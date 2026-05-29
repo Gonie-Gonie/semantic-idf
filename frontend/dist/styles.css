@@ -386,7 +386,9 @@ textarea {
   min-height: 100%;
   overflow: auto;
   padding: 8px;
+  font-family: "Cascadia Mono", Consolas, "Liberation Mono", monospace;
   font-size: 12px;
+  line-height: 1.45;
 }
 
 .primary-tree {
@@ -401,39 +403,46 @@ textarea {
 }
 
 .json-node {
-  margin: 2px 0;
+  margin: 0;
 }
 
 .json-node summary {
   cursor: pointer;
-  padding: 2px 0;
+  padding: 1px 0;
   font-weight: 600;
 }
 
 .json-object-tree {
-  display: grid;
-  gap: 2px;
+  display: block;
 }
 
-.json-model-object {
-  margin: 0;
-  padding: 2px 0 5px;
-  border-bottom: 1px solid var(--surface-2);
+.json-root-line,
+.json-close-line,
+.json-brace,
+.json-colon {
+  color: var(--muted);
 }
 
-.json-model-object:last-child {
-  border-bottom: 0;
+.json-root-line {
+  font-weight: 700;
 }
 
-.json-model-object > summary {
+.json-type-group,
+.json-instance,
+.json-value-node {
+  padding: 0;
+}
+
+.json-type-group > summary,
+.json-instance > summary,
+.json-value-node > summary {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  padding: 3px 0;
+  gap: 8px;
 }
 
-.json-model-object > summary > span:first-child {
+.json-line {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -447,30 +456,40 @@ textarea {
   gap: 5px;
 }
 
-.json-node ol {
-  margin: 1px 0 1px 6px;
-  padding: 0;
-  list-style: none;
+.json-children,
+.json-fields {
+  margin-left: 10px;
   display: grid;
   gap: 1px;
 }
 
-.json-node li {
+.json-field-row,
+.json-array-row {
   display: grid;
-  grid-template-columns: minmax(64px, 20%) minmax(0, 1fr);
-  gap: 5px;
+  grid-template-columns: minmax(96px, 22%) auto minmax(0, 1fr);
+  gap: 3px;
   align-items: start;
 }
 
+.json-array-row {
+  grid-template-columns: minmax(28px, auto) minmax(0, 1fr);
+}
+
 .json-key {
-  color: var(--muted);
+  color: #7a3e00;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.json-index {
+  color: var(--muted);
+  text-align: right;
+}
+
 .json-primitive {
   overflow-wrap: anywhere;
+  color: #1f2933;
 }
 
 #tableInputView {

@@ -651,38 +651,74 @@ function renderJSONObjectsTree(objects) {
   if (!objects.length) {
     return `<div class="empty">No objects</div>`;
   }
-  return objects.map(renderJSONModelObject).join("");
+  const groups = [];
+  const byType = new Map();
+  objects.forEach((object) => {
+    const objectType = object.type || "Object";
+    if (!byType.has(objectType)) {
+      const group = { type: objectType, objects: [] };
+      groups.push(group);
+      byType.set(objectType, group);
+    }
+    byType.get(objectType).objects.push(object);
+  });
+
+  return `
+    <div class="json-root-line">{</div>
+    ${groups.map((group, index) => renderJSONTypeGroup(group, index === groups.length - 1)).join("")}
+    <div class="json-root-line">}</div>
+  `;
 }
 
-function renderJSONModelObject(object) {
+function renderJSONTypeGroup(group, isLastGroup) {
+  return `
+    <details class="json-node json-type-group" open>
+      <summary>
+        <span class="json-line"><span class="json-key">${formatJSONKey(group.type)}</span><span class="json-colon">: </span><span class="json-brace">{</span></span>
+        <span class="badge">${escapeHTML(group.objects.length)} objects</span>
+      </summary>
+      <div class="json-children">
+        ${group.objects.map((object, index) => renderJSONInstance(object, index === group.objects.length - 1)).join("")}
+      </div>
+      <div class="json-close-line">}${isLastGroup ? "" : ","}</div>
+    </details>
+  `;
+}
+
+function renderJSONInstance(object, isLastObject) {
   const fields = object.fields || [];
   const objectType = object.type || "Object";
-  const objectLabel = object.name ? `${objectType} - ${object.name}` : objectType;
   const sourceIndex = object.sourceIndex ?? object.index ?? "";
+  const fallbackOrdinal = Number.isFinite(Number(sourceIndex)) ? Number(sourceIndex) + 1 : 1;
+  const objectName = object.name || `${objectType} ${fallbackOrdinal}`;
   const sourceLabel = sourceIndex === "" ? "" : `<span class="row-sub">#${escapeHTML(sourceIndex)}</span>`;
   return `
-    <details class="json-node json-model-object" open>
+    <details class="json-node json-instance" open>
       <summary>
-        <span title="${escapeHTML(objectLabel)}">${escapeHTML(objectLabel)}</span>
+        <span class="json-line" title="${escapeHTML(objectName)}"><span class="json-key">${formatJSONKey(objectName)}</span><span class="json-colon">: </span><span class="json-brace">{</span></span>
         <span class="json-summary-meta">
           ${sourceLabel}
           <span class="badge">${escapeHTML(fields.length)} fields</span>
         </span>
       </summary>
-      <ol>
+      <div class="json-fields">
         ${fields
-          .map(
-            (field, index) => `
-              <li>
-                <span class="json-key" title="${escapeHTML(field.key || field.comment || "")}">
-                  ${escapeHTML(field.key || field.comment || `Field ${index + 1}`)}
-                </span>
-                ${renderJSONTree(field.value, 1, field.key || field.comment || "value")}
-              </li>`,
-          )
+          .map((field, index) => renderJSONFieldRow(field, index, index === fields.length - 1))
           .join("")}
-      </ol>
+      </div>
+      <div class="json-close-line">}${isLastObject ? "" : ","}</div>
     </details>
+  `;
+}
+
+function renderJSONFieldRow(field, index, isLastField) {
+  const key = field.key || field.comment || `field_${index + 1}`;
+  return `
+    <div class="json-field-row">
+      <span class="json-key" title="${escapeHTML(field.comment || key)}">${formatJSONKey(key)}</span>
+      <span class="json-colon">: </span>
+      <span class="json-field-value">${renderJSONValue(field.value, 0, !isLastField)}</span>
+    </div>
   `;
 }
 
@@ -717,94 +753,76 @@ function formatJSONValue(value) {
   return String(value);
 }
 
+function formatJSONKey(value) {
+  return escapeHTML(JSON.stringify(String(value ?? "")));
+}
+
 function renderJSONFieldValue(value) {
   if (value && typeof value === "object") {
-    return `<div class="json-inline-tree">${renderJSONTree(value, 0, "value")}</div>`;
+    return `<div class="json-inline-tree">${renderJSONValue(value, 0, false)}</div>`;
   }
   return `<span title="${escapeHTML(formatJSONValue(value))}">${escapeHTML(formatJSONValue(value))}</span>`;
 }
 
-function jsonNodeLabel(value, fallbackLabel = "value") {
-  if (value && typeof value === "object" && !Array.isArray(value)) {
-    const type = value.type ? String(value.type) : "";
-    const name = value.name ? String(value.name) : "";
-    const key = value.key ? String(value.key) : "";
-    const comment = value.comment ? String(value.comment) : "";
-    if (type && name) {
-      return `${type} - ${name}`;
-    }
-    if (type) {
-      return type;
-    }
-    if (name) {
-      return name;
-    }
-    if (key) {
-      return key;
-    }
-    if (comment) {
-      return comment;
-    }
+function formatJSONLiteral(value) {
+  if (value === undefined) {
+    return "null";
   }
-
-  const labels = {
-    model: "EnergyPlus Model",
-    metadata: "Metadata",
-    version: "Version",
-    objects: "IDF Objects",
-    fields: "Fields",
-    value: "Value",
-  };
-  return labels[fallbackLabel] || fallbackLabel || "Value";
+  try {
+    const encoded = JSON.stringify(value);
+    return encoded === undefined ? "null" : encoded;
+  } catch (_) {
+    return JSON.stringify(formatJSONValue(value));
+  }
 }
 
-function jsonNodeBadge(value) {
-  if (Array.isArray(value)) {
-    return `${value.length}`;
-  }
-  if (value && typeof value === "object") {
-    return `${Object.keys(value).length}`;
-  }
-  return "";
-}
-
-function renderJSONTree(value, depth = 0, label = "value") {
-  const openAttr = depth < 3 || label === "fields" ? "open" : "";
+function renderJSONValue(value, depth = 0, trailingComma = false) {
+  const comma = trailingComma ? "," : "";
+  const openAttr = depth < 2 ? "open" : "";
   if (Array.isArray(value)) {
     if (!value.length) {
-      return `<span class="json-primitive">[]</span>`;
+      return `<span class="json-primitive">[]${comma}</span>`;
     }
     return `
-      <details class="json-node" ${openAttr}>
-        <summary>${escapeHTML(jsonNodeLabel(value, label))} <span class="badge">${escapeHTML(jsonNodeBadge(value))}</span></summary>
-        <ol>
+      <details class="json-node json-value-node" ${openAttr}>
+        <summary><span class="json-brace">[</span> <span class="badge">${escapeHTML(value.length)}</span></summary>
+        <div class="json-children">
           ${value
             .map(
               (item, index) =>
-                `<li><span class="json-key">${escapeHTML(index)}</span>${renderJSONTree(item, depth + 1, jsonNodeLabel(item, label))}</li>`,
+                `<div class="json-array-row"><span class="json-index">${escapeHTML(index)}</span>${renderJSONValue(item, depth + 1, index !== value.length - 1)}</div>`,
             )
             .join("")}
-        </ol>
+        </div>
+        <div class="json-close-line">]${comma}</div>
       </details>`;
   }
 
   if (value && typeof value === "object") {
     const entries = Object.entries(value);
     if (!entries.length) {
-      return `<span class="json-primitive">{}</span>`;
+      return `<span class="json-primitive">{}${comma}</span>`;
     }
     return `
-      <details class="json-node" ${openAttr}>
-        <summary>${escapeHTML(jsonNodeLabel(value, label))} <span class="badge">${escapeHTML(jsonNodeBadge(value))}</span></summary>
-        <ol>
+      <details class="json-node json-value-node" ${openAttr}>
+        <summary><span class="json-brace">{</span> <span class="badge">${escapeHTML(entries.length)}</span></summary>
+        <div class="json-children">
           ${entries
-            .map(([key, child]) => `<li><span class="json-key">${escapeHTML(key)}</span>${renderJSONTree(child, depth + 1, key)}</li>`)
+            .map(
+              ([key, child], index) => `
+                <div class="json-field-row">
+                  <span class="json-key">${formatJSONKey(key)}</span>
+                  <span class="json-colon">: </span>
+                  <span class="json-field-value">${renderJSONValue(child, depth + 1, index !== entries.length - 1)}</span>
+                </div>`,
+            )
             .join("")}
-        </ol>
+        </div>
+        <div class="json-close-line">}${comma}</div>
       </details>`;
   }
 
-  return `<span class="json-primitive">${escapeHTML(formatJSONValue(value))}</span>`;
+  return `<span class="json-primitive">${escapeHTML(formatJSONLiteral(value))}${comma}</span>`;
 }
 
 function renderFieldTable() {
