@@ -13,6 +13,7 @@
 - Keep EnergyPlus input parsing/conversion in `internal/epinput`; reserve `internal/idf` for low-level IDF parsing and analysis helpers.
 - Support EnergyPlus 22+ as the default compatibility range and keep version-specific IDD/schema integration pluggable.
 - Input viewing should keep Text, JSON, and Table modes in sync from one parsed/cached EnergyPlus model; Table mode should be organized by IDF object type and support row/column orientation changes.
+- Keep the startup sample tied to the vendored official EnergyPlus large office reference IDF unless a better real-world evaluation file is intentionally chosen.
 - JSON structured view should stay epJSON-shaped with quoted keys, braces, colons, literal values, semantic grouping, and compact indentation.
 - JSON view is a structured editor, not a raw textarea: syntax tokens are read-only UI, value tokens edit inline and call backend model patch APIs, and raw source text lives in the shared Raw Text pane.
 - Text view formatted summaries should remain editable and can action-sync position with raw text through a user-controlled toggle.
@@ -20,6 +21,7 @@
 - epJSON conversion should follow the official schema shape where known. Detailed surface and shading coordinate extensibles should appear as a `vertices` array, not as flat `vertex_1_*` keys.
 - Keep Text and Table groups open by default, and maintain stable table row headers.
 - Keep the app window itself from scrolling; use explicit scroll containers inside the input and analysis panels.
+- Keep vertical splitter behavior for Raw Text and Geometry details persistent via localStorage.
 - Keep right-panel result tabs purposeful: Summary for backend-driven metrics and Geometry for parsed building shape review.
 - Summary metric definitions, calculated values, exports, and guide entries should stay tied to the same backend catalog.
 - Keep the Summary export contract stable: categorized JSON and two-column `name,value` CSV.

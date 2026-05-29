@@ -1,4 +1,4 @@
-import { sampleIDF } from "./sample.js";
+import { defaultSample, loadDefaultSampleIDF } from "./sample.js";
 import { elements, state, updateTextStats } from "./state.js";
 import { analyze, closeToolMenu, convertInput, downloadText, exportSummary, openGuide, removeUnused } from "./actions.js";
 import { renderEmpty, renderReport, renderSummary } from "./analysis-views.js";
@@ -10,7 +10,7 @@ import {
   switchInputView,
   syncTextViewFromRawCaret,
 } from "./input-views.js";
-import { initializeWorkspaceSplitter } from "./layout.js";
+import { initializeVerticalSplitters, initializeWorkspaceSplitter } from "./layout.js";
 import { handleAnalysisActivation, switchResultTab } from "./navigation.js";
 
 configureInputViews({ analyze, renderReport });
@@ -84,7 +84,15 @@ elements.analysisPanel.addEventListener("keydown", (event) => {
 });
 
 initializeWorkspaceSplitter();
-elements.idfInput.value = sampleIDF;
-updateTextStats();
+initializeVerticalSplitters();
 renderEmpty();
-analyze();
+loadDefaultSampleIDF().then(async (sampleText) => {
+  elements.idfInput.value = sampleText;
+  updateTextStats();
+  await analyze();
+  state.lastAnalyzedText = sampleText;
+  const sourceLabel = sampleText.includes("RefBldgLargeOfficeNew2004_Chicago") ? defaultSample.name : "Fallback sample";
+  if (sourceLabel !== "Fallback sample") {
+    elements.runtimeStatus.title = defaultSample.source;
+  }
+});

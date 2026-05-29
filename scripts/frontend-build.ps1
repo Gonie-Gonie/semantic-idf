@@ -42,4 +42,9 @@ if (-not (Test-Path $threeModule)) {
     throw "Missing frontend/dist/vendor/three.module.js"
 }
 
+$defaultSample = Join-Path $dist "samples\RefBldgLargeOfficeNew2004_Chicago.idf"
+if (-not (Test-Path $defaultSample)) {
+    throw "Missing frontend/dist/samples/RefBldgLargeOfficeNew2004_Chicago.idf"
+}
+
 Write-Host "Static frontend is ready."

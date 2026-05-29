@@ -68,7 +68,7 @@ The app toolbar includes a Guide button that navigates to the bundled `frontend/
 - Text: fully expanded editable object summary first, shared editable raw source below, and optional action-based position sync between them.
 - JSON: structured epJSON-like editor first, with read-only syntax tokens and inline-editable value tokens that patch the backend model; raw source uses the shared Raw Text pane.
 - Table: fully expanded IDF object type tables with fixed row headers, no synthetic Name column, global and per-table row/column orientation controls, and shared raw source sync.
-- Workspace: resizable input and analysis panes with separate scroll areas and no window-level app scrolling.
+- Workspace: resizable input and analysis panes with separate scroll areas, no window-level app scrolling, and vertical splitters for Raw Text and Geometry details.
 
 ## Analysis Navigation
 
@@ -77,6 +77,7 @@ The app toolbar includes a Guide button that navigates to the bundled `frontend/
 - Summary can be filtered and exported as categorized JSON or a two-column `name,value` CSV.
 - Geometry parses detailed zones, walls, roofs, floors, and fenestration into a 3D view and a story-by-story plan view with selectable object details.
 - Summary metric guide entries are loaded from the same backend catalog as the calculated metrics.
+- The startup sample is the official EnergyPlus `RefBldgLargeOfficeNew2004_Chicago.idf` example vendored under `frontend/dist/samples/`.
 - Conversion and cleanup commands are grouped under the top toolbar Tools menu.
 
 ## Project Layout

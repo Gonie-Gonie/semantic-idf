@@ -34,6 +34,8 @@
           <p>
             Open supports `.idf`, `.imf`, `.epjson`, `.json`, and `.txt` files.
             Analyze detects IDF or epJSON from the file extension and content.
+            The startup sample is the official EnergyPlus `RefBldgLargeOfficeNew2004_Chicago.idf`
+            example from NREL/EnergyPlus.
           </p>
         </section>
 
@@ -54,7 +56,7 @@
             </article>
             <article>
               <h3>Resizable Split</h3>
-              <p>The input and analysis panels have separate scroll areas, a locked app window, and a draggable divider.</p>
+              <p>The input and analysis panels have separate scroll areas, a locked app window, draggable left/right divider, and draggable vertical dividers for Raw Text and Geometry details.</p>
             </article>
           </div>
         </section>
@@ -134,6 +136,7 @@
         <section id="updates" class="guide-section">
           <h2>Update Log</h2>
           <ul class="guide-log">
+            <li><strong>2026-05-29</strong> Switched the startup model to the official EnergyPlus large office reference IDF and added vertical splitters for Raw Text and Geometry details.</li>
             <li><strong>2026-05-29</strong> Added a Geometry result tab with Three.js 3D massing, story plan view, zone/wall/window toggles, and selected-object property details.</li>
             <li><strong>2026-05-29</strong> Rebuilt the right panel as a single Summary metric catalog with categorized metrics, JSON/CSV export, and backend-sourced metric guide entries.</li>
             <li><strong>2026-05-29</strong> Removed Advanced epJSON text, moved Raw Text into a shared pane for all input views, avoided synthetic Name columns in Table/Text, and added schema-aware `vertices` arrays for detailed surface epJSON output.</li>
