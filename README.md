@@ -82,7 +82,10 @@ The app toolbar includes a Guide button that navigates to the bundled `frontend/
 - `internal/idf`: IDF parsing, analysis, and editing core.
 - `internal/epinput`: EnergyPlus input format detection, version detection, common model, and IDF/epJSON conversion.
 - `frontend/dist`: tracked static frontend assets.
+- `frontend/dist/app.js`: tiny ES module entrypoint.
+- `frontend/dist/js`: frontend modules split by state, actions, input views, analysis views, navigation, layout, and sample data.
 - `frontend/dist/guide.html`: user-facing tool guide maintained cumulatively.
+- `docs/agent.md`: consolidated working notes and implementation principles.
 - `app.go`: Wails-bound application API.
 - `scripts`: repo-local runtime setup, checks, and repeatable commands.
 - `.runtime`: ignored local Go/Wails runtime and caches created by setup.

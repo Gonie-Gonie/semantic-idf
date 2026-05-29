@@ -1,5 +1,6 @@
-# Agent Notes
+# Agent Working Notes
 
+- Primary stack: Go plus Wails v2 with static HTML/CSS/JS.
 - Keep the committed project lightweight: repo-local runtime downloads live in ignored `.runtime/`.
 - Use `scripts/setup.ps1` to prepare `.runtime/go`, `.runtime/bin/wails.exe`, and local Go caches per clone.
 - Prefer the top-level `dev.bat` wrapper for Windows developer commands; it applies the PowerShell bypass flags.
@@ -12,5 +13,9 @@
 - Keep EnergyPlus input parsing/conversion in `internal/epinput`; reserve `internal/idf` for low-level IDF parsing and analysis helpers.
 - Support EnergyPlus 22+ as the default compatibility range and keep version-specific IDD/schema integration pluggable.
 - Input viewing should keep Text, JSON, and Table modes in sync from one parsed/cached EnergyPlus model; Table mode should be organized by IDF object type and support row/column orientation changes.
-- Prefer readable dense views over generic render dumps: JSON structured view should stay epJSON-shaped with quoted keys, braces, colons, literal values, semantic grouping, and compact indentation; keep Text/Table groups open and maintain stable table row headers.
-- Keep result navigation focused: Summary, Schedules, and Systems on the right; clickable analysis items should jump to the matching object in the active left input view, and zones should expose structured surfaces/related-object details.
+- JSON structured view should stay epJSON-shaped with quoted keys, braces, colons, literal values, semantic grouping, and compact indentation.
+- Keep Text and Table groups open by default, and maintain stable table row headers.
+- Keep result navigation focused: Summary, Schedules, and Systems on the right.
+- Clickable analysis items should jump to the matching object in the active left input view.
+- Zone summary should grow into a structured navigation surface with surfaces and related objects first.
+- Frontend code organization: keep `frontend/dist/app.js` as a tiny entrypoint and place feature modules under `frontend/dist/js/`.
