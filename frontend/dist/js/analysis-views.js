@@ -1,4 +1,5 @@
 import { elements, escapeHTML, state } from "./state.js";
+import { renderGeometry } from "./geometry-view.js";
 import { renderInputViews } from "./input-views.js";
 
 export function renderReport() {
@@ -9,12 +10,17 @@ export function renderReport() {
   }
 
   renderSummary(report.summary);
+  renderGeometry(report.geometry);
   renderInputViews();
 }
 
 export function renderEmpty() {
   elements.summaryMetricCount.textContent = "0 metrics";
   elements.summaryCategories.innerHTML = `<div class="empty">No summary metrics yet</div>`;
+  elements.geometryStats.textContent = "0 zones, 0 surfaces, 0 windows";
+  elements.geometryCanvasHost.innerHTML = `<div class="empty">No geometry yet</div>`;
+  elements.geometryPlan.innerHTML = "";
+  elements.geometryDetails.innerHTML = `<div class="empty">Select a zone, wall, or window</div>`;
   elements.textObjectView.innerHTML = `<div class="empty">No formatted input yet</div>`;
   elements.jsonStructuredView.innerHTML = `<div class="empty">No structured input yet</div>`;
   elements.fieldTable.innerHTML = `<div class="empty">No field table yet</div>`;

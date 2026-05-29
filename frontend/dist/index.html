@@ -77,20 +77,52 @@
         <div id="workspaceSplitter" class="workspace-splitter" role="separator" aria-orientation="vertical" aria-label="Resize input and analysis panels"></div>
 
         <section class="analysis-panel" aria-label="Analysis results">
-          <div class="summary-head">
-            <div>
-              <h2>Summary</h2>
-              <span id="summaryMetricCount">0 metrics</span>
+          <nav class="tabs" aria-label="Result tabs">
+            <button class="tab active" data-result-tab="summary" type="button">Summary</button>
+            <button class="tab" data-result-tab="geometry" type="button">Geometry</button>
+          </nav>
+
+          <div class="result-pane active" id="summaryPane">
+            <div class="summary-head">
+              <div>
+                <h2>Summary</h2>
+                <span id="summaryMetricCount">0 metrics</span>
+              </div>
+              <div class="summary-tools">
+                <input id="summaryFilter" type="search" placeholder="Filter metrics" />
+                <button id="exportSummaryJSONButton" type="button">Export JSON</button>
+                <button id="exportSummaryCSVButton" type="button">Export CSV</button>
+              </div>
             </div>
-            <div class="summary-tools">
-              <input id="summaryFilter" type="search" placeholder="Filter metrics" />
-              <button id="exportSummaryJSONButton" type="button">Export JSON</button>
-              <button id="exportSummaryCSVButton" type="button">Export CSV</button>
+            <div class="summary-pane">
+              <div id="summaryCategories" class="summary-categories"></div>
             </div>
           </div>
 
-          <div class="summary-pane" id="summaryPane">
-            <div id="summaryCategories" class="summary-categories"></div>
+          <div class="result-pane" id="geometryPane">
+            <div class="geometry-head">
+              <div>
+                <h2>Geometry</h2>
+                <span id="geometryStats">0 zones, 0 surfaces, 0 windows</span>
+              </div>
+              <div class="geometry-tools">
+                <button class="geometry-mode-button active" data-geometry-mode="3d" type="button">3D</button>
+                <button class="geometry-mode-button" data-geometry-mode="plan" type="button">Plan</button>
+                <select id="geometryStorySelect" aria-label="Geometry story"></select>
+                <label><input id="geometryShowZones" type="checkbox" checked /> Zones</label>
+                <label><input id="geometryShowWalls" type="checkbox" checked /> Walls</label>
+                <label><input id="geometryShowWindows" type="checkbox" checked /> Windows</label>
+              </div>
+            </div>
+            <div class="geometry-body">
+              <div id="geometryViewport" class="geometry-viewport">
+                <div id="geometryCanvasHost" class="geometry-canvas-host"></div>
+                <svg id="geometryPlan" class="geometry-plan" role="img" aria-label="Geometry floor plan"></svg>
+              </div>
+              <section id="geometryDetails" class="geometry-details" aria-label="Selected geometry properties">
+                <div class="empty">Select a zone, wall, or window</div>
+              </section>
+            </div>
           </div>
         </section>
       </section>

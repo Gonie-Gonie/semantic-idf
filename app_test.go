@@ -25,4 +25,7 @@ func TestAnalyzeInputTextIncludesSummary(t *testing.T) {
 	if len(result.Report.Summary.Categories) != 6 {
 		t.Fatalf("summary category count = %d, want 6", len(result.Report.Summary.Categories))
 	}
+	if result.Report.Geometry.ZoneCount != 1 {
+		t.Fatalf("geometry zone count = %d, want 1", result.Report.Geometry.ZoneCount)
+	}
 }

@@ -1,5 +1,6 @@
 import { elements, setStatus, state } from "./state.js";
 import { analyze } from "./actions.js";
+import { renderGeometry, resizeGeometry } from "./geometry-view.js";
 import { renderFieldTable, renderInputViews, switchInputView } from "./input-views.js";
 
 function currentInputViewElement() {
@@ -110,5 +111,21 @@ export function handleAnalysisActivation(element) {
       objectIndex: jumpTarget.dataset.jumpObjectIndex,
       objectType: jumpTarget.dataset.jumpObjectType,
     });
+  }
+}
+
+export function switchResultTab(tabName) {
+  state.activeResultTab = tabName === "geometry" ? "geometry" : "summary";
+  elements.resultTabButtons.forEach((button) => {
+    button.classList.toggle("active", button.dataset.resultTab === state.activeResultTab);
+  });
+  elements.resultPanes.forEach((pane) => {
+    pane.classList.toggle("active", pane.id === `${state.activeResultTab}Pane`);
+  });
+  if (state.activeResultTab === "geometry") {
+    window.setTimeout(() => {
+      renderGeometry();
+      resizeGeometry();
+    }, 0);
   }
 }

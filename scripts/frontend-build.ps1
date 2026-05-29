@@ -21,6 +21,7 @@ if (-not (Test-Path $entry)) {
 $modules = @(
     "actions.js",
     "analysis-views.js",
+    "geometry-view.js",
     "input-views.js",
     "layout.js",
     "main.js",
@@ -34,6 +35,11 @@ foreach ($module in $modules) {
     if (-not (Test-Path $path)) {
         throw "Missing frontend/dist/js/$module"
     }
+}
+
+$threeModule = Join-Path $dist "vendor\three.module.js"
+if (-not (Test-Path $threeModule)) {
+    throw "Missing frontend/dist/vendor/three.module.js"
 }
 
 Write-Host "Static frontend is ready."

@@ -2,6 +2,7 @@ import { sampleIDF } from "./sample.js";
 import { elements, state, updateTextStats } from "./state.js";
 import { analyze, closeToolMenu, convertInput, downloadText, exportSummary, openGuide, removeUnused } from "./actions.js";
 import { renderEmpty, renderReport, renderSummary } from "./analysis-views.js";
+import { renderGeometry, resizeGeometry, setGeometryMode, setGeometryStory } from "./geometry-view.js";
 import {
   configureInputViews,
   renderFieldTable,
@@ -10,7 +11,7 @@ import {
   syncTextViewFromRawCaret,
 } from "./input-views.js";
 import { initializeWorkspaceSplitter } from "./layout.js";
-import { handleAnalysisActivation } from "./navigation.js";
+import { handleAnalysisActivation, switchResultTab } from "./navigation.js";
 
 configureInputViews({ analyze, renderReport });
 
@@ -52,9 +53,20 @@ elements.syncRawTextToggle.addEventListener("change", () => {
 });
 elements.fieldFilter.addEventListener("input", renderFieldTable);
 elements.summaryFilter.addEventListener("input", () => renderSummary());
+elements.resultTabButtons.forEach((button) => {
+  button.addEventListener("click", () => switchResultTab(button.dataset.resultTab));
+});
+elements.geometryModeButtons.forEach((button) => {
+  button.addEventListener("click", () => setGeometryMode(button.dataset.geometryMode));
+});
+elements.geometryStorySelect.addEventListener("change", () => setGeometryStory(elements.geometryStorySelect.value));
+elements.geometryShowZones.addEventListener("change", () => renderGeometry());
+elements.geometryShowWalls.addEventListener("change", () => renderGeometry());
+elements.geometryShowWindows.addEventListener("change", () => renderGeometry());
 elements.inputViewButtons.forEach((button) => {
   button.addEventListener("click", () => switchInputView(button.dataset.inputView));
 });
+window.addEventListener("resize", resizeGeometry);
 elements.tableOrientationButtons.forEach((button) => {
   button.addEventListener("click", () => setTableOrientation(button.dataset.tableOrientation));
 });

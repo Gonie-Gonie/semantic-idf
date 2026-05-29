@@ -72,8 +72,10 @@ The app toolbar includes a Guide button that navigates to the bundled `frontend/
 
 ## Analysis Navigation
 
-- The right panel currently shows a single Summary metric catalog grouped by model, geometry, envelope, loads, schedules, and HVAC categories.
+- The right panel has Summary and Geometry result tabs.
+- Summary shows a metric catalog grouped by model, geometry, envelope, loads, schedules, and HVAC categories.
 - Summary can be filtered and exported as categorized JSON or a two-column `name,value` CSV.
+- Geometry parses detailed zones, walls, roofs, floors, and fenestration into a 3D view and a story-by-story plan view with selectable object details.
 - Summary metric guide entries are loaded from the same backend catalog as the calculated metrics.
 - Conversion and cleanup commands are grouped under the top toolbar Tools menu.
 
