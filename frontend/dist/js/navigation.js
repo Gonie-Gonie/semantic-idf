@@ -1,7 +1,7 @@
 import { elements, setStatus, state } from "./state.js";
 import { analyze } from "./actions.js";
 import { renderGeometry, resizeGeometry } from "./geometry-view.js";
-import { renderFieldTable, renderInputViews, switchInputView } from "./input-views.js";
+import { renderFieldTable, renderInputViews, switchInputView, syncRawTextToObjectField } from "./input-views.js";
 
 function currentInputViewElement() {
   return document.querySelector(`#${state.activeInputView}InputView`);
@@ -98,6 +98,9 @@ export async function focusInputObject(target) {
   expandDetailsFor(element);
   scrollInputTargetIntoView(element);
   highlightInputTarget(element);
+  if (state.syncTextRawPosition && hasObjectIndex) {
+    syncRawTextToObjectField(Number(target.objectIndex));
+  }
   setStatus("Input object located", "ok");
 }
 

@@ -13,6 +13,9 @@ export function renderGeometry(geometry = state.report?.geometry) {
   }
 
   ensureSelectedStory(geometry);
+  if (elements.geometrySyncLocate) {
+    elements.geometrySyncLocate.checked = state.geometrySyncLocate;
+  }
   elements.geometryStats.textContent = `${geometry.zoneCount || 0} zones, ${geometry.surfaceCount || 0} surfaces, ${geometry.windowCount || 0} windows`;
   renderStoryOptions(geometry);
   updateModeVisibility();
@@ -26,6 +29,9 @@ export function renderGeometry(geometry = state.report?.geometry) {
 
 export function setGeometryMode(mode) {
   state.geometryMode = mode === "plan" ? "plan" : "3d";
+  if (state.geometryMode === "plan" && state.selectedGeometryStory === "all") {
+    state.selectedGeometryStory = firstStoryIndex(state.report?.geometry);
+  }
   elements.geometryModeButtons.forEach((button) => {
     button.classList.toggle("active", button.dataset.geometryMode === state.geometryMode);
   });
@@ -33,7 +39,7 @@ export function setGeometryMode(mode) {
 }
 
 export function setGeometryStory(storyIndex) {
-  state.selectedGeometryStory = Number(storyIndex) || 0;
+  state.selectedGeometryStory = storyIndex === "all" ? "all" : Number(storyIndex) || 0;
   renderGeometry();
 }
 
@@ -43,6 +49,7 @@ export function selectGeometry(kind, id) {
   renderGeometryDetails();
   highlightSelectedMeshes();
   highlightSelectedPlan();
+  syncLocatedInputFromSelection();
 }
 
 export function resizeGeometry() {
@@ -64,7 +71,10 @@ function renderEmptyGeometry() {
 function ensureSelectedStory(geometry) {
   const stories = geometry.stories || [];
   if (!stories.length) {
-    state.selectedGeometryStory = 0;
+    state.selectedGeometryStory = state.geometryMode === "3d" ? "all" : 0;
+    return;
+  }
+  if (state.geometryMode === "3d" && state.selectedGeometryStory === "all") {
     return;
   }
   const exists = stories.some((story) => story.index === state.selectedGeometryStory);
@@ -75,12 +85,17 @@ function ensureSelectedStory(geometry) {
 
 function renderStoryOptions(geometry) {
   const stories = geometry.stories || [];
-  elements.geometryStorySelect.innerHTML = stories
+  const allOption =
+    state.geometryMode === "3d"
+      ? `<option value="all" ${state.selectedGeometryStory === "all" ? "selected" : ""}>All levels</option>`
+      : "";
+  const storyOptions = stories
     .map(
       (story) =>
         `<option value="${escapeHTML(story.index)}" ${story.index === state.selectedGeometryStory ? "selected" : ""}>${escapeHTML(story.name)} (${formatNumber(story.elevation)} m)</option>`,
     )
     .join("");
+  elements.geometryStorySelect.innerHTML = `${allOption}${storyOptions}`;
 }
 
 function updateModeVisibility() {
@@ -108,17 +123,17 @@ function renderScene(geometry) {
 
   if (elements.geometryShowZones.checked) {
     (geometry.surfaces || [])
-      .filter((surface) => surface.storyIndex === state.selectedGeometryStory && surface.surfaceType?.toLowerCase() === "floor")
+      .filter((surface) => matchesSelectedStory(surface) && surface.surfaceType?.toLowerCase() === "floor")
       .forEach((surface) => addSurfaceMesh(group, surface, "zone", zoneIdForName(geometry, surface.zoneName), center));
   }
   if (elements.geometryShowWalls.checked) {
     (geometry.surfaces || [])
-      .filter((surface) => surface.storyIndex === state.selectedGeometryStory && surface.surfaceType?.toLowerCase() !== "floor")
+      .filter((surface) => matchesSelectedStory(surface) && surface.surfaceType?.toLowerCase() !== "floor")
       .forEach((surface) => addSurfaceMesh(group, surface, "surface", surface.id, center));
   }
   if (elements.geometryShowWindows.checked) {
     (geometry.windows || [])
-      .filter((windowItem) => windowItem.storyIndex === state.selectedGeometryStory)
+      .filter((windowItem) => matchesSelectedStory(windowItem))
       .forEach((windowItem) => addWindowMesh(group, windowItem, center));
   }
 
@@ -131,6 +146,13 @@ function renderScene(geometry) {
   camera.updateProjectionMatrix();
   highlightSelectedMeshes();
   renderer.render(scene, camera);
+  window.requestAnimationFrame(() => {
+    if (rendererState?.renderer !== renderer || state.geometryMode !== "3d") {
+      return;
+    }
+    resizeRenderer();
+    renderer.render(scene, camera);
+  });
 }
 
 function ensureRenderer() {
@@ -145,7 +167,7 @@ function ensureRenderer() {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0xf7fafc);
   const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 1000);
-  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, preserveDrawingBuffer: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.domElement.className = "geometry-canvas";
   elements.geometryCanvasHost.innerHTML = "";
@@ -299,8 +321,9 @@ function addAxes(group, bounds, center) {
 
 function renderPlan(geometry) {
   disposeRendererCanvas();
-  const surfaces = (geometry.surfaces || []).filter((surface) => surface.storyIndex === state.selectedGeometryStory);
-  const windows = (geometry.windows || []).filter((windowItem) => windowItem.storyIndex === state.selectedGeometryStory);
+  const storyIndex = state.selectedGeometryStory === "all" ? firstStoryIndex(geometry) : state.selectedGeometryStory;
+  const surfaces = (geometry.surfaces || []).filter((surface) => surface.storyIndex === storyIndex);
+  const windows = (geometry.windows || []).filter((windowItem) => windowItem.storyIndex === storyIndex);
   const bounds = geometry.bounds || {};
   if (!bounds.ok || (!surfaces.length && !windows.length)) {
     elements.geometryPlan.innerHTML = `<text x="24" y="42" fill="#60707c" font-size="14">No floor plan geometry</text>`;
@@ -357,7 +380,7 @@ function renderGeometryDetails(geometry = state.report?.geometry) {
         <h3>${escapeHTML(entity.title)}</h3>
         <span>${escapeHTML(entity.subtitle)}</span>
       </div>
-      <button class="navigable-row" data-jump-object-index="${escapeHTML(entity.objectIndex)}" data-jump-object-type="${escapeHTML(entity.objectType)}" type="button">Locate Input</button>
+      <span class="geometry-sync-note">${state.geometrySyncLocate ? "Sync locate on" : "Sync locate off"}</span>
     </div>
     <div class="geometry-detail-grid">
       <section>
@@ -369,6 +392,32 @@ function renderGeometryDetails(geometry = state.report?.geometry) {
         ${renderFieldList(entity.fields)}
       </section>
     </div>`;
+}
+
+function syncLocatedInputFromSelection() {
+  if (!state.geometrySyncLocate) {
+    return;
+  }
+  const entity = selectedGeometryEntity(state.report?.geometry);
+  if (!entity) {
+    return;
+  }
+  window.dispatchEvent(
+    new CustomEvent("idfAnalyzer:geometryLocate", {
+      detail: {
+        objectIndex: entity.objectIndex,
+        objectType: entity.objectType,
+      },
+    }),
+  );
+}
+
+function matchesSelectedStory(item) {
+  return state.selectedGeometryStory === "all" || item.storyIndex === state.selectedGeometryStory;
+}
+
+function firstStoryIndex(geometry) {
+  return geometry?.stories?.[0]?.index ?? 0;
 }
 
 function selectedGeometryEntity(geometry) {

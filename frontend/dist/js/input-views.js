@@ -459,7 +459,7 @@ function syncRawTextToFormattedTarget(element) {
   syncRawTextToObjectField(objectIndex, fieldIndex, element.dataset.fieldIndexKind || "idf");
 }
 
-function syncRawTextToObjectField(objectIndex, fieldIndex = null, fieldIndexKind = "idf") {
+export function syncRawTextToObjectField(objectIndex, fieldIndex = null, fieldIndexKind = "idf") {
   const range = findRawTextRangeForTextTarget(objectIndex, fieldIndex, fieldIndexKind);
   if (!range) {
     return;

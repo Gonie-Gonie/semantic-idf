@@ -44,7 +44,7 @@
           <div class="guide-grid">
             <article>
               <h3>Text</h3>
-              <p>A fully expanded editable object summary first, with raw IDF or epJSON text below it and optional click-position sync between both panes.</p>
+              <p>A fully expanded editable object summary first, with raw IDF or epJSON text below it and optional position sync from editable fields and analysis selections.</p>
             </article>
             <article>
               <h3>JSON</h3>
@@ -70,7 +70,7 @@
             </article>
             <article>
               <h3>Geometry</h3>
-              <p>Geometry parses detailed zones, walls, roofs, floors, and fenestration into a 3D view and a story-by-story plan view with selectable properties.</p>
+              <p>Geometry parses detailed zones, walls, roofs, floors, and fenestration into a 3D view that defaults to all levels, optional story filtering, a story plan view, selectable properties, and Sync locate jumps to the matching input object.</p>
             </article>
             <article>
               <h3>Export</h3>
@@ -136,6 +136,7 @@
         <section id="updates" class="guide-section">
           <h2>Update Log</h2>
           <ul class="guide-log">
+            <li><strong>2026-05-29</strong> Made Geometry 3D default to all levels, changed locate into a Sync locate checkbox, and synced Raw Text position for right-panel object jumps when enabled.</li>
             <li><strong>2026-05-29</strong> Switched the startup model to the official EnergyPlus large office reference IDF and added vertical splitters for Raw Text and Geometry details.</li>
             <li><strong>2026-05-29</strong> Added a Geometry result tab with Three.js 3D massing, story plan view, zone/wall/window toggles, and selected-object property details.</li>
             <li><strong>2026-05-29</strong> Rebuilt the right panel as a single Summary metric catalog with categorized metrics, JSON/CSV export, and backend-sourced metric guide entries.</li>

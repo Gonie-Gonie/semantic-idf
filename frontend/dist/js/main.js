@@ -11,7 +11,7 @@ import {
   syncTextViewFromRawCaret,
 } from "./input-views.js";
 import { initializeVerticalSplitters, initializeWorkspaceSplitter } from "./layout.js";
-import { handleAnalysisActivation, switchResultTab } from "./navigation.js";
+import { focusInputObject, handleAnalysisActivation, switchResultTab } from "./navigation.js";
 
 configureInputViews({ analyze, renderReport });
 
@@ -60,6 +60,10 @@ elements.geometryModeButtons.forEach((button) => {
   button.addEventListener("click", () => setGeometryMode(button.dataset.geometryMode));
 });
 elements.geometryStorySelect.addEventListener("change", () => setGeometryStory(elements.geometryStorySelect.value));
+elements.geometrySyncLocate.addEventListener("change", () => {
+  state.geometrySyncLocate = elements.geometrySyncLocate.checked;
+  renderGeometry();
+});
 elements.geometryShowZones.addEventListener("change", () => renderGeometry());
 elements.geometryShowWalls.addEventListener("change", () => renderGeometry());
 elements.geometryShowWindows.addEventListener("change", () => renderGeometry());
@@ -67,6 +71,13 @@ elements.inputViewButtons.forEach((button) => {
   button.addEventListener("click", () => switchInputView(button.dataset.inputView));
 });
 window.addEventListener("resize", resizeGeometry);
+window.addEventListener("idfAnalyzer:geometryLocate", (event) => {
+  const { objectIndex, objectType } = event.detail || {};
+  if (objectIndex === undefined || objectIndex === null || String(objectIndex) === "") {
+    return;
+  }
+  focusInputObject({ objectIndex, objectType });
+});
 elements.tableOrientationButtons.forEach((button) => {
   button.addEventListener("click", () => setTableOrientation(button.dataset.tableOrientation));
 });

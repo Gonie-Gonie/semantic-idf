@@ -16,7 +16,7 @@
 - Keep the startup sample tied to the vendored official EnergyPlus large office reference IDF unless a better real-world evaluation file is intentionally chosen.
 - JSON structured view should stay epJSON-shaped with quoted keys, braces, colons, literal values, semantic grouping, and compact indentation.
 - JSON view is a structured editor, not a raw textarea: syntax tokens are read-only UI, value tokens edit inline and call backend model patch APIs, and raw source text lives in the shared Raw Text pane.
-- Text view formatted summaries should remain editable and can action-sync position with raw text through a user-controlled toggle.
+- Text view formatted summaries should remain editable and can sync position with raw text through a user-controlled toggle; right-panel object jumps should also move Raw Text when that toggle is enabled.
 - Do not synthesize Name-oriented UI when an object has no real name. Use real names when present; otherwise identify objects by type and index.
 - epJSON conversion should follow the official schema shape where known. Detailed surface and shading coordinate extensibles should appear as a `vertices` array, not as flat `vertex_1_*` keys.
 - Keep Text and Table groups open by default, and maintain stable table row headers.
@@ -25,5 +25,5 @@
 - Keep right-panel result tabs purposeful: Summary for backend-driven metrics and Geometry for parsed building shape review.
 - Summary metric definitions, calculated values, exports, and guide entries should stay tied to the same backend catalog.
 - Keep the Summary export contract stable: categorized JSON and two-column `name,value` CSV.
-- Geometry should keep parsed zone/surface/window data in the backend report and render from that shared structure in 3D and plan views.
+- Geometry should keep parsed zone/surface/window data in the backend report and render from that shared structure in 3D and plan views; 3D defaults to all levels, story filtering is optional, and Sync locate controls automatic jumps to matching input objects.
 - Frontend code organization: keep `frontend/dist/app.js` as a tiny entrypoint and place feature modules under `frontend/dist/js/`.

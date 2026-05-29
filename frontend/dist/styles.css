@@ -1171,6 +1171,14 @@ textarea {
   font-size: 12px;
 }
 
+.geometry-detail-head .geometry-sync-note {
+  flex: 0 0 auto;
+  margin-top: 0;
+  color: var(--ink-soft);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
 .geometry-detail-grid {
   display: grid;
   grid-template-columns: minmax(220px, 0.9fr) minmax(260px, 1.1fr);
