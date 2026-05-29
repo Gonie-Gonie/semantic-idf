@@ -47,29 +47,9 @@
           </div>
           <div class="input-view active" id="textInputView">
             <div id="textObjectView" class="formatted-object-view"></div>
-            <div class="raw-editor-block">
-              <div class="subhead">
-                <h3>Raw Text</h3>
-                <label class="sync-toggle">
-                  <input id="syncRawTextToggle" type="checkbox" checked />
-                  Sync position
-                </label>
-              </div>
-              <textarea id="idfInput" spellcheck="false"></textarea>
-            </div>
           </div>
           <div class="input-view" id="jsonInputView">
             <div id="jsonStructuredView" class="json-view"></div>
-            <details class="raw-editor-block json-editor-block advanced-json-block">
-              <summary>Advanced epJSON Text</summary>
-              <div class="advanced-json-body">
-                <div class="subhead">
-                  <h3>Raw epJSON</h3>
-                  <button id="applyJSONButton" type="button">Apply JSON</button>
-                </div>
-                <textarea id="jsonTextInput" spellcheck="false"></textarea>
-              </div>
-            </details>
           </div>
           <div class="input-view" id="tableInputView">
             <div class="table-tools">
@@ -81,6 +61,16 @@
               <span id="fieldStats">0 fields</span>
             </div>
             <div id="fieldTable" class="field-table"></div>
+          </div>
+          <div class="raw-editor-block">
+            <div class="subhead">
+              <h3>Raw Text</h3>
+              <label class="sync-toggle">
+                <input id="syncRawTextToggle" type="checkbox" checked />
+                Sync position
+              </label>
+            </div>
+            <textarea id="idfInput" spellcheck="false"></textarea>
           </div>
         </aside>
 

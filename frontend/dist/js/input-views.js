@@ -78,14 +78,10 @@ function renderJSONView() {
   const model = state.model;
   if (!model || !Array.isArray(model.objects)) {
     elements.jsonStructuredView.innerHTML = `<div class="empty">Analyze input to build JSON view</div>`;
-    elements.jsonTextInput.value = "";
     return;
   }
 
   const versionLabel = model.version?.raw || "unknown";
-  if (document.activeElement !== elements.jsonTextInput) {
-    elements.jsonTextInput.value = state.epjsonText || "";
-  }
 
   elements.jsonStructuredView.innerHTML = `
     <div class="json-meta">
@@ -169,7 +165,7 @@ function renderJSONInstance(object, isLastObject) {
   const openAttr = state.jsonCollapseDepth >= 2 || selected ? "open" : "";
   return `
     <details class="json-node json-instance ${selected ? "selected" : ""}" data-object-index="${escapeHTML(sourceIndex)}" data-object-type="${escapeHTML(objectType)}" ${openAttr}>
-      <summary class="json-object-summary" data-json-object-index="${escapeHTML(sourceIndex)}">
+      <summary class="json-object-summary" data-json-object-index="${escapeHTML(sourceIndex)}" data-object-index="${escapeHTML(sourceIndex)}" data-object-type="${escapeHTML(objectType)}">
         <span class="json-line" title="${escapeHTML(objectName)}"><span class="json-key">${formatJSONKey(objectName)}</span><span class="json-colon">: </span><span class="json-brace">{</span></span>
         <span class="json-summary-meta">
           ${sourceLabel}
@@ -192,7 +188,7 @@ function renderJSONFieldRow(field, objectIndex, fieldIndex, isLastField) {
     <div class="json-field-row">
       <span class="json-key" title="${escapeHTML(field.comment || key)}">${formatJSONKey(key)}</span>
       <span class="json-colon">: </span>
-      <span class="json-field-value">${renderJSONEditorValue(field.value, { objectIndex, fieldIndex, path: [] }, 0, !isLastField)}</span>
+      <span class="json-field-value">${renderJSONEditorValue(field.value, { objectIndex, fieldIndex, fieldIndexKind: "model", path: [] }, 0, !isLastField)}</span>
     </div>
   `;
 }
@@ -235,6 +231,7 @@ function bindJSONEditorControls() {
   elements.jsonStructuredView.querySelectorAll(".json-object-summary").forEach((summary) => {
     summary.addEventListener("click", () => {
       state.jsonSelectedObjectIndex = summary.dataset.jsonObjectIndex || "";
+      syncRawTextToFormattedTarget(summary);
     });
   });
   elements.jsonStructuredView.querySelectorAll(".json-value-token").forEach((button) => {
@@ -270,6 +267,7 @@ function focusSelectedJSONObject() {
 }
 
 async function editJSONValueToken(button) {
+  syncRawTextToFormattedTarget(button);
   const currentRaw = button.dataset.rawValue || "null";
   const editor = document.createElement("input");
   editor.type = "text";
@@ -359,12 +357,14 @@ async function commitJSONValueEdit(editor, nextRaw, restore) {
 function renderFormattedObject(object) {
   const fields = object.fields || [];
   const objectIndex = object.index ?? object.sourceIndex ?? "";
-  const objectName = object.name || "(unnamed)";
+  const objectName = object.name || "";
+  const primaryLabel = objectName || object.type || `#${objectIndex}`;
+  const secondaryLabel = objectName ? object.type || "" : "";
   return `
     <section class="json-object text-object" data-object-index="${escapeHTML(objectIndex)}" data-object-type="${escapeHTML(object.type || "")}">
       <div class="json-object-head text-object-head" data-object-index="${escapeHTML(objectIndex)}" data-object-type="${escapeHTML(object.type || "")}">
-        <strong title="${escapeHTML(objectName)}">${escapeHTML(objectName)}</strong>
-        <span class="row-sub">#${escapeHTML(objectIndex)}</span>
+        <strong title="${escapeHTML(primaryLabel)}">${escapeHTML(primaryLabel)}</strong>
+        <span class="row-sub">${secondaryLabel ? `${escapeHTML(secondaryLabel)} ` : ""}#${escapeHTML(objectIndex)}</span>
       </div>
       <dl>
         ${fields.map((field, fieldIndex) => renderFormattedTextField(field, objectIndex, fieldIndex)).join("")}
@@ -382,6 +382,7 @@ function renderFormattedTextField(field, objectIndex, fieldIndex) {
       <input class="text-field-input"
         data-object-index="${escapeHTML(objectIndex)}"
         data-field-index="${escapeHTML(fieldIndex)}"
+        data-field-index-kind="idf"
         data-original="${escapeHTML(value)}"
         value="${escapeHTML(value)}" />
     </dd>`;
@@ -437,8 +438,8 @@ async function applyFieldValue(input, successMessage = "Field updated") {
     elements.idfInput.value = result.text;
     updateTextStats();
     await analyzeCallback();
-    if (state.syncTextRawPosition && state.activeInputView === "text") {
-      syncRawTextToObjectField(objectIndex, fieldIndex);
+    if (state.syncTextRawPosition) {
+      syncRawTextToObjectField(objectIndex, fieldIndex, input.dataset.fieldIndexKind || "idf");
     }
     setStatus(successMessage, "ok");
   } catch (error) {
@@ -450,28 +451,29 @@ async function applyFieldValue(input, successMessage = "Field updated") {
 }
 
 function syncRawTextToFormattedTarget(element) {
-  if (!state.syncTextRawPosition || state.activeInputView !== "text") {
+  if (!state.syncTextRawPosition) {
     return;
   }
   const objectIndex = Number(element.dataset.objectIndex);
   const fieldIndex = element.dataset.fieldIndex === undefined ? null : Number(element.dataset.fieldIndex);
-  syncRawTextToObjectField(objectIndex, fieldIndex);
+  syncRawTextToObjectField(objectIndex, fieldIndex, element.dataset.fieldIndexKind || "idf");
 }
 
-function syncRawTextToObjectField(objectIndex, fieldIndex = null) {
-  const range = findRawTextRangeForTextTarget(objectIndex, fieldIndex);
+function syncRawTextToObjectField(objectIndex, fieldIndex = null, fieldIndexKind = "idf") {
+  const range = findRawTextRangeForTextTarget(objectIndex, fieldIndex, fieldIndexKind);
   if (!range) {
     return;
   }
   moveRawTextToRange(range);
 }
 
-function findRawTextRangeForTextTarget(objectIndex, fieldIndex = null) {
+function findRawTextRangeForTextTarget(objectIndex, fieldIndex = null, fieldIndexKind = "idf") {
   const text = elements.idfInput.value;
   if (!isLikelyJSONText(text)) {
-    return findIDFTokenRange(text, objectIndex, fieldIndex);
+    const idfFieldIndex = fieldIndexKind === "model" ? modelFieldIndexToIDFFieldIndex(objectIndex, fieldIndex) : fieldIndex;
+    return findIDFTokenRange(text, objectIndex, idfFieldIndex);
   }
-  return findJSONTextRange(text, objectIndex, fieldIndex);
+  return findJSONTextRange(text, objectIndex, fieldIndex, fieldIndexKind);
 }
 
 function moveRawTextToRange(range) {
@@ -548,14 +550,22 @@ function scanIDFTokens(text, visitor) {
         objectIndex += 1;
         fieldIndex = -1;
         inObject = true;
-        const token = { ...range, rawStart: tokenStart, rawEnd: index, type: "object", objectIndex, fieldIndex: null };
+        const token = {
+          ...range,
+          rawStart: tokenStart,
+          rawEnd: index,
+          type: "object",
+          objectIndex,
+          fieldIndex: null,
+          fieldIndexKind: "idf",
+        };
         if (visitor(token)) {
           return token;
         }
       }
     } else {
       fieldIndex += 1;
-      const token = { ...range, rawStart: tokenStart, rawEnd: index, type: "field", objectIndex, fieldIndex };
+      const token = { ...range, rawStart: tokenStart, rawEnd: index, type: "field", objectIndex, fieldIndex, fieldIndexKind: "idf" };
       if (visitor(token)) {
         return token;
       }
@@ -581,11 +591,9 @@ function trimmedRange(text, start, end) {
   return { start: rangeStart, end: rangeEnd };
 }
 
-function findJSONTextRange(text, objectIndex, fieldIndex = null) {
-  const reportObject = state.report?.objects?.find((object) => object.index === objectIndex);
-  const modelObject = state.model?.objects?.find(
-    (object, index) => object.sourceIndex === objectIndex || index === objectIndex,
-  );
+function findJSONTextRange(text, objectIndex, fieldIndex = null, fieldIndexKind = "idf") {
+  const reportObject = reportObjectByIndex(objectIndex);
+  const modelObject = modelObjectByIndex(objectIndex);
   if (!reportObject && !modelObject) {
     return null;
   }
@@ -597,7 +605,7 @@ function findJSONTextRange(text, objectIndex, fieldIndex = null) {
     return typeOffset >= 0 ? { start: typeOffset, end: typeOffset + typeNeedle.length } : null;
   }
 
-  const candidates = jsonFieldNeedles(reportObject, modelObject, fieldIndex);
+  const candidates = jsonFieldNeedles(reportObject, modelObject, fieldIndex, fieldIndexKind);
   for (const candidate of candidates) {
     const offset = text.indexOf(candidate, searchStart);
     if (offset >= 0) {
@@ -607,15 +615,15 @@ function findJSONTextRange(text, objectIndex, fieldIndex = null) {
   return typeOffset >= 0 ? { start: typeOffset, end: typeOffset + typeNeedle.length } : null;
 }
 
-function jsonFieldNeedles(reportObject, modelObject, fieldIndex) {
+function jsonFieldNeedles(reportObject, modelObject, fieldIndex, fieldIndexKind = "idf") {
   const candidates = [];
-  const reportField = reportObject?.fields?.[fieldIndex];
-  if (fieldIndex === 0 && reportField?.comment === "Name" && reportField.value) {
+  const idfFieldIndex = fieldIndexKind === "model" ? modelFieldIndexToIDFFieldIndex(reportObject?.index, fieldIndex) : fieldIndex;
+  const modelFieldIndex = fieldIndexKind === "model" ? fieldIndex : idfFieldIndexToModelFieldIndex(reportObject?.index, fieldIndex);
+  const reportField = idfFieldIndex === null ? null : reportObject?.fields?.[idfFieldIndex];
+  if (idfFieldIndex === 0 && reportField?.comment === "Name" && reportField.value) {
     candidates.push(JSON.stringify(String(reportField.value)));
   }
 
-  const hasNameField = reportObject?.fields?.[0]?.comment === "Name" && modelObject?.name;
-  const modelFieldIndex = hasNameField ? fieldIndex - 1 : fieldIndex;
   const modelField = modelFieldIndex >= 0 ? modelObject?.fields?.[modelFieldIndex] : null;
   if (modelField?.key) {
     candidates.push(JSON.stringify(modelField.key));
@@ -634,33 +642,108 @@ export function syncTextViewFromRawCaret(event) {
   if (event?.type === "keyup" && !rawNavigationKeys.has(event.key)) {
     return;
   }
-  if (!state.syncTextRawPosition || state.activeInputView !== "text") {
+  if (!state.syncTextRawPosition) {
     return;
   }
   const text = elements.idfInput.value;
-  if (isLikelyJSONText(text)) {
-    return;
-  }
-  const token = findIDFTokenAtOffset(text, elements.idfInput.selectionStart || 0);
+  const token = isLikelyJSONText(text)
+    ? findJSONTokenAtOffset(text, elements.idfInput.selectionStart || 0)
+    : findIDFTokenAtOffset(text, elements.idfInput.selectionStart || 0);
   if (!token) {
     return;
   }
 
-  const selector =
-    token.type === "field"
-      ? `.text-field-input[data-object-index="${token.objectIndex}"][data-field-index="${token.fieldIndex}"]`
-      : `.text-object[data-object-index="${token.objectIndex}"]`;
-  const target = elements.textObjectView.querySelector(selector);
+  const target = findActiveViewTargetForRawToken(token);
   if (!target) {
     return;
   }
-  const highlightTarget = token.type === "field" ? target.closest(".text-field-cell") || target : target;
-  scrollFormattedTextTargetIntoView(highlightTarget);
+  expandDetailsForViewTarget(target);
+  const highlightTarget = target.closest("td, th, .text-field-cell, .json-instance, .text-object") || target;
+  scrollActiveInputTargetIntoView(highlightTarget);
   highlightFormattedTextTarget(highlightTarget);
 }
 
-function scrollFormattedTextTargetIntoView(element) {
-  const container = elements.textObjectView;
+function findJSONTokenAtOffset(text, offset) {
+  const key = nearestJSONStringBeforeOffset(text, offset);
+  if (!key) {
+    return null;
+  }
+  for (const object of state.model?.objects || []) {
+    const objectIndex = object.sourceIndex ?? object.index;
+    if (key === object.name || key === object.type) {
+      return { type: "object", objectIndex, fieldIndex: null, fieldIndexKind: "model" };
+    }
+    const fieldIndex = (object.fields || []).findIndex((field) => field.key === key);
+    if (fieldIndex >= 0) {
+      return { type: "field", objectIndex, fieldIndex, fieldIndexKind: "model" };
+    }
+  }
+  return null;
+}
+
+function nearestJSONStringBeforeOffset(text, offset) {
+  const pattern = /"((?:\\.|[^"\\])*)"/g;
+  let match = null;
+  let current = null;
+  while ((match = pattern.exec(text)) && match.index <= offset) {
+    current = match[0];
+  }
+  if (!current) {
+    return "";
+  }
+  try {
+    return JSON.parse(current);
+  } catch (_) {
+    return "";
+  }
+}
+
+function findActiveViewTargetForRawToken(token) {
+  if (state.activeInputView === "json") {
+    const modelFieldIndex =
+      token.fieldIndexKind === "model" ? token.fieldIndex : idfFieldIndexToModelFieldIndex(token.objectIndex, token.fieldIndex);
+    if (token.type === "field" && modelFieldIndex !== null && modelFieldIndex >= 0) {
+      return elements.jsonStructuredView.querySelector(
+        `.json-value-token[data-object-index="${token.objectIndex}"][data-field-index="${modelFieldIndex}"]`,
+      );
+    }
+    return elements.jsonStructuredView.querySelector(`.json-instance[data-object-index="${token.objectIndex}"]`);
+  }
+  if (state.activeInputView === "table") {
+    const idfFieldIndex =
+      token.fieldIndexKind === "model" ? modelFieldIndexToIDFFieldIndex(token.objectIndex, token.fieldIndex) : token.fieldIndex;
+    if (token.type === "field" && idfFieldIndex !== null) {
+      return elements.fieldTable.querySelector(
+        `.field-value-input[data-object-index="${token.objectIndex}"][data-field-index="${idfFieldIndex}"]`,
+      );
+    }
+    return elements.fieldTable.querySelector(`[data-object-index="${token.objectIndex}"]`);
+  }
+  if (token.type === "field") {
+    const idfFieldIndex =
+      token.fieldIndexKind === "model" ? modelFieldIndexToIDFFieldIndex(token.objectIndex, token.fieldIndex) : token.fieldIndex;
+    return elements.textObjectView.querySelector(
+      `.text-field-input[data-object-index="${token.objectIndex}"][data-field-index="${idfFieldIndex}"]`,
+    );
+  }
+  return elements.textObjectView.querySelector(`.text-object[data-object-index="${token.objectIndex}"]`);
+}
+
+function expandDetailsForViewTarget(element) {
+  let current = element;
+  while (current) {
+    if (current.tagName && current.tagName.toLowerCase() === "details") {
+      current.open = true;
+    }
+    current = current.parentElement;
+  }
+}
+
+function scrollActiveInputTargetIntoView(element) {
+  const container = element.closest(".formatted-object-view, .json-view, .field-table");
+  if (!container) {
+    return;
+  }
   const containerRect = container.getBoundingClientRect();
   const elementRect = element.getBoundingClientRect();
   container.scrollTo({
@@ -675,6 +758,38 @@ function highlightFormattedTextTarget(element) {
   void element.offsetWidth;
   element.classList.add("input-jump-highlight");
   window.setTimeout(() => element.classList.remove("input-jump-highlight"), 1200);
+}
+
+function reportObjectByIndex(objectIndex) {
+  return state.report?.objects?.find((object) => object.index === objectIndex) || null;
+}
+
+function modelObjectByIndex(objectIndex) {
+  return (
+    state.model?.objects?.find((object, index) => object.sourceIndex === objectIndex || index === objectIndex) || null
+  );
+}
+
+function objectHasIDFNameField(objectIndex) {
+  const reportObject = reportObjectByIndex(objectIndex);
+  return Boolean(reportObject?.fields?.[0]?.comment === "Name" && reportObject.fields[0].value);
+}
+
+function modelFieldIndexToIDFFieldIndex(objectIndex, modelFieldIndex) {
+  if (modelFieldIndex === null || modelFieldIndex === undefined) {
+    return null;
+  }
+  return objectHasIDFNameField(objectIndex) ? modelFieldIndex + 1 : modelFieldIndex;
+}
+
+function idfFieldIndexToModelFieldIndex(objectIndex, idfFieldIndex) {
+  if (idfFieldIndex === null || idfFieldIndex === undefined) {
+    return null;
+  }
+  if (!objectHasIDFNameField(objectIndex)) {
+    return idfFieldIndex;
+  }
+  return idfFieldIndex === 0 ? null : idfFieldIndex - 1;
 }
 
 function formatJSONValue(value) {
@@ -811,6 +926,7 @@ function renderJSONEditorValue(value, context, depth = 0, trailingComma = false)
     <button class="json-value-token" type="button"
       data-object-index="${escapeHTML(context.objectIndex)}"
       data-field-index="${escapeHTML(context.fieldIndex)}"
+      data-field-index-kind="${escapeHTML(context.fieldIndexKind || "idf")}"
       data-json-path="${escapeHTML(JSON.stringify(context.path))}"
       data-raw-value="${escapeHTML(rawValue)}">${escapeHTML(rawValue)}</button><span class="json-comma">${comma}</span>`;
 }
@@ -860,6 +976,8 @@ export function renderFieldTable() {
   `;
 
   elements.fieldTable.querySelectorAll(".field-value-input").forEach((input) => {
+    input.addEventListener("focus", () => syncRawTextToFormattedTarget(input));
+    input.addEventListener("click", () => syncRawTextToFormattedTarget(input));
     input.addEventListener("blur", () => applyTableValue(input));
     input.addEventListener("keydown", (event) => {
       if (event.key === "Enter") {
@@ -871,6 +989,9 @@ export function renderFieldTable() {
         input.blur();
       }
     });
+  });
+  elements.fieldTable.querySelectorAll("[data-table-object-index]").forEach((element) => {
+    element.addEventListener("click", () => syncRawTextToFormattedTarget(element));
   });
   elements.fieldTable.querySelectorAll(".object-orientation-button").forEach((button) => {
     button.addEventListener("click", (event) => {
@@ -909,8 +1030,7 @@ function renderObjectsAsRowsTable(group, columns) {
     <table>
       <thead>
         <tr>
-          <th class="sticky-col">Obj</th>
-          <th>Name</th>
+          <th class="sticky-col">Object</th>
           ${columns.map((column) => `<th title="${escapeHTML(column.label)}">${escapeHTML(column.label)}</th>`).join("")}
         </tr>
       </thead>
@@ -918,9 +1038,8 @@ function renderObjectsAsRowsTable(group, columns) {
         ${group.objects
           .map(
             (object) => `
-              <tr data-object-index="${escapeHTML(object.index)}" data-object-type="${escapeHTML(object.type)}">
-                <td class="sticky-col">#${escapeHTML(object.index)}</td>
-                <td title="${escapeHTML(object.name || "")}">${escapeHTML(object.name || "-")}</td>
+              <tr data-object-index="${escapeHTML(object.index)}" data-object-type="${escapeHTML(object.type)}" data-table-object-index="${escapeHTML(object.index)}">
+                <td class="sticky-col" title="${escapeHTML(tableObjectLabel(object))}">${escapeHTML(tableObjectLabel(object))}</td>
                 ${columns.map((column) => renderObjectTypeCell(object, column.index)).join("")}
               </tr>`,
           )
@@ -939,8 +1058,8 @@ function renderFieldsAsRowsTable(group, columns) {
           ${group.objects
             .map(
               (object) => `
-                <th title="${escapeHTML(object.name || "")}" data-object-index="${escapeHTML(object.index)}" data-object-type="${escapeHTML(object.type)}">
-                  #${escapeHTML(object.index)} ${escapeHTML(object.name || "-")}
+                <th title="${escapeHTML(tableObjectLabel(object))}" data-object-index="${escapeHTML(object.index)}" data-object-type="${escapeHTML(object.type)}" data-table-object-index="${escapeHTML(object.index)}">
+                  ${escapeHTML(tableObjectLabel(object))}
                 </th>`,
             )
             .join("")}
@@ -985,9 +1104,16 @@ function renderObjectTypeCell(object, fieldIndex) {
   return `
     <td title="${escapeHTML(label)}" data-object-index="${escapeHTML(object.index)}" data-object-type="${escapeHTML(object.type)}">
       <input class="field-value-input" data-object-index="${escapeHTML(object.index)}"
-        data-field-index="${escapeHTML(fieldIndex)}" data-original="${escapeHTML(value)}"
+        data-field-index="${escapeHTML(fieldIndex)}" data-field-index-kind="idf" data-original="${escapeHTML(value)}"
         value="${escapeHTML(value)}" />
     </td>`;
+}
+
+function tableObjectLabel(object) {
+  if (object.name) {
+    return `#${object.index} ${object.name}`;
+  }
+  return `#${object.index} ${object.type || ""}`.trim();
 }
 
 async function applyTableValue(input) {
@@ -1008,14 +1134,6 @@ export async function switchInputView(viewName) {
     return;
   }
   renderInputViews();
-}
-
-export async function applyJSONText() {
-  elements.idfInput.value = elements.jsonTextInput.value;
-  updateTextStats();
-  state.lastAnalyzedText = "";
-  await analyzeCallback();
-  setStatus("JSON applied", "ok");
 }
 
 export function setTableOrientation(orientation) {

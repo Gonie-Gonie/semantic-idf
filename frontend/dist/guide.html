@@ -21,6 +21,7 @@
         <a href="#views">Input Views</a>
         <a href="#analysis">Analysis</a>
         <a href="#edit">Edit</a>
+        <a href="#epjson">epJSON</a>
         <a href="#version">Version</a>
         <a href="#build">Developer Build</a>
         <a href="#updates">Update Log</a>
@@ -44,11 +45,11 @@
             </article>
             <article>
               <h3>JSON</h3>
-              <p>A structured epJSON-like editor with read-only syntax, inline-editable value tokens, search, collapse depth, object focus, and raw epJSON in Advanced mode.</p>
+              <p>A structured epJSON-like editor with read-only syntax, inline-editable value tokens, search, collapse depth, object focus, and the shared raw text pane below.</p>
             </article>
             <article>
               <h3>Table</h3>
-              <p>Fully expanded object type tables with fixed row headers and switchable objects-as-rows or fields-as-rows layout.</p>
+              <p>Fully expanded object type tables with fixed row headers, switchable objects-as-rows or fields-as-rows layout, and shared raw text position sync.</p>
             </article>
             <article>
               <h3>Resizable Split</h3>
@@ -86,6 +87,16 @@
           </p>
         </section>
 
+        <section id="epjson" class="guide-section">
+          <h2>epJSON Shape Notes</h2>
+          <p>
+            EnergyPlus epJSON is schema-driven. The current converter preserves object groups and
+            now emits detailed surface and shading vertices as a `vertices` array of coordinate
+            objects. Broader IDD/schema-aware typing and extensible-field handling remains an
+            implementation target.
+          </p>
+        </section>
+
         <section id="version" class="guide-section">
           <h2>Version and IDD References</h2>
           <p>
@@ -110,9 +121,10 @@
         <section id="updates" class="guide-section">
           <h2>Update Log</h2>
           <ul class="guide-log">
+            <li><strong>2026-05-29</strong> Removed Advanced epJSON text, moved Raw Text into a shared pane for all input views, avoided synthetic Name columns in Table/Text, and added schema-aware `vertices` arrays for detailed surface epJSON output.</li>
             <li><strong>2026-05-29</strong> Made Text view summary fields editable and added optional action-based position sync between the formatted summary and raw text.</li>
             <li><strong>2026-05-29</strong> Locked window-level app scrolling so only panels scroll, and changed JSON value editing from a popup to inline token editing.</li>
-            <li><strong>2026-05-29</strong> Rebuilt JSON view as a structured editor with read-only syntax tokens, inline-editable value tokens, search, collapse depth, backend model patching, and Advanced raw epJSON editing.</li>
+            <li><strong>2026-05-29</strong> Rebuilt JSON view as a structured editor with read-only syntax tokens, inline-editable value tokens, search, collapse depth, backend model patching, and raw text editing.</li>
             <li><strong>2026-05-29</strong> Split the frontend script into ES modules under `frontend/dist/js/` and consolidated agent notes into `docs/agent.md`.</li>
             <li><strong>2026-05-29</strong> Reorganized the toolbar, removed the Objects result tab, added analysis-to-input object jumps, and expanded zone details with surface and related-object lists.</li>
             <li><strong>2026-05-29</strong> Restyled JSON structured view as an epJSON-shaped tree with quoted keys, braces, colons, and literal values.</li>

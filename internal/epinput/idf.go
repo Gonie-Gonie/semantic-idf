@@ -34,6 +34,7 @@ func FromIDFDocument(doc idf.Document, format Format) *Model {
 		typeIndex := typeCounts[object.Type]
 		typeCounts[object.Type]++
 		name, remaining := objectInstanceName(object.Type, fields, typeIndex)
+		remaining = collapseVertexArrayFields(object.Type, remaining)
 		model.Objects = append(model.Objects, InputObject{
 			Type:        object.Type,
 			Name:        name,
@@ -59,6 +60,10 @@ func ToIDFDocument(model *Model) idf.Document {
 			fields = append(fields, idf.Field{Value: object.Name, Comment: "Name"})
 		}
 		for _, field := range object.Fields {
+			if expanded, ok := expandVertexArrayField(object.Type, field); ok {
+				fields = append(fields, expanded...)
+				continue
+			}
 			comment := field.Comment
 			if comment == "" {
 				comment = keyToComment(field.Key)

@@ -26,8 +26,6 @@ export const elements = {
   guideButton: document.querySelector("#guideButton"),
   toolMenu: document.querySelector(".tool-menu"),
   idfInput: document.querySelector("#idfInput"),
-  jsonTextInput: document.querySelector("#jsonTextInput"),
-  applyJSONButton: document.querySelector("#applyJSONButton"),
   syncRawTextToggle: document.querySelector("#syncRawTextToggle"),
   textStats: document.querySelector("#textStats"),
   fieldStats: document.querySelector("#fieldStats"),

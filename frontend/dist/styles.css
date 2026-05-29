@@ -260,8 +260,9 @@ textarea:focus-visible,
 
 .input-view {
   display: none;
-  flex: 1;
+  flex: 1 1 58%;
   min-height: 0;
+  overflow: hidden;
 }
 
 .input-view.active {
@@ -269,56 +270,25 @@ textarea:focus-visible,
 }
 
 #textInputView,
-#jsonInputView {
+#jsonInputView,
+#tableInputView {
   flex-direction: column;
 }
 
 .formatted-object-view {
-  flex: 1 1 58%;
-  min-height: 220px;
+  flex: 1;
+  min-height: 0;
   overflow: auto;
   padding: 12px;
   background: #fbfcfd;
-  border-bottom: 1px solid var(--line);
 }
 
 .raw-editor-block {
-  flex: 1 1 42%;
-  min-height: 220px;
+  flex: 0 0 42%;
+  min-height: 190px;
   display: flex;
   flex-direction: column;
   border-top: 1px solid var(--line);
-}
-
-.json-editor-block {
-  flex-basis: 36%;
-}
-
-.advanced-json-block {
-  flex: 0 0 auto;
-  min-height: 0;
-  border-top: 1px solid var(--line);
-  background: var(--surface);
-}
-
-.advanced-json-block[open] {
-  flex-basis: 36%;
-  min-height: 220px;
-}
-
-.advanced-json-block > summary {
-  min-height: 36px;
-  cursor: pointer;
-  padding: 9px 10px;
-  border-bottom: 1px solid var(--line);
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.advanced-json-body {
-  height: calc(100% - 36px);
-  display: flex;
-  flex-direction: column;
 }
 
 .subhead {
@@ -362,7 +332,7 @@ textarea:focus-visible,
 textarea {
   flex: 1;
   width: 100%;
-  min-height: 280px;
+  min-height: 0;
   resize: none;
   border: 0;
   padding: 14px;

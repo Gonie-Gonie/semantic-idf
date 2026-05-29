@@ -140,3 +140,86 @@ func TestPatchFieldValueUpdatesRootAndNestedValues(t *testing.T) {
 		}
 	}
 }
+
+func TestDetailedSurfaceVerticesUseEPJSONArray(t *testing.T) {
+	model, err := Parse("surface.idf", []byte(`Version,
+  22.2;                    !- Version Identifier
+
+BuildingSurface:Detailed,
+  Wall 1,                   !- Name
+  Wall,                     !- Surface Type
+  Basic Wall,               !- Construction Name
+  Zone 1,                   !- Zone Name
+  Outdoors,                 !- Outside Boundary Condition
+  ,                         !- Outside Boundary Condition Object
+  SunExposed,               !- Sun Exposure
+  WindExposed,              !- Wind Exposure
+  0.5,                      !- View Factor to Ground
+  4,                        !- Number of Vertices
+  0,                        !- Vertex 1 X-coordinate
+  0,                        !- Vertex 1 Y-coordinate
+  0,                        !- Vertex 1 Z-coordinate
+  10,                       !- Vertex 2 X-coordinate
+  0,                        !- Vertex 2 Y-coordinate
+  0,                        !- Vertex 2 Z-coordinate
+  10,                       !- Vertex 3 X-coordinate
+  3,                        !- Vertex 3 Y-coordinate
+  0,                        !- Vertex 3 Z-coordinate
+  0,                        !- Vertex 4 X-coordinate
+  3,                        !- Vertex 4 Y-coordinate
+  0;                        !- Vertex 4 Z-coordinate
+`))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+
+	epjson, err := Write(model, FormatEPJSON)
+	if err != nil {
+		t.Fatalf("Write(epjson) error = %v", err)
+	}
+	for _, want := range []string{`"vertices": [`, `"vertex_x_coordinate": 0`, `"vertex_y_coordinate": 3`} {
+		if !strings.Contains(epjson, want) {
+			t.Fatalf("epJSON output missing %q:\n%s", want, epjson)
+		}
+	}
+	if strings.Contains(epjson, "vertex_1_x_coordinate") {
+		t.Fatalf("epJSON output kept flat vertex fields:\n%s", epjson)
+	}
+}
+
+func TestEPJSONVerticesArrayWritesIDFVertexFields(t *testing.T) {
+	model, err := Parse("surface.epJSON", []byte(`{
+  "Version": {
+    "Version 1": {
+      "version_identifier": "22.2",
+      "idf_order": 1
+    }
+  },
+  "BuildingSurface:Detailed": {
+    "Wall 1": {
+      "surface_type": "Wall",
+      "construction_name": "Basic Wall",
+      "zone_name": "Zone 1",
+      "number_of_vertices": 2,
+      "vertices": [
+        {"vertex_x_coordinate": 0, "vertex_y_coordinate": 0, "vertex_z_coordinate": 0},
+        {"vertex_x_coordinate": 10, "vertex_y_coordinate": 0, "vertex_z_coordinate": 0}
+      ],
+      "idf_order": 2
+    }
+  }
+}`))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+
+	idfText, err := Write(model, FormatIDF)
+	if err != nil {
+		t.Fatalf("Write(idf) error = %v", err)
+	}
+	for _, want := range []string{"Wall 1", "Vertex 1 X-coordinate", "Vertex 2 Z-coordinate"} {
+		if !strings.Contains(idfText, want) {
+			t.Fatalf("IDF output missing %q:\n%s", want, idfText)
+		}
+	}
+}

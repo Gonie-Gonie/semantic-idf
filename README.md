@@ -65,9 +65,9 @@ The app toolbar includes a Guide button that navigates to the bundled `frontend/
 
 ## Input Views
 
-- Text: fully expanded editable object summary first, editable raw source below, and optional action-based position sync between them.
-- JSON: structured epJSON-like editor first, with read-only syntax tokens and inline-editable value tokens that patch the backend model; raw epJSON text stays in Advanced mode.
-- Table: fully expanded IDF object type tables with fixed row headers plus global and per-table row/column orientation controls.
+- Text: fully expanded editable object summary first, shared editable raw source below, and optional action-based position sync between them.
+- JSON: structured epJSON-like editor first, with read-only syntax tokens and inline-editable value tokens that patch the backend model; raw source uses the shared Raw Text pane.
+- Table: fully expanded IDF object type tables with fixed row headers, no synthetic Name column, global and per-table row/column orientation controls, and shared raw source sync.
 - Workspace: resizable input and analysis panes with separate scroll areas and no window-level app scrolling.
 
 ## Analysis Navigation
@@ -93,3 +93,5 @@ The app toolbar includes a Guide button that navigates to the bundled `frontend/
 ## EnergyPlus References
 
 The parser currently supports EnergyPlus version 22 or newer when a `Version` object is present. Full IDD/schema validation is intentionally separated from parsing: version-specific files can be added later under `resources/energyplus/<major>.<minor>/Energy+.idd` and `resources/energyplus/<major>.<minor>/Energy+.schema.epJSON`.
+
+The epJSON path is being aligned with the official schema shape. Detailed surface and shading vertex fields are converted to a `vertices` array of coordinate objects; broader schema-aware numeric typing and extensible-field support should continue to grow from the official EnergyPlus schema references.

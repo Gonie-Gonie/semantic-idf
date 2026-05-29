@@ -37,7 +37,6 @@ export function renderEmpty() {
   elements.systemViz.innerHTML = "";
   elements.textObjectView.innerHTML = `<div class="empty">No formatted input yet</div>`;
   elements.jsonStructuredView.innerHTML = `<div class="empty">No structured input yet</div>`;
-  elements.jsonTextInput.value = "";
   elements.fieldTable.innerHTML = `<div class="empty">No field table yet</div>`;
   elements.fieldStats.textContent = "0 tables";
 }
