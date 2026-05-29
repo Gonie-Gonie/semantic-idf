@@ -610,8 +610,8 @@ function renderFormattedTextView() {
     <div class="json-groups">
       ${groups
         .map(
-          (group, index) => `
-            <details class="json-group" ${index < 4 ? "open" : ""}>
+          (group) => `
+            <details class="json-group" open>
               <summary>
                 <span>${escapeHTML(group.type)}</span>
                 <span class="badge">${escapeHTML(group.objects.length)}</span>
@@ -643,7 +643,7 @@ function renderJSONView() {
       <span class="badge">Version ${escapeHTML(versionLabel)}</span>
       <span class="badge">${escapeHTML(model.objects.length)} objects</span>
     </div>
-    <div class="json-tree primary-tree">${renderJSONTree(model)}</div>
+    <div class="json-tree primary-tree">${renderJSONTree(model, 0, "model")}</div>
   `;
 }
 
@@ -680,22 +680,71 @@ function formatJSONValue(value) {
 
 function renderJSONFieldValue(value) {
   if (value && typeof value === "object") {
-    return `<div class="json-inline-tree">${renderJSONTree(value)}</div>`;
+    return `<div class="json-inline-tree">${renderJSONTree(value, 0, "value")}</div>`;
   }
   return `<span title="${escapeHTML(formatJSONValue(value))}">${escapeHTML(formatJSONValue(value))}</span>`;
 }
 
-function renderJSONTree(value, depth = 0) {
-  const openAttr = depth < 2 ? "open" : "";
+function jsonNodeLabel(value, fallbackLabel = "value") {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const type = value.type ? String(value.type) : "";
+    const name = value.name ? String(value.name) : "";
+    const key = value.key ? String(value.key) : "";
+    const comment = value.comment ? String(value.comment) : "";
+    if (type && name) {
+      return `${type} - ${name}`;
+    }
+    if (type) {
+      return type;
+    }
+    if (name) {
+      return name;
+    }
+    if (key) {
+      return key;
+    }
+    if (comment) {
+      return comment;
+    }
+  }
+
+  const labels = {
+    model: "EnergyPlus Model",
+    metadata: "Metadata",
+    version: "Version",
+    objects: "IDF Objects",
+    fields: "Fields",
+    value: "Value",
+  };
+  return labels[fallbackLabel] || fallbackLabel || "Value";
+}
+
+function jsonNodeBadge(value) {
+  if (Array.isArray(value)) {
+    return `${value.length}`;
+  }
+  if (value && typeof value === "object") {
+    return `${Object.keys(value).length}`;
+  }
+  return "";
+}
+
+function renderJSONTree(value, depth = 0, label = "value") {
+  const openAttr = depth < 3 || label === "fields" ? "open" : "";
   if (Array.isArray(value)) {
     if (!value.length) {
       return `<span class="json-primitive">[]</span>`;
     }
     return `
       <details class="json-node" ${openAttr}>
-        <summary>Array <span class="badge">${escapeHTML(value.length)}</span></summary>
+        <summary>${escapeHTML(jsonNodeLabel(value, label))} <span class="badge">${escapeHTML(jsonNodeBadge(value))}</span></summary>
         <ol>
-          ${value.map((item, index) => `<li><span class="json-key">${escapeHTML(index)}</span>${renderJSONTree(item, depth + 1)}</li>`).join("")}
+          ${value
+            .map(
+              (item, index) =>
+                `<li><span class="json-key">${escapeHTML(index)}</span>${renderJSONTree(item, depth + 1, jsonNodeLabel(item, label))}</li>`,
+            )
+            .join("")}
         </ol>
       </details>`;
   }
@@ -707,10 +756,10 @@ function renderJSONTree(value, depth = 0) {
     }
     return `
       <details class="json-node" ${openAttr}>
-        <summary>Object <span class="badge">${escapeHTML(entries.length)}</span></summary>
+        <summary>${escapeHTML(jsonNodeLabel(value, label))} <span class="badge">${escapeHTML(jsonNodeBadge(value))}</span></summary>
         <ol>
           ${entries
-            .map(([key, child]) => `<li><span class="json-key">${escapeHTML(key)}</span>${renderJSONTree(child, depth + 1)}</li>`)
+            .map(([key, child]) => `<li><span class="json-key">${escapeHTML(key)}</span>${renderJSONTree(child, depth + 1, key)}</li>`)
             .join("")}
         </ol>
       </details>`;
@@ -791,7 +840,7 @@ function renderObjectTypeTable(group, groupIndex) {
   const columns = buildObjectTypeColumns(group.objects);
   const nextOrientation = orientation === "objects" ? "fields" : "objects";
   return `
-    <details class="object-table-group" ${groupIndex < 5 ? "open" : ""}>
+    <details class="object-table-group" open>
       <summary>
         <span>${escapeHTML(group.type)}</span>
         <span class="object-table-actions">

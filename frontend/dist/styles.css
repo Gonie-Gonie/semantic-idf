@@ -382,10 +382,10 @@ textarea {
 }
 
 .json-tree {
-  min-width: 780px;
+  min-width: 640px;
   min-height: 100%;
   overflow: auto;
-  padding: 10px;
+  padding: 8px;
   font-size: 12px;
 }
 
@@ -406,22 +406,22 @@ textarea {
 
 .json-node summary {
   cursor: pointer;
-  padding: 3px 0;
+  padding: 2px 0;
   font-weight: 600;
 }
 
 .json-node ol {
-  margin: 2px 0 2px 16px;
+  margin: 1px 0 1px 8px;
   padding: 0;
   list-style: none;
   display: grid;
-  gap: 2px;
+  gap: 1px;
 }
 
 .json-node li {
   display: grid;
-  grid-template-columns: minmax(96px, 28%) minmax(0, 1fr);
-  gap: 8px;
+  grid-template-columns: minmax(72px, 22%) minmax(0, 1fr);
+  gap: 6px;
   align-items: start;
 }
 
@@ -517,8 +517,9 @@ textarea {
 }
 
 .field-table table {
-  width: 100%;
-  min-width: 920px;
+  width: max-content;
+  min-width: 100%;
+  table-layout: auto;
   border-collapse: separate;
   border-spacing: 0;
 }
@@ -529,11 +530,16 @@ textarea {
   border-bottom: 1px solid var(--line);
   padding: 0 8px;
   height: 34px;
-  max-width: 220px;
+  max-width: none;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 12px;
+}
+
+.field-table th:not(.sticky-col),
+.field-table td:not(.sticky-col) {
+  min-width: 150px;
 }
 
 .field-table th {
@@ -554,7 +560,9 @@ textarea {
   position: sticky;
   left: 0;
   z-index: 3;
-  min-width: 64px;
+  width: 170px;
+  min-width: 170px;
+  max-width: 220px;
   background: var(--surface-2);
 }
 
@@ -570,7 +578,9 @@ textarea {
 }
 
 .field-table input {
-  width: max(120px, 100%);
+  width: 100%;
+  min-width: 130px;
+  max-width: 280px;
   height: 28px;
   border: 1px solid transparent;
   border-radius: 4px;

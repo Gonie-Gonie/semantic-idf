@@ -11,3 +11,4 @@
 - Treat unused-object deletion conservatively and keep parser round trips covered by tests.
 - EnergyPlus input policy: IDF and epJSON share `internal/epinput` for detection, version metadata, common object structure, and conversion; IDD/schema validation should be added behind that module rather than scattered through UI code.
 - Input view policy: Text leads with formatted object summaries and keeps raw editing below; JSON leads with the structured model tree and keeps editable epJSON below; Table uses object-type-specific spreadsheet tables with global and per-table orientation controls.
+- Readability policy: JSON tree labels should use EnergyPlus object type/name and field labels instead of generic Object/Array labels; keep indentation compact. Text and Table groups should default open, and table row headers should stay visually consistent.

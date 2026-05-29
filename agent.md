@@ -12,3 +12,4 @@
 - Keep EnergyPlus input parsing/conversion in `internal/epinput`; reserve `internal/idf` for low-level IDF parsing and analysis helpers.
 - Support EnergyPlus 22+ as the default compatibility range and keep version-specific IDD/schema integration pluggable.
 - Input viewing should keep Text, JSON, and Table modes in sync from one parsed/cached EnergyPlus model; Table mode should be organized by IDF object type and support row/column orientation changes.
+- Prefer readable dense views over generic render dumps: semantic JSON labels, compact tree indentation, open Text/Table groups, and stable table row headers.
