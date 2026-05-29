@@ -40,7 +40,7 @@
           <div class="guide-grid">
             <article>
               <h3>Text</h3>
-              <p>A fully expanded formatted object summary first, with editable raw IDF or epJSON text below it.</p>
+              <p>A fully expanded editable object summary first, with raw IDF or epJSON text below it and optional click-position sync between both panes.</p>
             </article>
             <article>
               <h3>JSON</h3>
@@ -80,8 +80,9 @@
           <p>
             Remove unused currently targets schedule, material, construction, curve, and table objects
             that are not referenced by other fields. To IDF, To epJSON, and Remove unused are grouped
-            under Tools. Inline JSON value edits patch the backend model and regenerate the source text,
-            epJSON preview, tables, and analysis report. Download exports the current editor text.
+            under Tools. Text summary, Table, and inline JSON value edits patch the backend model
+            or field text and regenerate the source text, epJSON preview, tables, and analysis report.
+            Download exports the current editor text.
           </p>
         </section>
 
@@ -109,6 +110,7 @@
         <section id="updates" class="guide-section">
           <h2>Update Log</h2>
           <ul class="guide-log">
+            <li><strong>2026-05-29</strong> Made Text view summary fields editable and added optional action-based position sync between the formatted summary and raw text.</li>
             <li><strong>2026-05-29</strong> Locked window-level app scrolling so only panels scroll, and changed JSON value editing from a popup to inline token editing.</li>
             <li><strong>2026-05-29</strong> Rebuilt JSON view as a structured editor with read-only syntax tokens, inline-editable value tokens, search, collapse depth, backend model patching, and Advanced raw epJSON editing.</li>
             <li><strong>2026-05-29</strong> Split the frontend script into ES modules under `frontend/dist/js/` and consolidated agent notes into `docs/agent.md`.</li>

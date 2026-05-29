@@ -20,15 +20,15 @@ export function renderInputViews() {
   }
 }
 
-function groupedObjectsFromModel() {
-  const model = state.model;
-  if (!model || !Array.isArray(model.objects)) {
+function groupedReportObjects() {
+  const report = state.report;
+  if (!report || !Array.isArray(report.objects)) {
     return [];
   }
 
   const groups = [];
   const byType = new Map();
-  model.objects.forEach((object) => {
+  report.objects.forEach((object) => {
     if (!byType.has(object.type)) {
       const group = { type: object.type, objects: [] };
       groups.push(group);
@@ -40,19 +40,21 @@ function groupedObjectsFromModel() {
 }
 
 function renderFormattedTextView() {
-  const model = state.model;
-  if (!model || !Array.isArray(model.objects)) {
+  const report = state.report;
+  if (!report || !Array.isArray(report.objects)) {
     elements.textObjectView.innerHTML = `<div class="empty">Analyze input to build formatted text view</div>`;
     return;
   }
 
-  const versionLabel = model.version?.raw || "unknown";
-  const groups = groupedObjectsFromModel();
+  const versionLabel = state.model?.version?.raw || "unknown";
+  const formatLabel = state.model?.format || "unknown";
+  const groups = groupedReportObjects();
   elements.textObjectView.innerHTML = `
     <div class="json-meta">
-      <span class="badge">${escapeHTML(model.format || "unknown")}</span>
+      <span class="badge">${escapeHTML(formatLabel)}</span>
       <span class="badge">Version ${escapeHTML(versionLabel)}</span>
-      <span class="badge">${escapeHTML(model.objects.length)} objects</span>
+      <span class="badge">${escapeHTML(report.objects.length)} objects</span>
+      <span class="badge">Editable fields</span>
     </div>
     <div class="json-groups">
       ${groups
@@ -69,6 +71,7 @@ function renderFormattedTextView() {
         .join("")}
     </div>
   `;
+  bindFormattedTextControls();
 }
 
 function renderJSONView() {
@@ -355,23 +358,323 @@ async function commitJSONValueEdit(editor, nextRaw, restore) {
 
 function renderFormattedObject(object) {
   const fields = object.fields || [];
+  const objectIndex = object.index ?? object.sourceIndex ?? "";
+  const objectName = object.name || "(unnamed)";
   return `
-    <section class="json-object" data-object-index="${escapeHTML(object.sourceIndex ?? "")}" data-object-type="${escapeHTML(object.type || "")}">
-      <div class="json-object-head">
-        <strong title="${escapeHTML(object.name || "")}">${escapeHTML(object.name || "(unnamed)")}</strong>
-        <span class="row-sub">#${escapeHTML(object.sourceIndex ?? "")}</span>
+    <section class="json-object text-object" data-object-index="${escapeHTML(objectIndex)}" data-object-type="${escapeHTML(object.type || "")}">
+      <div class="json-object-head text-object-head" data-object-index="${escapeHTML(objectIndex)}" data-object-type="${escapeHTML(object.type || "")}">
+        <strong title="${escapeHTML(objectName)}">${escapeHTML(objectName)}</strong>
+        <span class="row-sub">#${escapeHTML(objectIndex)}</span>
       </div>
       <dl>
-        ${fields
-          .map(
-            (field) => `
-              <dt title="${escapeHTML(field.key || field.comment || "")}">${escapeHTML(field.key || field.comment || "field")}</dt>
-              <dd>${renderJSONFieldValue(field.value)}</dd>`,
-          )
-          .join("")}
+        ${fields.map((field, fieldIndex) => renderFormattedTextField(field, objectIndex, fieldIndex)).join("")}
       </dl>
     </section>
   `;
+}
+
+function renderFormattedTextField(field, objectIndex, fieldIndex) {
+  const label = field.comment || field.key || `Field ${fieldIndex + 1}`;
+  const value = formatJSONValue(field.value);
+  return `
+    <dt title="${escapeHTML(label)}" data-object-index="${escapeHTML(objectIndex)}" data-field-index="${escapeHTML(fieldIndex)}">${escapeHTML(label)}</dt>
+    <dd class="text-field-cell" title="${escapeHTML(label)}" data-object-index="${escapeHTML(objectIndex)}" data-field-index="${escapeHTML(fieldIndex)}">
+      <input class="text-field-input"
+        data-object-index="${escapeHTML(objectIndex)}"
+        data-field-index="${escapeHTML(fieldIndex)}"
+        data-original="${escapeHTML(value)}"
+        value="${escapeHTML(value)}" />
+    </dd>`;
+}
+
+function bindFormattedTextControls() {
+  elements.syncRawTextToggle.checked = state.syncTextRawPosition;
+  elements.textObjectView.querySelectorAll(".text-object-head").forEach((head) => {
+    head.addEventListener("click", () => syncRawTextToFormattedTarget(head));
+  });
+  elements.textObjectView.querySelectorAll(".text-field-input").forEach((input) => {
+    input.addEventListener("focus", () => syncRawTextToFormattedTarget(input));
+    input.addEventListener("click", () => syncRawTextToFormattedTarget(input));
+    input.addEventListener("blur", () => applyTextValue(input));
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        input.blur();
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        input.value = input.dataset.original || "";
+        input.blur();
+      }
+    });
+  });
+}
+
+async function applyTextValue(input) {
+  await applyFieldValue(input, "Text field updated");
+}
+
+async function applyFieldValue(input, successMessage = "Field updated") {
+  const nextValue = input.value;
+  if (nextValue === input.dataset.original || input.dataset.committing === "true") {
+    return;
+  }
+
+  const api = backend();
+  if (!api || typeof api.UpdateFieldText !== "function") {
+    setStatus("Backend unavailable", "warn");
+    input.value = input.dataset.original || "";
+    return;
+  }
+
+  const objectIndex = Number(input.dataset.objectIndex);
+  const fieldIndex = Number(input.dataset.fieldIndex);
+  input.dataset.committing = "true";
+  input.disabled = true;
+
+  try {
+    const result = await api.UpdateFieldText(elements.idfInput.value, objectIndex, fieldIndex, nextValue);
+    elements.idfInput.value = result.text;
+    updateTextStats();
+    await analyzeCallback();
+    if (state.syncTextRawPosition && state.activeInputView === "text") {
+      syncRawTextToObjectField(objectIndex, fieldIndex);
+    }
+    setStatus(successMessage, "ok");
+  } catch (error) {
+    input.value = input.dataset.original || "";
+    input.disabled = false;
+    delete input.dataset.committing;
+    setStatus(error.message || String(error), "error");
+  }
+}
+
+function syncRawTextToFormattedTarget(element) {
+  if (!state.syncTextRawPosition || state.activeInputView !== "text") {
+    return;
+  }
+  const objectIndex = Number(element.dataset.objectIndex);
+  const fieldIndex = element.dataset.fieldIndex === undefined ? null : Number(element.dataset.fieldIndex);
+  syncRawTextToObjectField(objectIndex, fieldIndex);
+}
+
+function syncRawTextToObjectField(objectIndex, fieldIndex = null) {
+  const range = findRawTextRangeForTextTarget(objectIndex, fieldIndex);
+  if (!range) {
+    return;
+  }
+  moveRawTextToRange(range);
+}
+
+function findRawTextRangeForTextTarget(objectIndex, fieldIndex = null) {
+  const text = elements.idfInput.value;
+  if (!isLikelyJSONText(text)) {
+    return findIDFTokenRange(text, objectIndex, fieldIndex);
+  }
+  return findJSONTextRange(text, objectIndex, fieldIndex);
+}
+
+function moveRawTextToRange(range) {
+  const start = Math.max(0, Math.min(range.start, elements.idfInput.value.length));
+  const end = Math.max(start, Math.min(range.end, elements.idfInput.value.length));
+  const lineIndex = elements.idfInput.value.slice(0, start).split(/\n/).length - 1;
+  const style = window.getComputedStyle(elements.idfInput);
+  const fontSize = Number.parseFloat(style.fontSize) || 13;
+  const lineHeight = Number.parseFloat(style.lineHeight) || fontSize * 1.5;
+  elements.idfInput.scrollTop = Math.max(0, lineIndex * lineHeight - elements.idfInput.clientHeight * 0.25);
+  elements.idfInput.setSelectionRange(start, end);
+}
+
+function isLikelyJSONText(text) {
+  return /^\s*[\[{]/.test(text);
+}
+
+function findIDFTokenRange(text, targetObjectIndex, targetFieldIndex = null) {
+  return scanIDFTokens(text, (token) => {
+    if (token.objectIndex !== targetObjectIndex) {
+      return false;
+    }
+    if (targetFieldIndex === null) {
+      return token.type === "object";
+    }
+    return token.type === "field" && token.fieldIndex === targetFieldIndex;
+  });
+}
+
+function findIDFTokenAtOffset(text, offset) {
+  let nearest = null;
+  const exact = scanIDFTokens(text, (token) => {
+    if (offset >= token.rawStart && offset <= token.rawEnd) {
+      return true;
+    }
+    if (token.rawStart <= offset) {
+      nearest = token;
+    }
+    return token.rawStart > offset;
+  });
+  if (exact && offset >= exact.rawStart && offset <= exact.rawEnd) {
+    return exact;
+  }
+  return nearest;
+}
+
+function scanIDFTokens(text, visitor) {
+  let objectIndex = -1;
+  let fieldIndex = -1;
+  let inObject = false;
+  let inComment = false;
+  let tokenStart = 0;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    if (inComment) {
+      if (char === "\n") {
+        inComment = false;
+      }
+      continue;
+    }
+    if (char === "!") {
+      inComment = true;
+      continue;
+    }
+    if (char !== "," && char !== ";") {
+      continue;
+    }
+
+    const range = trimmedRange(text, tokenStart, index);
+    const hasContent = range.end > range.start;
+    if (!inObject) {
+      if (hasContent) {
+        objectIndex += 1;
+        fieldIndex = -1;
+        inObject = true;
+        const token = { ...range, rawStart: tokenStart, rawEnd: index, type: "object", objectIndex, fieldIndex: null };
+        if (visitor(token)) {
+          return token;
+        }
+      }
+    } else {
+      fieldIndex += 1;
+      const token = { ...range, rawStart: tokenStart, rawEnd: index, type: "field", objectIndex, fieldIndex };
+      if (visitor(token)) {
+        return token;
+      }
+    }
+
+    if (char === ";") {
+      inObject = false;
+    }
+    tokenStart = index + 1;
+  }
+  return null;
+}
+
+function trimmedRange(text, start, end) {
+  let rangeStart = start;
+  let rangeEnd = end;
+  while (rangeStart < rangeEnd && /\s/.test(text[rangeStart])) {
+    rangeStart += 1;
+  }
+  while (rangeEnd > rangeStart && /\s/.test(text[rangeEnd - 1])) {
+    rangeEnd -= 1;
+  }
+  return { start: rangeStart, end: rangeEnd };
+}
+
+function findJSONTextRange(text, objectIndex, fieldIndex = null) {
+  const reportObject = state.report?.objects?.find((object) => object.index === objectIndex);
+  const modelObject = state.model?.objects?.find(
+    (object, index) => object.sourceIndex === objectIndex || index === objectIndex,
+  );
+  if (!reportObject && !modelObject) {
+    return null;
+  }
+
+  const typeNeedle = JSON.stringify(modelObject?.type || reportObject?.type || "");
+  const typeOffset = typeNeedle === "\"\"" ? -1 : text.indexOf(typeNeedle);
+  const searchStart = typeOffset >= 0 ? typeOffset : 0;
+  if (fieldIndex === null) {
+    return typeOffset >= 0 ? { start: typeOffset, end: typeOffset + typeNeedle.length } : null;
+  }
+
+  const candidates = jsonFieldNeedles(reportObject, modelObject, fieldIndex);
+  for (const candidate of candidates) {
+    const offset = text.indexOf(candidate, searchStart);
+    if (offset >= 0) {
+      return { start: offset, end: offset + candidate.length };
+    }
+  }
+  return typeOffset >= 0 ? { start: typeOffset, end: typeOffset + typeNeedle.length } : null;
+}
+
+function jsonFieldNeedles(reportObject, modelObject, fieldIndex) {
+  const candidates = [];
+  const reportField = reportObject?.fields?.[fieldIndex];
+  if (fieldIndex === 0 && reportField?.comment === "Name" && reportField.value) {
+    candidates.push(JSON.stringify(String(reportField.value)));
+  }
+
+  const hasNameField = reportObject?.fields?.[0]?.comment === "Name" && modelObject?.name;
+  const modelFieldIndex = hasNameField ? fieldIndex - 1 : fieldIndex;
+  const modelField = modelFieldIndex >= 0 ? modelObject?.fields?.[modelFieldIndex] : null;
+  if (modelField?.key) {
+    candidates.push(JSON.stringify(modelField.key));
+  }
+  if (modelField?.value !== undefined && modelField?.value !== null && typeof modelField.value !== "object") {
+    candidates.push(JSON.stringify(String(modelField.value)));
+  }
+  if (reportField?.value) {
+    candidates.push(JSON.stringify(String(reportField.value)));
+  }
+  return [...new Set(candidates)];
+}
+
+export function syncTextViewFromRawCaret(event) {
+  const rawNavigationKeys = new Set(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End", "PageUp", "PageDown"]);
+  if (event?.type === "keyup" && !rawNavigationKeys.has(event.key)) {
+    return;
+  }
+  if (!state.syncTextRawPosition || state.activeInputView !== "text") {
+    return;
+  }
+  const text = elements.idfInput.value;
+  if (isLikelyJSONText(text)) {
+    return;
+  }
+  const token = findIDFTokenAtOffset(text, elements.idfInput.selectionStart || 0);
+  if (!token) {
+    return;
+  }
+
+  const selector =
+    token.type === "field"
+      ? `.text-field-input[data-object-index="${token.objectIndex}"][data-field-index="${token.fieldIndex}"]`
+      : `.text-object[data-object-index="${token.objectIndex}"]`;
+  const target = elements.textObjectView.querySelector(selector);
+  if (!target) {
+    return;
+  }
+  const highlightTarget = token.type === "field" ? target.closest(".text-field-cell") || target : target;
+  scrollFormattedTextTargetIntoView(highlightTarget);
+  highlightFormattedTextTarget(highlightTarget);
+}
+
+function scrollFormattedTextTargetIntoView(element) {
+  const container = elements.textObjectView;
+  const containerRect = container.getBoundingClientRect();
+  const elementRect = element.getBoundingClientRect();
+  container.scrollTo({
+    top: Math.max(0, container.scrollTop + elementRect.top - containerRect.top - container.clientHeight * 0.25),
+    left: Math.max(0, container.scrollLeft + elementRect.left - containerRect.left - 24),
+    behavior: "smooth",
+  });
+}
+
+function highlightFormattedTextTarget(element) {
+  element.classList.remove("input-jump-highlight");
+  void element.offsetWidth;
+  element.classList.add("input-jump-highlight");
+  window.setTimeout(() => element.classList.remove("input-jump-highlight"), 1200);
 }
 
 function formatJSONValue(value) {
@@ -688,33 +991,7 @@ function renderObjectTypeCell(object, fieldIndex) {
 }
 
 async function applyTableValue(input) {
-  const nextValue = input.value;
-  if (nextValue === input.dataset.original) {
-    return;
-  }
-
-  const api = backend();
-  if (!api || typeof api.UpdateFieldText !== "function") {
-    setStatus("Backend unavailable", "warn");
-    input.value = input.dataset.original || "";
-    return;
-  }
-
-  try {
-    const result = await api.UpdateFieldText(
-      elements.idfInput.value,
-      Number(input.dataset.objectIndex),
-      Number(input.dataset.fieldIndex),
-      nextValue,
-    );
-    elements.idfInput.value = result.text;
-    updateTextStats();
-    await analyzeCallback();
-    setStatus("Field updated", "ok");
-  } catch (error) {
-    input.value = input.dataset.original || "";
-    setStatus(error.message || String(error), "error");
-  }
+  await applyFieldValue(input, "Field updated");
 }
 
 export async function switchInputView(viewName) {

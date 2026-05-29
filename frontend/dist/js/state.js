@@ -12,6 +12,7 @@ export const state = {
   jsonSearchQuery: "",
   jsonCollapseDepth: 2,
   jsonSelectedObjectIndex: "",
+  syncTextRawPosition: true,
 };
 
 export const elements = {
@@ -27,6 +28,7 @@ export const elements = {
   idfInput: document.querySelector("#idfInput"),
   jsonTextInput: document.querySelector("#jsonTextInput"),
   applyJSONButton: document.querySelector("#applyJSONButton"),
+  syncRawTextToggle: document.querySelector("#syncRawTextToggle"),
   textStats: document.querySelector("#textStats"),
   fieldStats: document.querySelector("#fieldStats"),
   textObjectView: document.querySelector("#textObjectView"),

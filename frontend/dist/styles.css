@@ -344,6 +344,21 @@ textarea:focus-visible,
   padding: 0 10px;
 }
 
+.sync-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.sync-toggle input {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+}
+
 textarea {
   flex: 1;
   width: 100%;
@@ -474,6 +489,37 @@ textarea {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.text-object-head {
+  cursor: pointer;
+}
+
+.text-field-cell {
+  padding: 3px 4px;
+}
+
+.text-field-input {
+  width: 100%;
+  min-height: 24px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: #fbfcfd;
+  color: #1f2933;
+  padding: 2px 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.text-field-input:hover {
+  border-color: var(--line);
+  background: #ffffff;
+}
+
+.text-field-input:focus {
+  border-color: var(--teal);
+  background: #ffffff;
+  outline: 0;
 }
 
 .json-code {

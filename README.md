@@ -65,7 +65,7 @@ The app toolbar includes a Guide button that navigates to the bundled `frontend/
 
 ## Input Views
 
-- Text: fully expanded formatted object summary first, editable raw source below.
+- Text: fully expanded editable object summary first, editable raw source below, and optional action-based position sync between them.
 - JSON: structured epJSON-like editor first, with read-only syntax tokens and inline-editable value tokens that patch the backend model; raw epJSON text stays in Advanced mode.
 - Table: fully expanded IDF object type tables with fixed row headers plus global and per-table row/column orientation controls.
 - Workspace: resizable input and analysis panes with separate scroll areas and no window-level app scrolling.

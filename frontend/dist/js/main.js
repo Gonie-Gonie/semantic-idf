@@ -2,7 +2,14 @@ import { sampleIDF } from "./sample.js";
 import { elements, state, updateTextStats } from "./state.js";
 import { analyze, closeToolMenu, convertInput, downloadText, openGuide, removeUnused } from "./actions.js";
 import { renderEmpty, renderReport } from "./analysis-views.js";
-import { applyJSONText, configureInputViews, renderFieldTable, setTableOrientation, switchInputView } from "./input-views.js";
+import {
+  applyJSONText,
+  configureInputViews,
+  renderFieldTable,
+  setTableOrientation,
+  switchInputView,
+  syncTextViewFromRawCaret,
+} from "./input-views.js";
 import { initializeWorkspaceSplitter } from "./layout.js";
 import { handleAnalysisActivation, switchTab } from "./navigation.js";
 
@@ -38,8 +45,13 @@ elements.idfInput.addEventListener("input", () => {
   updateTextStats();
   state.lastAnalyzedText = "";
 });
+elements.idfInput.addEventListener("click", syncTextViewFromRawCaret);
+elements.idfInput.addEventListener("keyup", syncTextViewFromRawCaret);
 elements.jsonTextInput.addEventListener("input", () => {
   state.lastAnalyzedText = "";
+});
+elements.syncRawTextToggle.addEventListener("change", () => {
+  state.syncTextRawPosition = elements.syncRawTextToggle.checked;
 });
 elements.fieldFilter.addEventListener("input", renderFieldTable);
 elements.tabs.forEach((tab) => {

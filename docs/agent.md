@@ -15,6 +15,7 @@
 - Input viewing should keep Text, JSON, and Table modes in sync from one parsed/cached EnergyPlus model; Table mode should be organized by IDF object type and support row/column orientation changes.
 - JSON structured view should stay epJSON-shaped with quoted keys, braces, colons, literal values, semantic grouping, and compact indentation.
 - JSON view is a structured editor, not a raw textarea: syntax tokens are read-only UI, value tokens edit inline and call backend model patch APIs, and raw epJSON remains Advanced mode.
+- Text view formatted summaries should remain editable and can action-sync position with raw text through a user-controlled toggle.
 - Keep Text and Table groups open by default, and maintain stable table row headers.
 - Keep the app window itself from scrolling; use explicit scroll containers inside the input and analysis panels.
 - Keep result navigation focused: Summary, Schedules, and Systems on the right.
