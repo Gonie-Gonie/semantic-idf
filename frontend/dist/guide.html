@@ -40,19 +40,19 @@
           <div class="guide-grid">
             <article>
               <h3>Text</h3>
-              <p>The editable source view for IDF or epJSON text.</p>
+              <p>A formatted object summary first, with editable raw IDF or epJSON text below it.</p>
             </article>
             <article>
               <h3>JSON</h3>
-              <p>A grouped object view plus a collapsible structured tree for nested model data.</p>
+              <p>A structured model tree first, with editable epJSON text below it.</p>
             </article>
             <article>
               <h3>Table</h3>
-              <p>Object type tables with one row per object and one column per IDF field.</p>
+              <p>Object type tables that can switch between objects-as-rows and fields-as-rows.</p>
             </article>
             <article>
-              <h3>Cached Conversion</h3>
-              <p>Analyze keeps the parsed model and epJSON conversion in memory for fast switching.</p>
+              <h3>Resizable Split</h3>
+              <p>The input and analysis panels have separate scroll areas and a draggable divider.</p>
             </article>
           </div>
         </section>
@@ -112,6 +112,7 @@
         <section id="updates" class="guide-section">
           <h2>Update Log</h2>
           <ul class="guide-log">
+            <li><strong>2026-05-29</strong> Reworked Text and JSON view hierarchy, added table transpose controls, and added the resizable input-analysis splitter.</li>
             <li><strong>2026-05-29</strong> Replaced the starter sample with a larger multi-zone model and changed Table view to object-type tables.</li>
             <li><strong>2026-05-29</strong> Added Text, JSON, and Table input views with cached structured model rendering.</li>
             <li><strong>2026-05-29</strong> Guide navigation now stays inside the Wails WebView to avoid external `wails.localhost` connection failures.</li>

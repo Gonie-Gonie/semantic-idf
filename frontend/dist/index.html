@@ -41,19 +41,38 @@
             </div>
           </div>
           <div class="input-view active" id="textInputView">
-            <textarea id="idfInput" spellcheck="false"></textarea>
+            <div id="textObjectView" class="formatted-object-view"></div>
+            <div class="raw-editor-block">
+              <div class="subhead">
+                <h3>Raw Text</h3>
+              </div>
+              <textarea id="idfInput" spellcheck="false"></textarea>
+            </div>
           </div>
           <div class="input-view" id="jsonInputView">
             <div id="jsonStructuredView" class="json-view"></div>
+            <div class="raw-editor-block json-editor-block">
+              <div class="subhead">
+                <h3>epJSON Text</h3>
+                <button id="applyJSONButton" type="button">Apply JSON</button>
+              </div>
+              <textarea id="jsonTextInput" spellcheck="false"></textarea>
+            </div>
           </div>
           <div class="input-view" id="tableInputView">
             <div class="table-tools">
               <input id="fieldFilter" type="search" placeholder="Filter fields" />
+              <div class="orientation-controls" role="group" aria-label="Table orientation">
+                <button class="orientation-button active" data-table-orientation="objects" type="button">Objects as rows</button>
+                <button class="orientation-button" data-table-orientation="fields" type="button">Fields as rows</button>
+              </div>
               <span id="fieldStats">0 fields</span>
             </div>
             <div id="fieldTable" class="field-table"></div>
           </div>
         </aside>
+
+        <div id="workspaceSplitter" class="workspace-splitter" role="separator" aria-orientation="vertical" aria-label="Resize input and analysis panels"></div>
 
         <section class="analysis-panel" aria-label="Analysis results">
           <nav class="tabs" aria-label="Result tabs">

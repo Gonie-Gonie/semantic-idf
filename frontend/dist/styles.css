@@ -125,7 +125,7 @@ textarea:focus-visible,
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(360px, 42%) minmax(480px, 1fr);
+  grid-template-columns: minmax(420px, var(--editor-width, 58%)) 8px minmax(420px, 1fr);
 }
 
 .editor-panel,
@@ -135,10 +135,21 @@ textarea:focus-visible,
 }
 
 .editor-panel {
-  border-right: 1px solid var(--line);
   background: var(--surface);
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+}
+
+.workspace-splitter {
+  min-width: 8px;
+  cursor: col-resize;
+  background: linear-gradient(to right, transparent 0 3px, var(--line) 3px 5px, transparent 5px 8px);
+}
+
+.workspace-splitter:hover,
+.resizing-workspace .workspace-splitter {
+  background: linear-gradient(to right, transparent 0 2px, var(--teal) 2px 6px, transparent 6px 8px);
 }
 
 .panel-head {
@@ -196,8 +207,53 @@ textarea:focus-visible,
   display: flex;
 }
 
-#textInputView {
+#textInputView,
+#jsonInputView {
   flex-direction: column;
+}
+
+.formatted-object-view {
+  flex: 1 1 58%;
+  min-height: 220px;
+  overflow: auto;
+  padding: 12px;
+  background: #fbfcfd;
+  border-bottom: 1px solid var(--line);
+}
+
+.raw-editor-block {
+  flex: 1 1 42%;
+  min-height: 220px;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--line);
+}
+
+.json-editor-block {
+  flex-basis: 36%;
+}
+
+.subhead {
+  min-height: 36px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  padding: 6px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.subhead h3 {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.2;
+  letter-spacing: 0;
+}
+
+.subhead button {
+  min-height: 28px;
+  padding: 0 10px;
 }
 
 textarea {
@@ -224,6 +280,7 @@ textarea {
 }
 
 .json-view {
+  flex: 1 1 64%;
   padding: 12px;
 }
 
@@ -324,23 +381,18 @@ textarea {
   font-weight: 700;
 }
 
-.json-code pre {
-  margin: 0;
-  max-height: 360px;
-  overflow: auto;
-  border-top: 1px solid var(--line);
-  padding: 12px;
-  font-family: "Cascadia Mono", Consolas, "Liberation Mono", monospace;
-  font-size: 12px;
-  line-height: 1.45;
-}
-
 .json-tree {
-  max-height: 420px;
+  min-width: 780px;
+  min-height: 100%;
   overflow: auto;
-  border-top: 1px solid var(--line);
   padding: 10px;
   font-size: 12px;
+}
+
+.primary-tree {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
 }
 
 .json-inline-tree {
@@ -400,11 +452,31 @@ textarea {
 }
 
 .table-tools input {
-  width: min(260px, 62%);
+  width: min(300px, 38%);
   min-height: 30px;
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 0 10px;
+}
+
+.orientation-controls {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: center;
+}
+
+.orientation-button,
+.object-orientation-button {
+  min-height: 28px;
+  padding: 0 9px;
+  color: var(--muted);
+}
+
+.orientation-button.active {
+  background: var(--teal);
+  border-color: var(--teal);
+  color: #ffffff;
 }
 
 .table-tools span {
@@ -430,6 +502,12 @@ textarea {
   gap: 10px;
   font-size: 13px;
   font-weight: 700;
+}
+
+.object-table-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .object-type-table-scroll {
@@ -509,6 +587,7 @@ textarea {
 .analysis-panel {
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .tabs {
@@ -821,9 +900,12 @@ textarea {
     grid-template-columns: 1fr;
   }
 
+  .workspace-splitter {
+    display: none;
+  }
+
   .editor-panel {
     min-height: 42vh;
-    border-right: 0;
     border-bottom: 1px solid var(--line);
   }
 

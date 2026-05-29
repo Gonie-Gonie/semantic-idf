@@ -289,6 +289,8 @@ const state = {
   activeTab: "summary",
   activeInputView: "text",
   lastAnalyzedText: "",
+  tableOrientation: "objects",
+  tableGroupOrientations: new Map(),
 };
 
 const elements = {
@@ -301,11 +303,17 @@ const elements = {
   downloadButton: document.querySelector("#downloadButton"),
   guideButton: document.querySelector("#guideButton"),
   idfInput: document.querySelector("#idfInput"),
+  jsonTextInput: document.querySelector("#jsonTextInput"),
+  applyJSONButton: document.querySelector("#applyJSONButton"),
   textStats: document.querySelector("#textStats"),
   fieldStats: document.querySelector("#fieldStats"),
+  textObjectView: document.querySelector("#textObjectView"),
   jsonStructuredView: document.querySelector("#jsonStructuredView"),
   fieldFilter: document.querySelector("#fieldFilter"),
   fieldTable: document.querySelector("#fieldTable"),
+  tableOrientationButtons: document.querySelectorAll(".orientation-button"),
+  workspace: document.querySelector(".workspace"),
+  workspaceSplitter: document.querySelector("#workspaceSplitter"),
   inputViewButtons: document.querySelectorAll(".view-tab"),
   inputViews: document.querySelectorAll(".input-view"),
   objectCount: document.querySelector("#objectCount"),
@@ -451,7 +459,9 @@ function renderEmpty() {
   elements.connectionList.innerHTML = `<div class="empty">No connections yet</div>`;
   elements.zoneViz.innerHTML = "";
   elements.systemViz.innerHTML = "";
+  elements.textObjectView.innerHTML = `<div class="empty">No formatted input yet</div>`;
   elements.jsonStructuredView.innerHTML = `<div class="empty">No structured input yet</div>`;
+  elements.jsonTextInput.value = "";
   elements.fieldTable.innerHTML = `<div class="empty">No field table yet</div>`;
   elements.fieldStats.textContent = "0 tables";
 }
@@ -552,6 +562,9 @@ function renderConnectionList(connections) {
 }
 
 function renderInputViews() {
+  if (state.activeInputView === "text") {
+    renderFormattedTextView();
+  }
   if (state.activeInputView === "json") {
     renderJSONView();
   }
@@ -560,11 +573,10 @@ function renderInputViews() {
   }
 }
 
-function renderJSONView() {
+function groupedObjectsFromModel() {
   const model = state.model;
   if (!model || !Array.isArray(model.objects)) {
-    elements.jsonStructuredView.innerHTML = `<div class="empty">Analyze input to build JSON view</div>`;
-    return;
+    return [];
   }
 
   const groups = [];
@@ -577,16 +589,19 @@ function renderJSONView() {
     }
     byType.get(object.type).objects.push(object);
   });
+  return groups;
+}
+
+function renderFormattedTextView() {
+  const model = state.model;
+  if (!model || !Array.isArray(model.objects)) {
+    elements.textObjectView.innerHTML = `<div class="empty">Analyze input to build formatted text view</div>`;
+    return;
+  }
 
   const versionLabel = model.version?.raw || "unknown";
-  const epjsonPreview = state.epjsonText
-    ? `<details class="json-code">
-        <summary>epJSON</summary>
-        <pre>${escapeHTML(state.epjsonText)}</pre>
-      </details>`
-    : "";
-
-  elements.jsonStructuredView.innerHTML = `
+  const groups = groupedObjectsFromModel();
+  elements.textObjectView.innerHTML = `
     <div class="json-meta">
       <span class="badge">${escapeHTML(model.format || "unknown")}</span>
       <span class="badge">Version ${escapeHTML(versionLabel)}</span>
@@ -601,20 +616,38 @@ function renderJSONView() {
                 <span>${escapeHTML(group.type)}</span>
                 <span class="badge">${escapeHTML(group.objects.length)}</span>
               </summary>
-              ${group.objects.map(renderJSONObject).join("")}
+              ${group.objects.map(renderFormattedObject).join("")}
             </details>`,
         )
         .join("")}
     </div>
-    <details class="json-code">
-      <summary>Structured Model Tree</summary>
-      <div class="json-tree">${renderJSONTree(model)}</div>
-    </details>
-    ${epjsonPreview}
   `;
 }
 
-function renderJSONObject(object) {
+function renderJSONView() {
+  const model = state.model;
+  if (!model || !Array.isArray(model.objects)) {
+    elements.jsonStructuredView.innerHTML = `<div class="empty">Analyze input to build JSON view</div>`;
+    elements.jsonTextInput.value = "";
+    return;
+  }
+
+  const versionLabel = model.version?.raw || "unknown";
+  if (document.activeElement !== elements.jsonTextInput) {
+    elements.jsonTextInput.value = state.epjsonText || "";
+  }
+
+  elements.jsonStructuredView.innerHTML = `
+    <div class="json-meta">
+      <span class="badge">${escapeHTML(model.format || "unknown")}</span>
+      <span class="badge">Version ${escapeHTML(versionLabel)}</span>
+      <span class="badge">${escapeHTML(model.objects.length)} objects</span>
+    </div>
+    <div class="json-tree primary-tree">${renderJSONTree(model)}</div>
+  `;
+}
+
+function renderFormattedObject(object) {
   const fields = object.fields || [];
   return `
     <section class="json-object">
@@ -719,7 +752,8 @@ function renderFieldTable() {
   });
 
   const objectCount = groups.reduce((sum, group) => sum + group.objects.length, 0);
-  elements.fieldStats.textContent = `${groups.length} tables, ${objectCount} objects`;
+  const orientationLabel = state.tableOrientation === "fields" ? "fields as rows" : "objects as rows";
+  elements.fieldStats.textContent = `${groups.length} tables, ${objectCount} objects, ${orientationLabel}`;
   if (!groups.length) {
     elements.fieldTable.innerHTML = `<div class="empty">No matching object tables</div>`;
     return;
@@ -742,40 +776,92 @@ function renderFieldTable() {
       }
     });
   });
+  elements.fieldTable.querySelectorAll(".object-orientation-button").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      state.tableGroupOrientations.set(button.dataset.objectType, button.dataset.nextOrientation);
+      renderFieldTable();
+    });
+  });
 }
 
 function renderObjectTypeTable(group, groupIndex) {
+  const orientation = state.tableGroupOrientations.get(group.type) || state.tableOrientation;
   const columns = buildObjectTypeColumns(group.objects);
+  const nextOrientation = orientation === "objects" ? "fields" : "objects";
   return `
     <details class="object-table-group" ${groupIndex < 5 ? "open" : ""}>
       <summary>
         <span>${escapeHTML(group.type)}</span>
-        <span class="badge">${escapeHTML(group.objects.length)} rows</span>
+        <span class="object-table-actions">
+          <button class="object-orientation-button" data-object-type="${escapeHTML(group.type)}" data-next-orientation="${escapeHTML(nextOrientation)}" type="button">
+            ${orientation === "objects" ? "Fields as rows" : "Objects as rows"}
+          </button>
+          <span class="badge">${escapeHTML(group.objects.length)} objects</span>
+        </span>
       </summary>
       <div class="object-type-table-scroll">
-        <table>
-          <thead>
-            <tr>
-              <th class="sticky-col">Obj</th>
-              <th>Name</th>
-              ${columns.map((column) => `<th title="${escapeHTML(column.label)}">${escapeHTML(column.label)}</th>`).join("")}
-            </tr>
-          </thead>
-          <tbody>
-            ${group.objects
-              .map(
-                (object) => `
-                  <tr>
-                    <td class="sticky-col">#${escapeHTML(object.index)}</td>
-                    <td title="${escapeHTML(object.name || "")}">${escapeHTML(object.name || "-")}</td>
-                    ${columns.map((column) => renderObjectTypeCell(object, column.index)).join("")}
-                  </tr>`,
-              )
-              .join("")}
-          </tbody>
-        </table>
+        ${orientation === "objects" ? renderObjectsAsRowsTable(group, columns) : renderFieldsAsRowsTable(group, columns)}
       </div>
     </details>
+  `;
+}
+
+function renderObjectsAsRowsTable(group, columns) {
+  return `
+    <table>
+      <thead>
+        <tr>
+          <th class="sticky-col">Obj</th>
+          <th>Name</th>
+          ${columns.map((column) => `<th title="${escapeHTML(column.label)}">${escapeHTML(column.label)}</th>`).join("")}
+        </tr>
+      </thead>
+      <tbody>
+        ${group.objects
+          .map(
+            (object) => `
+              <tr>
+                <td class="sticky-col">#${escapeHTML(object.index)}</td>
+                <td title="${escapeHTML(object.name || "")}">${escapeHTML(object.name || "-")}</td>
+                ${columns.map((column) => renderObjectTypeCell(object, column.index)).join("")}
+              </tr>`,
+          )
+          .join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+function renderFieldsAsRowsTable(group, columns) {
+  return `
+    <table>
+      <thead>
+        <tr>
+          <th class="sticky-col">Field</th>
+          ${group.objects
+            .map(
+              (object) => `
+                <th title="${escapeHTML(object.name || "")}">
+                  #${escapeHTML(object.index)} ${escapeHTML(object.name || "-")}
+                </th>`,
+            )
+            .join("")}
+        </tr>
+      </thead>
+      <tbody>
+        ${columns
+          .map(
+            (column) => `
+              <tr>
+                <td class="sticky-col" title="${escapeHTML(column.label)}">${escapeHTML(column.label)}</td>
+                ${group.objects.map((object) => renderObjectTypeCell(object, column.index)).join("")}
+              </tr>`,
+          )
+          .join("")}
+      </tbody>
+    </table>
   `;
 }
 
@@ -961,6 +1047,72 @@ async function switchInputView(viewName) {
   renderInputViews();
 }
 
+async function applyJSONText() {
+  elements.idfInput.value = elements.jsonTextInput.value;
+  updateTextStats();
+  state.lastAnalyzedText = "";
+  await analyze();
+  setStatus("JSON applied", "ok");
+}
+
+function setTableOrientation(orientation) {
+  state.tableOrientation = orientation;
+  state.tableGroupOrientations.clear();
+  elements.tableOrientationButtons.forEach((button) => {
+    button.classList.toggle("active", button.dataset.tableOrientation === orientation);
+  });
+  renderFieldTable();
+}
+
+function initializeWorkspaceSplitter() {
+  const savedWidth = localStorage.getItem("idfAnalyzer.editorWidth");
+  if (savedWidth) {
+    elements.workspace.style.setProperty("--editor-width", savedWidth);
+  }
+
+  let dragging = false;
+  elements.workspaceSplitter.addEventListener("pointerdown", (event) => {
+    dragging = true;
+    elements.workspaceSplitter.setPointerCapture(event.pointerId);
+    document.body.classList.add("resizing-workspace");
+  });
+
+  elements.workspaceSplitter.addEventListener("pointermove", (event) => {
+    if (!dragging) {
+      return;
+    }
+    const rect = elements.workspace.getBoundingClientRect();
+    const splitterWidth = elements.workspaceSplitter.getBoundingClientRect().width;
+    const minLeft = 420;
+    const minRight = 420;
+    const nextWidth = Math.min(
+      Math.max(event.clientX - rect.left, minLeft),
+      rect.width - splitterWidth - minRight,
+    );
+    const value = `${Math.round(nextWidth)}px`;
+    elements.workspace.style.setProperty("--editor-width", value);
+    localStorage.setItem("idfAnalyzer.editorWidth", value);
+  });
+
+  function stopDrag(event) {
+    if (!dragging) {
+      return;
+    }
+    dragging = false;
+    if (event.pointerId !== undefined) {
+      try {
+        elements.workspaceSplitter.releasePointerCapture(event.pointerId);
+      } catch {
+        // Pointer capture may already be released by the browser.
+      }
+    }
+    document.body.classList.remove("resizing-workspace");
+  }
+
+  elements.workspaceSplitter.addEventListener("pointerup", stopDrag);
+  elements.workspaceSplitter.addEventListener("pointercancel", stopDrag);
+}
+
 elements.fileInput.addEventListener("change", async (event) => {
   const [file] = event.target.files || [];
   if (!file) {
@@ -977,8 +1129,12 @@ elements.toIDFButton.addEventListener("click", () => convertInput("idf"));
 elements.toEPJSONButton.addEventListener("click", () => convertInput("epjson"));
 elements.downloadButton.addEventListener("click", downloadText);
 elements.guideButton.addEventListener("click", openGuide);
+elements.applyJSONButton.addEventListener("click", applyJSONText);
 elements.idfInput.addEventListener("input", () => {
   updateTextStats();
+  state.lastAnalyzedText = "";
+});
+elements.jsonTextInput.addEventListener("input", () => {
   state.lastAnalyzedText = "";
 });
 elements.objectFilter.addEventListener("input", () => {
@@ -993,7 +1149,11 @@ elements.tabs.forEach((tab) => {
 elements.inputViewButtons.forEach((button) => {
   button.addEventListener("click", () => switchInputView(button.dataset.inputView));
 });
+elements.tableOrientationButtons.forEach((button) => {
+  button.addEventListener("click", () => setTableOrientation(button.dataset.tableOrientation));
+});
 
+initializeWorkspaceSplitter();
 elements.idfInput.value = sampleIDF;
 updateTextStats();
 renderEmpty();

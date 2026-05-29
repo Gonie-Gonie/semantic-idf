@@ -10,4 +10,4 @@
 - User guide policy: update `frontend/dist/guide.html` cumulatively, including its update log, when tool usage changes.
 - Treat unused-object deletion conservatively and keep parser round trips covered by tests.
 - EnergyPlus input policy: IDF and epJSON share `internal/epinput` for detection, version metadata, common object structure, and conversion; IDD/schema validation should be added behind that module rather than scattered through UI code.
-- Input view policy: preserve Text as source editing, JSON as grouped and tree-based structured model views, and Table as object-type-specific spreadsheet tables using cached analysis data when possible.
+- Input view policy: Text leads with formatted object summaries and keeps raw editing below; JSON leads with the structured model tree and keeps editable epJSON below; Table uses object-type-specific spreadsheet tables with global and per-table orientation controls.

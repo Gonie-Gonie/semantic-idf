@@ -16,8 +16,8 @@ func main() {
 
 	err := wails.Run(&options.App{
 		Title:  "IDF Analyzer",
-		Width:  1280,
-		Height: 820,
+		Width:  1600,
+		Height: 900,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
