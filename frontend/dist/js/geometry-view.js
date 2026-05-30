@@ -374,6 +374,7 @@ function renderGeometryDetails(geometry = state.report?.geometry) {
     elements.geometryDetails.innerHTML = `<div class="empty">Select a zone, wall, or window</div>`;
     return;
   }
+  const relatedGroups = geometryRelatedGroups(geometry, entity);
   elements.geometryDetails.innerHTML = `
     <div class="geometry-detail-head">
       <div>
@@ -388,10 +389,11 @@ function renderGeometryDetails(geometry = state.report?.geometry) {
         ${renderMetricList(entity.metrics)}
       </section>
       <section>
-        <h4>IDF Fields</h4>
-        ${renderFieldList(entity.fields)}
+        <h4>Related Objects</h4>
+        ${renderRelatedGroups(relatedGroups)}
       </section>
     </div>`;
+  bindGeometryDetailControls();
 }
 
 function syncLocatedInputFromSelection() {
@@ -426,27 +428,40 @@ function selectedGeometryEntity(geometry) {
   }
   if (state.selectedGeometryKind === "zone") {
     const zone = (geometry.zones || []).find((item) => item.id === state.selectedGeometryId);
-    return zone && { title: zone.name, subtitle: "Zone", objectIndex: zone.objectIndex, objectType: "Zone", metrics: zone.metrics, fields: zone.fields };
+    return zone && {
+      kind: "zone",
+      id: zone.id,
+      item: zone,
+      title: zone.name,
+      subtitle: "Zone",
+      objectIndex: zone.objectIndex,
+      objectType: "Zone",
+      metrics: zone.metrics,
+    };
   }
   if (state.selectedGeometryKind === "window") {
     const windowItem = (geometry.windows || []).find((item) => item.id === state.selectedGeometryId);
     return windowItem && {
+      kind: "window",
+      id: windowItem.id,
+      item: windowItem,
       title: windowItem.name || windowItem.type,
       subtitle: `${windowItem.surfaceType || windowItem.type} on ${windowItem.baseSurfaceName || "unknown surface"}`,
       objectIndex: windowItem.objectIndex,
       objectType: windowItem.type,
       metrics: windowItem.metrics,
-      fields: windowItem.fields,
     };
   }
   const surface = (geometry.surfaces || []).find((item) => item.id === state.selectedGeometryId);
   return surface && {
+    kind: "surface",
+    id: surface.id,
+    item: surface,
     title: surface.name || surface.type,
     subtitle: `${surface.surfaceType || surface.type} / ${surface.zoneName || "No zone"}`,
     objectIndex: surface.objectIndex,
     objectType: surface.type,
     metrics: surface.metrics,
-    fields: surface.fields,
   };
 }
 
@@ -458,12 +473,220 @@ function renderMetricList(metrics = []) {
     : `<div class="empty">No metrics</div>`;
 }
 
-function renderFieldList(fields = []) {
-  return fields.length
-    ? `<div class="geometry-field-list">${fields
-        .map((field, index) => `<div><span>${escapeHTML(field.comment || `Field ${index + 1}`)}</span><strong>${escapeHTML(field.value)}</strong></div>`)
-        .join("")}</div>`
-    : `<div class="empty">No fields</div>`;
+function geometryRelatedGroups(geometry, entity) {
+  if (!geometry || !entity?.item) {
+    return [];
+  }
+  if (entity.kind === "zone") {
+    return geometryRelatedGroupsForZone(geometry, entity.item);
+  }
+  if (entity.kind === "window") {
+    return geometryRelatedGroupsForWindow(geometry, entity.item);
+  }
+  return geometryRelatedGroupsForSurface(geometry, entity.item);
+}
+
+function geometryRelatedGroupsForZone(geometry, zone) {
+  const surfaces = (zone.surfaceIds || []).map((id) => surfaceByID(geometry, id)).filter(Boolean);
+  const windows = (zone.windowIds || []).map((id) => windowByID(geometry, id)).filter(Boolean);
+  const adjacent = uniqueRelatedItems(
+    surfaces
+      .flatMap((surface) => {
+        const adjacentSurface = adjacentSurfaceForSurface(geometry, surface);
+        const adjacentZone = adjacentSurface ? zoneByName(geometry, adjacentSurface.zoneName) : null;
+        return [
+          adjacentZone && adjacentZone.id !== zone.id ? relatedItemForZone(adjacentZone, "Adjacent zone") : null,
+          adjacentSurface ? relatedItemForSurface(adjacentSurface, "Adjacent surface") : referencedBoundaryItem(surface),
+        ];
+      })
+      .filter(Boolean),
+  );
+  return [
+    { title: "Boundary Surfaces", items: surfaces.map((surface) => relatedItemForSurface(surface, surface.surfaceType || "Surface")) },
+    { title: "Openings", items: windows.map((windowItem) => relatedItemForWindow(windowItem, windowItem.surfaceType || "Window")) },
+    { title: "Adjacent", items: adjacent },
+  ];
+}
+
+function geometryRelatedGroupsForSurface(geometry, surface) {
+  const parentZone = zoneByName(geometry, surface.zoneName);
+  const windows = windowsForSurface(geometry, surface);
+  const adjacentSurface = adjacentSurfaceForSurface(geometry, surface);
+  const adjacentZone = adjacentSurface ? zoneByName(geometry, adjacentSurface.zoneName) : null;
+  const adjacentItems = [
+    adjacentZone && adjacentZone.id !== parentZone?.id ? relatedItemForZone(adjacentZone, "Adjacent zone") : null,
+    adjacentSurface ? relatedItemForSurface(adjacentSurface, "Adjacent surface") : referencedBoundaryItem(surface),
+  ].filter(Boolean);
+  return [
+    { title: "Parent", items: parentZone ? [relatedItemForZone(parentZone, "Zone")] : [] },
+    { title: "Openings", items: windows.map((windowItem) => relatedItemForWindow(windowItem, windowItem.surfaceType || "Window")) },
+    { title: "Adjacent", items: adjacentItems },
+  ];
+}
+
+function geometryRelatedGroupsForWindow(geometry, windowItem) {
+  const parentSurface = windowItem.baseSurfaceId
+    ? surfaceByID(geometry, windowItem.baseSurfaceId)
+    : surfaceByName(geometry, windowItem.baseSurfaceName);
+  const parentZone = zoneByName(geometry, windowItem.zoneName || parentSurface?.zoneName);
+  const siblingWindows = parentSurface
+    ? windowsForSurface(geometry, parentSurface).filter((item) => item.id !== windowItem.id)
+    : [];
+  return [
+    { title: "Parent", items: [parentZone && relatedItemForZone(parentZone, "Zone"), parentSurface && relatedItemForSurface(parentSurface, "Base surface")].filter(Boolean) },
+    { title: "Sibling Openings", items: siblingWindows.map((item) => relatedItemForWindow(item, item.surfaceType || "Window")) },
+  ];
+}
+
+function renderRelatedGroups(groups = []) {
+  const visibleGroups = groups.filter((group) => group.items.length);
+  if (!visibleGroups.length) {
+    return `<div class="empty">No related objects</div>`;
+  }
+  return `
+    <div class="geometry-related-groups">
+      ${visibleGroups
+        .map(
+          (group) => `
+            <details class="geometry-related-group" open>
+              <summary>
+                <span>${escapeHTML(group.title)}</span>
+                <span class="badge">${escapeHTML(group.items.length)}</span>
+              </summary>
+              <div class="geometry-related-list">
+                ${group.items.map(renderRelatedItem).join("")}
+              </div>
+            </details>`,
+        )
+        .join("")}
+    </div>`;
+}
+
+function renderRelatedItem(item) {
+  const content = `
+    <span class="geometry-related-main">
+      <strong>${escapeHTML(item.title)}</strong>
+      <span>${escapeHTML(item.subtitle)}</span>
+    </span>
+    <span class="geometry-related-role">${escapeHTML(item.role)}</span>`;
+  if (item.kind && item.id) {
+    return `<button class="geometry-related-row" type="button" data-geometry-kind="${escapeHTML(item.kind)}" data-geometry-id="${escapeHTML(item.id)}">${content}</button>`;
+  }
+  return `<div class="geometry-related-row geometry-related-static">${content}</div>`;
+}
+
+function bindGeometryDetailControls() {
+  elements.geometryDetails.querySelectorAll(".geometry-related-row[data-geometry-id]").forEach((button) => {
+    button.addEventListener("click", () => selectGeometry(button.dataset.geometryKind, button.dataset.geometryId));
+  });
+}
+
+function relatedItemForZone(zone, role) {
+  return {
+    kind: "zone",
+    id: zone.id,
+    role,
+    title: zone.name,
+    subtitle: storyLabelForIndex(state.report?.geometry, zone.storyIndex),
+  };
+}
+
+function relatedItemForSurface(surface, role) {
+  return {
+    kind: "surface",
+    id: surface.id,
+    role,
+    title: surface.name || surface.type,
+    subtitle: `${surface.surfaceType || surface.type}${surface.zoneName ? ` / ${surface.zoneName}` : ""}`,
+  };
+}
+
+function relatedItemForWindow(windowItem, role) {
+  return {
+    kind: "window",
+    id: windowItem.id,
+    role,
+    title: windowItem.name || windowItem.type,
+    subtitle: windowItem.baseSurfaceName ? `On ${windowItem.baseSurfaceName}` : windowItem.type,
+  };
+}
+
+function referencedBoundaryItem(surface) {
+  const boundaryName = boundaryObjectName(surface);
+  if (!boundaryName) {
+    return null;
+  }
+  return {
+    role: "Referenced surface",
+    title: boundaryName,
+    subtitle: "Not parsed in geometry",
+  };
+}
+
+function uniqueRelatedItems(items) {
+  const seen = new Set();
+  return items.filter((item) => {
+    const key = `${item.kind || "static"}:${item.id || item.title}:${item.role}`;
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+function zoneByName(geometry, zoneName) {
+  const key = normalizeGeometryName(zoneName);
+  return key ? (geometry.zones || []).find((zone) => normalizeGeometryName(zone.name) === key) || null : null;
+}
+
+function surfaceByID(geometry, id) {
+  return (geometry.surfaces || []).find((surface) => surface.id === id) || null;
+}
+
+function surfaceByName(geometry, name) {
+  const key = normalizeGeometryName(name);
+  return key ? (geometry.surfaces || []).find((surface) => normalizeGeometryName(surface.name) === key) || null : null;
+}
+
+function windowByID(geometry, id) {
+  return (geometry.windows || []).find((windowItem) => windowItem.id === id) || null;
+}
+
+function windowsForSurface(geometry, surface) {
+  const surfaceName = normalizeGeometryName(surface?.name);
+  return (geometry.windows || []).filter(
+    (windowItem) =>
+      (surface?.id && windowItem.baseSurfaceId === surface.id) ||
+      (surfaceName && normalizeGeometryName(windowItem.baseSurfaceName) === surfaceName),
+  );
+}
+
+function adjacentSurfaceForSurface(geometry, surface) {
+  const boundaryName = boundaryObjectName(surface);
+  return boundaryName ? surfaceByName(geometry, boundaryName) : null;
+}
+
+function boundaryObjectName(surface) {
+  return fieldValueByCommentWords(surface?.fields, ["outside", "boundary", "condition", "object"]);
+}
+
+function fieldValueByCommentWords(fields = [], words = []) {
+  const lowerWords = words.map((word) => word.toLowerCase());
+  const field = fields.find((item) => {
+    const comment = String(item.comment || "").toLowerCase();
+    return lowerWords.every((word) => comment.includes(word));
+  });
+  return field?.value || "";
+}
+
+function storyLabelForIndex(geometry, storyIndex) {
+  const story = (geometry?.stories || []).find((item) => item.index === storyIndex);
+  return story ? `${story.name} (${formatNumber(story.elevation)} m)` : "Story unknown";
+}
+
+function normalizeGeometryName(value) {
+  return String(value || "").trim().toLowerCase();
 }
 
 function zoneIdForName(geometry, zoneName) {

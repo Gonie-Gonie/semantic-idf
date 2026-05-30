@@ -26,5 +26,5 @@
 - Keep right-panel result tabs purposeful: Summary for backend-driven metrics and Geometry for parsed building shape review.
 - Summary metric definitions, calculated values, exports, and guide entries should stay tied to the same backend catalog.
 - Keep the Summary export contract stable: categorized JSON and two-column `name,value` CSV.
-- Geometry should keep parsed zone/surface/window data in the backend report and render from that shared structure in 3D and plan views; 3D defaults to all levels, story filtering is optional, and Sync locate controls automatic jumps to matching input objects.
+- Geometry should keep parsed zone/surface/window data in the backend report and render from that shared structure in 3D and plan views; 3D defaults to all levels, story filtering is optional, selected-object details should show metrics plus related objects instead of duplicating IDF fields, and Sync locate controls automatic jumps to matching input objects.
 - Frontend code organization: keep `frontend/dist/app.js` as a tiny entrypoint and place feature modules under `frontend/dist/js/`.

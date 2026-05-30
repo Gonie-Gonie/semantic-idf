@@ -76,7 +76,7 @@ The app toolbar includes a Guide button that navigates to the bundled `frontend/
 - The right panel has Summary and Geometry result tabs.
 - Summary shows a metric catalog grouped by model, geometry, envelope, loads, schedules, and HVAC categories.
 - Summary can be filtered and exported as categorized JSON or a two-column `name,value` CSV.
-- Geometry parses detailed zones, walls, roofs, floors, and fenestration into a 3D view that defaults to all levels, optional story filtering, a story-by-story plan view, selectable object details, and Sync locate jumps to the matching input object.
+- Geometry parses detailed zones, walls, roofs, floors, and fenestration into a 3D view that defaults to all levels, optional story filtering, a story-by-story plan view, selectable metrics, related object links, and Sync locate jumps to the matching input object.
 - Summary metric guide entries are loaded from the same backend catalog as the calculated metrics.
 - The startup sample is the official EnergyPlus `RefBldgLargeOfficeNew2004_Chicago.idf` example vendored under `frontend/dist/samples/`.
 - Conversion and cleanup commands are grouped under the top toolbar Tools menu.

@@ -1213,14 +1213,12 @@ textarea {
   letter-spacing: 0;
 }
 
-.geometry-property-list,
-.geometry-field-list {
+.geometry-property-list {
   display: grid;
   border: 1px solid var(--surface-2);
 }
 
-.geometry-property-list div,
-.geometry-field-list div {
+.geometry-property-list div {
   min-height: 31px;
   display: grid;
   grid-template-columns: minmax(120px, 42%) minmax(0, 1fr);
@@ -1231,26 +1229,108 @@ textarea {
   font-size: 12px;
 }
 
-.geometry-property-list div:last-child,
-.geometry-field-list div:last-child {
+.geometry-property-list div:last-child {
   border-bottom: 0;
 }
 
-.geometry-property-list span,
-.geometry-field-list span {
+.geometry-property-list span {
   color: var(--muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.geometry-property-list strong,
-.geometry-field-list strong {
+.geometry-property-list strong {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-weight: 600;
+}
+
+.geometry-related-groups {
+  display: grid;
+  gap: 8px;
+}
+
+.geometry-related-group {
+  border: 1px solid var(--surface-2);
+  background: #ffffff;
+}
+
+.geometry-related-group summary {
+  min-height: 34px;
+  cursor: pointer;
+  padding: 7px 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.geometry-related-list {
+  display: grid;
+  border-top: 1px solid var(--surface-2);
+}
+
+.geometry-related-row {
+  width: 100%;
+  min-height: 42px;
+  border: 0;
+  border-bottom: 1px solid var(--surface-2);
+  border-radius: 0;
+  padding: 7px 8px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  justify-content: stretch;
+  background: #ffffff;
+  color: var(--ink);
+  text-align: left;
+}
+
+.geometry-related-row:last-child {
+  border-bottom: 0;
+}
+
+button.geometry-related-row:hover {
+  background: #f3fafb;
+}
+
+.geometry-related-static {
+  cursor: default;
+}
+
+.geometry-related-main {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.geometry-related-main strong,
+.geometry-related-main span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.geometry-related-main strong {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.geometry-related-main span,
+.geometry-related-role {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.geometry-related-role {
+  white-space: nowrap;
 }
 
 .tabs {
@@ -1774,7 +1854,7 @@ th.input-jump-highlight {
   }
 
   .geometry-property-list div,
-  .geometry-field-list div {
+  .geometry-related-row {
     grid-template-columns: 1fr;
   }
 }
