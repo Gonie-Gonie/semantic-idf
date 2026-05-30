@@ -5,7 +5,7 @@ import { renderEmpty, renderReport, renderSummary } from "./analysis-views.js";
 import { renderGeometry, resizeGeometry, setGeometryMode, setGeometryStory } from "./geometry-view.js";
 import {
   configureInputViews,
-  renderFieldTable,
+  setInputFilter,
   setTableOrientation,
   switchInputView,
   syncTextViewFromRawCaret,
@@ -51,7 +51,7 @@ elements.idfInput.addEventListener("keyup", syncTextViewFromRawCaret);
 elements.syncRawTextToggle.addEventListener("change", () => {
   state.syncTextRawPosition = elements.syncRawTextToggle.checked;
 });
-elements.fieldFilter.addEventListener("input", renderFieldTable);
+elements.inputFilter.addEventListener("input", () => setInputFilter(elements.inputFilter.value));
 elements.summaryFilter.addEventListener("input", () => renderSummary());
 elements.resultTabButtons.forEach((button) => {
   button.addEventListener("click", () => switchResultTab(button.dataset.resultTab));

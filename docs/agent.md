@@ -17,6 +17,7 @@
 - JSON structured view should stay epJSON-shaped with quoted keys, braces, colons, literal values, semantic grouping, and compact indentation.
 - JSON view is a structured editor, not a raw textarea: syntax tokens are read-only UI, value tokens edit inline and call backend model patch APIs, and raw source text lives in the shared Raw Text pane.
 - Text view formatted summaries should remain editable and can sync position with raw text through a user-controlled toggle; right-panel object jumps should also move Raw Text when that toggle is enabled.
+- Keep the left-panel input filter shared across Text, JSON, and Table views; it should filter by object type, name/index, field label, and value text.
 - Do not synthesize Name-oriented UI when an object has no real name. Use real names when present; otherwise identify objects by type and index.
 - epJSON conversion should follow the official schema shape where known. Detailed surface and shading coordinate extensibles should appear as a `vertices` array, not as flat `vertex_1_*` keys.
 - Keep Text and Table groups open by default, and maintain stable table row headers.

@@ -65,6 +65,7 @@ The app toolbar includes a Guide button that navigates to the bundled `frontend/
 
 ## Input Views
 
+- A shared input filter applies across Text, JSON, and Table views by matching object type, name/index, field label, and value text.
 - Text: fully expanded editable object summary first, shared editable raw source below, and optional position sync from editable fields and analysis selections.
 - JSON: structured epJSON-like editor first, with read-only syntax tokens and inline-editable value tokens that patch the backend model; raw source uses the shared Raw Text pane.
 - Table: fully expanded IDF object type tables with fixed row headers, no synthetic Name column, global and per-table row/column orientation controls, and shared raw source sync.

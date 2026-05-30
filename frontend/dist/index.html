@@ -45,6 +45,10 @@
               <button class="view-tab" data-input-view="table" type="button">Table</button>
             </div>
           </div>
+          <div class="input-filter-bar" role="search">
+            <input id="inputFilter" type="search" placeholder="Filter objects, fields, values" aria-label="Filter input objects" />
+            <span id="inputFilterStats">0 objects</span>
+          </div>
           <div class="input-view active" id="textInputView">
             <div id="textObjectView" class="formatted-object-view"></div>
           </div>
@@ -53,7 +57,6 @@
           </div>
           <div class="input-view" id="tableInputView">
             <div class="table-tools">
-              <input id="fieldFilter" type="search" placeholder="Filter fields" />
               <div class="orientation-controls" role="group" aria-label="Table orientation">
                 <button class="orientation-button active" data-table-orientation="objects" type="button">Objects as rows</button>
                 <button class="orientation-button" data-table-orientation="fields" type="button">Fields as rows</button>

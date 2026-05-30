@@ -20,56 +20,114 @@ export function renderInputViews() {
   }
 }
 
+export function setInputFilter(query) {
+  state.inputFilterQuery = query;
+  if (elements.inputFilter && elements.inputFilter.value !== query) {
+    elements.inputFilter.value = query;
+  }
+  renderInputViews();
+}
+
+export function clearInputFilter() {
+  setInputFilter("");
+}
+
+function currentInputFilterTerms() {
+  return state.inputFilterQuery.trim().toLowerCase().split(/\s+/).filter(Boolean);
+}
+
+function setInputFilterStats(matchingObjects, totalObjects) {
+  if (!elements.inputFilterStats) {
+    return;
+  }
+  elements.inputFilterStats.textContent = state.inputFilterQuery.trim()
+    ? `${matchingObjects} of ${totalObjects} objects`
+    : `${totalObjects} objects`;
+}
+
+function filterInputObjects(objects) {
+  const terms = currentInputFilterTerms();
+  return objects.filter((object) => matchesInputFilter(object, terms));
+}
+
+function matchesInputFilter(object, terms) {
+  if (!terms.length) {
+    return true;
+  }
+  const fields = object.fields || [];
+  const haystack = [
+    object.index ?? "",
+    object.sourceIndex ?? "",
+    object.type || "",
+    object.name || "",
+    ...fields.flatMap((field) => [field.key || "", field.comment || "", formatJSONValue(field.value)]),
+  ]
+    .join(" ")
+    .toLowerCase();
+  return terms.every((term) => haystack.includes(term));
+}
+
+function groupObjectsByType(objects) {
+  const groups = [];
+  const byType = new Map();
+  objects.forEach((object) => {
+    const objectType = object.type || "Object";
+    if (!byType.has(objectType)) {
+      const group = { type: objectType, objects: [] };
+      groups.push(group);
+      byType.set(objectType, group);
+    }
+    byType.get(objectType).objects.push(object);
+  });
+  return groups;
+}
+
 function groupedReportObjects() {
   const report = state.report;
   if (!report || !Array.isArray(report.objects)) {
     return [];
   }
-
-  const groups = [];
-  const byType = new Map();
-  report.objects.forEach((object) => {
-    if (!byType.has(object.type)) {
-      const group = { type: object.type, objects: [] };
-      groups.push(group);
-      byType.set(object.type, group);
-    }
-    byType.get(object.type).objects.push(object);
-  });
-  return groups;
+  return groupObjectsByType(filterInputObjects(report.objects));
 }
 
 function renderFormattedTextView() {
   const report = state.report;
   if (!report || !Array.isArray(report.objects)) {
     elements.textObjectView.innerHTML = `<div class="empty">Analyze input to build formatted text view</div>`;
+    setInputFilterStats(0, 0);
     return;
   }
 
   const versionLabel = state.model?.version?.raw || "unknown";
   const formatLabel = state.model?.format || "unknown";
   const groups = groupedReportObjects();
+  const matchingObjects = groups.reduce((sum, group) => sum + group.objects.length, 0);
+  setInputFilterStats(matchingObjects, report.objects.length);
   elements.textObjectView.innerHTML = `
     <div class="json-meta">
       <span class="badge">${escapeHTML(formatLabel)}</span>
       <span class="badge">Version ${escapeHTML(versionLabel)}</span>
-      <span class="badge">${escapeHTML(report.objects.length)} objects</span>
+      <span class="badge">${escapeHTML(matchingObjects)} objects</span>
       <span class="badge">Editable fields</span>
     </div>
-    <div class="json-groups">
-      ${groups
-        .map(
-          (group) => `
-            <details class="json-group" data-object-type="${escapeHTML(group.type)}" open>
-              <summary>
-                <span>${escapeHTML(group.type)}</span>
-                <span class="badge">${escapeHTML(group.objects.length)}</span>
-              </summary>
-              ${group.objects.map(renderFormattedObject).join("")}
-            </details>`,
-        )
-        .join("")}
-    </div>
+    ${
+      groups.length
+        ? `<div class="json-groups">
+            ${groups
+              .map(
+                (group) => `
+                  <details class="json-group" data-object-type="${escapeHTML(group.type)}" open>
+                    <summary>
+                      <span>${escapeHTML(group.type)}</span>
+                      <span class="badge">${escapeHTML(group.objects.length)}</span>
+                    </summary>
+                    ${group.objects.map(renderFormattedObject).join("")}
+                  </details>`,
+              )
+              .join("")}
+          </div>`
+        : `<div class="empty">No matching objects</div>`
+    }
   `;
   bindFormattedTextControls();
 }
@@ -78,19 +136,21 @@ function renderJSONView() {
   const model = state.model;
   if (!model || !Array.isArray(model.objects)) {
     elements.jsonStructuredView.innerHTML = `<div class="empty">Analyze input to build JSON view</div>`;
+    setInputFilterStats(0, 0);
     return;
   }
 
   const versionLabel = model.version?.raw || "unknown";
+  const visibleObjects = filterInputObjects(model.objects);
+  setInputFilterStats(visibleObjects.length, model.objects.length);
 
   elements.jsonStructuredView.innerHTML = `
     <div class="json-meta">
       <span class="badge">${escapeHTML(model.format || "unknown")}</span>
       <span class="badge">Version ${escapeHTML(versionLabel)}</span>
-      <span class="badge">${escapeHTML(model.objects.length)} objects</span>
+      <span class="badge">${escapeHTML(visibleObjects.length)} objects</span>
     </div>
     <div class="json-editor-tools">
-      <input id="jsonObjectSearch" type="search" placeholder="Search object, field, value" value="${escapeHTML(state.jsonSearchQuery)}" />
       <select id="jsonCollapseDepth" aria-label="JSON collapse depth">
         ${[
           ["1", "Type only"],
@@ -106,27 +166,16 @@ function renderJSONView() {
       </select>
       <button id="jsonFocusObjectButton" type="button">Focus Object</button>
     </div>
-    <div class="json-tree primary-tree json-object-tree">${renderJSONObjectsTree(model.objects)}</div>
+    <div class="json-tree primary-tree json-object-tree">${renderJSONObjectsTree(visibleObjects)}</div>
   `;
   bindJSONEditorControls();
 }
 
 function renderJSONObjectsTree(objects) {
   if (!objects.length) {
-    return `<div class="empty">No objects</div>`;
+    return state.inputFilterQuery.trim() ? `<div class="empty">No matching objects</div>` : `<div class="empty">No objects</div>`;
   }
-  const query = state.jsonSearchQuery.trim().toLowerCase();
-  const groups = [];
-  const byType = new Map();
-  objects.filter((object) => matchesJSONSearch(object, query)).forEach((object) => {
-    const objectType = object.type || "Object";
-    if (!byType.has(objectType)) {
-      const group = { type: objectType, objects: [] };
-      groups.push(group);
-      byType.set(objectType, group);
-    }
-    byType.get(objectType).objects.push(object);
-  });
+  const groups = groupObjectsByType(objects);
   if (!groups.length) {
     return `<div class="empty">No matching objects</div>`;
   }
@@ -193,35 +242,10 @@ function renderJSONFieldRow(field, objectIndex, fieldIndex, isLastField) {
   `;
 }
 
-function matchesJSONSearch(object, query) {
-  if (!query) {
-    return true;
-  }
-  const fields = object.fields || [];
-  const haystack = [
-    object.type || "",
-    object.name || "",
-    object.sourceIndex ?? "",
-    ...fields.flatMap((field) => [field.key || "", field.comment || "", formatJSONValue(field.value)]),
-  ]
-    .join(" ")
-    .toLowerCase();
-  return haystack.includes(query);
-}
-
 function bindJSONEditorControls() {
-  const searchInput = elements.jsonStructuredView.querySelector("#jsonObjectSearch");
   const depthSelect = elements.jsonStructuredView.querySelector("#jsonCollapseDepth");
   const focusButton = elements.jsonStructuredView.querySelector("#jsonFocusObjectButton");
 
-  searchInput?.addEventListener("input", () => {
-    const caret = searchInput.selectionStart || 0;
-    state.jsonSearchQuery = searchInput.value;
-    renderJSONView();
-    const nextSearchInput = elements.jsonStructuredView.querySelector("#jsonObjectSearch");
-    nextSearchInput?.focus();
-    nextSearchInput?.setSelectionRange(caret, caret);
-  });
   depthSelect?.addEventListener("change", () => {
     state.jsonCollapseDepth = Number(depthSelect.value);
     renderJSONView();
@@ -936,36 +960,15 @@ export function renderFieldTable() {
   if (!report || !Array.isArray(report.objects)) {
     elements.fieldTable.innerHTML = `<div class="empty">Analyze input to build table view</div>`;
     elements.fieldStats.textContent = "0 tables";
+    setInputFilterStats(0, 0);
     return;
   }
 
-  const filter = elements.fieldFilter.value.trim().toLowerCase();
-  const groups = [];
-  const byType = new Map();
-  report.objects.forEach((object) => {
-    const haystack = [
-      object.index,
-      object.type,
-      object.name || "",
-      ...(object.fields || []).flatMap((field) => [field.comment || "", field.value || ""]),
-    ]
-      .join(" ")
-      .toLowerCase();
-    if (filter && !haystack.includes(filter)) {
-      return;
-    }
-
-    if (!byType.has(object.type)) {
-      const group = { type: object.type, objects: [] };
-      groups.push(group);
-      byType.set(object.type, group);
-    }
-    byType.get(object.type).objects.push(object);
-  });
-
+  const groups = groupObjectsByType(filterInputObjects(report.objects));
   const objectCount = groups.reduce((sum, group) => sum + group.objects.length, 0);
   const orientationLabel = state.tableOrientation === "fields" ? "fields as rows" : "objects as rows";
   elements.fieldStats.textContent = `${groups.length} tables, ${objectCount} objects, ${orientationLabel}`;
+  setInputFilterStats(objectCount, report.objects.length);
   if (!groups.length) {
     elements.fieldTable.innerHTML = `<div class="empty">No matching object tables</div>`;
     return;

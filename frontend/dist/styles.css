@@ -282,6 +282,34 @@ textarea:focus-visible,
   display: flex;
 }
 
+.input-filter-bar {
+  min-height: 44px;
+  border-bottom: 1px solid var(--line);
+  padding: 7px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: var(--surface);
+}
+
+.input-filter-bar input {
+  flex: 1 1 220px;
+  min-width: 0;
+  min-height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0 10px;
+  background: #ffffff;
+}
+
+.input-filter-bar span {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 #textInputView,
 #jsonInputView,
 #tableInputView {
@@ -377,8 +405,9 @@ textarea {
 }
 
 .json-editor-tools {
-  display: grid;
-  grid-template-columns: minmax(180px, 1fr) auto auto;
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 6px;
   margin-bottom: 8px;
 }
@@ -689,14 +718,6 @@ textarea {
   justify-content: space-between;
   gap: 10px;
   background: var(--surface);
-}
-
-.table-tools input {
-  width: min(300px, 38%);
-  min-height: 30px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 0 10px;
 }
 
 .orientation-controls {

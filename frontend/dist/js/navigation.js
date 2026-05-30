@@ -1,7 +1,7 @@
 import { elements, setStatus, state } from "./state.js";
 import { analyze } from "./actions.js";
 import { renderGeometry, resizeGeometry } from "./geometry-view.js";
-import { renderFieldTable, renderInputViews, switchInputView, syncRawTextToObjectField } from "./input-views.js";
+import { clearInputFilter, renderInputViews, switchInputView, syncRawTextToObjectField } from "./input-views.js";
 
 function currentInputViewElement() {
   return document.querySelector(`#${state.activeInputView}InputView`);
@@ -81,9 +81,8 @@ export async function focusInputObject(target) {
   }
 
   let element = findInputTarget(target);
-  if (!element && state.activeInputView === "table" && elements.fieldFilter.value) {
-    elements.fieldFilter.value = "";
-    renderFieldTable();
+  if (!element && state.inputFilterQuery) {
+    clearInputFilter();
     element = findInputTarget(target);
   }
   if (!element && state.activeInputView !== "text") {
