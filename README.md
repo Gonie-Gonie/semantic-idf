@@ -61,7 +61,7 @@ Build artifacts and downloaded runtimes stay ignored by git.
 
 ## User Guide
 
-The app toolbar includes a Guide button that navigates to the bundled `frontend/dist/guide.html` document inside the Wails WebView. Keep that guide cumulative: whenever a workflow, button, limitation, or developer command changes, update the relevant section and append an entry to its update log.
+The app toolbar includes a Tools menu that navigates to bundled `frontend/dist/guide.html` and `frontend/dist/settings.html` documents inside the Wails WebView. Keep the guide cumulative: whenever a workflow, button, limitation, or developer command changes, update the relevant section and append an entry to its update log.
 
 ## Input Views
 
@@ -79,7 +79,9 @@ The app toolbar includes a Guide button that navigates to the bundled `frontend/
 - Geometry parses detailed zones, walls, roofs, floors, and fenestration into a 3D view that defaults to all levels, optional story filtering, a story-by-story plan view, selectable metrics, related object links, and Sync locate jumps to the matching input object.
 - Summary metric guide entries are loaded from the same backend catalog as the calculated metrics.
 - The startup sample is the official EnergyPlus `RefBldgLargeOfficeNew2004_Chicago.idf` example vendored under `frontend/dist/samples/`.
-- Conversion and cleanup commands are grouped under the top toolbar Tools menu.
+- Open uses the desktop file dialog, Save writes the current text back to the opened file or asks for a path, and Revert restores the text from the last opened input snapshot.
+- Analysis runs automatically after file open and after debounced editor changes; conversion and cleanup commands are grouped under the top toolbar Actions menu.
+- Settings are stored under the local app data/config directory and currently expose only the page frame for future options.
 
 ## Project Layout
 
@@ -89,6 +91,7 @@ The app toolbar includes a Guide button that navigates to the bundled `frontend/
 - `frontend/dist/app.js`: tiny ES module entrypoint.
 - `frontend/dist/js`: frontend modules split by state, actions, input views, analysis views, navigation, layout, and sample data.
 - `frontend/dist/guide.html`: user-facing tool guide maintained cumulatively.
+- `frontend/dist/settings.html`: settings page frame backed by the local settings JSON API.
 - `docs/agent.md`: consolidated working notes and implementation principles.
 - `app.go`: Wails-bound application API.
 - `scripts`: repo-local runtime setup, checks, and repeatable commands.

@@ -1,6 +1,22 @@
 import { defaultSample, loadDefaultSampleIDF } from "./sample.js";
 import { elements, state, updateTextStats } from "./state.js";
-import { analyze, closeToolMenu, convertInput, downloadText, exportSummary, openGuide, removeUnused } from "./actions.js";
+import {
+  analyze,
+  closeToolbarMenus,
+  convertInput,
+  exportSummary,
+  loadBrowserFile,
+  markDocumentChanged,
+  openGuide,
+  openInputFile,
+  openSettings,
+  registerLoadedDocument,
+  removeUnused,
+  revertToLoadedDocument,
+  saveInputFile,
+  scheduleAutoAnalyze,
+  updateDocumentActions,
+} from "./actions.js";
 import { renderEmpty, renderReport, renderSummary } from "./analysis-views.js";
 import { renderGeometry, resizeGeometry, setGeometryMode, setGeometryStory } from "./geometry-view.js";
 import {
@@ -15,36 +31,44 @@ import { focusInputObject, handleAnalysisActivation, switchResultTab } from "./n
 
 configureInputViews({ analyze, renderReport });
 
+elements.openButton.addEventListener("click", openInputFile);
 elements.fileInput.addEventListener("change", async (event) => {
   const [file] = event.target.files || [];
   if (!file) {
     return;
   }
-  elements.idfInput.value = await file.text();
-  updateTextStats();
-  await analyze();
+  await loadBrowserFile(file);
+  elements.fileInput.value = "";
 });
 
-elements.analyzeButton.addEventListener("click", analyze);
+elements.saveButton.addEventListener("click", saveInputFile);
+elements.revertButton.addEventListener("click", revertToLoadedDocument);
 elements.removeUnusedButton.addEventListener("click", async () => {
-  closeToolMenu();
+  closeToolbarMenus();
   await removeUnused();
 });
 elements.toIDFButton.addEventListener("click", async () => {
-  closeToolMenu();
+  closeToolbarMenus();
   await convertInput("idf");
 });
 elements.toEPJSONButton.addEventListener("click", async () => {
-  closeToolMenu();
+  closeToolbarMenus();
   await convertInput("epjson");
 });
-elements.downloadButton.addEventListener("click", downloadText);
 elements.exportSummaryJSONButton.addEventListener("click", () => exportSummary("json"));
 elements.exportSummaryCSVButton.addEventListener("click", () => exportSummary("csv"));
-elements.guideButton.addEventListener("click", openGuide);
+elements.guideButton.addEventListener("click", () => {
+  closeToolbarMenus();
+  openGuide();
+});
+elements.settingsButton.addEventListener("click", () => {
+  closeToolbarMenus();
+  openSettings();
+});
 elements.idfInput.addEventListener("input", () => {
   updateTextStats();
-  state.lastAnalyzedText = "";
+  markDocumentChanged();
+  scheduleAutoAnalyze();
 });
 elements.idfInput.addEventListener("click", syncTextViewFromRawCaret);
 elements.idfInput.addEventListener("keyup", syncTextViewFromRawCaret);
@@ -71,6 +95,9 @@ elements.inputViewButtons.forEach((button) => {
   button.addEventListener("click", () => switchInputView(button.dataset.inputView));
 });
 window.addEventListener("resize", resizeGeometry);
+window.addEventListener("idfAnalyzer:documentChanged", () => {
+  updateDocumentActions();
+});
 window.addEventListener("idfAnalyzer:geometryLocate", (event) => {
   const { objectIndex, objectType } = event.detail || {};
   if (objectIndex === undefined || objectIndex === null || String(objectIndex) === "") {
@@ -97,12 +124,14 @@ elements.analysisPanel.addEventListener("keydown", (event) => {
 initializeWorkspaceSplitter();
 initializeVerticalSplitters();
 renderEmpty();
+updateDocumentActions();
 loadDefaultSampleIDF().then(async (sampleText) => {
   elements.idfInput.value = sampleText;
   updateTextStats();
-  await analyze();
-  state.lastAnalyzedText = sampleText;
   const sourceLabel = sampleText.includes("RefBldgLargeOfficeNew2004_Chicago") ? defaultSample.name : "Fallback sample";
+  const sourceFilename = sourceLabel === "Fallback sample" ? "fallback-sample.idf" : "RefBldgLargeOfficeNew2004_Chicago.idf";
+  registerLoadedDocument(sampleText, { filename: sourceFilename });
+  await analyze({ statusMessage: `Loaded ${sourceLabel}` });
   if (sourceLabel !== "Fallback sample") {
     elements.runtimeStatus.title = defaultSample.source;
   }

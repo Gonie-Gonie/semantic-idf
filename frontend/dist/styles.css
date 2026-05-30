@@ -45,7 +45,6 @@ textarea,
 }
 
 button,
-.file-button,
 .toolbar-link {
   min-height: 34px;
   border: 1px solid var(--line);
@@ -63,19 +62,26 @@ button,
 }
 
 button:hover,
-.file-button:hover,
 .toolbar-link:hover {
   border-color: var(--teal);
 }
 
 button:focus-visible,
-.file-button:focus-within,
-.tool-menu summary:focus-visible,
+.toolbar-menu summary:focus-visible,
 input:focus-visible,
 textarea:focus-visible,
 .toolbar-link:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
+}
+
+button:disabled {
+  cursor: default;
+  opacity: 0.48;
+}
+
+button:disabled:hover {
+  border-color: var(--line);
 }
 
 .app-shell {
@@ -118,25 +124,25 @@ textarea:focus-visible,
   justify-content: flex-end;
 }
 
-.file-button input {
+.hidden-file-input {
   display: none;
 }
 
-#analyzeButton {
+#saveButton {
   background: var(--teal);
   border-color: var(--teal);
   color: #ffffff;
 }
 
-#analyzeButton:hover {
+#saveButton:hover {
   background: var(--teal-dark);
 }
 
-.tool-menu {
+.toolbar-menu {
   position: relative;
 }
 
-.tool-menu summary {
+.toolbar-menu summary {
   min-height: 34px;
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -152,16 +158,16 @@ textarea:focus-visible,
   list-style: none;
 }
 
-.tool-menu summary::-webkit-details-marker {
+.toolbar-menu summary::-webkit-details-marker {
   display: none;
 }
 
-.tool-menu[open] summary,
-.tool-menu summary:hover {
+.toolbar-menu[open] summary,
+.toolbar-menu summary:hover {
   border-color: var(--teal);
 }
 
-.tool-menu-popover {
+.toolbar-menu-popover {
   position: absolute;
   right: 0;
   top: calc(100% + 6px);
@@ -176,7 +182,7 @@ textarea:focus-visible,
   gap: 4px;
 }
 
-.tool-menu-popover button {
+.toolbar-menu-popover button {
   width: 100%;
   justify-content: flex-start;
 }
@@ -1603,6 +1609,10 @@ th.input-jump-highlight {
   gap: 18px;
 }
 
+.settings-layout {
+  grid-template-columns: 180px minmax(0, 1fr);
+}
+
 .guide-nav {
   position: sticky;
   top: 18px;
@@ -1686,6 +1696,40 @@ th.input-jump-highlight {
   color: var(--muted);
   font-size: 14px;
   line-height: 1.6;
+}
+
+.settings-list {
+  margin: 0;
+  display: grid;
+  border: 1px solid var(--surface-2);
+}
+
+.settings-list div {
+  min-height: 38px;
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  border-bottom: 1px solid var(--surface-2);
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.settings-list div:last-child {
+  border-bottom: 0;
+}
+
+.settings-list dt {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.settings-list dd {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .guide-metric-list {
@@ -1823,9 +1867,13 @@ th.input-jump-highlight {
   }
 
   button,
-  .file-button,
+  .toolbar-menu,
   .toolbar-link {
     flex: 1 1 45%;
+  }
+
+  .toolbar-menu summary {
+    width: 100%;
   }
 
   .metric-grid {
@@ -1855,6 +1903,10 @@ th.input-jump-highlight {
 
   .geometry-property-list div,
   .geometry-related-row {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-list div {
     grid-template-columns: 1fr;
   }
 }

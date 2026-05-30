@@ -2,12 +2,15 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/Gonie-Gonie/idf-analyzer/internal/epinput"
 	"github.com/Gonie-Gonie/idf-analyzer/internal/idf"
+	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 type App struct {
@@ -43,6 +46,28 @@ type SummaryExportResult struct {
 	Format   string `json:"format"`
 	Filename string `json:"filename"`
 	MIME     string `json:"mime"`
+}
+
+type InputFileResult struct {
+	Canceled bool   `json:"canceled,omitempty"`
+	Path     string `json:"path,omitempty"`
+	Filename string `json:"filename,omitempty"`
+	Text     string `json:"text,omitempty"`
+}
+
+type SaveFileResult struct {
+	Canceled bool   `json:"canceled,omitempty"`
+	Path     string `json:"path,omitempty"`
+	Filename string `json:"filename,omitempty"`
+}
+
+type AppSettings struct {
+	Version int `json:"version"`
+}
+
+type SettingsResult struct {
+	Path     string      `json:"path"`
+	Settings AppSettings `json:"settings"`
 }
 
 type ModelPatchResult = InputAnalysisResult
@@ -123,8 +148,63 @@ func (a *App) OpenIDF(path string) (*idf.Report, error) {
 	return a.AnalyzeIDFText(string(content))
 }
 
+func (a *App) OpenInputFile() (*InputFileResult, error) {
+	path, err := wailsruntime.OpenFileDialog(a.ctx, wailsruntime.OpenDialogOptions{
+		Title:   "Open EnergyPlus input",
+		Filters: inputFileFilters(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	if path == "" {
+		return &InputFileResult{Canceled: true}, nil
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	return &InputFileResult{
+		Path:     path,
+		Filename: filepath.Base(path),
+		Text:     string(content),
+	}, nil
+}
+
 func (a *App) SaveIDF(path string, text string) error {
 	return os.WriteFile(path, []byte(text), 0o644)
+}
+
+func (a *App) SaveInputFile(path string, text string) (*SaveFileResult, error) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return a.SaveInputFileAs(text, "")
+	}
+	if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
+		return nil, err
+	}
+	return &SaveFileResult{Path: path, Filename: filepath.Base(path)}, nil
+}
+
+func (a *App) SaveInputFileAs(text string, suggestedFilename string) (*SaveFileResult, error) {
+	suggestedFilename = strings.TrimSpace(suggestedFilename)
+	if suggestedFilename == "" {
+		suggestedFilename = "model.idf"
+	}
+	path, err := wailsruntime.SaveFileDialog(a.ctx, wailsruntime.SaveDialogOptions{
+		Title:           "Save EnergyPlus input",
+		DefaultFilename: suggestedFilename,
+		Filters:         inputFileFilters(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	if path == "" {
+		return &SaveFileResult{Canceled: true}, nil
+	}
+	if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
+		return nil, err
+	}
+	return &SaveFileResult{Path: path, Filename: filepath.Base(path)}, nil
 }
 
 func (a *App) UpdateFieldText(text string, objectIndex int, fieldIndex int, value string) (*TextEditResult, error) {
@@ -223,6 +303,32 @@ func (a *App) GetSummaryMetricGuides() []idf.SummaryGuide {
 	return idf.SummaryGuides()
 }
 
+func (a *App) GetSettings() (*SettingsResult, error) {
+	path, settings, err := loadAppSettings()
+	if err != nil {
+		return nil, err
+	}
+	return &SettingsResult{Path: path, Settings: settings}, nil
+}
+
+func (a *App) SaveSettings(settings AppSettings) (*SettingsResult, error) {
+	if settings.Version == 0 {
+		settings.Version = defaultAppSettings().Version
+	}
+	path, err := appSettingsPath()
+	if err != nil {
+		return nil, err
+	}
+	payload, err := json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(path, append(payload, '\n'), 0o644); err != nil {
+		return nil, err
+	}
+	return &SettingsResult{Path: path, Settings: settings}, nil
+}
+
 func writeDocumentInOriginalFormat(doc idf.Document, original *epinput.Model) string {
 	if original != nil && original.Format == epinput.FormatEPJSON {
 		model := epinput.FromIDFDocument(doc, epinput.FormatEPJSON)
@@ -232,4 +338,63 @@ func writeDocumentInOriginalFormat(doc idf.Document, original *epinput.Model) st
 		}
 	}
 	return doc.String()
+}
+
+func inputFileFilters() []wailsruntime.FileFilter {
+	return []wailsruntime.FileFilter{
+		{DisplayName: "EnergyPlus input", Pattern: "*.idf;*.imf;*.epjson;*.json;*.txt"},
+		{DisplayName: "All files", Pattern: "*.*"},
+	}
+}
+
+func defaultAppSettings() AppSettings {
+	return AppSettings{Version: 1}
+}
+
+func loadAppSettings() (string, AppSettings, error) {
+	path, err := appSettingsPath()
+	if err != nil {
+		return "", AppSettings{}, err
+	}
+	settings := defaultAppSettings()
+	content, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			payload, marshalErr := json.MarshalIndent(settings, "", "  ")
+			if marshalErr != nil {
+				return "", AppSettings{}, marshalErr
+			}
+			if writeErr := os.WriteFile(path, append(payload, '\n'), 0o644); writeErr != nil {
+				return "", AppSettings{}, writeErr
+			}
+			return path, settings, nil
+		}
+		return "", AppSettings{}, err
+	}
+	if len(strings.TrimSpace(string(content))) == 0 {
+		return path, settings, nil
+	}
+	if err := json.Unmarshal(content, &settings); err != nil {
+		return "", AppSettings{}, err
+	}
+	if settings.Version == 0 {
+		settings.Version = defaultAppSettings().Version
+	}
+	return path, settings, nil
+}
+
+func appSettingsPath() (string, error) {
+	root := strings.TrimSpace(os.Getenv("LOCALAPPDATA"))
+	if root == "" {
+		configDir, err := os.UserConfigDir()
+		if err != nil {
+			return "", err
+		}
+		root = configDir
+	}
+	dir := filepath.Join(root, "IDF Analyzer")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "settings.json"), nil
 }

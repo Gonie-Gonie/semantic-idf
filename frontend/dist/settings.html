@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>IDF Analyzer Settings</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body class="guide-page">
+    <header class="guide-header">
+      <div>
+        <p class="guide-kicker">IDF Analyzer</p>
+        <h1>Settings</h1>
+      </div>
+      <a class="toolbar-link" href="./index.html">Back to App</a>
+    </header>
+
+    <main class="guide-layout settings-layout">
+      <nav class="guide-nav" aria-label="Settings sections">
+        <a href="#general">General</a>
+      </nav>
+
+      <section class="guide-content">
+        <section id="general" class="guide-section">
+          <h2>General</h2>
+          <div id="settingsStatus" class="settings-status">
+            <div class="empty">Loading settings</div>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <script type="module">
+      const container = document.querySelector("#settingsStatus");
+
+      function escapeHTML(value) {
+        return String(value ?? "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;");
+      }
+
+      async function loadSettings() {
+        const api = window.go && window.go.main && window.go.main.App;
+        if (!api || typeof api.GetSettings !== "function") {
+          container.innerHTML = `<div class="empty">Settings are available in the desktop app.</div>`;
+          return;
+        }
+        try {
+          const result = await api.GetSettings();
+          container.innerHTML = `
+            <dl class="settings-list">
+              <div>
+                <dt>Storage</dt>
+                <dd>${escapeHTML(result.path || "")}</dd>
+              </div>
+              <div>
+                <dt>Version</dt>
+                <dd>${escapeHTML(result.settings?.version || 1)}</dd>
+              </div>
+            </dl>`;
+        } catch (error) {
+          container.innerHTML = `<div class="empty">${escapeHTML(error.message || String(error))}</div>`;
+        }
+      }
+
+      loadSettings();
+    </script>
+  </body>
+</html>

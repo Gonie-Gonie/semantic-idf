@@ -14,21 +14,25 @@
           <p id="runtimeStatus">Waiting for analysis backend</p>
         </div>
         <div class="toolbar" role="toolbar" aria-label="IDF actions">
-          <label class="file-button">
-            Open
-            <input id="fileInput" type="file" accept=".idf,.imf,.epjson,.json,.txt" />
-          </label>
-          <button id="analyzeButton" type="button">Analyze</button>
-          <button id="downloadButton" type="button">Download</button>
-          <details class="tool-menu">
+          <button id="openButton" type="button">Open</button>
+          <input id="fileInput" class="hidden-file-input" type="file" accept=".idf,.imf,.epjson,.json,.txt" />
+          <button id="saveButton" type="button">Save</button>
+          <button id="revertButton" type="button" disabled>Revert</button>
+          <details class="toolbar-menu tool-menu">
             <summary>Tools</summary>
-            <div class="tool-menu-popover">
+            <div class="toolbar-menu-popover">
+              <button id="guideButton" type="button">Guide</button>
+              <button id="settingsButton" type="button">Settings</button>
+            </div>
+          </details>
+          <details class="toolbar-menu action-menu">
+            <summary>Actions</summary>
+            <div class="toolbar-menu-popover">
               <button id="toEPJSONButton" type="button">To epJSON</button>
               <button id="toIDFButton" type="button">To IDF</button>
               <button id="removeUnusedButton" type="button">Remove unused</button>
             </div>
           </details>
-          <button id="guideButton" type="button">Guide</button>
         </div>
       </header>
 

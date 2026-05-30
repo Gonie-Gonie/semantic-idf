@@ -30,10 +30,12 @@
 
       <section class="guide-content">
         <section id="open" class="guide-section">
-          <h2>Open and Analyze</h2>
+          <h2>Open, Save, and Analyze</h2>
           <p>
-            Open supports `.idf`, `.imf`, `.epjson`, `.json`, and `.txt` files.
-            Analyze detects IDF or epJSON from the file extension and content.
+            Open uses the desktop file dialog and supports `.idf`, `.imf`, `.epjson`, `.json`, and `.txt` files.
+            Save writes the current editor text back to the opened file or asks for a path when no file path exists.
+            Revert restores the text from the most recent opened input snapshot.
+            Analysis detects IDF or epJSON from the content and runs automatically after opening files or after debounced editor changes.
             The startup sample is the official EnergyPlus `RefBldgLargeOfficeNew2004_Chicago.idf`
             example from NREL/EnergyPlus.
           </p>
@@ -95,10 +97,10 @@
           <p>
             Remove unused currently targets schedule, material, construction, curve, and table objects
             that are not referenced by other fields. To IDF, To epJSON, and Remove unused are grouped
-            under Tools. Text summary, Table, and inline JSON value edits patch the backend model
+            under Actions. Guide and Settings are grouped under Tools because they navigate to full-page views.
+            Text summary, Table, and inline JSON value edits patch the backend model
             or field text and regenerate the source text, epJSON preview, tables, and analysis report.
-            Download exports the current editor text. Export JSON and Export CSV in the Summary panel
-            export the current model summary.
+            Export JSON and Export CSV in the Summary panel export the current model summary.
           </p>
         </section>
 
@@ -136,6 +138,7 @@
         <section id="updates" class="guide-section">
           <h2>Update Log</h2>
           <ul class="guide-log">
+            <li><strong>2026-05-30</strong> Reworked the top toolbar with Open, Save, Revert, Tools, Actions, automatic analysis, and a Settings page frame.</li>
             <li><strong>2026-05-30</strong> Replaced Geometry selected-object IDF field lists with related zone, surface, and opening links.</li>
             <li><strong>2026-05-30</strong> Unified the left-panel input filter across Text, JSON, and Table views.</li>
             <li><strong>2026-05-29</strong> Made Geometry 3D default to all levels, changed locate into a Sync locate checkbox, and synced Raw Text position for right-panel object jumps when enabled.</li>

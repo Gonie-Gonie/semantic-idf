@@ -27,4 +27,7 @@
 - Summary metric definitions, calculated values, exports, and guide entries should stay tied to the same backend catalog.
 - Keep the Summary export contract stable: categorized JSON and two-column `name,value` CSV.
 - Geometry should keep parsed zone/surface/window data in the backend report and render from that shared structure in 3D and plan views; 3D defaults to all levels, story filtering is optional, selected-object details should show metrics plus related objects instead of duplicating IDF fields, and Sync locate controls automatic jumps to matching input objects.
+- Keep toolbar semantics split: top-level file actions for Open/Save/Revert, Tools for full-page navigation such as Guide and Settings, and Actions for immediate model operations such as conversion and cleanup.
+- Raw text edits should trigger debounced automatic analysis rather than requiring a manual Analyze button; structured edits can analyze immediately after backend patches.
+- App settings should persist through the backend settings API under the local app data/config directory, with `frontend/dist/settings.html` as the settings page frame.
 - Frontend code organization: keep `frontend/dist/app.js` as a tiny entrypoint and place feature modules under `frontend/dist/js/`.

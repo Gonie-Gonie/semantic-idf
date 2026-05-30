@@ -370,6 +370,7 @@ async function commitJSONValueEdit(editor, nextRaw, restore) {
     state.model = result.model || null;
     state.epjsonText = result.epjson || "";
     state.lastAnalyzedText = result.text;
+    window.dispatchEvent(new Event("idfAnalyzer:documentChanged"));
     renderReportCallback();
     setStatus("JSON value updated", "ok");
   } catch (error) {
