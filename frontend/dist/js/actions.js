@@ -18,6 +18,7 @@ export async function analyze(options = {}) {
   try {
     const text = elements.idfInput.value;
     const runID = ++analysisRunID;
+    setStatus(options.loadingMessage || "Analyzing input", "loading");
     const result =
       typeof api.AnalyzeInputText === "function"
         ? await api.AnalyzeInputText(text)

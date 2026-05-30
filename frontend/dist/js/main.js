@@ -1,5 +1,5 @@
 import { defaultSample, loadDefaultSampleIDF } from "./sample.js";
-import { elements, state, updateTextStats } from "./state.js";
+import { elements, setStatus, state, updateTextStats } from "./state.js";
 import {
   analyze,
   closeToolbarMenus,
@@ -96,7 +96,11 @@ elements.geometryShowWindows.addEventListener("change", () => renderGeometry());
 elements.inputViewButtons.forEach((button) => {
   button.addEventListener("click", () => switchInputView(button.dataset.inputView));
 });
-window.addEventListener("resize", resizeGeometry);
+window.addEventListener("resize", () => {
+  if (state.activeResultTab === "geometry") {
+    resizeGeometry();
+  }
+});
 window.addEventListener("idfAnalyzer:documentChanged", () => {
   updateDocumentActions();
 });
@@ -133,8 +137,17 @@ loadDefaultSampleIDF().then(async (sampleText) => {
   const sourceLabel = sampleText.includes("RefBldgLargeOfficeNew2004_Chicago") ? defaultSample.name : "Fallback sample";
   const sourceFilename = sourceLabel === "Fallback sample" ? "fallback-sample.idf" : "RefBldgLargeOfficeNew2004_Chicago.idf";
   registerLoadedDocument(sampleText, { filename: sourceFilename });
-  await analyze({ statusMessage: `Loaded ${sourceLabel}` });
   if (sourceLabel !== "Fallback sample") {
     elements.runtimeStatus.title = defaultSample.source;
   }
+  setStatus(`Loaded ${sourceLabel}; analysis queued`, "muted");
+  window.setTimeout(() => {
+    if (elements.idfInput.value !== sampleText || state.loadedText !== sampleText) {
+      return;
+    }
+    analyze({
+      loadingMessage: `Analyzing ${sourceLabel}`,
+      statusMessage: `Loaded ${sourceLabel}`,
+    });
+  }, 120);
 });

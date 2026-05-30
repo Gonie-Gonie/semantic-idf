@@ -174,7 +174,7 @@ function renderFileList(files) {
     .sort((a, b) => (a.index || 0) - (b.index || 0))
     .map((file) => {
       const status = file.status === "ok" ? "ok" : "error";
-      const detail = status === "ok" ? `${file.format || "input"}${file.version ? ` ${file.version}` : ""}` : file.error || "Failed";
+      const detail = status === "ok" ? (file.filename && file.filename !== file.label ? file.filename : "Analyzed") : file.error || "Failed";
       return `
         <div class="tool-file-item ${status}">
           <strong>${escapeHTML(file.label || file.filename || "Input file")}</strong>

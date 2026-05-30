@@ -10,6 +10,7 @@
 - Keep `frontend/dist/guide.html` focused on end-user workflows. Developer commands and repo maintenance notes belong in README/docs, not in the in-app guide.
 - Protect user work in the git tree. Do not revert unrelated changes.
 - Favor small IDF-domain functions that can be tested without launching the desktop shell.
+- Keep Go tests next to the package they exercise; do not centralize `_test.go` files just to reduce directory spread.
 - Keep EnergyPlus input parsing/conversion in `internal/epinput`; reserve `internal/idf` for low-level IDF parsing and analysis helpers.
 - Support EnergyPlus 22+ as the default compatibility range and keep version-specific IDD/schema integration pluggable.
 - Input viewing should keep Text, JSON, and Table modes in sync from one parsed/cached EnergyPlus model; Table mode should be organized by IDF object type and support row/column orientation changes.
@@ -23,10 +24,12 @@
 - Keep Text and Table groups open by default, and maintain stable table row headers.
 - Keep the app window itself from scrolling; use explicit scroll containers inside the input and analysis panels.
 - Keep vertical splitter behavior for Raw Text and Geometry details persistent via localStorage.
+- Splitter dragging should update layout through requestAnimationFrame and persist localStorage only when dragging ends.
 - Keep right-panel result tabs purposeful: Summary for backend-driven metrics and Geometry for parsed building shape review.
 - Summary metric definitions, calculated values, exports, and guide entries should stay tied to the same backend catalog.
 - Keep the Summary export contract stable: categorized JSON and two-column `name,value` CSV, with CSV names based on variable IDs and units appended in brackets instead of values. Unitless CSV metrics use `[-]`.
 - Geometry should keep parsed zone/surface/window data in the backend report and render from that shared structure in 3D and plan views; 3D defaults to all levels, story filtering is optional, selected-object details should show metrics plus related objects instead of duplicating IDF fields, and Sync locate controls automatic jumps to matching input objects.
+- Defer expensive Geometry rendering until the Geometry tab is active; Summary-first analysis should not build the Three.js scene.
 - Keep toolbar semantics split: top-level file actions for Open/Save/Revert, top-level Tools/Guide/Settings page navigation, and Actions for immediate model operations such as conversion and cleanup.
 - Tools page workflows should be full-page task surfaces. Multi-IDF Summary selects multiple inputs through the desktop dialog, analyzes them with a bounded worker pool, emits progress events, shows a transposable comparison table, and exports CSV in the selected orientation.
 - Raw text edits should trigger debounced automatic analysis rather than requiring a manual Analyze button; structured edits can analyze immediately after backend patches.

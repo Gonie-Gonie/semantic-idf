@@ -86,8 +86,10 @@ export function setStatus(message, tone = "muted") {
     ok: "#246b44",
     warn: "#a85f00",
     error: "#b3261e",
+    loading: "#60707c",
   };
   elements.runtimeStatus.style.color = colors[tone] || colors.muted;
+  elements.runtimeStatus.classList.toggle("status-loading", tone === "loading");
 }
 
 export function escapeHTML(value) {

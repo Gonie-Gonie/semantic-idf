@@ -10,7 +10,11 @@ export function renderReport() {
   }
 
   renderSummary(report.summary);
-  renderGeometry(report.geometry);
+  if (state.activeResultTab === "geometry") {
+    renderGeometry(report.geometry);
+  } else {
+    renderDeferredGeometry(report.geometry);
+  }
   renderInputViews();
 }
 
@@ -25,6 +29,17 @@ export function renderEmpty() {
   elements.jsonStructuredView.innerHTML = `<div class="empty">No structured input yet</div>`;
   elements.fieldTable.innerHTML = `<div class="empty">No field table yet</div>`;
   elements.fieldStats.textContent = "0 tables";
+}
+
+function renderDeferredGeometry(geometry) {
+  if (!geometry) {
+    elements.geometryStats.textContent = "0 zones, 0 surfaces, 0 windows";
+    return;
+  }
+  elements.geometryStats.textContent = `${geometry.zoneCount || 0} zones, ${geometry.surfaceCount || 0} surfaces, ${geometry.windowCount || 0} windows`;
+  elements.geometryCanvasHost.innerHTML = `<div class="empty">Open Geometry to render the model view</div>`;
+  elements.geometryPlan.innerHTML = "";
+  elements.geometryDetails.innerHTML = `<div class="empty">Open Geometry to inspect related objects</div>`;
 }
 
 export function renderSummary(summary = state.report?.summary) {

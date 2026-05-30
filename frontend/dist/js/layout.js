@@ -8,8 +8,32 @@ export function initializeWorkspaceSplitter() {
   }
 
   let dragging = false;
+  let dragFrame = 0;
+  let dragRect = null;
+  let splitterWidth = 0;
+  let pendingClientX = 0;
+  let lastValue = savedWidth || "";
+
+  function applyWorkspaceDrag() {
+    dragFrame = 0;
+    if (!dragging || !dragRect) {
+      return;
+    }
+    const minLeft = 420;
+    const minRight = 420;
+    const nextWidth = Math.min(
+      Math.max(pendingClientX - dragRect.left, minLeft),
+      dragRect.width - splitterWidth - minRight,
+    );
+    lastValue = `${Math.round(nextWidth)}px`;
+    elements.workspace.style.setProperty("--editor-width", lastValue);
+  }
+
   elements.workspaceSplitter.addEventListener("pointerdown", (event) => {
     dragging = true;
+    dragRect = elements.workspace.getBoundingClientRect();
+    splitterWidth = elements.workspaceSplitter.getBoundingClientRect().width;
+    pendingClientX = event.clientX;
     elements.workspaceSplitter.setPointerCapture(event.pointerId);
     document.body.classList.add("resizing-workspace");
   });
@@ -18,24 +42,29 @@ export function initializeWorkspaceSplitter() {
     if (!dragging) {
       return;
     }
-    const rect = elements.workspace.getBoundingClientRect();
-    const splitterWidth = elements.workspaceSplitter.getBoundingClientRect().width;
-    const minLeft = 420;
-    const minRight = 420;
-    const nextWidth = Math.min(
-      Math.max(event.clientX - rect.left, minLeft),
-      rect.width - splitterWidth - minRight,
-    );
-    const value = `${Math.round(nextWidth)}px`;
-    elements.workspace.style.setProperty("--editor-width", value);
-    localStorage.setItem("idfAnalyzer.editorWidth", value);
+    pendingClientX = event.clientX;
+    if (!dragFrame) {
+      dragFrame = window.requestAnimationFrame(applyWorkspaceDrag);
+    }
   });
 
   function stopDrag(event) {
     if (!dragging) {
       return;
     }
+    if (event.clientX !== undefined) {
+      pendingClientX = event.clientX;
+    }
+    if (dragFrame) {
+      window.cancelAnimationFrame(dragFrame);
+      dragFrame = 0;
+    }
+    applyWorkspaceDrag();
     dragging = false;
+    dragRect = null;
+    if (lastValue) {
+      localStorage.setItem("idfAnalyzer.editorWidth", lastValue);
+    }
     if (event.pointerId !== undefined) {
       try {
         elements.workspaceSplitter.releasePointerCapture(event.pointerId);
@@ -85,8 +114,34 @@ function initializeHeightSplitter({ container, splitter, property, storageKey, m
   }
 
   let dragging = false;
+  let dragFrame = 0;
+  let dragRect = null;
+  let splitterHeight = 0;
+  let pendingClientY = 0;
+  let lastValue = savedHeight || "";
+
+  function applyHeightDrag() {
+    dragFrame = 0;
+    if (!dragging || !dragRect) {
+      return;
+    }
+    const maxBottom = Math.max(minBottom, dragRect.height - splitterHeight - minTop);
+    const nextHeight = Math.min(
+      Math.max(dragRect.bottom - pendingClientY, minBottom),
+      maxBottom,
+    );
+    lastValue = `${Math.round(nextHeight)}px`;
+    container.style.setProperty(property, lastValue);
+    if (typeof onResize === "function") {
+      onResize();
+    }
+  }
+
   splitter.addEventListener("pointerdown", (event) => {
     dragging = true;
+    dragRect = container.getBoundingClientRect();
+    splitterHeight = splitter.getBoundingClientRect().height;
+    pendingClientY = event.clientY;
     splitter.setPointerCapture(event.pointerId);
     document.body.classList.add(resizingClass);
   });
@@ -95,18 +150,9 @@ function initializeHeightSplitter({ container, splitter, property, storageKey, m
     if (!dragging) {
       return;
     }
-    const rect = container.getBoundingClientRect();
-    const splitterHeight = splitter.getBoundingClientRect().height;
-    const maxBottom = Math.max(minBottom, rect.height - splitterHeight - minTop);
-    const nextHeight = Math.min(
-      Math.max(rect.bottom - event.clientY, minBottom),
-      maxBottom,
-    );
-    const value = `${Math.round(nextHeight)}px`;
-    container.style.setProperty(property, value);
-    localStorage.setItem(storageKey, value);
-    if (typeof onResize === "function") {
-      onResize();
+    pendingClientY = event.clientY;
+    if (!dragFrame) {
+      dragFrame = window.requestAnimationFrame(applyHeightDrag);
     }
   });
 
@@ -114,7 +160,19 @@ function initializeHeightSplitter({ container, splitter, property, storageKey, m
     if (!dragging) {
       return;
     }
+    if (event.clientY !== undefined) {
+      pendingClientY = event.clientY;
+    }
+    if (dragFrame) {
+      window.cancelAnimationFrame(dragFrame);
+      dragFrame = 0;
+    }
+    applyHeightDrag();
     dragging = false;
+    dragRect = null;
+    if (lastValue) {
+      localStorage.setItem(storageKey, lastValue);
+    }
     if (event.pointerId !== undefined) {
       try {
         splitter.releasePointerCapture(event.pointerId);
