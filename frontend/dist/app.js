@@ -12,8 +12,4 @@ function boot() {
   });
 }
 
-if (typeof window.requestAnimationFrame === "function") {
-  window.requestAnimationFrame(() => window.setTimeout(boot, 0));
-} else {
-  window.setTimeout(boot, 0);
-}
+window.setTimeout(boot, 0);

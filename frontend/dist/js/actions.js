@@ -3,7 +3,6 @@ import { renderDeferredGeometry, renderDiagnostics, renderEmpty, renderReport } 
 import { preloadGeometryRenderer, renderGeometry } from "./geometry-loader.js";
 
 let autoAnalyzeTimer = 0;
-let afterPaintAnalyzeFrame = 0;
 let afterPaintAnalyzeTimer = 0;
 let analysisRunID = 0;
 let activeAnalysisPromise = null;
@@ -131,30 +130,21 @@ function isCurrentAnalysis(runID, text) {
 
 export function scheduleAnalyzeAfterPaint(options = {}) {
   clearScheduledAnalyze();
-  const textSnapshot = options.textSnapshot ?? elements.idfInput.value;
+  const textSnapshot = normalizeLineEndings(options.textSnapshot ?? elements.idfInput.value);
   state.lastAnalyzedText = "";
   state.analysisStage = "queued";
   state.diagnosticsReady = false;
   state.geometryReady = false;
   updateDocumentActions();
   setStatus(options.queuedMessage || "Analysis queued", "muted");
-  const start = () => {
-    afterPaintAnalyzeTimer = window.setTimeout(() => {
-      afterPaintAnalyzeTimer = 0;
-      if (elements.idfInput.value !== textSnapshot) {
-        return;
-      }
-      analyze(options);
-    }, options.delay || 0);
-  };
-  if (typeof window.requestAnimationFrame === "function") {
-    afterPaintAnalyzeFrame = window.requestAnimationFrame(() => {
-      afterPaintAnalyzeFrame = 0;
-      start();
-    });
-  } else {
-    start();
-  }
+  const delay = Number.isFinite(Number(options.delay)) ? Math.max(0, Number(options.delay)) : 40;
+  afterPaintAnalyzeTimer = window.setTimeout(() => {
+    afterPaintAnalyzeTimer = 0;
+    if (normalizeLineEndings(elements.idfInput.value) !== textSnapshot) {
+      return;
+    }
+    analyze(options);
+  }, delay);
 }
 
 export function scheduleAutoAnalyze(delay = 900) {
@@ -375,20 +365,31 @@ function clearScheduledAnalyze() {
   autoAnalyzeTimer = 0;
   window.clearTimeout(afterPaintAnalyzeTimer);
   afterPaintAnalyzeTimer = 0;
-  if (afterPaintAnalyzeFrame) {
-    window.cancelAnimationFrame(afterPaintAnalyzeFrame);
-    afterPaintAnalyzeFrame = 0;
-  }
 }
 
 function nextPaint() {
   return new Promise((resolve) => {
+    let done = false;
+    let fallbackTimer = 0;
+    const finish = () => {
+      if (done) {
+        return;
+      }
+      done = true;
+      window.clearTimeout(fallbackTimer);
+      resolve();
+    };
+    fallbackTimer = window.setTimeout(finish, 80);
     if (typeof window.requestAnimationFrame !== "function") {
-      window.setTimeout(resolve, 0);
+      window.setTimeout(finish, 0);
       return;
     }
-    window.requestAnimationFrame(() => window.setTimeout(resolve, 0));
+    window.requestAnimationFrame(() => window.setTimeout(finish, 0));
   });
+}
+
+function normalizeLineEndings(text) {
+  return String(text ?? "").replace(/\r\n?/g, "\n");
 }
 
 function suggestedSaveFilename() {

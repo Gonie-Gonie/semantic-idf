@@ -131,9 +131,10 @@ updateDocumentActions();
 loadDefaultSampleIDF().then(async (sampleText) => {
   elements.idfInput.value = sampleText;
   updateTextStats();
+  const loadedText = elements.idfInput.value;
   const sourceLabel = sampleText.includes("RefBldgLargeOfficeNew2004_Chicago") ? defaultSample.name : "Fallback sample";
   const sourceFilename = sourceLabel === "Fallback sample" ? "fallback-sample.idf" : "RefBldgLargeOfficeNew2004_Chicago.idf";
-  registerLoadedDocument(sampleText, { filename: sourceFilename });
+  registerLoadedDocument(loadedText, { filename: sourceFilename });
   if (sourceLabel !== "Fallback sample") {
     elements.runtimeStatus.title = defaultSample.source;
   }
@@ -141,6 +142,6 @@ loadDefaultSampleIDF().then(async (sampleText) => {
     loadingMessage: `Analyzing ${sourceLabel}`,
     queuedMessage: `Loaded ${sourceLabel}; analysis queued`,
     statusMessage: `Loaded ${sourceLabel}`,
-    textSnapshot: sampleText,
+    textSnapshot: loadedText,
   });
 });
