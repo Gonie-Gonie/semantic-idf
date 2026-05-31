@@ -38,6 +38,7 @@ Use the top-level batch wrapper on Windows. From PowerShell, prefix it with `.\`
 .\dev.bat run
 .\dev.bat build
 .\dev.bat verify
+.\dev.bat release
 .\dev.bat guide
 ```
 
@@ -52,11 +53,36 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\test.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\release.ps1
 ```
 
 `scripts/setup.ps1` installs the repo-local runtime and a pre-commit hook. The hook runs `scripts/verify.ps1`, which performs whitespace checks, `go test ./...`, and `wails build` using `.runtime/`.
 
 Build artifacts and downloaded runtimes stay ignored by git.
+
+## Release Process
+
+Release timing is manual. Update `docs/release-notes/unreleased.md`, then run the GitHub Actions `Release` workflow when you want to publish. The workflow runs `scripts/release.ps1`, updates `wails.json`, writes `CHANGELOG.md`, snapshots the release notes under `docs/release-notes/vX.Y.Z.md`, builds a versioned executable, creates a commit and tag, and publishes a GitHub Release.
+
+The script chooses the semver bump from release-note sections when no explicit version is provided:
+
+- `Breaking Changes` or `BREAKING CHANGE`: major.
+- `Added` or `Features`: minor.
+- `Fixed`, `Changed`, `Performance`, `Security`, documentation-only, or internal-only notes: patch.
+
+For the first release, if no `v*` tag exists and `wails.json` already has a product version, `auto` releases that current version. The current test baseline is `0.1.0`, so the first workflow run can leave `version` empty or explicitly set `0.1.0`.
+
+Useful local release commands:
+
+```powershell
+# Prepare metadata only; leaves unreleased notes in place for review.
+.\dev.bat release -KeepUnreleased
+
+# Prepare, verify, build, commit, tag, push, and publish through GitHub CLI.
+.\dev.bat release -Package -Commit -Tag -Push -Publish
+```
+
+The app version is shown in the window title, page headers, Settings storage details, release asset names, and the built executable filename.
 
 ## User Guide
 

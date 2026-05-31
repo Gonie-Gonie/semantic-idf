@@ -1,7 +1,7 @@
 {
   "$schema": "https://wails.io/schemas/config.v2.json",
   "name": "idf-analyzer",
-  "outputfilename": "idf-analyzer",
+  "outputfilename": "idf-analyzer-v0.1.0",
   "assetdir": "frontend/dist",
   "frontend:dir": "frontend",
   "frontend:install": "powershell -NoProfile -ExecutionPolicy Bypass -File ../scripts/frontend-install.ps1",

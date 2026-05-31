@@ -31,6 +31,7 @@ if (-not (Test-Path $entry)) {
 $modules = @(
     "actions.js",
     "analysis-views.js",
+    "app-info.js",
     "geometry-loader.js",
     "geometry-view.js",
     "input-views.js",

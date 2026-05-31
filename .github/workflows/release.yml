@@ -1,0 +1,84 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Explicit version to release. Leave empty to infer from release notes."
+        required: false
+        type: string
+      bump:
+        description: "Semver bump when version is empty."
+        required: true
+        default: auto
+        type: choice
+        options:
+          - auto
+          - major
+          - minor
+          - patch
+      draft:
+        description: "Create the GitHub Release as a draft."
+        required: true
+        default: true
+        type: boolean
+      prerelease:
+        description: "Mark the GitHub Release as a prerelease."
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure git author
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Install repo toolchain
+        shell: pwsh
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\setup.ps1 -SkipGitHook
+
+      - name: Build and publish release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $releaseArgs = @(
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            ".\scripts\release.ps1",
+            "-Bump",
+            "${{ inputs.bump }}",
+            "-Package",
+            "-Commit",
+            "-Tag",
+            "-Push",
+            "-Publish"
+          )
+
+          if ("${{ inputs.version }}" -ne "") {
+            $releaseArgs += @("-Version", "${{ inputs.version }}")
+          }
+          if ([System.Convert]::ToBoolean("${{ inputs.draft }}")) {
+            $releaseArgs += "-Draft"
+          }
+          if ([System.Convert]::ToBoolean("${{ inputs.prerelease }}")) {
+            $releaseArgs += "-Prerelease"
+          }
+
+          powershell @releaseArgs

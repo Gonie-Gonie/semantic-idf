@@ -14,11 +14,30 @@ import (
 //go:embed all:frontend/dist
 var assets embed.FS
 
+//go:embed wails.json
+var wailsConfigBytes []byte
+
+type AppInfo struct {
+	Name           string `json:"name"`
+	Version        string `json:"version"`
+	Title          string `json:"title"`
+	OutputFilename string `json:"outputFilename"`
+}
+
+type wailsAppConfig struct {
+	Name           string `json:"name"`
+	OutputFilename string `json:"outputfilename"`
+	Info           struct {
+		ProductName    string `json:"productName"`
+		ProductVersion string `json:"productVersion"`
+	} `json:"info"`
+}
+
 func main() {
 	app := NewApp()
 
 	err := wails.Run(&options.App{
-		Title:  "IDF Analyzer",
+		Title:  currentAppInfo().Title,
 		Width:  1600,
 		Height: 900,
 		AssetServer: &assetserver.Options{
@@ -36,10 +55,49 @@ func main() {
 	}
 }
 
+func currentAppInfo() AppInfo {
+	info := AppInfo{
+		Name:           "IDF Analyzer",
+		Version:        "0.0.0",
+		Title:          "IDF Analyzer v0.0.0",
+		OutputFilename: "idf-analyzer",
+	}
+
+	var config wailsAppConfig
+	if err := json.Unmarshal(wailsConfigBytes, &config); err != nil {
+		return info
+	}
+
+	if config.Info.ProductName != "" {
+		info.Name = config.Info.ProductName
+	} else if config.Name != "" {
+		info.Name = config.Name
+	}
+	if config.Info.ProductVersion != "" {
+		info.Version = config.Info.ProductVersion
+	}
+	if config.OutputFilename != "" {
+		info.OutputFilename = config.OutputFilename
+	}
+	info.Title = info.Name
+	if info.Version != "" {
+		info.Title += " v" + info.Version
+	}
+	return info
+}
+
 func appAssetHandler(app *App) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
+		case "/api/app-info":
+			if r.Method != http.MethodGet {
+				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			if err := json.NewEncoder(w).Encode(currentAppInfo()); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
 		case "/api/summary-metric-guides":
 			if r.Method != http.MethodGet {
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

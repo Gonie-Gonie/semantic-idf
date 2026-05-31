@@ -22,6 +22,7 @@ if /I "%COMMAND%"=="run" goto run
 if /I "%COMMAND%"=="build" goto build
 if /I "%COMMAND%"=="package" goto build
 if /I "%COMMAND%"=="verify" goto verify
+if /I "%COMMAND%"=="release" goto release
 if /I "%COMMAND%"=="hook" goto hook
 if /I "%COMMAND%"=="frontend-build" goto frontend_build
 if /I "%COMMAND%"=="guide" goto guide
@@ -50,6 +51,10 @@ exit /b %ERRORLEVEL%
 
 :verify
 powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%scripts\verify.ps1" !SCRIPT_ARGS!
+exit /b %ERRORLEVEL%
+
+:release
+powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%scripts\release.ps1" !SCRIPT_ARGS!
 exit /b %ERRORLEVEL%
 
 :hook
@@ -83,6 +88,7 @@ echo   dev test              Run go tests
 echo   dev run               Run the Wails app with repo-local Go
 echo   dev build             Build the Wails executable
 echo   dev verify            Run diff check, tests, and Wails build
+echo   dev release           Prepare release metadata from release notes
 echo   dev hook              Install the pre-commit hook
 echo   dev frontend-build    Validate static frontend files
 echo   dev guide             Open the user guide HTML

@@ -13,6 +13,7 @@
         <h1>User Guide</h1>
       </div>
       <div class="guide-header-actions">
+        <span class="app-version" data-app-version>v0.1.0</span>
         <a class="toolbar-link" href="./index.html">Back to App</a>
         <a class="toolbar-link" href="./tools.html">Tools</a>
         <a class="toolbar-link" href="./settings.html">Settings</a>
@@ -176,8 +177,10 @@
       </section>
     </main>
     <script type="module">
+      import { renderAppInfo } from "./js/app-info.js";
       import { loadAndApplyAppSettings } from "./js/settings-client.js";
 
+      renderAppInfo();
       loadAndApplyAppSettings();
 
       const guideContainer = document.querySelector("#summaryMetricGuide");

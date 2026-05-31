@@ -13,6 +13,7 @@
         <h1>Settings</h1>
       </div>
       <div class="guide-header-actions">
+        <span class="app-version" data-app-version>v0.1.0</span>
         <a class="toolbar-link" href="./index.html">Back to App</a>
         <a class="toolbar-link" href="./tools.html">Tools</a>
         <a class="toolbar-link" href="./guide.html">Guide</a>
@@ -42,6 +43,7 @@
         mergeSettings,
         saveAppSettings,
       } from "./js/settings-client.js";
+      import { formatAppVersion, loadAppInfo, renderAppInfo } from "./js/app-info.js";
 
       const container = document.querySelector("#settingsStatus");
       const colorControls = [
@@ -55,6 +57,7 @@
 
       let loadedPath = "";
       let activeSettings = mergeSettings();
+      let activeAppInfo = null;
 
       function escapeHTML(value) {
         return String(value ?? "")
@@ -143,6 +146,10 @@
                   <dt>Schema</dt>
                   <dd>${escapeHTML(activeSettings.version)}</dd>
                 </div>
+                <div>
+                  <dt>App Version</dt>
+                  <dd>${escapeHTML(formatAppVersion(activeAppInfo))}</dd>
+                </div>
               </dl>
             </section>
 
@@ -217,7 +224,11 @@
         });
       }
 
-      loadAndApplyAppSettings().then(renderSettings);
+      Promise.all([loadAndApplyAppSettings(), loadAppInfo()]).then(([settingsResult, appInfo]) => {
+        activeAppInfo = appInfo;
+        renderAppInfo(appInfo);
+        renderSettings(settingsResult);
+      });
     </script>
   </body>
 </html>
