@@ -1,5 +1,5 @@
 import { elements, escapeHTML, state } from "./state.js";
-import { renderGeometry } from "./geometry-view.js";
+import { renderGeometry } from "./geometry-loader.js";
 import { renderInputViews } from "./input-views.js";
 
 export function renderReport() {
@@ -34,7 +34,14 @@ export function renderEmpty() {
   elements.fieldStats.textContent = "0 tables";
 }
 
-function renderDeferredGeometry(geometry) {
+export function renderDeferredGeometry(geometry) {
+  if (!state.geometryReady && state.report) {
+    elements.geometryStats.textContent = "Geometry pending";
+    elements.geometryCanvasHost.innerHTML = `<div class="empty status-loading">Geometry analysis is running</div>`;
+    elements.geometryPlan.innerHTML = "";
+    elements.geometryDetails.innerHTML = `<div class="empty">Geometry will be ready shortly</div>`;
+    return;
+  }
   if (!geometry) {
     elements.geometryStats.textContent = "0 zones, 0 surfaces, 0 windows";
     return;
@@ -78,6 +85,11 @@ export function renderSummary(summary = state.report?.summary) {
 }
 
 export function renderDiagnostics(diagnostics = state.report?.diagnostics) {
+  if (!state.diagnosticsReady && state.report) {
+    elements.diagnosticCount.textContent = "Diagnostics pending";
+    elements.diagnosticList.innerHTML = `<div class="empty status-loading">Diagnostics are running</div>`;
+    return;
+  }
   const items = diagnostics || [];
   const query = (elements.diagnosticFilter?.value || "").trim().toLowerCase();
   const visible = items.filter((item) => diagnosticMatchesQuery(item, query));

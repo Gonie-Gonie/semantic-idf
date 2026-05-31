@@ -1,5 +1,5 @@
 import { elements } from "./state.js";
-import { resizeGeometry } from "./geometry-view.js";
+import { resizeGeometry } from "./geometry-loader.js";
 
 export function initializeWorkspaceSplitter() {
   const savedWidth = localStorage.getItem("idfAnalyzer.editorWidth");
@@ -65,6 +65,7 @@ export function initializeWorkspaceSplitter() {
     if (lastValue) {
       localStorage.setItem("idfAnalyzer.editorWidth", lastValue);
     }
+    resizeGeometry();
     if (event.pointerId !== undefined) {
       try {
         elements.workspaceSplitter.releasePointerCapture(event.pointerId);
@@ -99,11 +100,22 @@ export function initializeVerticalSplitters() {
     minTop: 220,
     minBottom: 150,
     resizingClass: "resizing-geometry-details",
-    onResize: resizeGeometry,
+    onResize: null,
+    onResizeEnd: resizeGeometry,
   });
 }
 
-function initializeHeightSplitter({ container, splitter, property, storageKey, minTop, minBottom, resizingClass, onResize }) {
+function initializeHeightSplitter({
+  container,
+  splitter,
+  property,
+  storageKey,
+  minTop,
+  minBottom,
+  resizingClass,
+  onResize,
+  onResizeEnd,
+}) {
   if (!container || !splitter) {
     return;
   }
@@ -172,6 +184,9 @@ function initializeHeightSplitter({ container, splitter, property, storageKey, m
     dragRect = null;
     if (lastValue) {
       localStorage.setItem(storageKey, lastValue);
+    }
+    if (typeof onResizeEnd === "function") {
+      onResizeEnd();
     }
     if (event.pointerId !== undefined) {
       try {

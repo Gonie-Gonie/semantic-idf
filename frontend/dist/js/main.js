@@ -1,5 +1,5 @@
 import { defaultSample, loadDefaultSampleIDF } from "./sample.js";
-import { elements, setStatus, state, updateTextStats } from "./state.js";
+import { elements, state, updateTextStats } from "./state.js";
 import {
   analyze,
   closeToolbarMenus,
@@ -14,11 +14,12 @@ import {
   registerLoadedDocument,
   revertToLoadedDocument,
   saveInputFile,
+  scheduleAnalyzeAfterPaint,
   scheduleAutoAnalyze,
   updateDocumentActions,
 } from "./actions.js";
 import { renderDiagnostics, renderEmpty, renderReport, renderSummary } from "./analysis-views.js";
-import { renderGeometry, resizeGeometry, setGeometryMode, setGeometryStory } from "./geometry-view.js";
+import { renderGeometry, resizeGeometry, setGeometryMode, setGeometryStory } from "./geometry-loader.js";
 import {
   configureInputViews,
   setInputFilter,
@@ -136,14 +137,10 @@ loadDefaultSampleIDF().then(async (sampleText) => {
   if (sourceLabel !== "Fallback sample") {
     elements.runtimeStatus.title = defaultSample.source;
   }
-  setStatus(`Loaded ${sourceLabel}; analysis queued`, "muted");
-  window.setTimeout(() => {
-    if (elements.idfInput.value !== sampleText || state.loadedText !== sampleText) {
-      return;
-    }
-    analyze({
-      loadingMessage: `Analyzing ${sourceLabel}`,
-      statusMessage: `Loaded ${sourceLabel}`,
-    });
-  }, 120);
+  scheduleAnalyzeAfterPaint({
+    loadingMessage: `Analyzing ${sourceLabel}`,
+    queuedMessage: `Loaded ${sourceLabel}; analysis queued`,
+    statusMessage: `Loaded ${sourceLabel}`,
+    textSnapshot: sampleText,
+  });
 });

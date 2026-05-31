@@ -40,9 +40,9 @@
           <h2>Start</h2>
           <p>
             IDF Analyzer opens EnergyPlus IDF, IMF, and epJSON-style files, shows the input in synchronized Text,
-            JSON, and Table views, and calculates Summary and Geometry checks in the right panel. A reference office
-            model loads at startup so the interface is usable before you open a project file; its analysis starts after
-            the first screen is visible.
+            JSON, and Table views, and calculates Summary, Diagnose, and Geometry results in the right panel. A
+            reference office model loads at startup so the interface is usable before you open a project file; analysis
+            starts after the first screen is visible and fills in the visible Summary first.
           </p>
         </section>
 
@@ -181,6 +181,7 @@
           <h2>Recent Changes</h2>
           <ul class="guide-log">
             <li><strong>2026-05-31</strong> Added Diagnose results and moved remove-unused cleanup into the Tools Cleanup Wizard review flow.</li>
+            <li><strong>2026-05-31</strong> Startup analysis now runs in visible-first stages, then prepares Diagnose and Geometry in the background.</li>
             <li><strong>2026-05-31</strong> Summary CSV now writes every metric as `variable [unit],value`, using `[-]` when no unit applies.</li>
             <li><strong>2026-05-31</strong> Improved startup and splitter responsiveness by deferring startup sample analysis and Geometry rendering work.</li>
             <li><strong>2026-05-31</strong> Added Multi-IDF Summary under Tools with multi-file selection, progress, table transpose, and CSV export.</li>

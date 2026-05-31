@@ -1,6 +1,6 @@
 import { elements, setStatus, state } from "./state.js";
 import { analyze } from "./actions.js";
-import { renderGeometry, resizeGeometry } from "./geometry-view.js";
+import { renderGeometry, resizeGeometry } from "./geometry-loader.js";
 import { clearInputFilter, renderInputViews, switchInputView, syncRawTextToObjectField } from "./input-views.js";
 
 function currentInputViewElement() {

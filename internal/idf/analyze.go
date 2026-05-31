@@ -3,6 +3,7 @@ package idf
 import (
 	"sort"
 	"strings"
+	"sync"
 )
 
 type Report struct {
@@ -67,7 +68,47 @@ type RelatedObject struct {
 	Role  string `json:"role,omitempty"`
 }
 
+func AnalyzeOverview(doc Document) Report {
+	report := analyzeCore(doc)
+	report.Summary = AnalyzeSummary(doc)
+	return report
+}
+
 func Analyze(doc Document) Report {
+	report := analyzeCore(doc)
+	var unusedObjects []NamedObject
+	var summary SummaryReport
+	var geometry GeometryReport
+	var diagnostics []Diagnostic
+
+	var wg sync.WaitGroup
+	wg.Add(4)
+	go func() {
+		defer wg.Done()
+		unusedObjects = FindUnusedObjects(doc)
+	}()
+	go func() {
+		defer wg.Done()
+		summary = AnalyzeSummary(doc)
+	}()
+	go func() {
+		defer wg.Done()
+		geometry = AnalyzeGeometry(doc)
+	}()
+	go func() {
+		defer wg.Done()
+		diagnostics = AnalyzeDiagnostics(doc)
+	}()
+	wg.Wait()
+
+	report.UnusedObjects = unusedObjects
+	report.Summary = summary
+	report.Geometry = geometry
+	report.Diagnostics = diagnostics
+	return report
+}
+
+func analyzeCore(doc Document) Report {
 	report := Report{ObjectCount: len(doc.Objects)}
 	typeCounts := map[string]int{}
 	zoneSurfaces := map[string][]RelatedObject{}
@@ -127,10 +168,6 @@ func Analyze(doc Document) Report {
 		return report.TypeCounts[i].Count > report.TypeCounts[j].Count
 	})
 
-	report.UnusedObjects = FindUnusedObjects(doc)
-	report.Summary = AnalyzeSummary(doc)
-	report.Geometry = AnalyzeGeometry(doc)
-	report.Diagnostics = AnalyzeDiagnostics(doc)
 	return report
 }
 

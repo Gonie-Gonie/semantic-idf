@@ -1,8 +1,13 @@
 import { backend, elements, setStatus, state, updateTextStats } from "./state.js";
-import { renderEmpty, renderReport } from "./analysis-views.js";
+import { renderDeferredGeometry, renderDiagnostics, renderEmpty, renderReport } from "./analysis-views.js";
+import { preloadGeometryRenderer, renderGeometry } from "./geometry-loader.js";
 
 let autoAnalyzeTimer = 0;
+let afterPaintAnalyzeFrame = 0;
+let afterPaintAnalyzeTimer = 0;
 let analysisRunID = 0;
+let activeAnalysisPromise = null;
+let activeAnalysisText = "";
 
 export async function analyze(options = {}) {
   const api = backend();
@@ -14,37 +19,155 @@ export async function analyze(options = {}) {
     return;
   }
 
-  window.clearTimeout(autoAnalyzeTimer);
+  const text = elements.idfInput.value;
+  if (activeAnalysisPromise && activeAnalysisText === text) {
+    return activeAnalysisPromise;
+  }
+
+  clearScheduledAnalyze();
+  const runID = ++analysisRunID;
+  activeAnalysisText = text;
+  setStatus(options.loadingMessage || "Analyzing input", "loading");
+  activeAnalysisPromise = runAnalysis(api, text, runID, options);
+  return activeAnalysisPromise;
+}
+
+async function runAnalysis(api, text, runID, options) {
   try {
-    const text = elements.idfInput.value;
-    const runID = ++analysisRunID;
-    setStatus(options.loadingMessage || "Analyzing input", "loading");
-    const result =
-      typeof api.AnalyzeInputText === "function"
-        ? await api.AnalyzeInputText(text)
-        : { report: await api.AnalyzeIDFText(text), model: null, epjson: "" };
-    if (runID !== analysisRunID || text !== elements.idfInput.value) {
-      return;
-    }
-    state.report = result.report;
-    state.model = result.model || null;
-    state.epjsonText = result.epjson || "";
-    state.lastAnalyzedText = text;
-    renderReport();
-    updateDocumentActions();
-    setStatus(options.statusMessage || "Analysis complete", "ok");
+    const result = hasStagedAnalysisAPI(api)
+      ? await runStagedAnalysis(api, text, runID, options)
+      : await runFullAnalysis(api, text, runID, options);
+    return result;
   } catch (error) {
-    setStatus(error.message || String(error), "error");
+    if (isCurrentAnalysis(runID, text)) {
+      setStatus(error.message || String(error), "error");
+    }
+    return null;
+  } finally {
+    if (runID === analysisRunID) {
+      activeAnalysisPromise = null;
+      activeAnalysisText = "";
+    }
+  }
+}
+
+async function runFullAnalysis(api, text, runID, options) {
+  const result =
+    typeof api.AnalyzeInputText === "function"
+      ? await api.AnalyzeInputText(text)
+      : { report: await api.AnalyzeIDFText(text), model: null, epjson: "" };
+  if (!isCurrentAnalysis(runID, text)) {
+    return null;
+  }
+  applyOverviewResult(result, text, { complete: true });
+  setStatus(options.statusMessage || "Analysis complete", "ok");
+  return result;
+}
+
+async function runStagedAnalysis(api, text, runID, options) {
+  const overview = await api.AnalyzeInputOverviewText(text);
+  if (!isCurrentAnalysis(runID, text)) {
+    return null;
+  }
+  applyOverviewResult(overview, text);
+  setStatus("Summary ready; checking diagnostics", "loading");
+  await nextPaint();
+
+  const diagnostics = await api.AnalyzeInputDiagnosticsText(text);
+  if (!isCurrentAnalysis(runID, text)) {
+    return null;
+  }
+  state.report = state.report || {};
+  state.report.diagnostics = diagnostics || [];
+  state.diagnosticsReady = true;
+  state.analysisStage = "diagnostics";
+  renderDiagnostics();
+  setStatus("Diagnostics ready; preparing geometry", "loading");
+  await nextPaint();
+
+  const geometryPromise = api.AnalyzeInputGeometryText(text);
+  const rendererPromise = preloadGeometryRenderer();
+  const geometry = await geometryPromise;
+  await rendererPromise;
+  if (!isCurrentAnalysis(runID, text)) {
+    return null;
+  }
+  state.report = state.report || {};
+  state.report.geometry = geometry || {};
+  state.geometryReady = true;
+  state.analysisStage = "complete";
+  if (state.activeResultTab === "geometry") {
+    renderGeometry(state.report.geometry);
+  } else {
+    renderDeferredGeometry(state.report.geometry);
+  }
+  setStatus(options.statusMessage || "Analysis complete", "ok");
+  return { ...overview, report: state.report };
+}
+
+function applyOverviewResult(result, text, { complete = false } = {}) {
+  state.report = result.report;
+  state.model = result.model || null;
+  state.epjsonText = result.epjson || "";
+  state.lastAnalyzedText = text;
+  state.analysisStage = complete ? "complete" : "overview";
+  state.diagnosticsReady = complete;
+  state.geometryReady = complete;
+  renderReport();
+  updateDocumentActions();
+}
+
+function hasStagedAnalysisAPI(api) {
+  return (
+    typeof api.AnalyzeInputOverviewText === "function" &&
+    typeof api.AnalyzeInputDiagnosticsText === "function" &&
+    typeof api.AnalyzeInputGeometryText === "function"
+  );
+}
+
+function isCurrentAnalysis(runID, text) {
+  return runID === analysisRunID && text === elements.idfInput.value;
+}
+
+export function scheduleAnalyzeAfterPaint(options = {}) {
+  clearScheduledAnalyze();
+  const textSnapshot = options.textSnapshot ?? elements.idfInput.value;
+  state.lastAnalyzedText = "";
+  state.analysisStage = "queued";
+  state.diagnosticsReady = false;
+  state.geometryReady = false;
+  updateDocumentActions();
+  setStatus(options.queuedMessage || "Analysis queued", "muted");
+  const start = () => {
+    afterPaintAnalyzeTimer = window.setTimeout(() => {
+      afterPaintAnalyzeTimer = 0;
+      if (elements.idfInput.value !== textSnapshot) {
+        return;
+      }
+      analyze(options);
+    }, options.delay || 0);
+  };
+  if (typeof window.requestAnimationFrame === "function") {
+    afterPaintAnalyzeFrame = window.requestAnimationFrame(() => {
+      afterPaintAnalyzeFrame = 0;
+      start();
+    });
+  } else {
+    start();
   }
 }
 
 export function scheduleAutoAnalyze(delay = 900) {
-  window.clearTimeout(autoAnalyzeTimer);
+  clearScheduledAnalyze();
   state.lastAnalyzedText = "";
   updateDocumentActions();
   setStatus("Editing; analysis pending", "muted");
   autoAnalyzeTimer = window.setTimeout(() => {
-    analyze({ statusMessage: "Auto analysis complete" });
+    autoAnalyzeTimer = 0;
+    scheduleAnalyzeAfterPaint({
+      queuedMessage: "Editing paused; analysis queued",
+      statusMessage: "Auto analysis complete",
+    });
   }, delay);
 }
 
@@ -54,11 +177,21 @@ export function registerLoadedDocument(text, { path = "", filename = "" } = {}) 
   state.loadedText = text;
   state.savedText = text;
   state.lastAnalyzedText = "";
+  state.report = null;
+  state.model = null;
+  state.epjsonText = "";
+  state.analysisStage = "idle";
+  state.diagnosticsReady = false;
+  state.geometryReady = false;
+  renderEmpty();
   updateDocumentActions();
 }
 
 export function markDocumentChanged() {
   state.lastAnalyzedText = "";
+  state.analysisStage = "pending";
+  state.diagnosticsReady = false;
+  state.geometryReady = false;
   updateDocumentActions();
 }
 
@@ -92,7 +225,11 @@ export async function openInputFile() {
       path: result.path || "",
       filename: result.filename || "",
     });
-    await analyze({ statusMessage: `Opened ${result.filename || "input file"}` });
+    scheduleAnalyzeAfterPaint({
+      loadingMessage: `Analyzing ${result.filename || "input file"}`,
+      queuedMessage: `Opened ${result.filename || "input file"}; analysis queued`,
+      statusMessage: `Opened ${result.filename || "input file"}`,
+    });
   } catch (error) {
     setStatus(error.message || String(error), "error");
   }
@@ -102,7 +239,11 @@ export async function loadBrowserFile(file) {
   elements.idfInput.value = await file.text();
   updateTextStats();
   registerLoadedDocument(elements.idfInput.value, { filename: file.name || "" });
-  await analyze({ statusMessage: `Opened ${file.name || "input file"}` });
+  scheduleAnalyzeAfterPaint({
+    loadingMessage: `Analyzing ${file.name || "input file"}`,
+    queuedMessage: `Opened ${file.name || "input file"}; analysis queued`,
+    statusMessage: `Opened ${file.name || "input file"}`,
+  });
 }
 
 export async function saveInputFile() {
@@ -138,7 +279,10 @@ export async function revertToLoadedDocument() {
   elements.idfInput.value = state.loadedText;
   updateTextStats();
   markDocumentChanged();
-  await analyze({ statusMessage: "Reverted to opened input" });
+  scheduleAnalyzeAfterPaint({
+    queuedMessage: "Reverted to opened input; analysis queued",
+    statusMessage: "Reverted to opened input",
+  });
 }
 
 export async function removeUnused() {
@@ -172,9 +316,11 @@ export async function convertInput(targetFormat) {
     elements.idfInput.value = result.text;
     updateTextStats();
     markDocumentChanged();
-    await analyze();
     const label = targetFormat === "epjson" ? "epJSON" : "IDF";
-    setStatus(`Converted to ${label}`, "ok");
+    scheduleAnalyzeAfterPaint({
+      queuedMessage: `Converted to ${label}; analysis queued`,
+      statusMessage: `Converted to ${label}`,
+    });
   } catch (error) {
     setStatus(error.message || String(error), "error");
   }
@@ -222,6 +368,27 @@ export function closeToolbarMenus() {
 
 export function closeToolMenu() {
   closeToolbarMenus();
+}
+
+function clearScheduledAnalyze() {
+  window.clearTimeout(autoAnalyzeTimer);
+  autoAnalyzeTimer = 0;
+  window.clearTimeout(afterPaintAnalyzeTimer);
+  afterPaintAnalyzeTimer = 0;
+  if (afterPaintAnalyzeFrame) {
+    window.cancelAnimationFrame(afterPaintAnalyzeFrame);
+    afterPaintAnalyzeFrame = 0;
+  }
+}
+
+function nextPaint() {
+  return new Promise((resolve) => {
+    if (typeof window.requestAnimationFrame !== "function") {
+      window.setTimeout(resolve, 0);
+      return;
+    }
+    window.requestAnimationFrame(() => window.setTimeout(resolve, 0));
+  });
 }
 
 function suggestedSaveFilename() {

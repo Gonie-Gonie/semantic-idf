@@ -161,16 +161,45 @@ func (a *App) AnalyzeIDFText(text string) (*idf.Report, error) {
 	return result.Report, nil
 }
 
+func (a *App) AnalyzeInputOverviewText(text string) (*InputAnalysisResult, error) {
+	return analyzeInputText(text, idf.AnalyzeOverview, false)
+}
+
 func (a *App) AnalyzeInputText(text string) (*InputAnalysisResult, error) {
+	return analyzeInputText(text, idf.Analyze, true)
+}
+
+func (a *App) AnalyzeInputDiagnosticsText(text string) ([]idf.Diagnostic, error) {
 	model, err := epinput.Parse("", []byte(text))
 	if err != nil {
 		return nil, err
 	}
 	doc := epinput.ToIDFDocument(model)
-	report := idf.Analyze(doc)
-	epjsonText, err := epinput.Write(model, epinput.FormatEPJSON)
+	return idf.AnalyzeDiagnostics(doc), nil
+}
+
+func (a *App) AnalyzeInputGeometryText(text string) (*idf.GeometryReport, error) {
+	model, err := epinput.Parse("", []byte(text))
 	if err != nil {
 		return nil, err
+	}
+	geometry := idf.AnalyzeGeometry(epinput.ToIDFDocument(model))
+	return &geometry, nil
+}
+
+func analyzeInputText(text string, analyze func(idf.Document) idf.Report, includeEPJSON bool) (*InputAnalysisResult, error) {
+	model, err := epinput.Parse("", []byte(text))
+	if err != nil {
+		return nil, err
+	}
+	doc := epinput.ToIDFDocument(model)
+	report := analyze(doc)
+	epjsonText := ""
+	if includeEPJSON {
+		epjsonText, err = epinput.Write(model, epinput.FormatEPJSON)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return &InputAnalysisResult{

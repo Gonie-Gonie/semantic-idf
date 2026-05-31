@@ -80,7 +80,7 @@ The app toolbar includes top-level Tools, Guide, and Settings navigation buttons
 - Geometry parses detailed zones, walls, roofs, floors, and fenestration into a 3D view that defaults to all levels, optional story filtering, a story-by-story plan view, selectable metrics, related object links, and Sync locate jumps to the matching input object.
 - Summary metric guide entries are loaded from the same backend catalog as the calculated metrics.
 - The startup sample is the official EnergyPlus `RefBldgLargeOfficeNew2004_Chicago.idf` example vendored under `frontend/dist/samples/`.
-- The startup sample text is shown first, then analysis and Geometry rendering work are deferred until the UI can respond.
+- The startup sample text is shown first; analysis then runs in visible-first stages so Summary/Text render before Diagnose and Geometry finish in the background.
 - Open uses the desktop file dialog, Save writes the current text back to the opened file or asks for a path, and Revert restores the text from the last opened input snapshot.
 - Analysis runs automatically after file open and after debounced editor changes; conversion commands are grouped under the top toolbar Actions menu, while larger workflows belong under Tools.
 - Tools includes Multi-IDF Summary, which opens several EnergyPlus inputs, analyzes them concurrently, displays progress, compares Summary metrics in a transposable table, and exports CSV in the selected table direction.

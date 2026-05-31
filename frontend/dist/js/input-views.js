@@ -90,10 +90,21 @@ function groupedReportObjects() {
   return groupObjectsByType(filterInputObjects(report.objects));
 }
 
+function hasCurrentAnalysis() {
+  return state.lastAnalyzedText !== "" && state.lastAnalyzedText === elements.idfInput.value;
+}
+
+function pendingViewMessage(viewName) {
+  if (!elements.idfInput.value.trim()) {
+    return `No input loaded yet`;
+  }
+  return `Analysis pending; ${viewName} view will update automatically`;
+}
+
 function renderFormattedTextView() {
   const report = state.report;
-  if (!report || !Array.isArray(report.objects)) {
-    elements.textObjectView.innerHTML = `<div class="empty">Analyze input to build formatted text view</div>`;
+  if (!report || !Array.isArray(report.objects) || !hasCurrentAnalysis()) {
+    elements.textObjectView.innerHTML = `<div class="empty">${escapeHTML(pendingViewMessage("formatted text"))}</div>`;
     setInputFilterStats(0, 0);
     return;
   }
@@ -134,8 +145,8 @@ function renderFormattedTextView() {
 
 function renderJSONView() {
   const model = state.model;
-  if (!model || !Array.isArray(model.objects)) {
-    elements.jsonStructuredView.innerHTML = `<div class="empty">Analyze input to build JSON view</div>`;
+  if (!model || !Array.isArray(model.objects) || !hasCurrentAnalysis()) {
+    elements.jsonStructuredView.innerHTML = `<div class="empty">${escapeHTML(pendingViewMessage("JSON"))}</div>`;
     setInputFilterStats(0, 0);
     return;
   }
@@ -370,6 +381,9 @@ async function commitJSONValueEdit(editor, nextRaw, restore) {
     state.model = result.model || null;
     state.epjsonText = result.epjson || "";
     state.lastAnalyzedText = result.text;
+    state.analysisStage = "complete";
+    state.diagnosticsReady = true;
+    state.geometryReady = true;
     window.dispatchEvent(new Event("idfAnalyzer:documentChanged"));
     renderReportCallback();
     setStatus("JSON value updated", "ok");
@@ -958,8 +972,8 @@ function renderJSONEditorValue(value, context, depth = 0, trailingComma = false)
 
 export function renderFieldTable() {
   const report = state.report;
-  if (!report || !Array.isArray(report.objects)) {
-    elements.fieldTable.innerHTML = `<div class="empty">Analyze input to build table view</div>`;
+  if (!report || !Array.isArray(report.objects) || !hasCurrentAnalysis()) {
+    elements.fieldTable.innerHTML = `<div class="empty">${escapeHTML(pendingViewMessage("table"))}</div>`;
     elements.fieldStats.textContent = "0 tables";
     setInputFilterStats(0, 0);
     return;
@@ -1132,11 +1146,6 @@ export async function switchInputView(viewName) {
   elements.inputViews.forEach((view) => {
     view.classList.toggle("active", view.id === `${viewName}InputView`);
   });
-
-  if (viewName !== "text" && state.lastAnalyzedText !== elements.idfInput.value) {
-    await analyzeCallback();
-    return;
-  }
   renderInputViews();
 }
 
