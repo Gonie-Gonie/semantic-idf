@@ -24,6 +24,7 @@ export const state = {
   jsonCollapseDepth: 2,
   jsonSelectedObjectIndex: "",
   syncTextRawPosition: true,
+  autoAnalyzeDelayMs: 900,
 };
 
 export const elements = {
@@ -84,14 +85,18 @@ export function backend() {
 export function setStatus(message, tone = "muted") {
   elements.runtimeStatus.textContent = message;
   const colors = {
-    muted: "#60707c",
-    ok: "#246b44",
-    warn: "#a85f00",
-    error: "#b3261e",
-    loading: "#60707c",
+    muted: "--muted",
+    ok: "--green",
+    warn: "--amber",
+    error: "--red",
+    loading: "--muted",
   };
-  elements.runtimeStatus.style.color = colors[tone] || colors.muted;
+  elements.runtimeStatus.style.color = cssVar(colors[tone] || colors.muted);
   elements.runtimeStatus.classList.toggle("status-loading", tone === "loading");
+}
+
+function cssVar(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
 
 export function escapeHTML(value) {

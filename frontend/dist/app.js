@@ -1,3 +1,7 @@
+import { applyCachedAppSettings } from "./js/settings-client.js";
+
+applyCachedAppSettings();
+
 const status = document.querySelector("#runtimeStatus");
 if (status) {
   status.textContent = "Loading interface";

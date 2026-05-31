@@ -110,6 +110,7 @@ function renderScene(geometry) {
   elements.geometryPlan.innerHTML = "";
   ensureRenderer();
   const { scene, group, camera, renderer } = rendererState;
+  scene.background = new THREE.Color(geometryColor("background", 0xf7fafc));
   clearGroup(group);
   group.rotation.set(-0.22, 0.72, 0);
 
@@ -165,7 +166,7 @@ function ensureRenderer() {
   }
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0xf7fafc);
+  scene.background = new THREE.Color(geometryColor("background", 0xf7fafc));
   const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 1000);
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, preserveDrawingBuffer: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -250,7 +251,11 @@ function addSurfaceMesh(group, surface, kind, id, center) {
   const isZone = kind === "zone";
   const isRoof = /roof|ceiling/i.test(surface.surfaceType || "");
   const material = new THREE.MeshStandardMaterial({
-    color: isZone ? 0xb8d7b0 : isRoof ? 0xb8b0a1 : 0x7b9cbc,
+    color: isZone
+      ? geometryColor("zone", 0xb8d7b0)
+      : isRoof
+        ? geometryColor("roof", 0xb8b0a1)
+        : geometryColor("wall", 0x7b9cbc),
     roughness: 0.72,
     metalness: 0,
     transparent: true,
@@ -267,9 +272,10 @@ function addWindowMesh(group, windowItem, center) {
   if (!geometry) {
     return;
   }
+  const windowColor = geometryColor("window", 0x3fb6d4);
   const material = new THREE.MeshStandardMaterial({
-    color: 0x3fb6d4,
-    emissive: 0x0d6f82,
+    color: windowColor,
+    emissive: new THREE.Color(windowColor).multiplyScalar(0.45).getHex(),
     emissiveIntensity: 0.18,
     roughness: 0.35,
     transparent: true,
@@ -698,12 +704,13 @@ function highlightSelectedMeshes() {
   if (!rendererState) {
     return;
   }
+  const selectedColor = geometryColor("selected", 0xf0a202);
   rendererState.group.traverse((object) => {
     if (!object.material || !object.userData?.geometryId) {
       return;
     }
     const selected = object.userData.geometryId === state.selectedGeometryId && object.userData.geometryKind === state.selectedGeometryKind;
-    object.material.color.setHex(selected ? 0xf0a202 : object.userData.baseColor);
+    object.material.color.setHex(selected ? selectedColor : object.userData.baseColor);
     object.material.opacity = selected ? 0.95 : object.userData.baseOpacity;
   });
   rendererState.renderer.render(rendererState.scene, rendererState.camera);
@@ -724,6 +731,22 @@ function resizeRenderer() {
   const height = Math.max(1, Math.floor(rect.height));
   rendererState.renderer.setSize(width, height, false);
   rendererState.camera.aspect = width / height;
+}
+
+function geometryColor(name, fallback) {
+  const value = getComputedStyle(document.documentElement).getPropertyValue(`--geometry-${name}`).trim();
+  return parseHexColor(value, fallback);
+}
+
+function parseHexColor(value, fallback) {
+  const color = String(value || "").trim();
+  if (/^#[0-9a-f]{6}$/i.test(color)) {
+    return Number.parseInt(color.slice(1), 16);
+  }
+  if (/^#[0-9a-f]{3}$/i.test(color)) {
+    return Number.parseInt(color.slice(1).split("").map((char) => `${char}${char}`).join(""), 16);
+  }
+  return fallback;
 }
 
 function clearGroup(group) {

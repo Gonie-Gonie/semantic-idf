@@ -1,4 +1,5 @@
 import { defaultSample, loadDefaultSampleIDF } from "./sample.js";
+import { loadAndApplyAppSettings } from "./settings-client.js";
 import { elements, state, updateTextStats } from "./state.js";
 import {
   analyze,
@@ -28,6 +29,8 @@ import {
 } from "./input-views.js";
 import { initializeVerticalSplitters, initializeWorkspaceSplitter } from "./layout.js";
 import { focusInputObject, handleAnalysisActivation, switchResultTab } from "./navigation.js";
+
+loadAndApplyAppSettings().then((result) => applyRuntimeSettings(result.settings));
 
 configureInputViews({ analyze, renderReport });
 
@@ -108,6 +111,9 @@ elements.analysisPanel.addEventListener("keydown", (event) => {
   event.preventDefault();
   handleAnalysisActivation(target);
 });
+window.addEventListener("idfAnalyzer:settingsChanged", (event) => {
+  applyRuntimeSettings(event.detail?.settings);
+});
 
 initializeWorkspaceSplitter();
 initializeVerticalSplitters();
@@ -157,5 +163,27 @@ function restoreCurrentDocument() {
     return typeof documentState?.text === "string" && documentState.text.trim() ? documentState : null;
   } catch {
     return null;
+  }
+}
+
+function applyRuntimeSettings(settings) {
+  if (!settings) {
+    return;
+  }
+  state.autoAnalyzeDelayMs = settings.behavior?.autoAnalyzeDelayMs || state.autoAnalyzeDelayMs;
+  if (typeof settings.interaction?.syncRawTextPosition === "boolean") {
+    state.syncTextRawPosition = settings.interaction.syncRawTextPosition;
+    if (elements.syncRawTextToggle) {
+      elements.syncRawTextToggle.checked = state.syncTextRawPosition;
+    }
+  }
+  if (typeof settings.interaction?.geometrySyncLocate === "boolean") {
+    state.geometrySyncLocate = settings.interaction.geometrySyncLocate;
+    if (elements.geometrySyncLocate) {
+      elements.geometrySyncLocate.checked = state.geometrySyncLocate;
+    }
+  }
+  if (state.report?.geometry && state.activeResultTab === "geometry") {
+    renderGeometry();
   }
 }

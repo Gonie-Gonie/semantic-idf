@@ -38,6 +38,7 @@ $modules = @(
     "main.js",
     "navigation.js",
     "sample.js",
+    "settings-client.js",
     "state.js",
     "tools.js"
 )

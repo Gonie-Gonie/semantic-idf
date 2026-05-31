@@ -149,7 +149,7 @@ export function scheduleAnalyzeAfterPaint(options = {}) {
   }, delay);
 }
 
-export function scheduleAutoAnalyze(delay = 900) {
+export function scheduleAutoAnalyze(delay = state.autoAnalyzeDelayMs) {
   clearScheduledAnalyze();
   state.lastAnalyzedText = "";
   updateDocumentActions();

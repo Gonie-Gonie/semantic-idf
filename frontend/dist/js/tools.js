@@ -1,3 +1,7 @@
+import { loadAndApplyAppSettings } from "./settings-client.js";
+
+loadAndApplyAppSettings();
+
 const state = {
   activeTool: "multi-idf-summary",
   result: null,

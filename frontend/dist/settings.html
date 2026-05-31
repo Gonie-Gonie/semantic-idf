@@ -21,21 +21,40 @@
 
     <main class="guide-layout settings-layout">
       <nav class="guide-nav" aria-label="Settings sections">
-        <a href="#general">General</a>
+        <a href="#appearance">Appearance</a>
+        <a href="#geometry-colors">Geometry Colors</a>
+        <a href="#behavior">Behavior</a>
+        <a href="#storage">Storage</a>
       </nav>
 
       <section class="guide-content">
-        <section id="general" class="guide-section">
-          <h2>General</h2>
-          <div id="settingsStatus" class="settings-status">
-            <div class="empty">Loading settings</div>
-          </div>
-        </section>
+        <div id="settingsStatus" class="settings-status">
+          <div class="empty status-loading">Loading settings</div>
+        </div>
       </section>
     </main>
 
     <script type="module">
+      import {
+        applyAppSettings,
+        defaultAppSettings,
+        loadAndApplyAppSettings,
+        mergeSettings,
+        saveAppSettings,
+      } from "./js/settings-client.js";
+
       const container = document.querySelector("#settingsStatus");
+      const colorControls = [
+        ["background", "3D background"],
+        ["zone", "Zone floor"],
+        ["wall", "Wall surface"],
+        ["roof", "Roof / ceiling"],
+        ["window", "Window"],
+        ["selected", "Selected object"],
+      ];
+
+      let loadedPath = "";
+      let activeSettings = mergeSettings();
 
       function escapeHTML(value) {
         return String(value ?? "")
@@ -46,45 +65,159 @@
           .replaceAll("'", "&#039;");
       }
 
-      async function waitForAppAPI(methodName) {
-        for (let attempt = 0; attempt < 40; attempt += 1) {
-          const api = window.go && window.go.main && window.go.main.App;
-          if (api && typeof api[methodName] === "function") {
-            return api;
+      function renderSettings(result) {
+        activeSettings = mergeSettings(result.settings);
+        loadedPath = result.path || loadedPath;
+        const geometry = activeSettings.appearance.geometry;
+        container.innerHTML = `
+          <form id="settingsForm" class="settings-form">
+            ${result.warning ? `<div class="settings-message warning">${escapeHTML(result.warning)}</div>` : ""}
+            <section id="appearance" class="guide-section">
+              <div class="settings-section-head">
+                <div>
+                  <h2>Appearance</h2>
+                  <p>Choose the app theme used across the main app, Tools, Guide, and Settings pages.</p>
+                </div>
+              </div>
+              <label class="settings-field" for="themeSelect">
+                <span>App theme</span>
+                <select id="themeSelect" name="theme">
+                  <option value="system" ${activeSettings.appearance.theme === "system" ? "selected" : ""}>System</option>
+                  <option value="light" ${activeSettings.appearance.theme === "light" ? "selected" : ""}>Light</option>
+                  <option value="dark" ${activeSettings.appearance.theme === "dark" ? "selected" : ""}>Dark</option>
+                </select>
+              </label>
+            </section>
+
+            <section id="geometry-colors" class="guide-section">
+              <div class="settings-section-head">
+                <div>
+                  <h2>Geometry Colors</h2>
+                  <p>Set the colors used by the Geometry 3D and Plan views.</p>
+                </div>
+              </div>
+              <div class="settings-color-grid">
+                ${colorControls
+                  .map(([key, label]) => `
+                    <label class="settings-color-field" for="geometryColor-${key}">
+                      <span>${escapeHTML(label)}</span>
+                      <input id="geometryColor-${key}" data-geometry-color="${escapeHTML(key)}" type="color" value="${escapeHTML(geometry[key])}" />
+                    </label>`)
+                  .join("")}
+              </div>
+            </section>
+
+            <section id="behavior" class="guide-section">
+              <div class="settings-section-head">
+                <div>
+                  <h2>Behavior</h2>
+                  <p>Keep interaction defaults in one place instead of scattering them through the workspace.</p>
+                </div>
+              </div>
+              <label class="settings-field" for="autoAnalyzeDelay">
+                <span>Auto analysis delay</span>
+                <span class="settings-inline-control">
+                  <input id="autoAnalyzeDelayRange" type="range" min="150" max="5000" step="50" value="${escapeHTML(activeSettings.behavior.autoAnalyzeDelayMs)}" />
+                  <input id="autoAnalyzeDelay" type="number" min="150" max="5000" step="50" value="${escapeHTML(activeSettings.behavior.autoAnalyzeDelayMs)}" />
+                  <em>ms</em>
+                </span>
+              </label>
+              <label class="settings-check">
+                <input id="syncRawTextPosition" type="checkbox" ${activeSettings.interaction.syncRawTextPosition ? "checked" : ""} />
+                <span>Sync raw text position by default</span>
+              </label>
+              <label class="settings-check">
+                <input id="geometrySyncLocateDefault" type="checkbox" ${activeSettings.interaction.geometrySyncLocate ? "checked" : ""} />
+                <span>Geometry sync locate by default</span>
+              </label>
+            </section>
+
+            <section id="storage" class="guide-section">
+              <h2>Storage</h2>
+              <dl class="settings-list">
+                <div>
+                  <dt>Path</dt>
+                  <dd>${escapeHTML(loadedPath || "Local settings cache")}</dd>
+                </div>
+                <div>
+                  <dt>Schema</dt>
+                  <dd>${escapeHTML(activeSettings.version)}</dd>
+                </div>
+              </dl>
+            </section>
+
+            <div class="settings-actions">
+              <span id="settingsSaveStatus" class="settings-save-status">Unsaved changes are previewed immediately.</span>
+              <button id="settingsReset" type="button">Reset to Defaults</button>
+              <button id="settingsSave" type="submit">Save Settings</button>
+            </div>
+          </form>`;
+        bindSettingsForm();
+      }
+
+      function bindSettingsForm() {
+        const form = document.querySelector("#settingsForm");
+        const saveStatus = document.querySelector("#settingsSaveStatus");
+        const rangeInput = document.querySelector("#autoAnalyzeDelayRange");
+        const numberInput = document.querySelector("#autoAnalyzeDelay");
+        const updatePreview = () => {
+          activeSettings = readFormSettings();
+          applyAppSettings(activeSettings);
+          saveStatus.textContent = "Unsaved changes are previewed immediately.";
+        };
+        form.addEventListener("input", (event) => {
+          if (event.target === rangeInput) {
+            numberInput.value = rangeInput.value;
           }
-          await new Promise((resolve) => setTimeout(resolve, 50));
-        }
-        return null;
+          if (event.target === numberInput) {
+            rangeInput.value = numberInput.value;
+          }
+          updatePreview();
+        });
+        form.addEventListener("change", updatePreview);
+        form.addEventListener("submit", async (event) => {
+          event.preventDefault();
+          saveStatus.textContent = "Saving settings";
+          saveStatus.classList.add("status-loading");
+          try {
+            const result = await saveAppSettings(readFormSettings());
+            saveStatus.classList.remove("status-loading");
+            saveStatus.textContent = "Settings saved.";
+            renderSettings(result);
+          } catch (error) {
+            saveStatus.classList.remove("status-loading");
+            saveStatus.textContent = error?.message || String(error);
+          }
+        });
+        document.querySelector("#settingsReset").addEventListener("click", () => {
+          activeSettings = mergeSettings(defaultAppSettings);
+          applyAppSettings(activeSettings);
+          renderSettings({ path: loadedPath, settings: activeSettings });
+        });
       }
 
-      async function loadSettings() {
-        const api = await waitForAppAPI("GetSettings");
-        try {
-          const result = api
-            ? await api.GetSettings()
-            : await fetch("/api/settings").then((response) => {
-                if (!response.ok) {
-                  throw new Error(`Settings request failed: ${response.status}`);
-                }
-                return response.json();
-              });
-          container.innerHTML = `
-            <dl class="settings-list">
-              <div>
-                <dt>Storage</dt>
-                <dd>${escapeHTML(result.path || "")}</dd>
-              </div>
-              <div>
-                <dt>Version</dt>
-                <dd>${escapeHTML(result.settings?.version || 1)}</dd>
-              </div>
-            </dl>`;
-        } catch (error) {
-          container.innerHTML = `<div class="empty">${escapeHTML(error.message || String(error))}</div>`;
-        }
+      function readFormSettings() {
+        const geometry = {};
+        document.querySelectorAll("[data-geometry-color]").forEach((input) => {
+          geometry[input.dataset.geometryColor] = input.value;
+        });
+        return mergeSettings({
+          version: activeSettings.version,
+          appearance: {
+            theme: document.querySelector("#themeSelect").value,
+            geometry,
+          },
+          behavior: {
+            autoAnalyzeDelayMs: document.querySelector("#autoAnalyzeDelay").value,
+          },
+          interaction: {
+            syncRawTextPosition: document.querySelector("#syncRawTextPosition").checked,
+            geometrySyncLocate: document.querySelector("#geometrySyncLocateDefault").checked,
+          },
+        });
       }
 
-      loadSettings();
+      loadAndApplyAppSettings().then(renderSettings);
     </script>
   </body>
 </html>

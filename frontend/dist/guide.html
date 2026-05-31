@@ -151,8 +151,9 @@
         <section id="settings" class="guide-section">
           <h2>Settings</h2>
           <p>
-            Settings opens as its own page. The current page shows where app settings are stored; additional preferences
-            will be added there as they become available.
+            Settings opens as its own page. Appearance controls choose the app theme and Geometry colors for zones,
+            walls, roofs, windows, selections, and the 3D background. Behavior controls store defaults for automatic
+            analysis delay, raw text sync, and Geometry sync locate.
           </p>
         </section>
 
@@ -160,6 +161,7 @@
           <h2>Recent Changes</h2>
           <ul class="guide-log">
             <li><strong>2026-05-31</strong> Cleanup Wizard now operates on the current input with rule and candidate checkboxes plus Save / Save As.</li>
+            <li><strong>2026-05-31</strong> Added persistent Appearance settings for app theme and Geometry object colors.</li>
             <li><strong>2026-05-31</strong> Removed conversion commands and changed Tools to a left-selector tab layout.</li>
             <li><strong>2026-05-31</strong> Added Diagnose results and moved remove-unused cleanup into the Tools Cleanup Wizard review flow.</li>
             <li><strong>2026-05-31</strong> Startup analysis now runs in visible-first stages, then prepares Diagnose and Geometry in the background.</li>
@@ -174,6 +176,10 @@
       </section>
     </main>
     <script type="module">
+      import { loadAndApplyAppSettings } from "./js/settings-client.js";
+
+      loadAndApplyAppSettings();
+
       const guideContainer = document.querySelector("#summaryMetricGuide");
 
       function escapeHTML(value) {

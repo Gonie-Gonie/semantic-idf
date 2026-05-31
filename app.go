@@ -82,7 +82,33 @@ type CleanupApplyResult struct {
 }
 
 type AppSettings struct {
-	Version int `json:"version"`
+	Version     int                 `json:"version"`
+	Appearance  AppearanceSettings  `json:"appearance"`
+	Behavior    BehaviorSettings    `json:"behavior"`
+	Interaction InteractionSettings `json:"interaction"`
+}
+
+type AppearanceSettings struct {
+	Theme    string                     `json:"theme"`
+	Geometry GeometryAppearanceSettings `json:"geometry"`
+}
+
+type GeometryAppearanceSettings struct {
+	Background string `json:"background"`
+	Zone       string `json:"zone"`
+	Wall       string `json:"wall"`
+	Roof       string `json:"roof"`
+	Window     string `json:"window"`
+	Selected   string `json:"selected"`
+}
+
+type BehaviorSettings struct {
+	AutoAnalyzeDelayMS int `json:"autoAnalyzeDelayMs"`
+}
+
+type InteractionSettings struct {
+	SyncRawTextPosition bool `json:"syncRawTextPosition"`
+	GeometrySyncLocate  bool `json:"geometrySyncLocate"`
 }
 
 type SettingsResult struct {
@@ -674,9 +700,7 @@ func (a *App) GetSettings() (*SettingsResult, error) {
 }
 
 func (a *App) SaveSettings(settings AppSettings) (*SettingsResult, error) {
-	if settings.Version == 0 {
-		settings.Version = defaultAppSettings().Version
-	}
+	settings = normalizeAppSettings(settings)
 	path, err := appSettingsPath()
 	if err != nil {
 		return nil, err
@@ -710,7 +734,83 @@ func inputFileFilters() []wailsruntime.FileFilter {
 }
 
 func defaultAppSettings() AppSettings {
-	return AppSettings{Version: 1}
+	return AppSettings{
+		Version: 1,
+		Appearance: AppearanceSettings{
+			Theme: "system",
+			Geometry: GeometryAppearanceSettings{
+				Background: "#f7fafc",
+				Zone:       "#b8d7b0",
+				Wall:       "#7b9cbc",
+				Roof:       "#b8b0a1",
+				Window:     "#3fb6d4",
+				Selected:   "#f0a202",
+			},
+		},
+		Behavior: BehaviorSettings{
+			AutoAnalyzeDelayMS: 900,
+		},
+		Interaction: InteractionSettings{
+			SyncRawTextPosition: true,
+			GeometrySyncLocate:  true,
+		},
+	}
+}
+
+func normalizeAppSettings(settings AppSettings) AppSettings {
+	defaults := defaultAppSettings()
+	if settings.Version == 0 {
+		settings.Version = defaults.Version
+	}
+	switch strings.ToLower(strings.TrimSpace(settings.Appearance.Theme)) {
+	case "light", "dark", "system":
+		settings.Appearance.Theme = strings.ToLower(strings.TrimSpace(settings.Appearance.Theme))
+	default:
+		settings.Appearance.Theme = defaults.Appearance.Theme
+	}
+	settings.Appearance.Geometry.Background = normalizeHexColor(settings.Appearance.Geometry.Background, defaults.Appearance.Geometry.Background)
+	settings.Appearance.Geometry.Zone = normalizeHexColor(settings.Appearance.Geometry.Zone, defaults.Appearance.Geometry.Zone)
+	settings.Appearance.Geometry.Wall = normalizeHexColor(settings.Appearance.Geometry.Wall, defaults.Appearance.Geometry.Wall)
+	settings.Appearance.Geometry.Roof = normalizeHexColor(settings.Appearance.Geometry.Roof, defaults.Appearance.Geometry.Roof)
+	settings.Appearance.Geometry.Window = normalizeHexColor(settings.Appearance.Geometry.Window, defaults.Appearance.Geometry.Window)
+	settings.Appearance.Geometry.Selected = normalizeHexColor(settings.Appearance.Geometry.Selected, defaults.Appearance.Geometry.Selected)
+	if settings.Behavior.AutoAnalyzeDelayMS == 0 {
+		settings.Behavior.AutoAnalyzeDelayMS = defaults.Behavior.AutoAnalyzeDelayMS
+	}
+	if settings.Behavior.AutoAnalyzeDelayMS < 150 {
+		settings.Behavior.AutoAnalyzeDelayMS = 150
+	}
+	if settings.Behavior.AutoAnalyzeDelayMS > 5000 {
+		settings.Behavior.AutoAnalyzeDelayMS = 5000
+	}
+	return settings
+}
+
+func normalizeHexColor(value string, fallback string) string {
+	color := strings.ToLower(strings.TrimSpace(value))
+	if color == "" {
+		return fallback
+	}
+	if !strings.HasPrefix(color, "#") {
+		color = "#" + color
+	}
+	if len(color) == 4 && isHexColor(color[1:]) {
+		return "#" + string(color[1]) + string(color[1]) + string(color[2]) + string(color[2]) + string(color[3]) + string(color[3])
+	}
+	if len(color) == 7 && isHexColor(color[1:]) {
+		return color
+	}
+	return fallback
+}
+
+func isHexColor(value string) bool {
+	for _, char := range value {
+		if (char >= '0' && char <= '9') || (char >= 'a' && char <= 'f') || (char >= 'A' && char <= 'F') {
+			continue
+		}
+		return false
+	}
+	return len(value) > 0
 }
 
 func loadAppSettings() (string, AppSettings, error) {
@@ -739,9 +839,7 @@ func loadAppSettings() (string, AppSettings, error) {
 	if err := json.Unmarshal(content, &settings); err != nil {
 		return "", AppSettings{}, err
 	}
-	if settings.Version == 0 {
-		settings.Version = defaultAppSettings().Version
-	}
+	settings = normalizeAppSettings(settings)
 	return path, settings, nil
 }
 
