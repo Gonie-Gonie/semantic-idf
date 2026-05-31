@@ -294,28 +294,6 @@ export async function removeUnused() {
   }
 }
 
-export async function convertInput(targetFormat) {
-  const api = backend();
-  if (!api || typeof api.ConvertInputText !== "function") {
-    setStatus("Backend unavailable", "warn");
-    return;
-  }
-
-  try {
-    const result = await api.ConvertInputText(elements.idfInput.value, targetFormat);
-    elements.idfInput.value = result.text;
-    updateTextStats();
-    markDocumentChanged();
-    const label = targetFormat === "epjson" ? "epJSON" : "IDF";
-    scheduleAnalyzeAfterPaint({
-      queuedMessage: `Converted to ${label}; analysis queued`,
-      statusMessage: `Converted to ${label}`,
-    });
-  } catch (error) {
-    setStatus(error.message || String(error), "error");
-  }
-}
-
 export async function exportSummary(format) {
   const api = backend();
   if (!api || typeof api.ExportSummaryText !== "function") {
@@ -348,16 +326,6 @@ export function openTools() {
 
 export function openSettings() {
   window.location.assign("./settings.html");
-}
-
-export function closeToolbarMenus() {
-  elements.toolbarMenus.forEach((menu) => {
-    menu.open = false;
-  });
-}
-
-export function closeToolMenu() {
-  closeToolbarMenus();
 }
 
 function clearScheduledAnalyze() {

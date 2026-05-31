@@ -1,4 +1,5 @@
 const state = {
+  activeTool: "multi-idf-summary",
   result: null,
   activeRunID: "",
   orientation: "metrics",
@@ -10,6 +11,8 @@ const state = {
 };
 
 const elements = {
+  toolNavButtons: document.querySelectorAll("[data-tool-tab]"),
+  toolPanels: document.querySelectorAll("[data-tool-panel]"),
   selectButton: document.querySelector("#multiSummarySelect"),
   exportButton: document.querySelector("#multiSummaryExport"),
   stats: document.querySelector("#multiSummaryStats"),
@@ -303,6 +306,9 @@ function csvCell(value) {
 
 elements.selectButton.addEventListener("click", runMultiSummary);
 elements.exportButton.addEventListener("click", exportCSV);
+elements.toolNavButtons.forEach((button) => {
+  button.addEventListener("click", () => switchToolTab(button.dataset.toolTab));
+});
 elements.orientationButtons.forEach((button) => {
   button.addEventListener("click", () => {
     state.orientation = button.dataset.summaryOrientation;
@@ -312,6 +318,7 @@ elements.orientationButtons.forEach((button) => {
 });
 
 registerProgressListener();
+switchToolTab(window.location.hash.replace(/^#/, "") || state.activeTool, { updateHash: false });
 
 elements.cleanupScan.addEventListener("click", scanCleanup);
 elements.cleanupPreview.addEventListener("click", previewCleanup);
@@ -522,4 +529,23 @@ function cleanedFilename(filename = "cleaned.idf") {
     return `${filename}-cleaned.idf`;
   }
   return `${filename.slice(0, dot)}-cleaned${filename.slice(dot)}`;
+}
+
+function switchToolTab(toolID, { updateHash = true } = {}) {
+  const panel = [...elements.toolPanels].find((item) => item.dataset.toolPanel === toolID);
+  if (!panel) {
+    toolID = "multi-idf-summary";
+  }
+  state.activeTool = toolID;
+  elements.toolNavButtons.forEach((button) => {
+    const active = button.dataset.toolTab === toolID;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-current", active ? "page" : "false");
+  });
+  elements.toolPanels.forEach((item) => {
+    item.classList.toggle("active", item.dataset.toolPanel === toolID);
+  });
+  if (updateHash) {
+    window.history.replaceState(null, "", `#${toolID}`);
+  }
 }

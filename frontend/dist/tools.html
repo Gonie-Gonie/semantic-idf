@@ -19,14 +19,20 @@
       </div>
     </header>
 
-    <main class="guide-layout tools-layout">
-      <nav class="guide-nav" aria-label="Tools sections">
-        <a href="#multi-idf-summary">Multi-IDF Summary</a>
-        <a href="#cleanup-wizard">Cleanup Wizard</a>
+    <main class="guide-layout tools-layout tool-tab-layout">
+      <nav class="tool-nav" aria-label="Tools">
+        <button class="tool-nav-button active" data-tool-tab="multi-idf-summary" type="button">
+          <strong>Multi-IDF Summary</strong>
+          <span>Compare Summary metrics across files</span>
+        </button>
+        <button class="tool-nav-button" data-tool-tab="cleanup-wizard" type="button">
+          <strong>Cleanup Wizard</strong>
+          <span>Review and apply cleanup rules</span>
+        </button>
       </nav>
 
-      <section class="guide-content">
-        <section id="multi-idf-summary" class="guide-section tool-section">
+      <section class="tool-tab-content">
+        <section id="multi-idf-summary" class="guide-section tool-section active" data-tool-panel="multi-idf-summary">
           <div class="tool-title-row">
             <div>
               <h2>Multi-IDF Summary</h2>
@@ -62,7 +68,7 @@
           </div>
         </section>
 
-        <section id="cleanup-wizard" class="guide-section tool-section">
+        <section id="cleanup-wizard" class="guide-section tool-section" data-tool-panel="cleanup-wizard">
           <div class="tool-title-row">
             <div>
               <h2>Cleanup Wizard</h2>

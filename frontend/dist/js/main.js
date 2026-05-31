@@ -2,8 +2,6 @@ import { defaultSample, loadDefaultSampleIDF } from "./sample.js";
 import { elements, state, updateTextStats } from "./state.js";
 import {
   analyze,
-  closeToolbarMenus,
-  convertInput,
   exportSummary,
   loadBrowserFile,
   markDocumentChanged,
@@ -44,25 +42,11 @@ elements.fileInput.addEventListener("change", async (event) => {
 
 elements.saveButton.addEventListener("click", saveInputFile);
 elements.revertButton.addEventListener("click", revertToLoadedDocument);
-elements.toIDFButton.addEventListener("click", async () => {
-  closeToolbarMenus();
-  await convertInput("idf");
-});
-elements.toEPJSONButton.addEventListener("click", async () => {
-  closeToolbarMenus();
-  await convertInput("epjson");
-});
 elements.exportSummaryJSONButton.addEventListener("click", () => exportSummary("json"));
 elements.exportSummaryCSVButton.addEventListener("click", () => exportSummary("csv"));
 elements.toolsButton.addEventListener("click", openTools);
-elements.guideButton.addEventListener("click", () => {
-  closeToolbarMenus();
-  openGuide();
-});
-elements.settingsButton.addEventListener("click", () => {
-  closeToolbarMenus();
-  openSettings();
-});
+elements.guideButton.addEventListener("click", openGuide);
+elements.settingsButton.addEventListener("click", openSettings);
 elements.idfInput.addEventListener("input", () => {
   updateTextStats();
   markDocumentChanged();

@@ -36,13 +36,6 @@ type InputAnalysisResult struct {
 	Report  *idf.Report    `json:"report"`
 }
 
-type ConversionResult struct {
-	Text     string   `json:"text"`
-	Format   string   `json:"format"`
-	Version  string   `json:"version,omitempty"`
-	Warnings []string `json:"warnings,omitempty"`
-}
-
 type SummaryExportResult struct {
 	Text     string `json:"text"`
 	Format   string `json:"format"`
@@ -390,26 +383,6 @@ func (a *App) RemoveUnusedObjectsText(text string) (*TextEditResult, error) {
 		Format:  string(model.Format),
 		Version: model.Version.Raw,
 		Report:  &report,
-	}, nil
-}
-
-func (a *App) ConvertInputText(text string, targetFormat string) (*ConversionResult, error) {
-	model, err := epinput.Parse("", []byte(text))
-	if err != nil {
-		return nil, err
-	}
-
-	target := epinput.Format(targetFormat)
-	target = epinput.NormalizeFormat(target)
-	output, err := epinput.Write(model, target)
-	if err != nil {
-		return nil, err
-	}
-
-	return &ConversionResult{
-		Text:    output,
-		Format:  string(target),
-		Version: model.Version.Raw,
 	}, nil
 }
 
