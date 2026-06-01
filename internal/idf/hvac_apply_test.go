@@ -68,3 +68,65 @@ func TestPreviewApplyHVACRejectsInvalidNumber(t *testing.T) {
 		t.Fatalf("warnings = %#v, want invalid_hvac_number", preview.Warnings)
 	}
 }
+
+func TestApplyHVACAddsNodeOutputVariable(t *testing.T) {
+	doc := Document{Objects: []Object{
+		{Index: 0, Type: "NodeList", Fields: []Field{
+			{Value: "Supply Nodes", Comment: "Name"},
+			{Value: "Supply Outlet Node", Comment: "Node 1 Name"},
+		}},
+	}}
+
+	updated, preview := ApplyHVAC(doc, HVACApplyRequest{OutputVariables: []HVACOutputVariableRequest{
+		{
+			KeyValue:           "Supply Outlet Node",
+			VariableName:       "System Node Temperature",
+			ReportingFrequency: "Timestep",
+		},
+	}})
+	if !preview.CanApply {
+		t.Fatalf("preview warnings = %#v", preview.Warnings)
+	}
+	if len(updated.Objects) != 2 {
+		t.Fatalf("object count = %d, want 2", len(updated.Objects))
+	}
+	output := updated.Objects[1]
+	if output.Type != "Output:Variable" {
+		t.Fatalf("new object type = %s, want Output:Variable", output.Type)
+	}
+	if got := output.Fields[0].Value; got != "Supply Outlet Node" {
+		t.Fatalf("key value = %q, want node name", got)
+	}
+	if got := output.Fields[1].Value; got != "System Node Temperature" {
+		t.Fatalf("variable = %q, want System Node Temperature", got)
+	}
+	if got := output.Fields[2].Value; got != "Timestep" {
+		t.Fatalf("frequency = %q, want Timestep", got)
+	}
+}
+
+func TestApplyHVACSkipsDuplicateNodeOutputVariable(t *testing.T) {
+	doc := Document{Objects: []Object{
+		{Index: 0, Type: "Output:Variable", Fields: []Field{
+			{Value: "Supply Outlet Node", Comment: "Key Value"},
+			{Value: "System Node Temperature", Comment: "Variable Name"},
+			{Value: "Hourly", Comment: "Reporting Frequency"},
+		}},
+	}}
+
+	updated, preview := ApplyHVAC(doc, HVACApplyRequest{OutputVariables: []HVACOutputVariableRequest{
+		{
+			KeyValue:     "Supply Outlet Node",
+			VariableName: "System Node Temperature",
+		},
+	}})
+	if !preview.CanApply {
+		t.Fatalf("preview warnings = %#v", preview.Warnings)
+	}
+	if len(updated.Objects) != 1 {
+		t.Fatalf("object count = %d, want no duplicate", len(updated.Objects))
+	}
+	if len(preview.Changes) != 1 || preview.Changes[0].Action != "no_change" {
+		t.Fatalf("changes = %#v, want no_change", preview.Changes)
+	}
+}

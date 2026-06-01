@@ -119,6 +119,12 @@ var objectFieldCatalog = map[string]ObjectSpec{
 	"nodelist": catalogObject("NodeList",
 		field("Name", fieldRoleName),
 	),
+	"output:variable": catalogObject("Output:Variable",
+		field("Key Value", ""),
+		field("Variable Name", ""),
+		choiceField("Reporting Frequency", "", "Detailed", "Timestep", "Hourly", "Daily", "Monthly", "RunPeriod", "Annual"),
+		field("Schedule Name", fieldRoleObjectRef),
+	),
 }
 
 func catalogObject(objectType string, fields ...FieldSpec) ObjectSpec {

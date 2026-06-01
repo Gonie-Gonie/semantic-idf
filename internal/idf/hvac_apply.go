@@ -7,7 +7,8 @@ import (
 )
 
 type HVACApplyRequest struct {
-	Changes []HVACFieldEditRequest `json:"changes"`
+	Changes         []HVACFieldEditRequest      `json:"changes"`
+	OutputVariables []HVACOutputVariableRequest `json:"outputVariables,omitempty"`
 }
 
 type HVACFieldEditRequest struct {
@@ -15,6 +16,14 @@ type HVACFieldEditRequest struct {
 	FieldIndex  int    `json:"fieldIndex"`
 	Value       string `json:"value"`
 	Reason      string `json:"reason,omitempty"`
+}
+
+type HVACOutputVariableRequest struct {
+	KeyValue           string `json:"keyValue"`
+	VariableName       string `json:"variableName"`
+	ReportingFrequency string `json:"reportingFrequency,omitempty"`
+	ScheduleName       string `json:"scheduleName,omitempty"`
+	Reason             string `json:"reason,omitempty"`
 }
 
 type HVACApplyPreview struct {
@@ -49,7 +58,7 @@ func ApplyHVAC(doc Document, request HVACApplyRequest) (Document, HVACApplyPrevi
 func applyHVAC(doc Document, request HVACApplyRequest, mutate bool) (Document, HVACApplyPreview) {
 	updated := doc.clone()
 	preview := HVACApplyPreview{CanApply: true}
-	if len(request.Changes) == 0 {
+	if len(request.Changes) == 0 && len(request.OutputVariables) == 0 {
 		preview.CanApply = false
 		preview.Warnings = append(preview.Warnings, HVACWarning{
 			Severity: DiagnosticWarning,
@@ -75,6 +84,9 @@ func applyHVAC(doc Document, request HVACApplyRequest, mutate bool) (Document, H
 		}
 		seen[key] = true
 		applyHVACFieldChange(&updated, doc, change, mutate, &preview)
+	}
+	for _, outputVariable := range request.OutputVariables {
+		applyHVACOutputVariable(&updated, doc, outputVariable, mutate, &preview)
 	}
 	return updated, preview
 }
@@ -151,6 +163,118 @@ func applyHVACFieldChange(updated *Document, original Document, request HVACFiel
 	if mutate {
 		updated.Objects[request.ObjectIndex].Fields[request.FieldIndex].Value = nextValue
 	}
+}
+
+func applyHVACOutputVariable(updated *Document, original Document, request HVACOutputVariableRequest, mutate bool, preview *HVACApplyPreview) {
+	keyValue := strings.TrimSpace(request.KeyValue)
+	variableName := strings.TrimSpace(request.VariableName)
+	frequency := strings.TrimSpace(request.ReportingFrequency)
+	scheduleName := strings.TrimSpace(request.ScheduleName)
+	if frequency == "" {
+		frequency = defaultHVACOutputFrequency
+	}
+	if keyValue == "" {
+		preview.CanApply = false
+		preview.Warnings = append(preview.Warnings, HVACWarning{
+			Severity: DiagnosticError,
+			Category: "HVAC Apply",
+			Code:     "missing_output_key_value",
+			Message:  "Output:Variable monitor needs a node name as the key value.",
+		})
+		return
+	}
+	if !validHVACNodeOutputVariable(variableName) {
+		preview.CanApply = false
+		preview.Warnings = append(preview.Warnings, HVACWarning{
+			Severity: DiagnosticError,
+			Category: "HVAC Apply",
+			Code:     "unsupported_node_output_variable",
+			Message:  fmt.Sprintf("%q is not in the built-in EnergyPlus node output variable list.", variableName),
+			Value:    variableName,
+		})
+		return
+	}
+	if variable, ok := hvacNodeOutputVariableByName(variableName); ok && variable.Advanced {
+		preview.Warnings = append(preview.Warnings, HVACWarning{
+			Severity: DiagnosticWarning,
+			Category: "HVAC Apply",
+			Code:     "advanced_node_output_variable",
+			Message:  fmt.Sprintf("%q may require Diagnostics,DisplayAdvancedReportVariable to appear in EnergyPlus output.", variableName),
+			Value:    variableName,
+		})
+	}
+	if !validHVACOutputFrequency(frequency) {
+		preview.CanApply = false
+		preview.Warnings = append(preview.Warnings, HVACWarning{
+			Severity: DiagnosticError,
+			Category: "HVAC Apply",
+			Code:     "unsupported_output_frequency",
+			Message:  fmt.Sprintf("%q is not a valid Output:Variable reporting frequency.", frequency),
+			Value:    frequency,
+		})
+		return
+	}
+	frequency = canonicalHVACOutputFrequency(frequency)
+	if existing, ok := findExistingOutputVariable(original, keyValue, variableName, frequency, scheduleName); ok {
+		preview.Changes = append(preview.Changes, HVACApplyChange{
+			Action:       "no_change",
+			ObjectIndex:  existing.Index,
+			ObjectType:   existing.Type,
+			ObjectName:   objectName(existing),
+			FieldName:    "Output:Variable",
+			EditKind:     "output_variable",
+			After:        variableName,
+			Message:      fmt.Sprintf("Output:Variable for %q / %q at %s already exists.", keyValue, variableName, frequency),
+			RequiresSave: false,
+		})
+		return
+	}
+	objectIndex := len(updated.Objects)
+	preview.Changes = append(preview.Changes, HVACApplyChange{
+		Action:       "add_output_variable",
+		ObjectIndex:  objectIndex,
+		ObjectType:   "Output:Variable",
+		FieldName:    "Output:Variable",
+		EditKind:     "output_variable",
+		After:        variableName,
+		Message:      fmt.Sprintf("Add Output:Variable for node %q: %s at %s.", keyValue, variableName, frequency),
+		RequiresSave: true,
+	})
+	if !mutate {
+		return
+	}
+	fields := []Field{
+		{Value: keyValue, Comment: "Key Value"},
+		{Value: variableName, Comment: "Variable Name"},
+		{Value: frequency, Comment: "Reporting Frequency"},
+	}
+	if scheduleName != "" {
+		fields = append(fields, Field{Value: scheduleName, Comment: "Schedule Name"})
+	}
+	updated.Objects = append(updated.Objects, Object{
+		Index:  objectIndex,
+		Type:   "Output:Variable",
+		Fields: fields,
+	})
+}
+
+func findExistingOutputVariable(doc Document, keyValue string, variableName string, frequency string, scheduleName string) (Object, bool) {
+	for _, obj := range doc.Objects {
+		if !strings.EqualFold(obj.Type, "Output:Variable") {
+			continue
+		}
+		existingFrequency := hvacFieldValue(obj, 2)
+		if existingFrequency == "" {
+			existingFrequency = defaultHVACOutputFrequency
+		}
+		if strings.EqualFold(hvacFieldValue(obj, 0), keyValue) &&
+			strings.EqualFold(hvacFieldValue(obj, 1), variableName) &&
+			strings.EqualFold(canonicalHVACOutputFrequency(existingFrequency), canonicalHVACOutputFrequency(frequency)) &&
+			strings.EqualFold(hvacFieldValue(obj, 3), scheduleName) {
+			return obj, true
+		}
+	}
+	return Object{}, false
 }
 
 func validateHVACEditValue(doc Document, obj Object, editField HVACEditField, value string) []HVACWarning {

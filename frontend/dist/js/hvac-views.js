@@ -25,6 +25,23 @@ export function initializeHVACControls() {
     state.activeHVACGraphKey = `node:${state.activeHVACNodeName}`;
     renderHVAC();
   });
+  elements.hvacInspector?.addEventListener("click", (event) => {
+    const outputButton = event.target.closest("[data-hvac-output-variable]");
+    if (outputButton) {
+      openHVACOutputDialog({
+        keyValue: outputButton.dataset.hvacOutputKey || state.activeHVACNodeName || "",
+        variableName: outputButton.dataset.hvacOutputVariable || "",
+      });
+      return;
+    }
+    const nodeButton = event.target.closest("[data-hvac-node]");
+    if (!nodeButton) {
+      return;
+    }
+    state.activeHVACNodeName = nodeButton.dataset.hvacNode || "";
+    state.activeHVACGraphKey = `node:${state.activeHVACNodeName}`;
+    renderHVAC();
+  });
   elements.hvacApplyClose?.addEventListener("click", closeHVACApplyDialog);
   elements.hvacPreviewApply?.addEventListener("click", previewHVACApply);
   elements.hvacApplyForm?.addEventListener("submit", applyHVACEdit);
@@ -855,12 +872,14 @@ function renderHVACWarning(warning) {
 function renderHVACInspector(hvac, selectedLoop) {
   if (state.activeHVACNodeName) {
     const usages = (hvac.nodeUsages || []).filter((usage) => usage.nodeName === state.activeHVACNodeName);
+    const monitors = hvacNodeOutputMonitorsForNode(hvac, state.activeHVACNodeName);
     elements.hvacInspectorStats.textContent = t("count.uses", { count: usages.length });
     elements.hvacInspector.innerHTML = `
       <div class="hvac-inspector-title">
-        <strong>${escapeHTML(state.activeHVACNodeName)}</strong>
+        <strong title="${escapeHTML(state.activeHVACNodeName)}">${escapeHTML(state.activeHVACNodeName)}</strong>
         <span>Node</span>
       </div>
+      ${renderNodeOutputMonitorPanel(hvac, state.activeHVACNodeName, monitors)}
       ${usages.length ? usages.map(renderNodeUsage).join("") : `<div class="empty">${t("hvac.noNodeUsages")}</div>`}`;
     return;
   }
@@ -937,12 +956,93 @@ function renderNodeUsage(usage) {
     </div>`;
 }
 
+function renderNodeOutputMonitorPanel(hvac, nodeName, monitors) {
+  const variables = hvacNodeOutputVariables(hvac);
+  return `
+    <section class="hvac-node-monitor">
+      <div class="hvac-section-head compact">
+        <h3>${t("hvac.outputMonitor")}</h3>
+        <span>${t("hvac.monitorNodeHint")}</span>
+      </div>
+      <p>${t("hvac.nodeOutputAvailabilityNote")}</p>
+      <div class="hvac-node-monitor-existing">
+        <strong>${t("hvac.existingOutputVariables")}</strong>
+        <div class="hvac-tag-list">
+          ${
+            monitors.length
+              ? monitors
+                  .map(
+                    (monitor) =>
+                      `<span title="${escapeHTML(monitor.variableName)}">${escapeHTML(shortOutputMonitorLabel(monitor))} ${renderObjectLink(monitor.objectIndex, "Output:Variable")}</span>`,
+                  )
+                  .join("")
+              : `<span>${t("hvac.noOutputMonitors")}</span>`
+          }
+        </div>
+      </div>
+      <div class="hvac-node-output-list">
+        ${variables.map((variable) => renderNodeOutputVariable(nodeName, variable, monitors)).join("")}
+      </div>
+    </section>`;
+}
+
+function renderNodeOutputVariable(nodeName, variable, monitors) {
+  const alreadyRequested = monitors.some((monitor) => sameOutputVariableName(monitor.variableName, variable.variableName));
+  const badges = [
+    variable.units ? `[${variable.units}]` : "",
+    variable.reportType || "",
+    variable.appliesTo || "",
+    variable.advanced ? t("hvac.advancedOutput") : "",
+  ].filter(Boolean);
+  return `
+    <article class="hvac-node-output-row ${alreadyRequested ? "requested" : ""}">
+      <div>
+        <strong title="${escapeHTML(variable.variableName)}">${escapeHTML(variable.variableName)}</strong>
+        <span title="${escapeHTML(variable.description || "")}">${escapeHTML(variable.description || "")}</span>
+        <div class="hvac-output-badges">${badges.map((badge) => `<small>${escapeHTML(badge)}</small>`).join("")}</div>
+      </div>
+      <button class="hvac-edit-button" type="button"
+        data-hvac-output-key="${escapeHTML(nodeName)}"
+        data-hvac-output-variable="${escapeHTML(variable.variableName)}">
+        <span>${escapeHTML(alreadyRequested ? t("hvac.addAnotherMonitor") : t("hvac.addMonitor"))}</span>
+      </button>
+    </article>`;
+}
+
+function hvacNodeOutputVariables(hvac) {
+  return hvac?.nodeOutputVariables?.length ? hvac.nodeOutputVariables : fallbackHVACNodeOutputVariables();
+}
+
+function fallbackHVACNodeOutputVariables() {
+  return [
+    { variableName: "System Node Temperature", units: "C", reportType: "Average", category: "core" },
+    { variableName: "System Node Mass Flow Rate", units: "kg/s", reportType: "Average", category: "core" },
+    { variableName: "System Node Standard Density Volume Flow Rate", units: "m3/s", reportType: "Average", category: "core" },
+    { variableName: "System Node Enthalpy", units: "J/kg", reportType: "Average", category: "core" },
+    { variableName: "System Node Setpoint Temperature", units: "C", reportType: "Average", category: "setpoint" },
+  ];
+}
+
+function hvacNodeOutputMonitorsForNode(hvac, nodeName) {
+  return (hvac?.nodeOutputMonitors || []).filter((monitor) => monitor.wildcard || String(monitor.keyValue || "").toLowerCase() === String(nodeName || "").toLowerCase());
+}
+
+function shortOutputMonitorLabel(monitor) {
+  const frequency = monitor.reportingFrequency || "Hourly";
+  const key = monitor.wildcard ? "*" : monitor.keyValue;
+  return `${monitor.variableName} / ${frequency}${monitor.wildcard ? ` / ${key}` : ""}`;
+}
+
+function sameOutputVariableName(left, right) {
+  return String(left || "").trim().toLowerCase() === String(right || "").trim().toLowerCase();
+}
+
 function renderNodePill(nodeName, label) {
   if (!nodeName) {
     return `<span class="hvac-node empty-node">${escapeHTML(label)} N/A</span>`;
   }
   const active = nodeName === state.activeHVACNodeName ? " active" : "";
-  return `<button class="hvac-node${active}" data-hvac-node="${escapeHTML(nodeName)}" type="button"><small>${escapeHTML(label)}</small>${escapeHTML(nodeName)}</button>`;
+  return `<button class="hvac-node${active}" data-hvac-node="${escapeHTML(nodeName)}" title="${escapeHTML(nodeName)}" type="button"><small>${escapeHTML(label)}</small><span>${escapeHTML(nodeName)}</span></button>`;
 }
 
 function renderObjectLink(objectIndex, objectType) {
@@ -1684,6 +1784,7 @@ function openHVACApplyDialog(key) {
     return;
   }
   state.hvacApplyField = field;
+  state.hvacOutputRequest = null;
   state.hvacApplyPreview = null;
   const listID = "hvacApplyValueSuggestions";
   elements.hvacApplyBody.innerHTML = `
@@ -1718,8 +1819,64 @@ function openHVACApplyDialog(key) {
   elements.hvacApplyBody.querySelector("#hvacApplyValue")?.focus();
 }
 
+function openHVACOutputDialog({ keyValue, variableName }) {
+  const variables = hvacNodeOutputVariables(state.report?.hvac);
+  const selectedVariable = variables.find((item) => item.variableName === variableName) || variables[0] || { variableName };
+  state.hvacApplyField = null;
+  state.hvacOutputRequest = {
+    keyValue: keyValue || state.activeHVACNodeName || "",
+    variableName: selectedVariable.variableName || variableName || "",
+    reportingFrequency: "Hourly",
+    scheduleName: "",
+  };
+  state.hvacApplyPreview = null;
+  elements.hvacApplyBody.innerHTML = `
+    <section>
+      <h4>${t("hvac.addOutputVariable")}</h4>
+      <p>${t("hvac.outputRequestImpact")}</p>
+      <div class="settings-profile-grid">
+        <label class="settings-profile-field">
+          <span>${t("hvac.keyValue")}</span>
+          <input id="hvacOutputKeyValue" type="text" value="${escapeHTML(state.hvacOutputRequest.keyValue)}" readonly title="${escapeHTML(state.hvacOutputRequest.keyValue)}" />
+        </label>
+        <label class="settings-profile-field">
+          <span>${t("hvac.outputVariable")}</span>
+          <select id="hvacOutputVariable">
+            ${variables
+              .map(
+                (item) =>
+                  `<option value="${escapeHTML(item.variableName)}" ${item.variableName === state.hvacOutputRequest.variableName ? "selected" : ""}>${escapeHTML(item.variableName)}${item.units ? ` [${escapeHTML(item.units)}]` : ""}</option>`,
+              )
+              .join("")}
+          </select>
+        </label>
+        <label class="settings-profile-field">
+          <span>${t("hvac.reportingFrequency")}</span>
+          <select id="hvacOutputFrequency">
+            ${["Hourly", "Timestep", "Detailed", "Daily", "Monthly", "RunPeriod", "Annual"]
+              .map((item) => `<option value="${item}" ${item === state.hvacOutputRequest.reportingFrequency ? "selected" : ""}>${item}</option>`)
+              .join("")}
+          </select>
+        </label>
+        <label class="settings-profile-field">
+          <span>${t("hvac.scheduleOptional")}</span>
+          <input id="hvacOutputSchedule" type="text" value="" />
+        </label>
+      </div>
+    </section>
+    <section>
+      <h4>${t("common.preview")}</h4>
+      <div id="hvacApplyPreviewList" class="profile-apply-preview"><div class="empty">${t("status.runPreview")}</div></div>
+    </section>`;
+  elements.hvacApplyStatus.textContent = t("status.reviewBeforeApplying");
+  elements.hvacConfirmApply.disabled = true;
+  elements.hvacApplyDialog.classList.remove("hidden");
+  elements.hvacApplyBody.querySelector("#hvacOutputVariable")?.focus();
+}
+
 function closeHVACApplyDialog() {
   elements.hvacApplyDialog.classList.add("hidden");
+  state.hvacOutputRequest = null;
 }
 
 async function previewHVACApply() {
@@ -1757,6 +1914,23 @@ async function applyHVACEdit(event) {
 }
 
 function hvacApplyRequest() {
+  if (state.hvacOutputRequest) {
+    const keyValue = elements.hvacApplyBody.querySelector("#hvacOutputKeyValue")?.value ?? state.hvacOutputRequest.keyValue;
+    const variableName = elements.hvacApplyBody.querySelector("#hvacOutputVariable")?.value ?? state.hvacOutputRequest.variableName;
+    const reportingFrequency = elements.hvacApplyBody.querySelector("#hvacOutputFrequency")?.value ?? state.hvacOutputRequest.reportingFrequency;
+    const scheduleName = elements.hvacApplyBody.querySelector("#hvacOutputSchedule")?.value ?? "";
+    return {
+      changes: [],
+      outputVariables: [
+        {
+          keyValue,
+          variableName,
+          reportingFrequency,
+          scheduleName,
+        },
+      ],
+    };
+  }
   const field = state.hvacApplyField;
   if (!field) {
     return null;

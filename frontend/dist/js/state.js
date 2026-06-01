@@ -17,6 +17,7 @@ export const state = {
   activeHVACNodeName: "",
   activeHVACGraphKey: "",
   hvacApplyField: null,
+  hvacOutputRequest: null,
   hvacApplyPreview: null,
   profileGraphViewMode: "",
   profileGraphScaleMode: "auto",

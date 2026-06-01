@@ -7,16 +7,18 @@ import (
 )
 
 type HVACReport struct {
-	LoopCount         int             `json:"loopCount"`
-	AirLoopCount      int             `json:"airLoopCount"`
-	PlantLoopCount    int             `json:"plantLoopCount"`
-	ZoneRelationCount int             `json:"zoneRelationCount"`
-	NodeCount         int             `json:"nodeCount"`
-	WarningCount      int             `json:"warningCount"`
-	Loops             []HVACLoop      `json:"loops"`
-	ZoneRelations     []HVACZoneChain `json:"zoneRelations"`
-	NodeUsages        []HVACNodeUsage `json:"nodeUsages"`
-	Warnings          []HVACWarning   `json:"warnings"`
+	LoopCount           int                      `json:"loopCount"`
+	AirLoopCount        int                      `json:"airLoopCount"`
+	PlantLoopCount      int                      `json:"plantLoopCount"`
+	ZoneRelationCount   int                      `json:"zoneRelationCount"`
+	NodeCount           int                      `json:"nodeCount"`
+	WarningCount        int                      `json:"warningCount"`
+	Loops               []HVACLoop               `json:"loops"`
+	ZoneRelations       []HVACZoneChain          `json:"zoneRelations"`
+	NodeUsages          []HVACNodeUsage          `json:"nodeUsages"`
+	NodeOutputVariables []HVACNodeOutputVariable `json:"nodeOutputVariables,omitempty"`
+	NodeOutputMonitors  []HVACNodeOutputMonitor  `json:"nodeOutputMonitors,omitempty"`
+	Warnings            []HVACWarning            `json:"warnings"`
 }
 
 type HVACLoop struct {
@@ -148,6 +150,25 @@ type HVACEditField struct {
 	Impact          string                 `json:"impact,omitempty"`
 }
 
+type HVACNodeOutputVariable struct {
+	VariableName string `json:"variableName"`
+	Units        string `json:"units,omitempty"`
+	ReportType   string `json:"reportType,omitempty"`
+	Category     string `json:"category,omitempty"`
+	Description  string `json:"description,omitempty"`
+	AppliesTo    string `json:"appliesTo,omitempty"`
+	Advanced     bool   `json:"advanced,omitempty"`
+}
+
+type HVACNodeOutputMonitor struct {
+	KeyValue           string `json:"keyValue"`
+	VariableName       string `json:"variableName"`
+	ReportingFrequency string `json:"reportingFrequency,omitempty"`
+	ScheduleName       string `json:"scheduleName,omitempty"`
+	ObjectIndex        int    `json:"objectIndex"`
+	Wildcard           bool   `json:"wildcard,omitempty"`
+}
+
 type hvacContext struct {
 	doc                Document
 	objectsByTypeName  map[string]Object
@@ -187,9 +208,11 @@ func AnalyzeHVAC(doc Document) HVACReport {
 	relations := buildHVACZoneRelations(ctx, loops)
 	applyLoopZoneRelations(loops, relations)
 	report := HVACReport{
-		Loops:         loops,
-		ZoneRelations: relations,
-		NodeUsages:    append([]HVACNodeUsage(nil), ctx.nodeUsages...),
+		Loops:               loops,
+		ZoneRelations:       relations,
+		NodeUsages:          append([]HVACNodeUsage(nil), ctx.nodeUsages...),
+		NodeOutputVariables: HVACNodeOutputVariables(),
+		NodeOutputMonitors:  hvacNodeOutputMonitors(doc),
 	}
 	report.LoopCount = len(report.Loops)
 	report.ZoneRelationCount = len(report.ZoneRelations)
