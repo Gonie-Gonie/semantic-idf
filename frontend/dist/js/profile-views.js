@@ -34,7 +34,7 @@ export function renderProfile(profile = state.report?.profile) {
   renderProfileSettings(profile);
   renderProfileOverview(visibleGroups);
   renderProfileDetail(selectedGroup, profile);
-  renderProfileMatrix(lastProfileView.matrix, query);
+  renderProfileMatrix(lastProfileView.matrix, query, profile);
   renderProfileGraph(selectedGroup, profile);
   bindProfileControls(profile);
 }
@@ -179,9 +179,10 @@ function renderProfileItemRow(item) {
     </div>`;
 }
 
-function renderProfileMatrix(rows, query) {
+function renderProfileMatrix(rows, query, profile) {
   const visibleRows = rows.filter((row) => profileMatrixRowMatchesQuery(row, query));
   const dimensions = (lastProfileView?.dimensions || []).filter((dimension) => state.profileSettings.enabledDimensions.includes(dimension.id));
+  const itemMap = profileItemMap(profile);
   elements.profileMatrixStats.textContent = `${visibleRows.length} zones`;
   elements.profileMatrix.innerHTML = visibleRows.length
     ? `
@@ -194,11 +195,16 @@ function renderProfileMatrix(rows, query) {
             .map(
               (row) => `
                 <tr class="${selectedProfileGroup()?.zoneNames.includes(row.zoneName) ? "active" : ""}" data-profile-zone="${escapeHTML(row.zoneName)}">
-                  <th>${escapeHTML(row.zoneName)}</th>
+                  <th>
+                    <button class="profile-object-link navigable-row" data-jump-object-index="${escapeHTML(row.zoneObjectIndex)}" data-jump-object-type="Zone" type="button">
+                      #${escapeHTML(Number(row.zoneObjectIndex) + 1)}
+                    </button>
+                    ${escapeHTML(row.zoneName)}
+                  </th>
                   ${dimensions
                     .map((dimension) => {
                       const summary = row.dimensions.find((item) => item.dimension === dimension.id);
-                      return `<td>${summary ? escapeHTML(summary.displayValue) : "N/A"}<small>${summary ? escapeHTML(summary.schedulePattern || summary.scheduleName || "") : ""}</small></td>`;
+                      return renderProfileMatrixCell(summary, itemMap);
                     })
                     .join("")}
                 </tr>`,
@@ -209,45 +215,363 @@ function renderProfileMatrix(rows, query) {
     : `<div class="empty">No matching zones</div>`;
 }
 
+function renderProfileMatrixCell(summary, itemMap) {
+  if (!summary) {
+    return `<td>N/A</td>`;
+  }
+  const objects = (summary.itemIds || [])
+    .map((id) => itemMap.get(id))
+    .filter(Boolean)
+    .map(
+      (item) => `
+        <button class="profile-object-link navigable-row" data-jump-object-index="${escapeHTML(item.objectIndex)}" data-jump-object-type="${escapeHTML(item.objectType)}" type="button">
+          #${escapeHTML(Number(item.objectIndex) + 1)} ${escapeHTML(shortObjectType(item.objectType))}
+        </button>`,
+    )
+    .join("");
+  return `
+    <td>
+      <strong>${escapeHTML(summary.displayValue)}</strong>
+      <small>${escapeHTML(summary.schedulePattern || summary.scheduleName || "")}</small>
+      ${objects ? `<div class="profile-matrix-objects">${objects}</div>` : ""}
+    </td>`;
+}
+
 function renderProfileGraph(group, profile) {
   if (!group) {
     elements.profileGraph.innerHTML = `<div class="empty">Select a profile group to view graph summaries.</div>`;
     return;
   }
+  const viewMode = currentGraphViewMode();
+  const scaleMode = state.profileGraphScaleMode || "auto";
   const schedules = new Map((profile.schedules || []).map((schedule) => [schedule.scheduleName, schedule]));
   const itemMap = profileItemMap(profile);
-  const cards = group.dimensions
+  const dimensions = group.dimensions
     .filter((dimension) => state.profileSettings.enabledDimensions.includes(dimension.dimension))
     .map((dimension) => {
       const item = dimension.itemIds.map((id) => itemMap.get(id)).find((candidate) => candidate?.scheduleName) || null;
-      const schedule = item ? schedules.get(item.scheduleName) : null;
-      return renderProfileGraphCard(dimension, schedule);
-    })
-    .join("");
-  elements.profileGraphStats.textContent = state.profileSettings.graphMode === "multiplier" ? "Schedule multiplier" : "Actual representative value";
-  elements.profileGraph.innerHTML = cards || `<div class="empty">No scheduled profile values for this group.</div>`;
+      return { dimension, item, schedule: item ? schedules.get(item.scheduleName) : null };
+    });
+  const cards = dimensions.map((entry) => renderProfileGraphCard(entry.dimension, entry.schedule, viewMode, scaleMode)).join("");
+  elements.profileGraphStats.textContent = graphStatsLabel(viewMode, state.profileSettings.graphMode);
+  elements.profileGraph.innerHTML = `
+    <div class="profile-graph-toolbar">
+      <label class="profile-field">
+        <span>View</span>
+        <select id="profileGraphViewMode">
+          ${optionHTML("annual_heatmap", "Annual heatmap", viewMode)}
+          ${optionHTML("representative_week", "Representative week", viewMode)}
+          ${optionHTML("period_rules", "Through / For rules", viewMode)}
+          ${optionHTML("representative_day", "Representative days", viewMode)}
+        </select>
+      </label>
+      <label class="profile-field">
+        <span>Scale</span>
+        <select id="profileGraphScaleMode">
+          ${optionHTML("auto", "Auto", scaleMode)}
+          ${optionHTML("design_peak", "Design peak", scaleMode)}
+          ${optionHTML("multiplier_0_1", "Multiplier 0-1", scaleMode)}
+        </select>
+      </label>
+    </div>
+    ${renderProfileGraphSummary(group)}
+    <div class="profile-graph-grid">
+      ${cards || `<div class="empty">No scheduled profile values for this group.</div>`}
+    </div>`;
 }
 
-function renderProfileGraphCard(dimension, schedule) {
-  const profile = schedule?.weekdayProfile || Array.from({ length: 24 }, () => 1);
-  const values = state.profileSettings.graphMode === "multiplier" ? profile : profile.map((value) => value * dimension.value);
+function renderProfileGraphSummary(group) {
+  return `
+    <div class="profile-graph-summary">
+      <div>
+        <strong>${escapeHTML(group.name)}</strong>
+        <span>${escapeHTML(group.zoneNames.join(", "))}</span>
+      </div>
+      <div class="profile-graph-summary-metrics">
+        ${group.dimensions.map(renderProfileDimensionSummary).join("")}
+      </div>
+    </div>`;
+}
+
+function renderProfileGraphCard(dimension, schedule, viewMode, scaleMode) {
+  const graphData = graphDataForDimension(dimension, schedule, viewMode);
+  const values = state.profileSettings.graphMode === "multiplier"
+    ? graphData.values
+    : graphData.values.map((value) => value * dimension.value);
   const unit = state.profileSettings.graphMode === "multiplier" ? "" : dimension.unit;
-  const max = Math.max(...values, 1e-9);
-  const points = values
-    .map((value, index) => `${(index / 23) * 100},${80 - (value / max) * 70}`)
-    .join(" ");
+  const max = graphScaleMax(values, dimension, graphData, scaleMode);
+  const warnings = graphData.warning ? `<div class="profile-warning info">${escapeHTML(graphData.warning)}</div>` : "";
   return `
     <article class="profile-graph-card">
       <div>
         <strong>${escapeHTML(dimension.label)}</strong>
-        <span>${escapeHTML(schedule?.detectedPattern || "No schedule")}</span>
+        <span>${escapeHTML(graphData.label)}</span>
       </div>
-      <svg viewBox="0 0 100 84" role="img" aria-label="${escapeHTML(dimension.label)} representative weekday profile">
-        <line x1="0" y1="80" x2="100" y2="80"></line>
-        <polyline points="${points}"></polyline>
-      </svg>
-      <small>Peak ${escapeHTML(formatGraphNumber(max, unit))}</small>
+      ${warnings}
+      ${renderGraphVisual(graphData, values, max, dimension)}
+      <small>Peak ${escapeHTML(formatGraphNumber(Math.max(...values, 0), unit))} / scale ${escapeHTML(formatGraphNumber(max, unit))}</small>
     </article>`;
+}
+
+function renderGraphVisual(graphData, values, max, dimension) {
+  switch (graphData.kind) {
+    case "heatmap":
+      return renderHeatmap(values, max, dimension.label);
+    case "rules":
+      return renderRuleGraph(graphData, values, max);
+    case "day_profiles":
+      return renderDayProfiles(graphData, values, max);
+    default:
+      return renderLineGraph(values, max, `${dimension.label} ${graphData.label}`);
+  }
+}
+
+function graphDataForDimension(dimension, schedule, viewMode) {
+  const unresolvedWarning = schedule && schedule.resolved === false
+    ? "Schedule could not be fully parsed; showing design-level fallback instead of treating it as zero."
+    : "";
+  switch (viewMode) {
+    case "representative_week":
+      return {
+        kind: "line",
+        label: `${schedule?.detectedPattern || "No schedule"} / representative week`,
+        values: scheduleWeeklyProfile(schedule),
+        warning: unresolvedWarning,
+      };
+    case "period_rules":
+      return {
+        kind: "rules",
+        label: `${schedule?.detectedPattern || "No schedule"} / Through-For rules`,
+        values: scheduleRuleValues(schedule),
+        rules: scheduleRules(schedule),
+        warning: unresolvedWarning,
+      };
+    case "representative_day":
+      return {
+        kind: "day_profiles",
+        label: `${schedule?.detectedPattern || "No schedule"} / representative days`,
+        values: [
+          ...scheduleDayProfile(schedule, "weekdayProfile"),
+          ...scheduleDayProfile(schedule, "saturdayProfile"),
+          ...scheduleDayProfile(schedule, "sundayProfile"),
+        ],
+        profiles: [
+          { label: "Weekday", values: scheduleDayProfile(schedule, "weekdayProfile") },
+          { label: "Saturday", values: scheduleDayProfile(schedule, "saturdayProfile") },
+          { label: "Sunday", values: scheduleDayProfile(schedule, "sundayProfile") },
+        ],
+        warning: unresolvedWarning,
+      };
+    default:
+      return {
+        kind: "heatmap",
+        label: `${schedule?.detectedPattern || "No schedule"} / annual heatmap`,
+        values: annualScheduleValues(schedule),
+        warning: unresolvedWarning,
+      };
+  }
+}
+
+function renderLineGraph(values, max, label) {
+  const points = values
+    .map((value, index) => `${values.length <= 1 ? 0 : (index / (values.length - 1)) * 100},${80 - (clampGraphValue(value, max) / max) * 70}`)
+    .join(" ");
+  return `
+    <svg class="profile-line-graph" viewBox="0 0 100 84" role="img" aria-label="${escapeHTML(label)}">
+      <line x1="0" y1="80" x2="100" y2="80"></line>
+      <polyline points="${points}"></polyline>
+    </svg>`;
+}
+
+function renderDayProfiles(graphData, values, max) {
+  let offset = 0;
+  return `
+    <div class="profile-day-graphs">
+      ${graphData.profiles
+        .map((profile) => {
+          const profileValues = values.slice(offset, offset + profile.values.length);
+          offset += profile.values.length;
+          return `
+            <div>
+              <span>${escapeHTML(profile.label)}</span>
+              ${renderLineGraph(profileValues, max, profile.label)}
+            </div>`;
+        })
+        .join("")}
+    </div>`;
+}
+
+function renderRuleGraph(graphData, values, max) {
+  const rules = graphData.rules || [];
+  let offset = 0;
+  return `
+    <div class="profile-rule-list">
+      ${rules
+        .map((rule) => {
+          const scaledIntervals = values.slice(offset, offset + (rule.intervals || []).length);
+          offset += (rule.intervals || []).length;
+          const ruleValues = (rule.intervals || []).flatMap((interval, index) => {
+            const hours = Math.max(1, Math.round((Number(interval.endHour) || 0) - (Number(interval.startHour) || 0)));
+            return Array.from({ length: hours }, () => Number(scaledIntervals[index]) || 0);
+          });
+          return `
+            <div class="profile-rule-row">
+              <span>${escapeHTML(rule.label || `${rule.through || ""} ${rule.selector || ""}`)}</span>
+              ${renderLineGraph(ruleValues.length ? ruleValues : [0], max, rule.label || "Schedule rule")}
+            </div>`;
+        })
+        .join("") || `<div class="empty">No Through / For rules available.</div>`}
+    </div>`;
+}
+
+function renderHeatmap(values, max, label) {
+  const rects = values
+    .map((value, index) => {
+      const day = Math.floor(index / 24);
+      const hour = index % 24;
+      return `<rect x="${day}" y="${hour}" width="1" height="1" fill="${heatColor(value, max)}"></rect>`;
+    })
+    .join("");
+  return `
+    <svg class="profile-heatmap" viewBox="0 0 365 24" preserveAspectRatio="none" role="img" aria-label="${escapeHTML(label)} annual heatmap">
+      ${rects}
+    </svg>`;
+}
+
+function currentGraphViewMode() {
+  const allowed = new Set(["annual_heatmap", "representative_week", "period_rules", "representative_day"]);
+  if (allowed.has(state.profileGraphViewMode)) {
+    return state.profileGraphViewMode;
+  }
+  return "annual_heatmap";
+}
+
+function graphStatsLabel(viewMode, graphMode) {
+  const valueLabel = graphMode === "multiplier" ? "Schedule multiplier" : "Actual value";
+  switch (viewMode) {
+    case "representative_week":
+      return `${valueLabel}, representative week`;
+    case "period_rules":
+      return `${valueLabel}, Through / For rules`;
+    case "representative_day":
+      return `${valueLabel}, representative days`;
+    default:
+      return `${valueLabel}, annual heatmap`;
+  }
+}
+
+function graphScaleMax(values, dimension, graphData, scaleMode) {
+  if (scaleMode === "multiplier_0_1") {
+    return state.profileSettings.graphMode === "multiplier" ? 1 : Math.max(Number(dimension.value) || 0, 1e-9);
+  }
+  if (scaleMode === "design_peak") {
+    return state.profileSettings.graphMode === "multiplier" ? Math.max(...graphData.values, 1) : Math.max(Number(dimension.value) || 0, 1e-9);
+  }
+  return Math.max(...values, 1e-9);
+}
+
+function scheduleDayProfile(schedule, key) {
+  const values = schedule?.[key];
+  if (Array.isArray(values) && values.length) {
+    return values.map((value) => Number(value) || 0);
+  }
+  return Array.from({ length: 24 }, () => 1);
+}
+
+function scheduleWeeklyProfile(schedule) {
+  if (Array.isArray(schedule?.weeklyProfile) && schedule.weeklyProfile.length) {
+    return schedule.weeklyProfile.map((value) => Number(value) || 0);
+  }
+  return [
+    ...scheduleDayProfile(schedule, "weekdayProfile"),
+    ...scheduleDayProfile(schedule, "weekdayProfile"),
+    ...scheduleDayProfile(schedule, "weekdayProfile"),
+    ...scheduleDayProfile(schedule, "weekdayProfile"),
+    ...scheduleDayProfile(schedule, "weekdayProfile"),
+    ...scheduleDayProfile(schedule, "saturdayProfile"),
+    ...scheduleDayProfile(schedule, "sundayProfile"),
+  ];
+}
+
+function scheduleRules(schedule) {
+  return Array.isArray(schedule?.rules) && schedule.rules.length
+    ? schedule.rules
+    : [{ startDay: 1, endDay: 365, selector: "AllDays", label: "Fallback all days", intervals: [{ startHour: 0, endHour: 24, value: 1 }] }];
+}
+
+function scheduleRuleValues(schedule) {
+  return scheduleRules(schedule).flatMap((rule) => (rule.intervals || []).map((interval) => Number(interval.value) || 0));
+}
+
+function annualScheduleValues(schedule) {
+  const rules = scheduleRules(schedule);
+  const values = [];
+  for (let day = 1; day <= 365; day += 1) {
+    const rule = rules.find((candidate) => day >= Number(candidate.startDay || 1) && day <= Number(candidate.endDay || 365) && dayMatchesScheduleSelector(day, candidate.selector));
+    values.push(...profileFromRule(rule));
+  }
+  return values;
+}
+
+function profileFromRule(rule) {
+  const profile = Array.from({ length: 24 }, () => 0);
+  (rule?.intervals || []).forEach((interval) => {
+    const start = Math.max(0, Math.floor(Number(interval.startHour) || 0));
+    const end = Math.min(24, Math.ceil(Number(interval.endHour) || 0));
+    for (let hour = start; hour < end; hour += 1) {
+      profile[hour] = Number(interval.value) || 0;
+    }
+  });
+  return profile;
+}
+
+function dayMatchesScheduleSelector(day, selectorInput) {
+  const selector = String(selectorInput || "AllDays").trim().toLowerCase().replaceAll(" ", "");
+  const dayOfWeek = (day - 1) % 7;
+  switch (selector) {
+    case "weekdays":
+      return dayOfWeek >= 0 && dayOfWeek <= 4;
+    case "weekends":
+      return dayOfWeek === 5 || dayOfWeek === 6;
+    case "monday":
+      return dayOfWeek === 0;
+    case "tuesday":
+      return dayOfWeek === 1;
+    case "wednesday":
+      return dayOfWeek === 2;
+    case "thursday":
+      return dayOfWeek === 3;
+    case "friday":
+      return dayOfWeek === 4;
+    case "saturday":
+      return dayOfWeek === 5;
+    case "sunday":
+      return dayOfWeek === 6;
+    default:
+      return true;
+  }
+}
+
+function heatColor(value, max) {
+  const t = Math.max(0, Math.min(1, max <= 0 ? 0 : value / max));
+  const stops = [
+    [238, 243, 245],
+    [162, 208, 207],
+    [0, 124, 137],
+    [168, 95, 0],
+  ];
+  const scaled = t * (stops.length - 1);
+  const index = Math.min(stops.length - 2, Math.floor(scaled));
+  const local = scaled - index;
+  const color = stops[index].map((start, channel) => Math.round(start + (stops[index + 1][channel] - start) * local));
+  return `rgb(${color[0]}, ${color[1]}, ${color[2]})`;
+}
+
+function clampGraphValue(value, max) {
+  if (!Number.isFinite(value) || value < 0) {
+    return 0;
+  }
+  return Math.min(value, max);
 }
 
 function renderProfileWarning(warning) {
@@ -277,6 +601,16 @@ function bindProfileControls(profile) {
   });
   bindSettingControl("#profileGraphMode", (input) => {
     state.profileSettings.graphMode = input.value;
+  });
+  const graphView = elements.profileGraph.querySelector("#profileGraphViewMode");
+  graphView?.addEventListener("change", () => {
+    state.profileGraphViewMode = graphView.value;
+    renderProfile(profile);
+  });
+  const graphScale = elements.profileGraph.querySelector("#profileGraphScaleMode");
+  graphScale?.addEventListener("change", () => {
+    state.profileGraphScaleMode = graphScale.value;
+    renderProfile(profile);
   });
   elements.profileMatrix.querySelectorAll("[data-profile-zone]").forEach((row) => {
     row.addEventListener("click", () => {
@@ -634,6 +968,17 @@ function profileMatrixRowMatchesQuery(row, query) {
 
 function profileDimensionLabel(dimension) {
   return state.report?.profile?.dimensions?.find((item) => item.id === dimension)?.label || dimension;
+}
+
+function shortObjectType(value) {
+  return String(value || "")
+    .replace(/^Zone/i, "Z")
+    .replace(/^DesignSpecification:/i, "DS:")
+    .replace(/^ElectricEquipment$/i, "Elec")
+    .replace(/^GasEquipment$/i, "Gas")
+    .replace(/^OtherEquipment$/i, "Other")
+    .replace(/^ZoneInfiltration:/i, "Inf:")
+    .replace(/^ZoneVentilation:/i, "Vent:");
 }
 
 function formatNumber(value) {

@@ -1610,7 +1610,72 @@ textarea {
   white-space: nowrap;
 }
 
+.profile-matrix td strong {
+  display: block;
+  font-size: 12px;
+}
+
+.profile-matrix-objects {
+  margin-top: 6px;
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.profile-matrix-objects .profile-object-link {
+  margin-right: 0;
+}
+
 .profile-graph {
+  display: grid;
+  gap: 10px;
+}
+
+.profile-graph-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.profile-graph-toolbar .profile-field {
+  width: min(190px, 100%);
+}
+
+.profile-graph-summary {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 10px;
+  display: grid;
+  gap: 10px;
+}
+
+.profile-graph-summary > div:first-child {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.profile-graph-summary strong,
+.profile-graph-summary span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.profile-graph-summary span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.profile-graph-summary-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+  gap: 8px;
+}
+
+.profile-graph-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 10px;
@@ -1655,6 +1720,15 @@ textarea {
   background: var(--surface-3);
 }
 
+.profile-graph-card .profile-heatmap {
+  height: 132px;
+  image-rendering: pixelated;
+}
+
+.profile-graph-card .profile-line-graph {
+  height: 92px;
+}
+
 .profile-graph-card line {
   stroke: var(--line);
   stroke-width: 1;
@@ -1666,6 +1740,28 @@ textarea {
   stroke-width: 2.4;
   stroke-linejoin: round;
   stroke-linecap: round;
+}
+
+.profile-day-graphs,
+.profile-rule-list {
+  display: grid;
+  gap: 7px;
+}
+
+.profile-day-graphs > div,
+.profile-rule-row {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.profile-day-graphs span,
+.profile-rule-row span {
+  color: var(--muted);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .profile-dialog {

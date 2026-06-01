@@ -137,6 +137,21 @@ func TestAnalyzeProfileNormalizesZoneProfiles(t *testing.T) {
 	if len(profile.Schedules) != 1 || profile.Schedules[0].DetectedPattern != "weekday_9_to_6_sat_9_to_3" {
 		t.Fatalf("schedule summary = %#v, want weekday/saturday pattern", profile.Schedules)
 	}
+	if !profile.Schedules[0].Resolved {
+		t.Fatalf("schedule should be resolved: %#v", profile.Schedules[0])
+	}
+	if got := len(profile.Schedules[0].WeeklyProfile); got != 168 {
+		t.Fatalf("weekly profile length = %d, want 168", got)
+	}
+	if got := len(profile.Schedules[0].Rules); got != 3 {
+		t.Fatalf("schedule rules = %d, want 3", got)
+	}
+	if got := profile.Schedules[0].WeekdayProfile[9]; got != 1 {
+		t.Fatalf("weekday 09:00 profile = %v, want 1", got)
+	}
+	if got := profile.Schedules[0].SaturdayProfile[15]; got != 0 {
+		t.Fatalf("saturday 15:00 profile = %v, want 0", got)
+	}
 
 	zone := profile.ZoneProfiles[0]
 	assertProfileDimension(t, zone, ProfileDimensionOccupancy, 0.08, 0.0001)

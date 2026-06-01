@@ -41,7 +41,7 @@ export const defaultAppSettings = {
     numericTolerance: 0.001,
     scheduleCompareMode: "name",
     graphMode: "actual_value",
-    scheduleSummaryMode: "representative_day",
+    scheduleSummaryMode: "annual_heatmap",
     applyBehavior: {
       defaultMode: "clone",
       allowZoneListEdit: false,

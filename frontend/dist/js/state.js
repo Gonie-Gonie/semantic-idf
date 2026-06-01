@@ -8,6 +8,8 @@ export const state = {
   activeResultTab: "summary",
   activeInputView: "text",
   activeProfileGroupId: "",
+  profileGraphViewMode: "",
+  profileGraphScaleMode: "auto",
   profileSettings: null,
   profileApplyPreview: null,
   geometryMode: "3d",

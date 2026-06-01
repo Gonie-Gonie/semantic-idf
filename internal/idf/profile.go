@@ -154,14 +154,33 @@ type ScheduleSummary struct {
 	ScheduleName    string              `json:"scheduleName"`
 	ScheduleType    string              `json:"scheduleType"`
 	ObjectIndex     int                 `json:"objectIndex"`
+	Resolved        bool                `json:"resolved"`
 	DetectedPattern string              `json:"detectedPattern"`
 	WeekdayProfile  []float64           `json:"weekdayProfile"`
 	SaturdayProfile []float64           `json:"saturdayProfile"`
 	SundayProfile   []float64           `json:"sundayProfile"`
 	HolidayProfile  []float64           `json:"holidayProfile"`
+	WeeklyProfile   []float64           `json:"weeklyProfile,omitempty"`
+	Rules           []ScheduleRule      `json:"rules,omitempty"`
 	AnnualStats     ScheduleAnnualStats `json:"annualStats"`
 	ContentHash     string              `json:"contentHash"`
 	Warnings        []string            `json:"warnings,omitempty"`
+}
+
+type ScheduleRule struct {
+	StartDay  int                `json:"startDay"`
+	EndDay    int                `json:"endDay"`
+	Through   string             `json:"through"`
+	Selector  string             `json:"selector"`
+	Label     string             `json:"label"`
+	Intervals []ScheduleInterval `json:"intervals"`
+}
+
+type ScheduleInterval struct {
+	StartHour float64 `json:"startHour"`
+	EndHour   float64 `json:"endHour"`
+	Value     float64 `json:"value"`
+	Label     string  `json:"label"`
 }
 
 type ScheduleAnnualStats struct {
@@ -268,7 +287,7 @@ func defaultProfileAnalysisSettings() ProfileAnalysisSettings {
 		NumericTolerance:    0.001,
 		ScheduleCompareMode: "name",
 		GraphMode:           "actual_value",
-		ScheduleSummaryMode: "representative_day",
+		ScheduleSummaryMode: "annual_heatmap",
 		ApplyBehavior: ProfileApplyBehavior{
 			DefaultMode:           "clone",
 			AllowZoneListEdit:     false,
@@ -1023,40 +1042,52 @@ func summarizeSchedule(obj Object) ScheduleSummary {
 		value, ok := scheduleConstantValue(obj)
 		if !ok {
 			summary.DetectedPattern = "irregular"
-			summary.Warnings = append(summary.Warnings, "Constant schedule value could not be parsed.")
-			value = 0
+			summary.Warnings = append(summary.Warnings, "Constant schedule value could not be parsed; profile graph uses a design-level fallback.")
+			value = 1
 		}
+		summary.Resolved = ok
 		summary.WeekdayProfile = filledProfile(value)
 		summary.SaturdayProfile = filledProfile(value)
 		summary.SundayProfile = filledProfile(value)
 		summary.HolidayProfile = filledProfile(value)
+		summary.WeeklyProfile = weeklyProfileFromDayProfiles(summary.WeekdayProfile, summary.SaturdayProfile, summary.SundayProfile)
+		summary.Rules = []ScheduleRule{constantScheduleRule(value)}
 		summary.AnnualStats = annualStatsFromProfiles(summary.WeekdayProfile, summary.SaturdayProfile, summary.SundayProfile)
 	case strings.EqualFold(obj.Type, "Schedule:Compact"):
 		rules, ok := compactScheduleRules(obj)
 		if !ok {
 			summary.DetectedPattern = "irregular"
-			summary.Warnings = append(summary.Warnings, "Compact schedule could not be reduced to representative profiles.")
-			summary.WeekdayProfile = filledProfile(0)
-			summary.SaturdayProfile = filledProfile(0)
-			summary.SundayProfile = filledProfile(0)
-			summary.HolidayProfile = filledProfile(0)
+			summary.Warnings = append(summary.Warnings, "Compact schedule could not be reduced; profile graph uses a design-level fallback.")
+			summary.WeekdayProfile = filledProfile(1)
+			summary.SaturdayProfile = filledProfile(1)
+			summary.SundayProfile = filledProfile(1)
+			summary.HolidayProfile = filledProfile(1)
+			summary.WeeklyProfile = weeklyProfileFromDayProfiles(summary.WeekdayProfile, summary.SaturdayProfile, summary.SundayProfile)
+			summary.Rules = []ScheduleRule{constantScheduleRule(1)}
+			summary.AnnualStats = annualStatsFromProfiles(summary.WeekdayProfile, summary.SaturdayProfile, summary.SundayProfile)
 			break
 		}
+		summary.Resolved = true
 		summary.WeekdayProfile = representativeProfileForSelector(rules, "Weekdays")
 		summary.SaturdayProfile = representativeProfileForSelector(rules, "Saturday")
 		summary.SundayProfile = representativeProfileForSelector(rules, "Sunday")
 		summary.HolidayProfile = representativeProfileForSelector(rules, "AllDays")
+		summary.WeeklyProfile = weeklyProfileFromRules(rules)
+		summary.Rules = scheduleRulesFromCompact(rules)
 		summary.AnnualStats = annualStatsFromRules(rules)
 		if compactRulesAreSeasonal(rules) {
 			summary.Warnings = append(summary.Warnings, "Schedule has seasonal rule changes; representative days are a simplification.")
 		}
 	default:
 		summary.DetectedPattern = "irregular"
-		summary.Warnings = append(summary.Warnings, "Schedule type is not yet parsed for representative profile analysis.")
-		summary.WeekdayProfile = filledProfile(0)
-		summary.SaturdayProfile = filledProfile(0)
-		summary.SundayProfile = filledProfile(0)
-		summary.HolidayProfile = filledProfile(0)
+		summary.Warnings = append(summary.Warnings, "Schedule type is not yet parsed; profile graph uses a design-level fallback.")
+		summary.WeekdayProfile = filledProfile(1)
+		summary.SaturdayProfile = filledProfile(1)
+		summary.SundayProfile = filledProfile(1)
+		summary.HolidayProfile = filledProfile(1)
+		summary.WeeklyProfile = weeklyProfileFromDayProfiles(summary.WeekdayProfile, summary.SaturdayProfile, summary.SundayProfile)
+		summary.Rules = []ScheduleRule{constantScheduleRule(1)}
+		summary.AnnualStats = annualStatsFromProfiles(summary.WeekdayProfile, summary.SaturdayProfile, summary.SundayProfile)
 	}
 	if summary.DetectedPattern == "" {
 		summary.DetectedPattern = detectSchedulePattern(summary)
@@ -1143,6 +1174,39 @@ func representativeProfileForSelector(rules []compactScheduleRule, selector stri
 	return filledProfile(0)
 }
 
+func weeklyProfileFromRules(rules []compactScheduleRule) []float64 {
+	var out []float64
+	for day := 1; day <= 7; day++ {
+		out = append(out, profileForScheduleDay(rules, day)...)
+	}
+	return out
+}
+
+func weeklyProfileFromDayProfiles(weekday []float64, saturday []float64, sunday []float64) []float64 {
+	var out []float64
+	for day := 1; day <= 7; day++ {
+		switch day {
+		case 6:
+			out = append(out, saturday...)
+		case 7:
+			out = append(out, sunday...)
+		default:
+			out = append(out, weekday...)
+		}
+	}
+	return out
+}
+
+func profileForScheduleDay(rules []compactScheduleRule, day int) []float64 {
+	for _, rule := range rules {
+		if day < rule.startDay || day > rule.endDay || !dayMatchesSelector(day, rule.selector) {
+			continue
+		}
+		return profileFromIntervals(rule.intervals)
+	}
+	return filledProfile(0)
+}
+
 func profileFromIntervals(intervals []scheduleInterval) []float64 {
 	profile := make([]float64, 24)
 	previous := 0.0
@@ -1158,6 +1222,86 @@ func profileFromIntervals(intervals []scheduleInterval) []float64 {
 		previous = end
 	}
 	return roundedProfile(profile)
+}
+
+func scheduleRulesFromCompact(rules []compactScheduleRule) []ScheduleRule {
+	out := make([]ScheduleRule, 0, len(rules))
+	for _, rule := range rules {
+		out = append(out, ScheduleRule{
+			StartDay:  rule.startDay,
+			EndDay:    rule.endDay,
+			Through:   dayOfYearLabel(rule.endDay),
+			Selector:  rule.selector,
+			Label:     fmt.Sprintf("Through %s / For %s", dayOfYearLabel(rule.endDay), strings.TrimSpace(rule.selector)),
+			Intervals: scheduleIntervalsFromCompact(rule.intervals),
+		})
+	}
+	return out
+}
+
+func scheduleIntervalsFromCompact(intervals []scheduleInterval) []ScheduleInterval {
+	out := make([]ScheduleInterval, 0, len(intervals))
+	start := 0.0
+	for _, interval := range intervals {
+		end := start + interval.hours
+		out = append(out, ScheduleInterval{
+			StartHour: roundedNumber(start, 2),
+			EndHour:   roundedNumber(end, 2),
+			Value:     roundedNumber(interval.value, 4),
+			Label:     fmt.Sprintf("%s-%s", hourLabel(start), hourLabel(end)),
+		})
+		start = end
+	}
+	return out
+}
+
+func constantScheduleRule(value float64) ScheduleRule {
+	return ScheduleRule{
+		StartDay: 1,
+		EndDay:   365,
+		Through:  "12/31",
+		Selector: "AllDays",
+		Label:    "Through 12/31 / For AllDays",
+		Intervals: []ScheduleInterval{{
+			StartHour: 0,
+			EndHour:   24,
+			Value:     roundedNumber(value, 4),
+			Label:     "00:00-24:00",
+		}},
+	}
+}
+
+func dayOfYearLabel(day int) string {
+	daysByMonth := []int{31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31}
+	if day < 1 {
+		day = 1
+	}
+	if day > 365 {
+		day = 365
+	}
+	month := 1
+	for _, days := range daysByMonth {
+		if day <= days {
+			break
+		}
+		day -= days
+		month++
+	}
+	return fmt.Sprintf("%02d/%02d", month, day)
+}
+
+func hourLabel(hour float64) string {
+	wholeHour := int(math.Floor(hour))
+	minute := int(math.Round((hour - float64(wholeHour)) * 60))
+	if minute == 60 {
+		wholeHour++
+		minute = 0
+	}
+	if wholeHour > 24 {
+		wholeHour = 24
+		minute = 0
+	}
+	return fmt.Sprintf("%02d:%02d", wholeHour, minute)
 }
 
 func filledProfile(value float64) []float64 {
