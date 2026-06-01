@@ -19,6 +19,7 @@ The release script infers bump size from these sections:
 ## Changed
 
 - Moved canonical frontend assets from `frontend/dist` to `frontend/src` and reserved `frontend/dist` for future generated build output.
+- Refined the Output analysis UI into request-map and preset-library tables so it manages output relationships instead of mirroring the raw object list.
 
 ## Fixed
 

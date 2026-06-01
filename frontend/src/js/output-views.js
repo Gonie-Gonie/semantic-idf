@@ -43,10 +43,10 @@ export function renderOutput(output = state.report?.output) {
     : t("count.options", { count: output.recommendations?.length || 0 });
   elements.outputWarningStats.textContent = t("count.warnings", { count: warnings.length });
   elements.outputExisting.innerHTML = existing.length
-    ? existing.map(renderExistingOutputCard).join("")
+    ? renderOutputRequestTable(existing)
     : `<div class="empty">${t("output.noExisting")}</div>`;
   elements.outputRecommendations.innerHTML = recommendations.length
-    ? recommendations.map(renderOutputRecommendationCard).join("")
+    ? renderOutputRecommendationTable(recommendations)
     : `<div class="empty">${t("output.noRecommendations")}</div>`;
   elements.outputWarnings.innerHTML = warnings.length
     ? warnings.map(renderOutputWarning).join("")
@@ -63,23 +63,56 @@ function renderOutputEmpty() {
   elements.outputWarnings.innerHTML = `<div class="empty">${t("output.noWarnings")}</div>`;
 }
 
-function renderExistingOutputCard(item) {
+function renderOutputRequestTable(items) {
   return `
-    <article class="output-card ${item.duplicate ? "warning" : ""}">
-      <div class="output-card-head">
-        <div>
-          <strong title="${escapeHTML(item.objectType)}">${escapeHTML(item.objectType)}</strong>
-          <span title="${escapeHTML(item.summary || "")}">${escapeHTML(item.summary || item.category || "")}</span>
+    <table class="output-table">
+      <thead>
+        <tr>
+          <th>${escapeHTML(t("output.scope"))}</th>
+          <th>${escapeHTML(t("output.request"))}</th>
+          <th>${escapeHTML(t("output.frequency"))}</th>
+          <th>${escapeHTML(t("output.destination"))}</th>
+          <th>${escapeHTML(t("output.status"))}</th>
+          <th>${escapeHTML(t("output.manage"))}</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${items.map(renderOutputRequestRow).join("")}
+      </tbody>
+    </table>`;
+}
+
+function renderOutputRequestRow(item) {
+  return `
+    <tr class="${item.duplicate ? "warning" : ""}">
+      <td>
+        <strong title="${escapeHTML(outputScope(item))}">${escapeHTML(outputScope(item))}</strong>
+        <small title="${escapeHTML(outputScopeMeta(item))}">${escapeHTML(outputScopeMeta(item))}</small>
+      </td>
+      <td>
+        <strong title="${escapeHTML(outputRequestName(item))}">${escapeHTML(outputRequestName(item))}</strong>
+        <small title="${escapeHTML(item.objectType)}">${escapeHTML(outputRequestMeta(item))}</small>
+      </td>
+      <td>${renderOutputFrequencyCell(item)}</td>
+      <td>
+        <span title="${escapeHTML(outputDestination(item))}">${escapeHTML(outputDestination(item))}</span>
+      </td>
+      <td>
+        <span class="output-status ${item.duplicate ? "warning" : "ok"}">${escapeHTML(item.duplicate ? t("output.duplicate") : t("output.active"))}</span>
+      </td>
+      <td>
+        <div class="output-row-actions">
+          <button class="profile-object-link navigable-row" type="button" data-jump-object-index="${escapeHTML(item.objectIndex)}" data-jump-object-type="${escapeHTML(item.objectType)}">#${escapeHTML(Number(item.objectIndex) + 1)}</button>
+          <button type="button" data-output-remove="${escapeHTML(item.objectIndex)}">${escapeHTML(t("output.remove"))}</button>
         </div>
-        <button class="profile-object-link navigable-row" type="button" data-jump-object-index="${escapeHTML(item.objectIndex)}" data-jump-object-type="${escapeHTML(item.objectType)}">#${escapeHTML(Number(item.objectIndex) + 1)}</button>
-      </div>
-      <div class="output-field-list">
-        ${(item.fields || []).map((field) => renderOutputField(item, field)).join("")}
-      </div>
-      <div class="output-card-actions">
-        <button type="button" data-output-remove="${escapeHTML(item.objectIndex)}">${escapeHTML(t("output.remove"))}</button>
-      </div>
-    </article>`;
+        <details class="output-field-details">
+          <summary>${escapeHTML(t("output.fields"))}</summary>
+          <div class="output-field-list">
+            ${outputDetailFields(item).map((field) => renderOutputField(item, field)).join("") || `<div class="empty">${escapeHTML(t("output.noExtraFields", {}, "No extra fields"))}</div>`}
+          </div>
+        </details>
+      </td>
+    </tr>`;
 }
 
 function renderOutputField(item, field) {
@@ -97,21 +130,66 @@ function renderOutputField(item, field) {
     </label>`;
 }
 
-function renderOutputRecommendationCard(item) {
+function renderOutputFrequencyCell(item) {
+  const field = findOutputField(item, "Reporting Frequency");
+  if (!field) {
+    return `<span>${escapeHTML(item.reportingFrequency || "-")}</span>`;
+  }
+  const inputID = `output-frequency-${item.objectIndex}`;
   return `
-    <article class="output-card recommendation ${item.exists ? "exists" : ""}">
-      <div class="output-card-head">
-        <div>
-          <strong title="${escapeHTML(item.label)}">${escapeHTML(item.label)}</strong>
-          <span>${escapeHTML(item.objectType)} - ${escapeHTML(item.category || "")}</span>
+    <label class="output-inline-edit" for="${escapeHTML(inputID)}">
+      ${renderOutputFieldControl(item, field, inputID)}
+      <button type="button" data-output-update="${escapeHTML(item.objectIndex)}:${escapeHTML(field.index)}">${escapeHTML(t("output.update"))}</button>
+    </label>`;
+}
+
+function renderOutputFieldControl(item, field, inputID) {
+  return (field.choices || []).length
+    ? `<select id="${escapeHTML(inputID)}" data-output-field-input="${escapeHTML(item.objectIndex)}:${escapeHTML(field.index)}">
+        ${field.choices.map((choice) => `<option value="${escapeHTML(choice)}" ${String(choice) === String(field.value) ? "selected" : ""}>${escapeHTML(choice)}</option>`).join("")}
+      </select>`
+    : `<input id="${escapeHTML(inputID)}" data-output-field-input="${escapeHTML(item.objectIndex)}:${escapeHTML(field.index)}" value="${escapeHTML(field.value)}" />`;
+}
+
+function renderOutputRecommendationTable(items) {
+  return `
+    <table class="output-table output-library-table">
+      <thead>
+        <tr>
+          <th>${escapeHTML(t("common.category", {}, "Category"))}</th>
+          <th>${escapeHTML(t("output.request"))}</th>
+          <th>${escapeHTML(t("output.destination"))}</th>
+          <th>${escapeHTML(t("common.preview"))}</th>
+          <th>${escapeHTML(t("output.manage"))}</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${items.map(renderOutputRecommendationRow).join("")}
+      </tbody>
+    </table>`;
+}
+
+function renderOutputRecommendationRow(item) {
+  return `
+    <tr class="${item.exists ? "exists" : ""}">
+      <td>
+        <strong>${escapeHTML(outputCategoryLabel(item.category))}</strong>
+        <small>${escapeHTML(item.objectType)}</small>
+      </td>
+      <td>
+        <strong title="${escapeHTML(item.label)}">${escapeHTML(item.label)}</strong>
+        <small title="${escapeHTML(item.description || "")}">${escapeHTML(item.description || "")}</small>
+      </td>
+      <td>${escapeHTML(recommendationDestination(item))}</td>
+      <td>
+        <div class="output-recommendation-fields">
+          ${(item.fields || []).map((field) => `<span><b>${escapeHTML(field.name)}</b>${escapeHTML(field.value)}</span>`).join("")}
         </div>
+      </td>
+      <td>
         <button type="button" data-output-add="${escapeHTML(item.id)}" ${item.exists ? "disabled" : ""}>${escapeHTML(item.exists ? t("output.exists") : t("output.add"))}</button>
-      </div>
-      <p>${escapeHTML(item.description || "")}</p>
-      <div class="output-recommendation-fields">
-        ${(item.fields || []).map((field) => `<span><b>${escapeHTML(field.name)}</b>${escapeHTML(field.value)}</span>`).join("")}
-      </div>
-    </article>`;
+      </td>
+    </tr>`;
 }
 
 function renderOutputWarning(warning) {
@@ -256,6 +334,90 @@ function recommendationSummary(id) {
     return id;
   }
   return `${item.objectType} - ${(item.fields || []).map((field) => `${field.name}: ${field.value}`).join(", ")}`;
+}
+
+function outputScope(item) {
+  if (item.keyValue) {
+    return item.keyValue === "*" ? t("output.allKeys") : item.keyValue;
+  }
+  if (item.objectType === "Output:SQLite") {
+    return t("output.wholeSimulation");
+  }
+  if (item.objectType === "Output:Table:SummaryReports" || item.objectType === "OutputControl:Table:Style") {
+    return t("output.tabularReports");
+  }
+  if (item.objectType === "Output:VariableDictionary") {
+    return t("output.variableDictionary");
+  }
+  if (item.objectType === "Output:Diagnostics") {
+    return t("output.diagnostics");
+  }
+  return item.category || item.objectType || "-";
+}
+
+function outputScopeMeta(item) {
+  if (item.objectType === "Output:Variable") {
+    return t("output.timeSeriesVariable");
+  }
+  if ((item.objectType || "").startsWith("Output:Meter")) {
+    return t("output.energyMeter");
+  }
+  return item.objectType || "";
+}
+
+function outputRequestName(item) {
+  if (item.variableName) {
+    return item.variableName;
+  }
+  return item.summary || item.objectType || "-";
+}
+
+function outputRequestMeta(item) {
+  const parts = [outputCategoryLabel(item.category)];
+  if (item.scheduleName) {
+    parts.push(`${t("common.schedule")}: ${item.scheduleName}`);
+  }
+  return parts.filter(Boolean).join(" - ");
+}
+
+function outputDestination(item) {
+  switch (item.category) {
+    case "variables":
+      return "Time-series output";
+    case "meters":
+      return (item.objectType || "").includes("MeterFileOnly") ? "Meter file only" : "Meter output";
+    case "dictionary":
+      return "Variable dictionary";
+    case "files":
+      return "SQLite / result files";
+    case "tabular":
+      return "Tabular reports";
+    case "diagnostics":
+      return "Diagnostics report";
+    default:
+      return item.objectType || "-";
+  }
+}
+
+function recommendationDestination(item) {
+  return outputDestination({ category: item.category, objectType: item.objectType });
+}
+
+function outputCategoryLabel(category) {
+  return t(`output.category.${category}`, {}, category || "Output");
+}
+
+function findOutputField(item, name) {
+  const wanted = normalizeOutputFieldName(name);
+  return (item.fields || []).find((field) => normalizeOutputFieldName(field.name) === wanted);
+}
+
+function outputDetailFields(item) {
+  return (item.fields || []).filter((field) => normalizeOutputFieldName(field.name) !== "reporting frequency");
+}
+
+function normalizeOutputFieldName(value) {
+  return String(value || "").trim().toLowerCase().replaceAll("_", " ").replaceAll("-", " ").replace(/\s+/g, " ");
 }
 
 function outputItemMatchesQuery(item, query) {

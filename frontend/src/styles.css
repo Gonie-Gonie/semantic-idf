@@ -2569,63 +2569,126 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
   min-width: 0;
 }
 
-.output-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 10px;
+.output-table-wrap {
   min-width: 0;
-}
-
-.output-card {
-  display: grid;
-  gap: 10px;
-  min-width: 0;
+  overflow: auto;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel);
-  padding: 12px;
+  scrollbar-gutter: stable;
 }
 
-.output-card.warning {
-  border-color: color-mix(in srgb, var(--amber) 55%, var(--line));
+.output-table {
+  width: 100%;
+  min-width: 780px;
+  border-collapse: collapse;
+  table-layout: fixed;
 }
 
-.output-card.exists {
+.output-table th,
+.output-table td {
+  border-bottom: 1px solid var(--line);
+  padding: 9px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.output-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--table-head);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.output-table th:nth-child(1),
+.output-table td:nth-child(1) {
+  width: 18%;
+}
+
+.output-table th:nth-child(2),
+.output-table td:nth-child(2) {
+  width: 26%;
+}
+
+.output-table th:nth-child(3),
+.output-table td:nth-child(3) {
+  width: 18%;
+}
+
+.output-table th:nth-child(5),
+.output-table td:nth-child(5) {
+  width: 11%;
+}
+
+.output-table th:nth-child(6),
+.output-table td:nth-child(6) {
+  width: 17%;
+}
+
+.output-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.output-table tr.warning td {
+  background: color-mix(in srgb, var(--amber) 8%, transparent);
+}
+
+.output-table tr.exists {
   opacity: 0.72;
 }
 
-.output-card-head,
-.output-card-actions {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
+.output-table strong,
+.output-table span,
+.output-table small {
+  display: block;
   min-width: 0;
-}
-
-.output-card-head > div {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
-}
-
-.output-card strong,
-.output-card span,
-.output-card p {
-  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   overflow-wrap: anywhere;
 }
 
-.output-card-head strong {
-  font-size: 13px;
+.output-table strong {
+  font-size: 12px;
 }
 
-.output-card-head span,
-.output-card p,
+.output-table small,
+.output-table span,
 .output-recommendation-fields span {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1.45;
+}
+
+.output-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.output-status {
+  display: inline-flex;
+  width: max-content;
+  max-width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 7px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.output-status.ok {
+  color: var(--green);
+  border-color: color-mix(in srgb, var(--green) 45%, var(--line));
+}
+
+.output-status.warning {
+  color: var(--amber);
+  border-color: color-mix(in srgb, var(--amber) 55%, var(--line));
 }
 
 .output-field-list {
@@ -2647,7 +2710,9 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 }
 
 .output-field-row input,
-.output-field-row select {
+.output-field-row select,
+.output-inline-edit input,
+.output-inline-edit select {
   width: 100%;
   min-width: 0;
   border: 1px solid var(--line);
@@ -2657,6 +2722,28 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
   padding: 6px 8px;
   font: inherit;
   font-size: 12px;
+}
+
+.output-inline-edit {
+  display: grid;
+  grid-template-columns: minmax(96px, 1fr) auto;
+  gap: 6px;
+  min-width: 0;
+}
+
+.output-field-details {
+  min-width: 0;
+}
+
+.output-field-details summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.output-field-details[open] {
+  margin-top: 6px;
 }
 
 .output-recommendation-fields {
