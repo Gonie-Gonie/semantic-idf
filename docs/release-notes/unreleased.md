@@ -18,6 +18,7 @@ The release script infers bump size from these sections:
 - Parse, edit, summarize, diagnose, and clean up EnergyPlus IDF and epJSON inputs.
 - Add geometry visualization, summary exports, multi-IDF comparison, bundled sample input, and in-app guide/settings pages.
 - Add manual GitHub release automation driven by release notes, including semver selection, changelog updates, packaging, tagging, and GitHub Release publishing.
+- Publish GitHub Releases automatically when version tags are pushed.
 - Show the app version in the window title, page headers, Settings, release package name, and built executable filename.
 
 ## Changed

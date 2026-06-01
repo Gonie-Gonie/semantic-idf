@@ -7,6 +7,7 @@ param(
     [switch]$Tag,
     [switch]$Push,
     [switch]$Publish,
+    [switch]$ExistingTag,
     [switch]$Draft,
     [switch]$Prerelease,
     [switch]$KeepUnreleased,
@@ -470,6 +471,19 @@ function Invoke-GitTag {
     git -C $RepoRoot tag -a $tagName -m "Release $tagName"
 }
 
+function Assert-ExistingGitTag {
+    param(
+        [string]$RepoRoot,
+        [string]$TargetVersion
+    )
+
+    $tagName = "v$TargetVersion"
+    git -C $RepoRoot rev-parse -q --verify "refs/tags/$tagName" *> $null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Existing tag was requested but tag was not found: $tagName"
+    }
+}
+
 function Invoke-GitPush {
     param(
         [string]$RepoRoot,
@@ -505,6 +519,37 @@ function Invoke-GitHubRelease {
     }
 
     $tagName = "v$TargetVersion"
+    gh release view $tagName *> $null
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "[release] GitHub Release already exists: $tagName"
+        $editArgs = @(
+            "release",
+            "edit",
+            $tagName,
+            "--title",
+            "IDF Analyzer $tagName",
+            "--notes-file",
+            $ReleaseNotesPath
+        )
+        if ($DraftRelease) {
+            $editArgs += "--draft"
+        }
+        if ($PrereleaseRelease) {
+            $editArgs += "--prerelease"
+        }
+
+        gh @editArgs
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to update GitHub Release: $tagName"
+        }
+
+        gh release upload $tagName $AssetPath --clobber
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to upload release asset: $AssetPath"
+        }
+        return
+    }
+
     $args = @(
         "release",
         "create",
@@ -523,6 +568,9 @@ function Invoke-GitHubRelease {
     }
 
     gh @args
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to create GitHub Release: $tagName"
+    }
 }
 
 $repoRoot = Get-RepoRoot
@@ -533,12 +581,16 @@ $appInfoPath = Join-Path $repoRoot "frontend\dist\js\app-info.js"
 $changelogPath = Join-Path $repoRoot "CHANGELOG.md"
 $releaseDate = (Get-Date).ToString("yyyy-MM-dd")
 
-$shouldCommit = $Commit -or $Tag -or $Push -or $Publish
-$shouldTag = $Tag -or $Publish
-$shouldPush = $Push -or $Publish
+if ($ExistingTag -and ($Commit -or $Tag -or $Push)) {
+    throw "-ExistingTag cannot be combined with -Commit, -Tag, or -Push."
+}
+
+$shouldCommit = $Commit -or $Tag -or $Push -or ($Publish -and -not $ExistingTag)
+$shouldTag = ($Tag -or $Publish) -and -not $ExistingTag
+$shouldPush = ($Push -or $Publish) -and -not $ExistingTag
 $shouldPackage = $Package -or $Publish
 
-if ($shouldCommit -and -not $AllowDirty) {
+if (($shouldCommit -or $ExistingTag) -and -not $AllowDirty) {
     Assert-CleanGitTree -RepoRoot $repoRoot
 }
 
@@ -556,6 +608,10 @@ $target = Get-TargetVersion -CurrentVersion $currentVersion -RequestedVersion $V
 $targetVersion = $target.Version
 $versionedNotesPath = Join-Path $releaseNotesDir "v$targetVersion.md"
 $outputFilename = "idf-analyzer-v$targetVersion"
+
+if ($ExistingTag) {
+    Assert-ExistingGitTag -RepoRoot $repoRoot -TargetVersion $targetVersion
+}
 
 if ($noteSource.Source -eq "versioned" -and $temporaryVersionedPath -ne $versionedNotesPath) {
     $noteSource = Get-ReleaseNoteSource -UnreleasedPath $unreleasedPath -VersionedPath $versionedNotesPath
@@ -600,6 +656,9 @@ if ($Publish) {
 
 Write-Host "[release] version: $targetVersion"
 Write-Host "[release] bump: $($target.Bump)"
+if ($ExistingTag) {
+    Write-Host "[release] existing tag: v$targetVersion"
+}
 Write-Host "[release] notes: $versionedNotesPath"
 Write-Host "[release] changelog: $changelogPath"
 if ($assetPath) {

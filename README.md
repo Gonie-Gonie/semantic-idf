@@ -62,7 +62,11 @@ Build artifacts and downloaded runtimes stay ignored by git.
 
 ## Release Process
 
-Release timing is manual. Update `docs/release-notes/unreleased.md`, then run the GitHub Actions `Release` workflow when you want to publish. The workflow runs `scripts/release.ps1`, updates `wails.json`, writes `CHANGELOG.md`, snapshots the release notes under `docs/release-notes/vX.Y.Z.md`, builds a versioned executable, creates a commit and tag, and publishes a GitHub Release.
+Release timing is manual. Update `docs/release-notes/unreleased.md`, then create and push a `vX.Y.Z` tag when you want to publish. The tag push runs the GitHub Actions `Release` workflow, which builds a versioned executable from that tag and publishes the GitHub Release.
+
+Use `scripts/release.ps1` to keep the release metadata and tag together. It updates `wails.json`, writes `CHANGELOG.md`, snapshots the release notes under `docs/release-notes/vX.Y.Z.md`, builds a versioned executable, creates the release commit, creates the `vX.Y.Z` tag, and pushes both. The pushed tag then publishes the GitHub Release.
+
+The GitHub Actions `Release` workflow can still be run manually from GitHub when you want the workflow to do the prepare, tag, push, and publish steps in one run.
 
 The script chooses the semver bump from release-note sections when no explicit version is provided:
 
@@ -78,7 +82,11 @@ Useful local release commands:
 # Prepare metadata only; leaves unreleased notes in place for review.
 .\dev.bat release -KeepUnreleased
 
-# Prepare, verify, build, commit, tag, push, and publish through GitHub CLI.
+# Prepare, verify, build, commit, tag, and push.
+# The pushed tag publishes the GitHub Release.
+.\dev.bat release -Package -Commit -Tag -Push
+
+# Fallback: publish directly through GitHub CLI.
 .\dev.bat release -Package -Commit -Tag -Push -Publish
 ```
 

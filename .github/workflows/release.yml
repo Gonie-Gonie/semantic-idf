@@ -27,6 +27,9 @@ on:
         required: true
         default: false
         type: boolean
+  push:
+    tags:
+      - "v*.*.*"
 
 permissions:
   contents: write
@@ -52,6 +55,7 @@ jobs:
         run: powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\setup.ps1 -SkipGitHook
 
       - name: Build and publish release
+        if: github.event_name == 'workflow_dispatch'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -82,3 +86,17 @@ jobs:
           }
 
           powershell @releaseArgs
+
+      - name: Build and publish pushed tag
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tagName = $env:GITHUB_REF_NAME
+          if ($tagName -notmatch '^v\d+\.\d+\.\d+$') {
+            throw "Release tags must use vMAJOR.MINOR.PATCH format: $tagName"
+          }
+
+          $version = $tagName.Substring(1)
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\release.ps1 -Version $version -Package -Publish -ExistingTag -KeepUnreleased
