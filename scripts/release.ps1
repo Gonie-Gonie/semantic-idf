@@ -502,6 +502,19 @@ function Invoke-GitPush {
     git -C $RepoRoot push origin "v$TargetVersion"
 }
 
+function Test-GitHubReleaseExists {
+    param([string]$TagName)
+
+    $previousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        gh release view $TagName 1>$null 2>$null
+        return $LASTEXITCODE -eq 0
+    } finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+}
+
 function Invoke-GitHubRelease {
     param(
         [string]$TargetVersion,
@@ -519,8 +532,7 @@ function Invoke-GitHubRelease {
     }
 
     $tagName = "v$TargetVersion"
-    gh release view $tagName *> $null
-    if ($LASTEXITCODE -eq 0) {
+    if (Test-GitHubReleaseExists -TagName $tagName) {
         Write-Host "[release] GitHub Release already exists: $tagName"
         $editArgs = @(
             "release",
