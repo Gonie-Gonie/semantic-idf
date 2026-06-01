@@ -268,10 +268,10 @@ function renderHVACLoopView(loop, query) {
 
 function renderHVACLoopDiagram(loop) {
   const width = 1120;
-  const supplyY = 120;
-  const demandY = 330;
-  const leftX = 90;
-  const rightX = 1030;
+  const supplyY = 132;
+  const demandY = 354;
+  const leftX = 98;
+  const rightX = 1022;
   const supplyComponents = componentsForSide(loop.supplySide);
   const demandComponents = componentsForSide(loop.demandSide);
   const demandItems = demandComponents.length
@@ -280,23 +280,28 @@ function renderHVACLoopDiagram(loop) {
   const supplyItems = supplyComponents.length
     ? supplyComponents.map((component) => ({ kind: "component", component }))
     : [{ kind: "placeholder", label: t("hvac.supplySide") }];
-  const height = Math.max(450, 260 + Math.max(supplyItems.length, demandItems.length, 1) * 28);
-  const supplyPositions = distributeGraphPositions(supplyItems.length, leftX + 160, rightX - 160, supplyY);
-  const demandPositions = distributeGraphPositions(Math.max(demandItems.length, 1), rightX - 160, leftX + 160, demandY);
+  const height = Math.max(480, 300 + Math.max(supplyItems.length, demandItems.length, 1) * 20);
+  const loopPath = `M${leftX},${supplyY} H${rightX} V${demandY} H${leftX} V${supplyY}`;
+  const supplyPositions = distributeGraphPositions(supplyItems.length, leftX + 140, rightX - 140, supplyY);
+  const demandPositions = distributeGraphPositions(Math.max(demandItems.length, 1), rightX - 140, leftX + 140, demandY);
   const selectedKey = state.activeHVACGraphKey || `loop:${loop.id}`;
 
   return `
     <div class="hvac-graphic-shell">
       <svg class="hvac-loop-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHTML(loop.name || "HVAC loop")} loop diagram">
         <defs>
-          <marker id="hvacArrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
-            <path d="M0,0 L8,3 L0,6 Z" class="hvac-arrow-marker"></path>
+          <marker id="hvacLoopArrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+            <path d="M0,0 L8,3 L0,6 Z" class="hvac-loop-arrow-marker"></path>
           </marker>
         </defs>
+        <path class="hvac-loop-channel" d="${loopPath}"></path>
+        <line class="hvac-loop-divider" x1="${leftX - 34}" y1="${(supplyY + demandY) / 2}" x2="${rightX + 34}" y2="${(supplyY + demandY) / 2}"></line>
         <path class="hvac-loop-path ${selectedKey === `loop:${loop.id}` ? "selected" : ""}" data-hvac-graph-key="loop:${escapeHTML(loop.id)}"
-          d="M${leftX},${supplyY} H${rightX} V${demandY} H${leftX} V${supplyY}" marker-end="url(#hvacArrow)"></path>
+          d="${loopPath}" marker-end="url(#hvacLoopArrow)"></path>
         <text class="hvac-loop-label" x="${leftX}" y="54">${escapeHTML(loop.type)}</text>
         <text class="hvac-loop-name" x="${leftX}" y="76">${escapeHTML(loop.name || t("hvac.unnamedLoop"))}</text>
+        <text class="hvac-loop-side-note" x="${leftX + 26}" y="${(supplyY + demandY) / 2 - 8}">${escapeHTML(t("hvac.supplySide"))}</text>
+        <text class="hvac-loop-side-note" x="${leftX + 26}" y="${(supplyY + demandY) / 2 + 15}">${escapeHTML(t("hvac.demandSide"))}</text>
         ${renderLoopEndpoint(leftX, supplyY, loop.supplySide?.inletNode, t("hvac.supplyInlet"))}
         ${renderLoopEndpoint(rightX, supplyY, loop.supplySide?.outletNode, t("hvac.supplyOutlet"))}
         ${renderLoopEndpoint(rightX, demandY, loop.demandSide?.inletNode, t("hvac.demandInlet"))}
@@ -305,8 +310,8 @@ function renderHVACLoopDiagram(loop) {
         ${(demandItems.length ? demandItems : [{ kind: "placeholder", label: t("hvac.demandSide") }])
           .map((item, index) => renderLoopDiagramItem(item, demandPositions[index], "demand"))
           .join("")}
-        ${renderLoopBranchBadges(loop.supplySide, leftX + 20, supplyY + 68, t("hvac.supplyBranch"))}
-        ${renderLoopBranchBadges(loop.demandSide, rightX - 260, demandY + 68, t("hvac.demandBranch"))}
+        ${renderLoopBranchBadges(loop.supplySide, leftX + 34, supplyY + 44, t("hvac.supplyBranch"))}
+        ${renderLoopBranchBadges(loop.demandSide, rightX - 34, demandY - 58, t("hvac.demandBranch"))}
       </svg>
       <div class="hvac-legend">
         <span><i class="hvac-legend-supply"></i>${t("hvac.legendSupply")}</span>
@@ -323,8 +328,7 @@ function renderLoopEndpoint(x, y, nodeName, label) {
     <g class="hvac-loop-endpoint ${selected}" data-hvac-graph-key="${escapeHTML(key)}">
       <title>${escapeHTML([label, nodeName].filter(Boolean).join(" - "))}</title>
       <circle cx="${x}" cy="${y}" r="9"></circle>
-      <text x="${x}" y="${y - 17}" text-anchor="middle">${escapeHTML(label)}</text>
-      <text x="${x}" y="${y + 29}" text-anchor="middle">${escapeHTML(truncateText(nodeName || "N/A", 18))}</text>
+      <circle class="port-ring" cx="${x}" cy="${y}" r="4"></circle>
     </g>`;
 }
 
@@ -334,12 +338,10 @@ function renderLoopDiagramItem(item, position, side) {
   }
   if (item.kind === "zone") {
     const key = `zone:${item.zone}`;
-    return renderGraphNode({
+    return renderLoopEquipmentSymbol({
       key,
       x: position.x,
       y: position.y,
-      width: 118,
-      height: 54,
       label: item.zone,
       meta: "Zone",
       iconKind: "zone",
@@ -349,35 +351,46 @@ function renderLoopDiagramItem(item, position, side) {
   }
   if (item.kind === "placeholder") {
     const key = `placeholder:${side}`;
-    return renderGraphNode({
+    return renderLoopEquipmentSymbol({
       key,
       x: position.x,
       y: position.y,
-      width: 142,
-      height: 46,
       label: item.label,
       meta: "No parsed components",
       iconKind: "component",
-      shortLabel: "Empty",
-      className: `placeholder ${graphSelectionClass(key)}`,
+      shortLabel: "",
+      className: `placeholder ${side} ${graphSelectionClass(key)}`,
     });
   }
   const component = item.component;
   const key = componentGraphKey(component);
   const className = `${side} ${component.exists ? "" : "missing"} ${graphSelectionClass(key, componentGraphRelatedKeys(component))}`;
   const visual = componentVisual(component);
-  return renderGraphNode({
+  return renderLoopEquipmentSymbol({
     key,
     x: position.x,
     y: position.y,
-    width: 124,
-    height: 58,
     label: component.objectName || component.objectType || "Component",
     meta: component.objectType || "Component",
     iconKind: visual.iconKind,
     shortLabel: visual.shortLabel,
+    objectType: component.objectType || "",
     className,
   });
+}
+
+function renderLoopEquipmentSymbol({ key, x, y, label, meta, iconKind, shortLabel, objectType = "", className = "" }) {
+  const title = [label, meta].filter(Boolean).join(" - ");
+  const iconClass = escapeHTML(iconKind || "component");
+  return `
+    <g class="hvac-loop-equipment ${iconClass} ${className}" data-hvac-graph-key="${escapeHTML(key)}" aria-label="${escapeHTML(title)}">
+      <title>${escapeHTML(title)}</title>
+      <rect class="hvac-loop-equipment-hit" x="${x - 36}" y="${y - 38}" width="72" height="76" rx="10"></rect>
+      <circle class="pipe-port left" cx="${x - 42}" cy="${y}" r="5"></circle>
+      <circle class="pipe-port right" cx="${x + 42}" cy="${y}" r="5"></circle>
+      ${renderLoopEquipmentBody(iconKind, x, y, objectType)}
+      ${shortLabel ? `<text class="mini-label" x="${x}" y="${y + 35}" text-anchor="middle">${escapeHTML(truncateText(shortLabel, 12))}</text>` : ""}
+    </g>`;
 }
 
 function renderLoopBranchBadges(side = {}, x, y, label) {
@@ -389,12 +402,12 @@ function renderLoopBranchBadges(side = {}, x, y, label) {
     .slice(0, 4)
     .map((branch, index) => {
       const key = branchGraphKey(branch);
-      const itemY = y + index * 24;
+      const itemY = y + index * 22;
       return `
         <g class="hvac-branch-badge ${graphSelectionClass(key)}" data-hvac-graph-key="${escapeHTML(key)}">
           <title>${escapeHTML(`${label}: ${branch.name || "Branch"}`)}</title>
-          <rect x="${x}" y="${itemY}" width="240" height="18" rx="5"></rect>
-          <text x="${x + 8}" y="${itemY + 13}">${escapeHTML(label)}: ${escapeHTML(truncateText(branch.name || "Branch", 26))}</text>
+          <circle cx="${x}" cy="${itemY}" r="8"></circle>
+          <text x="${x}" y="${itemY + 4}" text-anchor="middle">${escapeHTML(index + 1)}</text>
         </g>`;
     })
     .join("");
@@ -1138,6 +1151,70 @@ function hvacVisualLabel(iconKind, objectType) {
       return "Terminal";
     default:
       return "Component";
+  }
+}
+
+function renderLoopEquipmentBody(kind, cx, cy, objectType = "") {
+  const lower = String(objectType || "").toLowerCase();
+  const coilTone = lower.includes("cooling") ? "cooling" : lower.includes("heating") ? "heating" : "mixed";
+  switch (kind) {
+    case "fan":
+      return `
+        <g class="hvac-loop-icon fan" aria-hidden="true">
+          <circle class="icon-case" cx="${cx}" cy="${cy}" r="18"></circle>
+          <path class="fan-blade" d="M${cx},${cy - 3} C${cx + 12},${cy - 19} ${cx + 21},${cy - 4} ${cx + 5},${cy + 1} Z"></path>
+          <path class="fan-blade" d="M${cx - 3},${cy + 2} C${cx - 21},${cy + 6} ${cx - 13},${cy + 21} ${cx + 1},${cy + 6} Z"></path>
+          <path class="fan-blade" d="M${cx + 2},${cy + 2} C${cx + 8},${cy + 20} ${cx + 21},${cy + 9} ${cx + 5},${cy - 3} Z"></path>
+          <circle class="icon-core" cx="${cx}" cy="${cy}" r="4"></circle>
+        </g>`;
+    case "coil":
+      return `
+        <g class="hvac-loop-icon coil ${coilTone}" aria-hidden="true">
+          <rect class="icon-case" x="${cx - 23}" y="${cy - 15}" width="46" height="30" rx="3"></rect>
+          <path class="coil-fin" d="M${cx - 17},${cy - 11} V${cy + 11} M${cx - 9},${cy - 11} V${cy + 11} M${cx - 1},${cy - 11} V${cy + 11} M${cx + 7},${cy - 11} V${cy + 11} M${cx + 15},${cy - 11} V${cy + 11}"></path>
+          <path class="coil-line" d="M${cx - 19},${cy + 8} C${cx - 14},${cy - 9} ${cx - 9},${cy - 9} ${cx - 4},${cy + 8} S${cx + 6},${cy + 25} ${cx + 11},${cy + 8} S${cx + 18},${cy - 9} ${cx + 21},${cy + 2}"></path>
+        </g>`;
+    case "pump":
+      return `
+        <g class="hvac-loop-icon pump" aria-hidden="true">
+          <rect class="icon-case" x="${cx - 23}" y="${cy - 12}" width="42" height="24" rx="10"></rect>
+          <circle class="pump-volute" cx="${cx - 12}" cy="${cy}" r="12"></circle>
+          <path class="pump-arrow" d="M${cx - 16},${cy} H${cx + 13} M${cx + 7},${cy - 6} L${cx + 15},${cy} L${cx + 7},${cy + 6}"></path>
+        </g>`;
+    case "chiller":
+      return `
+        <g class="hvac-loop-icon chiller" aria-hidden="true">
+          <rect class="icon-case" x="${cx - 24}" y="${cy - 17}" width="48" height="34" rx="4"></rect>
+          <rect class="icon-vent" x="${cx - 18}" y="${cy - 11}" width="36" height="7" rx="2"></rect>
+          <path class="snow" d="M${cx},${cy - 1} V${cy + 12} M${cx - 7},${cy + 2} L${cx + 7},${cy + 9} M${cx + 7},${cy + 2} L${cx - 7},${cy + 9}"></path>
+        </g>`;
+    case "boiler":
+      return `
+        <g class="hvac-loop-icon boiler" aria-hidden="true">
+          <rect class="icon-case" x="${cx - 22}" y="${cy - 17}" width="44" height="34" rx="4"></rect>
+          <path class="flame" d="M${cx},${cy - 10} C${cx + 11},${cy - 1} ${cx + 7},${cy + 13} ${cx},${cy + 13} C${cx - 8},${cy + 13} ${cx - 11},${cy + 2} ${cx - 3},${cy - 4} C${cx - 1},${cy - 6} ${cx - 1},${cy - 8} ${cx},${cy - 10} Z"></path>
+          <path class="flame-core" d="M${cx + 1},${cy - 2} C${cx + 5},${cy + 4} ${cx + 4},${cy + 10} ${cx},${cy + 10} C${cx - 4},${cy + 10} ${cx - 5},${cy + 4} ${cx + 1},${cy - 2} Z"></path>
+        </g>`;
+    case "terminal":
+      return `
+        <g class="hvac-loop-icon terminal" aria-hidden="true">
+          <rect class="duct left" x="${cx - 31}" y="${cy - 6}" width="12" height="12" rx="2"></rect>
+          <rect class="duct right" x="${cx + 19}" y="${cy - 6}" width="12" height="12" rx="2"></rect>
+          <rect class="icon-case" x="${cx - 21}" y="${cy - 15}" width="42" height="30" rx="4"></rect>
+          <path class="terminal-damper" d="M${cx - 12},${cy + 8} L${cx + 12},${cy - 8} M${cx - 12},${cy - 8} H${cx + 12} M${cx - 12},${cy + 8} H${cx + 12}"></path>
+        </g>`;
+    case "zone":
+      return `
+        <g class="hvac-loop-icon zone" aria-hidden="true">
+          <rect class="icon-case" x="${cx - 23}" y="${cy - 17}" width="46" height="34" rx="3"></rect>
+          <path class="room-line" d="M${cx - 11},${cy - 17} V${cy + 17} M${cx + 6},${cy - 17} V${cy + 17} M${cx - 23},${cy - 2} H${cx + 23}"></path>
+        </g>`;
+    default:
+      return `
+        <g class="hvac-loop-icon component" aria-hidden="true">
+          <rect class="icon-case" x="${cx - 22}" y="${cy - 15}" width="44" height="30" rx="5"></rect>
+          <path class="component-mark" d="M${cx - 11},${cy} H${cx + 11} M${cx},${cy - 10} V${cy + 10}"></path>
+        </g>`;
   }
 }
 

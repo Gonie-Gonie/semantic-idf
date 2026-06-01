@@ -1362,21 +1362,51 @@ textarea {
   background: var(--surface-3);
 }
 
+.hvac-loop-svg {
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--surface-2), transparent 68%) 1px, transparent 1px),
+    linear-gradient(0deg, color-mix(in srgb, var(--surface-2), transparent 68%) 1px, transparent 1px),
+    color-mix(in srgb, var(--surface-3), var(--surface) 50%);
+  background-size: 42px 42px;
+}
+
+.hvac-loop-channel {
+  fill: none;
+  stroke: color-mix(in srgb, var(--muted), var(--surface) 70%);
+  stroke-width: 70;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
+  pointer-events: none;
+}
+
 .hvac-loop-path {
   fill: none;
-  stroke: var(--teal);
-  stroke-width: 4;
+  stroke: var(--ink-strong);
+  stroke-width: 3;
   stroke-linejoin: round;
+  stroke-linecap: round;
   cursor: pointer;
 }
 
 .hvac-loop-path:hover,
 .hvac-loop-path.selected {
-  stroke-width: 6;
+  stroke: var(--focus);
+  stroke-width: 4.5;
+}
+
+.hvac-loop-arrow-marker {
+  fill: var(--ink-strong);
 }
 
 .hvac-arrow-marker {
   fill: var(--teal);
+}
+
+.hvac-loop-divider {
+  stroke: color-mix(in srgb, var(--muted), transparent 42%);
+  stroke-dasharray: 4 5;
+  stroke-width: 1;
+  pointer-events: none;
 }
 
 .hvac-loop-label,
@@ -1397,19 +1427,164 @@ textarea {
   font-size: 15px;
 }
 
+.hvac-loop-side-note {
+  fill: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+
 .hvac-loop-endpoint {
   cursor: pointer;
 }
 
 .hvac-loop-endpoint circle {
-  fill: var(--surface);
-  stroke: var(--teal);
-  stroke-width: 3;
+  fill: var(--surface-3);
+  stroke: var(--ink-strong);
+  stroke-width: 2.2;
+}
+
+.hvac-loop-endpoint .port-ring {
+  fill: var(--ink-strong);
+  stroke: var(--surface);
+  stroke-width: 1.5;
 }
 
 .hvac-loop-endpoint text {
   fill: var(--muted);
   font-size: 11px;
+}
+
+.hvac-loop-equipment {
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease;
+}
+
+.hvac-loop-equipment.supply {
+  color: var(--teal-dark);
+}
+
+.hvac-loop-equipment.demand,
+.hvac-loop-equipment.terminal {
+  color: var(--amber);
+}
+
+.hvac-loop-equipment.zone {
+  color: var(--focus);
+}
+
+.hvac-loop-equipment-hit {
+  fill: transparent;
+  stroke: none;
+  pointer-events: all;
+}
+
+.hvac-loop-equipment .pipe-port {
+  fill: var(--surface-3);
+  stroke: var(--ink-strong);
+  stroke-width: 2;
+}
+
+.hvac-loop-icon {
+  pointer-events: none;
+}
+
+.hvac-loop-icon .icon-case {
+  fill: color-mix(in srgb, var(--surface), currentColor 14%);
+  stroke: color-mix(in srgb, currentColor, var(--ink-strong) 24%);
+  stroke-width: 1.6;
+  filter: drop-shadow(0 1px 1px color-mix(in srgb, var(--ink), transparent 72%));
+}
+
+.hvac-loop-icon .fan-blade,
+.hvac-loop-icon .icon-core,
+.hvac-loop-icon .flame,
+.hvac-loop-icon .component-mark {
+  fill: currentColor;
+}
+
+.hvac-loop-icon .coil-fin,
+.hvac-loop-icon .coil-line,
+.hvac-loop-icon .pump-arrow,
+.hvac-loop-icon .snow,
+.hvac-loop-icon .terminal-damper,
+.hvac-loop-icon .room-line,
+.hvac-loop-icon .component-mark {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.hvac-loop-icon.coil.cooling .coil-line,
+.hvac-loop-icon.chiller .snow {
+  stroke: #2878d7;
+}
+
+.hvac-loop-icon.coil.heating .coil-line,
+.hvac-loop-icon.boiler .flame {
+  stroke: #c53b32;
+}
+
+.hvac-loop-icon.coil.mixed .coil-line {
+  stroke: #8a6a22;
+}
+
+.hvac-loop-icon .pump-volute,
+.hvac-loop-icon .duct,
+.hvac-loop-icon .icon-vent {
+  fill: color-mix(in srgb, var(--surface), currentColor 26%);
+  stroke: currentColor;
+  stroke-width: 1.3;
+}
+
+.hvac-loop-icon .flame {
+  fill: #d94a38;
+  stroke: #9f241d;
+}
+
+.hvac-loop-icon .flame-core {
+  fill: #ffd166;
+}
+
+.hvac-loop-equipment .mini-label {
+  fill: var(--muted);
+  font-size: 9.5px;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.hvac-loop-equipment:hover .icon-case,
+.hvac-loop-equipment.selected .icon-case,
+.hvac-loop-endpoint:hover circle,
+.hvac-loop-endpoint.selected circle,
+.hvac-branch-badge:hover circle,
+.hvac-branch-badge.selected circle {
+  stroke: var(--focus);
+  stroke-width: 2.8;
+  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--focus), transparent 55%));
+}
+
+.hvac-loop-equipment.related .icon-case,
+.hvac-loop-endpoint.related circle,
+.hvac-branch-badge.related circle {
+  stroke: var(--teal-dark);
+  stroke-width: 2.6;
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--teal), transparent 60%));
+}
+
+.hvac-loop-equipment.missing .icon-case {
+  stroke: var(--red);
+  stroke-dasharray: 5 4;
+}
+
+.hvac-loop-equipment.dimmed,
+.hvac-loop-endpoint.dimmed,
+.hvac-branch-badge.dimmed {
+  opacity: 0.18;
 }
 
 .hvac-graph-node {
@@ -1508,27 +1683,19 @@ textarea {
 }
 
 .hvac-graph-node:hover rect,
-.hvac-graph-node.selected rect,
-.hvac-loop-endpoint:hover circle,
-.hvac-loop-endpoint.selected circle,
-.hvac-branch-badge:hover rect,
-.hvac-branch-badge.selected rect {
+.hvac-graph-node.selected rect {
   stroke: var(--focus);
   stroke-width: 3;
   filter: drop-shadow(0 0 5px color-mix(in srgb, var(--focus), transparent 55%));
 }
 
-.hvac-graph-node.related rect,
-.hvac-loop-endpoint.related circle,
-.hvac-branch-badge.related rect {
+.hvac-graph-node.related rect {
   stroke: var(--teal-dark);
   stroke-width: 3;
   filter: drop-shadow(0 0 4px color-mix(in srgb, var(--teal), transparent 60%));
 }
 
-.hvac-graph-node.dimmed,
-.hvac-loop-endpoint.dimmed,
-.hvac-branch-badge.dimmed {
+.hvac-graph-node.dimmed {
   opacity: 0.2;
 }
 
@@ -1536,14 +1703,17 @@ textarea {
   cursor: pointer;
 }
 
-.hvac-branch-badge rect {
-  fill: var(--surface);
-  stroke: var(--line);
+.hvac-branch-badge circle {
+  fill: var(--surface-3);
+  stroke: var(--ink-strong);
+  stroke-width: 1.8;
 }
 
 .hvac-branch-badge text {
-  fill: var(--muted);
-  font-size: 11px;
+  fill: var(--ink-strong);
+  font-size: 9px;
+  font-weight: 800;
+  pointer-events: none;
 }
 
 .hvac-graph-link {
