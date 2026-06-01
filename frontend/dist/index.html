@@ -118,8 +118,12 @@
                 <section class="profile-overview" aria-label="Profile overview">
                   <div id="profileOverview" class="profile-overview-list"></div>
                 </section>
-                <section class="profile-detail" aria-label="Profile detail">
-                  <div id="profileDetail" class="profile-detail-panel"></div>
+                <section class="profile-visual" aria-label="Profile graph">
+                  <div class="profile-section-head">
+                    <h3 data-i18n="profile.graph">Profile Graph</h3>
+                    <span id="profileGraphStats" class="tool-muted">Annual heatmap</span>
+                  </div>
+                  <div id="profileGraph" class="profile-graph"></div>
                 </section>
               </div>
               <section class="profile-section">
@@ -131,10 +135,9 @@
               </section>
               <section class="profile-section">
                 <div class="profile-section-head">
-                  <h3 data-i18n="profile.graph">Profile Graph</h3>
-                  <span id="profileGraphStats" class="tool-muted">Representative day</span>
+                  <h3 data-i18n="profile.sourceObjects">Profile source objects</h3>
                 </div>
-                <div id="profileGraph" class="profile-graph"></div>
+                <div id="profileDetail" class="profile-detail-panel"></div>
               </section>
             </div>
             <div id="profileApplyDialog" class="profile-dialog hidden" role="dialog" aria-modal="true" aria-labelledby="profileApplyTitle">

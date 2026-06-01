@@ -14,6 +14,7 @@ export function renderProfile(profile = state.report?.profile) {
   }
 
   state.profileSettings = mergeProfileSettings(profile.defaultSettings, state.profileSettings || getCurrentAppSettings().profile);
+  state.activeProfileView = state.activeProfileView === "zone" ? "zone" : "profile";
   lastProfileView = buildProfileView(profile, state.profileSettings);
   if (!state.activeProfileGroupId || !lastProfileView.groups.some((group) => group.id === state.activeProfileGroupId)) {
     state.activeProfileGroupId = lastProfileView.groups[0]?.id || "";
@@ -21,22 +22,31 @@ export function renderProfile(profile = state.report?.profile) {
 
   const query = profileQuery();
   const visibleGroups = lastProfileView.groups.filter((group) => profileGroupMatchesQuery(group, query));
+  const visibleRows = lastProfileView.matrix.filter((row) => profileMatrixRowMatchesQuery(row, query));
   if (query && !visibleGroups.some((group) => group.id === state.activeProfileGroupId)) {
     state.activeProfileGroupId = visibleGroups[0]?.id || "";
+  }
+  if (!state.activeProfileZoneName || !lastProfileView.matrix.some((row) => row.zoneName === state.activeProfileZoneName)) {
+    state.activeProfileZoneName = visibleRows[0]?.zoneName || lastProfileView.matrix[0]?.zoneName || "";
+  }
+  if (state.activeProfileView === "zone" && query && !visibleRows.some((row) => row.zoneName === state.activeProfileZoneName)) {
+    state.activeProfileZoneName = visibleRows[0]?.zoneName || "";
   }
   const selectedGroup = query
     ? visibleGroups.find((group) => group.id === state.activeProfileGroupId) || null
     : selectedProfileGroup();
+  const selectedZone = state.activeProfileView === "zone" ? selectedProfileZoneRow() : null;
+  const graphGroup = selectedZone ? groupForZoneName(selectedZone.zoneName) : selectedGroup;
 
   elements.profileStats.textContent = query
     ? t("count.profilesOf", { shown: visibleGroups.length, total: lastProfileView.groups.length, items: profile.itemCount || 0 })
     : t("count.profiles", { profiles: lastProfileView.groups.length, items: profile.itemCount || 0 });
-  elements.profileApplyButton.disabled = !selectedGroup;
+  elements.profileApplyButton.disabled = !graphGroup;
   renderProfileSettings(profile);
-  renderProfileOverview(visibleGroups);
-  renderProfileDetail(selectedGroup, profile);
+  renderProfileOverview(visibleGroups, visibleRows);
+  renderProfileGraph(graphGroup, profile, selectedZone);
   renderProfileMatrix(lastProfileView.matrix, query, profile);
-  renderProfileGraph(selectedGroup, profile);
+  renderProfileDetail(graphGroup, profile, selectedZone);
   bindProfileControls(profile);
 }
 
@@ -48,7 +58,7 @@ function renderEmptyProfile() {
   elements.profileMatrix.innerHTML = `<div class="empty">${t("profile.noMatrix")}</div>`;
   elements.profileMatrixStats.textContent = t("count.zones", { count: 0 });
   elements.profileGraph.innerHTML = `<div class="empty">${t("profile.noGraph")}</div>`;
-  elements.profileGraphStats.textContent = t("graph.representativeDay");
+  elements.profileGraphStats.textContent = t("graph.annualHeatmap");
   elements.profileApplyButton.disabled = true;
 }
 
@@ -57,6 +67,17 @@ function renderProfileSettings(profile) {
   const dimensions = profile.dimensions || [];
   elements.profileSettings.innerHTML = `
     <div class="profile-live-controls">
+      <div class="profile-live-group">
+        <span class="profile-live-label">${t("profile.inspectBy")}</span>
+        <div class="profile-view-switch" role="tablist" aria-label="${escapeHTML(t("profile.inspectBy"))}">
+          <button class="profile-segment-button ${state.activeProfileView === "profile" ? "active" : ""}" type="button" data-profile-view="profile">
+            ${escapeHTML(t("profile.viewProfiles"))}
+          </button>
+          <button class="profile-segment-button ${state.activeProfileView === "zone" ? "active" : ""}" type="button" data-profile-view="zone">
+            ${escapeHTML(t("profile.viewZones"))}
+          </button>
+        </div>
+      </div>
       <div class="profile-live-group">
         <span class="profile-live-label">${t("common.dimensions")}</span>
         <div class="profile-toggle-row">
@@ -104,7 +125,13 @@ function optionHTML(value, label, selected) {
   return `<option value="${escapeHTML(value)}" ${String(selected) === String(value) ? "selected" : ""}>${escapeHTML(label)}</option>`;
 }
 
-function renderProfileOverview(groups) {
+function renderProfileOverview(groups, rows) {
+  if (state.activeProfileView === "zone") {
+    elements.profileOverview.innerHTML = rows.length
+      ? rows.map(renderProfileZoneCard).join("")
+      : `<div class="empty">${t("profile.noMatchingZones")}</div>`;
+    return;
+  }
   elements.profileOverview.innerHTML = groups.length
     ? groups.map(renderProfileGroupCard).join("")
     : `<div class="empty">${t("profile.noMatchingGroups")}</div>`;
@@ -123,24 +150,39 @@ function renderProfileGroupCard(group) {
     </button>`;
 }
 
-function renderProfileDetail(group, profile) {
+function renderProfileZoneCard(row) {
+  const active = row.zoneName === state.activeProfileZoneName ? "active" : "";
+  return `
+    <button class="profile-group-card profile-zone-card ${active}" data-profile-zone="${escapeHTML(row.zoneName)}" type="button">
+      <span>
+        <strong>${escapeHTML(row.zoneName)}</strong>
+        <small>${escapeHTML(row.groupName || t("profile.noProfileGroup"))}</small>
+      </span>
+      <span class="profile-card-zones">${escapeHTML(t("profile.receivesProfile", { profile: row.groupName || t("profile.noProfileGroup") }))}</span>
+      <span class="profile-card-metrics">${row.dimensions.map((dimension) => `${escapeHTML(dimension.label)} ${escapeHTML(dimension.displayValue)}`).join(" / ")}</span>
+    </button>`;
+}
+
+function renderProfileDetail(group, profile, zoneRow = null) {
   if (!group) {
     elements.profileDetail.innerHTML = `<div class="empty">${t("profile.noProfileGroup")}</div>`;
     return;
   }
   const itemMap = profileItemMap(profile);
-  const items = group.itemIds.map((id) => itemMap.get(id)).filter(Boolean);
-  const warnings = [...group.warnings, ...items.flatMap((item) => item.warnings || [])];
+  const dimensions = zoneRow?.dimensions || group.dimensions;
+  const itemIds = zoneRow?.dimensions?.flatMap((dimension) => dimension.itemIds || []) || group.itemIds;
+  const items = uniqueProfileItems(itemIds.map((id) => itemMap.get(id)).filter(Boolean));
+  const warnings = [...(zoneRow?.warnings || []), ...group.warnings, ...items.flatMap((item) => item.warnings || [])];
   elements.profileDetail.innerHTML = `
     <div class="profile-detail-head">
       <div>
-        <h3>${escapeHTML(group.name)}</h3>
-        <p>${escapeHTML(group.zoneNames.join(", "))}</p>
+        <h3>${escapeHTML(zoneRow ? zoneRow.zoneName : group.name)}</h3>
+        <p>${escapeHTML(zoneRow ? t("profile.receivesProfile", { profile: group.name }) : group.zoneNames.join(", "))}</p>
       </div>
       <span class="badge">${escapeHTML(t("count.zones", { count: group.zoneCount }))}</span>
     </div>
     <div class="profile-dimension-grid">
-      ${group.dimensions.map(renderProfileDimensionSummary).join("")}
+      ${dimensions.map(renderProfileDimensionSummary).join("")}
     </div>
     ${warnings.length ? `<div class="profile-warning-list">${warnings.map(renderProfileWarning).join("")}</div>` : ""}
     <div class="profile-item-table" role="table" aria-label="${escapeHTML(t("profile.sourceObjects"))}">
@@ -195,12 +237,13 @@ function renderProfileMatrix(rows, query, profile) {
           ${visibleRows
             .map(
               (row) => `
-                <tr class="${selectedProfileGroup()?.zoneNames.includes(row.zoneName) ? "active" : ""}" data-profile-zone="${escapeHTML(row.zoneName)}">
+                <tr class="${profileMatrixRowActive(row) ? "active" : ""}" data-profile-zone="${escapeHTML(row.zoneName)}">
                   <th>
                     <button class="profile-object-link navigable-row" data-jump-object-index="${escapeHTML(row.zoneObjectIndex)}" data-jump-object-type="Zone" type="button">
                       #${escapeHTML(Number(row.zoneObjectIndex) + 1)}
                     </button>
                     ${escapeHTML(row.zoneName)}
+                    <small>${escapeHTML(row.groupName || "")}</small>
                   </th>
                   ${dimensions
                     .map((dimension) => {
@@ -238,7 +281,7 @@ function renderProfileMatrixCell(summary, itemMap) {
     </td>`;
 }
 
-function renderProfileGraph(group, profile) {
+function renderProfileGraph(group, profile, zoneRow = null) {
   if (!group) {
     elements.profileGraph.innerHTML = `<div class="empty">${t("profile.graphSelect")}</div>`;
     return;
@@ -247,7 +290,8 @@ function renderProfileGraph(group, profile) {
   const scaleMode = state.profileGraphScaleMode || "auto";
   const schedules = new Map((profile.schedules || []).map((schedule) => [schedule.scheduleName, schedule]));
   const itemMap = profileItemMap(profile);
-  const dimensions = group.dimensions
+  const sourceDimensions = zoneRow?.dimensions || group.dimensions;
+  const dimensions = sourceDimensions
     .filter((dimension) => state.profileSettings.enabledDimensions.includes(dimension.dimension))
     .map((dimension) => {
       const item = dimension.itemIds.map((id) => itemMap.get(id)).find((candidate) => candidate?.scheduleName) || null;
@@ -262,6 +306,9 @@ function renderProfileGraph(group, profile) {
         <select id="profileGraphViewMode">
           ${optionHTML("annual_heatmap", t("graph.annualHeatmap"), viewMode)}
           ${optionHTML("representative_week", t("graph.representativeWeek"), viewMode)}
+          ${optionHTML("hourly_average_by_daytype", t("graph.hourlyByDaytype"), viewMode)}
+          ${optionHTML("monthly_average", t("graph.monthlyAverage"), viewMode)}
+          ${optionHTML("load_duration", t("graph.loadDuration"), viewMode)}
           ${optionHTML("period_rules", t("graph.periodRules"), viewMode)}
           ${optionHTML("representative_day", t("graph.representativeDay"), viewMode)}
         </select>
@@ -275,21 +322,36 @@ function renderProfileGraph(group, profile) {
         </select>
       </label>
     </div>
-    ${renderProfileGraphSummary(group)}
+    ${renderProfileGraphSummary(group, zoneRow, sourceDimensions)}
     <div class="profile-graph-grid">
       ${cards || `<div class="empty">${t("profile.graphNoValues")}</div>`}
     </div>`;
 }
 
-function renderProfileGraphSummary(group) {
+function renderProfileGraphSummary(group, zoneRow, dimensions) {
+  const title = zoneRow ? zoneRow.zoneName : group.name;
+  const subtitle = zoneRow ? t("profile.receivesProfile", { profile: group.name }) : t("profile.profileServesZones", { count: group.zoneCount });
   return `
     <div class="profile-graph-summary">
       <div>
-        <strong>${escapeHTML(group.name)}</strong>
-        <span>${escapeHTML(group.zoneNames.join(", "))}</span>
+        <strong>${escapeHTML(title)}</strong>
+        <span>${escapeHTML(subtitle)}</span>
+      </div>
+      <div class="profile-connection-row">
+        <span>${escapeHTML(zoneRow ? t("profile.sameProfileZones") : t("profile.connectedZones"))}</span>
+        <div>
+          ${group.zoneNames
+            .map(
+              (zoneName) => `
+                <button class="${zoneName === zoneRow?.zoneName ? "active" : ""}" type="button" data-profile-zone-ref="${escapeHTML(zoneName)}" title="${escapeHTML(zoneName)}">
+                  ${escapeHTML(zoneName)}
+                </button>`,
+            )
+            .join("")}
+        </div>
       </div>
       <div class="profile-graph-summary-metrics">
-        ${group.dimensions.map(renderProfileDimensionSummary).join("")}
+        ${dimensions.map(renderProfileDimensionSummary).join("")}
       </div>
     </div>`;
 }
@@ -337,6 +399,30 @@ function graphDataForDimension(dimension, schedule, viewMode) {
         kind: "line",
         label: `${schedule?.detectedPattern || t("profile.noSchedule")} / ${t("graph.representativeWeek")}`,
         values: scheduleWeeklyProfile(schedule),
+        warning: unresolvedWarning,
+      };
+    case "hourly_average_by_daytype": {
+      const profiles = daytypeAverageProfiles(schedule);
+      return {
+        kind: "day_profiles",
+        label: `${schedule?.detectedPattern || t("profile.noSchedule")} / ${t("graph.hourlyByDaytype")}`,
+        values: profiles.flatMap((profile) => profile.values),
+        profiles,
+        warning: unresolvedWarning,
+      };
+    }
+    case "monthly_average":
+      return {
+        kind: "line",
+        label: `${schedule?.detectedPattern || t("profile.noSchedule")} / ${t("graph.monthlyAverage")}`,
+        values: monthlyAverageValues(schedule),
+        warning: unresolvedWarning,
+      };
+    case "load_duration":
+      return {
+        kind: "line",
+        label: `${schedule?.detectedPattern || t("profile.noSchedule")} / ${t("graph.loadDuration")}`,
+        values: annualScheduleValues(schedule).sort((a, b) => b - a),
         warning: unresolvedWarning,
       };
     case "period_rules":
@@ -440,7 +526,7 @@ function renderHeatmap(values, max, label) {
 }
 
 function currentGraphViewMode() {
-  const allowed = new Set(["annual_heatmap", "representative_week", "period_rules", "representative_day"]);
+  const allowed = new Set(["annual_heatmap", "representative_week", "hourly_average_by_daytype", "monthly_average", "load_duration", "period_rules", "representative_day"]);
   if (allowed.has(state.profileGraphViewMode)) {
     return state.profileGraphViewMode;
   }
@@ -451,6 +537,12 @@ function graphStatsLabel(viewMode, graphMode) {
   switch (viewMode) {
     case "representative_week":
       return graphMode === "multiplier" ? t("graph.multiplierWeek") : t("graph.actualWeek");
+    case "hourly_average_by_daytype":
+      return `${graphMode === "multiplier" ? t("graph.multiplier") : t("graph.actualValue")}, ${t("graph.hourlyByDaytype")}`;
+    case "monthly_average":
+      return `${graphMode === "multiplier" ? t("graph.multiplier") : t("graph.actualValue")}, ${t("graph.monthlyAverage")}`;
+    case "load_duration":
+      return `${graphMode === "multiplier" ? t("graph.multiplier") : t("graph.actualValue")}, ${t("graph.loadDuration")}`;
     case "period_rules":
       return graphMode === "multiplier" ? t("graph.multiplierRules") : t("graph.actualRules");
     case "representative_day":
@@ -511,6 +603,46 @@ function annualScheduleValues(schedule) {
     values.push(...profileFromRule(rule));
   }
   return values;
+}
+
+function monthlyAverageValues(schedule) {
+  const values = annualScheduleValues(schedule);
+  const monthDays = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  let offset = 0;
+  return monthDays.map((days) => {
+    const hours = days * 24;
+    const monthValues = values.slice(offset, offset + hours);
+    offset += hours;
+    if (!monthValues.length) {
+      return 0;
+    }
+    return monthValues.reduce((sum, value) => sum + value, 0) / monthValues.length;
+  });
+}
+
+function daytypeAverageProfiles(schedule) {
+  const values = annualScheduleValues(schedule);
+  const buckets = {
+    weekday: Array.from({ length: 24 }, () => []),
+    saturday: Array.from({ length: 24 }, () => []),
+    sunday: Array.from({ length: 24 }, () => []),
+  };
+  for (let day = 1; day <= 365; day += 1) {
+    const dayOfWeek = (day - 1) % 7;
+    const key = dayOfWeek === 5 ? "saturday" : dayOfWeek === 6 ? "sunday" : "weekday";
+    for (let hour = 0; hour < 24; hour += 1) {
+      buckets[key][hour].push(Number(values[(day - 1) * 24 + hour]) || 0);
+    }
+  }
+  return [
+    { label: t("day.weekday"), values: averageHourlyBucket(buckets.weekday) },
+    { label: t("day.saturday"), values: averageHourlyBucket(buckets.saturday) },
+    { label: t("day.sunday"), values: averageHourlyBucket(buckets.sunday) },
+  ];
+}
+
+function averageHourlyBucket(bucket) {
+  return bucket.map((values) => (values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0));
 }
 
 function profileFromRule(rule) {
@@ -579,9 +711,24 @@ function renderProfileWarning(warning) {
 }
 
 function bindProfileControls(profile) {
+  elements.profileSettings.querySelectorAll("[data-profile-view]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.activeProfileView = button.dataset.profileView === "zone" ? "zone" : "profile";
+      renderProfile(profile);
+    });
+  });
   elements.profileOverview.querySelectorAll("[data-profile-group-id]").forEach((button) => {
     button.addEventListener("click", () => {
+      state.activeProfileView = "profile";
       state.activeProfileGroupId = button.dataset.profileGroupId || "";
+      const group = selectedProfileGroup();
+      state.activeProfileZoneName = group?.zoneNames?.[0] || state.activeProfileZoneName;
+      renderProfile(profile);
+    });
+  });
+  elements.profileOverview.querySelectorAll("[data-profile-zone]").forEach((button) => {
+    button.addEventListener("click", () => {
+      selectProfileZone(button.dataset.profileZone || "");
       renderProfile(profile);
     });
   });
@@ -612,13 +759,18 @@ function bindProfileControls(profile) {
     state.profileGraphScaleMode = graphScale.value;
     renderProfile(profile);
   });
+  elements.profileGraph.querySelectorAll("[data-profile-zone-ref]").forEach((button) => {
+    button.addEventListener("click", () => {
+      selectProfileZone(button.dataset.profileZoneRef || "");
+      renderProfile(profile);
+    });
+  });
   elements.profileMatrix.querySelectorAll("[data-profile-zone]").forEach((row) => {
-    row.addEventListener("click", () => {
-      const group = lastProfileView?.groups.find((candidate) => candidate.zoneNames.includes(row.dataset.profileZone));
-      if (!group) {
+    row.addEventListener("click", (event) => {
+      if (event.target.closest(".profile-object-link")) {
         return;
       }
-      state.activeProfileGroupId = group.id;
+      selectProfileZone(row.dataset.profileZone || "");
       renderProfile(profile);
     });
   });
@@ -813,7 +965,16 @@ function buildProfileView(profile, settings) {
     warnings: zone.warnings || [],
   }));
   const groups = buildProfileGroups(profile.zoneProfiles || [], settings);
-  return { dimensions, matrix, groups };
+  const groupByZone = new Map();
+  groups.forEach((group) => {
+    group.zoneNames.forEach((zoneName) => groupByZone.set(zoneName, group));
+  });
+  matrix.forEach((row) => {
+    const group = groupByZone.get(row.zoneName);
+    row.groupId = group?.id || "";
+    row.groupName = group?.name || "";
+  });
+  return { dimensions, matrix, groups, groupByZone };
 }
 
 function buildProfileGroups(zones, settings) {
@@ -932,6 +1093,41 @@ function persistProfileSettings() {
 
 function selectedProfileGroup() {
   return lastProfileView?.groups.find((group) => group.id === state.activeProfileGroupId) || lastProfileView?.groups[0] || null;
+}
+
+function selectedProfileZoneRow() {
+  return lastProfileView?.matrix.find((row) => row.zoneName === state.activeProfileZoneName) || lastProfileView?.matrix[0] || null;
+}
+
+function groupForZoneName(zoneName) {
+  return lastProfileView?.groupByZone?.get(zoneName) || lastProfileView?.groups.find((group) => group.zoneNames.includes(zoneName)) || null;
+}
+
+function selectProfileZone(zoneName) {
+  const row = lastProfileView?.matrix.find((candidate) => candidate.zoneName === zoneName);
+  if (!row) {
+    return;
+  }
+  state.activeProfileView = "zone";
+  state.activeProfileZoneName = row.zoneName;
+  state.activeProfileGroupId = row.groupId || groupForZoneName(row.zoneName)?.id || state.activeProfileGroupId;
+}
+
+function profileMatrixRowActive(row) {
+  if (state.activeProfileView === "zone") {
+    return row.zoneName === state.activeProfileZoneName;
+  }
+  return selectedProfileGroup()?.zoneNames.includes(row.zoneName);
+}
+
+function uniqueProfileItems(items) {
+  const byID = new Map();
+  items.forEach((item) => {
+    if (item?.id && !byID.has(item.id)) {
+      byID.set(item.id, item);
+    }
+  });
+  return [...byID.values()];
 }
 
 function profileItemMap(profile) {

@@ -34,7 +34,7 @@ export function renderEmpty() {
     elements.profileDetail.innerHTML = `<div class="empty">${t("profile.noProfile")}</div>`;
     elements.profileMatrixStats.textContent = t("count.zones", { count: 0 });
     elements.profileMatrix.innerHTML = `<div class="empty">${t("profile.noMatrix")}</div>`;
-    elements.profileGraphStats.textContent = t("graph.representativeDay");
+    elements.profileGraphStats.textContent = t("graph.annualHeatmap");
     elements.profileGraph.innerHTML = `<div class="empty">${t("profile.noGraph")}</div>`;
     elements.profileApplyButton.disabled = true;
   }

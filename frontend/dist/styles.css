@@ -2471,6 +2471,34 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
   flex-wrap: wrap;
 }
 
+.profile-view-switch {
+  min-height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--control);
+  padding: 3px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.profile-segment-button {
+  min-height: 24px;
+  border-color: transparent;
+  border-radius: 5px;
+  background: transparent;
+  padding: 0 9px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.profile-segment-button.active,
+.profile-segment-button:hover {
+  background: var(--surface);
+  color: var(--teal-dark);
+  border-color: var(--teal);
+}
+
 .profile-live-select {
   width: 180px;
 }
@@ -2575,12 +2603,20 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 
 .profile-layout {
   display: grid;
-  grid-template-columns: minmax(260px, 36%) minmax(360px, 1fr);
+  grid-template-columns: minmax(250px, 32%) minmax(420px, 1fr);
   gap: 12px;
   align-items: start;
 }
 
+.profile-visual {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+}
+
 .profile-overview-list {
+  max-height: min(650px, calc(100vh - 260px));
+  overflow: auto;
   display: grid;
   gap: 8px;
 }
@@ -2610,6 +2646,10 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
   background: var(--selected-soft);
 }
 
+.profile-zone-card.active {
+  border-color: var(--focus);
+}
+
 .profile-group-card > span:first-child {
   min-width: 0;
   display: flex;
@@ -2636,7 +2676,7 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 }
 
 .profile-detail-panel {
-  min-height: 220px;
+  min-height: 120px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface);
@@ -2902,7 +2942,7 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
   background: var(--surface);
   padding: 10px;
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .profile-graph-summary > div:first-child {
@@ -2923,6 +2963,48 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
   font-size: 12px;
 }
 
+.profile-connection-row {
+  min-width: 0;
+  border-top: 1px solid var(--surface-2);
+  padding-top: 7px;
+  display: grid;
+  gap: 5px;
+}
+
+.profile-connection-row > span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.profile-connection-row > div {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.profile-connection-row button {
+  max-width: 180px;
+  min-height: 24px;
+  border-color: var(--surface-2);
+  border-radius: 999px;
+  background: var(--surface-3);
+  color: var(--ink);
+  padding: 0 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+}
+
+.profile-connection-row button:hover,
+.profile-connection-row button.active {
+  border-color: var(--teal);
+  background: var(--teal-soft);
+  color: var(--teal-dark);
+}
+
 .profile-graph-summary-metrics {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
@@ -2931,7 +3013,7 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 
 .profile-graph-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 10px;
 }
 
@@ -2975,7 +3057,7 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 }
 
 .profile-graph-card .profile-heatmap {
-  height: 132px;
+  height: 150px;
   image-rendering: pixelated;
 }
 
