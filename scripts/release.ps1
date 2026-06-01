@@ -700,8 +700,8 @@ if ($shouldPackage) {
 if ($shouldCommit) {
     $metadataPaths = @(
         $wailsPath,
-        $appInfoPath,
-        $staticHTMLPaths,
+        $appInfoPath
+    ) + $staticHTMLPaths + @(
         $changelogPath,
         $unreleasedPath,
         $versionedNotesPath
