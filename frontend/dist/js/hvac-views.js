@@ -268,23 +268,37 @@ function renderHVACLoopView(loop, query) {
 
 function renderHVACLoopDiagram(loop) {
   const width = 1120;
-  const supplyY = 132;
-  const demandY = 354;
   const leftX = 98;
   const rightX = 1022;
-  const supplyComponents = componentsForSide(loop.supplySide);
-  const demandComponents = componentsForSide(loop.demandSide);
-  const demandItems = demandComponents.length
-    ? demandComponents.map((component) => ({ kind: "component", component }))
-    : (loop.relatedZones || []).map((zone) => ({ kind: "zone", zone }));
-  const supplyItems = supplyComponents.length
-    ? supplyComponents.map((component) => ({ kind: "component", component }))
+  const branchStartX = 220;
+  const branchEndX = 900;
+  const supplyFallbackItems = componentsForSide(loop.supplySide).length
+    ? componentsForSide(loop.supplySide).map((component) => ({ kind: "component", component }))
     : [{ kind: "placeholder", label: t("hvac.supplySide") }];
-  const height = Math.max(480, 300 + Math.max(supplyItems.length, demandItems.length, 1) * 20);
-  const loopPath = `M${leftX},${supplyY} H${rightX} V${demandY} H${leftX} V${supplyY}`;
-  const supplyPositions = distributeGraphPositions(supplyItems.length, leftX + 140, rightX - 140, supplyY);
-  const demandPositions = distributeGraphPositions(Math.max(demandItems.length, 1), rightX - 140, leftX + 140, demandY);
+  const demandFallbackItems = componentsForSide(loop.demandSide).length
+    ? componentsForSide(loop.demandSide).map((component) => ({ kind: "component", component }))
+    : (loop.relatedZones || []).map((zone) => ({ kind: "zone", zone }));
+  const supplyLayout = buildLoopSideLayout(loop.supplySide, supplyFallbackItems, {
+    side: "supply",
+    top: 102,
+    leftX,
+    rightX,
+    branchStartX,
+    branchEndX,
+    reverse: false,
+  });
+  const demandLayout = buildLoopSideLayout(loop.demandSide, demandFallbackItems.length ? demandFallbackItems : [{ kind: "placeholder", label: t("hvac.demandSide") }], {
+    side: "demand",
+    top: supplyLayout.top + supplyLayout.height + 110,
+    leftX,
+    rightX,
+    branchStartX,
+    branchEndX,
+    reverse: true,
+  });
+  const height = demandLayout.top + demandLayout.height + 92;
   const selectedKey = state.activeHVACGraphKey || `loop:${loop.id}`;
+  const loopSelected = selectedKey === `loop:${loop.id}` ? "selected" : "";
 
   return `
     <div class="hvac-graphic-shell">
@@ -294,24 +308,16 @@ function renderHVACLoopDiagram(loop) {
             <path d="M0,0 L8,3 L0,6 Z" class="hvac-loop-arrow-marker"></path>
           </marker>
         </defs>
-        <path class="hvac-loop-channel" d="${loopPath}"></path>
-        <line class="hvac-loop-divider" x1="${leftX - 34}" y1="${(supplyY + demandY) / 2}" x2="${rightX + 34}" y2="${(supplyY + demandY) / 2}"></line>
-        <path class="hvac-loop-path ${selectedKey === `loop:${loop.id}` ? "selected" : ""}" data-hvac-graph-key="loop:${escapeHTML(loop.id)}"
-          d="${loopPath}" marker-end="url(#hvacLoopArrow)"></path>
         <text class="hvac-loop-label" x="${leftX}" y="54">${escapeHTML(loop.type)}</text>
         <text class="hvac-loop-name" x="${leftX}" y="76">${escapeHTML(loop.name || t("hvac.unnamedLoop"))}</text>
-        <text class="hvac-loop-side-note" x="${leftX + 26}" y="${(supplyY + demandY) / 2 - 8}">${escapeHTML(t("hvac.supplySide"))}</text>
-        <text class="hvac-loop-side-note" x="${leftX + 26}" y="${(supplyY + demandY) / 2 + 15}">${escapeHTML(t("hvac.demandSide"))}</text>
-        ${renderLoopEndpoint(leftX, supplyY, loop.supplySide?.inletNode, t("hvac.supplyInlet"))}
-        ${renderLoopEndpoint(rightX, supplyY, loop.supplySide?.outletNode, t("hvac.supplyOutlet"))}
-        ${renderLoopEndpoint(rightX, demandY, loop.demandSide?.inletNode, t("hvac.demandInlet"))}
-        ${renderLoopEndpoint(leftX, demandY, loop.demandSide?.outletNode, t("hvac.demandOutlet"))}
-        ${supplyItems.map((item, index) => renderLoopDiagramItem(item, supplyPositions[index], "supply")).join("")}
-        ${(demandItems.length ? demandItems : [{ kind: "placeholder", label: t("hvac.demandSide") }])
-          .map((item, index) => renderLoopDiagramItem(item, demandPositions[index], "demand"))
-          .join("")}
-        ${renderLoopBranchBadges(loop.supplySide, leftX + 34, supplyY + 44, t("hvac.supplyBranch"))}
-        ${renderLoopBranchBadges(loop.demandSide, rightX - 34, demandY - 58, t("hvac.demandBranch"))}
+        <path class="hvac-loop-connector ${loopSelected}" data-hvac-graph-key="loop:${escapeHTML(loop.id)}"
+          d="M${rightX},${supplyLayout.busY} V${demandLayout.busY} M${leftX},${demandLayout.busY} V${supplyLayout.busY}" marker-end="url(#hvacLoopArrow)"></path>
+        ${renderLoopSideNetwork(supplyLayout, loop)}
+        ${renderLoopSideNetwork(demandLayout, loop)}
+        ${renderLoopEndpoint(leftX, supplyLayout.busY, loop.supplySide?.inletNode, t("hvac.supplyInlet"))}
+        ${renderLoopEndpoint(rightX, supplyLayout.busY, loop.supplySide?.outletNode, t("hvac.supplyOutlet"))}
+        ${renderLoopEndpoint(rightX, demandLayout.busY, loop.demandSide?.inletNode, t("hvac.demandInlet"))}
+        ${renderLoopEndpoint(leftX, demandLayout.busY, loop.demandSide?.outletNode, t("hvac.demandOutlet"))}
       </svg>
       <div class="hvac-legend">
         <span><i class="hvac-legend-supply"></i>${t("hvac.legendSupply")}</span>
@@ -319,6 +325,171 @@ function renderHVACLoopDiagram(loop) {
         <span><i class="hvac-legend-zone"></i>${t("hvac.legendZone")}</span>
       </div>
     </div>`;
+}
+
+function buildLoopSideLayout(sideData = {}, fallbackItems = [], options = {}) {
+  const flow = loopSideFlow(sideData, fallbackItems, options.side);
+  const rows = flow.rows;
+  const rowGap = 64;
+  const rowTopOffset = 46;
+  const rowBottomPadding = 42;
+  const height = Math.max(116, rowTopOffset + Math.max(1, rows.length - 1) * rowGap + rowBottomPadding);
+  const rowYs = rows.map((_, index) => options.top + rowTopOffset + index * rowGap);
+  const busY = rowYs.length > 1 ? (rowYs[0] + rowYs[rowYs.length - 1]) / 2 : rowYs[0];
+  return {
+    ...options,
+    sideData,
+    rows: rows.map((row, index) => ({ ...row, y: rowYs[index] })),
+    leadInItems: flow.leadInItems,
+    leadOutItems: flow.leadOutItems,
+    hasParallel: flow.hasParallel,
+    height,
+    busY,
+  };
+}
+
+function loopSideFlow(sideData = {}, fallbackItems = [], side = "") {
+  const branches = sideData.branches || [];
+  if (branches.length) {
+    const branchByName = new Map(branches.map((branch, index) => [normalizeGraphName(branch.name), { branch, index }]));
+    const splitters = (sideData.connectors || []).filter((connector) => String(connector.type || "").toLowerCase().includes("splitter"));
+    const mixers = (sideData.connectors || []).filter((connector) => String(connector.type || "").toLowerCase().includes("mixer"));
+    const parallelNames = new Set(
+      [...splitters.flatMap((connector) => connector.branchNames || []), ...mixers.flatMap((connector) => connector.branchNames || [])].map(normalizeGraphName),
+    );
+    const leadInNames = new Set(splitters.map((connector) => normalizeGraphName(connector.inletBranchName)).filter(Boolean));
+    const leadOutNames = new Set(mixers.map((connector) => normalizeGraphName(connector.outletBranchName)).filter(Boolean));
+    if (parallelNames.size > 1) {
+      const classifiedNames = new Set([...parallelNames, ...leadInNames, ...leadOutNames]);
+      const parallelRows = branches
+        .map((branch, index) => ({ branch, index }))
+        .filter(({ branch }) => parallelNames.has(normalizeGraphName(branch.name)))
+        .map(({ branch, index }) => loopBranchRow(branch, index, sideData, side));
+      const extraRows = branches
+        .map((branch, index) => ({ branch, index }))
+        .filter(({ branch }) => !classifiedNames.has(normalizeGraphName(branch.name)))
+        .map(({ branch, index }) => loopBranchRow(branch, index, sideData, side));
+      const rows = [...parallelRows, ...extraRows];
+      return {
+        rows: rows.length ? rows : branches.map((branch, index) => loopBranchRow(branch, index, sideData, side)),
+        leadInItems: itemsForBranchNames(branchByName, leadInNames, sideData, side),
+        leadOutItems: itemsForBranchNames(branchByName, leadOutNames, sideData, side),
+        hasParallel: true,
+      };
+    }
+    return {
+      rows: branches.map((branch, index) => loopBranchRow(branch, index, sideData, side)),
+      leadInItems: [],
+      leadOutItems: [],
+      hasParallel: false,
+    };
+  }
+  return {
+    rows: [
+      {
+        branch: null,
+        index: 0,
+        key: `side:${side}`,
+        label: sideData.name || side,
+        items: fallbackItems.length ? fallbackItems : [{ kind: "placeholder", label: sideData.name || side }],
+      },
+    ],
+    leadInItems: [],
+    leadOutItems: [],
+    hasParallel: false,
+  };
+}
+
+function loopBranchRow(branch, index, sideData = {}, side = "") {
+  return {
+    branch,
+    index,
+    key: branchGraphKey(branch),
+    label: branch.name || `${sideData.name || side} ${index + 1}`,
+    items: loopBranchItems(branch, sideData, side),
+  };
+}
+
+function loopBranchItems(branch, sideData = {}, side = "") {
+  return (branch.components || []).length
+    ? (branch.components || []).map((component) => ({ kind: "component", component }))
+    : [{ kind: "placeholder", label: branch.name || sideData.name || side }];
+}
+
+function itemsForBranchNames(branchByName, names, sideData = {}, side = "") {
+  return [...names].flatMap((name) => {
+    const entry = branchByName.get(name);
+    return entry ? loopBranchItems(entry.branch, sideData, side) : [];
+  });
+}
+
+function normalizeGraphName(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function renderLoopSideNetwork(layout, loop) {
+  const startX = layout.reverse ? layout.rightX : layout.leftX;
+  const endX = layout.reverse ? layout.leftX : layout.rightX;
+  const splitX = layout.reverse ? layout.branchEndX : layout.branchStartX;
+  const mixX = layout.reverse ? layout.branchStartX : layout.branchEndX;
+  const minY = layout.rows[0]?.y || layout.busY;
+  const maxY = layout.rows[layout.rows.length - 1]?.y || layout.busY;
+  const loopKey = `loop:${loop.id}`;
+  const loopClass = state.activeHVACGraphKey === loopKey ? "selected" : state.activeHVACGraphKey ? "dimmed" : "";
+  const sideLabel = layout.side === "supply" ? t("hvac.supplySide") : t("hvac.demandSide");
+  const branchPaths = layout.rows
+    .map((row) => {
+      const rowComponentKeys = row.items
+        .map((item) => (item.kind === "component" ? componentGraphKey(item.component) : ""))
+        .filter(Boolean);
+      const branchClass = graphSelectionClass(row.key, [loopKey, ...rowComponentKeys]);
+      return `
+        <path class="hvac-loop-branch-path ${branchClass}" data-hvac-graph-key="${escapeHTML(row.key)}" d="M${splitX},${row.y} H${mixX}"></path>
+        ${renderLoopBranchMarker(row, splitX, row.y, loopKey)}
+        ${renderLoopBranchItems(row, layout, loopKey)}`;
+    })
+    .join("");
+  return `
+    <g class="hvac-loop-side-block ${escapeHTML(layout.side)}">
+      <rect class="hvac-loop-side-panel" x="${layout.branchStartX - 62}" y="${layout.top}" width="${layout.branchEndX - layout.branchStartX + 124}" height="${layout.height}" rx="0"></rect>
+      <text class="hvac-loop-side-note" x="${layout.branchStartX - 45}" y="${layout.top + 22}">${escapeHTML(sideLabel)}</text>
+      <path class="hvac-loop-path ${loopClass}" data-hvac-graph-key="${escapeHTML(loopKey)}"
+        d="M${startX},${layout.busY} H${splitX} M${splitX},${minY} V${maxY} M${mixX},${minY} V${maxY} M${mixX},${layout.busY} H${endX}"></path>
+      ${renderLoopSerialItems(layout.leadInItems, layout, startX, splitX, layout.busY, loopKey)}
+      ${renderLoopSerialItems(layout.leadOutItems, layout, mixX, endX, layout.busY, loopKey)}
+      ${branchPaths}
+    </g>`;
+}
+
+function renderLoopSerialItems(items = [], layout, fromX, toX, y, loopKey) {
+  if (!items.length) {
+    return "";
+  }
+  const direction = toX >= fromX ? 1 : -1;
+  const start = fromX + direction * 54;
+  const end = toX - direction * 54;
+  const positions = distributeGraphPositions(items.length, start, end, y);
+  return items.map((item, index) => renderLoopDiagramItem(item, positions[index], layout.side, [loopKey])).join("");
+}
+
+function renderLoopBranchItems(row, layout, loopKey) {
+  const start = layout.reverse ? layout.branchEndX - 72 : layout.branchStartX + 72;
+  const end = layout.reverse ? layout.branchStartX + 72 : layout.branchEndX - 72;
+  const positions = distributeGraphPositions(row.items.length, start, end, row.y);
+  return row.items.map((item, index) => renderLoopDiagramItem(item, positions[index], layout.side, [row.key, loopKey])).join("");
+}
+
+function renderLoopBranchMarker(row, splitX, y, loopKey) {
+  const markerX = row.index % 2 === 0 ? splitX - 24 : splitX + 24;
+  const relatedKeys = row.items
+    .map((item) => (item.kind === "component" ? componentGraphKey(item.component) : ""))
+    .filter(Boolean);
+  return `
+    <g class="hvac-branch-badge ${graphSelectionClass(row.key, [loopKey, ...relatedKeys])}" data-hvac-graph-key="${escapeHTML(row.key)}">
+      <title>${escapeHTML(row.label || "Branch")}</title>
+      <circle cx="${markerX}" cy="${y}" r="8"></circle>
+      <text x="${markerX}" y="${y + 4}" text-anchor="middle">${escapeHTML(row.index + 1)}</text>
+    </g>`;
 }
 
 function renderLoopEndpoint(x, y, nodeName, label) {
@@ -332,7 +503,7 @@ function renderLoopEndpoint(x, y, nodeName, label) {
     </g>`;
 }
 
-function renderLoopDiagramItem(item, position, side) {
+function renderLoopDiagramItem(item, position, side, relatedKeys = []) {
   if (!position) {
     return "";
   }
@@ -346,7 +517,7 @@ function renderLoopDiagramItem(item, position, side) {
       meta: "Zone",
       iconKind: "zone",
       shortLabel: "Zone",
-      className: `zone ${graphSelectionClass(key)}`,
+      className: `zone ${graphSelectionClass(key, relatedKeys)}`,
     });
   }
   if (item.kind === "placeholder") {
@@ -359,12 +530,12 @@ function renderLoopDiagramItem(item, position, side) {
       meta: "No parsed components",
       iconKind: "component",
       shortLabel: "",
-      className: `placeholder ${side} ${graphSelectionClass(key)}`,
+      className: `placeholder ${side} ${graphSelectionClass(key, relatedKeys)}`,
     });
   }
   const component = item.component;
   const key = componentGraphKey(component);
-  const className = `${side} ${component.exists ? "" : "missing"} ${graphSelectionClass(key, componentGraphRelatedKeys(component))}`;
+  const className = `${side} ${component.exists ? "" : "missing"} ${graphSelectionClass(key, [...componentGraphRelatedKeys(component), ...relatedKeys])}`;
   const visual = componentVisual(component);
   return renderLoopEquipmentSymbol({
     key,
@@ -391,26 +562,6 @@ function renderLoopEquipmentSymbol({ key, x, y, label, meta, iconKind, shortLabe
       ${renderLoopEquipmentBody(iconKind, x, y, objectType)}
       ${shortLabel ? `<text class="mini-label" x="${x}" y="${y + 35}" text-anchor="middle">${escapeHTML(truncateText(shortLabel, 12))}</text>` : ""}
     </g>`;
-}
-
-function renderLoopBranchBadges(side = {}, x, y, label) {
-  const branches = side.branches || [];
-  if (!branches.length) {
-    return "";
-  }
-  return branches
-    .slice(0, 4)
-    .map((branch, index) => {
-      const key = branchGraphKey(branch);
-      const itemY = y + index * 22;
-      return `
-        <g class="hvac-branch-badge ${graphSelectionClass(key)}" data-hvac-graph-key="${escapeHTML(key)}">
-          <title>${escapeHTML(`${label}: ${branch.name || "Branch"}`)}</title>
-          <circle cx="${x}" cy="${itemY}" r="8"></circle>
-          <text x="${x}" y="${itemY + 4}" text-anchor="middle">${escapeHTML(index + 1)}</text>
-        </g>`;
-    })
-    .join("");
 }
 
 function renderGraphNode({ key, x, y, width, height, label, meta, className = "", iconKind = "", shortLabel = "", tooltip = "" }) {

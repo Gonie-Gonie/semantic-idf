@@ -1370,16 +1370,16 @@ textarea {
   background-size: 42px 42px;
 }
 
-.hvac-loop-channel {
-  fill: none;
-  stroke: color-mix(in srgb, var(--muted), var(--surface) 70%);
-  stroke-width: 70;
-  stroke-linecap: square;
-  stroke-linejoin: miter;
+.hvac-loop-side-panel {
+  fill: color-mix(in srgb, var(--muted), var(--surface) 78%);
+  stroke: color-mix(in srgb, var(--muted), transparent 62%);
+  stroke-width: 1;
   pointer-events: none;
 }
 
-.hvac-loop-path {
+.hvac-loop-path,
+.hvac-loop-connector,
+.hvac-loop-branch-path {
   fill: none;
   stroke: var(--ink-strong);
   stroke-width: 3;
@@ -1388,10 +1388,31 @@ textarea {
   cursor: pointer;
 }
 
+.hvac-loop-branch-path {
+  stroke-width: 2.4;
+}
+
 .hvac-loop-path:hover,
-.hvac-loop-path.selected {
+.hvac-loop-path.selected,
+.hvac-loop-connector:hover,
+.hvac-loop-connector.selected,
+.hvac-loop-branch-path:hover,
+.hvac-loop-branch-path.selected {
   stroke: var(--focus);
   stroke-width: 4.5;
+}
+
+.hvac-loop-path.related,
+.hvac-loop-connector.related,
+.hvac-loop-branch-path.related {
+  stroke: var(--teal-dark);
+  stroke-width: 3.8;
+}
+
+.hvac-loop-path.dimmed,
+.hvac-loop-connector.dimmed,
+.hvac-loop-branch-path.dimmed {
+  opacity: 0.18;
 }
 
 .hvac-loop-arrow-marker {
