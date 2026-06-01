@@ -7,6 +7,7 @@
   --control: #ffffff;
   --ink: #18222b;
   --ink-strong: #1f2933;
+  --ink-soft: #344451;
   --muted: #60707c;
   --line: #d7dee4;
   --teal: #007c89;
@@ -24,6 +25,13 @@
   --code-bg: #1f2933;
   --code-ink: #f7fafc;
   --table-head: #f9fbfc;
+  --shadow-menu: 0 16px 34px rgba(17, 24, 39, 0.16);
+  --shadow-dialog: 0 18px 48px rgba(15, 23, 42, 0.24);
+  --control-height: 34px;
+  --radius: 8px;
+  --radius-sm: 6px;
+  --scrollbar-thumb: #bcc8d0;
+  --scrollbar-thumb-hover: #91a4ae;
   --geometry-background: #f7fafc;
   --geometry-zone: #b8d7b0;
   --geometry-wall: #7b9cbc;
@@ -44,6 +52,7 @@
   --control: #202a34;
   --ink: #e7edf2;
   --ink-strong: #f3f7fa;
+  --ink-soft: #c4d0d8;
   --muted: #9aa9b5;
   --line: #33414d;
   --teal: #34b7c5;
@@ -61,6 +70,10 @@
   --code-bg: #071016;
   --code-ink: #eef6f8;
   --table-head: #1d2730;
+  --shadow-menu: 0 18px 38px rgba(0, 0, 0, 0.38);
+  --shadow-dialog: 0 20px 52px rgba(0, 0, 0, 0.46);
+  --scrollbar-thumb: #4a5b67;
+  --scrollbar-thumb-hover: #657684;
 }
 
 * {
@@ -70,12 +83,16 @@
 html,
 body {
   height: 100%;
+  scrollbar-gutter: stable;
 }
 
 body {
   margin: 0;
   background: var(--bg);
   color: var(--ink);
+  font-size: 13px;
+  line-height: 1.42;
+  text-rendering: optimizeLegibility;
 }
 
 body:not(.guide-page) {
@@ -85,6 +102,7 @@ body:not(.guide-page) {
 
 button,
 input,
+select,
 textarea,
 .toolbar-link {
   font: inherit;
@@ -92,9 +110,9 @@ textarea,
 
 button,
 .toolbar-link {
-  min-height: 34px;
+  min-height: var(--control-height);
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--surface);
   color: var(--ink);
   cursor: pointer;
@@ -105,6 +123,11 @@ button,
   gap: 6px;
   white-space: nowrap;
   text-decoration: none;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease,
+    opacity 120ms ease;
 }
 
 button:hover,
@@ -127,6 +150,32 @@ button:disabled {
 
 button:disabled:hover {
   border-color: var(--line);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: var(--scrollbar-thumb);
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+  background-clip: padding-box;
 }
 
 .app-shell {
@@ -168,7 +217,7 @@ button:disabled:hover {
   min-height: 24px;
   padding: 2px 7px;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--surface-3);
   color: var(--muted);
   font-size: 12px;
@@ -372,7 +421,7 @@ button:disabled:hover {
   min-width: 0;
   min-height: 30px;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   padding: 0 10px;
   background: var(--control);
 }
@@ -436,6 +485,8 @@ button:disabled:hover {
   flex: 1;
   min-height: 0;
   overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   padding: 12px;
   background: var(--surface-3);
 }
@@ -510,6 +561,8 @@ textarea {
   min-height: 0;
   width: 100%;
   overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   background: var(--surface-3);
 }
 
@@ -537,7 +590,7 @@ textarea {
 .json-editor-tools select {
   min-height: 30px;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   padding: 0 9px;
   background: var(--control);
 }
@@ -554,7 +607,7 @@ textarea {
 
 .json-group {
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: var(--surface);
 }
 
@@ -598,6 +651,8 @@ textarea {
   gap: 1px;
   background: var(--surface-2);
   border: 1px solid var(--surface-2);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
 }
 
 .json-object dt,
@@ -635,7 +690,7 @@ textarea {
   width: 100%;
   min-height: 24px;
   border: 1px solid transparent;
-  border-radius: 4px;
+  border-radius: 5px;
   background: var(--surface-3);
   color: var(--ink-strong);
   padding: 2px 5px;
@@ -647,7 +702,7 @@ textarea {
   width: 100%;
   min-height: 26px;
   border: 1px solid transparent;
-  border-radius: 4px;
+  border-radius: 5px;
   background: var(--control);
   color: var(--ink-strong);
   padding: 2px 5px;
@@ -667,7 +722,7 @@ textarea {
 .json-code {
   margin-top: 10px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: var(--surface);
 }
 
@@ -690,7 +745,7 @@ textarea {
 
 .primary-tree {
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: var(--control);
 }
 
@@ -799,7 +854,7 @@ textarea {
 .json-value-token {
   min-height: 0;
   border: 0;
-  border-radius: 4px;
+  border-radius: 5px;
   background: transparent;
   color: var(--ink-strong);
   font-family: inherit;
@@ -822,7 +877,7 @@ textarea {
   min-height: 22px;
   max-width: 100%;
   border: 1px solid var(--amber);
-  border-radius: 4px;
+  border-radius: 5px;
   background: var(--control);
   color: var(--ink-strong);
   font-family: inherit;
@@ -879,7 +934,7 @@ textarea {
 .object-table-group {
   margin: 10px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: var(--surface);
   overflow: hidden;
 }
@@ -905,6 +960,8 @@ textarea {
 .object-type-table-scroll {
   overflow-x: auto;
   overflow-y: visible;
+  overscroll-behavior-inline: contain;
+  scrollbar-gutter: stable;
   border-top: 1px solid var(--line);
 }
 
@@ -1086,7 +1143,7 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
   width: min(260px, 38vw);
   min-height: 34px;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   padding: 0 10px;
   background: var(--control);
 }
@@ -1095,6 +1152,8 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
   flex: 1;
   min-height: 0;
   overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   padding: 12px;
   background: var(--bg);
 }
@@ -1108,6 +1167,8 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
   flex: 1;
   min-height: 0;
   overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   padding: 12px;
   background: var(--bg);
 }
@@ -1120,7 +1181,7 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 .diagnostic-item {
   border: 1px solid var(--surface-2);
   border-left: 4px solid var(--amber);
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: var(--surface);
   padding: 10px;
   display: grid;
@@ -1181,7 +1242,7 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 
 .summary-category {
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: var(--surface);
   overflow: hidden;
 }
@@ -1270,7 +1331,7 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 .hvac-tools input {
   min-height: 34px;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--control);
   color: var(--ink);
 }
@@ -1279,6 +1340,8 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
   flex: 1;
   min-height: 0;
   overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   padding: 12px;
   background: var(--bg);
 }
@@ -1291,7 +1354,7 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 
 .hvac-navigator {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(176px, 1fr));
   gap: 8px;
 }
 
@@ -1299,7 +1362,7 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
   min-width: 0;
   position: relative;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: var(--surface);
   color: var(--ink);
   overflow: visible;
@@ -1313,13 +1376,13 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 
 .hvac-nav-card[open] {
   z-index: 40;
-  box-shadow: 0 12px 30px rgba(17, 24, 39, 0.16);
+  box-shadow: var(--shadow-menu);
 }
 
 .hvac-nav-card summary,
 .hvac-nav-action {
   width: 100%;
-  min-height: 58px;
+  min-height: 54px;
   padding: 9px 10px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -1397,10 +1460,12 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
   z-index: 45;
   max-height: min(320px, 48vh);
   overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: var(--surface);
-  box-shadow: 0 18px 36px rgba(17, 24, 39, 0.18);
+  box-shadow: var(--shadow-menu);
   padding: 5px;
   display: grid;
   gap: 4px;
@@ -1430,7 +1495,7 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 
 .hvac-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 34%);
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 34%);
   gap: 12px;
   align-items: start;
 }
@@ -1448,7 +1513,7 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 .hvac-graph,
 .hvac-inspector-section {
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: var(--surface);
   overflow: hidden;
 }
@@ -1456,11 +1521,13 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 .hvac-graph {
   min-height: 360px;
   overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .hvac-graphic-shell {
   min-width: 820px;
-  padding: 12px;
+  padding: 10px;
 }
 
 .hvac-loop-svg,
@@ -1469,7 +1536,7 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
   width: 100%;
   min-height: 420px;
   border: 1px solid var(--surface-2);
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: var(--surface-3);
 }
 
@@ -1953,14 +2020,14 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 .hvac-graph-detail {
   margin: 0 12px 12px;
   border: 1px solid var(--surface-2);
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: var(--surface);
   padding: 10px;
 }
 
 .hvac-detail-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 8px;
   margin-top: 10px;
 }
@@ -1969,7 +2036,7 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 .hvac-detail-list div {
   min-width: 0;
   border: 1px solid var(--surface-2);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   padding: 8px;
   background: var(--surface-3);
 }
@@ -2088,7 +2155,7 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
   min-height: 28px;
   max-width: 100%;
   border-color: var(--line);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--control);
   color: var(--ink);
   font-size: 12px;
@@ -2164,7 +2231,7 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 .hvac-node-output-row {
   min-width: 0;
   border: 1px solid var(--surface-2);
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: var(--surface);
   padding: 9px;
 }
@@ -2193,6 +2260,8 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
   gap: 7px;
   max-height: 330px;
   overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   padding-right: 2px;
 }
 
@@ -2271,7 +2340,7 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 
 .hvac-edit-button {
   min-height: 28px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   padding: 3px 7px;
   gap: 5px;
   font-size: 11px;
@@ -2312,7 +2381,7 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 
 .hvac-inline-warning {
   margin-top: 8px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--warn-bg);
   color: var(--amber);
   padding: 7px;
@@ -2346,7 +2415,7 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
   gap: 8px;
   margin-top: 10px;
   border: 1px solid var(--surface-2);
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: var(--surface-3);
   padding: 9px;
 }
@@ -2458,10 +2527,16 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 
 .hvac-inspector-kv {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(100px, 0.55fr) minmax(0, 1fr);
   gap: 8px;
   padding: 6px 0;
   border-bottom: 1px solid var(--surface-2);
+}
+
+.hvac-inspector-kv strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  text-align: right;
 }
 
 .hvac-inspector-kv span {
@@ -2481,6 +2556,8 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
   flex: 1;
   min-height: 0;
   overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   padding: 12px;
   background: var(--bg);
 }
@@ -2491,11 +2568,11 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 
 .profile-live-controls {
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: var(--surface);
-  padding: 10px;
+  padding: 9px 10px;
   display: grid;
-  grid-template-columns: auto minmax(220px, 1fr) auto;
+  grid-template-columns: auto minmax(220px, 1fr) minmax(150px, auto);
   align-items: center;
   gap: 12px;
 }
@@ -2525,7 +2602,7 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 .profile-view-switch {
   min-height: 32px;
   border: 1px solid var(--line);
-  border-radius: 7px;
+  border-radius: var(--radius-sm);
   background: var(--control);
   padding: 3px;
   display: inline-flex;
@@ -2556,7 +2633,7 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 
 .profile-settings-panel {
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: var(--surface);
   overflow: hidden;
 }
@@ -2646,7 +2723,7 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
   min-width: 0;
   min-height: 30px;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--control);
   color: var(--ink);
   padding: 0 9px;
@@ -2654,7 +2731,7 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 
 .profile-layout {
   display: grid;
-  grid-template-columns: minmax(280px, 30%) minmax(560px, 1fr);
+  grid-template-columns: minmax(250px, min(32%, 360px)) minmax(0, 1fr);
   gap: 12px;
   align-items: start;
 }
@@ -2668,15 +2745,17 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 .profile-overview-list {
   max-height: min(650px, calc(100vh - 260px));
   overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   display: grid;
   gap: 8px;
 }
 
 .profile-group-card {
   width: 100%;
-  min-height: 88px;
+  min-height: 82px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: var(--surface);
   padding: 10px;
   display: grid;
@@ -2729,7 +2808,7 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 .profile-detail-panel {
   min-height: 120px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: var(--surface);
   overflow: hidden;
 }
@@ -2769,7 +2848,7 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 .profile-dimension-card {
   min-width: 0;
   border: 1px solid var(--surface-2);
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: var(--surface-3);
   padding: 9px 10px;
   display: grid;
@@ -2808,7 +2887,7 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 
 .profile-warning {
   border-left: 3px solid var(--amber);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--warn-bg);
   color: var(--amber);
   padding: 7px 8px;
@@ -2830,6 +2909,8 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 
 .profile-item-table {
   overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-gutter: stable;
   border-top: 1px solid var(--line);
 }
 
@@ -2893,9 +2974,12 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 
 .profile-matrix {
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: var(--surface);
   overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  max-height: min(440px, 52vh);
 }
 
 .profile-matrix table {
@@ -2991,7 +3075,7 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 
 .profile-graph-summary {
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: var(--surface);
   padding: 10px;
   display: grid;
@@ -3066,14 +3150,14 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 
 .profile-graph-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
   gap: 10px;
 }
 
 .profile-graph-card {
   min-width: 0;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: var(--surface);
   padding: 10px;
   display: grid;
@@ -3112,19 +3196,19 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 .profile-graph-card svg {
   width: 100%;
   border: 1px solid var(--surface-2);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--surface-3);
 }
 
 .profile-heatmap-frame {
   min-width: 0;
   border: 1px solid var(--surface-2);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--surface-3);
   padding: 8px 9px 7px;
   display: grid;
   grid-template-columns: 28px minmax(0, 1fr);
-  grid-template-rows: minmax(96px, 1fr) auto;
+  grid-template-rows: minmax(124px, 1fr) auto;
   gap: 4px 7px;
 }
 
@@ -3148,14 +3232,14 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 
 .profile-graph-card .profile-heatmap {
   height: 100%;
-  min-height: 96px;
+  min-height: 124px;
   border: 0;
   border-radius: 3px;
   image-rendering: pixelated;
 }
 
 .profile-graph-card .profile-line-graph {
-  height: 132px;
+  height: 148px;
 }
 
 .profile-axis-line,
@@ -3179,11 +3263,11 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 
 .profile-axis-label {
   fill: var(--muted);
-  font-size: 5px;
+  font-size: 6px;
 }
 
 .profile-axis-label.x {
-  font-size: 6px;
+  font-size: 6.5px;
 }
 
 .profile-day-graphs,
@@ -3223,9 +3307,9 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
   width: min(760px, calc(100vw - 32px));
   max-height: calc(100vh - 42px);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: var(--surface);
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.22);
+  box-shadow: var(--shadow-dialog);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -3257,6 +3341,8 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 .profile-apply-body {
   min-height: 0;
   overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   padding: 12px;
   display: grid;
   gap: 12px;
@@ -3290,8 +3376,10 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 .profile-target-list {
   max-height: 180px;
   overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   border: 1px solid var(--surface-2);
-  border-radius: 8px;
+  border-radius: var(--radius);
   padding: 8px;
 }
 
@@ -3302,7 +3390,7 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 
 .profile-apply-change {
   border: 1px solid var(--surface-2);
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: var(--surface-3);
   padding: 8px 9px;
   display: grid;
@@ -3360,7 +3448,7 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
   min-height: 34px;
   max-width: 150px;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--control);
   padding: 0 9px;
 }
@@ -3521,6 +3609,8 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 .geometry-details {
   min-height: 0;
   overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   background: var(--surface);
 }
 
@@ -3572,6 +3662,8 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 .geometry-property-list {
   display: grid;
   border: 1px solid var(--surface-2);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
 }
 
 .geometry-property-list div {
@@ -3611,7 +3703,9 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 
 .geometry-related-group {
   border: 1px solid var(--surface-2);
+  border-radius: var(--radius-sm);
   background: var(--control);
+  overflow: hidden;
 }
 
 .geometry-related-group summary {
@@ -3702,7 +3796,9 @@ button.geometry-related-row:hover {
 
 .construction-card {
   border: 1px solid var(--surface-2);
+  border-radius: var(--radius-sm);
   background: var(--control);
+  overflow: hidden;
 }
 
 .construction-card-head {
@@ -4456,7 +4552,7 @@ th.input-jump-highlight {
   min-width: 0;
   min-height: 32px;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--control);
   color: var(--ink);
   padding: 0 9px;
@@ -4472,7 +4568,7 @@ th.input-jump-highlight {
   bottom: 0;
   z-index: 5;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: var(--surface);
   padding: 10px;
   display: flex;
@@ -4489,7 +4585,7 @@ th.input-jump-highlight {
 
 .settings-message {
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius);
   padding: 10px 12px;
   font-size: 13px;
 }
@@ -4514,7 +4610,7 @@ th.input-jump-highlight {
   top: 18px;
   align-self: start;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: var(--surface);
   padding: 8px;
   display: grid;
@@ -4555,14 +4651,14 @@ th.input-jump-highlight {
   top: 18px;
   align-self: start;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: var(--surface);
   padding: 8px;
 }
 
 .guide-nav a {
   display: block;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   color: var(--ink);
   padding: 9px 10px;
   text-decoration: none;
@@ -4582,7 +4678,7 @@ th.input-jump-highlight {
 
 .guide-section {
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: var(--surface);
   padding: 18px;
 }
@@ -4614,14 +4710,16 @@ th.input-jump-highlight {
 
 .guide-grid article {
   border: 1px solid var(--surface-2);
-  border-radius: 8px;
+  border-radius: var(--radius);
   padding: 12px;
 }
 
 .guide-section pre {
   margin: 12px 0 0;
   overflow: auto;
-  border-radius: 8px;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  border-radius: var(--radius);
   background: var(--code-bg);
   color: var(--code-ink);
   padding: 12px;
@@ -4677,7 +4775,7 @@ th.input-jump-highlight {
 
 .guide-metric-group {
   border: 1px solid var(--surface-2);
-  border-radius: 8px;
+  border-radius: var(--radius);
   overflow: hidden;
 }
 
@@ -4702,7 +4800,7 @@ th.input-jump-highlight {
 
 .guide-metric-card {
   border: 1px solid var(--surface-2);
-  border-radius: 8px;
+  border-radius: var(--radius);
   padding: 12px;
 }
 
@@ -4811,6 +4909,8 @@ th.input-jump-highlight {
 .tool-file-list {
   max-height: 128px;
   overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 8px;
@@ -4821,7 +4921,7 @@ th.input-jump-highlight {
   min-width: 0;
   border: 1px solid var(--surface-2);
   border-left: 3px solid var(--teal);
-  border-radius: 8px;
+  border-radius: var(--radius);
   padding: 9px 10px;
   background: var(--surface-3);
 }
@@ -4853,8 +4953,10 @@ th.input-jump-highlight {
   max-height: calc(100vh - 330px);
   min-height: 220px;
   overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: var(--surface);
 }
 
@@ -4943,7 +5045,7 @@ th.input-jump-highlight {
 
 .cleanup-rules {
   border: 1px solid var(--surface-2);
-  border-radius: 8px;
+  border-radius: var(--radius);
   min-height: 280px;
   padding: 10px;
   display: grid;
@@ -4957,7 +5059,7 @@ th.input-jump-highlight {
   gap: 8px;
   align-items: start;
   border: 1px solid var(--surface-2);
-  border-radius: 8px;
+  border-radius: var(--radius);
   padding: 9px;
 }
 
@@ -5005,6 +5107,9 @@ th.input-jump-highlight {
 
 .cleanup-candidates {
   max-height: calc(100vh - 280px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   padding: 10px;
 }
 
@@ -5019,7 +5124,7 @@ th.input-jump-highlight {
   gap: 9px;
   align-items: start;
   border: 1px solid var(--surface-2);
-  border-radius: 8px;
+  border-radius: var(--radius);
   padding: 9px 10px;
   background: var(--control);
 }
@@ -5055,6 +5160,35 @@ th.input-jump-highlight {
   font-size: 12px;
   font-style: normal;
   line-height: 1.35;
+}
+
+@media (max-width: 1260px) {
+  .summary-head,
+  .geometry-head {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .summary-tools,
+  .geometry-tools {
+    flex: 1 1 100%;
+  }
+
+  .hvac-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .hvac-side {
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  }
+
+  .profile-layout {
+    grid-template-columns: minmax(230px, 34%) minmax(0, 1fr);
+  }
+
+  .profile-graph-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 920px) {

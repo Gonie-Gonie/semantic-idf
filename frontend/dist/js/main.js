@@ -42,6 +42,7 @@ import {
 import { initializeProfileControls, renderProfile } from "./profile-views.js";
 import { normalizeAnalyzeTabOrder, t, translatePage } from "./i18n.js";
 import { initializeKeyboardShortcuts } from "./shortcuts.js";
+import { initializeScrollUX } from "./scroll-ux.js";
 
 loadAndApplyAppSettings().then((result) => applyRuntimeSettings(result.settings));
 
@@ -224,6 +225,7 @@ initializeWorkspaceSplitter();
 initializeVerticalSplitters();
 initializeProfileControls();
 initializeHVACControls();
+initializeScrollUX();
 initializeKeyboardShortcuts({
   save: saveInputFile,
   open: openInputFile,

@@ -1,9 +1,11 @@
 import { loadAndApplyAppSettings } from "./settings-client.js";
 import { renderAppInfo } from "./app-info.js";
 import { t } from "./i18n.js";
+import { initializeScrollUX } from "./scroll-ux.js";
 
 loadAndApplyAppSettings();
 renderAppInfo();
+initializeScrollUX();
 
 const state = {
   activeTool: "multi-idf-summary",
