@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>IDF Analyzer Tools</title>
+    <title data-i18n="tools.pageTitle">IDF Analyzer Tools</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body class="guide-page">
@@ -20,7 +20,7 @@
     </header>
 
     <main class="guide-layout tools-layout tool-tab-layout">
-      <nav class="tool-nav" aria-label="Tools">
+      <nav class="tool-nav" aria-label="Tools" data-i18n-aria-label="tools.navLabel">
         <button class="tool-nav-button active" data-tool-tab="multi-idf-summary" type="button">
           <strong data-i18n="tools.multiSummary">Multi-IDF Summary</strong>
           <span data-i18n="tools.multiSummaryDescription">Compare Summary metrics across files</span>
@@ -36,7 +36,7 @@
           <div class="tool-title-row">
             <div>
               <h2 data-i18n="tools.multiSummary">Multi-IDF Summary</h2>
-              <p>Analyze several EnergyPlus input files and compare their Summary metrics in one table.</p>
+              <p data-i18n="tools.multiSummaryLongDescription">Analyze several EnergyPlus input files and compare their Summary metrics in one table.</p>
             </div>
             <div class="tool-actions">
               <button id="multiSummarySelect" type="button" data-i18n="action.selectFiles">Select Files</button>
@@ -45,7 +45,7 @@
           </div>
 
           <div class="tool-control-row">
-            <div class="orientation-controls" role="group" aria-label="Multi-IDF summary orientation">
+            <div class="orientation-controls" role="group" aria-label="Multi-IDF summary orientation" data-i18n-aria-label="tools.orientationLabel">
               <button class="orientation-button active" data-summary-orientation="metrics" type="button" data-i18n="tools.metricsRows">Metrics as rows</button>
               <button class="orientation-button" data-summary-orientation="files" type="button" data-i18n="tools.buildingsRows">Buildings as rows</button>
             </div>
@@ -90,8 +90,8 @@
             <section>
               <div class="cleanup-candidate-head">
                 <h3 data-i18n="tools.candidates">Candidates</h3>
-                <input id="cleanupCandidateFilter" type="search" placeholder="Filter candidates" aria-label="Filter cleanup candidates" data-i18n-placeholder="tools.filterCandidates" />
-                <span id="cleanupCandidateStats" class="tool-muted">0 selected</span>
+                <input id="cleanupCandidateFilter" type="search" placeholder="Filter candidates" aria-label="Filter cleanup candidates" data-i18n-placeholder="tools.filterCandidates" data-i18n-aria-label="tools.filterCandidates" />
+                <span id="cleanupCandidateStats" class="tool-muted" data-i18n="tools.selectedOf" data-i18n-params='{"selected":0,"total":0}'>0 selected of 0</span>
               </div>
               <div id="cleanupCandidates" class="tool-table-wrap cleanup-candidates">
                 <div class="empty" data-i18n="tools.noCurrentInput">Open an input in the main app, then return to Tools.</div>

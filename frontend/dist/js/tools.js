@@ -201,7 +201,7 @@ function renderFileList(files) {
       const detail = status === "ok" ? (file.filename && file.filename !== file.label ? file.filename : t("tools.analyzed")) : file.error || t("tools.failed");
       return `
         <div class="tool-file-item ${status}">
-          <strong>${escapeHTML(file.label || file.filename || "Input file")}</strong>
+          <strong>${escapeHTML(file.label || file.filename || t("common.inputFile"))}</strong>
           <span>${escapeHTML(detail)}</span>
         </div>`;
     })
@@ -258,7 +258,7 @@ function renderFilesAsRows(metrics, files) {
             <tr>
               <th class="tool-sticky-col">
                 ${renderFileLabel(file)}
-                ${file.status === "ok" ? "" : `<span>${escapeHTML(file.error || "Failed")}</span>`}
+                ${file.status === "ok" ? "" : `<span>${escapeHTML(file.error || t("tools.failed"))}</span>`}
               </th>
               ${metrics.map((metric) => renderValueCell(file, metric.id)).join("")}
             </tr>`)
@@ -268,7 +268,7 @@ function renderFilesAsRows(metrics, files) {
 }
 
 function renderFileLabel(file) {
-  const label = file.label || file.filename || "Input file";
+  const label = file.label || file.filename || t("common.inputFile");
   const detail = file.filename && file.filename !== label ? file.filename : "";
   return `<strong>${escapeHTML(label)}</strong>${detail ? `<span>${escapeHTML(detail)}</span>` : ""}`;
 }
@@ -279,7 +279,7 @@ function renderValueCell(file, metricID) {
   }
   const value = file.metricValues?.[metricID];
   const status = value?.status || "missing";
-  return `<td class="tool-value ${escapeHTML(status)}" title="${escapeHTML(status)}">${escapeHTML(value?.displayValue ?? "N/A")}</td>`;
+  return `<td class="tool-value ${escapeHTML(status)}" title="${escapeHTML(status)}">${escapeHTML(value?.displayValue ?? t("common.notAvailable"))}</td>`;
 }
 
 function metricValueForCSV(file, metricID) {

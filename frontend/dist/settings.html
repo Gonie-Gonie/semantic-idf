@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>IDF Analyzer Settings</title>
+    <title data-i18n="settings.pageTitle">IDF Analyzer Settings</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body class="guide-page">
@@ -20,7 +20,7 @@
     </header>
 
     <main class="guide-layout settings-layout">
-      <nav class="guide-nav" aria-label="Settings sections">
+      <nav class="guide-nav" aria-label="Settings sections" data-i18n-aria-label="settings.sections">
         <a href="#appearance" data-i18n="settings.appearance">Appearance</a>
         <a href="#geometry-colors" data-i18n="settings.geometryColors">Geometry Colors</a>
         <a href="#behavior" data-i18n="settings.behavior">Behavior</a>
@@ -56,12 +56,12 @@
 
       const container = document.querySelector("#settingsStatus");
       const colorControls = [
-        ["background", "3D background"],
-        ["zone", "Zone floor"],
-        ["wall", "Wall surface"],
-        ["roof", "Roof / ceiling"],
-        ["window", "Window"],
-        ["selected", "Selected object"],
+        ["background", "settings.color.background"],
+        ["zone", "settings.color.zone"],
+        ["wall", "settings.color.wall"],
+        ["roof", "settings.color.roof"],
+        ["window", "settings.color.window"],
+        ["selected", "settings.color.selected"],
       ];
       const profileDimensions = ["occupancy", "lighting", "equipment", "infiltration", "ventilation", "outdoor_air"];
       const profileMetricOptions = {
@@ -199,7 +199,7 @@
                 ${colorControls
                   .map(([key, label]) => `
                     <label class="settings-color-field" for="geometryColor-${key}">
-                      <span>${escapeHTML(label)}</span>
+                      <span>${escapeHTML(t(label))}</span>
                       <input id="geometryColor-${key}" data-geometry-color="${escapeHTML(key)}" type="color" value="${escapeHTML(geometry[key])}" />
                     </label>`)
                   .join("")}
@@ -267,9 +267,9 @@
                 <select id="profileScheduleSummaryMode">
                   ${optionHTML("representative_day", t("graph.representativeDay"), profile.scheduleSummaryMode)}
                   ${optionHTML("representative_week", t("graph.representativeWeek"), profile.scheduleSummaryMode)}
-                  ${optionHTML("monthly_average", "Monthly average", profile.scheduleSummaryMode)}
-                  ${optionHTML("hourly_average_by_daytype", "Hourly by daytype", profile.scheduleSummaryMode)}
-                  ${optionHTML("load_duration", "Load duration", profile.scheduleSummaryMode)}
+                  ${optionHTML("monthly_average", t("graph.monthlyAverage"), profile.scheduleSummaryMode)}
+                  ${optionHTML("hourly_average_by_daytype", t("graph.hourlyByDaytype"), profile.scheduleSummaryMode)}
+                  ${optionHTML("load_duration", t("graph.loadDuration"), profile.scheduleSummaryMode)}
                   ${optionHTML("annual_heatmap", t("graph.annualHeatmap"), profile.scheduleSummaryMode)}
                 </select>
               </label>

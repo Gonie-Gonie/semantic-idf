@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>IDF Analyzer Guide</title>
+    <title data-i18n="guide.pageTitle">IDF Analyzer Guide</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body class="guide-page">
@@ -20,24 +20,24 @@
     </header>
 
     <main class="guide-layout">
-      <nav class="guide-nav" aria-label="Guide sections">
-        <a href="#start">Start</a>
-        <a href="#files">Files</a>
-        <a href="#input-views">Input Views</a>
-        <a href="#summary">Summary</a>
-        <a href="#diagnose">Diagnose</a>
-        <a href="#geometry">Geometry</a>
-        <a href="#summary-metrics">Metric Catalog</a>
-        <a href="#multi-idf-summary">Multi-IDF Summary</a>
-        <a href="#cleanup-wizard">Cleanup Wizard</a>
-        <a href="#settings">Settings</a>
-        <a href="#updates">Recent Changes</a>
+      <nav class="guide-nav" aria-label="Guide sections" data-i18n-aria-label="guide.sections">
+        <a href="#start" data-i18n="guide.nav.start">Start</a>
+        <a href="#files" data-i18n="guide.nav.files">Files</a>
+        <a href="#input-views" data-i18n="guide.nav.inputViews">Input Views</a>
+        <a href="#summary" data-i18n="guide.nav.summary">Summary</a>
+        <a href="#diagnose" data-i18n="guide.nav.diagnose">Diagnose</a>
+        <a href="#geometry" data-i18n="guide.nav.geometry">Geometry</a>
+        <a href="#summary-metrics" data-i18n="guide.nav.metricCatalog">Metric Catalog</a>
+        <a href="#multi-idf-summary" data-i18n="guide.nav.multiSummary">Multi-IDF Summary</a>
+        <a href="#cleanup-wizard" data-i18n="guide.nav.cleanup">Cleanup Wizard</a>
+        <a href="#settings" data-i18n="guide.nav.settings">Settings</a>
+        <a href="#updates" data-i18n="guide.nav.updates">Recent Changes</a>
       </nav>
 
       <section class="guide-content">
         <section id="start" class="guide-section">
-          <h2>Start</h2>
-          <p>
+          <h2 data-i18n="guide.start.title">Start</h2>
+          <p data-i18n="guide.start.body">
             IDF Analyzer opens EnergyPlus IDF, IMF, and epJSON-style files, shows the input in synchronized Text,
             JSON, and Table views, and calculates Summary, Diagnose, and Geometry results in the right panel. A
             reference office model loads at startup so the interface is usable before you open a project file; analysis
@@ -46,52 +46,52 @@
         </section>
 
         <section id="files" class="guide-section">
-          <h2>Files</h2>
+          <h2 data-i18n="guide.files.title">Files</h2>
           <div class="guide-grid">
             <article>
-              <h3>Open</h3>
-              <p>Loads `.idf`, `.imf`, `.epjson`, `.json`, or `.txt` from the desktop file picker and analyzes it automatically.</p>
+              <h3 data-i18n="guide.files.openTitle">Open</h3>
+              <p data-i18n="guide.files.openBody">Loads `.idf`, `.imf`, `.epjson`, `.json`, or `.txt` from the desktop file picker and analyzes it automatically.</p>
             </article>
             <article>
-              <h3>Save</h3>
-              <p>Writes the current editor text back to the opened file. If there is no original file path, the app asks where to save.</p>
+              <h3 data-i18n="guide.files.saveTitle">Save</h3>
+              <p data-i18n="guide.files.saveBody">Writes the current editor text back to the opened file. If there is no original file path, the app asks where to save.</p>
             </article>
             <article>
-              <h3>Revert</h3>
-              <p>Restores the input text to the snapshot from the most recent open operation.</p>
+              <h3 data-i18n="guide.files.revertTitle">Revert</h3>
+              <p data-i18n="guide.files.revertBody">Restores the input text to the snapshot from the most recent open operation.</p>
             </article>
             <article>
-              <h3>Automatic Analysis</h3>
-              <p>Analysis runs after opening a file and after editor changes pause briefly, so repeated edits do not need a separate Analyze button.</p>
+              <h3 data-i18n="guide.files.autoTitle">Automatic Analysis</h3>
+              <p data-i18n="guide.files.autoBody">Analysis runs after opening a file and after editor changes pause briefly, so repeated edits do not need a separate Analyze button.</p>
             </article>
           </div>
         </section>
 
         <section id="input-views" class="guide-section">
-          <h2>Input Views</h2>
+          <h2 data-i18n="guide.inputViews.title">Input Views</h2>
           <div class="guide-grid">
             <article>
-              <h3>Text</h3>
-              <p>Shows editable object summaries above the raw source text. The raw text area remains the final source that will be saved.</p>
+              <h3 data-i18n="guide.inputViews.textTitle">Text</h3>
+              <p data-i18n="guide.inputViews.textBody">Shows editable object summaries above the raw source text. The raw text area remains the final source that will be saved.</p>
             </article>
             <article>
-              <h3>JSON</h3>
-              <p>Shows an epJSON-shaped structured view. Value tokens can be edited inline while syntax tokens remain read-only.</p>
+              <h3 data-i18n="guide.inputViews.jsonTitle">JSON</h3>
+              <p data-i18n="guide.inputViews.jsonBody">Shows an epJSON-shaped structured view. Value tokens can be edited inline while syntax tokens remain read-only.</p>
             </article>
             <article>
-              <h3>Table</h3>
-              <p>Shows object-type tables with switchable row and column orientation for scanning fields across similar objects.</p>
+              <h3 data-i18n="guide.inputViews.tableTitle">Table</h3>
+              <p data-i18n="guide.inputViews.tableBody">Shows object-type tables with switchable row and column orientation for scanning fields across similar objects.</p>
             </article>
             <article>
-              <h3>Filter</h3>
-              <p>The left-panel filter works the same way across Text, JSON, and Table views by matching object type, object name, field label, and value text.</p>
+              <h3 data-i18n="guide.inputViews.filterTitle">Filter</h3>
+              <p data-i18n="guide.inputViews.filterBody">The left-panel filter works the same way across Text, JSON, and Table views by matching object type, object name, field label, and value text.</p>
             </article>
           </div>
         </section>
 
         <section id="summary" class="guide-section">
-          <h2>Summary</h2>
-          <p>
+          <h2 data-i18n="guide.summary.title">Summary</h2>
+          <p data-i18n="guide.summary.body">
             Summary groups model inventory, area, envelope, load, schedule, and HVAC metrics. Use the Summary filter to
             narrow the metric list. Export JSON keeps the grouped structure, while Export CSV creates `name,value` rows.
             CSV names use variable-style names with units in brackets, including `[-]` for values without a physical unit.
@@ -99,8 +99,8 @@
         </section>
 
         <section id="diagnose" class="guide-section">
-          <h2>Diagnose</h2>
-          <p>
+          <h2 data-i18n="guide.diagnose.title">Diagnose</h2>
+          <p data-i18n="guide.diagnose.body">
             Diagnose lists likely run-blocking errors and warning-level modeling risks, including missing references,
             duplicate names, orphan resources, missing required objects, geometry issues, unsupported schedule-hour
             calculations, and disconnected HVAC node graph hints.
@@ -108,8 +108,8 @@
         </section>
 
         <section id="geometry" class="guide-section">
-          <h2>Geometry</h2>
-          <p>
+          <h2 data-i18n="guide.geometry.title">Geometry</h2>
+          <p data-i18n="guide.geometry.body">
             Geometry shows parsed zones, surfaces, and fenestration in 3D and plan views. Selecting an item shows key
             metrics and related objects such as parent zones, base surfaces, child windows, adjacent zones, and matching
             surfaces. Sync locate can move the input view to the selected model object.
@@ -117,19 +117,19 @@
         </section>
 
         <section id="summary-metrics" class="guide-section">
-          <h2>Metric Catalog</h2>
-          <p>
+          <h2 data-i18n="guide.metricCatalog.title">Metric Catalog</h2>
+          <p data-i18n="guide.metricCatalog.body">
             The catalog below lists how Summary metrics are interpreted, including source fields, calculation method,
             assumptions, and missing-data behavior.
           </p>
           <div id="summaryMetricGuide" class="guide-metric-list">
-            <div class="empty">Loading metric catalog</div>
+            <div class="empty" data-i18n="guide.metricCatalog.loading">Loading metric catalog</div>
           </div>
         </section>
 
         <section id="multi-idf-summary" class="guide-section">
-          <h2>Multi-IDF Summary</h2>
-          <p>
+          <h2 data-i18n="guide.multiSummary.title">Multi-IDF Summary</h2>
+          <p data-i18n="guide.multiSummary.body">
             Multi-IDF Summary is available from Tools. Choose it from the left tool selector, select several input files,
             wait for the progress bar to finish, then review the combined Summary table. Metrics can be shown as rows
             with buildings as columns, or transposed with buildings as rows. Export CSV uses the currently selected table
@@ -138,8 +138,8 @@
         </section>
 
         <section id="cleanup-wizard" class="guide-section">
-          <h2>Cleanup Wizard</h2>
-          <p>
+          <h2 data-i18n="guide.cleanup.title">Cleanup Wizard</h2>
+          <p data-i18n="guide.cleanup.body">
             Cleanup Wizard is available from Tools and works on the input currently open in the main app. Choose rules on
             the left, then review filterable candidate checkboxes on the right to include or exclude individual removals.
             Save writes the cleaned result to the current file when a file path is available, while Save As asks for a new
@@ -149,8 +149,8 @@
         </section>
 
         <section id="settings" class="guide-section">
-          <h2>Settings</h2>
-          <p>
+          <h2 data-i18n="guide.settings.title">Settings</h2>
+          <p data-i18n="guide.settings.body">
             Settings opens as its own page. Appearance controls choose the app theme and Geometry colors for zones,
             walls, roofs, windows, selections, and the 3D background. Behavior controls store defaults for automatic
             analysis delay, raw text sync, and Geometry sync locate.
@@ -158,19 +158,19 @@
         </section>
 
         <section id="updates" class="guide-section">
-          <h2>Recent Changes</h2>
+          <h2 data-i18n="guide.updates.title">Recent Changes</h2>
           <ul class="guide-log">
-            <li><strong>2026-05-31</strong> Cleanup Wizard now operates on the current input with rule and candidate checkboxes plus Save / Save As.</li>
-            <li><strong>2026-05-31</strong> Added persistent Appearance settings for app theme and Geometry object colors.</li>
-            <li><strong>2026-05-31</strong> Removed conversion commands and changed Tools to a left-selector tab layout.</li>
-            <li><strong>2026-05-31</strong> Added Diagnose results and moved remove-unused cleanup into the Tools Cleanup Wizard review flow.</li>
-            <li><strong>2026-05-31</strong> Startup analysis now runs in visible-first stages, then prepares Diagnose and Geometry in the background.</li>
-            <li><strong>2026-05-31</strong> Summary CSV now writes every metric as `variable [unit],value`, using `[-]` when no unit applies.</li>
-            <li><strong>2026-05-31</strong> Improved startup and splitter responsiveness by deferring startup sample analysis and Geometry rendering work.</li>
-            <li><strong>2026-05-31</strong> Added Multi-IDF Summary under Tools with multi-file selection, progress, table transpose, and CSV export.</li>
-            <li><strong>2026-05-31</strong> Tools, Guide, and Settings are separate top-level navigation buttons.</li>
-            <li><strong>2026-05-30</strong> Geometry details show related zones, surfaces, and openings for the selected object.</li>
-            <li><strong>2026-05-30</strong> The left-panel filter now works consistently across Text, JSON, and Table views.</li>
+            <li data-i18n="guide.updates.cleanupCurrent">2026-05-31 Cleanup Wizard now operates on the current input with rule and candidate checkboxes plus Save / Save As.</li>
+            <li data-i18n="guide.updates.appearance">2026-05-31 Added persistent Appearance settings for app theme and Geometry object colors.</li>
+            <li data-i18n="guide.updates.toolsLayout">2026-05-31 Removed conversion commands and changed Tools to a left-selector tab layout.</li>
+            <li data-i18n="guide.updates.diagnoseCleanup">2026-05-31 Added Diagnose results and moved remove-unused cleanup into the Tools Cleanup Wizard review flow.</li>
+            <li data-i18n="guide.updates.startupStages">2026-05-31 Startup analysis now runs in visible-first stages, then prepares Diagnose and Geometry in the background.</li>
+            <li data-i18n="guide.updates.summaryCsv">2026-05-31 Summary CSV now writes every metric as `variable [unit],value`, using `[-]` when no unit applies.</li>
+            <li data-i18n="guide.updates.performance">2026-05-31 Improved startup and splitter responsiveness by deferring startup sample analysis and Geometry rendering work.</li>
+            <li data-i18n="guide.updates.multiSummary">2026-05-31 Added Multi-IDF Summary under Tools with multi-file selection, progress, table transpose, and CSV export.</li>
+            <li data-i18n="guide.updates.topNavigation">2026-05-31 Tools, Guide, and Settings are separate top-level navigation buttons.</li>
+            <li data-i18n="guide.updates.geometryDetails">2026-05-30 Geometry details show related zones, surfaces, and openings for the selected object.</li>
+            <li data-i18n="guide.updates.inputFilter">2026-05-30 The left-panel filter now works consistently across Text, JSON, and Table views.</li>
           </ul>
         </section>
       </section>
@@ -178,9 +178,10 @@
     <script type="module">
       import { renderAppInfo } from "./js/app-info.js";
       import { loadAndApplyAppSettings } from "./js/settings-client.js";
+      import { t, translatePage } from "./js/i18n.js";
 
       renderAppInfo();
-      loadAndApplyAppSettings();
+      loadAndApplyAppSettings().then(() => translatePage());
 
       const guideContainer = document.querySelector("#summaryMetricGuide");
 
@@ -195,13 +196,13 @@
 
       function renderGuides(guides) {
         if (!Array.isArray(guides) || guides.length === 0) {
-          guideContainer.innerHTML = `<div class="empty">No metric definitions available.</div>`;
+          guideContainer.innerHTML = `<div class="empty">${t("guide.metricCatalog.empty")}</div>`;
           return;
         }
 
         const grouped = new Map();
         guides.forEach((guide) => {
-          const category = guide.category || "Uncategorized";
+          const category = guide.category || t("guide.metricCatalog.uncategorized");
           if (!grouped.has(category)) {
             grouped.set(category, []);
           }
@@ -221,13 +222,13 @@
                     <article class="guide-metric-card">
                       <h3>${escapeHTML(item.name)} <code>${escapeHTML(item.id)}</code></h3>
                       <dl>
-                        <dt>Source</dt>
+                        <dt>${t("common.source")}</dt>
                         <dd>${escapeHTML(item.source)}</dd>
-                        <dt>Method</dt>
+                        <dt>${t("common.method")}</dt>
                         <dd>${escapeHTML(item.method)}</dd>
-                        <dt>Assumptions</dt>
+                        <dt>${t("guide.metricCatalog.assumptions")}</dt>
                         <dd>${escapeHTML(item.assumptions)}</dd>
-                        <dt>Missing Data</dt>
+                        <dt>${t("guide.metricCatalog.missingData")}</dt>
                         <dd>${escapeHTML(item.missingData)}</dd>
                       </dl>
                     </article>`)
@@ -257,11 +258,11 @@
           }
           const response = await fetch("/api/summary-metric-guides");
           if (!response.ok) {
-            throw new Error(`Metric catalog request failed: ${response.status}`);
+            throw new Error(t("guide.metricCatalog.requestFailed", { status: response.status }));
           }
           renderGuides(await response.json());
         } catch (error) {
-          guideContainer.innerHTML = `<div class="empty">Metric catalog is available in the desktop app.</div>`;
+          guideContainer.innerHTML = `<div class="empty">${t("guide.metricCatalog.desktopOnly")}</div>`;
         }
       }
 
