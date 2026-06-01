@@ -2,21 +2,8 @@ import { backend, elements, escapeHTML, state } from "./state.js";
 import { t } from "./i18n.js";
 
 export function initializeHVACControls() {
-  elements.hvacLoopSelect?.addEventListener("change", () => {
-    state.activeHVACLoopId = elements.hvacLoopSelect.value;
-    state.activeHVACNodeName = "";
-    state.activeHVACGraphKey = "";
-    renderHVAC();
-  });
   elements.hvacFilter?.addEventListener("input", () => renderHVAC());
-  elements.hvacViewButtons?.forEach((button) => {
-    button.addEventListener("click", () => {
-      state.activeHVACView = button.dataset.hvacView || "loop";
-      state.activeHVACGraphKey = "";
-      state.activeHVACNodeName = "";
-      renderHVAC();
-    });
-  });
+  elements.hvacSummary?.addEventListener("click", handleHVACNavigationClick);
   elements.hvacGraph?.addEventListener("click", (event) => {
     const editButton = event.target.closest("[data-hvac-edit-key]");
     if (editButton) {
@@ -77,11 +64,9 @@ export function renderHVAC(hvac = state.report?.hvac) {
     plant: hvac.plantLoopCount || 0,
     zones: hvac.zoneRelationCount || 0,
   });
-  renderHVACLoopSelect(loops);
-  renderHVACSummary(hvac);
+  renderHVACSummary(hvac, selectedLoop);
   renderHVACWarnings(hvac, query);
   renderHVACInspector(hvac, selectedLoop);
-  renderHVACViewButtons();
 
   if (state.activeHVACView === "relation") {
     renderHVACRelations(hvac, query);
@@ -94,7 +79,6 @@ export function renderHVAC(hvac = state.report?.hvac) {
 
 function renderEmptyHVAC() {
   elements.hvacStats.textContent = t("count.airPlantZone", { air: 0, plant: 0, zones: 0 });
-  elements.hvacLoopSelect.innerHTML = "";
   elements.hvacSummary.innerHTML = `<div class="empty">${t("hvac.noHVACAnalysis")}</div>`;
   elements.hvacGraph.innerHTML = `<div class="empty">${t("hvac.noLoopGraph")}</div>`;
   elements.hvacInspectorStats.textContent = t("hvac.selectNode");
@@ -103,46 +87,158 @@ function renderEmptyHVAC() {
   elements.hvacWarnings.innerHTML = `<div class="empty">${t("hvac.noWarnings")}</div>`;
 }
 
-function renderHVACLoopSelect(loops) {
-  elements.hvacLoopSelect.disabled = state.activeHVACView !== "loop";
-  if (state.activeHVACView !== "loop") {
-    elements.hvacLoopSelect.innerHTML = `<option value="">${t("hvac.allSystems")}</option>`;
+function renderHVACSummary(hvac, selectedLoop) {
+  const loops = hvac.loops || [];
+  const groups = groupHVACLoopsByType(loops);
+  const activeLoopKind = selectedLoop ? hvacLoopKind(selectedLoop) : "";
+  elements.hvacSummary.innerHTML = `
+    <div class="hvac-navigator">
+      ${renderHVACLoopPicker({
+        kind: "air",
+        label: t("hvac.airLoops"),
+        help: t("hvac.airLoopHelp"),
+        count: hvac.airLoopCount || groups.air.length,
+        loops: groups.air,
+        active: state.activeHVACView === "loop" && activeLoopKind === "air",
+      })}
+      ${renderHVACLoopPicker({
+        kind: "plant",
+        label: t("hvac.plantLoops"),
+        help: t("hvac.plantLoopHelp"),
+        count: hvac.plantLoopCount || groups.plant.length,
+        loops: groups.plant,
+        active: state.activeHVACView === "loop" && activeLoopKind === "plant",
+      })}
+      ${groups.other.length ? renderHVACLoopPicker({
+        kind: "other",
+        label: t("hvac.otherLoops"),
+        help: t("hvac.otherLoopHelp"),
+        count: groups.other.length,
+        loops: groups.other,
+        active: state.activeHVACView === "loop" && activeLoopKind === "other",
+      }) : ""}
+      ${renderHVACRelationPicker(hvac.zoneRelations || [], state.activeHVACView === "relation")}
+      ${renderHVACDiagnosticsCard(hvac.warningCount || 0, state.activeHVACView === "diagnostics")}
+    </div>`;
+}
+
+function renderHVACLoopPicker({ kind, label, help, count, loops, active }) {
+  return `
+    <details class="hvac-nav-card ${active ? "active" : ""}" data-hvac-loop-kind="${escapeHTML(kind)}">
+      <summary>
+        <span>
+          <strong>${escapeHTML(label)}</strong>
+          <em>${escapeHTML(help)}</em>
+        </span>
+        <b>${escapeHTML(count)}</b>
+      </summary>
+      <div class="hvac-nav-menu">
+        ${loops.length ? loops.map(renderHVACLoopChoice).join("") : `<div class="empty compact">${escapeHTML(t(kind === "air" ? "hvac.noAirLoops" : kind === "plant" ? "hvac.noPlantLoops" : "hvac.noLoops"))}</div>`}
+      </div>
+    </details>`;
+}
+
+function renderHVACLoopChoice(loop) {
+  const selected = state.activeHVACView === "loop" && loop.id === state.activeHVACLoopId;
+  return `
+    <button class="hvac-nav-choice ${selected ? "active" : ""}" type="button" data-hvac-loop-id="${escapeHTML(loop.id)}">
+      <span>${escapeHTML(loop.name || loop.type || t("hvac.unnamedLoop"))}</span>
+      <small>${escapeHTML([loop.type, objectReferenceText(loop.objectIndex)].filter(Boolean).join(" "))}</small>
+    </button>`;
+}
+
+function renderHVACRelationPicker(relations, active) {
+  const selectedZone = state.activeHVACGraphKey?.startsWith("zone:") ? state.activeHVACGraphKey.slice(5) : "";
+  return `
+    <details class="hvac-nav-card ${active ? "active" : ""}">
+      <summary>
+        <span>
+          <strong>${escapeHTML(t("hvac.zoneRelations"))}</strong>
+          <em>${escapeHTML(t("hvac.zoneRelationHelp"))}</em>
+        </span>
+        <b>${escapeHTML(relations.length)}</b>
+      </summary>
+      <div class="hvac-nav-menu">
+        <button class="hvac-nav-choice ${active && !selectedZone ? "active" : ""}" type="button" data-hvac-open-view="relation">
+          <span>${escapeHTML(t("hvac.allZoneRelations"))}</span>
+          <small>${escapeHTML(t("hvac.serviceRelation"))}</small>
+        </button>
+        ${
+          relations.length
+            ? relations.map((relation) => renderHVACRelationChoice(relation, selectedZone)).join("")
+            : `<div class="empty compact">${escapeHTML(t("hvac.noZoneRelations"))}</div>`
+        }
+      </div>
+    </details>`;
+}
+
+function renderHVACRelationChoice(relation, selectedZone) {
+  const selected = state.activeHVACView === "relation" && selectedZone === relation.zoneName;
+  const meta = [...new Set([...(relation.airLoopNames || []), ...(relation.plantLoopNames || [])])].join(", ") || t("hvac.noTerminal");
+  return `
+    <button class="hvac-nav-choice ${selected ? "active" : ""}" type="button" data-hvac-relation-zone="${escapeHTML(relation.zoneName || "")}">
+      <span>${escapeHTML(relation.zoneName || t("common.blank"))}</span>
+      <small>${escapeHTML(meta)}</small>
+    </button>`;
+}
+
+function renderHVACDiagnosticsCard(count, active) {
+  return `
+    <button class="hvac-nav-card hvac-nav-action ${active ? "active" : ""}" type="button" data-hvac-open-view="diagnostics">
+      <span>
+        <strong>${escapeHTML(t("hvac.warnings"))}</strong>
+        <em>${escapeHTML(t("hvac.diagnosticsHelp"))}</em>
+      </span>
+      <b>${escapeHTML(count)}</b>
+    </button>`;
+}
+
+function handleHVACNavigationClick(event) {
+  const loopButton = event.target.closest("[data-hvac-loop-id]");
+  if (loopButton) {
+    state.activeHVACView = "loop";
+    state.activeHVACLoopId = loopButton.dataset.hvacLoopId || "";
+    state.activeHVACGraphKey = "";
+    state.activeHVACNodeName = "";
+    renderHVAC();
     return;
   }
-  elements.hvacLoopSelect.innerHTML = loops.length
-    ? loops
-        .map(
-          (loop) =>
-            `<option value="${escapeHTML(loop.id)}" ${loop.id === state.activeHVACLoopId ? "selected" : ""}>${escapeHTML(loop.type)}: ${escapeHTML(loop.name || `#${Number(loop.objectIndex) + 1}`)}</option>`,
-        )
-        .join("")
-    : `<option value="">${t("hvac.noLoops")}</option>`;
+  const relationButton = event.target.closest("[data-hvac-relation-zone]");
+  if (relationButton) {
+    state.activeHVACView = "relation";
+    state.activeHVACGraphKey = relationButton.dataset.hvacRelationZone ? `zone:${relationButton.dataset.hvacRelationZone}` : "";
+    state.activeHVACNodeName = "";
+    renderHVAC();
+    return;
+  }
+  const viewButton = event.target.closest("[data-hvac-open-view]");
+  if (viewButton) {
+    state.activeHVACView = viewButton.dataset.hvacOpenView || "loop";
+    state.activeHVACGraphKey = "";
+    state.activeHVACNodeName = "";
+    renderHVAC();
+  }
 }
 
-function renderHVACViewButtons() {
-  elements.hvacViewButtons.forEach((button) => {
-    button.classList.toggle("active", button.dataset.hvacView === state.activeHVACView);
-  });
+function groupHVACLoopsByType(loops) {
+  return loops.reduce(
+    (groups, loop) => {
+      groups[hvacLoopKind(loop)].push(loop);
+      return groups;
+    },
+    { air: [], plant: [], other: [] },
+  );
 }
 
-function renderHVACSummary(hvac) {
-  elements.hvacSummary.innerHTML = `
-    <div class="hvac-stat-grid">
-      ${renderHVACStat("Loops", hvac.loopCount || 0)}
-      ${renderHVACStat("AirLoopHVAC", hvac.airLoopCount || 0)}
-      ${renderHVACStat("PlantLoop", hvac.plantLoopCount || 0)}
-      ${renderHVACStat("Zone relations", hvac.zoneRelationCount || 0)}
-      ${renderHVACStat("Nodes", hvac.nodeCount || 0)}
-      ${renderHVACStat(t("hvac.warnings"), hvac.warningCount || 0)}
-    </div>`;
-}
-
-function renderHVACStat(label, value) {
-  return `
-    <div class="hvac-stat">
-      <span>${escapeHTML(label)}</span>
-      <strong>${escapeHTML(value)}</strong>
-    </div>`;
+function hvacLoopKind(loop) {
+  const type = String(loop?.type || "").toLowerCase();
+  if (type.includes("airloop")) {
+    return "air";
+  }
+  if (type.includes("plantloop")) {
+    return "plant";
+  }
+  return "other";
 }
 
 function renderHVACLoopView(loop, query) {
@@ -670,6 +766,11 @@ function renderObjectLink(objectIndex, objectType) {
     return "";
   }
   return `<button class="profile-object-link navigable-row" data-jump-object-index="${escapeHTML(index)}" data-jump-object-type="${escapeHTML(objectType || "")}" type="button">#${escapeHTML(index + 1)}</button>`;
+}
+
+function objectReferenceText(objectIndex) {
+  const index = Number(objectIndex);
+  return Number.isFinite(index) && index >= 0 ? `#${index + 1}` : "";
 }
 
 function hvacQuery() {

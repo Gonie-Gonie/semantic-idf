@@ -40,7 +40,6 @@ export function renderEmpty() {
   }
   if (elements.hvacStats) {
     elements.hvacStats.textContent = t("count.airPlantZone", { air: 0, plant: 0, zones: 0 });
-    elements.hvacLoopSelect.innerHTML = "";
     elements.hvacSummary.innerHTML = `<div class="empty">${t("hvac.noHVACAnalysis")}</div>`;
     elements.hvacGraph.innerHTML = `<div class="empty">${t("hvac.noLoopGraph")}</div>`;
     elements.hvacInspectorStats.textContent = t("hvac.selectNode");
