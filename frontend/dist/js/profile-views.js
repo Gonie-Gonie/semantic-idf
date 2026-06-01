@@ -54,107 +54,49 @@ function renderEmptyProfile() {
 function renderProfileSettings(profile) {
   const settings = state.profileSettings;
   const dimensions = profile.dimensions || [];
-  const metricOptions = profile.metricOptions || [];
   elements.profileSettings.innerHTML = `
-    <details class="profile-settings-panel">
-      <summary>
-        <span>Profile Settings</span>
-        <span class="badge">${escapeHTML(settings.scheduleCompareMode)} grouping</span>
-      </summary>
-      <div class="profile-settings-grid">
-        <section>
-          <h3>Dimensions</h3>
-          <div class="profile-chip-grid">
-            ${dimensions
-              .map(
-                (dimension) => `
-                  <label class="profile-check">
-                    <input data-profile-dimension="${escapeHTML(dimension.id)}" type="checkbox" ${settings.enabledDimensions.includes(dimension.id) ? "checked" : ""} />
-                    <span>${escapeHTML(dimension.label)}</span>
-                  </label>`,
-              )
-              .join("")}
-          </div>
-        </section>
-        <section>
-          <h3>Display Metrics</h3>
-          <div class="profile-metric-settings">
-            ${dimensions
-              .map((dimension) => profileMetricSelect(dimension, metricOptions, "displayMetrics", settings.displayMetrics[dimension.id]))
-              .join("")}
-          </div>
-        </section>
-        <section>
-          <h3>Grouping</h3>
-          <div class="profile-metric-settings">
-            ${dimensions
-              .map((dimension) => profileMetricSelect(dimension, metricOptions, "groupingMetrics", settings.groupingMetrics[dimension.id]))
-              .join("")}
-            <label class="profile-field">
-              <span>Tolerance</span>
-              <input id="profileTolerance" type="number" min="0.000001" step="0.001" value="${escapeHTML(settings.numericTolerance)}" />
-            </label>
-            <label class="profile-field">
-              <span>Schedule compare</span>
-              <select id="profileScheduleCompare">
-                ${optionHTML("none", "Ignore schedule", settings.scheduleCompareMode)}
-                ${optionHTML("name", "Schedule name", settings.scheduleCompareMode)}
-                ${optionHTML("resolved", "Resolved pattern", settings.scheduleCompareMode)}
-              </select>
-            </label>
-          </div>
-        </section>
-        <section>
-          <h3>Graph & Apply</h3>
-          <div class="profile-metric-settings">
-            <label class="profile-field">
-              <span>Graph mode</span>
-              <select id="profileGraphMode">
-                ${optionHTML("actual_value", "Actual value", settings.graphMode)}
-                ${optionHTML("multiplier", "Multiplier", settings.graphMode)}
-              </select>
-            </label>
-            <label class="profile-field">
-              <span>Summary mode</span>
-              <select id="profileScheduleSummaryMode">
-                ${optionHTML("representative_day", "Representative day", settings.scheduleSummaryMode)}
-                ${optionHTML("representative_week", "Representative week", settings.scheduleSummaryMode)}
-                ${optionHTML("monthly_average", "Monthly average", settings.scheduleSummaryMode)}
-                ${optionHTML("hourly_average_by_daytype", "Hourly by daytype", settings.scheduleSummaryMode)}
-                ${optionHTML("load_duration", "Load duration", settings.scheduleSummaryMode)}
-                ${optionHTML("annual_heatmap", "Annual heatmap", settings.scheduleSummaryMode)}
-              </select>
-            </label>
-            <label class="profile-field">
-              <span>Apply mode</span>
-              <select id="profileApplyMode">
-                ${optionHTML("clone", "Clone objects", settings.applyBehavior.defaultMode)}
-                ${optionHTML("shared", "Edit ZoneList", settings.applyBehavior.defaultMode)}
-              </select>
-            </label>
-            <label class="profile-field">
-              <span>Existing target</span>
-              <select id="profileReplacePolicy">
-                ${optionHTML("replace", "Replace", settings.applyBehavior.replaceExistingPolicy)}
-                ${optionHTML("keep", "Keep", settings.applyBehavior.replaceExistingPolicy)}
-                ${optionHTML("duplicate", "Duplicate", settings.applyBehavior.replaceExistingPolicy)}
-              </select>
-            </label>
-          </div>
-        </section>
+    <div class="profile-live-controls">
+      <div class="profile-live-group">
+        <span class="profile-live-label">Dimensions</span>
+        <div class="profile-toggle-row">
+          ${dimensions
+            .map(
+              (dimension) => `
+                <label class="profile-check compact">
+                  <input data-profile-dimension="${escapeHTML(dimension.id)}" type="checkbox" ${settings.enabledDimensions.includes(dimension.id) ? "checked" : ""} />
+                  <span>${escapeHTML(dimension.label)}</span>
+                </label>`,
+            )
+            .join("")}
+        </div>
       </div>
-    </details>`;
+      <label class="profile-field profile-live-select">
+        <span>Graph</span>
+        <select id="profileGraphMode">
+          ${optionHTML("actual_value", "Actual value", settings.graphMode)}
+          ${optionHTML("multiplier", "Multiplier", settings.graphMode)}
+        </select>
+      </label>
+    </div>`;
 }
 
-function profileMetricSelect(dimension, options, mapName, value) {
-  const choices = options.filter((option) => option.dimension === dimension.id);
+function applyModeSelect(id, value) {
   return `
-    <label class="profile-field">
-      <span>${escapeHTML(dimension.label)}</span>
-      <select data-profile-metric-map="${escapeHTML(mapName)}" data-profile-metric-dimension="${escapeHTML(dimension.id)}">
-        ${choices.map((option) => optionHTML(option.id, `${option.label}${option.unit ? ` (${option.unit})` : ""}`, value)).join("")}
+      <select id="${escapeHTML(id)}">
+        ${optionHTML("clone", "Clone objects", value)}
+        ${optionHTML("shared", "Edit ZoneList", value)}
       </select>
-    </label>`;
+    `;
+}
+
+function replacePolicySelect(id, value) {
+  return `
+      <select id="${escapeHTML(id)}">
+        ${optionHTML("replace", "Replace", value)}
+        ${optionHTML("keep", "Keep", value)}
+        ${optionHTML("duplicate", "Duplicate", value)}
+      </select>
+    `;
 }
 
 function optionHTML(value, label, selected) {
@@ -333,31 +275,8 @@ function bindProfileControls(profile) {
       renderProfile(profile);
     });
   });
-  elements.profileSettings.querySelectorAll("[data-profile-metric-map]").forEach((select) => {
-    select.addEventListener("change", () => {
-      const mapName = select.dataset.profileMetricMap;
-      state.profileSettings[mapName][select.dataset.profileMetricDimension] = select.value;
-      persistProfileSettings();
-      renderProfile(profile);
-    });
-  });
-  bindSettingControl("#profileTolerance", (input) => {
-    state.profileSettings.numericTolerance = Number(input.value) || 0.001;
-  });
-  bindSettingControl("#profileScheduleCompare", (input) => {
-    state.profileSettings.scheduleCompareMode = input.value;
-  });
   bindSettingControl("#profileGraphMode", (input) => {
     state.profileSettings.graphMode = input.value;
-  });
-  bindSettingControl("#profileScheduleSummaryMode", (input) => {
-    state.profileSettings.scheduleSummaryMode = input.value;
-  });
-  bindSettingControl("#profileApplyMode", (input) => {
-    state.profileSettings.applyBehavior.defaultMode = input.value;
-  });
-  bindSettingControl("#profileReplacePolicy", (input) => {
-    state.profileSettings.applyBehavior.replaceExistingPolicy = input.value;
   });
   elements.profileMatrix.querySelectorAll("[data-profile-zone]").forEach((row) => {
     row.addEventListener("click", () => {
@@ -443,7 +362,17 @@ function openProfileApplyDialog() {
     </section>
     <section>
       <h4>Options</h4>
-      <label class="profile-check"><input id="profileAllowZoneListEdit" type="checkbox" ${state.profileSettings.applyBehavior.allowZoneListEdit ? "checked" : ""} /> <span>Allow shared ZoneList edits</span></label>
+      <div class="profile-dialog-options">
+        <label class="profile-field">
+          <span>Apply mode</span>
+          ${applyModeSelect("profileApplyModeDialog", state.profileSettings.applyBehavior.defaultMode)}
+        </label>
+        <label class="profile-field">
+          <span>Existing target</span>
+          ${replacePolicySelect("profileReplacePolicyDialog", state.profileSettings.applyBehavior.replaceExistingPolicy)}
+        </label>
+        <label class="profile-check"><input id="profileAllowZoneListEdit" type="checkbox" ${state.profileSettings.applyBehavior.allowZoneListEdit ? "checked" : ""} /> <span>Allow shared ZoneList edits</span></label>
+      </div>
     </section>
     <section>
       <h4>Preview</h4>
@@ -509,8 +438,8 @@ function profileApplyRequest() {
     sourceZoneNames: group?.zoneNames || [],
     targetZoneNames,
     dimensions: [...dimensionSet],
-    mode: state.profileSettings.applyBehavior.defaultMode,
-    replaceExistingPolicy: state.profileSettings.applyBehavior.replaceExistingPolicy,
+    mode: elements.profileApplyBody.querySelector("#profileApplyModeDialog")?.value || state.profileSettings.applyBehavior.defaultMode,
+    replaceExistingPolicy: elements.profileApplyBody.querySelector("#profileReplacePolicyDialog")?.value || state.profileSettings.applyBehavior.replaceExistingPolicy,
     nameSuffix: state.profileSettings.applyBehavior.nameSuffix,
     allowZoneListEdit: Boolean(elements.profileApplyBody.querySelector("#profileAllowZoneListEdit")?.checked),
   };

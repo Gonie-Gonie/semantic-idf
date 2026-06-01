@@ -24,6 +24,7 @@
         <a href="#appearance">Appearance</a>
         <a href="#geometry-colors">Geometry Colors</a>
         <a href="#behavior">Behavior</a>
+        <a href="#profile-analysis">Profile Analysis</a>
         <a href="#storage">Storage</a>
       </nav>
 
@@ -53,6 +54,49 @@
         ["window", "Window"],
         ["selected", "Selected object"],
       ];
+      const profileDimensions = [
+        ["occupancy", "Occupancy"],
+        ["lighting", "Lighting"],
+        ["equipment", "Equipment"],
+        ["infiltration", "Infiltration"],
+        ["ventilation", "Ventilation"],
+        ["outdoor_air", "Outdoor Air"],
+      ];
+      const profileMetricOptions = {
+        occupancy: [
+          ["count", "People", "people"],
+          ["people_per_area", "People density", "people/m2"],
+          ["area_per_person", "Area per person", "m2/person"],
+        ],
+        lighting: [
+          ["total_power", "Total power", "W"],
+          ["power_per_area", "Power density", "W/m2"],
+          ["power_per_person", "Power per person", "W/person"],
+        ],
+        equipment: [
+          ["total_power", "Total power", "W"],
+          ["power_per_area", "Power density", "W/m2"],
+          ["power_per_person", "Power per person", "W/person"],
+        ],
+        infiltration: [
+          ["flow", "Flow", "m3/s"],
+          ["flow_per_area", "Flow per floor area", "m3/s-m2"],
+          ["flow_per_exterior_area", "Flow per exterior area", "m3/s-m2"],
+          ["ach", "Air changes", "ACH"],
+        ],
+        ventilation: [
+          ["flow", "Flow", "m3/s"],
+          ["flow_per_area", "Flow per floor area", "m3/s-m2"],
+          ["flow_per_person", "Flow per person", "m3/s-person"],
+          ["ach", "Air changes", "ACH"],
+        ],
+        outdoor_air: [
+          ["flow", "Flow", "m3/s"],
+          ["flow_per_area", "Flow per floor area", "m3/s-m2"],
+          ["flow_per_person", "Flow per person", "m3/s-person"],
+          ["ach", "Air changes", "ACH"],
+        ],
+      };
 
       let loadedPath = "";
       let activeSettings = mergeSettings();
@@ -67,10 +111,26 @@
           .replaceAll("'", "&#039;");
       }
 
+      function optionHTML(value, label, selected) {
+        return `<option value="${escapeHTML(value)}" ${String(selected) === String(value) ? "selected" : ""}>${escapeHTML(label)}</option>`;
+      }
+
+      function profileMetricField(prefix, dimension, label, selected) {
+        const choices = profileMetricOptions[dimension] || [];
+        return `
+          <label class="settings-profile-field" for="${escapeHTML(prefix)}-${escapeHTML(dimension)}">
+            <span>${escapeHTML(label)}</span>
+            <select id="${escapeHTML(prefix)}-${escapeHTML(dimension)}" data-profile-metric="${escapeHTML(prefix)}" data-profile-dimension="${escapeHTML(dimension)}">
+              ${choices.map(([value, metricLabel, unit]) => optionHTML(value, `${metricLabel}${unit ? ` (${unit})` : ""}`, selected)).join("")}
+            </select>
+          </label>`;
+      }
+
       function renderSettings(result) {
         activeSettings = mergeSettings(result.settings);
         loadedPath = result.path || loadedPath;
         const geometry = activeSettings.appearance.geometry;
+        const profile = activeSettings.profile;
         container.innerHTML = `
           <form id="settingsForm" class="settings-form">
             ${result.warning ? `<div class="settings-message warning">${escapeHTML(result.warning)}</div>` : ""}
@@ -132,6 +192,80 @@
                 <input id="geometrySyncLocateDefault" type="checkbox" ${activeSettings.interaction.geometrySyncLocate ? "checked" : ""} />
                 <span>Geometry sync locate by default</span>
               </label>
+            </section>
+
+            <section id="profile-analysis" class="guide-section">
+              <div class="settings-section-head">
+                <div>
+                  <h2>Profile Analysis</h2>
+                  <p>Set the normalization and grouping defaults used by the Profile tab.</p>
+                </div>
+              </div>
+              <div class="settings-subsection">
+                <h3>Display Metrics</h3>
+                <div class="settings-profile-grid">
+                  ${profileDimensions.map(([dimension, label]) => profileMetricField("profileDisplayMetric", dimension, label, profile.displayMetrics[dimension])).join("")}
+                </div>
+              </div>
+              <div class="settings-subsection">
+                <h3>Grouping Metrics</h3>
+                <div class="settings-profile-grid">
+                  ${profileDimensions.map(([dimension, label]) => profileMetricField("profileGroupingMetric", dimension, label, profile.groupingMetrics[dimension])).join("")}
+                </div>
+              </div>
+              <label class="settings-field" for="profileNumericTolerance">
+                <span>Numeric tolerance</span>
+                <input id="profileNumericTolerance" type="number" min="0.000001" step="0.001" value="${escapeHTML(profile.numericTolerance)}" />
+              </label>
+              <label class="settings-field" for="profileScheduleCompare">
+                <span>Schedule compare</span>
+                <select id="profileScheduleCompare">
+                  ${optionHTML("none", "Ignore schedule", profile.scheduleCompareMode)}
+                  ${optionHTML("name", "Schedule name", profile.scheduleCompareMode)}
+                  ${optionHTML("resolved", "Resolved schedule", profile.scheduleCompareMode)}
+                </select>
+              </label>
+              <label class="settings-field" for="profileScheduleSummaryMode">
+                <span>Schedule summary</span>
+                <select id="profileScheduleSummaryMode">
+                  ${optionHTML("representative_day", "Representative day", profile.scheduleSummaryMode)}
+                  ${optionHTML("representative_week", "Representative week", profile.scheduleSummaryMode)}
+                  ${optionHTML("monthly_average", "Monthly average", profile.scheduleSummaryMode)}
+                  ${optionHTML("hourly_average_by_daytype", "Hourly by daytype", profile.scheduleSummaryMode)}
+                  ${optionHTML("load_duration", "Load duration", profile.scheduleSummaryMode)}
+                  ${optionHTML("annual_heatmap", "Annual heatmap", profile.scheduleSummaryMode)}
+                </select>
+              </label>
+              <div class="settings-subsection">
+                <h3>Apply Defaults</h3>
+                <label class="settings-field" for="profileDefaultApplyMode">
+                  <span>Apply mode</span>
+                  <select id="profileDefaultApplyMode">
+                    ${optionHTML("clone", "Clone objects", profile.applyBehavior.defaultMode)}
+                    ${optionHTML("shared", "Edit ZoneList", profile.applyBehavior.defaultMode)}
+                  </select>
+                </label>
+                <label class="settings-field" for="profileReplaceExistingPolicy">
+                  <span>Existing target</span>
+                  <select id="profileReplaceExistingPolicy">
+                    ${optionHTML("replace", "Replace", profile.applyBehavior.replaceExistingPolicy)}
+                    ${optionHTML("keep", "Keep", profile.applyBehavior.replaceExistingPolicy)}
+                    ${optionHTML("duplicate", "Duplicate", profile.applyBehavior.replaceExistingPolicy)}
+                  </select>
+                </label>
+                <label class="settings-field" for="profileNameSuffix">
+                  <span>Name suffix</span>
+                  <input id="profileNameSuffix" type="text" value="${escapeHTML(profile.applyBehavior.nameSuffix)}" />
+                </label>
+                <label class="settings-check">
+                  <input id="profileAllowZoneListEdit" type="checkbox" ${profile.applyBehavior.allowZoneListEdit ? "checked" : ""} />
+                  <span>Allow ZoneList editing by default</span>
+                </label>
+                <label class="settings-check">
+                  <input id="profileCreateMissingZoneList" type="checkbox" ${profile.applyBehavior.createMissingZoneList ? "checked" : ""} />
+                  <span>Create missing ZoneList when possible</span>
+                </label>
+              </div>
             </section>
 
             <section id="storage" class="guide-section">
@@ -207,9 +341,25 @@
         document.querySelectorAll("[data-geometry-color]").forEach((input) => {
           geometry[input.dataset.geometryColor] = input.value;
         });
+        const profile = {
+          ...activeSettings.profile,
+          displayMetrics: readProfileMetricMap("profileDisplayMetric"),
+          groupingMetrics: readProfileMetricMap("profileGroupingMetric"),
+          numericTolerance: document.querySelector("#profileNumericTolerance").value,
+          scheduleCompareMode: document.querySelector("#profileScheduleCompare").value,
+          scheduleSummaryMode: document.querySelector("#profileScheduleSummaryMode").value,
+          applyBehavior: {
+            ...activeSettings.profile.applyBehavior,
+            defaultMode: document.querySelector("#profileDefaultApplyMode").value,
+            replaceExistingPolicy: document.querySelector("#profileReplaceExistingPolicy").value,
+            nameSuffix: document.querySelector("#profileNameSuffix").value,
+            allowZoneListEdit: document.querySelector("#profileAllowZoneListEdit").checked,
+            createMissingZoneList: document.querySelector("#profileCreateMissingZoneList").checked,
+          },
+        };
         return mergeSettings({
           version: activeSettings.version,
-          profile: activeSettings.profile,
+          profile,
           appearance: {
             theme: document.querySelector("#themeSelect").value,
             geometry,
@@ -222,6 +372,14 @@
             geometrySyncLocate: document.querySelector("#geometrySyncLocateDefault").checked,
           },
         });
+      }
+
+      function readProfileMetricMap(prefix) {
+        const values = {};
+        document.querySelectorAll(`[data-profile-metric="${prefix}"]`).forEach((select) => {
+          values[select.dataset.profileDimension] = select.value;
+        });
+        return values;
       }
 
       Promise.all([loadAndApplyAppSettings(), loadAppInfo()]).then(([settingsResult, appInfo]) => {
