@@ -17,6 +17,7 @@ export function renderGeometry(geometry = state.report?.geometry) {
   if (elements.geometrySyncLocate) {
     elements.geometrySyncLocate.checked = state.geometrySyncLocate;
   }
+  updateSelectionAidControl();
   elements.geometryStats.textContent = t("geometry.stats", {
     zones: geometry.zoneCount || 0,
     surfaces: geometry.surfaceCount || 0,
@@ -45,6 +46,12 @@ export function setGeometryMode(mode) {
 
 export function setGeometryStory(storyIndex) {
   state.selectedGeometryStory = storyIndex === "all" ? "all" : Number(storyIndex) || 0;
+  renderGeometry();
+}
+
+export function setGeometrySelectionAid(enabled) {
+  state.geometrySelectionAid = Boolean(enabled);
+  updateSelectionAidControl();
   renderGeometry();
 }
 
@@ -111,6 +118,15 @@ function updateModeVisibility() {
   });
 }
 
+function updateSelectionAidControl() {
+  if (!elements.geometrySelectionAid) {
+    return;
+  }
+  elements.geometrySelectionAid.classList.toggle("active", state.geometrySelectionAid);
+  elements.geometrySelectionAid.setAttribute("aria-pressed", String(state.geometrySelectionAid));
+  elements.geometrySelectionAid.title = state.geometrySelectionAid ? "Surface selection aid on (H)" : "Surface selection aid off (H)";
+}
+
 function renderScene(geometry) {
   elements.geometryPlan.innerHTML = "";
   ensureRenderer();
@@ -127,14 +143,14 @@ function renderScene(geometry) {
     ? Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY, bounds.maxZ - bounds.minZ, 1)
     : 18;
 
-  if (elements.geometryShowZones.checked) {
+  if (elements.geometryShowZones.checked && !state.geometrySelectionAid) {
     (geometry.surfaces || [])
       .filter((surface) => matchesSelectedStory(surface) && surface.surfaceType?.toLowerCase() === "floor")
       .forEach((surface) => addSurfaceMesh(group, surface, "zone", zoneIdForName(geometry, surface.zoneName), center));
   }
   if (elements.geometryShowWalls.checked) {
     (geometry.surfaces || [])
-      .filter((surface) => matchesSelectedStory(surface) && surface.surfaceType?.toLowerCase() !== "floor")
+      .filter((surface) => matchesSelectedStory(surface) && (state.geometrySelectionAid || surface.surfaceType?.toLowerCase() !== "floor"))
       .forEach((surface) => addSurfaceMesh(group, surface, "surface", surface.id, center));
   }
   if (elements.geometryShowWindows.checked) {
@@ -249,27 +265,39 @@ function pickMesh(event) {
 }
 
 function addSurfaceMesh(group, surface, kind, id, center) {
-  const geometry = polygonGeometry(surface.vertices, center, 0);
+  const geometry = polygonGeometry(surface.vertices, center, state.geometrySelectionAid && kind === "surface" ? 0.055 : 0);
   if (!geometry) {
     return;
   }
   const isZone = kind === "zone";
   const isRoof = /roof|ceiling/i.test(surface.surfaceType || "");
+  const isFloor = /floor/i.test(surface.surfaceType || "");
+  const isInterior = /surface|zone|adiabatic/i.test(surface.outsideBoundary || "");
+  const baseColor = isZone
+    ? geometryColor("zone", 0xb8d7b0)
+    : isRoof
+      ? geometryColor("roof", 0xb8b0a1)
+      : isFloor
+        ? 0x98b8a7
+        : geometryColor("wall", 0x7b9cbc);
   const material = new THREE.MeshStandardMaterial({
-    color: isZone
-      ? geometryColor("zone", 0xb8d7b0)
-      : isRoof
-        ? geometryColor("roof", 0xb8b0a1)
-        : geometryColor("wall", 0x7b9cbc),
+    color: baseColor,
+    emissive: state.geometrySelectionAid && kind === "surface" ? new THREE.Color(baseColor).multiplyScalar(isInterior ? 0.35 : 0.22).getHex() : 0x000000,
+    emissiveIntensity: state.geometrySelectionAid && kind === "surface" ? 0.16 : 0,
     roughness: 0.72,
     metalness: 0,
     transparent: true,
-    opacity: isZone ? 0.5 : 0.72,
+    opacity: state.geometrySelectionAid && kind === "surface" ? (isFloor ? 0.64 : 0.82) : isZone ? 0.5 : 0.72,
+    depthWrite: !(state.geometrySelectionAid && kind === "surface"),
+    depthTest: !(state.geometrySelectionAid && kind === "surface"),
     side: THREE.DoubleSide,
   });
   const mesh = new THREE.Mesh(geometry, material);
   mesh.userData = { geometryKind: kind, geometryId: id, baseColor: material.color.getHex(), baseOpacity: material.opacity };
   group.add(mesh);
+  if (state.geometrySelectionAid && kind === "surface") {
+    addSurfaceOutline(group, surface, id, center, baseColor);
+  }
 }
 
 function addWindowMesh(group, windowItem, center) {
@@ -317,6 +345,24 @@ function polygonGeometry(points, center, offset) {
   return geometry;
 }
 
+function addSurfaceOutline(group, surface, id, center, color) {
+  if (!surface.vertices || surface.vertices.length < 2) {
+    return;
+  }
+  const points = surface.vertices.map((point) => new THREE.Vector3(point.x - center.x, point.z - center.y, point.y - center.z));
+  points.push(points[0].clone());
+  const geometry = new THREE.BufferGeometry().setFromPoints(points);
+  const material = new THREE.LineBasicMaterial({
+    color,
+    transparent: true,
+    opacity: 0.68,
+    depthTest: false,
+  });
+  const line = new THREE.Line(geometry, material);
+  line.userData = { geometryKind: "surface", geometryId: id, baseColor: material.color.getHex(), baseOpacity: material.opacity };
+  group.add(line);
+}
+
 function addAxes(group, bounds, center) {
   if (!bounds.ok) {
     return;
@@ -332,6 +378,7 @@ function addAxes(group, bounds, center) {
 
 function renderPlan(geometry) {
   disposeRendererCanvas();
+  elements.geometryPlan.classList.toggle("selection-aid", state.geometrySelectionAid);
   const storyIndex = state.selectedGeometryStory === "all" ? firstStoryIndex(geometry) : state.selectedGeometryStory;
   const surfaces = (geometry.surfaces || []).filter((surface) => surface.storyIndex === storyIndex);
   const windows = (geometry.windows || []).filter((windowItem) => windowItem.storyIndex === storyIndex);
@@ -361,8 +408,8 @@ function renderPlan(geometry) {
     : "";
   const wallLines = elements.geometryShowWalls.checked
     ? surfaces
-        .filter((surface) => surface.surfaceType?.toLowerCase() !== "floor")
-        .map((surface) => `<polyline class="plan-wall" data-geometry-kind="surface" data-geometry-id="${escapeHTML(surface.id)}" points="${surface.vertices.map(project).join(" ")} ${project(surface.vertices[0])}"></polyline>`)
+        .filter((surface) => state.geometrySelectionAid || surface.surfaceType?.toLowerCase() !== "floor")
+        .map((surface) => renderPlanSurfaceShape(surface, project))
         .join("")
     : "";
   const windowLines = elements.geometryShowWindows.checked
@@ -377,6 +424,32 @@ function renderPlan(geometry) {
     shape.addEventListener("click", () => selectGeometry(shape.dataset.geometryKind, shape.dataset.geometryId));
   });
   highlightSelectedPlan();
+}
+
+function renderPlanSurfaceShape(surface, project) {
+  const points = `${surface.vertices.map(project).join(" ")} ${project(surface.vertices[0])}`;
+  const className = `plan-surface ${planSurfaceClass(surface)}`;
+  const title = escapeHTML(`${surface.name || surface.type} / ${surface.surfaceType || "Surface"}`);
+  if (isHorizontalSurface(surface)) {
+    return `<polygon class="${className}" data-geometry-kind="surface" data-geometry-id="${escapeHTML(surface.id)}" points="${points}"><title>${title}</title></polygon>`;
+  }
+  return `<polyline class="plan-wall ${className}" data-geometry-kind="surface" data-geometry-id="${escapeHTML(surface.id)}" points="${points}"><title>${title}</title></polyline>`;
+}
+
+function planSurfaceClass(surface) {
+  const surfaceType = String(surface.surfaceType || "").toLowerCase();
+  const boundary = String(surface.outsideBoundary || "").toLowerCase();
+  return [
+    surfaceType.includes("floor") ? "floor" : "",
+    /roof|ceiling/.test(surfaceType) ? "roof" : "",
+    /surface|zone|adiabatic/.test(boundary) ? "interior" : "exterior",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function isHorizontalSurface(surface) {
+  return /floor|roof|ceiling/i.test(surface.surfaceType || "");
 }
 
 function renderGeometryDetails(geometry = state.report?.geometry) {
@@ -403,6 +476,7 @@ function renderGeometryDetails(geometry = state.report?.geometry) {
         <h4>${t("geometry.relatedObjects")}</h4>
         ${renderRelatedGroups(relatedGroups)}
       </section>
+      ${renderConstructionSection(geometry, entity)}
     </div>`;
   bindGeometryDetailControls();
 }
@@ -573,6 +647,99 @@ function renderRelatedGroups(groups = []) {
     </div>`;
 }
 
+function renderConstructionSection(geometry, entity) {
+  const construction = constructionForEntity(geometry, entity);
+  const constructionName = entity?.item?.construction || "";
+  if (!constructionName && !construction) {
+    return "";
+  }
+  return `
+    <section class="geometry-construction-section">
+      <h4>${t("geometry.construction", {}, "Construction")}</h4>
+      ${construction ? renderConstructionGraphic(construction) : `<div class="empty">${t("geometry.noConstruction", {}, "No construction layers parsed")}: ${escapeHTML(constructionName)}</div>`}
+    </section>`;
+}
+
+function constructionForEntity(geometry, entity) {
+  const constructionName = entity?.item?.construction;
+  const key = normalizeGeometryName(constructionName);
+  if (!key) {
+    return null;
+  }
+  return (geometry?.constructions || []).find((construction) => normalizeGeometryName(construction.name) === key) || null;
+}
+
+function renderConstructionGraphic(construction) {
+  const layers = construction.layers || [];
+  const totalThickness = layers.reduce((sum, layer) => sum + (layer.hasThickness ? Number(layer.thickness) || 0 : 0), 0);
+  return `
+    <div class="construction-card">
+      <div class="construction-card-head">
+        <strong>${escapeHTML(construction.name)}</strong>
+        <span>${construction.hasThickness ? `${t("geometry.totalThickness", {}, "Total thickness")} ${formatThickness(construction.totalThickness || totalThickness)}` : t("geometry.thicknessUnknown", {}, "Thickness unknown")}</span>
+      </div>
+      <div class="construction-stack" role="img" aria-label="${escapeHTML(construction.name)} construction layers">
+        ${layers.length ? layers.map((layer, index) => renderConstructionLayer(layer, index, totalThickness)).join("") : `<div class="empty">${t("geometry.noConstruction", {}, "No construction layers parsed")}</div>`}
+      </div>
+    </div>`;
+}
+
+function renderConstructionLayer(layer, index, totalThickness) {
+  const thickness = layer.hasThickness ? Number(layer.thickness) || 0 : 0;
+  const flexGrow = layer.hasThickness && totalThickness > 0 ? Math.max(0.18, thickness / totalThickness) : 0.35;
+  const width = layer.hasThickness && totalThickness > 0 ? Math.max(10, (thickness / totalThickness) * 100) : 18;
+  const color = constructionLayerColor(layer, index);
+  const details = [
+    layer.objectType,
+    layer.hasThickness ? formatThickness(layer.thickness) : "",
+    layer.thermalResistance ? `R ${formatNumber(layer.thermalResistance)}` : "",
+    layer.conductivity ? `k ${formatNumber(layer.conductivity)}` : "",
+  ].filter(Boolean);
+  return `
+    <button class="construction-layer" type="button" data-object-index="${escapeHTML(layer.objectIndex ?? "")}" style="--layer-color: ${color}; --layer-flex: ${flexGrow}; --layer-width: ${width}%;">
+      <span class="construction-layer-bar"></span>
+      <span class="construction-layer-text">
+        <strong>${escapeHTML(layer.name)}</strong>
+        <span>${escapeHTML(details.join(" / ") || t("common.notAvailable", {}, "N/A"))}</span>
+      </span>
+    </button>`;
+}
+
+function constructionLayerColor(layer, index) {
+  const text = `${layer.objectType || ""} ${layer.name || ""}`.toLowerCase();
+  if (text.includes("window") || text.includes("glazing") || text.includes("glass")) {
+    return "#68b9d1";
+  }
+  if (text.includes("air") || text.includes("gas")) {
+    return "#dbe8ef";
+  }
+  if (text.includes("insulation") || text.includes("mass")) {
+    return "#d7c878";
+  }
+  if (text.includes("concrete") || text.includes("gypsum") || text.includes("plaster")) {
+    return "#b9bdc3";
+  }
+  if (text.includes("metal") || text.includes("steel") || text.includes("alum")) {
+    return "#8da1ad";
+  }
+  if (text.includes("wood")) {
+    return "#b7895b";
+  }
+  const palette = ["#9fb7a4", "#a8b5ca", "#c3a995", "#b6b0c8", "#a7c0bf"];
+  return palette[index % palette.length];
+}
+
+function formatThickness(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) {
+    return t("common.notAvailable", {}, "N/A");
+  }
+  if (number < 1) {
+    return `${(number * 1000).toLocaleString(undefined, { maximumFractionDigits: 1 })} mm`;
+  }
+  return `${number.toLocaleString(undefined, { maximumFractionDigits: 3 })} m`;
+}
+
 function renderRelatedItem(item) {
   const content = `
     <span class="geometry-related-main">
@@ -589,6 +756,21 @@ function renderRelatedItem(item) {
 function bindGeometryDetailControls() {
   elements.geometryDetails.querySelectorAll(".geometry-related-row[data-geometry-id]").forEach((button) => {
     button.addEventListener("click", () => selectGeometry(button.dataset.geometryKind, button.dataset.geometryId));
+  });
+  elements.geometryDetails.querySelectorAll(".construction-layer[data-object-index]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const objectIndex = Number(button.dataset.objectIndex);
+      if (!Number.isFinite(objectIndex) || objectIndex < 0) {
+        return;
+      }
+      window.dispatchEvent(
+        new CustomEvent("idfAnalyzer:geometryLocate", {
+          detail: {
+            objectIndex,
+          },
+        }),
+      );
+    });
   });
 }
 

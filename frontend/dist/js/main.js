@@ -19,7 +19,7 @@ import {
   updateDocumentActions,
 } from "./actions.js";
 import { renderDiagnostics, renderEmpty, renderReport, renderSummary } from "./analysis-views.js";
-import { renderGeometry, resizeGeometry, setGeometryMode, setGeometryStory } from "./geometry-loader.js";
+import { renderGeometry, resizeGeometry, setGeometryMode, setGeometrySelectionAid, setGeometryStory } from "./geometry-loader.js";
 import { initializeHVACControls } from "./hvac-views.js";
 import {
   configureInputViews,
@@ -77,6 +77,7 @@ elements.geometryModeButtons.forEach((button) => {
   button.addEventListener("click", () => setGeometryMode(button.dataset.geometryMode));
 });
 elements.geometryStorySelect.addEventListener("change", () => setGeometryStory(elements.geometryStorySelect.value));
+elements.geometrySelectionAid.addEventListener("click", () => setGeometrySelectionAid(!state.geometrySelectionAid));
 elements.geometrySyncLocate.addEventListener("change", () => {
   state.geometrySyncLocate = elements.geometrySyncLocate.checked;
   renderGeometry();
@@ -84,12 +85,25 @@ elements.geometrySyncLocate.addEventListener("change", () => {
 elements.geometryShowZones.addEventListener("change", () => renderGeometry());
 elements.geometryShowWalls.addEventListener("change", () => renderGeometry());
 elements.geometryShowWindows.addEventListener("change", () => renderGeometry());
+elements.hvacExpandButton.addEventListener("click", () => toggleExpandedPane("hvac"));
+elements.geometryExpandButton.addEventListener("click", () => toggleExpandedPane("geometry"));
 elements.inputViewButtons.forEach((button) => {
   button.addEventListener("click", () => switchInputView(button.dataset.inputView));
 });
 window.addEventListener("resize", () => {
-  if (state.activeResultTab === "geometry") {
+  if (state.activeResultTab === "geometry" || state.expandedPane === "geometry") {
     resizeGeometry();
+  }
+});
+window.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && state.expandedPane) {
+    event.preventDefault();
+    toggleExpandedPane("");
+    return;
+  }
+  if (event.key.toLowerCase() === "h" && state.activeResultTab === "geometry" && !isEditableTarget(event.target)) {
+    event.preventDefault();
+    setGeometrySelectionAid(!state.geometrySelectionAid);
   }
 });
 window.addEventListener("idfAnalyzer:documentChanged", () => {
@@ -158,6 +172,38 @@ window.addEventListener("idfAnalyzer:hvacApplied", (event) => {
   const changeCount = result.preview?.changes?.filter((change) => change.requiresSave).length || 0;
   setStatus(t("status.hvacApplied", { count: changeCount }), "ok");
 });
+
+function toggleExpandedPane(pane) {
+  state.expandedPane = state.expandedPane === pane ? "" : pane;
+  if (!pane) {
+    state.expandedPane = "";
+  }
+  document.body.classList.toggle("analysis-expanded-active", Boolean(state.expandedPane));
+  elements.resultPanes.forEach((item) => {
+    const id = item.id.replace(/Pane$/, "").toLowerCase();
+    item.classList.toggle("analysis-expanded-pane", id === state.expandedPane);
+  });
+  updateExpandButtons();
+  if (state.expandedPane === "geometry" || pane === "geometry") {
+    window.requestAnimationFrame(resizeGeometry);
+  }
+}
+
+function updateExpandButtons() {
+  const expanded = state.expandedPane;
+  if (elements.hvacExpandButton) {
+    elements.hvacExpandButton.textContent = expanded === "hvac" ? t("action.close") : t("action.expand", {}, "Expand");
+    elements.hvacExpandButton.classList.toggle("active", expanded === "hvac");
+  }
+  if (elements.geometryExpandButton) {
+    elements.geometryExpandButton.textContent = expanded === "geometry" ? t("action.close") : t("action.expand", {}, "Expand");
+    elements.geometryExpandButton.classList.toggle("active", expanded === "geometry");
+  }
+}
+
+function isEditableTarget(target) {
+  return Boolean(target?.closest?.("input, textarea, select, [contenteditable='true']"));
+}
 
 initializeWorkspaceSplitter();
 initializeVerticalSplitters();

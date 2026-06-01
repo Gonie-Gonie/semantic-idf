@@ -94,3 +94,12 @@ export function setGeometryStory(storyIndex) {
   state.selectedGeometryStory = storyIndex === "all" ? "all" : Number(storyIndex) || 0;
   loadGeometryModule().then((module) => module.setGeometryStory(state.selectedGeometryStory));
 }
+
+export function setGeometrySelectionAid(enabled) {
+  state.geometrySelectionAid = Boolean(enabled);
+  if (elements.geometrySelectionAid) {
+    elements.geometrySelectionAid.classList.toggle("active", state.geometrySelectionAid);
+    elements.geometrySelectionAid.setAttribute("aria-pressed", String(state.geometrySelectionAid));
+  }
+  loadGeometryModule().then((module) => module.setGeometrySelectionAid(state.geometrySelectionAid));
+}

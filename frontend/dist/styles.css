@@ -952,6 +952,50 @@ textarea {
   flex-direction: column;
 }
 
+body.analysis-expanded-active {
+  overflow: hidden;
+}
+
+body.analysis-expanded-active::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  background: color-mix(in srgb, var(--bg) 72%, #000000 28%);
+}
+
+body.analysis-expanded-active .result-pane.analysis-expanded-pane {
+  position: fixed;
+  inset: 12px;
+  z-index: 901;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 18px 54px rgba(15, 23, 42, 0.28);
+}
+
+body.analysis-expanded-active .result-pane:not(.analysis-expanded-pane) {
+  visibility: hidden;
+}
+
+body.analysis-expanded-active .analysis-expanded-pane .summary-head,
+body.analysis-expanded-active .analysis-expanded-pane .geometry-head {
+  flex: 0 0 auto;
+}
+
+body.analysis-expanded-active .analysis-expanded-pane .hvac-pane,
+body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
+  grid-template-rows: minmax(0, 1fr) 8px minmax(190px, 28%);
+}
+
 .summary-head {
   min-height: 58px;
   padding: 10px 12px;
@@ -2985,6 +3029,14 @@ textarea {
   background: var(--surface-3);
 }
 
+.geometry-plan.selection-aid {
+  background:
+    linear-gradient(color-mix(in srgb, var(--line), transparent 58%) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--line), transparent 58%) 1px, transparent 1px),
+    var(--surface-3);
+  background-size: 28px 28px;
+}
+
 .plan-zone {
   fill: var(--geometry-zone);
   fill: color-mix(in srgb, var(--geometry-zone), var(--surface) 35%);
@@ -2993,12 +3045,43 @@ textarea {
   cursor: pointer;
 }
 
+.geometry-plan.selection-aid .plan-zone {
+  opacity: 0.22;
+  pointer-events: none;
+}
+
+.plan-surface {
+  fill: color-mix(in srgb, var(--geometry-wall), transparent 68%);
+  stroke: var(--geometry-wall);
+  stroke-width: 4;
+  stroke-linejoin: round;
+  cursor: pointer;
+}
+
+.plan-surface.floor {
+  fill: color-mix(in srgb, #98b8a7, transparent 46%);
+  stroke: #5f9276;
+}
+
+.plan-surface.roof {
+  fill: color-mix(in srgb, var(--geometry-roof), transparent 42%);
+  stroke: color-mix(in srgb, var(--geometry-roof), var(--ink) 34%);
+}
+
+.plan-surface.interior {
+  stroke-dasharray: 7 5;
+}
+
 .plan-wall {
   fill: none;
   stroke: var(--geometry-wall);
   stroke-width: 3;
   stroke-linejoin: round;
   cursor: pointer;
+}
+
+.geometry-plan.selection-aid .plan-wall {
+  stroke-width: 6;
 }
 
 .plan-window {
@@ -3010,10 +3093,15 @@ textarea {
 }
 
 .plan-zone.selected,
+.plan-surface.selected,
 .plan-wall.selected,
 .plan-window.selected {
   stroke: var(--geometry-selected);
   stroke-width: 6;
+}
+
+.plan-surface.selected {
+  fill: color-mix(in srgb, var(--geometry-selected), transparent 62%);
 }
 
 .geometry-details {
@@ -3056,7 +3144,7 @@ textarea {
 
 .geometry-detail-grid {
   display: grid;
-  grid-template-columns: minmax(220px, 0.9fr) minmax(260px, 1.1fr);
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
   gap: 12px;
   padding: 12px;
 }
@@ -3185,6 +3273,103 @@ button.geometry-related-row:hover {
 
 .geometry-related-role {
   white-space: nowrap;
+}
+
+.geometry-construction-section {
+  min-width: 0;
+}
+
+.construction-card {
+  border: 1px solid var(--surface-2);
+  background: var(--control);
+}
+
+.construction-card-head {
+  min-height: 42px;
+  padding: 8px 9px;
+  border-bottom: 1px solid var(--surface-2);
+  display: grid;
+  gap: 3px;
+}
+
+.construction-card-head strong,
+.construction-card-head span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.construction-card-head strong {
+  font-size: 12px;
+}
+
+.construction-card-head span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.construction-stack {
+  min-height: 150px;
+  padding: 10px;
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  overflow-x: auto;
+}
+
+.construction-layer {
+  flex: var(--layer-flex, 0.4) 0 max(34px, var(--layer-width, 18%));
+  min-width: 34px;
+  min-height: 128px;
+  border: 1px solid color-mix(in srgb, var(--layer-color), var(--ink) 22%);
+  border-radius: 4px;
+  padding: 0;
+  display: grid;
+  grid-template-rows: minmax(78px, 1fr) auto;
+  align-items: stretch;
+  gap: 0;
+  overflow: hidden;
+  background: var(--surface);
+  color: var(--ink);
+  text-align: left;
+}
+
+.construction-layer:hover {
+  border-color: var(--teal);
+}
+
+.construction-layer-bar {
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--layer-color), #ffffff 24%), var(--layer-color)),
+    repeating-linear-gradient(90deg, transparent 0 9px, rgba(255, 255, 255, 0.24) 9px 10px);
+  border-bottom: 1px solid color-mix(in srgb, var(--layer-color), var(--ink) 20%);
+}
+
+.construction-layer-text {
+  min-width: 0;
+  padding: 7px;
+  display: grid;
+  gap: 3px;
+  background: color-mix(in srgb, var(--surface), var(--layer-color) 12%);
+}
+
+.construction-layer-text strong,
+.construction-layer-text span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.construction-layer-text strong {
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.construction-layer-text span {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.25;
 }
 
 .tabs {

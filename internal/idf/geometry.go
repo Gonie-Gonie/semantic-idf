@@ -8,14 +8,15 @@ import (
 )
 
 type GeometryReport struct {
-	Zones        []GeometryZone    `json:"zones"`
-	Surfaces     []GeometrySurface `json:"surfaces"`
-	Windows      []GeometryWindow  `json:"windows"`
-	Stories      []GeometryStory   `json:"stories"`
-	Bounds       GeometryBounds    `json:"bounds"`
-	ZoneCount    int               `json:"zoneCount"`
-	SurfaceCount int               `json:"surfaceCount"`
-	WindowCount  int               `json:"windowCount"`
+	Zones         []GeometryZone         `json:"zones"`
+	Surfaces      []GeometrySurface      `json:"surfaces"`
+	Windows       []GeometryWindow       `json:"windows"`
+	Constructions []GeometryConstruction `json:"constructions,omitempty"`
+	Stories       []GeometryStory        `json:"stories"`
+	Bounds        GeometryBounds         `json:"bounds"`
+	ZoneCount     int                    `json:"zoneCount"`
+	SurfaceCount  int                    `json:"surfaceCount"`
+	WindowCount   int                    `json:"windowCount"`
 }
 
 type GeometryZone struct {
@@ -59,6 +60,7 @@ type GeometryWindow struct {
 	Name            string           `json:"name"`
 	Type            string           `json:"type"`
 	SurfaceType     string           `json:"surfaceType"`
+	Construction    string           `json:"construction,omitempty"`
 	BaseSurfaceID   string           `json:"baseSurfaceId,omitempty"`
 	BaseSurfaceName string           `json:"baseSurfaceName"`
 	ZoneName        string           `json:"zoneName,omitempty"`
@@ -101,6 +103,27 @@ type GeometryMetric struct {
 	Value        any    `json:"value,omitempty"`
 	DisplayValue string `json:"displayValue"`
 	Unit         string `json:"unit,omitempty"`
+}
+
+type GeometryConstruction struct {
+	Name           string                  `json:"name"`
+	ObjectType     string                  `json:"objectType"`
+	ObjectIndex    int                     `json:"objectIndex"`
+	Layers         []GeometryMaterialLayer `json:"layers"`
+	TotalThickness float64                 `json:"totalThickness,omitempty"`
+	HasThickness   bool                    `json:"hasThickness"`
+}
+
+type GeometryMaterialLayer struct {
+	Name              string  `json:"name"`
+	ObjectType        string  `json:"objectType,omitempty"`
+	ObjectIndex       int     `json:"objectIndex,omitempty"`
+	Thickness         float64 `json:"thickness,omitempty"`
+	HasThickness      bool    `json:"hasThickness"`
+	ThermalResistance float64 `json:"thermalResistance,omitempty"`
+	Conductivity      float64 `json:"conductivity,omitempty"`
+	Density           float64 `json:"density,omitempty"`
+	SpecificHeat      float64 `json:"specificHeat,omitempty"`
 }
 
 type geometryContext struct {
@@ -182,6 +205,7 @@ func AnalyzeGeometry(doc Document) GeometryReport {
 
 	report.finalizeZones()
 	report.assignStories()
+	report.Constructions = geometryConstructionsFromDocument(doc)
 	report.ZoneCount = len(report.Zones)
 	report.SurfaceCount = len(report.Surfaces)
 	report.WindowCount = len(report.Windows)
@@ -286,6 +310,7 @@ func geometryWindowFromObject(obj Object, ctx geometryContext, surfaces map[stri
 		Name:            objectName(obj),
 		Type:            obj.Type,
 		SurfaceType:     fenestrationSurfaceType(obj),
+		Construction:    findFieldByCommentWords(obj, "construction", "name"),
 		BaseSurfaceID:   base.ID,
 		BaseSurfaceName: baseName,
 		ZoneName:        base.ZoneName,
@@ -518,6 +543,82 @@ func geometryMetric(name string, value any, unit string, precision int) Geometry
 		display = "N/A"
 	}
 	return GeometryMetric{Name: name, Value: value, DisplayValue: display, Unit: unit}
+}
+
+func geometryConstructionsFromDocument(doc Document) []GeometryConstruction {
+	materials := geometryMaterialsByName(doc)
+	var constructions []GeometryConstruction
+	for _, obj := range doc.Objects {
+		if !strings.EqualFold(obj.Type, "Construction") {
+			continue
+		}
+		construction := GeometryConstruction{
+			Name:        objectName(obj),
+			ObjectType:  obj.Type,
+			ObjectIndex: obj.Index,
+		}
+		for index := 1; index < len(obj.Fields); index++ {
+			layerName := strings.TrimSpace(obj.Fields[index].Value)
+			if layerName == "" {
+				continue
+			}
+			layer, ok := materials[normalizeName(layerName)]
+			if !ok {
+				layer = GeometryMaterialLayer{Name: layerName, ObjectIndex: -1}
+			}
+			construction.Layers = append(construction.Layers, layer)
+			if layer.HasThickness {
+				construction.TotalThickness += layer.Thickness
+				construction.HasThickness = true
+			}
+		}
+		construction.TotalThickness = roundedNumber(construction.TotalThickness, 4)
+		constructions = append(constructions, construction)
+	}
+	return constructions
+}
+
+func geometryMaterialsByName(doc Document) map[string]GeometryMaterialLayer {
+	materials := map[string]GeometryMaterialLayer{}
+	for _, obj := range doc.Objects {
+		if !isGeometryMaterialType(obj.Type) {
+			continue
+		}
+		name := objectName(obj)
+		if name == "" {
+			continue
+		}
+		layer := GeometryMaterialLayer{
+			Name:        name,
+			ObjectType:  obj.Type,
+			ObjectIndex: obj.Index,
+		}
+		if thickness, ok := findNumericFieldByCommentWords(obj, "thickness"); ok {
+			layer.Thickness = roundedNumber(thickness, 4)
+			layer.HasThickness = true
+		}
+		if resistance, ok := findNumericFieldByCommentWords(obj, "thermal", "resistance"); ok {
+			layer.ThermalResistance = roundedNumber(resistance, 4)
+		}
+		if conductivity, ok := findNumericFieldByCommentWords(obj, "conductivity"); ok {
+			layer.Conductivity = roundedNumber(conductivity, 4)
+		}
+		if density, ok := findNumericFieldByCommentWords(obj, "density"); ok {
+			layer.Density = roundedNumber(density, 3)
+		}
+		if specificHeat, ok := findNumericFieldByCommentWords(obj, "specific", "heat"); ok {
+			layer.SpecificHeat = roundedNumber(specificHeat, 2)
+		}
+		materials[normalizeName(name)] = layer
+	}
+	return materials
+}
+
+func isGeometryMaterialType(objectType string) bool {
+	lower := strings.ToLower(strings.TrimSpace(objectType))
+	return lower == "material" ||
+		strings.HasPrefix(lower, "material:") ||
+		strings.HasPrefix(lower, "windowmaterial:")
 }
 
 func toFloat(value any) float64 {

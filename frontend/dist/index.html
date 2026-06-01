@@ -161,6 +161,7 @@
               </div>
               <div class="summary-tools hvac-tools">
                 <input id="hvacFilter" type="search" placeholder="Filter loops, zones, nodes" data-i18n-placeholder="hvac.filter" data-i18n-aria-label="hvac.filter" />
+                <button id="hvacExpandButton" type="button" data-expand-pane="hvac" data-i18n="action.expand">Expand</button>
               </div>
             </div>
             <div class="hvac-pane">
@@ -230,12 +231,14 @@
                   <button class="geometry-mode-button" data-geometry-mode="plan" type="button">Plan</button>
                   <select id="geometryStorySelect" aria-label="Geometry story"></select>
                 </div>
+                <button id="geometrySelectionAid" class="geometry-mode-button" type="button" aria-pressed="false" data-i18n="geometry.selectAid">Select aid</button>
                 <label class="geometry-toggle geometry-sync-toggle"><input id="geometrySyncLocate" type="checkbox" checked /> <span data-i18n="geometry.syncLocate">Sync locate</span></label>
                 <div class="geometry-control-group geometry-visibility-controls" aria-label="Geometry visibility">
                   <label class="geometry-toggle"><input id="geometryShowZones" type="checkbox" checked /> <span data-i18n="geometry.showZones">Zones</span></label>
                   <label class="geometry-toggle"><input id="geometryShowWalls" type="checkbox" checked /> <span data-i18n="geometry.showWalls">Walls</span></label>
                   <label class="geometry-toggle"><input id="geometryShowWindows" type="checkbox" checked /> <span data-i18n="geometry.showWindows">Windows</span></label>
                 </div>
+                <button id="geometryExpandButton" class="geometry-mode-button" type="button" data-expand-pane="geometry" data-i18n="action.expand">Expand</button>
               </div>
             </div>
             <div class="geometry-body">
