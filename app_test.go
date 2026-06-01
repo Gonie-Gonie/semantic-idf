@@ -38,7 +38,7 @@ func TestAnalyzeInputTextIncludesSummary(t *testing.T) {
 }
 
 func TestDefaultEnergyPlusSampleAnalyzes(t *testing.T) {
-	content, err := os.ReadFile("frontend/dist/samples/RefBldgLargeOfficeNew2004_Chicago.idf")
+	content, err := os.ReadFile("frontend/src/samples/RefBldgLargeOfficeNew2004_Chicago.idf")
 	if err != nil {
 		t.Fatalf("ReadFile(default sample) error = %v", err)
 	}

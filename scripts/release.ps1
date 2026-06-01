@@ -636,12 +636,12 @@ $repoRoot = Get-RepoRoot
 $releaseNotesDir = Join-Path $repoRoot "docs\release-notes"
 $unreleasedPath = Join-Path $releaseNotesDir "unreleased.md"
 $wailsPath = Join-Path $repoRoot "wails.json"
-$appInfoPath = Join-Path $repoRoot "frontend\dist\js\app-info.js"
+$appInfoPath = Join-Path $repoRoot "frontend\src\js\app-info.js"
 $staticHTMLPaths = @(
-    (Join-Path $repoRoot "frontend\dist\index.html"),
-    (Join-Path $repoRoot "frontend\dist\guide.html"),
-    (Join-Path $repoRoot "frontend\dist\tools.html"),
-    (Join-Path $repoRoot "frontend\dist\settings.html")
+    (Join-Path $repoRoot "frontend\src\index.html"),
+    (Join-Path $repoRoot "frontend\src\guide.html"),
+    (Join-Path $repoRoot "frontend\src\tools.html"),
+    (Join-Path $repoRoot "frontend\src\settings.html")
 )
 $changelogPath = Join-Path $repoRoot "CHANGELOG.md"
 $releaseDate = (Get-Date).ToString("yyyy-MM-dd")

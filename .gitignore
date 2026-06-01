@@ -9,6 +9,9 @@ coverage.out
 # Wails generated frontend bindings
 /frontend/wailsjs/
 
+# Future frontend build outputs; committed static source lives in frontend/src.
+/frontend/dist/
+
 # Optional web tooling, kept out of this base project
 node_modules/
 

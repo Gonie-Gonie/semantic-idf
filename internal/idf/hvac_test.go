@@ -207,7 +207,7 @@ func TestAnalyzeHVACReadsZoneEquipmentListWithLoadDistributionScheme(t *testing.
 }
 
 func TestAnalyzeHVACReferenceLargeOfficeRelations(t *testing.T) {
-	text, err := os.ReadFile("../../frontend/dist/samples/RefBldgLargeOfficeNew2004_Chicago.idf")
+	text, err := os.ReadFile("../../frontend/src/samples/RefBldgLargeOfficeNew2004_Chicago.idf")
 	if err != nil {
 		t.Fatalf("read reference sample: %v", err)
 	}

@@ -7,7 +7,7 @@
 - Prefer static frontend assets until a build chain becomes clearly valuable.
 - Every implementation pass should end with `scripts/verify.ps1`, then commit and push when the work is complete.
 - Every commit should use the repo-local runtime and include a successful Wails build; setup installs a local pre-commit hook for this.
-- Keep `frontend/dist/guide.html` focused on end-user workflows. Developer commands and repo maintenance notes belong in README/docs, not in the in-app guide.
+- Keep `frontend/src/guide.html` focused on end-user workflows. Developer commands and repo maintenance notes belong in README/docs, not in the in-app guide.
 - Protect user work in the git tree. Do not revert unrelated changes.
 - Favor small IDF-domain functions that can be tested without launching the desktop shell.
 - Keep Go tests next to the package they exercise; do not centralize `_test.go` files just to reduce directory spread.
@@ -33,5 +33,5 @@
 - Keep toolbar semantics split: top-level file actions for Open/Save/Revert and top-level Tools/Guide/Settings page navigation. Larger workflows and future operations belong in Tools.
 - Tools page workflows should be full-page task surfaces selected from the left tool selector, with only the active tool panel shown. Multi-IDF Summary selects multiple inputs through the desktop dialog, analyzes them with a bounded worker pool, emits progress events, shows a transposable comparison table, and exports CSV in the selected orientation. Cleanup Wizard should operate on the current app input, with rules on the left, filterable candidate checkboxes on the right, and Save/Save As output actions.
 - Raw text edits should trigger debounced automatic analysis rather than requiring a manual Analyze button; structured edits can analyze immediately after backend patches.
-- App settings should persist through the backend settings API under the local app data/config directory, with `frontend/dist/settings.html` as the settings page frame.
-- Frontend code organization: keep `frontend/dist/app.js` as a tiny entrypoint and place feature modules under `frontend/dist/js/`.
+- App settings should persist through the backend settings API under the local app data/config directory, with `frontend/src/settings.html` as the settings page frame.
+- Frontend code organization: keep `frontend/src/app.js` as a tiny entrypoint and place feature modules under `frontend/src/js/`; reserve `frontend/dist` for future generated build output.

@@ -18,7 +18,7 @@ The release script infers bump size from these sections:
 
 ## Changed
 
-- _None._
+- Moved canonical frontend assets from `frontend/dist` to `frontend/src` and reserved `frontend/dist` for future generated build output.
 
 ## Fixed
 
