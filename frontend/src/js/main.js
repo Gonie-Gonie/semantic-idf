@@ -21,6 +21,7 @@ import {
 import { renderDiagnostics, renderEmpty, renderReport, renderSummary } from "./analysis-views.js";
 import { renderGeometry, resizeGeometry, setGeometryMode, setGeometrySelectionAid, setGeometryStory } from "./geometry-loader.js";
 import { initializeHVACControls } from "./hvac-views.js";
+import { initializeOutputControls } from "./output-views.js";
 import {
   configureInputViews,
   setInputFilter,
@@ -187,6 +188,25 @@ window.addEventListener("idfAnalyzer:hvacApplied", (event) => {
   const changeCount = result.preview?.changes?.filter((change) => change.requiresSave).length || 0;
   setStatus(t("status.hvacApplied", { count: changeCount }), "ok");
 });
+window.addEventListener("idfAnalyzer:outputApplied", (event) => {
+  const result = event.detail || {};
+  if (!result.text || !result.report) {
+    return;
+  }
+  elements.idfInput.value = result.text;
+  updateTextStats();
+  state.report = result.report;
+  state.model = result.model || null;
+  state.epjsonText = result.epjson || "";
+  state.lastAnalyzedText = result.text;
+  state.analysisStage = "complete";
+  state.diagnosticsReady = true;
+  state.geometryReady = true;
+  renderReport();
+  updateDocumentActions();
+  const changeCount = result.preview?.changes?.filter((change) => change.requiresSave).length || 0;
+  setStatus(t("status.outputApplied", { count: changeCount }), "ok");
+});
 
 function toggleExpandedPane(pane) {
   state.expandedPane = state.expandedPane === pane ? "" : pane;
@@ -224,6 +244,7 @@ initializeWorkspaceSplitter();
 initializeVerticalSplitters();
 initializeProfileControls();
 initializeHVACControls();
+initializeOutputControls();
 initializeKeyboardShortcuts({
   save: saveInputFile,
   open: openInputFile,

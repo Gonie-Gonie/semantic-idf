@@ -39,6 +39,7 @@ $modules = @(
     "layout.js",
     "main.js",
     "navigation.js",
+    "output-views.js",
     "profile-views.js",
     "sample.js",
     "settings-client.js",

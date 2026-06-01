@@ -80,6 +80,7 @@
             <button class="tab active" data-result-tab="summary" type="button" data-i18n="tab.summary">Summary</button>
             <button class="tab" data-result-tab="profile" type="button" data-i18n="tab.profile">Profile</button>
             <button class="tab" data-result-tab="hvac" type="button" data-i18n="tab.hvac">HVAC</button>
+            <button class="tab" data-result-tab="output" type="button" data-i18n="tab.output">Output</button>
             <button class="tab" data-result-tab="diagnose" type="button" data-i18n="tab.diagnose">Diagnose</button>
             <button class="tab" data-result-tab="geometry" type="button" data-i18n="tab.geometry">Geometry</button>
           </nav>
@@ -202,6 +203,55 @@
                   <span id="hvacApplyStatus" class="settings-save-status" data-i18n="status.reviewBeforeApplying">Review changes before applying.</span>
                   <button id="hvacPreviewApply" type="button" data-i18n="action.preview">Preview</button>
                   <button id="hvacConfirmApply" type="submit" disabled data-i18n="action.apply">Apply</button>
+                </div>
+              </form>
+            </div>
+          </div>
+
+          <div class="result-pane" id="outputPane">
+            <div class="summary-head output-head">
+              <div>
+                <h2 data-i18n="tab.output">Output</h2>
+                <span id="outputStats">0 output objects</span>
+              </div>
+              <div class="summary-tools">
+                <input id="outputFilter" type="search" placeholder="Filter output requests" data-i18n-placeholder="output.filter" />
+              </div>
+            </div>
+            <div class="output-pane">
+              <section class="output-section">
+                <div class="profile-section-head">
+                  <h3 data-i18n="output.existing">Existing output requests</h3>
+                  <span id="outputExistingStats" class="tool-muted">0 objects</span>
+                </div>
+                <div id="outputExisting" class="output-grid"></div>
+              </section>
+              <section class="output-section">
+                <div class="profile-section-head">
+                  <h3 data-i18n="output.recommendations">Addable output requests</h3>
+                  <span id="outputRecommendationStats" class="tool-muted">0 options</span>
+                </div>
+                <div id="outputRecommendations" class="output-grid"></div>
+              </section>
+              <section class="output-section">
+                <div class="profile-section-head">
+                  <h3 data-i18n="output.warnings">Output warnings</h3>
+                  <span id="outputWarningStats" class="tool-muted">0 warnings</span>
+                </div>
+                <div id="outputWarnings" class="hvac-warning-list"></div>
+              </section>
+            </div>
+            <div id="outputApplyDialog" class="profile-dialog hidden" role="dialog" aria-modal="true" aria-labelledby="outputApplyTitle">
+              <form id="outputApplyForm" class="profile-dialog-panel">
+                <div class="profile-dialog-head">
+                  <h3 id="outputApplyTitle" data-i18n="output.applyTitle">Edit Output Request</h3>
+                  <button id="outputApplyClose" type="button" data-i18n="action.close">Close</button>
+                </div>
+                <div id="outputApplyBody" class="profile-apply-body"></div>
+                <div class="profile-dialog-actions">
+                  <span id="outputApplyStatus" class="settings-save-status" data-i18n="status.reviewBeforeApplying">Review changes before applying.</span>
+                  <button id="outputPreviewApply" type="button" data-i18n="action.preview">Preview</button>
+                  <button id="outputConfirmApply" type="submit" disabled data-i18n="action.apply">Apply</button>
                 </div>
               </form>
             </div>

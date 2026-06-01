@@ -2552,6 +2552,134 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
   border-left-color: var(--red);
 }
 
+.output-pane {
+  display: grid;
+  gap: 14px;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px;
+  background: var(--bg);
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.output-section {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.output-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 10px;
+  min-width: 0;
+}
+
+.output-card {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  padding: 12px;
+}
+
+.output-card.warning {
+  border-color: color-mix(in srgb, var(--amber) 55%, var(--line));
+}
+
+.output-card.exists {
+  opacity: 0.72;
+}
+
+.output-card-head,
+.output-card-actions {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.output-card-head > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.output-card strong,
+.output-card span,
+.output-card p {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.output-card-head strong {
+  font-size: 13px;
+}
+
+.output-card-head span,
+.output-card p,
+.output-recommendation-fields span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.output-field-list {
+  display: grid;
+  gap: 8px;
+}
+
+.output-field-row {
+  display: grid;
+  grid-template-columns: minmax(86px, 0.8fr) minmax(110px, 1.2fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.output-field-row > span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.output-field-row input,
+.output-field-row select {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 12px;
+}
+
+.output-recommendation-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.output-recommendation-fields span {
+  display: inline-flex;
+  gap: 5px;
+  max-width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--soft);
+  padding: 4px 7px;
+}
+
+.output-recommendation-fields b {
+  color: var(--text);
+  font-weight: 600;
+}
+
 .profile-pane {
   flex: 1;
   min-height: 0;

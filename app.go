@@ -101,6 +101,16 @@ type HVACApplyTextResult struct {
 	Preview idf.HVACApplyPreview `json:"preview"`
 }
 
+type OutputApplyTextResult struct {
+	Text    string                 `json:"text"`
+	Format  string                 `json:"format,omitempty"`
+	Version string                 `json:"version,omitempty"`
+	Model   *epinput.Model         `json:"model,omitempty"`
+	EPJSON  string                 `json:"epjson,omitempty"`
+	Report  *idf.Report            `json:"report"`
+	Preview idf.OutputApplyPreview `json:"preview"`
+}
+
 type AppSettings struct {
 	Version     int                         `json:"version"`
 	Appearance  AppearanceSettings          `json:"appearance"`
@@ -251,6 +261,15 @@ func (a *App) AnalyzeInputHVACText(text string) (*idf.HVACReport, error) {
 	}
 	hvac := idf.AnalyzeHVAC(epinput.ToIDFDocument(model))
 	return &hvac, nil
+}
+
+func (a *App) AnalyzeInputOutputText(text string) (*idf.OutputReport, error) {
+	model, err := epinput.Parse("", []byte(text))
+	if err != nil {
+		return nil, err
+	}
+	output := idf.AnalyzeOutput(epinput.ToIDFDocument(model))
+	return &output, nil
 }
 
 func analyzeInputText(text string, analyze func(idf.Document) idf.Report, includeEPJSON bool) (*InputAnalysisResult, error) {
@@ -610,6 +629,48 @@ func (a *App) ApplyHVACText(text string, request idf.HVACApplyRequest) (*HVACApp
 	}, nil
 }
 
+func (a *App) PreviewOutputApplyText(text string, request idf.OutputApplyRequest) (*idf.OutputApplyPreview, error) {
+	model, err := epinput.Parse("", []byte(text))
+	if err != nil {
+		return nil, err
+	}
+	doc := epinput.ToIDFDocument(model)
+	preview := idf.PreviewApplyOutput(doc, request)
+	return &preview, nil
+}
+
+func (a *App) ApplyOutputText(text string, request idf.OutputApplyRequest) (*OutputApplyTextResult, error) {
+	model, err := epinput.Parse("", []byte(text))
+	if err != nil {
+		return nil, err
+	}
+	doc := epinput.ToIDFDocument(model)
+	updated, preview := idf.ApplyOutput(doc, request)
+	if !preview.CanApply {
+		return nil, fmt.Errorf("output preview has blocking warnings")
+	}
+	resultText := writeDocumentInOriginalFormat(updated, model)
+	updatedModel, err := epinput.Parse("", []byte(resultText))
+	if err != nil {
+		return nil, err
+	}
+	updatedDoc := epinput.ToIDFDocument(updatedModel)
+	report := idf.Analyze(updatedDoc)
+	epjsonText, err := epinput.Write(updatedModel, epinput.FormatEPJSON)
+	if err != nil {
+		return nil, err
+	}
+	return &OutputApplyTextResult{
+		Text:    resultText,
+		Format:  string(updatedModel.Format),
+		Version: updatedModel.Version.Raw,
+		Model:   updatedModel,
+		EPJSON:  epjsonText,
+		Report:  &report,
+		Preview: preview,
+	}, nil
+}
+
 func (a *App) GetSummaryMetricGuides() []idf.SummaryGuide {
 	return idf.SummaryGuides()
 }
@@ -875,7 +936,7 @@ func defaultAppSettings() AppSettings {
 		Appearance: AppearanceSettings{
 			Theme:            "system",
 			Language:         "en",
-			AnalysisTabOrder: []string{"summary", "profile", "hvac", "diagnose", "geometry"},
+			AnalysisTabOrder: []string{"summary", "profile", "hvac", "output", "diagnose", "geometry"},
 			Geometry: GeometryAppearanceSettings{
 				Background: "#f7fafc",
 				Zone:       "#b8d7b0",
@@ -904,8 +965,9 @@ func defaultAppSettings() AppSettings {
 				"tabSummary":     "Ctrl+Alt+1",
 				"tabProfile":     "Ctrl+Alt+2",
 				"tabHVAC":        "Ctrl+Alt+3",
-				"tabDiagnose":    "Ctrl+Alt+4",
-				"tabGeometry":    "Ctrl+Alt+5",
+				"tabOutput":      "Ctrl+Alt+4",
+				"tabDiagnose":    "Ctrl+Alt+5",
+				"tabGeometry":    "Ctrl+Alt+6",
 			},
 		},
 		Profile: idf.DefaultProfileAnalysisSettings(),
@@ -979,6 +1041,7 @@ func normalizeAnalysisTabOrder(values []string, fallback []string) []string {
 		"summary":  true,
 		"profile":  true,
 		"hvac":     true,
+		"output":   true,
 		"diagnose": true,
 		"geometry": true,
 	}
@@ -994,7 +1057,7 @@ func normalizeAnalysisTabOrder(values []string, fallback []string) []string {
 	}
 	source := fallback
 	if len(source) == 0 {
-		source = []string{"summary", "profile", "hvac", "diagnose", "geometry"}
+		source = []string{"summary", "profile", "hvac", "output", "diagnose", "geometry"}
 	}
 	for _, value := range source {
 		normalized := strings.ToLower(strings.TrimSpace(value))

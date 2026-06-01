@@ -15,6 +15,7 @@ type Report struct {
 	HVACConnections []HVACConnection `json:"hvacConnections"`
 	UnusedObjects   []NamedObject    `json:"unusedObjects"`
 	Summary         SummaryReport    `json:"summary"`
+	Output          OutputReport     `json:"output"`
 	Profile         ProfileReport    `json:"profile"`
 	HVAC            HVACReport       `json:"hvac"`
 	Geometry        GeometryReport   `json:"geometry"`
@@ -73,6 +74,7 @@ type RelatedObject struct {
 func AnalyzeOverview(doc Document) Report {
 	report := analyzeCore(doc)
 	report.Summary = AnalyzeSummary(doc)
+	report.Output = AnalyzeOutput(doc)
 	report.Profile = AnalyzeProfile(doc)
 	report.HVAC = AnalyzeHVAC(doc)
 	return report
@@ -82,13 +84,14 @@ func Analyze(doc Document) Report {
 	report := analyzeCore(doc)
 	var unusedObjects []NamedObject
 	var summary SummaryReport
+	var output OutputReport
 	var profile ProfileReport
 	var hvac HVACReport
 	var geometry GeometryReport
 	var diagnostics []Diagnostic
 
 	var wg sync.WaitGroup
-	wg.Add(6)
+	wg.Add(7)
 	go func() {
 		defer wg.Done()
 		unusedObjects = FindUnusedObjects(doc)
@@ -96,6 +99,10 @@ func Analyze(doc Document) Report {
 	go func() {
 		defer wg.Done()
 		summary = AnalyzeSummary(doc)
+	}()
+	go func() {
+		defer wg.Done()
+		output = AnalyzeOutput(doc)
 	}()
 	go func() {
 		defer wg.Done()
@@ -117,6 +124,7 @@ func Analyze(doc Document) Report {
 
 	report.UnusedObjects = unusedObjects
 	report.Summary = summary
+	report.Output = output
 	report.Profile = profile
 	report.HVAC = hvac
 	report.Geometry = geometry
@@ -350,6 +358,7 @@ func isNamelessType(objectType string) bool {
 		return true
 	default:
 		return strings.HasPrefix(strings.ToLower(objectType), "output:") ||
+			strings.HasPrefix(strings.ToLower(objectType), "outputcontrol:") ||
 			strings.HasPrefix(strings.ToLower(objectType), "meter:")
 	}
 }

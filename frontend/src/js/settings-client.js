@@ -44,8 +44,9 @@ export const defaultAppSettings = {
       tabSummary: "Ctrl+Alt+1",
       tabProfile: "Ctrl+Alt+2",
       tabHVAC: "Ctrl+Alt+3",
-      tabDiagnose: "Ctrl+Alt+4",
-      tabGeometry: "Ctrl+Alt+5",
+      tabOutput: "Ctrl+Alt+4",
+      tabDiagnose: "Ctrl+Alt+5",
+      tabGeometry: "Ctrl+Alt+6",
     },
   },
   profile: {

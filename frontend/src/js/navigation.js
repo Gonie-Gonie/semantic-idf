@@ -209,7 +209,7 @@ export function switchResultTab(tabName, options = {}) {
   if (options.recordHistory !== false && state.activeResultTab !== tabName) {
     recordViewHistory();
   }
-  state.activeResultTab = ["profile", "hvac", "geometry", "diagnose"].includes(tabName) ? tabName : "summary";
+  state.activeResultTab = ["profile", "hvac", "output", "geometry", "diagnose"].includes(tabName) ? tabName : "summary";
   elements.resultTabButtons.forEach((button) => {
     button.classList.toggle("active", button.dataset.resultTab === state.activeResultTab);
   });

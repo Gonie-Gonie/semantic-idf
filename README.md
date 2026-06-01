@@ -106,10 +106,11 @@ The app toolbar includes top-level Tools, Guide, and Settings navigation buttons
 
 ## Analysis Navigation
 
-- The right panel has Summary, Diagnose, and Geometry result tabs.
+- The right panel has Summary, Profile, HVAC, Output, Diagnose, and Geometry result tabs.
 - Summary shows a metric catalog grouped by model, geometry, envelope, loads, schedules, and HVAC categories.
 - Summary can be filtered and exported as categorized JSON or a two-column `name,value` CSV whose names are variable IDs with units in brackets, including `[-]` for unitless values.
 - Diagnose reports error/warning issues such as missing references, duplicate names, orphan resources, required-object gaps, geometry problems, schedule-hour limits, and HVAC node graph hints.
+- Output reviews existing `Output:*` and `OutputControl:*` simulation output requests, highlights risky duplicates or high-volume frequencies, and can add or edit common report requests with preview.
 - Geometry parses detailed zones, walls, roofs, floors, and fenestration into a 3D view that defaults to all levels, optional story filtering, a story-by-story plan view, selectable metrics, related object links, and Sync locate jumps to the matching input object.
 - Summary metric guide entries are loaded from the same backend catalog as the calculated metrics.
 - The startup sample is the official EnergyPlus `RefBldgLargeOfficeNew2004_Chicago.idf` example vendored under `frontend/src/samples/`.

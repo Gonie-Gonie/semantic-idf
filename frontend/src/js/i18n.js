@@ -8,7 +8,7 @@ export const supportedLanguages = [
   ["fr", "Français"],
 ];
 
-export const defaultAnalyzeTabOrder = ["summary", "profile", "hvac", "diagnose", "geometry"];
+export const defaultAnalyzeTabOrder = ["summary", "profile", "hvac", "output", "diagnose", "geometry"];
 
 const dictionaries = {
   en: {
@@ -93,6 +93,9 @@ const dictionaries = {
     "count.metricsOf": "{shown} of {total} metrics",
     "count.objects": "{count} objects",
     "count.objectsOf": "{shown} of {total} objects",
+    "count.options": "{count} options",
+    "count.optionsOf": "{shown} of {total} options",
+    "count.outputs": "{count} output objects, {variables} variables, {meters} meters",
     "count.fields": "{count} fields",
     "count.profiles": "{profiles} profiles, {items} items",
     "count.profilesOf": "{shown} of {total} profiles, {items} items",
@@ -360,6 +363,22 @@ const dictionaries = {
     "profile.applyShared": "Edit ZoneList",
     "profile.createMissingZoneList": "Create missing ZoneList when possible",
     "profile.defaultDescription": "Set the normalization and grouping defaults used by the Profile tab.",
+    "output.add": "Add",
+    "output.addRequest": "Add output request",
+    "output.applyTitle": "Edit Output Request",
+    "output.existing": "Existing output requests",
+    "output.exists": "Exists",
+    "output.filter": "Filter output requests",
+    "output.noAnalysis": "No output analysis yet",
+    "output.noExisting": "No output requests found",
+    "output.noRecommendations": "No addable output requests",
+    "output.noWarnings": "No output warnings",
+    "output.recommendations": "Addable output requests",
+    "output.remove": "Remove",
+    "output.removeRequest": "Remove output request",
+    "output.update": "Update",
+    "output.updateRequest": "Update output field",
+    "output.warnings": "Output warnings",
     "profile.dimension.equipment": "Equipment",
     "profile.dimension.infiltration": "Infiltration",
     "profile.dimension.lighting": "Lighting",
@@ -451,6 +470,7 @@ const dictionaries = {
     "status.analyzingInput": "Analyzing input",
     "status.analyzingNamed": "Analyzing {name}",
     "status.applyHVAC": "Applying HVAC change",
+    "status.applyOutput": "Applying output change",
     "status.applyProfile": "Applying profile",
     "status.autoComplete": "Auto analysis complete",
     "status.backendUnavailable": "Backend unavailable",
@@ -460,6 +480,7 @@ const dictionaries = {
     "status.editingPausedQueued": "Editing paused; analysis queued",
     "status.fileSelectionCanceled": "File selection canceled",
     "status.hvacApplied": "HVAC change applied ({count} changes)",
+    "status.outputApplied": "Output change applied ({count} changes)",
     "status.loadedNamed": "Loaded {name}",
     "status.loadedQueued": "Loaded {name}; analysis queued",
     "status.loadingInterface": "Loading interface",
@@ -496,6 +517,7 @@ const dictionaries = {
     "shortcut.tabDiagnose": "Analyze tab: Diagnose",
     "shortcut.tabGeometry": "Analyze tab: Geometry",
     "shortcut.tabHVAC": "Analyze tab: HVAC",
+    "shortcut.tabOutput": "Analyze tab: Output",
     "shortcut.tabProfile": "Analyze tab: Profile",
     "shortcut.tabSummary": "Analyze tab: Summary",
     "shortcut.undoView": "Undo view/location",
@@ -506,6 +528,7 @@ const dictionaries = {
     "tab.diagnose": "Diagnose",
     "tab.geometry": "Geometry",
     "tab.hvac": "HVAC",
+    "tab.output": "Output",
     "tab.profile": "Profile",
     "tab.summary": "Summary",
     "theme.dark": "Dark",

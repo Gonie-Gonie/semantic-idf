@@ -14,7 +14,7 @@ The release script infers bump size from these sections:
 
 ## Added
 
-- _None._
+- Added an Analyze Output tab for reviewing existing `Output:*` and `OutputControl:*` requests, adding recommended output presets, and previewing edits/removals before applying them to the input.
 
 ## Changed
 
