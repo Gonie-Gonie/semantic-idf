@@ -2442,11 +2442,10 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
   border-radius: 8px;
   background: var(--surface);
   padding: 10px;
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(220px, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
-  flex-wrap: wrap;
 }
 
 .profile-live-group {
@@ -2500,7 +2499,7 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 }
 
 .profile-live-select {
-  width: 180px;
+  width: 170px;
 }
 
 .profile-settings-panel {
@@ -2603,7 +2602,7 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 
 .profile-layout {
   display: grid;
-  grid-template-columns: minmax(250px, 32%) minmax(420px, 1fr);
+  grid-template-columns: minmax(280px, 30%) minmax(560px, 1fr);
   gap: 12px;
   align-items: start;
 }
@@ -2857,8 +2856,8 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 
 .profile-matrix th,
 .profile-matrix td {
-  min-width: 138px;
-  max-width: 230px;
+  min-width: 150px;
+  max-width: 260px;
   border-right: 1px solid var(--surface-2);
   border-bottom: 1px solid var(--surface-2);
   padding: 8px 10px;
@@ -2874,6 +2873,8 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 }
 
 .profile-matrix tbody th {
+  min-width: 210px;
+  max-width: 280px;
   position: sticky;
   left: 0;
   z-index: 1;
@@ -2933,7 +2934,7 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 }
 
 .profile-graph-toolbar .profile-field {
-  width: min(190px, 100%);
+  width: min(210px, 100%);
 }
 
 .profile-graph-summary {
@@ -3013,7 +3014,7 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 
 .profile-graph-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
   gap: 10px;
 }
 
@@ -3033,6 +3034,14 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
   gap: 2px;
 }
 
+.profile-graph-meta {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .profile-graph-card strong,
 .profile-graph-card span,
 .profile-graph-card small {
@@ -3050,32 +3059,79 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 
 .profile-graph-card svg {
   width: 100%;
-  height: 92px;
   border: 1px solid var(--surface-2);
   border-radius: 6px;
   background: var(--surface-3);
 }
 
+.profile-heatmap-frame {
+  min-width: 0;
+  border: 1px solid var(--surface-2);
+  border-radius: 6px;
+  background: var(--surface-3);
+  padding: 8px 9px 7px;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  grid-template-rows: minmax(96px, 1fr) auto;
+  gap: 4px 7px;
+}
+
+.profile-heatmap-y {
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.profile-heatmap-x {
+  grid-column: 2;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
 .profile-graph-card .profile-heatmap {
-  height: 150px;
+  height: 100%;
+  min-height: 96px;
+  border: 0;
+  border-radius: 3px;
   image-rendering: pixelated;
 }
 
 .profile-graph-card .profile-line-graph {
-  height: 92px;
+  height: 132px;
 }
 
-.profile-graph-card line {
+.profile-axis-line,
+.profile-grid-line {
   stroke: var(--line);
   stroke-width: 1;
 }
 
-.profile-graph-card polyline {
+.profile-grid-line {
+  opacity: 0.56;
+  stroke-dasharray: 2 3;
+}
+
+.profile-step-path {
   fill: none;
   stroke: var(--teal);
-  stroke-width: 2.4;
-  stroke-linejoin: round;
-  stroke-linecap: round;
+  stroke-width: 2.6;
+  stroke-linejoin: miter;
+  stroke-linecap: square;
+}
+
+.profile-axis-label {
+  fill: var(--muted);
+  font-size: 5px;
+}
+
+.profile-axis-label.x {
+  font-size: 6px;
 }
 
 .profile-day-graphs,
@@ -5019,7 +5075,7 @@ th.input-jump-highlight {
 
   .profile-live-controls {
     align-items: stretch;
-    flex-direction: column;
+    grid-template-columns: 1fr;
   }
 
   .profile-live-select {

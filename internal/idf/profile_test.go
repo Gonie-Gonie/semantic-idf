@@ -159,6 +159,53 @@ func TestAnalyzeProfileNormalizesZoneProfiles(t *testing.T) {
 	assertProfileDimension(t, zone, ProfileDimensionInfiltration, 0.3, 0.0001)
 }
 
+func TestAnalyzeProfileParsesCompositeScheduleSelectors(t *testing.T) {
+	doc, err := Parse(`
+Schedule:Compact,
+  ComboSched,               !- Name
+  Fraction,                 !- Schedule Type Limits Name
+  Through: 12/31,           !- Field 1
+  For: SummerDesignDay,     !- Field 2
+  Until: 24:00,             !- Field 3
+  1,                        !- Field 4
+  For: Weekdays SummerDesignDay, !- Field 5
+  Until: 08:00,             !- Field 6
+  0,                        !- Field 7
+  Until: 18:00,             !- Field 8
+  1,                        !- Field 9
+  Until: 24:00,             !- Field 10
+  0,                        !- Field 11
+  For: Saturday WinterDesignDay, !- Field 12
+  Until: 12:00,             !- Field 13
+  0.5,                      !- Field 14
+  Until: 24:00,             !- Field 15
+  0,                        !- Field 16
+  For: Sunday Holidays AllOtherDays, !- Field 17
+  Until: 24:00,             !- Field 18
+  0;                        !- Field 19
+`)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	profile := AnalyzeProfile(doc)
+	if len(profile.Schedules) != 1 {
+		t.Fatalf("schedule count = %d, want 1", len(profile.Schedules))
+	}
+	schedule := profile.Schedules[0]
+	if !schedule.Resolved {
+		t.Fatalf("schedule should resolve composite selectors: %#v", schedule)
+	}
+	if got := schedule.WeekdayProfile[9]; got != 1 {
+		t.Fatalf("weekday 09:00 profile = %v, want 1", got)
+	}
+	if got := schedule.SaturdayProfile[10]; got != 0.5 {
+		t.Fatalf("saturday 10:00 profile = %v, want 0.5", got)
+	}
+	if got := schedule.SundayProfile[10]; got != 0 {
+		t.Fatalf("sunday 10:00 profile = %v, want 0", got)
+	}
+}
+
 func TestApplyProfileClonesSourceObjectsToTargetZone(t *testing.T) {
 	doc, err := Parse(profileFixtureIDF + `
 Zone,

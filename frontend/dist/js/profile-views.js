@@ -288,14 +288,14 @@ function renderProfileGraph(group, profile, zoneRow = null) {
   }
   const viewMode = currentGraphViewMode();
   const scaleMode = state.profileGraphScaleMode || "auto";
-  const schedules = new Map((profile.schedules || []).map((schedule) => [schedule.scheduleName, schedule]));
+  const schedules = scheduleLookupMap(profile.schedules || []);
   const itemMap = profileItemMap(profile);
   const sourceDimensions = zoneRow?.dimensions || group.dimensions;
   const dimensions = sourceDimensions
     .filter((dimension) => state.profileSettings.enabledDimensions.includes(dimension.dimension))
     .map((dimension) => {
       const item = dimension.itemIds.map((id) => itemMap.get(id)).find((candidate) => candidate?.scheduleName) || null;
-      return { dimension, item, schedule: item ? schedules.get(item.scheduleName) : null };
+      return { dimension, item, schedule: scheduleForProfileDimension(dimension, item, schedules) };
     });
   const cards = dimensions.map((entry) => renderProfileGraphCard(entry.dimension, entry.schedule, viewMode, scaleMode)).join("");
   elements.profileGraphStats.textContent = graphStatsLabel(viewMode, state.profileSettings.graphMode);
@@ -370,22 +370,26 @@ function renderProfileGraphCard(dimension, schedule, viewMode, scaleMode) {
         <strong>${escapeHTML(dimension.label)}</strong>
         <span>${escapeHTML(graphData.label)}</span>
       </div>
+      <div class="profile-graph-meta">
+        <span>${escapeHTML(t("common.unit"))}: ${escapeHTML(unit || t("graph.multiplier"))}</span>
+        <span>${escapeHTML(t("common.max"))}: ${escapeHTML(formatGraphNumber(Math.max(...values, 0), unit))}</span>
+      </div>
       ${warnings}
-      ${renderGraphVisual(graphData, values, max, dimension)}
+      ${renderGraphVisual(graphData, values, max, dimension, unit)}
       <small>${escapeHTML(t("graph.peakScale", { peak: formatGraphNumber(Math.max(...values, 0), unit), scale: formatGraphNumber(max, unit) }))}</small>
     </article>`;
 }
 
-function renderGraphVisual(graphData, values, max, dimension) {
+function renderGraphVisual(graphData, values, max, dimension, unit) {
   switch (graphData.kind) {
     case "heatmap":
-      return renderHeatmap(values, max, dimension.label);
+      return renderHeatmap(values, max, dimension.label, unit);
     case "rules":
-      return renderRuleGraph(graphData, values, max);
+      return renderRuleGraph(graphData, values, max, unit);
     case "day_profiles":
-      return renderDayProfiles(graphData, values, max);
+      return renderDayProfiles(graphData, values, max, unit);
     default:
-      return renderLineGraph(values, max, `${dimension.label} ${graphData.label}`);
+      return renderLineGraph(values, max, `${dimension.label} ${graphData.label}`, unit, graphData.xLabel);
   }
 }
 
@@ -393,50 +397,58 @@ function graphDataForDimension(dimension, schedule, viewMode) {
   const unresolvedWarning = schedule && schedule.resolved === false
     ? t("profile.scheduleUnresolvedWarning")
     : "";
+  const missingWarning = !schedule && dimension.scheduleName
+    ? t("profile.scheduleMissingGraph", { schedule: dimension.scheduleName })
+    : "";
+  const warning = unresolvedWarning || missingWarning;
+  const pattern = schedule?.detectedPattern || (dimension.scheduleName ? t("profile.scheduleFallback") : t("profile.alwaysOn"));
   switch (viewMode) {
     case "representative_week":
       return {
         kind: "line",
-        label: `${schedule?.detectedPattern || t("profile.noSchedule")} / ${t("graph.representativeWeek")}`,
+        label: `${pattern} / ${t("graph.representativeWeek")}`,
         values: scheduleWeeklyProfile(schedule),
-        warning: unresolvedWarning,
+        warning,
+        xLabel: "7d",
       };
     case "hourly_average_by_daytype": {
-      const profiles = daytypeAverageProfiles(schedule);
+      const profiles = daytypeAverageProfiles(schedule, dimension);
       return {
         kind: "day_profiles",
-        label: `${schedule?.detectedPattern || t("profile.noSchedule")} / ${t("graph.hourlyByDaytype")}`,
+        label: `${pattern} / ${t("graph.hourlyByDaytype")}`,
         values: profiles.flatMap((profile) => profile.values),
         profiles,
-        warning: unresolvedWarning,
+        warning,
       };
     }
     case "monthly_average":
       return {
         kind: "line",
-        label: `${schedule?.detectedPattern || t("profile.noSchedule")} / ${t("graph.monthlyAverage")}`,
-        values: monthlyAverageValues(schedule),
-        warning: unresolvedWarning,
+        label: `${pattern} / ${t("graph.monthlyAverage")}`,
+        values: monthlyAverageValues(schedule, dimension),
+        warning,
+        xLabel: "12m",
       };
     case "load_duration":
       return {
         kind: "line",
-        label: `${schedule?.detectedPattern || t("profile.noSchedule")} / ${t("graph.loadDuration")}`,
-        values: annualScheduleValues(schedule).sort((a, b) => b - a),
-        warning: unresolvedWarning,
+        label: `${pattern} / ${t("graph.loadDuration")}`,
+        values: annualScheduleValues(schedule, dimension).sort((a, b) => b - a),
+        warning,
+        xLabel: "8760h",
       };
     case "period_rules":
       return {
         kind: "rules",
-        label: `${schedule?.detectedPattern || t("profile.noSchedule")} / ${t("graph.periodRules")}`,
-        values: scheduleRuleValues(schedule),
-        rules: scheduleRules(schedule),
-        warning: unresolvedWarning,
+        label: `${pattern} / ${t("graph.periodRules")}`,
+        values: scheduleRuleValues(schedule, dimension),
+        rules: scheduleRules(schedule, dimension),
+        warning,
       };
     case "representative_day":
       return {
         kind: "day_profiles",
-        label: `${schedule?.detectedPattern || t("profile.noSchedule")} / ${t("graph.representativeDay")}`,
+        label: `${pattern} / ${t("graph.representativeDay")}`,
         values: [
           ...scheduleDayProfile(schedule, "weekdayProfile"),
           ...scheduleDayProfile(schedule, "saturdayProfile"),
@@ -447,30 +459,48 @@ function graphDataForDimension(dimension, schedule, viewMode) {
           { label: t("day.saturday"), values: scheduleDayProfile(schedule, "saturdayProfile") },
           { label: t("day.sunday"), values: scheduleDayProfile(schedule, "sundayProfile") },
         ],
-        warning: unresolvedWarning,
+        warning,
       };
     default:
       return {
         kind: "heatmap",
-        label: `${schedule?.detectedPattern || t("profile.noSchedule")} / ${t("graph.annualHeatmap")}`,
-        values: annualScheduleValues(schedule),
-        warning: unresolvedWarning,
+        label: `${pattern} / ${t("graph.annualHeatmap")}`,
+        values: annualScheduleValues(schedule, dimension),
+        warning,
       };
   }
 }
 
-function renderLineGraph(values, max, label) {
-  const points = values
-    .map((value, index) => `${values.length <= 1 ? 0 : (index / (values.length - 1)) * 100},${80 - (clampGraphValue(value, max) / max) * 70}`)
-    .join(" ");
+function renderLineGraph(values, max, label, unit = "", xLabel = "") {
+  const data = values.length ? values : [0];
+  const plot = { left: 28, right: 118, top: 10, bottom: 76 };
+  const width = plot.right - plot.left;
+  const y = (value) => plot.bottom - (clampGraphValue(value, max) / max) * (plot.bottom - plot.top);
+  const stepPath = data.reduce((path, value, index) => {
+    const currentY = y(value);
+    const nextX = plot.left + ((index + 1) / data.length) * width;
+    if (index === 0) {
+      return `M${plot.left},${currentY} H${nextX}`;
+    }
+    return `${path} V${currentY} H${nextX}`;
+  }, "");
+  const mid = max / 2;
   return `
-    <svg class="profile-line-graph" viewBox="0 0 100 84" role="img" aria-label="${escapeHTML(label)}">
-      <line x1="0" y1="80" x2="100" y2="80"></line>
-      <polyline points="${points}"></polyline>
+    <svg class="profile-line-graph" viewBox="0 0 124 92" role="img" aria-label="${escapeHTML(label)}">
+      <line class="profile-grid-line" x1="${plot.left}" y1="${plot.top}" x2="${plot.right}" y2="${plot.top}"></line>
+      <line class="profile-grid-line" x1="${plot.left}" y1="${y(mid)}" x2="${plot.right}" y2="${y(mid)}"></line>
+      <line class="profile-axis-line" x1="${plot.left}" y1="${plot.top}" x2="${plot.left}" y2="${plot.bottom}"></line>
+      <line class="profile-axis-line" x1="${plot.left}" y1="${plot.bottom}" x2="${plot.right}" y2="${plot.bottom}"></line>
+      <text class="profile-axis-label" x="2" y="${plot.top + 4}">${escapeHTML(formatAxisTick(max, unit))}</text>
+      <text class="profile-axis-label" x="2" y="${y(mid) + 4}">${escapeHTML(formatAxisTick(mid, unit))}</text>
+      <text class="profile-axis-label" x="2" y="${plot.bottom + 4}">0</text>
+      <text class="profile-axis-label x" x="${plot.left}" y="88">0</text>
+      <text class="profile-axis-label x" x="${plot.right}" y="88" text-anchor="end">${escapeHTML(xLabel || graphXLabel(data.length))}</text>
+      <path class="profile-step-path" d="${stepPath}"></path>
     </svg>`;
 }
 
-function renderDayProfiles(graphData, values, max) {
+function renderDayProfiles(graphData, values, max, unit = "") {
   let offset = 0;
   return `
     <div class="profile-day-graphs">
@@ -481,14 +511,14 @@ function renderDayProfiles(graphData, values, max) {
           return `
             <div>
               <span>${escapeHTML(profile.label)}</span>
-              ${renderLineGraph(profileValues, max, profile.label)}
+              ${renderLineGraph(profileValues, max, profile.label, unit, "24h")}
             </div>`;
         })
         .join("")}
     </div>`;
 }
 
-function renderRuleGraph(graphData, values, max) {
+function renderRuleGraph(graphData, values, max, unit = "") {
   const rules = graphData.rules || [];
   let offset = 0;
   return `
@@ -504,14 +534,14 @@ function renderRuleGraph(graphData, values, max) {
           return `
             <div class="profile-rule-row">
               <span>${escapeHTML(rule.label || `${rule.through || ""} ${rule.selector || ""}`)}</span>
-              ${renderLineGraph(ruleValues.length ? ruleValues : [0], max, rule.label || "Schedule rule")}
+              ${renderLineGraph(ruleValues.length ? ruleValues : [0], max, rule.label || "Schedule rule", unit, "24h")}
             </div>`;
         })
         .join("") || `<div class="empty">${t("profile.noRules")}</div>`}
     </div>`;
 }
 
-function renderHeatmap(values, max, label) {
+function renderHeatmap(values, max, label, unit = "") {
   const rects = values
     .map((value, index) => {
       const day = Math.floor(index / 24);
@@ -520,9 +550,22 @@ function renderHeatmap(values, max, label) {
     })
     .join("");
   return `
-    <svg class="profile-heatmap" viewBox="0 0 365 24" preserveAspectRatio="none" role="img" aria-label="${escapeHTML(`${label} ${t("graph.annualHeatmap")}`)}">
-      ${rects}
-    </svg>`;
+    <div class="profile-heatmap-frame" role="img" aria-label="${escapeHTML(`${label} ${t("graph.annualHeatmap")}`)}">
+      <div class="profile-heatmap-y">
+        <span>00</span>
+        <span>12</span>
+        <span>24</span>
+      </div>
+      <svg class="profile-heatmap" viewBox="0 0 365 24" preserveAspectRatio="none" aria-hidden="true">
+        ${rects}
+      </svg>
+      <div class="profile-heatmap-x">
+        <span>Jan</span>
+        <span>${escapeHTML(formatAxisTick(max / 2, unit))}</span>
+        <span>${escapeHTML(formatAxisTick(max, unit))}</span>
+        <span>Dec</span>
+      </div>
+    </div>`;
 }
 
 function currentGraphViewMode() {
@@ -562,6 +605,41 @@ function graphScaleMax(values, dimension, graphData, scaleMode) {
   return Math.max(...values, 1e-9);
 }
 
+function scheduleLookupMap(schedules) {
+  const map = new Map();
+  schedules.forEach((schedule) => {
+    const name = String(schedule.scheduleName || "").trim();
+    if (!name) {
+      return;
+    }
+    map.set(name, schedule);
+    map.set(normalizeProfileScheduleName(name), schedule);
+  });
+  return map;
+}
+
+function scheduleForProfileDimension(dimension, item, schedules) {
+  const names = [
+    item?.scheduleName,
+    dimension.scheduleName,
+    ...(String(dimension.scheduleName || "")
+      .split("+")
+      .map((name) => name.trim())
+      .filter(Boolean)),
+  ];
+  for (const name of names) {
+    const schedule = schedules.get(name) || schedules.get(normalizeProfileScheduleName(name));
+    if (schedule) {
+      return schedule;
+    }
+  }
+  return null;
+}
+
+function normalizeProfileScheduleName(name) {
+  return String(name || "").trim().toLowerCase();
+}
+
 function scheduleDayProfile(schedule, key) {
   const values = schedule?.[key];
   if (Array.isArray(values) && values.length) {
@@ -585,18 +663,24 @@ function scheduleWeeklyProfile(schedule) {
   ];
 }
 
-function scheduleRules(schedule) {
+function scheduleRules(schedule, dimension = {}) {
   return Array.isArray(schedule?.rules) && schedule.rules.length
     ? schedule.rules
-    : [{ startDay: 1, endDay: 365, selector: "AllDays", label: t("profile.fallbackAllDays"), intervals: [{ startHour: 0, endHour: 24, value: 1 }] }];
+    : [{
+        startDay: 1,
+        endDay: 365,
+        selector: "AllDays",
+        label: dimension.scheduleName ? t("profile.scheduleFallback") : t("profile.alwaysOn"),
+        intervals: [{ startHour: 0, endHour: 24, value: 1 }],
+      }];
 }
 
-function scheduleRuleValues(schedule) {
-  return scheduleRules(schedule).flatMap((rule) => (rule.intervals || []).map((interval) => Number(interval.value) || 0));
+function scheduleRuleValues(schedule, dimension = {}) {
+  return scheduleRules(schedule, dimension).flatMap((rule) => (rule.intervals || []).map((interval) => Number(interval.value) || 0));
 }
 
-function annualScheduleValues(schedule) {
-  const rules = scheduleRules(schedule);
+function annualScheduleValues(schedule, dimension = {}) {
+  const rules = scheduleRules(schedule, dimension);
   const values = [];
   for (let day = 1; day <= 365; day += 1) {
     const rule = rules.find((candidate) => day >= Number(candidate.startDay || 1) && day <= Number(candidate.endDay || 365) && dayMatchesScheduleSelector(day, candidate.selector));
@@ -605,8 +689,8 @@ function annualScheduleValues(schedule) {
   return values;
 }
 
-function monthlyAverageValues(schedule) {
-  const values = annualScheduleValues(schedule);
+function monthlyAverageValues(schedule, dimension = {}) {
+  const values = annualScheduleValues(schedule, dimension);
   const monthDays = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
   let offset = 0;
   return monthDays.map((days) => {
@@ -620,8 +704,8 @@ function monthlyAverageValues(schedule) {
   });
 }
 
-function daytypeAverageProfiles(schedule) {
-  const values = annualScheduleValues(schedule);
+function daytypeAverageProfiles(schedule, dimension = {}) {
+  const values = annualScheduleValues(schedule, dimension);
   const buckets = {
     weekday: Array.from({ length: 24 }, () => []),
     saturday: Array.from({ length: 24 }, () => []),
@@ -658,30 +742,54 @@ function profileFromRule(rule) {
 }
 
 function dayMatchesScheduleSelector(day, selectorInput) {
-  const selector = String(selectorInput || "AllDays").trim().toLowerCase().replaceAll(" ", "");
   const dayOfWeek = (day - 1) % 7;
-  switch (selector) {
-    case "weekdays":
-      return dayOfWeek >= 0 && dayOfWeek <= 4;
-    case "weekends":
-      return dayOfWeek === 5 || dayOfWeek === 6;
-    case "monday":
-      return dayOfWeek === 0;
-    case "tuesday":
-      return dayOfWeek === 1;
-    case "wednesday":
-      return dayOfWeek === 2;
-    case "thursday":
-      return dayOfWeek === 3;
-    case "friday":
-      return dayOfWeek === 4;
-    case "saturday":
-      return dayOfWeek === 5;
-    case "sunday":
-      return dayOfWeek === 6;
-    default:
-      return true;
+  for (const selector of scheduleSelectorTokens(selectorInput || "AllDays")) {
+    switch (selector) {
+      case "alldays":
+      case "everyday":
+      case "allotherdays":
+        return true;
+      case "weekdays":
+        if (dayOfWeek >= 0 && dayOfWeek <= 4) return true;
+        break;
+      case "weekends":
+        if (dayOfWeek === 5 || dayOfWeek === 6) return true;
+        break;
+      case "monday":
+        if (dayOfWeek === 0) return true;
+        break;
+      case "tuesday":
+        if (dayOfWeek === 1) return true;
+        break;
+      case "wednesday":
+        if (dayOfWeek === 2) return true;
+        break;
+      case "thursday":
+        if (dayOfWeek === 3) return true;
+        break;
+      case "friday":
+        if (dayOfWeek === 4) return true;
+        break;
+      case "saturday":
+        if (dayOfWeek === 5) return true;
+        break;
+      case "sunday":
+        if (dayOfWeek === 6) return true;
+        break;
+      default:
+        break;
+    }
   }
+  return false;
+}
+
+function scheduleSelectorTokens(selectorInput) {
+  return String(selectorInput || "")
+    .replaceAll(",", " ")
+    .trim()
+    .split(/\s+/)
+    .map((selector) => selector.trim().toLowerCase().replaceAll(" ", ""))
+    .filter(Boolean);
 }
 
 function heatColor(value, max) {
@@ -1188,4 +1296,32 @@ function formatNumber(value) {
 
 function formatGraphNumber(value, unit) {
   return `${formatNumber(value)}${unit ? ` ${unit}` : ""}`;
+}
+
+function formatAxisTick(value, unit = "") {
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return "0";
+  }
+  const abs = Math.abs(number);
+  const compact = abs >= 1000
+    ? number.toLocaleString(undefined, { maximumFractionDigits: 0 })
+    : abs >= 10
+      ? number.toLocaleString(undefined, { maximumFractionDigits: 1 })
+      : number.toLocaleString(undefined, { maximumFractionDigits: 3 });
+  const shortUnit = String(unit || "").replace("people/", "p/").replace("person", "p");
+  return shortUnit ? `${compact} ${shortUnit}` : compact;
+}
+
+function graphXLabel(length) {
+  if (length >= 8760) {
+    return "8760h";
+  }
+  if (length >= 168) {
+    return "7d";
+  }
+  if (length === 12) {
+    return "12m";
+  }
+  return "24h";
 }

@@ -1831,48 +1831,89 @@ func parseScheduleHour(value string) (float64, bool) {
 }
 
 func recognizedDaySelector(selector string) bool {
-	selector = normalizeScheduleSelector(selector)
-	switch selector {
-	case "alldays", "everyday", "weekdays", "weekends", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", "allotherdays":
-		return true
-	default:
+	tokens := scheduleSelectorTokens(selector)
+	if len(tokens) == 0 {
 		return false
 	}
+	for _, token := range tokens {
+		switch token {
+		case "alldays", "everyday", "weekdays", "weekends", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", "allotherdays", "holiday", "holidays", "summerdesignday", "winterdesignday", "customday1", "customday2":
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func dayMatchesSelector(day int, selector string) bool {
-	selector = normalizeScheduleSelector(selector)
 	dayOfWeek := (day - 1) % 7 // Fixed non-leap Monday-start calendar.
-	switch selector {
-	case "alldays", "everyday", "allotherdays":
-		return true
-	case "weekdays":
-		return dayOfWeek >= 0 && dayOfWeek <= 4
-	case "weekends":
-		return dayOfWeek == 5 || dayOfWeek == 6
-	case "monday":
-		return dayOfWeek == 0
-	case "tuesday":
-		return dayOfWeek == 1
-	case "wednesday":
-		return dayOfWeek == 2
-	case "thursday":
-		return dayOfWeek == 3
-	case "friday":
-		return dayOfWeek == 4
-	case "saturday":
-		return dayOfWeek == 5
-	case "sunday":
-		return dayOfWeek == 6
-	default:
-		return false
+	for _, token := range scheduleSelectorTokens(selector) {
+		switch token {
+		case "alldays", "everyday", "allotherdays":
+			return true
+		case "weekdays":
+			if dayOfWeek >= 0 && dayOfWeek <= 4 {
+				return true
+			}
+		case "weekends":
+			if dayOfWeek == 5 || dayOfWeek == 6 {
+				return true
+			}
+		case "monday":
+			if dayOfWeek == 0 {
+				return true
+			}
+		case "tuesday":
+			if dayOfWeek == 1 {
+				return true
+			}
+		case "wednesday":
+			if dayOfWeek == 2 {
+				return true
+			}
+		case "thursday":
+			if dayOfWeek == 3 {
+				return true
+			}
+		case "friday":
+			if dayOfWeek == 4 {
+				return true
+			}
+		case "saturday":
+			if dayOfWeek == 5 {
+				return true
+			}
+		case "sunday":
+			if dayOfWeek == 6 {
+				return true
+			}
+		}
 	}
+	return false
 }
 
 func normalizeScheduleSelector(value string) string {
 	value = strings.ToLower(strings.TrimSpace(value))
 	value = strings.ReplaceAll(value, " ", "")
 	return value
+}
+
+func scheduleSelectorTokens(value string) []string {
+	value = strings.ReplaceAll(value, ",", " ")
+	parts := strings.Fields(value)
+	tokens := make([]string, 0, len(parts))
+	for _, part := range parts {
+		token := normalizeScheduleSelector(part)
+		if token != "" {
+			tokens = append(tokens, token)
+		}
+	}
+	if len(tokens) == 0 {
+		if token := normalizeScheduleSelector(value); token != "" {
+			tokens = append(tokens, token)
+		}
+	}
+	return tokens
 }
 
 func init() {
