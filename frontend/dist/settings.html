@@ -46,7 +46,6 @@
       import { formatAppVersion, loadAppInfo, renderAppInfo } from "./js/app-info.js";
       import {
         analysisTabLabel,
-        defaultAnalyzeTabOrder,
         normalizeAnalyzeTabOrder,
         profileDimensionLabel,
         profileMetricLabel,
@@ -132,16 +131,22 @@
       function analysisTabOrderFields(selectedOrder) {
         const order = normalizeAnalyzeTabOrder(selectedOrder);
         return `
-          <div class="settings-tab-order">
+          <div id="analysisTabOrderList" class="settings-tab-order" role="list" aria-label="${escapeHTML(t("appearance.analysisTabOrder"))}">
             ${order
               .map(
                 (tab, index) => `
-                  <label class="settings-profile-field" for="analysisTabOrder-${index}">
-                    <span>${escapeHTML(t("appearance.tabPosition", { count: index + 1 }))}</span>
-                    <select id="analysisTabOrder-${index}" data-analysis-tab-position="${index}">
-                      ${defaultAnalyzeTabOrder.map((value) => optionHTML(value, analysisTabLabel(value), tab)).join("")}
-                    </select>
-                  </label>`,
+                  <div class="settings-tab-order-item ${index === 0 ? "main-tab" : ""}" role="listitem" draggable="true" tabindex="0" data-analysis-tab-id="${escapeHTML(tab)}">
+                    <span class="settings-tab-order-handle" aria-hidden="true">::</span>
+                    <span class="settings-tab-order-rank">${escapeHTML(t("appearance.tabPosition", { count: index + 1 }))}</span>
+                    <span class="settings-tab-order-label">
+                      <strong>${escapeHTML(analysisTabLabel(tab))}</strong>
+                      ${index === 0 ? `<em>${escapeHTML(t("appearance.mainTab"))}</em>` : ""}
+                    </span>
+                    <span class="settings-tab-order-actions">
+                      <button type="button" data-analysis-tab-move="up" aria-label="${escapeHTML(t("appearance.moveUp"))}" title="${escapeHTML(t("appearance.moveUp"))}" ${index === 0 ? "disabled" : ""}>&uarr;</button>
+                      <button type="button" data-analysis-tab-move="down" aria-label="${escapeHTML(t("appearance.moveDown"))}" title="${escapeHTML(t("appearance.moveDown"))}" ${index === order.length - 1 ? "disabled" : ""}>&darr;</button>
+                    </span>
+                  </div>`,
               )
               .join("")}
           </div>`;
@@ -337,10 +342,11 @@
           activeSettings = readFormSettings();
           applyAppSettings(activeSettings);
           saveStatus.textContent = t("status.unsavedPreview");
-          if (event?.target?.id === "languageSelect" || event?.target?.matches("[data-analysis-tab-position]")) {
+          if (event?.target?.id === "languageSelect") {
             renderSettings({ path: loadedPath, settings: activeSettings });
           }
         };
+        bindAnalysisTabOrderControls(updatePreview);
         form.addEventListener("input", (event) => {
           if (event.target === rangeInput) {
             numberInput.value = rangeInput.value;
@@ -413,7 +419,101 @@
       }
 
       function readAnalysisTabOrder() {
-        return normalizeAnalyzeTabOrder([...document.querySelectorAll("[data-analysis-tab-position]")].map((select) => select.value));
+        return normalizeAnalyzeTabOrder([...document.querySelectorAll("[data-analysis-tab-id]")].map((item) => item.dataset.analysisTabId));
+      }
+
+      function bindAnalysisTabOrderControls(updatePreview) {
+        const list = document.querySelector("#analysisTabOrderList");
+        if (!list) {
+          return;
+        }
+        let draggedTab = "";
+        list.querySelectorAll("[data-analysis-tab-id]").forEach((item) => {
+          item.addEventListener("dragstart", (event) => {
+            draggedTab = item.dataset.analysisTabId || "";
+            item.classList.add("dragging");
+            if (event.dataTransfer) {
+              event.dataTransfer.effectAllowed = "move";
+              event.dataTransfer.setData("text/plain", draggedTab);
+            }
+          });
+          item.addEventListener("dragend", () => {
+            draggedTab = "";
+            item.classList.remove("dragging", "drag-over");
+          });
+          item.addEventListener("dragover", (event) => {
+            event.preventDefault();
+            list.querySelectorAll(".drag-over").forEach((element) => element.classList.remove("drag-over"));
+            item.classList.add("drag-over");
+            if (event.dataTransfer) {
+              event.dataTransfer.dropEffect = "move";
+            }
+          });
+          item.addEventListener("dragleave", () => item.classList.remove("drag-over"));
+          item.addEventListener("drop", (event) => {
+            event.preventDefault();
+            item.classList.remove("drag-over");
+            const sourceTab = event.dataTransfer?.getData("text/plain") || draggedTab;
+            const targetTab = item.dataset.analysisTabId || "";
+            const targetRect = item.getBoundingClientRect();
+            const targetOffset = event.clientY > targetRect.top + targetRect.height / 2 ? 1 : 0;
+            moveAnalysisTabToTarget(sourceTab, targetTab, targetOffset, updatePreview);
+          });
+        });
+        list.querySelectorAll("[data-analysis-tab-move]").forEach((button) => {
+          button.addEventListener("click", () => {
+            const item = button.closest("[data-analysis-tab-id]");
+            moveAnalysisTabByStep(item?.dataset.analysisTabId || "", button.dataset.analysisTabMove === "up" ? -1 : 1, updatePreview);
+          });
+        });
+      }
+
+      function moveAnalysisTabByStep(tab, step, updatePreview) {
+        const order = readAnalysisTabOrder();
+        const from = order.indexOf(tab);
+        if (from < 0) {
+          return;
+        }
+        moveAnalysisTabToIndex(tab, from + step, updatePreview);
+      }
+
+      function moveAnalysisTabToTarget(sourceTab, targetTab, targetOffset, updatePreview) {
+        const order = readAnalysisTabOrder();
+        const from = order.indexOf(sourceTab);
+        const target = order.indexOf(targetTab);
+        if (from < 0 || target < 0 || sourceTab === targetTab) {
+          return;
+        }
+        let to = target + targetOffset;
+        if (from < to) {
+          to -= 1;
+        }
+        moveAnalysisTabToIndex(sourceTab, to, updatePreview);
+      }
+
+      function moveAnalysisTabToIndex(tab, index, updatePreview) {
+        const order = readAnalysisTabOrder();
+        const from = order.indexOf(tab);
+        if (from < 0) {
+          return;
+        }
+        const to = Math.max(0, Math.min(order.length - 1, index));
+        if (from === to) {
+          return;
+        }
+        order.splice(from, 1);
+        order.splice(to, 0, tab);
+        renderAnalysisTabOrder(order, updatePreview);
+        updatePreview?.();
+      }
+
+      function renderAnalysisTabOrder(order, updatePreview) {
+        const list = document.querySelector("#analysisTabOrderList");
+        if (!list) {
+          return;
+        }
+        list.outerHTML = analysisTabOrderFields(order);
+        bindAnalysisTabOrderControls(updatePreview);
       }
 
       function readProfileMetricMap(prefix) {

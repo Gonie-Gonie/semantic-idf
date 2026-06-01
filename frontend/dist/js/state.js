@@ -8,6 +8,8 @@ export const state = {
   diagnosticsReady: false,
   geometryReady: false,
   activeResultTab: "summary",
+  defaultResultTab: "summary",
+  resultTabManuallySelected: false,
   activeInputView: "text",
   activeProfileGroupId: "",
   activeHVACLoopId: "",

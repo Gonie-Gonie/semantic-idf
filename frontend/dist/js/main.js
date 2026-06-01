@@ -31,7 +31,7 @@ import {
 import { initializeVerticalSplitters, initializeWorkspaceSplitter } from "./layout.js";
 import { focusInputObject, handleAnalysisActivation, switchResultTab } from "./navigation.js";
 import { initializeProfileControls, renderProfile } from "./profile-views.js";
-import { t, translatePage } from "./i18n.js";
+import { normalizeAnalyzeTabOrder, t, translatePage } from "./i18n.js";
 
 loadAndApplyAppSettings().then((result) => applyRuntimeSettings(result.settings));
 
@@ -68,7 +68,10 @@ elements.inputFilter.addEventListener("input", () => setInputFilter(elements.inp
 elements.summaryFilter.addEventListener("input", () => renderSummary());
 elements.diagnosticFilter.addEventListener("input", () => renderDiagnostics());
 elements.resultTabButtons.forEach((button) => {
-  button.addEventListener("click", () => switchResultTab(button.dataset.resultTab));
+  button.addEventListener("click", () => {
+    state.resultTabManuallySelected = true;
+    switchResultTab(button.dataset.resultTab);
+  });
 });
 elements.geometryModeButtons.forEach((button) => {
   button.addEventListener("click", () => setGeometryMode(button.dataset.geometryMode));
@@ -170,12 +173,12 @@ if (restoredDocument) {
     path: restoredDocument.path || "",
     filename: restoredDocument.filename || "",
   });
-    scheduleAnalyzeAfterPaint({
-      loadingMessage: t("status.analyzingNamed", { name: restoredDocument.filename || "current input" }),
-      queuedMessage: t("status.loadedQueued", { name: restoredDocument.filename || "current input" }),
-      statusMessage: t("status.loadedNamed", { name: restoredDocument.filename || "current input" }),
-      textSnapshot: elements.idfInput.value,
-    });
+  scheduleAnalyzeAfterPaint({
+    loadingMessage: t("status.analyzingNamed", { name: restoredDocument.filename || "current input" }),
+    queuedMessage: t("status.loadedQueued", { name: restoredDocument.filename || "current input" }),
+    statusMessage: t("status.loadedNamed", { name: restoredDocument.filename || "current input" }),
+    textSnapshot: elements.idfInput.value,
+  });
 } else {
   loadDefaultSampleIDF().then(async (sampleText) => {
     elements.idfInput.value = sampleText;
@@ -233,6 +236,7 @@ function applyRuntimeSettings(settings) {
     }
   }
   if (settings.appearance) {
+    applyDefaultResultTab(settings.appearance.analysisTabOrder);
     translatePage();
     updateTextStats();
     if (state.report) {
@@ -243,5 +247,16 @@ function applyRuntimeSettings(settings) {
   }
   if (state.report?.geometry && state.activeResultTab === "geometry") {
     renderGeometry();
+  }
+}
+
+function applyDefaultResultTab(orderInput) {
+  const [firstTab] = normalizeAnalyzeTabOrder(orderInput);
+  if (!firstTab) {
+    return;
+  }
+  state.defaultResultTab = firstTab;
+  if (!state.resultTabManuallySelected && state.activeResultTab !== firstTab) {
+    switchResultTab(firstTab);
   }
 }
