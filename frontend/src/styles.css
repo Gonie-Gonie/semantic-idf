@@ -5824,3 +5824,87 @@ th.input-jump-highlight {
     white-space: normal;
   }
 }
+
+.settings-subsection-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.settings-subsection-head h3 {
+  margin: 0;
+}
+
+.settings-path-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-path-card {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  background: var(--surface-3);
+}
+
+.settings-path-card-head {
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.settings-path-card-head span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.settings-path-card label {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.settings-path-card input,
+.settings-path-row input {
+  min-width: 0;
+  width: 100%;
+}
+
+.settings-path-card button {
+  justify-self: end;
+}
+
+.settings-path-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.settings-detected-note {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+@media (max-width: 780px) {
+  .settings-path-card,
+  .settings-path-row {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-path-card button,
+  .settings-path-row button {
+    justify-self: stretch;
+  }
+}

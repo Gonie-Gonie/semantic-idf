@@ -24,6 +24,7 @@
         <a href="#appearance" data-i18n="settings.appearance">Appearance</a>
         <a href="#geometry-colors" data-i18n="settings.geometryColors">Geometry Colors</a>
         <a href="#behavior" data-i18n="settings.behavior">Behavior</a>
+        <a href="#simulation-settings" data-i18n="settings.simulation">Simulation</a>
         <a href="#keyboard-shortcuts" data-i18n="settings.keyboardShortcuts">Keyboard Shortcuts</a>
         <a href="#profile-analysis" data-i18n="settings.profileAnalysis">Profile Analysis</a>
         <a href="#storage" data-i18n="settings.storage">Storage</a>
@@ -122,6 +123,7 @@
       let loadedPath = "";
       let activeSettings = mergeSettings();
       let activeAppInfo = null;
+      let activeSimulationEnvironment = null;
 
       function escapeHTML(value) {
         return String(value ?? "")
@@ -134,6 +136,33 @@
 
       function optionHTML(value, label, selected) {
         return `<option value="${escapeHTML(value)}" ${String(selected) === String(value) ? "selected" : ""}>${escapeHTML(label)}</option>`;
+      }
+
+      function appAPI() {
+        return window.go && window.go.main && window.go.main.App;
+      }
+
+      async function waitForAppAPI(methodName) {
+        for (let attempt = 0; attempt < 40; attempt += 1) {
+          const api = appAPI();
+          if (api && typeof api[methodName] === "function") {
+            return api;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+        return null;
+      }
+
+      async function loadSimulationEnvironment() {
+        try {
+          const api = await waitForAppAPI("GetSimulationEnvironment");
+          activeSimulationEnvironment = api
+            ? await api.GetSimulationEnvironment()
+            : await fetch("/api/simulation-environment").then((response) => (response.ok ? response.json() : null));
+        } catch {
+          activeSimulationEnvironment = null;
+        }
+        return activeSimulationEnvironment;
       }
 
       function profileMetricField(prefix, dimension, label, selected) {
@@ -167,8 +196,93 @@
                     </span>
                   </div>`,
               )
-              .join("")}
+                .join("")}
           </div>`;
+      }
+
+      function simulationInstallationFields(registered, environmentInstallations) {
+        const registeredItems = Array.isArray(registered) ? registered : [];
+        const registeredKeys = new Set(registeredItems.map((item) => String(item.executablePath || item.rootPath || "").toLowerCase()));
+        const autoItems = (environmentInstallations || []).filter(
+          (item) => item.autoDetected && !registeredKeys.has(String(item.executablePath || item.rootPath || "").toLowerCase()),
+        );
+        const registeredHTML = registeredItems
+          .map((item, index) => simulationInstallationCard(item, index, true))
+          .join("");
+        const autoHTML = autoItems.map((item, index) => simulationInstallationCard(item, index, false)).join("");
+        return (
+          registeredHTML +
+          autoHTML +
+          (!registeredHTML && !autoHTML
+            ? `<div class="empty">${escapeHTML(t("simulation.noEnergyPlus", {}, "No EnergyPlus installation"))}</div>`
+            : "")
+        );
+      }
+
+      function simulationInstallationCard(item, index, registered) {
+        const prefix = registered ? `simulationInstall-${index}` : `simulationDetected-${index}`;
+        const disabled = registered ? "" : "disabled";
+        return `
+          <div class="settings-path-card" ${registered ? "data-ep-registered" : "data-ep-detected"} data-ep-index="${escapeHTML(index)}">
+            <div class="settings-path-card-head">
+              <strong>${escapeHTML(item.name || item.version || "EnergyPlus")}</strong>
+              <span>${escapeHTML(registered ? t("simulation.registered", {}, "Registered") : t("simulation.autoDetected", {}, "Auto detected"))}</span>
+            </div>
+            <label>
+              <span>${escapeHTML(t("common.name"))}</span>
+              <input id="${escapeHTML(prefix)}-name" data-ep-field="name" type="text" value="${escapeHTML(item.name || "")}" ${disabled} />
+            </label>
+            <label>
+              <span>${escapeHTML(t("common.version", {}, "Version"))}</span>
+              <input id="${escapeHTML(prefix)}-version" data-ep-field="version" type="text" value="${escapeHTML(item.version || "")}" ${disabled} />
+            </label>
+            <label>
+              <span>${escapeHTML(t("simulation.executablePath", {}, "Executable path"))}</span>
+              <input id="${escapeHTML(prefix)}-exe" data-ep-field="executablePath" type="text" value="${escapeHTML(item.executablePath || "")}" ${disabled} />
+            </label>
+            <label>
+              <span>${escapeHTML(t("simulation.rootPath", {}, "Root path"))}</span>
+              <input id="${escapeHTML(prefix)}-root" data-ep-field="rootPath" type="text" value="${escapeHTML(item.rootPath || "")}" ${disabled} />
+            </label>
+            <label>
+              <span>${escapeHTML(t("simulation.weatherDataPath", {}, "WeatherData path"))}</span>
+              <input id="${escapeHTML(prefix)}-weather" data-ep-field="weatherDataPath" type="text" value="${escapeHTML(item.weatherDataPath || "")}" ${disabled} />
+            </label>
+            ${
+              registered
+                ? `<button type="button" data-remove-ep-index="${escapeHTML(index)}">${escapeHTML(t("action.remove", {}, "Remove"))}</button>`
+                : ""
+            }
+          </div>`;
+      }
+
+      function simulationWeatherPathFields(paths) {
+        const values = Array.isArray(paths) ? paths : [];
+        if (!values.length) {
+          return `<div class="empty">${escapeHTML(t("simulation.noExtraWeatherFolders", {}, "No extra weather folders registered."))}</div>`;
+        }
+        return values
+          .map(
+            (path, index) => `
+              <div class="settings-path-row">
+                <input data-weather-path-index="${escapeHTML(index)}" type="text" value="${escapeHTML(path)}" />
+                <button type="button" data-remove-weather-path="${escapeHTML(index)}">${escapeHTML(t("action.remove", {}, "Remove"))}</button>
+              </div>`,
+          )
+          .join("");
+      }
+
+      function weatherFolderSummary(environment) {
+        const folders = environment?.weatherFolders || [];
+        const weatherCount = folders.reduce((sum, folder) => sum + (folder.files?.length || 0), 0);
+        if (!weatherCount) {
+          return t("simulation.noWeatherDetected", {}, "No EPW files detected from registered folders yet.");
+        }
+        return t(
+          "simulation.weatherDetected",
+          { folders: folders.length, files: weatherCount },
+          `${folders.length} folders, ${weatherCount} weather files detected`,
+        );
       }
 
       function renderSettings(result) {
@@ -176,6 +290,7 @@
         loadedPath = result.path || loadedPath;
         const geometry = activeSettings.appearance.geometry;
         const profile = activeSettings.profile;
+        const simulation = activeSettings.simulation;
         container.innerHTML = `
           <form id="settingsForm" class="settings-form">
             ${result.warning ? `<div class="settings-message warning">${escapeHTML(result.warning)}</div>` : ""}
@@ -248,6 +363,59 @@
                 <input id="geometrySyncLocateDefault" type="checkbox" ${activeSettings.interaction.geometrySyncLocate ? "checked" : ""} />
                 <span>${escapeHTML(t("behavior.geometrySync"))}</span>
               </label>
+            </section>
+
+            <section id="simulation-settings" class="guide-section">
+              <div class="settings-section-head">
+                <div>
+                  <h2>${escapeHTML(t("settings.simulation"))}</h2>
+                  <p>${escapeHTML(t("simulation.settingsDescription", {}, "Register external EnergyPlus engines, weather folders, and simulation defaults."))}</p>
+                </div>
+              </div>
+              <div class="settings-subsection">
+                <div class="settings-subsection-head">
+                  <h3>${escapeHTML(t("simulation.energyPlusInstallations", {}, "EnergyPlus installations"))}</h3>
+                  <button id="simulationAddEnergyPlus" type="button">${escapeHTML(t("simulation.addEnergyPlus", {}, "Add executable"))}</button>
+                </div>
+                <div id="simulationInstallations" class="settings-path-list">
+                  ${simulationInstallationFields(simulation.energyPlusInstallations, activeSimulationEnvironment?.installations || [])}
+                </div>
+              </div>
+              <div class="settings-subsection">
+                <div class="settings-subsection-head">
+                  <h3>${escapeHTML(t("simulation.weatherFolders", {}, "Weather folders"))}</h3>
+                  <button id="simulationAddWeatherPath" type="button">${escapeHTML(t("simulation.addWeatherFolder", {}, "Add folder"))}</button>
+                </div>
+                <div id="simulationWeatherPaths" class="settings-path-list">
+                  ${simulationWeatherPathFields(simulation.extraWeatherDataPaths)}
+                </div>
+                <div class="settings-detected-note">
+                  ${escapeHTML(weatherFolderSummary(activeSimulationEnvironment))}
+                </div>
+              </div>
+              <div class="settings-subsection">
+                <h3>${escapeHTML(t("simulation.runDefaults", {}, "Run defaults"))}</h3>
+                <label class="settings-field" for="simulationRunDirectory">
+                  <span>${escapeHTML(t("simulation.runDirectory", {}, "Simulation run directory"))}</span>
+                  <input id="simulationRunDirectory" type="text" value="${escapeHTML(simulation.runDirectory)}" />
+                </label>
+                <label class="settings-field" for="simulationWorkerFraction">
+                  <span>${escapeHTML(t("simulation.workerFraction", {}, "Default parallel workers"))}</span>
+                  <span class="settings-inline-control">
+                    <input id="simulationWorkerFractionRange" type="range" min="0.1" max="1" step="0.05" value="${escapeHTML(simulation.workerFraction)}" />
+                    <input id="simulationWorkerFraction" type="number" min="0.1" max="1" step="0.05" value="${escapeHTML(simulation.workerFraction)}" />
+                    <em>${escapeHTML(t("simulation.workerFractionUnit", {}, "CPU fraction"))}</em>
+                  </span>
+                </label>
+                <label class="settings-field" for="simulationMaxWorkers">
+                  <span>${escapeHTML(t("simulation.maxWorkers", {}, "Max workers"))}</span>
+                  <input id="simulationMaxWorkers" type="number" min="0" max="512" step="1" value="${escapeHTML(simulation.maxWorkers)}" />
+                </label>
+                <label class="settings-check">
+                  <input id="simulationAutoRunOnOpenDefault" type="checkbox" ${simulation.autoRunOnOpen ? "checked" : ""} />
+                  <span>${escapeHTML(t("simulation.autoRunOnOpen"))}</span>
+                </label>
+              </div>
             </section>
 
             <section id="keyboard-shortcuts" class="guide-section">
@@ -377,6 +545,8 @@
         const saveStatus = document.querySelector("#settingsSaveStatus");
         const rangeInput = document.querySelector("#autoAnalyzeDelayRange");
         const numberInput = document.querySelector("#autoAnalyzeDelay");
+        const workerFractionRange = document.querySelector("#simulationWorkerFractionRange");
+        const workerFractionInput = document.querySelector("#simulationWorkerFraction");
         const updatePreview = (event) => {
           activeSettings = readFormSettings();
           applyAppSettings(activeSettings);
@@ -394,6 +564,12 @@
           if (event.target === numberInput) {
             rangeInput.value = numberInput.value;
           }
+          if (event.target === workerFractionRange) {
+            workerFractionInput.value = workerFractionRange.value;
+          }
+          if (event.target === workerFractionInput) {
+            workerFractionRange.value = workerFractionInput.value;
+          }
           updatePreview(event);
         });
         form.addEventListener("change", updatePreview);
@@ -403,6 +579,7 @@
           saveStatus.classList.add("status-loading");
           try {
             const result = await saveAppSettings(readFormSettings());
+            await loadSimulationEnvironment();
             saveStatus.classList.remove("status-loading");
             saveStatus.textContent = t("status.savedSettings");
             renderSettings(result);
@@ -415,6 +592,75 @@
           activeSettings = mergeSettings(defaultAppSettings);
           applyAppSettings(activeSettings);
           renderSettings({ path: loadedPath, settings: activeSettings });
+        });
+        document.querySelector("#simulationAddEnergyPlus")?.addEventListener("click", async () => {
+          activeSettings = readFormSettings();
+          let install = {
+            id: "",
+            version: "",
+            name: "EnergyPlus",
+            executablePath: "",
+            rootPath: "",
+            weatherDataPath: "",
+            autoDetected: false,
+          };
+          try {
+            const api = await waitForAppAPI("SelectEnergyPlusExecutable");
+            if (api) {
+              const selected = await api.SelectEnergyPlusExecutable();
+              if (selected?.executablePath) {
+                install = { ...install, ...selected, autoDetected: false };
+              }
+            }
+          } catch {
+            // Keep the blank manual entry.
+          }
+          if (!install.executablePath) {
+            const manualPath = window.prompt(t("simulation.executablePath", {}, "Executable path"), "");
+            if (!manualPath) {
+              return;
+            }
+            install.executablePath = manualPath;
+            install.name = "EnergyPlus";
+          }
+          activeSettings.simulation.energyPlusInstallations = [...activeSettings.simulation.energyPlusInstallations, install];
+          renderSettings({ path: loadedPath, settings: activeSettings });
+        });
+        document.querySelector("#simulationAddWeatherPath")?.addEventListener("click", async () => {
+          activeSettings = readFormSettings();
+          let path = "";
+          try {
+            const api = await waitForAppAPI("SelectWeatherDirectory");
+            if (api) {
+              path = await api.SelectWeatherDirectory();
+            }
+          } catch {
+            path = "";
+          }
+          if (!path) {
+            path = window.prompt(t("simulation.weatherDataPath", {}, "WeatherData path"), "") || "";
+          }
+          if (!path) {
+            return;
+          }
+          activeSettings.simulation.extraWeatherDataPaths = [...activeSettings.simulation.extraWeatherDataPaths, path || ""];
+          renderSettings({ path: loadedPath, settings: activeSettings });
+        });
+        document.querySelectorAll("[data-remove-ep-index]").forEach((button) => {
+          button.addEventListener("click", () => {
+            activeSettings = readFormSettings();
+            const index = Number(button.dataset.removeEpIndex);
+            activeSettings.simulation.energyPlusInstallations.splice(index, 1);
+            renderSettings({ path: loadedPath, settings: activeSettings });
+          });
+        });
+        document.querySelectorAll("[data-remove-weather-path]").forEach((button) => {
+          button.addEventListener("click", () => {
+            activeSettings = readFormSettings();
+            const index = Number(button.dataset.removeWeatherPath);
+            activeSettings.simulation.extraWeatherDataPaths.splice(index, 1);
+            renderSettings({ path: loadedPath, settings: activeSettings });
+          });
         });
       }
 
@@ -498,6 +744,7 @@
         return mergeSettings({
           version: activeSettings.version,
           profile,
+          simulation: readSimulationSettings(),
           appearance: {
             theme: document.querySelector("#themeSelect").value,
             language: document.querySelector("#languageSelect").value,
@@ -513,6 +760,33 @@
             shortcuts: readShortcutSettings(),
           },
         });
+      }
+
+      function readSimulationSettings() {
+        return {
+          energyPlusInstallations: readEnergyPlusInstallations(),
+          extraWeatherDataPaths: readWeatherPaths(),
+          runDirectory: document.querySelector("#simulationRunDirectory")?.value || "",
+          workerFraction: document.querySelector("#simulationWorkerFraction")?.value || 0.5,
+          maxWorkers: document.querySelector("#simulationMaxWorkers")?.value || 0,
+          autoRunOnOpen: document.querySelector("#simulationAutoRunOnOpenDefault")?.checked ?? true,
+        };
+      }
+
+      function readEnergyPlusInstallations() {
+        return [...document.querySelectorAll("[data-ep-registered]")].map((card) => {
+          const install = { autoDetected: false };
+          card.querySelectorAll("[data-ep-field]").forEach((input) => {
+            install[input.dataset.epField] = input.value;
+          });
+          return install;
+        });
+      }
+
+      function readWeatherPaths() {
+        return [...document.querySelectorAll("[data-weather-path-index]")]
+          .map((input) => input.value)
+          .filter((value) => String(value || "").trim());
       }
 
       function readShortcutSettings() {
@@ -662,7 +936,7 @@
         return values;
       }
 
-      Promise.all([loadAndApplyAppSettings(), loadAppInfo()]).then(([settingsResult, appInfo]) => {
+      Promise.all([loadAndApplyAppSettings(), loadAppInfo(), loadSimulationEnvironment()]).then(([settingsResult, appInfo]) => {
         activeAppInfo = appInfo;
         renderAppInfo(appInfo);
         renderSettings(settingsResult);
