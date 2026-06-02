@@ -117,6 +117,7 @@ type AppSettings struct {
 	Behavior    BehaviorSettings            `json:"behavior"`
 	Interaction InteractionSettings         `json:"interaction"`
 	Profile     idf.ProfileAnalysisSettings `json:"profile"`
+	Simulation  SimulationSettings          `json:"simulation"`
 }
 
 type AppearanceSettings struct {
@@ -137,6 +138,25 @@ type GeometryAppearanceSettings struct {
 
 type BehaviorSettings struct {
 	AutoAnalyzeDelayMS int `json:"autoAnalyzeDelayMs"`
+}
+
+type SimulationSettings struct {
+	EnergyPlusInstallations []EnergyPlusInstallSetting `json:"energyPlusInstallations"`
+	ExtraWeatherDataPaths   []string                   `json:"extraWeatherDataPaths"`
+	RunDirectory            string                     `json:"runDirectory"`
+	WorkerFraction          float64                    `json:"workerFraction"`
+	MaxWorkers              int                        `json:"maxWorkers"`
+	AutoRunOnOpen           bool                       `json:"autoRunOnOpen"`
+}
+
+type EnergyPlusInstallSetting struct {
+	ID              string `json:"id"`
+	Version         string `json:"version"`
+	Name            string `json:"name"`
+	ExecutablePath  string `json:"executablePath"`
+	RootPath        string `json:"rootPath"`
+	WeatherDataPath string `json:"weatherDataPath"`
+	AutoDetected    bool   `json:"autoDetected"`
 }
 
 type InteractionSettings struct {
@@ -936,7 +956,7 @@ func defaultAppSettings() AppSettings {
 		Appearance: AppearanceSettings{
 			Theme:            "system",
 			Language:         "en",
-			AnalysisTabOrder: []string{"summary", "profile", "hvac", "output", "diagnose", "geometry"},
+			AnalysisTabOrder: []string{"summary", "profile", "hvac", "output", "simulation", "diagnose", "geometry"},
 			Geometry: GeometryAppearanceSettings{
 				Background: "#f7fafc",
 				Zone:       "#b8d7b0",
@@ -966,11 +986,13 @@ func defaultAppSettings() AppSettings {
 				"tabProfile":     "Ctrl+Alt+2",
 				"tabHVAC":        "Ctrl+Alt+3",
 				"tabOutput":      "Ctrl+Alt+4",
-				"tabDiagnose":    "Ctrl+Alt+5",
-				"tabGeometry":    "Ctrl+Alt+6",
+				"tabSimulation":  "Ctrl+Alt+5",
+				"tabDiagnose":    "Ctrl+Alt+6",
+				"tabGeometry":    "Ctrl+Alt+7",
 			},
 		},
-		Profile: idf.DefaultProfileAnalysisSettings(),
+		Profile:    idf.DefaultProfileAnalysisSettings(),
+		Simulation: defaultSimulationSettings(),
 	}
 }
 
@@ -1004,6 +1026,7 @@ func normalizeAppSettings(settings AppSettings) AppSettings {
 	}
 	settings.Interaction.Shortcuts = normalizeShortcutSettings(settings.Interaction.Shortcuts, defaults.Interaction.Shortcuts)
 	settings.Profile = normalizeProfileSettings(settings.Profile, defaults.Profile)
+	settings.Simulation = normalizeSimulationSettings(settings.Simulation, defaults.Simulation)
 	return settings
 }
 
@@ -1038,12 +1061,13 @@ func normalizeAppLanguage(value string, fallback string) string {
 
 func normalizeAnalysisTabOrder(values []string, fallback []string) []string {
 	allowed := map[string]bool{
-		"summary":  true,
-		"profile":  true,
-		"hvac":     true,
-		"output":   true,
-		"diagnose": true,
-		"geometry": true,
+		"summary":    true,
+		"profile":    true,
+		"hvac":       true,
+		"output":     true,
+		"simulation": true,
+		"diagnose":   true,
+		"geometry":   true,
 	}
 	seen := map[string]bool{}
 	out := make([]string, 0, len(allowed))
@@ -1057,7 +1081,7 @@ func normalizeAnalysisTabOrder(values []string, fallback []string) []string {
 	}
 	source := fallback
 	if len(source) == 0 {
-		source = []string{"summary", "profile", "hvac", "output", "diagnose", "geometry"}
+		source = []string{"summary", "profile", "hvac", "output", "simulation", "diagnose", "geometry"}
 	}
 	for _, value := range source {
 		normalized := strings.ToLower(strings.TrimSpace(value))
