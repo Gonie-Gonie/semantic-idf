@@ -710,7 +710,7 @@ func runSimulation(request SimulationRunRequest, progress func(SimulationProgres
 	}
 
 	emitSimulationProgress(progress, request.RunID, "execute", "running", "EnergyPlus is running", 1, 4, result.InputPath)
-	args := []string{"-d", outputDir, "-p", "eplusout", "-r"}
+	args := []string{"-d", outputDir, "-p", "eplus", "-r"}
 	if result.WeatherPath != "" {
 		args = append(args, "-w", result.WeatherPath)
 	}

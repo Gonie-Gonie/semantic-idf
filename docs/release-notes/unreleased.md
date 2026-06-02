@@ -26,4 +26,4 @@ The release script infers bump size from these sections:
 
 ## Fixed
 
-- _None._
+- Fixed EnergyPlus simulation output prefixing so runs produce standard `eplusout.*` files and ReadVarsESO post-processing can find the expected ESO/MTR outputs.
