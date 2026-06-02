@@ -5897,9 +5897,32 @@ th.input-jump-highlight {
   font-size: 12px;
 }
 
+.tool-simulation-controls {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.2fr) minmax(240px, 1.4fr) minmax(180px, 0.8fr) minmax(90px, 0.4fr) auto;
+  gap: 10px;
+  align-items: end;
+  margin-bottom: 12px;
+}
+
+.tool-simulation-controls label {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.tool-simulation-controls select,
+.tool-simulation-controls input {
+  min-width: 0;
+}
+
 @media (max-width: 780px) {
   .settings-path-card,
-  .settings-path-row {
+  .settings-path-row,
+  .tool-simulation-controls {
     grid-template-columns: 1fr;
   }
 

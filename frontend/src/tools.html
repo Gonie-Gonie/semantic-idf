@@ -29,6 +29,10 @@
           <strong data-i18n="tools.cleanup">Cleanup Wizard</strong>
           <span data-i18n="tools.cleanupDescription">Review and apply cleanup rules</span>
         </button>
+        <button class="tool-nav-button" data-tool-tab="multiple-simulation" type="button">
+          <strong data-i18n="tools.multipleSimulation">Multiple Simulation</strong>
+          <span data-i18n="tools.multipleSimulationDescription">Run and compare EnergyPlus cases</span>
+        </button>
       </nav>
 
       <section class="tool-tab-content">
@@ -97,6 +101,79 @@
                 <div class="empty" data-i18n="tools.noCurrentInput">Open an input in the main app, then return to Tools.</div>
               </div>
             </section>
+          </div>
+        </section>
+
+        <section id="multiple-simulation" class="guide-section tool-section" data-tool-panel="multiple-simulation">
+          <div class="tool-title-row">
+            <div>
+              <h2 data-i18n="tools.multipleSimulation">Multiple Simulation</h2>
+              <p data-i18n="tools.multipleSimulationLongDescription">Select IDF/epJSON files, run EnergyPlus with controlled workers, then compare selected numeric outputs.</p>
+            </div>
+            <div class="tool-actions">
+              <button id="multiSimulationSelectFiles" type="button" data-i18n="action.selectFiles">Select Files</button>
+              <button id="multiSimulationSelectFolder" type="button" data-i18n="tools.selectFolder">Select Folder</button>
+              <button id="multiSimulationRun" type="button" disabled data-i18n="tools.runSelectedSimulations">Run Selected</button>
+            </div>
+          </div>
+
+          <div class="tool-simulation-controls">
+            <label>
+              <span data-i18n="simulation.energyPlus">EnergyPlus</span>
+              <select id="multiSimulationEnergyPlus"></select>
+            </label>
+            <label>
+              <span data-i18n="simulation.weather">Weather</span>
+              <select id="multiSimulationWeather"></select>
+            </label>
+            <label>
+              <span data-i18n="tools.weatherMode">Weather mode</span>
+              <select id="multiSimulationWeatherMode">
+                <option value="same" data-i18n="tools.weatherSame">Same weather for all</option>
+                <option value="subfolder" data-i18n="tools.weatherSubfolder">Nearest EPW by folder</option>
+              </select>
+            </label>
+            <label>
+              <span data-i18n="tools.workers">Workers</span>
+              <input id="multiSimulationWorkers" type="number" min="0" max="512" step="1" value="0" />
+            </label>
+            <label class="settings-check">
+              <input id="multiSimulationRecursive" type="checkbox" checked />
+              <span data-i18n="tools.recursiveFolders">Search folders recursively</span>
+            </label>
+          </div>
+
+          <div class="tool-control-row">
+            <span id="multiSimulationStats" class="tool-muted" data-i18n="tools.noSimulationFiles">No simulation files selected</span>
+            <select id="multiSimulationSort">
+              <option value="filename" data-i18n="common.name">name</option>
+              <option value="status" data-i18n="common.status">Status</option>
+              <option value="warnings" data-i18n="simulation.errWarnings">ERR warnings</option>
+              <option value="severe" data-i18n="simulation.errSevere">Severe/Fatal</option>
+              <option value="duration" data-i18n="tools.duration">Duration</option>
+            </select>
+          </div>
+
+          <div class="tool-progress" aria-live="polite">
+            <div class="tool-progress-header">
+              <span id="multiSimulationStatus" data-i18n="tools.waitingFiles">Waiting for files</span>
+              <span id="multiSimulationPercent">0%</span>
+            </div>
+            <div class="tool-progress-track">
+              <div id="multiSimulationProgressBar" class="tool-progress-bar"></div>
+            </div>
+          </div>
+
+          <div id="multiSimulationFiles" class="tool-file-list"></div>
+          <section class="simulation-section">
+            <div class="profile-section-head">
+              <h3 data-i18n="tools.simulationComparison">Simulation comparison</h3>
+              <select id="multiSimulationMetric"></select>
+            </div>
+            <div id="multiSimulationChart" class="simulation-chart"></div>
+          </section>
+          <div id="multiSimulationTable" class="tool-table-wrap">
+            <div class="empty" data-i18n="tools.selectSimulationFilesHelp">Select files or a folder to prepare batch simulation.</div>
           </div>
         </section>
       </section>
