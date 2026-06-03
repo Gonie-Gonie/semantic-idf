@@ -654,7 +654,7 @@ func (a *App) ApplyOutputText(text string, request idf.OutputApplyRequest) (*Out
 	if !preview.CanApply {
 		return nil, fmt.Errorf("output preview has blocking warnings")
 	}
-	resultText := writeDocumentInOriginalFormat(updated, model)
+	resultText := writeOutputDocumentInOriginalFormat(text, updated, model)
 	updatedModel, err := epinput.Parse("", []byte(resultText))
 	if err != nil {
 		return nil, err
@@ -926,6 +926,103 @@ func writeDocumentInOriginalFormat(doc idf.Document, original *epinput.Model) st
 		}
 	}
 	return doc.String()
+}
+
+func writeOutputDocumentInOriginalFormat(originalText string, doc idf.Document, original *epinput.Model) string {
+	if original != nil && original.Format == epinput.FormatEPJSON {
+		return writeDocumentInOriginalFormat(doc, original)
+	}
+	return replaceOutputManagementObjects(originalText, doc)
+}
+
+func replaceOutputManagementObjects(originalText string, doc idf.Document) string {
+	lines := strings.Split(strings.ReplaceAll(originalText, "\r\n", "\n"), "\n")
+	remove := make([]bool, len(lines))
+	for _, span := range idfObjectSpans(lines) {
+		if !isOutputManagementTypeName(span.objectType) {
+			continue
+		}
+		for index := span.startLine; index <= span.endLine && index < len(remove); index++ {
+			if index >= 0 {
+				remove[index] = true
+			}
+		}
+	}
+	kept := make([]string, 0, len(lines))
+	for index, line := range lines {
+		if !remove[index] {
+			kept = append(kept, line)
+		}
+	}
+	output := outputManagementDocument(doc).String()
+	result := strings.TrimRight(strings.Join(kept, "\n"), "\n")
+	if strings.TrimSpace(output) == "" {
+		return result + "\n"
+	}
+	return result + "\n\n!- Managed output requests\n\n" + output + "\n"
+}
+
+type idfObjectSpan struct {
+	objectType string
+	startLine  int
+	endLine    int
+}
+
+func idfObjectSpans(lines []string) []idfObjectSpan {
+	var spans []idfObjectSpan
+	var token strings.Builder
+	inObject := false
+	startLine := 0
+	pendingStartLine := 0
+	for lineIndex, rawLine := range lines {
+		code, _, _ := strings.Cut(strings.TrimRight(rawLine, "\r"), "!")
+		if !inObject && strings.TrimSpace(code) == "" {
+			token.Reset()
+			continue
+		}
+		if !inObject && strings.TrimSpace(token.String()) == "" {
+			token.Reset()
+			pendingStartLine = lineIndex
+		}
+		for _, r := range code {
+			if r != ',' && r != ';' {
+				token.WriteRune(r)
+				continue
+			}
+			value := strings.TrimSpace(token.String())
+			token.Reset()
+			if !inObject {
+				if value == "" {
+					continue
+				}
+				startLine = pendingStartLine
+				spans = append(spans, idfObjectSpan{objectType: value, startLine: startLine, endLine: lineIndex})
+				inObject = true
+			}
+			if r == ';' && inObject {
+				spans[len(spans)-1].endLine = lineIndex
+				inObject = false
+			}
+		}
+	}
+	return spans
+}
+
+func outputManagementDocument(doc idf.Document) idf.Document {
+	out := idf.Document{}
+	for _, obj := range doc.Objects {
+		if !isOutputManagementTypeName(obj.Type) {
+			continue
+		}
+		obj.Index = len(out.Objects)
+		out.Objects = append(out.Objects, obj)
+	}
+	return out
+}
+
+func isOutputManagementTypeName(objectType string) bool {
+	lower := strings.ToLower(strings.TrimSpace(objectType))
+	return strings.HasPrefix(lower, "output:") || strings.HasPrefix(lower, "outputcontrol:")
 }
 
 func inputFileFilters() []wailsruntime.FileFilter {

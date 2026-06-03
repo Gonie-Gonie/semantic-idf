@@ -228,9 +228,38 @@ func outputRecommendations(doc Document, existing []OutputObjectSummary) []Outpu
 		outputMeterRecommendation("naturalgas-facility", "Facility natural gas meter", "NaturalGas:Facility", defaultOutputFrequency, "meters", "Tracks whole-facility natural gas use."),
 		outputMeterRecommendation("district-cooling-facility", "District cooling meter", "DistrictCooling:Facility", defaultOutputFrequency, "meters", "Tracks whole-facility district cooling use."),
 		outputMeterRecommendation("district-heating-facility", "District heating meter", "DistrictHeating:Facility", defaultOutputFrequency, "meters", "Tracks whole-facility district heating use."),
+		standardOutputRecommendation("standard-variable-dictionary", "Standard: variable dictionary", "standard_controls", "Writes the output-variable dictionary so unavailable variable names can be reviewed after a standard run.", "Output:VariableDictionary",
+			outputFields("Key Field", "Regular"), "dictionary"),
+		standardOutputRecommendation("standard-sqlite-tabular", "Standard: SQLite tabular results", "standard_controls", "Requests SQLite output with tabular reports for consistent post-processing.", "Output:SQLite",
+			outputFields("Option Type", "SimpleAndTabular", "Unit Conversion for Tabular Data", "JtoKWH"), "database", "tabular"),
+		standardOutputRecommendation("standard-summary-all", "Standard: all summary tables", "standard_controls", "Requests the common EnergyPlus summary tables alongside monthly CSV series.", "Output:Table:SummaryReports",
+			outputFields("Report 1 Name", "AllSummary"), "tabular"),
+		standardOutputRecommendation("standard-table-style-html", "Standard: HTML table style", "standard_controls", "Writes tabular reports in HTML with kWh-style energy units.", "OutputControl:Table:Style",
+			outputFields("Column Separator", "HTML", "Unit Conversion", "JtoKWH"), "tabular"),
+		standardOutputMeterRecommendation("standard-meter-electricity-facility", "Standard: facility electricity", "Electricity:Facility", "facility_energy", "Monthly whole-facility electricity use."),
+		standardOutputMeterRecommendation("standard-meter-naturalgas-facility", "Standard: facility natural gas", "NaturalGas:Facility", "facility_energy", "Monthly whole-facility natural gas use."),
+		standardOutputMeterRecommendation("standard-meter-district-cooling-facility", "Standard: facility district cooling", "DistrictCooling:Facility", "facility_energy", "Monthly whole-facility district cooling use."),
+		standardOutputMeterRecommendation("standard-meter-district-heating-facility", "Standard: facility district heating", "DistrictHeating:Facility", "facility_energy", "Monthly whole-facility district heating use."),
+		standardOutputMeterRecommendation("standard-meter-water-facility", "Standard: facility water", "Water:Facility", "facility_energy", "Monthly whole-facility water use."),
+		standardOutputMeterRecommendation("standard-meter-electricity-cooling", "Standard: electricity cooling", "Electricity:Cooling", "end_use_energy", "Monthly electricity used for cooling."),
+		standardOutputMeterRecommendation("standard-meter-electricity-heating", "Standard: electricity heating", "Electricity:Heating", "end_use_energy", "Monthly electricity used for heating."),
+		standardOutputMeterRecommendation("standard-meter-electricity-interior-lights", "Standard: electricity interior lights", "Electricity:InteriorLights", "end_use_energy", "Monthly electricity used by interior lights."),
+		standardOutputMeterRecommendation("standard-meter-electricity-interior-equipment", "Standard: electricity interior equipment", "Electricity:InteriorEquipment", "end_use_energy", "Monthly electricity used by interior equipment."),
+		standardOutputMeterRecommendation("standard-meter-electricity-fans", "Standard: electricity fans", "Electricity:Fans", "end_use_energy", "Monthly electricity used by fans."),
+		standardOutputMeterRecommendation("standard-meter-electricity-pumps", "Standard: electricity pumps", "Electricity:Pumps", "end_use_energy", "Monthly electricity used by pumps."),
+		standardOutputMeterRecommendation("standard-meter-electricity-heat-rejection", "Standard: electricity heat rejection", "Electricity:HeatRejection", "end_use_energy", "Monthly electricity used by heat rejection equipment."),
+		standardOutputMeterRecommendation("standard-meter-electricity-water-systems", "Standard: electricity water systems", "Electricity:WaterSystems", "end_use_energy", "Monthly electricity used by water systems."),
+		standardOutputMeterRecommendation("standard-meter-naturalgas-heating", "Standard: natural gas heating", "NaturalGas:Heating", "end_use_energy", "Monthly natural gas used for heating."),
+		standardOutputMeterRecommendation("standard-meter-naturalgas-water-systems", "Standard: natural gas water systems", "NaturalGas:WaterSystems", "end_use_energy", "Monthly natural gas used by water systems."),
+		standardOutputVariableRecommendation("standard-zone-lights-electricity", "Standard: zone lights electricity", "*", "Zone Lights Electricity Energy", "zone_energy", "Monthly zone-level lighting electricity where available."),
+		standardOutputVariableRecommendation("standard-zone-electric-equipment", "Standard: zone electric equipment", "*", "Zone Electric Equipment Electricity Energy", "zone_energy", "Monthly zone-level electric equipment energy where available."),
+		standardOutputVariableRecommendation("standard-zone-gas-equipment", "Standard: zone gas equipment", "*", "Zone Gas Equipment Gas Energy", "zone_energy", "Monthly zone-level gas equipment energy where available."),
+		standardOutputVariableRecommendation("standard-zone-sensible-heating", "Standard: zone sensible heating", "*", "Zone Air System Sensible Heating Energy", "zone_energy", "Monthly zone sensible heating energy where available."),
+		standardOutputVariableRecommendation("standard-zone-sensible-cooling", "Standard: zone sensible cooling", "*", "Zone Air System Sensible Cooling Energy", "zone_energy", "Monthly zone sensible cooling energy where available."),
 	}
 	hasNodes := false
 	hasZones := false
+	features := detectOutputFeatures(doc)
 	for _, obj := range doc.Objects {
 		if strings.EqualFold(obj.Type, "Zone") {
 			hasZones = true
@@ -243,7 +272,10 @@ func outputRecommendations(doc Document, existing []OutputObjectSummary) []Outpu
 	}
 	var out []OutputRecommendation
 	for _, item := range base {
-		if item.Category == "zone_conditions" && !hasZones {
+		if outputRecommendationHasTag(item, standardOutputTag) && !standardOutputRecommendationApplies(item, features) {
+			continue
+		}
+		if (item.Category == "zone_conditions" || item.Category == "zone_energy") && !hasZones {
 			continue
 		}
 		if item.Category == "hvac_nodes" && !hasNodes {
@@ -273,6 +305,27 @@ func outputMeterRecommendation(id, label, keyName, frequency, category, descript
 		[]OutputFieldValue{
 			{Name: "Key Name", Value: keyName},
 			{Name: "Reporting Frequency", Value: frequency},
+		}, "meter")
+}
+
+func standardOutputRecommendation(id, label, category, description, objectType string, fields []OutputFieldValue, tags ...string) OutputRecommendation {
+	return outputRecommendation(id, label, category, description, objectType, fields, append([]string{standardOutputTag}, tags...)...)
+}
+
+func standardOutputVariableRecommendation(id, label, keyValue, variableName, category, description string) OutputRecommendation {
+	return standardOutputRecommendation(id, label, category, description, "Output:Variable",
+		[]OutputFieldValue{
+			{Name: "Key Value", Value: keyValue},
+			{Name: "Variable Name", Value: variableName},
+			{Name: "Reporting Frequency", Value: standardOutputFrequency},
+		}, "time-series")
+}
+
+func standardOutputMeterRecommendation(id, label, keyName, category, description string) OutputRecommendation {
+	return standardOutputRecommendation(id, label, category, description, "Output:Meter",
+		[]OutputFieldValue{
+			{Name: "Key Name", Value: keyName},
+			{Name: "Reporting Frequency", Value: standardOutputFrequency},
 		}, "meter")
 }
 

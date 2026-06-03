@@ -78,6 +78,8 @@ type SimulationRunRequest struct {
 	EnergyPlusExecutablePath string `json:"energyPlusExecutablePath"`
 	WeatherPath              string `json:"weatherPath"`
 	OutputDirectory          string `json:"outputDirectory"`
+	StandardOutput           bool   `json:"standardOutput"`
+	StandardOutputMode       string `json:"standardOutputMode,omitempty"`
 	Silent                   bool   `json:"silent"`
 	Auto                     bool   `json:"auto"`
 }
@@ -213,7 +215,7 @@ func DefaultSettings() SimulationSettings {
 		RunDirectory:   defaultSimulationRunDirectory(),
 		WorkerFraction: defaultSimulationWorkerFraction,
 		MaxWorkers:     0,
-		AutoRunOnOpen:  true,
+		AutoRunOnOpen:  false,
 	}
 }
 

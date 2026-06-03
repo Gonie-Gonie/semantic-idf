@@ -6,10 +6,13 @@ import (
 )
 
 type OutputApplyRequest struct {
-	AddRecommendations  []string              `json:"addRecommendations,omitempty"`
-	AddObjects          []OutputObjectRequest `json:"addObjects,omitempty"`
-	Updates             []OutputFieldUpdate   `json:"updates,omitempty"`
-	RemoveObjectIndexes []int                 `json:"removeObjectIndexes,omitempty"`
+	Preset                  string                `json:"preset,omitempty"`
+	PresetMode              string                `json:"presetMode,omitempty"`
+	PresetRecommendationIDs []string              `json:"presetRecommendationIds,omitempty"`
+	AddRecommendations      []string              `json:"addRecommendations,omitempty"`
+	AddObjects              []OutputObjectRequest `json:"addObjects,omitempty"`
+	Updates                 []OutputFieldUpdate   `json:"updates,omitempty"`
+	RemoveObjectIndexes     []int                 `json:"removeObjectIndexes,omitempty"`
 }
 
 type OutputObjectRequest struct {
@@ -52,6 +55,7 @@ func ApplyOutput(doc Document, request OutputApplyRequest) (Document, OutputAppl
 }
 
 func applyOutput(doc Document, request OutputApplyRequest, mutate bool) (Document, OutputApplyPreview) {
+	request = expandOutputPresetRequest(doc, request)
 	updated := doc.clone()
 	preview := OutputApplyPreview{CanApply: true}
 	if len(request.AddRecommendations) == 0 && len(request.AddObjects) == 0 && len(request.Updates) == 0 && len(request.RemoveObjectIndexes) == 0 {

@@ -2,9 +2,13 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
+	"github.com/Gonie-Gonie/idf-analyzer/internal/epinput"
+	"github.com/Gonie-Gonie/idf-analyzer/internal/idf"
 	"github.com/Gonie-Gonie/idf-analyzer/internal/simulation"
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -116,6 +120,21 @@ func (a *App) RunSimulationText(request simulation.SimulationRunRequest) (*simul
 	if err != nil {
 		return nil, err
 	}
+	if request.WeatherPath == "" {
+		requiresWeather, err := simulationRequestRequiresWeatherFile(request)
+		if err != nil {
+			return nil, err
+		}
+		if requiresWeather {
+			return blockedSimulationResult(request, "This IDF uses weather-file design days or weather run periods. Select an EPW weather file before running."), nil
+		}
+	}
+	if request.StandardOutput {
+		request, err = prepareStandardOutputSimulationRequest(request)
+		if err != nil {
+			return nil, err
+		}
+	}
 	progress := func(item simulation.SimulationProgress) {
 		if a.ctx != nil {
 			wailsruntime.EventsEmit(a.ctx, "idfAnalyzer:simulationProgress", item)
@@ -125,6 +144,67 @@ func (a *App) RunSimulationText(request simulation.SimulationRunRequest) (*simul
 		request.Filename = filepath.Base(request.InputPath)
 	}
 	return simulation.RunSimulation(request, progress, settings.Simulation)
+}
+
+func blockedSimulationResult(request simulation.SimulationRunRequest, message string) *simulation.SimulationRunResult {
+	return &simulation.SimulationRunResult{
+		RunID:                    request.RunID,
+		Status:                   "blocked",
+		InputPath:                strings.TrimSpace(request.InputPath),
+		Filename:                 strings.TrimSpace(request.Filename),
+		WeatherPath:              strings.TrimSpace(request.WeatherPath),
+		EnergyPlusExecutablePath: strings.TrimSpace(request.EnergyPlusExecutablePath),
+		ExitCode:                 -1,
+		Error:                    message,
+	}
+}
+
+func simulationRequestRequiresWeatherFile(request simulation.SimulationRunRequest) (bool, error) {
+	text := request.Text
+	if strings.TrimSpace(text) == "" && strings.TrimSpace(request.InputPath) != "" {
+		content, err := os.ReadFile(request.InputPath)
+		if err != nil {
+			return false, err
+		}
+		text = string(content)
+	}
+	if strings.TrimSpace(text) == "" {
+		return false, nil
+	}
+	model, err := epinput.Parse("", []byte(text))
+	if err != nil {
+		return false, err
+	}
+	return idf.InputRequiresWeatherFile(epinput.ToIDFDocument(model)), nil
+}
+
+func prepareStandardOutputSimulationRequest(request simulation.SimulationRunRequest) (simulation.SimulationRunRequest, error) {
+	text := request.Text
+	if strings.TrimSpace(text) == "" && strings.TrimSpace(request.InputPath) != "" {
+		content, err := os.ReadFile(request.InputPath)
+		if err != nil {
+			return request, err
+		}
+		text = string(content)
+	}
+	if strings.TrimSpace(text) == "" {
+		return request, fmt.Errorf("standard output run needs input text or an input path")
+	}
+	model, err := epinput.Parse("", []byte(text))
+	if err != nil {
+		return request, err
+	}
+	doc := epinput.ToIDFDocument(model)
+	mode := strings.TrimSpace(request.StandardOutputMode)
+	if mode == "" {
+		mode = "replace"
+	}
+	updated, preview := idf.ApplyOutput(doc, idf.StandardOutputApplyRequest(doc, mode))
+	if !preview.CanApply {
+		return request, fmt.Errorf("standard output preset has blocking warnings")
+	}
+	request.Text = writeOutputDocumentInOriginalFormat(text, updated, model)
+	return request, nil
 }
 
 func (a *App) RunMultipleSimulations(request simulation.MultiSimulationRequest) (*simulation.MultiSimulationResult, error) {

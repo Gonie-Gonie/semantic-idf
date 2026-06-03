@@ -10,7 +10,7 @@
 
 .simulation-controls {
   display: grid;
-  grid-template-columns: minmax(220px, 1.2fr) minmax(260px, 1.6fr) auto;
+  grid-template-columns: minmax(220px, 1fr) minmax(260px, 1.35fr) minmax(260px, 1.25fr);
   gap: 10px;
   align-items: end;
 }
@@ -32,7 +32,61 @@
   flex-direction: row !important;
   align-items: center;
   color: var(--text) !important;
-  white-space: nowrap;
+  white-space: normal;
+}
+
+.simulation-checkbox input {
+  flex: 0 0 auto;
+}
+
+.simulation-run-options {
+  display: grid;
+  gap: 7px;
+  align-self: stretch;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px;
+  background: var(--surface);
+}
+
+.simulation-run-options > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.simulation-run-options button {
+  justify-self: start;
+}
+
+.simulation-blocker {
+  display: grid;
+  gap: 8px;
+  border: 1px solid color-mix(in srgb, var(--red) 32%, var(--line));
+  border-left: 4px solid var(--red);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--red) 7%, var(--surface));
+  padding: 12px;
+}
+
+.simulation-blocker strong {
+  color: var(--red);
+  font-size: 14px;
+}
+
+.simulation-blocker span {
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.simulation-blocked-empty {
+  display: grid;
+  min-height: 180px;
+  place-items: center;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
 }
 
 .simulation-progress-card,
@@ -366,10 +420,72 @@
   min-width: 0;
 }
 
+.output-standard-mode {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.4fr) minmax(180px, 1fr);
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.output-standard-list {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+  max-height: min(42vh, 420px);
+  overflow: auto;
+}
+
+.output-standard-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px;
+  background: var(--surface);
+}
+
+.output-standard-item.exists {
+  background: color-mix(in srgb, var(--green) 5%, var(--surface));
+}
+
+.output-standard-item span,
+.output-standard-item strong,
+.output-standard-item small {
+  min-width: 0;
+}
+
+.output-standard-item strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.output-standard-item small {
+  display: block;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.output-standard-item em {
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+}
+
 @media (max-width: 780px) {
   .settings-path-card,
   .settings-path-row,
-  .tool-simulation-controls {
+  .tool-simulation-controls,
+  .output-standard-mode {
     grid-template-columns: 1fr;
   }
 

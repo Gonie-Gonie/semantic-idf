@@ -8,6 +8,20 @@ Version, 24.1;
 Zone,
   Office;
 
+Lights,
+  Office Lights,
+  Office,
+  ,
+  LightingLevel,
+  100;
+
+ElectricEquipment,
+  Office Equipment,
+  Office,
+  ,
+  EquipmentLevel,
+  100;
+
 Output:Variable,
   *,
   Zone Air Temperature,
@@ -51,11 +65,11 @@ func TestApplyOutputAddsUpdatesAndRemoves(t *testing.T) {
 	updated, preview := ApplyOutput(doc, OutputApplyRequest{
 		AddRecommendations: []string{"sqlite-simple-tabular"},
 		Updates: []OutputFieldUpdate{{
-			ObjectIndex: 2,
+			ObjectIndex: 4,
 			FieldIndex:  2,
 			Value:       "Daily",
 		}},
-		RemoveObjectIndexes: []int{3},
+		RemoveObjectIndexes: []int{5},
 	})
 	if !preview.CanApply {
 		t.Fatalf("preview blocking warnings: %#v", preview.Warnings)
@@ -76,6 +90,45 @@ func TestApplyOutputAddsUpdatesAndRemoves(t *testing.T) {
 	}
 	if !foundSQLite || !foundDailyVariable {
 		t.Fatalf("updated output report missing expected changes: %#v", report.Existing)
+	}
+}
+
+func TestApplyStandardOutputPresetReplacesNonStandardOutput(t *testing.T) {
+	doc, err := Parse(outputFixtureIDF + `
+Output:Variable,
+  *,
+  Zone Air Relative Humidity,
+  Hourly;
+`)
+	if err != nil {
+		t.Fatalf("parse output fixture: %v", err)
+	}
+	updated, preview := ApplyOutput(doc, OutputApplyRequest{
+		Preset:     "standard",
+		PresetMode: "replace",
+	})
+	if !preview.CanApply {
+		t.Fatalf("preview blocking warnings: %#v", preview.Warnings)
+	}
+	report := AnalyzeOutput(updated)
+	if !recommendationExists(report, "standard-meter-electricity-facility") {
+		t.Fatalf("expected standard electricity recommendation in %#v", report.Recommendations)
+	}
+	foundStandardMeter := false
+	foundOldHumidity := false
+	for _, obj := range report.Existing {
+		if obj.ObjectType == "Output:Meter" && obj.KeyValue == "Electricity:Facility" && obj.ReportingFrequency == "Monthly" {
+			foundStandardMeter = true
+		}
+		if obj.ObjectType == "Output:Variable" && obj.VariableName == "Zone Air Relative Humidity" {
+			foundOldHumidity = true
+		}
+	}
+	if !foundStandardMeter {
+		t.Fatalf("standard monthly facility meter was not present: %#v", report.Existing)
+	}
+	if foundOldHumidity {
+		t.Fatalf("replace preset should remove non-standard humidity output: %#v", report.Existing)
 	}
 }
 

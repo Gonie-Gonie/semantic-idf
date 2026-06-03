@@ -1,13 +1,19 @@
 import { backend, elements, escapeHTML, setStatus, state } from "./state.js";
 import { t } from "./i18n.js";
+import { openStandardOutputApplyDialog } from "./output-views.js";
 
 let progressListenerRegistered = false;
 
 export function initializeSimulationControls() {
+  elements.simulationApplyStandardOutput?.addEventListener("click", () => openStandardOutputApplyDialog());
   elements.simulationRefreshEnv?.addEventListener("click", () => loadSimulationEnvironment());
   elements.simulationRunButton?.addEventListener("click", () => runCurrentSimulation({ silent: false }));
   elements.simulationEnergyPlusSelect?.addEventListener("change", () => renderSimulation());
   elements.simulationWeatherSelect?.addEventListener("change", () => renderSimulation());
+  elements.simulationStandardOutput?.addEventListener("change", () => {
+    state.simulationStandardOutput = elements.simulationStandardOutput.checked;
+    renderSimulation();
+  });
   elements.simulationSeriesSelect?.addEventListener("change", () => {
     state.simulationSelectedSeries = elements.simulationSeriesSelect.value || "";
     renderSimulationChart();
@@ -86,7 +92,7 @@ function renderSimulationEmpty() {
   updateSimulationControls();
   const installCount = state.simulationEnvironment?.installations?.length || 0;
   const hasText = Boolean((elements.idfInput?.value || "").trim());
-  const versionIssue = simulationVersionIssue();
+  const blockingIssue = simulationBlockingIssue();
   if (state.simulationRunning) {
     elements.simulationStats.textContent = t("simulation.runningStats", {}, "Simulation running in background");
     elements.simulationResultMeta.textContent = t("simulation.backgroundRun", {}, "EnergyPlus is running in the background");
@@ -96,11 +102,22 @@ function renderSimulationEmpty() {
     elements.simulationFiles.innerHTML = `<div class="empty status-loading">${escapeHTML(t("simulation.writingOutputs", {}, "EnergyPlus is writing output files"))}</div>`;
     return;
   }
-  const idleMessage = versionIssue
-    ? versionIssue.message
-    : hasText
-      ? t("simulation.idle", {}, "Ready")
-      : t("simulation.noInputText", {}, "Open or paste an IDF before running simulation");
+  if (blockingIssue) {
+    elements.simulationStats.textContent = t("simulation.blockedStats", {}, "Cannot run");
+    elements.simulationStatus.textContent = blockingIssue.title;
+    elements.simulationStatus.classList.remove("status-loading");
+    elements.simulationPercent.textContent = "0%";
+    elements.simulationProgressBar.style.width = "0%";
+    elements.simulationResultMeta.textContent = t("simulation.blockedMeta", {}, "Run requirements need attention");
+    elements.simulationResultSummary.innerHTML = renderSimulationBlocker(blockingIssue);
+    elements.simulationSeriesSelect.innerHTML = `<option value="">${escapeHTML(t("simulation.noSeries", {}, "No CSV series"))}</option>`;
+    elements.simulationChart.innerHTML = `<div class="simulation-blocked-empty">${escapeHTML(t("simulation.blockedGraph", {}, "Graph output is unavailable until the run can start."))}</div>`;
+    elements.simulationFiles.innerHTML = `<div class="simulation-blocked-empty">${escapeHTML(t("simulation.blockedFiles", {}, "No output files will be created while simulation is blocked."))}</div>`;
+    return;
+  }
+  const idleMessage = hasText
+    ? t("simulation.idle", {}, "Ready")
+    : t("simulation.noInputText", {}, "Open or paste an IDF before running simulation");
   elements.simulationStats.textContent = installCount
     ? idleMessage
     : t("simulation.noEnergyPlus", {}, "No EnergyPlus installation");
@@ -187,21 +204,27 @@ function renderSimulationProgress() {
 function updateSimulationControls() {
   const hasText = Boolean((elements.idfInput?.value || "").trim());
   const hasInstall = Boolean(elements.simulationEnergyPlusSelect?.value || state.simulationEnvironment?.installations?.[0]?.executablePath);
-  const versionIssue = simulationVersionIssue();
+  const blockingIssue = simulationBlockingIssue();
   if (elements.simulationRunButton) {
-    const disabledReason = versionIssue
-      ? versionIssue.message
+    const disabledReason = blockingIssue
+      ? blockingIssue.message
       : !hasInstall
         ? t("simulation.registerEnergyPlus", {}, "Register EnergyPlus in Settings")
         : !hasText
           ? t("simulation.noInputText", {}, "Open or paste an IDF before running simulation")
           : "";
-    elements.simulationRunButton.disabled = state.simulationRunning || !hasText || !hasInstall || Boolean(versionIssue);
+    elements.simulationRunButton.disabled = state.simulationRunning || !hasText || !hasInstall || Boolean(blockingIssue);
     elements.simulationRunButton.textContent = state.simulationRunning ? t("simulation.runningShort", {}, "Running") : t("action.runSimulation", {}, "Run Simulation");
     elements.simulationRunButton.classList.toggle("status-loading", state.simulationRunning);
     elements.simulationRunButton.title = state.simulationRunning
       ? t("simulation.backgroundRun", {}, "EnergyPlus is running in the background")
       : disabledReason;
+  }
+  if (elements.simulationApplyStandardOutput) {
+    elements.simulationApplyStandardOutput.disabled = state.simulationRunning || !hasText;
+    elements.simulationApplyStandardOutput.title = hasText
+      ? t("output.standardOutputSummary", {}, "Adds the monthly meters and zone energy variables used by standard simulation graphs.")
+      : t("simulation.noInputText", {}, "Open or paste an IDF before running simulation");
   }
   if (elements.simulationEnergyPlusSelect) {
     elements.simulationEnergyPlusSelect.disabled = state.simulationRunning;
@@ -227,12 +250,55 @@ function simulationVersionIssue() {
   return {
     requiredVersion,
     selectedVersion: selectedInstall.version,
+    title: t("simulation.versionBlockedTitle", {}, "EnergyPlus version mismatch"),
     message: t(
       "simulation.versionMismatch",
       { idf: requiredVersion, ep: selectedInstall.version },
       `IDF Version ${requiredVersion} needs matching EnergyPlus. Selected: ${selectedInstall.version}.`,
     ),
   };
+}
+
+function simulationBlockingIssue() {
+  const text = elements.idfInput?.value || "";
+  if (!text.trim()) {
+    return null;
+  }
+  const hasInstall = Boolean(elements.simulationEnergyPlusSelect?.value || state.simulationEnvironment?.installations?.[0]?.executablePath);
+  if (!hasInstall) {
+    return {
+      title: t("simulation.energyPlusBlockedTitle", {}, "EnergyPlus is not configured"),
+      message: t("simulation.registerEnergyPlus", {}, "Register EnergyPlus in Settings"),
+    };
+  }
+  const versionIssue = simulationVersionIssue();
+  if (versionIssue) {
+    return versionIssue;
+  }
+  if (!elements.simulationWeatherSelect?.value && currentInputRequiresWeatherFile(text)) {
+    return {
+      title: t("simulation.weatherBlockedTitle", {}, "Weather file required"),
+      message: t("simulation.weatherRequired", {}, "This IDF uses weather-file design days or weather run periods. Select an EPW weather file before running."),
+    };
+  }
+  return null;
+}
+
+function currentInputRequiresWeatherFile(text) {
+  const value = String(text || "");
+  if (/(?:^|\n)\s*SizingPeriod:WeatherFile(?:Days|ConditionType|DesignDay)\s*,/i.test(value)) {
+    return true;
+  }
+  if (!/(?:^|\n)\s*RunPeriod\s*,/i.test(value)) {
+    return false;
+  }
+  const simulationControl = value.match(/(?:^|\n)\s*SimulationControl\s*,([\s\S]*?);/i)?.[1] || "";
+  const fields = simulationControl
+    .split(",")
+    .map((item) => item.split("!")[0].trim())
+    .filter((item) => item !== "");
+  const weatherRunValue = fields[4] || "";
+  return !/^no$/i.test(weatherRunValue);
 }
 
 function selectedEnergyPlusInstall() {
@@ -305,6 +371,14 @@ function renderRunningNotice() {
         <span>${escapeHTML(progress.message || t("simulation.running", {}, "EnergyPlus simulation is running"))}</span>
       </div>
       <span>${Math.round(percent)}%</span>
+    </div>`;
+}
+
+function renderSimulationBlocker(issue) {
+  return `
+    <div class="simulation-blocker">
+      <strong>${escapeHTML(issue.title || t("simulation.blockedStats", {}, "Cannot run"))}</strong>
+      <span>${escapeHTML(issue.message || "")}</span>
     </div>`;
 }
 
@@ -387,7 +461,7 @@ function renderSimulationSeriesSelect(result) {
     return;
   }
   if (!state.simulationSelectedSeries || !series.some((item) => seriesID(item) === state.simulationSelectedSeries)) {
-    state.simulationSelectedSeries = seriesID(series[0]);
+    state.simulationSelectedSeries = seriesID(preferredSimulationSeries(series) || series[0]);
   }
   elements.simulationSeriesSelect.innerHTML = series
     .map((item) => {
@@ -480,6 +554,14 @@ async function runCurrentSimulation({ silent = false, auto = false } = {}) {
     renderSimulation();
     return null;
   }
+  const blockingIssue = simulationBlockingIssue();
+  if (blockingIssue) {
+    if (!silent) {
+      setStatus(blockingIssue.message, "warn");
+    }
+    renderSimulation();
+    return null;
+  }
   const runID = `sim-${Date.now()}`;
   state.simulationRunning = true;
   state.simulationActiveRunID = runID;
@@ -497,6 +579,8 @@ async function runCurrentSimulation({ silent = false, auto = false } = {}) {
     filename: state.currentFilename || "current-input.idf",
     energyPlusExecutablePath: installPath,
     weatherPath: elements.simulationWeatherSelect?.value || "",
+    standardOutput: Boolean(elements.simulationStandardOutput?.checked),
+    standardOutputMode: "replace",
     silent,
     auto,
   };
@@ -538,6 +622,10 @@ async function maybeAutoRunSimulation() {
     return;
   }
   renderSimulationEnvironment();
+  if (!elements.simulationWeatherSelect?.value) {
+    renderSimulation();
+    return;
+  }
   if (simulationVersionIssue()) {
     renderSimulation();
     return;
@@ -611,6 +699,19 @@ function seriesID(series) {
   return `${series.file}::${series.column}`;
 }
 
+function preferredSimulationSeries(series) {
+  const preferred = [
+    "Electricity:Facility",
+    "NaturalGas:Facility",
+    "DistrictCooling:Facility",
+    "DistrictHeating:Facility",
+    "Water:Facility",
+  ];
+  return preferred
+    .map((name) => series.find((item) => String(item.column || "").includes(name)))
+    .find(Boolean) || null;
+}
+
 function statusText(status) {
   switch (status) {
     case "succeeded":
@@ -619,6 +720,8 @@ function statusText(status) {
       return t("simulation.failed", {}, "Failed");
     case "missing_energyplus":
       return t("simulation.missingEnergyPlus", {}, "EnergyPlus missing");
+    case "blocked":
+      return t("simulation.blockedStats", {}, "Cannot run");
     case "running":
       return t("simulation.runningShort", {}, "Running");
     default:

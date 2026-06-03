@@ -6,7 +6,10 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/Gonie-Gonie/idf-analyzer/internal/idf"
 )
 
 const appSummaryIDF = `
@@ -51,6 +54,58 @@ func TestDefaultEnergyPlusSampleAnalyzes(t *testing.T) {
 	}
 	if result.Report.Geometry.ZoneCount < 10 || result.Report.Geometry.SurfaceCount < 50 || result.Report.Geometry.WindowCount < 10 {
 		t.Fatalf("default sample geometry too small: zones=%d surfaces=%d windows=%d", result.Report.Geometry.ZoneCount, result.Report.Geometry.SurfaceCount, result.Report.Geometry.WindowCount)
+	}
+}
+
+func TestReplaceOutputManagementObjectsPreservesNonOutputText(t *testing.T) {
+	original := `
+Version,
+  24.2;
+
+Building,
+  Test Building,
+  0,
+  Suburbs,
+  ,
+  ,
+  MinimalShadowing;
+
+GlobalGeometryRules,
+  UpperLeftCorner,
+  CounterClockWise,
+  World;
+
+Zone,
+  Office;
+
+Output:Variable,
+  *,
+  Zone Mean Air Temperature,
+  Hourly;
+`
+	doc, err := idf.Parse(original)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	updated, preview := idf.ApplyOutput(doc, idf.OutputApplyRequest{
+		AddRecommendations:  []string{"sqlite-simple-tabular"},
+		RemoveObjectIndexes: []int{4},
+	})
+	if !preview.CanApply {
+		t.Fatalf("preview blocked: %#v", preview.Warnings)
+	}
+	patched := replaceOutputManagementObjects(original, updated)
+	if !strings.Contains(patched, "Building,\n  Test Building") {
+		t.Fatalf("patched text lost Building object:\n%s", patched)
+	}
+	if !strings.Contains(patched, "GlobalGeometryRules,") {
+		t.Fatalf("patched text lost GlobalGeometryRules:\n%s", patched)
+	}
+	if strings.Contains(patched, "Zone Mean Air Temperature") {
+		t.Fatalf("patched text kept removed output variable:\n%s", patched)
+	}
+	if !strings.Contains(patched, "Output:SQLite,") {
+		t.Fatalf("patched text did not append Output:SQLite:\n%s", patched)
 	}
 }
 

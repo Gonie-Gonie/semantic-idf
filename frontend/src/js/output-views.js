@@ -16,6 +16,14 @@ export function initializeOutputControls() {
     elements.outputConfirmApply.disabled = true;
     elements.outputApplyStatus.textContent = t("status.runPreview");
   });
+  elements.outputApplyBody?.addEventListener("change", () => {
+    if (elements.outputApplyDialog?.classList.contains("hidden")) {
+      return;
+    }
+    state.outputApplyPreview = null;
+    elements.outputConfirmApply.disabled = true;
+    elements.outputApplyStatus.textContent = t("status.runPreview");
+  });
 }
 
 export function renderOutput(output = state.report?.output) {
@@ -241,8 +249,50 @@ function handleOutputAction(event) {
   }
 }
 
-function openOutputApplyDialog({ title, request, summary }) {
+export function openStandardOutputApplyDialog() {
+  const recommendations = standardOutputRecommendations();
+  if (!recommendations.length) {
+    openOutputApplyDialog({
+      title: t("output.standardOutputTitle", {}, "Apply standard output set"),
+      request: { preset: "standard", presetMode: "merge" },
+      summary: t("output.standardOutputSummary", {}, "Adds the monthly meters and zone energy variables used by standard simulation graphs."),
+    });
+    return;
+  }
+  state.outputApplyRequest = null;
+  state.outputApplyRequestBuilder = buildStandardOutputApplyRequest;
+  state.outputApplyPreview = null;
+  elements.outputConfirmApply.disabled = true;
+  elements.outputApplyStatus.textContent = t("status.reviewBeforeApplying");
+  elements.outputApplyBody.innerHTML = `
+    <section>
+      <h4>${escapeHTML(t("output.standardOutputTitle", {}, "Apply standard output set"))}</h4>
+      <p>${escapeHTML(t("output.standardOutputSummary", {}, "Adds the monthly meters and zone energy variables used by standard simulation graphs."))}</p>
+      <label class="output-standard-mode" for="outputStandardMode">
+        <span>${escapeHTML(t("output.standardOutputMode", {}, "Apply mode"))}</span>
+        <select id="outputStandardMode">
+          <option value="merge" selected>${escapeHTML(t("output.standardOutputMerge", {}, "Add missing standard outputs"))}</option>
+          <option value="replace">${escapeHTML(t("output.standardOutputReplace", {}, "Replace non-standard outputs"))}</option>
+          <option value="selected">${escapeHTML(t("output.standardOutputSelected", {}, "Add selected only"))}</option>
+        </select>
+      </label>
+      <div class="output-standard-list">
+        ${recommendations.map(renderStandardOutputOption).join("")}
+      </div>
+    </section>
+    <section>
+      <h4>${escapeHTML(t("common.preview"))}</h4>
+      <div id="outputApplyPreviewList" class="profile-apply-preview"><div class="empty">${escapeHTML(t("status.runPreview"))}</div></div>
+    </section>`;
+  const mode = elements.outputApplyBody.querySelector("#outputStandardMode");
+  mode?.addEventListener("change", () => setStandardOutputDefaults(mode.value));
+  setStandardOutputDefaults("merge");
+  elements.outputApplyDialog.classList.remove("hidden");
+}
+
+function openOutputApplyDialog({ title, request, summary, buildRequest = null }) {
   state.outputApplyRequest = request;
+  state.outputApplyRequestBuilder = buildRequest;
   state.outputApplyPreview = null;
   elements.outputConfirmApply.disabled = true;
   elements.outputApplyStatus.textContent = t("status.reviewBeforeApplying");
@@ -261,11 +311,12 @@ function openOutputApplyDialog({ title, request, summary }) {
 function closeOutputApplyDialog() {
   elements.outputApplyDialog.classList.add("hidden");
   state.outputApplyRequest = null;
+  state.outputApplyRequestBuilder = null;
   state.outputApplyPreview = null;
 }
 
 async function previewOutputApply() {
-  const request = state.outputApplyRequest;
+  const request = currentOutputApplyRequest();
   if (!request) {
     elements.outputApplyStatus.textContent = t("status.noChangesCanApply");
     return;
@@ -285,7 +336,7 @@ async function previewOutputApply() {
 
 async function applyOutput(event) {
   event.preventDefault();
-  const request = state.outputApplyRequest;
+  const request = currentOutputApplyRequest();
   if (!request) {
     return;
   }
@@ -334,6 +385,50 @@ function recommendationSummary(id) {
     return id;
   }
   return `${item.objectType} - ${(item.fields || []).map((field) => `${field.name}: ${field.value}`).join(", ")}`;
+}
+
+function currentOutputApplyRequest() {
+  return state.outputApplyRequestBuilder ? state.outputApplyRequestBuilder() : state.outputApplyRequest;
+}
+
+function standardOutputRecommendations() {
+  return (state.report?.output?.recommendations || []).filter((item) => (item.tags || []).some((tag) => String(tag).toLowerCase() === "standard"));
+}
+
+function renderStandardOutputOption(item) {
+  const checkboxID = `standard-output-${item.id}`;
+  return `
+    <label class="output-standard-item ${item.exists ? "exists" : ""}" for="${escapeHTML(checkboxID)}">
+      <input id="${escapeHTML(checkboxID)}" type="checkbox" data-standard-output-id="${escapeHTML(item.id)}" />
+      <span>
+        <strong>${escapeHTML(item.label)}</strong>
+        <small>${escapeHTML(outputCategoryLabel(item.category))} - ${escapeHTML(standardOutputFieldSummary(item))}</small>
+      </span>
+      <em>${escapeHTML(item.exists ? t("output.exists") : t("output.add"))}</em>
+    </label>`;
+}
+
+function setStandardOutputDefaults(mode) {
+  elements.outputApplyBody.querySelectorAll("[data-standard-output-id]").forEach((input) => {
+    const item = standardOutputRecommendations().find((candidate) => candidate.id === input.dataset.standardOutputId);
+    input.checked = mode === "replace" ? true : mode === "selected" ? false : !item?.exists;
+  });
+}
+
+function buildStandardOutputApplyRequest() {
+  const mode = elements.outputApplyBody.querySelector("#outputStandardMode")?.value || "merge";
+  const selected = [...elements.outputApplyBody.querySelectorAll("[data-standard-output-id]:checked")]
+    .map((input) => input.dataset.standardOutputId)
+    .filter(Boolean);
+  return {
+    preset: "standard",
+    presetMode: mode === "replace" ? "replace" : "merge",
+    presetRecommendationIds: selected,
+  };
+}
+
+function standardOutputFieldSummary(item) {
+  return (item.fields || []).map((field) => field.value).filter(Boolean).join(" / ") || item.objectType || "";
 }
 
 function outputScope(item) {
@@ -394,6 +489,14 @@ function outputDestination(item) {
       return "Tabular reports";
     case "diagnostics":
       return "Diagnostics report";
+    case "standard_controls":
+      return "Standard result files";
+    case "facility_energy":
+      return "Facility monthly meter";
+    case "end_use_energy":
+      return "End-use monthly meter";
+    case "zone_energy":
+      return "Zone monthly variable";
     default:
       return item.objectType || "-";
   }

@@ -279,10 +279,18 @@
                   <span data-i18n="simulation.weather">Weather</span>
                   <select id="simulationWeatherSelect"></select>
                 </label>
-                <label class="simulation-checkbox">
-                  <input id="simulationAutoRunOnOpen" type="checkbox" checked />
-                  <span data-i18n="simulation.autoRunOnOpen">Auto-run quietly after opening an input</span>
-                </label>
+                <div class="simulation-run-options" aria-label="Run options">
+                  <span data-i18n="simulation.runOptions">Run options</span>
+                  <label class="simulation-checkbox">
+                    <input id="simulationStandardOutput" type="checkbox" />
+                    <span data-i18n="simulation.standardOutputRun">Use standard monthly outputs for this run</span>
+                  </label>
+                  <label class="simulation-checkbox">
+                    <input id="simulationAutoRunOnOpen" type="checkbox" />
+                    <span data-i18n="simulation.autoRunOnOpen">Auto-run after opening an input when weather is selected</span>
+                  </label>
+                  <button id="simulationApplyStandardOutput" type="button" data-i18n="action.applyStandardOutput">Apply Standard Output to IDF</button>
+                </div>
               </section>
               <section class="simulation-progress-card" aria-label="Simulation progress">
                 <div class="simulation-progress-meta">

@@ -86,7 +86,7 @@ export const defaultAppSettings = {
     runDirectory: "",
     workerFraction: 0.5,
     maxWorkers: 0,
-    autoRunOnOpen: true,
+    autoRunOnOpen: false,
   },
 };
 
