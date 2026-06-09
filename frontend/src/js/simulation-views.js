@@ -6,6 +6,9 @@ let progressListenerRegistered = false;
 let heatFlowPlayTimer = 0;
 
 export function initializeSimulationControls() {
+  if (elements.simulationStandardOutput) {
+    elements.simulationStandardOutput.checked = state.simulationStandardOutput !== false;
+  }
   elements.simulationApplyStandardOutput?.addEventListener("click", () => openStandardOutputApplyDialog());
   elements.simulationRefreshEnv?.addEventListener("click", () => loadSimulationEnvironment());
   elements.simulationRunButton?.addEventListener("click", () => runCurrentSimulation({ silent: false }));
@@ -74,6 +77,7 @@ export async function loadSimulationEnvironment() {
 }
 
 export function renderSimulation() {
+  setSimulationPreviewMode(false);
   renderSimulationEnvironment();
   renderSimulationProgress();
   updateSimulationControls();
@@ -85,6 +89,7 @@ export function renderSimulation() {
   const stale = state.simulationStale;
   const err = result.err || {};
   const csvCount = result.csvs?.length || 0;
+  const sqlCount = (result.files || []).filter((file) => file.kind === "sqlite").length;
   const issueCount = err.total || 0;
   const statusLabel = statusText(result.status);
   elements.simulationStats.textContent = stale
@@ -93,7 +98,7 @@ export function renderSimulation() {
   if (state.simulationRunning) {
     elements.simulationStats.textContent = t("simulation.runningStats", {}, "Simulation running in background");
   }
-  elements.simulationResultMeta.textContent = `${result.filename || "current input"} - ${formatDuration(result.durationMs || 0)} - ${csvCount} CSV - ${issueCount} ERR issues`;
+  elements.simulationResultMeta.textContent = `${result.filename || "current input"} - ${formatDuration(result.durationMs || 0)} - ${sqlCount} SQL - ${csvCount} CSV - ${issueCount} ERR issues`;
   elements.simulationResultSummary.innerHTML = `${state.simulationRunning ? renderRunningNotice() : ""}${renderSimulationSummary(result, stale)}`;
   renderSimulationHeatFlow();
   renderSimulationSeriesSelect(result);
@@ -106,17 +111,20 @@ function renderSimulationEmpty() {
     return;
   }
   updateSimulationControls();
+  setSimulationPreviewMode(!state.simulationRunning);
   const installCount = state.simulationEnvironment?.installations?.length || 0;
   const hasText = Boolean((elements.idfInput?.value || "").trim());
   const blockingIssue = simulationBlockingIssue();
   if (state.simulationRunning) {
+    setSimulationPreviewMode(false);
     elements.simulationStats.textContent = t("simulation.runningStats", {}, "Simulation running in background");
     elements.simulationResultMeta.textContent = t("simulation.backgroundRun", {}, "EnergyPlus is running in the background");
     elements.simulationResultSummary.innerHTML = renderRunningNotice();
-    renderSimulationHeatFlowEmpty(t("simulation.heatFlowAfterRun", {}, "The heat-flow ledger will appear when standard heat-balance CSV output is available."));
-    elements.simulationSeriesSelect.innerHTML = `<option value="">${escapeHTML(t("simulation.waitingForCSV", {}, "Waiting for CSV output"))}</option>`;
-    elements.simulationChart.innerHTML = `<div class="simulation-running-empty">${renderMiniProgressSVG()}<span>${escapeHTML(t("simulation.graphAfterRun", {}, "The CSV graph will appear when the run finishes."))}</span></div>`;
+    renderSimulationHeatFlowEmpty(t("simulation.heatFlowAfterRun", {}, "The heat-flow ledger will appear when standard heat-balance SQL/CSV output is available."));
+    elements.simulationSeriesSelect.innerHTML = `<option value="">${escapeHTML(t("simulation.waitingForCSV", {}, "Waiting for SQL/CSV output"))}</option>`;
+    elements.simulationChart.innerHTML = `<div class="simulation-running-empty">${renderMiniProgressSVG()}<span>${escapeHTML(t("simulation.graphAfterRun", {}, "The SQL/CSV graph will appear when the run finishes."))}</span></div>`;
     elements.simulationFiles.innerHTML = `<div class="empty status-loading">${escapeHTML(t("simulation.writingOutputs", {}, "EnergyPlus is writing output files"))}</div>`;
+    updateSimulationOutputAvailability(null, true);
     return;
   }
   if (blockingIssue) {
@@ -128,9 +136,10 @@ function renderSimulationEmpty() {
     elements.simulationResultMeta.textContent = t("simulation.blockedMeta", {}, "Run requirements need attention");
     elements.simulationResultSummary.innerHTML = renderSimulationBlocker(blockingIssue);
     renderSimulationHeatFlowEmpty(t("simulation.blockedGraph", {}, "Graph output is unavailable until the run can start."));
-    elements.simulationSeriesSelect.innerHTML = `<option value="">${escapeHTML(t("simulation.noSeries", {}, "No CSV series"))}</option>`;
+    elements.simulationSeriesSelect.innerHTML = `<option value="">${escapeHTML(t("simulation.noSeries", {}, "No SQL/CSV series"))}</option>`;
     elements.simulationChart.innerHTML = `<div class="simulation-blocked-empty">${escapeHTML(t("simulation.blockedGraph", {}, "Graph output is unavailable until the run can start."))}</div>`;
     elements.simulationFiles.innerHTML = `<div class="simulation-blocked-empty">${escapeHTML(t("simulation.blockedFiles", {}, "No output files will be created while simulation is blocked."))}</div>`;
+    updateSimulationOutputAvailability(blockingIssue, false);
     return;
   }
   const idleMessage = hasText
@@ -145,12 +154,47 @@ function renderSimulationEmpty() {
   elements.simulationStatus.classList.remove("status-loading");
   elements.simulationPercent.textContent = "0%";
   elements.simulationProgressBar.style.width = "0%";
-  elements.simulationResultMeta.textContent = "ERR / CSV / output files";
   elements.simulationResultSummary.innerHTML = `<div class="empty">${t("simulation.noResult", {}, "Run a simulation to inspect ERR and CSV outputs.")}</div>`;
   renderSimulationHeatFlowEmpty(t("simulation.noHeatFlow", {}, "Run with standard outputs to inspect zone heat-flow ledger."));
-  elements.simulationSeriesSelect.innerHTML = `<option value="">${escapeHTML(t("simulation.noSeries", {}, "No CSV series"))}</option>`;
-  elements.simulationChart.innerHTML = `<div class="empty">${t("simulation.noGraph", {}, "CSV graph will appear after a run with numeric output.")}</div>`;
+  elements.simulationSeriesSelect.innerHTML = `<option value="">${escapeHTML(t("simulation.noSeries", {}, "No SQL/CSV series"))}</option>`;
+  elements.simulationChart.innerHTML = `<div class="empty">${t("simulation.noGraph", {}, "SQL/CSV graph will appear after a run with numeric output.")}</div>`;
   elements.simulationFiles.innerHTML = `<div class="empty">${t("simulation.noFiles", {}, "No output files yet")}</div>`;
+  updateSimulationOutputAvailability(null, false);
+}
+
+function setSimulationPreviewMode(preview) {
+  elements.simulationResultSummary?.closest(".simulation-pane")?.classList.toggle("preview", Boolean(preview));
+}
+
+function updateSimulationOutputAvailability(blockingIssue, running) {
+  const standardOn = state.simulationStandardOutput !== false && Boolean(elements.simulationStandardOutput?.checked);
+  const blocked = Boolean(blockingIssue);
+  if (elements.simulationResultMeta) {
+    elements.simulationResultMeta.textContent = running
+      ? t("simulation.outputPending", {}, "Outputs are pending while EnergyPlus runs.")
+      : blocked
+        ? t("simulation.outputBlocked", {}, "Run requirements must be fixed before outputs are available.")
+        : t("simulation.outputAvailable", {}, "After a run, ERR status and SQL/CSV output summaries will be available.");
+  }
+  if (elements.simulationHeatFlowStats) {
+    elements.simulationHeatFlowStats.textContent = blocked
+      ? t("simulation.outputBlockedShort", {}, "Unavailable until run is possible")
+      : standardOn
+        ? t("simulation.heatFlowAvailable", {}, "Standard outputs ON: SQL heat-flow ledger will be available after this run.")
+        : t("simulation.heatFlowUnavailableStandardOff", {}, "Standard outputs OFF: running now will not show the heat-flow ledger.");
+  }
+  if (elements.simulationSeriesStats) {
+    elements.simulationSeriesStats.textContent = blocked
+      ? t("simulation.outputBlockedShort", {}, "Unavailable until run is possible")
+      : standardOn
+        ? t("simulation.seriesAvailable", {}, "Standard outputs ON: SQL/CSV time-series graph will be available after this run.")
+        : t("simulation.seriesMaybeUnavailableStandardOff", {}, "Standard outputs OFF: graph depends on existing output requests.");
+  }
+  if (elements.simulationFilesStats) {
+    elements.simulationFilesStats.textContent = blocked
+      ? t("simulation.outputBlockedShort", {}, "Unavailable until run is possible")
+      : t("simulation.filesAvailable", {}, "Output files will be listed after the run.");
+  }
 }
 
 function renderSimulationEnvironment() {
@@ -476,7 +520,10 @@ function renderSimulationSeriesSelect(result) {
   const series = result.series || [];
   if (!series.length) {
     state.simulationSelectedSeries = "";
-    elements.simulationSeriesSelect.innerHTML = `<option value="">${escapeHTML(t("simulation.noSeries", {}, "No CSV series"))}</option>`;
+    elements.simulationSeriesSelect.innerHTML = `<option value="">${escapeHTML(t("simulation.noSeries", {}, "No SQL/CSV series"))}</option>`;
+    if (elements.simulationSeriesStats) {
+      elements.simulationSeriesStats.textContent = t("simulation.noSeries", {}, "No SQL/CSV series");
+    }
     return;
   }
   if (!state.simulationSelectedSeries || !series.some((item) => seriesID(item) === state.simulationSelectedSeries)) {
@@ -488,13 +535,16 @@ function renderSimulationSeriesSelect(result) {
       return `<option value="${escapeHTML(id)}" ${id === state.simulationSelectedSeries ? "selected" : ""}>${escapeHTML(item.file)} - ${escapeHTML(item.column)}</option>`;
     })
     .join("");
+  if (elements.simulationSeriesStats) {
+    elements.simulationSeriesStats.textContent = t("simulation.seriesStats", { count: series.length }, `${series.length} SQL/CSV series`);
+  }
 }
 
 function renderSimulationChart() {
   const result = state.simulationResult;
   const series = (result?.series || []).find((item) => seriesID(item) === state.simulationSelectedSeries);
   if (!series || !series.points?.length) {
-    elements.simulationChart.innerHTML = `<div class="empty">${t("simulation.noGraph", {}, "CSV graph will appear after a run with numeric output.")}</div>`;
+    elements.simulationChart.innerHTML = `<div class="empty">${t("simulation.noGraph", {}, "SQL/CSV graph will appear after a run with numeric output.")}</div>`;
     return;
   }
   const width = 900;
@@ -1072,6 +1122,9 @@ function formatTemperature(value) {
 }
 
 function renderSimulationFiles(result) {
+  if (elements.simulationFilesStats) {
+    elements.simulationFilesStats.textContent = t("simulation.fileStats", { count: result.files?.length || 0 }, `${result.files?.length || 0} files`);
+  }
   const rows = (result.files || [])
     .map(
       (file) => `

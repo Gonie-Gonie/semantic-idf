@@ -910,6 +910,23 @@ func readSimulationOutputs(result *SimulationRunResult) {
 		return strings.ToLower(result.Files[i].Name) < strings.ToLower(result.Files[j].Name)
 	})
 	for _, file := range result.Files {
+		if file.Kind != "sqlite" {
+			continue
+		}
+		if len(result.Series) == 0 {
+			series, err := parseSimulationSQLSeries(file.Path)
+			if err == nil && len(series) > 0 {
+				result.Series = append(result.Series, series...)
+			}
+		}
+		if len(result.HeatFlow.Zones) == 0 {
+			heatFlow, err := parseSimulationHeatFlowSQL(file.Path)
+			if err == nil && len(heatFlow.Zones) > 0 {
+				result.HeatFlow = heatFlow
+			}
+		}
+	}
+	for _, file := range result.Files {
 		if file.Kind != "csv" {
 			continue
 		}
@@ -918,7 +935,9 @@ func readSimulationOutputs(result *SimulationRunResult) {
 			continue
 		}
 		result.CSVs = append(result.CSVs, summary)
-		result.Series = append(result.Series, series...)
+		if len(result.Series) == 0 {
+			result.Series = append(result.Series, series...)
+		}
 		if len(result.HeatFlow.Zones) == 0 {
 			heatFlow, err := parseSimulationHeatFlowCSV(file.Path)
 			if err == nil && len(heatFlow.Zones) > 0 {

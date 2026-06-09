@@ -1,6 +1,7 @@
 package simulation
 
 import (
+	"database/sql"
 	"os"
 	"path/filepath"
 	"testing"
@@ -143,6 +144,67 @@ End of Data Dictionary
 	}
 }
 
+func TestParseSimulationHeatFlowSQLBuildsDataset(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "eplusout.sql")
+	createTestEnergyPlusSQL(t, path)
+
+	dataset, err := parseSimulationHeatFlowSQL(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dataset.FrameCount != 2 || dataset.OriginalFrameCount != 2 {
+		t.Fatalf("frame counts = %d/%d, want 2/2", dataset.FrameCount, dataset.OriginalFrameCount)
+	}
+	if len(dataset.Categories) != 3 {
+		t.Fatalf("category count = %d, want 3: %#v", len(dataset.Categories), dataset.Categories)
+	}
+	if len(dataset.Zones) != 2 {
+		t.Fatalf("zone count = %d, want 2: %#v", len(dataset.Zones), dataset.Zones)
+	}
+	if dataset.Zones[0].Name != "ZONE ONE" || dataset.Zones[0].Temperature[1] != 21.5 {
+		t.Fatalf("first zone = %#v", dataset.Zones[0])
+	}
+	if dataset.Labels[1] != "01-01 02:00" {
+		t.Fatalf("labels = %#v", dataset.Labels)
+	}
+	if dataset.SourceFile != "eplusout.sql" {
+		t.Fatalf("source file = %q, want eplusout.sql", dataset.SourceFile)
+	}
+}
+
+func TestReadSimulationOutputsPrefersSQLHeatFlowAndSeries(t *testing.T) {
+	dir := t.TempDir()
+	createTestEnergyPlusSQL(t, filepath.Join(dir, "eplusout.sql"))
+	content := `Program Version,EnergyPlus
+2,8,Day of Simulation[],Month[],Day of Month[],DST Indicator[1=yes 0=no],Hour[],StartMinute[],EndMinute[],DayType
+10,1,ZONE ONE,Zone Mean Air Temperature [C] !Hourly
+11,1,ZONE ONE,Zone Air Heat Balance Internal Convective Heat Gain Rate [W] !Hourly
+End of Data Dictionary
+2,1, 1, 1, 0, 1, 0.00,60.00,Monday
+10,20.0
+11,100.0
+`
+	if err := os.WriteFile(filepath.Join(dir, "eplusout.eso"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "eplusout.err"), []byte("EnergyPlus Completed Successfully"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	result := &SimulationRunResult{OutputDirectory: dir}
+	readSimulationOutputs(result)
+	if len(result.HeatFlow.Zones) != 2 {
+		t.Fatalf("heat-flow zones = %d, want 2; files = %#v", len(result.HeatFlow.Zones), result.Files)
+	}
+	if result.HeatFlow.SourceFile != "eplusout.sql" {
+		t.Fatalf("source file = %q, want eplusout.sql", result.HeatFlow.SourceFile)
+	}
+	if len(result.Series) == 0 || result.Series[0].File != "eplusout.sql" {
+		t.Fatalf("sql series were not parsed first: %#v", result.Series)
+	}
+}
+
 func TestReadSimulationOutputsUsesESOHeatFlowFallback(t *testing.T) {
 	dir := t.TempDir()
 	content := `Program Version,EnergyPlus
@@ -168,6 +230,58 @@ End of Data Dictionary
 	}
 	if result.HeatFlow.SourceFile != "eplusout.eso" {
 		t.Fatalf("source file = %q, want eplusout.eso", result.HeatFlow.SourceFile)
+	}
+}
+
+func createTestEnergyPlusSQL(t *testing.T, path string) {
+	t.Helper()
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	statements := []string{
+		`CREATE TABLE ReportDataDictionary (
+			ReportDataDictionaryIndex INTEGER PRIMARY KEY,
+			KeyValue TEXT,
+			Name TEXT,
+			Units TEXT
+		)`,
+		`CREATE TABLE "Time" (
+			TimeIndex INTEGER PRIMARY KEY,
+			Month INTEGER,
+			Day INTEGER,
+			Hour INTEGER,
+			Minute INTEGER
+		)`,
+		`CREATE TABLE ReportData (
+			ReportDataIndex INTEGER PRIMARY KEY,
+			TimeIndex INTEGER,
+			ReportDataDictionaryIndex INTEGER,
+			Value REAL
+		)`,
+		`INSERT INTO ReportDataDictionary VALUES
+			(10, 'ZONE ONE', 'Zone Mean Air Temperature', 'C'),
+			(11, 'ZONE ONE', 'Zone Air Heat Balance Internal Convective Heat Gain Rate', 'W'),
+			(12, 'ZONE ONE', 'Zone Air Heat Balance Surface Convection Rate', 'W'),
+			(13, 'ZONE TWO', 'Zone Air Heat Balance Outdoor Air Transfer Rate', 'W')`,
+		`INSERT INTO "Time" VALUES
+			(1, 1, 1, 1, 0),
+			(2, 1, 1, 2, 0)`,
+		`INSERT INTO ReportData VALUES
+			(1, 1, 10, 20.0),
+			(2, 1, 11, 100.0),
+			(3, 1, 12, -30.0),
+			(4, 1, 13, -12.0),
+			(5, 2, 10, 21.5),
+			(6, 2, 11, 150.0),
+			(7, 2, 12, -45.0),
+			(8, 2, 13, -18.0)`,
+	}
+	for _, statement := range statements {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatalf("sql fixture statement failed: %v\n%s", err, statement)
+		}
 	}
 }
 

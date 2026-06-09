@@ -97,6 +97,22 @@
   padding: 10px;
 }
 
+.simulation-pane.preview .simulation-section {
+  padding: 8px 10px;
+}
+
+.simulation-pane.preview .simulation-section > :not(.profile-section-head) {
+  display: none;
+}
+
+.simulation-pane.preview #simulationSeriesSelect {
+  display: none;
+}
+
+.simulation-pane:not(.preview) #simulationSeriesStats {
+  display: none;
+}
+
 .simulation-progress-card.running {
   border-color: color-mix(in srgb, var(--teal) 42%, var(--line));
   background: color-mix(in srgb, var(--teal) 6%, var(--surface));

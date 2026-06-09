@@ -286,7 +286,7 @@
                 <div class="simulation-run-options" aria-label="Run options">
                   <span data-i18n="simulation.runOptions">Run options</span>
                   <label class="simulation-checkbox">
-                    <input id="simulationStandardOutput" type="checkbox" />
+                    <input id="simulationStandardOutput" type="checkbox" checked />
                     <span data-i18n="simulation.standardOutputRun">Use standard outputs for this run</span>
                   </label>
                   <label class="simulation-checkbox">
@@ -343,14 +343,16 @@
               </section>
               <section class="simulation-section">
                 <div class="profile-section-head">
-                  <h3 data-i18n="simulation.graph">CSV Graph</h3>
-                  <select id="simulationSeriesSelect" aria-label="CSV series"></select>
+                  <h3 data-i18n="simulation.graph">SQL/CSV Graph</h3>
+                  <span id="simulationSeriesStats" class="tool-muted">No SQL/CSV series</span>
+                  <select id="simulationSeriesSelect" aria-label="SQL/CSV series"></select>
                 </div>
                 <div id="simulationChart" class="simulation-chart"></div>
               </section>
               <section class="simulation-section">
                 <div class="profile-section-head">
                   <h3 data-i18n="simulation.files">Output files</h3>
+                  <span id="simulationFilesStats" class="tool-muted">No output files</span>
                 </div>
                 <div id="simulationFiles" class="simulation-files"></div>
               </section>
