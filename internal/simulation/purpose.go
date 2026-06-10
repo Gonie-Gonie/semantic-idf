@@ -143,10 +143,33 @@ type HVACLoopRunResult struct {
 }
 
 type IntegrityResult struct {
-	Status    string               `json:"status"`
-	ERR       ERRSummary           `json:"err"`
-	Files     []SimulationFileInfo `json:"files,omitempty"`
-	Completed bool                 `json:"completed"`
+	Status         string                   `json:"status"`
+	ERR            ERRSummary               `json:"err"`
+	Files          []SimulationFileInfo     `json:"files,omitempty"`
+	Completed      bool                     `json:"completed"`
+	SQLIssues      []IntegritySQLIssue      `json:"sqlIssues,omitempty"`
+	TabularReports []IntegrityTabularReport `json:"tabularReports,omitempty"`
+}
+
+type IntegritySQLIssue struct {
+	Severity string `json:"severity"`
+	Message  string `json:"message"`
+	Count    int    `json:"count,omitempty"`
+	Source   string `json:"source,omitempty"`
+}
+
+type IntegrityTabularReport struct {
+	ReportName string                `json:"reportName"`
+	For        string                `json:"for,omitempty"`
+	TableName  string                `json:"tableName"`
+	Columns    []string              `json:"columns,omitempty"`
+	Rows       []IntegrityTabularRow `json:"rows,omitempty"`
+	Source     string                `json:"source,omitempty"`
+}
+
+type IntegrityTabularRow struct {
+	Name   string            `json:"name"`
+	Values map[string]string `json:"values,omitempty"`
 }
 
 type PurposeCompletenessItem struct {
@@ -287,17 +310,32 @@ func BuildPurposeResultBundle(result *SimulationRunResult, request SimulationPur
 				source,
 			))
 		case SimulationPurposeIntegrity:
+			sqlIntegrity := buildIntegritySQLResultFromFiles(result.Files)
 			bundle.Integrity = IntegrityResult{
-				Status:    result.Status,
-				ERR:       result.ERR,
-				Files:     append([]SimulationFileInfo(nil), result.Files...),
-				Completed: result.ERR.Completed,
+				Status:         result.Status,
+				ERR:            result.ERR,
+				Files:          append([]SimulationFileInfo(nil), result.Files...),
+				Completed:      result.ERR.Completed,
+				SQLIssues:      sqlIntegrity.Issues,
+				TabularReports: sqlIntegrity.TabularReports,
 			}
 			bundle.Completeness = append(bundle.Completeness, purposeCompleteness(
 				SimulationPurposeIntegrity,
 				"ERR summary",
 				result.ERR.Path != "",
 				"err",
+			))
+			bundle.Completeness = append(bundle.Completeness, purposeCompleteness(
+				SimulationPurposeIntegrity,
+				"SQL error table",
+				sqlIntegrity.HasErrorsTable,
+				sqlIntegritySource(sqlIntegrity, "missing"),
+			))
+			bundle.Completeness = append(bundle.Completeness, purposeCompleteness(
+				SimulationPurposeIntegrity,
+				"SQL tabular reports",
+				sqlIntegrity.HasTabularData,
+				sqlIntegritySource(sqlIntegrity, "missing"),
 			))
 		}
 	}
@@ -334,6 +372,26 @@ func energyDashboardSource(result EnergyDashboardResult, series []SimulationSeri
 		}
 	}
 	return seriesSource(series)
+}
+
+func buildIntegritySQLResultFromFiles(files []SimulationFileInfo) integritySQLParseResult {
+	for _, file := range files {
+		if file.Kind != "sqlite" {
+			continue
+		}
+		result, err := parseSimulationIntegritySQL(file.Path)
+		if err == nil && (result.HasErrorsTable || result.HasTabularData || len(result.Issues)+len(result.TabularReports) > 0) {
+			return result
+		}
+	}
+	return integritySQLParseResult{}
+}
+
+func sqlIntegritySource(result integritySQLParseResult, fallback string) string {
+	if result.Source != "" {
+		return simulationSourceFromFilename(result.Source)
+	}
+	return fallback
 }
 
 func newPurposePlanBuilder(doc idf.Document, request SimulationPurposeRequest) *purposePlanBuilder {

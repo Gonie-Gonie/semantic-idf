@@ -57,6 +57,7 @@ The release script infers bump size from these sections:
 - Simulation runs now write an `idf-analyzer-run.json` manifest with input hash, selected purposes, output plan, engine/weather paths, and result file metadata.
 - Purpose run planning now applies `preserve`, `highest_resolution`, and `purpose_default` frequency conflict policies instead of only flagging conflicts.
 - Purpose run-plan estimates now use IDF `RunPeriod` and `Timestep` objects so short-run and timestep-heavy simulations show more realistic frame counts.
+- Integrity purpose results now read SQL `Errors` and `TabularDataWithStrings` diagnostics and preview key tabular reports alongside ERR output.
 
 ## Fixed
 

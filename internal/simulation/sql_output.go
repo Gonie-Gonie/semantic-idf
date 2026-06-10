@@ -6,9 +6,17 @@ import (
 	"math"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	_ "modernc.org/sqlite"
+)
+
+const (
+	maxIntegritySQLIssues       = 200
+	maxIntegrityTabularRows     = 360
+	maxIntegrityTabularReports  = 12
+	maxIntegrityTabularRowCells = 80
 )
 
 type sqlOutputDictionaryRow struct {
@@ -30,6 +38,14 @@ type energySeriesBuilder struct {
 	unit       string
 	points     []SimulationPoint
 	total      float64
+}
+
+type integritySQLParseResult struct {
+	Issues         []IntegritySQLIssue
+	TabularReports []IntegrityTabularReport
+	HasErrorsTable bool
+	HasTabularData bool
+	Source         string
 }
 
 func parseSimulationSQLSeries(path string) ([]SimulationSeries, error) {
@@ -388,6 +404,193 @@ func parseSimulationHeatFlowSQL(path string) (HeatFlowDataset, error) {
 	return finalizeHeatFlowDataset(dataset, zoneBuilders, zoneOrder, len(categories))
 }
 
+func parseSimulationIntegritySQL(path string) (integritySQLParseResult, error) {
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		return integritySQLParseResult{}, err
+	}
+	defer db.Close()
+
+	result := integritySQLParseResult{Source: filepath.Base(path)}
+	hasErrors, err := sqlTableExists(db, "Errors")
+	if err != nil {
+		return result, err
+	}
+	if hasErrors {
+		result.HasErrorsTable = true
+		issues, err := parseIntegritySQLErrors(db, path)
+		if err != nil {
+			return result, err
+		}
+		result.Issues = issues
+	}
+
+	hasTabular, err := sqlTableExists(db, "TabularDataWithStrings")
+	if err != nil {
+		return result, err
+	}
+	if hasTabular {
+		result.HasTabularData = true
+		reports, err := parseIntegritySQLTabularReports(db, path)
+		if err != nil {
+			return result, err
+		}
+		result.TabularReports = reports
+	}
+	return result, nil
+}
+
+func parseIntegritySQLErrors(db *sql.DB, path string) ([]IntegritySQLIssue, error) {
+	rows, err := db.Query(fmt.Sprintf(`SELECT * FROM %s LIMIT ?`, quoteSQLiteIdentifier("Errors")), maxIntegritySQLIssues)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	columns, err := rows.Columns()
+	if err != nil {
+		return nil, err
+	}
+	issues := []IntegritySQLIssue{}
+	for rows.Next() {
+		values, err := scanSQLStringRow(rows, len(columns))
+		if err != nil {
+			continue
+		}
+		row := sqlStringRow(columns, values)
+		message := firstSQLColumnValue(row, "ErrorMessage", "Message", "Description")
+		if message == "" {
+			message = compactSQLRowMessage(columns, values)
+		}
+		if message == "" {
+			continue
+		}
+		severity := classifySQLIssueSeverity(firstSQLColumnValue(row, "ErrorType", "Type", "Severity"), message)
+		issues = append(issues, IntegritySQLIssue{
+			Severity: severity,
+			Message:  message,
+			Count:    parseSQLInt(firstSQLColumnValue(row, "Count", "Occurrences", "Total")),
+			Source:   filepath.Base(path),
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return issues, nil
+}
+
+func parseIntegritySQLTabularReports(db *sql.DB, path string) ([]IntegrityTabularReport, error) {
+	columns, err := sqlTableColumns(db, "TabularDataWithStrings")
+	if err != nil {
+		return nil, err
+	}
+	if !sqlHasColumns(columns, "ReportName", "TableName", "RowName", "ColumnName", "Value") {
+		return nil, nil
+	}
+	source := quoteSQLiteIdentifier("TabularDataWithStrings")
+	orderBy := integrityTabularOrderBy(columns)
+	query := fmt.Sprintf(`
+SELECT %s AS report_name,
+       %s AS report_for,
+       %s AS table_name,
+       %s AS row_name,
+       %s AS column_name,
+       %s AS units,
+       %s AS value
+FROM %s
+WHERE TRIM(COALESCE(%s, '')) <> ''
+ORDER BY %s
+LIMIT ?`,
+		sqlTextColumnExpr(columns, "ReportName", "''"),
+		sqlTextColumnExpr(columns, "ReportForString", "''"),
+		sqlTextColumnExpr(columns, "TableName", "''"),
+		sqlTextColumnExpr(columns, "RowName", "''"),
+		sqlTextColumnExpr(columns, "ColumnName", "''"),
+		sqlTextColumnExpr(columns, "Units", "''"),
+		sqlTextColumnExpr(columns, "Value", "''"),
+		source,
+		sqlTextColumnExpr(columns, "ReportName", "''"),
+		orderBy,
+	)
+	rows, err := db.Query(query, maxIntegrityTabularRows)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	type reportBuilder struct {
+		report     IntegrityTabularReport
+		rowIndexes map[string]int
+		columns    map[string]bool
+	}
+	builders := map[string]*reportBuilder{}
+	order := []string{}
+	for rows.Next() {
+		var reportName, reportFor, tableName, rowName, columnName, units, value sql.NullString
+		if err := rows.Scan(&reportName, &reportFor, &tableName, &rowName, &columnName, &units, &value); err != nil {
+			continue
+		}
+		report := strings.TrimSpace(reportName.String)
+		table := strings.TrimSpace(tableName.String)
+		column := tabularColumnLabel(columnName.String, units.String)
+		if report == "" || table == "" || column == "" {
+			continue
+		}
+		key := normalizeEnergyOutputName(report + "\x00" + reportFor.String + "\x00" + table)
+		builder := builders[key]
+		if builder == nil {
+			if len(order) >= maxIntegrityTabularReports {
+				continue
+			}
+			builder = &reportBuilder{
+				report: IntegrityTabularReport{
+					ReportName: report,
+					For:        strings.TrimSpace(reportFor.String),
+					TableName:  table,
+					Source:     filepath.Base(path),
+				},
+				rowIndexes: map[string]int{},
+				columns:    map[string]bool{},
+			}
+			builders[key] = builder
+			order = append(order, key)
+		}
+		if !builder.columns[column] {
+			builder.columns[column] = true
+			builder.report.Columns = append(builder.report.Columns, column)
+		}
+		rowLabel := strings.TrimSpace(rowName.String)
+		if rowLabel == "" {
+			rowLabel = "(blank)"
+		}
+		rowIndex, ok := builder.rowIndexes[rowLabel]
+		if !ok {
+			if len(builder.report.Rows) >= maxIntegrityTabularRowCells {
+				continue
+			}
+			rowIndex = len(builder.report.Rows)
+			builder.rowIndexes[rowLabel] = rowIndex
+			builder.report.Rows = append(builder.report.Rows, IntegrityTabularRow{
+				Name:   rowLabel,
+				Values: map[string]string{},
+			})
+		}
+		builder.report.Rows[rowIndex].Values[column] = strings.TrimSpace(value.String)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	reports := make([]IntegrityTabularReport, 0, len(order))
+	for _, key := range order {
+		report := builders[key].report
+		if len(report.Rows) == 0 {
+			continue
+		}
+		reports = append(reports, report)
+	}
+	return reports, nil
+}
+
 func sqlOutputSeriesDictionaries(db *sql.DB) ([]sqlOutputDictionaryRow, error) {
 	rows, err := db.Query(`
 SELECT DISTINCT rdd.ReportDataDictionaryIndex, COALESCE(rdd.KeyValue, ''), COALESCE(rdd.Name, ''), COALESCE(rdd.Units, '')
@@ -623,6 +826,166 @@ func heatFlowSQLVariableNames() []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+func sqlTableExists(db *sql.DB, tableName string) (bool, error) {
+	var count int
+	err := db.QueryRow(`SELECT COUNT(1) FROM sqlite_master WHERE type IN ('table', 'view') AND lower(name) = lower(?)`, tableName).Scan(&count)
+	return count > 0, err
+}
+
+func sqlTableColumns(db *sql.DB, tableName string) (map[string]string, error) {
+	rows, err := db.Query(`PRAGMA table_info(` + quoteSQLiteIdentifier(tableName) + `)`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	columns := map[string]string{}
+	for rows.Next() {
+		var cid int
+		var name string
+		var dataType string
+		var notNull int
+		var defaultValue any
+		var pk int
+		if err := rows.Scan(&cid, &name, &dataType, &notNull, &defaultValue, &pk); err != nil {
+			continue
+		}
+		if strings.TrimSpace(name) != "" {
+			columns[normalizeSQLColumnName(name)] = name
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return columns, nil
+}
+
+func sqlHasColumns(columns map[string]string, names ...string) bool {
+	for _, name := range names {
+		if columns[normalizeSQLColumnName(name)] == "" {
+			return false
+		}
+	}
+	return true
+}
+
+func sqlTextColumnExpr(columns map[string]string, name string, fallback string) string {
+	actual := columns[normalizeSQLColumnName(name)]
+	if actual == "" {
+		return fallback
+	}
+	return "COALESCE(" + quoteSQLiteIdentifier(actual) + ", '')"
+}
+
+func integrityTabularOrderBy(columns map[string]string) string {
+	order := []string{}
+	for _, name := range []string{"ReportName", "ReportForString", "TableName", "RowId", "ColumnId", "RowName", "ColumnName"} {
+		actual := columns[normalizeSQLColumnName(name)]
+		if actual != "" {
+			order = append(order, quoteSQLiteIdentifier(actual))
+		}
+	}
+	if len(order) == 0 {
+		return "report_name, table_name, row_name, column_name"
+	}
+	return strings.Join(order, ", ")
+}
+
+func scanSQLStringRow(rows *sql.Rows, count int) ([]string, error) {
+	values := make([]sql.NullString, count)
+	targets := make([]any, count)
+	for index := range values {
+		targets[index] = &values[index]
+	}
+	if err := rows.Scan(targets...); err != nil {
+		return nil, err
+	}
+	out := make([]string, count)
+	for index, value := range values {
+		if value.Valid {
+			out[index] = strings.TrimSpace(value.String)
+		}
+	}
+	return out, nil
+}
+
+func sqlStringRow(columns []string, values []string) map[string]string {
+	row := map[string]string{}
+	for index, column := range columns {
+		if index >= len(values) {
+			continue
+		}
+		row[normalizeSQLColumnName(column)] = values[index]
+	}
+	return row
+}
+
+func firstSQLColumnValue(row map[string]string, names ...string) string {
+	for _, name := range names {
+		if value := strings.TrimSpace(row[normalizeSQLColumnName(name)]); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func compactSQLRowMessage(columns []string, values []string) string {
+	parts := []string{}
+	for index, column := range columns {
+		if index >= len(values) || strings.TrimSpace(values[index]) == "" {
+			continue
+		}
+		parts = append(parts, strings.TrimSpace(column)+": "+strings.TrimSpace(values[index]))
+	}
+	return strings.Join(parts, "; ")
+}
+
+func classifySQLIssueSeverity(value string, message string) string {
+	text := strings.ToLower(strings.TrimSpace(value + " " + message))
+	switch {
+	case strings.Contains(text, "fatal"):
+		return "fatal"
+	case strings.Contains(text, "severe"), strings.Contains(text, "error"):
+		return "severe"
+	case strings.Contains(text, "warning"):
+		return "warning"
+	default:
+		return "info"
+	}
+}
+
+func parseSQLInt(value string) int {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0
+	}
+	number, err := strconv.Atoi(value)
+	if err != nil {
+		return 0
+	}
+	return number
+}
+
+func tabularColumnLabel(columnName string, units string) string {
+	label := strings.TrimSpace(columnName)
+	if label == "" {
+		return ""
+	}
+	units = strings.TrimSpace(units)
+	if units != "" && !strings.EqualFold(units, "None") {
+		label += " [" + units + "]"
+	}
+	return label
+}
+
+func quoteSQLiteIdentifier(value string) string {
+	return `"` + strings.ReplaceAll(value, `"`, `""`) + `"`
+}
+
+func normalizeSQLColumnName(value string) string {
+	replacer := strings.NewReplacer("_", "", " ", "", "-", "")
+	return strings.ToLower(replacer.Replace(strings.TrimSpace(value)))
 }
 
 func sqlReportDataQuery(dictionaryIDs []int) (string, []any) {

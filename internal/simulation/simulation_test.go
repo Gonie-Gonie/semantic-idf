@@ -225,6 +225,58 @@ func TestPurposeResultBundleUsesSQLEnergyDashboard(t *testing.T) {
 	}
 }
 
+func TestParseSimulationIntegritySQLBuildsDiagnosticsAndTabular(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "eplusout.sql")
+	createTestIntegritySQL(t, path)
+
+	result, err := parseSimulationIntegritySQL(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.HasErrorsTable || len(result.Issues) != 2 {
+		t.Fatalf("sql issues = %#v", result)
+	}
+	if result.Issues[1].Severity != "severe" || result.Issues[1].Count != 1 {
+		t.Fatalf("severe issue = %#v", result.Issues[1])
+	}
+	if !result.HasTabularData || len(result.TabularReports) != 1 {
+		t.Fatalf("tabular reports = %#v", result.TabularReports)
+	}
+	report := result.TabularReports[0]
+	if report.ReportName != "AnnualBuildingUtilityPerformanceSummary" || report.TableName != "Site and Source Energy" {
+		t.Fatalf("report identity = %#v", report)
+	}
+	if len(report.Columns) != 2 || report.Rows[0].Values["Total Energy [GJ]"] != "12.5" {
+		t.Fatalf("report values = %#v", report)
+	}
+}
+
+func TestPurposeResultBundleUsesSQLIntegrityResult(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "eplusout.sql")
+	createTestIntegritySQL(t, path)
+
+	result := &SimulationRunResult{
+		Status: "succeeded",
+		Files: []SimulationFileInfo{{
+			Name: "eplusout.sql",
+			Path: path,
+			Kind: "sqlite",
+		}},
+	}
+	bundle := BuildPurposeResultBundle(result, SimulationPurposeRequest{
+		Purposes: []SimulationPurposeID{SimulationPurposeIntegrity},
+	})
+
+	if len(bundle.Integrity.SQLIssues) != 2 || len(bundle.Integrity.TabularReports) != 1 {
+		t.Fatalf("integrity bundle = %#v", bundle.Integrity)
+	}
+	if len(bundle.Completeness) != 3 || !bundle.Completeness[1].Found || !bundle.Completeness[2].Found {
+		t.Fatalf("integrity completeness = %#v", bundle.Completeness)
+	}
+}
+
 func TestWriteSimulationRunManifest(t *testing.T) {
 	dir := t.TempDir()
 	inputPath := filepath.Join(dir, "in.idf")
@@ -440,6 +492,45 @@ func createTestEnergySQL(t *testing.T, path string) {
 			(4, 2, 21, 1800000.0),
 			(5, 1, 22, 900000.0),
 			(6, 2, 22, 900000.0)`,
+	}
+	for _, statement := range statements {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatalf("sql fixture statement failed: %v\n%s", err, statement)
+		}
+	}
+}
+
+func createTestIntegritySQL(t *testing.T, path string) {
+	t.Helper()
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	statements := []string{
+		`CREATE TABLE Errors (
+			ErrorIndex INTEGER PRIMARY KEY,
+			ErrorType TEXT,
+			ErrorMessage TEXT,
+			Count INTEGER
+		)`,
+		`CREATE TABLE TabularDataWithStrings (
+			ReportName TEXT,
+			ReportForString TEXT,
+			TableName TEXT,
+			RowName TEXT,
+			ColumnName TEXT,
+			Units TEXT,
+			RowId INTEGER,
+			ColumnId INTEGER,
+			Value TEXT
+		)`,
+		`INSERT INTO Errors VALUES
+			(1, 'Warning', 'Calculated design day warning', 2),
+			(2, 'Severe', 'Node connection problem', 1)`,
+		`INSERT INTO TabularDataWithStrings VALUES
+			('AnnualBuildingUtilityPerformanceSummary', 'Entire Facility', 'Site and Source Energy', 'Total Site Energy', 'Total Energy', 'GJ', 1, 1, '12.5'),
+			('AnnualBuildingUtilityPerformanceSummary', 'Entire Facility', 'Site and Source Energy', 'Total Site Energy', 'Energy Per Total Building Area', 'MJ/m2', 1, 2, '85.1')`,
 	}
 	for _, statement := range statements {
 		if _, err := db.Exec(statement); err != nil {

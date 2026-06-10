@@ -966,6 +966,9 @@ function renderMiniProgressSVG() {
 
 function renderSimulationSummary(result, stale) {
   const err = result.err || {};
+  const integrity = result.purposeResults?.integrity || {};
+  const sqlIssues = integrity.sqlIssues || [];
+  const tabularReports = integrity.tabularReports || [];
   const staleBadge = stale ? `<span class="simulation-badge stale">${escapeHTML(t("simulation.stale", {}, "Stale"))}</span>` : "";
   const statusBadge = `<span class="simulation-badge ${escapeHTML(result.status || "unknown")}">${escapeHTML(statusText(result.status))}</span>`;
   const issueSummary = simulationIssueSummary(err.issues || []);
@@ -997,6 +1000,8 @@ function renderSimulationSummary(result, stale) {
       <div><span>${escapeHTML(t("simulation.errWarnings", {}, "ERR warnings"))}</span><strong>${escapeHTML(err.warnings || 0)}</strong></div>
       <div><span>${escapeHTML(t("simulation.errSevere", {}, "Severe/Fatal"))}</span><strong>${escapeHTML((err.severe || 0) + (err.fatal || 0))}</strong></div>
       <div><span>${escapeHTML(t("simulation.csvFiles", {}, "CSV files"))}</span><strong>${escapeHTML(result.csvs?.length || 0)}</strong></div>
+      <div><span>${escapeHTML(t("simulation.sqlDiagnostics", {}, "SQL diagnostics"))}</span><strong>${escapeHTML(sqlIssues.length)}</strong></div>
+      <div><span>${escapeHTML(t("simulation.tabularReports", {}, "Tabular reports"))}</span><strong>${escapeHTML(tabularReports.length)}</strong></div>
     </div>
     <div class="simulation-issue-summary">
       ${issueSummary.map((item) => `<span class="${escapeHTML(item.key)}">${escapeHTML(item.label)} ${escapeHTML(item.count)}</span>`).join("")}
@@ -1021,7 +1026,71 @@ function renderSimulationSummary(result, stale) {
           </table>
         </div>
       </section>
+    </div>
+    ${renderIntegritySQLDetails(sqlIssues, tabularReports)}`;
+}
+
+function renderIntegritySQLDetails(sqlIssues = [], tabularReports = []) {
+  if (!sqlIssues.length && !tabularReports.length) {
+    return "";
+  }
+  const sqlRows = sqlIssues
+    .slice(0, 24)
+    .map(
+      (issue) => `
+        <tr>
+          <td><span class="simulation-severity ${escapeHTML(issue.severity || "info")}">${escapeHTML(issue.severity || "info")}</span></td>
+          <td>${escapeHTML(issue.message || "")}</td>
+          <td>${escapeHTML(issue.count || "")}</td>
+          <td>${escapeHTML(issue.source || "")}</td>
+        </tr>`,
+    )
+    .join("");
+  const issueSection = `
+    <section>
+      <h4>${escapeHTML(t("simulation.sqlDiagnostics", {}, "SQL diagnostics"))}</h4>
+      <div class="output-table-wrap">
+        <table class="output-table">
+          <thead><tr><th>${escapeHTML(t("common.type", {}, "Type"))}</th><th>${escapeHTML(t("common.message", {}, "Message"))}</th><th>${escapeHTML(t("common.count", {}, "Count"))}</th><th>${escapeHTML(t("common.source", {}, "Source"))}</th></tr></thead>
+          <tbody>${sqlRows || `<tr><td colspan="4">${escapeHTML(t("simulation.noSQLDiagnostics", {}, "No SQL diagnostics rows were found."))}</td></tr>`}</tbody>
+        </table>
+      </div>
+    </section>`;
+  const reportSections = tabularReports.length
+    ? `<div class="simulation-tabular-reports">${tabularReports.slice(0, 6).map(renderIntegrityTabularReport).join("")}</div>`
+    : `<div class="empty">${escapeHTML(t("simulation.noTabularReports", {}, "No SQL tabular reports were found."))}</div>`;
+  return `
+    <div class="simulation-integrity-sql">
+      ${issueSection}
+      <section>
+        <h4>${escapeHTML(t("simulation.tabularReports", {}, "Tabular reports"))}</h4>
+        ${reportSections}
+      </section>
     </div>`;
+}
+
+function renderIntegrityTabularReport(report) {
+  const columns = (report.columns || []).slice(0, 6);
+  const rows = (report.rows || []).slice(0, 10);
+  const header = columns.map((column) => `<th>${escapeHTML(column)}</th>`).join("");
+  const body = rows
+    .map((row) => {
+      const cells = columns.map((column) => `<td>${escapeHTML(row.values?.[column] || "")}</td>`).join("");
+      return `<tr><td>${escapeHTML(row.name || "")}</td>${cells}</tr>`;
+    })
+    .join("");
+  const subtitle = [report.reportName, report.for, report.source].filter(Boolean).join(" - ");
+  return `
+    <article class="simulation-tabular-report">
+      <h5>${escapeHTML(report.tableName || t("simulation.tabularReport", {}, "Tabular report"))}</h5>
+      <span>${escapeHTML(subtitle)}</span>
+      <div class="output-table-wrap">
+        <table class="output-table">
+          <thead><tr><th>${escapeHTML(t("common.row", {}, "Row"))}</th>${header}</tr></thead>
+          <tbody>${body || `<tr><td colspan="${columns.length + 1}">${escapeHTML(t("common.notAvailable", {}, "N/A"))}</td></tr>`}</tbody>
+        </table>
+      </div>
+    </article>`;
 }
 
 function simulationIssueSummary(issues = []) {
