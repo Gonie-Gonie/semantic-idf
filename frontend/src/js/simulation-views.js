@@ -990,6 +990,7 @@ function sampledSeriesIndexes(pointCount, maxPoints) {
 }
 
 function hvacSeriesLabel(series = {}) {
+  series = safeSimulationSeries(series);
   return [seriesNodeKey(series.column), seriesVariableName(series.column)].filter(Boolean).join(" / ") || simulationSeriesDisplayColumn(series);
 }
 
@@ -1683,15 +1684,26 @@ function formatOptionalValueWithUnit(value, unit) {
   return Number.isFinite(Number(value)) ? formatValueWithUnit(value, unit) : "";
 }
 
+function safeSimulationSeries(series) {
+  return series && typeof series === "object" ? series : {};
+}
+
+function safeSimulationSeriesList(series) {
+  return Array.isArray(series) ? series.filter((item) => item && typeof item === "object") : [];
+}
+
 function simulationSeriesDisplayColumn(series = {}) {
+  series = safeSimulationSeries(series);
   return series.displayColumn || series.column || "";
 }
 
 function simulationSeriesDisplayUnit(series = {}) {
+  series = safeSimulationSeries(series);
   return series.displayUnit || seriesColumnUnit(simulationSeriesDisplayColumn(series));
 }
 
 function simulationSeriesPoints(series = {}) {
+  series = safeSimulationSeries(series);
   return Array.isArray(series.displayPoints) && series.displayPoints.length === (series.points || []).length
     ? series.displayPoints
     : (series.points || []);
@@ -1710,6 +1722,7 @@ function simulationSeriesPointAt(series = {}, frameIndex = 0) {
 }
 
 function formatSeriesStat(series = {}, key = "average") {
+  series = safeSimulationSeries(series);
   const displayKey = `display${key.slice(0, 1).toUpperCase()}${key.slice(1)}`;
   const displayValue = Number(series[displayKey]);
   const rawValue = Number(series[key]);
@@ -1878,7 +1891,7 @@ function findSimulationSeriesByID(id) {
   if (!id) {
     return null;
   }
-  return (state.simulationResult?.series || []).find((series) => seriesID(series) === id) || null;
+  return safeSimulationSeriesList(state.simulationResult?.series).find((series) => seriesID(series) === id) || null;
 }
 
 function findSimulationSeriesForMetric(keyValue, variableName) {
@@ -1887,7 +1900,7 @@ function findSimulationSeriesForMetric(keyValue, variableName) {
   if (!key || !variable) {
     return null;
   }
-  return (state.simulationResult?.series || []).find((series) => {
+  return safeSimulationSeriesList(state.simulationResult?.series).find((series) => {
     return (key === "*" || normalizeOutputMatchToken(seriesNodeKey(series.column)) === key)
       && normalizeOutputMatchToken(seriesVariableName(series.column)) === variable;
   }) || null;
@@ -1898,7 +1911,7 @@ function findSimulationSeriesForMeter(meterName) {
   if (!meter) {
     return null;
   }
-  return (state.simulationResult?.series || []).find((series) => normalizeOutputMatchToken(seriesColumnMainName(series.column)) === meter) || null;
+  return safeSimulationSeriesList(state.simulationResult?.series).find((series) => normalizeOutputMatchToken(seriesColumnMainName(series.column)) === meter) || null;
 }
 
 function findComponentMetricSeries(component = {}, metric = {}) {
@@ -3328,7 +3341,7 @@ function outputObjectIsMeter(objectType) {
 }
 
 function renderSimulationSeriesSelect(result) {
-  const series = result.series || [];
+  const series = safeSimulationSeriesList(result?.series);
   const groupOptions = simulationSeriesGroupOptions(series);
   const selectedGroup = groupOptions.some((option) => option.value === state.simulationSeriesGroup) ? state.simulationSeriesGroup : "all";
   state.simulationSeriesGroup = selectedGroup;
@@ -3493,7 +3506,7 @@ function renderSimulationChart() {
 
 function currentSimulationSeries() {
   const result = state.simulationResult;
-  return (result?.series || []).find((item) => seriesID(item) === state.simulationSelectedSeries) || null;
+  return safeSimulationSeriesList(result?.series).find((item) => seriesID(item) === state.simulationSelectedSeries) || null;
 }
 
 function renderSimulationSeriesRangeControls(series, visibleRange = null) {
@@ -5247,10 +5260,12 @@ function waitForProgressRuntime() {
 }
 
 function seriesID(series) {
-  return `${series.file}::${series.column}`;
+  series = safeSimulationSeries(series);
+  return `${series.file || ""}::${series.column || ""}`;
 }
 
-function preferredSimulationSeries(series) {
+function preferredSimulationSeries(series = []) {
+  const items = Array.isArray(series) ? series.filter(Boolean) : [];
   const preferred = [
     "Electricity:Facility",
     "NaturalGas:Facility",
@@ -5259,7 +5274,7 @@ function preferredSimulationSeries(series) {
     "Water:Facility",
   ];
   return preferred
-    .map((name) => series.find((item) => String(item.column || "").includes(name)))
+    .map((name) => items.find((item) => String(item.column || "").includes(name)))
     .find(Boolean) || null;
 }
 
