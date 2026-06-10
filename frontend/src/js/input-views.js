@@ -495,14 +495,45 @@ function renderSemanticLineContent(line) {
   const key = semanticDisplayKey(line);
   const displayValue = line.displayValue ?? line.value ?? "";
   const patchValue = line.patchValue ?? line.sourceValue ?? displayValue;
+  const badge = renderSemanticSourceBadge(line, displayValue);
   const value = line.editable
     ? `<button class="semantic-value-token" type="button" data-object-index="${escapeHTML(line.objectIndex ?? "")}" data-field-index="${escapeHTML(line.fieldIndex ?? "")}" data-field-index-kind="idf" data-original="${escapeHTML(patchValue)}" data-display="${escapeHTML(displayValue)}" data-edit-kind="${escapeHTML(line.editKind || "raw_field")}">${escapeHTML(semanticDisplayScalar(displayValue))}</button>`
     : `<span class="semantic-value" data-source-kind="${escapeHTML(line.sourceKind || "")}">${escapeHTML(semanticDisplayScalar(displayValue))}</span>`;
-  return `<code class="semantic-code-kv"><span class="semantic-indent">${escapeHTML(indent)}</span><span class="semantic-key">${escapeHTML(key)}</span><span class="semantic-colon">:</span> ${value}</code>`;
+  return `<code class="semantic-code-kv"><span class="semantic-indent">${escapeHTML(indent)}</span><span class="semantic-key">${escapeHTML(key)}</span><span class="semantic-colon">:</span> ${value}${badge}</code>`;
 }
 
 function semanticLineHasValue(line) {
   return Boolean(line?.key) && (line.editable || line.displayValue !== undefined || line.value !== undefined || line.role === "metadata" || line.role === "object" || line.role === "field");
+}
+
+function renderSemanticSourceBadge(line, displayValue) {
+  const badge = semanticSourceBadge(line, displayValue);
+  if (!badge) {
+    return "";
+  }
+  const title = [line.sourceKind, line.editKind, line.role].filter(Boolean).join(" / ");
+  return `<span class="semantic-source-badge" data-kind="${escapeHTML(badge.kind)}" title="${escapeHTML(title)}">${escapeHTML(badge.label)}</span>`;
+}
+
+function semanticSourceBadge(line, displayValue) {
+  const key = semanticLineKeyToken(line);
+  const scalar = String(displayValue || "").toLowerCase();
+  if (key === "confidence" && (scalar.includes("inferred") || scalar.includes("partial") || scalar === "low" || scalar === "medium")) {
+    return { label: "Inferred", kind: "inferred" };
+  }
+  if (key === "source" && (scalar.includes("inference") || scalar.includes("fallback") || scalar.includes("computed"))) {
+    return { label: "Inferred", kind: "inferred" };
+  }
+  if (line.editable || line.sourceKind === "field") {
+    return { label: "Raw", kind: "raw" };
+  }
+  if (line.sourceKind === "derived") {
+    return { label: "Computed", kind: "computed" };
+  }
+  if (line.sourceKind === "summary" || line.role === "metadata") {
+    return { label: "Summary", kind: "summary" };
+  }
+  return null;
 }
 
 function semanticDisplayKey(line) {

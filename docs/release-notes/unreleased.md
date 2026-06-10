@@ -41,6 +41,7 @@ The release script infers bump size from these sections:
 - Summary conditioned-zone metrics now expose evidence breakdowns for equipment connections, ZoneHVAC objects, thermostats, and SpaceHVAC references, with inferred confidence metadata.
 - Summary footprint area now remains floor-surface based, while XY bounding-box area is reported as a separate advanced inferred metric.
 - Summary envelope area is now labeled as gross, with a separate net opaque envelope area metric that subtracts recognized fenestration.
+- Semantic YAML lines now show Raw, Computed, Summary, and Inferred badges so derived values are visually distinct from editable IDF fields.
 
 ## Fixed
 

@@ -739,6 +739,37 @@ button:disabled:hover {
   color: #fef3c7;
 }
 
+.semantic-source-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 16px;
+  margin-left: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 4px;
+  padding: 0 5px;
+  color: #cbd5e1;
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 650;
+  line-height: 1.2;
+  vertical-align: 1px;
+}
+
+.semantic-source-badge[data-kind="raw"] {
+  border-color: rgba(52, 183, 197, 0.45);
+  color: #67e8f9;
+}
+
+.semantic-source-badge[data-kind="computed"] {
+  border-color: rgba(129, 140, 248, 0.46);
+  color: #c4b5fd;
+}
+
+.semantic-source-badge[data-kind="inferred"] {
+  border-color: rgba(245, 158, 11, 0.5);
+  color: #fcd34d;
+}
+
 .semantic-value-token {
   appearance: none;
   display: inline;
