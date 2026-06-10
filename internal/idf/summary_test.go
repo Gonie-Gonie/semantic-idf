@@ -285,8 +285,8 @@ Fan:ConstantVolume,
 func TestSummaryRegistryAndGuideCoverage(t *testing.T) {
 	definitions := SummaryDefinitions()
 	guides := SummaryGuides()
-	if len(definitions) != 57 {
-		t.Fatalf("definition count = %d, want 57", len(definitions))
+	if len(definitions) != 58 {
+		t.Fatalf("definition count = %d, want 58", len(definitions))
 	}
 	if len(guides) != len(definitions) {
 		t.Fatalf("guide count = %d, want %d", len(guides), len(definitions))
@@ -316,11 +316,11 @@ func TestAnalyzeSummaryCoreMetricsAndExports(t *testing.T) {
 		t.Fatalf("Parse() error = %v", err)
 	}
 	summary := AnalyzeSummary(doc)
-	if summary.MetricCount != 57 {
-		t.Fatalf("summary metric count = %d, want 57", summary.MetricCount)
+	if summary.MetricCount != 58 {
+		t.Fatalf("summary metric count = %d, want 58", summary.MetricCount)
 	}
-	if got := countMetrics(summary); got != 57 {
-		t.Fatalf("rendered metric count = %d, want 57", got)
+	if got := countMetrics(summary); got != 58 {
+		t.Fatalf("rendered metric count = %d, want 58", got)
 	}
 	if got := metricByID(t, summary, "building_name").DisplayValue; got != "Summary Test Building" {
 		t.Fatalf("building name = %q, want Summary Test Building", got)
@@ -405,8 +405,8 @@ func TestAnalyzeSummaryCoreMetricsAndExports(t *testing.T) {
 	if err != nil {
 		t.Fatalf("summary CSV did not parse: %v\n%s", err, csvText)
 	}
-	if len(records) != 58 {
-		t.Fatalf("CSV rows = %d, want 58", len(records))
+	if len(records) != 59 {
+		t.Fatalf("CSV rows = %d, want 59", len(records))
 	}
 	if len(records[0]) != 2 || records[0][0] != "name" || records[0][1] != "value" {
 		t.Fatalf("CSV header = %#v, want name,value", records[0])
@@ -540,6 +540,70 @@ BuildingSurface:Detailed,
 	if boundingBox.Visibility != "advanced" || boundingBox.Confidence != "inferred" {
 		t.Fatalf("bounding box metadata = visibility %q confidence %q, want advanced/inferred", boundingBox.Visibility, boundingBox.Confidence)
 	}
+}
+
+func TestAnalyzeSummarySeparatesGrossAndNetEnvelopeArea(t *testing.T) {
+	doc, err := Parse(`
+Zone,
+  Perimeter;
+
+BuildingSurface:Detailed,
+  South Wall,               !- Name
+  Wall,                     !- Surface Type
+  ,                         !- Construction Name
+  Perimeter,                !- Zone Name
+  Outdoors,                 !- Outside Boundary Condition
+  ,                         !- Outside Boundary Condition Object
+  SunExposed,               !- Sun Exposure
+  WindExposed,              !- Wind Exposure
+  0,                        !- View Factor to Ground
+  4,                        !- Number of Vertices
+  0,                        !- Vertex 1 X-coordinate
+  0,                        !- Vertex 1 Y-coordinate
+  0,                        !- Vertex 1 Z-coordinate
+  10,                       !- Vertex 2 X-coordinate
+  0,                        !- Vertex 2 Y-coordinate
+  0,                        !- Vertex 2 Z-coordinate
+  10,                       !- Vertex 3 X-coordinate
+  0,                        !- Vertex 3 Y-coordinate
+  3,                        !- Vertex 3 Z-coordinate
+  0,                        !- Vertex 4 X-coordinate
+  0,                        !- Vertex 4 Y-coordinate
+  3;                        !- Vertex 4 Z-coordinate
+
+FenestrationSurface:Detailed,
+  South Window,             !- Name
+  Window,                   !- Surface Type
+  ,                         !- Construction Name
+  South Wall,               !- Building Surface Name
+  ,                         !- Outside Boundary Condition Object
+  0.5,                      !- View Factor to Ground
+  ,                         !- Frame and Divider Name
+  1,                        !- Multiplier
+  4,                        !- Number of Vertices
+  2,                        !- Vertex 1 X-coordinate
+  0,                        !- Vertex 1 Y-coordinate
+  1,                        !- Vertex 1 Z-coordinate
+  4,                        !- Vertex 2 X-coordinate
+  0,                        !- Vertex 2 Y-coordinate
+  1,                        !- Vertex 2 Z-coordinate
+  4,                        !- Vertex 3 X-coordinate
+  0,                        !- Vertex 3 Y-coordinate
+  2,                        !- Vertex 3 Z-coordinate
+  2,                        !- Vertex 4 X-coordinate
+  0,                        !- Vertex 4 Y-coordinate
+  2;                        !- Vertex 4 Z-coordinate
+`)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+
+	summary := AnalyzeSummary(doc)
+	if got := metricByID(t, summary, "envelope_area_m2").Name; got != "Gross envelope area" {
+		t.Fatalf("envelope metric name = %q, want Gross envelope area", got)
+	}
+	assertMetricClose(t, summary, "envelope_area_m2", 30, 0.001)
+	assertMetricClose(t, summary, "net_opaque_envelope_area_m2", 28, 0.001)
 }
 
 func countMetrics(summary SummaryReport) int {

@@ -105,7 +105,8 @@ var summaryDefinitions = []SummaryDefinition{
 	def("building_long_side_m", "geometry_areas", "Building long side", "m", 2, "Detailed surface vertices.", "Uses the larger of the model XY bounding-box width and depth.", "Only detailed vertices are considered.", "N/A when detailed vertex coordinates are unavailable."),
 	def("building_short_side_m", "geometry_areas", "Building short side", "m", 2, "Detailed surface vertices.", "Uses the smaller nonzero side of the model XY bounding box.", "Only detailed vertices are considered.", "N/A when detailed vertex coordinates are unavailable or one side is zero."),
 	def("footprint_aspect_ratio", "geometry_areas", "Footprint aspect ratio", "", 3, "Detailed surface vertices.", "Divides building long side by building short side.", "A value of 1.0 indicates a square bounding footprint.", "N/A when either side length is unavailable."),
-	def("envelope_area_m2", "geometry_areas", "Envelope area", "m2", 2, "Exterior walls, roofs, and ground floors.", "Sums exterior opaque wall area, roof area, and ground-contact floor area.", "Fenestration is not subtracted from opaque base surfaces in v1.", "N/A when no envelope surface area can be computed."),
+	def("envelope_area_m2", "geometry_areas", "Gross envelope area", "m2", 2, "Exterior walls, roofs, and ground floors.", "Sums exterior opaque wall area, roof area, and ground-contact floor area.", "Fenestration is not subtracted from opaque base surfaces; see net opaque envelope area for the subtracted value.", "N/A when no envelope surface area can be computed."),
+	def("net_opaque_envelope_area_m2", "geometry_areas", "Net opaque envelope area", "m2", 2, "Gross envelope area and fenestration area.", "Subtracts recognized window and opaque door area from gross envelope area.", "This is an analyzer area balance and depends on resolved fenestration geometry.", "N/A when gross envelope area cannot be computed."),
 	def("envelope_area_to_volume_ratio", "geometry_areas", "Envelope area to volume ratio", "1/m", 3, "Envelope area and total zone volume.", "Divides envelope area by total zone volume.", "Uses partial volume estimates when declared volumes are incomplete.", "N/A when envelope area or volume is unavailable."),
 	def("floor_area_to_volume_ratio", "geometry_areas", "Floor area to volume ratio", "1/m", 3, "Gross floor area and total zone volume.", "Divides gross floor area by total zone volume.", "Uses partial volume estimates when declared volumes are incomplete.", "N/A when floor area or volume is unavailable."),
 
@@ -1124,6 +1125,8 @@ func (facts summaryFacts) metricValues() map[string]summaryMetricValue {
 	}
 	if facts.hasEnvelopeArea {
 		values["envelope_area_m2"] = numberSummaryValue(facts.envelopeArea, precisionFor("envelope_area_m2"), summaryStatusOK)
+		netOpaque := math.Max(0, facts.envelopeArea-facts.windowArea-facts.doorArea)
+		values["net_opaque_envelope_area_m2"] = numberSummaryValue(netOpaque, precisionFor("net_opaque_envelope_area_m2"), summaryStatusOK)
 	}
 	if facts.hasEnvelopeArea && facts.hasZoneVolume {
 		values["envelope_area_to_volume_ratio"] = ratioSummaryValue(facts.envelopeArea, facts.totalZoneVolume, precisionFor("envelope_area_to_volume_ratio"), partialIf(facts.zoneVolumePartial))
@@ -2194,7 +2197,7 @@ func scheduleSelectorTokens(value string) []string {
 }
 
 func init() {
-	if len(summaryDefinitions) != 57 {
-		panic(fmt.Sprintf("summary metric registry has %d metrics, want 57", len(summaryDefinitions)))
+	if len(summaryDefinitions) != 58 {
+		panic(fmt.Sprintf("summary metric registry has %d metrics, want 58", len(summaryDefinitions)))
 	}
 }
