@@ -1993,9 +1993,17 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
   align-items: start;
 }
 
+.hvac-layout.inspector-collapsed {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .hvac-main,
 .hvac-side {
   min-width: 0;
+}
+
+.hvac-layout.inspector-collapsed .hvac-side {
+  display: none;
 }
 
 .hvac-side {
@@ -2677,6 +2685,12 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
   color: var(--accent-strong);
 }
 
+.hvac-inspector-toggle.active {
+  border-color: var(--teal);
+  background: var(--teal-soft);
+  color: var(--teal-dark);
+}
+
 .hvac-loop-meta span,
 .hvac-side-meta span,
 .hvac-tag-list span,
@@ -2941,6 +2955,31 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   align-items: center;
+}
+
+.hvac-component-select {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  text-align: left;
+}
+
+.hvac-component-select:hover strong {
+  color: var(--teal-dark);
+}
+
+.hvac-component-source {
+  justify-self: end;
+}
+
+.hvac-component-select strong,
+.hvac-component-select span {
+  display: block;
 }
 
 .hvac-component-main strong,

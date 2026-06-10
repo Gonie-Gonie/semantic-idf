@@ -175,16 +175,17 @@
               </div>
               <div class="summary-tools hvac-tools">
                 <input id="hvacFilter" type="search" placeholder="Filter loops, zones, nodes" data-i18n-placeholder="hvac.filter" data-i18n-aria-label="hvac.filter" />
+                <button id="hvacInspectorToggle" class="hvac-inspector-toggle" type="button" aria-controls="hvacSide" aria-expanded="true">Hide inspector</button>
                 <button id="hvacExpandButton" type="button" data-expand-pane="hvac" data-i18n="action.expand">Expand</button>
               </div>
             </div>
             <div class="hvac-pane">
               <div id="hvacSummary" class="hvac-summary"></div>
-              <div class="hvac-layout">
+              <div id="hvacLayout" class="hvac-layout">
                 <section class="hvac-main" aria-label="HVAC graph">
                   <div id="hvacGraph" class="hvac-graph"></div>
                 </section>
-                <aside class="hvac-side" aria-label="HVAC inspector">
+                <aside id="hvacSide" class="hvac-side" aria-label="HVAC inspector">
                   <section class="hvac-inspector-section">
                     <div class="hvac-section-head">
                       <h3 data-i18n="hvac.inspector">Inspector</h3>

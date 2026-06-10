@@ -2,9 +2,16 @@ import { backend, elements, escapeHTML, state } from "./state.js";
 import { t } from "./i18n.js";
 
 export function initializeHVACControls() {
+  state.hvacInspectorCollapsed = readHVACInspectorCollapsed();
+  syncHVACInspectorDrawer();
   elements.hvacFilter?.addEventListener("input", () => renderHVAC());
   elements.hvacSummary?.addEventListener("click", handleHVACNavigationClick);
   elements.hvacSummary?.addEventListener("toggle", handleHVACNavigationToggle, true);
+  elements.hvacInspectorToggle?.addEventListener("click", () => {
+    state.hvacInspectorCollapsed = !state.hvacInspectorCollapsed;
+    writeHVACInspectorCollapsed(state.hvacInspectorCollapsed);
+    syncHVACInspectorDrawer();
+  });
   document.addEventListener("click", handleHVACOutsideClick);
   elements.hvacGraph?.addEventListener("click", (event) => {
     if (event.target.closest("[data-jump-object-index]")) {
@@ -99,10 +106,38 @@ function selectHVACGraphKey(key) {
   renderHVAC();
 }
 
+function readHVACInspectorCollapsed() {
+  try {
+    return localStorage.getItem("idfAnalyzer.hvacInspectorCollapsed") === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeHVACInspectorCollapsed(collapsed) {
+  try {
+    localStorage.setItem("idfAnalyzer.hvacInspectorCollapsed", collapsed ? "1" : "0");
+  } catch {
+    // localStorage can be unavailable in hardened webview settings.
+  }
+}
+
+function syncHVACInspectorDrawer() {
+  const collapsed = Boolean(state.hvacInspectorCollapsed);
+  elements.hvacLayout?.classList.toggle("inspector-collapsed", collapsed);
+  elements.hvacSide?.classList.toggle("collapsed", collapsed);
+  if (elements.hvacInspectorToggle) {
+    elements.hvacInspectorToggle.textContent = collapsed ? t("hvac.showInspector", {}, "Show inspector") : t("hvac.hideInspector", {}, "Hide inspector");
+    elements.hvacInspectorToggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+    elements.hvacInspectorToggle.classList.toggle("active", !collapsed);
+  }
+}
+
 export function renderHVAC(hvac = state.report?.hvac) {
   if (!elements.hvacStats) {
     return;
   }
+  syncHVACInspectorDrawer();
   if (!hvac) {
     renderEmptyHVAC();
     return;
@@ -793,6 +828,10 @@ function renderHVACBranch(branch) {
 
 function renderHVACComponent(component) {
   const existsClass = component.exists ? "" : " missing";
+  const graphKey = componentGraphKey(component);
+  const displayName = componentDisplayName(component);
+  const metaLabel = componentMetaLabel(component);
+  const title = [displayName, metaLabel].filter(Boolean).join(" - ");
   const badges = renderHVACEvidenceBadges([
     component.displayLabel || component.familyLabel || component.family,
     component.roleHere,
@@ -806,8 +845,11 @@ function renderHVACComponent(component) {
   return `
     <div class="hvac-component${existsClass}">
       <div class="hvac-component-main">
-        <strong>${escapeHTML(componentDisplayName(component))}</strong>
-        <span>${escapeHTML(componentMetaLabel(component))} ${renderObjectLink(component.objectIndex, component.objectType)}</span>
+        <button class="hvac-component-select" type="button" data-hvac-graph-key="${escapeHTML(graphKey)}" title="${escapeHTML(title)}">
+          <strong title="${escapeHTML(displayName)}">${escapeHTML(displayName)}</strong>
+          <span title="${escapeHTML(metaLabel)}">${escapeHTML(metaLabel)}</span>
+        </button>
+        <span class="hvac-component-source">${renderObjectLink(component.objectIndex, component.objectType)}</span>
       </div>
       ${badges}
       <div class="hvac-node-line compact">
