@@ -368,7 +368,7 @@
 
 .simulation-heatflow-controls {
   display: grid;
-  grid-template-columns: auto minmax(180px, 1fr) minmax(128px, auto) minmax(108px, auto) minmax(142px, auto);
+  grid-template-columns: auto minmax(180px, 1fr) minmax(128px, auto) repeat(5, minmax(108px, auto));
   gap: 8px;
   align-items: center;
   margin-bottom: 10px;
@@ -381,6 +381,10 @@
   align-items: center;
   color: var(--muted);
   font-size: 12px;
+}
+
+.simulation-heatflow-controls input[type="range"] {
+  min-width: 86px;
 }
 
 .simulation-heatflow-controls output {
@@ -702,6 +706,11 @@
 .heatflow-chart-hit {
   fill: transparent;
   cursor: crosshair;
+}
+
+.simulation-chart-hit {
+  fill: transparent;
+  cursor: ew-resize;
 }
 
 .heatflow-tooltip {

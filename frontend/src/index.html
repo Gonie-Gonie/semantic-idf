@@ -21,6 +21,11 @@
           <input id="fileInput" class="hidden-file-input" type="file" accept=".idf,.imf,.epjson,.json,.txt" />
           <button id="saveButton" type="button" data-i18n="action.save">Save</button>
           <button id="revertButton" type="button" disabled data-i18n="action.revert">Revert</button>
+          <div class="layout-presets" role="group" aria-label="Layout presets">
+            <button type="button" data-layout-preset="analysis">Analysis</button>
+            <button type="button" data-layout-preset="balanced">Balanced</button>
+            <button type="button" data-layout-preset="editor">Editor</button>
+          </div>
           <button id="toolsButton" type="button" data-i18n="action.tools">Tools</button>
           <button id="guideButton" type="button" data-i18n="action.guide">Guide</button>
           <button id="settingsButton" type="button" data-i18n="action.settings">Settings</button>
@@ -322,6 +327,12 @@
                   <input id="simulationHeatFlowSlider" type="range" min="0" max="0" value="0" aria-label="Heat-flow frame" />
                   <output id="simulationHeatFlowFrame">No frame</output>
                   <label>
+                    <span>Story</span>
+                    <select id="simulationHeatFlowStory" aria-label="Heat-flow story">
+                      <option value="all">All stories</option>
+                    </select>
+                  </label>
+                  <label>
                     <span data-i18n="simulation.speed">Speed</span>
                     <select id="simulationHeatFlowSpeed" aria-label="Heat-flow playback speed">
                       <option value="900">Slow</option>
@@ -335,6 +346,14 @@
                       <option value="net" selected>Net heat flow</option>
                       <option value="temperature">Temperature</option>
                     </select>
+                  </label>
+                  <label>
+                    <span>Start</span>
+                    <input id="simulationHeatFlowRangeStart" type="range" min="0" max="0" value="0" aria-label="Heat-flow visible range start" />
+                  </label>
+                  <label>
+                    <span>End</span>
+                    <input id="simulationHeatFlowRangeEnd" type="range" min="0" max="0" value="0" aria-label="Heat-flow visible range end" />
                   </label>
                 </div>
                 <div id="simulationHeatFlow" class="simulation-heatflow">

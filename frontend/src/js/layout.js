@@ -1,11 +1,21 @@
 import { elements } from "./state.js";
 import { resizeGeometry } from "./geometry-loader.js";
 
+const workspacePresetWidths = {
+  analysis: "44%",
+  balanced: "50%",
+  editor: "62%",
+};
+
 export function initializeWorkspaceSplitter() {
   const savedWidth = localStorage.getItem("idfAnalyzer.editorWidth");
   if (savedWidth) {
     elements.workspace.style.setProperty("--editor-width", savedWidth);
   }
+  updateWorkspacePresetButtons(workspacePresetForWidth(savedWidth || workspacePresetWidths.analysis));
+  elements.layoutPresetButtons?.forEach((button) => {
+    button.addEventListener("click", () => applyWorkspacePreset(button.dataset.layoutPreset || "balanced"));
+  });
 
   let dragging = false;
   let dragFrame = 0;
@@ -19,8 +29,8 @@ export function initializeWorkspaceSplitter() {
     if (!dragging || !dragRect) {
       return;
     }
-    const minLeft = 420;
-    const minRight = 420;
+    const minLeft = 360;
+    const minRight = 360;
     const nextWidth = Math.min(
       Math.max(pendingClientX - dragRect.left, minLeft),
       dragRect.width - splitterWidth - minRight,
@@ -78,6 +88,24 @@ export function initializeWorkspaceSplitter() {
 
   elements.workspaceSplitter.addEventListener("pointerup", stopDrag);
   elements.workspaceSplitter.addEventListener("pointercancel", stopDrag);
+}
+
+export function applyWorkspacePreset(preset) {
+  const nextWidth = workspacePresetWidths[preset] || workspacePresetWidths.balanced;
+  elements.workspace?.style.setProperty("--editor-width", nextWidth);
+  localStorage.setItem("idfAnalyzer.editorWidth", nextWidth);
+  updateWorkspacePresetButtons(workspacePresetForWidth(nextWidth));
+  resizeGeometry();
+}
+
+function workspacePresetForWidth(width) {
+  return Object.entries(workspacePresetWidths).find(([, value]) => value === width)?.[0] || "";
+}
+
+function updateWorkspacePresetButtons(activePreset) {
+  elements.layoutPresetButtons?.forEach((button) => {
+    button.classList.toggle("active", button.dataset.layoutPreset === activePreset);
+  });
 }
 
 export function initializeVerticalSplitters() {

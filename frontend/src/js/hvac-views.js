@@ -7,6 +7,9 @@ export function initializeHVACControls() {
   elements.hvacSummary?.addEventListener("toggle", handleHVACNavigationToggle, true);
   document.addEventListener("click", handleHVACOutsideClick);
   elements.hvacGraph?.addEventListener("click", (event) => {
+    if (event.target.closest("[data-jump-object-index]")) {
+      return;
+    }
     const loopJump = event.target.closest("[data-hvac-jump-loop-name]");
     if (loopJump) {
       jumpToHVACLoopByName(loopJump.dataset.hvacJumpLoopName || "", loopJump.dataset.hvacJumpGraphKey || "");
@@ -19,9 +22,7 @@ export function initializeHVACControls() {
     }
     const graphTarget = event.target.closest("[data-hvac-graph-key]");
     if (graphTarget) {
-      state.activeHVACGraphKey = graphTarget.dataset.hvacGraphKey || "";
-      state.activeHVACNodeName = state.activeHVACGraphKey.startsWith("node:") ? state.activeHVACGraphKey.slice(5) : "";
-      renderHVAC();
+      selectHVACGraphKey(graphTarget.dataset.hvacGraphKey || "");
       return;
     }
     const nodeButton = event.target.closest("[data-hvac-node]");
@@ -31,6 +32,20 @@ export function initializeHVACControls() {
     state.activeHVACNodeName = nodeButton.dataset.hvacNode || "";
     state.activeHVACGraphKey = `node:${state.activeHVACNodeName}`;
     renderHVAC();
+  });
+  elements.hvacGraph?.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+    if (event.target.closest("[data-jump-object-index]")) {
+      return;
+    }
+    const graphTarget = event.target.closest("[data-hvac-graph-key]");
+    if (!graphTarget) {
+      return;
+    }
+    event.preventDefault();
+    selectHVACGraphKey(graphTarget.dataset.hvacGraphKey || "");
   });
   elements.hvacInspector?.addEventListener("click", (event) => {
     const loopJump = event.target.closest("[data-hvac-jump-loop-name]");
@@ -70,6 +85,12 @@ export function initializeHVACControls() {
       previewList.innerHTML = `<div class="empty">${t("status.runPreview")}</div>`;
     }
   });
+}
+
+function selectHVACGraphKey(key) {
+  state.activeHVACGraphKey = key;
+  state.activeHVACNodeName = key.startsWith("node:") ? key.slice(5) : "";
+  renderHVAC();
 }
 
 export function renderHVAC(hvac = state.report?.hvac) {
@@ -864,9 +885,31 @@ function renderHVACRelations(hvac, query) {
   const relations = (hvac.zoneRelations || []).filter((relation) => zoneRelationMatchesQuery(relation, query));
   elements.hvacGraph.innerHTML = relations.length
     ? `
+      ${renderHVACRelationTable(relations)}
       ${renderHVACRelationGraph(relations)}
       ${renderHVACRelationGraphDetail(relations)}`
     : `<div class="empty">${t("hvac.noMatchingRelations")}</div>`;
+}
+
+function renderHVACRelationTable(relations) {
+  return `
+    <section class="hvac-relation-table-shell">
+      <div class="hvac-section-head compact">
+        <h3>${escapeHTML(t("hvac.zoneRelations"))}</h3>
+        <span>${escapeHTML(t("count.zones", { count: relations.length }, `${relations.length} zones`))}</span>
+      </div>
+      <div class="hvac-relation-table" role="table" aria-label="${escapeHTML(t("hvac.zoneRelations"))}">
+        <div class="hvac-relation-table-row head" role="row">
+          <span>Zone</span>
+          <span>${escapeHTML(t("hvac.terminalEquipment"))}</span>
+          <span>AirLoop</span>
+          <span>Plant / Condenser</span>
+          <span>${escapeHTML(t("common.source", {}, "Source"))}</span>
+          <span>${escapeHTML(t("common.evidence", {}, "Evidence"))}</span>
+        </div>
+        ${relations.map(renderHVACZoneRelation).join("")}
+      </div>
+    </section>`;
 }
 
 function renderHVACRelationGraph(relations) {
@@ -952,17 +995,45 @@ function renderHVACRelationGraphDetail(relations) {
 }
 
 function renderHVACZoneRelation(relation) {
+  const terminalComponents = (relation.terminalUnits || []).length ? relation.terminalUnits || [] : relation.zoneEquipment || [];
+  const terminalText = terminalComponents.map((item) => item.objectName || item.objectType).filter(Boolean).join(", ") || "N/A";
+  const terminalEvidence = terminalComponents
+    .flatMap((item) => [
+      item.listedInZoneEquipment ? "listed" : "",
+      item.resolvedFromADU ? "ADU" : "",
+      item.outletMatchesZoneInlet ? "outlet->zone" : "",
+      item.inletOnAirLoopDemand ? "demand path" : "",
+      ...(item.relationEvidence || []),
+    ])
+    .filter(Boolean);
+  const evidence = [...new Set([...(relation.evidence || []), ...terminalEvidence])].slice(0, 4);
+  const plantText = [
+    ...(relation.plantLoopNames || []),
+    ...(relation.condenserLoopNames || []).map((name) => `Condenser: ${name}`),
+  ].join(", ") || "N/A";
+  const rowClass = graphSelectionClass(`zone:${relation.zoneName}`, relationGraphKeys(relation));
   return `
-    <div class="hvac-relation-table-row" role="row">
+    <div class="hvac-relation-table-row ${rowClass}" role="row" tabindex="0" data-hvac-graph-key="zone:${escapeHTML(relation.zoneName || "")}">
       <span>
         ${renderObjectLink(relation.zoneObjectIndex, "Zone")}
         <strong>${escapeHTML(relation.zoneName)}</strong>
       </span>
-      <span>${(relation.terminalUnits || []).map((item) => escapeHTML(item.objectName || item.objectType)).join(", ") || "N/A"}</span>
+      <span>${escapeHTML(terminalText)}</span>
       <span>${(relation.airLoopNames || []).map(escapeHTML).join(", ") || "N/A"}</span>
-      <span>${(relation.plantLoopNames || []).map(escapeHTML).join(", ") || "N/A"}</span>
-      <span>${(relation.zoneEquipment || []).map((item) => escapeHTML(item.objectName || item.objectType)).join(", ") || "N/A"}</span>
+      <span>${escapeHTML(plantText)}</span>
+      <span>${escapeHTML([relation.confidence, relation.relationSource].filter(Boolean).join(" / ") || "N/A")}</span>
+      <span>${escapeHTML(evidence.join(" / ") || relationIssueSummary(relation))}</span>
     </div>`;
+}
+
+function relationIssueSummary(relation = {}) {
+  if (!(relation.terminalUnits || []).length && !(relation.zoneEquipment || []).length) {
+    return t("hvac.noTerminal", {}, "No terminal");
+  }
+  if (!(relation.airLoopNames || []).length && !(relation.plantLoopNames || []).length) {
+    return "No loop relation";
+  }
+  return "N/A";
 }
 
 function renderHVACDiagnostics(hvac, query) {
