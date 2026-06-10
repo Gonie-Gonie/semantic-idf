@@ -125,17 +125,19 @@ function renderSemanticView() {
   setInputFilterStats(visibleObjectIndexes.size || (state.report?.objects?.length || 0), state.report?.objects?.length || 0);
 
   const sourceNameConflicts = projection.sourceNameConflicts || [];
-  const compact = state.semanticProjectionMode !== "full";
+  const mode = semanticProjectionMode();
   elements.semanticEditor.innerHTML = `
     <div class="semantic-toolbar">
       <div class="json-meta">
         <span class="badge">${escapeHTML(projection.schema || "eplus-semantic/0.1")}</span>
         <span class="badge">Version ${escapeHTML(projection.energyplusVersion || "unknown")}</span>
         <span class="badge">${escapeHTML(t("count.objects", { count: projection.objectCount || 0 }))}</span>
-        <span class="badge">${escapeHTML(compact ? "Compact" : "Full")}</span>
+        <span class="badge">${escapeHTML(semanticModeLabel(mode))}</span>
       </div>
       <div class="semantic-actions">
-        <button id="semanticProjectionModeButton" type="button">${escapeHTML(compact ? "Show full" : "Compact")}</button>
+        <div class="semantic-mode-tabs" role="group" aria-label="Semantic detail level">
+          ${["basic", "detailed", "source"].map((item) => `<button class="${item === mode ? "active" : ""}" data-semantic-mode="${item}" type="button">${escapeHTML(semanticModeLabel(item))}</button>`).join("")}
+        </div>
         <button id="semanticFocusObjectButton" type="button">${escapeHTML(t("input.focusObject"))}</button>
         <button id="semanticFixDuplicatesButton" type="button" ${sourceNameConflicts.length ? "" : "disabled"}>
           ${escapeHTML(t("semantic.fixSourceNameConflicts", { count: sourceNameConflicts.length }, `Fix source name conflicts (${sourceNameConflicts.length})`))}
@@ -143,6 +145,7 @@ function renderSemanticView() {
       </div>
     </div>
     ${renderSemanticWarnings(projection)}
+    ${renderSemanticSectionIndex(projection.lines)}
     <div class="semantic-sticky-path" aria-live="polite"></div>
     <div class="semantic-yaml" role="tree" aria-label="Semantic YAML projection">
       ${visibleLines.map((line, index) => renderSemanticLine(line, index, keyWidths)).join("")}
@@ -165,7 +168,12 @@ function semanticKeyWidths(lines) {
 }
 
 function semanticVisibleLines(lines, terms) {
-  const compactLines = state.semanticProjectionMode === "full" || terms.length ? lines : compactSemanticLines(lines);
+  const mode = semanticProjectionMode();
+  const compactLines = terms.length || mode === "source"
+    ? lines
+    : mode === "detailed"
+      ? compactSemanticLines(lines)
+      : basicSemanticLines(lines);
   if (!terms.length) {
     return compactLines;
   }
@@ -191,8 +199,89 @@ function semanticVisibleLines(lines, terms) {
   });
 }
 
+function semanticProjectionMode() {
+  return ["basic", "detailed", "source"].includes(state.semanticProjectionMode) ? state.semanticProjectionMode : "basic";
+}
+
+function semanticModeLabel(mode) {
+  switch (mode) {
+    case "source":
+      return "Source/debug";
+    case "detailed":
+      return "Detailed";
+    default:
+      return "Basic";
+  }
+}
+
+function basicSemanticLines(lines) {
+  const hiddenBlocks = new Set([
+    "duplicated_as",
+    "also_shown_in",
+    "sync_policy",
+    "source_relations",
+    "source_preservation",
+    "raw",
+    "computed",
+    "vertices",
+  ]);
+  const keepKeys = new Set([
+    "schema",
+    "name",
+    "class",
+    "type",
+    "family",
+    "family_label",
+    "display_label",
+    "role_here",
+    "source",
+    "confidence",
+    "status",
+    "value",
+    "zone",
+    "space",
+    "schedule",
+    "air_loop",
+    "plant_loop",
+    "air_loops",
+    "plant_loops",
+    "condenser_loops",
+    "terminal_units",
+    "zone_equipment",
+    "outputs",
+    "diagnostics",
+  ]);
+  const out = [];
+  let hideUntilIndent = null;
+  for (const line of lines) {
+    const indent = Number(line.indent || 0);
+    if (hideUntilIndent !== null && indent > hideUntilIndent) {
+      continue;
+    }
+    hideUntilIndent = null;
+    const key = String(line.key || "").trim();
+    if (hiddenBlocks.has(key)) {
+      hideUntilIndent = indent;
+      continue;
+    }
+    const text = String(line.text || "").trimStart();
+    if (line.text === "semantic_energyplus_model:" || (line.role === "syntax" && indent <= 2)) {
+      out.push(line);
+      continue;
+    }
+    if (text.startsWith("- name:") && indent <= 4) {
+      out.push(line);
+      continue;
+    }
+    if (semanticLineHasValue(line) && indent <= 4 && keepKeys.has(key)) {
+      out.push(line);
+    }
+  }
+  return out;
+}
+
 function compactSemanticLines(lines) {
-  const hiddenKeys = new Set(["duplicated_as", "also_shown_in", "sync_policy", "source_relations"]);
+  const hiddenKeys = new Set(["duplicated_as", "also_shown_in", "sync_policy", "source_relations", "source_preservation"]);
   const out = [];
   let hideUntilIndent = null;
   for (const line of lines) {
@@ -209,6 +298,34 @@ function compactSemanticLines(lines) {
     out.push(line);
   }
   return out;
+}
+
+function renderSemanticSectionIndex(lines = []) {
+  const sections = lines.filter((line) =>
+    line.role === "syntax" &&
+    Number(line.indent || 0) === 1 &&
+    String(line.text || "").trim() !== "semantic_energyplus_model:",
+  );
+  if (!sections.length) {
+    return "";
+  }
+  return `
+    <nav class="semantic-section-index" aria-label="Semantic sections">
+      ${sections
+        .map((line) => {
+          const label = semanticSectionLabel(line);
+          return `<button type="button" data-semantic-section-text="${escapeHTML(line.text || "")}">${escapeHTML(label)}</button>`;
+        })
+        .join("")}
+    </nav>`;
+}
+
+function semanticSectionLabel(line) {
+  const text = String(line.text || "").trim().replace(/:$/, "");
+  return text
+    .split("_")
+    .map((part) => part.slice(0, 1).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 function renderSemanticWarnings(projection) {
@@ -301,8 +418,19 @@ function semanticDisplayKey(line) {
 }
 
 function bindSemanticControls() {
+  elements.semanticEditor.querySelectorAll("[data-semantic-mode]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.semanticProjectionMode = button.dataset.semanticMode || "basic";
+      renderSemanticView();
+    });
+  });
+  elements.semanticEditor.querySelectorAll("[data-semantic-section-text]").forEach((button) => {
+    button.addEventListener("click", () => {
+      scrollSemanticSectionIntoView(button.dataset.semanticSectionText || "");
+    });
+  });
   elements.semanticEditor.querySelector("#semanticProjectionModeButton")?.addEventListener("click", () => {
-    state.semanticProjectionMode = state.semanticProjectionMode === "full" ? "grouped" : "full";
+    state.semanticProjectionMode = semanticProjectionMode() === "source" ? "basic" : "source";
     renderSemanticView();
   });
   elements.semanticEditor.querySelector("#semanticFocusObjectButton")?.addEventListener("click", () => focusSelectedSemanticObject());
@@ -322,6 +450,11 @@ function bindSemanticControls() {
     });
   });
   bindSemanticStickyPath();
+}
+
+function scrollSemanticSectionIntoView(sectionText) {
+  const target = Array.from(elements.semanticEditor.querySelectorAll(".semantic-line")).find((line) => line.dataset.semanticText === sectionText);
+  target?.scrollIntoView({ block: "start", inline: "nearest" });
 }
 
 function semanticLineIsBranch(line) {

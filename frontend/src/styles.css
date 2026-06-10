@@ -533,6 +533,31 @@ button:disabled:hover {
   gap: 6px;
 }
 
+.semantic-mode-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-3);
+  padding: 2px;
+}
+
+.semantic-mode-tabs button {
+  min-height: 26px;
+  border-color: transparent;
+  background: transparent;
+  padding: 0 8px;
+  font-size: 11px;
+}
+
+.semantic-mode-tabs button:hover,
+.semantic-mode-tabs button.active {
+  border-color: var(--teal);
+  background: var(--teal-soft);
+  color: var(--teal-dark);
+}
+
 .semantic-actions button {
   min-height: 30px;
   padding: 0 9px;
@@ -557,14 +582,43 @@ button:disabled:hover {
   color: var(--amber);
 }
 
-.semantic-sticky-path {
+.semantic-section-index {
   position: sticky;
   top: 0;
   z-index: 6;
   display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  padding: 6px 8px;
+}
+
+.semantic-section-index button {
+  min-height: 24px;
+  border-color: var(--line);
+  border-radius: 999px;
+  background: var(--surface-2);
+  padding: 0 8px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.semantic-section-index button:hover {
+  border-color: var(--teal);
+  color: var(--teal-dark);
+}
+
+.semantic-sticky-path {
+  position: sticky;
+  top: 42px;
+  z-index: 6;
+  display: flex;
   align-items: center;
   gap: 6px;
-  min-width: 640px;
+  min-width: 0;
   margin-bottom: 6px;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
@@ -587,7 +641,7 @@ button:disabled:hover {
 }
 
 .semantic-yaml {
-  min-width: 640px;
+  min-width: 0;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--code-bg);
@@ -602,7 +656,8 @@ button:disabled:hover {
   min-height: 0;
   padding: 1px 10px;
   border-left: 3px solid transparent;
-  white-space: pre;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 .semantic-yaml .semantic-line:first-child {

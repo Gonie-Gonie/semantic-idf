@@ -71,7 +71,7 @@ export const state = {
   tableGroupOrientations: new Map(),
   inputFilterQuery: "",
   semanticSelectedObjectIndex: "",
-  semanticProjectionMode: "grouped",
+  semanticProjectionMode: "basic",
   jsonCollapseDepth: 2,
   jsonSelectedObjectIndex: "",
   syncTextRawPosition: true,
