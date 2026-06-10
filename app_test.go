@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Gonie-Gonie/idf-analyzer/internal/idf"
+	"github.com/Gonie-Gonie/idf-analyzer/internal/simulation"
 )
 
 const appSummaryIDF = `
@@ -109,6 +110,73 @@ Output:Variable,
 	}
 }
 
+func TestPreparePurposeSimulationRequestUsesRunCopy(t *testing.T) {
+	original := appSummaryIDF
+	tempDir := t.TempDir()
+	inputPath := filepath.Join(tempDir, "input.idf")
+	if err := os.WriteFile(inputPath, []byte(original), 0o644); err != nil {
+		t.Fatalf("write input fixture: %v", err)
+	}
+
+	purposeRequest := simulation.NormalizeSimulationPurposeRequest(&simulation.SimulationPurposeRequest{
+		Purposes: []simulation.SimulationPurposeID{simulation.SimulationPurposeBasicEnergy},
+	})
+	prepared, err := preparePurposeSimulationRequest(simulation.SimulationRunRequest{
+		InputPath:       inputPath,
+		Filename:        "input.idf",
+		PurposeRequest:  &purposeRequest,
+		UseReadVarsESO:  false,
+		StandardOutput:  false,
+		OutputDirectory: tempDir,
+	})
+	if err != nil {
+		t.Fatalf("preparePurposeSimulationRequest() error = %v", err)
+	}
+	content, err := os.ReadFile(inputPath)
+	if err != nil {
+		t.Fatalf("read original input: %v", err)
+	}
+	if string(content) != original {
+		t.Fatalf("preparePurposeSimulationRequest mutated original file:\n%s", string(content))
+	}
+	if prepared.Text == "" || prepared.Text == original {
+		t.Fatalf("prepared run copy text was not expanded:\n%s", prepared.Text)
+	}
+	if !strings.Contains(prepared.Text, "Output:SQLite") || !strings.Contains(prepared.Text, "Zone Lights Electricity Energy") {
+		t.Fatalf("prepared run copy is missing purpose outputs:\n%s", prepared.Text)
+	}
+	if prepared.PurposeRunPlan == nil || len(prepared.PurposeRunPlan.OutputObjects) == 0 {
+		t.Fatalf("prepared run plan was not attached: %#v", prepared.PurposeRunPlan)
+	}
+	if !strings.Contains(prepared.TemporaryOutputDiff, "purpose-run-copy.idf") {
+		t.Fatalf("temporary output diff missing run-copy marker:\n%s", prepared.TemporaryOutputDiff)
+	}
+	if prepared.ResultMode != "sql_first" {
+		t.Fatalf("prepared result mode = %q, want sql_first", prepared.ResultMode)
+	}
+}
+
+func TestApplyPurposeOutputsTextUsesOutputPipeline(t *testing.T) {
+	result, err := NewApp().ApplyPurposeOutputsText(appSummaryIDF, simulation.SimulationPurposeRequest{
+		Purposes: []simulation.SimulationPurposeID{simulation.SimulationPurposeZoneHeatFlow},
+	})
+	if err != nil {
+		t.Fatalf("ApplyPurposeOutputsText() error = %v", err)
+	}
+	if !result.Preview.CanApply {
+		t.Fatalf("purpose output preview blocked: %#v", result.Preview.Warnings)
+	}
+	if !outputApplyPreviewHasAction(result.Preview.Changes, "add_output", "Output:Variable") {
+		t.Fatalf("preview changes do not include Output:Variable add: %#v", result.Preview.Changes)
+	}
+	if !strings.Contains(result.Text, "Output:SQLite") || !strings.Contains(result.Text, "Zone Mean Air Temperature") {
+		t.Fatalf("applied text is missing purpose outputs:\n%s", result.Text)
+	}
+	if result.Report == nil || result.Report.Output.VariableCount == 0 || result.Report.Output.ObjectCount == 0 {
+		t.Fatalf("applied report output summary not populated: %#v", result.Report)
+	}
+}
+
 func TestAppAssetHandlerServesSummaryMetricGuides(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/api/summary-metric-guides", nil)
 	response := httptest.NewRecorder()
@@ -127,6 +195,15 @@ func TestAppAssetHandlerServesSummaryMetricGuides(t *testing.T) {
 	if len(guides) != 59 {
 		t.Fatalf("summary metric guide API returned %d guides, want 59", len(guides))
 	}
+}
+
+func outputApplyPreviewHasAction(changes []idf.OutputApplyChange, action string, objectType string) bool {
+	for _, change := range changes {
+		if change.Action == action && change.ObjectType == objectType {
+			return true
+		}
+	}
+	return false
 }
 
 func TestAnalyzeMultiSummaryPaths(t *testing.T) {
