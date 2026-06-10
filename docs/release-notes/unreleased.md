@@ -101,6 +101,7 @@ The release script infers bump size from these sections:
 - Simulation empty-state and advanced-option labels now frame legacy standard-output presets as secondary to the purpose-driven Run & Inspect flow.
 - Discovery-enabled purpose run plans now request EnergyPlus output dictionaries so RDD/MDD catalog generation is part of the temporary run plan.
 - HVAC Loop Check results now include a frame slider with node and component snapshots for inspecting selected-time temperatures, setpoints, flows, and operation values.
+- Simulation output discovery now marks user-entered Custom Outputs as `missing` when they are not found in the current SQL/RDD/MDD catalog.
 
 ## Fixed
 

@@ -114,6 +114,8 @@ func DiscoverAvailableOutputs(request OutputDiscoveryRequest) (OutputDiscoveryRe
 					aliasReason = "A discovered output can be used as an alias for this purpose output."
 					units = alias.Units
 					source = mergeDiscoveryToken(source, alias.Source)
+				} else if purposeIDsContain(object.PurposeIDs, SimulationPurposeCustomOutputs) {
+					status = "missing"
 				}
 				collector.add(OutputDiscoveryItem{
 					ObjectType:         object.ObjectType,
@@ -552,6 +554,9 @@ func mergeDiscoveryStatus(left string, right string) string {
 	}
 	if left == "fallback" || right == "fallback" {
 		return "fallback"
+	}
+	if left == "missing" || right == "missing" {
+		return "missing"
 	}
 	return strings.TrimSpace(left + " " + right)
 }

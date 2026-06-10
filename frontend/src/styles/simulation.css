@@ -247,6 +247,10 @@
   color: var(--teal);
 }
 
+.simulation-discovery-badge.missing {
+  color: var(--red);
+}
+
 .simulation-plan-actions {
   display: flex;
   flex-wrap: wrap;

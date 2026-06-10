@@ -200,6 +200,30 @@ GasEquipment,
 	}
 }
 
+func TestDiscoverAvailableOutputsMarksUndiscoveredCustomOutputMissing(t *testing.T) {
+	result, err := DiscoverAvailableOutputs(OutputDiscoveryRequest{
+		Text: purposePlanFixtureIDF,
+		PurposeRequest: &SimulationPurposeRequest{
+			Purposes: []SimulationPurposeID{SimulationPurposeCustomOutputs},
+			Scope: SimulationPurposeScope{CustomOutputs: []PurposeCustomOutput{{
+				ObjectType:         "Output:Variable",
+				KeyValue:           "*",
+				VariableName:       "Not A Real Output Variable",
+				ReportingFrequency: "Hourly",
+			}}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !discoveryHas(result.Items, "Output:Variable", "*", "Not A Real Output Variable", "missing") {
+		t.Fatalf("custom output should be marked missing when no catalog entry exists: %#v", result.Items)
+	}
+	if result.Counts["missing"] == 0 {
+		t.Fatalf("missing count not reported: %#v", result.Counts)
+	}
+}
+
 func discoveryHas(items []OutputDiscoveryItem, objectType string, keyValue string, name string, status string) bool {
 	_, ok := discoveryFind(items, objectType, keyValue, name, status)
 	return ok
