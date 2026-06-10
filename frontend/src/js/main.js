@@ -279,6 +279,7 @@ if (restoredDocument) {
     textSnapshot: elements.idfInput.value,
   });
 } else {
+  setStatus(t("status.analysisWillStart"), "loading");
   loadDefaultSampleIDF().then(async (sampleText) => {
     elements.idfInput.value = sampleText;
     updateTextStats();

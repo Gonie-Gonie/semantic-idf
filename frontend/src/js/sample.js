@@ -15,14 +15,28 @@ Zone,
   Fallback Zone;            !- Name
 `;
 
+const defaultSampleTimeoutMS = 2500;
+
 export async function loadDefaultSampleIDF() {
+  const controller = typeof AbortController === "function" ? new AbortController() : null;
+  let timeoutID = 0;
   try {
-    const response = await fetch(defaultSample.path);
+    const timeout = new Promise((_, reject) => {
+      timeoutID = window.setTimeout(() => {
+        controller?.abort();
+        reject(new Error("Default sample load timed out"));
+      }, defaultSampleTimeoutMS);
+    });
+    const response = await Promise.race([fetch(defaultSample.path, controller ? { signal: controller.signal } : undefined), timeout]);
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
     return await response.text();
   } catch {
     return fallbackSampleIDF;
+  } finally {
+    if (timeoutID) {
+      window.clearTimeout(timeoutID);
+    }
   }
 }
