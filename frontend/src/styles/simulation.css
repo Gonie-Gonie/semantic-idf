@@ -396,6 +396,44 @@
   gap: 8px;
 }
 
+.simulation-hvac-schematic-wrap {
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.simulation-hvac-schematic {
+  width: 100%;
+  min-width: 640px;
+  height: 150px;
+}
+
+.simulation-hvac-schematic-line {
+  stroke: color-mix(in srgb, var(--line) 55%, var(--muted));
+  stroke-width: 3;
+  vector-effect: non-scaling-stroke;
+}
+
+.simulation-hvac-schematic-node circle {
+  fill: var(--surface);
+  stroke: var(--line);
+  stroke-width: 2;
+}
+
+.simulation-hvac-schematic-node.active circle {
+  fill: color-mix(in srgb, var(--teal) 12%, var(--surface));
+  stroke: var(--teal);
+}
+
+.simulation-hvac-schematic-node text {
+  fill: var(--muted);
+  font-size: 11px;
+}
+
+.simulation-hvac-schematic-node text:first-of-type {
+  fill: var(--text);
+  font-weight: 800;
+}
+
 .simulation-hvac-node-card,
 .simulation-hvac-component-chip {
   display: grid;

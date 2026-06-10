@@ -124,7 +124,9 @@ Purpose result viewers now include:
   pumps, coils, chillers, boilers, and cooling towers, derived loop metrics,
   node-state heat-transfer estimates, loop status classification, and alerts for
   zero flow, flow without temperature spread, missing setpoints, and large
-  temperature-setpoint deltas.
+  temperature-setpoint deltas. The frame snapshot includes a compact node
+  schematic with live temperature/flow labels before detailed node and component
+  cards.
 - Comfort zone metric summaries for temperature, setpoint, PMV, and PPD series,
   with optional custom `MM-DD` period scoping for the rendered trends and issue
   ranking.

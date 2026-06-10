@@ -115,6 +115,7 @@ The release script infers bump size from these sections:
 - SQL and CSV series now carry normalized display units and values so J/Wh energy, W rates, temperatures, mass flow, and humidity ratio render consistently across charts and purpose result tables.
 - HVAC Loop Check results now classify loop operating status and add node-state-derived air/water heat-transfer estimates with reported-vs-derived labels in the viewer and HTML export.
 - Purpose run plans now emit Heavy and Very Heavy output-weight warnings with series/frame counts, with regression coverage for large selected-zone models.
+- HVAC Loop Check frame snapshots now include a compact node schematic with live temperature/flow labels before the detailed node and component cards.
 
 ## Fixed
 

@@ -733,6 +733,7 @@ const dictionaries = {
     "simulation.hvacStatusSetpointNotMet": "Setpoint not met",
     "simulation.hvacStatusSetpointTracking": "Setpoint tracking",
     "simulation.hvacStatusSuspicious": "Suspicious",
+    "simulation.hvacSchematic": "HVAC loop schematic",
     "simulation.integrity": "Integrity",
     "simulation.integrityCrossChecks": "Cross checks",
     "simulation.noIntegrityCrossChecks": "No matching cross checks",

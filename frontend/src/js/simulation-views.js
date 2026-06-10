@@ -604,6 +604,7 @@ function renderSimulationHVACLoopSnapshot(loop) {
           <input type="range" min="0" max="${frameCount - 1}" value="${frameIndex}" data-simulation-hvac-frame />
         </label>
       </div>
+      ${renderSimulationHVACSchematic(nodes)}
       <div class="simulation-hvac-node-strip">
         ${nodes.map((node) => renderSimulationHVACNodeSnapshot(node, maxFlow)).join("")}
       </div>
@@ -685,6 +686,53 @@ function renderSimulationHVACNodeSnapshot(node, maxFlow) {
         <i style="width:${flowPercent.toFixed(1)}%"></i>
       </div>
     </article>`;
+}
+
+function renderSimulationHVACSchematic(nodes) {
+  const shown = nodes.slice(0, 8);
+  if (shown.length < 2) {
+    return "";
+  }
+  const width = 920;
+  const height = 150;
+  const padX = 58;
+  const y = 58;
+  const step = shown.length > 1 ? (width - padX * 2) / (shown.length - 1) : 0;
+  const nodeGroups = shown
+    .map((node, index) => {
+      const x = padX + step * index;
+      const active = Math.abs(Number(node.flow?.value) || 0) > 0.001;
+      const value = node.temperature
+        ? formatValueWithUnit(node.temperature.value, node.temperature.unit)
+        : node.flow
+          ? formatValueWithUnit(node.flow.value, node.flow.unit)
+          : "-";
+      return `
+        <g class="simulation-hvac-schematic-node ${active ? "active" : ""}">
+          <circle cx="${roundSVG(x)}" cy="${y}" r="17"></circle>
+          <text x="${roundSVG(x)}" y="${y + 4}" text-anchor="middle">${escapeHTML(String(index + 1))}</text>
+          <text x="${roundSVG(x)}" y="${y + 36}" text-anchor="middle">${escapeHTML(shortSimulationNodeLabel(node.nodeName || ""))}</text>
+          <text x="${roundSVG(x)}" y="${y + 52}" text-anchor="middle">${escapeHTML(value)}</text>
+        </g>`;
+    })
+    .join("");
+  const lineStart = padX;
+  const lineEnd = padX + step * (shown.length - 1);
+  return `
+    <div class="simulation-hvac-schematic-wrap">
+      <svg class="simulation-hvac-schematic" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHTML(t("simulation.hvacSchematic", {}, "HVAC loop schematic"))}">
+        <line x1="${roundSVG(lineStart)}" y1="${y}" x2="${roundSVG(lineEnd)}" y2="${y}" class="simulation-hvac-schematic-line"></line>
+        ${nodeGroups}
+      </svg>
+    </div>`;
+}
+
+function shortSimulationNodeLabel(value) {
+  const text = String(value || "").trim();
+  if (text.length <= 18) {
+    return text;
+  }
+  return `${text.slice(0, 15)}...`;
 }
 
 function renderHVACSnapshotMetric(label, metric) {
