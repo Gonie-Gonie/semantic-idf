@@ -57,10 +57,11 @@ Supported purpose ids:
 - `comfort_check`
 - `custom_outputs`
 
-`SimulationPurposeScope` can express selected zones, selected loops, selected
-components, output signatures, and custom output objects. Phase 1 uses selected
-zones for Zone Heat Flow and keeps HVAC loop checks on wildcard node keys until
-loop node resolution is wired to the HVAC tab.
+`SimulationPurposeScope` can express selected zones, selected air/plant/condenser
+loops, selected components, output signatures, and custom output objects. Zone
+Heat Flow and Comfort use selected zone names when provided. HVAC Loop Check
+uses selected loop node names when they can be resolved from the current HVAC
+analysis, and falls back to wildcard node keys when scope is broad or unresolved.
 
 `PurposeRunPlan` reports:
 
@@ -88,18 +89,58 @@ Output states:
 
 The result source priority is SQL, then CSV, then ESO. SQL parsing already
 feeds legacy `Series` and `HeatFlow`, so older viewers continue to work while
-purpose result viewers are added.
+purpose result viewers are added. Basic Energy SQL rows are converted to display
+units (`J`/`kJ`/`MJ`/`GJ`/`Wh` to `kWh`, `W` to `kW`) and grouped into monthly
+chart points when `Time.Month` is available, so hourly or timestep energy rows
+can still feed monthly dashboards.
+
+Purpose result viewers now include:
+
+- Basic Energy facility/end-use monthly charts, zone matrix, and zone reported
+  energy table.
+- Zone Heat Flow SQL or CSV/ESO ledger with frame sampling metadata and
+  time-range controls.
+- HVAC Loop Check node summaries, derived loop metrics, and alerts for zero
+  flow, missing setpoints, and large temperature-setpoint deltas.
+- Comfort zone metric summaries for temperature, setpoint, PMV, and PPD series.
+- Integrity ERR, SQL error table, and tabular report previews.
+
+Where a row can be matched back to the run plan, result tables show the source
+output state and signature so the user can distinguish existing, temporary, and
+will-be-persisted output requests.
 
 ## Permanent Outputs
 
 `ApplyPurposeOutputsText` converts a purpose plan into the existing Output apply
 pipeline. This keeps permanent output edits behind the same preview/apply
-contract as manual Output tab changes.
+contract as manual Output tab changes. The Output analysis report also annotates
+existing and recommended output requests with purpose tags, and the Output tab
+can filter by purpose.
 
 ## Output Discovery
 
 `DiscoverAvailableOutputs` builds a searchable output catalog from available run
 artifacts. It reads SQL `ReportDataDictionary`, `.rdd`, and `.mdd` files when
-present, then merges selected purpose-plan outputs as `fallback` entries. Each
-catalog item reports its object type, key, variable or meter name, units, source,
-status (`available` or `fallback`), and purpose tags when applicable.
+present, then merges selected purpose-plan outputs as `available`, `alias`, or
+`fallback` entries:
+
+- `available`: the exact requested output, wildcard equivalent, or dictionary
+  class equivalent was discovered.
+- `alias`: an alternate discovered variable can satisfy the purpose request
+  (for example, `Zone Air Temperature` for `Zone Mean Air Temperature`).
+- `fallback`: the purpose preset can still request the output, but it was not
+  discovered in the current SQL/RDD/MDD catalog.
+
+Catalog reads are cached per SQL/RDD/MDD path and invalidated when file size or
+modification time changes. Each catalog item reports its object type, key,
+variable or meter name, units, source, status, alias target when applicable, and
+purpose tags. Custom Outputs entered manually or picked from discovery are saved
+locally and restored in later sessions.
+
+## Run Artifacts and Export
+
+Purpose runs write `idf-analyzer-run.json`, `idf-analyzer-run-plan.json`, and
+`temporary_outputs.diff` in the output directory. The UI can export a purpose
+result JSON bundle or a standalone HTML report that embeds run metadata, the run
+plan, parsed purpose results, completeness, file references, and the source
+output signatures visible in result tables.
