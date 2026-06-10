@@ -99,6 +99,7 @@ The release script infers bump size from these sections:
 - The SQL/CSV Series result tab now exposes visible All/Start/End time-range controls that stay synchronized with wheel zoom and row-driven chart inspection.
 - Zone Heat Flow playback now uses the active purpose heat-flow dataset and keeps explicit zoom start/end plus visible frame index state in sync with the range controls.
 - Simulation empty-state and advanced-option labels now frame legacy standard-output presets as secondary to the purpose-driven Run & Inspect flow.
+- Discovery-enabled purpose run plans now request EnergyPlus output dictionaries so RDD/MDD catalog generation is part of the temporary run plan.
 
 ## Fixed
 

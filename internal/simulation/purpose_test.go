@@ -293,6 +293,32 @@ func TestBuildPurposeRunPlanMergesDuplicateOutputsAcrossPurposes(t *testing.T) {
 	}
 }
 
+func TestBuildPurposeRunPlanDiscoveryAddsDictionaryOutput(t *testing.T) {
+	doc := parsePurposePlanFixture(t, purposePlanFixtureIDF)
+
+	plan := BuildPurposeRunPlan(doc, SimulationPurposeRequest{
+		Purposes:         []SimulationPurposeID{SimulationPurposeBasicEnergy},
+		DiscoveryAllowed: true,
+	})
+
+	if !plan.RequiresDiscovery {
+		t.Fatalf("plan should require discovery when discovery is allowed")
+	}
+	dictionary := findPurposeOutput(plan, "Output:VariableDictionary", "", "")
+	if dictionary == nil {
+		t.Fatalf("discovery plan should include variable dictionary output: %#v", plan.OutputObjects)
+	}
+	if dictionary.State != PurposeOutputStateTemporary {
+		t.Fatalf("dictionary output state = %q, want temporary", dictionary.State)
+	}
+	if !purposeIDsContain(dictionary.PurposeIDs, SimulationPurposeBasicEnergy) {
+		t.Fatalf("dictionary purpose IDs = %#v, want basic energy", dictionary.PurposeIDs)
+	}
+	if !purposePlanHasWarning(plan, "discovery_dictionary_requested") {
+		t.Fatalf("expected discovery dictionary warning in %#v", plan.Warnings)
+	}
+}
+
 func TestPurposeRunPlanTemporaryOutputDiffIncludesOnlyTemporaryOutputs(t *testing.T) {
 	doc := parsePurposePlanFixture(t, purposePlanFixtureIDF+`
 Output:Variable,

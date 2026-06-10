@@ -379,6 +379,9 @@ func BuildPurposeRunPlan(doc idf.Document, request SimulationPurposeRequest) Pur
 			builder.addCustomOutputs()
 		}
 	}
+	if request.DiscoveryAllowed {
+		builder.addDiscoveryDictionaryOutputs()
+	}
 	return builder.plan()
 }
 
@@ -1279,6 +1282,24 @@ func (builder *purposePlanBuilder) addSQLBase() {
 		Description: "Primary SQL result source with tabular data.",
 		Reason:      "Purpose run base SQL output",
 	})
+}
+
+func (builder *purposePlanBuilder) addDiscoveryDictionaryOutputs() {
+	purposeIDs := append([]SimulationPurposeID(nil), builder.request.Purposes...)
+	if len(purposeIDs) == 0 {
+		purposeIDs = []SimulationPurposeID{SimulationPurposeCustomOutputs}
+	}
+	builder.addObject(PurposeOutputObject{
+		ObjectType: "Output:VariableDictionary",
+		Fields: []idf.OutputFieldValue{
+			{Name: "Key Field", Value: "Regular"},
+		},
+		PurposeIDs:  purposeIDs,
+		Weight:      "light",
+		Description: "Requests EnergyPlus report-variable and meter dictionaries for output discovery.",
+		Reason:      "Discovery catalog dictionary output",
+	})
+	builder.warn("info", "discovery_dictionary_requested", "Discovery is enabled, so the run plan requests EnergyPlus output dictionaries for the catalog assistant.", firstPurposeID(purposeIDs), "")
 }
 
 func (builder *purposePlanBuilder) addBasicEnergy() {
