@@ -527,6 +527,11 @@
   gap: 12px;
 }
 
+.simulation-comfort-results {
+  display: grid;
+  gap: 10px;
+}
+
 .simulation-hvac-loop-result {
   display: grid;
   gap: 8px;

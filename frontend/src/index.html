@@ -405,6 +405,7 @@
                 <button type="button" data-simulation-result-view-button="energy" data-i18n="simulation.energy">Energy</button>
                 <button type="button" data-simulation-result-view-button="zone_heat_flow" data-i18n="simulation.heatFlow">Heat-Flow Ledger</button>
                 <button type="button" data-simulation-result-view-button="hvac_loops" data-i18n="simulation.hvacLoops">HVAC Loops</button>
+                <button type="button" data-simulation-result-view-button="comfort" data-i18n="simulation.comfort">Comfort</button>
                 <button type="button" data-simulation-result-view-button="integrity" data-i18n="simulation.integrity">Integrity</button>
                 <button type="button" data-simulation-result-view-button="series" data-i18n="simulation.series">Series</button>
                 <button type="button" data-simulation-result-view-button="files" data-i18n="simulation.files">Output files</button>
@@ -422,6 +423,13 @@
                   <span id="simulationHVACLoopStats" class="tool-muted">No HVAC loop result</span>
                 </div>
                 <div id="simulationHVACLoopResults" class="simulation-hvac-loop-results"></div>
+              </section>
+              <section class="simulation-section" data-simulation-result-view="comfort">
+                <div class="profile-section-head">
+                  <h3 data-i18n="simulation.comfort">Comfort</h3>
+                  <span id="simulationComfortStats" class="tool-muted">No comfort result</span>
+                </div>
+                <div id="simulationComfortResults" class="simulation-comfort-results"></div>
               </section>
               <section class="simulation-section" data-simulation-result-view="integrity">
                 <div class="profile-section-head">

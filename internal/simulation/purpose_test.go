@@ -145,6 +145,28 @@ Fan:ConstantVolume,
 	}
 }
 
+func TestBuildPurposeRunPlanComfortSelectedZones(t *testing.T) {
+	doc := parsePurposePlanFixture(t, purposePlanFixtureIDF)
+
+	plan := BuildPurposeRunPlan(doc, SimulationPurposeRequest{
+		Purposes: []SimulationPurposeID{SimulationPurposeComfort},
+		Scope: SimulationPurposeScope{
+			ZoneMode:  "selected",
+			ZoneNames: []string{"Lab"},
+		},
+	})
+
+	if findPurposeOutput(plan, "Output:Variable", "Lab", "Zone Mean Air Temperature") == nil {
+		t.Fatalf("missing selected-zone comfort output in %#v", plan.OutputObjects)
+	}
+	if findPurposeOutput(plan, "Output:Variable", "*", "Zone Mean Air Temperature") != nil {
+		t.Fatalf("selected comfort plan should not use wildcard zone key: %#v", plan.OutputObjects)
+	}
+	if !purposePlanHasWarning(plan, "comfort_scope_selected") {
+		t.Fatalf("expected comfort selected-zone warning in %#v", plan.Warnings)
+	}
+}
+
 func TestBuildPurposeRunPlanEstimatesFramesFromRunPeriod(t *testing.T) {
 	doc := parsePurposePlanFixture(t, purposePlanFixtureIDF+`
 Timestep,

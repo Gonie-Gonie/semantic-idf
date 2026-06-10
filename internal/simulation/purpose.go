@@ -98,6 +98,7 @@ type PurposeResultBundle struct {
 	Energy       EnergyDashboardResult     `json:"energy,omitempty"`
 	ZoneHeatFlow HeatFlowDataset           `json:"zoneHeatFlow,omitempty"`
 	HVACLoops    []HVACLoopRunResult       `json:"hvacLoops,omitempty"`
+	Comfort      ComfortResult             `json:"comfort,omitempty"`
 	Integrity    IntegrityResult           `json:"integrity,omitempty"`
 	Series       []SimulationSeries        `json:"series,omitempty"`
 	Completeness []PurposeCompletenessItem `json:"completeness,omitempty"`
@@ -140,6 +141,27 @@ type HVACLoopRunResult struct {
 	LoopType     string                    `json:"loopType,omitempty"`
 	Series       []SimulationSeries        `json:"series,omitempty"`
 	Completeness []PurposeCompletenessItem `json:"completeness,omitempty"`
+}
+
+type ComfortResult struct {
+	Zones        []ComfortZoneResult       `json:"zones,omitempty"`
+	Series       []SimulationSeries        `json:"series,omitempty"`
+	Completeness []PurposeCompletenessItem `json:"completeness,omitempty"`
+}
+
+type ComfortZoneResult struct {
+	ZoneName string                `json:"zoneName"`
+	Metrics  []ComfortMetricResult `json:"metrics,omitempty"`
+}
+
+type ComfortMetricResult struct {
+	Name    string            `json:"name"`
+	Unit    string            `json:"unit,omitempty"`
+	Source  string            `json:"source,omitempty"`
+	Min     float64           `json:"min"`
+	Max     float64           `json:"max"`
+	Average float64           `json:"average"`
+	Points  []SimulationPoint `json:"points,omitempty"`
 }
 
 type IntegrityResult struct {
@@ -317,6 +339,14 @@ func BuildPurposeResultBundle(result *SimulationRunResult, request SimulationPur
 				len(bundle.HVACLoops) > 0 && len(bundle.HVACLoops[0].Series) > 0,
 				hvacLoopResultSource(bundle.HVACLoops),
 			))
+		case SimulationPurposeComfort:
+			bundle.Comfort = buildComfortResult(result.Series)
+			bundle.Completeness = append(bundle.Completeness, purposeCompleteness(
+				SimulationPurposeComfort,
+				"zone comfort series",
+				len(bundle.Comfort.Series) > 0,
+				seriesSource(bundle.Comfort.Series),
+			))
 		case SimulationPurposeIntegrity:
 			sqlIntegrity := buildIntegritySQLResultFromFiles(result.Files)
 			bundle.Integrity = IntegrityResult{
@@ -423,6 +453,65 @@ func hvacLoopResultSource(results []HVACLoopRunResult) string {
 		}
 	}
 	return "missing"
+}
+
+func buildComfortResult(series []SimulationSeries) ComfortResult {
+	result := ComfortResult{}
+	foundVariables := map[string]bool{}
+	zoneMap := map[string]*ComfortZoneResult{}
+	zoneOrder := []string{}
+	for _, item := range series {
+		if !purposeSeriesMatchesVariables(item.Column, comfortCheckVariables()) {
+			continue
+		}
+		keyValue, variableName := splitPurposeSeriesColumn(item.Column)
+		if keyValue == "" {
+			keyValue = "Unknown Zone"
+		}
+		foundVariables[normalizePurposeToken(variableName)] = true
+		result.Series = append(result.Series, item)
+		zoneKey := normalizePurposeToken(keyValue)
+		zone := zoneMap[zoneKey]
+		if zone == nil {
+			zone = &ComfortZoneResult{ZoneName: keyValue}
+			zoneMap[zoneKey] = zone
+			zoneOrder = append(zoneOrder, zoneKey)
+		}
+		zone.Metrics = append(zone.Metrics, ComfortMetricResult{
+			Name:    variableName,
+			Unit:    unitFromSeriesColumn(item.Column),
+			Source:  item.File,
+			Min:     item.Min,
+			Max:     item.Max,
+			Average: item.Average,
+			Points:  append([]SimulationPoint(nil), item.Points...),
+		})
+	}
+	sort.SliceStable(zoneOrder, func(i, j int) bool {
+		return strings.ToLower(zoneMap[zoneOrder[i]].ZoneName) < strings.ToLower(zoneMap[zoneOrder[j]].ZoneName)
+	})
+	for _, key := range zoneOrder {
+		zone := zoneMap[key]
+		sort.SliceStable(zone.Metrics, func(i, j int) bool {
+			return strings.ToLower(zone.Metrics[i].Name) < strings.ToLower(zone.Metrics[j].Name)
+		})
+		result.Zones = append(result.Zones, *zone)
+	}
+	result.Completeness = comfortSeriesCompleteness(foundVariables, seriesSource(result.Series))
+	return result
+}
+
+func comfortSeriesCompleteness(found map[string]bool, source string) []PurposeCompletenessItem {
+	items := make([]PurposeCompletenessItem, 0, len(comfortCheckVariables()))
+	for _, variable := range comfortCheckVariables() {
+		items = append(items, purposeCompleteness(
+			SimulationPurposeComfort,
+			variable,
+			found[normalizePurposeToken(variable)],
+			source,
+		))
+	}
+	return items
 }
 
 func buildEnergyDashboardResultFromFiles(files []SimulationFileInfo) EnergyDashboardResult {
@@ -738,14 +827,15 @@ func (builder *purposePlanBuilder) addComfort() {
 		builder.warn("warning", "comfort_scope_empty", "Comfort Check needs Zone objects, but none were found.", SimulationPurposeComfort, "")
 		return
 	}
-	for _, variable := range []string{
-		"Zone Mean Air Temperature",
-		"Zone Thermostat Heating Setpoint Temperature",
-		"Zone Thermostat Cooling Setpoint Temperature",
-		"Zone Thermal Comfort Fanger Model PMV",
-		"Zone Thermal Comfort Fanger Model PPD",
-	} {
-		builder.addVariable(SimulationPurposeComfort, "*", variable, "Hourly", "medium", "Hourly zone comfort and setpoint trend.")
+	keys := []string{"*"}
+	if strings.EqualFold(builder.request.Scope.ZoneMode, "selected") && len(builder.request.Scope.ZoneNames) > 0 {
+		keys = builder.request.Scope.ZoneNames
+		builder.warn("info", "comfort_scope_selected", fmt.Sprintf("Comfort Check is limited to %d selected zone key(s).", len(keys)), SimulationPurposeComfort, "")
+	}
+	for _, key := range keys {
+		for _, variable := range comfortCheckVariables() {
+			builder.addVariable(SimulationPurposeComfort, key, variable, "Hourly", "medium", "Hourly zone comfort and setpoint trend.")
+		}
 	}
 }
 
@@ -1263,6 +1353,16 @@ func zoneHeatFlowVariableNames() []string {
 		"Zone Air Heat Balance System Convective Heat Gain Rate",
 		"Zone Air Heat Balance Air Energy Storage Rate",
 		"Zone Air Heat Balance Deviation Rate",
+	}
+}
+
+func comfortCheckVariables() []string {
+	return []string{
+		"Zone Mean Air Temperature",
+		"Zone Thermostat Heating Setpoint Temperature",
+		"Zone Thermostat Cooling Setpoint Temperature",
+		"Zone Thermal Comfort Fanger Model PMV",
+		"Zone Thermal Comfort Fanger Model PPD",
 	}
 }
 

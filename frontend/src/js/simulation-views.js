@@ -161,6 +161,7 @@ export function renderSimulation() {
   elements.simulationResultSummary.innerHTML = `${state.simulationRunning ? renderRunningNotice() : ""}${renderSimulationSummary(result, stale)}`;
   renderSimulationEnergyDashboard(result);
   renderSimulationHVACLoops(result);
+  renderSimulationComfort(result);
   renderSimulationHeatFlow();
   renderSimulationSeriesSelect(result);
   renderSimulationChart();
@@ -190,6 +191,7 @@ function renderSimulationEmpty() {
     elements.simulationFiles.innerHTML = `<div class="empty status-loading">${escapeHTML(t("simulation.writingOutputs", {}, "EnergyPlus is writing output files"))}</div>`;
     renderSimulationEnergyEmpty(t("simulation.outputPending", {}, "Outputs are pending while EnergyPlus runs."));
     renderSimulationHVACLoopEmpty(t("simulation.outputPending", {}, "Outputs are pending while EnergyPlus runs."));
+    renderSimulationComfortEmpty(t("simulation.outputPending", {}, "Outputs are pending while EnergyPlus runs."));
     toggleSimulationResultSections();
     updateSimulationOutputAvailability(null, true);
     return;
@@ -209,6 +211,7 @@ function renderSimulationEmpty() {
     elements.simulationFiles.innerHTML = `<div class="simulation-blocked-empty">${escapeHTML(t("simulation.blockedFiles", {}, "No output files will be created while simulation is blocked."))}</div>`;
     renderSimulationEnergyEmpty(t("simulation.outputBlocked", {}, "Run requirements must be fixed before outputs are available."));
     renderSimulationHVACLoopEmpty(t("simulation.outputBlocked", {}, "Run requirements must be fixed before outputs are available."));
+    renderSimulationComfortEmpty(t("simulation.outputBlocked", {}, "Run requirements must be fixed before outputs are available."));
     toggleSimulationResultSections();
     updateSimulationOutputAvailability(blockingIssue, false);
     return;
@@ -229,6 +232,7 @@ function renderSimulationEmpty() {
   renderSimulationResultTabs(null);
   renderSimulationEnergyEmpty(t("simulation.noEnergyResult", {}, "Run Basic Energy to inspect monthly energy results."));
   renderSimulationHVACLoopEmpty(t("simulation.noHVACLoopResult", {}, "Run HVAC Loop Check to inspect node state series."));
+  renderSimulationComfortEmpty(t("simulation.noComfortResult", {}, "Run Comfort Check to inspect zone temperature and setpoint series."));
   renderSimulationHeatFlowEmpty(t("simulation.noHeatFlow", {}, "Run with standard outputs to inspect zone heat-flow ledger."));
   elements.simulationSeriesSelect.innerHTML = `<option value="">${escapeHTML(t("simulation.noSeries", {}, "No SQL/CSV series"))}</option>`;
   elements.simulationChart.innerHTML = `<div class="empty">${t("simulation.noGraph", {}, "SQL/CSV graph will appear after a run with numeric output.")}</div>`;
@@ -346,19 +350,21 @@ function ensureActiveSimulationResultView(result) {
   if (availability[state.simulationActiveResultView]) {
     return;
   }
-  state.simulationActiveResultView = ["energy", "zone_heat_flow", "hvac_loops", "integrity", "series", "files"].find((view) => availability[view]) || "energy";
+  state.simulationActiveResultView = ["energy", "zone_heat_flow", "hvac_loops", "comfort", "integrity", "series", "files"].find((view) => availability[view]) || "energy";
 }
 
 function simulationResultViewAvailability(result) {
   if (!result) {
-    return { energy: true, zone_heat_flow: true, hvac_loops: true, integrity: true, series: true, files: true };
+    return { energy: true, zone_heat_flow: true, hvac_loops: true, comfort: true, integrity: true, series: true, files: true };
   }
   const energy = result.purposeResults?.energy || {};
   const hvacLoops = result.purposeResults?.hvacLoops || [];
+  const comfort = result.purposeResults?.comfort || {};
   return {
     energy: Boolean((energy.facilityMonthly || []).length || (energy.endUseMonthly || []).length || (energy.zoneMonthly || []).length),
     zone_heat_flow: Boolean((result.heatFlow?.zones || []).length),
     hvac_loops: Boolean(hvacLoops.some((loop) => (loop.series || []).length)),
+    comfort: Boolean((comfort.zones || []).length || (comfort.series || []).length),
     integrity: true,
     series: Boolean((result.series || []).length),
     files: Boolean((result.files || []).length),
@@ -478,6 +484,62 @@ function renderSimulationHVACLoopResult(loop) {
         </table>
       </div>
     </section>`;
+}
+
+function renderSimulationComfortEmpty(message) {
+  if (elements.simulationComfortStats) {
+    elements.simulationComfortStats.textContent = t("simulation.noComfortResult", {}, "No comfort result");
+  }
+  if (elements.simulationComfortResults) {
+    elements.simulationComfortResults.innerHTML = `<div class="empty">${escapeHTML(message)}</div>`;
+  }
+}
+
+function renderSimulationComfort(result) {
+  const comfort = result?.purposeResults?.comfort || {};
+  const zones = comfort.zones || [];
+  const seriesCount = (comfort.series || []).length;
+  if (!zones.length && !seriesCount) {
+    renderSimulationComfortEmpty(t("simulation.noComfortResult", {}, "Run Comfort Check to inspect zone temperature and setpoint series."));
+    return;
+  }
+  if (elements.simulationComfortStats) {
+    elements.simulationComfortStats.textContent = t(
+      "simulation.comfortStats",
+      { zones: zones.length, series: seriesCount },
+      `${zones.length} zones, ${seriesCount} comfort series`,
+    );
+  }
+  const completenessHTML = (comfort.completeness || []).length
+    ? `<div class="simulation-completeness-row">${comfort.completeness
+        .map((item) => `<span class="${item.found ? "found" : "missing"}">${escapeHTML(item.requiredOutput || "")}</span>`)
+        .join("")}</div>`
+    : "";
+  const rows = zones
+    .flatMap((zone) => (zone.metrics || []).map((metric) => ({ zoneName: zone.zoneName, metric })))
+    .slice(0, 120)
+    .map(
+      ({ zoneName, metric }) => `
+        <tr>
+          <td>${escapeHTML(zoneName || "")}</td>
+          <td>${escapeHTML(metric.name || "")}</td>
+          <td>${escapeHTML(metric.unit || "")}</td>
+          <td>${escapeHTML(formatNumber(metric.min))}</td>
+          <td>${escapeHTML(formatNumber(metric.max))}</td>
+          <td>${escapeHTML(formatNumber(metric.average))}</td>
+          <td>${escapeHTML(metric.source || "")}</td>
+          <td>${escapeHTML(metric.points?.length || 0)}</td>
+        </tr>`,
+    )
+    .join("");
+  elements.simulationComfortResults.innerHTML = `
+    ${completenessHTML}
+    <div class="output-table-wrap">
+      <table class="output-table">
+        <thead><tr><th>${escapeHTML(t("common.targetZones", {}, "Target Zones"))}</th><th>${escapeHTML(t("common.metric", {}, "Metric"))}</th><th>${escapeHTML(t("common.unit", {}, "Unit"))}</th><th>Min</th><th>Max</th><th>Avg</th><th>${escapeHTML(t("common.source", {}, "Source"))}</th><th>${escapeHTML(t("common.points", {}, "Points"))}</th></tr></thead>
+        <tbody>${rows || `<tr><td colspan="8">${escapeHTML(t("simulation.noComfortResult", {}, "No comfort result"))}</td></tr>`}</tbody>
+      </table>
+    </div>`;
 }
 
 function renderEnergyBarSection(title, series) {
