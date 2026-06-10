@@ -1112,6 +1112,47 @@
   font-size: 11px;
 }
 
+.simulation-hvac-loop-controls {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+  padding: 7px;
+}
+
+.simulation-hvac-toggle-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.simulation-hvac-toggle-row label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 24px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.simulation-hvac-toggle-row input {
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+.simulation-hvac-toggle-row span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .simulation-hvac-status {
   display: inline-flex;
   min-height: 20px;
@@ -1162,6 +1203,102 @@
 .simulation-hvac-source-legend .derived {
   border-color: color-mix(in srgb, var(--teal) 45%, var(--line));
   color: var(--teal);
+}
+
+.simulation-hvac-series-overview {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+  padding: 8px;
+}
+
+.simulation-hvac-series-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.simulation-hvac-series-head h5 {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.simulation-hvac-series-head span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.simulation-hvac-series-chart-wrap {
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.simulation-hvac-series-chart {
+  width: 100%;
+  min-width: 680px;
+  height: 260px;
+}
+
+.simulation-hvac-series-line {
+  fill: none;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.simulation-hvac-frame-marker {
+  stroke: var(--amber);
+  stroke-width: 2;
+  stroke-dasharray: 4 4;
+  vector-effect: non-scaling-stroke;
+}
+
+.simulation-hvac-series-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.simulation-hvac-series-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: min(260px, 100%);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  padding: 2px 7px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.simulation-hvac-series-legend i {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.simulation-hvac-series-legend small,
+.simulation-hvac-series-legend em {
+  color: var(--muted);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 650;
+}
+
+.simulation-hvac-series-legend span,
+.simulation-hvac-series-legend small,
+.simulation-hvac-series-legend em {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .simulation-completeness-row {

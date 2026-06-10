@@ -538,7 +538,9 @@ function renderSimulationHVACLoops(result) {
 }
 
 function renderSimulationHVACLoopResult(loop) {
-  const rows = (loop.series || [])
+  const visibleNodeSeries = hvacVisibleSeries(loop.series || []);
+  const visibleComponents = hvacVisibleComponents(loop.components || []);
+  const rows = visibleNodeSeries
     .slice(0, 80)
     .map(
       (series) => {
@@ -567,12 +569,14 @@ function renderSimulationHVACLoopResult(loop) {
         </div>
         <span>${escapeHTML([loop.loopType || t("simulation.nodeStateSeries", {}, "Node state series"), loop.statusMessage || ""].filter(Boolean).join(" - "))}</span>
       </div>
-      ${renderSimulationHVACLoopSnapshot(loop)}
+      ${renderSimulationHVACLoopControls(loop)}
+      ${simulationHVACPanelVisible("snapshot") ? renderSimulationHVACLoopSnapshot(loop) : ""}
+      ${simulationHVACPanelVisible("chart") ? renderSimulationHVACSeriesOverview(loop, visibleNodeSeries, visibleComponents) : ""}
       ${renderSimulationHVACLoopDerivedMetrics(loop.derivedMetrics || [])}
       ${renderSimulationHVACLoopAlerts(loop.alerts || [])}
       ${renderPurposeCompletenessRow(loop.completeness || [])}
       ${renderSimulationHVACNodeSummaries(loop.nodeSummaries || [])}
-      ${renderSimulationHVACComponentOperations(loop.components || [])}
+      ${renderSimulationHVACComponentOperations(visibleComponents)}
       <div class="output-table-wrap">
         <table class="output-table">
           <thead><tr><th>${escapeHTML(t("common.key", {}, "Key"))}</th><th>${escapeHTML(t("common.metric", {}, "Metric"))}</th><th>${escapeHTML(t("common.source", {}, "Source"))}</th><th>${escapeHTML(t("simulation.sourceOutput", {}, "Source output"))}</th><th>Min</th><th>Max</th><th>Avg</th><th>${escapeHTML(t("common.points", {}, "Points"))}</th></tr></thead>
@@ -580,6 +584,81 @@ function renderSimulationHVACLoopResult(loop) {
         </table>
       </div>
     </section>`;
+}
+
+function renderSimulationHVACLoopControls(loop) {
+  const groupOptions = hvacLoopGroupOptions(loop);
+  const panelOptions = [
+    { id: "snapshot", label: t("simulation.hvacSnapshot", {}, "Frame snapshot") },
+    { id: "chart", label: t("simulation.hvacMultiSeries", {}, "Multi-series") },
+  ];
+  return `
+    <div class="simulation-hvac-loop-controls">
+      <div class="simulation-hvac-toggle-row" role="group" aria-label="${escapeHTML(t("simulation.hvacPanels", {}, "HVAC panels"))}">
+        ${panelOptions
+          .map(
+            (option) => `
+              <label>
+                <input type="checkbox" data-simulation-hvac-panel-toggle="${escapeHTML(option.id)}" ${simulationHVACPanelVisible(option.id) ? "checked" : ""} />
+                <span>${escapeHTML(option.label)}</span>
+              </label>`,
+          )
+          .join("")}
+      </div>
+      <div class="simulation-hvac-toggle-row" role="group" aria-label="${escapeHTML(t("simulation.variableGroups", {}, "Variable groups"))}">
+        ${groupOptions
+          .map(
+            (option) => `
+              <label>
+                <input type="checkbox" data-simulation-hvac-group-toggle="${escapeHTML(option.value)}" ${simulationHVACGroupVisible(option.value) ? "checked" : ""} />
+                <span>${escapeHTML(option.label)}</span>
+              </label>`,
+          )
+          .join("")}
+      </div>
+    </div>`;
+}
+
+function hvacLoopGroupOptions(loop = {}) {
+  const series = [
+    ...(loop.series || []),
+    ...(loop.components || []).flatMap((component) => component.series || []),
+  ];
+  return simulationSeriesGroupOptions(series).filter((option) => option.value !== "all");
+}
+
+function simulationHVACPanelVisible(panelID) {
+  if (!state.simulationHVACPanels) {
+    state.simulationHVACPanels = {};
+  }
+  if (state.simulationHVACPanels[panelID] === undefined) {
+    state.simulationHVACPanels[panelID] = true;
+  }
+  return Boolean(state.simulationHVACPanels[panelID]);
+}
+
+function simulationHVACGroupVisible(groupID) {
+  if (!state.simulationHVACVisibleGroups) {
+    state.simulationHVACVisibleGroups = {};
+  }
+  if (state.simulationHVACVisibleGroups[groupID] === undefined) {
+    state.simulationHVACVisibleGroups[groupID] = true;
+  }
+  return Boolean(state.simulationHVACVisibleGroups[groupID]);
+}
+
+function hvacVisibleSeries(series = []) {
+  return (series || []).filter((item) => simulationHVACGroupVisible(simulationSeriesGroupID(item)));
+}
+
+function hvacVisibleComponents(components = []) {
+  return (components || [])
+    .map((component) => {
+      const metrics = (component.metrics || []).filter((metric) => simulationHVACGroupVisible(simulationVariableGroupID(metric.name)));
+      const series = (component.series || []).filter((item) => simulationHVACGroupVisible(simulationSeriesGroupID(item)));
+      return { ...component, metrics, series };
+    })
+    .filter((component) => (component.metrics || []).length || (component.series || []).length);
 }
 
 function renderSimulationHVACLoopSnapshot(loop) {
@@ -777,6 +856,113 @@ function renderSimulationHVACComponentSnapshot(item) {
 
 function hvacComponentSeriesCount(components) {
   return components.reduce((sum, component) => sum + (component.series || []).length, 0);
+}
+
+function renderSimulationHVACSeriesOverview(loop, nodeSeries = [], components = []) {
+  const series = [
+    ...nodeSeries.map((item) => ({ series: item, label: hvacSeriesLabel(item) })),
+    ...components.flatMap((component) =>
+      (component.series || []).map((item) => ({
+        series: item,
+        label: [component.componentName, seriesVariableName(item.column)].filter(Boolean).join(" / ") || hvacSeriesLabel(item),
+      })),
+    ),
+  ].filter((item) => simulationSeriesPointCount(item.series) > 1);
+  if (!series.length) {
+    return "";
+  }
+  const shown = series.slice(0, 8);
+  const frameCount = Math.max(...shown.map((item) => simulationSeriesPointCount(item.series)));
+  const frameIndex = Math.round(clampNumber(state.simulationHVACFrameIndex, 0, Math.max(0, frameCount - 1)));
+  const width = 920;
+  const height = 260;
+  const pad = { left: 48, right: 24, top: 26, bottom: 42 };
+  const plotWidth = width - pad.left - pad.right;
+  const plotHeight = height - pad.top - pad.bottom;
+  const palette = ["#0f766e", "#2563eb", "#f59e0b", "#dc2626", "#16a34a", "#7c3aed", "#475569", "#0891b2"];
+  const chartLines = shown
+    .map((item, seriesIndex) => {
+      const points = simulationSeriesPoints(item.series);
+      const values = points.map((point) => Number(point.value)).filter(Number.isFinite);
+      if (values.length < 2) {
+        return "";
+      }
+      const min = Math.min(...values);
+      const max = Math.max(...values);
+      const range = max - min || 1;
+      const sampleIndexes = sampledSeriesIndexes(points.length, 180);
+      const polyline = sampleIndexes
+        .map((pointIndex) => {
+          const point = points[pointIndex] || {};
+          const value = Number(point.value);
+          if (!Number.isFinite(value)) {
+            return "";
+          }
+          const x = pad.left + plotWidth * (pointIndex / Math.max(points.length - 1, 1));
+          const y = pad.top + plotHeight * (1 - (value - min) / range);
+          return `${roundSVG(x)},${roundSVG(y)}`;
+        })
+        .filter(Boolean)
+        .join(" ");
+      if (!polyline) {
+        return "";
+      }
+      return `<polyline points="${polyline}" class="simulation-hvac-series-line" style="stroke:${palette[seriesIndex % palette.length]}"></polyline>`;
+    })
+    .join("");
+  const firstPoints = simulationSeriesPoints(shown[0]?.series || {});
+  const firstLabel = firstPoints[0]?.label || "start";
+  const lastLabel = firstPoints[firstPoints.length - 1]?.label || "end";
+  const markerX = pad.left + plotWidth * (frameIndex / Math.max(frameCount - 1, 1));
+  const legend = shown
+    .map((item, index) => {
+      const group = simulationSeriesGroupID(item.series);
+      const unit = simulationSeriesDisplayUnit(item.series);
+      return `
+        <span title="${escapeHTML(item.label)}">
+          <i style="background:${palette[index % palette.length]}"></i>
+          ${escapeHTML(shortSimulationNodeLabel(item.label))}
+          ${unit ? `<small>${escapeHTML(unit)}</small>` : ""}
+          <em>${escapeHTML(simulationSeriesGroupLabel(group))}</em>
+        </span>`;
+    })
+    .join("");
+  const hiddenCount = series.length - shown.length;
+  return `
+    <section class="simulation-hvac-series-overview">
+      <div class="simulation-hvac-series-head">
+        <h5>${escapeHTML(t("simulation.hvacMultiSeries", {}, "Multi-series"))}</h5>
+        <span>${escapeHTML(t("simulation.hvacNormalizedSeries", {}, "Normalized by each series range"))}${hiddenCount > 0 ? ` - +${hiddenCount}` : ""}</span>
+      </div>
+      <div class="simulation-hvac-series-chart-wrap">
+        <svg class="simulation-hvac-series-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHTML(t("simulation.hvacMultiSeries", {}, "Multi-series"))}">
+          <line x1="${pad.left}" y1="${pad.top}" x2="${pad.left}" y2="${height - pad.bottom}" class="simulation-axis-line"></line>
+          <line x1="${pad.left}" y1="${height - pad.bottom}" x2="${width - pad.right}" y2="${height - pad.bottom}" class="simulation-axis-line"></line>
+          <line x1="${pad.left}" y1="${pad.top}" x2="${width - pad.right}" y2="${pad.top}" class="simulation-grid"></line>
+          <line x1="${pad.left}" y1="${pad.top + plotHeight / 2}" x2="${width - pad.right}" y2="${pad.top + plotHeight / 2}" class="simulation-grid"></line>
+          ${chartLines}
+          <line x1="${roundSVG(markerX)}" y1="${pad.top}" x2="${roundSVG(markerX)}" y2="${height - pad.bottom}" class="simulation-hvac-frame-marker"></line>
+          <text x="${pad.left}" y="${height - 14}" class="simulation-axis">${escapeHTML(firstLabel)}</text>
+          <text x="${width - pad.right}" y="${height - 14}" text-anchor="end" class="simulation-axis">${escapeHTML(lastLabel)}</text>
+          <text x="${pad.left}" y="17" class="simulation-title">${escapeHTML(t("simulation.hvacMultiSeries", {}, "Multi-series"))}</text>
+        </svg>
+      </div>
+      <div class="simulation-hvac-series-legend">${legend}</div>
+    </section>`;
+}
+
+function sampledSeriesIndexes(pointCount, maxPoints) {
+  const count = Math.max(0, Number(pointCount) || 0);
+  if (count <= maxPoints) {
+    return Array.from({ length: count }, (_value, index) => index);
+  }
+  const last = count - 1;
+  const step = last / Math.max(maxPoints - 1, 1);
+  return Array.from({ length: maxPoints }, (_value, index) => Math.min(last, Math.round(index * step)));
+}
+
+function hvacSeriesLabel(series = {}) {
+  return [seriesNodeKey(series.column), seriesVariableName(series.column)].filter(Boolean).join(" / ") || simulationSeriesDisplayColumn(series);
 }
 
 function renderSimulationHVACLoopDerivedMetrics(metrics) {
@@ -1611,6 +1797,20 @@ function handleSimulationEnergyDashboardChange(event) {
 
 function handleSimulationHVACResultsInput(event) {
   if (!(event.target instanceof Element)) {
+    return;
+  }
+  const groupToggle = event.target.closest("[data-simulation-hvac-group-toggle]");
+  if (groupToggle) {
+    state.simulationHVACVisibleGroups = state.simulationHVACVisibleGroups || {};
+    state.simulationHVACVisibleGroups[groupToggle.dataset.simulationHvacGroupToggle || "other"] = Boolean(groupToggle.checked);
+    renderSimulationHVACLoops(state.simulationResult);
+    return;
+  }
+  const panelToggle = event.target.closest("[data-simulation-hvac-panel-toggle]");
+  if (panelToggle) {
+    state.simulationHVACPanels = state.simulationHVACPanels || {};
+    state.simulationHVACPanels[panelToggle.dataset.simulationHvacPanelToggle || "snapshot"] = Boolean(panelToggle.checked);
+    renderSimulationHVACLoops(state.simulationResult);
     return;
   }
   const input = event.target.closest("[data-simulation-hvac-frame]");
@@ -3157,21 +3357,30 @@ function setSimulationSeriesGroupUnavailable() {
 }
 
 function simulationSeriesGroupOptions(series) {
-  const options = [
-    { value: "all", label: t("simulation.seriesAllGroups", {}, "All groups") },
-    { value: "temperature", label: t("simulation.seriesGroupTemperature", {}, "Temperature") },
-    { value: "mass_flow", label: t("simulation.seriesGroupMassFlow", {}, "Mass flow") },
-    { value: "setpoint", label: t("simulation.seriesGroupSetpoint", {}, "Setpoint") },
-    { value: "rate_load", label: t("simulation.seriesGroupRateLoad", {}, "Rate / load") },
-    { value: "power_energy", label: t("simulation.seriesGroupPowerEnergy", {}, "Power / energy") },
-    { value: "other", label: t("simulation.seriesGroupOther", {}, "Other") },
-  ];
+  const options = simulationSeriesGroupDefinitions();
   const groups = new Set((series || []).map(simulationSeriesGroupID));
   return options.filter((option) => option.value === "all" || groups.has(option.value));
 }
 
+function simulationSeriesGroupDefinitions() {
+  return [
+    { value: "all", label: t("simulation.seriesAllGroups", {}, "All groups") },
+    { value: "temperature", label: t("simulation.seriesGroupTemperature", {}, "Temperature") },
+    { value: "mass_flow", label: t("simulation.seriesGroupMassFlow", {}, "Mass flow") },
+    { value: "setpoint", label: t("simulation.seriesGroupSetpoint", {}, "Setpoint") },
+    { value: "psychrometric", label: t("simulation.seriesGroupPsychrometric", {}, "Humidity / enthalpy") },
+    { value: "rate_load", label: t("simulation.seriesGroupRateLoad", {}, "Rate / load") },
+    { value: "power_energy", label: t("simulation.seriesGroupPowerEnergy", {}, "Power / energy") },
+    { value: "other", label: t("simulation.seriesGroupOther", {}, "Other") },
+  ];
+}
+
 function simulationSeriesGroupID(series) {
-  const name = normalizeOutputMatchToken(seriesVariableName(series?.column || ""));
+  return simulationVariableGroupID(seriesVariableName(series?.column || ""));
+}
+
+function simulationVariableGroupID(variableName) {
+  const name = normalizeOutputMatchToken(variableName);
   if (name.includes("setpoint")) {
     return "setpoint";
   }
@@ -3181,6 +3390,9 @@ function simulationSeriesGroupID(series) {
   if (name.includes("mass flow") || name.includes("flow rate") || name.includes("flowrate")) {
     return "mass_flow";
   }
+  if (name.includes("humidity") || name.includes("enthalpy")) {
+    return "psychrometric";
+  }
   if (name.includes("rate") || name.includes("load") || name.includes("runtime fraction")) {
     return "rate_load";
   }
@@ -3188,6 +3400,10 @@ function simulationSeriesGroupID(series) {
     return "power_energy";
   }
   return "other";
+}
+
+function simulationSeriesGroupLabel(groupID) {
+  return simulationSeriesGroupDefinitions().find((option) => option.value === groupID)?.label || groupID;
 }
 
 function renderSimulationChart() {

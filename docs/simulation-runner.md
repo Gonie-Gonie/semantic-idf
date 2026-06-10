@@ -126,7 +126,10 @@ Purpose result viewers now include:
   zero flow, flow without temperature spread, missing setpoints, and large
   temperature-setpoint deltas. The frame snapshot includes a compact node
   schematic with live temperature/flow labels before detailed node and component
-  cards.
+  cards. The result view also provides panel toggles for the snapshot and
+  normalized multi-series chart, plus variable group toggles for temperature,
+  setpoints, mass flow, humidity/enthalpy, rate/load, power/energy, and other
+  HVAC outputs.
 - Comfort zone metric summaries for temperature, setpoint, PMV, and PPD series,
   with optional custom `MM-DD` period scoping for the rendered trends and issue
   ranking.
