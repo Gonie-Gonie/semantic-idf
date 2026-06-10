@@ -1269,7 +1269,11 @@ func writeSemanticHVACComponent(builder *semanticYAMLBuilder, indent int, compon
 	if component.FamilyLabel != "" {
 		builder.kvForObject(indent+1, "family_label", component.FamilyLabel, objectIndex, component.ObjectType, name)
 	}
-	builder.kvForObject(indent+1, "role_here", role, objectIndex, component.ObjectType, name)
+	if component.DisplayLabel != "" {
+		builder.kvForObject(indent+1, "display_label", component.DisplayLabel, objectIndex, component.ObjectType, name)
+	}
+	roleHere := firstNonEmpty(component.RoleHere, role)
+	builder.kvForObject(indent+1, "role_here", roleHere, objectIndex, component.ObjectType, name)
 	if component.RelationSource != "" || component.RelationConfidence != "" || len(component.RelationEvidence) > 0 {
 		builder.rawForObject(indent+1, "relation:", objectIndex, component.ObjectType, name)
 		if component.RelationSource != "" {
@@ -1315,7 +1319,7 @@ func writeSemanticHVACComponent(builder *semanticYAMLBuilder, indent int, compon
 		builder.kvForObject(indent+1, "reason", "unresolved_component_reference", objectIndex, component.ObjectType, name)
 	}
 	if objectIndex >= 0 {
-		writeSemanticDuplicatedAs(builder, indent+1, objectIndex, component.ObjectType, name, role, []string{"hvac/equipment_catalog/" + blankAs(name, component.ObjectType)})
+		writeSemanticDuplicatedAs(builder, indent+1, objectIndex, component.ObjectType, name, roleHere, []string{"hvac/equipment_catalog/" + blankAs(name, component.ObjectType)})
 	}
 }
 
@@ -1402,7 +1406,30 @@ func writeSemanticHVACEquipmentCatalog(builder *semanticYAMLBuilder, ctx *semant
 		byBucket[bucket] = append(byBucket[bucket], component)
 	}
 	builder.raw(2, "equipment_catalog:")
-	for _, bucket := range []string{"fans", "coils", "pumps", "chillers", "boilers", "towers", "terminals", "other"} {
+	for _, bucket := range []string{
+		"fans",
+		"coils",
+		"pumps",
+		"pipes",
+		"chillers",
+		"boilers",
+		"cooling_towers",
+		"heat_pumps",
+		"water_heaters",
+		"thermal_storage",
+		"heat_exchangers",
+		"district_energy",
+		"terminals",
+		"unitary_systems",
+		"outdoor_air",
+		"controllers",
+		"setpoint_managers",
+		"availability_managers",
+		"plant_components",
+		"zone_hvac",
+		"air_distribution",
+		"other",
+	} {
 		components := byBucket[bucket]
 		if len(components) == 0 {
 			continue
@@ -1427,14 +1454,42 @@ func semanticHVACEquipmentBucket(objectType string) string {
 		return "coils"
 	case family == "pump":
 		return "pumps"
-	case family == "chiller" || family == "district_cooling":
+	case family == "pipe":
+		return "pipes"
+	case family == "chiller":
 		return "chillers"
-	case family == "boiler" || family == "district_heating":
+	case family == "boiler":
 		return "boilers"
 	case family == "cooling_tower":
-		return "towers"
+		return "cooling_towers"
+	case family == "heat_pump":
+		return "heat_pumps"
+	case family == "water_heater":
+		return "water_heaters"
+	case family == "thermal_storage":
+		return "thermal_storage"
+	case family == "heat_exchanger":
+		return "heat_exchangers"
+	case family == "district_cooling" || family == "district_heating":
+		return "district_energy"
 	case family == "terminal":
 		return "terminals"
+	case family == "unitary_system":
+		return "unitary_systems"
+	case family == "outdoor_air":
+		return "outdoor_air"
+	case family == "controller":
+		return "controllers"
+	case family == "setpoint_manager":
+		return "setpoint_managers"
+	case family == "availability_manager":
+		return "availability_managers"
+	case family == "plant_component":
+		return "plant_components"
+	case family == "zone_hvac":
+		return "zone_hvac"
+	case family == "air_distribution":
+		return "air_distribution"
 	default:
 		return "other"
 	}

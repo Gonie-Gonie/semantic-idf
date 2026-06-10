@@ -1968,6 +1968,21 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
   color: var(--amber);
 }
 
+.hvac-loop-equipment.pipe,
+.hvac-loop-equipment.heat_exchanger {
+  color: var(--muted);
+}
+
+.hvac-loop-equipment.tower,
+.hvac-loop-equipment.heat_pump,
+.hvac-loop-equipment.district {
+  color: var(--green);
+}
+
+.hvac-loop-equipment.control {
+  color: var(--focus);
+}
+
 .hvac-loop-equipment.zone {
   color: var(--focus);
 }
@@ -2005,9 +2020,15 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 .hvac-loop-icon .coil-fin,
 .hvac-loop-icon .coil-line,
 .hvac-loop-icon .pump-arrow,
+.hvac-loop-icon .pipe-body,
 .hvac-loop-icon .snow,
 .hvac-loop-icon .terminal-damper,
 .hvac-loop-icon .room-line,
+.hvac-loop-icon .tower-fill,
+.hvac-loop-icon .heat-pump-arrows,
+.hvac-loop-icon .heat-exchanger-lines,
+.hvac-loop-icon .district-grid,
+.hvac-loop-icon .control-line,
 .hvac-loop-icon .component-mark {
   fill: none;
   stroke: currentColor;
@@ -2032,7 +2053,9 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 
 .hvac-loop-icon .pump-volute,
 .hvac-loop-icon .duct,
-.hvac-loop-icon .icon-vent {
+.hvac-loop-icon .icon-vent,
+.hvac-loop-icon .tower-fan,
+.hvac-loop-icon .control-dot {
   fill: color-mix(in srgb, var(--surface), currentColor 26%);
   stroke: currentColor;
   stroke-width: 1.3;

@@ -640,8 +640,8 @@ function renderLoopDiagramItem(item, position, side, relatedKeys = []) {
     key,
     x: position.x,
     y: position.y,
-    label: component.objectName || component.objectType || "Component",
-    meta: component.objectType || "Component",
+    label: componentDisplayName(component),
+    meta: componentMetaLabel(component),
     iconKind: visual.iconKind,
     shortLabel: visual.shortLabel,
     objectType: component.objectType || "",
@@ -759,7 +759,8 @@ function renderHVACBranch(branch) {
 function renderHVACComponent(component) {
   const existsClass = component.exists ? "" : " missing";
   const badges = renderHVACEvidenceBadges([
-    component.familyLabel || component.family,
+    component.displayLabel || component.familyLabel || component.family,
+    component.roleHere,
     component.relationConfidence,
     component.relationSource,
     component.listedInZoneEquipment ? "Zone equipment" : "",
@@ -770,8 +771,8 @@ function renderHVACComponent(component) {
   return `
     <div class="hvac-component${existsClass}">
       <div class="hvac-component-main">
-        <strong>${escapeHTML(component.objectName || component.objectType || t("common.component"))}</strong>
-        <span>${escapeHTML(component.objectType || t("hvac.unknownType"))} ${renderObjectLink(component.objectIndex, component.objectType)}</span>
+        <strong>${escapeHTML(componentDisplayName(component))}</strong>
+        <span>${escapeHTML(componentMetaLabel(component))} ${renderObjectLink(component.objectIndex, component.objectType)}</span>
       </div>
       ${badges}
       <div class="hvac-node-line compact">
@@ -996,13 +997,13 @@ function renderHVACRelationGraphDetail(relations) {
 
 function renderHVACZoneRelation(relation) {
   const terminalComponents = (relation.terminalUnits || []).length ? relation.terminalUnits || [] : relation.zoneEquipment || [];
-  const terminalText = terminalComponents.map((item) => item.objectName || item.objectType).filter(Boolean).join(", ") || "N/A";
+  const terminalText = terminalComponents.map(componentDisplayName).filter(Boolean).join(", ") || "N/A";
   const terminalEvidence = terminalComponents
     .flatMap((item) => [
       item.listedInZoneEquipment ? "listed" : "",
-      item.resolvedFromADU ? "ADU" : "",
+      item.resolvedFromAirDistributionUnit ? "ADU" : "",
       item.outletMatchesZoneInlet ? "outlet->zone" : "",
-      item.inletOnAirLoopDemand ? "demand path" : "",
+      item.inletOnAirLoopDemandPath ? "demand path" : "",
       ...(item.relationEvidence || []),
     ])
     .filter(Boolean);
@@ -1127,7 +1128,7 @@ function renderHVACInspectorSelection(selected) {
       selected.component
         ? `
           <div class="hvac-inspector-kv"><span>${t("common.type")}</span><strong>${escapeHTML(selected.component.objectType || "N/A")}</strong></div>
-          <div class="hvac-inspector-kv"><span>Family</span><strong>${escapeHTML(selected.component.familyLabel || selected.component.family || "N/A")}</strong></div>
+          <div class="hvac-inspector-kv"><span>Family</span><strong>${escapeHTML(componentMetaLabel(selected.component))}</strong></div>
           <div class="hvac-inspector-kv"><span>Evidence</span><strong>${escapeHTML([selected.component.relationConfidence, selected.component.relationSource].filter(Boolean).join(" / ") || "N/A")}</strong></div>
           <div class="hvac-inspector-kv"><span>${t("common.inlet")}</span><strong>${escapeHTML(selected.component.inletNode || "N/A")}</strong></div>
           <div class="hvac-inspector-kv"><span>${t("common.outlet")}</span><strong>${escapeHTML(selected.component.outletNode || "N/A")}</strong></div>`
@@ -1363,6 +1364,8 @@ function componentSearchFields(component = {}) {
     component.objectName,
     component.family,
     component.familyLabel,
+    component.displayLabel,
+    component.roleHere,
     component.relationSource,
     component.relationConfidence,
     ...(component.relationEvidence || []),
@@ -1457,7 +1460,7 @@ function renderSelectedHVACDetail(selected) {
         </div>
         <div class="hvac-detail-grid">
           <div><span>${t("common.object")}</span><strong>${renderObjectLink(component.objectIndex, component.objectType) || "N/A"}</strong></div>
-          <div><span>Family</span><strong>${escapeHTML(component.familyLabel || component.family || "N/A")}</strong></div>
+          <div><span>Family</span><strong>${escapeHTML(componentMetaLabel(component))}</strong></div>
           <div><span>Evidence</span><strong>${escapeHTML([component.relationConfidence, component.relationSource].filter(Boolean).join(" / ") || "N/A")}</strong></div>
           <div><span>${t("common.inlet")}</span><strong>${escapeHTML(component.inletNode || "N/A")}</strong></div>
           <div><span>${t("common.outlet")}</span><strong>${escapeHTML(component.outletNode || "N/A")}</strong></div>
@@ -1663,11 +1666,81 @@ function truncateText(value, maxLength) {
   return `${text.slice(0, Math.max(0, maxLength - 3))}...`;
 }
 
+function componentDisplayName(component = {}) {
+  const name = component.objectName || "";
+  const label = component.displayLabel || componentFamilyLabel(component.family, component.objectType);
+  if (name) {
+    return name;
+  }
+  return label || component.objectType || t("hvac.unknownType", {}, "Unknown HVAC object");
+}
+
+function componentMetaLabel(component = {}) {
+  return [component.displayLabel || componentFamilyLabel(component.family, component.objectType), component.objectType]
+    .filter(Boolean)
+    .join(" / ") || t("hvac.unknownType", {}, "Unknown HVAC object");
+}
+
+function componentFamilyLabel(family, objectType = "") {
+  switch (family) {
+    case "fan":
+      return "Fan";
+    case "cooling_coil":
+      return "Cooling Coil";
+    case "heating_coil":
+      return "Heating Coil";
+    case "coil":
+      return "Coil";
+    case "pump":
+      return "Pump";
+    case "pipe":
+      return "Pipe";
+    case "chiller":
+      return "Chiller";
+    case "boiler":
+      return "Boiler";
+    case "cooling_tower":
+      return "Cooling Tower";
+    case "heat_pump":
+      return "Heat Pump";
+    case "water_heater":
+      return "Water Heater";
+    case "thermal_storage":
+      return "Thermal Storage";
+    case "heat_exchanger":
+      return "Heat Exchanger";
+    case "district_cooling":
+      return "District Cooling";
+    case "district_heating":
+      return "District Heating";
+    case "terminal":
+      return "Air Terminal";
+    case "zone_hvac":
+      return "Zone HVAC";
+    case "unitary_system":
+      return "Unitary System";
+    case "outdoor_air":
+      return "Outdoor Air";
+    case "controller":
+      return "Controller";
+    case "setpoint_manager":
+      return "Setpoint Manager";
+    case "availability_manager":
+      return "Availability Manager";
+    case "plant_component":
+      return "Plant Component";
+    case "air_distribution":
+      return "Air Distribution";
+    default:
+      return objectType ? "" : "Unknown HVAC object";
+  }
+}
+
 function componentVisual(component = {}) {
-  const iconKind = hvacVisualKindForType(component.objectType || "");
+  const iconKind = hvacVisualKindForFamily(component.family, component.objectType || "");
   return {
     iconKind,
-    shortLabel: hvacVisualLabel(iconKind, component.objectType || component.objectName || ""),
+    shortLabel: component.displayLabel || componentFamilyLabel(component.family, component.objectType) || hvacVisualLabel(iconKind, component.objectType || component.objectName || ""),
   };
 }
 
@@ -1686,6 +1759,49 @@ function relationNodeVisual(node = {}) {
       return { iconKind: "zone", shortLabel: "Zone" };
     default:
       return { iconKind: "component", shortLabel: truncateText(node.label || "Item", 10) };
+  }
+}
+
+function hvacVisualKindForFamily(family, objectType) {
+  switch (family) {
+    case "fan":
+      return "fan";
+    case "cooling_coil":
+    case "heating_coil":
+    case "coil":
+      return "coil";
+    case "pump":
+      return "pump";
+    case "pipe":
+      return "pipe";
+    case "chiller":
+      return "chiller";
+    case "boiler":
+    case "water_heater":
+      return "boiler";
+    case "cooling_tower":
+      return "tower";
+    case "heat_pump":
+      return "heat_pump";
+    case "heat_exchanger":
+      return "heat_exchanger";
+    case "district_cooling":
+    case "district_heating":
+      return "district";
+    case "terminal":
+    case "zone_hvac":
+    case "unitary_system":
+      return "terminal";
+    case "outdoor_air":
+      return "air";
+    case "controller":
+    case "setpoint_manager":
+    case "availability_manager":
+      return "control";
+    case "plant_component":
+      return "plant";
+    default:
+      return hvacVisualKindForType(objectType);
   }
 }
 
@@ -1768,6 +1884,12 @@ function renderLoopEquipmentBody(kind, cx, cy, objectType = "") {
           <circle class="pump-volute" cx="${cx - 12}" cy="${cy}" r="12"></circle>
           <path class="pump-arrow" d="M${cx - 16},${cy} H${cx + 13} M${cx + 7},${cy - 6} L${cx + 15},${cy} L${cx + 7},${cy + 6}"></path>
         </g>`;
+    case "pipe":
+      return `
+        <g class="hvac-loop-icon pipe" aria-hidden="true">
+          <path class="pipe-body" d="M${cx - 30},${cy} H${cx + 30}"></path>
+          <path class="pipe-body" d="M${cx - 16},${cy - 9} V${cy + 9} M${cx + 16},${cy - 9} V${cy + 9}"></path>
+        </g>`;
     case "chiller":
       return `
         <g class="hvac-loop-icon chiller" aria-hidden="true">
@@ -1775,12 +1897,44 @@ function renderLoopEquipmentBody(kind, cx, cy, objectType = "") {
           <rect class="icon-vent" x="${cx - 18}" y="${cy - 11}" width="36" height="7" rx="2"></rect>
           <path class="snow" d="M${cx},${cy - 1} V${cy + 12} M${cx - 7},${cy + 2} L${cx + 7},${cy + 9} M${cx + 7},${cy + 2} L${cx - 7},${cy + 9}"></path>
         </g>`;
+    case "tower":
+      return `
+        <g class="hvac-loop-icon tower" aria-hidden="true">
+          <path class="icon-case tower-case" d="M${cx - 20},${cy + 17} L${cx - 13},${cy - 16} H${cx + 13} L${cx + 20},${cy + 17} Z"></path>
+          <path class="tower-fill" d="M${cx - 13},${cy - 5} H${cx + 13} M${cx - 16},${cy + 6} H${cx + 16}"></path>
+          <circle class="tower-fan" cx="${cx}" cy="${cy - 11}" r="5"></circle>
+        </g>`;
+    case "heat_pump":
+      return `
+        <g class="hvac-loop-icon heat-pump" aria-hidden="true">
+          <rect class="icon-case" x="${cx - 23}" y="${cy - 16}" width="46" height="32" rx="5"></rect>
+          <path class="heat-pump-arrows" d="M${cx - 13},${cy - 3} H${cx + 12} M${cx + 6},${cy - 9} L${cx + 14},${cy - 3} L${cx + 6},${cy + 3} M${cx + 13},${cy + 8} H${cx - 12} M${cx - 6},${cy + 2} L${cx - 14},${cy + 8} L${cx - 6},${cy + 14}"></path>
+        </g>`;
     case "boiler":
       return `
         <g class="hvac-loop-icon boiler" aria-hidden="true">
           <rect class="icon-case" x="${cx - 22}" y="${cy - 17}" width="44" height="34" rx="4"></rect>
           <path class="flame" d="M${cx},${cy - 10} C${cx + 11},${cy - 1} ${cx + 7},${cy + 13} ${cx},${cy + 13} C${cx - 8},${cy + 13} ${cx - 11},${cy + 2} ${cx - 3},${cy - 4} C${cx - 1},${cy - 6} ${cx - 1},${cy - 8} ${cx},${cy - 10} Z"></path>
           <path class="flame-core" d="M${cx + 1},${cy - 2} C${cx + 5},${cy + 4} ${cx + 4},${cy + 10} ${cx},${cy + 10} C${cx - 4},${cy + 10} ${cx - 5},${cy + 4} ${cx + 1},${cy - 2} Z"></path>
+        </g>`;
+    case "heat_exchanger":
+      return `
+        <g class="hvac-loop-icon heat-exchanger" aria-hidden="true">
+          <rect class="icon-case" x="${cx - 23}" y="${cy - 16}" width="46" height="32" rx="5"></rect>
+          <path class="heat-exchanger-lines" d="M${cx - 16},${cy - 9} L${cx + 16},${cy + 9} M${cx - 16},${cy + 9} L${cx + 16},${cy - 9} M${cx - 19},${cy} H${cx + 19}"></path>
+        </g>`;
+    case "district":
+      return `
+        <g class="hvac-loop-icon district" aria-hidden="true">
+          <rect class="icon-case" x="${cx - 22}" y="${cy - 17}" width="44" height="34" rx="4"></rect>
+          <path class="district-grid" d="M${cx - 12},${cy + 10} V${cy - 10} H${cx + 12} V${cy + 10} M${cx - 12},${cy - 1} H${cx + 12} M${cx},${cy - 10} V${cy + 10}"></path>
+        </g>`;
+    case "control":
+      return `
+        <g class="hvac-loop-icon control" aria-hidden="true">
+          <rect class="icon-case" x="${cx - 21}" y="${cy - 15}" width="42" height="30" rx="6"></rect>
+          <path class="control-line" d="M${cx - 12},${cy - 5} H${cx + 12} M${cx - 7},${cy} H${cx + 7} M${cx - 12},${cy + 5} H${cx + 12}"></path>
+          <circle class="control-dot" cx="${cx - 4}" cy="${cy}" r="2"></circle>
         </g>`;
     case "terminal":
       return `
@@ -1928,8 +2082,8 @@ function buildRelationGraph(relations) {
             key: relationComponentKey(component, "terminal"),
             kind: "terminal",
             column: "terminal",
-            label: component.objectName || component.objectType || "Equipment",
-            meta: [component.familyLabel || component.family, component.relationConfidence].filter(Boolean).join(" / ") || component.objectType || "Equipment",
+            label: component.objectName || componentDisplayName(component),
+            meta: [component.displayLabel || component.familyLabel || component.family, component.relationConfidence].filter(Boolean).join(" / ") || component.objectType || "Equipment",
             component,
           }),
         )
@@ -1959,8 +2113,8 @@ function buildRelationGraph(relations) {
             key: relationComponentKey(component, "source"),
             kind: "source",
             column: "plant",
-            label: component.objectName || component.objectType || "Source",
-            meta: [component.familyLabel || component.family, component.loopName].filter(Boolean).join(" / ") || (relation.plantLoopNames || []).join(", ") || "PlantLoop",
+            label: component.objectName || componentDisplayName(component),
+            meta: [component.displayLabel || component.familyLabel || component.family, component.loopName].filter(Boolean).join(" / ") || (relation.plantLoopNames || []).join(", ") || "PlantLoop",
             component,
           }),
         )

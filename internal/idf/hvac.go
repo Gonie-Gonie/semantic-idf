@@ -66,6 +66,7 @@ type HVACComponent struct {
 	Exists                  bool            `json:"exists"`
 	Family                  string          `json:"family,omitempty"`
 	FamilyLabel             string          `json:"familyLabel,omitempty"`
+	DisplayLabel            string          `json:"displayLabel,omitempty"`
 	LoopName                string          `json:"loopName,omitempty"`
 	ControlType             string          `json:"controlType,omitempty"`
 	InletNode               string          `json:"inletNode,omitempty"`
@@ -446,6 +447,7 @@ func buildHVACLoopSide(ctx *hvacContext, sideName string, owner Object, inletNod
 			side.Warnings = append(side.Warnings, hvacWarningForObject(owner, "missing_branch", fmt.Sprintf("%s references missing Branch %q.", objectLabel(owner), branchName)))
 			continue
 		}
+		branch = annotateHVACBranchContext(branch, owner.Type, sideName)
 		side.Branches = append(side.Branches, branch)
 	}
 	side.Connectors = connectorsFromList(ctx, side.ConnectorListName, owner, knownBranches)
@@ -454,6 +456,57 @@ func buildHVACLoopSide(ctx *hvacContext, sideName string, owner Object, inletNod
 	}
 	side.Warnings = append(side.Warnings, validateHVACLoopSide(owner, side)...)
 	return side
+}
+
+func annotateHVACBranchContext(branch HVACBranch, loopType string, sideName string) HVACBranch {
+	for index := range branch.Components {
+		branch.Components[index].RoleHere = hvacComponentContextRole(branch.Components[index], loopType, sideName)
+	}
+	return branch
+}
+
+func hvacComponentContextRole(component HVACComponent, loopType string, sideName string) string {
+	family := component.Family
+	if family == "" {
+		family, _ = hvacComponentFamily(component.ObjectType)
+	}
+	if isHVACControlType(component.ObjectType) {
+		return "control"
+	}
+	if family == "pipe" {
+		return "bypass_pipe"
+	}
+	loopKey := strings.ToLower(strings.TrimSpace(loopType))
+	sideKey := strings.ToLower(strings.TrimSpace(sideName))
+	switch loopKey {
+	case "airloophvac":
+		if sideKey == "demand" {
+			return "air_demand_distribution"
+		}
+		return "air_supply_component"
+	case "plantloop":
+		if sideKey == "demand" {
+			return "plant_demand_load"
+		}
+		if isPlantSourceEquipmentType(component.ObjectType) {
+			return "plant_supply_source"
+		}
+		return "plant_supply_component"
+	case "condenserloop":
+		if sideKey == "demand" {
+			return "condenser_demand_load"
+		}
+		return "condenser_supply_reject"
+	default:
+		return "loop_component"
+	}
+}
+
+func hvacZoneEquipmentRole(component HVACComponent) string {
+	if isAirTerminalType(component.ObjectType) {
+		return "zone_terminal"
+	}
+	return "zone_equipment"
 }
 
 func duplicateBranchNameWarnings(owner Object, branchListName string, branchNames []string) []HVACWarning {
@@ -831,11 +884,12 @@ func isBranchControlValue(value string) bool {
 func newHVACComponent(ctx *hvacContext, objectType string, objectNameValue string) HVACComponent {
 	family, familyLabel := hvacComponentFamily(objectType)
 	component := HVACComponent{
-		ObjectType:  strings.TrimSpace(objectType),
-		ObjectName:  strings.TrimSpace(objectNameValue),
-		ObjectIndex: -1,
-		Family:      family,
-		FamilyLabel: familyLabel,
+		ObjectType:   strings.TrimSpace(objectType),
+		ObjectName:   strings.TrimSpace(objectNameValue),
+		ObjectIndex:  -1,
+		Family:       family,
+		FamilyLabel:  familyLabel,
+		DisplayLabel: hvacComponentDisplayLabel(objectType),
 	}
 	if component.ObjectType == "" || component.ObjectName == "" {
 		return component
@@ -1055,6 +1109,7 @@ func equipmentFromZoneEquipmentList(ctx *hvacContext, equipmentList Object, rela
 			continue
 		}
 		component := newHVACComponent(ctx, objectType, objectNameValue)
+		component.RoleHere = hvacZoneEquipmentRole(component)
 		component.ListedInZoneEquipment = true
 		component.RelationSource = "explicit"
 		component.RelationConfidence = "high"
@@ -1296,6 +1351,7 @@ func resolveAirDistributionUnitTerminal(ctx *hvacContext, equipment HVACComponen
 	if equipment.OutletNode != "" {
 		terminal.OutletNode = equipment.OutletNode
 	}
+	terminal.RoleHere = "zone_terminal"
 	terminal.ResolvedFromADU = true
 	terminal.DistributionUnitName = equipment.ObjectName
 	terminal.RelationSource = "explicit"
@@ -1684,6 +1740,7 @@ func plantSourceEquipmentForLoopNames(loops []HVACLoop, loopNames []string) []HV
 			}
 			seen[key] = true
 			component.LoopName = loop.Name
+			component.RoleHere = hvacComponentContextRole(component, loop.Type, "Supply")
 			equipment = append(equipment, component)
 		}
 	}
@@ -2345,12 +2402,22 @@ func hvacComponentFamily(objectType string) (string, string) {
 		return "cooling_tower", "Cooling towers"
 	case strings.HasPrefix(lower, "heatpump:"):
 		return "heat_pump", "Heat pumps"
+	case strings.Contains(lower, "unitarysystem"):
+		return "unitary_system", "Unitary systems"
 	case strings.HasPrefix(lower, "waterheater:"):
 		return "water_heater", "Water heaters"
 	case strings.HasPrefix(lower, "thermalstorage:"):
 		return "thermal_storage", "Thermal storage"
 	case strings.HasPrefix(lower, "pipe:"):
 		return "pipe", "Pipes"
+	case strings.HasPrefix(lower, "outdoorair:") || strings.HasPrefix(lower, "airloophvac:outdoorairsystem"):
+		return "outdoor_air", "Outdoor air systems"
+	case strings.HasPrefix(lower, "controller:"):
+		return "controller", "Controllers"
+	case strings.HasPrefix(lower, "setpointmanager:"):
+		return "setpoint_manager", "Setpoint managers"
+	case strings.HasPrefix(lower, "availabilitymanager:"):
+		return "availability_manager", "Availability managers"
 	case strings.HasPrefix(lower, "districtcooling"):
 		return "district_cooling", "District cooling"
 	case strings.HasPrefix(lower, "districtheating"):
@@ -2367,6 +2434,65 @@ func hvacComponentFamily(objectType string) (string, string) {
 		return "air_distribution", "Air distribution"
 	default:
 		return "other", "Other HVAC"
+	}
+}
+
+func hvacComponentDisplayLabel(objectType string) string {
+	family, _ := hvacComponentFamily(objectType)
+	switch family {
+	case "fan":
+		return "Fan"
+	case "cooling_coil":
+		return "Cooling Coil"
+	case "heating_coil":
+		return "Heating Coil"
+	case "coil":
+		return "Coil"
+	case "pump":
+		return "Pump"
+	case "pipe":
+		return "Pipe"
+	case "chiller":
+		return "Chiller"
+	case "boiler":
+		return "Boiler"
+	case "cooling_tower":
+		return "Cooling Tower"
+	case "heat_pump":
+		return "Heat Pump"
+	case "water_heater":
+		return "Water Heater"
+	case "thermal_storage":
+		return "Thermal Storage"
+	case "heat_exchanger":
+		return "Heat Exchanger"
+	case "district_cooling":
+		return "District Cooling"
+	case "district_heating":
+		return "District Heating"
+	case "terminal":
+		return "Air Terminal"
+	case "zone_hvac":
+		return "Zone HVAC"
+	case "unitary_system":
+		return "Unitary System"
+	case "outdoor_air":
+		return "Outdoor Air"
+	case "controller":
+		return "Controller"
+	case "setpoint_manager":
+		return "Setpoint Manager"
+	case "availability_manager":
+		return "Availability Manager"
+	case "plant_component":
+		return "Plant Component"
+	case "air_distribution":
+		return "Air Distribution"
+	default:
+		if strings.TrimSpace(objectType) == "" {
+			return "Unknown HVAC object"
+		}
+		return "HVAC Component"
 	}
 }
 
@@ -2461,11 +2587,21 @@ func isHVACComponentType(objectType string) bool {
 		strings.HasPrefix(lower, "districtheating") ||
 		strings.HasPrefix(lower, "coolingtower:") ||
 		strings.HasPrefix(lower, "heatpump:") ||
+		strings.Contains(lower, "unitarysystem") ||
 		strings.HasPrefix(lower, "pipe:") ||
+		strings.HasPrefix(lower, "outdoorair:") ||
 		strings.HasPrefix(lower, "waterheater:") ||
 		strings.HasPrefix(lower, "thermalstorage:") ||
 		strings.HasPrefix(lower, "heat exchanger:") ||
-		strings.HasPrefix(lower, "heatexchanger:")
+		strings.HasPrefix(lower, "heatexchanger:") ||
+		isHVACControlType(objectType)
+}
+
+func isHVACControlType(objectType string) bool {
+	lower := strings.ToLower(strings.TrimSpace(objectType))
+	return strings.HasPrefix(lower, "controller:") ||
+		strings.HasPrefix(lower, "setpointmanager:") ||
+		strings.HasPrefix(lower, "availabilitymanager:")
 }
 
 func isPlantSourceEquipmentType(objectType string) bool {

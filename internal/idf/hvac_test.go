@@ -323,6 +323,73 @@ func TestAnalyzeHVACCondenserLoopAndLoopRuleWarnings(t *testing.T) {
 	}
 }
 
+func TestAnalyzeHVACComponentFamiliesAndContextRoles(t *testing.T) {
+	doc := Document{Objects: []Object{
+		{Index: 0, Type: "CondenserLoop", Fields: []Field{
+			{Value: "Condenser Loop"},
+			{Value: "Water"},
+			{Value: ""},
+			{Value: ""},
+			{Value: "Cnd Setpoint"},
+			{Value: "35"},
+			{Value: "5"},
+			{Value: "Autosize"},
+			{Value: "0"},
+			{Value: "Autosize"},
+			{Value: "Cnd Supply Inlet"},
+			{Value: "Cnd Supply Outlet"},
+			{Value: "Cnd Branches"},
+			{Value: ""},
+		}},
+		{Index: 1, Type: "BranchList", Fields: []Field{
+			{Value: "Cnd Branches"},
+			{Value: "Tower Branch"},
+		}},
+		{Index: 2, Type: "Branch", Fields: []Field{
+			{Value: "Tower Branch"},
+			{Value: ""},
+			{Value: "Pipe:Adiabatic"},
+			{Value: "Bypass Pipe"},
+			{Value: "Cnd Supply Inlet"},
+			{Value: "Tower Inlet"},
+			{Value: "CoolingTower:SingleSpeed"},
+			{Value: "Heat Rejection Tower"},
+			{Value: "Tower Inlet"},
+			{Value: "Cnd Supply Outlet"},
+		}},
+		{Index: 3, Type: "Pipe:Adiabatic", Fields: []Field{{Value: "Bypass Pipe"}}},
+		{Index: 4, Type: "CoolingTower:SingleSpeed", Fields: []Field{{Value: "Heat Rejection Tower"}}},
+	}}
+
+	report := AnalyzeHVAC(doc)
+	loop := findHVACTestingLoop(report, "Condenser Loop")
+	if loop == nil || len(loop.SupplySide.Branches) != 1 {
+		t.Fatalf("condenser loop supply branch not parsed: %#v", report.Loops)
+	}
+	components := loop.SupplySide.Branches[0].Components
+	pipe := findHVACTestingComponent(components, "Bypass Pipe")
+	if pipe == nil {
+		t.Fatalf("pipe component not found: %#v", components)
+	}
+	if pipe.Family != "pipe" || pipe.DisplayLabel != "Pipe" || pipe.RoleHere != "bypass_pipe" {
+		t.Fatalf("pipe classification = %#v, want pipe/Pipe/bypass_pipe", *pipe)
+	}
+	tower := findHVACTestingComponent(components, "Heat Rejection Tower")
+	if tower == nil {
+		t.Fatalf("cooling tower component not found: %#v", components)
+	}
+	if tower.Family != "cooling_tower" || tower.DisplayLabel != "Cooling Tower" || tower.RoleHere != "condenser_supply_reject" {
+		t.Fatalf("tower classification = %#v, want cooling_tower/Cooling Tower/condenser_supply_reject", *tower)
+	}
+
+	projection := BuildSemanticYAMLProjection(doc, SemanticYAMLMetadata{})
+	for _, expected := range []string{"cooling_towers:", "pipes:", "display_label: Pipe", "role_here: condenser_supply_reject"} {
+		if !strings.Contains(projection.Text, expected) {
+			t.Fatalf("semantic HVAC catalog missing %q:\n%s", expected, projection.Text)
+		}
+	}
+}
+
 func TestAnalyzeHVACReferenceLargeOfficeRelations(t *testing.T) {
 	text, err := os.ReadFile("../../frontend/src/samples/RefBldgLargeOfficeNew2004_Chicago.idf")
 	if err != nil {
@@ -395,4 +462,13 @@ func componentSliceContainsName(components []HVACComponent, name string) bool {
 		}
 	}
 	return false
+}
+
+func findHVACTestingComponent(components []HVACComponent, name string) *HVACComponent {
+	for index := range components {
+		if strings.EqualFold(components[index].ObjectName, name) {
+			return &components[index]
+		}
+	}
+	return nil
 }
