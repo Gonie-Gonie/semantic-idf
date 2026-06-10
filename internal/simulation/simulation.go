@@ -1074,16 +1074,22 @@ func parseSQLResults(result *SimulationRunResult) {
 		if file.Kind != "sqlite" {
 			continue
 		}
+		var plan PurposeRunPlan
+		if result.PurposeRunPlan != nil {
+			plan = *result.PurposeRunPlan
+		}
+		parsed, err := parseSimulationSQL(file.Path, plan)
+		if err != nil {
+			continue
+		}
 		if len(result.Series) == 0 {
-			series, err := parseSimulationSQLSeries(file.Path)
-			if err == nil && len(series) > 0 {
-				result.Series = append(result.Series, series...)
+			if len(parsed.Series) > 0 {
+				result.Series = append(result.Series, parsed.Series...)
 			}
 		}
 		if len(result.HeatFlow.Zones) == 0 {
-			heatFlow, err := parseSimulationHeatFlowSQL(file.Path)
-			if err == nil && len(heatFlow.Zones) > 0 {
-				result.HeatFlow = heatFlow
+			if len(parsed.HeatFlow.Zones) > 0 {
+				result.HeatFlow = parsed.HeatFlow
 			}
 		}
 	}

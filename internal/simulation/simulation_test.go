@@ -122,6 +122,23 @@ func TestParseSimulationSQLGracefullyHandlesMissingReportTables(t *testing.T) {
 	}
 }
 
+func TestParseSimulationSQLEntrypointBuildsCombinedResult(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "eplusout.sql")
+	createTestEnergyPlusSQL(t, path)
+
+	result, err := parseSimulationSQL(path, PurposeRunPlan{Purposes: []SimulationPurposeID{SimulationPurposeZoneHeatFlow}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.SourceFile != "eplusout.sql" || len(result.Purposes) != 1 || result.Purposes[0] != SimulationPurposeZoneHeatFlow {
+		t.Fatalf("entrypoint metadata = %#v", result)
+	}
+	if len(result.Series) == 0 || len(result.HeatFlow.Zones) == 0 {
+		t.Fatalf("entrypoint parsed result = %#v", result)
+	}
+}
+
 func TestParseSimulationHeatFlowCSVBuildsDataset(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "eplusout.csv")

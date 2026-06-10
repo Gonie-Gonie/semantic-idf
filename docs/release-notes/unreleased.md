@@ -93,4 +93,5 @@ The release script infers bump size from these sections:
 
 ## Fixed
 
+- SQL result parsing now has a combined entrypoint that gathers series, energy, heat-flow, integrity, and comfort unmet-hour summaries while preserving partial parse results.
 - Purpose SQL parsers now treat incomplete SQLite result files as empty results so CSV/ESO fallback and partial purpose result handling can continue cleanly.

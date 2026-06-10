@@ -55,6 +55,66 @@ type integritySQLParseResult struct {
 	Source         string
 }
 
+type SQLParseResult struct {
+	SourceFile        string                `json:"sourceFile,omitempty"`
+	Purposes          []SimulationPurposeID `json:"purposes,omitempty"`
+	Series            []SimulationSeries    `json:"series,omitempty"`
+	Energy            EnergyDashboardResult `json:"energy,omitempty"`
+	HeatFlow          HeatFlowDataset       `json:"heatFlow,omitempty"`
+	Integrity         integritySQLParseResult
+	ComfortUnmetHours []ComfortUnmetSummary `json:"comfortUnmetHours,omitempty"`
+}
+
+func parseSimulationSQL(path string, plan PurposeRunPlan) (SQLParseResult, error) {
+	result := SQLParseResult{
+		SourceFile: filepath.Base(path),
+		Purposes:   append([]SimulationPurposeID(nil), plan.Purposes...),
+	}
+	var firstErr error
+	if series, err := parseSimulationSQLSeries(path); err != nil {
+		firstErr = err
+	} else {
+		result.Series = series
+	}
+	if energy, err := parseSimulationEnergySQL(path); err != nil {
+		if firstErr == nil {
+			firstErr = err
+		}
+	} else {
+		result.Energy = energy
+	}
+	if heatFlow, err := parseSimulationHeatFlowSQL(path); err != nil {
+		if firstErr == nil {
+			firstErr = err
+		}
+	} else {
+		result.HeatFlow = heatFlow
+	}
+	if integrity, err := parseSimulationIntegritySQL(path); err != nil {
+		if firstErr == nil {
+			firstErr = err
+		}
+	} else {
+		result.Integrity = integrity
+	}
+	if unmet, err := parseComfortUnmetSQL(path); err != nil {
+		if firstErr == nil {
+			firstErr = err
+		}
+	} else {
+		result.ComfortUnmetHours = unmet
+	}
+	if len(result.Series) > 0 ||
+		len(result.Energy.FacilityMonthly)+len(result.Energy.EndUseMonthly)+len(result.Energy.ZoneMonthly) > 0 ||
+		len(result.HeatFlow.Zones) > 0 ||
+		result.Integrity.HasErrorsTable ||
+		result.Integrity.HasTabularData ||
+		len(result.ComfortUnmetHours) > 0 {
+		firstErr = nil
+	}
+	return result, firstErr
+}
+
 func parseSimulationSQLSeries(path string) ([]SimulationSeries, error) {
 	db, err := sql.Open("sqlite", path)
 	if err != nil {

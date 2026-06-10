@@ -97,6 +97,11 @@ units (`J`/`kJ`/`MJ`/`GJ`/`Wh` to `kWh`, `W` to `kW`) and grouped into monthly
 chart points when `Time.Month` is available, so hourly or timestep energy rows
 can still feed monthly dashboards.
 
+`parseSimulationSQL` is the combined SQLite entrypoint. It gathers generic
+time-series rows, Basic Energy dashboard data, SQL heat-flow data, Integrity
+diagnostics/tabular reports, and Comfort unmet-hours rows into one parse result,
+while keeping partial results when one SQL feature is absent or malformed.
+
 Purpose result viewers now include:
 
 - Basic Energy facility/end-use monthly charts, zone matrix, and zone reported
