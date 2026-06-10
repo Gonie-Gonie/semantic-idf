@@ -297,6 +297,11 @@ func TestPurposeResultBundleUsesSQLEnergyDashboard(t *testing.T) {
 
 	result := &SimulationRunResult{
 		Status: "succeeded",
+		PurposeRunPlan: &PurposeRunPlan{OutputObjects: []PurposeOutputObject{
+			{ObjectType: "Output:Meter", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, KeyValue: "Electricity:Facility"},
+			{ObjectType: "Output:Meter", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, KeyValue: "NaturalGas:Facility"},
+			{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, VariableName: "Zone Lights Electricity Energy"},
+		}},
 		Files: []SimulationFileInfo{{
 			Name: "eplusout.sql",
 			Path: path,
@@ -310,7 +315,10 @@ func TestPurposeResultBundleUsesSQLEnergyDashboard(t *testing.T) {
 	if len(bundle.Energy.FacilityMonthly) != 1 || bundle.Energy.FacilityMonthly[0].Source != "eplusout.sql" {
 		t.Fatalf("bundle energy = %#v", bundle.Energy)
 	}
-	if len(bundle.Completeness) != 1 || !bundle.Completeness[0].Found || bundle.Completeness[0].Source != "sql" {
+	if len(bundle.Completeness) != 3 ||
+		!purposeCompletenessFound(bundle.Completeness, "Electricity:Facility") ||
+		!purposeCompletenessFound(bundle.Completeness, "Zone Lights Electricity Energy") ||
+		purposeCompletenessFound(bundle.Completeness, "NaturalGas:Facility") {
 		t.Fatalf("bundle completeness = %#v", bundle.Completeness)
 	}
 }

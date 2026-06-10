@@ -268,6 +268,7 @@ type PurposeCompletenessItem struct {
 	RequiredOutput string              `json:"requiredOutput"`
 	Found          bool                `json:"found"`
 	Source         string              `json:"source"`
+	Status         string              `json:"status,omitempty"`
 	Message        string              `json:"message,omitempty"`
 }
 
@@ -467,13 +468,8 @@ func BuildPurposeResultBundle(result *SimulationRunResult, request SimulationPur
 			if len(bundle.Energy.FacilityMonthly)+len(bundle.Energy.EndUseMonthly)+len(bundle.Energy.ZoneMonthly) == 0 {
 				bundle.Energy = buildEnergyDashboardResult(result.Series)
 			}
-			bundle.Completeness = append(bundle.Completeness, purposeCompleteness(
-				SimulationPurposeBasicEnergy,
-				"monthly energy series",
-				len(bundle.Energy.FacilityMonthly)+len(bundle.Energy.EndUseMonthly)+len(bundle.Energy.ZoneMonthly) > 0,
-				energyDashboardSource(bundle.Energy, result.Series),
-			))
-			bundle.Energy.Completeness = append([]PurposeCompletenessItem(nil), bundle.Completeness...)
+			bundle.Energy.Completeness = energyDashboardCompleteness(bundle.Energy, result.PurposeRunPlan, result.Series)
+			bundle.Completeness = append(bundle.Completeness, bundle.Energy.Completeness...)
 		case SimulationPurposeZoneHeatFlow:
 			bundle.ZoneHeatFlow = result.HeatFlow
 			bundle.ZoneHeatFlow.Completeness = zoneHeatFlowCompleteness(result.HeatFlow)
@@ -1023,6 +1019,80 @@ func buildEnergyDashboardResultFromFiles(files []SimulationFileInfo) EnergyDashb
 		}
 	}
 	return EnergyDashboardResult{}
+}
+
+func energyDashboardCompleteness(result EnergyDashboardResult, plan *PurposeRunPlan, fallbackSeries []SimulationSeries) []PurposeCompletenessItem {
+	expected := basicEnergyCompletenessOutputs(plan)
+	foundSources := map[string]string{}
+	for _, item := range result.FacilityMonthly {
+		if item.Name != "" {
+			foundSources[normalizeEnergyOutputName(item.Name)] = simulationSourceFromFilename(item.Source)
+		}
+	}
+	for _, item := range result.EndUseMonthly {
+		if item.Name != "" {
+			foundSources[normalizeEnergyOutputName(item.Name)] = simulationSourceFromFilename(item.Source)
+		}
+	}
+	for _, item := range result.ZoneMonthly {
+		if item.Metric != "" {
+			foundSources[normalizeEnergyOutputName(item.Metric)] = simulationSourceFromFilename(item.Source)
+		}
+	}
+	fallbackSource := energyDashboardSource(result, fallbackSeries)
+	items := make([]PurposeCompletenessItem, 0, len(expected))
+	for _, name := range expected {
+		source, found := foundSources[normalizeEnergyOutputName(name)]
+		if source == "" && found {
+			source = fallbackSource
+		}
+		if !found {
+			source = "missing"
+		}
+		items = append(items, purposeCompleteness(SimulationPurposeBasicEnergy, name, found, source))
+	}
+	return items
+}
+
+func basicEnergyCompletenessOutputs(plan *PurposeRunPlan) []string {
+	out := []string{}
+	if plan != nil {
+		for _, object := range plan.OutputObjects {
+			if !purposeIDsContain(object.PurposeIDs, SimulationPurposeBasicEnergy) {
+				continue
+			}
+			switch strings.ToLower(strings.TrimSpace(object.ObjectType)) {
+			case "output:meter", "output:meter:meterfileonly", "output:meter:cumulative", "output:meter:cumulativemeterfileonly":
+				out = appendUniquePurposeString(out, object.KeyValue)
+			case "output:variable":
+				if energyZoneVariables()[normalizeEnergyOutputName(object.VariableName)] {
+					out = appendUniquePurposeString(out, object.VariableName)
+				}
+			}
+		}
+	}
+	if len(out) > 0 {
+		return out
+	}
+	for _, name := range energyFacilityMeterNames() {
+		out = appendUniquePurposeString(out, name)
+	}
+	for _, name := range energyEndUseMeterNames() {
+		out = appendUniquePurposeString(out, name)
+	}
+	for _, name := range energyZoneVariableNames() {
+		out = appendUniquePurposeString(out, name)
+	}
+	return out
+}
+
+func purposeIDsContain(values []SimulationPurposeID, target SimulationPurposeID) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
 }
 
 func energyDashboardSource(result EnergyDashboardResult, series []SimulationSeries) string {
@@ -1991,11 +2061,16 @@ func unitFromSeriesColumn(value string) string {
 }
 
 func purposeCompleteness(purposeID SimulationPurposeID, requiredOutput string, found bool, source string) PurposeCompletenessItem {
+	status := "missing"
+	if found {
+		status = "found"
+	}
 	item := PurposeCompletenessItem{
 		PurposeID:      purposeID,
 		RequiredOutput: requiredOutput,
 		Found:          found,
 		Source:         source,
+		Status:         status,
 	}
 	if !found {
 		item.Message = "Required output was not found in the parsed result files."

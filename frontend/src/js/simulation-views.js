@@ -720,7 +720,8 @@ function renderPurposeCompletenessRow(items) {
   return `<div class="simulation-completeness-row">${items
     .map((item) => {
       const source = item.source ? ` - ${item.source}` : "";
-      return `<span class="${item.found ? "found" : "missing"}" title="${escapeHTML(`${item.requiredOutput || ""}${source}`)}">${escapeHTML(item.requiredOutput || "")}</span>`;
+      const status = item.status || (item.found ? "found" : "missing");
+      return `<span class="${escapeHTML(status)}" title="${escapeHTML(`${item.requiredOutput || ""}${source}`)}">${escapeHTML(item.requiredOutput || "")}</span>`;
     })
     .join("")}</div>`;
 }

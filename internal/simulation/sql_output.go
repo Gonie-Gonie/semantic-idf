@@ -758,17 +758,25 @@ func classifySQLEnergyDictionary(row sqlOutputDictionaryRow) (sqlEnergyDictionar
 }
 
 func energyFacilityMeters() map[string]bool {
-	return normalizedEnergySet(
+	return normalizedEnergySet(energyFacilityMeterNames()...)
+}
+
+func energyFacilityMeterNames() []string {
+	return []string{
 		"Electricity:Facility",
 		"NaturalGas:Facility",
 		"DistrictCooling:Facility",
 		"DistrictHeating:Facility",
 		"Water:Facility",
-	)
+	}
 }
 
 func energyEndUseMeters() map[string]bool {
-	return normalizedEnergySet(
+	return normalizedEnergySet(energyEndUseMeterNames()...)
+}
+
+func energyEndUseMeterNames() []string {
+	return []string{
 		"Electricity:Cooling",
 		"Electricity:Heating",
 		"Electricity:InteriorLights",
@@ -779,17 +787,21 @@ func energyEndUseMeters() map[string]bool {
 		"Electricity:WaterSystems",
 		"NaturalGas:Heating",
 		"NaturalGas:WaterSystems",
-	)
+	}
 }
 
 func energyZoneVariables() map[string]bool {
-	return normalizedEnergySet(
+	return normalizedEnergySet(energyZoneVariableNames()...)
+}
+
+func energyZoneVariableNames() []string {
+	return []string{
 		"Zone Lights Electricity Energy",
 		"Zone Electric Equipment Electricity Energy",
 		"Zone Gas Equipment Gas Energy",
 		"Zone Air System Sensible Heating Energy",
 		"Zone Air System Sensible Cooling Energy",
-	)
+	}
 }
 
 func normalizedEnergySet(values ...string) map[string]bool {
