@@ -10,6 +10,12 @@ export function initializeHVACControls() {
     if (event.target.closest("[data-jump-object-index]")) {
       return;
     }
+    const scaleButton = event.target.closest("[data-hvac-graph-scale]");
+    if (scaleButton) {
+      state.hvacGraphScale = hvacGraphScaleMode(scaleButton.dataset.hvacGraphScale || "fit");
+      renderHVAC();
+      return;
+    }
     const loopJump = event.target.closest("[data-hvac-jump-loop-name]");
     if (loopJump) {
       jumpToHVACLoopByName(loopJump.dataset.hvacJumpLoopName || "", loopJump.dataset.hvacJumpGraphKey || "");
@@ -358,11 +364,40 @@ function renderHVACLoopView(loop, query) {
       <div class="hvac-loop-meta">
         <span>${escapeHTML(t("count.zones", { count: (loop.relatedZones || []).length }))}</span>
         <span>${escapeHTML(t("hvac.crossLoopLinks", { count: (loop.relatedLoops || []).length }))}</span>
+        ${renderHVACGraphScaleControls()}
       </div>
     </div>
     ${renderHVACLoopDiagram(loop)}
     ${renderHVACLoopGraphDetail(loop)}
     ${renderCrossLoopRelations(loop)}`;
+}
+
+function hvacGraphScaleMode(value = state.hvacGraphScale) {
+  return ["fit", "actual", "compact"].includes(value) ? value : "fit";
+}
+
+function hvacGraphScaleClass() {
+  return `scale-${hvacGraphScaleMode()}`;
+}
+
+function renderHVACGraphScaleControls() {
+  const options = [
+    ["fit", t("hvac.graphScaleFit", {}, "Fit")],
+    ["actual", t("hvac.graphScaleActual", {}, "100%")],
+    ["compact", t("hvac.graphScaleCompact", {}, "Compact")],
+  ];
+  return `
+    <div class="hvac-graph-scale" role="group" aria-label="${escapeHTML(t("hvac.graphScale", {}, "HVAC graph scale"))}">
+      ${options
+        .map(([value, label]) => {
+          const active = hvacGraphScaleMode() === value;
+          return `
+            <button class="${active ? "active" : ""}" type="button" data-hvac-graph-scale="${escapeHTML(value)}" aria-pressed="${active ? "true" : "false"}">
+              ${escapeHTML(label)}
+            </button>`;
+        })
+        .join("")}
+    </div>`;
 }
 
 function renderHVACLoopDiagram(loop) {
@@ -400,7 +435,7 @@ function renderHVACLoopDiagram(loop) {
   const loopSelected = selectedKey === `loop:${loop.id}` ? "selected" : "";
 
   return `
-    <div class="hvac-graphic-shell">
+    <div class="hvac-graphic-shell ${hvacGraphScaleClass()}" style="--hvac-graph-width: ${width}px">
       <svg class="hvac-loop-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHTML(loop.name || "HVAC loop")} loop diagram">
         <defs>
           <marker id="hvacLoopArrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
@@ -918,7 +953,10 @@ function renderHVACRelationGraph(relations) {
   const width = graph.width;
   const height = graph.height;
   return `
-    <div class="hvac-graphic-shell hvac-relation-shell">
+    <div class="hvac-graphic-shell hvac-relation-shell ${hvacGraphScaleClass()}" style="--hvac-graph-width: ${width}px">
+      <div class="hvac-graph-toolbar">
+        ${renderHVACGraphScaleControls()}
+      </div>
       <svg class="hvac-relation-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="HVAC system-zone relation graph">
         <defs>
           <marker id="hvacRelationArrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">

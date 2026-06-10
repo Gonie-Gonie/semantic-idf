@@ -19,6 +19,7 @@ export const state = {
   activeHVACView: "relation",
   activeHVACNodeName: "",
   activeHVACGraphKey: "",
+  hvacGraphScale: "fit",
   hvacApplyField: null,
   hvacOutputRequest: null,
   hvacApplyPreview: null,

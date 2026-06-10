@@ -30,6 +30,7 @@ The release script infers bump size from these sections:
 - Heat-flow simulation now adds a mini timeline brush with reset/day/week/month/run-period shortcuts and Shift+wheel panning for visible frame ranges.
 - Summary rows now switch long, inferred, advanced, and readiness metrics into compact two-line rows for narrow analysis panes.
 - Diagnose regression tests now include golden snapshots for valid baseline, design-day RunPeriod notices, output wildcard/environment keys, and Schedule:Compact tokens.
+- HVAC loop and relation graphs now include Fit, 100%, and Compact scale controls for narrow panes and detailed graph inspection.
 
 ## Fixed
 

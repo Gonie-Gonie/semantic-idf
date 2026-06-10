@@ -2019,8 +2019,22 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 }
 
 .hvac-graphic-shell {
-  min-width: 820px;
+  width: 100%;
+  min-width: min(820px, 100%);
   padding: 10px;
+}
+
+.hvac-graphic-shell.scale-fit,
+.hvac-graphic-shell.scale-compact {
+  min-width: 0;
+}
+
+.hvac-graphic-shell.scale-actual {
+  min-width: var(--hvac-graph-width, 1120px);
+}
+
+.hvac-graphic-shell.scale-compact {
+  max-width: 760px;
 }
 
 .hvac-loop-svg,
@@ -2031,6 +2045,11 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
   border: 1px solid var(--surface-2);
   border-radius: var(--radius);
   background: var(--surface-3);
+}
+
+.hvac-graphic-shell.scale-compact .hvac-loop-svg,
+.hvac-graphic-shell.scale-compact .hvac-relation-svg {
+  min-height: 320px;
 }
 
 .hvac-loop-svg {
@@ -2624,6 +2643,38 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 6px;
+}
+
+.hvac-graph-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
+.hvac-graph-scale {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  border: 1px solid var(--surface-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  padding: 2px;
+}
+
+.hvac-graph-scale button {
+  min-height: 26px;
+  border: 0;
+  border-radius: calc(var(--radius-sm) - 2px);
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  padding: 3px 8px;
+}
+
+.hvac-graph-scale button:hover,
+.hvac-graph-scale button.active {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
 }
 
 .hvac-loop-meta span,
