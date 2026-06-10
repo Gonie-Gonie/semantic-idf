@@ -29,6 +29,7 @@ The release script infers bump size from these sections:
 - HVAC plant relation inference now uses a typed component reference graph with source field metadata instead of blindly scanning every component field.
 - Heat-flow simulation now adds a mini timeline brush with reset/day/week/month/run-period shortcuts and Shift+wheel panning for visible frame ranges.
 - Purpose simulation regression coverage now verifies run-copy output injection preserves the source IDF file and permanent purpose output edits flow through the Output apply pipeline.
+- Simulation regression coverage now locks the SQL-first ReadVarsESO policy so `-r` is only used for explicit fallback or legacy CSV modes.
 - SQL parser regression coverage now directly checks ReportDataDictionary/Time/ReportData joins for series names, labels, units, and statistics.
 - Summary rows now switch long, inferred, advanced, and readiness metrics into compact two-line rows for narrow analysis panes.
 - Diagnose regression tests now include golden snapshots for valid baseline, design-day RunPeriod notices, output wildcard/environment keys, and Schedule:Compact tokens.

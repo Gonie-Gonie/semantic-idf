@@ -694,6 +694,42 @@ func TestWritePurposeRunArtifacts(t *testing.T) {
 	}
 }
 
+func TestSimulationUsesReadVarsESOPolicy(t *testing.T) {
+	cases := []struct {
+		name string
+		req  SimulationRunRequest
+		want bool
+	}{
+		{
+			name: "sql first disables readvarseso by default",
+			req:  SimulationRunRequest{ResultMode: "sql_first"},
+			want: false,
+		},
+		{
+			name: "sql first allows explicit readvarseso fallback",
+			req:  SimulationRunRequest{ResultMode: "sql_first", UseReadVarsESO: true},
+			want: true,
+		},
+		{
+			name: "csv fallback always uses readvarseso",
+			req:  SimulationRunRequest{ResultMode: "csv_fallback"},
+			want: true,
+		},
+		{
+			name: "legacy empty mode keeps readvarseso behavior",
+			req:  SimulationRunRequest{},
+			want: true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := simulationUsesReadVarsESO(tc.req); got != tc.want {
+				t.Fatalf("simulationUsesReadVarsESO() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestReadSimulationOutputsEmitsDetailedProgressPhases(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "eplusout.err"), []byte("EnergyPlus Completed Successfully"), 0o644); err != nil {
