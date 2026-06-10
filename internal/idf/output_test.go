@@ -167,7 +167,7 @@ func TestApplyOutputAddsUpdatesAndRemoves(t *testing.T) {
 	}
 }
 
-func TestTableStyleRecommendationUsesSingleIDDField(t *testing.T) {
+func TestTableStyleRecommendationUsesIDDFields(t *testing.T) {
 	doc, err := Parse(outputFixtureIDF)
 	if err != nil {
 		t.Fatalf("parse output fixture: %v", err)
@@ -177,11 +177,14 @@ func TestTableStyleRecommendationUsesSingleIDDField(t *testing.T) {
 	if recommendation == nil {
 		t.Fatalf("missing table-style-html recommendation")
 	}
-	if len(recommendation.Fields) != 1 {
-		t.Fatalf("table style fields = %#v, want only Column Separator", recommendation.Fields)
+	if len(recommendation.Fields) != 2 {
+		t.Fatalf("table style fields = %#v, want Column Separator and Unit Conversion", recommendation.Fields)
 	}
 	if recommendation.Fields[0].Name != "Column Separator" || recommendation.Fields[0].Value != "HTML" {
 		t.Fatalf("table style field = %#v, want Column Separator=HTML", recommendation.Fields[0])
+	}
+	if recommendation.Fields[1].Name != "Unit Conversion" || recommendation.Fields[1].Value != "JtoKWH" {
+		t.Fatalf("table style field = %#v, want Unit Conversion=JtoKWH", recommendation.Fields[1])
 	}
 }
 
@@ -222,7 +225,8 @@ Output:Table:SummaryReports,
 func TestApplyOutputDoesNotDuplicateUniqueTableStyle(t *testing.T) {
 	doc, err := Parse(outputFixtureIDF + `
 OutputControl:Table:Style,
-  Comma;
+  Comma,
+  None;
 `)
 	if err != nil {
 		t.Fatalf("parse output fixture: %v", err)
@@ -230,7 +234,7 @@ OutputControl:Table:Style,
 	updated, preview := ApplyOutput(doc, OutputApplyRequest{
 		AddObjects: []OutputObjectRequest{{
 			ObjectType: "OutputControl:Table:Style",
-			Fields:     outputFields("Column Separator", "HTML"),
+			Fields:     outputFields("Column Separator", "HTML", "Unit Conversion", "JtoKWH"),
 		}},
 	})
 	if !preview.CanApply {
@@ -240,7 +244,7 @@ OutputControl:Table:Style,
 	for _, obj := range updated.Objects {
 		if obj.Type == "OutputControl:Table:Style" {
 			count++
-			if len(obj.Fields) != 1 || obj.Fields[0].Value != "Comma" {
+			if len(obj.Fields) != 2 || obj.Fields[0].Value != "Comma" || obj.Fields[1].Value != "None" {
 				t.Fatalf("table style was unexpectedly rewritten: %#v", obj.Fields)
 			}
 		}

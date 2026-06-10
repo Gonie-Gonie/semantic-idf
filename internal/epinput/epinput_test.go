@@ -93,6 +93,31 @@ func TestParseEPJSONDetectsVersionAndWritesIDF(t *testing.T) {
 	}
 }
 
+func TestOutputControlObjectsRoundTripWithoutSyntheticName(t *testing.T) {
+	model, err := Parse("model.idf", []byte(`Version,
+  24.2;                    !- Version Identifier
+
+OutputControl:Table:Style,
+  Comma,                   !- Column Separator
+  JtoKWH;                  !- Unit Conversion
+`))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	idfText, err := Write(model, FormatIDF)
+	if err != nil {
+		t.Fatalf("Write(idf) error = %v", err)
+	}
+	if strings.Contains(idfText, "OutputControl:Table:Style 1") {
+		t.Fatalf("IDF output contains a synthetic OutputControl name:\n%s", idfText)
+	}
+	for _, want := range []string{"OutputControl:Table:Style,", "Comma,", "JtoKWH;"} {
+		if !strings.Contains(idfText, want) {
+			t.Fatalf("IDF output missing %q:\n%s", want, idfText)
+		}
+	}
+}
+
 func TestRejectsPre22VersionWhenKnown(t *testing.T) {
 	_, err := Parse("old.idf", []byte("Version,\n  9.6; !- Version Identifier\n"))
 	if err == nil {

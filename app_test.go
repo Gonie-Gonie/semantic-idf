@@ -307,7 +307,11 @@ Output:Variable,
 }
 
 func TestPreparePurposeSimulationRequestUsesRunCopy(t *testing.T) {
-	original := appSummaryIDF
+	original := appSummaryIDF + `
+OutputControl:Table:Style,
+  Comma,                   !- Column Separator
+  JtoKWH;                  !- Unit Conversion
+`
 	tempDir := t.TempDir()
 	inputPath := filepath.Join(tempDir, "input.idf")
 	if err := os.WriteFile(inputPath, []byte(original), 0o644); err != nil {
@@ -340,6 +344,9 @@ func TestPreparePurposeSimulationRequestUsesRunCopy(t *testing.T) {
 	}
 	if !strings.Contains(prepared.Text, "Output:SQLite") || !strings.Contains(prepared.Text, "Zone Lights Electricity Energy") {
 		t.Fatalf("prepared run copy is missing purpose outputs:\n%s", prepared.Text)
+	}
+	if strings.Contains(prepared.Text, "OutputControl:Table:Style 1") {
+		t.Fatalf("prepared run copy inserted a synthetic OutputControl name:\n%s", prepared.Text)
 	}
 	if prepared.PurposeRunPlan == nil || len(prepared.PurposeRunPlan.OutputObjects) == 0 {
 		t.Fatalf("prepared run plan was not attached: %#v", prepared.PurposeRunPlan)

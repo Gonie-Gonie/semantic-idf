@@ -39,6 +39,26 @@ type FieldValueSuggestion struct {
 	Source string `json:"source,omitempty"`
 }
 
+type schemaPropertySpec struct {
+	Type        any      `json:"type"`
+	Enum        []string `json:"enum"`
+	Units       string   `json:"units"`
+	Autosizable bool     `json:"autosizable"`
+}
+
+type schemaLegacyIDD struct {
+	Fields    []string `json:"fields"`
+	FieldInfo map[string]struct {
+		FieldName string `json:"field_name"`
+	} `json:"field_info"`
+	Alphas struct {
+		Fields []string `json:"fields"`
+	} `json:"alphas"`
+	Numerics struct {
+		Fields []string `json:"fields"`
+	} `json:"numerics"`
+}
+
 const (
 	fieldRoleName            = "name"
 	fieldRoleObjectRef       = "object_ref"
@@ -344,6 +364,7 @@ var objectFieldCatalog = map[string]ObjectSpec{
 	),
 	"outputcontrol:table:style": catalogObject("OutputControl:Table:Style",
 		choiceField("Column Separator", "", "Tab", "Fixed", "Comma", "HTML", "XML", "All"),
+		choiceField("Unit Conversion", "", "None", "JtoKWH", "JtoMJ", "JtoGJ", "InchPound"),
 	),
 	"output:diagnostics": catalogObject("Output:Diagnostics",
 		field("Key 1", ""),
@@ -488,13 +509,9 @@ func loadEnergyPlusSchemaAdapterFile(version string, path string) (EnergyPlusSch
 	}
 	var raw struct {
 		Properties map[string]struct {
-			Properties map[string]struct {
-				Type        any      `json:"type"`
-				Enum        []string `json:"enum"`
-				Units       string   `json:"units"`
-				Autosizable bool     `json:"autosizable"`
-			} `json:"properties"`
-			Required []string `json:"required"`
+			Properties map[string]schemaPropertySpec `json:"properties"`
+			LegacyIDD  schemaLegacyIDD               `json:"legacy_idd"`
+			Required   []string                      `json:"required"`
 		} `json:"properties"`
 	}
 	if err := json.Unmarshal(content, &raw); err != nil {
@@ -512,15 +529,15 @@ func loadEnergyPlusSchemaAdapterFile(version string, path string) (EnergyPlusSch
 			required[normalizeFieldName(name)] = true
 		}
 		spec := ObjectSpec{Type: objectType, SchemaSource: path}
-		names := make([]string, 0, len(objectSchema.Properties))
-		for name := range objectSchema.Properties {
-			names = append(names, name)
-		}
-		sort.Strings(names)
+		names := schemaFieldOrder(objectSchema.Properties, objectSchema.LegacyIDD.Fields, objectSchema.LegacyIDD.Alphas.Fields, objectSchema.LegacyIDD.Numerics.Fields)
 		for _, name := range names {
 			fieldSchema := objectSchema.Properties[name]
+			fieldName := humanizeSchemaFieldName(name)
+			if info, ok := objectSchema.LegacyIDD.FieldInfo[name]; ok && strings.TrimSpace(info.FieldName) != "" {
+				fieldName = strings.TrimSpace(info.FieldName)
+			}
 			fieldSpec := FieldSpec{
-				Name:          humanizeSchemaFieldName(name),
+				Name:          fieldName,
 				Role:          roleFromFieldComment(name),
 				Choices:       append([]string(nil), fieldSchema.Enum...),
 				Units:         fieldSchema.Units,
@@ -536,6 +553,44 @@ func loadEnergyPlusSchemaAdapterFile(version string, path string) (EnergyPlusSch
 		adapter.Objects[normalizeFieldCatalogKey(objectType)] = spec
 	}
 	return adapter, nil
+}
+
+func schemaFieldOrder(properties map[string]schemaPropertySpec, iddFields []string, alphaFields []string, numericFields []string) []string {
+	var names []string
+	seen := map[string]bool{}
+	add := func(value string) {
+		value = strings.TrimSpace(value)
+		if value == "" || seen[value] {
+			return
+		}
+		if _, ok := properties[value]; !ok {
+			return
+		}
+		names = append(names, value)
+		seen[value] = true
+	}
+	for _, name := range iddFields {
+		add(name)
+	}
+	if len(names) == 0 {
+		for _, name := range alphaFields {
+			add(name)
+		}
+		for _, name := range numericFields {
+			add(name)
+		}
+	}
+	remaining := make([]string, 0, len(properties))
+	for name := range properties {
+		if !seen[name] {
+			remaining = append(remaining, name)
+		}
+	}
+	sort.Strings(remaining)
+	for _, name := range remaining {
+		add(name)
+	}
+	return names
 }
 
 func humanizeSchemaFieldName(name string) string {

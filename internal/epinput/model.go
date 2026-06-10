@@ -140,6 +140,7 @@ func isNamelessObjectType(objectType string) bool {
 		return true
 	default:
 		return strings.HasPrefix(strings.ToLower(objectType), "output:") ||
+			strings.HasPrefix(strings.ToLower(objectType), "outputcontrol:") ||
 			strings.HasPrefix(strings.ToLower(objectType), "meter:")
 	}
 }

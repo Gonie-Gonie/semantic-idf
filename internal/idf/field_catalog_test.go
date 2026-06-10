@@ -52,6 +52,14 @@ func TestLoadEnergyPlusSchemaAdapterFile(t *testing.T) {
   "properties": {
     "Custom:Object": {
       "required": ["name"],
+      "legacy_idd": {
+        "fields": ["name", "mode", "flow_rate"],
+        "field_info": {
+          "name": {"field_name": "Name"},
+          "mode": {"field_name": "Operating Mode"},
+          "flow_rate": {"field_name": "Design Flow Rate"}
+        }
+      },
       "properties": {
         "name": {"type": "string"},
         "flow_rate": {"type": "number", "units": "m3/s", "autosizable": true},
@@ -73,9 +81,12 @@ func TestLoadEnergyPlusSchemaAdapterFile(t *testing.T) {
 	if len(spec.Fields) != 3 {
 		t.Fatalf("field count = %d, want 3", len(spec.Fields))
 	}
+	if spec.Fields[0].Name != "Name" || spec.Fields[1].Name != "Operating Mode" || spec.Fields[2].Name != "Design Flow Rate" {
+		t.Fatalf("schema field order/names = %#v, want legacy IDD order and field names", spec.Fields)
+	}
 	var flow FieldSpec
 	for _, field := range spec.Fields {
-		if field.Name == "Flow Rate" {
+		if field.Name == "Design Flow Rate" {
 			flow = field
 		}
 	}
