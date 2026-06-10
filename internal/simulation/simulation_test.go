@@ -88,6 +88,40 @@ func TestParseSimulationSQLSeriesBuildsTimedSeries(t *testing.T) {
 	}
 }
 
+func TestParseSimulationSQLGracefullyHandlesMissingReportTables(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "eplusout.sql")
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`CREATE TABLE Metadata (Name TEXT, Value TEXT)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	series, err := parseSimulationSQLSeries(path)
+	if err != nil || len(series) != 0 {
+		t.Fatalf("series parser = len %d err %v, want empty nil", len(series), err)
+	}
+	energy, err := parseSimulationEnergySQL(path)
+	if err != nil {
+		t.Fatalf("energy parser err = %v", err)
+	}
+	if len(energy.FacilityMonthly)+len(energy.EndUseMonthly)+len(energy.ZoneMonthly) != 0 {
+		t.Fatalf("energy parser should return empty result: %#v", energy)
+	}
+	heatFlow, err := parseSimulationHeatFlowSQL(path)
+	if err != nil {
+		t.Fatalf("heat-flow parser err = %v", err)
+	}
+	if len(heatFlow.Zones) != 0 || heatFlow.FrameCount != 0 {
+		t.Fatalf("heat-flow parser should return empty result: %#v", heatFlow)
+	}
+}
+
 func TestParseSimulationHeatFlowCSVBuildsDataset(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "eplusout.csv")

@@ -91,4 +91,4 @@ The release script infers bump size from these sections:
 
 ## Fixed
 
-- _None._
+- Purpose SQL parsers now treat incomplete SQLite result files as empty results so CSV/ESO fallback and partial purpose result handling can continue cleanly.

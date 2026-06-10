@@ -61,6 +61,10 @@ func parseSimulationSQLSeries(path string) ([]SimulationSeries, error) {
 	}
 	defer db.Close()
 
+	ready, err := sqlHasTables(db, "ReportDataDictionary", "ReportData", "Time")
+	if err != nil || !ready {
+		return nil, err
+	}
 	dictionaries, err := sqlOutputSeriesDictionaries(db)
 	if err != nil {
 		return nil, err
@@ -157,6 +161,10 @@ func parseSimulationEnergySQL(path string) (EnergyDashboardResult, error) {
 	}
 	defer db.Close()
 
+	ready, err := sqlHasTables(db, "ReportDataDictionary", "ReportData", "Time")
+	if err != nil || !ready {
+		return EnergyDashboardResult{}, err
+	}
 	dictionaries, err := sqlOutputEnergyDictionaries(db)
 	if err != nil {
 		return EnergyDashboardResult{}, err
@@ -307,6 +315,10 @@ func parseSimulationHeatFlowSQL(path string) (HeatFlowDataset, error) {
 	}
 	defer db.Close()
 
+	ready, err := sqlHasTables(db, "ReportDataDictionary", "ReportData", "Time")
+	if err != nil || !ready {
+		return HeatFlowDataset{}, err
+	}
 	dictionaries, err := sqlOutputHeatFlowDictionaries(db)
 	if err != nil {
 		return HeatFlowDataset{}, err
@@ -881,6 +893,16 @@ func sqlTableExists(db *sql.DB, tableName string) (bool, error) {
 	var count int
 	err := db.QueryRow(`SELECT COUNT(1) FROM sqlite_master WHERE type IN ('table', 'view') AND lower(name) = lower(?)`, tableName).Scan(&count)
 	return count > 0, err
+}
+
+func sqlHasTables(db *sql.DB, tableNames ...string) (bool, error) {
+	for _, tableName := range tableNames {
+		exists, err := sqlTableExists(db, tableName)
+		if err != nil || !exists {
+			return exists, err
+		}
+	}
+	return true, nil
 }
 
 func sqlTableColumns(db *sql.DB, tableName string) (map[string]string, error) {
