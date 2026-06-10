@@ -1184,6 +1184,8 @@ func (builder *purposePlanBuilder) hvacLoopCheckTargets() hvacLoopCheckTargets {
 		"PlantLoop":     purposeNameSet(scope.PlantLoopNames),
 		"CondenserLoop": purposeNameSet(scope.CondenserLoopNames),
 	}
+	selectedComponentIDs := purposeComponentIDSet(scope.ComponentIDs)
+	componentScoped := len(selectedComponentIDs) > 0
 	selected := len(scope.AirLoopNames)+len(scope.PlantLoopNames)+len(scope.CondenserLoopNames) > 0 || strings.EqualFold(scope.LoopMode, "selected")
 	targets := hvacLoopCheckTargets{Selected: selected}
 	if !selected {
@@ -1197,10 +1199,20 @@ func (builder *purposePlanBuilder) hvacLoopCheckTargets() hvacLoopCheckTargets {
 			continue
 		}
 		targets.LoopCount++
-		for _, node := range purposeHVACLoopNodes(loop) {
-			nodeSet[normalizePurposeToken(node)] = strings.TrimSpace(node)
+		if !componentScoped {
+			for _, node := range purposeHVACLoopNodes(loop) {
+				nodeSet[normalizePurposeToken(node)] = strings.TrimSpace(node)
+			}
 		}
 		for _, component := range purposeHVACLoopComponents(loop) {
+			if componentScoped && !purposeHVACComponentSelected(component, selectedComponentIDs) {
+				continue
+			}
+			if componentScoped {
+				for _, node := range purposeHVACComponentNodes(component) {
+					nodeSet[normalizePurposeToken(node)] = strings.TrimSpace(node)
+				}
+			}
 			if component.ObjectName != "" {
 				componentSet[normalizePurposeToken(component.ObjectName)] = strings.TrimSpace(component.ObjectName)
 				targets.Components = appendUniqueHVACComponentTarget(targets.Components, hvacLoopCheckComponentTarget{
@@ -1219,6 +1231,46 @@ func (builder *purposePlanBuilder) hvacLoopCheckTargets() hvacLoopCheckTargets {
 		return strings.ToLower(targets.Components[i].ObjectType) < strings.ToLower(targets.Components[j].ObjectType)
 	})
 	return targets
+}
+
+func purposeComponentIDSet(values []string) map[string]bool {
+	out := map[string]bool{}
+	for _, value := range values {
+		key := normalizePurposeToken(value)
+		if key != "" {
+			out[key] = true
+		}
+	}
+	return out
+}
+
+func purposeHVACComponentSelected(component idf.HVACComponent, selected map[string]bool) bool {
+	for _, id := range purposeHVACComponentIDs(component) {
+		if selected[normalizePurposeToken(id)] {
+			return true
+		}
+	}
+	return false
+}
+
+func purposeHVACComponentIDs(component idf.HVACComponent) []string {
+	out := []string{}
+	add := func(value string) {
+		out = appendUniquePurposeString(out, value)
+	}
+	if component.ObjectIndex >= 0 {
+		for _, prefix := range []string{"component", "source", "terminal"} {
+			add(fmt.Sprintf("%s:%d", prefix, component.ObjectIndex))
+		}
+	}
+	if component.ObjectType != "" && component.ObjectName != "" {
+		for _, prefix := range []string{"component", "source", "terminal"} {
+			add(prefix + ":" + component.ObjectType + ":" + component.ObjectName)
+		}
+		add(component.ObjectType + ":" + component.ObjectName)
+	}
+	add(component.ObjectName)
+	return out
 }
 
 func purposeHVACLoopSelected(loop idf.HVACLoop, selectedNames map[string]map[string]bool) bool {
@@ -1274,6 +1326,22 @@ func purposeHVACLoopNodes(loop idf.HVACLoop) []string {
 				add(node)
 			}
 		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+func purposeHVACComponentNodes(component idf.HVACComponent) []string {
+	out := []string{}
+	add := func(value string) {
+		out = appendUniquePurposeString(out, value)
+	}
+	add(component.InletNode)
+	add(component.OutletNode)
+	add(component.WaterInletNode)
+	add(component.WaterOutletNode)
+	for _, usage := range component.NodeUsages {
+		add(usage.NodeName)
 	}
 	sort.Strings(out)
 	return out

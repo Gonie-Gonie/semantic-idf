@@ -148,6 +148,60 @@ Fan:ConstantVolume,
 	}
 }
 
+func TestBuildPurposeRunPlanHVACLoopCheckSelectedComponent(t *testing.T) {
+	doc := parsePurposePlanFixture(t, purposePlanFixtureIDF+`
+AirLoopHVAC,
+  Main Air Loop,
+  ,
+  ,
+  Autosize,
+  Air Branches,
+  ,
+  Air Supply Inlet,
+  Air Demand Outlet,
+  Air Demand Inlet,
+  Air Supply Outlet;
+
+BranchList,
+  Air Branches,
+  Main Air Branch;
+
+Branch,
+  Main Air Branch,
+  ,
+  Fan:ConstantVolume,
+  Supply Fan,
+  Air Supply Inlet,
+  Fan Outlet,
+  Coil:Cooling:Water,
+  Cooling Coil,
+  Fan Outlet,
+  Coil Outlet;
+`)
+
+	plan := BuildPurposeRunPlan(doc, SimulationPurposeRequest{
+		Purposes: []SimulationPurposeID{SimulationPurposeHVACLoopCheck},
+		Scope: SimulationPurposeScope{
+			LoopMode:     "selected",
+			AirLoopNames: []string{"Main Air Loop"},
+			ComponentIDs: []string{"Coil:Cooling:Water:Cooling Coil"},
+		},
+	})
+
+	if findPurposeOutput(plan, "Output:Variable", "Cooling Coil", "Cooling Coil Total Cooling Rate") == nil {
+		t.Fatalf("missing selected component operation output in %#v", plan.OutputObjects)
+	}
+	if findPurposeOutput(plan, "Output:Variable", "Supply Fan", "Fan Electricity Rate") != nil {
+		t.Fatalf("component-scoped plan should not include unselected fan output: %#v", plan.OutputObjects)
+	}
+	if findPurposeOutput(plan, "Output:Variable", "Fan Outlet", "System Node Temperature") == nil {
+		t.Fatalf("missing selected component inlet node output in %#v", plan.OutputObjects)
+	}
+	if findPurposeOutput(plan, "Output:Variable", "Air Supply Inlet", "System Node Temperature") != nil {
+		t.Fatalf("component-scoped plan should not include loop-wide inlet node: %#v", plan.OutputObjects)
+	}
+}
+
 func TestBuildPurposeRunPlanComfortSelectedZones(t *testing.T) {
 	doc := parsePurposePlanFixture(t, purposePlanFixtureIDF)
 

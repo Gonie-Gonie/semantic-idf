@@ -1417,6 +1417,10 @@ function simulationHVACPurposeScope(purposes = selectedSimulationPurposes()) {
       scope.loopMode = "all";
       break;
   }
+  const component = activeSimulationHVACComponent(loop);
+  if (component) {
+    scope.componentIds = simulationHVACComponentScopeIDs(component);
+  }
   return scope;
 }
 
@@ -1425,12 +1429,57 @@ function simulationHVACScopeSummary(purposes = selectedSimulationPurposes()) {
     return "";
   }
   const loop = activeSimulationHVACLoop();
+  const component = activeSimulationHVACComponent(loop);
+  if (loop?.name && component) {
+    return `HVAC: ${loop.name} / ${component.objectName || component.objectType || t("common.component", {}, "Component")}`;
+  }
   return loop?.name ? `HVAC: ${loop.name}` : t("simulation.allHVACLoops", {}, "HVAC: all loops");
 }
 
 function activeSimulationHVACLoop() {
   const loops = state.report?.hvac?.loops || [];
   return loops.find((loop) => loop.id === state.activeHVACLoopId) || null;
+}
+
+function activeSimulationHVACComponent(loop = activeSimulationHVACLoop()) {
+  const selectedKey = normalizeOutputMatchToken(state.activeHVACGraphKey || "");
+  if (!loop || !selectedKey || selectedKey.startsWith("loop:") || selectedKey.startsWith("node:")) {
+    return null;
+  }
+  return simulationHVACLoopComponents(loop).find((component) =>
+    simulationHVACComponentScopeIDs(component).some((id) => normalizeOutputMatchToken(id) === selectedKey),
+  ) || null;
+}
+
+function simulationHVACLoopComponents(loop = {}) {
+  const sides = [loop.supplySide, loop.demandSide].filter(Boolean);
+  return sides.flatMap((side) => (side.branches || []).flatMap((branch) => branch.components || []));
+}
+
+function simulationHVACComponentScopeIDs(component = {}) {
+  const ids = [];
+  const add = (value) => {
+    const text = String(value || "").trim();
+    if (text && !ids.includes(text)) {
+      ids.push(text);
+    }
+  };
+  const index = Number(component.objectIndex);
+  if (Number.isFinite(index) && index >= 0) {
+    for (const prefix of ["component", "source", "terminal"]) {
+      add(`${prefix}:${index}`);
+    }
+  }
+  const objectType = component.objectType || "";
+  const objectName = component.objectName || "";
+  if (objectType && objectName) {
+    for (const prefix of ["component", "source", "terminal"]) {
+      add(`${prefix}:${objectType}:${objectName}`);
+    }
+    add(`${objectType}:${objectName}`);
+  }
+  add(objectName);
+  return ids;
 }
 
 function selectedSimulationPurposes() {
