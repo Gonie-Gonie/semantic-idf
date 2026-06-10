@@ -49,6 +49,8 @@ The release script infers bump size from these sections:
 - Summary WWR and skylight metrics now distinguish computed azimuth evidence from unresolved fenestration base-surface cases.
 - Semantic YAML Basic mode now enforces a 250-line budget for large models, with backend line-count metadata and regression coverage.
 - Semantic schedule definitions now summarize used-by references with counts, role groups, top examples, and truncated counts instead of expanding every reference inline.
+- Simulation runs now expose a purpose-driven request, run-plan preview model, SQL-first result mode controls, and purpose result bundle shell while preserving existing Series and Heat-Flow viewers.
+- Purpose simulation planning now builds Basic Energy, Zone Heat Flow, Integrity, Comfort, HVAC Loop Check, and Custom Outputs presets with signature-based output merging and warning metadata.
 
 ## Fixed
 

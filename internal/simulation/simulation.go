@@ -71,17 +71,21 @@ type EnergyPlusInstallSetting struct {
 }
 
 type SimulationRunRequest struct {
-	RunID                    string `json:"runId"`
-	Text                     string `json:"text"`
-	InputPath                string `json:"inputPath"`
-	Filename                 string `json:"filename"`
-	EnergyPlusExecutablePath string `json:"energyPlusExecutablePath"`
-	WeatherPath              string `json:"weatherPath"`
-	OutputDirectory          string `json:"outputDirectory"`
-	StandardOutput           bool   `json:"standardOutput"`
-	StandardOutputMode       string `json:"standardOutputMode,omitempty"`
-	Silent                   bool   `json:"silent"`
-	Auto                     bool   `json:"auto"`
+	RunID                    string                    `json:"runId"`
+	Text                     string                    `json:"text"`
+	InputPath                string                    `json:"inputPath"`
+	Filename                 string                    `json:"filename"`
+	EnergyPlusExecutablePath string                    `json:"energyPlusExecutablePath"`
+	WeatherPath              string                    `json:"weatherPath"`
+	OutputDirectory          string                    `json:"outputDirectory"`
+	StandardOutput           bool                      `json:"standardOutput"`
+	StandardOutputMode       string                    `json:"standardOutputMode,omitempty"`
+	PurposeRequest           *SimulationPurposeRequest `json:"purposeRequest,omitempty"`
+	PurposeRunPlan           *PurposeRunPlan           `json:"purposeRunPlan,omitempty"`
+	ResultMode               string                    `json:"resultMode,omitempty"`
+	UseReadVarsESO           bool                      `json:"useReadVarsESO,omitempty"`
+	Silent                   bool                      `json:"silent"`
+	Auto                     bool                      `json:"auto"`
 }
 
 type MultiSimulationRequest struct {
@@ -132,6 +136,8 @@ type SimulationRunResult struct {
 	CSVs                     []CSVSummary         `json:"csvs,omitempty"`
 	Series                   []SimulationSeries   `json:"series,omitempty"`
 	HeatFlow                 HeatFlowDataset      `json:"heatFlow,omitempty"`
+	PurposeRunPlan           *PurposeRunPlan      `json:"purposeRunPlan,omitempty"`
+	PurposeResults           *PurposeResultBundle `json:"purposeResults,omitempty"`
 }
 
 type MultiSimulationResult struct {
@@ -681,7 +687,10 @@ func RunSimulation(request SimulationRunRequest, progress func(SimulationProgres
 	}
 
 	emitSimulationProgress(progress, request.RunID, "execute", "running", "EnergyPlus is running", 1, 4, result.InputPath)
-	args := []string{"-d", outputDir, "-p", "eplus", "-r"}
+	args := []string{"-d", outputDir, "-p", "eplus"}
+	if simulationUsesReadVarsESO(request) {
+		args = append(args, "-r")
+	}
 	if result.WeatherPath != "" {
 		args = append(args, "-w", result.WeatherPath)
 	}
@@ -698,6 +707,13 @@ func RunSimulation(request SimulationRunRequest, progress func(SimulationProgres
 
 	emitSimulationProgress(progress, request.RunID, "parse", "running", "Reading simulation output", 3, 4, result.InputPath)
 	readSimulationOutputs(result)
+	if request.PurposeRunPlan != nil {
+		result.PurposeRunPlan = request.PurposeRunPlan
+	}
+	if request.PurposeRequest != nil {
+		bundle := BuildPurposeResultBundle(result, *request.PurposeRequest)
+		result.PurposeResults = &bundle
+	}
 	if result.Error != "" || result.ExitCode != 0 || result.ERR.Fatal > 0 || result.ERR.Severe > 0 {
 		result.Status = "failed"
 	} else {
@@ -824,6 +840,18 @@ func finishSimulationResult(result *SimulationRunResult, started time.Time) {
 	result.DurationMS = finished.Sub(started).Milliseconds()
 }
 
+func simulationUsesReadVarsESO(request SimulationRunRequest) bool {
+	mode := strings.ToLower(strings.TrimSpace(request.ResultMode))
+	switch mode {
+	case "sql_first", "sql-only", "sql_only":
+		return request.UseReadVarsESO
+	case "csv", "csv_fallback", "readvarseso":
+		return true
+	default:
+		return true
+	}
+}
+
 func simulationCompletionMessage(result *SimulationRunResult) string {
 	if result.Status == "succeeded" {
 		return fmt.Sprintf("Simulation complete: %d warnings", result.ERR.Warnings)
@@ -885,30 +913,49 @@ func copyLimited(builder *strings.Builder, reader io.Reader, limit int) {
 }
 
 func readSimulationOutputs(result *SimulationRunResult) {
-	files, _ := os.ReadDir(result.OutputDirectory)
+	result.Files = collectSimulationFiles(result.OutputDirectory)
+	parseERR(result)
+	sort.Slice(result.Files, func(i, j int) bool {
+		return strings.ToLower(result.Files[i].Name) < strings.ToLower(result.Files[j].Name)
+	})
+	parseSQLResults(result)
+	parseCSVResults(result)
+	parseHeatFlowFallback(result)
+}
+
+func collectSimulationFiles(outputDirectory string) []SimulationFileInfo {
+	files, _ := os.ReadDir(outputDirectory)
+	out := []SimulationFileInfo{}
 	for _, entry := range files {
 		if entry.IsDir() {
 			continue
 		}
-		path := filepath.Join(result.OutputDirectory, entry.Name())
+		path := filepath.Join(outputDirectory, entry.Name())
 		info, err := entry.Info()
 		if err != nil {
 			continue
 		}
 		kind := simulationFileKind(entry.Name())
-		result.Files = append(result.Files, SimulationFileInfo{
+		out = append(out, SimulationFileInfo{
 			Name: entry.Name(),
 			Path: path,
 			Kind: kind,
 			Size: info.Size(),
 		})
-		if strings.EqualFold(filepath.Ext(entry.Name()), ".err") {
-			result.ERR = parseERRFile(path)
+	}
+	return out
+}
+
+func parseERR(result *SimulationRunResult) {
+	for _, file := range result.Files {
+		if file.Kind == "err" {
+			result.ERR = parseERRFile(file.Path)
+			return
 		}
 	}
-	sort.Slice(result.Files, func(i, j int) bool {
-		return strings.ToLower(result.Files[i].Name) < strings.ToLower(result.Files[j].Name)
-	})
+}
+
+func parseSQLResults(result *SimulationRunResult) {
 	for _, file := range result.Files {
 		if file.Kind != "sqlite" {
 			continue
@@ -926,6 +973,9 @@ func readSimulationOutputs(result *SimulationRunResult) {
 			}
 		}
 	}
+}
+
+func parseCSVResults(result *SimulationRunResult) {
 	for _, file := range result.Files {
 		if file.Kind != "csv" {
 			continue
@@ -945,6 +995,9 @@ func readSimulationOutputs(result *SimulationRunResult) {
 			}
 		}
 	}
+}
+
+func parseHeatFlowFallback(result *SimulationRunResult) {
 	if len(result.HeatFlow.Zones) == 0 {
 		for _, file := range result.Files {
 			if file.Kind != "eso" {

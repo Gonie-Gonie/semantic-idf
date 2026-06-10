@@ -129,7 +129,12 @@ func (a *App) RunSimulationText(request simulation.SimulationRunRequest) (*simul
 			return blockedSimulationResult(request, "This IDF uses weather-file design days or weather run periods. Select an EPW weather file before running."), nil
 		}
 	}
-	if request.StandardOutput {
+	if request.PurposeRequest != nil {
+		request, err = preparePurposeSimulationRequest(request)
+		if err != nil {
+			return nil, err
+		}
+	} else if request.StandardOutput {
 		request, err = prepareStandardOutputSimulationRequest(request)
 		if err != nil {
 			return nil, err
@@ -146,6 +151,60 @@ func (a *App) RunSimulationText(request simulation.SimulationRunRequest) (*simul
 	return simulation.RunSimulation(request, progress, settings.Simulation)
 }
 
+func (a *App) RunPurposeSimulationText(request simulation.SimulationRunRequest) (*simulation.SimulationRunResult, error) {
+	if request.PurposeRequest == nil {
+		purposeRequest := simulation.NormalizeSimulationPurposeRequest(nil)
+		request.PurposeRequest = &purposeRequest
+	}
+	return a.RunSimulationText(request)
+}
+
+func (a *App) BuildSimulationRunPlan(request simulation.SimulationRunRequest) (*simulation.PurposeRunPlan, error) {
+	model, doc, err := simulationRequestModelAndDocument(request)
+	if err != nil {
+		return nil, err
+	}
+	_ = model
+	purposeRequest := simulation.NormalizeSimulationPurposeRequest(request.PurposeRequest)
+	plan := simulation.BuildPurposeRunPlan(doc, purposeRequest)
+	return &plan, nil
+}
+
+func (a *App) ApplyPurposeOutputsText(text string, request simulation.SimulationPurposeRequest) (*OutputApplyTextResult, error) {
+	model, err := epinput.Parse("", []byte(text))
+	if err != nil {
+		return nil, err
+	}
+	doc := epinput.ToIDFDocument(model)
+	request = simulation.NormalizeSimulationPurposeRequest(&request)
+	plan := simulation.BuildPurposeRunPlan(doc, request)
+	updated, preview := idf.ApplyOutput(doc, simulation.PurposeRunPlanApplyRequest(plan))
+	if !preview.CanApply {
+		return nil, fmt.Errorf("purpose output preview has blocking warnings")
+	}
+	resultText := writeOutputDocumentInOriginalFormat(text, updated, model)
+	updatedModel, err := epinput.Parse("", []byte(resultText))
+	if err != nil {
+		return nil, err
+	}
+	updatedDoc := epinput.ToIDFDocument(updatedModel)
+	report := idf.Analyze(updatedDoc)
+	epjsonText, err := epinput.Write(updatedModel, epinput.FormatEPJSON)
+	if err != nil {
+		return nil, err
+	}
+	return &OutputApplyTextResult{
+		Text:     resultText,
+		Format:   string(updatedModel.Format),
+		Version:  updatedModel.Version.Raw,
+		Model:    updatedModel,
+		EPJSON:   epjsonText,
+		Semantic: semanticProjectionForModelDoc(updatedModel, updatedDoc),
+		Report:   &report,
+		Preview:  preview,
+	}, nil
+}
+
 func blockedSimulationResult(request simulation.SimulationRunRequest, message string) *simulation.SimulationRunResult {
 	return &simulation.SimulationRunResult{
 		RunID:                    request.RunID,
@@ -157,6 +216,25 @@ func blockedSimulationResult(request simulation.SimulationRunRequest, message st
 		ExitCode:                 -1,
 		Error:                    message,
 	}
+}
+
+func simulationRequestModelAndDocument(request simulation.SimulationRunRequest) (*epinput.Model, idf.Document, error) {
+	text := request.Text
+	if strings.TrimSpace(text) == "" && strings.TrimSpace(request.InputPath) != "" {
+		content, err := os.ReadFile(request.InputPath)
+		if err != nil {
+			return nil, idf.Document{}, err
+		}
+		text = string(content)
+	}
+	if strings.TrimSpace(text) == "" {
+		return nil, idf.Document{}, fmt.Errorf("simulation run plan needs input text or an input path")
+	}
+	model, err := epinput.Parse("", []byte(text))
+	if err != nil {
+		return nil, idf.Document{}, err
+	}
+	return model, epinput.ToIDFDocument(model), nil
 }
 
 func simulationRequestRequiresWeatherFile(request simulation.SimulationRunRequest) (bool, error) {
@@ -176,6 +254,38 @@ func simulationRequestRequiresWeatherFile(request simulation.SimulationRunReques
 		return false, err
 	}
 	return idf.InputRequiresWeatherFile(epinput.ToIDFDocument(model)), nil
+}
+
+func preparePurposeSimulationRequest(request simulation.SimulationRunRequest) (simulation.SimulationRunRequest, error) {
+	text := request.Text
+	if strings.TrimSpace(text) == "" && strings.TrimSpace(request.InputPath) != "" {
+		content, err := os.ReadFile(request.InputPath)
+		if err != nil {
+			return request, err
+		}
+		text = string(content)
+	}
+	if strings.TrimSpace(text) == "" {
+		return request, fmt.Errorf("purpose run needs input text or an input path")
+	}
+	model, err := epinput.Parse("", []byte(text))
+	if err != nil {
+		return request, err
+	}
+	doc := epinput.ToIDFDocument(model)
+	purposeRequest := simulation.NormalizeSimulationPurposeRequest(request.PurposeRequest)
+	plan := simulation.BuildPurposeRunPlan(doc, purposeRequest)
+	updated, preview := idf.ApplyOutput(doc, simulation.PurposeRunPlanApplyRequest(plan))
+	if !preview.CanApply {
+		return request, fmt.Errorf("purpose output plan has blocking warnings")
+	}
+	request.Text = writeOutputDocumentInOriginalFormat(text, updated, model)
+	request.PurposeRequest = &purposeRequest
+	request.PurposeRunPlan = &plan
+	if strings.TrimSpace(request.ResultMode) == "" {
+		request.ResultMode = "sql_first"
+	}
+	return request, nil
 }
 
 func prepareStandardOutputSimulationRequest(request simulation.SimulationRunRequest) (simulation.SimulationRunRequest, error) {
