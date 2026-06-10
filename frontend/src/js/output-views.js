@@ -320,7 +320,7 @@ export function openStandardOutputApplyDialog() {
   const recommendations = standardOutputRecommendations();
   if (!recommendations.length) {
     openOutputApplyDialog({
-      title: t("output.standardOutputTitle", {}, "Apply standard output set"),
+      title: t("output.standardOutputTitle", {}, "Apply legacy output preset"),
       request: { preset: "standard", presetMode: "merge" },
       summary: t("output.standardOutputSummary", {}, "Adds the monthly meters and zone energy variables used by standard simulation graphs."),
     });
@@ -333,13 +333,13 @@ export function openStandardOutputApplyDialog() {
   elements.outputApplyStatus.textContent = t("status.reviewBeforeApplying");
   elements.outputApplyBody.innerHTML = `
     <section>
-      <h4>${escapeHTML(t("output.standardOutputTitle", {}, "Apply standard output set"))}</h4>
+      <h4>${escapeHTML(t("output.standardOutputTitle", {}, "Apply legacy output preset"))}</h4>
       <p>${escapeHTML(t("output.standardOutputSummary", {}, "Adds the monthly meters and zone energy variables used by standard simulation graphs."))}</p>
       <label class="output-standard-mode" for="outputStandardMode">
         <span>${escapeHTML(t("output.standardOutputMode", {}, "Apply mode"))}</span>
         <select id="outputStandardMode">
-          <option value="merge" selected>${escapeHTML(t("output.standardOutputMerge", {}, "Add missing standard outputs"))}</option>
-          <option value="replace">${escapeHTML(t("output.standardOutputReplace", {}, "Replace non-standard outputs"))}</option>
+          <option value="merge" selected>${escapeHTML(t("output.standardOutputMerge", {}, "Add missing legacy preset outputs"))}</option>
+          <option value="replace">${escapeHTML(t("output.standardOutputReplace", {}, "Replace non-preset outputs"))}</option>
           <option value="selected">${escapeHTML(t("output.standardOutputSelected", {}, "Add selected only"))}</option>
         </select>
       </label>

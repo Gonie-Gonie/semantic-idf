@@ -273,7 +273,7 @@ function renderSimulationEmpty() {
   renderSimulationEnergyEmpty(t("simulation.noEnergyResult", {}, "Run Basic Energy to inspect monthly energy results."));
   renderSimulationHVACLoopEmpty(t("simulation.noHVACLoopResult", {}, "Run HVAC Loop Check to inspect node state series."));
   renderSimulationComfortEmpty(t("simulation.noComfortResult", {}, "Run Comfort Check to inspect zone temperature and setpoint series."));
-  renderSimulationHeatFlowEmpty(t("simulation.noHeatFlow", {}, "Run with standard outputs to inspect zone heat-flow ledger."));
+  renderSimulationHeatFlowEmpty(t("simulation.noHeatFlow", {}, "Select Zone Heat Flow to inspect the zone heat-flow ledger."));
   elements.simulationSeriesSelect.innerHTML = `<option value="">${escapeHTML(t("simulation.noSeries", {}, "No SQL/CSV series"))}</option>`;
   elements.simulationChart.innerHTML = `<div class="empty">${t("simulation.noGraph", {}, "SQL/CSV graph will appear after a run with numeric output.")}</div>`;
   elements.simulationFiles.innerHTML = `<div class="empty">${t("simulation.noFiles", {}, "No output files yet")}</div>`;
@@ -2264,7 +2264,7 @@ function renderSimulationHeatFlow() {
   }
   const dataset = state.simulationResult?.heatFlow;
   if (!dataset?.zones?.length || !dataset?.categories?.length || !(dataset.frameCount > 0)) {
-    renderSimulationHeatFlowEmpty(t("simulation.noHeatFlow", {}, "Run with standard outputs to inspect zone heat-flow ledger."));
+    renderSimulationHeatFlowEmpty(t("simulation.noHeatFlow", {}, "Select Zone Heat Flow to inspect the zone heat-flow ledger."));
     return;
   }
   const geometry = state.report?.geometry;
