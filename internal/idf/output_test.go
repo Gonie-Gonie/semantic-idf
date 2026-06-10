@@ -44,6 +44,9 @@ func TestAnalyzeOutputListsExistingAndRecommendations(t *testing.T) {
 	if len(report.Existing) != 2 {
 		t.Fatalf("existing count = %d, want 2", len(report.Existing))
 	}
+	if !outputSummaryHasPurpose(report.Existing, "Output:Meter", "Electricity:Facility", "basic_energy") {
+		t.Fatalf("facility meter should be tagged for basic energy: %#v", report.Existing)
+	}
 	if !recommendationExists(report, "sqlite-simple-tabular") {
 		t.Fatalf("expected SQLite recommendation in %#v", report.Recommendations)
 	}
@@ -54,6 +57,55 @@ func TestAnalyzeOutputListsExistingAndRecommendations(t *testing.T) {
 		if item.ID == "zone-air-temperature" && !item.Exists {
 			t.Fatalf("zone-air-temperature should be marked existing")
 		}
+		if item.ID == "node-temperature" && !stringSliceContains(item.PurposeTags, "hvac_loop_check") {
+			t.Fatalf("node-temperature should be tagged for HVAC loop checks: %#v", item)
+		}
+	}
+}
+
+func TestAnalyzeOutputPurposeTags(t *testing.T) {
+	doc, err := Parse(`
+Version, 24.1;
+
+Output:SQLite,
+  SimpleAndTabular,
+  JtoKWH;
+
+Output:Variable,
+  *,
+  Zone Mean Air Temperature,
+  Hourly;
+
+Output:Variable,
+  Supply Outlet Node,
+  System Node Mass Flow Rate,
+  Hourly;
+
+Output:Variable,
+  *,
+  Zone Thermal Comfort Fanger Model PMV,
+  Hourly;
+
+Output:Diagnostics,
+  DisplayExtraWarnings;
+`)
+	if err != nil {
+		t.Fatalf("parse output purpose fixture: %v", err)
+	}
+	report := AnalyzeOutput(doc)
+	if !outputSummaryHasPurpose(report.Existing, "Output:SQLite", "", "basic_energy") ||
+		!outputSummaryHasPurpose(report.Existing, "Output:SQLite", "", "hvac_loop_check") {
+		t.Fatalf("SQLite should be tagged as a purpose-run base output: %#v", report.Existing)
+	}
+	if !outputSummaryHasPurpose(report.Existing, "Output:Variable", "Zone Mean Air Temperature", "zone_heat_flow") ||
+		!outputSummaryHasPurpose(report.Existing, "Output:Variable", "Zone Mean Air Temperature", "comfort_check") {
+		t.Fatalf("zone mean air temperature purpose tags missing: %#v", report.Existing)
+	}
+	if !outputSummaryHasPurpose(report.Existing, "Output:Variable", "System Node Mass Flow Rate", "hvac_loop_check") {
+		t.Fatalf("system node purpose tag missing: %#v", report.Existing)
+	}
+	if !outputSummaryHasPurpose(report.Existing, "Output:Diagnostics", "", "integrity_check") {
+		t.Fatalf("diagnostics purpose tag missing: %#v", report.Existing)
 	}
 }
 
@@ -142,6 +194,28 @@ Output:Variable,
 func recommendationExists(report OutputReport, id string) bool {
 	for _, item := range report.Recommendations {
 		if item.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+func outputSummaryHasPurpose(items []OutputObjectSummary, objectType string, name string, purpose string) bool {
+	for _, item := range items {
+		if item.ObjectType != objectType {
+			continue
+		}
+		if name != "" && item.VariableName != name && item.KeyValue != name {
+			continue
+		}
+		return stringSliceContains(item.PurposeTags, purpose)
+	}
+	return false
+}
+
+func stringSliceContains(values []string, wanted string) bool {
+	for _, value := range values {
+		if value == wanted {
 			return true
 		}
 	}

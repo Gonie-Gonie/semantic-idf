@@ -1464,13 +1464,15 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
   flex-wrap: wrap;
 }
 
-.summary-tools input {
+.summary-tools input,
+.summary-tools select {
   width: min(260px, 38vw);
   min-height: 34px;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   padding: 0 10px;
   background: var(--control);
+  color: var(--text);
 }
 
 .summary-pane {
@@ -3392,6 +3394,26 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 .output-status.warning {
   color: var(--amber);
   border-color: color-mix(in srgb, var(--amber) 55%, var(--line));
+}
+
+.output-purpose-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.output-purpose-tags span {
+  display: inline-flex;
+  width: max-content;
+  max-width: 100%;
+  border: 1px solid color-mix(in srgb, var(--teal) 35%, var(--line));
+  border-radius: 999px;
+  padding: 2px 6px;
+  background: color-mix(in srgb, var(--teal) 8%, var(--panel));
+  color: var(--teal);
+  font-size: 10px;
+  font-weight: 700;
 }
 
 .output-field-list {

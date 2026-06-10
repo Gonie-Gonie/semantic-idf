@@ -227,6 +227,15 @@
               </div>
               <div class="summary-tools">
                 <input id="outputFilter" type="search" placeholder="Filter output requests" data-i18n-placeholder="output.filter" />
+                <select id="outputPurposeFilter" aria-label="Filter output requests by purpose">
+                  <option value="all" data-i18n="output.allPurposes">All purposes</option>
+                  <option value="basic_energy" data-i18n="simulation.purposeBasicEnergy">Basic Energy</option>
+                  <option value="zone_heat_flow" data-i18n="simulation.purposeZoneHeatFlow">Zone Heat Flow</option>
+                  <option value="hvac_loop_check" data-i18n="simulation.purposeHVACLoop">HVAC Loop Check</option>
+                  <option value="integrity_check" data-i18n="simulation.purposeIntegrity">Integrity</option>
+                  <option value="comfort_check" data-i18n="simulation.purposeComfort">Comfort</option>
+                  <option value="custom_outputs" data-i18n="simulation.purposeCustom">Custom Outputs</option>
+                </select>
               </div>
             </div>
             <div class="output-pane">

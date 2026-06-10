@@ -401,6 +401,7 @@ const dictionaries = {
     "output.applyTitle": "Edit Output Request",
     "output.active": "Active",
     "output.allKeys": "All keys",
+    "output.allPurposes": "All purposes",
     "output.category.controls": "Controls",
     "output.category.diagnostics": "Diagnostics",
     "output.category.dictionary": "Dictionary",

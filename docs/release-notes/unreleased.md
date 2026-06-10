@@ -71,6 +71,7 @@ The release script infers bump size from these sections:
 - Basic Energy results now include monthly stacked profile charts and a zone energy heatmap matrix in addition to total bars and ranking tables.
 - Basic Energy now surfaces purpose completeness badges alongside HVAC Loop and Comfort result views.
 - Simulation output discovery now caches SQL/RDD/MDD catalog reads and invalidates them when source files change.
+- Output analysis now tags existing and recommended output requests by simulation purpose and adds a purpose filter to the Output tab.
 
 ## Fixed
 

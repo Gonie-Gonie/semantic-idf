@@ -30,6 +30,7 @@ type OutputObjectSummary struct {
 	ReportingFrequency string               `json:"reportingFrequency,omitempty"`
 	ScheduleName       string               `json:"scheduleName,omitempty"`
 	Duplicate          bool                 `json:"duplicate,omitempty"`
+	PurposeTags        []string             `json:"purposeTags,omitempty"`
 	Fields             []OutputFieldSummary `json:"fields"`
 }
 
@@ -50,6 +51,7 @@ type OutputRecommendation struct {
 	Fields      []OutputFieldValue `json:"fields"`
 	Exists      bool               `json:"exists"`
 	Tags        []string           `json:"tags,omitempty"`
+	PurposeTags []string           `json:"purposeTags,omitempty"`
 }
 
 type OutputFieldValue struct {
@@ -125,6 +127,7 @@ func summarizeOutputObject(obj Object) OutputObjectSummary {
 		KeyValue:     outputFieldValue(fields, "Key Value", "Key Name"),
 		VariableName: outputFieldValue(fields, "Variable Name"),
 		ScheduleName: outputFieldValue(fields, "Schedule Name"),
+		PurposeTags:  outputPurposeTags(obj.Type, fields),
 		Fields:       outputFieldSummaries(obj),
 	}
 	summary.ReportingFrequency = outputFieldValue(fields, "Reporting Frequency")
@@ -297,7 +300,16 @@ func outputRecommendations(doc Document, existing []OutputObjectSummary) []Outpu
 }
 
 func outputRecommendation(id, label, category, description, objectType string, fields []OutputFieldValue, tags ...string) OutputRecommendation {
-	return OutputRecommendation{ID: id, Label: label, Category: category, Description: description, ObjectType: objectType, Fields: fields, Tags: tags}
+	return OutputRecommendation{
+		ID:          id,
+		Label:       label,
+		Category:    category,
+		Description: description,
+		ObjectType:  objectType,
+		Fields:      fields,
+		Tags:        tags,
+		PurposeTags: outputPurposeTags(objectType, fields),
+	}
 }
 
 func outputVariableRecommendation(id, label, keyValue, variableName, frequency, category, description string) OutputRecommendation {
@@ -400,6 +412,88 @@ func outputCategory(objectType string) string {
 		}
 		return "other"
 	}
+}
+
+func outputPurposeTags(objectType string, fields []OutputFieldValue) []string {
+	tags := map[string]bool{}
+	lowerType := strings.ToLower(strings.TrimSpace(objectType))
+	switch lowerType {
+	case "output:sqlite":
+		addOutputPurposeTags(tags, "basic_energy", "zone_heat_flow", "hvac_loop_check", "integrity_check", "comfort_check", "custom_outputs")
+	case "output:variabledictionary":
+		addOutputPurposeTags(tags, "custom_outputs")
+	case "output:table:summaryreports", "outputcontrol:table:style", "output:diagnostics":
+		addOutputPurposeTags(tags, "integrity_check")
+	case "output:meter", "output:meter:meterfileonly", "output:meter:cumulative", "output:meter:cumulativemeterfileonly":
+		if outputMeterSupportsBasicEnergy(outputFieldValue(fields, "Key Name", "Key Value")) {
+			addOutputPurposeTags(tags, "basic_energy")
+		}
+	case "output:variable":
+		outputVariablePurposeTags(outputFieldValue(fields, "Variable Name"), tags)
+	}
+	return orderedOutputPurposeTags(tags)
+}
+
+func outputMeterSupportsBasicEnergy(name string) bool {
+	switch normalizeName(name) {
+	case "electricity:facility", "naturalgas:facility", "districtcooling:facility", "districtheating:facility", "water:facility",
+		"electricity:cooling", "electricity:heating", "electricity:interiorlights", "electricity:interiorequipment",
+		"electricity:fans", "electricity:pumps", "electricity:heatrejection", "electricity:watersystems",
+		"naturalgas:heating", "naturalgas:watersystems":
+		return true
+	default:
+		return false
+	}
+}
+
+func outputVariablePurposeTags(variableName string, tags map[string]bool) {
+	switch normalizeName(variableName) {
+	case "zone lights electricity energy", "zone electric equipment electricity energy", "zone gas equipment gas energy",
+		"zone air system sensible heating energy", "zone air system sensible cooling energy":
+		addOutputPurposeTags(tags, "basic_energy")
+	case "zone mean air temperature":
+		addOutputPurposeTags(tags, "zone_heat_flow", "comfort_check")
+	case "zone air heat balance internal convective heat gain rate",
+		"zone air heat balance surface convection rate",
+		"zone air heat balance interzone air transfer rate",
+		"zone air heat balance outdoor air transfer rate",
+		"zone air heat balance system air transfer rate",
+		"zone air heat balance system convective heat gain rate",
+		"zone air heat balance air energy storage rate",
+		"zone air heat balance deviation rate":
+		addOutputPurposeTags(tags, "zone_heat_flow")
+	case "system node temperature", "system node mass flow rate", "system node setpoint temperature", "system node humidity ratio", "system node enthalpy":
+		addOutputPurposeTags(tags, "hvac_loop_check")
+	case "zone thermostat heating setpoint temperature", "zone thermostat cooling setpoint temperature",
+		"zone thermal comfort fanger model pmv", "zone thermal comfort fanger model ppd":
+		addOutputPurposeTags(tags, "comfort_check")
+	}
+}
+
+func addOutputPurposeTags(tags map[string]bool, values ...string) {
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			tags[value] = true
+		}
+	}
+}
+
+func orderedOutputPurposeTags(tags map[string]bool) []string {
+	order := []string{"basic_energy", "zone_heat_flow", "hvac_loop_check", "integrity_check", "comfort_check", "custom_outputs"}
+	out := make([]string, 0, len(tags))
+	for _, value := range order {
+		if tags[value] {
+			out = append(out, value)
+			delete(tags, value)
+		}
+	}
+	extra := make([]string, 0, len(tags))
+	for value := range tags {
+		extra = append(extra, value)
+	}
+	sort.Strings(extra)
+	return append(out, extra...)
 }
 
 func isOutputManagementType(objectType string) bool {

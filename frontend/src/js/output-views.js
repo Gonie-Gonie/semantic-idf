@@ -1,8 +1,21 @@
 import { backend, elements, escapeHTML, state } from "./state.js";
 import { t } from "./i18n.js";
 
+const OUTPUT_PURPOSE_FILTERS = [
+  { id: "basic_energy", labelKey: "simulation.purposeBasicEnergy", fallback: "Basic Energy" },
+  { id: "zone_heat_flow", labelKey: "simulation.purposeZoneHeatFlow", fallback: "Zone Heat Flow" },
+  { id: "hvac_loop_check", labelKey: "simulation.purposeHVACLoop", fallback: "HVAC Loop Check" },
+  { id: "integrity_check", labelKey: "simulation.purposeIntegrity", fallback: "Integrity" },
+  { id: "comfort_check", labelKey: "simulation.purposeComfort", fallback: "Comfort" },
+  { id: "custom_outputs", labelKey: "simulation.purposeCustom", fallback: "Custom Outputs" },
+];
+
 export function initializeOutputControls() {
   elements.outputFilter?.addEventListener("input", () => renderOutput());
+  elements.outputPurposeFilter?.addEventListener("change", () => {
+    state.outputPurposeFilter = elements.outputPurposeFilter.value || "all";
+    renderOutput();
+  });
   elements.outputExisting?.addEventListener("click", handleOutputAction);
   elements.outputRecommendations?.addEventListener("click", handleOutputAction);
   elements.outputApplyClose?.addEventListener("click", closeOutputApplyDialog);
@@ -35,8 +48,13 @@ export function renderOutput(output = state.report?.output) {
     return;
   }
   const query = (elements.outputFilter?.value || "").trim().toLowerCase();
-  const existing = (output.existing || []).filter((item) => outputItemMatchesQuery(item, query));
-  const recommendations = (output.recommendations || []).filter((item) => outputRecommendationMatchesQuery(item, query));
+  const purposeFilter = elements.outputPurposeFilter?.value || state.outputPurposeFilter || "all";
+  state.outputPurposeFilter = purposeFilter;
+  syncOutputPurposeFilter(output, purposeFilter);
+  const existing = (output.existing || []).filter((item) => outputItemMatchesQuery(item, query) && outputItemMatchesPurpose(item, purposeFilter));
+  const recommendations = (output.recommendations || []).filter(
+    (item) => outputRecommendationMatchesQuery(item, query) && outputItemMatchesPurpose(item, purposeFilter),
+  );
   const warnings = (output.warnings || []).filter((item) => outputWarningMatchesQuery(item, query));
   elements.outputStats.textContent = t("count.outputs", {
     count: output.objectCount || 0,
@@ -62,6 +80,7 @@ export function renderOutput(output = state.report?.output) {
 }
 
 function renderOutputEmpty() {
+  syncOutputPurposeFilter(null, "all");
   elements.outputStats.textContent = t("count.outputs", { count: 0, variables: 0, meters: 0 });
   elements.outputExistingStats.textContent = t("count.objects", { count: 0 });
   elements.outputRecommendationStats.textContent = t("count.options", { count: 0 });
@@ -69,6 +88,36 @@ function renderOutputEmpty() {
   elements.outputExisting.innerHTML = `<div class="empty">${t("output.noAnalysis")}</div>`;
   elements.outputRecommendations.innerHTML = `<div class="empty">${t("output.noRecommendations")}</div>`;
   elements.outputWarnings.innerHTML = `<div class="empty">${t("output.noWarnings")}</div>`;
+}
+
+function syncOutputPurposeFilter(output, selected) {
+  if (!elements.outputPurposeFilter) {
+    return;
+  }
+  const counts = outputPurposeCounts(output);
+  const options = [
+    `<option value="all">${escapeHTML(t("output.allPurposes", {}, "All purposes"))}</option>`,
+    ...OUTPUT_PURPOSE_FILTERS.map((purpose) => {
+      const count = counts.get(purpose.id) || 0;
+      const label = `${t(purpose.labelKey, {}, purpose.fallback)}${count ? ` (${count})` : ""}`;
+      return `<option value="${escapeHTML(purpose.id)}" ${selected === purpose.id ? "selected" : ""}>${escapeHTML(label)}</option>`;
+    }),
+  ];
+  const nextHTML = options.join("");
+  if (elements.outputPurposeFilter.innerHTML !== nextHTML) {
+    elements.outputPurposeFilter.innerHTML = nextHTML;
+  }
+  elements.outputPurposeFilter.value = selected || "all";
+}
+
+function outputPurposeCounts(output) {
+  const counts = new Map();
+  for (const item of [...(output?.existing || []), ...(output?.recommendations || [])]) {
+    for (const tag of item.purposeTags || []) {
+      counts.set(tag, (counts.get(tag) || 0) + 1);
+    }
+  }
+  return counts;
 }
 
 function renderOutputRequestTable(items) {
@@ -100,6 +149,7 @@ function renderOutputRequestRow(item) {
       <td>
         <strong title="${escapeHTML(outputRequestName(item))}">${escapeHTML(outputRequestName(item))}</strong>
         <small title="${escapeHTML(item.objectType)}">${escapeHTML(outputRequestMeta(item))}</small>
+        ${renderOutputPurposeTags(item.purposeTags)}
       </td>
       <td>${renderOutputFrequencyCell(item)}</td>
       <td>
@@ -187,6 +237,7 @@ function renderOutputRecommendationRow(item) {
       <td>
         <strong title="${escapeHTML(item.label)}">${escapeHTML(item.label)}</strong>
         <small title="${escapeHTML(item.description || "")}">${escapeHTML(item.description || "")}</small>
+        ${renderOutputPurposeTags(item.purposeTags)}
       </td>
       <td>${escapeHTML(recommendationDestination(item))}</td>
       <td>
@@ -211,6 +262,22 @@ function renderOutputWarning(warning) {
           : ""
       }
     </article>`;
+}
+
+function renderOutputPurposeTags(tags = []) {
+  const values = (tags || []).filter(Boolean);
+  if (!values.length) {
+    return "";
+  }
+  return `<div class="output-purpose-tags">${values.map((tag) => `<span title="${escapeHTML(tag)}">${escapeHTML(outputPurposeLabel(tag))}</span>`).join("")}</div>`;
+}
+
+function outputPurposeLabel(tag) {
+  const purpose = OUTPUT_PURPOSE_FILTERS.find((item) => item.id === tag);
+  if (!purpose) {
+    return String(tag || "").replaceAll("_", " ");
+  }
+  return t(purpose.labelKey, {}, purpose.fallback);
 }
 
 function handleOutputAction(event) {
@@ -537,8 +604,16 @@ function outputItemMatchesQuery(item, query) {
     item.keyValue,
     item.variableName,
     item.reportingFrequency,
+    ...(item.purposeTags || []).map(outputPurposeLabel),
     ...(item.fields || []).flatMap((field) => [field.name, field.value]),
   ].some((value) => String(value ?? "").toLowerCase().includes(query));
+}
+
+function outputItemMatchesPurpose(item, purposeFilter) {
+  if (!purposeFilter || purposeFilter === "all") {
+    return true;
+  }
+  return (item.purposeTags || []).includes(purposeFilter);
 }
 
 function outputRecommendationMatchesQuery(item, query) {
@@ -553,6 +628,7 @@ function outputRecommendationMatchesQuery(item, query) {
     item.objectType,
     ...(item.fields || []).flatMap((field) => [field.name, field.value]),
     ...(item.tags || []),
+    ...(item.purposeTags || []).map(outputPurposeLabel),
   ].some((value) => String(value ?? "").toLowerCase().includes(query));
 }
 
