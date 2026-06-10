@@ -109,6 +109,7 @@ The release script infers bump size from these sections:
 - Integrity purpose results now connect static Diagnose issues with EnergyPlus ERR and SQL diagnostics in the result view and exported bundle.
 - Purpose run-plan regression tests now include golden snapshots for Basic Energy, Zone Heat Flow, HVAC Loop Check, and Integrity presets.
 - Simulation run results and manifests now record SQL, CSV, and ESO source priority plus the actual sources used by result parsers.
+- Comfort Check now supports custom period scope inputs that filter comfort trends, summaries, issue ranking, and HTML exports to the selected date range.
 
 ## Fixed
 

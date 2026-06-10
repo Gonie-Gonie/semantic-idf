@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/Gonie-Gonie/idf-analyzer/internal/idf"
@@ -50,6 +51,9 @@ type SimulationPurposeRequest struct {
 type SimulationPurposeScope struct {
 	ZoneMode           string                `json:"zoneMode,omitempty"`
 	ZoneNames          []string              `json:"zoneNames,omitempty"`
+	PeriodMode         string                `json:"periodMode,omitempty"`
+	PeriodStart        string                `json:"periodStart,omitempty"`
+	PeriodEnd          string                `json:"periodEnd,omitempty"`
 	LoopMode           string                `json:"loopMode,omitempty"`
 	AirLoopNames       []string              `json:"airLoopNames,omitempty"`
 	PlantLoopNames     []string              `json:"plantLoopNames,omitempty"`
@@ -214,6 +218,7 @@ type HVACComponentOperationMetric struct {
 }
 
 type ComfortResult struct {
+	PeriodScope  string                    `json:"periodScope,omitempty"`
 	Zones        []ComfortZoneResult       `json:"zones,omitempty"`
 	Series       []SimulationSeries        `json:"series,omitempty"`
 	Issues       []ComfortIssueRank        `json:"issues,omitempty"`
@@ -340,6 +345,12 @@ func NormalizeSimulationPurposeRequest(request *SimulationPurposeRequest) Simula
 		normalized.Scope.LoopMode = "all"
 	}
 	normalized.Scope.ZoneNames = normalizePurposeStrings(normalized.Scope.ZoneNames)
+	normalized.Scope.PeriodMode = strings.TrimSpace(normalized.Scope.PeriodMode)
+	if normalized.Scope.PeriodMode == "" {
+		normalized.Scope.PeriodMode = "full"
+	}
+	normalized.Scope.PeriodStart = strings.TrimSpace(normalized.Scope.PeriodStart)
+	normalized.Scope.PeriodEnd = strings.TrimSpace(normalized.Scope.PeriodEnd)
 	normalized.Scope.AirLoopNames = normalizePurposeStrings(normalized.Scope.AirLoopNames)
 	normalized.Scope.PlantLoopNames = normalizePurposeStrings(normalized.Scope.PlantLoopNames)
 	normalized.Scope.CondenserLoopNames = normalizePurposeStrings(normalized.Scope.CondenserLoopNames)
@@ -522,7 +533,7 @@ func BuildPurposeResultBundle(result *SimulationRunResult, request SimulationPur
 				hvacLoopResultSource(bundle.HVACLoops),
 			))
 		case SimulationPurposeComfort:
-			bundle.Comfort = buildComfortResult(result.Series)
+			bundle.Comfort = buildComfortResult(result.Series, request.Scope)
 			bundle.Comfort.UnmetHours = buildComfortUnmetSummariesFromFiles(result.Files)
 			bundle.Completeness = append(bundle.Completeness, bundle.Comfort.Completeness...)
 		case SimulationPurposeIntegrity:
@@ -942,13 +953,21 @@ func hvacLoopResultSource(results []HVACLoopRunResult) string {
 	return "missing"
 }
 
-func buildComfortResult(series []SimulationSeries) ComfortResult {
+func buildComfortResult(series []SimulationSeries, scope SimulationPurposeScope) ComfortResult {
 	result := ComfortResult{}
 	foundVariables := map[string]bool{}
 	zoneMap := map[string]*ComfortZoneResult{}
 	zoneOrder := []string{}
+	periodLabel := comfortPeriodScopeLabel(scope)
+	if periodLabel != "" {
+		result.PeriodScope = periodLabel
+	}
 	for _, item := range series {
 		if !purposeSeriesMatchesVariables(item.Column, comfortCheckVariables()) {
+			continue
+		}
+		filteredItem, ok := filterComfortSeriesByPeriod(item, scope)
+		if !ok {
 			continue
 		}
 		keyValue, variableName := splitPurposeSeriesColumn(item.Column)
@@ -956,7 +975,7 @@ func buildComfortResult(series []SimulationSeries) ComfortResult {
 			keyValue = "Unknown Zone"
 		}
 		foundVariables[normalizePurposeToken(variableName)] = true
-		result.Series = append(result.Series, item)
+		result.Series = append(result.Series, filteredItem)
 		zoneKey := normalizePurposeToken(keyValue)
 		zone := zoneMap[zoneKey]
 		if zone == nil {
@@ -967,11 +986,11 @@ func buildComfortResult(series []SimulationSeries) ComfortResult {
 		zone.Metrics = append(zone.Metrics, ComfortMetricResult{
 			Name:    variableName,
 			Unit:    unitFromSeriesColumn(item.Column),
-			Source:  item.File,
-			Min:     item.Min,
-			Max:     item.Max,
-			Average: item.Average,
-			Points:  append([]SimulationPoint(nil), item.Points...),
+			Source:  filteredItem.File,
+			Min:     filteredItem.Min,
+			Max:     filteredItem.Max,
+			Average: filteredItem.Average,
+			Points:  append([]SimulationPoint(nil), filteredItem.Points...),
 		})
 	}
 	sort.SliceStable(zoneOrder, func(i, j int) bool {
@@ -987,6 +1006,125 @@ func buildComfortResult(series []SimulationSeries) ComfortResult {
 	result.Issues = buildComfortIssueRanking(result.Zones)
 	result.Completeness = comfortSeriesCompleteness(foundVariables, seriesSource(result.Series))
 	return result
+}
+
+func filterComfortSeriesByPeriod(item SimulationSeries, scope SimulationPurposeScope) (SimulationSeries, bool) {
+	startDay, endDay, ok := comfortPeriodScopeDays(scope)
+	if !ok {
+		return item, true
+	}
+	filtered := item
+	filtered.Points = []SimulationPoint{}
+	for _, point := range item.Points {
+		day, dayOK := comfortPointDay(point)
+		if !dayOK || !comfortDayInScope(day, startDay, endDay) {
+			continue
+		}
+		filtered.Points = append(filtered.Points, point)
+	}
+	if len(filtered.Points) == 0 {
+		return filtered, false
+	}
+	filtered.Min, filtered.Max, filtered.Average = simulationPointStats(filtered.Points)
+	return filtered, true
+}
+
+func comfortPeriodScopeDays(scope SimulationPurposeScope) (int, int, bool) {
+	mode := strings.ToLower(strings.TrimSpace(scope.PeriodMode))
+	if mode == "" || mode == "full" || mode == "run_period" {
+		return 0, 0, false
+	}
+	if mode != "custom" && strings.TrimSpace(scope.PeriodStart) == "" && strings.TrimSpace(scope.PeriodEnd) == "" {
+		return 0, 0, false
+	}
+	startDay := 1
+	endDay := 365
+	if value, ok := parseComfortPeriodDay(scope.PeriodStart); ok {
+		startDay = value
+	}
+	if value, ok := parseComfortPeriodDay(scope.PeriodEnd); ok {
+		endDay = value
+	}
+	return startDay, endDay, true
+}
+
+func comfortPeriodScopeLabel(scope SimulationPurposeScope) string {
+	_, _, ok := comfortPeriodScopeDays(scope)
+	if !ok {
+		return ""
+	}
+	start := strings.TrimSpace(scope.PeriodStart)
+	if start == "" {
+		start = "year start"
+	}
+	end := strings.TrimSpace(scope.PeriodEnd)
+	if end == "" {
+		end = "year end"
+	}
+	return start + " to " + end
+}
+
+func parseComfortPeriodDay(value string) (int, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0, false
+	}
+	token := strings.Fields(value)[0]
+	token = strings.ReplaceAll(token, "/", "-")
+	token = strings.ReplaceAll(token, ".", "-")
+	parts := strings.Split(token, "-")
+	if len(parts) >= 3 && len(parts[0]) == 4 {
+		parts = parts[1:]
+	}
+	if len(parts) < 2 {
+		return 0, false
+	}
+	month, err := strconv.Atoi(strings.TrimLeft(parts[0], "0"))
+	if err != nil {
+		return 0, false
+	}
+	day, err := strconv.Atoi(strings.TrimLeft(parts[1], "0"))
+	if err != nil {
+		return 0, false
+	}
+	result := dayOfYear(month, day)
+	return result, result > 0
+}
+
+func comfortPointDay(point SimulationPoint) (int, bool) {
+	if day, ok := parseComfortPeriodDay(point.Label); ok {
+		return day, true
+	}
+	x := point.X
+	if x <= 0 {
+		return 0, false
+	}
+	if x <= 366 {
+		return x, true
+	}
+	return ((x - 1) / 24) + 1, true
+}
+
+func comfortDayInScope(day int, startDay int, endDay int) bool {
+	if startDay <= endDay {
+		return day >= startDay && day <= endDay
+	}
+	return day >= startDay || day <= endDay
+}
+
+func simulationPointStats(points []SimulationPoint) (float64, float64, float64) {
+	if len(points) == 0 {
+		return 0, 0, 0
+	}
+	minValue := points[0].Value
+	maxValue := points[0].Value
+	total := 0.0
+	for _, point := range points {
+		minValue = math.Min(minValue, point.Value)
+		maxValue = math.Max(maxValue, point.Value)
+		total += point.Value
+	}
+	return roundedPurposeNumber(minValue), roundedPurposeNumber(maxValue), roundedPurposeNumber(total / float64(len(points)))
 }
 
 func buildComfortIssueRanking(zones []ComfortZoneResult) []ComfortIssueRank {

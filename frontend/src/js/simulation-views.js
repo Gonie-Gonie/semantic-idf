@@ -38,6 +38,12 @@ export function initializeSimulationControls() {
     renderSimulation();
   });
   elements.simulationPurposeZoneNames?.addEventListener("input", () => scheduleSimulationRunPlan());
+  elements.simulationPurposePeriodMode?.addEventListener("change", () => {
+    scheduleSimulationRunPlan();
+    renderSimulation();
+  });
+  elements.simulationPurposePeriodStart?.addEventListener("input", () => scheduleSimulationRunPlan());
+  elements.simulationPurposePeriodEnd?.addEventListener("input", () => scheduleSimulationRunPlan());
   elements.simulationPurposeFrequencyPolicy?.addEventListener("change", () => scheduleSimulationRunPlan());
   elements.simulationPurposeApplyMode?.addEventListener("change", () => updatePurposeApplyButton());
   elements.simulationCustomOutputs?.addEventListener("input", () => {
@@ -860,6 +866,9 @@ function renderSimulationComfort(result) {
   const completenessHTML = (comfort.completeness || []).length
     ? renderPurposeCompletenessRow(comfort.completeness || [])
     : "";
+  const periodHTML = comfort.periodScope
+    ? `<div class="simulation-result-sources"><span>${escapeHTML(t("simulation.periodScope", {}, "Period scope"))}: ${escapeHTML(comfort.periodScope)}</span></div>`
+    : "";
   const unmetHTML = renderComfortUnmetSummary(comfort.unmetHours || []);
   const issuesHTML = renderComfortIssueRanking(comfort.issues || []);
   const rows = zones
@@ -882,6 +891,7 @@ function renderSimulationComfort(result) {
     .join("");
   elements.simulationComfortResults.innerHTML = `
     ${completenessHTML}
+    ${periodHTML}
     ${renderComfortTimeline(zones)}
     ${unmetHTML}
     ${issuesHTML}
@@ -1890,6 +1900,9 @@ function buildSimulationPurposeRequest() {
     scope: {
       zoneMode,
       zoneNames: simulationPurposeZoneNamesForMode(zoneMode),
+      periodMode: elements.simulationPurposePeriodMode?.value || "full",
+      periodStart: elements.simulationPurposePeriodStart?.value || "",
+      periodEnd: elements.simulationPurposePeriodEnd?.value || "",
       ...simulationHVACPurposeScope(purposes),
       customOutputs: parseCustomOutputs(elements.simulationCustomOutputs?.value || ""),
     },
@@ -2335,6 +2348,15 @@ function updateSimulationControls() {
   }
   if (elements.simulationRefreshPlan) {
     elements.simulationRefreshPlan.disabled = state.simulationRunning || !hasText;
+  }
+  if (elements.simulationPurposePeriodMode) {
+    elements.simulationPurposePeriodMode.disabled = state.simulationRunning;
+  }
+  const customPeriod = elements.simulationPurposePeriodMode?.value === "custom";
+  for (const input of [elements.simulationPurposePeriodStart, elements.simulationPurposePeriodEnd]) {
+    if (input) {
+      input.disabled = state.simulationRunning || !customPeriod;
+    }
   }
   updatePurposeExportButton();
   if (elements.simulationPurposeInputs?.length) {
@@ -4523,6 +4545,7 @@ function renderPurposeHTMLComfort(comfort) {
     return "";
   }
   return [
+    comfort.periodScope ? `<h2>Comfort Period Scope</h2>${renderPurposeHTMLTable(["Field", "Value"], [["Period", comfort.periodScope]])}` : "",
     unmetRows.length ? `<h2>Comfort Unmet Hours</h2>${renderPurposeHTMLTable(["Zone", "Metric", "Value", "Report", "Table", "Source"], unmetRows)}` : "",
     issueRows.length
       ? `<h2>Comfort Issue Ranking</h2>${renderPurposeHTMLTable(["Zone", "Unmet samples", "Heating", "Cooling", "Max deviation", "Avg deviation", "Time", "Source"], issueRows)}`

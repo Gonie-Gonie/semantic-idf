@@ -115,7 +115,9 @@ Purpose result viewers now include:
 - HVAC Loop Check node summaries, component operation summaries for fans,
   pumps, coils, chillers, boilers, and cooling towers, derived loop metrics, and
   alerts for zero flow, missing setpoints, and large temperature-setpoint deltas.
-- Comfort zone metric summaries for temperature, setpoint, PMV, and PPD series.
+- Comfort zone metric summaries for temperature, setpoint, PMV, and PPD series,
+  with optional custom `MM-DD` period scoping for the rendered trends and issue
+  ranking.
 - Integrity ERR, SQL error table, and tabular report previews.
 
 Where a row can be matched back to the run plan, result tables show the source

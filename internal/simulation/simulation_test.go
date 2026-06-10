@@ -596,6 +596,37 @@ func TestPurposeResultBundleBuildsComfortResult(t *testing.T) {
 	}
 }
 
+func TestPurposeResultBundleAppliesComfortPeriodScope(t *testing.T) {
+	result := &SimulationRunResult{
+		Status: "succeeded",
+		Series: []SimulationSeries{
+			{File: "eplusout.sql", Column: "Office:Zone Mean Air Temperature [C]", Min: 18, Max: 28, Average: 23, Points: []SimulationPoint{{X: 1, Label: "01-01 01:00", Value: 18}, {X: 2, Label: "02-15 02:00", Value: 28}}},
+			{File: "eplusout.sql", Column: "Office:Zone Thermostat Heating Setpoint Temperature [C]", Min: 20, Max: 20, Average: 20, Points: []SimulationPoint{{X: 1, Label: "01-01 01:00", Value: 20}, {X: 2, Label: "02-15 02:00", Value: 20}}},
+			{File: "eplusout.sql", Column: "Office:Zone Thermostat Cooling Setpoint Temperature [C]", Min: 26, Max: 26, Average: 26, Points: []SimulationPoint{{X: 1, Label: "01-01 01:00", Value: 26}, {X: 2, Label: "02-15 02:00", Value: 26}}},
+		},
+	}
+	bundle := BuildPurposeResultBundle(result, SimulationPurposeRequest{
+		Purposes: []SimulationPurposeID{SimulationPurposeComfort},
+		Scope: SimulationPurposeScope{
+			PeriodMode:  "custom",
+			PeriodStart: "02-01",
+			PeriodEnd:   "02-28",
+		},
+	})
+
+	if bundle.Comfort.PeriodScope != "02-01 to 02-28" {
+		t.Fatalf("period scope = %q", bundle.Comfort.PeriodScope)
+	}
+	metrics := comfortMetricMap(bundle.Comfort.Zones[0].Metrics)
+	temperature := metrics[normalizePurposeToken("Zone Mean Air Temperature")]
+	if temperature == nil || len(temperature.Points) != 1 || temperature.Points[0].Value != 28 || temperature.Min != 28 || temperature.Max != 28 {
+		t.Fatalf("filtered temperature metric = %#v", temperature)
+	}
+	if len(bundle.Comfort.Issues) != 1 || bundle.Comfort.Issues[0].UnmetSamples != 1 || bundle.Comfort.Issues[0].HeatingSamples != 0 || bundle.Comfort.Issues[0].CoolingSamples != 1 {
+		t.Fatalf("period-scoped comfort issues = %#v", bundle.Comfort.Issues)
+	}
+}
+
 func TestPurposeResultBundleBuildsComfortUnmetSummaries(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "eplusout.sql")

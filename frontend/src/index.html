@@ -377,6 +377,21 @@
                     <input id="simulationPurposeZoneNames" type="text" placeholder="Office, Lab" data-i18n-placeholder="simulation.selectedZonesPlaceholder" />
                   </label>
                   <label>
+                    <span data-i18n="simulation.periodScope">Period scope</span>
+                    <select id="simulationPurposePeriodMode">
+                      <option value="full" selected data-i18n="simulation.periodFull">Full run</option>
+                      <option value="custom" data-i18n="simulation.periodCustom">Custom dates</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span data-i18n="simulation.periodStart">Period start</span>
+                    <input id="simulationPurposePeriodStart" type="text" placeholder="01-01" data-i18n-placeholder="simulation.periodDatePlaceholder" />
+                  </label>
+                  <label>
+                    <span data-i18n="simulation.periodEnd">Period end</span>
+                    <input id="simulationPurposePeriodEnd" type="text" placeholder="12-31" data-i18n-placeholder="simulation.periodDatePlaceholder" />
+                  </label>
+                  <label>
                     <span data-i18n="simulation.frequencyPolicy">Frequency policy</span>
                     <select id="simulationPurposeFrequencyPolicy">
                       <option value="purpose_default" selected data-i18n="simulation.frequencyPurposeDefault">Purpose default</option>
