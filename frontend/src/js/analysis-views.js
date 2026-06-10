@@ -375,8 +375,9 @@ function countBy(values, keyFn) {
 function renderMetricRow(metric) {
   const unit = metric.unit ? `<span class="summary-unit">${escapeHTML(metric.unit)}</span>` : "";
   const meta = renderMetricMeta(metric);
+  const compact = shouldRenderCompactMetricRow(metric) ? " compact" : "";
   return `
-    <div class="summary-row" role="row">
+    <div class="summary-row${compact}" role="row">
       <div class="summary-name" role="cell">
         <strong title="${escapeHTML(metric.name)}">${escapeHTML(metric.name)}</strong>
         <span>${escapeHTML(metric.id)}</span>
@@ -388,6 +389,14 @@ function renderMetricRow(metric) {
       </div>
       <span class="summary-status ${statusClass(metric.status)}" role="cell">${escapeHTML(metric.status || "missing")}</span>
     </div>`;
+}
+
+function shouldRenderCompactMetricRow(metric) {
+  const badges = metric.badges || [];
+  return String(metric.name || "").length > 34 ||
+    metric.visibility === "advanced" ||
+    badges.includes("inferred") ||
+    badges.includes("readiness");
 }
 
 function renderMetricMeta(metric) {

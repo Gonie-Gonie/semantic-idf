@@ -1713,6 +1713,40 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
   border-bottom: 0;
 }
 
+.summary-row.compact {
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "name status"
+    "value value";
+  gap: 5px 10px;
+  align-items: start;
+  padding-block: 8px;
+}
+
+.summary-row.compact .summary-name {
+  grid-area: name;
+}
+
+.summary-row.compact .summary-value {
+  grid-area: value;
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.summary-row.compact .summary-value strong {
+  max-width: 100%;
+}
+
+.summary-row.compact .summary-unit {
+  margin-top: 0;
+}
+
+.summary-row.compact .summary-status {
+  grid-area: status;
+}
+
 .summary-name,
 .summary-value {
   min-width: 0;
@@ -6072,6 +6106,14 @@ th.input-jump-highlight {
   .summary-row {
     grid-template-columns: minmax(0, 1fr);
     align-items: start;
+  }
+
+  .summary-row.compact {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "name"
+      "value"
+      "status";
   }
 
   .hvac-component-main,

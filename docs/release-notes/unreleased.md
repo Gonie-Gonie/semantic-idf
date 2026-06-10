@@ -28,6 +28,7 @@ The release script infers bump size from these sections:
 - AirLoopHVAC demand paths now expose a structured SupplyPath/ReturnPath graph with splitter, mixer, plenum, and terminal evidence for zone relations and semantic exports.
 - HVAC plant relation inference now uses a typed component reference graph with source field metadata instead of blindly scanning every component field.
 - Heat-flow simulation now adds a mini timeline brush with reset/day/week/month/run-period shortcuts and Shift+wheel panning for visible frame ranges.
+- Summary rows now switch long, inferred, advanced, and readiness metrics into compact two-line rows for narrow analysis panes.
 
 ## Fixed
 
