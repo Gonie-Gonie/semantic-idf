@@ -384,6 +384,27 @@ func TestWriteSimulationRunManifest(t *testing.T) {
 	}
 }
 
+func TestWritePurposeRunArtifacts(t *testing.T) {
+	dir := t.TempDir()
+	request := SimulationRunRequest{
+		PurposeRunPlan:      &PurposeRunPlan{Purposes: []SimulationPurposeID{SimulationPurposeBasicEnergy}, EstimatedWeight: "Light"},
+		TemporaryOutputDiff: "--- original.idf\n+++ purpose-run-copy.idf\n+Output:SQLite,\n+  SimpleAndTabular;  !- Option Type\n",
+	}
+
+	writePurposeRunArtifacts(dir, request)
+
+	if _, err := os.Stat(filepath.Join(dir, "idf-analyzer-run-plan.json")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "temporary_outputs.diff")); err != nil {
+		t.Fatal(err)
+	}
+	files := collectSimulationFiles(dir)
+	if !simulationResultHasFileKind(files, "run_plan") || !simulationResultHasFileKind(files, "temporary_output_diff") {
+		t.Fatalf("artifact file kinds = %#v", files)
+	}
+}
+
 func simulationResultHasFileKind(files []SimulationFileInfo, kind string) bool {
 	for _, file := range files {
 		if file.Kind == kind {

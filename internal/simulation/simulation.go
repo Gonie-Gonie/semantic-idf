@@ -85,6 +85,7 @@ type SimulationRunRequest struct {
 	StandardOutputMode       string                    `json:"standardOutputMode,omitempty"`
 	PurposeRequest           *SimulationPurposeRequest `json:"purposeRequest,omitempty"`
 	PurposeRunPlan           *PurposeRunPlan           `json:"purposeRunPlan,omitempty"`
+	TemporaryOutputDiff      string                    `json:"-"`
 	ResultMode               string                    `json:"resultMode,omitempty"`
 	UseReadVarsESO           bool                      `json:"useReadVarsESO,omitempty"`
 	Silent                   bool                      `json:"silent"`
@@ -689,6 +690,7 @@ func RunSimulation(request SimulationRunRequest, progress func(SimulationProgres
 	if err := os.MkdirAll(outputDir, 0o755); err != nil {
 		return nil, err
 	}
+	writePurposeRunArtifacts(outputDir, request)
 
 	inputPath := strings.TrimSpace(request.InputPath)
 	if strings.TrimSpace(request.Text) != "" {
@@ -910,6 +912,21 @@ func writeSimulationRunManifest(result *SimulationRunResult, request SimulationR
 	})
 }
 
+func writePurposeRunArtifacts(outputDirectory string, request SimulationRunRequest) {
+	if strings.TrimSpace(outputDirectory) == "" {
+		return
+	}
+	if request.PurposeRunPlan != nil {
+		payload, err := json.MarshalIndent(request.PurposeRunPlan, "", "  ")
+		if err == nil {
+			_ = os.WriteFile(filepath.Join(outputDirectory, "idf-analyzer-run-plan.json"), append(payload, '\n'), 0o644)
+		}
+	}
+	if strings.TrimSpace(request.TemporaryOutputDiff) != "" {
+		_ = os.WriteFile(filepath.Join(outputDirectory, "temporary_outputs.diff"), []byte(request.TemporaryOutputDiff), 0o644)
+	}
+}
+
 func fileSHA256(path string) string {
 	if strings.TrimSpace(path) == "" {
 		return ""
@@ -1095,8 +1112,13 @@ func parseHeatFlowFallback(result *SimulationRunResult) {
 }
 
 func simulationFileKind(name string) string {
-	if strings.EqualFold(filepath.Base(name), "idf-analyzer-run.json") {
+	switch strings.ToLower(filepath.Base(name)) {
+	case "idf-analyzer-run.json":
 		return "manifest"
+	case "idf-analyzer-run-plan.json":
+		return "run_plan"
+	case "temporary_outputs.diff":
+		return "temporary_output_diff"
 	}
 	switch strings.ToLower(filepath.Ext(name)) {
 	case ".err":

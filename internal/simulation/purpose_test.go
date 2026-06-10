@@ -227,6 +227,26 @@ func TestBuildPurposeRunPlanMergesDuplicateOutputsAcrossPurposes(t *testing.T) {
 	}
 }
 
+func TestPurposeRunPlanTemporaryOutputDiffIncludesOnlyTemporaryOutputs(t *testing.T) {
+	doc := parsePurposePlanFixture(t, purposePlanFixtureIDF+`
+Output:Variable,
+  *,
+  Zone Mean Air Temperature,
+  Hourly;
+`)
+	plan := BuildPurposeRunPlan(doc, SimulationPurposeRequest{
+		Purposes: []SimulationPurposeID{SimulationPurposeZoneHeatFlow},
+	})
+
+	diff := PurposeRunPlanTemporaryOutputDiff(plan)
+	if !strings.Contains(diff, "+++ purpose-run-copy.idf") || !strings.Contains(diff, "+Output:SQLite,") {
+		t.Fatalf("diff does not include expected added outputs:\n%s", diff)
+	}
+	if strings.Contains(diff, "+  Zone Mean Air Temperature") {
+		t.Fatalf("diff includes existing output:\n%s", diff)
+	}
+}
+
 func TestBuildPurposeRunPlanMarksFrequencyConflict(t *testing.T) {
 	doc := parsePurposePlanFixture(t, purposePlanFixtureIDF+`
 Output:Variable,

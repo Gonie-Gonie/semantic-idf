@@ -287,6 +287,31 @@ func PurposeRunPlanApplyRequest(plan PurposeRunPlan) idf.OutputApplyRequest {
 	return idf.OutputApplyRequest{AddObjects: additions}
 }
 
+func PurposeRunPlanTemporaryOutputDiff(plan PurposeRunPlan) string {
+	var builder strings.Builder
+	added := 0
+	for _, object := range plan.OutputObjects {
+		if object.State == PurposeOutputStateExisting {
+			continue
+		}
+		if added == 0 {
+			builder.WriteString("--- original.idf\n")
+			builder.WriteString("+++ purpose-run-copy.idf\n")
+		}
+		added++
+		builder.WriteString(fmt.Sprintf("+%s,\n", object.ObjectType))
+		for index, field := range object.Fields {
+			terminator := ","
+			if index == len(object.Fields)-1 {
+				terminator = ";"
+			}
+			builder.WriteString(fmt.Sprintf("+  %s%s  !- %s\n", field.Value, terminator, field.Name))
+		}
+		builder.WriteString("\n")
+	}
+	return builder.String()
+}
+
 func PurposeOutputSignature(objectType string, fields []idf.OutputFieldValue) string {
 	parts := []string{normalizePurposeToken(objectType)}
 	for _, field := range fields {

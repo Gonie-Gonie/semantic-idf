@@ -290,6 +290,7 @@ func preparePurposeSimulationRequest(request simulation.SimulationRunRequest) (s
 	request.Text = writeOutputDocumentInOriginalFormat(text, updated, model)
 	request.PurposeRequest = &purposeRequest
 	request.PurposeRunPlan = &plan
+	request.TemporaryOutputDiff = simulation.PurposeRunPlanTemporaryOutputDiff(plan)
 	if strings.TrimSpace(request.ResultMode) == "" {
 		request.ResultMode = "sql_first"
 	}
