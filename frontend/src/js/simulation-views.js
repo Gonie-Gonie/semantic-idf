@@ -7,6 +7,8 @@ let heatFlowPlayTimer = 0;
 let simulationRunPlanTimer = 0;
 let simulationRunPlanSequence = 0;
 
+const simulationCustomOutputsStorageKey = "idfAnalyzer.simulationCustomOutputs";
+
 const simulationPurposeDefinitions = [
   { id: "basic_energy", label: "Basic Energy" },
   { id: "zone_heat_flow", label: "Zone Heat Flow" },
@@ -21,6 +23,7 @@ export function initializeSimulationControls() {
   if (elements.simulationStandardOutput) {
     elements.simulationStandardOutput.checked = state.simulationStandardOutput !== false;
   }
+  restoreSimulationCustomOutputsPreset();
   elements.simulationApplyStandardOutput?.addEventListener("click", () => openStandardOutputApplyDialog());
   elements.simulationPurposeInputs?.forEach((input) => {
     input.checked = state.simulationSelectedPurposes.includes(input.dataset.simulationPurpose);
@@ -36,7 +39,10 @@ export function initializeSimulationControls() {
   });
   elements.simulationPurposeZoneNames?.addEventListener("input", () => scheduleSimulationRunPlan());
   elements.simulationPurposeFrequencyPolicy?.addEventListener("change", () => scheduleSimulationRunPlan());
-  elements.simulationCustomOutputs?.addEventListener("input", () => scheduleSimulationRunPlan());
+  elements.simulationCustomOutputs?.addEventListener("input", () => {
+    saveSimulationCustomOutputsPreset();
+    scheduleSimulationRunPlan();
+  });
   elements.simulationOutputDiscoveryFilter?.addEventListener("input", () => {
     state.simulationOutputDiscoveryQuery = elements.simulationOutputDiscoveryFilter.value || "";
     renderSimulationOutputDiscovery();
@@ -1036,7 +1042,46 @@ function appendDiscoveredCustomOutput(index) {
     lines.push(line);
   }
   elements.simulationCustomOutputs.value = lines.join("\n");
+  saveSimulationCustomOutputsPreset();
   scheduleSimulationRunPlan(0);
+}
+
+function restoreSimulationCustomOutputsPreset() {
+  if (!elements.simulationCustomOutputs || String(elements.simulationCustomOutputs.value || "").trim()) {
+    return;
+  }
+  try {
+    const saved = window.localStorage.getItem(simulationCustomOutputsStorageKey);
+    if (saved) {
+      elements.simulationCustomOutputs.value = saved;
+    }
+  } catch {
+    // localStorage can be unavailable in hardened webview settings.
+  }
+}
+
+function saveSimulationCustomOutputsPreset() {
+  if (!elements.simulationCustomOutputs) {
+    return;
+  }
+  try {
+    const value = normalizeCustomOutputPresetText(elements.simulationCustomOutputs.value || "");
+    if (value) {
+      window.localStorage.setItem(simulationCustomOutputsStorageKey, value);
+    } else {
+      window.localStorage.removeItem(simulationCustomOutputsStorageKey);
+    }
+  } catch {
+    // localStorage can be unavailable in hardened webview settings.
+  }
+}
+
+function normalizeCustomOutputPresetText(value) {
+  return String(value || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join("\n");
 }
 
 function customOutputLineFromDiscoveryItem(item) {
