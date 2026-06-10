@@ -63,6 +63,7 @@ export function initializeSimulationControls() {
     });
   });
   elements.simulationExportPurposeJSON?.addEventListener("click", () => exportPurposeResultJSON());
+  elements.simulationExportPurposeHTML?.addEventListener("click", () => exportPurposeResultHTML());
   elements.simulationRefreshEnv?.addEventListener("click", () => loadSimulationEnvironment());
   elements.simulationRunButton?.addEventListener("click", () => runCurrentSimulation({ silent: false }));
   elements.simulationEnergyPlusSelect?.addEventListener("change", () => renderSimulation());
@@ -1201,14 +1202,16 @@ function updateSimulationControls() {
 }
 
 function updatePurposeExportButton() {
-  if (!elements.simulationExportPurposeJSON) {
-    return;
-  }
   const canExport = Boolean(state.simulationResult?.purposeResults);
-  elements.simulationExportPurposeJSON.disabled = state.simulationRunning || !canExport;
-  elements.simulationExportPurposeJSON.title = canExport
-    ? t("action.exportPurposeJson", {}, "Export Purpose JSON")
-    : t("simulation.noPurposeResultExport", {}, "No purpose results to export yet.");
+  for (const button of [elements.simulationExportPurposeJSON, elements.simulationExportPurposeHTML]) {
+    if (!button) {
+      continue;
+    }
+    button.disabled = state.simulationRunning || !canExport;
+    button.title = canExport
+      ? button.textContent || t("action.exportPurposeJson", {}, "Export Purpose JSON")
+      : t("simulation.noPurposeResultExport", {}, "No purpose results to export yet.");
+  }
 }
 
 function simulationVersionIssue() {
@@ -2702,7 +2705,35 @@ function exportPurposeResultJSON() {
   if (!result?.purposeResults) {
     return;
   }
-  const payload = {
+  const payload = purposeResultExportPayload(result);
+  const blob = new Blob([`${JSON.stringify(payload, null, 2)}\n`], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = purposeResultExportFilename(result, "json");
+  link.click();
+  URL.revokeObjectURL(url);
+  setStatus(t("status.purposeResultsExported", {}, "Purpose result JSON exported"), "ok");
+}
+
+function exportPurposeResultHTML() {
+  const result = state.simulationResult;
+  if (!result?.purposeResults) {
+    return;
+  }
+  const payload = purposeResultExportPayload(result);
+  const blob = new Blob([purposeResultHTML(payload)], { type: "text/html" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = purposeResultExportFilename(result, "html");
+  link.click();
+  URL.revokeObjectURL(url);
+  setStatus(t("status.purposeHTMLExported", {}, "Purpose result HTML exported"), "ok");
+}
+
+function purposeResultExportPayload(result) {
+  return {
     runId: result.runId || "",
     status: result.status || "",
     filename: result.filename || "",
@@ -2717,19 +2748,11 @@ function exportPurposeResultJSON() {
     purposeResults: result.purposeResults,
     files: result.files || [],
   };
-  const blob = new Blob([`${JSON.stringify(payload, null, 2)}\n`], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = purposeResultExportFilename(result);
-  link.click();
-  URL.revokeObjectURL(url);
-  setStatus(t("status.purposeResultsExported", {}, "Purpose result JSON exported"), "ok");
 }
 
-function purposeResultExportFilename(result) {
+function purposeResultExportFilename(result, extension) {
   const base = String(result.filename || result.runId || "purpose-results").replace(/\.[^.]+$/, "");
-  return `${sanitizeExportFilename(base)}-purpose-results.json`;
+  return `${sanitizeExportFilename(base)}-purpose-results.${extension}`;
 }
 
 function sanitizeExportFilename(value) {
@@ -2740,6 +2763,79 @@ function sanitizeExportFilename(value) {
     .replace(/^-|-$/g, "")
     .slice(0, 80);
   return safe || "purpose-results";
+}
+
+function purposeResultHTML(payload) {
+  const planObjects = payload.purposeRunPlan?.outputObjects || [];
+  const completeness = payload.purposeResults?.completeness || [];
+  const files = payload.files || [];
+  const summaryRows = [
+    ["Run ID", payload.runId],
+    ["Status", payload.status],
+    ["Input", payload.filename || payload.inputPath],
+    ["Weather", payload.weatherPath],
+    ["Output directory", payload.outputDirectory],
+    ["Started", payload.startedAt],
+    ["Finished", payload.finishedAt],
+  ];
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>${escapeHTML(payload.filename || "Purpose Simulation Results")}</title>
+<style>
+body{margin:0;background:#f6f8fb;color:#17202a;font:14px/1.45 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+main{max-width:1180px;margin:0 auto;padding:24px}
+h1{margin:0 0 6px;font-size:26px} h2{margin:24px 0 10px;font-size:17px}
+.muted{color:#667085} table{width:100%;border-collapse:collapse;background:white;border:1px solid #d8dee8}
+th,td{padding:8px 10px;border-bottom:1px solid #e5e9f0;text-align:left;vertical-align:top}
+th{background:#eef3f8;font-size:12px;text-transform:uppercase;letter-spacing:0}
+pre{max-height:520px;overflow:auto;background:#0f172a;color:#e2e8f0;padding:14px;border-radius:6px}
+</style>
+</head>
+<body>
+<main>
+<h1>Purpose Simulation Results</h1>
+<p class="muted">${escapeHTML(payload.filename || payload.runId || "")}</p>
+<h2>Run</h2>
+${renderPurposeHTMLTable(["Field", "Value"], summaryRows)}
+<h2>Output Plan</h2>
+${renderPurposeHTMLTable(
+  ["Type", "Key", "Metric", "Frequency", "Purpose", "State"],
+  planObjects.map((object) => [
+    object.objectType || "",
+    object.keyValue || "",
+    object.variableName || "",
+    object.reportingFrequency || "",
+    (object.purposeIds || []).join(", "),
+    object.state || "",
+  ]),
+)}
+<h2>Completeness</h2>
+${renderPurposeHTMLTable(
+  ["Purpose", "Required Output", "Found", "Source"],
+  completeness.map((item) => [item.purposeId || "", item.requiredOutput || "", item.found ? "Yes" : "No", item.source || ""]),
+)}
+<h2>Files</h2>
+${renderPurposeHTMLTable(
+  ["Name", "Type", "Path"],
+  files.map((file) => [file.name || "", file.kind || "", file.path || ""]),
+)}
+<h2>Raw Bundle</h2>
+<pre>${escapeHTML(JSON.stringify(payload, null, 2))}</pre>
+</main>
+</body>
+</html>`;
+}
+
+function renderPurposeHTMLTable(headers, rows) {
+  const body = rows.length
+    ? rows
+        .map((row) => `<tr>${row.map((cell) => `<td>${escapeHTML(String(cell ?? ""))}</td>`).join("")}</tr>`)
+        .join("")
+    : `<tr><td colspan="${headers.length}"><span class="muted">No data</span></td></tr>`;
+  return `<table><thead><tr>${headers.map((header) => `<th>${escapeHTML(header)}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table>`;
 }
 
 async function runCurrentSimulation({ silent = false, auto = false } = {}) {

@@ -232,6 +232,7 @@ export const elements = {
   simulationChart: document.querySelector("#simulationChart"),
   simulationFilesStats: document.querySelector("#simulationFilesStats"),
   simulationExportPurposeJSON: document.querySelector("#simulationExportPurposeJSON"),
+  simulationExportPurposeHTML: document.querySelector("#simulationExportPurposeHTML"),
   simulationFiles: document.querySelector("#simulationFiles"),
   summaryCategories: document.querySelector("#summaryCategories"),
   diagnosticCount: document.querySelector("#diagnosticCount"),

@@ -65,6 +65,7 @@ The release script infers bump size from these sections:
 - Custom Outputs purpose runs can now include user-entered Output:Variable and Output:Meter requests in the run-plan preview and simulation request.
 - Custom Outputs setup now includes a discovery catalog picker for adding SQL/RDD/MDD-backed output variables and meters to the run plan.
 - Purpose simulation results can now be exported as a JSON bundle containing run metadata, the purpose run plan, parsed purpose results, and output file references.
+- Purpose simulation results can now be exported as a standalone HTML report with run metadata, output plan, completeness, file references, and embedded JSON.
 - Purpose simulation runs now save `idf-analyzer-run-plan.json` and `temporary_outputs.diff` artifacts alongside EnergyPlus outputs.
 - Simulation progress events now distinguish purpose planning, temporary output application, SQL parsing, fallback parsing, and purpose-result bundling phases.
 
