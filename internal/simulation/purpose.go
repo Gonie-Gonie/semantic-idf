@@ -490,19 +490,143 @@ func (builder *purposePlanBuilder) addZoneHeatFlow() {
 
 func (builder *purposePlanBuilder) addHVACLoopCheck() {
 	keys := []string{"*"}
-	if len(builder.request.Scope.AirLoopNames)+len(builder.request.Scope.PlantLoopNames)+len(builder.request.Scope.CondenserLoopNames) == 0 {
+	targets := builder.hvacLoopCheckTargets()
+	if targets.Selected {
+		if len(targets.NodeNames) == 0 {
+			builder.warn("warning", "hvac_scope_unresolved", "HVAC Loop Check was limited to selected loops, but no loop nodes were resolved.", SimulationPurposeHVACLoopCheck, "")
+			return
+		}
+		keys = targets.NodeNames
+		builder.warn("info", "hvac_scope_selected", fmt.Sprintf("HVAC Loop Check is limited to %d node key(s) across %d selected loop(s) and %d component(s).", len(targets.NodeNames), targets.LoopCount, len(targets.ComponentNames)), SimulationPurposeHVACLoopCheck, "")
+	} else {
 		builder.warn("warning", "hvac_scope_wildcard", "HVAC Loop Check currently uses wildcard node keys when no loop scope is selected.", SimulationPurposeHVACLoopCheck, "")
 	}
 	for _, key := range keys {
-		for _, variable := range []string{
-			"System Node Temperature",
-			"System Node Mass Flow Rate",
-			"System Node Setpoint Temperature",
-			"System Node Humidity Ratio",
-			"System Node Enthalpy",
-		} {
+		for _, variable := range hvacLoopCheckNodeVariables() {
 			builder.addVariable(SimulationPurposeHVACLoopCheck, key, variable, "Hourly", "heavy", "Hourly system node state for loop inspection.")
 		}
+	}
+}
+
+type hvacLoopCheckTargets struct {
+	Selected       bool
+	LoopCount      int
+	NodeNames      []string
+	ComponentNames []string
+}
+
+func (builder *purposePlanBuilder) hvacLoopCheckTargets() hvacLoopCheckTargets {
+	scope := builder.request.Scope
+	selectedNames := map[string]map[string]bool{
+		"AirLoopHVAC":   purposeNameSet(scope.AirLoopNames),
+		"PlantLoop":     purposeNameSet(scope.PlantLoopNames),
+		"CondenserLoop": purposeNameSet(scope.CondenserLoopNames),
+	}
+	selected := len(scope.AirLoopNames)+len(scope.PlantLoopNames)+len(scope.CondenserLoopNames) > 0 || strings.EqualFold(scope.LoopMode, "selected")
+	targets := hvacLoopCheckTargets{Selected: selected}
+	if !selected {
+		return targets
+	}
+	report := idf.AnalyzeHVAC(builder.doc)
+	nodeSet := map[string]string{}
+	componentSet := map[string]string{}
+	for _, loop := range report.Loops {
+		if !purposeHVACLoopSelected(loop, selectedNames) {
+			continue
+		}
+		targets.LoopCount++
+		for _, node := range purposeHVACLoopNodes(loop) {
+			nodeSet[normalizePurposeToken(node)] = strings.TrimSpace(node)
+		}
+		for _, component := range purposeHVACLoopComponents(loop) {
+			if component.ObjectName != "" {
+				componentSet[normalizePurposeToken(component.ObjectName)] = strings.TrimSpace(component.ObjectName)
+			}
+		}
+	}
+	targets.NodeNames = purposeSortedSet(nodeSet)
+	targets.ComponentNames = purposeSortedSet(componentSet)
+	return targets
+}
+
+func purposeHVACLoopSelected(loop idf.HVACLoop, selectedNames map[string]map[string]bool) bool {
+	wanted := selectedNames[loop.Type]
+	if len(wanted) == 0 {
+		return false
+	}
+	return wanted[normalizePurposeToken(loop.Name)]
+}
+
+func purposeHVACLoopNodes(loop idf.HVACLoop) []string {
+	out := []string{}
+	add := func(value string) {
+		out = appendUniquePurposeString(out, value)
+	}
+	for _, side := range []idf.HVACLoopSide{loop.SupplySide, loop.DemandSide} {
+		add(side.InletNode)
+		add(side.OutletNode)
+		for _, branch := range side.Branches {
+			add(branch.InletNode)
+			add(branch.OutletNode)
+			for _, component := range branch.Components {
+				add(component.InletNode)
+				add(component.OutletNode)
+				add(component.WaterInletNode)
+				add(component.WaterOutletNode)
+				for _, usage := range component.NodeUsages {
+					add(usage.NodeName)
+				}
+			}
+		}
+	}
+	if loop.DemandGraph.SupplyPath != nil {
+		add(loop.DemandGraph.SupplyPath.InletNode)
+		add(loop.DemandGraph.SupplyPath.OutletNode)
+		for _, component := range loop.DemandGraph.SupplyPath.Components {
+			for _, node := range component.InletNodes {
+				add(node)
+			}
+			for _, node := range component.OutletNodes {
+				add(node)
+			}
+		}
+	}
+	if loop.DemandGraph.ReturnPath != nil {
+		add(loop.DemandGraph.ReturnPath.InletNode)
+		add(loop.DemandGraph.ReturnPath.OutletNode)
+		for _, component := range loop.DemandGraph.ReturnPath.Components {
+			for _, node := range component.InletNodes {
+				add(node)
+			}
+			for _, node := range component.OutletNodes {
+				add(node)
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+func purposeHVACLoopComponents(loop idf.HVACLoop) []idf.HVACComponent {
+	out := []idf.HVACComponent{}
+	for _, side := range []idf.HVACLoopSide{loop.SupplySide, loop.DemandSide} {
+		for _, branch := range side.Branches {
+			out = append(out, branch.Components...)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		return strings.ToLower(out[i].ObjectName) < strings.ToLower(out[j].ObjectName)
+	})
+	return out
+}
+
+func hvacLoopCheckNodeVariables() []string {
+	return []string{
+		"System Node Temperature",
+		"System Node Mass Flow Rate",
+		"System Node Setpoint Temperature",
+		"System Node Humidity Ratio",
+		"System Node Enthalpy",
 	}
 }
 
@@ -1164,6 +1288,44 @@ func normalizePurposeStrings(values []string) []string {
 		out = append(out, value)
 	}
 	return out
+}
+
+func purposeNameSet(values []string) map[string]bool {
+	out := map[string]bool{}
+	for _, value := range values {
+		key := normalizePurposeToken(value)
+		if key != "" {
+			out[key] = true
+		}
+	}
+	return out
+}
+
+func purposeSortedSet(values map[string]string) []string {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			out = append(out, strings.TrimSpace(value))
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		return strings.ToLower(out[i]) < strings.ToLower(out[j])
+	})
+	return out
+}
+
+func appendUniquePurposeString(values []string, value string) []string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return values
+	}
+	key := normalizePurposeToken(value)
+	for _, existing := range values {
+		if normalizePurposeToken(existing) == key {
+			return values
+		}
+	}
+	return append(values, value)
 }
 
 func normalizePurposeFieldName(value string) string {

@@ -91,6 +91,60 @@ func TestBuildPurposeRunPlanZoneHeatFlowSelectedZones(t *testing.T) {
 	}
 }
 
+func TestBuildPurposeRunPlanHVACLoopCheckSelectedAirLoopNodes(t *testing.T) {
+	doc := parsePurposePlanFixture(t, purposePlanFixtureIDF+`
+AirLoopHVAC,
+  Main Air Loop,
+  ,
+  ,
+  Autosize,
+  Air Branches,
+  ,
+  Air Supply Inlet,
+  Air Demand Outlet,
+  Air Demand Inlet,
+  Air Supply Outlet;
+
+BranchList,
+  Air Branches,
+  Main Air Branch;
+
+Branch,
+  Main Air Branch,
+  ,
+  Fan:ConstantVolume,
+  Supply Fan,
+  Air Supply Inlet,
+  Fan Outlet;
+
+Fan:ConstantVolume,
+  Supply Fan,
+  Air Supply Inlet,
+  Fan Outlet;
+`)
+
+	plan := BuildPurposeRunPlan(doc, SimulationPurposeRequest{
+		Purposes: []SimulationPurposeID{SimulationPurposeHVACLoopCheck},
+		Scope: SimulationPurposeScope{
+			LoopMode:     "selected",
+			AirLoopNames: []string{"Main Air Loop"},
+		},
+	})
+
+	if findPurposeOutput(plan, "Output:Variable", "Air Supply Inlet", "System Node Temperature") == nil {
+		t.Fatalf("missing selected loop node output in %#v", plan.OutputObjects)
+	}
+	if findPurposeOutput(plan, "Output:Variable", "Fan Outlet", "System Node Mass Flow Rate") == nil {
+		t.Fatalf("missing component outlet node output in %#v", plan.OutputObjects)
+	}
+	if findPurposeOutput(plan, "Output:Variable", "*", "System Node Temperature") != nil {
+		t.Fatalf("selected loop plan should not use wildcard node key: %#v", plan.OutputObjects)
+	}
+	if !purposePlanHasWarning(plan, "hvac_scope_selected") {
+		t.Fatalf("expected selected HVAC scope warning in %#v", plan.Warnings)
+	}
+}
+
 func TestBuildPurposeRunPlanEstimatesFramesFromRunPeriod(t *testing.T) {
 	doc := parsePurposePlanFixture(t, purposePlanFixtureIDF+`
 Timestep,
