@@ -91,6 +91,28 @@ func TestBuildPurposeRunPlanZoneHeatFlowSelectedZones(t *testing.T) {
 	}
 }
 
+func TestBuildPurposeRunPlanZoneHeatFlowVisibleZones(t *testing.T) {
+	doc := parsePurposePlanFixture(t, purposePlanFixtureIDF)
+
+	plan := BuildPurposeRunPlan(doc, SimulationPurposeRequest{
+		Purposes: []SimulationPurposeID{SimulationPurposeZoneHeatFlow},
+		Scope: SimulationPurposeScope{
+			ZoneMode:  "visible",
+			ZoneNames: []string{"Lab"},
+		},
+	})
+
+	if findPurposeOutput(plan, "Output:Variable", "Lab", "Zone Mean Air Temperature") == nil {
+		t.Fatalf("missing visible-zone temperature output in %#v", plan.OutputObjects)
+	}
+	if findPurposeOutput(plan, "Output:Variable", "*", "Zone Mean Air Temperature") != nil {
+		t.Fatalf("visible-zone plan should not use wildcard zone key: %#v", plan.OutputObjects)
+	}
+	if !purposePlanHasWarning(plan, "zone_scope_visible") {
+		t.Fatalf("expected visible-zone scope warning in %#v", plan.Warnings)
+	}
+}
+
 func TestBuildPurposeRunPlanHVACLoopCheckSelectedAirLoopNodes(t *testing.T) {
 	doc := parsePurposePlanFixture(t, purposePlanFixtureIDF+`
 AirLoopHVAC,
@@ -230,6 +252,28 @@ func TestBuildPurposeRunPlanComfortSelectedZones(t *testing.T) {
 	}
 	if !purposePlanHasWarning(plan, "comfort_scope_selected") {
 		t.Fatalf("expected comfort selected-zone warning in %#v", plan.Warnings)
+	}
+}
+
+func TestBuildPurposeRunPlanComfortFilteredZones(t *testing.T) {
+	doc := parsePurposePlanFixture(t, purposePlanFixtureIDF)
+
+	plan := BuildPurposeRunPlan(doc, SimulationPurposeRequest{
+		Purposes: []SimulationPurposeID{SimulationPurposeComfort},
+		Scope: SimulationPurposeScope{
+			ZoneMode:  "filtered",
+			ZoneNames: []string{"Office"},
+		},
+	})
+
+	if findPurposeOutput(plan, "Output:Variable", "Office", "Zone Mean Air Temperature") == nil {
+		t.Fatalf("missing filtered-zone comfort output in %#v", plan.OutputObjects)
+	}
+	if findPurposeOutput(plan, "Output:Variable", "*", "Zone Mean Air Temperature") != nil {
+		t.Fatalf("filtered comfort plan should not use wildcard zone key: %#v", plan.OutputObjects)
+	}
+	if !purposePlanHasWarning(plan, "comfort_scope_filtered") {
+		t.Fatalf("expected comfort filtered-zone warning in %#v", plan.Warnings)
 	}
 }
 

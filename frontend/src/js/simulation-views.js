@@ -319,9 +319,10 @@ function renderSimulationPurposeSetup() {
       : t("simulation.noPurposeSelected", {}, "No purposes selected");
   }
   if (elements.simulationPurposeZoneNames) {
-    const selectedMode = elements.simulationPurposeZoneMode?.value === "selected";
-    elements.simulationPurposeZoneNames.disabled = !selectedMode;
-    elements.simulationPurposeZoneNames.closest("label")?.classList.toggle("disabled", !selectedMode);
+    const zoneMode = elements.simulationPurposeZoneMode?.value || "all";
+    const editableMode = zoneMode === "selected" || zoneMode === "filtered";
+    elements.simulationPurposeZoneNames.disabled = !editableMode;
+    elements.simulationPurposeZoneNames.closest("label")?.classList.toggle("disabled", !editableMode);
   }
   if (elements.simulationCustomOutputs) {
     const customSelected = selected.includes("custom_outputs");
@@ -1883,11 +1884,12 @@ function purposeOutputAppliesInMode(object = {}, mode = purposeOutputApplyMode()
 
 function buildSimulationPurposeRequest() {
   const purposes = selectedSimulationPurposes();
+  const zoneMode = elements.simulationPurposeZoneMode?.value || "all";
   return {
     purposes,
     scope: {
-      zoneMode: elements.simulationPurposeZoneMode?.value || "all",
-      zoneNames: parseCommaList(elements.simulationPurposeZoneNames?.value || ""),
+      zoneMode,
+      zoneNames: simulationPurposeZoneNamesForMode(zoneMode),
       ...simulationHVACPurposeScope(purposes),
       customOutputs: parseCustomOutputs(elements.simulationCustomOutputs?.value || ""),
     },
@@ -1897,6 +1899,65 @@ function buildSimulationPurposeRequest() {
     persistOutputs: Boolean(elements.simulationPersistOutputs?.checked),
     discoveryAllowed: false,
   };
+}
+
+function simulationPurposeZoneNamesForMode(zoneMode) {
+  const typed = parseCommaList(elements.simulationPurposeZoneNames?.value || "");
+  switch (zoneMode) {
+    case "selected":
+      return typed;
+    case "visible":
+      return simulationVisibleZoneNames();
+    case "filtered":
+      return simulationFilteredZoneNames(typed);
+    default:
+      return [];
+  }
+}
+
+function simulationVisibleZoneNames() {
+  const geometry = state.report?.geometry;
+  const zones = geometry?.zones || [];
+  if (!zones.length) {
+    return [];
+  }
+  if (state.selectedGeometryStory === "all" || state.selectedGeometryStory === "" || state.selectedGeometryStory === undefined) {
+    return zones.map((zone) => zone.name).filter(Boolean);
+  }
+  return zones
+    .filter((zone) => String(zone.storyIndex) === String(state.selectedGeometryStory))
+    .map((zone) => zone.name)
+    .filter(Boolean);
+}
+
+function simulationFilteredZoneNames(terms) {
+  const zoneNames = simulationAllZoneNames();
+  const filters = (terms || []).map(normalizeOutputMatchToken).filter(Boolean);
+  if (filters.length) {
+    return zoneNames.filter((zoneName) => filters.some((term) => normalizeOutputMatchToken(zoneName).includes(term)));
+  }
+  const activeNames = [state.activeProfileZoneName, selectedGeometryZoneName()].map((value) => String(value || "").trim()).filter(Boolean);
+  return activeNames.length ? activeNames : [];
+}
+
+function simulationAllZoneNames() {
+  const geometryZones = (state.report?.geometry?.zones || []).map((zone) => zone.name).filter(Boolean);
+  if (geometryZones.length) {
+    return [...new Set(geometryZones)].sort((a, b) => a.localeCompare(b));
+  }
+  return (state.model?.objects || [])
+    .filter((object) => String(object.type || "").toLowerCase() === "zone")
+    .map((object) => object.name || object.fields?.[0]?.value || "")
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b));
+}
+
+function selectedGeometryZoneName() {
+  if (state.selectedGeometryKind !== "zone" || !state.selectedGeometryId) {
+    return "";
+  }
+  const zone = (state.report?.geometry?.zones || []).find((item) => item.id === state.selectedGeometryId);
+  return zone?.name || "";
 }
 
 function simulationHVACPurposeScope(purposes = selectedSimulationPurposes()) {

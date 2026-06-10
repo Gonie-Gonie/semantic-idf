@@ -1342,9 +1342,9 @@ func (builder *purposePlanBuilder) addZoneHeatFlow() {
 		return
 	}
 	keys := []string{"*"}
-	if strings.EqualFold(builder.request.Scope.ZoneMode, "selected") && len(builder.request.Scope.ZoneNames) > 0 {
-		keys = builder.request.Scope.ZoneNames
-		builder.warn("info", "zone_scope_selected", fmt.Sprintf("Zone Heat Flow is limited to %d selected zone key(s).", len(keys)), SimulationPurposeZoneHeatFlow, "")
+	if scopedKeys, ok, mode := purposeZoneKeysForScope(builder.request.Scope); ok {
+		keys = scopedKeys
+		builder.warn("info", "zone_scope_"+mode, fmt.Sprintf("Zone Heat Flow is limited to %d %s zone key(s).", len(keys), mode), SimulationPurposeZoneHeatFlow, "")
 	} else {
 		builder.warn("info", "wildcard_zone_heat_flow", "Zone Heat Flow uses wildcard zone keys until selected-zone scoping is requested.", SimulationPurposeZoneHeatFlow, "")
 	}
@@ -1353,6 +1353,19 @@ func (builder *purposePlanBuilder) addZoneHeatFlow() {
 		for _, variable := range zoneHeatFlowVariableNames() {
 			builder.addVariable(SimulationPurposeZoneHeatFlow, key, variable, "Hourly", "medium", "Hourly zone heat-balance ledger variable.")
 		}
+	}
+}
+
+func purposeZoneKeysForScope(scope SimulationPurposeScope) ([]string, bool, string) {
+	mode := strings.ToLower(strings.TrimSpace(scope.ZoneMode))
+	switch mode {
+	case "selected", "visible", "filtered":
+		if len(scope.ZoneNames) == 0 {
+			return nil, false, mode
+		}
+		return append([]string(nil), scope.ZoneNames...), true, mode
+	default:
+		return nil, false, "all"
 	}
 }
 
@@ -1701,9 +1714,9 @@ func (builder *purposePlanBuilder) addComfort() {
 	}
 	builder.addRecommendation("standard-summary-all", SimulationPurposeComfort)
 	keys := []string{"*"}
-	if strings.EqualFold(builder.request.Scope.ZoneMode, "selected") && len(builder.request.Scope.ZoneNames) > 0 {
-		keys = builder.request.Scope.ZoneNames
-		builder.warn("info", "comfort_scope_selected", fmt.Sprintf("Comfort Check is limited to %d selected zone key(s).", len(keys)), SimulationPurposeComfort, "")
+	if scopedKeys, ok, mode := purposeZoneKeysForScope(builder.request.Scope); ok {
+		keys = scopedKeys
+		builder.warn("info", "comfort_scope_"+mode, fmt.Sprintf("Comfort Check is limited to %d %s zone key(s).", len(keys), mode), SimulationPurposeComfort, "")
 	}
 	for _, key := range keys {
 		for _, variable := range comfortCheckVariables() {

@@ -104,6 +104,7 @@ The release script infers bump size from these sections:
 - HVAC Loop Check results now include a frame slider with node and component snapshots for inspecting selected-time temperatures, setpoints, flows, and operation values.
 - Simulation output discovery now marks user-entered Custom Outputs as `missing` when they are not found in the current SQL/RDD/MDD catalog.
 - Purpose simulation run manifests now include EnergyPlus version metadata when it can be resolved from configured or detected installations.
+- Purpose zone scopes now support visible and filtered zone modes, letting Heat Flow and Comfort outputs narrow to geometry/profile-derived zone names.
 
 ## Fixed
 

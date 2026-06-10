@@ -57,14 +57,14 @@ Supported purpose ids:
 - `comfort_check`
 - `custom_outputs`
 
-`SimulationPurposeScope` can express selected zones, selected air/plant/condenser
-loops, selected components, output signatures, and custom output objects. Zone
-Heat Flow and Comfort use selected zone names when provided. HVAC Loop Check
-uses selected loop node names when they can be resolved from the current HVAC
-analysis, requests component operation variables for resolved loop components,
-and falls back to wildcard node/component keys when scope is broad or unresolved.
-The Simulation UI passes the active HVAC tab loop as selected HVAC scope when
-HVAC Loop Check is enabled.
+`SimulationPurposeScope` can express all, selected, visible, or filtered zones;
+selected air/plant/condenser loops; selected components; output signatures; and
+custom output objects. Zone Heat Flow and Comfort use scoped zone names when
+provided. HVAC Loop Check uses selected loop node names when they can be resolved
+from the current HVAC analysis, requests component operation variables for
+resolved loop components, and falls back to wildcard node/component keys when
+scope is broad or unresolved. The Simulation UI passes the active HVAC tab loop
+as selected HVAC scope when HVAC Loop Check is enabled.
 
 `PurposeRunPlan` reports:
 
