@@ -54,6 +54,7 @@ The release script infers bump size from these sections:
 - The Simulation tab is now framed as Run & Inspect with purpose cards, scope controls, run-plan preview, and a permanent purpose-output apply action.
 - Basic Energy purpose results now parse EnergyPlus SQL meter and zone-energy rows directly, including J-to-kWh conversion and SQL source completeness metadata.
 - Simulation results now include purpose-aware Energy, Heat-Flow, Integrity, Series, and Files tabs with a Basic Energy dashboard for SQL monthly energy output.
+- Simulation runs now write an `idf-analyzer-run.json` manifest with input hash, selected purposes, output plan, engine/weather paths, and result file metadata.
 
 ## Fixed
 

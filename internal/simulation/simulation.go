@@ -3,7 +3,10 @@ package simulation
 import (
 	"bufio"
 	"context"
+	"crypto/sha256"
 	"encoding/csv"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"hash/fnv"
 	"io"
@@ -138,6 +141,25 @@ type SimulationRunResult struct {
 	HeatFlow                 HeatFlowDataset      `json:"heatFlow,omitempty"`
 	PurposeRunPlan           *PurposeRunPlan      `json:"purposeRunPlan,omitempty"`
 	PurposeResults           *PurposeResultBundle `json:"purposeResults,omitempty"`
+}
+
+type SimulationRunManifest struct {
+	RunID                    string                `json:"runId"`
+	CreatedAt                string                `json:"createdAt"`
+	StartedAt                string                `json:"startedAt,omitempty"`
+	FinishedAt               string                `json:"finishedAt,omitempty"`
+	Status                   string                `json:"status"`
+	InputPath                string                `json:"inputPath,omitempty"`
+	InputHash                string                `json:"inputHash,omitempty"`
+	Filename                 string                `json:"filename,omitempty"`
+	EnergyPlusExecutablePath string                `json:"energyPlusExecutablePath,omitempty"`
+	WeatherPath              string                `json:"weatherPath,omitempty"`
+	OutputDirectory          string                `json:"outputDirectory,omitempty"`
+	Purposes                 []SimulationPurposeID `json:"purposes,omitempty"`
+	OutputPlan               *PurposeRunPlan       `json:"outputPlan,omitempty"`
+	ResultMode               string                `json:"resultMode,omitempty"`
+	UseReadVarsESO           bool                  `json:"useReadVarsESO,omitempty"`
+	ResultFiles              []SimulationFileInfo  `json:"resultFiles,omitempty"`
 }
 
 type MultiSimulationResult struct {
@@ -720,6 +742,7 @@ func RunSimulation(request SimulationRunRequest, progress func(SimulationProgres
 		result.Status = "succeeded"
 	}
 	finishSimulationResult(result, started)
+	writeSimulationRunManifest(result, request)
 	emitSimulationProgress(progress, request.RunID, "complete", result.Status, simulationCompletionMessage(result), 4, 4, result.InputPath)
 	return result, nil
 }
@@ -838,6 +861,65 @@ func finishSimulationResult(result *SimulationRunResult, started time.Time) {
 	finished := time.Now()
 	result.FinishedAt = finished.Format(time.RFC3339)
 	result.DurationMS = finished.Sub(started).Milliseconds()
+}
+
+func writeSimulationRunManifest(result *SimulationRunResult, request SimulationRunRequest) {
+	if result == nil || strings.TrimSpace(result.OutputDirectory) == "" {
+		return
+	}
+	manifest := SimulationRunManifest{
+		RunID:                    result.RunID,
+		CreatedAt:                time.Now().Format(time.RFC3339),
+		StartedAt:                result.StartedAt,
+		FinishedAt:               result.FinishedAt,
+		Status:                   result.Status,
+		InputPath:                result.InputPath,
+		InputHash:                fileSHA256(result.InputPath),
+		Filename:                 result.Filename,
+		EnergyPlusExecutablePath: result.EnergyPlusExecutablePath,
+		WeatherPath:              result.WeatherPath,
+		OutputDirectory:          result.OutputDirectory,
+		OutputPlan:               request.PurposeRunPlan,
+		ResultMode:               request.ResultMode,
+		UseReadVarsESO:           simulationUsesReadVarsESO(request),
+		ResultFiles:              append([]SimulationFileInfo(nil), result.Files...),
+	}
+	if request.PurposeRequest != nil {
+		manifest.Purposes = append([]SimulationPurposeID(nil), request.PurposeRequest.Purposes...)
+	}
+	path := filepath.Join(result.OutputDirectory, "idf-analyzer-run.json")
+	payload, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		return
+	}
+	if err := os.WriteFile(path, append(payload, '\n'), 0o644); err != nil {
+		return
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return
+	}
+	result.Files = append(result.Files, SimulationFileInfo{
+		Name: filepath.Base(path),
+		Path: path,
+		Kind: "manifest",
+		Size: info.Size(),
+	})
+	sort.Slice(result.Files, func(i, j int) bool {
+		return strings.ToLower(result.Files[i].Name) < strings.ToLower(result.Files[j].Name)
+	})
+}
+
+func fileSHA256(path string) string {
+	if strings.TrimSpace(path) == "" {
+		return ""
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(content)
+	return hex.EncodeToString(sum[:])
 }
 
 func simulationUsesReadVarsESO(request SimulationRunRequest) bool {
@@ -1013,6 +1095,9 @@ func parseHeatFlowFallback(result *SimulationRunResult) {
 }
 
 func simulationFileKind(name string) string {
+	if strings.EqualFold(filepath.Base(name), "idf-analyzer-run.json") {
+		return "manifest"
+	}
 	switch strings.ToLower(filepath.Ext(name)) {
 	case ".err":
 		return "err"

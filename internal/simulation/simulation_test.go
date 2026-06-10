@@ -2,6 +2,7 @@ package simulation
 
 import (
 	"database/sql"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -222,6 +223,68 @@ func TestPurposeResultBundleUsesSQLEnergyDashboard(t *testing.T) {
 	if len(bundle.Completeness) != 1 || !bundle.Completeness[0].Found || bundle.Completeness[0].Source != "sql" {
 		t.Fatalf("bundle completeness = %#v", bundle.Completeness)
 	}
+}
+
+func TestWriteSimulationRunManifest(t *testing.T) {
+	dir := t.TempDir()
+	inputPath := filepath.Join(dir, "in.idf")
+	if err := os.WriteFile(inputPath, []byte("Version, 24.1;\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result := &SimulationRunResult{
+		RunID:           "sim-test",
+		Status:          "succeeded",
+		InputPath:       inputPath,
+		Filename:        "in.idf",
+		OutputDirectory: dir,
+		StartedAt:       "2026-06-10T00:00:00Z",
+		FinishedAt:      "2026-06-10T00:00:01Z",
+		Files: []SimulationFileInfo{{
+			Name: "eplusout.sql",
+			Path: filepath.Join(dir, "eplusout.sql"),
+			Kind: "sqlite",
+			Size: 120,
+		}},
+	}
+	plan := &PurposeRunPlan{Purposes: []SimulationPurposeID{SimulationPurposeBasicEnergy}, EstimatedWeight: "Light"}
+	request := SimulationRunRequest{
+		PurposeRequest: &SimulationPurposeRequest{Purposes: []SimulationPurposeID{SimulationPurposeBasicEnergy}},
+		PurposeRunPlan: plan,
+		ResultMode:     "sql_first",
+	}
+
+	writeSimulationRunManifest(result, request)
+
+	path := filepath.Join(dir, "idf-analyzer-run.json")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manifest SimulationRunManifest
+	if err := json.Unmarshal(content, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	if manifest.RunID != "sim-test" || manifest.Status != "succeeded" || manifest.InputHash == "" {
+		t.Fatalf("manifest core fields = %+v", manifest)
+	}
+	if len(manifest.Purposes) != 1 || manifest.Purposes[0] != SimulationPurposeBasicEnergy {
+		t.Fatalf("manifest purposes = %#v", manifest.Purposes)
+	}
+	if manifest.OutputPlan == nil || manifest.OutputPlan.EstimatedWeight != "Light" {
+		t.Fatalf("manifest output plan = %#v", manifest.OutputPlan)
+	}
+	if len(result.Files) != 2 || !simulationResultHasFileKind(result.Files, "manifest") {
+		t.Fatalf("result files = %#v", result.Files)
+	}
+}
+
+func simulationResultHasFileKind(files []SimulationFileInfo, kind string) bool {
+	for _, file := range files {
+		if file.Kind == kind {
+			return true
+		}
+	}
+	return false
 }
 
 func TestReadSimulationOutputsPrefersSQLHeatFlowAndSeries(t *testing.T) {
