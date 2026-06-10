@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -314,6 +315,68 @@ func TestParseSimulationEnergySQLAggregatesRowsByMonth(t *testing.T) {
 	}
 	if len(facility.Points) != 2 || facility.Points[0].Label != "M1" || facility.Points[0].Value != 2 || facility.Points[1].Value != 2 {
 		t.Fatalf("aggregated monthly points = %#v", facility.Points)
+	}
+}
+
+func TestConvertEnergySQLValueUnits(t *testing.T) {
+	tests := []struct {
+		name      string
+		value     float64
+		unit      string
+		wantValue float64
+		wantUnit  string
+	}{
+		{name: "joules", value: 3600000, unit: "J", wantValue: 1, wantUnit: "kWh"},
+		{name: "kilojoules", value: 3600, unit: "kJ", wantValue: 1, wantUnit: "kWh"},
+		{name: "megajoules", value: 3.6, unit: "MJ", wantValue: 1, wantUnit: "kWh"},
+		{name: "gigajoules", value: 0.0036, unit: "GJ", wantValue: 1, wantUnit: "kWh"},
+		{name: "watt hours", value: 1000, unit: "Wh", wantValue: 1, wantUnit: "kWh"},
+		{name: "kilowatt hours", value: 2.5, unit: "kWh", wantValue: 2.5, wantUnit: "kWh"},
+		{name: "watts", value: 1500, unit: "W", wantValue: 1.5, wantUnit: "kW"},
+		{name: "unknown unit", value: 7, unit: " kg ", wantValue: 7, wantUnit: "kg"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			gotValue, gotUnit := convertEnergySQLValue(test.value, test.unit)
+			if math.Abs(gotValue-test.wantValue) > 0.000001 || gotUnit != test.wantUnit {
+				t.Fatalf("convertEnergySQLValue(%v, %q) = %v %s, want %v %s", test.value, test.unit, gotValue, gotUnit, test.wantValue, test.wantUnit)
+			}
+		})
+	}
+}
+
+func TestParseSimulationEnergySQLTotalsConvertedMonthlyPoints(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "eplusout.sql")
+	createTestEnergySQL(t, path)
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`UPDATE ReportDataDictionary SET Units = 'W' WHERE ReportDataDictionaryIndex = 21`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE ReportData SET Value = 1000.0 WHERE ReportDataIndex = 3`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE ReportData SET Value = 2500.0 WHERE ReportDataIndex = 4`); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := parseSimulationEnergySQL(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.EndUseMonthly) != 1 {
+		t.Fatalf("end-use series count = %d, want 1: %#v", len(result.EndUseMonthly), result.EndUseMonthly)
+	}
+	endUse := result.EndUseMonthly[0]
+	if endUse.Unit != "kW" || endUse.Total != 3.5 {
+		t.Fatalf("converted end-use total = %+v, want 3.5 kW", endUse)
+	}
+	if len(endUse.Points) != 2 || endUse.Points[0].Value != 1 || endUse.Points[1].Value != 2.5 {
+		t.Fatalf("converted monthly points = %#v", endUse.Points)
 	}
 }
 

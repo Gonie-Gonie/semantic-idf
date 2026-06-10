@@ -81,6 +81,7 @@ The release script infers bump size from these sections:
 - Simulation output discovery now marks purpose outputs as `alias` when a discovered alternate variable can satisfy the requested purpose variable.
 - Custom Outputs purpose presets entered or picked in the Simulation setup are now saved locally and restored on the next session.
 - Basic Energy SQL results now aggregate sub-monthly energy rows into monthly chart points while preserving converted kWh totals.
+- Basic Energy SQL unit conversion policy now has explicit coverage for J/kJ/MJ/GJ/Wh/kWh/W inputs and converted monthly totals.
 - Purpose result tables now show the matched source output state and run-plan signature for zone energy, comfort, and HVAC loop series rows.
 - Simulation runner documentation now reflects purpose scopes, SQL monthly aggregation, discovery alias/cache states, result source signatures, and run export artifacts.
 - HVAC Loop Check purpose runs now include selected-loop component operation outputs and group parsed fan, pump, coil, chiller, boiler, and cooling-tower series in the HVAC result view.
