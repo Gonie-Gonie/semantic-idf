@@ -261,12 +261,15 @@ func BuildPurposeResultBundle(result *SimulationRunResult, request SimulationPur
 	for _, purposeID := range request.Purposes {
 		switch purposeID {
 		case SimulationPurposeBasicEnergy:
-			bundle.Energy = buildEnergyDashboardResult(result.Series)
+			bundle.Energy = buildEnergyDashboardResultFromFiles(result.Files)
+			if len(bundle.Energy.FacilityMonthly)+len(bundle.Energy.EndUseMonthly)+len(bundle.Energy.ZoneMonthly) == 0 {
+				bundle.Energy = buildEnergyDashboardResult(result.Series)
+			}
 			bundle.Completeness = append(bundle.Completeness, purposeCompleteness(
 				SimulationPurposeBasicEnergy,
 				"monthly energy series",
 				len(bundle.Energy.FacilityMonthly)+len(bundle.Energy.EndUseMonthly)+len(bundle.Energy.ZoneMonthly) > 0,
-				seriesSource(result.Series),
+				energyDashboardSource(bundle.Energy, result.Series),
 			))
 			bundle.Energy.Completeness = append([]PurposeCompletenessItem(nil), bundle.Completeness...)
 		case SimulationPurposeZoneHeatFlow:
@@ -297,6 +300,38 @@ func BuildPurposeResultBundle(result *SimulationRunResult, request SimulationPur
 		}
 	}
 	return bundle
+}
+
+func buildEnergyDashboardResultFromFiles(files []SimulationFileInfo) EnergyDashboardResult {
+	for _, file := range files {
+		if file.Kind != "sqlite" {
+			continue
+		}
+		result, err := parseSimulationEnergySQL(file.Path)
+		if err == nil && len(result.FacilityMonthly)+len(result.EndUseMonthly)+len(result.ZoneMonthly) > 0 {
+			return result
+		}
+	}
+	return EnergyDashboardResult{}
+}
+
+func energyDashboardSource(result EnergyDashboardResult, series []SimulationSeries) string {
+	for _, item := range result.FacilityMonthly {
+		if item.Source != "" {
+			return simulationSourceFromFilename(item.Source)
+		}
+	}
+	for _, item := range result.EndUseMonthly {
+		if item.Source != "" {
+			return simulationSourceFromFilename(item.Source)
+		}
+	}
+	for _, item := range result.ZoneMonthly {
+		if item.Source != "" {
+			return simulationSourceFromFilename(item.Source)
+		}
+	}
+	return seriesSource(series)
 }
 
 func newPurposePlanBuilder(doc idf.Document, request SimulationPurposeRequest) *purposePlanBuilder {

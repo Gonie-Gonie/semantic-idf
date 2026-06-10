@@ -52,6 +52,7 @@ The release script infers bump size from these sections:
 - Simulation runs now expose a purpose-driven request, run-plan preview model, SQL-first result mode controls, and purpose result bundle shell while preserving existing Series and Heat-Flow viewers.
 - Purpose simulation planning now builds Basic Energy, Zone Heat Flow, Integrity, Comfort, HVAC Loop Check, and Custom Outputs presets with signature-based output merging and warning metadata.
 - The Simulation tab is now framed as Run & Inspect with purpose cards, scope controls, run-plan preview, and a permanent purpose-output apply action.
+- Basic Energy purpose results now parse EnergyPlus SQL meter and zone-energy rows directly, including J-to-kWh conversion and SQL source completeness metadata.
 
 ## Fixed
 

@@ -173,6 +173,57 @@ func TestParseSimulationHeatFlowSQLBuildsDataset(t *testing.T) {
 	}
 }
 
+func TestParseSimulationEnergySQLBuildsDashboard(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "eplusout.sql")
+	createTestEnergySQL(t, path)
+
+	result, err := parseSimulationEnergySQL(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.FacilityMonthly) != 1 {
+		t.Fatalf("facility series count = %d, want 1: %#v", len(result.FacilityMonthly), result.FacilityMonthly)
+	}
+	if len(result.EndUseMonthly) != 1 {
+		t.Fatalf("end-use series count = %d, want 1: %#v", len(result.EndUseMonthly), result.EndUseMonthly)
+	}
+	if len(result.ZoneMonthly) != 1 {
+		t.Fatalf("zone series count = %d, want 1: %#v", len(result.ZoneMonthly), result.ZoneMonthly)
+	}
+	if result.FacilityMonthly[0].Unit != "kWh" || result.FacilityMonthly[0].Total != 3 {
+		t.Fatalf("facility energy = %+v, want 3 kWh", result.FacilityMonthly[0])
+	}
+	if result.ZoneMonthly[0].ZoneName != "ZONE ONE" || result.ZoneMonthly[0].Total != 0.5 {
+		t.Fatalf("zone energy = %+v, want ZONE ONE 0.5 kWh", result.ZoneMonthly[0])
+	}
+}
+
+func TestPurposeResultBundleUsesSQLEnergyDashboard(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "eplusout.sql")
+	createTestEnergySQL(t, path)
+
+	result := &SimulationRunResult{
+		Status: "succeeded",
+		Files: []SimulationFileInfo{{
+			Name: "eplusout.sql",
+			Path: path,
+			Kind: "sqlite",
+		}},
+	}
+	bundle := BuildPurposeResultBundle(result, SimulationPurposeRequest{
+		Purposes: []SimulationPurposeID{SimulationPurposeBasicEnergy},
+	})
+
+	if len(bundle.Energy.FacilityMonthly) != 1 || bundle.Energy.FacilityMonthly[0].Source != "eplusout.sql" {
+		t.Fatalf("bundle energy = %#v", bundle.Energy)
+	}
+	if len(bundle.Completeness) != 1 || !bundle.Completeness[0].Found || bundle.Completeness[0].Source != "sql" {
+		t.Fatalf("bundle completeness = %#v", bundle.Completeness)
+	}
+}
+
 func TestReadSimulationOutputsPrefersSQLHeatFlowAndSeries(t *testing.T) {
 	dir := t.TempDir()
 	createTestEnergyPlusSQL(t, filepath.Join(dir, "eplusout.sql"))
@@ -277,6 +328,55 @@ func createTestEnergyPlusSQL(t *testing.T, path string) {
 			(6, 2, 11, 150.0),
 			(7, 2, 12, -45.0),
 			(8, 2, 13, -18.0)`,
+	}
+	for _, statement := range statements {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatalf("sql fixture statement failed: %v\n%s", err, statement)
+		}
+	}
+}
+
+func createTestEnergySQL(t *testing.T, path string) {
+	t.Helper()
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	statements := []string{
+		`CREATE TABLE ReportDataDictionary (
+			ReportDataDictionaryIndex INTEGER PRIMARY KEY,
+			KeyValue TEXT,
+			Name TEXT,
+			Units TEXT
+		)`,
+		`CREATE TABLE "Time" (
+			TimeIndex INTEGER PRIMARY KEY,
+			Month INTEGER,
+			Day INTEGER,
+			Hour INTEGER,
+			Minute INTEGER
+		)`,
+		`CREATE TABLE ReportData (
+			ReportDataIndex INTEGER PRIMARY KEY,
+			TimeIndex INTEGER,
+			ReportDataDictionaryIndex INTEGER,
+			Value REAL
+		)`,
+		`INSERT INTO ReportDataDictionary VALUES
+			(20, '', 'Electricity:Facility', 'J'),
+			(21, '', 'Electricity:Cooling', 'J'),
+			(22, 'ZONE ONE', 'Zone Lights Electricity Energy', 'J')`,
+		`INSERT INTO "Time" VALUES
+			(1, 1, 31, 24, 0),
+			(2, 2, 28, 24, 0)`,
+		`INSERT INTO ReportData VALUES
+			(1, 1, 20, 3600000.0),
+			(2, 2, 20, 7200000.0),
+			(3, 1, 21, 1800000.0),
+			(4, 2, 21, 1800000.0),
+			(5, 1, 22, 900000.0),
+			(6, 2, 22, 900000.0)`,
 	}
 	for _, statement := range statements {
 		if _, err := db.Exec(statement); err != nil {
