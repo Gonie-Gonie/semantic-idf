@@ -691,6 +691,70 @@
   gap: 6px;
 }
 
+.simulation-energy-chart-wrap {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.simulation-energy-chart {
+  width: 100%;
+  min-width: 680px;
+  height: 240px;
+}
+
+.simulation-energy-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.simulation-energy-legend span {
+  display: inline-flex;
+  max-width: 220px;
+  align-items: center;
+  gap: 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.simulation-energy-legend i {
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.simulation-zone-energy-matrix {
+  overflow: auto;
+}
+
+.simulation-zone-energy-matrix table {
+  min-width: 680px;
+  border-collapse: separate;
+  border-spacing: 3px;
+}
+
+.simulation-zone-energy-matrix th {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.simulation-zone-energy-matrix td span {
+  display: block;
+  width: 32px;
+  height: 18px;
+  border: 1px solid color-mix(in srgb, var(--line) 65%, transparent);
+  border-radius: 3px;
+}
+
 .simulation-energy-bar-row {
   display: grid;
   grid-template-columns: minmax(150px, 0.9fr) minmax(120px, 1.3fr) minmax(90px, auto);

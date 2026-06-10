@@ -444,8 +444,11 @@ function renderSimulationEnergyDashboard(result) {
     .join("");
   elements.simulationEnergyDashboard.innerHTML = `
     <div class="simulation-energy-kpis">${kpis || `<div><span>${escapeHTML(t("common.notAvailable", {}, "N/A"))}</span><strong>0</strong></div>`}</div>
+    ${renderEnergyMonthlyChart(t("simulation.facilityMonthlyProfile", {}, "Facility monthly profile"), facility)}
+    ${renderEnergyMonthlyChart(t("simulation.endUseMonthlyProfile", {}, "End-use monthly profile"), endUse)}
     ${renderEnergyBarSection(t("simulation.facilityEnergy", {}, "Facility energy"), facility)}
     ${renderEnergyBarSection(t("simulation.endUseEnergy", {}, "End-use energy"), endUse)}
+    ${renderZoneEnergyMatrix(zones)}
     ${renderZoneEnergyTable(zones)}`;
 }
 
@@ -596,6 +599,126 @@ function renderEnergyBarSection(title, series) {
     <section class="simulation-energy-block">
       <h4>${escapeHTML(title)}</h4>
       <div class="simulation-energy-bars">${rows}</div>
+    </section>`;
+}
+
+function renderEnergyMonthlyChart(title, series) {
+  const frames = energyChartFrames(series);
+  if (!series.length || !frames.length) {
+    return "";
+  }
+  const width = 760;
+  const height = 240;
+  const margin = { top: 18, right: 18, bottom: 44, left: 58 };
+  const plotWidth = width - margin.left - margin.right;
+  const plotHeight = height - margin.top - margin.bottom;
+  const colors = ["#0f766e", "#2563eb", "#d97706", "#16a34a", "#9333ea", "#dc2626", "#0891b2", "#4f46e5"];
+  const stacks = frames.map((frame) => {
+    let total = 0;
+    const segments = series.map((item, index) => {
+      const value = Math.max(0, energyPointValue(item, frame.key));
+      const segment = { name: item.name || "", value, color: colors[index % colors.length], y0: total, y1: total + value };
+      total += value;
+      return segment;
+    });
+    return { ...frame, total, segments };
+  });
+  const maxTotal = Math.max(...stacks.map((frame) => frame.total), 1);
+  const barGap = 8;
+  const barWidth = Math.max(8, (plotWidth - barGap * Math.max(0, stacks.length - 1)) / stacks.length);
+  const bars = stacks
+    .map((frame, index) => {
+      const x = margin.left + index * (barWidth + barGap);
+      const segments = frame.segments
+        .filter((segment) => segment.value > 0)
+        .map((segment) => {
+          const y = margin.top + plotHeight - (segment.y1 / maxTotal) * plotHeight;
+          const segmentHeight = Math.max(1, ((segment.y1 - segment.y0) / maxTotal) * plotHeight);
+          return `<rect x="${roundSVG(x)}" y="${roundSVG(y)}" width="${roundSVG(barWidth)}" height="${roundSVG(segmentHeight)}" fill="${segment.color}"><title>${escapeHTML(`${segment.name}: ${formatEnergyValue(segment.value, series[0]?.unit || "")}`)}</title></rect>`;
+        })
+        .join("");
+      const labelY = margin.top + plotHeight + 16;
+      return `${segments}<text x="${roundSVG(x + barWidth / 2)}" y="${labelY}" class="simulation-axis" text-anchor="middle">${escapeHTML(frame.label)}</text>`;
+    })
+    .join("");
+  const legend = series
+    .slice(0, 8)
+    .map((item, index) => `<span><i style="background:${colors[index % colors.length]}"></i>${escapeHTML(item.name || "")}</span>`)
+    .join("");
+  return `
+    <section class="simulation-energy-block">
+      <h4>${escapeHTML(title)}</h4>
+      <div class="simulation-energy-chart-wrap">
+        <svg class="simulation-energy-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHTML(title)}">
+          <line x1="${margin.left}" y1="${margin.top + plotHeight}" x2="${width - margin.right}" y2="${margin.top + plotHeight}" class="simulation-axis-line"></line>
+          <line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${margin.top + plotHeight}" class="simulation-axis-line"></line>
+          <text x="${margin.left}" y="12" class="simulation-title">${escapeHTML(formatEnergyValue(maxTotal, series[0]?.unit || ""))}</text>
+          ${bars}
+        </svg>
+        <div class="simulation-energy-legend">${legend}</div>
+      </div>
+    </section>`;
+}
+
+function energyChartFrames(series) {
+  const frameMap = new Map();
+  for (const item of series) {
+    for (const point of item.points || []) {
+      const key = String(point.x ?? point.label ?? frameMap.size + 1);
+      if (!frameMap.has(key)) {
+        frameMap.set(key, { key, label: energyPointLabel(point, frameMap.size) });
+      }
+    }
+  }
+  return [...frameMap.values()].slice(0, 12);
+}
+
+function energyPointLabel(point, index) {
+  const label = String(point.label || "").trim();
+  if (label) {
+    const monthMatch = label.match(/^(\d{1,2})\//);
+    return monthMatch ? `M${monthMatch[1]}` : label.slice(0, 8);
+  }
+  return String(point.x || index + 1);
+}
+
+function energyPointValue(series, key) {
+  const point = (series.points || []).find((item) => String(item.x ?? item.label ?? "") === key);
+  return Number(point?.value) || 0;
+}
+
+function renderZoneEnergyMatrix(zones) {
+  const frames = energyChartFrames(zones);
+  if (!zones.length || !frames.length) {
+    return "";
+  }
+  const rows = zones
+    .slice()
+    .sort((a, b) => Math.abs(Number(b.total) || 0) - Math.abs(Number(a.total) || 0))
+    .slice(0, 24);
+  const maxValue = Math.max(...rows.flatMap((row) => frames.map((frame) => Math.abs(energyPointValue(row, frame.key)))), 1);
+  const header = frames.map((frame) => `<th>${escapeHTML(frame.label)}</th>`).join("");
+  const body = rows
+    .map((row) => {
+      const cells = frames
+        .map((frame) => {
+          const value = energyPointValue(row, frame.key);
+          const alpha = Math.min(0.82, Math.max(0.08, Math.abs(value) / maxValue));
+          return `<td><span style="background:rgba(15,118,110,${alpha})" title="${escapeHTML(formatEnergyValue(value, row.unit || ""))}"></span></td>`;
+        })
+        .join("");
+      return `<tr><th>${escapeHTML(`${row.zoneName || ""} / ${row.metric || ""}`)}</th>${cells}</tr>`;
+    })
+    .join("");
+  return `
+    <section class="simulation-energy-block">
+      <h4>${escapeHTML(t("simulation.zoneEnergyMatrix", {}, "Zone energy matrix"))}</h4>
+      <div class="simulation-zone-energy-matrix">
+        <table>
+          <thead><tr><th>${escapeHTML(t("common.targetZones", {}, "Target Zones"))}</th>${header}</tr></thead>
+          <tbody>${body}</tbody>
+        </table>
+      </div>
     </section>`;
 }
 

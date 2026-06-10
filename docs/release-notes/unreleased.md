@@ -68,6 +68,7 @@ The release script infers bump size from these sections:
 - Purpose simulation results can now be exported as a standalone HTML report with run metadata, output plan, completeness, file references, and embedded JSON.
 - Purpose simulation runs now save `idf-analyzer-run-plan.json` and `temporary_outputs.diff` artifacts alongside EnergyPlus outputs.
 - Simulation progress events now distinguish purpose planning, temporary output application, SQL parsing, fallback parsing, and purpose-result bundling phases.
+- Basic Energy results now include monthly stacked profile charts and a zone energy heatmap matrix in addition to total bars and ranking tables.
 
 ## Fixed
 
