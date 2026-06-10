@@ -521,6 +521,15 @@
                 <div class="profile-section-head">
                   <h3 data-i18n="simulation.graph">SQL/CSV Graph</h3>
                   <span id="simulationSeriesStats" class="tool-muted">No SQL/CSV series</span>
+                  <select id="simulationSeriesGroup" aria-label="Series variable group">
+                    <option value="all">All groups</option>
+                    <option value="temperature">Temperature</option>
+                    <option value="mass_flow">Mass flow</option>
+                    <option value="setpoint">Setpoint</option>
+                    <option value="rate_load">Rate / load</option>
+                    <option value="power_energy">Power / energy</option>
+                    <option value="other">Other</option>
+                  </select>
                   <select id="simulationSeriesSelect" aria-label="SQL/CSV series"></select>
                 </div>
                 <div class="simulation-series-controls" aria-label="Series time range controls">

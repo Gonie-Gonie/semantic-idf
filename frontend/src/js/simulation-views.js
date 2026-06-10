@@ -83,6 +83,14 @@ export function initializeSimulationControls() {
     state.simulationStandardOutput = elements.simulationStandardOutput.checked;
     renderSimulation();
   });
+  elements.simulationSeriesGroup?.addEventListener("change", () => {
+    state.simulationSeriesGroup = elements.simulationSeriesGroup.value || "all";
+    state.simulationSelectedSeries = "";
+    state.simulationSeriesRangeStart = 0;
+    state.simulationSeriesRangeEnd = -1;
+    renderSimulationSeriesSelect(state.simulationResult || {});
+    renderSimulationChart();
+  });
   elements.simulationSeriesSelect?.addEventListener("change", () => {
     state.simulationSelectedSeries = elements.simulationSeriesSelect.value || "";
     state.simulationSeriesRangeStart = 0;
@@ -227,6 +235,7 @@ function renderSimulationEmpty() {
     elements.simulationResultMeta.textContent = t("simulation.backgroundRun", {}, "EnergyPlus is running in the background");
     elements.simulationResultSummary.innerHTML = renderRunningNotice();
     renderSimulationHeatFlowEmpty(t("simulation.heatFlowAfterRun", {}, "The heat-flow ledger will appear when standard heat-balance SQL/CSV output is available."));
+    setSimulationSeriesGroupUnavailable();
     elements.simulationSeriesSelect.innerHTML = `<option value="">${escapeHTML(t("simulation.waitingForCSV", {}, "Waiting for SQL/CSV output"))}</option>`;
     elements.simulationChart.innerHTML = `<div class="simulation-running-empty">${renderMiniProgressSVG()}<span>${escapeHTML(t("simulation.graphAfterRun", {}, "The SQL/CSV graph will appear when the run finishes."))}</span></div>`;
     elements.simulationFiles.innerHTML = `<div class="empty status-loading">${escapeHTML(t("simulation.writingOutputs", {}, "EnergyPlus is writing output files"))}</div>`;
@@ -247,6 +256,7 @@ function renderSimulationEmpty() {
     elements.simulationResultMeta.textContent = t("simulation.blockedMeta", {}, "Run requirements need attention");
     elements.simulationResultSummary.innerHTML = renderSimulationBlocker(blockingIssue);
     renderSimulationHeatFlowEmpty(t("simulation.blockedGraph", {}, "Graph output is unavailable until the run can start."));
+    setSimulationSeriesGroupUnavailable();
     elements.simulationSeriesSelect.innerHTML = `<option value="">${escapeHTML(t("simulation.noSeries", {}, "No SQL/CSV series"))}</option>`;
     elements.simulationChart.innerHTML = `<div class="simulation-blocked-empty">${escapeHTML(t("simulation.blockedGraph", {}, "Graph output is unavailable until the run can start."))}</div>`;
     elements.simulationFiles.innerHTML = `<div class="simulation-blocked-empty">${escapeHTML(t("simulation.blockedFiles", {}, "No output files will be created while simulation is blocked."))}</div>`;
@@ -275,6 +285,7 @@ function renderSimulationEmpty() {
   renderSimulationHVACLoopEmpty(t("simulation.noHVACLoopResult", {}, "Run HVAC Loop Check to inspect node state series."));
   renderSimulationComfortEmpty(t("simulation.noComfortResult", {}, "Run Comfort Check to inspect zone temperature and setpoint series."));
   renderSimulationHeatFlowEmpty(t("simulation.noHeatFlow", {}, "Select Zone Heat Flow to inspect the zone heat-flow ledger."));
+  setSimulationSeriesGroupUnavailable();
   elements.simulationSeriesSelect.innerHTML = `<option value="">${escapeHTML(t("simulation.noSeries", {}, "No SQL/CSV series"))}</option>`;
   elements.simulationChart.innerHTML = `<div class="empty">${t("simulation.noGraph", {}, "SQL/CSV graph will appear after a run with numeric output.")}</div>`;
   elements.simulationFiles.innerHTML = `<div class="empty">${t("simulation.noFiles", {}, "No output files yet")}</div>`;
@@ -2267,6 +2278,15 @@ function simulationIssueSummary(issues = []) {
 
 function renderSimulationSeriesSelect(result) {
   const series = result.series || [];
+  const groupOptions = simulationSeriesGroupOptions(series);
+  const selectedGroup = groupOptions.some((option) => option.value === state.simulationSeriesGroup) ? state.simulationSeriesGroup : "all";
+  state.simulationSeriesGroup = selectedGroup;
+  if (elements.simulationSeriesGroup) {
+    elements.simulationSeriesGroup.disabled = !series.length;
+    elements.simulationSeriesGroup.innerHTML = groupOptions
+      .map((option) => `<option value="${escapeHTML(option.value)}" ${option.value === selectedGroup ? "selected" : ""}>${escapeHTML(option.label)}</option>`)
+      .join("");
+  }
   if (!series.length) {
     state.simulationSelectedSeries = "";
     elements.simulationSeriesSelect.innerHTML = `<option value="">${escapeHTML(t("simulation.noSeries", {}, "No SQL/CSV series"))}</option>`;
@@ -2276,20 +2296,75 @@ function renderSimulationSeriesSelect(result) {
     }
     return;
   }
-  if (!state.simulationSelectedSeries || !series.some((item) => seriesID(item) === state.simulationSelectedSeries)) {
-    state.simulationSelectedSeries = seriesID(preferredSimulationSeries(series) || series[0]);
+  const visibleSeries = selectedGroup === "all" ? series : series.filter((item) => simulationSeriesGroupID(item) === selectedGroup);
+  if (!visibleSeries.length) {
+    state.simulationSelectedSeries = "";
+    elements.simulationSeriesSelect.innerHTML = `<option value="">${escapeHTML(t("simulation.noSeriesInGroup", {}, "No series in this group"))}</option>`;
+    renderSimulationSeriesRangeControls(null);
+    if (elements.simulationSeriesStats) {
+      elements.simulationSeriesStats.textContent = t("simulation.seriesGroupStats", { shown: 0, total: series.length }, `0 of ${series.length} SQL/CSV series`);
+    }
+    return;
+  }
+  if (!state.simulationSelectedSeries || !visibleSeries.some((item) => seriesID(item) === state.simulationSelectedSeries)) {
+    state.simulationSelectedSeries = seriesID(preferredSimulationSeries(visibleSeries) || visibleSeries[0]);
     state.simulationSeriesRangeStart = 0;
     state.simulationSeriesRangeEnd = -1;
   }
-  elements.simulationSeriesSelect.innerHTML = series
+  elements.simulationSeriesSelect.innerHTML = visibleSeries
     .map((item) => {
       const id = seriesID(item);
       return `<option value="${escapeHTML(id)}" ${id === state.simulationSelectedSeries ? "selected" : ""}>${escapeHTML(item.file)} - ${escapeHTML(item.column)}</option>`;
     })
     .join("");
   if (elements.simulationSeriesStats) {
-    elements.simulationSeriesStats.textContent = t("simulation.seriesStats", { count: series.length }, `${series.length} SQL/CSV series`);
+    elements.simulationSeriesStats.textContent = selectedGroup === "all"
+      ? t("simulation.seriesStats", { count: series.length }, `${series.length} SQL/CSV series`)
+      : t("simulation.seriesGroupStats", { shown: visibleSeries.length, total: series.length }, `${visibleSeries.length} of ${series.length} SQL/CSV series`);
   }
+}
+
+function setSimulationSeriesGroupUnavailable() {
+  if (!elements.simulationSeriesGroup) {
+    return;
+  }
+  state.simulationSeriesGroup = "all";
+  elements.simulationSeriesGroup.disabled = true;
+  elements.simulationSeriesGroup.innerHTML = `<option value="all">${escapeHTML(t("simulation.seriesAllGroups", {}, "All groups"))}</option>`;
+}
+
+function simulationSeriesGroupOptions(series) {
+  const options = [
+    { value: "all", label: t("simulation.seriesAllGroups", {}, "All groups") },
+    { value: "temperature", label: t("simulation.seriesGroupTemperature", {}, "Temperature") },
+    { value: "mass_flow", label: t("simulation.seriesGroupMassFlow", {}, "Mass flow") },
+    { value: "setpoint", label: t("simulation.seriesGroupSetpoint", {}, "Setpoint") },
+    { value: "rate_load", label: t("simulation.seriesGroupRateLoad", {}, "Rate / load") },
+    { value: "power_energy", label: t("simulation.seriesGroupPowerEnergy", {}, "Power / energy") },
+    { value: "other", label: t("simulation.seriesGroupOther", {}, "Other") },
+  ];
+  const groups = new Set((series || []).map(simulationSeriesGroupID));
+  return options.filter((option) => option.value === "all" || groups.has(option.value));
+}
+
+function simulationSeriesGroupID(series) {
+  const name = normalizeOutputMatchToken(seriesVariableName(series?.column || ""));
+  if (name.includes("setpoint")) {
+    return "setpoint";
+  }
+  if (name.includes("temperature") || name.includes("drybulb")) {
+    return "temperature";
+  }
+  if (name.includes("mass flow") || name.includes("flow rate") || name.includes("flowrate")) {
+    return "mass_flow";
+  }
+  if (name.includes("rate") || name.includes("load") || name.includes("runtime fraction")) {
+    return "rate_load";
+  }
+  if (name.includes("power") || name.includes("energy") || name.includes("electricity") || name.includes(":")) {
+    return "power_energy";
+  }
+  return "other";
 }
 
 function renderSimulationChart() {

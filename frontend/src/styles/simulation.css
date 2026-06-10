@@ -1042,6 +1042,14 @@
   overflow-x: auto;
 }
 
+#simulationSeriesGroup {
+  max-width: 170px;
+}
+
+#simulationSeriesSelect {
+  max-width: min(520px, 48vw);
+}
+
 .simulation-series-controls {
   display: grid;
   grid-template-columns: auto minmax(150px, 1fr) minmax(150px, 1fr) minmax(180px, auto);
