@@ -29,8 +29,8 @@ func TestAnalyzeInputTextIncludesSummary(t *testing.T) {
 	if result.Report == nil {
 		t.Fatalf("AnalyzeInputText() report = nil")
 	}
-	if result.Report.Summary.MetricCount != 58 {
-		t.Fatalf("summary metric count = %d, want 58", result.Report.Summary.MetricCount)
+	if result.Report.Summary.MetricCount != 59 {
+		t.Fatalf("summary metric count = %d, want 59", result.Report.Summary.MetricCount)
 	}
 	if len(result.Report.Summary.Categories) != 6 {
 		t.Fatalf("summary category count = %d, want 6", len(result.Report.Summary.Categories))
@@ -124,8 +124,8 @@ func TestAppAssetHandlerServesSummaryMetricGuides(t *testing.T) {
 	if err := json.NewDecoder(response.Body).Decode(&guides); err != nil {
 		t.Fatalf("summary metric guide API did not return JSON: %v", err)
 	}
-	if len(guides) != 58 {
-		t.Fatalf("summary metric guide API returned %d guides, want 58", len(guides))
+	if len(guides) != 59 {
+		t.Fatalf("summary metric guide API returned %d guides, want 59", len(guides))
 	}
 }
 
@@ -158,8 +158,8 @@ Zone, Perimeter;
 	if len(progress) != 2 {
 		t.Fatalf("progress events = %d, want 2", len(progress))
 	}
-	if len(result.Metrics) != 58 {
-		t.Fatalf("multi summary metrics = %d, want 58", len(result.Metrics))
+	if len(result.Metrics) != 59 {
+		t.Fatalf("multi summary metrics = %d, want 59", len(result.Metrics))
 	}
 	if result.Files[0].Label != "Alpha" || result.Files[1].Label != "Beta" {
 		t.Fatalf("multi summary labels = %q, %q; want Alpha, Beta", result.Files[0].Label, result.Files[1].Label)

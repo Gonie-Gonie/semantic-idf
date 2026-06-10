@@ -129,6 +129,7 @@ var summaryDefinitions = []SummaryDefinition{
 	def("total_people", "internal_loads", "Total people", "people", 2, "People objects.", "Sums People, People/Area, or Area/Person methods where supporting floor area is available.", "Zone and ZoneList references are expanded where possible; zone multipliers are applied.", "N/A when no people count can be computed."),
 	def("people_density_per_100m2", "internal_loads", "People density", "people/100m2", 3, "People count and floor area.", "Divides total people by floor area and scales to 100 m2.", "Conditioned floor area is preferred; gross floor area is used as fallback.", "N/A when people count or floor area is unavailable."),
 	def("internal_load_object_count", "internal_loads", "Internal load object count", "", 0, "People, Lights, and ElectricEquipment objects.", "Counts the main internal load objects represented in this summary.", "Other load types can be added as new catalog metrics.", "Always available; zero means no supported internal load objects were found."),
+	def("internal_load_method_coverage", "internal_loads", "Internal load method coverage", "", 0, "People, Lights, and ElectricEquipment calculation methods.", "Reports resolved_objects / total_objects and unresolved_method_count for supported internal load summary objects.", "A method is unresolved when the required people, floor-area, or design-level fields cannot be resolved.", "Always available; zero totals mean no supported internal load objects were found."),
 
 	def("referenced_schedule_count", "schedules_operation", "Referenced schedule count", "", 0, "Fields whose comments include Schedule Name.", "Counts distinct schedule names referenced by non-schedule objects.", "Schedule names are matched case-insensitively after trimming.", "Always available; zero means no schedule references were found."),
 	def("supported_schedule_count", "schedules_operation", "Supported annual schedule count", "", 0, "Schedule:Constant and Schedule:Compact objects.", "Counts schedules whose annual active hours can be evaluated by the v1 parser.", "Schedule value greater than zero is treated as active.", "Always available; zero means no supported annual schedules were found."),
@@ -443,87 +444,89 @@ func isFinitePositiveOrZero(value float64) bool {
 }
 
 type summaryFacts struct {
-	version                    string
-	buildingName               string
-	buildingNorthAxis          float64
-	hasBuildingNorthAxis       bool
-	objectCount                int
-	objectTypeCount            int
-	zoneCount                  int
-	spaceCount                 int
-	scheduleCount              int
-	constructionCount          int
-	materialCount              int
-	zoneMultipliers            map[string]float64
-	zoneDirections             map[string]float64
-	zoneFloorAreas             map[string]float64
-	zoneHeights                map[string]float64
-	declaredZoneVolumes        map[string]float64
-	zoneLists                  map[string][]string
-	conditionedZones           map[string]bool
-	conditionedZoneEvidence    map[string]map[string]bool
-	spaceZones                 map[string]string
-	referencedSchedules        map[string]bool
-	scheduleHours              map[string]float64
-	supportedScheduleCount     int
-	unsupportedScheduleCount   int
-	internalLoadObjectCount    int
-	totalPeople                float64
-	hasPeople                  bool
-	peoplePartial              bool
-	totalLightingPower         float64
-	hasLightingPower           bool
-	lightingPartial            bool
-	totalEquipmentPower        float64
-	hasEquipmentPower          bool
-	equipmentPartial           bool
-	hvacObjectCount            int
-	zoneHVACObjectCount        int
-	thermostatCount            int
-	hvacNodeConnectionCount    int
-	geometryObjectCount        int
-	detailedGeometryCount      int
-	profileReferenceCount      int
-	supportedProfileReferences int
-	hvacRelationConfidence     string
-	diagnosticSourceCounts     map[string]int
-	outputRequestCount         int
-	recognizedOutputCount      int
-	grossFloorArea             float64
-	hasGrossFloorArea          bool
-	footprintArea              float64
-	hasFootprintArea           bool
-	boundingBoxArea            float64
-	hasBoundingBoxArea         bool
-	totalZoneVolume            float64
-	hasZoneVolume              bool
-	zoneVolumePartial          bool
-	averageFloorHeight         float64
-	hasAverageFloorHeight      bool
-	averageFloorHeightPartial  bool
-	buildingLongSide           float64
-	buildingShortSide          float64
-	hasBuildingSides           bool
-	envelopeArea               float64
-	hasEnvelopeArea            bool
-	exteriorWallArea           float64
-	hasExteriorWallArea        bool
-	roofArea                   float64
-	hasRoofArea                bool
-	groundFloorArea            float64
-	hasGroundFloorArea         bool
-	windowArea                 float64
-	hasWindowArea              bool
-	doorArea                   float64
-	hasDoorArea                bool
-	skylightArea               float64
-	wallAreaByOrientation      map[string]float64
-	windowAreaByOrientation    map[string]float64
-	bounds                     geometryBounds
-	vertexEntryDirection       string
-	surfaces                   []surfaceInfo
-	floorSurfaces              []surfaceInfo
-	lowestFloorSurfaces        []surfaceInfo
+	version                     string
+	buildingName                string
+	buildingNorthAxis           float64
+	hasBuildingNorthAxis        bool
+	objectCount                 int
+	objectTypeCount             int
+	zoneCount                   int
+	spaceCount                  int
+	scheduleCount               int
+	constructionCount           int
+	materialCount               int
+	zoneMultipliers             map[string]float64
+	zoneDirections              map[string]float64
+	zoneFloorAreas              map[string]float64
+	zoneHeights                 map[string]float64
+	declaredZoneVolumes         map[string]float64
+	zoneLists                   map[string][]string
+	conditionedZones            map[string]bool
+	conditionedZoneEvidence     map[string]map[string]bool
+	spaceZones                  map[string]string
+	referencedSchedules         map[string]bool
+	scheduleHours               map[string]float64
+	supportedScheduleCount      int
+	unsupportedScheduleCount    int
+	internalLoadObjectCount     int
+	totalPeople                 float64
+	hasPeople                   bool
+	peoplePartial               bool
+	totalLightingPower          float64
+	hasLightingPower            bool
+	lightingPartial             bool
+	totalEquipmentPower         float64
+	hasEquipmentPower           bool
+	equipmentPartial            bool
+	internalLoadResolvedCount   int
+	internalLoadUnresolvedCount int
+	hvacObjectCount             int
+	zoneHVACObjectCount         int
+	thermostatCount             int
+	hvacNodeConnectionCount     int
+	geometryObjectCount         int
+	detailedGeometryCount       int
+	profileReferenceCount       int
+	supportedProfileReferences  int
+	hvacRelationConfidence      string
+	diagnosticSourceCounts      map[string]int
+	outputRequestCount          int
+	recognizedOutputCount       int
+	grossFloorArea              float64
+	hasGrossFloorArea           bool
+	footprintArea               float64
+	hasFootprintArea            bool
+	boundingBoxArea             float64
+	hasBoundingBoxArea          bool
+	totalZoneVolume             float64
+	hasZoneVolume               bool
+	zoneVolumePartial           bool
+	averageFloorHeight          float64
+	hasAverageFloorHeight       bool
+	averageFloorHeightPartial   bool
+	buildingLongSide            float64
+	buildingShortSide           float64
+	hasBuildingSides            bool
+	envelopeArea                float64
+	hasEnvelopeArea             bool
+	exteriorWallArea            float64
+	hasExteriorWallArea         bool
+	roofArea                    float64
+	hasRoofArea                 bool
+	groundFloorArea             float64
+	hasGroundFloorArea          bool
+	windowArea                  float64
+	hasWindowArea               bool
+	doorArea                    float64
+	hasDoorArea                 bool
+	skylightArea                float64
+	wallAreaByOrientation       map[string]float64
+	windowAreaByOrientation     map[string]float64
+	bounds                      geometryBounds
+	vertexEntryDirection        string
+	surfaces                    []surfaceInfo
+	floorSurfaces               []surfaceInfo
+	lowestFloorSurfaces         []surfaceInfo
 }
 
 type geometryBounds struct {
@@ -935,8 +938,10 @@ func (facts *summaryFacts) capturePeople(obj Object) {
 	value, ok, partial := facts.peopleObjectValue(obj)
 	if !ok {
 		facts.peoplePartial = true
+		facts.internalLoadUnresolvedCount++
 		return
 	}
+	facts.internalLoadResolvedCount++
 	facts.totalPeople += value
 	facts.hasPeople = true
 	if partial {
@@ -949,8 +954,10 @@ func (facts *summaryFacts) captureLighting(obj Object) {
 	value, ok, partial := facts.designPowerValue(obj, "lighting")
 	if !ok {
 		facts.lightingPartial = true
+		facts.internalLoadUnresolvedCount++
 		return
 	}
+	facts.internalLoadResolvedCount++
 	facts.totalLightingPower += value
 	facts.hasLightingPower = true
 	if partial {
@@ -963,8 +970,10 @@ func (facts *summaryFacts) captureEquipment(obj Object) {
 	value, ok, partial := facts.designPowerValue(obj, "equipment")
 	if !ok {
 		facts.equipmentPartial = true
+		facts.internalLoadUnresolvedCount++
 		return
 	}
+	facts.internalLoadResolvedCount++
 	facts.totalEquipmentPower += value
 	facts.hasEquipmentPower = true
 	if partial {
@@ -1078,6 +1087,7 @@ func (facts summaryFacts) metricValues() map[string]summaryMetricValue {
 		"construction_count":                  countSummaryValue(facts.constructionCount),
 		"material_count":                      countSummaryValue(facts.materialCount),
 		"internal_load_object_count":          countSummaryValue(facts.internalLoadObjectCount),
+		"internal_load_method_coverage":       summaryInternalLoadCoverageValue(facts.internalLoadResolvedCount, facts.internalLoadObjectCount, facts.internalLoadUnresolvedCount),
 		"referenced_schedule_count":           countSummaryValue(len(facts.referencedSchedules)),
 		"supported_schedule_count":            countSummaryValue(facts.supportedScheduleCount),
 		"unsupported_schedule_count":          countSummaryValue(facts.unsupportedScheduleCount),
@@ -1228,6 +1238,8 @@ func summaryMetricSource(metricID string, definitionSource string) string {
 		return "analyzer_readiness"
 	case "bounding_box_area_m2":
 		return "analyzer_inference"
+	case "internal_load_method_coverage":
+		return "analyzer_coverage"
 	case "conditioned_zone_count", "conditioned_zone_evidence_breakdown", "hvac_relation_confidence":
 		return "hvac_semantic_evidence"
 	case "diagnostics_by_source":
@@ -1256,7 +1268,7 @@ func summaryMetricConfidence(metricID string, status string) string {
 		return "inferred"
 	case "hvac_relation_confidence":
 		return "reported"
-	case "diagnostics_by_source", "geometry_coverage_percent", "profile_coverage_percent", "output_readiness_percent":
+	case "diagnostics_by_source", "geometry_coverage_percent", "profile_coverage_percent", "internal_load_method_coverage", "output_readiness_percent":
 		return "computed"
 	default:
 		if status == summaryStatusPartial {
@@ -1317,6 +1329,15 @@ func summaryConditionedEvidenceDisplay(evidence map[string]map[string]bool) stri
 		parts = append(parts, fmt.Sprintf("%s:%d", key, len(evidence[key])))
 	}
 	return strings.Join(parts, ", ")
+}
+
+func summaryInternalLoadCoverageValue(resolved int, total int, unresolved int) summaryMetricValue {
+	display := fmt.Sprintf("resolved:%d/%d, unresolved_method_count:%d", resolved, total, unresolved)
+	return summaryMetricValue{
+		Value:        display,
+		DisplayValue: display,
+		Status:       partialIf(unresolved > 0),
+	}
 }
 
 func floorAreaStatus(conditionedArea, grossArea float64, hasGross bool) string {
@@ -2197,7 +2218,7 @@ func scheduleSelectorTokens(value string) []string {
 }
 
 func init() {
-	if len(summaryDefinitions) != 58 {
-		panic(fmt.Sprintf("summary metric registry has %d metrics, want 58", len(summaryDefinitions)))
+	if len(summaryDefinitions) != 59 {
+		panic(fmt.Sprintf("summary metric registry has %d metrics, want 59", len(summaryDefinitions)))
 	}
 }

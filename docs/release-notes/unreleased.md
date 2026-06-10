@@ -42,6 +42,7 @@ The release script infers bump size from these sections:
 - Summary footprint area now remains floor-surface based, while XY bounding-box area is reported as a separate advanced inferred metric.
 - Summary envelope area is now labeled as gross, with a separate net opaque envelope area metric that subtracts recognized fenestration.
 - Semantic YAML lines now show Raw, Computed, Summary, and Inferred badges so derived values are visually distinct from editable IDF fields.
+- Summary internal-load metrics now report resolved object coverage and unresolved calculation-method counts for People, Lights, and ElectricEquipment.
 
 ## Fixed
 

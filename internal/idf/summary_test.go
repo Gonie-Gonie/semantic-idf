@@ -285,8 +285,8 @@ Fan:ConstantVolume,
 func TestSummaryRegistryAndGuideCoverage(t *testing.T) {
 	definitions := SummaryDefinitions()
 	guides := SummaryGuides()
-	if len(definitions) != 58 {
-		t.Fatalf("definition count = %d, want 58", len(definitions))
+	if len(definitions) != 59 {
+		t.Fatalf("definition count = %d, want 59", len(definitions))
 	}
 	if len(guides) != len(definitions) {
 		t.Fatalf("guide count = %d, want %d", len(guides), len(definitions))
@@ -316,11 +316,11 @@ func TestAnalyzeSummaryCoreMetricsAndExports(t *testing.T) {
 		t.Fatalf("Parse() error = %v", err)
 	}
 	summary := AnalyzeSummary(doc)
-	if summary.MetricCount != 58 {
-		t.Fatalf("summary metric count = %d, want 58", summary.MetricCount)
+	if summary.MetricCount != 59 {
+		t.Fatalf("summary metric count = %d, want 59", summary.MetricCount)
 	}
-	if got := countMetrics(summary); got != 58 {
-		t.Fatalf("rendered metric count = %d, want 58", got)
+	if got := countMetrics(summary); got != 59 {
+		t.Fatalf("rendered metric count = %d, want 59", got)
 	}
 	if got := metricByID(t, summary, "building_name").DisplayValue; got != "Summary Test Building" {
 		t.Fatalf("building name = %q, want Summary Test Building", got)
@@ -348,6 +348,9 @@ func TestAnalyzeSummaryCoreMetricsAndExports(t *testing.T) {
 	assertMetricClose(t, summary, "average_equipment_power_density_w_per_m2", 10, 0.001)
 	assertMetricClose(t, summary, "total_people", 10, 0.001)
 	assertMetricClose(t, summary, "people_density_per_100m2", 5, 0.001)
+	if got := metricByID(t, summary, "internal_load_method_coverage").DisplayValue; got != "resolved:3/3, unresolved_method_count:0" {
+		t.Fatalf("internal load coverage = %q, want all core loads resolved", got)
+	}
 	assertMetricClose(t, summary, "model_operating_hours_h", 8760, 0.001)
 	assertMetricClose(t, summary, "average_schedule_operating_hours_h", 6570, 0.001)
 
@@ -405,8 +408,8 @@ func TestAnalyzeSummaryCoreMetricsAndExports(t *testing.T) {
 	if err != nil {
 		t.Fatalf("summary CSV did not parse: %v\n%s", err, csvText)
 	}
-	if len(records) != 59 {
-		t.Fatalf("CSV rows = %d, want 59", len(records))
+	if len(records) != 60 {
+		t.Fatalf("CSV rows = %d, want 60", len(records))
 	}
 	if len(records[0]) != 2 || records[0][0] != "name" || records[0][1] != "value" {
 		t.Fatalf("CSV header = %#v, want name,value", records[0])
@@ -494,6 +497,29 @@ func TestAnalyzeSummaryConditionedZoneEvidenceBreakdown(t *testing.T) {
 	}
 	if breakdown.Confidence != "inferred" {
 		t.Fatalf("conditioned evidence confidence = %q, want inferred", breakdown.Confidence)
+	}
+}
+
+func TestAnalyzeSummaryInternalLoadMethodCoverageReportsUnresolved(t *testing.T) {
+	doc := Document{Objects: []Object{
+		{Index: 0, Type: "Zone", Fields: []Field{{Value: "Office", Comment: "Name"}}},
+		{Index: 1, Type: "Lights", Fields: []Field{
+			{Value: "Office Lights", Comment: "Name"},
+			{Value: "Office", Comment: "Zone Name"},
+			{Value: "AlwaysOn", Comment: "Schedule Name"},
+			{Value: "Watts/Area", Comment: "Design Level Calculation Method"},
+			{Value: "", Comment: "Lighting Level"},
+			{Value: "8", Comment: "Watts per Zone Floor Area"},
+		}},
+	}}
+
+	summary := AnalyzeSummary(doc)
+	coverage := metricByID(t, summary, "internal_load_method_coverage")
+	if coverage.DisplayValue != "resolved:0/1, unresolved_method_count:1" {
+		t.Fatalf("internal load coverage = %q, want unresolved Watts/Area object", coverage.DisplayValue)
+	}
+	if coverage.Status != summaryStatusPartial {
+		t.Fatalf("internal load coverage status = %q, want partial", coverage.Status)
 	}
 }
 
