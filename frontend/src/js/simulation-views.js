@@ -2311,7 +2311,8 @@ function renderSimulationHeatFlow() {
   if (!elements.simulationHeatFlow) {
     return;
   }
-  const dataset = state.simulationResult?.heatFlow;
+  const purposeDataset = state.simulationResult?.purposeResults?.zoneHeatFlow;
+  const dataset = purposeDataset?.zones?.length ? purposeDataset : state.simulationResult?.heatFlow;
   if (!dataset?.zones?.length || !dataset?.categories?.length || !(dataset.frameCount > 0)) {
     renderSimulationHeatFlowEmpty(t("simulation.noHeatFlow", {}, "Select Zone Heat Flow to inspect the zone heat-flow ledger."));
     return;
@@ -2360,6 +2361,7 @@ function renderSimulationHeatFlow() {
   }
 
   elements.simulationHeatFlow.innerHTML = `
+    ${renderPurposeCompletenessRow(dataset.completeness || [])}
     ${renderHeatFlowGuide()}
     ${renderHeatFlowTimelineBrush(dataset, zoneMap.get(normalizeHeatFlowName(selectedZone)), visibleRange, frameIndex)}
     ${renderHeatFlowSpatialToolbar()}

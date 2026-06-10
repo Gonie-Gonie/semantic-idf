@@ -15,18 +15,19 @@ import (
 const maxHeatFlowFrames = 720
 
 type HeatFlowDataset struct {
-	SourceFile         string               `json:"sourceFile,omitempty"`
-	Unit               string               `json:"unit,omitempty"`
-	TemperatureUnit    string               `json:"temperatureUnit,omitempty"`
-	FrameCount         int                  `json:"frameCount"`
-	OriginalFrameCount int                  `json:"originalFrameCount"`
-	Labels             []string             `json:"labels,omitempty"`
-	Categories         []HeatFlowCategory   `json:"categories,omitempty"`
-	Zones              []HeatFlowZoneSeries `json:"zones,omitempty"`
-	MaxAbs             float64              `json:"maxAbs,omitempty"`
-	MinTemperature     float64              `json:"minTemperature,omitempty"`
-	MaxTemperature     float64              `json:"maxTemperature,omitempty"`
-	Warnings           []string             `json:"warnings,omitempty"`
+	SourceFile         string                    `json:"sourceFile,omitempty"`
+	Unit               string                    `json:"unit,omitempty"`
+	TemperatureUnit    string                    `json:"temperatureUnit,omitempty"`
+	FrameCount         int                       `json:"frameCount"`
+	OriginalFrameCount int                       `json:"originalFrameCount"`
+	Labels             []string                  `json:"labels,omitempty"`
+	Categories         []HeatFlowCategory        `json:"categories,omitempty"`
+	Zones              []HeatFlowZoneSeries      `json:"zones,omitempty"`
+	Completeness       []PurposeCompletenessItem `json:"completeness,omitempty"`
+	MaxAbs             float64                   `json:"maxAbs,omitempty"`
+	MinTemperature     float64                   `json:"minTemperature,omitempty"`
+	MaxTemperature     float64                   `json:"maxTemperature,omitempty"`
+	Warnings           []string                  `json:"warnings,omitempty"`
 }
 
 type HeatFlowCategory struct {

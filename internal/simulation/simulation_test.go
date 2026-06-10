@@ -315,6 +315,45 @@ func TestPurposeResultBundleUsesSQLEnergyDashboard(t *testing.T) {
 	}
 }
 
+func TestPurposeResultBundleBuildsZoneHeatFlowCompleteness(t *testing.T) {
+	result := &SimulationRunResult{
+		Status: "succeeded",
+		HeatFlow: HeatFlowDataset{
+			SourceFile: "eplusout.sql",
+			FrameCount: 1,
+			Categories: []HeatFlowCategory{{
+				ID:           "internalConvective",
+				Label:        "Internal convective gains",
+				VariableName: "Zone Air Heat Balance Internal Convective Heat Gain Rate",
+				Unit:         "W",
+			}},
+			Zones: []HeatFlowZoneSeries{{
+				Name:        "Office",
+				Temperature: []float64{21},
+				Values:      [][]float64{{120}},
+			}},
+		},
+	}
+
+	bundle := BuildPurposeResultBundle(result, SimulationPurposeRequest{
+		Purposes: []SimulationPurposeID{SimulationPurposeZoneHeatFlow},
+	})
+
+	wantCount := len(zoneHeatFlowVariableNames()) + 1
+	if len(bundle.ZoneHeatFlow.Completeness) != wantCount || len(bundle.Completeness) != wantCount {
+		t.Fatalf("zone heat-flow completeness count = %d/%d, want %d", len(bundle.ZoneHeatFlow.Completeness), len(bundle.Completeness), wantCount)
+	}
+	if !purposeCompletenessFound(bundle.ZoneHeatFlow.Completeness, "Zone Mean Air Temperature") {
+		t.Fatalf("temperature completeness missing: %#v", bundle.ZoneHeatFlow.Completeness)
+	}
+	if !purposeCompletenessFound(bundle.ZoneHeatFlow.Completeness, "Zone Air Heat Balance Internal Convective Heat Gain Rate") {
+		t.Fatalf("found category completeness missing: %#v", bundle.ZoneHeatFlow.Completeness)
+	}
+	if purposeCompletenessFound(bundle.ZoneHeatFlow.Completeness, "Zone Air Heat Balance Surface Convection Rate") {
+		t.Fatalf("missing category should not be marked found: %#v", bundle.ZoneHeatFlow.Completeness)
+	}
+}
+
 func TestParseSimulationIntegritySQLBuildsDiagnosticsAndTabular(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "eplusout.sql")
@@ -544,6 +583,15 @@ func simulationResultHasFileKind(files []SimulationFileInfo, kind string) bool {
 	for _, file := range files {
 		if file.Kind == kind {
 			return true
+		}
+	}
+	return false
+}
+
+func purposeCompletenessFound(items []PurposeCompletenessItem, requiredOutput string) bool {
+	for _, item := range items {
+		if item.RequiredOutput == requiredOutput {
+			return item.Found
 		}
 	}
 	return false

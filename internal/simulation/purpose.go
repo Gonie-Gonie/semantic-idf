@@ -476,16 +476,8 @@ func BuildPurposeResultBundle(result *SimulationRunResult, request SimulationPur
 			bundle.Energy.Completeness = append([]PurposeCompletenessItem(nil), bundle.Completeness...)
 		case SimulationPurposeZoneHeatFlow:
 			bundle.ZoneHeatFlow = result.HeatFlow
-			source := "missing"
-			if result.HeatFlow.SourceFile != "" {
-				source = simulationSourceFromFilename(result.HeatFlow.SourceFile)
-			}
-			bundle.Completeness = append(bundle.Completeness, purposeCompleteness(
-				SimulationPurposeZoneHeatFlow,
-				"zone heat-flow ledger",
-				len(result.HeatFlow.Zones) > 0,
-				source,
-			))
+			bundle.ZoneHeatFlow.Completeness = zoneHeatFlowCompleteness(result.HeatFlow)
+			bundle.Completeness = append(bundle.Completeness, bundle.ZoneHeatFlow.Completeness...)
 		case SimulationPurposeHVACLoopCheck:
 			bundle.HVACLoops = buildHVACLoopRunResults(result.Series, request)
 			hasNodeSeries := len(bundle.HVACLoops) > 0 && len(bundle.HVACLoops[0].Series) > 0
@@ -979,6 +971,41 @@ func comfortSeriesCompleteness(found map[string]bool, source string) []PurposeCo
 			SimulationPurposeComfort,
 			variable,
 			found[normalizePurposeToken(variable)],
+			source,
+		))
+	}
+	return items
+}
+
+func zoneHeatFlowCompleteness(dataset HeatFlowDataset) []PurposeCompletenessItem {
+	source := "missing"
+	if dataset.SourceFile != "" {
+		source = simulationSourceFromFilename(dataset.SourceFile)
+	}
+	foundTemperature := false
+	for _, zone := range dataset.Zones {
+		if len(zone.Temperature) > 0 {
+			foundTemperature = true
+			break
+		}
+	}
+	items := []PurposeCompletenessItem{
+		purposeCompleteness(
+			SimulationPurposeZoneHeatFlow,
+			"Zone Mean Air Temperature",
+			foundTemperature,
+			source,
+		),
+	}
+	foundCategories := map[string]bool{}
+	for _, category := range dataset.Categories {
+		foundCategories[normalizePurposeToken(category.VariableName)] = true
+	}
+	for _, variable := range zoneHeatFlowVariableNames() {
+		items = append(items, purposeCompleteness(
+			SimulationPurposeZoneHeatFlow,
+			variable,
+			foundCategories[normalizePurposeToken(variable)],
 			source,
 		))
 	}
