@@ -98,7 +98,8 @@ var summaryDefinitions = []SummaryDefinition{
 	def("gross_floor_area_m2", "geometry_areas", "Gross floor area", "m2", 2, "Zone floor fields and floor surfaces.", "Sums zone floor area fields when present; otherwise sums Floor surface polygon or rectangle areas.", "Zone multipliers are applied. Surface-derived floor area includes all floor surfaces assigned to zones.", "N/A when no numeric zone floor area or floor surface area can be computed."),
 	def("conditioned_floor_area_m2", "geometry_areas", "Conditioned floor area", "m2", 2, "Gross floor area and conditioned-zone detection.", "Sums floor area for zones referenced by ZoneHVAC, ZoneHVAC:EquipmentConnections, or ZoneControl:Thermostat objects.", "Zone multipliers are applied. Only zones with known floor area can contribute.", "N/A when conditioned zones or floor areas cannot be identified."),
 	def("unconditioned_floor_area_m2", "geometry_areas", "Unconditioned floor area", "m2", 2, "Gross and conditioned floor area.", "Subtracts conditioned floor area from gross floor area.", "The value is clamped at zero to avoid negative results from partial data.", "N/A when gross or conditioned floor area is unavailable."),
-	def("footprint_area_m2", "geometry_areas", "Footprint area", "m2", 2, "Lowest floor surfaces or geometry bounding box.", "Sums the lowest horizontal floor surfaces; falls back to the XY bounding-box area from detailed vertices.", "Zone multipliers are applied to surface areas. Bounding-box fallback is marked partial.", "N/A when no floor surface or detailed vertex extents are available."),
+	def("footprint_area_m2", "geometry_areas", "Footprint area", "m2", 2, "Lowest floor surfaces.", "Sums ground-contact floor surfaces, or the lowest horizontal floor surfaces when ground boundary data is absent.", "Zone multipliers are applied to surface areas. Bounding-box dimensions are reported separately and are not used as footprint area.", "N/A when no floor surface area can be computed."),
+	def("bounding_box_area_m2", "geometry_areas", "Bounding box area", "m2", 2, "Detailed surface vertices.", "Calculates the XY bounding-box area from all detailed vertices.", "This is a coarse geometric extent, not a true footprint polygon.", "N/A when detailed vertex extents are unavailable."),
 	def("total_zone_volume_m3", "geometry_areas", "Total zone volume", "m3", 2, "Zone / Volume and surface-derived zone heights.", "Sums numeric Zone Volume fields; when missing, estimates volume from zone floor area times zone height.", "Zone multipliers are applied. Estimated values are marked partial.", "N/A when neither declared nor estimated zone volume is available."),
 	def("average_floor_height_m", "geometry_areas", "Average floor height", "m", 2, "Zone / Ceiling Height and detailed surface extents.", "Averages numeric zone ceiling heights; falls back to max-min vertex Z height by zone.", "Each zone contributes once; autocalculate fields require geometry fallback.", "N/A when no zone height can be read or inferred."),
 	def("building_long_side_m", "geometry_areas", "Building long side", "m", 2, "Detailed surface vertices.", "Uses the larger of the model XY bounding-box width and depth.", "Only detailed vertices are considered.", "N/A when detailed vertex coordinates are unavailable."),
@@ -491,7 +492,8 @@ type summaryFacts struct {
 	hasGrossFloorArea          bool
 	footprintArea              float64
 	hasFootprintArea           bool
-	footprintPartial           bool
+	boundingBoxArea            float64
+	hasBoundingBoxArea         bool
 	totalZoneVolume            float64
 	hasZoneVolume              bool
 	zoneVolumePartial          bool
@@ -848,19 +850,15 @@ func (facts *summaryFacts) finalizeGeometry() {
 	if facts.hasGroundFloorArea {
 		facts.footprintArea = facts.groundFloorArea
 		facts.hasFootprintArea = true
-	} else if facts.bounds.initialized {
-		width := facts.bounds.maxX - facts.bounds.minX
-		depth := facts.bounds.maxY - facts.bounds.minY
-		if width > 0 && depth > 0 {
-			facts.footprintArea = width * depth
-			facts.hasFootprintArea = true
-			facts.footprintPartial = true
-		}
 	}
 
 	if facts.bounds.initialized {
 		width := facts.bounds.maxX - facts.bounds.minX
 		depth := facts.bounds.maxY - facts.bounds.minY
+		if width > 0 && depth > 0 {
+			facts.boundingBoxArea = width * depth
+			facts.hasBoundingBoxArea = true
+		}
 		longSide := math.Max(width, depth)
 		shortSide := math.Min(width, depth)
 		if longSide > 0 && shortSide > 0 {
@@ -1108,7 +1106,10 @@ func (facts summaryFacts) metricValues() map[string]summaryMetricValue {
 		values["unconditioned_floor_area_m2"] = numberSummaryValue(unconditioned, precisionFor("unconditioned_floor_area_m2"), floorAreaStatus(conditionedArea, facts.grossFloorArea, true))
 	}
 	if facts.hasFootprintArea {
-		values["footprint_area_m2"] = numberSummaryValue(facts.footprintArea, precisionFor("footprint_area_m2"), partialIf(facts.footprintPartial))
+		values["footprint_area_m2"] = numberSummaryValue(facts.footprintArea, precisionFor("footprint_area_m2"), summaryStatusOK)
+	}
+	if facts.hasBoundingBoxArea {
+		values["bounding_box_area_m2"] = numberSummaryValue(facts.boundingBoxArea, precisionFor("bounding_box_area_m2"), summaryStatusOK)
 	}
 	if facts.hasZoneVolume {
 		values["total_zone_volume_m3"] = numberSummaryValue(facts.totalZoneVolume, precisionFor("total_zone_volume_m3"), partialIf(facts.zoneVolumePartial))
@@ -1222,6 +1223,8 @@ func summaryMetricSource(metricID string, definitionSource string) string {
 	switch metricID {
 	case "geometry_coverage_percent", "profile_coverage_percent", "output_readiness_percent":
 		return "analyzer_readiness"
+	case "bounding_box_area_m2":
+		return "analyzer_inference"
 	case "conditioned_zone_count", "conditioned_zone_evidence_breakdown", "hvac_relation_confidence":
 		return "hvac_semantic_evidence"
 	case "diagnostics_by_source":
@@ -1243,7 +1246,7 @@ func summaryMetricConfidence(metricID string, status string) string {
 			return "partial"
 		}
 		return "inferred"
-	case "building_long_side_m", "building_short_side_m", "footprint_aspect_ratio", "model_operating_hours_h", "average_schedule_operating_hours_h":
+	case "bounding_box_area_m2", "building_long_side_m", "building_short_side_m", "footprint_aspect_ratio", "model_operating_hours_h", "average_schedule_operating_hours_h":
 		if status == summaryStatusPartial {
 			return "partial"
 		}
@@ -1262,7 +1265,7 @@ func summaryMetricConfidence(metricID string, status string) string {
 
 func summaryMetricVisibility(metricID string) string {
 	switch metricID {
-	case "average_schedule_operating_hours_h", "unconditioned_floor_area_m2", "building_long_side_m", "building_short_side_m", "footprint_aspect_ratio", "envelope_area_to_volume_ratio", "floor_area_to_volume_ratio", "hvac_node_connection_count", "diagnostics_by_source":
+	case "average_schedule_operating_hours_h", "unconditioned_floor_area_m2", "bounding_box_area_m2", "building_long_side_m", "building_short_side_m", "footprint_aspect_ratio", "envelope_area_to_volume_ratio", "floor_area_to_volume_ratio", "hvac_node_connection_count", "diagnostics_by_source":
 		return "advanced"
 	default:
 		return "primary"
@@ -1278,7 +1281,7 @@ func summaryMetricBadges(metricID string, status string) []string {
 		badges = append(badges, "missing")
 	}
 	switch metricID {
-	case "conditioned_floor_area_m2", "unconditioned_floor_area_m2", "conditioned_zone_count", "conditioned_zone_evidence_breakdown", "building_long_side_m", "building_short_side_m", "footprint_aspect_ratio", "model_operating_hours_h", "average_schedule_operating_hours_h", "hvac_relation_confidence":
+	case "conditioned_floor_area_m2", "unconditioned_floor_area_m2", "conditioned_zone_count", "conditioned_zone_evidence_breakdown", "bounding_box_area_m2", "building_long_side_m", "building_short_side_m", "footprint_aspect_ratio", "model_operating_hours_h", "average_schedule_operating_hours_h", "hvac_relation_confidence":
 		badges = append(badges, "inferred")
 	case "geometry_coverage_percent", "profile_coverage_percent", "output_readiness_percent":
 		badges = append(badges, "readiness")
@@ -2191,7 +2194,7 @@ func scheduleSelectorTokens(value string) []string {
 }
 
 func init() {
-	if len(summaryDefinitions) != 56 {
-		panic(fmt.Sprintf("summary metric registry has %d metrics, want 56", len(summaryDefinitions)))
+	if len(summaryDefinitions) != 57 {
+		panic(fmt.Sprintf("summary metric registry has %d metrics, want 57", len(summaryDefinitions)))
 	}
 }

@@ -285,8 +285,8 @@ Fan:ConstantVolume,
 func TestSummaryRegistryAndGuideCoverage(t *testing.T) {
 	definitions := SummaryDefinitions()
 	guides := SummaryGuides()
-	if len(definitions) != 56 {
-		t.Fatalf("definition count = %d, want 56", len(definitions))
+	if len(definitions) != 57 {
+		t.Fatalf("definition count = %d, want 57", len(definitions))
 	}
 	if len(guides) != len(definitions) {
 		t.Fatalf("guide count = %d, want %d", len(guides), len(definitions))
@@ -316,11 +316,11 @@ func TestAnalyzeSummaryCoreMetricsAndExports(t *testing.T) {
 		t.Fatalf("Parse() error = %v", err)
 	}
 	summary := AnalyzeSummary(doc)
-	if summary.MetricCount != 56 {
-		t.Fatalf("summary metric count = %d, want 56", summary.MetricCount)
+	if summary.MetricCount != 57 {
+		t.Fatalf("summary metric count = %d, want 57", summary.MetricCount)
 	}
-	if got := countMetrics(summary); got != 56 {
-		t.Fatalf("rendered metric count = %d, want 56", got)
+	if got := countMetrics(summary); got != 57 {
+		t.Fatalf("rendered metric count = %d, want 57", got)
 	}
 	if got := metricByID(t, summary, "building_name").DisplayValue; got != "Summary Test Building" {
 		t.Fatalf("building name = %q, want Summary Test Building", got)
@@ -334,6 +334,7 @@ func TestAnalyzeSummaryCoreMetricsAndExports(t *testing.T) {
 	assertMetricClose(t, summary, "building_long_side_m", 20, 0.001)
 	assertMetricClose(t, summary, "building_short_side_m", 10, 0.001)
 	assertMetricClose(t, summary, "footprint_aspect_ratio", 2, 0.001)
+	assertMetricClose(t, summary, "bounding_box_area_m2", 200, 0.001)
 	assertMetricClose(t, summary, "exterior_wall_area_m2", 180, 0.001)
 	assertMetricClose(t, summary, "window_area_m2", 6, 0.001)
 	assertMetricClose(t, summary, "total_wwr_percent", 3.3, 0.05)
@@ -404,8 +405,8 @@ func TestAnalyzeSummaryCoreMetricsAndExports(t *testing.T) {
 	if err != nil {
 		t.Fatalf("summary CSV did not parse: %v\n%s", err, csvText)
 	}
-	if len(records) != 57 {
-		t.Fatalf("CSV rows = %d, want 57", len(records))
+	if len(records) != 58 {
+		t.Fatalf("CSV rows = %d, want 58", len(records))
 	}
 	if len(records[0]) != 2 || records[0][0] != "name" || records[0][1] != "value" {
 		t.Fatalf("CSV header = %#v, want name,value", records[0])
@@ -493,6 +494,51 @@ func TestAnalyzeSummaryConditionedZoneEvidenceBreakdown(t *testing.T) {
 	}
 	if breakdown.Confidence != "inferred" {
 		t.Fatalf("conditioned evidence confidence = %q, want inferred", breakdown.Confidence)
+	}
+}
+
+func TestAnalyzeSummarySeparatesBoundingBoxAreaFromFootprint(t *testing.T) {
+	doc, err := Parse(`
+Zone,
+  Box Zone;
+
+BuildingSurface:Detailed,
+  Roof Surface,             !- Name
+  Roof,                     !- Surface Type
+  ,                         !- Construction Name
+  Box Zone,                 !- Zone Name
+  Outdoors,                 !- Outside Boundary Condition
+  ,                         !- Outside Boundary Condition Object
+  SunExposed,               !- Sun Exposure
+  WindExposed,              !- Wind Exposure
+  0,                        !- View Factor to Ground
+  4,                        !- Number of Vertices
+  0,                        !- Vertex 1 X-coordinate
+  0,                        !- Vertex 1 Y-coordinate
+  3,                        !- Vertex 1 Z-coordinate
+  10,                       !- Vertex 2 X-coordinate
+  0,                        !- Vertex 2 Y-coordinate
+  3,                        !- Vertex 2 Z-coordinate
+  10,                       !- Vertex 3 X-coordinate
+  8,                        !- Vertex 3 Y-coordinate
+  3,                        !- Vertex 3 Z-coordinate
+  0,                        !- Vertex 4 X-coordinate
+  8,                        !- Vertex 4 Y-coordinate
+  3;                        !- Vertex 4 Z-coordinate
+`)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+
+	summary := AnalyzeSummary(doc)
+	footprint := metricByID(t, summary, "footprint_area_m2")
+	if footprint.Status != summaryStatusMissing {
+		t.Fatalf("footprint status = %q, want missing when only bounding box is available", footprint.Status)
+	}
+	assertMetricClose(t, summary, "bounding_box_area_m2", 80, 0.001)
+	boundingBox := metricByID(t, summary, "bounding_box_area_m2")
+	if boundingBox.Visibility != "advanced" || boundingBox.Confidence != "inferred" {
+		t.Fatalf("bounding box metadata = visibility %q confidence %q, want advanced/inferred", boundingBox.Visibility, boundingBox.Confidence)
 	}
 }
 

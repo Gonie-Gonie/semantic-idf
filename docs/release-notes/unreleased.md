@@ -39,6 +39,7 @@ The release script infers bump size from these sections:
 - Semantic HVAC duplicate markers now list actual loop, zone relation, demand graph, and catalog occurrence paths instead of only pointing back to the catalog entry.
 - Semantic YAML search now includes facet buttons for source fields, editable values, derived metadata, and evidence/debug blocks while preserving parent path context.
 - Summary conditioned-zone metrics now expose evidence breakdowns for equipment connections, ZoneHVAC objects, thermostats, and SpaceHVAC references, with inferred confidence metadata.
+- Summary footprint area now remains floor-surface based, while XY bounding-box area is reported as a separate advanced inferred metric.
 
 ## Fixed
 
