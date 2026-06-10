@@ -73,6 +73,7 @@ The release script infers bump size from these sections:
 - Simulation output discovery now caches SQL/RDD/MDD catalog reads and invalidates them when source files change.
 - Output analysis now tags existing and recommended output requests by simulation purpose and adds a purpose filter to the Output tab.
 - HVAC Loop Check results now include node summaries, derived loop metrics, and alert rules for zero flow, missing setpoints, and large setpoint deltas.
+- Simulation output discovery now marks purpose outputs as `alias` when a discovered alternate variable can satisfy the requested purpose variable.
 
 ## Fixed
 

@@ -88,11 +88,42 @@ func TestDiscoverOutputsCachedInvalidatesOnFileChange(t *testing.T) {
 	}
 }
 
+func TestDiscoverAvailableOutputsMarksPurposeAlias(t *testing.T) {
+	dir := t.TempDir()
+	rddPath := filepath.Join(dir, "eplusout.rdd")
+	if err := os.WriteFile(rddPath, []byte("Zone,Average,Zone Air Temperature [C]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := DiscoverAvailableOutputs(OutputDiscoveryRequest{
+		Text:    purposePlanFixtureIDF,
+		RDDPath: rddPath,
+		PurposeRequest: &SimulationPurposeRequest{
+			Purposes: []SimulationPurposeID{SimulationPurposeZoneHeatFlow},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, ok := discoveryFind(result.Items, "Output:Variable", "*", "Zone Mean Air Temperature", "alias")
+	if !ok || item.AliasOf != "Zone Air Temperature" {
+		t.Fatalf("missing alias item: %#v", result.Items)
+	}
+	if result.Counts["alias"] == 0 {
+		t.Fatalf("alias count missing: %#v", result.Counts)
+	}
+}
+
 func discoveryHas(items []OutputDiscoveryItem, objectType string, keyValue string, name string, status string) bool {
+	_, ok := discoveryFind(items, objectType, keyValue, name, status)
+	return ok
+}
+
+func discoveryFind(items []OutputDiscoveryItem, objectType string, keyValue string, name string, status string) (OutputDiscoveryItem, bool) {
 	for _, item := range items {
 		if item.ObjectType == objectType && item.KeyValue == keyValue && item.Name == name && item.Status == status {
-			return true
+			return item, true
 		}
 	}
-	return false
+	return OutputDiscoveryItem{}, false
 }

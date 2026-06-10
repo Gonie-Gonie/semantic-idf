@@ -994,6 +994,8 @@ function discoveryItemMatchesQuery(item, query) {
     item.reportingFrequency,
     item.source,
     item.status,
+    item.aliasOf,
+    item.aliasReason,
     ...(item.purposeIds || []),
   ]
     .join(" ")
@@ -1004,8 +1006,9 @@ function discoveryItemMatchesQuery(item, query) {
 function renderSimulationOutputDiscoveryItem(item, index) {
   const isMeter = String(item.objectType || "").toLowerCase() === "output:meter";
   const title = isMeter ? item.name || item.keyValue || "" : item.name || "";
-  const detail = isMeter ? item.objectType || "Output:Meter" : `${item.keyValue || "*"} / ${item.objectType || "Output:Variable"}`;
-  const meta = [item.reportingFrequency, item.units, item.source].filter(Boolean).join(" - ");
+  const alias = item.aliasOf ? `alias: ${item.aliasOf}` : "";
+  const detail = isMeter ? [item.objectType || "Output:Meter", alias].filter(Boolean).join(" / ") : [item.keyValue || "*", item.objectType || "Output:Variable", alias].filter(Boolean).join(" / ");
+  const meta = [item.reportingFrequency, item.units, item.source, item.aliasReason].filter(Boolean).join(" - ");
   return `
     <div class="simulation-output-discovery-item">
       <span>
@@ -1043,10 +1046,10 @@ function customOutputLineFromDiscoveryItem(item) {
   const objectType = String(item.objectType || "").trim();
   const frequency = item.reportingFrequency || "Hourly";
   if (objectType.toLowerCase() === "output:meter") {
-    const meterName = item.name || item.keyValue || "";
+    const meterName = item.aliasOf || item.name || item.keyValue || "";
     return meterName ? `Output:Meter | ${meterName} | ${frequency}` : "";
   }
-  const variableName = item.name || "";
+  const variableName = item.aliasOf || item.name || "";
   return variableName ? `Output:Variable | ${item.keyValue || "*"} | ${variableName} | ${frequency}` : "";
 }
 

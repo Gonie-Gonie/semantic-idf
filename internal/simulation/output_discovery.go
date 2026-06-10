@@ -34,6 +34,8 @@ type OutputDiscoveryItem struct {
 	ReportingFrequency string                `json:"reportingFrequency,omitempty"`
 	Source             string                `json:"source"`
 	Status             string                `json:"status"`
+	AliasOf            string                `json:"aliasOf,omitempty"`
+	AliasReason        string                `json:"aliasReason,omitempty"`
 	PurposeIDs         []SimulationPurposeID `json:"purposeIds,omitempty"`
 }
 
@@ -96,16 +98,29 @@ func DiscoverAvailableOutputs(request OutputDiscoveryRequest) (OutputDiscoveryRe
 					continue
 				}
 				status := "fallback"
+				aliasOf := ""
+				aliasReason := ""
+				units := ""
+				source := "purpose_plan"
 				if collector.has(object.ObjectType, object.KeyValue, object.VariableName) {
 					status = "available"
+				} else if alias, ok := collector.aliasFor(object.ObjectType, object.KeyValue, object.VariableName); ok {
+					status = "alias"
+					aliasOf = alias.Name
+					aliasReason = "A discovered output variable can be used as an alias for this purpose output."
+					units = alias.Units
+					source = mergeDiscoveryToken(source, alias.Source)
 				}
 				collector.add(OutputDiscoveryItem{
 					ObjectType:         object.ObjectType,
 					KeyValue:           object.KeyValue,
 					Name:               object.VariableName,
+					Units:              units,
 					ReportingFrequency: object.ReportingFrequency,
-					Source:             "purpose_plan",
+					Source:             source,
 					Status:             status,
+					AliasOf:            aliasOf,
+					AliasReason:        aliasReason,
 					PurposeIDs:         object.PurposeIDs,
 				})
 			}
@@ -175,6 +190,8 @@ func (collector *outputDiscoveryCollector) add(item OutputDiscoveryItem) {
 	item.ReportingFrequency = canonicalPurposeFrequency(item.ReportingFrequency)
 	item.Source = strings.TrimSpace(item.Source)
 	item.Status = strings.TrimSpace(item.Status)
+	item.AliasOf = strings.TrimSpace(item.AliasOf)
+	item.AliasReason = strings.TrimSpace(item.AliasReason)
 	if item.Status == "" {
 		item.Status = "available"
 	}
@@ -193,6 +210,12 @@ func (collector *outputDiscoveryCollector) add(item OutputDiscoveryItem) {
 		if existing.ReportingFrequency == "" {
 			existing.ReportingFrequency = item.ReportingFrequency
 		}
+		if existing.AliasOf == "" {
+			existing.AliasOf = item.AliasOf
+		}
+		if existing.AliasReason == "" {
+			existing.AliasReason = item.AliasReason
+		}
 		collector.items[key] = existing
 		return
 	}
@@ -200,10 +223,37 @@ func (collector *outputDiscoveryCollector) add(item OutputDiscoveryItem) {
 }
 
 func (collector outputDiscoveryCollector) has(objectType string, keyValue string, name string) bool {
-	if collector.items[outputDiscoveryKey(objectType, keyValue, name)].Name != "" {
-		return true
+	_, ok := collector.find(objectType, keyValue, name)
+	return ok
+}
+
+func (collector outputDiscoveryCollector) find(objectType string, keyValue string, name string) (OutputDiscoveryItem, bool) {
+	if item := collector.items[outputDiscoveryKey(objectType, keyValue, name)]; item.Name != "" {
+		return item, true
 	}
-	return collector.items[outputDiscoveryKey(objectType, "*", name)].Name != ""
+	if item := collector.items[outputDiscoveryKey(objectType, "*", name)]; item.Name != "" {
+		return item, true
+	}
+	keys := make([]string, 0, len(collector.items))
+	for key, item := range collector.items {
+		if strings.EqualFold(item.ObjectType, objectType) && strings.EqualFold(item.Name, name) {
+			keys = append(keys, key)
+		}
+	}
+	sort.Strings(keys)
+	if len(keys) > 0 {
+		return collector.items[keys[0]], true
+	}
+	return OutputDiscoveryItem{}, false
+}
+
+func (collector outputDiscoveryCollector) aliasFor(objectType string, keyValue string, name string) (OutputDiscoveryItem, bool) {
+	for _, alias := range outputDiscoveryAliases(objectType, name) {
+		if item, ok := collector.find(objectType, keyValue, alias); ok {
+			return item, true
+		}
+	}
+	return OutputDiscoveryItem{}, false
 }
 
 func (collector outputDiscoveryCollector) sorted() []OutputDiscoveryItem {
@@ -374,6 +424,18 @@ func splitDictionaryNameUnits(value string) (string, string) {
 
 func outputDiscoveryKey(objectType string, keyValue string, name string) string {
 	return normalizePurposeToken(objectType) + "|" + normalizePurposeToken(keyValue) + "|" + normalizePurposeToken(name)
+}
+
+func outputDiscoveryAliases(objectType string, name string) []string {
+	if !strings.EqualFold(strings.TrimSpace(objectType), "Output:Variable") {
+		return nil
+	}
+	switch normalizePurposeToken(name) {
+	case "zone mean air temperature":
+		return []string{"Zone Air Temperature", "Space Mean Air Temperature"}
+	default:
+		return nil
+	}
 }
 
 func mergeDiscoveryToken(left string, right string) string {

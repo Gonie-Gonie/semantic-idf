@@ -243,6 +243,10 @@
   color: var(--amber);
 }
 
+.simulation-discovery-badge.alias {
+  color: var(--teal);
+}
+
 .simulation-plan-actions {
   display: flex;
   flex-wrap: wrap;
