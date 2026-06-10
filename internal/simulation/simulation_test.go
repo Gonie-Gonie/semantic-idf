@@ -64,6 +64,30 @@ func TestParseSimulationCSVBuildsSummariesAndSeries(t *testing.T) {
 	}
 }
 
+func TestParseSimulationSQLSeriesBuildsTimedSeries(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "eplusout.sql")
+	createTestEnergyPlusSQL(t, path)
+
+	series, err := parseSimulationSQLSeries(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(series) != 4 {
+		t.Fatalf("series count = %d, want 4: %#v", len(series), series)
+	}
+	first := series[0]
+	if first.File != "eplusout.sql" || first.Column != "ZONE ONE:Zone Mean Air Temperature [C]" {
+		t.Fatalf("first series identity = %+v", first)
+	}
+	if first.Min != 20 || first.Max != 21.5 || first.Average != 20.75 || first.RowCount != 2 {
+		t.Fatalf("first series stats = %+v", first)
+	}
+	if len(first.Points) != 2 || first.Points[0].Label != "01-01 01:00" || first.Points[1].Label != "01-01 02:00" {
+		t.Fatalf("first series points = %#v", first.Points)
+	}
+}
+
 func TestParseSimulationHeatFlowCSVBuildsDataset(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "eplusout.csv")
