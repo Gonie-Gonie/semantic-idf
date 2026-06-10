@@ -501,7 +501,10 @@ function renderSimulationHVACLoopResult(loop) {
         <h4>${escapeHTML(loop.name || t("simulation.hvacLoops", {}, "HVAC Loops"))}</h4>
         <span>${escapeHTML(loop.loopType || t("simulation.nodeStateSeries", {}, "Node state series"))}</span>
       </div>
+      ${renderSimulationHVACLoopDerivedMetrics(loop.derivedMetrics || [])}
+      ${renderSimulationHVACLoopAlerts(loop.alerts || [])}
       ${renderPurposeCompletenessRow(loop.completeness || [])}
+      ${renderSimulationHVACNodeSummaries(loop.nodeSummaries || [])}
       <div class="output-table-wrap">
         <table class="output-table">
           <thead><tr><th>${escapeHTML(t("common.key", {}, "Key"))}</th><th>${escapeHTML(t("common.metric", {}, "Metric"))}</th><th>${escapeHTML(t("common.source", {}, "Source"))}</th><th>Min</th><th>Max</th><th>Avg</th><th>${escapeHTML(t("common.points", {}, "Points"))}</th></tr></thead>
@@ -509,6 +512,73 @@ function renderSimulationHVACLoopResult(loop) {
         </table>
       </div>
     </section>`;
+}
+
+function renderSimulationHVACLoopDerivedMetrics(metrics) {
+  if (!metrics.length) {
+    return "";
+  }
+  return `
+    <div class="simulation-hvac-derived-grid">
+      ${metrics
+        .map(
+          (metric) => `
+            <article class="simulation-hvac-derived ${escapeHTML(metric.status || "info")}">
+              <span>${escapeHTML(metric.name || "")}</span>
+              <strong>${escapeHTML(formatValueWithUnit(metric.value, metric.unit))}</strong>
+              <small>${escapeHTML(metric.message || metric.source || "")}</small>
+            </article>`,
+        )
+        .join("")}
+    </div>`;
+}
+
+function renderSimulationHVACLoopAlerts(alerts) {
+  if (!alerts.length) {
+    return "";
+  }
+  return `
+    <div class="simulation-hvac-alert-list">
+      ${alerts
+        .map(
+          (alert) => `
+            <article class="simulation-hvac-alert ${escapeHTML(alert.severity || "info")}">
+              <strong>${escapeHTML(alert.message || alert.code || "")}</strong>
+              <span>${escapeHTML([alert.nodeName, alert.code, alert.source, formatOptionalValueWithUnit(alert.value, alert.unit)].filter(Boolean).join(" - "))}</span>
+            </article>`,
+        )
+        .join("")}
+    </div>`;
+}
+
+function renderSimulationHVACNodeSummaries(nodes) {
+  if (!nodes.length) {
+    return "";
+  }
+  const rows = nodes
+    .slice(0, 80)
+    .map(
+      (node) => `
+        <tr>
+          <td>${escapeHTML(node.nodeName || "")}</td>
+          <td>${escapeHTML(node.hasTemperature ? formatValueWithUnit(node.temperatureAverage, node.temperatureUnit) : "-")}</td>
+          <td>${escapeHTML(node.hasSetpoint ? formatValueWithUnit(node.setpointAverage, node.setpointUnit) : "-")}</td>
+          <td>${escapeHTML(node.temperatureSetpointSamples ? formatValueWithUnit(node.temperatureSetpointDelta, node.temperatureUnit || "C") : "-")}</td>
+          <td>${escapeHTML(node.hasMassFlow ? formatValueWithUnit(node.massFlowMax, node.massFlowUnit) : "-")}</td>
+          <td>${escapeHTML(node.hasMassFlow ? formatValueWithUnit((Number(node.activeMassFlowFraction) || 0) * 100, "%") : "-")}</td>
+          <td>${escapeHTML(node.source || "")}</td>
+        </tr>`,
+    )
+    .join("");
+  return `
+    <div class="output-table-wrap simulation-hvac-node-summary">
+      <table class="output-table">
+        <thead>
+          <tr><th>${escapeHTML(t("common.node", {}, "Node"))}</th><th>Avg temp</th><th>Avg setpoint</th><th>Avg delta</th><th>Peak flow</th><th>Active flow</th><th>${escapeHTML(t("common.source", {}, "Source"))}</th></tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
 }
 
 function renderSimulationComfortEmpty(message) {
@@ -757,6 +827,14 @@ function renderZoneEnergyTable(zones) {
 function formatEnergyValue(value, unit) {
   const safeUnit = unit || "";
   return `${formatNumber(value)}${safeUnit ? ` ${safeUnit}` : ""}`;
+}
+
+function formatValueWithUnit(value, unit) {
+  return formatEnergyValue(value, unit);
+}
+
+function formatOptionalValueWithUnit(value, unit) {
+  return Number.isFinite(Number(value)) ? formatValueWithUnit(value, unit) : "";
 }
 
 function scheduleSimulationRunPlan(delay = 260) {

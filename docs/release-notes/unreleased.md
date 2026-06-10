@@ -72,6 +72,7 @@ The release script infers bump size from these sections:
 - Basic Energy now surfaces purpose completeness badges alongside HVAC Loop and Comfort result views.
 - Simulation output discovery now caches SQL/RDD/MDD catalog reads and invalidates them when source files change.
 - Output analysis now tags existing and recommended output requests by simulation purpose and adds a purpose filter to the Output tab.
+- HVAC Loop Check results now include node summaries, derived loop metrics, and alert rules for zero flow, missing setpoints, and large setpoint deltas.
 
 ## Fixed
 

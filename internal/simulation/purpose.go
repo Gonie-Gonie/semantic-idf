@@ -2,6 +2,7 @@ package simulation
 
 import (
 	"fmt"
+	"math"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -137,10 +138,51 @@ type EnergyTotal struct {
 }
 
 type HVACLoopRunResult struct {
-	Name         string                    `json:"name"`
-	LoopType     string                    `json:"loopType,omitempty"`
-	Series       []SimulationSeries        `json:"series,omitempty"`
-	Completeness []PurposeCompletenessItem `json:"completeness,omitempty"`
+	Name           string                    `json:"name"`
+	LoopType       string                    `json:"loopType,omitempty"`
+	Series         []SimulationSeries        `json:"series,omitempty"`
+	NodeSummaries  []HVACNodeRunSummary      `json:"nodeSummaries,omitempty"`
+	DerivedMetrics []HVACLoopDerivedMetric   `json:"derivedMetrics,omitempty"`
+	Alerts         []HVACLoopAlert           `json:"alerts,omitempty"`
+	Completeness   []PurposeCompletenessItem `json:"completeness,omitempty"`
+}
+
+type HVACNodeRunSummary struct {
+	NodeName                   string  `json:"nodeName"`
+	Source                     string  `json:"source,omitempty"`
+	SeriesCount                int     `json:"seriesCount"`
+	HasTemperature             bool    `json:"hasTemperature"`
+	TemperatureAverage         float64 `json:"temperatureAverage"`
+	TemperatureUnit            string  `json:"temperatureUnit,omitempty"`
+	HasMassFlow                bool    `json:"hasMassFlow"`
+	MassFlowAverage            float64 `json:"massFlowAverage"`
+	MassFlowMax                float64 `json:"massFlowMax"`
+	MassFlowUnit               string  `json:"massFlowUnit,omitempty"`
+	HasSetpoint                bool    `json:"hasSetpoint"`
+	SetpointAverage            float64 `json:"setpointAverage"`
+	SetpointUnit               string  `json:"setpointUnit,omitempty"`
+	TemperatureSetpointDelta   float64 `json:"temperatureSetpointDelta"`
+	ActiveMassFlowFraction     float64 `json:"activeMassFlowFraction"`
+	TemperatureSetpointSamples int     `json:"temperatureSetpointSamples,omitempty"`
+}
+
+type HVACLoopDerivedMetric struct {
+	Name    string  `json:"name"`
+	Unit    string  `json:"unit,omitempty"`
+	Value   float64 `json:"value"`
+	Source  string  `json:"source,omitempty"`
+	Status  string  `json:"status,omitempty"`
+	Message string  `json:"message,omitempty"`
+}
+
+type HVACLoopAlert struct {
+	Severity string   `json:"severity"`
+	Code     string   `json:"code"`
+	Message  string   `json:"message"`
+	NodeName string   `json:"nodeName,omitempty"`
+	Source   string   `json:"source,omitempty"`
+	Value    *float64 `json:"value,omitempty"`
+	Unit     string   `json:"unit,omitempty"`
 }
 
 type ComfortResult struct {
@@ -422,12 +464,236 @@ func buildHVACLoopRunResults(series []SimulationSeries, request SimulationPurpos
 		return nil
 	}
 	result := HVACLoopRunResult{
-		Name:         hvacLoopResultName(request.Scope),
-		LoopType:     hvacLoopResultType(request.Scope),
-		Series:       nodeSeries,
-		Completeness: hvacNodeSeriesCompleteness(foundVariables, seriesSource(nodeSeries)),
+		Name:          hvacLoopResultName(request.Scope),
+		LoopType:      hvacLoopResultType(request.Scope),
+		Series:        nodeSeries,
+		NodeSummaries: buildHVACNodeRunSummaries(nodeSeries),
+		Completeness:  hvacNodeSeriesCompleteness(foundVariables, seriesSource(nodeSeries)),
 	}
+	result.DerivedMetrics = buildHVACLoopDerivedMetrics(result.NodeSummaries)
+	result.Alerts = buildHVACLoopAlerts(result.NodeSummaries)
 	return []HVACLoopRunResult{result}
+}
+
+type hvacNodeSeriesBucket struct {
+	nodeName    string
+	series      []SimulationSeries
+	temperature *SimulationSeries
+	massFlow    *SimulationSeries
+	setpoint    *SimulationSeries
+}
+
+func buildHVACNodeRunSummaries(series []SimulationSeries) []HVACNodeRunSummary {
+	buckets := map[string]*hvacNodeSeriesBucket{}
+	order := []string{}
+	for _, item := range series {
+		nodeName, variableName := splitPurposeSeriesColumn(item.Column)
+		if nodeName == "" {
+			nodeName = "Unknown Node"
+		}
+		key := normalizePurposeToken(nodeName)
+		bucket := buckets[key]
+		if bucket == nil {
+			bucket = &hvacNodeSeriesBucket{nodeName: nodeName}
+			buckets[key] = bucket
+			order = append(order, key)
+		}
+		bucket.series = append(bucket.series, item)
+		itemCopy := item
+		switch normalizePurposeToken(variableName) {
+		case "system node temperature":
+			bucket.temperature = &itemCopy
+		case "system node mass flow rate":
+			bucket.massFlow = &itemCopy
+		case "system node setpoint temperature":
+			bucket.setpoint = &itemCopy
+		}
+	}
+	sort.SliceStable(order, func(i, j int) bool {
+		return strings.ToLower(buckets[order[i]].nodeName) < strings.ToLower(buckets[order[j]].nodeName)
+	})
+	out := make([]HVACNodeRunSummary, 0, len(order))
+	for _, key := range order {
+		out = append(out, hvacNodeSummaryFromBucket(buckets[key]))
+	}
+	return out
+}
+
+func hvacNodeSummaryFromBucket(bucket *hvacNodeSeriesBucket) HVACNodeRunSummary {
+	summary := HVACNodeRunSummary{
+		NodeName:    bucket.nodeName,
+		Source:      seriesSource(bucket.series),
+		SeriesCount: len(bucket.series),
+	}
+	if bucket.temperature != nil {
+		summary.HasTemperature = true
+		summary.TemperatureAverage = roundedPurposeNumber(bucket.temperature.Average)
+		summary.TemperatureUnit = unitFromSeriesColumn(bucket.temperature.Column)
+	}
+	if bucket.massFlow != nil {
+		summary.HasMassFlow = true
+		summary.MassFlowAverage = roundedPurposeNumber(bucket.massFlow.Average)
+		summary.MassFlowMax = roundedPurposeNumber(bucket.massFlow.Max)
+		summary.MassFlowUnit = unitFromSeriesColumn(bucket.massFlow.Column)
+		summary.ActiveMassFlowFraction = roundedPurposeNumber(hvacActiveMassFlowFraction(bucket.massFlow.Points))
+	}
+	if bucket.setpoint != nil {
+		summary.HasSetpoint = true
+		summary.SetpointAverage = roundedPurposeNumber(bucket.setpoint.Average)
+		summary.SetpointUnit = unitFromSeriesColumn(bucket.setpoint.Column)
+	}
+	if bucket.temperature != nil && bucket.setpoint != nil {
+		delta, samples := hvacAverageAbsoluteDelta(bucket.temperature.Points, bucket.setpoint.Points)
+		summary.TemperatureSetpointDelta = roundedPurposeNumber(delta)
+		summary.TemperatureSetpointSamples = samples
+	}
+	return summary
+}
+
+func buildHVACLoopDerivedMetrics(nodes []HVACNodeRunSummary) []HVACLoopDerivedMetric {
+	if len(nodes) == 0 {
+		return nil
+	}
+	var metrics []HVACLoopDerivedMetric
+	if average, ok := averageHVACNodeValue(nodes, func(node HVACNodeRunSummary) (float64, bool) {
+		return node.TemperatureAverage, node.HasTemperature
+	}); ok {
+		metrics = append(metrics, HVACLoopDerivedMetric{Name: "Average node temperature", Unit: "C", Value: roundedPurposeNumber(average), Source: "series", Status: "info"})
+	}
+	if peak, ok := maxHVACNodeValue(nodes, func(node HVACNodeRunSummary) (float64, bool) {
+		return node.MassFlowMax, node.HasMassFlow
+	}); ok {
+		metrics = append(metrics, HVACLoopDerivedMetric{Name: "Peak node mass flow", Unit: "kg/s", Value: roundedPurposeNumber(peak), Source: "series", Status: hvacFlowStatus(peak)})
+	}
+	if average, ok := averageHVACNodeValue(nodes, func(node HVACNodeRunSummary) (float64, bool) {
+		return node.TemperatureSetpointDelta, node.TemperatureSetpointSamples > 0
+	}); ok {
+		metrics = append(metrics, HVACLoopDerivedMetric{Name: "Average temperature-setpoint delta", Unit: "C", Value: roundedPurposeNumber(average), Source: "series", Status: hvacSetpointDeltaStatus(average)})
+	}
+	if average, ok := averageHVACNodeValue(nodes, func(node HVACNodeRunSummary) (float64, bool) {
+		return node.ActiveMassFlowFraction * 100, node.HasMassFlow
+	}); ok {
+		metrics = append(metrics, HVACLoopDerivedMetric{Name: "Average active-flow fraction", Unit: "%", Value: roundedPurposeNumber(average), Source: "series", Status: hvacActiveFlowStatus(average)})
+	}
+	return metrics
+}
+
+func buildHVACLoopAlerts(nodes []HVACNodeRunSummary) []HVACLoopAlert {
+	var alerts []HVACLoopAlert
+	for _, node := range nodes {
+		if node.HasMassFlow && node.MassFlowMax <= 0.001 {
+			alerts = append(alerts, HVACLoopAlert{
+				Severity: "warning",
+				Code:     "no_detected_mass_flow",
+				Message:  "Node mass flow stayed near zero during the parsed run.",
+				NodeName: node.NodeName,
+				Source:   node.Source,
+				Value:    purposeFloat64(node.MassFlowMax),
+				Unit:     node.MassFlowUnit,
+			})
+		}
+		if node.HasTemperature && !node.HasSetpoint {
+			alerts = append(alerts, HVACLoopAlert{
+				Severity: "info",
+				Code:     "missing_temperature_setpoint",
+				Message:  "Temperature was reported without a matching setpoint series for this node.",
+				NodeName: node.NodeName,
+				Source:   node.Source,
+			})
+		}
+		if node.TemperatureSetpointSamples > 0 && node.TemperatureSetpointDelta > 5 {
+			alerts = append(alerts, HVACLoopAlert{
+				Severity: "warning",
+				Code:     "temperature_setpoint_delta",
+				Message:  "Average node temperature drifted more than 5 C from setpoint.",
+				NodeName: node.NodeName,
+				Source:   node.Source,
+				Value:    purposeFloat64(node.TemperatureSetpointDelta),
+				Unit:     "C",
+			})
+		}
+	}
+	return alerts
+}
+
+func purposeFloat64(value float64) *float64 {
+	return &value
+}
+
+func hvacActiveMassFlowFraction(points []SimulationPoint) float64 {
+	if len(points) == 0 {
+		return 0
+	}
+	active := 0
+	for _, point := range points {
+		if math.Abs(point.Value) > 0.001 {
+			active++
+		}
+	}
+	return float64(active) / float64(len(points))
+}
+
+func hvacAverageAbsoluteDelta(left []SimulationPoint, right []SimulationPoint) (float64, int) {
+	limit := minInt(len(left), len(right))
+	if limit == 0 {
+		return 0, 0
+	}
+	total := 0.0
+	for index := 0; index < limit; index++ {
+		total += math.Abs(left[index].Value - right[index].Value)
+	}
+	return total / float64(limit), limit
+}
+
+func averageHVACNodeValue(nodes []HVACNodeRunSummary, value func(HVACNodeRunSummary) (float64, bool)) (float64, bool) {
+	total := 0.0
+	count := 0
+	for _, node := range nodes {
+		if item, ok := value(node); ok {
+			total += item
+			count++
+		}
+	}
+	if count == 0 {
+		return 0, false
+	}
+	return total / float64(count), true
+}
+
+func maxHVACNodeValue(nodes []HVACNodeRunSummary, value func(HVACNodeRunSummary) (float64, bool)) (float64, bool) {
+	maximum := math.Inf(-1)
+	found := false
+	for _, node := range nodes {
+		if item, ok := value(node); ok {
+			maximum = math.Max(maximum, item)
+			found = true
+		}
+	}
+	if !found {
+		return 0, false
+	}
+	return maximum, true
+}
+
+func hvacFlowStatus(value float64) string {
+	if value <= 0.001 {
+		return "warning"
+	}
+	return "ok"
+}
+
+func hvacSetpointDeltaStatus(value float64) string {
+	if value > 5 {
+		return "warning"
+	}
+	return "ok"
+}
+
+func hvacActiveFlowStatus(value float64) string {
+	if value < 5 {
+		return "warning"
+	}
+	return "ok"
 }
 
 func hvacNodeSeriesCompleteness(found map[string]bool, source string) []PurposeCompletenessItem {
@@ -1283,6 +1549,10 @@ func seriesTotal(series SimulationSeries) float64 {
 		total += point.Value
 	}
 	return total
+}
+
+func roundedPurposeNumber(value float64) float64 {
+	return math.Round(value*1000) / 1000
 }
 
 func splitZoneEnergySeriesName(value string) (string, string, bool) {
