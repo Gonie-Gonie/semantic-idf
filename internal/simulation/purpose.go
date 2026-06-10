@@ -932,11 +932,11 @@ func classifyHVACLoopStatus(nodes []HVACNodeRunSummary, metrics []HVACLoopDerive
 		return "flow_no_load", "Mass flow was present, but node temperature spread stayed near zero."
 	}
 	if spreadOK && spread >= 0.2 {
-		if hvacNodeNamesSuggest(nodes, "heat", "hot", "hw") {
-			return "active_heating", "Flow and node temperature spread indicate active heat transfer."
-		}
 		if hvacNodeNamesSuggest(nodes, "cool", "cold", "chw", "chilled") {
 			return "active_cooling", "Flow and node temperature spread indicate active cooling transfer."
+		}
+		if hvacNodeNamesSuggest(nodes, "heat", "hot", "hw") {
+			return "active_heating", "Flow and node temperature spread indicate active heat transfer."
 		}
 		if setpointOK && setpointDelta <= 2 {
 			return "setpoint_tracking", "Flow and temperature spread are present while setpoints remain close."

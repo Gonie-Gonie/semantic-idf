@@ -683,6 +683,108 @@ func TestPurposeResultBundleBuildsHVACLoopSeries(t *testing.T) {
 	}
 }
 
+func TestClassifyHVACLoopStatusStates(t *testing.T) {
+	tests := []struct {
+		name    string
+		nodes   []HVACNodeRunSummary
+		metrics []HVACLoopDerivedMetric
+		alerts  []HVACLoopAlert
+		want    string
+	}{
+		{
+			name: "unknown without flow",
+			nodes: []HVACNodeRunSummary{
+				hvacStatusNode("Supply", 21, false, 0, 0, false),
+			},
+			want: "unknown",
+		},
+		{
+			name: "off at zero flow",
+			nodes: []HVACNodeRunSummary{
+				hvacStatusNode("Supply", 21, true, 0, 0, false),
+			},
+			want: "off",
+		},
+		{
+			name: "flow without load",
+			nodes: []HVACNodeRunSummary{
+				hvacStatusNode("Supply", 21, true, 0.4, 0, false),
+				hvacStatusNode("Return", 21.1, true, 0.3, 0, false),
+			},
+			want: "flow_no_load",
+		},
+		{
+			name: "heating role from node names",
+			nodes: []HVACNodeRunSummary{
+				hvacStatusNode("Hot Water Supply", 50, true, 0.8, 0, false),
+				hvacStatusNode("HW Return", 45, true, 0.6, 0, false),
+			},
+			want: "active_heating",
+		},
+		{
+			name: "cooling role from node names",
+			nodes: []HVACNodeRunSummary{
+				hvacStatusNode("CHW Supply", 7, true, 0.8, 0, false),
+				hvacStatusNode("Chilled Water Return", 12, true, 0.7, 0, false),
+			},
+			want: "active_cooling",
+		},
+		{
+			name: "setpoint tracking",
+			nodes: []HVACNodeRunSummary{
+				hvacStatusNode("Supply", 20, true, 0.5, 1.2, true),
+				hvacStatusNode("Return", 22, true, 0.4, 1.4, true),
+			},
+			want: "setpoint_tracking",
+		},
+		{
+			name: "setpoint not met",
+			nodes: []HVACNodeRunSummary{
+				hvacStatusNode("Supply", 20, true, 0.5, 6.1, true),
+				hvacStatusNode("Return", 24, true, 0.4, 6.4, true),
+			},
+			want: "setpoint_not_met",
+		},
+		{
+			name: "suspicious generic role",
+			nodes: []HVACNodeRunSummary{
+				hvacStatusNode("Node A", 20, true, 0.5, 0, false),
+				hvacStatusNode("Node B", 24, true, 0.4, 0, false),
+			},
+			want: "suspicious",
+		},
+		{
+			name: "derived metric fallback",
+			nodes: []HVACNodeRunSummary{
+				hvacStatusNode("Supply", 20, true, 0.5, 0, false),
+			},
+			metrics: []HVACLoopDerivedMetric{{Name: "Estimated air-side heat transfer", Source: "derived_from_node_state"}},
+			want:    "setpoint_tracking",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, message := classifyHVACLoopStatus(test.nodes, test.metrics, test.alerts)
+			if got != test.want {
+				t.Fatalf("classifyHVACLoopStatus() = %q (%s), want %q", got, message, test.want)
+			}
+		})
+	}
+}
+
+func TestBuildHVACLoopDerivedAlertsFlowWithoutTemperatureSpread(t *testing.T) {
+	nodes := []HVACNodeRunSummary{
+		hvacStatusNode("Supply", 21, true, 0.4, 0, false),
+		hvacStatusNode("Return", 21.1, true, 0.3, 0, false),
+	}
+
+	alerts := buildHVACLoopDerivedAlerts(nodes)
+	if len(alerts) != 1 || alerts[0].Code != "flow_without_temperature_spread" || alerts[0].Severity != "warning" {
+		t.Fatalf("derived alerts = %#v", alerts)
+	}
+}
+
 func TestPurposeResultBundleBuildsComfortResult(t *testing.T) {
 	result := &SimulationRunResult{
 		Status: "succeeded",
@@ -714,6 +816,26 @@ func TestPurposeResultBundleBuildsComfortResult(t *testing.T) {
 		purposeCompletenessFound(bundle.Completeness, "Zone Air System Sensible Cooling Rate") {
 		t.Fatalf("comfort completeness = %#v", bundle.Completeness)
 	}
+}
+
+func hvacStatusNode(name string, temperature float64, hasFlow bool, massFlow float64, setpointDelta float64, hasSetpoint bool) HVACNodeRunSummary {
+	node := HVACNodeRunSummary{
+		NodeName:           name,
+		HasTemperature:     true,
+		TemperatureAverage: temperature,
+		TemperatureUnit:    "C",
+	}
+	if hasFlow {
+		node.HasMassFlow = true
+		node.MassFlowMax = massFlow
+		node.MassFlowUnit = "kg/s"
+	}
+	if hasSetpoint {
+		node.HasSetpoint = true
+		node.TemperatureSetpointDelta = setpointDelta
+		node.TemperatureSetpointSamples = 1
+	}
+	return node
 }
 
 func TestPurposeResultBundleAppliesComfortPeriodScope(t *testing.T) {

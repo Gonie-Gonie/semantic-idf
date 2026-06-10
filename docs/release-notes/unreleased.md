@@ -124,3 +124,4 @@ The release script infers bump size from these sections:
 - SQL result parsing now has a combined entrypoint that gathers series, energy, heat-flow, integrity, and comfort unmet-hour summaries while preserving partial parse results.
 - SQL result parsing now runs through a timeout-aware context entrypoint so long parse phases can be cancelled between parser steps.
 - Purpose SQL parsers now treat incomplete SQLite result files as empty results so CSV/ESO fallback and partial purpose result handling can continue cleanly.
+- HVAC Loop Check status classification now treats `CHW`/chilled-water node names as cooling before matching generic `HW` heating tokens.
