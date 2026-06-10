@@ -260,6 +260,79 @@ func TestAnalyzeHVACReadsZoneEquipmentListSixFieldGroup(t *testing.T) {
 	}
 }
 
+func TestAnalyzeHVACBuildsSpaceHVACRelation(t *testing.T) {
+	doc := Document{Objects: []Object{
+		{Index: 0, Type: "Zone", Fields: []Field{{Value: "Open Office"}}},
+		{Index: 1, Type: "Space", Fields: []Field{
+			{Value: "Open Office Space", Comment: "Name"},
+			{Value: "Open Office", Comment: "Zone Name"},
+		}},
+		{Index: 2, Type: "NodeList", Fields: []Field{
+			{Value: "Open Office Space Inlets"},
+			{Value: "Open Office Space Supply Inlet"},
+		}},
+		{Index: 3, Type: "SpaceHVAC:EquipmentConnections", Fields: []Field{
+			{Value: "Open Office Space", Comment: "Space Name"},
+			{Value: "Open Office Space Equipment", Comment: "Space Conditioning Equipment List Name"},
+			{Value: "Open Office Space Inlets", Comment: "Space Air Inlet Node or NodeList Name"},
+			{Value: "", Comment: "Space Air Exhaust Node or NodeList Name"},
+			{Value: "Open Office Space Air Node", Comment: "Space Air Node Name"},
+			{Value: "Open Office Space Return Node", Comment: "Space Return Air Node or NodeList Name"},
+		}},
+		{Index: 4, Type: "SpaceHVAC:EquipmentList", Fields: []Field{
+			{Value: "Open Office Space Equipment"},
+			{Value: "SequentialLoad"},
+			{Value: "AirTerminal:SingleDuct:ConstantVolume:NoReheat"},
+			{Value: "Open Office Space Terminal"},
+			{Value: "1"},
+			{Value: "1"},
+		}},
+		{Index: 5, Type: "AirTerminal:SingleDuct:ConstantVolume:NoReheat", Fields: []Field{
+			{Value: "Open Office Space Terminal", Comment: "Name"},
+			{Value: "Air Demand Inlet", Comment: "Air Inlet Node Name"},
+			{Value: "Open Office Space Supply Inlet", Comment: "Air Outlet Node Name"},
+		}},
+		{Index: 6, Type: "SpaceHVAC:ZoneEquipmentSplitter", Fields: []Field{
+			{Value: "Open Office Splitter"},
+			{Value: "Open Office"},
+			{Value: "Open Office Space"},
+		}},
+	}}
+
+	report := AnalyzeHVAC(doc)
+	if len(report.ZoneRelations) != 1 {
+		t.Fatalf("space relation count = %d, want 1: %#v", len(report.ZoneRelations), report.ZoneRelations)
+	}
+	relation := report.ZoneRelations[0]
+	if relation.RelationScope != "space" || relation.SpaceName != "Open Office Space" || relation.ZoneName != "Open Office" {
+		t.Fatalf("space relation identity = %#v", relation)
+	}
+	if relation.SpaceObjectIndex != 1 || relation.ZoneObjectIndex != 0 {
+		t.Fatalf("space/zone object indexes = %d/%d, want 1/0", relation.SpaceObjectIndex, relation.ZoneObjectIndex)
+	}
+	if got := len(relation.ZoneEquipment); got != 1 {
+		t.Fatalf("space equipment count = %d, want 1: %#v", got, relation.ZoneEquipment)
+	}
+	if relation.ZoneEquipment[0].RoleHere != "zone_terminal" {
+		t.Fatalf("space equipment role = %q, want zone_terminal", relation.ZoneEquipment[0].RoleHere)
+	}
+	if len(relation.TerminalUnits) != 1 || !relation.TerminalUnits[0].OutletMatchesZoneInlet {
+		t.Fatalf("space terminal evidence = %#v", relation.TerminalUnits)
+	}
+	hasNodeListSource := false
+	for _, source := range relation.Nodes.Sources {
+		if source.SourceType == "node_list_expansion" && source.InputValue == "Open Office Space Inlets" {
+			hasNodeListSource = true
+		}
+	}
+	if !hasNodeListSource {
+		t.Fatalf("space node source expansion = %#v", relation.Nodes.Sources)
+	}
+	if !stringSliceContainsFold(relation.Evidence, "Open Office Splitter") {
+		t.Fatalf("space evidence = %#v, want splitter evidence", relation.Evidence)
+	}
+}
+
 func TestAnalyzeHVACBuildsAirLoopDemandGraphFromSupplyAndReturnPaths(t *testing.T) {
 	doc := Document{Objects: []Object{
 		{Index: 0, Type: "AirLoopHVAC", Fields: []Field{

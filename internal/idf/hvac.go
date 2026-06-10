@@ -178,6 +178,9 @@ type HVACNodeEdge struct {
 type HVACZoneChain struct {
 	ZoneName           string             `json:"zoneName"`
 	ZoneObjectIndex    int                `json:"zoneObjectIndex,omitempty"`
+	SpaceName          string             `json:"spaceName,omitempty"`
+	SpaceObjectIndex   int                `json:"spaceObjectIndex,omitempty"`
+	RelationScope      string             `json:"relationScope,omitempty"`
 	RelationSource     string             `json:"relationSource,omitempty"`
 	Confidence         string             `json:"confidence,omitempty"`
 	Evidence           []string           `json:"evidence,omitempty"`
@@ -1095,8 +1098,16 @@ func buildHVACZoneRelations(ctx *hvacContext, loops []HVACLoop) []HVACZoneChain 
 			relations = append(relations, relation)
 		}
 	}
+	for _, connectionObj := range ctx.objectsByType[normalizeFieldCatalogKey("SpaceHVAC:EquipmentConnections")] {
+		relation := buildHVACSpaceRelation(ctx, loops, connectionObj)
+		if relation.SpaceName != "" {
+			relations = append(relations, relation)
+		}
+	}
 	sort.Slice(relations, func(i, j int) bool {
-		return strings.ToLower(relations[i].ZoneName) < strings.ToLower(relations[j].ZoneName)
+		left := strings.ToLower(strings.TrimSpace(relations[i].ZoneName + "/" + relations[i].SpaceName))
+		right := strings.ToLower(strings.TrimSpace(relations[j].ZoneName + "/" + relations[j].SpaceName))
+		return left < right
 	})
 	return relations
 }
@@ -1106,6 +1117,7 @@ func buildHVACZoneRelation(ctx *hvacContext, loops []HVACLoop, connectionObj Obj
 	relation := HVACZoneChain{
 		ZoneName:        zoneName,
 		ZoneObjectIndex: zoneObjectIndex(ctx, zoneName),
+		RelationScope:   "zone",
 	}
 	equipmentListName := fieldValueByCatalogName(connectionObj, "Zone Conditioning Equipment List Name")
 	zoneInletNodes := expandNodeOrNodeList(ctx, fieldValueByCatalogName(connectionObj, "Zone Air Inlet Node or NodeList Name"))
@@ -1125,7 +1137,7 @@ func buildHVACZoneRelation(ctx *hvacContext, loops []HVACLoop, connectionObj Obj
 			relation.Warnings = append(relation.Warnings, hvacWarningForObject(connectionObj, "missing_zone_equipment_list",
 				fmt.Sprintf("Zone %q references missing ZoneHVAC:EquipmentList %q.", zoneName, equipmentListName)))
 		} else {
-			relation.ZoneEquipment = equipmentFromZoneEquipmentList(ctx, equipmentList, &relation)
+			relation.ZoneEquipment = equipmentFromHVACEquipmentList(ctx, equipmentList, &relation, "ZoneHVAC:EquipmentList", "missing_zone_equipment", "zone_equipment")
 			relation.Evidence = append(relation.Evidence, "ZoneHVAC:EquipmentConnections -> ZoneHVAC:EquipmentList")
 		}
 	}
@@ -1182,7 +1194,99 @@ func buildHVACZoneRelation(ctx *hvacContext, loops []HVACLoop, connectionObj Obj
 	return relation
 }
 
+func buildHVACSpaceRelation(ctx *hvacContext, loops []HVACLoop, connectionObj Object) HVACZoneChain {
+	spaceName := fieldValueByCatalogName(connectionObj, "Space Name")
+	zoneName := zoneNameForSpace(ctx, spaceName)
+	relation := HVACZoneChain{
+		ZoneName:         zoneName,
+		ZoneObjectIndex:  zoneObjectIndex(ctx, zoneName),
+		SpaceName:        spaceName,
+		SpaceObjectIndex: spaceObjectIndex(ctx, spaceName),
+		RelationScope:    "space",
+	}
+	equipmentListName := fieldValueByCatalogName(connectionObj, "Space Conditioning Equipment List Name", "Zone Conditioning Equipment List Name")
+	spaceInletNodes := expandNodeOrNodeList(ctx, fieldValueByCatalogName(connectionObj, "Space Air Inlet Node or NodeList Name", "Zone Air Inlet Node or NodeList Name"))
+	spaceExhaustNodes := expandNodeOrNodeList(ctx, fieldValueByCatalogName(connectionObj, "Space Air Exhaust Node or NodeList Name", "Zone Air Exhaust Node or NodeList Name"))
+	spaceReturnNodes := expandNodeOrNodeList(ctx, fieldValueByCatalogName(connectionObj, "Space Return Air Node or NodeList Name", "Zone Return Air Node or NodeList Name"))
+	relation.Nodes = HVACZoneNodes{
+		AirNode:      fieldValueByCatalogName(connectionObj, "Space Air Node Name", "Zone Air Node Name"),
+		InletNodes:   append([]string(nil), spaceInletNodes...),
+		ExhaustNodes: append([]string(nil), spaceExhaustNodes...),
+		ReturnNodes:  append([]string(nil), spaceReturnNodes...),
+		Sources:      zoneNodeSources(ctx, connectionObj),
+	}
+
+	if equipmentListName != "" {
+		equipmentList, ok := hvacEquipmentListByName(ctx, equipmentListName, "SpaceHVAC:EquipmentList", "ZoneHVAC:EquipmentList")
+		if !ok {
+			relation.Warnings = append(relation.Warnings, hvacWarningForObject(connectionObj, "missing_space_equipment_list",
+				fmt.Sprintf("Space %q references missing HVAC equipment list %q.", spaceName, equipmentListName)))
+		} else {
+			relation.ZoneEquipment = equipmentFromHVACEquipmentList(ctx, equipmentList, &relation, objectLabel(equipmentList), "missing_space_equipment", "space_equipment")
+			relation.Evidence = append(relation.Evidence, fmt.Sprintf("SpaceHVAC:EquipmentConnections -> %s", objectLabel(equipmentList)))
+		}
+	}
+
+	for _, evidence := range spaceZoneEquipmentSplitterEvidence(ctx, relation) {
+		relation.Evidence = appendUniqueString(relation.Evidence, evidence)
+	}
+	for _, equipment := range relation.ZoneEquipment {
+		for _, terminal := range terminalsForZoneEquipment(ctx, equipment) {
+			if equipment.ListedInZoneEquipment {
+				terminal.ListedInZoneEquipment = true
+				terminal.RelationEvidence = appendUniqueString(terminal.RelationEvidence, "SpaceHVAC equipment list")
+			}
+			if terminal.OutletNode != "" && stringSliceContainsFold(spaceInletNodes, terminal.OutletNode) {
+				terminal.OutletMatchesZoneInlet = true
+				terminal.RelationEvidence = appendUniqueString(terminal.RelationEvidence, "terminal outlet node matches space inlet node")
+			}
+			if !componentSliceContains(relation.TerminalUnits, terminal) {
+				relation.TerminalUnits = append(relation.TerminalUnits, terminal)
+			}
+			if terminal.OutletNode != "" && len(spaceInletNodes) > 0 && !stringSliceContainsFold(spaceInletNodes, terminal.OutletNode) {
+				warning := hvacWarningForComponent(terminal, "terminal_not_connected_to_space_inlet",
+					fmt.Sprintf("Terminal %s outlet node %q is not in Space %q inlet nodes.", componentLabel(terminal), terminal.OutletNode, spaceName))
+				warning.ExpectedNodes = append([]string(nil), spaceInletNodes...)
+				warning.ActualNode = terminal.OutletNode
+				warning.SuggestedFixTarget = "SpaceHVAC:EquipmentConnections/Space Air Inlet Node or NodeList Name"
+				relation.Warnings = append(relation.Warnings, warning)
+			}
+		}
+	}
+	for _, terminal := range terminalsByZoneInlet(ctx, spaceInletNodes) {
+		terminal.RelationSource = "node_match"
+		terminal.RelationConfidence = "medium"
+		terminal.OutletMatchesZoneInlet = true
+		terminal.RelationEvidence = appendUniqueString(terminal.RelationEvidence, "terminal outlet node matches space inlet node")
+		if !componentSliceContains(relation.TerminalUnits, terminal) {
+			relation.TerminalUnits = append(relation.TerminalUnits, terminal)
+		}
+	}
+
+	airLoopRelations := inferAirLoopRelationsForZone(ctx, loops, relation.TerminalUnits, spaceInletNodes, spaceReturnNodes)
+	airLoopNames := hvacLoopRelationNameSet(airLoopRelations)
+	plantLoopNames := inferPlantLoopsForZone(ctx, loops, airLoopNames, relation.TerminalUnits, relation.ZoneEquipment)
+	relation.AirLoopNames = sortedStringSet(airLoopNames)
+	relation.AirLoopRelations = sortedHVACLoopRelations(airLoopRelations)
+	relation.PlantLoopNames = sortedStringSet(plantLoopNames)
+	relation.PlantLoopRelations = plantLoopRelationsForZone(loops, relation.PlantLoopNames, relation.AirLoopNames)
+	relation.CondenserLoopNames = condenserLoopNamesForPlantLoops(loops, relation.PlantLoopNames)
+	relation.PlantEquipment = plantSourceEquipmentForLoopNames(loops, relation.PlantLoopNames)
+	if len(spaceReturnNodes) > 0 && len(relation.AirLoopNames) == 0 {
+		relation.Warnings = append(relation.Warnings, hvacWarningForObject(connectionObj, "space_return_without_airloop",
+			fmt.Sprintf("Space %q has return node(s) but no AirLoop relation could be inferred.", spaceName)))
+	}
+	annotateTerminalAirLoopEvidence(ctx, loops, &relation)
+	relation.RelationSource, relation.Confidence = zoneRelationSourceConfidence(relation)
+	relation.ServiceChains = buildServiceChains(relation)
+	return relation
+}
+
 func equipmentFromZoneEquipmentList(ctx *hvacContext, equipmentList Object, relation *HVACZoneChain) []HVACComponent {
+	return equipmentFromHVACEquipmentList(ctx, equipmentList, relation, "ZoneHVAC:EquipmentList", "missing_zone_equipment", "zone_equipment")
+}
+
+func equipmentFromHVACEquipmentList(ctx *hvacContext, equipmentList Object, relation *HVACZoneChain, evidence string, missingCode string, defaultRole string) []HVACComponent {
 	var equipment []HVACComponent
 	for _, reference := range zoneEquipmentReferences(ctx, equipmentList) {
 		objectType := strings.TrimSpace(equipmentList.Fields[reference.TypeIndex].Value)
@@ -1192,18 +1296,21 @@ func equipmentFromZoneEquipmentList(ctx *hvacContext, equipmentList Object, rela
 		}
 		component := newHVACComponent(ctx, objectType, objectNameValue)
 		component.RoleHere = hvacZoneEquipmentRole(component)
+		if component.RoleHere == "zone_equipment" && defaultRole != "" {
+			component.RoleHere = defaultRole
+		}
 		component.ListedInZoneEquipment = true
 		component.RelationSource = "explicit"
 		component.RelationConfidence = "high"
-		component.RelationEvidence = appendUniqueString(component.RelationEvidence, "ZoneHVAC:EquipmentList")
+		component.RelationEvidence = appendUniqueString(component.RelationEvidence, evidence)
 		component.CoolingSequence = hvacFieldValue(equipmentList, reference.CoolingSequenceIndex)
 		component.HeatingSequence = hvacFieldValue(equipmentList, reference.HeatingSequenceIndex)
 		component.CoolingFractionSchedule = hvacFieldValue(equipmentList, reference.CoolingScheduleIndex)
 		component.HeatingFractionSchedule = hvacFieldValue(equipmentList, reference.HeatingScheduleIndex)
 		component.EditableFields = append(component.EditableFields, editableZoneEquipmentSequenceFields(ctx.doc, equipmentList, reference.TypeIndex)...)
 		if !component.Exists {
-			relation.Warnings = append(relation.Warnings, hvacWarningForObject(equipmentList, "missing_zone_equipment",
-				fmt.Sprintf("ZoneHVAC:EquipmentList %q references missing %s %q.", objectName(equipmentList), objectType, objectNameValue)))
+			relation.Warnings = append(relation.Warnings, hvacWarningForObject(equipmentList, missingCode,
+				fmt.Sprintf("%s %q references missing %s %q.", objectLabel(equipmentList), objectName(equipmentList), objectType, objectNameValue)))
 		}
 		equipment = append(equipment, component)
 	}
@@ -1379,6 +1486,72 @@ func firstPositiveInteger(value string) int {
 	return number
 }
 
+func hvacEquipmentListByName(ctx *hvacContext, name string, objectTypes ...string) (Object, bool) {
+	for _, objectType := range objectTypes {
+		if obj, ok := ctx.objectsByTypeName[hvacObjectKey(objectType, name)]; ok {
+			return obj, true
+		}
+	}
+	for _, obj := range ctx.objectsByName[normalizeName(name)] {
+		if strings.EqualFold(obj.Type, "ZoneHVAC:EquipmentList") || strings.EqualFold(obj.Type, "SpaceHVAC:EquipmentList") {
+			return obj, true
+		}
+	}
+	return Object{}, false
+}
+
+func zoneNameForSpace(ctx *hvacContext, spaceName string) string {
+	obj, ok := ctx.objectsByTypeName[hvacObjectKey("Space", spaceName)]
+	if !ok {
+		return ""
+	}
+	if zoneName := fieldValueByCatalogName(obj, "Zone Name"); zoneName != "" {
+		return zoneName
+	}
+	if len(obj.Fields) > 1 {
+		return strings.TrimSpace(obj.Fields[1].Value)
+	}
+	return ""
+}
+
+func spaceObjectIndex(ctx *hvacContext, spaceName string) int {
+	obj, ok := ctx.objectsByTypeName[hvacObjectKey("Space", spaceName)]
+	if !ok {
+		return -1
+	}
+	return obj.Index
+}
+
+func spaceZoneEquipmentSplitterEvidence(ctx *hvacContext, relation HVACZoneChain) []string {
+	if relation.SpaceName == "" && relation.ZoneName == "" {
+		return nil
+	}
+	var evidence []string
+	for _, splitter := range ctx.objectsByType[normalizeFieldCatalogKey("SpaceHVAC:ZoneEquipmentSplitter")] {
+		if objectMentionsValue(splitter, relation.SpaceName) || objectMentionsValue(splitter, relation.ZoneName) {
+			label := objectLabel(splitter)
+			if label == "" {
+				label = "SpaceHVAC:ZoneEquipmentSplitter"
+			}
+			evidence = appendUniqueString(evidence, label)
+		}
+	}
+	return evidence
+}
+
+func objectMentionsValue(obj Object, value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return false
+	}
+	for _, field := range obj.Fields {
+		if strings.EqualFold(strings.TrimSpace(field.Value), value) {
+			return true
+		}
+	}
+	return false
+}
+
 func terminalsByZoneInlet(ctx *hvacContext, zoneInletNodes []string) []HVACComponent {
 	if len(zoneInletNodes) == 0 {
 		return nil
@@ -1445,15 +1618,15 @@ func resolveAirDistributionUnitTerminal(ctx *hvacContext, equipment HVACComponen
 func zoneNodeSources(ctx *hvacContext, connectionObj Object) []HVACZoneNodeSource {
 	var sources []HVACZoneNodeSource
 	for _, item := range []struct {
-		role string
-		name string
+		role  string
+		names []string
 	}{
-		{role: "air_node", name: "Zone Air Node Name"},
-		{role: "inlet_nodes", name: "Zone Air Inlet Node or NodeList Name"},
-		{role: "exhaust_nodes", name: "Zone Air Exhaust Node or NodeList Name"},
-		{role: "return_nodes", name: "Zone Return Air Node or NodeList Name"},
+		{role: "air_node", names: []string{"Zone Air Node Name", "Space Air Node Name"}},
+		{role: "inlet_nodes", names: []string{"Zone Air Inlet Node or NodeList Name", "Space Air Inlet Node or NodeList Name"}},
+		{role: "exhaust_nodes", names: []string{"Zone Air Exhaust Node or NodeList Name", "Space Air Exhaust Node or NodeList Name"}},
+		{role: "return_nodes", names: []string{"Zone Return Air Node or NodeList Name", "Space Return Air Node or NodeList Name"}},
 	} {
-		value, fieldIndex, ok := fieldValueIndexByCatalogName(connectionObj, item.name)
+		value, fieldIndex, ok := fieldValueIndexByCatalogName(connectionObj, item.names...)
 		if !ok || strings.TrimSpace(value) == "" {
 			continue
 		}

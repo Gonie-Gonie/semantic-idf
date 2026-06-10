@@ -239,7 +239,7 @@ function renderHVACLoopChoice(loop) {
 }
 
 function renderHVACRelationPicker(relations, active) {
-  const selectedZone = state.activeHVACGraphKey?.startsWith("zone:") ? state.activeHVACGraphKey.slice(5) : "";
+  const selectedKey = state.activeHVACGraphKey?.startsWith("zone:") || state.activeHVACGraphKey?.startsWith("space:") ? state.activeHVACGraphKey : "";
   return `
     <details class="hvac-nav-card ${active ? "active" : ""}">
       <summary>
@@ -250,22 +250,24 @@ function renderHVACRelationPicker(relations, active) {
         <b>${escapeHTML(relations.length)}</b>
       </summary>
       <div class="hvac-nav-menu">
-        <button class="hvac-nav-choice ${active && !selectedZone ? "active" : ""}" type="button" data-hvac-open-view="relation">
+        <button class="hvac-nav-choice ${active && !selectedKey ? "active" : ""}" type="button" data-hvac-open-view="relation">
           <span>${escapeHTML(t("hvac.allZoneRelations"))}</span>
           <small>${escapeHTML(t("hvac.serviceRelation"))}</small>
         </button>
         ${
           relations.length
-            ? relations.map((relation) => renderHVACRelationChoice(relation, selectedZone)).join("")
+            ? relations.map((relation) => renderHVACRelationChoice(relation, selectedKey)).join("")
             : `<div class="empty compact">${escapeHTML(t("hvac.noZoneRelations"))}</div>`
         }
       </div>
     </details>`;
 }
 
-function renderHVACRelationChoice(relation, selectedZone) {
-  const selected = state.activeHVACView === "relation" && selectedZone === relation.zoneName;
+function renderHVACRelationChoice(relation, selectedKey) {
+  const key = relationSelectionKey(relation);
+  const selected = state.activeHVACView === "relation" && selectedKey === key;
   const meta = [
+    relation.relationScope === "space" ? "SpaceHVAC" : "",
     relation.confidence ? `${relation.confidence} confidence` : "",
     relation.relationSource || "",
     [...new Set([...(relation.airLoopNames || []), ...(relation.plantLoopNames || [])])].join(", "),
@@ -273,8 +275,8 @@ function renderHVACRelationChoice(relation, selectedZone) {
     .filter(Boolean)
     .join(" / ") || t("hvac.noTerminal");
   return `
-    <button class="hvac-nav-choice ${selected ? "active" : ""}" type="button" data-hvac-relation-zone="${escapeHTML(relation.zoneName || "")}">
-      <span>${escapeHTML(relation.zoneName || t("common.blank"))}</span>
+    <button class="hvac-nav-choice ${selected ? "active" : ""}" type="button" data-hvac-relation-key="${escapeHTML(key)}">
+      <span>${escapeHTML(relationDisplayName(relation))}</span>
       <small>${escapeHTML(meta)}</small>
     </button>`;
 }
@@ -288,6 +290,27 @@ function renderHVACDiagnosticsCard(count, active) {
       </span>
       <b>${escapeHTML(count)}</b>
     </button>`;
+}
+
+function relationSelectionKey(relation = {}) {
+  if (relation.spaceName) {
+    return `space:${relation.spaceName}`;
+  }
+  return relation.zoneName ? `zone:${relation.zoneName}` : "";
+}
+
+function relationDisplayName(relation = {}) {
+  if (relation.spaceName) {
+    return relation.zoneName ? `${relation.spaceName} / ${relation.zoneName}` : relation.spaceName;
+  }
+  return relation.zoneName || t("common.blank");
+}
+
+function renderRelationSubjectLink(relation = {}) {
+  if (relation.spaceName) {
+    return renderObjectLink(relation.spaceObjectIndex, "Space");
+  }
+  return renderObjectLink(relation.zoneObjectIndex, "Zone");
 }
 
 function handleHVACNavigationClick(event) {
@@ -305,10 +328,10 @@ function handleHVACNavigationClick(event) {
     renderHVAC();
     return;
   }
-  const relationButton = event.target.closest("[data-hvac-relation-zone]");
+  const relationButton = event.target.closest("[data-hvac-relation-key]");
   if (relationButton) {
     state.activeHVACView = "relation";
-    state.activeHVACGraphKey = relationButton.dataset.hvacRelationZone ? `zone:${relationButton.dataset.hvacRelationZone}` : "";
+    state.activeHVACGraphKey = relationButton.dataset.hvacRelationKey || "";
     state.activeHVACNodeName = "";
     renderHVAC();
     return;
@@ -1092,12 +1115,13 @@ function renderHVACZoneRelation(relation) {
     ...(relation.plantLoopNames || []),
     ...(relation.condenserLoopNames || []).map((name) => `Condenser: ${name}`),
   ].join(", ") || "N/A";
-  const rowClass = graphSelectionClass(`zone:${relation.zoneName}`, relationGraphKeys(relation));
+  const relationKey = relationSelectionKey(relation);
+  const rowClass = graphSelectionClass(relationKey, relationGraphKeys(relation));
   return `
-    <div class="hvac-relation-table-row ${rowClass}" role="row" tabindex="0" data-hvac-graph-key="zone:${escapeHTML(relation.zoneName || "")}">
+    <div class="hvac-relation-table-row ${rowClass}" role="row" tabindex="0" data-hvac-graph-key="${escapeHTML(relationKey)}">
       <span>
-        ${renderObjectLink(relation.zoneObjectIndex, "Zone")}
-        <strong>${escapeHTML(relation.zoneName)}</strong>
+        ${renderRelationSubjectLink(relation)}
+        <strong>${escapeHTML(relationDisplayName(relation))}</strong>
       </span>
       <span>${escapeHTML(terminalText)}</span>
       <span>${(relation.airLoopNames || []).map(escapeHTML).join(", ") || "N/A"}</span>
@@ -1216,7 +1240,7 @@ function renderHVACInspectorSelection(selected) {
     }
     ${
       selected.relations
-        ? `<div class="hvac-tag-list">${selected.relations.map((relation) => `<span>${escapeHTML(relation.zoneName)}</span>`).join("") || `<span>N/A</span>`}</div>`
+        ? `<div class="hvac-tag-list">${selected.relations.map((relation) => `<span>${escapeHTML(relationDisplayName(relation))}</span>`).join("") || `<span>N/A</span>`}</div>`
         : ""
     }`;
 }
@@ -1503,6 +1527,11 @@ function selectedRelationGraphItem(relations) {
     const zoneName = key.slice(5);
     return { kind: "zone", zoneName, relation: relations.find((relation) => relation.zoneName === zoneName) };
   }
+  if (key.startsWith("space:")) {
+    const spaceName = key.slice(6);
+    const relation = relations.find((item) => item.spaceName === spaceName);
+    return { kind: "zone", zoneName: relationDisplayName(relation), relation };
+  }
   if (key.startsWith("plant:")) {
     const loopName = key.slice(6);
     return { kind: "plant", loopName, relations: relations.filter((relation) => (relation.plantLoopNames || []).includes(loopName)) };
@@ -1555,7 +1584,7 @@ function renderSelectedHVACDetail(selected) {
                 ${(selected.relations || [])
                   .map(
                     (relation) =>
-                      `<div><strong>${renderObjectLink(relation.zoneObjectIndex, "Zone")} ${escapeHTML(relation.zoneName)}</strong><span>${escapeHTML(
+                      `<div><strong>${renderRelationSubjectLink(relation)} ${escapeHTML(relationDisplayName(relation))}</strong><span>${escapeHTML(
                         [...new Set([...(relation.plantLoopNames || []), ...(relation.airLoopNames || [])])].join(" -> ") || t("hvac.serviceRelation"),
                       )}</span></div>`,
                   )
@@ -1598,7 +1627,7 @@ function renderSelectedHVACDetail(selected) {
           <span>Zone</span>
         </div>
         <div class="hvac-detail-grid">
-          <div><span>${t("common.object")}</span><strong>${renderObjectLink(relation?.zoneObjectIndex, "Zone") || "N/A"}</strong></div>
+          <div><span>${t("common.object")}</span><strong>${renderRelationSubjectLink(relation) || "N/A"}</strong></div>
           <div><span>Confidence</span><strong>${escapeHTML([relation?.confidence, relation?.relationSource].filter(Boolean).join(" / ") || "N/A")}</strong></div>
           <div><span>Air loops</span><strong>${escapeHTML(loopNames.join(", ") || "N/A")}</strong></div>
           <div><span>Plant loops</span><strong>${escapeHTML((relation?.plantLoopNames || []).join(", ") || "N/A")}</strong></div>
@@ -1617,7 +1646,7 @@ function renderSelectedHVACDetail(selected) {
           <span>${selected.kind === "plant" ? "PlantLoop" : "AirLoopHVAC"}</span>
         </div>
         <div class="hvac-detail-list">
-          ${(selected.relations || []).map((relation) => `<div><strong>${renderObjectLink(relation.zoneObjectIndex, "Zone")} ${escapeHTML(relation.zoneName)}</strong><span>${escapeHTML([relation.confidence, (relation.terminalUnits || []).map((item) => item.objectName || item.objectType).join(", ")].filter(Boolean).join(" / ") || t("hvac.noTerminal"))}</span></div>`).join("") || `<div class="empty">${t("profile.noMatchingZones")}</div>`}
+          ${(selected.relations || []).map((relation) => `<div><strong>${renderRelationSubjectLink(relation)} ${escapeHTML(relationDisplayName(relation))}</strong><span>${escapeHTML([relation.confidence, (relation.terminalUnits || []).map((item) => item.objectName || item.objectType).join(", ")].filter(Boolean).join(" / ") || t("hvac.noTerminal"))}</span></div>`).join("") || `<div class="empty">${t("profile.noMatchingZones")}</div>`}
         </div>
       </section>`;
   }
@@ -1629,7 +1658,7 @@ function renderSelectedHVACDetail(selected) {
           <span>${escapeHTML(t("hvac.relatedZoneCount", { count: (selected.relations || []).length }))}</span>
         </div>
         <div class="hvac-detail-list">
-          ${(selected.relations || []).map((relation) => `<div><strong>${renderObjectLink(relation.zoneObjectIndex, "Zone")} ${escapeHTML(relation.zoneName)}</strong><span>${escapeHTML([...new Set([...(relation.plantLoopNames || []), ...(relation.airLoopNames || [])])].join(" -> ") || t("hvac.serviceRelation"))}</span></div>`).join("")}
+          ${(selected.relations || []).map((relation) => `<div><strong>${renderRelationSubjectLink(relation)} ${escapeHTML(relationDisplayName(relation))}</strong><span>${escapeHTML([...new Set([...(relation.plantLoopNames || []), ...(relation.airLoopNames || [])])].join(" -> ") || t("hvac.serviceRelation"))}</span></div>`).join("")}
         </div>
       </section>`;
   }
@@ -2123,12 +2152,13 @@ function uniqueRelationComponents(components) {
 function relationGraphKeys(relation) {
   const terminalSource = (relation.terminalUnits || []).length ? relation.terminalUnits || [] : relation.zoneEquipment || [];
   const terminalKeys = uniqueRelationComponents(terminalSource).map((component) => relationComponentKey(component, "terminal"));
-  if (!terminalKeys.length && relation.zoneName) {
-    terminalKeys.push(`terminal:direct:${relation.zoneName}`);
+  const subjectKey = relationSelectionKey(relation);
+  if (!terminalKeys.length && subjectKey) {
+    terminalKeys.push(`terminal:direct:${subjectKey}`);
   }
   const sourceKeys = uniqueRelationComponents(relation.plantEquipment || []).map((component) => relationComponentKey(component, "source"));
   return [
-    relation.zoneName ? `zone:${relation.zoneName}` : "",
+    subjectKey,
     ...(relation.plantLoopNames || []).map((name) => `plant:${name}`),
     ...sourceKeys,
     ...(relation.airLoopNames || []).map((name) => `air:${name}`),
@@ -2146,13 +2176,14 @@ function buildRelationGraph(relations) {
   const nodesByKey = new Map();
   const linksByKey = new Map();
   for (const relation of relations) {
+    const subjectKey = relationSelectionKey(relation);
     const zoneNode = ensureRelationNode(nodesByKey, {
-      key: `zone:${relation.zoneName}`,
+      key: subjectKey,
       kind: "zone",
       column: "zone",
-      label: relation.zoneName,
-      meta: [relation.confidence, relation.relationSource].filter(Boolean).join(" / ") || "Zone",
-      objectIndex: relation.zoneObjectIndex,
+      label: relationDisplayName(relation),
+      meta: [relation.relationScope === "space" ? "SpaceHVAC" : "", relation.confidence, relation.relationSource].filter(Boolean).join(" / ") || "Zone",
+      objectIndex: relation.spaceName ? relation.spaceObjectIndex : relation.zoneObjectIndex,
     });
     const terminalSource = (relation.terminalUnits || []).length ? relation.terminalUnits || [] : relation.zoneEquipment || [];
     const terminalComponents = uniqueRelationComponents(terminalSource);
@@ -2169,7 +2200,7 @@ function buildRelationGraph(relations) {
         )
       : [
           ensureRelationNode(nodesByKey, {
-            key: `terminal:direct:${relation.zoneName}`,
+            key: `terminal:direct:${subjectKey}`,
             kind: "terminal",
             column: "terminal",
             label: t("hvac.directZoneEquipment"),

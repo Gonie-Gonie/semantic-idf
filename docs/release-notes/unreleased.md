@@ -33,6 +33,7 @@ The release script infers bump size from these sections:
 - HVAC loop and relation graphs now include Fit, 100%, and Compact scale controls for narrow panes and detailed graph inspection.
 - HVAC inspector panels can now be collapsed from the toolbar, and component labels expose full tooltips with direct inspector selection.
 - Heat-flow floor plans now support independent spatial zoom/pan controls and a collapsible zone ledger inspector.
+- HVAC analysis now builds separate SpaceHVAC equipment relations with parent-zone links, node-list provenance, splitter evidence, and UI labels.
 
 ## Fixed
 
