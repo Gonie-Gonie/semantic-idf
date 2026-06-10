@@ -170,6 +170,14 @@ func (a *App) BuildSimulationRunPlan(request simulation.SimulationRunRequest) (*
 	return &plan, nil
 }
 
+func (a *App) DiscoverAvailableOutputs(request simulation.OutputDiscoveryRequest) (*simulation.OutputDiscoveryResult, error) {
+	result, err := simulation.DiscoverAvailableOutputs(request)
+	if err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
 func (a *App) ApplyPurposeOutputsText(text string, request simulation.SimulationPurposeRequest) (*OutputApplyTextResult, error) {
 	model, err := epinput.Parse("", []byte(text))
 	if err != nil {

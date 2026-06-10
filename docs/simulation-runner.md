@@ -95,3 +95,11 @@ purpose result viewers are added.
 `ApplyPurposeOutputsText` converts a purpose plan into the existing Output apply
 pipeline. This keeps permanent output edits behind the same preview/apply
 contract as manual Output tab changes.
+
+## Output Discovery
+
+`DiscoverAvailableOutputs` builds a searchable output catalog from available run
+artifacts. It reads SQL `ReportDataDictionary`, `.rdd`, and `.mdd` files when
+present, then merges selected purpose-plan outputs as `fallback` entries. Each
+catalog item reports its object type, key, variable or meter name, units, source,
+status (`available` or `fallback`), and purpose tags when applicable.
