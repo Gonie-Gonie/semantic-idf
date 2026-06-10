@@ -561,8 +561,11 @@ function renderSimulationHVACLoopResult(loop) {
   return `
     <section class="simulation-hvac-loop-result">
       <div class="simulation-hvac-loop-head">
-        <h4>${escapeHTML(loop.name || t("simulation.hvacLoops", {}, "HVAC Loops"))}</h4>
-        <span>${escapeHTML(loop.loopType || t("simulation.nodeStateSeries", {}, "Node state series"))}</span>
+        <div>
+          <h4>${escapeHTML(loop.name || t("simulation.hvacLoops", {}, "HVAC Loops"))}</h4>
+          ${loop.status ? `<b class="simulation-hvac-status ${escapeHTML(loop.status)}">${escapeHTML(simulationHVACStatusLabel(loop.status))}</b>` : ""}
+        </div>
+        <span>${escapeHTML([loop.loopType || t("simulation.nodeStateSeries", {}, "Node state series"), loop.statusMessage || ""].filter(Boolean).join(" - "))}</span>
       </div>
       ${renderSimulationHVACLoopSnapshot(loop)}
       ${renderSimulationHVACLoopDerivedMetrics(loop.derivedMetrics || [])}
@@ -733,18 +736,51 @@ function renderSimulationHVACLoopDerivedMetrics(metrics) {
     return "";
   }
   return `
-    <div class="simulation-hvac-derived-grid">
-      ${metrics
-        .map(
-          (metric) => `
-            <article class="simulation-hvac-derived ${escapeHTML(metric.status || "info")}">
-              <span>${escapeHTML(metric.name || "")}</span>
-              <strong>${escapeHTML(formatValueWithUnit(metric.value, metric.unit))}</strong>
-              <small>${escapeHTML(metric.message || metric.source || "")}</small>
-            </article>`,
-        )
-        .join("")}
-    </div>`;
+    <section class="simulation-hvac-derived-block">
+      <div class="simulation-hvac-source-legend">
+        <span>${escapeHTML(t("simulation.reportedByEnergyPlus", {}, "reported by EnergyPlus"))}</span>
+        <span class="derived">${escapeHTML(t("simulation.derivedFromNodeState", {}, "derived from node state"))}</span>
+      </div>
+      <div class="simulation-hvac-derived-grid">
+        ${metrics
+          .map(
+            (metric) => `
+              <article class="simulation-hvac-derived ${escapeHTML(metric.status || "info")} ${metric.source === "derived_from_node_state" ? "derived" : "reported"}">
+                <span>${escapeHTML(metric.name || "")}</span>
+                <strong>${escapeHTML(formatValueWithUnit(metric.value, metric.unit))}</strong>
+                <small>${escapeHTML(metric.message || simulationHVACMetricSourceLabel(metric.source || ""))}</small>
+              </article>`,
+          )
+          .join("")}
+      </div>
+    </section>`;
+}
+
+function simulationHVACStatusLabel(status) {
+  switch (String(status || "").toLowerCase()) {
+    case "off":
+      return t("simulation.hvacStatusOff", {}, "Off");
+    case "flow_no_load":
+      return t("simulation.hvacStatusFlowNoLoad", {}, "Flow, no load");
+    case "active_heating":
+      return t("simulation.hvacStatusActiveHeating", {}, "Active heating");
+    case "active_cooling":
+      return t("simulation.hvacStatusActiveCooling", {}, "Active cooling");
+    case "setpoint_tracking":
+      return t("simulation.hvacStatusSetpointTracking", {}, "Setpoint tracking");
+    case "setpoint_not_met":
+      return t("simulation.hvacStatusSetpointNotMet", {}, "Setpoint not met");
+    case "suspicious":
+      return t("simulation.hvacStatusSuspicious", {}, "Suspicious");
+    default:
+      return simulationDiagnosticSourceLabel(status || "unknown");
+  }
+}
+
+function simulationHVACMetricSourceLabel(source) {
+  return source === "derived_from_node_state"
+    ? t("simulation.derivedFromNodeState", {}, "derived from node state")
+    : t("simulation.reportedByEnergyPlus", {}, "reported by EnergyPlus");
 }
 
 function renderSimulationHVACLoopAlerts(alerts) {
@@ -4547,7 +4583,29 @@ function renderPurposeHTMLHVAC(loops) {
       ),
     )
     .slice(0, 160);
+  const statusRows = loops.map((loop) => [
+    loop.name || "",
+    simulationHVACStatusLabel(loop.status || "unknown"),
+    loop.statusMessage || "",
+    loop.loopType || "",
+  ]);
+  const derivedRows = loops
+    .flatMap((loop) =>
+      (loop.derivedMetrics || []).map((metric) => [
+        loop.name || "",
+        metric.name || "",
+        formatValueWithUnit(metric.value, metric.unit),
+        simulationHVACMetricSourceLabel(metric.source || ""),
+        metric.status || "",
+        metric.message || "",
+      ]),
+    )
+    .slice(0, 120);
   return [
+    statusRows.length ? `<h2>HVAC Loop Status</h2>${renderPurposeHTMLTable(["Loop", "Status", "Message", "Type"], statusRows)}` : "",
+    derivedRows.length
+      ? `<h2>HVAC Derived Metrics</h2>${renderPurposeHTMLTable(["Loop", "Metric", "Value", "Source", "Status", "Message"], derivedRows)}`
+      : "",
     nodeRows.length ? `<h2>HVAC Node Results</h2>${renderPurposeHTMLTable(["Loop", "Node", "Avg temp", "Peak flow", "Avg delta", "Source"], nodeRows)}` : "",
     componentRows.length
       ? `<h2>HVAC Component Results</h2>${renderPurposeHTMLTable(["Loop", "Component", "Type", "Metric", "Peak", "Total", "Source"], componentRows)}`

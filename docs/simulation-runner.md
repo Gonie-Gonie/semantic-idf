@@ -120,8 +120,10 @@ Purpose result viewers now include:
 - Zone Heat Flow SQL or CSV/ESO ledger with frame sampling metadata and
   time-range controls.
 - HVAC Loop Check node summaries, component operation summaries for fans,
-  pumps, coils, chillers, boilers, and cooling towers, derived loop metrics, and
-  alerts for zero flow, missing setpoints, and large temperature-setpoint deltas.
+  pumps, coils, chillers, boilers, and cooling towers, derived loop metrics,
+  node-state heat-transfer estimates, loop status classification, and alerts for
+  zero flow, flow without temperature spread, missing setpoints, and large
+  temperature-setpoint deltas.
 - Comfort zone metric summaries for temperature, setpoint, PMV, and PPD series,
   with optional custom `MM-DD` period scoping for the rendered trends and issue
   ranking.

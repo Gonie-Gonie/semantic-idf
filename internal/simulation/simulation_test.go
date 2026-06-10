@@ -634,6 +634,7 @@ func TestPurposeResultBundleBuildsHVACLoopSeries(t *testing.T) {
 			{File: "eplusout.sql", Column: "Air Supply Inlet:System Node Temperature [C]", Min: 20, Max: 22, Average: 21, Points: []SimulationPoint{{X: 1, Value: 20}, {X: 2, Value: 22}}},
 			{File: "eplusout.sql", Column: "Air Supply Inlet:System Node Setpoint Temperature [C]", Min: 21, Max: 21, Average: 21, Points: []SimulationPoint{{X: 1, Value: 21}, {X: 2, Value: 21}}},
 			{File: "eplusout.sql", Column: "Air Supply Inlet:System Node Mass Flow Rate [kg/s]", Min: 0.2, Max: 0.4, Average: 0.3, Points: []SimulationPoint{{X: 1, Value: 0.2}, {X: 2, Value: 0.4}}},
+			{File: "eplusout.sql", Column: "Fan Outlet:System Node Temperature [C]", Min: 15, Max: 17, Average: 16, Points: []SimulationPoint{{X: 1, Value: 15}, {X: 2, Value: 17}}},
 			{File: "eplusout.sql", Column: "Fan Outlet:System Node Mass Flow Rate [kg/s]", Min: 0, Max: 0, Average: 0, Points: []SimulationPoint{{X: 1, Value: 0}, {X: 2, Value: 0}}},
 			{File: "eplusout.sql", Column: "Supply Fan:Fan Electricity Rate [W]", Min: 120, Max: 260, Average: 190, Points: []SimulationPoint{{X: 1, Value: 120}, {X: 2, Value: 260}}},
 			{File: "eplusout.sql", Column: "Supply Fan:Fan Electricity Energy [J]", Min: 432000, Max: 936000, Average: 684000, Points: []SimulationPoint{{X: 1, Value: 432000}, {X: 2, Value: 936000}}},
@@ -650,7 +651,7 @@ func TestPurposeResultBundleBuildsHVACLoopSeries(t *testing.T) {
 	if len(bundle.HVACLoops) != 1 || bundle.HVACLoops[0].Name != "Main Air Loop" {
 		t.Fatalf("hvac loop result = %#v", bundle.HVACLoops)
 	}
-	if len(bundle.HVACLoops[0].Series) != 4 {
+	if len(bundle.HVACLoops[0].Series) != 5 {
 		t.Fatalf("hvac series = %#v", bundle.HVACLoops[0].Series)
 	}
 	if len(bundle.HVACLoops[0].NodeSummaries) != 2 {
@@ -664,6 +665,12 @@ func TestPurposeResultBundleBuildsHVACLoopSeries(t *testing.T) {
 	}
 	if len(bundle.HVACLoops[0].DerivedMetrics) == 0 {
 		t.Fatalf("derived metrics missing: %#v", bundle.HVACLoops[0])
+	}
+	if bundle.HVACLoops[0].Status != "setpoint_tracking" {
+		t.Fatalf("hvac status = %q (%s)", bundle.HVACLoops[0].Status, bundle.HVACLoops[0].StatusMessage)
+	}
+	if !hvacLoopDerivedMetricExists(bundle.HVACLoops[0].DerivedMetrics, "Estimated air-side heat transfer", "derived_from_node_state") {
+		t.Fatalf("expected derived air-side heat transfer: %#v", bundle.HVACLoops[0].DerivedMetrics)
 	}
 	if !hvacLoopAlertExists(bundle.HVACLoops[0].Alerts, "no_detected_mass_flow") {
 		t.Fatalf("expected zero-flow alert: %#v", bundle.HVACLoops[0].Alerts)
@@ -768,6 +775,15 @@ func TestPurposeResultBundleBuildsComfortUnmetSummaries(t *testing.T) {
 func hvacLoopAlertExists(alerts []HVACLoopAlert, code string) bool {
 	for _, alert := range alerts {
 		if alert.Code == code {
+			return true
+		}
+	}
+	return false
+}
+
+func hvacLoopDerivedMetricExists(metrics []HVACLoopDerivedMetric, name string, source string) bool {
+	for _, metric := range metrics {
+		if metric.Name == name && metric.Source == source {
 			return true
 		}
 	}

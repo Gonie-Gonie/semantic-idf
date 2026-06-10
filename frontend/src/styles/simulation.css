@@ -333,6 +333,10 @@
   border-left-color: var(--green);
 }
 
+.simulation-hvac-derived.derived {
+  border-left-color: var(--teal);
+}
+
 .simulation-hvac-derived span,
 .simulation-hvac-derived small {
   overflow: hidden;
@@ -1053,6 +1057,13 @@
   align-items: baseline;
 }
 
+.simulation-hvac-loop-head > div {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
 .simulation-hvac-loop-head h4 {
   margin: 0;
   font-size: 13px;
@@ -1061,6 +1072,58 @@
 .simulation-hvac-loop-head span {
   color: var(--muted);
   font-size: 11px;
+}
+
+.simulation-hvac-status {
+  display: inline-flex;
+  min-height: 20px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 1px 7px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.simulation-hvac-status.active_heating,
+.simulation-hvac-status.active_cooling,
+.simulation-hvac-status.setpoint_tracking {
+  border-color: color-mix(in srgb, var(--green) 45%, var(--line));
+  color: var(--green);
+}
+
+.simulation-hvac-status.flow_no_load,
+.simulation-hvac-status.setpoint_not_met,
+.simulation-hvac-status.suspicious {
+  border-color: color-mix(in srgb, var(--amber) 50%, var(--line));
+  color: var(--amber);
+}
+
+.simulation-hvac-derived-block {
+  display: grid;
+  gap: 6px;
+}
+
+.simulation-hvac-source-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.simulation-hvac-source-legend span {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px 7px;
+}
+
+.simulation-hvac-source-legend .derived {
+  border-color: color-mix(in srgb, var(--teal) 45%, var(--line));
+  color: var(--teal);
 }
 
 .simulation-completeness-row {

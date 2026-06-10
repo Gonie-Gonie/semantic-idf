@@ -152,6 +152,8 @@ type EnergyTotal struct {
 type HVACLoopRunResult struct {
 	Name           string                    `json:"name"`
 	LoopType       string                    `json:"loopType,omitempty"`
+	Status         string                    `json:"status,omitempty"`
+	StatusMessage  string                    `json:"statusMessage,omitempty"`
 	Series         []SimulationSeries        `json:"series,omitempty"`
 	NodeSummaries  []HVACNodeRunSummary      `json:"nodeSummaries,omitempty"`
 	Components     []HVACComponentRunSummary `json:"components,omitempty"`
@@ -618,8 +620,10 @@ func buildHVACLoopRunResults(series []SimulationSeries, request SimulationPurpos
 		len(componentSeries) > 0,
 		seriesSource(componentSeries),
 	))
-	result.DerivedMetrics = buildHVACLoopDerivedMetrics(result.NodeSummaries)
+	result.DerivedMetrics = buildHVACLoopDerivedMetrics(result.NodeSummaries, result.LoopType)
 	result.Alerts = buildHVACLoopAlerts(result.NodeSummaries)
+	result.Alerts = append(result.Alerts, buildHVACLoopDerivedAlerts(result.NodeSummaries)...)
+	result.Status, result.StatusMessage = classifyHVACLoopStatus(result.NodeSummaries, result.DerivedMetrics, result.Alerts)
 	return []HVACLoopRunResult{result}
 }
 
@@ -767,7 +771,7 @@ func hvacComponentSeriesCount(components []HVACComponentRunSummary) int {
 	return total
 }
 
-func buildHVACLoopDerivedMetrics(nodes []HVACNodeRunSummary) []HVACLoopDerivedMetric {
+func buildHVACLoopDerivedMetrics(nodes []HVACNodeRunSummary, loopType string) []HVACLoopDerivedMetric {
 	if len(nodes) == 0 {
 		return nil
 	}
@@ -792,7 +796,63 @@ func buildHVACLoopDerivedMetrics(nodes []HVACNodeRunSummary) []HVACLoopDerivedMe
 	}); ok {
 		metrics = append(metrics, HVACLoopDerivedMetric{Name: "Average active-flow fraction", Unit: "%", Value: roundedPurposeNumber(average), Source: "series", Status: hvacActiveFlowStatus(average)})
 	}
+	if spread, ok := hvacNodeTemperatureSpread(nodes); ok {
+		metrics = append(metrics, HVACLoopDerivedMetric{
+			Name:    "Average node temperature spread",
+			Unit:    "C",
+			Value:   roundedPurposeNumber(spread),
+			Source:  "derived_from_node_state",
+			Status:  hvacTemperatureSpreadStatus(spread),
+			Message: "Difference between warmest and coolest reported node average.",
+		})
+		if peakFlow, flowOK := maxHVACNodeValue(nodes, func(node HVACNodeRunSummary) (float64, bool) {
+			return node.MassFlowMax, node.HasMassFlow
+		}); flowOK {
+			metricName, cp := hvacDerivedHeatTransferConfig(loopType)
+			metrics = append(metrics, HVACLoopDerivedMetric{
+				Name:    metricName,
+				Unit:    "kW",
+				Value:   roundedPurposeNumber(math.Abs(peakFlow * cp * spread)),
+				Source:  "derived_from_node_state",
+				Status:  "derived",
+				Message: "Estimated from peak node mass flow, fluid heat capacity, and average node temperature spread.",
+			})
+		}
+	}
 	return metrics
+}
+
+func hvacDerivedHeatTransferConfig(loopType string) (string, float64) {
+	normalized := strings.ToLower(loopType)
+	if strings.Contains(normalized, "plant") || strings.Contains(normalized, "condenser") {
+		return "Estimated water-side heat transfer", 4.186
+	}
+	return "Estimated air-side heat transfer", 1.006
+}
+
+func hvacNodeTemperatureSpread(nodes []HVACNodeRunSummary) (float64, bool) {
+	minimum := math.Inf(1)
+	maximum := math.Inf(-1)
+	count := 0
+	for _, node := range nodes {
+		if !node.HasTemperature {
+			continue
+		}
+		count++
+		minimum = math.Min(minimum, node.TemperatureAverage)
+		maximum = math.Max(maximum, node.TemperatureAverage)
+	}
+	if count < 2 || math.IsInf(minimum, 0) || math.IsInf(maximum, 0) {
+		return 0, false
+	}
+	return math.Abs(maximum - minimum), true
+}
+
+func hvacTemperatureSpreadStatus(value float64) string {
+	if value < 0.2 {
+		return "warning"
+	}
+	return "ok"
 }
 
 func buildHVACLoopAlerts(nodes []HVACNodeRunSummary) []HVACLoopAlert {
@@ -831,6 +891,92 @@ func buildHVACLoopAlerts(nodes []HVACNodeRunSummary) []HVACLoopAlert {
 		}
 	}
 	return alerts
+}
+
+func buildHVACLoopDerivedAlerts(nodes []HVACNodeRunSummary) []HVACLoopAlert {
+	peakFlow, flowOK := maxHVACNodeValue(nodes, func(node HVACNodeRunSummary) (float64, bool) {
+		return node.MassFlowMax, node.HasMassFlow
+	})
+	spread, spreadOK := hvacNodeTemperatureSpread(nodes)
+	if !flowOK || !spreadOK || peakFlow <= 0.001 || spread >= 0.2 {
+		return nil
+	}
+	return []HVACLoopAlert{{
+		Severity: "warning",
+		Code:     "flow_without_temperature_spread",
+		Message:  "Node mass flow was detected, but reported node temperature spread stayed near zero.",
+		Source:   "derived_from_node_state",
+		Value:    purposeFloat64(roundedPurposeNumber(spread)),
+		Unit:     "C",
+	}}
+}
+
+func classifyHVACLoopStatus(nodes []HVACNodeRunSummary, metrics []HVACLoopDerivedMetric, alerts []HVACLoopAlert) (string, string) {
+	peakFlow, flowOK := maxHVACNodeValue(nodes, func(node HVACNodeRunSummary) (float64, bool) {
+		return node.MassFlowMax, node.HasMassFlow
+	})
+	spread, spreadOK := hvacNodeTemperatureSpread(nodes)
+	setpointDelta, setpointOK := averageHVACNodeValue(nodes, func(node HVACNodeRunSummary) (float64, bool) {
+		return node.TemperatureSetpointDelta, node.TemperatureSetpointSamples > 0
+	})
+	if hasHVACAlert(alerts, "temperature_setpoint_delta") || (setpointOK && setpointDelta > 5) {
+		return "setpoint_not_met", "Average node temperature drifted more than 5 C from setpoint."
+	}
+	if !flowOK {
+		return "unknown", "Mass-flow series were not available for loop status classification."
+	}
+	if peakFlow <= 0.001 {
+		return "off", "No meaningful node mass flow was detected."
+	}
+	if spreadOK && spread < 0.2 {
+		return "flow_no_load", "Mass flow was present, but node temperature spread stayed near zero."
+	}
+	if spreadOK && spread >= 0.2 {
+		if hvacNodeNamesSuggest(nodes, "heat", "hot", "hw") {
+			return "active_heating", "Flow and node temperature spread indicate active heat transfer."
+		}
+		if hvacNodeNamesSuggest(nodes, "cool", "cold", "chw", "chilled") {
+			return "active_cooling", "Flow and node temperature spread indicate active cooling transfer."
+		}
+		if setpointOK && setpointDelta <= 2 {
+			return "setpoint_tracking", "Flow and temperature spread are present while setpoints remain close."
+		}
+		return "suspicious", "Flow and temperature spread were detected, but heating/cooling role could not be inferred from node names."
+	}
+	if hasHVACDerivedMetric(metrics, "Estimated air-side heat transfer") || hasHVACDerivedMetric(metrics, "Estimated water-side heat transfer") {
+		return "setpoint_tracking", "Derived heat-transfer metrics are available."
+	}
+	return "suspicious", "Loop status could not be classified from the available node summaries."
+}
+
+func hasHVACAlert(alerts []HVACLoopAlert, code string) bool {
+	for _, alert := range alerts {
+		if alert.Code == code {
+			return true
+		}
+	}
+	return false
+}
+
+func hasHVACDerivedMetric(metrics []HVACLoopDerivedMetric, name string) bool {
+	for _, metric := range metrics {
+		if metric.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func hvacNodeNamesSuggest(nodes []HVACNodeRunSummary, tokens ...string) bool {
+	for _, node := range nodes {
+		name := normalizePurposeToken(node.NodeName)
+		for _, token := range tokens {
+			if strings.Contains(name, token) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func purposeFloat64(value float64) *float64 {
