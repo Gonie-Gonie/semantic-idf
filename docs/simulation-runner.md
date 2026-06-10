@@ -126,7 +126,10 @@ Purpose result viewers now include:
   zero flow, flow without temperature spread, missing setpoints, and large
   temperature-setpoint deltas. The frame snapshot includes a compact node
   schematic with live temperature/flow labels before detailed node and component
-  cards. The result view also provides panel toggles for the snapshot and
+  cards. The Simulation result viewer deliberately keeps that live schematic
+  compact, and reuses the existing HVAC tab `renderHVACLoopDiagram` only as an
+  optional topology panel when the current HVAC selection matches the simulated
+  loop. The result view also provides panel toggles for topology, snapshot, and
   normalized multi-series chart, plus variable group toggles for temperature,
   setpoints, mass flow, humidity/enthalpy, rate/load, power/energy, and other
   HVAC outputs.

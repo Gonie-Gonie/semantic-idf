@@ -58,6 +58,7 @@ export const state = {
   simulationHeatFlowInspectorCollapsed: false,
   simulationHeatFlowPlaying: false,
   simulationHVACPanels: {
+    topology: false,
     snapshot: true,
     chart: true,
   },

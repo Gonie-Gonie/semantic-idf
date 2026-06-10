@@ -738,6 +738,8 @@ const dictionaries = {
     "simulation.hvacPanels": "HVAC panels",
     "simulation.hvacSchematic": "HVAC loop schematic",
     "simulation.hvacSnapshot": "Frame snapshot",
+    "simulation.hvacTopology": "Topology",
+    "simulation.hvacTopologySource": "From the current HVAC graph selection",
     "simulation.integrity": "Integrity",
     "simulation.integrityCrossChecks": "Cross checks",
     "simulation.noIntegrityCrossChecks": "No matching cross checks",

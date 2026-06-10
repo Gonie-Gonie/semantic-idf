@@ -1,5 +1,6 @@
 import { backend, elements, escapeHTML, setStatus, state } from "./state.js";
 import { t } from "./i18n.js";
+import { renderHVACLoopDiagram } from "./hvac-views.js";
 import { openStandardOutputApplyDialog } from "./output-views.js";
 
 let progressListenerRegistered = false;
@@ -540,6 +541,7 @@ function renderSimulationHVACLoops(result) {
 function renderSimulationHVACLoopResult(loop) {
   const visibleNodeSeries = hvacVisibleSeries(loop.series || []);
   const visibleComponents = hvacVisibleComponents(loop.components || []);
+  const staticDiagramLoop = simulationHVACStaticDiagramLoop(loop);
   const rows = visibleNodeSeries
     .slice(0, 80)
     .map(
@@ -569,7 +571,8 @@ function renderSimulationHVACLoopResult(loop) {
         </div>
         <span>${escapeHTML([loop.loopType || t("simulation.nodeStateSeries", {}, "Node state series"), loop.statusMessage || ""].filter(Boolean).join(" - "))}</span>
       </div>
-      ${renderSimulationHVACLoopControls(loop)}
+      ${renderSimulationHVACLoopControls(loop, staticDiagramLoop)}
+      ${staticDiagramLoop && simulationHVACPanelVisible("topology") ? renderSimulationHVACStaticDiagram(staticDiagramLoop) : ""}
       ${simulationHVACPanelVisible("snapshot") ? renderSimulationHVACLoopSnapshot(loop) : ""}
       ${simulationHVACPanelVisible("chart") ? renderSimulationHVACSeriesOverview(loop, visibleNodeSeries, visibleComponents) : ""}
       ${renderSimulationHVACLoopDerivedMetrics(loop.derivedMetrics || [])}
@@ -586,12 +589,13 @@ function renderSimulationHVACLoopResult(loop) {
     </section>`;
 }
 
-function renderSimulationHVACLoopControls(loop) {
+function renderSimulationHVACLoopControls(loop, staticDiagramLoop = null) {
   const groupOptions = hvacLoopGroupOptions(loop);
   const panelOptions = [
+    staticDiagramLoop ? { id: "topology", label: t("simulation.hvacTopology", {}, "Topology") } : null,
     { id: "snapshot", label: t("simulation.hvacSnapshot", {}, "Frame snapshot") },
     { id: "chart", label: t("simulation.hvacMultiSeries", {}, "Multi-series") },
-  ];
+  ].filter(Boolean);
   return `
     <div class="simulation-hvac-loop-controls">
       <div class="simulation-hvac-toggle-row" role="group" aria-label="${escapeHTML(t("simulation.hvacPanels", {}, "HVAC panels"))}">
@@ -659,6 +663,30 @@ function hvacVisibleComponents(components = []) {
       return { ...component, metrics, series };
     })
     .filter((component) => (component.metrics || []).length || (component.series || []).length);
+}
+
+function simulationHVACStaticDiagramLoop(resultLoop = {}) {
+  const loop = activeSimulationHVACLoop();
+  if (!loop) {
+    return null;
+  }
+  const resultName = normalizeOutputMatchToken(resultLoop.name || "");
+  const loopName = normalizeOutputMatchToken(loop.name || "");
+  if (!resultName || !loopName || resultName === loopName || resultName.includes(loopName) || loopName.includes(resultName)) {
+    return loop;
+  }
+  return null;
+}
+
+function renderSimulationHVACStaticDiagram(loop) {
+  return `
+    <section class="simulation-hvac-static-diagram">
+      <div class="simulation-hvac-series-head">
+        <h5>${escapeHTML(t("simulation.hvacTopology", {}, "Topology"))}</h5>
+        <span>${escapeHTML(t("simulation.hvacTopologySource", {}, "From the current HVAC graph selection"))}</span>
+      </div>
+      ${renderHVACLoopDiagram(loop)}
+    </section>`;
 }
 
 function renderSimulationHVACLoopSnapshot(loop) {

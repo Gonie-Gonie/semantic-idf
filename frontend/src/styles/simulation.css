@@ -1215,6 +1215,21 @@
   padding: 8px;
 }
 
+.simulation-hvac-static-diagram {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+  padding: 8px;
+}
+
+.simulation-hvac-static-diagram .hvac-graphic-shell {
+  max-width: 100%;
+  background: var(--surface);
+}
+
 .simulation-hvac-series-head {
   display: flex;
   flex-wrap: wrap;

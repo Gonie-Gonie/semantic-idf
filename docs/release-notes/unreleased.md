@@ -117,6 +117,7 @@ The release script infers bump size from these sections:
 - Purpose run plans now emit Heavy and Very Heavy output-weight warnings with series/frame counts, with regression coverage for large selected-zone models.
 - HVAC Loop Check frame snapshots now include a compact node schematic with live temperature/flow labels before the detailed node and component cards.
 - HVAC Loop Check results now provide snapshot/chart panel toggles and variable-group filters for the normalized multi-series chart and node/component result tables.
+- HVAC Loop Check results can now open the selected HVAC tab loop topology using the shared `renderHVACLoopDiagram` renderer while keeping live frame overlays in the compact simulation schematic.
 
 ## Fixed
 

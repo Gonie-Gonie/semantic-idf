@@ -468,7 +468,7 @@ function renderHVACGraphScaleControls() {
     </div>`;
 }
 
-function renderHVACLoopDiagram(loop) {
+export function renderHVACLoopDiagram(loop) {
   const width = 1120;
   const leftX = 98;
   const rightX = 1022;
