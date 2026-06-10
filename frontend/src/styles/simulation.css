@@ -283,6 +283,37 @@
   font-size: 12px;
 }
 
+.simulation-result-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 8px;
+}
+
+.simulation-result-tabs button {
+  min-height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--muted);
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.simulation-result-tabs button.active {
+  border-color: color-mix(in srgb, var(--teal) 45%, var(--line));
+  background: color-mix(in srgb, var(--teal) 10%, var(--surface));
+  color: var(--text);
+}
+
+.simulation-result-tabs button:disabled {
+  opacity: 0.45;
+}
+
 .simulation-running-notice {
   display: flex;
   align-items: center;
@@ -445,6 +476,91 @@
   padding: 8px 10px;
   background: color-mix(in srgb, var(--red) 8%, transparent);
   color: var(--red);
+}
+
+.simulation-energy-dashboard {
+  display: grid;
+  gap: 12px;
+}
+
+.simulation-energy-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  gap: 8px;
+}
+
+.simulation-energy-kpis > div {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-2);
+  padding: 8px;
+}
+
+.simulation-energy-kpis span {
+  display: block;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.simulation-energy-kpis strong {
+  display: block;
+  margin-top: 3px;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.simulation-energy-block {
+  display: grid;
+  gap: 7px;
+}
+
+.simulation-energy-block h4 {
+  margin: 0;
+  font-size: 13px;
+}
+
+.simulation-energy-bars {
+  display: grid;
+  gap: 6px;
+}
+
+.simulation-energy-bar-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.9fr) minmax(120px, 1.3fr) minmax(90px, auto);
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.simulation-energy-bar-row span,
+.simulation-energy-bar-row strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.simulation-energy-bar-row strong {
+  color: var(--text);
+  text-align: right;
+}
+
+.simulation-energy-bar-row div {
+  overflow: hidden;
+  height: 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--line) 72%, transparent);
+}
+
+.simulation-energy-bar-row i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--teal), var(--green));
 }
 
 .simulation-tables {
@@ -1187,6 +1303,8 @@
   .simulation-controls,
   .simulation-purpose-grid,
   .simulation-scope-controls,
+  .simulation-energy-kpis,
+  .simulation-energy-bar-row,
   .settings-path-card,
   .settings-path-row,
   .tool-simulation-controls,

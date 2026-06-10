@@ -401,14 +401,28 @@
                   <div id="simulationProgressBar" class="tool-progress-bar"></div>
                 </div>
               </section>
-              <section class="simulation-section">
+              <nav id="simulationResultTabs" class="simulation-result-tabs" aria-label="Simulation result views">
+                <button type="button" data-simulation-result-view-button="energy" data-i18n="simulation.energy">Energy</button>
+                <button type="button" data-simulation-result-view-button="zone_heat_flow" data-i18n="simulation.heatFlow">Heat-Flow Ledger</button>
+                <button type="button" data-simulation-result-view-button="integrity" data-i18n="simulation.integrity">Integrity</button>
+                <button type="button" data-simulation-result-view-button="series" data-i18n="simulation.series">Series</button>
+                <button type="button" data-simulation-result-view-button="files" data-i18n="simulation.files">Output files</button>
+              </nav>
+              <section class="simulation-section" data-simulation-result-view="energy">
                 <div class="profile-section-head">
-                  <h3 data-i18n="simulation.results">Results</h3>
+                  <h3 data-i18n="simulation.energy">Energy</h3>
+                  <span id="simulationEnergyStats" class="tool-muted">No energy result</span>
+                </div>
+                <div id="simulationEnergyDashboard" class="simulation-energy-dashboard"></div>
+              </section>
+              <section class="simulation-section" data-simulation-result-view="integrity">
+                <div class="profile-section-head">
+                  <h3 data-i18n="simulation.integrity">Integrity</h3>
                   <span id="simulationResultMeta" class="tool-muted">ERR / CSV / output files</span>
                 </div>
                 <div id="simulationResultSummary" class="simulation-summary"></div>
               </section>
-              <section class="simulation-section simulation-heatflow-section">
+              <section class="simulation-section simulation-heatflow-section" data-simulation-result-view="zone_heat_flow">
                 <div class="profile-section-head simulation-heatflow-head">
                   <h3 data-i18n="simulation.heatFlow">Heat-Flow Ledger</h3>
                   <span id="simulationHeatFlowStats" class="tool-muted">No heat-flow output</span>
@@ -448,10 +462,10 @@
                   </label>
                 </div>
                 <div id="simulationHeatFlow" class="simulation-heatflow">
-                  <div class="empty">Heat-flow output will appear after a run with standard outputs.</div>
+                  <div class="empty">Heat-flow output will appear after a run with Zone Heat Flow selected.</div>
                 </div>
               </section>
-              <section class="simulation-section">
+              <section class="simulation-section" data-simulation-result-view="series">
                 <div class="profile-section-head">
                   <h3 data-i18n="simulation.graph">SQL/CSV Graph</h3>
                   <span id="simulationSeriesStats" class="tool-muted">No SQL/CSV series</span>
@@ -459,7 +473,7 @@
                 </div>
                 <div id="simulationChart" class="simulation-chart"></div>
               </section>
-              <section class="simulation-section">
+              <section class="simulation-section" data-simulation-result-view="files">
                 <div class="profile-section-head">
                   <h3 data-i18n="simulation.files">Output files</h3>
                   <span id="simulationFilesStats" class="tool-muted">No output files</span>

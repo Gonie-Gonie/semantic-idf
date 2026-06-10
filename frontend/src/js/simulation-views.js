@@ -39,6 +39,13 @@ export function initializeSimulationControls() {
   elements.simulationPersistOutputs?.addEventListener("change", () => scheduleSimulationRunPlan());
   elements.simulationRefreshPlan?.addEventListener("click", () => refreshSimulationRunPlan({ force: true }));
   elements.simulationApplyPurposeOutputs?.addEventListener("click", () => applyPurposeOutputsToCurrentIDF());
+  elements.simulationResultTabs?.querySelectorAll("[data-simulation-result-view-button]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.simulationActiveResultView = button.dataset.simulationResultViewButton || "energy";
+      renderSimulationResultTabs(state.simulationResult);
+      toggleSimulationResultSections();
+    });
+  });
   elements.simulationRefreshEnv?.addEventListener("click", () => loadSimulationEnvironment());
   elements.simulationRunButton?.addEventListener("click", () => runCurrentSimulation({ silent: false }));
   elements.simulationEnergyPlusSelect?.addEventListener("change", () => renderSimulation());
@@ -142,6 +149,8 @@ export function renderSimulation() {
   const sqlCount = (result.files || []).filter((file) => file.kind === "sqlite").length;
   const issueCount = err.total || 0;
   const statusLabel = statusText(result.status);
+  ensureActiveSimulationResultView(result);
+  renderSimulationResultTabs(result);
   elements.simulationStats.textContent = stale
     ? t("simulation.staleStats", { status: statusLabel }, `${statusLabel}, stale`)
     : t("simulation.stats", { status: statusLabel, warnings: err.warnings || 0, severe: err.severe || 0 }, `${statusLabel}, ${err.warnings || 0} warnings`);
@@ -150,10 +159,12 @@ export function renderSimulation() {
   }
   elements.simulationResultMeta.textContent = `${result.filename || "current input"} - ${formatDuration(result.durationMs || 0)} - ${sqlCount} SQL - ${csvCount} CSV - ${issueCount} ERR issues`;
   elements.simulationResultSummary.innerHTML = `${state.simulationRunning ? renderRunningNotice() : ""}${renderSimulationSummary(result, stale)}`;
+  renderSimulationEnergyDashboard(result);
   renderSimulationHeatFlow();
   renderSimulationSeriesSelect(result);
   renderSimulationChart();
   renderSimulationFiles(result);
+  toggleSimulationResultSections();
 }
 
 function renderSimulationEmpty() {
@@ -168,6 +179,7 @@ function renderSimulationEmpty() {
   const blockingIssue = simulationBlockingIssue();
   if (state.simulationRunning) {
     setSimulationPreviewMode(false);
+    renderSimulationResultTabs(null);
     elements.simulationStats.textContent = t("simulation.runningStats", {}, "Simulation running in background");
     elements.simulationResultMeta.textContent = t("simulation.backgroundRun", {}, "EnergyPlus is running in the background");
     elements.simulationResultSummary.innerHTML = renderRunningNotice();
@@ -175,10 +187,13 @@ function renderSimulationEmpty() {
     elements.simulationSeriesSelect.innerHTML = `<option value="">${escapeHTML(t("simulation.waitingForCSV", {}, "Waiting for SQL/CSV output"))}</option>`;
     elements.simulationChart.innerHTML = `<div class="simulation-running-empty">${renderMiniProgressSVG()}<span>${escapeHTML(t("simulation.graphAfterRun", {}, "The SQL/CSV graph will appear when the run finishes."))}</span></div>`;
     elements.simulationFiles.innerHTML = `<div class="empty status-loading">${escapeHTML(t("simulation.writingOutputs", {}, "EnergyPlus is writing output files"))}</div>`;
+    renderSimulationEnergyEmpty(t("simulation.outputPending", {}, "Outputs are pending while EnergyPlus runs."));
+    toggleSimulationResultSections();
     updateSimulationOutputAvailability(null, true);
     return;
   }
   if (blockingIssue) {
+    renderSimulationResultTabs(null);
     elements.simulationStats.textContent = t("simulation.blockedStats", {}, "Cannot run");
     elements.simulationStatus.textContent = blockingIssue.title;
     elements.simulationStatus.classList.remove("status-loading");
@@ -190,6 +205,8 @@ function renderSimulationEmpty() {
     elements.simulationSeriesSelect.innerHTML = `<option value="">${escapeHTML(t("simulation.noSeries", {}, "No SQL/CSV series"))}</option>`;
     elements.simulationChart.innerHTML = `<div class="simulation-blocked-empty">${escapeHTML(t("simulation.blockedGraph", {}, "Graph output is unavailable until the run can start."))}</div>`;
     elements.simulationFiles.innerHTML = `<div class="simulation-blocked-empty">${escapeHTML(t("simulation.blockedFiles", {}, "No output files will be created while simulation is blocked."))}</div>`;
+    renderSimulationEnergyEmpty(t("simulation.outputBlocked", {}, "Run requirements must be fixed before outputs are available."));
+    toggleSimulationResultSections();
     updateSimulationOutputAvailability(blockingIssue, false);
     return;
   }
@@ -206,10 +223,13 @@ function renderSimulationEmpty() {
   elements.simulationPercent.textContent = "0%";
   elements.simulationProgressBar.style.width = "0%";
   elements.simulationResultSummary.innerHTML = `<div class="empty">${t("simulation.noResult", {}, "Run a simulation to inspect ERR and CSV outputs.")}</div>`;
+  renderSimulationResultTabs(null);
+  renderSimulationEnergyEmpty(t("simulation.noEnergyResult", {}, "Run Basic Energy to inspect monthly energy results."));
   renderSimulationHeatFlowEmpty(t("simulation.noHeatFlow", {}, "Run with standard outputs to inspect zone heat-flow ledger."));
   elements.simulationSeriesSelect.innerHTML = `<option value="">${escapeHTML(t("simulation.noSeries", {}, "No SQL/CSV series"))}</option>`;
   elements.simulationChart.innerHTML = `<div class="empty">${t("simulation.noGraph", {}, "SQL/CSV graph will appear after a run with numeric output.")}</div>`;
   elements.simulationFiles.innerHTML = `<div class="empty">${t("simulation.noFiles", {}, "No output files yet")}</div>`;
+  toggleSimulationResultSections();
   updateSimulationOutputAvailability(null, false);
 }
 
@@ -303,6 +323,153 @@ function renderSimulationRunPlanPreview() {
     </div>
     ${truncated}`;
   updatePurposeApplyButton();
+}
+
+function renderSimulationResultTabs(result) {
+  if (!elements.simulationResultTabs) {
+    return;
+  }
+  const availability = simulationResultViewAvailability(result);
+  elements.simulationResultTabs.querySelectorAll("[data-simulation-result-view-button]").forEach((button) => {
+    const view = button.dataset.simulationResultViewButton || "";
+    button.classList.toggle("active", view === state.simulationActiveResultView);
+    button.disabled = Boolean(result) && !availability[view];
+  });
+}
+
+function ensureActiveSimulationResultView(result) {
+  const availability = simulationResultViewAvailability(result);
+  if (availability[state.simulationActiveResultView]) {
+    return;
+  }
+  state.simulationActiveResultView = ["energy", "zone_heat_flow", "integrity", "series", "files"].find((view) => availability[view]) || "energy";
+}
+
+function simulationResultViewAvailability(result) {
+  if (!result) {
+    return { energy: true, zone_heat_flow: true, integrity: true, series: true, files: true };
+  }
+  const energy = result.purposeResults?.energy || {};
+  return {
+    energy: Boolean((energy.facilityMonthly || []).length || (energy.endUseMonthly || []).length || (energy.zoneMonthly || []).length),
+    zone_heat_flow: Boolean((result.heatFlow?.zones || []).length),
+    integrity: true,
+    series: Boolean((result.series || []).length),
+    files: Boolean((result.files || []).length),
+  };
+}
+
+function toggleSimulationResultSections() {
+  document.querySelectorAll("#simulationPane [data-simulation-result-view]").forEach((section) => {
+    section.hidden = section.dataset.simulationResultView !== state.simulationActiveResultView;
+  });
+}
+
+function renderSimulationEnergyEmpty(message) {
+  if (elements.simulationEnergyStats) {
+    elements.simulationEnergyStats.textContent = t("simulation.noEnergyResult", {}, "No energy result");
+  }
+  if (elements.simulationEnergyDashboard) {
+    elements.simulationEnergyDashboard.innerHTML = `<div class="empty">${escapeHTML(message)}</div>`;
+  }
+}
+
+function renderSimulationEnergyDashboard(result) {
+  const energy = result?.purposeResults?.energy || {};
+  const facility = energy.facilityMonthly || [];
+  const endUse = energy.endUseMonthly || [];
+  const zones = energy.zoneMonthly || [];
+  if (!facility.length && !endUse.length && !zones.length) {
+    renderSimulationEnergyEmpty(t("simulation.noEnergyResult", {}, "Run Basic Energy to inspect monthly energy results."));
+    return;
+  }
+  if (elements.simulationEnergyStats) {
+    elements.simulationEnergyStats.textContent = t(
+      "simulation.energyStats",
+      { facility: facility.length, enduse: endUse.length, zones: zones.length },
+      `${facility.length} facility, ${endUse.length} end-use, ${zones.length} zone series`,
+    );
+  }
+  const totals = [...facility, ...endUse].map((item) => ({ name: item.name, value: Number(item.total) || 0, unit: item.unit || "", source: item.source || "" }));
+  const kpis = totals
+    .slice()
+    .sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
+    .slice(0, 4)
+    .map(
+      (item) => `
+        <div>
+          <span>${escapeHTML(item.name)}</span>
+          <strong>${escapeHTML(formatEnergyValue(item.value, item.unit))}</strong>
+        </div>`,
+    )
+    .join("");
+  elements.simulationEnergyDashboard.innerHTML = `
+    <div class="simulation-energy-kpis">${kpis || `<div><span>${escapeHTML(t("common.notAvailable", {}, "N/A"))}</span><strong>0</strong></div>`}</div>
+    ${renderEnergyBarSection(t("simulation.facilityEnergy", {}, "Facility energy"), facility)}
+    ${renderEnergyBarSection(t("simulation.endUseEnergy", {}, "End-use energy"), endUse)}
+    ${renderZoneEnergyTable(zones)}`;
+}
+
+function renderEnergyBarSection(title, series) {
+  if (!series.length) {
+    return `
+      <section class="simulation-energy-block">
+        <h4>${escapeHTML(title)}</h4>
+        <div class="empty">${escapeHTML(t("simulation.noEnergySeries", {}, "No energy series found."))}</div>
+      </section>`;
+  }
+  const maxValue = Math.max(...series.map((item) => Math.abs(Number(item.total) || 0)), 1);
+  const rows = series
+    .slice()
+    .sort((a, b) => Math.abs(Number(b.total) || 0) - Math.abs(Number(a.total) || 0))
+    .map((item) => {
+      const value = Number(item.total) || 0;
+      const width = Math.max(2, Math.min(100, (Math.abs(value) / maxValue) * 100));
+      return `
+        <div class="simulation-energy-bar-row" title="${escapeHTML(item.source || "")}">
+          <span>${escapeHTML(item.name || "")}</span>
+          <div><i style="width:${width}%"></i></div>
+          <strong>${escapeHTML(formatEnergyValue(value, item.unit))}</strong>
+        </div>`;
+    })
+    .join("");
+  return `
+    <section class="simulation-energy-block">
+      <h4>${escapeHTML(title)}</h4>
+      <div class="simulation-energy-bars">${rows}</div>
+    </section>`;
+}
+
+function renderZoneEnergyTable(zones) {
+  const rows = zones
+    .slice()
+    .sort((a, b) => Math.abs(Number(b.total) || 0) - Math.abs(Number(a.total) || 0))
+    .slice(0, 32)
+    .map(
+      (item) => `
+        <tr>
+          <td>${escapeHTML(item.zoneName || "")}</td>
+          <td>${escapeHTML(item.metric || "")}</td>
+          <td>${escapeHTML(formatEnergyValue(Number(item.total) || 0, item.unit || ""))}</td>
+          <td>${escapeHTML(item.source || "")}</td>
+        </tr>`,
+    )
+    .join("");
+  return `
+    <section class="simulation-energy-block">
+      <h4>${escapeHTML(t("simulation.zoneEnergy", {}, "Zone reported energy"))}</h4>
+      <div class="output-table-wrap">
+        <table class="output-table">
+          <thead><tr><th>${escapeHTML(t("common.targetZones", {}, "Target Zones"))}</th><th>${escapeHTML(t("common.metric", {}, "Metric"))}</th><th>${escapeHTML(t("common.value", {}, "Value"))}</th><th>${escapeHTML(t("common.source", {}, "Source"))}</th></tr></thead>
+          <tbody>${rows || `<tr><td colspan="4">${escapeHTML(t("simulation.noZoneEnergy", {}, "No zone reported energy series found."))}</td></tr>`}</tbody>
+        </table>
+      </div>
+    </section>`;
+}
+
+function formatEnergyValue(value, unit) {
+  const safeUnit = unit || "";
+  return `${formatNumber(value)}${safeUnit ? ` ${safeUnit}` : ""}`;
 }
 
 function scheduleSimulationRunPlan(delay = 260) {
