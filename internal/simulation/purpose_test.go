@@ -1,6 +1,7 @@
 package simulation
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -337,6 +338,149 @@ func TestBuildPurposeRunPlanMergesDuplicateOutputsAcrossPurposes(t *testing.T) {
 	}
 }
 
+func TestBuildPurposeRunPlanGoldenSnapshots(t *testing.T) {
+	hvacDoc := parsePurposePlanFixture(t, purposePlanFixtureIDF+`
+AirLoopHVAC,
+  Main Air Loop,
+  ,
+  ,
+  Autosize,
+  Air Branches,
+  ,
+  Air Supply Inlet,
+  Air Demand Outlet,
+  Air Demand Inlet,
+  Air Supply Outlet;
+
+BranchList,
+  Air Branches,
+  Main Air Branch;
+
+Branch,
+  Main Air Branch,
+  ,
+  Fan:ConstantVolume,
+  Supply Fan,
+  Air Supply Inlet,
+  Fan Outlet;
+
+Fan:ConstantVolume,
+  Supply Fan,
+  Air Supply Inlet,
+  Fan Outlet;
+`)
+	cases := []struct {
+		name    string
+		doc     idf.Document
+		request SimulationPurposeRequest
+		want    string
+	}{
+		{
+			name:    "basic_energy",
+			doc:     parsePurposePlanFixture(t, purposePlanFixtureIDF),
+			request: SimulationPurposeRequest{Purposes: []SimulationPurposeID{SimulationPurposeBasicEnergy}},
+			want: `requires_sql=true requires_discovery=false weight=Light frames=12
+output|Output:SQLite||||temporary|basic_energy
+output|Output:Meter|Electricity:Facility||Monthly|temporary|basic_energy
+output|Output:Meter|Electricity:InteriorEquipment||Monthly|temporary|basic_energy
+output|Output:Meter|Electricity:InteriorLights||Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Air System Sensible Cooling Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Air System Sensible Heating Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Electric Equipment Electricity Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Gas Equipment Gas Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Lights Electricity Energy|Monthly|temporary|basic_energy
+`,
+		},
+		{
+			name: "zone_heat_flow_selected",
+			doc:  parsePurposePlanFixture(t, purposePlanFixtureIDF),
+			request: SimulationPurposeRequest{
+				Purposes: []SimulationPurposeID{SimulationPurposeZoneHeatFlow},
+				Scope: SimulationPurposeScope{
+					ZoneMode:  "selected",
+					ZoneNames: []string{"Office"},
+				},
+			},
+			want: `requires_sql=true requires_discovery=false weight=Medium frames=8760
+warning|info|zone_scope_selected|zone_heat_flow
+output|Output:SQLite||||temporary|zone_heat_flow
+output|Output:Variable|Office|Zone Air Heat Balance Air Energy Storage Rate|Hourly|temporary|zone_heat_flow
+output|Output:Variable|Office|Zone Air Heat Balance Deviation Rate|Hourly|temporary|zone_heat_flow
+output|Output:Variable|Office|Zone Air Heat Balance Internal Convective Heat Gain Rate|Hourly|temporary|zone_heat_flow
+output|Output:Variable|Office|Zone Air Heat Balance Interzone Air Transfer Rate|Hourly|temporary|zone_heat_flow
+output|Output:Variable|Office|Zone Air Heat Balance Outdoor Air Transfer Rate|Hourly|temporary|zone_heat_flow
+output|Output:Variable|Office|Zone Air Heat Balance Surface Convection Rate|Hourly|temporary|zone_heat_flow
+output|Output:Variable|Office|Zone Air Heat Balance System Air Transfer Rate|Hourly|temporary|zone_heat_flow
+output|Output:Variable|Office|Zone Air Heat Balance System Convective Heat Gain Rate|Hourly|temporary|zone_heat_flow
+output|Output:Variable|Office|Zone Mean Air Temperature|Hourly|temporary|zone_heat_flow
+`,
+		},
+		{
+			name: "hvac_loop_selected",
+			doc:  hvacDoc,
+			request: SimulationPurposeRequest{
+				Purposes: []SimulationPurposeID{SimulationPurposeHVACLoopCheck},
+				Scope: SimulationPurposeScope{
+					LoopMode:     "selected",
+					AirLoopNames: []string{"Main Air Loop"},
+				},
+			},
+			want: `requires_sql=true requires_discovery=false weight=Heavy frames=8760
+warning|info|hvac_scope_selected|hvac_loop_check
+output|Output:SQLite||||temporary|hvac_loop_check
+output|Output:Variable|Air Demand Inlet|System Node Enthalpy|Hourly|temporary|hvac_loop_check
+output|Output:Variable|Air Demand Inlet|System Node Humidity Ratio|Hourly|temporary|hvac_loop_check
+output|Output:Variable|Air Demand Inlet|System Node Mass Flow Rate|Hourly|temporary|hvac_loop_check
+output|Output:Variable|Air Demand Inlet|System Node Setpoint Temperature|Hourly|temporary|hvac_loop_check
+output|Output:Variable|Air Demand Inlet|System Node Temperature|Hourly|temporary|hvac_loop_check
+output|Output:Variable|Air Demand Outlet|System Node Enthalpy|Hourly|temporary|hvac_loop_check
+output|Output:Variable|Air Demand Outlet|System Node Humidity Ratio|Hourly|temporary|hvac_loop_check
+output|Output:Variable|Air Demand Outlet|System Node Mass Flow Rate|Hourly|temporary|hvac_loop_check
+output|Output:Variable|Air Demand Outlet|System Node Setpoint Temperature|Hourly|temporary|hvac_loop_check
+output|Output:Variable|Air Demand Outlet|System Node Temperature|Hourly|temporary|hvac_loop_check
+output|Output:Variable|Air Supply Inlet|System Node Enthalpy|Hourly|temporary|hvac_loop_check
+output|Output:Variable|Air Supply Inlet|System Node Humidity Ratio|Hourly|temporary|hvac_loop_check
+output|Output:Variable|Air Supply Inlet|System Node Mass Flow Rate|Hourly|temporary|hvac_loop_check
+output|Output:Variable|Air Supply Inlet|System Node Setpoint Temperature|Hourly|temporary|hvac_loop_check
+output|Output:Variable|Air Supply Inlet|System Node Temperature|Hourly|temporary|hvac_loop_check
+output|Output:Variable|Air Supply Outlet|System Node Enthalpy|Hourly|temporary|hvac_loop_check
+output|Output:Variable|Air Supply Outlet|System Node Humidity Ratio|Hourly|temporary|hvac_loop_check
+output|Output:Variable|Air Supply Outlet|System Node Mass Flow Rate|Hourly|temporary|hvac_loop_check
+output|Output:Variable|Air Supply Outlet|System Node Setpoint Temperature|Hourly|temporary|hvac_loop_check
+output|Output:Variable|Air Supply Outlet|System Node Temperature|Hourly|temporary|hvac_loop_check
+output|Output:Variable|Fan Outlet|System Node Enthalpy|Hourly|temporary|hvac_loop_check
+output|Output:Variable|Fan Outlet|System Node Humidity Ratio|Hourly|temporary|hvac_loop_check
+output|Output:Variable|Fan Outlet|System Node Mass Flow Rate|Hourly|temporary|hvac_loop_check
+output|Output:Variable|Fan Outlet|System Node Setpoint Temperature|Hourly|temporary|hvac_loop_check
+output|Output:Variable|Fan Outlet|System Node Temperature|Hourly|temporary|hvac_loop_check
+output|Output:Variable|Supply Fan|Fan Electricity Energy|Hourly|temporary|hvac_loop_check
+output|Output:Variable|Supply Fan|Fan Electricity Rate|Hourly|temporary|hvac_loop_check
+`,
+		},
+		{
+			name:    "integrity",
+			doc:     parsePurposePlanFixture(t, purposePlanFixtureIDF),
+			request: SimulationPurposeRequest{Purposes: []SimulationPurposeID{SimulationPurposeIntegrity}},
+			want: `requires_sql=true requires_discovery=false weight=Light frames=1
+output|Output:SQLite||||temporary|integrity_check
+output|Output:Diagnostics||||temporary|integrity_check
+output|Output:Table:SummaryReports||||temporary|integrity_check
+output|Output:VariableDictionary||||temporary|integrity_check
+output|OutputControl:Table:Style||||temporary|integrity_check
+`,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := snapshotPurposeRunPlan(BuildPurposeRunPlan(tc.doc, tc.request))
+			if got != tc.want {
+				t.Fatalf("purpose plan snapshot mismatch\nwant:\n%s\ngot:\n%s", tc.want, got)
+			}
+		})
+	}
+}
+
 func TestBuildPurposeRunPlanDiscoveryAddsDictionaryOutput(t *testing.T) {
 	doc := parsePurposePlanFixture(t, purposePlanFixtureIDF)
 
@@ -504,6 +648,35 @@ func parsePurposePlanFixture(t *testing.T, text string) idf.Document {
 		t.Fatalf("parse fixture: %v", err)
 	}
 	return doc
+}
+
+func snapshotPurposeRunPlan(plan PurposeRunPlan) string {
+	var builder strings.Builder
+	fmt.Fprintf(&builder, "requires_sql=%t requires_discovery=%t weight=%s frames=%d\n", plan.RequiresSQL, plan.RequiresDiscovery, plan.EstimatedWeight, plan.EstimatedFrames)
+	for _, warning := range plan.Warnings {
+		fmt.Fprintf(&builder, "warning|%s|%s|%s\n", warning.Severity, warning.Code, warning.PurposeID)
+	}
+	for _, object := range plan.OutputObjects {
+		fmt.Fprintf(
+			&builder,
+			"output|%s|%s|%s|%s|%s|%s\n",
+			object.ObjectType,
+			object.KeyValue,
+			object.VariableName,
+			object.ReportingFrequency,
+			object.State,
+			purposeIDsSnapshot(object.PurposeIDs),
+		)
+	}
+	return builder.String()
+}
+
+func purposeIDsSnapshot(values []SimulationPurposeID) string {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		out = append(out, string(value))
+	}
+	return strings.Join(out, ",")
 }
 
 func findPurposeOutput(plan PurposeRunPlan, objectType string, keyValue string, variableName string) *PurposeOutputObject {
