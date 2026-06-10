@@ -139,6 +139,8 @@ type SimulationRunResult struct {
 	Stdout                   string               `json:"stdout,omitempty"`
 	Stderr                   string               `json:"stderr,omitempty"`
 	Files                    []SimulationFileInfo `json:"files,omitempty"`
+	ResultSourcePriority     []string             `json:"resultSourcePriority,omitempty"`
+	ResultSources            []string             `json:"resultSources,omitempty"`
 	ERR                      ERRSummary           `json:"err"`
 	CSVs                     []CSVSummary         `json:"csvs,omitempty"`
 	Series                   []SimulationSeries   `json:"series,omitempty"`
@@ -164,6 +166,8 @@ type SimulationRunManifest struct {
 	OutputPlan               *PurposeRunPlan       `json:"outputPlan,omitempty"`
 	ResultMode               string                `json:"resultMode,omitempty"`
 	UseReadVarsESO           bool                  `json:"useReadVarsESO,omitempty"`
+	ResultSourcePriority     []string              `json:"resultSourcePriority,omitempty"`
+	ResultSources            []string              `json:"resultSources,omitempty"`
 	ResultFiles              []SimulationFileInfo  `json:"resultFiles,omitempty"`
 }
 
@@ -915,6 +919,8 @@ func writeSimulationRunManifest(result *SimulationRunResult, request SimulationR
 		OutputPlan:               request.PurposeRunPlan,
 		ResultMode:               request.ResultMode,
 		UseReadVarsESO:           simulationUsesReadVarsESO(request),
+		ResultSourcePriority:     append([]string(nil), result.ResultSourcePriority...),
+		ResultSources:            append([]string(nil), result.ResultSources...),
 		ResultFiles:              append([]SimulationFileInfo(nil), result.Files...),
 	}
 	if request.PurposeRequest != nil {
@@ -1047,16 +1053,25 @@ func readSimulationOutputs(result *SimulationRunResult) {
 }
 
 func readSimulationOutputsWithProgress(result *SimulationRunResult, runID string, progress func(SimulationProgress), path string) {
+	result.ResultSourcePriority = defaultSimulationResultSourcePriority()
+	usedSources := map[string]bool{}
 	result.Files = collectSimulationFiles(result.OutputDirectory)
 	parseERR(result)
 	sort.Slice(result.Files, func(i, j int) bool {
 		return strings.ToLower(result.Files[i].Name) < strings.ToLower(result.Files[j].Name)
 	})
 	emitSimulationProgress(progress, runID, "parse_sql", "running", "Reading SQL results", 6, simulationProgressTotal, path)
-	parseSQLResults(result)
+	if parseSQLResults(result) {
+		usedSources["sql"] = true
+	}
 	emitSimulationProgress(progress, runID, "parse_fallback", "running", "Reading CSV and ESO fallback results", 7, simulationProgressTotal, path)
-	parseCSVResults(result)
-	parseHeatFlowFallback(result)
+	if parseCSVResults(result) {
+		usedSources["csv"] = true
+	}
+	if parseHeatFlowFallback(result) {
+		usedSources["eso"] = true
+	}
+	result.ResultSources = orderedSimulationResultSources(usedSources)
 }
 
 func collectSimulationFiles(outputDirectory string) []SimulationFileInfo {
@@ -1091,7 +1106,8 @@ func parseERR(result *SimulationRunResult) {
 	}
 }
 
-func parseSQLResults(result *SimulationRunResult) {
+func parseSQLResults(result *SimulationRunResult) bool {
+	used := false
 	for _, file := range result.Files {
 		if file.Kind != "sqlite" {
 			continue
@@ -1104,6 +1120,9 @@ func parseSQLResults(result *SimulationRunResult) {
 		if err != nil {
 			continue
 		}
+		if sqlParseResultHasData(parsed) {
+			used = true
+		}
 		if len(result.Series) == 0 {
 			if len(parsed.Series) > 0 {
 				result.Series = append(result.Series, parsed.Series...)
@@ -1115,9 +1134,11 @@ func parseSQLResults(result *SimulationRunResult) {
 			}
 		}
 	}
+	return used
 }
 
-func parseCSVResults(result *SimulationRunResult) {
+func parseCSVResults(result *SimulationRunResult) bool {
+	used := false
 	for _, file := range result.Files {
 		if file.Kind != "csv" {
 			continue
@@ -1126,6 +1147,7 @@ func parseCSVResults(result *SimulationRunResult) {
 		if err != nil {
 			continue
 		}
+		used = true
 		result.CSVs = append(result.CSVs, summary)
 		if len(result.Series) == 0 {
 			result.Series = append(result.Series, series...)
@@ -1137,9 +1159,10 @@ func parseCSVResults(result *SimulationRunResult) {
 			}
 		}
 	}
+	return used
 }
 
-func parseHeatFlowFallback(result *SimulationRunResult) {
+func parseHeatFlowFallback(result *SimulationRunResult) bool {
 	if len(result.HeatFlow.Zones) == 0 {
 		for _, file := range result.Files {
 			if file.Kind != "eso" {
@@ -1148,10 +1171,38 @@ func parseHeatFlowFallback(result *SimulationRunResult) {
 			heatFlow, err := parseSimulationHeatFlowESO(file.Path)
 			if err == nil && len(heatFlow.Zones) > 0 {
 				result.HeatFlow = heatFlow
-				break
+				return true
 			}
 		}
 	}
+	return false
+}
+
+func defaultSimulationResultSourcePriority() []string {
+	return []string{"sql", "csv", "eso"}
+}
+
+func orderedSimulationResultSources(used map[string]bool) []string {
+	out := []string{}
+	for _, source := range defaultSimulationResultSourcePriority() {
+		if used[source] {
+			out = append(out, source)
+		}
+	}
+	return out
+}
+
+func sqlParseResultHasData(result SQLParseResult) bool {
+	return len(result.Series) > 0 ||
+		len(result.Energy.FacilityMonthly) > 0 ||
+		len(result.Energy.EndUseMonthly) > 0 ||
+		len(result.Energy.ZoneMonthly) > 0 ||
+		len(result.HeatFlow.Zones) > 0 ||
+		len(result.Integrity.Issues) > 0 ||
+		len(result.Integrity.TabularReports) > 0 ||
+		result.Integrity.HasErrorsTable ||
+		result.Integrity.HasTabularData ||
+		len(result.ComfortUnmetHours) > 0
 }
 
 func simulationFileKind(name string) string {

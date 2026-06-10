@@ -882,6 +882,21 @@
   color: var(--red);
 }
 
+.simulation-result-sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.simulation-result-sources span {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 8px;
+  background: var(--surface);
+}
+
 .simulation-error {
   border-left: 3px solid var(--red);
   padding: 8px 10px;

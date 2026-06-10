@@ -645,6 +645,12 @@ func TestWriteSimulationRunManifest(t *testing.T) {
 		OutputDirectory:   dir,
 		StartedAt:         "2026-06-10T00:00:00Z",
 		FinishedAt:        "2026-06-10T00:00:01Z",
+		ResultSourcePriority: []string{
+			"sql",
+			"csv",
+			"eso",
+		},
+		ResultSources: []string{"sql"},
 		Files: []SimulationFileInfo{{
 			Name: "eplusout.sql",
 			Path: filepath.Join(dir, "eplusout.sql"),
@@ -681,6 +687,9 @@ func TestWriteSimulationRunManifest(t *testing.T) {
 	}
 	if manifest.OutputPlan == nil || manifest.OutputPlan.EstimatedWeight != "Light" {
 		t.Fatalf("manifest output plan = %#v", manifest.OutputPlan)
+	}
+	if !stringSlicesEqual(manifest.ResultSourcePriority, []string{"sql", "csv", "eso"}) || !stringSlicesEqual(manifest.ResultSources, []string{"sql"}) {
+		t.Fatalf("manifest source metadata = priority %#v sources %#v", manifest.ResultSourcePriority, manifest.ResultSources)
 	}
 	if len(result.Files) != 2 || !simulationResultHasFileKind(result.Files, "manifest") {
 		t.Fatalf("result files = %#v", result.Files)
@@ -813,6 +822,18 @@ func stringSliceContains(values []string, target string) bool {
 	return false
 }
 
+func stringSlicesEqual(left []string, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
+}
+
 func TestReadSimulationOutputsPrefersSQLHeatFlowAndSeries(t *testing.T) {
 	dir := t.TempDir()
 	createTestEnergyPlusSQL(t, filepath.Join(dir, "eplusout.sql"))
@@ -843,6 +864,9 @@ End of Data Dictionary
 	if len(result.Series) == 0 || result.Series[0].File != "eplusout.sql" {
 		t.Fatalf("sql series were not parsed first: %#v", result.Series)
 	}
+	if !stringSlicesEqual(result.ResultSourcePriority, []string{"sql", "csv", "eso"}) || !stringSlicesEqual(result.ResultSources, []string{"sql"}) {
+		t.Fatalf("result source metadata = priority %#v sources %#v", result.ResultSourcePriority, result.ResultSources)
+	}
 }
 
 func TestReadSimulationOutputsUsesESOHeatFlowFallback(t *testing.T) {
@@ -870,6 +894,9 @@ End of Data Dictionary
 	}
 	if result.HeatFlow.SourceFile != "eplusout.eso" {
 		t.Fatalf("source file = %q, want eplusout.eso", result.HeatFlow.SourceFile)
+	}
+	if !stringSlicesEqual(result.ResultSourcePriority, []string{"sql", "csv", "eso"}) || !stringSlicesEqual(result.ResultSources, []string{"eso"}) {
+		t.Fatalf("result source metadata = priority %#v sources %#v", result.ResultSourcePriority, result.ResultSources)
 	}
 }
 

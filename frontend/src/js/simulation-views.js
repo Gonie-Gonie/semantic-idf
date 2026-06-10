@@ -2571,6 +2571,7 @@ function renderSimulationSummary(result, stale) {
     <div class="simulation-issue-summary">
       ${issueSummary.map((item) => `<span class="${escapeHTML(item.key)}">${escapeHTML(item.label)} ${escapeHTML(item.count)}</span>`).join("")}
     </div>
+    ${renderSimulationResultSourceSummary(result)}
     ${result.error ? `<div class="simulation-error">${escapeHTML(result.error)}</div>` : ""}
     <div class="simulation-tables">
       <section>
@@ -2798,6 +2799,19 @@ function simulationIssueSummary(issues = []) {
     { key: "severe", label: t("simulation.errSevere", {}, "Severe"), count: counts.severe },
     { key: "fatal", label: "Fatal", count: counts.fatal },
   ];
+}
+
+function renderSimulationResultSourceSummary(result) {
+  const priority = result.resultSourcePriority || [];
+  const sources = result.resultSources || [];
+  if (!priority.length && !sources.length) {
+    return "";
+  }
+  return `
+    <div class="simulation-result-sources">
+      ${priority.length ? `<span>${escapeHTML(t("simulation.resultSourcePriority", {}, "Source priority"))}: ${escapeHTML(priority.join(" -> "))}</span>` : ""}
+      ${sources.length ? `<span>${escapeHTML(t("simulation.resultSourcesUsed", {}, "Used sources"))}: ${escapeHTML(sources.join(", "))}</span>` : ""}
+    </div>`;
 }
 
 function renderSimulationCustomSeriesLinks(result) {
@@ -4236,6 +4250,8 @@ function purposeResultExportPayload(result) {
     startedAt: result.startedAt || "",
     finishedAt: result.finishedAt || "",
     durationMs: result.durationMs || 0,
+    resultSourcePriority: result.resultSourcePriority || [],
+    resultSources: result.resultSources || [],
     purposeRunPlan: result.purposeRunPlan || null,
     purposeResults: result.purposeResults,
     files: result.files || [],
@@ -4267,6 +4283,8 @@ function purposeResultHTML(payload) {
     ["Input", payload.filename || payload.inputPath],
     ["Weather", payload.weatherPath],
     ["Output directory", payload.outputDirectory],
+    ["Result source priority", (payload.resultSourcePriority || []).join(" -> ")],
+    ["Result sources used", (payload.resultSources || []).join(", ")],
     ["Started", payload.startedAt],
     ["Finished", payload.finishedAt],
   ];
