@@ -48,6 +48,7 @@ The release script infers bump size from these sections:
 - HVAC regression coverage now includes zone-only four-pipe fan coil equipment and service/process plant loop notice behavior.
 - Summary WWR and skylight metrics now distinguish computed azimuth evidence from unresolved fenestration base-surface cases.
 - Semantic YAML Basic mode now enforces a 250-line budget for large models, with backend line-count metadata and regression coverage.
+- Semantic schedule definitions now summarize used-by references with counts, role groups, top examples, and truncated counts instead of expanding every reference inline.
 
 ## Fixed
 

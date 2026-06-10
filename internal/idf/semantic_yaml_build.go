@@ -314,23 +314,53 @@ func writeSemanticScheduleHeader(builder *semanticYAMLBuilder, ctx *semanticCont
 	if hours, ok := annualScheduleHours(obj); ok {
 		builder.kvForObject(indent+1, "active_hours_per_year", semanticNumber(hours), obj.Index, obj.Type, name)
 	}
-	if len(ctx.scheduleRefs[normalizeName(name)]) > 0 {
-		builder.rawForObject(indent+1, "used_by:", obj.Index, obj.Type, name)
-		for _, use := range sortedSemanticScheduleUses(ctx.scheduleRefs[normalizeName(name)]) {
-			builder.rawForObject(indent+2, "- path: "+yamlScalar(use.Path), obj.Index, obj.Type, name)
-			builder.kvForObject(indent+3, "object", use.Object, obj.Index, obj.Type, name)
-			builder.kvForObject(indent+3, "field", use.Field, obj.Index, obj.Type, name)
-			builder.kvForObject(indent+3, "role", use.Role, obj.Index, obj.Type, name)
-			builder.kvForObject(indent+3, "source_object", use.SourceObject, obj.Index, obj.Type, name)
-			if len(use.ExpandedViews) > 0 {
-				builder.rawForObject(indent+3, "expanded_views:", obj.Index, obj.Type, name)
-				for _, path := range use.ExpandedViews {
-					builder.rawForObject(indent+4, "- "+yamlScalar(path), obj.Index, obj.Type, name)
-				}
-			}
-		}
+	if uses := sortedSemanticScheduleUses(ctx.scheduleRefs[normalizeName(name)]); len(uses) > 0 {
+		writeSemanticScheduleUseSummary(builder, indent+1, obj, name, uses)
 	}
 	return name
+}
+
+func writeSemanticScheduleUseSummary(builder *semanticYAMLBuilder, indent int, obj Object, name string, uses []semanticScheduleUse) {
+	builder.kvForObject(indent, "used_by_count", fmt.Sprintf("%d", len(uses)), obj.Index, obj.Type, name)
+	builder.rawForObject(indent, "used_by_groups:", obj.Index, obj.Type, name)
+	for _, group := range semanticScheduleUseGroups(uses) {
+		builder.kvForObject(indent+1, group.Name, fmt.Sprintf("%d", group.Count), obj.Index, obj.Type, name)
+	}
+	builder.rawForObject(indent, "used_by_examples:", obj.Index, obj.Type, name)
+	limit := minInt(len(uses), 3)
+	for _, use := range uses[:limit] {
+		builder.rawForObject(indent+1, "- path: "+yamlScalar(use.Path), obj.Index, obj.Type, name)
+		builder.kvForObject(indent+2, "object", use.Object, obj.Index, obj.Type, name)
+		builder.kvForObject(indent+2, "field", use.Field, obj.Index, obj.Type, name)
+		builder.kvForObject(indent+2, "role", use.Role, obj.Index, obj.Type, name)
+	}
+	if len(uses) > limit {
+		builder.kvForObject(indent, "used_by_truncated_count", fmt.Sprintf("%d", len(uses)-limit), obj.Index, obj.Type, name)
+	}
+}
+
+type semanticScheduleUseGroup struct {
+	Name  string
+	Count int
+}
+
+func semanticScheduleUseGroups(uses []semanticScheduleUse) []semanticScheduleUseGroup {
+	counts := map[string]int{}
+	for _, use := range uses {
+		role := strings.TrimSpace(use.Role)
+		if role == "" {
+			role = "schedule_ref"
+		}
+		counts["by_"+semanticPathSegment(role, "schedule_ref")]++
+	}
+	var groups []semanticScheduleUseGroup
+	for name, count := range counts {
+		groups = append(groups, semanticScheduleUseGroup{Name: name, Count: count})
+	}
+	sort.Slice(groups, func(i, j int) bool {
+		return groups[i].Name < groups[j].Name
+	})
+	return groups
 }
 
 func writeSemanticConstantSchedule(builder *semanticYAMLBuilder, ctx *semanticContext, indent int, obj Object) {
@@ -2712,6 +2742,13 @@ func semanticNumber(value float64) string {
 
 func semanticQuantity(value float64, unit string) string {
 	return strings.TrimSpace(semanticNumber(value) + " " + unit)
+}
+
+func minInt(left int, right int) int {
+	if left < right {
+		return left
+	}
+	return right
 }
 
 func sortedUniqueStrings(values []string) []string {

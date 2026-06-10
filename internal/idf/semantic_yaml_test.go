@@ -274,6 +274,67 @@ Schedule:Compact,
 	}
 }
 
+func TestSemanticYAMLSummarizesScheduleUsedBy(t *testing.T) {
+	doc, err := Parse(`
+Schedule:Constant,
+  AlwaysOn,
+  Fraction,
+  1;
+
+Zone,
+  Office;
+
+People,
+  Office People,            !- Name
+  Office,                   !- Zone or ZoneList Name
+  AlwaysOn,                 !- Number of People Schedule Name
+  People,                   !- Number of People Calculation Method
+  3;                        !- Number of People
+
+Lights,
+  Office Lights,            !- Name
+  Office,                   !- Zone or ZoneList Name
+  AlwaysOn,                 !- Schedule Name
+  LightingLevel,            !- Design Level Calculation Method
+  500;                      !- Lighting Level
+
+ElectricEquipment,
+  Office Plug Loads,        !- Name
+  Office,                   !- Zone or ZoneList Name
+  AlwaysOn,                 !- Schedule Name
+  EquipmentLevel,           !- Design Level Calculation Method
+  750;                      !- Design Level
+
+ZoneControl:Thermostat,
+  Office Thermostat,        !- Name
+  Office,                   !- Zone or ZoneList Name
+  AlwaysOn,                 !- Control Type Schedule Name
+  ThermostatSetpoint:DualSetpoint, !- Control 1 Object Type
+  Office Setpoint;          !- Control 1 Name
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	projection := BuildSemanticYAMLProjection(doc, SemanticYAMLMetadata{})
+	for _, expected := range []string{
+		"used_by_count: 4",
+		"used_by_groups:",
+		"used_by_examples:",
+		"used_by_truncated_count: 1",
+		"object: \"ZoneControl:Thermostat Office Thermostat\"",
+		"object: ElectricEquipment Office Plug Loads",
+		"object: Lights Office Lights",
+	} {
+		if !strings.Contains(projection.Text, expected) {
+			t.Fatalf("semantic schedule used_by summary missing %q:\n%s", expected, projection.Text)
+		}
+	}
+	if strings.Contains(projection.Text, "source_object: obj-") || strings.Contains(projection.Text, "expanded_views:") {
+		t.Fatalf("semantic schedule used_by summary should not include full debug references:\n%s", projection.Text)
+	}
+}
+
 func TestSemanticYAMLShowsSurfaceVerticesAsZoneGeometry(t *testing.T) {
 	doc, err := Parse(`
 Zone,
