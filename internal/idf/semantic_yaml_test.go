@@ -230,7 +230,9 @@ BuildingSurface:Detailed,
 		"- name: Office Wall",
 		"type: Wall",
 		"construction: ExtWall",
-		"vertices: [[0,0,3], [4,0,3], [4,0,0], [0,0,0]]",
+		"vertices:",
+		"source: computed_geometry",
+		"value: [[0,0,3], [4,0,3], [4,0,0], [0,0,0]]",
 	} {
 		if !strings.Contains(projection.Text, expected) {
 			t.Fatalf("semantic YAML missing %q:\n%s", expected, projection.Text)
@@ -308,7 +310,7 @@ func TestSemanticYAMLShowsAirAndPlantLoops(t *testing.T) {
 		}},
 		{Index: 1, Type: "BranchList", Fields: []Field{{Value: "Air Branches"}, {Value: "Main Air Branch"}}},
 		{Index: 2, Type: "Branch", Fields: []Field{
-			{Value: "Main Air Branch"}, {Value: ""}, {Value: "Fan:ConstantVolume"}, {Value: "Supply Fan"}, {Value: "Air Supply Inlet"}, {Value: "Air Supply Outlet"}, {Value: "Passive"},
+			{Value: "Main Air Branch"}, {Value: ""}, {Value: "Fan:ConstantVolume"}, {Value: "Supply Fan"}, {Value: "Air Supply Inlet"}, {Value: "Air Supply Outlet"},
 		}},
 		{Index: 3, Type: "Fan:ConstantVolume", Fields: []Field{{Value: "Supply Fan", Comment: "Name"}, {Value: "Air Supply Inlet", Comment: "Air Inlet Node Name"}, {Value: "Air Supply Outlet", Comment: "Air Outlet Node Name"}}},
 		{Index: 4, Type: "PlantLoop", Fields: []Field{
@@ -317,7 +319,7 @@ func TestSemanticYAMLShowsAirAndPlantLoops(t *testing.T) {
 		}},
 		{Index: 5, Type: "BranchList", Fields: []Field{{Value: "Plant Supply Branches"}, {Value: "Plant Supply Branch"}}},
 		{Index: 6, Type: "Branch", Fields: []Field{
-			{Value: "Plant Supply Branch"}, {Value: ""}, {Value: "Pump:VariableSpeed"}, {Value: "CHW Pump"}, {Value: "Plant Supply Inlet"}, {Value: "Plant Supply Outlet"}, {Value: "Passive"},
+			{Value: "Plant Supply Branch"}, {Value: ""}, {Value: "Pump:VariableSpeed"}, {Value: "CHW Pump"}, {Value: "Plant Supply Inlet"}, {Value: "Plant Supply Outlet"},
 		}},
 		{Index: 7, Type: "Pump:VariableSpeed", Fields: []Field{{Value: "CHW Pump", Comment: "Name"}, {Value: "Plant Supply Inlet", Comment: "Inlet Node Name"}, {Value: "Plant Supply Outlet", Comment: "Outlet Node Name"}}},
 	}}
@@ -385,14 +387,14 @@ Output:Variable,
 		"csv:",
 		"enabled: true",
 		"json:",
-		"source: \"Output:JSON\"",
+		"request_source: \"Output:JSON\"",
 		"tabular:",
 		"style:",
 		"- \"[Hourly] Zone Lights Electricity Energy\"",
 		"inherited_outputs:",
-		"scope: wildcard",
+		"scope: zone_wildcard",
 		"unresolved:",
-		"reason: target_key_not_resolved",
+		"attachment_resolution: unresolved_after_rdd",
 	} {
 		if !strings.Contains(projection.Text, expected) {
 			t.Fatalf("semantic output YAML missing %q:\n%s", expected, projection.Text)
@@ -428,7 +430,7 @@ Lights,
 	}
 	projection := BuildSemanticYAMLProjection(doc, SemanticYAMLMetadata{})
 	for _, expected := range []string{
-		"zone_groups:",
+		"zone_lists:",
 		"- name: Offices",
 		"- name: Office 1",
 		"- name: Office 2",

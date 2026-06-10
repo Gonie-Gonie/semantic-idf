@@ -31,12 +31,10 @@ func TestAnalyzeHVACBuildsLoopAndZoneRelations(t *testing.T) {
 			{Value: "Supply Fan"},
 			{Value: "Air Supply Inlet"},
 			{Value: "Fan Outlet"},
-			{Value: "Passive"},
 			{Value: "Coil:Cooling:Water"},
 			{Value: "Cooling Coil"},
 			{Value: "Fan Outlet"},
 			{Value: "Air Supply Outlet"},
-			{Value: "Passive"},
 		}},
 		{Index: 3, Type: "Fan:ConstantVolume", Fields: []Field{
 			{Value: "Supply Fan", Comment: "Name"},
@@ -81,7 +79,6 @@ func TestAnalyzeHVACBuildsLoopAndZoneRelations(t *testing.T) {
 			{Value: "Cooling Coil"},
 			{Value: "CHW Supply"},
 			{Value: "CHW Return"},
-			{Value: "Passive"},
 		}},
 		{Index: 8, Type: "Zone", Fields: []Field{{Value: "Office"}}},
 		{Index: 9, Type: "NodeList", Fields: []Field{

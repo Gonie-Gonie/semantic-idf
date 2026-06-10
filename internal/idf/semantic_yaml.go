@@ -128,7 +128,7 @@ func BuildSemanticModel(doc Document, metadata SemanticYAMLMetadata) SemanticMod
 			UnshownFieldCount: map[int]int{},
 		},
 	}
-	ctx := buildSemanticContext(doc)
+	ctx := buildSemanticContext(doc, metadata)
 	builder := &semanticYAMLBuilder{model: &model, ctx: ctx}
 	buildSemanticProjectionNodes(builder, ctx, metadata)
 	for objectIndex := range ctx.mapped {

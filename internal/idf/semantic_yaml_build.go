@@ -2,6 +2,7 @@ package idf
 
 import (
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 )
@@ -23,6 +24,14 @@ func buildSemanticProjectionNodes(builder *semanticYAMLBuilder, ctx *semanticCon
 	} else {
 		builder.kv(1, "energyplus_version", "unknown")
 	}
+	builder.raw(1, "compatibility:")
+	builder.kv(2, "energyplus_version", blankAs(metadata.EnergyPlusVersion, "unknown"))
+	builder.kv(2, "adapter_version", ctx.adapter.AdapterVersion)
+	if ctx.adapter.SourcePath != "" {
+		builder.kv(2, "schema_source", ctx.adapter.SourcePath)
+	} else {
+		builder.kv(2, "schema_source", "manual_fallback_catalog")
+	}
 	builder.kv(1, "yaml_profile", "strict-yaml-1.2-json-compatible")
 
 	builder.raw(1, "project:")
@@ -36,8 +45,10 @@ func buildSemanticProjectionNodes(builder *semanticYAMLBuilder, ctx *semanticCon
 	writeSemanticSchedules(builder, ctx)
 	writeSemanticMaterials(builder, ctx)
 	writeSemanticConstructions(builder, ctx)
-	writeSemanticZoneGroups(builder, ctx)
+	writeSemanticShading(builder, ctx)
+	writeSemanticTargetGroups(builder, ctx)
 	writeSemanticZones(builder, ctx)
+	writeSemanticAirflows(builder, ctx)
 	writeSemanticHVAC(builder, ctx)
 	writeSemanticOutputs(builder, ctx)
 	writeSemanticSourceNameConflicts(builder, builder.model.Source.NameConflicts)
@@ -47,6 +58,7 @@ func buildSemanticProjectionNodes(builder *semanticYAMLBuilder, ctx *semanticCon
 
 type semanticContext struct {
 	doc              Document
+	adapter          EnergyPlusSchemaAdapter
 	objectByIndex    map[int]Object
 	mapped           map[int]bool
 	geometry         GeometryReport
@@ -55,17 +67,51 @@ type semanticContext struct {
 	surfacesByZone   map[string][]GeometrySurface
 	windowsBySurface map[string][]GeometryWindow
 	loadsByZone      map[string]map[string][]Object
+	loadsBySpace     map[string]map[string][]Object
 	controlsByZone   map[string][]Object
 	outputsByTarget  map[string][]OutputObjectSummary
 	wildcardOutputs  []OutputObjectSummary
-	scheduleRefs     map[string][]string
+	scheduleRefs     map[string][]semanticScheduleUse
 	zoneLists        map[string][]string
+	spaceLists       map[string][]string
+	zoneGroups       []Object
+	spacesByZone     map[string][]semanticSpace
+	spaceByName      map[string]semanticSpace
 	shownFields      map[int]map[int]bool
 }
 
-func buildSemanticContext(doc Document) *semanticContext {
+type semanticScheduleUse struct {
+	ScheduleName  string
+	Path          string
+	Object        string
+	Field         string
+	Role          string
+	SourceObject  string
+	ExpandedViews []string
+}
+
+type semanticSpace struct {
+	Name        string
+	ZoneName    string
+	Source      string
+	ObjectIndex int
+	FloorArea   string
+	Volume      string
+	SpaceType   string
+	Tags        []string
+}
+
+func buildSemanticContext(doc Document, metadata SemanticYAMLMetadata) *semanticContext {
+	adapter, err := loadEnergyPlusSchemaAdapter(metadata.EnergyPlusVersion,
+		"resources",
+		filepath.Join("..", "..", "resources"),
+	)
+	if err != nil {
+		adapter = fieldCatalogAdapter(metadata.EnergyPlusVersion)
+	}
 	ctx := &semanticContext{
 		doc:              doc,
+		adapter:          adapter,
 		objectByIndex:    map[int]Object{},
 		mapped:           map[int]bool{},
 		geometry:         AnalyzeGeometry(doc),
@@ -74,23 +120,53 @@ func buildSemanticContext(doc Document) *semanticContext {
 		surfacesByZone:   map[string][]GeometrySurface{},
 		windowsBySurface: map[string][]GeometryWindow{},
 		loadsByZone:      map[string]map[string][]Object{},
+		loadsBySpace:     map[string]map[string][]Object{},
 		controlsByZone:   map[string][]Object{},
 		outputsByTarget:  map[string][]OutputObjectSummary{},
-		scheduleRefs:     map[string][]string{},
+		scheduleRefs:     map[string][]semanticScheduleUse{},
 		zoneLists:        map[string][]string{},
+		spaceLists:       map[string][]string{},
+		spacesByZone:     map[string][]semanticSpace{},
+		spaceByName:      map[string]semanticSpace{},
 		shownFields:      map[int]map[int]bool{},
 	}
 	for _, obj := range doc.Objects {
 		ctx.objectByIndex[obj.Index] = obj
-		if strings.EqualFold(obj.Type, "ZoneList") || strings.EqualFold(obj.Type, "SpaceList") {
+		if strings.EqualFold(obj.Type, "ZoneList") {
 			if name := objectName(obj); name != "" {
 				ctx.zoneLists[normalizeName(name)] = semanticListMembers(obj)
+				ctx.mark(obj.Index)
+			}
+			continue
+		}
+		if strings.EqualFold(obj.Type, "SpaceList") {
+			if name := objectName(obj); name != "" {
+				ctx.spaceLists[normalizeName(name)] = semanticListMembers(obj)
+				ctx.mark(obj.Index)
+			}
+			continue
+		}
+		if strings.EqualFold(obj.Type, "ZoneGroup") {
+			ctx.zoneGroups = append(ctx.zoneGroups, obj)
+			ctx.mark(obj.Index)
+			continue
+		}
+		if strings.EqualFold(obj.Type, "Space") {
+			space := semanticSpaceFromObject(obj)
+			if space.Name != "" {
+				ctx.spacesByZone[normalizeName(space.ZoneName)] = append(ctx.spacesByZone[normalizeName(space.ZoneName)], space)
+				ctx.spaceByName[normalizeName(space.Name)] = space
 				ctx.mark(obj.Index)
 			}
 		}
 	}
 	for _, surface := range ctx.geometry.Surfaces {
 		ctx.surfacesByZone[normalizeName(surface.ZoneName)] = append(ctx.surfacesByZone[normalizeName(surface.ZoneName)], surface)
+		if surface.SpaceName != "" && ctx.spaceByName[normalizeName(surface.SpaceName)].Name == "" {
+			space := semanticSpace{Name: surface.SpaceName, ZoneName: surface.ZoneName, Source: "referenced_by_surface", ObjectIndex: -1}
+			ctx.spacesByZone[normalizeName(surface.ZoneName)] = append(ctx.spacesByZone[normalizeName(surface.ZoneName)], space)
+			ctx.spaceByName[normalizeName(space.Name)] = space
+		}
 	}
 	for _, window := range ctx.geometry.Windows {
 		ctx.windowsBySurface[normalizeName(window.BaseSurfaceName)] = append(ctx.windowsBySurface[normalizeName(window.BaseSurfaceName)], window)
@@ -98,18 +174,33 @@ func buildSemanticContext(doc Document) *semanticContext {
 	for _, summary := range ctx.output.Existing {
 		key := normalizeName(summary.KeyValue)
 		if key == "*" {
-			ctx.wildcardOutputs = append(ctx.wildcardOutputs, summary)
+			if semanticOutputWildcardFamily(summary) == "zone_wildcard" {
+				ctx.wildcardOutputs = append(ctx.wildcardOutputs, summary)
+			}
 		} else if key != "" {
 			ctx.outputsByTarget[key] = append(ctx.outputsByTarget[key], summary)
 		}
 	}
 	for _, obj := range doc.Objects {
-		for _, scheduleName := range semanticScheduleReferences(obj) {
-			ctx.scheduleRefs[normalizeName(scheduleName)] = append(ctx.scheduleRefs[normalizeName(scheduleName)], semanticObjectReferencePath(obj))
+		for _, ref := range semanticScheduleReferences(obj) {
+			ref.Path = semanticObjectReferencePath(obj)
+			ref.Object = semanticObjectLabel(obj)
+			ref.SourceObject = fmt.Sprintf("obj-%d", obj.Index)
+			ctx.scheduleRefs[normalizeName(ref.ScheduleName)] = append(ctx.scheduleRefs[normalizeName(ref.ScheduleName)], ref)
 		}
-		zoneName, bucket, ok := semanticZoneAttachment(obj)
+		targetName, targetKind, bucket, ok := semanticTargetAttachment(ctx, obj)
 		if ok {
-			for _, target := range semanticZoneTargets(ctx, zoneName) {
+			if targetKind == "space" || targetKind == "space_list" {
+				for _, target := range semanticSpaceTargets(ctx, targetName) {
+					key := normalizeName(target)
+					if ctx.loadsBySpace[key] == nil {
+						ctx.loadsBySpace[key] = map[string][]Object{}
+					}
+					ctx.loadsBySpace[key][bucket] = append(ctx.loadsBySpace[key][bucket], obj)
+				}
+				continue
+			}
+			for _, target := range semanticZoneTargets(ctx, targetName) {
 				key := normalizeName(target)
 				if ctx.loadsByZone[key] == nil {
 					ctx.loadsByZone[key] = map[string][]Object{}
@@ -120,6 +211,17 @@ func buildSemanticContext(doc Document) *semanticContext {
 		}
 		if zoneName := semanticControlZone(obj); zoneName != "" {
 			ctx.controlsByZone[normalizeName(zoneName)] = append(ctx.controlsByZone[normalizeName(zoneName)], obj)
+		}
+	}
+	for _, zone := range semanticZones(ctx) {
+		key := normalizeName(zone.Name)
+		if len(ctx.spacesByZone[key]) == 0 {
+			ctx.spacesByZone[key] = append(ctx.spacesByZone[key], semanticSpace{
+				Name:        zone.Name,
+				ZoneName:    zone.Name,
+				Source:      "inferred_default",
+				ObjectIndex: -1,
+			})
 		}
 	}
 	return ctx
@@ -161,24 +263,36 @@ type semanticCompactScheduleRule struct {
 
 func writeSemanticSchedules(builder *semanticYAMLBuilder, ctx *semanticContext) {
 	objects := semanticObjectsForTypes(ctx.doc, semanticObjectTypesWithPrefix(ctx.doc, "Schedule:"))
-	if len(objects) == 0 {
+	typeLimits := semanticObjectsForTypes(ctx.doc, []string{"ScheduleTypeLimits"})
+	if len(objects) == 0 && len(typeLimits) == 0 {
 		builder.raw(1, "schedules: {}")
 		return
 	}
 	builder.raw(1, "schedules:")
+	if len(typeLimits) > 0 {
+		builder.raw(2, "type_limits:")
+		for _, obj := range typeLimits {
+			ctx.mark(obj.Index)
+			writeSemanticReferenceObject(builder, 3, obj)
+		}
+	}
+	if len(objects) == 0 {
+		return
+	}
+	builder.raw(2, "definitions:")
 	for _, obj := range objects {
 		ctx.mark(obj.Index)
 		switch {
 		case strings.EqualFold(obj.Type, "Schedule:Constant"):
-			writeSemanticConstantSchedule(builder, ctx, 2, obj)
+			writeSemanticConstantSchedule(builder, ctx, 3, obj)
 		case strings.EqualFold(obj.Type, "Schedule:Compact"):
 			if rules, ok := semanticCompactScheduleRules(obj); ok {
-				writeSemanticCompactSchedule(builder, ctx, 2, obj, rules)
+				writeSemanticCompactSchedule(builder, ctx, 3, obj, rules)
 			} else {
-				writeSemanticReferenceObject(builder, 2, obj)
+				writeSemanticRawFallbackSchedule(builder, ctx, 3, obj, "compact_schedule_parse_failed")
 			}
 		default:
-			writeSemanticReferenceObject(builder, 2, obj)
+			writeSemanticReferenceObject(builder, 3, obj)
 		}
 	}
 }
@@ -198,11 +312,20 @@ func writeSemanticScheduleHeader(builder *semanticYAMLBuilder, ctx *semanticCont
 	if hours, ok := annualScheduleHours(obj); ok {
 		builder.kvForObject(indent+1, "active_hours_per_year", semanticNumber(hours), obj.Index, obj.Type, name)
 	}
-	usedBy := sortedUniqueStrings(ctx.scheduleRefs[normalizeName(name)])
-	if len(usedBy) > 0 {
+	if len(ctx.scheduleRefs[normalizeName(name)]) > 0 {
 		builder.rawForObject(indent+1, "used_by:", obj.Index, obj.Type, name)
-		for _, path := range usedBy {
-			builder.rawForObject(indent+2, "- "+yamlScalar(path), obj.Index, obj.Type, name)
+		for _, use := range sortedSemanticScheduleUses(ctx.scheduleRefs[normalizeName(name)]) {
+			builder.rawForObject(indent+2, "- path: "+yamlScalar(use.Path), obj.Index, obj.Type, name)
+			builder.kvForObject(indent+3, "object", use.Object, obj.Index, obj.Type, name)
+			builder.kvForObject(indent+3, "field", use.Field, obj.Index, obj.Type, name)
+			builder.kvForObject(indent+3, "role", use.Role, obj.Index, obj.Type, name)
+			builder.kvForObject(indent+3, "source_object", use.SourceObject, obj.Index, obj.Type, name)
+			if len(use.ExpandedViews) > 0 {
+				builder.rawForObject(indent+3, "expanded_views:", obj.Index, obj.Type, name)
+				for _, path := range use.ExpandedViews {
+					builder.rawForObject(indent+4, "- "+yamlScalar(path), obj.Index, obj.Type, name)
+				}
+			}
 		}
 	}
 	return name
@@ -217,6 +340,7 @@ func writeSemanticConstantSchedule(builder *semanticYAMLBuilder, ctx *semanticCo
 
 func writeSemanticCompactSchedule(builder *semanticYAMLBuilder, ctx *semanticContext, indent int, obj Object, rules []semanticCompactScheduleRule) {
 	name := writeSemanticScheduleHeader(builder, ctx, indent, obj)
+	builder.kvForObject(indent+1, "parse_status", "parsed", obj.Index, obj.Type, name)
 	builder.rawForObject(indent+1, "rules:", obj.Index, obj.Type, name)
 	for _, rule := range rules {
 		if rule.Through != "" && rule.ThroughFieldIndex >= 0 {
@@ -235,6 +359,19 @@ func writeSemanticCompactSchedule(builder *semanticYAMLBuilder, ctx *semanticCon
 			builder.fieldKV(indent+4, "- time", interval.Time, obj.Index, obj.Type, name, interval.TimeFieldIndex)
 			builder.fieldKV(indent+5, "value", interval.Value, obj.Index, obj.Type, name, interval.ValueFieldIndex)
 		}
+	}
+}
+
+func writeSemanticRawFallbackSchedule(builder *semanticYAMLBuilder, ctx *semanticContext, indent int, obj Object, reason string) {
+	name := writeSemanticScheduleHeader(builder, ctx, indent, obj)
+	builder.kvForObject(indent+1, "parse_status", "raw_fallback", obj.Index, obj.Type, name)
+	builder.kvForObject(indent+1, "reason", reason, obj.Index, obj.Type, name)
+	builder.rawForObject(indent+1, "raw_fields:", obj.Index, obj.Type, name)
+	for fieldIndex, field := range obj.Fields {
+		if fieldIndex == 0 && name != "" {
+			continue
+		}
+		builder.fieldKV(indent+2, semanticFieldKey(field, fieldIndex), field.Value, obj.Index, obj.Type, name, fieldIndex)
 	}
 }
 
@@ -331,10 +468,26 @@ func writeSemanticMaterials(builder *semanticYAMLBuilder, ctx *semanticContext) 
 		name := objectName(obj)
 		builder.fieldKV(2, "- name", name, obj.Index, obj.Type, name, 0)
 		builder.kvForObject(3, "class", obj.Type, obj.Index, obj.Type, name)
+		builder.kvForObject(3, "material_kind", semanticMaterialKind(obj.Type), obj.Index, obj.Type, name)
 		builder.kvForObject(3, "source_object_index", fmt.Sprintf("%d", obj.Index), obj.Index, obj.Type, name)
-		for _, fieldName := range []string{"Roughness", "Thickness", "Conductivity", "Density", "Specific Heat", "Thermal Resistance", "U-Factor"} {
+		for _, fieldName := range []string{"Roughness"} {
 			key := semanticFieldKeyFromName(fieldName)
 			semanticFieldByNames(builder, 3, key, obj, "", fieldName)
+		}
+		for _, item := range []struct {
+			field string
+			unit  string
+		}{
+			{"Thickness", "m"},
+			{"Conductivity", "W/m-K"},
+			{"Density", "kg/m3"},
+			{"Specific Heat", "J/kg-K"},
+			{"Thermal Resistance", "m2-K/W"},
+			{"U-Factor", "W/m2-K"},
+		} {
+			if value, fieldIndex, ok := semanticFieldValue(obj, item.field); ok {
+				builder.fieldDisplayKV(3, semanticFieldKeyFromName(item.field), strings.TrimSpace(value+" "+item.unit), value, obj.Index, obj.Type, name, fieldIndex)
+			}
 		}
 		usedBy := semanticMaterialUsedBy(ctx.doc, name)
 		if len(usedBy) > 0 {
@@ -346,8 +499,26 @@ func writeSemanticMaterials(builder *semanticYAMLBuilder, ctx *semanticContext) 
 	}
 }
 
+func semanticMaterialKind(objectType string) string {
+	lower := strings.ToLower(strings.TrimSpace(objectType))
+	switch {
+	case lower == "material":
+		return "mass"
+	case strings.Contains(lower, "nomass"):
+		return "no_mass"
+	case strings.Contains(lower, "airgap"):
+		return "air_gap"
+	case strings.HasPrefix(lower, "windowmaterial:"):
+		return "window_material"
+	default:
+		return "complex"
+	}
+}
+
 func writeSemanticConstructions(builder *semanticYAMLBuilder, ctx *semanticContext) {
-	if len(ctx.geometry.Constructions) == 0 && len(semanticFenestrationConstructionObjects(ctx.doc)) == 0 {
+	performance := semanticPerformanceConstructionObjects(ctx.doc)
+	fenestration := semanticFenestrationConstructionObjects(ctx.doc)
+	if len(ctx.geometry.Constructions) == 0 && len(fenestration) == 0 && len(performance) == 0 {
 		builder.raw(1, "constructions: {}")
 		return
 	}
@@ -380,14 +551,27 @@ func writeSemanticConstructions(builder *semanticYAMLBuilder, ctx *semanticConte
 				builder.kvForObject(6, "order", fmt.Sprintf("%d", layerIndex+1), construction.ObjectIndex, construction.ObjectType, name)
 				if layer.ObjectType != "" {
 					builder.kvForObject(6, "class", layer.ObjectType, construction.ObjectIndex, construction.ObjectType, name)
+					builder.kvForObject(6, "material_kind", semanticMaterialKind(layer.ObjectType), construction.ObjectIndex, construction.ObjectType, name)
 				}
 				if layer.HasThickness {
 					builder.kvForObject(6, "thickness", semanticQuantity(layer.Thickness, "m"), construction.ObjectIndex, construction.ObjectType, name)
 				}
+				if layer.ThermalResistance > 0 {
+					builder.kvForObject(6, "thermal_resistance", semanticQuantity(layer.ThermalResistance, "m2-K/W"), construction.ObjectIndex, construction.ObjectType, name)
+				}
+				if layer.Conductivity > 0 {
+					builder.kvForObject(6, "conductivity", semanticQuantity(layer.Conductivity, "W/m-K"), construction.ObjectIndex, construction.ObjectType, name)
+				}
 			}
 		}
 	}
-	fenestration := semanticFenestrationConstructionObjects(ctx.doc)
+	if len(performance) > 0 {
+		builder.raw(2, "performance_based:")
+		for _, obj := range performance {
+			ctx.mark(obj.Index)
+			writeSemanticReferenceObject(builder, 3, obj)
+		}
+	}
 	if len(fenestration) == 0 {
 		builder.raw(2, "fenestration: []")
 		return
@@ -399,19 +583,62 @@ func writeSemanticConstructions(builder *semanticYAMLBuilder, ctx *semanticConte
 	}
 }
 
-func writeSemanticZoneGroups(builder *semanticYAMLBuilder, ctx *semanticContext) {
-	var groups []Object
-	for _, obj := range ctx.doc.Objects {
-		if strings.EqualFold(obj.Type, "ZoneList") || strings.EqualFold(obj.Type, "SpaceList") {
-			groups = append(groups, obj)
-		}
+func writeSemanticShading(builder *semanticYAMLBuilder, ctx *semanticContext) {
+	site := semanticObjectsWithTypePrefix(ctx.doc, "Shading:Site")
+	building := semanticObjectsWithTypePrefix(ctx.doc, "Shading:Building")
+	zone := semanticObjectsWithTypePrefix(ctx.doc, "Shading:Zone")
+	if len(site) == 0 && len(building) == 0 && len(zone) == 0 {
+		builder.raw(1, "shading: {}")
+		return
 	}
-	if len(groups) == 0 {
+	builder.raw(1, "shading:")
+	writeSemanticObjectList(builder, ctx, 2, "site", site)
+	writeSemanticObjectList(builder, ctx, 2, "building", building)
+	writeSemanticObjectList(builder, ctx, 2, "zone", zone)
+}
+
+func writeSemanticObjectList(builder *semanticYAMLBuilder, ctx *semanticContext, indent int, key string, objects []Object) {
+	if len(objects) == 0 {
+		builder.raw(indent, key+": []")
+		return
+	}
+	builder.raw(indent, key+":")
+	for _, obj := range objects {
+		ctx.mark(obj.Index)
+		writeSemanticReferenceObject(builder, indent+1, obj)
+	}
+}
+
+func writeSemanticTargetGroups(builder *semanticYAMLBuilder, ctx *semanticContext) {
+	writeSemanticListObjects(builder, ctx, "zone_lists", "ZoneList")
+	writeSemanticListObjects(builder, ctx, "space_lists", "SpaceList")
+	if len(ctx.zoneGroups) == 0 {
 		builder.raw(1, "zone_groups: []")
 		return
 	}
 	builder.raw(1, "zone_groups:")
-	for _, obj := range groups {
+	for _, obj := range ctx.zoneGroups {
+		ctx.mark(obj.Index)
+		name := objectName(obj)
+		builder.fieldKV(2, "- name", name, obj.Index, obj.Type, name, 0)
+		builder.kvForObject(3, "class", obj.Type, obj.Index, obj.Type, name)
+		if value, fieldIndex, ok := semanticFieldValue(obj, "Zone List Name"); ok {
+			builder.fieldKV(3, "zone_list", value, obj.Index, obj.Type, name, fieldIndex)
+		}
+		if value, fieldIndex, ok := semanticFieldValue(obj, "Zone List Multiplier", "Multiplier"); ok {
+			builder.fieldKV(3, "multiplier", value, obj.Index, obj.Type, name, fieldIndex)
+		}
+	}
+}
+
+func writeSemanticListObjects(builder *semanticYAMLBuilder, ctx *semanticContext, section string, objectType string) {
+	objects := semanticObjectsForTypes(ctx.doc, []string{objectType})
+	if len(objects) == 0 {
+		builder.raw(1, section+": []")
+		return
+	}
+	builder.raw(1, section+":")
+	for _, obj := range objects {
 		ctx.mark(obj.Index)
 		name := objectName(obj)
 		builder.fieldKV(2, "- name", name, obj.Index, obj.Type, name, 0)
@@ -419,9 +646,15 @@ func writeSemanticZoneGroups(builder *semanticYAMLBuilder, ctx *semanticContext)
 		builder.rawForObject(3, "members:", obj.Index, obj.Type, name)
 		for index := 1; index < len(obj.Fields); index++ {
 			value := strings.TrimSpace(obj.Fields[index].Value)
-			if value != "" {
-				builder.fieldKV(4, "- name", value, obj.Index, obj.Type, name, index)
+			if value == "" {
+				continue
 			}
+			memberKind := "zone"
+			if strings.EqualFold(objectType, "SpaceList") {
+				memberKind = "space"
+			}
+			builder.fieldKV(4, "- name", value, obj.Index, obj.Type, name, index)
+			builder.kvForObject(5, "kind", memberKind, obj.Index, obj.Type, name)
 		}
 	}
 }
@@ -446,6 +679,7 @@ func writeSemanticZones(builder *semanticYAMLBuilder, ctx *semanticContext) {
 		builder.kvForObject(4, "object_index", fmt.Sprintf("%d", zone.ObjectIndex), zone.ObjectIndex, "Zone", zoneName)
 		builder.kvForObject(4, "object_type", "Zone", zone.ObjectIndex, "Zone", zoneName)
 		writeSemanticZoneGeometry(builder, ctx, zoneName)
+		writeSemanticSpaces(builder, ctx, zoneName)
 		writeSemanticZoneLoads(builder, ctx, zoneName)
 		writeSemanticZoneControls(builder, ctx, zoneName)
 		writeSemanticZoneHVAC(builder, ctx, zoneName)
@@ -456,25 +690,69 @@ func writeSemanticZones(builder *semanticYAMLBuilder, ctx *semanticContext) {
 
 func writeSemanticZoneGeometry(builder *semanticYAMLBuilder, ctx *semanticContext, zoneName string) {
 	surfaces := ctx.surfacesByZone[normalizeName(zoneName)]
-	if len(surfaces) == 0 {
+	zoneObj, hasZoneObj := semanticZoneObject(ctx, zoneName)
+	if len(surfaces) == 0 && !hasZoneObj {
 		return
 	}
 	builder.raw(3, "geometry:")
+	if hasZoneObj {
+		if value, fieldIndex, ok := semanticFieldValue(zoneObj, "Direction of Relative North"); ok {
+			builder.fieldKV(4, "relative_north", value, zoneObj.Index, zoneObj.Type, zoneName, fieldIndex)
+		}
+		origin := []string{}
+		for _, name := range []string{"X Origin", "Y Origin", "Z Origin"} {
+			if value, _, ok := semanticFieldValue(zoneObj, name); ok {
+				origin = append(origin, value)
+			} else {
+				origin = append(origin, "0")
+			}
+		}
+		builder.rawForObject(4, "origin: ["+strings.Join(origin, ", ")+"]", zoneObj.Index, zoneObj.Type, zoneName)
+		if value, fieldIndex, ok := semanticFieldValue(zoneObj, "Multiplier"); ok {
+			builder.fieldKV(4, "multiplier", value, zoneObj.Index, zoneObj.Type, zoneName, fieldIndex)
+		}
+		if value, fieldIndex, ok := semanticFieldValue(zoneObj, "Floor Area"); ok {
+			builder.fieldKV(4, "floor_area", value, zoneObj.Index, zoneObj.Type, zoneName, fieldIndex)
+		}
+		if value, fieldIndex, ok := semanticFieldValue(zoneObj, "Volume"); ok {
+			builder.fieldKV(4, "volume", value, zoneObj.Index, zoneObj.Type, zoneName, fieldIndex)
+		}
+		if value, fieldIndex, ok := semanticFieldValue(zoneObj, "Part of Total Floor Area"); ok {
+			builder.fieldKV(4, "part_of_total_floor_area", value, zoneObj.Index, zoneObj.Type, zoneName, fieldIndex)
+		}
+	}
+	builder.raw(4, "global_rules:")
+	builder.kv(5, "coordinate_system", blankAs(ctx.geometry.CoordinateSystem, "relative"))
+	builder.kv(5, "vertex_entry_direction", blankAs(ctx.geometry.VertexEntryDirection, "counterclockwise"))
+	builder.kv(5, "starting_vertex_position", blankAs(ctx.geometry.StartingVertexPosition, "upperleftcorner"))
+	if len(surfaces) == 0 {
+		return
+	}
 	builder.raw(4, "surfaces:")
 	for _, surface := range surfaces {
 		ctx.mark(surface.ObjectIndex)
 		builder.fieldKV(5, "- name", surface.Name, surface.ObjectIndex, surface.Type, surface.Name, 0)
 		builder.kvForObject(6, "class", surface.Type, surface.ObjectIndex, surface.Type, surface.Name)
 		builder.kvForObject(6, "type", surface.SurfaceType, surface.ObjectIndex, surface.Type, surface.Name)
+		if surface.ZoneName != "" {
+			semanticFieldByNames(builder, 6, "zone", ctx.objectByIndex[surface.ObjectIndex], surface.ZoneName, "Zone Name")
+		}
+		if surface.SpaceName != "" {
+			semanticFieldByNames(builder, 6, "space", ctx.objectByIndex[surface.ObjectIndex], surface.SpaceName, "Space Name")
+		}
 		semanticFieldByNames(builder, 6, "construction", ctx.objectByIndex[surface.ObjectIndex], surface.Construction, "Construction Name")
 		builder.rawForObject(6, "boundary:", surface.ObjectIndex, surface.Type, surface.Name)
 		semanticFieldByNames(builder, 7, "condition", ctx.objectByIndex[surface.ObjectIndex], surface.OutsideBoundary, "Outside Boundary Condition")
 		semanticFieldByNames(builder, 7, "object", ctx.objectByIndex[surface.ObjectIndex], "", "Outside Boundary Condition Object")
+		writeSemanticSurfaceBoundaryResolution(builder, ctx, 7, surface)
 		builder.rawForObject(6, "exposure:", surface.ObjectIndex, surface.Type, surface.Name)
 		semanticFieldByNames(builder, 7, "sun", ctx.objectByIndex[surface.ObjectIndex], "", "Sun Exposure")
 		semanticFieldByNames(builder, 7, "wind", ctx.objectByIndex[surface.ObjectIndex], "", "Wind Exposure")
+		writeSemanticBoundaryExposureValidation(builder, ctx, 7, surface)
 		semanticFieldByNames(builder, 6, "view_factor_to_ground", ctx.objectByIndex[surface.ObjectIndex], "", "View Factor to Ground")
-		builder.rawForObject(6, "vertices: "+semanticVertices(surface.Vertices), surface.ObjectIndex, surface.Type, surface.Name)
+		builder.rawForObject(6, "vertices:", surface.ObjectIndex, surface.Type, surface.Name)
+		builder.kvForObject(7, "source", blankAs(surface.VerticesSource, "computed_geometry"), surface.ObjectIndex, surface.Type, surface.Name)
+		builder.rawForObject(7, "value: "+semanticVertices(surface.Vertices), surface.ObjectIndex, surface.Type, surface.Name)
 		builder.rawForObject(6, "computed:", surface.ObjectIndex, surface.Type, surface.Name)
 		builder.kvForObject(7, "area", semanticQuantity(surface.Area, "m2"), surface.ObjectIndex, surface.Type, surface.Name)
 		if surface.Orientation != "" {
@@ -491,9 +769,16 @@ func writeSemanticZoneGeometry(builder *semanticYAMLBuilder, ctx *semanticContex
 				builder.kvForObject(8, "type", window.SurfaceType, window.ObjectIndex, window.Type, window.Name)
 				semanticFieldByNames(builder, 8, "construction", ctx.objectByIndex[window.ObjectIndex], window.Construction, "Construction Name")
 				semanticFieldByNames(builder, 8, "base_surface", ctx.objectByIndex[window.ObjectIndex], window.BaseSurfaceName, "Building Surface Name", "Surface Name")
-				builder.rawForObject(8, "vertices: "+semanticVertices(window.Vertices), window.ObjectIndex, window.Type, window.Name)
+				builder.kvForObject(8, "base_surface_resolution", semanticBaseSurfaceResolution(ctx, window), window.ObjectIndex, window.Type, window.Name)
+				builder.rawForObject(8, "raw:", window.ObjectIndex, window.Type, window.Name)
+				builder.kvForObject(9, "multiplier", semanticNumber(window.Multiplier), window.ObjectIndex, window.Type, window.Name)
+				builder.rawForObject(8, "vertices:", window.ObjectIndex, window.Type, window.Name)
+				builder.kvForObject(9, "source", blankAs(window.VerticesSource, "computed_geometry"), window.ObjectIndex, window.Type, window.Name)
+				builder.rawForObject(9, "value: "+semanticVertices(window.Vertices), window.ObjectIndex, window.Type, window.Name)
 				builder.rawForObject(8, "computed:", window.ObjectIndex, window.Type, window.Name)
-				builder.kvForObject(9, "area", semanticQuantity(window.Area, "m2"), window.ObjectIndex, window.Type, window.Name)
+				builder.rawForObject(9, "area:", window.ObjectIndex, window.Type, window.Name)
+				builder.kvForObject(10, "value", semanticQuantity(window.Area, "m2"), window.ObjectIndex, window.Type, window.Name)
+				builder.kvForObject(10, "includes_multiplier", fmt.Sprintf("%t", window.AreaIncludesMultiplier), window.ObjectIndex, window.Type, window.Name)
 				if window.Orientation != "" {
 					builder.kvForObject(9, "orientation", window.Orientation, window.ObjectIndex, window.Type, window.Name)
 				}
@@ -505,13 +790,110 @@ func writeSemanticZoneGeometry(builder *semanticYAMLBuilder, ctx *semanticContex
 	}
 }
 
+func writeSemanticSpaces(builder *semanticYAMLBuilder, ctx *semanticContext, zoneName string) {
+	spaces := ctx.spacesByZone[normalizeName(zoneName)]
+	if len(spaces) == 0 {
+		return
+	}
+	builder.raw(3, "spaces:")
+	for _, space := range spaces {
+		objectIndex := space.ObjectIndex
+		objectType := "Space"
+		if objectIndex < 0 {
+			objectIndex = semanticZoneObjectIndex(ctx, zoneName)
+			objectType = "computed/default_space"
+		} else {
+			ctx.mark(objectIndex)
+		}
+		builder.rawForObject(4, "- name: "+yamlScalar(space.Name), objectIndex, objectType, space.Name)
+		builder.kvForObject(5, "zone_name", blankAs(space.ZoneName, zoneName), objectIndex, objectType, space.Name)
+		builder.kvForObject(5, "source", blankAs(space.Source, "idf_object"), objectIndex, objectType, space.Name)
+		if space.FloorArea != "" {
+			builder.kvForObject(5, "floor_area", space.FloorArea, objectIndex, objectType, space.Name)
+		}
+		if space.Volume != "" {
+			builder.kvForObject(5, "volume", space.Volume, objectIndex, objectType, space.Name)
+		}
+		if space.SpaceType != "" {
+			builder.kvForObject(5, "space_type", space.SpaceType, objectIndex, objectType, space.Name)
+		}
+		writeSemanticSpaceLoads(builder, ctx, 5, space.Name)
+		writeSemanticSpaceHVAC(builder, ctx, 5, space.Name)
+	}
+}
+
+func writeSemanticSpaceHVAC(builder *semanticYAMLBuilder, ctx *semanticContext, indent int, spaceName string) {
+	var objects []Object
+	for _, obj := range ctx.doc.Objects {
+		lower := strings.ToLower(strings.TrimSpace(obj.Type))
+		if !strings.HasPrefix(lower, "spacehvac:") {
+			continue
+		}
+		value, _, ok := semanticFieldValue(obj, "Space Name")
+		if ok && strings.EqualFold(value, spaceName) {
+			objects = append(objects, obj)
+		}
+	}
+	if len(objects) == 0 {
+		return
+	}
+	builder.raw(indent, "hvac:")
+	for _, obj := range objects {
+		ctx.mark(obj.Index)
+		writeSemanticReferenceObject(builder, indent+1, obj)
+	}
+}
+
 func writeSemanticZoneLoads(builder *semanticYAMLBuilder, ctx *semanticContext, zoneName string) {
 	buckets := ctx.loadsByZone[normalizeName(zoneName)]
+	outdoorAirSpecs := semanticOutdoorAirSpecsForZone(ctx, zoneName)
+	if len(buckets) == 0 && len(outdoorAirSpecs) == 0 {
+		return
+	}
+	writeSemanticZoneObjectBuckets(builder, ctx, 3, "loads", []string{"people", "lights", "electric_equipment", "gas_equipment", "hot_water_equipment", "steam_equipment", "other_equipment"}, buckets)
+	writeSemanticZoneObjectBuckets(builder, ctx, 3, "thermal_mass", []string{"internal_mass"}, buckets)
+	writeSemanticZoneObjectBuckets(builder, ctx, 3, "behavior", []string{"thermal_capacitance", "air_balance"}, buckets)
+	writeSemanticAirExchange(builder, ctx, 3, buckets, outdoorAirSpecs)
+}
+
+func writeSemanticAirExchange(builder *semanticYAMLBuilder, ctx *semanticContext, indent int, buckets map[string][]Object, outdoorAirSpecs []Object) {
+	order := []string{"infiltration", "ventilation", "mixing", "cross_mixing"}
+	hasAirExchange := len(outdoorAirSpecs) > 0
+	for _, bucket := range order {
+		hasAirExchange = hasAirExchange || len(buckets[bucket]) > 0
+	}
+	if !hasAirExchange {
+		return
+	}
+	builder.raw(indent, "air_exchange:")
+	for _, bucket := range order {
+		objects := buckets[bucket]
+		if len(objects) == 0 {
+			continue
+		}
+		builder.raw(indent+1, bucket+":")
+		for _, obj := range objects {
+			ctx.mark(obj.Index)
+			writeSemanticLoadObject(builder, indent+2, obj)
+		}
+	}
+	if len(outdoorAirSpecs) > 0 {
+		builder.raw(indent+1, "outdoor_air_specs:")
+		for _, obj := range outdoorAirSpecs {
+			ctx.mark(obj.Index)
+			writeSemanticReferenceObject(builder, indent+2, obj)
+		}
+	}
+}
+
+func writeSemanticSpaceLoads(builder *semanticYAMLBuilder, ctx *semanticContext, indent int, spaceName string) {
+	buckets := ctx.loadsBySpace[normalizeName(spaceName)]
 	if len(buckets) == 0 {
 		return
 	}
-	writeSemanticZoneObjectBuckets(builder, ctx, 3, "loads", []string{"people", "lights", "electric_equipment", "gas_equipment"}, buckets)
-	writeSemanticZoneObjectBuckets(builder, ctx, 3, "air_exchange", []string{"infiltration", "ventilation", "mixing", "cross_mixing"}, buckets)
+	writeSemanticZoneObjectBuckets(builder, ctx, indent, "loads", []string{"people", "lights", "electric_equipment", "gas_equipment", "hot_water_equipment", "steam_equipment", "other_equipment"}, buckets)
+	writeSemanticZoneObjectBuckets(builder, ctx, indent, "thermal_mass", []string{"internal_mass"}, buckets)
+	writeSemanticAirExchange(builder, ctx, indent, buckets, nil)
 }
 
 func writeSemanticZoneObjectBuckets(builder *semanticYAMLBuilder, ctx *semanticContext, indent int, section string, order []string, buckets map[string][]Object) {
@@ -543,8 +925,15 @@ func writeSemanticLoadObject(builder *semanticYAMLBuilder, indent int, obj Objec
 	name := objectName(obj)
 	builder.fieldKV(indent, "- name", name, obj.Index, obj.Type, name, 0)
 	builder.kvForObject(indent+1, "class", obj.Type, obj.Index, obj.Type, name)
-	if value, fieldIndex, ok := semanticFieldValue(obj, "Zone or ZoneList Name", "Zone Name"); ok {
-		builder.fieldKV(indent+1, "zone", value, obj.Index, obj.Type, name, fieldIndex)
+	if value, fieldIndex, ok := semanticFieldValue(obj, "Zone or ZoneList or Space or SpaceList Name", "Zone or ZoneList Name", "Space or SpaceList Name", "Zone Name", "Space Name"); ok {
+		key := "zone"
+		if builder.ctx != nil {
+			_, targetKind, _, _ := semanticTargetAttachment(builder.ctx, obj)
+			if targetKind == "space" || targetKind == "space_list" {
+				key = "space"
+			}
+		}
+		builder.fieldKV(indent+1, key, value, obj.Index, obj.Type, name, fieldIndex)
 	}
 	if value, fieldIndex, ok := semanticFieldValue(obj, "Number of People Schedule Name", "Schedule Name"); ok {
 		builder.fieldKV(indent+1, "schedule", value, obj.Index, obj.Type, name, fieldIndex)
@@ -555,12 +944,46 @@ func writeSemanticLoadObject(builder *semanticYAMLBuilder, indent int, obj Objec
 	if displayValue, sourceValue, fieldIndex, ok := semanticLoadLevel(obj); ok {
 		builder.fieldDisplayKV(indent+1, "level", displayValue, sourceValue, obj.Index, obj.Type, name, fieldIndex)
 	}
+	writeSemanticLoadMethodFields(builder, indent+1, obj)
 	if target, _, ok := semanticZoneAttachment(obj); ok {
 		if members := builder.ctx.zoneLists[normalizeName(target)]; len(members) > 1 {
+			builder.kvForObject(indent+1, "same_source_object_id", fmt.Sprintf("obj-%d", obj.Index), obj.Index, obj.Type, name)
+			builder.kvForObject(indent+1, "expanded_from", "ZoneList/"+target, obj.Index, obj.Type, name)
 			writeSemanticDuplicatedAs(builder, indent+1, obj.Index, obj.Type, name, "zone_group_expanded_load", semanticZoneGroupOccurrencePaths(members, obj))
 		}
 	}
 	writeSemanticAttachedOutputs(builder, indent+1, "outputs", builder.ctx.outputsByTarget[normalizeName(name)])
+}
+
+func writeSemanticLoadMethodFields(builder *semanticYAMLBuilder, indent int, obj Object) {
+	method, methodIndex, hasMethod := semanticFieldValue(obj, "Calculation Method", "Design Flow Rate Calculation Method")
+	if hasMethod {
+		builder.fieldKV(indent, "calculation_method", method, obj.Index, obj.Type, objectName(obj), methodIndex)
+	}
+	switch strings.ToLower(strings.TrimSpace(obj.Type)) {
+	case "people":
+		semanticFieldByNames(builder, indent, "number_of_people", obj, "", "Number of People")
+		semanticFieldByNames(builder, indent, "people_per_floor_area", obj, "", "People per Zone Floor Area")
+		semanticFieldByNames(builder, indent, "floor_area_per_person", obj, "", "Zone Floor Area per Person")
+	case "lights":
+		semanticFieldByNames(builder, indent, "lighting_level", obj, "", "Lighting Level")
+		semanticFieldByNames(builder, indent, "watts_per_zone_floor_area", obj, "", "Watts per Zone Floor Area")
+		semanticFieldByNames(builder, indent, "watts_per_person", obj, "", "Watts per Person")
+	case "electricequipment", "gasequipment", "hotwaterequipment", "steamequipment", "otherequipment":
+		semanticFieldByNames(builder, indent, "design_level", obj, "", "Design Level")
+		semanticFieldByNames(builder, indent, "power_density", obj, "", "Watts per Zone Floor Area", "Power per Zone Floor Area")
+		semanticFieldByNames(builder, indent, "area_per_power", obj, "", "Zone Floor Area per Unit of Power")
+	default:
+		lower := strings.ToLower(strings.TrimSpace(obj.Type))
+		if strings.HasPrefix(lower, "zoneinfiltration:") || strings.HasPrefix(lower, "zoneventilation:") || strings.HasPrefix(lower, "zonemixing") || strings.HasPrefix(lower, "zonecrossmixing") {
+			semanticFieldByNames(builder, indent, "design_flow_rate", obj, "", "Design Flow Rate")
+			semanticFieldByNames(builder, indent, "flow_rate_per_zone_floor_area", obj, "", "Flow Rate per Zone Floor Area")
+			semanticFieldByNames(builder, indent, "flow_rate_per_person", obj, "", "Flow Rate per Person")
+			semanticFieldByNames(builder, indent, "air_changes_per_hour", obj, "", "Air Changes per Hour")
+			semanticFieldByNames(builder, indent, "effective_leakage_area", obj, "", "Effective Air Leakage Area")
+			semanticFieldByNames(builder, indent, "flow_coefficient", obj, "", "Flow Coefficient")
+		}
+	}
 }
 
 func writeSemanticZoneControls(builder *semanticYAMLBuilder, ctx *semanticContext, zoneName string) {
@@ -607,6 +1030,15 @@ func writeSemanticZoneHVAC(builder *semanticYAMLBuilder, ctx *semanticContext, z
 		return
 	}
 	builder.raw(3, "hvac:")
+	if relation.Nodes.AirNode != "" || len(relation.Nodes.InletNodes) > 0 || len(relation.Nodes.ExhaustNodes) > 0 || len(relation.Nodes.ReturnNodes) > 0 {
+		builder.raw(4, "nodes:")
+		if relation.Nodes.AirNode != "" {
+			builder.kv(5, "air_node", relation.Nodes.AirNode)
+		}
+		writeSemanticStringList(builder, 5, "inlet_nodes", relation.Nodes.InletNodes)
+		writeSemanticStringList(builder, 5, "exhaust_nodes", relation.Nodes.ExhaustNodes)
+		writeSemanticStringList(builder, 5, "return_nodes", relation.Nodes.ReturnNodes)
+	}
 	if len(relation.AirLoopNames) > 0 {
 		builder.raw(4, "air_loops:")
 		for _, name := range relation.AirLoopNames {
@@ -627,18 +1059,72 @@ func writeSemanticZoneHVAC(builder *semanticYAMLBuilder, ctx *semanticContext, z
 			writeSemanticHVACComponent(builder, 5, component, "zone_equipment")
 		}
 	}
+	if len(relation.ServiceChains) > 0 {
+		builder.raw(4, "service_chains:")
+		for _, chain := range relation.ServiceChains {
+			builder.raw(5, "- zone: "+yamlScalar(chain.ZoneName))
+			if chain.TerminalName != "" {
+				builder.kv(6, "terminal", chain.TerminalName)
+			}
+			if chain.AirLoopName != "" {
+				builder.kv(6, "air_loop", chain.AirLoopName)
+			}
+			if chain.PlantLoop != "" {
+				builder.kv(6, "plant_loop", chain.PlantLoop)
+			}
+			if chain.SourceComponent != "" {
+				builder.kv(6, "source_component", chain.SourceComponent)
+			}
+			if chain.Component != "" {
+				builder.kv(6, "component", chain.Component)
+			}
+			builder.kv(6, "confidence", blankAs(chain.Confidence, "inferred"))
+			builder.kv(6, "evidence", chain.Evidence)
+			writeSemanticStringList(builder, 6, "source_relations", chain.SourceRelations)
+		}
+	}
+}
+
+func writeSemanticStringList(builder *semanticYAMLBuilder, indent int, key string, values []string) {
+	if len(values) == 0 {
+		return
+	}
+	builder.raw(indent, key+":")
+	for _, value := range values {
+		builder.raw(indent+1, "- "+yamlScalar(value))
+	}
 }
 
 func writeSemanticHVAC(builder *semanticYAMLBuilder, ctx *semanticContext) {
-	if len(ctx.hvac.Loops) == 0 {
+	if len(ctx.hvac.Loops) == 0 && len(ctx.hvac.NodeUsages) == 0 {
 		builder.raw(1, "hvac: {}")
 		return
 	}
 	builder.raw(1, "hvac:")
 	writeSemanticHVACLoops(builder, ctx, "air_loops", "AirLoopHVAC")
 	writeSemanticHVACLoops(builder, ctx, "plant_loops", "PlantLoop")
+	writeSemanticHVACLoops(builder, ctx, "condenser_loops", "CondenserLoop")
 	writeSemanticHVACEquipmentCatalog(builder, ctx)
 	writeSemanticHVACNodes(builder, ctx)
+}
+
+func writeSemanticAirflows(builder *semanticYAMLBuilder, ctx *semanticContext) {
+	var afn []Object
+	for _, obj := range ctx.doc.Objects {
+		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(obj.Type)), "airflownetwork:") {
+			afn = append(afn, obj)
+		}
+	}
+	if len(afn) == 0 {
+		builder.raw(1, "airflows: {}")
+		return
+	}
+	builder.raw(1, "airflows:")
+	builder.raw(2, "airflow_network:")
+	for _, obj := range afn {
+		ctx.mark(obj.Index)
+		writeSemanticReferenceObject(builder, 3, obj)
+	}
 }
 
 func writeSemanticHVACLoops(builder *semanticYAMLBuilder, ctx *semanticContext, key string, loopType string) {
@@ -656,6 +1142,21 @@ func writeSemanticHVACLoops(builder *semanticYAMLBuilder, ctx *semanticContext, 
 		ctx.mark(loop.ObjectIndex)
 		builder.fieldKV(3, "- name", loop.Name, loop.ObjectIndex, loop.Type, loop.Name, 0)
 		builder.kvForObject(4, "class", loop.Type, loop.ObjectIndex, loop.Type, loop.Name)
+		if loop.OperationScheme != "" || loop.AvailabilityManagerList != "" || loop.SetpointNode != "" {
+			builder.rawForObject(4, "controls:", loop.ObjectIndex, loop.Type, loop.Name)
+			if loop.OperationScheme != "" {
+				builder.kvForObject(5, "operation_scheme", loop.OperationScheme, loop.ObjectIndex, loop.Type, loop.Name)
+			}
+			if loop.AvailabilityManagerList != "" {
+				builder.kvForObject(5, "availability_managers", loop.AvailabilityManagerList, loop.ObjectIndex, loop.Type, loop.Name)
+			}
+			if loop.SetpointNode != "" {
+				builder.rawForObject(5, "setpoints:", loop.ObjectIndex, loop.Type, loop.Name)
+				builder.kvForObject(6, "- node", loop.SetpointNode, loop.ObjectIndex, loop.Type, loop.Name)
+			}
+		}
+		builder.rawForObject(4, "computed:", loop.ObjectIndex, loop.Type, loop.Name)
+		builder.rawForObject(5, "summary_path: "+yamlScalar(semanticHVACSummaryPath(loop)), loop.ObjectIndex, loop.Type, loop.Name)
 		writeSemanticHVACSide(builder, ctx, 4, "supply_side", loop.SupplySide)
 		writeSemanticHVACSide(builder, ctx, 4, "demand_side", loop.DemandSide)
 	}
@@ -671,6 +1172,12 @@ func writeSemanticHVACSide(builder *semanticYAMLBuilder, ctx *semanticContext, i
 	}
 	if side.OutletNode != "" {
 		builder.kv(indent+1, "outlet_node", side.OutletNode)
+	}
+	if side.BranchListName != "" {
+		builder.kv(indent+1, "branch_list", side.BranchListName)
+	}
+	if side.ConnectorListName != "" {
+		builder.kv(indent+1, "connector_list", side.ConnectorListName)
 	}
 	if len(side.Branches) > 0 {
 		builder.raw(indent+1, "branches:")
@@ -692,6 +1199,26 @@ func writeSemanticHVACSide(builder *semanticYAMLBuilder, ctx *semanticContext, i
 			}
 		}
 	}
+	if len(side.Connectors) > 0 {
+		builder.raw(indent+1, "connectors:")
+		for _, connector := range side.Connectors {
+			ctx.mark(connector.ObjectIndex)
+			builder.rawForObject(indent+2, "- name: "+yamlScalar(connector.Name), connector.ObjectIndex, connector.Type, connector.Name)
+			builder.kvForObject(indent+3, "class", connector.Type, connector.ObjectIndex, connector.Type, connector.Name)
+			if connector.InletBranchName != "" {
+				builder.kvForObject(indent+3, "inlet_branch", connector.InletBranchName, connector.ObjectIndex, connector.Type, connector.Name)
+			}
+			if connector.OutletBranchName != "" {
+				builder.kvForObject(indent+3, "outlet_branch", connector.OutletBranchName, connector.ObjectIndex, connector.Type, connector.Name)
+			}
+			if len(connector.BranchNames) > 0 {
+				builder.rawForObject(indent+3, "branches:", connector.ObjectIndex, connector.Type, connector.Name)
+				for _, branchName := range connector.BranchNames {
+					builder.rawForObject(indent+4, "- "+yamlScalar(branchName), connector.ObjectIndex, connector.Type, connector.Name)
+				}
+			}
+		}
+	}
 }
 
 func writeSemanticHVACComponent(builder *semanticYAMLBuilder, indent int, component HVACComponent, role string) {
@@ -699,6 +1226,25 @@ func writeSemanticHVACComponent(builder *semanticYAMLBuilder, indent int, compon
 	objectIndex := component.ObjectIndex
 	builder.rawForObject(indent, "- name: "+yamlScalar(name), objectIndex, component.ObjectType, name)
 	builder.kvForObject(indent+1, "class", component.ObjectType, objectIndex, component.ObjectType, name)
+	builder.kvForObject(indent+1, "role_here", role, objectIndex, component.ObjectType, name)
+	if component.CoolingSequence != "" || component.HeatingSequence != "" {
+		builder.rawForObject(indent+1, "sequence:", objectIndex, component.ObjectType, name)
+		if component.CoolingSequence != "" {
+			builder.kvForObject(indent+2, "cooling", component.CoolingSequence, objectIndex, component.ObjectType, name)
+		}
+		if component.HeatingSequence != "" {
+			builder.kvForObject(indent+2, "heating_or_no_load", component.HeatingSequence, objectIndex, component.ObjectType, name)
+		}
+	}
+	if component.CoolingFractionSchedule != "" || component.HeatingFractionSchedule != "" {
+		builder.rawForObject(indent+1, "sequential_fraction_schedules:", objectIndex, component.ObjectType, name)
+		if component.CoolingFractionSchedule != "" {
+			builder.kvForObject(indent+2, "cooling_fraction_schedule", component.CoolingFractionSchedule, objectIndex, component.ObjectType, name)
+		}
+		if component.HeatingFractionSchedule != "" {
+			builder.kvForObject(indent+2, "heating_fraction_schedule", component.HeatingFractionSchedule, objectIndex, component.ObjectType, name)
+		}
+	}
 	if component.InletNode != "" {
 		builder.kvForObject(indent+1, "inlet_node", component.InletNode, objectIndex, component.ObjectType, name)
 	}
@@ -718,6 +1264,39 @@ func writeSemanticHVACComponent(builder *semanticYAMLBuilder, indent int, compon
 	if objectIndex >= 0 {
 		writeSemanticDuplicatedAs(builder, indent+1, objectIndex, component.ObjectType, name, role, []string{"hvac/equipment_catalog/" + blankAs(name, component.ObjectType)})
 	}
+}
+
+func semanticHVACSummaryPath(loop HVACLoop) string {
+	var parts []string
+	for _, side := range []HVACLoopSide{loop.SupplySide, loop.DemandSide} {
+		if side.InletNode != "" {
+			parts = append(parts, side.InletNode)
+		}
+		for _, branch := range side.Branches {
+			for _, component := range branch.Components {
+				parts = append(parts, componentLabel(component))
+				if component.OutletNode != "" {
+					parts = append(parts, component.OutletNode)
+				}
+			}
+		}
+	}
+	return strings.Join(sortedUniqueConsecutive(parts), " -> ")
+}
+
+func sortedUniqueConsecutive(values []string) []string {
+	var out []string
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if len(out) > 0 && out[len(out)-1] == value {
+			continue
+		}
+		out = append(out, value)
+	}
+	return out
 }
 
 func writeSemanticDuplicatedAs(builder *semanticYAMLBuilder, indent int, objectIndex int, objectType string, objectName string, role string, alsoShownIn []string) {
@@ -764,16 +1343,47 @@ func writeSemanticHVACEquipmentCatalog(builder *semanticYAMLBuilder, ctx *semant
 	if len(seen) == 0 {
 		return
 	}
-	indexes := make([]int, 0, len(seen))
-	for index := range seen {
-		indexes = append(indexes, index)
+	byBucket := map[string][]HVACComponent{}
+	for _, component := range seen {
+		bucket := semanticHVACEquipmentBucket(component.ObjectType)
+		byBucket[bucket] = append(byBucket[bucket], component)
 	}
-	sort.Ints(indexes)
 	builder.raw(2, "equipment_catalog:")
-	for _, index := range indexes {
-		component := seen[index]
-		ctx.mark(component.ObjectIndex)
-		writeSemanticHVACComponent(builder, 3, component, "equipment_catalog")
+	for _, bucket := range []string{"fans", "coils", "pumps", "chillers", "boilers", "towers", "terminals", "other"} {
+		components := byBucket[bucket]
+		if len(components) == 0 {
+			continue
+		}
+		sort.SliceStable(components, func(i, j int) bool {
+			return components[i].ObjectIndex < components[j].ObjectIndex
+		})
+		builder.raw(3, bucket+":")
+		for _, component := range components {
+			ctx.mark(component.ObjectIndex)
+			writeSemanticHVACComponent(builder, 4, component, "equipment_catalog")
+		}
+	}
+}
+
+func semanticHVACEquipmentBucket(objectType string) string {
+	lower := strings.ToLower(strings.TrimSpace(objectType))
+	switch {
+	case strings.HasPrefix(lower, "fan:"):
+		return "fans"
+	case strings.HasPrefix(lower, "coil:"):
+		return "coils"
+	case strings.HasPrefix(lower, "pump:"):
+		return "pumps"
+	case strings.HasPrefix(lower, "chiller:"):
+		return "chillers"
+	case strings.HasPrefix(lower, "boiler:"):
+		return "boilers"
+	case strings.HasPrefix(lower, "coolingtower:"):
+		return "towers"
+	case isAirTerminalType(objectType):
+		return "terminals"
+	default:
+		return "other"
 	}
 }
 
@@ -798,8 +1408,34 @@ func writeSemanticHVACNodes(builder *semanticYAMLBuilder, ctx *semanticContext) 
 		}
 		nodeName := usages[0].NodeName
 		builder.raw(3, "- name: "+yamlScalar(nodeName))
-		builder.raw(4, "used_by:")
+		builder.raw(4, "defined_by: []")
+		var listedBy []HVACNodeUsage
+		var usedBy []HVACNodeUsage
 		for _, usage := range usages {
+			if usage.Role == "node_list_member" {
+				listedBy = append(listedBy, usage)
+			} else {
+				usedBy = append(usedBy, usage)
+			}
+		}
+		if len(listedBy) > 0 {
+			builder.raw(4, "listed_by:")
+			for _, usage := range listedBy {
+				label := usage.ObjectType
+				if usage.ObjectName != "" {
+					label += " " + usage.ObjectName
+				}
+				builder.rawForObject(5, "- "+yamlScalar(label), usage.ObjectIndex, usage.ObjectType, usage.ObjectName)
+			}
+		}
+		builder.kv(4, "node_kind", semanticHVACNodeKind(usedBy))
+		builder.kv(4, "expected_degree", semanticHVACNodeExpectedDegree(usedBy))
+		if len(usedBy) == 0 {
+			builder.raw(4, "used_by: []")
+			continue
+		}
+		builder.raw(4, "used_by:")
+		for _, usage := range usedBy {
 			label := usage.ObjectType
 			if usage.ObjectName != "" {
 				label += " " + usage.ObjectName
@@ -810,16 +1446,42 @@ func writeSemanticHVACNodes(builder *semanticYAMLBuilder, ctx *semanticContext) 
 	}
 }
 
+func semanticHVACNodeKind(usages []HVACNodeUsage) string {
+	for _, usage := range usages {
+		if strings.Contains(usage.Role, "outdoor") || strings.Contains(usage.Role, "relief") {
+			return "outdoor_or_relief"
+		}
+	}
+	if len(usages) <= 1 {
+		return "one_sided"
+	}
+	return "connected"
+}
+
+func semanticHVACNodeExpectedDegree(usages []HVACNodeUsage) string {
+	switch semanticHVACNodeKind(usages) {
+	case "outdoor_or_relief":
+		return "one_or_more"
+	case "one_sided":
+		return "check_context"
+	default:
+		return "producer_and_consumer"
+	}
+}
+
 func writeSemanticOutputs(builder *semanticYAMLBuilder, ctx *semanticContext) {
 	builder.raw(1, "outputs:")
 	builder.raw(2, "files:")
-	writeSemanticOutputFileStatus(builder, 3, "csv", "OutputControl:Files", semanticOutputControlFilesEnabled(ctx.doc, "csv"))
-	writeSemanticOutputFileStatus(builder, 3, "sqlite", "Output:SQLite", semanticOutputObjectExists(ctx.output, "Output:SQLite") || semanticOutputControlFilesEnabled(ctx.doc, "sqlite"))
-	writeSemanticOutputFileStatus(builder, 3, "json", "Output:JSON", semanticOutputObjectExists(ctx.output, "Output:JSON") || semanticOutputControlFilesEnabled(ctx.doc, "json"))
+	writeSemanticOutputFileStatus(builder, ctx, 3, "csv", "")
+	writeSemanticOutputFileStatus(builder, ctx, 3, "sqlite", "Output:SQLite")
+	writeSemanticOutputFileStatus(builder, ctx, 3, "json", "Output:JSON")
 	var variables []OutputObjectSummary
 	var meters []OutputObjectSummary
 	var summaryReports []OutputObjectSummary
 	var tableStyles []OutputObjectSummary
+	var monthlyTables []OutputObjectSummary
+	var annualTables []OutputObjectSummary
+	var timeBinTables []OutputObjectSummary
 	var wildcard []OutputObjectSummary
 	var unresolved []OutputObjectSummary
 	for _, item := range ctx.output.Existing {
@@ -829,24 +1491,33 @@ func writeSemanticOutputs(builder *semanticYAMLBuilder, ctx *semanticContext) {
 			variables = append(variables, item)
 			if strings.TrimSpace(item.KeyValue) == "*" {
 				wildcard = append(wildcard, item)
-			} else if strings.TrimSpace(item.KeyValue) != "" && !semanticOutputTargetExists(ctx, item.KeyValue) {
+			} else if semanticOutputAttachmentResolution(ctx, item) == "unresolved_after_rdd" {
 				unresolved = append(unresolved, item)
 			}
-		case "output:meter", "output:meter:meterfileonly":
+		case "output:meter", "output:meter:meterfileonly", "output:meter:cumulative", "output:meter:cumulativemeterfileonly":
 			meters = append(meters, item)
 		case "output:table:summaryreports":
 			summaryReports = append(summaryReports, item)
 		case "outputcontrol:table:style":
 			tableStyles = append(tableStyles, item)
+		case "output:table:monthly":
+			monthlyTables = append(monthlyTables, item)
+		case "output:table:annual":
+			annualTables = append(annualTables, item)
+		case "output:table:timebins":
+			timeBinTables = append(timeBinTables, item)
 		}
 	}
 	writeSemanticOutputList(builder, 2, "variables", variables, true)
 	writeSemanticOutputList(builder, 2, "meters", meters, true)
 	writeSemanticOutputList(builder, 2, "wildcard", wildcard, true)
 	writeSemanticOutputList(builder, 2, "unresolved", unresolved, true)
-	if len(summaryReports) > 0 || len(tableStyles) > 0 {
+	if len(summaryReports) > 0 || len(tableStyles) > 0 || len(monthlyTables) > 0 || len(annualTables) > 0 || len(timeBinTables) > 0 {
 		builder.raw(2, "tabular:")
 		writeSemanticOutputList(builder, 3, "summary_reports", summaryReports, false)
+		writeSemanticOutputList(builder, 3, "monthly", monthlyTables, false)
+		writeSemanticOutputList(builder, 3, "annual", annualTables, false)
+		writeSemanticOutputList(builder, 3, "time_bins", timeBinTables, false)
 		if len(tableStyles) > 0 {
 			builder.raw(3, "style:")
 			for _, item := range tableStyles {
@@ -862,10 +1533,25 @@ func writeSemanticOutputs(builder *semanticYAMLBuilder, ctx *semanticContext) {
 	writeSemanticHeatFlowOutputGroup(builder, 2, variables)
 }
 
-func writeSemanticOutputFileStatus(builder *semanticYAMLBuilder, indent int, key string, source string, enabled bool) {
+func writeSemanticOutputFileStatus(builder *semanticYAMLBuilder, ctx *semanticContext, indent int, key string, requestObjectType string) {
+	controlEnabled, state := semanticOutputControlFilesState(ctx.doc, key)
+	requested := true
+	requestSource := "default"
+	if requestObjectType != "" {
+		requested = semanticOutputObjectExists(ctx.output, requestObjectType)
+		requestSource = requestObjectType
+	}
+	enabled := controlEnabled
+	if requestObjectType != "" {
+		enabled = requested && controlEnabled
+	}
 	builder.raw(indent, key+":")
 	builder.kv(indent+1, "enabled", fmt.Sprintf("%t", enabled))
-	builder.kv(indent+1, "source", source)
+	builder.kv(indent+1, "requested", fmt.Sprintf("%t", requested))
+	builder.kv(indent+1, "disabled", fmt.Sprintf("%t", !controlEnabled))
+	builder.kv(indent+1, "state", state)
+	builder.kv(indent+1, "source", "OutputControl:Files")
+	builder.kv(indent+1, "request_source", requestSource)
 }
 
 func writeSemanticAttachedOutputs(builder *semanticYAMLBuilder, indent int, key string, outputs []OutputObjectSummary) {
@@ -882,12 +1568,17 @@ func writeSemanticOutputList(builder *semanticYAMLBuilder, indent int, key strin
 		switch key {
 		case "wildcard":
 			builder.rawForObject(indent+1, "- request: "+yamlScalar(label), output.ObjectIndex, output.ObjectType, output.ObjectName)
-			builder.kvForObject(indent+2, "scope", "wildcard", output.ObjectIndex, output.ObjectType, output.ObjectName)
+			builder.kvForObject(indent+2, "scope", semanticOutputWildcardFamily(output), output.ObjectIndex, output.ObjectType, output.ObjectName)
+			builder.kvForObject(indent+2, "attachment_resolution", semanticOutputAttachmentResolution(builder.ctx, output), output.ObjectIndex, output.ObjectType, output.ObjectName)
 		case "unresolved":
 			builder.rawForObject(indent+1, "- request: "+yamlScalar(label), output.ObjectIndex, output.ObjectType, output.ObjectName)
+			builder.kvForObject(indent+2, "attachment_resolution", semanticOutputAttachmentResolution(builder.ctx, output), output.ObjectIndex, output.ObjectType, output.ObjectName)
 			builder.kvForObject(indent+2, "reason", "target_key_not_resolved", output.ObjectIndex, output.ObjectType, output.ObjectName)
 		default:
 			builder.rawForObject(indent+1, "- "+yamlScalar(label), output.ObjectIndex, output.ObjectType, output.ObjectName)
+			if strings.EqualFold(output.ObjectType, "Output:Variable") {
+				builder.kvForObject(indent+2, "attachment_resolution", semanticOutputAttachmentResolution(builder.ctx, output), output.ObjectIndex, output.ObjectType, output.ObjectName)
+			}
 		}
 	}
 }
@@ -1047,6 +1738,19 @@ func writeSemanticSourcePreservation(builder *semanticYAMLBuilder, ctx *semantic
 		builder.rawForObject(3, "- object: "+yamlScalar(label), obj.Index, obj.Type, name)
 		builder.kvForObject(4, "source_object_index", fmt.Sprintf("%d", obj.Index), obj.Index, obj.Type, name)
 		builder.kvForObject(4, "unshown_field_count", fmt.Sprintf("%d", count), obj.Index, obj.Type, name)
+		builder.rawForObject(4, "fields:", obj.Index, obj.Type, name)
+		for fieldIndex, field := range obj.Fields {
+			if strings.TrimSpace(field.Value) == "" || ctx.shownFields[obj.Index][fieldIndex] {
+				continue
+			}
+			fieldName := catalogFieldName(obj, fieldIndex)
+			if fieldName == "" {
+				fieldName = field.Comment
+			}
+			builder.rawForObject(5, "- index: "+fmt.Sprintf("%d", fieldIndex), obj.Index, obj.Type, name)
+			builder.kvForObject(6, "name", blankAs(fieldName, fmt.Sprintf("Field %d", fieldIndex+1)), obj.Index, obj.Type, name)
+			builder.kvForObject(6, "value", field.Value, obj.Index, obj.Type, name)
+		}
 	}
 }
 
@@ -1096,6 +1800,16 @@ func semanticObjectsForTypes(doc Document, objectTypes []string) []Object {
 	return objects
 }
 
+func semanticObjectsWithTypePrefix(doc Document, prefix string) []Object {
+	var objects []Object
+	for _, obj := range doc.Objects {
+		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(obj.Type)), strings.ToLower(strings.TrimSpace(prefix))) {
+			objects = append(objects, obj)
+		}
+	}
+	return objects
+}
+
 func semanticMaterialObjects(doc Document) []Object {
 	var objects []Object
 	for _, obj := range doc.Objects {
@@ -1110,11 +1824,26 @@ func semanticFenestrationConstructionObjects(doc Document) []Object {
 	var objects []Object
 	for _, obj := range doc.Objects {
 		lower := strings.ToLower(strings.TrimSpace(obj.Type))
-		if strings.HasPrefix(lower, "construction:") {
+		if strings.HasPrefix(lower, "construction:") && !semanticIsPerformanceConstructionType(lower) {
 			objects = append(objects, obj)
 		}
 	}
 	return objects
+}
+
+func semanticPerformanceConstructionObjects(doc Document) []Object {
+	var objects []Object
+	for _, obj := range doc.Objects {
+		if semanticIsPerformanceConstructionType(strings.ToLower(strings.TrimSpace(obj.Type))) {
+			objects = append(objects, obj)
+		}
+	}
+	return objects
+}
+
+func semanticIsPerformanceConstructionType(lower string) bool {
+	return strings.Contains(lower, "ffactorgroundfloor") ||
+		strings.Contains(lower, "cfactorundergroundwall")
 }
 
 func semanticFieldKeyFromName(name string) string {
@@ -1184,6 +1913,135 @@ func semanticZones(ctx *semanticContext) []GeometryZone {
 	return zones
 }
 
+func semanticZoneObject(ctx *semanticContext, zoneName string) (Object, bool) {
+	for _, obj := range ctx.doc.Objects {
+		if strings.EqualFold(obj.Type, "Zone") && strings.EqualFold(objectName(obj), zoneName) {
+			return obj, true
+		}
+	}
+	return Object{}, false
+}
+
+func semanticZoneObjectIndex(ctx *semanticContext, zoneName string) int {
+	if obj, ok := semanticZoneObject(ctx, zoneName); ok {
+		return obj.Index
+	}
+	return -1
+}
+
+func semanticOutdoorAirSpecsForZone(ctx *semanticContext, zoneName string) []Object {
+	dsoaByName := map[string]Object{}
+	for _, obj := range ctx.doc.Objects {
+		if strings.EqualFold(obj.Type, "DesignSpecification:OutdoorAir") {
+			dsoaByName[normalizeName(objectName(obj))] = obj
+		}
+	}
+	if len(dsoaByName) == 0 {
+		return nil
+	}
+	zoneKey := normalizeName(zoneName)
+	seen := map[int]bool{}
+	var out []Object
+	for _, obj := range ctx.doc.Objects {
+		target, _, ok := semanticFieldValue(obj, "Zone or ZoneList Name", "Zone Name")
+		if !ok {
+			continue
+		}
+		targetMatches := normalizeName(target) == zoneKey
+		if !targetMatches {
+			for _, member := range ctx.zoneLists[normalizeName(target)] {
+				if normalizeName(member) == zoneKey {
+					targetMatches = true
+					break
+				}
+			}
+		}
+		if !targetMatches {
+			continue
+		}
+		for index, field := range obj.Fields {
+			fieldName := catalogFieldName(obj, index)
+			if fieldName == "" {
+				fieldName = field.Comment
+			}
+			normalized := normalizeFieldName(fieldName)
+			if !strings.Contains(normalized, "outdoor air") || !strings.Contains(normalized, "name") {
+				continue
+			}
+			if spec, ok := dsoaByName[normalizeName(field.Value)]; ok && !seen[spec.Index] {
+				seen[spec.Index] = true
+				out = append(out, spec)
+			}
+		}
+	}
+	return out
+}
+
+func writeSemanticSurfaceBoundaryResolution(builder *semanticYAMLBuilder, ctx *semanticContext, indent int, surface GeometrySurface) {
+	if !strings.EqualFold(surface.OutsideBoundary, "Surface") {
+		return
+	}
+	counterpart, _, _ := semanticFieldValue(ctx.objectByIndex[surface.ObjectIndex], "Outside Boundary Condition Object")
+	resolution := "missing"
+	if counterpart != "" {
+		resolution = "one_way"
+		for _, other := range ctx.geometry.Surfaces {
+			if strings.EqualFold(other.Name, counterpart) {
+				reverse, _, _ := semanticFieldValue(ctx.objectByIndex[other.ObjectIndex], "Outside Boundary Condition Object")
+				if strings.EqualFold(reverse, surface.Name) {
+					resolution = "resolved"
+				}
+				break
+			}
+		}
+	}
+	builder.kvForObject(indent, "counterpart", blankAs(counterpart, "missing"), surface.ObjectIndex, surface.Type, surface.Name)
+	builder.kvForObject(indent, "resolution", resolution, surface.ObjectIndex, surface.Type, surface.Name)
+}
+
+func writeSemanticBoundaryExposureValidation(builder *semanticYAMLBuilder, ctx *semanticContext, indent int, surface GeometrySurface) {
+	obj := ctx.objectByIndex[surface.ObjectIndex]
+	sun, _, _ := semanticFieldValue(obj, "Sun Exposure")
+	wind, _, _ := semanticFieldValue(obj, "Wind Exposure")
+	rule := "not_checked"
+	switch strings.ToLower(strings.TrimSpace(surface.OutsideBoundary)) {
+	case "outdoors":
+		if strings.EqualFold(sun, "SunExposed") && strings.EqualFold(wind, "WindExposed") {
+			rule = "ok"
+		} else {
+			rule = "check_outdoors_exposure"
+		}
+	case "surface", "adiabatic", "ground":
+		if strings.EqualFold(sun, "NoSun") && strings.EqualFold(wind, "NoWind") {
+			rule = "ok"
+		} else {
+			rule = "check_non_outdoor_exposure"
+		}
+	}
+	builder.rawForObject(indent, "validation:", surface.ObjectIndex, surface.Type, surface.Name)
+	builder.kvForObject(indent+1, "exposure_rule", rule, surface.ObjectIndex, surface.Type, surface.Name)
+}
+
+func semanticBaseSurfaceResolution(ctx *semanticContext, window GeometryWindow) string {
+	if window.BaseSurfaceName == "" {
+		return "missing"
+	}
+	matches := 0
+	for _, surface := range ctx.geometry.Surfaces {
+		if strings.EqualFold(surface.Name, window.BaseSurfaceName) {
+			matches++
+		}
+	}
+	switch matches {
+	case 0:
+		return "missing"
+	case 1:
+		return "resolved"
+	default:
+		return "ambiguous"
+	}
+}
+
 func semanticFieldByNames(builder *semanticYAMLBuilder, indent int, key string, obj Object, fallback string, names ...string) {
 	if value, fieldIndex, ok := semanticFieldValue(obj, names...); ok {
 		builder.fieldKV(indent, key, value, obj.Index, obj.Type, objectName(obj), fieldIndex)
@@ -1194,11 +2052,11 @@ func semanticFieldByNames(builder *semanticYAMLBuilder, indent int, key string, 
 	}
 }
 
-func semanticScheduleReferences(obj Object) []string {
+func semanticScheduleReferences(obj Object) []semanticScheduleUse {
 	if strings.HasPrefix(strings.ToLower(obj.Type), "schedule:") {
 		return nil
 	}
-	var refs []string
+	var refs []semanticScheduleUse
 	for index, field := range obj.Fields {
 		value := strings.TrimSpace(field.Value)
 		if value == "" {
@@ -1210,10 +2068,14 @@ func semanticScheduleReferences(obj Object) []string {
 		}
 		normalized := normalizeFieldName(fieldName)
 		if strings.Contains(normalized, "schedule") && strings.Contains(normalized, "name") {
-			refs = append(refs, value)
+			refs = append(refs, semanticScheduleUse{
+				ScheduleName: value,
+				Field:        blankAs(fieldName, fmt.Sprintf("Field %d", index+1)),
+				Role:         catalogFieldRole(obj, index),
+			})
 		}
 	}
-	return sortedUniqueStrings(refs)
+	return sortedSemanticScheduleUses(refs)
 }
 
 func semanticObjectReferencePath(obj Object) string {
@@ -1233,6 +2095,37 @@ func semanticObjectReferencePath(obj Object) string {
 		return strings.ToLower(obj.Type) + "/" + name
 	}
 	return strings.ToLower(obj.Type) + "/object-" + fmt.Sprintf("%d", obj.Index)
+}
+
+func semanticObjectLabel(obj Object) string {
+	name := objectName(obj)
+	if name == "" {
+		return obj.Type
+	}
+	return obj.Type + " " + name
+}
+
+func sortedSemanticScheduleUses(values []semanticScheduleUse) []semanticScheduleUse {
+	seen := map[string]bool{}
+	out := make([]semanticScheduleUse, 0, len(values))
+	for _, value := range values {
+		key := normalizeName(value.ScheduleName) + "|" + value.Path + "|" + value.Field + "|" + value.Object
+		if seen[key] || strings.TrimSpace(value.ScheduleName) == "" {
+			continue
+		}
+		seen[key] = true
+		if value.Role == "" {
+			value.Role = "schedule_ref"
+		}
+		out = append(out, value)
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].Path != out[j].Path {
+			return out[i].Path < out[j].Path
+		}
+		return out[i].Field < out[j].Field
+	})
+	return out
 }
 
 func semanticAirExchangeBucket(bucket string) bool {
@@ -1255,12 +2148,40 @@ func semanticListMembers(obj Object) []string {
 	return sortedUniqueStrings(values)
 }
 
+func semanticSpaceFromObject(obj Object) semanticSpace {
+	name := objectName(obj)
+	zoneName, _, _ := semanticFieldValue(obj, "Zone Name")
+	floorArea, _, _ := semanticFieldValue(obj, "Floor Area")
+	volume, _, _ := semanticFieldValue(obj, "Volume")
+	spaceType, _, _ := semanticFieldValue(obj, "Space Type")
+	return semanticSpace{
+		Name:        name,
+		ZoneName:    zoneName,
+		Source:      "idf_object",
+		ObjectIndex: obj.Index,
+		FloorArea:   floorArea,
+		Volume:      volume,
+		SpaceType:   spaceType,
+	}
+}
+
 func semanticZoneTargets(ctx *semanticContext, target string) []string {
 	target = strings.TrimSpace(target)
 	if target == "" {
 		return nil
 	}
 	if members := ctx.zoneLists[normalizeName(target)]; len(members) > 0 {
+		return members
+	}
+	return []string{target}
+}
+
+func semanticSpaceTargets(ctx *semanticContext, target string) []string {
+	target = strings.TrimSpace(target)
+	if target == "" {
+		return nil
+	}
+	if members := ctx.spaceLists[normalizeName(target)]; len(members) > 0 {
 		return members
 	}
 	return []string{target}
@@ -1345,6 +2266,11 @@ func semanticFallbackFieldIndexes(objectType string, names ...string) []int {
 }
 
 func semanticZoneAttachment(obj Object) (string, string, bool) {
+	targetName, _, bucket, ok := semanticTargetAttachment(nil, obj)
+	return targetName, bucket, ok
+}
+
+func semanticTargetAttachment(ctx *semanticContext, obj Object) (string, string, string, bool) {
 	bucket := ""
 	switch lower := strings.ToLower(obj.Type); {
 	case lower == "people":
@@ -1355,6 +2281,18 @@ func semanticZoneAttachment(obj Object) (string, string, bool) {
 		bucket = "electric_equipment"
 	case lower == "gasequipment":
 		bucket = "gas_equipment"
+	case lower == "hotwaterequipment":
+		bucket = "hot_water_equipment"
+	case lower == "steamequipment":
+		bucket = "steam_equipment"
+	case lower == "otherequipment":
+		bucket = "other_equipment"
+	case lower == "internalmass":
+		bucket = "internal_mass"
+	case lower == "zonecapacitancemultiplier:researchspecial":
+		bucket = "thermal_capacitance"
+	case lower == "zoneairmassflowconservation":
+		bucket = "air_balance"
 	case strings.HasPrefix(lower, "zoneinfiltration:"):
 		bucket = "infiltration"
 	case strings.HasPrefix(lower, "zoneventilation:"):
@@ -1364,10 +2302,30 @@ func semanticZoneAttachment(obj Object) (string, string, bool) {
 	case strings.HasPrefix(lower, "zonecrossmixing"):
 		bucket = "cross_mixing"
 	default:
-		return "", "", false
+		return "", "", "", false
 	}
-	zoneName, _, ok := semanticFieldValue(obj, "Zone or ZoneList Name", "Zone Name")
-	return zoneName, bucket, ok
+	targetName, _, ok := semanticFieldValue(obj,
+		"Zone or ZoneList or Space or SpaceList Name",
+		"Zone or ZoneList Name",
+		"Space or SpaceList Name",
+		"Zone Name",
+		"Space Name",
+	)
+	if !ok {
+		return "", "", "", false
+	}
+	targetKind := "zone"
+	if ctx != nil {
+		switch {
+		case len(ctx.spaceLists[normalizeName(targetName)]) > 0:
+			targetKind = "space_list"
+		case ctx.spaceByName[normalizeName(targetName)].Name != "":
+			targetKind = "space"
+		case len(ctx.zoneLists[normalizeName(targetName)]) > 0:
+			targetKind = "zone_list"
+		}
+	}
+	return targetName, targetKind, bucket, true
 }
 
 func semanticControlZone(obj Object) string {
@@ -1468,6 +2426,11 @@ func semanticOutputObjectExists(report OutputReport, objectType string) bool {
 }
 
 func semanticOutputControlFilesEnabled(doc Document, fileKind string) bool {
+	enabled, _ := semanticOutputControlFilesState(doc, fileKind)
+	return enabled
+}
+
+func semanticOutputControlFilesState(doc Document, fileKind string) (bool, string) {
 	for _, obj := range doc.Objects {
 		if !strings.EqualFold(obj.Type, "OutputControl:Files") {
 			continue
@@ -1481,10 +2444,21 @@ func semanticOutputControlFilesEnabled(doc Document, fileKind string) bool {
 			if name != wanted && !strings.Contains(name, normalizeFieldName(fileKind)) {
 				continue
 			}
-			return semanticYesNoValue(field.Value)
+			return semanticYesNoValue(field.Value), "explicit"
 		}
 	}
-	return false
+	return semanticOutputControlFilesDefault(fileKind), "default"
+}
+
+func semanticOutputControlFilesDefault(fileKind string) bool {
+	switch strings.ToLower(strings.TrimSpace(fileKind)) {
+	case "csv":
+		return false
+	case "mtr", "eso", "eio", "tabular", "sqlite", "json":
+		return true
+	default:
+		return false
+	}
 }
 
 func semanticYesNoValue(value string) bool {
@@ -1507,6 +2481,39 @@ func semanticOutputTargetExists(ctx *semanticContext, keyValue string) bool {
 		}
 	}
 	return false
+}
+
+func semanticOutputAttachmentResolution(ctx *semanticContext, output OutputObjectSummary) string {
+	key := strings.TrimSpace(output.KeyValue)
+	if key == "" || key == "*" {
+		if key == "*" {
+			return semanticOutputWildcardFamily(output)
+		}
+		return "wildcard"
+	}
+	if strings.EqualFold(key, "Environment") || strings.EqualFold(key, "Environment:*") {
+		return "environment"
+	}
+	if ctx != nil && semanticOutputTargetExists(ctx, key) {
+		return "resolved"
+	}
+	return "unresolved_after_rdd"
+}
+
+func semanticOutputWildcardFamily(output OutputObjectSummary) string {
+	name := strings.ToLower(strings.TrimSpace(output.VariableName))
+	switch {
+	case strings.Contains(name, "zone "):
+		return "zone_wildcard"
+	case strings.Contains(name, "system node") || strings.Contains(name, " node "):
+		return "node_wildcard"
+	case strings.Contains(name, "surface"):
+		return "surface_wildcard"
+	case strings.Contains(name, "equipment"):
+		return "equipment_wildcard"
+	default:
+		return "unknown_wildcard"
+	}
 }
 
 func semanticOutputLabel(output OutputObjectSummary, includeTarget bool) string {
@@ -1537,7 +2544,50 @@ func writeSemanticHeatFlowOutputGroup(builder *semanticYAMLBuilder, indent int, 
 	builder.raw(indent, "groups:")
 	builder.raw(indent+1, "heat_flow_ledger:")
 	builder.kv(indent+2, "frequency", standardHeatFlowFrequency)
+	completeness, missing, consistent := semanticHeatFlowLedgerCompleteness(heatFlow)
+	builder.kv(indent+2, "completeness", completeness)
+	builder.kv(indent+2, "frequency_consistent", fmt.Sprintf("%t", consistent))
+	if len(missing) > 0 {
+		builder.raw(indent+2, "missing_variables:")
+		for _, variable := range missing {
+			builder.raw(indent+3, "- "+yamlScalar(variable))
+		}
+	}
 	writeSemanticOutputList(builder, indent+2, "variables", heatFlow, false)
+}
+
+func semanticHeatFlowLedgerCompleteness(variables []OutputObjectSummary) (string, []string, bool) {
+	required := []string{
+		"Zone Air Heat Balance Internal Convective Heat Gain Rate",
+		"Zone Air Heat Balance Surface Convection Rate",
+		"Zone Air Heat Balance Interzone Air Transfer Rate",
+		"Zone Air Heat Balance Outdoor Air Transfer Rate",
+		"Zone Air Heat Balance System Air Transfer Rate",
+		"Zone Air Heat Balance System Convective Heat Gain Rate",
+		"Zone Air Heat Balance Air Energy Storage Rate",
+		"Zone Air Heat Balance Deviation Rate",
+	}
+	seen := map[string]bool{}
+	consistent := true
+	for _, variable := range variables {
+		seen[normalizeName(variable.VariableName)] = true
+		if variable.ReportingFrequency != "" && !strings.EqualFold(variable.ReportingFrequency, standardHeatFlowFrequency) {
+			consistent = false
+		}
+	}
+	var missing []string
+	for _, variable := range required {
+		if !seen[normalizeName(variable)] {
+			missing = append(missing, variable)
+		}
+	}
+	if len(missing) == 0 && consistent {
+		return "complete", nil, true
+	}
+	if len(missing) < len(required) {
+		return "partial", missing, consistent
+	}
+	return "incomplete", missing, consistent
 }
 
 func semanticSectionForType(objectType string) string {
@@ -1566,9 +2616,14 @@ func semanticSectionForType(objectType string) string {
 	case lower == "zone" ||
 		lower == "space" ||
 		strings.Contains(lower, "surface") ||
+		strings.HasPrefix(lower, "wall:") ||
+		lower == "window" ||
+		lower == "door" ||
 		lower == "people" ||
 		lower == "lights" ||
 		strings.Contains(lower, "equipment") ||
+		lower == "internalmass" ||
+		strings.HasPrefix(lower, "designspecification:outdoorair") ||
 		strings.HasPrefix(lower, "zoneinfiltration:") ||
 		strings.HasPrefix(lower, "zoneventilation:") ||
 		strings.HasPrefix(lower, "zonecontrol:") ||
@@ -1577,6 +2632,7 @@ func semanticSectionForType(objectType string) string {
 	case strings.Contains(lower, "hvac") ||
 		strings.HasPrefix(lower, "airloop") ||
 		strings.HasPrefix(lower, "plantloop") ||
+		strings.HasPrefix(lower, "condenserloop") ||
 		strings.HasPrefix(lower, "branch") ||
 		strings.HasPrefix(lower, "connector") ||
 		strings.HasPrefix(lower, "node") ||
@@ -1589,6 +2645,8 @@ func semanticSectionForType(objectType string) string {
 		strings.HasPrefix(lower, "setpointmanager:") ||
 		strings.HasPrefix(lower, "pipe:"):
 		return "hvac"
+	case strings.HasPrefix(lower, "airflownetwork:"):
+		return "airflows"
 	case strings.HasPrefix(lower, "output:") ||
 		strings.HasPrefix(lower, "outputcontrol:") ||
 		strings.HasPrefix(lower, "meter:"):

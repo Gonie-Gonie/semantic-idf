@@ -8,15 +8,18 @@ import (
 )
 
 type GeometryReport struct {
-	Zones         []GeometryZone         `json:"zones"`
-	Surfaces      []GeometrySurface      `json:"surfaces"`
-	Windows       []GeometryWindow       `json:"windows"`
-	Constructions []GeometryConstruction `json:"constructions,omitempty"`
-	Stories       []GeometryStory        `json:"stories"`
-	Bounds        GeometryBounds         `json:"bounds"`
-	ZoneCount     int                    `json:"zoneCount"`
-	SurfaceCount  int                    `json:"surfaceCount"`
-	WindowCount   int                    `json:"windowCount"`
+	Zones                  []GeometryZone         `json:"zones"`
+	Surfaces               []GeometrySurface      `json:"surfaces"`
+	Windows                []GeometryWindow       `json:"windows"`
+	Constructions          []GeometryConstruction `json:"constructions,omitempty"`
+	Stories                []GeometryStory        `json:"stories"`
+	Bounds                 GeometryBounds         `json:"bounds"`
+	CoordinateSystem       string                 `json:"coordinateSystem,omitempty"`
+	VertexEntryDirection   string                 `json:"vertexEntryDirection,omitempty"`
+	StartingVertexPosition string                 `json:"startingVertexPosition,omitempty"`
+	ZoneCount              int                    `json:"zoneCount"`
+	SurfaceCount           int                    `json:"surfaceCount"`
+	WindowCount            int                    `json:"windowCount"`
 }
 
 type GeometryZone struct {
@@ -41,6 +44,7 @@ type GeometrySurface struct {
 	Type            string           `json:"type"`
 	SurfaceType     string           `json:"surfaceType"`
 	ZoneName        string           `json:"zoneName"`
+	SpaceName       string           `json:"spaceName,omitempty"`
 	Construction    string           `json:"construction"`
 	OutsideBoundary string           `json:"outsideBoundary"`
 	StoryIndex      int              `json:"storyIndex"`
@@ -50,27 +54,31 @@ type GeometrySurface struct {
 	MinZ            float64          `json:"minZ"`
 	MaxZ            float64          `json:"maxZ"`
 	Vertices        []GeometryPoint  `json:"vertices"`
+	VerticesSource  string           `json:"verticesSource"`
 	Metrics         []GeometryMetric `json:"metrics"`
 	Fields          []Field          `json:"fields"`
 }
 
 type GeometryWindow struct {
-	ID              string           `json:"id"`
-	ObjectIndex     int              `json:"objectIndex"`
-	Name            string           `json:"name"`
-	Type            string           `json:"type"`
-	SurfaceType     string           `json:"surfaceType"`
-	Construction    string           `json:"construction,omitempty"`
-	BaseSurfaceID   string           `json:"baseSurfaceId,omitempty"`
-	BaseSurfaceName string           `json:"baseSurfaceName"`
-	ZoneName        string           `json:"zoneName,omitempty"`
-	StoryIndex      int              `json:"storyIndex"`
-	Area            float64          `json:"area"`
-	Azimuth         float64          `json:"azimuth"`
-	Orientation     string           `json:"orientation"`
-	Vertices        []GeometryPoint  `json:"vertices"`
-	Metrics         []GeometryMetric `json:"metrics"`
-	Fields          []Field          `json:"fields"`
+	ID                     string           `json:"id"`
+	ObjectIndex            int              `json:"objectIndex"`
+	Name                   string           `json:"name"`
+	Type                   string           `json:"type"`
+	SurfaceType            string           `json:"surfaceType"`
+	Construction           string           `json:"construction,omitempty"`
+	BaseSurfaceID          string           `json:"baseSurfaceId,omitempty"`
+	BaseSurfaceName        string           `json:"baseSurfaceName"`
+	ZoneName               string           `json:"zoneName,omitempty"`
+	StoryIndex             int              `json:"storyIndex"`
+	Area                   float64          `json:"area"`
+	AreaIncludesMultiplier bool             `json:"areaIncludesMultiplier"`
+	Multiplier             float64          `json:"multiplier,omitempty"`
+	Azimuth                float64          `json:"azimuth"`
+	Orientation            string           `json:"orientation"`
+	Vertices               []GeometryPoint  `json:"vertices"`
+	VerticesSource         string           `json:"verticesSource"`
+	Metrics                []GeometryMetric `json:"metrics"`
+	Fields                 []Field          `json:"fields"`
 }
 
 type GeometryStory struct {
@@ -134,18 +142,22 @@ type GeometryMaterialLayer struct {
 }
 
 type geometryContext struct {
-	buildingNorthAxis    float64
-	hasBuildingNorthAxis bool
-	vertexEntryDirection string
-	zoneDirections       map[string]float64
-	zoneMultipliers      map[string]float64
+	buildingNorthAxis      float64
+	hasBuildingNorthAxis   bool
+	coordinateSystem       string
+	startingVertexPosition string
+	vertexEntryDirection   string
+	zoneDirections         map[string]float64
+	zoneMultipliers        map[string]float64
 }
 
 func AnalyzeGeometry(doc Document) GeometryReport {
 	ctx := geometryContext{
-		vertexEntryDirection: "counterclockwise",
-		zoneDirections:       map[string]float64{},
-		zoneMultipliers:      map[string]float64{},
+		coordinateSystem:       "relative",
+		startingVertexPosition: "upperleftcorner",
+		vertexEntryDirection:   "counterclockwise",
+		zoneDirections:         map[string]float64{},
+		zoneMultipliers:        map[string]float64{},
 	}
 	report := GeometryReport{}
 	zoneByName := map[string]int{}
@@ -160,6 +172,16 @@ func AnalyzeGeometry(doc Document) GeometryReport {
 		case strings.EqualFold(obj.Type, "GlobalGeometryRules"):
 			if value := findFieldByCommentWords(obj, "vertex", "entry", "direction"); value != "" {
 				ctx.vertexEntryDirection = strings.ToLower(strings.TrimSpace(value))
+			}
+			if value := findFieldByCommentWords(obj, "coordinate", "system"); value != "" {
+				ctx.coordinateSystem = strings.ToLower(strings.TrimSpace(value))
+			} else if len(obj.Fields) > 2 && strings.TrimSpace(obj.Fields[2].Value) != "" {
+				ctx.coordinateSystem = strings.ToLower(strings.TrimSpace(obj.Fields[2].Value))
+			}
+			if value := findFieldByCommentWords(obj, "starting", "vertex", "position"); value != "" {
+				ctx.startingVertexPosition = strings.ToLower(strings.TrimSpace(value))
+			} else if len(obj.Fields) > 0 && strings.TrimSpace(obj.Fields[0].Value) != "" {
+				ctx.startingVertexPosition = strings.ToLower(strings.TrimSpace(obj.Fields[0].Value))
 			}
 		case strings.EqualFold(obj.Type, "Zone"):
 			zone := geometryZoneFromObject(obj)
@@ -213,6 +235,9 @@ func AnalyzeGeometry(doc Document) GeometryReport {
 	report.finalizeZones()
 	report.assignStories()
 	report.Constructions = geometryConstructionsFromDocument(doc)
+	report.CoordinateSystem = ctx.coordinateSystem
+	report.VertexEntryDirection = ctx.vertexEntryDirection
+	report.StartingVertexPosition = ctx.startingVertexPosition
 	report.ZoneCount = len(report.Zones)
 	report.SurfaceCount = len(report.Surfaces)
 	report.WindowCount = len(report.Windows)
@@ -246,7 +271,9 @@ func geometrySurfaceFromObject(obj Object, ctx geometryContext) (GeometrySurface
 	if !ok {
 		return GeometrySurface{}, false
 	}
-	zoneName := findFieldByCommentWords(obj, "zone", "name")
+	zoneName := semanticGeometryFieldValue(obj, 3, "Zone Name")
+	spaceName := semanticGeometrySpaceName(obj)
+	outsideBoundary := semanticGeometryOutsideBoundary(obj)
 	area *= zoneMultiplierFor(ctx.zoneMultipliers, zoneName)
 	points := geometryPoints(vertices)
 	minZ, maxZ, _ := verticesZStats(vertices)
@@ -263,8 +290,9 @@ func geometrySurfaceFromObject(obj Object, ctx geometryContext) (GeometrySurface
 		Type:            obj.Type,
 		SurfaceType:     surfaceType,
 		ZoneName:        zoneName,
+		SpaceName:       spaceName,
 		Construction:    findFieldByCommentWords(obj, "construction", "name"),
-		OutsideBoundary: findFieldByCommentWords(obj, "outside", "boundary", "condition"),
+		OutsideBoundary: outsideBoundary,
 		StoryIndex:      -1,
 		Area:            roundedNumber(area, 3),
 		Azimuth:         roundedNumber(azimuth, 2),
@@ -272,6 +300,7 @@ func geometrySurfaceFromObject(obj Object, ctx geometryContext) (GeometrySurface
 		MinZ:            roundedNumber(minZ, 3),
 		MaxZ:            roundedNumber(maxZ, 3),
 		Vertices:        points,
+		VerticesSource:  "computed_geometry",
 		Fields:          append([]Field(nil), obj.Fields...),
 	}
 	surface.Metrics = []GeometryMetric{
@@ -312,21 +341,24 @@ func geometryWindowFromObject(obj Object, ctx geometryContext, surfaces map[stri
 		orientation = orientationFromAzimuth(azimuth)
 	}
 	window := GeometryWindow{
-		ID:              "window-" + strconv.Itoa(obj.Index),
-		ObjectIndex:     obj.Index,
-		Name:            objectName(obj),
-		Type:            obj.Type,
-		SurfaceType:     fenestrationSurfaceType(obj),
-		Construction:    findFieldByCommentWords(obj, "construction", "name"),
-		BaseSurfaceID:   base.ID,
-		BaseSurfaceName: baseName,
-		ZoneName:        base.ZoneName,
-		StoryIndex:      -1,
-		Area:            roundedNumber(area, 3),
-		Azimuth:         roundedNumber(azimuth, 2),
-		Orientation:     orientation,
-		Vertices:        geometryPoints(vertices),
-		Fields:          append([]Field(nil), obj.Fields...),
+		ID:                     "window-" + strconv.Itoa(obj.Index),
+		ObjectIndex:            obj.Index,
+		Name:                   objectName(obj),
+		Type:                   obj.Type,
+		SurfaceType:            fenestrationSurfaceType(obj),
+		Construction:           findFieldByCommentWords(obj, "construction", "name"),
+		BaseSurfaceID:          base.ID,
+		BaseSurfaceName:        baseName,
+		ZoneName:               base.ZoneName,
+		StoryIndex:             -1,
+		Area:                   roundedNumber(area, 3),
+		AreaIncludesMultiplier: multiplier != 1,
+		Multiplier:             multiplier,
+		Azimuth:                roundedNumber(azimuth, 2),
+		Orientation:            orientation,
+		Vertices:               geometryPoints(vertices),
+		VerticesSource:         "computed_geometry",
+		Fields:                 append([]Field(nil), obj.Fields...),
 	}
 	window.Metrics = []GeometryMetric{
 		geometryMetric("Area", window.Area, "m2", 2),
@@ -335,6 +367,57 @@ func geometryWindowFromObject(obj Object, ctx geometryContext, surfaces map[stri
 		geometryMetric("Multiplier", multiplier, "", 2),
 	}
 	return window, true
+}
+
+func semanticGeometryFieldValue(obj Object, fallbackIndex int, names ...string) string {
+	if value := fieldValueByCatalogName(obj, names...); value != "" {
+		return value
+	}
+	for _, name := range names {
+		words := strings.Fields(strings.ToLower(strings.ReplaceAll(name, "-", " ")))
+		if value := findFieldByCommentWords(obj, words...); value != "" {
+			return value
+		}
+	}
+	if fallbackIndex >= 0 && fallbackIndex < len(obj.Fields) {
+		return strings.TrimSpace(obj.Fields[fallbackIndex].Value)
+	}
+	return ""
+}
+
+func semanticGeometrySpaceName(obj Object) string {
+	value := fieldValueByCatalogName(obj, "Space Name")
+	if value == "" {
+		value = findFieldByCommentWords(obj, "space", "name")
+	}
+	if isSurfaceBoundaryCondition(value) {
+		return ""
+	}
+	return strings.TrimSpace(value)
+}
+
+func semanticGeometryOutsideBoundary(obj Object) string {
+	if value := findFieldByCommentWords(obj, "outside", "boundary", "condition"); value != "" {
+		return value
+	}
+	if value := fieldValueByCatalogName(obj, "Outside Boundary Condition"); value != "" && isSurfaceBoundaryCondition(value) {
+		return value
+	}
+	for _, index := range []int{4, 5} {
+		if index < len(obj.Fields) && isSurfaceBoundaryCondition(obj.Fields[index].Value) {
+			return strings.TrimSpace(obj.Fields[index].Value)
+		}
+	}
+	return ""
+}
+
+func isSurfaceBoundaryCondition(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "outdoors", "ground", "surface", "adiabatic", "zone", "otherzone", "other side coefficients", "othersidecoefficients", "other side conditions model", "othersideconditionsmodel":
+		return true
+	default:
+		return false
+	}
 }
 
 func geometryAzimuth(obj Object, vertices []point3, zoneName string, ctx geometryContext) (float64, bool) {

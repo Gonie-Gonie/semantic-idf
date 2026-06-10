@@ -99,7 +99,7 @@ func AnalyzeOutput(doc Document) OutputReport {
 					Value:       summary.ReportingFrequency,
 				})
 			}
-		case "output:meter", "output:meter:meterfileonly":
+		case "output:meter", "output:meter:meterfileonly", "output:meter:cumulative", "output:meter:cumulativemeterfileonly":
 			report.MeterCount++
 		default:
 			report.ControlCount++
@@ -139,7 +139,7 @@ func outputObjectSummaryText(summary OutputObjectSummary, fields []OutputFieldVa
 	switch strings.ToLower(summary.ObjectType) {
 	case "output:variable":
 		return strings.TrimSpace(fmt.Sprintf("%s / %s / %s", blankAsWildcard(summary.KeyValue), summary.VariableName, summary.ReportingFrequency))
-	case "output:meter", "output:meter:meterfileonly":
+	case "output:meter", "output:meter:meterfileonly", "output:meter:cumulative", "output:meter:cumulativemeterfileonly":
 		return strings.TrimSpace(fmt.Sprintf("%s / %s", summary.KeyValue, summary.ReportingFrequency))
 	default:
 		values := make([]string, 0, len(fields))
@@ -384,13 +384,13 @@ func outputCategory(objectType string) string {
 	switch strings.ToLower(strings.TrimSpace(objectType)) {
 	case "output:variable":
 		return "variables"
-	case "output:meter", "output:meter:meterfileonly":
+	case "output:meter", "output:meter:meterfileonly", "output:meter:cumulative", "output:meter:cumulativemeterfileonly":
 		return "meters"
 	case "output:variabledictionary":
 		return "dictionary"
 	case "output:sqlite", "output:json", "outputcontrol:files":
 		return "files"
-	case "output:table:summaryreports", "outputcontrol:table:style":
+	case "output:table:summaryreports", "output:table:monthly", "output:table:annual", "output:table:timebins", "outputcontrol:table:style":
 		return "tabular"
 	case "output:diagnostics":
 		return "diagnostics"

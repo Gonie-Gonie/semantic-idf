@@ -14,11 +14,11 @@ The release script infers bump size from these sections:
 
 ## Added
 
-- _None._
+- Semantic YAML now exposes EnergyPlus compatibility adapter metadata, split ZoneList/SpaceList/ZoneGroup views, zone Spaces, richer output attachment resolution, and expanded HVAC loop metadata.
 
 ## Changed
 
-- _None._
+- HVAC analysis now treats Branch components as EP26-style 4-field groups by default and includes CondenserLoop, connector/branch rule diagnostics, and ZoneHVAC equipment sequence metadata.
 
 ## Fixed
 

@@ -10,6 +10,7 @@ type HVACReport struct {
 	LoopCount           int                      `json:"loopCount"`
 	AirLoopCount        int                      `json:"airLoopCount"`
 	PlantLoopCount      int                      `json:"plantLoopCount"`
+	CondenserLoopCount  int                      `json:"condenserLoopCount"`
 	ZoneRelationCount   int                      `json:"zoneRelationCount"`
 	NodeCount           int                      `json:"nodeCount"`
 	WarningCount        int                      `json:"warningCount"`
@@ -18,19 +19,23 @@ type HVACReport struct {
 	NodeUsages          []HVACNodeUsage          `json:"nodeUsages"`
 	NodeOutputVariables []HVACNodeOutputVariable `json:"nodeOutputVariables,omitempty"`
 	NodeOutputMonitors  []HVACNodeOutputMonitor  `json:"nodeOutputMonitors,omitempty"`
+	NodeEdges           []HVACNodeEdge           `json:"nodeEdges,omitempty"`
 	Warnings            []HVACWarning            `json:"warnings"`
 }
 
 type HVACLoop struct {
-	ID           string                  `json:"id"`
-	Type         string                  `json:"type"`
-	Name         string                  `json:"name"`
-	ObjectIndex  int                     `json:"objectIndex"`
-	SupplySide   HVACLoopSide            `json:"supplySide"`
-	DemandSide   HVACLoopSide            `json:"demandSide"`
-	RelatedZones []string                `json:"relatedZones,omitempty"`
-	RelatedLoops []HVACCrossLoopRelation `json:"relatedLoops,omitempty"`
-	Warnings     []HVACWarning           `json:"warnings,omitempty"`
+	ID                      string                  `json:"id"`
+	Type                    string                  `json:"type"`
+	Name                    string                  `json:"name"`
+	ObjectIndex             int                     `json:"objectIndex"`
+	OperationScheme         string                  `json:"operationScheme,omitempty"`
+	AvailabilityManagerList string                  `json:"availabilityManagerList,omitempty"`
+	SetpointNode            string                  `json:"setpointNode,omitempty"`
+	SupplySide              HVACLoopSide            `json:"supplySide"`
+	DemandSide              HVACLoopSide            `json:"demandSide"`
+	RelatedZones            []string                `json:"relatedZones,omitempty"`
+	RelatedLoops            []HVACCrossLoopRelation `json:"relatedLoops,omitempty"`
+	Warnings                []HVACWarning           `json:"warnings,omitempty"`
 }
 
 type HVACLoopSide struct {
@@ -55,21 +60,26 @@ type HVACBranch struct {
 }
 
 type HVACComponent struct {
-	ObjectType       string          `json:"objectType"`
-	ObjectName       string          `json:"objectName"`
-	ObjectIndex      int             `json:"objectIndex,omitempty"`
-	Exists           bool            `json:"exists"`
-	LoopName         string          `json:"loopName,omitempty"`
-	ControlType      string          `json:"controlType,omitempty"`
-	InletNode        string          `json:"inletNode,omitempty"`
-	OutletNode       string          `json:"outletNode,omitempty"`
-	WaterInletNode   string          `json:"waterInletNode,omitempty"`
-	WaterOutletNode  string          `json:"waterOutletNode,omitempty"`
-	InletFieldIndex  int             `json:"inletFieldIndex,omitempty"`
-	OutletFieldIndex int             `json:"outletFieldIndex,omitempty"`
-	NodeUsages       []HVACNodeUsage `json:"nodeUsages,omitempty"`
-	RelatedLoopNames []string        `json:"relatedLoopNames,omitempty"`
-	EditableFields   []HVACEditField `json:"editableFields,omitempty"`
+	ObjectType              string          `json:"objectType"`
+	ObjectName              string          `json:"objectName"`
+	ObjectIndex             int             `json:"objectIndex,omitempty"`
+	Exists                  bool            `json:"exists"`
+	LoopName                string          `json:"loopName,omitempty"`
+	ControlType             string          `json:"controlType,omitempty"`
+	InletNode               string          `json:"inletNode,omitempty"`
+	OutletNode              string          `json:"outletNode,omitempty"`
+	WaterInletNode          string          `json:"waterInletNode,omitempty"`
+	WaterOutletNode         string          `json:"waterOutletNode,omitempty"`
+	InletFieldIndex         int             `json:"inletFieldIndex,omitempty"`
+	OutletFieldIndex        int             `json:"outletFieldIndex,omitempty"`
+	RoleHere                string          `json:"roleHere,omitempty"`
+	CoolingSequence         string          `json:"coolingSequence,omitempty"`
+	HeatingSequence         string          `json:"heatingSequence,omitempty"`
+	CoolingFractionSchedule string          `json:"coolingFractionSchedule,omitempty"`
+	HeatingFractionSchedule string          `json:"heatingFractionSchedule,omitempty"`
+	NodeUsages              []HVACNodeUsage `json:"nodeUsages,omitempty"`
+	RelatedLoopNames        []string        `json:"relatedLoopNames,omitempty"`
+	EditableFields          []HVACEditField `json:"editableFields,omitempty"`
 }
 
 type HVACConnector struct {
@@ -93,9 +103,19 @@ type HVACNodeUsage struct {
 	Role        string `json:"role"`
 }
 
+type HVACNodeEdge struct {
+	NodeName      string `json:"nodeName"`
+	FromComponent string `json:"fromComponent,omitempty"`
+	FromNode      string `json:"fromNode,omitempty"`
+	ToNode        string `json:"toNode,omitempty"`
+	ToComponent   string `json:"toComponent,omitempty"`
+	Direction     string `json:"direction"`
+}
+
 type HVACZoneChain struct {
 	ZoneName        string            `json:"zoneName"`
 	ZoneObjectIndex int               `json:"zoneObjectIndex,omitempty"`
+	Nodes           HVACZoneNodes     `json:"nodes,omitempty"`
 	AirLoopNames    []string          `json:"airLoopNames,omitempty"`
 	TerminalUnits   []HVACComponent   `json:"terminalUnits,omitempty"`
 	ZoneEquipment   []HVACComponent   `json:"zoneEquipment,omitempty"`
@@ -105,14 +125,23 @@ type HVACZoneChain struct {
 	Warnings        []HVACWarning     `json:"warnings,omitempty"`
 }
 
+type HVACZoneNodes struct {
+	AirNode      string   `json:"airNode,omitempty"`
+	InletNodes   []string `json:"inletNodes,omitempty"`
+	ExhaustNodes []string `json:"exhaustNodes,omitempty"`
+	ReturnNodes  []string `json:"returnNodes,omitempty"`
+}
+
 type HVACServicePath struct {
-	ZoneName        string `json:"zoneName"`
-	TerminalName    string `json:"terminalName,omitempty"`
-	AirLoopName     string `json:"airLoopName,omitempty"`
-	Component       string `json:"component,omitempty"`
-	PlantLoop       string `json:"plantLoop,omitempty"`
-	SourceComponent string `json:"sourceComponent,omitempty"`
-	Evidence        string `json:"evidence,omitempty"`
+	ZoneName        string   `json:"zoneName"`
+	TerminalName    string   `json:"terminalName,omitempty"`
+	AirLoopName     string   `json:"airLoopName,omitempty"`
+	Component       string   `json:"component,omitempty"`
+	PlantLoop       string   `json:"plantLoop,omitempty"`
+	SourceComponent string   `json:"sourceComponent,omitempty"`
+	Confidence      string   `json:"confidence,omitempty"`
+	Evidence        string   `json:"evidence,omitempty"`
+	SourceRelations []string `json:"sourceRelations,omitempty"`
 }
 
 type HVACCrossLoopRelation struct {
@@ -123,16 +152,19 @@ type HVACCrossLoopRelation struct {
 }
 
 type HVACWarning struct {
-	Severity    string `json:"severity"`
-	Category    string `json:"category"`
-	Code        string `json:"code"`
-	Message     string `json:"message"`
-	ObjectIndex int    `json:"objectIndex,omitempty"`
-	ObjectType  string `json:"objectType,omitempty"`
-	ObjectName  string `json:"objectName,omitempty"`
-	FieldIndex  int    `json:"fieldIndex,omitempty"`
-	Field       string `json:"field,omitempty"`
-	Value       string `json:"value,omitempty"`
+	Severity           string   `json:"severity"`
+	Category           string   `json:"category"`
+	Code               string   `json:"code"`
+	Message            string   `json:"message"`
+	ObjectIndex        int      `json:"objectIndex,omitempty"`
+	ObjectType         string   `json:"objectType,omitempty"`
+	ObjectName         string   `json:"objectName,omitempty"`
+	FieldIndex         int      `json:"fieldIndex,omitempty"`
+	Field              string   `json:"field,omitempty"`
+	Value              string   `json:"value,omitempty"`
+	ExpectedNodes      []string `json:"expectedNodes,omitempty"`
+	ActualNode         string   `json:"actualNode,omitempty"`
+	SuggestedFixTarget string   `json:"suggestedFixTarget,omitempty"`
 }
 
 type HVACEditField struct {
@@ -203,6 +235,11 @@ func AnalyzeHVAC(doc Document) HVACReport {
 		loops = append(loops, loop)
 		registerLoopComponents(ctx, loop)
 	}
+	for _, obj := range ctx.objectsByType[normalizeFieldCatalogKey("CondenserLoop")] {
+		loop := parseCondenserLoop(ctx, obj)
+		loops = append(loops, loop)
+		registerLoopComponents(ctx, loop)
+	}
 
 	applyCrossLoopRelations(ctx, loops)
 	relations := buildHVACZoneRelations(ctx, loops)
@@ -213,6 +250,7 @@ func AnalyzeHVAC(doc Document) HVACReport {
 		NodeUsages:          append([]HVACNodeUsage(nil), ctx.nodeUsages...),
 		NodeOutputVariables: HVACNodeOutputVariables(),
 		NodeOutputMonitors:  hvacNodeOutputMonitors(doc),
+		NodeEdges:           buildHVACNodeEdges(loops),
 	}
 	report.LoopCount = len(report.Loops)
 	report.ZoneRelationCount = len(report.ZoneRelations)
@@ -223,6 +261,8 @@ func AnalyzeHVAC(doc Document) HVACReport {
 			report.AirLoopCount++
 		case "PlantLoop":
 			report.PlantLoopCount++
+		case "CondenserLoop":
+			report.CondenserLoopCount++
 		}
 	}
 	report.Warnings = collectHVACWarnings(ctx, report)
@@ -272,10 +312,11 @@ func newHVACContext(doc Document) *hvacContext {
 func parseAirLoopHVAC(ctx *hvacContext, obj Object) HVACLoop {
 	name := objectName(obj)
 	loop := HVACLoop{
-		ID:          fmt.Sprintf("air:%s", normalizeName(name)),
-		Type:        "AirLoopHVAC",
-		Name:        name,
-		ObjectIndex: obj.Index,
+		ID:                      fmt.Sprintf("air:%s", normalizeName(name)),
+		Type:                    "AirLoopHVAC",
+		Name:                    name,
+		ObjectIndex:             obj.Index,
+		AvailabilityManagerList: fieldValueByCatalogName(obj, "Availability Manager List Name"),
 		SupplySide: buildHVACLoopSide(ctx, "Supply", obj,
 			fieldValueByCatalogName(obj, "Supply Side Inlet Node Name"),
 			fieldValueByCatalogName(obj, "Supply Side Outlet Node Names"),
@@ -296,10 +337,13 @@ func parseAirLoopHVAC(ctx *hvacContext, obj Object) HVACLoop {
 func parsePlantLoop(ctx *hvacContext, obj Object) HVACLoop {
 	name := objectName(obj)
 	loop := HVACLoop{
-		ID:          fmt.Sprintf("plant:%s", normalizeName(name)),
-		Type:        "PlantLoop",
-		Name:        name,
-		ObjectIndex: obj.Index,
+		ID:                      fmt.Sprintf("plant:%s", normalizeName(name)),
+		Type:                    "PlantLoop",
+		Name:                    name,
+		ObjectIndex:             obj.Index,
+		OperationScheme:         fieldValueByCatalogName(obj, "Plant Equipment Operation Scheme Name"),
+		AvailabilityManagerList: fieldValueByCatalogName(obj, "Availability Manager List Name"),
+		SetpointNode:            fieldValueByCatalogName(obj, "Loop Temperature Setpoint Node Name"),
 		SupplySide: buildHVACLoopSide(ctx, "Supply", obj,
 			fieldValueByCatalogName(obj, "Plant Side Inlet Node Name"),
 			fieldValueByCatalogName(obj, "Plant Side Outlet Node Name"),
@@ -317,6 +361,33 @@ func parsePlantLoop(ctx *hvacContext, obj Object) HVACLoop {
 	return loop
 }
 
+func parseCondenserLoop(ctx *hvacContext, obj Object) HVACLoop {
+	name := objectName(obj)
+	loop := HVACLoop{
+		ID:                      fmt.Sprintf("condenser:%s", normalizeName(name)),
+		Type:                    "CondenserLoop",
+		Name:                    name,
+		ObjectIndex:             obj.Index,
+		OperationScheme:         fieldValueByCatalogName(obj, "Condenser Equipment Operation Scheme Name", "Plant Equipment Operation Scheme Name"),
+		AvailabilityManagerList: fieldValueByCatalogName(obj, "Availability Manager List Name"),
+		SetpointNode:            fieldValueByCatalogName(obj, "Condenser Loop Temperature Setpoint Node Name", "Loop Temperature Setpoint Node Name"),
+		SupplySide: buildHVACLoopSide(ctx, "Supply", obj,
+			fieldValueByCatalogName(obj, "Condenser Side Inlet Node Name", "Plant Side Inlet Node Name"),
+			fieldValueByCatalogName(obj, "Condenser Side Outlet Node Name", "Plant Side Outlet Node Name"),
+			fieldValueByCatalogName(obj, "Condenser Side Branch List Name", "Plant Side Branch List Name"),
+			fieldValueByCatalogName(obj, "Condenser Side Connector List Name", "Plant Side Connector List Name")),
+		DemandSide: buildHVACLoopSide(ctx, "Demand", obj,
+			fieldValueByCatalogName(obj, "Demand Side Inlet Node Name"),
+			fieldValueByCatalogName(obj, "Demand Side Outlet Node Name"),
+			fieldValueByCatalogName(obj, "Demand Side Branch List Name"),
+			fieldValueByCatalogName(obj, "Demand Side Connector List Name")),
+	}
+	if loop.ID == "condenser:" {
+		loop.ID = fmt.Sprintf("condenser:%d", obj.Index)
+	}
+	return loop
+}
+
 func buildHVACLoopSide(ctx *hvacContext, sideName string, owner Object, inletNode string, outletNode string, branchListName string, connectorListName string) HVACLoopSide {
 	side := HVACLoopSide{
 		Name:              sideName,
@@ -326,6 +397,9 @@ func buildHVACLoopSide(ctx *hvacContext, sideName string, owner Object, inletNod
 		ConnectorListName: strings.TrimSpace(connectorListName),
 	}
 	branchNames := branchNamesFromList(ctx, side.BranchListName, owner)
+	for _, warning := range duplicateBranchNameWarnings(owner, side.BranchListName, branchNames) {
+		side.Warnings = append(side.Warnings, warning)
+	}
 	knownBranches := map[string]bool{}
 	for _, branchName := range branchNames {
 		key := normalizeName(branchName)
@@ -342,7 +416,52 @@ func buildHVACLoopSide(ctx *hvacContext, sideName string, owner Object, inletNod
 	for _, connector := range side.Connectors {
 		side.Warnings = append(side.Warnings, connector.Warnings...)
 	}
+	side.Warnings = append(side.Warnings, validateHVACLoopSide(owner, side)...)
 	return side
+}
+
+func duplicateBranchNameWarnings(owner Object, branchListName string, branchNames []string) []HVACWarning {
+	seen := map[string]bool{}
+	var warnings []HVACWarning
+	for _, branchName := range branchNames {
+		key := normalizeName(branchName)
+		if key == "" {
+			continue
+		}
+		if seen[key] {
+			warnings = append(warnings, hvacWarningForObject(owner, "duplicate_branch_in_branch_list",
+				fmt.Sprintf("BranchList %q contains duplicate Branch %q.", branchListName, branchName)))
+		}
+		seen[key] = true
+	}
+	return warnings
+}
+
+func validateHVACLoopSide(owner Object, side HVACLoopSide) []HVACWarning {
+	var warnings []HVACWarning
+	if len(side.Branches) > 0 {
+		first := side.Branches[0]
+		last := side.Branches[len(side.Branches)-1]
+		if side.InletNode != "" && first.InletNode != "" && !strings.EqualFold(side.InletNode, first.InletNode) {
+			warnings = append(warnings, hvacWarningForObject(owner, "branch_list_order_mismatch",
+				fmt.Sprintf("%s side first branch %q inlet node %q does not match loop side inlet node %q.", side.Name, first.Name, first.InletNode, side.InletNode)))
+		}
+		if side.OutletNode != "" && last.OutletNode != "" && !strings.EqualFold(side.OutletNode, last.OutletNode) {
+			warnings = append(warnings, hvacWarningForObject(owner, "branch_list_order_mismatch",
+				fmt.Sprintf("%s side last branch %q outlet node %q does not match loop side outlet node %q.", side.Name, last.Name, last.OutletNode, side.OutletNode)))
+		}
+	}
+	for _, connector := range side.Connectors {
+		if strings.EqualFold(connector.Type, "Connector:Splitter") && len(side.Branches) > 0 && connector.InletBranchName != "" && !strings.EqualFold(connector.InletBranchName, side.Branches[0].Name) {
+			warnings = append(warnings, hvacWarningForObject(owner, "splitter_inlet_not_loop_inlet_branch",
+				fmt.Sprintf("Splitter %q inlet branch %q is not the first branch in %s side BranchList.", connector.Name, connector.InletBranchName, side.Name)))
+		}
+		if strings.EqualFold(connector.Type, "Connector:Mixer") && len(side.Branches) > 0 && connector.OutletBranchName != "" && !strings.EqualFold(connector.OutletBranchName, side.Branches[len(side.Branches)-1].Name) {
+			warnings = append(warnings, hvacWarningForObject(owner, "mixer_outlet_not_loop_outlet_branch",
+				fmt.Sprintf("Mixer %q outlet branch %q is not the last branch in %s side BranchList.", connector.Name, connector.OutletBranchName, side.Name)))
+		}
+	}
+	return warnings
 }
 
 func branchNamesFromList(ctx *hvacContext, branchListName string, owner Object) []string {
@@ -392,7 +511,31 @@ func connectorsFromList(ctx *hvacContext, connectorListName string, owner Object
 		}
 		connectors = append(connectors, parseHVACConnector(connectorObj, knownBranches))
 	}
+	for _, warning := range validateConnectorListComposition(obj, connectors) {
+		ctx.warnings = append(ctx.warnings, warning)
+	}
 	return connectors
+}
+
+func validateConnectorListComposition(obj Object, connectors []HVACConnector) []HVACWarning {
+	var warnings []HVACWarning
+	if len(connectors) > 2 {
+		warnings = append(warnings, hvacWarningForObject(obj, "connector_list_too_many_connectors",
+			fmt.Sprintf("ConnectorList %q has %d connectors; EnergyPlus loop sides allow at most two.", objectName(obj), len(connectors))))
+	}
+	if len(connectors) == 2 {
+		hasSplitter := false
+		hasMixer := false
+		for _, connector := range connectors {
+			hasSplitter = hasSplitter || strings.EqualFold(connector.Type, "Connector:Splitter")
+			hasMixer = hasMixer || strings.EqualFold(connector.Type, "Connector:Mixer")
+		}
+		if !hasSplitter || !hasMixer {
+			warnings = append(warnings, hvacWarningForObject(obj, "connector_list_invalid_composition",
+				fmt.Sprintf("ConnectorList %q with two connectors must contain one splitter and one mixer.", objectName(obj))))
+		}
+	}
+	return warnings
 }
 
 func parseHVACConnector(obj Object, knownBranches map[string]bool) HVACConnector {
@@ -447,6 +590,10 @@ func parseHVACBranch(ctx *hvacContext, obj Object) HVACBranch {
 			branch.Warnings = append(branch.Warnings, hvacWarningForObject(obj, "missing_branch_component",
 				fmt.Sprintf("Branch %q references missing %s %q.", branch.Name, componentType, componentName)))
 		}
+		if strings.EqualFold(componentType, "Connector:Splitter") || strings.EqualFold(componentType, "Connector:Mixer") {
+			branch.Warnings = append(branch.Warnings, hvacWarningForObject(obj, "connector_inside_branch_component_list",
+				fmt.Sprintf("Branch %q includes %s %q as a component; splitters and mixers belong in ConnectorList.", branch.Name, componentType, componentName)))
+		}
 		branch.Components = append(branch.Components, component)
 	}
 	for index := 0; index < len(branch.Components)-1; index++ {
@@ -475,6 +622,9 @@ type branchComponentReference struct {
 
 func branchComponentReferences(ctx *hvacContext, obj Object) []branchComponentReference {
 	if references := branchComponentReferencesFromComments(obj); len(references) > 0 {
+		return references
+	}
+	if references := branchComponentReferencesByStride(obj, 4); scoreBranchComponentReferences(ctx, obj, references) > 0 {
 		return references
 	}
 	stride4 := branchComponentReferencesByStride(obj, 4)
@@ -750,8 +900,12 @@ func waterCoilLoopWarnings(ctx *hvacContext, loop HVACLoop) []HVACWarning {
 			}
 		case "PlantLoop":
 			if loopSideContainsComponent(loop.DemandSide, component) && !containsMapValue(loopTypes, "AirLoopHVAC") && !componentReferencedByZoneHVAC(ctx, key) {
-				warnings = append(warnings, hvacWarningForComponent(component, "plant_demand_component_without_air_or_zone_use",
-					fmt.Sprintf("Plant demand component %s was not found on any AirLoop branch or ZoneHVAC equipment list.", componentLabel(component))))
+				warning := hvacWarningForComponent(component, "plant_demand_component_without_air_or_zone_use",
+					fmt.Sprintf("Plant demand component %s was not found on any AirLoop branch or ZoneHVAC equipment list.", componentLabel(component)))
+				if strings.Contains(strings.ToLower(loop.Name), "service") || strings.Contains(strings.ToLower(loop.Name), "process") {
+					warning.Severity = "notice"
+				}
+				warnings = append(warnings, warning)
 			}
 		}
 	}
@@ -780,7 +934,14 @@ func buildHVACZoneRelation(ctx *hvacContext, loops []HVACLoop, connectionObj Obj
 	}
 	equipmentListName := fieldValueByCatalogName(connectionObj, "Zone Conditioning Equipment List Name")
 	zoneInletNodes := expandNodeOrNodeList(ctx, fieldValueByCatalogName(connectionObj, "Zone Air Inlet Node or NodeList Name"))
+	zoneExhaustNodes := expandNodeOrNodeList(ctx, fieldValueByCatalogName(connectionObj, "Zone Air Exhaust Node or NodeList Name"))
 	zoneReturnNodes := expandNodeOrNodeList(ctx, fieldValueByCatalogName(connectionObj, "Zone Return Air Node or NodeList Name"))
+	relation.Nodes = HVACZoneNodes{
+		AirNode:      fieldValueByCatalogName(connectionObj, "Zone Air Node Name"),
+		InletNodes:   append([]string(nil), zoneInletNodes...),
+		ExhaustNodes: append([]string(nil), zoneExhaustNodes...),
+		ReturnNodes:  append([]string(nil), zoneReturnNodes...),
+	}
 
 	if equipmentListName != "" {
 		equipmentList, ok := ctx.objectsByTypeName[hvacObjectKey("ZoneHVAC:EquipmentList", equipmentListName)]
@@ -798,8 +959,12 @@ func buildHVACZoneRelation(ctx *hvacContext, loops []HVACLoop, connectionObj Obj
 				relation.TerminalUnits = append(relation.TerminalUnits, terminal)
 			}
 			if terminal.OutletNode != "" && len(zoneInletNodes) > 0 && !stringSliceContainsFold(zoneInletNodes, terminal.OutletNode) {
-				relation.Warnings = append(relation.Warnings, hvacWarningForComponent(terminal, "terminal_not_connected_to_zone_inlet",
-					fmt.Sprintf("Terminal %s outlet node %q is not in Zone %q inlet nodes.", componentLabel(terminal), terminal.OutletNode, zoneName)))
+				warning := hvacWarningForComponent(terminal, "terminal_not_connected_to_zone_inlet",
+					fmt.Sprintf("Terminal %s outlet node %q is not in Zone %q inlet nodes.", componentLabel(terminal), terminal.OutletNode, zoneName))
+				warning.ExpectedNodes = append([]string(nil), zoneInletNodes...)
+				warning.ActualNode = terminal.OutletNode
+				warning.SuggestedFixTarget = "ZoneHVAC:EquipmentConnections/Zone Air Inlet Node or NodeList Name"
+				relation.Warnings = append(relation.Warnings, warning)
 			}
 		}
 	}
@@ -831,6 +996,10 @@ func equipmentFromZoneEquipmentList(ctx *hvacContext, equipmentList Object, rela
 			continue
 		}
 		component := newHVACComponent(ctx, objectType, objectNameValue)
+		component.CoolingSequence = hvacFieldValue(equipmentList, reference.CoolingSequenceIndex)
+		component.HeatingSequence = hvacFieldValue(equipmentList, reference.HeatingSequenceIndex)
+		component.CoolingFractionSchedule = hvacFieldValue(equipmentList, reference.CoolingScheduleIndex)
+		component.HeatingFractionSchedule = hvacFieldValue(equipmentList, reference.HeatingScheduleIndex)
 		component.EditableFields = append(component.EditableFields, editableZoneEquipmentSequenceFields(ctx.doc, equipmentList, reference.TypeIndex)...)
 		if !component.Exists {
 			relation.Warnings = append(relation.Warnings, hvacWarningForObject(equipmentList, "missing_zone_equipment",
@@ -842,8 +1011,12 @@ func equipmentFromZoneEquipmentList(ctx *hvacContext, equipmentList Object, rela
 }
 
 type zoneEquipmentReference struct {
-	TypeIndex int
-	NameIndex int
+	TypeIndex            int
+	NameIndex            int
+	CoolingSequenceIndex int
+	HeatingSequenceIndex int
+	CoolingScheduleIndex int
+	HeatingScheduleIndex int
 }
 
 func zoneEquipmentReferences(ctx *hvacContext, equipmentList Object) []zoneEquipmentReference {
@@ -851,11 +1024,16 @@ func zoneEquipmentReferences(ctx *hvacContext, equipmentList Object) []zoneEquip
 		return references
 	}
 	start := bestZoneEquipmentListStartIndex(ctx, equipmentList)
+	stride := bestZoneEquipmentListStride(ctx, equipmentList, start)
 	var references []zoneEquipmentReference
-	for index := start; index+1 < len(equipmentList.Fields); index += 4 {
+	for index := start; index+1 < len(equipmentList.Fields); index += stride {
 		references = append(references, zoneEquipmentReference{
-			TypeIndex: index,
-			NameIndex: index + 1,
+			TypeIndex:            index,
+			NameIndex:            index + 1,
+			CoolingSequenceIndex: index + 2,
+			HeatingSequenceIndex: index + 3,
+			CoolingScheduleIndex: optionalZoneEquipmentIndex(equipmentList, index+4, stride),
+			HeatingScheduleIndex: optionalZoneEquipmentIndex(equipmentList, index+5, stride),
 		})
 	}
 	return references
@@ -891,12 +1069,23 @@ func zoneEquipmentReferencesFromComments(equipmentList Object) []zoneEquipmentRe
 		nameIndex, hasName := nameIndexes[group]
 		if hasType && hasName {
 			references = append(references, zoneEquipmentReference{
-				TypeIndex: typeIndex,
-				NameIndex: nameIndex,
+				TypeIndex:            typeIndex,
+				NameIndex:            nameIndex,
+				CoolingSequenceIndex: typeIndex + 2,
+				HeatingSequenceIndex: typeIndex + 3,
+				CoolingScheduleIndex: typeIndex + 4,
+				HeatingScheduleIndex: typeIndex + 5,
 			})
 		}
 	}
 	return references
+}
+
+func optionalZoneEquipmentIndex(equipmentList Object, index int, stride int) int {
+	if stride >= 6 && index >= 0 && index < len(equipmentList.Fields) {
+		return index
+	}
+	return -1
 }
 
 func zoneEquipmentNameComment(comment string) bool {
@@ -920,6 +1109,39 @@ func bestZoneEquipmentListStartIndex(ctx *hvacContext, equipmentList Object) int
 		}
 	}
 	return start
+}
+
+func bestZoneEquipmentListStride(ctx *hvacContext, equipmentList Object, start int) int {
+	stride6 := scoreZoneEquipmentListStride(ctx, equipmentList, start, 6)
+	stride4 := scoreZoneEquipmentListStride(ctx, equipmentList, start, 4)
+	if stride6 >= stride4 {
+		return 6
+	}
+	return 4
+}
+
+func scoreZoneEquipmentListStride(ctx *hvacContext, equipmentList Object, start int, stride int) int {
+	score := 0
+	for index := start; index+1 < len(equipmentList.Fields); index += stride {
+		objectType := strings.TrimSpace(equipmentList.Fields[index].Value)
+		objectNameValue := strings.TrimSpace(equipmentList.Fields[index+1].Value)
+		if objectType == "" && objectNameValue == "" {
+			continue
+		}
+		score++
+		if isHVACComponentType(objectType) || isAirTerminalType(objectType) {
+			score += 2
+		}
+		if _, ok := ctx.objectsByTypeName[hvacObjectKey(objectType, objectNameValue)]; ok {
+			score += 3
+		}
+		if stride == 6 && index+5 < len(equipmentList.Fields) {
+			if strings.TrimSpace(equipmentList.Fields[index+4].Value) != "" || strings.TrimSpace(equipmentList.Fields[index+5].Value) != "" {
+				score++
+			}
+		}
+	}
+	return score
 }
 
 func scoreZoneEquipmentListStart(ctx *hvacContext, equipmentList Object, start int) int {
@@ -1185,9 +1407,11 @@ func buildServiceChains(relation HVACZoneChain) []HVACServicePath {
 	for _, terminal := range relation.TerminalUnits {
 		if len(relation.AirLoopNames) == 0 && len(relation.PlantLoopNames) == 0 {
 			paths = append(paths, HVACServicePath{
-				ZoneName:     relation.ZoneName,
-				TerminalName: componentLabel(terminal),
-				Evidence:     "terminal outlet matches zone inlet",
+				ZoneName:        relation.ZoneName,
+				TerminalName:    componentLabel(terminal),
+				Confidence:      "medium",
+				Evidence:        "terminal outlet matches zone inlet",
+				SourceRelations: []string{"terminal_outlet_node", "zone_inlet_node"},
 			})
 			continue
 		}
@@ -1204,7 +1428,9 @@ func buildServiceChains(relation HVACZoneChain) []HVACServicePath {
 						AirLoopName:     airLoopName,
 						PlantLoop:       plantLoopName,
 						SourceComponent: sourceComponent,
+						Confidence:      "inferred",
 						Evidence:        "node/reference relation",
+						SourceRelations: []string{"air_loop_demand_nodes", "zone_equipment_references", "plant_loop_component_references"},
 					})
 				}
 			}
@@ -1213,9 +1439,11 @@ func buildServiceChains(relation HVACZoneChain) []HVACServicePath {
 	if len(paths) == 0 {
 		for _, equipment := range relation.ZoneEquipment {
 			paths = append(paths, HVACServicePath{
-				ZoneName:  relation.ZoneName,
-				Component: componentLabel(equipment),
-				Evidence:  "ZoneHVAC:EquipmentList",
+				ZoneName:        relation.ZoneName,
+				Component:       componentLabel(equipment),
+				Confidence:      "high",
+				Evidence:        "ZoneHVAC:EquipmentList",
+				SourceRelations: []string{"zone_equipment_list"},
 			})
 		}
 	}
@@ -1358,6 +1586,18 @@ func hvacNodeFieldRole(obj Object, fieldIndex int, field Field) string {
 	hasNodeWords := strings.Contains(comment, "node") && (strings.Contains(comment, "name") || strings.Contains(comment, "list"))
 	if catalogRole != fieldRoleNodeRef && catalogRole != fieldRoleNodeListRef && !hasNodeWords {
 		return ""
+	}
+	if strings.EqualFold(obj.Type, "OutdoorAir:Mixer") {
+		switch {
+		case strings.Contains(comment, "mixed"):
+			return "oa_mixer_mixed_air"
+		case strings.Contains(comment, "outdoor"):
+			return "outdoor_air"
+		case strings.Contains(comment, "relief"):
+			return "relief_air"
+		case strings.Contains(comment, "return"):
+			return "return_air"
+		}
 	}
 	listSuffix := ""
 	if catalogRole == fieldRoleNodeListRef || strings.Contains(comment, "node list") || strings.Contains(comment, "nodelist") {
@@ -1692,6 +1932,38 @@ func loopComponents(loop HVACLoop) []HVACComponent {
 		}
 	}
 	return components
+}
+
+func buildHVACNodeEdges(loops []HVACLoop) []HVACNodeEdge {
+	var edges []HVACNodeEdge
+	for _, loop := range loops {
+		for _, branch := range append(append([]HVACBranch{}, loop.SupplySide.Branches...), loop.DemandSide.Branches...) {
+			for index, component := range branch.Components {
+				label := componentLabel(component)
+				if component.OutletNode != "" {
+					edge := HVACNodeEdge{
+						NodeName:      component.OutletNode,
+						FromComponent: label,
+						ToNode:        component.OutletNode,
+						Direction:     "producer",
+					}
+					if index+1 < len(branch.Components) {
+						edge.ToComponent = componentLabel(branch.Components[index+1])
+					}
+					edges = append(edges, edge)
+				}
+				if component.InletNode != "" {
+					edges = append(edges, HVACNodeEdge{
+						NodeName:    component.InletNode,
+						FromNode:    component.InletNode,
+						ToComponent: label,
+						Direction:   "consumer",
+					})
+				}
+			}
+		}
+	}
+	return edges
 }
 
 func mutateLoopComponents(loop *HVACLoop, mutate func(*HVACComponent)) {
