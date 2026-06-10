@@ -1050,6 +1050,17 @@
   max-width: min(520px, 48vw);
 }
 
+.simulation-custom-series {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.simulation-custom-series-links h4 {
+  margin: 0 0 6px;
+  font-size: 13px;
+}
+
 .simulation-series-controls {
   display: grid;
   grid-template-columns: auto minmax(150px, 1fr) minmax(150px, 1fr) minmax(180px, auto);

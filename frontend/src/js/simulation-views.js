@@ -212,6 +212,7 @@ export function renderSimulation() {
   renderSimulationComfort(result);
   renderSimulationHeatFlow();
   renderSimulationSeriesSelect(result);
+  renderSimulationCustomSeriesLinks(result);
   renderSimulationChart();
   renderSimulationFiles(result);
   toggleSimulationResultSections();
@@ -236,6 +237,7 @@ function renderSimulationEmpty() {
     elements.simulationResultSummary.innerHTML = renderRunningNotice();
     renderSimulationHeatFlowEmpty(t("simulation.heatFlowAfterRun", {}, "The heat-flow ledger will appear when standard heat-balance SQL/CSV output is available."));
     setSimulationSeriesGroupUnavailable();
+    renderSimulationCustomSeriesLinks(null);
     elements.simulationSeriesSelect.innerHTML = `<option value="">${escapeHTML(t("simulation.waitingForCSV", {}, "Waiting for SQL/CSV output"))}</option>`;
     elements.simulationChart.innerHTML = `<div class="simulation-running-empty">${renderMiniProgressSVG()}<span>${escapeHTML(t("simulation.graphAfterRun", {}, "The SQL/CSV graph will appear when the run finishes."))}</span></div>`;
     elements.simulationFiles.innerHTML = `<div class="empty status-loading">${escapeHTML(t("simulation.writingOutputs", {}, "EnergyPlus is writing output files"))}</div>`;
@@ -257,6 +259,7 @@ function renderSimulationEmpty() {
     elements.simulationResultSummary.innerHTML = renderSimulationBlocker(blockingIssue);
     renderSimulationHeatFlowEmpty(t("simulation.blockedGraph", {}, "Graph output is unavailable until the run can start."));
     setSimulationSeriesGroupUnavailable();
+    renderSimulationCustomSeriesLinks(null);
     elements.simulationSeriesSelect.innerHTML = `<option value="">${escapeHTML(t("simulation.noSeries", {}, "No SQL/CSV series"))}</option>`;
     elements.simulationChart.innerHTML = `<div class="simulation-blocked-empty">${escapeHTML(t("simulation.blockedGraph", {}, "Graph output is unavailable until the run can start."))}</div>`;
     elements.simulationFiles.innerHTML = `<div class="simulation-blocked-empty">${escapeHTML(t("simulation.blockedFiles", {}, "No output files will be created while simulation is blocked."))}</div>`;
@@ -286,6 +289,7 @@ function renderSimulationEmpty() {
   renderSimulationComfortEmpty(t("simulation.noComfortResult", {}, "Run Comfort Check to inspect zone temperature and setpoint series."));
   renderSimulationHeatFlowEmpty(t("simulation.noHeatFlow", {}, "Select Zone Heat Flow to inspect the zone heat-flow ledger."));
   setSimulationSeriesGroupUnavailable();
+  renderSimulationCustomSeriesLinks(null);
   elements.simulationSeriesSelect.innerHTML = `<option value="">${escapeHTML(t("simulation.noSeries", {}, "No SQL/CSV series"))}</option>`;
   elements.simulationChart.innerHTML = `<div class="empty">${t("simulation.noGraph", {}, "SQL/CSV graph will appear after a run with numeric output.")}</div>`;
   elements.simulationFiles.innerHTML = `<div class="empty">${t("simulation.noFiles", {}, "No output files yet")}</div>`;
@@ -1211,9 +1215,17 @@ function findSimulationSeriesForMetric(keyValue, variableName) {
     return null;
   }
   return (state.simulationResult?.series || []).find((series) => {
-    return normalizeOutputMatchToken(seriesNodeKey(series.column)) === key
+    return (key === "*" || normalizeOutputMatchToken(seriesNodeKey(series.column)) === key)
       && normalizeOutputMatchToken(seriesVariableName(series.column)) === variable;
   }) || null;
+}
+
+function findSimulationSeriesForMeter(meterName) {
+  const meter = normalizeOutputMatchToken(meterName);
+  if (!meter) {
+    return null;
+  }
+  return (state.simulationResult?.series || []).find((series) => normalizeOutputMatchToken(seriesColumnMainName(series.column)) === meter) || null;
 }
 
 function findComponentMetricSeries(component = {}, metric = {}) {
@@ -2274,6 +2286,76 @@ function simulationIssueSummary(issues = []) {
     { key: "severe", label: t("simulation.errSevere", {}, "Severe"), count: counts.severe },
     { key: "fatal", label: "Fatal", count: counts.fatal },
   ];
+}
+
+function renderSimulationCustomSeriesLinks(result) {
+  if (!elements.simulationCustomSeries) {
+    return;
+  }
+  const customOutputs = activePurposeOutputObjects().filter((object) => {
+    const purposeIDs = object.purposeIds || [];
+    return purposeIDs.includes("custom_outputs") && purposeObjectIsSeries(object.objectType);
+  });
+  if (!result || !customOutputs.length) {
+    elements.simulationCustomSeries.innerHTML = "";
+    return;
+  }
+  const rows = customOutputs
+    .slice(0, 32)
+    .map((object) => {
+      const ref = customOutputSeriesRef(object);
+      return `
+        <tr>
+          <td>${escapeHTML(object.objectType || "")}</td>
+          <td>${escapeHTML(customOutputSeriesLabel(object))}</td>
+          <td>${escapeHTML(object.reportingFrequency || "")}</td>
+          <td>${renderSeriesInspectButton(ref)}</td>
+        </tr>`;
+    })
+    .join("");
+  elements.simulationCustomSeries.innerHTML = `
+    <section class="simulation-custom-series-links">
+      <h4>${escapeHTML(t("simulation.customOutputs", {}, "Custom outputs"))}</h4>
+      <div class="output-table-wrap">
+        <table class="output-table">
+          <thead><tr><th>${escapeHTML(t("common.type", {}, "Type"))}</th><th>${escapeHTML(t("simulation.sourceOutput", {}, "Source output"))}</th><th>${escapeHTML(t("hvac.reportingFrequency", {}, "Reporting frequency"))}</th><th>${escapeHTML(t("simulation.inspectSeriesAction", {}, "Chart"))}</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </section>`;
+}
+
+function customOutputSeriesRef(object) {
+  if (outputObjectIsMeter(object.objectType)) {
+    const meterName = object.keyValue || object.meterName || customOutputFieldValue(object, "Key Name");
+    return { series: findSimulationSeriesForMeter(meterName), keyValue: meterName, variableName: meterName };
+  }
+  return {
+    series: findSimulationSeriesForMetric(object.keyValue || "*", object.variableName),
+    keyValue: object.keyValue || "*",
+    variableName: object.variableName || "",
+  };
+}
+
+function customOutputSeriesLabel(object) {
+  if (outputObjectIsMeter(object.objectType)) {
+    return object.keyValue || object.meterName || customOutputFieldValue(object, "Key Name") || "";
+  }
+  return [object.keyValue || "*", object.variableName || customOutputFieldValue(object, "Variable Name")].filter(Boolean).join(" / ");
+}
+
+function customOutputFieldValue(object, fieldName) {
+  const field = (object.fields || []).find((item) => normalizeOutputMatchToken(item.name) === normalizeOutputMatchToken(fieldName));
+  return field?.value || "";
+}
+
+function purposeObjectIsSeries(objectType) {
+  const normalized = normalizeOutputMatchToken(objectType);
+  return normalized === "output:variable" || outputObjectIsMeter(objectType);
+}
+
+function outputObjectIsMeter(objectType) {
+  return normalizeOutputMatchToken(objectType).startsWith("output:meter");
 }
 
 function renderSimulationSeriesSelect(result) {
@@ -4089,6 +4171,10 @@ function preferredSimulationSeries(series) {
 function seriesNodeKey(column) {
   const [key] = String(column || "").split(":");
   return key?.trim() || "";
+}
+
+function seriesColumnMainName(column) {
+  return String(column || "").replace(/\s*\[[^\]]+\]\s*$/, "").trim();
 }
 
 function seriesVariableName(column) {

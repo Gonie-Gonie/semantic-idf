@@ -87,6 +87,7 @@ The release script infers bump size from these sections:
 - HVAC Loop Check purpose runs now include selected-loop component operation outputs and group parsed fan, pump, coil, chiller, boiler, and cooling-tower series in the HVAC result view.
 - HVAC Loop Check purpose scope now follows the selected HVAC graph component and limits component/node outputs to that component when available.
 - SQL/CSV Series charts now include a variable-group filter for temperature, mass flow, setpoint, rate/load, power/energy, and other series.
+- Custom Outputs now appear as chart-ready links in the Series tab, including wildcard variable matches and direct meter-name matches.
 - Purpose output permanent apply now has explicit modes for adding missing outputs, replacing conflicts, keeping existing outputs while adding purpose duplicates, or removing selected purpose outputs.
 - Purpose result HTML export now includes Energy, Zone Heat Flow, HVAC node/component, and Comfort summary tables before the embedded raw bundle.
 - Simulation output discovery now treats purpose meters as first-class fallback/alias entries, including `NaturalGas:*` and `Gas:*` meter aliases.

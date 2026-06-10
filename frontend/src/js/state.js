@@ -242,6 +242,7 @@ export const elements = {
   simulationSeriesRangeStart: document.querySelector("#simulationSeriesRangeStart"),
   simulationSeriesRangeEnd: document.querySelector("#simulationSeriesRangeEnd"),
   simulationSeriesRangeLabel: document.querySelector("#simulationSeriesRangeLabel"),
+  simulationCustomSeries: document.querySelector("#simulationCustomSeries"),
   simulationChart: document.querySelector("#simulationChart"),
   simulationFilesStats: document.querySelector("#simulationFilesStats"),
   simulationExportPurposeJSON: document.querySelector("#simulationExportPurposeJSON"),
