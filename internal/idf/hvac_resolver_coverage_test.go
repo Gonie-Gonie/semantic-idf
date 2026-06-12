@@ -22,6 +22,9 @@ func TestHVACResolverCoverageMatrixRegistersChecklistFamilies(t *testing.T) {
 		if item.Status != hvacResolverDone {
 			t.Fatalf("resolver matrix item %s status = %q, want done", item.ObjectType, item.Status)
 		}
+		if item.TestFixture == "" {
+			t.Fatalf("resolver matrix item %s is done but has no test fixture", item.ObjectType)
+		}
 		if strings.Contains(item.Resolver, "generic") {
 			t.Fatalf("resolver matrix item %s still uses a legacy resolver label", item.ObjectType)
 		}
