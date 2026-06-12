@@ -1,0 +1,102 @@
+package idf
+
+type HVACResolverCoverageItem struct {
+	ObjectType  string
+	Family      string
+	Resolver    string
+	Status      string
+	TestFixture string
+}
+
+const (
+	hvacResolverDone    = "done"
+	hvacResolverGeneric = "generic"
+	hvacResolverTodo    = "todo"
+)
+
+func HVACResolverCoverageMatrix() []HVACResolverCoverageItem {
+	return []HVACResolverCoverageItem{
+		{ObjectType: "AirLoopHVAC", Family: "air_loop", Resolver: "parseAirLoopHVAC", Status: hvacResolverDone, TestFixture: "hvac_test.go"},
+		{ObjectType: "PlantLoop", Family: "plant_loop", Resolver: "parsePlantLoop", Status: hvacResolverDone, TestFixture: "hvac_test.go"},
+		{ObjectType: "CondenserLoop", Family: "plant_loop", Resolver: "parseCondenserLoop", Status: hvacResolverDone, TestFixture: "hvac_test.go"},
+		{ObjectType: "Branch", Family: "loop_side", Resolver: "parseHVACBranch", Status: hvacResolverDone, TestFixture: "hvac_test.go"},
+		{ObjectType: "BranchList", Family: "loop_side", Resolver: "branchNamesFromList", Status: hvacResolverDone, TestFixture: "hvac_test.go"},
+		{ObjectType: "ConnectorList", Family: "loop_side", Resolver: "connectorsFromList", Status: hvacResolverDone, TestFixture: "hvac_test.go"},
+		{ObjectType: "Connector:Splitter", Family: "loop_side", Resolver: "parseHVACConnector", Status: hvacResolverDone, TestFixture: "hvac_test.go"},
+		{ObjectType: "Connector:Mixer", Family: "loop_side", Resolver: "parseHVACConnector", Status: hvacResolverDone, TestFixture: "hvac_test.go"},
+		{ObjectType: "AirLoopHVAC:SupplyPath", Family: "air_loop_demand", Resolver: "parseAirLoopSupplyPath", Status: hvacResolverDone, TestFixture: "hvac_test.go"},
+		{ObjectType: "AirLoopHVAC:ReturnPath", Family: "air_loop_demand", Resolver: "parseAirLoopReturnPath", Status: hvacResolverDone, TestFixture: "hvac_test.go"},
+		{ObjectType: "AirLoopHVAC:ZoneSplitter", Family: "air_loop_demand", Resolver: "airLoopDemandComponentNodes", Status: hvacResolverDone, TestFixture: "hvac_test.go"},
+		{ObjectType: "AirLoopHVAC:ZoneMixer", Family: "air_loop_demand", Resolver: "airLoopDemandComponentNodes", Status: hvacResolverDone, TestFixture: "hvac_test.go"},
+		{ObjectType: "AirLoopHVAC:SupplyPlenum", Family: "air_loop_demand", Resolver: "airLoopDemandComponentNodes", Status: hvacResolverGeneric},
+		{ObjectType: "AirLoopHVAC:ReturnPlenum", Family: "air_loop_demand", Resolver: "airLoopDemandComponentNodes", Status: hvacResolverGeneric},
+		{ObjectType: "ZoneHVAC:EquipmentConnections", Family: "zone_hvac", Resolver: "buildHVACZoneRelation", Status: hvacResolverDone, TestFixture: "hvac_test.go"},
+		{ObjectType: "ZoneHVAC:EquipmentList", Family: "zone_hvac", Resolver: "zoneEquipmentReferences", Status: hvacResolverDone, TestFixture: "hvac_test.go"},
+		{ObjectType: "SpaceHVAC:EquipmentConnections", Family: "space_hvac", Resolver: "buildHVACSpaceRelation", Status: hvacResolverDone, TestFixture: "hvac_test.go"},
+		{ObjectType: "SpaceHVAC:EquipmentList", Family: "space_hvac", Resolver: "zoneEquipmentReferences", Status: hvacResolverDone, TestFixture: "hvac_test.go"},
+		{ObjectType: "SpaceHVAC:ZoneEquipmentSplitter", Family: "space_hvac", Resolver: "spaceZoneEquipmentSplitterEvidence", Status: hvacResolverGeneric},
+		{ObjectType: "ZoneHVAC:AirDistributionUnit", Family: "air_terminal", Resolver: "resolveAirDistributionUnitTerminal", Status: hvacResolverDone, TestFixture: "hvac_test.go"},
+		{ObjectType: "AirTerminal:SingleDuct:Uncontrolled", Family: "air_terminal", Resolver: "genericNodeRoleResolver", Status: hvacResolverGeneric},
+		{ObjectType: "AirTerminal:SingleDuct:ConstantVolume:Reheat", Family: "air_terminal", Resolver: "genericNodeRoleResolver", Status: hvacResolverGeneric},
+		{ObjectType: "AirTerminal:SingleDuct:ConstantVolume:NoReheat", Family: "air_terminal", Resolver: "genericNodeRoleResolver", Status: hvacResolverDone, TestFixture: "hvac_test.go"},
+		{ObjectType: "AirTerminal:SingleDuct:VAV:NoReheat", Family: "air_terminal", Resolver: "genericNodeRoleResolver", Status: hvacResolverGeneric},
+		{ObjectType: "AirTerminal:SingleDuct:VAV:Reheat", Family: "air_terminal", Resolver: "typedComponentReferenceResolver", Status: hvacResolverDone, TestFixture: "hvac_test.go"},
+		{ObjectType: "AirTerminal:SingleDuct:VAV:HeatAndCool:NoReheat", Family: "air_terminal", Resolver: "genericNodeRoleResolver", Status: hvacResolverGeneric},
+		{ObjectType: "AirTerminal:SingleDuct:VAV:HeatAndCool:Reheat", Family: "air_terminal", Resolver: "typedComponentReferenceResolver", Status: hvacResolverGeneric},
+		{ObjectType: "AirTerminal:SingleDuct:SeriesPIU:Reheat", Family: "air_terminal", Resolver: "genericNodeRoleResolver", Status: hvacResolverGeneric},
+		{ObjectType: "AirTerminal:SingleDuct:ParallelPIU:Reheat", Family: "air_terminal", Resolver: "genericNodeRoleResolver", Status: hvacResolverGeneric},
+		{ObjectType: "AirTerminal:SingleDuct:ConstantVolume:FourPipeInduction", Family: "air_terminal", Resolver: "genericNodeRoleResolver", Status: hvacResolverGeneric},
+		{ObjectType: "AirTerminal:SingleDuct:ConstantVolume:FourPipeBeam", Family: "air_terminal", Resolver: "genericNodeRoleResolver", Status: hvacResolverGeneric},
+		{ObjectType: "AirTerminal:DualDuct:ConstantVolume", Family: "air_terminal", Resolver: "genericNodeRoleResolver", Status: hvacResolverGeneric},
+		{ObjectType: "AirTerminal:DualDuct:VAV", Family: "air_terminal", Resolver: "genericNodeRoleResolver", Status: hvacResolverGeneric},
+		{ObjectType: "AirTerminal:SingleDuct:Mixer", Family: "air_terminal", Resolver: "genericNodeRoleResolver", Status: hvacResolverGeneric},
+		{ObjectType: "AirTerminal:SingleDuct:UserDefined", Family: "air_terminal", Resolver: "genericNodeRoleResolver", Status: hvacResolverGeneric},
+		{ObjectType: "ZoneHVAC:IdealLoadsAirSystem", Family: "zone_equipment", Resolver: "genericNodeRoleResolver", Status: hvacResolverGeneric},
+		{ObjectType: "ZoneHVAC:FourPipeFanCoil", Family: "zone_equipment", Resolver: "directZoneEquipmentResolver", Status: hvacResolverDone, TestFixture: "hvac_test.go"},
+		{ObjectType: "ZoneHVAC:WindowAirConditioner", Family: "zone_equipment", Resolver: "genericNodeRoleResolver", Status: hvacResolverGeneric},
+		{ObjectType: "ZoneHVAC:PackagedTerminalAirConditioner", Family: "zone_equipment", Resolver: "genericNodeRoleResolver", Status: hvacResolverGeneric},
+		{ObjectType: "ZoneHVAC:PackagedTerminalHeatPump", Family: "zone_equipment", Resolver: "genericNodeRoleResolver", Status: hvacResolverGeneric},
+		{ObjectType: "ZoneHVAC:WaterToAirHeatPump", Family: "zone_equipment", Resolver: "typedComponentReferenceResolver", Status: hvacResolverGeneric},
+		{ObjectType: "ZoneHVAC:UnitHeater", Family: "zone_equipment", Resolver: "genericNodeRoleResolver", Status: hvacResolverGeneric},
+		{ObjectType: "ZoneHVAC:UnitVentilator", Family: "zone_equipment", Resolver: "typedComponentReferenceResolver", Status: hvacResolverGeneric},
+		{ObjectType: "ZoneHVAC:VentilatedSlab", Family: "zone_equipment", Resolver: "genericNodeRoleResolver", Status: hvacResolverGeneric},
+		{ObjectType: "ZoneHVAC:Baseboard:Convective:Water", Family: "zone_equipment", Resolver: "genericNodeRoleResolver", Status: hvacResolverGeneric},
+		{ObjectType: "ZoneHVAC:Baseboard:RadiantConvective:Water", Family: "zone_equipment", Resolver: "genericNodeRoleResolver", Status: hvacResolverGeneric},
+		{ObjectType: "ZoneHVAC:Baseboard:RadiantConvective:Steam", Family: "zone_equipment", Resolver: "genericNodeRoleResolver", Status: hvacResolverGeneric},
+		{ObjectType: "ZoneHVAC:Baseboard:RadiantConvective:Electric", Family: "zone_equipment", Resolver: "genericNodeRoleResolver", Status: hvacResolverGeneric},
+		{ObjectType: "ZoneHVAC:LowTemperatureRadiant:VariableFlow", Family: "zone_equipment", Resolver: "genericNodeRoleResolver", Status: hvacResolverGeneric},
+		{ObjectType: "ZoneHVAC:LowTemperatureRadiant:ConstantFlow", Family: "zone_equipment", Resolver: "genericNodeRoleResolver", Status: hvacResolverGeneric},
+		{ObjectType: "ZoneHVAC:LowTemperatureRadiant:Electric", Family: "zone_equipment", Resolver: "genericNodeRoleResolver", Status: hvacResolverGeneric},
+		{ObjectType: "ZoneHVAC:CoolingPanel:RadiantConvective:Water", Family: "zone_equipment", Resolver: "genericNodeRoleResolver", Status: hvacResolverGeneric},
+		{ObjectType: "ZoneHVAC:Dehumidifier:DX", Family: "zone_equipment", Resolver: "genericNodeRoleResolver", Status: hvacResolverGeneric},
+		{ObjectType: "ZoneHVAC:EnergyRecoveryVentilator", Family: "zone_equipment", Resolver: "typedComponentReferenceResolver", Status: hvacResolverGeneric},
+		{ObjectType: "ZoneHVAC:HybridUnitaryHVAC", Family: "zone_equipment", Resolver: "typedComponentReferenceResolver", Status: hvacResolverGeneric},
+		{ObjectType: "ZoneHVAC:OutdoorAirUnit", Family: "zone_equipment", Resolver: "typedComponentReferenceResolver", Status: hvacResolverGeneric},
+		{ObjectType: "ZoneHVAC:TerminalUnit:VariableRefrigerantFlow", Family: "zone_equipment", Resolver: "genericNodeRoleResolver", Status: hvacResolverGeneric},
+		{ObjectType: "ZoneHVAC:RefrigerationChillerSet", Family: "zone_equipment", Resolver: "genericNodeRoleResolver", Status: hvacResolverGeneric},
+		{ObjectType: "ZoneHVAC:UserDefined", Family: "zone_equipment", Resolver: "genericNodeRoleResolver", Status: hvacResolverGeneric},
+		{ObjectType: "Coil:Cooling:Water", Family: "water_coil", Resolver: "crossloop.same_water_coil_air_and_plant", Status: hvacResolverDone, TestFixture: "hvac_test.go"},
+		{ObjectType: "Coil:Heating:Water", Family: "water_coil", Resolver: "typedComponentReferenceResolver", Status: hvacResolverDone, TestFixture: "hvac_test.go"},
+		{ObjectType: "Coil:Heating:Steam", Family: "water_coil", Resolver: "genericNodeRoleResolver", Status: hvacResolverGeneric},
+		{ObjectType: "Coil:Cooling:DX:*", Family: "dx_coil", Resolver: "genericNodeRoleResolver", Status: hvacResolverGeneric},
+		{ObjectType: "Coil:Heating:DX:*", Family: "dx_coil", Resolver: "genericNodeRoleResolver", Status: hvacResolverGeneric},
+		{ObjectType: "CoilSystem:*", Family: "coil_system", Resolver: "typedComponentReferenceResolver", Status: hvacResolverGeneric},
+		{ObjectType: "AirLoopHVAC:UnitarySystem", Family: "unitary_system", Resolver: "typedComponentReferenceResolver", Status: hvacResolverGeneric},
+		{ObjectType: "AirLoopHVAC:Unitary:*", Family: "unitary_system", Resolver: "typedComponentReferenceResolver", Status: hvacResolverGeneric},
+		{ObjectType: "Chiller:*", Family: "plant_source", Resolver: "genericNodeRoleResolver", Status: hvacResolverGeneric},
+		{ObjectType: "Boiler:*", Family: "plant_source", Resolver: "genericNodeRoleResolver", Status: hvacResolverGeneric},
+		{ObjectType: "HeatPump:PlantLoop:EIR:*", Family: "plant_source", Resolver: "genericNodeRoleResolver", Status: hvacResolverGeneric},
+		{ObjectType: "CoolingTower:*", Family: "condenser_reject", Resolver: "genericNodeRoleResolver", Status: hvacResolverGeneric},
+		{ObjectType: "HeatExchanger:*", Family: "heat_exchanger", Resolver: "genericNodeRoleResolver", Status: hvacResolverGeneric},
+		{ObjectType: "DistrictCooling", Family: "plant_source", Resolver: "genericNodeRoleResolver", Status: hvacResolverGeneric},
+		{ObjectType: "DistrictHeating", Family: "plant_source", Resolver: "genericNodeRoleResolver", Status: hvacResolverGeneric},
+		{ObjectType: "GroundHeatExchanger:*", Family: "plant_source", Resolver: "genericNodeRoleResolver", Status: hvacResolverGeneric},
+		{ObjectType: "Fan:*", Family: "fan", Resolver: "genericNodeRoleResolver", Status: hvacResolverGeneric},
+		{ObjectType: "Pump:*", Family: "pump", Resolver: "genericNodeRoleResolver", Status: hvacResolverGeneric},
+		{ObjectType: "Pipe:*", Family: "pipe", Resolver: "genericNodeRoleResolver", Status: hvacResolverGeneric},
+		{ObjectType: "Duct", Family: "duct", Resolver: "genericNodeRoleResolver", Status: hvacResolverGeneric},
+		{ObjectType: "SetpointManager:*", Family: "control", Resolver: "genericNodeRoleResolver", Status: hvacResolverGeneric},
+		{ObjectType: "Controller:WaterCoil", Family: "control", Resolver: "typedComponentReferenceResolver", Status: hvacResolverGeneric},
+		{ObjectType: "AvailabilityManagerAssignmentList", Family: "control", Resolver: "typedComponentReferenceResolver", Status: hvacResolverGeneric},
+	}
+}
