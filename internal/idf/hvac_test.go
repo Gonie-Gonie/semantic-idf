@@ -1401,6 +1401,85 @@ func TestAnalyzeHVACVentilatedSlabUsesCatalogForInternalComponents(t *testing.T)
 	}
 }
 
+func TestAnalyzeHVACOutdoorAirUnitUsesCatalogForEquipmentList(t *testing.T) {
+	doc := Document{Objects: []Object{
+		{Index: 0, Type: "Zone", Fields: []Field{{Value: "Office"}}},
+		{Index: 1, Type: "ZoneHVAC:EquipmentConnections", Fields: []Field{
+			{Value: "Office"},
+			{Value: "Office Equipment"},
+			{Value: "Office Supply"},
+			{Value: "Office Exhaust"},
+			{Value: "Office Zone Air Node"},
+			{Value: "Office Return"},
+		}},
+		{Index: 2, Type: "ZoneHVAC:EquipmentList", Fields: []Field{
+			{Value: "Office Equipment"},
+			{Value: "SequentialLoad"},
+			{Value: "ZoneHVAC:OutdoorAirUnit"},
+			{Value: "Office OAU"},
+			{Value: "1"},
+			{Value: "1"},
+			{Value: ""},
+			{Value: ""},
+		}},
+		{Index: 3, Type: "ZoneHVAC:OutdoorAirUnit", Fields: []Field{
+			{Value: "Office OAU"},
+			{Value: "Always On"},
+			{Value: "Office"},
+			{Value: "0.42"},
+			{Value: "OA Schedule"},
+			{Value: "Office OAU Supply Fan"},
+			{Value: "DrawThrough"},
+			{Value: "Office OAU Exhaust Fan"},
+			{Value: "0.42"},
+			{Value: "Exhaust Schedule"},
+			{Value: "NeutralControl"},
+			{Value: ""},
+			{Value: ""},
+			{Value: "Office Outdoor Air"},
+			{Value: "Office OAU Air Outlet"},
+			{Value: "Office OAU Air Inlet"},
+			{Value: "Office OAU Fan Outlet"},
+			{Value: "Office OAU Equipment"},
+		}},
+		{Index: 4, Type: "Fan:SystemModel", Fields: []Field{{Value: "Office OAU Supply Fan"}}},
+		{Index: 5, Type: "Fan:ConstantVolume", Fields: []Field{{Value: "Office OAU Exhaust Fan"}}},
+		{Index: 6, Type: "ZoneHVAC:OutdoorAirUnit:EquipmentList", Fields: []Field{
+			{Value: "Office OAU Equipment"},
+			{Value: "HeatExchanger:AirToAir:SensibleAndLatent"},
+			{Value: "Office OAU Heat Exchanger"},
+			{Value: "Coil:Heating:Water"},
+			{Value: "Office OAU Heating Coil"},
+		}},
+		{Index: 7, Type: "HeatExchanger:AirToAir:SensibleAndLatent", Fields: []Field{{Value: "Office OAU Heat Exchanger"}}},
+		{Index: 8, Type: "Coil:Heating:Water", Fields: []Field{{Value: "Office OAU Heating Coil"}}},
+	}}
+
+	report := AnalyzeHVAC(doc)
+	for _, target := range []struct {
+		from       string
+		objectType string
+		name       string
+	}{
+		{from: "Office OAU", objectType: "Fan:SystemModel", name: "Office OAU Supply Fan"},
+		{from: "Office OAU", objectType: "Fan:ConstantVolume", name: "Office OAU Exhaust Fan"},
+		{from: "Office OAU", objectType: "ZoneHVAC:OutdoorAirUnit:EquipmentList", name: "Office OAU Equipment"},
+		{from: "Office OAU Equipment", objectType: "HeatExchanger:AirToAir:SensibleAndLatent", name: "Office OAU Heat Exchanger"},
+		{from: "Office OAU Equipment", objectType: "Coil:Heating:Water", name: "Office OAU Heating Coil"},
+	} {
+		if !hasHVACComponentReference(report.ComponentReferences, target.from, target.objectType, target.name, "internal_component_reference") {
+			t.Fatalf("component references = %#v, want %s -> %s %s", report.ComponentReferences, target.from, target.objectType, target.name)
+		}
+	}
+	relation := findHVACTestingZoneRelation(report, "Office")
+	if relation == nil {
+		t.Fatalf("Office relation not found: %#v", report.ZoneRelations)
+	}
+	if len(relation.ZoneEquipment) != 1 || !strings.EqualFold(relation.ZoneEquipment[0].ObjectType, "ZoneHVAC:OutdoorAirUnit") {
+		t.Fatalf("zone equipment = %#v, want OutdoorAirUnit", relation.ZoneEquipment)
+	}
+}
+
 func TestAnalyzeHVACBuildsPlantOnlyRadiantServiceChain(t *testing.T) {
 	doc := Document{Objects: []Object{
 		{Index: 0, Type: "Zone", Fields: []Field{{Value: "Office"}}},
