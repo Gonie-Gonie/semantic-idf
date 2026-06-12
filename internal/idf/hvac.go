@@ -143,9 +143,6 @@ type HVACComponent struct {
 	NodeUsages              []HVACNodeUsage `json:"nodeUsages,omitempty"`
 	RelatedLoopNames        []string        `json:"relatedLoopNames,omitempty"`
 	EditableFields          []HVACEditField `json:"editableFields,omitempty"`
-	RelationSource          string          `json:"-"`
-	RelationConfidence      string          `json:"-"`
-	RelationEvidence        []string        `json:"-"`
 	ListedInZoneEquipment   bool            `json:"listedInZoneEquipment,omitempty"`
 	ResolvedFromADU         bool            `json:"resolvedFromAirDistributionUnit,omitempty"`
 	DistributionUnitName    string          `json:"distributionUnitName,omitempty"`
@@ -189,9 +186,8 @@ type HVACZoneChain struct {
 	SpaceName          string             `json:"spaceName,omitempty"`
 	SpaceObjectIndex   int                `json:"spaceObjectIndex,omitempty"`
 	RelationScope      string             `json:"relationScope,omitempty"`
-	RelationSource     string             `json:"-"`
-	Confidence         string             `json:"-"`
-	Evidence           []string           `json:"-"`
+	RuleIDs            []string           `json:"ruleIds,omitempty"`
+	RuleTrace          []string           `json:"ruleTrace,omitempty"`
 	Nodes              HVACZoneNodes      `json:"nodes,omitempty"`
 	AirLoopNames       []string           `json:"airLoopNames,omitempty"`
 	AirLoopRelations   []HVACLoopRelation `json:"airLoopRelations,omitempty"`
@@ -226,11 +222,10 @@ type HVACZoneNodeSource struct {
 }
 
 type HVACLoopRelation struct {
-	LoopName   string   `json:"loopName"`
-	LoopType   string   `json:"loopType"`
-	Source     string   `json:"-"`
-	Confidence string   `json:"-"`
-	Evidence   []string `json:"-"`
+	LoopName  string   `json:"loopName"`
+	LoopType  string   `json:"loopType"`
+	RuleIDs   []string `json:"ruleIds,omitempty"`
+	RuleTrace []string `json:"ruleTrace,omitempty"`
 }
 
 type HVACServicePath struct {
@@ -240,8 +235,6 @@ type HVACServicePath struct {
 	Component       string   `json:"component,omitempty"`
 	PlantLoop       string   `json:"plantLoop,omitempty"`
 	SourceComponent string   `json:"sourceComponent,omitempty"`
-	Confidence      string   `json:"-"`
-	Evidence        string   `json:"-"`
 	SourceRelations []string `json:"sourceRelations,omitempty"`
 }
 
@@ -1241,7 +1234,8 @@ func buildHVACZoneRelation(ctx *hvacContext, loops []HVACLoop, connectionObj Obj
 				fmt.Sprintf("Zone %q references missing ZoneHVAC:EquipmentList %q.", zoneName, equipmentListName)))
 		} else {
 			relation.ZoneEquipment = equipmentFromHVACEquipmentList(ctx, equipmentList, &relation, "ZoneHVAC:EquipmentList", "missing_zone_equipment", "zone_equipment")
-			relation.Evidence = append(relation.Evidence, "ZoneHVAC:EquipmentConnections -> ZoneHVAC:EquipmentList")
+			relation.RuleIDs = appendUniqueString(relation.RuleIDs, hvacRuleZoneHasEquipmentList)
+			relation.RuleTrace = appendUniqueString(relation.RuleTrace, "ZoneHVAC:EquipmentConnections -> ZoneHVAC:EquipmentList")
 		}
 	}
 
@@ -1249,11 +1243,9 @@ func buildHVACZoneRelation(ctx *hvacContext, loops []HVACLoop, connectionObj Obj
 		for _, terminal := range terminalsForZoneEquipment(ctx, equipment) {
 			if equipment.ListedInZoneEquipment {
 				terminal.ListedInZoneEquipment = true
-				terminal.RelationEvidence = appendUniqueString(terminal.RelationEvidence, "ZoneHVAC:EquipmentList")
 			}
 			if terminal.OutletNode != "" && stringSliceContainsFold(zoneInletNodes, terminal.OutletNode) {
 				terminal.OutletMatchesZoneInlet = true
-				terminal.RelationEvidence = appendUniqueString(terminal.RelationEvidence, "terminal outlet node matches zone inlet node")
 			}
 			if !componentSliceContains(relation.TerminalUnits, terminal) {
 				relation.TerminalUnits = append(relation.TerminalUnits, terminal)
@@ -1273,10 +1265,7 @@ func buildHVACZoneRelation(ctx *hvacContext, loops []HVACLoop, connectionObj Obj
 		}
 	}
 	for _, terminal := range terminalsByZoneInlet(ctx, zoneInletNodes) {
-		terminal.RelationSource = "node_match"
-		terminal.RelationConfidence = "medium"
 		terminal.OutletMatchesZoneInlet = true
-		terminal.RelationEvidence = appendUniqueString(terminal.RelationEvidence, "terminal outlet node matches zone inlet node")
 		if !componentSliceContains(relation.TerminalUnits, terminal) {
 			relation.TerminalUnits = append(relation.TerminalUnits, terminal)
 		}
@@ -1296,7 +1285,8 @@ func buildHVACZoneRelation(ctx *hvacContext, loops []HVACLoop, connectionObj Obj
 			fmt.Sprintf("Zone %q has return node(s) but no AirLoop relation could be inferred.", zoneName)))
 	}
 	annotateTerminalAirLoopEvidence(ctx, loops, &relation)
-	relation.RelationSource, relation.Confidence = zoneRelationSourceConfidence(relation)
+	relation.RuleIDs = appendUniqueStrings(relation.RuleIDs, hvacLoopRelationRuleIDs(relation.AirLoopRelations)...)
+	relation.RuleIDs = appendUniqueStrings(relation.RuleIDs, hvacLoopRelationRuleIDs(relation.PlantLoopRelations)...)
 	return relation
 }
 
@@ -1329,22 +1319,22 @@ func buildHVACSpaceRelation(ctx *hvacContext, loops []HVACLoop, connectionObj Ob
 				fmt.Sprintf("Space %q references missing HVAC equipment list %q.", spaceName, equipmentListName)))
 		} else {
 			relation.ZoneEquipment = equipmentFromHVACEquipmentList(ctx, equipmentList, &relation, objectLabel(equipmentList), "missing_space_equipment", "space_equipment")
-			relation.Evidence = append(relation.Evidence, fmt.Sprintf("SpaceHVAC:EquipmentConnections -> %s", objectLabel(equipmentList)))
+			relation.RuleIDs = appendUniqueString(relation.RuleIDs, hvacRuleZoneHasEquipmentList)
+			relation.RuleTrace = appendUniqueString(relation.RuleTrace, fmt.Sprintf("SpaceHVAC:EquipmentConnections -> %s", objectLabel(equipmentList)))
 		}
 	}
 
 	for _, evidence := range spaceZoneEquipmentSplitterEvidence(ctx, relation) {
-		relation.Evidence = appendUniqueString(relation.Evidence, evidence)
+		relation.RuleIDs = appendUniqueString(relation.RuleIDs, "space.zone_equipment_splitter")
+		relation.RuleTrace = appendUniqueString(relation.RuleTrace, evidence)
 	}
 	for _, equipment := range relation.ZoneEquipment {
 		for _, terminal := range terminalsForZoneEquipment(ctx, equipment) {
 			if equipment.ListedInZoneEquipment {
 				terminal.ListedInZoneEquipment = true
-				terminal.RelationEvidence = appendUniqueString(terminal.RelationEvidence, "SpaceHVAC equipment list")
 			}
 			if terminal.OutletNode != "" && stringSliceContainsFold(spaceInletNodes, terminal.OutletNode) {
 				terminal.OutletMatchesZoneInlet = true
-				terminal.RelationEvidence = appendUniqueString(terminal.RelationEvidence, "terminal outlet node matches space inlet node")
 			}
 			if !componentSliceContains(relation.TerminalUnits, terminal) {
 				relation.TerminalUnits = append(relation.TerminalUnits, terminal)
@@ -1364,10 +1354,7 @@ func buildHVACSpaceRelation(ctx *hvacContext, loops []HVACLoop, connectionObj Ob
 		}
 	}
 	for _, terminal := range terminalsByZoneInlet(ctx, spaceInletNodes) {
-		terminal.RelationSource = "node_match"
-		terminal.RelationConfidence = "medium"
 		terminal.OutletMatchesZoneInlet = true
-		terminal.RelationEvidence = appendUniqueString(terminal.RelationEvidence, "terminal outlet node matches space inlet node")
 		if !componentSliceContains(relation.TerminalUnits, terminal) {
 			relation.TerminalUnits = append(relation.TerminalUnits, terminal)
 		}
@@ -1387,7 +1374,8 @@ func buildHVACSpaceRelation(ctx *hvacContext, loops []HVACLoop, connectionObj Ob
 			fmt.Sprintf("Space %q has return node(s) but no AirLoop relation could be inferred.", spaceName)))
 	}
 	annotateTerminalAirLoopEvidence(ctx, loops, &relation)
-	relation.RelationSource, relation.Confidence = zoneRelationSourceConfidence(relation)
+	relation.RuleIDs = appendUniqueStrings(relation.RuleIDs, hvacLoopRelationRuleIDs(relation.AirLoopRelations)...)
+	relation.RuleIDs = appendUniqueStrings(relation.RuleIDs, hvacLoopRelationRuleIDs(relation.PlantLoopRelations)...)
 	return relation
 }
 
@@ -1410,9 +1398,6 @@ func equipmentFromHVACEquipmentList(ctx *hvacContext, equipmentList Object, rela
 			component.RoleHere = defaultRole
 		}
 		component.ListedInZoneEquipment = true
-		component.RelationSource = "explicit"
-		component.RelationConfidence = "high"
-		component.RelationEvidence = appendUniqueString(component.RelationEvidence, evidence)
 		component.CoolingSequence = hvacFieldValue(equipmentList, reference.CoolingSequenceIndex)
 		component.HeatingSequence = hvacFieldValue(equipmentList, reference.HeatingSequenceIndex)
 		component.CoolingFractionSchedule = hvacFieldValue(equipmentList, reference.CoolingScheduleIndex)
@@ -1760,9 +1745,6 @@ func resolveAirDistributionUnitTerminal(ctx *hvacContext, equipment HVACComponen
 	terminal.RoleHere = "zone_terminal"
 	terminal.ResolvedFromADU = true
 	terminal.DistributionUnitName = equipment.ObjectName
-	terminal.RelationSource = "explicit"
-	terminal.RelationConfidence = "high"
-	terminal.RelationEvidence = appendUniqueString(terminal.RelationEvidence, "ZoneHVAC:AirDistributionUnit")
 	return terminal, terminal.ObjectType != "" && terminal.ObjectName != ""
 }
 
@@ -1819,13 +1801,12 @@ func resolveAirLoopRelationsForZone(ctx *hvacContext, loops []HVACLoop, terminal
 		relation := relations[key]
 		if relation.LoopName == "" {
 			relation = HVACLoopRelation{
-				LoopName:   loop.Name,
-				LoopType:   loop.Type,
-				Source:     ruleID,
-				Confidence: "rule",
+				LoopName: loop.Name,
+				LoopType: loop.Type,
 			}
 		}
-		relation.Evidence = appendUniqueString(relation.Evidence, evidence)
+		relation.RuleIDs = appendUniqueString(relation.RuleIDs, ruleID)
+		relation.RuleTrace = appendUniqueString(relation.RuleTrace, evidence)
 		relations[key] = relation
 	}
 
@@ -1881,6 +1862,21 @@ func sortedHVACLoopRelations(relations []HVACLoopRelation) []HVACLoopRelation {
 	return out
 }
 
+func hvacLoopRelationRuleIDs(relations []HVACLoopRelation) []string {
+	var ids []string
+	for _, relation := range relations {
+		ids = appendUniqueStrings(ids, relation.RuleIDs...)
+	}
+	return ids
+}
+
+func appendUniqueStrings(values []string, candidates ...string) []string {
+	for _, candidate := range candidates {
+		values = appendUniqueString(values, candidate)
+	}
+	return values
+}
+
 func plantLoopRelationsForZone(loops []HVACLoop, plantLoopNames []string, airLoopNames []string) []HVACLoopRelation {
 	wanted := map[string]bool{}
 	for _, name := range plantLoopNames {
@@ -1894,17 +1890,15 @@ func plantLoopRelationsForZone(loops []HVACLoop, plantLoopNames []string, airLoo
 	for _, loop := range loops {
 		if loop.Type == "PlantLoop" && wanted[normalizeName(loop.Name)] {
 			relation := HVACLoopRelation{
-				LoopName:   loop.Name,
-				LoopType:   loop.Type,
-				Source:     "component_reference",
-				Confidence: "inferred",
-				Evidence:   []string{"Zone equipment or terminal component references a component on this plant loop."},
+				LoopName:  loop.Name,
+				LoopType:  loop.Type,
+				RuleIDs:   []string{hvacRulePlantComponentOnDemandBranch},
+				RuleTrace: []string{"Zone equipment or terminal component resolves to a component on this plant loop."},
 			}
 			for _, airLoopRelation := range loop.RelatedLoops {
 				if airLoops[normalizeName(airLoopRelation.LoopName)] {
-					relation.Source = "air_loop_cross_reference"
-					relation.Confidence = "medium"
-					relation.Evidence = appendUniqueString(relation.Evidence, fmt.Sprintf("AirLoop %q shares %s %q with this plant loop.", airLoopRelation.LoopName, airLoopRelation.ComponentType, airLoopRelation.ComponentName))
+					relation.RuleIDs = appendUniqueString(relation.RuleIDs, hvacRuleCrossLoopSameWaterCoil)
+					relation.RuleTrace = appendUniqueString(relation.RuleTrace, fmt.Sprintf("AirLoop %q shares %s %q with this plant loop.", airLoopRelation.LoopName, airLoopRelation.ComponentType, airLoopRelation.ComponentName))
 				}
 			}
 			relations[normalizeName(loop.Name)] = relation
@@ -1946,57 +1940,9 @@ func annotateTerminalAirLoopEvidence(ctx *hvacContext, loops []HVACLoop, relatio
 			demandNodes := airLoopDemandNodes(ctx, loop)
 			if terminal.InletNode != "" && demandNodes[normalizeName(terminal.InletNode)] {
 				terminal.InletOnAirLoopDemand = true
-				terminal.RelationSource = firstNonEmpty(terminal.RelationSource, hvacRuleAirLoopZoneSplitterToTerminal)
-				terminal.RelationConfidence = strongestConfidence(terminal.RelationConfidence, "rule")
-				terminal.RelationEvidence = appendUniqueString(terminal.RelationEvidence, "terminal inlet node is on AirLoop demand graph")
 			}
 		}
-		if terminal.OutletMatchesZoneInlet {
-			terminal.RelationConfidence = strongestConfidence(terminal.RelationConfidence, "rule")
-		}
 	}
-}
-
-func zoneRelationSourceConfidence(relation HVACZoneChain) (string, string) {
-	switch {
-	case len(relation.AirLoopRelations) > 0 && anyTerminalHasHighEvidence(relation.TerminalUnits):
-		return "cross_confirmed", "high"
-	case len(relation.ZoneEquipment) > 0:
-		return "explicit_zone_equipment", "high"
-	case len(relation.AirLoopRelations) > 0 || len(relation.PlantLoopRelations) > 0:
-		return "inferred", "medium"
-	default:
-		return "unresolved", "low"
-	}
-}
-
-func anyTerminalHasHighEvidence(terminals []HVACComponent) bool {
-	for _, terminal := range terminals {
-		if terminal.OutletMatchesZoneInlet && terminal.InletOnAirLoopDemand {
-			return true
-		}
-	}
-	return false
-}
-
-func confidenceRank(confidence string) int {
-	switch confidence {
-	case "rule", "high", "cross_confirmed":
-		return 0
-	case "medium", "inferred":
-		return 1
-	case "low", "unresolved":
-		return 2
-	default:
-		return 3
-	}
-}
-
-func strongestConfidence(current string, candidate string) string {
-	if confidenceRank(candidate) < confidenceRank(current) {
-		return candidate
-	}
-	return current
 }
 
 func resolvePlantLoopsForZone(ctx *hvacContext, loops []HVACLoop, airLoopNames map[string]bool, terminals []HVACComponent, equipment []HVACComponent) map[string]bool {
@@ -2322,8 +2268,6 @@ func buildServiceChainsFromRuleGraph(relation HVACZoneChain, graph HVACRuleGraph
 					ZoneName:        relation.ZoneName,
 					TerminalName:    componentLabel(terminal),
 					AirLoopName:     airLoopName,
-					Confidence:      "rule",
-					Evidence:        hvacRulePathEvidence(edges),
 					SourceRelations: hvacRulePathRuleIDs(edges),
 				})
 			}
@@ -2332,8 +2276,6 @@ func buildServiceChainsFromRuleGraph(relation HVACZoneChain, graph HVACRuleGraph
 			addPath(HVACServicePath{
 				ZoneName:        relation.ZoneName,
 				TerminalName:    componentLabel(terminal),
-				Confidence:      "rule",
-				Evidence:        hvacRulePathEvidence(edges),
 				SourceRelations: hvacRulePathRuleIDs(edges),
 			})
 		}
@@ -2351,8 +2293,6 @@ func buildServiceChainsFromRuleGraph(relation HVACZoneChain, graph HVACRuleGraph
 					ZoneName:        relation.ZoneName,
 					PlantLoop:       plantLoopName,
 					SourceComponent: componentLabel(sourceComponent),
-					Confidence:      "rule",
-					Evidence:        hvacRulePathEvidence(edges),
 					SourceRelations: hvacRulePathRuleIDs(edges),
 				})
 			}
@@ -2371,8 +2311,6 @@ func buildServiceChainsFromRuleGraph(relation HVACZoneChain, graph HVACRuleGraph
 			addPath(HVACServicePath{
 				ZoneName:        relation.ZoneName,
 				Component:       componentLabel(equipment),
-				Confidence:      "rule",
-				Evidence:        hvacRulePathEvidence(edges),
 				SourceRelations: hvacRulePathRuleIDs(edges),
 			})
 		}
@@ -2478,10 +2416,6 @@ func hvacRulePathRuleIDs(edges []HVACRuleEdge) []string {
 		ids = appendUniqueString(ids, edge.RuleID)
 	}
 	return ids
-}
-
-func hvacRulePathEvidence(edges []HVACRuleEdge) string {
-	return strings.Join(hvacRulePathRuleIDs(edges), " -> ")
 }
 
 func parseAirLoopDemandGraph(ctx *hvacContext, loop HVACLoop) AirLoopDemandGraph {

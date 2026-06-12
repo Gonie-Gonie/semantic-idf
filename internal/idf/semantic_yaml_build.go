@@ -1092,15 +1092,14 @@ func writeSemanticZoneHVAC(builder *semanticYAMLBuilder, ctx *semanticContext, z
 		builder.raw(4, "air_loop_relations:")
 		for _, loopRelation := range relation.AirLoopRelations {
 			builder.raw(5, "- loop: "+yamlScalar(loopRelation.LoopName))
-			if strings.Contains(loopRelation.Source, ".") {
-				builder.kv(6, "rule_id", loopRelation.Source)
-			}
+			writeSemanticStringList(builder, 6, "rule_ids", loopRelation.RuleIDs)
 		}
 	}
 	if len(relation.PlantLoopRelations) > 0 {
 		builder.raw(4, "plant_loop_relations:")
 		for _, loopRelation := range relation.PlantLoopRelations {
 			builder.raw(5, "- loop: "+yamlScalar(loopRelation.LoopName))
+			writeSemanticStringList(builder, 6, "rule_ids", loopRelation.RuleIDs)
 		}
 	}
 	writeSemanticStringList(builder, 4, "condenser_loops", relation.CondenserLoopNames)

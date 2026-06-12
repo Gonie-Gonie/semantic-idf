@@ -132,10 +132,10 @@ func TestAnalyzeHVACBuildsLoopAndZoneRelations(t *testing.T) {
 	if !stringSliceContainsFold(relation.PlantLoopNames, "Chilled Water Loop") {
 		t.Fatalf("plant loop names = %#v, want Chilled Water Loop", relation.PlantLoopNames)
 	}
-	if relation.RelationSource != "cross_confirmed" || relation.Confidence != "high" {
-		t.Fatalf("relation evidence = source %q confidence %q, want cross_confirmed/high", relation.RelationSource, relation.Confidence)
+	if !stringSliceContainsFold(relation.RuleIDs, hvacRuleZoneHasEquipmentList) || !stringSliceContainsFold(relation.RuleIDs, hvacRuleAirLoopZoneSplitterToTerminal) || !stringSliceContainsFold(relation.RuleIDs, hvacRulePlantComponentOnDemandBranch) {
+		t.Fatalf("relation rule ids = %#v, want equipment list, air loop, and plant rules", relation.RuleIDs)
 	}
-	if len(relation.AirLoopRelations) != 1 || relation.AirLoopRelations[0].Confidence != "rule" {
+	if len(relation.AirLoopRelations) != 1 || !stringSliceContainsFold(relation.AirLoopRelations[0].RuleIDs, hvacRuleAirLoopZoneSplitterToTerminal) {
 		t.Fatalf("air loop relations = %#v, want rule-resolved relation", relation.AirLoopRelations)
 	}
 	if len(relation.TerminalUnits) != 1 || !relation.TerminalUnits[0].InletOnAirLoopDemand || !relation.TerminalUnits[0].OutletMatchesZoneInlet {
@@ -490,8 +490,8 @@ func TestAnalyzeHVACBuildsSpaceHVACRelation(t *testing.T) {
 	if !hasNodeListSource {
 		t.Fatalf("space node source expansion = %#v", relation.Nodes.Sources)
 	}
-	if !stringSliceContainsFold(relation.Evidence, "Open Office Splitter") {
-		t.Fatalf("space evidence = %#v, want splitter evidence", relation.Evidence)
+	if !stringSliceContainsFold(relation.RuleTrace, "Open Office Splitter") {
+		t.Fatalf("space rule trace = %#v, want splitter trace", relation.RuleTrace)
 	}
 }
 
@@ -625,14 +625,14 @@ func TestAnalyzeHVACBuildsAirLoopDemandGraphFromSupplyAndReturnPaths(t *testing.
 		t.Fatalf("Office air loop relation = %#v", report.ZoneRelations)
 	}
 	airRelation := relation.AirLoopRelations[0]
-	if airRelation.Source != hvacRuleAirLoopZoneSplitterToTerminal || airRelation.Confidence != "rule" {
-		t.Fatalf("air relation = %#v, want %s/rule", airRelation, hvacRuleAirLoopZoneSplitterToTerminal)
+	if !stringSliceContainsFold(airRelation.RuleIDs, hvacRuleAirLoopZoneSplitterToTerminal) {
+		t.Fatalf("air relation = %#v, want %s rule", airRelation, hvacRuleAirLoopZoneSplitterToTerminal)
 	}
-	if !stringSliceContainsFold(airRelation.Evidence, `Terminal inlet node "Office Terminal Inlet" is on the AirLoop demand graph.`) {
-		t.Fatalf("air relation evidence = %#v, want terminal inlet graph evidence", airRelation.Evidence)
+	if !stringSliceContainsFold(airRelation.RuleTrace, `Terminal inlet node "Office Terminal Inlet" is on the AirLoop demand graph.`) {
+		t.Fatalf("air relation trace = %#v, want terminal inlet graph trace", airRelation.RuleTrace)
 	}
-	if !stringSliceContainsFold(airRelation.Evidence, "Zone return node is present on the AirLoop return path graph.") {
-		t.Fatalf("air relation evidence = %#v, want return path evidence", airRelation.Evidence)
+	if !stringSliceContainsFold(airRelation.RuleTrace, "Zone return node is present on the AirLoop return path graph.") {
+		t.Fatalf("air relation trace = %#v, want return path trace", airRelation.RuleTrace)
 	}
 	if len(relation.TerminalUnits) != 1 || !relation.TerminalUnits[0].InletOnAirLoopDemand {
 		t.Fatalf("terminal demand evidence = %#v, want inlet on demand graph", relation.TerminalUnits)
@@ -696,9 +696,6 @@ func TestBuildServiceChainsFromRuleGraphRequiresDirectedPath(t *testing.T) {
 		}
 		if path.AirLoopName == "Air 2" || path.PlantLoop == "Plant 2" {
 			t.Fatalf("service path includes disconnected loop: %#v", path)
-		}
-		if path.Confidence != "rule" {
-			t.Fatalf("service path confidence = %q, want rule", path.Confidence)
 		}
 		if len(path.SourceRelations) == 0 {
 			t.Fatalf("service path missing rule trace: %#v", path)
@@ -1006,8 +1003,8 @@ func TestAnalyzeHVACReferenceLargeOfficeRelations(t *testing.T) {
 	if !componentSliceContainsName(relation.TerminalUnits, "Basement VAV Box Component") {
 		t.Fatalf("Basement terminals = %#v, want resolved VAV terminal", relation.TerminalUnits)
 	}
-	if relation.Confidence == "" || relation.RelationSource == "" {
-		t.Fatalf("Basement relation missing confidence/source: %#v", relation)
+	if len(relation.RuleIDs) == 0 {
+		t.Fatalf("Basement relation missing rule ids: %#v", relation)
 	}
 	if !stringSliceContainsFold(relation.PlantLoopNames, "HeatSys1") || !stringSliceContainsFold(relation.PlantLoopNames, "CoolSys1") {
 		t.Fatalf("Basement plant loops = %#v, want HeatSys1 and CoolSys1", relation.PlantLoopNames)
