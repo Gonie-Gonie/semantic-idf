@@ -2246,6 +2246,122 @@ func TestAnalyzeHVACPlantSourceFamiliesUseCatalogForNodeRoles(t *testing.T) {
 	}
 }
 
+func TestAnalyzeHVACTransportAndControlFamiliesUseCatalogForNodesAndReferences(t *testing.T) {
+	doc := Document{Objects: []Object{
+		{Index: 0, Type: "Fan:ConstantVolume", Fields: []Field{
+			{Value: "Supply Fan"},
+			{Value: "Always On"},
+			{Value: "0.7"},
+			{Value: "500"},
+			{Value: "Autosize"},
+			{Value: "0.9"},
+			{Value: "1.0"},
+			{Value: "Fan Inlet"},
+			{Value: "Fan Outlet"},
+		}},
+		{Index: 1, Type: "Fan:SystemModel", Fields: []Field{
+			{Value: "System Fan"},
+			{Value: "Always On"},
+			{Value: "System Fan Inlet"},
+			{Value: "System Fan Outlet"},
+			{Value: "Autosize"},
+			{Value: "Continuous"},
+		}},
+		{Index: 2, Type: "Pump:VariableSpeed", Fields: []Field{
+			{Value: "CHW Pump"},
+			{Value: "Pump Inlet"},
+			{Value: "Pump Outlet"},
+			{Value: "Autosize"},
+		}},
+		{Index: 3, Type: "Pipe:Adiabatic", Fields: []Field{
+			{Value: "Bypass Pipe"},
+			{Value: "Pipe Inlet"},
+			{Value: "Pipe Outlet"},
+		}},
+		{Index: 4, Type: "Duct", Fields: []Field{
+			{Value: "Supply Duct"},
+			{Value: "Duct Inlet"},
+			{Value: "Duct Outlet"},
+		}},
+		{Index: 5, Type: "SetpointManager:Scheduled", Fields: []Field{
+			{Value: "Supply Air Temp Manager"},
+			{Value: "Temperature"},
+			{Value: "Supply Air Temp Schedule"},
+			{Value: "Supply Air Setpoint Node"},
+		}},
+		{Index: 6, Type: "SetpointManager:MixedAir", Fields: []Field{
+			{Value: "Mixed Air Manager"},
+			{Value: "Temperature"},
+			{Value: "Reference Setpoint Node"},
+			{Value: "Mixed Air Fan Inlet"},
+			{Value: "Mixed Air Fan Outlet"},
+			{Value: "Mixed Air Setpoint Node"},
+			{Value: "Cooling Coil Inlet"},
+			{Value: "Cooling Coil Outlet"},
+			{Value: "12.8"},
+		}},
+		{Index: 7, Type: "Controller:WaterCoil", Fields: []Field{
+			{Value: "Cooling Coil Controller"},
+			{Value: "Temperature"},
+			{Value: "Reverse"},
+			{Value: "Flow"},
+			{Value: "Controller Sensor Node"},
+			{Value: "Controller Actuator Node"},
+			{Value: "0.001"},
+			{Value: "Autosize"},
+			{Value: "0"},
+		}},
+		{Index: 8, Type: "AvailabilityManagerAssignmentList", Fields: []Field{
+			{Value: "Air Loop Availability Managers"},
+			{Value: "AvailabilityManager:Scheduled"},
+			{Value: "Night Schedule Manager"},
+			{Value: "AvailabilityManager:NightCycle"},
+			{Value: "Night Cycle Manager"},
+		}},
+		{Index: 9, Type: "AvailabilityManager:Scheduled", Fields: []Field{{Value: "Night Schedule Manager"}}},
+		{Index: 10, Type: "AvailabilityManager:NightCycle", Fields: []Field{{Value: "Night Cycle Manager"}}},
+	}}
+
+	report := AnalyzeHVAC(doc)
+	nodeTests := []struct {
+		objectType string
+		objectName string
+		nodeName   string
+		role       string
+		fieldIndex int
+	}{
+		{objectType: "Fan:ConstantVolume", objectName: "Supply Fan", nodeName: "Fan Inlet", role: "air_inlet", fieldIndex: 7},
+		{objectType: "Fan:SystemModel", objectName: "System Fan", nodeName: "System Fan Outlet", role: "air_outlet", fieldIndex: 3},
+		{objectType: "Pump:VariableSpeed", objectName: "CHW Pump", nodeName: "Pump Inlet", role: "inlet", fieldIndex: 1},
+		{objectType: "Pipe:Adiabatic", objectName: "Bypass Pipe", nodeName: "Pipe Outlet", role: "outlet", fieldIndex: 2},
+		{objectType: "Duct", objectName: "Supply Duct", nodeName: "Duct Inlet", role: "inlet", fieldIndex: 1},
+		{objectType: "SetpointManager:Scheduled", objectName: "Supply Air Temp Manager", nodeName: "Supply Air Setpoint Node", role: "setpoint_node_list", fieldIndex: 3},
+		{objectType: "SetpointManager:MixedAir", objectName: "Mixed Air Manager", nodeName: "Mixed Air Fan Outlet", role: "outlet", fieldIndex: 4},
+		{objectType: "Controller:WaterCoil", objectName: "Cooling Coil Controller", nodeName: "Controller Actuator Node", role: "node", fieldIndex: 5},
+	}
+	for _, test := range nodeTests {
+		if !hasHVACNodeUsage(report.NodeUsages, test.objectType, test.objectName, test.nodeName, test.role, test.fieldIndex) {
+			t.Fatalf("node usages = %#v, want %s %s node %q role %s at field %d",
+				report.NodeUsages, test.objectType, test.objectName, test.nodeName, test.role, test.fieldIndex)
+		}
+	}
+	for _, reference := range []struct {
+		targetType string
+		targetName string
+	}{
+		{targetType: "AvailabilityManager:Scheduled", targetName: "Night Schedule Manager"},
+		{targetType: "AvailabilityManager:NightCycle", targetName: "Night Cycle Manager"},
+	} {
+		if !hasHVACComponentReference(report.ComponentReferences, "Air Loop Availability Managers", reference.targetType, reference.targetName, "internal_component_reference") {
+			t.Fatalf("component references = %#v, want availability list -> %s %s",
+				report.ComponentReferences, reference.targetType, reference.targetName)
+		}
+	}
+	if !hasHVACRuleEdge(report.RuleGraph, hvacRuleComponentReferencesComponent) {
+		t.Fatalf("rule graph missing availability manager component reference edges: %#v", report.RuleGraph.Edges)
+	}
+}
+
 func TestAnalyzeHVACVRFTerminalUsesCatalogForInternalComponents(t *testing.T) {
 	doc := Document{Objects: []Object{
 		{Index: 0, Type: "ZoneHVAC:TerminalUnit:VariableRefrigerantFlow", Fields: []Field{

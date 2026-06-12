@@ -54,12 +54,15 @@ func TestPreviewApplyHVACRejectsInvalidNumber(t *testing.T) {
 	doc := Document{Objects: []Object{
 		{Index: 0, Type: "Fan:ConstantVolume", Fields: []Field{
 			{Value: "Supply Fan", Comment: "Name"},
+			{Value: "Always On", Comment: "Availability Schedule Name"},
+			{Value: "0.7", Comment: "Fan Total Efficiency"},
+			{Value: "500", Comment: "Pressure Rise"},
 			{Value: "Autosize", Comment: "Maximum Flow Rate"},
 		}},
 	}}
 
 	preview := PreviewApplyHVAC(doc, HVACApplyRequest{Changes: []HVACFieldEditRequest{
-		{ObjectIndex: 0, FieldIndex: 1, Value: "fast"},
+		{ObjectIndex: 0, FieldIndex: 4, Value: "fast"},
 	}})
 	if preview.CanApply {
 		t.Fatalf("preview.CanApply = true, want false")

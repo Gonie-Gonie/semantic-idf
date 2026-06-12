@@ -574,6 +574,54 @@ func TestFieldCatalogCoversAirTerminalFamilies(t *testing.T) {
 			fieldName:  "Outlet Node Name",
 			role:       fieldRoleNodeRef,
 		},
+		{
+			objectType: "Fan:ConstantVolume",
+			fieldIndex: 7,
+			fieldName:  "Air Inlet Node Name",
+			role:       fieldRoleNodeRef,
+		},
+		{
+			objectType: "Fan:SystemModel",
+			fieldIndex: 2,
+			fieldName:  "Air Inlet Node Name",
+			role:       fieldRoleNodeRef,
+		},
+		{
+			objectType: "Pump:VariableSpeed",
+			fieldIndex: 1,
+			fieldName:  "Inlet Node Name",
+			role:       fieldRoleNodeRef,
+		},
+		{
+			objectType: "Pipe:Adiabatic",
+			fieldIndex: 2,
+			fieldName:  "Outlet Node Name",
+			role:       fieldRoleNodeRef,
+		},
+		{
+			objectType: "Duct",
+			fieldIndex: 1,
+			fieldName:  "Inlet Node Name",
+			role:       fieldRoleNodeRef,
+		},
+		{
+			objectType: "SetpointManager:Scheduled",
+			fieldIndex: 3,
+			fieldName:  "Setpoint Node or NodeList Name",
+			role:       fieldRoleNodeListRef,
+		},
+		{
+			objectType: "Controller:WaterCoil",
+			fieldIndex: 5,
+			fieldName:  "Actuator Node Name",
+			role:       fieldRoleNodeRef,
+		},
+		{
+			objectType: "AvailabilityManagerAssignmentList",
+			fieldIndex: 4,
+			fieldName:  "Availability Manager Name",
+			role:       fieldRoleObjectRef,
+		},
 	}
 
 	for _, test := range tests {
