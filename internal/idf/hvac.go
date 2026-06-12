@@ -1134,11 +1134,13 @@ func newHVACComponent(ctx *hvacContext, objectType string, objectNameValue strin
 			}
 		}
 	}
-	if inlet := fieldValueByCatalogName(obj, "Air Inlet Node Name", "Inlet Node Name"); inlet != "" {
+	if inlet, index, ok := fieldValueIndexByCatalogName(obj, "Air Inlet Node Name", "Inlet Node Name"); ok && inlet != "" {
 		component.InletNode = inlet
+		component.InletFieldIndex = index
 	}
-	if outlet := fieldValueByCatalogName(obj, "Air Outlet Node Name", "Outlet Node Name"); outlet != "" {
+	if outlet, index, ok := fieldValueIndexByCatalogName(obj, "Air Outlet Node Name", "Outlet Node Name"); ok && outlet != "" {
 		component.OutletNode = outlet
+		component.OutletFieldIndex = index
 	}
 	return component
 }

@@ -853,6 +853,137 @@ func TestAnalyzeHVACUsesTypedComponentReferenceGraphForPlantRelation(t *testing.
 	}
 }
 
+func TestAnalyzeHVACVAVReheatTerminalUsesCatalogWithoutComments(t *testing.T) {
+	doc := Document{Objects: []Object{
+		{Index: 0, Type: "Zone", Fields: []Field{{Value: "Office"}}},
+		{Index: 1, Type: "ZoneHVAC:EquipmentConnections", Fields: []Field{
+			{Value: "Office"},
+			{Value: "Office Equipment"},
+			{Value: "Office Supply Inlet"},
+			{Value: ""},
+			{Value: "Office Zone Air Node"},
+			{Value: "Office Return Node"},
+		}},
+		{Index: 2, Type: "ZoneHVAC:EquipmentList", Fields: []Field{
+			{Value: "Office Equipment"},
+			{Value: "ZoneHVAC:AirDistributionUnit"},
+			{Value: "Office ADU"},
+			{Value: "1"},
+			{Value: "1"},
+		}},
+		{Index: 3, Type: "ZoneHVAC:AirDistributionUnit", Fields: []Field{
+			{Value: "Office ADU"},
+			{Value: "Office Supply Inlet"},
+			{Value: "AirTerminal:SingleDuct:VAV:Reheat"},
+			{Value: "Office VAV"},
+		}},
+		{Index: 4, Type: "AirTerminal:SingleDuct:VAV:Reheat", Fields: []Field{
+			{Value: "Office VAV"},
+			{Value: "Always On"},
+			{Value: "Office Damper Outlet"},
+			{Value: "Office Terminal Inlet"},
+			{Value: "Autosize"},
+			{Value: "Constant"},
+			{Value: "0.3"},
+			{Value: ""},
+			{Value: ""},
+			{Value: "Coil:Heating:Water"},
+			{Value: "Office Reheat Coil"},
+			{Value: "Autosize"},
+			{Value: "0"},
+			{Value: "Office Supply Inlet"},
+			{Value: "0.001"},
+		}},
+		{Index: 5, Type: "PlantLoop", Fields: []Field{
+			{Value: "Heating Water Loop"},
+			{Value: "Water"},
+			{Value: ""},
+			{Value: ""},
+			{Value: "HW Setpoint"},
+			{Value: "80"},
+			{Value: "20"},
+			{Value: "Autosize"},
+			{Value: "0"},
+			{Value: "Autosize"},
+			{Value: "HW Supply Inlet"},
+			{Value: "HW Supply Outlet"},
+			{Value: "HW Supply Branches"},
+			{Value: ""},
+			{Value: "HW Demand Inlet"},
+			{Value: "HW Demand Outlet"},
+			{Value: "HW Demand Branches"},
+			{Value: ""},
+		}},
+		{Index: 6, Type: "BranchList", Fields: []Field{
+			{Value: "HW Demand Branches"},
+			{Value: "Reheat Coil Branch"},
+		}},
+		{Index: 7, Type: "Branch", Fields: []Field{
+			{Value: "Reheat Coil Branch"},
+			{Value: ""},
+			{Value: "Coil:Heating:Water"},
+			{Value: "Office Reheat Coil"},
+			{Value: "HW Demand Inlet"},
+			{Value: "HW Demand Outlet"},
+		}},
+		{Index: 8, Type: "Coil:Heating:Water", Fields: []Field{
+			{Value: "Office Reheat Coil"},
+		}},
+		{Index: 9, Type: "BranchList", Fields: []Field{
+			{Value: "HW Supply Branches"},
+			{Value: "Boiler Branch"},
+		}},
+		{Index: 10, Type: "Branch", Fields: []Field{
+			{Value: "Boiler Branch"},
+			{Value: ""},
+			{Value: "Boiler:HotWater"},
+			{Value: "HW Boiler"},
+			{Value: "HW Supply Inlet"},
+			{Value: "HW Supply Outlet"},
+		}},
+		{Index: 11, Type: "Boiler:HotWater", Fields: []Field{
+			{Value: "HW Boiler"},
+		}},
+	}}
+
+	report := AnalyzeHVAC(doc)
+	relation := findHVACTestingZoneRelation(report, "Office")
+	if relation == nil {
+		t.Fatalf("Office relation not found: %#v", report.ZoneRelations)
+	}
+	terminal := findHVACTestingComponent(relation.TerminalUnits, "Office VAV")
+	if terminal == nil {
+		t.Fatalf("terminal units = %#v, want Office VAV", relation.TerminalUnits)
+	}
+	if terminal.InletNode != "Office Terminal Inlet" || terminal.OutletNode != "Office Supply Inlet" || terminal.TerminalObjectOutletNode != "Office Supply Inlet" {
+		t.Fatalf("terminal nodes = %#v, want catalog-derived inlet and final outlet", terminal)
+	}
+	if terminal.OutletFieldIndex != 13 {
+		t.Fatalf("terminal outlet field index = %d, want final Air Outlet Node Name index 13", terminal.OutletFieldIndex)
+	}
+	if !terminal.ResolvedFromADU || terminal.DistributionUnitName != "Office ADU" || terminal.DistributionUnitOutletNode != "Office Supply Inlet" {
+		t.Fatalf("terminal ADU trace = %#v, want Office ADU outlet trace", terminal)
+	}
+	if !hasHVACComponentReference(report.ComponentReferences, "Office VAV", "Coil:Heating:Water", "Office Reheat Coil", "internal_component_reference") {
+		t.Fatalf("component references = %#v, want catalog-derived VAV reheat coil reference", report.ComponentReferences)
+	}
+	for _, ruleID := range []string{
+		hvacRuleZoneEquipmentListADU,
+		hvacRuleZoneADUResolvesTerminal,
+		hvacRuleZoneADUOutletMatchesInlet,
+		hvacRuleZoneTerminalOutletMatchesADU,
+		hvacRuleComponentReferencesComponent,
+		hvacRuleComponentServesParent,
+	} {
+		if !hasHVACRuleEdge(report.RuleGraph, ruleID) {
+			t.Fatalf("rule graph missing %s edge: %#v", ruleID, report.RuleGraph.Edges)
+		}
+	}
+	if !hasHVACServiceChain(relation.ServiceChains, "Heating Water Loop", "Boiler:HotWater HW Boiler", "", "Office VAV") {
+		t.Fatalf("service chains = %#v, want boiler -> reheat coil -> terminal -> zone", relation.ServiceChains)
+	}
+}
+
 func TestAnalyzeHVACServiceWaterLoopWarningIsNotice(t *testing.T) {
 	doc := Document{Objects: []Object{
 		{Index: 0, Type: "PlantLoop", Fields: []Field{

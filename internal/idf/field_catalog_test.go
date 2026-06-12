@@ -69,6 +69,62 @@ func TestFieldCatalogExpandsExtensibleFieldSpecs(t *testing.T) {
 	}
 }
 
+func TestFieldCatalogCoversAirTerminalFamilies(t *testing.T) {
+	tests := []struct {
+		objectType string
+		fieldIndex int
+		fieldName  string
+		role       string
+	}{
+		{
+			objectType: "ZoneHVAC:AirDistributionUnit",
+			fieldIndex: 2,
+			fieldName:  "Air Terminal Object Type",
+			role:       fieldRoleObjectTypeRef,
+		},
+		{
+			objectType: "AirTerminal:SingleDuct:VAV:Reheat",
+			fieldIndex: 9,
+			fieldName:  "Reheat Coil Object Type",
+			role:       fieldRoleObjectTypeRef,
+		},
+		{
+			objectType: "AirTerminal:SingleDuct:VAV:Reheat",
+			fieldIndex: 13,
+			fieldName:  "Air Outlet Node Name",
+			role:       fieldRoleNodeRef,
+		},
+		{
+			objectType: "AirTerminal:SingleDuct:SeriesPIU:Reheat",
+			fieldIndex: 10,
+			fieldName:  "Reheat Coil Object Type",
+			role:       fieldRoleObjectTypeRef,
+		},
+		{
+			objectType: "AirTerminal:DualDuct:VAV",
+			fieldIndex: 4,
+			fieldName:  "Cold Air Inlet Node Name",
+			role:       fieldRoleNodeRef,
+		},
+		{
+			objectType: "AirTerminal:SingleDuct:Mixer",
+			fieldIndex: 1,
+			fieldName:  "ZoneHVAC Unit Object Type",
+			role:       fieldRoleObjectTypeRef,
+		},
+	}
+
+	for _, test := range tests {
+		spec, ok := fieldSpecAt(test.objectType, test.fieldIndex)
+		if !ok {
+			t.Fatalf("%s field %d spec missing", test.objectType, test.fieldIndex)
+		}
+		if spec.Name != test.fieldName || spec.Role != test.role {
+			t.Fatalf("%s field %d spec = %#v, want %s/%s", test.objectType, test.fieldIndex, spec, test.fieldName, test.role)
+		}
+	}
+}
+
 func TestLoadEnergyPlusSchemaAdapterFile(t *testing.T) {
 	root := t.TempDir()
 	schemaPath := filepath.Join(root, "Energy+.schema.epJSON")
