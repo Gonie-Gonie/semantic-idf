@@ -579,6 +579,130 @@ func TestAnalyzeHVACKeepsFourPipeFanCoilAsZoneEquipment(t *testing.T) {
 	}
 }
 
+func TestAnalyzeHVACFourPipeFanCoilUsesCatalogForInternalComponents(t *testing.T) {
+	doc := Document{Objects: []Object{
+		{Index: 0, Type: "Zone", Fields: []Field{{Value: "Office"}}},
+		{Index: 1, Type: "ZoneHVAC:EquipmentConnections", Fields: []Field{
+			{Value: "Office"},
+			{Value: "Office Equipment"},
+			{Value: "Office Supply Inlet"},
+			{Value: ""},
+			{Value: "Office Zone Air Node"},
+			{Value: ""},
+		}},
+		{Index: 2, Type: "ZoneHVAC:EquipmentList", Fields: []Field{
+			{Value: "Office Equipment"},
+			{Value: "SequentialLoad"},
+			{Value: "ZoneHVAC:FourPipeFanCoil"},
+			{Value: "Office FPFC"},
+			{Value: "1"},
+			{Value: "1"},
+			{Value: ""},
+			{Value: ""},
+		}},
+		{Index: 3, Type: "ZoneHVAC:FourPipeFanCoil", Fields: []Field{
+			{Value: "Office FPFC"},
+			{Value: "Always On"},
+			{Value: "CyclingFan"},
+			{Value: "Autosize"},
+			{Value: "0.33"},
+			{Value: "0.66"},
+			{Value: "0"},
+			{Value: ""},
+			{Value: "Office Return"},
+			{Value: "Office Supply Inlet"},
+			{Value: "OutdoorAir:Mixer"},
+			{Value: "Office OA Mixer"},
+			{Value: "Fan:OnOff"},
+			{Value: "Office Fan"},
+			{Value: "Coil:Cooling:Water"},
+			{Value: "Office Cooling Coil"},
+			{Value: "Autosize"},
+			{Value: "0"},
+			{Value: "0.001"},
+			{Value: "Coil:Heating:Water"},
+			{Value: "Office Heating Coil"},
+			{Value: "Autosize"},
+			{Value: "0"},
+			{Value: "0.001"},
+		}},
+		{Index: 4, Type: "OutdoorAir:Mixer", Fields: []Field{{Value: "Office OA Mixer"}}},
+		{Index: 5, Type: "Fan:OnOff", Fields: []Field{{Value: "Office Fan"}}},
+		{Index: 6, Type: "Coil:Cooling:Water", Fields: []Field{{Value: "Office Cooling Coil"}}},
+		{Index: 7, Type: "Coil:Heating:Water", Fields: []Field{{Value: "Office Heating Coil"}}},
+		{Index: 8, Type: "PlantLoop", Fields: []Field{
+			{Value: "Heating Water Loop"},
+			{Value: "Water"},
+			{Value: ""},
+			{Value: ""},
+			{Value: "HW Setpoint"},
+			{Value: "80"},
+			{Value: "20"},
+			{Value: "Autosize"},
+			{Value: "0"},
+			{Value: "Autosize"},
+			{Value: "HW Supply Inlet"},
+			{Value: "HW Supply Outlet"},
+			{Value: "HW Supply Branches"},
+			{Value: ""},
+			{Value: "HW Demand Inlet"},
+			{Value: "HW Demand Outlet"},
+			{Value: "HW Demand Branches"},
+			{Value: ""},
+		}},
+		{Index: 9, Type: "BranchList", Fields: []Field{
+			{Value: "HW Supply Branches"},
+			{Value: "Boiler Branch"},
+		}},
+		{Index: 10, Type: "Branch", Fields: []Field{
+			{Value: "Boiler Branch"},
+			{Value: ""},
+			{Value: "Boiler:HotWater"},
+			{Value: "HW Boiler"},
+			{Value: "HW Supply Inlet"},
+			{Value: "HW Supply Outlet"},
+		}},
+		{Index: 11, Type: "Boiler:HotWater", Fields: []Field{{Value: "HW Boiler"}}},
+		{Index: 12, Type: "BranchList", Fields: []Field{
+			{Value: "HW Demand Branches"},
+			{Value: "Heating Coil Branch"},
+		}},
+		{Index: 13, Type: "Branch", Fields: []Field{
+			{Value: "Heating Coil Branch"},
+			{Value: ""},
+			{Value: "Coil:Heating:Water"},
+			{Value: "Office Heating Coil"},
+			{Value: "HW Demand Inlet"},
+			{Value: "HW Demand Outlet"},
+		}},
+	}}
+
+	report := AnalyzeHVAC(doc)
+	for _, target := range []struct {
+		objectType string
+		name       string
+	}{
+		{objectType: "OutdoorAir:Mixer", name: "Office OA Mixer"},
+		{objectType: "Fan:OnOff", name: "Office Fan"},
+		{objectType: "Coil:Cooling:Water", name: "Office Cooling Coil"},
+		{objectType: "Coil:Heating:Water", name: "Office Heating Coil"},
+	} {
+		if !hasHVACComponentReference(report.ComponentReferences, "Office FPFC", target.objectType, target.name, "internal_component_reference") {
+			t.Fatalf("component references = %#v, want fan coil -> %s %s", report.ComponentReferences, target.objectType, target.name)
+		}
+	}
+	relation := findHVACTestingZoneRelation(report, "Office")
+	if relation == nil {
+		t.Fatalf("Office relation not found: %#v", report.ZoneRelations)
+	}
+	if !stringSliceContainsFold(relation.PlantLoopNames, "Heating Water Loop") {
+		t.Fatalf("plant loops = %#v, want Heating Water Loop", relation.PlantLoopNames)
+	}
+	if !hasHVACServiceChainComponent(relation.ServiceChains, "Heating Water Loop", "HW Boiler", "Office Heating Coil") {
+		t.Fatalf("service chains = %#v, want boiler -> heating coil -> fan coil -> zone", relation.ServiceChains)
+	}
+}
+
 func TestAnalyzeHVACBuildsPlantOnlyRadiantServiceChain(t *testing.T) {
 	doc := Document{Objects: []Object{
 		{Index: 0, Type: "Zone", Fields: []Field{{Value: "Office"}}},

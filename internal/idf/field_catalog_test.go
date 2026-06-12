@@ -119,6 +119,18 @@ func TestFieldCatalogCoversAirTerminalFamilies(t *testing.T) {
 			role:       fieldRoleNodeRef,
 		},
 		{
+			objectType: "ZoneHVAC:FourPipeFanCoil",
+			fieldIndex: 14,
+			fieldName:  "Cooling Coil Object Type",
+			role:       fieldRoleObjectTypeRef,
+		},
+		{
+			objectType: "ZoneHVAC:FourPipeFanCoil",
+			fieldIndex: 20,
+			fieldName:  "Heating Coil Name",
+			role:       fieldRoleObjectRef,
+		},
+		{
 			objectType: "ZoneHVAC:LowTemperatureRadiant:VariableFlow",
 			fieldIndex: 8,
 			fieldName:  "Heating Water Inlet Node Name",
