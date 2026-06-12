@@ -955,6 +955,143 @@ func TestAnalyzeHVACPackagedTerminalUnitsUseCatalogForInternalComponents(t *test
 	}
 }
 
+func TestAnalyzeHVACDirectZoneEquipmentUsesCatalogForInternalComponents(t *testing.T) {
+	type target struct {
+		objectType string
+		name       string
+	}
+	tests := []struct {
+		name          string
+		objectType    string
+		equipmentName string
+		fields        []Field
+		targets       []target
+	}{
+		{
+			name:          "WaterToAirHeatPump",
+			objectType:    "ZoneHVAC:WaterToAirHeatPump",
+			equipmentName: "Office WAHP",
+			fields: []Field{
+				{Value: "Office WAHP"},
+				{Value: "Always On"},
+				{Value: "Office WAHP Return"},
+				{Value: "Office WAHP Supply"},
+				{Value: "OutdoorAir:Mixer"},
+				{Value: "Office WAHP OA Mixer"},
+				{Value: "Autosize"},
+				{Value: "Autosize"},
+				{Value: "Autosize"},
+				{Value: ""},
+				{Value: "0"},
+				{Value: "0"},
+				{Value: "0"},
+				{Value: "Fan:SystemModel"},
+				{Value: "Office WAHP Fan"},
+				{Value: "Coil:Heating:WaterToAirHeatPump:EquationFit"},
+				{Value: "Office WAHP Heating Coil"},
+				{Value: "Coil:Cooling:WaterToAirHeatPump:EquationFit"},
+				{Value: "Office WAHP Cooling Coil"},
+				{Value: "Coil:Heating:Fuel"},
+				{Value: "Office WAHP Supplemental Coil"},
+				{Value: "60"},
+				{Value: "20"},
+				{Value: "Outdoor Sensor Node"},
+				{Value: "BlowThrough"},
+				{Value: "Always On"},
+			},
+			targets: []target{
+				{objectType: "OutdoorAir:Mixer", name: "Office WAHP OA Mixer"},
+				{objectType: "Fan:SystemModel", name: "Office WAHP Fan"},
+				{objectType: "Coil:Heating:WaterToAirHeatPump:EquationFit", name: "Office WAHP Heating Coil"},
+				{objectType: "Coil:Cooling:WaterToAirHeatPump:EquationFit", name: "Office WAHP Cooling Coil"},
+				{objectType: "Coil:Heating:Fuel", name: "Office WAHP Supplemental Coil"},
+			},
+		},
+		{
+			name:          "UnitVentilator",
+			objectType:    "ZoneHVAC:UnitVentilator",
+			equipmentName: "Office Unit Ventilator",
+			fields: []Field{
+				{Value: "Office Unit Ventilator"},
+				{Value: "Always On"},
+				{Value: "0.84"},
+				{Value: "VariablePercent"},
+				{Value: "0.168"},
+				{Value: "Min OA Schedule"},
+				{Value: "0.84"},
+				{Value: "Max OA Schedule"},
+				{Value: "Office Unit Ventilator Return"},
+				{Value: "Office Unit Ventilator Supply"},
+				{Value: "Office Unit Ventilator Outdoor Air"},
+				{Value: "Office Unit Ventilator Exhaust"},
+				{Value: "Office Unit Ventilator Mixed Air"},
+				{Value: "Fan:ConstantVolume"},
+				{Value: "Office Unit Ventilator Fan"},
+				{Value: "HeatingAndCooling"},
+				{Value: "Always On"},
+				{Value: "Coil:Heating:Water"},
+				{Value: "Office Unit Ventilator Heating Coil"},
+				{Value: "0.001"},
+				{Value: "Coil:Cooling:Water"},
+				{Value: "Office Unit Ventilator Cooling Coil"},
+				{Value: "0.001"},
+			},
+			targets: []target{
+				{objectType: "Fan:ConstantVolume", name: "Office Unit Ventilator Fan"},
+				{objectType: "Coil:Heating:Water", name: "Office Unit Ventilator Heating Coil"},
+				{objectType: "Coil:Cooling:Water", name: "Office Unit Ventilator Cooling Coil"},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			objects := []Object{
+				{Index: 0, Type: "Zone", Fields: []Field{{Value: "Office"}}},
+				{Index: 1, Type: "ZoneHVAC:EquipmentConnections", Fields: []Field{
+					{Value: "Office"},
+					{Value: "Office Equipment"},
+					{Value: "Office Supply"},
+					{Value: ""},
+					{Value: "Office Zone Air Node"},
+					{Value: ""},
+				}},
+				{Index: 2, Type: "ZoneHVAC:EquipmentList", Fields: []Field{
+					{Value: "Office Equipment"},
+					{Value: "SequentialLoad"},
+					{Value: test.objectType},
+					{Value: test.equipmentName},
+					{Value: "1"},
+					{Value: "1"},
+					{Value: ""},
+					{Value: ""},
+				}},
+				{Index: 3, Type: test.objectType, Fields: test.fields},
+			}
+			for index, item := range test.targets {
+				objects = append(objects, Object{Index: 4 + index, Type: item.objectType, Fields: []Field{{Value: item.name}}})
+			}
+
+			report := AnalyzeHVAC(Document{Objects: objects})
+			for _, item := range test.targets {
+				if !hasHVACComponentReference(report.ComponentReferences, test.equipmentName, item.objectType, item.name, "internal_component_reference") {
+					t.Fatalf("component references = %#v, want %s -> %s %s", report.ComponentReferences, test.equipmentName, item.objectType, item.name)
+				}
+			}
+			relation := findHVACTestingZoneRelation(report, "Office")
+			if relation == nil {
+				t.Fatalf("Office relation not found: %#v", report.ZoneRelations)
+			}
+			if len(relation.AirLoopNames) != 0 || len(relation.TerminalUnits) != 0 {
+				t.Fatalf("%s relation resolved unexpected air terminal/loop: %#v", test.objectType, relation)
+			}
+			if len(relation.ZoneEquipment) != 1 || !strings.EqualFold(relation.ZoneEquipment[0].ObjectType, test.objectType) {
+				t.Fatalf("zone equipment = %#v, want %s", relation.ZoneEquipment, test.objectType)
+			}
+		})
+	}
+}
+
 func TestAnalyzeHVACBuildsPlantOnlyRadiantServiceChain(t *testing.T) {
 	doc := Document{Objects: []Object{
 		{Index: 0, Type: "Zone", Fields: []Field{{Value: "Office"}}},

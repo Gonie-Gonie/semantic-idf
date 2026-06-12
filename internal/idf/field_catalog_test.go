@@ -167,6 +167,30 @@ func TestFieldCatalogCoversAirTerminalFamilies(t *testing.T) {
 			role:       fieldRoleObjectRef,
 		},
 		{
+			objectType: "ZoneHVAC:WaterToAirHeatPump",
+			fieldIndex: 13,
+			fieldName:  "Supply Air Fan Object Type",
+			role:       fieldRoleObjectTypeRef,
+		},
+		{
+			objectType: "ZoneHVAC:WaterToAirHeatPump",
+			fieldIndex: 20,
+			fieldName:  "Supplemental Heating Coil Name",
+			role:       fieldRoleObjectRef,
+		},
+		{
+			objectType: "ZoneHVAC:UnitVentilator",
+			fieldIndex: 17,
+			fieldName:  "Heating Coil Object Type",
+			role:       fieldRoleObjectTypeRef,
+		},
+		{
+			objectType: "ZoneHVAC:UnitVentilator",
+			fieldIndex: 21,
+			fieldName:  "Cooling Coil Name",
+			role:       fieldRoleObjectRef,
+		},
+		{
 			objectType: "ZoneHVAC:LowTemperatureRadiant:VariableFlow",
 			fieldIndex: 8,
 			fieldName:  "Heating Water Inlet Node Name",
