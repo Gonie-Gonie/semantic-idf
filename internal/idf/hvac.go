@@ -2056,6 +2056,7 @@ func buildHVACComponentReferenceGraph(ctx *hvacContext) []HVACComponentReference
 				references = append(references, reference)
 			}
 		}
+		references = append(references, vrfSystemTerminalReferences(ctx, obj)...)
 	}
 	sort.SliceStable(references, func(i, j int) bool {
 		if references[i].FromObjectIndex != references[j].FromObjectIndex {
@@ -2176,6 +2177,99 @@ func hvacComponentReferenceFromPair(ctx *hvacContext, obj Object, pair hvacCompo
 		reference.TargetObjectIndex = targetObj.Index
 	}
 	return reference, true
+}
+
+type zoneTerminalUnitReference struct {
+	Name       string
+	FieldIndex int
+}
+
+func vrfSystemTerminalReferences(ctx *hvacContext, obj Object) []HVACComponentReference {
+	if !isRefrigerantSystemType(obj.Type) {
+		return nil
+	}
+	listName, listFieldIndex, ok := vrfSystemTerminalUnitListName(obj)
+	if !ok || listName == "" {
+		return nil
+	}
+	listObj, ok := ctx.objectsByTypeName[hvacObjectKey("ZoneTerminalUnitList", listName)]
+	if !ok {
+		return nil
+	}
+	var references []HVACComponentReference
+	for _, terminal := range zoneTerminalUnitReferences(listObj) {
+		if terminal.Name == "" {
+			continue
+		}
+		reference := HVACComponentReference{
+			FromObjectType:   obj.Type,
+			FromObjectName:   objectName(obj),
+			FromObjectIndex:  obj.Index,
+			TypeFieldIndex:   -1,
+			NameFieldIndex:   listFieldIndex,
+			NameFieldName:    "Zone Terminal Unit List Name",
+			TargetObjectType: "ZoneHVAC:TerminalUnit:VariableRefrigerantFlow",
+			TargetObjectName: terminal.Name,
+			RelationRole:     "refrigerant_terminal_unit",
+			Source:           "zone_terminal_unit_list",
+			RelationshipType: "serves",
+			TargetClass:      "zone_hvac",
+		}
+		if targetObj, ok := ctx.objectsByTypeName[hvacObjectKey(reference.TargetObjectType, reference.TargetObjectName)]; ok {
+			reference.TargetExists = true
+			reference.TargetObjectIndex = targetObj.Index
+		}
+		references = append(references, reference)
+	}
+	return references
+}
+
+func vrfSystemTerminalUnitListName(obj Object) (string, int, bool) {
+	if value, index, ok := fieldValueIndexByCatalogName(obj, "Zone Terminal Unit List Name"); ok && value != "" {
+		return value, index, true
+	}
+	for index, field := range obj.Fields {
+		if strings.Contains(normalizeFieldName(field.Comment), "zone terminal unit list name") {
+			value := strings.TrimSpace(field.Value)
+			return value, index, value != ""
+		}
+	}
+	lower := normalizeFieldCatalogKey(obj.Type)
+	switch {
+	case lower == "airconditioner:variablerefrigerantflow":
+		if len(obj.Fields) > 36 {
+			value := strings.TrimSpace(obj.Fields[36].Value)
+			return value, 36, value != ""
+		}
+	case strings.HasPrefix(lower, "airconditioner:variablerefrigerantflow:fluidtemperaturecontrol"):
+		if len(obj.Fields) > 1 {
+			value := strings.TrimSpace(obj.Fields[1].Value)
+			return value, 1, value != ""
+		}
+	}
+	return "", -1, false
+}
+
+func zoneTerminalUnitReferences(listObj Object) []zoneTerminalUnitReference {
+	var references []zoneTerminalUnitReference
+	for _, group := range hvacExtensibleFieldGroups(listObj, "zone_terminal_units") {
+		index := hvacGroupFieldIndexByRole(group, fieldRoleObjectRef)
+		if index < 0 || index >= len(listObj.Fields) {
+			continue
+		}
+		if value := strings.TrimSpace(listObj.Fields[index].Value); value != "" {
+			references = append(references, zoneTerminalUnitReference{Name: value, FieldIndex: index})
+		}
+	}
+	if len(references) > 0 {
+		return references
+	}
+	for index := 1; index < len(listObj.Fields); index++ {
+		if value := strings.TrimSpace(listObj.Fields[index].Value); value != "" {
+			references = append(references, zoneTerminalUnitReference{Name: value, FieldIndex: index})
+		}
+	}
+	return references
 }
 
 func componentReferencedByZoneHVAC(ctx *hvacContext, wantedKey string) bool {
@@ -2318,6 +2412,21 @@ func buildServiceChainsFromRuleGraph(relation HVACZoneChain, graph HVACRuleGraph
 				enrichHVACServicePathFromRulePath(&path, edges, nodesByID)
 				addPath(path)
 			}
+		}
+	}
+
+	for _, node := range graph.Nodes {
+		if node.Kind != "component" || !isRefrigerantSystemType(node.ObjectType) {
+			continue
+		}
+		if edges, ok := hvacRuleGraphPath(graph, node.ID, subjectID); ok {
+			path := HVACServicePath{
+				ZoneName:        relation.ZoneName,
+				SourceComponent: firstNonEmpty(node.Label, node.ObjectName),
+				SourceRelations: hvacRulePathRuleIDs(edges),
+			}
+			enrichHVACServicePathFromRulePath(&path, edges, nodesByID)
+			addPath(path)
 		}
 	}
 
@@ -3416,6 +3525,8 @@ func hvacComponentFamily(objectType string) (string, string) {
 		return "cooling_tower", "Cooling towers"
 	case strings.HasPrefix(lower, "heatpump:"):
 		return "heat_pump", "Heat pumps"
+	case isRefrigerantSystemType(objectType):
+		return "refrigerant_system", "Refrigerant systems"
 	case strings.Contains(lower, "unitarysystem"):
 		return "unitary_system", "Unitary systems"
 	case strings.HasPrefix(lower, "waterheater:"):
@@ -3474,6 +3585,8 @@ func hvacComponentDisplayLabel(objectType string) string {
 		return "Cooling Tower"
 	case "heat_pump":
 		return "Heat Pump"
+	case "refrigerant_system":
+		return "Refrigerant System"
 	case "water_heater":
 		return "Water Heater"
 	case "thermal_storage":
@@ -3595,6 +3708,11 @@ func isChillerType(objectType string) bool {
 	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(objectType)), "chiller:")
 }
 
+func isRefrigerantSystemType(objectType string) bool {
+	lower := strings.ToLower(strings.TrimSpace(objectType))
+	return strings.HasPrefix(lower, "airconditioner:variablerefrigerantflow")
+}
+
 func isHVACComponentType(objectType string) bool {
 	lower := strings.ToLower(strings.TrimSpace(objectType))
 	return strings.HasPrefix(lower, "coil:") ||
@@ -3604,6 +3722,7 @@ func isHVACComponentType(objectType string) bool {
 		strings.HasPrefix(lower, "boiler:") ||
 		strings.HasPrefix(lower, "airterminal:") ||
 		strings.HasPrefix(lower, "zonehvac:") ||
+		strings.HasPrefix(lower, "airconditioner:") ||
 		strings.HasPrefix(lower, "airloophvac:") ||
 		strings.HasPrefix(lower, "plantcomponent:") ||
 		strings.HasPrefix(lower, "districtcooling") ||

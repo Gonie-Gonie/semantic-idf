@@ -136,6 +136,18 @@ func TestFieldCatalogCoversAirTerminalFamilies(t *testing.T) {
 			fieldName:  "Cooling Coil Object Name",
 			role:       fieldRoleObjectRef,
 		},
+		{
+			objectType: "AirConditioner:VariableRefrigerantFlow",
+			fieldIndex: 36,
+			fieldName:  "Zone Terminal Unit List Name",
+			role:       fieldRoleObjectRef,
+		},
+		{
+			objectType: "ZoneTerminalUnitList",
+			fieldIndex: 1,
+			fieldName:  "Zone Terminal Unit Name",
+			role:       fieldRoleObjectRef,
+		},
 	}
 
 	for _, test := range tests {

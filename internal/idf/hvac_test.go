@@ -733,6 +733,61 @@ func TestAnalyzeHVACVRFTerminalUsesCatalogForInternalComponents(t *testing.T) {
 	}
 }
 
+func TestAnalyzeHVACVRFSystemServesTerminalThroughTerminalList(t *testing.T) {
+	vrfSystemFields := make([]Field, 37)
+	vrfSystemFields[0] = Field{Value: "Office VRF Outdoor"}
+	vrfSystemFields[36] = Field{Value: "Office VRF Terminal List"}
+	doc := Document{Objects: []Object{
+		{Index: 0, Type: "Zone", Fields: []Field{{Value: "Office"}}},
+		{Index: 1, Type: "ZoneHVAC:EquipmentConnections", Fields: []Field{
+			{Value: "Office"},
+			{Value: "Office Equipment"},
+			{Value: "Office Inlet"},
+			{Value: ""},
+			{Value: "Office Air Node"},
+			{Value: ""},
+		}},
+		{Index: 2, Type: "ZoneHVAC:EquipmentList", Fields: []Field{
+			{Value: "Office Equipment"},
+			{Value: "SequentialLoad"},
+			{Value: "ZoneHVAC:TerminalUnit:VariableRefrigerantFlow"},
+			{Value: "Office VRF Terminal"},
+			{Value: "1"},
+			{Value: "1"},
+			{Value: ""},
+			{Value: ""},
+		}},
+		{Index: 3, Type: "ZoneHVAC:TerminalUnit:VariableRefrigerantFlow", Fields: []Field{
+			{Value: "Office VRF Terminal"},
+			{Value: "Always On"},
+			{Value: "Office VRF Inlet"},
+			{Value: "Office Inlet"},
+		}},
+		{Index: 4, Type: "AirConditioner:VariableRefrigerantFlow", Fields: vrfSystemFields},
+		{Index: 5, Type: "ZoneTerminalUnitList", Fields: []Field{
+			{Value: "Office VRF Terminal List"},
+			{Value: "Office VRF Terminal"},
+		}},
+	}}
+
+	report := AnalyzeHVAC(doc)
+	if !hasHVACComponentReference(report.ComponentReferences, "Office VRF Outdoor", "ZoneHVAC:TerminalUnit:VariableRefrigerantFlow", "Office VRF Terminal", "refrigerant_terminal_unit") {
+		t.Fatalf("component references = %#v, want VRF outdoor -> terminal", report.ComponentReferences)
+	}
+	for _, ruleID := range []string{hvacRuleVRFSystemTerminalList, hvacRuleVRFTerminalListContains} {
+		if !hasHVACRuleEdge(report.RuleGraph, ruleID) {
+			t.Fatalf("rule graph missing %s edge: %#v", ruleID, report.RuleGraph.Edges)
+		}
+	}
+	relation := findHVACTestingZoneRelation(report, "Office")
+	if relation == nil {
+		t.Fatalf("Office relation not found: %#v", report.ZoneRelations)
+	}
+	if !hasHVACServiceChainComponent(relation.ServiceChains, "", "Office VRF Outdoor", "Office VRF Terminal") {
+		t.Fatalf("service chains = %#v, want VRF outdoor -> terminal -> zone", relation.ServiceChains)
+	}
+}
+
 func TestAnalyzeHVACBuildsAirLoopDemandGraphFromSupplyAndReturnPaths(t *testing.T) {
 	doc := Document{Objects: []Object{
 		{Index: 0, Type: "AirLoopHVAC", Fields: []Field{

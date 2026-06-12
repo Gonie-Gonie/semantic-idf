@@ -40,6 +40,8 @@ const (
 	hvacRuleZoneTerminalOutletMatchesInlet = "zone.terminal_outlet_matches_zone_inlet"
 	hvacRuleComponentReferencesComponent   = "component.references_component"
 	hvacRuleComponentServesParent          = "component.reference_serves_parent"
+	hvacRuleVRFSystemTerminalList          = "vrf.system_terminal_unit_list"
+	hvacRuleVRFTerminalListContains        = "vrf.terminal_unit_list_contains_terminal"
 	hvacRulePlantComponentOnSupplyBranch   = "plant.component_on_supply_branch"
 	hvacRulePlantComponentOnDemandBranch   = "plant.component_on_demand_branch"
 	hvacRuleCondenserComponentOnDemand     = "condenser.component_on_demand_branch"
@@ -110,6 +112,7 @@ func buildHVACRuleGraph(ctx *hvacContext, loops []HVACLoop, relations []HVACZone
 	for _, relation := range relations {
 		builder.addZoneRelation(relation)
 	}
+	builder.addVRFSystemEdges()
 	builder.addComponentReferenceEdges()
 	builder.addCrossLoopEdges()
 	return builder.graph()
@@ -463,6 +466,41 @@ func (b *hvacRuleGraphBuilder) addZoneTerminalEdges(subjectID string, connection
 				b.addEdge(hvacRuleAirLoopZoneSplitterToTerminal, loopID, terminalID, "serves", "air", terminalObj,
 					[]int{terminal.InletFieldIndex}, []string{terminal.InletNode})
 			}
+		}
+	}
+}
+
+func (b *hvacRuleGraphBuilder) addVRFSystemEdges() {
+	for _, systemObj := range b.ctx.doc.Objects {
+		if !isRefrigerantSystemType(systemObj.Type) {
+			continue
+		}
+		listName, listFieldIndex, ok := vrfSystemTerminalUnitListName(systemObj)
+		if !ok || listName == "" {
+			continue
+		}
+		listObj, ok := b.objectByTypeName("ZoneTerminalUnitList", listName)
+		if !ok {
+			continue
+		}
+		system := newHVACComponent(b.ctx, systemObj.Type, objectName(systemObj))
+		systemID := b.addComponentSourceNode(system, "refrigerant")
+		listID := hvacRuleObjectNodeID("path", listObj.Type, objectName(listObj), listObj.Index, "zone_terminal_unit_list")
+		b.addObjectNode(listID, "path", "zone_terminal_unit_list", "refrigerant", listObj)
+		b.addEdge(hvacRuleVRFSystemTerminalList, systemID, listID, "reference", "refrigerant", systemObj,
+			[]int{listFieldIndex}, []string{listName})
+
+		for _, terminalRef := range zoneTerminalUnitReferences(listObj) {
+			if terminalRef.Name == "" {
+				continue
+			}
+			if _, ok := b.objectByTypeName("ZoneHVAC:TerminalUnit:VariableRefrigerantFlow", terminalRef.Name); !ok {
+				continue
+			}
+			terminal := newHVACComponent(b.ctx, "ZoneHVAC:TerminalUnit:VariableRefrigerantFlow", terminalRef.Name)
+			terminalID := b.addComponentSourceNode(terminal, "air")
+			b.addEdge(hvacRuleVRFTerminalListContains, listID, terminalID, "reference", "refrigerant", listObj,
+				[]int{terminalRef.FieldIndex}, []string{terminalRef.Name})
 		}
 	}
 }
@@ -835,6 +873,8 @@ func hvacRuleMediumForLoop(loopType string) string {
 
 func hvacRuleMediumForComponent(objectType string) string {
 	switch {
+	case isRefrigerantSystemType(objectType):
+		return "refrigerant"
 	case isAirTerminalType(objectType):
 		return "air"
 	case isWaterCoilType(objectType), isPlantSourceEquipmentType(objectType):
