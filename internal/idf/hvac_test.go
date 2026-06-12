@@ -1915,6 +1915,92 @@ func TestAnalyzeHVACBuildsPlantOnlyRadiantServiceChain(t *testing.T) {
 	}
 }
 
+func TestAnalyzeHVACCoilFamiliesUseCatalogForNodeRoles(t *testing.T) {
+	doc := Document{Objects: []Object{
+		{Index: 0, Type: "Coil:Heating:Steam", Fields: []Field{
+			{Value: "Steam Reheat Coil"},
+			{Value: "Always On"},
+			{Value: "Autosize"},
+			{Value: "2"},
+			{Value: "20"},
+			{Value: "Steam Coil Water Inlet"},
+			{Value: "Steam Coil Water Outlet"},
+			{Value: "Steam Coil Air Inlet"},
+			{Value: "Steam Coil Air Outlet"},
+			{Value: "ZoneLoadControl"},
+			{Value: ""},
+		}},
+		{Index: 1, Type: "Coil:Cooling:DX:SingleSpeed", Fields: []Field{
+			{Value: "DX Cooling Coil"},
+			{Value: "Always On"},
+			{Value: "Autosize"},
+			{Value: "Autosize"},
+			{Value: "3.0"},
+			{Value: "Autosize"},
+			{Value: "773.3"},
+			{Value: "934.4"},
+			{Value: "DX Cooling Air Inlet"},
+			{Value: "DX Cooling Air Outlet"},
+		}},
+		{Index: 2, Type: "Coil:Heating:DX:SingleSpeed", Fields: []Field{
+			{Value: "DX Heating Coil"},
+			{Value: "Always On"},
+			{Value: "Autosize"},
+			{Value: "3.0"},
+			{Value: "Autosize"},
+			{Value: "773.3"},
+			{Value: "934.4"},
+			{Value: "DX Heating Air Inlet"},
+			{Value: "DX Heating Air Outlet"},
+		}},
+		{Index: 3, Type: "Coil:Cooling:DX:VariableRefrigerantFlow", Fields: []Field{
+			{Value: "VRF Cooling Coil"},
+			{Value: "Always On"},
+			{Value: "Autosize"},
+			{Value: "Autosize"},
+			{Value: "Autosize"},
+			{Value: "CoolCapFT"},
+			{Value: "CoolCapFFF"},
+			{Value: "VRF Cooling Air Inlet"},
+			{Value: "VRF Cooling Air Outlet"},
+		}},
+		{Index: 4, Type: "Coil:Heating:DX:VariableRefrigerantFlow", Fields: []Field{
+			{Value: "VRF Heating Coil"},
+			{Value: "Always On"},
+			{Value: "Autosize"},
+			{Value: "Autosize"},
+			{Value: "VRF Heating Air Inlet"},
+			{Value: "VRF Heating Air Outlet"},
+		}},
+	}}
+
+	report := AnalyzeHVAC(doc)
+	tests := []struct {
+		objectType string
+		objectName string
+		nodeName   string
+		role       string
+		fieldIndex int
+	}{
+		{objectType: "Coil:Heating:Steam", objectName: "Steam Reheat Coil", nodeName: "Steam Coil Water Inlet", role: "water_inlet", fieldIndex: 5},
+		{objectType: "Coil:Heating:Steam", objectName: "Steam Reheat Coil", nodeName: "Steam Coil Air Outlet", role: "air_outlet", fieldIndex: 8},
+		{objectType: "Coil:Cooling:DX:SingleSpeed", objectName: "DX Cooling Coil", nodeName: "DX Cooling Air Inlet", role: "air_inlet", fieldIndex: 8},
+		{objectType: "Coil:Cooling:DX:SingleSpeed", objectName: "DX Cooling Coil", nodeName: "DX Cooling Air Outlet", role: "air_outlet", fieldIndex: 9},
+		{objectType: "Coil:Heating:DX:SingleSpeed", objectName: "DX Heating Coil", nodeName: "DX Heating Air Inlet", role: "air_inlet", fieldIndex: 7},
+		{objectType: "Coil:Heating:DX:SingleSpeed", objectName: "DX Heating Coil", nodeName: "DX Heating Air Outlet", role: "air_outlet", fieldIndex: 8},
+		{objectType: "Coil:Cooling:DX:VariableRefrigerantFlow", objectName: "VRF Cooling Coil", nodeName: "VRF Cooling Air Inlet", role: "air_inlet", fieldIndex: 7},
+		{objectType: "Coil:Cooling:DX:VariableRefrigerantFlow", objectName: "VRF Cooling Coil", nodeName: "VRF Cooling Air Outlet", role: "air_outlet", fieldIndex: 8},
+		{objectType: "Coil:Heating:DX:VariableRefrigerantFlow", objectName: "VRF Heating Coil", nodeName: "VRF Heating Air Inlet", role: "air_inlet", fieldIndex: 4},
+		{objectType: "Coil:Heating:DX:VariableRefrigerantFlow", objectName: "VRF Heating Coil", nodeName: "VRF Heating Air Outlet", role: "air_outlet", fieldIndex: 5},
+	}
+	for _, test := range tests {
+		if !hasHVACNodeUsage(report.NodeUsages, test.objectType, test.objectName, test.nodeName, test.role, test.fieldIndex) {
+			t.Fatalf("node usages = %#v, want %s %s node %q role %s at field %d",
+				report.NodeUsages, test.objectType, test.objectName, test.nodeName, test.role, test.fieldIndex)
+		}
+	}
+}
+
 func TestAnalyzeHVACVRFTerminalUsesCatalogForInternalComponents(t *testing.T) {
 	doc := Document{Objects: []Object{
 		{Index: 0, Type: "ZoneHVAC:TerminalUnit:VariableRefrigerantFlow", Fields: []Field{
@@ -3227,6 +3313,19 @@ func findHVACWarningByCode(warnings []HVACWarning, code string) *HVACWarning {
 func hasDemandGraphEdge(graph AirLoopDemandGraph, role string, fromNode string, toNode string) bool {
 	for _, edge := range graph.Edges {
 		if edge.Role == role && strings.EqualFold(edge.FromNode, fromNode) && strings.EqualFold(edge.ToNode, toNode) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasHVACNodeUsage(usages []HVACNodeUsage, objectType string, objectName string, nodeName string, role string, fieldIndex int) bool {
+	for _, usage := range usages {
+		if strings.EqualFold(usage.ObjectType, objectType) &&
+			strings.EqualFold(usage.ObjectName, objectName) &&
+			strings.EqualFold(usage.NodeName, nodeName) &&
+			usage.Role == role &&
+			usage.FieldIndex == fieldIndex {
 			return true
 		}
 	}
