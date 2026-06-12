@@ -422,7 +422,7 @@ func newHVACContext(doc Document) *hvacContext {
 		if name == "" {
 			continue
 		}
-		for index := 1; index < len(obj.Fields); index++ {
+		for _, index := range nodeListFieldIndexes(obj) {
 			value := strings.TrimSpace(obj.Fields[index].Value)
 			if value != "" {
 				ctx.nodeLists[normalizeName(name)] = append(ctx.nodeLists[normalizeName(name)], value)
@@ -660,13 +660,68 @@ func branchNamesFromList(ctx *hvacContext, branchListName string, owner Object) 
 		return nil
 	}
 	var names []string
-	for index := 1; index < len(obj.Fields); index++ {
+	for _, index := range branchListFieldIndexes(obj) {
 		value := strings.TrimSpace(obj.Fields[index].Value)
 		if value != "" {
 			names = append(names, value)
 		}
 	}
 	return names
+}
+
+func branchListFieldIndexes(obj Object) []int {
+	var indexes []int
+	for _, group := range hvacExtensibleFieldGroups(obj, "branches") {
+		if index := hvacGroupFieldIndexByRole(group, fieldRoleBranchRef); index >= 0 {
+			indexes = append(indexes, index)
+		}
+	}
+	if len(indexes) > 0 {
+		return indexes
+	}
+	for index := 1; index < len(obj.Fields); index++ {
+		indexes = append(indexes, index)
+	}
+	return indexes
+}
+
+func nodeListFieldIndexes(obj Object) []int {
+	var indexes []int
+	for _, group := range hvacExtensibleFieldGroups(obj, "nodes") {
+		if index := hvacGroupFieldIndexByRole(group, fieldRoleNodeRef); index >= 0 {
+			indexes = append(indexes, index)
+		}
+	}
+	if len(indexes) > 0 {
+		return indexes
+	}
+	for index := 1; index < len(obj.Fields); index++ {
+		indexes = append(indexes, index)
+	}
+	return indexes
+}
+
+type connectorListReference struct {
+	TypeIndex int
+	NameIndex int
+}
+
+func connectorListReferences(obj Object) []connectorListReference {
+	var references []connectorListReference
+	for _, group := range hvacExtensibleFieldGroups(obj, "connectors") {
+		typeIndex := hvacGroupFieldIndexByRole(group, fieldRoleObjectTypeRef)
+		nameIndex := hvacGroupFieldIndexByName(group, "Connector Name")
+		if typeIndex >= 0 && nameIndex >= 0 {
+			references = append(references, connectorListReference{TypeIndex: typeIndex, NameIndex: nameIndex})
+		}
+	}
+	if len(references) > 0 {
+		return references
+	}
+	for index := 1; index+1 < len(obj.Fields); index += 2 {
+		references = append(references, connectorListReference{TypeIndex: index, NameIndex: index + 1})
+	}
+	return references
 }
 
 func connectorsFromList(ctx *hvacContext, connectorListName string, owner Object, knownBranches map[string]bool) []HVACConnector {
@@ -679,9 +734,9 @@ func connectorsFromList(ctx *hvacContext, connectorListName string, owner Object
 		return nil
 	}
 	var connectors []HVACConnector
-	for index := 1; index+1 < len(obj.Fields); index += 2 {
-		connectorType := strings.TrimSpace(obj.Fields[index].Value)
-		connectorName := strings.TrimSpace(obj.Fields[index+1].Value)
+	for _, reference := range connectorListReferences(obj) {
+		connectorType := strings.TrimSpace(obj.Fields[reference.TypeIndex].Value)
+		connectorName := strings.TrimSpace(obj.Fields[reference.NameIndex].Value)
 		if connectorType == "" && connectorName == "" {
 			continue
 		}
@@ -810,7 +865,27 @@ type branchComponentReference struct {
 	ControlIndex int
 }
 
+func branchComponentReferencesFromCatalog(obj Object) []branchComponentReference {
+	var references []branchComponentReference
+	for _, group := range hvacExtensibleFieldGroups(obj, "components") {
+		reference := branchComponentReference{
+			TypeIndex:    hvacGroupFieldIndexByName(group, "Component Object Type"),
+			NameIndex:    hvacGroupFieldIndexByName(group, "Component Name"),
+			InletIndex:   hvacGroupFieldIndexByName(group, "Component Inlet Node Name"),
+			OutletIndex:  hvacGroupFieldIndexByName(group, "Component Outlet Node Name"),
+			ControlIndex: hvacGroupFieldIndexByName(group, "Component Branch Control Type"),
+		}
+		if reference.TypeIndex >= 0 && reference.NameIndex >= 0 && reference.InletIndex >= 0 && reference.OutletIndex >= 0 {
+			references = append(references, reference)
+		}
+	}
+	return references
+}
+
 func branchComponentReferences(ctx *hvacContext, obj Object) []branchComponentReference {
+	if references := branchComponentReferencesFromCatalog(obj); len(references) > 0 {
+		return references
+	}
 	if references := branchComponentReferencesFromComments(obj); len(references) > 0 {
 		return references
 	}
@@ -1364,7 +1439,45 @@ type zoneEquipmentReference struct {
 	HeatingScheduleIndex int
 }
 
+func zoneEquipmentReferencesFromCatalog(ctx *hvacContext, equipmentList Object) []zoneEquipmentReference {
+	if len(equipmentList.Fields) > 1 {
+		firstExtensibleCandidate := strings.TrimSpace(equipmentList.Fields[1].Value)
+		if isHVACComponentType(firstExtensibleCandidate) || isAirTerminalType(firstExtensibleCandidate) {
+			return nil
+		}
+	}
+	var references []zoneEquipmentReference
+	for _, group := range hvacExtensibleFieldGroups(equipmentList, "equipment") {
+		reference := zoneEquipmentReference{
+			TypeIndex:            hvacGroupFieldIndexByRole(group, fieldRoleObjectTypeRef),
+			NameIndex:            hvacGroupFieldIndexByRole(group, fieldRoleObjectRef),
+			CoolingSequenceIndex: hvacGroupFieldIndexByName(group, "Zone Equipment Cooling Sequence", "Space Equipment Cooling Sequence"),
+			HeatingSequenceIndex: hvacGroupFieldIndexByName(group, "Zone Equipment Heating or No-Load Sequence", "Space Equipment Heating or No-Load Sequence"),
+			CoolingScheduleIndex: hvacGroupFieldIndexByName(group, "Sequential Cooling Fraction Schedule Name"),
+			HeatingScheduleIndex: hvacGroupFieldIndexByName(group, "Sequential Heating Fraction Schedule Name"),
+		}
+		if reference.TypeIndex < 0 || reference.NameIndex < 0 {
+			continue
+		}
+		objectType := strings.TrimSpace(equipmentList.Fields[reference.TypeIndex].Value)
+		objectNameValue := strings.TrimSpace(equipmentList.Fields[reference.NameIndex].Value)
+		if objectType == "" && objectNameValue == "" {
+			continue
+		}
+		if objectType != "" && !isHVACComponentType(objectType) && !isAirTerminalType(objectType) {
+			if _, ok := ctx.objectsByTypeName[hvacObjectKey(objectType, objectNameValue)]; !ok {
+				return nil
+			}
+		}
+		references = append(references, reference)
+	}
+	return references
+}
+
 func zoneEquipmentReferences(ctx *hvacContext, equipmentList Object) []zoneEquipmentReference {
+	if references := zoneEquipmentReferencesFromCatalog(ctx, equipmentList); len(references) > 0 {
+		return references
+	}
 	if references := zoneEquipmentReferencesFromComments(equipmentList); len(references) > 0 {
 		return references
 	}
@@ -2319,11 +2432,34 @@ func parseAirLoopReturnPath(ctx *hvacContext, loop HVACLoop) *AirLoopDemandPath 
 	return nil
 }
 
+type airLoopPathComponentReference struct {
+	TypeIndex int
+	NameIndex int
+}
+
+func airLoopPathComponentReferences(pathObj Object) []airLoopPathComponentReference {
+	var references []airLoopPathComponentReference
+	for _, group := range hvacExtensibleFieldGroups(pathObj, "components") {
+		typeIndex := hvacGroupFieldIndexByRole(group, fieldRoleObjectTypeRef)
+		nameIndex := hvacGroupFieldIndexByRole(group, fieldRoleObjectRef)
+		if typeIndex >= 0 && nameIndex >= 0 {
+			references = append(references, airLoopPathComponentReference{TypeIndex: typeIndex, NameIndex: nameIndex})
+		}
+	}
+	if len(references) > 0 {
+		return references
+	}
+	for index := 2; index+1 < len(pathObj.Fields); index += 2 {
+		references = append(references, airLoopPathComponentReference{TypeIndex: index, NameIndex: index + 1})
+	}
+	return references
+}
+
 func parseAirLoopPathComponents(ctx *hvacContext, pathObj Object, pathType string) []AirLoopDemandPathComponent {
 	var components []AirLoopDemandPathComponent
-	for index := 2; index+1 < len(pathObj.Fields); index += 2 {
-		componentType := strings.TrimSpace(pathObj.Fields[index].Value)
-		componentName := strings.TrimSpace(pathObj.Fields[index+1].Value)
+	for _, reference := range airLoopPathComponentReferences(pathObj) {
+		componentType := strings.TrimSpace(pathObj.Fields[reference.TypeIndex].Value)
+		componentName := strings.TrimSpace(pathObj.Fields[reference.NameIndex].Value)
 		if componentType == "" && componentName == "" {
 			continue
 		}
@@ -2331,8 +2467,8 @@ func parseAirLoopPathComponents(ctx *hvacContext, pathObj Object, pathType strin
 			ObjectType:           componentType,
 			ObjectName:           componentName,
 			Role:                 airLoopDemandComponentRole(componentType),
-			SourceTypeFieldIndex: index,
-			SourceNameFieldIndex: index + 1,
+			SourceTypeFieldIndex: reference.TypeIndex,
+			SourceNameFieldIndex: reference.NameIndex,
 		}
 		if componentObj, ok := ctx.objectsByTypeName[hvacObjectKey(componentType, componentName)]; ok {
 			component.ObjectIndex = componentObj.Index

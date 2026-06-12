@@ -45,6 +45,30 @@ func TestFieldCatalogCarriesReferenceTargetMetadata(t *testing.T) {
 	}
 }
 
+func TestFieldCatalogExpandsExtensibleFieldSpecs(t *testing.T) {
+	spec, ok := fieldSpecAt("Branch", 6)
+	if !ok {
+		t.Fatal("Branch second component object type field spec missing")
+	}
+	if spec.Name != "Component Object Type" || spec.Role != fieldRoleObjectTypeRef || spec.ExtensibleGroup != "components" || spec.Index != 6 {
+		t.Fatalf("Branch repeated type spec = %#v", spec)
+	}
+	spec, ok = fieldSpecAt("ZoneHVAC:EquipmentList", 13)
+	if !ok {
+		t.Fatal("ZoneHVAC:EquipmentList repeated schedule field spec missing")
+	}
+	if spec.Name != "Sequential Heating Fraction Schedule Name" || spec.Role != fieldRoleScheduleRef || spec.ExtensibleGroup != "equipment" || spec.Index != 13 {
+		t.Fatalf("Zone equipment repeated schedule spec = %#v", spec)
+	}
+	spec, ok = fieldSpecAt("AirLoopHVAC:SupplyPath", 5)
+	if !ok {
+		t.Fatal("AirLoopHVAC:SupplyPath repeated component name field spec missing")
+	}
+	if spec.Name != "Component Name" || spec.Role != fieldRoleObjectRef || spec.ExtensibleGroup != "components" || spec.Index != 5 {
+		t.Fatalf("SupplyPath repeated component name spec = %#v", spec)
+	}
+}
+
 func TestLoadEnergyPlusSchemaAdapterFile(t *testing.T) {
 	root := t.TempDir()
 	schemaPath := filepath.Join(root, "Energy+.schema.epJSON")

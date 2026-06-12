@@ -199,6 +199,7 @@ var objectFieldCatalog = map[string]ObjectSpec{
 	),
 	"branchlist": catalogObject("BranchList",
 		field("Name", fieldRoleName),
+		extensibleField("Branch Name", fieldRoleBranchRef, "branches", 1),
 	),
 	"branch": catalogObject("Branch",
 		field("Name", fieldRoleName),
@@ -210,6 +211,8 @@ var objectFieldCatalog = map[string]ObjectSpec{
 	),
 	"connectorlist": catalogObject("ConnectorList",
 		field("Name", fieldRoleName),
+		extensibleField("Connector Object Type", fieldRoleObjectTypeRef, "connectors", 2),
+		extensibleField("Connector Name", fieldRoleObjectRef, "connectors", 2),
 	),
 	"connector:splitter": catalogObject("Connector:Splitter",
 		field("Name", fieldRoleName),
@@ -224,10 +227,14 @@ var objectFieldCatalog = map[string]ObjectSpec{
 	"airloophvac:supplypath": catalogObject("AirLoopHVAC:SupplyPath",
 		field("Name", fieldRoleName),
 		field("Supply Air Path Inlet Node Name", fieldRoleNodeRef),
+		extensibleField("Component Object Type", fieldRoleObjectTypeRef, "components", 2),
+		extensibleField("Component Name", fieldRoleObjectRef, "components", 2),
 	),
 	"airloophvac:returnpath": catalogObject("AirLoopHVAC:ReturnPath",
 		field("Name", fieldRoleName),
 		field("Return Air Path Outlet Node Name", fieldRoleNodeRef),
+		extensibleField("Component Object Type", fieldRoleObjectTypeRef, "components", 2),
+		extensibleField("Component Name", fieldRoleObjectRef, "components", 2),
 	),
 	"airloophvac:zonesplitter": catalogObject("AirLoopHVAC:ZoneSplitter",
 		field("Name", fieldRoleName),
@@ -471,6 +478,28 @@ func enrichFieldTarget(spec FieldSpec) FieldSpec {
 func fieldSpecAt(objectType string, fieldIndex int) (FieldSpec, bool) {
 	spec, ok := objectFieldCatalog[normalizeFieldCatalogKey(objectType)]
 	if !ok || fieldIndex < 0 || fieldIndex >= len(spec.Fields) {
+		if !ok || fieldIndex < 0 {
+			return FieldSpec{}, false
+		}
+		for _, field := range spec.Fields {
+			if field.ExtensibleGroup == "" || field.ExtensibleGroupSize <= 0 {
+				continue
+			}
+			if fieldIndex < field.Index {
+				continue
+			}
+			offset := (fieldIndex - field.Index) % field.ExtensibleGroupSize
+			templateIndex := field.Index + offset
+			if templateIndex < 0 || templateIndex >= len(spec.Fields) {
+				continue
+			}
+			template := spec.Fields[templateIndex]
+			if template.ExtensibleGroup != field.ExtensibleGroup {
+				continue
+			}
+			template.Index = fieldIndex
+			return template, true
+		}
 		return FieldSpec{}, false
 	}
 	return spec.Fields[fieldIndex], true
