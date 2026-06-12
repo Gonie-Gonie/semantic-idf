@@ -251,6 +251,36 @@ func TestFieldCatalogCoversAirTerminalFamilies(t *testing.T) {
 			role:       fieldRoleNodeRef,
 		},
 		{
+			objectType: "ZoneHVAC:LowTemperatureRadiant:ConstantFlow",
+			fieldIndex: 16,
+			fieldName:  "Cooling Water Inlet Node Name",
+			role:       fieldRoleNodeRef,
+		},
+		{
+			objectType: "ZoneHVAC:LowTemperatureRadiant:Electric",
+			fieldIndex: 2,
+			fieldName:  "Zone Name",
+			role:       fieldRoleZoneRef,
+		},
+		{
+			objectType: "ZoneHVAC:HighTemperatureRadiant",
+			fieldIndex: 16,
+			fieldName:  "Surface Name",
+			role:       fieldRoleObjectRef,
+		},
+		{
+			objectType: "ZoneHVAC:VentilatedSlab",
+			fieldIndex: 30,
+			fieldName:  "Fan Name",
+			role:       fieldRoleObjectRef,
+		},
+		{
+			objectType: "ZoneHVAC:VentilatedSlab",
+			fieldIndex: 32,
+			fieldName:  "Heating Coil Object Type",
+			role:       fieldRoleObjectTypeRef,
+		},
+		{
 			objectType: "ZoneHVAC:LowTemperatureRadiant:SurfaceGroup",
 			fieldIndex: 1,
 			fieldName:  "Surface Name",

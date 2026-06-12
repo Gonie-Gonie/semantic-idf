@@ -1313,6 +1313,94 @@ func TestAnalyzeHVACBaseboardWaterUsesCatalogForPlantServiceChain(t *testing.T) 
 	}
 }
 
+func TestAnalyzeHVACVentilatedSlabUsesCatalogForInternalComponents(t *testing.T) {
+	doc := Document{Objects: []Object{
+		{Index: 0, Type: "Zone", Fields: []Field{{Value: "Office"}}},
+		{Index: 1, Type: "ZoneHVAC:EquipmentConnections", Fields: []Field{
+			{Value: "Office"},
+			{Value: "Office Equipment"},
+			{Value: "Office Supply"},
+			{Value: ""},
+			{Value: "Office Zone Air Node"},
+			{Value: ""},
+		}},
+		{Index: 2, Type: "ZoneHVAC:EquipmentList", Fields: []Field{
+			{Value: "Office Equipment"},
+			{Value: "SequentialLoad"},
+			{Value: "ZoneHVAC:VentilatedSlab"},
+			{Value: "Office Vent Slab"},
+			{Value: "1"},
+			{Value: "1"},
+			{Value: ""},
+			{Value: ""},
+		}},
+		{Index: 3, Type: "ZoneHVAC:VentilatedSlab", Fields: []Field{
+			{Value: "Office Vent Slab"},
+			{Value: "Always On"},
+			{Value: "Office"},
+			{Value: "Office Slab Surface"},
+			{Value: "0.84"},
+			{Value: "VariablePercent"},
+			{Value: "0.168"},
+			{Value: "Min OA Schedule"},
+			{Value: "0.84"},
+			{Value: "Max OA Schedule"},
+			{Value: "SlabOnly"},
+			{Value: "0.05"},
+			{Value: "30"},
+			{Value: "50"},
+			{Value: "MeanAirTemperature"},
+			{Value: "Heat High Air"},
+			{Value: "Heat Low Air"},
+			{Value: "Heat High Control"},
+			{Value: "Heat Low Control"},
+			{Value: "Cool High Air"},
+			{Value: "Cool Low Air"},
+			{Value: "Cool High Control"},
+			{Value: "Cool Low Control"},
+			{Value: "Office Return"},
+			{Value: "Office Slab In"},
+			{Value: "Office Supply"},
+			{Value: "Office Outdoor Air"},
+			{Value: "Office Relief"},
+			{Value: "Office OA Mixer Outlet"},
+			{Value: "Office Fan Outlet"},
+			{Value: "Office Vent Slab Fan"},
+			{Value: "HeatingAndCooling"},
+			{Value: "Coil:Heating:Water"},
+			{Value: "Office Vent Slab Heating Coil"},
+			{Value: "HW Inlet"},
+			{Value: "Coil:Cooling:Water"},
+			{Value: "Office Vent Slab Cooling Coil"},
+			{Value: "CHW Inlet"},
+		}},
+		{Index: 4, Type: "Fan:ConstantVolume", Fields: []Field{{Value: "Office Vent Slab Fan"}}},
+		{Index: 5, Type: "Coil:Heating:Water", Fields: []Field{{Value: "Office Vent Slab Heating Coil"}}},
+		{Index: 6, Type: "Coil:Cooling:Water", Fields: []Field{{Value: "Office Vent Slab Cooling Coil"}}},
+	}}
+
+	report := AnalyzeHVAC(doc)
+	for _, target := range []struct {
+		objectType string
+		name       string
+	}{
+		{objectType: "Fan:ConstantVolume", name: "Office Vent Slab Fan"},
+		{objectType: "Coil:Heating:Water", name: "Office Vent Slab Heating Coil"},
+		{objectType: "Coil:Cooling:Water", name: "Office Vent Slab Cooling Coil"},
+	} {
+		if !hasHVACComponentReference(report.ComponentReferences, "Office Vent Slab", target.objectType, target.name, "internal_component_reference") {
+			t.Fatalf("component references = %#v, want ventilated slab -> %s %s", report.ComponentReferences, target.objectType, target.name)
+		}
+	}
+	relation := findHVACTestingZoneRelation(report, "Office")
+	if relation == nil {
+		t.Fatalf("Office relation not found: %#v", report.ZoneRelations)
+	}
+	if len(relation.ZoneEquipment) != 1 || !strings.EqualFold(relation.ZoneEquipment[0].ObjectType, "ZoneHVAC:VentilatedSlab") {
+		t.Fatalf("zone equipment = %#v, want ventilated slab", relation.ZoneEquipment)
+	}
+}
+
 func TestAnalyzeHVACBuildsPlantOnlyRadiantServiceChain(t *testing.T) {
 	doc := Document{Objects: []Object{
 		{Index: 0, Type: "Zone", Fields: []Field{{Value: "Office"}}},

@@ -2138,6 +2138,16 @@ func hvacComponentReferencePairs(ctx *hvacContext, obj Object) []hvacComponentRe
 				Source:           "schema_name_field",
 			},
 		}
+	case "zonehvac:ventilatedslab":
+		pairs := hvacComponentReferencePairsFromFieldRoles(obj)
+		pairs = append(pairs, hvacComponentReferencePair{
+			TypeIndex:                  -1,
+			NameIndex:                  30,
+			TargetObjectTypeCandidates: []string{"Fan:*"},
+			RelationRole:               "internal_component_reference",
+			Source:                     "schema_name_field",
+		})
+		return pairs
 	default:
 		return hvacComponentReferencePairsFromFieldRoles(obj)
 	}
