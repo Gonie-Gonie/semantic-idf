@@ -145,7 +145,7 @@ var summaryDefinitions = []SummaryDefinition{
 	def("hvac_node_connection_count", "hvac_conditioning", "HVAC node connection count", "", 0, "Typed HVAC loop branch components.", "Counts typed inlet-to-outlet edges produced by AnalyzeHVAC for parsed loop branch components.", "The result is an analyzer topology count, not a full EnergyPlus simulation solve.", "Always available; zero means no typed loop component edges were parsed."),
 	def("geometry_coverage_percent", "model_inventory", "Geometry coverage", "%", 1, "Detailed geometry inputs.", "Compares surfaces/fenestration with usable detailed vertices against geometry-bearing objects.", "Simple geometry objects are counted as uncovered because detailed polygon checks cannot verify them.", "Always available; zero means no detailed geometry was available."),
 	def("profile_coverage_percent", "model_inventory", "Profile coverage", "%", 1, "Schedule references and supported annual-hour parser.", "Divides referenced schedules that can be evaluated for annual hours by all referenced schedules.", "Unreferenced schedules are excluded from this readiness metric.", "N/A when no schedule references are present."),
-	def("hvac_relation_confidence", "hvac_conditioning", "HVAC relation confidence", "", 0, "HVAC zone relation evidence.", "Reports high, medium, low, or none based on ZoneHVAC equipment lists, terminal nodes, and loop demand-path evidence.", "This is an evidence label, not an EnergyPlus simulation validation result.", "N/A when no HVAC zone relations are present."),
+	def("hvac_rule_edge_count", "hvac_conditioning", "HVAC rule edge count", "", 0, "HVAC RuleGraph edges.", "Counts HVAC graph edges that were created from EnergyPlus object and field rules.", "Only rule-resolved edges are counted; invalid relations remain diagnostics.", "Always available; zero means no HVAC rule edges were resolved."),
 	def("diagnostics_by_source", "model_inventory", "Diagnostics by source", "", 0, "Analyzer diagnostics.", "Counts diagnostics grouped by source such as energyplus_rule, analyzer_limitation, user_quality_check, or heuristic_inference.", "Counts depend on the analyzer diagnostic rules enabled in this build.", "Always available; empty means no diagnostics were emitted."),
 	def("output_readiness_percent", "model_inventory", "Output readiness", "%", 1, "Output:* requests.", "Compares requested simulation outputs against the standard output groups recognized by the analyzer.", "This is a reporting-readiness metric and does not guarantee a successful simulation.", "Always available; zero means no recognized output requests were present."),
 }
@@ -518,7 +518,7 @@ type summaryFacts struct {
 	detailedGeometryCount       int
 	profileReferenceCount       int
 	supportedProfileReferences  int
-	hvacRelationConfidence      string
+	hvacRuleEdgeCount           int
 	diagnosticSourceCounts      map[string]int
 	outputRequestCount          int
 	recognizedOutputCount       int
@@ -694,7 +694,7 @@ func (facts *summaryFacts) captureReadiness(doc Document) {
 	}
 
 	hvacReport := AnalyzeHVAC(doc)
-	facts.hvacRelationConfidence = summaryHVACRelationConfidence(hvacReport.ZoneRelations)
+	facts.hvacRuleEdgeCount = len(hvacReport.RuleGraph.Edges)
 	facts.hvacNodeConnectionCount = summaryHVACTypedNodeConnectionCount(hvacReport)
 
 	for _, diagnostic := range AnalyzeDiagnostics(doc) {
@@ -712,19 +712,6 @@ func (facts *summaryFacts) captureReadiness(doc Document) {
 			facts.recognizedOutputCount++
 		}
 	}
-}
-
-func summaryHVACRelationConfidence(relations []HVACZoneChain) string {
-	if len(relations) == 0 {
-		return ""
-	}
-	best := "low"
-	for _, relation := range relations {
-		if confidenceRank(relation.Confidence) < confidenceRank(best) {
-			best = relation.Confidence
-		}
-	}
-	return best
 }
 
 func summaryHVACTypedNodeConnectionCount(report HVACReport) int {
@@ -1244,9 +1231,7 @@ func (facts summaryFacts) metricValues() map[string]summaryMetricValue {
 	if facts.profileReferenceCount > 0 {
 		values["profile_coverage_percent"] = percentSummaryValue(float64(facts.supportedProfileReferences), float64(facts.profileReferenceCount), precisionFor("profile_coverage_percent"), partialIf(facts.supportedProfileReferences < facts.profileReferenceCount))
 	}
-	if facts.hvacRelationConfidence != "" {
-		values["hvac_relation_confidence"] = stringSummaryValue(facts.hvacRelationConfidence)
-	}
+	values["hvac_rule_edge_count"] = countSummaryValue(facts.hvacRuleEdgeCount)
 	if facts.outputRequestCount > 0 {
 		values["output_readiness_percent"] = percentSummaryValue(float64(facts.recognizedOutputCount), float64(facts.outputRequestCount), precisionFor("output_readiness_percent"), partialIf(facts.recognizedOutputCount < facts.outputRequestCount))
 	} else {
@@ -1289,8 +1274,10 @@ func summaryMetricSource(metricID string, definitionSource string) string {
 		return "analyzer_inference"
 	case "internal_load_method_coverage":
 		return "analyzer_coverage"
-	case "conditioned_zone_count", "conditioned_zone_evidence_breakdown", "hvac_relation_confidence":
+	case "conditioned_zone_count", "conditioned_zone_evidence_breakdown":
 		return "hvac_semantic_evidence"
+	case "hvac_rule_edge_count":
+		return "energyplus_rule_graph"
 	case "diagnostics_by_source":
 		return "diagnostics"
 	}
@@ -1320,9 +1307,7 @@ func summaryMetricConfidence(metricID string, status string) string {
 			return "partial"
 		}
 		return "inferred"
-	case "hvac_relation_confidence":
-		return "reported"
-	case "diagnostics_by_source", "geometry_coverage_percent", "profile_coverage_percent", "internal_load_method_coverage", "output_readiness_percent":
+	case "diagnostics_by_source", "geometry_coverage_percent", "profile_coverage_percent", "internal_load_method_coverage", "output_readiness_percent", "hvac_rule_edge_count":
 		return "computed"
 	default:
 		if status == summaryStatusPartial {
@@ -1334,7 +1319,7 @@ func summaryMetricConfidence(metricID string, status string) string {
 
 func summaryMetricVisibility(metricID string) string {
 	switch metricID {
-	case "average_schedule_operating_hours_h", "unconditioned_floor_area_m2", "bounding_box_area_m2", "building_long_side_m", "building_short_side_m", "footprint_aspect_ratio", "envelope_area_to_volume_ratio", "floor_area_to_volume_ratio", "hvac_node_connection_count", "diagnostics_by_source":
+	case "average_schedule_operating_hours_h", "unconditioned_floor_area_m2", "bounding_box_area_m2", "building_long_side_m", "building_short_side_m", "footprint_aspect_ratio", "envelope_area_to_volume_ratio", "floor_area_to_volume_ratio", "hvac_node_connection_count", "hvac_rule_edge_count", "diagnostics_by_source":
 		return "advanced"
 	default:
 		return "primary"
@@ -1350,7 +1335,7 @@ func summaryMetricBadges(metricID string, status string) []string {
 		badges = append(badges, "missing")
 	}
 	switch metricID {
-	case "conditioned_floor_area_m2", "unconditioned_floor_area_m2", "conditioned_zone_count", "conditioned_zone_evidence_breakdown", "bounding_box_area_m2", "building_long_side_m", "building_short_side_m", "footprint_aspect_ratio", "model_operating_hours_h", "average_schedule_operating_hours_h", "hvac_relation_confidence":
+	case "conditioned_floor_area_m2", "unconditioned_floor_area_m2", "conditioned_zone_count", "conditioned_zone_evidence_breakdown", "bounding_box_area_m2", "building_long_side_m", "building_short_side_m", "footprint_aspect_ratio", "model_operating_hours_h", "average_schedule_operating_hours_h":
 		badges = append(badges, "inferred")
 	case "north_wwr_percent", "east_wwr_percent", "south_wwr_percent", "west_wwr_percent":
 		badges = append(badges, "orientation")

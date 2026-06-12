@@ -1309,8 +1309,7 @@ function renderHVACWarning(warning) {
     <article class="hvac-warning ${escapeHTML(warning.severity || "warning")}">
       <div>
         <strong>${escapeHTML(warning.message || "")}</strong>
-        <span>${escapeHTML([warning.code, warning.source, warning.confidence, warning.objectType, warning.objectName].filter(Boolean).join(" / "))}</span>
-        ${warning.evidence ? `<small>${escapeHTML(warning.evidence)}</small>` : ""}
+        <span>${escapeHTML([warning.code, warning.source, warning.objectType, warning.objectName].filter(Boolean).join(" / "))}</span>
         ${details.length ? `<small>${escapeHTML(details.join(" / "))}</small>` : ""}
       </div>
       ${renderObjectLink(warning.objectIndex, warning.objectType)}
@@ -1558,7 +1557,7 @@ function warningMatchesQuery(warning, query) {
   if (!query) {
     return true;
   }
-  return [warning.severity, warning.category, warning.code, warning.source, warning.confidence, warning.evidence, warning.message, warning.objectType, warning.objectName, warning.field, warning.value, warning.edgeId, warning.sourceFieldIndex, warning.actualNode, warning.suggestedFixTarget, ...(warning.expectedNodes || [])]
+  return [warning.severity, warning.category, warning.code, warning.source, warning.message, warning.objectType, warning.objectName, warning.field, warning.value, warning.edgeId, warning.sourceFieldIndex, warning.actualNode, warning.suggestedFixTarget, ...(warning.expectedNodes || [])]
     .join(" ")
     .toLowerCase()
     .includes(query);
