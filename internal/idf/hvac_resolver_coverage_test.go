@@ -1,6 +1,9 @@
 package idf
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestHVACResolverCoverageMatrixRegistersChecklistFamilies(t *testing.T) {
 	matrix := HVACResolverCoverageMatrix()
@@ -16,10 +19,11 @@ func TestHVACResolverCoverageMatrixRegistersChecklistFamilies(t *testing.T) {
 			t.Fatalf("duplicate matrix object type %q", item.ObjectType)
 		}
 		seen[item.ObjectType] = true
-		switch item.Status {
-		case hvacResolverDone, hvacResolverGeneric, hvacResolverTodo:
-		default:
-			t.Fatalf("unknown resolver status %q for %s", item.Status, item.ObjectType)
+		if item.Status != hvacResolverDone {
+			t.Fatalf("resolver matrix item %s status = %q, want done", item.ObjectType, item.Status)
+		}
+		if strings.Contains(item.Resolver, "generic") {
+			t.Fatalf("resolver matrix item %s still uses a legacy resolver label", item.ObjectType)
 		}
 	}
 	for _, objectType := range []string{
