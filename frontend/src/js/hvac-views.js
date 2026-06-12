@@ -2541,7 +2541,7 @@ function findRelationComponentByLabel(components = [], label = "") {
   if (!normalized) {
     return null;
   }
-  return components.find((component) => normalizeGraphName(componentLabel(component)) === normalized || normalizeGraphName(component.objectName) === normalized) || null;
+  return components.find((component) => normalizeGraphName(componentDisplayName(component)) === normalized || normalizeGraphName(component.objectName) === normalized) || null;
 }
 
 function addRelationLink(linksByKey, from, to, kind, relation) {
