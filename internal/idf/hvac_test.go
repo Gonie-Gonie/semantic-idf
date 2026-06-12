@@ -703,6 +703,116 @@ func TestAnalyzeHVACFourPipeFanCoilUsesCatalogForInternalComponents(t *testing.T
 	}
 }
 
+func TestAnalyzeHVACUnitHeaterUsesCatalogForInternalComponents(t *testing.T) {
+	doc := Document{Objects: []Object{
+		{Index: 0, Type: "Zone", Fields: []Field{{Value: "Warehouse"}}},
+		{Index: 1, Type: "ZoneHVAC:EquipmentConnections", Fields: []Field{
+			{Value: "Warehouse"},
+			{Value: "Warehouse Equipment"},
+			{Value: "Warehouse Supply Inlet"},
+			{Value: ""},
+			{Value: "Warehouse Zone Air Node"},
+			{Value: ""},
+		}},
+		{Index: 2, Type: "ZoneHVAC:EquipmentList", Fields: []Field{
+			{Value: "Warehouse Equipment"},
+			{Value: "SequentialLoad"},
+			{Value: "ZoneHVAC:UnitHeater"},
+			{Value: "Warehouse Unit Heater"},
+			{Value: "1"},
+			{Value: "1"},
+			{Value: ""},
+			{Value: ""},
+		}},
+		{Index: 3, Type: "ZoneHVAC:UnitHeater", Fields: []Field{
+			{Value: "Warehouse Unit Heater"},
+			{Value: "Always On"},
+			{Value: "Warehouse Return"},
+			{Value: "Warehouse Supply Inlet"},
+			{Value: "Fan:ConstantVolume"},
+			{Value: "Warehouse Unit Heater Fan"},
+			{Value: "Autosize"},
+			{Value: "Coil:Heating:Water"},
+			{Value: "Warehouse Unit Heater Coil"},
+			{Value: ""},
+			{Value: "No"},
+			{Value: "Autosize"},
+			{Value: "0"},
+			{Value: "0.001"},
+		}},
+		{Index: 4, Type: "Fan:ConstantVolume", Fields: []Field{{Value: "Warehouse Unit Heater Fan"}}},
+		{Index: 5, Type: "Coil:Heating:Water", Fields: []Field{{Value: "Warehouse Unit Heater Coil"}}},
+		{Index: 6, Type: "PlantLoop", Fields: []Field{
+			{Value: "Heating Water Loop"},
+			{Value: "Water"},
+			{Value: ""},
+			{Value: ""},
+			{Value: "HW Setpoint"},
+			{Value: "80"},
+			{Value: "20"},
+			{Value: "Autosize"},
+			{Value: "0"},
+			{Value: "Autosize"},
+			{Value: "HW Supply Inlet"},
+			{Value: "HW Supply Outlet"},
+			{Value: "HW Supply Branches"},
+			{Value: ""},
+			{Value: "HW Demand Inlet"},
+			{Value: "HW Demand Outlet"},
+			{Value: "HW Demand Branches"},
+			{Value: ""},
+		}},
+		{Index: 7, Type: "BranchList", Fields: []Field{
+			{Value: "HW Supply Branches"},
+			{Value: "Boiler Branch"},
+		}},
+		{Index: 8, Type: "Branch", Fields: []Field{
+			{Value: "Boiler Branch"},
+			{Value: ""},
+			{Value: "Boiler:HotWater"},
+			{Value: "HW Boiler"},
+			{Value: "HW Supply Inlet"},
+			{Value: "HW Supply Outlet"},
+		}},
+		{Index: 9, Type: "Boiler:HotWater", Fields: []Field{{Value: "HW Boiler"}}},
+		{Index: 10, Type: "BranchList", Fields: []Field{
+			{Value: "HW Demand Branches"},
+			{Value: "Unit Heater Coil Branch"},
+		}},
+		{Index: 11, Type: "Branch", Fields: []Field{
+			{Value: "Unit Heater Coil Branch"},
+			{Value: ""},
+			{Value: "Coil:Heating:Water"},
+			{Value: "Warehouse Unit Heater Coil"},
+			{Value: "HW Demand Inlet"},
+			{Value: "HW Demand Outlet"},
+		}},
+	}}
+
+	report := AnalyzeHVAC(doc)
+	for _, target := range []struct {
+		objectType string
+		name       string
+	}{
+		{objectType: "Fan:ConstantVolume", name: "Warehouse Unit Heater Fan"},
+		{objectType: "Coil:Heating:Water", name: "Warehouse Unit Heater Coil"},
+	} {
+		if !hasHVACComponentReference(report.ComponentReferences, "Warehouse Unit Heater", target.objectType, target.name, "internal_component_reference") {
+			t.Fatalf("component references = %#v, want unit heater -> %s %s", report.ComponentReferences, target.objectType, target.name)
+		}
+	}
+	relation := findHVACTestingZoneRelation(report, "Warehouse")
+	if relation == nil {
+		t.Fatalf("Warehouse relation not found: %#v", report.ZoneRelations)
+	}
+	if !stringSliceContainsFold(relation.PlantLoopNames, "Heating Water Loop") {
+		t.Fatalf("plant loops = %#v, want Heating Water Loop", relation.PlantLoopNames)
+	}
+	if !hasHVACServiceChainComponent(relation.ServiceChains, "Heating Water Loop", "HW Boiler", "Warehouse Unit Heater Coil") {
+		t.Fatalf("service chains = %#v, want boiler -> unit heater coil -> zone", relation.ServiceChains)
+	}
+}
+
 func TestAnalyzeHVACBuildsPlantOnlyRadiantServiceChain(t *testing.T) {
 	doc := Document{Objects: []Object{
 		{Index: 0, Type: "Zone", Fields: []Field{{Value: "Office"}}},
