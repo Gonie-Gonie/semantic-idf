@@ -644,6 +644,11 @@ func TestAnalyzeHVACBuildsAirLoopDemandGraphFromSupplyAndReturnPaths(t *testing.
 			t.Fatalf("semantic HVAC demand graph missing %q:\n%s", expected, projection.Text)
 		}
 	}
+	for _, forbidden := range []string{"relation_source:", "confidence:", "evidence:"} {
+		if strings.Contains(projection.Text, forbidden) {
+			t.Fatalf("semantic HVAC projection contains legacy relation vocabulary %q:\n%s", forbidden, projection.Text)
+		}
+	}
 }
 
 func TestBuildServiceChainsDoesNotCreateAirPlantCartesianProduct(t *testing.T) {

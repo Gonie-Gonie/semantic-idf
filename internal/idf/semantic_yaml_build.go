@@ -1062,13 +1062,6 @@ func writeSemanticZoneHVAC(builder *semanticYAMLBuilder, ctx *semanticContext, z
 		return
 	}
 	builder.raw(3, "hvac:")
-	if relation.RelationSource != "" {
-		builder.kv(4, "relation_source", relation.RelationSource)
-	}
-	if relation.Confidence != "" {
-		builder.kv(4, "confidence", relation.Confidence)
-	}
-	writeSemanticStringList(builder, 4, "evidence", relation.Evidence)
 	if relation.Nodes.AirNode != "" || len(relation.Nodes.InletNodes) > 0 || len(relation.Nodes.ExhaustNodes) > 0 || len(relation.Nodes.ReturnNodes) > 0 {
 		builder.raw(4, "nodes:")
 		if relation.Nodes.AirNode != "" {
@@ -1099,18 +1092,15 @@ func writeSemanticZoneHVAC(builder *semanticYAMLBuilder, ctx *semanticContext, z
 		builder.raw(4, "air_loop_relations:")
 		for _, loopRelation := range relation.AirLoopRelations {
 			builder.raw(5, "- loop: "+yamlScalar(loopRelation.LoopName))
-			builder.kv(6, "source", loopRelation.Source)
-			builder.kv(6, "confidence", loopRelation.Confidence)
-			writeSemanticStringList(builder, 6, "evidence", loopRelation.Evidence)
+			if strings.Contains(loopRelation.Source, ".") {
+				builder.kv(6, "rule_id", loopRelation.Source)
+			}
 		}
 	}
 	if len(relation.PlantLoopRelations) > 0 {
 		builder.raw(4, "plant_loop_relations:")
 		for _, loopRelation := range relation.PlantLoopRelations {
 			builder.raw(5, "- loop: "+yamlScalar(loopRelation.LoopName))
-			builder.kv(6, "source", loopRelation.Source)
-			builder.kv(6, "confidence", loopRelation.Confidence)
-			writeSemanticStringList(builder, 6, "evidence", loopRelation.Evidence)
 		}
 	}
 	writeSemanticStringList(builder, 4, "condenser_loops", relation.CondenserLoopNames)
@@ -1147,8 +1137,6 @@ func writeSemanticZoneHVAC(builder *semanticYAMLBuilder, ctx *semanticContext, z
 			if chain.Component != "" {
 				builder.kv(6, "component", chain.Component)
 			}
-			builder.kv(6, "confidence", blankAs(chain.Confidence, "inferred"))
-			builder.kv(6, "evidence", chain.Evidence)
 			writeSemanticStringList(builder, 6, "source_relations", chain.SourceRelations)
 		}
 	}
@@ -1384,16 +1372,6 @@ func writeSemanticHVACComponent(builder *semanticYAMLBuilder, indent int, compon
 	}
 	roleHere := firstNonEmpty(component.RoleHere, role)
 	builder.kvForObject(indent+1, "role_here", roleHere, objectIndex, component.ObjectType, name)
-	if component.RelationSource != "" || component.RelationConfidence != "" || len(component.RelationEvidence) > 0 {
-		builder.rawForObject(indent+1, "relation:", objectIndex, component.ObjectType, name)
-		if component.RelationSource != "" {
-			builder.kvForObject(indent+2, "source", component.RelationSource, objectIndex, component.ObjectType, name)
-		}
-		if component.RelationConfidence != "" {
-			builder.kvForObject(indent+2, "confidence", component.RelationConfidence, objectIndex, component.ObjectType, name)
-		}
-		writeSemanticStringList(builder, indent+2, "evidence", component.RelationEvidence)
-	}
 	if component.CoolingSequence != "" || component.HeatingSequence != "" {
 		builder.rawForObject(indent+1, "sequence:", objectIndex, component.ObjectType, name)
 		if component.CoolingSequence != "" {
