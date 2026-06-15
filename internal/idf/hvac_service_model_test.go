@@ -293,6 +293,14 @@ func TestHVACServiceModelClassifiesSupportingSystemCouplings(t *testing.T) {
 		{Index: 10, Type: "PythonPlugin:Instance", Fields: []Field{{Value: "Python Plugin"}}},
 		{Index: 11, Type: "ExternalInterface:Schedule", Fields: []Field{{Value: "External Schedule"}}},
 		{Index: 12, Type: "PlantEquipmentOperation:ThermalEnergyStorage", Fields: []Field{{Value: "TES Operation"}}},
+		{Index: 13, Type: "FluidCooler:SingleSpeed", Fields: []Field{{Value: "Fluid Cooler"}}},
+		{Index: 14, Type: "EvaporativeFluidCooler:SingleSpeed", Fields: []Field{{Value: "Evap Fluid Cooler"}}},
+		{Index: 15, Type: "GroundHeatExchanger:Vertical", Fields: []Field{{Value: "Ground HX"}}},
+		{Index: 16, Type: "PipingSystem:Underground:Domain", Fields: []Field{{Value: "Underground Domain"}}},
+		{Index: 17, Type: "HeatExchanger:FluidToFluid", Fields: []Field{{Value: "Loop HX"}}},
+		{Index: 18, Type: "Generator:FuelCell", Fields: []Field{{Value: "Fuel Cell"}}},
+		{Index: 19, Type: "Generator:FuelCell:ExhaustGasToWaterHeatExchanger", Fields: []Field{{Value: "Fuel Cell HX"}}},
+		{Index: 20, Type: "Generator:FuelSupply", Fields: []Field{{Value: "Fuel Supply"}}},
 	}}
 
 	report := AnalyzeHVAC(doc)
@@ -315,6 +323,14 @@ func TestHVACServiceModelClassifiesSupportingSystemCouplings(t *testing.T) {
 		{"PythonPlugin:Instance", "control_overlay", "ems_external"},
 		{"ExternalInterface:Schedule", "control_overlay", "ems_external"},
 		{"PlantEquipmentOperation:ThermalEnergyStorage", "operation_scheme", "thermal_storage_operation"},
+		{"FluidCooler:SingleSpeed", "heat_rejection", "fluid_cooler"},
+		{"EvaporativeFluidCooler:SingleSpeed", "heat_rejection", "fluid_cooler"},
+		{"GroundHeatExchanger:Vertical", "source_sink", "ground_hx"},
+		{"PipingSystem:Underground:Domain", "source_sink", "ground_hx"},
+		{"HeatExchanger:FluidToFluid", "heat_recovery", "fluid_heat_exchanger"},
+		{"Generator:FuelCell", "generator", "fuel_cell"},
+		{"Generator:FuelCell:ExhaustGasToWaterHeatExchanger", "heat_recovery", "fuel_cell_heat_recovery"},
+		{"Generator:FuelSupply", "source_sink", "fuel_supply"},
 	} {
 		if !hasSystemCoupling(couplings, expected.objectType, expected.couplingType, expected.role) {
 			t.Fatalf("couplings = %#v, missing %#v", couplings, expected)

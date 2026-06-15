@@ -840,6 +840,8 @@ func hvacCouplingTypeAndRoleForObject(objectType string) (string, string) {
 		return "heat_rejection", "fluid_cooler"
 	case strings.HasPrefix(lower, "groundheatexchanger:") || strings.HasPrefix(lower, "pipingsystem:underground:"):
 		return "source_sink", "ground_hx"
+	case strings.HasPrefix(lower, "generator:fuelcell:exhaustgastowaterheatexchanger") || strings.HasPrefix(lower, "generator:fuelcell:stackcooler"):
+		return "heat_recovery", "fuel_cell_heat_recovery"
 	case strings.HasPrefix(lower, "heatexchanger:fluidtofluid") || strings.Contains(lower, "heatexchanger"):
 		return "heat_recovery", "fluid_heat_exchanger"
 	case strings.HasPrefix(lower, "electricloadcenter:storage:"):
@@ -850,8 +852,6 @@ func hvacCouplingTypeAndRoleForObject(objectType string) (string, string) {
 		return "generator", "pv"
 	case strings.HasPrefix(lower, "generator:windturbine"):
 		return "generator", "wind"
-	case strings.HasPrefix(lower, "generator:fuelcell:exhaustgastowaterheatexchanger") || strings.HasPrefix(lower, "generator:fuelcell:stackcooler"):
-		return "heat_recovery", "fuel_cell_heat_recovery"
 	case strings.HasPrefix(lower, "generator:fuelcell"):
 		return "generator", "fuel_cell"
 	case strings.HasPrefix(lower, "generator:fuelsupply"):
