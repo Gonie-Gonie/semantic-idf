@@ -92,6 +92,192 @@ func TestHVACServiceModelKeepsFanCoilAsDirectZoneDelivery(t *testing.T) {
 	}
 }
 
+func TestHVACServiceModelClassifiesPackagedLocalEquipment(t *testing.T) {
+	doc := Document{Objects: []Object{
+		{Index: 0, Type: "Zone", Fields: []Field{{Value: "Office"}}},
+		{Index: 1, Type: "ZoneHVAC:EquipmentConnections", Fields: []Field{
+			{Value: "Office"},
+			{Value: "Office Equipment"},
+			{Value: "Office Supply Inlet"},
+			{Value: ""},
+			{Value: "Office Zone Air Node"},
+			{Value: ""},
+		}},
+		{Index: 2, Type: "ZoneHVAC:EquipmentList", Fields: []Field{
+			{Value: "Office Equipment"},
+			{Value: "ZoneHVAC:PackagedTerminalHeatPump"},
+			{Value: "Office PTHP"},
+			{Value: "1"},
+			{Value: "1"},
+		}},
+		{Index: 3, Type: "ZoneHVAC:PackagedTerminalHeatPump", Fields: []Field{
+			{Value: "Office PTHP"},
+			{Value: ""},
+			{Value: "Autosize"},
+			{Value: "Office Supply Inlet"},
+			{Value: "Office Zone Air Node"},
+		}},
+	}}
+
+	report := AnalyzeHVAC(doc)
+	office := findHVACTestingZoneService(report.ServiceModel, "Office")
+	if office == nil {
+		t.Fatalf("Office zone service not found: %#v", report.ServiceModel.ZoneServices)
+	}
+	for _, serviceKind := range []string{"cooling", "heating"} {
+		path := findZoneServicePath(office.Paths, serviceKind, "direct_zone_air", "", "", "Office PTHP")
+		if path == nil {
+			t.Fatalf("Office paths = %#v, want %s packaged heat pump path", office.Paths, serviceKind)
+		}
+		if path.DeliveryEquipment.DeliveryType != "pthp" || path.DeliveryEquipment.RequiresAirLoop {
+			t.Fatalf("PTHP delivery classification = %#v", path.DeliveryEquipment)
+		}
+		if path.SourceSystem == nil || path.SourceSystem.Name == "" {
+			t.Fatalf("PTHP path missing local source system: %#v", path)
+		}
+		if strings.Contains(strings.ToLower(path.Delivery.DisplayFamily), "terminal") {
+			t.Fatalf("PTHP delivery label still looks terminal-like: %#v", path.Delivery)
+		}
+	}
+}
+
+func TestHVACServiceModelBuildsRadiantPlantPath(t *testing.T) {
+	doc := Document{Objects: []Object{
+		{Index: 0, Type: "Zone", Fields: []Field{{Value: "Office"}}},
+		{Index: 1, Type: "ZoneHVAC:EquipmentConnections", Fields: []Field{
+			{Value: "Office"},
+			{Value: "Office Equipment"},
+			{Value: ""},
+			{Value: ""},
+			{Value: "Office Zone Air Node"},
+			{Value: ""},
+		}},
+		{Index: 2, Type: "ZoneHVAC:EquipmentList", Fields: []Field{
+			{Value: "Office Equipment"},
+			{Value: "ZoneHVAC:LowTemperatureRadiant:VariableFlow"},
+			{Value: "Office Radiant"},
+			{Value: "1"},
+			{Value: "1"},
+		}},
+		{Index: 3, Type: "ZoneHVAC:LowTemperatureRadiant:VariableFlow", Fields: []Field{
+			{Value: "Office Radiant"},
+			{Value: "Radiant Design"},
+			{Value: ""},
+			{Value: "Office"},
+			{Value: "Office Radiant Surfaces"},
+			{Value: "100"},
+			{Value: "Autosize"},
+			{Value: "Autosize"},
+			{Value: "HW Demand Inlet"},
+			{Value: "HW Demand Outlet"},
+		}},
+		{Index: 4, Type: "PlantLoop", Fields: []Field{
+			{Value: "Heating Water Loop"},
+			{Value: "Water"},
+			{Value: ""},
+			{Value: ""},
+			{Value: "HW Setpoint"},
+			{Value: "80"},
+			{Value: "20"},
+			{Value: "Autosize"},
+			{Value: "0"},
+			{Value: "Autosize"},
+			{Value: "HW Supply Inlet"},
+			{Value: "HW Supply Outlet"},
+			{Value: "HW Supply Branches"},
+			{Value: ""},
+			{Value: "HW Demand Inlet"},
+			{Value: "HW Demand Outlet"},
+			{Value: "HW Demand Branches"},
+			{Value: ""},
+		}},
+		{Index: 5, Type: "BranchList", Fields: []Field{
+			{Value: "HW Demand Branches"},
+			{Value: "Radiant Branch"},
+		}},
+		{Index: 6, Type: "Branch", Fields: []Field{
+			{Value: "Radiant Branch"},
+			{Value: ""},
+			{Value: "ZoneHVAC:LowTemperatureRadiant:VariableFlow"},
+			{Value: "Office Radiant"},
+			{Value: "HW Demand Inlet"},
+			{Value: "HW Demand Outlet"},
+		}},
+	}}
+
+	report := AnalyzeHVAC(doc)
+	office := findHVACTestingZoneService(report.ServiceModel, "Office")
+	if office == nil {
+		t.Fatalf("Office zone service not found: %#v", report.ServiceModel.ZoneServices)
+	}
+	path := findZoneServicePath(office.Paths, "radiant_heating", "radiant", "Heating Water Loop", "", "Office Radiant")
+	if path == nil {
+		t.Fatalf("Office paths = %#v, want radiant plant path", office.Paths)
+	}
+	if path.AirLoop != nil {
+		t.Fatalf("radiant path gained an air loop: %#v", path)
+	}
+	if path.DeliveryEquipment.DeliveryType != "radiant_floor" {
+		t.Fatalf("radiant delivery classification = %#v", path.DeliveryEquipment)
+	}
+}
+
+func TestHVACServiceModelBuildsVRFRefrigerantPath(t *testing.T) {
+	vrfSystemFields := make([]Field, 37)
+	vrfSystemFields[0] = Field{Value: "Office VRF Outdoor"}
+	vrfSystemFields[36] = Field{Value: "Office VRF Terminal List"}
+	doc := Document{Objects: []Object{
+		{Index: 0, Type: "Zone", Fields: []Field{{Value: "Office"}}},
+		{Index: 1, Type: "ZoneHVAC:EquipmentConnections", Fields: []Field{
+			{Value: "Office"},
+			{Value: "Office Equipment"},
+			{Value: "Office Inlet"},
+			{Value: ""},
+			{Value: "Office Air Node"},
+			{Value: ""},
+		}},
+		{Index: 2, Type: "ZoneHVAC:EquipmentList", Fields: []Field{
+			{Value: "Office Equipment"},
+			{Value: "SequentialLoad"},
+			{Value: "ZoneHVAC:TerminalUnit:VariableRefrigerantFlow"},
+			{Value: "Office VRF Terminal"},
+			{Value: "1"},
+			{Value: "1"},
+			{Value: ""},
+			{Value: ""},
+		}},
+		{Index: 3, Type: "ZoneHVAC:TerminalUnit:VariableRefrigerantFlow", Fields: []Field{
+			{Value: "Office VRF Terminal"},
+			{Value: "Always On"},
+			{Value: "Office VRF Inlet"},
+			{Value: "Office Inlet"},
+		}},
+		{Index: 4, Type: "AirConditioner:VariableRefrigerantFlow", Fields: vrfSystemFields},
+		{Index: 5, Type: "ZoneTerminalUnitList", Fields: []Field{
+			{Value: "Office VRF Terminal List"},
+			{Value: "Office VRF Terminal"},
+		}},
+	}}
+
+	report := AnalyzeHVAC(doc)
+	office := findHVACTestingZoneService(report.ServiceModel, "Office")
+	if office == nil {
+		t.Fatalf("Office zone service not found: %#v", report.ServiceModel.ZoneServices)
+	}
+	for _, serviceKind := range []string{"cooling", "heating"} {
+		path := findZoneServicePath(office.Paths, serviceKind, "direct_zone_refrigerant", "", "", "Office VRF Terminal")
+		if path == nil {
+			t.Fatalf("Office paths = %#v, want %s VRF refrigerant path", office.Paths, serviceKind)
+		}
+		if path.RefrigerantSystem == nil || path.RefrigerantSystem.Name != "Office VRF Outdoor" {
+			t.Fatalf("VRF path refrigerant system = %#v", path.RefrigerantSystem)
+		}
+		if path.PlantLoop != nil || path.AirLoop != nil {
+			t.Fatalf("VRF path gained plant/air loop: %#v", path)
+		}
+	}
+}
+
 func TestHVACServiceModelClassifiesSupportingSystemCouplings(t *testing.T) {
 	doc := Document{Objects: []Object{
 		{Index: 0, Type: "ThermalStorage:Ice:Simple", Fields: []Field{{Value: "Ice Tank"}}},
@@ -158,6 +344,34 @@ func TestHVACServiceModelSeparatesTrueAirTerminalsFromZoneEquipment(t *testing.T
 	}
 }
 
+func TestHVACFrontendDefaultCopyHidesRuleGraphVocabulary(t *testing.T) {
+	for _, path := range []string{
+		"../../frontend/src/js/hvac-views.js",
+		"../../frontend/src/js/i18n.js",
+		"../../frontend/src/styles.css",
+	} {
+		content, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		text := string(content)
+		for _, forbidden := range []string{
+			"Rule edges",
+			"Rule trace",
+			"Rule path",
+			"Terminal / Equipment",
+			"Plant / Condenser",
+			"Zone relations",
+			"Cross-loop",
+			"hvac.inferred",
+		} {
+			if strings.Contains(text, forbidden) {
+				t.Fatalf("%s contains default-HVAC forbidden copy %q", path, forbidden)
+			}
+		}
+	}
+}
+
 func findHVACTestingZoneService(model HVACServiceModel, zoneName string) *ZoneServiceSummary {
 	for index := range model.ZoneServices {
 		if strings.EqualFold(model.ZoneServices[index].ZoneName, zoneName) {
@@ -168,7 +382,12 @@ func findHVACTestingZoneService(model HVACServiceModel, zoneName string) *ZoneSe
 }
 
 func hasZoneServicePath(paths []ZoneServicePath, serviceKind string, pathType string, plantLoop string, airLoop string, deliveryNeedle string) bool {
-	for _, path := range paths {
+	return findZoneServicePath(paths, serviceKind, pathType, plantLoop, airLoop, deliveryNeedle) != nil
+}
+
+func findZoneServicePath(paths []ZoneServicePath, serviceKind string, pathType string, plantLoop string, airLoop string, deliveryNeedle string) *ZoneServicePath {
+	for index := range paths {
+		path := paths[index]
 		if serviceKind != "" && path.ServiceKind != serviceKind {
 			continue
 		}
@@ -189,9 +408,9 @@ func hasZoneServicePath(paths []ZoneServicePath, serviceKind string, pathType st
 		if deliveryNeedle != "" && !strings.Contains(strings.ToLower(deliveryName), strings.ToLower(deliveryNeedle)) {
 			continue
 		}
-		return true
+		return &paths[index]
 	}
-	return false
+	return nil
 }
 
 func hasSystemCoupling(couplings []SystemCoupling, objectType string, couplingType string, role string) bool {

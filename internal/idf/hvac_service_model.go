@@ -335,6 +335,9 @@ func buildZoneServicePaths(ctx *hvacContext, loops []HVACLoop, relations []HVACZ
 			if chain.SourceComponent != "" {
 				path.SourceSystem = systemRefFromLabel("source", chain.SourceComponent, hvacMediumsForServiceKind(path.ServiceKind))
 			}
+			if path.SourceSystem == nil && plantRef == nil && airRef == nil {
+				path.SourceSystem = localSourceSystemForDelivery(deliveryInfo.DeliveryType, path.ServiceKind)
+			}
 			if isVRFDelivery(deliveryInfo.DeliveryType) || serviceChainLooksRefrigerant(chain) {
 				path.PathType = "direct_zone_refrigerant"
 				path.RefrigerantSystem = refrigerantSystemForDelivery(ctx, delivery)
