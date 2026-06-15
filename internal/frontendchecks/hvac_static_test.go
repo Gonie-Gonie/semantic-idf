@@ -54,6 +54,9 @@ func TestFrontendHVACStartsOnZoneServices(t *testing.T) {
 	if !strings.Contains(string(content), `activeHVACView: "services"`) {
 		t.Fatalf("state.js should default HVAC to Zone Services view")
 	}
+	if !strings.Contains(string(content), `hvacGraphScale: "actual"`) {
+		t.Fatalf("state.js should default HVAC graph to actual scale")
+	}
 }
 
 func TestFrontendHVACServiceDOMContracts(t *testing.T) {
@@ -66,9 +69,14 @@ func TestFrontendHVACServiceDOMContracts(t *testing.T) {
 		"function buildServiceGraph(paths, couplings)",
 		"function serviceGraphNodeIdentity",
 		"function layoutServiceGraphNodes",
+		"function alignServiceGraphColumnRows",
+		"function clearHVACGraphSelection",
 		"function isPhysicalServiceCoupling",
 		"function serviceLinkPath",
 		"function bundleServiceGraphLinks",
+		`event.key === "Escape"`,
+		`state.activeHVACGraphKey = ""`,
+		`state.activeHVACNodeName = ""`,
 		"hvac-service-svg",
 		"hvac-edge-bundle-badge",
 		"hvac-trace-drawer",
@@ -127,6 +135,7 @@ func TestFrontendHVACServiceStylesCoverRoutingAndBundling(t *testing.T) {
 		".hvac-graph-link.medium-refrigerant",
 		".hvac-graph-link.medium-electricity",
 		".hvac-graph-link.medium-control",
+		".hvac-graphic-shell.scale-actual .hvac-service-svg",
 	} {
 		if !strings.Contains(text, required) {
 			t.Fatalf("hvac service styles are missing %q", required)

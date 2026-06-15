@@ -13,6 +13,7 @@ export function initializeHVACControls() {
     syncHVACInspectorDrawer();
   });
   document.addEventListener("click", handleHVACOutsideClick);
+  document.addEventListener("keydown", handleHVACEscapeKey);
   elements.hvacGraph?.addEventListener("click", (event) => {
     if (event.target.closest("[data-jump-object-index]")) {
       return;
@@ -47,6 +48,11 @@ export function initializeHVACControls() {
     renderHVAC();
   });
   elements.hvacGraph?.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      clearHVACGraphSelection();
+      return;
+    }
     if (event.key !== "Enter" && event.key !== " ") {
       return;
     }
@@ -104,6 +110,34 @@ function selectHVACGraphKey(key) {
   state.activeHVACGraphKey = key;
   state.activeHVACNodeName = key.startsWith("node:") ? key.slice(5) : "";
   renderHVAC();
+}
+
+function handleHVACEscapeKey(event) {
+  if (event.key !== "Escape" || !hasActiveHVACGraphSelection()) {
+    return;
+  }
+  if (event.target?.closest?.("input, textarea, select, [contenteditable='true']")) {
+    return;
+  }
+  const hvacPaneIsVisible = state.activeResultTab === "hvac" || document.querySelector("#hvacPane")?.classList.contains("active");
+  if (!hvacPaneIsVisible) {
+    return;
+  }
+  event.preventDefault();
+  clearHVACGraphSelection();
+}
+
+function clearHVACGraphSelection() {
+  if (!hasActiveHVACGraphSelection()) {
+    return;
+  }
+  state.activeHVACGraphKey = "";
+  state.activeHVACNodeName = "";
+  renderHVAC();
+}
+
+function hasActiveHVACGraphSelection() {
+  return Boolean(state.activeHVACGraphKey || state.activeHVACNodeName);
 }
 
 function readHVACInspectorCollapsed() {
@@ -1607,7 +1641,7 @@ function buildServiceGraph(paths, couplings) {
   const nodeByKey = new Map();
   const couplingById = new Map((couplings || []).map((coupling) => [coupling.id, coupling]));
   const sortedPaths = sortServiceGraphPaths(paths);
-  const width = 1160;
+  const width = 1480;
   const addNode = (path, spec) => {
     const key = serviceGraphNodeKey(path, spec);
     let node = nodeByKey.get(key);
@@ -1700,8 +1734,9 @@ function buildServiceGraph(paths, couplings) {
     });
   });
   const nodes = [...nodeByKey.values()];
-  const height = layoutServiceGraphNodes(nodes);
-  return { width, height, nodes, links: bundleServiceGraphLinks(links), groups: serviceGraphColumnGroups(nodes, height) };
+  const bundledLinks = bundleServiceGraphLinks(links);
+  const height = layoutServiceGraphNodes(nodes, bundledLinks);
+  return { width, height, nodes, links: bundledLinks, groups: serviceGraphColumnGroups(nodes, height) };
 }
 
 function sortServiceGraphPaths(paths = []) {
@@ -1768,34 +1803,93 @@ function appendUniqueString(values = [], value = "") {
 }
 
 const serviceGraphColumns = [
-  { id: "source", label: "Source", x: 128, width: 190, roles: ["source", "plant_loop", "refrigerant_system"] },
-  { id: "support", label: "Physical support", x: 304, width: 170, roles: ["coupling"] },
-  { id: "conditioning", label: "Conditioning", x: 478, width: 178, roles: ["conditioning"] },
-  { id: "air_loop", label: "Air loop", x: 650, width: 178, roles: ["air_loop"] },
-  { id: "delivery", label: "Delivery", x: 842, width: 190, roles: ["delivery"] },
-  { id: "zone", label: "Zone", x: 1056, width: 176, roles: ["zone"] },
+  { id: "source", label: "Source", x: 146, width: 210, roles: ["source", "plant_loop", "refrigerant_system"] },
+  { id: "support", label: "Physical support", x: 382, width: 186, roles: ["coupling"] },
+  { id: "conditioning", label: "Conditioning", x: 608, width: 194, roles: ["conditioning"] },
+  { id: "air_loop", label: "Air loop", x: 832, width: 194, roles: ["air_loop"] },
+  { id: "delivery", label: "Delivery", x: 1086, width: 214, roles: ["delivery"] },
+  { id: "zone", label: "Zone", x: 1340, width: 196, roles: ["zone"] },
 ];
 
 function serviceGraphColumnForRole(role = "") {
   return serviceGraphColumns.find((column) => column.roles.includes(role)) || serviceGraphColumns[serviceGraphColumns.length - 1];
 }
 
-function layoutServiceGraphNodes(nodes = []) {
-  const top = 100;
-  const rowGap = 96;
-  let maxColumnCount = 1;
+function layoutServiceGraphNodes(nodes = [], links = []) {
+  const top = 116;
+  const rowGap = 118;
+  let maxRow = 0;
   for (const column of serviceGraphColumns) {
-    const columnNodes = nodes
-      .filter((node) => column.roles.includes(node.role))
-      .sort((left, right) => String(left.sortKey || left.label || "").localeCompare(String(right.sortKey || right.label || ""), undefined, { numeric: true }));
-    maxColumnCount = Math.max(maxColumnCount, columnNodes.length);
+    const columnNodes = serviceGraphColumnNodes(nodes, column);
     columnNodes.forEach((node, index) => {
       node.x = column.x;
       node.y = top + index * rowGap;
       node.width = Math.min(node.width || column.width, column.width);
+      maxRow = Math.max(maxRow, index);
     });
   }
-  return Math.max(300, top + (maxColumnCount - 1) * rowGap + 108);
+  for (const column of serviceGraphColumns.slice(1)) {
+    maxRow = Math.max(maxRow, alignServiceGraphColumnRows(nodes, links, column, top, rowGap));
+  }
+  return Math.max(300, top + maxRow * rowGap + 108);
+}
+
+function serviceGraphColumnNodes(nodes = [], column = {}) {
+  return nodes.filter((node) => column.roles?.includes(node.role)).sort(compareServiceGraphNodes);
+}
+
+function compareServiceGraphNodes(left, right) {
+  return String(left.sortKey || left.label || "").localeCompare(String(right.sortKey || right.label || ""), undefined, { numeric: true });
+}
+
+function alignServiceGraphColumnRows(nodes = [], links = [], column = {}, top = 0, rowGap = 96) {
+  const columnNodes = serviceGraphColumnNodes(nodes, column);
+  const usedRows = new Set();
+  columnNodes
+    .map((node, index) => ({
+      node,
+      naturalRow: index,
+      desiredRow: serviceGraphDesiredRow(node, links, top, rowGap, index),
+    }))
+    .sort((left, right) => left.desiredRow - right.desiredRow || compareServiceGraphNodes(left.node, right.node))
+    .forEach(({ node, desiredRow, naturalRow }) => {
+      const row = nearestFreeServiceGraphRow(Number.isFinite(desiredRow) ? desiredRow : naturalRow, usedRows);
+      usedRows.add(row);
+      node.y = top + row * rowGap;
+    });
+  return usedRows.size ? Math.max(...usedRows) : 0;
+}
+
+function serviceGraphDesiredRow(node, links = [], top = 0, rowGap = 96, fallbackRow = 0) {
+  const relatedY = links.flatMap((link) => {
+    if (link.from === node && link.to) {
+      return [link.to.y];
+    }
+    if (link.to === node && link.from) {
+      return [link.from.y];
+    }
+    return [];
+  });
+  if (!relatedY.length) {
+    return fallbackRow;
+  }
+  const averageY = relatedY.reduce((sum, value) => sum + value, 0) / relatedY.length;
+  return Math.max(0, Math.round((averageY - top) / rowGap));
+}
+
+function nearestFreeServiceGraphRow(preferredRow, usedRows = new Set()) {
+  const start = Math.max(0, Math.round(preferredRow));
+  for (let distance = 0; distance < usedRows.size + 64; distance += 1) {
+    const before = start - distance;
+    if (before >= 0 && !usedRows.has(before)) {
+      return before;
+    }
+    const after = start + distance;
+    if (!usedRows.has(after)) {
+      return after;
+    }
+  }
+  return usedRows.size;
 }
 
 function serviceGraphColumnGroups(nodes = [], height = 300) {
@@ -1816,6 +1910,7 @@ function serviceGraphNodeSortKey(path = {}, spec = {}) {
   return [
     String(serviceGraphColumnForRole(spec.role).x).padStart(4, "0"),
     spec.role === "delivery" ? String(deliverySortRank(path)).padStart(2, "0") : "00",
+    spec.role === "zone" ? servedSubjectLabel(path.servedSubject || path) : "",
     spec.meta || "",
     spec.label || "",
   ]

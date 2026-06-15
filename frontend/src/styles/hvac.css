@@ -259,6 +259,7 @@
 }
 
 .hvac-graphic-shell.scale-actual {
+  width: var(--hvac-graph-width, 1120px);
   min-width: var(--hvac-graph-width, 1120px);
 }
 
@@ -281,6 +282,12 @@
 .hvac-graphic-shell.scale-compact .hvac-relation-svg,
 .hvac-graphic-shell.scale-compact .hvac-service-svg {
   min-height: 320px;
+}
+
+.hvac-graphic-shell.scale-actual .hvac-loop-svg,
+.hvac-graphic-shell.scale-actual .hvac-relation-svg,
+.hvac-graphic-shell.scale-actual .hvac-service-svg {
+  width: var(--hvac-graph-width, 1120px);
 }
 
 .hvac-loop-svg {
