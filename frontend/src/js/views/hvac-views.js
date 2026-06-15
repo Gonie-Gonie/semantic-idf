@@ -508,6 +508,9 @@ function supportingCouplingsForLoop(loop = {}, couplings = []) {
   const seen = new Set();
   const out = [];
   for (const coupling of couplings || []) {
+    if (!isPhysicalServiceCoupling(coupling)) {
+      continue;
+    }
     const match = (coupling.connectedLoops || []).find((connectedLoop) => loopKeys.has(loopRefGraphKey(connectedLoop.type, connectedLoop.name)));
     if (!match || seen.has(coupling.id)) {
       continue;
@@ -1236,8 +1239,24 @@ function servicePathGraphKey(path = {}) {
   return `service-path:${path.id || servedSubjectKey(path.servedSubject || path)}`;
 }
 
-function serviceGraphNodeKey(path, role) {
-  return `service-node:${path.id}:${role}`;
+function serviceGraphNodeKey(path, specOrRole) {
+  const spec =
+    typeof specOrRole === "string"
+      ? servicePathNodeSpecs(path).find((item) => item.role === specOrRole) || { role: specOrRole }
+      : specOrRole || {};
+  return `service-node:${spec.role || "node"}:${serviceGraphNodeIdentity(path, spec)}`;
+}
+
+function serviceGraphNodeIdentity(path = {}, spec = {}) {
+  if (spec.role === "zone") {
+    return servedSubjectKey(path.servedSubject || path);
+  }
+  const ref = spec.ref || {};
+  if (ref.id) {
+    return normalizeGraphName(ref.id);
+  }
+  const typedName = [ref.objectType || ref.type || spec.kind || spec.role, ref.objectName || ref.name || spec.label].filter(Boolean).join(":");
+  return normalizeGraphName(typedName || spec.label || spec.role || "node");
 }
 
 function serviceKindLabel(kind = "") {
@@ -1548,52 +1567,9 @@ function renderHVACServices(hvac, query) {
     .filter((path) => servicePathMatchesQuery(path, query));
   elements.hvacGraph.innerHTML = paths.length
     ? `
-      ${renderHVACServiceTable(paths, hvac)}
       ${renderHVACServiceGraph(paths, hvacServiceModel(hvac).couplings || [])}
       ${renderHVACServiceGraphDetail(paths, hvacServiceModel(hvac).couplings || [])}`
     : `<div class="empty">${t("hvac.noMatchingServices", {}, "No matching zone services")}</div>`;
-}
-
-function renderHVACServiceTable(paths, hvac) {
-  return `
-    <section class="hvac-relation-table-shell hvac-service-table-shell">
-      <div class="hvac-section-head compact">
-        <h3>${escapeHTML(t("hvac.zoneServices", {}, "Zone Services"))}</h3>
-        <span>${escapeHTML(t("count.items", { count: paths.length }, `${paths.length} paths`))}</span>
-      </div>
-      <div class="hvac-service-table" role="table" aria-label="${escapeHTML(t("hvac.zoneServices", {}, "Zone Services"))}">
-        <div class="hvac-service-table-row head" role="row">
-          <span>Zone</span>
-          <span>Service</span>
-          <span>${escapeHTML(t("hvac.delivery", {}, "Delivery"))}</span>
-          <span>${escapeHTML(t("hvac.source", {}, "Source"))}</span>
-          <span>${escapeHTML(t("hvac.airSystem", {}, "Air system"))}</span>
-          <span>${escapeHTML(t("hvac.coupledSystems", {}, "Coupled systems"))}</span>
-          <span>${escapeHTML(t("hvac.issues", {}, "Issues"))}</span>
-        </div>
-        ${paths.map((path) => renderHVACServiceRow(path, hvac)).join("")}
-      </div>
-    </section>`;
-}
-
-function renderHVACServiceRow(path, hvac) {
-  const pathKey = servicePathGraphKey(path);
-  const sourceText = servicePathSourceText(path);
-  const coupledText = servicePathCoupledText(path, hvacServiceModel(hvac).couplings || []);
-  const issues = (path.issues || []).map((issue) => issue.code || issue.message).filter(Boolean);
-  return `
-    <div class="hvac-service-table-row ${graphSelectionClass(pathKey, [`subject:${servedSubjectKey(path.servedSubject || path)}`])}" role="row" tabindex="0" data-hvac-graph-key="${escapeHTML(pathKey)}">
-      <span>
-        <strong>${escapeHTML(servedSubjectLabel(path.servedSubject || path))}</strong>
-        <small>${escapeHTML(path.pathType || "")}</small>
-      </span>
-      <span>${escapeHTML(serviceKindLabel(path.serviceKind))}</span>
-      <span>${escapeHTML(deliveryLabel(path))}</span>
-      <span>${escapeHTML(sourceText || "-")}</span>
-      <span>${escapeHTML(path.airLoop?.name || "-")}</span>
-      <span>${escapeHTML(coupledText || "-")}</span>
-      <span>${escapeHTML(issues.join(", ") || "-")}</span>
-    </div>`;
 }
 
 function renderHVACServiceGraph(paths, couplings) {
@@ -1627,129 +1603,266 @@ function renderHVACServiceGraph(paths, couplings) {
 }
 
 function buildServiceGraph(paths, couplings) {
-  const nodes = [];
   const links = [];
-  const groups = [];
+  const nodeByKey = new Map();
   const couplingById = new Map((couplings || []).map((coupling) => [coupling.id, coupling]));
-  const rowGap = 132;
-  const baseY = 86;
+  const sortedPaths = sortServiceGraphPaths(paths);
   const width = 1160;
-  paths.forEach((path, index) => {
-    const y = baseY + index * rowGap;
-    groups.push({ y: y - 54, height: 108, label: `${serviceKindLabel(path.serviceKind)} / ${pathTypeLabel(path.pathType)}` });
-    const specs = servicePathNodeSpecs(path);
-    const rowNodes = specs.map((spec, specIndex) => {
-      const x = serviceNodeX(specIndex, specs.length, width);
-      const node = {
-        key: serviceGraphNodeKey(path, spec.role),
-        pathId: path.id,
+  const addNode = (path, spec) => {
+    const key = serviceGraphNodeKey(path, spec);
+    let node = nodeByKey.get(key);
+    if (!node) {
+      node = {
+        key,
         role: spec.role,
         kind: spec.kind,
-        x,
-        y,
-        width: spec.width || 156,
-        height: 58,
+        x: serviceNodeX(spec.role, 0, 1, width),
+        y: 0,
+        width: spec.width || serviceNodeWidth(spec.role),
+        height: 62,
         label: spec.label,
         meta: spec.meta,
         iconKind: spec.iconKind,
         shortLabel: spec.shortLabel,
         ref: spec.ref,
         path,
-        relatedKeys: [servicePathGraphKey(path), `subject:${servedSubjectKey(path.servedSubject || path)}`],
+        paths: [],
+        relatedKeys: [],
         ports: graphPortsForNode(spec.kind),
+        sortKey: serviceGraphNodeSortKey(path, spec),
       };
-      nodes.push(node);
-      return node;
-    });
-    rowNodes.forEach((node, nodeIndex) => {
-      const next = rowNodes[nodeIndex + 1];
-      if (next) {
-        links.push({
-          key: `service-link:${path.id}:${node.role}->${next.role}`,
-          from: node,
-          to: next,
-          medium: serviceEdgeMedium(node, next, path),
-          label: serviceEdgeLabel(serviceEdgeMedium(node, next, path)),
-          path,
-          relatedKeys: [servicePathGraphKey(path), node.key, next.key],
-        });
-      }
-    });
-    const plantNode = rowNodes.find((node) => ["plant_loop", "source", "refrigerant_system"].includes(node.role));
-    const supportCouplings = (path.supportingCouplingIds || []).map((id) => couplingById.get(id)).filter(Boolean);
-    const visibleCouplings = supportCouplings.slice(0, 3);
-    visibleCouplings.forEach((coupling, supportIndex) => {
-      const anchor = plantNode || rowNodes[0];
-      const supportNode = {
-        key: `coupling-node:${path.id}:${coupling.id}`,
-        pathId: path.id,
+      nodeByKey.set(key, node);
+    }
+    node.paths.push(path);
+    node.relatedKeys = appendUniqueString(node.relatedKeys || [], servicePathGraphKey(path));
+    node.relatedKeys = appendUniqueString(node.relatedKeys || [], `subject:${servedSubjectKey(path.servedSubject || path)}`);
+    return node;
+  };
+  const addCouplingNode = (path, coupling) => {
+    const key = `coupling-node:any:${coupling.id}`;
+    let node = nodeByKey.get(key);
+    if (!node) {
+      node = {
+        key,
         role: "coupling",
         kind: coupling.couplingType || "coupling",
-        x: anchor.x + supportIndex * 176,
-        y: y + 68,
-        width: 160,
-        height: 48,
+        x: serviceNodeX("coupling", 0, 1, width),
+        y: 0,
+        width: 166,
+        height: 50,
         label: coupling.object?.displayName || coupling.object?.objectName || coupling.role,
         meta: couplingRoleLabel(coupling),
         iconKind: iconKindForCoupling(coupling),
         shortLabel: couplingShortLabel(coupling),
         coupling,
         path,
-        relatedKeys: [servicePathGraphKey(path), anchor.key],
+        paths: [],
+        relatedKeys: [],
         ports: graphPortsForNode("support"),
+        sortKey: serviceGraphCouplingSortKey(coupling),
       };
-      nodes.push(supportNode);
-      links.push({
-        key: `support-link:${path.id}:${coupling.id}`,
-        from: supportNode,
-        to: anchor,
-        medium: (coupling.mediums || [])[0] || "control",
-        label: serviceEdgeLabel((coupling.mediums || [])[0] || "control"),
-        path,
-        coupling,
-        support: true,
-        relatedKeys: [servicePathGraphKey(path), supportNode.key, anchor.key],
-      });
-    });
-    if (supportCouplings.length > visibleCouplings.length) {
-      const anchor = plantNode || rowNodes[0];
-      nodes.push({
-        key: `coupling-node:${path.id}:more`,
-        pathId: path.id,
-        role: "coupling",
-        kind: "support_chip",
-        x: anchor.x + visibleCouplings.length * 176,
-        y: y + 68,
-        width: 150,
-        height: 42,
-        label: `+${supportCouplings.length - visibleCouplings.length}`,
-        meta: t("hvac.supportingAssets", {}, "supporting assets"),
-        iconKind: "component",
-        shortLabel: `+${supportCouplings.length - visibleCouplings.length}`,
-        path,
-        relatedKeys: [servicePathGraphKey(path), anchor.key],
-        ports: graphPortsForNode("support"),
-      });
+      nodeByKey.set(key, node);
     }
+    node.paths.push(path);
+    node.relatedKeys = appendUniqueString(node.relatedKeys || [], servicePathGraphKey(path));
+    return node;
+  };
+  const addLink = (from, to, path, support = false, coupling = null) => {
+    const medium = support ? (coupling?.mediums || [])[0] || "control" : serviceEdgeMedium(from, to, path);
+    links.push({
+      key: `${support ? "support-link" : "service-link"}:${from.key}->${to.key}:${medium}`,
+      from,
+      to,
+      medium,
+      label: serviceEdgeLabel(medium),
+      path,
+      paths: [path],
+      coupling,
+      support,
+      relatedKeys: [servicePathGraphKey(path), `subject:${servedSubjectKey(path.servedSubject || path)}`, from.key, to.key],
+    });
+  };
+  sortedPaths.forEach((path) => {
+    const specs = servicePathNodeSpecs(path);
+    const rowNodes = specs.map((spec) => addNode(path, spec));
+    rowNodes.forEach((node, nodeIndex) => {
+      const next = rowNodes[nodeIndex + 1];
+      if (next) {
+        addLink(node, next, path);
+      }
+    });
+    const plantNode = rowNodes.find((node) => ["plant_loop", "source", "refrigerant_system"].includes(node.role));
+    physicalSupportingCouplings(path, couplingById).forEach((coupling) => {
+      const anchor = plantNode || rowNodes[0];
+      if (anchor) {
+        addLink(addCouplingNode(path, coupling), anchor, path, true, coupling);
+      }
+    });
   });
-  return { width, height: Math.max(260, baseY + paths.length * rowGap + 92), nodes, links: bundleServiceGraphLinks(links), groups };
+  const nodes = [...nodeByKey.values()];
+  const height = layoutServiceGraphNodes(nodes);
+  return { width, height, nodes, links: bundleServiceGraphLinks(links), groups: serviceGraphColumnGroups(nodes, height) };
+}
+
+function sortServiceGraphPaths(paths = []) {
+  return [...paths].sort((a, b) => serviceGraphPathSortKey(a).localeCompare(serviceGraphPathSortKey(b), undefined, { numeric: true }));
+}
+
+function serviceGraphPathSortKey(path = {}) {
+  return [
+    servedSubjectLabel(path.servedSubject || path),
+    String(deliverySortRank(path)).padStart(2, "0"),
+    deliveryLabel(path),
+    path.delivery?.objectName || path.delivery?.displayName || "",
+    path.airLoop?.name || "",
+    serviceKindSortRank(path.serviceKind),
+    path.plantLoop?.name || path.refrigerantSystem?.name || path.sourceSystem?.name || "",
+    path.pathType || "",
+  ]
+    .join("|")
+    .toLowerCase();
+}
+
+function deliverySortRank(path = {}) {
+  const deliveryType = path.deliveryEquipment?.deliveryType || path.delivery?.deliveryType || "";
+  const ranks = {
+    vav_reheat_terminal: 10,
+    air_terminal: 11,
+    constant_volume_terminal: 12,
+    fan_powered_terminal: 13,
+    adu: 14,
+    fan_coil: 20,
+    unit_ventilator: 21,
+    unit_heater: 22,
+    water_to_air_heat_pump: 23,
+    radiant_floor: 30,
+    radiant_panel: 31,
+    baseboard: 32,
+    vrf_indoor: 40,
+    ptac: 50,
+    pthp: 51,
+    window_ac: 52,
+    evaporative_cooler: 53,
+    ideal_loads: 60,
+  };
+  return ranks[deliveryType] || 90;
+}
+
+function serviceKindSortRank(kind = "") {
+  const ranks = {
+    cooling: "10",
+    heating: "20",
+    ventilation: "30",
+    exhaust: "40",
+    radiant_cooling: "50",
+    radiant_heating: "51",
+  };
+  return ranks[kind] || "90";
+}
+
+function appendUniqueString(values = [], value = "") {
+  if (value && !values.includes(value)) {
+    values.push(value);
+  }
+  return values;
+}
+
+const serviceGraphColumns = [
+  { id: "source", label: "Source", x: 128, width: 190, roles: ["source", "plant_loop", "refrigerant_system"] },
+  { id: "support", label: "Physical support", x: 304, width: 170, roles: ["coupling"] },
+  { id: "conditioning", label: "Conditioning", x: 478, width: 178, roles: ["conditioning"] },
+  { id: "air_loop", label: "Air loop", x: 650, width: 178, roles: ["air_loop"] },
+  { id: "delivery", label: "Delivery", x: 842, width: 190, roles: ["delivery"] },
+  { id: "zone", label: "Zone", x: 1056, width: 176, roles: ["zone"] },
+];
+
+function serviceGraphColumnForRole(role = "") {
+  return serviceGraphColumns.find((column) => column.roles.includes(role)) || serviceGraphColumns[serviceGraphColumns.length - 1];
+}
+
+function layoutServiceGraphNodes(nodes = []) {
+  const top = 94;
+  const rowGap = 86;
+  let maxColumnCount = 1;
+  for (const column of serviceGraphColumns) {
+    const columnNodes = nodes
+      .filter((node) => column.roles.includes(node.role))
+      .sort((left, right) => String(left.sortKey || left.label || "").localeCompare(String(right.sortKey || right.label || ""), undefined, { numeric: true }));
+    maxColumnCount = Math.max(maxColumnCount, columnNodes.length);
+    columnNodes.forEach((node, index) => {
+      node.x = column.x;
+      node.y = top + index * rowGap;
+      node.width = Math.min(node.width || column.width, column.width);
+    });
+  }
+  return Math.max(300, top + (maxColumnCount - 1) * rowGap + 108);
+}
+
+function serviceGraphColumnGroups(nodes = [], height = 300) {
+  const usedRoles = new Set(nodes.map((node) => node.role));
+  return serviceGraphColumns
+    .filter((column) => column.roles.some((role) => usedRoles.has(role)))
+    .map((column) => ({
+      x: column.x - column.width / 2 - 8,
+      y: 28,
+      width: column.width + 16,
+      height: height - 56,
+      label: column.label,
+      column: true,
+    }));
+}
+
+function serviceGraphNodeSortKey(path = {}, spec = {}) {
+  return [
+    String(serviceGraphColumnForRole(spec.role).x).padStart(4, "0"),
+    spec.role === "delivery" ? String(deliverySortRank(path)).padStart(2, "0") : "00",
+    spec.meta || "",
+    spec.label || "",
+  ]
+    .join("|")
+    .toLowerCase();
+}
+
+function serviceGraphCouplingSortKey(coupling = {}) {
+  return [coupling.couplingType || "", coupling.role || "", coupling.object?.objectName || coupling.object?.displayName || ""].join("|").toLowerCase();
+}
+
+function physicalSupportingCouplings(path = {}, couplingById = new Map()) {
+  return (path.supportingCouplingIds || [])
+    .map((id) => couplingById.get(id))
+    .filter((coupling) => isPhysicalServiceCoupling(coupling));
+}
+
+function isPhysicalServiceCoupling(coupling = {}) {
+  if (!coupling || coupling.placementHint === "detail_only") {
+    return false;
+  }
+  const type = coupling.couplingType || "";
+  if (type === "operation_scheme" || type === "control_overlay" || type === "fault_overlay") {
+    return false;
+  }
+  return ["thermal_storage", "electric_storage", "generator", "heat_rejection", "heat_recovery", "service_water", "source_sink"].includes(type);
 }
 
 function bundleServiceGraphLinks(links = []) {
-  const counts = new Map();
+  const bundled = new Map();
   for (const link of links) {
     const key = serviceLinkBundleKey(link);
-    counts.set(key, (counts.get(key) || 0) + 1);
-  }
-  return links.map((link) => {
-    const bundleKey = serviceLinkBundleKey(link);
-    const bundleCount = counts.get(bundleKey) || 1;
-    return {
+    const current = bundled.get(key);
+    if (current) {
+      current.bundleCount += 1;
+      current.paths = [...(current.paths || []), ...(link.paths || [link.path]).filter(Boolean)];
+      current.relatedKeys = [...new Set([...(current.relatedKeys || []), ...(link.relatedKeys || [])])];
+      continue;
+    }
+    bundled.set(key, {
       ...link,
-      bundleKey,
-      bundleCount,
-    };
-  });
+      bundleKey: key,
+      bundleCount: 1,
+      paths: (link.paths || [link.path]).filter(Boolean),
+    });
+  }
+  return [...bundled.values()];
 }
 
 function serviceLinkBundleKey(link = {}) {
@@ -1764,22 +1877,24 @@ function serviceLinkBundleKey(link = {}) {
 }
 
 function servicePathNodeSpecs(path) {
+  const deliveryRef = path.delivery || {};
+  const conditioning = (path.conditioning || [])[0] || null;
   const zoneSpec = {
     role: "zone",
     kind: path.servedSubject?.kind === "space" ? "space" : "zone",
     label: servedSubjectLabel(path.servedSubject || path),
     meta: path.servedSubject?.kind === "space" ? "Space" : "Zone",
     iconKind: "zone",
-    shortLabel: path.servedSubject?.kind === "space" ? "Space" : "Zone",
+    shortLabel: servedSubjectLabel(path.servedSubject || path),
     ref: path.servedSubject,
   };
   const deliverySpec = {
     role: "delivery",
-    kind: path.deliveryEquipment?.deliveryType || path.delivery?.deliveryType || "direct_zone_unit",
-    label: path.delivery?.displayName || path.delivery?.objectName || deliveryLabel(path),
-    meta: path.deliveryEquipment?.displayFamily || path.delivery?.displayFamily || path.delivery?.objectType || "",
+    kind: path.deliveryEquipment?.deliveryType || deliveryRef.deliveryType || "direct_zone_unit",
+    label: componentRefLabel(deliveryRef, deliveryLabel(path)),
+    meta: componentRefMeta(deliveryRef, path.deliveryEquipment?.displayFamily || deliveryRef.displayFamily || ""),
     iconKind: iconKindForDelivery(path.deliveryEquipment?.deliveryType || path.delivery?.deliveryType),
-    shortLabel: path.deliveryEquipment?.displayFamily || deliveryLabel(path),
+    shortLabel: componentRefLabel(deliveryRef, deliveryLabel(path)),
     ref: path.delivery,
   };
   const plantSpec = path.plantLoop
@@ -1789,17 +1904,17 @@ function servicePathNodeSpecs(path) {
         label: path.plantLoop.name,
         meta: "PlantLoop",
         iconKind: "plant",
-        shortLabel: "Plant",
+        shortLabel: path.plantLoop.name,
         ref: path.plantLoop,
       }
     : path.sourceSystem
       ? {
           role: "source",
           kind: path.sourceSystem.type || "source",
-          label: path.sourceSystem.name,
-          meta: sourceSystemLabel(path.sourceSystem),
+          label: systemRefLabel(path.sourceSystem),
+          meta: systemRefMeta(path.sourceSystem, sourceSystemLabel(path.sourceSystem)),
           iconKind: iconKindForSource(path.sourceSystem),
-          shortLabel: sourceSystemLabel(path.sourceSystem),
+          shortLabel: systemRefLabel(path.sourceSystem),
           ref: path.sourceSystem,
         }
       : null;
@@ -1810,7 +1925,7 @@ function servicePathNodeSpecs(path) {
         label: path.airLoop.name,
         meta: "AirLoopHVAC",
         iconKind: "air",
-        shortLabel: "Air Loop",
+        shortLabel: path.airLoop.name,
         ref: path.airLoop,
       }
     : null;
@@ -1818,22 +1933,22 @@ function servicePathNodeSpecs(path) {
     ? {
         role: "refrigerant_system",
         kind: "refrigerant_system",
-        label: path.refrigerantSystem.name,
-        meta: "Refrigerant System",
+        label: systemRefLabel(path.refrigerantSystem),
+        meta: systemRefMeta(path.refrigerantSystem, "Refrigerant System"),
         iconKind: "refrigerant",
-        shortLabel: "VRF",
+        shortLabel: systemRefLabel(path.refrigerantSystem),
         ref: path.refrigerantSystem,
       }
     : null;
-  const conditioningSpec = (path.conditioning || [])[0]
+  const conditioningSpec = conditioning
     ? {
         role: "conditioning",
         kind: "coil",
-        label: (path.conditioning || [])[0].displayName || (path.conditioning || [])[0].objectName,
-        meta: (path.conditioning || [])[0].displayFamily || (path.conditioning || [])[0].objectType,
+        label: componentRefLabel(conditioning, "Conditioning"),
+        meta: componentRefMeta(conditioning, conditioning.displayFamily || "Conditioning"),
         iconKind: "coil",
-        shortLabel: "Coil",
-        ref: (path.conditioning || [])[0],
+        shortLabel: componentRefLabel(conditioning, "Conditioning"),
+        ref: conditioning,
       }
     : null;
   switch (path.pathType) {
@@ -1858,13 +1973,48 @@ function servicePathNodeSpecs(path) {
   }
 }
 
-function serviceNodeX(index, count, width) {
+function componentRefLabel(ref = {}, fallback = "") {
+  return ref.displayName || ref.objectName || ref.name || fallback || "";
+}
+
+function componentRefMeta(ref = {}, fallback = "") {
+  return ref.objectType || ref.displayFamily || ref.family || fallback || "";
+}
+
+function systemRefLabel(ref = {}) {
+  return ref.displayName || ref.objectName || ref.name || ref.type || "";
+}
+
+function systemRefMeta(ref = {}, fallback = "") {
+  return ref.objectType || ref.type || fallback || "";
+}
+
+function serviceNodeX(role, index, count, width) {
+  const column = serviceGraphColumnForRole(role);
+  if (column) {
+    return column.x;
+  }
   if (count <= 1) {
     return width / 2;
   }
   const left = 110;
   const right = width - 110;
   return left + ((right - left) * index) / (count - 1);
+}
+
+function serviceNodeWidth(role) {
+  switch (role) {
+    case "zone":
+      return 164;
+    case "delivery":
+      return 178;
+    case "air_loop":
+      return 172;
+    case "conditioning":
+      return 174;
+    default:
+      return 170;
+  }
 }
 
 function graphPortsForNode(kind) {
@@ -1899,9 +2049,9 @@ function graphPortsForNode(kind) {
 
 function renderServiceLaneBand(group) {
   return `
-    <g class="hvac-service-lane">
-      <rect x="18" y="${group.y}" width="1124" height="${group.height}" rx="6"></rect>
-      <text x="32" y="${group.y + 22}">${escapeHTML(group.label)}</text>
+    <g class="hvac-service-lane ${group.column ? "column" : ""}">
+      <rect x="${group.x ?? 18}" y="${group.y}" width="${group.width || 1124}" height="${group.height}" rx="6"></rect>
+      <text x="${(group.x ?? 18) + 14}" y="${group.y + 22}">${escapeHTML(group.label)}</text>
     </g>`;
 }
 
@@ -1982,6 +2132,7 @@ function renderHVACServiceGraphDetail(paths, couplings) {
   if (!selected) {
     const zones = new Set(paths.map((path) => servedSubjectKey(path.servedSubject || path))).size;
     const deliveryTypes = new Set(paths.map((path) => path.deliveryEquipment?.deliveryType || path.delivery?.deliveryType).filter(Boolean)).size;
+    const physicalCouplings = (couplings || []).filter((coupling) => isPhysicalServiceCoupling(coupling)).length;
     return `
       <section class="hvac-graph-detail">
         <div class="hvac-section-head">
@@ -1992,7 +2143,7 @@ function renderHVACServiceGraphDetail(paths, couplings) {
           <div><span>Zones</span><strong>${escapeHTML(zones)}</strong></div>
           <div><span>Service paths</span><strong>${escapeHTML(paths.length)}</strong></div>
           <div><span>${escapeHTML(t("hvac.delivery", {}, "Delivery"))}</span><strong>${escapeHTML(deliveryTypes)}</strong></div>
-          <div><span>${escapeHTML(t("hvac.couplings", {}, "Couplings"))}</span><strong>${escapeHTML(couplings.length)}</strong></div>
+          <div><span>${escapeHTML(t("hvac.couplings", {}, "Couplings"))}</span><strong>${escapeHTML(physicalCouplings)}</strong></div>
         </div>
       </section>`;
   }
@@ -2042,27 +2193,61 @@ function selectedServiceGraphItem(paths, couplings) {
     return coupling ? { kind: "coupling", coupling, path } : null;
   }
   if (key.startsWith("service-node:")) {
-    const raw = key.slice("service-node:".length);
-    const roleIndex = raw.lastIndexOf(":");
-    const pathID = roleIndex >= 0 ? raw.slice(0, roleIndex) : raw;
-    const role = roleIndex >= 0 ? raw.slice(roleIndex + 1) : "";
-    const path = paths.find((item) => item.id === pathID);
-    if (!path) {
+    const matches = paths
+      .map((path) => {
+        const node = servicePathNodeSpecs(path).find((spec) => serviceGraphNodeKey(path, spec) === key);
+        return node ? { path, node } : null;
+      })
+      .filter(Boolean);
+    if (!matches.length) {
       return null;
     }
-    const node = servicePathNodeSpecs(path).find((item) => item.role === role);
-    return node ? { kind: "node", node, path } : null;
+    return {
+      kind: "node",
+      node: { ...matches[0].node, key, paths: matches.map((match) => match.path) },
+      path: matches[0].path,
+      paths: matches.map((match) => match.path),
+    };
   }
   if (key.startsWith("service-link:") || key.startsWith("support-link:")) {
-    const raw = key.slice(key.indexOf(":") + 1);
-    const path = paths.find((item) => raw.startsWith(`${item.id}:`));
-    return path ? { kind: "link", path } : null;
+    const matchingPaths = paths.filter((path) => servicePathLinkKeys(path, couplingById).has(key));
+    return matchingPaths[0] ? { kind: "link", path: matchingPaths[0], paths: matchingPaths } : null;
   }
   return null;
 }
 
+function servicePathLinkKeys(path = {}, couplingById = new Map()) {
+  const keys = new Set();
+  const nodes = servicePathNodeSpecs(path).map((spec) => ({
+    key: serviceGraphNodeKey(path, spec),
+    role: spec.role,
+    kind: spec.kind,
+    ref: spec.ref,
+    label: spec.label,
+  }));
+  nodes.forEach((node, index) => {
+    const next = nodes[index + 1];
+    if (!next) {
+      return;
+    }
+    const medium = serviceEdgeMedium(node, next, path);
+    keys.add(`service-link:${node.key}->${next.key}:${medium}`);
+  });
+  const anchor = nodes.find((node) => ["plant_loop", "source", "refrigerant_system"].includes(node.role)) || nodes[0];
+  if (anchor) {
+    for (const coupling of physicalSupportingCouplings(path, couplingById)) {
+      const supportKey = `coupling-node:any:${coupling.id}`;
+      const medium = (coupling.mediums || [])[0] || "control";
+      keys.add(`support-link:${supportKey}->${anchor.key}:${medium}`);
+    }
+  }
+  return keys;
+}
+
 function renderSelectedServicePathDetail(path, couplings) {
-  const pathCouplings = (path.supportingCouplingIds || []).map((id) => (couplings || []).find((coupling) => coupling.id === id)).filter(Boolean);
+  const pathCouplings = (path.supportingCouplingIds || [])
+    .map((id) => (couplings || []).find((coupling) => coupling.id === id))
+    .filter((coupling) => isPhysicalServiceCoupling(coupling));
   return `
     <section class="hvac-graph-detail">
       <div class="hvac-section-head">
@@ -2082,12 +2267,14 @@ function renderSelectedServicePathDetail(path, couplings) {
 
 function renderSelectedServiceNodeDetail(node, path, couplings) {
   const ref = node.ref || {};
-  const connected = servicePathConnectedSystems(path);
+  const nodePaths = (node.paths || [path]).filter(Boolean);
+  const connected = [...new Set(nodePaths.flatMap(servicePathConnectedSystems))];
+  const traceIds = [...new Set(nodePaths.flatMap((item) => item.traceIds || []))];
   return `
     <section class="hvac-graph-detail">
       <div class="hvac-section-head">
         <h3>${escapeHTML(node.label || ref.displayName || ref.name || "")}</h3>
-        <span>${escapeHTML(node.meta || ref.objectType || node.kind || "")}</span>
+        <span>${escapeHTML([node.meta || ref.objectType || node.kind || "", nodePaths.length > 1 ? `${nodePaths.length} paths` : ""].filter(Boolean).join(" / "))}</span>
       </div>
       ${connected.length ? `<section class="hvac-connected-systems"><strong>${escapeHTML(t("hvac.connectedSystems", {}, "Connected systems"))}</strong><div class="hvac-connected-system-list">${connected.map((item) => `<span>${escapeHTML(item)}</span>`).join("")}</div></section>` : ""}
       <div class="hvac-detail-grid">
@@ -2098,7 +2285,7 @@ function renderSelectedServiceNodeDetail(node, path, couplings) {
         <div><span>${escapeHTML(t("common.outlet"))}</span><strong>${escapeHTML(ref.outletNode || "N/A")}</strong></div>
         <div><span>${escapeHTML(t("common.water"))}</span><strong>${escapeHTML([ref.waterInletNode, ref.waterOutletNode].filter(Boolean).join(" -> ") || "N/A")}</strong></div>
       </div>
-      ${renderHVACTraceDrawer(path.traceIds || [])}
+      ${renderHVACTraceDrawer(traceIds)}
     </section>`;
 }
 
@@ -2122,7 +2309,7 @@ function renderSelectedCouplingDetail(coupling, path) {
 
 function renderHVACCouplings(hvac, query) {
   const serviceModel = hvacServiceModel(hvac);
-  const couplings = (serviceModel.couplings || []).filter((coupling) => couplingMatchesQuery(coupling, query));
+  const couplings = (serviceModel.couplings || []).filter((coupling) => isPhysicalServiceCoupling(coupling)).filter((coupling) => couplingMatchesQuery(coupling, query));
   const networks = serviceModel.networks || [];
   elements.hvacGraph.innerHTML = couplings.length || networks.length
     ? `

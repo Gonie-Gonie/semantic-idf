@@ -1671,84 +1671,6 @@
   font-weight: 700;
 }
 
-.hvac-service-table-shell {
-  border-bottom: 1px solid var(--line);
-}
-
-.hvac-service-table {
-  display: grid;
-  min-width: 1120px;
-  border: 1px solid var(--surface-2);
-  border-radius: var(--radius);
-  overflow: hidden;
-}
-
-.hvac-service-table-row {
-  display: grid;
-  grid-template-columns:
-    minmax(150px, 1fr)
-    minmax(90px, 0.58fr)
-    minmax(170px, 1.14fr)
-    minmax(130px, 0.8fr)
-    minmax(130px, 0.8fr)
-    minmax(180px, 1.1fr)
-    minmax(140px, 0.85fr);
-  gap: 8px;
-  align-items: center;
-  min-height: 42px;
-  border: 0;
-  border-bottom: 1px solid var(--surface-2);
-  background: transparent;
-  color: var(--text);
-  cursor: pointer;
-  padding: 8px 10px;
-  text-align: left;
-  font-size: 12px;
-}
-
-.hvac-service-table-row:hover,
-.hvac-service-table-row.selected {
-  background: var(--teal-soft);
-}
-
-.hvac-service-table-row.related {
-  background: color-mix(in srgb, var(--teal-soft), transparent 42%);
-}
-
-.hvac-service-table-row.dimmed {
-  opacity: 0.48;
-}
-
-.hvac-service-table-row.head {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  background: var(--table-head);
-  color: var(--muted);
-  cursor: default;
-  font-weight: 700;
-}
-
-.hvac-service-table-row span,
-.hvac-service-table-row strong,
-.hvac-service-table-row small {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  overflow-wrap: anywhere;
-}
-
-.hvac-service-table-row strong,
-.hvac-service-table-row small {
-  display: block;
-}
-
-.hvac-service-table-row small {
-  margin-top: 2px;
-  color: var(--muted);
-  font-size: 10px;
-}
-
 .hvac-service-shell {
   border-bottom: 1px solid var(--line);
 }
@@ -1769,6 +1691,11 @@
   fill: color-mix(in srgb, var(--surface), transparent 8%);
   stroke: color-mix(in srgb, var(--line), transparent 8%);
   stroke-width: 1;
+}
+
+.hvac-service-lane.column rect {
+  fill: color-mix(in srgb, var(--surface), transparent 40%);
+  stroke: color-mix(in srgb, var(--line), transparent 20%);
 }
 
 .hvac-service-lane text {
@@ -1876,15 +1803,6 @@
 .hvac-support-card.generator .hvac-support-icon,
 .hvac-support-card.electric_storage .hvac-support-icon {
   color: #854d0e;
-}
-
-.hvac-support-card.control_overlay .hvac-support-icon,
-.hvac-support-card.operation_scheme .hvac-support-icon {
-  color: var(--focus);
-}
-
-.hvac-support-card.fault_overlay .hvac-support-icon {
-  color: var(--red);
 }
 
 .hvac-support-card strong,

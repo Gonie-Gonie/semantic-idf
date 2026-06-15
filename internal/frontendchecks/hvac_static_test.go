@@ -64,8 +64,10 @@ func TestFrontendHVACServiceDOMContracts(t *testing.T) {
 	text := string(content)
 	for _, required := range []string{
 		"function buildServiceGraph(paths, couplings)",
+		"function serviceGraphNodeIdentity",
+		"function layoutServiceGraphNodes",
+		"function isPhysicalServiceCoupling",
 		"function bundleServiceGraphLinks",
-		"hvac-service-table-row",
 		"hvac-service-svg",
 		"hvac-edge-bundle-badge",
 		"hvac-trace-drawer",
@@ -75,6 +77,35 @@ func TestFrontendHVACServiceDOMContracts(t *testing.T) {
 	} {
 		if !strings.Contains(text, required) {
 			t.Fatalf("hvac service renderer is missing DOM contract %q", required)
+		}
+	}
+}
+
+func TestFrontendHVACZoneServicesIsGraphOnlyAndPhysicalObjectBased(t *testing.T) {
+	content, err := os.ReadFile(repoPath("frontend/src/js/views/hvac-views.js"))
+	if err != nil {
+		t.Fatalf("read hvac views: %v", err)
+	}
+	text := string(content)
+	for _, forbidden := range []string{
+		"renderHVACServiceTable",
+		"renderHVACServiceRow",
+		"hvac-service-table-row",
+		"`service-node:${path.id}:",
+	} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("HVAC Zone Services graph should not use table/path-scoped physical nodes: found %q", forbidden)
+		}
+	}
+	for _, required := range []string{
+		"serviceGraphNodeKey(path, spec)",
+		"coupling.placementHint === \"detail_only\"",
+		"type === \"operation_scheme\"",
+		"physicalSupportingCouplings(path, couplingById)",
+		"servicePathLinkKeys(path, couplingById)",
+	} {
+		if !strings.Contains(text, required) {
+			t.Fatalf("HVAC Zone Services physical graph contract missing %q", required)
 		}
 	}
 }
