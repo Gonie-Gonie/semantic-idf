@@ -88,6 +88,9 @@ func TestHVACServiceModelExternalFixtureMatrix(t *testing.T) {
 	for _, fixture := range fixtures {
 		t.Run(fixture.name, func(t *testing.T) {
 			text, err := os.ReadFile(fixture.path)
+			if os.IsNotExist(err) {
+				t.Skipf("external fixture %s is not checked in; run TestExternalHVACFixtureMatrix with local fixture paths for full coverage", fixture.path)
+			}
 			if err != nil {
 				t.Fatalf("read fixture: %v", err)
 			}
