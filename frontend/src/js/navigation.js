@@ -1,6 +1,6 @@
 import { elements, setStatus, state } from "./state.js";
 import { t } from "./i18n.js";
-import { analyze } from "./actions.js";
+import { analyze, prioritizeAnalysisStageForTab } from "./actions.js";
 import { renderReport } from "./views/analysis-views.js";
 import { renderGeometry, resizeGeometry } from "./geometry-loader.js";
 import {
@@ -217,6 +217,7 @@ export function switchResultTab(tabName, options = {}) {
   elements.resultPanes.forEach((pane) => {
     pane.classList.toggle("active", pane.id === `${state.activeResultTab}Pane`);
   });
+  prioritizeAnalysisStageForTab(state.activeResultTab);
   if (state.report && (state.analysisDirty?.[state.activeResultTab] ?? true)) {
     renderReport({ scope: "active" });
   }

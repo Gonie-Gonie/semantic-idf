@@ -402,13 +402,74 @@ function renderPlan(geometry) {
   disposeRendererCanvas();
   elements.geometryPlan.classList.toggle("selection-aid", state.geometrySelectionAid);
   const storyIndex = state.selectedGeometryStory === "all" ? firstStoryIndex(geometry) : state.selectedGeometryStory;
-  const surfaces = (geometry.surfaces || []).filter((surface) => surface.storyIndex === storyIndex);
-  const windows = (geometry.windows || []).filter((windowItem) => windowItem.storyIndex === storyIndex);
-  const bounds = geometry.bounds || {};
-  if (!bounds.ok || (!surfaces.length && !windows.length)) {
+  const layout = cachedGeometryPlanLayout(geometry, storyIndex);
+  if (!layout.ok) {
     elements.geometryPlan.innerHTML = `<text x="24" y="42" fill="#60707c" font-size="14">${t("geometry.noFloorPlan")}</text>`;
     elements.geometryPlan.setAttribute("viewBox", "0 0 640 420");
     return;
+  }
+
+  const zoneFloorPolygons = elements.geometryShowZones.checked
+    ? layout.surfaces
+        .filter((surface) => surface.isFloor)
+        .map((surface) => `<polygon class="plan-zone" data-geometry-kind="zone" data-geometry-id="${escapeHTML(surface.zoneID)}" points="${surface.openPoints}"></polygon>`)
+        .join("")
+    : "";
+  const wallLines = elements.geometryShowWalls.checked
+    ? layout.surfaces
+        .filter((surface) => state.geometrySelectionAid || !surface.isFloor)
+        .map(renderPlanSurfaceShape)
+        .join("")
+    : "";
+  const windowLines = elements.geometryShowWindows.checked
+    ? layout.windows
+        .map((windowItem) => `<polyline class="plan-window" data-geometry-kind="window" data-geometry-id="${escapeHTML(windowItem.id)}" points="${windowItem.closedPoints}"></polyline>`)
+        .join("")
+    : "";
+
+  elements.geometryPlan.setAttribute("viewBox", `0 0 ${layout.viewWidth} ${layout.viewHeight}`);
+  elements.geometryPlan.innerHTML = `${zoneFloorPolygons}${wallLines}${windowLines}`;
+  elements.geometryPlan.querySelectorAll("[data-geometry-id]").forEach((shape) => {
+    shape.addEventListener("click", () => selectGeometry(shape.dataset.geometryKind, shape.dataset.geometryId));
+  });
+  highlightSelectedPlan();
+}
+
+function cachedGeometryPlanLayout(geometry, storyIndex) {
+  const cache = state.geometryPlanLayoutCache || new Map();
+  state.geometryPlanLayoutCache = cache;
+  const key = geometryPlanLayoutCacheKey(geometry, storyIndex);
+  if (cache.has(key)) {
+    const cached = cache.get(key);
+    cache.delete(key);
+    cache.set(key, cached);
+    return cached;
+  }
+  const layout = buildGeometryPlanLayout(geometry, storyIndex);
+  cache.set(key, layout);
+  while (cache.size > 8) {
+    cache.delete(cache.keys().next().value);
+  }
+  return layout;
+}
+
+function geometryPlanLayoutCacheKey(geometry, storyIndex) {
+  const bounds = geometry.bounds || {};
+  return [
+    state.analysisKey || state.lastAnalyzedKey || "",
+    storyIndex,
+    (geometry.surfaces || []).length,
+    (geometry.windows || []).length,
+    bounds.ok ? [bounds.minX, bounds.minY, bounds.maxX, bounds.maxY].map((value) => Number(value || 0).toFixed(3)).join(",") : "no-bounds",
+  ].join("|");
+}
+
+function buildGeometryPlanLayout(geometry, storyIndex) {
+  const surfaces = (geometry.surfaces || []).filter((surface) => surface.storyIndex === storyIndex && hasPlanVertices(surface));
+  const windows = (geometry.windows || []).filter((windowItem) => windowItem.storyIndex === storyIndex && hasPlanVertices(windowItem));
+  const bounds = geometry.bounds || {};
+  if (!bounds.ok || (!surfaces.length && !windows.length)) {
+    return { ok: false, viewWidth: 640, viewHeight: 420, surfaces: [], windows: [] };
   }
 
   const pad = 18;
@@ -418,44 +479,39 @@ function renderPlan(geometry) {
   const viewHeight = Math.max(360, Math.round((height / width) * 760));
   const scale = Math.min((viewWidth - pad * 2) / width, (viewHeight - pad * 2) / height);
   const project = (point) => `${pad + (point.x - bounds.minX) * scale},${viewHeight - pad - (point.y - bounds.minY) * scale}`;
-
-  const zoneFloorPolygons = elements.geometryShowZones.checked
-    ? surfaces
-        .filter((surface) => surface.surfaceType?.toLowerCase() === "floor")
-        .map((surface) => {
-          const zoneID = zoneIdForName(geometry, surface.zoneName);
-          return `<polygon class="plan-zone" data-geometry-kind="zone" data-geometry-id="${escapeHTML(zoneID)}" points="${surface.vertices.map(project).join(" ")}"></polygon>`;
-        })
-        .join("")
-    : "";
-  const wallLines = elements.geometryShowWalls.checked
-    ? surfaces
-        .filter((surface) => state.geometrySelectionAid || surface.surfaceType?.toLowerCase() !== "floor")
-        .map((surface) => renderPlanSurfaceShape(surface, project))
-        .join("")
-    : "";
-  const windowLines = elements.geometryShowWindows.checked
-    ? windows
-        .map((windowItem) => `<polyline class="plan-window" data-geometry-kind="window" data-geometry-id="${escapeHTML(windowItem.id)}" points="${windowItem.vertices.map(project).join(" ")} ${project(windowItem.vertices[0])}"></polyline>`)
-        .join("")
-    : "";
-
-  elements.geometryPlan.setAttribute("viewBox", `0 0 ${viewWidth} ${viewHeight}`);
-  elements.geometryPlan.innerHTML = `${zoneFloorPolygons}${wallLines}${windowLines}`;
-  elements.geometryPlan.querySelectorAll("[data-geometry-id]").forEach((shape) => {
-    shape.addEventListener("click", () => selectGeometry(shape.dataset.geometryKind, shape.dataset.geometryId));
+  const projectedSurfaces = surfaces.map((surface) => {
+    const openPoints = surface.vertices.map(project).join(" ");
+    return {
+      id: surface.id,
+      title: `${surface.name || surface.type} / ${surface.surfaceType || "Surface"}`,
+      className: `plan-surface ${planSurfaceClass(surface)}`,
+      openPoints,
+      closedPoints: `${openPoints} ${project(surface.vertices[0])}`,
+      isHorizontal: isHorizontalSurface(surface),
+      isFloor: surface.surfaceType?.toLowerCase() === "floor",
+      zoneID: zoneIdForName(geometry, surface.zoneName),
+    };
   });
-  highlightSelectedPlan();
+  const projectedWindows = windows.map((windowItem) => {
+    const openPoints = windowItem.vertices.map(project).join(" ");
+    return {
+      id: windowItem.id,
+      closedPoints: `${openPoints} ${project(windowItem.vertices[0])}`,
+    };
+  });
+  return { ok: true, viewWidth, viewHeight, surfaces: projectedSurfaces, windows: projectedWindows };
 }
 
-function renderPlanSurfaceShape(surface, project) {
-  const points = `${surface.vertices.map(project).join(" ")} ${project(surface.vertices[0])}`;
-  const className = `plan-surface ${planSurfaceClass(surface)}`;
-  const title = escapeHTML(`${surface.name || surface.type} / ${surface.surfaceType || "Surface"}`);
-  if (isHorizontalSurface(surface)) {
-    return `<polygon class="${className}" data-geometry-kind="surface" data-geometry-id="${escapeHTML(surface.id)}" points="${points}"><title>${title}</title></polygon>`;
+function renderPlanSurfaceShape(surface) {
+  const title = escapeHTML(surface.title);
+  if (surface.isHorizontal) {
+    return `<polygon class="${surface.className}" data-geometry-kind="surface" data-geometry-id="${escapeHTML(surface.id)}" points="${surface.closedPoints}"><title>${title}</title></polygon>`;
   }
-  return `<polyline class="plan-wall ${className}" data-geometry-kind="surface" data-geometry-id="${escapeHTML(surface.id)}" points="${points}"><title>${title}</title></polyline>`;
+  return `<polyline class="plan-wall ${surface.className}" data-geometry-kind="surface" data-geometry-id="${escapeHTML(surface.id)}" points="${surface.closedPoints}"><title>${title}</title></polyline>`;
+}
+
+function hasPlanVertices(item) {
+  return Array.isArray(item?.vertices) && item.vertices.length > 0;
 }
 
 function planSurfaceClass(surface) {

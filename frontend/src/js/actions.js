@@ -1,4 +1,4 @@
-import { backend, elements, setStatus, state, updateTextStats } from "./state.js";
+import { backend, elements, refreshStatusTitle, setStatus, state, updateTextStats } from "./state.js";
 import {
   markAllAnalysisDirty,
   markAnalysisDirty,
@@ -22,6 +22,7 @@ let activeAnalysisPromise = null;
 let activeAnalysisText = "";
 const maxFrontendStageConcurrency = 2;
 let idlePreRenderTimer = 0;
+let activeStageQueue = null;
 
 export async function analyze(options = {}) {
   const api = backend();
@@ -90,7 +91,7 @@ async function runQueuedStageAnalysis(api, text, analysisKey, runID, options) {
     }
     applyStageResult(stage, result);
     return result;
-  });
+  }, { analysisKey });
   if (!isCurrentAnalysis(runID, text, analysisKey)) {
     return null;
   }
@@ -101,21 +102,48 @@ async function runQueuedStageAnalysis(api, text, analysisKey, runID, options) {
   return { ...quick, report: state.report, stages: results.filter(Boolean) };
 }
 
-async function runStageQueue(stages, worker) {
+async function runStageQueue(stages, worker, context = {}) {
   const results = [];
-  let nextIndex = 0;
+  const queue = {
+    analysisKey: context.analysisKey || state.analysisKey || "",
+    pending: stages.map((stage, index) => ({ stage, index })),
+    running: new Set(),
+    completed: new Set(),
+    prioritize(stage) {
+      const index = this.pending.findIndex((task) => task.stage === stage);
+      if (index <= 0) {
+        return false;
+      }
+      const [task] = this.pending.splice(index, 1);
+      this.pending.unshift(task);
+      return true;
+    },
+  };
+  activeStageQueue = queue;
   async function runNext() {
-    const index = nextIndex;
-    nextIndex += 1;
-    if (index >= stages.length) {
-      return;
+    for (;;) {
+      const task = queue.pending.shift();
+      if (!task) {
+        return;
+      }
+      queue.running.add(task.stage);
+      try {
+        results[task.index] = await worker(task.stage);
+      } finally {
+        queue.running.delete(task.stage);
+        queue.completed.add(task.stage);
+      }
     }
-    results[index] = await worker(stages[index]);
-    await runNext();
   }
-  const workers = Array.from({ length: Math.min(maxFrontendStageConcurrency, stages.length) }, runNext);
-  await Promise.all(workers);
-  return results;
+  try {
+    const workers = Array.from({ length: Math.min(maxFrontendStageConcurrency, stages.length) }, runNext);
+    await Promise.all(workers);
+    return results;
+  } finally {
+    if (activeStageQueue === queue) {
+      activeStageQueue = null;
+    }
+  }
 }
 
 async function runFullAnalysis(api, text, analysisKey, runID, options) {
@@ -181,6 +209,7 @@ async function runStagedAnalysis(api, text, analysisKey, runID, options) {
 function applyStageResult(stage, result) {
   const report = result?.report || {};
   state.report = state.report || {};
+  recordAnalysisTiming(result?.timing, stage);
   switch (stage) {
     case "profile":
       state.report.profile = report.profile || {};
@@ -217,6 +246,21 @@ function applyStageResult(stage, result) {
   } else {
     updateResultTabReadiness();
   }
+}
+
+export function prioritizeAnalysisStageForTab(tab = state.activeResultTab) {
+  const stage = resultTabStage(tab);
+  if (!stage || !activeStageQueue) {
+    return false;
+  }
+  if (activeStageQueue.analysisKey && state.analysisKey && activeStageQueue.analysisKey !== state.analysisKey) {
+    return false;
+  }
+  const promoted = activeStageQueue.prioritize(stage);
+  if (promoted) {
+    updateResultTabReadiness();
+  }
+  return promoted;
 }
 
 function orderedAnalysisStages(activeTab) {
@@ -276,6 +320,9 @@ function applyOverviewResult(result, text, { complete = false, analysisKey = "" 
   state.lastAnalyzedKey = state.analysisKey;
   state.hvacServiceGraphLayoutCache?.clear?.();
   state.profileViewCache?.clear?.();
+  state.geometryPlanLayoutCache?.clear?.();
+  state.analysisStageTimings = {};
+  recordAnalysisTiming(result.timing);
   state.analysisStage = complete ? "complete" : "overview";
   state.diagnosticsReady = complete;
   state.geometryReady = complete;
@@ -329,6 +376,8 @@ export function scheduleAnalyzeAfterPaint(options = {}) {
   state.lastAnalyzedText = "";
   state.lastAnalyzedKey = "";
   state.analysisStage = "queued";
+  state.analysisTiming = null;
+  state.analysisStageTimings = {};
   resetAnalysisReadiness();
   state.diagnosticsReady = false;
   state.geometryReady = false;
@@ -372,6 +421,9 @@ export function registerLoadedDocument(text, { path = "", filename = "" } = {}) 
   state.model = null;
   state.epjsonText = "";
   state.semanticProjection = null;
+  state.analysisTiming = null;
+  state.analysisStageTimings = {};
+  state.renderTiming = { tabs: {}, last: null };
   state.semanticSelectedObjectIndex = "";
   state.analysisStage = "idle";
   state.diagnosticsReady = false;
@@ -385,6 +437,9 @@ export function markDocumentChanged() {
   state.lastAnalyzedKey = "";
   state.analysisKey = "";
   state.analysisStage = "pending";
+  state.analysisTiming = null;
+  state.analysisStageTimings = {};
+  state.renderTiming = { tabs: {}, last: null };
   resetAnalysisReadiness();
   state.diagnosticsReady = false;
   state.geometryReady = false;
@@ -587,6 +642,9 @@ export function applyCachedAnalysisResult(result, snapshot = {}) {
   state.lastAnalyzedKey = analysisKey;
   state.hvacServiceGraphLayoutCache?.clear?.();
   state.profileViewCache?.clear?.();
+  state.geometryPlanLayoutCache?.clear?.();
+  state.analysisStageTimings = {};
+  recordAnalysisTiming(result.timing);
   const complete = isCompleteAnalysisResult(result);
   state.analysisStage = complete ? "complete" : "overview";
   state.diagnosticsReady = complete;
@@ -597,6 +655,22 @@ export function applyCachedAnalysisResult(result, snapshot = {}) {
   scheduleIdlePreRender();
   updateDocumentActions();
   return complete;
+}
+
+function recordAnalysisTiming(timing, stage = "") {
+  if (!timing) {
+    return;
+  }
+  state.analysisTiming = timing;
+  if (!state.analysisStageTimings) {
+    state.analysisStageTimings = {};
+  }
+  if (timing.stages) {
+    Object.assign(state.analysisStageTimings, timing.stages);
+  } else if (stage && Number.isFinite(Number(timing.analyzeMs))) {
+    state.analysisStageTimings[stage] = Number(timing.analyzeMs);
+  }
+  refreshStatusTitle();
 }
 
 function clearScheduledAnalyze() {

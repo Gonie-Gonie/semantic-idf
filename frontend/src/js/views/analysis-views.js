@@ -1,4 +1,4 @@
-import { elements, escapeHTML, state } from "../state.js";
+import { elements, escapeHTML, refreshStatusTitle, state } from "../state.js";
 import { renderGeometry } from "../geometry-loader.js";
 import { renderHVAC } from "./hvac-views.js";
 import { renderInputViews } from "./input-views.js";
@@ -50,40 +50,45 @@ export function renderResultTab(tab, report = state.report) {
   if (!report) {
     return;
   }
-  switch (tab) {
-    case "profile":
-      renderProfile(report.profile);
-      markAnalysisRendered("profile");
-      break;
-    case "hvac":
-      renderHVAC(report.hvac);
-      markAnalysisRendered("hvac");
-      break;
-    case "output":
-      renderOutput(report.output);
-      markAnalysisRendered("output");
-      break;
-    case "simulation":
-      renderSimulation();
-      markAnalysisRendered("simulation");
-      break;
-    case "diagnose":
-      renderDiagnostics(report.diagnostics);
-      markAnalysisRendered("diagnose");
-      break;
-    case "geometry":
-      if (state.geometryReady) {
-        renderGeometry(report.geometry);
-      } else {
-        renderDeferredGeometry(report.geometry);
-      }
-      markAnalysisRendered("geometry");
-      break;
-    case "summary":
-    default:
-      renderSummary(report.summary);
-      markAnalysisRendered("summary");
-      break;
+  const startedAt = nowMS();
+  try {
+    switch (tab) {
+      case "profile":
+        renderProfile(report.profile);
+        markAnalysisRendered("profile");
+        break;
+      case "hvac":
+        renderHVAC(report.hvac);
+        markAnalysisRendered("hvac");
+        break;
+      case "output":
+        renderOutput(report.output);
+        markAnalysisRendered("output");
+        break;
+      case "simulation":
+        renderSimulation();
+        markAnalysisRendered("simulation");
+        break;
+      case "diagnose":
+        renderDiagnostics(report.diagnostics);
+        markAnalysisRendered("diagnose");
+        break;
+      case "geometry":
+        if (state.geometryReady) {
+          renderGeometry(report.geometry);
+        } else {
+          renderDeferredGeometry(report.geometry);
+        }
+        markAnalysisRendered("geometry");
+        break;
+      case "summary":
+      default:
+        renderSummary(report.summary);
+        markAnalysisRendered("summary");
+        break;
+    }
+  } finally {
+    recordRenderTiming(tab, nowMS() - startedAt);
   }
 }
 
@@ -133,6 +138,20 @@ function markAnalysisRendered(tab) {
   if (state.analysisDirty && Object.prototype.hasOwnProperty.call(state.analysisDirty, tab)) {
     state.analysisDirty[tab] = false;
   }
+}
+
+function recordRenderTiming(tab, elapsedMS) {
+  if (!state.renderTiming) {
+    state.renderTiming = { tabs: {}, last: null };
+  }
+  state.renderTiming.tabs = state.renderTiming.tabs || {};
+  state.renderTiming.tabs[tab] = elapsedMS;
+  state.renderTiming.last = { tab, ms: elapsedMS, at: Date.now() };
+  refreshStatusTitle();
+}
+
+function nowMS() {
+  return typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : Date.now();
 }
 
 export function renderEmpty() {

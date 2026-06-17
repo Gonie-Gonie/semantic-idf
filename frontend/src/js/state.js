@@ -25,6 +25,12 @@ export const state = {
     diagnose: false,
     geometry: false,
   },
+  analysisTiming: null,
+  analysisStageTimings: {},
+  renderTiming: {
+    tabs: {},
+    last: null,
+  },
   diagnosticsReady: false,
   geometryReady: false,
   activeResultTab: "summary",
@@ -143,6 +149,7 @@ export const state = {
   profileSettings: null,
   profileApplyPreview: null,
   geometryMode: "3d",
+  geometryPlanLayoutCache: new Map(),
   selectedGeometryId: "",
   selectedGeometryKind: "",
   selectedGeometryStory: "all",
@@ -369,6 +376,60 @@ export function setStatus(message, tone = "muted") {
   };
   elements.runtimeStatus.style.color = cssVar(colors[tone] || colors.muted);
   elements.runtimeStatus.classList.toggle("status-loading", tone === "loading");
+  refreshStatusTitle();
+}
+
+export function refreshStatusTitle() {
+  if (!elements.runtimeStatus) {
+    return;
+  }
+  const details = [];
+  const analysis = formatAnalysisTiming();
+  if (analysis) {
+    details.push(analysis);
+  }
+  const render = state.renderTiming?.last;
+  if (render?.tab) {
+    details.push(`Last render: ${render.tab} ${formatMS(render.ms)}`);
+  }
+  elements.runtimeStatus.title = details.join("\n");
+}
+
+function formatAnalysisTiming() {
+  const timing = state.analysisTiming;
+  const stageTimings = state.analysisStageTimings || timing?.stages || {};
+  if (!timing && !Object.keys(stageTimings).length) {
+    return "";
+  }
+  const mode = timing?.mode ? ` ${timing.mode}` : "";
+  const cache = timing?.cacheHit ? " (cache hit)" : "";
+  const parts = [`Analysis${mode}${cache}`];
+  [
+    ["total", timing?.totalMs],
+    ["queue", timing?.queueWaitMs],
+    ["parse", timing?.parseMs],
+    ["analyze", timing?.analyzeMs],
+    ["semantic", timing?.semanticMs],
+    ["epjson", timing?.epjsonMs],
+  ].forEach(([label, value]) => {
+    if (Number.isFinite(Number(value)) && Number(value) > 0) {
+      parts.push(`${label} ${formatMS(value)}`);
+    }
+  });
+  const stages = Object.entries(stageTimings)
+    .filter(([, value]) => Number.isFinite(Number(value)) && Number(value) >= 0)
+    .sort((a, b) => String(a[0]).localeCompare(String(b[0])))
+    .slice(0, 8)
+    .map(([label, value]) => `${label} ${formatMS(value)}`);
+  if (stages.length) {
+    parts.push(`stages ${stages.join(", ")}`);
+  }
+  return parts.join(" | ");
+}
+
+function formatMS(value) {
+  const numeric = Number(value) || 0;
+  return numeric >= 100 ? `${Math.round(numeric)} ms` : `${numeric.toFixed(1)} ms`;
 }
 
 function cssVar(name) {
