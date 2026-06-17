@@ -127,6 +127,66 @@ func TestHVACNavigationComponentIDUsesTypeAndName(t *testing.T) {
 	}
 }
 
+func TestHVACNavigationComponentIDDisambiguatesDuplicateTypeName(t *testing.T) {
+	left := ComponentRef{
+		ID:          "component:10",
+		ObjectType:  "Coil:Cooling:Water",
+		ObjectName:  "Shared Name",
+		ObjectIndex: 10,
+		DisplayName: "Shared Name",
+	}
+	right := ComponentRef{
+		ID:          "component:11",
+		ObjectType:  "Coil:Cooling:Water",
+		ObjectName:  "Shared Name",
+		ObjectIndex: 11,
+		DisplayName: "Shared Name",
+	}
+	paths := []ZoneServicePath{
+		{
+			ID:          "office-a-cooling",
+			ZoneName:    "Office A",
+			ServiceKind: "cooling",
+			PathType:    "central_air",
+			Delivery:    left,
+			ServedSubject: ServedSubjectRef{
+				Kind:     "zone",
+				Name:     "Office A",
+				ZoneName: "Office A",
+			},
+		},
+		{
+			ID:          "office-b-cooling",
+			ZoneName:    "Office B",
+			ServiceKind: "cooling",
+			PathType:    "central_air",
+			Delivery:    right,
+			ServedSubject: ServedSubjectRef{
+				Kind:     "zone",
+				Name:     "Office B",
+				ZoneName: "Office B",
+			},
+		},
+	}
+
+	navigation := buildHVACNavigationIndex(paths, nil, nil, nil, ComponentIndex{})
+	baseID := navigationComponentID(left)
+	leftID := baseID + ":source:10"
+	rightID := baseID + ":source:11"
+	if leftID == rightID || findNavigationEntity(navigation.Entities, leftID, "component") == nil || findNavigationEntity(navigation.Entities, rightID, "component") == nil {
+		t.Fatalf("duplicate component entities were not disambiguated: %#v", navigation.Entities)
+	}
+	if !stringSliceContains(navigation.ByComponent[leftID], "office-a-cooling") {
+		t.Fatalf("left duplicate component reverse index = %#v", navigation.ByComponent[leftID])
+	}
+	if !stringSliceContains(navigation.ByComponent[rightID], "office-b-cooling") {
+		t.Fatalf("right duplicate component reverse index = %#v", navigation.ByComponent[rightID])
+	}
+	if stringSliceContains(navigation.ByComponent[baseID], "office-a-cooling") || stringSliceContains(navigation.ByComponent[baseID], "office-b-cooling") {
+		t.Fatalf("base duplicate component id should not receive path refs: %#v", navigation.ByComponent[baseID])
+	}
+}
+
 func TestHVACServiceModelExternalFixtureMatrix(t *testing.T) {
 	fixtures := []struct {
 		name       string

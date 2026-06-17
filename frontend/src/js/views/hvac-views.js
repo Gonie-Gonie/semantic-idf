@@ -2,6 +2,7 @@ import { backend, elements, escapeHTML, setStatus, state } from "../state.js";
 import { t } from "../i18n.js";
 
 const HVAC_GRAPH_EXPORT_SCHEMA = "idf-analyzer.hvac.graph.v1";
+let hvacComponentBaseCountCache = { serviceModel: null, counts: new Map() };
 
 export function initializeHVACControls() {
   state.hvacInspectorCollapsed = readHVACInspectorCollapsed();
@@ -2362,12 +2363,84 @@ function pathComponentNavigationIDs(path = {}) {
 }
 
 function navigationComponentEntityID(component = {}) {
+  const baseID = navigationComponentBaseID(component);
+  if (baseID) {
+    return disambiguatedNavigationComponentEntityID(component, baseID);
+  }
+  return component.id ? `component:${normalizeGraphName(component.id)}` : "";
+}
+
+function navigationComponentBaseID(component = {}) {
   const objectType = normalizeGraphName(component.objectType || "");
   const objectName = normalizeGraphName(component.objectName || component.displayName || "");
   if (objectType && objectName) {
     return `component:${objectType}:${objectName}`;
   }
-  return component.id ? `component:${normalizeGraphName(component.id)}` : "";
+  return "";
+}
+
+function disambiguatedNavigationComponentEntityID(component = {}, baseID = navigationComponentBaseID(component)) {
+  if ((navigationComponentBaseCounts().get(baseID) || 0) < 2) {
+    return baseID;
+  }
+  const suffix = navigationComponentInstanceSuffix(component);
+  return suffix ? `${baseID}${suffix}` : baseID;
+}
+
+function navigationComponentBaseCounts() {
+  const serviceModel = hvacServiceModel();
+  if (hvacComponentBaseCountCache.serviceModel === serviceModel) {
+    return hvacComponentBaseCountCache.counts;
+  }
+  const groups = new Map();
+  const add = (component = {}) => {
+    const baseID = navigationComponentBaseID(component);
+    if (!baseID) {
+      return;
+    }
+    if (!groups.has(baseID)) {
+      groups.set(baseID, new Set());
+    }
+    groups.get(baseID).add(navigationComponentInstanceKey(component));
+  };
+  servicePathsForHVAC().forEach((path) => {
+    [path.delivery, path.deliveryWrapper, ...(path.conditioning || [])].filter(Boolean).forEach(add);
+  });
+  (serviceModel.components || []).forEach((item) => {
+    add(item.component || {});
+    (item.internalRefs || []).forEach(add);
+  });
+  (serviceModel.couplings || []).forEach((coupling) => {
+    add(coupling.object || {});
+    (coupling.connectedComponents || []).forEach(add);
+  });
+  const counts = new Map([...groups.entries()].map(([baseID, instances]) => [baseID, instances.size]));
+  hvacComponentBaseCountCache = { serviceModel, counts };
+  return counts;
+}
+
+function navigationComponentInstanceKey(component = {}) {
+  const index = Number(component.objectIndex);
+  if (Number.isFinite(index) && index >= 0) {
+    return `index:${Math.trunc(index)}`;
+  }
+  if (component.id) {
+    return `id:${component.id}`;
+  }
+  return `base:${navigationComponentBaseID(component)}`;
+}
+
+function navigationComponentInstanceSuffix(component = {}) {
+  const index = Number(component.objectIndex);
+  if (Number.isFinite(index) && index >= 0) {
+    return `:source:${Math.trunc(index)}`;
+  }
+  const id = String(component.id || "").trim();
+  const indexMatch = id.match(/^component:(\d+)$/i);
+  if (indexMatch) {
+    return `:source:${indexMatch[1]}`;
+  }
+  return id ? `:source:${normalizeGraphName(id)}` : "";
 }
 
 function hvacDebugEnabled() {

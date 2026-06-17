@@ -630,19 +630,21 @@ func refrigerantSystemSummaries(paths []ZoneServicePath) []SystemSummary {
 }
 
 type hvacNavigationBuilder struct {
-	entities map[string]HVACNavigationEntity
-	links    map[string]HVACNavigationLink
-	byZone   map[string][]string
-	bySpace  map[string][]string
-	byLoop   map[string][]string
-	byComp   map[string][]string
-	byCpl    map[string][]string
-	byNet    map[string][]string
-	byPath   map[string][]string
+	entities     map[string]HVACNavigationEntity
+	links        map[string]HVACNavigationLink
+	componentIDs map[string]string
+	byZone       map[string][]string
+	bySpace      map[string][]string
+	byLoop       map[string][]string
+	byComp       map[string][]string
+	byCpl        map[string][]string
+	byNet        map[string][]string
+	byPath       map[string][]string
 }
 
 func buildHVACNavigationIndex(paths []ZoneServicePath, systems []SystemSummary, couplings []SystemCoupling, networks []EnergyNetwork, componentIndex ComponentIndex) HVACNavigationIndex {
 	builder := newHVACNavigationBuilder()
+	builder.componentIDs = disambiguatedHVACNavigationComponentIDs(paths, couplings, componentIndex)
 	couplingByID := map[string]SystemCoupling{}
 	for _, coupling := range couplings {
 		couplingByID[coupling.ID] = coupling
@@ -673,7 +675,7 @@ func buildHVACNavigationIndex(paths []ZoneServicePath, systems []SystemSummary, 
 		builder.addPath(path, couplingByID)
 	}
 	for _, item := range componentIndexItems(componentIndex) {
-		entity := navigationEntityForComponent(item.Component, item.RelatedPathIDs)
+		entity := builder.navigationEntityForComponent(item.Component, item.RelatedPathIDs)
 		entity.ServiceKinds = serviceKindsForPathIDs(paths, item.RelatedPathIDs)
 		entity.PathTypes = pathTypesForPathIDs(paths, item.RelatedPathIDs)
 		for _, loop := range item.RelatedLoopRefs {
@@ -695,8 +697,8 @@ func buildHVACNavigationIndex(paths []ZoneServicePath, systems []SystemSummary, 
 			builder.addLink(loopEntityID, couplingEntityID, "has_supporting_asset", "", firstMedium(coupling.Mediums))
 		}
 		for _, component := range append([]ComponentRef{coupling.Object}, coupling.ConnectedComponents...) {
-			componentEntityID := navigationComponentID(component)
-			builder.addEntity(navigationEntityForComponent(component, nil))
+			componentEntityID := builder.navigationComponentID(component)
+			builder.addEntity(builder.navigationEntityForComponent(component, nil))
 			builder.addLink(componentEntityID, couplingEntityID, "connected_to_coupling", "", firstMedium(coupling.Mediums))
 		}
 		for _, zone := range coupling.ConnectedZones {
@@ -710,15 +712,16 @@ func buildHVACNavigationIndex(paths []ZoneServicePath, systems []SystemSummary, 
 
 func newHVACNavigationBuilder() *hvacNavigationBuilder {
 	return &hvacNavigationBuilder{
-		entities: map[string]HVACNavigationEntity{},
-		links:    map[string]HVACNavigationLink{},
-		byZone:   map[string][]string{},
-		bySpace:  map[string][]string{},
-		byLoop:   map[string][]string{},
-		byComp:   map[string][]string{},
-		byCpl:    map[string][]string{},
-		byNet:    map[string][]string{},
-		byPath:   map[string][]string{},
+		entities:     map[string]HVACNavigationEntity{},
+		links:        map[string]HVACNavigationLink{},
+		componentIDs: map[string]string{},
+		byZone:       map[string][]string{},
+		bySpace:      map[string][]string{},
+		byLoop:       map[string][]string{},
+		byComp:       map[string][]string{},
+		byCpl:        map[string][]string{},
+		byNet:        map[string][]string{},
+		byPath:       map[string][]string{},
 	}
 }
 
@@ -759,8 +762,8 @@ func (builder *hvacNavigationBuilder) addPath(path ZoneServicePath, couplingByID
 		builder.addPathEntity(path.ID, systemEntityID)
 	}
 	for _, component := range pathComponentRefs(path) {
-		componentEntityID := navigationComponentID(component)
-		builder.addEntity(navigationEntityForComponent(component, []string{path.ID}))
+		componentEntityID := builder.navigationComponentID(component)
+		builder.addEntity(builder.navigationEntityForComponent(component, []string{path.ID}))
 		linkKind := "has_conditioning"
 		if component.ID == path.Delivery.ID {
 			linkKind = "has_delivery"
@@ -790,6 +793,23 @@ func (builder *hvacNavigationBuilder) addPath(path ZoneServicePath, couplingByID
 		builder.addIndex(builder.byCpl, couplingEntityID, path.ID)
 		builder.addPathEntity(path.ID, couplingEntityID)
 	}
+}
+
+func (builder *hvacNavigationBuilder) navigationComponentID(component ComponentRef) string {
+	baseID := navigationComponentID(component)
+	if baseID == "" {
+		return ""
+	}
+	if id := builder.componentIDs[navigationComponentInstanceKey(component)]; id != "" {
+		return id
+	}
+	return baseID
+}
+
+func (builder *hvacNavigationBuilder) navigationEntityForComponent(component ComponentRef, relatedPathIDs []string) HVACNavigationEntity {
+	entity := navigationEntityForComponent(component, relatedPathIDs)
+	entity.ID = builder.navigationComponentID(component)
+	return entity
 }
 
 func (builder *hvacNavigationBuilder) addEntity(entity HVACNavigationEntity) {
@@ -921,6 +941,79 @@ func navigationComponentID(component ComponentRef) string {
 	}
 	if objectType != "" {
 		return "component:" + objectType
+	}
+	return ""
+}
+
+func disambiguatedHVACNavigationComponentIDs(paths []ZoneServicePath, couplings []SystemCoupling, componentIndex ComponentIndex) map[string]string {
+	byBaseID := map[string][]ComponentRef{}
+	add := func(component ComponentRef) {
+		baseID := navigationComponentID(component)
+		if baseID == "" {
+			return
+		}
+		byBaseID[baseID] = appendUniqueComponentInstance(byBaseID[baseID], component)
+	}
+	for _, path := range paths {
+		for _, component := range pathComponentRefs(path) {
+			add(component)
+		}
+	}
+	for _, item := range componentIndexItems(componentIndex) {
+		add(item.Component)
+		for _, ref := range item.InternalRefs {
+			add(ref)
+		}
+	}
+	for _, coupling := range couplings {
+		add(coupling.Object)
+		for _, component := range coupling.ConnectedComponents {
+			add(component)
+		}
+	}
+
+	out := map[string]string{}
+	for baseID, refs := range byBaseID {
+		if len(refs) < 2 {
+			continue
+		}
+		for _, ref := range refs {
+			suffix := navigationComponentInstanceSuffix(ref)
+			if suffix == "" {
+				continue
+			}
+			out[navigationComponentInstanceKey(ref)] = baseID + suffix
+		}
+	}
+	return out
+}
+
+func appendUniqueComponentInstance(values []ComponentRef, candidate ComponentRef) []ComponentRef {
+	key := navigationComponentInstanceKey(candidate)
+	for _, value := range values {
+		if navigationComponentInstanceKey(value) == key {
+			return values
+		}
+	}
+	return append(values, candidate)
+}
+
+func navigationComponentInstanceKey(component ComponentRef) string {
+	if component.ObjectIndex >= 0 {
+		return fmt.Sprintf("index:%d", component.ObjectIndex)
+	}
+	if strings.TrimSpace(component.ID) != "" {
+		return "id:" + strings.TrimSpace(component.ID)
+	}
+	return "base:" + navigationComponentID(component)
+}
+
+func navigationComponentInstanceSuffix(component ComponentRef) string {
+	if component.ObjectIndex >= 0 {
+		return fmt.Sprintf(":source:%d", component.ObjectIndex)
+	}
+	if strings.TrimSpace(component.ID) != "" {
+		return ":source:" + normalizeName(component.ID)
 	}
 	return ""
 }
