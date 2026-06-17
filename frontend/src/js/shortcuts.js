@@ -21,7 +21,7 @@ function handleShortcutKeydown(event, actions) {
   }
 
   event.preventDefault();
-  action();
+  action(event);
 }
 
 function shortcutIDForEvent(event) {

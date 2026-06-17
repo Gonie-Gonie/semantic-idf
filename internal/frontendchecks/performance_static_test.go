@@ -112,6 +112,47 @@ func TestFrontendNavigationCacheRestoreContract(t *testing.T) {
 	}
 }
 
+func TestFrontendContextualNavigationShortcutContracts(t *testing.T) {
+	main := readTestFile(t, "frontend/src/js/main.js")
+	for _, term := range []string{
+		"backHVAC, forwardHVAC, initializeHVACControls",
+		"function handleUndoShortcut(event)",
+		"function handleRedoShortcut(event)",
+		"undoViewNavigation({ scope: \"input\" })",
+		"redoViewNavigation({ scope: \"input\" })",
+		"function handleAnalysisTabCycleKey(event)",
+		`event.key !== "PageUp" && event.key !== "PageDown"`,
+		"switchResultTabByOffset(event.key === \"PageUp\" ? -1 : 1)",
+		"function handleHardwareHistoryKey(event)",
+		`event.key === "BrowserBack"`,
+		`event.key === "BrowserForward"`,
+		"function handleHardwareHistoryMouseButton(event)",
+		"event.button !== 3 && event.button !== 4",
+	} {
+		if !strings.Contains(main, term) {
+			t.Fatalf("contextual navigation contract missing %q", term)
+		}
+	}
+
+	navigation := readTestFile(t, "frontend/src/js/navigation.js")
+	for _, term := range []string{
+		"export async function undoViewNavigation(options = {})",
+		"export async function redoViewNavigation(options = {})",
+		"async function restoreViewSnapshot(snapshot, options = {})",
+		`const scope = options.scope || "all"`,
+		`scope !== "input" && snapshot.resultTab`,
+	} {
+		if !strings.Contains(navigation, term) {
+			t.Fatalf("scoped view history contract missing %q", term)
+		}
+	}
+
+	shortcuts := readTestFile(t, "frontend/src/js/shortcuts.js")
+	if !strings.Contains(shortcuts, "action(event)") {
+		t.Fatalf("keyboard shortcut dispatcher should pass the key event to contextual actions")
+	}
+}
+
 func TestFrontendHVACDebugRuleGraphLoadsExplicitly(t *testing.T) {
 	app := readTestFile(t, "app.go")
 	if !strings.Contains(app, `"hvac-debug"`) || !strings.Contains(app, "slimReportForMode") {

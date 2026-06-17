@@ -22,7 +22,7 @@ import {
 import { markAnalysisDirty, renderDiagnostics, renderEmpty, renderReport, renderSummary } from "./views/analysis-views.js";
 import { renderGeometry, resizeGeometry, setGeometryMode, setGeometrySelectionAid, setGeometryStory } from "./geometry-loader.js";
 import { initializeDiagnoseFixes } from "./views/diagnose-fixes.js";
-import { initializeHVACControls } from "./views/hvac-views.js";
+import { backHVAC, forwardHVAC, initializeHVACControls } from "./views/hvac-views.js";
 import { initializeOutputControls } from "./views/output-views.js";
 import {
   configureInputViews,
@@ -115,6 +115,9 @@ window.addEventListener("resize", () => {
   }
 });
 window.addEventListener("keydown", (event) => {
+  if (handleAnalysisTabCycleKey(event) || handleHardwareHistoryKey(event)) {
+    return;
+  }
   if (event.key === "Escape" && state.expandedPane) {
     event.preventDefault();
     toggleExpandedPane("");
@@ -125,6 +128,8 @@ window.addEventListener("keydown", (event) => {
     setGeometrySelectionAid(!state.geometrySelectionAid);
   }
 });
+window.addEventListener("mousedown", handleHardwareHistoryMouseButton, { capture: true });
+window.addEventListener("auxclick", handleHardwareHistoryMouseButton, { capture: true });
 window.addEventListener("idfAnalyzer:documentChanged", () => {
   updateDocumentActions();
 });
@@ -252,6 +257,114 @@ function isEditableTarget(target) {
   return Boolean(target?.closest?.("input, textarea, select, [contenteditable='true']"));
 }
 
+function isEditorPanelTarget(target) {
+  return Boolean(target?.closest?.(".editor-panel"));
+}
+
+function isAnalysisPanelTarget(target) {
+  return Boolean(target?.closest?.(".analysis-panel"));
+}
+
+function isAnalysisHistoryTarget(target) {
+  return isAnalysisPanelTarget(target) || (!isEditorPanelTarget(target) && state.activeResultTab !== "summary");
+}
+
+function handleUndoShortcut(event) {
+  if (isEditableTarget(event?.target)) {
+    return false;
+  }
+  if (isAnalysisHistoryTarget(event?.target)) {
+    return navigateAnalysisHistory("back");
+  }
+  undoViewNavigation({ scope: "input" });
+  return true;
+}
+
+function handleRedoShortcut(event) {
+  if (isEditableTarget(event?.target)) {
+    return false;
+  }
+  if (isAnalysisHistoryTarget(event?.target)) {
+    return navigateAnalysisHistory("forward");
+  }
+  redoViewNavigation({ scope: "input" });
+  return true;
+}
+
+function navigateAnalysisHistory(direction, options = {}) {
+  const moved = direction === "back" ? restoreActiveAnalysisBack() : restoreActiveAnalysisForward();
+  if (!moved && !options.quiet) {
+    setStatus(t("status.noViewHistory"), "warn");
+  }
+  return moved;
+}
+
+function restoreActiveAnalysisBack() {
+  if (state.activeResultTab === "hvac") {
+    return backHVAC();
+  }
+  return false;
+}
+
+function restoreActiveAnalysisForward() {
+  if (state.activeResultTab === "hvac") {
+    return forwardHVAC();
+  }
+  return false;
+}
+
+function handleAnalysisTabCycleKey(event) {
+  if (isEditableTarget(event.target) || isEditorPanelTarget(event.target)) {
+    return false;
+  }
+  if (!(event.ctrlKey || event.metaKey) || event.altKey || (event.key !== "PageUp" && event.key !== "PageDown")) {
+    return false;
+  }
+  event.preventDefault();
+  switchResultTabByOffset(event.key === "PageUp" ? -1 : 1);
+  return true;
+}
+
+function switchResultTabByOffset(offset) {
+  const tabButtons = [...(elements.resultTabButtons || [])].filter((button) => button.dataset.resultTab);
+  if (!tabButtons.length) {
+    return;
+  }
+  const currentIndex = Math.max(0, tabButtons.findIndex((button) => button.dataset.resultTab === state.activeResultTab));
+  const nextIndex = (currentIndex + offset + tabButtons.length) % tabButtons.length;
+  const nextTab = tabButtons[nextIndex].dataset.resultTab;
+  state.resultTabManuallySelected = true;
+  switchResultTab(nextTab);
+  tabButtons[nextIndex].focus?.({ preventScroll: true });
+}
+
+function handleHardwareHistoryKey(event) {
+  if (isEditableTarget(event.target) || state.activeResultTab !== "hvac") {
+    return false;
+  }
+  const isBack = event.key === "BrowserBack" || (event.altKey && event.key === "ArrowLeft" && !event.ctrlKey && !event.metaKey && !event.shiftKey);
+  const isForward =
+    event.key === "BrowserForward" || (event.altKey && event.key === "ArrowRight" && !event.ctrlKey && !event.metaKey && !event.shiftKey);
+  if (!isBack && !isForward) {
+    return false;
+  }
+  event.preventDefault();
+  navigateAnalysisHistory(isBack ? "back" : "forward", { quiet: true });
+  return true;
+}
+
+function handleHardwareHistoryMouseButton(event) {
+  if ((event.button !== 3 && event.button !== 4) || state.activeResultTab !== "hvac" || isEditableTarget(event.target)) {
+    return false;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  if (event.type !== "auxclick") {
+    navigateAnalysisHistory(event.button === 3 ? "back" : "forward", { quiet: true });
+  }
+  return true;
+}
+
 initializeWorkspaceSplitter();
 initializeVerticalSplitters();
 initializeProfileControls();
@@ -262,8 +375,8 @@ initializeDiagnoseFixes();
 initializeKeyboardShortcuts({
   save: saveInputFile,
   open: openInputFile,
-  undoView: undoViewNavigation,
-  redoView: redoViewNavigation,
+  undoView: handleUndoShortcut,
+  redoView: handleRedoShortcut,
   jumpDefinition: jumpInputDefinition,
   jumpReferences: jumpInputReferences,
   switchInputView,

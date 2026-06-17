@@ -235,26 +235,28 @@ function navigateHVAC(target = {}, options = {}) {
   renderHVAC();
 }
 
-function backHVAC() {
+export function backHVAC() {
   const previous = state.hvacNavigationStack.pop();
   if (!previous) {
-    return;
+    return false;
   }
   state.hvacForwardStack.push(hvacNavigationSnapshot());
   restoreHVACNavigationSnapshot(previous);
   notifyHVACSelectionChanged();
   renderHVAC();
+  return true;
 }
 
-function forwardHVAC() {
+export function forwardHVAC() {
   const next = state.hvacForwardStack.pop();
   if (!next) {
-    return;
+    return false;
   }
   state.hvacNavigationStack.push(hvacNavigationSnapshot());
   restoreHVACNavigationSnapshot(next);
   notifyHVACSelectionChanged();
   renderHVAC();
+  return true;
 }
 
 function clearHVACFocus() {

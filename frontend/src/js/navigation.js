@@ -238,28 +238,29 @@ function knownResultTabIDs() {
   return ids.length ? ids : ["summary", "profile", "hvac", "output", "simulation", "diagnose", "geometry"];
 }
 
-export async function undoViewNavigation() {
+export async function undoViewNavigation(options = {}) {
   const snapshot = popUndoSnapshot(captureViewSnapshot());
   if (!snapshot) {
     setStatus(t("status.noViewHistory"), "warn");
     return;
   }
-  await restoreViewSnapshot(snapshot);
+  await restoreViewSnapshot(snapshot, options);
 }
 
-export async function redoViewNavigation() {
+export async function redoViewNavigation(options = {}) {
   const snapshot = popRedoSnapshot(captureViewSnapshot());
   if (!snapshot) {
     setStatus(t("status.noViewHistory"), "warn");
     return;
   }
-  await restoreViewSnapshot(snapshot);
+  await restoreViewSnapshot(snapshot, options);
 }
 
-async function restoreViewSnapshot(snapshot) {
+async function restoreViewSnapshot(snapshot, options = {}) {
+  const scope = options.scope || "all";
   await withHistoryRestore(async () => {
     state.jsonSelectedObjectIndex = snapshot.jsonSelectedObjectIndex || "";
-    if (snapshot.resultTab && snapshot.resultTab !== state.activeResultTab) {
+    if (scope !== "input" && snapshot.resultTab && snapshot.resultTab !== state.activeResultTab) {
       switchResultTab(snapshot.resultTab, { recordHistory: false });
     }
     if (snapshot.inputView && snapshot.inputView !== state.activeInputView) {
