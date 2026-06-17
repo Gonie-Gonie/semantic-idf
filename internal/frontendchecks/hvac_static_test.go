@@ -54,6 +54,17 @@ func TestFrontendHVACStartsOnZoneServices(t *testing.T) {
 	if !strings.Contains(string(content), `activeHVACView: "services"`) {
 		t.Fatalf("state.js should default HVAC to Zone Services view")
 	}
+	for _, required := range []string{
+		"activeHVACEntity",
+		"activeHVACContext",
+		"hvacNavigationStack",
+		"hvacForwardStack",
+		`activeHVACGraphScope: "focused"`,
+	} {
+		if !strings.Contains(string(content), required) {
+			t.Fatalf("state.js should include HVAC navigation state %q", required)
+		}
+	}
 	if !strings.Contains(string(content), `hvacGraphScale: "actual"`) {
 		t.Fatalf("state.js should default HVAC graph to actual scale")
 	}
@@ -74,6 +85,14 @@ func TestFrontendHVACServiceDOMContracts(t *testing.T) {
 		"function isPhysicalServiceCoupling",
 		"function serviceLinkPath",
 		"function bundleServiceGraphLinks",
+		"function navigateHVAC(target = {}, options = {})",
+		"function backHVAC()",
+		"function forwardHVAC()",
+		"function clearHVACFocus()",
+		"function pathsForActiveHVACEntity",
+		"function renderHVACGraphScopeControls",
+		"function renderHVACBreadcrumbBar",
+		"function orthogonalPath",
 		`event.key === "Escape"`,
 		`state.activeHVACGraphKey = ""`,
 		`state.activeHVACNodeName = ""`,
