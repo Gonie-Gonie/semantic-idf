@@ -97,15 +97,16 @@ func AnalyzeQuickFromIndex(index *DocumentIndex, timer StageTimer) Report {
 		report = analyzeCore(doc)
 	})
 	timeAnalysisStage(timer, "summary", func() {
-		report.Summary = AnalyzeSummary(doc)
+		report.Summary = AnalyzeSummaryQuick(doc)
 	})
 	timeAnalysisStage(timer, "output", func() {
-		report.Output = AnalyzeOutput(doc)
+		report.Output = AnalyzeOutputFromIndex(index)
 	})
 	return report
 }
 
 func AnalyzeOverviewTimed(doc Document, timer StageTimer) Report {
+	index := NewDocumentIndex(doc)
 	var report Report
 	timeAnalysisStage(timer, "core", func() {
 		report = analyzeCore(doc)
@@ -114,13 +115,13 @@ func AnalyzeOverviewTimed(doc Document, timer StageTimer) Report {
 		report.Summary = AnalyzeSummary(doc)
 	})
 	timeAnalysisStage(timer, "output", func() {
-		report.Output = AnalyzeOutput(doc)
+		report.Output = AnalyzeOutputFromIndex(index)
 	})
 	timeAnalysisStage(timer, "profile", func() {
-		report.Profile = AnalyzeProfile(doc)
+		report.Profile = AnalyzeProfileFromIndex(index)
 	})
 	timeAnalysisStage(timer, "hvac", func() {
-		report.HVAC = AnalyzeHVAC(doc)
+		report.HVAC = AnalyzeHVACFromIndex(index)
 	})
 	return report
 }
@@ -130,6 +131,7 @@ func Analyze(doc Document) Report {
 }
 
 func AnalyzeTimed(doc Document, timer StageTimer) Report {
+	index := NewDocumentIndex(doc)
 	var report Report
 	timeAnalysisStage(timer, "core", func() {
 		report = analyzeCore(doc)
@@ -167,27 +169,27 @@ func AnalyzeTimed(doc Document, timer StageTimer) Report {
 	})
 	run(func() {
 		timeAnalysisStage(timer, "output", func() {
-			output = AnalyzeOutput(doc)
+			output = AnalyzeOutputFromIndex(index)
 		})
 	})
 	run(func() {
 		timeAnalysisStage(timer, "profile", func() {
-			profile = AnalyzeProfile(doc)
+			profile = AnalyzeProfileFromIndex(index)
 		})
 	})
 	run(func() {
 		timeAnalysisStage(timer, "hvac", func() {
-			hvac = AnalyzeHVAC(doc)
+			hvac = AnalyzeHVACFromIndex(index)
 		})
 	})
 	run(func() {
 		timeAnalysisStage(timer, "geometry", func() {
-			geometry = AnalyzeGeometry(doc)
+			geometry = AnalyzeGeometryFromIndex(index)
 		})
 	})
 	run(func() {
 		timeAnalysisStage(timer, "diagnostics", func() {
-			diagnostics = AnalyzeDiagnostics(doc)
+			diagnostics = AnalyzeDiagnosticsFromIndex(index)
 		})
 	})
 	wg.Wait()

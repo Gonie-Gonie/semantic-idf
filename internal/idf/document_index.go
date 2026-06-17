@@ -59,6 +59,41 @@ func (index *DocumentIndex) ObjectByTypeName(typeName, name string) (Object, boo
 	return object, ok
 }
 
+func AnalyzeProfileFromIndex(index *DocumentIndex) ProfileReport {
+	if index == nil {
+		return ProfileReport{}
+	}
+	return AnalyzeProfile(index.Doc)
+}
+
+func AnalyzeHVACFromIndex(index *DocumentIndex) HVACReport {
+	if index == nil {
+		return HVACReport{}
+	}
+	return AnalyzeHVAC(index.Doc)
+}
+
+func AnalyzeOutputFromIndex(index *DocumentIndex) OutputReport {
+	if index == nil {
+		return OutputReport{}
+	}
+	return AnalyzeOutput(index.Doc)
+}
+
+func AnalyzeDiagnosticsFromIndex(index *DocumentIndex) []Diagnostic {
+	if index == nil {
+		return nil
+	}
+	return AnalyzeDiagnostics(index.Doc)
+}
+
+func AnalyzeGeometryFromIndex(index *DocumentIndex) GeometryReport {
+	if index == nil {
+		return GeometryReport{}
+	}
+	return AnalyzeGeometry(index.Doc)
+}
+
 func typeNameIndexKey(typeName, name string) string {
 	return normalizeIndexKey(typeName) + "\x00" + normalizeIndexKey(name)
 }

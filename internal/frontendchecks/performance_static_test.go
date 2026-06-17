@@ -70,3 +70,51 @@ func TestFrontendGeometryPlanLayoutCacheContract(t *testing.T) {
 		}
 	}
 }
+
+func TestFrontendNavigationCacheRestoreContract(t *testing.T) {
+	actions := readTestFile(t, "frontend/src/js/actions.js")
+	for _, term := range []string{
+		"export async function openBatch()",
+		"export async function openSettings()",
+		"await saveWorkspaceSnapshot()",
+		"analysisKey,",
+		"window.sessionStorage.setItem(currentDocumentStorageKey, JSON.stringify(snapshot))",
+		"export function applyCachedAnalysisResult",
+	} {
+		if !strings.Contains(actions, term) {
+			t.Fatalf("workspace snapshot contract missing %q", term)
+		}
+	}
+	snapshotBody := sliceBetween(actions, "export async function saveWorkspaceSnapshot()", "export function applyCachedAnalysisResult")
+	if strings.Contains(snapshotBody, "report") {
+		t.Fatalf("workspace snapshot should not store full report payload")
+	}
+
+	main := readTestFile(t, "frontend/src/js/main.js")
+	restoreBody := sliceBetween(main, "async function restoreCachedDocumentAnalysis", "function restoreCurrentDocument")
+	for _, term := range []string{
+		"async function restoreCachedDocumentAnalysis",
+		"api.GetCachedAnalysis(restoredDocument.analysisKey)",
+		"applyCachedAnalysisResult(cached, restoredDocument)",
+		"preferCache: Boolean(restoredDocument.analysisKey)",
+	} {
+		if !strings.Contains(restoreBody, term) {
+			t.Fatalf("restore cache contract missing %q", term)
+		}
+	}
+	if strings.Index(restoreBody, "api.GetCachedAnalysis(restoredDocument.analysisKey)") > strings.Index(restoreBody, "scheduleAnalyzeAfterPaint({") {
+		t.Fatalf("restore should check backend cache before scheduling analysis")
+	}
+}
+
+func sliceBetween(text, start, end string) string {
+	startIndex := strings.Index(text, start)
+	if startIndex < 0 {
+		return ""
+	}
+	endIndex := strings.Index(text[startIndex:], end)
+	if endIndex < 0 {
+		return text[startIndex:]
+	}
+	return text[startIndex : startIndex+endIndex]
+}

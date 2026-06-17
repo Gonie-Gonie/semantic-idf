@@ -69,6 +69,10 @@ type SummaryGuide struct {
 	MissingData string `json:"missingData"`
 }
 
+type SummaryAnalysisOptions struct {
+	IncludeHeavyReadiness bool
+}
+
 type summaryCategoryDef struct {
 	id   string
 	name string
@@ -199,7 +203,15 @@ func SummaryGuides() []SummaryGuide {
 }
 
 func AnalyzeSummary(doc Document) SummaryReport {
-	facts := collectSummaryFacts(doc)
+	return AnalyzeSummaryWithOptions(doc, SummaryAnalysisOptions{IncludeHeavyReadiness: true})
+}
+
+func AnalyzeSummaryQuick(doc Document) SummaryReport {
+	return AnalyzeSummaryWithOptions(doc, SummaryAnalysisOptions{})
+}
+
+func AnalyzeSummaryWithOptions(doc Document, options SummaryAnalysisOptions) SummaryReport {
+	facts := collectSummaryFactsWithOptions(doc, options)
 	values := facts.metricValues()
 	categories := make([]SummaryCategory, 0, len(summaryCategories))
 	categoryIndexes := map[string]int{}
@@ -514,6 +526,7 @@ type summaryFacts struct {
 	zoneHVACObjectCount         int
 	thermostatCount             int
 	hvacNodeConnectionCount     int
+	heavyReadinessCaptured      bool
 	geometryObjectCount         int
 	detailedGeometryCount       int
 	profileReferenceCount       int
@@ -600,6 +613,10 @@ type surfaceInfo struct {
 }
 
 func collectSummaryFacts(doc Document) summaryFacts {
+	return collectSummaryFactsWithOptions(doc, SummaryAnalysisOptions{IncludeHeavyReadiness: true})
+}
+
+func collectSummaryFactsWithOptions(doc Document, options SummaryAnalysisOptions) summaryFacts {
 	facts := summaryFacts{
 		objectCount:             len(doc.Objects),
 		zoneMultipliers:         map[string]float64{},
@@ -672,11 +689,11 @@ func collectSummaryFacts(doc Document) summaryFacts {
 	}
 
 	facts.finalizeVolumeAndHeights()
-	facts.captureReadiness(doc)
+	facts.captureReadiness(doc, options.IncludeHeavyReadiness)
 	return facts
 }
 
-func (facts *summaryFacts) captureReadiness(doc Document) {
+func (facts *summaryFacts) captureReadiness(doc Document, includeHeavy bool) {
 	for _, obj := range doc.Objects {
 		if isBuildingSurfaceType(obj.Type) || isFenestrationType(obj.Type) {
 			facts.geometryObjectCount++
@@ -693,6 +710,10 @@ func (facts *summaryFacts) captureReadiness(doc Document) {
 		}
 	}
 
+	if !includeHeavy {
+		return
+	}
+	facts.heavyReadinessCaptured = true
 	hvacReport := AnalyzeHVAC(doc)
 	facts.hvacRuleEdgeCount = len(hvacReport.RuleGraph.Edges)
 	facts.hvacNodeConnectionCount = summaryHVACTypedNodeConnectionCount(hvacReport)
@@ -1128,8 +1149,10 @@ func (facts summaryFacts) metricValues() map[string]summaryMetricValue {
 		"thermostat_count":                    countSummaryValue(facts.thermostatCount),
 		"conditioned_zone_count":              countSummaryValue(len(facts.conditionedZones)),
 		"conditioned_zone_evidence_breakdown": stringSummaryValue(summaryConditionedEvidenceDisplay(facts.conditionedZoneEvidence)),
-		"hvac_node_connection_count":          countSummaryValue(facts.hvacNodeConnectionCount),
-		"diagnostics_by_source":               stringSummaryValue(summarySourceCountsDisplay(facts.diagnosticSourceCounts)),
+	}
+	if facts.heavyReadinessCaptured {
+		values["hvac_node_connection_count"] = countSummaryValue(facts.hvacNodeConnectionCount)
+		values["diagnostics_by_source"] = stringSummaryValue(summarySourceCountsDisplay(facts.diagnosticSourceCounts))
 	}
 
 	if facts.hasBuildingNorthAxis {
@@ -1231,11 +1254,13 @@ func (facts summaryFacts) metricValues() map[string]summaryMetricValue {
 	if facts.profileReferenceCount > 0 {
 		values["profile_coverage_percent"] = percentSummaryValue(float64(facts.supportedProfileReferences), float64(facts.profileReferenceCount), precisionFor("profile_coverage_percent"), partialIf(facts.supportedProfileReferences < facts.profileReferenceCount))
 	}
-	values["hvac_rule_edge_count"] = countSummaryValue(facts.hvacRuleEdgeCount)
-	if facts.outputRequestCount > 0 {
-		values["output_readiness_percent"] = percentSummaryValue(float64(facts.recognizedOutputCount), float64(facts.outputRequestCount), precisionFor("output_readiness_percent"), partialIf(facts.recognizedOutputCount < facts.outputRequestCount))
-	} else {
-		values["output_readiness_percent"] = missingSummaryValue()
+	if facts.heavyReadinessCaptured {
+		values["hvac_rule_edge_count"] = countSummaryValue(facts.hvacRuleEdgeCount)
+		if facts.outputRequestCount > 0 {
+			values["output_readiness_percent"] = percentSummaryValue(float64(facts.recognizedOutputCount), float64(facts.outputRequestCount), precisionFor("output_readiness_percent"), partialIf(facts.recognizedOutputCount < facts.outputRequestCount))
+		} else {
+			values["output_readiness_percent"] = missingSummaryValue()
+		}
 	}
 
 	for _, definition := range summaryDefinitions {

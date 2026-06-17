@@ -545,6 +545,33 @@ func TestFormatSummaryNumberUsesCompactDecimalPrecision(t *testing.T) {
 	}
 }
 
+func TestAnalyzeSummaryQuickDefersHeavyReadinessMetrics(t *testing.T) {
+	doc, err := Parse(summaryFixtureIDF)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	quick := AnalyzeSummaryQuick(doc)
+	if quick.MetricCount != 59 {
+		t.Fatalf("quick summary metric count = %d, want 59", quick.MetricCount)
+	}
+	if got := metricByID(t, quick, "building_name").DisplayValue; got != "Summary Test Building" {
+		t.Fatalf("quick building name = %q, want Summary Test Building", got)
+	}
+	for _, id := range []string{"hvac_node_connection_count", "hvac_rule_edge_count", "diagnostics_by_source", "output_readiness_percent"} {
+		if got := metricByID(t, quick, id).Status; got != summaryStatusMissing {
+			t.Fatalf("quick %s status = %q, want missing until heavy stages run", id, got)
+		}
+	}
+
+	full := AnalyzeSummary(doc)
+	if got := metricByID(t, full, "hvac_node_connection_count").Status; got == summaryStatusMissing {
+		t.Fatalf("full hvac_node_connection_count should be computed")
+	}
+	if got := metricByID(t, full, "diagnostics_by_source").Status; got == summaryStatusMissing {
+		t.Fatalf("full diagnostics_by_source should be computed")
+	}
+}
+
 func TestAnalyzeSummarySkylightBaseSurfaceResolution(t *testing.T) {
 	doc, err := Parse(summarySkylightMissingBaseFixtureIDF)
 	if err != nil {

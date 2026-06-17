@@ -430,17 +430,18 @@ func (a *App) analyzeInputStageText(text string, mode string) (*InputAnalysisRes
 		stageStart := time.Now()
 		report := idf.Report{}
 		stageName := mode
+		index := idf.NewDocumentIndex(doc)
 		switch mode {
 		case "profile":
-			report.Profile = idf.AnalyzeProfile(doc)
+			report.Profile = idf.AnalyzeProfileFromIndex(index)
 		case "hvac":
-			report.HVAC = idf.AnalyzeHVAC(doc)
+			report.HVAC = idf.AnalyzeHVACFromIndex(index)
 		case "output":
-			report.Output = idf.AnalyzeOutput(doc)
+			report.Output = idf.AnalyzeOutputFromIndex(index)
 		case "diagnostics":
-			report.Diagnostics = idf.AnalyzeDiagnostics(doc)
+			report.Diagnostics = idf.AnalyzeDiagnosticsFromIndex(index)
 		case "geometry":
-			geometry := idf.AnalyzeGeometry(doc)
+			geometry := idf.AnalyzeGeometryFromIndex(index)
 			report.Geometry = geometry
 		default:
 			return nil, fmt.Errorf("unsupported analysis stage %q", mode)
