@@ -11,6 +11,47 @@ type HVACServiceModel struct {
 	Systems      []SystemSummary      `json:"systems"`
 	Couplings    []SystemCoupling     `json:"couplings"`
 	Networks     []EnergyNetwork      `json:"networks"`
+	Components   []ComponentIndexItem `json:"components,omitempty"`
+	Navigation   HVACNavigationIndex  `json:"navigation,omitempty"`
+}
+
+type HVACNavigationIndex struct {
+	Entities []HVACNavigationEntity `json:"entities"`
+	Links    []HVACNavigationLink   `json:"links"`
+
+	ByZone      map[string][]string `json:"byZone,omitempty"`
+	BySpace     map[string][]string `json:"bySpace,omitempty"`
+	ByLoop      map[string][]string `json:"byLoop,omitempty"`
+	ByComponent map[string][]string `json:"byComponent,omitempty"`
+	ByCoupling  map[string][]string `json:"byCoupling,omitempty"`
+	ByNetwork   map[string][]string `json:"byNetwork,omitempty"`
+	ByPath      map[string][]string `json:"byPath,omitempty"`
+}
+
+type HVACNavigationEntity struct {
+	ID             string   `json:"id"`
+	Kind           string   `json:"kind"`
+	Label          string   `json:"label"`
+	ObjectType     string   `json:"objectType,omitempty"`
+	ObjectName     string   `json:"objectName,omitempty"`
+	ObjectIndex    int      `json:"objectIndex,omitempty"`
+	ZoneName       string   `json:"zoneName,omitempty"`
+	SpaceName      string   `json:"spaceName,omitempty"`
+	LoopName       string   `json:"loopName,omitempty"`
+	LoopType       string   `json:"loopType,omitempty"`
+	ServiceKinds   []string `json:"serviceKinds,omitempty"`
+	PathTypes      []string `json:"pathTypes,omitempty"`
+	Mediums        []string `json:"mediums,omitempty"`
+	RelatedPathIDs []string `json:"relatedPathIds,omitempty"`
+}
+
+type HVACNavigationLink struct {
+	ID     string `json:"id"`
+	FromID string `json:"fromId"`
+	ToID   string `json:"toId"`
+	Kind   string `json:"kind"`
+	PathID string `json:"pathId,omitempty"`
+	Medium string `json:"medium,omitempty"`
 }
 
 type ZoneServiceSummary struct {
@@ -133,17 +174,24 @@ type SystemSummary struct {
 	Mediums             []string       `json:"mediums,omitempty"`
 	ConnectedLoops      []LoopRef      `json:"connectedLoops,omitempty"`
 	ConnectedComponents []ComponentRef `json:"connectedComponents,omitempty"`
+	RelatedPathIDs      []string       `json:"relatedPathIds,omitempty"`
+	RelatedZoneNames    []string       `json:"relatedZoneNames,omitempty"`
+	RelatedCouplingIDs  []string       `json:"relatedCouplingIds,omitempty"`
 }
 
 type ComponentIndexItem struct {
-	Component     ComponentRef          `json:"component"`
-	Family        string                `json:"family"`
-	DisplayFamily string                `json:"displayFamily"`
-	DeliveryType  string                `json:"deliveryType"`
-	CouplingType  string                `json:"couplingType"`
-	Mediums       []string              `json:"mediums"`
-	Occurrences   []ComponentOccurrence `json:"occurrences"`
-	InternalRefs  []ComponentRef        `json:"internalRefs"`
+	Component          ComponentRef          `json:"component"`
+	Family             string                `json:"family"`
+	DisplayFamily      string                `json:"displayFamily"`
+	DeliveryType       string                `json:"deliveryType"`
+	CouplingType       string                `json:"couplingType"`
+	Mediums            []string              `json:"mediums"`
+	Occurrences        []ComponentOccurrence `json:"occurrences"`
+	InternalRefs       []ComponentRef        `json:"internalRefs"`
+	RelatedPathIDs     []string              `json:"relatedPathIds,omitempty"`
+	RelatedZoneNames   []string              `json:"relatedZoneNames,omitempty"`
+	RelatedLoopRefs    []LoopRef             `json:"relatedLoopRefs,omitempty"`
+	RelatedCouplingIDs []string              `json:"relatedCouplingIds,omitempty"`
 }
 
 type ComponentOccurrence struct {
@@ -173,11 +221,16 @@ func buildHVACServiceModel(ctx *hvacContext, loops []HVACLoop, relations []HVACZ
 	couplings := buildHVACSystemCouplings(ctx, loops, componentIndex)
 	couplingIndex := buildHVACCouplingIndex(couplings)
 	paths := buildZoneServicePaths(ctx, loops, relations, graph, componentIndex, couplingIndex)
+	enrichHVACComponentIndex(&componentIndex, paths, couplings)
+	networks := buildEnergyNetworks(ctx, couplings)
+	systems := buildHVACSystemSummaries(loops, paths, couplings)
 	return HVACServiceModel{
 		ZoneServices: buildZoneServiceSummaries(relations, paths),
-		Systems:      buildHVACSystemSummaries(loops),
+		Systems:      systems,
 		Couplings:    couplings,
-		Networks:     buildEnergyNetworks(ctx, couplings),
+		Networks:     networks,
+		Components:   componentIndexItems(componentIndex),
+		Navigation:   buildHVACNavigationIndex(paths, systems, couplings, networks, componentIndex),
 	}
 }
 
@@ -417,18 +470,122 @@ func buildZoneServicePaths(ctx *hvacContext, loops []HVACLoop, relations []HVACZ
 	return paths
 }
 
-func buildHVACSystemSummaries(loops []HVACLoop) []SystemSummary {
+func enrichHVACComponentIndex(index *ComponentIndex, paths []ZoneServicePath, couplings []SystemCoupling) {
+	if index == nil {
+		return
+	}
+	update := func(ref ComponentRef, mutate func(*ComponentIndexItem)) {
+		key := componentRefIndexKey(ref)
+		if key == "" {
+			return
+		}
+		item, ok := index.ByKey[key]
+		if !ok {
+			item = ComponentIndexItem{
+				Component:     ref,
+				Family:        ref.Family,
+				DisplayFamily: ref.DisplayFamily,
+				DeliveryType:  ref.DeliveryType,
+				CouplingType:  ref.CouplingType,
+				Mediums:       append([]string(nil), ref.Mediums...),
+			}
+		}
+		mutate(&item)
+		index.ByKey[key] = item
+	}
+	for _, path := range paths {
+		loopRefs := pathLoopRefs(path)
+		addPathRef := func(ref ComponentRef) {
+			update(ref, func(item *ComponentIndexItem) {
+				item.RelatedPathIDs = appendUniqueString(item.RelatedPathIDs, path.ID)
+				item.RelatedZoneNames = appendUniqueString(item.RelatedZoneNames, path.ZoneName)
+				for _, loop := range loopRefs {
+					item.RelatedLoopRefs = appendUniqueLoopRef(item.RelatedLoopRefs, loop)
+				}
+			})
+		}
+		addPathRef(path.Delivery)
+		if path.DeliveryWrapper != nil {
+			addPathRef(*path.DeliveryWrapper)
+		}
+		for _, component := range path.Conditioning {
+			addPathRef(component)
+		}
+	}
+	for _, coupling := range couplings {
+		update(coupling.Object, func(item *ComponentIndexItem) {
+			item.CouplingType = firstNonEmpty(item.CouplingType, coupling.CouplingType)
+			item.RelatedCouplingIDs = appendUniqueString(item.RelatedCouplingIDs, coupling.ID)
+			for _, loop := range coupling.ConnectedLoops {
+				item.RelatedLoopRefs = appendUniqueLoopRef(item.RelatedLoopRefs, loop)
+			}
+			for _, zone := range coupling.ConnectedZones {
+				item.RelatedZoneNames = appendUniqueString(item.RelatedZoneNames, zone.ZoneName)
+			}
+		})
+		for _, component := range coupling.ConnectedComponents {
+			update(component, func(item *ComponentIndexItem) {
+				item.RelatedCouplingIDs = appendUniqueString(item.RelatedCouplingIDs, coupling.ID)
+			})
+		}
+	}
+	for key, item := range index.ByKey {
+		sortComponentIndexItem(&item)
+		index.ByKey[key] = item
+	}
+}
+
+func componentIndexItems(index ComponentIndex) []ComponentIndexItem {
+	items := make([]ComponentIndexItem, 0, len(index.ByKey))
+	for _, item := range index.ByKey {
+		sortComponentIndexItem(&item)
+		items = append(items, item)
+	}
+	sort.SliceStable(items, func(i, j int) bool {
+		left := navigationComponentID(items[i].Component)
+		right := navigationComponentID(items[j].Component)
+		if left != right {
+			return left < right
+		}
+		return strings.ToLower(items[i].Component.DisplayName) < strings.ToLower(items[j].Component.DisplayName)
+	})
+	return items
+}
+
+func sortComponentIndexItem(item *ComponentIndexItem) {
+	if item == nil {
+		return
+	}
+	sort.Strings(item.RelatedPathIDs)
+	sort.Strings(item.RelatedZoneNames)
+	sort.Strings(item.RelatedCouplingIDs)
+	sort.SliceStable(item.RelatedLoopRefs, func(i, j int) bool {
+		return loopRefKey(item.RelatedLoopRefs[i].Type, item.RelatedLoopRefs[i].Name) < loopRefKey(item.RelatedLoopRefs[j].Type, item.RelatedLoopRefs[j].Name)
+	})
+}
+
+func buildHVACSystemSummaries(loops []HVACLoop, paths []ZoneServicePath, couplings []SystemCoupling) []SystemSummary {
 	var systems []SystemSummary
 	for _, loop := range loops {
+		ref := loopRefFromLoop(loop)
+		relatedPaths := relatedPathIDsForLoop(paths, ref)
+		relatedZones := relatedZoneNamesForPaths(paths, relatedPaths)
+		relatedCouplings := relatedCouplingIDsForLoop(couplings, ref)
 		systems = append(systems, SystemSummary{
-			ID:          loop.ID,
-			Type:        loop.Type,
-			Name:        loop.Name,
-			ObjectType:  loop.Type,
-			ObjectIndex: loop.ObjectIndex,
-			Role:        hvacLoopSystemRole(loop.Type),
-			Mediums:     loopMediums(loop.Type),
+			ID:                 loop.ID,
+			Type:               loop.Type,
+			Name:               loop.Name,
+			ObjectType:         loop.Type,
+			ObjectIndex:        loop.ObjectIndex,
+			Role:               hvacLoopSystemRole(loop.Type),
+			Mediums:            mediumSetForLoopPaths(ref, paths),
+			RelatedPathIDs:     relatedPaths,
+			RelatedZoneNames:   relatedZones,
+			RelatedCouplingIDs: relatedCouplings,
 		})
+	}
+	for _, summary := range refrigerantSystemSummaries(paths) {
+		systems = append(systems, summary)
 	}
 	sort.SliceStable(systems, func(i, j int) bool {
 		if systems[i].Type != systems[j].Type {
@@ -437,6 +594,717 @@ func buildHVACSystemSummaries(loops []HVACLoop) []SystemSummary {
 		return strings.ToLower(systems[i].Name) < strings.ToLower(systems[j].Name)
 	})
 	return systems
+}
+
+func refrigerantSystemSummaries(paths []ZoneServicePath) []SystemSummary {
+	byID := map[string]SystemSummary{}
+	for _, path := range paths {
+		if path.RefrigerantSystem == nil {
+			continue
+		}
+		system := *path.RefrigerantSystem
+		id := firstNonEmpty(system.ID, navigationSystemID(&system))
+		summary := byID[id]
+		if summary.ID == "" {
+			summary = SystemSummary{
+				ID:          id,
+				Type:        firstNonEmpty(system.Type, "refrigerant_system"),
+				Name:        system.Name,
+				ObjectType:  system.ObjectType,
+				ObjectIndex: system.ObjectIndex,
+				Role:        "refrigerant_system",
+				Mediums:     append([]string(nil), system.Mediums...),
+			}
+		}
+		summary.RelatedPathIDs = appendUniqueString(summary.RelatedPathIDs, path.ID)
+		summary.RelatedZoneNames = appendUniqueString(summary.RelatedZoneNames, path.ZoneName)
+		byID[id] = summary
+	}
+	summaries := make([]SystemSummary, 0, len(byID))
+	for _, summary := range byID {
+		sort.Strings(summary.RelatedPathIDs)
+		sort.Strings(summary.RelatedZoneNames)
+		summaries = append(summaries, summary)
+	}
+	return summaries
+}
+
+type hvacNavigationBuilder struct {
+	entities map[string]HVACNavigationEntity
+	links    map[string]HVACNavigationLink
+	byZone   map[string][]string
+	bySpace  map[string][]string
+	byLoop   map[string][]string
+	byComp   map[string][]string
+	byCpl    map[string][]string
+	byNet    map[string][]string
+	byPath   map[string][]string
+}
+
+func buildHVACNavigationIndex(paths []ZoneServicePath, systems []SystemSummary, couplings []SystemCoupling, networks []EnergyNetwork, componentIndex ComponentIndex) HVACNavigationIndex {
+	builder := newHVACNavigationBuilder()
+	couplingByID := map[string]SystemCoupling{}
+	for _, coupling := range couplings {
+		couplingByID[coupling.ID] = coupling
+		builder.addEntity(navigationEntityForCoupling(coupling, relatedPathIDsForCoupling(paths, coupling.ID)))
+	}
+	for _, network := range networks {
+		networkID := navigationNetworkID(network)
+		builder.addEntity(HVACNavigationEntity{
+			ID:        networkID,
+			Kind:      "network",
+			Label:     firstNonEmpty(network.Name, network.NetworkType),
+			Mediums:   append([]string(nil), network.Mediums...),
+			PathTypes: nil,
+		})
+		for _, couplingID := range network.CouplingIDs {
+			couplingEntityID := navigationCouplingID(couplingID)
+			builder.addLink(networkID, couplingEntityID, "contains_coupling", "", "")
+			builder.addIndex(builder.byNet, networkID, couplingID)
+			if coupling, ok := couplingByID[couplingID]; ok {
+				builder.addEntity(navigationEntityForCoupling(coupling, relatedPathIDsForCoupling(paths, coupling.ID)))
+			}
+		}
+	}
+	for _, system := range systems {
+		builder.addEntity(navigationEntityForSystemSummary(system))
+	}
+	for _, path := range paths {
+		builder.addPath(path, couplingByID)
+	}
+	for _, item := range componentIndexItems(componentIndex) {
+		entity := navigationEntityForComponent(item.Component, item.RelatedPathIDs)
+		entity.ServiceKinds = serviceKindsForPathIDs(paths, item.RelatedPathIDs)
+		entity.PathTypes = pathTypesForPathIDs(paths, item.RelatedPathIDs)
+		for _, loop := range item.RelatedLoopRefs {
+			entity.Mediums = appendUniqueStrings(entity.Mediums, loop.Mediums...)
+		}
+		builder.addEntity(entity)
+		for _, pathID := range item.RelatedPathIDs {
+			builder.addIndex(builder.byComp, entity.ID, pathID)
+		}
+		for _, couplingID := range item.RelatedCouplingIDs {
+			builder.addLink(entity.ID, navigationCouplingID(couplingID), "connected_to_coupling", "", "")
+		}
+	}
+	for _, coupling := range couplings {
+		couplingEntityID := navigationCouplingID(coupling.ID)
+		for _, loop := range coupling.ConnectedLoops {
+			loopEntityID := navigationLoopID(loop)
+			builder.addEntity(navigationEntityForLoop(loop, nil))
+			builder.addLink(loopEntityID, couplingEntityID, "has_supporting_asset", "", firstMedium(coupling.Mediums))
+		}
+		for _, component := range append([]ComponentRef{coupling.Object}, coupling.ConnectedComponents...) {
+			componentEntityID := navigationComponentID(component)
+			builder.addEntity(navigationEntityForComponent(component, nil))
+			builder.addLink(componentEntityID, couplingEntityID, "connected_to_coupling", "", firstMedium(coupling.Mediums))
+		}
+		for _, zone := range coupling.ConnectedZones {
+			subjectEntityID := navigationSubjectID(zone)
+			builder.addEntity(navigationEntityForSubject(zone, nil))
+			builder.addLink(couplingEntityID, subjectEntityID, "affects_zone", "", firstMedium(coupling.Mediums))
+		}
+	}
+	return builder.index()
+}
+
+func newHVACNavigationBuilder() *hvacNavigationBuilder {
+	return &hvacNavigationBuilder{
+		entities: map[string]HVACNavigationEntity{},
+		links:    map[string]HVACNavigationLink{},
+		byZone:   map[string][]string{},
+		bySpace:  map[string][]string{},
+		byLoop:   map[string][]string{},
+		byComp:   map[string][]string{},
+		byCpl:    map[string][]string{},
+		byNet:    map[string][]string{},
+		byPath:   map[string][]string{},
+	}
+}
+
+func (builder *hvacNavigationBuilder) addPath(path ZoneServicePath, couplingByID map[string]SystemCoupling) {
+	pathEntityID := navigationPathID(path.ID)
+	subjectID := navigationSubjectID(path.ServedSubject)
+	builder.addEntity(HVACNavigationEntity{
+		ID:             pathEntityID,
+		Kind:           "service_path",
+		Label:          servicePathNavigationLabel(path),
+		ZoneName:       path.ZoneName,
+		SpaceName:      path.SpaceName,
+		ServiceKinds:   []string{path.ServiceKind},
+		PathTypes:      []string{path.PathType},
+		Mediums:        pathMediums(path),
+		RelatedPathIDs: []string{path.ID},
+	})
+	builder.addEntity(navigationEntityForSubject(path.ServedSubject, []string{path.ID}))
+	builder.addLink(pathEntityID, subjectID, "serves", path.ID, "")
+	builder.addPathEntity(path.ID, pathEntityID)
+	builder.addPathEntity(path.ID, subjectID)
+	if path.ServedSubject.Kind == "space" {
+		builder.addIndex(builder.bySpace, subjectID, path.ID)
+	} else {
+		builder.addIndex(builder.byZone, subjectID, path.ID)
+	}
+	for _, loop := range pathLoopRefs(path) {
+		loopEntityID := navigationLoopID(loop)
+		builder.addEntity(navigationEntityForLoop(loop, []string{path.ID}))
+		builder.addLink(pathEntityID, loopEntityID, "uses_loop", path.ID, pathMediumForLoop(path, loop))
+		builder.addIndex(builder.byLoop, loopEntityID, path.ID)
+		builder.addPathEntity(path.ID, loopEntityID)
+	}
+	for _, system := range pathSystemRefs(path) {
+		systemEntityID := navigationSystemID(system)
+		builder.addEntity(navigationEntityForSystemRef(system, []string{path.ID}))
+		builder.addLink(pathEntityID, systemEntityID, "has_source", path.ID, firstMedium(system.Mediums))
+		builder.addPathEntity(path.ID, systemEntityID)
+	}
+	for _, component := range pathComponentRefs(path) {
+		componentEntityID := navigationComponentID(component)
+		builder.addEntity(navigationEntityForComponent(component, []string{path.ID}))
+		linkKind := "has_conditioning"
+		if component.ID == path.Delivery.ID {
+			linkKind = "has_delivery"
+		}
+		if path.DeliveryWrapper != nil && component.ID == path.DeliveryWrapper.ID {
+			linkKind = "has_delivery_wrapper"
+		}
+		builder.addLink(pathEntityID, componentEntityID, linkKind, path.ID, firstMedium(component.Mediums))
+		builder.addIndex(builder.byComp, componentEntityID, path.ID)
+		builder.addPathEntity(path.ID, componentEntityID)
+		for _, nodeName := range componentNodeNames(component) {
+			nodeID := navigationNodeID(nodeName)
+			builder.addEntity(HVACNavigationEntity{ID: nodeID, Kind: "node", Label: nodeName, RelatedPathIDs: []string{path.ID}})
+			builder.addLink(componentEntityID, nodeID, "uses_node", path.ID, firstMedium(component.Mediums))
+			builder.addPathEntity(path.ID, nodeID)
+		}
+	}
+	for _, couplingID := range path.SupportingCouplings {
+		couplingEntityID := navigationCouplingID(couplingID)
+		if coupling, ok := couplingByID[couplingID]; ok {
+			builder.addEntity(navigationEntityForCoupling(coupling, []string{path.ID}))
+			builder.addLink(pathEntityID, couplingEntityID, "supported_by", path.ID, firstMedium(coupling.Mediums))
+		} else {
+			builder.addEntity(HVACNavigationEntity{ID: couplingEntityID, Kind: "coupling", Label: couplingID, RelatedPathIDs: []string{path.ID}})
+			builder.addLink(pathEntityID, couplingEntityID, "supported_by", path.ID, "")
+		}
+		builder.addIndex(builder.byCpl, couplingEntityID, path.ID)
+		builder.addPathEntity(path.ID, couplingEntityID)
+	}
+}
+
+func (builder *hvacNavigationBuilder) addEntity(entity HVACNavigationEntity) {
+	if entity.ID == "" {
+		return
+	}
+	current := builder.entities[entity.ID]
+	if current.ID == "" {
+		current = entity
+	} else {
+		current.Kind = firstNonEmpty(current.Kind, entity.Kind)
+		current.Label = firstNonEmpty(current.Label, entity.Label)
+		current.ObjectType = firstNonEmpty(current.ObjectType, entity.ObjectType)
+		current.ObjectName = firstNonEmpty(current.ObjectName, entity.ObjectName)
+		if current.ObjectIndex == 0 && entity.ObjectIndex != 0 {
+			current.ObjectIndex = entity.ObjectIndex
+		}
+		current.ZoneName = firstNonEmpty(current.ZoneName, entity.ZoneName)
+		current.SpaceName = firstNonEmpty(current.SpaceName, entity.SpaceName)
+		current.LoopName = firstNonEmpty(current.LoopName, entity.LoopName)
+		current.LoopType = firstNonEmpty(current.LoopType, entity.LoopType)
+		current.ServiceKinds = appendUniqueStrings(current.ServiceKinds, entity.ServiceKinds...)
+		current.PathTypes = appendUniqueStrings(current.PathTypes, entity.PathTypes...)
+		current.Mediums = appendUniqueStrings(current.Mediums, entity.Mediums...)
+		current.RelatedPathIDs = appendUniqueStrings(current.RelatedPathIDs, entity.RelatedPathIDs...)
+	}
+	current.ServiceKinds = cleanStrings(current.ServiceKinds)
+	current.PathTypes = cleanStrings(current.PathTypes)
+	current.Mediums = cleanStrings(current.Mediums)
+	sort.Strings(current.RelatedPathIDs)
+	builder.entities[entity.ID] = current
+}
+
+func (builder *hvacNavigationBuilder) addLink(fromID string, toID string, kind string, pathID string, medium string) {
+	if fromID == "" || toID == "" || kind == "" {
+		return
+	}
+	id := strings.Join([]string{kind, fromID, toID, pathID, medium}, "|")
+	builder.links[id] = HVACNavigationLink{
+		ID:     id,
+		FromID: fromID,
+		ToID:   toID,
+		Kind:   kind,
+		PathID: pathID,
+		Medium: medium,
+	}
+}
+
+func (builder *hvacNavigationBuilder) addPathEntity(pathID string, entityID string) {
+	builder.addIndex(builder.byPath, pathID, entityID)
+}
+
+func (builder *hvacNavigationBuilder) addIndex(index map[string][]string, key string, value string) {
+	if key == "" || value == "" {
+		return
+	}
+	index[key] = appendUniqueString(index[key], value)
+}
+
+func (builder *hvacNavigationBuilder) index() HVACNavigationIndex {
+	entities := make([]HVACNavigationEntity, 0, len(builder.entities))
+	for _, entity := range builder.entities {
+		sort.Strings(entity.ServiceKinds)
+		sort.Strings(entity.PathTypes)
+		sort.Strings(entity.Mediums)
+		sort.Strings(entity.RelatedPathIDs)
+		entities = append(entities, entity)
+	}
+	sort.SliceStable(entities, func(i, j int) bool {
+		if entities[i].Kind != entities[j].Kind {
+			return entities[i].Kind < entities[j].Kind
+		}
+		return entities[i].ID < entities[j].ID
+	})
+	links := make([]HVACNavigationLink, 0, len(builder.links))
+	for _, link := range builder.links {
+		links = append(links, link)
+	}
+	sort.SliceStable(links, func(i, j int) bool {
+		return links[i].ID < links[j].ID
+	})
+	return HVACNavigationIndex{
+		Entities:    entities,
+		Links:       links,
+		ByZone:      sortedStringMap(builder.byZone),
+		BySpace:     sortedStringMap(builder.bySpace),
+		ByLoop:      sortedStringMap(builder.byLoop),
+		ByComponent: sortedStringMap(builder.byComp),
+		ByCoupling:  sortedStringMap(builder.byCpl),
+		ByNetwork:   sortedStringMap(builder.byNet),
+		ByPath:      sortedStringMap(builder.byPath),
+	}
+}
+
+func navigationPathID(pathID string) string {
+	pathID = strings.TrimSpace(pathID)
+	if pathID == "" {
+		return ""
+	}
+	if strings.HasPrefix(pathID, "path:") {
+		return pathID
+	}
+	return "path:" + pathID
+}
+
+func navigationSubjectID(subject ServedSubjectRef) string {
+	return servedSubjectKey(subject)
+}
+
+func navigationLoopID(loop LoopRef) string {
+	return "loop:" + loopRefKey(loop.Type, loop.Name)
+}
+
+func navigationSystemID(system *SystemRef) string {
+	if system == nil {
+		return ""
+	}
+	return "system:" + normalizeFieldCatalogKey(firstNonEmpty(system.Type, system.ObjectType, "system")) + ":" + normalizeName(firstNonEmpty(system.Name, system.ObjectName, system.DisplayName))
+}
+
+func navigationComponentID(component ComponentRef) string {
+	objectType := normalizeFieldCatalogKey(component.ObjectType)
+	objectName := normalizeName(firstNonEmpty(component.ObjectName, component.DisplayName))
+	if objectType != "" && objectName != "" {
+		return "component:" + objectType + ":" + objectName
+	}
+	if component.ID != "" {
+		return "component:" + normalizeName(component.ID)
+	}
+	if objectType != "" {
+		return "component:" + objectType
+	}
+	return ""
+}
+
+func navigationCouplingID(couplingID string) string {
+	couplingID = strings.TrimSpace(couplingID)
+	if couplingID == "" {
+		return ""
+	}
+	if strings.HasPrefix(couplingID, "coupling:") {
+		return couplingID
+	}
+	return "coupling:" + normalizeName(couplingID)
+}
+
+func navigationNetworkID(network EnergyNetwork) string {
+	name := normalizeName(firstNonEmpty(network.Name, network.ID, network.NetworkType))
+	return "network:" + normalizeFieldCatalogKey(network.NetworkType) + ":" + name
+}
+
+func navigationNodeID(nodeName string) string {
+	nodeName = strings.TrimSpace(nodeName)
+	if nodeName == "" {
+		return ""
+	}
+	return "node:" + normalizeName(nodeName)
+}
+
+func navigationEntityForSubject(subject ServedSubjectRef, relatedPathIDs []string) HVACNavigationEntity {
+	entity := HVACNavigationEntity{
+		ID:             navigationSubjectID(subject),
+		Kind:           firstNonEmpty(subject.Kind, "zone"),
+		Label:          firstNonEmpty(subject.Name, subject.SpaceName, subject.ZoneName),
+		ObjectIndex:    subject.ObjectIndex,
+		ZoneName:       subject.ZoneName,
+		SpaceName:      subject.SpaceName,
+		RelatedPathIDs: append([]string(nil), relatedPathIDs...),
+	}
+	if entity.Kind == "space" {
+		entity.Label = firstNonEmpty(subject.SpaceName, subject.Name)
+	}
+	return entity
+}
+
+func navigationEntityForLoop(loop LoopRef, relatedPathIDs []string) HVACNavigationEntity {
+	return HVACNavigationEntity{
+		ID:             navigationLoopID(loop),
+		Kind:           "loop",
+		Label:          firstNonEmpty(loop.Name, loop.Type),
+		ObjectType:     loop.Type,
+		ObjectName:     loop.Name,
+		ObjectIndex:    loop.ObjectIndex,
+		LoopName:       loop.Name,
+		LoopType:       loop.Type,
+		Mediums:        append([]string(nil), loop.Mediums...),
+		RelatedPathIDs: append([]string(nil), relatedPathIDs...),
+	}
+}
+
+func navigationEntityForSystemRef(system *SystemRef, relatedPathIDs []string) HVACNavigationEntity {
+	if system == nil {
+		return HVACNavigationEntity{}
+	}
+	return HVACNavigationEntity{
+		ID:             navigationSystemID(system),
+		Kind:           "system",
+		Label:          firstNonEmpty(system.DisplayName, system.Name, system.ObjectName, system.Type),
+		ObjectType:     firstNonEmpty(system.ObjectType, system.Type),
+		ObjectName:     firstNonEmpty(system.ObjectName, system.Name),
+		ObjectIndex:    system.ObjectIndex,
+		Mediums:        append([]string(nil), system.Mediums...),
+		RelatedPathIDs: append([]string(nil), relatedPathIDs...),
+	}
+}
+
+func navigationEntityForSystemSummary(system SystemSummary) HVACNavigationEntity {
+	ref := &SystemRef{
+		Type:        system.Type,
+		Name:        system.Name,
+		ObjectType:  system.ObjectType,
+		ObjectName:  system.Name,
+		ObjectIndex: system.ObjectIndex,
+		Mediums:     system.Mediums,
+	}
+	entity := navigationEntityForSystemRef(ref, system.RelatedPathIDs)
+	entity.Kind = "system"
+	entity.LoopName = system.Name
+	entity.LoopType = system.Type
+	return entity
+}
+
+func navigationEntityForComponent(component ComponentRef, relatedPathIDs []string) HVACNavigationEntity {
+	return HVACNavigationEntity{
+		ID:             navigationComponentID(component),
+		Kind:           "component",
+		Label:          componentRefLabel(component),
+		ObjectType:     component.ObjectType,
+		ObjectName:     component.ObjectName,
+		ObjectIndex:    component.ObjectIndex,
+		Mediums:        append([]string(nil), component.Mediums...),
+		RelatedPathIDs: append([]string(nil), relatedPathIDs...),
+	}
+}
+
+func navigationEntityForCoupling(coupling SystemCoupling, relatedPathIDs []string) HVACNavigationEntity {
+	entity := navigationEntityForComponent(coupling.Object, relatedPathIDs)
+	entity.ID = navigationCouplingID(coupling.ID)
+	entity.Kind = "coupling"
+	entity.Label = firstNonEmpty(coupling.Object.DisplayName, coupling.Object.ObjectName, coupling.Role, coupling.CouplingType)
+	entity.ServiceKinds = nil
+	entity.PathTypes = nil
+	entity.Mediums = appendUniqueStrings(entity.Mediums, coupling.Mediums...)
+	return entity
+}
+
+func componentRefLabel(component ComponentRef) string {
+	return firstNonEmpty(component.DisplayName, component.ObjectName, component.ObjectType, component.ID)
+}
+
+func servicePathNavigationLabel(path ZoneServicePath) string {
+	return strings.TrimSpace(strings.Join([]string{
+		servedSubjectLabel(path.ServedSubject),
+		serviceKindNavigationLabel(path.ServiceKind),
+		componentRefLabel(path.Delivery),
+	}, " / "))
+}
+
+func servedSubjectLabel(subject ServedSubjectRef) string {
+	if subject.Kind == "space" && subject.SpaceName != "" {
+		if subject.ZoneName != "" {
+			return subject.SpaceName + " / " + subject.ZoneName
+		}
+		return subject.SpaceName
+	}
+	return firstNonEmpty(subject.ZoneName, subject.Name)
+}
+
+func serviceKindNavigationLabel(kind string) string {
+	if kind == "" {
+		return ""
+	}
+	return strings.ReplaceAll(kind, "_", " ")
+}
+
+func componentRefIndexKey(ref ComponentRef) string {
+	if strings.TrimSpace(ref.ObjectType) == "" || strings.TrimSpace(ref.ObjectName) == "" {
+		return ""
+	}
+	return hvacObjectKey(ref.ObjectType, ref.ObjectName)
+}
+
+func pathLoopRefs(path ZoneServicePath) []LoopRef {
+	var refs []LoopRef
+	if path.PlantLoop != nil {
+		refs = appendUniqueLoopRef(refs, *path.PlantLoop)
+	}
+	if path.CondenserLoop != nil {
+		refs = appendUniqueLoopRef(refs, *path.CondenserLoop)
+	}
+	if path.AirLoop != nil {
+		refs = appendUniqueLoopRef(refs, *path.AirLoop)
+	}
+	return refs
+}
+
+func pathSystemRefs(path ZoneServicePath) []*SystemRef {
+	var refs []*SystemRef
+	if path.SourceSystem != nil {
+		refs = append(refs, path.SourceSystem)
+	}
+	if path.RefrigerantSystem != nil {
+		refs = append(refs, path.RefrigerantSystem)
+	}
+	return refs
+}
+
+func pathComponentRefs(path ZoneServicePath) []ComponentRef {
+	var refs []ComponentRef
+	refs = appendUniqueComponentRef(refs, path.Delivery)
+	if path.DeliveryWrapper != nil {
+		refs = appendUniqueComponentRef(refs, *path.DeliveryWrapper)
+	}
+	for _, component := range path.Conditioning {
+		refs = appendUniqueComponentRef(refs, component)
+	}
+	return refs
+}
+
+func componentNodeNames(component ComponentRef) []string {
+	names := map[string]bool{}
+	for _, name := range []string{
+		component.InletNode,
+		component.OutletNode,
+		component.WaterInletNode,
+		component.WaterOutletNode,
+	} {
+		if strings.TrimSpace(name) != "" {
+			names[name] = true
+		}
+	}
+	return sortedStringSet(names)
+}
+
+func pathMediums(path ZoneServicePath) []string {
+	values := map[string]bool{}
+	add := func(items []string) {
+		for _, item := range items {
+			if item != "" {
+				values[item] = true
+			}
+		}
+	}
+	for _, loop := range pathLoopRefs(path) {
+		add([]string{pathMediumForLoop(path, loop)})
+	}
+	for _, component := range pathComponentRefs(path) {
+		add(component.Mediums)
+	}
+	for _, system := range pathSystemRefs(path) {
+		add(system.Mediums)
+	}
+	if len(values) == 0 {
+		add(hvacMediumsForServiceKind(path.ServiceKind))
+	}
+	return sortedStringSet(values)
+}
+
+func pathMediumForLoop(path ZoneServicePath, loop LoopRef) string {
+	loopType := strings.ToLower(strings.TrimSpace(loop.Type))
+	switch {
+	case strings.Contains(loopType, "airloop"):
+		return "air"
+	case strings.Contains(loopType, "condenser"):
+		return "condenser_water"
+	case strings.Contains(loopType, "plant"):
+		if path.ServiceKind == "heating" || path.ServiceKind == "radiant_heating" || path.PathType == "baseboard" {
+			return "hot_water"
+		}
+		if path.ServiceKind == "cooling" || path.ServiceKind == "radiant_cooling" || path.ServiceKind == "dehumidification" {
+			return "chilled_water"
+		}
+	}
+	return firstMedium(loop.Mediums)
+}
+
+func firstMedium(mediums []string) string {
+	if len(mediums) == 0 {
+		return ""
+	}
+	return mediums[0]
+}
+
+func relatedPathIDsForLoop(paths []ZoneServicePath, loop LoopRef) []string {
+	var ids []string
+	for _, path := range paths {
+		if pathUsesLoop(path, loop) {
+			ids = appendUniqueString(ids, path.ID)
+		}
+	}
+	sort.Strings(ids)
+	return ids
+}
+
+func pathUsesLoop(path ZoneServicePath, loop LoopRef) bool {
+	for _, candidate := range pathLoopRefs(path) {
+		if loopRefKey(candidate.Type, candidate.Name) == loopRefKey(loop.Type, loop.Name) {
+			return true
+		}
+	}
+	return false
+}
+
+func relatedZoneNamesForPaths(paths []ZoneServicePath, pathIDs []string) []string {
+	wanted := map[string]bool{}
+	for _, id := range pathIDs {
+		wanted[id] = true
+	}
+	values := map[string]bool{}
+	for _, path := range paths {
+		if wanted[path.ID] && path.ZoneName != "" {
+			values[path.ZoneName] = true
+		}
+	}
+	return sortedStringSet(values)
+}
+
+func relatedCouplingIDsForLoop(couplings []SystemCoupling, loop LoopRef) []string {
+	var ids []string
+	for _, coupling := range couplings {
+		for _, candidate := range coupling.ConnectedLoops {
+			if loopRefKey(candidate.Type, candidate.Name) == loopRefKey(loop.Type, loop.Name) {
+				ids = appendUniqueString(ids, coupling.ID)
+			}
+		}
+	}
+	sort.Strings(ids)
+	return ids
+}
+
+func relatedPathIDsForCoupling(paths []ZoneServicePath, couplingID string) []string {
+	var ids []string
+	for _, path := range paths {
+		if stringSliceContainsFold(path.SupportingCouplings, couplingID) {
+			ids = appendUniqueString(ids, path.ID)
+		}
+	}
+	sort.Strings(ids)
+	return ids
+}
+
+func mediumSetForLoopPaths(loop LoopRef, paths []ZoneServicePath) []string {
+	values := map[string]bool{}
+	for _, path := range paths {
+		if pathUsesLoop(path, loop) {
+			if medium := pathMediumForLoop(path, loop); medium != "" {
+				values[medium] = true
+			}
+		}
+	}
+	if len(values) == 0 {
+		for _, medium := range loop.Mediums {
+			values[medium] = true
+		}
+	}
+	if len(values) == 0 {
+		for _, medium := range loopMediums(loop.Type) {
+			values[medium] = true
+		}
+	}
+	return sortedStringSet(values)
+}
+
+func serviceKindsForPathIDs(paths []ZoneServicePath, pathIDs []string) []string {
+	wanted := map[string]bool{}
+	for _, id := range pathIDs {
+		wanted[id] = true
+	}
+	values := map[string]bool{}
+	for _, path := range paths {
+		if wanted[path.ID] && path.ServiceKind != "" {
+			values[path.ServiceKind] = true
+		}
+	}
+	return sortedStringSet(values)
+}
+
+func pathTypesForPathIDs(paths []ZoneServicePath, pathIDs []string) []string {
+	wanted := map[string]bool{}
+	for _, id := range pathIDs {
+		wanted[id] = true
+	}
+	values := map[string]bool{}
+	for _, path := range paths {
+		if wanted[path.ID] && path.PathType != "" {
+			values[path.PathType] = true
+		}
+	}
+	return sortedStringSet(values)
+}
+
+func appendUniqueLoopRef(values []LoopRef, candidate LoopRef) []LoopRef {
+	if strings.TrimSpace(candidate.Type) == "" && strings.TrimSpace(candidate.Name) == "" {
+		return values
+	}
+	key := loopRefKey(candidate.Type, candidate.Name)
+	for _, value := range values {
+		if loopRefKey(value.Type, value.Name) == key {
+			return values
+		}
+	}
+	return append(values, candidate)
+}
+
+func sortedStringMap(values map[string][]string) map[string][]string {
+	if len(values) == 0 {
+		return nil
+	}
+	out := make(map[string][]string, len(values))
+	for key, items := range values {
+		copied := append([]string(nil), items...)
+		sort.Strings(copied)
+		out[key] = copied
+	}
+	return out
 }
 
 func buildHVACSystemCouplings(ctx *hvacContext, loops []HVACLoop, componentIndex ComponentIndex) []SystemCoupling {

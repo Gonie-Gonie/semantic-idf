@@ -41,6 +41,92 @@ func TestHVACServiceModelReferenceLargeOfficeZonePaths(t *testing.T) {
 	}
 }
 
+func TestHVACServiceModelBuildsNavigationIndex(t *testing.T) {
+	text, err := os.ReadFile("../../frontend/src/samples/RefBldgLargeOfficeNew2004_Chicago.idf")
+	if err != nil {
+		t.Fatalf("read reference sample: %v", err)
+	}
+	doc, err := Parse(string(text))
+	if err != nil {
+		t.Fatalf("parse reference sample: %v", err)
+	}
+
+	report := AnalyzeHVAC(doc)
+	coreBottom := findHVACTestingZoneService(report.ServiceModel, "Core_bottom")
+	if coreBottom == nil {
+		t.Fatalf("Core_bottom zone service not found")
+	}
+	path := findZoneServicePath(coreBottom.Paths, "cooling", "central_air_with_plant", "CoolSys1", "VAV_1", "Core_bottom VAV Box")
+	if path == nil {
+		t.Fatalf("Core_bottom cooling service path not found: %#v", coreBottom.Paths)
+	}
+	navigation := report.ServiceModel.Navigation
+	if len(navigation.Entities) == 0 || len(navigation.Links) == 0 {
+		t.Fatalf("navigation index is empty: %#v", navigation)
+	}
+
+	zoneID := "zone:" + normalizeName("Core_bottom")
+	loopID := "loop:" + loopRefKey("PlantLoop", "CoolSys1")
+	componentID := navigationComponentID(path.Delivery)
+	pathEntityID := navigationPathID(path.ID)
+	for _, assertion := range []struct {
+		name   string
+		values []string
+		want   string
+	}{
+		{"zone reverse index", navigation.ByZone[zoneID], path.ID},
+		{"loop reverse index", navigation.ByLoop[loopID], path.ID},
+		{"component reverse index", navigation.ByComponent[componentID], path.ID},
+		{"path entity index", navigation.ByPath[path.ID], pathEntityID},
+	} {
+		if !stringSliceContains(assertion.values, assertion.want) {
+			t.Fatalf("%s = %#v, want %s", assertion.name, assertion.values, assertion.want)
+		}
+	}
+	if strings.HasPrefix(componentID, "component:") && strings.TrimPrefix(componentID, "component:") == path.Delivery.ID {
+		t.Fatalf("navigation component id still mirrors object-index-only id: %s", componentID)
+	}
+	if findNavigationEntity(navigation.Entities, pathEntityID, "service_path") == nil {
+		t.Fatalf("navigation entities missing path entity %s", pathEntityID)
+	}
+	if findNavigationLink(navigation.Links, pathEntityID, zoneID, "serves") == nil {
+		t.Fatalf("navigation links missing path -> zone serve link")
+	}
+	if findNavigationLink(navigation.Links, pathEntityID, loopID, "uses_loop") == nil {
+		t.Fatalf("navigation links missing path -> loop link")
+	}
+	system := findSystemSummary(report.ServiceModel.Systems, "PlantLoop", "CoolSys1")
+	if system == nil {
+		t.Fatalf("systems missing CoolSys1 summary: %#v", report.ServiceModel.Systems)
+	}
+	if !stringSliceContains(system.RelatedPathIDs, path.ID) || !stringSliceContains(system.RelatedZoneNames, "Core_bottom") {
+		t.Fatalf("CoolSys1 system summary missing service reverse refs: %#v", system)
+	}
+	component := findComponentIndexItem(report.ServiceModel.Components, path.Delivery.ObjectType, path.Delivery.ObjectName)
+	if component == nil {
+		t.Fatalf("components missing delivery component %#v", path.Delivery)
+	}
+	if !stringSliceContains(component.RelatedPathIDs, path.ID) || !stringSliceContains(component.RelatedZoneNames, "Core_bottom") {
+		t.Fatalf("component index missing related paths/zones: %#v", component)
+	}
+}
+
+func TestHVACNavigationComponentIDUsesTypeAndName(t *testing.T) {
+	left := navigationComponentID(ComponentRef{ObjectType: "Coil:Cooling:Water", ObjectName: "Shared Name", ObjectIndex: 10})
+	right := navigationComponentID(ComponentRef{ObjectType: "Fan:ConstantVolume", ObjectName: "Shared Name", ObjectIndex: 11})
+	if left == right {
+		t.Fatalf("different component types collided: %s", left)
+	}
+	for _, id := range []string{left, right} {
+		if strings.HasPrefix(strings.TrimPrefix(id, "component:"), "10") || strings.HasPrefix(strings.TrimPrefix(id, "component:"), "11") {
+			t.Fatalf("component navigation id should not be object-index-only: %s", id)
+		}
+		if !strings.Contains(id, normalizeName("Shared Name")) {
+			t.Fatalf("component navigation id should include normalized name: %s", id)
+		}
+	}
+}
+
 func TestHVACServiceModelExternalFixtureMatrix(t *testing.T) {
 	fixtures := []struct {
 		name       string
@@ -601,6 +687,13 @@ func TestHVACServiceModelLinksLoopSupportingCouplingsToServicePaths(t *testing.T
 	if path.Delivery.ObjectName == "Ice Tank" || componentRefsContainObject(path.Conditioning, "ThermalStorage:Ice:Simple", "Ice Tank") {
 		t.Fatalf("supporting storage leaked into primary service path: %#v", path)
 	}
+	couplingEntityID := navigationCouplingID(storage.ID)
+	if !stringSliceContains(report.ServiceModel.Navigation.ByCoupling[couplingEntityID], path.ID) {
+		t.Fatalf("navigation coupling reverse index = %#v, want %s", report.ServiceModel.Navigation.ByCoupling[couplingEntityID], path.ID)
+	}
+	if findNavigationLink(report.ServiceModel.Navigation.Links, navigationPathID(path.ID), couplingEntityID, "supported_by") == nil {
+		t.Fatalf("navigation links missing path -> supporting coupling link")
+	}
 	if !hasSystemCoupling(report.ServiceModel.Couplings, "PlantEquipmentOperation:ThermalEnergyStorage", "operation_scheme", "thermal_storage_operation") {
 		t.Fatalf("couplings = %#v, want thermal storage operation scheme coupling", report.ServiceModel.Couplings)
 	}
@@ -1037,4 +1130,41 @@ func hasEnergyNetwork(model HVACServiceModel, networkType string) bool {
 		}
 	}
 	return false
+}
+
+func findNavigationEntity(entities []HVACNavigationEntity, id string, kind string) *HVACNavigationEntity {
+	for index := range entities {
+		if entities[index].ID == id && (kind == "" || entities[index].Kind == kind) {
+			return &entities[index]
+		}
+	}
+	return nil
+}
+
+func findNavigationLink(links []HVACNavigationLink, fromID string, toID string, kind string) *HVACNavigationLink {
+	for index := range links {
+		if links[index].FromID == fromID && links[index].ToID == toID && links[index].Kind == kind {
+			return &links[index]
+		}
+	}
+	return nil
+}
+
+func findSystemSummary(systems []SystemSummary, systemType string, name string) *SystemSummary {
+	for index := range systems {
+		if strings.EqualFold(systems[index].Type, systemType) && strings.EqualFold(systems[index].Name, name) {
+			return &systems[index]
+		}
+	}
+	return nil
+}
+
+func findComponentIndexItem(items []ComponentIndexItem, objectType string, objectName string) *ComponentIndexItem {
+	for index := range items {
+		component := items[index].Component
+		if strings.EqualFold(component.ObjectType, objectType) && strings.EqualFold(component.ObjectName, objectName) {
+			return &items[index]
+		}
+	}
+	return nil
 }
