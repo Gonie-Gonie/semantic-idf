@@ -162,6 +162,44 @@ func TestAnalysisCacheSharesInFlightComputation(t *testing.T) {
 	}
 }
 
+func TestParseBatchInputReusesContentHashCache(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "model.idf")
+	if err := os.WriteFile(path, []byte(appSummaryIDF), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	firstModel, firstDoc, err := parseBatchInput(path)
+	if err != nil {
+		t.Fatalf("first parseBatchInput() error = %v", err)
+	}
+	secondModel, secondDoc, err := parseBatchInput(path)
+	if err != nil {
+		t.Fatalf("second parseBatchInput() error = %v", err)
+	}
+	if firstModel != secondModel {
+		t.Fatalf("parseBatchInput() did not reuse cached model")
+	}
+	if len(firstDoc.Objects) != len(secondDoc.Objects) {
+		t.Fatalf("cached doc object count = %d, want %d", len(secondDoc.Objects), len(firstDoc.Objects))
+	}
+}
+
+func TestThrottleMultiSummaryProgressKeepsFinalEvent(t *testing.T) {
+	var emitted []MultiSummaryProgress
+	throttled := throttleMultiSummaryProgress(func(progress MultiSummaryProgress) {
+		emitted = append(emitted, progress)
+	})
+	throttled(MultiSummaryProgress{RunID: "batch", Total: 3, Completed: 1})
+	throttled(MultiSummaryProgress{RunID: "batch", Total: 3, Completed: 2})
+	throttled(MultiSummaryProgress{RunID: "batch", Total: 3, Completed: 3})
+	if len(emitted) != 2 {
+		t.Fatalf("emitted progress count = %d, want first and final events", len(emitted))
+	}
+	if emitted[len(emitted)-1].Completed != 3 {
+		t.Fatalf("final progress event = %+v, want completed=3", emitted[len(emitted)-1])
+	}
+}
+
 func TestAnalyzeBatchDiagnosePathsKeepsParseFailuresInResult(t *testing.T) {
 	dir := t.TempDir()
 	okPath := filepath.Join(dir, "ok.idf")

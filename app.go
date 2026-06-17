@@ -691,12 +691,31 @@ func (a *App) AnalyzeMultiIDFSummary(runID string) (*MultiSummaryResult, error) 
 		return &MultiSummaryResult{Canceled: true, RunID: runID}, nil
 	}
 
-	return analyzeMultiSummaryPaths(paths, runID, func(progress MultiSummaryProgress) {
+	return analyzeMultiSummaryPaths(paths, runID, throttleMultiSummaryProgress(func(progress MultiSummaryProgress) {
 		if a.ctx != nil {
 			wailsruntime.EventsEmit(a.ctx, "idfAnalyzer:multiSummaryProgress", progress)
 			wailsruntime.EventsEmit(a.ctx, "idfAnalyzer:batchProgress", progress)
 		}
-	}), nil
+	})), nil
+}
+
+func throttleMultiSummaryProgress(emit func(MultiSummaryProgress)) func(MultiSummaryProgress) {
+	var mu sync.Mutex
+	lastEmit := time.Time{}
+	return func(progress MultiSummaryProgress) {
+		if emit == nil {
+			return
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		now := time.Now()
+		final := progress.Total > 0 && progress.Completed >= progress.Total
+		if !final && !lastEmit.IsZero() && now.Sub(lastEmit) < 150*time.Millisecond {
+			return
+		}
+		lastEmit = now
+		emit(progress)
+	}
 }
 
 func (a *App) SaveIDF(path string, text string) error {

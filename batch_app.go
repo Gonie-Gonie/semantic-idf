@@ -911,15 +911,7 @@ func firstNonEmpty(values ...string) string {
 }
 
 func parseBatchInput(path string) (*epinput.Model, idf.Document, error) {
-	content, err := os.ReadFile(path)
-	if err != nil {
-		return nil, idf.Document{}, err
-	}
-	model, err := epinput.Parse(path, content)
-	if err != nil {
-		return nil, idf.Document{}, err
-	}
-	return model, epinput.ToIDFDocument(model), nil
+	return parseCachedBatchInput(path)
 }
 
 func safeCleanupRuleIDs(scan idf.CleanupScan) []string {
