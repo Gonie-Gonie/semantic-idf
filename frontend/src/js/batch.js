@@ -6,6 +6,8 @@ import { initializeMultiSimulationTool } from "./batch/batch-simulation.js";
 loadAndApplyAppSettings();
 renderAppInfo();
 
+const BATCH_TABLE_RENDER_LIMIT = 500;
+
 const state = {
   activeBatchTool: "batch-summary",
   result: null,
@@ -295,7 +297,9 @@ function renderTable() {
 }
 
 function renderMetricsAsRows(metrics, files) {
+  const renderedMetrics = metrics.slice(0, BATCH_TABLE_RENDER_LIMIT);
   return `
+    ${renderBatchHiddenRowsNotice(metrics.length - renderedMetrics.length, "metrics")}
     <table class="tool-table">
       <thead>
         <tr>
@@ -304,7 +308,7 @@ function renderMetricsAsRows(metrics, files) {
         </tr>
       </thead>
       <tbody>
-        ${metrics
+        ${renderedMetrics
           .map((metric) => `
             <tr>
               <th class="tool-sticky-col">
@@ -319,7 +323,9 @@ function renderMetricsAsRows(metrics, files) {
 }
 
 function renderFilesAsRows(metrics, files) {
+  const renderedFiles = files.slice(0, BATCH_TABLE_RENDER_LIMIT);
   return `
+    ${renderBatchHiddenRowsNotice(files.length - renderedFiles.length, "files")}
     <table class="tool-table">
       <thead>
         <tr>
@@ -328,7 +334,7 @@ function renderFilesAsRows(metrics, files) {
         </tr>
       </thead>
       <tbody>
-        ${files
+        ${renderedFiles
           .map((file) => `
             <tr>
               <th class="tool-sticky-col">
@@ -360,6 +366,12 @@ function renderValueCell(file, metricID) {
   const value = file.metricValues?.[metricID];
   const status = value?.status || "missing";
   return `<td class="tool-value ${escapeHTML(status)}" title="${escapeHTML(status)}">${escapeHTML(value?.displayValue ?? t("common.notAvailable"))}</td>`;
+}
+
+function renderBatchHiddenRowsNotice(hiddenCount, label) {
+  return hiddenCount > 0
+    ? `<div class="empty compact">${escapeHTML(`${hiddenCount} additional ${label} hidden. Narrow filters to render them.`)}</div>`
+    : "";
 }
 
 function metricValueForCSV(file, metricID) {
@@ -708,7 +720,9 @@ function renderBatchDiagnose() {
     elements.batchDiagnoseTable.innerHTML = `<div class="empty">${escapeHTML(t("diagnose.noDiagnostics", {}, "No diagnostics found"))}</div>`;
     return;
   }
+  const renderedCodes = codes.slice(0, BATCH_TABLE_RENDER_LIMIT);
   elements.batchDiagnoseTable.innerHTML = `
+    ${renderBatchHiddenRowsNotice(codes.length - renderedCodes.length, "diagnostic codes")}
     <table class="tool-table">
       <thead>
         <tr>
@@ -721,7 +735,7 @@ function renderBatchDiagnose() {
         </tr>
       </thead>
       <tbody>
-        ${codes
+        ${renderedCodes
           .map(
             (item) => `
               <tr>
@@ -842,7 +856,9 @@ function renderBatchOutputQA() {
     elements.batchOutputQATable.innerHTML = `<div class="empty">${escapeHTML(t("batch.selectOutputQAFilesHelp", {}, "Select files to inspect output readiness and heavy output risks."))}</div>`;
     return;
   }
+  const renderedFiles = files.slice(0, BATCH_TABLE_RENDER_LIMIT);
   elements.batchOutputQATable.innerHTML = `
+    ${renderBatchHiddenRowsNotice(files.length - renderedFiles.length, "files")}
     <table class="tool-table">
       <thead>
         <tr>
@@ -862,7 +878,7 @@ function renderBatchOutputQA() {
         </tr>
       </thead>
       <tbody>
-        ${files
+        ${renderedFiles
           .map(
             (file) => `
               <tr>
@@ -937,7 +953,9 @@ function renderBatchCleanupReport() {
     return;
   }
   elements.batchCleanupCreateCopies.disabled = !files.length;
+  const renderedRules = rules.slice(0, BATCH_TABLE_RENDER_LIMIT);
   elements.batchCleanupTable.innerHTML = `
+    ${renderBatchHiddenRowsNotice(rules.length - renderedRules.length, "rules")}
     <table class="tool-table">
       <thead>
         <tr>
@@ -946,7 +964,7 @@ function renderBatchCleanupReport() {
         </tr>
       </thead>
       <tbody>
-        ${rules
+        ${renderedRules
           .map(
             (rule) => `
               <tr>
@@ -984,10 +1002,12 @@ async function createBatchCleanupCopies() {
 
 function renderBatchCleanupCopyResult(result) {
   const files = result?.files || [];
+  const renderedFiles = files.slice(0, BATCH_TABLE_RENDER_LIMIT);
   elements.batchCleanupTable.insertAdjacentHTML(
     "beforeend",
     `
     <div class="tool-table-wrap batch-cleanup-copy-result">
+      ${renderBatchHiddenRowsNotice(files.length - renderedFiles.length, "files")}
       <table class="tool-table">
         <thead>
           <tr>
@@ -997,7 +1017,7 @@ function renderBatchCleanupCopyResult(result) {
           </tr>
         </thead>
         <tbody>
-          ${files
+          ${renderedFiles
             .map(
               (file) => `
                 <tr>
@@ -1042,7 +1062,9 @@ function renderBatchConvertExport() {
     elements.batchConvertTable.innerHTML = `<div class="empty">${escapeHTML(t("batch.selectConvertFilesHelp", {}, "Select files and an output format to prepare batch conversion."))}</div>`;
     return;
   }
+  const renderedFiles = files.slice(0, BATCH_TABLE_RENDER_LIMIT);
   elements.batchConvertTable.innerHTML = `
+    ${renderBatchHiddenRowsNotice(files.length - renderedFiles.length, "files")}
     <table class="tool-table">
       <thead>
         <tr>
@@ -1053,7 +1075,7 @@ function renderBatchConvertExport() {
         </tr>
       </thead>
       <tbody>
-        ${files
+        ${renderedFiles
           .map(
             (file) => `
               <tr>

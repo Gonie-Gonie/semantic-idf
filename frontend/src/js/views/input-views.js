@@ -3,6 +3,7 @@ import { t } from "../i18n.js";
 import { recordViewHistory } from "../view-history.js";
 
 const SEMANTIC_BASIC_LINE_BUDGET = 250;
+const FIELD_TABLE_RENDER_LIMIT = 500;
 
 let analyzeCallback = async () => {};
 let renderReportCallback = () => renderInputViews();
@@ -1998,8 +1999,11 @@ export function renderFieldTable() {
     return;
   }
 
+  const limitedGroups = limitObjectGroups(groups, FIELD_TABLE_RENDER_LIMIT);
+  const hiddenCount = Math.max(0, objectCount - limitedGroups.reduce((sum, group) => sum + group.objects.length, 0));
   elements.fieldTable.innerHTML = `
-    ${groups.map((group, index) => renderObjectTypeTable(group, index)).join("")}
+    ${hiddenCount ? `<div class="empty compact">${escapeHTML(`${hiddenCount} additional objects hidden. Narrow the filter to render them.`)}</div>` : ""}
+    ${limitedGroups.map((group, index) => renderObjectTypeTable(group, index)).join("")}
   `;
 
   elements.fieldTable.querySelectorAll(".field-value-input").forEach((input) => {
@@ -2031,6 +2035,22 @@ export function renderFieldTable() {
       renderFieldTable();
     });
   });
+}
+
+function limitObjectGroups(groups, limit) {
+  let remaining = limit;
+  const limited = [];
+  for (const group of groups) {
+    if (remaining <= 0) {
+      break;
+    }
+    const objects = group.objects.slice(0, remaining);
+    if (objects.length) {
+      limited.push({ ...group, objects });
+      remaining -= objects.length;
+    }
+  }
+  return limited;
 }
 
 function renderObjectTypeTable(group, groupIndex) {

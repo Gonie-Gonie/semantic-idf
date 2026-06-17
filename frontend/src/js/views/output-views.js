@@ -9,6 +9,7 @@ const OUTPUT_PURPOSE_FILTERS = [
   { id: "comfort_check", labelKey: "simulation.purposeComfort", fallback: "Comfort" },
   { id: "custom_outputs", labelKey: "simulation.purposeCustom", fallback: "Custom Outputs" },
 ];
+const OUTPUT_RENDER_LIMIT = 500;
 
 export function initializeOutputControls() {
   elements.outputFilter?.addEventListener("input", () => renderOutput());
@@ -72,15 +73,24 @@ export function renderOutput(output = state.report?.output) {
     ? t("count.optionsOf", { shown: recommendations.length, total: output.recommendations?.length || 0 })
     : t("count.options", { count: output.recommendations?.length || 0 });
   elements.outputWarningStats.textContent = t("count.warnings", { count: warnings.length });
+  const renderedExisting = existing.slice(0, OUTPUT_RENDER_LIMIT);
+  const renderedRecommendations = recommendations.slice(0, OUTPUT_RENDER_LIMIT);
+  const renderedWarnings = warnings.slice(0, OUTPUT_RENDER_LIMIT);
   elements.outputExisting.innerHTML = existing.length
-    ? renderOutputRequestTable(existing)
+    ? `${renderHiddenRowsNotice(existing.length - renderedExisting.length, "outputs")}${renderOutputRequestTable(renderedExisting)}`
     : `<div class="empty">${t("output.noExisting")}</div>`;
   elements.outputRecommendations.innerHTML = recommendations.length
-    ? renderOutputRecommendationTable(recommendations)
+    ? `${renderHiddenRowsNotice(recommendations.length - renderedRecommendations.length, "recommendations")}${renderOutputRecommendationTable(renderedRecommendations)}`
     : `<div class="empty">${t("output.noRecommendations")}</div>`;
   elements.outputWarnings.innerHTML = warnings.length
-    ? warnings.map(renderOutputWarning).join("")
+    ? `${renderHiddenRowsNotice(warnings.length - renderedWarnings.length, "warnings")}${renderedWarnings.map(renderOutputWarning).join("")}`
     : `<div class="empty">${t("output.noWarnings")}</div>`;
+}
+
+function renderHiddenRowsNotice(hiddenCount, label) {
+  return hiddenCount > 0
+    ? `<div class="empty compact">${escapeHTML(`${hiddenCount} additional ${label} hidden. Narrow the filter to render them.`)}</div>`
+    : "";
 }
 
 function renderOutputEmpty() {

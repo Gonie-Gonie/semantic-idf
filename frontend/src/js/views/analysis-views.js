@@ -7,12 +7,16 @@ import { renderProfile } from "./profile-views.js";
 import { renderSimulation } from "./simulation-views.js";
 import { t } from "../i18n.js";
 
+const DIAGNOSTIC_RENDER_LIMIT = 500;
+
 export function renderReport(options = {}) {
   const report = state.report;
   if (!report) {
+    updateResultTabReadiness();
     renderEmpty();
     return;
   }
+  updateResultTabReadiness();
 
   if (options.scope === "all") {
     renderSummary(report.summary);
@@ -95,6 +99,34 @@ export function markAllAnalysisDirty() {
   Object.keys(state.analysisDirty || {}).forEach((tab) => {
     state.analysisDirty[tab] = true;
   });
+}
+
+export function updateResultTabReadiness() {
+  elements.resultTabButtons?.forEach((button) => {
+    const tab = button.dataset.resultTab || "summary";
+    const readiness = resultTabReadiness(tab);
+    button.dataset.readiness = readiness;
+    const baseLabel = button.textContent.replace(/\s+/g, " ").trim();
+    const label = `${baseLabel} · ${readiness}`;
+    button.title = label;
+    button.setAttribute("aria-label", label);
+  });
+}
+
+function resultTabReadiness(tab) {
+  if (!state.report) {
+    return "pending";
+  }
+  if (state.analysisReady?.[tab]) {
+    return "ready";
+  }
+  if (state.analysisStage === "queued" || state.analysisStage === "pending" || state.analysisStage === "overview") {
+    return tab === "summary" ? "ready" : "pending";
+  }
+  if (state.analysisStage === "diagnostics" && ["diagnose", "geometry"].includes(tab)) {
+    return tab === "diagnose" ? "ready" : "running";
+  }
+  return "deferred";
 }
 
 function markAnalysisRendered(tab) {
@@ -214,6 +246,8 @@ export function renderDiagnostics(diagnostics = state.report?.diagnostics) {
   const query = (elements.diagnosticFilter?.value || "").trim().toLowerCase();
   pruneDiagnosticReviewState(items);
   const visible = items.filter((item) => diagnosticMatchesQuery(item, query) && diagnosticMatchesControls(item));
+  const renderedVisible = visible.slice(0, DIAGNOSTIC_RENDER_LIMIT);
+  const hiddenVisibleCount = Math.max(0, visible.length - renderedVisible.length);
   const severityCounts = countBy(items, (item) => item.severity || "warning");
   const errorCount = severityCounts.get("error") || 0;
   const warningCount = severityCounts.get("warning") || 0;
@@ -224,7 +258,9 @@ export function renderDiagnostics(diagnostics = state.report?.diagnostics) {
     : `${errorCount} errors, ${warningCount} warnings, ${noticeCount} notices`;
   elements.diagnosticList.innerHTML = items.length
     ? `${renderDiagnosticToolbar(items, visible.length)}${
-        visible.length ? renderDiagnosticGroups(visible) : `<div class="empty">${t("diagnose.noMatching")}</div>`
+        hiddenVisibleCount ? `<div class="empty compact">${hiddenVisibleCount} additional diagnostics hidden. Narrow the filter to render them.</div>` : ""
+      }${
+        renderedVisible.length ? renderDiagnosticGroups(renderedVisible) : `<div class="empty">${t("diagnose.noMatching")}</div>`
       }`
     : `<div class="empty">${t("diagnose.noDiagnostics")}</div>`;
   bindDiagnosticControls();

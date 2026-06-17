@@ -19,7 +19,7 @@ import {
   scheduleAutoAnalyze,
   updateDocumentActions,
 } from "./actions.js";
-import { renderDiagnostics, renderEmpty, renderReport, renderSummary } from "./views/analysis-views.js";
+import { markAnalysisDirty, renderDiagnostics, renderEmpty, renderReport, renderSummary } from "./views/analysis-views.js";
 import { renderGeometry, resizeGeometry, setGeometryMode, setGeometrySelectionAid, setGeometryStory } from "./geometry-loader.js";
 import { initializeDiagnoseFixes } from "./views/diagnose-fixes.js";
 import { initializeHVACControls } from "./views/hvac-views.js";
@@ -376,8 +376,12 @@ function applyRuntimeSettings(settings) {
   }
   if (settings.profile) {
     state.profileSettings = settings.profile;
+    state.profileViewCache?.clear?.();
     if (state.report?.profile) {
-      renderProfile(state.report.profile);
+      markAnalysisDirty("profile");
+      if (state.activeResultTab === "profile") {
+        renderProfile(state.report.profile);
+      }
     }
   }
   if (settings.appearance) {

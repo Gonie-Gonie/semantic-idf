@@ -6,6 +6,7 @@ import {
   renderEmpty,
   renderReport,
   renderResultTab,
+  updateResultTabReadiness,
 } from "./views/analysis-views.js";
 import { preloadGeometryRenderer, renderGeometry } from "./geometry-loader.js";
 import { t } from "./i18n.js";
@@ -183,24 +184,29 @@ function applyStageResult(stage, result) {
   switch (stage) {
     case "profile":
       state.report.profile = report.profile || {};
+      state.analysisReady.profile = true;
       markAnalysisDirty("profile");
       break;
     case "hvac":
       state.report.hvac = report.hvac || {};
+      state.analysisReady.hvac = true;
       markAnalysisDirty("hvac");
       break;
     case "output":
       state.report.output = report.output || {};
+      state.analysisReady.output = true;
       markAnalysisDirty("output");
       break;
     case "diagnostics":
       state.report.diagnostics = report.diagnostics || [];
       state.diagnosticsReady = true;
+      state.analysisReady.diagnose = true;
       markAnalysisDirty("diagnose");
       break;
     case "geometry":
       state.report.geometry = report.geometry || {};
       state.geometryReady = true;
+      state.analysisReady.geometry = true;
       markAnalysisDirty("geometry");
       break;
     default:
@@ -208,6 +214,8 @@ function applyStageResult(stage, result) {
   }
   if (stageMatchesActiveTab(stage)) {
     renderReport({ scope: "active" });
+  } else {
+    updateResultTabReadiness();
   }
 }
 
@@ -266,9 +274,12 @@ function applyOverviewResult(result, text, { complete = false, analysisKey = "" 
   state.lastAnalyzedText = text;
   state.analysisKey = result.analysisKey || analysisKey || state.analysisKey;
   state.lastAnalyzedKey = state.analysisKey;
+  state.hvacServiceGraphLayoutCache?.clear?.();
+  state.profileViewCache?.clear?.();
   state.analysisStage = complete ? "complete" : "overview";
   state.diagnosticsReady = complete;
   state.geometryReady = complete;
+  setAnalysisReadiness(complete);
   markAllAnalysisDirty();
   renderReport({ scope: "active" });
   updateDocumentActions();
@@ -276,6 +287,28 @@ function applyOverviewResult(result, text, { complete = false, analysisKey = "" 
 
 function hasQueuedStageAnalysisAPI(api) {
   return typeof api.AnalyzeInputQuickText === "function" && typeof api.AnalyzeInputStageText === "function";
+}
+
+function setAnalysisReadiness(complete) {
+  state.analysisReady.summary = Boolean(state.report?.summary);
+  state.analysisReady.output = complete || Boolean(state.report?.output);
+  state.analysisReady.profile = complete;
+  state.analysisReady.hvac = complete;
+  state.analysisReady.diagnose = complete;
+  state.analysisReady.geometry = complete;
+  state.analysisReady.simulation = true;
+  updateResultTabReadiness();
+}
+
+function resetAnalysisReadiness() {
+  state.analysisReady.summary = false;
+  state.analysisReady.profile = false;
+  state.analysisReady.hvac = false;
+  state.analysisReady.output = false;
+  state.analysisReady.diagnose = false;
+  state.analysisReady.geometry = false;
+  state.analysisReady.simulation = true;
+  updateResultTabReadiness();
 }
 
 function hasStagedAnalysisAPI(api) {
@@ -296,6 +329,7 @@ export function scheduleAnalyzeAfterPaint(options = {}) {
   state.lastAnalyzedText = "";
   state.lastAnalyzedKey = "";
   state.analysisStage = "queued";
+  resetAnalysisReadiness();
   state.diagnosticsReady = false;
   state.geometryReady = false;
   updateDocumentActions();
@@ -333,6 +367,7 @@ export function registerLoadedDocument(text, { path = "", filename = "" } = {}) 
   state.lastAnalyzedText = "";
   state.lastAnalyzedKey = "";
   state.analysisKey = "";
+  resetAnalysisReadiness();
   state.report = null;
   state.model = null;
   state.epjsonText = "";
@@ -350,6 +385,7 @@ export function markDocumentChanged() {
   state.lastAnalyzedKey = "";
   state.analysisKey = "";
   state.analysisStage = "pending";
+  resetAnalysisReadiness();
   state.diagnosticsReady = false;
   state.geometryReady = false;
   updateDocumentActions();
@@ -549,10 +585,13 @@ export function applyCachedAnalysisResult(result, snapshot = {}) {
   state.lastAnalyzedText = text;
   state.analysisKey = analysisKey;
   state.lastAnalyzedKey = analysisKey;
+  state.hvacServiceGraphLayoutCache?.clear?.();
+  state.profileViewCache?.clear?.();
   const complete = isCompleteAnalysisResult(result);
   state.analysisStage = complete ? "complete" : "overview";
   state.diagnosticsReady = complete;
   state.geometryReady = complete;
+  setAnalysisReadiness(complete);
   markAllAnalysisDirty();
   renderReport({ scope: "active" });
   scheduleIdlePreRender();

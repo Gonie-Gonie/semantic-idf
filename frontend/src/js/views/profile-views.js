@@ -3,6 +3,7 @@ import { getCurrentAppSettings, saveAppSettings } from "../settings-client.js";
 import { profileDimensionLabel as i18nProfileDimensionLabel, profileMetricLabel, t } from "../i18n.js";
 
 let lastProfileView = null;
+const PROFILE_MATRIX_RENDER_LIMIT = 500;
 
 export function renderProfile(profile = state.report?.profile) {
   if (!elements.profileStats) {
@@ -16,7 +17,7 @@ export function renderProfile(profile = state.report?.profile) {
   state.profileSettings = mergeProfileSettings(profile.defaultSettings, state.profileSettings || getCurrentAppSettings().profile);
   state.profileGraphDeck = mergeProfileGraphDeck(profile, state.profileGraphDeck);
   state.activeProfileView = state.activeProfileView === "zone" ? "zone" : "profile";
-  lastProfileView = buildProfileView(profile, state.profileSettings);
+  lastProfileView = cachedProfileView(profile, state.profileSettings);
   if (!state.activeProfileGroupId || !lastProfileView.groups.some((group) => group.id === state.activeProfileGroupId)) {
     state.activeProfileGroupId = lastProfileView.groups[0]?.id || "";
   }
@@ -261,17 +262,20 @@ function renderProfileSourceAccordion(item) {
 
 function renderProfileMatrix(rows, query, profile) {
   const visibleRows = rows.filter((row) => profileMatrixRowMatchesQuery(row, query));
+  const renderedRows = visibleRows.slice(0, PROFILE_MATRIX_RENDER_LIMIT);
+  const hiddenRows = Math.max(0, visibleRows.length - renderedRows.length);
   const dimensions = (lastProfileView?.dimensions || []).filter((dimension) => state.profileSettings.enabledDimensions.includes(dimension.id));
   const itemMap = profileItemMap(profile);
   elements.profileMatrixStats.textContent = t("count.zones", { count: visibleRows.length });
   elements.profileMatrix.innerHTML = visibleRows.length
     ? `
+      ${hiddenRows ? `<div class="empty compact">${escapeHTML(`${hiddenRows} additional zones hidden. Narrow the filter to render them.`)}</div>` : ""}
       <table>
         <thead>
           <tr><th>Zone</th>${dimensions.map((dimension) => `<th>${escapeHTML(profileDimensionLabel(dimension.id))}</th>`).join("")}</tr>
         </thead>
         <tbody>
-          ${visibleRows
+          ${renderedRows
             .map(
               (row) => `
                 <tr class="${profileMatrixRowActive(row) ? "active" : ""}" data-profile-zone="${escapeHTML(row.zoneName)}">
@@ -1806,6 +1810,37 @@ function renderApplyPreview(preview) {
   list.innerHTML = `
     ${warnings.map(renderProfileWarning).join("")}
     ${changes.length ? changes.map((change) => `<div class="profile-apply-change"><strong>${escapeHTML(change.action)}</strong><span>${escapeHTML(change.message)}</span></div>`).join("") : `<div class="empty">${t("status.noChanges")}</div>`}`;
+}
+
+function cachedProfileView(profile, settings) {
+  const cache = state.profileViewCache || new Map();
+  state.profileViewCache = cache;
+  const key = profileViewCacheKey(profile, settings);
+  if (cache.has(key)) {
+    const view = cache.get(key);
+    cache.delete(key);
+    cache.set(key, view);
+    return view;
+  }
+  const view = buildProfileView(profile, settings);
+  cache.set(key, view);
+  while (cache.size > 6) {
+    cache.delete(cache.keys().next().value);
+  }
+  return view;
+}
+
+function profileViewCacheKey(profile, settings) {
+  return [
+    state.analysisKey || state.lastAnalyzedKey || "",
+    profile.itemCount || 0,
+    (profile.zoneProfiles || []).length,
+    (settings?.enabledDimensions || []).join(","),
+    settings?.groupBy || "",
+    settings?.metricMode || "",
+    settings?.scheduleCompareMode || "",
+    settings?.numericTolerance || "",
+  ].join("|");
 }
 
 function buildProfileView(profile, settings) {

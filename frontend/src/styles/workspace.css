@@ -15,6 +15,30 @@
   border-bottom-color: transparent;
   background: transparent;
   color: var(--muted);
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tab::after {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--line);
+}
+
+.tab[data-readiness="ready"]::after {
+  background: var(--green);
+}
+
+.tab[data-readiness="running"]::after {
+  background: var(--teal);
+}
+
+.tab[data-readiness="deferred"]::after {
+  background: var(--amber);
 }
 
 .tab.active {
@@ -1350,4 +1374,3 @@ th.input-jump-highlight {
   height: 100%;
   background: var(--teal);
 }
-

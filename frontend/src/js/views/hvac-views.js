@@ -2804,7 +2804,7 @@ function renderHVACServices(hvac, query) {
 }
 
 function renderHVACServiceGraph(paths, couplings) {
-  const graph = buildServiceGraph(paths, couplings);
+  const graph = cachedServiceGraph(paths, couplings);
   const width = graph.width;
   const height = graph.height;
   return `
@@ -2833,6 +2833,43 @@ function renderHVACServiceGraph(paths, couplings) {
         <span><i class="hvac-legend-control"></i>Control</span>
       </div>
     </div>`;
+}
+
+function cachedServiceGraph(paths, couplings) {
+  const key = serviceGraphLayoutCacheKey(paths, couplings);
+  const cache = state.hvacServiceGraphLayoutCache || new Map();
+  state.hvacServiceGraphLayoutCache = cache;
+  if (cache.has(key)) {
+    const graph = cache.get(key);
+    cache.delete(key);
+    cache.set(key, graph);
+    return graph;
+  }
+  const graph = buildServiceGraph(paths, couplings);
+  cache.set(key, graph);
+  while (cache.size > 8) {
+    cache.delete(cache.keys().next().value);
+  }
+  return graph;
+}
+
+function serviceGraphLayoutCacheKey(paths = [], couplings = []) {
+  const pathKey = paths.map((path) => path.id || servicePathGraphKey(path)).sort().join(",");
+  const couplingKey = (couplings || [])
+    .filter(isPhysicalServiceCoupling)
+    .map((coupling) => coupling.id || coupling.object?.objectName || coupling.role || "")
+    .sort()
+    .join(",");
+  return [
+    state.analysisKey || state.lastAnalyzedKey || "",
+    state.activeHVACGraphScope || "",
+    state.hvacServiceKindFilter || "",
+    state.hvacPathTypeFilter || "",
+    state.hvacMediumFilter || "",
+    state.activeHVACEntity?.id || "",
+    pathKey,
+    couplingKey,
+  ].join("|");
 }
 
 function buildServiceGraph(paths, couplings) {
