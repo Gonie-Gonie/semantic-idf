@@ -67,6 +67,8 @@ func TestFrontendSimulationEnergySystemsCrossJumpContracts(t *testing.T) {
 		"relationshipRules",
 		"relationshipRule",
 		"energyExplanationRelationshipRuleLabel",
+		"simulation.relatedPathIds",
+		"simulation.missingSourceMetadata",
 		"selection.relation",
 		"selection.pathType",
 		"state.simulationEnergySelection === edge.id",

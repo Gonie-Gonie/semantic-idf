@@ -1849,7 +1849,16 @@ function renderEnergyExplanationInspector(selection, explanation = {}) {
   if (selection.ruleId) {
     inspectorFields.push({ label: t("simulation.relationshipRule", {}, "Rule"), value: energyExplanationRelationshipRuleLabel(explanation, selection.ruleId) });
   }
+  if (selection.relation === "allocation" || selection.basis === "allocated") {
+    inspectorFields.push({
+      label: t("simulation.allocationPolicy", {}, "Allocation"),
+      value: energyAllocationPolicyLabel(explanation.allocationPolicy || "direct_only"),
+    });
+  }
   inspectorFields.push({ label: t("common.source", {}, "Source"), value: (selection.sourceIds || []).join(", ") || "-" });
+  if ((selection.relatedPathIds || []).length) {
+    inspectorFields.push({ label: t("simulation.relatedPathIds", {}, "Related path IDs"), value: (selection.relatedPathIds || []).join(", ") });
+  }
   if (Number.isFinite(signedValue) && signedValue !== 0 && signedValue !== Number(selection.value)) {
     inspectorFields.splice(1, 0, { label: t("simulation.signedValue", {}, "Signed"), value: formatValueWithUnit(signedValue, selection.unit) });
   }
@@ -2220,11 +2229,23 @@ function energyExplanationLevelLabel(level = "") {
 }
 
 function energyExplanationSourcesForIDs(explanation = {}, sourceIDs = []) {
-  const wanted = new Set(sourceIDs || []);
-  return (explanation.sources || []).filter((source) => wanted.has(source.id));
+  const byID = new Map((explanation.sources || []).map((source) => [source.id, source]));
+  const seen = new Set();
+  return (sourceIDs || [])
+    .filter((id) => {
+      if (!id || seen.has(id)) {
+        return false;
+      }
+      seen.add(id);
+      return true;
+    })
+    .map((id) => byID.get(id) || { id, missing: true });
 }
 
 function energyExplanationSourceTypeLabel(source = {}) {
+  if (source.missing) {
+    return t("simulation.missingSourceMetadata", {}, "missing source metadata");
+  }
   const basis = source.isMeter ? "meter" : "variable";
   return [source.sourceType || "", basis].filter(Boolean).join(" / ") || basis;
 }
