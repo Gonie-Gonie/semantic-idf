@@ -2098,14 +2098,11 @@ func (builder *purposePlanBuilder) addBasicEnergy() {
 	if !docHasObject(builder.doc, "Zone") {
 		return
 	}
-	for _, variable := range []string{
-		"Zone Lights Electricity Energy",
-		"Zone Electric Equipment Electricity Energy",
-		"Zone Gas Equipment Gas Energy",
-		"Zone Air System Sensible Heating Energy",
-		"Zone Air System Sensible Cooling Energy",
-	} {
-		builder.addVariableWithReason(SimulationPurposeBasicEnergy, "*", variable, "Monthly", "medium", "Basic Energy Explain: monthly zone-level delivered load or reported energy.", "Basic Energy Explain output")
+	for _, variable := range basicEnergyZoneReportedEnergyVariableNames() {
+		builder.addVariableWithReason(SimulationPurposeBasicEnergy, "*", variable, "Monthly", "medium", "Basic Energy Explain: monthly zone-level reported energy.", "Basic Energy Explain output")
+	}
+	for _, variable := range basicEnergyDeliveredLoadVariableNames() {
+		builder.addVariableWithReason(SimulationPurposeBasicEnergy, "*", variable, "Monthly", "medium", "Basic Energy Explain: monthly delivered-load energy or rate fallback.", "Basic Energy Explain output")
 	}
 	for _, variable := range basicEnergyObjectHeatDriverVariableNames() {
 		builder.addVariableWithReason(SimulationPurposeBasicEnergy, "*", variable, "Monthly", "medium", "Basic Energy Heat Drivers: monthly object-level heat-driver explanation output.", "Basic Energy Heat Drivers output")
@@ -2116,6 +2113,24 @@ func (builder *purposePlanBuilder) addBasicEnergy() {
 	for _, variable := range zoneHeatFlowVariableNames() {
 		builder.addVariableWithReason(SimulationPurposeBasicEnergy, "*", variable, "Monthly", "medium", "Basic Energy Heat Drivers: monthly zone heat-balance explanation output.", "Basic Energy Heat Drivers output")
 	}
+}
+
+func basicEnergyZoneReportedEnergyVariableNames() []string {
+	return []string{
+		"Zone Lights Electricity Energy",
+		"Zone Electric Equipment Electricity Energy",
+		"Zone Gas Equipment Gas Energy",
+	}
+}
+
+func basicEnergyDeliveredLoadVariableNames() []string {
+	out := []string{}
+	for _, def := range energyLoadAliasCatalog() {
+		for _, alias := range def.Aliases {
+			out = appendUniquePurposeString(out, alias)
+		}
+	}
+	return out
 }
 
 func (builder *purposePlanBuilder) addZoneHeatFlow() {

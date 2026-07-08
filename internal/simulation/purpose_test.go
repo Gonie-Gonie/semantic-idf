@@ -66,6 +66,17 @@ Output:SQLite,
 	if zoneEnergy.Reason != "Basic Energy Explain output" || !strings.Contains(zoneEnergy.Description, "Basic Energy Explain") {
 		t.Fatalf("zone energy reason/description = %q / %q", zoneEnergy.Reason, zoneEnergy.Description)
 	}
+	for _, variable := range []string{
+		"Zone Air System Sensible Cooling Rate",
+		"Zone Ideal Loads Zone Sensible Heating Energy",
+		"Zone Radiant HVAC Cooling Energy",
+		"Cooling Coil Total Cooling Energy",
+		"Plant Supply Side Cooling Demand Rate",
+	} {
+		if findPurposeOutput(plan, "Output:Variable", "*", variable) == nil {
+			t.Fatalf("missing delivered-load output %q in %#v", variable, plan.OutputObjects)
+		}
+	}
 	heatDriver := findPurposeOutput(plan, "Output:Variable", "*", "Zone Air Heat Balance Surface Convection Rate")
 	if heatDriver == nil || heatDriver.ReportingFrequency != "Monthly" {
 		t.Fatalf("missing monthly heat-driver output in %#v", plan.OutputObjects)
@@ -445,8 +456,17 @@ output|Output:SQLite||||temporary|basic_energy
 output|Output:Meter|Electricity:Facility||Monthly|temporary|basic_energy
 output|Output:Meter|Electricity:InteriorEquipment||Monthly|temporary|basic_energy
 output|Output:Meter|Electricity:InteriorLights||Monthly|temporary|basic_energy
+output|Output:Variable|*|Cooling Coil Sensible Cooling Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Cooling Coil Total Cooling Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Cooling Coil Total Cooling Rate|Monthly|temporary|basic_energy
 output|Output:Variable|*|Fan Air Heat Gain Energy|Monthly|temporary|basic_energy
 output|Output:Variable|*|Fan Air Heat Gain Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Heating Coil Heating Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Heating Coil Heating Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Plant Loop Cooling Demand Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Plant Loop Heating Demand Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Plant Supply Side Cooling Demand Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Plant Supply Side Heating Demand Rate|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Air Heat Balance Air Energy Storage Rate|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Air Heat Balance Deviation Rate|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Air Heat Balance Internal Convective Heat Gain Rate|Monthly|temporary|basic_energy
@@ -456,10 +476,20 @@ output|Output:Variable|*|Zone Air Heat Balance Surface Convection Rate|Monthly|t
 output|Output:Variable|*|Zone Air Heat Balance System Air Transfer Rate|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Air Heat Balance System Convective Heat Gain Rate|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Air System Sensible Cooling Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Air System Sensible Cooling Rate|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Air System Sensible Heating Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Air System Sensible Heating Rate|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Electric Equipment Electricity Energy|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Gas Equipment Gas Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Ideal Loads Supply Air Total Cooling Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Ideal Loads Supply Air Total Heating Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Ideal Loads Zone Sensible Cooling Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Ideal Loads Zone Sensible Heating Energy|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Lights Electricity Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Radiant HVAC Cooling Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Radiant HVAC Cooling Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Radiant HVAC Heating Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Radiant HVAC Heating Rate|Monthly|temporary|basic_energy
 `,
 		},
 		{

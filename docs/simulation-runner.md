@@ -82,10 +82,11 @@ as selected HVAC scope when HVAC Loop Check is enabled.
   estimates based on series count times frame count
 
 Basic Energy requests SQL, monthly top-level/end-use meters, monthly delivered
-load variables, monthly object-level fan heat-to-air variables, and monthly
-zone heat-balance driver variables. When Zone Heat Flow is also selected, its
-hourly heat-balance outputs are reused instead of adding a duplicate monthly
-zone heat-driver request.
+load variables across zone air system, ideal loads, radiant HVAC, coil, and
+plant demand aliases, monthly object-level fan heat-to-air variables, and
+monthly zone heat-balance driver variables. When Zone Heat Flow is also
+selected, its hourly heat-balance outputs are reused instead of adding a
+duplicate monthly zone heat-driver request.
 End-use meter aliases cover cooling, heating, lighting, equipment, fans, pumps,
 heat rejection, heat recovery, water systems, exterior lighting, refrigeration,
 onsite generation, and natural-gas heating/equipment/water-system use where the
