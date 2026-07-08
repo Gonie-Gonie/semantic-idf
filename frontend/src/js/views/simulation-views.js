@@ -6355,6 +6355,27 @@ function renderPurposeHTMLEnergyExplanation(summary = {}, explanation = {}) {
       )}`,
     );
   }
+  const availabilityRows = (completeness.sourceAvailability || [])
+    .slice(0, 240)
+    .map((item) => [item.level || "", item.name || "", item.status || ""]);
+  if (availabilityRows.length) {
+    sections.push(`<h2>Energy Explanation Source Availability</h2>${renderPurposeHTMLTable(["Level", "Output", "Status"], availabilityRows)}`);
+  }
+  const ruleRows = (explanation.relationshipRules || [])
+    .slice(0, 120)
+    .map((rule) => [
+      rule.id || "",
+      [rule.fromLevel, rule.toLevel].filter(Boolean).join(" -> "),
+      [rule.fromKind, rule.toKind].filter(Boolean).join(" -> "),
+      rule.basis || "",
+      (rule.requiredSource || []).join(", "),
+      rule.formula || "",
+    ]);
+  if (ruleRows.length) {
+    sections.push(
+      `<h2>Energy Explanation Relationship Rules</h2>${renderPurposeHTMLTable(["Rule", "Level flow", "Kind flow", "Basis", "Required source", "Formula"], ruleRows)}`,
+    );
+  }
   const summaryRows = purposeHTMLEnergySummaryRows(summary);
   if (summaryRows.length) {
     sections.push(
@@ -6379,6 +6400,12 @@ function renderPurposeHTMLEnergyExplanation(summary = {}, explanation = {}) {
     ]);
   if (edgeRows.length) {
     sections.push(`<h2>Energy Explanation Annual Edges</h2>${renderPurposeHTMLTable(["Relation", "Basis", "Rule", "From", "To", "Value", "Formula"], edgeRows)}`);
+  }
+  const warningRows = [...(explanation.warnings || []), ...(graph.warnings || [])]
+    .slice(0, 120)
+    .map((warning) => [warning.severity || "", warning.code || "", warning.period || graph.id || "", warning.message || ""]);
+  if (warningRows.length) {
+    sections.push(`<h2>Energy Explanation Warnings</h2>${renderPurposeHTMLTable(["Severity", "Code", "Period", "Message"], warningRows)}`);
   }
   const reconciliationRows = (graph.reconciliation || [])
     .slice(0, 180)

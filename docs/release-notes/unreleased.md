@@ -148,6 +148,8 @@ The release script infers bump size from these sections:
 - Purpose HTML export now includes Basic Energy explanation summary, annual
   edge, reconciliation, and source metadata tables instead of leaving that
   evidence only in the raw JSON bundle.
+- Purpose HTML export now also includes Basic Energy source availability,
+  relationship rule, and warning tables for the explanation graph.
 - Basic Energy explanations now fall back to annual SQL tabular end-use rows
   when detailed `ReportData` energy rows are unavailable, while preserving
   `sql_tabular` source metadata.
