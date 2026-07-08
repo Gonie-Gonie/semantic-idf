@@ -862,6 +862,10 @@ func TestEnergyRelationshipRuleCatalogProvidesEdgeBasis(t *testing.T) {
 	if allocationRule.Basis != "allocated" || allocationRule.FromLevel != "energy" || allocationRule.ToLevel != "load" {
 		t.Fatalf("allocation rule = %#v", allocationRule)
 	}
+	productionRule := energyRelationshipRuleByID(energyRelationshipRuleOnsiteProduction)
+	if productionRule.Basis != "measured_meter" || !strings.Contains(productionRule.Formula, "separately") {
+		t.Fatalf("onsite production rule = %#v", productionRule)
+	}
 }
 
 func TestBuildEnergyExplanationAllocatedZoneLoadShare(t *testing.T) {
@@ -952,8 +956,11 @@ func TestBuildEnergyExplanationKeepsProductionOutOfConsumptionResidual(t *testin
 	if production == nil || production.Value != 2 {
 		t.Fatalf("production node = %#v", production)
 	}
-	if edge := energyExplanationEdgeByIDs(result.Edges, "energy.carrier.electricity", "energy.end_use.generators.electricity"); edge != nil {
-		t.Fatalf("production should not be treated as facility consumption edge: %#v", edge)
+	if energyExplanationHasEdge(result.Edges, "meter_enduse", "measured_meter", "energy.carrier.electricity", "energy.end_use.generators.electricity") {
+		t.Fatalf("production should not be treated as facility consumption edge: %#v", result.Edges)
+	}
+	if edge := energyExplanationEdgeByIDs(result.Edges, "energy.carrier.electricity", "energy.end_use.generators.electricity"); edge == nil || edge.Relation != "onsite_production" || edge.RuleID != energyRelationshipRuleOnsiteProduction || edge.Value != 2 {
+		t.Fatalf("production support edge = %#v; all edges = %#v", edge, result.Edges)
 	}
 	reconciliation := energyExplanationReconciliationByID(result.Reconciliation, "reconcile.energy.electricity.annual")
 	if reconciliation == nil || reconciliation.ExpectedValue != 10 || reconciliation.ExplainedValue != 6 || reconciliation.ResidualValue != 4 || result.Completeness.MappedPercent != 60 {

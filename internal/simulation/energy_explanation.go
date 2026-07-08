@@ -186,6 +186,7 @@ const (
 	energyRelationshipRuleMeasuredLoad      = "load.measured_variable"
 	energyRelationshipRuleAllocatedZoneLoad = "allocation.by_zone_load_share"
 	energyRelationshipRuleHeatDriverBalance = "heat.driver_balance"
+	energyRelationshipRuleOnsiteProduction  = "support.onsite_production"
 	energyRelationshipRuleEnergyResidual    = "residual.energy_total"
 	energyRelationshipRuleHeatResidual      = "residual.heat_driver_balance"
 )
@@ -765,6 +766,7 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 	facilitySourcesByCarrier := map[string][]string{}
 	endUseValueByCarrier := map[string]float64{}
 	endUseNodesByCarrier := map[string][]string{}
+	productionNodesByCarrier := map[string][]string{}
 	loadNodesByService := map[string][]string{}
 	loadNodesByZoneService := map[string][]string{}
 	zoneLoadNodesByService := map[string][]string{}
@@ -810,7 +812,9 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 				facilityByCarrier[item.Carrier] = nodeID
 				facilityValueByCarrier[item.Carrier] += value
 				facilitySourcesByCarrier[item.Carrier] = appendUniqueStrings(facilitySourcesByCarrier[item.Carrier], item.SourceIDs...)
-			} else if !energyExplanationIsProductionEndUse(item) {
+			} else if energyExplanationIsProductionEndUse(item) {
+				productionNodesByCarrier[item.Carrier] = appendUniqueStrings(productionNodesByCarrier[item.Carrier], nodeID)
+			} else {
 				endUseValueByCarrier[item.Carrier] += value
 				endUseNodesByCarrier[item.Carrier] = appendUniqueStrings(endUseNodesByCarrier[item.Carrier], nodeID)
 			}
@@ -873,6 +877,7 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 	reconciliation := []EnergyReconciliation{}
 	warnings := []EnergyWarning{}
 	meterEndUseRule := energyRelationshipRuleByID(energyRelationshipRuleMeterEndUse)
+	onsiteProductionRule := energyRelationshipRuleByID(energyRelationshipRuleOnsiteProduction)
 	measuredLoadRule := energyRelationshipRuleByID(energyRelationshipRuleMeasuredLoad)
 	allocatedZoneLoadRule := energyRelationshipRuleByID(energyRelationshipRuleAllocatedZoneLoad)
 	heatDriverRule := energyRelationshipRuleByID(energyRelationshipRuleHeatDriverBalance)
@@ -898,6 +903,25 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 				Formula:   meterEndUseRule.Formula,
 				RuleID:    meterEndUseRule.ID,
 				SourceIDs: endUseNode.node.SourceIDs,
+			})
+		}
+		for _, productionID := range productionNodesByCarrier[carrier] {
+			productionNode := nodes[productionID]
+			if productionNode == nil {
+				continue
+			}
+			edges = append(edges, EnergyExplanationEdge{
+				ID:        edgeID("production", period, facilityID, productionID),
+				FromID:    facilityID,
+				ToID:      productionID,
+				Value:     productionNode.node.Value,
+				Unit:      productionNode.node.Unit,
+				Period:    period,
+				Relation:  "onsite_production",
+				Basis:     onsiteProductionRule.Basis,
+				Formula:   onsiteProductionRule.Formula,
+				RuleID:    onsiteProductionRule.ID,
+				SourceIDs: productionNode.node.SourceIDs,
 			})
 		}
 		residual := roundedEnergyNumber(facilityValue - endUseValue)
@@ -1555,6 +1579,16 @@ func energyRelationshipRuleCatalog() []EnergyRelationshipRule {
 			RequiredSource: []string{"sql_report_data:heat_balance_variable"},
 			Basis:          "derived_balance",
 			Formula:        "integrate(zone heat-balance rate W * timestep_hours) / 1000",
+		},
+		{
+			ID:             energyRelationshipRuleOnsiteProduction,
+			FromLevel:      "energy",
+			ToLevel:        "energy",
+			FromKind:       "facility_total",
+			ToKind:         "onsite_production",
+			RequiredSource: []string{"ElectricityProduced:Facility", "Generators:ElectricityProduced"},
+			Basis:          "measured_meter",
+			Formula:        "onsite production meter shown separately from facility consumption residual",
 		},
 		{
 			ID:             energyRelationshipRuleEnergyResidual,
