@@ -2,6 +2,7 @@ import { backend, elements, escapeHTML, setStatus, state } from "../state.js";
 import { t } from "../i18n.js";
 import { navigateHVAC, renderHVACLoopDiagram } from "./hvac-views.js";
 import { openStandardOutputApplyDialog } from "./output-views.js";
+import { renderProfile } from "./profile-views.js";
 
 let progressListenerRegistered = false;
 let heatFlowPlayTimer = 0;
@@ -2191,11 +2192,18 @@ function renderSimulationEnergyDrilldownActions(selection = {}) {
   const zoneName = selection.zoneName || "";
   const heatFlowZones = heatFlowZoneMap(activeHeatFlowDataset());
   const hasHeatFlow = zoneName && heatFlowZones.has(normalizeHeatFlowName(zoneName));
+  const profileZoneName = simulationProfileZoneName(zoneName);
   const actions = [];
   if (zoneName) {
     actions.push(`
       <button class="simulation-series-inspect" type="button" data-simulation-energy-zone-jump="${escapeHTML(zoneName)}">
         ${escapeHTML(t("simulation.openZoneInSankey", {}, "Sankey"))}
+      </button>`);
+  }
+  if (profileZoneName) {
+    actions.push(`
+      <button class="simulation-series-inspect" type="button" data-simulation-energy-profile-zone-jump="${escapeHTML(profileZoneName)}">
+        ${escapeHTML(t("tab.profile", {}, "Profile"))}
       </button>`);
   }
   if (hasHeatFlow) {
@@ -3976,6 +3984,11 @@ function handleSimulationSeriesInspectClick(event) {
     renderSimulationEnergyDashboard(state.simulationResult);
     return;
   }
+  const energyProfileZoneJump = event.target.closest("[data-simulation-energy-profile-zone-jump]");
+  if (energyProfileZoneJump) {
+    openSimulationProfileZone(energyProfileZoneJump.dataset.simulationEnergyProfileZoneJump || "");
+    return;
+  }
   const energyHeatFlowZoneJump = event.target.closest("[data-simulation-energy-heatflow-zone-jump]");
   if (energyHeatFlowZoneJump) {
     state.simulationHeatFlowSelectedZone = energyHeatFlowZoneJump.dataset.simulationEnergyHeatflowZoneJump || "";
@@ -4108,6 +4121,36 @@ function openSimulationHVACTab() {
   } else {
     state.activeResultTab = "hvac";
   }
+}
+
+function openSimulationProfileZone(zoneName = "") {
+  const profileZoneName = simulationProfileZoneName(zoneName);
+  if (!profileZoneName) {
+    setStatus(t("profile.noAnalysis", {}, "No profile analysis"), "warn");
+    return;
+  }
+  state.activeProfileView = "zone";
+  state.activeProfileZoneName = profileZoneName;
+  if (elements.profileFilter) {
+    elements.profileFilter.value = "";
+  }
+  const profileTab = [...(elements.resultTabButtons || [])].find((button) => button.dataset.resultTab === "profile");
+  if (profileTab) {
+    profileTab.click();
+  } else {
+    state.activeResultTab = "profile";
+  }
+  renderProfile(state.report?.profile);
+}
+
+function simulationProfileZoneName(zoneName = "") {
+  const wanted = normalizeOutputMatchToken(zoneName);
+  if (!wanted) {
+    return "";
+  }
+  return (state.report?.profile?.zoneProfiles || []).find((zone) => normalizeOutputMatchToken(zone.zoneName) === wanted)?.zoneName
+    || (state.report?.profile?.matrix || []).find((row) => normalizeOutputMatchToken(row.zoneName) === wanted)?.zoneName
+    || "";
 }
 
 function simulationHVACLoopForRef(loopType = "", loopName = "") {

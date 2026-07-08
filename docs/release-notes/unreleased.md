@@ -48,6 +48,8 @@ The release script infers bump size from these sections:
   period so month-level accounting changes are easier to inspect.
 - Basic Energy Sankey inspector actions now expose zone focus and related
   service-path focus jumps alongside HVAC and Heat Flow drilldowns.
+- Basic Energy Sankey inspector zone actions can now jump directly into the
+  matching Profile tab zone view when profile analysis is available.
 - Basic Energy Monthly view now includes a compact Energy Use, Delivered Load,
   Heat Drivers, and Residual level chart.
 - Basic Energy Zones view now summarizes zone/service delivered load, cooling
