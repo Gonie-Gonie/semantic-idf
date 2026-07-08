@@ -931,6 +931,15 @@ func classifySQLEnergyDictionary(row sqlOutputDictionaryRow) (sqlEnergyDictionar
 		displayName:            metricName,
 		zoneName:               keyValue,
 	}
+	if def, displayName, ok := sqlEnergyMeterAliasDefinition(name, keyValue); ok {
+		energy.displayName = displayName
+		if def.FacilityTotal {
+			energy.category = "facility"
+		} else {
+			energy.category = "end_use"
+		}
+		return energy, true
+	}
 	if energyFacilityMeters()[normalizedName] || energyFacilityMeters()[normalizedKey] {
 		energy.category = "facility"
 		if energyFacilityMeters()[normalizedKey] {
@@ -954,6 +963,19 @@ func classifySQLEnergyDictionary(row sqlOutputDictionaryRow) (sqlEnergyDictionar
 		return energy, true
 	}
 	return sqlEnergyDictionaryRow{}, false
+}
+
+func sqlEnergyMeterAliasDefinition(name string, keyValue string) (energyMeterAliasDefinition, string, bool) {
+	for _, candidate := range []string{keyValue, name} {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "" {
+			continue
+		}
+		if def, ok := energyMeterAliasDefinitionForName(candidate); ok {
+			return def, candidate, true
+		}
+	}
+	return energyMeterAliasDefinition{}, "", false
 }
 
 func energyFacilityMeters() map[string]bool {

@@ -177,7 +177,10 @@ still feed monthly dashboards. Basic Energy also builds an
   `energyExplanation` payload with `semantic-idf.energy-explanation/v1` schema,
   source IDs derived from `ReportDataDictionary`, accounting-basis edges, and
   residual reconciliation between facility carrier totals and mapped end-use
-meters. If detailed `ReportData` rows are unavailable, Basic Energy can fall
+meters. The legacy Basic Energy dashboard classifier uses the same meter alias
+catalog as the explanation graph, so both `Electricity:Cooling` and
+`Cooling:Electricity` style end-use meter names are retained in Overview tables.
+If detailed `ReportData` rows are unavailable, Basic Energy can fall
 back to annual `TabularDataWithStrings` end-use rows and marks those sources as
 `sql_tabular` with `tabular_annual_value` aggregation. Energy sources preserve
 both the raw source unit and the normalized graph unit so `J` meters and `W`

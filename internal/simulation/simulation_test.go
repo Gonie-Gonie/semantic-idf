@@ -306,7 +306,10 @@ func TestParseSimulationEnergySQLClassifiesExtendedMeters(t *testing.T) {
 		(24, '', 'Steam:Facility', 'J'),
 		(25, '', 'ElectricityProduced:Facility', 'J'),
 		(26, '', 'DistrictCooling:Cooling', 'J'),
-		(27, '', 'DistrictHeating:Heating', 'J')`); err != nil {
+		(27, '', 'DistrictHeating:Heating', 'J'),
+		(28, '', 'Cooling:Electricity', 'J'),
+		(29, '', 'Heating:Electricity', 'J'),
+		(30, '', 'InteriorLights:Electricity', 'J')`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Exec(`INSERT INTO ReportData VALUES
@@ -314,7 +317,10 @@ func TestParseSimulationEnergySQLClassifiesExtendedMeters(t *testing.T) {
 		(8, 1, 24, 7200000.0),
 		(9, 1, 25, 1800000.0),
 		(10, 1, 26, 900000.0),
-		(11, 1, 27, 450000.0)`); err != nil {
+		(11, 1, 27, 450000.0),
+		(12, 1, 28, 360000.0),
+		(13, 1, 29, 720000.0),
+		(14, 1, 30, 1080000.0)`); err != nil {
 		t.Fatal(err)
 	}
 
@@ -336,6 +342,15 @@ func TestParseSimulationEnergySQLClassifiesExtendedMeters(t *testing.T) {
 	}
 	if item := energySeriesByName(result.EndUseMonthly, "DistrictHeating:Heating"); item == nil || item.Total != 0.125 {
 		t.Fatalf("district heating end-use series = %#v", result.EndUseMonthly)
+	}
+	if item := energySeriesByName(result.EndUseMonthly, "Cooling:Electricity"); item == nil || item.Total != 0.1 {
+		t.Fatalf("cooling electricity end-use alias series = %#v", result.EndUseMonthly)
+	}
+	if item := energySeriesByName(result.EndUseMonthly, "Heating:Electricity"); item == nil || item.Total != 0.2 {
+		t.Fatalf("heating electricity end-use alias series = %#v", result.EndUseMonthly)
+	}
+	if item := energySeriesByName(result.EndUseMonthly, "InteriorLights:Electricity"); item == nil || item.Total != 0.3 {
+		t.Fatalf("lighting electricity end-use alias series = %#v", result.EndUseMonthly)
 	}
 }
 
