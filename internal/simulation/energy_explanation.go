@@ -12,6 +12,7 @@ import (
 
 const energyExplanationSchema = "semantic-idf.energy-explanation/v1"
 const energyExplanationSummarySchema = "semantic-idf.energy-explanation-summary/v1"
+const maxEnergyExplanationTabularRows = 1200
 
 type EnergyExplanationResult struct {
 	Schema            string                   `json:"schema"`
@@ -304,88 +305,101 @@ func parseSimulationEnergyExplanationSQL(path string, plan *PurposeRunPlan) (Ene
 	}
 	defer db.Close()
 
+	series := []energyExplanationSeries{}
+	sources := []EnergyDataSource{}
 	ready, err := sqlHasTables(db, "ReportDataDictionary", "ReportData", "Time")
-	if err != nil || !ready {
-		return EnergyExplanationResult{}, err
-	}
-	dictionaries, err := sqlEnergyExplanationDictionaries(db, filepath.Base(path))
 	if err != nil {
 		return EnergyExplanationResult{}, err
 	}
-	if len(dictionaries) == 0 {
+	if ready {
+		dictionaries, err := sqlEnergyExplanationDictionaries(db, filepath.Base(path))
+		if err != nil {
+			return EnergyExplanationResult{}, err
+		}
+		if len(dictionaries) > 0 {
+			intervalHours, err := sqlTimeIntervalHours(db)
+			if err != nil {
+				intervalHours = map[int64]float64{}
+			}
+			selectedStartDay, selectedEndDay, hasSelectedRange := energyExplanationSelectedRangeDays(plan)
+
+			ids := make([]int, 0, len(dictionaries))
+			byID := map[int]energyExplanationDictionary{}
+			for _, dictionary := range dictionaries {
+				ids = append(ids, dictionary.row.index)
+				byID[dictionary.row.index] = dictionary
+			}
+			query, args := sqlReportDataQuery(ids)
+			rows, err := db.Query(query, args...)
+			if err != nil {
+				return EnergyExplanationResult{}, err
+			}
+
+			builders := map[int]*energyExplanationSeriesBuilder{}
+			for rows.Next() {
+				var timeIndex int64
+				var month, day, hour, minute sql.NullInt64
+				var dictionaryIndex int
+				var value sql.NullFloat64
+				if err := rows.Scan(&timeIndex, &month, &day, &hour, &minute, &dictionaryIndex, &value); err != nil {
+					continue
+				}
+				if !value.Valid || math.IsNaN(value.Float64) || math.IsInf(value.Float64, 0) {
+					continue
+				}
+				dictionary, ok := byID[dictionaryIndex]
+				if !ok {
+					continue
+				}
+				builder := builders[dictionaryIndex]
+				if builder == nil {
+					builder = &energyExplanationSeriesBuilder{dictionary: dictionary}
+					builders[dictionaryIndex] = builder
+				}
+				number, unit := energyExplanationSQLValue(value.Float64, dictionary, intervalHours[timeIndex])
+				builder.unit = unit
+				builder.total += number
+				if month.Valid && month.Int64 >= 1 && month.Int64 <= 12 {
+					if builder.monthly == nil {
+						builder.monthly = map[int]float64{}
+					}
+					builder.monthly[int(month.Int64)] += number
+				}
+				if hasSelectedRange {
+					if rowDay, ok := energyExplanationSQLDayOfYear(month, day); ok && comfortDayInScope(rowDay, selectedStartDay, selectedEndDay) {
+						builder.selectedRange += number
+						builder.hasSelectedRange = true
+					}
+				}
+			}
+			if err := rows.Err(); err != nil {
+				rows.Close()
+				return EnergyExplanationResult{}, err
+			}
+			if err := rows.Close(); err != nil {
+				return EnergyExplanationResult{}, err
+			}
+
+			for _, dictionary := range dictionaries {
+				builder := builders[dictionary.row.index]
+				if builder == nil || builder.total == 0 && len(builder.monthly) == 0 {
+					continue
+				}
+				source := energyDataSourceForDictionary(dictionary)
+				source.ObjectIndex = energyExplanationObjectIndexForDictionary(dictionary, plan)
+				sources = append(sources, source)
+				series = append(series, energyExplanationSeriesForBuilder(builder, source.ID))
+			}
+		}
+	}
+	tabularSeries, tabularSources, err := parseEnergyExplanationTabularAnnual(db, series)
+	if err != nil {
+		return EnergyExplanationResult{}, err
+	}
+	series = append(series, tabularSeries...)
+	sources = append(sources, tabularSources...)
+	if len(series) == 0 && len(sources) == 0 {
 		return emptyEnergyExplanationResult(plan), nil
-	}
-	intervalHours, err := sqlTimeIntervalHours(db)
-	if err != nil {
-		intervalHours = map[int64]float64{}
-	}
-	selectedStartDay, selectedEndDay, hasSelectedRange := energyExplanationSelectedRangeDays(plan)
-
-	ids := make([]int, 0, len(dictionaries))
-	byID := map[int]energyExplanationDictionary{}
-	for _, dictionary := range dictionaries {
-		ids = append(ids, dictionary.row.index)
-		byID[dictionary.row.index] = dictionary
-	}
-	query, args := sqlReportDataQuery(ids)
-	rows, err := db.Query(query, args...)
-	if err != nil {
-		return EnergyExplanationResult{}, err
-	}
-	defer rows.Close()
-
-	builders := map[int]*energyExplanationSeriesBuilder{}
-	for rows.Next() {
-		var timeIndex int64
-		var month, day, hour, minute sql.NullInt64
-		var dictionaryIndex int
-		var value sql.NullFloat64
-		if err := rows.Scan(&timeIndex, &month, &day, &hour, &minute, &dictionaryIndex, &value); err != nil {
-			continue
-		}
-		if !value.Valid || math.IsNaN(value.Float64) || math.IsInf(value.Float64, 0) {
-			continue
-		}
-		dictionary, ok := byID[dictionaryIndex]
-		if !ok {
-			continue
-		}
-		builder := builders[dictionaryIndex]
-		if builder == nil {
-			builder = &energyExplanationSeriesBuilder{dictionary: dictionary}
-			builders[dictionaryIndex] = builder
-		}
-		number, unit := energyExplanationSQLValue(value.Float64, dictionary, intervalHours[timeIndex])
-		builder.unit = unit
-		builder.total += number
-		if month.Valid && month.Int64 >= 1 && month.Int64 <= 12 {
-			if builder.monthly == nil {
-				builder.monthly = map[int]float64{}
-			}
-			builder.monthly[int(month.Int64)] += number
-		}
-		if hasSelectedRange {
-			if rowDay, ok := energyExplanationSQLDayOfYear(month, day); ok && comfortDayInScope(rowDay, selectedStartDay, selectedEndDay) {
-				builder.selectedRange += number
-				builder.hasSelectedRange = true
-			}
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return EnergyExplanationResult{}, err
-	}
-
-	series := make([]energyExplanationSeries, 0, len(builders))
-	sources := make([]EnergyDataSource, 0, len(builders))
-	for _, dictionary := range dictionaries {
-		builder := builders[dictionary.row.index]
-		if builder == nil || builder.total == 0 && len(builder.monthly) == 0 {
-			continue
-		}
-		source := energyDataSourceForDictionary(dictionary)
-		source.ObjectIndex = energyExplanationObjectIndexForDictionary(dictionary, plan)
-		sources = append(sources, source)
-		series = append(series, energyExplanationSeriesForBuilder(builder, source.ID))
 	}
 	return buildEnergyExplanationResult(series, sources, plan), nil
 }
@@ -1484,6 +1498,215 @@ func energyDataSourceForDictionary(dictionary energyExplanationDictionary) Energ
 		TableName:          "ReportData",
 		ColumnName:         fmt.Sprintf("ReportDataDictionaryIndex=%d", row.index),
 	}
+}
+
+func parseEnergyExplanationTabularAnnual(db *sql.DB, existing []energyExplanationSeries) ([]energyExplanationSeries, []EnergyDataSource, error) {
+	hasTabular, err := sqlTableExists(db, "TabularDataWithStrings")
+	if err != nil || !hasTabular {
+		return nil, nil, err
+	}
+	columns, err := sqlTableColumns(db, "TabularDataWithStrings")
+	if err != nil {
+		return nil, nil, err
+	}
+	if !sqlHasColumns(columns, "ReportName", "TableName", "RowName", "ColumnName", "Value") {
+		return nil, nil, nil
+	}
+	query := fmt.Sprintf(`
+SELECT %s AS table_name,
+       %s AS row_name,
+       %s AS column_name,
+       %s AS units,
+       %s AS value
+FROM %s
+WHERE LOWER(TRIM(COALESCE(%s, ''))) = 'annualbuildingutilityperformancesummary'
+  AND TRIM(COALESCE(%s, '')) <> ''
+ORDER BY %s`,
+		sqlTextColumnExpr(columns, "TableName", "''"),
+		sqlTextColumnExpr(columns, "RowName", "''"),
+		sqlTextColumnExpr(columns, "ColumnName", "''"),
+		sqlTextColumnExpr(columns, "Units", "''"),
+		sqlTextColumnExpr(columns, "Value", "''"),
+		quoteSQLiteIdentifier("TabularDataWithStrings"),
+		sqlTextColumnExpr(columns, "ReportName", "''"),
+		sqlTextColumnExpr(columns, "Value", "''"),
+		integrityTabularOrderBy(columns),
+	)
+	rows, err := db.Query(query)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+
+	seen := energyExplanationExistingEnergyGroups(existing)
+	series := []energyExplanationSeries{}
+	sources := []EnergyDataSource{}
+	for rows.Next() {
+		if len(series) >= maxEnergyExplanationTabularRows {
+			break
+		}
+		var tableName, rowName, columnName, units, valueText string
+		if err := rows.Scan(&tableName, &rowName, &columnName, &units, &valueText); err != nil {
+			continue
+		}
+		alias, ok := energyExplanationTabularEnergyAlias(tableName, rowName, columnName)
+		if !ok {
+			continue
+		}
+		def, ok := energyMeterAliasDefinitionForName(alias)
+		if !ok {
+			continue
+		}
+		groupKey := expectedEnergyExplanationOutputGroupKey(alias, "energy")
+		if groupKey == "" || seen[groupKey] {
+			continue
+		}
+		value, ok := parseSQLTabularNumber(valueText)
+		if !ok || value == 0 || math.IsNaN(value) || math.IsInf(value, 0) {
+			continue
+		}
+		number, unit := convertEnergySQLValue(value, units)
+		if number == 0 {
+			continue
+		}
+		sourceID := energyExplanationTabularSourceID(tableName, rowName, columnName)
+		sources = append(sources, EnergyDataSource{
+			ID:                 sourceID,
+			SourceType:         "sql_tabular",
+			IsMeter:            true,
+			KeyValue:           alias,
+			Name:               alias,
+			Units:              strings.TrimSpace(units),
+			ReportingFrequency: "Annual",
+			AggregationMethod:  "tabular_annual_value",
+			TableName:          strings.TrimSpace(tableName),
+			RowName:            strings.TrimSpace(rowName),
+			ColumnName:         tabularColumnLabel(columnName, units),
+		})
+		series = append(series, energyExplanationSeries{
+			Level:               "energy",
+			Kind:                def.Kind,
+			Label:               def.Label,
+			Unit:                unit,
+			Carrier:             def.Carrier,
+			EndUse:              def.EndUse,
+			MeterHierarchyLevel: def.HierarchyLevel,
+			SourceIDs:           []string{sourceID},
+			Total:               roundedEnergyNumber(number),
+			sourceKeyValue:      alias,
+			sourceName:          alias,
+			sourceFrequency:     "Annual",
+			sourcePriority:      energyAliasPriority(alias, def.Aliases),
+		})
+		seen[groupKey] = true
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, err
+	}
+	return series, sources, nil
+}
+
+func energyExplanationExistingEnergyGroups(series []energyExplanationSeries) map[string]bool {
+	seen := map[string]bool{}
+	for _, item := range series {
+		if item.Level != "energy" {
+			continue
+		}
+		if key := energyExplanationCompletenessGroupKey(item); key != "" {
+			seen[key] = true
+		}
+	}
+	return seen
+}
+
+func energyExplanationTabularEnergyAlias(tableName string, rowName string, columnName string) (string, bool) {
+	if !strings.Contains(normalizeEnergyOutputName(tableName), "end uses") {
+		return "", false
+	}
+	carrier, ok := energyExplanationTabularCarrier(columnName)
+	if !ok {
+		return "", false
+	}
+	if energyExplanationTabularTotalRow(rowName) {
+		return carrier + ":Facility", true
+	}
+	endUse, ok := energyExplanationTabularEndUse(rowName)
+	if !ok {
+		return "", false
+	}
+	if endUse == "Generators" && carrier == "Electricity" {
+		return "Generators:ElectricityProduced", true
+	}
+	return endUse + ":" + carrier, true
+}
+
+func energyExplanationTabularCarrier(columnName string) (string, bool) {
+	switch normalizeEnergyOutputName(columnName) {
+	case "electricity":
+		return "Electricity", true
+	case "natural gas", "gas":
+		return "NaturalGas", true
+	case "district cooling":
+		return "DistrictCooling", true
+	case "district heating":
+		return "DistrictHeating", true
+	case "steam":
+		return "Steam", true
+	case "water":
+		return "Water", true
+	case "fuel oil no 1", "fuel oil 1", "fuel oil #1":
+		return "FuelOilNo1", true
+	case "fuel oil no 2", "fuel oil 2", "fuel oil #2":
+		return "FuelOilNo2", true
+	case "propane":
+		return "Propane", true
+	default:
+		return "", false
+	}
+}
+
+func energyExplanationTabularTotalRow(rowName string) bool {
+	switch normalizeEnergyOutputName(rowName) {
+	case "total end uses", "total energy", "total site energy", "net site energy":
+		return true
+	default:
+		return false
+	}
+}
+
+func energyExplanationTabularEndUse(rowName string) (string, bool) {
+	switch normalizeEnergyOutputName(rowName) {
+	case "cooling":
+		return "Cooling", true
+	case "heating":
+		return "Heating", true
+	case "interior lighting":
+		return "InteriorLights", true
+	case "interior equipment":
+		return "InteriorEquipment", true
+	case "fans":
+		return "Fans", true
+	case "pumps":
+		return "Pumps", true
+	case "heat rejection":
+		return "HeatRejection", true
+	case "heat recovery":
+		return "HeatRecovery", true
+	case "water systems":
+		return "WaterSystems", true
+	case "exterior lighting":
+		return "ExteriorLights", true
+	case "refrigeration":
+		return "Refrigeration", true
+	case "generators", "electricity generation":
+		return "Generators", true
+	default:
+		return "", false
+	}
+}
+
+func energyExplanationTabularSourceID(tableName string, rowName string, columnName string) string {
+	return "sql-tabular-" + metricID(tableName+"."+rowName+"."+columnName)
 }
 
 func energyExplanationAggregationMethod(dictionary energyExplanationDictionary) string {

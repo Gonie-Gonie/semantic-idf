@@ -832,6 +832,10 @@ func comfortTabularLooksUnmet(values ...string) bool {
 }
 
 func parseComfortTabularNumber(value string) (float64, bool) {
+	return parseSQLTabularNumber(value)
+}
+
+func parseSQLTabularNumber(value string) (float64, bool) {
 	clean := strings.ReplaceAll(strings.TrimSpace(value), ",", "")
 	if clean == "" {
 		return 0, false

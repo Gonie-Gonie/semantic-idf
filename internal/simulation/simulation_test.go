@@ -1099,6 +1099,43 @@ func TestPurposeResultBundleAppliesEnergyExplanationPeriodScope(t *testing.T) {
 	}
 }
 
+func TestParseSimulationEnergyExplanationSQLUsesTabularAnnualFallback(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "eplusout.sql")
+	createTestEnergyTabularSQL(t, path)
+
+	result, err := parseSimulationEnergyExplanationSQL(path, &PurposeRunPlan{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Schema != energyExplanationSchema || len(result.Periods) != 1 || result.Periods[0].ID != "annual" {
+		t.Fatalf("tabular explanation identity/periods = %q %#v", result.Schema, result.Periods)
+	}
+	facility := energyExplanationNodeByID(result.Nodes, "energy.carrier.electricity")
+	if facility == nil || facility.Value != 3 || facility.Unit != "kWh" || facility.MeterHierarchyLevel != "facility_total" {
+		t.Fatalf("tabular facility node = %#v", facility)
+	}
+	cooling := energyExplanationNodeByID(result.Nodes, "energy.end_use.cooling.electricity")
+	if cooling == nil || cooling.Value != 1 || cooling.MeterHierarchyLevel != "broad_end_use" {
+		t.Fatalf("tabular cooling node = %#v", cooling)
+	}
+	lighting := energyExplanationNodeByID(result.Nodes, "energy.end_use.interior_lighting.electricity")
+	if lighting == nil || lighting.Value != 0.5 {
+		t.Fatalf("tabular lighting node = %#v", lighting)
+	}
+	reconciliation := energyExplanationReconciliationByID(result.Reconciliation, "reconcile.energy.electricity.annual")
+	if reconciliation == nil || reconciliation.ExpectedValue != 3 || reconciliation.ExplainedValue != 1.5 || reconciliation.ResidualValue != 1.5 {
+		t.Fatalf("tabular reconciliation = %#v", result.Reconciliation)
+	}
+	source := energyExplanationSourceByName(result.Sources, "Cooling:Electricity")
+	if source == nil || source.SourceType != "sql_tabular" || source.AggregationMethod != "tabular_annual_value" || source.TableName != "End Uses" || source.RowName != "Cooling" || source.ColumnName != "Electricity [GJ]" {
+		t.Fatalf("tabular source = %#v", source)
+	}
+	if availability := energyExplanationSourceAvailabilityByName(result.Completeness.SourceAvailability, "Electricity:Facility"); availability == nil || availability.Status != "found" {
+		t.Fatalf("tabular source availability = %#v", result.Completeness.SourceAvailability)
+	}
+}
+
 func TestPurposeResultBundleLinksEnergyExplanationToHVACServicePaths(t *testing.T) {
 	dir := t.TempDir()
 	sqlPath := filepath.Join(dir, "eplusout.sql")
@@ -1256,6 +1293,15 @@ func energyExplanationHasSource(sources []EnergyDataSource, id string, isMeter b
 func energyExplanationSourceByID(sources []EnergyDataSource, id string) *EnergyDataSource {
 	for index := range sources {
 		if sources[index].ID == id {
+			return &sources[index]
+		}
+	}
+	return nil
+}
+
+func energyExplanationSourceByName(sources []EnergyDataSource, name string) *EnergyDataSource {
+	for index := range sources {
+		if sources[index].Name == name {
 			return &sources[index]
 		}
 	}
@@ -2112,6 +2158,38 @@ func createTestEnergySQL(t *testing.T, path string) {
 			(4, 2, 21, 1800000.0),
 			(5, 1, 22, 900000.0),
 			(6, 2, 22, 900000.0)`,
+	}
+	for _, statement := range statements {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatalf("sql fixture statement failed: %v\n%s", err, statement)
+		}
+	}
+}
+
+func createTestEnergyTabularSQL(t *testing.T, path string) {
+	t.Helper()
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	statements := []string{
+		`CREATE TABLE TabularDataWithStrings (
+			ReportName TEXT,
+			ReportForString TEXT,
+			TableName TEXT,
+			RowName TEXT,
+			ColumnName TEXT,
+			Units TEXT,
+			RowId INTEGER,
+			ColumnId INTEGER,
+			Value TEXT
+		)`,
+		`INSERT INTO TabularDataWithStrings VALUES
+			('AnnualBuildingUtilityPerformanceSummary', 'Entire Facility', 'End Uses', 'Total End Uses', 'Electricity', 'GJ', 1, 1, '0.0108'),
+			('AnnualBuildingUtilityPerformanceSummary', 'Entire Facility', 'End Uses', 'Cooling', 'Electricity', 'GJ', 2, 1, '0.0036'),
+			('AnnualBuildingUtilityPerformanceSummary', 'Entire Facility', 'End Uses', 'Interior Lighting', 'Electricity', 'GJ', 3, 1, '0.0018'),
+			('AnnualBuildingUtilityPerformanceSummary', 'Entire Facility', 'End Uses', 'Humidification', 'Electricity', 'GJ', 4, 1, '0.0001')`,
 	}
 	for _, statement := range statements {
 		if _, err := db.Exec(statement); err != nil {
