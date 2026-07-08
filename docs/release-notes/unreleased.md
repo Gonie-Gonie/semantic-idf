@@ -29,7 +29,9 @@ The release script infers bump size from these sections:
 - Batch purpose simulation metrics now include compact annual Energy Use,
   Delivered Load, Heat Driver, residual, mapped-percent, and top heat-driver
   values from the Basic Energy explanation summary, plus two-row delta tables
-  for end-use energy, delivered loads, and heat drivers.
+  for end-use energy, delivered loads, and heat drivers. The batch explanation
+  comparison also ranks the largest annual changes and labels missing baseline
+  or comparison rows.
 
 ## Changed
 

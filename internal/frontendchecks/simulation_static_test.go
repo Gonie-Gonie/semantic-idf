@@ -32,3 +32,18 @@ func TestFrontendSimulationEnergySystemsCrossJumpContracts(t *testing.T) {
 		}
 	}
 }
+
+func TestFrontendBatchEnergyExplanationDeltaContracts(t *testing.T) {
+	batch := readTestFile(t, "frontend/src/js/batch/batch-simulation.js")
+	for _, term := range []string{
+		"renderEnergyExplanationDeltaRanking",
+		"energyExplanationDeltaRows",
+		"energyExplanationDeltaStatus",
+		"Largest Energy Explanation Changes",
+		"missing in baseline",
+	} {
+		if !strings.Contains(batch, term) {
+			t.Fatalf("batch energy explanation delta contract missing %q", term)
+		}
+	}
+}

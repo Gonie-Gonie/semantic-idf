@@ -397,36 +397,64 @@ export function initializeMultiSimulationTool(context) {
       .map(([label, key]) => renderEnergyExplanationDeltaSection(label, selected[0], selected[1], key))
       .filter(Boolean)
       .join("");
-    return sections ? `<div class="batch-energy-explanation-compare">${sections}</div>` : "";
+    const ranking = renderEnergyExplanationDeltaRanking(selected[0], selected[1]);
+    return sections || ranking ? `<div class="batch-energy-explanation-compare">${ranking}${sections}</div>` : "";
+  }
+
+  function renderEnergyExplanationDeltaRanking(leftResult, rightResult) {
+    const groups = [
+      ["Energy Use", "energyByEndUse"],
+      ["Delivered Load", "deliveredLoadByService"],
+      ["Heat Drivers", "heatDrivers"],
+      ["Residual", "residuals"],
+    ];
+    const rows = groups
+      .flatMap(([group, key]) => energyExplanationDeltaRows(group, leftResult, rightResult, key))
+      .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta) || a.group.localeCompare(b.group) || a.label.localeCompare(b.label))
+      .slice(0, 12)
+      .map(
+        (row) => `
+          <tr>
+            <td>${escapeHTML(row.group)}</td>
+            <td>${escapeHTML(row.label)}</td>
+            <td>${escapeHTML(formatValue(row.leftValue, row.unit))}</td>
+            <td>${escapeHTML(formatValue(row.rightValue, row.unit))}</td>
+            <td>${escapeHTML(formatSignedValue(row.delta, row.unit))}</td>
+            <td>${escapeHTML(row.percent === null ? t("common.notAvailable", {}, "N/A") : `${formatNumber(row.percent)}%`)}</td>
+            <td>${escapeHTML(row.status)}</td>
+          </tr>`,
+      )
+      .join("");
+    if (!rows) {
+      return "";
+    }
+    return `
+      <section>
+        <h4>${escapeHTML(t("simulation.energyDeltaRanking", {}, "Largest Energy Explanation Changes"))}</h4>
+        <div class="tool-table-wrap">
+          <table class="tool-table">
+            <thead><tr><th>Level</th><th>${escapeHTML(t("common.metric", {}, "Metric"))}</th><th>${escapeHTML(leftResult.filename || fileName(leftResult.inputPath))}</th><th>${escapeHTML(rightResult.filename || fileName(rightResult.inputPath))}</th><th>Delta</th><th>%</th><th>Status</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </section>`;
   }
 
   function renderEnergyExplanationDeltaSection(label, leftResult, rightResult, key) {
-    const left = energyExplanationSummaryMap(leftResult.purposeResults?.energyExplanationSummary?.[key] || []);
-    const right = energyExplanationSummaryMap(rightResult.purposeResults?.energyExplanationSummary?.[key] || []);
-    const ids = [...new Set([...left.keys(), ...right.keys()])].sort((a, b) => {
-      const leftValue = Math.abs(left.get(a)?.value || 0) + Math.abs(right.get(a)?.value || 0);
-      const rightValue = Math.abs(left.get(b)?.value || 0) + Math.abs(right.get(b)?.value || 0);
-      return rightValue - leftValue || energyExplanationSummaryLabel(left.get(a) || right.get(a)).localeCompare(energyExplanationSummaryLabel(left.get(b) || right.get(b)));
-    });
-    const rows = ids
+    const rows = energyExplanationDeltaRows(label, leftResult, rightResult, key)
+      .sort((a, b) => b.totalMagnitude - a.totalMagnitude || a.label.localeCompare(b.label))
       .slice(0, 12)
-      .map((id) => {
-        const leftItem = left.get(id);
-        const rightItem = right.get(id);
-        const leftValue = Number(leftItem?.value || 0);
-        const rightValue = Number(rightItem?.value || 0);
-        const unit = rightItem?.unit || leftItem?.unit || "";
-        const delta = rightValue - leftValue;
-        const percent = leftValue === 0 ? null : (delta / leftValue) * 100;
-        return `
+      .map(
+        (row) => `
           <tr>
-            <td>${escapeHTML(energyExplanationSummaryLabel(leftItem || rightItem))}</td>
-            <td>${escapeHTML(formatValue(leftValue, unit))}</td>
-            <td>${escapeHTML(formatValue(rightValue, unit))}</td>
-            <td>${escapeHTML(formatSignedValue(delta, unit))}</td>
-            <td>${escapeHTML(percent === null ? t("common.notAvailable", {}, "N/A") : `${formatNumber(percent)}%`)}</td>
-          </tr>`;
-      })
+            <td>${escapeHTML(row.label)}</td>
+            <td>${escapeHTML(formatValue(row.leftValue, row.unit))}</td>
+            <td>${escapeHTML(formatValue(row.rightValue, row.unit))}</td>
+            <td>${escapeHTML(formatSignedValue(row.delta, row.unit))}</td>
+            <td>${escapeHTML(row.percent === null ? t("common.notAvailable", {}, "N/A") : `${formatNumber(row.percent)}%`)}</td>
+            <td>${escapeHTML(row.status)}</td>
+          </tr>`,
+      )
       .join("");
     if (!rows) {
       return "";
@@ -436,11 +464,37 @@ export function initializeMultiSimulationTool(context) {
         <h4>${escapeHTML(label)}</h4>
         <div class="tool-table-wrap">
           <table class="tool-table">
-            <thead><tr><th>${escapeHTML(t("common.metric", {}, "Metric"))}</th><th>${escapeHTML(leftResult.filename || fileName(leftResult.inputPath))}</th><th>${escapeHTML(rightResult.filename || fileName(rightResult.inputPath))}</th><th>Delta</th><th>%</th></tr></thead>
+            <thead><tr><th>${escapeHTML(t("common.metric", {}, "Metric"))}</th><th>${escapeHTML(leftResult.filename || fileName(leftResult.inputPath))}</th><th>${escapeHTML(rightResult.filename || fileName(rightResult.inputPath))}</th><th>Delta</th><th>%</th><th>Status</th></tr></thead>
             <tbody>${rows}</tbody>
           </table>
         </div>
       </section>`;
+  }
+
+  function energyExplanationDeltaRows(group, leftResult, rightResult, key) {
+    const left = energyExplanationSummaryMap(leftResult.purposeResults?.energyExplanationSummary?.[key] || []);
+    const right = energyExplanationSummaryMap(rightResult.purposeResults?.energyExplanationSummary?.[key] || []);
+    return [...new Set([...left.keys(), ...right.keys()])].map((id) => {
+      const leftItem = left.get(id);
+      const rightItem = right.get(id);
+      const leftValue = Number(leftItem?.value || 0);
+      const rightValue = Number(rightItem?.value || 0);
+      const unit = rightItem?.unit || leftItem?.unit || "";
+      const delta = rightValue - leftValue;
+      const percent = leftValue === 0 ? null : (delta / leftValue) * 100;
+      return {
+        group,
+        id,
+        label: energyExplanationSummaryLabel(leftItem || rightItem),
+        leftValue,
+        rightValue,
+        delta,
+        percent,
+        unit,
+        status: energyExplanationDeltaStatus(leftItem, rightItem),
+        totalMagnitude: Math.abs(leftValue) + Math.abs(rightValue),
+      };
+    });
   }
 
   function energyExplanationSummaryMap(items = []) {
@@ -455,6 +509,16 @@ export function initializeMultiSimulationTool(context) {
 
   function energyExplanationSummaryLabel(item = {}) {
     return item.label || item.id || "";
+  }
+
+  function energyExplanationDeltaStatus(leftItem, rightItem) {
+    if (!leftItem && rightItem) {
+      return "missing in baseline";
+    }
+    if (leftItem && !rightItem) {
+      return "missing in comparison";
+    }
+    return "matched";
   }
 
   function formatValue(value, unit = "") {

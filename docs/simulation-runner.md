@@ -125,7 +125,10 @@ Batch purpose simulations also summarize the annual explanation graph into
 compact purpose metrics for Energy Use, Delivered Load, Heat Drivers, residual,
 mapped percent, and the largest heat-driver groups. When two Basic Energy
 purpose rows with explanation summaries are selected, the batch chart also shows
-end-use, delivered-load, and heat-driver delta tables beside the selected metric.
+the largest explanation changes plus end-use, delivered-load, and heat-driver
+delta tables beside the selected metric. Missing summary rows are labeled
+separately from matched rows so an absent output is not silently treated as a
+normal zero.
 
 `parseSimulationSQL` is the combined SQLite entrypoint. It gathers generic
 time-series rows, Basic Energy dashboard data, SQL heat-flow data, Integrity
