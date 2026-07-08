@@ -1420,12 +1420,14 @@ func batchSimulationPurposeMetricSection(result simulation.MultiSimulationResult
 func batchSimulationEnergySummarySection(result simulation.MultiSimulationResult) tabular.Section {
 	section := tabular.Section{
 		Title:   "energy_summary",
-		Headers: []string{"file", "status", "run_id", "type", "id", "label", "value", "unit", "level", "service_kind", "path_type", "carrier", "end_use", "heat_category", "sign", "basis", "formula", "numerator_label", "numerator_value", "numerator_unit", "denominator_label", "denominator_value", "denominator_unit", "source_ids"},
+		Headers: []string{"file", "status", "run_id", "type", "id", "label", "value", "unit", "level", "service_kind", "path_type", "carrier", "end_use", "heat_category", "sign", "basis", "formula", "numerator_label", "numerator_value", "numerator_unit", "denominator_label", "denominator_value", "denominator_unit", "source_ids", "source_object_index"},
 	}
 	for _, item := range result.Results {
 		summary := simulation.EnergyExplanationSummary{}
+		explanation := simulation.EnergyExplanationResult{}
 		if item.PurposeResults != nil {
 			summary = item.PurposeResults.EnergyExplanationSummary
+			explanation = item.PurposeResults.EnergyExplanation
 		}
 		file := batchSimulationFileLabel(item)
 		for _, group := range batchSimulationSummaryGroups(summary) {
@@ -1455,6 +1457,7 @@ func batchSimulationEnergySummarySection(result simulation.MultiSimulationResult
 					formatBatchSimulationOptionalFloat(metric.DenominatorValue, metric.DenominatorLabel, metric.DenominatorUnit),
 					metric.DenominatorUnit,
 					strings.Join(metric.SourceIDs, "; "),
+					batchSimulationSourceObjectIndexes(explanation, metric.SourceIDs),
 				})
 			}
 		}
@@ -1570,14 +1573,15 @@ func batchSimulationSourceValueSummary(explanation simulation.EnergyExplanationR
 func batchSimulationEnergyEdgeSection(result simulation.MultiSimulationResult) tabular.Section {
 	section := tabular.Section{
 		Title:   "energy_edges",
-		Headers: []string{"file", "status", "run_id", "period", "id", "from_id", "to_id", "value", "unit", "relation", "basis", "rule_id", "formula", "zone", "service_kind", "source_ids", "related_path_ids"},
+		Headers: []string{"file", "status", "run_id", "period", "id", "from_id", "to_id", "value", "unit", "relation", "basis", "rule_id", "formula", "zone", "service_kind", "source_ids", "source_object_index", "related_path_ids"},
 	}
 	for _, item := range result.Results {
 		if item.PurposeResults == nil {
 			continue
 		}
 		file := batchSimulationFileLabel(item)
-		for _, period := range batchSimulationExportPeriods(item.PurposeResults.EnergyExplanation) {
+		explanation := item.PurposeResults.EnergyExplanation
+		for _, period := range batchSimulationExportPeriods(explanation) {
 			for _, edge := range period.Edges {
 				section.Rows = append(section.Rows, []string{
 					file,
@@ -1596,6 +1600,7 @@ func batchSimulationEnergyEdgeSection(result simulation.MultiSimulationResult) t
 					edge.ZoneName,
 					edge.ServiceKind,
 					strings.Join(edge.SourceIDs, "; "),
+					batchSimulationSourceObjectIndexes(explanation, edge.SourceIDs),
 					strings.Join(edge.RelatedPathIDs, "; "),
 				})
 			}
@@ -1607,14 +1612,15 @@ func batchSimulationEnergyEdgeSection(result simulation.MultiSimulationResult) t
 func batchSimulationEnergyReconciliationSection(result simulation.MultiSimulationResult) tabular.Section {
 	section := tabular.Section{
 		Title:   "energy_reconciliation",
-		Headers: []string{"file", "status", "run_id", "period", "id", "label", "level", "reconciliation_status", "expected", "explained", "residual", "unit", "basis", "formula", "zone", "service_kind", "source_ids"},
+		Headers: []string{"file", "status", "run_id", "period", "id", "label", "level", "reconciliation_status", "expected", "explained", "residual", "unit", "basis", "formula", "zone", "service_kind", "source_ids", "source_object_index"},
 	}
 	for _, item := range result.Results {
 		if item.PurposeResults == nil {
 			continue
 		}
 		file := batchSimulationFileLabel(item)
-		for _, period := range batchSimulationExportPeriods(item.PurposeResults.EnergyExplanation) {
+		explanation := item.PurposeResults.EnergyExplanation
+		for _, period := range batchSimulationExportPeriods(explanation) {
 			for _, row := range period.Reconciliation {
 				section.Rows = append(section.Rows, []string{
 					file,
@@ -1634,6 +1640,7 @@ func batchSimulationEnergyReconciliationSection(result simulation.MultiSimulatio
 					row.ZoneName,
 					row.ServiceKind,
 					strings.Join(row.SourceIDs, "; "),
+					batchSimulationSourceObjectIndexes(explanation, row.SourceIDs),
 				})
 			}
 		}

@@ -297,9 +297,10 @@ expanding the default spreadsheet export. Compact summary rows also carry their
 source IDs and matching source output object indexes when available. Batch
 Simulation can also export the same core purpose metrics, compact energy
 summary, source metadata, source availability, edge, and reconciliation sheets
-as XLSX. Source availability rows preserve `source_ids` and matching output
-object indexes, source table/row/column labels, and source/normalized units
-when the source metadata is available. When a baseline and
+as XLSX. XLSX summary, edge, reconciliation, and source availability rows
+preserve `source_ids` and matching output object indexes when the source
+metadata is available. Source availability rows also include source
+table/row/column labels and source/normalized units. When a baseline and
 target case are selected, the XLSX workbook also includes
 comparison context, summary delta, and annual Sankey edge delta sheets. The
 workbook also includes a Run Context sheet with the selected paths, purpose

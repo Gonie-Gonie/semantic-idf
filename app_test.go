@@ -364,6 +364,7 @@ func TestBatchSummaryWorkbookSheetsIncludeDelta(t *testing.T) {
 }
 
 func TestBatchSimulationWorkbookSheetsIncludesPurposeAndEnergySheets(t *testing.T) {
+	sourceObjectIndex := 12
 	result := simulation.MultiSimulationResult{
 		RunID:     "sim-xlsx-test",
 		Total:     1,
@@ -398,6 +399,7 @@ func TestBatchSimulationWorkbookSheetsIncludesPurposeAndEnergySheets(t *testing.
 						DenominatorLabel: "Cooling electricity",
 						DenominatorValue: 4,
 						DenominatorUnit:  "kWh",
+						SourceIDs:        []string{"sql-rdd-1"},
 					}},
 				},
 				EnergyExplanation: simulation.EnergyExplanationResult{
@@ -415,6 +417,7 @@ func TestBatchSimulationWorkbookSheetsIncludesPurposeAndEnergySheets(t *testing.
 						Name:           "Cooling:Electricity",
 						SourceUnit:     "J",
 						NormalizedUnit: "kWh",
+						ObjectIndex:    &sourceObjectIndex,
 					}},
 					Periods: []simulation.EnergyPeriod{{
 						ID:   "annual",
@@ -426,13 +429,14 @@ func TestBatchSimulationWorkbookSheetsIncludesPurposeAndEnergySheets(t *testing.
 							Period:   "annual",
 						}},
 						Edges: []simulation.EnergyExplanationEdge{{
-							ID:       "edge-1",
-							FromID:   "energy.carrier.electricity",
-							ToID:     "energy.end_use.cooling.electricity",
-							Value:    1,
-							Unit:     "kWh",
-							Relation: "meter_enduse",
-							Basis:    "measured_meter",
+							ID:        "edge-1",
+							FromID:    "energy.carrier.electricity",
+							ToID:      "energy.end_use.cooling.electricity",
+							Value:     1,
+							Unit:      "kWh",
+							Relation:  "meter_enduse",
+							Basis:     "measured_meter",
+							SourceIDs: []string{"sql-rdd-1"},
 						}},
 						Reconciliation: []simulation.EnergyReconciliation{{
 							ID:             "reconcile.energy.electricity.annual",
@@ -445,6 +449,7 @@ func TestBatchSimulationWorkbookSheetsIncludesPurposeAndEnergySheets(t *testing.
 							ResidualValue:  1,
 							Unit:           "kWh",
 							Basis:          "meter_reconciliation",
+							SourceIDs:      []string{"sql-rdd-1"},
 						}},
 					}},
 				},
@@ -458,10 +463,13 @@ func TestBatchSimulationWorkbookSheetsIncludesPurposeAndEnergySheets(t *testing.
 	if rows := sheets[0].Sections[0].Rows; len(rows) != 1 || rows[0][3] != "energy_explanation.kpi.cooling_cop" {
 		t.Fatalf("purpose metric rows = %#v", rows)
 	}
-	if rows := sheets[1].Sections[0].Rows; len(rows) != 1 || rows[0][3] != "derived_kpi" || rows[0][10] != "zone" || rows[0][15] != "derived_kpi" || rows[0][18] != "8" || rows[0][21] != "4" {
+	if rows := sheets[1].Sections[0].Rows; len(rows) != 1 || rows[0][3] != "derived_kpi" || rows[0][10] != "zone" || rows[0][15] != "derived_kpi" || rows[0][18] != "8" || rows[0][21] != "4" || rows[0][23] != "sql-rdd-1" || rows[0][24] != "12" {
 		t.Fatalf("energy summary rows = %#v", rows)
 	}
-	if rows := sheets[4].Sections[0].Rows; len(rows) != 1 || rows[0][7] != "residual" {
+	if rows := sheets[3].Sections[0].Rows; len(rows) != 1 || rows[0][15] != "sql-rdd-1" || rows[0][16] != "12" {
+		t.Fatalf("energy edge rows = %#v", rows)
+	}
+	if rows := sheets[4].Sections[0].Rows; len(rows) != 1 || rows[0][7] != "residual" || rows[0][16] != "sql-rdd-1" || rows[0][17] != "12" {
 		t.Fatalf("reconciliation rows = %#v", rows)
 	}
 	if rows := sheets[5].Sections[0].Rows; len(rows) != 1 || rows[0][3] != "annual" || rows[0][5] != "heat_balance_deviation_large" {
