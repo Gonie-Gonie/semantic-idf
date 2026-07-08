@@ -646,6 +646,131 @@ func TestBatchSimulationWorkbookSheetsIncludeComparisonDelta(t *testing.T) {
 	}
 }
 
+func TestBatchSimulationEnergyDeltasDistinguishMissingAndZero(t *testing.T) {
+	left := simulation.SimulationRunResult{
+		RunID:    "baseline-run",
+		Filename: "baseline.idf",
+		Status:   "succeeded",
+		PurposeResults: &simulation.PurposeResultBundle{
+			EnergyExplanationSummary: simulation.EnergyExplanationSummary{
+				Schema: "semantic-idf.energy-explanation-summary/v1",
+				EnergyByEndUse: []simulation.EnergyExplanationSummaryItem{{
+					ID:    "lighting.electricity",
+					Label: "Lighting electricity",
+					Value: 0,
+					Unit:  "kWh",
+					Level: "energy",
+					Basis: "measured_meter",
+				}},
+			},
+			EnergyExplanation: simulation.EnergyExplanationResult{
+				Schema: "semantic-idf.energy-explanation/v1",
+				Periods: []simulation.EnergyPeriod{{
+					ID:   "annual",
+					Kind: "annual",
+					Nodes: []simulation.EnergyExplanationNode{
+						{ID: "energy.carrier.electricity", Label: "Electricity"},
+						{ID: "energy.end_use.lighting.electricity", Label: "Lighting electricity"},
+					},
+					Edges: []simulation.EnergyExplanationEdge{{
+						ID:       "edge.lighting",
+						FromID:   "energy.carrier.electricity",
+						ToID:     "energy.end_use.lighting.electricity",
+						Value:    0,
+						Unit:     "kWh",
+						Relation: "meter_enduse",
+						Basis:    "measured_meter",
+					}},
+				}},
+			},
+		},
+	}
+	right := simulation.SimulationRunResult{
+		RunID:    "target-run",
+		Filename: "target.idf",
+		Status:   "succeeded",
+		PurposeResults: &simulation.PurposeResultBundle{
+			EnergyExplanationSummary: simulation.EnergyExplanationSummary{
+				Schema: "semantic-idf.energy-explanation-summary/v1",
+				EnergyByEndUse: []simulation.EnergyExplanationSummaryItem{
+					{
+						ID:    "lighting.electricity",
+						Label: "Lighting electricity",
+						Value: 5,
+						Unit:  "kWh",
+						Level: "energy",
+						Basis: "measured_meter",
+					},
+					{
+						ID:    "pumps.electricity",
+						Label: "Pumps electricity",
+						Value: 2,
+						Unit:  "kWh",
+						Level: "energy",
+						Basis: "measured_meter",
+					},
+				},
+			},
+			EnergyExplanation: simulation.EnergyExplanationResult{
+				Schema: "semantic-idf.energy-explanation/v1",
+				Periods: []simulation.EnergyPeriod{{
+					ID:   "annual",
+					Kind: "annual",
+					Nodes: []simulation.EnergyExplanationNode{
+						{ID: "energy.carrier.electricity", Label: "Electricity"},
+						{ID: "energy.end_use.lighting.electricity", Label: "Lighting electricity"},
+						{ID: "energy.end_use.pumps.electricity", Label: "Pumps electricity"},
+					},
+					Edges: []simulation.EnergyExplanationEdge{
+						{
+							ID:       "edge.lighting",
+							FromID:   "energy.carrier.electricity",
+							ToID:     "energy.end_use.lighting.electricity",
+							Value:    5,
+							Unit:     "kWh",
+							Relation: "meter_enduse",
+							Basis:    "measured_meter",
+						},
+						{
+							ID:       "edge.pumps",
+							FromID:   "energy.carrier.electricity",
+							ToID:     "energy.end_use.pumps.electricity",
+							Value:    2,
+							Unit:     "kWh",
+							Relation: "meter_enduse",
+							Basis:    "measured_meter",
+						},
+					},
+				}},
+			},
+		},
+	}
+
+	energyRows := batchSimulationEnergyDeltaSection(left, right).Rows
+	rowByID := func(rows [][]string, id string) []string {
+		for _, row := range rows {
+			if len(row) > 1 && row[1] == id {
+				return row
+			}
+		}
+		return nil
+	}
+	if row := rowByID(energyRows, "lighting.electricity"); row == nil || row[5] != "0" || row[6] != "5" || row[8] != "N/A" || row[10] != "matched" {
+		t.Fatalf("zero baseline energy row = %#v; all rows = %#v", row, energyRows)
+	}
+	if row := rowByID(energyRows, "pumps.electricity"); row == nil || row[5] != "0" || row[6] != "2" || row[8] != "N/A" || row[10] != "missing in baseline" {
+		t.Fatalf("missing baseline energy row = %#v; all rows = %#v", row, energyRows)
+	}
+
+	edgeRows := batchSimulationEnergyEdgeDeltaSection(left, right).Rows
+	if row := rowByID(edgeRows, "Electricity -> Lighting electricity"); row == nil || row[5] != "0" || row[6] != "5" || row[8] != "N/A" || row[10] != "matched" {
+		t.Fatalf("zero baseline edge row = %#v; all rows = %#v", row, edgeRows)
+	}
+	if row := rowByID(edgeRows, "Electricity -> Pumps electricity"); row == nil || row[5] != "0" || row[6] != "2" || row[8] != "N/A" || row[10] != "missing in baseline" {
+		t.Fatalf("missing baseline edge row = %#v; all rows = %#v", row, edgeRows)
+	}
+}
+
 func TestCreateBatchSafeCleanupCopiesWritesCleanedCopyOnly(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "cleanup.idf")
