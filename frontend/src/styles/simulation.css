@@ -1142,6 +1142,13 @@
   text-decoration: underline;
 }
 
+.simulation-energy-zone-paths {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+}
+
 .simulation-energy-explain-grid,
 .energy-explanation-inspector-grid {
   display: grid;

@@ -553,7 +553,7 @@ function renderEnergySubviewControls(view, explanation = {}) {
           .join("")}
       </div>
       ${
-        ["sankey", "systems", "reconciliation"].includes(view) && periodOptions
+        ["sankey", "zones", "systems", "reconciliation"].includes(view) && periodOptions
           ? `<label><span>${escapeHTML(t("common.period", {}, "Period"))}</span><select data-simulation-energy-period>${periodOptions}</select></label>`
           : ""
       }
@@ -973,7 +973,8 @@ function renderEnergyExplanationMonthlyLevelChart(explanation = {}) {
 }
 
 function renderEnergyZonesSubview(zones = [], explanation = {}) {
-  const heatRows = (explanation.nodes || [])
+  const graph = energyExplanationGraphForPeriod(explanation, state.simulationEnergyPeriod || "annual");
+  const heatRows = (graph.nodes || [])
     .filter((node) => node.level === "heat" && node.zoneName)
     .sort((a, b) => {
       const zoneCompare = String(a.zoneName || "").localeCompare(String(b.zoneName || ""));
@@ -997,6 +998,7 @@ function renderEnergyZonesSubview(zones = [], explanation = {}) {
     ${renderEnergyExplanationCompleteness(explanation)}
     ${renderZoneEnergyMatrix(zones)}
     ${renderZoneEnergyTable(zones)}
+    ${renderEnergyZoneBreakdownSection(explanation)}
     <section class="simulation-energy-block">
       <div class="simulation-energy-block-head">
         <h4>${escapeHTML(t("simulation.zoneHeatDrivers", {}, "Zone heat drivers"))}</h4>
@@ -1009,6 +1011,106 @@ function renderEnergyZonesSubview(zones = [], explanation = {}) {
         </table>
       </div>
     </section>`;
+}
+
+function renderEnergyZoneBreakdownSection(explanation = {}) {
+  const graph = energyExplanationGraphForPeriod(explanation, state.simulationEnergyPeriod || "annual");
+  const rows = energyZoneBreakdownRows(graph)
+    .map((row) => {
+      const pathButtons = simulationRelatedServicePathsForEnergyNodes(row.nodes)
+        .slice(0, 4)
+        .map((path) =>
+          renderSimulationEnergyServicePathButton(
+            path,
+            `${simulationServiceKindLabel(path.serviceKind)} / ${simulationDeliveryLabel(path)}`,
+          ),
+        )
+        .join("");
+      return `
+        <tr>
+          <td>${escapeHTML(row.zoneName || "")}</td>
+          <td>${escapeHTML(row.serviceKind ? simulationServiceKindLabel(row.serviceKind) : t("common.all", {}, "All"))}</td>
+          <td>${escapeHTML(formatValueWithUnit(row.load, row.unit))}</td>
+          <td>${escapeHTML(formatValueWithUnit(row.coolingPressure, row.unit))}</td>
+          <td>${escapeHTML(formatValueWithUnit(row.heatingPressure, row.unit))}</td>
+          <td>${escapeHTML(formatValueWithUnit(row.signedHeat, row.unit))}</td>
+          <td>${escapeHTML(formatValueWithUnit(row.residual, row.unit))}</td>
+          <td>${pathButtons ? `<div class="simulation-energy-zone-paths">${pathButtons}</div>` : `<span class="simulation-source-output missing">${escapeHTML(t("common.notAvailable", {}, "N/A"))}</span>`}</td>
+          <td><button class="simulation-series-inspect" type="button" data-simulation-energy-zone-jump="${escapeHTML(row.zoneName || "")}">${escapeHTML(t("simulation.openZoneInSankey", {}, "Sankey"))}</button></td>
+        </tr>`;
+    })
+    .join("");
+  if (!rows) {
+    return "";
+  }
+  return `
+    <section class="simulation-energy-block">
+      <div class="simulation-energy-block-head">
+        <h4>${escapeHTML(t("simulation.energyZoneBreakdown", {}, "Zone energy/load/heat breakdown"))}</h4>
+        <span>${escapeHTML(graph.label || state.simulationEnergyPeriod || "annual")}</span>
+      </div>
+      <div class="output-table-wrap">
+        <table class="output-table">
+          <thead><tr><th>${escapeHTML(t("common.zone", {}, "Zone"))}</th><th>${escapeHTML(t("simulation.service", {}, "Service"))}</th><th>${escapeHTML(t("simulation.deliveredLoad", {}, "Delivered Load"))}</th><th>${escapeHTML(t("simulation.coolingPressure", {}, "Cooling pressure"))}</th><th>${escapeHTML(t("simulation.heatingPressure", {}, "Heating pressure"))}</th><th>${escapeHTML(t("simulation.signedValue", {}, "Signed"))}</th><th>${escapeHTML(t("simulation.residual", {}, "Residual"))}</th><th>${escapeHTML(t("hvac.relatedServicePaths", {}, "Related service paths"))}</th><th>${escapeHTML(t("common.view", {}, "View"))}</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </section>`;
+}
+
+function energyZoneBreakdownRows(graph = {}) {
+  const rowsByKey = new Map();
+  const ensureRow = (zoneName = "", serviceKind = "", unit = "kWh") => {
+    const zoneKey = simulationZoneKey(zoneName);
+    const service = simulationCanonicalServiceKind(serviceKind || "");
+    const key = `${zoneKey}|${service}`;
+    if (!rowsByKey.has(key)) {
+      rowsByKey.set(key, {
+        zoneName,
+        serviceKind: service,
+        load: 0,
+        coolingPressure: 0,
+        heatingPressure: 0,
+        signedHeat: 0,
+        residual: 0,
+        unit: unit || "kWh",
+        nodes: [],
+      });
+    }
+    const row = rowsByKey.get(key);
+    row.unit = unit || row.unit || "kWh";
+    return row;
+  };
+  (graph.nodes || []).forEach((node) => {
+    if (!node.zoneName || !["load", "heat", "residual"].includes(node.level)) {
+      return;
+    }
+    const row = ensureRow(node.zoneName, node.serviceKind || energyServiceFromNode(node), node.unit);
+    row.nodes.push(node);
+    const displayValue = Number(node.displayValue ?? node.value) || 0;
+    if (node.level === "load") {
+      row.load += Math.abs(displayValue);
+    } else if (node.level === "heat") {
+      const signed = Number(node.signedValue ?? node.value) || 0;
+      row.coolingPressure += Math.max(0, signed);
+      row.heatingPressure += Math.max(0, -signed);
+      row.signedHeat += signed;
+    } else if (node.level === "residual") {
+      row.residual += displayValue;
+    }
+  });
+  (graph.reconciliation || []).forEach((item) => {
+    if (item.level !== "heat" || !item.zoneName) {
+      return;
+    }
+    const row = ensureRow(item.zoneName, item.serviceKind || "", item.unit);
+    row.residual += Number(item.residualValue) || 0;
+  });
+  return [...rowsByKey.values()].sort((a, b) => {
+    const zoneCompare = String(a.zoneName || "").localeCompare(String(b.zoneName || ""));
+    if (zoneCompare) return zoneCompare;
+    return String(a.serviceKind || "").localeCompare(String(b.serviceKind || ""));
+  });
 }
 
 function energyExplanationLevelTotals(nodes = []) {
@@ -3384,6 +3486,15 @@ function handleSimulationSeriesInspectClick(event) {
   const energyPeriodJump = event.target.closest("[data-simulation-energy-period-jump]");
   if (energyPeriodJump) {
     state.simulationEnergyPeriod = energyPeriodJump.dataset.simulationEnergyPeriodJump || "annual";
+    state.simulationEnergySelection = "";
+    state.simulationEnergyView = "sankey";
+    renderSimulationEnergyDashboard(state.simulationResult);
+    return;
+  }
+  const energyZoneJump = event.target.closest("[data-simulation-energy-zone-jump]");
+  if (energyZoneJump) {
+    state.simulationEnergyFocusMode = "zone";
+    state.simulationEnergyZoneFocus = energyZoneJump.dataset.simulationEnergyZoneJump || "";
     state.simulationEnergySelection = "";
     state.simulationEnergyView = "sankey";
     renderSimulationEnergyDashboard(state.simulationResult);

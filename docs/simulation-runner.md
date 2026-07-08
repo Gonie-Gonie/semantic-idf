@@ -287,6 +287,9 @@ Purpose result viewers now include:
   where zone load and heat-driver data exist, zone/service rows for the selected
   annual or monthly period. The subview ranks the largest zone/service heat
   residuals for the active period below the full reconciliation table.
+  The `Zones` subview summarizes each zone/service period as Delivered Load,
+  Cooling Pressure, Heating Pressure, signed heat, and residual values, with
+  direct jumps to the matching Sankey zone focus and related HVAC service paths.
   The `Systems` subview and node inspector match load/heat services to the
   current HVAC service model by zone and service kind, then link directly to the
   related HVAC service path. Sankey and Systems can focus the graph by all
