@@ -6980,9 +6980,7 @@ function renderPurposeHTMLEnergyExplanation(summary = {}, explanation = {}) {
       )}`,
     );
   }
-  const warningRows = [...(explanation.warnings || []), ...(graph.warnings || [])]
-    .slice(0, 120)
-    .map((warning) => [warning.severity || "", warning.code || "", warning.period || graph.id || "", warning.message || ""]);
+  const warningRows = purposeHTMLEnergyWarningRows(explanation).slice(0, 120);
   if (warningRows.length) {
     sections.push(`<h2>Energy Explanation Warnings</h2>${renderPurposeHTMLTable(["Severity", "Code", "Period", "Message"], warningRows)}`);
   }
@@ -7077,6 +7075,25 @@ function purposeHTMLEnergyMonthlyRows(explanation = {}) {
     });
 }
 
+function purposeHTMLEnergyWarningRows(explanation = {}) {
+  const rows = [];
+  const seen = new Set();
+  const addWarning = (warning = {}, periodID = "", periodLabel = "") => {
+    const period = warning.period || periodID || "";
+    const key = [warning.severity || "", warning.code || "", period, warning.message || ""].join("\u0000");
+    if ((!warning.code && !warning.message) || seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    rows.push([warning.severity || "", warning.code || "", periodLabel || period, warning.message || ""]);
+  };
+  (explanation.warnings || []).forEach((warning) => addWarning(warning, warning.period || "annual", warning.period || "Annual"));
+  (explanation.periods || []).forEach((period) => {
+    (period.warnings || []).forEach((warning) => addWarning(warning, warning.period || period.id || "", period.label || period.id || ""));
+  });
+  return rows;
+}
+
 function purposeHTMLAnnualEnergyGraph(explanation = {}) {
   return (
     (explanation.periods || []).find((period) => period.id === "annual" || period.kind === "annual") || {
@@ -7085,6 +7102,7 @@ function purposeHTMLAnnualEnergyGraph(explanation = {}) {
       nodes: explanation.nodes || [],
       edges: explanation.edges || [],
       reconciliation: explanation.reconciliation || [],
+      warnings: explanation.warnings || [],
     }
   );
 }

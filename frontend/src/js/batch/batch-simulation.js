@@ -592,6 +592,41 @@ export function initializeMultiSimulationTool(context) {
           "",
         ]);
       });
+      energyExplanationWarningExportItems(explanation).forEach((warning) => {
+        rows.push([
+          file,
+          item.status || "",
+          item.runId || "",
+          "energy_explanation.warning",
+          warning.code || "",
+          warning.message || "",
+          "",
+          "",
+          "",
+          "",
+          warning.severity || "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          warning.period || "",
+          "warning",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          ...emptyEnergyExplanationSourceUnitExportFields(),
+          "",
+        ]);
+      });
     });
     downloadCSV(rows, "batch-simulation-purpose-results.csv");
     if (elements.multiSimulationStatus) {
@@ -763,6 +798,25 @@ export function initializeMultiSimulationTool(context) {
         periodLabel: graph.label || graph.id || "",
       })),
     );
+  }
+
+  function energyExplanationWarningExportItems(explanation = {}) {
+    const rows = [];
+    const seen = new Set();
+    const addWarning = (warning = {}, periodID = "") => {
+      const period = warning.period || periodID || "";
+      const key = [warning.severity || "", warning.code || "", period, warning.message || ""].join("\u0000");
+      if ((!warning.code && !warning.message) || seen.has(key)) {
+        return;
+      }
+      seen.add(key);
+      rows.push({ ...warning, period });
+    };
+    (explanation.warnings || []).forEach((warning) => addWarning(warning, warning.period || "annual"));
+    energyExplanationBatchExportPeriods(explanation).forEach((period) => {
+      (period.warnings || []).forEach((warning) => addWarning(warning, warning.period || period.id || ""));
+    });
+    return rows;
   }
 
   function energyExplanationBatchExportPeriods(explanation = {}) {

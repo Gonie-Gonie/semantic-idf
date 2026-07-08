@@ -828,6 +828,9 @@ func batchSimulationWorkbookSheets(request BatchSimulationXLSXExportRequest) []t
 	if reconciliation := batchSimulationEnergyReconciliationSection(request.Result); len(reconciliation.Rows) > 0 {
 		sections = append(sections, tabular.WorkbookSheet{Name: "Reconciliation", Sections: []tabular.Section{reconciliation}})
 	}
+	if warnings := batchSimulationEnergyWarningSection(request.Result); len(warnings.Rows) > 0 {
+		sections = append(sections, tabular.WorkbookSheet{Name: "Energy Warnings", Sections: []tabular.Section{warnings}})
+	}
 	return sections
 }
 
@@ -1193,6 +1196,7 @@ func batchSimulationAnnualPeriod(explanation simulation.EnergyExplanationResult)
 		Nodes:          explanation.Nodes,
 		Edges:          explanation.Edges,
 		Reconciliation: explanation.Reconciliation,
+		Warnings:       explanation.Warnings,
 	}
 }
 
@@ -1413,6 +1417,59 @@ func batchSimulationEnergyReconciliationSection(result simulation.MultiSimulatio
 	return section
 }
 
+func batchSimulationEnergyWarningSection(result simulation.MultiSimulationResult) tabular.Section {
+	section := tabular.Section{
+		Title:   "energy_warnings",
+		Headers: []string{"file", "status", "run_id", "period", "severity", "code", "message"},
+	}
+	for _, item := range result.Results {
+		if item.PurposeResults == nil {
+			continue
+		}
+		file := batchSimulationFileLabel(item)
+		for _, warning := range batchSimulationEnergyWarningRows(item.PurposeResults.EnergyExplanation) {
+			section.Rows = append(section.Rows, []string{
+				file,
+				item.Status,
+				item.RunID,
+				warning.Period,
+				warning.Severity,
+				warning.Code,
+				warning.Message,
+			})
+		}
+	}
+	return section
+}
+
+func batchSimulationEnergyWarningRows(explanation simulation.EnergyExplanationResult) []simulation.EnergyWarning {
+	rows := []simulation.EnergyWarning{}
+	seen := map[string]bool{}
+	add := func(warning simulation.EnergyWarning, period string) {
+		if warning.Period == "" {
+			warning.Period = period
+		}
+		if warning.Code == "" && warning.Message == "" {
+			return
+		}
+		key := strings.Join([]string{warning.Severity, warning.Code, warning.Period, warning.Message}, "\x00")
+		if seen[key] {
+			return
+		}
+		seen[key] = true
+		rows = append(rows, warning)
+	}
+	for _, warning := range explanation.Warnings {
+		add(warning, firstNonEmpty(warning.Period, "annual"))
+	}
+	for _, period := range batchSimulationExportPeriods(explanation) {
+		for _, warning := range period.Warnings {
+			add(warning, firstNonEmpty(warning.Period, period.ID))
+		}
+	}
+	return rows
+}
+
 type batchSimulationSummaryGroup struct {
 	name  string
 	items []simulation.EnergyExplanationSummaryItem
@@ -1433,12 +1490,13 @@ func batchSimulationSummaryGroups(summary simulation.EnergyExplanationSummary) [
 
 func batchSimulationExportPeriods(explanation simulation.EnergyExplanationResult) []simulation.EnergyPeriod {
 	periods := explanation.Periods
-	if len(periods) == 0 && (len(explanation.Edges) > 0 || len(explanation.Reconciliation) > 0) {
+	if len(periods) == 0 && (len(explanation.Edges) > 0 || len(explanation.Reconciliation) > 0 || len(explanation.Warnings) > 0) {
 		periods = []simulation.EnergyPeriod{{
 			ID:             "annual",
 			Kind:           "annual",
 			Edges:          explanation.Edges,
 			Reconciliation: explanation.Reconciliation,
+			Warnings:       explanation.Warnings,
 		}}
 	}
 	out := []simulation.EnergyPeriod{}

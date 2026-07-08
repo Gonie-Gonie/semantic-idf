@@ -66,6 +66,8 @@ func TestFrontendSimulationEnergySystemsCrossJumpContracts(t *testing.T) {
 		"Energy Explanation Warnings",
 		"Energy Explanation Monthly Ledger",
 		"purposeHTMLEnergyMonthlyRows",
+		"purposeHTMLEnergyWarningRows",
+		"period.warnings",
 		"Source IDs",
 		"Related Paths",
 		"edge.relatedPathIds",
@@ -188,6 +190,7 @@ func TestFrontendBatchEnergyExplanationDeltaContracts(t *testing.T) {
 		"energy_explanation.derived_kpi",
 		"energyExplanationSourceExportItems",
 		"energyExplanationEdgeExportItems",
+		"energyExplanationWarningExportItems",
 		"energyExplanationBatchExportPeriods",
 		"energyExplanationSourceObjectIndexes",
 		"sourceIds: item.sourceIds",
@@ -196,6 +199,7 @@ func TestFrontendBatchEnergyExplanationDeltaContracts(t *testing.T) {
 		"reconciliation.status",
 		"energy_explanation.source",
 		"energy_explanation.edge",
+		"energy_explanation.warning",
 		"source_frequency",
 		"source_aggregation",
 		"source_unit",
@@ -226,6 +230,12 @@ func TestFrontendBatchEnergyExplanationDeltaContracts(t *testing.T) {
 	}
 	if !strings.Contains(html, "multiSimulationFrequencyPolicy") || !strings.Contains(html, "highest_resolution") {
 		t.Fatalf("batch simulation frequency policy control is missing")
+	}
+	batchApp := readTestFile(t, "batch_app.go")
+	for _, term := range []string{"batchSimulationEnergyWarningSection", "batchSimulationEnergyWarningRows", "Energy Warnings", "energy_warnings"} {
+		if !strings.Contains(batchApp, term) {
+			t.Fatalf("batch simulation warning workbook export missing %q", term)
+		}
 	}
 	styles := readTestFile(t, "frontend/src/styles/workspace.css")
 	if !strings.Contains(styles, ".batch-energy-edge-delta-view") || !strings.Contains(styles, ".batch-energy-edge-delta-track") {
