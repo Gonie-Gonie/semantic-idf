@@ -144,6 +144,32 @@ func TestBuildPurposeRunPlanBasicEnergyDetailTiers(t *testing.T) {
 	}
 }
 
+func TestBuildPurposeRunPlanBasicEnergyHighestResolutionUsesHourlyDetail(t *testing.T) {
+	doc := parsePurposePlanFixture(t, purposePlanFixtureIDF)
+
+	plan := BuildPurposeRunPlan(doc, SimulationPurposeRequest{
+		Purposes:          []SimulationPurposeID{SimulationPurposeBasicEnergy},
+		BasicEnergyDetail: PurposeBasicEnergyDetailHeatDrivers,
+		FrequencyPolicy:   PurposeFrequencyPolicyHighestResolution,
+	})
+
+	for _, variable := range []string{
+		"Zone Lights Electricity Energy",
+		"Zone Air System Sensible Cooling Rate",
+		"Fan Air Heat Gain Energy",
+		"Zone Air Heat Balance Surface Convection Rate",
+		"Zone Infiltration Sensible Heat Loss Energy",
+	} {
+		output := findPurposeOutput(plan, "Output:Variable", "*", variable)
+		if output == nil || output.ReportingFrequency != "Hourly" {
+			t.Fatalf("highest-resolution Basic Energy output %q = %+v", variable, output)
+		}
+	}
+	if plan.EstimatedFrames != 8760 {
+		t.Fatalf("estimated frames = %d, want hourly Basic Energy frames", plan.EstimatedFrames)
+	}
+}
+
 func TestBuildPurposeRunPlanBasicEnergyWithZoneHeatFlowKeepsEnergyMonthly(t *testing.T) {
 	doc := parsePurposePlanFixture(t, purposePlanFixtureIDF)
 

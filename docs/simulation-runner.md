@@ -88,15 +88,17 @@ as selected HVAC scope when HVAC Loop Check is enabled.
   estimates based on series count times frame count
 
 Basic Energy detail is tiered by the `basicEnergyDetail` request option. `light`
-requests SQL plus monthly top-level/end-use meters. `explain` adds monthly
+requests SQL plus monthly top-level/end-use meters. `explain` adds
 delivered-load variables across zone air system, ideal loads, radiant HVAC,
 coil, and plant demand aliases plus zone reported-energy variables.
-`heat_drivers` adds monthly object-level fan heat-to-air variables, monthly
-detailed internal-gain and air-exchange heat-driver variables, and monthly zone
-heat-balance driver variables. The app and batch UI default to `light`; callers
-that omit the option keep the legacy `heat_drivers` behavior. When Zone Heat
-Flow is also selected, its hourly heat-balance outputs are reused instead of
-adding a duplicate monthly zone heat-driver request.
+`heat_drivers` adds object-level fan heat-to-air variables, detailed
+internal-gain and air-exchange heat-driver variables, and zone heat-balance
+driver variables. Those explanation/detail variables are monthly by default and
+become hourly when the frequency policy is `highest_resolution`. The app and
+batch UI default to `light`; callers that omit the option keep the legacy
+`heat_drivers` behavior. When Zone Heat Flow is also selected, its hourly
+heat-balance outputs are reused instead of adding a duplicate Basic Energy zone
+heat-driver request.
 End-use meter aliases cover cooling, heating, lighting, equipment, fans, pumps,
 heat rejection, heat recovery, water systems, exterior lighting, refrigeration,
 onsite generation, district cooling/heating end uses, natural-gas

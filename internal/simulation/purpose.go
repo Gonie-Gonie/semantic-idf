@@ -2304,27 +2304,35 @@ func (builder *purposePlanBuilder) addBasicEnergy() {
 	if detail == PurposeBasicEnergyDetailLight {
 		return
 	}
+	detailFrequency := basicEnergyDetailFrequency(builder.request)
 	for _, variable := range basicEnergyZoneReportedEnergyVariableNames() {
-		builder.addVariableWithReason(SimulationPurposeBasicEnergy, "*", variable, "Monthly", "medium", "Basic Energy Explain: monthly zone-level reported energy.", "Basic Energy Explain output")
+		builder.addVariableWithReason(SimulationPurposeBasicEnergy, "*", variable, detailFrequency, "medium", "Basic Energy Explain: zone-level reported energy.", "Basic Energy Explain output")
 	}
 	for _, variable := range basicEnergyDeliveredLoadVariableNames() {
-		builder.addVariableWithReason(SimulationPurposeBasicEnergy, "*", variable, "Monthly", "medium", "Basic Energy Explain: monthly delivered-load energy or rate fallback.", "Basic Energy Explain output")
+		builder.addVariableWithReason(SimulationPurposeBasicEnergy, "*", variable, detailFrequency, "medium", "Basic Energy Explain: delivered-load energy or rate fallback.", "Basic Energy Explain output")
 	}
 	if detail == PurposeBasicEnergyDetailExplain {
 		return
 	}
 	for _, variable := range basicEnergyObjectHeatDriverVariableNames() {
-		builder.addVariableWithReason(SimulationPurposeBasicEnergy, "*", variable, "Monthly", "medium", "Basic Energy Heat Drivers: monthly object-level heat-driver explanation output.", "Basic Energy Heat Drivers output")
+		builder.addVariableWithReason(SimulationPurposeBasicEnergy, "*", variable, detailFrequency, "medium", "Basic Energy Heat Drivers: object-level heat-driver explanation output.", "Basic Energy Heat Drivers output")
 	}
 	for _, variable := range basicEnergyDetailedHeatDriverVariableNames() {
-		builder.addVariableWithReason(SimulationPurposeBasicEnergy, "*", variable, "Monthly", "medium", "Basic Energy Heat Drivers: monthly detailed zone heat-driver explanation output.", "Basic Energy Heat Drivers output")
+		builder.addVariableWithReason(SimulationPurposeBasicEnergy, "*", variable, detailFrequency, "medium", "Basic Energy Heat Drivers: detailed zone heat-driver explanation output.", "Basic Energy Heat Drivers output")
 	}
 	if purposeIDsContain(builder.request.Purposes, SimulationPurposeZoneHeatFlow) {
 		return
 	}
 	for _, variable := range zoneHeatFlowVariableNames() {
-		builder.addVariableWithReason(SimulationPurposeBasicEnergy, "*", variable, "Monthly", "medium", "Basic Energy Heat Drivers: monthly zone heat-balance explanation output.", "Basic Energy Heat Drivers output")
+		builder.addVariableWithReason(SimulationPurposeBasicEnergy, "*", variable, detailFrequency, "medium", "Basic Energy Heat Drivers: zone heat-balance explanation output.", "Basic Energy Heat Drivers output")
 	}
+}
+
+func basicEnergyDetailFrequency(request SimulationPurposeRequest) string {
+	if request.FrequencyPolicy == PurposeFrequencyPolicyHighestResolution {
+		return "Hourly"
+	}
+	return "Monthly"
 }
 
 func basicEnergyZoneReportedEnergyVariableNames() []string {
