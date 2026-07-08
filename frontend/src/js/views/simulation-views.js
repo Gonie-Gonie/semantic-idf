@@ -7777,7 +7777,7 @@ function renderPurposeHTMLEnergyExplanation(summary = {}, explanation = {}) {
       item.name || "",
       item.status || "",
       (item.sourceIds || []).join(", "),
-      ...purposeHTMLSourceAvailabilityFields(explanation, item.sourceIds || []),
+      ...purposeHTMLSourceMetadataFields(explanation, item.sourceIds || []),
     ]);
   if (availabilityRows.length) {
     sections.push(
@@ -7802,7 +7802,7 @@ function renderPurposeHTMLEnergyExplanation(summary = {}, explanation = {}) {
       `<h2>Energy Explanation Relationship Rules</h2>${renderPurposeHTMLTable(["Rule", "Level flow", "Kind flow", "Basis", "Required source", "Formula"], ruleRows)}`,
     );
   }
-  const summaryRows = purposeHTMLEnergySummaryRows(summary);
+  const summaryRows = purposeHTMLEnergySummaryRows(summary, explanation);
   if (summaryRows.length) {
     sections.push(
       `<h2>Energy Explanation Summary</h2>${renderPurposeHTMLTable(
@@ -7822,6 +7822,12 @@ function renderPurposeHTMLEnergyExplanation(summary = {}, explanation = {}) {
           "Numerator",
           "Denominator",
           "Source IDs",
+          "Output Object",
+          "Table",
+          "Row",
+          "Column",
+          "Source Unit",
+          "Normalized Unit",
         ],
         summaryRows.slice(0, 180),
       )}`,
@@ -7843,13 +7849,14 @@ function renderPurposeHTMLEnergyExplanation(summary = {}, explanation = {}) {
       nodeLabels.get(edge.toId) || edge.toId || "",
       formatValueWithUnit(edge.value, edge.unit),
       (edge.sourceIds || []).join(", "),
+      ...purposeHTMLSourceMetadataFields(explanation, edge.sourceIds || []),
       (edge.relatedPathIds || []).join(", "),
       edge.formula || "",
     ]);
   if (edgeRows.length) {
     sections.push(
       `<h2>Energy Explanation Annual Edges</h2>${renderPurposeHTMLTable(
-        ["Relation", "Basis", "Rule", "From", "To", "Value", "Source IDs", "Related Paths", "Formula"],
+        ["Relation", "Basis", "Rule", "From", "To", "Value", "Source IDs", "Output Object", "Table", "Row", "Column", "Source Unit", "Normalized Unit", "Related Paths", "Formula"],
         edgeRows,
       )}`,
     );
@@ -7872,12 +7879,13 @@ function renderPurposeHTMLEnergyExplanation(summary = {}, explanation = {}) {
       formatValueWithUnit(row.residualValue, row.unit),
       row.basis || "",
       (row.sourceIds || []).join(", "),
+      ...purposeHTMLSourceMetadataFields(explanation, row.sourceIds || []),
       row.formula || "",
     ]);
   if (reconciliationRows.length) {
     sections.push(
       `<h2>Energy Explanation Reconciliation</h2>${renderPurposeHTMLTable(
-        ["Metric", "Period", "Level", "Status", "Zone", "Service", "Expected", "Mapped", "Residual", "Basis", "Source IDs", "Formula"],
+        ["Metric", "Period", "Level", "Status", "Zone", "Service", "Expected", "Mapped", "Residual", "Basis", "Source IDs", "Output Object", "Table", "Row", "Column", "Source Unit", "Normalized Unit", "Formula"],
         reconciliationRows,
       )}`,
     );
@@ -7910,7 +7918,7 @@ function renderPurposeHTMLEnergyExplanation(summary = {}, explanation = {}) {
   return sections.join("\n");
 }
 
-function purposeHTMLEnergySummaryRows(summary = {}) {
+function purposeHTMLEnergySummaryRows(summary = {}, explanation = {}) {
   const groups = [
     ["Energy by carrier", summary.energyByCarrier || []],
     ["Energy by end use", summary.energyByEndUse || []],
@@ -7938,6 +7946,7 @@ function purposeHTMLEnergySummaryRows(summary = {}) {
       energyExplanationSummaryRatioPart(item.numeratorLabel, item.numeratorValue, item.numeratorUnit),
       energyExplanationSummaryRatioPart(item.denominatorLabel, item.denominatorValue, item.denominatorUnit),
       (item.sourceIds || []).join(", "),
+      ...purposeHTMLSourceMetadataFields(explanation, item.sourceIds || []),
     ]),
   );
 }
@@ -7950,7 +7959,7 @@ function energyExplanationSummaryRatioPart(label = "", value, unit = "") {
   return [label, Number.isFinite(number) && number !== 0 ? formatValueWithUnit(number, unit) : ""].filter(Boolean).join(": ");
 }
 
-function purposeHTMLSourceAvailabilityFields(explanation = {}, sourceIDs = []) {
+function purposeHTMLSourceMetadataFields(explanation = {}, sourceIDs = []) {
   return [
     purposeHTMLSourceValueSummary(explanation, sourceIDs, (source) => (source.objectIndex === undefined || source.objectIndex === null ? "" : source.objectIndex)),
     purposeHTMLSourceValueSummary(explanation, sourceIDs, (source) => source.tableName),

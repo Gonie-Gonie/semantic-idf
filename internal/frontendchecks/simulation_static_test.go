@@ -103,7 +103,7 @@ func TestFrontendSimulationEnergySystemsCrossJumpContracts(t *testing.T) {
 		"Energy Explanation Relationship Rules",
 		"Energy Explanation Warnings",
 		"Energy Explanation Monthly Ledger",
-		"purposeHTMLSourceAvailabilityFields",
+		"purposeHTMLSourceMetadataFields",
 		"purposeHTMLSourceValueSummary",
 		"purposeHTMLEnergyMonthlyRows",
 		"purposeHTMLEnergyWarningRows",
