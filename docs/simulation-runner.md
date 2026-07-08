@@ -209,8 +209,10 @@ Purpose result viewers now include:
 - Basic Energy facility/end-use monthly charts, zone matrix, zone reported
   energy table, and `Overview` / `Sankey` / `Monthly` / `Zones` / `Sources` /
   `Reconciliation` subviews for tracing Energy Use to Delivered Load and Heat
-  Drivers with source metadata. The completeness panel shows mapped percent,
-  allocation policy, missing categories, and missing source availability rows.
+  Drivers with source metadata. The Sankey inspector shows edge relation, basis,
+  rule, formula, sources, and related service paths. The completeness panel
+  shows mapped percent, allocation policy, missing categories, and missing
+  source availability rows.
   Source availability uses `found` and `missing` status values so missing rows
   are not confused with present SQL dictionary sources. Source output cells link
   back to the matching existing output request object when the run plan can

@@ -1200,11 +1200,14 @@ function renderEnergyExplanationInspector(selection, explanation = {}) {
     { label: t("common.value", {}, "Value"), value: formatValueWithUnit(selection.value, selection.unit) },
     { label: t("common.period", {}, "Period"), value: selection.period || state.simulationEnergyPeriod || "annual" },
     { label: t("simulation.basis", {}, "Basis"), value: selection.basis || "measured" },
-    { label: t("common.source", {}, "Source"), value: (selection.sourceIds || []).join(", ") || "-" },
   ];
-  if (selection.ruleId) {
-    inspectorFields.splice(3, 0, { label: t("simulation.relationshipRule", {}, "Rule"), value: energyExplanationRelationshipRuleLabel(explanation, selection.ruleId) });
+  if (selection.relation) {
+    inspectorFields.push({ label: t("simulation.relation", {}, "Relation"), value: selection.relation });
   }
+  if (selection.ruleId) {
+    inspectorFields.push({ label: t("simulation.relationshipRule", {}, "Rule"), value: energyExplanationRelationshipRuleLabel(explanation, selection.ruleId) });
+  }
+  inspectorFields.push({ label: t("common.source", {}, "Source"), value: (selection.sourceIds || []).join(", ") || "-" });
   if (Number.isFinite(signedValue) && signedValue !== 0 && signedValue !== Number(selection.value)) {
     inspectorFields.splice(1, 0, { label: t("simulation.signedValue", {}, "Signed"), value: formatValueWithUnit(signedValue, selection.unit) });
   }

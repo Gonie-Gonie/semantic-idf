@@ -76,6 +76,8 @@ The release script infers bump size from these sections:
 - The Basic Energy Reconciliation subview now expands each accounting row's
   source IDs into compact source/output links, so residual checks can jump back
   to the matching output request when one is known.
+- The Basic Energy Sankey inspector now shows the selected edge `relation`
+  alongside basis, rule, formula, and source metadata.
 - Energy reconciliation source IDs now include both the expected facility total
   source and the mapped consumption end-use sources used in the residual
   formula.
