@@ -101,6 +101,11 @@ Output:Variable,
   Plant Supply Side Cooling Demand Rate,
   Monthly;
 
+Output:Variable,
+  Battery,
+  Electric Storage Charge Energy,
+  Monthly;
+
 Output:Meter,
   Electricity:Refrigeration,
   Monthly;
@@ -146,6 +151,9 @@ Output:Table:SummaryReports,
 	}
 	if !outputSummaryHasPurpose(report.Existing, "Output:Variable", "Plant Supply Side Cooling Demand Rate", "basic_energy") {
 		t.Fatalf("plant load output should be tagged for Basic Energy: %#v", report.Existing)
+	}
+	if !outputSummaryHasPurpose(report.Existing, "Output:Variable", "Electric Storage Charge Energy", "basic_energy") {
+		t.Fatalf("storage energy output should be tagged for Basic Energy: %#v", report.Existing)
 	}
 	if !outputSummaryHasPurpose(report.Existing, "Output:Meter", "Electricity:Refrigeration", "basic_energy") ||
 		!outputSummaryHasPurpose(report.Existing, "Output:Meter", "FuelOilNo1:Facility", "basic_energy") {

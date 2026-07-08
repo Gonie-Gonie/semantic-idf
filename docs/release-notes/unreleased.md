@@ -250,6 +250,10 @@ The release script infers bump size from these sections:
 - The Output tab now tags more Basic Energy explanation and heat-driver outputs
   and shows Basic Energy output-set badges for existing and recommended output
   requests.
+- Basic Energy now requests and parses electric storage charge/discharge energy
+  variables when electric storage is present, tagging charge as measured energy
+  use and discharge as a separate support flow outside facility-consumption
+  residuals.
 - Batch purpose simulation metrics now include compact annual Energy Use,
   Delivered Load, Heat Driver, residual, mapped-percent, and top heat-driver
   values from the Basic Energy explanation summary, plus two-row delta tables

@@ -195,11 +195,13 @@ type EnergyRelationshipRule struct {
 
 const (
 	energyRelationshipRuleMeterEndUse              = "meter.end_use"
+	energyRelationshipRuleMeasuredEnergyVariable   = "energy.measured_variable"
 	energyRelationshipRuleMeasuredLoad             = "load.measured_variable"
 	energyRelationshipRuleAllocatedZoneLoad        = "allocation.by_zone_load_share"
 	energyRelationshipRuleAllocatedServicePathLoad = "allocation.by_service_path_load_share"
 	energyRelationshipRuleHeatDriverBalance        = "heat.driver_balance"
 	energyRelationshipRuleOnsiteProduction         = "support.onsite_production"
+	energyRelationshipRuleStorageDischarge         = "support.storage_discharge"
 	energyRelationshipRuleEnergyResidual           = "residual.energy_total"
 	energyRelationshipRuleHeatResidual             = "residual.heat_driver_balance"
 )
@@ -239,6 +241,7 @@ type energyExplanationDictionary struct {
 	indexGroup         string
 	sourceFile         string
 	meter              *energyMeterAliasDefinition
+	energy             *energyMeterAliasDefinition
 	load               *energyLoadAliasDefinition
 	heat               *energyHeatAliasDefinition
 }
@@ -968,7 +971,7 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 	facilitySourcesByCarrier := map[string][]string{}
 	endUseValueByCarrier := map[string]float64{}
 	endUseNodesByCarrier := map[string][]string{}
-	productionNodesByCarrier := map[string][]string{}
+	supportNodesByCarrier := map[string][]string{}
 	loadNodesByService := map[string][]string{}
 	loadNodesByZoneService := map[string][]string{}
 	zoneLoadNodesByService := map[string][]string{}
@@ -1015,14 +1018,15 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 				Carrier:             item.Carrier,
 				EndUse:              item.EndUse,
 				MeterHierarchyLevel: item.MeterHierarchyLevel,
+				Basis:               item.Basis,
 				SourceIDs:           item.SourceIDs,
 			})
 			if strings.HasSuffix(item.Kind, ".total") {
 				facilityByCarrier[item.Carrier] = nodeID
 				facilityValueByCarrier[item.Carrier] += value
 				facilitySourcesByCarrier[item.Carrier] = appendUniqueStrings(facilitySourcesByCarrier[item.Carrier], item.SourceIDs...)
-			} else if energyExplanationIsProductionEndUse(item) {
-				productionNodesByCarrier[item.Carrier] = appendUniqueStrings(productionNodesByCarrier[item.Carrier], nodeID)
+			} else if energyExplanationIsSupportEndUse(item) {
+				supportNodesByCarrier[item.Carrier] = appendUniqueStrings(supportNodesByCarrier[item.Carrier], nodeID)
 			} else {
 				endUseValueByCarrier[item.Carrier] += value
 				endUseNodesByCarrier[item.Carrier] = appendUniqueStrings(endUseNodesByCarrier[item.Carrier], nodeID)
@@ -1088,7 +1092,9 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 	reconciliation := []EnergyReconciliation{}
 	warnings := []EnergyWarning{}
 	meterEndUseRule := energyRelationshipRuleByID(energyRelationshipRuleMeterEndUse)
+	measuredEnergyVariableRule := energyRelationshipRuleByID(energyRelationshipRuleMeasuredEnergyVariable)
 	onsiteProductionRule := energyRelationshipRuleByID(energyRelationshipRuleOnsiteProduction)
+	storageDischargeRule := energyRelationshipRuleByID(energyRelationshipRuleStorageDischarge)
 	measuredLoadRule := energyRelationshipRuleByID(energyRelationshipRuleMeasuredLoad)
 	allocatedZoneLoadRule := energyRelationshipRuleByID(energyRelationshipRuleAllocatedZoneLoad)
 	heatDriverRule := energyRelationshipRuleByID(energyRelationshipRuleHeatDriverBalance)
@@ -1103,6 +1109,12 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 			if endUseNode == nil {
 				continue
 			}
+			rule := meterEndUseRule
+			relation := "meter_enduse"
+			if endUseNode.node.Basis == measuredEnergyVariableRule.Basis {
+				rule = measuredEnergyVariableRule
+				relation = "energy_variable"
+			}
 			energySourceIDs = appendUniqueStrings(energySourceIDs, endUseNode.node.SourceIDs...)
 			edges = append(edges, EnergyExplanationEdge{
 				ID:        edgeID("edge", period, facilityID, endUseID),
@@ -1111,30 +1123,38 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 				Value:     endUseNode.node.Value,
 				Unit:      endUseNode.node.Unit,
 				Period:    period,
-				Relation:  "meter_enduse",
-				Basis:     meterEndUseRule.Basis,
-				Formula:   meterEndUseRule.Formula,
-				RuleID:    meterEndUseRule.ID,
+				Relation:  relation,
+				Basis:     rule.Basis,
+				Formula:   rule.Formula,
+				RuleID:    rule.ID,
 				SourceIDs: endUseNode.node.SourceIDs,
 			})
 		}
-		for _, productionID := range productionNodesByCarrier[carrier] {
-			productionNode := nodes[productionID]
-			if productionNode == nil {
+		for _, supportID := range supportNodesByCarrier[carrier] {
+			supportNode := nodes[supportID]
+			if supportNode == nil {
 				continue
 			}
+			rule := onsiteProductionRule
+			relation := "onsite_production"
+			edgePrefix := "production"
+			if supportNode.node.EndUse == "storage_discharge" {
+				rule = storageDischargeRule
+				relation = "storage_discharge"
+				edgePrefix = "support"
+			}
 			edges = append(edges, EnergyExplanationEdge{
-				ID:        edgeID("production", period, facilityID, productionID),
+				ID:        edgeID(edgePrefix, period, facilityID, supportID),
 				FromID:    facilityID,
-				ToID:      productionID,
-				Value:     productionNode.node.Value,
-				Unit:      productionNode.node.Unit,
+				ToID:      supportID,
+				Value:     supportNode.node.Value,
+				Unit:      supportNode.node.Unit,
 				Period:    period,
-				Relation:  "onsite_production",
-				Basis:     onsiteProductionRule.Basis,
-				Formula:   onsiteProductionRule.Formula,
-				RuleID:    onsiteProductionRule.ID,
-				SourceIDs: productionNode.node.SourceIDs,
+				Relation:  relation,
+				Basis:     rule.Basis,
+				Formula:   rule.Formula,
+				RuleID:    rule.ID,
+				SourceIDs: supportNode.node.SourceIDs,
 			})
 		}
 		residual := roundedEnergyNumber(facilityValue - endUseValue)
@@ -1695,6 +1715,9 @@ ORDER BY rdd.%s`, indexExpr, keyExpr, nameExpr, unitsExpr, isMeterExpr, frequenc
 			copy := def
 			dictionary.meter = &copy
 			dictionary.isMeter = true
+		} else if def, ok := energyVariableAliasDefinitionForName(row.name); ok {
+			copy := def
+			dictionary.energy = &copy
 		} else if def, ok := energyLoadAliasDefinitionForName(row.name); ok {
 			copy := def
 			dictionary.load = &copy
@@ -1724,6 +1747,7 @@ func energyExplanationSeriesForBuilder(builder *energyExplanationSeriesBuilder, 
 			Carrier:             def.Carrier,
 			EndUse:              def.EndUse,
 			MeterHierarchyLevel: def.HierarchyLevel,
+			Basis:               "measured_meter",
 			SourceIDs:           []string{sourceID},
 			Total:               roundedEnergyNumber(builder.total),
 			Monthly:             roundedEnergyExplanationMonthly(builder.monthly),
@@ -1735,6 +1759,30 @@ func energyExplanationSeriesForBuilder(builder *energyExplanationSeriesBuilder, 
 			sourceName:          strings.TrimSpace(firstNonEmpty(dictionary.row.keyValue, dictionary.row.name)),
 			sourceFrequency:     strings.TrimSpace(dictionary.reportingFrequency),
 			sourcePriority:      energyAliasPriority(firstNonEmpty(dictionary.row.keyValue, dictionary.row.name), def.Aliases),
+		}
+	}
+	if dictionary.energy != nil {
+		def := dictionary.energy
+		return energyExplanationSeries{
+			Level:               "energy",
+			Kind:                def.Kind,
+			Label:               def.Label,
+			Unit:                builder.unit,
+			Carrier:             def.Carrier,
+			EndUse:              def.EndUse,
+			MeterHierarchyLevel: def.HierarchyLevel,
+			Basis:               "measured_energy_variable",
+			SourceIDs:           []string{sourceID},
+			Total:               roundedEnergyNumber(builder.total),
+			Monthly:             roundedEnergyExplanationMonthly(builder.monthly),
+			Daily:               roundedEnergyExplanationDaily(builder.daily),
+			Hourly:              roundedEnergyExplanationHourly(builder.hourly),
+			SelectedRange:       roundedEnergyNumber(builder.selectedRange),
+			HasSelectedRange:    builder.hasSelectedRange,
+			sourceKeyValue:      strings.TrimSpace(dictionary.row.keyValue),
+			sourceName:          strings.TrimSpace(dictionary.row.name),
+			sourceFrequency:     strings.TrimSpace(dictionary.reportingFrequency),
+			sourcePriority:      energyAliasPriority(dictionary.row.name, def.Aliases),
 		}
 	}
 	if dictionary.load != nil {
@@ -1907,6 +1955,7 @@ ORDER BY %s`,
 			Carrier:             def.Carrier,
 			EndUse:              def.EndUse,
 			MeterHierarchyLevel: def.HierarchyLevel,
+			Basis:               "sql_tabular",
 			SourceIDs:           []string{sourceID},
 			Total:               roundedEnergyNumber(number),
 			sourceKeyValue:      alias,
@@ -2295,6 +2344,16 @@ func energyRelationshipRuleCatalog() []EnergyRelationshipRule {
 			Formula:        "sum(ReportData where IsMeter=1 and Name or KeyValue matches end-use meter)",
 		},
 		{
+			ID:             energyRelationshipRuleMeasuredEnergyVariable,
+			FromLevel:      "energy",
+			ToLevel:        "energy",
+			FromKind:       "facility_total",
+			ToKind:         "energy_variable_end_use",
+			RequiredSource: []string{"sql_report_data:variable"},
+			Basis:          "measured_energy_variable",
+			Formula:        "sum(ReportData where Name matches measured energy variable)",
+		},
+		{
 			ID:             energyRelationshipRuleMeasuredLoad,
 			FromLevel:      "energy",
 			ToLevel:        "load",
@@ -2343,6 +2402,16 @@ func energyRelationshipRuleCatalog() []EnergyRelationshipRule {
 			RequiredSource: []string{"ElectricityProduced:Facility", "Generators:ElectricityProduced"},
 			Basis:          "measured_meter",
 			Formula:        "onsite production meter shown separately from facility consumption residual",
+		},
+		{
+			ID:             energyRelationshipRuleStorageDischarge,
+			FromLevel:      "energy",
+			ToLevel:        "energy",
+			FromKind:       "facility_total",
+			ToKind:         "storage_discharge",
+			RequiredSource: []string{"Electric Storage Discharge Energy"},
+			Basis:          "measured_energy_variable",
+			Formula:        "storage discharge shown separately from facility consumption residual",
 		},
 		{
 			ID:             energyRelationshipRuleEnergyResidual,
@@ -2440,6 +2509,25 @@ func energyHeatAliasCatalog() []energyHeatAliasDefinition {
 		{Kind: "heat.ventilation", Label: "Ventilation heat transfer", HeatCategory: "air_exchange", Aliases: []string{"Zone Ventilation Sensible Heat Loss Energy", "Zone Ventilation Sensible Heat Gain Energy", "Zone Ventilation Sensible Heat Loss Rate", "Zone Ventilation Sensible Heat Gain Rate"}},
 		{Kind: "heat.mixing", Label: "Mixing heat transfer", HeatCategory: "air_exchange", Aliases: []string{"Zone Mixing Sensible Heat Loss Energy", "Zone Mixing Sensible Heat Gain Energy", "Zone Mixing Sensible Heat Loss Rate", "Zone Mixing Sensible Heat Gain Rate"}},
 	}
+}
+
+func energyVariableAliasCatalog() []energyMeterAliasDefinition {
+	return []energyMeterAliasDefinition{
+		{Kind: "energy.storage_charge", Label: "Storage charge", Carrier: "electricity", EndUse: "storage_charge", HierarchyLevel: "broad_end_use", Aliases: []string{"Electric Storage Charge Energy"}},
+		{Kind: "energy.storage_discharge", Label: "Storage discharge", Carrier: "electricity", EndUse: "storage_discharge", HierarchyLevel: "broad_end_use", Aliases: []string{"Electric Storage Discharge Energy"}},
+	}
+}
+
+func energyVariableAliasDefinitionForName(name string) (energyMeterAliasDefinition, bool) {
+	key := normalizeEnergyOutputName(name)
+	for _, def := range energyVariableAliasCatalog() {
+		for _, alias := range def.Aliases {
+			if normalizeEnergyOutputName(alias) == key {
+				return def, true
+			}
+		}
+	}
+	return energyMeterAliasDefinition{}, false
 }
 
 func energyMeterAliasDefinitionForName(name string) (energyMeterAliasDefinition, bool) {
@@ -2649,6 +2737,10 @@ func expectedEnergyExplanationOutputs(plan *PurposeRunPlan, level string) []stri
 			case "energy":
 				if strings.EqualFold(object.ObjectType, "Output:Meter") {
 					out = appendUniquePurposeString(out, object.KeyValue)
+				} else if strings.EqualFold(object.ObjectType, "Output:Variable") {
+					if _, ok := energyVariableAliasDefinitionForName(object.VariableName); ok {
+						out = appendUniquePurposeString(out, object.VariableName)
+					}
 				}
 			case "load":
 				if strings.EqualFold(object.ObjectType, "Output:Variable") {
@@ -2691,6 +2783,14 @@ func expectedEnergyExplanationOutputGroupKey(name string, level string) string {
 	switch level {
 	case "energy":
 		if def, ok := energyMeterAliasDefinitionForName(name); ok {
+			return strings.Join([]string{
+				"energy",
+				def.Kind,
+				normalizeEnergyOutputName(def.Carrier),
+				normalizeEnergyOutputName(def.EndUse),
+			}, "|")
+		}
+		if def, ok := energyVariableAliasDefinitionForName(name); ok {
 			return strings.Join([]string{
 				"energy",
 				def.Kind,
@@ -2801,8 +2901,8 @@ func energyExplanationEnergyNodeID(item energyExplanationSeries) string {
 	return "energy.end_use." + item.EndUse + "." + item.Carrier
 }
 
-func energyExplanationIsProductionEndUse(item energyExplanationSeries) bool {
-	return item.Level == "energy" && (item.EndUse == "generators" || item.Kind == "energy.generators")
+func energyExplanationIsSupportEndUse(item energyExplanationSeries) bool {
+	return item.Level == "energy" && (item.EndUse == "generators" || item.EndUse == "storage_discharge" || item.Kind == "energy.generators")
 }
 
 func energyExplanationLoadNodeID(item energyExplanationSeries) string {

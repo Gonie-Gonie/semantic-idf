@@ -319,7 +319,7 @@ function outputBasicEnergySetLabel(item = {}) {
   if (outputVariableLooksLikeEnergyExplain(variableName) || item.category === "zone_energy") {
     return t("simulation.basicEnergyDetailExplain", {}, "Explain");
   }
-  if (objectType.startsWith("output:meter") || ["facility_energy", "end_use_energy"].includes(item.category)) {
+  if (outputVariableLooksLikeEnergyUse(variableName) || objectType.startsWith("output:meter") || ["facility_energy", "end_use_energy"].includes(item.category)) {
     return t("simulation.basicEnergyDetailLight", {}, "Light");
   }
   return "";
@@ -344,6 +344,11 @@ function outputVariableLooksLikeEnergyExplain(variableName = "") {
         name.includes("electricity energy") ||
         name.includes("gas energy")),
   );
+}
+
+function outputVariableLooksLikeEnergyUse(variableName = "") {
+  const name = String(variableName || "").toLowerCase();
+  return Boolean(name && (name.includes("electric storage charge energy") || name.includes("electric storage discharge energy")));
 }
 
 function outputVariableLooksLikeHeatDriver(variableName = "") {

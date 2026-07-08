@@ -2333,6 +2333,11 @@ func (builder *purposePlanBuilder) addBasicEnergy() {
 	} {
 		builder.addRecommendation(id, SimulationPurposeBasicEnergy)
 	}
+	if docHasObjectTypePrefix(builder.doc, "ElectricLoadCenter:Storage:") {
+		for _, variable := range basicEnergyStorageVariableNames() {
+			builder.addVariableWithReason(SimulationPurposeBasicEnergy, "*", variable, basicEnergyDetailFrequency(builder.request), "medium", "Basic Energy Light: electric storage charge/discharge energy.", "Basic Energy Light output")
+		}
+	}
 	if !docHasObject(builder.doc, "Zone") {
 		return
 	}
@@ -2377,6 +2382,16 @@ func basicEnergyZoneReportedEnergyVariableNames() []string {
 		"Zone Electric Equipment Electricity Energy",
 		"Zone Gas Equipment Gas Energy",
 	}
+}
+
+func basicEnergyStorageVariableNames() []string {
+	out := []string{}
+	for _, def := range energyVariableAliasCatalog() {
+		for _, alias := range def.Aliases {
+			out = appendUniquePurposeString(out, alias)
+		}
+	}
+	return out
 }
 
 func basicEnergyDeliveredLoadVariableNames() []string {
@@ -3429,6 +3444,16 @@ func comfortCheckVariables() []string {
 func docHasObject(doc idf.Document, objectType string) bool {
 	for _, obj := range doc.Objects {
 		if strings.EqualFold(strings.TrimSpace(obj.Type), objectType) {
+			return true
+		}
+	}
+	return false
+}
+
+func docHasObjectTypePrefix(doc idf.Document, objectTypePrefix string) bool {
+	prefix := strings.ToLower(strings.TrimSpace(objectTypePrefix))
+	for _, obj := range doc.Objects {
+		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(obj.Type)), prefix) {
 			return true
 		}
 	}

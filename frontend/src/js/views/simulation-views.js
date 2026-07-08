@@ -1796,6 +1796,8 @@ function renderEnergyExplanationLegend() {
       <span><i class="node water_systems"></i>${escapeHTML(energyEndUseLabel("water_systems"))}</span>
       <span><i class="node refrigeration"></i>${escapeHTML(energyEndUseLabel("refrigeration"))}</span>
       <span><i class="node generators"></i>${escapeHTML(energyEndUseLabel("generators"))}</span>
+      <span><i class="node storage_charge"></i>${escapeHTML(energyEndUseLabel("storage_charge"))}</span>
+      <span><i class="node storage_discharge"></i>${escapeHTML(energyEndUseLabel("storage_discharge"))}</span>
       <span><i class="node other"></i>${escapeHTML(energyEndUseLabel("other"))}</span>
       <span><i class="measured_meter"></i>${escapeHTML(t("simulation.basisMeasuredMeter", {}, "measured meter"))}</span>
       <span><i class="measured_variable"></i>${escapeHTML(t("simulation.basisMeasuredVariable", {}, "measured variable"))}</span>

@@ -256,6 +256,9 @@ DistrictHeating,
 Generator:Photovoltaic,
   Roof PV;
 
+ElectricLoadCenter:Storage:Simple,
+  Battery;
+
 OtherEquipment,
   Steam Process,
   Steam;
@@ -280,6 +283,15 @@ OtherEquipment,
 	} {
 		if findPurposeOutput(plan, "Output:Meter", meter, "") == nil {
 			t.Fatalf("missing extended energy meter %q in %#v", meter, plan.OutputObjects)
+		}
+	}
+	for _, variable := range []string{
+		"Electric Storage Charge Energy",
+		"Electric Storage Discharge Energy",
+	} {
+		output := findPurposeOutput(plan, "Output:Variable", "*", variable)
+		if output == nil || output.ReportingFrequency != "Monthly" || output.Reason != "Basic Energy Light output" {
+			t.Fatalf("missing storage energy output %q in %#v", variable, plan.OutputObjects)
 		}
 	}
 }

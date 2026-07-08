@@ -1074,6 +1074,14 @@ func TestEnergyMeterAliasCatalogHandlesCarrierAndEndUseOrder(t *testing.T) {
 	if !ok || gasEquipment.Carrier != "natural_gas" || gasEquipment.EndUse != "interior_equipment" {
 		t.Fatalf("NaturalGas:InteriorEquipment alias = %#v ok=%t", gasEquipment, ok)
 	}
+	storageCharge, ok := energyVariableAliasDefinitionForName("Electric Storage Charge Energy")
+	if !ok || storageCharge.Kind != "energy.storage_charge" || storageCharge.EndUse != "storage_charge" {
+		t.Fatalf("Electric Storage Charge Energy alias = %#v ok=%t", storageCharge, ok)
+	}
+	storageDischarge, ok := energyVariableAliasDefinitionForName("Electric Storage Discharge Energy")
+	if !ok || storageDischarge.Kind != "energy.storage_discharge" || storageDischarge.EndUse != "storage_discharge" {
+		t.Fatalf("Electric Storage Discharge Energy alias = %#v ok=%t", storageDischarge, ok)
+	}
 	if _, ok := energyMeterAliasDefinitionForName("SomeCustomMeter:Electricity"); ok {
 		t.Fatalf("custom meter should not be classified as a known alias")
 	}
@@ -1119,6 +1127,68 @@ func TestParseSimulationEnergyExplanationSQLMapsUnknownCarrierMeterToOther(t *te
 	}
 }
 
+func TestParseSimulationEnergyExplanationSQLMapsElectricStorageVariables(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "eplusout.sql")
+	createTestEnergySQL(t, path)
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO ReportDataDictionary VALUES
+		(30, 'Battery', 'Electric Storage Charge Energy', 'J'),
+		(31, 'Battery', 'Electric Storage Discharge Energy', 'J')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO ReportData VALUES
+		(30, 1, 30, 1800000.0),
+		(31, 2, 30, 1800000.0),
+		(32, 1, 31, 900000.0),
+		(33, 2, 31, 900000.0)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	chargeObjectIndex := 5
+	dischargeObjectIndex := 6
+	plan := &PurposeRunPlan{OutputObjects: []PurposeOutputObject{
+		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, KeyValue: "*", VariableName: "Electric Storage Charge Energy", ObjectIndex: &chargeObjectIndex},
+		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, KeyValue: "*", VariableName: "Electric Storage Discharge Energy", ObjectIndex: &dischargeObjectIndex},
+	}}
+	result, err := parseSimulationEnergyExplanationSQL(path, plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	charge := energyExplanationNodeByID(result.Nodes, "energy.end_use.storage_charge.electricity")
+	if charge == nil || charge.Value != 1 || charge.Basis != "measured_energy_variable" || charge.EndUse != "storage_charge" || !stringSliceContains(charge.SourceIDs, "sql-rdd-30") {
+		t.Fatalf("storage charge node = %#v", charge)
+	}
+	discharge := energyExplanationNodeByID(result.Nodes, "energy.end_use.storage_discharge.electricity")
+	if discharge == nil || discharge.Value != 0.5 || discharge.Basis != "measured_energy_variable" || discharge.EndUse != "storage_discharge" || !stringSliceContains(discharge.SourceIDs, "sql-rdd-31") {
+		t.Fatalf("storage discharge node = %#v", discharge)
+	}
+	chargeEdge := energyExplanationEdgeByIDs(result.Edges, "energy.carrier.electricity", "energy.end_use.storage_charge.electricity")
+	if chargeEdge == nil || chargeEdge.Relation != "energy_variable" || chargeEdge.Basis != "measured_energy_variable" || chargeEdge.RuleID != energyRelationshipRuleMeasuredEnergyVariable {
+		t.Fatalf("storage charge edge = %#v", chargeEdge)
+	}
+	dischargeEdge := energyExplanationEdgeByIDs(result.Edges, "energy.carrier.electricity", "energy.end_use.storage_discharge.electricity")
+	if dischargeEdge == nil || dischargeEdge.Relation != "storage_discharge" || dischargeEdge.Basis != "measured_energy_variable" || dischargeEdge.RuleID != energyRelationshipRuleStorageDischarge {
+		t.Fatalf("storage discharge edge = %#v", dischargeEdge)
+	}
+	reconciliation := energyExplanationReconciliationByID(result.Reconciliation, "reconcile.energy.electricity.annual")
+	if reconciliation == nil || reconciliation.ExpectedValue != 3 || reconciliation.ExplainedValue != 2 || reconciliation.ResidualValue != 1 {
+		t.Fatalf("storage reconciliation should count charge but not discharge as consumption: %#v", reconciliation)
+	}
+	if source := energyExplanationSourceByID(result.Sources, "sql-rdd-30"); source == nil || source.ObjectIndex == nil || *source.ObjectIndex != chargeObjectIndex {
+		t.Fatalf("storage charge source = %#v", source)
+	}
+	if availability := energyExplanationSourceAvailabilityByName(result.Completeness.SourceAvailability, "Electric Storage Discharge Energy"); availability == nil || availability.Status != "found" || availability.Level != "energy" {
+		t.Fatalf("storage source availability = %#v", result.Completeness.SourceAvailability)
+	}
+}
+
 func TestEnergyRelationshipRuleCatalogProvidesEdgeBasis(t *testing.T) {
 	rules := energyRelationshipRuleCatalog()
 	if len(rules) < 5 {
@@ -1127,6 +1197,10 @@ func TestEnergyRelationshipRuleCatalogProvidesEdgeBasis(t *testing.T) {
 	meterRule := energyRelationshipRuleByID(energyRelationshipRuleMeterEndUse)
 	if meterRule.Basis != "measured_meter" || meterRule.FromLevel != "energy" || meterRule.ToLevel != "energy" || len(meterRule.RequiredSource) == 0 {
 		t.Fatalf("meter rule = %#v", meterRule)
+	}
+	energyVariableRule := energyRelationshipRuleByID(energyRelationshipRuleMeasuredEnergyVariable)
+	if energyVariableRule.Basis != "measured_energy_variable" || energyVariableRule.FromLevel != "energy" || energyVariableRule.ToLevel != "energy" {
+		t.Fatalf("energy variable rule = %#v", energyVariableRule)
 	}
 	loadRule := energyRelationshipRuleByID(energyRelationshipRuleMeasuredLoad)
 	if loadRule.Basis != "measured_variable" || !strings.Contains(loadRule.Formula, "not COP-converted") {
@@ -1147,6 +1221,10 @@ func TestEnergyRelationshipRuleCatalogProvidesEdgeBasis(t *testing.T) {
 	productionRule := energyRelationshipRuleByID(energyRelationshipRuleOnsiteProduction)
 	if productionRule.Basis != "measured_meter" || !strings.Contains(productionRule.Formula, "separately") {
 		t.Fatalf("onsite production rule = %#v", productionRule)
+	}
+	storageDischargeRule := energyRelationshipRuleByID(energyRelationshipRuleStorageDischarge)
+	if storageDischargeRule.Basis != "measured_energy_variable" || !strings.Contains(storageDischargeRule.Formula, "storage discharge") {
+		t.Fatalf("storage discharge rule = %#v", storageDischargeRule)
 	}
 	if request := NormalizeSimulationPurposeRequest(&SimulationPurposeRequest{AllocationPolicy: PurposeAllocationPolicyByServicePathLoadShare}); request.AllocationPolicy != PurposeAllocationPolicyByServicePathLoadShare {
 		t.Fatalf("service path allocation policy normalized to %q", request.AllocationPolicy)

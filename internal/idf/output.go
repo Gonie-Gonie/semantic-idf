@@ -467,7 +467,8 @@ func outputMeterSupportsBasicEnergy(name string) bool {
 func outputVariablePurposeTags(variableName string, tags map[string]bool) {
 	switch normalizeName(variableName) {
 	case "zone lights electricity energy", "zone electric equipment electricity energy", "zone gas equipment gas energy",
-		"zone air system sensible heating energy", "zone air system sensible cooling energy":
+		"zone air system sensible heating energy", "zone air system sensible cooling energy",
+		"electric storage charge energy", "electric storage discharge energy":
 		addOutputPurposeTags(tags, "basic_energy")
 	case "zone mean air temperature":
 		addOutputPurposeTags(tags, "zone_heat_flow", "comfort_check")
