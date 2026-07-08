@@ -234,7 +234,9 @@ summary, source metadata, edge, and reconciliation sheets as XLSX. It can export
 the full batch result as
 `semantic-idf.batch-simulation/v1` JSON, preserving embedded purpose result
 payloads such as high-resolution daily/hourly explanation periods that are
-intentionally omitted from the default CSV.
+intentionally omitted from the default CSV. The export context also preserves
+the selected baseline and target row IDs used by the two-case explanation delta
+view.
 
 `parseSimulationSQL` is the combined SQLite entrypoint. It gathers generic
 time-series rows, Basic Energy dashboard data, SQL heat-flow data, Integrity

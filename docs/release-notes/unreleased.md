@@ -139,6 +139,8 @@ The release script infers bump size from these sections:
   summary/source/edge/reconciliation workbook sheets as XLSX.
 - Batch Simulation energy-explanation deltas now expose explicit baseline and
   target selectors so two-case Sankey and summary changes are traceable.
+- Batch Simulation JSON export now preserves the selected baseline and target
+  comparison row IDs in its export context.
 - Basic Energy explanations now fall back to annual SQL tabular end-use rows
   when detailed `ReportData` energy rows are unavailable, while preserving
   `sql_tabular` source metadata.

@@ -644,6 +644,10 @@ export function initializeMultiSimulationTool(context) {
         selectedRowIds: Array.from(state.multiSimulation.selectedRows || []),
         metric: state.multiSimulation.metric || "",
         sort: state.multiSimulation.sort || "filename",
+        comparison: {
+          baselineRowId: state.multiSimulation.compareBaselineId || "",
+          targetRowId: state.multiSimulation.compareTargetId || "",
+        },
       },
       result,
     };
