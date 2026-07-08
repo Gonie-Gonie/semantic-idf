@@ -51,8 +51,8 @@ The release script infers bump size from these sections:
   Delivered Load, Heat Driver, residual, mapped-percent, and top heat-driver
   values from the Basic Energy explanation summary, plus two-row delta tables
   for end-use energy, delivered loads, and heat drivers. The batch explanation
-  comparison also ranks the largest annual changes and labels missing baseline
-  or comparison rows.
+  comparison also ranks the largest annual summary and Sankey edge changes, and
+  labels missing baseline or comparison rows.
 - Batch Simulation can export purpose metrics, compact Basic Energy
   explanation summary/source metadata rows, and Sankey edge metadata rows as CSV.
 

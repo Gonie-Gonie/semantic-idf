@@ -619,7 +619,8 @@ export function initializeMultiSimulationTool(context) {
       .filter(Boolean)
       .join("");
     const ranking = renderEnergyExplanationDeltaRanking(selected[0], selected[1]);
-    return sections || ranking ? `<div class="batch-energy-explanation-compare">${ranking}${sections}</div>` : "";
+    const edgeRanking = renderEnergyExplanationEdgeDeltaRanking(selected[0], selected[1]);
+    return sections || ranking || edgeRanking ? `<div class="batch-energy-explanation-compare">${ranking}${edgeRanking}${sections}</div>` : "";
   }
 
   function renderEnergyExplanationDeltaRanking(leftResult, rightResult) {
@@ -655,6 +656,39 @@ export function initializeMultiSimulationTool(context) {
         <div class="tool-table-wrap">
           <table class="tool-table">
             <thead><tr><th>Level</th><th>${escapeHTML(t("common.metric", {}, "Metric"))}</th><th>${escapeHTML(leftResult.filename || fileName(leftResult.inputPath))}</th><th>${escapeHTML(rightResult.filename || fileName(rightResult.inputPath))}</th><th>Delta</th><th>%</th><th>Status</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </section>`;
+  }
+
+  function renderEnergyExplanationEdgeDeltaRanking(leftResult, rightResult) {
+    const rows = energyExplanationEdgeDeltaRows(leftResult, rightResult)
+      .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta) || a.relation.localeCompare(b.relation) || a.label.localeCompare(b.label))
+      .slice(0, 12)
+      .map(
+        (row) => `
+          <tr>
+            <td>${escapeHTML(row.relation)}</td>
+            <td>${escapeHTML(row.label)}</td>
+            <td>${escapeHTML(row.ruleId || "")}</td>
+            <td>${escapeHTML(formatValue(row.leftValue, row.unit))}</td>
+            <td>${escapeHTML(formatValue(row.rightValue, row.unit))}</td>
+            <td>${escapeHTML(formatSignedValue(row.delta, row.unit))}</td>
+            <td>${escapeHTML(row.percent === null ? t("common.notAvailable", {}, "N/A") : `${formatNumber(row.percent)}%`)}</td>
+            <td>${escapeHTML(row.status)}</td>
+          </tr>`,
+      )
+      .join("");
+    if (!rows) {
+      return "";
+    }
+    return `
+      <section>
+        <h4>${escapeHTML(t("simulation.energySankeyEdgeDelta", {}, "Sankey Edge Delta"))}</h4>
+        <div class="tool-table-wrap">
+          <table class="tool-table">
+            <thead><tr><th>Relation</th><th>Edge</th><th>Rule</th><th>${escapeHTML(leftResult.filename || fileName(leftResult.inputPath))}</th><th>${escapeHTML(rightResult.filename || fileName(rightResult.inputPath))}</th><th>Delta</th><th>%</th><th>Status</th></tr></thead>
             <tbody>${rows}</tbody>
           </table>
         </div>
@@ -716,6 +750,54 @@ export function initializeMultiSimulationTool(context) {
         totalMagnitude: Math.abs(leftValue) + Math.abs(rightValue),
       };
     });
+  }
+
+  function energyExplanationEdgeDeltaRows(leftResult, rightResult) {
+    const left = energyExplanationEdgeMap(leftResult.purposeResults?.energyExplanation || {});
+    const right = energyExplanationEdgeMap(rightResult.purposeResults?.energyExplanation || {});
+    return [...new Set([...left.keys(), ...right.keys()])].map((id) => {
+      const leftEdge = left.get(id);
+      const rightEdge = right.get(id);
+      const leftValue = Number(leftEdge?.value || 0);
+      const rightValue = Number(rightEdge?.value || 0);
+      const unit = rightEdge?.unit || leftEdge?.unit || "";
+      const delta = rightValue - leftValue;
+      const percent = leftValue === 0 ? null : (delta / leftValue) * 100;
+      return {
+        id,
+        label: rightEdge?.label || leftEdge?.label || id,
+        relation: rightEdge?.relation || leftEdge?.relation || "",
+        ruleId: rightEdge?.ruleId || leftEdge?.ruleId || "",
+        leftValue,
+        rightValue,
+        delta,
+        percent,
+        unit,
+        status: energyExplanationDeltaStatus(leftEdge, rightEdge),
+      };
+    });
+  }
+
+  function energyExplanationEdgeMap(explanation = {}) {
+    const out = new Map();
+    energyExplanationAnnualEdgeItems(explanation).forEach((edge) => {
+      const id = edge.id || [edge.relation, edge.ruleId, edge.fromId, edge.toId].filter(Boolean).join("|");
+      if (id) {
+        out.set(id, edge);
+      }
+    });
+    return out;
+  }
+
+  function energyExplanationAnnualEdgeItems(explanation = {}) {
+    const annual = (explanation.periods || []).find((period) => period.id === "annual" || period.kind === "annual");
+    const graph = annual || { id: "annual", label: "Annual", nodes: explanation.nodes || [], edges: explanation.edges || [] };
+    const nodeLabels = new Map((graph.nodes || []).map((node) => [node.id, node.label || node.kind || node.id || ""]));
+    return (graph.edges || []).map((edge) => ({
+      ...edge,
+      period: edge.period || graph.id || "annual",
+      label: `${nodeLabels.get(edge.fromId) || edge.fromId || ""} -> ${nodeLabels.get(edge.toId) || edge.toId || ""}`,
+    }));
   }
 
   function energyExplanationSummaryMap(items = []) {

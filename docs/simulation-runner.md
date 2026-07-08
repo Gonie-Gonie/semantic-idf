@@ -149,7 +149,9 @@ compact purpose metrics for Energy Use, Delivered Load, Heat Drivers, residual,
 mapped percent, and the largest heat-driver groups. When two Basic Energy
 purpose rows with explanation summaries are selected, the batch chart also shows
 the largest explanation changes plus end-use, delivered-load, and heat-driver
-delta tables beside the selected metric. Missing summary rows are labeled
+delta tables beside the selected metric. It also ranks annual Sankey edge deltas
+by relation, edge label, rule ID, delta, percent, and missing-row status.
+Missing summary rows are labeled
 separately from matched rows so an absent output is not silently treated as a
 normal zero. Batch Simulation can export purpose metrics, compact
 `energyExplanationSummary` rows, `energyExplanation` source metadata rows, and

@@ -59,7 +59,10 @@ func TestFrontendBatchEnergyExplanationDeltaContracts(t *testing.T) {
 	batch := readTestFile(t, "frontend/src/js/batch/batch-simulation.js")
 	for _, term := range []string{
 		"renderEnergyExplanationDeltaRanking",
+		"renderEnergyExplanationEdgeDeltaRanking",
 		"energyExplanationDeltaRows",
+		"energyExplanationEdgeDeltaRows",
+		"energyExplanationAnnualEdgeItems",
 		"energyExplanationDeltaStatus",
 		"elements.multiSimulationAllocationPolicy?.value",
 		"exportMultiSimulationCSV",
@@ -72,6 +75,7 @@ func TestFrontendBatchEnergyExplanationDeltaContracts(t *testing.T) {
 		"rule_id",
 		"source_ids",
 		"Largest Energy Explanation Changes",
+		"Sankey Edge Delta",
 		"missing in baseline",
 	} {
 		if !strings.Contains(batch, term) {

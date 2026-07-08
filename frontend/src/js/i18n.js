@@ -722,6 +722,7 @@ const dictionaries = {
     "simulation.errWarnings": "ERR warnings",
     "simulation.executablePath": "Executable path",
     "simulation.failed": "Failed",
+    "simulation.energySankeyEdgeDelta": "Sankey Edge Delta",
     "simulation.files": "Output files",
     "simulation.finishedWithIssues": "Simulation finished with issues",
     "simulation.fileStats": "{count} files",
