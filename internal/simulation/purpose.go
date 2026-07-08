@@ -2085,9 +2085,13 @@ func (builder *purposePlanBuilder) addBasicEnergy() {
 		"standard-meter-electricity-fans",
 		"standard-meter-electricity-pumps",
 		"standard-meter-electricity-heat-rejection",
+		"standard-meter-electricity-heat-recovery",
 		"standard-meter-electricity-water-systems",
+		"standard-meter-electricity-exterior-lights",
+		"standard-meter-electricity-refrigeration",
 		"standard-meter-naturalgas-heating",
 		"standard-meter-naturalgas-water-systems",
+		"standard-meter-naturalgas-interior-equipment",
 	} {
 		builder.addRecommendation(id, SimulationPurposeBasicEnergy)
 	}

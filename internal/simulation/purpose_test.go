@@ -95,6 +95,27 @@ func TestBuildPurposeRunPlanBasicEnergyAllocationPolicy(t *testing.T) {
 	}
 }
 
+func TestBuildPurposeRunPlanBasicEnergyExtendedEndUseMeters(t *testing.T) {
+	doc := parsePurposePlanFixture(t, purposePlanFixtureIDF+`
+Refrigeration:Compressor,
+  Case Compressor;
+
+HeatExchanger:AirToAir:FlatPlate,
+  Heat Recovery HX;
+`)
+
+	plan := BuildPurposeRunPlan(doc, SimulationPurposeRequest{
+		Purposes: []SimulationPurposeID{SimulationPurposeBasicEnergy},
+	})
+
+	if findPurposeOutput(plan, "Output:Meter", "Electricity:Refrigeration", "") == nil {
+		t.Fatalf("missing refrigeration meter in %#v", plan.OutputObjects)
+	}
+	if findPurposeOutput(plan, "Output:Meter", "Electricity:HeatRecovery", "") == nil {
+		t.Fatalf("missing heat recovery meter in %#v", plan.OutputObjects)
+	}
+}
+
 func TestBuildPurposeRunPlanZoneHeatFlowSelectedZones(t *testing.T) {
 	doc := parsePurposePlanFixture(t, purposePlanFixtureIDF)
 

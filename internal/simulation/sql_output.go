@@ -972,9 +972,13 @@ func energyEndUseMeterNames() []string {
 		"Electricity:Fans",
 		"Electricity:Pumps",
 		"Electricity:HeatRejection",
+		"Electricity:HeatRecovery",
 		"Electricity:WaterSystems",
+		"Electricity:ExteriorLights",
+		"Electricity:Refrigeration",
 		"NaturalGas:Heating",
 		"NaturalGas:WaterSystems",
+		"NaturalGas:InteriorEquipment",
 	}
 }
 

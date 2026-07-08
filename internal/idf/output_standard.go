@@ -24,7 +24,10 @@ type standardOutputFeatures struct {
 	hasFans              bool
 	hasPumps             bool
 	hasHeatRejection     bool
+	hasHeatRecovery      bool
 	hasWaterSystems      bool
+	hasExteriorLights    bool
+	hasRefrigeration     bool
 }
 
 // StandardOutputApplyRequest builds the preset used by simulation runs. Replace mode
@@ -138,6 +141,9 @@ func detectOutputFeatures(doc Document) standardOutputFeatures {
 		case strings.EqualFold(obj.Type, "GasEquipment"):
 			features.hasGasEquipment = true
 			features.hasNaturalGas = true
+		case strings.EqualFold(obj.Type, "Exterior:Lights"):
+			features.hasExteriorLights = true
+			features.hasElectricity = true
 		case strings.HasPrefix(objectType, "fan:"):
 			features.hasFans = true
 			features.hasElectricity = true
@@ -151,6 +157,12 @@ func detectOutputFeatures(doc Document) standardOutputFeatures {
 			features.hasHeating = true
 		case strings.Contains(objectType, "heatrejection") || strings.Contains(objectType, "coolingtower"):
 			features.hasHeatRejection = true
+			features.hasElectricity = true
+		case strings.Contains(objectType, "heatrecovery") || strings.Contains(objectType, "heatexchanger"):
+			features.hasHeatRecovery = true
+			features.hasElectricity = true
+		case strings.Contains(objectType, "refrigeration"):
+			features.hasRefrigeration = true
 			features.hasElectricity = true
 		case strings.HasPrefix(objectType, "wateruse:"):
 			features.hasWaterSystems = true
@@ -204,12 +216,20 @@ func standardOutputRecommendationApplies(item OutputRecommendation, features sta
 		return features.hasPumps
 	case strings.Contains(key, "electricity:heatrejection"):
 		return features.hasHeatRejection
+	case strings.Contains(key, "electricity:heatrecovery"):
+		return features.hasHeatRecovery
 	case strings.Contains(key, "electricity:watersystems"):
 		return features.hasWaterSystems && features.hasElectricity
+	case strings.Contains(key, "electricity:exteriorlights"):
+		return features.hasExteriorLights
+	case strings.Contains(key, "electricity:refrigeration"):
+		return features.hasRefrigeration
 	case strings.Contains(key, "naturalgas:heating"):
 		return features.hasHeating && features.hasNaturalGas
 	case strings.Contains(key, "naturalgas:watersystems"):
 		return features.hasWaterSystems && features.hasNaturalGas
+	case strings.Contains(key, "naturalgas:interiorequipment"):
+		return features.hasGasEquipment
 	case strings.Contains(variable, "zone lights electricity"):
 		return features.hasLights
 	case strings.Contains(variable, "zone electric equipment"):

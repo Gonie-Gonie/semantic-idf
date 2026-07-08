@@ -602,6 +602,18 @@ func TestEnergyMeterAliasCatalogHandlesCarrierAndEndUseOrder(t *testing.T) {
 	if !ok || !facility.FacilityTotal || facility.Carrier != "natural_gas" {
 		t.Fatalf("NaturalGas:Facility alias = %#v ok=%t", facility, ok)
 	}
+	refrigeration, ok := energyMeterAliasDefinitionForName("Electricity:Refrigeration")
+	if !ok || refrigeration.Kind != "energy.refrigeration" || refrigeration.EndUse != "refrigeration" {
+		t.Fatalf("Electricity:Refrigeration alias = %#v ok=%t", refrigeration, ok)
+	}
+	heatRecovery, ok := energyMeterAliasDefinitionForName("HeatRecovery:Electricity")
+	if !ok || heatRecovery.Kind != "energy.heat_recovery" || heatRecovery.EndUse != "heat_recovery" {
+		t.Fatalf("HeatRecovery:Electricity alias = %#v ok=%t", heatRecovery, ok)
+	}
+	gasEquipment, ok := energyMeterAliasDefinitionForName("NaturalGas:InteriorEquipment")
+	if !ok || gasEquipment.Carrier != "natural_gas" || gasEquipment.EndUse != "interior_equipment" {
+		t.Fatalf("NaturalGas:InteriorEquipment alias = %#v ok=%t", gasEquipment, ok)
+	}
 	if _, ok := energyMeterAliasDefinitionForName("SomeCustomMeter:Electricity"); ok {
 		t.Fatalf("custom meter should not be classified as a known alias")
 	}

@@ -42,6 +42,8 @@ The release script infers bump size from these sections:
 - Basic Energy purpose runs now request monthly delivered-load and heat-driver
   explanation outputs while reusing hourly Zone Heat Flow outputs when that
   purpose is selected.
+- Basic Energy end-use meter coverage now includes heat recovery, exterior
+  lighting, refrigeration, and natural-gas interior equipment where applicable.
 - Basic Energy heat-driver extraction now recognizes object-level fan heat-to-air
   outputs separately from fan electricity use.
 - Basic Energy output plan rows now label monthly delivered-load/zone-energy
