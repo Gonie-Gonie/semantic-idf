@@ -614,6 +614,10 @@ func TestParseSimulationEnergyExplanationSQLPrefersEnergyOverRateFallback(t *tes
 	if heat == nil || heat.Value != 0.2 || !stringSliceContains(heat.SourceIDs, "sql-rdd-25") || stringSliceContains(heat.SourceIDs, "sql-rdd-26") {
 		t.Fatalf("heat source priority node = %#v", heat)
 	}
+	if result.Completeness.DeliveredLoad.Found != 1 || result.Completeness.DeliveredLoad.Total != 1 ||
+		result.Completeness.HeatDrivers.Found != 1 || result.Completeness.HeatDrivers.Total != 1 {
+		t.Fatalf("fallback completeness should count canonical groups: %#v", result.Completeness)
+	}
 	if !energyExplanationHasSource(result.Sources, "sql-rdd-24", false, "Zone Air System Sensible Cooling Rate") ||
 		!energyExplanationHasSource(result.Sources, "sql-rdd-26", false, "Fan Air Heat Gain Rate") {
 		t.Fatalf("fallback sources should stay traceable: %#v", result.Sources)

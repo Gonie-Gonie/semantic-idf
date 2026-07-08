@@ -92,7 +92,9 @@ onsite generation, and natural-gas heating/equipment/water-system use where the
 model exposes those meters.
 When both energy and rate outputs are present for the same delivered-load or
 heat-driver target, the explanation parser uses the reported energy series and
-keeps the rate series only as traceable fallback source metadata.
+keeps the rate series only as traceable fallback source metadata. Completeness
+uses the canonical target count for these fallback groups while source
+availability still lists each requested output name.
 
 Output states:
 

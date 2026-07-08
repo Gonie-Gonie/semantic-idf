@@ -1562,22 +1562,32 @@ func buildEnergyExplanationCompleteness(series []energyExplanationSeries, source
 	expectedEnergy := expectedEnergyExplanationOutputs(plan, "energy")
 	expectedLoad := expectedEnergyExplanationOutputs(plan, "load")
 	expectedHeat := expectedEnergyExplanationOutputs(plan, "heat")
-	foundEnergy := 0
-	foundLoad := 0
-	foundHeat := 0
+	expectedEnergyGroups := expectedEnergyExplanationOutputGroups(expectedEnergy, "energy")
+	expectedLoadGroups := expectedEnergyExplanationOutputGroups(expectedLoad, "load")
+	expectedHeatGroups := expectedEnergyExplanationOutputGroups(expectedHeat, "heat")
+	foundEnergyGroups := map[string]bool{}
+	foundLoadGroups := map[string]bool{}
+	foundHeatGroups := map[string]bool{}
 	for _, item := range series {
+		key := energyExplanationCompletenessGroupKey(item)
+		if key == "" {
+			continue
+		}
 		switch item.Level {
 		case "energy":
-			foundEnergy++
+			foundEnergyGroups[key] = true
 		case "load":
-			foundLoad++
+			foundLoadGroups[key] = true
 		case "heat":
-			foundHeat++
+			foundHeatGroups[key] = true
 		}
 	}
-	energyLevel := energyCompletenessLevel("energy", foundEnergy, maxInt(len(expectedEnergy), foundEnergy), "Energy Use")
-	loadLevel := energyCompletenessLevel("load", foundLoad, maxInt(len(expectedLoad), foundLoad), "Delivered Load")
-	heatLevel := energyCompletenessLevel("heat", foundHeat, maxInt(len(expectedHeat), foundHeat), "Heat Drivers")
+	foundEnergy := len(foundEnergyGroups)
+	foundLoad := len(foundLoadGroups)
+	foundHeat := len(foundHeatGroups)
+	energyLevel := energyCompletenessLevel("energy", foundEnergy, maxInt(len(expectedEnergyGroups), foundEnergy), "Energy Use")
+	loadLevel := energyCompletenessLevel("load", foundLoad, maxInt(len(expectedLoadGroups), foundLoad), "Delivered Load")
+	heatLevel := energyCompletenessLevel("heat", foundHeat, maxInt(len(expectedHeatGroups), foundHeat), "Heat Drivers")
 	status := "complete"
 	if energyLevel.Status != "complete" || loadLevel.Status == "missing" || heatLevel.Status == "missing" {
 		status = "partial"
@@ -1639,6 +1649,73 @@ func expectedEnergyExplanationOutputs(plan *PurposeRunPlan, level string) []stri
 		out = appendUniquePurposeString(out, name)
 	}
 	return out
+}
+
+func expectedEnergyExplanationOutputGroups(names []string, level string) []string {
+	out := []string{}
+	for _, name := range names {
+		if key := expectedEnergyExplanationOutputGroupKey(name, level); key != "" {
+			out = appendUniquePurposeString(out, key)
+		}
+	}
+	return out
+}
+
+func expectedEnergyExplanationOutputGroupKey(name string, level string) string {
+	switch level {
+	case "energy":
+		if def, ok := energyMeterAliasDefinitionForName(name); ok {
+			return strings.Join([]string{
+				"energy",
+				def.Kind,
+				normalizeEnergyOutputName(def.Carrier),
+				normalizeEnergyOutputName(def.EndUse),
+			}, "|")
+		}
+	case "load":
+		if def, ok := energyLoadAliasDefinitionForName(name); ok {
+			return strings.Join([]string{
+				"load",
+				def.Kind,
+				normalizeEnergyOutputName(def.ServiceKind),
+			}, "|")
+		}
+	case "heat":
+		if def, ok := energyHeatAliasDefinitionForName(name); ok {
+			return strings.Join([]string{
+				"heat",
+				def.Kind,
+				normalizeEnergyOutputName(def.HeatCategory),
+			}, "|")
+		}
+	}
+	return strings.Join([]string{level, normalizeEnergyOutputName(name)}, "|")
+}
+
+func energyExplanationCompletenessGroupKey(item energyExplanationSeries) string {
+	switch item.Level {
+	case "energy":
+		return strings.Join([]string{
+			"energy",
+			item.Kind,
+			normalizeEnergyOutputName(item.Carrier),
+			normalizeEnergyOutputName(item.EndUse),
+		}, "|")
+	case "load":
+		return strings.Join([]string{
+			"load",
+			item.Kind,
+			normalizeEnergyOutputName(item.ServiceKind),
+		}, "|")
+	case "heat":
+		return strings.Join([]string{
+			"heat",
+			item.Kind,
+			normalizeEnergyOutputName(item.HeatCategory),
+		}, "|")
+	default:
+		return ""
+	}
 }
 
 func energyCompletenessLevel(level string, found int, total int, label string) EnergyCompletenessLevel {

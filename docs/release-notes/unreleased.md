@@ -46,7 +46,8 @@ The release script infers bump size from these sections:
   lighting, refrigeration, and natural-gas interior equipment where applicable.
 - Basic Energy explanation parsing now prefers reported energy variables over
   rate fallbacks for the same delivered-load or heat-driver target, avoiding
-  duplicate Sankey accounting when both are present.
+  duplicate Sankey accounting when both are present; completeness now counts
+  those fallback aliases by canonical target instead of raw output-name count.
 - Basic Energy heat-driver extraction now recognizes object-level fan heat-to-air
   outputs separately from fan electricity use.
 - Basic Energy output plan rows now label monthly delivered-load/zone-energy
