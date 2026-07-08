@@ -103,6 +103,41 @@ Output:SQLite,
 	}
 }
 
+func TestBuildPurposeRunPlanBasicEnergyWithZoneHeatFlowKeepsEnergyMonthly(t *testing.T) {
+	doc := parsePurposePlanFixture(t, purposePlanFixtureIDF)
+
+	plan := BuildPurposeRunPlan(doc, SimulationPurposeRequest{
+		Purposes: []SimulationPurposeID{SimulationPurposeBasicEnergy, SimulationPurposeZoneHeatFlow},
+		Scope: SimulationPurposeScope{
+			ZoneMode:  "selected",
+			ZoneNames: []string{"Office"},
+		},
+	})
+
+	for _, object := range plan.OutputObjects {
+		if object.ObjectType == "Output:SQLite" {
+			continue
+		}
+		if purposeIDsContain(object.PurposeIDs, SimulationPurposeBasicEnergy) && object.ReportingFrequency != "Monthly" {
+			t.Fatalf("Basic Energy output should stay monthly: %+v", object)
+		}
+		if strings.EqualFold(object.ReportingFrequency, "Hourly") && purposeIDsContain(object.PurposeIDs, SimulationPurposeBasicEnergy) {
+			t.Fatalf("Hourly output should not be owned by Basic Energy: %+v", object)
+		}
+	}
+
+	heatFlow := findPurposeOutput(plan, "Output:Variable", "Office", "Zone Air Heat Balance Surface Convection Rate")
+	if heatFlow == nil || heatFlow.ReportingFrequency != "Hourly" || !purposeIDsContain(heatFlow.PurposeIDs, SimulationPurposeZoneHeatFlow) || purposeIDsContain(heatFlow.PurposeIDs, SimulationPurposeBasicEnergy) {
+		t.Fatalf("hourly heat-flow output = %+v", heatFlow)
+	}
+	if duplicate := findPurposeOutput(plan, "Output:Variable", "*", "Zone Air Heat Balance Surface Convection Rate"); duplicate != nil {
+		t.Fatalf("Basic Energy should reuse Zone Heat Flow heat-balance output instead of adding monthly duplicate: %+v", duplicate)
+	}
+	if plan.EstimatedFrames != 8760 {
+		t.Fatalf("estimated frames = %d, want hourly Zone Heat Flow frames", plan.EstimatedFrames)
+	}
+}
+
 func TestBuildPurposeRunPlanBasicEnergyAllocationPolicy(t *testing.T) {
 	doc := parsePurposePlanFixture(t, purposePlanFixtureIDF)
 
