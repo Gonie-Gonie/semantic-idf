@@ -151,6 +151,8 @@ The release script infers bump size from these sections:
   numerator/denominator details for COP comparison rows.
 - Batch Simulation CSV and XLSX exports now include Basic Energy source
   availability rows, preserving missing and not-applicable expected outputs.
+- Batch Simulation completeness deltas now compare missing and not-applicable
+  Basic Energy source availability outputs between selected cases.
 - Basic Energy completeness hints now tell light-tier users to switch the detail
   tier before rerunning when explanation outputs are missing.
 - The Basic Energy Reconciliation subview now expands each accounting row's

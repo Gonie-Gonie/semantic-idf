@@ -261,8 +261,9 @@ Basic Energy purpose rows with explanation summaries are selected, the batch
 chart also lets the user pin an explicit baseline and target case, then shows
 the largest explanation changes plus end-use, delivered-load, and heat-driver
 delta tables beside the selected metric. It flags completeness
-differences between the two selected cases, including mapped percent and missing
-category changes. Explicit gain/loss heat-driver summary rows stay separate so
+differences between the two selected cases, including mapped percent, missing
+category changes, and missing/not-applicable source availability changes.
+Explicit gain/loss heat-driver summary rows stay separate so
 opposite air-exchange directions can be compared. It also ranks annual Sankey
 edge deltas by relation, basis, edge label, rule ID, delta, percent, and
 missing-row status. A compact bar view renders the largest selected-case edge

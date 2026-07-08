@@ -573,6 +573,63 @@ func TestBatchSimulationWorkbookSheetsIncludeSourceAvailability(t *testing.T) {
 	}
 }
 
+func TestBatchSimulationWorkbookSheetsIncludeCompletenessDelta(t *testing.T) {
+	result := simulation.MultiSimulationResult{
+		Results: []simulation.SimulationRunResult{
+			{
+				RunID:    "baseline-run",
+				Filename: "baseline.idf",
+				Status:   "succeeded",
+				PurposeResults: &simulation.PurposeResultBundle{
+					EnergyExplanationSummary: simulation.EnergyExplanationSummary{
+						Schema: "semantic-idf.energy-explanation-summary/v1",
+						Completeness: simulation.EnergyCompleteness{
+							Status:        "complete",
+							MappedPercent: 90,
+							SourceAvailability: []simulation.EnergySourceAvailabilityEntry{
+								{Level: "load", Name: "Zone Air System Sensible Cooling Energy", Status: "found"},
+							},
+						},
+					},
+				},
+			},
+			{
+				RunID:    "target-run",
+				Filename: "target.idf",
+				Status:   "succeeded",
+				PurposeResults: &simulation.PurposeResultBundle{
+					EnergyExplanationSummary: simulation.EnergyExplanationSummary{
+						Schema: "semantic-idf.energy-explanation-summary/v1",
+						Completeness: simulation.EnergyCompleteness{
+							Status:            "partial",
+							MappedPercent:     65,
+							MissingCategories: []string{"load: Zone Air System Sensible Cooling Energy"},
+							SourceAvailability: []simulation.EnergySourceAvailabilityEntry{
+								{Level: "load", Name: "Zone Air System Sensible Cooling Energy", Status: "missing"},
+								{Level: "heat", Name: "Zone Fan Heat Gain Energy", Status: "not_applicable"},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	sheets := batchSimulationWorkbookSheets(BatchSimulationXLSXExportRequest{
+		Result: result,
+		Comparison: BatchSimulationComparisonXLSXContext{
+			BaselineRowID: "baseline-run",
+			TargetRowID:   "target-run",
+		},
+	})
+	if len(sheets) != 3 || sheets[2].Name != "Completeness Delta" {
+		t.Fatalf("completeness delta sheets = %#v", sheets)
+	}
+	rows := sheets[2].Sections[0].Rows
+	if len(rows) != 5 || rows[0][0] != "status" || rows[3][0] != "missing_source_outputs" || !strings.Contains(rows[3][4], "Zone Air System Sensible Cooling Energy") || rows[4][0] != "not_applicable_source_outputs" {
+		t.Fatalf("completeness delta rows = %#v", rows)
+	}
+}
+
 func TestBatchSimulationWorkbookSheetsIncludeComparisonDelta(t *testing.T) {
 	result := simulation.MultiSimulationResult{
 		Results: []simulation.SimulationRunResult{

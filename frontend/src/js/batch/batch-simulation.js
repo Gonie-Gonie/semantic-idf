@@ -1103,6 +1103,16 @@ export function initializeMultiSimulationTool(context) {
         left: energyExplanationMissingCategorySummary(left.missingCategories || []),
         right: energyExplanationMissingCategorySummary(right.missingCategories || []),
       },
+      {
+        label: "Missing source outputs",
+        left: energyExplanationSourceAvailabilitySummary(left.sourceAvailability || [], ["missing"]),
+        right: energyExplanationSourceAvailabilitySummary(right.sourceAvailability || [], ["missing"]),
+      },
+      {
+        label: "Not-applicable source outputs",
+        left: energyExplanationSourceAvailabilitySummary(left.sourceAvailability || [], ["not_applicable"]),
+        right: energyExplanationSourceAvailabilitySummary(right.sourceAvailability || [], ["not_applicable"]),
+      },
     ].filter((row) => row.left !== row.right);
     if (!rows.length) {
       return "";
@@ -1130,6 +1140,20 @@ export function initializeMultiSimulationTool(context) {
 
   function energyExplanationMissingCategorySummary(items = []) {
     const values = (items || []).filter(Boolean);
+    if (!values.length) {
+      return "0";
+    }
+    const preview = values.slice(0, 3).join("; ");
+    return values.length > 3 ? `${values.length}: ${preview}; ...` : `${values.length}: ${preview}`;
+  }
+
+  function energyExplanationSourceAvailabilitySummary(items = [], statuses = []) {
+    const wanted = new Set((statuses || []).map((status) => String(status || "").toLowerCase()));
+    const values = (items || [])
+      .filter((item) => wanted.has(String(item.status || "").toLowerCase()))
+      .map((item) => [item.level || "", item.name || ""].filter(Boolean).join(": "))
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b));
     if (!values.length) {
       return "0";
     }

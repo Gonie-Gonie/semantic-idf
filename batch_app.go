@@ -809,6 +809,9 @@ func batchSimulationWorkbookSheets(request BatchSimulationXLSXExportRequest) []t
 	left, right, ok := batchSimulationComparisonResults(request)
 	if ok {
 		sections = append(sections, tabular.WorkbookSheet{Name: "Comparison", Sections: []tabular.Section{batchSimulationComparisonSection(left, right)}})
+		if completeness := batchSimulationCompletenessDeltaSection(left, right); len(completeness.Rows) > 0 {
+			sections = append(sections, tabular.WorkbookSheet{Name: "Completeness Delta", Sections: []tabular.Section{completeness}})
+		}
 		if delta := batchSimulationEnergyDeltaSection(left, right); len(delta.Rows) > 0 {
 			sections = append(sections, tabular.WorkbookSheet{Name: "Energy Delta", Sections: []tabular.Section{delta}})
 		}
@@ -960,6 +963,106 @@ func batchSimulationComparisonSection(left, right simulation.SimulationRunResult
 			{"target", batchSimulationRowID(right), batchSimulationFileLabel(right), right.RunID, right.Status, right.InputPath},
 		},
 	}
+}
+
+func batchSimulationCompletenessDeltaSection(left, right simulation.SimulationRunResult) tabular.Section {
+	leftCompleteness := left.PurposeResults.EnergyExplanationSummary.Completeness
+	rightCompleteness := right.PurposeResults.EnergyExplanationSummary.Completeness
+	section := tabular.Section{
+		Title:   "completeness_delta",
+		Headers: []string{"metric", "baseline_file", "target_file", "baseline_value", "target_value"},
+	}
+	rows := []struct {
+		label string
+		left  string
+		right string
+	}{
+		{label: "status", left: leftCompleteness.Status, right: rightCompleteness.Status},
+		{
+			label: "mapped_energy_percent",
+			left:  formatBatchSimulationOptionalFloat(leftCompleteness.MappedPercent, "", "%"),
+			right: formatBatchSimulationOptionalFloat(rightCompleteness.MappedPercent, "", "%"),
+		},
+		{
+			label: "missing_categories",
+			left:  batchSimulationStringListSummary(leftCompleteness.MissingCategories),
+			right: batchSimulationStringListSummary(rightCompleteness.MissingCategories),
+		},
+		{
+			label: "missing_source_outputs",
+			left:  batchSimulationSourceAvailabilitySummary(leftCompleteness.SourceAvailability, "missing"),
+			right: batchSimulationSourceAvailabilitySummary(rightCompleteness.SourceAvailability, "missing"),
+		},
+		{
+			label: "not_applicable_source_outputs",
+			left:  batchSimulationSourceAvailabilitySummary(leftCompleteness.SourceAvailability, "not_applicable"),
+			right: batchSimulationSourceAvailabilitySummary(rightCompleteness.SourceAvailability, "not_applicable"),
+		},
+	}
+	for _, row := range rows {
+		if row.left == row.right {
+			continue
+		}
+		section.Rows = append(section.Rows, []string{
+			row.label,
+			batchSimulationFileLabel(left),
+			batchSimulationFileLabel(right),
+			row.left,
+			row.right,
+		})
+	}
+	return section
+}
+
+func batchSimulationStringListSummary(items []string) string {
+	values := make([]string, 0, len(items))
+	for _, item := range items {
+		item = strings.TrimSpace(item)
+		if item != "" {
+			values = append(values, item)
+		}
+	}
+	sort.Strings(values)
+	return batchSimulationPreviewSummary(values)
+}
+
+func batchSimulationSourceAvailabilitySummary(items []simulation.EnergySourceAvailabilityEntry, status string) string {
+	status = strings.ToLower(strings.TrimSpace(status))
+	values := []string{}
+	for _, item := range items {
+		if strings.ToLower(strings.TrimSpace(item.Status)) != status {
+			continue
+		}
+		values = append(values, batchSimulationAvailabilityLabel(item.Level, item.Name))
+	}
+	sort.Strings(values)
+	return batchSimulationPreviewSummary(values)
+}
+
+func batchSimulationPreviewSummary(values []string) string {
+	if len(values) == 0 {
+		return "0"
+	}
+	limit := 3
+	if len(values) < limit {
+		limit = len(values)
+	}
+	preview := strings.Join(values[:limit], "; ")
+	if len(values) > 3 {
+		return fmt.Sprintf("%d: %s; ...", len(values), preview)
+	}
+	return fmt.Sprintf("%d: %s", len(values), preview)
+}
+
+func batchSimulationAvailabilityLabel(level string, name string) string {
+	values := []string{}
+	for _, value := range []string{level, name} {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			values = append(values, value)
+		}
+	}
+	return strings.Join(values, ": ")
 }
 
 type batchSimulationDeltaRow struct {

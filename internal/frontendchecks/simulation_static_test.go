@@ -224,6 +224,7 @@ func TestFrontendBatchEnergyExplanationDeltaContracts(t *testing.T) {
 		"rightMissing",
 		"common.missing",
 		"renderEnergyExplanationCompletenessDelta",
+		"energyExplanationSourceAvailabilitySummary",
 		"renderEnergyCompareSelects",
 		"selectedEnergyCompareResults",
 		"handleEnergyCompareSelectChange",
