@@ -567,6 +567,49 @@ func TestParseSimulationEnergyExplanationSQLBuildsAccountingGraph(t *testing.T) 
 	}
 }
 
+func TestParseSimulationEnergyExplanationSQLPreservesHeatGainLossSigns(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "eplusout.sql")
+	createTestEnergySQL(t, path)
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`INSERT INTO ReportDataDictionary VALUES
+		(23, 'ZONE ONE', 'Zone Infiltration Sensible Heat Gain Energy', 'J'),
+		(24, 'ZONE ONE', 'Zone Infiltration Sensible Heat Loss Energy', 'J')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO ReportData VALUES
+		(7, 1, 23, 900000.0),
+		(8, 2, 23, 900000.0),
+		(9, 1, 24, 450000.0),
+		(10, 2, 24, 450000.0)`); err != nil {
+		t.Fatal(err)
+	}
+
+	plan := &PurposeRunPlan{OutputObjects: []PurposeOutputObject{
+		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, VariableName: "Zone Infiltration Sensible Heat Gain Energy"},
+		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, VariableName: "Zone Infiltration Sensible Heat Loss Energy"},
+	}}
+	result, err := parseSimulationEnergyExplanationSQL(path, plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gain := energyExplanationNodeByID(result.Nodes, "heat.infiltration.positive.zone_one")
+	if gain == nil || gain.Label != "Infiltration heat gain" || gain.Value != 0.5 || gain.SignedValue != 0.5 || gain.ServiceKind != "cooling" || gain.Sign != "positive" || !stringSliceContains(gain.SourceIDs, "sql-rdd-23") {
+		t.Fatalf("infiltration gain node = %#v", gain)
+	}
+	loss := energyExplanationNodeByID(result.Nodes, "heat.infiltration.negative.zone_one")
+	if loss == nil || loss.Label != "Infiltration heat loss" || loss.Value != 0.25 || loss.SignedValue != -0.25 || loss.ServiceKind != "heating" || loss.Sign != "negative" || !stringSliceContains(loss.SourceIDs, "sql-rdd-24") {
+		t.Fatalf("infiltration loss node = %#v", loss)
+	}
+	if result.Completeness.HeatDrivers.Found != 1 || result.Completeness.HeatDrivers.Total != 1 {
+		t.Fatalf("heat completeness = %#v", result.Completeness.HeatDrivers)
+	}
+}
+
 func TestParseSimulationEnergyExplanationSQLPrefersEnergyOverRateFallback(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "eplusout.sql")

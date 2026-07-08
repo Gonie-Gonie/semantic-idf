@@ -48,6 +48,9 @@ The release script infers bump size from these sections:
   rate fallbacks for the same delivered-load or heat-driver target, avoiding
   duplicate Sankey accounting when both are present; completeness now counts
   those fallback aliases by canonical target instead of raw output-name count.
+- Basic Energy heat-driver parsing now preserves explicit sensible heat
+  gain/loss signs, keeping positive and negative air-exchange drivers as
+  separate Sankey nodes when EnergyPlus reports both as positive energy values.
 - Basic Energy explanation plans now request the delivered-load alias catalog
   across zone air system, ideal loads, radiant HVAC, coil, and plant demand
   outputs at monthly frequency.

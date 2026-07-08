@@ -153,7 +153,9 @@ to zone load nodes by measured delivered-load share and the edge uses
 `allocation.by_zone_load_share` rule. When heat-balance rate
 variables are present, the same payload
 integrates them to `kWh` by timestep and links Delivered Load to Heat Drivers
-with signed driver values and residual reconciliation.
+with signed driver values and residual reconciliation. Explicit sensible heat
+gain/loss outputs are kept as separate positive/negative heat-driver nodes even
+when EnergyPlus reports both source series as positive energy values.
 
 Generic SQL and CSV series keep original values for compatibility and also
 expose display metadata (`displayColumn`, `displayUnit`, `displayMin`,

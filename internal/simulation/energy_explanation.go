@@ -245,16 +245,18 @@ type energyExplanationSeries struct {
 	ZoneName     string
 	LoopName     string
 	HeatCategory string
+	HeatSign     string
 	Basis        string
 	SourceIDs    []string
 	Total        float64
 	Monthly      map[int]float64
 
-	sourceKeyValue  string
-	sourceName      string
-	sourceFrequency string
-	sourceIsRate    bool
-	sourcePriority  int
+	sourceKeyValue     string
+	sourceName         string
+	sourceFrequency    string
+	sourceIsRate       bool
+	sourcePriority     int
+	heatSignMultiplier float64
 }
 
 type energyExplanationGraph struct {
@@ -451,6 +453,7 @@ func energyExplanationSeriesSelectionKey(item energyExplanationSeries) string {
 			item.Level,
 			item.Kind,
 			normalizeEnergyOutputName(item.HeatCategory),
+			normalizeEnergyOutputName(item.HeatSign),
 			normalizeEnergyOutputName(scope),
 		}, "|")
 	default:
@@ -797,8 +800,12 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 			}
 		case "heat":
 			nodeID := energyExplanationHeatNodeID(item)
-			signedValue := value
-			displayValue := math.Abs(value)
+			signMultiplier := item.heatSignMultiplier
+			if signMultiplier == 0 {
+				signMultiplier = 1
+			}
+			signedValue := value * signMultiplier
+			displayValue := math.Abs(signedValue)
 			sign := "positive"
 			serviceKind := "cooling"
 			if signedValue < 0 {
@@ -1253,22 +1260,26 @@ func energyExplanationSeriesForBuilder(builder *energyExplanationSeriesBuilder, 
 	if def.ObjectScoped {
 		zoneName = ""
 	}
+	heatSign := energyHeatAliasExplicitSign(dictionary.row.name)
+	signMultiplier := energyHeatSignMultiplier(heatSign)
 	return energyExplanationSeries{
-		Level:           "heat",
-		Kind:            def.Kind,
-		Label:           def.Label,
-		Unit:            builder.unit,
-		ZoneName:        zoneName,
-		HeatCategory:    def.HeatCategory,
-		Basis:           "derived_balance",
-		SourceIDs:       []string{sourceID},
-		Total:           roundedEnergyNumber(builder.total),
-		Monthly:         roundedEnergyExplanationMonthly(builder.monthly),
-		sourceKeyValue:  strings.TrimSpace(dictionary.row.keyValue),
-		sourceName:      strings.TrimSpace(dictionary.row.name),
-		sourceFrequency: strings.TrimSpace(dictionary.reportingFrequency),
-		sourceIsRate:    energyExplanationIntegratesRate(dictionary),
-		sourcePriority:  energyAliasPriority(dictionary.row.name, def.Aliases),
+		Level:              "heat",
+		Kind:               def.Kind,
+		Label:              energyHeatAliasLabel(def.Label, heatSign),
+		Unit:               builder.unit,
+		ZoneName:           zoneName,
+		HeatCategory:       def.HeatCategory,
+		HeatSign:           heatSign,
+		Basis:              "derived_balance",
+		SourceIDs:          []string{sourceID},
+		Total:              roundedEnergyNumber(builder.total),
+		Monthly:            roundedEnergyExplanationMonthly(builder.monthly),
+		sourceKeyValue:     strings.TrimSpace(dictionary.row.keyValue),
+		sourceName:         strings.TrimSpace(dictionary.row.name),
+		sourceFrequency:    strings.TrimSpace(dictionary.reportingFrequency),
+		sourceIsRate:       energyExplanationIntegratesRate(dictionary),
+		sourcePriority:     energyAliasPriority(dictionary.row.name, def.Aliases),
+		heatSignMultiplier: signMultiplier,
 	}
 }
 
@@ -1585,6 +1596,46 @@ func energyHeatAliasDefinitionForName(name string) (energyHeatAliasDefinition, b
 	return energyHeatAliasDefinition{}, false
 }
 
+func energyHeatAliasExplicitSign(name string) string {
+	key := normalizeEnergyOutputName(name)
+	if strings.Contains(key, " sensible heat loss ") {
+		return "negative"
+	}
+	if strings.Contains(key, " sensible heat gain ") {
+		return "positive"
+	}
+	return ""
+}
+
+func energyHeatSignMultiplier(sign string) float64 {
+	if sign == "negative" {
+		return -1
+	}
+	return 1
+}
+
+func energyHeatAliasLabel(label string, sign string) string {
+	label = strings.TrimSpace(label)
+	switch sign {
+	case "positive":
+		return energyHeatAliasSignedLabel(label, "gain")
+	case "negative":
+		return energyHeatAliasSignedLabel(label, "loss")
+	default:
+		return label
+	}
+}
+
+func energyHeatAliasSignedLabel(label string, suffix string) string {
+	if label == "" {
+		return suffix
+	}
+	if strings.Contains(label, "heat transfer") {
+		return strings.Replace(label, "heat transfer", "heat "+suffix, 1)
+	}
+	return label + " " + suffix
+}
+
 func buildEnergyExplanationCompleteness(series []energyExplanationSeries, sources []EnergyDataSource, plan *PurposeRunPlan, mappedPercent float64) EnergyCompleteness {
 	expectedEnergy := expectedEnergyExplanationOutputs(plan, "energy")
 	expectedLoad := expectedEnergyExplanationOutputs(plan, "load")
@@ -1815,6 +1866,9 @@ func energyExplanationLoadNodeID(item energyExplanationSeries) string {
 
 func energyExplanationHeatNodeID(item energyExplanationSeries) string {
 	nodeID := item.Kind
+	if sign := strings.TrimSpace(item.HeatSign); sign != "" {
+		nodeID += "." + metricID(sign)
+	}
 	if suffix := energyExplanationZoneSuffix(item.ZoneName); suffix != "" {
 		nodeID += "." + suffix
 	}
