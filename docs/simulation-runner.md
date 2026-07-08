@@ -92,7 +92,7 @@ Output states:
 - `parseHeatFlowFallback`
 
 The result source priority is SQL, then CSV, then ESO. The run result and
-`idf-analyzer-run.json` manifest expose both `resultSourcePriority` and the
+`semantic-idf-run.json` manifest expose both `resultSourcePriority` and the
 actual `resultSources` used by the parsers. SQL parsing already feeds legacy
 `Series` and `HeatFlow`, so older viewers continue to work while purpose result
 viewers are added. Basic Energy SQL rows are converted to display units
@@ -181,7 +181,7 @@ locally and restored in later sessions.
 
 ## Run Artifacts and Export
 
-Purpose runs write `idf-analyzer-run.json`, `idf-analyzer-run-plan.json`, and
+Purpose runs write `semantic-idf-run.json`, `semantic-idf-run-plan.json`, and
 `temporary_outputs.diff` in the output directory. The UI can export a purpose
 result JSON bundle or a standalone HTML report that embeds run metadata,
 including EnergyPlus executable/version metadata, the run plan, parsed purpose

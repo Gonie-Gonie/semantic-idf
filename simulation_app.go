@@ -7,9 +7,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Gonie-Gonie/idf-analyzer/internal/epinput"
-	"github.com/Gonie-Gonie/idf-analyzer/internal/idf"
-	"github.com/Gonie-Gonie/idf-analyzer/internal/simulation"
+	"github.com/Gonie-Gonie/semantic-idf/internal/epinput"
+	"github.com/Gonie-Gonie/semantic-idf/internal/idf"
+	"github.com/Gonie-Gonie/semantic-idf/internal/simulation"
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 

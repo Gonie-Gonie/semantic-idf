@@ -6,10 +6,10 @@ import (
 	"io"
 	"strings"
 
-	"github.com/Gonie-Gonie/idf-analyzer/internal/idf"
+	"github.com/Gonie-Gonie/semantic-idf/internal/idf"
 )
 
-const hvacGraphExportSchema = "idf-analyzer.hvac.graph.v1"
+const hvacGraphExportSchema = "semantic-idf.hvac.graph.v1"
 
 type hvacGraphExportPayload struct {
 	Schema string              `json:"schema"`

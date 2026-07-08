@@ -63,7 +63,7 @@ function Get-WailsProductName {
     if ($config.name) {
         return [string]$config.name
     }
-    return "IDF Analyzer"
+    return "SemanticIDF"
 }
 
 function Set-WailsReleaseMetadata {
@@ -74,7 +74,7 @@ function Set-WailsReleaseMetadata {
 
     $text = Normalize-NewLine -Text (Get-Content -LiteralPath $Path -Raw)
     $text = Set-JsonStringProperty -Text $text -Name "productVersion" -Value $TargetVersion
-    $text = Set-JsonStringProperty -Text $text -Name "outputfilename" -Value "idf-analyzer-v$TargetVersion"
+    $text = Set-JsonStringProperty -Text $text -Name "outputfilename" -Value "semantic-idf-v$TargetVersion"
     Write-TextFile -Path $Path -Text $text
 }
 
@@ -112,8 +112,8 @@ function Set-AppInfoModuleVersion {
     $titleRegex = New-Object System.Text.RegularExpressions.Regex('title:\s*"[^"]+"')
     $outputRegex = New-Object System.Text.RegularExpressions.Regex('outputFilename:\s*"[^"]+"')
     $text = $versionRegex.Replace($text, "version: `"$TargetVersion`"", 1)
-    $text = $titleRegex.Replace($text, "title: `"IDF Analyzer v$TargetVersion`"", 1)
-    $text = $outputRegex.Replace($text, "outputFilename: `"idf-analyzer-v$TargetVersion`"", 1)
+    $text = $titleRegex.Replace($text, "title: `"SemanticIDF v$TargetVersion`"", 1)
+    $text = $outputRegex.Replace($text, "outputFilename: `"semantic-idf-v$TargetVersion`"", 1)
     Write-TextFile -Path $Path -Text $text
 }
 
@@ -359,7 +359,7 @@ function Update-Changelog {
         [string]$ReleaseNoteBody
     )
 
-    $header = "# Changelog`n`nAll notable changes to IDF Analyzer are recorded here from release notes.`n`n"
+    $header = "# Changelog`n`nAll notable changes to SemanticIDF are recorded here from release notes.`n`n"
     if (Test-Path -LiteralPath $Path) {
         $text = Normalize-NewLine -Text (Get-Content -LiteralPath $Path -Raw)
     } else {
@@ -394,7 +394,7 @@ function Write-VersionedReleaseNotes {
         [string]$ReleaseNoteBody
     )
 
-    $content = "# IDF Analyzer v$TargetVersion`n`nReleased: $ReleaseDate`n`n$ReleaseNoteBody"
+    $content = "# SemanticIDF v$TargetVersion`n`nReleased: $ReleaseDate`n`n$ReleaseNoteBody"
     Write-TextFile -Path $Path -Text $content
 }
 
@@ -457,7 +457,7 @@ function New-ReleasePackage {
         New-Item -ItemType Directory -Path $OutputDir | Out-Null
     }
 
-    $zipPath = Join-Path $OutputDir "idf-analyzer-v$TargetVersion-windows-amd64.zip"
+    $zipPath = Join-Path $OutputDir "semantic-idf-v$TargetVersion-windows-amd64.zip"
     if (Test-Path -LiteralPath $zipPath) {
         Remove-Item -LiteralPath $zipPath -Force
     }
@@ -586,7 +586,7 @@ function Invoke-GitHubRelease {
             "edit",
             $tagName,
             "--title",
-            "IDF Analyzer $tagName",
+            "SemanticIDF $tagName",
             "--notes-file",
             $ReleaseNotesPath
         )
@@ -615,7 +615,7 @@ function Invoke-GitHubRelease {
         $tagName,
         $AssetPath,
         "--title",
-        "IDF Analyzer $tagName",
+        "SemanticIDF $tagName",
         "--notes-file",
         $ReleaseNotesPath
     )
@@ -672,7 +672,7 @@ $latestTag = Get-LatestReleaseTag -RepoRoot $repoRoot
 $target = Get-TargetVersion -CurrentVersion $currentVersion -RequestedVersion $Version -RequestedBump $Bump -ReleaseNoteBody $noteSource.Body -LatestTag $latestTag
 $targetVersion = $target.Version
 $versionedNotesPath = Join-Path $releaseNotesDir "v$targetVersion.md"
-$outputFilename = "idf-analyzer-v$targetVersion"
+$outputFilename = "semantic-idf-v$targetVersion"
 
 if ($ExistingTag) {
     Assert-ExistingGitTag -RepoRoot $repoRoot -TargetVersion $targetVersion

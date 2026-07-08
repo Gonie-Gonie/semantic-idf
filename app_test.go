@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Gonie-Gonie/idf-analyzer/internal/idf"
-	"github.com/Gonie-Gonie/idf-analyzer/internal/simulation"
+	"github.com/Gonie-Gonie/semantic-idf/internal/idf"
+	"github.com/Gonie-Gonie/semantic-idf/internal/simulation"
 )
 
 const appSummaryIDF = `

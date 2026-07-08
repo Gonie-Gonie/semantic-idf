@@ -968,7 +968,7 @@ func writeSimulationRunManifest(result *SimulationRunResult, request SimulationR
 	if request.PurposeRequest != nil {
 		manifest.Purposes = append([]SimulationPurposeID(nil), request.PurposeRequest.Purposes...)
 	}
-	path := filepath.Join(result.OutputDirectory, "idf-analyzer-run.json")
+	path := filepath.Join(result.OutputDirectory, "semantic-idf-run.json")
 	payload, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
 		return
@@ -998,7 +998,7 @@ func writePurposeRunArtifacts(outputDirectory string, request SimulationRunReque
 	if request.PurposeRunPlan != nil {
 		payload, err := json.MarshalIndent(request.PurposeRunPlan, "", "  ")
 		if err == nil {
-			_ = os.WriteFile(filepath.Join(outputDirectory, "idf-analyzer-run-plan.json"), append(payload, '\n'), 0o644)
+			_ = os.WriteFile(filepath.Join(outputDirectory, "semantic-idf-run-plan.json"), append(payload, '\n'), 0o644)
 		}
 	}
 	if strings.TrimSpace(request.TemporaryOutputDiff) != "" {
@@ -1249,9 +1249,9 @@ func sqlParseResultHasData(result SQLParseResult) bool {
 
 func simulationFileKind(name string) string {
 	switch strings.ToLower(filepath.Base(name)) {
-	case "idf-analyzer-run.json":
+	case "semantic-idf-run.json":
 		return "manifest"
-	case "idf-analyzer-run-plan.json":
+	case "semantic-idf-run-plan.json":
 		return "run_plan"
 	case "temporary_outputs.diff":
 		return "temporary_output_diff"
@@ -1464,7 +1464,7 @@ func defaultSimulationRunDirectory() string {
 	if root == "" {
 		root = os.TempDir()
 	}
-	return filepath.Join(root, "IDF Analyzer", "simulations")
+	return filepath.Join(root, "SemanticIDF", "simulations")
 }
 
 func DefaultWorkerCount(settings SimulationSettings) int {

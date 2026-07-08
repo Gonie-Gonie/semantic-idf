@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Gonie-Gonie/idf-analyzer/internal/tabular"
+	"github.com/Gonie-Gonie/semantic-idf/internal/tabular"
 )
 
 func ObjectTableSections(doc Document) []tabular.Section {

@@ -1,4 +1,4 @@
-module github.com/Gonie-Gonie/idf-analyzer
+module github.com/Gonie-Gonie/semantic-idf
 
 go 1.24.0
 

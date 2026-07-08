@@ -16,15 +16,15 @@ type hvacExternalFixture struct {
 }
 
 func TestExternalHVACFixtureMatrix(t *testing.T) {
-	if strings.TrimSpace(os.Getenv("IDF_ANALYZER_RUN_HVAC_FIXTURES")) != "1" {
-		t.Skip("set IDF_ANALYZER_RUN_HVAC_FIXTURES=1 to run the external HVAC fixture matrix")
+	if strings.TrimSpace(os.Getenv("SEMANTIC_IDF_RUN_HVAC_FIXTURES")) != "1" {
+		t.Skip("set SEMANTIC_IDF_RUN_HVAC_FIXTURES=1 to run the external HVAC fixture matrix")
 	}
 
 	home, _ := os.UserHomeDir()
 	fixtures := []hvacExternalFixture{
 		{
 			Name: "HospitalLowEnergy",
-			Env:  "IDF_ANALYZER_HVAC_HOSPITAL_IDF",
+			Env:  "SEMANTIC_IDF_HVAC_HOSPITAL_IDF",
 			Defaults: []string{
 				filepath.Join("testdata", "hvac_external", "HospitalLowEnergy.idf"),
 				filepath.Join("C:\\", "EnergyPlusV24-2-0", "ExampleFiles", "HospitalLowEnergy.idf"),
@@ -35,13 +35,13 @@ func TestExternalHVACFixtureMatrix(t *testing.T) {
 		},
 		{
 			Name:          "Domestic health-clinic operating IDF",
-			Env:           "IDF_ANALYZER_HVAC_DOMESTIC_HEALTH_IDF",
+			Env:           "SEMANTIC_IDF_HVAC_DOMESTIC_HEALTH_IDF",
 			Defaults:      []string{filepath.Join("testdata", "hvac_external", "heatfloor.idf"), filepath.Join(home, "Downloads", "heatfloor.idf")},
 			WantPathTypes: []string{"radiant"},
 		},
 		{
 			Name: "Domestic childcare operating IDF",
-			Env:  "IDF_ANALYZER_HVAC_DOMESTIC_CHILDCARE_IDF",
+			Env:  "SEMANTIC_IDF_HVAC_DOMESTIC_CHILDCARE_IDF",
 			Defaults: []string{
 				filepath.Join("testdata", "hvac_external", "Office_1_default.idf"),
 				filepath.Join(home, "Downloads", "Office_1_default.idf"),

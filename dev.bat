@@ -80,7 +80,7 @@ call :print_help
 exit /b 0
 
 :print_help
-echo IDF Analyzer developer commands
+echo SemanticIDF developer commands
 echo.
 echo   dev setup             Install repo-local Go/Wails runtime and git hook
 echo   dev check             Check repo-local runtime

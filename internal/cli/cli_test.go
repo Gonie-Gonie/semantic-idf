@@ -181,7 +181,7 @@ func TestCLIHVACGraphExports(t *testing.T) {
 		t.Fatalf("runCLI hvac-graph service exit = %d, stderr = %s", code, serviceErr.String())
 	}
 	for _, want := range []string{
-		`"schema": "idf-analyzer.hvac.graph.v1"`,
+		`"schema": "semantic-idf.hvac.graph.v1"`,
 		`"graph": "service"`,
 		`"serviceModel"`,
 		`"navigation"`,

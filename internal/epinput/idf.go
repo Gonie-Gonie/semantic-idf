@@ -1,7 +1,7 @@
 package epinput
 
 import (
-	"github.com/Gonie-Gonie/idf-analyzer/internal/idf"
+	"github.com/Gonie-Gonie/semantic-idf/internal/idf"
 )
 
 func ParseIDF(content string) (*Model, error) {

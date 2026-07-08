@@ -104,15 +104,15 @@ if ($appInfoText -notmatch 'version:\s*"([^"]+)"') {
 if ($Matches[1] -ne $productVersion) {
     throw "App version mismatch: wails.json=$productVersion app-info.js=$($Matches[1])"
 }
-if ($appInfoText -notmatch ('outputFilename:\s*"idf-analyzer-v' + [regex]::Escape($productVersion) + '"')) {
+if ($appInfoText -notmatch ('outputFilename:\s*"semantic-idf-v' + [regex]::Escape($productVersion) + '"')) {
     throw "App output filename does not match version $productVersion in frontend/src/js/app-info.js"
 }
 
 $staticVersionChecks = @(
     @($index, 'data-app-version[^>]*>v' + [regex]::Escape($productVersion) + '<'),
-    @($tools, 'data-app-brand-version[^>]*>IDF ANALYZER V' + [regex]::Escape($productVersion) + '<'),
-    @($guide, 'data-app-brand-version[^>]*>IDF ANALYZER V' + [regex]::Escape($productVersion) + '<'),
-    @($settings, 'data-app-brand-version[^>]*>IDF ANALYZER V' + [regex]::Escape($productVersion) + '<')
+    @($tools, 'data-app-brand-version[^>]*>SemanticIDF v' + [regex]::Escape($productVersion) + '<'),
+    @($guide, 'data-app-brand-version[^>]*>SemanticIDF v' + [regex]::Escape($productVersion) + '<'),
+    @($settings, 'data-app-brand-version[^>]*>SemanticIDF v' + [regex]::Escape($productVersion) + '<')
 )
 foreach ($check in $staticVersionChecks) {
     $path = [string]$check[0]

@@ -5,8 +5,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/Gonie-Gonie/idf-analyzer/internal/epinput"
-	"github.com/Gonie-Gonie/idf-analyzer/internal/idf"
+	"github.com/Gonie-Gonie/semantic-idf/internal/epinput"
+	"github.com/Gonie-Gonie/semantic-idf/internal/idf"
 )
 
 func prepareBatchPurposeSimulationRequest(request SimulationRunRequest, purposeRequest SimulationPurposeRequest) (SimulationRunRequest, error) {

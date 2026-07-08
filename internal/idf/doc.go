@@ -13,7 +13,7 @@
 //   - semantic_yaml*: semantic YAML rendering and golden-file support.
 //   - simulation_requirements: small simulation input requirement checks.
 //
-// Keep tightly coupled IDF analyzers in this package while they share unexported
+// Keep tightly coupled IDF analysis helpers in this package while they share unexported
 // parser/catalog helpers. New UI, CLI, or static-check code should live outside
 // this package unless it needs direct access to those internals.
 package idf

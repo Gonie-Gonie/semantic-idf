@@ -1,8 +1,8 @@
 export const bundledAppInfo = {
-  name: "IDF Analyzer",
+  name: "SemanticIDF",
   version: "0.4.2",
-  title: "IDF Analyzer v0.4.2",
-  outputFilename: "idf-analyzer-v0.4.2",
+  title: "SemanticIDF v0.4.2",
+  outputFilename: "semantic-idf-v0.4.2",
 };
 
 let cachedAppInfo = null;
@@ -45,7 +45,7 @@ export async function renderAppInfo(appInfoInput) {
     element.textContent = info.title;
   });
   document.querySelectorAll("[data-app-brand-version]").forEach((element) => {
-    element.textContent = `${info.name.toUpperCase()} V${info.version}`;
+    element.textContent = `${info.name} v${info.version}`;
   });
   document.querySelectorAll("[data-app-version]").forEach((element) => {
     element.textContent = `v${info.version}`;
@@ -62,13 +62,13 @@ export function formatAppVersion(appInfoInput) {
 function normalizeAppInfo(input = {}) {
   const name = String(input.name || bundledAppInfo.name).trim() || bundledAppInfo.name;
   const version = String(input.version || bundledAppInfo.version).trim() || bundledAppInfo.version;
-  const defaultOutputFilename = `idf-analyzer-v${version}`;
+  const defaultOutputFilename = `semantic-idf-v${version}`;
   const outputFilename = String(input.outputFilename || defaultOutputFilename).trim() || defaultOutputFilename;
   const title = String(input.title || `${name} v${version}`).trim() || `${name} v${version}`;
   return { name, version, title, outputFilename };
 }
 
 function updateDocumentTitle(info) {
-  const suffix = document.title.replace(/^IDF Analyzer(?: v\d+\.\d+\.\d+)?\s*/i, "").trim();
+  const suffix = document.title.replace(/^SemanticIDF(?: v\d+\.\d+\.\d+)?\s*/i, "").trim();
   document.title = suffix ? `${info.title} ${suffix}` : info.title;
 }

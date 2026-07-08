@@ -11,9 +11,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Gonie-Gonie/idf-analyzer/internal/epinput"
-	"github.com/Gonie-Gonie/idf-analyzer/internal/idf"
-	"github.com/Gonie-Gonie/idf-analyzer/internal/simulation"
+	"github.com/Gonie-Gonie/semantic-idf/internal/epinput"
+	"github.com/Gonie-Gonie/semantic-idf/internal/idf"
+	"github.com/Gonie-Gonie/semantic-idf/internal/simulation"
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -1732,7 +1732,7 @@ func appSettingsPath() (string, error) {
 		}
 		root = configDir
 	}
-	dir := filepath.Join(root, "IDF Analyzer")
+	dir := filepath.Join(root, "SemanticIDF")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}

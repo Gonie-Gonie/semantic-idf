@@ -7,7 +7,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/Gonie-Gonie/idf-analyzer/internal/idf"
+	"github.com/Gonie-Gonie/semantic-idf/internal/idf"
 )
 
 func cliProfileGraph(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) error {

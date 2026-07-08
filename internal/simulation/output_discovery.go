@@ -8,7 +8,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/Gonie-Gonie/idf-analyzer/internal/idf"
+	"github.com/Gonie-Gonie/semantic-idf/internal/idf"
 )
 
 type OutputDiscoveryRequest struct {

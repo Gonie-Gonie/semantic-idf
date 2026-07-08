@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"os"
 
-	appcli "github.com/Gonie-Gonie/idf-analyzer/internal/cli"
-	"github.com/Gonie-Gonie/idf-analyzer/internal/idf"
-	"github.com/Gonie-Gonie/idf-analyzer/internal/simulation"
+	appcli "github.com/Gonie-Gonie/semantic-idf/internal/cli"
+	"github.com/Gonie-Gonie/semantic-idf/internal/idf"
+	"github.com/Gonie-Gonie/semantic-idf/internal/simulation"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
@@ -64,10 +64,10 @@ func main() {
 
 func currentAppInfo() AppInfo {
 	info := AppInfo{
-		Name:           "IDF Analyzer",
+		Name:           "SemanticIDF",
 		Version:        "0.0.0",
-		Title:          "IDF Analyzer v0.0.0",
-		OutputFilename: "idf-analyzer",
+		Title:          "SemanticIDF v0.0.0",
+		OutputFilename: "semantic-idf",
 	}
 
 	var config wailsAppConfig

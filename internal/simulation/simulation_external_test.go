@@ -8,11 +8,11 @@ import (
 )
 
 func TestExternalEnergyPlusSmoke(t *testing.T) {
-	if strings.TrimSpace(os.Getenv("IDF_ANALYZER_RUN_EP_SMOKE")) != "1" {
-		t.Skip("set IDF_ANALYZER_RUN_EP_SMOKE=1 to run the external EnergyPlus smoke test")
+	if strings.TrimSpace(os.Getenv("SEMANTIC_IDF_RUN_EP_SMOKE")) != "1" {
+		t.Skip("set SEMANTIC_IDF_RUN_EP_SMOKE=1 to run the external EnergyPlus smoke test")
 	}
 
-	executable := strings.TrimSpace(os.Getenv("IDF_ANALYZER_ENERGYPLUS_EXE"))
+	executable := strings.TrimSpace(os.Getenv("SEMANTIC_IDF_ENERGYPLUS_EXE"))
 	if executable == "" {
 		for _, install := range AutoDetectEnergyPlusInstallations() {
 			if install.ExecutablePath != "" {
@@ -25,8 +25,8 @@ func TestExternalEnergyPlusSmoke(t *testing.T) {
 		t.Skip("EnergyPlus executable was not found")
 	}
 	root := filepath.Dir(executable)
-	example := envOrDefaultPath("IDF_ANALYZER_ENERGYPLUS_EXAMPLE", filepath.Join(root, "ExampleFiles", "1ZoneUncontrolled.idf"))
-	weather := envOrDefaultPath("IDF_ANALYZER_ENERGYPLUS_WEATHER", filepath.Join(root, "WeatherData", "USA_IL_Chicago-OHare.Intl.AP.725300_TMY3.epw"))
+	example := envOrDefaultPath("SEMANTIC_IDF_ENERGYPLUS_EXAMPLE", filepath.Join(root, "ExampleFiles", "1ZoneUncontrolled.idf"))
+	weather := envOrDefaultPath("SEMANTIC_IDF_ENERGYPLUS_WEATHER", filepath.Join(root, "WeatherData", "USA_IL_Chicago-OHare.Intl.AP.725300_TMY3.epw"))
 	for _, path := range []string{executable, example, weather} {
 		if _, err := os.Stat(path); err != nil {
 			t.Skipf("required EnergyPlus smoke-test file is unavailable: %s", path)

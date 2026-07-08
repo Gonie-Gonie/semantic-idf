@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Gonie-Gonie/idf-analyzer/internal/idf"
+	"github.com/Gonie-Gonie/semantic-idf/internal/idf"
 )
 
 var vertexFieldPattern = regexp.MustCompile(`^vertex_(\d+)_(x|y|z)_coordinate$`)

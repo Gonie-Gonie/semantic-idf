@@ -10,7 +10,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/Gonie-Gonie/idf-analyzer/internal/idf"
+	"github.com/Gonie-Gonie/semantic-idf/internal/idf"
 )
 
 type SimulationPurposeID string
@@ -1959,7 +1959,7 @@ func integrityStaticDiagnosticUnavailable(message string) idf.Diagnostic {
 		Severity:   idf.DiagnosticWarning,
 		Category:   "Static Diagnose",
 		Code:       "static_diagnostics_unavailable",
-		Source:     "idf_analyzer",
+		Source:     "semantic_idf",
 		Confidence: "high",
 		Message:    message,
 	}

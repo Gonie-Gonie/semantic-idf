@@ -3,13 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title data-i18n="guide.pageTitle">IDF Analyzer Guide</title>
+    <title data-i18n="guide.pageTitle">SemanticIDF Guide</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body class="guide-page">
     <header class="guide-header">
       <div>
-        <p class="guide-kicker" data-app-brand-version>IDF ANALYZER V0.4.2</p>
+        <p class="guide-kicker" data-app-brand-version>SemanticIDF v0.4.2</p>
         <h1 data-i18n="guide.title">User Guide</h1>
       </div>
       <div class="guide-header-actions">
@@ -39,7 +39,7 @@
         <section id="start" class="guide-section">
           <h2 data-i18n="guide.start.title">Start</h2>
           <p data-i18n="guide.start.body">
-            IDF Analyzer opens EnergyPlus IDF, IMF, and epJSON-style files, shows the input in synchronized Text,
+            SemanticIDF opens EnergyPlus IDF, IMF, and epJSON-style files, shows the input in synchronized Text,
             JSON, and Table views, and calculates Summary, Diagnose, and Geometry results in the right panel. A
             reference office model loads at startup so the interface is usable before you open a project file; analysis
             starts after the first screen is visible and fills in the visible Summary first.
@@ -72,46 +72,46 @@
           <h2 data-i18n="guide.cli.title">CLI Commands</h2>
           <p data-i18n="guide.cli.body">
             The packaged executable can also run non-interactive commands. Running without arguments opens the desktop
-            app; running `idf-analyzer cli ...` or a recognized top-level command runs the CLI. Use `-` as the input path
+            app; running `semantic-idf cli ...` or a recognized top-level command runs the CLI. Use `-` as the input path
             to read from stdin and `-o -` to write command output to stdout.
           </p>
           <div class="guide-grid">
             <article>
               <h3 data-i18n="guide.cli.summaryTitle">Summary and diagnostics</h3>
               <p data-i18n="guide.cli.summaryBody">Export text, JSON, CSV, or styled XLSX summaries, and export Diagnose issues for scripts or CI checks.</p>
-              <pre><code>idf-analyzer cli summary model.idf
-idf-analyzer cli summary -format json -o summary.json model.idf
-idf-analyzer cli summary -format csv -o summary.csv model.idf
-idf-analyzer cli summary -format xlsx -o summary.xlsx model.idf
-idf-analyzer cli diagnostics -format text model.idf
-idf-analyzer cli diagnostics -format csv -o diagnostics.csv model.idf
-idf-analyzer cli analyze -format json -o report.json model.idf</code></pre>
+              <pre><code>semantic-idf cli summary model.idf
+semantic-idf cli summary -format json -o summary.json model.idf
+semantic-idf cli summary -format csv -o summary.csv model.idf
+semantic-idf cli summary -format xlsx -o summary.xlsx model.idf
+semantic-idf cli diagnostics -format text model.idf
+semantic-idf cli diagnostics -format csv -o diagnostics.csv model.idf
+semantic-idf cli analyze -format json -o report.json model.idf</code></pre>
             </article>
             <article>
               <h3 data-i18n="guide.cli.multiTitle">Multi-file summary</h3>
               <p data-i18n="guide.cli.multiBody">Compare Summary metrics across several models as CSV, JSON, text, or a styled single-sheet XLSX workbook.</p>
-              <pre><code>idf-analyzer cli multi-summary -format csv -o compare.csv a.idf b.idf c.epjson
-idf-analyzer cli multi-summary -format xlsx -orientation metrics -o compare.xlsx a.idf b.idf
-idf-analyzer cli multi-summary -format xlsx -orientation files -o compare-by-file.xlsx a.idf b.idf</code></pre>
+              <pre><code>semantic-idf cli multi-summary -format csv -o compare.csv a.idf b.idf c.epjson
+semantic-idf cli multi-summary -format xlsx -orientation metrics -o compare.xlsx a.idf b.idf
+semantic-idf cli multi-summary -format xlsx -orientation files -o compare-by-file.xlsx a.idf b.idf</code></pre>
             </article>
             <article>
               <h3 data-i18n="guide.cli.cleanTitle">Clean</h3>
               <p data-i18n="guide.cli.cleanBody">Preview cleanup candidates, apply default or explicit rules, compact formatting, and optionally rename duplicate semantic object names.</p>
-              <pre><code>idf-analyzer cli clean --dry-run model.idf
-idf-analyzer cli clean --dry-run -format json -o cleanup-preview.json model.idf
-idf-analyzer cli clean -o cleaned.idf model.idf
-idf-analyzer cli clean -rules all --compact -o cleaned.idf model.idf
-idf-analyzer cli clean -rules none --semantic-duplicates -o semantic-fixed.idf model.idf
-idf-analyzer cli clean -rules remove_unused_schedules,remove_duplicate_output_variables -o cleaned.idf model.idf</code></pre>
+              <pre><code>semantic-idf cli clean --dry-run model.idf
+semantic-idf cli clean --dry-run -format json -o cleanup-preview.json model.idf
+semantic-idf cli clean -o cleaned.idf model.idf
+semantic-idf cli clean -rules all --compact -o cleaned.idf model.idf
+semantic-idf cli clean -rules none --semantic-duplicates -o semantic-fixed.idf model.idf
+semantic-idf cli clean -rules remove_unused_schedules,remove_duplicate_output_variables -o cleaned.idf model.idf</code></pre>
             </article>
             <article>
               <h3 data-i18n="guide.cli.convertTitle">Convert</h3>
               <p data-i18n="guide.cli.convertBody">Convert IDF and epJSON inputs to IDF, epJSON, semantic YAML view export, or a styled one-sheet Excel table export grouped by `[ObjectType]` markers.</p>
-              <pre><code>idf-analyzer cli convert -to idf -o model.idf model.epjson
-idf-analyzer cli convert -to json -o model.epjson model.idf
-idf-analyzer cli convert -to yaml -o model.semantic.yaml model.idf
-idf-analyzer cli convert -to table -o model.tables.xlsx model.idf
-type model.idf | idf-analyzer cli convert -to json -o - -</code></pre>
+              <pre><code>semantic-idf cli convert -to idf -o model.idf model.epjson
+semantic-idf cli convert -to json -o model.epjson model.idf
+semantic-idf cli convert -to yaml -o model.semantic.yaml model.idf
+semantic-idf cli convert -to table -o model.tables.xlsx model.idf
+type model.idf | semantic-idf cli convert -to json -o - -</code></pre>
             </article>
           </div>
         </section>

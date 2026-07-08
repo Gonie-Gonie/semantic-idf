@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Gonie-Gonie/idf-analyzer/internal/idf"
+	"github.com/Gonie-Gonie/semantic-idf/internal/idf"
 )
 
 func TestParseERRFileCountsIssues(t *testing.T) {
@@ -949,7 +949,7 @@ func TestWriteSimulationRunManifest(t *testing.T) {
 
 	writeSimulationRunManifest(result, request)
 
-	path := filepath.Join(dir, "idf-analyzer-run.json")
+	path := filepath.Join(dir, "semantic-idf-run.json")
 	content, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -987,7 +987,7 @@ func TestWritePurposeRunArtifacts(t *testing.T) {
 
 	writePurposeRunArtifacts(dir, request)
 
-	if _, err := os.Stat(filepath.Join(dir, "idf-analyzer-run-plan.json")); err != nil {
+	if _, err := os.Stat(filepath.Join(dir, "semantic-idf-run-plan.json")); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "temporary_outputs.diff")); err != nil {

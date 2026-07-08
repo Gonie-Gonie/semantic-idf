@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Gonie-Gonie/idf-analyzer/internal/epinput"
-	"github.com/Gonie-Gonie/idf-analyzer/internal/idf"
+	"github.com/Gonie-Gonie/semantic-idf/internal/epinput"
+	"github.com/Gonie-Gonie/semantic-idf/internal/idf"
 )
 
 const maxBatchInputCacheEntries = 64

@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to IDF Analyzer are recorded here from release notes.
+All notable changes to SemanticIDF are recorded here from release notes.
 
 ## [0.4.2] - 2026-06-17
 
@@ -48,7 +48,7 @@ All notable changes to IDF Analyzer are recorded here from release notes.
 
 ## Highlights Compared With v0.3.0
 
-- v0.4.0 expands IDF Analyzer from the v0.3.0 output/simulation foundation into a purpose-driven inspection workflow with richer simulation results, batch analysis, and traceable semantic diagnostics.
+- v0.4.0 expands SemanticIDF from the v0.3.0 output/simulation foundation into a purpose-driven inspection workflow with richer simulation results, batch analysis, and traceable semantic diagnostics.
 - The former Tools surface is now a full Batch workspace, while Simulation is now organized around purpose presets, scoped run plans, SQL-first result bundles, and exportable evidence.
 
 ## Added
@@ -165,7 +165,7 @@ All notable changes to IDF Analyzer are recorded here from release notes.
 
 ## Added
 
-- Package IDF Analyzer as a Wails desktop app with a static HTML/CSS/JS frontend.
+- Package SemanticIDF as a Wails desktop app with a static HTML/CSS/JS frontend.
 - Parse, edit, summarize, diagnose, and clean up EnergyPlus IDF and epJSON inputs.
 - Add geometry visualization, summary exports, multi-IDF comparison, bundled sample input, and in-app guide/settings pages.
 - Add manual GitHub release automation driven by release notes, including semver selection, changelog updates, packaging, tagging, and GitHub Release publishing.

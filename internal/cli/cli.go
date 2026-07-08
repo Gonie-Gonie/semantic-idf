@@ -11,9 +11,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Gonie-Gonie/idf-analyzer/internal/epinput"
-	"github.com/Gonie-Gonie/idf-analyzer/internal/idf"
-	"github.com/Gonie-Gonie/idf-analyzer/internal/tabular"
+	"github.com/Gonie-Gonie/semantic-idf/internal/epinput"
+	"github.com/Gonie-Gonie/semantic-idf/internal/idf"
+	"github.com/Gonie-Gonie/semantic-idf/internal/tabular"
 )
 
 type cliInput struct {
@@ -81,7 +81,7 @@ func runCLI(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer, 
 	case "convert":
 		err = cliConvert(args[1:], stdin, stdout, stderr)
 	default:
-		err = fmt.Errorf("unknown CLI command %q; use `idf-analyzer cli --help`", args[0])
+		err = fmt.Errorf("unknown CLI command %q; use `semantic-idf cli --help`", args[0])
 	}
 	if err != nil {
 		if err == flag.ErrHelp {
@@ -94,11 +94,11 @@ func runCLI(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer, 
 }
 
 func writeCLIHelp(w io.Writer) {
-	fmt.Fprint(w, `IDF Analyzer CLI
+	fmt.Fprint(w, `SemanticIDF CLI
 
 Usage:
-  idf-analyzer cli <command> [options] <input>
-  idf-analyzer <command> [options] <input>
+  semantic-idf cli <command> [options] <input>
+  semantic-idf <command> [options] <input>
 
 Commands:
   summary        Export Summary metrics as text, JSON, CSV, or XLSX.
@@ -113,7 +113,7 @@ Commands:
   convert        Convert IDF/epJSON to IDF, JSON, semantic YAML view export, or XLSX tables.
 
 Use "-" as input to read from stdin. Use "-o -" to write an output file stream to stdout.
-Run "idf-analyzer cli <command> --help" for command-specific options.
+Run "semantic-idf cli <command> --help" for command-specific options.
 `)
 }
 

@@ -1,7 +1,7 @@
 import { backend, elements, escapeHTML, setStatus, state } from "../state.js";
 import { t } from "../i18n.js";
 
-const HVAC_GRAPH_EXPORT_SCHEMA = "idf-analyzer.hvac.graph.v1";
+const HVAC_GRAPH_EXPORT_SCHEMA = "semantic-idf.hvac.graph.v1";
 let hvacComponentBaseCountCache = { serviceModel: null, counts: new Map() };
 let hvacDebugRuleGraphRequestKey = "";
 let hvacDebugRuleGraphEmptyKey = "";
@@ -3873,7 +3873,7 @@ function exportHVACDebugGraph(graph) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `idf-analyzer-hvac-${payload.graph}-graph.json`;
+  link.download = `semantic-idf-hvac-${payload.graph}-graph.json`;
   document.body.appendChild(link);
   link.click();
   link.remove();

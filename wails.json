@@ -1,7 +1,7 @@
 {
   "$schema": "https://wails.io/schemas/config.v2.json",
-  "name": "idf-analyzer",
-  "outputfilename": "idf-analyzer-v0.4.2",
+  "name": "semantic-idf",
+  "outputfilename": "semantic-idf-v0.4.2",
   "assetdir": "frontend/src",
   "frontend:dir": "frontend",
   "frontend:install": "powershell -NoProfile -ExecutionPolicy Bypass -File ../scripts/frontend-install.ps1",
@@ -12,8 +12,8 @@
     "name": "Gonie-Gonie"
   },
   "info": {
-    "productName": "IDF Analyzer",
+    "productName": "SemanticIDF",
     "productVersion": "0.4.2",
-    "comments": "Lightweight EnergyPlus IDF analyzer"
+    "comments": "SemanticIDF EnergyPlus input analysis tooling"
   }
 }
