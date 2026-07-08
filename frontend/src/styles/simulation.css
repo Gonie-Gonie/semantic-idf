@@ -1109,6 +1109,44 @@
   border-color: color-mix(in srgb, var(--red) 45%, var(--line));
 }
 
+.energy-explanation-missing {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: baseline;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.energy-explanation-missing strong {
+  color: var(--text);
+}
+
+.energy-source-availability {
+  max-height: 160px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.energy-source-availability table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.energy-source-availability th,
+.energy-source-availability td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+
+.energy-source-availability th {
+  color: var(--muted);
+  font-size: 11px;
+}
+
 .energy-sankey-wrap {
   min-width: 0;
   overflow-x: auto;

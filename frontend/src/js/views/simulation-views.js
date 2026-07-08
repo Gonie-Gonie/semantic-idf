@@ -799,6 +799,19 @@ function renderEnergyExplanationCompleteness(explanation = {}) {
     return "";
   }
   const allocationPolicy = energyAllocationPolicyLabel(explanation.allocationPolicy || "direct_only");
+  const missingCategories = completeness.missingCategories || [];
+  const availabilityRows = (completeness.sourceAvailability || [])
+    .filter((item) => item.status && item.status !== "found")
+    .slice(0, 12)
+    .map(
+      (item) => `
+        <tr>
+          <td>${escapeHTML(energyExplanationLevelLabel(item.level || ""))}</td>
+          <td>${escapeHTML(item.name || "")}</td>
+          <td>${escapeHTML(item.status || "")}</td>
+        </tr>`,
+    )
+    .join("");
   return `
     <section class="simulation-energy-block simulation-energy-explain-status">
       <div class="simulation-energy-block-head">
@@ -817,6 +830,21 @@ function renderEnergyExplanationCompleteness(explanation = {}) {
           )
           .join("")}
       </div>
+      ${
+        missingCategories.length
+          ? `<div class="energy-explanation-missing"><strong>${escapeHTML(t("simulation.missingOutputs", {}, "Missing outputs"))}</strong><span>${escapeHTML(missingCategories.join(", "))}</span></div>`
+          : ""
+      }
+      ${
+        availabilityRows
+          ? `<div class="energy-source-availability">
+              <table>
+                <thead><tr><th>Level</th><th>${escapeHTML(t("common.output", {}, "Output"))}</th><th>Status</th></tr></thead>
+                <tbody>${availabilityRows}</tbody>
+              </table>
+            </div>`
+          : ""
+      }
     </section>`;
 }
 

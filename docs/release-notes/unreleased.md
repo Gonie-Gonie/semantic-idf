@@ -21,6 +21,8 @@ The release script infers bump size from these sections:
   available.
 - Energy explanation Sankey and Systems views can now focus by all results, a
   selected zone, or a selected HVAC service path.
+- Energy explanation completeness now surfaces missing categories and source
+  availability rows in the UI.
 - Added an annual `energyExplanationSummary` result payload for carrier,
   end-use, delivered-load, heat-driver, residual, and top-zone rollups.
 - Basic Energy explanation plans and result payloads now expose the

@@ -155,11 +155,13 @@ Purpose result viewers now include:
 - Basic Energy facility/end-use monthly charts, zone matrix, zone reported
   energy table, and `Overview` / `Sankey` / `Monthly` / `Zones` / `Sources` /
   `Reconciliation` subviews for tracing Energy Use to Delivered Load and Heat
-  Drivers with source metadata. The `Systems` subview and node inspector match
-  load/heat services to the current HVAC service model by zone and service kind,
-  then link directly to the related HVAC service path. Sankey and Systems can
-  focus the graph by all results, a selected zone, or a selected HVAC service
-  path without changing the stored explanation payload.
+  Drivers with source metadata. The completeness panel shows mapped percent,
+  allocation policy, missing categories, and missing source availability rows.
+  The `Systems` subview and node inspector match load/heat services to the
+  current HVAC service model by zone and service kind, then link directly to the
+  related HVAC service path. Sankey and Systems can focus the graph by all
+  results, a selected zone, or a selected HVAC service path without changing the
+  stored explanation payload.
 - Zone Heat Flow SQL or CSV/ESO ledger with frame sampling metadata and
   time-range controls.
 - HVAC Loop Check node summaries, component operation summaries for fans,
