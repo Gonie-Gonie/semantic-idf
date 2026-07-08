@@ -71,6 +71,7 @@ The release script infers bump size from these sections:
   labels missing baseline or comparison rows.
 - Batch Simulation can export purpose metrics, compact Basic Energy
   explanation summary/source metadata rows, and Sankey edge metadata rows as CSV.
+  Edge export rows include related HVAC service path IDs when available.
 
 ## Changed
 

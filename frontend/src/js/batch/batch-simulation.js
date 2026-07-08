@@ -424,6 +424,7 @@ export function initializeMultiSimulationTool(context) {
       "zone",
       "service_kind",
       "source_ids",
+      "related_path_ids",
     ]];
     (result.results || []).forEach((item) => {
       const file = item.filename || fileName(item.inputPath);
@@ -522,6 +523,7 @@ export function initializeMultiSimulationTool(context) {
           edge.zoneName || "",
           edge.serviceKind || "",
           (edge.sourceIds || []).join("; "),
+          (edge.relatedPathIds || []).join("; "),
         ]);
       });
     });
@@ -555,7 +557,7 @@ export function initializeMultiSimulationTool(context) {
   }
 
   function emptyEnergyExplanationEdgeExportFields() {
-    return ["", "", "", "", "", "", "", "", "", ""];
+    return ["", "", "", "", "", "", "", "", "", "", ""];
   }
 
   function energyExplanationEdgeExportItems(explanation = {}) {

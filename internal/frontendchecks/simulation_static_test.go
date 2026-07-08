@@ -76,6 +76,7 @@ func TestFrontendBatchEnergyExplanationDeltaContracts(t *testing.T) {
 		"source_frequency",
 		"rule_id",
 		"source_ids",
+		"related_path_ids",
 		"Largest Energy Explanation Changes",
 		"Sankey Edge Delta",
 		"missing in baseline",
