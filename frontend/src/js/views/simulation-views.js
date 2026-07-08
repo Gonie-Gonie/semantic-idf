@@ -1441,6 +1441,7 @@ function renderEnergyExplanationCompleteness(explanation = {}) {
       ? t("simulation.energyAccountingCoverageHint", {}, "No source output shortage is reported; remaining gaps are accounting coverage or model applicability.")
       : "";
   const applyDisabled = purposeOutputApplyState().disabled;
+  const availabilitySummary = renderEnergySourceAvailabilitySummary(completeness.sourceAvailability || []);
   const availabilityRows = (completeness.sourceAvailability || [])
     .filter((item) => item.status && item.status !== "found")
     .slice(0, 12)
@@ -1471,6 +1472,7 @@ function renderEnergyExplanationCompleteness(explanation = {}) {
           )
           .join("")}
       </div>
+      ${availabilitySummary}
       ${
         missingCategories.length
           ? `<div class="energy-explanation-missing"><strong>${escapeHTML(t("simulation.missingOutputs", {}, "Missing outputs"))}</strong><span>${escapeHTML(missingCategories.join(", "))}</span></div>`
@@ -1505,6 +1507,46 @@ function renderEnergyExplanationCompleteness(explanation = {}) {
           : ""
       }
     </section>`;
+}
+
+function renderEnergySourceAvailabilitySummary(items = []) {
+  const groups = new Map();
+  for (const item of items || []) {
+    const level = String(item.level || "").toLowerCase();
+    const status = String(item.status || "").toLowerCase();
+    if (!level || !status) {
+      continue;
+    }
+    if (!groups.has(level)) {
+      groups.set(level, { level, found: 0, missing: 0, not_applicable: 0, other: 0 });
+    }
+    const group = groups.get(level);
+    if (status === "found" || status === "missing" || status === "not_applicable") {
+      group[status] += 1;
+    } else {
+      group.other += 1;
+    }
+  }
+  const rows = ["energy", "load", "heat"]
+    .map((level) => groups.get(level))
+    .filter(Boolean)
+    .map((group) => {
+      const parts = [
+        ["found", group.found],
+        ["missing", group.missing],
+        ["not_applicable", group.not_applicable],
+        ["other", group.other],
+      ]
+        .filter(([, count]) => count > 0)
+        .map(([status, count]) => `${count} ${titleCaseEnergyToken(status)}`)
+        .join(" / ");
+      return `<span><b>${escapeHTML(energyExplanationLevelLabel(group.level))}</b>${escapeHTML(parts || "0")}</span>`;
+    })
+    .join("");
+  if (!rows) {
+    return "";
+  }
+  return `<div class="energy-source-availability-summary">${rows}</div>`;
 }
 
 function energyAllocationPolicyLabel(policy = "") {

@@ -338,8 +338,8 @@ Purpose result viewers now include:
   The Overview subview also includes an annual Energy Use breakdown by carrier
   and end use so fuel-qualified uses remain distinct in comparison.
   The completeness panel
-  shows mapped percent, allocation policy, missing categories, and missing
-  source availability rows.
+  shows mapped percent, allocation policy, source availability counts by level
+  and status, missing categories, and missing source availability rows.
   Source availability uses `found` and `missing` status values so missing rows
   are not confused with present SQL dictionary sources. Source output cells link
   back to the matching existing output request object when the run plan can

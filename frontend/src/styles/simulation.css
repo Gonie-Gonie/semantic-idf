@@ -1320,6 +1320,30 @@
   align-items: center;
 }
 
+.energy-source-availability-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.energy-source-availability-summary span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px 8px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.energy-source-availability-summary b {
+  margin-right: 4px;
+  color: var(--text);
+}
+
 .energy-source-availability {
   max-height: 160px;
   overflow: auto;

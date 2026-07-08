@@ -162,6 +162,8 @@ The release script infers bump size from these sections:
 - The Simulation run plan now summarizes Basic Energy output sets by tier and
   state, making SQL, Light, Explain, and Heat Driver request coverage visible
   before running.
+- The Basic Energy completeness panel now summarizes source availability counts
+  by level and status before listing missing or not-applicable source rows.
 - Basic Energy source metadata now includes `aggregationMethod` for SQL/report
   sources, and the Sources view, inspector tables, and batch CSV export show it.
 - Basic Energy source metadata now preserves both source units and normalized
