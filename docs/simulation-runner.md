@@ -194,7 +194,8 @@ normal zero. Batch Simulation can export purpose metrics, compact
 reconciliation rows, and Sankey edge metadata rows with period, relation, basis,
 `ruleId`, formula, endpoint, service, zone, source IDs, related source output
 object indexes, and related HVAC service path IDs as CSV for spreadsheet
-comparison.
+comparison. Compact summary rows also carry their source IDs and matching source
+output object indexes when available.
 
 `parseSimulationSQL` is the combined SQLite entrypoint. It gathers generic
 time-series rows, Basic Energy dashboard data, SQL heat-flow data, Integrity

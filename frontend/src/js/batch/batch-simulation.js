@@ -428,6 +428,8 @@ export function initializeMultiSimulationTool(context) {
     ]];
     (result.results || []).forEach((item) => {
       const file = item.filename || fileName(item.inputPath);
+      const explanation = item.purposeResults?.energyExplanation || {};
+      const explanationSummary = item.purposeResults?.energyExplanationSummary || {};
       for (const metric of item.purposeMetrics || []) {
         rows.push([
           file,
@@ -450,7 +452,7 @@ export function initializeMultiSimulationTool(context) {
           ...emptyEnergyExplanationEdgeExportFields(),
         ]);
       }
-      energyExplanationSummaryExportItems(item.purposeResults?.energyExplanationSummary || {}).forEach((metric) => {
+      energyExplanationSummaryExportItems(explanationSummary).forEach((metric) => {
         rows.push([
           file,
           item.status || "",
@@ -468,11 +470,11 @@ export function initializeMultiSimulationTool(context) {
           "",
           "",
           "",
-          "",
-          ...emptyEnergyExplanationEdgeExportFields(),
+          energyExplanationSourceObjectIndexes(explanation, metric.sourceIds || []),
+          ...emptyEnergyExplanationEdgeExportFields(metric.sourceIds || []),
         ]);
       });
-      energyExplanationSourceExportItems(item.purposeResults?.energyExplanation || {}).forEach((source) => {
+      energyExplanationSourceExportItems(explanation).forEach((source) => {
         rows.push([
           file,
           item.status || "",
@@ -494,7 +496,7 @@ export function initializeMultiSimulationTool(context) {
           ...emptyEnergyExplanationEdgeExportFields(),
         ]);
       });
-      energyExplanationEdgeExportItems(item.purposeResults?.energyExplanation || {}).forEach((edge) => {
+      energyExplanationEdgeExportItems(explanation).forEach((edge) => {
         rows.push([
           file,
           item.status || "",
@@ -512,7 +514,7 @@ export function initializeMultiSimulationTool(context) {
           edge.toId || "",
           edge.period || "",
           edge.ruleId || "",
-          energyExplanationSourceObjectIndexes(item.purposeResults?.energyExplanation || {}, edge.sourceIds || []),
+          energyExplanationSourceObjectIndexes(explanation, edge.sourceIds || []),
           edge.period || "",
           edge.relation || "",
           edge.basis || "",
@@ -526,7 +528,7 @@ export function initializeMultiSimulationTool(context) {
           (edge.relatedPathIds || []).join("; "),
         ]);
       });
-      energyExplanationReconciliationExportItems(item.purposeResults?.energyExplanation || {}).forEach((reconciliation) => {
+      energyExplanationReconciliationExportItems(explanation).forEach((reconciliation) => {
         rows.push([
           file,
           item.status || "",
@@ -544,7 +546,7 @@ export function initializeMultiSimulationTool(context) {
           "",
           "",
           "",
-          energyExplanationSourceObjectIndexes(item.purposeResults?.energyExplanation || {}, reconciliation.sourceIds || []),
+          energyExplanationSourceObjectIndexes(explanation, reconciliation.sourceIds || []),
           reconciliation.period || "",
           "reconciliation",
           reconciliation.basis || "",
@@ -584,12 +586,13 @@ export function initializeMultiSimulationTool(context) {
         unit: item.unit || "",
         level: item.level || item.kind || "",
         status: summary.completeness?.status || "",
+        sourceIds: item.sourceIds || [],
       })),
     );
   }
 
-  function emptyEnergyExplanationEdgeExportFields() {
-    return ["", "", "", "", "", "", "", "", "", "", ""];
+  function emptyEnergyExplanationEdgeExportFields(sourceIDs = [], relatedPathIDs = []) {
+    return ["", "", "", "", "", "", "", "", "", (sourceIDs || []).join("; "), (relatedPathIDs || []).join("; ")];
   }
 
   function energyExplanationSourceObjectIndexes(explanation = {}, sourceIDs = []) {
