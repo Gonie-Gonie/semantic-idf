@@ -442,6 +442,81 @@ func TestBatchSimulationWorkbookSheetsIncludesPurposeAndEnergySheets(t *testing.
 	}
 }
 
+func TestBatchSimulationWorkbookSheetsIncludeRunContext(t *testing.T) {
+	result := simulation.MultiSimulationResult{
+		RunID:     "sim-run-context",
+		Total:     2,
+		Completed: 2,
+		Succeeded: 1,
+		Failed:    1,
+	}
+	sheets := batchSimulationWorkbookSheets(BatchSimulationXLSXExportRequest{
+		Result: result,
+		Context: BatchSimulationXLSXExportContext{
+			SelectedPaths:  []string{"a.idf", "b.idf"},
+			RootDirectory:  "C:/models",
+			SelectedRowIDs: []string{"baseline-run", "target-run"},
+			Metric:         "energy_explanation.kpi.cooling_cop",
+			Sort:           "filename",
+			ViewMode:       "purpose",
+			WeatherMode:    "same",
+			WeatherPath:    "weather.epw",
+			WorkerCount:    3,
+			PurposeRequest: simulation.SimulationPurposeRequest{
+				Purposes:         []simulation.SimulationPurposeID{simulation.SimulationPurposeBasicEnergy},
+				FrequencyPolicy:  simulation.PurposeFrequencyPolicyHighestResolution,
+				SQLMode:          simulation.PurposeSQLModeSQLFirst,
+				AllocationPolicy: simulation.PurposeAllocationPolicyByZoneLoadShare,
+				OutputApplyMode:  simulation.PurposeOutputApplyModeAddMissingOnly,
+				Scope: simulation.SimulationPurposeScope{
+					ZoneMode:         "selected",
+					ZoneNames:        []string{"Core"},
+					PeriodMode:       "custom",
+					PeriodStart:      "01-01",
+					PeriodEnd:        "01-31",
+					LoopMode:         "selected",
+					AirLoopNames:     []string{"AHU-1"},
+					OutputSignatures: []string{"Output:Variable|*|Zone Air Temperature|Hourly"},
+				},
+			},
+			Comparison: BatchSimulationComparisonXLSXContext{
+				BaselineRowID: "baseline-run",
+				TargetRowID:   "target-run",
+			},
+		},
+	})
+	if len(sheets) != 2 || sheets[0].Name != "Purpose Metrics" || sheets[1].Name != "Run Context" {
+		t.Fatalf("simulation context workbook sheets = %#v", sheets)
+	}
+	rows := map[string]string{}
+	for _, row := range sheets[1].Sections[0].Rows {
+		if len(row) == 2 {
+			rows[row[0]] = row[1]
+		}
+	}
+	for key, want := range map[string]string{
+		"run_id":                     "sim-run-context",
+		"selected_paths":             "a.idf; b.idf",
+		"selected_row_ids":           "baseline-run; target-run",
+		"worker_count":               "3",
+		"comparison_baseline_row_id": "baseline-run",
+		"comparison_target_row_id":   "target-run",
+		"purpose_ids":                "basic_energy",
+		"frequency_policy":           simulation.PurposeFrequencyPolicyHighestResolution,
+		"allocation_policy":          simulation.PurposeAllocationPolicyByZoneLoadShare,
+		"sql_mode":                   simulation.PurposeSQLModeSQLFirst,
+		"output_apply_mode":          simulation.PurposeOutputApplyModeAddMissingOnly,
+		"scope_zone_names":           "Core",
+		"scope_period_start":         "01-01",
+		"scope_air_loop_names":       "AHU-1",
+		"scope_output_signatures":    "Output:Variable|*|Zone Air Temperature|Hourly",
+	} {
+		if rows[key] != want {
+			t.Fatalf("run context row %q = %q, want %q (rows %#v)", key, rows[key], want, rows)
+		}
+	}
+}
+
 func TestBatchSimulationWorkbookSheetsIncludeComparisonDelta(t *testing.T) {
 	result := simulation.MultiSimulationResult{
 		Results: []simulation.SimulationRunResult{

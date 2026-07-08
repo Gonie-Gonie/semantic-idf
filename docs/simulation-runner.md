@@ -235,7 +235,10 @@ source IDs and matching source output object indexes when available. Batch
 Simulation can also export the same core purpose metrics, compact energy
 summary, source metadata, edge, and reconciliation sheets as XLSX. When a
 baseline and target case are selected, the XLSX workbook also includes
-comparison context, summary delta, and annual Sankey edge delta sheets. It can
+comparison context, summary delta, and annual Sankey edge delta sheets. The
+workbook also includes a Run Context sheet with the selected paths, purpose
+request, frequency/allocation policy, weather mode/path, worker count, and
+batch view settings used for the export. It can
 export the full batch result as
 `semantic-idf.batch-simulation/v1` JSON, preserving embedded purpose result
 payloads such as high-resolution daily/hourly explanation periods that are

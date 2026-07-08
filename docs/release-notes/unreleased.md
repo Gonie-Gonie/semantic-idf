@@ -143,6 +143,9 @@ The release script infers bump size from these sections:
   comparison row IDs in its export context.
 - Batch Simulation XLSX export now carries the selected comparison context plus
   Basic Energy summary and annual Sankey edge delta sheets.
+- Batch Simulation XLSX export now includes a Run Context sheet preserving the
+  selected files, purpose request, frequency/allocation policy, weather mode,
+  worker count, and batch view options.
 - Basic Energy Sankey now visually highlights the selected edge and endpoint
   nodes while its inspector details are shown.
 - Purpose HTML export now includes Basic Energy explanation summary, annual

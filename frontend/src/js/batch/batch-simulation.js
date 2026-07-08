@@ -615,7 +615,12 @@ export function initializeMultiSimulationTool(context) {
       elements.multiSimulationStatus.textContent = t("common.loadingSettings", {}, "Loading");
     }
     try {
-      const saved = await api.SaveBatchSimulationXLSX({ result, comparison: multiSimulationComparisonContext(result) });
+      const exportContext = multiSimulationExportContext(result);
+      const saved = await api.SaveBatchSimulationXLSX({
+        result,
+        context: exportContext,
+        comparison: exportContext.comparison,
+      });
       if (!saved?.canceled && elements.multiSimulationStatus) {
         elements.multiSimulationStatus.textContent = t(
           "status.savedNamed",
@@ -638,19 +643,7 @@ export function initializeMultiSimulationTool(context) {
     const payload = {
       schema: "semantic-idf.batch-simulation/v1",
       exportedAt: new Date().toISOString(),
-      context: {
-        selectedPaths: [...(state.multiSimulation.selectedPaths || [])],
-        rootDirectory: state.multiSimulation.rootDirectory || "",
-        selectedRowIds: Array.from(state.multiSimulation.selectedRows || []),
-        metric: state.multiSimulation.metric || "",
-        sort: state.multiSimulation.sort || "filename",
-        viewMode: elements.multiSimulationViewMode?.value || "purpose",
-        weatherMode: elements.multiSimulationWeatherMode?.value || "same",
-        weatherPath: elements.multiSimulationWeather?.value || "",
-        workerCount: Number(elements.multiSimulationWorkers?.value || 0),
-        purposeRequest: batchPurposeRequest(),
-        comparison: multiSimulationComparisonContext(result),
-      },
+      context: multiSimulationExportContext(result),
       result,
     };
     const blob = new Blob([`${JSON.stringify(payload, null, 2)}\n`], { type: "application/json" });
@@ -672,6 +665,22 @@ export function initializeMultiSimulationTool(context) {
     return {
       baselineRowId: state.multiSimulation.compareBaselineId || "",
       targetRowId: state.multiSimulation.compareTargetId || "",
+    };
+  }
+
+  function multiSimulationExportContext(result) {
+    return {
+      selectedPaths: [...(state.multiSimulation.selectedPaths || [])],
+      rootDirectory: state.multiSimulation.rootDirectory || "",
+      selectedRowIds: Array.from(state.multiSimulation.selectedRows || []),
+      metric: state.multiSimulation.metric || "",
+      sort: state.multiSimulation.sort || "filename",
+      viewMode: elements.multiSimulationViewMode?.value || "purpose",
+      weatherMode: elements.multiSimulationWeatherMode?.value || "same",
+      weatherPath: elements.multiSimulationWeather?.value || "",
+      workerCount: Number(elements.multiSimulationWorkers?.value || 0),
+      purposeRequest: batchPurposeRequest(),
+      comparison: multiSimulationComparisonContext(result),
     };
   }
 

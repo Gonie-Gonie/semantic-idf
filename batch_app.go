@@ -145,7 +145,22 @@ type BatchSummaryXLSXExportRequest struct {
 
 type BatchSimulationXLSXExportRequest struct {
 	Result     simulation.MultiSimulationResult     `json:"result"`
+	Context    BatchSimulationXLSXExportContext     `json:"context,omitempty"`
 	Comparison BatchSimulationComparisonXLSXContext `json:"comparison,omitempty"`
+}
+
+type BatchSimulationXLSXExportContext struct {
+	SelectedPaths  []string                             `json:"selectedPaths,omitempty"`
+	RootDirectory  string                               `json:"rootDirectory,omitempty"`
+	SelectedRowIDs []string                             `json:"selectedRowIds,omitempty"`
+	Metric         string                               `json:"metric,omitempty"`
+	Sort           string                               `json:"sort,omitempty"`
+	ViewMode       string                               `json:"viewMode,omitempty"`
+	WeatherMode    string                               `json:"weatherMode,omitempty"`
+	WeatherPath    string                               `json:"weatherPath,omitempty"`
+	WorkerCount    int                                  `json:"workerCount,omitempty"`
+	PurposeRequest simulation.SimulationPurposeRequest  `json:"purposeRequest,omitempty"`
+	Comparison     BatchSimulationComparisonXLSXContext `json:"comparison,omitempty"`
 }
 
 type BatchSimulationComparisonXLSXContext struct {
@@ -788,6 +803,9 @@ func batchSimulationWorkbookSheets(request BatchSimulationXLSXExportRequest) []t
 	sections := []tabular.WorkbookSheet{
 		{Name: "Purpose Metrics", Sections: []tabular.Section{batchSimulationPurposeMetricSection(request.Result)}},
 	}
+	if context := batchSimulationRunContextSection(request); len(context.Rows) > 0 {
+		sections = append(sections, tabular.WorkbookSheet{Name: "Run Context", Sections: []tabular.Section{context}})
+	}
 	left, right, ok := batchSimulationComparisonResults(request)
 	if ok {
 		sections = append(sections, tabular.WorkbookSheet{Name: "Comparison", Sections: []tabular.Section{batchSimulationComparisonSection(left, right)}})
@@ -813,6 +831,93 @@ func batchSimulationWorkbookSheets(request BatchSimulationXLSXExportRequest) []t
 	return sections
 }
 
+func batchSimulationRunContextSection(request BatchSimulationXLSXExportRequest) tabular.Section {
+	context := request.Context
+	if !hasBatchSimulationRunContext(context) {
+		return tabular.Section{}
+	}
+	purposeRequest := simulation.NormalizeSimulationPurposeRequest(&context.PurposeRequest)
+	comparison := batchSimulationComparisonContext(request)
+	section := tabular.Section{
+		Title:   "run_context",
+		Headers: []string{"field", "value"},
+		Rows: [][]string{
+			{"run_id", request.Result.RunID},
+			{"total", fmt.Sprint(request.Result.Total)},
+			{"completed", fmt.Sprint(request.Result.Completed)},
+			{"succeeded", fmt.Sprint(request.Result.Succeeded)},
+			{"failed", fmt.Sprint(request.Result.Failed)},
+			{"root_directory", context.RootDirectory},
+			{"selected_paths", strings.Join(context.SelectedPaths, "; ")},
+			{"selected_row_ids", strings.Join(context.SelectedRowIDs, "; ")},
+			{"metric", context.Metric},
+			{"sort", context.Sort},
+			{"view_mode", context.ViewMode},
+			{"weather_mode", context.WeatherMode},
+			{"weather_path", context.WeatherPath},
+			{"worker_count", fmt.Sprint(context.WorkerCount)},
+			{"comparison_baseline_row_id", comparison.BaselineRowID},
+			{"comparison_target_row_id", comparison.TargetRowID},
+			{"purpose_ids", strings.Join(batchSimulationPurposeIDStrings(purposeRequest.Purposes), "; ")},
+			{"frequency_policy", purposeRequest.FrequencyPolicy},
+			{"allocation_policy", purposeRequest.AllocationPolicy},
+			{"sql_mode", purposeRequest.SQLMode},
+			{"output_apply_mode", purposeRequest.OutputApplyMode},
+			{"persist_outputs", fmt.Sprint(purposeRequest.PersistOutputs)},
+			{"discovery_allowed", fmt.Sprint(purposeRequest.DiscoveryAllowed)},
+			{"scope_zone_mode", purposeRequest.Scope.ZoneMode},
+			{"scope_zone_names", strings.Join(purposeRequest.Scope.ZoneNames, "; ")},
+			{"scope_period_mode", purposeRequest.Scope.PeriodMode},
+			{"scope_period_start", purposeRequest.Scope.PeriodStart},
+			{"scope_period_end", purposeRequest.Scope.PeriodEnd},
+			{"scope_loop_mode", purposeRequest.Scope.LoopMode},
+			{"scope_air_loop_names", strings.Join(purposeRequest.Scope.AirLoopNames, "; ")},
+			{"scope_plant_loop_names", strings.Join(purposeRequest.Scope.PlantLoopNames, "; ")},
+			{"scope_condenser_loop_names", strings.Join(purposeRequest.Scope.CondenserLoopNames, "; ")},
+			{"scope_component_ids", strings.Join(purposeRequest.Scope.ComponentIDs, "; ")},
+			{"scope_output_signatures", strings.Join(purposeRequest.Scope.OutputSignatures, "; ")},
+			{"scope_custom_output_count", fmt.Sprint(len(purposeRequest.Scope.CustomOutputs))},
+		},
+	}
+	return section
+}
+
+func hasBatchSimulationRunContext(context BatchSimulationXLSXExportContext) bool {
+	if len(context.SelectedPaths) > 0 || context.RootDirectory != "" || len(context.SelectedRowIDs) > 0 ||
+		context.Metric != "" || context.Sort != "" || context.ViewMode != "" || context.WeatherMode != "" ||
+		context.WeatherPath != "" || context.WorkerCount != 0 || context.Comparison.BaselineRowID != "" ||
+		context.Comparison.TargetRowID != "" {
+		return true
+	}
+	purpose := context.PurposeRequest
+	return len(purpose.Purposes) > 0 || purpose.FrequencyPolicy != "" || purpose.SQLMode != "" ||
+		purpose.AllocationPolicy != "" || purpose.PersistOutputs || purpose.DiscoveryAllowed ||
+		purpose.OutputApplyMode != "" || purpose.Scope.ZoneMode != "" || len(purpose.Scope.ZoneNames) > 0 ||
+		purpose.Scope.PeriodMode != "" || purpose.Scope.PeriodStart != "" || purpose.Scope.PeriodEnd != "" ||
+		purpose.Scope.LoopMode != "" || len(purpose.Scope.AirLoopNames) > 0 ||
+		len(purpose.Scope.PlantLoopNames) > 0 || len(purpose.Scope.CondenserLoopNames) > 0 ||
+		len(purpose.Scope.ComponentIDs) > 0 || len(purpose.Scope.OutputSignatures) > 0 ||
+		len(purpose.Scope.CustomOutputs) > 0
+}
+
+func batchSimulationPurposeIDStrings(purposes []simulation.SimulationPurposeID) []string {
+	ids := make([]string, 0, len(purposes))
+	for _, purpose := range purposes {
+		if purpose != "" {
+			ids = append(ids, string(purpose))
+		}
+	}
+	return ids
+}
+
+func batchSimulationComparisonContext(request BatchSimulationXLSXExportRequest) BatchSimulationComparisonXLSXContext {
+	comparison := request.Comparison
+	if comparison.BaselineRowID == "" && comparison.TargetRowID == "" {
+		comparison = request.Context.Comparison
+	}
+	return comparison
+}
+
 func batchSimulationComparisonResults(request BatchSimulationXLSXExportRequest) (simulation.SimulationRunResult, simulation.SimulationRunResult, bool) {
 	candidates := make([]simulation.SimulationRunResult, 0, len(request.Result.Results))
 	byID := map[string]simulation.SimulationRunResult{}
@@ -825,9 +930,10 @@ func batchSimulationComparisonResults(request BatchSimulationXLSXExportRequest) 
 			byID[id] = item
 		}
 	}
-	if request.Comparison.BaselineRowID != "" && request.Comparison.TargetRowID != "" && request.Comparison.BaselineRowID != request.Comparison.TargetRowID {
-		left, leftOK := byID[request.Comparison.BaselineRowID]
-		right, rightOK := byID[request.Comparison.TargetRowID]
+	comparison := batchSimulationComparisonContext(request)
+	if comparison.BaselineRowID != "" && comparison.TargetRowID != "" && comparison.BaselineRowID != comparison.TargetRowID {
+		left, leftOK := byID[comparison.BaselineRowID]
+		right, rightOK := byID[comparison.TargetRowID]
 		if leftOK && rightOK {
 			return left, right, true
 		}
