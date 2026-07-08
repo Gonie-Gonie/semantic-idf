@@ -341,13 +341,9 @@ func parseSimulationEnergyExplanationSQL(path string, plan *PurposeRunPlan) (Ene
 				ids = append(ids, dictionary.row.index)
 				byID[dictionary.row.index] = dictionary
 			}
-			reportRows, err := QueryReportData(db, SQLSeriesQuery{DictionaryIndexes: ids})
-			if err != nil {
-				return EnergyExplanationResult{}, err
-			}
 
 			builders := map[int]*energyExplanationSeriesBuilder{}
-			for _, row := range reportRows {
+			if err := walkReportData(db, SQLSeriesQuery{DictionaryIndexes: ids}, func(row SQLSeriesRow) error {
 				timeIndex := row.TimeIndex
 				month := row.Month
 				day := row.Day
@@ -355,11 +351,11 @@ func parseSimulationEnergyExplanationSQL(path string, plan *PurposeRunPlan) (Ene
 				dictionaryIndex := row.DictionaryIndex
 				value := row.Value
 				if !value.Valid || math.IsNaN(value.Float64) || math.IsInf(value.Float64, 0) {
-					continue
+					return nil
 				}
 				dictionary, ok := byID[dictionaryIndex]
 				if !ok {
-					continue
+					return nil
 				}
 				builder := builders[dictionaryIndex]
 				if builder == nil {
@@ -397,6 +393,9 @@ func parseSimulationEnergyExplanationSQL(path string, plan *PurposeRunPlan) (Ene
 						builder.hasSelectedRange = true
 					}
 				}
+				return nil
+			}); err != nil {
+				return EnergyExplanationResult{}, err
 			}
 
 			for _, dictionary := range dictionaries {
