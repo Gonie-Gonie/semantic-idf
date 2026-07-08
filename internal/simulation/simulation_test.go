@@ -523,6 +523,9 @@ func TestParseSimulationEnergyExplanationSQLBuildsAccountingGraph(t *testing.T) 
 	if result.Completeness.HeatDrivers.Found != 2 || result.Completeness.HeatDrivers.Total != 2 || result.Completeness.DeliveredLoad.Found != 1 || result.Completeness.DeliveredLoad.Total != 1 {
 		t.Fatalf("explanation completeness = %#v", result.Completeness)
 	}
+	if availability := energyExplanationSourceAvailabilityByName(result.Completeness.SourceAvailability, "Zone Air Heat Balance Surface Convection Rate"); availability == nil || availability.Status != "found" || availability.Level != "heat" {
+		t.Fatalf("source availability = %#v", result.Completeness.SourceAvailability)
+	}
 	if len(result.Sources) != 5 || !energyExplanationHasSource(result.Sources, "sql-rdd-20", true, "Electricity:Facility") || !energyExplanationHasSource(result.Sources, "sql-rdd-24", false, "Zone Air Heat Balance Internal Convective Heat Gain Rate") {
 		t.Fatalf("sources = %#v", result.Sources)
 	}
@@ -612,6 +615,12 @@ func TestPurposeResultBundleUsesSQLEnergyDashboard(t *testing.T) {
 	if bundle.EnergyExplanationSummary.Schema != energyExplanationSummarySchema || bundle.EnergyExplanationSummary.AllocationPolicy != PurposeAllocationPolicyDirectOnly || len(bundle.EnergyExplanationSummary.EnergyByCarrier) == 0 {
 		t.Fatalf("bundle energy explanation summary = %#v", bundle.EnergyExplanationSummary)
 	}
+	if availability := energyExplanationSourceAvailabilityByName(bundle.EnergyExplanation.Completeness.SourceAvailability, "NaturalGas:Facility"); availability == nil || availability.Status != "missing" || availability.Level != "energy" {
+		t.Fatalf("natural gas source availability = %#v", bundle.EnergyExplanation.Completeness.SourceAvailability)
+	}
+	if !stringSliceContains(bundle.EnergyExplanation.Completeness.MissingCategories, "energy: NaturalGas:Facility") {
+		t.Fatalf("missing categories = %#v", bundle.EnergyExplanation.Completeness.MissingCategories)
+	}
 	if len(bundle.Completeness) != 3 ||
 		!purposeCompletenessFound(bundle.Completeness, "Electricity:Facility") ||
 		!purposeCompletenessFound(bundle.Completeness, "Zone Lights Electricity Energy") ||
@@ -650,6 +659,15 @@ func energyExplanationHasSource(sources []EnergyDataSource, id string, isMeter b
 func energyExplanationReconciliationByID(items []EnergyReconciliation, id string) *EnergyReconciliation {
 	for index := range items {
 		if items[index].ID == id {
+			return &items[index]
+		}
+	}
+	return nil
+}
+
+func energyExplanationSourceAvailabilityByName(items []EnergySourceAvailabilityEntry, name string) *EnergySourceAvailabilityEntry {
+	for index := range items {
+		if items[index].Name == name {
 			return &items[index]
 		}
 	}

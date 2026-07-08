@@ -1292,6 +1292,7 @@ func buildEnergyExplanationCompleteness(series []energyExplanationSeries, source
 	availability = append(availability, sourceAvailabilityEntries(expectedEnergy, "energy", sources)...)
 	availability = append(availability, sourceAvailabilityEntries(expectedLoad, "load", sources)...)
 	availability = append(availability, sourceAvailabilityEntries(expectedHeat, "heat", sources)...)
+	missingCategories := missingEnergySourceCategories(availability)
 	return EnergyCompleteness{
 		Status:             status,
 		MappedPercent:      mappedPercent,
@@ -1299,6 +1300,7 @@ func buildEnergyExplanationCompleteness(series []energyExplanationSeries, source
 		DeliveredLoad:      loadLevel,
 		HeatDrivers:        heatLevel,
 		Items:              []EnergyCompletenessLevel{energyLevel, loadLevel, heatLevel},
+		MissingCategories:  missingCategories,
 		SourceAvailability: availability,
 	}
 }
@@ -1370,11 +1372,22 @@ func sourceAvailabilityEntries(expected []string, level string, sources []Energy
 		status := "missing"
 		for _, source := range sources {
 			if strings.EqualFold(source.Name, name) || strings.EqualFold(source.KeyValue, name) {
-				status = "available"
+				status = "found"
 				break
 			}
 		}
 		out = append(out, EnergySourceAvailabilityEntry{Name: name, Level: level, Status: status})
+	}
+	return out
+}
+
+func missingEnergySourceCategories(availability []EnergySourceAvailabilityEntry) []string {
+	out := []string{}
+	for _, item := range availability {
+		if item.Status != "missing" {
+			continue
+		}
+		out = appendUniquePurposeString(out, strings.TrimSpace(item.Level+": "+item.Name))
 	}
 	return out
 }

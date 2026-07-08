@@ -159,6 +159,8 @@ Purpose result viewers now include:
   `Reconciliation` subviews for tracing Energy Use to Delivered Load and Heat
   Drivers with source metadata. The completeness panel shows mapped percent,
   allocation policy, missing categories, and missing source availability rows.
+  Source availability uses `found` and `missing` status values so missing rows
+  are not confused with present SQL dictionary sources.
   The `Systems` subview and node inspector match load/heat services to the
   current HVAC service model by zone and service kind, then link directly to the
   related HVAC service path. Sankey and Systems can focus the graph by all
