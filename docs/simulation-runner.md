@@ -345,5 +345,6 @@ Purpose runs write `semantic-idf-run.json`, `semantic-idf-run-plan.json`, and
 result JSON bundle or a standalone HTML report that embeds run metadata,
 including EnergyPlus executable/version metadata, the run plan, parsed purpose
 results, purpose-specific Energy/Heat Flow/HVAC/Comfort summary tables,
+Basic Energy explanation summary/source/annual edge/reconciliation evidence,
 completeness, file references, and the source output signatures visible in
 result tables.

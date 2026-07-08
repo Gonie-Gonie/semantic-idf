@@ -145,6 +145,9 @@ The release script infers bump size from these sections:
   Basic Energy summary and annual Sankey edge delta sheets.
 - Basic Energy Sankey now visually highlights the selected edge and endpoint
   nodes while its inspector details are shown.
+- Purpose HTML export now includes Basic Energy explanation summary, annual
+  edge, reconciliation, and source metadata tables instead of leaving that
+  evidence only in the raw JSON bundle.
 - Basic Energy explanations now fall back to annual SQL tabular end-use rows
   when detailed `ReportData` energy rows are unavailable, while preserving
   `sql_tabular` source metadata.

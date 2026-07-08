@@ -6311,6 +6311,7 @@ ${renderPurposeHTMLTable(
 function renderPurposeHTMLResultSections(results) {
   return [
     renderPurposeHTMLEnergy(results.energy || {}),
+    renderPurposeHTMLEnergyExplanation(results.energyExplanationSummary || {}, results.energyExplanation || {}),
     renderPurposeHTMLHeatFlow(results.zoneHeatFlow || {}),
     renderPurposeHTMLHVAC(results.hvacLoops || []),
     renderPurposeHTMLIntegrity(results.integrity || {}),
@@ -6334,6 +6335,134 @@ function renderPurposeHTMLEnergy(energy) {
     return "";
   }
   return `<h2>Energy Results</h2>${renderPurposeHTMLTable(["Metric", "Unit", "Total", "Source"], rows.slice(0, 120))}`;
+}
+
+function renderPurposeHTMLEnergyExplanation(summary = {}, explanation = {}) {
+  const sections = [];
+  const completeness = summary.completeness || explanation.completeness || {};
+  if (summary.schema || explanation.schema || completeness.status) {
+    sections.push(
+      `<h2>Energy Explanation Completeness</h2>${renderPurposeHTMLTable(
+        ["Field", "Value"],
+        [
+          ["Schema", summary.schema || explanation.schema || ""],
+          ["Period", summary.period || "annual"],
+          ["Allocation policy", summary.allocationPolicy || explanation.allocationPolicy || ""],
+          ["Status", completeness.status || ""],
+          ["Mapped energy", Number.isFinite(Number(completeness.mappedPercent)) ? `${formatNumber(completeness.mappedPercent)}%` : ""],
+          ["Missing categories", (completeness.missingCategories || []).join(", ")],
+        ],
+      )}`,
+    );
+  }
+  const summaryRows = purposeHTMLEnergySummaryRows(summary);
+  if (summaryRows.length) {
+    sections.push(
+      `<h2>Energy Explanation Summary</h2>${renderPurposeHTMLTable(
+        ["Type", "Metric", "Label", "Value", "Unit", "Level", "Service", "Path", "Basis"],
+        summaryRows.slice(0, 180),
+      )}`,
+    );
+  }
+  const graph = purposeHTMLAnnualEnergyGraph(explanation);
+  const nodeLabels = new Map((graph.nodes || []).map((node) => [node.id, node.label || node.kind || node.id || ""]));
+  const edgeRows = (graph.edges || [])
+    .slice(0, 180)
+    .map((edge) => [
+      edge.relation || "",
+      edge.basis || "",
+      edge.ruleId || "",
+      nodeLabels.get(edge.fromId) || edge.fromId || "",
+      nodeLabels.get(edge.toId) || edge.toId || "",
+      formatValueWithUnit(edge.value, edge.unit),
+      edge.formula || "",
+    ]);
+  if (edgeRows.length) {
+    sections.push(`<h2>Energy Explanation Annual Edges</h2>${renderPurposeHTMLTable(["Relation", "Basis", "Rule", "From", "To", "Value", "Formula"], edgeRows)}`);
+  }
+  const reconciliationRows = (graph.reconciliation || [])
+    .slice(0, 180)
+    .map((row) => [
+      row.label || row.id || "",
+      row.period || graph.id || "annual",
+      row.level || "",
+      row.zoneName || "",
+      row.serviceKind || "",
+      formatValueWithUnit(row.expectedValue, row.unit),
+      formatValueWithUnit(row.explainedValue, row.unit),
+      formatValueWithUnit(row.residualValue, row.unit),
+      row.basis || "",
+      row.formula || "",
+    ]);
+  if (reconciliationRows.length) {
+    sections.push(
+      `<h2>Energy Explanation Reconciliation</h2>${renderPurposeHTMLTable(
+        ["Metric", "Period", "Level", "Zone", "Service", "Expected", "Mapped", "Residual", "Basis", "Formula"],
+        reconciliationRows,
+      )}`,
+    );
+  }
+  const sourceRows = (explanation.sources || [])
+    .slice(0, 180)
+    .map((source) => [
+      source.id || "",
+      source.sourceType || "",
+      source.isMeter ? "meter" : "variable",
+      source.keyValue || "",
+      source.name || "",
+      source.reportingFrequency || "",
+      source.aggregationMethod || "",
+      source.sourceUnit || source.units || "",
+      source.normalizedUnit || "",
+      source.objectIndex ?? "",
+    ]);
+  if (sourceRows.length) {
+    sections.push(
+      `<h2>Energy Explanation Sources</h2>${renderPurposeHTMLTable(
+        ["ID", "Source", "Basis", "Key", "Name", "Frequency", "Aggregation", "Source Unit", "Normalized Unit", "Output Object"],
+        sourceRows,
+      )}`,
+    );
+  }
+  return sections.join("\n");
+}
+
+function purposeHTMLEnergySummaryRows(summary = {}) {
+  const groups = [
+    ["Energy by carrier", summary.energyByCarrier || []],
+    ["Energy by end use", summary.energyByEndUse || []],
+    ["Delivered load", summary.deliveredLoadByService || []],
+    ["Derived KPI", summary.derivedKpis || []],
+    ["Heat drivers", summary.heatDrivers || []],
+    ["Residuals", summary.residuals || []],
+    ["Top heat drivers", summary.topHeatDrivers || []],
+    ["Top zones", summary.topZones || []],
+  ];
+  return groups.flatMap(([group, items]) =>
+    (items || []).map((item) => [
+      group,
+      item.id || "",
+      item.label || "",
+      formatValueWithUnit(item.value, item.unit),
+      item.unit || "",
+      item.level || "",
+      item.serviceKind || "",
+      item.pathType || "",
+      item.basis || "",
+    ]),
+  );
+}
+
+function purposeHTMLAnnualEnergyGraph(explanation = {}) {
+  return (
+    (explanation.periods || []).find((period) => period.id === "annual" || period.kind === "annual") || {
+      id: "annual",
+      kind: "annual",
+      nodes: explanation.nodes || [],
+      edges: explanation.edges || [],
+      reconciliation: explanation.reconciliation || [],
+    }
+  );
 }
 
 function renderPurposeHTMLHeatFlow(heatFlow) {
