@@ -25,6 +25,9 @@ The release script infers bump size from these sections:
   magnitude, signed balance, cooling-pressure, and heating-pressure views.
 - Energy explanation Sankey can cap visible heat-driver nodes and group omitted
   drivers as `Other heat drivers` for large models.
+- Energy explanation Sankey now uses carrier/service-specific node colors and a
+  legend for common electricity, fuel, district cooling/heating, cooling, and
+  heating classes.
 - Energy explanation completeness now surfaces missing categories and source
   availability rows in the UI.
 - Energy explanation source availability now uses `found`/`missing` status rows

@@ -1245,8 +1245,9 @@ function renderEnergyExplanationSVG(nodes = [], edges = []) {
       }
       const selected = state.simulationEnergySelection === node.id ? " selected" : "";
       const connected = connectedNodeIDs.has(node.id) ? " connected" : "";
+      const classTokens = energyExplanationNodeClassTokens(node);
       return `
-        <g class="energy-sankey-node ${escapeHTML(node.level || "")} ${escapeHTML(node.carrier || node.serviceKind || "")}${selected}${connected}" data-energy-explanation-node="${escapeHTML(node.id || "")}" transform="translate(${roundSVG(pos.x)} ${roundSVG(pos.y)})">
+        <g class="energy-sankey-node ${escapeHTML(classTokens)}${selected}${connected}" data-energy-explanation-node="${escapeHTML(node.id || "")}" transform="translate(${roundSVG(pos.x)} ${roundSVG(pos.y)})">
           <rect width="${pos.w}" height="${pos.h}" rx="5"></rect>
           <text x="8" y="12">${escapeHTML(shortEnergyExplanationLabel(node.label || node.kind || ""))}</text>
           <text x="8" y="24">${escapeHTML(formatValueWithUnit(node.value, node.unit))}</text>
@@ -1273,9 +1274,29 @@ function renderEnergyExplanationSVG(nodes = [], edges = []) {
     </div>`;
 }
 
+function energyExplanationNodeClassTokens(node = {}) {
+  return [node.level, node.carrier, node.serviceKind, node.endUse, node.heatCategory]
+    .map(energyExplanationClassToken)
+    .filter(Boolean)
+    .join(" ");
+}
+
+function energyExplanationClassToken(value = "") {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
 function renderEnergyExplanationLegend() {
   return `
     <div class="energy-sankey-legend">
+      <span><i class="node electricity"></i>${escapeHTML(t("simulation.energyElectricity", {}, "Electricity"))}</span>
+      <span><i class="node fuel"></i>${escapeHTML(t("simulation.energyFuel", {}, "Fuel/gas"))}</span>
+      <span><i class="node district_cooling"></i>${escapeHTML(t("simulation.energyDistrictCooling", {}, "District cooling"))}</span>
+      <span><i class="node district_heating"></i>${escapeHTML(t("simulation.energyDistrictHeating", {}, "District heating"))}</span>
+      <span><i class="node cooling"></i>${escapeHTML(t("simulation.cooling", {}, "Cooling"))}</span>
+      <span><i class="node heating"></i>${escapeHTML(t("simulation.heating", {}, "Heating"))}</span>
       <span><i class="measured_meter"></i>${escapeHTML(t("simulation.basisMeasuredMeter", {}, "measured meter"))}</span>
       <span><i class="measured_variable"></i>${escapeHTML(t("simulation.basisMeasuredVariable", {}, "measured variable"))}</span>
       <span><i class="derived_balance"></i>${escapeHTML(t("simulation.basisDerived", {}, "derived balance"))}</span>

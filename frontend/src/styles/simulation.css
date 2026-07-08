@@ -1265,8 +1265,63 @@
   fill: color-mix(in srgb, #2563eb 12%, var(--surface-2));
 }
 
+.energy-sankey-node.electricity rect {
+  fill: color-mix(in srgb, #facc15 22%, var(--surface-2));
+  stroke: color-mix(in srgb, #ca8a04 48%, var(--line));
+}
+
+.energy-sankey-node.natural_gas rect,
+.energy-sankey-node.gas rect,
+.energy-sankey-node.propane rect,
+.energy-sankey-node.steam rect,
+.energy-sankey-node.fuel_oil_no1 rect,
+.energy-sankey-node.fuel_oil_no2 rect,
+.energy-sankey-node.other_fuel1 rect,
+.energy-sankey-node.other_fuel2 rect {
+  fill: color-mix(in srgb, #c2410c 15%, var(--surface-2));
+  stroke: color-mix(in srgb, #c2410c 38%, var(--line));
+}
+
+.energy-sankey-node.district_cooling rect {
+  fill: color-mix(in srgb, #06b6d4 16%, var(--surface-2));
+  stroke: color-mix(in srgb, #0891b2 40%, var(--line));
+}
+
+.energy-sankey-node.district_heating rect {
+  fill: color-mix(in srgb, #ef4444 14%, var(--surface-2));
+  stroke: color-mix(in srgb, #dc2626 38%, var(--line));
+}
+
 .energy-sankey-node.load rect {
   fill: color-mix(in srgb, var(--green) 12%, var(--surface-2));
+}
+
+.energy-sankey-node.cooling rect {
+  fill: color-mix(in srgb, #38bdf8 15%, var(--surface-2));
+  stroke: color-mix(in srgb, #0284c7 38%, var(--line));
+}
+
+.energy-sankey-node.heating rect {
+  fill: color-mix(in srgb, #f97316 14%, var(--surface-2));
+  stroke: color-mix(in srgb, #ea580c 36%, var(--line));
+}
+
+.energy-sankey-node.ventilation rect {
+  fill: color-mix(in srgb, #14b8a6 14%, var(--surface-2));
+  stroke: color-mix(in srgb, #0f766e 36%, var(--line));
+}
+
+.energy-sankey-node.lighting rect,
+.energy-sankey-node.interior_lighting rect,
+.energy-sankey-node.exterior_lighting rect {
+  fill: color-mix(in srgb, var(--amber) 14%, var(--surface-2));
+  stroke: color-mix(in srgb, var(--amber) 38%, var(--line));
+}
+
+.energy-sankey-node.equipment rect,
+.energy-sankey-node.interior_equipment rect {
+  fill: color-mix(in srgb, #64748b 10%, var(--surface-2));
+  stroke: color-mix(in srgb, #64748b 34%, var(--line));
 }
 
 .energy-sankey-node.heat rect {
@@ -1316,6 +1371,43 @@
   height: 3px;
   border-radius: 99px;
   background: #2563eb;
+}
+
+.energy-sankey-legend i.node {
+  width: 10px;
+  height: 10px;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+}
+
+.energy-sankey-legend i.node.electricity {
+  background: color-mix(in srgb, #facc15 45%, var(--surface-2));
+  border-color: #ca8a04;
+}
+
+.energy-sankey-legend i.node.fuel {
+  background: color-mix(in srgb, #c2410c 28%, var(--surface-2));
+  border-color: #c2410c;
+}
+
+.energy-sankey-legend i.node.district_cooling {
+  background: color-mix(in srgb, #06b6d4 32%, var(--surface-2));
+  border-color: #0891b2;
+}
+
+.energy-sankey-legend i.node.district_heating {
+  background: color-mix(in srgb, #ef4444 28%, var(--surface-2));
+  border-color: #dc2626;
+}
+
+.energy-sankey-legend i.node.cooling {
+  background: color-mix(in srgb, #38bdf8 30%, var(--surface-2));
+  border-color: #0284c7;
+}
+
+.energy-sankey-legend i.node.heating {
+  background: color-mix(in srgb, #f97316 28%, var(--surface-2));
+  border-color: #ea580c;
 }
 
 .energy-sankey-legend i.measured_variable {

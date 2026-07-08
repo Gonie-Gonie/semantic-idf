@@ -287,7 +287,8 @@ Purpose result viewers now include:
   results, a selected zone, or a selected HVAC service path without changing the
   stored explanation payload. The Sankey view can switch heat-driver rendering
   between display magnitude, signed balance, cooling-pressure, and
-  heating-pressure modes, and can cap visible heat-driver nodes with omitted
+  heating-pressure modes, uses carrier/service-specific node colors for common
+  energy and load classes, and can cap visible heat-driver nodes with omitted
   drivers grouped as `Other heat drivers`.
 - Zone Heat Flow SQL or CSV/ESO ledger with frame sampling metadata and
   time-range controls.
