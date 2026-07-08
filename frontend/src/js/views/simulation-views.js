@@ -398,6 +398,7 @@ function renderSimulationRunPlanPreview() {
           <td>${escapeHTML(object.variableName || "")}</td>
           <td>${escapeHTML(object.reportingFrequency || "")}</td>
           <td>${escapeHTML((object.purposeIds || []).map(purposeLabel).join(", "))}</td>
+          <td>${escapeHTML(purposeOutputSetLabel(object))}</td>
           <td><span class="simulation-output-state ${escapeHTML(object.state || "")}">${escapeHTML(outputStateLabel(object.state))}</span></td>
           <td>${escapeHTML(object.weight || "light")}</td>
         </tr>`;
@@ -414,12 +415,62 @@ function renderSimulationRunPlanPreview() {
     ${warningHTML}
     <div class="output-table-wrap">
       <table class="output-table simulation-plan-table">
-        <thead><tr><th>${escapeHTML(t("common.type", {}, "Type"))}</th><th>${escapeHTML(t("common.key", {}, "Key"))}</th><th>${escapeHTML(t("common.metric", {}, "Metric"))}</th><th>${escapeHTML(t("common.frequency", {}, "Frequency"))}</th><th>${escapeHTML(t("simulation.purpose", {}, "Purpose"))}</th><th>${escapeHTML(t("common.status", {}, "Status"))}</th><th>${escapeHTML(t("simulation.weight", {}, "Weight"))}</th></tr></thead>
-        <tbody>${rows || `<tr><td colspan="7">${escapeHTML(t("simulation.noPlanOutputs", {}, "No output objects selected."))}</td></tr>`}</tbody>
+        <thead><tr><th>${escapeHTML(t("common.type", {}, "Type"))}</th><th>${escapeHTML(t("common.key", {}, "Key"))}</th><th>${escapeHTML(t("common.metric", {}, "Metric"))}</th><th>${escapeHTML(t("common.frequency", {}, "Frequency"))}</th><th>${escapeHTML(t("simulation.purpose", {}, "Purpose"))}</th><th>${escapeHTML(t("simulation.outputSet", {}, "Output set"))}</th><th>${escapeHTML(t("common.status", {}, "Status"))}</th><th>${escapeHTML(t("simulation.weight", {}, "Weight"))}</th></tr></thead>
+        <tbody>${rows || `<tr><td colspan="8">${escapeHTML(t("simulation.noPlanOutputs", {}, "No output objects selected."))}</td></tr>`}</tbody>
       </table>
     </div>
     ${truncated}`;
   updatePurposeApplyButton();
+}
+
+function purposeOutputSetLabel(object = {}) {
+  if (!(object.purposeIds || []).includes("basic_energy")) {
+    return object.reason || "";
+  }
+  const objectType = String(object.objectType || "").toLowerCase();
+  if (objectType === "output:sqlite") {
+    return t("simulation.outputSetSQL", {}, "SQL");
+  }
+  const evidence = `${object.reason || ""} ${object.description || ""} ${object.variableName || ""}`.toLowerCase();
+  if (evidence.includes("heat drivers")) {
+    return t("simulation.basicEnergyDetailHeatDrivers", {}, "Heat drivers");
+  }
+  if (evidence.includes("explain") || purposeOutputLooksLikeEnergyExplain(object.variableName || "")) {
+    return t("simulation.basicEnergyDetailExplain", {}, "Explain");
+  }
+  if (purposeOutputLooksLikeHeatDriver(object.variableName || "")) {
+    return t("simulation.basicEnergyDetailHeatDrivers", {}, "Heat drivers");
+  }
+  return t("simulation.basicEnergyDetailLight", {}, "Light");
+}
+
+function purposeOutputLooksLikeEnergyExplain(variableName = "") {
+  const name = String(variableName || "").toLowerCase();
+  return Boolean(
+    name &&
+      (name.includes("sensible cooling") ||
+        name.includes("sensible heating") ||
+        name.includes("cooling demand") ||
+        name.includes("heating demand") ||
+        name.includes("cooling coil") ||
+        name.includes("heating coil") ||
+        name.includes("ideal loads") ||
+        name.includes("radiant hvac") ||
+        name.includes("electricity energy") ||
+        name.includes("gas energy")),
+  );
+}
+
+function purposeOutputLooksLikeHeatDriver(variableName = "") {
+  const name = String(variableName || "").toLowerCase();
+  return Boolean(
+    name &&
+      (name.includes("heat balance") ||
+        name.includes("total heating") ||
+        name.includes("sensible heat gain") ||
+        name.includes("sensible heat loss") ||
+        name.includes("fan air heat gain")),
+  );
 }
 
 function renderSimulationResultTabs(result) {
