@@ -2379,12 +2379,15 @@ function renderSimulationEnergyConnectedSystems(path = {}) {
   const loopButtons = simulationServicePathLoopRefs(path)
     .map(
       (loop) => `
-        <button
-          class="simulation-energy-system-chip"
-          type="button"
-          data-simulation-hvac-loop-type="${escapeHTML(loop.type || "")}"
-          data-simulation-hvac-loop-name="${escapeHTML(loop.name || "")}"
-        >${escapeHTML(loop.label || loop.name || "")}</button>`,
+        <span class="energy-service-path-action-row">
+          <button
+            class="simulation-energy-system-chip"
+            type="button"
+            data-simulation-hvac-loop-type="${escapeHTML(loop.type || "")}"
+            data-simulation-hvac-loop-name="${escapeHTML(loop.name || "")}"
+          >${escapeHTML(loop.label || loop.name || "")}</button>
+          ${renderSimulationEnergyLoopFocusButton(loop)}
+        </span>`,
     )
     .join("");
   const otherSystems = simulationServicePathOtherSystems(path)
@@ -2413,6 +2416,20 @@ function renderSimulationEnergySupportingAssets(path = {}) {
         )
         .join("")}
     </div>`;
+}
+
+function renderSimulationEnergyLoopFocusButton(loop = {}) {
+  const value = simulationEnergyLoopFocusValue(loop);
+  if (!value) {
+    return "";
+  }
+  return `
+    <button
+      type="button"
+      class="energy-service-path-chip secondary"
+      data-simulation-energy-loop-focus-jump="${escapeHTML(value)}"
+      title="${escapeHTML(t("simulation.openLoopInSankey", {}, "Sankey"))}"
+    >${escapeHTML(t("simulation.openLoopInSankey", {}, "Sankey"))}</button>`;
 }
 
 function simulationRelatedServicePathsForEnergySelection(selection = {}) {
@@ -4147,6 +4164,15 @@ function handleSimulationSeriesInspectClick(event) {
   if (energyServicePathJump) {
     state.simulationEnergyFocusMode = "service_path";
     state.simulationEnergyServicePathFocus = energyServicePathJump.dataset.simulationEnergyServicePathJump || "";
+    state.simulationEnergySelection = "";
+    state.simulationEnergyView = "sankey";
+    renderSimulationEnergyDashboard(state.simulationResult);
+    return;
+  }
+  const energyLoopFocusJump = event.target.closest("[data-simulation-energy-loop-focus-jump]");
+  if (energyLoopFocusJump) {
+    state.simulationEnergyFocusMode = "loop";
+    state.simulationEnergyLoopFocus = energyLoopFocusJump.dataset.simulationEnergyLoopFocusJump || "";
     state.simulationEnergySelection = "";
     state.simulationEnergyView = "sankey";
     renderSimulationEnergyDashboard(state.simulationResult);

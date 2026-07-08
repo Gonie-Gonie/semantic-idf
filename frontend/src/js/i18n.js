@@ -822,6 +822,7 @@ const dictionaries = {
     "simulation.energyOutputShortageHint": "Source output shortage: open the output plan, make missing outputs permanent, then rerun Basic Energy.",
     "simulation.energyAccountingCoverageHint": "No source output shortage is reported; remaining gaps are accounting coverage or model applicability.",
     "simulation.openSankeyPeriod": "Open {period} in Sankey",
+    "simulation.openLoopInSankey": "Sankey",
     "simulation.openServicePathInSankey": "Sankey",
     "simulation.openZoneInSankey": "Sankey",
     "simulation.openZoneHeatFlow": "Heat Flow",
