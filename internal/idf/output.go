@@ -497,7 +497,9 @@ func outputVariablePurposeTags(variableName string, tags map[string]bool) {
 		"zone radiant hvac heating energy", "zone radiant hvac heating rate",
 		"cooling coil sensible cooling energy",
 		"plant supply side cooling demand rate", "plant loop cooling demand energy",
-		"plant supply side heating demand rate", "plant loop heating demand energy":
+		"plant supply side heating demand rate", "plant loop heating demand energy",
+		"plant supply side unmet demand rate", "plant supply side not distributed demand rate",
+		"cond loop demand not distributed":
 		addOutputPurposeTags(tags, "basic_energy")
 	case "fan air heat gain energy", "fan air heat gain rate",
 		"zone windows total transmitted solar radiation energy", "zone windows total transmitted solar radiation rate", "zone transmitted solar energy",

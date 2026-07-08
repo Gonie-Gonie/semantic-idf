@@ -337,6 +337,9 @@ function outputVariableLooksLikeEnergyExplain(variableName = "") {
         name.includes("sensible heating") ||
         name.includes("cooling demand") ||
         name.includes("heating demand") ||
+        name.includes("unmet demand") ||
+        name.includes("not distributed demand") ||
+        name.includes("demand not distributed") ||
         name.includes("cooling coil") ||
         name.includes("heating coil") ||
         name.includes("ideal loads") ||

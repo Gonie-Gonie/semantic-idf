@@ -1176,6 +1176,65 @@ func TestParseSimulationEnergyExplanationSQLScopesDeliveredLoadNodes(t *testing.
 	}
 }
 
+func TestParseSimulationEnergyExplanationSQLMapsPlantUnmetResidualLoads(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "eplusout.sql")
+	createTestEnergySQL(t, path)
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`INSERT INTO ReportDataDictionary VALUES
+		(23, 'CHW Loop', 'Plant Supply Side Unmet Demand Rate', 'W'),
+		(24, 'Condenser Loop', 'Cond Loop Demand Not Distributed', 'W')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO "Time" VALUES
+		(3, 1, 1, 1, 0),
+		(4, 1, 1, 2, 0)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO ReportData VALUES
+		(7, 3, 23, 1000.0),
+		(8, 4, 23, 500.0),
+		(9, 3, 24, 250.0),
+		(10, 4, 24, 250.0)`); err != nil {
+		t.Fatal(err)
+	}
+
+	plan := &PurposeRunPlan{OutputObjects: []PurposeOutputObject{
+		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, VariableName: "Plant Supply Side Unmet Demand Rate"},
+		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, VariableName: "Cond Loop Demand Not Distributed"},
+	}}
+	result, err := parseSimulationEnergyExplanationSQL(path, plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	unmet := energyExplanationNodeByID(result.Nodes, "load.unmet_or_residual.chw_loop")
+	if unmet == nil || unmet.Value != 1.5 || unmet.Unit != "kWh" || unmet.Basis != "integrated_rate_variable" || unmet.Kind != "load.plant_unmet_or_residual" || unmet.LoopName != "CHW Loop" || !stringSliceContains(unmet.SourceIDs, "sql-rdd-23") {
+		t.Fatalf("plant unmet load node = %#v", unmet)
+	}
+	notDistributed := energyExplanationNodeByID(result.Nodes, "load.unmet_or_residual.condenser_loop")
+	if notDistributed == nil || notDistributed.Value != 0.5 || notDistributed.ServiceKind != "unmet_or_residual" || notDistributed.LoopName != "Condenser Loop" || !stringSliceContains(notDistributed.SourceIDs, "sql-rdd-24") {
+		t.Fatalf("plant residual load node = %#v", notDistributed)
+	}
+	if result.Completeness.DeliveredLoad.Found != 1 || result.Completeness.DeliveredLoad.Total != 1 {
+		t.Fatalf("plant unmet load completeness = %#v", result.Completeness.DeliveredLoad)
+	}
+	if availability := energyExplanationSourceAvailabilityByName(result.Completeness.SourceAvailability, "Plant Supply Side Unmet Demand Rate"); availability == nil || availability.Status != "found" || availability.Level != "load" {
+		t.Fatalf("plant unmet source availability = %#v", result.Completeness.SourceAvailability)
+	}
+	if availability := energyExplanationSourceAvailabilityByName(result.Completeness.SourceAvailability, "Cond Loop Demand Not Distributed"); availability == nil || availability.Status != "found" || availability.Level != "load" {
+		t.Fatalf("cond loop not-distributed source availability = %#v", result.Completeness.SourceAvailability)
+	}
+	summary := buildEnergyExplanationSummary(result)
+	if item := energyExplanationSummaryItemByID(summary.DeliveredLoadByService, "load.plant_unmet_or_residual"); item == nil || item.Value != 2 || item.ServiceKind != "unmet_or_residual" || item.PathType != "plant" {
+		t.Fatalf("summary plant unmet/residual load = %#v", summary.DeliveredLoadByService)
+	}
+}
+
 func TestSQLTimeIntervalHoursUsesElapsedFirstPeriod(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "eplusout.sql")

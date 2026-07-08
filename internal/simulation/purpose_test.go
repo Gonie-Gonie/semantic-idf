@@ -77,6 +77,7 @@ Output:SQLite,
 		"Zone Radiant HVAC Cooling Energy",
 		"Cooling Coil Total Cooling Energy",
 		"Plant Supply Side Cooling Demand Rate",
+		"Plant Supply Side Unmet Demand Rate",
 	} {
 		if findPurposeOutput(plan, "Output:Variable", "*", variable) == nil {
 			t.Fatalf("missing delivered-load output %q in %#v", variable, plan.OutputObjects)
@@ -629,6 +630,7 @@ output|Output:SQLite||||temporary|basic_energy
 output|Output:Meter|Electricity:Facility||Monthly|temporary|basic_energy
 output|Output:Meter|Electricity:InteriorEquipment||Monthly|temporary|basic_energy
 output|Output:Meter|Electricity:InteriorLights||Monthly|temporary|basic_energy
+output|Output:Variable|*|Cond Loop Demand Not Distributed|Monthly|temporary|basic_energy
 output|Output:Variable|*|Cooling Coil Sensible Cooling Energy|Monthly|temporary|basic_energy
 output|Output:Variable|*|Cooling Coil Total Cooling Energy|Monthly|temporary|basic_energy
 output|Output:Variable|*|Cooling Coil Total Cooling Rate|Monthly|temporary|basic_energy
@@ -640,6 +642,8 @@ output|Output:Variable|*|Plant Loop Cooling Demand Energy|Monthly|temporary|basi
 output|Output:Variable|*|Plant Loop Heating Demand Energy|Monthly|temporary|basic_energy
 output|Output:Variable|*|Plant Supply Side Cooling Demand Rate|Monthly|temporary|basic_energy
 output|Output:Variable|*|Plant Supply Side Heating Demand Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Plant Supply Side Not Distributed Demand Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Plant Supply Side Unmet Demand Rate|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Air Heat Balance Air Energy Storage Rate|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Air Heat Balance Deviation Rate|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Air Heat Balance Internal Convective Heat Gain Rate|Monthly|temporary|basic_energy

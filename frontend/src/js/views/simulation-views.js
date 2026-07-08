@@ -2627,6 +2627,7 @@ function simulationServiceKindLabel(kind = "") {
     exhaust: "Exhaust",
     humidification: "Humidification",
     dehumidification: "Dehumidification",
+    unmet_or_residual: "Unmet / residual",
     radiant_cooling: "Radiant cooling",
     radiant_heating: "Radiant heating",
   };

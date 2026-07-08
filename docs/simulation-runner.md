@@ -90,8 +90,9 @@ as selected HVAC scope when HVAC Loop Check is enabled.
 Basic Energy detail is tiered by the `basicEnergyDetail` request option. `light`
 requests SQL plus monthly top-level/end-use meters. `explain` adds
 delivered-load variables across zone air system, ideal loads, radiant HVAC,
-coil, plant demand, Ideal Loads latent humidification/dehumidification, and
-outdoor-air ventilation-conditioning aliases plus zone reported-energy
+coil, plant demand, plant unmet/residual demand, Ideal Loads latent
+humidification/dehumidification, and outdoor-air ventilation-conditioning
+aliases plus zone reported-energy
 variables.
 `heat_drivers` adds object-level fan heat-to-air variables, detailed
 internal-gain, window solar, window heat gain/loss, and air-exchange

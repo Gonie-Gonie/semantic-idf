@@ -263,6 +263,8 @@ The release script infers bump size from these sections:
 - Basic Energy Explain now requests and parses Ideal Loads latent
   humidification/dehumidification and outdoor-air ventilation-conditioning load
   outputs as separate Delivered Load service kinds.
+- Basic Energy Explain now keeps plant and condenser loop unmet/not-distributed
+  demand rate outputs as Level 2 unmet/residual delivered-load nodes.
 - Batch purpose simulation metrics now include compact annual Energy Use,
   Delivered Load, Heat Driver, residual, mapped-percent, and top heat-driver
   values from the Basic Energy explanation summary, plus two-row delta tables

@@ -2488,6 +2488,7 @@ func energyLoadAliasCatalog() []energyLoadAliasDefinition {
 		{Kind: "load.system_heating", Label: "System heating delivered", ServiceKind: "heating", Scope: "system", Aliases: []string{"Heating Coil Heating Energy", "Heating Coil Heating Rate"}},
 		{Kind: "load.plant_cooling", Label: "Plant cooling demand", ServiceKind: "cooling", Scope: "plant", Aliases: []string{"Plant Supply Side Cooling Demand Rate", "Plant Loop Cooling Demand Energy"}},
 		{Kind: "load.plant_heating", Label: "Plant heating demand", ServiceKind: "heating", Scope: "plant", Aliases: []string{"Plant Supply Side Heating Demand Rate", "Plant Loop Heating Demand Energy"}},
+		{Kind: "load.plant_unmet_or_residual", Label: "Plant unmet/residual demand", ServiceKind: "unmet_or_residual", Scope: "plant", Aliases: []string{"Plant Supply Side Unmet Demand Rate", "Plant Supply Side Not Distributed Demand Rate", "Cond Loop Demand Not Distributed"}},
 		{Kind: "load.zone_humidification", Label: "Zone humidification load", ServiceKind: "humidification", Scope: "zone", Aliases: []string{"Zone Ideal Loads Supply Air Latent Heating Energy", "Zone Ideal Loads Supply Air Latent Heating Rate", "Zone Ideal Loads Zone Latent Heating Energy", "Zone Ideal Loads Zone Latent Heating Rate", "Zone Ideal Loads Outdoor Air Latent Heating Energy", "Zone Ideal Loads Outdoor Air Latent Heating Rate"}},
 		{Kind: "load.zone_dehumidification", Label: "Zone dehumidification load", ServiceKind: "dehumidification", Scope: "zone", Aliases: []string{"Zone Ideal Loads Supply Air Latent Cooling Energy", "Zone Ideal Loads Supply Air Latent Cooling Rate", "Zone Ideal Loads Zone Latent Cooling Energy", "Zone Ideal Loads Zone Latent Cooling Rate", "Zone Ideal Loads Outdoor Air Latent Cooling Energy", "Zone Ideal Loads Outdoor Air Latent Cooling Rate"}},
 		{Kind: "load.ventilation_conditioning", Label: "Ventilation conditioning load", ServiceKind: "ventilation", Scope: "zone", Aliases: []string{"Zone Ideal Loads Outdoor Air Sensible Heating Energy", "Zone Ideal Loads Outdoor Air Sensible Heating Rate", "Zone Ideal Loads Outdoor Air Total Heating Energy", "Zone Ideal Loads Outdoor Air Total Heating Rate", "Zone Ideal Loads Outdoor Air Sensible Cooling Energy", "Zone Ideal Loads Outdoor Air Sensible Cooling Rate", "Zone Ideal Loads Outdoor Air Total Cooling Energy", "Zone Ideal Loads Outdoor Air Total Cooling Rate"}},
@@ -2983,6 +2984,8 @@ func energyServiceLabel(serviceKind string) string {
 		return "Cooling"
 	case "heating":
 		return "Heating"
+	case "unmet_or_residual":
+		return "Unmet / residual"
 	default:
 		return strings.Title(strings.ReplaceAll(serviceKind, "_", " "))
 	}

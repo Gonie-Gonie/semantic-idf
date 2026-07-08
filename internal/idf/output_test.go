@@ -112,6 +112,11 @@ Output:Variable,
   Monthly;
 
 Output:Variable,
+  CHW Loop,
+  Plant Supply Side Unmet Demand Rate,
+  Monthly;
+
+Output:Variable,
   *,
   Zone Ideal Loads Supply Air Latent Cooling Energy,
   Monthly;
@@ -172,6 +177,9 @@ Output:Table:SummaryReports,
 	}
 	if !outputSummaryHasPurpose(report.Existing, "Output:Variable", "Plant Supply Side Cooling Demand Rate", "basic_energy") {
 		t.Fatalf("plant load output should be tagged for Basic Energy: %#v", report.Existing)
+	}
+	if !outputSummaryHasPurpose(report.Existing, "Output:Variable", "Plant Supply Side Unmet Demand Rate", "basic_energy") {
+		t.Fatalf("plant unmet-load output should be tagged for Basic Energy: %#v", report.Existing)
 	}
 	if !outputSummaryHasPurpose(report.Existing, "Output:Variable", "Zone Ideal Loads Supply Air Latent Cooling Energy", "basic_energy") {
 		t.Fatalf("latent delivered-load output should be tagged for Basic Energy: %#v", report.Existing)
