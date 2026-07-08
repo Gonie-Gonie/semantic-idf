@@ -388,6 +388,9 @@ The release script infers bump size from these sections:
   storage, and other energy use, to stable labels and node colors.
 - Basic Energy Sankey inspectors and legends now label delivered-load source
   basis values such as reported energy variables and integrated rate variables.
+- Basic Energy Sankey all-results focus now groups heat-driver detail by heat
+  category/sign before applying the default top-N node budget, while the `All`
+  action still expands back to detail nodes.
 - Basic Energy Sankey default grouping now applies a 100-node display budget,
   reducing visible heat-driver nodes further when non-heat graph nodes would
   otherwise push the default view past the budget.

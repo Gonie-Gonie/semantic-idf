@@ -1664,7 +1664,7 @@ function currentBasicEnergyDetail() {
 }
 
 function renderEnergyExplanationSankey(explanation = {}) {
-  const graph = groupedEnergyExplanationGraph(energyExplanationSignModeGraph(focusedEnergyExplanationGraph(energyExplanationGraphForPeriod(explanation, state.simulationEnergyPeriod || "annual"))));
+  const graph = groupedEnergyExplanationGraph(categoryGroupedEnergyExplanationGraph(energyExplanationSignModeGraph(focusedEnergyExplanationGraph(energyExplanationGraphForPeriod(explanation, state.simulationEnergyPeriod || "annual")))));
   const nodes = graph.nodes || [];
   const edges = graph.edges || [];
   if (!nodes.length) {
@@ -1766,6 +1766,90 @@ function energyExplanationEdgeForSignMode(edge = {}, mode = "display") {
   return { ...edge, value };
 }
 
+function categoryGroupedEnergyExplanationGraph(graph = {}) {
+  if ((state.simulationEnergyFocusMode || "all") !== "all" || !energyExplanationNodeLimit(state.simulationEnergyNodeLimit)) {
+    return graph;
+  }
+  const nodes = graph.nodes || [];
+  const heatNodes = nodes.filter((node) => node.level === "heat" && node.heatCategory && node.heatCategory !== "grouped_other");
+  if (heatNodes.length < 2) {
+    return graph;
+  }
+  const groupKeyForNode = (node) => [
+    node.heatCategory || "uncategorized",
+    node.sign || "",
+    node.serviceKind || "",
+  ].join("|");
+  const groups = new Map();
+  for (const node of heatNodes) {
+    const key = groupKeyForNode(node);
+    const existing = groups.get(key) || {
+      ...node,
+      id: `heat.category.${metricTokenForEnergyID(key)}`,
+      kind: `heat.category.${metricTokenForEnergyID(node.heatCategory || "uncategorized")}`,
+      label: energyHeatCategoryNodeLabel(node),
+      value: 0,
+      signedValue: 0,
+      displayValue: 0,
+      zoneName: "",
+      sourceIds: [],
+      relatedPathIds: [],
+    };
+    existing.value = roundedDisplayNumber((Number(existing.value) || 0) + (Number(node.value) || 0));
+    existing.signedValue = roundedDisplayNumber((Number(existing.signedValue) || 0) + (Number(node.signedValue) || 0));
+    existing.displayValue = roundedDisplayNumber((Number(existing.displayValue) || 0) + (Number(node.displayValue) || Number(node.value) || 0));
+    existing.sourceIds = appendUniqueEnergyStrings(existing.sourceIds || [], ...(node.sourceIds || []));
+    existing.relatedPathIds = appendUniqueEnergyStrings(existing.relatedPathIds || [], ...(node.relatedPathIds || []));
+    groups.set(key, existing);
+  }
+  if (groups.size >= heatNodes.length) {
+    return graph;
+  }
+  const groupedHeatIDs = new Set(heatNodes.map((node) => node.id));
+  const groupIDByHeatID = new Map(heatNodes.map((node) => [node.id, groups.get(groupKeyForNode(node))?.id || node.id]));
+  const visibleNodes = nodes.filter((node) => !groupedHeatIDs.has(node.id));
+  visibleNodes.push(...groups.values());
+  const edgeGroups = new Map();
+  const visibleEdges = [];
+  for (const edge of graph.edges || []) {
+    const groupedToID = groupIDByHeatID.get(edge.toId);
+    if (!groupedToID) {
+      visibleEdges.push(edge);
+      continue;
+    }
+    const key = [edge.fromId || "unknown", groupedToID, edge.relation || "", edge.basis || "", edge.ruleId || ""].join("|");
+    const existing = edgeGroups.get(key) || {
+      ...edge,
+      id: `edge.heat_category.${metricTokenForEnergyID(key)}`,
+      toId: groupedToID,
+      value: 0,
+      signedValue: 0,
+      displayValue: 0,
+      zoneName: "",
+      sourceIds: [],
+      relatedPathIds: [],
+      formula: "grouped heat drivers by category for all-zone view",
+    };
+    existing.value = roundedDisplayNumber((Number(existing.value) || 0) + (Number(edge.value) || 0));
+    existing.signedValue = roundedDisplayNumber((Number(existing.signedValue) || 0) + (Number(edge.signedValue) || 0));
+    existing.displayValue = roundedDisplayNumber((Number(existing.displayValue) || 0) + (Number(edge.displayValue) || Number(edge.value) || 0));
+    existing.sourceIds = appendUniqueEnergyStrings(existing.sourceIds || [], ...(edge.sourceIds || []));
+    existing.relatedPathIds = appendUniqueEnergyStrings(existing.relatedPathIds || [], ...(edge.relatedPathIds || []));
+    edgeGroups.set(key, existing);
+  }
+  visibleEdges.push(...edgeGroups.values());
+  return {
+    ...graph,
+    nodes: visibleNodes,
+    edges: visibleEdges,
+    grouping: {
+      ...(graph.grouping || {}),
+      heatCategoryGroups: groups.size,
+      heatCategoryGroupedCount: heatNodes.length,
+    },
+  };
+}
+
 function groupedEnergyExplanationGraph(graph = {}) {
   const requestedLimit = energyExplanationNodeLimit(state.simulationEnergyNodeLimit);
   if (!requestedLimit) {
@@ -1840,6 +1924,7 @@ function groupedEnergyExplanationGraph(graph = {}) {
     nodes: groupedNodes,
     edges: groupedEdges,
     grouping: {
+      ...(graph.grouping || {}),
       limit,
       omittedHeatCount: omittedHeatNodes.length,
       otherNodeId: otherID,
@@ -1857,16 +1942,24 @@ function energyExplanationNodeLimit(value) {
 
 function renderEnergyExplanationGroupingNotice(grouping = {}) {
   const count = Number(grouping.omittedHeatCount) || 0;
-  if (count <= 0) {
+  const categoryGroupedCount = Number(grouping.heatCategoryGroupedCount) || 0;
+  if (count <= 0 && categoryGroupedCount <= 0) {
     return "";
   }
   const limit = Number(grouping.limit) || 0;
-  const message = limit > 0
-    ? t("simulation.energySankeyGrouped", { count, limit }, `Showing top ${limit} heat drivers; ${count} grouped as Other.`)
-    : t("simulation.energySankeyGroupedAllHeat", { count }, `${count} heat drivers grouped as Other to keep the default graph compact.`);
+  const messages = [];
+  if (categoryGroupedCount > 0) {
+    const groups = Number(grouping.heatCategoryGroups) || 0;
+    messages.push(t("simulation.energySankeyCategoryGrouped", { count: categoryGroupedCount, groups }, `${categoryGroupedCount} heat drivers grouped into ${groups} category nodes.`));
+  }
+  if (count > 0) {
+    messages.push(limit > 0
+      ? t("simulation.energySankeyGrouped", { count, limit }, `Showing top ${limit} heat drivers; ${count} grouped as Other.`)
+      : t("simulation.energySankeyGroupedAllHeat", { count }, `${count} heat drivers grouped as Other to keep the default graph compact.`));
+  }
   return `
     <div class="energy-sankey-grouping-notice">
-      <span>${escapeHTML(message)}</span>
+      <span>${escapeHTML(messages.join(" "))}</span>
       <button class="simulation-series-inspect" type="button" data-simulation-energy-show-all-nodes="1">${escapeHTML(t("common.all", {}, "All"))}</button>
     </div>`;
 }
@@ -2967,6 +3060,17 @@ function titleCaseEnergyToken(value = "") {
   return String(value || "")
     .replace(/_/g, " ")
     .replace(/\w\S*/g, (part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase());
+}
+
+function energyHeatCategoryNodeLabel(node = {}) {
+  const categoryLabel = titleCaseEnergyToken(node.heatCategory || "heat drivers");
+  if (node.sign === "positive") {
+    return `${categoryLabel} cooling pressure`;
+  }
+  if (node.sign === "negative") {
+    return `${categoryLabel} heating pressure`;
+  }
+  return categoryLabel;
 }
 
 function energyEndUseLabel(endUse = "") {
