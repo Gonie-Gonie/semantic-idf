@@ -436,7 +436,10 @@ Basic Energy completeness panels distinguish source output shortage from
 accounting/model coverage gaps. When missing source requests are reported, the
 result view can jump back to the Simulation output plan, refresh the purpose
 request set, and invoke the same permanent output application flow before the
-user reruns Basic Energy with explanation outputs. If the active model-aware
+user reruns Basic Energy with explanation outputs. Light-tier results that did
+not request load or heat-driver detail also show a detail-tier guidance row that
+links back to the output plan so the user can switch to Explain or Heat Drivers
+and rerun. If the active model-aware
 purpose plan did not request any Basic Energy meter outputs, Energy Use source
 availability is reported as `not_applicable` instead of falling back to a broad
 missing-meter catalog. Delivered-load source availability also treats variables

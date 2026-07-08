@@ -1431,15 +1431,23 @@ function renderEnergyExplanationCompleteness(explanation = {}) {
   const missingCategories = completeness.missingCategories || [];
   const missingAvailability = (completeness.sourceAvailability || []).filter((item) => item.status && item.status !== "found" && item.status !== "not_applicable");
   const hasIncompleteItems = items.some((item) => item.status && item.status !== "complete" && item.status !== "not_applicable");
-  const hasOutputShortage = missingCategories.length > 0 || missingAvailability.length > 0;
   const basicEnergyDetail = currentBasicEnergyDetail();
-  const coverageNote = hasOutputShortage
-    ? basicEnergyDetail === "light"
-      ? t("simulation.energyDetailTierHint", {}, "Source output shortage: switch Basic Energy detail to Explain or Heat drivers, refresh the output plan, then rerun Basic Energy.")
-      : t("simulation.energyOutputShortageHint", {}, "Source output shortage: open the output plan, make missing outputs permanent, then rerun Basic Energy.")
-    : hasIncompleteItems
-      ? t("simulation.energyAccountingCoverageHint", {}, "No source output shortage is reported; remaining gaps are accounting coverage or model applicability.")
-      : "";
+  const hasDetailTierGap =
+    basicEnergyDetail === "light" &&
+    items.some((item) => String(item.status || "").toLowerCase() === "not_applicable" && ["load", "heat"].includes(String(item.level || "").toLowerCase()));
+  const hasOutputShortage = missingCategories.length > 0 || missingAvailability.length > 0;
+  let coverageNote = "";
+  let coverageTitle = "";
+  if (hasOutputShortage) {
+    coverageTitle = t("simulation.outputShortage", {}, "Output shortage");
+    coverageNote = t("simulation.energyOutputShortageHint", {}, "Source output shortage: open the output plan, make missing outputs permanent, then rerun Basic Energy.");
+  } else if (hasDetailTierGap) {
+    coverageTitle = t("simulation.energyDetailTier", {}, "Detail tier");
+    coverageNote = t("simulation.energyDetailTierHint", {}, "Detailed load/heat outputs were not requested by Light Basic Energy. Switch Basic Energy detail to Explain or Heat drivers, refresh the output plan, then rerun Basic Energy.");
+  } else if (hasIncompleteItems) {
+    coverageTitle = t("simulation.accountingCoverage", {}, "Accounting coverage");
+    coverageNote = t("simulation.energyAccountingCoverageHint", {}, "No source output shortage is reported; remaining gaps are accounting coverage or model applicability.");
+  }
   const applyDisabled = purposeOutputApplyState().disabled;
   const availabilitySummary = renderEnergySourceAvailabilitySummary(completeness.sourceAvailability || []);
   const availabilityRows = (completeness.sourceAvailability || [])
@@ -1482,14 +1490,18 @@ function renderEnergyExplanationCompleteness(explanation = {}) {
         coverageNote
           ? `<div class="energy-explanation-output-actions">
               <div>
-                <strong>${escapeHTML(hasOutputShortage ? t("simulation.outputShortage", {}, "Output shortage") : t("simulation.accountingCoverage", {}, "Accounting coverage"))}</strong>
+                <strong>${escapeHTML(coverageTitle)}</strong>
                 <span>${escapeHTML(coverageNote)}</span>
               </div>
               ${
-                hasOutputShortage
+                hasOutputShortage || hasDetailTierGap
                   ? `<div class="energy-explanation-output-buttons">
                       <button class="simulation-series-inspect" type="button" data-simulation-energy-output-plan="1">${escapeHTML(t("simulation.openOutputPlan", {}, "Output plan"))}</button>
-                      <button class="simulation-series-inspect" type="button" data-simulation-energy-apply-outputs="1" ${applyDisabled ? "disabled" : ""}>${escapeHTML(t("simulation.makePurposeOutputsPermanent", {}, "Make outputs permanent"))}</button>
+                      ${
+                        hasOutputShortage
+                          ? `<button class="simulation-series-inspect" type="button" data-simulation-energy-apply-outputs="1" ${applyDisabled ? "disabled" : ""}>${escapeHTML(t("simulation.makePurposeOutputsPermanent", {}, "Make outputs permanent"))}</button>`
+                          : ""
+                      }
                     </div>`
                   : ""
               }

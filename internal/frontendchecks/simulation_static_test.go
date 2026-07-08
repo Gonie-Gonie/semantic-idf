@@ -154,6 +154,8 @@ func TestFrontendSimulationEnergySystemsCrossJumpContracts(t *testing.T) {
 		"basicEnergyDetail",
 		"basicEnergyDetailLabel",
 		"currentBasicEnergyDetail",
+		"hasDetailTierGap",
+		"simulation.energyDetailTier",
 		"simulation.basicEnergyDetail",
 		"simulation.energyDetailTierHint",
 		"simulation.energyOutputShortageHint",

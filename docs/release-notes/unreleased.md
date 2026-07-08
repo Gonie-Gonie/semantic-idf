@@ -187,6 +187,9 @@ The release script infers bump size from these sections:
   before running.
 - The Basic Energy completeness panel now summarizes source availability counts
   by level and status before listing missing or not-applicable source rows.
+- The Basic Energy completeness panel now treats Light-tier not-applicable
+  load/heat detail as a detail-tier gap and links users back to the output plan
+  instead of hiding the rerun guidance.
 - Basic Energy purpose requests now default omitted `basicEnergyDetail` values
   to the light tier, keeping default run plans monthly and meter-focused unless
   Explain or Heat Drivers is explicitly selected.
