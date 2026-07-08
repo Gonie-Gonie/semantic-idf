@@ -347,4 +347,5 @@ including EnergyPlus executable/version metadata, the run plan, parsed purpose
 results, purpose-specific Energy/Heat Flow/HVAC/Comfort summary tables,
 Basic Energy explanation completeness, source availability, relationship rules,
 summary/monthly ledger/source/annual edge/reconciliation/warning evidence, file
-references, and the source output signatures visible in result tables.
+references, source IDs and related service path IDs for exported explanation
+rows, and the source output signatures visible in result tables.

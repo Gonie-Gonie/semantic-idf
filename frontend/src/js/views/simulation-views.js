@@ -6380,7 +6380,7 @@ function renderPurposeHTMLEnergyExplanation(summary = {}, explanation = {}) {
   if (summaryRows.length) {
     sections.push(
       `<h2>Energy Explanation Summary</h2>${renderPurposeHTMLTable(
-        ["Type", "Metric", "Label", "Value", "Unit", "Level", "Service", "Path", "Basis"],
+        ["Type", "Metric", "Label", "Value", "Unit", "Level", "Service", "Path", "Basis", "Source IDs"],
         summaryRows.slice(0, 180),
       )}`,
     );
@@ -6400,10 +6400,17 @@ function renderPurposeHTMLEnergyExplanation(summary = {}, explanation = {}) {
       nodeLabels.get(edge.fromId) || edge.fromId || "",
       nodeLabels.get(edge.toId) || edge.toId || "",
       formatValueWithUnit(edge.value, edge.unit),
+      (edge.sourceIds || []).join(", "),
+      (edge.relatedPathIds || []).join(", "),
       edge.formula || "",
     ]);
   if (edgeRows.length) {
-    sections.push(`<h2>Energy Explanation Annual Edges</h2>${renderPurposeHTMLTable(["Relation", "Basis", "Rule", "From", "To", "Value", "Formula"], edgeRows)}`);
+    sections.push(
+      `<h2>Energy Explanation Annual Edges</h2>${renderPurposeHTMLTable(
+        ["Relation", "Basis", "Rule", "From", "To", "Value", "Source IDs", "Related Paths", "Formula"],
+        edgeRows,
+      )}`,
+    );
   }
   const warningRows = [...(explanation.warnings || []), ...(graph.warnings || [])]
     .slice(0, 120)
@@ -6423,12 +6430,13 @@ function renderPurposeHTMLEnergyExplanation(summary = {}, explanation = {}) {
       formatValueWithUnit(row.explainedValue, row.unit),
       formatValueWithUnit(row.residualValue, row.unit),
       row.basis || "",
+      (row.sourceIds || []).join(", "),
       row.formula || "",
     ]);
   if (reconciliationRows.length) {
     sections.push(
       `<h2>Energy Explanation Reconciliation</h2>${renderPurposeHTMLTable(
-        ["Metric", "Period", "Level", "Zone", "Service", "Expected", "Mapped", "Residual", "Basis", "Formula"],
+        ["Metric", "Period", "Level", "Zone", "Service", "Expected", "Mapped", "Residual", "Basis", "Source IDs", "Formula"],
         reconciliationRows,
       )}`,
     );
@@ -6480,6 +6488,7 @@ function purposeHTMLEnergySummaryRows(summary = {}) {
       item.serviceKind || "",
       item.pathType || "",
       item.basis || "",
+      (item.sourceIds || []).join(", "),
     ]),
   );
 }
