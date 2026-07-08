@@ -803,6 +803,7 @@ const dictionaries = {
     "simulation.outputDiscoveryStats": "{shown} of {total} outputs",
     "simulation.openSankeyPeriod": "Open {period} in Sankey",
     "simulation.openZoneInSankey": "Sankey",
+    "simulation.openZoneHeatFlow": "Heat Flow",
     "simulation.periodCustom": "Custom dates",
     "simulation.periodDatePlaceholder": "01-01",
     "simulation.periodEnd": "Period end",

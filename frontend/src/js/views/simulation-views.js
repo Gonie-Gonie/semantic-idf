@@ -445,11 +445,12 @@ function simulationResultViewAvailability(result) {
     return { energy: true, zone_heat_flow: true, hvac_loops: true, comfort: true, integrity: true, series: true, files: true };
   }
   const energy = result.purposeResults?.energy || {};
+  const heatFlow = result.purposeResults?.zoneHeatFlow?.zones?.length ? result.purposeResults.zoneHeatFlow : result.heatFlow || {};
   const hvacLoops = result.purposeResults?.hvacLoops || [];
   const comfort = result.purposeResults?.comfort || {};
   return {
     energy: Boolean((energy.facilityMonthly || []).length || (energy.endUseMonthly || []).length || (energy.zoneMonthly || []).length),
-    zone_heat_flow: Boolean((result.heatFlow?.zones || []).length),
+    zone_heat_flow: Boolean((heatFlow.zones || []).length),
     hvac_loops: Boolean(hvacLoops.some((loop) => (loop.series || []).length || hvacComponentSeriesCount(loop.components || []))),
     comfort: Boolean((comfort.zones || []).length || (comfort.series || []).length),
     integrity: true,
@@ -1015,6 +1016,7 @@ function renderEnergyZonesSubview(zones = [], explanation = {}) {
 
 function renderEnergyZoneBreakdownSection(explanation = {}) {
   const graph = energyExplanationGraphForPeriod(explanation, state.simulationEnergyPeriod || "annual");
+  const heatFlowZones = heatFlowZoneMap(activeHeatFlowDataset());
   const rows = energyZoneBreakdownRows(graph)
     .map((row) => {
       const pathButtons = simulationRelatedServicePathsForEnergyNodes(row.nodes)
@@ -1026,6 +1028,7 @@ function renderEnergyZoneBreakdownSection(explanation = {}) {
           ),
         )
         .join("");
+      const hasHeatFlow = heatFlowZones.has(normalizeHeatFlowName(row.zoneName || ""));
       return `
         <tr>
           <td>${escapeHTML(row.zoneName || "")}</td>
@@ -1036,7 +1039,12 @@ function renderEnergyZoneBreakdownSection(explanation = {}) {
           <td>${escapeHTML(formatValueWithUnit(row.signedHeat, row.unit))}</td>
           <td>${escapeHTML(formatValueWithUnit(row.residual, row.unit))}</td>
           <td>${pathButtons ? `<div class="simulation-energy-zone-paths">${pathButtons}</div>` : `<span class="simulation-source-output missing">${escapeHTML(t("common.notAvailable", {}, "N/A"))}</span>`}</td>
-          <td><button class="simulation-series-inspect" type="button" data-simulation-energy-zone-jump="${escapeHTML(row.zoneName || "")}">${escapeHTML(t("simulation.openZoneInSankey", {}, "Sankey"))}</button></td>
+          <td>
+            <div class="simulation-energy-zone-actions">
+              <button class="simulation-series-inspect" type="button" data-simulation-energy-zone-jump="${escapeHTML(row.zoneName || "")}">${escapeHTML(t("simulation.openZoneInSankey", {}, "Sankey"))}</button>
+              ${hasHeatFlow ? `<button class="simulation-series-inspect" type="button" data-simulation-energy-heatflow-zone-jump="${escapeHTML(row.zoneName || "")}">${escapeHTML(t("simulation.openZoneHeatFlow", {}, "Heat Flow"))}</button>` : ""}
+            </div>
+          </td>
         </tr>`;
     })
     .join("");
@@ -3498,6 +3506,15 @@ function handleSimulationSeriesInspectClick(event) {
     state.simulationEnergySelection = "";
     state.simulationEnergyView = "sankey";
     renderSimulationEnergyDashboard(state.simulationResult);
+    return;
+  }
+  const energyHeatFlowZoneJump = event.target.closest("[data-simulation-energy-heatflow-zone-jump]");
+  if (energyHeatFlowZoneJump) {
+    state.simulationHeatFlowSelectedZone = energyHeatFlowZoneJump.dataset.simulationEnergyHeatflowZoneJump || "";
+    state.simulationActiveResultView = "zone_heat_flow";
+    renderSimulationResultTabs(state.simulationResult);
+    toggleSimulationResultSections();
+    renderSimulationHeatFlow();
     return;
   }
   const hvacPath = event.target.closest("[data-simulation-hvac-path-id]");

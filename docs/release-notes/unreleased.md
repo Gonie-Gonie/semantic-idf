@@ -34,7 +34,7 @@ The release script infers bump size from these sections:
   Heat Drivers, and Residual level chart.
 - Basic Energy Zones view now summarizes zone/service delivered load, cooling
   and heating pressure, signed heat, and residual values with Sankey focus
-  jumps and HVAC service-path links.
+  jumps, Heat-Flow Ledger jumps, and HVAC service-path links.
 - Basic Energy Overview now includes an annual Energy Use breakdown by carrier
   and end use, with source links for each row.
 - Energy explanation completeness now surfaces missing categories and source

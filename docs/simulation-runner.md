@@ -289,7 +289,8 @@ Purpose result viewers now include:
   residuals for the active period below the full reconciliation table.
   The `Zones` subview summarizes each zone/service period as Delivered Load,
   Cooling Pressure, Heating Pressure, signed heat, and residual values, with
-  direct jumps to the matching Sankey zone focus and related HVAC service paths.
+  direct jumps to the matching Sankey zone focus, Heat-Flow Ledger zone, and
+  related HVAC service paths.
   The `Systems` subview and node inspector match load/heat services to the
   current HVAC service model by zone and service kind, then link directly to the
   related HVAC service path. Sankey and Systems can focus the graph by all
