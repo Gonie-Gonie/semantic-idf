@@ -507,12 +507,17 @@ func TestParseSimulationEnergyExplanationSQLBuildsAccountingGraph(t *testing.T) 
 		t.Fatal(err)
 	}
 
+	facilityObjectIndex := 0
+	coolingObjectIndex := 1
+	loadObjectIndex := 2
+	internalHeatObjectIndex := 3
+	surfaceHeatObjectIndex := 4
 	plan := &PurposeRunPlan{OutputObjects: []PurposeOutputObject{
-		{ObjectType: "Output:Meter", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, KeyValue: "Electricity:Facility"},
-		{ObjectType: "Output:Meter", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, KeyValue: "Electricity:Cooling"},
-		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, VariableName: "Zone Air System Sensible Cooling Energy"},
-		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, VariableName: "Zone Air Heat Balance Internal Convective Heat Gain Rate"},
-		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, VariableName: "Zone Air Heat Balance Surface Convection Rate"},
+		{ObjectType: "Output:Meter", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, KeyValue: "Electricity:Facility", ObjectIndex: &facilityObjectIndex},
+		{ObjectType: "Output:Meter", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, KeyValue: "Electricity:Cooling", ObjectIndex: &coolingObjectIndex},
+		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, KeyValue: "*", VariableName: "Zone Air System Sensible Cooling Energy", ObjectIndex: &loadObjectIndex},
+		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, KeyValue: "*", VariableName: "Zone Air Heat Balance Internal Convective Heat Gain Rate", ObjectIndex: &internalHeatObjectIndex},
+		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, KeyValue: "*", VariableName: "Zone Air Heat Balance Surface Convection Rate", ObjectIndex: &surfaceHeatObjectIndex},
 	}}
 	result, err := parseSimulationEnergyExplanationSQL(path, plan)
 	if err != nil {
@@ -602,6 +607,12 @@ func TestParseSimulationEnergyExplanationSQLBuildsAccountingGraph(t *testing.T) 
 	}
 	if len(result.Sources) != 5 || !energyExplanationHasSource(result.Sources, "sql-rdd-20", true, "Electricity:Facility") || !energyExplanationHasSource(result.Sources, "sql-rdd-24", false, "Zone Air Heat Balance Internal Convective Heat Gain Rate") {
 		t.Fatalf("sources = %#v", result.Sources)
+	}
+	if source := energyExplanationSourceByID(result.Sources, "sql-rdd-20"); source == nil || source.ObjectIndex == nil || *source.ObjectIndex != facilityObjectIndex {
+		t.Fatalf("facility source object index = %#v", source)
+	}
+	if source := energyExplanationSourceByID(result.Sources, "sql-rdd-24"); source == nil || source.ObjectIndex == nil || *source.ObjectIndex != internalHeatObjectIndex {
+		t.Fatalf("heat source object index = %#v", source)
 	}
 	summary := buildEnergyExplanationSummary(result)
 	if summary.Schema != energyExplanationSummarySchema || summary.AllocationPolicy != PurposeAllocationPolicyDirectOnly || len(summary.EnergyByCarrier) != 1 || summary.EnergyByCarrier[0].Value != 3 {
@@ -1163,6 +1174,15 @@ func energyExplanationHasSource(sources []EnergyDataSource, id string, isMeter b
 		}
 	}
 	return false
+}
+
+func energyExplanationSourceByID(sources []EnergyDataSource, id string) *EnergyDataSource {
+	for index := range sources {
+		if sources[index].ID == id {
+			return &sources[index]
+		}
+	}
+	return nil
 }
 
 func energyExplanationReconciliationByID(items []EnergyReconciliation, id string) *EnergyReconciliation {

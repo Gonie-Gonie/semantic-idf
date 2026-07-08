@@ -80,6 +80,9 @@ The release script infers bump size from these sections:
 - Basic Energy explanation nodes and edges now include related HVAC service path
   IDs when the source model can be analyzed, so Sankey inspectors and Systems
   views can jump to the matching zone service paths directly.
+- Basic Energy SQL source metadata now carries matching output request object
+  indexes when the run plan references existing outputs, including object index
+  `0`, and batch source CSV exports preserve those indexes.
 - Basic Energy heat-driver extraction now recognizes object-level fan heat-to-air
   outputs separately from fan electricity use.
 - Basic Energy output plan rows now label monthly delivered-load/zone-energy

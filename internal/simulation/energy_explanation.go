@@ -121,7 +121,7 @@ type EnergyDataSource struct {
 	TableName          string `json:"tableName,omitempty"`
 	RowName            string `json:"rowName,omitempty"`
 	ColumnName         string `json:"columnName,omitempty"`
-	ObjectIndex        int    `json:"objectIndex,omitempty"`
+	ObjectIndex        *int   `json:"objectIndex,omitempty"`
 }
 
 type EnergyReconciliation struct {
@@ -365,6 +365,7 @@ func parseSimulationEnergyExplanationSQL(path string, plan *PurposeRunPlan) (Ene
 			continue
 		}
 		source := energyDataSourceForDictionary(dictionary)
+		source.ObjectIndex = energyExplanationObjectIndexForDictionary(dictionary, plan)
 		sources = append(sources, source)
 		series = append(series, energyExplanationSeriesForBuilder(builder, source.ID))
 	}
@@ -1332,6 +1333,63 @@ func energyDataSourceForDictionary(dictionary energyExplanationDictionary) Energ
 		IndexGroup:         strings.TrimSpace(dictionary.indexGroup),
 		TableName:          "ReportData",
 		ColumnName:         fmt.Sprintf("ReportDataDictionaryIndex=%d", row.index),
+	}
+}
+
+func energyExplanationObjectIndexForDictionary(dictionary energyExplanationDictionary, plan *PurposeRunPlan) *int {
+	if plan == nil {
+		return nil
+	}
+	row := dictionary.row
+	name := strings.TrimSpace(row.name)
+	keyValue := strings.TrimSpace(row.keyValue)
+	if dictionary.isMeter {
+		sourceName := strings.TrimSpace(firstNonEmpty(keyValue, name))
+		for _, object := range plan.OutputObjects {
+			if object.ObjectIndex == nil || !purposeIDsContain(object.PurposeIDs, SimulationPurposeBasicEnergy) {
+				continue
+			}
+			if !energyExplanationIsMeterObjectType(object.ObjectType) {
+				continue
+			}
+			if normalizeEnergyOutputName(object.KeyValue) == normalizeEnergyOutputName(sourceName) {
+				return object.ObjectIndex
+			}
+		}
+		return nil
+	}
+	if name == "" {
+		return nil
+	}
+	var wildcard *int
+	for _, object := range plan.OutputObjects {
+		if object.ObjectIndex == nil || !purposeIDsContain(object.PurposeIDs, SimulationPurposeBasicEnergy) {
+			continue
+		}
+		if !strings.EqualFold(strings.TrimSpace(object.ObjectType), "Output:Variable") {
+			continue
+		}
+		if normalizeEnergyOutputName(object.VariableName) != normalizeEnergyOutputName(name) {
+			continue
+		}
+		objectKey := strings.TrimSpace(object.KeyValue)
+		if objectKey == "*" || objectKey == "" {
+			wildcard = object.ObjectIndex
+			continue
+		}
+		if normalizeEnergyOutputName(objectKey) == normalizeEnergyOutputName(keyValue) {
+			return object.ObjectIndex
+		}
+	}
+	return wildcard
+}
+
+func energyExplanationIsMeterObjectType(objectType string) bool {
+	switch strings.ToLower(strings.TrimSpace(objectType)) {
+	case "output:meter", "output:meter:meterfileonly", "output:meter:cumulative", "output:meter:cumulativemeterfileonly":
+		return true
+	default:
+		return false
 	}
 }
 

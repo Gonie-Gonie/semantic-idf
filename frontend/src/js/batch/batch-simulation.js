@@ -490,7 +490,7 @@ export function initializeMultiSimulationTool(context) {
           source.name || "",
           source.reportingFrequency || "",
           source.indexGroup || "",
-          source.objectIndex || "",
+          source.objectIndex ?? "",
           ...emptyEnergyExplanationEdgeExportFields(),
         ]);
       });
