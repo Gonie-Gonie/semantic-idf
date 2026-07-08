@@ -168,6 +168,9 @@ The release script infers bump size from these sections:
 - Batch Simulation XLSX Energy Delta and Sankey Edge Delta sheets now include
   baseline/target source table, row, column, source unit, and normalized unit
   fields directly on delta rows.
+- Purpose HTML exports now include source output object, table, row, column,
+  source unit, and normalized unit fields directly in Energy Explanation Source
+  Availability rows.
 - Batch Simulation Basic Energy comparison now shows residual delta tables in
   the UI, matching the residual rows already exported in workbook deltas.
 - The Simulation run plan now summarizes Basic Energy output sets by tier and

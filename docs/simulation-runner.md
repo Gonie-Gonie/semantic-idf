@@ -471,4 +471,5 @@ results, purpose-specific Energy/Heat Flow/HVAC/Comfort summary tables,
 Basic Energy explanation completeness, source availability, relationship rules,
 summary/monthly ledger/source/annual edge/reconciliation/warning evidence, file
 references, source IDs and related service path IDs for exported explanation
-rows, and the source output signatures visible in result tables.
+rows, source output object/table/row/column/unit metadata for source
+availability rows, and the source output signatures visible in result tables.

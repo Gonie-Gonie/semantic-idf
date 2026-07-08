@@ -7772,9 +7772,20 @@ function renderPurposeHTMLEnergyExplanation(summary = {}, explanation = {}) {
   }
   const availabilityRows = (completeness.sourceAvailability || [])
     .slice(0, 240)
-    .map((item) => [item.level || "", item.name || "", item.status || "", (item.sourceIds || []).join(", ")]);
+    .map((item) => [
+      item.level || "",
+      item.name || "",
+      item.status || "",
+      (item.sourceIds || []).join(", "),
+      ...purposeHTMLSourceAvailabilityFields(explanation, item.sourceIds || []),
+    ]);
   if (availabilityRows.length) {
-    sections.push(`<h2>Energy Explanation Source Availability</h2>${renderPurposeHTMLTable(["Level", "Output", "Status", "Source IDs"], availabilityRows)}`);
+    sections.push(
+      `<h2>Energy Explanation Source Availability</h2>${renderPurposeHTMLTable(
+        ["Level", "Output", "Status", "Source IDs", "Output Object", "Table", "Row", "Column", "Source Unit", "Normalized Unit"],
+        availabilityRows,
+      )}`,
+    );
   }
   const ruleRows = (explanation.relationshipRules || [])
     .slice(0, 120)
@@ -7937,6 +7948,31 @@ function energyExplanationSummaryRatioPart(label = "", value, unit = "") {
     return "";
   }
   return [label, Number.isFinite(number) && number !== 0 ? formatValueWithUnit(number, unit) : ""].filter(Boolean).join(": ");
+}
+
+function purposeHTMLSourceAvailabilityFields(explanation = {}, sourceIDs = []) {
+  return [
+    purposeHTMLSourceValueSummary(explanation, sourceIDs, (source) => (source.objectIndex === undefined || source.objectIndex === null ? "" : source.objectIndex)),
+    purposeHTMLSourceValueSummary(explanation, sourceIDs, (source) => source.tableName),
+    purposeHTMLSourceValueSummary(explanation, sourceIDs, (source) => source.rowName),
+    purposeHTMLSourceValueSummary(explanation, sourceIDs, (source) => source.columnName),
+    purposeHTMLSourceValueSummary(explanation, sourceIDs, (source) => source.sourceUnit || source.units),
+    purposeHTMLSourceValueSummary(explanation, sourceIDs, (source) => source.normalizedUnit),
+  ];
+}
+
+function purposeHTMLSourceValueSummary(explanation = {}, sourceIDs = [], valueFn = () => "") {
+  const values = [];
+  for (const source of energyExplanationSourcesForIDs(explanation, sourceIDs || [])) {
+    if (source.missing) {
+      continue;
+    }
+    const value = String(valueFn(source) ?? "").trim();
+    if (value && !values.includes(value)) {
+      values.push(value);
+    }
+  }
+  return values.join(", ");
 }
 
 function purposeHTMLEnergyMonthlyRows(explanation = {}) {
