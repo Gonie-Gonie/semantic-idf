@@ -1464,6 +1464,10 @@ function renderSimulationEnergyServicePathButton(path = {}, label = "") {
 }
 
 function simulationRelatedServicePathsForEnergySelection(selection = {}) {
+  const directPaths = simulationHVACServicePathsByIDs(selection.relatedPathIds || []);
+  if (directPaths.length) {
+    return directPaths;
+  }
   const service = simulationCanonicalServiceKind(selection.serviceKind || energyServiceFromNode(selection));
   const zoneKey = simulationZoneKey(selection.zoneName || "");
   return simulationHVACServicePaths().filter((path) => {
@@ -1478,9 +1482,15 @@ function simulationRelatedServicePathsForEnergySelection(selection = {}) {
 }
 
 function simulationRelatedServicePathsForEnergyNodes(nodes = []) {
+  const directPathIDs = new Set();
   const wantedServices = new Set();
   const wantedZoneServices = new Set();
   nodes.forEach((node) => {
+    (node.relatedPathIds || []).forEach((id) => {
+      if (id) {
+        directPathIDs.add(id);
+      }
+    });
     const service = simulationCanonicalServiceKind(node.serviceKind || energyServiceFromNode(node));
     if (!service) {
       return;
@@ -1490,6 +1500,9 @@ function simulationRelatedServicePathsForEnergyNodes(nodes = []) {
       wantedZoneServices.add(`${simulationZoneKey(node.zoneName)}|${service}`);
     }
   });
+  if (directPathIDs.size) {
+    return simulationSortedEnergyServicePaths(simulationHVACServicePathsByIDs([...directPathIDs]));
+  }
   const paths = simulationHVACServicePaths().filter((path) => {
     const service = simulationCanonicalServiceKind(path.serviceKind);
     if (!wantedServices.has(service)) {
@@ -1501,6 +1514,18 @@ function simulationRelatedServicePathsForEnergyNodes(nodes = []) {
     const zoneKey = simulationZoneKey(path.zoneName || path.servedSubject?.zoneName || "");
     return wantedZoneServices.has(`${zoneKey}|${service}`) || wantedServices.has(service);
   });
+  return simulationSortedEnergyServicePaths(paths);
+}
+
+function simulationHVACServicePathsByIDs(pathIDs = []) {
+  const wanted = new Set(pathIDs || []);
+  if (!wanted.size) {
+    return [];
+  }
+  return simulationHVACServicePaths().filter((path) => wanted.has(path.id));
+}
+
+function simulationSortedEnergyServicePaths(paths = []) {
   return paths.sort((a, b) => {
     const zoneCompare = simulationServedSubjectLabel(a.servedSubject || a).localeCompare(simulationServedSubjectLabel(b.servedSubject || b));
     if (zoneCompare) return zoneCompare;

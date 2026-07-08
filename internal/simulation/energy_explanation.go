@@ -67,42 +67,44 @@ type EnergyExplanationSummaryItem struct {
 }
 
 type EnergyExplanationNode struct {
-	ID           string   `json:"id"`
-	Level        string   `json:"level"`
-	Kind         string   `json:"kind"`
-	Label        string   `json:"label"`
-	Value        float64  `json:"value"`
-	SignedValue  float64  `json:"signedValue,omitempty"`
-	DisplayValue float64  `json:"displayValue,omitempty"`
-	Unit         string   `json:"unit"`
-	Period       string   `json:"period,omitempty"`
-	ZoneName     string   `json:"zoneName,omitempty"`
-	LoopName     string   `json:"loopName,omitempty"`
-	ServiceKind  string   `json:"serviceKind,omitempty"`
-	Carrier      string   `json:"carrier,omitempty"`
-	EndUse       string   `json:"endUse,omitempty"`
-	HeatCategory string   `json:"heatCategory,omitempty"`
-	Sign         string   `json:"sign,omitempty"`
-	Basis        string   `json:"basis,omitempty"`
-	SourceIDs    []string `json:"sourceIds,omitempty"`
+	ID             string   `json:"id"`
+	Level          string   `json:"level"`
+	Kind           string   `json:"kind"`
+	Label          string   `json:"label"`
+	Value          float64  `json:"value"`
+	SignedValue    float64  `json:"signedValue,omitempty"`
+	DisplayValue   float64  `json:"displayValue,omitempty"`
+	Unit           string   `json:"unit"`
+	Period         string   `json:"period,omitempty"`
+	ZoneName       string   `json:"zoneName,omitempty"`
+	LoopName       string   `json:"loopName,omitempty"`
+	ServiceKind    string   `json:"serviceKind,omitempty"`
+	Carrier        string   `json:"carrier,omitempty"`
+	EndUse         string   `json:"endUse,omitempty"`
+	HeatCategory   string   `json:"heatCategory,omitempty"`
+	Sign           string   `json:"sign,omitempty"`
+	Basis          string   `json:"basis,omitempty"`
+	RelatedPathIDs []string `json:"relatedPathIds,omitempty"`
+	SourceIDs      []string `json:"sourceIds,omitempty"`
 }
 
 type EnergyExplanationEdge struct {
-	ID           string   `json:"id"`
-	FromID       string   `json:"fromId"`
-	ToID         string   `json:"toId"`
-	Value        float64  `json:"value"`
-	SignedValue  float64  `json:"signedValue,omitempty"`
-	DisplayValue float64  `json:"displayValue,omitempty"`
-	Unit         string   `json:"unit"`
-	Period       string   `json:"period,omitempty"`
-	Relation     string   `json:"relation"`
-	Basis        string   `json:"basis"`
-	Formula      string   `json:"formula,omitempty"`
-	RuleID       string   `json:"ruleId,omitempty"`
-	SourceIDs    []string `json:"sourceIds,omitempty"`
-	ZoneName     string   `json:"zoneName,omitempty"`
-	ServiceKind  string   `json:"serviceKind,omitempty"`
+	ID             string   `json:"id"`
+	FromID         string   `json:"fromId"`
+	ToID           string   `json:"toId"`
+	Value          float64  `json:"value"`
+	SignedValue    float64  `json:"signedValue,omitempty"`
+	DisplayValue   float64  `json:"displayValue,omitempty"`
+	Unit           string   `json:"unit"`
+	Period         string   `json:"period,omitempty"`
+	Relation       string   `json:"relation"`
+	Basis          string   `json:"basis"`
+	Formula        string   `json:"formula,omitempty"`
+	RuleID         string   `json:"ruleId,omitempty"`
+	SourceIDs      []string `json:"sourceIds,omitempty"`
+	ZoneName       string   `json:"zoneName,omitempty"`
+	ServiceKind    string   `json:"serviceKind,omitempty"`
+	RelatedPathIDs []string `json:"relatedPathIds,omitempty"`
 }
 
 type EnergyDataSource struct {
@@ -742,6 +744,7 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 		existing.node.SignedValue = roundedEnergyNumber(existing.node.SignedValue + node.SignedValue)
 		existing.node.DisplayValue = roundedEnergyNumber(existing.node.DisplayValue + node.DisplayValue)
 		existing.node.SourceIDs = appendUniqueStrings(existing.node.SourceIDs, node.SourceIDs...)
+		existing.node.RelatedPathIDs = appendUniqueStrings(existing.node.RelatedPathIDs, node.RelatedPathIDs...)
 	}
 	for _, item := range series {
 		value := valueFor(item)

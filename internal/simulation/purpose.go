@@ -10,6 +10,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/Gonie-Gonie/semantic-idf/internal/epinput"
 	"github.com/Gonie-Gonie/semantic-idf/internal/idf"
 )
 
@@ -554,6 +555,7 @@ func BuildPurposeResultBundle(result *SimulationRunResult, request SimulationPur
 			}
 			bundle.Energy.Completeness = energyDashboardCompleteness(bundle.Energy, result.PurposeRunPlan, result.Series)
 			bundle.EnergyExplanation = buildEnergyExplanationResultFromFiles(result.Files, bundle.Energy, plan)
+			bundle.EnergyExplanation = enrichEnergyExplanationWithServicePaths(bundle.EnergyExplanation, result.InputPath)
 			bundle.EnergyExplanationSummary = buildEnergyExplanationSummary(bundle.EnergyExplanation)
 			bundle.Completeness = append(bundle.Completeness, bundle.Energy.Completeness...)
 		case SimulationPurposeZoneHeatFlow:
@@ -613,6 +615,165 @@ func BuildPurposeResultBundle(result *SimulationRunResult, request SimulationPur
 		}
 	}
 	return bundle
+}
+
+type energyServicePathIndex struct {
+	byService     map[string][]string
+	byZone        map[string][]string
+	byZoneService map[string][]string
+	byLoopService map[string][]string
+}
+
+func enrichEnergyExplanationWithServicePaths(explanation EnergyExplanationResult, inputPath string) EnergyExplanationResult {
+	index := buildEnergyServicePathIndex(inputPath)
+	if len(index.byService) == 0 && len(index.byZone) == 0 && len(index.byLoopService) == 0 {
+		return explanation
+	}
+	explanation.Nodes = enrichEnergyExplanationNodesWithServicePaths(explanation.Nodes, index)
+	nodePaths := energyExplanationNodePathMap(explanation.Nodes)
+	explanation.Edges = enrichEnergyExplanationEdgesWithServicePaths(explanation.Edges, nodePaths, index)
+	for periodIndex := range explanation.Periods {
+		explanation.Periods[periodIndex].Nodes = enrichEnergyExplanationNodesWithServicePaths(explanation.Periods[periodIndex].Nodes, index)
+		periodNodePaths := energyExplanationNodePathMap(explanation.Periods[periodIndex].Nodes)
+		explanation.Periods[periodIndex].Edges = enrichEnergyExplanationEdgesWithServicePaths(explanation.Periods[periodIndex].Edges, periodNodePaths, index)
+	}
+	return explanation
+}
+
+func buildEnergyServicePathIndex(inputPath string) energyServicePathIndex {
+	index := energyServicePathIndex{
+		byService:     map[string][]string{},
+		byZone:        map[string][]string{},
+		byZoneService: map[string][]string{},
+		byLoopService: map[string][]string{},
+	}
+	inputPath = strings.TrimSpace(inputPath)
+	if inputPath == "" {
+		return index
+	}
+	content, err := os.ReadFile(inputPath)
+	if err != nil {
+		return index
+	}
+	model, err := epinput.Parse(inputPath, content)
+	if err != nil {
+		return index
+	}
+	report := idf.AnalyzeHVAC(epinput.ToIDFDocument(model))
+	for _, summary := range report.ServiceModel.ZoneServices {
+		for _, path := range summary.Paths {
+			pathID := strings.TrimSpace(path.ID)
+			service := energyCanonicalServiceKind(path.ServiceKind)
+			if pathID == "" {
+				continue
+			}
+			if service != "" {
+				index.byService[service] = appendUniqueStrings(index.byService[service], pathID)
+			}
+			zoneKey := normalizePurposeToken(firstNonEmpty(path.ZoneName, path.ServedSubject.ZoneName, summary.ZoneName))
+			if zoneKey != "" {
+				index.byZone[zoneKey] = appendUniqueStrings(index.byZone[zoneKey], pathID)
+				if service != "" {
+					index.byZoneService[zoneKey+"|"+service] = appendUniqueStrings(index.byZoneService[zoneKey+"|"+service], pathID)
+				}
+			}
+			for _, loopName := range energyServicePathLoopNames(path) {
+				loopKey := normalizePurposeToken(loopName)
+				if loopKey != "" && service != "" {
+					index.byLoopService[loopKey+"|"+service] = appendUniqueStrings(index.byLoopService[loopKey+"|"+service], pathID)
+				}
+			}
+		}
+	}
+	return index
+}
+
+func energyServicePathLoopNames(path idf.ZoneServicePath) []string {
+	out := []string{}
+	if path.PlantLoop != nil {
+		out = appendUniqueStrings(out, path.PlantLoop.Name)
+	}
+	if path.AirLoop != nil {
+		out = appendUniqueStrings(out, path.AirLoop.Name)
+	}
+	if path.CondenserLoop != nil {
+		out = appendUniqueStrings(out, path.CondenserLoop.Name)
+	}
+	if path.SourceSystem != nil {
+		out = appendUniqueStrings(out, path.SourceSystem.Name)
+	}
+	if path.RefrigerantSystem != nil {
+		out = appendUniqueStrings(out, path.RefrigerantSystem.Name)
+	}
+	return out
+}
+
+func enrichEnergyExplanationNodesWithServicePaths(nodes []EnergyExplanationNode, index energyServicePathIndex) []EnergyExplanationNode {
+	out := append([]EnergyExplanationNode(nil), nodes...)
+	for nodeIndex := range out {
+		out[nodeIndex].RelatedPathIDs = appendUniqueStrings(out[nodeIndex].RelatedPathIDs, relatedEnergyServicePathIDs(out[nodeIndex], index)...)
+	}
+	return out
+}
+
+func enrichEnergyExplanationEdgesWithServicePaths(edges []EnergyExplanationEdge, nodePaths map[string][]string, index energyServicePathIndex) []EnergyExplanationEdge {
+	out := append([]EnergyExplanationEdge(nil), edges...)
+	for edgeIndex := range out {
+		out[edgeIndex].RelatedPathIDs = appendUniqueStrings(out[edgeIndex].RelatedPathIDs, nodePaths[out[edgeIndex].FromID]...)
+		out[edgeIndex].RelatedPathIDs = appendUniqueStrings(out[edgeIndex].RelatedPathIDs, nodePaths[out[edgeIndex].ToID]...)
+		if out[edgeIndex].ZoneName != "" || out[edgeIndex].ServiceKind != "" {
+			out[edgeIndex].RelatedPathIDs = appendUniqueStrings(out[edgeIndex].RelatedPathIDs, relatedEnergyServicePathIDs(EnergyExplanationNode{
+				ZoneName:    out[edgeIndex].ZoneName,
+				ServiceKind: out[edgeIndex].ServiceKind,
+			}, index)...)
+		}
+	}
+	return out
+}
+
+func energyExplanationNodePathMap(nodes []EnergyExplanationNode) map[string][]string {
+	out := map[string][]string{}
+	for _, node := range nodes {
+		if node.ID == "" || len(node.RelatedPathIDs) == 0 {
+			continue
+		}
+		out[node.ID] = appendUniqueStrings(out[node.ID], node.RelatedPathIDs...)
+	}
+	return out
+}
+
+func relatedEnergyServicePathIDs(node EnergyExplanationNode, index energyServicePathIndex) []string {
+	service := energyCanonicalServiceKind(firstNonEmpty(node.ServiceKind, node.EndUse))
+	zoneKey := normalizePurposeToken(node.ZoneName)
+	loopKey := normalizePurposeToken(node.LoopName)
+	out := []string{}
+	if zoneKey != "" && service != "" {
+		out = appendUniqueStrings(out, index.byZoneService[zoneKey+"|"+service]...)
+	}
+	if loopKey != "" && service != "" {
+		out = appendUniqueStrings(out, index.byLoopService[loopKey+"|"+service]...)
+	}
+	if len(out) == 0 && zoneKey != "" {
+		out = appendUniqueStrings(out, index.byZone[zoneKey]...)
+	}
+	if len(out) == 0 && zoneKey == "" && loopKey == "" && service != "" && (node.Level == "load" || node.Level == "heat") {
+		out = appendUniqueStrings(out, index.byService[service]...)
+	}
+	return out
+}
+
+func energyCanonicalServiceKind(serviceKind string) string {
+	value := strings.ToLower(strings.TrimSpace(serviceKind))
+	switch {
+	case strings.Contains(value, "cooling") || value == "dehumidification":
+		return "cooling"
+	case strings.Contains(value, "heating") || value == "humidification":
+		return "heating"
+	case strings.Contains(value, "ventilation"):
+		return "ventilation"
+	default:
+		return value
+	}
 }
 
 func buildHVACLoopRunResults(series []SimulationSeries, request SimulationPurposeRequest) []HVACLoopRunResult {

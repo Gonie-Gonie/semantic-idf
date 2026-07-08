@@ -100,6 +100,10 @@ Delivered-load nodes keep zone loads in `zoneName`, plant demand in `loopName`,
 and aggregate coil/system loads at the system layer; heat-driver reconciliation
 uses zone loads when they are available so plant and system layers are not
 double-counted against zone heat-balance drivers.
+When the source IDF or epJSON can be read for the run, load/heat nodes and
+related edges also include `relatedPathIds` from the HVAC service model. The
+Sankey inspector and Systems view use those IDs before falling back to
+zone/service-kind matching.
 
 Output states:
 

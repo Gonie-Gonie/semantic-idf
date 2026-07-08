@@ -55,6 +55,9 @@ The release script infers bump size from these sections:
   demand loads to `loopName`, and keep coil/system loads as aggregate system
   nodes so heat-driver reconciliation does not double-count system and plant
   layers when zone loads are available.
+- Basic Energy explanation nodes and edges now include related HVAC service path
+  IDs when the source model can be analyzed, so Sankey inspectors and Systems
+  views can jump to the matching zone service paths directly.
 - Basic Energy heat-driver extraction now recognizes object-level fan heat-to-air
   outputs separately from fan electricity use.
 - Basic Energy output plan rows now label monthly delivered-load/zone-energy

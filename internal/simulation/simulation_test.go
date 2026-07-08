@@ -868,6 +868,106 @@ func TestPurposeResultBundleUsesSQLEnergyDashboard(t *testing.T) {
 	}
 }
 
+func TestPurposeResultBundleLinksEnergyExplanationToHVACServicePaths(t *testing.T) {
+	dir := t.TempDir()
+	sqlPath := filepath.Join(dir, "eplusout.sql")
+	createTestEnergySQL(t, sqlPath)
+	db, err := sql.Open("sqlite", sqlPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO ReportDataDictionary VALUES
+		(23, 'Office', 'Zone Air System Sensible Cooling Energy', 'J')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO ReportData VALUES
+		(7, 1, 23, 900000.0),
+		(8, 2, 23, 900000.0)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	inputPath := filepath.Join(dir, "model.idf")
+	if err := os.WriteFile(inputPath, []byte(`
+Version, 24.1;
+
+Zone,
+  Office;
+
+ZoneHVAC:EquipmentConnections,
+  Office,
+  Office Equipment,
+  Office Supply Inlet,
+  ,
+  Office Zone Air Node,
+  ;
+
+ZoneHVAC:EquipmentList,
+  Office Equipment,
+  SequentialLoad,
+  ZoneHVAC:IdealLoadsAirSystem,
+  Office Ideal Loads,
+  1,
+  1,
+  ,
+  ;
+
+ZoneHVAC:IdealLoadsAirSystem,
+  Office Ideal Loads,
+  Always On,
+  Office Supply Inlet,
+  ,
+  ,
+  50,
+  13,
+  0.015,
+  0.009,
+  NoLimit,
+  Autosize,
+  Autosize,
+  NoLimit,
+  Autosize,
+  Autosize,
+  ,
+  ,
+  None,
+  0.7;
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	result := &SimulationRunResult{
+		Status:    "succeeded",
+		InputPath: inputPath,
+		PurposeRunPlan: &PurposeRunPlan{OutputObjects: []PurposeOutputObject{
+			{ObjectType: "Output:Meter", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, KeyValue: "Electricity:Cooling"},
+			{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, VariableName: "Zone Air System Sensible Cooling Energy"},
+		}},
+		Files: []SimulationFileInfo{{
+			Name: "eplusout.sql",
+			Path: sqlPath,
+			Kind: "sqlite",
+		}},
+	}
+	bundle := BuildPurposeResultBundle(result, SimulationPurposeRequest{
+		Purposes: []SimulationPurposeID{SimulationPurposeBasicEnergy},
+	})
+
+	load := energyExplanationNodeByID(bundle.EnergyExplanation.Nodes, "load.cooling.office")
+	if load == nil || len(load.RelatedPathIDs) == 0 {
+		t.Fatalf("load node related paths = %#v", load)
+	}
+	edge := energyExplanationEdgeByIDs(bundle.EnergyExplanation.Edges, "energy.end_use.cooling.electricity", "load.cooling.office")
+	if edge == nil || len(edge.RelatedPathIDs) == 0 || !stringSlicesEqual(edge.RelatedPathIDs, load.RelatedPathIDs) {
+		t.Fatalf("delivered-load edge related paths = %#v load=%#v", edge, load)
+	}
+	periodLoad := energyExplanationNodeByID(bundle.EnergyExplanation.Periods[1].Nodes, "load.cooling.office")
+	if periodLoad == nil || !stringSlicesEqual(periodLoad.RelatedPathIDs, load.RelatedPathIDs) {
+		t.Fatalf("period load related paths = %#v annual=%#v", periodLoad, load)
+	}
+}
+
 func energyExplanationNodeByID(nodes []EnergyExplanationNode, id string) *EnergyExplanationNode {
 	for index := range nodes {
 		if nodes[index].ID == id {

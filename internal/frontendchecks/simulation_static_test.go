@@ -12,6 +12,8 @@ func TestFrontendSimulationEnergySystemsCrossJumpContracts(t *testing.T) {
 		"renderEnergySystemsSubview",
 		"data-simulation-hvac-path-id",
 		"simulationRelatedServicePathsForEnergySelection",
+		"simulationHVACServicePathsByIDs",
+		"relatedPathIds",
 		"focusedEnergyExplanationGraph",
 		"data-simulation-energy-focus-mode",
 		"data-simulation-energy-service-path-focus",
