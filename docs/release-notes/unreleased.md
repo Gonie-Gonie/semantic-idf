@@ -226,7 +226,10 @@ The release script infers bump size from these sections:
 
 ## Changed
 
-- _None._
+- Basic Energy SQL explanation parsing now uses a shared `QueryReportData`
+  layer that joins `ReportDataDictionary`, `ReportData`, and `Time` while
+  preserving dictionary filters, meter status, reporting frequency, and time
+  interval metadata.
 
 ## Fixed
 

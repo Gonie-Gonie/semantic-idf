@@ -368,6 +368,106 @@ func TestParseSimulationEnergySQLAggregatesRowsByMonth(t *testing.T) {
 	}
 }
 
+func TestQueryReportDataFiltersAndPreservesMetadata(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "eplusout.sql")
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	statements := []string{
+		`CREATE TABLE ReportDataDictionary (
+			ReportDataDictionaryIndex INTEGER PRIMARY KEY,
+			KeyValue TEXT,
+			Name TEXT,
+			Units TEXT,
+			IsMeter INTEGER,
+			ReportingFrequency TEXT,
+			IndexGroup TEXT
+		)`,
+		`CREATE TABLE "Time" (
+			TimeIndex INTEGER PRIMARY KEY,
+			Month INTEGER,
+			Day INTEGER,
+			Hour INTEGER,
+			Minute INTEGER,
+			IntervalType TEXT
+		)`,
+		`CREATE TABLE ReportData (
+			ReportDataIndex INTEGER PRIMARY KEY,
+			TimeIndex INTEGER,
+			ReportDataDictionaryIndex INTEGER,
+			Value REAL
+		)`,
+		`INSERT INTO ReportDataDictionary VALUES
+			(20, '', 'Electricity:Facility', 'J', 1, 'Hourly', 'Meters'),
+			(21, 'ZONE ONE', 'Zone Lights Electricity Energy', 'J', 0, 'Monthly', 'Zone')`,
+		`INSERT INTO "Time" VALUES
+			(1, 1, 1, 1, 0, 'Zone Timestep'),
+			(2, 1, 31, 24, 0, 'Month')`,
+		`INSERT INTO ReportData VALUES
+			(1, 1, 20, 3600000.0),
+			(2, 2, 21, 900000.0)`,
+	}
+	for _, statement := range statements {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatalf("sql fixture statement failed: %v\n%s", err, statement)
+		}
+	}
+
+	isMeter := true
+	rows, err := QueryReportData(db, SQLSeriesQuery{
+		Names:     []string{"Electricity:Facility"},
+		IsMeter:   &isMeter,
+		Frequency: []string{"Hourly"},
+		Units:     []string{"J"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("meter row count = %d, want 1: %#v", len(rows), rows)
+	}
+	row := rows[0]
+	if row.DictionaryIndex != 20 || row.Name != "Electricity:Facility" || row.KeyValue != "" || !row.IsMeter {
+		t.Fatalf("meter dictionary metadata = %#v", row)
+	}
+	if row.ReportingFrequency != "Hourly" || row.IndexGroup != "Meters" || row.Units != "J" {
+		t.Fatalf("meter report metadata = %#v", row)
+	}
+	if !row.Month.Valid || row.Month.Int64 != 1 || !row.Day.Valid || row.Day.Int64 != 1 || !row.Hour.Valid || row.Hour.Int64 != 1 || row.IntervalType != "Zone Timestep" {
+		t.Fatalf("meter time metadata = %#v", row)
+	}
+	if !row.Value.Valid || row.Value.Float64 != 3600000 {
+		t.Fatalf("meter value = %#v", row.Value)
+	}
+
+	notMeter := false
+	rows, err = QueryReportData(db, SQLSeriesQuery{
+		KeyValues: []string{"ZONE ONE"},
+		IsMeter:   &notMeter,
+		Frequency: []string{"Monthly"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].DictionaryIndex != 21 || rows[0].IntervalType != "Month" {
+		t.Fatalf("variable row = %#v, want monthly ZONE ONE row", rows)
+	}
+
+	rows, err = QueryReportData(db, SQLSeriesQuery{
+		Names:   []string{"Electricity:Facility"},
+		IsMeter: &notMeter,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 0 {
+		t.Fatalf("non-meter filter returned facility meter rows: %#v", rows)
+	}
+}
+
 func TestConvertEnergySQLValueUnits(t *testing.T) {
 	tests := []struct {
 		name      string

@@ -158,7 +158,10 @@ The result source priority is SQL, then CSV, then ESO. The run result and
 `semantic-idf-run.json` manifest expose both `resultSourcePriority` and the
 actual `resultSources` used by the parsers. SQL parsing already feeds legacy
 `Series` and `HeatFlow`, so older viewers continue to work while purpose result
-viewers are added. Basic Energy SQL rows are converted to display units
+viewers are added. Basic Energy explanation parsing uses a shared
+`QueryReportData` layer that joins `ReportDataDictionary`, `ReportData`, and
+`Time` while preserving dictionary metadata, meter status, reporting frequency,
+and time interval fields. Basic Energy SQL rows are converted to display units
 (`J`/`kJ`/`MJ`/`GJ`/`Wh` to `kWh`, `W` to `kW`) and grouped into monthly chart
 points when `Time.Month` is available, so hourly or timestep energy rows can
 still feed monthly dashboards. Basic Energy also builds an

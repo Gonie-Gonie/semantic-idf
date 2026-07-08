@@ -341,21 +341,19 @@ func parseSimulationEnergyExplanationSQL(path string, plan *PurposeRunPlan) (Ene
 				ids = append(ids, dictionary.row.index)
 				byID[dictionary.row.index] = dictionary
 			}
-			query, args := sqlReportDataQuery(ids)
-			rows, err := db.Query(query, args...)
+			reportRows, err := QueryReportData(db, SQLSeriesQuery{DictionaryIndexes: ids})
 			if err != nil {
 				return EnergyExplanationResult{}, err
 			}
 
 			builders := map[int]*energyExplanationSeriesBuilder{}
-			for rows.Next() {
-				var timeIndex int64
-				var month, day, hour, minute sql.NullInt64
-				var dictionaryIndex int
-				var value sql.NullFloat64
-				if err := rows.Scan(&timeIndex, &month, &day, &hour, &minute, &dictionaryIndex, &value); err != nil {
-					continue
-				}
+			for _, row := range reportRows {
+				timeIndex := row.TimeIndex
+				month := row.Month
+				day := row.Day
+				hour := row.Hour
+				dictionaryIndex := row.DictionaryIndex
+				value := row.Value
 				if !value.Valid || math.IsNaN(value.Float64) || math.IsInf(value.Float64, 0) {
 					continue
 				}
@@ -399,13 +397,6 @@ func parseSimulationEnergyExplanationSQL(path string, plan *PurposeRunPlan) (Ene
 						builder.hasSelectedRange = true
 					}
 				}
-			}
-			if err := rows.Err(); err != nil {
-				rows.Close()
-				return EnergyExplanationResult{}, err
-			}
-			if err := rows.Close(); err != nil {
-				return EnergyExplanationResult{}, err
 			}
 
 			for _, dictionary := range dictionaries {

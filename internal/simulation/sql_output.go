@@ -30,6 +30,34 @@ type sqlOutputDictionaryRow struct {
 	units    string
 }
 
+// SQLSeriesQuery filters EnergyPlus ReportData rows by dictionary metadata.
+type SQLSeriesQuery struct {
+	DictionaryIndexes []int
+	Names             []string
+	KeyValues         []string
+	IsMeter           *bool
+	Frequency         []string
+	Units             []string
+}
+
+// SQLSeriesRow is a ReportData row joined with its dictionary and Time metadata.
+type SQLSeriesRow struct {
+	TimeIndex          int64
+	Month              sql.NullInt64
+	Day                sql.NullInt64
+	Hour               sql.NullInt64
+	Minute             sql.NullInt64
+	IntervalType       string
+	DictionaryIndex    int
+	KeyValue           string
+	Name               string
+	Units              string
+	IsMeter            bool
+	ReportingFrequency string
+	IndexGroup         string
+	Value              sql.NullFloat64
+}
+
 type sqlEnergyDictionaryRow struct {
 	sqlOutputDictionaryRow
 	category    string
@@ -1261,6 +1289,204 @@ func quoteSQLiteIdentifier(value string) string {
 func normalizeSQLColumnName(value string) string {
 	replacer := strings.NewReplacer("_", "", " ", "", "-", "")
 	return strings.ToLower(replacer.Replace(strings.TrimSpace(value)))
+}
+
+// QueryReportData returns ReportData rows with dictionary and Time metadata.
+func QueryReportData(db *sql.DB, seriesQuery SQLSeriesQuery) ([]SQLSeriesRow, error) {
+	reportDataColumns, err := sqlTableColumns(db, "ReportData")
+	if err != nil {
+		return nil, err
+	}
+	dictionaryColumns, err := sqlTableColumns(db, "ReportDataDictionary")
+	if err != nil {
+		return nil, err
+	}
+	timeColumns, err := sqlTableColumns(db, "Time")
+	if err != nil {
+		return nil, err
+	}
+	rdTimeIndex := reportDataColumns[normalizeSQLColumnName("TimeIndex")]
+	rdDictionaryIndex := reportDataColumns[normalizeSQLColumnName("ReportDataDictionaryIndex")]
+	rdValue := reportDataColumns[normalizeSQLColumnName("Value")]
+	rddDictionaryIndex := dictionaryColumns[normalizeSQLColumnName("ReportDataDictionaryIndex")]
+	timeIndex := timeColumns[normalizeSQLColumnName("TimeIndex")]
+	if rdTimeIndex == "" || rdDictionaryIndex == "" || rdValue == "" || rddDictionaryIndex == "" || timeIndex == "" {
+		return nil, fmt.Errorf("required ReportData query columns are missing")
+	}
+
+	rdTimeIndexExpr := "rd." + quoteSQLiteIdentifier(rdTimeIndex)
+	rdDictionaryIndexExpr := "rd." + quoteSQLiteIdentifier(rdDictionaryIndex)
+	rdValueExpr := "rd." + quoteSQLiteIdentifier(rdValue)
+	rddDictionaryIndexExpr := "rdd." + quoteSQLiteIdentifier(rddDictionaryIndex)
+	timeIndexExpr := "t." + quoteSQLiteIdentifier(timeIndex)
+	keyValueExpr := sqlAliasedTextColumnExpr(dictionaryColumns, "rdd", "KeyValue", "''")
+	nameExpr := sqlAliasedTextColumnExpr(dictionaryColumns, "rdd", "Name", "''")
+	unitsExpr := sqlAliasedTextColumnExpr(dictionaryColumns, "rdd", "Units", "''")
+	isMeterExpr := sqlAliasedCastTextColumnExpr(dictionaryColumns, "rdd", "IsMeter", "'0'")
+	frequencyExpr := sqlAliasedTextColumnExpr(dictionaryColumns, "rdd", "ReportingFrequency", "''")
+	indexGroupExpr := sqlAliasedTextColumnExpr(dictionaryColumns, "rdd", "IndexGroup", "''")
+	monthExpr := sqlAliasedColumnExpr(timeColumns, "t", "Month", "NULL")
+	dayExpr := sqlAliasedColumnExpr(timeColumns, "t", "Day", "NULL")
+	hourExpr := sqlAliasedColumnExpr(timeColumns, "t", "Hour", "NULL")
+	minuteExpr := sqlAliasedColumnExpr(timeColumns, "t", "Minute", "NULL")
+	intervalTypeExpr := sqlAliasedTextColumnExpr(timeColumns, "t", "IntervalType", "''")
+
+	where, args := sqlSeriesQueryWhereClause(seriesQuery, rdDictionaryIndexExpr, nameExpr, keyValueExpr, isMeterExpr, frequencyExpr, unitsExpr)
+	rows, err := db.Query(fmt.Sprintf(`
+SELECT %s AS time_index,
+       %s AS month,
+       %s AS day,
+       %s AS hour,
+       %s AS minute,
+       %s AS interval_type,
+       %s AS dictionary_index,
+       %s AS key_value,
+       %s AS name,
+       %s AS units,
+       %s AS is_meter,
+       %s AS reporting_frequency,
+       %s AS index_group,
+       %s AS value
+FROM ReportData rd
+JOIN ReportDataDictionary rdd ON %s = %s
+LEFT JOIN "Time" t ON %s = %s
+%s
+ORDER BY %s, %s`,
+		rdTimeIndexExpr,
+		monthExpr,
+		dayExpr,
+		hourExpr,
+		minuteExpr,
+		intervalTypeExpr,
+		rdDictionaryIndexExpr,
+		keyValueExpr,
+		nameExpr,
+		unitsExpr,
+		isMeterExpr,
+		frequencyExpr,
+		indexGroupExpr,
+		rdValueExpr,
+		rddDictionaryIndexExpr,
+		rdDictionaryIndexExpr,
+		timeIndexExpr,
+		rdTimeIndexExpr,
+		where,
+		rdTimeIndexExpr,
+		rdDictionaryIndexExpr,
+	), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []SQLSeriesRow{}
+	for rows.Next() {
+		var row SQLSeriesRow
+		var isMeterText string
+		if err := rows.Scan(
+			&row.TimeIndex,
+			&row.Month,
+			&row.Day,
+			&row.Hour,
+			&row.Minute,
+			&row.IntervalType,
+			&row.DictionaryIndex,
+			&row.KeyValue,
+			&row.Name,
+			&row.Units,
+			&isMeterText,
+			&row.ReportingFrequency,
+			&row.IndexGroup,
+			&row.Value,
+		); err != nil {
+			return nil, err
+		}
+		row.IsMeter = parseSQLBool(isMeterText)
+		out = append(out, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func sqlAliasedColumnExpr(columns map[string]string, alias string, name string, fallback string) string {
+	actual := columns[normalizeSQLColumnName(name)]
+	if actual == "" {
+		return fallback
+	}
+	return alias + "." + quoteSQLiteIdentifier(actual)
+}
+
+func sqlAliasedTextColumnExpr(columns map[string]string, alias string, name string, fallback string) string {
+	actual := columns[normalizeSQLColumnName(name)]
+	if actual == "" {
+		return fallback
+	}
+	return "COALESCE(" + alias + "." + quoteSQLiteIdentifier(actual) + ", '')"
+}
+
+func sqlAliasedCastTextColumnExpr(columns map[string]string, alias string, name string, fallback string) string {
+	actual := columns[normalizeSQLColumnName(name)]
+	if actual == "" {
+		return fallback
+	}
+	return "COALESCE(CAST(" + alias + "." + quoteSQLiteIdentifier(actual) + " AS TEXT), '')"
+}
+
+func sqlSeriesQueryWhereClause(seriesQuery SQLSeriesQuery, dictionaryIndexExpr string, nameExpr string, keyValueExpr string, isMeterExpr string, frequencyExpr string, unitsExpr string) (string, []any) {
+	conditions := []string{}
+	args := []any{}
+	appendIntFilter := func(expr string, values []int) {
+		if len(values) == 0 {
+			return
+		}
+		conditions = append(conditions, fmt.Sprintf("%s IN (%s)", expr, sqlPlaceholders(len(values))))
+		for _, value := range values {
+			args = append(args, value)
+		}
+	}
+	appendTextFilter := func(expr string, values []string) {
+		values = compactSQLFilterStrings(values)
+		if len(values) == 0 {
+			return
+		}
+		conditions = append(conditions, fmt.Sprintf("TRIM(%s) IN (%s)", expr, sqlPlaceholders(len(values))))
+		for _, value := range values {
+			args = append(args, value)
+		}
+	}
+	appendIntFilter(dictionaryIndexExpr, seriesQuery.DictionaryIndexes)
+	appendTextFilter(nameExpr, seriesQuery.Names)
+	appendTextFilter(keyValueExpr, seriesQuery.KeyValues)
+	appendTextFilter(frequencyExpr, seriesQuery.Frequency)
+	appendTextFilter(unitsExpr, seriesQuery.Units)
+	if seriesQuery.IsMeter != nil {
+		normalized := fmt.Sprintf("LOWER(TRIM(%s))", isMeterExpr)
+		if *seriesQuery.IsMeter {
+			conditions = append(conditions, normalized+" IN ('1', 'true', 'yes', 'y')")
+		} else {
+			conditions = append(conditions, normalized+" NOT IN ('1', 'true', 'yes', 'y')")
+		}
+	}
+	if len(conditions) == 0 {
+		return "", args
+	}
+	return "WHERE " + strings.Join(conditions, " AND "), args
+}
+
+func compactSQLFilterStrings(values []string) []string {
+	out := []string{}
+	seen := map[string]bool{}
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		out = append(out, value)
+	}
+	return out
 }
 
 func sqlReportDataQuery(dictionaryIDs []int) (string, []any) {
