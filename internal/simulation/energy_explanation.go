@@ -2734,7 +2734,9 @@ func energyCompletenessLevel(level string, found int, total int, label string) E
 		status = "partial"
 	}
 	message := fmt.Sprintf("%s: %d/%d source group(s) available", label, found, total)
-	if level == "heat" && found == 0 {
+	if total == 0 {
+		message = label + ": not requested by the current output plan"
+	} else if level == "heat" && found == 0 {
 		message = "Heat Drivers need Zone Heat Flow or explanation heat-balance outputs."
 	}
 	return EnergyCompletenessLevel{

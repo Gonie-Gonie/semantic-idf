@@ -98,7 +98,9 @@ become hourly when the frequency policy is `highest_resolution`. The app and
 batch UI default to `light`; callers that omit the option keep the legacy
 `heat_drivers` behavior. When Zone Heat Flow is also selected, its hourly
 heat-balance outputs are reused instead of adding a duplicate Basic Energy zone
-heat-driver request.
+heat-driver request. Detail levels not requested by the active tier are reported
+as `not_applicable` in explanation completeness instead of as missing source
+outputs.
 End-use meter aliases cover cooling, heating, lighting, equipment, fans, pumps,
 heat rejection, heat recovery, water systems, exterior lighting, refrigeration,
 onsite generation, district cooling/heating end uses, natural-gas

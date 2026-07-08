@@ -1349,6 +1349,27 @@ func TestPurposeResultBundleUsesSQLEnergyDashboard(t *testing.T) {
 	}
 }
 
+func TestEnergyExplanationCompletenessMarksUnrequestedLightDetailsNotApplicable(t *testing.T) {
+	doc := parsePurposePlanFixture(t, purposePlanFixtureIDF)
+	plan := BuildPurposeRunPlan(doc, SimulationPurposeRequest{
+		Purposes:          []SimulationPurposeID{SimulationPurposeBasicEnergy},
+		BasicEnergyDetail: PurposeBasicEnergyDetailLight,
+	})
+
+	completeness := buildEnergyExplanationCompleteness(nil, nil, &plan, 0)
+	if completeness.DeliveredLoad.Status != "not_applicable" || !strings.Contains(completeness.DeliveredLoad.Message, "not requested") {
+		t.Fatalf("light-tier delivered-load completeness = %#v", completeness.DeliveredLoad)
+	}
+	if completeness.HeatDrivers.Status != "not_applicable" || !strings.Contains(completeness.HeatDrivers.Message, "not requested") {
+		t.Fatalf("light-tier heat-driver completeness = %#v", completeness.HeatDrivers)
+	}
+	for _, category := range completeness.MissingCategories {
+		if strings.HasPrefix(category, "load:") || strings.HasPrefix(category, "heat:") {
+			t.Fatalf("light tier should not report unrequested detail source shortage: %#v", completeness.MissingCategories)
+		}
+	}
+}
+
 func TestPurposeResultBundleAppliesEnergyExplanationPeriodScope(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "eplusout.sql")

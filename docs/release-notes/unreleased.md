@@ -23,6 +23,8 @@ The release script infers bump size from these sections:
   detail tiers; the app and batch UI default to the light meter-only tier.
 - Basic Energy detail outputs now honor the `highest_resolution` frequency
   policy by requesting hourly explain and heat-driver variables.
+- Basic Energy explanation completeness now marks unrequested light-tier
+  delivered-load and heat-driver details as `not_applicable` instead of missing.
 - Energy explanation Sankey and Systems views can now focus by all results, a
   selected zone, or a selected HVAC service path.
 - Energy explanation Sankey can now switch heat drivers between display
