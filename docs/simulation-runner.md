@@ -93,6 +93,9 @@ heat rejection, heat recovery, water systems, exterior lighting, refrigeration,
 onsite generation, district cooling/heating end uses, natural-gas
 heating/equipment/water-system use, and facility fuel oil/propane/steam/other
 fuel totals where the model exposes those meters.
+Onsite electricity production remains visible as a Level 1 energy end-use item
+and summary/export row, but it is not counted as mapped facility consumption
+when residuals and mapped percent are calculated.
 When both energy and rate outputs are present for the same delivered-load or
 heat-driver target, the explanation parser uses the reported energy series and
 keeps the rate series only as traceable fallback source metadata. Completeness

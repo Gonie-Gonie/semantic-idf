@@ -903,6 +903,57 @@ func TestBuildEnergyExplanationAllocatedZoneLoadShare(t *testing.T) {
 	}
 }
 
+func TestBuildEnergyExplanationKeepsProductionOutOfConsumptionResidual(t *testing.T) {
+	result := buildEnergyExplanationResult([]energyExplanationSeries{
+		{
+			Level:     "energy",
+			Kind:      "energy.electricity.total",
+			Label:     "Electricity total",
+			Unit:      "kWh",
+			Carrier:   "electricity",
+			EndUse:    "total",
+			SourceIDs: []string{"facility"},
+			Total:     10,
+		},
+		{
+			Level:     "energy",
+			Kind:      "energy.cooling",
+			Label:     "Cooling energy",
+			Unit:      "kWh",
+			Carrier:   "electricity",
+			EndUse:    "cooling",
+			SourceIDs: []string{"cooling"},
+			Total:     6,
+		},
+		{
+			Level:     "energy",
+			Kind:      "energy.generators",
+			Label:     "Generators / onsite production",
+			Unit:      "kWh",
+			Carrier:   "electricity",
+			EndUse:    "generators",
+			SourceIDs: []string{"pv"},
+			Total:     2,
+		},
+	}, nil, &PurposeRunPlan{})
+
+	production := energyExplanationNodeByID(result.Nodes, "energy.end_use.generators.electricity")
+	if production == nil || production.Value != 2 {
+		t.Fatalf("production node = %#v", production)
+	}
+	if edge := energyExplanationEdgeByIDs(result.Edges, "energy.carrier.electricity", "energy.end_use.generators.electricity"); edge != nil {
+		t.Fatalf("production should not be treated as facility consumption edge: %#v", edge)
+	}
+	reconciliation := energyExplanationReconciliationByID(result.Reconciliation, "reconcile.energy.electricity.annual")
+	if reconciliation == nil || reconciliation.ExpectedValue != 10 || reconciliation.ExplainedValue != 6 || reconciliation.ResidualValue != 4 || result.Completeness.MappedPercent != 60 {
+		t.Fatalf("production-aware reconciliation = %#v completeness=%#v", reconciliation, result.Completeness)
+	}
+	summary := buildEnergyExplanationSummary(result)
+	if item := energyExplanationSummaryItemByID(summary.EnergyByEndUse, "generators.electricity"); item == nil || item.Value != 2 {
+		t.Fatalf("production summary item = %#v", summary.EnergyByEndUse)
+	}
+}
+
 func TestEnergyHeatAliasCatalogHandlesObjectScopedFanHeat(t *testing.T) {
 	def, ok := energyHeatAliasDefinitionForName("Fan Air Heat Gain Rate")
 	if !ok || def.Kind != "heat.fan_to_air" || def.HeatCategory != "hvac_system" || !def.ObjectScoped {

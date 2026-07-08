@@ -693,6 +693,9 @@ func energyExplanationSummaryItemID(key string, node EnergyExplanationNode) stri
 	if node.Level == "zone" {
 		return firstNonEmpty(node.ID, key)
 	}
+	if node.Level == "energy" && node.EndUse != "" && node.EndUse != "total" && strings.TrimSpace(key) != "" {
+		return key
+	}
 	if node.Level == "heat" && strings.TrimSpace(key) != "" {
 		return key
 	}
@@ -806,7 +809,7 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 				facilityByCarrier[item.Carrier] = nodeID
 				facilityValueByCarrier[item.Carrier] += value
 				facilitySourcesByCarrier[item.Carrier] = appendUniqueStrings(facilitySourcesByCarrier[item.Carrier], item.SourceIDs...)
-			} else {
+			} else if !energyExplanationIsProductionEndUse(item) {
 				endUseValueByCarrier[item.Carrier] += value
 				endUseNodesByCarrier[item.Carrier] = appendUniqueStrings(endUseNodesByCarrier[item.Carrier], nodeID)
 			}
@@ -1882,6 +1885,10 @@ func energyExplanationEnergyNodeID(item energyExplanationSeries) string {
 		return "energy.carrier." + item.Carrier
 	}
 	return "energy.end_use." + item.EndUse + "." + item.Carrier
+}
+
+func energyExplanationIsProductionEndUse(item energyExplanationSeries) bool {
+	return item.Level == "energy" && (item.EndUse == "generators" || item.Kind == "energy.generators")
 }
 
 func energyExplanationLoadNodeID(item energyExplanationSeries) string {

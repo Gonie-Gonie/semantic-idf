@@ -48,6 +48,9 @@ The release script infers bump size from these sections:
   meters for fuel oil, propane, other fuels, steam, district cooling/heating
   end uses, and onsite electricity production when those model features are
   detected.
+- Basic Energy explanation summaries now keep energy end-use carrier IDs
+  distinct, and onsite electricity production no longer counts as mapped
+  facility consumption in residual and mapped-percent calculations.
 - Basic Energy explanation parsing now prefers reported energy variables over
   rate fallbacks for the same delivered-load or heat-driver target, avoiding
   duplicate Sankey accounting when both are present; completeness now counts
