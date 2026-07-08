@@ -85,6 +85,10 @@ func TestFrontendSimulationEnergySystemsCrossJumpContracts(t *testing.T) {
 		"data-simulation-energy-apply-outputs",
 		"openSimulationPurposeOutputPlan",
 		"purposeOutputApplyState",
+		"simulationPurposeEnergyDetail",
+		"basicEnergyDetail",
+		"basicEnergyDetailLabel",
+		"simulation.basicEnergyDetail",
 		"simulation.energyOutputShortageHint",
 		"simulation.energyAccountingCoverageHint",
 		"result.purposeResults?.zoneHeatFlow",
@@ -119,7 +123,7 @@ func TestFrontendSimulationEnergySystemsCrossJumpContracts(t *testing.T) {
 		t.Fatalf("hvac navigation should remain exportable for simulation energy cross-jumps")
 	}
 	indexHTML := readTestFile(t, "frontend/src/index.html")
-	if !strings.Contains(indexHTML, "simulationPurposeAllocationPolicy") || !strings.Contains(indexHTML, "by_zone_load_share") || !strings.Contains(indexHTML, "by_service_path_load_share") {
+	if !strings.Contains(indexHTML, "simulationPurposeAllocationPolicy") || !strings.Contains(indexHTML, "simulationPurposeEnergyDetail") || !strings.Contains(indexHTML, "by_zone_load_share") || !strings.Contains(indexHTML, "by_service_path_load_share") {
 		t.Fatalf("simulation allocation policy control is missing")
 	}
 	styles := readTestFile(t, "frontend/src/styles/simulation.css")
@@ -152,6 +156,7 @@ func TestFrontendBatchEnergyExplanationDeltaContracts(t *testing.T) {
 		"handleEnergyCompareSelectChange",
 		"energyExplanationMissingCategorySummary",
 		"elements.multiSimulationAllocationPolicy?.value",
+		"elements.multiSimulationEnergyDetail?.value",
 		"elements.multiSimulationFrequencyPolicy?.value",
 		"exportMultiSimulationCSV",
 		"exportMultiSimulationXLSX",
@@ -205,7 +210,7 @@ func TestFrontendBatchEnergyExplanationDeltaContracts(t *testing.T) {
 	if !strings.Contains(html, "multiSimulationCompareBaseline") || !strings.Contains(html, "multiSimulationCompareTarget") {
 		t.Fatalf("batch simulation energy comparison selectors are missing")
 	}
-	if !strings.Contains(html, "multiSimulationAllocationPolicy") || !strings.Contains(html, "by_zone_load_share") || !strings.Contains(html, "by_service_path_load_share") {
+	if !strings.Contains(html, "multiSimulationAllocationPolicy") || !strings.Contains(html, "multiSimulationEnergyDetail") || !strings.Contains(html, "by_zone_load_share") || !strings.Contains(html, "by_service_path_load_share") {
 		t.Fatalf("batch simulation allocation policy control is missing")
 	}
 	if !strings.Contains(html, "multiSimulationFrequencyPolicy") || !strings.Contains(html, "highest_resolution") {

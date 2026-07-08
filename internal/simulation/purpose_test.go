@@ -49,6 +49,9 @@ Output:SQLite,
 	if plan.AllocationPolicy != PurposeAllocationPolicyDirectOnly {
 		t.Fatalf("allocation policy = %q, want %q", plan.AllocationPolicy, PurposeAllocationPolicyDirectOnly)
 	}
+	if plan.BasicEnergyDetail != PurposeBasicEnergyDetailHeatDrivers {
+		t.Fatalf("basic energy detail = %q, want %q", plan.BasicEnergyDetail, PurposeBasicEnergyDetailHeatDrivers)
+	}
 	sql := findPurposeOutput(plan, "Output:SQLite", "", "")
 	if sql == nil {
 		t.Fatalf("missing SQL output in %#v", plan.OutputObjects)
@@ -100,6 +103,44 @@ Output:SQLite,
 	}
 	if plan.EstimatedFrames != 12 {
 		t.Fatalf("estimated frames = %d, want 12 for monthly energy", plan.EstimatedFrames)
+	}
+}
+
+func TestBuildPurposeRunPlanBasicEnergyDetailTiers(t *testing.T) {
+	doc := parsePurposePlanFixture(t, purposePlanFixtureIDF)
+
+	light := BuildPurposeRunPlan(doc, SimulationPurposeRequest{
+		Purposes:          []SimulationPurposeID{SimulationPurposeBasicEnergy},
+		BasicEnergyDetail: PurposeBasicEnergyDetailLight,
+	})
+	if light.BasicEnergyDetail != PurposeBasicEnergyDetailLight {
+		t.Fatalf("light detail = %q", light.BasicEnergyDetail)
+	}
+	if findPurposeOutput(light, "Output:Meter", "Electricity:Facility", "") == nil {
+		t.Fatalf("light tier should still include top-level meters: %#v", light.OutputObjects)
+	}
+	if output := findPurposeOutput(light, "Output:Variable", "*", "Zone Lights Electricity Energy"); output != nil {
+		t.Fatalf("light tier should not include explain output: %+v", output)
+	}
+	if output := findPurposeOutput(light, "Output:Variable", "*", "Zone Air Heat Balance Surface Convection Rate"); output != nil {
+		t.Fatalf("light tier should not include heat-driver output: %+v", output)
+	}
+
+	explain := BuildPurposeRunPlan(doc, SimulationPurposeRequest{
+		Purposes:          []SimulationPurposeID{SimulationPurposeBasicEnergy},
+		BasicEnergyDetail: PurposeBasicEnergyDetailExplain,
+	})
+	if explain.BasicEnergyDetail != PurposeBasicEnergyDetailExplain {
+		t.Fatalf("explain detail = %q", explain.BasicEnergyDetail)
+	}
+	if findPurposeOutput(explain, "Output:Variable", "*", "Zone Lights Electricity Energy") == nil {
+		t.Fatalf("explain tier should include zone energy output: %#v", explain.OutputObjects)
+	}
+	if findPurposeOutput(explain, "Output:Variable", "*", "Zone Air System Sensible Cooling Rate") == nil {
+		t.Fatalf("explain tier should include delivered-load output: %#v", explain.OutputObjects)
+	}
+	if output := findPurposeOutput(explain, "Output:Variable", "*", "Zone Air Heat Balance Surface Convection Rate"); output != nil {
+		t.Fatalf("explain tier should not include heat-driver output: %+v", output)
 	}
 }
 

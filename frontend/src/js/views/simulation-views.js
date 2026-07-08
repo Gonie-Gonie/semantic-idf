@@ -45,6 +45,7 @@ export function initializeSimulationControls() {
   });
   elements.simulationPurposePeriodStart?.addEventListener("input", () => scheduleSimulationRunPlan());
   elements.simulationPurposePeriodEnd?.addEventListener("input", () => scheduleSimulationRunPlan());
+  elements.simulationPurposeEnergyDetail?.addEventListener("change", () => scheduleSimulationRunPlan());
   elements.simulationPurposeFrequencyPolicy?.addEventListener("change", () => scheduleSimulationRunPlan());
   elements.simulationPurposeAllocationPolicy?.addEventListener("change", () => scheduleSimulationRunPlan());
   elements.simulationPurposeApplyMode?.addEventListener("change", () => updatePurposeApplyButton());
@@ -408,6 +409,7 @@ function renderSimulationRunPlanPreview() {
       <span>${escapeHTML(t("simulation.estimatedSeries", { count: plan.estimatedSeries || 0 }, `${plan.estimatedSeries || 0} series`))}</span>
       <span>${escapeHTML(t("simulation.estimatedFrames", { count: plan.estimatedFrames || 0 }, `${plan.estimatedFrames || 0} frames`))}</span>
       <span>${escapeHTML(plan.requiresSQL ? t("simulation.sqlPrimary", {}, "SQL primary") : t("simulation.sqlOptional", {}, "SQL optional"))}</span>
+      ${plan.basicEnergyDetail ? `<span>${escapeHTML(t("simulation.basicEnergyDetail", {}, "Basic Energy detail"))}: ${escapeHTML(basicEnergyDetailLabel(plan.basicEnergyDetail))}</span>` : ""}
     </div>
     ${warningHTML}
     <div class="output-table-wrap">
@@ -1271,6 +1273,19 @@ function energyAllocationPolicyLabel(policy = "") {
       return t("simulation.allocationByServicePathLoadShare", {}, "By service path load share");
     default:
       return titleCaseEnergyToken(policy || "direct_only");
+  }
+}
+
+function basicEnergyDetailLabel(detail = "") {
+  switch (String(detail || "").toLowerCase()) {
+    case "light":
+      return t("simulation.basicEnergyDetailLight", {}, "Light");
+    case "explain":
+      return t("simulation.basicEnergyDetailExplain", {}, "Explain");
+    case "heat_drivers":
+      return t("simulation.basicEnergyDetailHeatDrivers", {}, "Heat drivers");
+    default:
+      return titleCaseEnergyToken(detail || "heat_drivers");
   }
 }
 
@@ -4224,6 +4239,7 @@ function buildSimulationPurposeRequest() {
       ...simulationHVACPurposeScope(purposes),
       customOutputs: parseCustomOutputs(elements.simulationCustomOutputs?.value || ""),
     },
+    basicEnergyDetail: elements.simulationPurposeEnergyDetail?.value || "light",
     frequencyPolicy: elements.simulationPurposeFrequencyPolicy?.value || "purpose_default",
     allocationPolicy: elements.simulationPurposeAllocationPolicy?.value || "direct_only",
     outputApplyMode: purposeOutputApplyMode(),
@@ -4670,6 +4686,12 @@ function updateSimulationControls() {
   }
   if (elements.simulationPurposePeriodMode) {
     elements.simulationPurposePeriodMode.disabled = state.simulationRunning;
+  }
+  if (elements.simulationPurposeEnergyDetail) {
+    elements.simulationPurposeEnergyDetail.disabled = state.simulationRunning;
+  }
+  if (elements.simulationPurposeFrequencyPolicy) {
+    elements.simulationPurposeFrequencyPolicy.disabled = state.simulationRunning;
   }
   if (elements.simulationPurposeAllocationPolicy) {
     elements.simulationPurposeAllocationPolicy.disabled = state.simulationRunning;

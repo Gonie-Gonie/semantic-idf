@@ -33,6 +33,9 @@ const (
 	PurposeAllocationPolicyDirectOnly             = "direct_only"
 	PurposeAllocationPolicyByZoneLoadShare        = "by_zone_load_share"
 	PurposeAllocationPolicyByServicePathLoadShare = "by_service_path_load_share"
+	PurposeBasicEnergyDetailLight                 = "light"
+	PurposeBasicEnergyDetailExplain               = "explain"
+	PurposeBasicEnergyDetailHeatDrivers           = "heat_drivers"
 	PurposeOutputStateExisting                    = "existing"
 	PurposeOutputStateTemporary                   = "temporary"
 	PurposeOutputStateWillPersist                 = "will_be_persisted"
@@ -44,14 +47,15 @@ const (
 )
 
 type SimulationPurposeRequest struct {
-	Purposes         []SimulationPurposeID  `json:"purposes"`
-	Scope            SimulationPurposeScope `json:"scope"`
-	FrequencyPolicy  string                 `json:"frequencyPolicy,omitempty"`
-	SQLMode          string                 `json:"sqlMode,omitempty"`
-	AllocationPolicy string                 `json:"allocationPolicy,omitempty"`
-	PersistOutputs   bool                   `json:"persistOutputs,omitempty"`
-	DiscoveryAllowed bool                   `json:"discoveryAllowed,omitempty"`
-	OutputApplyMode  string                 `json:"outputApplyMode,omitempty"`
+	Purposes          []SimulationPurposeID  `json:"purposes"`
+	Scope             SimulationPurposeScope `json:"scope"`
+	FrequencyPolicy   string                 `json:"frequencyPolicy,omitempty"`
+	SQLMode           string                 `json:"sqlMode,omitempty"`
+	AllocationPolicy  string                 `json:"allocationPolicy,omitempty"`
+	BasicEnergyDetail string                 `json:"basicEnergyDetail,omitempty"`
+	PersistOutputs    bool                   `json:"persistOutputs,omitempty"`
+	DiscoveryAllowed  bool                   `json:"discoveryAllowed,omitempty"`
+	OutputApplyMode   string                 `json:"outputApplyMode,omitempty"`
 }
 
 type SimulationPurposeScope struct {
@@ -87,6 +91,7 @@ type PurposeRunPlan struct {
 	RequiresSQL       bool                  `json:"requiresSQL"`
 	RequiresDiscovery bool                  `json:"requiresDiscovery"`
 	AllocationPolicy  string                `json:"allocationPolicy,omitempty"`
+	BasicEnergyDetail string                `json:"basicEnergyDetail,omitempty"`
 	PeriodMode        string                `json:"periodMode,omitempty"`
 	PeriodStart       string                `json:"periodStart,omitempty"`
 	PeriodEnd         string                `json:"periodEnd,omitempty"`
@@ -363,6 +368,7 @@ func NormalizeSimulationPurposeRequest(request *SimulationPurposeRequest) Simula
 		normalized.SQLMode = PurposeSQLModeSQLFirst
 	}
 	normalized.AllocationPolicy = normalizePurposeAllocationPolicy(normalized.AllocationPolicy)
+	normalized.BasicEnergyDetail = normalizePurposeBasicEnergyDetail(normalized.BasicEnergyDetail)
 	normalized.OutputApplyMode = normalizePurposeOutputApplyMode(normalized.OutputApplyMode)
 	normalized.Scope.ZoneMode = strings.TrimSpace(normalized.Scope.ZoneMode)
 	if normalized.Scope.ZoneMode == "" {
@@ -397,6 +403,19 @@ func normalizePurposeAllocationPolicy(policy string) string {
 		return PurposeAllocationPolicyByServicePathLoadShare
 	default:
 		return PurposeAllocationPolicyDirectOnly
+	}
+}
+
+func normalizePurposeBasicEnergyDetail(detail string) string {
+	switch strings.ToLower(strings.TrimSpace(detail)) {
+	case PurposeBasicEnergyDetailLight:
+		return PurposeBasicEnergyDetailLight
+	case PurposeBasicEnergyDetailExplain, "energy_explain", "explanation":
+		return PurposeBasicEnergyDetailExplain
+	case PurposeBasicEnergyDetailHeatDrivers, "heat", "full", "":
+		return PurposeBasicEnergyDetailHeatDrivers
+	default:
+		return PurposeBasicEnergyDetailHeatDrivers
 	}
 }
 
@@ -623,6 +642,7 @@ func purposeRunPlanWithRequestScope(plan *PurposeRunPlan, request SimulationPurp
 		copy = *plan
 	}
 	copy.AllocationPolicy = request.AllocationPolicy
+	copy.BasicEnergyDetail = purposeRunPlanBasicEnergyDetail(request)
 	copy.PeriodMode = request.Scope.PeriodMode
 	copy.PeriodStart = request.Scope.PeriodStart
 	copy.PeriodEnd = request.Scope.PeriodEnd
@@ -2280,11 +2300,18 @@ func (builder *purposePlanBuilder) addBasicEnergy() {
 	if !docHasObject(builder.doc, "Zone") {
 		return
 	}
+	detail := normalizePurposeBasicEnergyDetail(builder.request.BasicEnergyDetail)
+	if detail == PurposeBasicEnergyDetailLight {
+		return
+	}
 	for _, variable := range basicEnergyZoneReportedEnergyVariableNames() {
 		builder.addVariableWithReason(SimulationPurposeBasicEnergy, "*", variable, "Monthly", "medium", "Basic Energy Explain: monthly zone-level reported energy.", "Basic Energy Explain output")
 	}
 	for _, variable := range basicEnergyDeliveredLoadVariableNames() {
 		builder.addVariableWithReason(SimulationPurposeBasicEnergy, "*", variable, "Monthly", "medium", "Basic Energy Explain: monthly delivered-load energy or rate fallback.", "Basic Energy Explain output")
+	}
+	if detail == PurposeBasicEnergyDetailExplain {
+		return
 	}
 	for _, variable := range basicEnergyObjectHeatDriverVariableNames() {
 		builder.addVariableWithReason(SimulationPurposeBasicEnergy, "*", variable, "Monthly", "medium", "Basic Energy Heat Drivers: monthly object-level heat-driver explanation output.", "Basic Energy Heat Drivers output")
@@ -2895,11 +2922,19 @@ func (builder *purposePlanBuilder) plan() PurposeRunPlan {
 		RequiresSQL:       true,
 		RequiresDiscovery: builder.request.DiscoveryAllowed,
 		AllocationPolicy:  builder.request.AllocationPolicy,
+		BasicEnergyDetail: purposeRunPlanBasicEnergyDetail(builder.request),
 		PeriodMode:        builder.request.Scope.PeriodMode,
 		PeriodStart:       builder.request.Scope.PeriodStart,
 		PeriodEnd:         builder.request.Scope.PeriodEnd,
 		Warnings:          builder.warnings,
 	}
+}
+
+func purposeRunPlanBasicEnergyDetail(request SimulationPurposeRequest) string {
+	if !purposeIDsContain(request.Purposes, SimulationPurposeBasicEnergy) {
+		return ""
+	}
+	return request.BasicEnergyDetail
 }
 
 func (builder *purposePlanBuilder) outputWeightWarning(weight string, seriesCount int, frameCount int) PurposeRunWarning {

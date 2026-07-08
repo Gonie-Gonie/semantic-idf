@@ -19,6 +19,8 @@ The release script infers bump size from these sections:
   source metadata, HVAC service-path cross-jumps, and residual reconciliation,
   including heat-driver links from delivered loads when heat-balance outputs are
   available.
+- Basic Energy run setup now exposes `light`, `explain`, and `heat_drivers`
+  detail tiers; the app and batch UI default to the light meter-only tier.
 - Energy explanation Sankey and Systems views can now focus by all results, a
   selected zone, or a selected HVAC service path.
 - Energy explanation Sankey can now switch heat drivers between display

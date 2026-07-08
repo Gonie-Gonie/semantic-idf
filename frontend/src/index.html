@@ -370,7 +370,7 @@
                     <input type="checkbox" data-simulation-purpose="basic_energy" checked />
                     <span>
                       <strong data-i18n="simulation.purposeBasicEnergy">Basic Energy</strong>
-                      <small data-i18n="simulation.purposeBasicEnergyDesc">Monthly meters, end uses, and zone reported energy.</small>
+                      <small data-i18n="simulation.purposeBasicEnergyDesc">Monthly meters and end-use energy; detail tier adds explanations.</small>
                     </span>
                     <em>Light</em>
                   </label>
@@ -443,6 +443,14 @@
                   <label>
                     <span data-i18n="simulation.periodEnd">Period end</span>
                     <input id="simulationPurposePeriodEnd" type="text" placeholder="12-31" data-i18n-placeholder="simulation.periodDatePlaceholder" />
+                  </label>
+                  <label>
+                    <span data-i18n="simulation.basicEnergyDetail">Basic Energy detail</span>
+                    <select id="simulationPurposeEnergyDetail">
+                      <option value="light" selected data-i18n="simulation.basicEnergyDetailLight">Light</option>
+                      <option value="explain" data-i18n="simulation.basicEnergyDetailExplain">Explain</option>
+                      <option value="heat_drivers" data-i18n="simulation.basicEnergyDetailHeatDrivers">Heat drivers</option>
+                    </select>
                   </label>
                   <label>
                     <span data-i18n="simulation.frequencyPolicy">Frequency policy</span>
