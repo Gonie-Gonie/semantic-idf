@@ -2615,6 +2615,8 @@ func energyEndUseToken(value string) (string, bool) {
 		return "interior_equipment", true
 	case "exteriorlights":
 		return "exterior_lighting", true
+	case "exteriorequipment":
+		return "exterior_equipment", true
 	case "fans":
 		return "fans", true
 	case "pumps":
@@ -2623,10 +2625,16 @@ func energyEndUseToken(value string) (string, bool) {
 		return "heat_rejection", true
 	case "heatrecovery":
 		return "heat_recovery", true
-	case "watersystems":
+	case "watersystems", "dhw":
 		return "water_systems", true
 	case "refrigeration":
 		return "refrigeration", true
+	case "humidifier", "humidification":
+		return "humidification", true
+	case "cogeneration":
+		return "generators", true
+	case "miscellaneous":
+		return "other", true
 	default:
 		return "", false
 	}
@@ -2644,6 +2652,8 @@ func energyEndUseLabel(endUse string, carrier string) string {
 		return energyCarrierLabel(carrier) + " interior equipment"
 	case "exterior_lighting":
 		return energyCarrierLabel(carrier) + " exterior lighting"
+	case "exterior_equipment":
+		return energyCarrierLabel(carrier) + " exterior equipment"
 	case "fans":
 		return energyCarrierLabel(carrier) + " fans"
 	case "pumps":
@@ -2656,6 +2666,12 @@ func energyEndUseLabel(endUse string, carrier string) string {
 		return energyCarrierLabel(carrier) + " water systems"
 	case "refrigeration":
 		return energyCarrierLabel(carrier) + " refrigeration"
+	case "humidification":
+		return energyCarrierLabel(carrier) + " humidification"
+	case "generators":
+		return energyCarrierLabel(carrier) + " cogeneration / onsite production"
+	case "other":
+		return "Other " + strings.ToLower(energyCarrierLabel(carrier)) + " use"
 	default:
 		return energyCarrierLabel(carrier) + " " + strings.ReplaceAll(endUse, "_", " ")
 	}

@@ -1326,6 +1326,26 @@ func TestEnergyMeterAliasCatalogHandlesCarrierAndEndUseOrder(t *testing.T) {
 	if !ok || steamWater.Kind != "energy.water_systems" || steamWater.Carrier != "steam" || steamWater.EndUse != "water_systems" {
 		t.Fatalf("steam water systems meter alias = %#v ok=%t", steamWater, ok)
 	}
+	dhw, ok := energyMeterAliasOrOtherDefinitionForName("DHW:FuelOilNo2")
+	if !ok || dhw.Kind != "energy.water_systems" || dhw.Carrier != "fuel_oil_2" || dhw.EndUse != "water_systems" {
+		t.Fatalf("DHW fuel oil meter alias = %#v ok=%t", dhw, ok)
+	}
+	exteriorEquipment, ok := energyMeterAliasOrOtherDefinitionForName("ExteriorEquipment:Electricity")
+	if !ok || exteriorEquipment.Kind != "energy.exterior_equipment" || exteriorEquipment.Carrier != "electricity" || exteriorEquipment.EndUse != "exterior_equipment" {
+		t.Fatalf("exterior equipment meter alias = %#v ok=%t", exteriorEquipment, ok)
+	}
+	humidifier, ok := energyMeterAliasOrOtherDefinitionForName("Humidifier:NaturalGas")
+	if !ok || humidifier.Kind != "energy.humidification" || humidifier.Carrier != "natural_gas" || humidifier.EndUse != "humidification" {
+		t.Fatalf("humidifier meter alias = %#v ok=%t", humidifier, ok)
+	}
+	cogeneration, ok := energyMeterAliasOrOtherDefinitionForName("Cogeneration:Electricity")
+	if !ok || cogeneration.Kind != "energy.generators" || cogeneration.Carrier != "electricity" || cogeneration.EndUse != "generators" {
+		t.Fatalf("cogeneration meter alias = %#v ok=%t", cogeneration, ok)
+	}
+	miscellaneous, ok := energyMeterAliasOrOtherDefinitionForName("Miscellaneous:Propane")
+	if !ok || miscellaneous.Kind != "energy.other" || miscellaneous.Carrier != "propane" || miscellaneous.EndUse != "other" {
+		t.Fatalf("miscellaneous meter alias = %#v ok=%t", miscellaneous, ok)
+	}
 	other, ok := energyMeterAliasOrOtherDefinitionForName("SomeCustomMeter:Electricity")
 	if !ok || other.Carrier != "electricity" || other.EndUse != "other" || other.HierarchyLevel != "broad_end_use" {
 		t.Fatalf("custom meter fallback = %#v ok=%t", other, ok)

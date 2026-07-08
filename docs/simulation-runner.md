@@ -204,8 +204,9 @@ payloads expose
 `allocationPolicy` so exported results make clear whether allocated edges were
 allowed. Carrier-qualified meters that are not in the explicit end-use alias
 catalog are split by known EnergyPlus end-use tokens such as heating, water
-systems, fans, pumps, and refrigeration before falling back to `other`, while
-preserving the original meter name in source metadata. The Sankey UI maps
+systems/DHW, fans, pumps, exterior equipment, humidifier, cogeneration, and
+refrigeration before falling back to `other`, while preserving the original
+meter name in source metadata. The Sankey UI maps
 canonical end-use IDs such as fans, pumps, water systems, refrigeration, onsite
 generation, and other energy use to stable labels and node colors. With
 `by_zone_load_share`, cooling/heating end-use

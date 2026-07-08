@@ -270,7 +270,8 @@ The release script infers bump size from these sections:
   meter names.
 - Basic Energy energy explanations now split generic carrier/end-use meters such
   as `Heating:Propane` and `WaterSystems:Steam` into canonical end-use and
-  carrier nodes before falling back to `Other`.
+  carrier nodes, including DHW, exterior equipment, humidifier, cogeneration,
+  and miscellaneous end-use tokens, before falling back to `Other`.
 - Batch purpose simulation metrics now include compact annual Energy Use,
   Delivered Load, Heat Driver, residual, mapped-percent, and top heat-driver
   values from the Basic Energy explanation summary, plus two-row delta tables
