@@ -51,6 +51,8 @@ func TestFrontendSimulationEnergySystemsCrossJumpContracts(t *testing.T) {
 		"Energy Explanation Source Availability",
 		"Energy Explanation Relationship Rules",
 		"Energy Explanation Warnings",
+		"Energy Explanation Monthly Ledger",
+		"purposeHTMLEnergyMonthlyRows",
 		"completeness.sourceAvailability",
 		"explanation.relationshipRules",
 		"renderEnergyDerivedKPISection",

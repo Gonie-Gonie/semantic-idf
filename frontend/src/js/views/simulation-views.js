@@ -6385,6 +6385,10 @@ function renderPurposeHTMLEnergyExplanation(summary = {}, explanation = {}) {
       )}`,
     );
   }
+  const monthlyRows = purposeHTMLEnergyMonthlyRows(explanation);
+  if (monthlyRows.length) {
+    sections.push(`<h2>Energy Explanation Monthly Ledger</h2>${renderPurposeHTMLTable(["Period", "Energy Use", "Delivered Load", "Heat Drivers", "Residual"], monthlyRows)}`);
+  }
   const graph = purposeHTMLAnnualEnergyGraph(explanation);
   const nodeLabels = new Map((graph.nodes || []).map((node) => [node.id, node.label || node.kind || node.id || ""]));
   const edgeRows = (graph.edges || [])
@@ -6478,6 +6482,21 @@ function purposeHTMLEnergySummaryRows(summary = {}) {
       item.basis || "",
     ]),
   );
+}
+
+function purposeHTMLEnergyMonthlyRows(explanation = {}) {
+  return (explanation.periods || [])
+    .filter((period) => period.kind === "monthly")
+    .map((period) => {
+      const totals = energyExplanationLevelTotals(period.nodes || []);
+      return [
+        period.label || period.id || "",
+        formatValueWithUnit(totals.energy, totals.unit),
+        formatValueWithUnit(totals.load, totals.unit),
+        formatValueWithUnit(totals.heat, totals.unit),
+        formatValueWithUnit(totals.residual, totals.unit),
+      ];
+    });
 }
 
 function purposeHTMLAnnualEnergyGraph(explanation = {}) {
