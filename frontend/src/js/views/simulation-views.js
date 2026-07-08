@@ -1203,6 +1203,9 @@ function renderEnergyExplanationInspector(selection, explanation = {}) {
     { label: t("simulation.basis", {}, "Basis"), value: selection.basis || "measured" },
     { label: t("common.source", {}, "Source"), value: (selection.sourceIds || []).join(", ") || "-" },
   ];
+  if (selection.ruleId) {
+    inspectorFields.splice(3, 0, { label: t("simulation.relationshipRule", {}, "Rule"), value: selection.ruleId });
+  }
   if (Number.isFinite(signedValue) && signedValue !== 0 && signedValue !== Number(selection.value)) {
     inspectorFields.splice(1, 0, { label: t("simulation.signedValue", {}, "Signed"), value: formatValueWithUnit(signedValue, selection.unit) });
   }
@@ -1632,6 +1635,7 @@ function energyExplanationEdgeTitle(edge = {}) {
   return [
     edge.relation || "",
     edge.basis || "",
+    edge.ruleId ? `rule: ${edge.ruleId}` : "",
     formatValueWithUnit(edge.value, edge.unit),
     Number(edge.signedValue) && Number(edge.signedValue) !== Number(edge.value) ? `signed: ${formatValueWithUnit(edge.signedValue, edge.unit)}` : "",
     edge.formula || "",

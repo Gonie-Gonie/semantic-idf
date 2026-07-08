@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Gonie-Gonie/semantic-idf/internal/idf"
@@ -515,6 +516,18 @@ func TestParseSimulationEnergyExplanationSQLBuildsAccountingGraph(t *testing.T) 
 	if !energyExplanationHasEdge(result.Edges, "residual", "residual", "energy.carrier.electricity", "residual.energy.electricity") {
 		t.Fatalf("missing residual edge: %#v", result.Edges)
 	}
+	if edge := energyExplanationEdgeByIDs(result.Edges, "energy.carrier.electricity", "energy.end_use.cooling.electricity"); edge == nil || edge.RuleID != energyRelationshipRuleMeterEndUse {
+		t.Fatalf("meter end-use rule edge = %#v", edge)
+	}
+	if edge := energyExplanationEdgeByIDs(result.Edges, "energy.end_use.cooling.electricity", "load.cooling.zone_one"); edge == nil || edge.RuleID != energyRelationshipRuleMeasuredLoad {
+		t.Fatalf("measured load rule edge = %#v", edge)
+	}
+	if edge := energyExplanationEdgeByIDs(result.Edges, "load.cooling.zone_one", "heat.internal_convective.zone_one"); edge == nil || edge.RuleID != energyRelationshipRuleHeatDriverBalance {
+		t.Fatalf("heat driver rule edge = %#v", edge)
+	}
+	if edge := energyExplanationEdgeByIDs(result.Edges, "energy.carrier.electricity", "residual.energy.electricity"); edge == nil || edge.RuleID != energyRelationshipRuleEnergyResidual {
+		t.Fatalf("energy residual rule edge = %#v", edge)
+	}
 	energyReconciliation := energyExplanationReconciliationByID(result.Reconciliation, "reconcile.energy.electricity.annual")
 	heatReconciliation := energyExplanationReconciliationByID(result.Reconciliation, "reconcile.heat.cooling.annual")
 	if energyReconciliation == nil || energyReconciliation.ResidualValue != 2 || heatReconciliation == nil || heatReconciliation.ResidualValue != 0 || heatReconciliation.ExplainedValue != 0.5 || result.Completeness.MappedPercent != 33.333 {
@@ -584,6 +597,25 @@ func TestEnergyMeterAliasCatalogHandlesCarrierAndEndUseOrder(t *testing.T) {
 	}
 }
 
+func TestEnergyRelationshipRuleCatalogProvidesEdgeBasis(t *testing.T) {
+	rules := energyRelationshipRuleCatalog()
+	if len(rules) < 5 {
+		t.Fatalf("rule catalog = %#v", rules)
+	}
+	meterRule := energyRelationshipRuleByID(energyRelationshipRuleMeterEndUse)
+	if meterRule.Basis != "measured_meter" || meterRule.FromLevel != "energy" || meterRule.ToLevel != "energy" || len(meterRule.RequiredSource) == 0 {
+		t.Fatalf("meter rule = %#v", meterRule)
+	}
+	loadRule := energyRelationshipRuleByID(energyRelationshipRuleMeasuredLoad)
+	if loadRule.Basis != "measured_variable" || !strings.Contains(loadRule.Formula, "not COP-converted") {
+		t.Fatalf("load rule = %#v", loadRule)
+	}
+	heatRule := energyRelationshipRuleByID(energyRelationshipRuleHeatDriverBalance)
+	if heatRule.Basis != "derived_balance" || heatRule.FromLevel != "load" || heatRule.ToLevel != "heat" {
+		t.Fatalf("heat rule = %#v", heatRule)
+	}
+}
+
 func TestPurposeResultBundleUsesSQLEnergyDashboard(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "eplusout.sql")
@@ -645,6 +677,15 @@ func energyExplanationHasEdge(edges []EnergyExplanationEdge, relation string, ba
 		}
 	}
 	return false
+}
+
+func energyExplanationEdgeByIDs(edges []EnergyExplanationEdge, fromID string, toID string) *EnergyExplanationEdge {
+	for index := range edges {
+		if edges[index].FromID == fromID && edges[index].ToID == toID {
+			return &edges[index]
+		}
+	}
+	return nil
 }
 
 func energyExplanationHasSource(sources []EnergyDataSource, id string, isMeter bool, name string) bool {

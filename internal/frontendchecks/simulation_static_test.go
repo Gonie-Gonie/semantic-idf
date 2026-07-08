@@ -26,6 +26,8 @@ func TestFrontendSimulationEnergySystemsCrossJumpContracts(t *testing.T) {
 		"energy-source-availability",
 		"simulation-source-output-jump",
 		"data-jump-object-index",
+		"ruleId",
+		"relationshipRule",
 		"missingCategories",
 		`allocationPolicy: "direct_only"`,
 		"navigateHVAC(",

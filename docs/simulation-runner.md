@@ -118,7 +118,10 @@ still feed monthly dashboards. Basic Energy also builds an
 `energyExplanation` payload with `semantic-idf.energy-explanation/v1` schema,
 source IDs derived from `ReportDataDictionary`, accounting-basis edges, and
 residual reconciliation between facility carrier totals and mapped end-use
-meters. The companion `energyExplanationSummary` payload keeps the annual
+meters. Explanation edges also carry a relationship `ruleId` from the Basic
+Energy rule catalog so the UI and exports can distinguish measured end-use,
+measured load, heat-balance, and residual links. The companion
+`energyExplanationSummary` payload keeps the annual
 carrier, end-use, delivered-load, heat-driver, residual, and top-zone rollups in
 a compact shape for batch comparisons and exports. Both payloads expose
 `allocationPolicy` so exported results make clear whether allocated edges were

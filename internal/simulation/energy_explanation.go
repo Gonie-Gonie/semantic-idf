@@ -98,6 +98,7 @@ type EnergyExplanationEdge struct {
 	Relation     string   `json:"relation"`
 	Basis        string   `json:"basis"`
 	Formula      string   `json:"formula,omitempty"`
+	RuleID       string   `json:"ruleId,omitempty"`
 	SourceIDs    []string `json:"sourceIds,omitempty"`
 	ZoneName     string   `json:"zoneName,omitempty"`
 	ServiceKind  string   `json:"serviceKind,omitempty"`
@@ -163,6 +164,25 @@ type EnergyWarning struct {
 	Message  string `json:"message"`
 	Period   string `json:"period,omitempty"`
 }
+
+type EnergyRelationshipRule struct {
+	ID             string
+	FromLevel      string
+	ToLevel        string
+	FromKind       string
+	ToKind         string
+	RequiredSource []string
+	Basis          string
+	Formula        string
+}
+
+const (
+	energyRelationshipRuleMeterEndUse       = "meter.end_use"
+	energyRelationshipRuleMeasuredLoad      = "load.measured_variable"
+	energyRelationshipRuleHeatDriverBalance = "heat.driver_balance"
+	energyRelationshipRuleEnergyResidual    = "residual.energy_total"
+	energyRelationshipRuleHeatResidual      = "residual.heat_driver_balance"
+)
 
 type energyMeterAliasDefinition struct {
 	Kind                 string
@@ -671,6 +691,11 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 	edges := []EnergyExplanationEdge{}
 	reconciliation := []EnergyReconciliation{}
 	warnings := []EnergyWarning{}
+	meterEndUseRule := energyRelationshipRuleByID(energyRelationshipRuleMeterEndUse)
+	measuredLoadRule := energyRelationshipRuleByID(energyRelationshipRuleMeasuredLoad)
+	heatDriverRule := energyRelationshipRuleByID(energyRelationshipRuleHeatDriverBalance)
+	energyResidualRule := energyRelationshipRuleByID(energyRelationshipRuleEnergyResidual)
+	heatResidualRule := energyRelationshipRuleByID(energyRelationshipRuleHeatResidual)
 	for carrier, facilityID := range facilityByCarrier {
 		endUseValue := endUseValueByCarrier[carrier]
 		facilityValue := facilityValueByCarrier[carrier]
@@ -687,8 +712,9 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 				Unit:      endUseNode.node.Unit,
 				Period:    period,
 				Relation:  "meter_enduse",
-				Basis:     "measured_meter",
-				Formula:   "sum(ReportData where IsMeter=1 and Name or KeyValue matches end-use meter)",
+				Basis:     meterEndUseRule.Basis,
+				Formula:   meterEndUseRule.Formula,
+				RuleID:    meterEndUseRule.ID,
 				SourceIDs: endUseNode.node.SourceIDs,
 			})
 		}
@@ -728,8 +754,9 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 				Unit:      nodes[facilityID].node.Unit,
 				Period:    period,
 				Relation:  "residual",
-				Basis:     "residual",
-				Formula:   "abs(facility carrier total - mapped broad end-use meters)",
+				Basis:     energyResidualRule.Basis,
+				Formula:   energyResidualRule.Formula,
+				RuleID:    energyResidualRule.ID,
 				SourceIDs: facilitySourcesByCarrier[carrier],
 			})
 		}
@@ -766,8 +793,9 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 				Unit:        loadNode.node.Unit,
 				Period:      period,
 				Relation:    "delivered_load",
-				Basis:       "measured_variable",
-				Formula:     "reported delivered load; not COP-converted from energy use",
+				Basis:       measuredLoadRule.Basis,
+				Formula:     measuredLoadRule.Formula,
+				RuleID:      measuredLoadRule.ID,
 				SourceIDs:   loadNode.node.SourceIDs,
 				ServiceKind: serviceKind,
 			})
@@ -799,8 +827,9 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 			Unit:         node.node.Unit,
 			Period:       period,
 			Relation:     "heat_driver",
-			Basis:        "derived_balance",
-			Formula:      "integrate(zone heat-balance rate W * timestep_hours) / 1000",
+			Basis:        heatDriverRule.Basis,
+			Formula:      heatDriverRule.Formula,
+			RuleID:       heatDriverRule.ID,
 			SourceIDs:    node.node.SourceIDs,
 			ZoneName:     node.node.ZoneName,
 			ServiceKind:  node.node.ServiceKind,
@@ -871,8 +900,9 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 			Unit:        loadUnit,
 			Period:      period,
 			Relation:    "residual",
-			Basis:       "residual",
-			Formula:     "abs(delivered load - mapped heat drivers)",
+			Basis:       heatResidualRule.Basis,
+			Formula:     heatResidualRule.Formula,
+			RuleID:      heatResidualRule.ID,
 			SourceIDs:   sourceIDs,
 			ServiceKind: serviceKind,
 		})
@@ -1160,6 +1190,70 @@ func parseSQLTimeInt(value string) (int, bool) {
 		return 0, false
 	}
 	return number, true
+}
+
+func energyRelationshipRuleCatalog() []EnergyRelationshipRule {
+	return []EnergyRelationshipRule{
+		{
+			ID:             energyRelationshipRuleMeterEndUse,
+			FromLevel:      "energy",
+			ToLevel:        "energy",
+			FromKind:       "facility_total",
+			ToKind:         "broad_end_use",
+			RequiredSource: []string{"sql_report_data:meter"},
+			Basis:          "measured_meter",
+			Formula:        "sum(ReportData where IsMeter=1 and Name or KeyValue matches end-use meter)",
+		},
+		{
+			ID:             energyRelationshipRuleMeasuredLoad,
+			FromLevel:      "energy",
+			ToLevel:        "load",
+			FromKind:       "cooling_or_heating_end_use",
+			ToKind:         "delivered_load",
+			RequiredSource: []string{"sql_report_data:variable"},
+			Basis:          "measured_variable",
+			Formula:        "reported delivered load; not COP-converted from energy use",
+		},
+		{
+			ID:             energyRelationshipRuleHeatDriverBalance,
+			FromLevel:      "load",
+			ToLevel:        "heat",
+			FromKind:       "zone_delivered_load",
+			ToKind:         "zone_heat_driver",
+			RequiredSource: []string{"sql_report_data:heat_balance_variable"},
+			Basis:          "derived_balance",
+			Formula:        "integrate(zone heat-balance rate W * timestep_hours) / 1000",
+		},
+		{
+			ID:             energyRelationshipRuleEnergyResidual,
+			FromLevel:      "energy",
+			ToLevel:        "residual",
+			FromKind:       "facility_total",
+			ToKind:         "energy_residual",
+			RequiredSource: []string{"sql_report_data:meter"},
+			Basis:          "residual",
+			Formula:        "abs(facility carrier total - mapped broad end-use meters)",
+		},
+		{
+			ID:             energyRelationshipRuleHeatResidual,
+			FromLevel:      "load",
+			ToLevel:        "residual",
+			FromKind:       "delivered_load",
+			ToKind:         "heat_driver_residual",
+			RequiredSource: []string{"sql_report_data:variable"},
+			Basis:          "residual",
+			Formula:        "abs(delivered load - mapped heat drivers)",
+		},
+	}
+}
+
+func energyRelationshipRuleByID(id string) EnergyRelationshipRule {
+	for _, rule := range energyRelationshipRuleCatalog() {
+		if rule.ID == id {
+			return rule
+		}
+	}
+	return EnergyRelationshipRule{ID: id}
 }
 
 func energyMeterAliasCatalog() []energyMeterAliasDefinition {
