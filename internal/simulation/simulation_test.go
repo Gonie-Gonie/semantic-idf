@@ -921,6 +921,59 @@ func TestParseSimulationEnergyExplanationSQLIntegratesRateOnlyOutputs(t *testing
 	}
 }
 
+func TestParseSimulationEnergyExplanationSQLWarnsOnLargeHeatBalanceDeviation(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "eplusout.sql")
+	createTestEnergySQL(t, path)
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`INSERT INTO ReportDataDictionary VALUES
+		(23, 'ZONE ONE', 'Zone Air System Sensible Cooling Rate', 'W'),
+		(24, 'ZONE ONE', 'Zone Air Heat Balance Deviation Rate', 'W')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO "Time" VALUES
+		(3, 1, 1, 1, 0),
+		(4, 1, 1, 2, 0)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO ReportData VALUES
+		(7, 3, 23, 1000.0),
+		(8, 4, 23, 1000.0),
+		(9, 3, 24, 500.0),
+		(10, 4, 24, 500.0)`); err != nil {
+		t.Fatal(err)
+	}
+
+	plan := &PurposeRunPlan{OutputObjects: []PurposeOutputObject{
+		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, VariableName: "Zone Air System Sensible Cooling Rate"},
+		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, VariableName: "Zone Air Heat Balance Deviation Rate"},
+	}}
+	result, err := parseSimulationEnergyExplanationSQL(path, plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	warning := energyExplanationWarningByCode(result.Warnings, "heat_balance_deviation_large")
+	if warning == nil || warning.Period != "annual" || !strings.Contains(warning.Message, "ZONE ONE") || !strings.Contains(warning.Message, "1 kWh") {
+		t.Fatalf("annual heat-balance deviation warning = %#v", result.Warnings)
+	}
+	monthly := energyExplanationPeriodByID(result.Periods, "M1")
+	if monthly == nil {
+		t.Fatalf("monthly period missing from %#v", result.Periods)
+	}
+	if warning := energyExplanationWarningByCode(monthly.Warnings, "heat_balance_deviation_large"); warning == nil || warning.Period != "M1" || !strings.Contains(warning.Message, "ZONE ONE") {
+		t.Fatalf("monthly heat-balance deviation warning = %#v", monthly.Warnings)
+	}
+	deviation := energyExplanationNodeByID(result.Nodes, "heat.zone_balance_residual.zone_one")
+	if deviation == nil || deviation.Value != 1 || deviation.HeatCategory != "storage_residual" || deviation.Sign != "positive" {
+		t.Fatalf("heat-balance deviation node = %#v", deviation)
+	}
+}
+
 func TestParseSimulationEnergyExplanationSQLScopesDeliveredLoadNodes(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "eplusout.sql")

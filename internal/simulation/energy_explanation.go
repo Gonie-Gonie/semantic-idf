@@ -976,6 +976,7 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 	heatSourcesByService := map[string][]string{}
 	heatValueByZoneService := map[string]float64{}
 	heatSourcesByZoneService := map[string][]string{}
+	heatDeviationByZoneService := map[string]float64{}
 	addNode := func(node EnergyExplanationNode) {
 		if node.ID == "" || node.Value == 0 {
 			return
@@ -1243,6 +1244,9 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 			key := energyExplanationZoneServiceKey(node.node.ZoneName, node.node.ServiceKind)
 			heatValueByZoneService[key] += node.node.DisplayValue
 			heatSourcesByZoneService[key] = appendUniqueStrings(heatSourcesByZoneService[key], node.node.SourceIDs...)
+			if node.node.Kind == "heat.zone_balance_residual" {
+				heatDeviationByZoneService[key] += node.node.DisplayValue
+			}
 		}
 		edges = append(edges, EnergyExplanationEdge{
 			ID:           edgeID("heat", period, fromID, node.node.ID),
@@ -1406,6 +1410,15 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 				Severity: "warning",
 				Code:     "zone_heat_residual_gap",
 				Message:  fmt.Sprintf("%s %s heat-driver reconciliation has %s residual %g %s.", zoneName, energyServiceLabel(serviceKind), status, residual, loadUnit),
+				Period:   period,
+			})
+		}
+		deviationValue := roundedEnergyNumber(heatDeviationByZoneService[key])
+		if deviationValue > energyResidualVisibilityThreshold(loadValue) {
+			warnings = append(warnings, EnergyWarning{
+				Severity: "warning",
+				Code:     "heat_balance_deviation_large",
+				Message:  fmt.Sprintf("%s %s heat-balance deviation is %g %s for this period.", zoneName, energyServiceLabel(serviceKind), deviationValue, loadUnit),
 				Period:   period,
 			})
 		}

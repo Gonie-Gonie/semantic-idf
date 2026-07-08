@@ -239,6 +239,8 @@ The release script infers bump size from these sections:
   storage, and other energy use, to stable labels and node colors.
 - Basic Energy Sankey inspectors and legends now label delivered-load source
   basis values such as reported energy variables and integrated rate variables.
+- Basic Energy reconciliation now emits period warnings when zone heat-balance
+  deviation terms are large relative to the delivered-load basis.
 
 ## Fixed
 
