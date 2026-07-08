@@ -620,7 +620,7 @@ func buildEnergyExplanationSummary(explanation EnergyExplanationResult) EnergyEx
 			key := firstNonEmpty(node.ServiceKind, node.Kind, node.ID)
 			addEnergyExplanationSummaryNode(loadByService, key, node, value)
 		case node.Level == "heat":
-			key := firstNonEmpty(node.Kind, node.ID)
+			key := energyExplanationHeatSummaryKey(node)
 			addEnergyExplanationSummaryNode(heatByDriver, key, node, value)
 			if node.ZoneName != "" {
 				addEnergyExplanationSummaryNode(zones, node.ZoneName, EnergyExplanationNode{
@@ -687,10 +687,37 @@ func energyExplanationSummaryItemID(key string, node EnergyExplanationNode) stri
 	if node.Level == "zone" {
 		return firstNonEmpty(node.ID, key)
 	}
+	if node.Level == "heat" && strings.TrimSpace(key) != "" {
+		return key
+	}
 	if node.Kind != "" {
 		return node.Kind
 	}
 	return firstNonEmpty(node.ID, key)
+}
+
+func energyExplanationHeatSummaryKey(node EnergyExplanationNode) string {
+	key := firstNonEmpty(node.Kind, node.ID)
+	if sign := energyExplanationExplicitHeatNodeSign(node); sign != "" && node.Kind != "" {
+		return node.Kind + "." + sign
+	}
+	return key
+}
+
+func energyExplanationExplicitHeatNodeSign(node EnergyExplanationNode) string {
+	kind := strings.TrimSpace(node.Kind)
+	id := strings.TrimSpace(node.ID)
+	if kind == "" || id == "" || !strings.HasPrefix(id, kind+".") {
+		return ""
+	}
+	rest := strings.TrimPrefix(id, kind+".")
+	sign, _, _ := strings.Cut(rest, ".")
+	switch sign {
+	case "positive", "negative":
+		return sign
+	default:
+		return ""
+	}
 }
 
 func sortedEnergyExplanationSummaryItems(groups map[string]*EnergyExplanationSummaryItem) []EnergyExplanationSummaryItem {
