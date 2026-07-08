@@ -1186,6 +1186,15 @@ function renderEnergyExplanationCompleteness(explanation = {}) {
   }
   const allocationPolicy = energyAllocationPolicyLabel(explanation.allocationPolicy || "direct_only");
   const missingCategories = completeness.missingCategories || [];
+  const missingAvailability = (completeness.sourceAvailability || []).filter((item) => item.status && item.status !== "found" && item.status !== "not_applicable");
+  const hasIncompleteItems = items.some((item) => item.status && item.status !== "complete" && item.status !== "not_applicable");
+  const hasOutputShortage = missingCategories.length > 0 || missingAvailability.length > 0;
+  const coverageNote = hasOutputShortage
+    ? t("simulation.energyOutputShortageHint", {}, "Source output shortage: open the output plan, make missing outputs permanent, then rerun Basic Energy.")
+    : hasIncompleteItems
+      ? t("simulation.energyAccountingCoverageHint", {}, "No source output shortage is reported; remaining gaps are accounting coverage or model applicability.")
+      : "";
+  const applyDisabled = purposeOutputApplyState().disabled;
   const availabilityRows = (completeness.sourceAvailability || [])
     .filter((item) => item.status && item.status !== "found")
     .slice(0, 12)
@@ -1219,6 +1228,24 @@ function renderEnergyExplanationCompleteness(explanation = {}) {
       ${
         missingCategories.length
           ? `<div class="energy-explanation-missing"><strong>${escapeHTML(t("simulation.missingOutputs", {}, "Missing outputs"))}</strong><span>${escapeHTML(missingCategories.join(", "))}</span></div>`
+          : ""
+      }
+      ${
+        coverageNote
+          ? `<div class="energy-explanation-output-actions">
+              <div>
+                <strong>${escapeHTML(hasOutputShortage ? t("simulation.outputShortage", {}, "Output shortage") : t("simulation.accountingCoverage", {}, "Accounting coverage"))}</strong>
+                <span>${escapeHTML(coverageNote)}</span>
+              </div>
+              ${
+                hasOutputShortage
+                  ? `<div class="energy-explanation-output-buttons">
+                      <button class="simulation-series-inspect" type="button" data-simulation-energy-output-plan="1">${escapeHTML(t("simulation.openOutputPlan", {}, "Output plan"))}</button>
+                      <button class="simulation-series-inspect" type="button" data-simulation-energy-apply-outputs="1" ${applyDisabled ? "disabled" : ""}>${escapeHTML(t("simulation.makePurposeOutputsPermanent", {}, "Make outputs permanent"))}</button>
+                    </div>`
+                  : ""
+              }
+            </div>`
           : ""
       }
       ${
@@ -3567,6 +3594,17 @@ function handleSimulationSeriesInspectClick(event) {
     renderSimulationEnergyDashboard(state.simulationResult);
     return;
   }
+  const energyOutputPlan = event.target.closest("[data-simulation-energy-output-plan]");
+  if (energyOutputPlan) {
+    openSimulationPurposeOutputPlan();
+    return;
+  }
+  const energyApplyOutputs = event.target.closest("[data-simulation-energy-apply-outputs]");
+  if (energyApplyOutputs && !energyApplyOutputs.disabled) {
+    openSimulationPurposeOutputPlan({ status: false });
+    void applyPurposeOutputsToCurrentIDF();
+    return;
+  }
   const hvacPath = event.target.closest("[data-simulation-hvac-path-id]");
   if (hvacPath) {
     openSimulationHVACServicePath(hvacPath.dataset.simulationHvacPathId || "");
@@ -3607,6 +3645,25 @@ function openSimulationHVACServicePath(pathID) {
     hvacTab.click();
   } else {
     state.activeResultTab = "hvac";
+  }
+}
+
+function openSimulationPurposeOutputPlan(options = {}) {
+  const simulationTab = [...(elements.resultTabButtons || [])].find((button) => button.dataset.resultTab === "simulation");
+  if (simulationTab) {
+    simulationTab.click();
+  } else {
+    state.activeResultTab = "simulation";
+  }
+  scheduleSimulationRunPlan(0);
+  window.setTimeout(() => {
+    const target = elements.simulationRunPlan || elements.simulationApplyPurposeOutputs || elements.simulationPurposeStats;
+    target?.scrollIntoView({ block: "start", behavior: "smooth" });
+    elements.simulationRunPlan?.classList.add("attention");
+    window.setTimeout(() => elements.simulationRunPlan?.classList.remove("attention"), 1800);
+  }, 0);
+  if (options.status !== false) {
+    setStatus(t("simulation.outputPlanOpened", {}, "Output plan opened"), "ok");
   }
 }
 
@@ -4051,14 +4108,22 @@ function updatePurposeApplyButton() {
   if (!elements.simulationApplyPurposeOutputs) {
     return;
   }
+  const applyState = purposeOutputApplyState();
+  elements.simulationApplyPurposeOutputs.disabled = applyState.disabled;
+  elements.simulationApplyPurposeOutputs.title = applyState.hasApplicableOutputs
+    ? t("simulation.makePurposeOutputsPermanent", {}, "Make outputs permanent")
+    : t("simulation.noTemporaryOutputs", {}, "No temporary purpose outputs need to be applied.");
+}
+
+function purposeOutputApplyState() {
   const hasText = Boolean((elements.idfInput?.value || "").trim());
   const plan = state.simulationPurposePlan;
   const mode = purposeOutputApplyMode();
   const hasApplicableOutputs = (plan?.outputObjects || []).some((object) => purposeOutputAppliesInMode(object, mode));
-  elements.simulationApplyPurposeOutputs.disabled = state.simulationRunning || state.simulationPurposePlanLoading || !hasText || !plan || !hasApplicableOutputs;
-  elements.simulationApplyPurposeOutputs.title = hasApplicableOutputs
-    ? t("simulation.makePurposeOutputsPermanent", {}, "Make outputs permanent")
-    : t("simulation.noTemporaryOutputs", {}, "No temporary purpose outputs need to be applied.");
+  return {
+    hasApplicableOutputs,
+    disabled: state.simulationRunning || state.simulationPurposePlanLoading || !hasText || !plan || !hasApplicableOutputs,
+  };
 }
 
 function purposeOutputApplyMode() {

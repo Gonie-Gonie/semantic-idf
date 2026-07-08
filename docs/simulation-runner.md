@@ -343,6 +343,12 @@ selected purpose plan. The EnergyPlus run-copy path still keeps existing outputs
 and adds temporary purpose outputs so result parsing can use the requested
 series without editing the source IDF.
 
+Basic Energy completeness panels distinguish source output shortage from
+accounting/model coverage gaps. When missing source requests are reported, the
+result view can jump back to the Simulation output plan, refresh the purpose
+request set, and invoke the same permanent output application flow before the
+user reruns Basic Energy with explanation outputs.
+
 ## Output Discovery
 
 `DiscoverAvailableOutputs` builds a searchable output catalog from available run
