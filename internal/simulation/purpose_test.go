@@ -116,6 +116,23 @@ func TestBuildPurposeRunPlanBasicEnergyAllocationPolicy(t *testing.T) {
 	}
 }
 
+func TestBuildPurposeRunPlanPreservesPeriodScope(t *testing.T) {
+	doc := parsePurposePlanFixture(t, purposePlanFixtureIDF)
+
+	plan := BuildPurposeRunPlan(doc, SimulationPurposeRequest{
+		Purposes: []SimulationPurposeID{SimulationPurposeBasicEnergy},
+		Scope: SimulationPurposeScope{
+			PeriodMode:  "custom",
+			PeriodStart: "01-01",
+			PeriodEnd:   "01-31",
+		},
+	})
+
+	if plan.PeriodMode != "custom" || plan.PeriodStart != "01-01" || plan.PeriodEnd != "01-31" {
+		t.Fatalf("period scope = %q %q %q", plan.PeriodMode, plan.PeriodStart, plan.PeriodEnd)
+	}
+}
+
 func TestBuildPurposeRunPlanBasicEnergyExtendedEndUseMeters(t *testing.T) {
 	doc := parsePurposePlanFixture(t, purposePlanFixtureIDF+`
 Refrigeration:Compressor,

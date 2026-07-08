@@ -1055,6 +1055,50 @@ func TestPurposeResultBundleUsesSQLEnergyDashboard(t *testing.T) {
 	}
 }
 
+func TestPurposeResultBundleAppliesEnergyExplanationPeriodScope(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "eplusout.sql")
+	createTestEnergySQL(t, path)
+
+	result := &SimulationRunResult{
+		Status:         "succeeded",
+		PurposeRunPlan: &PurposeRunPlan{},
+		Files: []SimulationFileInfo{{
+			Name: "eplusout.sql",
+			Path: path,
+			Kind: "sqlite",
+		}},
+	}
+	bundle := BuildPurposeResultBundle(result, SimulationPurposeRequest{
+		Purposes: []SimulationPurposeID{SimulationPurposeBasicEnergy},
+		Scope: SimulationPurposeScope{
+			PeriodMode:  "custom",
+			PeriodStart: "01-01",
+			PeriodEnd:   "01-31",
+		},
+	})
+
+	period := energyExplanationPeriodByID(bundle.EnergyExplanation.Periods, "selected_range")
+	if period == nil || period.Label != "01-01 to 01-31" || period.Kind != "selected_range" {
+		t.Fatalf("selected period = %#v periods=%#v", period, bundle.EnergyExplanation.Periods)
+	}
+	facility := energyExplanationNodeByID(period.Nodes, "energy.carrier.electricity")
+	if facility == nil || facility.Value != 1 || facility.Unit != "kWh" {
+		t.Fatalf("selected facility node = %#v", facility)
+	}
+	cooling := energyExplanationNodeByID(period.Nodes, "energy.end_use.cooling.electricity")
+	if cooling == nil || cooling.Value != 0.5 {
+		t.Fatalf("selected cooling node = %#v", cooling)
+	}
+	reconciliation := energyExplanationReconciliationByID(period.Reconciliation, "reconcile.energy.electricity.selected_range")
+	if reconciliation == nil || reconciliation.ExpectedValue != 1 || reconciliation.ExplainedValue != 0.5 || reconciliation.ResidualValue != 0.5 {
+		t.Fatalf("selected reconciliation = %#v", period.Reconciliation)
+	}
+	if len(bundle.EnergyExplanation.Periods) != 4 || bundle.EnergyExplanation.Periods[0].ID != "annual" || bundle.EnergyExplanation.Periods[1].ID != "selected_range" {
+		t.Fatalf("period order = %#v", bundle.EnergyExplanation.Periods)
+	}
+}
+
 func TestPurposeResultBundleLinksEnergyExplanationToHVACServicePaths(t *testing.T) {
 	dir := t.TempDir()
 	sqlPath := filepath.Join(dir, "eplusout.sql")
@@ -1168,6 +1212,15 @@ func energyExplanationNodeByID(nodes []EnergyExplanationNode, id string) *Energy
 	for index := range nodes {
 		if nodes[index].ID == id {
 			return &nodes[index]
+		}
+	}
+	return nil
+}
+
+func energyExplanationPeriodByID(periods []EnergyPeriod, id string) *EnergyPeriod {
+	for index := range periods {
+		if periods[index].ID == id {
+			return &periods[index]
 		}
 	}
 	return nil

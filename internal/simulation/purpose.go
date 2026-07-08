@@ -86,6 +86,9 @@ type PurposeRunPlan struct {
 	RequiresSQL       bool                  `json:"requiresSQL"`
 	RequiresDiscovery bool                  `json:"requiresDiscovery"`
 	AllocationPolicy  string                `json:"allocationPolicy,omitempty"`
+	PeriodMode        string                `json:"periodMode,omitempty"`
+	PeriodStart       string                `json:"periodStart,omitempty"`
+	PeriodEnd         string                `json:"periodEnd,omitempty"`
 	Warnings          []PurposeRunWarning   `json:"warnings,omitempty"`
 }
 
@@ -541,14 +544,7 @@ func BuildPurposeResultBundle(result *SimulationRunResult, request SimulationPur
 	for _, purposeID := range request.Purposes {
 		switch purposeID {
 		case SimulationPurposeBasicEnergy:
-			plan := result.PurposeRunPlan
-			if plan != nil {
-				copy := *plan
-				copy.AllocationPolicy = request.AllocationPolicy
-				plan = &copy
-			} else {
-				plan = &PurposeRunPlan{AllocationPolicy: request.AllocationPolicy}
-			}
+			plan := purposeRunPlanWithRequestScope(result.PurposeRunPlan, request)
 			bundle.Energy = buildEnergyDashboardResultFromFiles(result.Files)
 			if len(bundle.Energy.FacilityMonthly)+len(bundle.Energy.EndUseMonthly)+len(bundle.Energy.ZoneMonthly) == 0 {
 				bundle.Energy = buildEnergyDashboardResult(result.Series)
@@ -615,6 +611,18 @@ func BuildPurposeResultBundle(result *SimulationRunResult, request SimulationPur
 		}
 	}
 	return bundle
+}
+
+func purposeRunPlanWithRequestScope(plan *PurposeRunPlan, request SimulationPurposeRequest) *PurposeRunPlan {
+	var copy PurposeRunPlan
+	if plan != nil {
+		copy = *plan
+	}
+	copy.AllocationPolicy = request.AllocationPolicy
+	copy.PeriodMode = request.Scope.PeriodMode
+	copy.PeriodStart = request.Scope.PeriodStart
+	copy.PeriodEnd = request.Scope.PeriodEnd
+	return &copy
 }
 
 type energyServicePathIndex struct {
@@ -2883,6 +2891,9 @@ func (builder *purposePlanBuilder) plan() PurposeRunPlan {
 		RequiresSQL:       true,
 		RequiresDiscovery: builder.request.DiscoveryAllowed,
 		AllocationPolicy:  builder.request.AllocationPolicy,
+		PeriodMode:        builder.request.Scope.PeriodMode,
+		PeriodStart:       builder.request.Scope.PeriodStart,
+		PeriodEnd:         builder.request.Scope.PeriodEnd,
 		Warnings:          builder.warnings,
 	}
 }

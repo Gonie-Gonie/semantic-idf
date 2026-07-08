@@ -236,10 +236,12 @@ type energyExplanationDictionary struct {
 }
 
 type energyExplanationSeriesBuilder struct {
-	dictionary energyExplanationDictionary
-	unit       string
-	total      float64
-	monthly    map[int]float64
+	dictionary       energyExplanationDictionary
+	unit             string
+	total            float64
+	monthly          map[int]float64
+	selectedRange    float64
+	hasSelectedRange bool
 }
 
 type energyExplanationSeries struct {
@@ -259,6 +261,8 @@ type energyExplanationSeries struct {
 	SourceIDs           []string
 	Total               float64
 	Monthly             map[int]float64
+	SelectedRange       float64
+	HasSelectedRange    bool
 
 	sourceKeyValue     string
 	sourceName         string
@@ -315,6 +319,7 @@ func parseSimulationEnergyExplanationSQL(path string, plan *PurposeRunPlan) (Ene
 	if err != nil {
 		intervalHours = map[int64]float64{}
 	}
+	selectedStartDay, selectedEndDay, hasSelectedRange := energyExplanationSelectedRangeDays(plan)
 
 	ids := make([]int, 0, len(dictionaries))
 	byID := map[int]energyExplanationDictionary{}
@@ -358,6 +363,12 @@ func parseSimulationEnergyExplanationSQL(path string, plan *PurposeRunPlan) (Ene
 				builder.monthly = map[int]float64{}
 			}
 			builder.monthly[int(month.Int64)] += number
+		}
+		if hasSelectedRange {
+			if rowDay, ok := energyExplanationSQLDayOfYear(month, day); ok && comfortDayInScope(rowDay, selectedStartDay, selectedEndDay) {
+				builder.selectedRange += number
+				builder.hasSelectedRange = true
+			}
 		}
 	}
 	if err := rows.Err(); err != nil {
@@ -573,6 +584,9 @@ func buildEnergyExplanationResult(series []energyExplanationSeries, sources []En
 			Warnings:       append([]EnergyWarning(nil), annual.Warnings...),
 		},
 	}
+	if selectedRange, ok := buildEnergyExplanationSelectedRangePeriod(series, allocationPolicy, plan); ok {
+		periods = append(periods, selectedRange)
+	}
 	for _, month := range months {
 		periodID := fmt.Sprintf("M%d", month)
 		graph := buildEnergyExplanationGraphForPeriod(periodID, series, allocationPolicy, func(item energyExplanationSeries) float64 {
@@ -603,6 +617,38 @@ func buildEnergyExplanationResult(series []energyExplanationSeries, sources []En
 		Warnings:          annual.Warnings,
 	}
 	return result
+}
+
+func buildEnergyExplanationSelectedRangePeriod(series []energyExplanationSeries, allocationPolicy string, plan *PurposeRunPlan) (EnergyPeriod, bool) {
+	label := energyExplanationSelectedRangeLabel(plan)
+	if label == "" {
+		return EnergyPeriod{}, false
+	}
+	hasValue := false
+	for _, item := range series {
+		if item.HasSelectedRange && item.SelectedRange != 0 {
+			hasValue = true
+			break
+		}
+	}
+	if !hasValue {
+		return EnergyPeriod{}, false
+	}
+	graph := buildEnergyExplanationGraphForPeriod("selected_range", series, allocationPolicy, func(item energyExplanationSeries) float64 {
+		if !item.HasSelectedRange {
+			return 0
+		}
+		return item.SelectedRange
+	})
+	return EnergyPeriod{
+		ID:             "selected_range",
+		Label:          label,
+		Kind:           "selected_range",
+		Nodes:          graph.Nodes,
+		Edges:          graph.Edges,
+		Reconciliation: graph.Reconciliation,
+		Warnings:       graph.Warnings,
+	}, true
 }
 
 func buildEnergyExplanationSummary(explanation EnergyExplanationResult) EnergyExplanationSummary {
@@ -1361,6 +1407,8 @@ func energyExplanationSeriesForBuilder(builder *energyExplanationSeriesBuilder, 
 			SourceIDs:           []string{sourceID},
 			Total:               roundedEnergyNumber(builder.total),
 			Monthly:             roundedEnergyExplanationMonthly(builder.monthly),
+			SelectedRange:       roundedEnergyNumber(builder.selectedRange),
+			HasSelectedRange:    builder.hasSelectedRange,
 			sourceKeyValue:      strings.TrimSpace(dictionary.row.keyValue),
 			sourceName:          strings.TrimSpace(firstNonEmpty(dictionary.row.keyValue, dictionary.row.name)),
 			sourceFrequency:     strings.TrimSpace(dictionary.reportingFrequency),
@@ -1371,22 +1419,24 @@ func energyExplanationSeriesForBuilder(builder *energyExplanationSeriesBuilder, 
 		def := dictionary.load
 		zoneName, loopName := energyLoadScopeNames(def.Scope, dictionary.row.keyValue)
 		return energyExplanationSeries{
-			Level:           "load",
-			Kind:            def.Kind,
-			Label:           def.Label,
-			Unit:            builder.unit,
-			ServiceKind:     def.ServiceKind,
-			ZoneName:        zoneName,
-			LoopName:        loopName,
-			Basis:           "measured_variable",
-			SourceIDs:       []string{sourceID},
-			Total:           roundedEnergyNumber(builder.total),
-			Monthly:         roundedEnergyExplanationMonthly(builder.monthly),
-			sourceKeyValue:  strings.TrimSpace(dictionary.row.keyValue),
-			sourceName:      strings.TrimSpace(dictionary.row.name),
-			sourceFrequency: strings.TrimSpace(dictionary.reportingFrequency),
-			sourceIsRate:    energyExplanationIntegratesRate(dictionary),
-			sourcePriority:  energyAliasPriority(dictionary.row.name, def.Aliases),
+			Level:            "load",
+			Kind:             def.Kind,
+			Label:            def.Label,
+			Unit:             builder.unit,
+			ServiceKind:      def.ServiceKind,
+			ZoneName:         zoneName,
+			LoopName:         loopName,
+			Basis:            "measured_variable",
+			SourceIDs:        []string{sourceID},
+			Total:            roundedEnergyNumber(builder.total),
+			Monthly:          roundedEnergyExplanationMonthly(builder.monthly),
+			SelectedRange:    roundedEnergyNumber(builder.selectedRange),
+			HasSelectedRange: builder.hasSelectedRange,
+			sourceKeyValue:   strings.TrimSpace(dictionary.row.keyValue),
+			sourceName:       strings.TrimSpace(dictionary.row.name),
+			sourceFrequency:  strings.TrimSpace(dictionary.reportingFrequency),
+			sourceIsRate:     energyExplanationIntegratesRate(dictionary),
+			sourcePriority:   energyAliasPriority(dictionary.row.name, def.Aliases),
 		}
 	}
 	def := dictionary.heat
@@ -1408,6 +1458,8 @@ func energyExplanationSeriesForBuilder(builder *energyExplanationSeriesBuilder, 
 		SourceIDs:          []string{sourceID},
 		Total:              roundedEnergyNumber(builder.total),
 		Monthly:            roundedEnergyExplanationMonthly(builder.monthly),
+		SelectedRange:      roundedEnergyNumber(builder.selectedRange),
+		HasSelectedRange:   builder.hasSelectedRange,
 		sourceKeyValue:     strings.TrimSpace(dictionary.row.keyValue),
 		sourceName:         strings.TrimSpace(dictionary.row.name),
 		sourceFrequency:    strings.TrimSpace(dictionary.reportingFrequency),
@@ -1609,6 +1661,33 @@ func sqlTimeOrdinalMinutes(monthText string, dayText string, hourText string, mi
 	}
 	dayOfYear += maxInt(day, 1) - 1
 	return ((dayOfYear*24)+hour)*60 + minute, true
+}
+
+func energyExplanationSQLDayOfYear(month sql.NullInt64, day sql.NullInt64) (int, bool) {
+	if !month.Valid || !day.Valid {
+		return 0, false
+	}
+	value := dayOfYear(int(month.Int64), int(day.Int64))
+	return value, value > 0
+}
+
+func energyExplanationSelectedRangeDays(plan *PurposeRunPlan) (int, int, bool) {
+	return comfortPeriodScopeDays(energyExplanationPeriodScope(plan))
+}
+
+func energyExplanationSelectedRangeLabel(plan *PurposeRunPlan) string {
+	return comfortPeriodScopeLabel(energyExplanationPeriodScope(plan))
+}
+
+func energyExplanationPeriodScope(plan *PurposeRunPlan) SimulationPurposeScope {
+	if plan == nil {
+		return SimulationPurposeScope{}
+	}
+	return SimulationPurposeScope{
+		PeriodMode:  plan.PeriodMode,
+		PeriodStart: plan.PeriodStart,
+		PeriodEnd:   plan.PeriodEnd,
+	}
 }
 
 func parseSQLTimeInt(value string) (int, bool) {

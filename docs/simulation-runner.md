@@ -152,7 +152,10 @@ still feed monthly dashboards. Basic Energy also builds an
 `energyExplanation` payload with `semantic-idf.energy-explanation/v1` schema,
 source IDs derived from `ReportDataDictionary`, accounting-basis edges, and
 residual reconciliation between facility carrier totals and mapped end-use
-meters. The payload includes the Basic Energy relationship rule catalog, and
+meters. When a custom period scope is selected, SQL row values whose `Time`
+month/day falls inside the scope are also emitted as a `selected_range` period
+alongside annual and monthly periods. The payload includes the Basic Energy
+relationship rule catalog, and
 explanation edges carry a relationship `ruleId` from that catalog so the UI and
 exports can distinguish measured end-use, measured load, heat-balance, and
 residual links. The companion
