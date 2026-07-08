@@ -394,6 +394,12 @@ func TestBatchSimulationWorkbookSheetsIncludesPurposeAndEnergySheets(t *testing.
 				},
 				EnergyExplanation: simulation.EnergyExplanationResult{
 					Schema: "semantic-idf.energy-explanation/v1",
+					Warnings: []simulation.EnergyWarning{{
+						Severity: "warning",
+						Code:     "heat_balance_deviation_large",
+						Message:  "Annual heat-balance deviation is large.",
+						Period:   "annual",
+					}},
 					Sources: []simulation.EnergyDataSource{{
 						ID:             "sql-rdd-1",
 						SourceType:     "sql_report_data",
@@ -405,6 +411,12 @@ func TestBatchSimulationWorkbookSheetsIncludesPurposeAndEnergySheets(t *testing.
 					Periods: []simulation.EnergyPeriod{{
 						ID:   "annual",
 						Kind: "annual",
+						Warnings: []simulation.EnergyWarning{{
+							Severity: "warning",
+							Code:     "heat_balance_deviation_large",
+							Message:  "Annual heat-balance deviation is large.",
+							Period:   "annual",
+						}},
 						Edges: []simulation.EnergyExplanationEdge{{
 							ID:       "edge-1",
 							FromID:   "energy.carrier.electricity",
@@ -419,6 +431,7 @@ func TestBatchSimulationWorkbookSheetsIncludesPurposeAndEnergySheets(t *testing.
 							Level:          "energy",
 							Period:         "annual",
 							Label:          "Electricity total basis",
+							Status:         "residual",
 							ExpectedValue:  2,
 							ExplainedValue: 1,
 							ResidualValue:  1,
@@ -431,7 +444,7 @@ func TestBatchSimulationWorkbookSheetsIncludesPurposeAndEnergySheets(t *testing.
 		}},
 	}
 	sheets := batchSimulationWorkbookSheets(BatchSimulationXLSXExportRequest{Result: result})
-	if len(sheets) != 5 || sheets[0].Name != "Purpose Metrics" || sheets[1].Name != "Energy Summary" || sheets[4].Name != "Reconciliation" {
+	if len(sheets) != 6 || sheets[0].Name != "Purpose Metrics" || sheets[1].Name != "Energy Summary" || sheets[4].Name != "Reconciliation" || sheets[5].Name != "Energy Warnings" {
 		t.Fatalf("simulation workbook sheets = %#v", sheets)
 	}
 	if rows := sheets[0].Sections[0].Rows; len(rows) != 1 || rows[0][3] != "energy_explanation.kpi.cooling_cop" {
@@ -439,6 +452,12 @@ func TestBatchSimulationWorkbookSheetsIncludesPurposeAndEnergySheets(t *testing.
 	}
 	if rows := sheets[1].Sections[0].Rows; len(rows) != 1 || rows[0][3] != "derived_kpi" || rows[0][10] != "zone" {
 		t.Fatalf("energy summary rows = %#v", rows)
+	}
+	if rows := sheets[4].Sections[0].Rows; len(rows) != 1 || rows[0][7] != "residual" {
+		t.Fatalf("reconciliation rows = %#v", rows)
+	}
+	if rows := sheets[5].Sections[0].Rows; len(rows) != 1 || rows[0][3] != "annual" || rows[0][5] != "heat_balance_deviation_large" {
+		t.Fatalf("warning rows = %#v", rows)
 	}
 }
 
@@ -463,11 +482,12 @@ func TestBatchSimulationWorkbookSheetsIncludeRunContext(t *testing.T) {
 			WeatherPath:    "weather.epw",
 			WorkerCount:    3,
 			PurposeRequest: simulation.SimulationPurposeRequest{
-				Purposes:         []simulation.SimulationPurposeID{simulation.SimulationPurposeBasicEnergy},
-				FrequencyPolicy:  simulation.PurposeFrequencyPolicyHighestResolution,
-				SQLMode:          simulation.PurposeSQLModeSQLFirst,
-				AllocationPolicy: simulation.PurposeAllocationPolicyByZoneLoadShare,
-				OutputApplyMode:  simulation.PurposeOutputApplyModeAddMissingOnly,
+				Purposes:          []simulation.SimulationPurposeID{simulation.SimulationPurposeBasicEnergy},
+				FrequencyPolicy:   simulation.PurposeFrequencyPolicyHighestResolution,
+				SQLMode:           simulation.PurposeSQLModeSQLFirst,
+				AllocationPolicy:  simulation.PurposeAllocationPolicyByZoneLoadShare,
+				BasicEnergyDetail: simulation.PurposeBasicEnergyDetailHeatDrivers,
+				OutputApplyMode:   simulation.PurposeOutputApplyModeAddMissingOnly,
 				Scope: simulation.SimulationPurposeScope{
 					ZoneMode:         "selected",
 					ZoneNames:        []string{"Core"},
@@ -504,6 +524,7 @@ func TestBatchSimulationWorkbookSheetsIncludeRunContext(t *testing.T) {
 		"purpose_ids":                "basic_energy",
 		"frequency_policy":           simulation.PurposeFrequencyPolicyHighestResolution,
 		"allocation_policy":          simulation.PurposeAllocationPolicyByZoneLoadShare,
+		"basic_energy_detail":        simulation.PurposeBasicEnergyDetailHeatDrivers,
 		"sql_mode":                   simulation.PurposeSQLModeSQLFirst,
 		"output_apply_mode":          simulation.PurposeOutputApplyModeAddMissingOnly,
 		"scope_zone_names":           "Core",
