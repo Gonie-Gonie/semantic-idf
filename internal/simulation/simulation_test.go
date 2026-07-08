@@ -477,6 +477,16 @@ func TestParseSimulationEnergyExplanationSQLBuildsAccountingGraph(t *testing.T) 
 	if result.AllocationPolicy != PurposeAllocationPolicyDirectOnly {
 		t.Fatalf("allocation policy = %q", result.AllocationPolicy)
 	}
+	if len(result.RelationshipRules) < 5 || result.RelationshipRules[0].ID == "" {
+		t.Fatalf("relationship rules = %#v", result.RelationshipRules)
+	}
+	encoded, err := json.Marshal(result.RelationshipRules[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(encoded), `"fromLevel"`) || strings.Contains(string(encoded), `"FromLevel"`) {
+		t.Fatalf("relationship rule json = %s", encoded)
+	}
 	if len(result.Periods) != 3 || result.Periods[0].ID != "annual" || result.Periods[1].ID != "M1" || result.Periods[2].ID != "M2" {
 		t.Fatalf("periods = %#v", result.Periods)
 	}

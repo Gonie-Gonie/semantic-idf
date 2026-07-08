@@ -1204,7 +1204,7 @@ function renderEnergyExplanationInspector(selection, explanation = {}) {
     { label: t("common.source", {}, "Source"), value: (selection.sourceIds || []).join(", ") || "-" },
   ];
   if (selection.ruleId) {
-    inspectorFields.splice(3, 0, { label: t("simulation.relationshipRule", {}, "Rule"), value: selection.ruleId });
+    inspectorFields.splice(3, 0, { label: t("simulation.relationshipRule", {}, "Rule"), value: energyExplanationRelationshipRuleLabel(explanation, selection.ruleId) });
   }
   if (Number.isFinite(signedValue) && signedValue !== 0 && signedValue !== Number(selection.value)) {
     inspectorFields.splice(1, 0, { label: t("simulation.signedValue", {}, "Signed"), value: formatValueWithUnit(signedValue, selection.unit) });
@@ -1420,6 +1420,15 @@ function energyExplanationLevelLabel(level = "") {
 function energyExplanationSourcesForIDs(explanation = {}, sourceIDs = []) {
   const wanted = new Set(sourceIDs || []);
   return (explanation.sources || []).filter((source) => wanted.has(source.id));
+}
+
+function energyExplanationRelationshipRuleLabel(explanation = {}, ruleID = "") {
+  const rule = (explanation.relationshipRules || []).find((item) => item.id === ruleID);
+  if (!rule) {
+    return ruleID;
+  }
+  const flow = [rule.fromLevel, rule.toLevel].filter(Boolean).join(" -> ");
+  return [rule.id, flow, rule.basis].filter(Boolean).join(" / ");
 }
 
 function renderSimulationEnergyRelatedServicePaths(selection = {}) {

@@ -14,17 +14,18 @@ const energyExplanationSchema = "semantic-idf.energy-explanation/v1"
 const energyExplanationSummarySchema = "semantic-idf.energy-explanation-summary/v1"
 
 type EnergyExplanationResult struct {
-	Schema           string                  `json:"schema"`
-	Purpose          string                  `json:"purpose"`
-	Frequency        string                  `json:"frequency"`
-	AllocationPolicy string                  `json:"allocationPolicy,omitempty"`
-	Periods          []EnergyPeriod          `json:"periods,omitempty"`
-	Nodes            []EnergyExplanationNode `json:"nodes"`
-	Edges            []EnergyExplanationEdge `json:"edges"`
-	Reconciliation   []EnergyReconciliation  `json:"reconciliation,omitempty"`
-	Sources          []EnergyDataSource      `json:"sources,omitempty"`
-	Completeness     EnergyCompleteness      `json:"completeness"`
-	Warnings         []EnergyWarning         `json:"warnings,omitempty"`
+	Schema            string                   `json:"schema"`
+	Purpose           string                   `json:"purpose"`
+	Frequency         string                   `json:"frequency"`
+	AllocationPolicy  string                   `json:"allocationPolicy,omitempty"`
+	RelationshipRules []EnergyRelationshipRule `json:"relationshipRules,omitempty"`
+	Periods           []EnergyPeriod           `json:"periods,omitempty"`
+	Nodes             []EnergyExplanationNode  `json:"nodes"`
+	Edges             []EnergyExplanationEdge  `json:"edges"`
+	Reconciliation    []EnergyReconciliation   `json:"reconciliation,omitempty"`
+	Sources           []EnergyDataSource       `json:"sources,omitempty"`
+	Completeness      EnergyCompleteness       `json:"completeness"`
+	Warnings          []EnergyWarning          `json:"warnings,omitempty"`
 }
 
 type EnergyPeriod struct {
@@ -166,14 +167,14 @@ type EnergyWarning struct {
 }
 
 type EnergyRelationshipRule struct {
-	ID             string
-	FromLevel      string
-	ToLevel        string
-	FromKind       string
-	ToKind         string
-	RequiredSource []string
-	Basis          string
-	Formula        string
+	ID             string   `json:"id"`
+	FromLevel      string   `json:"fromLevel,omitempty"`
+	ToLevel        string   `json:"toLevel,omitempty"`
+	FromKind       string   `json:"fromKind,omitempty"`
+	ToKind         string   `json:"toKind,omitempty"`
+	RequiredSource []string `json:"requiredSource,omitempty"`
+	Basis          string   `json:"basis"`
+	Formula        string   `json:"formula,omitempty"`
 }
 
 const (
@@ -399,10 +400,11 @@ func buildEnergyExplanationFromDashboard(dashboard EnergyDashboardResult, plan *
 
 func emptyEnergyExplanationResult(plan *PurposeRunPlan) EnergyExplanationResult {
 	result := EnergyExplanationResult{
-		Schema:           energyExplanationSchema,
-		Purpose:          string(SimulationPurposeBasicEnergy),
-		Frequency:        "monthly",
-		AllocationPolicy: PurposeAllocationPolicyDirectOnly,
+		Schema:            energyExplanationSchema,
+		Purpose:           string(SimulationPurposeBasicEnergy),
+		Frequency:         "monthly",
+		AllocationPolicy:  PurposeAllocationPolicyDirectOnly,
+		RelationshipRules: energyRelationshipRuleCatalog(),
 	}
 	result.Completeness = buildEnergyExplanationCompleteness(nil, nil, plan, 0)
 	return result
@@ -445,17 +447,18 @@ func buildEnergyExplanationResult(series []energyExplanationSeries, sources []En
 		})
 	}
 	result := EnergyExplanationResult{
-		Schema:           energyExplanationSchema,
-		Purpose:          string(SimulationPurposeBasicEnergy),
-		Frequency:        "monthly",
-		AllocationPolicy: PurposeAllocationPolicyDirectOnly,
-		Periods:          periods,
-		Nodes:            annual.Nodes,
-		Edges:            annual.Edges,
-		Reconciliation:   annual.Reconciliation,
-		Sources:          sources,
-		Completeness:     buildEnergyExplanationCompleteness(series, sources, plan, annual.MappedPercent),
-		Warnings:         annual.Warnings,
+		Schema:            energyExplanationSchema,
+		Purpose:           string(SimulationPurposeBasicEnergy),
+		Frequency:         "monthly",
+		AllocationPolicy:  PurposeAllocationPolicyDirectOnly,
+		RelationshipRules: energyRelationshipRuleCatalog(),
+		Periods:           periods,
+		Nodes:             annual.Nodes,
+		Edges:             annual.Edges,
+		Reconciliation:    annual.Reconciliation,
+		Sources:           sources,
+		Completeness:      buildEnergyExplanationCompleteness(series, sources, plan, annual.MappedPercent),
+		Warnings:          annual.Warnings,
 	}
 	return result
 }
