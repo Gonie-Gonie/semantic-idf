@@ -160,6 +160,8 @@ The release script infers bump size from these sections:
   summary/source/edge/reconciliation workbook sheets as XLSX.
 - Batch Simulation energy-explanation deltas now expose explicit baseline and
   target selectors so two-case Sankey and summary changes are traceable.
+- Batch Simulation now shows a compact annual Sankey edge delta bar view with
+  relation, basis, baseline value, target delta, percent, and missing-row state.
 - Batch Simulation JSON export now preserves the selected baseline and target
   comparison row IDs in its export context.
 - Batch Simulation XLSX export now carries the selected comparison context plus

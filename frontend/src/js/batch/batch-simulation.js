@@ -1032,13 +1032,15 @@ export function initializeMultiSimulationTool(context) {
   }
 
   function renderEnergyExplanationEdgeDeltaRanking(leftResult, rightResult) {
-    const rows = energyExplanationEdgeDeltaRows(leftResult, rightResult)
-      .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta) || a.relation.localeCompare(b.relation) || a.label.localeCompare(b.label))
+    const sortedRows = energyExplanationEdgeDeltaRows(leftResult, rightResult)
+      .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta) || a.relation.localeCompare(b.relation) || a.label.localeCompare(b.label));
+    const rows = sortedRows
       .slice(0, 12)
       .map(
         (row) => `
           <tr>
             <td>${escapeHTML(row.relation)}</td>
+            <td>${escapeHTML(row.basis || "")}</td>
             <td>${escapeHTML(row.label)}</td>
             <td>${escapeHTML(row.ruleId || "")}</td>
             <td>${escapeHTML(energyExplanationDeltaValue(row, "left"))}</td>
@@ -1055,13 +1057,43 @@ export function initializeMultiSimulationTool(context) {
     return `
       <section>
         <h4>${escapeHTML(t("simulation.energySankeyEdgeDelta", {}, "Sankey Edge Delta"))}</h4>
+        ${renderEnergyExplanationEdgeDeltaBars(sortedRows.slice(0, 8))}
         <div class="tool-table-wrap">
           <table class="tool-table">
-            <thead><tr><th>Relation</th><th>Edge</th><th>Rule</th><th>${escapeHTML(leftResult.filename || fileName(leftResult.inputPath))}</th><th>${escapeHTML(rightResult.filename || fileName(rightResult.inputPath))}</th><th>Delta</th><th>%</th><th>Status</th></tr></thead>
+            <thead><tr><th>Relation</th><th>Basis</th><th>Edge</th><th>Rule</th><th>${escapeHTML(leftResult.filename || fileName(leftResult.inputPath))}</th><th>${escapeHTML(rightResult.filename || fileName(rightResult.inputPath))}</th><th>Delta</th><th>%</th><th>Status</th></tr></thead>
             <tbody>${rows}</tbody>
           </table>
         </div>
       </section>`;
+  }
+
+  function renderEnergyExplanationEdgeDeltaBars(rows = []) {
+    if (!rows.length) {
+      return "";
+    }
+    const maxDelta = Math.max(...rows.map((row) => Math.abs(Number(row.delta) || 0)), 0);
+    return `
+      <div class="batch-energy-edge-delta-view" aria-label="${escapeHTML(t("simulation.energySankeyEdgeDelta", {}, "Sankey Edge Delta"))}">
+        ${rows
+          .map((row) => {
+            const width = maxDelta > 0 ? Math.max(4, Math.min(100, (Math.abs(Number(row.delta) || 0) / maxDelta) * 100)) : 4;
+            const className = row.leftMissing || row.rightMissing ? "missing" : row.delta >= 0 ? "positive" : "negative";
+            return `
+              <article class="${escapeHTML(className)}">
+                <div>
+                  <strong title="${escapeHTML(row.label)}">${escapeHTML(row.label)}</strong>
+                  <span>${escapeHTML([row.relation, row.basis].filter(Boolean).join(" / "))}</span>
+                </div>
+                <div class="batch-energy-edge-delta-track"><i style="width: ${escapeHTML(formatNumber(width))}%;"></i></div>
+                <div class="batch-energy-edge-delta-meta">
+                  <span>${escapeHTML(energyExplanationDeltaValue(row, "left"))}</span>
+                  <strong>${escapeHTML(formatSignedValue(row.delta, row.unit))}</strong>
+                  <span>${escapeHTML(energyExplanationDeltaPercent(row))}</span>
+                </div>
+              </article>`;
+          })
+          .join("")}
+      </div>`;
   }
 
   function renderEnergyExplanationDeltaSection(label, leftResult, rightResult, key) {
@@ -1138,7 +1170,10 @@ export function initializeMultiSimulationTool(context) {
         id,
         label: rightEdge?.label || leftEdge?.label || id,
         relation: rightEdge?.relation || leftEdge?.relation || "",
+        basis: rightEdge?.basis || leftEdge?.basis || "",
         ruleId: rightEdge?.ruleId || leftEdge?.ruleId || "",
+        fromId: rightEdge?.fromId || leftEdge?.fromId || "",
+        toId: rightEdge?.toId || leftEdge?.toId || "",
         leftValue,
         rightValue,
         leftMissing: !leftEdge,

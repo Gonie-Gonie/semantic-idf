@@ -134,6 +134,8 @@ func TestFrontendBatchEnergyExplanationDeltaContracts(t *testing.T) {
 		"energyExplanationEdgeDeltaRows",
 		"energyExplanationAnnualEdgeItems",
 		"energyExplanationDeltaStatus",
+		"renderEnergyExplanationEdgeDeltaBars",
+		"batch-energy-edge-delta-view",
 		"energyExplanationDeltaValue",
 		"energyExplanationDeltaPercent",
 		"leftMissing",
@@ -183,6 +185,7 @@ func TestFrontendBatchEnergyExplanationDeltaContracts(t *testing.T) {
 		"related_path_ids",
 		"Largest Energy Explanation Changes",
 		"Sankey Edge Delta",
+		"Basis</th><th>Edge",
 		"missing in baseline",
 	} {
 		if !strings.Contains(batch, term) {
@@ -201,5 +204,9 @@ func TestFrontendBatchEnergyExplanationDeltaContracts(t *testing.T) {
 	}
 	if !strings.Contains(html, "multiSimulationFrequencyPolicy") || !strings.Contains(html, "highest_resolution") {
 		t.Fatalf("batch simulation frequency policy control is missing")
+	}
+	styles := readTestFile(t, "frontend/src/styles/workspace.css")
+	if !strings.Contains(styles, ".batch-energy-edge-delta-view") || !strings.Contains(styles, ".batch-energy-edge-delta-track") {
+		t.Fatalf("batch energy edge delta styles are missing")
 	}
 }

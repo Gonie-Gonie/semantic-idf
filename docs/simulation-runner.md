@@ -223,8 +223,10 @@ delta tables beside the selected metric. It flags completeness
 differences between the two selected cases, including mapped percent and missing
 category changes. Explicit gain/loss heat-driver summary rows stay separate so
 opposite air-exchange directions can be compared. It also ranks annual Sankey
-edge deltas by relation, edge label, rule ID, delta, percent, and missing-row
-status.
+edge deltas by relation, basis, edge label, rule ID, delta, percent, and
+missing-row status. A compact bar view renders the largest selected-case edge
+deltas before the table so the two-case Sankey change is visible without
+reading every row.
 Missing summary and edge rows are labeled separately from matched rows, and the
 comparison value cell renders `Missing` instead of numeric `0` so an absent
 output is not silently treated as a normal zero. Batch Simulation can export

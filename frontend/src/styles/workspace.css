@@ -1434,3 +1434,64 @@ th.input-jump-highlight {
   color: var(--text);
   font-size: 13px;
 }
+
+.batch-energy-edge-delta-view {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.batch-energy-edge-delta-view article {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(120px, 0.7fr) minmax(150px, 0.7fr);
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.batch-energy-edge-delta-view strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.batch-energy-edge-delta-view span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.batch-energy-edge-delta-track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--surface);
+}
+
+.batch-energy-edge-delta-track i {
+  display: block;
+  height: 100%;
+  min-width: 4px;
+  border-radius: inherit;
+  background: var(--teal);
+}
+
+.batch-energy-edge-delta-view article.negative .batch-energy-edge-delta-track i {
+  background: var(--amber);
+}
+
+.batch-energy-edge-delta-view article.missing .batch-energy-edge-delta-track i {
+  background: var(--red);
+}
+
+.batch-energy-edge-delta-meta {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 6px;
+  align-items: baseline;
+  text-align: right;
+}
