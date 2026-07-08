@@ -138,6 +138,7 @@ type EnergyReconciliation struct {
 	Level          string   `json:"level"`
 	Period         string   `json:"period"`
 	Label          string   `json:"label"`
+	Status         string   `json:"status,omitempty"`
 	ZoneName       string   `json:"zoneName,omitempty"`
 	ServiceKind    string   `json:"serviceKind,omitempty"`
 	ExpectedValue  float64  `json:"expectedValue"`
@@ -1151,6 +1152,7 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 			Level:          "energy",
 			Period:         period,
 			Label:          energyCarrierLabel(carrier) + " total basis",
+			Status:         energyReconciliationStatus(facilityValue, residual),
 			ExpectedValue:  roundedEnergyNumber(facilityValue),
 			ExplainedValue: roundedEnergyNumber(endUseValue),
 			ResidualValue:  residual,
@@ -1302,6 +1304,7 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 			Level:          "heat",
 			Period:         period,
 			Label:          energyServiceLabel(serviceKind) + " heat-driver basis",
+			Status:         energyReconciliationStatus(loadValue, residual),
 			ExpectedValue:  roundedEnergyNumber(loadValue),
 			ExplainedValue: heatValue,
 			ResidualValue:  residual,
@@ -1395,6 +1398,7 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 			Level:          "heat",
 			Period:         period,
 			Label:          energyServiceLabel(serviceKind) + " heat-driver basis - " + zoneName,
+			Status:         energyReconciliationStatus(loadValue, residual),
 			ZoneName:       zoneName,
 			ServiceKind:    serviceKind,
 			ExpectedValue:  roundedEnergyNumber(loadValue),
@@ -2859,6 +2863,16 @@ func energyServiceLabel(serviceKind string) string {
 
 func energyResidualVisibilityThreshold(reference float64) float64 {
 	return math.Max(0.001, math.Abs(reference)*0.001)
+}
+
+func energyReconciliationStatus(expected float64, residual float64) string {
+	if math.Abs(residual) <= energyResidualVisibilityThreshold(expected) {
+		return "balanced"
+	}
+	if residual < 0 {
+		return "overmapped"
+	}
+	return "residual"
 }
 
 func firstExistingNodeID(nodes map[string]*energyExplanationNodeAccumulator, ids ...string) string {

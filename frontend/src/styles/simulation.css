@@ -639,6 +639,42 @@
   max-width: 360px;
 }
 
+.energy-reconciliation-row.residual td {
+  background: color-mix(in srgb, var(--amber) 6%, transparent);
+}
+
+.energy-reconciliation-row.overmapped td {
+  background: color-mix(in srgb, var(--red) 5%, transparent);
+}
+
+.energy-reconciliation-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 74px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px 7px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.energy-reconciliation-status.balanced {
+  border-color: color-mix(in srgb, var(--green) 38%, var(--line));
+  color: var(--green);
+}
+
+.energy-reconciliation-status.residual {
+  border-color: color-mix(in srgb, var(--amber) 48%, var(--line));
+  color: color-mix(in srgb, var(--amber) 78%, var(--text));
+}
+
+.energy-reconciliation-status.overmapped {
+  border-color: color-mix(in srgb, var(--red) 42%, var(--line));
+  color: var(--red);
+}
+
 .energy-reconciliation-source {
   display: inline-grid;
   grid-template-columns: minmax(58px, auto) auto auto;

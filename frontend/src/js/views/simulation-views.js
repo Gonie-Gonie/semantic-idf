@@ -1722,21 +1722,23 @@ function renderEnergyExplanationReconciliation(explanation = {}) {
   const reconciliation = usePeriodRows ? graph.reconciliation || [] : explanation.reconciliation || [];
   const warningsForPeriod = periodID !== "annual" || (graph.warnings || []).length ? graph.warnings || [] : explanation.warnings || [];
   const rows = reconciliation
-    .map(
-      (item) => `
-        <tr>
+    .map((item) => {
+      const status = energyReconciliationStatus(item);
+      return `
+        <tr class="energy-reconciliation-row ${escapeHTML(status)}">
           <td>${escapeHTML(item.label || item.id || "")}</td>
           <td>${escapeHTML(item.period || "")}</td>
           <td>${escapeHTML(item.zoneName || "")}</td>
           <td>${escapeHTML(item.serviceKind || "")}</td>
+          <td><span class="energy-reconciliation-status ${escapeHTML(status)}">${escapeHTML(energyReconciliationStatusLabel(status))}</span></td>
           <td>${escapeHTML(formatValueWithUnit(item.expectedValue, item.unit))}</td>
           <td>${escapeHTML(formatValueWithUnit(item.explainedValue, item.unit))}</td>
           <td>${escapeHTML(formatValueWithUnit(item.residualValue, item.unit))}</td>
           <td>${escapeHTML(item.basis || "")}</td>
           <td>${escapeHTML(item.formula || "")}</td>
           <td>${renderEnergyReconciliationSources(explanation, item.sourceIds || [])}</td>
-        </tr>`,
-    )
+        </tr>`;
+    })
     .join("");
   const warnings = warningsForPeriod
     .map((warning) => `<article class="simulation-hvac-alert ${escapeHTML(warning.severity || "info")}"><strong>${escapeHTML(warning.code || "")}</strong><span>${escapeHTML(warning.message || "")}</span></article>`)
@@ -1753,8 +1755,8 @@ function renderEnergyExplanationReconciliation(explanation = {}) {
       </div>
       <div class="output-table-wrap">
         <table class="output-table">
-          <thead><tr><th>${escapeHTML(t("common.metric", {}, "Metric"))}</th><th>${escapeHTML(t("common.period", {}, "Period"))}</th><th>${escapeHTML(t("common.zone", {}, "Zone"))}</th><th>${escapeHTML(t("simulation.service", {}, "Service"))}</th><th>Expected</th><th>Mapped</th><th>Residual</th><th>${escapeHTML(t("simulation.basis", {}, "Basis"))}</th><th>Formula</th><th>${escapeHTML(t("common.source", {}, "Source"))}</th></tr></thead>
-          <tbody>${rows || `<tr><td colspan="10">${escapeHTML(t("common.notAvailable", {}, "N/A"))}</td></tr>`}</tbody>
+          <thead><tr><th>${escapeHTML(t("common.metric", {}, "Metric"))}</th><th>${escapeHTML(t("common.period", {}, "Period"))}</th><th>${escapeHTML(t("common.zone", {}, "Zone"))}</th><th>${escapeHTML(t("simulation.service", {}, "Service"))}</th><th>${escapeHTML(t("common.status", {}, "Status"))}</th><th>Expected</th><th>Mapped</th><th>Residual</th><th>${escapeHTML(t("simulation.basis", {}, "Basis"))}</th><th>Formula</th><th>${escapeHTML(t("common.source", {}, "Source"))}</th></tr></thead>
+          <tbody>${rows || `<tr><td colspan="11">${escapeHTML(t("common.notAvailable", {}, "N/A"))}</td></tr>`}</tbody>
         </table>
       </div>
     </section>
@@ -1763,19 +1765,21 @@ function renderEnergyExplanationReconciliation(explanation = {}) {
 
 function renderEnergyZoneResidualRanking(reconciliation = []) {
   const rows = (reconciliation || [])
-    .filter((item) => item.level === "heat" && item.zoneName && Number.isFinite(Number(item.residualValue)) && Math.abs(Number(item.residualValue)) > 0)
+    .filter((item) => item.level === "heat" && item.zoneName && energyReconciliationStatus(item) !== "balanced")
     .sort((a, b) => Math.abs(Number(b.residualValue)) - Math.abs(Number(a.residualValue)))
     .slice(0, 8)
-    .map(
-      (item) => `
-        <tr>
+    .map((item) => {
+      const status = energyReconciliationStatus(item);
+      return `
+        <tr class="energy-reconciliation-row ${escapeHTML(status)}">
           <td>${escapeHTML(item.zoneName || "")}</td>
           <td>${escapeHTML(item.serviceKind || "")}</td>
+          <td><span class="energy-reconciliation-status ${escapeHTML(status)}">${escapeHTML(energyReconciliationStatusLabel(status))}</span></td>
           <td>${escapeHTML(formatValueWithUnit(item.residualValue, item.unit))}</td>
           <td>${escapeHTML(formatValueWithUnit(item.expectedValue, item.unit))}</td>
           <td>${escapeHTML(formatValueWithUnit(item.explainedValue, item.unit))}</td>
-        </tr>`,
-    )
+        </tr>`;
+    })
     .join("");
   if (!rows) {
     return "";
@@ -1788,11 +1792,38 @@ function renderEnergyZoneResidualRanking(reconciliation = []) {
       </div>
       <div class="output-table-wrap">
         <table class="output-table">
-          <thead><tr><th>${escapeHTML(t("common.zone", {}, "Zone"))}</th><th>${escapeHTML(t("simulation.service", {}, "Service"))}</th><th>Residual</th><th>Expected</th><th>Mapped</th></tr></thead>
+          <thead><tr><th>${escapeHTML(t("common.zone", {}, "Zone"))}</th><th>${escapeHTML(t("simulation.service", {}, "Service"))}</th><th>${escapeHTML(t("common.status", {}, "Status"))}</th><th>Residual</th><th>Expected</th><th>Mapped</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>
     </section>`;
+}
+
+function energyReconciliationStatus(item = {}) {
+  const status = String(item.status || "").toLowerCase();
+  if (["balanced", "residual", "overmapped"].includes(status)) {
+    return status;
+  }
+  const expected = Math.abs(Number(item.expectedValue) || 0);
+  const residual = Number(item.residualValue) || 0;
+  const threshold = Math.max(0.001, expected * 0.001);
+  if (Math.abs(residual) <= threshold) {
+    return "balanced";
+  }
+  return residual < 0 ? "overmapped" : "residual";
+}
+
+function energyReconciliationStatusLabel(status = "") {
+  switch (String(status || "").toLowerCase()) {
+    case "balanced":
+      return t("simulation.reconciliationBalanced", {}, "Balanced");
+    case "overmapped":
+      return t("simulation.reconciliationOvermapped", {}, "Overmapped");
+    case "residual":
+      return t("simulation.reconciliationResidual", {}, "Residual");
+    default:
+      return status || t("common.notAvailable", {}, "N/A");
+  }
 }
 
 function renderEnergyReconciliationSources(explanation = {}, sourceIDs = []) {
@@ -6863,6 +6894,7 @@ function renderPurposeHTMLEnergyExplanation(summary = {}, explanation = {}) {
       row.label || row.id || "",
       row.period || graph.id || "annual",
       row.level || "",
+      energyReconciliationStatusLabel(energyReconciliationStatus(row)),
       row.zoneName || "",
       row.serviceKind || "",
       formatValueWithUnit(row.expectedValue, row.unit),
@@ -6875,7 +6907,7 @@ function renderPurposeHTMLEnergyExplanation(summary = {}, explanation = {}) {
   if (reconciliationRows.length) {
     sections.push(
       `<h2>Energy Explanation Reconciliation</h2>${renderPurposeHTMLTable(
-        ["Metric", "Period", "Level", "Zone", "Service", "Expected", "Mapped", "Residual", "Basis", "Source IDs", "Formula"],
+        ["Metric", "Period", "Level", "Status", "Zone", "Service", "Expected", "Mapped", "Residual", "Basis", "Source IDs", "Formula"],
         reconciliationRows,
       )}`,
     );

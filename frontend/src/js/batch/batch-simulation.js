@@ -569,7 +569,7 @@ export function initializeMultiSimulationTool(context) {
           reconciliation.unit || "",
           formatSignedValue(reconciliation.residualValue, reconciliation.unit || ""),
           reconciliation.level || "",
-          "",
+          reconciliation.status || "",
           "",
           "",
           "",

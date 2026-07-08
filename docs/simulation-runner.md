@@ -288,8 +288,10 @@ Purpose result viewers now include:
   total source and the mapped consumption end-use sources referenced by the
   residual formula. Heat-driver reconciliation includes service-level rows and,
   where zone load and heat-driver data exist, zone/service rows for the selected
-  annual or monthly period. The subview ranks the largest zone/service heat
-  residuals for the active period below the full reconciliation table.
+  annual or monthly period. Each reconciliation row carries a `balanced`,
+  `residual`, or `overmapped` status, and the subview ranks the largest
+  non-balanced zone/service heat residuals for the active period below the full
+  reconciliation table.
   The `Zones` subview summarizes each zone/service period as Delivered Load,
   Cooling Pressure, Heating Pressure, signed heat, and residual values, with
   direct jumps to the matching Sankey zone focus, Heat-Flow Ledger zone, and

@@ -117,6 +117,8 @@ The release script infers bump size from these sections:
   rows.
 - The Basic Energy Reconciliation subview now ranks the largest zone/service
   heat residuals for the selected annual or monthly period.
+- Basic Energy reconciliation rows now expose `balanced`, `residual`, and
+  `overmapped` statuses in the app, HTML reports, and batch CSV exports.
 - Energy reconciliation source IDs now include both the expected facility total
   source and the mapped consumption end-use sources used in the residual
   formula.

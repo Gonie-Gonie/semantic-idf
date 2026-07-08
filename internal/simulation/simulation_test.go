@@ -592,25 +592,25 @@ func TestParseSimulationEnergyExplanationSQLBuildsAccountingGraph(t *testing.T) 
 	}
 	energyReconciliation := energyExplanationReconciliationByID(result.Reconciliation, "reconcile.energy.electricity.annual")
 	heatReconciliation := energyExplanationReconciliationByID(result.Reconciliation, "reconcile.heat.cooling.annual")
-	if energyReconciliation == nil || energyReconciliation.ResidualValue != 2 || heatReconciliation == nil || heatReconciliation.ResidualValue != 0 || heatReconciliation.ExplainedValue != 0.5 || result.Completeness.MappedPercent != 33.333 {
+	if energyReconciliation == nil || energyReconciliation.Status != "residual" || energyReconciliation.ResidualValue != 2 || heatReconciliation == nil || heatReconciliation.Status != "balanced" || heatReconciliation.ResidualValue != 0 || heatReconciliation.ExplainedValue != 0.5 || result.Completeness.MappedPercent != 33.333 {
 		t.Fatalf("reconciliation/completeness = %#v / %#v", result.Reconciliation, result.Completeness)
 	}
 	if !stringSliceContains(energyReconciliation.SourceIDs, "sql-rdd-20") || !stringSliceContains(energyReconciliation.SourceIDs, "sql-rdd-21") {
 		t.Fatalf("energy reconciliation sources = %#v", energyReconciliation.SourceIDs)
 	}
 	zoneHeatReconciliation := energyExplanationReconciliationByID(result.Reconciliation, "reconcile.heat.cooling.zone_one.annual")
-	if zoneHeatReconciliation == nil || zoneHeatReconciliation.ZoneName != "ZONE ONE" || zoneHeatReconciliation.ServiceKind != "cooling" || zoneHeatReconciliation.ExpectedValue != 0.5 || zoneHeatReconciliation.ExplainedValue != 0.5 || zoneHeatReconciliation.ResidualValue != 0 {
+	if zoneHeatReconciliation == nil || zoneHeatReconciliation.Status != "balanced" || zoneHeatReconciliation.ZoneName != "ZONE ONE" || zoneHeatReconciliation.ServiceKind != "cooling" || zoneHeatReconciliation.ExpectedValue != 0.5 || zoneHeatReconciliation.ExplainedValue != 0.5 || zoneHeatReconciliation.ResidualValue != 0 {
 		t.Fatalf("zone heat reconciliation = %#v", zoneHeatReconciliation)
 	}
 	if !stringSliceContains(zoneHeatReconciliation.SourceIDs, "sql-rdd-23") || !stringSliceContains(zoneHeatReconciliation.SourceIDs, "sql-rdd-24") {
 		t.Fatalf("zone heat reconciliation sources = %#v", zoneHeatReconciliation.SourceIDs)
 	}
 	monthlyHeatReconciliation := energyExplanationReconciliationByID(result.Periods[1].Reconciliation, "reconcile.heat.cooling.M1")
-	if monthlyHeatReconciliation == nil || monthlyHeatReconciliation.ExpectedValue != 0.25 || monthlyHeatReconciliation.ExplainedValue != 0.5 || monthlyHeatReconciliation.ResidualValue != -0.25 {
+	if monthlyHeatReconciliation == nil || monthlyHeatReconciliation.Status != "overmapped" || monthlyHeatReconciliation.ExpectedValue != 0.25 || monthlyHeatReconciliation.ExplainedValue != 0.5 || monthlyHeatReconciliation.ResidualValue != -0.25 {
 		t.Fatalf("monthly heat reconciliation = %#v", result.Periods[1].Reconciliation)
 	}
 	monthlyZoneHeatReconciliation := energyExplanationReconciliationByID(result.Periods[1].Reconciliation, "reconcile.heat.cooling.zone_one.M1")
-	if monthlyZoneHeatReconciliation == nil || monthlyZoneHeatReconciliation.ZoneName != "ZONE ONE" || monthlyZoneHeatReconciliation.ExpectedValue != 0.25 || monthlyZoneHeatReconciliation.ExplainedValue != 0.5 || monthlyZoneHeatReconciliation.ResidualValue != -0.25 {
+	if monthlyZoneHeatReconciliation == nil || monthlyZoneHeatReconciliation.Status != "overmapped" || monthlyZoneHeatReconciliation.ZoneName != "ZONE ONE" || monthlyZoneHeatReconciliation.ExpectedValue != 0.25 || monthlyZoneHeatReconciliation.ExplainedValue != 0.5 || monthlyZoneHeatReconciliation.ResidualValue != -0.25 {
 		t.Fatalf("monthly zone heat reconciliation = %#v", result.Periods[1].Reconciliation)
 	}
 	if result.Completeness.HeatDrivers.Found != 2 || result.Completeness.HeatDrivers.Total != 2 || result.Completeness.DeliveredLoad.Found != 1 || result.Completeness.DeliveredLoad.Total != 1 {
