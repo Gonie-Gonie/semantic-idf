@@ -622,10 +622,10 @@ func TestParseSimulationEnergyExplanationSQLBuildsAccountingGraph(t *testing.T) 
 	if len(result.Sources) != 5 || !energyExplanationHasSource(result.Sources, "sql-rdd-20", true, "Electricity:Facility") || !energyExplanationHasSource(result.Sources, "sql-rdd-24", false, "Zone Air Heat Balance Internal Convective Heat Gain Rate") {
 		t.Fatalf("sources = %#v", result.Sources)
 	}
-	if source := energyExplanationSourceByID(result.Sources, "sql-rdd-20"); source == nil || source.ObjectIndex == nil || *source.ObjectIndex != facilityObjectIndex {
+	if source := energyExplanationSourceByID(result.Sources, "sql-rdd-20"); source == nil || source.ObjectIndex == nil || *source.ObjectIndex != facilityObjectIndex || source.AggregationMethod != "sum_report_data" {
 		t.Fatalf("facility source object index = %#v", source)
 	}
-	if source := energyExplanationSourceByID(result.Sources, "sql-rdd-24"); source == nil || source.ObjectIndex == nil || *source.ObjectIndex != internalHeatObjectIndex {
+	if source := energyExplanationSourceByID(result.Sources, "sql-rdd-24"); source == nil || source.ObjectIndex == nil || *source.ObjectIndex != internalHeatObjectIndex || source.AggregationMethod != "integrate_rate_by_time_interval" {
 		t.Fatalf("heat source object index = %#v", source)
 	}
 	summary := buildEnergyExplanationSummary(result)

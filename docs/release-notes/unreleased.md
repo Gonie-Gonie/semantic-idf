@@ -73,6 +73,8 @@ The release script infers bump size from these sections:
 - Batch Simulation energy explanation summary, edge, and reconciliation CSV
   rows now fill `source_ids` and `source_object_index` when their source IDs can
   be matched to output request objects.
+- Basic Energy source metadata now includes `aggregationMethod` for SQL/report
+  sources, and the Sources view, inspector tables, and batch CSV export show it.
 - The Basic Energy Reconciliation subview now expands each accounting row's
   source IDs into compact source/output links, so residual checks can jump back
   to the matching output request when one is known.

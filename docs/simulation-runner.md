@@ -113,7 +113,10 @@ Sankey inspector and Systems view use those IDs before falling back to
 zone/service-kind matching. SQL source metadata also records the matching output
 request `objectIndex` when the run plan references an existing output object, so
 source tables, Sankey inspectors, and batch source CSV rows can jump back to the
-original request before falling back to output-name matching.
+original request before falling back to output-name matching. SQL source
+metadata also records an `aggregationMethod` such as `sum_report_data` or
+`integrate_rate_by_time_interval`, and source tables, inspectors, and batch CSV
+exports show that method beside frequency and unit.
 
 Output states:
 

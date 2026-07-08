@@ -117,6 +117,7 @@ type EnergyDataSource struct {
 	Name               string `json:"name,omitempty"`
 	Units              string `json:"units,omitempty"`
 	ReportingFrequency string `json:"reportingFrequency,omitempty"`
+	AggregationMethod  string `json:"aggregationMethod,omitempty"`
 	IndexGroup         string `json:"indexGroup,omitempty"`
 	TableName          string `json:"tableName,omitempty"`
 	RowName            string `json:"rowName,omitempty"`
@@ -385,11 +386,12 @@ func buildEnergyExplanationFromDashboard(dashboard EnergyDashboardResult, plan *
 		}
 		sourceID := "series-" + metricID(item.Name)
 		sources = append(sources, EnergyDataSource{
-			ID:         sourceID,
-			SourceType: "series",
-			IsMeter:    true,
-			Name:       item.Name,
-			Units:      item.Unit,
+			ID:                sourceID,
+			SourceType:        "series",
+			IsMeter:           true,
+			Name:              item.Name,
+			Units:             item.Unit,
+			AggregationMethod: "sum_dashboard_series",
 		})
 		monthly := map[int]float64{}
 		for _, point := range item.Points {
@@ -1418,10 +1420,18 @@ func energyDataSourceForDictionary(dictionary energyExplanationDictionary) Energ
 		Name:               strings.TrimSpace(row.name),
 		Units:              strings.TrimSpace(row.units),
 		ReportingFrequency: strings.TrimSpace(dictionary.reportingFrequency),
+		AggregationMethod:  energyExplanationAggregationMethod(dictionary),
 		IndexGroup:         strings.TrimSpace(dictionary.indexGroup),
 		TableName:          "ReportData",
 		ColumnName:         fmt.Sprintf("ReportDataDictionaryIndex=%d", row.index),
 	}
+}
+
+func energyExplanationAggregationMethod(dictionary energyExplanationDictionary) string {
+	if energyExplanationIntegratesRate(dictionary) {
+		return "integrate_rate_by_time_interval"
+	}
+	return "sum_report_data"
 }
 
 func energyExplanationObjectIndexForDictionary(dictionary energyExplanationDictionary, plan *PurposeRunPlan) *int {
