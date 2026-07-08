@@ -1295,7 +1295,7 @@ export function initializeMultiSimulationTool(context) {
       .filter(Boolean);
     return {
       purposes: purposes.length ? purposes : ["basic_energy"],
-      frequencyPolicy: "purpose_default",
+      frequencyPolicy: elements.multiSimulationFrequencyPolicy?.value || "purpose_default",
       allocationPolicy: elements.multiSimulationAllocationPolicy?.value || "direct_only",
       sqlMode: "sql_first",
       persistOutputs: false,
@@ -1446,6 +1446,7 @@ export function initializeMultiSimulationTool(context) {
     elements.multiSimulationWeather?.addEventListener("change", schedulePlanPreview);
     elements.multiSimulationWeatherMode?.addEventListener("change", schedulePlanPreview);
     elements.multiSimulationAllocationPolicy?.addEventListener("change", schedulePlanPreview);
+    elements.multiSimulationFrequencyPolicy?.addEventListener("change", schedulePlanPreview);
     elements.multiSimulationWorkers?.addEventListener("change", schedulePlanPreview);
     elements.multiSimulationRecursive?.addEventListener("change", schedulePlanPreview);
   }

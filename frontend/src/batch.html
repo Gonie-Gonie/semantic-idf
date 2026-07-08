@@ -283,6 +283,14 @@
                 <option value="by_zone_load_share" data-i18n="simulation.allocationByZoneLoadShare">By zone load share</option>
               </select>
             </label>
+            <label>
+              <span data-i18n="simulation.frequencyPolicy">Frequency policy</span>
+              <select id="multiSimulationFrequencyPolicy">
+                <option value="purpose_default" selected data-i18n="simulation.frequencyPurposeDefault">Purpose default</option>
+                <option value="preserve" data-i18n="simulation.frequencyPreserve">Preserve existing</option>
+                <option value="highest_resolution" data-i18n="simulation.frequencyHighestResolution">Highest resolution</option>
+              </select>
+            </label>
             <label class="settings-check">
               <input id="multiSimulationRecursive" type="checkbox" checked />
               <span data-i18n="tools.recursiveFolders">Search folders recursively</span>

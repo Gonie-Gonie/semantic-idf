@@ -96,6 +96,7 @@ const elements = {
   multiSimulationWorkers: document.querySelector("#multiSimulationWorkers"),
   multiSimulationViewMode: document.querySelector("#multiSimulationViewMode"),
   multiSimulationAllocationPolicy: document.querySelector("#multiSimulationAllocationPolicy"),
+  multiSimulationFrequencyPolicy: document.querySelector("#multiSimulationFrequencyPolicy"),
   multiSimulationRecursive: document.querySelector("#multiSimulationRecursive"),
   multiSimulationStats: document.querySelector("#multiSimulationStats"),
   multiSimulationSort: document.querySelector("#multiSimulationSort"),

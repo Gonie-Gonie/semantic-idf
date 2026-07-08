@@ -110,6 +110,7 @@ func TestFrontendBatchEnergyExplanationDeltaContracts(t *testing.T) {
 		"handleEnergyCompareSelectChange",
 		"energyExplanationMissingCategorySummary",
 		"elements.multiSimulationAllocationPolicy?.value",
+		"elements.multiSimulationFrequencyPolicy?.value",
 		"exportMultiSimulationCSV",
 		"exportMultiSimulationXLSX",
 		"exportMultiSimulationJSON",
@@ -156,5 +157,8 @@ func TestFrontendBatchEnergyExplanationDeltaContracts(t *testing.T) {
 	}
 	if !strings.Contains(html, "multiSimulationAllocationPolicy") || !strings.Contains(html, "by_zone_load_share") {
 		t.Fatalf("batch simulation allocation policy control is missing")
+	}
+	if !strings.Contains(html, "multiSimulationFrequencyPolicy") || !strings.Contains(html, "highest_resolution") {
+		t.Fatalf("batch simulation frequency policy control is missing")
 	}
 }

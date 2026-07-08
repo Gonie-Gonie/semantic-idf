@@ -154,6 +154,8 @@ The release script infers bump size from these sections:
   for Energy Use, Delivered Load, Heat Drivers, and Residual totals.
 - Purpose HTML export now includes source IDs and related service path IDs on
   Basic Energy explanation summary, annual edge, and reconciliation rows.
+- Batch Simulation now exposes the purpose frequency policy selector, including
+  the highest-resolution mode for Basic Energy drilldown runs.
 - Basic Energy explanations now fall back to annual SQL tabular end-use rows
   when detailed `ReportData` energy rows are unavailable, while preserving
   `sql_tabular` source metadata.
