@@ -1732,6 +1732,41 @@
   align-items: center;
 }
 
+.energy-related-zones {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  padding: 8px;
+}
+
+.energy-related-zones strong {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.energy-related-zones > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.energy-related-zone-chip {
+  border: 0;
+  background: none;
+  color: var(--focus);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  padding: 0;
+  cursor: pointer;
+}
+
+.energy-related-zone-chip:hover {
+  text-decoration: underline;
+}
+
 .energy-related-service-paths {
   display: grid;
   gap: 6px;

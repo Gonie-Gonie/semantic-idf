@@ -1842,6 +1842,7 @@ function renderEnergyExplanationInspector(selection, explanation = {}) {
     inspectorFields.push({ label: t("simulation.pathType", {}, "Path type"), value: simulationPathTypeLabel(selection.pathType) });
   }
   const drilldownActions = renderSimulationEnergyDrilldownActions(selection);
+  const relatedZones = renderSimulationEnergyRelatedZones(selection);
   const relatedPaths = renderSimulationEnergyRelatedServicePaths(selection);
   return `
     <section class="energy-explanation-inspector">
@@ -1854,6 +1855,7 @@ function renderEnergyExplanationInspector(selection, explanation = {}) {
       </div>
       ${selection.formula ? `<p class="energy-explanation-formula">${escapeHTML(selection.formula)}</p>` : ""}
       ${drilldownActions}
+      ${relatedZones}
       ${relatedPaths}
       <div class="output-table-wrap">
         <table class="output-table">
@@ -2261,6 +2263,29 @@ function renderSimulationEnergyRelatedServicePaths(selection = {}) {
     </div>`;
 }
 
+function renderSimulationEnergyRelatedZones(selection = {}) {
+  const zones = simulationRelatedZoneNamesForEnergySelection(selection).slice(0, 12);
+  if (!zones.length) {
+    return "";
+  }
+  return `
+    <div class="energy-related-zones">
+      <strong>${escapeHTML(t("common.zone", {}, "Zone"))}</strong>
+      <div>
+        ${zones
+          .map(
+            (zoneName) => `
+              <button
+                type="button"
+                class="energy-related-zone-chip"
+                data-simulation-energy-zone-jump="${escapeHTML(zoneName)}"
+              >${escapeHTML(zoneName)}</button>`,
+          )
+          .join("")}
+      </div>
+    </div>`;
+}
+
 function renderSimulationEnergyServicePathFocusButton(path = {}) {
   return `
     <button
@@ -2337,6 +2362,24 @@ function simulationRelatedServicePathsForEnergySelection(selection = {}) {
     }
     return Boolean(service || zoneKey);
   });
+}
+
+function simulationRelatedZoneNamesForEnergySelection(selection = {}) {
+  const zones = [];
+  const addZone = (zoneName = "") => {
+    const name = String(zoneName || "").trim();
+    if (!name) {
+      return;
+    }
+    if (!zones.some((existing) => simulationZoneKey(existing) === simulationZoneKey(name))) {
+      zones.push(name);
+    }
+  };
+  addZone(selection.zoneName || "");
+  simulationRelatedServicePathsForEnergySelection(selection).forEach((path) => {
+    addZone(path.zoneName || path.servedSubject?.zoneName || path.servedSubject?.name || "");
+  });
+  return zones;
 }
 
 function simulationRelatedServicePathsForEnergyNodes(nodes = []) {
