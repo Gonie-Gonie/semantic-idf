@@ -212,7 +212,9 @@ Purpose result viewers now include:
   Source availability uses `found` and `missing` status values so missing rows
   are not confused with present SQL dictionary sources. Source output cells link
   back to the matching existing output request object when the run plan can
-  identify one.
+  identify one. The Reconciliation subview expands row `sourceIds` into compact
+  source/output links so residual checks remain traceable to their meter or
+  variable requests.
   The `Systems` subview and node inspector match load/heat services to the
   current HVAC service model by zone and service kind, then link directly to the
   related HVAC service path. Sankey and Systems can focus the graph by all

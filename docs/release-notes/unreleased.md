@@ -70,6 +70,9 @@ The release script infers bump size from these sections:
 - Batch Simulation purpose-result CSV exports now include annual/monthly energy
   explanation reconciliation rows with residual, basis, formula, period, and
   source IDs.
+- The Basic Energy Reconciliation subview now expands each accounting row's
+  source IDs into compact source/output links, so residual checks can jump back
+  to the matching output request when one is known.
 - Basic Energy explanation plans now request the delivered-load alias catalog
   across zone air system, ideal loads, radiant HVAC, coil, and plant demand
   outputs at monthly frequency.

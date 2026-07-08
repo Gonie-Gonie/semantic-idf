@@ -626,6 +626,54 @@
   padding-inline: 7px;
 }
 
+.energy-reconciliation-sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 180px;
+  max-width: 360px;
+}
+
+.energy-reconciliation-source {
+  display: inline-grid;
+  grid-template-columns: minmax(58px, auto) auto auto;
+  gap: 4px;
+  align-items: center;
+  max-width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-2);
+  padding: 3px;
+}
+
+.energy-reconciliation-source code {
+  max-width: 108px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.energy-reconciliation-source .simulation-source-output-jump {
+  min-height: 20px;
+  padding-inline: 5px;
+}
+
+.energy-reconciliation-source .simulation-source-output {
+  min-height: 20px;
+  padding: 2px 5px;
+  font-size: 10px;
+}
+
+.energy-reconciliation-source.more {
+  display: inline-flex;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 7px;
+}
+
 .simulation-source-cell .simulation-source-output {
   display: inline-flex;
   grid-row: 1;

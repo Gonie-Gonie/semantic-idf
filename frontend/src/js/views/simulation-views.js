@@ -1288,6 +1288,7 @@ function renderEnergyExplanationReconciliation(explanation = {}) {
           <td>${escapeHTML(formatValueWithUnit(item.residualValue, item.unit))}</td>
           <td>${escapeHTML(item.basis || "")}</td>
           <td>${escapeHTML(item.formula || "")}</td>
+          <td>${renderEnergyReconciliationSources(explanation, item.sourceIds || [])}</td>
         </tr>`,
     )
     .join("");
@@ -1305,11 +1306,34 @@ function renderEnergyExplanationReconciliation(explanation = {}) {
       </div>
       <div class="output-table-wrap">
         <table class="output-table">
-          <thead><tr><th>${escapeHTML(t("common.metric", {}, "Metric"))}</th><th>${escapeHTML(t("common.period", {}, "Period"))}</th><th>Expected</th><th>Mapped</th><th>Residual</th><th>${escapeHTML(t("simulation.basis", {}, "Basis"))}</th><th>Formula</th></tr></thead>
-          <tbody>${rows || `<tr><td colspan="7">${escapeHTML(t("common.notAvailable", {}, "N/A"))}</td></tr>`}</tbody>
+          <thead><tr><th>${escapeHTML(t("common.metric", {}, "Metric"))}</th><th>${escapeHTML(t("common.period", {}, "Period"))}</th><th>Expected</th><th>Mapped</th><th>Residual</th><th>${escapeHTML(t("simulation.basis", {}, "Basis"))}</th><th>Formula</th><th>${escapeHTML(t("common.source", {}, "Source"))}</th></tr></thead>
+          <tbody>${rows || `<tr><td colspan="8">${escapeHTML(t("common.notAvailable", {}, "N/A"))}</td></tr>`}</tbody>
         </table>
       </div>
     </section>`;
+}
+
+function renderEnergyReconciliationSources(explanation = {}, sourceIDs = []) {
+  const sourceByID = new Map((explanation.sources || []).map((source) => [source.id, source]));
+  const uniqueSourceIDs = appendUniqueEnergyStrings([], ...(sourceIDs || []));
+  const rows = uniqueSourceIDs
+    .slice(0, 8)
+    .map((sourceID) => {
+      const source = sourceByID.get(sourceID) || { id: sourceID };
+      const object = source.id ? sourceOutputForEnergySource(source) : null;
+      const label = [source.keyValue, source.name, source.reportingFrequency].filter(Boolean).join(" / ");
+      return `
+        <span class="energy-reconciliation-source" title="${escapeHTML(label || sourceID)}">
+          <code>${escapeHTML(sourceID)}</code>
+          ${renderSourceOutputCell(object, { compact: true })}
+        </span>`;
+    })
+    .join("");
+  const hiddenCount = Math.max(0, uniqueSourceIDs.length - 8);
+  if (!rows) {
+    return `<span class="simulation-source-output missing">${escapeHTML(t("common.notAvailable", {}, "N/A"))}</span>`;
+  }
+  return `<div class="energy-reconciliation-sources">${rows}${hiddenCount ? `<span class="energy-reconciliation-source more">+${escapeHTML(hiddenCount)}</span>` : ""}</div>`;
 }
 
 function energyExplanationGraphForPeriod(explanation = {}, periodID = "annual") {
@@ -2982,7 +3006,7 @@ function purposeSourceOutputRank(object, resultKey) {
   return 1;
 }
 
-function renderSourceOutputCell(object) {
+function renderSourceOutputCell(object, options = {}) {
   if (!object) {
     return `<span class="simulation-source-output missing">${escapeHTML(t("common.notAvailable", {}, "N/A"))}</span>`;
   }
@@ -2992,7 +3016,8 @@ function renderSourceOutputCell(object) {
   const jump = Number.isFinite(objectIndex)
     ? `<button class="profile-object-link navigable-row simulation-source-output-jump" type="button" data-jump-object-index="${escapeHTML(objectIndex)}" data-jump-object-type="${escapeHTML(object.objectType || "")}">#${escapeHTML(objectIndex + 1)}</button>`
     : "";
-  return `${jump}<span class="simulation-source-output ${escapeHTML(object.state || "")}" title="${escapeHTML(signature)}">${escapeHTML(stateLabel)}</span><small class="simulation-source-signature" title="${escapeHTML(signature)}">${escapeHTML(signature)}</small>`;
+  const signatureHTML = options.compact ? "" : `<small class="simulation-source-signature" title="${escapeHTML(signature)}">${escapeHTML(signature)}</small>`;
+  return `${jump}<span class="simulation-source-output ${escapeHTML(object.state || "")}" title="${escapeHTML(signature)}">${escapeHTML(stateLabel)}</span>${signatureHTML}`;
 }
 
 function renderSourceInspectorCell(object, seriesRef = {}) {
