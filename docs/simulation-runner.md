@@ -305,7 +305,8 @@ comparison. The batch CSV keeps annual,
 monthly, and selected-range explanation periods by default; daily and hourly
 periods remain available in the embedded purpose result payload without
 expanding the default spreadsheet export. Compact summary rows also carry their
-source IDs and matching source output object indexes when available. Batch
+source IDs, matching source output object indexes, source table/row/column
+labels, and source/normalized units when available. Batch
 Simulation can also export the same core purpose metrics, compact energy
 summary, source metadata, source availability, edge, and reconciliation sheets
 as XLSX. XLSX summary, edge, reconciliation, and source availability rows
