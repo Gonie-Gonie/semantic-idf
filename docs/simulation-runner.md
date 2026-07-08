@@ -173,7 +173,7 @@ The result source priority is SQL, then CSV, then ESO. The run result and
 actual `resultSources` used by the parsers. SQL parsing uses a shared
 `QueryReportData` layer that joins `ReportDataDictionary`, `ReportData`, and
 `Time` while preserving dictionary metadata, meter status, reporting frequency,
-and time interval fields; it feeds legacy `Series`, Energy dashboard,
+index group, and time interval fields; it feeds legacy `Series`, Energy dashboard,
 `HeatFlow`, and Basic Energy explanation rows so older viewers continue to work
 while purpose result viewers are added. Basic Energy SQL rows are converted to
 display units

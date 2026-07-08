@@ -38,6 +38,7 @@ type SQLSeriesQuery struct {
 	IsMeter           *bool
 	Frequency         []string
 	Units             []string
+	IndexGroups       []string
 }
 
 // SQLSeriesRow is a ReportData row joined with its dictionary and Time metadata.
@@ -1343,7 +1344,7 @@ func walkReportData(db *sql.DB, seriesQuery SQLSeriesQuery, visit func(SQLSeries
 	minuteExpr := sqlAliasedColumnExpr(timeColumns, "t", "Minute", "NULL")
 	intervalTypeExpr := sqlAliasedTextColumnExpr(timeColumns, "t", "IntervalType", "''")
 
-	where, args := sqlSeriesQueryWhereClause(seriesQuery, rdDictionaryIndexExpr, nameExpr, keyValueExpr, isMeterExpr, frequencyExpr, unitsExpr)
+	where, args := sqlSeriesQueryWhereClause(seriesQuery, rdDictionaryIndexExpr, nameExpr, keyValueExpr, isMeterExpr, frequencyExpr, unitsExpr, indexGroupExpr)
 	rows, err := db.Query(fmt.Sprintf(`
 SELECT %s AS time_index,
        %s AS month,
@@ -1447,7 +1448,7 @@ func sqlAliasedCastTextColumnExpr(columns map[string]string, alias string, name 
 	return "COALESCE(CAST(" + alias + "." + quoteSQLiteIdentifier(actual) + " AS TEXT), '')"
 }
 
-func sqlSeriesQueryWhereClause(seriesQuery SQLSeriesQuery, dictionaryIndexExpr string, nameExpr string, keyValueExpr string, isMeterExpr string, frequencyExpr string, unitsExpr string) (string, []any) {
+func sqlSeriesQueryWhereClause(seriesQuery SQLSeriesQuery, dictionaryIndexExpr string, nameExpr string, keyValueExpr string, isMeterExpr string, frequencyExpr string, unitsExpr string, indexGroupExpr string) (string, []any) {
 	conditions := []string{}
 	args := []any{}
 	appendIntFilter := func(expr string, values []int) {
@@ -1474,6 +1475,7 @@ func sqlSeriesQueryWhereClause(seriesQuery SQLSeriesQuery, dictionaryIndexExpr s
 	appendTextFilter(keyValueExpr, seriesQuery.KeyValues)
 	appendTextFilter(frequencyExpr, seriesQuery.Frequency)
 	appendTextFilter(unitsExpr, seriesQuery.Units)
+	appendTextFilter(indexGroupExpr, seriesQuery.IndexGroups)
 	if seriesQuery.IsMeter != nil {
 		normalized := fmt.Sprintf("LOWER(TRIM(%s))", isMeterExpr)
 		if *seriesQuery.IsMeter {

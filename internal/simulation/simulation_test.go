@@ -482,6 +482,16 @@ func TestQueryReportDataFiltersAndPreservesMetadata(t *testing.T) {
 	}
 
 	rows, err = QueryReportData(db, SQLSeriesQuery{
+		IndexGroups: []string{"Zone"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].DictionaryIndex != 21 || rows[0].IndexGroup != "Zone" {
+		t.Fatalf("index-group filtered row = %#v, want Zone dictionary row", rows)
+	}
+
+	rows, err = QueryReportData(db, SQLSeriesQuery{
 		Names:   []string{"Electricity:Facility"},
 		IsMeter: &notMeter,
 	})

@@ -33,6 +33,9 @@ The release script infers bump size from these sections:
 - Basic Energy source availability and SQL source output-request links now use
   the energy meter alias catalog, so carrier/end-use meter order variants stay
   traceable.
+- The shared SQL `QueryReportData` layer can now filter by
+  `ReportDataDictionary.IndexGroup` while preserving that source metadata for
+  purpose result parsers.
 - Energy explanation Sankey and Systems views can now focus by all results, a
   selected zone, selected HVAC service path, or selected HVAC loop.
 - Energy explanation Sankey now has Detailed and Compact column modes, with
