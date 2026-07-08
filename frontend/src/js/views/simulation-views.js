@@ -1767,12 +1767,15 @@ function energyExplanationEdgeForSignMode(edge = {}, mode = "display") {
 }
 
 function groupedEnergyExplanationGraph(graph = {}) {
-  const limit = energyExplanationNodeLimit(state.simulationEnergyNodeLimit);
-  if (!limit) {
+  const requestedLimit = energyExplanationNodeLimit(state.simulationEnergyNodeLimit);
+  if (!requestedLimit) {
     return graph;
   }
   const nodes = graph.nodes || [];
   const heatNodes = nodes.filter((node) => node.level === "heat");
+  const nonHeatCount = nodes.length - heatNodes.length;
+  const maxDefaultNodes = 100;
+  const limit = Math.min(requestedLimit, Math.max(0, maxDefaultNodes - nonHeatCount - 1));
   if (heatNodes.length <= limit) {
     return graph;
   }
@@ -1858,9 +1861,12 @@ function renderEnergyExplanationGroupingNotice(grouping = {}) {
     return "";
   }
   const limit = Number(grouping.limit) || 0;
+  const message = limit > 0
+    ? t("simulation.energySankeyGrouped", { count, limit }, `Showing top ${limit} heat drivers; ${count} grouped as Other.`)
+    : t("simulation.energySankeyGroupedAllHeat", { count }, `${count} heat drivers grouped as Other to keep the default graph compact.`);
   return `
     <div class="energy-sankey-grouping-notice">
-      <span>${escapeHTML(t("simulation.energySankeyGrouped", { count, limit }, `Showing top ${limit} heat drivers; ${count} grouped as Other.`))}</span>
+      <span>${escapeHTML(message)}</span>
       <button class="simulation-series-inspect" type="button" data-simulation-energy-show-all-nodes="1">${escapeHTML(t("common.all", {}, "All"))}</button>
     </div>`;
 }

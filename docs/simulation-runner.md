@@ -395,7 +395,9 @@ Purpose result viewers now include:
   cooling pressure, negative heat drivers add heating pressure, and signed mode
   preserves the original heat-balance sign. The view uses carrier/service-specific
   node colors for common energy and load classes, and can cap visible heat-driver nodes with omitted
-  drivers grouped as `Other heat drivers`. When grouping occurs, the view shows
+  drivers grouped as `Other heat drivers`. The default grouping also keeps the
+  rendered Sankey graph within a 100-node budget where heat-driver grouping can
+  achieve it. When grouping occurs, the view shows
   how many heat drivers were folded, preserves related HVAC service-path IDs for
   the grouped inspector row, and offers an `All` action to expand them.
 - Zone Heat Flow SQL or CSV/ESO ledger with frame sampling metadata and
