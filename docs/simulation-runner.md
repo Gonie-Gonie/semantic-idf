@@ -141,7 +141,9 @@ Purpose result viewers now include:
   `Reconciliation` subviews for tracing Energy Use to Delivered Load and Heat
   Drivers with source metadata. The `Systems` subview and node inspector match
   load/heat services to the current HVAC service model by zone and service kind,
-  then link directly to the related HVAC service path.
+  then link directly to the related HVAC service path. Sankey and Systems can
+  focus the graph by all results, a selected zone, or a selected HVAC service
+  path without changing the stored explanation payload.
 - Zone Heat Flow SQL or CSV/ESO ledger with frame sampling metadata and
   time-range controls.
 - HVAC Loop Check node summaries, component operation summaries for fans,

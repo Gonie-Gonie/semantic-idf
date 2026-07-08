@@ -19,6 +19,8 @@ The release script infers bump size from these sections:
   source metadata, HVAC service-path cross-jumps, and residual reconciliation,
   including heat-driver links from delivered loads when heat-balance outputs are
   available.
+- Energy explanation Sankey and Systems views can now focus by all results, a
+  selected zone, or a selected HVAC service path.
 - Added an annual `energyExplanationSummary` result payload for carrier,
   end-use, delivered-load, heat-driver, residual, and top-zone rollups.
 - Basic Energy purpose runs now request monthly delivered-load and heat-driver

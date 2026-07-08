@@ -12,6 +12,9 @@ func TestFrontendSimulationEnergySystemsCrossJumpContracts(t *testing.T) {
 		"renderEnergySystemsSubview",
 		"data-simulation-hvac-path-id",
 		"simulationRelatedServicePathsForEnergySelection",
+		"focusedEnergyExplanationGraph",
+		"data-simulation-energy-focus-mode",
+		"data-simulation-energy-service-path-focus",
 		"navigateHVAC(",
 	} {
 		if !strings.Contains(simulation, term) {
@@ -23,7 +26,7 @@ func TestFrontendSimulationEnergySystemsCrossJumpContracts(t *testing.T) {
 		t.Fatalf("hvac navigation should remain exportable for simulation energy cross-jumps")
 	}
 	styles := readTestFile(t, "frontend/src/styles/simulation.css")
-	for _, term := range []string{".energy-related-service-paths", ".energy-service-path-chip"} {
+	for _, term := range []string{".energy-related-service-paths", ".energy-service-path-chip", ".simulation-energy-focus-controls"} {
 		if !strings.Contains(styles, term) {
 			t.Fatalf("simulation energy cross-jump style missing %q", term)
 		}

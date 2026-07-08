@@ -1043,6 +1043,23 @@
   font: inherit;
 }
 
+.simulation-energy-focus-controls {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.simulation-energy-focus-controls label {
+  max-width: min(320px, 70vw);
+}
+
+.simulation-energy-focus-controls select {
+  max-width: 220px;
+}
+
 .simulation-energy-explain-grid,
 .energy-explanation-inspector-grid {
   display: grid;
