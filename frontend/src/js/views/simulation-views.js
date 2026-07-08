@@ -531,6 +531,7 @@ function renderSimulationEnergyEmpty(message) {
 function renderSimulationEnergyDashboard(result) {
   const energy = result?.purposeResults?.energy || {};
   const explanation = result?.purposeResults?.energyExplanation || {};
+  const explanationSummary = result?.purposeResults?.energyExplanationSummary || {};
   const facility = energy.facilityMonthly || [];
   const endUse = energy.endUseMonthly || [];
   const zones = energy.zoneMonthly || [];
@@ -563,7 +564,7 @@ function renderSimulationEnergyDashboard(result) {
   if (["sankey", "systems"].includes(view) && energyExplanationHasPayload(explanation)) {
     normalizeSimulationEnergyFocusState(explanation);
   }
-  const viewBody = renderEnergySubview(view, energy, explanation, facility, endUse, zones);
+  const viewBody = renderEnergySubview(view, energy, explanation, explanationSummary, facility, endUse, zones);
   elements.simulationEnergyDashboard.innerHTML = `
     <div class="simulation-energy-kpis">${kpis || `<div><span>${escapeHTML(t("common.notAvailable", {}, "N/A"))}</span><strong>0</strong></div>`}</div>
     ${renderEnergySubviewControls(view, explanation)}
@@ -741,7 +742,7 @@ function normalizeSimulationEnergyFocusState(explanation = {}) {
   return { zones, paths, loops, mode };
 }
 
-function renderEnergySubview(view, energy, explanation, facility, endUse, zones) {
+function renderEnergySubview(view, energy, explanation, explanationSummary, facility, endUse, zones) {
   switch (view) {
     case "sankey":
       return renderEnergyExplanationSankey(explanation);
@@ -759,7 +760,7 @@ function renderEnergySubview(view, energy, explanation, facility, endUse, zones)
       return `
         ${renderPurposeCompletenessRow(energy.completeness || [])}
         ${renderEnergyExplanationCompleteness(explanation)}
-        ${renderEnergyDerivedKPISection(explanation)}
+        ${renderEnergyDerivedKPISection(explanation, explanationSummary)}
         ${renderEnergyUseBreakdownSection(explanation)}
         ${renderEnergyMonthlyChart(t("simulation.facilityMonthlyProfile", {}, "Facility monthly profile"), facility, explanation)}
         ${renderEnergyMonthlyChart(t("simulation.endUseMonthlyProfile", {}, "End-use monthly profile"), endUse, explanation)}
@@ -859,16 +860,16 @@ function renderEnergySystemsSubview(explanation = {}) {
     </section>`;
 }
 
-function renderEnergyDerivedKPISection(explanation = {}) {
+function renderEnergyDerivedKPISection(explanation = {}, explanationSummary = {}) {
   const graph = energyExplanationGraphForPeriod(explanation, "annual");
-  const rows = energyExplanationDerivedKPIItems(graph.nodes || [])
+  const rows = energyExplanationDerivedKPIItems(graph.nodes || [], explanationSummary)
     .map(
       (item) => `
         <tr>
           <td>${escapeHTML(simulationServiceKindLabel(item.serviceKind))}</td>
           <td>${escapeHTML(simulationPathTypeLabel(item.pathType))}</td>
-          <td>${escapeHTML(formatValueWithUnit(item.loadValue, "kWh"))}</td>
-          <td>${escapeHTML(formatValueWithUnit(item.energyValue, "kWh"))}</td>
+          <td>${escapeHTML(formatOptionalValueWithUnit(item.loadValue, "kWh"))}</td>
+          <td>${escapeHTML(formatOptionalValueWithUnit(item.energyValue, "kWh"))}</td>
           <td>${escapeHTML(formatNumber(item.value))}</td>
         </tr>`,
     )
@@ -891,10 +892,56 @@ function renderEnergyDerivedKPISection(explanation = {}) {
     </section>`;
 }
 
-function energyExplanationDerivedKPIItems(nodes = []) {
+function formatOptionalValueWithUnit(value, unit = "") {
+  const number = Number(value);
+  return Number.isFinite(number) && number !== 0 ? formatValueWithUnit(number, unit) : "-";
+}
+
+function energyExplanationDerivedKPIItems(nodes = [], explanationSummary = {}) {
+  const graphItems = energyExplanationGraphDerivedKPIItems(nodes);
+  const summaryItems = (explanationSummary.derivedKpis || []).filter((item) => Number(item.value) > 0);
+  if (!summaryItems.length) {
+    return graphItems;
+  }
+  return summaryItems
+    .map((item) => {
+      const serviceKind = item.serviceKind || energyExplanationKPIServiceKind(item);
+      const match = graphItems.find(
+        (candidate) =>
+          candidate.serviceKind === serviceKind ||
+          (item.kind && candidate.kind === item.kind) ||
+          (item.id && candidate.id === item.id),
+      );
+      return {
+        id: item.id || match?.id || "",
+        kind: item.kind || match?.kind || "",
+        label: item.label || match?.label || "",
+        serviceKind,
+        pathType: item.pathType || match?.pathType || "",
+        value: Number(item.value) || match?.value || 0,
+        energyValue: match?.energyValue,
+        loadValue: match?.loadValue,
+        basis: item.basis || match?.basis || "",
+      };
+    })
+    .filter((item) => item.serviceKind && item.value > 0);
+}
+
+function energyExplanationKPIServiceKind(item = {}) {
+  const text = `${item.id || ""} ${item.kind || ""} ${item.label || ""}`.toLowerCase();
+  if (text.includes("cooling")) {
+    return "cooling";
+  }
+  if (text.includes("heating")) {
+    return "heating";
+  }
+  return "";
+}
+
+function energyExplanationGraphDerivedKPIItems(nodes = []) {
   return [
-    { serviceKind: "cooling", label: "Cooling COP" },
-    { serviceKind: "heating", label: "Heating COP" },
+    { id: "kpi.cooling_cop", kind: "kpi.cooling_cop", serviceKind: "cooling", label: "Cooling COP" },
+    { id: "kpi.heating_cop", kind: "kpi.heating_cop", serviceKind: "heating", label: "Heating COP" },
   ]
     .map((definition) => {
       const energy = energyExplanationElectricEndUseNode(nodes, definition.serviceKind);

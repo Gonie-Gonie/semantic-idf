@@ -142,6 +142,9 @@ The release script infers bump size from these sections:
   `facility_total` and `broad_end_use`, and the Sankey inspector shows it.
 - Basic Energy Overview now states the Energy Use total basis from
   `meterHierarchyLevel`, keeping facility totals distinct from end-use rows.
+- Basic Energy Overview now renders derived COP values from the summary
+  `derivedKpis` payload, using the annual graph only to fill matching electric
+  energy and delivered-load display details.
 - Basic Energy completeness hints now tell light-tier users to switch the detail
   tier before rerunning when explanation outputs are missing.
 - The Basic Energy Reconciliation subview now expands each accounting row's

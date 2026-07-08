@@ -234,7 +234,9 @@ When electric end-use energy and delivered thermal load are both present, Basic
 Energy also reports derived COP KPIs separately from the Sankey graph rather
 than creating synthetic COP conversion edges. Batch purpose metrics expose those
 derived KPIs so COP can be selected directly in the Batch Simulation chart and
-table.
+table. The Energy Overview uses the summary `derivedKpis` payload as the KPI
+source of truth and only uses the annual graph to fill in display details such
+as the matching electric energy and delivered load values.
 
 Generic SQL and CSV series keep original values for compatibility and also
 expose display metadata (`displayColumn`, `displayUnit`, `displayMin`,
