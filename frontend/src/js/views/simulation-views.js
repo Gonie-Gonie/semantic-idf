@@ -612,9 +612,26 @@ function renderEnergySubviewControls(view, explanation = {}) {
           : ""
       }
       ${["sankey", "systems"].includes(view) && energyExplanationHasPayload(explanation) ? renderEnergyFocusControls(explanation) : ""}
+      ${view === "sankey" && energyExplanationHasPayload(explanation) ? renderEnergySankeyModeControls() : ""}
       ${view === "sankey" && energyExplanationHasPayload(explanation) ? renderEnergySignModeControls() : ""}
       ${view === "sankey" && energyExplanationHasPayload(explanation) ? renderEnergyNodeLimitControls() : ""}
     </div>`;
+}
+
+function renderEnergySankeyModeControls() {
+  const mode = energyExplanationSankeyMode(state.simulationEnergySankeyMode || "detailed");
+  state.simulationEnergySankeyMode = mode;
+  const options = [
+    ["detailed", t("simulation.energySankeyDetailed", {}, "Detailed")],
+    ["compact", t("simulation.energySankeyCompact", {}, "Compact")],
+  ]
+    .map(([value, label]) => `<option value="${escapeHTML(value)}" ${mode === value ? "selected" : ""}>${escapeHTML(label)}</option>`)
+    .join("");
+  return `
+    <label>
+      <span>${escapeHTML(t("simulation.energySankeyMode", {}, "Sankey mode"))}</span>
+      <select data-simulation-energy-sankey-mode>${options}</select>
+    </label>`;
 }
 
 function renderEnergySignModeControls() {
@@ -1600,32 +1617,36 @@ function roundedDisplayNumber(value) {
 }
 
 function renderEnergyExplanationSVG(nodes = [], edges = []) {
-  const columns = [[], [], [], [], []];
-  nodes.forEach((node) => {
-    columns[energyExplanationColumn(node)].push(node);
+  const mode = energyExplanationSankeyMode(state.simulationEnergySankeyMode || "detailed");
+  const displayGraph = energyExplanationSankeyDisplayGraph(nodes, edges, mode);
+  const displayNodes = displayGraph.nodes || [];
+  const displayEdges = displayGraph.edges || [];
+  const columnConfig = energyExplanationSankeyColumnConfig(mode);
+  const columns = columnConfig.map(() => []);
+  displayNodes.forEach((node) => {
+    columns[energyExplanationColumn(node, mode)].push(node);
   });
   columns.forEach((column) => column.sort((a, b) => Math.abs(Number(b.value) || 0) - Math.abs(Number(a.value) || 0)));
   const width = 960;
   const rowHeight = 48;
   const maxRows = Math.max(1, ...columns.map((column) => column.length));
   const height = Math.max(260, 42 + maxRows * rowHeight);
-  const xPositions = [24, 238, 452, 666, 800];
   const nodeWidth = 142;
-  const selectedEdge = edges.find((edge) => state.simulationEnergySelection === edge.id);
+  const selectedEdge = displayEdges.find((edge) => state.simulationEnergySelection === edge.id);
   const connectedNodeIDs = new Set([selectedEdge?.fromId, selectedEdge?.toId].filter(Boolean));
   const positions = new Map();
   columns.forEach((column, columnIndex) => {
     column.forEach((node, rowIndex) => {
       positions.set(node.id, {
-        x: xPositions[columnIndex],
+        x: columnConfig[columnIndex].x,
         y: 34 + rowIndex * rowHeight,
         w: nodeWidth,
         h: 28,
       });
     });
   });
-  const maxEdge = Math.max(1, ...edges.map((edge) => Math.abs(Number(edge.value) || 0)));
-  const edgePaths = edges
+  const maxEdge = Math.max(1, ...displayEdges.map((edge) => Math.abs(Number(edge.value) || 0)));
+  const edgePaths = displayEdges
     .map((edge) => {
       const from = positions.get(edge.fromId);
       const to = positions.get(edge.toId);
@@ -1642,7 +1663,7 @@ function renderEnergyExplanationSVG(nodes = [], edges = []) {
       return `<path class="energy-sankey-edge ${escapeHTML(edge.basis || "")}${selected}" d="M ${roundSVG(x1)} ${roundSVG(y1)} C ${roundSVG(x1 + mid)} ${roundSVG(y1)}, ${roundSVG(x2 - mid)} ${roundSVG(y2)}, ${roundSVG(x2)} ${roundSVG(y2)}" stroke-width="${roundSVG(strokeWidth)}" data-energy-explanation-edge="${escapeHTML(edge.id || "")}"><title>${escapeHTML(energyExplanationEdgeTitle(edge))}</title></path>`;
     })
     .join("");
-  const nodeRects = nodes
+  const nodeRects = displayNodes
     .map((node) => {
       const pos = positions.get(node.id);
       if (!pos) {
@@ -1660,14 +1681,8 @@ function renderEnergyExplanationSVG(nodes = [], edges = []) {
         </g>`;
     })
     .join("");
-  const labels = [
-    [24, "Energy Use"],
-    [238, "End Use"],
-    [452, "Delivered Load"],
-    [666, "Heat Drivers"],
-    [800, "Residual"],
-  ]
-    .map(([x, label]) => `<text x="${x}" y="18" class="simulation-axis">${escapeHTML(label)}</text>`)
+  const labels = columnConfig
+    .map((column) => `<text x="${column.x}" y="18" class="simulation-axis">${escapeHTML(column.label)}</text>`)
     .join("");
   return `
     <div class="energy-sankey-wrap">
@@ -1677,6 +1692,47 @@ function renderEnergyExplanationSVG(nodes = [], edges = []) {
         <g class="energy-sankey-nodes">${nodeRects}</g>
       </svg>
     </div>`;
+}
+
+function energyExplanationSankeyMode(mode = "") {
+  return ["compact", "detailed"].includes(mode) ? mode : "detailed";
+}
+
+function energyExplanationSankeyColumnConfig(mode = "detailed") {
+  if (energyExplanationSankeyMode(mode) === "compact") {
+    return [
+      { key: "energy", x: 24, label: t("simulation.energyUse", {}, "Energy Use") },
+      { key: "load", x: 318, label: t("simulation.deliveredLoad", {}, "Delivered Load") },
+      { key: "heat", x: 594, label: t("simulation.heatDrivers", {}, "Heat Drivers") },
+      { key: "residual", x: 800, label: t("simulation.residual", {}, "Residual") },
+    ];
+  }
+  return [
+    { key: "carrier", x: 24, label: t("simulation.energyCarrier", {}, "Energy Carrier") },
+    { key: "end_use", x: 238, label: t("simulation.endUseEnergy", {}, "End-use energy") },
+    { key: "load", x: 452, label: t("simulation.deliveredLoad", {}, "Delivered Load") },
+    { key: "heat", x: 666, label: t("simulation.heatDrivers", {}, "Heat Drivers") },
+    { key: "residual", x: 800, label: t("simulation.residual", {}, "Residual") },
+  ];
+}
+
+function energyExplanationSankeyDisplayGraph(nodes = [], edges = [], mode = "detailed") {
+  if (energyExplanationSankeyMode(mode) !== "compact") {
+    return { nodes, edges };
+  }
+  const hiddenEnergyIDs = new Set(
+    (nodes || [])
+      .filter((node) => node.level === "energy" && !String(node.id || "").includes(".end_use."))
+      .map((node) => node.id),
+  );
+  const visibleNodes = (nodes || []).filter((node) => !hiddenEnergyIDs.has(node.id));
+  const nodeByID = new Map(visibleNodes.map((node) => [node.id, node]));
+  const visibleEdges = (edges || []).filter((edge) => {
+    const from = nodeByID.get(edge.fromId);
+    const to = nodeByID.get(edge.toId);
+    return from && to && energyExplanationColumn(from, mode) < energyExplanationColumn(to, mode);
+  });
+  return { nodes: visibleNodes, edges: visibleEdges };
 }
 
 function energyExplanationNodeClassTokens(node = {}) {
@@ -2061,7 +2117,19 @@ function energyExplanationNodeLabel(nodes = [], id = "") {
   return nodes.find((node) => node.id === id)?.label || id;
 }
 
-function energyExplanationColumn(node = {}) {
+function energyExplanationColumn(node = {}, mode = "detailed") {
+  if (energyExplanationSankeyMode(mode) === "compact") {
+    if (node.level === "residual") {
+      return 3;
+    }
+    if (node.level === "heat") {
+      return 2;
+    }
+    if (node.level === "load") {
+      return 1;
+    }
+    return 0;
+  }
   if (node.level === "residual") {
     return 4;
   }
@@ -3941,6 +4009,13 @@ function handleSimulationEnergyDashboardChange(event) {
   const signMode = event.target.closest("[data-simulation-energy-sign-mode]");
   if (signMode) {
     state.simulationEnergySignMode = energyExplanationSignMode(signMode.value || "display");
+    state.simulationEnergySelection = "";
+    renderSimulationEnergyDashboard(state.simulationResult);
+    return;
+  }
+  const sankeyMode = event.target.closest("[data-simulation-energy-sankey-mode]");
+  if (sankeyMode) {
+    state.simulationEnergySankeyMode = energyExplanationSankeyMode(sankeyMode.value || "detailed");
     state.simulationEnergySelection = "";
     renderSimulationEnergyDashboard(state.simulationResult);
     return;

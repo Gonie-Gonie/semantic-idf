@@ -142,6 +142,7 @@ export const state = {
   simulationEnergyFocusMode: "all",
   simulationEnergyZoneFocus: "",
   simulationEnergyServicePathFocus: "",
+  simulationEnergySankeyMode: "detailed",
   simulationEnergySignMode: "display",
   simulationEnergyNodeLimit: 80,
   simulationZoneEnergyMetric: "__total",

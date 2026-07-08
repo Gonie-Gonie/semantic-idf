@@ -27,6 +27,9 @@ The release script infers bump size from these sections:
   delivered-load and heat-driver details as `not_applicable` instead of missing.
 - Energy explanation Sankey and Systems views can now focus by all results, a
   selected zone, or a selected HVAC service path.
+- Energy explanation Sankey now has Detailed and Compact column modes, with
+  Detailed separating Energy Carrier and End-use Energy columns and Compact
+  collapsing to Energy Use -> Delivered Load -> Heat Drivers.
 - Energy explanation Sankey can now switch heat drivers between display
   magnitude, signed balance, cooling-pressure, and heating-pressure views.
 - Energy explanation Sankey now states the heat-driver sign convention: positive
