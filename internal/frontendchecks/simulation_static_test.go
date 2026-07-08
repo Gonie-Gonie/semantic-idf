@@ -46,6 +46,9 @@ func TestFrontendBatchEnergyExplanationDeltaContracts(t *testing.T) {
 		`allocationPolicy: "direct_only"`,
 		"exportMultiSimulationCSV",
 		"energyExplanationSummaryExportItems",
+		"energyExplanationSourceExportItems",
+		"energy_explanation.source",
+		"source_frequency",
 		"Largest Energy Explanation Changes",
 		"missing in baseline",
 	} {

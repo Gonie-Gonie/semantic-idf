@@ -396,7 +396,25 @@ export function initializeMultiSimulationTool(context) {
     if (!result || !(result.results || []).length || typeof downloadCSV !== "function") {
       return;
     }
-    const rows = [["file", "status", "run_id", "metric_type", "metric_id", "label", "value", "unit", "display_value", "level", "detail_status"]];
+    const rows = [[
+      "file",
+      "status",
+      "run_id",
+      "metric_type",
+      "metric_id",
+      "label",
+      "value",
+      "unit",
+      "display_value",
+      "level",
+      "detail_status",
+      "source_type",
+      "source_key",
+      "source_name",
+      "source_frequency",
+      "source_index_group",
+      "source_object_index",
+    ]];
     (result.results || []).forEach((item) => {
       const file = item.filename || fileName(item.inputPath);
       for (const metric of item.purposeMetrics || []) {
@@ -412,6 +430,12 @@ export function initializeMultiSimulationTool(context) {
           metric.displayValue || "",
           metric.purposeId || "",
           metric.status || "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
         ]);
       }
       energyExplanationSummaryExportItems(item.purposeResults?.energyExplanationSummary || {}).forEach((metric) => {
@@ -427,6 +451,33 @@ export function initializeMultiSimulationTool(context) {
           "",
           metric.level || "",
           metric.status || "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+        ]);
+      });
+      energyExplanationSourceExportItems(item.purposeResults?.energyExplanation || {}).forEach((source) => {
+        rows.push([
+          file,
+          item.status || "",
+          item.runId || "",
+          "energy_explanation.source",
+          source.id || "",
+          source.label || "",
+          "",
+          source.units || "",
+          "",
+          source.level || "",
+          source.status || "",
+          source.sourceType || "",
+          source.keyValue || "",
+          source.name || "",
+          source.reportingFrequency || "",
+          source.indexGroup || "",
+          source.objectIndex || "",
         ]);
       });
     });
@@ -457,6 +508,35 @@ export function initializeMultiSimulationTool(context) {
         status: summary.completeness?.status || "",
       })),
     );
+  }
+
+  function energyExplanationSourceExportItems(explanation = {}) {
+    const availability = new Map();
+    for (const item of explanation.completeness?.sourceAvailability || []) {
+      const key = `${String(item.level || "").toLowerCase()}|${String(item.name || "").toLowerCase()}`;
+      availability.set(key, item.status || "");
+    }
+    return (explanation.sources || []).map((source) => {
+      const level = source.isMeter ? "energy" : energyExplanationSourceLevel(source.name || "");
+      const key = `${String(level || "").toLowerCase()}|${String(source.name || source.keyValue || "").toLowerCase()}`;
+      return {
+        ...source,
+        level,
+        label: source.keyValue && source.name ? `${source.keyValue} / ${source.name}` : source.keyValue || source.name || source.id || "",
+        status: availability.get(key) || "found",
+      };
+    });
+  }
+
+  function energyExplanationSourceLevel(name = "") {
+    const normalized = String(name || "").toLowerCase();
+    if (normalized.includes("heat balance") || normalized.includes("infiltration") || normalized.includes("ventilation") || normalized.includes("mixing")) {
+      return "heat";
+    }
+    if (normalized.includes("cooling") || normalized.includes("heating") || normalized.includes("load") || normalized.includes("demand")) {
+      return "load";
+    }
+    return "energy";
   }
 
   function renderEnergyExplanationBatchCompare(result) {

@@ -41,7 +41,7 @@ The release script infers bump size from these sections:
   comparison also ranks the largest annual changes and labels missing baseline
   or comparison rows.
 - Batch Simulation can export purpose metrics and compact Basic Energy
-  explanation summary rows as CSV.
+  explanation summary/source metadata rows as CSV.
 
 ## Changed
 
