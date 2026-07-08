@@ -1,6 +1,6 @@
 import { backend, elements, escapeHTML, setStatus, state } from "../state.js";
 import { t } from "../i18n.js";
-import { renderHVACLoopDiagram } from "./hvac-views.js";
+import { navigateHVAC, renderHVACLoopDiagram } from "./hvac-views.js";
 import { openStandardOutputApplyDialog } from "./output-views.js";
 
 let progressListenerRegistered = false;
@@ -474,18 +474,20 @@ function renderSimulationEnergyEmpty(message) {
 
 function renderSimulationEnergyDashboard(result) {
   const energy = result?.purposeResults?.energy || {};
+  const explanation = result?.purposeResults?.energyExplanation || {};
   const facility = energy.facilityMonthly || [];
   const endUse = energy.endUseMonthly || [];
   const zones = energy.zoneMonthly || [];
-  if (!facility.length && !endUse.length && !zones.length) {
+  const explanationNodes = energyExplanationGraphForPeriod(explanation, state.simulationEnergyPeriod || "annual").nodes || [];
+  if (!facility.length && !endUse.length && !zones.length && !explanationNodes.length) {
     renderSimulationEnergyEmpty(t("simulation.noEnergyResult", {}, "Run Basic Energy to inspect monthly energy results."));
     return;
   }
   if (elements.simulationEnergyStats) {
     elements.simulationEnergyStats.textContent = t(
       "simulation.energyStats",
-      { facility: facility.length, enduse: endUse.length, zones: zones.length },
-      `${facility.length} facility, ${endUse.length} end-use, ${zones.length} zone series`,
+      { facility: facility.length, enduse: endUse.length, zones: zones.length, nodes: explanationNodes.length },
+      `${facility.length} facility, ${endUse.length} end-use, ${zones.length} zone series, ${explanationNodes.length} explanation nodes`,
     );
   }
   const totals = [...facility, ...endUse].map((item) => ({ name: item.name, value: Number(item.total) || 0, unit: item.unit || "", source: item.source || "" }));
@@ -501,15 +503,799 @@ function renderSimulationEnergyDashboard(result) {
         </div>`,
     )
     .join("");
+  const view = energySubview(explanation);
+  const viewBody = renderEnergySubview(view, energy, explanation, facility, endUse, zones);
   elements.simulationEnergyDashboard.innerHTML = `
     <div class="simulation-energy-kpis">${kpis || `<div><span>${escapeHTML(t("common.notAvailable", {}, "N/A"))}</span><strong>0</strong></div>`}</div>
-    ${renderPurposeCompletenessRow(energy.completeness || [])}
+    ${renderEnergySubviewControls(view, explanation)}
+    ${viewBody}`;
+}
+
+function energySubview(explanation = {}) {
+  const allowed = ["overview", "sankey", "monthly", "zones", "systems", "sources", "reconciliation"];
+  let view = state.simulationEnergyView || "overview";
+  if (!allowed.includes(view)) {
+    view = "overview";
+  }
+  if (["sankey", "sources", "reconciliation"].includes(view) && !energyExplanationHasPayload(explanation)) {
+    view = "overview";
+  }
+  state.simulationEnergyView = view;
+  return view;
+}
+
+function energyExplanationHasPayload(explanation = {}) {
+  return Boolean((explanation.nodes || []).length || (explanation.sources || []).length || (explanation.reconciliation || []).length);
+}
+
+function renderEnergySubviewControls(view, explanation = {}) {
+  const tabs = [
+    ["overview", t("simulation.energyOverview", {}, "Overview")],
+    ["sankey", t("simulation.energySankey", {}, "Sankey")],
+    ["monthly", t("simulation.monthly", {}, "Monthly")],
+    ["zones", t("simulation.zones", {}, "Zones")],
+    ["systems", t("simulation.systems", {}, "Systems")],
+    ["sources", t("simulation.energySources", {}, "Sources")],
+    ["reconciliation", t("simulation.energyReconciliation", {}, "Reconciliation")],
+  ];
+  const periodOptions = (explanation.periods || [])
+    .map((period) => `<option value="${escapeHTML(period.id || "")}" ${(state.simulationEnergyPeriod || "annual") === period.id ? "selected" : ""}>${escapeHTML(period.label || period.id || "")}</option>`)
+    .join("");
+  return `
+    <div class="simulation-energy-subnav">
+      <div class="view-tabs" role="tablist" aria-label="${escapeHTML(t("simulation.energyViews", {}, "Energy views"))}">
+        ${tabs
+          .map(([id, label]) => {
+            const disabled = ["sankey", "sources", "reconciliation"].includes(id) && !energyExplanationHasPayload(explanation);
+            return `<button class="view-tab ${view === id ? "active" : ""}" type="button" data-simulation-energy-view="${id}" ${disabled ? "disabled" : ""}>${escapeHTML(label)}</button>`;
+          })
+          .join("")}
+      </div>
+      ${
+        ["sankey", "systems"].includes(view) && periodOptions
+          ? `<label><span>${escapeHTML(t("common.period", {}, "Period"))}</span><select data-simulation-energy-period>${periodOptions}</select></label>`
+          : ""
+      }
+    </div>`;
+}
+
+function renderEnergySubview(view, energy, explanation, facility, endUse, zones) {
+  switch (view) {
+    case "sankey":
+      return renderEnergyExplanationSankey(explanation);
+    case "monthly":
+      return renderEnergyMonthlySubview(explanation, facility, endUse);
+    case "zones":
+      return renderEnergyZonesSubview(zones, explanation);
+    case "systems":
+      return renderEnergySystemsSubview(explanation);
+    case "sources":
+      return renderEnergyExplanationSources(explanation);
+    case "reconciliation":
+      return renderEnergyExplanationReconciliation(explanation);
+    default:
+      return `
+        ${renderPurposeCompletenessRow(energy.completeness || [])}
+        ${renderEnergyExplanationCompleteness(explanation)}
+        ${renderEnergyMonthlyChart(t("simulation.facilityMonthlyProfile", {}, "Facility monthly profile"), facility)}
+        ${renderEnergyMonthlyChart(t("simulation.endUseMonthlyProfile", {}, "End-use monthly profile"), endUse)}
+        ${renderEnergyBarSection(t("simulation.facilityEnergy", {}, "Facility energy"), facility)}
+        ${renderEnergyBarSection(t("simulation.endUseEnergy", {}, "End-use energy"), endUse)}
+        ${renderZoneEnergyMatrix(zones)}
+        ${renderZoneEnergyTable(zones)}`;
+  }
+}
+
+function renderEnergySystemsSubview(explanation = {}) {
+  const graph = energyExplanationGraphForPeriod(explanation, state.simulationEnergyPeriod || "annual");
+  const rows = simulationEnergyServiceRows(graph.nodes || []);
+  const hasHVAC = simulationHVACServicePaths().length > 0;
+  return `
+    ${renderEnergyExplanationCompleteness(explanation)}
+    <section class="simulation-energy-block">
+      <div class="simulation-energy-block-head">
+        <h4>${escapeHTML(t("simulation.energySystems", {}, "Systems"))}</h4>
+        <span>${escapeHTML(hasHVAC ? t("simulation.energySystemsHint", {}, "Service paths are matched by zone and service kind.") : t("hvac.noServicePaths", {}, "No service paths"))}</span>
+      </div>
+      <div class="output-table-wrap">
+        <table class="output-table">
+          <thead><tr><th>Zone</th><th>Service</th><th>${escapeHTML(t("hvac.delivery", {}, "Delivery"))}</th><th>${escapeHTML(t("hvac.connectedSystems", {}, "Connected systems"))}</th><th>Path type</th><th>Load</th><th>Heat drivers</th></tr></thead>
+          <tbody>${rows || `<tr><td colspan="7">${escapeHTML(hasHVAC ? t("simulation.noRelatedSystems", {}, "No related service paths for the current energy graph.") : t("hvac.noServicePaths", {}, "No service paths"))}</td></tr>`}</tbody>
+        </table>
+      </div>
+    </section>`;
+}
+
+function simulationEnergyServiceRows(nodes = []) {
+  const paths = simulationRelatedServicePathsForEnergyNodes(nodes);
+  const loadByService = new Map();
+  const heatByZoneService = new Map();
+  nodes.forEach((node) => {
+    const service = simulationCanonicalServiceKind(node.serviceKind || energyServiceFromNode(node));
+    if (!service) {
+      return;
+    }
+    const value = Number(node.displayValue ?? node.value) || 0;
+    if (node.level === "load") {
+      loadByService.set(service, (loadByService.get(service) || 0) + value);
+    } else if (node.level === "heat") {
+      const zoneKey = simulationZoneKey(node.zoneName || "");
+      const key = `${zoneKey}|${service}`;
+      heatByZoneService.set(key, (heatByZoneService.get(key) || 0) + value);
+    }
+  });
+  return paths
+    .map((path) => {
+      const service = simulationCanonicalServiceKind(path.serviceKind);
+      const heat = heatByZoneService.get(`${simulationZoneKey(path.zoneName || path.servedSubject?.zoneName || "")}|${service}`) || 0;
+      const load = loadByService.get(service) || 0;
+      return `
+        <tr>
+          <td>${renderSimulationEnergyServicePathButton(path, simulationServedSubjectLabel(path.servedSubject || path))}</td>
+          <td>${escapeHTML(simulationServiceKindLabel(path.serviceKind))}</td>
+          <td>${escapeHTML(simulationDeliveryLabel(path))}</td>
+          <td>${escapeHTML(simulationServicePathConnectedSystems(path).join(", ") || "N/A")}</td>
+          <td>${escapeHTML(simulationPathTypeLabel(path.pathType))}</td>
+          <td>${escapeHTML(formatValueWithUnit(load, "kWh"))}</td>
+          <td>${escapeHTML(formatValueWithUnit(heat, "kWh"))}</td>
+        </tr>`;
+    })
+    .join("");
+}
+
+function renderEnergyMonthlySubview(explanation = {}, facility = [], endUse = []) {
+  const rows = (explanation.periods || [])
+    .filter((period) => period.kind === "monthly")
+    .map((period) => {
+      const totals = energyExplanationLevelTotals(period.nodes || []);
+      return `
+        <tr>
+          <td>${escapeHTML(period.label || period.id || "")}</td>
+          <td>${escapeHTML(formatValueWithUnit(totals.energy, totals.unit))}</td>
+          <td>${escapeHTML(formatValueWithUnit(totals.load, totals.unit))}</td>
+          <td>${escapeHTML(formatValueWithUnit(totals.heat, totals.unit))}</td>
+          <td>${escapeHTML(formatValueWithUnit(totals.residual, totals.unit))}</td>
+        </tr>`;
+    })
+    .join("");
+  return `
+    ${renderEnergyExplanationCompleteness(explanation)}
     ${renderEnergyMonthlyChart(t("simulation.facilityMonthlyProfile", {}, "Facility monthly profile"), facility)}
     ${renderEnergyMonthlyChart(t("simulation.endUseMonthlyProfile", {}, "End-use monthly profile"), endUse)}
-    ${renderEnergyBarSection(t("simulation.facilityEnergy", {}, "Facility energy"), facility)}
-    ${renderEnergyBarSection(t("simulation.endUseEnergy", {}, "End-use energy"), endUse)}
+    <section class="simulation-energy-block">
+      <div class="simulation-energy-block-head">
+        <h4>${escapeHTML(t("simulation.energyExplanationMonthly", {}, "Explanation monthly ledger"))}</h4>
+        <span>${escapeHTML(t("simulation.energyBasisNote", {}, "Basis is accounting/source type, not confidence."))}</span>
+      </div>
+      <div class="output-table-wrap">
+        <table class="output-table">
+          <thead><tr><th>${escapeHTML(t("common.period", {}, "Period"))}</th><th>Energy Use</th><th>Delivered Load</th><th>Heat Drivers</th><th>Residual</th></tr></thead>
+          <tbody>${rows || `<tr><td colspan="5">${escapeHTML(t("common.notAvailable", {}, "N/A"))}</td></tr>`}</tbody>
+        </table>
+      </div>
+    </section>`;
+}
+
+function renderEnergyZonesSubview(zones = [], explanation = {}) {
+  const heatRows = (explanation.nodes || [])
+    .filter((node) => node.level === "heat" && node.zoneName)
+    .sort((a, b) => {
+      const zoneCompare = String(a.zoneName || "").localeCompare(String(b.zoneName || ""));
+      if (zoneCompare) return zoneCompare;
+      return Math.abs(Number(b.value) || 0) - Math.abs(Number(a.value) || 0);
+    })
+    .map(
+      (node) => `
+        <tr>
+          <td>${escapeHTML(node.zoneName || "")}</td>
+          <td>${escapeHTML(node.label || node.kind || "")}</td>
+          <td>${escapeHTML(node.heatCategory || "")}</td>
+          <td>${escapeHTML(node.serviceKind || "")}</td>
+          <td>${escapeHTML(formatValueWithUnit(node.value, node.unit))}</td>
+          <td>${escapeHTML(formatValueWithUnit(node.signedValue, node.unit))}</td>
+          <td>${escapeHTML((node.sourceIds || []).join(", ") || "-")}</td>
+        </tr>`,
+    )
+    .join("");
+  return `
+    ${renderEnergyExplanationCompleteness(explanation)}
     ${renderZoneEnergyMatrix(zones)}
-    ${renderZoneEnergyTable(zones)}`;
+    ${renderZoneEnergyTable(zones)}
+    <section class="simulation-energy-block">
+      <div class="simulation-energy-block-head">
+        <h4>${escapeHTML(t("simulation.zoneHeatDrivers", {}, "Zone heat drivers"))}</h4>
+        <span>${escapeHTML(t("simulation.energyBasisNote", {}, "Basis is accounting/source type, not confidence."))}</span>
+      </div>
+      <div class="output-table-wrap">
+        <table class="output-table">
+          <thead><tr><th>${escapeHTML(t("common.zone", {}, "Zone"))}</th><th>Driver</th><th>Category</th><th>Service</th><th>Display</th><th>Signed</th><th>${escapeHTML(t("common.source", {}, "Source"))}</th></tr></thead>
+          <tbody>${heatRows || `<tr><td colspan="7">${escapeHTML(t("common.notAvailable", {}, "N/A"))}</td></tr>`}</tbody>
+        </table>
+      </div>
+    </section>`;
+}
+
+function energyExplanationLevelTotals(nodes = []) {
+  const totals = { energy: 0, load: 0, heat: 0, residual: 0, unit: "kWh" };
+  nodes.forEach((node) => {
+    const value = Number(node.displayValue ?? node.value) || 0;
+    if (node.unit) {
+      totals.unit = node.unit;
+    }
+    if (node.level === "energy" && String(node.id || "").includes(".carrier.")) {
+      totals.energy += value;
+    } else if (node.level === "load") {
+      totals.load += value;
+    } else if (node.level === "heat") {
+      totals.heat += value;
+    } else if (node.level === "residual") {
+      totals.residual += value;
+    }
+  });
+  totals.energy = Math.round(totals.energy * 1000) / 1000;
+  totals.load = Math.round(totals.load * 1000) / 1000;
+  totals.heat = Math.round(totals.heat * 1000) / 1000;
+  totals.residual = Math.round(totals.residual * 1000) / 1000;
+  return totals;
+}
+
+function renderEnergyExplanationCompleteness(explanation = {}) {
+  const completeness = explanation.completeness || {};
+  const items = completeness.items || [completeness.energyUse, completeness.deliveredLoad, completeness.heatDrivers].filter(Boolean);
+  if (!items.length) {
+    return "";
+  }
+  return `
+    <section class="simulation-energy-block simulation-energy-explain-status">
+      <div class="simulation-energy-block-head">
+        <h4>${escapeHTML(t("simulation.energyExplanation", {}, "Energy explanation"))}</h4>
+        <span>${escapeHTML(t("simulation.mappedEnergy", {}, "Mapped energy"))}: ${escapeHTML(formatNumber(completeness.mappedPercent || 0))}%</span>
+      </div>
+      <div class="simulation-energy-explain-grid">
+        ${items
+          .map(
+            (item) => `
+              <article class="${escapeHTML(item.status || "missing")}">
+                <span>${escapeHTML(energyExplanationLevelLabel(item.level || ""))}</span>
+                <strong>${escapeHTML(item.status || "")}</strong>
+                <small>${escapeHTML(item.message || `${item.found || 0}/${item.total || 0}`)}</small>
+              </article>`,
+          )
+          .join("")}
+      </div>
+    </section>`;
+}
+
+function renderEnergyExplanationSankey(explanation = {}) {
+  const graph = energyExplanationGraphForPeriod(explanation, state.simulationEnergyPeriod || "annual");
+  const nodes = graph.nodes || [];
+  const edges = graph.edges || [];
+  if (!nodes.length) {
+    return `<div class="empty">${escapeHTML(t("simulation.noEnergyExplanation", {}, "No energy explanation graph is available."))}</div>`;
+  }
+  const selected = energyExplanationSelection(explanation, graph);
+  const svg = renderEnergyExplanationSVG(nodes, edges);
+  return `
+    ${renderEnergyExplanationCompleteness(explanation)}
+    <section class="simulation-energy-block">
+      <div class="simulation-energy-block-head">
+        <h4>${escapeHTML(t("simulation.energyPath", {}, "Energy Use -> Delivered Load -> Heat Drivers"))}</h4>
+        <span>${escapeHTML(t("simulation.energyBasisNote", {}, "Basis is accounting/source type, not confidence."))}</span>
+      </div>
+      ${svg}
+      ${renderEnergyExplanationLegend()}
+      ${renderEnergyExplanationInspector(selected, explanation)}
+    </section>`;
+}
+
+function renderEnergyExplanationSVG(nodes = [], edges = []) {
+  const columns = [[], [], [], [], []];
+  nodes.forEach((node) => {
+    columns[energyExplanationColumn(node)].push(node);
+  });
+  columns.forEach((column) => column.sort((a, b) => Math.abs(Number(b.value) || 0) - Math.abs(Number(a.value) || 0)));
+  const width = 960;
+  const rowHeight = 48;
+  const maxRows = Math.max(1, ...columns.map((column) => column.length));
+  const height = Math.max(260, 42 + maxRows * rowHeight);
+  const xPositions = [24, 238, 452, 666, 800];
+  const nodeWidth = 142;
+  const positions = new Map();
+  columns.forEach((column, columnIndex) => {
+    column.forEach((node, rowIndex) => {
+      positions.set(node.id, {
+        x: xPositions[columnIndex],
+        y: 34 + rowIndex * rowHeight,
+        w: nodeWidth,
+        h: 28,
+      });
+    });
+  });
+  const maxEdge = Math.max(1, ...edges.map((edge) => Math.abs(Number(edge.value) || 0)));
+  const edgePaths = edges
+    .map((edge) => {
+      const from = positions.get(edge.fromId);
+      const to = positions.get(edge.toId);
+      if (!from || !to) {
+        return "";
+      }
+      const x1 = from.x + from.w;
+      const y1 = from.y + from.h / 2;
+      const x2 = to.x;
+      const y2 = to.y + to.h / 2;
+      const mid = Math.max(28, (x2 - x1) / 2);
+      const strokeWidth = Math.max(2, Math.min(18, 2 + 16 * Math.abs(Number(edge.value) || 0) / maxEdge));
+      return `<path class="energy-sankey-edge ${escapeHTML(edge.basis || "")}" d="M ${roundSVG(x1)} ${roundSVG(y1)} C ${roundSVG(x1 + mid)} ${roundSVG(y1)}, ${roundSVG(x2 - mid)} ${roundSVG(y2)}, ${roundSVG(x2)} ${roundSVG(y2)}" stroke-width="${roundSVG(strokeWidth)}" data-energy-explanation-edge="${escapeHTML(edge.id || "")}"><title>${escapeHTML(energyExplanationEdgeTitle(edge))}</title></path>`;
+    })
+    .join("");
+  const nodeRects = nodes
+    .map((node) => {
+      const pos = positions.get(node.id);
+      if (!pos) {
+        return "";
+      }
+      const selected = state.simulationEnergySelection === node.id ? " selected" : "";
+      return `
+        <g class="energy-sankey-node ${escapeHTML(node.level || "")} ${escapeHTML(node.carrier || node.serviceKind || "")}${selected}" data-energy-explanation-node="${escapeHTML(node.id || "")}" transform="translate(${roundSVG(pos.x)} ${roundSVG(pos.y)})">
+          <rect width="${pos.w}" height="${pos.h}" rx="5"></rect>
+          <text x="8" y="12">${escapeHTML(shortEnergyExplanationLabel(node.label || node.kind || ""))}</text>
+          <text x="8" y="24">${escapeHTML(formatValueWithUnit(node.value, node.unit))}</text>
+          <title>${escapeHTML(energyExplanationNodeTitle(node))}</title>
+        </g>`;
+    })
+    .join("");
+  const labels = [
+    [24, "Energy Use"],
+    [238, "End Use"],
+    [452, "Delivered Load"],
+    [666, "Heat Drivers"],
+    [800, "Residual"],
+  ]
+    .map(([x, label]) => `<text x="${x}" y="18" class="simulation-axis">${escapeHTML(label)}</text>`)
+    .join("");
+  return `
+    <div class="energy-sankey-wrap">
+      <svg class="energy-sankey" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHTML(t("simulation.energySankey", {}, "Energy Sankey"))}">
+        ${labels}
+        <g class="energy-sankey-edges">${edgePaths}</g>
+        <g class="energy-sankey-nodes">${nodeRects}</g>
+      </svg>
+    </div>`;
+}
+
+function renderEnergyExplanationLegend() {
+  return `
+    <div class="energy-sankey-legend">
+      <span><i class="measured_meter"></i>${escapeHTML(t("simulation.basisMeasuredMeter", {}, "measured meter"))}</span>
+      <span><i class="measured_variable"></i>${escapeHTML(t("simulation.basisMeasuredVariable", {}, "measured variable"))}</span>
+      <span><i class="derived_balance"></i>${escapeHTML(t("simulation.basisDerived", {}, "derived balance"))}</span>
+      <span><i class="allocated"></i>${escapeHTML(t("simulation.basisAllocated", {}, "allocated"))}</span>
+      <span><i class="residual"></i>${escapeHTML(t("simulation.basisResidual", {}, "residual"))}</span>
+    </div>`;
+}
+
+function renderEnergyExplanationInspector(selection, explanation = {}) {
+  if (!selection) {
+    return `<div class="energy-explanation-inspector empty">${escapeHTML(t("simulation.energySelectNode", {}, "Select a node or edge to inspect value, basis, formula, and source metadata."))}</div>`;
+  }
+  const sources = energyExplanationSourcesForIDs(explanation, selection.sourceIds || []);
+  const sourceRows = sources
+    .map((source) => {
+      const object = source.isMeter
+        ? findPurposeOutputObject("Output:Meter", source.keyValue || source.name || "", "")
+        : sourceOutputForVariable(source.keyValue || "", source.name || "");
+      return `
+        <tr>
+          <td>${escapeHTML(source.id || "")}</td>
+          <td>${escapeHTML(source.isMeter ? "meter" : "variable")}</td>
+          <td>${escapeHTML(source.keyValue || "")}</td>
+          <td>${escapeHTML(source.name || "")}</td>
+          <td>${escapeHTML(source.reportingFrequency || "")}</td>
+          <td>${escapeHTML(source.units || "")}</td>
+          <td>${renderSourceOutputCell(object)}</td>
+        </tr>`;
+    })
+    .join("");
+  const type = selection.fromId ? "edge" : "node";
+  const signedValue = Number(selection.signedValue);
+  const inspectorFields = [
+    { label: t("common.value", {}, "Value"), value: formatValueWithUnit(selection.value, selection.unit) },
+    { label: t("common.period", {}, "Period"), value: selection.period || state.simulationEnergyPeriod || "annual" },
+    { label: t("simulation.basis", {}, "Basis"), value: selection.basis || "measured" },
+    { label: t("common.source", {}, "Source"), value: (selection.sourceIds || []).join(", ") || "-" },
+  ];
+  if (Number.isFinite(signedValue) && signedValue !== 0 && signedValue !== Number(selection.value)) {
+    inspectorFields.splice(1, 0, { label: t("simulation.signedValue", {}, "Signed"), value: formatValueWithUnit(signedValue, selection.unit) });
+  }
+  if (selection.heatCategory) {
+    inspectorFields.push({ label: t("simulation.heatCategory", {}, "Heat category"), value: selection.heatCategory });
+  }
+  if (selection.zoneName) {
+    inspectorFields.push({ label: t("common.zone", {}, "Zone"), value: selection.zoneName });
+  }
+  if (selection.serviceKind) {
+    inspectorFields.push({ label: t("simulation.service", {}, "Service"), value: selection.serviceKind });
+  }
+  const relatedPaths = renderSimulationEnergyRelatedServicePaths(selection);
+  return `
+    <section class="energy-explanation-inspector">
+      <div class="simulation-energy-block-head">
+        <h4>${escapeHTML(selection.label || selection.kind || selection.id || "")}</h4>
+        <span>${escapeHTML(type)} / ${escapeHTML(selection.basis || selection.level || "")}</span>
+      </div>
+      <div class="energy-explanation-inspector-grid">
+        ${inspectorFields.map((field) => `<div><span>${escapeHTML(field.label)}</span><strong>${escapeHTML(field.value)}</strong></div>`).join("")}
+      </div>
+      ${selection.formula ? `<p class="energy-explanation-formula">${escapeHTML(selection.formula)}</p>` : ""}
+      ${relatedPaths}
+      <div class="output-table-wrap">
+        <table class="output-table">
+          <thead><tr><th>ID</th><th>${escapeHTML(t("common.type", {}, "Type"))}</th><th>Key</th><th>Name</th><th>Frequency</th><th>Unit</th><th>${escapeHTML(t("simulation.sourceOutput", {}, "Source output"))}</th></tr></thead>
+          <tbody>${sourceRows || `<tr><td colspan="7">${escapeHTML(t("common.notAvailable", {}, "N/A"))}</td></tr>`}</tbody>
+        </table>
+      </div>
+    </section>`;
+}
+
+function renderEnergyExplanationSources(explanation = {}) {
+  const rows = (explanation.sources || [])
+    .map((source) => {
+      const object = source.isMeter
+        ? findPurposeOutputObject("Output:Meter", source.keyValue || source.name || "", "")
+        : sourceOutputForVariable(source.keyValue || "", source.name || "");
+      return `
+        <tr>
+          <td>${escapeHTML(source.id || "")}</td>
+          <td>${escapeHTML(source.sourceType || "")}</td>
+          <td>${escapeHTML(source.isMeter ? "meter" : "variable")}</td>
+          <td>${escapeHTML(source.keyValue || "")}</td>
+          <td>${escapeHTML(source.name || "")}</td>
+          <td>${escapeHTML(source.reportingFrequency || "")}</td>
+          <td>${escapeHTML(source.units || "")}</td>
+          <td>${renderSourceOutputCell(object)}</td>
+        </tr>`;
+    })
+    .join("");
+  return `
+    <section class="simulation-energy-block">
+      <div class="simulation-energy-block-head">
+        <h4>${escapeHTML(t("simulation.energySources", {}, "Sources"))}</h4>
+        <span>${escapeHTML((explanation.sources || []).length)} SQL/output source(s)</span>
+      </div>
+      <div class="output-table-wrap">
+        <table class="output-table">
+          <thead><tr><th>ID</th><th>Source</th><th>Basis</th><th>Key</th><th>Name</th><th>Frequency</th><th>Unit</th><th>${escapeHTML(t("simulation.sourceOutput", {}, "Source output"))}</th></tr></thead>
+          <tbody>${rows || `<tr><td colspan="8">${escapeHTML(t("simulation.noEnergyExplanation", {}, "No energy explanation graph is available."))}</td></tr>`}</tbody>
+        </table>
+      </div>
+    </section>`;
+}
+
+function renderEnergyExplanationReconciliation(explanation = {}) {
+  const completeness = renderEnergyExplanationCompleteness(explanation);
+  const rows = (explanation.reconciliation || [])
+    .map(
+      (item) => `
+        <tr>
+          <td>${escapeHTML(item.label || item.id || "")}</td>
+          <td>${escapeHTML(item.period || "")}</td>
+          <td>${escapeHTML(formatValueWithUnit(item.expectedValue, item.unit))}</td>
+          <td>${escapeHTML(formatValueWithUnit(item.explainedValue, item.unit))}</td>
+          <td>${escapeHTML(formatValueWithUnit(item.residualValue, item.unit))}</td>
+          <td>${escapeHTML(item.basis || "")}</td>
+          <td>${escapeHTML(item.formula || "")}</td>
+        </tr>`,
+    )
+    .join("");
+  const warnings = (explanation.warnings || [])
+    .map((warning) => `<article class="simulation-hvac-alert ${escapeHTML(warning.severity || "info")}"><strong>${escapeHTML(warning.code || "")}</strong><span>${escapeHTML(warning.message || "")}</span></article>`)
+    .join("");
+  return `
+    ${completeness}
+    ${warnings ? `<div class="simulation-hvac-alert-list">${warnings}</div>` : ""}
+    <section class="simulation-energy-block">
+      <div class="simulation-energy-block-head">
+        <h4>${escapeHTML(t("simulation.energyReconciliation", {}, "Reconciliation"))}</h4>
+        <span>${escapeHTML(t("simulation.accountingGapNote", {}, "Residual is an accounting gap, not automatically a model error."))}</span>
+      </div>
+      <div class="output-table-wrap">
+        <table class="output-table">
+          <thead><tr><th>${escapeHTML(t("common.metric", {}, "Metric"))}</th><th>${escapeHTML(t("common.period", {}, "Period"))}</th><th>Expected</th><th>Mapped</th><th>Residual</th><th>${escapeHTML(t("simulation.basis", {}, "Basis"))}</th><th>Formula</th></tr></thead>
+          <tbody>${rows || `<tr><td colspan="7">${escapeHTML(t("common.notAvailable", {}, "N/A"))}</td></tr>`}</tbody>
+        </table>
+      </div>
+    </section>`;
+}
+
+function energyExplanationGraphForPeriod(explanation = {}, periodID = "annual") {
+  const id = periodID || "annual";
+  const period = (explanation.periods || []).find((item) => item.id === id);
+  if (period) {
+    return { nodes: period.nodes || [], edges: period.edges || [] };
+  }
+  return { nodes: explanation.nodes || [], edges: explanation.edges || [] };
+}
+
+function energyExplanationSelection(explanation = {}, graph = {}) {
+  const id = state.simulationEnergySelection || "";
+  if (!id) {
+    return null;
+  }
+  const node = (graph.nodes || []).find((item) => item.id === id);
+  if (node) {
+    return node;
+  }
+  const edge = (graph.edges || []).find((item) => item.id === id);
+  if (edge) {
+    return {
+      ...edge,
+      label: `${energyExplanationNodeLabel(graph.nodes, edge.fromId)} -> ${energyExplanationNodeLabel(graph.nodes, edge.toId)}`,
+    };
+  }
+  const fallback = (explanation.nodes || []).find((item) => item.id === id) || (explanation.edges || []).find((item) => item.id === id);
+  return fallback || null;
+}
+
+function energyExplanationNodeLabel(nodes = [], id = "") {
+  return nodes.find((node) => node.id === id)?.label || id;
+}
+
+function energyExplanationColumn(node = {}) {
+  if (node.level === "residual") {
+    return 4;
+  }
+  if (node.level === "heat") {
+    return 3;
+  }
+  if (node.level === "load") {
+    return 2;
+  }
+  if (node.level === "energy" && String(node.id || "").includes(".end_use.")) {
+    return 1;
+  }
+  return 0;
+}
+
+function energyExplanationLevelLabel(level = "") {
+  switch (level) {
+    case "energy":
+      return t("simulation.energyUse", {}, "Energy Use");
+    case "load":
+      return t("simulation.deliveredLoad", {}, "Delivered Load");
+    case "heat":
+      return t("simulation.heatDrivers", {}, "Heat Drivers");
+    case "residual":
+      return t("simulation.residual", {}, "Residual");
+    default:
+      return level || t("common.notAvailable", {}, "N/A");
+  }
+}
+
+function energyExplanationSourcesForIDs(explanation = {}, sourceIDs = []) {
+  const wanted = new Set(sourceIDs || []);
+  return (explanation.sources || []).filter((source) => wanted.has(source.id));
+}
+
+function renderSimulationEnergyRelatedServicePaths(selection = {}) {
+  const paths = simulationRelatedServicePathsForEnergySelection(selection).slice(0, 8);
+  if (!paths.length) {
+    return "";
+  }
+  return `
+    <div class="energy-related-service-paths">
+      <strong>${escapeHTML(t("hvac.relatedServicePaths", {}, "Related service paths"))}</strong>
+      <div>
+        ${paths
+          .map((path) =>
+            renderSimulationEnergyServicePathButton(
+              path,
+              `${simulationServedSubjectLabel(path.servedSubject || path)} / ${simulationServiceKindLabel(path.serviceKind)} / ${simulationDeliveryLabel(path)}`,
+            ),
+          )
+          .join("")}
+      </div>
+    </div>`;
+}
+
+function renderSimulationEnergyServicePathButton(path = {}, label = "") {
+  return `
+    <button
+      type="button"
+      class="energy-service-path-chip"
+      data-simulation-hvac-path-id="${escapeHTML(path.id || "")}"
+      title="${escapeHTML(simulationServicePathConnectedSystems(path).join(", ") || simulationPathTypeLabel(path.pathType))}"
+    >${escapeHTML(label || simulationServedSubjectLabel(path.servedSubject || path))}</button>`;
+}
+
+function simulationRelatedServicePathsForEnergySelection(selection = {}) {
+  const service = simulationCanonicalServiceKind(selection.serviceKind || energyServiceFromNode(selection));
+  const zoneKey = simulationZoneKey(selection.zoneName || "");
+  return simulationHVACServicePaths().filter((path) => {
+    if (service && simulationCanonicalServiceKind(path.serviceKind) !== service) {
+      return false;
+    }
+    if (zoneKey && simulationZoneKey(path.zoneName || path.servedSubject?.zoneName || "") !== zoneKey) {
+      return false;
+    }
+    return Boolean(service || zoneKey);
+  });
+}
+
+function simulationRelatedServicePathsForEnergyNodes(nodes = []) {
+  const wantedServices = new Set();
+  const wantedZoneServices = new Set();
+  nodes.forEach((node) => {
+    const service = simulationCanonicalServiceKind(node.serviceKind || energyServiceFromNode(node));
+    if (!service) {
+      return;
+    }
+    wantedServices.add(service);
+    if (node.zoneName) {
+      wantedZoneServices.add(`${simulationZoneKey(node.zoneName)}|${service}`);
+    }
+  });
+  const paths = simulationHVACServicePaths().filter((path) => {
+    const service = simulationCanonicalServiceKind(path.serviceKind);
+    if (!wantedServices.has(service)) {
+      return false;
+    }
+    if (!wantedZoneServices.size) {
+      return true;
+    }
+    const zoneKey = simulationZoneKey(path.zoneName || path.servedSubject?.zoneName || "");
+    return wantedZoneServices.has(`${zoneKey}|${service}`) || wantedServices.has(service);
+  });
+  return paths.sort((a, b) => {
+    const zoneCompare = simulationServedSubjectLabel(a.servedSubject || a).localeCompare(simulationServedSubjectLabel(b.servedSubject || b));
+    if (zoneCompare) return zoneCompare;
+    return simulationServiceKindLabel(a.serviceKind).localeCompare(simulationServiceKindLabel(b.serviceKind));
+  });
+}
+
+function simulationHVACServiceModel() {
+  return state.report?.hvac?.serviceModel || { zoneServices: [], systems: [], couplings: [], networks: [] };
+}
+
+function simulationHVACServicePaths() {
+  return (simulationHVACServiceModel().zoneServices || []).flatMap((summary) => summary.paths || []);
+}
+
+function simulationCanonicalServiceKind(serviceKind = "") {
+  const value = String(serviceKind || "").toLowerCase();
+  if (value.includes("cooling") || value === "dehumidification") {
+    return "cooling";
+  }
+  if (value.includes("heating") || value === "humidification") {
+    return "heating";
+  }
+  if (value.includes("ventilation")) {
+    return "ventilation";
+  }
+  return value || "";
+}
+
+function energyServiceFromNode(node = {}) {
+  const text = `${node.id || ""} ${node.kind || ""} ${node.endUse || ""}`.toLowerCase();
+  if (text.includes("cooling")) {
+    return "cooling";
+  }
+  if (text.includes("heating")) {
+    return "heating";
+  }
+  if (text.includes("ventilation")) {
+    return "ventilation";
+  }
+  return "";
+}
+
+function simulationZoneKey(value = "") {
+  return String(value || "").trim().toLowerCase();
+}
+
+function simulationNavigationPathEntityID(pathID = "") {
+  return String(pathID || "").startsWith("path:") ? pathID : `path:${pathID}`;
+}
+
+function simulationServicePathGraphKey(path = {}) {
+  return `service-path:${path.id || simulationServedSubjectKey(path.servedSubject || path)}`;
+}
+
+function simulationServedSubjectKey(subject = {}) {
+  if (String(subject.kind || "").toLowerCase() === "space" && subject.spaceName) {
+    return `space:${simulationZoneKey(subject.spaceName)}`;
+  }
+  return `zone:${simulationZoneKey(subject.zoneName || subject.name)}`;
+}
+
+function simulationServedSubjectLabel(subject = {}) {
+  if (String(subject.kind || "").toLowerCase() === "space" && subject.spaceName) {
+    return subject.zoneName ? `${subject.spaceName} / ${subject.zoneName}` : subject.spaceName;
+  }
+  return subject.zoneName || subject.name || t("common.blank", {}, "Blank");
+}
+
+function simulationServiceKindLabel(kind = "") {
+  const labels = {
+    cooling: "Cooling",
+    heating: "Heating",
+    ventilation: "Ventilation",
+    exhaust: "Exhaust",
+    humidification: "Humidification",
+    dehumidification: "Dehumidification",
+    radiant_cooling: "Radiant cooling",
+    radiant_heating: "Radiant heating",
+  };
+  return labels[kind] || titleCaseEnergyToken(kind || "Service");
+}
+
+function simulationPathTypeLabel(pathType = "") {
+  const labels = {
+    central_air_with_plant: "Central air + plant",
+    central_air: "Central air",
+    direct_zone_hydronic: "Direct hydronic",
+    direct_zone_air: "Direct zone air",
+    direct_zone_refrigerant: "Refrigerant",
+    radiant: "Radiant",
+    baseboard: "Baseboard",
+    ideal_loads: "Ideal loads",
+    ventilation_only: "Ventilation only",
+    exhaust_only: "Exhaust only",
+    local: "Local",
+  };
+  return labels[pathType] || titleCaseEnergyToken(pathType || "Path");
+}
+
+function simulationDeliveryLabel(path = {}) {
+  return path.deliveryEquipment?.displayFamily || path.delivery?.displayFamily || path.delivery?.displayName || path.delivery?.objectName || "Delivery";
+}
+
+function simulationServicePathConnectedSystems(path = {}) {
+  return [
+    path.plantLoop?.name ? `PlantLoop ${path.plantLoop.name}` : "",
+    path.airLoop?.name ? `AirLoopHVAC ${path.airLoop.name}` : "",
+    path.condenserLoop?.name ? `CondenserLoop ${path.condenserLoop.name}` : "",
+    path.refrigerantSystem?.name ? `${path.refrigerantSystem.type || "Refrigerant"} ${path.refrigerantSystem.name}` : "",
+    path.sourceSystem?.name ? `${path.sourceSystem.type || "Source"} ${path.sourceSystem.name}` : "",
+  ].filter(Boolean);
+}
+
+function titleCaseEnergyToken(value = "") {
+  return String(value || "")
+    .replace(/_/g, " ")
+    .replace(/\w\S*/g, (part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase());
+}
+
+function energyExplanationNodeTitle(node = {}) {
+  return [
+    node.label || node.kind || node.id,
+    formatValueWithUnit(node.value, node.unit),
+    energyExplanationLevelLabel(node.level || ""),
+    node.carrier ? `carrier: ${node.carrier}` : "",
+    node.endUse ? `end use: ${node.endUse}` : "",
+    node.serviceKind ? `service: ${node.serviceKind}` : "",
+    node.heatCategory ? `heat category: ${node.heatCategory}` : "",
+    node.sign ? `sign: ${node.sign}` : "",
+    Number(node.signedValue) && Number(node.signedValue) !== Number(node.value) ? `signed: ${formatValueWithUnit(node.signedValue, node.unit)}` : "",
+  ]
+    .filter(Boolean)
+    .join(" / ");
+}
+
+function energyExplanationEdgeTitle(edge = {}) {
+  return [
+    edge.relation || "",
+    edge.basis || "",
+    formatValueWithUnit(edge.value, edge.unit),
+    Number(edge.signedValue) && Number(edge.signedValue) !== Number(edge.value) ? `signed: ${formatValueWithUnit(edge.signedValue, edge.unit)}` : "",
+    edge.formula || "",
+  ]
+    .filter(Boolean)
+    .join(" / ");
+}
+
+function shortEnergyExplanationLabel(label = "") {
+  label = String(label || "").trim();
+  return label.length > 22 ? `${label.slice(0, 21)}...` : label;
 }
 
 function renderSimulationHVACLoopEmpty(message) {
@@ -1811,6 +2597,29 @@ function handleSimulationSeriesInspectClick(event) {
   if (!(event.target instanceof Element)) {
     return;
   }
+  const energyViewButton = event.target.closest("[data-simulation-energy-view]");
+  if (energyViewButton && !energyViewButton.disabled) {
+    state.simulationEnergyView = energyViewButton.dataset.simulationEnergyView || "overview";
+    renderSimulationEnergyDashboard(state.simulationResult);
+    return;
+  }
+  const energyNode = event.target.closest("[data-energy-explanation-node]");
+  if (energyNode) {
+    state.simulationEnergySelection = energyNode.dataset.energyExplanationNode || "";
+    renderSimulationEnergyDashboard(state.simulationResult);
+    return;
+  }
+  const energyEdge = event.target.closest("[data-energy-explanation-edge]");
+  if (energyEdge) {
+    state.simulationEnergySelection = energyEdge.dataset.energyExplanationEdge || "";
+    renderSimulationEnergyDashboard(state.simulationResult);
+    return;
+  }
+  const hvacPath = event.target.closest("[data-simulation-hvac-path-id]");
+  if (hvacPath) {
+    openSimulationHVACServicePath(hvacPath.dataset.simulationHvacPathId || "");
+    return;
+  }
   const button = event.target.closest("[data-simulation-inspect-series]");
   if (!button || button.disabled) {
     return;
@@ -1824,8 +2633,40 @@ function handleSimulationSeriesInspectClick(event) {
   selectSimulationSeries(series);
 }
 
+function openSimulationHVACServicePath(pathID) {
+  const path = simulationHVACServicePaths().find((item) => item.id === pathID);
+  if (!path) {
+    setStatus(t("hvac.noServicePaths", {}, "No service paths"), "warn");
+    return;
+  }
+  navigateHVAC(
+    {
+      kind: "service_path",
+      id: simulationNavigationPathEntityID(path.id),
+      label: simulationServedSubjectLabel(path.servedSubject || path),
+      view: "services",
+      context: { pathId: path.id },
+      graphKey: simulationServicePathGraphKey(path),
+    },
+    { pushHistory: true },
+  );
+  const hvacTab = [...(elements.resultTabButtons || [])].find((button) => button.dataset.resultTab === "hvac");
+  if (hvacTab) {
+    hvacTab.click();
+  } else {
+    state.activeResultTab = "hvac";
+  }
+}
+
 function handleSimulationEnergyDashboardChange(event) {
   if (!(event.target instanceof Element)) {
+    return;
+  }
+  const period = event.target.closest("[data-simulation-energy-period]");
+  if (period) {
+    state.simulationEnergyPeriod = period.value || "annual";
+    state.simulationEnergySelection = "";
+    renderSimulationEnergyDashboard(state.simulationResult);
     return;
   }
   const select = event.target.closest("[data-simulation-zone-energy-metric]");

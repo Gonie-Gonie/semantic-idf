@@ -59,8 +59,9 @@ Output:SQLite,
 	if findPurposeOutput(plan, "Output:Variable", "*", "Zone Lights Electricity Energy") == nil {
 		t.Fatalf("missing zone lights energy output in %#v", plan.OutputObjects)
 	}
-	if findPurposeOutput(plan, "Output:Variable", "*", "Zone Air Heat Balance Surface Convection Rate") != nil {
-		t.Fatalf("basic energy plan should not include zone heat-flow outputs: %#v", plan.OutputObjects)
+	heatDriver := findPurposeOutput(plan, "Output:Variable", "*", "Zone Air Heat Balance Surface Convection Rate")
+	if heatDriver == nil || heatDriver.ReportingFrequency != "Monthly" {
+		t.Fatalf("missing monthly heat-driver output in %#v", plan.OutputObjects)
 	}
 	if plan.EstimatedFrames != 12 {
 		t.Fatalf("estimated frames = %d, want 12 for monthly energy", plan.EstimatedFrames)
@@ -333,6 +334,18 @@ func TestBuildPurposeRunPlanMergesDuplicateOutputsAcrossPurposes(t *testing.T) {
 	if sqlCount != 1 {
 		t.Fatalf("SQL output count = %d, want 1", sqlCount)
 	}
+	heatDriverCount := 0
+	for _, object := range plan.OutputObjects {
+		if object.ObjectType == "Output:Variable" && object.VariableName == "Zone Air Heat Balance Surface Convection Rate" {
+			heatDriverCount++
+			if object.ReportingFrequency != "Hourly" {
+				t.Fatalf("shared heat-driver output frequency = %q, want Hourly", object.ReportingFrequency)
+			}
+		}
+	}
+	if heatDriverCount != 1 {
+		t.Fatalf("heat-driver output count = %d, want 1 in %#v", heatDriverCount, plan.OutputObjects)
+	}
 	if findPurposeOutput(plan, "Output:VariableDictionary", "", "") == nil {
 		t.Fatalf("integrity plan should include variable dictionary output: %#v", plan.OutputObjects)
 	}
@@ -384,6 +397,14 @@ output|Output:SQLite||||temporary|basic_energy
 output|Output:Meter|Electricity:Facility||Monthly|temporary|basic_energy
 output|Output:Meter|Electricity:InteriorEquipment||Monthly|temporary|basic_energy
 output|Output:Meter|Electricity:InteriorLights||Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Air Heat Balance Air Energy Storage Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Air Heat Balance Deviation Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Air Heat Balance Internal Convective Heat Gain Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Air Heat Balance Interzone Air Transfer Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Air Heat Balance Outdoor Air Transfer Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Air Heat Balance Surface Convection Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Air Heat Balance System Air Transfer Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Air Heat Balance System Convective Heat Gain Rate|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Air System Sensible Cooling Energy|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Air System Sensible Heating Energy|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Electric Equipment Electricity Energy|Monthly|temporary|basic_energy

@@ -190,7 +190,7 @@ function selectHVACGraphKey(key) {
   navigateHVAC(hvacTargetForGraphKey(key), { pushHistory: true });
 }
 
-function navigateHVAC(target = {}, options = {}) {
+export function navigateHVAC(target = {}, options = {}) {
   const previous = hvacNavigationSnapshot();
   const entity = resolveHVACNavigationEntity(target);
   const nextView = target.view || viewForHVACEntity(entity) || state.activeHVACView || "services";

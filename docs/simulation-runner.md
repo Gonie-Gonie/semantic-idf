@@ -74,6 +74,11 @@ as selected HVAC scope when HVAC Loop Check is enabled.
 - warnings for wildcard scope, frequency conflicts, and Heavy/Very Heavy output
   estimates based on series count times frame count
 
+Basic Energy requests SQL, monthly top-level/end-use meters, monthly delivered
+load variables, and monthly heat-balance driver variables. When Zone Heat Flow
+is also selected, its hourly heat-balance outputs are reused instead of adding a
+duplicate monthly heat-driver request.
+
 Output states:
 
 - `existing`: already present in the source IDF.
@@ -98,7 +103,16 @@ actual `resultSources` used by the parsers. SQL parsing already feeds legacy
 viewers are added. Basic Energy SQL rows are converted to display units
 (`J`/`kJ`/`MJ`/`GJ`/`Wh` to `kWh`, `W` to `kW`) and grouped into monthly chart
 points when `Time.Month` is available, so hourly or timestep energy rows can
-still feed monthly dashboards.
+still feed monthly dashboards. Basic Energy also builds an
+`energyExplanation` payload with `semantic-idf.energy-explanation/v1` schema,
+source IDs derived from `ReportDataDictionary`, accounting-basis edges, and
+residual reconciliation between facility carrier totals and mapped end-use
+meters. The companion `energyExplanationSummary` payload keeps the annual
+carrier, end-use, delivered-load, heat-driver, residual, and top-zone rollups in
+a compact shape for batch comparisons and exports. When heat-balance rate
+variables are present, the same payload
+integrates them to `kWh` by timestep and links Delivered Load to Heat Drivers
+with signed driver values and residual reconciliation.
 
 Generic SQL and CSV series keep original values for compatibility and also
 expose display metadata (`displayColumn`, `displayUnit`, `displayMin`,
@@ -106,6 +120,12 @@ expose display metadata (`displayColumn`, `displayUnit`, `displayMin`,
 change). Result charts and purpose summary tables use these display fields so
 energy, power/rate, temperature, mass-flow, and humidity-ratio units stay
 consistent across viewers.
+
+Batch purpose simulations also summarize the annual explanation graph into
+compact purpose metrics for Energy Use, Delivered Load, Heat Drivers, residual,
+mapped percent, and the largest heat-driver groups. When two Basic Energy
+purpose rows with explanation summaries are selected, the batch chart also shows
+end-use, delivered-load, and heat-driver delta tables beside the selected metric.
 
 `parseSimulationSQL` is the combined SQLite entrypoint. It gathers generic
 time-series rows, Basic Energy dashboard data, SQL heat-flow data, Integrity
@@ -116,8 +136,12 @@ parser phases so oversized SQL files do not monopolize the runner indefinitely.
 
 Purpose result viewers now include:
 
-- Basic Energy facility/end-use monthly charts, zone matrix, and zone reported
-  energy table.
+- Basic Energy facility/end-use monthly charts, zone matrix, zone reported
+  energy table, and `Overview` / `Sankey` / `Monthly` / `Zones` / `Sources` /
+  `Reconciliation` subviews for tracing Energy Use to Delivered Load and Heat
+  Drivers with source metadata. The `Systems` subview and node inspector match
+  load/heat services to the current HVAC service model by zone and service kind,
+  then link directly to the related HVAC service path.
 - Zone Heat Flow SQL or CSV/ESO ledger with frame sampling metadata and
   time-range controls.
 - HVAC Loop Check node summaries, component operation summaries for fans,

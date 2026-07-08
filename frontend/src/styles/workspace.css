@@ -1373,3 +1373,15 @@ th.input-jump-highlight {
   height: 100%;
   background: var(--teal);
 }
+
+.batch-energy-explanation-compare {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.batch-energy-explanation-compare h4 {
+  margin: 0 0 6px;
+  color: var(--text);
+  font-size: 13px;
+}

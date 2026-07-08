@@ -429,6 +429,155 @@ func TestParseSimulationEnergySQLTotalsConvertedMonthlyPoints(t *testing.T) {
 	}
 }
 
+func TestParseSimulationEnergyExplanationSQLBuildsAccountingGraph(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "eplusout.sql")
+	createTestEnergySQL(t, path)
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`INSERT INTO ReportDataDictionary VALUES
+		(23, 'ZONE ONE', 'Zone Air System Sensible Cooling Energy', 'J'),
+		(24, 'ZONE ONE', 'Zone Air Heat Balance Internal Convective Heat Gain Rate', 'W'),
+		(25, 'ZONE ONE', 'Zone Air Heat Balance Surface Convection Rate', 'W')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO "Time" VALUES
+		(3, 1, 1, 1, 0),
+		(4, 1, 1, 2, 0)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO ReportData VALUES
+		(7, 1, 23, 900000.0),
+		(8, 2, 23, 900000.0),
+		(9, 3, 24, 250.0),
+		(10, 4, 24, 250.0),
+		(11, 3, 25, -100.0),
+		(12, 4, 25, -100.0)`); err != nil {
+		t.Fatal(err)
+	}
+
+	plan := &PurposeRunPlan{OutputObjects: []PurposeOutputObject{
+		{ObjectType: "Output:Meter", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, KeyValue: "Electricity:Facility"},
+		{ObjectType: "Output:Meter", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, KeyValue: "Electricity:Cooling"},
+		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, VariableName: "Zone Air System Sensible Cooling Energy"},
+		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, VariableName: "Zone Air Heat Balance Internal Convective Heat Gain Rate"},
+		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, VariableName: "Zone Air Heat Balance Surface Convection Rate"},
+	}}
+	result, err := parseSimulationEnergyExplanationSQL(path, plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Schema != energyExplanationSchema || result.Purpose != string(SimulationPurposeBasicEnergy) {
+		t.Fatalf("identity = %q/%q", result.Schema, result.Purpose)
+	}
+	if len(result.Periods) != 3 || result.Periods[0].ID != "annual" || result.Periods[1].ID != "M1" || result.Periods[2].ID != "M2" {
+		t.Fatalf("periods = %#v", result.Periods)
+	}
+	facility := energyExplanationNodeByID(result.Nodes, "energy.carrier.electricity")
+	if facility == nil || facility.Value != 3 || facility.Unit != "kWh" || !stringSliceContains(facility.SourceIDs, "sql-rdd-20") {
+		t.Fatalf("facility node = %#v", facility)
+	}
+	cooling := energyExplanationNodeByID(result.Nodes, "energy.end_use.cooling.electricity")
+	if cooling == nil || cooling.Value != 1 || cooling.Carrier != "electricity" || cooling.EndUse != "cooling" {
+		t.Fatalf("cooling node = %#v", cooling)
+	}
+	load := energyExplanationNodeByID(result.Nodes, "load.cooling.zone_one")
+	if load == nil || load.Level != "load" || load.Value != 0.5 || load.ServiceKind != "cooling" || load.ZoneName != "ZONE ONE" || !stringSliceContains(load.SourceIDs, "sql-rdd-23") {
+		t.Fatalf("load node = %#v", load)
+	}
+	heat := energyExplanationNodeByID(result.Nodes, "heat.internal_convective.zone_one")
+	if heat == nil || heat.Level != "heat" || heat.Value != 0.5 || heat.SignedValue != 0.5 || heat.Unit != "kWh" || heat.HeatCategory != "internal_gains" || heat.Basis != "derived_balance" || !stringSliceContains(heat.SourceIDs, "sql-rdd-24") {
+		t.Fatalf("heat node = %#v", heat)
+	}
+	surface := energyExplanationNodeByID(result.Nodes, "heat.surface_convection.zone_one")
+	if surface == nil || surface.Value != 0.2 || surface.SignedValue != -0.2 || surface.ServiceKind != "heating" || surface.Sign != "negative" {
+		t.Fatalf("surface heat node = %#v", surface)
+	}
+	residual := energyExplanationNodeByID(result.Nodes, "residual.energy.electricity")
+	if residual == nil || residual.Value != 2 || residual.Level != "residual" {
+		t.Fatalf("residual node = %#v", residual)
+	}
+	if !energyExplanationHasEdge(result.Edges, "meter_enduse", "measured_meter", "energy.carrier.electricity", "energy.end_use.cooling.electricity") {
+		t.Fatalf("missing measured meter edge: %#v", result.Edges)
+	}
+	if !energyExplanationHasEdge(result.Edges, "delivered_load", "measured_variable", "energy.end_use.cooling.electricity", "load.cooling.zone_one") {
+		t.Fatalf("missing delivered-load edge: %#v", result.Edges)
+	}
+	if !energyExplanationHasEdge(result.Edges, "heat_driver", "derived_balance", "load.cooling.zone_one", "heat.internal_convective.zone_one") {
+		t.Fatalf("missing heat-driver edge: %#v", result.Edges)
+	}
+	if !energyExplanationHasEdge(result.Edges, "residual", "residual", "energy.carrier.electricity", "residual.energy.electricity") {
+		t.Fatalf("missing residual edge: %#v", result.Edges)
+	}
+	energyReconciliation := energyExplanationReconciliationByID(result.Reconciliation, "reconcile.energy.electricity.annual")
+	heatReconciliation := energyExplanationReconciliationByID(result.Reconciliation, "reconcile.heat.cooling.annual")
+	if energyReconciliation == nil || energyReconciliation.ResidualValue != 2 || heatReconciliation == nil || heatReconciliation.ResidualValue != 0 || heatReconciliation.ExplainedValue != 0.5 || result.Completeness.MappedPercent != 33.333 {
+		t.Fatalf("reconciliation/completeness = %#v / %#v", result.Reconciliation, result.Completeness)
+	}
+	if result.Completeness.HeatDrivers.Found != 2 || result.Completeness.HeatDrivers.Total != 2 || result.Completeness.DeliveredLoad.Found != 1 || result.Completeness.DeliveredLoad.Total != 1 {
+		t.Fatalf("explanation completeness = %#v", result.Completeness)
+	}
+	if len(result.Sources) != 5 || !energyExplanationHasSource(result.Sources, "sql-rdd-20", true, "Electricity:Facility") || !energyExplanationHasSource(result.Sources, "sql-rdd-24", false, "Zone Air Heat Balance Internal Convective Heat Gain Rate") {
+		t.Fatalf("sources = %#v", result.Sources)
+	}
+	summary := buildEnergyExplanationSummary(result)
+	if summary.Schema != energyExplanationSummarySchema || len(summary.EnergyByCarrier) != 1 || summary.EnergyByCarrier[0].Value != 3 {
+		t.Fatalf("summary energy = %#v", summary)
+	}
+	if item := energyExplanationSummaryItemByID(summary.DeliveredLoadByService, "load.zone_cooling"); item == nil || item.Value != 0.5 {
+		t.Fatalf("summary delivered load = %#v", summary.DeliveredLoadByService)
+	}
+	if item := energyExplanationSummaryItemByID(summary.TopHeatDrivers, "heat.internal_convective"); item == nil || item.Value != 0.5 {
+		t.Fatalf("summary top heat drivers = %#v", summary.TopHeatDrivers)
+	}
+	if item := energyExplanationSummaryItemByID(summary.TopZones, "zone.zone_one"); item == nil || item.Value != 0.7 {
+		t.Fatalf("summary top zones = %#v", summary.TopZones)
+	}
+}
+
+func TestSQLTimeIntervalHoursUsesElapsedFirstPeriod(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "eplusout.sql")
+	createTestEnergySQL(t, path)
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	intervals, err := sqlTimeIntervalHours(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if intervals[1] != 744 {
+		t.Fatalf("first monthly interval = %v, want 744 hours", intervals[1])
+	}
+	if intervals[2] != 672 {
+		t.Fatalf("second monthly interval = %v, want 672 hours", intervals[2])
+	}
+}
+
+func TestEnergyMeterAliasCatalogHandlesCarrierAndEndUseOrder(t *testing.T) {
+	coolingA, ok := energyMeterAliasDefinitionForName("Cooling:Electricity")
+	if !ok || coolingA.Carrier != "electricity" || coolingA.EndUse != "cooling" || coolingA.HierarchyLevel != "broad_end_use" {
+		t.Fatalf("Cooling:Electricity alias = %#v ok=%t", coolingA, ok)
+	}
+	coolingB, ok := energyMeterAliasDefinitionForName("Electricity:Cooling")
+	if !ok || coolingB.Carrier != "electricity" || coolingB.EndUse != "cooling" {
+		t.Fatalf("Electricity:Cooling alias = %#v ok=%t", coolingB, ok)
+	}
+	facility, ok := energyMeterAliasDefinitionForName("NaturalGas:Facility")
+	if !ok || !facility.FacilityTotal || facility.Carrier != "natural_gas" {
+		t.Fatalf("NaturalGas:Facility alias = %#v ok=%t", facility, ok)
+	}
+	if _, ok := energyMeterAliasDefinitionForName("SomeCustomMeter:Electricity"); ok {
+		t.Fatalf("custom meter should not be classified as a known alias")
+	}
+}
+
 func TestPurposeResultBundleUsesSQLEnergyDashboard(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "eplusout.sql")
@@ -454,12 +603,63 @@ func TestPurposeResultBundleUsesSQLEnergyDashboard(t *testing.T) {
 	if len(bundle.Energy.FacilityMonthly) != 1 || bundle.Energy.FacilityMonthly[0].Source != "eplusout.sql" {
 		t.Fatalf("bundle energy = %#v", bundle.Energy)
 	}
+	if bundle.EnergyExplanation.Schema != energyExplanationSchema || len(bundle.EnergyExplanation.Nodes) == 0 {
+		t.Fatalf("bundle energy explanation = %#v", bundle.EnergyExplanation)
+	}
+	if bundle.EnergyExplanationSummary.Schema != energyExplanationSummarySchema || len(bundle.EnergyExplanationSummary.EnergyByCarrier) == 0 {
+		t.Fatalf("bundle energy explanation summary = %#v", bundle.EnergyExplanationSummary)
+	}
 	if len(bundle.Completeness) != 3 ||
 		!purposeCompletenessFound(bundle.Completeness, "Electricity:Facility") ||
 		!purposeCompletenessFound(bundle.Completeness, "Zone Lights Electricity Energy") ||
 		purposeCompletenessFound(bundle.Completeness, "NaturalGas:Facility") {
 		t.Fatalf("bundle completeness = %#v", bundle.Completeness)
 	}
+}
+
+func energyExplanationNodeByID(nodes []EnergyExplanationNode, id string) *EnergyExplanationNode {
+	for index := range nodes {
+		if nodes[index].ID == id {
+			return &nodes[index]
+		}
+	}
+	return nil
+}
+
+func energyExplanationHasEdge(edges []EnergyExplanationEdge, relation string, basis string, fromID string, toID string) bool {
+	for _, edge := range edges {
+		if edge.Relation == relation && edge.Basis == basis && edge.FromID == fromID && edge.ToID == toID {
+			return true
+		}
+	}
+	return false
+}
+
+func energyExplanationHasSource(sources []EnergyDataSource, id string, isMeter bool, name string) bool {
+	for _, source := range sources {
+		if source.ID == id && source.IsMeter == isMeter && source.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func energyExplanationReconciliationByID(items []EnergyReconciliation, id string) *EnergyReconciliation {
+	for index := range items {
+		if items[index].ID == id {
+			return &items[index]
+		}
+	}
+	return nil
+}
+
+func energyExplanationSummaryItemByID(items []EnergyExplanationSummaryItem, id string) *EnergyExplanationSummaryItem {
+	for index := range items {
+		if items[index].ID == id {
+			return &items[index]
+		}
+	}
+	return nil
 }
 
 func TestPurposeResultBundleBuildsZoneHeatFlowCompleteness(t *testing.T) {

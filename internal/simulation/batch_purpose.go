@@ -67,6 +67,7 @@ func SummarizePurposeMetrics(bundle *PurposeResultBundle) []PurposeMetric {
 			Status:       "ok",
 		})
 	}
+	metrics = append(metrics, energyExplanationPurposeMetrics(bundle.EnergyExplanation)...)
 	if bundle.Integrity.Completed || bundle.Integrity.Status != "" {
 		metrics = append(metrics,
 			PurposeMetric{
@@ -118,6 +119,80 @@ func SummarizePurposeMetrics(bundle *PurposeResultBundle) []PurposeMetric {
 		}
 	}
 	return metrics
+}
+
+func energyExplanationPurposeMetrics(explanation EnergyExplanationResult) []PurposeMetric {
+	if explanation.Schema == "" || len(explanation.Nodes) == 0 {
+		return nil
+	}
+	summary := buildEnergyExplanationSummary(explanation)
+	if summary.Schema == "" {
+		return nil
+	}
+	metrics := []PurposeMetric{}
+	metrics = appendEnergyExplanationSummaryTotalMetric(metrics, "energy_use", "Energy explanation use", summary.EnergyByCarrier)
+	metrics = appendEnergyExplanationSummaryTotalMetric(metrics, "delivered_load", "Delivered load total", summary.DeliveredLoadByService)
+	metrics = appendEnergyExplanationSummaryTotalMetric(metrics, "heat_drivers", "Heat driver total", summary.HeatDrivers)
+	metrics = appendEnergyExplanationSummaryTotalMetric(metrics, "residual", "Energy explanation residual", summary.Residuals)
+	if explanation.Completeness.MappedPercent > 0 {
+		metrics = append(metrics, PurposeMetric{
+			ID:           "energy_explanation.mapped_percent",
+			Label:        "Mapped energy percent",
+			PurposeID:    SimulationPurposeBasicEnergy,
+			Value:        explanation.Completeness.MappedPercent,
+			Unit:         "%",
+			DisplayValue: formatPurposeMetric(explanation.Completeness.MappedPercent, "%"),
+			Status:       explanation.Completeness.Status,
+		})
+	}
+	for _, item := range summary.TopHeatDrivers {
+		if item.Value == 0 {
+			continue
+		}
+		label := strings.TrimSpace("Heat driver: " + firstNonEmpty(item.Label, item.Kind, item.ID))
+		metrics = append(metrics, PurposeMetric{
+			ID:           "energy_explanation.heat." + metricID(item.ID),
+			Label:        label,
+			PurposeID:    SimulationPurposeBasicEnergy,
+			Value:        item.Value,
+			Unit:         item.Unit,
+			DisplayValue: formatPurposeMetric(item.Value, item.Unit),
+			Status:       "ok",
+		})
+	}
+	return metrics
+}
+
+func appendEnergyExplanationSummaryTotalMetric(metrics []PurposeMetric, id string, label string, items []EnergyExplanationSummaryItem) []PurposeMetric {
+	value, unit := energyExplanationSummaryItemsTotal(items)
+	return appendEnergyExplanationTotalMetric(metrics, id, label, value, unit)
+}
+
+func energyExplanationSummaryItemsTotal(items []EnergyExplanationSummaryItem) (float64, string) {
+	total := 0.0
+	unit := "kWh"
+	for _, item := range items {
+		total += item.Value
+		if item.Unit != "" {
+			unit = item.Unit
+		}
+	}
+	return roundedEnergyNumber(total), unit
+}
+
+func appendEnergyExplanationTotalMetric(metrics []PurposeMetric, id string, label string, value float64, unit string) []PurposeMetric {
+	if value == 0 {
+		return metrics
+	}
+	return append(metrics, PurposeMetric{
+		ID:           "energy_explanation." + id,
+		Label:        label,
+		PurposeID:    SimulationPurposeBasicEnergy,
+		Value:        value,
+		Unit:         unit,
+		DisplayValue: formatPurposeMetric(value, unit),
+		Status:       "ok",
+	})
 }
 
 func missingCompletenessCount(items []PurposeCompletenessItem) int {

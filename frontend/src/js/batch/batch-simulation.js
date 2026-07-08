@@ -378,7 +378,96 @@ export function initializeMultiSimulationTool(context) {
               </div>`;
           })
           .join("")}
-      </div>`;
+      </div>
+      ${renderEnergyExplanationBatchCompare(result)}`;
+  }
+
+  function renderEnergyExplanationBatchCompare(result) {
+    const selected = (result.results || [])
+      .filter((item) => state.multiSimulation.selectedRows.has(rowID(item)) && item.purposeResults?.energyExplanationSummary?.schema)
+      .slice(0, 2);
+    if (selected.length < 2) {
+      return "";
+    }
+    const sections = [
+      ["Energy Use", "energyByEndUse"],
+      ["Delivered Load", "deliveredLoadByService"],
+      ["Heat Drivers", "heatDrivers"],
+    ]
+      .map(([label, key]) => renderEnergyExplanationDeltaSection(label, selected[0], selected[1], key))
+      .filter(Boolean)
+      .join("");
+    return sections ? `<div class="batch-energy-explanation-compare">${sections}</div>` : "";
+  }
+
+  function renderEnergyExplanationDeltaSection(label, leftResult, rightResult, key) {
+    const left = energyExplanationSummaryMap(leftResult.purposeResults?.energyExplanationSummary?.[key] || []);
+    const right = energyExplanationSummaryMap(rightResult.purposeResults?.energyExplanationSummary?.[key] || []);
+    const ids = [...new Set([...left.keys(), ...right.keys()])].sort((a, b) => {
+      const leftValue = Math.abs(left.get(a)?.value || 0) + Math.abs(right.get(a)?.value || 0);
+      const rightValue = Math.abs(left.get(b)?.value || 0) + Math.abs(right.get(b)?.value || 0);
+      return rightValue - leftValue || energyExplanationSummaryLabel(left.get(a) || right.get(a)).localeCompare(energyExplanationSummaryLabel(left.get(b) || right.get(b)));
+    });
+    const rows = ids
+      .slice(0, 12)
+      .map((id) => {
+        const leftItem = left.get(id);
+        const rightItem = right.get(id);
+        const leftValue = Number(leftItem?.value || 0);
+        const rightValue = Number(rightItem?.value || 0);
+        const unit = rightItem?.unit || leftItem?.unit || "";
+        const delta = rightValue - leftValue;
+        const percent = leftValue === 0 ? null : (delta / leftValue) * 100;
+        return `
+          <tr>
+            <td>${escapeHTML(energyExplanationSummaryLabel(leftItem || rightItem))}</td>
+            <td>${escapeHTML(formatValue(leftValue, unit))}</td>
+            <td>${escapeHTML(formatValue(rightValue, unit))}</td>
+            <td>${escapeHTML(formatSignedValue(delta, unit))}</td>
+            <td>${escapeHTML(percent === null ? t("common.notAvailable", {}, "N/A") : `${formatNumber(percent)}%`)}</td>
+          </tr>`;
+      })
+      .join("");
+    if (!rows) {
+      return "";
+    }
+    return `
+      <section>
+        <h4>${escapeHTML(label)}</h4>
+        <div class="tool-table-wrap">
+          <table class="tool-table">
+            <thead><tr><th>${escapeHTML(t("common.metric", {}, "Metric"))}</th><th>${escapeHTML(leftResult.filename || fileName(leftResult.inputPath))}</th><th>${escapeHTML(rightResult.filename || fileName(rightResult.inputPath))}</th><th>Delta</th><th>%</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </section>`;
+  }
+
+  function energyExplanationSummaryMap(items = []) {
+    const out = new Map();
+    items.forEach((item) => {
+      if (item?.id) {
+        out.set(item.id, item);
+      }
+    });
+    return out;
+  }
+
+  function energyExplanationSummaryLabel(item = {}) {
+    return item.label || item.id || "";
+  }
+
+  function formatValue(value, unit = "") {
+    return `${formatNumber(value)}${unit ? ` ${unit}` : ""}`;
+  }
+
+  function formatSignedValue(value, unit = "") {
+    const number = Number(value);
+    if (!Number.isFinite(number)) {
+      return t("common.notAvailable", {}, "N/A");
+    }
+    const sign = number > 0 ? "+" : "";
+    return `${sign}${formatValue(number, unit)}`;
   }
 
   function sortedResults(results) {

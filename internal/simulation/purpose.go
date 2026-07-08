@@ -108,13 +108,15 @@ type PurposeRunWarning struct {
 }
 
 type PurposeResultBundle struct {
-	Energy       EnergyDashboardResult     `json:"energy,omitempty"`
-	ZoneHeatFlow HeatFlowDataset           `json:"zoneHeatFlow,omitempty"`
-	HVACLoops    []HVACLoopRunResult       `json:"hvacLoops,omitempty"`
-	Comfort      ComfortResult             `json:"comfort,omitempty"`
-	Integrity    IntegrityResult           `json:"integrity,omitempty"`
-	Series       []SimulationSeries        `json:"series,omitempty"`
-	Completeness []PurposeCompletenessItem `json:"completeness,omitempty"`
+	Energy                   EnergyDashboardResult     `json:"energy,omitempty"`
+	EnergyExplanation        EnergyExplanationResult   `json:"energyExplanation,omitempty"`
+	EnergyExplanationSummary EnergyExplanationSummary  `json:"energyExplanationSummary,omitempty"`
+	ZoneHeatFlow             HeatFlowDataset           `json:"zoneHeatFlow,omitempty"`
+	HVACLoops                []HVACLoopRunResult       `json:"hvacLoops,omitempty"`
+	Comfort                  ComfortResult             `json:"comfort,omitempty"`
+	Integrity                IntegrityResult           `json:"integrity,omitempty"`
+	Series                   []SimulationSeries        `json:"series,omitempty"`
+	Completeness             []PurposeCompletenessItem `json:"completeness,omitempty"`
 }
 
 type EnergyDashboardResult struct {
@@ -527,6 +529,8 @@ func BuildPurposeResultBundle(result *SimulationRunResult, request SimulationPur
 				bundle.Energy = buildEnergyDashboardResult(result.Series)
 			}
 			bundle.Energy.Completeness = energyDashboardCompleteness(bundle.Energy, result.PurposeRunPlan, result.Series)
+			bundle.EnergyExplanation = buildEnergyExplanationResultFromFiles(result.Files, bundle.Energy, result.PurposeRunPlan)
+			bundle.EnergyExplanationSummary = buildEnergyExplanationSummary(bundle.EnergyExplanation)
 			bundle.Completeness = append(bundle.Completeness, bundle.Energy.Completeness...)
 		case SimulationPurposeZoneHeatFlow:
 			bundle.ZoneHeatFlow = result.HeatFlow
@@ -2074,6 +2078,12 @@ func (builder *purposePlanBuilder) addBasicEnergy() {
 		"Zone Air System Sensible Cooling Energy",
 	} {
 		builder.addVariable(SimulationPurposeBasicEnergy, "*", variable, "Monthly", "medium", "Monthly zone-level reported energy.")
+	}
+	if purposeIDsContain(builder.request.Purposes, SimulationPurposeZoneHeatFlow) {
+		return
+	}
+	for _, variable := range zoneHeatFlowVariableNames() {
+		builder.addVariable(SimulationPurposeBasicEnergy, "*", variable, "Monthly", "medium", "Monthly heat-driver explanation output.")
 	}
 }
 
