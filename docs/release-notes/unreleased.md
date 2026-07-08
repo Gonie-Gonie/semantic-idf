@@ -25,6 +25,8 @@ The release script infers bump size from these sections:
   policy by requesting hourly explain and heat-driver variables.
 - Basic Energy explanation completeness now marks unrequested light-tier
   delivered-load and heat-driver details as `not_applicable` instead of missing.
+- Basic Energy source availability now emits `not_applicable` placeholder rows
+  for unrequested detail levels, keeping exports distinct from missing outputs.
 - Energy explanation Sankey and Systems views can now focus by all results, a
   selected zone, selected HVAC service path, or selected HVAC loop.
 - Energy explanation Sankey now has Detailed and Compact column modes, with

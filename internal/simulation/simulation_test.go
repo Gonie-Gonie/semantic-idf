@@ -1911,6 +1911,12 @@ func TestEnergyExplanationCompletenessMarksUnrequestedLightDetailsNotApplicable(
 	if completeness.HeatDrivers.Status != "not_applicable" || !strings.Contains(completeness.HeatDrivers.Message, "not requested") {
 		t.Fatalf("light-tier heat-driver completeness = %#v", completeness.HeatDrivers)
 	}
+	if availability := energyExplanationSourceAvailabilityByLevelStatus(completeness.SourceAvailability, "load", "not_applicable"); availability == nil || availability.Name != "not requested by current output plan" {
+		t.Fatalf("light-tier load source availability = %#v", completeness.SourceAvailability)
+	}
+	if availability := energyExplanationSourceAvailabilityByLevelStatus(completeness.SourceAvailability, "heat", "not_applicable"); availability == nil || availability.Name != "not requested by current output plan" {
+		t.Fatalf("light-tier heat source availability = %#v", completeness.SourceAvailability)
+	}
 	for _, category := range completeness.MissingCategories {
 		if strings.HasPrefix(category, "load:") || strings.HasPrefix(category, "heat:") {
 			t.Fatalf("light tier should not report unrequested detail source shortage: %#v", completeness.MissingCategories)
@@ -2270,6 +2276,15 @@ func energyExplanationWarningByCode(items []EnergyWarning, code string) *EnergyW
 func energyExplanationSourceAvailabilityByName(items []EnergySourceAvailabilityEntry, name string) *EnergySourceAvailabilityEntry {
 	for index := range items {
 		if items[index].Name == name {
+			return &items[index]
+		}
+	}
+	return nil
+}
+
+func energyExplanationSourceAvailabilityByLevelStatus(items []EnergySourceAvailabilityEntry, level string, status string) *EnergySourceAvailabilityEntry {
+	for index := range items {
+		if items[index].Level == level && items[index].Status == status {
 			return &items[index]
 		}
 	}

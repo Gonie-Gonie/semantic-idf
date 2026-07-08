@@ -2859,9 +2859,9 @@ func buildEnergyExplanationCompleteness(series []energyExplanationSeries, source
 		status = "missing"
 	}
 	availability := make([]EnergySourceAvailabilityEntry, 0, len(expectedEnergy)+len(expectedLoad)+len(expectedHeat))
-	availability = append(availability, sourceAvailabilityEntries(expectedEnergy, "energy", sources)...)
-	availability = append(availability, sourceAvailabilityEntries(expectedLoad, "load", sources)...)
-	availability = append(availability, sourceAvailabilityEntries(expectedHeat, "heat", sources)...)
+	availability = append(availability, sourceAvailabilityEntriesForLevel(expectedEnergy, "energy", sources)...)
+	availability = append(availability, sourceAvailabilityEntriesForLevel(expectedLoad, "load", sources)...)
+	availability = append(availability, sourceAvailabilityEntriesForLevel(expectedHeat, "heat", sources)...)
 	missingCategories := missingEnergySourceCategories(availability)
 	return EnergyCompleteness{
 		Status:             status,
@@ -3030,6 +3030,17 @@ func sourceAvailabilityEntries(expected []string, level string, sources []Energy
 		out = append(out, EnergySourceAvailabilityEntry{Name: name, Level: level, Status: status})
 	}
 	return out
+}
+
+func sourceAvailabilityEntriesForLevel(expected []string, level string, sources []EnergyDataSource) []EnergySourceAvailabilityEntry {
+	if len(expected) == 0 {
+		return []EnergySourceAvailabilityEntry{{
+			Name:   "not requested by current output plan",
+			Level:  level,
+			Status: "not_applicable",
+		}}
+	}
+	return sourceAvailabilityEntries(expected, level, sources)
 }
 
 func missingEnergySourceCategories(availability []EnergySourceAvailabilityEntry) []string {
