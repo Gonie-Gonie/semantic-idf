@@ -245,6 +245,12 @@ type energyExplanationSeries struct {
 	SourceIDs    []string
 	Total        float64
 	Monthly      map[int]float64
+
+	sourceKeyValue  string
+	sourceName      string
+	sourceFrequency string
+	sourceIsRate    bool
+	sourcePriority  int
 }
 
 type energyExplanationGraph struct {
@@ -400,6 +406,101 @@ func buildEnergyExplanationFromDashboard(dashboard EnergyDashboardResult, plan *
 	return buildEnergyExplanationResult(series, sources, plan)
 }
 
+func preferredEnergyExplanationSeries(series []energyExplanationSeries) []energyExplanationSeries {
+	out := make([]energyExplanationSeries, 0, len(series))
+	selected := map[string]int{}
+	for _, item := range series {
+		key := energyExplanationSeriesSelectionKey(item)
+		if key == "" {
+			out = append(out, item)
+			continue
+		}
+		index, ok := selected[key]
+		if !ok {
+			selected[key] = len(out)
+			out = append(out, item)
+			continue
+		}
+		if energyExplanationSeriesSourcePreferred(item, out[index]) {
+			out[index] = item
+		}
+	}
+	return out
+}
+
+func energyExplanationSeriesSelectionKey(item energyExplanationSeries) string {
+	switch item.Level {
+	case "load":
+		return strings.Join([]string{
+			item.Level,
+			item.Kind,
+			normalizeEnergyOutputName(item.ServiceKind),
+			normalizeEnergyOutputName(item.ZoneName),
+		}, "|")
+	case "heat":
+		scope := item.ZoneName
+		if strings.TrimSpace(scope) == "" {
+			scope = item.sourceKeyValue
+		}
+		return strings.Join([]string{
+			item.Level,
+			item.Kind,
+			normalizeEnergyOutputName(item.HeatCategory),
+			normalizeEnergyOutputName(scope),
+		}, "|")
+	default:
+		return ""
+	}
+}
+
+func energyExplanationSeriesSourcePreferred(candidate energyExplanationSeries, current energyExplanationSeries) bool {
+	candidateRank := energyExplanationSeriesSourceRank(candidate)
+	currentRank := energyExplanationSeriesSourceRank(current)
+	for index := range candidateRank {
+		if candidateRank[index] != currentRank[index] {
+			return candidateRank[index] < currentRank[index]
+		}
+	}
+	return strings.ToLower(candidate.sourceName) < strings.ToLower(current.sourceName)
+}
+
+func energyExplanationSeriesSourceRank(item energyExplanationSeries) [3]int {
+	rateRank := 0
+	if item.sourceIsRate {
+		rateRank = 1
+	}
+	return [3]int{rateRank, energyExplanationSourceFrequencyRank(item.sourceFrequency), item.sourcePriority}
+}
+
+func energyExplanationSourceFrequencyRank(frequency string) int {
+	switch strings.ToLower(canonicalPurposeFrequency(frequency)) {
+	case "monthly":
+		return 0
+	case "runperiod", "annual":
+		return 1
+	case "daily":
+		return 2
+	case "hourly":
+		return 3
+	case "timestep", "detailed":
+		return 4
+	case "":
+		return 5
+	default:
+		return 6
+	}
+}
+
+func energyAliasPriority(name string, aliases []string) int {
+	key := normalizeEnergyOutputName(name)
+	for index, alias := range aliases {
+		if normalizeEnergyOutputName(alias) == key {
+			return index
+		}
+	}
+	return len(aliases) + 100
+}
+
 func emptyEnergyExplanationResult(plan *PurposeRunPlan) EnergyExplanationResult {
 	allocationPolicy := energyExplanationAllocationPolicy(plan)
 	result := EnergyExplanationResult{
@@ -415,6 +516,7 @@ func emptyEnergyExplanationResult(plan *PurposeRunPlan) EnergyExplanationResult 
 
 func buildEnergyExplanationResult(series []energyExplanationSeries, sources []EnergyDataSource, plan *PurposeRunPlan) EnergyExplanationResult {
 	allocationPolicy := energyExplanationAllocationPolicy(plan)
+	series = preferredEnergyExplanationSeries(series)
 	sort.SliceStable(series, func(i, j int) bool {
 		if series[i].Level != series[j].Level {
 			return series[i].Level < series[j].Level
@@ -1084,30 +1186,39 @@ func energyExplanationSeriesForBuilder(builder *energyExplanationSeriesBuilder, 
 	if dictionary.meter != nil {
 		def := dictionary.meter
 		return energyExplanationSeries{
-			Level:     "energy",
-			Kind:      def.Kind,
-			Label:     def.Label,
-			Unit:      builder.unit,
-			Carrier:   def.Carrier,
-			EndUse:    def.EndUse,
-			SourceIDs: []string{sourceID},
-			Total:     roundedEnergyNumber(builder.total),
-			Monthly:   roundedEnergyExplanationMonthly(builder.monthly),
+			Level:           "energy",
+			Kind:            def.Kind,
+			Label:           def.Label,
+			Unit:            builder.unit,
+			Carrier:         def.Carrier,
+			EndUse:          def.EndUse,
+			SourceIDs:       []string{sourceID},
+			Total:           roundedEnergyNumber(builder.total),
+			Monthly:         roundedEnergyExplanationMonthly(builder.monthly),
+			sourceKeyValue:  strings.TrimSpace(dictionary.row.keyValue),
+			sourceName:      strings.TrimSpace(firstNonEmpty(dictionary.row.keyValue, dictionary.row.name)),
+			sourceFrequency: strings.TrimSpace(dictionary.reportingFrequency),
+			sourcePriority:  energyAliasPriority(firstNonEmpty(dictionary.row.keyValue, dictionary.row.name), def.Aliases),
 		}
 	}
 	if dictionary.load != nil {
 		def := dictionary.load
 		return energyExplanationSeries{
-			Level:       "load",
-			Kind:        def.Kind,
-			Label:       def.Label,
-			Unit:        builder.unit,
-			ServiceKind: def.ServiceKind,
-			ZoneName:    strings.TrimSpace(dictionary.row.keyValue),
-			Basis:       "measured_variable",
-			SourceIDs:   []string{sourceID},
-			Total:       roundedEnergyNumber(builder.total),
-			Monthly:     roundedEnergyExplanationMonthly(builder.monthly),
+			Level:           "load",
+			Kind:            def.Kind,
+			Label:           def.Label,
+			Unit:            builder.unit,
+			ServiceKind:     def.ServiceKind,
+			ZoneName:        strings.TrimSpace(dictionary.row.keyValue),
+			Basis:           "measured_variable",
+			SourceIDs:       []string{sourceID},
+			Total:           roundedEnergyNumber(builder.total),
+			Monthly:         roundedEnergyExplanationMonthly(builder.monthly),
+			sourceKeyValue:  strings.TrimSpace(dictionary.row.keyValue),
+			sourceName:      strings.TrimSpace(dictionary.row.name),
+			sourceFrequency: strings.TrimSpace(dictionary.reportingFrequency),
+			sourceIsRate:    energyExplanationIntegratesRate(dictionary),
+			sourcePriority:  energyAliasPriority(dictionary.row.name, def.Aliases),
 		}
 	}
 	def := dictionary.heat
@@ -1116,16 +1227,21 @@ func energyExplanationSeriesForBuilder(builder *energyExplanationSeriesBuilder, 
 		zoneName = ""
 	}
 	return energyExplanationSeries{
-		Level:        "heat",
-		Kind:         def.Kind,
-		Label:        def.Label,
-		Unit:         builder.unit,
-		ZoneName:     zoneName,
-		HeatCategory: def.HeatCategory,
-		Basis:        "derived_balance",
-		SourceIDs:    []string{sourceID},
-		Total:        roundedEnergyNumber(builder.total),
-		Monthly:      roundedEnergyExplanationMonthly(builder.monthly),
+		Level:           "heat",
+		Kind:            def.Kind,
+		Label:           def.Label,
+		Unit:            builder.unit,
+		ZoneName:        zoneName,
+		HeatCategory:    def.HeatCategory,
+		Basis:           "derived_balance",
+		SourceIDs:       []string{sourceID},
+		Total:           roundedEnergyNumber(builder.total),
+		Monthly:         roundedEnergyExplanationMonthly(builder.monthly),
+		sourceKeyValue:  strings.TrimSpace(dictionary.row.keyValue),
+		sourceName:      strings.TrimSpace(dictionary.row.name),
+		sourceFrequency: strings.TrimSpace(dictionary.reportingFrequency),
+		sourceIsRate:    energyExplanationIntegratesRate(dictionary),
+		sourcePriority:  energyAliasPriority(dictionary.row.name, def.Aliases),
 	}
 }
 

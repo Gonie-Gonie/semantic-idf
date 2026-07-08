@@ -567,6 +567,59 @@ func TestParseSimulationEnergyExplanationSQLBuildsAccountingGraph(t *testing.T) 
 	}
 }
 
+func TestParseSimulationEnergyExplanationSQLPrefersEnergyOverRateFallback(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "eplusout.sql")
+	createTestEnergySQL(t, path)
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`INSERT INTO ReportDataDictionary VALUES
+		(23, 'ZONE ONE', 'Zone Air System Sensible Cooling Energy', 'J'),
+		(24, 'ZONE ONE', 'Zone Air System Sensible Cooling Rate', 'W'),
+		(25, 'Supply Fan', 'Fan Air Heat Gain Energy', 'J'),
+		(26, 'Supply Fan', 'Fan Air Heat Gain Rate', 'W')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO ReportData VALUES
+		(7, 1, 23, 900000.0),
+		(8, 2, 23, 900000.0),
+		(9, 1, 24, 1000.0),
+		(10, 2, 24, 1000.0),
+		(11, 1, 25, 360000.0),
+		(12, 2, 25, 360000.0),
+		(13, 1, 26, 1000.0),
+		(14, 2, 26, 1000.0)`); err != nil {
+		t.Fatal(err)
+	}
+
+	plan := &PurposeRunPlan{OutputObjects: []PurposeOutputObject{
+		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, VariableName: "Zone Air System Sensible Cooling Energy"},
+		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, VariableName: "Zone Air System Sensible Cooling Rate"},
+		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, VariableName: "Fan Air Heat Gain Energy"},
+		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, VariableName: "Fan Air Heat Gain Rate"},
+	}}
+	result, err := parseSimulationEnergyExplanationSQL(path, plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	load := energyExplanationNodeByID(result.Nodes, "load.cooling.zone_one")
+	if load == nil || load.Value != 0.5 || !stringSliceContains(load.SourceIDs, "sql-rdd-23") || stringSliceContains(load.SourceIDs, "sql-rdd-24") {
+		t.Fatalf("load source priority node = %#v", load)
+	}
+	heat := energyExplanationNodeByID(result.Nodes, "heat.fan_to_air")
+	if heat == nil || heat.Value != 0.2 || !stringSliceContains(heat.SourceIDs, "sql-rdd-25") || stringSliceContains(heat.SourceIDs, "sql-rdd-26") {
+		t.Fatalf("heat source priority node = %#v", heat)
+	}
+	if !energyExplanationHasSource(result.Sources, "sql-rdd-24", false, "Zone Air System Sensible Cooling Rate") ||
+		!energyExplanationHasSource(result.Sources, "sql-rdd-26", false, "Fan Air Heat Gain Rate") {
+		t.Fatalf("fallback sources should stay traceable: %#v", result.Sources)
+	}
+}
+
 func TestSQLTimeIntervalHoursUsesElapsedFirstPeriod(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "eplusout.sql")
