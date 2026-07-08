@@ -2091,13 +2091,13 @@ func (builder *purposePlanBuilder) addBasicEnergy() {
 		"Zone Air System Sensible Heating Energy",
 		"Zone Air System Sensible Cooling Energy",
 	} {
-		builder.addVariable(SimulationPurposeBasicEnergy, "*", variable, "Monthly", "medium", "Monthly zone-level reported energy.")
+		builder.addVariableWithReason(SimulationPurposeBasicEnergy, "*", variable, "Monthly", "medium", "Basic Energy Explain: monthly zone-level delivered load or reported energy.", "Basic Energy Explain output")
 	}
 	if purposeIDsContain(builder.request.Purposes, SimulationPurposeZoneHeatFlow) {
 		return
 	}
 	for _, variable := range zoneHeatFlowVariableNames() {
-		builder.addVariable(SimulationPurposeBasicEnergy, "*", variable, "Monthly", "medium", "Monthly heat-driver explanation output.")
+		builder.addVariableWithReason(SimulationPurposeBasicEnergy, "*", variable, "Monthly", "medium", "Basic Energy Heat Drivers: monthly zone heat-balance explanation output.", "Basic Energy Heat Drivers output")
 	}
 }
 
@@ -2547,6 +2547,10 @@ func (builder *purposePlanBuilder) addRecommendation(id string, purposeID Simula
 }
 
 func (builder *purposePlanBuilder) addVariable(purposeID SimulationPurposeID, keyValue string, variableName string, frequency string, weight string, description string) {
+	builder.addVariableWithReason(purposeID, keyValue, variableName, frequency, weight, description, string(purposeID)+" purpose")
+}
+
+func (builder *purposePlanBuilder) addVariableWithReason(purposeID SimulationPurposeID, keyValue string, variableName string, frequency string, weight string, description string, reason string) {
 	builder.addObject(PurposeOutputObject{
 		ObjectType: "Output:Variable",
 		Fields: []idf.OutputFieldValue{
@@ -2557,7 +2561,7 @@ func (builder *purposePlanBuilder) addVariable(purposeID SimulationPurposeID, ke
 		PurposeIDs:  []SimulationPurposeID{purposeID},
 		Weight:      weight,
 		Description: description,
-		Reason:      string(purposeID) + " purpose",
+		Reason:      reason,
 	})
 }
 

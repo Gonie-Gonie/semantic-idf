@@ -59,12 +59,19 @@ Output:SQLite,
 	if findPurposeOutput(plan, "Output:Meter", "Electricity:Facility", "") == nil {
 		t.Fatalf("missing Electricity:Facility meter in %#v", plan.OutputObjects)
 	}
-	if findPurposeOutput(plan, "Output:Variable", "*", "Zone Lights Electricity Energy") == nil {
+	zoneEnergy := findPurposeOutput(plan, "Output:Variable", "*", "Zone Lights Electricity Energy")
+	if zoneEnergy == nil {
 		t.Fatalf("missing zone lights energy output in %#v", plan.OutputObjects)
+	}
+	if zoneEnergy.Reason != "Basic Energy Explain output" || !strings.Contains(zoneEnergy.Description, "Basic Energy Explain") {
+		t.Fatalf("zone energy reason/description = %q / %q", zoneEnergy.Reason, zoneEnergy.Description)
 	}
 	heatDriver := findPurposeOutput(plan, "Output:Variable", "*", "Zone Air Heat Balance Surface Convection Rate")
 	if heatDriver == nil || heatDriver.ReportingFrequency != "Monthly" {
 		t.Fatalf("missing monthly heat-driver output in %#v", plan.OutputObjects)
+	}
+	if heatDriver.Reason != "Basic Energy Heat Drivers output" || !strings.Contains(heatDriver.Description, "Basic Energy Heat Drivers") {
+		t.Fatalf("heat driver reason/description = %q / %q", heatDriver.Reason, heatDriver.Description)
 	}
 	if plan.EstimatedFrames != 12 {
 		t.Fatalf("estimated frames = %d, want 12 for monthly energy", plan.EstimatedFrames)

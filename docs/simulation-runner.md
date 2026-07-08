@@ -92,6 +92,11 @@ Output states:
 - `will_be_persisted`: planned for permanent apply.
 - `conflict`: same output target exists with a different frequency or field set.
 
+Basic Energy output requests use tiered reasons in plan previews and Output
+apply previews: top-level SQL/meters form the light energy basis, monthly
+delivered-load and zone energy variables are labeled as `Basic Energy Explain`,
+and monthly heat-balance variables are labeled as `Basic Energy Heat Drivers`.
+
 ## Result Reading
 
 `readSimulationOutputs` is split into:

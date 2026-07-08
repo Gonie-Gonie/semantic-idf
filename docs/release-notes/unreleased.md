@@ -29,6 +29,9 @@ The release script infers bump size from these sections:
 - Basic Energy purpose runs now request monthly delivered-load and heat-driver
   explanation outputs while reusing hourly Zone Heat Flow outputs when that
   purpose is selected.
+- Basic Energy output plan rows now label monthly delivered-load/zone-energy
+  requests as `Basic Energy Explain` and monthly heat-balance requests as
+  `Basic Energy Heat Drivers`.
 - Batch purpose simulation metrics now include compact annual Energy Use,
   Delivered Load, Heat Driver, residual, mapped-percent, and top heat-driver
   values from the Basic Energy explanation summary, plus two-row delta tables
