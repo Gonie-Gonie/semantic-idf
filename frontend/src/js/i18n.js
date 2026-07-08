@@ -723,6 +723,7 @@ const dictionaries = {
     "simulation.energyUseBreakdown": "Energy use by carrier and end use",
     "simulation.energyUseBreakdownHint": "Carrier and end use stay separate for comparison.",
     "simulation.energyExplanationMonthlyLevels": "Monthly explanation levels",
+    "simulation.energySankeyGrouped": "Showing top {limit} heat drivers; {count} grouped as Other.",
     "simulation.energyZoneBreakdown": "Zone energy/load/heat breakdown",
     "simulation.endUse": "End use",
     "simulation.endUseEnergy": "End-use energy",

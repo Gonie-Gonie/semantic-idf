@@ -1291,6 +1291,7 @@ function renderEnergyExplanationSankey(explanation = {}) {
         <span>${escapeHTML(t("simulation.energyBasisNote", {}, "Basis is accounting/source type, not confidence."))} / ${escapeHTML(energyExplanationSignModeLabel(state.simulationEnergySignMode || "display"))}</span>
       </div>
       ${svg}
+      ${renderEnergyExplanationGroupingNotice(graph.grouping)}
       ${renderEnergyExplanationLegend()}
       ${renderEnergyExplanationInspector(selected, explanation)}
     </section>`;
@@ -1435,7 +1436,16 @@ function groupedEnergyExplanationGraph(graph = {}) {
     otherEdges.set(key, existing);
   }
   groupedEdges.push(...otherEdges.values());
-  return { nodes: groupedNodes, edges: groupedEdges };
+  return {
+    ...graph,
+    nodes: groupedNodes,
+    edges: groupedEdges,
+    grouping: {
+      limit,
+      omittedHeatCount: omittedHeatNodes.length,
+      otherNodeId: otherID,
+    },
+  };
 }
 
 function energyExplanationNodeLimit(value) {
@@ -1444,6 +1454,19 @@ function energyExplanationNodeLimit(value) {
     return 80;
   }
   return number === 0 ? 0 : Math.max(10, Math.round(number));
+}
+
+function renderEnergyExplanationGroupingNotice(grouping = {}) {
+  const count = Number(grouping.omittedHeatCount) || 0;
+  if (count <= 0) {
+    return "";
+  }
+  const limit = Number(grouping.limit) || 0;
+  return `
+    <div class="energy-sankey-grouping-notice">
+      <span>${escapeHTML(t("simulation.energySankeyGrouped", { count, limit }, `Showing top ${limit} heat drivers; ${count} grouped as Other.`))}</span>
+      <button class="simulation-series-inspect" type="button" data-simulation-energy-show-all-nodes="1">${escapeHTML(t("common.all", {}, "All"))}</button>
+    </div>`;
 }
 
 function appendUniqueEnergyStrings(values = [], ...items) {
@@ -3591,6 +3614,13 @@ function handleSimulationSeriesInspectClick(event) {
     state.simulationEnergyServicePathFocus = energyServicePathJump.dataset.simulationEnergyServicePathJump || "";
     state.simulationEnergySelection = "";
     state.simulationEnergyView = "sankey";
+    renderSimulationEnergyDashboard(state.simulationResult);
+    return;
+  }
+  const energyShowAllNodes = event.target.closest("[data-simulation-energy-show-all-nodes]");
+  if (energyShowAllNodes) {
+    state.simulationEnergyNodeLimit = 0;
+    state.simulationEnergySelection = "";
     renderSimulationEnergyDashboard(state.simulationResult);
     return;
   }

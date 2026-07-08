@@ -1289,6 +1289,17 @@
   min-height: 260px;
 }
 
+.energy-sankey-grouping-notice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .energy-sankey-edge {
   fill: none;
   stroke: color-mix(in srgb, #2563eb 58%, transparent);

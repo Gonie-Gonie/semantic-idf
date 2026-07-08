@@ -302,7 +302,8 @@ Purpose result viewers now include:
   between display magnitude, signed balance, cooling-pressure, and
   heating-pressure modes, uses carrier/service-specific node colors for common
   energy and load classes, and can cap visible heat-driver nodes with omitted
-  drivers grouped as `Other heat drivers`.
+  drivers grouped as `Other heat drivers`. When grouping occurs, the view shows
+  how many heat drivers were folded and offers an `All` action to expand them.
 - Zone Heat Flow SQL or CSV/ESO ledger with frame sampling metadata and
   time-range controls.
 - HVAC Loop Check node summaries, component operation summaries for fans,

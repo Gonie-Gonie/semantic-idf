@@ -27,6 +27,9 @@ func TestFrontendSimulationEnergySystemsCrossJumpContracts(t *testing.T) {
 		"heating_pressure",
 		"groupedEnergyExplanationGraph",
 		"data-simulation-energy-node-limit",
+		"data-simulation-energy-show-all-nodes",
+		"renderEnergyExplanationGroupingNotice",
+		"simulation.energySankeyGrouped",
 		"heat.other_grouped",
 		"energyAllocationPolicyLabel",
 		"energy-source-availability",
@@ -115,7 +118,7 @@ func TestFrontendSimulationEnergySystemsCrossJumpContracts(t *testing.T) {
 		t.Fatalf("simulation allocation policy control is missing")
 	}
 	styles := readTestFile(t, "frontend/src/styles/simulation.css")
-	for _, term := range []string{".energy-related-service-paths", ".energy-service-path-chip", ".simulation-energy-focus-controls", ".simulation-energy-period-row", ".simulation-energy-zone-paths", ".simulation-energy-zone-actions", ".simulation-energy-chart-period", ".energy-explanation-output-actions", ".energy-source-availability", ".simulation-source-output-jump", ".energy-reconciliation-sources", ".energy-sankey-edge.selected", ".energy-sankey-node.connected", ".energy-sankey-node.electricity", ".energy-sankey-node.district_cooling", ".energy-sankey-legend i.node"} {
+	for _, term := range []string{".energy-related-service-paths", ".energy-service-path-chip", ".simulation-energy-focus-controls", ".simulation-energy-period-row", ".simulation-energy-zone-paths", ".simulation-energy-zone-actions", ".simulation-energy-chart-period", ".energy-explanation-output-actions", ".energy-source-availability", ".simulation-source-output-jump", ".energy-reconciliation-sources", ".energy-sankey-grouping-notice", ".energy-sankey-edge.selected", ".energy-sankey-node.connected", ".energy-sankey-node.electricity", ".energy-sankey-node.district_cooling", ".energy-sankey-legend i.node"} {
 		if !strings.Contains(styles, term) {
 			t.Fatalf("simulation energy cross-jump style missing %q", term)
 		}
