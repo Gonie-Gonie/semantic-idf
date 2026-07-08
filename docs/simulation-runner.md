@@ -403,8 +403,8 @@ Purpose result viewers now include:
   heat drivers`. The default grouping also keeps the rendered Sankey graph
   within a 100-node budget where heat-driver grouping can achieve it. When
   grouping occurs, the view shows how many heat drivers were folded, preserves
-  related HVAC service-path IDs for the grouped inspector row, and offers an
-  `All` action to expand them.
+  related HVAC service-path IDs and signed/display heat values for the grouped
+  inspector row, and offers an `All` action to expand them.
 - Zone Heat Flow SQL or CSV/ESO ledger with frame sampling metadata and
   time-range controls.
 - HVAC Loop Check node summaries, component operation summaries for fans,

@@ -1876,7 +1876,11 @@ function groupedEnergyExplanationGraph(graph = {}) {
   const otherSources = omittedHeatNodes.reduce((out, node) => appendUniqueEnergyStrings(out, ...(node.sourceIds || [])), []);
   const otherRelatedPathIDs = omittedHeatNodes.reduce((out, node) => appendUniqueEnergyStrings(out, ...(node.relatedPathIds || [])), []);
   const otherValue = roundedDisplayNumber(omittedHeatNodes.reduce((sum, node) => sum + (Number(node.value) || 0), 0));
+  const otherSignedValue = roundedDisplayNumber(omittedHeatNodes.reduce((sum, node) => sum + (Number(node.signedValue) || 0), 0));
+  const otherDisplayValue = roundedDisplayNumber(omittedHeatNodes.reduce((sum, node) => sum + (Number(node.displayValue) || Number(node.value) || 0), 0));
   const otherUnit = omittedHeatNodes.find((node) => node.unit)?.unit || "kWh";
+  const otherSigns = [...new Set(omittedHeatNodes.map((node) => node.sign || "").filter(Boolean))];
+  const otherServices = [...new Set(omittedHeatNodes.map((node) => node.serviceKind || "").filter(Boolean))];
   const groupedNodes = nodes.filter((node) => node.level !== "heat" || keepHeatIDs.has(node.id));
   groupedNodes.push({
     id: otherID,
@@ -1884,8 +1888,12 @@ function groupedEnergyExplanationGraph(graph = {}) {
     kind: "heat.other_grouped",
     label: "Other heat drivers",
     value: otherValue,
+    signedValue: otherSignedValue,
+    displayValue: otherDisplayValue,
     unit: otherUnit,
     heatCategory: "grouped_other",
+    sign: otherSigns.length === 1 ? otherSigns[0] : "mixed",
+    serviceKind: otherServices.length === 1 ? otherServices[0] : "",
     basis: "derived_balance",
     sourceIds: otherSources,
     relatedPathIds: otherRelatedPathIDs,
