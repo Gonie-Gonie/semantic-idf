@@ -1185,7 +1185,7 @@ function renderEnergyExplanationInspector(selection, explanation = {}) {
       return `
         <tr>
           <td>${escapeHTML(source.id || "")}</td>
-          <td>${escapeHTML(source.isMeter ? "meter" : "variable")}</td>
+          <td>${escapeHTML(energyExplanationSourceTypeLabel(source))}</td>
           <td>${escapeHTML(source.keyValue || "")}</td>
           <td>${escapeHTML(source.name || "")}</td>
           <td>${escapeHTML(source.reportingFrequency || "")}</td>
@@ -1367,7 +1367,7 @@ function renderEnergyReconciliationSources(explanation = {}, sourceIDs = []) {
     .map((sourceID) => {
       const source = sourceByID.get(sourceID) || { id: sourceID };
       const object = source.id ? sourceOutputForEnergySource(source) : null;
-      const label = [source.keyValue, source.name, source.reportingFrequency].filter(Boolean).join(" / ");
+      const label = [energyExplanationSourceTypeLabel(source), source.keyValue, source.name, source.reportingFrequency].filter(Boolean).join(" / ");
       return `
         <span class="energy-reconciliation-source" title="${escapeHTML(label || sourceID)}">
           <code>${escapeHTML(sourceID)}</code>
@@ -1509,6 +1509,11 @@ function energyExplanationLevelLabel(level = "") {
 function energyExplanationSourcesForIDs(explanation = {}, sourceIDs = []) {
   const wanted = new Set(sourceIDs || []);
   return (explanation.sources || []).filter((source) => wanted.has(source.id));
+}
+
+function energyExplanationSourceTypeLabel(source = {}) {
+  const basis = source.isMeter ? "meter" : "variable";
+  return [source.sourceType || "", basis].filter(Boolean).join(" / ") || basis;
 }
 
 function energyExplanationRelationshipRuleLabel(explanation = {}, ruleID = "") {
