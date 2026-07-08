@@ -62,6 +62,8 @@ func TestFrontendSimulationEnergySystemsCrossJumpContracts(t *testing.T) {
 		"explanation.relationshipRules",
 		"renderEnergyDerivedKPISection",
 		"energyExplanationDerivedKPIItems",
+		"renderEnergyUseBreakdownSection",
+		"simulation.energyUseBreakdown",
 		"simulation.relation",
 		"selection.meterHierarchyLevel",
 		"meterHierarchy",

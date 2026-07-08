@@ -267,6 +267,8 @@ Purpose result viewers now include:
   Drivers with source metadata. The Sankey inspector shows edge relation, basis,
   rule, formula, sources, and related service paths, and the selected edge plus
   its endpoint nodes are highlighted in the graph while the inspector is open.
+  The Overview subview also includes an annual Energy Use breakdown by carrier
+  and end use so fuel-qualified uses remain distinct in comparison.
   The completeness panel
   shows mapped percent, allocation policy, missing categories, and missing
   source availability rows.

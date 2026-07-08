@@ -30,6 +30,8 @@ The release script infers bump size from these sections:
   heating classes.
 - Basic Energy Monthly ledger rows now open the matching Sankey period so
   month-level accounting changes are easier to inspect.
+- Basic Energy Overview now includes an annual Energy Use breakdown by carrier
+  and end use, with source links for each row.
 - Energy explanation completeness now surfaces missing categories and source
   availability rows in the UI.
 - Energy explanation source availability now uses `found`/`missing` status rows

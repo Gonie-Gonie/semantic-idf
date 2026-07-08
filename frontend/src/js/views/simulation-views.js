@@ -664,6 +664,7 @@ function renderEnergySubview(view, energy, explanation, facility, endUse, zones)
         ${renderPurposeCompletenessRow(energy.completeness || [])}
         ${renderEnergyExplanationCompleteness(explanation)}
         ${renderEnergyDerivedKPISection(explanation)}
+        ${renderEnergyUseBreakdownSection(explanation)}
         ${renderEnergyMonthlyChart(t("simulation.facilityMonthlyProfile", {}, "Facility monthly profile"), facility)}
         ${renderEnergyMonthlyChart(t("simulation.endUseMonthlyProfile", {}, "End-use monthly profile"), endUse)}
         ${renderEnergyBarSection(t("simulation.facilityEnergy", {}, "Facility energy"), facility)}
@@ -671,6 +672,44 @@ function renderEnergySubview(view, energy, explanation, facility, endUse, zones)
         ${renderZoneEnergyMatrix(zones)}
         ${renderZoneEnergyTable(zones)}`;
   }
+}
+
+function renderEnergyUseBreakdownSection(explanation = {}) {
+  const graph = energyExplanationGraphForPeriod(explanation, "annual");
+  const rows = (graph.nodes || [])
+    .filter((node) => node.level === "energy" && String(node.id || "").includes(".end_use.") && node.endUse && node.endUse !== "total")
+    .sort((a, b) => {
+      const carrierCompare = String(a.carrier || "").localeCompare(String(b.carrier || ""));
+      if (carrierCompare) return carrierCompare;
+      return Math.abs(Number(b.value) || 0) - Math.abs(Number(a.value) || 0);
+    })
+    .map(
+      (node) => `
+        <tr>
+          <td>${escapeHTML(titleCaseEnergyToken(node.carrier || ""))}</td>
+          <td>${escapeHTML(titleCaseEnergyToken(node.endUse || ""))}</td>
+          <td>${escapeHTML(node.label || node.kind || node.id || "")}</td>
+          <td>${escapeHTML(formatValueWithUnit(node.value, node.unit))}</td>
+          <td>${renderEnergyReconciliationSources(explanation, node.sourceIds || [])}</td>
+        </tr>`,
+    )
+    .join("");
+  if (!rows) {
+    return "";
+  }
+  return `
+    <section class="simulation-energy-block">
+      <div class="simulation-energy-block-head">
+        <h4>${escapeHTML(t("simulation.energyUseBreakdown", {}, "Energy use by carrier and end use"))}</h4>
+        <span>${escapeHTML(t("simulation.energyUseBreakdownHint", {}, "Carrier and end use stay separate for comparison."))}</span>
+      </div>
+      <div class="output-table-wrap">
+        <table class="output-table">
+          <thead><tr><th>${escapeHTML(t("simulation.carrier", {}, "Carrier"))}</th><th>${escapeHTML(t("simulation.endUse", {}, "End use"))}</th><th>${escapeHTML(t("common.metric", {}, "Metric"))}</th><th>${escapeHTML(t("common.value", {}, "Value"))}</th><th>${escapeHTML(t("common.source", {}, "Source"))}</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </section>`;
 }
 
 function renderEnergySystemsSubview(explanation = {}) {
