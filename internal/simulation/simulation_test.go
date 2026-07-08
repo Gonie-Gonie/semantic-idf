@@ -1771,9 +1771,17 @@ ZoneHVAC:IdealLoadsAirSystem,
 	if edge == nil || len(edge.RelatedPathIDs) == 0 || !stringSlicesEqual(edge.RelatedPathIDs, load.RelatedPathIDs) {
 		t.Fatalf("delivered-load edge related paths = %#v load=%#v", edge, load)
 	}
+	residual := energyExplanationNodeByID(bundle.EnergyExplanation.Nodes, "residual.heat.cooling")
+	if residual == nil || len(residual.RelatedPathIDs) == 0 || !stringSlicesEqual(residual.RelatedPathIDs, load.RelatedPathIDs) {
+		t.Fatalf("heat residual related paths = %#v load=%#v", residual, load)
+	}
 	periodLoad := energyExplanationNodeByID(bundle.EnergyExplanation.Periods[1].Nodes, "load.cooling.office")
 	if periodLoad == nil || !stringSlicesEqual(periodLoad.RelatedPathIDs, load.RelatedPathIDs) {
 		t.Fatalf("period load related paths = %#v annual=%#v", periodLoad, load)
+	}
+	periodResidual := energyExplanationNodeByID(bundle.EnergyExplanation.Periods[1].Nodes, "residual.heat.cooling")
+	if periodResidual == nil || !stringSlicesEqual(periodResidual.RelatedPathIDs, load.RelatedPathIDs) {
+		t.Fatalf("period heat residual related paths = %#v annual=%#v", periodResidual, residual)
 	}
 }
 

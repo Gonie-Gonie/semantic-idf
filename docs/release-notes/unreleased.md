@@ -58,6 +58,8 @@ The release script infers bump size from these sections:
   with a direct Sankey service-path focus jump.
 - Basic Energy Systems rows now render connected HVAC loops and supporting
   coupling assets as jump targets into the HVAC tab.
+- Basic Energy heat residual nodes now retain related HVAC service path IDs, so
+  service-level accounting gaps remain traceable from Sankey inspectors.
 - Basic Energy completeness panels now distinguish missing source outputs from
   accounting/model coverage gaps and can jump directly to the purpose output
   plan or apply missing purpose outputs permanently.

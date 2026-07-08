@@ -664,10 +664,12 @@ func enrichEnergyExplanationWithServicePaths(explanation EnergyExplanationResult
 	explanation.Nodes = enrichEnergyExplanationNodesWithServicePaths(explanation.Nodes, index)
 	nodePaths := energyExplanationNodePathMap(explanation.Nodes)
 	explanation.Edges = enrichEnergyExplanationEdgesWithServicePaths(explanation.Edges, nodePaths, index)
+	explanation.Nodes = enrichEnergyExplanationResidualNodesFromEdges(explanation.Nodes, explanation.Edges)
 	for periodIndex := range explanation.Periods {
 		explanation.Periods[periodIndex].Nodes = enrichEnergyExplanationNodesWithServicePaths(explanation.Periods[periodIndex].Nodes, index)
 		periodNodePaths := energyExplanationNodePathMap(explanation.Periods[periodIndex].Nodes)
 		explanation.Periods[periodIndex].Edges = enrichEnergyExplanationEdgesWithServicePaths(explanation.Periods[periodIndex].Edges, periodNodePaths, index)
+		explanation.Periods[periodIndex].Nodes = enrichEnergyExplanationResidualNodesFromEdges(explanation.Periods[periodIndex].Nodes, explanation.Periods[periodIndex].Edges)
 	}
 	return explanation
 }
@@ -774,6 +776,40 @@ func energyExplanationNodePathMap(nodes []EnergyExplanationNode) map[string][]st
 	return out
 }
 
+func enrichEnergyExplanationResidualNodesFromEdges(nodes []EnergyExplanationNode, edges []EnergyExplanationEdge) []EnergyExplanationNode {
+	residualIDs := map[string]bool{}
+	for _, node := range nodes {
+		if node.ID != "" && (node.Level == "residual" || strings.Contains(node.Kind, "residual")) {
+			residualIDs[node.ID] = true
+		}
+	}
+	if len(residualIDs) == 0 {
+		return nodes
+	}
+	pathsByNode := map[string][]string{}
+	for _, edge := range edges {
+		if len(edge.RelatedPathIDs) == 0 {
+			continue
+		}
+		if residualIDs[edge.FromID] {
+			pathsByNode[edge.FromID] = appendUniqueStrings(pathsByNode[edge.FromID], edge.RelatedPathIDs...)
+		}
+		if residualIDs[edge.ToID] {
+			pathsByNode[edge.ToID] = appendUniqueStrings(pathsByNode[edge.ToID], edge.RelatedPathIDs...)
+		}
+	}
+	if len(pathsByNode) == 0 {
+		return nodes
+	}
+	out := append([]EnergyExplanationNode(nil), nodes...)
+	for nodeIndex := range out {
+		if paths := pathsByNode[out[nodeIndex].ID]; len(paths) > 0 {
+			out[nodeIndex].RelatedPathIDs = appendUniqueStrings(out[nodeIndex].RelatedPathIDs, paths...)
+		}
+	}
+	return out
+}
+
 func relatedEnergyServicePathIDs(node EnergyExplanationNode, index energyServicePathIndex) []string {
 	service := energyCanonicalServiceKind(firstNonEmpty(node.ServiceKind, node.EndUse))
 	zoneKey := normalizePurposeToken(node.ZoneName)
@@ -788,7 +824,7 @@ func relatedEnergyServicePathIDs(node EnergyExplanationNode, index energyService
 	if len(out) == 0 && zoneKey != "" {
 		out = appendUniqueStrings(out, index.byZone[zoneKey]...)
 	}
-	if len(out) == 0 && zoneKey == "" && loopKey == "" && service != "" && (node.Level == "load" || node.Level == "heat") {
+	if len(out) == 0 && zoneKey == "" && loopKey == "" && service != "" && (node.Level == "load" || node.Level == "heat" || node.Kind == "heat.residual") {
 		out = appendUniqueStrings(out, index.byService[service]...)
 	}
 	return out
