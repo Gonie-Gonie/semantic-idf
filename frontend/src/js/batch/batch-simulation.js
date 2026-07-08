@@ -1323,8 +1323,8 @@ export function initializeMultiSimulationTool(context) {
     return [...new Set([...left.keys(), ...right.keys()])].map((id) => {
       const leftItem = left.get(id);
       const rightItem = right.get(id);
-      const leftValue = Number(leftItem?.value || 0);
-      const rightValue = Number(rightItem?.value || 0);
+      const leftValue = energyExplanationComparisonValue(leftItem);
+      const rightValue = energyExplanationComparisonValue(rightItem);
       const unit = rightItem?.unit || leftItem?.unit || "";
       const delta = rightValue - leftValue;
       const percent = leftValue === 0 ? null : (delta / leftValue) * 100;
@@ -1342,15 +1342,15 @@ export function initializeMultiSimulationTool(context) {
         formula: rightItem?.formula || leftItem?.formula || "",
         numeratorLabel: rightItem?.numeratorLabel || leftItem?.numeratorLabel || "",
         denominatorLabel: rightItem?.denominatorLabel || leftItem?.denominatorLabel || "",
-        leftNumeratorValue: Number(leftItem?.numeratorValue || 0),
-        rightNumeratorValue: Number(rightItem?.numeratorValue || 0),
+        leftNumeratorValue: energyExplanationComparisonValue(leftItem, "numeratorValue"),
+        rightNumeratorValue: energyExplanationComparisonValue(rightItem, "numeratorValue"),
         numeratorUnit: rightItem?.numeratorUnit || leftItem?.numeratorUnit || "",
-        leftDenominatorValue: Number(leftItem?.denominatorValue || 0),
-        rightDenominatorValue: Number(rightItem?.denominatorValue || 0),
+        leftDenominatorValue: energyExplanationComparisonValue(leftItem, "denominatorValue"),
+        rightDenominatorValue: energyExplanationComparisonValue(rightItem, "denominatorValue"),
         denominatorUnit: rightItem?.denominatorUnit || leftItem?.denominatorUnit || "",
         heatCategory: rightItem?.heatCategory || leftItem?.heatCategory || "",
         sign: rightItem?.sign || leftItem?.sign || "",
-        status: energyExplanationDeltaStatus(leftItem, rightItem),
+        status: energyExplanationDeltaStatus(leftItem, rightItem, leftValue, rightValue),
         totalMagnitude: Math.abs(leftValue) + Math.abs(rightValue),
       };
     });
@@ -1362,8 +1362,8 @@ export function initializeMultiSimulationTool(context) {
     return [...new Set([...left.keys(), ...right.keys()])].map((id) => {
       const leftEdge = left.get(id);
       const rightEdge = right.get(id);
-      const leftValue = Number(leftEdge?.value || 0);
-      const rightValue = Number(rightEdge?.value || 0);
+      const leftValue = energyExplanationComparisonValue(leftEdge);
+      const rightValue = energyExplanationComparisonValue(rightEdge);
       const unit = rightEdge?.unit || leftEdge?.unit || "";
       const delta = rightValue - leftValue;
       const percent = leftValue === 0 ? null : (delta / leftValue) * 100;
@@ -1382,7 +1382,7 @@ export function initializeMultiSimulationTool(context) {
         delta,
         percent,
         unit,
-        status: energyExplanationDeltaStatus(leftEdge, rightEdge),
+        status: energyExplanationDeltaStatus(leftEdge, rightEdge, leftValue, rightValue),
       };
     });
   }
@@ -1483,12 +1483,26 @@ export function initializeMultiSimulationTool(context) {
     return `${formatNumber(row.percent)}%`;
   }
 
-  function energyExplanationDeltaStatus(leftItem, rightItem) {
+  function energyExplanationComparisonValue(item, field = "value") {
+    if (!item) {
+      return 0;
+    }
+    const number = Number(item[field]);
+    return Number.isFinite(number) ? number : 0;
+  }
+
+  function energyExplanationDeltaStatus(leftItem, rightItem, leftValue = 0, rightValue = 0) {
     if (!leftItem && rightItem) {
       return "missing in baseline";
     }
     if (leftItem && !rightItem) {
       return "missing in comparison";
+    }
+    if (leftValue === 0 && rightValue !== 0) {
+      return "zero baseline";
+    }
+    if (leftValue !== 0 && rightValue === 0) {
+      return "zero comparison";
     }
     return "matched";
   }
