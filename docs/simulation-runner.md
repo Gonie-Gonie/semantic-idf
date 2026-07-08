@@ -352,8 +352,9 @@ Purpose result viewers now include:
   `Reconciliation` subviews for tracing Energy Use to Delivered Load and Heat
   Drivers with source metadata. The Sankey inspector shows edge relation, basis,
   rule, formula, sources, SQL tabular table/row/column metadata, and related
-  service paths, and the selected edge plus its endpoint nodes are highlighted
-  in the graph while the inspector is open.
+  service paths, connected HVAC loops, and supporting coupling assets, and the
+  selected edge plus its endpoint nodes are highlighted in the graph while the
+  inspector is open.
   The Overview subview also includes an annual Energy Use breakdown by carrier
   and end use so fuel-qualified uses remain distinct in comparison.
   The completeness panel
@@ -384,7 +385,8 @@ Purpose result viewers now include:
   related HVAC service paths.
   The `Systems` subview and node inspector match load/heat services to the
   current HVAC service model by zone and service kind, then link directly to the
-  related HVAC service path. The Systems table now shows source energy,
+  related HVAC service path, connected loops, and supporting coupling assets.
+  The Systems table now shows source energy,
   delivered load, heat-driver totals, connected plant/air/source systems, and
   supporting assets on the same service-path row, and each row can open the
   matching Sankey service-path focus. Sankey and Systems can focus the graph by all

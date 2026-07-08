@@ -1812,7 +1812,8 @@
   text-decoration: underline;
 }
 
-.energy-related-service-paths {
+.energy-related-service-paths,
+.energy-related-hvac-links {
   display: grid;
   gap: 6px;
   border: 1px solid var(--line);
@@ -1821,12 +1822,14 @@
   padding: 8px;
 }
 
-.energy-related-service-paths strong {
+.energy-related-service-paths strong,
+.energy-related-hvac-links strong {
   color: var(--text);
   font-size: 12px;
 }
 
-.energy-related-service-paths > div {
+.energy-related-service-paths > div,
+.energy-related-hvac-links > div {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;

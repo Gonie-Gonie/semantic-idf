@@ -2227,6 +2227,7 @@ function renderEnergyExplanationInspector(selection, explanation = {}) {
   const drilldownActions = renderSimulationEnergyDrilldownActions(selection);
   const relatedZones = renderSimulationEnergyRelatedZones(selection);
   const relatedPaths = renderSimulationEnergyRelatedServicePaths(selection);
+  const relatedHVAC = renderSimulationEnergyRelatedHVACLinks(selection);
   return `
     <section class="energy-explanation-inspector">
       <div class="simulation-energy-block-head">
@@ -2240,6 +2241,7 @@ function renderEnergyExplanationInspector(selection, explanation = {}) {
       ${drilldownActions}
       ${relatedZones}
       ${relatedPaths}
+      ${relatedHVAC}
       <div class="output-table-wrap">
         <table class="output-table">
           <thead><tr><th>ID</th><th>${escapeHTML(t("common.type", {}, "Type"))}</th><th>Key</th><th>Name</th><th>Frequency</th><th>Aggregation</th><th>Table</th><th>Row</th><th>Column</th><th>Source Unit</th><th>Normalized Unit</th><th>${escapeHTML(t("simulation.sourceOutput", {}, "Source output"))}</th><th>${escapeHTML(t("simulation.inspectSeriesAction", {}, "Chart"))}</th></tr></thead>
@@ -2684,6 +2686,69 @@ function renderSimulationEnergyRelatedServicePaths(selection = {}) {
           )
           .join("")}
       </div>
+    </div>`;
+}
+
+function renderSimulationEnergyRelatedHVACLinks(selection = {}) {
+  const paths = simulationRelatedServicePathsForEnergySelection(selection).slice(0, 8);
+  if (!paths.length) {
+    return "";
+  }
+  const loops = [];
+  const loopKeys = new Set();
+  const assets = [];
+  const assetIDs = new Set();
+  paths.forEach((path) => {
+    simulationServicePathLoopRefs(path).forEach((loop) => {
+      const key = simulationEnergyLoopFocusValue(loop) || `${loop.type || ""}:${loop.name || ""}`;
+      if (!key || loopKeys.has(key)) {
+        return;
+      }
+      loopKeys.add(key);
+      loops.push(loop);
+    });
+    simulationServicePathSupportingAssetRefs(path).forEach((asset) => {
+      const key = asset.id || asset.label || "";
+      if (!key || assetIDs.has(key)) {
+        return;
+      }
+      assetIDs.add(key);
+      assets.push(asset);
+    });
+  });
+  const loopRows = loops
+    .map(
+      (loop) => `
+        <span class="energy-service-path-action-row">
+          <button
+            class="simulation-energy-system-chip"
+            type="button"
+            data-simulation-hvac-loop-type="${escapeHTML(loop.type || "")}"
+            data-simulation-hvac-loop-name="${escapeHTML(loop.name || "")}"
+            title="${escapeHTML(t("simulation.openLoopInHVAC", {}, "Open loop in HVAC"))}"
+          >${escapeHTML(loop.label || loop.name || "")}</button>
+          ${renderSimulationEnergyLoopFocusButton(loop)}
+        </span>`,
+    )
+    .join("");
+  const assetRows = assets
+    .map(
+      (asset) => `
+        <button
+          class="simulation-energy-system-chip"
+          type="button"
+          data-simulation-hvac-coupling-id="${escapeHTML(asset.id || "")}"
+          title="${escapeHTML(t("simulation.openAssetInHVAC", {}, "Open asset in HVAC"))}"
+        >${escapeHTML(asset.label || asset.id || "")}</button>`,
+    )
+    .join("");
+  if (!loopRows && !assetRows) {
+    return "";
+  }
+  return `
+    <div class="energy-related-hvac-links">
+      <strong>${escapeHTML(t("simulation.energyHVACJumps", {}, "HVAC jumps"))}</strong>
+      <div>${loopRows}${assetRows}</div>
     </div>`;
 }
 

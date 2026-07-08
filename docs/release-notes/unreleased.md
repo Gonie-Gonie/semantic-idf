@@ -71,6 +71,9 @@ The release script infers bump size from these sections:
   period switches.
 - Basic Energy Sankey inspector actions now expose zone focus and related
   service-path focus jumps alongside HVAC and Heat Flow drilldowns.
+- Basic Energy Sankey inspectors now list connected HVAC loops and supporting
+  coupling assets for the selected service path, with direct jumps into the HVAC
+  tab.
 - Basic Energy Sankey inspector zone actions can now jump directly into the
   matching Profile tab zone view when profile analysis is available.
 - Basic Energy Sankey inspectors now list related zones inferred from selected
