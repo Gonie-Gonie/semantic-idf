@@ -208,6 +208,7 @@ type energyHeatAliasDefinition struct {
 	Kind         string
 	Label        string
 	HeatCategory string
+	ObjectScoped bool
 	Aliases      []string
 }
 
@@ -1044,12 +1045,16 @@ func energyExplanationSeriesForBuilder(builder *energyExplanationSeriesBuilder, 
 		}
 	}
 	def := dictionary.heat
+	zoneName := strings.TrimSpace(dictionary.row.keyValue)
+	if def.ObjectScoped {
+		zoneName = ""
+	}
 	return energyExplanationSeries{
 		Level:        "heat",
 		Kind:         def.Kind,
 		Label:        def.Label,
 		Unit:         builder.unit,
-		ZoneName:     strings.TrimSpace(dictionary.row.keyValue),
+		ZoneName:     zoneName,
 		HeatCategory: def.HeatCategory,
 		Basis:        "derived_balance",
 		SourceIDs:    []string{sourceID},
@@ -1311,6 +1316,7 @@ func energyHeatAliasCatalog() []energyHeatAliasDefinition {
 		{Kind: "heat.ventilation_outdoor_air", Label: "Outdoor air transfer", HeatCategory: "air_exchange", Aliases: []string{"Zone Air Heat Balance Outdoor Air Transfer Rate"}},
 		{Kind: "heat.hvac_air_transfer", Label: "HVAC system air transfer", HeatCategory: "hvac_system", Aliases: []string{"Zone Air Heat Balance System Air Transfer Rate"}},
 		{Kind: "heat.system_convective", Label: "HVAC/system convective gains", HeatCategory: "hvac_system", Aliases: []string{"Zone Air Heat Balance System Convective Heat Gain Rate"}},
+		{Kind: "heat.fan_to_air", Label: "Fan heat to air", HeatCategory: "hvac_system", ObjectScoped: true, Aliases: []string{"Fan Air Heat Gain Energy", "Fan Air Heat Gain Rate"}},
 		{Kind: "heat.storage_air", Label: "Air energy storage", HeatCategory: "storage_residual", Aliases: []string{"Zone Air Heat Balance Air Energy Storage Rate"}},
 		{Kind: "heat.zone_balance_residual", Label: "Heat balance deviation", HeatCategory: "storage_residual", Aliases: []string{"Zone Air Heat Balance Deviation Rate"}},
 		{Kind: "heat.people", Label: "People heat", HeatCategory: "internal_gains", Aliases: []string{"Zone People Total Heating Energy", "Zone People Total Heating Rate"}},

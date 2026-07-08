@@ -73,6 +73,10 @@ Output:SQLite,
 	if heatDriver.Reason != "Basic Energy Heat Drivers output" || !strings.Contains(heatDriver.Description, "Basic Energy Heat Drivers") {
 		t.Fatalf("heat driver reason/description = %q / %q", heatDriver.Reason, heatDriver.Description)
 	}
+	fanHeat := findPurposeOutput(plan, "Output:Variable", "*", "Fan Air Heat Gain Energy")
+	if fanHeat == nil || fanHeat.ReportingFrequency != "Monthly" || fanHeat.Reason != "Basic Energy Heat Drivers output" {
+		t.Fatalf("missing monthly fan heat-driver output in %#v", plan.OutputObjects)
+	}
 	if plan.EstimatedFrames != 12 {
 		t.Fatalf("estimated frames = %d, want 12 for monthly energy", plan.EstimatedFrames)
 	}
@@ -407,6 +411,8 @@ output|Output:SQLite||||temporary|basic_energy
 output|Output:Meter|Electricity:Facility||Monthly|temporary|basic_energy
 output|Output:Meter|Electricity:InteriorEquipment||Monthly|temporary|basic_energy
 output|Output:Meter|Electricity:InteriorLights||Monthly|temporary|basic_energy
+output|Output:Variable|*|Fan Air Heat Gain Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Fan Air Heat Gain Rate|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Air Heat Balance Air Energy Storage Rate|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Air Heat Balance Deviation Rate|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Air Heat Balance Internal Convective Heat Gain Rate|Monthly|temporary|basic_energy

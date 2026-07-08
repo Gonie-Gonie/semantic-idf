@@ -626,6 +626,27 @@ func TestEnergyRelationshipRuleCatalogProvidesEdgeBasis(t *testing.T) {
 	}
 }
 
+func TestEnergyHeatAliasCatalogHandlesObjectScopedFanHeat(t *testing.T) {
+	def, ok := energyHeatAliasDefinitionForName("Fan Air Heat Gain Rate")
+	if !ok || def.Kind != "heat.fan_to_air" || def.HeatCategory != "hvac_system" || !def.ObjectScoped {
+		t.Fatalf("fan heat alias = %#v ok=%t", def, ok)
+	}
+	series := energyExplanationSeriesForBuilder(&energyExplanationSeriesBuilder{
+		dictionary: energyExplanationDictionary{
+			row: sqlOutputDictionaryRow{
+				keyValue: "Supply Fan",
+				name:     "Fan Air Heat Gain Rate",
+			},
+			heat: &def,
+		},
+		unit:  "kWh",
+		total: 0.4,
+	}, "sql-rdd-99")
+	if series.Level != "heat" || series.Kind != "heat.fan_to_air" || series.ZoneName != "" || series.Total != 0.4 {
+		t.Fatalf("fan heat series = %#v", series)
+	}
+}
+
 func TestPurposeResultBundleUsesSQLEnergyDashboard(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "eplusout.sql")

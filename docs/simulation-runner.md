@@ -81,9 +81,10 @@ as selected HVAC scope when HVAC Loop Check is enabled.
   estimates based on series count times frame count
 
 Basic Energy requests SQL, monthly top-level/end-use meters, monthly delivered
-load variables, and monthly heat-balance driver variables. When Zone Heat Flow
-is also selected, its hourly heat-balance outputs are reused instead of adding a
-duplicate monthly heat-driver request.
+load variables, monthly object-level fan heat-to-air variables, and monthly
+zone heat-balance driver variables. When Zone Heat Flow is also selected, its
+hourly heat-balance outputs are reused instead of adding a duplicate monthly
+zone heat-driver request.
 
 Output states:
 
@@ -95,7 +96,8 @@ Output states:
 Basic Energy output requests use tiered reasons in plan previews and Output
 apply previews: top-level SQL/meters form the light energy basis, monthly
 delivered-load and zone energy variables are labeled as `Basic Energy Explain`,
-and monthly heat-balance variables are labeled as `Basic Energy Heat Drivers`.
+and monthly heat-balance/fan heat variables are labeled as `Basic Energy Heat
+Drivers`.
 
 ## Result Reading
 

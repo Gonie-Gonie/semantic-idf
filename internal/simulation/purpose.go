@@ -2093,6 +2093,9 @@ func (builder *purposePlanBuilder) addBasicEnergy() {
 	} {
 		builder.addVariableWithReason(SimulationPurposeBasicEnergy, "*", variable, "Monthly", "medium", "Basic Energy Explain: monthly zone-level delivered load or reported energy.", "Basic Energy Explain output")
 	}
+	for _, variable := range basicEnergyObjectHeatDriverVariableNames() {
+		builder.addVariableWithReason(SimulationPurposeBasicEnergy, "*", variable, "Monthly", "medium", "Basic Energy Heat Drivers: monthly object-level heat-driver explanation output.", "Basic Energy Heat Drivers output")
+	}
 	if purposeIDsContain(builder.request.Purposes, SimulationPurposeZoneHeatFlow) {
 		return
 	}
@@ -3084,6 +3087,13 @@ func zoneHeatFlowVariableNames() []string {
 		"Zone Air Heat Balance System Convective Heat Gain Rate",
 		"Zone Air Heat Balance Air Energy Storage Rate",
 		"Zone Air Heat Balance Deviation Rate",
+	}
+}
+
+func basicEnergyObjectHeatDriverVariableNames() []string {
+	return []string{
+		"Fan Air Heat Gain Energy",
+		"Fan Air Heat Gain Rate",
 	}
 }
 
