@@ -145,7 +145,9 @@ exports show that method beside frequency and unit. `ReportData` sources fill
 unit, for example `ZONE ONE / Zone Air System Sensible Cooling Energy` and
 `Value [J]`. Source availability rows also use the energy meter alias catalog
 when matching planned meter names such as `Cooling:Electricity` to SQL/MDD
-source names such as `Electricity:Cooling`.
+source names such as `Electricity:Cooling`; the same meter alias rule is used
+by source tables and Sankey inspectors when no exact `objectIndex` link is
+available.
 Found rows preserve matching `sourceIds`, so HTML and batch exports can connect
 availability status back to the exact SQL source and output request object.
 

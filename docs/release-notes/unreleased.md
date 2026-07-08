@@ -298,6 +298,9 @@ The release script infers bump size from these sections:
   `sql_tabular` source metadata.
 - Energy explanation source tables and Sankey inspectors now prefer exact
   source `objectIndex` links before falling back to output-name matching.
+- Energy explanation source tables and Sankey inspectors now use meter
+  carrier/end-use alias matching for fallback output links, so sources such as
+  `Cooling:Electricity` can still connect to `Electricity:Cooling` requests.
 - Basic Energy heat-driver extraction now recognizes object-level fan heat-to-air
   outputs separately from fan electricity use.
 - Basic Energy output plan rows now label monthly delivered-load/zone-energy

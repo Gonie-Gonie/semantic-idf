@@ -4222,6 +4222,9 @@ function findPurposeOutputObject(objectType, keyValue, variableName) {
     if (objectTypeKey === "output:variable") {
       return normalizeOutputMatchToken(object.variableName) === variable && purposeOutputKeyMatches(object.keyValue, key);
     }
+    if (objectTypeKey === "output:meter" && energyMeterOutputKeysMatch(object.keyValue, keyValue)) {
+      return true;
+    }
     return purposeOutputKeyMatches(object.keyValue, key);
   });
   return candidates.sort((a, b) => purposeSourceOutputRank(b, key) - purposeSourceOutputRank(a, key))[0] || null;
@@ -4236,10 +4239,103 @@ function purposeOutputKeyMatches(objectKeyValue, resultKey) {
   return objectKey === resultKey || objectKey === "*" || objectKey === "";
 }
 
+function energyMeterOutputKeysMatch(left, right) {
+  if (purposeOutputKeyMatches(left, normalizeOutputMatchToken(right))) {
+    return true;
+  }
+  const leftGroup = energyMeterAliasGroupKey(left);
+  const rightGroup = energyMeterAliasGroupKey(right);
+  return leftGroup && leftGroup === rightGroup;
+}
+
+function energyMeterAliasGroupKey(value = "") {
+  const text = String(value || "").trim();
+  const compact = text.toLowerCase().replace(/[^a-z0-9]+/g, "");
+  const special = {
+    electricityproducedfacility: "electricity|generators",
+    generatorselectricityproduced: "electricity|generators",
+  };
+  if (special[compact]) {
+    return special[compact];
+  }
+  const parts = text.split(":").map((part) => part.trim()).filter(Boolean);
+  if (parts.length !== 2) {
+    return "";
+  }
+  const [left, right] = parts;
+  const leftCarrier = energyMeterCarrierToken(left);
+  const rightCarrier = energyMeterCarrierToken(right);
+  const leftEndUse = energyMeterEndUseToken(left);
+  const rightEndUse = energyMeterEndUseToken(right);
+  if (energyMeterAliasPartToken(right) === "facility" && leftCarrier) {
+    return `${leftCarrier}|total`;
+  }
+  if (energyMeterAliasPartToken(left) === "facility" && rightCarrier) {
+    return `${rightCarrier}|total`;
+  }
+  if (leftCarrier && rightEndUse) {
+    return `${leftCarrier}|${rightEndUse}`;
+  }
+  if (leftEndUse && rightCarrier) {
+    return `${rightCarrier}|${leftEndUse}`;
+  }
+  return "";
+}
+
+function energyMeterCarrierToken(value = "") {
+  const token = energyMeterAliasPartToken(value);
+  const carriers = {
+    electricity: "electricity",
+    naturalgas: "natural_gas",
+    gas: "natural_gas",
+    districtcooling: "district_cooling",
+    districtheating: "district_heating",
+    fueloilno1: "fuel_oil_1",
+    fueloilno2: "fuel_oil_2",
+    propane: "propane",
+    otherfuel1: "other_fuel_1",
+    otherfuel2: "other_fuel_2",
+    steam: "steam",
+    water: "water",
+  };
+  return carriers[token] || "";
+}
+
+function energyMeterEndUseToken(value = "") {
+  const token = energyMeterAliasPartToken(value);
+  const endUses = {
+    cooling: "cooling",
+    heating: "heating",
+    interiorlights: "interior_lighting",
+    interiorequipment: "interior_equipment",
+    exteriorlights: "exterior_lighting",
+    exteriorequipment: "exterior_equipment",
+    fans: "fans",
+    pumps: "pumps",
+    heatrejection: "heat_rejection",
+    heatrecovery: "heat_recovery",
+    watersystems: "water_systems",
+    dhw: "water_systems",
+    refrigeration: "refrigeration",
+    humidifier: "humidification",
+    humidification: "humidification",
+    cogeneration: "generators",
+    miscellaneous: "other",
+  };
+  return endUses[token] || "";
+}
+
+function energyMeterAliasPartToken(value = "") {
+  return String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
 function purposeSourceOutputRank(object, resultKey) {
   const objectKey = normalizeOutputMatchToken(object.keyValue);
   if (objectKey === resultKey) {
     return 3;
+  }
+  if (energyMeterOutputKeysMatch(object.keyValue, resultKey)) {
+    return 2.5;
   }
   if (objectKey === "*") {
     return 2;
