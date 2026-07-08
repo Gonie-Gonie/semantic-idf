@@ -1205,6 +1205,9 @@ function renderEnergyExplanationInspector(selection, explanation = {}) {
   if (selection.relation) {
     inspectorFields.push({ label: t("simulation.relation", {}, "Relation"), value: selection.relation });
   }
+  if (selection.meterHierarchyLevel) {
+    inspectorFields.push({ label: t("simulation.meterHierarchy", {}, "Meter hierarchy"), value: selection.meterHierarchyLevel });
+  }
   if (selection.ruleId) {
     inspectorFields.push({ label: t("simulation.relationshipRule", {}, "Rule"), value: energyExplanationRelationshipRuleLabel(explanation, selection.ruleId) });
   }

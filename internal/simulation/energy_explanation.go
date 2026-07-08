@@ -53,41 +53,43 @@ type EnergyExplanationSummary struct {
 }
 
 type EnergyExplanationSummaryItem struct {
-	ID           string   `json:"id"`
-	Level        string   `json:"level,omitempty"`
-	Kind         string   `json:"kind,omitempty"`
-	Label        string   `json:"label"`
-	Value        float64  `json:"value"`
-	Unit         string   `json:"unit,omitempty"`
-	ZoneName     string   `json:"zoneName,omitempty"`
-	ServiceKind  string   `json:"serviceKind,omitempty"`
-	Carrier      string   `json:"carrier,omitempty"`
-	EndUse       string   `json:"endUse,omitempty"`
-	HeatCategory string   `json:"heatCategory,omitempty"`
-	Basis        string   `json:"basis,omitempty"`
-	SourceIDs    []string `json:"sourceIds,omitempty"`
+	ID                  string   `json:"id"`
+	Level               string   `json:"level,omitempty"`
+	Kind                string   `json:"kind,omitempty"`
+	Label               string   `json:"label"`
+	Value               float64  `json:"value"`
+	Unit                string   `json:"unit,omitempty"`
+	ZoneName            string   `json:"zoneName,omitempty"`
+	ServiceKind         string   `json:"serviceKind,omitempty"`
+	Carrier             string   `json:"carrier,omitempty"`
+	EndUse              string   `json:"endUse,omitempty"`
+	MeterHierarchyLevel string   `json:"meterHierarchyLevel,omitempty"`
+	HeatCategory        string   `json:"heatCategory,omitempty"`
+	Basis               string   `json:"basis,omitempty"`
+	SourceIDs           []string `json:"sourceIds,omitempty"`
 }
 
 type EnergyExplanationNode struct {
-	ID             string   `json:"id"`
-	Level          string   `json:"level"`
-	Kind           string   `json:"kind"`
-	Label          string   `json:"label"`
-	Value          float64  `json:"value"`
-	SignedValue    float64  `json:"signedValue,omitempty"`
-	DisplayValue   float64  `json:"displayValue,omitempty"`
-	Unit           string   `json:"unit"`
-	Period         string   `json:"period,omitempty"`
-	ZoneName       string   `json:"zoneName,omitempty"`
-	LoopName       string   `json:"loopName,omitempty"`
-	ServiceKind    string   `json:"serviceKind,omitempty"`
-	Carrier        string   `json:"carrier,omitempty"`
-	EndUse         string   `json:"endUse,omitempty"`
-	HeatCategory   string   `json:"heatCategory,omitempty"`
-	Sign           string   `json:"sign,omitempty"`
-	Basis          string   `json:"basis,omitempty"`
-	RelatedPathIDs []string `json:"relatedPathIds,omitempty"`
-	SourceIDs      []string `json:"sourceIds,omitempty"`
+	ID                  string   `json:"id"`
+	Level               string   `json:"level"`
+	Kind                string   `json:"kind"`
+	Label               string   `json:"label"`
+	Value               float64  `json:"value"`
+	SignedValue         float64  `json:"signedValue,omitempty"`
+	DisplayValue        float64  `json:"displayValue,omitempty"`
+	Unit                string   `json:"unit"`
+	Period              string   `json:"period,omitempty"`
+	ZoneName            string   `json:"zoneName,omitempty"`
+	LoopName            string   `json:"loopName,omitempty"`
+	ServiceKind         string   `json:"serviceKind,omitempty"`
+	Carrier             string   `json:"carrier,omitempty"`
+	EndUse              string   `json:"endUse,omitempty"`
+	MeterHierarchyLevel string   `json:"meterHierarchyLevel,omitempty"`
+	HeatCategory        string   `json:"heatCategory,omitempty"`
+	Sign                string   `json:"sign,omitempty"`
+	Basis               string   `json:"basis,omitempty"`
+	RelatedPathIDs      []string `json:"relatedPathIds,omitempty"`
+	SourceIDs           []string `json:"sourceIds,omitempty"`
 }
 
 type EnergyExplanationEdge struct {
@@ -241,21 +243,22 @@ type energyExplanationSeriesBuilder struct {
 }
 
 type energyExplanationSeries struct {
-	Level        string
-	Kind         string
-	Label        string
-	Unit         string
-	Carrier      string
-	EndUse       string
-	ServiceKind  string
-	ZoneName     string
-	LoopName     string
-	HeatCategory string
-	HeatSign     string
-	Basis        string
-	SourceIDs    []string
-	Total        float64
-	Monthly      map[int]float64
+	Level               string
+	Kind                string
+	Label               string
+	Unit                string
+	Carrier             string
+	EndUse              string
+	MeterHierarchyLevel string
+	ServiceKind         string
+	ZoneName            string
+	LoopName            string
+	HeatCategory        string
+	HeatSign            string
+	Basis               string
+	SourceIDs           []string
+	Total               float64
+	Monthly             map[int]float64
 
 	sourceKeyValue     string
 	sourceName         string
@@ -400,15 +403,16 @@ func buildEnergyExplanationFromDashboard(dashboard EnergyDashboardResult, plan *
 			}
 		}
 		series = append(series, energyExplanationSeries{
-			Level:     "energy",
-			Kind:      def.Kind,
-			Label:     def.Label,
-			Unit:      item.Unit,
-			Carrier:   def.Carrier,
-			EndUse:    def.EndUse,
-			SourceIDs: []string{sourceID},
-			Total:     item.Total,
-			Monthly:   monthly,
+			Level:               "energy",
+			Kind:                def.Kind,
+			Label:               def.Label,
+			Unit:                item.Unit,
+			Carrier:             def.Carrier,
+			EndUse:              def.EndUse,
+			MeterHierarchyLevel: def.HierarchyLevel,
+			SourceIDs:           []string{sourceID},
+			Total:               item.Total,
+			Monthly:             monthly,
 		})
 	}
 	for _, item := range dashboard.FacilityMonthly {
@@ -676,18 +680,19 @@ func addEnergyExplanationSummaryNode(groups map[string]*EnergyExplanationSummary
 	item := groups[key]
 	if item == nil {
 		groups[key] = &EnergyExplanationSummaryItem{
-			ID:           energyExplanationSummaryItemID(key, node),
-			Level:        node.Level,
-			Kind:         node.Kind,
-			Label:        firstNonEmpty(node.Label, node.Kind, node.ID, key),
-			Unit:         node.Unit,
-			ZoneName:     node.ZoneName,
-			ServiceKind:  node.ServiceKind,
-			Carrier:      node.Carrier,
-			EndUse:       node.EndUse,
-			HeatCategory: node.HeatCategory,
-			Basis:        node.Basis,
-			SourceIDs:    appendUniqueStrings(nil, node.SourceIDs...),
+			ID:                  energyExplanationSummaryItemID(key, node),
+			Level:               node.Level,
+			Kind:                node.Kind,
+			Label:               firstNonEmpty(node.Label, node.Kind, node.ID, key),
+			Unit:                node.Unit,
+			ZoneName:            node.ZoneName,
+			ServiceKind:         node.ServiceKind,
+			Carrier:             node.Carrier,
+			EndUse:              node.EndUse,
+			MeterHierarchyLevel: node.MeterHierarchyLevel,
+			HeatCategory:        node.HeatCategory,
+			Basis:               node.Basis,
+			SourceIDs:           appendUniqueStrings(nil, node.SourceIDs...),
 		}
 		item = groups[key]
 	}
@@ -803,16 +808,17 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 		case "energy":
 			nodeID := energyExplanationEnergyNodeID(item)
 			addNode(EnergyExplanationNode{
-				ID:        nodeID,
-				Level:     "energy",
-				Kind:      item.Kind,
-				Label:     item.Label,
-				Value:     value,
-				Unit:      item.Unit,
-				Period:    period,
-				Carrier:   item.Carrier,
-				EndUse:    item.EndUse,
-				SourceIDs: item.SourceIDs,
+				ID:                  nodeID,
+				Level:               "energy",
+				Kind:                item.Kind,
+				Label:               item.Label,
+				Value:               value,
+				Unit:                item.Unit,
+				Period:              period,
+				Carrier:             item.Carrier,
+				EndUse:              item.EndUse,
+				MeterHierarchyLevel: item.MeterHierarchyLevel,
+				SourceIDs:           item.SourceIDs,
 			})
 			if strings.HasSuffix(item.Kind, ".total") {
 				facilityByCarrier[item.Carrier] = nodeID
@@ -1345,19 +1351,20 @@ func energyExplanationSeriesForBuilder(builder *energyExplanationSeriesBuilder, 
 	if dictionary.meter != nil {
 		def := dictionary.meter
 		return energyExplanationSeries{
-			Level:           "energy",
-			Kind:            def.Kind,
-			Label:           def.Label,
-			Unit:            builder.unit,
-			Carrier:         def.Carrier,
-			EndUse:          def.EndUse,
-			SourceIDs:       []string{sourceID},
-			Total:           roundedEnergyNumber(builder.total),
-			Monthly:         roundedEnergyExplanationMonthly(builder.monthly),
-			sourceKeyValue:  strings.TrimSpace(dictionary.row.keyValue),
-			sourceName:      strings.TrimSpace(firstNonEmpty(dictionary.row.keyValue, dictionary.row.name)),
-			sourceFrequency: strings.TrimSpace(dictionary.reportingFrequency),
-			sourcePriority:  energyAliasPriority(firstNonEmpty(dictionary.row.keyValue, dictionary.row.name), def.Aliases),
+			Level:               "energy",
+			Kind:                def.Kind,
+			Label:               def.Label,
+			Unit:                builder.unit,
+			Carrier:             def.Carrier,
+			EndUse:              def.EndUse,
+			MeterHierarchyLevel: def.HierarchyLevel,
+			SourceIDs:           []string{sourceID},
+			Total:               roundedEnergyNumber(builder.total),
+			Monthly:             roundedEnergyExplanationMonthly(builder.monthly),
+			sourceKeyValue:      strings.TrimSpace(dictionary.row.keyValue),
+			sourceName:          strings.TrimSpace(firstNonEmpty(dictionary.row.keyValue, dictionary.row.name)),
+			sourceFrequency:     strings.TrimSpace(dictionary.reportingFrequency),
+			sourcePriority:      energyAliasPriority(firstNonEmpty(dictionary.row.keyValue, dictionary.row.name), def.Aliases),
 		}
 	}
 	if dictionary.load != nil {

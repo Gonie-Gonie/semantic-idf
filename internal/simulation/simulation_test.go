@@ -543,11 +543,11 @@ func TestParseSimulationEnergyExplanationSQLBuildsAccountingGraph(t *testing.T) 
 		t.Fatalf("periods = %#v", result.Periods)
 	}
 	facility := energyExplanationNodeByID(result.Nodes, "energy.carrier.electricity")
-	if facility == nil || facility.Value != 3 || facility.Unit != "kWh" || !stringSliceContains(facility.SourceIDs, "sql-rdd-20") {
+	if facility == nil || facility.Value != 3 || facility.Unit != "kWh" || facility.MeterHierarchyLevel != "facility_total" || !stringSliceContains(facility.SourceIDs, "sql-rdd-20") {
 		t.Fatalf("facility node = %#v", facility)
 	}
 	cooling := energyExplanationNodeByID(result.Nodes, "energy.end_use.cooling.electricity")
-	if cooling == nil || cooling.Value != 1 || cooling.Carrier != "electricity" || cooling.EndUse != "cooling" {
+	if cooling == nil || cooling.Value != 1 || cooling.Carrier != "electricity" || cooling.EndUse != "cooling" || cooling.MeterHierarchyLevel != "broad_end_use" {
 		t.Fatalf("cooling node = %#v", cooling)
 	}
 	load := energyExplanationNodeByID(result.Nodes, "load.cooling.zone_one")

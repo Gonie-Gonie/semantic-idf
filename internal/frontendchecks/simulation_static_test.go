@@ -38,6 +38,8 @@ func TestFrontendSimulationEnergySystemsCrossJumpContracts(t *testing.T) {
 		"energyExplanationRelationshipRuleLabel",
 		"selection.relation",
 		"simulation.relation",
+		"selection.meterHierarchyLevel",
+		"meterHierarchy",
 		"missingCategories",
 		"renderEnergyReconciliationSources",
 		"energy-reconciliation-sources",

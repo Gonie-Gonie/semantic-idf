@@ -158,7 +158,10 @@ exports can distinguish measured end-use, measured load, heat-balance, and
 residual links. The companion
 `energyExplanationSummary` payload keeps the annual
 carrier, end-use, delivered-load, heat-driver, residual, and top-zone rollups in
-a compact shape for batch comparisons and exports. Both payloads expose
+a compact shape for batch comparisons and exports. Energy nodes expose
+`meterHierarchyLevel` values such as `facility_total` and `broad_end_use` so the
+Sankey inspector can show which meter hierarchy tier is being reconciled. Both
+payloads expose
 `allocationPolicy` so exported results make clear whether allocated edges were
 allowed. With `by_zone_load_share`, cooling/heating end-use energy is allocated
 to zone load nodes by measured delivered-load share and the edge uses
