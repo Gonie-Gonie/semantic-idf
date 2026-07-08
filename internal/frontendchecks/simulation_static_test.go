@@ -83,6 +83,8 @@ func TestFrontendBatchEnergyExplanationDeltaContracts(t *testing.T) {
 		"energyExplanationDeltaStatus",
 		"elements.multiSimulationAllocationPolicy?.value",
 		"exportMultiSimulationCSV",
+		"exportMultiSimulationJSON",
+		"semantic-idf.batch-simulation/v1",
 		"energyExplanationSummaryExportItems",
 		"energyExplanationSourceExportItems",
 		"energyExplanationEdgeExportItems",
@@ -108,7 +110,7 @@ func TestFrontendBatchEnergyExplanationDeltaContracts(t *testing.T) {
 		}
 	}
 	html := readTestFile(t, "frontend/src/batch.html")
-	if !strings.Contains(html, "multiSimulationExport") {
+	if !strings.Contains(html, "multiSimulationExport") || !strings.Contains(html, "multiSimulationExportJSON") {
 		t.Fatalf("batch simulation export button is missing")
 	}
 	if !strings.Contains(html, "multiSimulationAllocationPolicy") || !strings.Contains(html, "by_zone_load_share") {

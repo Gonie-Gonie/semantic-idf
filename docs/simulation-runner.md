@@ -212,7 +212,10 @@ comparison. The batch CSV keeps annual, monthly, and selected-range explanation
 periods by default; daily periods remain available in the embedded purpose
 result payload without expanding the default spreadsheet export. Compact summary
 rows also carry their source IDs and matching source output object indexes when
-available.
+available. Batch Simulation can also export the full batch result as
+`semantic-idf.batch-simulation/v1` JSON, preserving embedded purpose result
+payloads such as high-resolution daily explanation periods that are intentionally
+omitted from the default CSV.
 
 `parseSimulationSQL` is the combined SQLite entrypoint. It gathers generic
 time-series rows, Basic Energy dashboard data, SQL heat-flow data, Integrity

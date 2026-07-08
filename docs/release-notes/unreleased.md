@@ -115,6 +115,9 @@ The release script infers bump size from these sections:
 - Batch Simulation energy explanation CSV exports now keep annual, monthly, and
   selected-range edge/reconciliation rows by default, leaving daily periods in
   the embedded JSON payload to avoid oversized high-resolution CSV exports.
+- Batch Simulation can now export the full purpose run result as
+  `semantic-idf.batch-simulation/v1` JSON, preserving embedded Basic Energy
+  explanation payloads that are too detailed for the default CSV.
 - Basic Energy explanations now fall back to annual SQL tabular end-use rows
   when detailed `ReportData` energy rows are unavailable, while preserving
   `sql_tabular` source metadata.

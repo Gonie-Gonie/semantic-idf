@@ -52,6 +52,15 @@ export function initializeMultiSimulationTool(context) {
     }
   }
 
+  function setExportButtonsDisabled(disabled) {
+    if (elements.multiSimulationExport) {
+      elements.multiSimulationExport.disabled = disabled;
+    }
+    if (elements.multiSimulationExportJSON) {
+      elements.multiSimulationExportJSON.disabled = disabled;
+    }
+  }
+
   async function selectFiles() {
     const api = await waitForAppAPI("SelectSimulationInputFiles");
     if (!api) {
@@ -88,9 +97,7 @@ export function initializeMultiSimulationTool(context) {
     state.multiSimulation.selectedRows.clear();
     state.multiSimulation.metric = "";
     elements.multiSimulationRun.disabled = !state.multiSimulation.selectedPaths.length || state.multiSimulation.running;
-    if (elements.multiSimulationExport) {
-      elements.multiSimulationExport.disabled = true;
-    }
+    setExportButtonsDisabled(true);
     elements.multiSimulationStats.textContent = t(
       "tools.simulationFilesSelected",
       { count: state.multiSimulation.selectedPaths.length },
@@ -208,9 +215,7 @@ export function initializeMultiSimulationTool(context) {
   function renderResult() {
     const result = state.multiSimulation.result;
     if (!result) {
-      if (elements.multiSimulationExport) {
-        elements.multiSimulationExport.disabled = true;
-      }
+      setExportButtonsDisabled(true);
       elements.multiSimulationMetric.innerHTML = `<option value="">${escapeHTML(t("simulation.noSeries", {}, "No CSV series"))}</option>`;
       elements.multiSimulationChart.innerHTML = `<div class="empty">${escapeHTML(t("tools.noSimulationResult", {}, "Run the selected files to compare simulation output."))}</div>`;
       elements.multiSimulationTable.innerHTML = state.multiSimulation.selectedPaths.length
@@ -221,9 +226,7 @@ export function initializeMultiSimulationTool(context) {
     const total = result.total || 0;
     const succeeded = result.succeeded || 0;
     const failed = result.failed || 0;
-    if (elements.multiSimulationExport) {
-      elements.multiSimulationExport.disabled = !(result.results || []).length;
-    }
+    setExportButtonsDisabled(!(result.results || []).length);
     elements.multiSimulationStats.textContent = t(
       "tools.simulationResultStats",
       { total, succeeded, failed, workers: result.workers || 0 },
@@ -570,6 +573,35 @@ export function initializeMultiSimulationTool(context) {
     downloadCSV(rows, "batch-simulation-purpose-results.csv");
     if (elements.multiSimulationStatus) {
       elements.multiSimulationStatus.textContent = t("status.exportedCsv", {}, "CSV exported");
+    }
+  }
+
+  function exportMultiSimulationJSON() {
+    const result = state.multiSimulation.result;
+    if (!result || !(result.results || []).length) {
+      return;
+    }
+    const payload = {
+      schema: "semantic-idf.batch-simulation/v1",
+      exportedAt: new Date().toISOString(),
+      context: {
+        selectedPaths: [...(state.multiSimulation.selectedPaths || [])],
+        rootDirectory: state.multiSimulation.rootDirectory || "",
+        selectedRowIds: Array.from(state.multiSimulation.selectedRows || []),
+        metric: state.multiSimulation.metric || "",
+        sort: state.multiSimulation.sort || "filename",
+      },
+      result,
+    };
+    const blob = new Blob([`${JSON.stringify(payload, null, 2)}\n`], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "batch-simulation-purpose-results.json";
+    link.click();
+    URL.revokeObjectURL(url);
+    if (elements.multiSimulationStatus) {
+      elements.multiSimulationStatus.textContent = t("status.exportedJson", {}, "JSON exported");
     }
   }
 
@@ -1145,6 +1177,7 @@ export function initializeMultiSimulationTool(context) {
     elements.multiSimulationSelectFolder?.addEventListener("click", selectFolder);
     elements.multiSimulationRun?.addEventListener("click", run);
     elements.multiSimulationExport?.addEventListener("click", exportMultiSimulationCSV);
+    elements.multiSimulationExportJSON?.addEventListener("click", exportMultiSimulationJSON);
     elements.multiSimulationMetric?.addEventListener("change", () => {
       state.multiSimulation.metric = elements.multiSimulationMetric.value || "";
       if (state.multiSimulation.result) {

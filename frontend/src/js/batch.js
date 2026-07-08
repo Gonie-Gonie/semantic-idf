@@ -86,6 +86,7 @@ const elements = {
   multiSimulationSelectFolder: document.querySelector("#multiSimulationSelectFolder"),
   multiSimulationRun: document.querySelector("#multiSimulationRun"),
   multiSimulationExport: document.querySelector("#multiSimulationExport"),
+  multiSimulationExportJSON: document.querySelector("#multiSimulationExportJSON"),
   multiSimulationEnergyPlus: document.querySelector("#multiSimulationEnergyPlus"),
   multiSimulationWeather: document.querySelector("#multiSimulationWeather"),
   multiSimulationWeatherMode: document.querySelector("#multiSimulationWeatherMode"),
