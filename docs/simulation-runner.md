@@ -206,7 +206,9 @@ gain/loss outputs are kept as separate positive/negative heat-driver nodes even
 when EnergyPlus reports both source series as positive energy values.
 Delivered-load nodes carry both `serviceKind` and `pathType` metadata, using the
 load alias scope (`zone`, `system`, or `plant`) so HVAC service links and batch
-exports can distinguish zone loads from broader system or plant demand.
+exports can distinguish zone loads from broader system or plant demand. Their
+node `basis` also distinguishes reported energy variables from rate variables
+integrated over the SQL time interval.
 When electric end-use energy and delivered thermal load are both present, Basic
 Energy also reports derived COP KPIs separately from the Sankey graph rather
 than creating synthetic COP conversion edges. Batch purpose metrics expose those

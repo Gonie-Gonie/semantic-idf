@@ -1040,6 +1040,7 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 				LoopName:    item.LoopName,
 				ServiceKind: item.ServiceKind,
 				PathType:    item.PathType,
+				Basis:       item.Basis,
 				SourceIDs:   item.SourceIDs,
 			})
 			loadNodesByService[item.ServiceKind] = appendUniqueStrings(loadNodesByService[item.ServiceKind], nodeID)
@@ -1735,7 +1736,7 @@ func energyExplanationSeriesForBuilder(builder *energyExplanationSeriesBuilder, 
 			PathType:         def.Scope,
 			ZoneName:         zoneName,
 			LoopName:         loopName,
-			Basis:            "measured_variable",
+			Basis:            energyExplanationLoadSourceBasis(dictionary),
 			SourceIDs:        []string{sourceID},
 			Total:            roundedEnergyNumber(builder.total),
 			Monthly:          roundedEnergyExplanationMonthly(builder.monthly),
@@ -2016,6 +2017,13 @@ func energyExplanationAggregationMethod(dictionary energyExplanationDictionary) 
 		return "integrate_rate_by_time_interval"
 	}
 	return "sum_report_data"
+}
+
+func energyExplanationLoadSourceBasis(dictionary energyExplanationDictionary) string {
+	if energyExplanationIntegratesRate(dictionary) {
+		return "integrated_rate_variable"
+	}
+	return "measured_energy_variable"
 }
 
 func energyExplanationSupportsDailyPeriods(dictionary energyExplanationDictionary) bool {

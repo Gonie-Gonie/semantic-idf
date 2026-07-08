@@ -651,7 +651,7 @@ func TestParseSimulationEnergyExplanationSQLBuildsAccountingGraph(t *testing.T) 
 		t.Fatalf("cooling node = %#v", cooling)
 	}
 	load := energyExplanationNodeByID(result.Nodes, "load.cooling.zone_one")
-	if load == nil || load.Level != "load" || load.Value != 0.5 || load.ServiceKind != "cooling" || load.PathType != "zone" || load.ZoneName != "ZONE ONE" || !stringSliceContains(load.SourceIDs, "sql-rdd-23") {
+	if load == nil || load.Level != "load" || load.Value != 0.5 || load.ServiceKind != "cooling" || load.PathType != "zone" || load.ZoneName != "ZONE ONE" || load.Basis != "measured_energy_variable" || !stringSliceContains(load.SourceIDs, "sql-rdd-23") {
 		t.Fatalf("load node = %#v", load)
 	}
 	heat := energyExplanationNodeByID(result.Nodes, "heat.internal_convective.zone_one")
@@ -845,7 +845,7 @@ func TestParseSimulationEnergyExplanationSQLPrefersEnergyOverRateFallback(t *tes
 	}
 
 	load := energyExplanationNodeByID(result.Nodes, "load.cooling.zone_one")
-	if load == nil || load.Value != 0.5 || !stringSliceContains(load.SourceIDs, "sql-rdd-23") || stringSliceContains(load.SourceIDs, "sql-rdd-24") {
+	if load == nil || load.Value != 0.5 || load.Basis != "measured_energy_variable" || !stringSliceContains(load.SourceIDs, "sql-rdd-23") || stringSliceContains(load.SourceIDs, "sql-rdd-24") {
 		t.Fatalf("load source priority node = %#v", load)
 	}
 	heat := energyExplanationNodeByID(result.Nodes, "heat.fan_to_air")
@@ -899,7 +899,7 @@ func TestParseSimulationEnergyExplanationSQLIntegratesRateOnlyOutputs(t *testing
 	}
 
 	load := energyExplanationNodeByID(result.Nodes, "load.cooling.zone_one")
-	if load == nil || load.Value != 2 || load.Unit != "kWh" || !stringSliceContains(load.SourceIDs, "sql-rdd-23") {
+	if load == nil || load.Value != 2 || load.Unit != "kWh" || load.Basis != "integrated_rate_variable" || !stringSliceContains(load.SourceIDs, "sql-rdd-23") {
 		t.Fatalf("rate-integrated load node = %#v", load)
 	}
 	heat := energyExplanationNodeByID(result.Nodes, "heat.internal_convective.zone_one")

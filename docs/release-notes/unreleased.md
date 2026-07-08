@@ -231,6 +231,9 @@ The release script infers bump size from these sections:
   filters, meter status, reporting frequency, and time interval metadata for
   legacy series, Energy dashboard, Heat Flow, and Basic Energy explanation
   rows.
+- Basic Energy delivered-load nodes now expose whether their values came from
+  reported energy variables or rate variables integrated over SQL time
+  intervals through the node `basis` field.
 
 ## Fixed
 
