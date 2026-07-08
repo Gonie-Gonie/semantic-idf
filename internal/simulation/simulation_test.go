@@ -595,6 +595,9 @@ func TestParseSimulationEnergyExplanationSQLBuildsAccountingGraph(t *testing.T) 
 	if energyReconciliation == nil || energyReconciliation.ResidualValue != 2 || heatReconciliation == nil || heatReconciliation.ResidualValue != 0 || heatReconciliation.ExplainedValue != 0.5 || result.Completeness.MappedPercent != 33.333 {
 		t.Fatalf("reconciliation/completeness = %#v / %#v", result.Reconciliation, result.Completeness)
 	}
+	if !stringSliceContains(energyReconciliation.SourceIDs, "sql-rdd-20") || !stringSliceContains(energyReconciliation.SourceIDs, "sql-rdd-21") {
+		t.Fatalf("energy reconciliation sources = %#v", energyReconciliation.SourceIDs)
+	}
 	monthlyHeatReconciliation := energyExplanationReconciliationByID(result.Periods[1].Reconciliation, "reconcile.heat.cooling.M1")
 	if monthlyHeatReconciliation == nil || monthlyHeatReconciliation.ExpectedValue != 0.25 || monthlyHeatReconciliation.ExplainedValue != 0.5 || monthlyHeatReconciliation.ResidualValue != -0.25 {
 		t.Fatalf("monthly heat reconciliation = %#v", result.Periods[1].Reconciliation)
@@ -965,6 +968,9 @@ func TestBuildEnergyExplanationKeepsProductionOutOfConsumptionResidual(t *testin
 	reconciliation := energyExplanationReconciliationByID(result.Reconciliation, "reconcile.energy.electricity.annual")
 	if reconciliation == nil || reconciliation.ExpectedValue != 10 || reconciliation.ExplainedValue != 6 || reconciliation.ResidualValue != 4 || result.Completeness.MappedPercent != 60 {
 		t.Fatalf("production-aware reconciliation = %#v completeness=%#v", reconciliation, result.Completeness)
+	}
+	if !stringSliceContains(reconciliation.SourceIDs, "facility") || !stringSliceContains(reconciliation.SourceIDs, "cooling") || stringSliceContains(reconciliation.SourceIDs, "pv") {
+		t.Fatalf("production-aware reconciliation sources = %#v", reconciliation.SourceIDs)
 	}
 	summary := buildEnergyExplanationSummary(result)
 	if item := energyExplanationSummaryItemByID(summary.EnergyByEndUse, "generators.electricity"); item == nil || item.Value != 2 {

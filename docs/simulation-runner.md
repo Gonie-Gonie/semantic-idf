@@ -214,7 +214,9 @@ Purpose result viewers now include:
   back to the matching existing output request object when the run plan can
   identify one. The Reconciliation subview expands row `sourceIds` into compact
   source/output links so residual checks remain traceable to their meter or
-  variable requests.
+  variable requests. Energy residual rows include both the expected facility
+  total source and the mapped consumption end-use sources referenced by the
+  residual formula.
   The `Systems` subview and node inspector match load/heat services to the
   current HVAC service model by zone and service kind, then link directly to the
   related HVAC service path. Sankey and Systems can focus the graph by all

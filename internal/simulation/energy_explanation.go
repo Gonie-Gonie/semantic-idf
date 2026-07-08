@@ -886,11 +886,13 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 	for carrier, facilityID := range facilityByCarrier {
 		endUseValue := endUseValueByCarrier[carrier]
 		facilityValue := facilityValueByCarrier[carrier]
+		energySourceIDs := appendUniqueStrings(nil, facilitySourcesByCarrier[carrier]...)
 		for _, endUseID := range endUseNodesByCarrier[carrier] {
 			endUseNode := nodes[endUseID]
 			if endUseNode == nil {
 				continue
 			}
+			energySourceIDs = appendUniqueStrings(energySourceIDs, endUseNode.node.SourceIDs...)
 			edges = append(edges, EnergyExplanationEdge{
 				ID:        edgeID("edge", period, facilityID, endUseID),
 				FromID:    facilityID,
@@ -937,7 +939,7 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 			Unit:           nodes[facilityID].node.Unit,
 			Basis:          "residual",
 			Formula:        "facility carrier total - mapped broad end-use meters",
-			SourceIDs:      facilitySourcesByCarrier[carrier],
+			SourceIDs:      energySourceIDs,
 		})
 		if residualAbs > energyResidualVisibilityThreshold(facilityValue) {
 			residualID := "residual.energy." + carrier
@@ -950,7 +952,7 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 				Unit:      nodes[facilityID].node.Unit,
 				Period:    period,
 				Carrier:   carrier,
-				SourceIDs: facilitySourcesByCarrier[carrier],
+				SourceIDs: energySourceIDs,
 			})
 			edges = append(edges, EnergyExplanationEdge{
 				ID:        edgeID("residual", period, facilityID, residualID),
@@ -963,7 +965,7 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 				Basis:     energyResidualRule.Basis,
 				Formula:   energyResidualRule.Formula,
 				RuleID:    energyResidualRule.ID,
-				SourceIDs: facilitySourcesByCarrier[carrier],
+				SourceIDs: energySourceIDs,
 			})
 		}
 		if residual < -energyResidualVisibilityThreshold(facilityValue) {
