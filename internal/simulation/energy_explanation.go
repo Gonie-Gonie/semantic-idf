@@ -2198,7 +2198,7 @@ func energyExplanationObjectIndexForDictionary(dictionary energyExplanationDicti
 		if !strings.EqualFold(strings.TrimSpace(object.ObjectType), "Output:Variable") {
 			continue
 		}
-		if normalizeEnergyOutputName(object.VariableName) != normalizeEnergyOutputName(name) {
+		if !energyExplanationVariableObjectMatchesDictionaryName(object.VariableName, name, dictionary) {
 			continue
 		}
 		objectKey := strings.TrimSpace(object.KeyValue)
@@ -2211,6 +2211,22 @@ func energyExplanationObjectIndexForDictionary(dictionary energyExplanationDicti
 		}
 	}
 	return wildcard
+}
+
+func energyExplanationVariableObjectMatchesDictionaryName(objectName string, sourceName string, dictionary energyExplanationDictionary) bool {
+	if normalizeEnergyOutputName(objectName) == normalizeEnergyOutputName(sourceName) {
+		return true
+	}
+	switch {
+	case dictionary.energy != nil:
+		return energyNamesShareEnergyAliasGroup(objectName, sourceName)
+	case dictionary.load != nil:
+		return energyNamesShareLoadAliasGroup(objectName, sourceName)
+	case dictionary.heat != nil:
+		return energyNamesShareHeatAliasGroup(objectName, sourceName)
+	default:
+		return false
+	}
 }
 
 func energyExplanationIsMeterObjectType(objectType string) bool {

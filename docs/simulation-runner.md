@@ -147,7 +147,9 @@ unit, for example `ZONE ONE / Zone Air System Sensible Cooling Energy` and
 when matching planned meter names such as `Cooling:Electricity` to SQL/MDD
 source names such as `Electricity:Cooling`; the same meter alias rule is used
 by source tables and Sankey inspectors when no exact `objectIndex` link is
-available.
+available. SQL source metadata also attaches output request `objectIndex` values
+through delivered-load aliases and same-sign heat-driver aliases, keeping gain
+and loss heat requests distinct.
 Found rows preserve matching `sourceIds`, so HTML and batch exports can connect
 availability status back to the exact SQL source and output request object.
 

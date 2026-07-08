@@ -1996,10 +1996,13 @@ func TestEnergyExplanationSourceAvailabilityMatchesLoadAndSignedHeatAliases(t *t
 		t.Fatal(err)
 	}
 
+	loadObjectIndex := 31
+	heatGainObjectIndex := 32
+	heatLossObjectIndex := 33
 	plan := &PurposeRunPlan{OutputObjects: []PurposeOutputObject{
-		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, VariableName: "Zone Air System Sensible Cooling Energy"},
-		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, VariableName: "Zone Infiltration Sensible Heat Gain Energy"},
-		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, VariableName: "Zone Infiltration Sensible Heat Loss Energy"},
+		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, KeyValue: "*", VariableName: "Zone Air System Sensible Cooling Energy", ObjectIndex: &loadObjectIndex},
+		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, KeyValue: "*", VariableName: "Zone Infiltration Sensible Heat Gain Energy", ObjectIndex: &heatGainObjectIndex},
+		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, KeyValue: "*", VariableName: "Zone Infiltration Sensible Heat Loss Energy", ObjectIndex: &heatLossObjectIndex},
 	}}
 	result, err := parseSimulationEnergyExplanationSQL(path, plan)
 	if err != nil {
@@ -2017,6 +2020,12 @@ func TestEnergyExplanationSourceAvailabilityMatchesLoadAndSignedHeatAliases(t *t
 	heatLoss := energyExplanationSourceAvailabilityByName(result.Completeness.SourceAvailability, "Zone Infiltration Sensible Heat Loss Energy")
 	if heatLoss == nil || heatLoss.Status != "missing" || len(heatLoss.SourceIDs) != 0 {
 		t.Fatalf("heat loss availability should not match opposite sign aliases: %#v", result.Completeness.SourceAvailability)
+	}
+	if source := energyExplanationSourceByID(result.Sources, "sql-rdd-23"); source == nil || source.ObjectIndex == nil || *source.ObjectIndex != loadObjectIndex {
+		t.Fatalf("load alias source object index = %#v", source)
+	}
+	if source := energyExplanationSourceByID(result.Sources, "sql-rdd-24"); source == nil || source.ObjectIndex == nil || *source.ObjectIndex != heatGainObjectIndex || *source.ObjectIndex == heatLossObjectIndex {
+		t.Fatalf("signed heat alias source object index = %#v", source)
 	}
 	for _, category := range result.Completeness.MissingCategories {
 		if strings.HasPrefix(category, "load:") || category == "heat: Zone Infiltration Sensible Heat Gain Energy" {
