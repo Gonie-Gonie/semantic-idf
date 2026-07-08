@@ -224,6 +224,7 @@ func TestFrontendBatchEnergyExplanationDeltaContracts(t *testing.T) {
 		"energyExplanationDeltaValue",
 		"energyExplanationDeltaPercent",
 		"energyExplanationComparisonValue",
+		"Residual\", \"residuals",
 		"zero baseline",
 		"zero comparison",
 		"leftMissing",

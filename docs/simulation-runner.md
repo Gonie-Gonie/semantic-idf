@@ -269,7 +269,7 @@ mapped percent, derived COP KPIs, and the largest heat-driver groups. When two
 Basic Energy purpose rows with explanation summaries are selected, the batch
 chart also lets the user pin an explicit baseline and target case, then shows
 the largest explanation changes plus end-use, delivered-load, and heat-driver
-delta tables beside the selected metric. It flags completeness
+delta tables, including residual rows, beside the selected metric. It flags completeness
 differences between the two selected cases, including mapped percent, missing
 category changes, and missing/not-applicable source availability changes.
 Explicit gain/loss heat-driver summary rows stay separate so

@@ -1028,6 +1028,7 @@ export function initializeMultiSimulationTool(context) {
       ["Delivered Load", "deliveredLoadByService"],
       ["Derived KPI", "derivedKpis"],
       ["Heat Drivers", "heatDrivers"],
+      ["Residual", "residuals"],
     ]
       .map(([label, key]) => renderEnergyExplanationDeltaSection(label, selected[0], selected[1], key))
       .filter(Boolean)
