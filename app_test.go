@@ -1103,6 +1103,13 @@ Output:Variable,
 
 func TestPreparePurposeSimulationRequestUsesRunCopy(t *testing.T) {
 	original := appSummaryIDF + `
+Lights,
+  Office Lights,
+  Office,
+  ,
+  LightingLevel,
+  100;
+
 OutputControl:Table:Style,
   Comma,                   !- Column Separator
   JtoKWH;                  !- Unit Conversion
@@ -1137,8 +1144,11 @@ OutputControl:Table:Style,
 	if prepared.Text == "" || prepared.Text == original {
 		t.Fatalf("prepared run copy text was not expanded:\n%s", prepared.Text)
 	}
-	if !strings.Contains(prepared.Text, "Output:SQLite") || !strings.Contains(prepared.Text, "Zone Lights Electricity Energy") {
+	if !strings.Contains(prepared.Text, "Output:SQLite") || !strings.Contains(prepared.Text, "Electricity:Facility") {
 		t.Fatalf("prepared run copy is missing purpose outputs:\n%s", prepared.Text)
+	}
+	if strings.Contains(prepared.Text, "Zone Lights Electricity Energy") {
+		t.Fatalf("default Basic Energy run copy included explain outputs:\n%s", prepared.Text)
 	}
 	if strings.Contains(prepared.Text, "OutputControl:Table:Style 1") {
 		t.Fatalf("prepared run copy inserted a synthetic OutputControl name:\n%s", prepared.Text)

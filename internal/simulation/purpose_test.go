@@ -40,7 +40,8 @@ Output:SQLite,
 `)
 
 	plan := BuildPurposeRunPlan(doc, SimulationPurposeRequest{
-		Purposes: []SimulationPurposeID{SimulationPurposeBasicEnergy},
+		Purposes:          []SimulationPurposeID{SimulationPurposeBasicEnergy},
+		BasicEnergyDetail: PurposeBasicEnergyDetailHeatDrivers,
 	})
 
 	if !plan.RequiresSQL {
@@ -108,6 +109,30 @@ Output:SQLite,
 	}
 	if plan.EstimatedFrames != 12 {
 		t.Fatalf("estimated frames = %d, want 12 for monthly energy", plan.EstimatedFrames)
+	}
+}
+
+func TestBuildPurposeRunPlanBasicEnergyDefaultsToLight(t *testing.T) {
+	doc := parsePurposePlanFixture(t, purposePlanFixtureIDF)
+
+	plan := BuildPurposeRunPlan(doc, SimulationPurposeRequest{
+		Purposes: []SimulationPurposeID{SimulationPurposeBasicEnergy},
+	})
+
+	if plan.BasicEnergyDetail != PurposeBasicEnergyDetailLight {
+		t.Fatalf("basic energy detail = %q, want %q", plan.BasicEnergyDetail, PurposeBasicEnergyDetailLight)
+	}
+	if findPurposeOutput(plan, "Output:Meter", "Electricity:Facility", "") == nil {
+		t.Fatalf("light default should include top-level meters: %#v", plan.OutputObjects)
+	}
+	if output := findPurposeOutput(plan, "Output:Variable", "*", "Zone Lights Electricity Energy"); output != nil {
+		t.Fatalf("light default should not include explain output: %+v", output)
+	}
+	if output := findPurposeOutput(plan, "Output:Variable", "*", "Zone Air Heat Balance Surface Convection Rate"); output != nil {
+		t.Fatalf("light default should not include heat-driver output: %+v", output)
+	}
+	if plan.EstimatedFrames != 12 {
+		t.Fatalf("estimated frames = %d, want monthly light Basic Energy frames", plan.EstimatedFrames)
 	}
 }
 
@@ -622,9 +647,12 @@ Fan:ConstantVolume,
 		want    string
 	}{
 		{
-			name:    "basic_energy",
-			doc:     parsePurposePlanFixture(t, purposePlanFixtureIDF),
-			request: SimulationPurposeRequest{Purposes: []SimulationPurposeID{SimulationPurposeBasicEnergy}},
+			name: "basic_energy_heat_drivers",
+			doc:  parsePurposePlanFixture(t, purposePlanFixtureIDF),
+			request: SimulationPurposeRequest{
+				Purposes:          []SimulationPurposeID{SimulationPurposeBasicEnergy},
+				BasicEnergyDetail: PurposeBasicEnergyDetailHeatDrivers,
+			},
 			want: `requires_sql=true requires_discovery=false weight=Light frames=12
 output|Output:SQLite||||temporary|basic_energy
 output|Output:Meter|Electricity:Facility||Monthly|temporary|basic_energy

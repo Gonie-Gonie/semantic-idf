@@ -99,7 +99,8 @@ internal-gain, window solar, window heat gain/loss, and air-exchange
 heat-driver variables, plus zone heat-balance driver variables. Those
 explanation/detail variables are monthly by default and become hourly when the
 frequency policy is `highest_resolution`. The app and batch UI default to
-`light`; callers that omit the option keep the legacy `heat_drivers` behavior.
+`light`, and callers that omit the option now use the same light tier unless
+they explicitly request `explain` or `heat_drivers`.
 When Zone Heat Flow is also selected, its hourly
 heat-balance outputs are reused instead of adding a duplicate Basic Energy zone
 heat-driver request. Detail levels not requested by the active tier are reported

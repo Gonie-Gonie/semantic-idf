@@ -408,14 +408,14 @@ func normalizePurposeAllocationPolicy(policy string) string {
 
 func normalizePurposeBasicEnergyDetail(detail string) string {
 	switch strings.ToLower(strings.TrimSpace(detail)) {
-	case PurposeBasicEnergyDetailLight:
+	case PurposeBasicEnergyDetailLight, "":
 		return PurposeBasicEnergyDetailLight
 	case PurposeBasicEnergyDetailExplain, "energy_explain", "explanation":
 		return PurposeBasicEnergyDetailExplain
-	case PurposeBasicEnergyDetailHeatDrivers, "heat", "full", "":
+	case PurposeBasicEnergyDetailHeatDrivers, "heat", "full":
 		return PurposeBasicEnergyDetailHeatDrivers
 	default:
-		return PurposeBasicEnergyDetailHeatDrivers
+		return PurposeBasicEnergyDetailLight
 	}
 }
 
