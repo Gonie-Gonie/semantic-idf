@@ -123,6 +123,23 @@ Refrigeration:Compressor,
 
 HeatExchanger:AirToAir:FlatPlate,
   Heat Recovery HX;
+
+Boiler:HotWater,
+  Fuel Oil Boiler,
+  FuelOilNo1;
+
+DistrictCooling,
+  Campus District Cooling;
+
+DistrictHeating,
+  Campus District Heating;
+
+Generator:Photovoltaic,
+  Roof PV;
+
+OtherEquipment,
+  Steam Process,
+  Steam;
 `)
 
 	plan := BuildPurposeRunPlan(doc, SimulationPurposeRequest{
@@ -134,6 +151,17 @@ HeatExchanger:AirToAir:FlatPlate,
 	}
 	if findPurposeOutput(plan, "Output:Meter", "Electricity:HeatRecovery", "") == nil {
 		t.Fatalf("missing heat recovery meter in %#v", plan.OutputObjects)
+	}
+	for _, meter := range []string{
+		"FuelOilNo1:Facility",
+		"Steam:Facility",
+		"ElectricityProduced:Facility",
+		"DistrictCooling:Cooling",
+		"DistrictHeating:Heating",
+	} {
+		if findPurposeOutput(plan, "Output:Meter", meter, "") == nil {
+			t.Fatalf("missing extended energy meter %q in %#v", meter, plan.OutputObjects)
+		}
 	}
 }
 

@@ -292,6 +292,53 @@ func TestParseSimulationEnergySQLBuildsDashboard(t *testing.T) {
 	}
 }
 
+func TestParseSimulationEnergySQLClassifiesExtendedMeters(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "eplusout.sql")
+	createTestEnergySQL(t, path)
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`INSERT INTO ReportDataDictionary VALUES
+		(23, '', 'FuelOilNo1:Facility', 'J'),
+		(24, '', 'Steam:Facility', 'J'),
+		(25, '', 'ElectricityProduced:Facility', 'J'),
+		(26, '', 'DistrictCooling:Cooling', 'J'),
+		(27, '', 'DistrictHeating:Heating', 'J')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO ReportData VALUES
+		(7, 1, 23, 3600000.0),
+		(8, 1, 24, 7200000.0),
+		(9, 1, 25, 1800000.0),
+		(10, 1, 26, 900000.0),
+		(11, 1, 27, 450000.0)`); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := parseSimulationEnergySQL(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if item := energySeriesByName(result.FacilityMonthly, "FuelOilNo1:Facility"); item == nil || item.Total != 1 {
+		t.Fatalf("fuel oil facility series = %#v", result.FacilityMonthly)
+	}
+	if item := energySeriesByName(result.FacilityMonthly, "Steam:Facility"); item == nil || item.Total != 2 {
+		t.Fatalf("steam facility series = %#v", result.FacilityMonthly)
+	}
+	if item := energySeriesByName(result.EndUseMonthly, "ElectricityProduced:Facility"); item == nil || item.Total != 0.5 {
+		t.Fatalf("onsite production end-use series = %#v", result.EndUseMonthly)
+	}
+	if item := energySeriesByName(result.EndUseMonthly, "DistrictCooling:Cooling"); item == nil || item.Total != 0.25 {
+		t.Fatalf("district cooling end-use series = %#v", result.EndUseMonthly)
+	}
+	if item := energySeriesByName(result.EndUseMonthly, "DistrictHeating:Heating"); item == nil || item.Total != 0.125 {
+		t.Fatalf("district heating end-use series = %#v", result.EndUseMonthly)
+	}
+}
+
 func TestParseSimulationEnergySQLAggregatesRowsByMonth(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "eplusout.sql")
@@ -1020,6 +1067,15 @@ ZoneHVAC:IdealLoadsAirSystem,
 	if periodLoad == nil || !stringSlicesEqual(periodLoad.RelatedPathIDs, load.RelatedPathIDs) {
 		t.Fatalf("period load related paths = %#v annual=%#v", periodLoad, load)
 	}
+}
+
+func energySeriesByName(items []EnergySeries, name string) *EnergySeries {
+	for index := range items {
+		if items[index].Name == name {
+			return &items[index]
+		}
+	}
+	return nil
 }
 
 func energyExplanationNodeByID(nodes []EnergyExplanationNode, id string) *EnergyExplanationNode {

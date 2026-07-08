@@ -44,6 +44,10 @@ The release script infers bump size from these sections:
   purpose is selected.
 - Basic Energy end-use meter coverage now includes heat recovery, exterior
   lighting, refrigeration, and natural-gas interior equipment where applicable.
+- Basic Energy and standard output plans now cover additional Level 1 energy
+  meters for fuel oil, propane, other fuels, steam, district cooling/heating
+  end uses, and onsite electricity production when those model features are
+  detected.
 - Basic Energy explanation parsing now prefers reported energy variables over
   rate fallbacks for the same delivered-load or heat-driver target, avoiding
   duplicate Sankey accounting when both are present; completeness now counts

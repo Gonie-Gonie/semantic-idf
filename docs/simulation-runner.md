@@ -90,8 +90,9 @@ selected, its hourly heat-balance outputs are reused instead of adding a
 duplicate monthly zone heat-driver request.
 End-use meter aliases cover cooling, heating, lighting, equipment, fans, pumps,
 heat rejection, heat recovery, water systems, exterior lighting, refrigeration,
-onsite generation, and natural-gas heating/equipment/water-system use where the
-model exposes those meters.
+onsite generation, district cooling/heating end uses, natural-gas
+heating/equipment/water-system use, and facility fuel oil/propane/steam/other
+fuel totals where the model exposes those meters.
 When both energy and rate outputs are present for the same delivered-load or
 heat-driver target, the explanation parser uses the reported energy series and
 keeps the rate series only as traceable fallback source metadata. Completeness

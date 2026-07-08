@@ -16,9 +16,16 @@ type standardOutputFeatures struct {
 	hasNaturalGas        bool
 	hasDistrictCooling   bool
 	hasDistrictHeating   bool
+	hasFuelOilNo1        bool
+	hasFuelOilNo2        bool
+	hasPropane           bool
+	hasOtherFuel1        bool
+	hasOtherFuel2        bool
+	hasSteam             bool
 	hasLights            bool
 	hasElectricEquipment bool
 	hasGasEquipment      bool
+	hasOnsiteGeneration  bool
 	hasCooling           bool
 	hasHeating           bool
 	hasFans              bool
@@ -150,6 +157,10 @@ func detectOutputFeatures(doc Document) standardOutputFeatures {
 		case strings.HasPrefix(objectType, "pump:"):
 			features.hasPumps = true
 			features.hasElectricity = true
+		case strings.Contains(objectType, "districtcooling"):
+			features.hasDistrictCooling = true
+		case strings.Contains(objectType, "districtheating"):
+			features.hasDistrictHeating = true
 		case strings.Contains(objectType, "cooling"):
 			features.hasCooling = true
 			features.hasElectricity = true
@@ -164,12 +175,11 @@ func detectOutputFeatures(doc Document) standardOutputFeatures {
 		case strings.Contains(objectType, "refrigeration"):
 			features.hasRefrigeration = true
 			features.hasElectricity = true
+		case strings.HasPrefix(objectType, "generator:") || strings.HasPrefix(objectType, "electricloadcenter:"):
+			features.hasOnsiteGeneration = true
+			features.hasElectricity = true
 		case strings.HasPrefix(objectType, "wateruse:"):
 			features.hasWaterSystems = true
-		case strings.Contains(objectType, "districtcooling"):
-			features.hasDistrictCooling = true
-		case strings.Contains(objectType, "districtheating"):
-			features.hasDistrictHeating = true
 		}
 		for _, field := range obj.Fields {
 			value := strings.ToLower(strings.TrimSpace(field.Value))
@@ -182,6 +192,18 @@ func detectOutputFeatures(doc Document) standardOutputFeatures {
 				features.hasDistrictCooling = true
 			case "districtheating":
 				features.hasDistrictHeating = true
+			case "fueloilno1":
+				features.hasFuelOilNo1 = true
+			case "fueloilno2":
+				features.hasFuelOilNo2 = true
+			case "propane":
+				features.hasPropane = true
+			case "otherfuel1":
+				features.hasOtherFuel1 = true
+			case "otherfuel2":
+				features.hasOtherFuel2 = true
+			case "steam":
+				features.hasSteam = true
 			}
 		}
 	}
@@ -200,6 +222,18 @@ func standardOutputRecommendationApplies(item OutputRecommendation, features sta
 		return features.hasDistrictCooling
 	case strings.Contains(key, "districtheating:facility"):
 		return features.hasDistrictHeating
+	case strings.Contains(key, "fueloilno1:facility"):
+		return features.hasFuelOilNo1
+	case strings.Contains(key, "fueloilno2:facility"):
+		return features.hasFuelOilNo2
+	case strings.Contains(key, "propane:facility"):
+		return features.hasPropane
+	case strings.Contains(key, "otherfuel1:facility"):
+		return features.hasOtherFuel1
+	case strings.Contains(key, "otherfuel2:facility"):
+		return features.hasOtherFuel2
+	case strings.Contains(key, "steam:facility"):
+		return features.hasSteam
 	case strings.Contains(key, "water:facility"):
 		return features.hasWaterSystems
 	case strings.Contains(key, "electricity:cooling"):
@@ -224,6 +258,12 @@ func standardOutputRecommendationApplies(item OutputRecommendation, features sta
 		return features.hasExteriorLights
 	case strings.Contains(key, "electricity:refrigeration"):
 		return features.hasRefrigeration
+	case strings.Contains(key, "electricityproduced:facility"):
+		return features.hasOnsiteGeneration
+	case strings.Contains(key, "districtcooling:cooling"):
+		return features.hasDistrictCooling
+	case strings.Contains(key, "districtheating:heating"):
+		return features.hasDistrictHeating
 	case strings.Contains(key, "naturalgas:heating"):
 		return features.hasHeating && features.hasNaturalGas
 	case strings.Contains(key, "naturalgas:watersystems"):

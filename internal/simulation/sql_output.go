@@ -955,6 +955,12 @@ func energyFacilityMeterNames() []string {
 		"NaturalGas:Facility",
 		"DistrictCooling:Facility",
 		"DistrictHeating:Facility",
+		"FuelOilNo1:Facility",
+		"FuelOilNo2:Facility",
+		"Propane:Facility",
+		"OtherFuel1:Facility",
+		"OtherFuel2:Facility",
+		"Steam:Facility",
 		"Water:Facility",
 	}
 }
@@ -976,6 +982,9 @@ func energyEndUseMeterNames() []string {
 		"Electricity:WaterSystems",
 		"Electricity:ExteriorLights",
 		"Electricity:Refrigeration",
+		"ElectricityProduced:Facility",
+		"DistrictCooling:Cooling",
+		"DistrictHeating:Heating",
 		"NaturalGas:Heating",
 		"NaturalGas:WaterSystems",
 		"NaturalGas:InteriorEquipment",
