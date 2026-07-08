@@ -921,7 +921,7 @@ func TestBatchSimulationEnergyDeltasDistinguishMissingAndZero(t *testing.T) {
 		}
 		return nil
 	}
-	if row := rowByID(energyRows, "lighting.electricity"); row == nil || row[5] != "0" || row[6] != "5" || row[8] != "N/A" || row[10] != "matched" {
+	if row := rowByID(energyRows, "lighting.electricity"); row == nil || row[5] != "0" || row[6] != "5" || row[8] != "N/A" || row[10] != "zero baseline" {
 		t.Fatalf("zero baseline energy row = %#v; all rows = %#v", row, energyRows)
 	}
 	if row := rowByID(energyRows, "pumps.electricity"); row == nil || row[5] != "0" || row[6] != "2" || row[8] != "N/A" || row[10] != "missing in baseline" {
@@ -929,7 +929,7 @@ func TestBatchSimulationEnergyDeltasDistinguishMissingAndZero(t *testing.T) {
 	}
 
 	edgeRows := batchSimulationEnergyEdgeDeltaSection(left, right).Rows
-	if row := rowByID(edgeRows, "Electricity -> Lighting electricity"); row == nil || row[5] != "0" || row[6] != "5" || row[8] != "N/A" || row[10] != "matched" {
+	if row := rowByID(edgeRows, "Electricity -> Lighting electricity"); row == nil || row[5] != "0" || row[6] != "5" || row[8] != "N/A" || row[10] != "zero baseline" {
 		t.Fatalf("zero baseline edge row = %#v; all rows = %#v", row, edgeRows)
 	}
 	if row := rowByID(edgeRows, "Electricity -> Pumps electricity"); row == nil || row[5] != "0" || row[6] != "2" || row[8] != "N/A" || row[10] != "missing in baseline" {

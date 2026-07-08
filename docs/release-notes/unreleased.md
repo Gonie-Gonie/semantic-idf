@@ -171,8 +171,8 @@ The release script infers bump size from these sections:
 - Batch Simulation completeness deltas now compare missing and not-applicable
   Basic Energy source availability outputs between selected cases.
 - Batch Simulation now labels zero baseline/comparison rows separately from
-  missing Basic Energy explanation rows and keeps percent deltas as `N/A` when
-  the baseline value is zero.
+  missing Basic Energy explanation rows in the app, CSV, and XLSX exports and
+  keeps percent deltas as `N/A` when the baseline value is zero.
 - Basic Energy completeness hints now tell light-tier users to switch the detail
   tier before rerunning when explanation outputs are missing.
 - The Basic Energy Reconciliation subview now expands each accounting row's

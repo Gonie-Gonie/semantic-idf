@@ -282,8 +282,8 @@ Missing summary and edge rows are labeled separately from matched rows, real
 zero values are labeled as `zero baseline` or `zero comparison` when only one
 side is zero, and the comparison value cell renders `Missing` instead of
 numeric `0` so an absent output is not silently treated as a normal zero.
-Percent deltas remain `N/A` when the baseline value is zero. Batch Simulation
-can export purpose metrics, compact
+Percent deltas remain `N/A` when the baseline value is zero in the app, CSV,
+and XLSX exports. Batch Simulation can export purpose metrics, compact
 `energyExplanationSummary` rows, `energyExplanation` source metadata rows,
 source availability rows, reconciliation rows, and Sankey edge metadata rows
 with period, relation, basis,

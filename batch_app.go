@@ -1198,7 +1198,7 @@ func batchSimulationSummaryDeltaRows(group string, leftItems, rightItems []simul
 			Delta:             rightValue - leftValue,
 			Percent:           batchSimulationPercentDelta(leftValue, rightValue-leftValue),
 			Unit:              firstNonEmpty(rightItem.Unit, leftItem.Unit),
-			Status:            batchSimulationDeltaStatus(leftOK, rightOK),
+			Status:            batchSimulationDeltaStatus(leftOK, rightOK, leftValue, rightValue),
 			Level:             firstNonEmpty(rightItem.Level, leftItem.Level),
 			ServiceKind:       firstNonEmpty(rightItem.ServiceKind, leftItem.ServiceKind),
 			PathType:          firstNonEmpty(rightItem.PathType, leftItem.PathType),
@@ -1286,7 +1286,7 @@ func batchSimulationEdgeDeltaRows(leftExplanation, rightExplanation simulation.E
 		item.RightValue = rightValue
 		item.Delta = rightValue - leftValue
 		item.Percent = batchSimulationPercentDelta(leftValue, item.Delta)
-		item.Status = batchSimulationDeltaStatus(leftOK, rightOK)
+		item.Status = batchSimulationDeltaStatus(leftOK, rightOK, leftValue, rightValue)
 		rows = append(rows, item)
 	}
 	return rows
@@ -1363,12 +1363,16 @@ func sortBatchSimulationDeltaRows(rows []batchSimulationDeltaRow) {
 	})
 }
 
-func batchSimulationDeltaStatus(leftOK, rightOK bool) string {
+func batchSimulationDeltaStatus(leftOK, rightOK bool, leftValue float64, rightValue float64) string {
 	switch {
 	case !leftOK && rightOK:
 		return "missing in baseline"
 	case leftOK && !rightOK:
 		return "missing in comparison"
+	case leftValue == 0 && rightValue != 0:
+		return "zero baseline"
+	case leftValue != 0 && rightValue == 0:
+		return "zero comparison"
 	default:
 		return "matched"
 	}
