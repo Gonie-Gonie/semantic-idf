@@ -207,7 +207,9 @@ with signed driver values and residual reconciliation. Explicit sensible heat
 gain/loss outputs are kept as separate positive/negative heat-driver nodes even
 when EnergyPlus reports both source series as positive energy values. Large
 reported heat-balance deviation terms emit period warnings so unresolved zone
-balance checks are visible next to the reconciliation rows.
+balance checks are visible next to the reconciliation rows. When matching Zone
+Heat Flow data exists, heat/load selections in the Sankey inspector can jump
+directly to the zone heat-flow ledger.
 Delivered-load nodes carry both `serviceKind` and `pathType` metadata, using the
 load alias scope (`zone`, `system`, or `plant`) so HVAC service links and batch
 exports can distinguish zone loads from broader system or plant demand. Their

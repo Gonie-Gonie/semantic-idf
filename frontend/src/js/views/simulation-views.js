@@ -1694,6 +1694,7 @@ function renderEnergyExplanationInspector(selection, explanation = {}) {
   if (selection.pathType) {
     inspectorFields.push({ label: t("simulation.pathType", {}, "Path type"), value: simulationPathTypeLabel(selection.pathType) });
   }
+  const drilldownActions = renderSimulationEnergyDrilldownActions(selection);
   const relatedPaths = renderSimulationEnergyRelatedServicePaths(selection);
   return `
     <section class="energy-explanation-inspector">
@@ -1705,6 +1706,7 @@ function renderEnergyExplanationInspector(selection, explanation = {}) {
         ${inspectorFields.map((field) => `<div><span>${escapeHTML(field.label)}</span><strong>${escapeHTML(field.value)}</strong></div>`).join("")}
       </div>
       ${selection.formula ? `<p class="energy-explanation-formula">${escapeHTML(selection.formula)}</p>` : ""}
+      ${drilldownActions}
       ${relatedPaths}
       <div class="output-table-wrap">
         <table class="output-table">
@@ -2025,6 +2027,21 @@ function energyExplanationRelationshipRuleLabel(explanation = {}, ruleID = "") {
   }
   const flow = [rule.fromLevel, rule.toLevel].filter(Boolean).join(" -> ");
   return [rule.id, flow, energyExplanationBasisLabel(rule.basis || "")].filter(Boolean).join(" / ");
+}
+
+function renderSimulationEnergyDrilldownActions(selection = {}) {
+  const zoneName = selection.zoneName || "";
+  const heatFlowZones = heatFlowZoneMap(activeHeatFlowDataset());
+  const hasHeatFlow = zoneName && heatFlowZones.has(normalizeHeatFlowName(zoneName));
+  if (!hasHeatFlow) {
+    return "";
+  }
+  return `
+    <div class="energy-explanation-drilldown-actions">
+      <button class="simulation-series-inspect" type="button" data-simulation-energy-heatflow-zone-jump="${escapeHTML(zoneName)}">
+        ${escapeHTML(t("simulation.openZoneHeatFlow", {}, "Heat Flow"))}
+      </button>
+    </div>`;
 }
 
 function energyExplanationBasisLabel(basis = "") {

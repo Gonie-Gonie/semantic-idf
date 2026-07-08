@@ -241,6 +241,9 @@ The release script infers bump size from these sections:
   basis values such as reported energy variables and integrated rate variables.
 - Basic Energy reconciliation now emits period warnings when zone heat-balance
   deviation terms are large relative to the delivered-load basis.
+- Basic Energy Sankey inspectors can now jump directly from zone heat/load
+  selections to matching Zone Heat Flow ledger rows when that output is
+  available.
 
 ## Fixed
 

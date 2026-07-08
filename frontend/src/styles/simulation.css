@@ -1651,6 +1651,13 @@
   font-size: 12px;
 }
 
+.energy-explanation-drilldown-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
 .energy-related-service-paths {
   display: grid;
   gap: 6px;
