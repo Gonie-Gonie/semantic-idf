@@ -98,6 +98,9 @@ The release script infers bump size from these sections:
   plan or apply missing purpose outputs permanently.
 - Basic Energy source availability rows now use status badges for missing and
   not-applicable outputs.
+- Basic Energy completeness now treats energy meters that were not requested by
+  the active model-aware output plan as `not_applicable` instead of reporting a
+  source shortage from the fallback meter catalog.
 - Basic Energy Overview now includes an annual Energy Use breakdown by carrier
   and end use, with source links for each row.
 - Energy explanation completeness now surfaces missing categories and source

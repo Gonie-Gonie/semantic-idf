@@ -2878,11 +2878,13 @@ func buildEnergyExplanationCompleteness(series []energyExplanationSeries, source
 
 func expectedEnergyExplanationOutputs(plan *PurposeRunPlan, level string) []string {
 	out := []string{}
+	planRequestsBasicEnergy := false
 	if plan != nil {
 		for _, object := range plan.OutputObjects {
 			if !purposeIDsContain(object.PurposeIDs, SimulationPurposeBasicEnergy) {
 				continue
 			}
+			planRequestsBasicEnergy = true
 			switch level {
 			case "energy":
 				if strings.EqualFold(object.ObjectType, "Output:Meter") {
@@ -2908,6 +2910,9 @@ func expectedEnergyExplanationOutputs(plan *PurposeRunPlan, level string) []stri
 		}
 	}
 	if len(out) > 0 || level != "energy" {
+		return out
+	}
+	if plan != nil && planRequestsBasicEnergy {
 		return out
 	}
 	for _, name := range energyFacilityMeterNames() {

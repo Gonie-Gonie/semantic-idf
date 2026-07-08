@@ -424,7 +424,10 @@ Basic Energy completeness panels distinguish source output shortage from
 accounting/model coverage gaps. When missing source requests are reported, the
 result view can jump back to the Simulation output plan, refresh the purpose
 request set, and invoke the same permanent output application flow before the
-user reruns Basic Energy with explanation outputs.
+user reruns Basic Energy with explanation outputs. If the active model-aware
+purpose plan did not request any Basic Energy meter outputs, Energy Use source
+availability is reported as `not_applicable` instead of falling back to a broad
+missing-meter catalog.
 
 ## Output Discovery
 

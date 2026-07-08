@@ -1940,6 +1940,34 @@ func TestEnergyExplanationCompletenessMarksUnrequestedLightDetailsNotApplicable(
 	}
 }
 
+func TestEnergyExplanationCompletenessTreatsUnrequestedEnergyAsNotApplicable(t *testing.T) {
+	doc := parsePurposePlanFixture(t, `
+Version, 24.1;
+
+Zone,
+  Office;
+`)
+	plan := BuildPurposeRunPlan(doc, SimulationPurposeRequest{
+		Purposes: []SimulationPurposeID{SimulationPurposeBasicEnergy},
+	})
+	if output := findPurposeOutput(plan, "Output:Meter", "Electricity:Facility", ""); output != nil {
+		t.Fatalf("minimal model should not request facility meters: %+v", output)
+	}
+
+	completeness := buildEnergyExplanationCompleteness(nil, nil, &plan, 0)
+	if completeness.EnergyUse.Status != "not_applicable" || !strings.Contains(completeness.EnergyUse.Message, "not requested") {
+		t.Fatalf("unrequested energy completeness = %#v", completeness.EnergyUse)
+	}
+	if availability := energyExplanationSourceAvailabilityByLevelStatus(completeness.SourceAvailability, "energy", "not_applicable"); availability == nil || availability.Name != "not requested by current output plan" {
+		t.Fatalf("unrequested energy source availability = %#v", completeness.SourceAvailability)
+	}
+	for _, category := range completeness.MissingCategories {
+		if strings.HasPrefix(category, "energy:") {
+			t.Fatalf("unrequested energy should not report source shortage: %#v", completeness.MissingCategories)
+		}
+	}
+}
+
 func TestPurposeResultBundleAppliesEnergyExplanationPeriodScope(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "eplusout.sql")
