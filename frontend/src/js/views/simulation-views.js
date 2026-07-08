@@ -1708,6 +1708,7 @@ function groupedEnergyExplanationGraph(graph = {}) {
   const omittedHeatIDs = new Set(omittedHeatNodes.map((node) => node.id));
   const otherID = "heat.other_grouped";
   const otherSources = omittedHeatNodes.reduce((out, node) => appendUniqueEnergyStrings(out, ...(node.sourceIds || [])), []);
+  const otherRelatedPathIDs = omittedHeatNodes.reduce((out, node) => appendUniqueEnergyStrings(out, ...(node.relatedPathIds || [])), []);
   const otherValue = roundedDisplayNumber(omittedHeatNodes.reduce((sum, node) => sum + (Number(node.value) || 0), 0));
   const otherUnit = omittedHeatNodes.find((node) => node.unit)?.unit || "kWh";
   const groupedNodes = nodes.filter((node) => node.level !== "heat" || keepHeatIDs.has(node.id));
@@ -1721,9 +1722,11 @@ function groupedEnergyExplanationGraph(graph = {}) {
     heatCategory: "grouped_other",
     basis: "derived_balance",
     sourceIds: otherSources,
+    relatedPathIds: otherRelatedPathIDs,
   });
   const groupedEdges = [];
   const otherEdges = new Map();
+  const omittedHeatNodeByID = new Map(omittedHeatNodes.map((node) => [node.id, node]));
   for (const edge of graph.edges || []) {
     if (!omittedHeatIDs.has(edge.toId)) {
       groupedEdges.push(edge);
@@ -1738,12 +1741,15 @@ function groupedEnergyExplanationGraph(graph = {}) {
       signedValue: 0,
       displayValue: 0,
       sourceIds: [],
+      relatedPathIds: [],
       formula: "grouped omitted heat-driver edges",
     };
+    const omittedNode = omittedHeatNodeByID.get(edge.toId) || {};
     existing.value = roundedDisplayNumber((Number(existing.value) || 0) + (Number(edge.value) || 0));
     existing.signedValue = roundedDisplayNumber((Number(existing.signedValue) || 0) + (Number(edge.signedValue) || 0));
     existing.displayValue = roundedDisplayNumber((Number(existing.displayValue) || 0) + (Number(edge.displayValue) || Number(edge.value) || 0));
     existing.sourceIds = appendUniqueEnergyStrings(existing.sourceIds || [], ...(edge.sourceIds || []));
+    existing.relatedPathIds = appendUniqueEnergyStrings(existing.relatedPathIds || [], ...(edge.relatedPathIds || []), ...(omittedNode.relatedPathIds || []));
     otherEdges.set(key, existing);
   }
   groupedEdges.push(...otherEdges.values());

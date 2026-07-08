@@ -56,6 +56,8 @@ The release script infers bump size from these sections:
 - Energy explanation Sankey can cap visible heat-driver nodes, group omitted
   drivers as `Other heat drivers` for large models, and expand grouped drivers
   with an `All` action.
+- Grouped Basic Energy heat-driver nodes now preserve related HVAC service-path
+  IDs, so the Sankey inspector keeps service jump context after top-N grouping.
 - Energy explanation Sankey now uses carrier/service-specific node colors and a
   legend for common electricity, fuel, district cooling/heating, cooling, and
   heating classes.
