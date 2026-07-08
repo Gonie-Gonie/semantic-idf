@@ -254,6 +254,9 @@ The release script infers bump size from these sections:
   variables when electric storage is present, tagging charge as measured energy
   use and discharge as a separate support flow outside facility-consumption
   residuals.
+- Basic Energy heat-driver detail now includes zone window transmitted solar
+  radiation outputs so solar gains can appear as a Level 3 heat-driver term
+  when EnergyPlus reports them.
 - Batch purpose simulation metrics now include compact annual Energy Use,
   Delivered Load, Heat Driver, residual, mapped-percent, and top heat-driver
   values from the Basic Energy explanation summary, plus two-row delta tables

@@ -805,6 +805,44 @@ func TestParseSimulationEnergyExplanationSQLPreservesHeatGainLossSigns(t *testin
 	}
 }
 
+func TestParseSimulationEnergyExplanationSQLMapsWindowSolarHeatDriver(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "eplusout.sql")
+	createTestEnergySQL(t, path)
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`INSERT INTO ReportDataDictionary VALUES
+		(23, 'ZONE ONE', 'Zone Windows Total Transmitted Solar Radiation Energy', 'J')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO ReportData VALUES
+		(7, 1, 23, 1800000.0),
+		(8, 2, 23, 1800000.0)`); err != nil {
+		t.Fatal(err)
+	}
+
+	plan := &PurposeRunPlan{OutputObjects: []PurposeOutputObject{
+		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, VariableName: "Zone Windows Total Transmitted Solar Radiation Energy"},
+	}}
+	result, err := parseSimulationEnergyExplanationSQL(path, plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	solar := energyExplanationNodeByID(result.Nodes, "heat.solar_window.zone_one")
+	if solar == nil || solar.Value != 1 || solar.SignedValue != 1 || solar.ServiceKind != "cooling" || solar.HeatCategory != "surface_envelope" || !stringSliceContains(solar.SourceIDs, "sql-rdd-23") {
+		t.Fatalf("window solar heat driver = %#v", solar)
+	}
+	if result.Completeness.HeatDrivers.Found != 1 || result.Completeness.HeatDrivers.Total != 1 {
+		t.Fatalf("solar heat completeness = %#v", result.Completeness.HeatDrivers)
+	}
+	if availability := energyExplanationSourceAvailabilityByName(result.Completeness.SourceAvailability, "Zone Windows Total Transmitted Solar Radiation Energy"); availability == nil || availability.Status != "found" || availability.Level != "heat" {
+		t.Fatalf("solar source availability = %#v", result.Completeness.SourceAvailability)
+	}
+}
+
 func TestParseSimulationEnergyExplanationSQLPrefersEnergyOverRateFallback(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "eplusout.sql")
