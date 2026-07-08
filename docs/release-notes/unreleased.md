@@ -27,6 +27,9 @@ The release script infers bump size from these sections:
   delivered-load and heat-driver details as `not_applicable` instead of missing.
 - Basic Energy source availability now emits `not_applicable` placeholder rows
   for unrequested detail levels, keeping exports distinct from missing outputs.
+- Basic Energy source availability rows now carry matching source IDs for found
+  outputs, so HTML and batch exports can trace availability status back to SQL
+  sources and output requests.
 - Energy explanation Sankey and Systems views can now focus by all results, a
   selected zone, selected HVAC service path, or selected HVAC loop.
 - Energy explanation Sankey now has Detailed and Compact column modes, with

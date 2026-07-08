@@ -178,9 +178,10 @@ type EnergyCompletenessLevel struct {
 }
 
 type EnergySourceAvailabilityEntry struct {
-	Name   string `json:"name"`
-	Level  string `json:"level"`
-	Status string `json:"status"`
+	Name      string   `json:"name"`
+	Level     string   `json:"level"`
+	Status    string   `json:"status"`
+	SourceIDs []string `json:"sourceIds,omitempty"`
 }
 
 type EnergyWarning struct {
@@ -3021,15 +3022,22 @@ func sourceAvailabilityEntries(expected []string, level string, sources []Energy
 	out := make([]EnergySourceAvailabilityEntry, 0, len(expected))
 	for _, name := range expected {
 		status := "missing"
+		sourceIDs := []string{}
 		for _, source := range sources {
-			if strings.EqualFold(source.Name, name) || strings.EqualFold(source.KeyValue, name) {
+			if energySourceMatchesAvailabilityName(source, name) {
 				status = "found"
-				break
+				if source.ID != "" {
+					sourceIDs = appendUniquePurposeString(sourceIDs, source.ID)
+				}
 			}
 		}
-		out = append(out, EnergySourceAvailabilityEntry{Name: name, Level: level, Status: status})
+		out = append(out, EnergySourceAvailabilityEntry{Name: name, Level: level, Status: status, SourceIDs: sourceIDs})
 	}
 	return out
+}
+
+func energySourceMatchesAvailabilityName(source EnergyDataSource, name string) bool {
+	return strings.EqualFold(source.Name, name) || strings.EqualFold(source.KeyValue, name)
 }
 
 func sourceAvailabilityEntriesForLevel(expected []string, level string, sources []EnergyDataSource) []EnergySourceAvailabilityEntry {

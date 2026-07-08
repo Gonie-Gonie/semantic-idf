@@ -555,8 +555,8 @@ export function initializeMultiSimulationTool(context) {
           "",
           "",
           "",
-          "",
-          ...emptyEnergyExplanationEdgeExportFields(),
+          energyExplanationSourceObjectIndexes(explanation, availability.sourceIds || []),
+          ...emptyEnergyExplanationEdgeExportFields(availability.sourceIds || []),
           ...emptyEnergyExplanationSourceUnitExportFields(),
           "",
           ...emptyEnergyExplanationHeatExportFields(),
@@ -957,6 +957,7 @@ export function initializeMultiSimulationTool(context) {
       level: item.level || "",
       name: item.name || "",
       status: item.status || "",
+      sourceIds: item.sourceIds || [],
     }));
   }
 

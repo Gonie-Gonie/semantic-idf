@@ -744,7 +744,7 @@ func TestParseSimulationEnergyExplanationSQLBuildsAccountingGraph(t *testing.T) 
 	if result.Completeness.HeatDrivers.Found != 2 || result.Completeness.HeatDrivers.Total != 2 || result.Completeness.DeliveredLoad.Found != 1 || result.Completeness.DeliveredLoad.Total != 1 {
 		t.Fatalf("explanation completeness = %#v", result.Completeness)
 	}
-	if availability := energyExplanationSourceAvailabilityByName(result.Completeness.SourceAvailability, "Zone Air Heat Balance Surface Convection Rate"); availability == nil || availability.Status != "found" || availability.Level != "heat" {
+	if availability := energyExplanationSourceAvailabilityByName(result.Completeness.SourceAvailability, "Zone Air Heat Balance Surface Convection Rate"); availability == nil || availability.Status != "found" || availability.Level != "heat" || !stringSliceContains(availability.SourceIDs, "sql-rdd-25") {
 		t.Fatalf("source availability = %#v", result.Completeness.SourceAvailability)
 	}
 	if len(result.Sources) != 5 || !energyExplanationHasSource(result.Sources, "sql-rdd-20", true, "Electricity:Facility") || !energyExplanationHasSource(result.Sources, "sql-rdd-24", false, "Zone Air Heat Balance Internal Convective Heat Gain Rate") {

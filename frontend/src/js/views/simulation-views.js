@@ -7568,9 +7568,9 @@ function renderPurposeHTMLEnergyExplanation(summary = {}, explanation = {}) {
   }
   const availabilityRows = (completeness.sourceAvailability || [])
     .slice(0, 240)
-    .map((item) => [item.level || "", item.name || "", item.status || ""]);
+    .map((item) => [item.level || "", item.name || "", item.status || "", (item.sourceIds || []).join(", ")]);
   if (availabilityRows.length) {
-    sections.push(`<h2>Energy Explanation Source Availability</h2>${renderPurposeHTMLTable(["Level", "Output", "Status"], availabilityRows)}`);
+    sections.push(`<h2>Energy Explanation Source Availability</h2>${renderPurposeHTMLTable(["Level", "Output", "Status", "Source IDs"], availabilityRows)}`);
   }
   const ruleRows = (explanation.relationshipRules || [])
     .slice(0, 120)
