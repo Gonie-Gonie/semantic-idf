@@ -997,6 +997,103 @@ func TestEnergyRelationshipRuleCatalogProvidesEdgeBasis(t *testing.T) {
 	}
 }
 
+func TestBuildEnergyExplanationSankeyGraphContracts(t *testing.T) {
+	result := buildEnergyExplanationResult([]energyExplanationSeries{
+		{
+			Level:               "energy",
+			Kind:                "energy.total",
+			Label:               "Electricity total",
+			Unit:                "kWh",
+			Carrier:             "electricity",
+			MeterHierarchyLevel: "facility_total",
+			SourceIDs:           []string{"facility-source"},
+			Total:               10,
+			Monthly:             map[int]float64{1: 5},
+		},
+		{
+			Level:               "energy",
+			Kind:                "energy.cooling",
+			Label:               "Cooling energy",
+			Unit:                "kWh",
+			Carrier:             "electricity",
+			EndUse:              "cooling",
+			MeterHierarchyLevel: "broad_end_use",
+			SourceIDs:           []string{"cooling-source"},
+			Total:               4,
+			Monthly:             map[int]float64{1: 2},
+		},
+		{
+			Level:       "load",
+			Kind:        "load.zone_cooling",
+			Label:       "Zone cooling load",
+			Unit:        "kWh",
+			ServiceKind: "cooling",
+			PathType:    "zone",
+			ZoneName:    "Office",
+			SourceIDs:   []string{"load-source"},
+			Total:       3,
+			Monthly:     map[int]float64{1: 1.5},
+		},
+		{
+			Level:              "heat",
+			Kind:               "heat.internal_convective",
+			Label:              "Internal convection",
+			Unit:               "kWh",
+			ZoneName:           "Office",
+			HeatCategory:       "internal_gains",
+			SourceIDs:          []string{"heat-source"},
+			Total:              1,
+			Monthly:            map[int]float64{1: 0.5},
+			heatSignMultiplier: 1,
+		},
+	}, nil, &PurposeRunPlan{})
+
+	expectedNodeIDs := []string{
+		"energy.carrier.electricity",
+		"energy.end_use.cooling.electricity",
+		"load.cooling.office",
+		"heat.internal_convective.office",
+		"residual.energy.electricity",
+	}
+	for _, id := range expectedNodeIDs {
+		if energyExplanationNodeByID(result.Nodes, id) == nil {
+			t.Fatalf("annual node %q missing from %#v", id, result.Nodes)
+		}
+	}
+	monthly := energyExplanationPeriodByID(result.Periods, "M1")
+	if monthly == nil {
+		t.Fatalf("monthly period missing from %#v", result.Periods)
+	}
+	for _, id := range expectedNodeIDs {
+		if energyExplanationNodeByID(monthly.Nodes, id) == nil {
+			t.Fatalf("monthly node %q missing from %#v", id, monthly.Nodes)
+		}
+	}
+
+	annualEdges := []struct {
+		from     string
+		to       string
+		relation string
+		basis    string
+		ruleID   string
+	}{
+		{"energy.carrier.electricity", "energy.end_use.cooling.electricity", "meter_enduse", "measured_meter", energyRelationshipRuleMeterEndUse},
+		{"energy.end_use.cooling.electricity", "load.cooling.office", "delivered_load", "measured_variable", energyRelationshipRuleMeasuredLoad},
+		{"load.cooling.office", "heat.internal_convective.office", "heat_driver", "derived_balance", energyRelationshipRuleHeatDriverBalance},
+		{"energy.carrier.electricity", "residual.energy.electricity", "residual", "residual", energyRelationshipRuleEnergyResidual},
+	}
+	for _, expected := range annualEdges {
+		edge := energyExplanationEdgeByIDs(result.Edges, expected.from, expected.to)
+		if edge == nil || edge.Relation != expected.relation || edge.Basis != expected.basis || edge.RuleID != expected.ruleID {
+			t.Fatalf("annual edge %s -> %s = %#v", expected.from, expected.to, edge)
+		}
+		monthlyEdge := energyExplanationEdgeByIDs(monthly.Edges, expected.from, expected.to)
+		if monthlyEdge == nil || monthlyEdge.Relation != expected.relation || monthlyEdge.Basis != expected.basis || monthlyEdge.RuleID != expected.ruleID {
+			t.Fatalf("monthly edge %s -> %s = %#v", expected.from, expected.to, monthlyEdge)
+		}
+	}
+}
+
 func TestBuildEnergyExplanationAllocatedZoneLoadShare(t *testing.T) {
 	result := buildEnergyExplanationResult([]energyExplanationSeries{
 		{
