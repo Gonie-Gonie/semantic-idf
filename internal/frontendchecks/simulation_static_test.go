@@ -11,9 +11,18 @@ func TestFrontendSimulationEnergySystemsCrossJumpContracts(t *testing.T) {
 		`["systems", t("simulation.systems"`,
 		"renderEnergySystemsSubview",
 		"simulationEnergyServiceAggregates",
+		"renderSimulationEnergyConnectedSystems",
+		"renderSimulationEnergySupportingAssets",
+		"simulationServicePathLoopRefs",
 		"simulationServicePathSupportingAssets",
+		"simulationServicePathSupportingAssetRefs",
 		"simulation.sourceEnergy",
 		"data-simulation-hvac-path-id",
+		"data-simulation-hvac-loop-name",
+		"data-simulation-hvac-coupling-id",
+		"openSimulationHVACLoopRef",
+		"openSimulationHVACCoupling",
+		"simulationHVACLoopRefGraphKey",
 		"simulationRelatedServicePathsForEnergySelection",
 		"simulationHVACServicePathsByIDs",
 		"relatedPathIds",
@@ -144,7 +153,7 @@ func TestFrontendSimulationEnergySystemsCrossJumpContracts(t *testing.T) {
 		t.Fatalf("simulation allocation policy control is missing")
 	}
 	styles := readTestFile(t, "frontend/src/styles/simulation.css")
-	for _, term := range []string{".energy-related-service-paths", ".energy-service-path-chip", ".energy-explanation-drilldown-actions", ".energy-use-total-basis", ".simulation-energy-focus-controls", ".simulation-energy-period-row", ".simulation-energy-zone-paths", ".simulation-energy-zone-actions", ".simulation-energy-chart-period", ".energy-explanation-output-actions", ".energy-source-availability", ".simulation-source-output-jump", ".energy-reconciliation-sources", ".energy-reconciliation-status", ".energy-sankey-grouping-notice", ".energy-sankey-sign-note", ".energy-sankey-edge.selected", ".energy-sankey-node.connected", ".energy-sankey-node.electricity", ".energy-sankey-node.district_cooling", ".energy-sankey-node.fans", ".energy-sankey-node.pumps", ".energy-sankey-node.heat_recovery", ".energy-sankey-node.water_systems", ".energy-sankey-node.refrigeration", ".energy-sankey-node.generators", ".energy-sankey-node.other", ".energy-sankey-legend i.node", ".energy-sankey-legend i.measured_energy_variable", ".energy-sankey-legend i.integrated_rate_variable"} {
+	for _, term := range []string{".energy-related-service-paths", ".energy-service-path-chip", ".simulation-energy-system-links", ".simulation-energy-system-chip", ".energy-explanation-drilldown-actions", ".energy-use-total-basis", ".simulation-energy-focus-controls", ".simulation-energy-period-row", ".simulation-energy-zone-paths", ".simulation-energy-zone-actions", ".simulation-energy-chart-period", ".energy-explanation-output-actions", ".energy-source-availability", ".simulation-source-output-jump", ".energy-reconciliation-sources", ".energy-reconciliation-status", ".energy-sankey-grouping-notice", ".energy-sankey-sign-note", ".energy-sankey-edge.selected", ".energy-sankey-node.connected", ".energy-sankey-node.electricity", ".energy-sankey-node.district_cooling", ".energy-sankey-node.fans", ".energy-sankey-node.pumps", ".energy-sankey-node.heat_recovery", ".energy-sankey-node.water_systems", ".energy-sankey-node.refrigeration", ".energy-sankey-node.generators", ".energy-sankey-node.other", ".energy-sankey-legend i.node", ".energy-sankey-legend i.measured_energy_variable", ".energy-sankey-legend i.integrated_rate_variable"} {
 		if !strings.Contains(styles, term) {
 			t.Fatalf("simulation energy cross-jump style missing %q", term)
 		}

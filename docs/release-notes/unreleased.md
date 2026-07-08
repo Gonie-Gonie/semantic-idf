@@ -51,6 +51,8 @@ The release script infers bump size from these sections:
 - Basic Energy Systems view now shows service-path source energy, delivered
   load, heat-driver totals, connected systems, and supporting assets together,
   with a direct Sankey service-path focus jump.
+- Basic Energy Systems rows now render connected HVAC loops and supporting
+  coupling assets as jump targets into the HVAC tab.
 - Basic Energy completeness panels now distinguish missing source outputs from
   accounting/model coverage gaps and can jump directly to the purpose output
   plan or apply missing purpose outputs permanently.

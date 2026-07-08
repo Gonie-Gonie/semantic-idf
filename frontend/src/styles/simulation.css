@@ -1203,6 +1203,27 @@
   align-items: center;
 }
 
+.simulation-energy-system-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+}
+
+.simulation-energy-system-chip {
+  border: 0;
+  background: none;
+  color: var(--focus);
+  font: inherit;
+  font-weight: 650;
+  padding: 0;
+  cursor: pointer;
+}
+
+.simulation-energy-system-chip:hover {
+  text-decoration: underline;
+}
+
 .simulation-energy-explain-grid,
 .energy-explanation-inspector-grid {
   display: grid;
