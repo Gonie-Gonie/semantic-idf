@@ -109,6 +109,9 @@ The release script infers bump size from these sections:
 - Basic Energy SQL explanations now preserve custom purpose period scopes and
   emit a `selected_range` period with row-level values, edges, and
   reconciliation for the selected dates.
+- Basic Energy SQL explanations now emit daily `D<n>` periods for Daily,
+  Hourly, Timestep, or Detailed sources while leaving Monthly/RunPeriod sources
+  annual/monthly only.
 - Basic Energy explanations now fall back to annual SQL tabular end-use rows
   when detailed `ReportData` energy rows are unavailable, while preserving
   `sql_tabular` source metadata.

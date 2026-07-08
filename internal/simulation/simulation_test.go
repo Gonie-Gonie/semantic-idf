@@ -1099,6 +1099,41 @@ func TestPurposeResultBundleAppliesEnergyExplanationPeriodScope(t *testing.T) {
 	}
 }
 
+func TestParseSimulationEnergyExplanationSQLBuildsDailyPeriods(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "eplusout.sql")
+	createTestEnergyDailySQL(t, path)
+
+	result, err := parseSimulationEnergyExplanationSQL(path, &PurposeRunPlan{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dayOne := energyExplanationPeriodByID(result.Periods, "D1")
+	dayTwo := energyExplanationPeriodByID(result.Periods, "D2")
+	if dayOne == nil || dayOne.Kind != "daily" || dayOne.Label != "Day 1" || dayTwo == nil || dayTwo.Kind != "daily" {
+		t.Fatalf("daily periods = %#v", result.Periods)
+	}
+	monthly := energyExplanationPeriodByID(result.Periods, "M1")
+	if monthly == nil || monthly.Kind != "monthly" {
+		t.Fatalf("monthly period missing from daily source = %#v", result.Periods)
+	}
+	facilityDayOne := energyExplanationNodeByID(dayOne.Nodes, "energy.carrier.electricity")
+	if facilityDayOne == nil || facilityDayOne.Value != 1 {
+		t.Fatalf("day 1 facility node = %#v", facilityDayOne)
+	}
+	coolingDayTwo := energyExplanationNodeByID(dayTwo.Nodes, "energy.end_use.cooling.electricity")
+	if coolingDayTwo == nil || coolingDayTwo.Value != 0.5 {
+		t.Fatalf("day 2 cooling node = %#v", coolingDayTwo)
+	}
+	reconciliation := energyExplanationReconciliationByID(dayTwo.Reconciliation, "reconcile.energy.electricity.D2")
+	if reconciliation == nil || reconciliation.ExpectedValue != 2 || reconciliation.ExplainedValue != 0.5 || reconciliation.ResidualValue != 1.5 {
+		t.Fatalf("day 2 reconciliation = %#v", dayTwo.Reconciliation)
+	}
+	if len(result.Periods) != 4 || result.Periods[0].ID != "annual" || result.Periods[1].ID != "M1" || result.Periods[2].ID != "D1" || result.Periods[3].ID != "D2" {
+		t.Fatalf("daily period order = %#v", result.Periods)
+	}
+}
+
 func TestParseSimulationEnergyExplanationSQLUsesTabularAnnualFallback(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "eplusout.sql")
@@ -2158,6 +2193,54 @@ func createTestEnergySQL(t *testing.T, path string) {
 			(4, 2, 21, 1800000.0),
 			(5, 1, 22, 900000.0),
 			(6, 2, 22, 900000.0)`,
+	}
+	for _, statement := range statements {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatalf("sql fixture statement failed: %v\n%s", err, statement)
+		}
+	}
+}
+
+func createTestEnergyDailySQL(t *testing.T, path string) {
+	t.Helper()
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	statements := []string{
+		`CREATE TABLE ReportDataDictionary (
+			ReportDataDictionaryIndex INTEGER PRIMARY KEY,
+			KeyValue TEXT,
+			Name TEXT,
+			Units TEXT,
+			IsMeter INTEGER,
+			ReportingFrequency TEXT
+		)`,
+		`CREATE TABLE "Time" (
+			TimeIndex INTEGER PRIMARY KEY,
+			Month INTEGER,
+			Day INTEGER,
+			Hour INTEGER,
+			Minute INTEGER
+		)`,
+		`CREATE TABLE ReportData (
+			ReportDataIndex INTEGER PRIMARY KEY,
+			TimeIndex INTEGER,
+			ReportDataDictionaryIndex INTEGER,
+			Value REAL
+		)`,
+		`INSERT INTO ReportDataDictionary VALUES
+			(20, '', 'Electricity:Facility', 'J', 1, 'Daily'),
+			(21, '', 'Electricity:Cooling', 'J', 1, 'Daily')`,
+		`INSERT INTO "Time" VALUES
+			(1, 1, 1, 24, 0),
+			(2, 1, 2, 24, 0)`,
+		`INSERT INTO ReportData VALUES
+			(1, 1, 20, 3600000.0),
+			(2, 2, 20, 7200000.0),
+			(3, 1, 21, 1800000.0),
+			(4, 2, 21, 1800000.0)`,
 	}
 	for _, statement := range statements {
 		if _, err := db.Exec(statement); err != nil {

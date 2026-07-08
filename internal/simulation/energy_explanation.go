@@ -241,6 +241,7 @@ type energyExplanationSeriesBuilder struct {
 	unit             string
 	total            float64
 	monthly          map[int]float64
+	daily            map[int]float64
 	selectedRange    float64
 	hasSelectedRange bool
 }
@@ -262,6 +263,7 @@ type energyExplanationSeries struct {
 	SourceIDs           []string
 	Total               float64
 	Monthly             map[int]float64
+	Daily               map[int]float64
 	SelectedRange       float64
 	HasSelectedRange    bool
 
@@ -364,6 +366,14 @@ func parseSimulationEnergyExplanationSQL(path string, plan *PurposeRunPlan) (Ene
 						builder.monthly = map[int]float64{}
 					}
 					builder.monthly[int(month.Int64)] += number
+				}
+				if energyExplanationSupportsDailyPeriods(dictionary) {
+					if rowDay, ok := energyExplanationSQLDayOfYear(month, day); ok {
+						if builder.daily == nil {
+							builder.daily = map[int]float64{}
+						}
+						builder.daily[rowDay] += number
+					}
 				}
 				if hasSelectedRange {
 					if rowDay, ok := energyExplanationSQLDayOfYear(month, day); ok && comfortDayInScope(rowDay, selectedStartDay, selectedEndDay) {
@@ -610,6 +620,21 @@ func buildEnergyExplanationResult(series []energyExplanationSeries, sources []En
 			ID:             periodID,
 			Label:          fmt.Sprintf("M%d", month),
 			Kind:           "monthly",
+			Nodes:          graph.Nodes,
+			Edges:          graph.Edges,
+			Reconciliation: graph.Reconciliation,
+			Warnings:       graph.Warnings,
+		})
+	}
+	for _, day := range energyExplanationDays(series) {
+		periodID := fmt.Sprintf("D%d", day)
+		graph := buildEnergyExplanationGraphForPeriod(periodID, series, allocationPolicy, func(item energyExplanationSeries) float64 {
+			return item.Daily[day]
+		})
+		periods = append(periods, EnergyPeriod{
+			ID:             periodID,
+			Label:          fmt.Sprintf("Day %d", day),
+			Kind:           "daily",
 			Nodes:          graph.Nodes,
 			Edges:          graph.Edges,
 			Reconciliation: graph.Reconciliation,
@@ -1421,6 +1446,7 @@ func energyExplanationSeriesForBuilder(builder *energyExplanationSeriesBuilder, 
 			SourceIDs:           []string{sourceID},
 			Total:               roundedEnergyNumber(builder.total),
 			Monthly:             roundedEnergyExplanationMonthly(builder.monthly),
+			Daily:               roundedEnergyExplanationDaily(builder.daily),
 			SelectedRange:       roundedEnergyNumber(builder.selectedRange),
 			HasSelectedRange:    builder.hasSelectedRange,
 			sourceKeyValue:      strings.TrimSpace(dictionary.row.keyValue),
@@ -1444,6 +1470,7 @@ func energyExplanationSeriesForBuilder(builder *energyExplanationSeriesBuilder, 
 			SourceIDs:        []string{sourceID},
 			Total:            roundedEnergyNumber(builder.total),
 			Monthly:          roundedEnergyExplanationMonthly(builder.monthly),
+			Daily:            roundedEnergyExplanationDaily(builder.daily),
 			SelectedRange:    roundedEnergyNumber(builder.selectedRange),
 			HasSelectedRange: builder.hasSelectedRange,
 			sourceKeyValue:   strings.TrimSpace(dictionary.row.keyValue),
@@ -1472,6 +1499,7 @@ func energyExplanationSeriesForBuilder(builder *energyExplanationSeriesBuilder, 
 		SourceIDs:          []string{sourceID},
 		Total:              roundedEnergyNumber(builder.total),
 		Monthly:            roundedEnergyExplanationMonthly(builder.monthly),
+		Daily:              roundedEnergyExplanationDaily(builder.daily),
 		SelectedRange:      roundedEnergyNumber(builder.selectedRange),
 		HasSelectedRange:   builder.hasSelectedRange,
 		sourceKeyValue:     strings.TrimSpace(dictionary.row.keyValue),
@@ -1714,6 +1742,19 @@ func energyExplanationAggregationMethod(dictionary energyExplanationDictionary) 
 		return "integrate_rate_by_time_interval"
 	}
 	return "sum_report_data"
+}
+
+func energyExplanationSupportsDailyPeriods(dictionary energyExplanationDictionary) bool {
+	frequency := strings.TrimSpace(dictionary.reportingFrequency)
+	if frequency == "" {
+		return false
+	}
+	switch strings.ToLower(canonicalPurposeFrequency(frequency)) {
+	case "daily", "hourly", "timestep", "detailed":
+		return true
+	default:
+		return false
+	}
 }
 
 func energyExplanationObjectIndexForDictionary(dictionary energyExplanationDictionary, plan *PurposeRunPlan) *int {
@@ -2484,6 +2525,24 @@ func energyExplanationMonths(series []energyExplanationSeries) []int {
 	return months
 }
 
+func energyExplanationDays(series []energyExplanationSeries) []int {
+	seen := map[int]bool{}
+	for _, item := range series {
+		for day, value := range item.Daily {
+			if value == 0 {
+				continue
+			}
+			seen[day] = true
+		}
+	}
+	days := make([]int, 0, len(seen))
+	for day := range seen {
+		days = append(days, day)
+	}
+	sort.Ints(days)
+	return days
+}
+
 func roundedEnergyExplanationMonthly(monthly map[int]float64) map[int]float64 {
 	if len(monthly) == 0 {
 		return nil
@@ -2491,6 +2550,17 @@ func roundedEnergyExplanationMonthly(monthly map[int]float64) map[int]float64 {
 	out := map[int]float64{}
 	for month, value := range monthly {
 		out[month] = roundedEnergyNumber(value)
+	}
+	return out
+}
+
+func roundedEnergyExplanationDaily(daily map[int]float64) map[int]float64 {
+	if len(daily) == 0 {
+		return nil
+	}
+	out := map[int]float64{}
+	for day, value := range daily {
+		out[day] = roundedEnergyNumber(value)
 	}
 	return out
 }

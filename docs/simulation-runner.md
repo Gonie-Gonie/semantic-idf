@@ -154,10 +154,13 @@ source IDs derived from `ReportDataDictionary`, accounting-basis edges, and
 residual reconciliation between facility carrier totals and mapped end-use
 meters. If detailed `ReportData` rows are unavailable, Basic Energy can fall
 back to annual `TabularDataWithStrings` end-use rows and marks those sources as
-`sql_tabular` with `tabular_annual_value` aggregation. When a custom period
-scope is selected, SQL row values whose `Time` month/day falls inside the scope
-are also emitted as a `selected_range` period alongside annual and monthly
-periods. The payload includes the Basic Energy relationship rule catalog, and
+`sql_tabular` with `tabular_annual_value` aggregation. Daily, hourly, timestep,
+or detailed SQL sources also emit daily `D<n>` periods from `Time.Month` and
+`Time.Day`, while Monthly/RunPeriod sources stay annual/monthly only to avoid
+treating monthly rows as daily data. When a custom period scope is selected,
+SQL row values whose `Time` month/day falls inside the scope are also emitted as
+a `selected_range` period alongside annual and monthly periods. The payload
+includes the Basic Energy relationship rule catalog, and
 explanation edges carry a relationship `ruleId` from that catalog so the UI and
 exports can distinguish measured end-use, measured load, heat-balance, and
 residual links. The companion
