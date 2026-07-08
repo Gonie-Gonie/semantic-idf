@@ -78,6 +78,9 @@ The release script infers bump size from these sections:
   to the matching output request when one is known.
 - The Basic Energy Sankey inspector now shows the selected edge `relation`
   alongside basis, rule, formula, and source metadata.
+- Heat-driver reconciliation now includes zone/service rows when zone delivered
+  load and zone heat-driver sources are available, including monthly period
+  rows.
 - Energy reconciliation source IDs now include both the expected facility total
   source and the mapped consumption end-use sources used in the residual
   formula.

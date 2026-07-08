@@ -1286,6 +1286,8 @@ function renderEnergyExplanationReconciliation(explanation = {}) {
         <tr>
           <td>${escapeHTML(item.label || item.id || "")}</td>
           <td>${escapeHTML(item.period || "")}</td>
+          <td>${escapeHTML(item.zoneName || "")}</td>
+          <td>${escapeHTML(item.serviceKind || "")}</td>
           <td>${escapeHTML(formatValueWithUnit(item.expectedValue, item.unit))}</td>
           <td>${escapeHTML(formatValueWithUnit(item.explainedValue, item.unit))}</td>
           <td>${escapeHTML(formatValueWithUnit(item.residualValue, item.unit))}</td>
@@ -1309,8 +1311,8 @@ function renderEnergyExplanationReconciliation(explanation = {}) {
       </div>
       <div class="output-table-wrap">
         <table class="output-table">
-          <thead><tr><th>${escapeHTML(t("common.metric", {}, "Metric"))}</th><th>${escapeHTML(t("common.period", {}, "Period"))}</th><th>Expected</th><th>Mapped</th><th>Residual</th><th>${escapeHTML(t("simulation.basis", {}, "Basis"))}</th><th>Formula</th><th>${escapeHTML(t("common.source", {}, "Source"))}</th></tr></thead>
-          <tbody>${rows || `<tr><td colspan="8">${escapeHTML(t("common.notAvailable", {}, "N/A"))}</td></tr>`}</tbody>
+          <thead><tr><th>${escapeHTML(t("common.metric", {}, "Metric"))}</th><th>${escapeHTML(t("common.period", {}, "Period"))}</th><th>${escapeHTML(t("common.zone", {}, "Zone"))}</th><th>${escapeHTML(t("simulation.service", {}, "Service"))}</th><th>Expected</th><th>Mapped</th><th>Residual</th><th>${escapeHTML(t("simulation.basis", {}, "Basis"))}</th><th>Formula</th><th>${escapeHTML(t("common.source", {}, "Source"))}</th></tr></thead>
+          <tbody>${rows || `<tr><td colspan="10">${escapeHTML(t("common.notAvailable", {}, "N/A"))}</td></tr>`}</tbody>
         </table>
       </div>
     </section>`;

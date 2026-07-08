@@ -129,6 +129,8 @@ type EnergyReconciliation struct {
 	Level          string   `json:"level"`
 	Period         string   `json:"period"`
 	Label          string   `json:"label"`
+	ZoneName       string   `json:"zoneName,omitempty"`
+	ServiceKind    string   `json:"serviceKind,omitempty"`
 	ExpectedValue  float64  `json:"expectedValue"`
 	ExplainedValue float64  `json:"explainedValue"`
 	ResidualValue  float64  `json:"residualValue"`
@@ -772,6 +774,8 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 	zoneLoadNodesByService := map[string][]string{}
 	heatValueByService := map[string]float64{}
 	heatSourcesByService := map[string][]string{}
+	heatValueByZoneService := map[string]float64{}
+	heatSourcesByZoneService := map[string][]string{}
 	addNode := func(node EnergyExplanationNode) {
 		if node.ID == "" || node.Value == 0 {
 			return
@@ -1028,6 +1032,11 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 		}
 		heatValueByService[node.node.ServiceKind] += node.node.DisplayValue
 		heatSourcesByService[node.node.ServiceKind] = appendUniqueStrings(heatSourcesByService[node.node.ServiceKind], node.node.SourceIDs...)
+		if node.node.ZoneName != "" && node.node.ServiceKind != "" {
+			key := energyExplanationZoneServiceKey(node.node.ZoneName, node.node.ServiceKind)
+			heatValueByZoneService[key] += node.node.DisplayValue
+			heatSourcesByZoneService[key] = appendUniqueStrings(heatSourcesByZoneService[key], node.node.SourceIDs...)
+		}
 		edges = append(edges, EnergyExplanationEdge{
 			ID:           edgeID("heat", period, fromID, node.node.ID),
 			FromID:       fromID,
@@ -1085,6 +1094,7 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 			Unit:           loadUnit,
 			Basis:          "residual",
 			Formula:        "delivered load - mapped heat drivers",
+			ServiceKind:    serviceKind,
 			SourceIDs:      sourceIDs,
 		})
 		if math.Abs(residual) <= energyResidualVisibilityThreshold(loadValue) {
@@ -1129,6 +1139,58 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 				Period:   period,
 			})
 		}
+	}
+	zoneServiceKeys := make([]string, 0, len(loadNodesByZoneService))
+	for key := range loadNodesByZoneService {
+		if strings.Contains(key, "|") {
+			zoneServiceKeys = append(zoneServiceKeys, key)
+		}
+	}
+	sort.Strings(zoneServiceKeys)
+	for _, key := range zoneServiceKeys {
+		zoneID, serviceKind := splitEnergyExplanationZoneServiceKey(key)
+		if zoneID == "" || serviceKind == "" {
+			continue
+		}
+		loadValue := 0.0
+		loadUnit := "kWh"
+		zoneName := zoneID
+		loadSources := []string{}
+		for _, loadID := range loadNodesByZoneService[key] {
+			loadNode := nodes[loadID]
+			if loadNode == nil {
+				continue
+			}
+			loadValue += loadNode.node.Value
+			if loadNode.node.ZoneName != "" {
+				zoneName = loadNode.node.ZoneName
+			}
+			if loadNode.node.Unit != "" {
+				loadUnit = loadNode.node.Unit
+			}
+			loadSources = appendUniqueStrings(loadSources, loadNode.node.SourceIDs...)
+		}
+		if loadValue == 0 {
+			continue
+		}
+		heatValue := roundedEnergyNumber(heatValueByZoneService[key])
+		residual := roundedEnergyNumber(loadValue - heatValue)
+		sourceIDs := appendUniqueStrings(loadSources, heatSourcesByZoneService[key]...)
+		reconciliation = append(reconciliation, EnergyReconciliation{
+			ID:             "reconcile.heat." + serviceKind + "." + zoneID + "." + period,
+			Level:          "heat",
+			Period:         period,
+			Label:          energyServiceLabel(serviceKind) + " heat-driver basis - " + zoneName,
+			ZoneName:       zoneName,
+			ServiceKind:    serviceKind,
+			ExpectedValue:  roundedEnergyNumber(loadValue),
+			ExplainedValue: heatValue,
+			ResidualValue:  residual,
+			Unit:           loadUnit,
+			Basis:          "residual",
+			Formula:        "zone delivered load - mapped zone heat drivers",
+			SourceIDs:      sourceIDs,
+		})
 	}
 
 	outNodes := make([]EnergyExplanationNode, 0, len(nodes))
@@ -2019,6 +2081,14 @@ func energyExplanationZoneSuffix(zoneName string) string {
 
 func energyExplanationZoneServiceKey(zoneName string, serviceKind string) string {
 	return energyExplanationZoneSuffix(zoneName) + "|" + strings.TrimSpace(serviceKind)
+}
+
+func splitEnergyExplanationZoneServiceKey(key string) (string, string) {
+	zoneName, serviceKind, ok := strings.Cut(key, "|")
+	if !ok {
+		return "", ""
+	}
+	return strings.TrimSpace(zoneName), strings.TrimSpace(serviceKind)
 }
 
 func energyCarrierLabel(carrier string) string {

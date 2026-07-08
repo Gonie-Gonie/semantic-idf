@@ -554,7 +554,7 @@ export function initializeMultiSimulationTool(context) {
           reconciliation.formula || "",
           "",
           "",
-          "",
+          reconciliation.zoneName || "",
           reconciliation.serviceKind || "",
           (reconciliation.sourceIds || []).join("; "),
           "",

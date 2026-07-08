@@ -220,7 +220,9 @@ Purpose result viewers now include:
   source/output links so residual checks remain traceable to their meter or
   variable requests. Energy residual rows include both the expected facility
   total source and the mapped consumption end-use sources referenced by the
-  residual formula.
+  residual formula. Heat-driver reconciliation includes service-level rows and,
+  where zone load and heat-driver data exist, zone/service rows for the selected
+  annual or monthly period.
   The `Systems` subview and node inspector match load/heat services to the
   current HVAC service model by zone and service kind, then link directly to the
   related HVAC service path. Sankey and Systems can focus the graph by all

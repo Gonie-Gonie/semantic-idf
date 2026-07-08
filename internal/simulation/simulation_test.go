@@ -598,9 +598,20 @@ func TestParseSimulationEnergyExplanationSQLBuildsAccountingGraph(t *testing.T) 
 	if !stringSliceContains(energyReconciliation.SourceIDs, "sql-rdd-20") || !stringSliceContains(energyReconciliation.SourceIDs, "sql-rdd-21") {
 		t.Fatalf("energy reconciliation sources = %#v", energyReconciliation.SourceIDs)
 	}
+	zoneHeatReconciliation := energyExplanationReconciliationByID(result.Reconciliation, "reconcile.heat.cooling.zone_one.annual")
+	if zoneHeatReconciliation == nil || zoneHeatReconciliation.ZoneName != "ZONE ONE" || zoneHeatReconciliation.ServiceKind != "cooling" || zoneHeatReconciliation.ExpectedValue != 0.5 || zoneHeatReconciliation.ExplainedValue != 0.5 || zoneHeatReconciliation.ResidualValue != 0 {
+		t.Fatalf("zone heat reconciliation = %#v", zoneHeatReconciliation)
+	}
+	if !stringSliceContains(zoneHeatReconciliation.SourceIDs, "sql-rdd-23") || !stringSliceContains(zoneHeatReconciliation.SourceIDs, "sql-rdd-24") {
+		t.Fatalf("zone heat reconciliation sources = %#v", zoneHeatReconciliation.SourceIDs)
+	}
 	monthlyHeatReconciliation := energyExplanationReconciliationByID(result.Periods[1].Reconciliation, "reconcile.heat.cooling.M1")
 	if monthlyHeatReconciliation == nil || monthlyHeatReconciliation.ExpectedValue != 0.25 || monthlyHeatReconciliation.ExplainedValue != 0.5 || monthlyHeatReconciliation.ResidualValue != -0.25 {
 		t.Fatalf("monthly heat reconciliation = %#v", result.Periods[1].Reconciliation)
+	}
+	monthlyZoneHeatReconciliation := energyExplanationReconciliationByID(result.Periods[1].Reconciliation, "reconcile.heat.cooling.zone_one.M1")
+	if monthlyZoneHeatReconciliation == nil || monthlyZoneHeatReconciliation.ZoneName != "ZONE ONE" || monthlyZoneHeatReconciliation.ExpectedValue != 0.25 || monthlyZoneHeatReconciliation.ExplainedValue != 0.5 || monthlyZoneHeatReconciliation.ResidualValue != -0.25 {
+		t.Fatalf("monthly zone heat reconciliation = %#v", result.Periods[1].Reconciliation)
 	}
 	if result.Completeness.HeatDrivers.Found != 2 || result.Completeness.HeatDrivers.Total != 2 || result.Completeness.DeliveredLoad.Found != 1 || result.Completeness.DeliveredLoad.Total != 1 {
 		t.Fatalf("explanation completeness = %#v", result.Completeness)
