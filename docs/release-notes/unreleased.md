@@ -39,6 +39,8 @@ The release script infers bump size from these sections:
   `direct_only` and `by_zone_load_share` allocation policies. The zone-load
   share mode emits `basis=allocated` Energy Use -> Delivered Load edges, and
   Simulation/Batch Simulation controls can select the policy.
+- Basic Energy allocation policy now also supports `by_service_path_load_share`
+  when delivered-load nodes can be matched to HVAC service paths.
 - Basic Energy purpose runs now request monthly delivered-load and heat-driver
   explanation outputs while reusing hourly Zone Heat Flow outputs when that
   purpose is selected.

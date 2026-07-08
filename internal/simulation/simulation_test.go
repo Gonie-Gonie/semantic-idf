@@ -925,9 +925,16 @@ func TestEnergyRelationshipRuleCatalogProvidesEdgeBasis(t *testing.T) {
 	if allocationRule.Basis != "allocated" || allocationRule.FromLevel != "energy" || allocationRule.ToLevel != "load" {
 		t.Fatalf("allocation rule = %#v", allocationRule)
 	}
+	servicePathAllocationRule := energyRelationshipRuleByID(energyRelationshipRuleAllocatedServicePathLoad)
+	if servicePathAllocationRule.Basis != "allocated" || !strings.Contains(servicePathAllocationRule.Formula, "service path") {
+		t.Fatalf("service path allocation rule = %#v", servicePathAllocationRule)
+	}
 	productionRule := energyRelationshipRuleByID(energyRelationshipRuleOnsiteProduction)
 	if productionRule.Basis != "measured_meter" || !strings.Contains(productionRule.Formula, "separately") {
 		t.Fatalf("onsite production rule = %#v", productionRule)
+	}
+	if request := NormalizeSimulationPurposeRequest(&SimulationPurposeRequest{AllocationPolicy: PurposeAllocationPolicyByServicePathLoadShare}); request.AllocationPolicy != PurposeAllocationPolicyByServicePathLoadShare {
+		t.Fatalf("service path allocation policy normalized to %q", request.AllocationPolicy)
 	}
 }
 
@@ -978,6 +985,88 @@ func TestBuildEnergyExplanationAllocatedZoneLoadShare(t *testing.T) {
 	}
 	if energyExplanationHasEdge(result.Edges, "delivered_load", "measured_variable", "energy.end_use.cooling.electricity", "load.cooling.zone_a") {
 		t.Fatalf("allocated view should not also emit measured delivered-load edges: %#v", result.Edges)
+	}
+}
+
+func TestApplyEnergyExplanationServicePathLoadShareAllocation(t *testing.T) {
+	explanation := EnergyExplanationResult{
+		AllocationPolicy: PurposeAllocationPolicyByServicePathLoadShare,
+		Nodes: []EnergyExplanationNode{
+			{
+				ID:          "energy.end_use.cooling.electricity",
+				Level:       "energy",
+				Kind:        "energy.cooling",
+				Label:       "Cooling energy",
+				Value:       12,
+				Unit:        "kWh",
+				Carrier:     "electricity",
+				EndUse:      "cooling",
+				ServiceKind: "cooling",
+				SourceIDs:   []string{"energy-source"},
+			},
+			{
+				ID:             "load.cooling.office",
+				Level:          "load",
+				Kind:           "load.zone_cooling",
+				Label:          "Office cooling",
+				Value:          4,
+				Unit:           "kWh",
+				ServiceKind:    "cooling",
+				ZoneName:       "OFFICE",
+				SourceIDs:      []string{"load-office"},
+				RelatedPathIDs: []string{"path.office.cooling"},
+			},
+			{
+				ID:             "load.cooling.lab",
+				Level:          "load",
+				Kind:           "load.zone_cooling",
+				Label:          "Lab cooling",
+				Value:          8,
+				Unit:           "kWh",
+				ServiceKind:    "cooling",
+				ZoneName:       "LAB",
+				SourceIDs:      []string{"load-lab"},
+				RelatedPathIDs: []string{"path.lab.cooling"},
+			},
+		},
+		Edges: []EnergyExplanationEdge{
+			{
+				ID:          "edge.office",
+				FromID:      "energy.end_use.cooling.electricity",
+				ToID:        "load.cooling.office",
+				Value:       4,
+				Unit:        "kWh",
+				Relation:    "delivered_load",
+				Basis:       "measured_variable",
+				RuleID:      energyRelationshipRuleMeasuredLoad,
+				ServiceKind: "cooling",
+				SourceIDs:   []string{"load-office"},
+			},
+			{
+				ID:          "edge.lab",
+				FromID:      "energy.end_use.cooling.electricity",
+				ToID:        "load.cooling.lab",
+				Value:       8,
+				Unit:        "kWh",
+				Relation:    "delivered_load",
+				Basis:       "measured_variable",
+				RuleID:      energyRelationshipRuleMeasuredLoad,
+				ServiceKind: "cooling",
+				SourceIDs:   []string{"load-lab"},
+			},
+		},
+	}
+	result := applyEnergyExplanationServicePathLoadShareAllocation(explanation)
+	office := energyExplanationEdgeByIDs(result.Edges, "energy.end_use.cooling.electricity", "load.cooling.office")
+	if office == nil || office.Relation != "allocation" || office.Basis != "allocated" || office.RuleID != energyRelationshipRuleAllocatedServicePathLoad || office.Value != 4 || len(office.RelatedPathIDs) != 1 {
+		t.Fatalf("office service-path allocation edge = %#v; all edges = %#v", office, result.Edges)
+	}
+	lab := energyExplanationEdgeByIDs(result.Edges, "energy.end_use.cooling.electricity", "load.cooling.lab")
+	if lab == nil || lab.Relation != "allocation" || lab.Value != 8 || !strings.Contains(lab.Formula, "path.lab.cooling") {
+		t.Fatalf("lab service-path allocation edge = %#v; all edges = %#v", lab, result.Edges)
+	}
+	if energyExplanationHasEdge(result.Edges, "delivered_load", "measured_variable", "energy.end_use.cooling.electricity", "load.cooling.office") {
+		t.Fatalf("service-path allocated view should not retain measured delivered-load edge: %#v", result.Edges)
 	}
 }
 

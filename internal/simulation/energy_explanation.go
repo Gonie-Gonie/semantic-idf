@@ -193,13 +193,14 @@ type EnergyRelationshipRule struct {
 }
 
 const (
-	energyRelationshipRuleMeterEndUse       = "meter.end_use"
-	energyRelationshipRuleMeasuredLoad      = "load.measured_variable"
-	energyRelationshipRuleAllocatedZoneLoad = "allocation.by_zone_load_share"
-	energyRelationshipRuleHeatDriverBalance = "heat.driver_balance"
-	energyRelationshipRuleOnsiteProduction  = "support.onsite_production"
-	energyRelationshipRuleEnergyResidual    = "residual.energy_total"
-	energyRelationshipRuleHeatResidual      = "residual.heat_driver_balance"
+	energyRelationshipRuleMeterEndUse              = "meter.end_use"
+	energyRelationshipRuleMeasuredLoad             = "load.measured_variable"
+	energyRelationshipRuleAllocatedZoneLoad        = "allocation.by_zone_load_share"
+	energyRelationshipRuleAllocatedServicePathLoad = "allocation.by_service_path_load_share"
+	energyRelationshipRuleHeatDriverBalance        = "heat.driver_balance"
+	energyRelationshipRuleOnsiteProduction         = "support.onsite_production"
+	energyRelationshipRuleEnergyResidual           = "residual.energy_total"
+	energyRelationshipRuleHeatResidual             = "residual.heat_driver_balance"
 )
 
 type energyMeterAliasDefinition struct {
@@ -1483,6 +1484,149 @@ func addAllocatedZoneLoadShareEdges(edges *[]EnergyExplanationEdge, period strin
 	return true
 }
 
+func applyEnergyExplanationServicePathLoadShareAllocation(explanation EnergyExplanationResult) EnergyExplanationResult {
+	if explanation.AllocationPolicy != PurposeAllocationPolicyByServicePathLoadShare {
+		return explanation
+	}
+	rule := energyRelationshipRuleByID(energyRelationshipRuleAllocatedServicePathLoad)
+	explanation.Edges = servicePathLoadShareAllocatedEdges(explanation.Nodes, explanation.Edges, rule)
+	for periodIndex := range explanation.Periods {
+		explanation.Periods[periodIndex].Edges = servicePathLoadShareAllocatedEdges(explanation.Periods[periodIndex].Nodes, explanation.Periods[periodIndex].Edges, rule)
+	}
+	return explanation
+}
+
+func servicePathLoadShareAllocatedEdges(nodes []EnergyExplanationNode, edges []EnergyExplanationEdge, rule EnergyRelationshipRule) []EnergyExplanationEdge {
+	nodeByID := map[string]EnergyExplanationNode{}
+	for _, node := range nodes {
+		if node.ID != "" {
+			nodeByID[node.ID] = node
+		}
+	}
+	groups := map[string][]EnergyExplanationEdge{}
+	groupOrder := []string{}
+	edgeGroup := map[string]string{}
+	for _, edge := range edges {
+		if !isServicePathLoadShareCandidate(edge, nodeByID) {
+			continue
+		}
+		key := strings.Join([]string{edge.Period, edge.FromID, servicePathLoadShareEdgeServiceKind(edge, nodeByID)}, "\x00")
+		if _, ok := groups[key]; !ok {
+			groupOrder = append(groupOrder, key)
+		}
+		groups[key] = append(groups[key], edge)
+		edgeGroup[edge.ID] = key
+	}
+	if len(groups) == 0 {
+		return edges
+	}
+	allocatedGroups := map[string][]EnergyExplanationEdge{}
+	for _, key := range groupOrder {
+		allocatedGroups[key] = servicePathLoadShareAllocatedGroup(groups[key], nodeByID, rule)
+	}
+	out := make([]EnergyExplanationEdge, 0, len(edges))
+	emittedGroups := map[string]bool{}
+	for _, edge := range edges {
+		key := edgeGroup[edge.ID]
+		if key == "" {
+			out = append(out, edge)
+			continue
+		}
+		if emittedGroups[key] {
+			continue
+		}
+		out = append(out, allocatedGroups[key]...)
+		emittedGroups[key] = true
+	}
+	return out
+}
+
+func isServicePathLoadShareCandidate(edge EnergyExplanationEdge, nodeByID map[string]EnergyExplanationNode) bool {
+	if edge.Relation != "delivered_load" || edge.Basis != "measured_variable" || edge.FromID == "" || edge.ToID == "" {
+		return false
+	}
+	fromNode, fromOK := nodeByID[edge.FromID]
+	toNode, toOK := nodeByID[edge.ToID]
+	if !fromOK || !toOK || fromNode.Level != "energy" || toNode.Level != "load" {
+		return false
+	}
+	return energyCanonicalServiceKind(firstNonEmpty(edge.ServiceKind, toNode.ServiceKind, fromNode.EndUse)) != ""
+}
+
+func servicePathLoadShareEdgeServiceKind(edge EnergyExplanationEdge, nodeByID map[string]EnergyExplanationNode) string {
+	fromNode := nodeByID[edge.FromID]
+	toNode := nodeByID[edge.ToID]
+	return energyCanonicalServiceKind(firstNonEmpty(edge.ServiceKind, toNode.ServiceKind, fromNode.EndUse))
+}
+
+func servicePathLoadShareAllocatedGroup(group []EnergyExplanationEdge, nodeByID map[string]EnergyExplanationNode, rule EnergyRelationshipRule) []EnergyExplanationEdge {
+	if len(group) == 0 {
+		return group
+	}
+	fromNode := nodeByID[group[0].FromID]
+	if fromNode.ID == "" || fromNode.Value == 0 {
+		return append([]EnergyExplanationEdge(nil), group...)
+	}
+	type servicePathTarget struct {
+		edge  EnergyExplanationEdge
+		node  EnergyExplanationNode
+		paths []string
+		value float64
+	}
+	targets := []servicePathTarget{}
+	totalLoad := 0.0
+	for _, edge := range group {
+		targetNode := nodeByID[edge.ToID]
+		paths := appendUniqueStrings(targetNode.RelatedPathIDs, edge.RelatedPathIDs...)
+		if len(paths) == 0 {
+			return append([]EnergyExplanationEdge(nil), group...)
+		}
+		value := math.Abs(edge.Value)
+		if value == 0 {
+			value = math.Abs(targetNode.Value)
+		}
+		if value == 0 {
+			return append([]EnergyExplanationEdge(nil), group...)
+		}
+		totalLoad += value
+		targets = append(targets, servicePathTarget{edge: edge, node: targetNode, paths: paths, value: value})
+	}
+	if totalLoad == 0 {
+		return append([]EnergyExplanationEdge(nil), group...)
+	}
+	allocated := make([]EnergyExplanationEdge, 0, len(targets))
+	for _, target := range targets {
+		share := target.value / totalLoad
+		value := roundedEnergyNumber(fromNode.Value * share)
+		if value == 0 {
+			continue
+		}
+		serviceKind := energyCanonicalServiceKind(firstNonEmpty(target.edge.ServiceKind, target.node.ServiceKind, fromNode.EndUse))
+		sourceIDs := appendUniqueStrings(fromNode.SourceIDs, target.edge.SourceIDs...)
+		sourceIDs = appendUniqueStrings(sourceIDs, target.node.SourceIDs...)
+		allocated = append(allocated, EnergyExplanationEdge{
+			ID:             edgeID("allocation_service_path", target.edge.Period, target.edge.FromID, target.edge.ToID),
+			FromID:         target.edge.FromID,
+			ToID:           target.edge.ToID,
+			Value:          value,
+			Unit:           firstNonEmpty(fromNode.Unit, target.edge.Unit, target.node.Unit),
+			Period:         target.edge.Period,
+			Relation:       "allocation",
+			Basis:          rule.Basis,
+			Formula:        fmt.Sprintf("%s; service path load share %.6f; service paths %s", rule.Formula, share, strings.Join(target.paths, ", ")),
+			RuleID:         rule.ID,
+			SourceIDs:      sourceIDs,
+			ZoneName:       target.node.ZoneName,
+			ServiceKind:    serviceKind,
+			RelatedPathIDs: target.paths,
+		})
+	}
+	if len(allocated) == 0 {
+		return append([]EnergyExplanationEdge(nil), group...)
+	}
+	return allocated
+}
+
 func sqlEnergyExplanationDictionaries(db *sql.DB, sourceFile string) ([]energyExplanationDictionary, error) {
 	columns, err := sqlTableColumns(db, "ReportDataDictionary")
 	if err != nil {
@@ -2145,6 +2289,16 @@ func energyRelationshipRuleCatalog() []EnergyRelationshipRule {
 			RequiredSource: []string{"sql_report_data:meter", "sql_report_data:variable"},
 			Basis:          "allocated",
 			Formula:        "allocate end-use energy by measured zone delivered-load share",
+		},
+		{
+			ID:             energyRelationshipRuleAllocatedServicePathLoad,
+			FromLevel:      "energy",
+			ToLevel:        "load",
+			FromKind:       "cooling_or_heating_end_use",
+			ToKind:         "service_path_delivered_load",
+			RequiredSource: []string{"sql_report_data:meter", "sql_report_data:variable", "idf_hvac_service_model"},
+			Basis:          "allocated",
+			Formula:        "allocate end-use energy by measured delivered-load share for matched HVAC service paths",
 		},
 		{
 			ID:             energyRelationshipRuleHeatDriverBalance,

@@ -49,12 +49,15 @@ is a convenience wrapper that defaults to Basic Energy + Zone Heat Flow.
 `SimulationPurposeRequest.allocationPolicy` defaults to `direct_only`. Basic
 Energy also accepts `by_zone_load_share`, which replaces direct Energy Use ->
 Delivered Load links with `basis=allocated` zone-load-share edges when
-zone-scoped delivered-load variables are available. The Simulation and Batch
-Simulation purpose controls expose both policies. Batch Simulation also exposes
-the same frequency policy selector as single-file Simulation, so batch users can
-keep the monthly purpose default, preserve existing output frequencies, or ask
-for the highest available resolution when they need drilldown. Service-path
-allocation is still reserved for a future mode.
+zone-scoped delivered-load variables are available. It also accepts
+`by_service_path_load_share`, which applies the same load-share allocation only
+after load nodes are matched to HVAC service paths; if a load group cannot be
+fully matched to service paths, the measured direct edges are preserved. The
+Simulation and Batch Simulation purpose controls expose these policies. Batch
+Simulation also exposes the same frequency policy selector as single-file
+Simulation, so batch users can keep the monthly purpose default, preserve
+existing output frequencies, or ask for the highest available resolution when
+they need drilldown.
 
 ## Purpose Model
 
@@ -182,7 +185,9 @@ catalog are retained as `other` end uses while preserving the original meter
 name in source metadata. With `by_zone_load_share`, cooling/heating end-use
 energy is allocated to zone load nodes by measured delivered-load share and the
 edge uses `relation=allocation`, `basis=allocated`, and the
-`allocation.by_zone_load_share` rule. When heat-balance rate
+`allocation.by_zone_load_share` rule. With `by_service_path_load_share`, the
+allocated edge also carries the matched service path IDs and the
+`allocation.by_service_path_load_share` rule. When heat-balance rate
 variables are present, the same payload
 integrates them to `kWh` by timestep and links Delivered Load to Heat Drivers
 with signed driver values and residual reconciliation. Explicit sensible heat

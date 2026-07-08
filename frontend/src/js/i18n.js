@@ -745,6 +745,7 @@ const dictionaries = {
     "simulation.estimatedFrames": "{count} frames",
     "simulation.estimatedSeries": "{count} series",
     "simulation.allocationByZoneLoadShare": "By zone load share",
+    "simulation.allocationByServicePathLoadShare": "By service path load share",
     "simulation.allocationDirectOnly": "Direct only",
     "simulation.allocationPolicy": "Allocation policy",
     "simulation.frequencyHighestResolution": "Highest resolution",

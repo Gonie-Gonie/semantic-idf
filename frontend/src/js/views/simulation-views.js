@@ -993,6 +993,10 @@ function energyAllocationPolicyLabel(policy = "") {
   switch (policy) {
     case "direct_only":
       return t("simulation.allocationDirectOnly", {}, "Direct only");
+    case "by_zone_load_share":
+      return t("simulation.allocationByZoneLoadShare", {}, "By zone load share");
+    case "by_service_path_load_share":
+      return t("simulation.allocationByServicePathLoadShare", {}, "By service path load share");
     default:
       return titleCaseEnergyToken(policy || "direct_only");
   }

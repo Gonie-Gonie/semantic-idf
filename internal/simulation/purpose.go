@@ -26,20 +26,21 @@ const (
 )
 
 const (
-	PurposeFrequencyPolicyDefault           = "purpose_default"
-	PurposeFrequencyPolicyPreserve          = "preserve"
-	PurposeFrequencyPolicyHighestResolution = "highest_resolution"
-	PurposeSQLModeSQLFirst                  = "sql_first"
-	PurposeAllocationPolicyDirectOnly       = "direct_only"
-	PurposeAllocationPolicyByZoneLoadShare  = "by_zone_load_share"
-	PurposeOutputStateExisting              = "existing"
-	PurposeOutputStateTemporary             = "temporary"
-	PurposeOutputStateWillPersist           = "will_be_persisted"
-	PurposeOutputStateConflict              = "conflict"
-	PurposeOutputApplyModeAddMissingOnly    = "add_missing_only"
-	PurposeOutputApplyModeReplaceConflicts  = "replace_conflicting"
-	PurposeOutputApplyModeKeepExistingAdd   = "keep_existing_and_add"
-	PurposeOutputApplyModeRemovePurpose     = "remove_purpose_outputs"
+	PurposeFrequencyPolicyDefault                 = "purpose_default"
+	PurposeFrequencyPolicyPreserve                = "preserve"
+	PurposeFrequencyPolicyHighestResolution       = "highest_resolution"
+	PurposeSQLModeSQLFirst                        = "sql_first"
+	PurposeAllocationPolicyDirectOnly             = "direct_only"
+	PurposeAllocationPolicyByZoneLoadShare        = "by_zone_load_share"
+	PurposeAllocationPolicyByServicePathLoadShare = "by_service_path_load_share"
+	PurposeOutputStateExisting                    = "existing"
+	PurposeOutputStateTemporary                   = "temporary"
+	PurposeOutputStateWillPersist                 = "will_be_persisted"
+	PurposeOutputStateConflict                    = "conflict"
+	PurposeOutputApplyModeAddMissingOnly          = "add_missing_only"
+	PurposeOutputApplyModeReplaceConflicts        = "replace_conflicting"
+	PurposeOutputApplyModeKeepExistingAdd         = "keep_existing_and_add"
+	PurposeOutputApplyModeRemovePurpose           = "remove_purpose_outputs"
 )
 
 type SimulationPurposeRequest struct {
@@ -392,6 +393,8 @@ func normalizePurposeAllocationPolicy(policy string) string {
 		return PurposeAllocationPolicyDirectOnly
 	case PurposeAllocationPolicyByZoneLoadShare, "zone_load_share":
 		return PurposeAllocationPolicyByZoneLoadShare
+	case PurposeAllocationPolicyByServicePathLoadShare, "service_path_load_share":
+		return PurposeAllocationPolicyByServicePathLoadShare
 	default:
 		return PurposeAllocationPolicyDirectOnly
 	}
@@ -552,6 +555,7 @@ func BuildPurposeResultBundle(result *SimulationRunResult, request SimulationPur
 			bundle.Energy.Completeness = energyDashboardCompleteness(bundle.Energy, result.PurposeRunPlan, result.Series)
 			bundle.EnergyExplanation = buildEnergyExplanationResultFromFiles(result.Files, bundle.Energy, plan)
 			bundle.EnergyExplanation = enrichEnergyExplanationWithServicePaths(bundle.EnergyExplanation, result.InputPath)
+			bundle.EnergyExplanation = applyEnergyExplanationServicePathLoadShareAllocation(bundle.EnergyExplanation)
 			bundle.EnergyExplanationSummary = buildEnergyExplanationSummary(bundle.EnergyExplanation)
 			bundle.Completeness = append(bundle.Completeness, bundle.Energy.Completeness...)
 		case SimulationPurposeZoneHeatFlow:
