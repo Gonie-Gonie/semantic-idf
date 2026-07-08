@@ -1058,6 +1058,75 @@ func TestParseSimulationEnergyExplanationSQLPrefersEnergyOverRateFallback(t *tes
 	}
 }
 
+func TestParseSimulationEnergyExplanationSQLSeparatesFanElectricityAndHeat(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "eplusout.sql")
+	createTestEnergySQL(t, path)
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`INSERT INTO ReportDataDictionary VALUES
+		(23, '', 'Electricity:Fans', 'J'),
+		(24, 'Supply Fan', 'Fan Air Heat Gain Energy', 'J')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO ReportData VALUES
+		(7, 1, 23, 360000.0),
+		(8, 2, 23, 720000.0),
+		(9, 1, 24, 180000.0),
+		(10, 2, 24, 180000.0)`); err != nil {
+		t.Fatal(err)
+	}
+
+	fanElectricityObjectIndex := 5
+	fanHeatObjectIndex := 6
+	plan := &PurposeRunPlan{OutputObjects: []PurposeOutputObject{
+		{ObjectType: "Output:Meter", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, KeyValue: "Electricity:Fans", ObjectIndex: &fanElectricityObjectIndex},
+		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, KeyValue: "*", VariableName: "Fan Air Heat Gain Energy", ObjectIndex: &fanHeatObjectIndex},
+	}}
+	result, err := parseSimulationEnergyExplanationSQL(path, plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fanEnergy := energyExplanationNodeByID(result.Nodes, "energy.end_use.fans.electricity")
+	if fanEnergy == nil || fanEnergy.Level != "energy" || fanEnergy.Value != 0.3 || fanEnergy.EndUse != "fans" || fanEnergy.Carrier != "electricity" ||
+		!stringSliceContains(fanEnergy.SourceIDs, "sql-rdd-23") || stringSliceContains(fanEnergy.SourceIDs, "sql-rdd-24") {
+		t.Fatalf("fan electricity node = %#v", fanEnergy)
+	}
+	fanHeat := energyExplanationNodeByID(result.Nodes, "heat.fan_to_air")
+	if fanHeat == nil || fanHeat.Level != "heat" || fanHeat.Value != 0.1 || fanHeat.HeatCategory != "hvac_system" ||
+		!stringSliceContains(fanHeat.SourceIDs, "sql-rdd-24") || stringSliceContains(fanHeat.SourceIDs, "sql-rdd-23") {
+		t.Fatalf("fan heat node = %#v", fanHeat)
+	}
+	if result.Completeness.EnergyUse.Status != "complete" ||
+		result.Completeness.HeatDrivers.Found != 1 || result.Completeness.HeatDrivers.Total != 1 {
+		t.Fatalf("fan energy/heat completeness = %#v", result.Completeness)
+	}
+	if availability := energyExplanationSourceAvailabilityByName(result.Completeness.SourceAvailability, "Electricity:Fans"); availability == nil || availability.Status != "found" || availability.Level != "energy" || !stringSliceContains(availability.SourceIDs, "sql-rdd-23") {
+		t.Fatalf("fan electricity availability = %#v", result.Completeness.SourceAvailability)
+	}
+	if availability := energyExplanationSourceAvailabilityByName(result.Completeness.SourceAvailability, "Fan Air Heat Gain Energy"); availability == nil || availability.Status != "found" || availability.Level != "heat" || !stringSliceContains(availability.SourceIDs, "sql-rdd-24") {
+		t.Fatalf("fan heat availability = %#v", result.Completeness.SourceAvailability)
+	}
+	if source := energyExplanationSourceByID(result.Sources, "sql-rdd-23"); source == nil || !source.IsMeter || source.ObjectIndex == nil || *source.ObjectIndex != fanElectricityObjectIndex {
+		t.Fatalf("fan electricity source = %#v", source)
+	}
+	if source := energyExplanationSourceByID(result.Sources, "sql-rdd-24"); source == nil || source.IsMeter || source.ObjectIndex == nil || *source.ObjectIndex != fanHeatObjectIndex {
+		t.Fatalf("fan heat source = %#v", source)
+	}
+
+	summary := buildEnergyExplanationSummary(result)
+	if item := energyExplanationSummaryItemByID(summary.EnergyByEndUse, "fans.electricity"); item == nil || item.Value != 0.3 || !stringSliceContains(item.SourceIDs, "sql-rdd-23") || stringSliceContains(item.SourceIDs, "sql-rdd-24") {
+		t.Fatalf("summary fan electricity = %#v", summary.EnergyByEndUse)
+	}
+	if item := energyExplanationSummaryItemByID(summary.HeatDrivers, "heat.fan_to_air"); item == nil || item.Value != 0.1 || !stringSliceContains(item.SourceIDs, "sql-rdd-24") || stringSliceContains(item.SourceIDs, "sql-rdd-23") {
+		t.Fatalf("summary fan heat = %#v", summary.HeatDrivers)
+	}
+}
+
 func TestParseSimulationEnergyExplanationSQLIntegratesRateOnlyOutputs(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "eplusout.sql")
