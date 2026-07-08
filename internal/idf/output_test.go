@@ -88,6 +88,29 @@ Output:Variable,
 
 Output:Variable,
   *,
+  Zone Air Heat Balance Surface Convection Rate,
+  Monthly;
+
+Output:Variable,
+  Supply Fan,
+  Fan Air Heat Gain Rate,
+  Monthly;
+
+Output:Variable,
+  CHW Loop,
+  Plant Supply Side Cooling Demand Rate,
+  Monthly;
+
+Output:Meter,
+  Electricity:Refrigeration,
+  Monthly;
+
+Output:Meter,
+  FuelOilNo1:Facility,
+  Monthly;
+
+Output:Variable,
+  *,
   Zone Thermal Comfort Fanger Model PMV,
   Hourly;
 
@@ -113,6 +136,20 @@ Output:Table:SummaryReports,
 	if !outputSummaryHasPurpose(report.Existing, "Output:Variable", "Zone Mean Air Temperature", "zone_heat_flow") ||
 		!outputSummaryHasPurpose(report.Existing, "Output:Variable", "Zone Mean Air Temperature", "comfort_check") {
 		t.Fatalf("zone mean air temperature purpose tags missing: %#v", report.Existing)
+	}
+	if !outputSummaryHasPurpose(report.Existing, "Output:Variable", "Zone Air Heat Balance Surface Convection Rate", "basic_energy") ||
+		!outputSummaryHasPurpose(report.Existing, "Output:Variable", "Zone Air Heat Balance Surface Convection Rate", "zone_heat_flow") {
+		t.Fatalf("heat-balance output should be tagged for Basic Energy and Zone Heat Flow: %#v", report.Existing)
+	}
+	if !outputSummaryHasPurpose(report.Existing, "Output:Variable", "Fan Air Heat Gain Rate", "basic_energy") {
+		t.Fatalf("fan heat output should be tagged for Basic Energy: %#v", report.Existing)
+	}
+	if !outputSummaryHasPurpose(report.Existing, "Output:Variable", "Plant Supply Side Cooling Demand Rate", "basic_energy") {
+		t.Fatalf("plant load output should be tagged for Basic Energy: %#v", report.Existing)
+	}
+	if !outputSummaryHasPurpose(report.Existing, "Output:Meter", "Electricity:Refrigeration", "basic_energy") ||
+		!outputSummaryHasPurpose(report.Existing, "Output:Meter", "FuelOilNo1:Facility", "basic_energy") {
+		t.Fatalf("extended Basic Energy meter purpose tags missing: %#v", report.Existing)
 	}
 	if !outputSummaryHasPurpose(report.Existing, "Output:Variable", "Zone Air Relative Humidity", "comfort_check") {
 		t.Fatalf("zone relative humidity comfort purpose tag missing: %#v", report.Existing)

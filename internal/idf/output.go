@@ -452,9 +452,12 @@ func outputPurposeTags(objectType string, fields []OutputFieldValue) []string {
 func outputMeterSupportsBasicEnergy(name string) bool {
 	switch normalizeName(name) {
 	case "electricity:facility", "naturalgas:facility", "districtcooling:facility", "districtheating:facility", "water:facility",
+		"fueloilno1:facility", "fueloilno2:facility", "propane:facility", "otherfuel1:facility", "otherfuel2:facility", "steam:facility",
 		"electricity:cooling", "electricity:heating", "electricity:interiorlights", "electricity:interiorequipment",
 		"electricity:fans", "electricity:pumps", "electricity:heatrejection", "electricity:watersystems",
-		"naturalgas:heating", "naturalgas:watersystems":
+		"electricity:heatrecovery", "electricity:exteriorlights", "electricity:refrigeration", "electricityproduced:facility",
+		"districtcooling:cooling", "districtheating:heating",
+		"naturalgas:heating", "naturalgas:watersystems", "naturalgas:interiorequipment":
 		return true
 	default:
 		return false
@@ -476,13 +479,34 @@ func outputVariablePurposeTags(variableName string, tags map[string]bool) {
 		"zone air heat balance system convective heat gain rate",
 		"zone air heat balance air energy storage rate",
 		"zone air heat balance deviation rate":
-		addOutputPurposeTags(tags, "zone_heat_flow")
+		addOutputPurposeTags(tags, "basic_energy", "zone_heat_flow")
+	case "zone ideal loads zone sensible cooling energy", "zone ideal loads supply air total cooling energy",
+		"zone ideal loads zone sensible heating energy", "zone ideal loads supply air total heating energy",
+		"zone radiant hvac cooling energy", "zone radiant hvac cooling rate",
+		"zone radiant hvac heating energy", "zone radiant hvac heating rate",
+		"cooling coil sensible cooling energy",
+		"plant supply side cooling demand rate", "plant loop cooling demand energy",
+		"plant supply side heating demand rate", "plant loop heating demand energy":
+		addOutputPurposeTags(tags, "basic_energy")
+	case "fan air heat gain energy", "fan air heat gain rate",
+		"zone people total heating energy", "zone people total heating rate",
+		"zone lights total heating energy", "zone lights total heating rate",
+		"zone electric equipment total heating energy", "zone electric equipment total heating rate",
+		"zone gas equipment total heating energy", "zone gas equipment total heating rate",
+		"zone infiltration sensible heat loss energy", "zone infiltration sensible heat gain energy",
+		"zone infiltration sensible heat loss rate", "zone infiltration sensible heat gain rate",
+		"zone ventilation sensible heat loss energy", "zone ventilation sensible heat gain energy",
+		"zone ventilation sensible heat loss rate", "zone ventilation sensible heat gain rate",
+		"zone mixing sensible heat loss energy", "zone mixing sensible heat gain energy",
+		"zone mixing sensible heat loss rate", "zone mixing sensible heat gain rate":
+		addOutputPurposeTags(tags, "basic_energy")
 	case "system node temperature", "system node mass flow rate", "system node setpoint temperature", "system node humidity ratio", "system node enthalpy":
 		addOutputPurposeTags(tags, "hvac_loop_check")
+	case "cooling coil total cooling rate", "cooling coil total cooling energy",
+		"heating coil heating rate", "heating coil heating energy":
+		addOutputPurposeTags(tags, "basic_energy", "hvac_loop_check")
 	case "fan electricity rate", "fan electricity energy",
 		"pump electricity rate", "pump electricity energy",
-		"cooling coil total cooling rate", "cooling coil total cooling energy",
-		"heating coil heating rate", "heating coil heating energy",
 		"chiller evaporator cooling rate", "chiller evaporator cooling energy",
 		"chiller electricity rate", "chiller electricity energy",
 		"boiler heating rate", "boiler heating energy",

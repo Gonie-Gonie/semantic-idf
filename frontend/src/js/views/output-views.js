@@ -164,6 +164,7 @@ function renderOutputRequestRow(item) {
         <strong title="${escapeHTML(outputRequestName(item))}">${escapeHTML(outputRequestName(item))}</strong>
         <small title="${escapeHTML(item.objectType)}">${escapeHTML(outputRequestMeta(item))}</small>
         ${renderOutputPurposeTags(item.purposeTags)}
+        ${renderOutputEnergySetTag(item)}
       </td>
       <td>${renderOutputFrequencyCell(item)}</td>
       <td>
@@ -252,6 +253,7 @@ function renderOutputRecommendationRow(item) {
         <strong title="${escapeHTML(item.label)}">${escapeHTML(item.label)}</strong>
         <small title="${escapeHTML(item.description || "")}">${escapeHTML(item.description || "")}</small>
         ${renderOutputPurposeTags(item.purposeTags)}
+        ${renderOutputEnergySetTag(item)}
       </td>
       <td>${escapeHTML(recommendationDestination(item))}</td>
       <td>
@@ -292,6 +294,68 @@ function outputPurposeLabel(tag) {
     return String(tag || "").replaceAll("_", " ");
   }
   return t(purpose.labelKey, {}, purpose.fallback);
+}
+
+function renderOutputEnergySetTag(item = {}) {
+  const label = outputBasicEnergySetLabel(item);
+  if (!label) {
+    return "";
+  }
+  return `<div class="output-set-tags"><span title="${escapeHTML(t("simulation.outputSet", {}, "Output set"))}">${escapeHTML(label)}</span></div>`;
+}
+
+function outputBasicEnergySetLabel(item = {}) {
+  if (!(item.purposeTags || []).includes("basic_energy")) {
+    return "";
+  }
+  const objectType = String(item.objectType || "").toLowerCase();
+  if (objectType === "output:sqlite") {
+    return t("simulation.outputSetSQL", {}, "SQL");
+  }
+  const variableName = outputItemVariableName(item);
+  if (outputVariableLooksLikeHeatDriver(variableName)) {
+    return t("simulation.basicEnergyDetailHeatDrivers", {}, "Heat drivers");
+  }
+  if (outputVariableLooksLikeEnergyExplain(variableName) || item.category === "zone_energy") {
+    return t("simulation.basicEnergyDetailExplain", {}, "Explain");
+  }
+  if (objectType.startsWith("output:meter") || ["facility_energy", "end_use_energy"].includes(item.category)) {
+    return t("simulation.basicEnergyDetailLight", {}, "Light");
+  }
+  return "";
+}
+
+function outputItemVariableName(item = {}) {
+  return item.variableName || findOutputField(item, "Variable Name")?.value || "";
+}
+
+function outputVariableLooksLikeEnergyExplain(variableName = "") {
+  const name = String(variableName || "").toLowerCase();
+  return Boolean(
+    name &&
+      (name.includes("sensible cooling") ||
+        name.includes("sensible heating") ||
+        name.includes("cooling demand") ||
+        name.includes("heating demand") ||
+        name.includes("cooling coil") ||
+        name.includes("heating coil") ||
+        name.includes("ideal loads") ||
+        name.includes("radiant hvac") ||
+        name.includes("electricity energy") ||
+        name.includes("gas energy")),
+  );
+}
+
+function outputVariableLooksLikeHeatDriver(variableName = "") {
+  const name = String(variableName || "").toLowerCase();
+  return Boolean(
+    name &&
+      (name.includes("heat balance") ||
+        name.includes("total heating") ||
+        name.includes("sensible heat gain") ||
+        name.includes("sensible heat loss") ||
+        name.includes("fan air heat gain")),
+  );
 }
 
 function handleOutputAction(event) {
@@ -619,6 +683,7 @@ function outputItemMatchesQuery(item, query) {
     item.variableName,
     item.reportingFrequency,
     ...(item.purposeTags || []).map(outputPurposeLabel),
+    outputBasicEnergySetLabel(item),
     ...(item.fields || []).flatMap((field) => [field.name, field.value]),
   ].some((value) => String(value ?? "").toLowerCase().includes(query));
 }
@@ -643,6 +708,7 @@ function outputRecommendationMatchesQuery(item, query) {
     ...(item.fields || []).flatMap((field) => [field.name, field.value]),
     ...(item.tags || []),
     ...(item.purposeTags || []).map(outputPurposeLabel),
+    outputBasicEnergySetLabel(item),
   ].some((value) => String(value ?? "").toLowerCase().includes(query));
 }
 

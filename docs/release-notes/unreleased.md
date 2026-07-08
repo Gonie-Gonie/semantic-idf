@@ -247,6 +247,9 @@ The release script infers bump size from these sections:
   as `Basic Energy Heat Drivers`.
 - Basic Energy run-plan tables now expose an `Output set` column so SQL, Light,
   Explain, and Heat Drivers requests are distinguishable before running.
+- The Output tab now tags more Basic Energy explanation and heat-driver outputs
+  and shows Basic Energy output-set badges for existing and recommended output
+  requests.
 - Batch purpose simulation metrics now include compact annual Energy Use,
   Delivered Load, Heat Driver, residual, mapped-percent, and top heat-driver
   values from the Basic Energy explanation summary, plus two-row delta tables

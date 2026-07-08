@@ -178,6 +178,16 @@ func TestFrontendSimulationEnergySystemsCrossJumpContracts(t *testing.T) {
 			t.Fatalf("simulation energy cross-jump style missing %q", term)
 		}
 	}
+	outputView := readTestFile(t, "frontend/src/js/views/output-views.js")
+	for _, term := range []string{"renderOutputEnergySetTag", "outputBasicEnergySetLabel", "outputVariableLooksLikeEnergyExplain", "outputVariableLooksLikeHeatDriver", "simulation.outputSet"} {
+		if !strings.Contains(outputView, term) {
+			t.Fatalf("output tab Basic Energy output set contract missing %q", term)
+		}
+	}
+	outputStyles := readTestFile(t, "frontend/src/styles/output.css")
+	if !strings.Contains(outputStyles, ".output-set-tags") {
+		t.Fatalf("output tab Basic Energy output set style missing")
+	}
 	if !strings.Contains(simulation, "function energyEndUseLabel") || !strings.Contains(simulation, "energyEndUseGenerators") || !strings.Contains(simulation, "energyEndUseStorageCharge") {
 		t.Fatalf("simulation energy end-use label mapping is missing")
 	}

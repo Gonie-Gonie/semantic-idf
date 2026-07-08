@@ -816,6 +816,8 @@ const dictionaries = {
     "simulation.outputDiscoveryNone": "No catalog",
     "simulation.outputDiscoveryStats": "{shown} of {total} outputs",
     "simulation.outputPlanOpened": "Output plan opened",
+    "simulation.outputSet": "Output set",
+    "simulation.outputSetSQL": "SQL",
     "simulation.openOutputPlan": "Output plan",
     "simulation.outputShortage": "Output shortage",
     "simulation.accountingCoverage": "Accounting coverage",
