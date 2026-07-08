@@ -237,6 +237,8 @@ The release script infers bump size from these sections:
 - Basic Energy Sankey now maps more canonical end-use IDs, including fans,
   pumps, heat recovery, water systems, refrigeration, onsite generation,
   storage, and other energy use, to stable labels and node colors.
+- Basic Energy Sankey inspectors and legends now label delivered-load source
+  basis values such as reported energy variables and integrated rate variables.
 
 ## Fixed
 

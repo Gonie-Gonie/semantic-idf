@@ -1611,6 +1611,14 @@
   background: var(--green);
 }
 
+.energy-sankey-legend i.measured_energy_variable {
+  background: #16a34a;
+}
+
+.energy-sankey-legend i.integrated_rate_variable {
+  background: repeating-linear-gradient(90deg, #16a34a, #16a34a 4px, transparent 4px, transparent 8px);
+}
+
 .energy-sankey-legend i.derived_balance {
   background: #7c3aed;
 }

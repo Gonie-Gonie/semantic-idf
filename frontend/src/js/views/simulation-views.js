@@ -1628,6 +1628,8 @@ function renderEnergyExplanationLegend() {
       <span><i class="node other"></i>${escapeHTML(energyEndUseLabel("other"))}</span>
       <span><i class="measured_meter"></i>${escapeHTML(t("simulation.basisMeasuredMeter", {}, "measured meter"))}</span>
       <span><i class="measured_variable"></i>${escapeHTML(t("simulation.basisMeasuredVariable", {}, "measured variable"))}</span>
+      <span><i class="measured_energy_variable"></i>${escapeHTML(energyExplanationBasisLabel("measured_energy_variable"))}</span>
+      <span><i class="integrated_rate_variable"></i>${escapeHTML(energyExplanationBasisLabel("integrated_rate_variable"))}</span>
       <span><i class="derived_balance"></i>${escapeHTML(t("simulation.basisDerived", {}, "derived balance"))}</span>
       <span><i class="allocated"></i>${escapeHTML(t("simulation.basisAllocated", {}, "allocated"))}</span>
       <span><i class="residual"></i>${escapeHTML(t("simulation.basisResidual", {}, "residual"))}</span>
@@ -1665,7 +1667,7 @@ function renderEnergyExplanationInspector(selection, explanation = {}) {
   const inspectorFields = [
     { label: t("common.value", {}, "Value"), value: formatValueWithUnit(selection.value, selection.unit) },
     { label: t("common.period", {}, "Period"), value: selection.period || state.simulationEnergyPeriod || "annual" },
-    { label: t("simulation.basis", {}, "Basis"), value: selection.basis || "measured" },
+    { label: t("simulation.basis", {}, "Basis"), value: energyExplanationBasisLabel(selection.basis || "measured") },
   ];
   if (selection.relation) {
     inspectorFields.push({ label: t("simulation.relation", {}, "Relation"), value: selection.relation });
@@ -1697,7 +1699,7 @@ function renderEnergyExplanationInspector(selection, explanation = {}) {
     <section class="energy-explanation-inspector">
       <div class="simulation-energy-block-head">
         <h4>${escapeHTML(selection.label || selection.kind || selection.id || "")}</h4>
-        <span>${escapeHTML(type)} / ${escapeHTML(selection.basis || selection.level || "")}</span>
+        <span>${escapeHTML(type)} / ${escapeHTML(energyExplanationBasisLabel(selection.basis || selection.level || ""))}</span>
       </div>
       <div class="energy-explanation-inspector-grid">
         ${inspectorFields.map((field) => `<div><span>${escapeHTML(field.label)}</span><strong>${escapeHTML(field.value)}</strong></div>`).join("")}
@@ -2022,7 +2024,23 @@ function energyExplanationRelationshipRuleLabel(explanation = {}, ruleID = "") {
     return ruleID;
   }
   const flow = [rule.fromLevel, rule.toLevel].filter(Boolean).join(" -> ");
-  return [rule.id, flow, rule.basis].filter(Boolean).join(" / ");
+  return [rule.id, flow, energyExplanationBasisLabel(rule.basis || "")].filter(Boolean).join(" / ");
+}
+
+function energyExplanationBasisLabel(basis = "") {
+  const labels = {
+    measured: t("simulation.basisMeasured", {}, "measured"),
+    measured_meter: t("simulation.basisMeasuredMeter", {}, "measured meter"),
+    measured_variable: t("simulation.basisMeasuredVariable", {}, "measured variable"),
+    measured_energy_variable: t("simulation.basisMeasuredEnergyVariable", {}, "reported energy variable"),
+    integrated_rate_variable: t("simulation.basisIntegratedRateVariable", {}, "integrated rate variable"),
+    derived_balance: t("simulation.basisDerived", {}, "derived balance"),
+    allocated: t("simulation.basisAllocated", {}, "allocated"),
+    residual: t("simulation.basisResidual", {}, "residual"),
+    derived_kpi: t("simulation.basisDerivedKPI", {}, "derived KPI"),
+    tabular_annual_value: t("simulation.basisTabularAnnual", {}, "annual tabular value"),
+  };
+  return labels[String(basis || "").toLowerCase()] || titleCaseEnergyToken(basis);
 }
 
 function renderSimulationEnergyRelatedServicePaths(selection = {}) {
