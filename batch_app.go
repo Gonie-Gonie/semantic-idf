@@ -1066,47 +1066,53 @@ func batchSimulationAvailabilityLabel(level string, name string) string {
 }
 
 type batchSimulationDeltaRow struct {
-	Group             string
-	ID                string
-	Label             string
-	LeftValue         float64
-	RightValue        float64
-	Delta             float64
-	Percent           string
-	Unit              string
-	Status            string
-	Level             string
-	ServiceKind       string
-	PathType          string
-	Basis             string
-	HeatCategory      string
-	Sign              string
-	Formula           string
-	NumeratorLabel    string
-	NumeratorUnit     string
-	LeftNumerator     float64
-	RightNumerator    float64
-	DenominatorLabel  string
-	DenominatorUnit   string
-	LeftDenominator   float64
-	RightDenominator  float64
-	LeftRatioPresent  bool
-	RightRatioPresent bool
-	Relation          string
-	RuleID            string
-	FromID            string
-	ToID              string
-	SourceIDs         []string
-	RelatedPathIDs    []string
+	Group               string
+	ID                  string
+	Label               string
+	LeftValue           float64
+	RightValue          float64
+	Delta               float64
+	Percent             string
+	Unit                string
+	Status              string
+	Level               string
+	ServiceKind         string
+	PathType            string
+	Basis               string
+	HeatCategory        string
+	Sign                string
+	Formula             string
+	NumeratorLabel      string
+	NumeratorUnit       string
+	LeftNumerator       float64
+	RightNumerator      float64
+	DenominatorLabel    string
+	DenominatorUnit     string
+	LeftDenominator     float64
+	RightDenominator    float64
+	LeftRatioPresent    bool
+	RightRatioPresent   bool
+	Relation            string
+	RuleID              string
+	FromID              string
+	ToID                string
+	SourceIDs           []string
+	RelatedPathIDs      []string
+	LeftSourceIDs       []string
+	RightSourceIDs      []string
+	LeftRelatedPathIDs  []string
+	RightRelatedPathIDs []string
 }
 
 func batchSimulationEnergyDeltaSection(left, right simulation.SimulationRunResult) tabular.Section {
 	section := tabular.Section{
 		Title:   "energy_delta",
-		Headers: []string{"type", "id", "label", "baseline_file", "target_file", "baseline_value", "target_value", "delta", "percent", "unit", "status", "level", "service_kind", "path_type", "basis", "heat_category", "sign", "formula", "numerator_label", "baseline_numerator", "target_numerator", "numerator_unit", "denominator_label", "baseline_denominator", "target_denominator", "denominator_unit"},
+		Headers: []string{"type", "id", "label", "baseline_file", "target_file", "baseline_value", "target_value", "delta", "percent", "unit", "status", "level", "service_kind", "path_type", "basis", "heat_category", "sign", "formula", "numerator_label", "baseline_numerator", "target_numerator", "numerator_unit", "denominator_label", "baseline_denominator", "target_denominator", "denominator_unit", "baseline_source_ids", "target_source_ids", "baseline_source_object_index", "target_source_object_index"},
 	}
 	leftSummary := left.PurposeResults.EnergyExplanationSummary
 	rightSummary := right.PurposeResults.EnergyExplanationSummary
+	leftExplanation := left.PurposeResults.EnergyExplanation
+	rightExplanation := right.PurposeResults.EnergyExplanation
 	rows := []batchSimulationDeltaRow{}
 	for _, group := range []struct {
 		name  string
@@ -1150,6 +1156,10 @@ func batchSimulationEnergyDeltaSection(left, right simulation.SimulationRunResul
 			formatBatchSimulationOptionalFloatPresent(row.LeftDenominator, row.LeftRatioPresent),
 			formatBatchSimulationOptionalFloatPresent(row.RightDenominator, row.RightRatioPresent),
 			row.DenominatorUnit,
+			strings.Join(row.LeftSourceIDs, "; "),
+			strings.Join(row.RightSourceIDs, "; "),
+			batchSimulationSourceObjectIndexes(leftExplanation, row.LeftSourceIDs),
+			batchSimulationSourceObjectIndexes(rightExplanation, row.RightSourceIDs),
 		})
 	}
 	return section
@@ -1216,9 +1226,18 @@ func batchSimulationSummaryDeltaRows(group string, leftItems, rightItems []simul
 			RightDenominator:  rightItem.DenominatorValue,
 			LeftRatioPresent:  leftOK && batchSimulationSummaryRatioPresent(leftItem),
 			RightRatioPresent: rightOK && batchSimulationSummaryRatioPresent(rightItem),
+			LeftSourceIDs:     stringSliceWhenPresent(leftOK, leftItem.SourceIDs),
+			RightSourceIDs:    stringSliceWhenPresent(rightOK, rightItem.SourceIDs),
 		})
 	}
 	return rows
+}
+
+func stringSliceWhenPresent(present bool, values []string) []string {
+	if !present {
+		return nil
+	}
+	return values
 }
 
 func batchSimulationSummaryRatioPresent(item simulation.EnergyExplanationSummaryItem) bool {
@@ -1228,9 +1247,11 @@ func batchSimulationSummaryRatioPresent(item simulation.EnergyExplanationSummary
 func batchSimulationEnergyEdgeDeltaSection(left, right simulation.SimulationRunResult) tabular.Section {
 	section := tabular.Section{
 		Title:   "sankey_edge_delta",
-		Headers: []string{"relation", "edge", "rule_id", "baseline_file", "target_file", "baseline_value", "target_value", "delta", "percent", "unit", "status", "basis", "from_id", "to_id", "source_ids", "related_path_ids"},
+		Headers: []string{"relation", "edge", "rule_id", "baseline_file", "target_file", "baseline_value", "target_value", "delta", "percent", "unit", "status", "basis", "from_id", "to_id", "baseline_source_ids", "target_source_ids", "baseline_source_object_index", "target_source_object_index", "baseline_related_path_ids", "target_related_path_ids"},
 	}
-	rows := batchSimulationEdgeDeltaRows(left.PurposeResults.EnergyExplanation, right.PurposeResults.EnergyExplanation)
+	leftExplanation := left.PurposeResults.EnergyExplanation
+	rightExplanation := right.PurposeResults.EnergyExplanation
+	rows := batchSimulationEdgeDeltaRows(leftExplanation, rightExplanation)
 	sortBatchSimulationDeltaRows(rows)
 	for _, row := range rows {
 		section.Rows = append(section.Rows, []string{
@@ -1248,8 +1269,12 @@ func batchSimulationEnergyEdgeDeltaSection(left, right simulation.SimulationRunR
 			row.Basis,
 			row.FromID,
 			row.ToID,
-			strings.Join(row.SourceIDs, "; "),
-			strings.Join(row.RelatedPathIDs, "; "),
+			strings.Join(row.LeftSourceIDs, "; "),
+			strings.Join(row.RightSourceIDs, "; "),
+			batchSimulationSourceObjectIndexes(leftExplanation, row.LeftSourceIDs),
+			batchSimulationSourceObjectIndexes(rightExplanation, row.RightSourceIDs),
+			strings.Join(row.LeftRelatedPathIDs, "; "),
+			strings.Join(row.RightRelatedPathIDs, "; "),
 		})
 	}
 	return section
@@ -1287,6 +1312,10 @@ func batchSimulationEdgeDeltaRows(leftExplanation, rightExplanation simulation.E
 		item.Delta = rightValue - leftValue
 		item.Percent = batchSimulationPercentDelta(leftValue, item.Delta)
 		item.Status = batchSimulationDeltaStatus(leftOK, rightOK, leftValue, rightValue)
+		item.LeftSourceIDs = stringSliceWhenPresent(leftOK, leftEdge.SourceIDs)
+		item.RightSourceIDs = stringSliceWhenPresent(rightOK, rightEdge.SourceIDs)
+		item.LeftRelatedPathIDs = stringSliceWhenPresent(leftOK, leftEdge.RelatedPathIDs)
+		item.RightRelatedPathIDs = stringSliceWhenPresent(rightOK, rightEdge.RelatedPathIDs)
 		rows = append(rows, item)
 	}
 	return rows

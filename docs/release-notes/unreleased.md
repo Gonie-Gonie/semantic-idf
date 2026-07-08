@@ -154,6 +154,9 @@ The release script infers bump size from these sections:
   be matched to output request objects.
 - Batch Simulation XLSX energy summary, edge, and reconciliation sheets now
   include `source_object_index` beside `source_ids`.
+- Batch Simulation XLSX Energy Delta and Sankey Edge Delta sheets now split
+  baseline and target source IDs/object indexes so comparison rows remain
+  traceable on both sides.
 - Basic Energy source metadata now includes `aggregationMethod` for SQL/report
   sources, and the Sources view, inspector tables, and batch CSV export show it.
 - Basic Energy source metadata now preserves both source units and normalized

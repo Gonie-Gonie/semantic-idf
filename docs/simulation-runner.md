@@ -303,6 +303,8 @@ metadata is available. Source availability rows also include source
 table/row/column labels and source/normalized units. When a baseline and
 target case are selected, the XLSX workbook also includes
 comparison context, summary delta, and annual Sankey edge delta sheets. The
+delta sheets preserve baseline/target source IDs and matching source object
+indexes separately, with edge related path IDs split by side. The
 workbook also includes a Run Context sheet with the selected paths, purpose
 request, frequency/allocation policy, weather mode/path, worker count, and
 batch view settings used for the export. It can

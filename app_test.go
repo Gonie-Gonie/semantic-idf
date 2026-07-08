@@ -686,6 +686,8 @@ func TestBatchSimulationWorkbookSheetsIncludeCompletenessDelta(t *testing.T) {
 }
 
 func TestBatchSimulationWorkbookSheetsIncludeComparisonDelta(t *testing.T) {
+	baselineSourceObjectIndex := 21
+	targetSourceObjectIndex := 22
 	result := simulation.MultiSimulationResult{
 		Results: []simulation.SimulationRunResult{
 			{
@@ -696,14 +698,15 @@ func TestBatchSimulationWorkbookSheetsIncludeComparisonDelta(t *testing.T) {
 					EnergyExplanationSummary: simulation.EnergyExplanationSummary{
 						Schema: "semantic-idf.energy-explanation-summary/v1",
 						EnergyByEndUse: []simulation.EnergyExplanationSummaryItem{{
-							ID:      "cooling.electricity",
-							Label:   "Cooling electricity",
-							Value:   10,
-							Unit:    "kWh",
-							Level:   "energy",
-							Carrier: "electricity",
-							EndUse:  "cooling",
-							Basis:   "measured_meter",
+							ID:        "cooling.electricity",
+							Label:     "Cooling electricity",
+							Value:     10,
+							Unit:      "kWh",
+							Level:     "energy",
+							Carrier:   "electricity",
+							EndUse:    "cooling",
+							Basis:     "measured_meter",
+							SourceIDs: []string{"baseline-source"},
 						}},
 						DerivedKPIs: []simulation.EnergyExplanationSummaryItem{{
 							ID:               "kpi.cooling_cop",
@@ -720,10 +723,17 @@ func TestBatchSimulationWorkbookSheetsIncludeComparisonDelta(t *testing.T) {
 							DenominatorLabel: "Cooling electricity",
 							DenominatorValue: 4,
 							DenominatorUnit:  "kWh",
+							SourceIDs:        []string{"baseline-source"},
 						}},
 					},
 					EnergyExplanation: simulation.EnergyExplanationResult{
 						Schema: "semantic-idf.energy-explanation/v1",
+						Sources: []simulation.EnergyDataSource{{
+							ID:          "baseline-source",
+							SourceType:  "sql_report_data",
+							Name:        "Cooling:Electricity",
+							ObjectIndex: &baselineSourceObjectIndex,
+						}},
 						Periods: []simulation.EnergyPeriod{{
 							ID:   "annual",
 							Kind: "annual",
@@ -732,14 +742,16 @@ func TestBatchSimulationWorkbookSheetsIncludeComparisonDelta(t *testing.T) {
 								{ID: "energy.end_use.cooling.electricity", Label: "Cooling electricity"},
 							},
 							Edges: []simulation.EnergyExplanationEdge{{
-								ID:       "edge.cooling",
-								FromID:   "energy.carrier.electricity",
-								ToID:     "energy.end_use.cooling.electricity",
-								Value:    10,
-								Unit:     "kWh",
-								Relation: "meter_enduse",
-								Basis:    "measured_meter",
-								RuleID:   "meter.cooling_electricity",
+								ID:             "edge.cooling",
+								FromID:         "energy.carrier.electricity",
+								ToID:           "energy.end_use.cooling.electricity",
+								Value:          10,
+								Unit:           "kWh",
+								Relation:       "meter_enduse",
+								Basis:          "measured_meter",
+								RuleID:         "meter.cooling_electricity",
+								SourceIDs:      []string{"baseline-source"},
+								RelatedPathIDs: []string{"baseline-path"},
 							}},
 						}},
 					},
@@ -753,14 +765,15 @@ func TestBatchSimulationWorkbookSheetsIncludeComparisonDelta(t *testing.T) {
 					EnergyExplanationSummary: simulation.EnergyExplanationSummary{
 						Schema: "semantic-idf.energy-explanation-summary/v1",
 						EnergyByEndUse: []simulation.EnergyExplanationSummaryItem{{
-							ID:      "cooling.electricity",
-							Label:   "Cooling electricity",
-							Value:   15,
-							Unit:    "kWh",
-							Level:   "energy",
-							Carrier: "electricity",
-							EndUse:  "cooling",
-							Basis:   "measured_meter",
+							ID:        "cooling.electricity",
+							Label:     "Cooling electricity",
+							Value:     15,
+							Unit:      "kWh",
+							Level:     "energy",
+							Carrier:   "electricity",
+							EndUse:    "cooling",
+							Basis:     "measured_meter",
+							SourceIDs: []string{"target-source"},
 						}},
 						DerivedKPIs: []simulation.EnergyExplanationSummaryItem{{
 							ID:               "kpi.cooling_cop",
@@ -777,10 +790,17 @@ func TestBatchSimulationWorkbookSheetsIncludeComparisonDelta(t *testing.T) {
 							DenominatorLabel: "Cooling electricity",
 							DenominatorValue: 3,
 							DenominatorUnit:  "kWh",
+							SourceIDs:        []string{"target-source"},
 						}},
 					},
 					EnergyExplanation: simulation.EnergyExplanationResult{
 						Schema: "semantic-idf.energy-explanation/v1",
+						Sources: []simulation.EnergyDataSource{{
+							ID:          "target-source",
+							SourceType:  "sql_report_data",
+							Name:        "Cooling:Electricity",
+							ObjectIndex: &targetSourceObjectIndex,
+						}},
 						Periods: []simulation.EnergyPeriod{{
 							ID:   "annual",
 							Kind: "annual",
@@ -789,14 +809,16 @@ func TestBatchSimulationWorkbookSheetsIncludeComparisonDelta(t *testing.T) {
 								{ID: "energy.end_use.cooling.electricity", Label: "Cooling electricity"},
 							},
 							Edges: []simulation.EnergyExplanationEdge{{
-								ID:       "edge.cooling",
-								FromID:   "energy.carrier.electricity",
-								ToID:     "energy.end_use.cooling.electricity",
-								Value:    15,
-								Unit:     "kWh",
-								Relation: "meter_enduse",
-								Basis:    "measured_meter",
-								RuleID:   "meter.cooling_electricity",
+								ID:             "edge.cooling",
+								FromID:         "energy.carrier.electricity",
+								ToID:           "energy.end_use.cooling.electricity",
+								Value:          15,
+								Unit:           "kWh",
+								Relation:       "meter_enduse",
+								Basis:          "measured_meter",
+								RuleID:         "meter.cooling_electricity",
+								SourceIDs:      []string{"target-source"},
+								RelatedPathIDs: []string{"target-path"},
 							}},
 						}},
 					},
@@ -811,16 +833,16 @@ func TestBatchSimulationWorkbookSheetsIncludeComparisonDelta(t *testing.T) {
 			TargetRowID:   "target-run",
 		},
 	})
-	if len(sheets) != 6 || sheets[1].Name != "Comparison" || sheets[2].Name != "Energy Delta" || sheets[3].Name != "Sankey Edge Delta" {
+	if len(sheets) != 7 || sheets[1].Name != "Comparison" || sheets[2].Name != "Energy Delta" || sheets[3].Name != "Sankey Edge Delta" {
 		t.Fatalf("simulation comparison workbook sheets = %#v", sheets)
 	}
 	if rows := sheets[1].Sections[0].Rows; len(rows) != 2 || rows[0][1] != "baseline-run" || rows[1][1] != "target-run" {
 		t.Fatalf("comparison rows = %#v", rows)
 	}
-	if rows := sheets[2].Sections[0].Rows; len(rows) != 2 || rows[0][1] != "cooling.electricity" || rows[0][7] != "5" || rows[0][8] != "50%" || rows[1][1] != "kpi.cooling_cop" || rows[1][17] == "" || rows[1][19] != "8" || rows[1][20] != "9" || rows[1][23] != "4" || rows[1][24] != "3" {
+	if rows := sheets[2].Sections[0].Rows; len(rows) != 2 || rows[0][1] != "cooling.electricity" || rows[0][7] != "5" || rows[0][8] != "50%" || rows[0][26] != "baseline-source" || rows[0][27] != "target-source" || rows[0][28] != "21" || rows[0][29] != "22" || rows[1][1] != "kpi.cooling_cop" || rows[1][17] == "" || rows[1][19] != "8" || rows[1][20] != "9" || rows[1][23] != "4" || rows[1][24] != "3" {
 		t.Fatalf("energy delta rows = %#v", rows)
 	}
-	if rows := sheets[3].Sections[0].Rows; len(rows) != 1 || rows[0][0] != "meter_enduse" || rows[0][7] != "5" || rows[0][10] != "matched" {
+	if rows := sheets[3].Sections[0].Rows; len(rows) != 1 || rows[0][0] != "meter_enduse" || rows[0][7] != "5" || rows[0][10] != "matched" || rows[0][14] != "baseline-source" || rows[0][15] != "target-source" || rows[0][16] != "21" || rows[0][17] != "22" || rows[0][18] != "baseline-path" || rows[0][19] != "target-path" {
 		t.Fatalf("edge delta rows = %#v", rows)
 	}
 }
