@@ -1389,8 +1389,12 @@
 .energy-sankey-node.gas rect,
 .energy-sankey-node.propane rect,
 .energy-sankey-node.steam rect,
+.energy-sankey-node.fuel_oil_1 rect,
+.energy-sankey-node.fuel_oil_2 rect,
 .energy-sankey-node.fuel_oil_no1 rect,
 .energy-sankey-node.fuel_oil_no2 rect,
+.energy-sankey-node.other_fuel_1 rect,
+.energy-sankey-node.other_fuel_2 rect,
 .energy-sankey-node.other_fuel1 rect,
 .energy-sankey-node.other_fuel2 rect {
   fill: color-mix(in srgb, #c2410c 15%, var(--surface-2));
@@ -1421,6 +1425,26 @@
   stroke: color-mix(in srgb, #ea580c 36%, var(--line));
 }
 
+.energy-sankey-node.fans rect {
+  fill: color-mix(in srgb, #818cf8 14%, var(--surface-2));
+  stroke: color-mix(in srgb, #4f46e5 34%, var(--line));
+}
+
+.energy-sankey-node.pumps rect {
+  fill: color-mix(in srgb, #22c55e 13%, var(--surface-2));
+  stroke: color-mix(in srgb, #15803d 34%, var(--line));
+}
+
+.energy-sankey-node.heat_rejection rect {
+  fill: color-mix(in srgb, #0ea5e9 14%, var(--surface-2));
+  stroke: color-mix(in srgb, #0369a1 34%, var(--line));
+}
+
+.energy-sankey-node.heat_recovery rect {
+  fill: color-mix(in srgb, #10b981 14%, var(--surface-2));
+  stroke: color-mix(in srgb, #047857 34%, var(--line));
+}
+
 .energy-sankey-node.ventilation rect {
   fill: color-mix(in srgb, #14b8a6 14%, var(--surface-2));
   stroke: color-mix(in srgb, #0f766e 36%, var(--line));
@@ -1436,6 +1460,29 @@
 .energy-sankey-node.equipment rect,
 .energy-sankey-node.interior_equipment rect {
   fill: color-mix(in srgb, #64748b 10%, var(--surface-2));
+  stroke: color-mix(in srgb, #64748b 34%, var(--line));
+}
+
+.energy-sankey-node.water_systems rect {
+  fill: color-mix(in srgb, #2563eb 12%, var(--surface-2));
+  stroke: color-mix(in srgb, #1d4ed8 34%, var(--line));
+}
+
+.energy-sankey-node.refrigeration rect {
+  fill: color-mix(in srgb, #0891b2 13%, var(--surface-2));
+  stroke: color-mix(in srgb, #0e7490 34%, var(--line));
+}
+
+.energy-sankey-node.generators rect,
+.energy-sankey-node.storage_charge rect,
+.energy-sankey-node.storage_discharge rect {
+  fill: color-mix(in srgb, #84cc16 14%, var(--surface-2));
+  stroke: color-mix(in srgb, #4d7c0f 34%, var(--line));
+}
+
+.energy-sankey-node.other_hvac rect,
+.energy-sankey-node.other rect {
+  fill: color-mix(in srgb, #94a3b8 12%, var(--surface-2));
   stroke: color-mix(in srgb, #64748b 34%, var(--line));
 }
 
@@ -1528,6 +1575,36 @@
 .energy-sankey-legend i.node.heating {
   background: color-mix(in srgb, #f97316 28%, var(--surface-2));
   border-color: #ea580c;
+}
+
+.energy-sankey-legend i.node.fans {
+  background: color-mix(in srgb, #818cf8 30%, var(--surface-2));
+  border-color: #4f46e5;
+}
+
+.energy-sankey-legend i.node.pumps {
+  background: color-mix(in srgb, #22c55e 26%, var(--surface-2));
+  border-color: #15803d;
+}
+
+.energy-sankey-legend i.node.water_systems {
+  background: color-mix(in srgb, #2563eb 26%, var(--surface-2));
+  border-color: #1d4ed8;
+}
+
+.energy-sankey-legend i.node.refrigeration {
+  background: color-mix(in srgb, #0891b2 28%, var(--surface-2));
+  border-color: #0e7490;
+}
+
+.energy-sankey-legend i.node.generators {
+  background: color-mix(in srgb, #84cc16 28%, var(--surface-2));
+  border-color: #4d7c0f;
+}
+
+.energy-sankey-legend i.node.other {
+  background: color-mix(in srgb, #94a3b8 24%, var(--surface-2));
+  border-color: #64748b;
 }
 
 .energy-sankey-legend i.measured_variable {

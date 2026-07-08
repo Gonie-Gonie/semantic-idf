@@ -690,7 +690,7 @@ function renderEnergyUseBreakdownSection(explanation = {}) {
       (node) => `
         <tr>
           <td>${escapeHTML(titleCaseEnergyToken(node.carrier || ""))}</td>
-          <td>${escapeHTML(titleCaseEnergyToken(node.endUse || ""))}</td>
+          <td>${escapeHTML(energyEndUseLabel(node.endUse || ""))}</td>
           <td>${escapeHTML(node.label || node.kind || node.id || "")}</td>
           <td>${escapeHTML(formatValueWithUnit(node.value, node.unit))}</td>
           <td>${renderEnergyReconciliationSources(explanation, node.sourceIds || [])}</td>
@@ -1620,6 +1620,12 @@ function renderEnergyExplanationLegend() {
       <span><i class="node district_heating"></i>${escapeHTML(t("simulation.energyDistrictHeating", {}, "District heating"))}</span>
       <span><i class="node cooling"></i>${escapeHTML(t("simulation.cooling", {}, "Cooling"))}</span>
       <span><i class="node heating"></i>${escapeHTML(t("simulation.heating", {}, "Heating"))}</span>
+      <span><i class="node fans"></i>${escapeHTML(energyEndUseLabel("fans"))}</span>
+      <span><i class="node pumps"></i>${escapeHTML(energyEndUseLabel("pumps"))}</span>
+      <span><i class="node water_systems"></i>${escapeHTML(energyEndUseLabel("water_systems"))}</span>
+      <span><i class="node refrigeration"></i>${escapeHTML(energyEndUseLabel("refrigeration"))}</span>
+      <span><i class="node generators"></i>${escapeHTML(energyEndUseLabel("generators"))}</span>
+      <span><i class="node other"></i>${escapeHTML(energyEndUseLabel("other"))}</span>
       <span><i class="measured_meter"></i>${escapeHTML(t("simulation.basisMeasuredMeter", {}, "measured meter"))}</span>
       <span><i class="measured_variable"></i>${escapeHTML(t("simulation.basisMeasuredVariable", {}, "measured variable"))}</span>
       <span><i class="derived_balance"></i>${escapeHTML(t("simulation.basisDerived", {}, "derived balance"))}</span>
@@ -2243,6 +2249,29 @@ function titleCaseEnergyToken(value = "") {
   return String(value || "")
     .replace(/_/g, " ")
     .replace(/\w\S*/g, (part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase());
+}
+
+function energyEndUseLabel(endUse = "") {
+  const labels = {
+    cooling: t("simulation.cooling", {}, "Cooling"),
+    heating: t("simulation.heating", {}, "Heating"),
+    fans: t("simulation.energyEndUseFans", {}, "Fans"),
+    pumps: t("simulation.energyEndUsePumps", {}, "Pumps"),
+    heat_rejection: t("simulation.energyEndUseHeatRejection", {}, "Heat rejection"),
+    heat_recovery: t("simulation.energyEndUseHeatRecovery", {}, "Heat recovery"),
+    interior_lighting: t("simulation.energyEndUseInteriorLighting", {}, "Interior lighting"),
+    exterior_lighting: t("simulation.energyEndUseExteriorLighting", {}, "Exterior lighting"),
+    interior_equipment: t("simulation.energyEndUseInteriorEquipment", {}, "Interior equipment"),
+    water_systems: t("simulation.energyEndUseWaterSystems", {}, "Water systems"),
+    refrigeration: t("simulation.energyEndUseRefrigeration", {}, "Refrigeration"),
+    generators: t("simulation.energyEndUseGenerators", {}, "Generators / onsite production"),
+    storage_charge: t("simulation.energyEndUseStorageCharge", {}, "Storage charge"),
+    storage_discharge: t("simulation.energyEndUseStorageDischarge", {}, "Storage discharge"),
+    other_hvac: t("simulation.energyEndUseOtherHVAC", {}, "Other HVAC"),
+    other: t("simulation.energyEndUseOther", {}, "Other"),
+    total: t("simulation.energyEndUseTotal", {}, "Total"),
+  };
+  return labels[String(endUse || "").toLowerCase()] || titleCaseEnergyToken(endUse);
 }
 
 function energyExplanationNodeTitle(node = {}) {

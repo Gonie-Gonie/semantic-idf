@@ -193,7 +193,9 @@ payloads expose
 `allocationPolicy` so exported results make clear whether allocated edges were
 allowed. Carrier-qualified meters that are not in the explicit end-use alias
 catalog are retained as `other` end uses while preserving the original meter
-name in source metadata. With `by_zone_load_share`, cooling/heating end-use
+name in source metadata. The Sankey UI maps canonical end-use IDs such as fans,
+pumps, water systems, refrigeration, onsite generation, and other energy use to
+stable labels and node colors. With `by_zone_load_share`, cooling/heating end-use
 energy is allocated to zone load nodes by measured delivered-load share and the
 edge uses `relation=allocation`, `basis=allocated`, and the
 `allocation.by_zone_load_share` rule. With `by_service_path_load_share`, the

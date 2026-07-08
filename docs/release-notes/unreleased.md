@@ -234,6 +234,9 @@ The release script infers bump size from these sections:
 - Basic Energy delivered-load nodes now expose whether their values came from
   reported energy variables or rate variables integrated over SQL time
   intervals through the node `basis` field.
+- Basic Energy Sankey now maps more canonical end-use IDs, including fans,
+  pumps, heat recovery, water systems, refrigeration, onsite generation,
+  storage, and other energy use, to stable labels and node colors.
 
 ## Fixed
 
