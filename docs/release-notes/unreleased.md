@@ -174,6 +174,9 @@ The release script infers bump size from these sections:
 - Batch Simulation CSV energy summary, Sankey edge, and reconciliation rows now
   fill source table, row, column, source unit, and normalized unit fields from
   their source IDs.
+- Batch Simulation Basic Energy comparison tables now show baseline/target
+  source IDs, output object numbers, table/row/column references, and units
+  directly beside each summary and Sankey edge delta.
 - Purpose HTML exports now include source output object, table, row, column,
   source unit, and normalized unit fields directly in Energy Explanation
   summary, annual edge, reconciliation, and source availability rows.

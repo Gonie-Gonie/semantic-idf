@@ -283,6 +283,9 @@ the largest explanation changes plus end-use, delivered-load, and heat-driver
 delta tables, including residual rows, beside the selected metric. It flags completeness
 differences between the two selected cases, including mapped percent, missing
 category changes, and missing/not-applicable source availability changes.
+Comparison rows include compact baseline/target source IDs, source output
+object numbers, SQL table/row/column references, and source/normalized units
+when available.
 Explicit gain/loss heat-driver summary rows stay separate so
 opposite air-exchange directions can be compared. It also ranks annual Sankey
 edge deltas by relation, basis, edge label, rule ID, delta, percent, and

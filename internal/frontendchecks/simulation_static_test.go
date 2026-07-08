@@ -228,6 +228,8 @@ func TestFrontendBatchEnergyExplanationDeltaContracts(t *testing.T) {
 		"renderEnergyExplanationEdgeDeltaRanking",
 		"energyExplanationDeltaMetricCell",
 		"energyExplanationDeltaRatioSideDetail",
+		"energyExplanationDeltaSourceCell",
+		"energyExplanationDeltaSourceSummary",
 		"energyExplanationDeltaRows",
 		"energyExplanationEdgeDeltaRows",
 		"energyExplanationAnnualEdgeItems",
@@ -242,6 +244,8 @@ func TestFrontendBatchEnergyExplanationDeltaContracts(t *testing.T) {
 		"zero comparison",
 		"leftMissing",
 		"rightMissing",
+		"leftSourceSummary",
+		"rightSourceSummary",
 		"common.missing",
 		"renderEnergyExplanationCompletenessDelta",
 		"energyExplanationSourceAvailabilitySummary",
@@ -319,6 +323,7 @@ func TestFrontendBatchEnergyExplanationDeltaContracts(t *testing.T) {
 		"Largest Energy Explanation Changes",
 		"Sankey Edge Delta",
 		"Basis</th><th>Edge",
+		"Sources</th><th>Status",
 		"missing in baseline",
 	} {
 		if !strings.Contains(batch, term) {
@@ -353,5 +358,8 @@ func TestFrontendBatchEnergyExplanationDeltaContracts(t *testing.T) {
 	styles := readTestFile(t, "frontend/src/styles/workspace.css")
 	if !strings.Contains(styles, ".batch-energy-edge-delta-view") || !strings.Contains(styles, ".batch-energy-edge-delta-track") {
 		t.Fatalf("batch energy edge delta styles are missing")
+	}
+	if !strings.Contains(styles, ".batch-energy-delta-sources") {
+		t.Fatalf("batch energy delta source styles are missing")
 	}
 }

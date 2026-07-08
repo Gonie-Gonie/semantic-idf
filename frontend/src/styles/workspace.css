@@ -1451,6 +1451,30 @@ th.input-jump-highlight {
   line-height: 1.3;
 }
 
+.batch-energy-delta-sources {
+  min-width: 220px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.batch-energy-delta-sources span,
+.batch-energy-delta-sources small {
+  display: block;
+}
+
+.batch-energy-delta-sources b {
+  color: var(--text);
+  font-size: 10px;
+}
+
+.batch-energy-delta-sources small {
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .batch-energy-edge-delta-view {
   display: grid;
   gap: 6px;

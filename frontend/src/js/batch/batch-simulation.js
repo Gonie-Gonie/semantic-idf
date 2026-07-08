@@ -1249,6 +1249,7 @@ export function initializeMultiSimulationTool(context) {
             <td>${escapeHTML(energyExplanationDeltaValue(row, "right"))}</td>
             <td>${escapeHTML(formatSignedValue(row.delta, row.unit))}</td>
             <td>${escapeHTML(energyExplanationDeltaPercent(row))}</td>
+            ${energyExplanationDeltaSourceCell(row)}
             <td>${escapeHTML(row.status)}</td>
           </tr>`,
       )
@@ -1261,7 +1262,7 @@ export function initializeMultiSimulationTool(context) {
         <h4>${escapeHTML(t("simulation.energyDeltaRanking", {}, "Largest Energy Explanation Changes"))}</h4>
         <div class="tool-table-wrap">
           <table class="tool-table">
-            <thead><tr><th>Level</th><th>${escapeHTML(t("common.metric", {}, "Metric"))}</th><th>${escapeHTML(leftResult.filename || fileName(leftResult.inputPath))}</th><th>${escapeHTML(rightResult.filename || fileName(rightResult.inputPath))}</th><th>Delta</th><th>%</th><th>Status</th></tr></thead>
+            <thead><tr><th>Level</th><th>${escapeHTML(t("common.metric", {}, "Metric"))}</th><th>${escapeHTML(leftResult.filename || fileName(leftResult.inputPath))}</th><th>${escapeHTML(rightResult.filename || fileName(rightResult.inputPath))}</th><th>Delta</th><th>%</th><th>Sources</th><th>Status</th></tr></thead>
             <tbody>${rows}</tbody>
           </table>
         </div>
@@ -1284,6 +1285,7 @@ export function initializeMultiSimulationTool(context) {
             <td>${escapeHTML(energyExplanationDeltaValue(row, "right"))}</td>
             <td>${escapeHTML(formatSignedValue(row.delta, row.unit))}</td>
             <td>${escapeHTML(energyExplanationDeltaPercent(row))}</td>
+            ${energyExplanationDeltaSourceCell(row)}
             <td>${escapeHTML(row.status)}</td>
           </tr>`,
       )
@@ -1297,7 +1299,7 @@ export function initializeMultiSimulationTool(context) {
         ${renderEnergyExplanationEdgeDeltaBars(sortedRows.slice(0, 8))}
         <div class="tool-table-wrap">
           <table class="tool-table">
-            <thead><tr><th>Relation</th><th>Basis</th><th>Edge</th><th>Rule</th><th>${escapeHTML(leftResult.filename || fileName(leftResult.inputPath))}</th><th>${escapeHTML(rightResult.filename || fileName(rightResult.inputPath))}</th><th>Delta</th><th>%</th><th>Status</th></tr></thead>
+            <thead><tr><th>Relation</th><th>Basis</th><th>Edge</th><th>Rule</th><th>${escapeHTML(leftResult.filename || fileName(leftResult.inputPath))}</th><th>${escapeHTML(rightResult.filename || fileName(rightResult.inputPath))}</th><th>Delta</th><th>%</th><th>Sources</th><th>Status</th></tr></thead>
             <tbody>${rows}</tbody>
           </table>
         </div>
@@ -1345,6 +1347,7 @@ export function initializeMultiSimulationTool(context) {
             <td>${escapeHTML(energyExplanationDeltaValue(row, "right"))}</td>
             <td>${escapeHTML(formatSignedValue(row.delta, row.unit))}</td>
             <td>${escapeHTML(energyExplanationDeltaPercent(row))}</td>
+            ${energyExplanationDeltaSourceCell(row)}
             <td>${escapeHTML(row.status)}</td>
           </tr>`,
       )
@@ -1357,7 +1360,7 @@ export function initializeMultiSimulationTool(context) {
         <h4>${escapeHTML(label)}</h4>
         <div class="tool-table-wrap">
           <table class="tool-table">
-            <thead><tr><th>${escapeHTML(t("common.metric", {}, "Metric"))}</th><th>${escapeHTML(leftResult.filename || fileName(leftResult.inputPath))}</th><th>${escapeHTML(rightResult.filename || fileName(rightResult.inputPath))}</th><th>Delta</th><th>%</th><th>Status</th></tr></thead>
+            <thead><tr><th>${escapeHTML(t("common.metric", {}, "Metric"))}</th><th>${escapeHTML(leftResult.filename || fileName(leftResult.inputPath))}</th><th>${escapeHTML(rightResult.filename || fileName(rightResult.inputPath))}</th><th>Delta</th><th>%</th><th>Sources</th><th>Status</th></tr></thead>
             <tbody>${rows}</tbody>
           </table>
         </div>
@@ -1367,6 +1370,8 @@ export function initializeMultiSimulationTool(context) {
   function energyExplanationDeltaRows(group, leftResult, rightResult, key) {
     const left = energyExplanationSummaryMap(leftResult.purposeResults?.energyExplanationSummary?.[key] || []);
     const right = energyExplanationSummaryMap(rightResult.purposeResults?.energyExplanationSummary?.[key] || []);
+    const leftExplanation = leftResult.purposeResults?.energyExplanation || {};
+    const rightExplanation = rightResult.purposeResults?.energyExplanation || {};
     return [...new Set([...left.keys(), ...right.keys()])].map((id) => {
       const leftItem = left.get(id);
       const rightItem = right.get(id);
@@ -1397,6 +1402,10 @@ export function initializeMultiSimulationTool(context) {
         denominatorUnit: rightItem?.denominatorUnit || leftItem?.denominatorUnit || "",
         heatCategory: rightItem?.heatCategory || leftItem?.heatCategory || "",
         sign: rightItem?.sign || leftItem?.sign || "",
+        leftSourceIDs: leftItem?.sourceIds || [],
+        rightSourceIDs: rightItem?.sourceIds || [],
+        leftSourceSummary: energyExplanationDeltaSourceSummary(leftExplanation, leftItem?.sourceIds || []),
+        rightSourceSummary: energyExplanationDeltaSourceSummary(rightExplanation, rightItem?.sourceIds || []),
         status: energyExplanationDeltaStatus(leftItem, rightItem, leftValue, rightValue),
         totalMagnitude: Math.abs(leftValue) + Math.abs(rightValue),
       };
@@ -1404,8 +1413,10 @@ export function initializeMultiSimulationTool(context) {
   }
 
   function energyExplanationEdgeDeltaRows(leftResult, rightResult) {
-    const left = energyExplanationEdgeMap(leftResult.purposeResults?.energyExplanation || {});
-    const right = energyExplanationEdgeMap(rightResult.purposeResults?.energyExplanation || {});
+    const leftExplanation = leftResult.purposeResults?.energyExplanation || {};
+    const rightExplanation = rightResult.purposeResults?.energyExplanation || {};
+    const left = energyExplanationEdgeMap(leftExplanation);
+    const right = energyExplanationEdgeMap(rightExplanation);
     return [...new Set([...left.keys(), ...right.keys()])].map((id) => {
       const leftEdge = left.get(id);
       const rightEdge = right.get(id);
@@ -1429,6 +1440,10 @@ export function initializeMultiSimulationTool(context) {
         delta,
         percent,
         unit,
+        leftSourceIDs: leftEdge?.sourceIds || [],
+        rightSourceIDs: rightEdge?.sourceIds || [],
+        leftSourceSummary: energyExplanationDeltaSourceSummary(leftExplanation, leftEdge?.sourceIds || []),
+        rightSourceSummary: energyExplanationDeltaSourceSummary(rightExplanation, rightEdge?.sourceIds || []),
         status: energyExplanationDeltaStatus(leftEdge, rightEdge, leftValue, rightValue),
       };
     });
@@ -1497,6 +1512,46 @@ export function initializeMultiSimulationTool(context) {
       parts.push(right);
     }
     return parts.join(" | ");
+  }
+
+  function energyExplanationDeltaSourceCell(row = {}) {
+    const left = row.leftSourceSummary || "";
+    const right = row.rightSourceSummary || "";
+    if (!left && !right) {
+      return `<td class="batch-energy-delta-sources muted">-</td>`;
+    }
+    const sides = [
+      [t("batch.baselineCase", {}, "Baseline"), left],
+      [t("batch.targetCase", {}, "Target"), right],
+    ]
+      .filter(([, value]) => value)
+      .map(([label, value]) => `<span><b>${escapeHTML(label)}</b><small title="${escapeHTML(value)}">${escapeHTML(value)}</small></span>`)
+      .join("");
+    return `<td class="batch-energy-delta-sources">${sides}</td>`;
+  }
+
+  function energyExplanationDeltaSourceSummary(explanation = {}, sourceIDs = []) {
+    const sourceByID = new Map((explanation.sources || []).map((source) => [source.id, source]));
+    const values = [];
+    for (const sourceID of sourceIDs || []) {
+      if (!sourceID || values.some((value) => value.sourceID === sourceID)) {
+        continue;
+      }
+      const source = sourceByID.get(sourceID) || {};
+      const objectIndex = Number(source.objectIndex);
+      const outputObject = Number.isFinite(objectIndex) ? `#${objectIndex + 1}` : "";
+      const tableRef = [source.tableName, source.rowName, source.columnName].filter(Boolean).join(" / ");
+      const unitRef = [source.sourceUnit || source.units, source.normalizedUnit].filter(Boolean).join(" -> ");
+      values.push({
+        sourceID,
+        label: [source.id || sourceID, outputObject, tableRef, unitRef].filter(Boolean).join(" | "),
+      });
+    }
+    const labels = values.map((value) => value.label).filter(Boolean);
+    if (labels.length <= 2) {
+      return labels.join("; ");
+    }
+    return `${labels.slice(0, 2).join("; ")}; +${labels.length - 2}`;
   }
 
   function energyExplanationDeltaRatioSideDetail(label, numeratorValue, denominatorValue, row = {}) {
