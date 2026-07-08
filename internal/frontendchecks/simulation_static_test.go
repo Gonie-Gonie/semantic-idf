@@ -15,6 +15,8 @@ func TestFrontendSimulationEnergySystemsCrossJumpContracts(t *testing.T) {
 		"focusedEnergyExplanationGraph",
 		"data-simulation-energy-focus-mode",
 		"data-simulation-energy-service-path-focus",
+		"energyAllocationPolicyLabel",
+		`allocationPolicy: "direct_only"`,
 		"navigateHVAC(",
 	} {
 		if !strings.Contains(simulation, term) {
@@ -39,6 +41,7 @@ func TestFrontendBatchEnergyExplanationDeltaContracts(t *testing.T) {
 		"renderEnergyExplanationDeltaRanking",
 		"energyExplanationDeltaRows",
 		"energyExplanationDeltaStatus",
+		`allocationPolicy: "direct_only"`,
 		"Largest Energy Explanation Changes",
 		"missing in baseline",
 	} {

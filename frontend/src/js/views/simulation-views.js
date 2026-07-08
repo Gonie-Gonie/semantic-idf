@@ -798,11 +798,12 @@ function renderEnergyExplanationCompleteness(explanation = {}) {
   if (!items.length) {
     return "";
   }
+  const allocationPolicy = energyAllocationPolicyLabel(explanation.allocationPolicy || "direct_only");
   return `
     <section class="simulation-energy-block simulation-energy-explain-status">
       <div class="simulation-energy-block-head">
         <h4>${escapeHTML(t("simulation.energyExplanation", {}, "Energy explanation"))}</h4>
-        <span>${escapeHTML(t("simulation.mappedEnergy", {}, "Mapped energy"))}: ${escapeHTML(formatNumber(completeness.mappedPercent || 0))}%</span>
+        <span>${escapeHTML(t("simulation.mappedEnergy", {}, "Mapped energy"))}: ${escapeHTML(formatNumber(completeness.mappedPercent || 0))}% / ${escapeHTML(t("simulation.allocationPolicy", {}, "Allocation"))}: ${escapeHTML(allocationPolicy)}</span>
       </div>
       <div class="simulation-energy-explain-grid">
         ${items
@@ -817,6 +818,15 @@ function renderEnergyExplanationCompleteness(explanation = {}) {
           .join("")}
       </div>
     </section>`;
+}
+
+function energyAllocationPolicyLabel(policy = "") {
+  switch (policy) {
+    case "direct_only":
+      return t("simulation.allocationDirectOnly", {}, "Direct only");
+    default:
+      return titleCaseEnergyToken(policy || "direct_only");
+  }
 }
 
 function renderEnergyExplanationSankey(explanation = {}) {
@@ -3229,6 +3239,7 @@ function buildSimulationPurposeRequest() {
       customOutputs: parseCustomOutputs(elements.simulationCustomOutputs?.value || ""),
     },
     frequencyPolicy: elements.simulationPurposeFrequencyPolicy?.value || "purpose_default",
+    allocationPolicy: "direct_only",
     outputApplyMode: purposeOutputApplyMode(),
     sqlMode: "sql_first",
     persistOutputs: Boolean(elements.simulationPersistOutputs?.checked),

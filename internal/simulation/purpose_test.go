@@ -46,6 +46,9 @@ Output:SQLite,
 	if !plan.RequiresSQL {
 		t.Fatalf("plan should require SQL")
 	}
+	if plan.AllocationPolicy != PurposeAllocationPolicyDirectOnly {
+		t.Fatalf("allocation policy = %q, want %q", plan.AllocationPolicy, PurposeAllocationPolicyDirectOnly)
+	}
 	sql := findPurposeOutput(plan, "Output:SQLite", "", "")
 	if sql == nil {
 		t.Fatalf("missing SQL output in %#v", plan.OutputObjects)

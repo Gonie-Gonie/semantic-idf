@@ -23,6 +23,9 @@ The release script infers bump size from these sections:
   selected zone, or a selected HVAC service path.
 - Added an annual `energyExplanationSummary` result payload for carrier,
   end-use, delivered-load, heat-driver, residual, and top-zone rollups.
+- Basic Energy explanation plans and result payloads now expose the
+  `direct_only` allocation policy so exports and UI panels distinguish measured
+  or derived links from future allocated views.
 - Basic Energy purpose runs now request monthly delivered-load and heat-driver
   explanation outputs while reusing hourly Zone Heat Flow outputs when that
   purpose is selected.

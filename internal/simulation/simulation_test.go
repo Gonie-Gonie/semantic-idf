@@ -473,6 +473,9 @@ func TestParseSimulationEnergyExplanationSQLBuildsAccountingGraph(t *testing.T) 
 	if result.Schema != energyExplanationSchema || result.Purpose != string(SimulationPurposeBasicEnergy) {
 		t.Fatalf("identity = %q/%q", result.Schema, result.Purpose)
 	}
+	if result.AllocationPolicy != PurposeAllocationPolicyDirectOnly {
+		t.Fatalf("allocation policy = %q", result.AllocationPolicy)
+	}
 	if len(result.Periods) != 3 || result.Periods[0].ID != "annual" || result.Periods[1].ID != "M1" || result.Periods[2].ID != "M2" {
 		t.Fatalf("periods = %#v", result.Periods)
 	}
@@ -524,7 +527,7 @@ func TestParseSimulationEnergyExplanationSQLBuildsAccountingGraph(t *testing.T) 
 		t.Fatalf("sources = %#v", result.Sources)
 	}
 	summary := buildEnergyExplanationSummary(result)
-	if summary.Schema != energyExplanationSummarySchema || len(summary.EnergyByCarrier) != 1 || summary.EnergyByCarrier[0].Value != 3 {
+	if summary.Schema != energyExplanationSummarySchema || summary.AllocationPolicy != PurposeAllocationPolicyDirectOnly || len(summary.EnergyByCarrier) != 1 || summary.EnergyByCarrier[0].Value != 3 {
 		t.Fatalf("summary energy = %#v", summary)
 	}
 	if item := energyExplanationSummaryItemByID(summary.DeliveredLoadByService, "load.zone_cooling"); item == nil || item.Value != 0.5 {
@@ -606,7 +609,7 @@ func TestPurposeResultBundleUsesSQLEnergyDashboard(t *testing.T) {
 	if bundle.EnergyExplanation.Schema != energyExplanationSchema || len(bundle.EnergyExplanation.Nodes) == 0 {
 		t.Fatalf("bundle energy explanation = %#v", bundle.EnergyExplanation)
 	}
-	if bundle.EnergyExplanationSummary.Schema != energyExplanationSummarySchema || len(bundle.EnergyExplanationSummary.EnergyByCarrier) == 0 {
+	if bundle.EnergyExplanationSummary.Schema != energyExplanationSummarySchema || bundle.EnergyExplanationSummary.AllocationPolicy != PurposeAllocationPolicyDirectOnly || len(bundle.EnergyExplanationSummary.EnergyByCarrier) == 0 {
 		t.Fatalf("bundle energy explanation summary = %#v", bundle.EnergyExplanationSummary)
 	}
 	if len(bundle.Completeness) != 3 ||

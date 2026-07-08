@@ -46,6 +46,12 @@ The purpose flow is:
 uses the purpose flow when `purposeRequest` is present. `RunPurposeSimulationText`
 is a convenience wrapper that defaults to Basic Energy + Zone Heat Flow.
 
+`SimulationPurposeRequest.allocationPolicy` is normalized to `direct_only`.
+The current Basic Energy explanation graph only displays directly measured
+meters, measured variables, derived balance terms, and residuals. It does not
+create allocated zone or service-path edges until a future allocation mode is
+implemented.
+
 ## Purpose Model
 
 Supported purpose ids:
@@ -109,7 +115,9 @@ source IDs derived from `ReportDataDictionary`, accounting-basis edges, and
 residual reconciliation between facility carrier totals and mapped end-use
 meters. The companion `energyExplanationSummary` payload keeps the annual
 carrier, end-use, delivered-load, heat-driver, residual, and top-zone rollups in
-a compact shape for batch comparisons and exports. When heat-balance rate
+a compact shape for batch comparisons and exports. Both payloads expose
+`allocationPolicy` so exported results make clear whether allocated edges were
+allowed. When heat-balance rate
 variables are present, the same payload
 integrates them to `kWh` by timestep and links Delivered Load to Heat Drivers
 with signed driver values and residual reconciliation.

@@ -14,16 +14,17 @@ const energyExplanationSchema = "semantic-idf.energy-explanation/v1"
 const energyExplanationSummarySchema = "semantic-idf.energy-explanation-summary/v1"
 
 type EnergyExplanationResult struct {
-	Schema         string                  `json:"schema"`
-	Purpose        string                  `json:"purpose"`
-	Frequency      string                  `json:"frequency"`
-	Periods        []EnergyPeriod          `json:"periods,omitempty"`
-	Nodes          []EnergyExplanationNode `json:"nodes"`
-	Edges          []EnergyExplanationEdge `json:"edges"`
-	Reconciliation []EnergyReconciliation  `json:"reconciliation,omitempty"`
-	Sources        []EnergyDataSource      `json:"sources,omitempty"`
-	Completeness   EnergyCompleteness      `json:"completeness"`
-	Warnings       []EnergyWarning         `json:"warnings,omitempty"`
+	Schema           string                  `json:"schema"`
+	Purpose          string                  `json:"purpose"`
+	Frequency        string                  `json:"frequency"`
+	AllocationPolicy string                  `json:"allocationPolicy,omitempty"`
+	Periods          []EnergyPeriod          `json:"periods,omitempty"`
+	Nodes            []EnergyExplanationNode `json:"nodes"`
+	Edges            []EnergyExplanationEdge `json:"edges"`
+	Reconciliation   []EnergyReconciliation  `json:"reconciliation,omitempty"`
+	Sources          []EnergyDataSource      `json:"sources,omitempty"`
+	Completeness     EnergyCompleteness      `json:"completeness"`
+	Warnings         []EnergyWarning         `json:"warnings,omitempty"`
 }
 
 type EnergyPeriod struct {
@@ -37,6 +38,7 @@ type EnergyPeriod struct {
 type EnergyExplanationSummary struct {
 	Schema                 string                         `json:"schema,omitempty"`
 	Period                 string                         `json:"period,omitempty"`
+	AllocationPolicy       string                         `json:"allocationPolicy,omitempty"`
 	EnergyByCarrier        []EnergyExplanationSummaryItem `json:"energyByCarrier,omitempty"`
 	EnergyByEndUse         []EnergyExplanationSummaryItem `json:"energyByEndUse,omitempty"`
 	DeliveredLoadByService []EnergyExplanationSummaryItem `json:"deliveredLoadByService,omitempty"`
@@ -377,9 +379,10 @@ func buildEnergyExplanationFromDashboard(dashboard EnergyDashboardResult, plan *
 
 func emptyEnergyExplanationResult(plan *PurposeRunPlan) EnergyExplanationResult {
 	result := EnergyExplanationResult{
-		Schema:    energyExplanationSchema,
-		Purpose:   string(SimulationPurposeBasicEnergy),
-		Frequency: "monthly",
+		Schema:           energyExplanationSchema,
+		Purpose:          string(SimulationPurposeBasicEnergy),
+		Frequency:        "monthly",
+		AllocationPolicy: PurposeAllocationPolicyDirectOnly,
 	}
 	result.Completeness = buildEnergyExplanationCompleteness(nil, nil, plan, 0)
 	return result
@@ -422,16 +425,17 @@ func buildEnergyExplanationResult(series []energyExplanationSeries, sources []En
 		})
 	}
 	result := EnergyExplanationResult{
-		Schema:         energyExplanationSchema,
-		Purpose:        string(SimulationPurposeBasicEnergy),
-		Frequency:      "monthly",
-		Periods:        periods,
-		Nodes:          annual.Nodes,
-		Edges:          annual.Edges,
-		Reconciliation: annual.Reconciliation,
-		Sources:        sources,
-		Completeness:   buildEnergyExplanationCompleteness(series, sources, plan, annual.MappedPercent),
-		Warnings:       annual.Warnings,
+		Schema:           energyExplanationSchema,
+		Purpose:          string(SimulationPurposeBasicEnergy),
+		Frequency:        "monthly",
+		AllocationPolicy: PurposeAllocationPolicyDirectOnly,
+		Periods:          periods,
+		Nodes:            annual.Nodes,
+		Edges:            annual.Edges,
+		Reconciliation:   annual.Reconciliation,
+		Sources:          sources,
+		Completeness:     buildEnergyExplanationCompleteness(series, sources, plan, annual.MappedPercent),
+		Warnings:         annual.Warnings,
 	}
 	return result
 }
@@ -441,9 +445,10 @@ func buildEnergyExplanationSummary(explanation EnergyExplanationResult) EnergyEx
 		return EnergyExplanationSummary{}
 	}
 	summary := EnergyExplanationSummary{
-		Schema:       energyExplanationSummarySchema,
-		Period:       "annual",
-		Completeness: explanation.Completeness,
+		Schema:           energyExplanationSummarySchema,
+		Period:           "annual",
+		AllocationPolicy: firstNonEmpty(explanation.AllocationPolicy, PurposeAllocationPolicyDirectOnly),
+		Completeness:     explanation.Completeness,
 	}
 	energyByCarrier := map[string]*EnergyExplanationSummaryItem{}
 	energyByEndUse := map[string]*EnergyExplanationSummaryItem{}

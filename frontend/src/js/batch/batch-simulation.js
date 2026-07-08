@@ -638,6 +638,7 @@ export function initializeMultiSimulationTool(context) {
     return {
       purposes: purposes.length ? purposes : ["basic_energy"],
       frequencyPolicy: "purpose_default",
+      allocationPolicy: "direct_only",
       sqlMode: "sql_first",
       persistOutputs: false,
       discoveryAllowed: false,

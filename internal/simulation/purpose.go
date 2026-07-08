@@ -29,6 +29,7 @@ const (
 	PurposeFrequencyPolicyPreserve          = "preserve"
 	PurposeFrequencyPolicyHighestResolution = "highest_resolution"
 	PurposeSQLModeSQLFirst                  = "sql_first"
+	PurposeAllocationPolicyDirectOnly       = "direct_only"
 	PurposeOutputStateExisting              = "existing"
 	PurposeOutputStateTemporary             = "temporary"
 	PurposeOutputStateWillPersist           = "will_be_persisted"
@@ -44,6 +45,7 @@ type SimulationPurposeRequest struct {
 	Scope            SimulationPurposeScope `json:"scope"`
 	FrequencyPolicy  string                 `json:"frequencyPolicy,omitempty"`
 	SQLMode          string                 `json:"sqlMode,omitempty"`
+	AllocationPolicy string                 `json:"allocationPolicy,omitempty"`
 	PersistOutputs   bool                   `json:"persistOutputs,omitempty"`
 	DiscoveryAllowed bool                   `json:"discoveryAllowed,omitempty"`
 	OutputApplyMode  string                 `json:"outputApplyMode,omitempty"`
@@ -81,6 +83,7 @@ type PurposeRunPlan struct {
 	EstimatedFrames   int                   `json:"estimatedFrames"`
 	RequiresSQL       bool                  `json:"requiresSQL"`
 	RequiresDiscovery bool                  `json:"requiresDiscovery"`
+	AllocationPolicy  string                `json:"allocationPolicy,omitempty"`
 	Warnings          []PurposeRunWarning   `json:"warnings,omitempty"`
 }
 
@@ -353,6 +356,7 @@ func NormalizeSimulationPurposeRequest(request *SimulationPurposeRequest) Simula
 	if normalized.SQLMode == "" {
 		normalized.SQLMode = PurposeSQLModeSQLFirst
 	}
+	normalized.AllocationPolicy = normalizePurposeAllocationPolicy(normalized.AllocationPolicy)
 	normalized.OutputApplyMode = normalizePurposeOutputApplyMode(normalized.OutputApplyMode)
 	normalized.Scope.ZoneMode = strings.TrimSpace(normalized.Scope.ZoneMode)
 	if normalized.Scope.ZoneMode == "" {
@@ -375,6 +379,15 @@ func NormalizeSimulationPurposeRequest(request *SimulationPurposeRequest) Simula
 	normalized.Scope.ComponentIDs = normalizePurposeStrings(normalized.Scope.ComponentIDs)
 	normalized.Scope.OutputSignatures = normalizePurposeStrings(normalized.Scope.OutputSignatures)
 	return normalized
+}
+
+func normalizePurposeAllocationPolicy(policy string) string {
+	switch strings.ToLower(strings.TrimSpace(policy)) {
+	case PurposeAllocationPolicyDirectOnly, "", "none":
+		return PurposeAllocationPolicyDirectOnly
+	default:
+		return PurposeAllocationPolicyDirectOnly
+	}
 }
 
 func normalizePurposeOutputApplyMode(mode string) string {
@@ -530,6 +543,7 @@ func BuildPurposeResultBundle(result *SimulationRunResult, request SimulationPur
 			}
 			bundle.Energy.Completeness = energyDashboardCompleteness(bundle.Energy, result.PurposeRunPlan, result.Series)
 			bundle.EnergyExplanation = buildEnergyExplanationResultFromFiles(result.Files, bundle.Energy, result.PurposeRunPlan)
+			bundle.EnergyExplanation.AllocationPolicy = request.AllocationPolicy
 			bundle.EnergyExplanationSummary = buildEnergyExplanationSummary(bundle.EnergyExplanation)
 			bundle.Completeness = append(bundle.Completeness, bundle.Energy.Completeness...)
 		case SimulationPurposeZoneHeatFlow:
@@ -2659,6 +2673,7 @@ func (builder *purposePlanBuilder) plan() PurposeRunPlan {
 		EstimatedFrames:   frameCount,
 		RequiresSQL:       true,
 		RequiresDiscovery: builder.request.DiscoveryAllowed,
+		AllocationPolicy:  builder.request.AllocationPolicy,
 		Warnings:          builder.warnings,
 	}
 }
