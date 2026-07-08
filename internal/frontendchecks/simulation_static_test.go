@@ -186,6 +186,7 @@ func TestFrontendBatchEnergyExplanationDeltaContracts(t *testing.T) {
 		"baselineRowId",
 		"targetRowId",
 		"purposeRequest: batchPurposeRequest()",
+		"basicEnergyDetail: elements.multiSimulationEnergyDetail?.value",
 		"workerCount: Number(elements.multiSimulationWorkers?.value || 0)",
 		"weatherMode: elements.multiSimulationWeatherMode?.value",
 		"energyExplanationSummaryExportItems",
@@ -242,6 +243,9 @@ func TestFrontendBatchEnergyExplanationDeltaContracts(t *testing.T) {
 	}
 	if !strings.Contains(batchApp, "reconciliation_status") || !strings.Contains(batchApp, "row.Status") {
 		t.Fatalf("batch simulation reconciliation workbook status export is missing")
+	}
+	if !strings.Contains(batchApp, "basic_energy_detail") || !strings.Contains(batchApp, "purposeRequest.BasicEnergyDetail") {
+		t.Fatalf("batch simulation run context should preserve Basic Energy detail")
 	}
 	styles := readTestFile(t, "frontend/src/styles/workspace.css")
 	if !strings.Contains(styles, ".batch-energy-edge-delta-view") || !strings.Contains(styles, ".batch-energy-edge-delta-track") {

@@ -190,6 +190,8 @@ The release script infers bump size from these sections:
 - Batch Simulation XLSX export now includes a Run Context sheet preserving the
   selected files, purpose request, frequency/allocation policy, weather mode,
   worker count, and batch view options.
+- Batch Simulation XLSX Run Context now records the Basic Energy detail tier
+  used for the run.
 - Basic Energy Sankey now visually highlights the selected edge and endpoint
   nodes while its inspector details are shown.
 - Purpose HTML export now includes Basic Energy explanation summary, annual

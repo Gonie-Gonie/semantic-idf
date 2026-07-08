@@ -864,6 +864,7 @@ func batchSimulationRunContextSection(request BatchSimulationXLSXExportRequest) 
 			{"purpose_ids", strings.Join(batchSimulationPurposeIDStrings(purposeRequest.Purposes), "; ")},
 			{"frequency_policy", purposeRequest.FrequencyPolicy},
 			{"allocation_policy", purposeRequest.AllocationPolicy},
+			{"basic_energy_detail", purposeRequest.BasicEnergyDetail},
 			{"sql_mode", purposeRequest.SQLMode},
 			{"output_apply_mode", purposeRequest.OutputApplyMode},
 			{"persist_outputs", fmt.Sprint(purposeRequest.PersistOutputs)},
@@ -895,7 +896,7 @@ func hasBatchSimulationRunContext(context BatchSimulationXLSXExportContext) bool
 	purpose := context.PurposeRequest
 	return len(purpose.Purposes) > 0 || purpose.FrequencyPolicy != "" || purpose.SQLMode != "" ||
 		purpose.AllocationPolicy != "" || purpose.PersistOutputs || purpose.DiscoveryAllowed ||
-		purpose.OutputApplyMode != "" || purpose.Scope.ZoneMode != "" || len(purpose.Scope.ZoneNames) > 0 ||
+		purpose.BasicEnergyDetail != "" || purpose.OutputApplyMode != "" || purpose.Scope.ZoneMode != "" || len(purpose.Scope.ZoneNames) > 0 ||
 		purpose.Scope.PeriodMode != "" || purpose.Scope.PeriodStart != "" || purpose.Scope.PeriodEnd != "" ||
 		purpose.Scope.LoopMode != "" || len(purpose.Scope.AirLoopNames) > 0 ||
 		len(purpose.Scope.PlantLoopNames) > 0 || len(purpose.Scope.CondenserLoopNames) > 0 ||
