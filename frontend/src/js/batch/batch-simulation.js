@@ -512,7 +512,7 @@ export function initializeMultiSimulationTool(context) {
           edge.toId || "",
           edge.period || "",
           edge.ruleId || "",
-          "",
+          energyExplanationSourceObjectIndexes(item.purposeResults?.energyExplanation || {}, edge.sourceIds || []),
           edge.period || "",
           edge.relation || "",
           edge.basis || "",
@@ -544,7 +544,7 @@ export function initializeMultiSimulationTool(context) {
           "",
           "",
           "",
-          "",
+          energyExplanationSourceObjectIndexes(item.purposeResults?.energyExplanation || {}, reconciliation.sourceIds || []),
           reconciliation.period || "",
           "reconciliation",
           reconciliation.basis || "",
@@ -590,6 +590,19 @@ export function initializeMultiSimulationTool(context) {
 
   function emptyEnergyExplanationEdgeExportFields() {
     return ["", "", "", "", "", "", "", "", "", "", ""];
+  }
+
+  function energyExplanationSourceObjectIndexes(explanation = {}, sourceIDs = []) {
+    const sourceByID = new Map((explanation.sources || []).map((source) => [source.id, source]));
+    const indexes = [];
+    for (const sourceID of sourceIDs || []) {
+      const source = sourceByID.get(sourceID);
+      const index = Number(source?.objectIndex);
+      if (Number.isFinite(index) && !indexes.includes(index)) {
+        indexes.push(index);
+      }
+    }
+    return indexes.join("; ");
   }
 
   function energyExplanationEdgeExportItems(explanation = {}) {
