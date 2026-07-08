@@ -1227,7 +1227,8 @@ function renderEnergyExplanationSVG(nodes = [], edges = []) {
       const y2 = to.y + to.h / 2;
       const mid = Math.max(28, (x2 - x1) / 2);
       const strokeWidth = Math.max(2, Math.min(18, 2 + 16 * Math.abs(Number(edge.value) || 0) / maxEdge));
-      return `<path class="energy-sankey-edge ${escapeHTML(edge.basis || "")}" d="M ${roundSVG(x1)} ${roundSVG(y1)} C ${roundSVG(x1 + mid)} ${roundSVG(y1)}, ${roundSVG(x2 - mid)} ${roundSVG(y2)}, ${roundSVG(x2)} ${roundSVG(y2)}" stroke-width="${roundSVG(strokeWidth)}" data-energy-explanation-edge="${escapeHTML(edge.id || "")}"><title>${escapeHTML(energyExplanationEdgeTitle(edge))}</title></path>`;
+      const selected = state.simulationEnergySelection === edge.id ? " selected" : "";
+      return `<path class="energy-sankey-edge ${escapeHTML(edge.basis || "")}${selected}" d="M ${roundSVG(x1)} ${roundSVG(y1)} C ${roundSVG(x1 + mid)} ${roundSVG(y1)}, ${roundSVG(x2 - mid)} ${roundSVG(y2)}, ${roundSVG(x2)} ${roundSVG(y2)}" stroke-width="${roundSVG(strokeWidth)}" data-energy-explanation-edge="${escapeHTML(edge.id || "")}"><title>${escapeHTML(energyExplanationEdgeTitle(edge))}</title></path>`;
     })
     .join("");
   const nodeRects = nodes

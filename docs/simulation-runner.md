@@ -149,9 +149,9 @@ viewers are added. Basic Energy SQL rows are converted to display units
 (`J`/`kJ`/`MJ`/`GJ`/`Wh` to `kWh`, `W` to `kW`) and grouped into monthly chart
 points when `Time.Month` is available, so hourly or timestep energy rows can
 still feed monthly dashboards. Basic Energy also builds an
-`energyExplanation` payload with `semantic-idf.energy-explanation/v1` schema,
-source IDs derived from `ReportDataDictionary`, accounting-basis edges, and
-residual reconciliation between facility carrier totals and mapped end-use
+  `energyExplanation` payload with `semantic-idf.energy-explanation/v1` schema,
+  source IDs derived from `ReportDataDictionary`, accounting-basis edges, and
+  residual reconciliation between facility carrier totals and mapped end-use
 meters. If detailed `ReportData` rows are unavailable, Basic Energy can fall
 back to annual `TabularDataWithStrings` end-use rows and marks those sources as
 `sql_tabular` with `tabular_annual_value` aggregation. Energy sources preserve
@@ -253,7 +253,8 @@ Purpose result viewers now include:
   energy table, and `Overview` / `Sankey` / `Monthly` / `Zones` / `Sources` /
   `Reconciliation` subviews for tracing Energy Use to Delivered Load and Heat
   Drivers with source metadata. The Sankey inspector shows edge relation, basis,
-  rule, formula, sources, and related service paths. The completeness panel
+  rule, formula, sources, and related service paths, and the selected edge is
+  highlighted in the graph while the inspector is open. The completeness panel
   shows mapped percent, allocation policy, missing categories, and missing
   source availability rows.
   Source availability uses `found` and `missing` status values so missing rows

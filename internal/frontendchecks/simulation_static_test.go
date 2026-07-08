@@ -40,6 +40,7 @@ func TestFrontendSimulationEnergySystemsCrossJumpContracts(t *testing.T) {
 		"energyExplanationRelationshipRuleLabel",
 		"selection.relation",
 		"selection.pathType",
+		"state.simulationEnergySelection === edge.id",
 		"renderEnergyDerivedKPISection",
 		"energyExplanationDerivedKPIItems",
 		"simulation.relation",
@@ -70,7 +71,7 @@ func TestFrontendSimulationEnergySystemsCrossJumpContracts(t *testing.T) {
 		t.Fatalf("simulation allocation policy control is missing")
 	}
 	styles := readTestFile(t, "frontend/src/styles/simulation.css")
-	for _, term := range []string{".energy-related-service-paths", ".energy-service-path-chip", ".simulation-energy-focus-controls", ".energy-source-availability", ".simulation-source-output-jump", ".energy-reconciliation-sources"} {
+	for _, term := range []string{".energy-related-service-paths", ".energy-service-path-chip", ".simulation-energy-focus-controls", ".energy-source-availability", ".simulation-source-output-jump", ".energy-reconciliation-sources", ".energy-sankey-edge.selected"} {
 		if !strings.Contains(styles, term) {
 			t.Fatalf("simulation energy cross-jump style missing %q", term)
 		}
