@@ -180,6 +180,7 @@ type EnergyRelationshipRule struct {
 const (
 	energyRelationshipRuleMeterEndUse       = "meter.end_use"
 	energyRelationshipRuleMeasuredLoad      = "load.measured_variable"
+	energyRelationshipRuleAllocatedZoneLoad = "allocation.by_zone_load_share"
 	energyRelationshipRuleHeatDriverBalance = "heat.driver_balance"
 	energyRelationshipRuleEnergyResidual    = "residual.energy_total"
 	energyRelationshipRuleHeatResidual      = "residual.heat_driver_balance"
@@ -400,11 +401,12 @@ func buildEnergyExplanationFromDashboard(dashboard EnergyDashboardResult, plan *
 }
 
 func emptyEnergyExplanationResult(plan *PurposeRunPlan) EnergyExplanationResult {
+	allocationPolicy := energyExplanationAllocationPolicy(plan)
 	result := EnergyExplanationResult{
 		Schema:            energyExplanationSchema,
 		Purpose:           string(SimulationPurposeBasicEnergy),
 		Frequency:         "monthly",
-		AllocationPolicy:  PurposeAllocationPolicyDirectOnly,
+		AllocationPolicy:  allocationPolicy,
 		RelationshipRules: energyRelationshipRuleCatalog(),
 	}
 	result.Completeness = buildEnergyExplanationCompleteness(nil, nil, plan, 0)
@@ -412,6 +414,7 @@ func emptyEnergyExplanationResult(plan *PurposeRunPlan) EnergyExplanationResult 
 }
 
 func buildEnergyExplanationResult(series []energyExplanationSeries, sources []EnergyDataSource, plan *PurposeRunPlan) EnergyExplanationResult {
+	allocationPolicy := energyExplanationAllocationPolicy(plan)
 	sort.SliceStable(series, func(i, j int) bool {
 		if series[i].Level != series[j].Level {
 			return series[i].Level < series[j].Level
@@ -421,7 +424,7 @@ func buildEnergyExplanationResult(series []energyExplanationSeries, sources []En
 	sort.SliceStable(sources, func(i, j int) bool {
 		return sources[i].ID < sources[j].ID
 	})
-	annual := buildEnergyExplanationGraphForPeriod("annual", series, func(item energyExplanationSeries) float64 {
+	annual := buildEnergyExplanationGraphForPeriod("annual", series, allocationPolicy, func(item energyExplanationSeries) float64 {
 		return item.Total
 	})
 	months := energyExplanationMonths(series)
@@ -436,7 +439,7 @@ func buildEnergyExplanationResult(series []energyExplanationSeries, sources []En
 	}
 	for _, month := range months {
 		periodID := fmt.Sprintf("M%d", month)
-		graph := buildEnergyExplanationGraphForPeriod(periodID, series, func(item energyExplanationSeries) float64 {
+		graph := buildEnergyExplanationGraphForPeriod(periodID, series, allocationPolicy, func(item energyExplanationSeries) float64 {
 			return item.Monthly[month]
 		})
 		periods = append(periods, EnergyPeriod{
@@ -451,7 +454,7 @@ func buildEnergyExplanationResult(series []energyExplanationSeries, sources []En
 		Schema:            energyExplanationSchema,
 		Purpose:           string(SimulationPurposeBasicEnergy),
 		Frequency:         "monthly",
-		AllocationPolicy:  PurposeAllocationPolicyDirectOnly,
+		AllocationPolicy:  allocationPolicy,
 		RelationshipRules: energyRelationshipRuleCatalog(),
 		Periods:           periods,
 		Nodes:             annual.Nodes,
@@ -589,7 +592,14 @@ func limitEnergyExplanationSummaryItems(items []EnergyExplanationSummaryItem, li
 	return append([]EnergyExplanationSummaryItem(nil), items[:limit]...)
 }
 
-func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanationSeries, valueFor func(energyExplanationSeries) float64) energyExplanationGraph {
+func energyExplanationAllocationPolicy(plan *PurposeRunPlan) string {
+	if plan == nil {
+		return PurposeAllocationPolicyDirectOnly
+	}
+	return normalizePurposeAllocationPolicy(plan.AllocationPolicy)
+}
+
+func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanationSeries, allocationPolicy string, valueFor func(energyExplanationSeries) float64) energyExplanationGraph {
 	nodes := map[string]*energyExplanationNodeAccumulator{}
 	facilityByCarrier := map[string]string{}
 	facilityValueByCarrier := map[string]float64{}
@@ -697,6 +707,7 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 	warnings := []EnergyWarning{}
 	meterEndUseRule := energyRelationshipRuleByID(energyRelationshipRuleMeterEndUse)
 	measuredLoadRule := energyRelationshipRuleByID(energyRelationshipRuleMeasuredLoad)
+	allocatedZoneLoadRule := energyRelationshipRuleByID(energyRelationshipRuleAllocatedZoneLoad)
 	heatDriverRule := energyRelationshipRuleByID(energyRelationshipRuleHeatDriverBalance)
 	energyResidualRule := energyRelationshipRuleByID(energyRelationshipRuleEnergyResidual)
 	heatResidualRule := energyRelationshipRuleByID(energyRelationshipRuleHeatResidual)
@@ -782,6 +793,9 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 			fromID = firstExistingNodeID(nodes, "energy.end_use.heating.electricity", "energy.end_use.heating.natural_gas", "energy.end_use.heating.district_heating")
 		}
 		if fromID == "" {
+			continue
+		}
+		if allocationPolicy == PurposeAllocationPolicyByZoneLoadShare && addAllocatedZoneLoadShareEdges(&edges, period, nodes, fromID, loadIDs, allocatedZoneLoadRule) {
 			continue
 		}
 		for _, loadID := range loadIDs {
@@ -943,6 +957,58 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 		Warnings:       warnings,
 		MappedPercent:  mappedPercent,
 	}
+}
+
+func addAllocatedZoneLoadShareEdges(edges *[]EnergyExplanationEdge, period string, nodes map[string]*energyExplanationNodeAccumulator, fromID string, loadIDs []string, rule EnergyRelationshipRule) bool {
+	fromNode := nodes[fromID]
+	if fromNode == nil || fromNode.node.Value == 0 {
+		return false
+	}
+	type zoneLoadTarget struct {
+		id    string
+		node  EnergyExplanationNode
+		value float64
+	}
+	targets := []zoneLoadTarget{}
+	totalLoad := 0.0
+	for _, loadID := range loadIDs {
+		loadNode := nodes[loadID]
+		if loadNode == nil || loadNode.node.ZoneName == "" {
+			continue
+		}
+		value := math.Abs(loadNode.node.Value)
+		if value == 0 {
+			continue
+		}
+		totalLoad += value
+		targets = append(targets, zoneLoadTarget{id: loadID, node: loadNode.node, value: value})
+	}
+	if totalLoad == 0 || len(targets) == 0 {
+		return false
+	}
+	for _, target := range targets {
+		share := target.value / totalLoad
+		value := roundedEnergyNumber(fromNode.node.Value * share)
+		if value == 0 {
+			continue
+		}
+		*edges = append(*edges, EnergyExplanationEdge{
+			ID:          edgeID("allocation", period, fromID, target.id),
+			FromID:      fromID,
+			ToID:        target.id,
+			Value:       value,
+			Unit:        fromNode.node.Unit,
+			Period:      period,
+			Relation:    "allocation",
+			Basis:       rule.Basis,
+			Formula:     fmt.Sprintf("%s; zone load share %.6f", rule.Formula, share),
+			RuleID:      rule.ID,
+			SourceIDs:   appendUniqueStrings(fromNode.node.SourceIDs, target.node.SourceIDs...),
+			ZoneName:    target.node.ZoneName,
+			ServiceKind: target.node.ServiceKind,
+		})
+	}
+	return true
 }
 
 func sqlEnergyExplanationDictionaries(db *sql.DB, sourceFile string) ([]energyExplanationDictionary, error) {
@@ -1221,6 +1287,16 @@ func energyRelationshipRuleCatalog() []EnergyRelationshipRule {
 			RequiredSource: []string{"sql_report_data:variable"},
 			Basis:          "measured_variable",
 			Formula:        "reported delivered load; not COP-converted from energy use",
+		},
+		{
+			ID:             energyRelationshipRuleAllocatedZoneLoad,
+			FromLevel:      "energy",
+			ToLevel:        "load",
+			FromKind:       "cooling_or_heating_end_use",
+			ToKind:         "zone_delivered_load",
+			RequiredSource: []string{"sql_report_data:meter", "sql_report_data:variable"},
+			Basis:          "allocated",
+			Formula:        "allocate end-use energy by measured zone delivered-load share",
 		},
 		{
 			ID:             energyRelationshipRuleHeatDriverBalance,

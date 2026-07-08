@@ -624,6 +624,60 @@ func TestEnergyRelationshipRuleCatalogProvidesEdgeBasis(t *testing.T) {
 	if heatRule.Basis != "derived_balance" || heatRule.FromLevel != "load" || heatRule.ToLevel != "heat" {
 		t.Fatalf("heat rule = %#v", heatRule)
 	}
+	allocationRule := energyRelationshipRuleByID(energyRelationshipRuleAllocatedZoneLoad)
+	if allocationRule.Basis != "allocated" || allocationRule.FromLevel != "energy" || allocationRule.ToLevel != "load" {
+		t.Fatalf("allocation rule = %#v", allocationRule)
+	}
+}
+
+func TestBuildEnergyExplanationAllocatedZoneLoadShare(t *testing.T) {
+	result := buildEnergyExplanationResult([]energyExplanationSeries{
+		{
+			Level:     "energy",
+			Kind:      "energy.cooling",
+			Label:     "Cooling energy",
+			Unit:      "kWh",
+			Carrier:   "electricity",
+			EndUse:    "cooling",
+			SourceIDs: []string{"energy-source"},
+			Total:     4,
+		},
+		{
+			Level:       "load",
+			Kind:        "load.zone_cooling",
+			Label:       "Zone cooling load",
+			Unit:        "kWh",
+			ServiceKind: "cooling",
+			ZoneName:    "ZONE A",
+			SourceIDs:   []string{"load-a"},
+			Total:       1,
+		},
+		{
+			Level:       "load",
+			Kind:        "load.zone_cooling",
+			Label:       "Zone cooling load",
+			Unit:        "kWh",
+			ServiceKind: "cooling",
+			ZoneName:    "ZONE B",
+			SourceIDs:   []string{"load-b"},
+			Total:       3,
+		},
+	}, nil, &PurposeRunPlan{AllocationPolicy: PurposeAllocationPolicyByZoneLoadShare})
+
+	if result.AllocationPolicy != PurposeAllocationPolicyByZoneLoadShare {
+		t.Fatalf("allocation policy = %q", result.AllocationPolicy)
+	}
+	edgeA := energyExplanationEdgeByIDs(result.Edges, "energy.end_use.cooling.electricity", "load.cooling.zone_a")
+	if edgeA == nil || edgeA.Relation != "allocation" || edgeA.Basis != "allocated" || edgeA.RuleID != energyRelationshipRuleAllocatedZoneLoad || edgeA.Value != 1 {
+		t.Fatalf("allocated zone A edge = %#v; all edges = %#v", edgeA, result.Edges)
+	}
+	edgeB := energyExplanationEdgeByIDs(result.Edges, "energy.end_use.cooling.electricity", "load.cooling.zone_b")
+	if edgeB == nil || edgeB.Relation != "allocation" || edgeB.Value != 3 {
+		t.Fatalf("allocated zone B edge = %#v; all edges = %#v", edgeB, result.Edges)
+	}
+	if energyExplanationHasEdge(result.Edges, "delivered_load", "measured_variable", "energy.end_use.cooling.electricity", "load.cooling.zone_a") {
+		t.Fatalf("allocated view should not also emit measured delivered-load edges: %#v", result.Edges)
+	}
 }
 
 func TestEnergyHeatAliasCatalogHandlesObjectScopedFanHeat(t *testing.T) {

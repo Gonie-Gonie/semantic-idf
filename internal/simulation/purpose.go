@@ -30,6 +30,7 @@ const (
 	PurposeFrequencyPolicyHighestResolution = "highest_resolution"
 	PurposeSQLModeSQLFirst                  = "sql_first"
 	PurposeAllocationPolicyDirectOnly       = "direct_only"
+	PurposeAllocationPolicyByZoneLoadShare  = "by_zone_load_share"
 	PurposeOutputStateExisting              = "existing"
 	PurposeOutputStateTemporary             = "temporary"
 	PurposeOutputStateWillPersist           = "will_be_persisted"
@@ -385,6 +386,8 @@ func normalizePurposeAllocationPolicy(policy string) string {
 	switch strings.ToLower(strings.TrimSpace(policy)) {
 	case PurposeAllocationPolicyDirectOnly, "", "none":
 		return PurposeAllocationPolicyDirectOnly
+	case PurposeAllocationPolicyByZoneLoadShare, "zone_load_share":
+		return PurposeAllocationPolicyByZoneLoadShare
 	default:
 		return PurposeAllocationPolicyDirectOnly
 	}
@@ -537,13 +540,20 @@ func BuildPurposeResultBundle(result *SimulationRunResult, request SimulationPur
 	for _, purposeID := range request.Purposes {
 		switch purposeID {
 		case SimulationPurposeBasicEnergy:
+			plan := result.PurposeRunPlan
+			if plan != nil {
+				copy := *plan
+				copy.AllocationPolicy = request.AllocationPolicy
+				plan = &copy
+			} else {
+				plan = &PurposeRunPlan{AllocationPolicy: request.AllocationPolicy}
+			}
 			bundle.Energy = buildEnergyDashboardResultFromFiles(result.Files)
 			if len(bundle.Energy.FacilityMonthly)+len(bundle.Energy.EndUseMonthly)+len(bundle.Energy.ZoneMonthly) == 0 {
 				bundle.Energy = buildEnergyDashboardResult(result.Series)
 			}
 			bundle.Energy.Completeness = energyDashboardCompleteness(bundle.Energy, result.PurposeRunPlan, result.Series)
-			bundle.EnergyExplanation = buildEnergyExplanationResultFromFiles(result.Files, bundle.Energy, result.PurposeRunPlan)
-			bundle.EnergyExplanation.AllocationPolicy = request.AllocationPolicy
+			bundle.EnergyExplanation = buildEnergyExplanationResultFromFiles(result.Files, bundle.Energy, plan)
 			bundle.EnergyExplanationSummary = buildEnergyExplanationSummary(bundle.EnergyExplanation)
 			bundle.Completeness = append(bundle.Completeness, bundle.Energy.Completeness...)
 		case SimulationPurposeZoneHeatFlow:

@@ -82,6 +82,19 @@ Output:SQLite,
 	}
 }
 
+func TestBuildPurposeRunPlanBasicEnergyAllocationPolicy(t *testing.T) {
+	doc := parsePurposePlanFixture(t, purposePlanFixtureIDF)
+
+	plan := BuildPurposeRunPlan(doc, SimulationPurposeRequest{
+		Purposes:         []SimulationPurposeID{SimulationPurposeBasicEnergy},
+		AllocationPolicy: PurposeAllocationPolicyByZoneLoadShare,
+	})
+
+	if plan.AllocationPolicy != PurposeAllocationPolicyByZoneLoadShare {
+		t.Fatalf("allocation policy = %q, want %q", plan.AllocationPolicy, PurposeAllocationPolicyByZoneLoadShare)
+	}
+}
+
 func TestBuildPurposeRunPlanZoneHeatFlowSelectedZones(t *testing.T) {
 	doc := parsePurposePlanFixture(t, purposePlanFixtureIDF)
 
