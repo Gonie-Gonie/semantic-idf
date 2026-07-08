@@ -822,6 +822,9 @@ func batchSimulationWorkbookSheets(request BatchSimulationXLSXExportRequest) []t
 	if sources := batchSimulationEnergySourceSection(request.Result); len(sources.Rows) > 0 {
 		sections = append(sections, tabular.WorkbookSheet{Name: "Energy Sources", Sections: []tabular.Section{sources}})
 	}
+	if availability := batchSimulationEnergySourceAvailabilitySection(request.Result); len(availability.Rows) > 0 {
+		sections = append(sections, tabular.WorkbookSheet{Name: "Source Availability", Sections: []tabular.Section{availability}})
+	}
 	if edges := batchSimulationEnergyEdgeSection(request.Result); len(edges.Rows) > 0 {
 		sections = append(sections, tabular.WorkbookSheet{Name: "Energy Edges", Sections: []tabular.Section{edges}})
 	}
@@ -1381,6 +1384,30 @@ func batchSimulationEnergySourceSection(result simulation.MultiSimulationResult)
 				source.TableName,
 				source.RowName,
 				source.ColumnName,
+			})
+		}
+	}
+	return section
+}
+
+func batchSimulationEnergySourceAvailabilitySection(result simulation.MultiSimulationResult) tabular.Section {
+	section := tabular.Section{
+		Title:   "source_availability",
+		Headers: []string{"file", "run_status", "run_id", "level", "output", "availability_status"},
+	}
+	for _, item := range result.Results {
+		if item.PurposeResults == nil {
+			continue
+		}
+		file := batchSimulationFileLabel(item)
+		for _, availability := range item.PurposeResults.EnergyExplanation.Completeness.SourceAvailability {
+			section.Rows = append(section.Rows, []string{
+				file,
+				item.Status,
+				item.RunID,
+				availability.Level,
+				availability.Name,
+				availability.Status,
 			})
 		}
 	}

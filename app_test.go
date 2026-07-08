@@ -546,6 +546,33 @@ func TestBatchSimulationWorkbookSheetsIncludeRunContext(t *testing.T) {
 	}
 }
 
+func TestBatchSimulationWorkbookSheetsIncludeSourceAvailability(t *testing.T) {
+	result := simulation.MultiSimulationResult{
+		Results: []simulation.SimulationRunResult{{
+			RunID:    "run-source-availability",
+			Filename: "availability.idf",
+			Status:   "succeeded",
+			PurposeResults: &simulation.PurposeResultBundle{
+				EnergyExplanation: simulation.EnergyExplanationResult{
+					Completeness: simulation.EnergyCompleteness{
+						SourceAvailability: []simulation.EnergySourceAvailabilityEntry{
+							{Level: "energy", Name: "Electricity:Facility", Status: "found"},
+							{Level: "load", Name: "Zone Air System Sensible Cooling Energy", Status: "missing"},
+						},
+					},
+				},
+			},
+		}},
+	}
+	sheets := batchSimulationWorkbookSheets(BatchSimulationXLSXExportRequest{Result: result})
+	if len(sheets) != 2 || sheets[1].Name != "Source Availability" {
+		t.Fatalf("source availability sheets = %#v", sheets)
+	}
+	if rows := sheets[1].Sections[0].Rows; len(rows) != 2 || rows[0][5] != "found" || rows[1][4] != "Zone Air System Sensible Cooling Energy" || rows[1][5] != "missing" {
+		t.Fatalf("source availability rows = %#v", rows)
+	}
+}
+
 func TestBatchSimulationWorkbookSheetsIncludeComparisonDelta(t *testing.T) {
 	result := simulation.MultiSimulationResult{
 		Results: []simulation.SimulationRunResult{

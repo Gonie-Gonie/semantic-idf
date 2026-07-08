@@ -149,6 +149,8 @@ The release script infers bump size from these sections:
   numerator and denominator values for CSV, XLSX, HTML, and JSON exports.
 - Batch Simulation energy delta views now include derived KPI formula and
   numerator/denominator details for COP comparison rows.
+- Batch Simulation CSV and XLSX exports now include Basic Energy source
+  availability rows, preserving missing and not-applicable expected outputs.
 - Basic Energy completeness hints now tell light-tier users to switch the detail
   tier before rerunning when explanation outputs are missing.
 - The Basic Energy Reconciliation subview now expands each accounting row's

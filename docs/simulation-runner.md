@@ -273,7 +273,8 @@ comparison value cell renders `Missing` instead of numeric `0` so an absent
 output is not silently treated as a normal zero. Batch Simulation can export
 purpose metrics, compact
 `energyExplanationSummary` rows, `energyExplanation` source metadata rows,
-reconciliation rows, and Sankey edge metadata rows with period, relation, basis,
+source availability rows, reconciliation rows, and Sankey edge metadata rows
+with period, relation, basis,
 `ruleId`, formula, endpoint, service, zone, source IDs, related source output
 object indexes, source/normalized units, load path type, and related HVAC
 service path IDs as CSV for spreadsheet comparison. The batch CSV keeps annual,

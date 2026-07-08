@@ -531,6 +531,32 @@ export function initializeMultiSimulationTool(context) {
           ...emptyEnergyExplanationRatioExportFields(),
         ]);
       });
+      energyExplanationSourceAvailabilityExportItems(explanation).forEach((availability) => {
+        rows.push([
+          file,
+          item.status || "",
+          item.runId || "",
+          "energy_explanation.source_availability",
+          availability.id || "",
+          availability.name || "",
+          "",
+          "",
+          "",
+          availability.level || "",
+          availability.status || "",
+          "source_availability",
+          "",
+          availability.name || "",
+          "",
+          "",
+          "",
+          "",
+          ...emptyEnergyExplanationEdgeExportFields(),
+          ...emptyEnergyExplanationSourceUnitExportFields(),
+          "",
+          ...emptyEnergyExplanationRatioExportFields(),
+        ]);
+      });
       energyExplanationEdgeExportItems(explanation).forEach((edge) => {
         rows.push([
           file,
@@ -904,6 +930,15 @@ export function initializeMultiSimulationTool(context) {
         status: availability.get(key) || "found",
       };
     });
+  }
+
+  function energyExplanationSourceAvailabilityExportItems(explanation = {}) {
+    return (explanation.completeness?.sourceAvailability || []).map((item) => ({
+      id: [item.level || "", item.name || ""].filter(Boolean).join("|"),
+      level: item.level || "",
+      name: item.name || "",
+      status: item.status || "",
+    }));
   }
 
   function energyExplanationSourceLevel(name = "") {
