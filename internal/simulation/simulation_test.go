@@ -309,7 +309,9 @@ func TestParseSimulationEnergySQLClassifiesExtendedMeters(t *testing.T) {
 		(27, '', 'DistrictHeating:Heating', 'J'),
 		(28, '', 'Cooling:Electricity', 'J'),
 		(29, '', 'Heating:Electricity', 'J'),
-		(30, '', 'InteriorLights:Electricity', 'J')`); err != nil {
+		(30, '', 'InteriorLights:Electricity', 'J'),
+		(31, '', 'Heating:Propane', 'J'),
+		(32, '', 'WaterSystems:Steam', 'J')`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Exec(`INSERT INTO ReportData VALUES
@@ -320,7 +322,9 @@ func TestParseSimulationEnergySQLClassifiesExtendedMeters(t *testing.T) {
 		(11, 1, 27, 450000.0),
 		(12, 1, 28, 360000.0),
 		(13, 1, 29, 720000.0),
-		(14, 1, 30, 1080000.0)`); err != nil {
+		(14, 1, 30, 1080000.0),
+		(15, 1, 31, 1440000.0),
+		(16, 1, 32, 2160000.0)`); err != nil {
 		t.Fatal(err)
 	}
 
@@ -351,6 +355,12 @@ func TestParseSimulationEnergySQLClassifiesExtendedMeters(t *testing.T) {
 	}
 	if item := energySeriesByName(result.EndUseMonthly, "InteriorLights:Electricity"); item == nil || item.Total != 0.3 {
 		t.Fatalf("lighting electricity end-use alias series = %#v", result.EndUseMonthly)
+	}
+	if item := energySeriesByName(result.EndUseMonthly, "Heating:Propane"); item == nil || item.Total != 0.4 {
+		t.Fatalf("propane heating end-use series = %#v", result.EndUseMonthly)
+	}
+	if item := energySeriesByName(result.EndUseMonthly, "WaterSystems:Steam"); item == nil || item.Total != 0.6 {
+		t.Fatalf("steam water systems end-use series = %#v", result.EndUseMonthly)
 	}
 }
 
@@ -1308,6 +1318,14 @@ func TestEnergyMeterAliasCatalogHandlesCarrierAndEndUseOrder(t *testing.T) {
 	if _, ok := energyMeterAliasDefinitionForName("SomeCustomMeter:Electricity"); ok {
 		t.Fatalf("custom meter should not be classified as a known alias")
 	}
+	propaneHeating, ok := energyMeterAliasOrOtherDefinitionForName("Heating:Propane")
+	if !ok || propaneHeating.Kind != "energy.heating" || propaneHeating.Carrier != "propane" || propaneHeating.EndUse != "heating" || propaneHeating.HierarchyLevel != "broad_end_use" {
+		t.Fatalf("propane heating meter alias = %#v ok=%t", propaneHeating, ok)
+	}
+	steamWater, ok := energyMeterAliasOrOtherDefinitionForName("WaterSystems:Steam")
+	if !ok || steamWater.Kind != "energy.water_systems" || steamWater.Carrier != "steam" || steamWater.EndUse != "water_systems" {
+		t.Fatalf("steam water systems meter alias = %#v ok=%t", steamWater, ok)
+	}
 	other, ok := energyMeterAliasOrOtherDefinitionForName("SomeCustomMeter:Electricity")
 	if !ok || other.Carrier != "electricity" || other.EndUse != "other" || other.HierarchyLevel != "broad_end_use" {
 		t.Fatalf("custom meter fallback = %#v ok=%t", other, ok)
@@ -1347,6 +1365,53 @@ func TestParseSimulationEnergyExplanationSQLMapsUnknownCarrierMeterToOther(t *te
 	reconciliation := energyExplanationReconciliationByID(result.Reconciliation, "reconcile.energy.electricity.annual")
 	if reconciliation == nil || reconciliation.ExpectedValue != 3 || reconciliation.ExplainedValue != 2 || reconciliation.ResidualValue != 1 {
 		t.Fatalf("custom meter reconciliation = %#v", reconciliation)
+	}
+}
+
+func TestParseSimulationEnergyExplanationSQLMapsGenericFuelEndUseMeters(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "eplusout.sql")
+	createTestEnergySQL(t, path)
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO ReportDataDictionary VALUES
+		(30, '', 'Propane:Facility', 'J'),
+		(31, '', 'Heating:Propane', 'J'),
+		(32, '', 'Steam:Facility', 'J'),
+		(33, '', 'WaterSystems:Steam', 'J')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO ReportData VALUES
+		(30, 1, 30, 7200000.0),
+		(31, 1, 31, 3600000.0),
+		(32, 1, 32, 3600000.0),
+		(33, 1, 33, 1800000.0)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := parseSimulationEnergyExplanationSQL(path, &PurposeRunPlan{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	propaneHeating := energyExplanationNodeByID(result.Nodes, "energy.end_use.heating.propane")
+	if propaneHeating == nil || propaneHeating.Value != 1 || propaneHeating.Kind != "energy.heating" || propaneHeating.Carrier != "propane" || propaneHeating.EndUse != "heating" {
+		t.Fatalf("propane heating end-use node = %#v", propaneHeating)
+	}
+	steamWater := energyExplanationNodeByID(result.Nodes, "energy.end_use.water_systems.steam")
+	if steamWater == nil || steamWater.Value != 0.5 || steamWater.Kind != "energy.water_systems" || steamWater.Carrier != "steam" || steamWater.EndUse != "water_systems" {
+		t.Fatalf("steam water systems end-use node = %#v", steamWater)
+	}
+	if edge := energyExplanationEdgeByIDs(result.Edges, "energy.carrier.propane", "energy.end_use.heating.propane"); edge == nil || edge.Relation != "meter_enduse" || edge.Value != 1 {
+		t.Fatalf("propane heating edge = %#v; all edges = %#v", edge, result.Edges)
+	}
+	summary := buildEnergyExplanationSummary(result)
+	if item := energyExplanationSummaryItemByID(summary.EnergyByEndUse, "heating.propane"); item == nil || item.Value != 1 || item.Carrier != "propane" {
+		t.Fatalf("propane heating summary = %#v", summary.EnergyByEndUse)
 	}
 }
 

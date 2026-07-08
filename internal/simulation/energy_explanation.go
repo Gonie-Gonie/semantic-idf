@@ -2552,6 +2552,9 @@ func energyMeterAliasOrOtherDefinitionForName(name string) (energyMeterAliasDefi
 	if def, ok := energyMeterAliasDefinitionForName(name); ok {
 		return def, true
 	}
+	if def, ok := energyMeterEndUseCarrierDefinitionForName(name); ok {
+		return def, true
+	}
 	carrier, ok := energyMeterCarrierFromUnknownMeter(name)
 	if !ok {
 		return energyMeterAliasDefinition{}, false
@@ -2564,6 +2567,98 @@ func energyMeterAliasOrOtherDefinitionForName(name string) (energyMeterAliasDefi
 		HierarchyLevel: "broad_end_use",
 		Aliases:        []string{name},
 	}, true
+}
+
+func energyMeterEndUseCarrierDefinitionForName(name string) (energyMeterAliasDefinition, bool) {
+	parts := strings.Split(strings.TrimSpace(name), ":")
+	if len(parts) != 2 {
+		return energyMeterAliasDefinition{}, false
+	}
+	left := strings.TrimSpace(parts[0])
+	right := strings.TrimSpace(parts[1])
+	if strings.EqualFold(left, "facility") || strings.EqualFold(right, "facility") {
+		return energyMeterAliasDefinition{}, false
+	}
+	if carrier, ok := energyCarrierToken(left); ok {
+		if endUse, ok := energyEndUseToken(right); ok {
+			return energyMeterEndUseCarrierDefinition(name, carrier, endUse), true
+		}
+	}
+	if endUse, ok := energyEndUseToken(left); ok {
+		if carrier, ok := energyCarrierToken(right); ok {
+			return energyMeterEndUseCarrierDefinition(name, carrier, endUse), true
+		}
+	}
+	return energyMeterAliasDefinition{}, false
+}
+
+func energyMeterEndUseCarrierDefinition(name string, carrier string, endUse string) energyMeterAliasDefinition {
+	return energyMeterAliasDefinition{
+		Kind:           "energy." + endUse,
+		Label:          energyEndUseLabel(endUse, carrier),
+		Carrier:        carrier,
+		EndUse:         endUse,
+		HierarchyLevel: "broad_end_use",
+		Aliases:        []string{name},
+	}
+}
+
+func energyEndUseToken(value string) (string, bool) {
+	switch normalizeEnergyOutputName(value) {
+	case "cooling":
+		return "cooling", true
+	case "heating":
+		return "heating", true
+	case "interiorlights":
+		return "interior_lighting", true
+	case "interiorequipment":
+		return "interior_equipment", true
+	case "exteriorlights":
+		return "exterior_lighting", true
+	case "fans":
+		return "fans", true
+	case "pumps":
+		return "pumps", true
+	case "heatrejection":
+		return "heat_rejection", true
+	case "heatrecovery":
+		return "heat_recovery", true
+	case "watersystems":
+		return "water_systems", true
+	case "refrigeration":
+		return "refrigeration", true
+	default:
+		return "", false
+	}
+}
+
+func energyEndUseLabel(endUse string, carrier string) string {
+	switch endUse {
+	case "cooling":
+		return energyCarrierLabel(carrier) + " cooling"
+	case "heating":
+		return energyCarrierLabel(carrier) + " heating"
+	case "interior_lighting":
+		return energyCarrierLabel(carrier) + " interior lighting"
+	case "interior_equipment":
+		return energyCarrierLabel(carrier) + " interior equipment"
+	case "exterior_lighting":
+		return energyCarrierLabel(carrier) + " exterior lighting"
+	case "fans":
+		return energyCarrierLabel(carrier) + " fans"
+	case "pumps":
+		return energyCarrierLabel(carrier) + " pumps"
+	case "heat_rejection":
+		return energyCarrierLabel(carrier) + " heat rejection"
+	case "heat_recovery":
+		return energyCarrierLabel(carrier) + " heat recovery"
+	case "water_systems":
+		return energyCarrierLabel(carrier) + " water systems"
+	case "refrigeration":
+		return energyCarrierLabel(carrier) + " refrigeration"
+	default:
+		return energyCarrierLabel(carrier) + " " + strings.ReplaceAll(endUse, "_", " ")
+	}
 }
 
 func energyMeterCarrierFromUnknownMeter(name string) (string, bool) {

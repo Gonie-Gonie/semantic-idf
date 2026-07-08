@@ -268,6 +268,9 @@ The release script infers bump size from these sections:
 - Basic Energy Overview SQL parsing now classifies end-use meter aliases through
   the shared energy meter catalog, preserving both carrier-first and end-use-first
   meter names.
+- Basic Energy energy explanations now split generic carrier/end-use meters such
+  as `Heating:Propane` and `WaterSystems:Steam` into canonical end-use and
+  carrier nodes before falling back to `Other`.
 - Batch purpose simulation metrics now include compact annual Energy Use,
   Delivered Load, Heat Driver, residual, mapped-percent, and top heat-driver
   values from the Basic Energy explanation summary, plus two-row delta tables

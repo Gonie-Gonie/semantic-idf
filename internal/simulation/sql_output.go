@@ -971,7 +971,7 @@ func sqlEnergyMeterAliasDefinition(name string, keyValue string) (energyMeterAli
 		if candidate == "" {
 			continue
 		}
-		if def, ok := energyMeterAliasDefinitionForName(candidate); ok {
+		if def, ok := energyMeterAliasOrOtherDefinitionForName(candidate); ok {
 			return def, candidate, true
 		}
 	}
