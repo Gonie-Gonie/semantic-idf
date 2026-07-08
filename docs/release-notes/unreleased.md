@@ -81,6 +81,8 @@ The release script infers bump size from these sections:
 - Heat-driver reconciliation now includes zone/service rows when zone delivered
   load and zone heat-driver sources are available, including monthly period
   rows.
+- The Basic Energy Reconciliation subview now ranks the largest zone/service
+  heat residuals for the selected annual or monthly period.
 - Energy reconciliation source IDs now include both the expected facility total
   source and the mapped consumption end-use sources used in the residual
   formula.

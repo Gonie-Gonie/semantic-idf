@@ -1301,6 +1301,7 @@ function renderEnergyExplanationReconciliation(explanation = {}) {
     .map((warning) => `<article class="simulation-hvac-alert ${escapeHTML(warning.severity || "info")}"><strong>${escapeHTML(warning.code || "")}</strong><span>${escapeHTML(warning.message || "")}</span></article>`)
     .join("");
   const periodLabel = graph.label || periodID;
+  const zoneResidualRanking = renderEnergyZoneResidualRanking(reconciliation);
   return `
     ${completeness}
     ${warnings ? `<div class="simulation-hvac-alert-list">${warnings}</div>` : ""}
@@ -1313,6 +1314,41 @@ function renderEnergyExplanationReconciliation(explanation = {}) {
         <table class="output-table">
           <thead><tr><th>${escapeHTML(t("common.metric", {}, "Metric"))}</th><th>${escapeHTML(t("common.period", {}, "Period"))}</th><th>${escapeHTML(t("common.zone", {}, "Zone"))}</th><th>${escapeHTML(t("simulation.service", {}, "Service"))}</th><th>Expected</th><th>Mapped</th><th>Residual</th><th>${escapeHTML(t("simulation.basis", {}, "Basis"))}</th><th>Formula</th><th>${escapeHTML(t("common.source", {}, "Source"))}</th></tr></thead>
           <tbody>${rows || `<tr><td colspan="10">${escapeHTML(t("common.notAvailable", {}, "N/A"))}</td></tr>`}</tbody>
+        </table>
+      </div>
+    </section>
+    ${zoneResidualRanking}`;
+}
+
+function renderEnergyZoneResidualRanking(reconciliation = []) {
+  const rows = (reconciliation || [])
+    .filter((item) => item.level === "heat" && item.zoneName && Number.isFinite(Number(item.residualValue)) && Math.abs(Number(item.residualValue)) > 0)
+    .sort((a, b) => Math.abs(Number(b.residualValue)) - Math.abs(Number(a.residualValue)))
+    .slice(0, 8)
+    .map(
+      (item) => `
+        <tr>
+          <td>${escapeHTML(item.zoneName || "")}</td>
+          <td>${escapeHTML(item.serviceKind || "")}</td>
+          <td>${escapeHTML(formatValueWithUnit(item.residualValue, item.unit))}</td>
+          <td>${escapeHTML(formatValueWithUnit(item.expectedValue, item.unit))}</td>
+          <td>${escapeHTML(formatValueWithUnit(item.explainedValue, item.unit))}</td>
+        </tr>`,
+    )
+    .join("");
+  if (!rows) {
+    return "";
+  }
+  return `
+    <section class="simulation-energy-block">
+      <div class="simulation-energy-block-head">
+        <h4>${escapeHTML(t("simulation.zoneHeatResidualRanking", {}, "Largest zone heat residuals"))}</h4>
+        <span>${escapeHTML(t("simulation.accountingGapNote", {}, "Residual is an accounting gap, not automatically a model error."))}</span>
+      </div>
+      <div class="output-table-wrap">
+        <table class="output-table">
+          <thead><tr><th>${escapeHTML(t("common.zone", {}, "Zone"))}</th><th>${escapeHTML(t("simulation.service", {}, "Service"))}</th><th>Residual</th><th>Expected</th><th>Mapped</th></tr></thead>
+          <tbody>${rows}</tbody>
         </table>
       </div>
     </section>`;

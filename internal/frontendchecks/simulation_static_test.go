@@ -40,6 +40,8 @@ func TestFrontendSimulationEnergySystemsCrossJumpContracts(t *testing.T) {
 		"missingCategories",
 		"renderEnergyReconciliationSources",
 		"energy-reconciliation-sources",
+		"renderEnergyZoneResidualRanking",
+		"zoneHeatResidualRanking",
 		"item.zoneName",
 		"item.serviceKind",
 		"renderSourceOutputCell(object, { compact: true })",
