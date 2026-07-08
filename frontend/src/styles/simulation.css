@@ -1729,6 +1729,13 @@
   gap: 6px;
 }
 
+.energy-service-path-action-row {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+}
+
 .energy-service-path-chip {
   display: inline-flex;
   align-items: center;
@@ -1748,6 +1755,11 @@
 .energy-service-path-chip:hover {
   border-color: #2563eb;
   color: #1d4ed8;
+}
+
+.energy-service-path-chip.secondary {
+  color: var(--muted);
+  font-weight: 600;
 }
 
 .simulation-hvac-loop-results {

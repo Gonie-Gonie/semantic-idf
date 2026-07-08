@@ -2191,14 +2191,25 @@ function renderSimulationEnergyDrilldownActions(selection = {}) {
   const zoneName = selection.zoneName || "";
   const heatFlowZones = heatFlowZoneMap(activeHeatFlowDataset());
   const hasHeatFlow = zoneName && heatFlowZones.has(normalizeHeatFlowName(zoneName));
-  if (!hasHeatFlow) {
+  const actions = [];
+  if (zoneName) {
+    actions.push(`
+      <button class="simulation-series-inspect" type="button" data-simulation-energy-zone-jump="${escapeHTML(zoneName)}">
+        ${escapeHTML(t("simulation.openZoneInSankey", {}, "Sankey"))}
+      </button>`);
+  }
+  if (hasHeatFlow) {
+    actions.push(`
+      <button class="simulation-series-inspect" type="button" data-simulation-energy-heatflow-zone-jump="${escapeHTML(zoneName)}">
+        ${escapeHTML(t("simulation.openZoneHeatFlow", {}, "Heat Flow"))}
+      </button>`);
+  }
+  if (!actions.length) {
     return "";
   }
   return `
     <div class="energy-explanation-drilldown-actions">
-      <button class="simulation-series-inspect" type="button" data-simulation-energy-heatflow-zone-jump="${escapeHTML(zoneName)}">
-        ${escapeHTML(t("simulation.openZoneHeatFlow", {}, "Heat Flow"))}
-      </button>
+      ${actions.join("")}
     </div>`;
 }
 
@@ -2229,14 +2240,27 @@ function renderSimulationEnergyRelatedServicePaths(selection = {}) {
       <div>
         ${paths
           .map((path) =>
-            renderSimulationEnergyServicePathButton(
-              path,
-              `${simulationServedSubjectLabel(path.servedSubject || path)} / ${simulationServiceKindLabel(path.serviceKind)} / ${simulationDeliveryLabel(path)}`,
-            ),
+            `<span class="energy-service-path-action-row">
+              ${renderSimulationEnergyServicePathButton(
+                path,
+                `${simulationServedSubjectLabel(path.servedSubject || path)} / ${simulationServiceKindLabel(path.serviceKind)} / ${simulationDeliveryLabel(path)}`,
+              )}
+              ${renderSimulationEnergyServicePathFocusButton(path)}
+            </span>`,
           )
           .join("")}
       </div>
     </div>`;
+}
+
+function renderSimulationEnergyServicePathFocusButton(path = {}) {
+  return `
+    <button
+      type="button"
+      class="energy-service-path-chip secondary"
+      data-simulation-energy-service-path-jump="${escapeHTML(path.id || "")}"
+      title="${escapeHTML(t("simulation.openServicePathInSankey", {}, "Sankey"))}"
+    >${escapeHTML(t("simulation.openServicePathInSankey", {}, "Sankey"))}</button>`;
 }
 
 function renderSimulationEnergyServicePathButton(path = {}, label = "") {
