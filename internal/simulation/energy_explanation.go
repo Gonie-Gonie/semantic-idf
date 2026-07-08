@@ -209,6 +209,7 @@ const (
 	energyRelationshipRuleAllocatedZoneLoad        = "allocation.by_zone_load_share"
 	energyRelationshipRuleAllocatedServicePathLoad = "allocation.by_service_path_load_share"
 	energyRelationshipRuleHeatDriverBalance        = "heat.driver_balance"
+	energyRelationshipRuleInternalGainHeat         = "heat.internal_gain_energy"
 	energyRelationshipRuleOnsiteProduction         = "support.onsite_production"
 	energyRelationshipRuleStorageDischarge         = "support.storage_discharge"
 	energyRelationshipRuleEnergyResidual           = "residual.energy_total"
@@ -295,6 +296,11 @@ type energyExplanationSeries struct {
 	sourceIsRate       bool
 	sourcePriority     int
 	heatSignMultiplier float64
+}
+
+type energyExplanationInternalGainTarget struct {
+	endUse  string
+	carrier string
 }
 
 type energyExplanationGraph struct {
@@ -1004,6 +1010,7 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 	facilitySourcesByCarrier := map[string][]string{}
 	endUseValueByCarrier := map[string]float64{}
 	endUseNodesByCarrier := map[string][]string{}
+	endUseNodeByTarget := map[string]string{}
 	supportNodesByCarrier := map[string][]string{}
 	loadNodesByService := map[string][]string{}
 	loadNodesByZoneService := map[string][]string{}
@@ -1013,6 +1020,7 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 	heatValueByZoneService := map[string]float64{}
 	heatSourcesByZoneService := map[string][]string{}
 	heatDeviationByZoneService := map[string]float64{}
+	internalGainTargetByHeatNode := map[string]energyExplanationInternalGainTarget{}
 	addNode := func(node EnergyExplanationNode) {
 		if node.ID == "" || node.Value == 0 {
 			return
@@ -1063,6 +1071,7 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 			} else {
 				endUseValueByCarrier[item.Carrier] += value
 				endUseNodesByCarrier[item.Carrier] = appendUniqueStrings(endUseNodesByCarrier[item.Carrier], nodeID)
+				endUseNodeByTarget[energyExplanationEndUseCarrierKey(item.EndUse, item.Carrier)] = nodeID
 			}
 		case "load":
 			nodeID := energyExplanationLoadNodeID(item)
@@ -1118,6 +1127,9 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 				Basis:        "derived_balance",
 				SourceIDs:    item.SourceIDs,
 			})
+			if target, ok := energyExplanationInternalGainEnergyTarget(item); ok {
+				internalGainTargetByHeatNode[nodeID] = target
+			}
 		}
 	}
 
@@ -1131,6 +1143,7 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 	measuredLoadRule := energyRelationshipRuleByID(energyRelationshipRuleMeasuredLoad)
 	allocatedZoneLoadRule := energyRelationshipRuleByID(energyRelationshipRuleAllocatedZoneLoad)
 	heatDriverRule := energyRelationshipRuleByID(energyRelationshipRuleHeatDriverBalance)
+	internalGainHeatRule := energyRelationshipRuleByID(energyRelationshipRuleInternalGainHeat)
 	energyResidualRule := energyRelationshipRuleByID(energyRelationshipRuleEnergyResidual)
 	heatResidualRule := energyRelationshipRuleByID(energyRelationshipRuleHeatResidual)
 	for carrier, facilityID := range facilityByCarrier {
@@ -1317,6 +1330,34 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 			SourceIDs:    node.node.SourceIDs,
 			ZoneName:     node.node.ZoneName,
 			ServiceKind:  node.node.ServiceKind,
+		})
+	}
+	for heatID, target := range internalGainTargetByHeatNode {
+		heatNode := nodes[heatID]
+		if heatNode == nil {
+			continue
+		}
+		fromID := endUseNodeByTarget[energyExplanationEndUseCarrierKey(target.endUse, target.carrier)]
+		fromNode := nodes[fromID]
+		if fromNode == nil {
+			continue
+		}
+		edges = append(edges, EnergyExplanationEdge{
+			ID:           edgeID("internal_gain", period, fromID, heatID),
+			FromID:       fromID,
+			ToID:         heatID,
+			Value:        heatNode.node.Value,
+			SignedValue:  heatNode.node.SignedValue,
+			DisplayValue: heatNode.node.DisplayValue,
+			Unit:         heatNode.node.Unit,
+			Period:       period,
+			Relation:     "internal_gain_heat",
+			Basis:        internalGainHeatRule.Basis,
+			Formula:      internalGainHeatRule.Formula,
+			RuleID:       internalGainHeatRule.ID,
+			SourceIDs:    appendUniqueStrings(fromNode.node.SourceIDs, heatNode.node.SourceIDs...),
+			ZoneName:     heatNode.node.ZoneName,
+			ServiceKind:  heatNode.node.ServiceKind,
 		})
 	}
 	for serviceKind, loadIDs := range loadNodesByService {
@@ -2461,6 +2502,16 @@ func energyRelationshipRuleCatalog() []EnergyRelationshipRule {
 			Formula:        "integrate(zone heat-balance rate W * timestep_hours) / 1000",
 		},
 		{
+			ID:             energyRelationshipRuleInternalGainHeat,
+			FromLevel:      "energy",
+			ToLevel:        "heat",
+			FromKind:       "internal_gain_end_use",
+			ToKind:         "internal_gain_heat_driver",
+			RequiredSource: []string{"sql_report_data:meter", "sql_report_data:heat_gain_variable"},
+			Basis:          "measured_meter_plus_zone_gain_variable",
+			Formula:        "link matching internal-gain end-use energy with reported zone heat-gain variable; values are independently measured",
+		},
+		{
 			ID:             energyRelationshipRuleOnsiteProduction,
 			FromLevel:      "energy",
 			ToLevel:        "energy",
@@ -3170,6 +3221,26 @@ func energyExplanationEnergyNodeID(item energyExplanationSeries) string {
 
 func energyExplanationIsSupportEndUse(item energyExplanationSeries) bool {
 	return item.Level == "energy" && (item.EndUse == "generators" || item.EndUse == "storage_discharge" || item.Kind == "energy.generators")
+}
+
+func energyExplanationEndUseCarrierKey(endUse string, carrier string) string {
+	return normalizeEnergyOutputName(endUse) + "|" + normalizeEnergyOutputName(carrier)
+}
+
+func energyExplanationInternalGainEnergyTarget(item energyExplanationSeries) (energyExplanationInternalGainTarget, bool) {
+	switch item.Kind {
+	case "heat.lighting":
+		return energyExplanationInternalGainTarget{endUse: "interior_lighting", carrier: "electricity"}, true
+	case "heat.equipment":
+		nameKey := normalizeEnergyOutputName(item.sourceName)
+		if strings.Contains(nameKey, "gasequipment") {
+			return energyExplanationInternalGainTarget{endUse: "interior_equipment", carrier: "natural_gas"}, true
+		}
+		if strings.Contains(nameKey, "electricequipment") {
+			return energyExplanationInternalGainTarget{endUse: "interior_equipment", carrier: "electricity"}, true
+		}
+	}
+	return energyExplanationInternalGainTarget{}, false
 }
 
 func energyExplanationLoadNodeID(item energyExplanationSeries) string {

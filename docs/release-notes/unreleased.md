@@ -114,6 +114,9 @@ The release script infers bump size from these sections:
   request objects when available.
 - Energy explanation payloads now include relationship rule catalogs, and edges
   expose `ruleId` values shown in the Sankey inspector.
+- Basic Energy relationship rules now link matching internal-gain end-use energy
+  and zone heat-gain variables, such as interior lighting energy to lighting
+  heat, with an explicit measured meter/variable basis.
 - Added an annual `energyExplanationSummary` result payload for carrier,
   end-use, delivered-load, heat-driver, residual, and top-zone rollups.
 - Basic Energy explanation plans and result payloads now support

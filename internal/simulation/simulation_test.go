@@ -1609,6 +1609,10 @@ func TestEnergyRelationshipRuleCatalogProvidesEdgeBasis(t *testing.T) {
 	if heatRule.Basis != "derived_balance" || heatRule.FromLevel != "load" || heatRule.ToLevel != "heat" {
 		t.Fatalf("heat rule = %#v", heatRule)
 	}
+	internalGainRule := energyRelationshipRuleByID(energyRelationshipRuleInternalGainHeat)
+	if internalGainRule.Basis != "measured_meter_plus_zone_gain_variable" || internalGainRule.FromLevel != "energy" || internalGainRule.ToLevel != "heat" {
+		t.Fatalf("internal gain rule = %#v", internalGainRule)
+	}
 	allocationRule := energyRelationshipRuleByID(energyRelationshipRuleAllocatedZoneLoad)
 	if allocationRule.Basis != "allocated" || allocationRule.FromLevel != "energy" || allocationRule.ToLevel != "load" {
 		t.Fatalf("allocation rule = %#v", allocationRule)
@@ -1627,6 +1631,52 @@ func TestEnergyRelationshipRuleCatalogProvidesEdgeBasis(t *testing.T) {
 	}
 	if request := NormalizeSimulationPurposeRequest(&SimulationPurposeRequest{AllocationPolicy: PurposeAllocationPolicyByServicePathLoadShare}); request.AllocationPolicy != PurposeAllocationPolicyByServicePathLoadShare {
 		t.Fatalf("service path allocation policy normalized to %q", request.AllocationPolicy)
+	}
+}
+
+func TestBuildEnergyExplanationLinksInteriorLightingEnergyToLightingHeat(t *testing.T) {
+	result := buildEnergyExplanationResult([]energyExplanationSeries{
+		{
+			Level:               "energy",
+			Kind:                "energy.interior_lighting",
+			Label:               "Interior lighting",
+			Unit:                "kWh",
+			Carrier:             "electricity",
+			EndUse:              "interior_lighting",
+			MeterHierarchyLevel: "broad_end_use",
+			SourceIDs:           []string{"lighting-energy-source"},
+			Total:               1.5,
+			Monthly:             map[int]float64{1: 0.75},
+		},
+		{
+			Level:              "heat",
+			Kind:               "heat.lighting",
+			Label:              "Lighting heat",
+			Unit:               "kWh",
+			ZoneName:           "Office",
+			HeatCategory:       "internal_gains",
+			SourceIDs:          []string{"lighting-heat-source"},
+			Total:              1.2,
+			Monthly:            map[int]float64{1: 0.6},
+			sourceName:         "Zone Lights Total Heating Energy",
+			heatSignMultiplier: 1,
+		},
+	}, nil, &PurposeRunPlan{})
+
+	fromID := "energy.end_use.interior_lighting.electricity"
+	toID := "heat.lighting.office"
+	edge := energyExplanationEdgeByIDs(result.Edges, fromID, toID)
+	if edge == nil || edge.Relation != "internal_gain_heat" || edge.Basis != "measured_meter_plus_zone_gain_variable" || edge.RuleID != energyRelationshipRuleInternalGainHeat || edge.Value != 1.2 ||
+		!stringSliceContains(edge.SourceIDs, "lighting-energy-source") || !stringSliceContains(edge.SourceIDs, "lighting-heat-source") {
+		t.Fatalf("lighting energy heat edge = %#v", edge)
+	}
+	monthly := energyExplanationPeriodByID(result.Periods, "M1")
+	if monthly == nil {
+		t.Fatalf("monthly period missing from %#v", result.Periods)
+	}
+	monthlyEdge := energyExplanationEdgeByIDs(monthly.Edges, fromID, toID)
+	if monthlyEdge == nil || monthlyEdge.Value != 0.6 || monthlyEdge.RuleID != energyRelationshipRuleInternalGainHeat {
+		t.Fatalf("monthly lighting energy heat edge = %#v", monthlyEdge)
 	}
 }
 

@@ -1440,7 +1440,8 @@
 }
 
 .energy-sankey-edge.measured_variable,
-.energy-sankey-edge.measured_energy_variable {
+.energy-sankey-edge.measured_energy_variable,
+.energy-sankey-edge.measured_meter_plus_zone_gain_variable {
   stroke: color-mix(in srgb, var(--green) 62%, transparent);
 }
 
@@ -1727,6 +1728,10 @@
 
 .energy-sankey-legend i.measured_energy_variable {
   background: #16a34a;
+}
+
+.energy-sankey-legend i.measured_meter_plus_zone_gain_variable {
+  background: #15803d;
 }
 
 .energy-sankey-legend i.integrated_rate_variable {

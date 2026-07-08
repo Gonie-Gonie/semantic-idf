@@ -214,7 +214,10 @@ does not flood a single dropdown.
 The payload includes the Basic Energy relationship rule catalog, and
 explanation edges carry a relationship `ruleId` from that catalog so the UI and
 exports can distinguish measured end-use, measured load, heat-balance, and
-residual links. The companion
+residual links. When matching end-use and zone heat-gain sources are both
+available, internal-gain edges such as interior lighting energy to lighting
+heat use `basis=measured_meter_plus_zone_gain_variable` to show the measured
+meter/variable pairing without treating it as a conservation equation. The companion
 `energyExplanationSummary` payload keeps the annual
 carrier, end-use, delivered-load, heat-driver, residual, and top-zone rollups in
 a compact shape for batch comparisons and exports. Energy nodes expose

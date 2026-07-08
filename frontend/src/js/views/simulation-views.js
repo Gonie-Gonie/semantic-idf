@@ -2046,6 +2046,7 @@ function renderEnergyExplanationLegend() {
       <span><i class="measured_meter"></i>${escapeHTML(t("simulation.basisMeasuredMeter", {}, "measured meter"))}</span>
       <span><i class="measured_variable"></i>${escapeHTML(t("simulation.basisMeasuredVariable", {}, "measured variable"))}</span>
       <span><i class="measured_energy_variable"></i>${escapeHTML(energyExplanationBasisLabel("measured_energy_variable"))}</span>
+      <span><i class="measured_meter_plus_zone_gain_variable"></i>${escapeHTML(energyExplanationBasisLabel("measured_meter_plus_zone_gain_variable"))}</span>
       <span><i class="integrated_rate_variable"></i>${escapeHTML(energyExplanationBasisLabel("integrated_rate_variable"))}</span>
       <span><i class="derived_balance"></i>${escapeHTML(t("simulation.basisDerived", {}, "derived balance"))}</span>
       <span><i class="allocated"></i>${escapeHTML(t("simulation.basisAllocated", {}, "allocated"))}</span>
@@ -2552,6 +2553,7 @@ function energyExplanationBasisLabel(basis = "") {
     measured_meter: t("simulation.basisMeasuredMeter", {}, "measured meter"),
     measured_variable: t("simulation.basisMeasuredVariable", {}, "measured variable"),
     measured_energy_variable: t("simulation.basisMeasuredEnergyVariable", {}, "reported energy variable"),
+    measured_meter_plus_zone_gain_variable: t("simulation.basisMeasuredMeterPlusZoneGainVariable", {}, "measured meter + zone heat gain variable"),
     integrated_rate_variable: t("simulation.basisIntegratedRateVariable", {}, "integrated rate variable"),
     derived_balance: t("simulation.basisDerived", {}, "derived balance"),
     allocated: t("simulation.basisAllocated", {}, "allocated"),
