@@ -1230,6 +1230,7 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 				Unit:      nodes[facilityID].node.Unit,
 				Period:    period,
 				Carrier:   carrier,
+				Basis:     energyResidualRule.Basis,
 				SourceIDs: energySourceIDs,
 			})
 			edges = append(edges, EnergyExplanationEdge{

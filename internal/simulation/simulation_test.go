@@ -1752,6 +1752,21 @@ func TestBuildEnergyExplanationSankeyGraphContracts(t *testing.T) {
 			t.Fatalf("monthly node %q missing from %#v", id, monthly.Nodes)
 		}
 	}
+	assertGraphNodeSourceTrace := func(period string, nodes []EnergyExplanationNode) {
+		for _, node := range nodes {
+			if node.ID == "" || node.Level == "" || node.Kind == "" {
+				t.Fatalf("%s node missing identity fields: %#v", period, node)
+			}
+			if len(node.SourceIDs) == 0 {
+				t.Fatalf("%s node %q missing source trace: %#v", period, node.ID, node)
+			}
+			if node.Level == "residual" && node.Basis != "residual" {
+				t.Fatalf("%s residual node %q should keep residual basis: %#v", period, node.ID, node)
+			}
+		}
+	}
+	assertGraphNodeSourceTrace("annual", result.Nodes)
+	assertGraphNodeSourceTrace("M1", monthly.Nodes)
 
 	annualEdges := []struct {
 		from     string
@@ -1781,6 +1796,21 @@ func TestBuildEnergyExplanationSankeyGraphContracts(t *testing.T) {
 			t.Fatalf("edge ID should not embed period: annual=%q monthly=%q", edge.ID, monthlyEdge.ID)
 		}
 	}
+	assertGraphEdgeSourceTrace := func(period string, edges []EnergyExplanationEdge) {
+		for _, edge := range edges {
+			if edge.ID == "" || edge.FromID == "" || edge.ToID == "" || edge.Relation == "" || edge.Basis == "" || edge.RuleID == "" {
+				t.Fatalf("%s edge missing identity/rule fields: %#v", period, edge)
+			}
+			if len(edge.SourceIDs) == 0 {
+				t.Fatalf("%s edge %q missing source trace: %#v", period, edge.ID, edge)
+			}
+			if edge.Basis == "residual" && edge.Relation != "residual" {
+				t.Fatalf("%s residual-basis edge %q should keep residual relation: %#v", period, edge.ID, edge)
+			}
+		}
+	}
+	assertGraphEdgeSourceTrace("annual", result.Edges)
+	assertGraphEdgeSourceTrace("M1", monthly.Edges)
 }
 
 func TestBuildEnergyExplanationAllocatedZoneLoadShare(t *testing.T) {

@@ -101,6 +101,8 @@ The release script infers bump size from these sections:
   without replacing the HVAC loop jump.
 - Basic Energy heat residual nodes now retain related HVAC service path IDs, so
   service-level accounting gaps remain traceable from Sankey inspectors.
+- Basic Energy energy residual nodes now retain `residual` basis metadata, so
+  node inspectors and exports identify residual accounting gaps consistently.
 - Basic Energy completeness panels now distinguish missing source outputs from
   accounting/model coverage gaps and can jump directly to the purpose output
   plan or apply missing purpose outputs permanently.
