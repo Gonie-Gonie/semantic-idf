@@ -599,6 +599,58 @@ func TestBatchSimulationWorkbookSheetsIncludeSourceAvailability(t *testing.T) {
 	}
 }
 
+func TestBatchSimulationWorkbookSheetsIncludeEnergyNodes(t *testing.T) {
+	sourceObjectIndex := 7
+	result := simulation.MultiSimulationResult{
+		Results: []simulation.SimulationRunResult{{
+			RunID:    "run-energy-nodes",
+			Filename: "nodes.idf",
+			Status:   "succeeded",
+			PurposeResults: &simulation.PurposeResultBundle{
+				EnergyExplanation: simulation.EnergyExplanationResult{
+					Sources: []simulation.EnergyDataSource{{
+						ID:             "sql-rdd-7",
+						SourceType:     "sql_report_data",
+						Name:           "Zone Air System Sensible Cooling Energy",
+						SourceUnit:     "J",
+						NormalizedUnit: "kWh",
+						TableName:      "ReportData",
+						RowName:        "Office",
+						ColumnName:     "Zone Air System Sensible Cooling Energy",
+						ObjectIndex:    &sourceObjectIndex,
+					}},
+					Periods: []simulation.EnergyPeriod{{
+						ID:   "annual",
+						Kind: "annual",
+						Nodes: []simulation.EnergyExplanationNode{{
+							ID:             "load.cooling.office",
+							Level:          "load",
+							Kind:           "load.zone_cooling",
+							Label:          "Office cooling",
+							Value:          8,
+							Unit:           "kWh",
+							Period:         "annual",
+							ZoneName:       "Office",
+							ServiceKind:    "cooling",
+							PathType:       "zone",
+							Basis:          "measured_variable",
+							SourceIDs:      []string{"sql-rdd-7"},
+							RelatedPathIDs: []string{"path.office.cooling"},
+						}},
+					}},
+				},
+			},
+		}},
+	}
+	sheets := batchSimulationWorkbookSheets(BatchSimulationXLSXExportRequest{Result: result})
+	if len(sheets) != 3 || sheets[1].Name != "Energy Nodes" || sheets[2].Name != "Energy Sources" {
+		t.Fatalf("energy node sheets = %#v", sheets)
+	}
+	if rows := sheets[1].Sections[0].Rows; len(rows) != 1 || rows[0][3] != "annual" || rows[0][4] != "load.cooling.office" || rows[0][10] != "Office" || rows[0][11] != "cooling" || rows[0][12] != "zone" || rows[0][18] != "measured_variable" || rows[0][19] != "sql-rdd-7" || rows[0][20] != "7" || rows[0][21] != "path.office.cooling" || rows[0][22] != "ReportData" || rows[0][23] != "Office" || rows[0][24] != "Zone Air System Sensible Cooling Energy" || rows[0][25] != "J" || rows[0][26] != "kWh" {
+		t.Fatalf("energy node rows = %#v", rows)
+	}
+}
+
 func TestBatchSimulationWorkbookSheetsIncludeHeatDriverSummarySign(t *testing.T) {
 	result := simulation.MultiSimulationResult{
 		Results: []simulation.SimulationRunResult{{
@@ -846,7 +898,7 @@ func TestBatchSimulationWorkbookSheetsIncludeComparisonDelta(t *testing.T) {
 			TargetRowID:   "target-run",
 		},
 	})
-	if len(sheets) != 7 || sheets[1].Name != "Comparison" || sheets[2].Name != "Energy Delta" || sheets[3].Name != "Sankey Edge Delta" {
+	if len(sheets) != 8 || sheets[1].Name != "Comparison" || sheets[2].Name != "Energy Delta" || sheets[3].Name != "Sankey Edge Delta" || sheets[5].Name != "Energy Nodes" {
 		t.Fatalf("simulation comparison workbook sheets = %#v", sheets)
 	}
 	if rows := sheets[1].Sections[0].Rows; len(rows) != 2 || rows[0][1] != "baseline-run" || rows[1][1] != "target-run" {

@@ -822,6 +822,9 @@ func batchSimulationWorkbookSheets(request BatchSimulationXLSXExportRequest) []t
 	if summary := batchSimulationEnergySummarySection(request.Result); len(summary.Rows) > 0 {
 		sections = append(sections, tabular.WorkbookSheet{Name: "Energy Summary", Sections: []tabular.Section{summary}})
 	}
+	if nodes := batchSimulationEnergyNodeSection(request.Result); len(nodes.Rows) > 0 {
+		sections = append(sections, tabular.WorkbookSheet{Name: "Energy Nodes", Sections: []tabular.Section{nodes}})
+	}
 	if sources := batchSimulationEnergySourceSection(request.Result); len(sources.Rows) > 0 {
 		sections = append(sections, tabular.WorkbookSheet{Name: "Energy Sources", Sections: []tabular.Section{sources}})
 	}
@@ -1572,6 +1575,51 @@ func batchSimulationEnergySourceAvailabilitySection(result simulation.MultiSimul
 	return section
 }
 
+func batchSimulationEnergyNodeSection(result simulation.MultiSimulationResult) tabular.Section {
+	section := tabular.Section{
+		Title:   "energy_nodes",
+		Headers: []string{"file", "status", "run_id", "period", "id", "level", "kind", "label", "value", "unit", "zone", "service_kind", "path_type", "carrier", "end_use", "meter_hierarchy", "heat_category", "sign", "basis", "source_ids", "source_object_index", "related_path_ids", "source_table", "source_row", "source_column", "source_unit", "normalized_unit"},
+	}
+	for _, item := range result.Results {
+		if item.PurposeResults == nil {
+			continue
+		}
+		file := batchSimulationFileLabel(item)
+		explanation := item.PurposeResults.EnergyExplanation
+		for _, period := range batchSimulationExportPeriods(explanation) {
+			for _, node := range period.Nodes {
+				values := []string{
+					file,
+					item.Status,
+					item.RunID,
+					firstNonEmpty(node.Period, period.ID),
+					node.ID,
+					node.Level,
+					node.Kind,
+					node.Label,
+					formatBatchSimulationFloat(node.Value),
+					node.Unit,
+					node.ZoneName,
+					node.ServiceKind,
+					node.PathType,
+					node.Carrier,
+					node.EndUse,
+					node.MeterHierarchyLevel,
+					node.HeatCategory,
+					node.Sign,
+					node.Basis,
+					strings.Join(node.SourceIDs, "; "),
+					batchSimulationSourceObjectIndexes(explanation, node.SourceIDs),
+					strings.Join(node.RelatedPathIDs, "; "),
+				}
+				values = append(values, batchSimulationSourceMetadataFields(explanation, node.SourceIDs)...)
+				section.Rows = append(section.Rows, values)
+			}
+		}
+	}
+	return section
+}
+
 func batchSimulationSourceObjectIndexes(explanation simulation.EnergyExplanationResult, sourceIDs []string) string {
 	return batchSimulationSourceValueSummary(explanation, sourceIDs, func(source simulation.EnergyDataSource) string {
 		if source.ObjectIndex == nil {
@@ -1786,10 +1834,11 @@ func batchSimulationSummaryGroups(summary simulation.EnergyExplanationSummary) [
 
 func batchSimulationExportPeriods(explanation simulation.EnergyExplanationResult) []simulation.EnergyPeriod {
 	periods := explanation.Periods
-	if len(periods) == 0 && (len(explanation.Edges) > 0 || len(explanation.Reconciliation) > 0 || len(explanation.Warnings) > 0) {
+	if len(periods) == 0 && (len(explanation.Nodes) > 0 || len(explanation.Edges) > 0 || len(explanation.Reconciliation) > 0 || len(explanation.Warnings) > 0) {
 		periods = []simulation.EnergyPeriod{{
 			ID:             "annual",
 			Kind:           "annual",
+			Nodes:          explanation.Nodes,
 			Edges:          explanation.Edges,
 			Reconciliation: explanation.Reconciliation,
 			Warnings:       explanation.Warnings,

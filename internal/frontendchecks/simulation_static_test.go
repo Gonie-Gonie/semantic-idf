@@ -302,6 +302,7 @@ func TestFrontendBatchEnergyExplanationDeltaContracts(t *testing.T) {
 		"energy_explanation.derived_kpi",
 		"energyExplanationSourceExportItems",
 		"energyExplanationSourceAvailabilityExportItems",
+		"energyExplanationNodeExportItems",
 		"energyExplanationEdgeExportItems",
 		"energyExplanationWarningExportItems",
 		"energyExplanationBatchExportPeriods",
@@ -329,6 +330,7 @@ func TestFrontendBatchEnergyExplanationDeltaContracts(t *testing.T) {
 		"reconciliation.status",
 		"energy_explanation.source",
 		"energy_explanation.source_availability",
+		"energy_explanation.node",
 		"energy_explanation.edge",
 		"energy_explanation.warning",
 		"source_frequency",
@@ -370,9 +372,9 @@ func TestFrontendBatchEnergyExplanationDeltaContracts(t *testing.T) {
 		t.Fatalf("batch simulation frequency policy control is missing")
 	}
 	batchApp := readTestFile(t, "batch_app.go")
-	for _, term := range []string{"batchSimulationEnergyWarningSection", "batchSimulationEnergyWarningRows", "Energy Warnings", "energy_warnings"} {
+	for _, term := range []string{"batchSimulationEnergyNodeSection", "Energy Nodes", "energy_nodes", "batchSimulationEnergyWarningSection", "batchSimulationEnergyWarningRows", "Energy Warnings", "energy_warnings"} {
 		if !strings.Contains(batchApp, term) {
-			t.Fatalf("batch simulation warning workbook export missing %q", term)
+			t.Fatalf("batch simulation energy workbook export missing %q", term)
 		}
 	}
 	if !strings.Contains(batchApp, "reconciliation_status") || !strings.Contains(batchApp, "row.Status") {

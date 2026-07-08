@@ -570,6 +570,45 @@ export function initializeMultiSimulationTool(context) {
           ...emptyEnergyExplanationRatioExportFields(),
         ]);
       });
+      energyExplanationNodeExportItems(explanation).forEach((node) => {
+        const displayValue = Number(node.displayValue) || Number(node.value) || 0;
+        rows.push([
+          file,
+          item.status || "",
+          item.runId || "",
+          "energy_explanation.node",
+          node.id || "",
+          node.label || "",
+          node.value ?? "",
+          node.unit || "",
+          formatValue(displayValue, node.unit || ""),
+          node.level || "",
+          node.basis || "",
+          "node",
+          node.kind || "",
+          node.label || "",
+          "",
+          "",
+          "",
+          energyExplanationSourceObjectIndexes(explanation, node.sourceIds || []),
+          ...energyExplanationSourceTableExportFieldsForIDs(explanation, node.sourceIds || []),
+          node.period || "",
+          "node",
+          node.basis || "",
+          "",
+          "",
+          "",
+          "",
+          node.zoneName || "",
+          node.serviceKind || "",
+          (node.sourceIds || []).join("; "),
+          (node.relatedPathIds || []).join("; "),
+          ...energyExplanationSourceUnitExportFieldsForIDs(explanation, node.sourceIds || []),
+          node.pathType || "",
+          ...energyExplanationHeatExportFields(node),
+          ...emptyEnergyExplanationRatioExportFields(),
+        ]);
+      });
       energyExplanationEdgeExportItems(explanation).forEach((edge) => {
         rows.push([
           file,
@@ -932,6 +971,20 @@ export function initializeMultiSimulationTool(context) {
         label: `${nodeLabels.get(edge.fromId) || edge.fromId || ""} -> ${nodeLabels.get(edge.toId) || edge.toId || ""}`,
       }));
     });
+  }
+
+  function energyExplanationNodeExportItems(explanation = {}) {
+    const periodGraphs = energyExplanationBatchExportPeriods(explanation).filter((period) => (period.nodes || []).length);
+    const graphs = periodGraphs.length
+      ? periodGraphs
+      : [{ id: "annual", label: "Annual", nodes: explanation.nodes || [] }];
+    return graphs.flatMap((graph) =>
+      (graph.nodes || []).map((node) => ({
+        ...node,
+        period: node.period || graph.id || "",
+        periodLabel: graph.label || graph.id || "",
+      })),
+    );
   }
 
   function energyExplanationReconciliationExportItems(explanation = {}) {

@@ -305,22 +305,23 @@ numeric `0` so an absent output is not silently treated as a normal zero.
 Percent deltas remain `N/A` when the baseline value is zero in the app, CSV,
 and XLSX exports. Batch Simulation can export purpose metrics, compact
 `energyExplanationSummary` rows, `energyExplanation` source metadata rows,
-source availability rows, reconciliation rows, and Sankey edge metadata rows
-with period, relation, basis,
-`ruleId`, formula, endpoint, service, zone, source IDs, related source output
-object indexes, SQL tabular table/row/column names, source/normalized units,
-load path type, and related HVAC service path IDs as CSV for spreadsheet
-comparison. The batch CSV keeps annual,
+source availability rows, node metadata rows, reconciliation rows, and Sankey
+edge metadata rows with period, level/kind, relation, basis, `ruleId`, formula,
+endpoint, service, zone, source IDs, related source output object indexes, SQL
+tabular table/row/column names, source/normalized units, load path type, and
+related HVAC service path IDs as CSV for spreadsheet comparison. The batch CSV
+keeps annual,
 monthly, and selected-range explanation periods by default; daily and hourly
 periods remain available in the embedded purpose result payload without
 expanding the default spreadsheet export. Compact summary rows also carry their
 source IDs, matching source output object indexes, source table/row/column
 labels, and source/normalized units when available. Batch
 Simulation can also export the same core purpose metrics, compact energy
-summary, source metadata, source availability, edge, and reconciliation sheets
-as XLSX. XLSX summary, edge, reconciliation, and source availability rows
-preserve `source_ids`, matching output object indexes, source table/row/column
-labels, and source/normalized units when the source metadata is available. When a baseline and
+summary, node metadata, source metadata, source availability, edge, and
+reconciliation sheets as XLSX. XLSX summary, node, edge, reconciliation, and
+source availability rows preserve `source_ids`, matching output object indexes,
+source table/row/column labels, and source/normalized units when the source
+metadata is available. When a baseline and
 target case are selected, the XLSX workbook also includes
 comparison context, summary delta, and annual Sankey edge delta sheets. The
 delta sheets preserve baseline/target source IDs and matching source object

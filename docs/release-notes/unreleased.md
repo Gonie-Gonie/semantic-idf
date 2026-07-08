@@ -43,6 +43,9 @@ The release script infers bump size from these sections:
   matching output object indexes for found Basic Energy source rows.
 - Batch Simulation CSV and XLSX source availability rows now include matched
   source table/row/column labels and source/normalized units when available.
+- Batch Simulation CSV and XLSX exports now include Basic Energy node rows with
+  period, level/kind, scope, source IDs, source metadata, and related service
+  path IDs.
 - Energy explanation Sankey and Systems views can now focus by all results, a
   selected zone, selected HVAC service path, or selected HVAC loop.
 - Energy explanation Sankey now has Detailed and Compact column modes, with
