@@ -558,6 +558,7 @@ function renderEnergySubviewControls(view, explanation = {}) {
       }
       ${["sankey", "systems"].includes(view) && energyExplanationHasPayload(explanation) ? renderEnergyFocusControls(explanation) : ""}
       ${view === "sankey" && energyExplanationHasPayload(explanation) ? renderEnergySignModeControls() : ""}
+      ${view === "sankey" && energyExplanationHasPayload(explanation) ? renderEnergyNodeLimitControls() : ""}
     </div>`;
 }
 
@@ -576,6 +577,24 @@ function renderEnergySignModeControls() {
     <label>
       <span>${escapeHTML(t("simulation.heatDriverView", {}, "Heat driver view"))}</span>
       <select data-simulation-energy-sign-mode>${options}</select>
+    </label>`;
+}
+
+function renderEnergyNodeLimitControls() {
+  const limit = energyExplanationNodeLimit(state.simulationEnergyNodeLimit);
+  state.simulationEnergyNodeLimit = limit;
+  const options = [
+    [40, "Top 40"],
+    [80, "Top 80"],
+    [120, "Top 120"],
+    [0, t("common.all", {}, "All")],
+  ]
+    .map(([value, label]) => `<option value="${escapeHTML(value)}" ${limit === value ? "selected" : ""}>${escapeHTML(label)}</option>`)
+    .join("");
+  return `
+    <label>
+      <span>${escapeHTML(t("simulation.nodeLimit", {}, "Nodes"))}</span>
+      <select data-simulation-energy-node-limit>${options}</select>
     </label>`;
 }
 
@@ -877,7 +896,7 @@ function energyAllocationPolicyLabel(policy = "") {
 }
 
 function renderEnergyExplanationSankey(explanation = {}) {
-  const graph = energyExplanationSignModeGraph(focusedEnergyExplanationGraph(energyExplanationGraphForPeriod(explanation, state.simulationEnergyPeriod || "annual")));
+  const graph = groupedEnergyExplanationGraph(energyExplanationSignModeGraph(focusedEnergyExplanationGraph(energyExplanationGraphForPeriod(explanation, state.simulationEnergyPeriod || "annual"))));
   const nodes = graph.nodes || [];
   const edges = graph.edges || [];
   if (!nodes.length) {
@@ -975,6 +994,97 @@ function energyExplanationEdgeForSignMode(edge = {}, mode = "display") {
   const displayValue = Number(edge.displayValue ?? edge.value) || 0;
   const value = mode === "signed" ? signed : Math.abs(mode === "display" ? displayValue : signed);
   return { ...edge, value };
+}
+
+function groupedEnergyExplanationGraph(graph = {}) {
+  const limit = energyExplanationNodeLimit(state.simulationEnergyNodeLimit);
+  if (!limit) {
+    return graph;
+  }
+  const nodes = graph.nodes || [];
+  const heatNodes = nodes.filter((node) => node.level === "heat");
+  if (heatNodes.length <= limit) {
+    return graph;
+  }
+  const keepHeatIDs = new Set(
+    heatNodes
+      .slice()
+      .sort((a, b) => Math.abs(Number(b.value) || 0) - Math.abs(Number(a.value) || 0))
+      .slice(0, limit)
+      .map((node) => node.id),
+  );
+  const omittedHeatNodes = heatNodes.filter((node) => !keepHeatIDs.has(node.id));
+  const omittedHeatIDs = new Set(omittedHeatNodes.map((node) => node.id));
+  const otherID = "heat.other_grouped";
+  const otherSources = omittedHeatNodes.reduce((out, node) => appendUniqueEnergyStrings(out, ...(node.sourceIds || [])), []);
+  const otherValue = roundedDisplayNumber(omittedHeatNodes.reduce((sum, node) => sum + (Number(node.value) || 0), 0));
+  const otherUnit = omittedHeatNodes.find((node) => node.unit)?.unit || "kWh";
+  const groupedNodes = nodes.filter((node) => node.level !== "heat" || keepHeatIDs.has(node.id));
+  groupedNodes.push({
+    id: otherID,
+    level: "heat",
+    kind: "heat.other_grouped",
+    label: "Other heat drivers",
+    value: otherValue,
+    unit: otherUnit,
+    heatCategory: "grouped_other",
+    basis: "derived_balance",
+    sourceIds: otherSources,
+  });
+  const groupedEdges = [];
+  const otherEdges = new Map();
+  for (const edge of graph.edges || []) {
+    if (!omittedHeatIDs.has(edge.toId)) {
+      groupedEdges.push(edge);
+      continue;
+    }
+    const key = edge.fromId || "unknown";
+    const existing = otherEdges.get(key) || {
+      ...edge,
+      id: `edge.grouped_other.${metricTokenForEnergyID(key)}`,
+      toId: otherID,
+      value: 0,
+      signedValue: 0,
+      displayValue: 0,
+      sourceIds: [],
+      formula: "grouped omitted heat-driver edges",
+    };
+    existing.value = roundedDisplayNumber((Number(existing.value) || 0) + (Number(edge.value) || 0));
+    existing.signedValue = roundedDisplayNumber((Number(existing.signedValue) || 0) + (Number(edge.signedValue) || 0));
+    existing.displayValue = roundedDisplayNumber((Number(existing.displayValue) || 0) + (Number(edge.displayValue) || Number(edge.value) || 0));
+    existing.sourceIds = appendUniqueEnergyStrings(existing.sourceIds || [], ...(edge.sourceIds || []));
+    otherEdges.set(key, existing);
+  }
+  groupedEdges.push(...otherEdges.values());
+  return { nodes: groupedNodes, edges: groupedEdges };
+}
+
+function energyExplanationNodeLimit(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number < 0) {
+    return 80;
+  }
+  return number === 0 ? 0 : Math.max(10, Math.round(number));
+}
+
+function appendUniqueEnergyStrings(values = [], ...items) {
+  const out = [...values];
+  const seen = new Set(out);
+  items.forEach((item) => {
+    if (item && !seen.has(item)) {
+      out.push(item);
+      seen.add(item);
+    }
+  });
+  return out;
+}
+
+function metricTokenForEnergyID(value = "") {
+  return String(value || "unknown").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "unknown";
+}
+
+function roundedDisplayNumber(value) {
+  return Math.round((Number(value) || 0) * 1000) / 1000;
 }
 
 function renderEnergyExplanationSVG(nodes = [], edges = []) {
@@ -2930,6 +3040,13 @@ function handleSimulationEnergyDashboardChange(event) {
   const signMode = event.target.closest("[data-simulation-energy-sign-mode]");
   if (signMode) {
     state.simulationEnergySignMode = energyExplanationSignMode(signMode.value || "display");
+    state.simulationEnergySelection = "";
+    renderSimulationEnergyDashboard(state.simulationResult);
+    return;
+  }
+  const nodeLimit = event.target.closest("[data-simulation-energy-node-limit]");
+  if (nodeLimit) {
+    state.simulationEnergyNodeLimit = energyExplanationNodeLimit(nodeLimit.value);
     state.simulationEnergySelection = "";
     renderSimulationEnergyDashboard(state.simulationResult);
     return;
