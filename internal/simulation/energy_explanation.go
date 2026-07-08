@@ -1891,8 +1891,26 @@ func energyDataSourceForDictionary(dictionary energyExplanationDictionary) Energ
 		AggregationMethod:  energyExplanationAggregationMethod(dictionary),
 		IndexGroup:         strings.TrimSpace(dictionary.indexGroup),
 		TableName:          "ReportData",
-		ColumnName:         fmt.Sprintf("ReportDataDictionaryIndex=%d", row.index),
+		RowName:            reportDataSourceRowName(row),
+		ColumnName:         reportDataSourceColumnName(row.units),
 	}
+}
+
+func reportDataSourceRowName(row sqlOutputDictionaryRow) string {
+	keyValue := strings.TrimSpace(row.keyValue)
+	name := strings.TrimSpace(row.name)
+	if keyValue != "" && name != "" {
+		return keyValue + " / " + name
+	}
+	return firstNonEmpty(keyValue, name)
+}
+
+func reportDataSourceColumnName(units string) string {
+	unit := strings.TrimSpace(units)
+	if unit == "" {
+		return "Value"
+	}
+	return "Value [" + unit + "]"
 }
 
 func parseEnergyExplanationTabularAnnual(db *sql.DB, existing []energyExplanationSeries) ([]energyExplanationSeries, []EnergyDataSource, error) {

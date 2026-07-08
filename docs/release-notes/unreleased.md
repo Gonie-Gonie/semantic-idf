@@ -180,6 +180,8 @@ The release script infers bump size from these sections:
 - Basic Energy source metadata now preserves both source units and normalized
   graph units, and the Sources view, inspector tables, and batch CSV export show
   both values.
+- Basic Energy SQL `ReportData` sources now fill readable table row and value
+  column metadata such as `Electricity:Facility` and `Value [J]`.
 - Basic Energy energy nodes now carry `meterHierarchyLevel` metadata such as
   `facility_total` and `broad_end_use`, and the Sankey inspector shows it.
 - Basic Energy Overview now states the Energy Use total basis from
