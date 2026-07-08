@@ -26,7 +26,7 @@ The release script infers bump size from these sections:
 - Basic Energy explanation completeness now marks unrequested light-tier
   delivered-load and heat-driver details as `not_applicable` instead of missing.
 - Energy explanation Sankey and Systems views can now focus by all results, a
-  selected zone, or a selected HVAC service path.
+  selected zone, selected HVAC service path, or selected HVAC loop.
 - Energy explanation Sankey now has Detailed and Compact column modes, with
   Detailed separating Energy Carrier and End-use Energy columns and Compact
   collapsing to Energy Use -> Delivered Load -> Heat Drivers.

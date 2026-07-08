@@ -560,6 +560,9 @@ function renderSimulationEnergyDashboard(result) {
     )
     .join("");
   const view = energySubview(explanation);
+  if (["sankey", "systems"].includes(view) && energyExplanationHasPayload(explanation)) {
+    normalizeSimulationEnergyFocusState(explanation);
+  }
   const viewBody = renderEnergySubview(view, energy, explanation, facility, endUse, zones);
   elements.simulationEnergyDashboard.innerHTML = `
     <div class="simulation-energy-kpis">${kpis || `<div><span>${escapeHTML(t("common.notAvailable", {}, "N/A"))}</span><strong>0</strong></div>`}</div>
@@ -672,30 +675,17 @@ function renderEnergyNodeLimitControls() {
 }
 
 function renderEnergyFocusControls(explanation = {}) {
-  const graph = energyExplanationGraphForPeriod(explanation, state.simulationEnergyPeriod || "annual");
-  const zones = energyFocusZones(graph.nodes || []);
-  const paths = simulationHVACServicePaths();
-  let mode = state.simulationEnergyFocusMode || "all";
-  if (mode === "zone" && !zones.length) {
-    mode = "all";
-  }
-  if (mode === "service_path" && !paths.length) {
-    mode = "all";
-  }
-  state.simulationEnergyFocusMode = mode;
-  if (mode === "zone" && !zones.some((zone) => simulationZoneKey(zone) === simulationZoneKey(state.simulationEnergyZoneFocus))) {
-    state.simulationEnergyZoneFocus = zones[0] || "";
-  }
-  if (mode === "service_path" && !paths.some((path) => path.id === state.simulationEnergyServicePathFocus)) {
-    state.simulationEnergyServicePathFocus = paths[0]?.id || "";
-  }
+  const { zones, paths, loops, mode } = normalizeSimulationEnergyFocusState(explanation);
   const modeOptions = [
     ["all", t("common.all", {}, "All")],
     ["zone", t("common.zone", {}, "Zone")],
     ["service_path", t("hvac.servicePath", {}, "Service path")],
+    ["loop", t("simulation.hvacLoop", {}, "HVAC loop")],
   ]
     .map(([value, label]) => {
-      const disabled = value === "zone" && !zones.length || value === "service_path" && !paths.length;
+      const disabled = value === "zone" && !zones.length
+        || value === "service_path" && !paths.length
+        || value === "loop" && !loops.length;
       return `<option value="${escapeHTML(value)}" ${mode === value ? "selected" : ""} ${disabled ? "disabled" : ""}>${escapeHTML(label)}</option>`;
     })
     .join("");
@@ -709,12 +699,46 @@ function renderEnergyFocusControls(explanation = {}) {
         .map((path) => `<option value="${escapeHTML(path.id || "")}" ${path.id === state.simulationEnergyServicePathFocus ? "selected" : ""}>${escapeHTML(simulationEnergyServicePathFocusLabel(path))}</option>`)
         .join("")}</select></label>`
     : "";
+  const loopSelect = mode === "loop"
+    ? `<label><span>${escapeHTML(t("simulation.hvacLoop", {}, "HVAC loop"))}</span><select data-simulation-energy-loop-focus>${loops
+        .map((loop) => `<option value="${escapeHTML(loop.value || "")}" ${loop.value === state.simulationEnergyLoopFocus ? "selected" : ""}>${escapeHTML(loop.label || loop.value || "")}</option>`)
+        .join("")}</select></label>`
+    : "";
   return `
     <div class="simulation-energy-focus-controls">
       <label><span>${escapeHTML(t("simulation.focus", {}, "Focus"))}</span><select data-simulation-energy-focus-mode>${modeOptions}</select></label>
       ${zoneSelect}
       ${pathSelect}
+      ${loopSelect}
     </div>`;
+}
+
+function normalizeSimulationEnergyFocusState(explanation = {}) {
+  const graph = energyExplanationGraphForPeriod(explanation, state.simulationEnergyPeriod || "annual");
+  const zones = energyFocusZones(graph.nodes || []);
+  const paths = simulationHVACServicePaths();
+  const loops = simulationEnergyLoopFocusOptions();
+  let mode = state.simulationEnergyFocusMode || "all";
+  if (mode === "zone" && !zones.length) {
+    mode = "all";
+  }
+  if (mode === "service_path" && !paths.length) {
+    mode = "all";
+  }
+  if (mode === "loop" && !loops.length) {
+    mode = "all";
+  }
+  state.simulationEnergyFocusMode = mode;
+  if (mode === "zone" && !zones.some((zone) => simulationZoneKey(zone) === simulationZoneKey(state.simulationEnergyZoneFocus))) {
+    state.simulationEnergyZoneFocus = zones[0] || "";
+  }
+  if (mode === "service_path" && !paths.some((path) => path.id === state.simulationEnergyServicePathFocus)) {
+    state.simulationEnergyServicePathFocus = paths[0]?.id || "";
+  }
+  if (mode === "loop" && !loops.some((loop) => loop.value === state.simulationEnergyLoopFocus)) {
+    state.simulationEnergyLoopFocus = loops[0]?.value || "";
+  }
+  return { zones, paths, loops, mode };
 }
 
 function renderEnergySubview(view, energy, explanation, facility, endUse, zones) {
@@ -2079,25 +2103,49 @@ function focusedEnergyExplanationGraph(graph = {}) {
     if (!path) {
       return graph;
     }
-    const service = simulationCanonicalServiceKind(path.serviceKind);
-    const zoneKey = simulationZoneKey(path.zoneName || path.servedSubject?.zoneName || "");
-    includeNode = (node) => {
-      const nodeService = simulationCanonicalServiceKind(node.serviceKind || energyServiceFromNode(node));
-      const serviceMatch = !nodeService || !service || nodeService === service;
-      const zoneMatch = !zoneKey || !node.zoneName || simulationZoneKey(node.zoneName) === zoneKey;
-      if (node.level === "load" || node.level === "heat") {
-        return serviceMatch && zoneMatch;
-      }
-      if (node.level === "energy" && nodeService) {
-        return serviceMatch;
-      }
-      return zoneMatch;
-    };
+    includeNode = (node) => simulationEnergyNodeMatchesServicePaths(node, [path]);
+  } else if (mode === "loop") {
+    const paths = simulationEnergyServicePathsForLoopFocus(state.simulationEnergyLoopFocus);
+    if (!paths.length) {
+      return graph;
+    }
+    includeNode = (node) => simulationEnergyNodeMatchesServicePaths(node, paths);
   }
   const focusedNodes = nodes.filter(includeNode);
   const nodeIDs = new Set(focusedNodes.map((node) => node.id));
   const focusedEdges = edges.filter((edge) => nodeIDs.has(edge.fromId) && nodeIDs.has(edge.toId));
   return { nodes: focusedNodes, edges: focusedEdges };
+}
+
+function simulationEnergyNodeMatchesServicePaths(node = {}, paths = []) {
+  const descriptors = (paths || [])
+    .map((path) => ({
+      id: path.id || "",
+      service: simulationCanonicalServiceKind(path.serviceKind),
+      zoneKey: simulationZoneKey(path.zoneName || path.servedSubject?.zoneName || ""),
+    }))
+    .filter((path) => path.id || path.service || path.zoneKey);
+  if (!descriptors.length) {
+    return true;
+  }
+  const relatedPathIDs = new Set(node.relatedPathIds || []);
+  if (descriptors.some((path) => path.id && relatedPathIDs.has(path.id))) {
+    return true;
+  }
+  const nodeService = simulationCanonicalServiceKind(node.serviceKind || energyServiceFromNode(node));
+  const nodeZoneKey = simulationZoneKey(node.zoneName || "");
+  const matchesPath = (path) => {
+    const serviceMatch = !nodeService || !path.service || nodeService === path.service;
+    const zoneMatch = !path.zoneKey || !nodeZoneKey || nodeZoneKey === path.zoneKey;
+    return serviceMatch && zoneMatch;
+  };
+  if (["load", "heat", "residual"].includes(node.level)) {
+    return descriptors.some(matchesPath);
+  }
+  if (node.level === "energy" && nodeService) {
+    return descriptors.some((path) => !path.service || nodeService === path.service);
+  }
+  return descriptors.some((path) => !path.zoneKey || !nodeZoneKey || nodeZoneKey === path.zoneKey);
 }
 
 function energyFocusZones(nodes = []) {
@@ -2440,6 +2488,39 @@ function simulationHVACServiceModel() {
 
 function simulationHVACServicePaths() {
   return (simulationHVACServiceModel().zoneServices || []).flatMap((summary) => summary.paths || []);
+}
+
+function simulationEnergyLoopFocusOptions() {
+  const seen = new Set();
+  const options = [];
+  simulationHVACServicePaths().forEach((path) => {
+    simulationServicePathLoopRefs(path).forEach((loop) => {
+      const value = simulationEnergyLoopFocusValue(loop);
+      if (!value || seen.has(value)) {
+        return;
+      }
+      seen.add(value);
+      options.push({
+        value,
+        label: loop.label || [loop.type, loop.name].filter(Boolean).join(" ") || value,
+      });
+    });
+  });
+  return options.sort((a, b) => a.label.localeCompare(b.label));
+}
+
+function simulationEnergyLoopFocusValue(loop = {}) {
+  return simulationHVACLoopRefGraphKey(loop.type || "", loop.name || "");
+}
+
+function simulationEnergyServicePathsForLoopFocus(loopFocus = "") {
+  const wanted = String(loopFocus || "").trim();
+  if (!wanted) {
+    return [];
+  }
+  return simulationHVACServicePaths().filter((path) =>
+    simulationServicePathLoopRefs(path).some((loop) => simulationEnergyLoopFocusValue(loop) === wanted),
+  );
 }
 
 function simulationCanonicalServiceKind(serviceKind = "") {
@@ -4262,6 +4343,13 @@ function handleSimulationEnergyDashboardChange(event) {
   const pathFocus = event.target.closest("[data-simulation-energy-service-path-focus]");
   if (pathFocus) {
     state.simulationEnergyServicePathFocus = pathFocus.value || "";
+    state.simulationEnergySelection = "";
+    renderSimulationEnergyDashboard(state.simulationResult);
+    return;
+  }
+  const loopFocus = event.target.closest("[data-simulation-energy-loop-focus]");
+  if (loopFocus) {
+    state.simulationEnergyLoopFocus = loopFocus.value || "";
     state.simulationEnergySelection = "";
     renderSimulationEnergyDashboard(state.simulationResult);
     return;
