@@ -93,6 +93,7 @@ Output:SQLite,
 	}
 	for _, variable := range []string{
 		"Zone People Total Heating Energy",
+		"Zone Windows Total Heat Gain Energy",
 		"Zone Windows Total Transmitted Solar Radiation Energy",
 		"Zone Infiltration Sensible Heat Loss Energy",
 		"Zone Ventilation Sensible Heat Gain Rate",
@@ -681,6 +682,10 @@ output|Output:Variable|*|Zone Ventilation Sensible Heat Gain Energy|Monthly|temp
 output|Output:Variable|*|Zone Ventilation Sensible Heat Gain Rate|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Ventilation Sensible Heat Loss Energy|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Ventilation Sensible Heat Loss Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Windows Total Heat Gain Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Windows Total Heat Gain Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Windows Total Heat Loss Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Windows Total Heat Loss Rate|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Windows Total Transmitted Solar Radiation Energy|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Windows Total Transmitted Solar Radiation Rate|Monthly|temporary|basic_energy
 `,

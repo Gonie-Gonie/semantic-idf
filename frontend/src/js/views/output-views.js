@@ -359,6 +359,8 @@ function outputVariableLooksLikeHeatDriver(variableName = "") {
         name.includes("total heating") ||
         name.includes("transmitted solar") ||
         name.includes("solar radiation") ||
+        name.includes("heat gain") ||
+        name.includes("heat loss") ||
         name.includes("sensible heat gain") ||
         name.includes("sensible heat loss") ||
         name.includes("fan air heat gain")),

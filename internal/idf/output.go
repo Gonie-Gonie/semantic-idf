@@ -491,6 +491,8 @@ func outputVariablePurposeTags(variableName string, tags map[string]bool) {
 		addOutputPurposeTags(tags, "basic_energy")
 	case "fan air heat gain energy", "fan air heat gain rate",
 		"zone windows total transmitted solar radiation energy", "zone windows total transmitted solar radiation rate", "zone transmitted solar energy",
+		"zone windows total heat gain energy", "zone windows total heat gain rate",
+		"zone windows total heat loss energy", "zone windows total heat loss rate",
 		"zone people total heating energy", "zone people total heating rate",
 		"zone lights total heating energy", "zone lights total heating rate",
 		"zone electric equipment total heating energy", "zone electric equipment total heating rate",

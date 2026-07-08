@@ -843,6 +843,56 @@ func TestParseSimulationEnergyExplanationSQLMapsWindowSolarHeatDriver(t *testing
 	}
 }
 
+func TestParseSimulationEnergyExplanationSQLMapsWindowHeatGainLossDrivers(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "eplusout.sql")
+	createTestEnergySQL(t, path)
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`INSERT INTO ReportDataDictionary VALUES
+		(23, 'ZONE ONE', 'Zone Windows Total Heat Gain Energy', 'J'),
+		(24, 'ZONE ONE', 'Zone Windows Total Heat Loss Energy', 'J')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO ReportData VALUES
+		(7, 1, 23, 1800000.0),
+		(8, 2, 23, 1800000.0),
+		(9, 1, 24, 900000.0),
+		(10, 2, 24, 900000.0)`); err != nil {
+		t.Fatal(err)
+	}
+
+	plan := &PurposeRunPlan{OutputObjects: []PurposeOutputObject{
+		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, VariableName: "Zone Windows Total Heat Gain Energy"},
+		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, VariableName: "Zone Windows Total Heat Loss Energy"},
+	}}
+	result, err := parseSimulationEnergyExplanationSQL(path, plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gain := energyExplanationNodeByID(result.Nodes, "heat.window_heat_transfer.positive.zone_one")
+	if gain == nil || gain.Label != "Window heat gain" || gain.Value != 1 || gain.SignedValue != 1 || gain.ServiceKind != "cooling" || gain.HeatCategory != "surface_envelope" || !stringSliceContains(gain.SourceIDs, "sql-rdd-23") {
+		t.Fatalf("window gain heat driver = %#v", gain)
+	}
+	loss := energyExplanationNodeByID(result.Nodes, "heat.window_heat_transfer.negative.zone_one")
+	if loss == nil || loss.Label != "Window heat loss" || loss.Value != 0.5 || loss.SignedValue != -0.5 || loss.ServiceKind != "heating" || loss.HeatCategory != "surface_envelope" || !stringSliceContains(loss.SourceIDs, "sql-rdd-24") {
+		t.Fatalf("window loss heat driver = %#v", loss)
+	}
+	if result.Completeness.HeatDrivers.Found != 1 || result.Completeness.HeatDrivers.Total != 1 {
+		t.Fatalf("window heat completeness = %#v", result.Completeness.HeatDrivers)
+	}
+	summary := buildEnergyExplanationSummary(result)
+	if item := energyExplanationSummaryItemByID(summary.HeatDrivers, "heat.window_heat_transfer.positive"); item == nil || item.Label != "Window heat gain" || item.Value != 1 {
+		t.Fatalf("summary window gain = %#v", summary.HeatDrivers)
+	}
+	if item := energyExplanationSummaryItemByID(summary.HeatDrivers, "heat.window_heat_transfer.negative"); item == nil || item.Label != "Window heat loss" || item.Value != 0.5 {
+		t.Fatalf("summary window loss = %#v", summary.HeatDrivers)
+	}
+}
+
 func TestParseSimulationEnergyExplanationSQLPrefersEnergyOverRateFallback(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "eplusout.sql")

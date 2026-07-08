@@ -102,6 +102,11 @@ Output:Variable,
   Monthly;
 
 Output:Variable,
+  *,
+  Zone Windows Total Heat Loss Energy,
+  Monthly;
+
+Output:Variable,
   CHW Loop,
   Plant Supply Side Cooling Demand Rate,
   Monthly;
@@ -156,6 +161,9 @@ Output:Table:SummaryReports,
 	}
 	if !outputSummaryHasPurpose(report.Existing, "Output:Variable", "Zone Windows Total Transmitted Solar Radiation Energy", "basic_energy") {
 		t.Fatalf("window solar heat output should be tagged for Basic Energy: %#v", report.Existing)
+	}
+	if !outputSummaryHasPurpose(report.Existing, "Output:Variable", "Zone Windows Total Heat Loss Energy", "basic_energy") {
+		t.Fatalf("window heat-loss output should be tagged for Basic Energy: %#v", report.Existing)
 	}
 	if !outputSummaryHasPurpose(report.Existing, "Output:Variable", "Plant Supply Side Cooling Demand Rate", "basic_energy") {
 		t.Fatalf("plant load output should be tagged for Basic Energy: %#v", report.Existing)

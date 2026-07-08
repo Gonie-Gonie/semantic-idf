@@ -2501,6 +2501,7 @@ func energyHeatAliasCatalog() []energyHeatAliasDefinition {
 		{Kind: "heat.system_convective", Label: "HVAC/system convective gains", HeatCategory: "hvac_system", Aliases: []string{"Zone Air Heat Balance System Convective Heat Gain Rate"}},
 		{Kind: "heat.fan_to_air", Label: "Fan heat to air", HeatCategory: "hvac_system", ObjectScoped: true, Aliases: []string{"Fan Air Heat Gain Energy", "Fan Air Heat Gain Rate"}},
 		{Kind: "heat.solar_window", Label: "Window transmitted solar", HeatCategory: "surface_envelope", Aliases: []string{"Zone Windows Total Transmitted Solar Radiation Energy", "Zone Windows Total Transmitted Solar Radiation Rate", "Zone Transmitted Solar Energy"}},
+		{Kind: "heat.window_heat_transfer", Label: "Window heat transfer", HeatCategory: "surface_envelope", Aliases: []string{"Zone Windows Total Heat Gain Energy", "Zone Windows Total Heat Gain Rate", "Zone Windows Total Heat Loss Energy", "Zone Windows Total Heat Loss Rate"}},
 		{Kind: "heat.storage_air", Label: "Air energy storage", HeatCategory: "storage_residual", Aliases: []string{"Zone Air Heat Balance Air Energy Storage Rate"}},
 		{Kind: "heat.zone_balance_residual", Label: "Heat balance deviation", HeatCategory: "storage_residual", Aliases: []string{"Zone Air Heat Balance Deviation Rate"}},
 		{Kind: "heat.people", Label: "People heat", HeatCategory: "internal_gains", Aliases: []string{"Zone People Total Heating Energy", "Zone People Total Heating Rate"}},
@@ -2635,10 +2636,10 @@ func energyHeatAliasDefinitionForName(name string) (energyHeatAliasDefinition, b
 
 func energyHeatAliasExplicitSign(name string) string {
 	key := normalizeEnergyOutputName(name)
-	if strings.Contains(key, " sensible heat loss ") {
+	if strings.Contains(key, " sensible heat loss ") || strings.Contains(key, "zone windows total heat loss") {
 		return "negative"
 	}
-	if strings.Contains(key, " sensible heat gain ") {
+	if strings.Contains(key, " sensible heat gain ") || strings.Contains(key, "zone windows total heat gain") {
 		return "positive"
 	}
 	return ""
