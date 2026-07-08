@@ -822,10 +822,10 @@ func TestParseSimulationEnergyExplanationSQLPreservesHeatGainLossSigns(t *testin
 		t.Fatalf("heat completeness = %#v", result.Completeness.HeatDrivers)
 	}
 	summary := buildEnergyExplanationSummary(result)
-	if item := energyExplanationSummaryItemByID(summary.HeatDrivers, "heat.infiltration.positive"); item == nil || item.Label != "Infiltration heat gain" || item.Value != 0.5 {
+	if item := energyExplanationSummaryItemByID(summary.HeatDrivers, "heat.infiltration.positive"); item == nil || item.Label != "Infiltration heat gain" || item.Value != 0.5 || item.HeatCategory != "air_exchange" || item.Sign != "positive" {
 		t.Fatalf("summary infiltration gain = %#v", summary.HeatDrivers)
 	}
-	if item := energyExplanationSummaryItemByID(summary.HeatDrivers, "heat.infiltration.negative"); item == nil || item.Label != "Infiltration heat loss" || item.Value != 0.25 {
+	if item := energyExplanationSummaryItemByID(summary.HeatDrivers, "heat.infiltration.negative"); item == nil || item.Label != "Infiltration heat loss" || item.Value != 0.25 || item.HeatCategory != "air_exchange" || item.Sign != "negative" {
 		t.Fatalf("summary infiltration loss = %#v", summary.HeatDrivers)
 	}
 }

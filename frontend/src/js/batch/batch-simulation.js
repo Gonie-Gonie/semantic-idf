@@ -442,6 +442,8 @@ export function initializeMultiSimulationTool(context) {
       "source_unit",
       "normalized_unit",
       "path_type",
+      "heat_category",
+      "sign",
       "numerator_label",
       "numerator_value",
       "numerator_unit",
@@ -476,6 +478,7 @@ export function initializeMultiSimulationTool(context) {
           ...emptyEnergyExplanationEdgeExportFields(),
           ...emptyEnergyExplanationSourceUnitExportFields(),
           "",
+          ...emptyEnergyExplanationHeatExportFields(),
           ...emptyEnergyExplanationRatioExportFields(),
         ]);
       }
@@ -502,6 +505,7 @@ export function initializeMultiSimulationTool(context) {
           ...energyExplanationSummaryEdgeExportFields(metric),
           ...emptyEnergyExplanationSourceUnitExportFields(),
           metric.pathType || "",
+          ...energyExplanationHeatExportFields(metric),
           ...energyExplanationRatioExportFields(metric),
         ]);
       });
@@ -528,6 +532,7 @@ export function initializeMultiSimulationTool(context) {
           ...emptyEnergyExplanationEdgeExportFields(),
           ...energyExplanationSourceUnitExportFields(source),
           "",
+          ...emptyEnergyExplanationHeatExportFields(),
           ...emptyEnergyExplanationRatioExportFields(),
         ]);
       });
@@ -554,6 +559,7 @@ export function initializeMultiSimulationTool(context) {
           ...emptyEnergyExplanationEdgeExportFields(),
           ...emptyEnergyExplanationSourceUnitExportFields(),
           "",
+          ...emptyEnergyExplanationHeatExportFields(),
           ...emptyEnergyExplanationRatioExportFields(),
         ]);
       });
@@ -590,6 +596,7 @@ export function initializeMultiSimulationTool(context) {
           (edge.relatedPathIds || []).join("; "),
           ...emptyEnergyExplanationSourceUnitExportFields(),
           edge.pathType || "",
+          ...emptyEnergyExplanationHeatExportFields(),
           ...emptyEnergyExplanationRatioExportFields(),
         ]);
       });
@@ -626,6 +633,7 @@ export function initializeMultiSimulationTool(context) {
           "",
           ...emptyEnergyExplanationSourceUnitExportFields(),
           "",
+          ...emptyEnergyExplanationHeatExportFields(),
           ...emptyEnergyExplanationRatioExportFields(),
         ]);
       });
@@ -662,6 +670,7 @@ export function initializeMultiSimulationTool(context) {
           "",
           ...emptyEnergyExplanationSourceUnitExportFields(),
           "",
+          ...emptyEnergyExplanationHeatExportFields(),
           ...emptyEnergyExplanationRatioExportFields(),
         ]);
       });
@@ -777,6 +786,8 @@ export function initializeMultiSimulationTool(context) {
         unit: item.unit || "",
         level: item.level || item.kind || "",
         pathType: item.pathType || "",
+        heatCategory: item.heatCategory || "",
+        sign: item.sign || "",
         serviceKind: item.serviceKind || "",
         basis: item.basis || "",
         formula: item.formula || "",
@@ -818,6 +829,14 @@ export function initializeMultiSimulationTool(context) {
 
   function emptyEnergyExplanationRatioExportFields() {
     return ["", "", "", "", "", ""];
+  }
+
+  function emptyEnergyExplanationHeatExportFields() {
+    return ["", ""];
+  }
+
+  function energyExplanationHeatExportFields(metric = {}) {
+    return [metric.heatCategory || "", metric.sign || ""];
   }
 
   function energyExplanationRatioExportFields(metric = {}) {
@@ -1328,6 +1347,8 @@ export function initializeMultiSimulationTool(context) {
         leftDenominatorValue: Number(leftItem?.denominatorValue || 0),
         rightDenominatorValue: Number(rightItem?.denominatorValue || 0),
         denominatorUnit: rightItem?.denominatorUnit || leftItem?.denominatorUnit || "",
+        heatCategory: rightItem?.heatCategory || leftItem?.heatCategory || "",
+        sign: rightItem?.sign || leftItem?.sign || "",
         status: energyExplanationDeltaStatus(leftItem, rightItem),
         totalMagnitude: Math.abs(leftValue) + Math.abs(rightValue),
       };
@@ -1414,6 +1435,10 @@ export function initializeMultiSimulationTool(context) {
     const parts = [];
     if (row.formula) {
       parts.push(row.formula);
+    }
+    const heatDetail = [row.heatCategory, row.sign].filter(Boolean).join(" / ");
+    if (heatDetail) {
+      parts.push(heatDetail);
     }
     const left = energyExplanationDeltaRatioSideDetail(t("batch.baselineCase", {}, "Baseline"), row.leftNumeratorValue, row.leftDenominatorValue, row);
     const right = energyExplanationDeltaRatioSideDetail(t("batch.targetCase", {}, "Target"), row.rightNumeratorValue, row.rightDenominatorValue, row);

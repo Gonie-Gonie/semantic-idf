@@ -219,7 +219,10 @@ variables are present, the same payload
 integrates them to `kWh` by timestep and links Delivered Load to Heat Drivers
 with signed driver values and residual reconciliation. Explicit sensible heat
 gain/loss outputs are kept as separate positive/negative heat-driver nodes even
-when EnergyPlus reports both source series as positive energy values. Large
+when EnergyPlus reports both source series as positive energy values. Summary
+rows and batch/HTML exports preserve each heat-driver row's `heatCategory` and
+`sign` so gain/loss direction remains machine-readable outside the Sankey graph.
+Large
 reported heat-balance deviation terms emit period warnings so unresolved zone
 balance checks are visible next to the reconciliation rows. When matching Zone
 Heat Flow data exists, heat/load selections in the Sankey inspector can jump

@@ -68,6 +68,7 @@ type EnergyExplanationSummaryItem struct {
 	EndUse              string   `json:"endUse,omitempty"`
 	MeterHierarchyLevel string   `json:"meterHierarchyLevel,omitempty"`
 	HeatCategory        string   `json:"heatCategory,omitempty"`
+	Sign                string   `json:"sign,omitempty"`
 	Basis               string   `json:"basis,omitempty"`
 	Formula             string   `json:"formula,omitempty"`
 	NumeratorLabel      string   `json:"numeratorLabel,omitempty"`
@@ -814,13 +815,30 @@ func addEnergyExplanationSummaryNode(groups map[string]*EnergyExplanationSummary
 			EndUse:              node.EndUse,
 			MeterHierarchyLevel: node.MeterHierarchyLevel,
 			HeatCategory:        node.HeatCategory,
+			Sign:                node.Sign,
 			Basis:               node.Basis,
 			SourceIDs:           appendUniqueStrings(nil, node.SourceIDs...),
 		}
 		item = groups[key]
 	}
 	item.Value = roundedEnergyNumber(item.Value + value)
+	item.Sign = mergeEnergyExplanationSummarySign(item.Sign, node.Sign)
 	item.SourceIDs = appendUniqueStrings(item.SourceIDs, node.SourceIDs...)
+}
+
+func mergeEnergyExplanationSummarySign(current string, next string) string {
+	current = strings.TrimSpace(current)
+	next = strings.TrimSpace(next)
+	if next == "" {
+		return current
+	}
+	if current == "" {
+		return next
+	}
+	if current == next {
+		return current
+	}
+	return "mixed"
 }
 
 func energyExplanationSummaryItemID(key string, node EnergyExplanationNode) string {

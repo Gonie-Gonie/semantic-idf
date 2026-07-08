@@ -458,7 +458,7 @@ func TestBatchSimulationWorkbookSheetsIncludesPurposeAndEnergySheets(t *testing.
 	if rows := sheets[0].Sections[0].Rows; len(rows) != 1 || rows[0][3] != "energy_explanation.kpi.cooling_cop" {
 		t.Fatalf("purpose metric rows = %#v", rows)
 	}
-	if rows := sheets[1].Sections[0].Rows; len(rows) != 1 || rows[0][3] != "derived_kpi" || rows[0][10] != "zone" || rows[0][13] != "derived_kpi" || rows[0][16] != "8" || rows[0][19] != "4" {
+	if rows := sheets[1].Sections[0].Rows; len(rows) != 1 || rows[0][3] != "derived_kpi" || rows[0][10] != "zone" || rows[0][15] != "derived_kpi" || rows[0][18] != "8" || rows[0][21] != "4" {
 		t.Fatalf("energy summary rows = %#v", rows)
 	}
 	if rows := sheets[4].Sections[0].Rows; len(rows) != 1 || rows[0][7] != "residual" {
@@ -570,6 +570,38 @@ func TestBatchSimulationWorkbookSheetsIncludeSourceAvailability(t *testing.T) {
 	}
 	if rows := sheets[1].Sections[0].Rows; len(rows) != 2 || rows[0][5] != "found" || rows[1][4] != "Zone Air System Sensible Cooling Energy" || rows[1][5] != "missing" {
 		t.Fatalf("source availability rows = %#v", rows)
+	}
+}
+
+func TestBatchSimulationWorkbookSheetsIncludeHeatDriverSummarySign(t *testing.T) {
+	result := simulation.MultiSimulationResult{
+		Results: []simulation.SimulationRunResult{{
+			RunID:    "run-heat-sign",
+			Filename: "heat-sign.idf",
+			Status:   "succeeded",
+			PurposeResults: &simulation.PurposeResultBundle{
+				EnergyExplanationSummary: simulation.EnergyExplanationSummary{
+					Schema: "semantic-idf.energy-explanation-summary/v1",
+					HeatDrivers: []simulation.EnergyExplanationSummaryItem{{
+						ID:           "heat.infiltration.negative",
+						Level:        "heat",
+						Label:        "Infiltration heat loss",
+						Value:        1.25,
+						Unit:         "kWh",
+						HeatCategory: "air_exchange",
+						Sign:         "negative",
+						Basis:        "measured_energy_variable",
+					}},
+				},
+			},
+		}},
+	}
+	sheets := batchSimulationWorkbookSheets(BatchSimulationXLSXExportRequest{Result: result})
+	if len(sheets) != 2 || sheets[1].Name != "Energy Summary" {
+		t.Fatalf("energy summary sheets = %#v", sheets)
+	}
+	if rows := sheets[1].Sections[0].Rows; len(rows) != 1 || rows[0][13] != "air_exchange" || rows[0][14] != "negative" || rows[0][15] != "measured_energy_variable" {
+		t.Fatalf("energy summary heat sign rows = %#v", rows)
 	}
 }
 
@@ -762,7 +794,7 @@ func TestBatchSimulationWorkbookSheetsIncludeComparisonDelta(t *testing.T) {
 	if rows := sheets[1].Sections[0].Rows; len(rows) != 2 || rows[0][1] != "baseline-run" || rows[1][1] != "target-run" {
 		t.Fatalf("comparison rows = %#v", rows)
 	}
-	if rows := sheets[2].Sections[0].Rows; len(rows) != 2 || rows[0][1] != "cooling.electricity" || rows[0][7] != "5" || rows[0][8] != "50%" || rows[1][1] != "kpi.cooling_cop" || rows[1][15] == "" || rows[1][17] != "8" || rows[1][18] != "9" || rows[1][21] != "4" || rows[1][22] != "3" {
+	if rows := sheets[2].Sections[0].Rows; len(rows) != 2 || rows[0][1] != "cooling.electricity" || rows[0][7] != "5" || rows[0][8] != "50%" || rows[1][1] != "kpi.cooling_cop" || rows[1][17] == "" || rows[1][19] != "8" || rows[1][20] != "9" || rows[1][23] != "4" || rows[1][24] != "3" {
 		t.Fatalf("energy delta rows = %#v", rows)
 	}
 	if rows := sheets[3].Sections[0].Rows; len(rows) != 1 || rows[0][0] != "meter_enduse" || rows[0][7] != "5" || rows[0][10] != "matched" {

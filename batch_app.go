@@ -1079,6 +1079,8 @@ type batchSimulationDeltaRow struct {
 	ServiceKind       string
 	PathType          string
 	Basis             string
+	HeatCategory      string
+	Sign              string
 	Formula           string
 	NumeratorLabel    string
 	NumeratorUnit     string
@@ -1101,7 +1103,7 @@ type batchSimulationDeltaRow struct {
 func batchSimulationEnergyDeltaSection(left, right simulation.SimulationRunResult) tabular.Section {
 	section := tabular.Section{
 		Title:   "energy_delta",
-		Headers: []string{"type", "id", "label", "baseline_file", "target_file", "baseline_value", "target_value", "delta", "percent", "unit", "status", "level", "service_kind", "path_type", "basis", "formula", "numerator_label", "baseline_numerator", "target_numerator", "numerator_unit", "denominator_label", "baseline_denominator", "target_denominator", "denominator_unit"},
+		Headers: []string{"type", "id", "label", "baseline_file", "target_file", "baseline_value", "target_value", "delta", "percent", "unit", "status", "level", "service_kind", "path_type", "basis", "heat_category", "sign", "formula", "numerator_label", "baseline_numerator", "target_numerator", "numerator_unit", "denominator_label", "baseline_denominator", "target_denominator", "denominator_unit"},
 	}
 	leftSummary := left.PurposeResults.EnergyExplanationSummary
 	rightSummary := right.PurposeResults.EnergyExplanationSummary
@@ -1137,6 +1139,8 @@ func batchSimulationEnergyDeltaSection(left, right simulation.SimulationRunResul
 			row.ServiceKind,
 			row.PathType,
 			row.Basis,
+			row.HeatCategory,
+			row.Sign,
 			row.Formula,
 			row.NumeratorLabel,
 			formatBatchSimulationOptionalFloatPresent(row.LeftNumerator, row.LeftRatioPresent),
@@ -1199,6 +1203,8 @@ func batchSimulationSummaryDeltaRows(group string, leftItems, rightItems []simul
 			ServiceKind:       firstNonEmpty(rightItem.ServiceKind, leftItem.ServiceKind),
 			PathType:          firstNonEmpty(rightItem.PathType, leftItem.PathType),
 			Basis:             firstNonEmpty(rightItem.Basis, leftItem.Basis),
+			HeatCategory:      firstNonEmpty(rightItem.HeatCategory, leftItem.HeatCategory),
+			Sign:              firstNonEmpty(rightItem.Sign, leftItem.Sign),
 			Formula:           firstNonEmpty(rightItem.Formula, leftItem.Formula),
 			NumeratorLabel:    firstNonEmpty(rightItem.NumeratorLabel, leftItem.NumeratorLabel),
 			NumeratorUnit:     firstNonEmpty(rightItem.NumeratorUnit, leftItem.NumeratorUnit),
@@ -1410,7 +1416,7 @@ func batchSimulationPurposeMetricSection(result simulation.MultiSimulationResult
 func batchSimulationEnergySummarySection(result simulation.MultiSimulationResult) tabular.Section {
 	section := tabular.Section{
 		Title:   "energy_summary",
-		Headers: []string{"file", "status", "run_id", "type", "id", "label", "value", "unit", "level", "service_kind", "path_type", "carrier", "end_use", "basis", "formula", "numerator_label", "numerator_value", "numerator_unit", "denominator_label", "denominator_value", "denominator_unit", "source_ids"},
+		Headers: []string{"file", "status", "run_id", "type", "id", "label", "value", "unit", "level", "service_kind", "path_type", "carrier", "end_use", "heat_category", "sign", "basis", "formula", "numerator_label", "numerator_value", "numerator_unit", "denominator_label", "denominator_value", "denominator_unit", "source_ids"},
 	}
 	for _, item := range result.Results {
 		summary := simulation.EnergyExplanationSummary{}
@@ -1434,6 +1440,8 @@ func batchSimulationEnergySummarySection(result simulation.MultiSimulationResult
 					metric.PathType,
 					metric.Carrier,
 					metric.EndUse,
+					metric.HeatCategory,
+					metric.Sign,
 					metric.Basis,
 					metric.Formula,
 					metric.NumeratorLabel,
