@@ -168,6 +168,9 @@ The release script infers bump size from these sections:
 - Batch Simulation XLSX Energy Delta and Sankey Edge Delta sheets now include
   baseline/target source table, row, column, source unit, and normalized unit
   fields directly on delta rows.
+- Batch Simulation XLSX energy summary, Sankey edge, reconciliation, and source
+  availability rows now include source table, row, column, source unit, and
+  normalized unit fields directly.
 - Batch Simulation CSV energy summary, Sankey edge, and reconciliation rows now
   fill source table, row, column, source unit, and normalized unit fields from
   their source IDs.

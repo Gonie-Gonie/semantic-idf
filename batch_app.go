@@ -1453,7 +1453,7 @@ func batchSimulationPurposeMetricSection(result simulation.MultiSimulationResult
 func batchSimulationEnergySummarySection(result simulation.MultiSimulationResult) tabular.Section {
 	section := tabular.Section{
 		Title:   "energy_summary",
-		Headers: []string{"file", "status", "run_id", "type", "id", "label", "value", "unit", "level", "service_kind", "path_type", "carrier", "end_use", "heat_category", "sign", "basis", "formula", "numerator_label", "numerator_value", "numerator_unit", "denominator_label", "denominator_value", "denominator_unit", "source_ids", "source_object_index"},
+		Headers: []string{"file", "status", "run_id", "type", "id", "label", "value", "unit", "level", "service_kind", "path_type", "carrier", "end_use", "heat_category", "sign", "basis", "formula", "numerator_label", "numerator_value", "numerator_unit", "denominator_label", "denominator_value", "denominator_unit", "source_ids", "source_object_index", "source_table", "source_row", "source_column", "source_unit", "normalized_unit"},
 	}
 	for _, item := range result.Results {
 		summary := simulation.EnergyExplanationSummary{}
@@ -1465,7 +1465,7 @@ func batchSimulationEnergySummarySection(result simulation.MultiSimulationResult
 		file := batchSimulationFileLabel(item)
 		for _, group := range batchSimulationSummaryGroups(summary) {
 			for _, metric := range group.items {
-				section.Rows = append(section.Rows, []string{
+				values := []string{
 					file,
 					item.Status,
 					item.RunID,
@@ -1491,7 +1491,9 @@ func batchSimulationEnergySummarySection(result simulation.MultiSimulationResult
 					metric.DenominatorUnit,
 					strings.Join(metric.SourceIDs, "; "),
 					batchSimulationSourceObjectIndexes(explanation, metric.SourceIDs),
-				})
+				}
+				values = append(values, batchSimulationSourceMetadataFields(explanation, metric.SourceIDs)...)
+				section.Rows = append(section.Rows, values)
 			}
 		}
 	}
@@ -1553,7 +1555,7 @@ func batchSimulationEnergySourceAvailabilitySection(result simulation.MultiSimul
 		file := batchSimulationFileLabel(item)
 		explanation := item.PurposeResults.EnergyExplanation
 		for _, availability := range explanation.Completeness.SourceAvailability {
-			section.Rows = append(section.Rows, []string{
+			values := []string{
 				file,
 				item.Status,
 				item.RunID,
@@ -1562,14 +1564,9 @@ func batchSimulationEnergySourceAvailabilitySection(result simulation.MultiSimul
 				availability.Status,
 				strings.Join(availability.SourceIDs, "; "),
 				batchSimulationSourceObjectIndexes(explanation, availability.SourceIDs),
-				batchSimulationSourceValueSummary(explanation, availability.SourceIDs, func(source simulation.EnergyDataSource) string { return source.TableName }),
-				batchSimulationSourceValueSummary(explanation, availability.SourceIDs, func(source simulation.EnergyDataSource) string { return source.RowName }),
-				batchSimulationSourceValueSummary(explanation, availability.SourceIDs, func(source simulation.EnergyDataSource) string { return source.ColumnName }),
-				batchSimulationSourceValueSummary(explanation, availability.SourceIDs, func(source simulation.EnergyDataSource) string {
-					return firstNonEmpty(source.SourceUnit, source.Units)
-				}),
-				batchSimulationSourceValueSummary(explanation, availability.SourceIDs, func(source simulation.EnergyDataSource) string { return source.NormalizedUnit }),
-			})
+			}
+			values = append(values, batchSimulationSourceMetadataFields(explanation, availability.SourceIDs)...)
+			section.Rows = append(section.Rows, values)
 		}
 	}
 	return section
@@ -1582,6 +1579,18 @@ func batchSimulationSourceObjectIndexes(explanation simulation.EnergyExplanation
 		}
 		return fmt.Sprintf("%d", *source.ObjectIndex)
 	})
+}
+
+func batchSimulationSourceMetadataFields(explanation simulation.EnergyExplanationResult, sourceIDs []string) []string {
+	return []string{
+		batchSimulationSourceValueSummary(explanation, sourceIDs, func(source simulation.EnergyDataSource) string { return source.TableName }),
+		batchSimulationSourceValueSummary(explanation, sourceIDs, func(source simulation.EnergyDataSource) string { return source.RowName }),
+		batchSimulationSourceValueSummary(explanation, sourceIDs, func(source simulation.EnergyDataSource) string { return source.ColumnName }),
+		batchSimulationSourceValueSummary(explanation, sourceIDs, func(source simulation.EnergyDataSource) string {
+			return firstNonEmpty(source.SourceUnit, source.Units)
+		}),
+		batchSimulationSourceValueSummary(explanation, sourceIDs, func(source simulation.EnergyDataSource) string { return source.NormalizedUnit }),
+	}
 }
 
 func batchSimulationSourceMetadataDeltaFields(leftExplanation, rightExplanation simulation.EnergyExplanationResult, leftSourceIDs, rightSourceIDs []string) []string {
@@ -1625,7 +1634,7 @@ func batchSimulationSourceValueSummary(explanation simulation.EnergyExplanationR
 func batchSimulationEnergyEdgeSection(result simulation.MultiSimulationResult) tabular.Section {
 	section := tabular.Section{
 		Title:   "energy_edges",
-		Headers: []string{"file", "status", "run_id", "period", "id", "from_id", "to_id", "value", "unit", "relation", "basis", "rule_id", "formula", "zone", "service_kind", "source_ids", "source_object_index", "related_path_ids"},
+		Headers: []string{"file", "status", "run_id", "period", "id", "from_id", "to_id", "value", "unit", "relation", "basis", "rule_id", "formula", "zone", "service_kind", "source_ids", "source_object_index", "related_path_ids", "source_table", "source_row", "source_column", "source_unit", "normalized_unit"},
 	}
 	for _, item := range result.Results {
 		if item.PurposeResults == nil {
@@ -1635,7 +1644,7 @@ func batchSimulationEnergyEdgeSection(result simulation.MultiSimulationResult) t
 		explanation := item.PurposeResults.EnergyExplanation
 		for _, period := range batchSimulationExportPeriods(explanation) {
 			for _, edge := range period.Edges {
-				section.Rows = append(section.Rows, []string{
+				values := []string{
 					file,
 					item.Status,
 					item.RunID,
@@ -1654,7 +1663,9 @@ func batchSimulationEnergyEdgeSection(result simulation.MultiSimulationResult) t
 					strings.Join(edge.SourceIDs, "; "),
 					batchSimulationSourceObjectIndexes(explanation, edge.SourceIDs),
 					strings.Join(edge.RelatedPathIDs, "; "),
-				})
+				}
+				values = append(values, batchSimulationSourceMetadataFields(explanation, edge.SourceIDs)...)
+				section.Rows = append(section.Rows, values)
 			}
 		}
 	}
@@ -1664,7 +1675,7 @@ func batchSimulationEnergyEdgeSection(result simulation.MultiSimulationResult) t
 func batchSimulationEnergyReconciliationSection(result simulation.MultiSimulationResult) tabular.Section {
 	section := tabular.Section{
 		Title:   "energy_reconciliation",
-		Headers: []string{"file", "status", "run_id", "period", "id", "label", "level", "reconciliation_status", "expected", "explained", "residual", "unit", "basis", "formula", "zone", "service_kind", "source_ids", "source_object_index"},
+		Headers: []string{"file", "status", "run_id", "period", "id", "label", "level", "reconciliation_status", "expected", "explained", "residual", "unit", "basis", "formula", "zone", "service_kind", "source_ids", "source_object_index", "source_table", "source_row", "source_column", "source_unit", "normalized_unit"},
 	}
 	for _, item := range result.Results {
 		if item.PurposeResults == nil {
@@ -1674,7 +1685,7 @@ func batchSimulationEnergyReconciliationSection(result simulation.MultiSimulatio
 		explanation := item.PurposeResults.EnergyExplanation
 		for _, period := range batchSimulationExportPeriods(explanation) {
 			for _, row := range period.Reconciliation {
-				section.Rows = append(section.Rows, []string{
+				values := []string{
 					file,
 					item.Status,
 					item.RunID,
@@ -1693,7 +1704,9 @@ func batchSimulationEnergyReconciliationSection(result simulation.MultiSimulatio
 					row.ServiceKind,
 					strings.Join(row.SourceIDs, "; "),
 					batchSimulationSourceObjectIndexes(explanation, row.SourceIDs),
-				})
+				}
+				values = append(values, batchSimulationSourceMetadataFields(explanation, row.SourceIDs)...)
+				section.Rows = append(section.Rows, values)
 			}
 		}
 	}

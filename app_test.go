@@ -415,6 +415,9 @@ func TestBatchSimulationWorkbookSheetsIncludesPurposeAndEnergySheets(t *testing.
 						SourceType:     "sql_report_data",
 						IsMeter:        true,
 						Name:           "Cooling:Electricity",
+						TableName:      "ReportData",
+						RowName:        "Cooling:Electricity",
+						ColumnName:     "Value [J]",
 						SourceUnit:     "J",
 						NormalizedUnit: "kWh",
 						ObjectIndex:    &sourceObjectIndex,
@@ -463,13 +466,13 @@ func TestBatchSimulationWorkbookSheetsIncludesPurposeAndEnergySheets(t *testing.
 	if rows := sheets[0].Sections[0].Rows; len(rows) != 1 || rows[0][3] != "energy_explanation.kpi.cooling_cop" {
 		t.Fatalf("purpose metric rows = %#v", rows)
 	}
-	if rows := sheets[1].Sections[0].Rows; len(rows) != 1 || rows[0][3] != "derived_kpi" || rows[0][10] != "zone" || rows[0][15] != "derived_kpi" || rows[0][18] != "8" || rows[0][21] != "4" || rows[0][23] != "sql-rdd-1" || rows[0][24] != "12" {
+	if rows := sheets[1].Sections[0].Rows; len(rows) != 1 || rows[0][3] != "derived_kpi" || rows[0][10] != "zone" || rows[0][15] != "derived_kpi" || rows[0][18] != "8" || rows[0][21] != "4" || rows[0][23] != "sql-rdd-1" || rows[0][24] != "12" || rows[0][25] != "ReportData" || rows[0][26] != "Cooling:Electricity" || rows[0][27] != "Value [J]" || rows[0][28] != "J" || rows[0][29] != "kWh" {
 		t.Fatalf("energy summary rows = %#v", rows)
 	}
-	if rows := sheets[3].Sections[0].Rows; len(rows) != 1 || rows[0][15] != "sql-rdd-1" || rows[0][16] != "12" {
+	if rows := sheets[3].Sections[0].Rows; len(rows) != 1 || rows[0][15] != "sql-rdd-1" || rows[0][16] != "12" || rows[0][18] != "ReportData" || rows[0][19] != "Cooling:Electricity" || rows[0][20] != "Value [J]" || rows[0][21] != "J" || rows[0][22] != "kWh" {
 		t.Fatalf("energy edge rows = %#v", rows)
 	}
-	if rows := sheets[4].Sections[0].Rows; len(rows) != 1 || rows[0][7] != "residual" || rows[0][16] != "sql-rdd-1" || rows[0][17] != "12" {
+	if rows := sheets[4].Sections[0].Rows; len(rows) != 1 || rows[0][7] != "residual" || rows[0][16] != "sql-rdd-1" || rows[0][17] != "12" || rows[0][18] != "ReportData" || rows[0][19] != "Cooling:Electricity" || rows[0][20] != "Value [J]" || rows[0][21] != "J" || rows[0][22] != "kWh" {
 		t.Fatalf("reconciliation rows = %#v", rows)
 	}
 	if rows := sheets[5].Sections[0].Rows; len(rows) != 1 || rows[0][3] != "annual" || rows[0][5] != "heat_balance_deviation_large" {
