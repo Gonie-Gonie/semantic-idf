@@ -615,7 +615,7 @@ export function initializeMultiSimulationTool(context) {
   }
 
   function energyExplanationEdgeExportItems(explanation = {}) {
-    const periodGraphs = (explanation.periods || []).filter((period) => (period.edges || []).length);
+    const periodGraphs = energyExplanationBatchExportPeriods(explanation).filter((period) => (period.edges || []).length);
     const graphs = periodGraphs.length
       ? periodGraphs
       : [{ id: "annual", label: "Annual", nodes: explanation.nodes || [], edges: explanation.edges || [] }];
@@ -631,7 +631,7 @@ export function initializeMultiSimulationTool(context) {
   }
 
   function energyExplanationReconciliationExportItems(explanation = {}) {
-    const periodGraphs = (explanation.periods || []).filter((period) => (period.reconciliation || []).length);
+    const periodGraphs = energyExplanationBatchExportPeriods(explanation).filter((period) => (period.reconciliation || []).length);
     const graphs = periodGraphs.length
       ? periodGraphs
       : [{ id: "annual", label: "Annual", reconciliation: explanation.reconciliation || [] }];
@@ -642,6 +642,18 @@ export function initializeMultiSimulationTool(context) {
         periodLabel: graph.label || graph.id || "",
       })),
     );
+  }
+
+  function energyExplanationBatchExportPeriods(explanation = {}) {
+    const periods = explanation.periods || [];
+    if (!periods.length) {
+      return [];
+    }
+    return periods.filter((period) => {
+      const kind = String(period.kind || "").toLowerCase();
+      const id = String(period.id || "").toLowerCase();
+      return kind === "annual" || kind === "monthly" || kind === "selected_range" || id === "annual" || id === "selected_range";
+    });
   }
 
   function energyExplanationSourceExportItems(explanation = {}) {
