@@ -125,9 +125,13 @@ The release script infers bump size from these sections:
 - Basic Energy SQL explanations now emit daily `D<n>` periods for Daily,
   Hourly, Timestep, or Detailed sources while leaving Monthly/RunPeriod sources
   annual/monthly only.
+- Basic Energy SQL explanations now emit hourly `H<n>` periods for Hourly,
+  Timestep, or Detailed sources while leaving Daily/Monthly/RunPeriod sources at
+  coarser periods.
 - Batch Simulation energy explanation CSV exports now keep annual, monthly, and
-  selected-range edge/reconciliation rows by default, leaving daily periods in
-  the embedded JSON payload to avoid oversized high-resolution CSV exports.
+  selected-range edge/reconciliation rows by default, leaving daily/hourly
+  periods in the embedded JSON payload to avoid oversized high-resolution CSV
+  exports.
 - Batch Simulation can now export the full purpose run result as
   `semantic-idf.batch-simulation/v1` JSON, preserving embedded Basic Energy
   explanation payloads that are too detailed for the default CSV.

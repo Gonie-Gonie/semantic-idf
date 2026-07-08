@@ -1183,6 +1183,41 @@ func TestParseSimulationEnergyExplanationSQLBuildsDailyPeriods(t *testing.T) {
 	}
 }
 
+func TestParseSimulationEnergyExplanationSQLBuildsHourlyPeriods(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "eplusout.sql")
+	createTestEnergyHourlySQL(t, path)
+
+	result, err := parseSimulationEnergyExplanationSQL(path, &PurposeRunPlan{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	hourOne := energyExplanationPeriodByID(result.Periods, "H1")
+	hourTwo := energyExplanationPeriodByID(result.Periods, "H2")
+	if hourOne == nil || hourOne.Kind != "hourly" || hourOne.Label != "Hour 1" || hourTwo == nil || hourTwo.Kind != "hourly" {
+		t.Fatalf("hourly periods = %#v", result.Periods)
+	}
+	dayOne := energyExplanationPeriodByID(result.Periods, "D1")
+	if dayOne == nil || dayOne.Kind != "daily" {
+		t.Fatalf("daily period missing from hourly source = %#v", result.Periods)
+	}
+	facilityHourOne := energyExplanationNodeByID(hourOne.Nodes, "energy.carrier.electricity")
+	if facilityHourOne == nil || facilityHourOne.Value != 1 {
+		t.Fatalf("hour 1 facility node = %#v", facilityHourOne)
+	}
+	facilityHourTwo := energyExplanationNodeByID(hourTwo.Nodes, "energy.carrier.electricity")
+	if facilityHourTwo == nil || facilityHourTwo.Value != 2 {
+		t.Fatalf("hour 2 facility node = %#v", facilityHourTwo)
+	}
+	reconciliation := energyExplanationReconciliationByID(hourTwo.Reconciliation, "reconcile.energy.electricity.H2")
+	if reconciliation == nil || reconciliation.ExpectedValue != 2 || reconciliation.ExplainedValue != 0.5 || reconciliation.ResidualValue != 1.5 {
+		t.Fatalf("hour 2 reconciliation = %#v", hourTwo.Reconciliation)
+	}
+	if len(result.Periods) != 5 || result.Periods[0].ID != "annual" || result.Periods[1].ID != "M1" || result.Periods[2].ID != "D1" || result.Periods[3].ID != "H1" || result.Periods[4].ID != "H2" {
+		t.Fatalf("hourly period order = %#v", result.Periods)
+	}
+}
+
 func TestParseSimulationEnergyExplanationSQLUsesTabularAnnualFallback(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "eplusout.sql")
@@ -2285,6 +2320,54 @@ func createTestEnergyDailySQL(t *testing.T, path string) {
 		`INSERT INTO "Time" VALUES
 			(1, 1, 1, 24, 0),
 			(2, 1, 2, 24, 0)`,
+		`INSERT INTO ReportData VALUES
+			(1, 1, 20, 3600000.0),
+			(2, 2, 20, 7200000.0),
+			(3, 1, 21, 1800000.0),
+			(4, 2, 21, 1800000.0)`,
+	}
+	for _, statement := range statements {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatalf("sql fixture statement failed: %v\n%s", err, statement)
+		}
+	}
+}
+
+func createTestEnergyHourlySQL(t *testing.T, path string) {
+	t.Helper()
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	statements := []string{
+		`CREATE TABLE ReportDataDictionary (
+			ReportDataDictionaryIndex INTEGER PRIMARY KEY,
+			KeyValue TEXT,
+			Name TEXT,
+			Units TEXT,
+			IsMeter INTEGER,
+			ReportingFrequency TEXT
+		)`,
+		`CREATE TABLE "Time" (
+			TimeIndex INTEGER PRIMARY KEY,
+			Month INTEGER,
+			Day INTEGER,
+			Hour INTEGER,
+			Minute INTEGER
+		)`,
+		`CREATE TABLE ReportData (
+			ReportDataIndex INTEGER PRIMARY KEY,
+			TimeIndex INTEGER,
+			ReportDataDictionaryIndex INTEGER,
+			Value REAL
+		)`,
+		`INSERT INTO ReportDataDictionary VALUES
+			(20, '', 'Electricity:Facility', 'J', 1, 'Hourly'),
+			(21, '', 'Electricity:Cooling', 'J', 1, 'Hourly')`,
+		`INSERT INTO "Time" VALUES
+			(1, 1, 1, 1, 0),
+			(2, 1, 1, 2, 0)`,
 		`INSERT INTO ReportData VALUES
 			(1, 1, 20, 3600000.0),
 			(2, 2, 20, 7200000.0),

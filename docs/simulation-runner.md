@@ -157,12 +157,13 @@ back to annual `TabularDataWithStrings` end-use rows and marks those sources as
 `sql_tabular` with `tabular_annual_value` aggregation. Energy sources preserve
 both the raw source unit and the normalized graph unit so `J` meters and `W`
 rate variables remain traceable after conversion to `kWh`. Daily, hourly,
-timestep, or detailed SQL sources also emit daily `D<n>` periods from
-`Time.Month` and `Time.Day`, while Monthly/RunPeriod sources stay annual/monthly
-only to avoid treating monthly rows as daily data. When a custom period scope is
-selected, SQL row values whose `Time` month/day falls inside the scope are also
-emitted as a `selected_range` period alongside annual and monthly periods. The
-payload includes the Basic Energy relationship rule catalog, and
+timestep, or detailed SQL sources emit daily `D<n>` periods from `Time.Month`
+and `Time.Day`; Hourly, Timestep, or Detailed sources also emit hourly `H<n>`
+periods from `Time.Hour`. Monthly/RunPeriod sources stay annual/monthly only to
+avoid treating monthly rows as high-resolution data. When a custom period scope
+is selected, SQL row values whose `Time` month/day falls inside the scope are
+also emitted as a `selected_range` period alongside annual and monthly periods.
+The payload includes the Basic Energy relationship rule catalog, and
 explanation edges carry a relationship `ruleId` from that catalog so the UI and
 exports can distinguish measured end-use, measured load, heat-balance, and
 residual links. The companion
@@ -223,14 +224,14 @@ reconciliation rows, and Sankey edge metadata rows with period, relation, basis,
 `ruleId`, formula, endpoint, service, zone, source IDs, related source output
 object indexes, source/normalized units, load path type, and related HVAC
 service path IDs as CSV for spreadsheet comparison. The batch CSV keeps annual,
-monthly, and selected-range explanation periods by default; daily periods remain
-available in the embedded purpose result payload without expanding the default
-spreadsheet export. Compact summary rows also carry their source IDs and
-matching source output object indexes when available. Batch Simulation can also
-export the full batch result as
+monthly, and selected-range explanation periods by default; daily and hourly
+periods remain available in the embedded purpose result payload without
+expanding the default spreadsheet export. Compact summary rows also carry their
+source IDs and matching source output object indexes when available. Batch
+Simulation can also export the full batch result as
 `semantic-idf.batch-simulation/v1` JSON, preserving embedded purpose result
-payloads such as high-resolution daily explanation periods that are intentionally
-omitted from the default CSV.
+payloads such as high-resolution daily/hourly explanation periods that are
+intentionally omitted from the default CSV.
 
 `parseSimulationSQL` is the combined SQLite entrypoint. It gathers generic
 time-series rows, Basic Energy dashboard data, SQL heat-flow data, Integrity
