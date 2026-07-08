@@ -960,31 +960,42 @@ func batchSimulationComparisonSection(left, right simulation.SimulationRunResult
 }
 
 type batchSimulationDeltaRow struct {
-	Group          string
-	ID             string
-	Label          string
-	LeftValue      float64
-	RightValue     float64
-	Delta          float64
-	Percent        string
-	Unit           string
-	Status         string
-	Level          string
-	ServiceKind    string
-	PathType       string
-	Basis          string
-	Relation       string
-	RuleID         string
-	FromID         string
-	ToID           string
-	SourceIDs      []string
-	RelatedPathIDs []string
+	Group             string
+	ID                string
+	Label             string
+	LeftValue         float64
+	RightValue        float64
+	Delta             float64
+	Percent           string
+	Unit              string
+	Status            string
+	Level             string
+	ServiceKind       string
+	PathType          string
+	Basis             string
+	Formula           string
+	NumeratorLabel    string
+	NumeratorUnit     string
+	LeftNumerator     float64
+	RightNumerator    float64
+	DenominatorLabel  string
+	DenominatorUnit   string
+	LeftDenominator   float64
+	RightDenominator  float64
+	LeftRatioPresent  bool
+	RightRatioPresent bool
+	Relation          string
+	RuleID            string
+	FromID            string
+	ToID              string
+	SourceIDs         []string
+	RelatedPathIDs    []string
 }
 
 func batchSimulationEnergyDeltaSection(left, right simulation.SimulationRunResult) tabular.Section {
 	section := tabular.Section{
 		Title:   "energy_delta",
-		Headers: []string{"type", "id", "label", "baseline_file", "target_file", "baseline_value", "target_value", "delta", "percent", "unit", "status", "level", "service_kind", "path_type", "basis"},
+		Headers: []string{"type", "id", "label", "baseline_file", "target_file", "baseline_value", "target_value", "delta", "percent", "unit", "status", "level", "service_kind", "path_type", "basis", "formula", "numerator_label", "baseline_numerator", "target_numerator", "numerator_unit", "denominator_label", "baseline_denominator", "target_denominator", "denominator_unit"},
 	}
 	leftSummary := left.PurposeResults.EnergyExplanationSummary
 	rightSummary := right.PurposeResults.EnergyExplanationSummary
@@ -1020,6 +1031,15 @@ func batchSimulationEnergyDeltaSection(left, right simulation.SimulationRunResul
 			row.ServiceKind,
 			row.PathType,
 			row.Basis,
+			row.Formula,
+			row.NumeratorLabel,
+			formatBatchSimulationOptionalFloatPresent(row.LeftNumerator, row.LeftRatioPresent),
+			formatBatchSimulationOptionalFloatPresent(row.RightNumerator, row.RightRatioPresent),
+			row.NumeratorUnit,
+			row.DenominatorLabel,
+			formatBatchSimulationOptionalFloatPresent(row.LeftDenominator, row.LeftRatioPresent),
+			formatBatchSimulationOptionalFloatPresent(row.RightDenominator, row.RightRatioPresent),
+			row.DenominatorUnit,
 		})
 	}
 	return section
@@ -1060,22 +1080,37 @@ func batchSimulationSummaryDeltaRows(group string, leftItems, rightItems []simul
 			item = leftItem
 		}
 		rows = append(rows, batchSimulationDeltaRow{
-			Group:       group,
-			ID:          id,
-			Label:       firstNonEmpty(item.Label, id),
-			LeftValue:   leftValue,
-			RightValue:  rightValue,
-			Delta:       rightValue - leftValue,
-			Percent:     batchSimulationPercentDelta(leftValue, rightValue-leftValue),
-			Unit:        firstNonEmpty(rightItem.Unit, leftItem.Unit),
-			Status:      batchSimulationDeltaStatus(leftOK, rightOK),
-			Level:       firstNonEmpty(rightItem.Level, leftItem.Level),
-			ServiceKind: firstNonEmpty(rightItem.ServiceKind, leftItem.ServiceKind),
-			PathType:    firstNonEmpty(rightItem.PathType, leftItem.PathType),
-			Basis:       firstNonEmpty(rightItem.Basis, leftItem.Basis),
+			Group:             group,
+			ID:                id,
+			Label:             firstNonEmpty(item.Label, id),
+			LeftValue:         leftValue,
+			RightValue:        rightValue,
+			Delta:             rightValue - leftValue,
+			Percent:           batchSimulationPercentDelta(leftValue, rightValue-leftValue),
+			Unit:              firstNonEmpty(rightItem.Unit, leftItem.Unit),
+			Status:            batchSimulationDeltaStatus(leftOK, rightOK),
+			Level:             firstNonEmpty(rightItem.Level, leftItem.Level),
+			ServiceKind:       firstNonEmpty(rightItem.ServiceKind, leftItem.ServiceKind),
+			PathType:          firstNonEmpty(rightItem.PathType, leftItem.PathType),
+			Basis:             firstNonEmpty(rightItem.Basis, leftItem.Basis),
+			Formula:           firstNonEmpty(rightItem.Formula, leftItem.Formula),
+			NumeratorLabel:    firstNonEmpty(rightItem.NumeratorLabel, leftItem.NumeratorLabel),
+			NumeratorUnit:     firstNonEmpty(rightItem.NumeratorUnit, leftItem.NumeratorUnit),
+			LeftNumerator:     leftItem.NumeratorValue,
+			RightNumerator:    rightItem.NumeratorValue,
+			DenominatorLabel:  firstNonEmpty(rightItem.DenominatorLabel, leftItem.DenominatorLabel),
+			DenominatorUnit:   firstNonEmpty(rightItem.DenominatorUnit, leftItem.DenominatorUnit),
+			LeftDenominator:   leftItem.DenominatorValue,
+			RightDenominator:  rightItem.DenominatorValue,
+			LeftRatioPresent:  leftOK && batchSimulationSummaryRatioPresent(leftItem),
+			RightRatioPresent: rightOK && batchSimulationSummaryRatioPresent(rightItem),
 		})
 	}
 	return rows
+}
+
+func batchSimulationSummaryRatioPresent(item simulation.EnergyExplanationSummaryItem) bool {
+	return item.NumeratorValue != 0 || item.DenominatorValue != 0 || item.NumeratorLabel != "" || item.DenominatorLabel != ""
 }
 
 func batchSimulationEnergyEdgeDeltaSection(left, right simulation.SimulationRunResult) tabular.Section {
@@ -1533,6 +1568,13 @@ func formatBatchSimulationFloat(value float64) string {
 
 func formatBatchSimulationOptionalFloat(value float64, label string, unit string) string {
 	if value == 0 && strings.TrimSpace(label) == "" && strings.TrimSpace(unit) == "" {
+		return ""
+	}
+	return formatBatchSimulationFloat(value)
+}
+
+func formatBatchSimulationOptionalFloatPresent(value float64, present bool) string {
+	if !present {
 		return ""
 	}
 	return formatBatchSimulationFloat(value)

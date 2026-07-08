@@ -147,6 +147,8 @@ The release script infers bump size from these sections:
   energy and delivered-load display details.
 - Basic Energy derived KPI summary rows now preserve the COP formula plus
   numerator and denominator values for CSV, XLSX, HTML, and JSON exports.
+- Batch Simulation energy delta views now include derived KPI formula and
+  numerator/denominator details for COP comparison rows.
 - Basic Energy completeness hints now tell light-tier users to switch the detail
   tier before rerunning when explanation outputs are missing.
 - The Basic Energy Reconciliation subview now expands each accounting row's

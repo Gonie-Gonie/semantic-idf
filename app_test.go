@@ -566,6 +566,22 @@ func TestBatchSimulationWorkbookSheetsIncludeComparisonDelta(t *testing.T) {
 							EndUse:  "cooling",
 							Basis:   "measured_meter",
 						}},
+						DerivedKPIs: []simulation.EnergyExplanationSummaryItem{{
+							ID:               "kpi.cooling_cop",
+							Label:            "Cooling COP",
+							Value:            2,
+							Level:            "derived_kpi",
+							ServiceKind:      "cooling",
+							PathType:         "zone",
+							Basis:            "derived_kpi",
+							Formula:          "delivered_load / electric_end_use_energy",
+							NumeratorLabel:   "Cooling load",
+							NumeratorValue:   8,
+							NumeratorUnit:    "kWh",
+							DenominatorLabel: "Cooling electricity",
+							DenominatorValue: 4,
+							DenominatorUnit:  "kWh",
+						}},
 					},
 					EnergyExplanation: simulation.EnergyExplanationResult{
 						Schema: "semantic-idf.energy-explanation/v1",
@@ -607,6 +623,22 @@ func TestBatchSimulationWorkbookSheetsIncludeComparisonDelta(t *testing.T) {
 							EndUse:  "cooling",
 							Basis:   "measured_meter",
 						}},
+						DerivedKPIs: []simulation.EnergyExplanationSummaryItem{{
+							ID:               "kpi.cooling_cop",
+							Label:            "Cooling COP",
+							Value:            3,
+							Level:            "derived_kpi",
+							ServiceKind:      "cooling",
+							PathType:         "zone",
+							Basis:            "derived_kpi",
+							Formula:          "delivered_load / electric_end_use_energy",
+							NumeratorLabel:   "Cooling load",
+							NumeratorValue:   9,
+							NumeratorUnit:    "kWh",
+							DenominatorLabel: "Cooling electricity",
+							DenominatorValue: 3,
+							DenominatorUnit:  "kWh",
+						}},
 					},
 					EnergyExplanation: simulation.EnergyExplanationResult{
 						Schema: "semantic-idf.energy-explanation/v1",
@@ -646,7 +678,7 @@ func TestBatchSimulationWorkbookSheetsIncludeComparisonDelta(t *testing.T) {
 	if rows := sheets[1].Sections[0].Rows; len(rows) != 2 || rows[0][1] != "baseline-run" || rows[1][1] != "target-run" {
 		t.Fatalf("comparison rows = %#v", rows)
 	}
-	if rows := sheets[2].Sections[0].Rows; len(rows) != 1 || rows[0][1] != "cooling.electricity" || rows[0][7] != "5" || rows[0][8] != "50%" {
+	if rows := sheets[2].Sections[0].Rows; len(rows) != 2 || rows[0][1] != "cooling.electricity" || rows[0][7] != "5" || rows[0][8] != "50%" || rows[1][1] != "kpi.cooling_cop" || rows[1][15] == "" || rows[1][17] != "8" || rows[1][18] != "9" || rows[1][21] != "4" || rows[1][22] != "3" {
 		t.Fatalf("energy delta rows = %#v", rows)
 	}
 	if rows := sheets[3].Sections[0].Rows; len(rows) != 1 || rows[0][0] != "meter_enduse" || rows[0][7] != "5" || rows[0][10] != "matched" {

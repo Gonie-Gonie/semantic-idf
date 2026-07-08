@@ -1118,7 +1118,7 @@ export function initializeMultiSimulationTool(context) {
         (row) => `
           <tr>
             <td>${escapeHTML(row.group)}</td>
-            <td>${escapeHTML(row.label)}</td>
+            ${energyExplanationDeltaMetricCell(row)}
             <td>${escapeHTML(energyExplanationDeltaValue(row, "left"))}</td>
             <td>${escapeHTML(energyExplanationDeltaValue(row, "right"))}</td>
             <td>${escapeHTML(formatSignedValue(row.delta, row.unit))}</td>
@@ -1214,7 +1214,7 @@ export function initializeMultiSimulationTool(context) {
       .map(
         (row) => `
           <tr>
-            <td>${escapeHTML(row.label)}</td>
+            ${energyExplanationDeltaMetricCell(row)}
             <td>${escapeHTML(energyExplanationDeltaValue(row, "left"))}</td>
             <td>${escapeHTML(energyExplanationDeltaValue(row, "right"))}</td>
             <td>${escapeHTML(formatSignedValue(row.delta, row.unit))}</td>
@@ -1260,6 +1260,15 @@ export function initializeMultiSimulationTool(context) {
         delta,
         percent,
         unit,
+        formula: rightItem?.formula || leftItem?.formula || "",
+        numeratorLabel: rightItem?.numeratorLabel || leftItem?.numeratorLabel || "",
+        denominatorLabel: rightItem?.denominatorLabel || leftItem?.denominatorLabel || "",
+        leftNumeratorValue: Number(leftItem?.numeratorValue || 0),
+        rightNumeratorValue: Number(rightItem?.numeratorValue || 0),
+        numeratorUnit: rightItem?.numeratorUnit || leftItem?.numeratorUnit || "",
+        leftDenominatorValue: Number(leftItem?.denominatorValue || 0),
+        rightDenominatorValue: Number(rightItem?.denominatorValue || 0),
+        denominatorUnit: rightItem?.denominatorUnit || leftItem?.denominatorUnit || "",
         status: energyExplanationDeltaStatus(leftItem, rightItem),
         totalMagnitude: Math.abs(leftValue) + Math.abs(rightValue),
       };
@@ -1331,6 +1340,48 @@ export function initializeMultiSimulationTool(context) {
 
   function energyExplanationSummaryLabel(item = {}) {
     return item.label || item.id || "";
+  }
+
+  function energyExplanationDeltaMetricCell(row = {}) {
+    const detail = energyExplanationDeltaMetricDetail(row);
+    return `
+      <td class="batch-energy-delta-metric">
+        <span>${escapeHTML(row.label || "")}</span>
+        ${detail ? `<small>${escapeHTML(detail)}</small>` : ""}
+      </td>`;
+  }
+
+  function energyExplanationDeltaMetricDetail(row = {}) {
+    const parts = [];
+    if (row.formula) {
+      parts.push(row.formula);
+    }
+    const left = energyExplanationDeltaRatioSideDetail(t("batch.baselineCase", {}, "Baseline"), row.leftNumeratorValue, row.leftDenominatorValue, row);
+    const right = energyExplanationDeltaRatioSideDetail(t("batch.targetCase", {}, "Target"), row.rightNumeratorValue, row.rightDenominatorValue, row);
+    if (left) {
+      parts.push(left);
+    }
+    if (right) {
+      parts.push(right);
+    }
+    return parts.join(" | ");
+  }
+
+  function energyExplanationDeltaRatioSideDetail(label, numeratorValue, denominatorValue, row = {}) {
+    const numerator = energyExplanationDeltaRatioPart(row.numeratorLabel, numeratorValue, row.numeratorUnit);
+    const denominator = energyExplanationDeltaRatioPart(row.denominatorLabel, denominatorValue, row.denominatorUnit);
+    if (!numerator && !denominator) {
+      return "";
+    }
+    return `${label}: ${[numerator, denominator].filter(Boolean).join(" / ")}`;
+  }
+
+  function energyExplanationDeltaRatioPart(label = "", value, unit = "") {
+    const number = Number(value);
+    if (!Number.isFinite(number) || number === 0) {
+      return "";
+    }
+    return [label, formatValue(number, unit)].filter(Boolean).join(" ");
   }
 
   function energyExplanationDeltaValue(row = {}, side = "left") {

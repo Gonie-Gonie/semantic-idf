@@ -210,6 +210,8 @@ func TestFrontendBatchEnergyExplanationDeltaContracts(t *testing.T) {
 	for _, term := range []string{
 		"renderEnergyExplanationDeltaRanking",
 		"renderEnergyExplanationEdgeDeltaRanking",
+		"energyExplanationDeltaMetricCell",
+		"energyExplanationDeltaRatioSideDetail",
 		"energyExplanationDeltaRows",
 		"energyExplanationEdgeDeltaRows",
 		"energyExplanationAnnualEdgeItems",

@@ -1435,6 +1435,22 @@ th.input-jump-highlight {
   font-size: 13px;
 }
 
+.batch-energy-delta-metric {
+  min-width: 180px;
+}
+
+.batch-energy-delta-metric span,
+.batch-energy-delta-metric small {
+  display: block;
+}
+
+.batch-energy-delta-metric small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
 .batch-energy-edge-delta-view {
   display: grid;
   gap: 6px;

@@ -239,7 +239,9 @@ source of truth and only uses the annual graph to fill in display details such
 as the matching electric energy and delivered load values. Derived KPI summary
 items carry the formula plus numerator and denominator labels, values, and
 units so CSV/XLSX/HTML exports can audit the COP calculation without adding a
-synthetic Sankey conversion edge.
+synthetic Sankey conversion edge. Batch delta views also keep that detail next
+to derived KPI rows so a COP change can be traced back to delivered-load and
+electric-energy changes.
 
 Generic SQL and CSV series keep original values for compatibility and also
 expose display metadata (`displayColumn`, `displayUnit`, `displayMin`,
