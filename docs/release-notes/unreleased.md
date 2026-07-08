@@ -190,6 +190,9 @@ The release script infers bump size from these sections:
 - The Basic Energy completeness panel now treats Light-tier not-applicable
   load/heat detail as a detail-tier gap and links users back to the output plan
   instead of hiding the rerun guidance.
+- Basic Energy Sankey, zone, system, and reconciliation views now split period
+  selection by annual/selected/monthly/daily/hourly kind and use a range slider
+  for very large high-resolution period sets.
 - Basic Energy purpose requests now default omitted `basicEnergyDetail` values
   to the light tier, keeping default run plans monthly and meter-focused unless
   Explain or Heat Drivers is explicitly selected.

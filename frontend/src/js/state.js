@@ -138,6 +138,7 @@ export const state = {
   simulationActiveResultView: "energy",
   simulationEnergyView: "overview",
   simulationEnergyPeriod: "annual",
+  simulationEnergyPeriodKind: "",
   simulationEnergySelection: "",
   simulationEnergyFocusMode: "all",
   simulationEnergyZoneFocus: "",

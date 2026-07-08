@@ -1196,6 +1196,15 @@
   text-decoration: underline;
 }
 
+.simulation-energy-period-slider {
+  min-width: 220px;
+}
+
+.simulation-energy-period-slider input[type="range"] {
+  width: 100%;
+  min-width: 180px;
+}
+
 .simulation-energy-zone-paths {
   display: flex;
   flex-wrap: wrap;

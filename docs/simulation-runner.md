@@ -208,6 +208,9 @@ periods from `Time.Hour`. Monthly/RunPeriod sources stay annual/monthly only to
 avoid treating monthly rows as high-resolution data. When a custom period scope
 is selected, SQL row values whose `Time` month/day falls inside the scope are
 also emitted as a `selected_range` period alongside annual and monthly periods.
+The Sankey, Zones, Systems, and Reconciliation controls split periods by kind
+and use a range slider for large daily/hourly sets so high-resolution drilldown
+does not flood a single dropdown.
 The payload includes the Basic Energy relationship rule catalog, and
 explanation edges carry a relationship `ruleId` from that catalog so the UI and
 exports can distinguish measured end-use, measured load, heat-balance, and

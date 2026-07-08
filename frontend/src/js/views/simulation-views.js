@@ -86,6 +86,7 @@ export function initializeSimulationControls() {
     }
   });
   elements.simulationEnergyDashboard?.addEventListener("click", handleSimulationSeriesInspectClick);
+  elements.simulationEnergyDashboard?.addEventListener("input", handleSimulationEnergyDashboardChange);
   elements.simulationEnergyDashboard?.addEventListener("change", handleSimulationEnergyDashboardChange);
   elements.simulationHVACLoopResults?.addEventListener("click", handleSimulationSeriesInspectClick);
   elements.simulationHVACLoopResults?.addEventListener("input", handleSimulationHVACResultsInput);
@@ -652,9 +653,7 @@ function renderEnergySubviewControls(view, explanation = {}) {
     ["sources", t("simulation.energySources", {}, "Sources")],
     ["reconciliation", t("simulation.energyReconciliation", {}, "Reconciliation")],
   ];
-  const periodOptions = (explanation.periods || [])
-    .map((period) => `<option value="${escapeHTML(period.id || "")}" ${(state.simulationEnergyPeriod || "annual") === period.id ? "selected" : ""}>${escapeHTML(period.label || period.id || "")}</option>`)
-    .join("");
+  const periodControls = renderEnergyPeriodControls(view, explanation);
   return `
     <div class="simulation-energy-subnav">
       <div class="view-tabs" role="tablist" aria-label="${escapeHTML(t("simulation.energyViews", {}, "Energy views"))}">
@@ -665,16 +664,84 @@ function renderEnergySubviewControls(view, explanation = {}) {
           })
           .join("")}
       </div>
-      ${
-        ["sankey", "zones", "systems", "reconciliation"].includes(view) && periodOptions
-          ? `<label><span>${escapeHTML(t("common.period", {}, "Period"))}</span><select data-simulation-energy-period>${periodOptions}</select></label>`
-          : ""
-      }
+      ${periodControls}
       ${["sankey", "systems"].includes(view) && energyExplanationHasPayload(explanation) ? renderEnergyFocusControls(explanation) : ""}
       ${view === "sankey" && energyExplanationHasPayload(explanation) ? renderEnergySankeyModeControls() : ""}
       ${view === "sankey" && energyExplanationHasPayload(explanation) ? renderEnergySignModeControls() : ""}
       ${view === "sankey" && energyExplanationHasPayload(explanation) ? renderEnergyNodeLimitControls() : ""}
     </div>`;
+}
+
+function renderEnergyPeriodControls(view, explanation = {}) {
+  if (!["sankey", "zones", "systems", "reconciliation"].includes(view)) {
+    return "";
+  }
+  const periods = explanation.periods || [];
+  if (!periods.length) {
+    return "";
+  }
+  const currentPeriod = energyExplanationPeriodForID(periods, state.simulationEnergyPeriod || "annual") || periods[0];
+  const kinds = energyExplanationPeriodKinds(periods);
+  let kind = state.simulationEnergyPeriodKind || energyExplanationPeriodKind(currentPeriod);
+  if (!kinds.includes(kind)) {
+    kind = energyExplanationPeriodKind(currentPeriod) || kinds[0] || "annual";
+  }
+  let filtered = periods.filter((period) => energyExplanationPeriodKind(period) === kind);
+  if (!filtered.length) {
+    kind = energyExplanationPeriodKind(currentPeriod) || kinds[0] || "annual";
+    filtered = periods.filter((period) => energyExplanationPeriodKind(period) === kind);
+  }
+  let selectedPeriod = filtered.find((period) => period.id === state.simulationEnergyPeriod);
+  if (!selectedPeriod) {
+    selectedPeriod = filtered[0] || currentPeriod;
+    state.simulationEnergyPeriod = selectedPeriod.id || "annual";
+  }
+  state.simulationEnergyPeriodKind = kind;
+  const kindControl =
+    kinds.length > 1
+      ? `<label><span>${escapeHTML(t("simulation.periodType", {}, "Period type"))}</span><select data-simulation-energy-period-kind>${kinds
+          .map((item) => `<option value="${escapeHTML(item)}" ${kind === item ? "selected" : ""}>${escapeHTML(energyExplanationPeriodKindLabel(item))}</option>`)
+          .join("")}</select></label>`
+      : "";
+  const selectedIndex = Math.max(0, filtered.findIndex((period) => period.id === selectedPeriod.id));
+  const periodControl =
+    filtered.length > 96
+      ? `<label class="simulation-energy-period-slider"><span>${escapeHTML(t("common.period", {}, "Period"))}: ${escapeHTML(selectedPeriod.label || selectedPeriod.id || "")}</span><input type="range" min="0" max="${escapeHTML(filtered.length - 1)}" value="${escapeHTML(selectedIndex)}" data-simulation-energy-period-index /></label>`
+      : `<label><span>${escapeHTML(t("common.period", {}, "Period"))}</span><select data-simulation-energy-period>${filtered
+          .map((period) => `<option value="${escapeHTML(period.id || "")}" ${(state.simulationEnergyPeriod || "annual") === period.id ? "selected" : ""}>${escapeHTML(period.label || period.id || "")}</option>`)
+          .join("")}</select></label>`;
+  return `${kindControl}${periodControl}`;
+}
+
+function energyExplanationPeriodForID(periods = [], periodID = "") {
+  return periods.find((period) => period.id === periodID) || null;
+}
+
+function energyExplanationPeriodKind(period = {}) {
+  return period.kind || (period.id === "annual" ? "annual" : "");
+}
+
+function energyExplanationPeriodKinds(periods = []) {
+  const preferred = ["annual", "selected_range", "monthly", "daily", "hourly"];
+  const seen = new Set((periods || []).map(energyExplanationPeriodKind).filter(Boolean));
+  return preferred.filter((kind) => seen.has(kind)).concat([...seen].filter((kind) => !preferred.includes(kind)).sort((a, b) => a.localeCompare(b)));
+}
+
+function energyExplanationPeriodKindLabel(kind = "") {
+  switch (kind) {
+    case "annual":
+      return t("simulation.periodAnnual", {}, "Annual");
+    case "selected_range":
+      return t("simulation.periodSelectedRange", {}, "Selected range");
+    case "monthly":
+      return t("simulation.monthly", {}, "Monthly");
+    case "daily":
+      return t("simulation.daily", {}, "Daily");
+    case "hourly":
+      return t("simulation.hourly", {}, "Hourly");
+    default:
+      return titleCaseEnergyToken(kind);
+  }
 }
 
 function renderEnergySankeyModeControls() {
@@ -4438,6 +4505,9 @@ function handleSimulationSeriesInspectClick(event) {
   const energyPeriodJump = event.target.closest("[data-simulation-energy-period-jump]");
   if (energyPeriodJump) {
     state.simulationEnergyPeriod = energyPeriodJump.dataset.simulationEnergyPeriodJump || "annual";
+    const explanation = state.simulationResult?.purposeResults?.energyExplanation || {};
+    const current = energyExplanationPeriodForID(explanation.periods || [], state.simulationEnergyPeriod);
+    state.simulationEnergyPeriodKind = energyExplanationPeriodKind(current || {}) || state.simulationEnergyPeriodKind;
     state.simulationEnergySelection = "";
     state.simulationEnergyView = "sankey";
     renderSimulationEnergyDashboard(state.simulationResult);
@@ -4676,6 +4746,30 @@ function handleSimulationEnergyDashboardChange(event) {
   const period = event.target.closest("[data-simulation-energy-period]");
   if (period) {
     state.simulationEnergyPeriod = period.value || "annual";
+    const explanation = state.simulationResult?.purposeResults?.energyExplanation || {};
+    const current = energyExplanationPeriodForID(explanation.periods || [], state.simulationEnergyPeriod);
+    state.simulationEnergyPeriodKind = energyExplanationPeriodKind(current || {}) || state.simulationEnergyPeriodKind;
+    state.simulationEnergySelection = "";
+    renderSimulationEnergyDashboard(state.simulationResult);
+    return;
+  }
+  const periodKind = event.target.closest("[data-simulation-energy-period-kind]");
+  if (periodKind) {
+    const explanation = state.simulationResult?.purposeResults?.energyExplanation || {};
+    state.simulationEnergyPeriodKind = periodKind.value || "";
+    const next = (explanation.periods || []).find((item) => energyExplanationPeriodKind(item) === state.simulationEnergyPeriodKind);
+    state.simulationEnergyPeriod = next?.id || "annual";
+    state.simulationEnergySelection = "";
+    renderSimulationEnergyDashboard(state.simulationResult);
+    return;
+  }
+  const periodIndex = event.target.closest("[data-simulation-energy-period-index]");
+  if (periodIndex) {
+    const explanation = state.simulationResult?.purposeResults?.energyExplanation || {};
+    const kind = state.simulationEnergyPeriodKind || "annual";
+    const periods = (explanation.periods || []).filter((item) => energyExplanationPeriodKind(item) === kind);
+    const index = Math.max(0, Math.min(periods.length - 1, Number(periodIndex.value) || 0));
+    state.simulationEnergyPeriod = periods[index]?.id || "annual";
     state.simulationEnergySelection = "";
     renderSimulationEnergyDashboard(state.simulationResult);
     return;
