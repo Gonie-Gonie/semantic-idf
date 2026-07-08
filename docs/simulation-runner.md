@@ -491,4 +491,5 @@ summary/monthly ledger/source/annual node/annual edge/reconciliation/warning evi
 references, source IDs and related service path IDs for exported explanation
 rows, source output object/table/row/column/unit metadata for summary, node, edge,
 reconciliation, and source availability rows, and the source output signatures
-visible in result tables.
+visible in result tables. Annual node and edge tables also retain stable graph
+IDs plus zone/service/path scope fields where the payload provides them.

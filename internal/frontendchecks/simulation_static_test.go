@@ -118,6 +118,8 @@ func TestFrontendSimulationEnergySystemsCrossJumpContracts(t *testing.T) {
 		"purposeHTMLAnnualEnergyGraph",
 		"Energy Explanation Annual Nodes",
 		"Energy Explanation Annual Edges",
+		"edge.fromId",
+		"edge.toId",
 		"Energy Explanation Reconciliation",
 		"Energy Explanation Sources",
 		"Energy Explanation Source Availability",

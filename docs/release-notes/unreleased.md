@@ -85,6 +85,8 @@ The release script infers bump size from these sections:
 - Purpose HTML exports now include Basic Energy annual node rows with level,
   kind, value, zone/service/path, source IDs, source metadata, and related
   service-path IDs.
+- Purpose HTML annual edge rows now include edge IDs, period, endpoint IDs,
+  zone/service/path scope, source metadata, and related service-path IDs.
 - Basic Energy Monthly view now includes a compact Energy Use, Delivered Load,
   Heat Drivers, and Residual level chart.
 - Basic Energy Zones view now summarizes zone/service delivered load, cooling

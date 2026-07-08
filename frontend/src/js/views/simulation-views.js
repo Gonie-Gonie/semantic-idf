@@ -8177,12 +8177,19 @@ function renderPurposeHTMLEnergyExplanation(summary = {}, explanation = {}) {
   const edgeRows = (graph.edges || [])
     .slice(0, 180)
     .map((edge) => [
+      edge.id || "",
+      edge.period || graph.id || "annual",
       edge.relation || "",
       edge.basis || "",
       edge.ruleId || "",
+      edge.fromId || "",
       nodeLabels.get(edge.fromId) || edge.fromId || "",
+      edge.toId || "",
       nodeLabels.get(edge.toId) || edge.toId || "",
       formatValueWithUnit(edge.value, edge.unit),
+      edge.zoneName || "",
+      edge.serviceKind || "",
+      edge.pathType || "",
       (edge.sourceIds || []).join(", "),
       ...purposeHTMLSourceMetadataFields(explanation, edge.sourceIds || []),
       (edge.relatedPathIds || []).join(", "),
@@ -8191,7 +8198,7 @@ function renderPurposeHTMLEnergyExplanation(summary = {}, explanation = {}) {
   if (edgeRows.length) {
     sections.push(
       `<h2>Energy Explanation Annual Edges</h2>${renderPurposeHTMLTable(
-        ["Relation", "Basis", "Rule", "From", "To", "Value", "Source IDs", "Output Object", "Table", "Row", "Column", "Source Unit", "Normalized Unit", "Related Paths", "Formula"],
+        ["ID", "Period", "Relation", "Basis", "Rule", "From ID", "From", "To ID", "To", "Value", "Zone", "Service", "Path", "Source IDs", "Output Object", "Table", "Row", "Column", "Source Unit", "Normalized Unit", "Related Paths", "Formula"],
         edgeRows,
       )}`,
     );
