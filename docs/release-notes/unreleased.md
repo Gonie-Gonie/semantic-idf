@@ -54,6 +54,8 @@ The release script infers bump size from these sections:
   HVAC service paths, with one-click zone focus.
 - Basic Energy Sankey inspectors now preserve unresolved source IDs and show
   allocation policy plus related path IDs for allocation/service-path traces.
+- Basic Energy Sankey inspector and Sources tables now expose Chart actions for
+  matching source meters and variables.
 - Basic Energy Monthly view now includes a compact Energy Use, Delivered Load,
   Heat Drivers, and Residual level chart.
 - Basic Energy Zones view now summarizes zone/service delivered load, cooling

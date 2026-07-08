@@ -1830,6 +1830,7 @@ function renderEnergyExplanationInspector(selection, explanation = {}) {
           <td>${escapeHTML(source.sourceUnit || source.units || "")}</td>
           <td>${escapeHTML(source.normalizedUnit || "")}</td>
           <td>${renderSourceOutputCell(object)}</td>
+          <td>${renderEnergySourceSeriesInspectButton(source)}</td>
         </tr>`;
     })
     .join("");
@@ -1892,8 +1893,8 @@ function renderEnergyExplanationInspector(selection, explanation = {}) {
       ${relatedPaths}
       <div class="output-table-wrap">
         <table class="output-table">
-          <thead><tr><th>ID</th><th>${escapeHTML(t("common.type", {}, "Type"))}</th><th>Key</th><th>Name</th><th>Frequency</th><th>Aggregation</th><th>Source Unit</th><th>Normalized Unit</th><th>${escapeHTML(t("simulation.sourceOutput", {}, "Source output"))}</th></tr></thead>
-          <tbody>${sourceRows || `<tr><td colspan="9">${escapeHTML(t("common.notAvailable", {}, "N/A"))}</td></tr>`}</tbody>
+          <thead><tr><th>ID</th><th>${escapeHTML(t("common.type", {}, "Type"))}</th><th>Key</th><th>Name</th><th>Frequency</th><th>Aggregation</th><th>Source Unit</th><th>Normalized Unit</th><th>${escapeHTML(t("simulation.sourceOutput", {}, "Source output"))}</th><th>${escapeHTML(t("simulation.inspectSeriesAction", {}, "Chart"))}</th></tr></thead>
+          <tbody>${sourceRows || `<tr><td colspan="10">${escapeHTML(t("common.notAvailable", {}, "N/A"))}</td></tr>`}</tbody>
         </table>
       </div>
     </section>`;
@@ -1915,6 +1916,7 @@ function renderEnergyExplanationSources(explanation = {}) {
           <td>${escapeHTML(source.sourceUnit || source.units || "")}</td>
           <td>${escapeHTML(source.normalizedUnit || "")}</td>
           <td>${renderSourceOutputCell(object)}</td>
+          <td>${renderEnergySourceSeriesInspectButton(source)}</td>
         </tr>`;
     })
     .join("");
@@ -1926,8 +1928,8 @@ function renderEnergyExplanationSources(explanation = {}) {
       </div>
       <div class="output-table-wrap">
         <table class="output-table">
-          <thead><tr><th>ID</th><th>Source</th><th>Basis</th><th>Key</th><th>Name</th><th>Frequency</th><th>Aggregation</th><th>Source Unit</th><th>Normalized Unit</th><th>${escapeHTML(t("simulation.sourceOutput", {}, "Source output"))}</th></tr></thead>
-          <tbody>${rows || `<tr><td colspan="10">${escapeHTML(t("simulation.noEnergyExplanation", {}, "No energy explanation graph is available."))}</td></tr>`}</tbody>
+          <thead><tr><th>ID</th><th>Source</th><th>Basis</th><th>Key</th><th>Name</th><th>Frequency</th><th>Aggregation</th><th>Source Unit</th><th>Normalized Unit</th><th>${escapeHTML(t("simulation.sourceOutput", {}, "Source output"))}</th><th>${escapeHTML(t("simulation.inspectSeriesAction", {}, "Chart"))}</th></tr></thead>
+          <tbody>${rows || `<tr><td colspan="11">${escapeHTML(t("simulation.noEnergyExplanation", {}, "No energy explanation graph is available."))}</td></tr>`}</tbody>
         </table>
       </div>
     </section>`;
@@ -4088,7 +4090,9 @@ function renderSourceInspectorCell(object, seriesRef = {}) {
 }
 
 function renderSeriesInspectButton(seriesRef = {}) {
-  const series = seriesRef.series || findSimulationSeriesForMetric(seriesRef.keyValue, seriesRef.variableName);
+  const series = seriesRef.series
+    || (seriesRef.meterName ? findSimulationSeriesForMeter(seriesRef.meterName) : null)
+    || findSimulationSeriesForMetric(seriesRef.keyValue, seriesRef.variableName);
   const id = series ? seriesID(series) : "";
   const label = t("simulation.inspectSeriesAction", {}, "Chart");
   const title = series
@@ -4102,9 +4106,27 @@ function renderSeriesInspectButton(seriesRef = {}) {
       data-simulation-series-id="${escapeHTML(id)}"
       data-simulation-series-key="${escapeHTML(seriesRef.keyValue || "")}"
       data-simulation-series-metric="${escapeHTML(seriesRef.variableName || "")}"
+      data-simulation-series-meter="${escapeHTML(seriesRef.meterName || "")}"
       title="${escapeHTML(title)}"
       ${series ? "" : "disabled"}
     >${escapeHTML(label)}</button>`;
+}
+
+function renderEnergySourceSeriesInspectButton(source = {}) {
+  return renderSeriesInspectButton(energySourceSeriesRef(source));
+}
+
+function energySourceSeriesRef(source = {}) {
+  if (source.missing) {
+    return {};
+  }
+  if (source.isMeter) {
+    const meterName = source.keyValue || source.name || "";
+    return { meterName, series: findSimulationSeriesForMeter(meterName) };
+  }
+  const keyValue = source.keyValue || "";
+  const variableName = source.name || "";
+  return { keyValue, variableName, series: findSimulationSeriesForMetric(keyValue, variableName) };
 }
 
 function handleSimulationSeriesInspectClick(event) {
@@ -4216,7 +4238,8 @@ function handleSimulationSeriesInspectClick(event) {
     return;
   }
   const series = findSimulationSeriesByID(button.dataset.simulationSeriesId || "")
-    || findSimulationSeriesForMetric(button.dataset.simulationSeriesKey || "", button.dataset.simulationSeriesMetric || "");
+    || findSimulationSeriesForMetric(button.dataset.simulationSeriesKey || "", button.dataset.simulationSeriesMetric || "")
+    || findSimulationSeriesForMeter(button.dataset.simulationSeriesMeter || "");
   if (!series) {
     setStatus(t("simulation.inspectSeriesUnavailable", {}, "No matching SQL/CSV series is available for this row"), "warn");
     return;
