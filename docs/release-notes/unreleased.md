@@ -143,8 +143,8 @@ The release script infers bump size from these sections:
   comparison row IDs in its export context.
 - Batch Simulation XLSX export now carries the selected comparison context plus
   Basic Energy summary and annual Sankey edge delta sheets.
-- Basic Energy Sankey now visually highlights the selected edge while its
-  inspector details are shown.
+- Basic Energy Sankey now visually highlights the selected edge and endpoint
+  nodes while its inspector details are shown.
 - Basic Energy explanations now fall back to annual SQL tabular end-use rows
   when detailed `ReportData` energy rows are unavailable, while preserving
   `sql_tabular` source metadata.

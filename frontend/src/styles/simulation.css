@@ -1282,6 +1282,11 @@
   stroke-width: 2;
 }
 
+.energy-sankey-node.connected rect {
+  stroke: color-mix(in srgb, #2563eb 72%, var(--line));
+  stroke-width: 1.6;
+}
+
 .energy-sankey-node text {
   fill: var(--text);
   font-size: 10px;

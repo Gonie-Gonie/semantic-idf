@@ -1202,6 +1202,8 @@ function renderEnergyExplanationSVG(nodes = [], edges = []) {
   const height = Math.max(260, 42 + maxRows * rowHeight);
   const xPositions = [24, 238, 452, 666, 800];
   const nodeWidth = 142;
+  const selectedEdge = edges.find((edge) => state.simulationEnergySelection === edge.id);
+  const connectedNodeIDs = new Set([selectedEdge?.fromId, selectedEdge?.toId].filter(Boolean));
   const positions = new Map();
   columns.forEach((column, columnIndex) => {
     column.forEach((node, rowIndex) => {
@@ -1238,8 +1240,9 @@ function renderEnergyExplanationSVG(nodes = [], edges = []) {
         return "";
       }
       const selected = state.simulationEnergySelection === node.id ? " selected" : "";
+      const connected = connectedNodeIDs.has(node.id) ? " connected" : "";
       return `
-        <g class="energy-sankey-node ${escapeHTML(node.level || "")} ${escapeHTML(node.carrier || node.serviceKind || "")}${selected}" data-energy-explanation-node="${escapeHTML(node.id || "")}" transform="translate(${roundSVG(pos.x)} ${roundSVG(pos.y)})">
+        <g class="energy-sankey-node ${escapeHTML(node.level || "")} ${escapeHTML(node.carrier || node.serviceKind || "")}${selected}${connected}" data-energy-explanation-node="${escapeHTML(node.id || "")}" transform="translate(${roundSVG(pos.x)} ${roundSVG(pos.y)})">
           <rect width="${pos.w}" height="${pos.h}" rx="5"></rect>
           <text x="8" y="12">${escapeHTML(shortEnergyExplanationLabel(node.label || node.kind || ""))}</text>
           <text x="8" y="24">${escapeHTML(formatValueWithUnit(node.value, node.unit))}</text>

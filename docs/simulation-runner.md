@@ -253,8 +253,9 @@ Purpose result viewers now include:
   energy table, and `Overview` / `Sankey` / `Monthly` / `Zones` / `Sources` /
   `Reconciliation` subviews for tracing Energy Use to Delivered Load and Heat
   Drivers with source metadata. The Sankey inspector shows edge relation, basis,
-  rule, formula, sources, and related service paths, and the selected edge is
-  highlighted in the graph while the inspector is open. The completeness panel
+  rule, formula, sources, and related service paths, and the selected edge plus
+  its endpoint nodes are highlighted in the graph while the inspector is open.
+  The completeness panel
   shows mapped percent, allocation policy, missing categories, and missing
   source availability rows.
   Source availability uses `found` and `missing` status values so missing rows
