@@ -198,27 +198,20 @@ func parseSimulationSQLSeries(path string) ([]SimulationSeries, error) {
 		}
 	}
 
-	query, args := sqlReportDataQuery(ids)
-	rows, err := db.Query(query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
 	seriesPoints := map[int][]SimulationPoint{}
 	timeOrdinal := map[int64]int{}
 	timeLabels := map[int64]string{}
 	rowCount := 0
-	for rows.Next() {
-		var timeIndex int64
-		var month, day, hour, minute sql.NullInt64
-		var dictionaryIndex int
-		var value sql.NullFloat64
-		if err := rows.Scan(&timeIndex, &month, &day, &hour, &minute, &dictionaryIndex, &value); err != nil {
-			continue
-		}
+	if err := walkReportData(db, SQLSeriesQuery{DictionaryIndexes: ids}, func(row SQLSeriesRow) error {
+		timeIndex := row.TimeIndex
+		month := row.Month
+		day := row.Day
+		hour := row.Hour
+		minute := row.Minute
+		dictionaryIndex := row.DictionaryIndex
+		value := row.Value
 		if !value.Valid || math.IsNaN(value.Float64) || math.IsInf(value.Float64, 0) {
-			continue
+			return nil
 		}
 		ordinal := timeOrdinal[timeIndex]
 		if ordinal == 0 {
@@ -229,7 +222,7 @@ func parseSimulationSQLSeries(path string) ([]SimulationSeries, error) {
 		}
 		acc := accumulators[dictionaryIndex]
 		if acc == nil {
-			continue
+			return nil
 		}
 		number := value.Float64
 		acc.numericCount++
@@ -242,8 +235,8 @@ func parseSimulationSQLSeries(path string) ([]SimulationSeries, error) {
 			Label: timeLabels[timeIndex],
 			Value: number,
 		})
-	}
-	if err := rows.Err(); err != nil {
+		return nil
+	}); err != nil {
 		return nil, err
 	}
 
@@ -292,31 +285,24 @@ func parseSimulationEnergySQL(path string) (EnergyDashboardResult, error) {
 		byID[dictionary.index] = dictionary
 	}
 
-	query, args := sqlReportDataQuery(ids)
-	rows, err := db.Query(query, args...)
-	if err != nil {
-		return EnergyDashboardResult{}, err
-	}
-	defer rows.Close()
-
 	builders := map[int]*energySeriesBuilder{}
 	timeOrdinal := map[int64]int{}
 	timeLabels := map[int64]string{}
 	rowCount := 0
-	for rows.Next() {
-		var timeIndex int64
-		var month, day, hour, minute sql.NullInt64
-		var dictionaryIndex int
-		var value sql.NullFloat64
-		if err := rows.Scan(&timeIndex, &month, &day, &hour, &minute, &dictionaryIndex, &value); err != nil {
-			continue
-		}
+	if err := walkReportData(db, SQLSeriesQuery{DictionaryIndexes: ids}, func(row SQLSeriesRow) error {
+		timeIndex := row.TimeIndex
+		month := row.Month
+		day := row.Day
+		hour := row.Hour
+		minute := row.Minute
+		dictionaryIndex := row.DictionaryIndex
+		value := row.Value
 		if !value.Valid || math.IsNaN(value.Float64) || math.IsInf(value.Float64, 0) {
-			continue
+			return nil
 		}
 		dictionary, ok := byID[dictionaryIndex]
 		if !ok {
-			continue
+			return nil
 		}
 		ordinal := timeOrdinal[timeIndex]
 		if ordinal == 0 {
@@ -334,8 +320,8 @@ func parseSimulationEnergySQL(path string) (EnergyDashboardResult, error) {
 		builder.unit = unit
 		builder.total += number
 		builder.addPoint(month, ordinal, timeLabels[timeIndex], number)
-	}
-	if err := rows.Err(); err != nil {
+		return nil
+	}); err != nil {
 		return EnergyDashboardResult{}, err
 	}
 
@@ -494,13 +480,6 @@ func parseSimulationHeatFlowSQL(path string) (HeatFlowDataset, error) {
 		stride = int(math.Ceil(float64(rowCount) / float64(maxHeatFlowFrames)))
 	}
 
-	query, args := sqlReportDataQuery(ids)
-	rows, err := db.Query(query, args...)
-	if err != nil {
-		return HeatFlowDataset{}, err
-	}
-	defer rows.Close()
-
 	dataset := HeatFlowDataset{
 		SourceFile:         filepath.Base(path),
 		Unit:               "W",
@@ -516,16 +495,16 @@ func parseSimulationHeatFlowSQL(path string) (HeatFlowDataset, error) {
 	keptFrame := map[int64]int{}
 	frameIndex := -1
 
-	for rows.Next() {
-		var timeIndex int64
-		var month, day, hour, minute sql.NullInt64
-		var dictionaryIndex int
-		var value sql.NullFloat64
-		if err := rows.Scan(&timeIndex, &month, &day, &hour, &minute, &dictionaryIndex, &value); err != nil {
-			continue
-		}
+	if err := walkReportData(db, SQLSeriesQuery{DictionaryIndexes: ids}, func(row SQLSeriesRow) error {
+		timeIndex := row.TimeIndex
+		month := row.Month
+		day := row.Day
+		hour := row.Hour
+		minute := row.Minute
+		dictionaryIndex := row.DictionaryIndex
+		value := row.Value
 		if !value.Valid || math.IsNaN(value.Float64) || math.IsInf(value.Float64, 0) {
-			continue
+			return nil
 		}
 		currentFrame, known := timeFrame[timeIndex]
 		if !known {
@@ -540,11 +519,11 @@ func parseSimulationHeatFlowSQL(path string) (HeatFlowDataset, error) {
 		}
 		keptFrameIndex, keep := keptFrame[timeIndex]
 		if !keep {
-			continue
+			return nil
 		}
 		column, ok := columns[dictionaryIndex]
 		if !ok {
-			continue
+			return nil
 		}
 		key := normalizeHeatFlowName(column.zoneName)
 		builder := zoneBuilders[key]
@@ -563,13 +542,13 @@ func parseSimulationHeatFlowSQL(path string) (HeatFlowDataset, error) {
 			builder.hasTemperature = true
 			dataset.MinTemperature = math.Min(dataset.MinTemperature, number)
 			dataset.MaxTemperature = math.Max(dataset.MaxTemperature, number)
-			continue
+			return nil
 		}
 		builder.values[column.categoryIndex][keptFrameIndex] = roundedHeatFlowNumber(number)
 		builder.hasHeatFlowData = true
 		dataset.MaxAbs = math.Max(dataset.MaxAbs, math.Abs(number))
-	}
-	if err := rows.Err(); err != nil {
+		return nil
+	}); err != nil {
 		return HeatFlowDataset{}, err
 	}
 	if rowCount > dataset.FrameCount {
@@ -1293,17 +1272,28 @@ func normalizeSQLColumnName(value string) string {
 
 // QueryReportData returns ReportData rows with dictionary and Time metadata.
 func QueryReportData(db *sql.DB, seriesQuery SQLSeriesQuery) ([]SQLSeriesRow, error) {
+	out := []SQLSeriesRow{}
+	if err := walkReportData(db, seriesQuery, func(row SQLSeriesRow) error {
+		out = append(out, row)
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func walkReportData(db *sql.DB, seriesQuery SQLSeriesQuery, visit func(SQLSeriesRow) error) error {
 	reportDataColumns, err := sqlTableColumns(db, "ReportData")
 	if err != nil {
-		return nil, err
+		return err
 	}
 	dictionaryColumns, err := sqlTableColumns(db, "ReportDataDictionary")
 	if err != nil {
-		return nil, err
+		return err
 	}
 	timeColumns, err := sqlTableColumns(db, "Time")
 	if err != nil {
-		return nil, err
+		return err
 	}
 	rdTimeIndex := reportDataColumns[normalizeSQLColumnName("TimeIndex")]
 	rdDictionaryIndex := reportDataColumns[normalizeSQLColumnName("ReportDataDictionaryIndex")]
@@ -1311,7 +1301,7 @@ func QueryReportData(db *sql.DB, seriesQuery SQLSeriesQuery) ([]SQLSeriesRow, er
 	rddDictionaryIndex := dictionaryColumns[normalizeSQLColumnName("ReportDataDictionaryIndex")]
 	timeIndex := timeColumns[normalizeSQLColumnName("TimeIndex")]
 	if rdTimeIndex == "" || rdDictionaryIndex == "" || rdValue == "" || rddDictionaryIndex == "" || timeIndex == "" {
-		return nil, fmt.Errorf("required ReportData query columns are missing")
+		return fmt.Errorf("required ReportData query columns are missing")
 	}
 
 	rdTimeIndexExpr := "rd." + quoteSQLiteIdentifier(rdTimeIndex)
@@ -1375,11 +1365,10 @@ ORDER BY %s, %s`,
 		rdDictionaryIndexExpr,
 	), args...)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer rows.Close()
 
-	out := []SQLSeriesRow{}
 	for rows.Next() {
 		var row SQLSeriesRow
 		var isMeterText string
@@ -1399,15 +1388,17 @@ ORDER BY %s, %s`,
 			&row.IndexGroup,
 			&row.Value,
 		); err != nil {
-			return nil, err
+			return err
 		}
 		row.IsMeter = parseSQLBool(isMeterText)
-		out = append(out, row)
+		if err := visit(row); err != nil {
+			return err
+		}
 	}
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return err
 	}
-	return out, nil
+	return nil
 }
 
 func sqlAliasedColumnExpr(columns map[string]string, alias string, name string, fallback string) string {
@@ -1487,26 +1478,6 @@ func compactSQLFilterStrings(values []string) []string {
 		out = append(out, value)
 	}
 	return out
-}
-
-func sqlReportDataQuery(dictionaryIDs []int) (string, []any) {
-	placeholders := sqlPlaceholders(len(dictionaryIDs))
-	args := make([]any, 0, len(dictionaryIDs))
-	for _, id := range dictionaryIDs {
-		args = append(args, id)
-	}
-	return fmt.Sprintf(`
-SELECT rd.TimeIndex,
-       t.Month,
-       t.Day,
-       t.Hour,
-       t.Minute,
-       rd.ReportDataDictionaryIndex,
-       rd.Value
-FROM ReportData rd
-LEFT JOIN "Time" t ON t.TimeIndex = rd.TimeIndex
-WHERE rd.ReportDataDictionaryIndex IN (%s)
-ORDER BY rd.TimeIndex, rd.ReportDataDictionaryIndex`, placeholders), args
 }
 
 func sqlDistinctTimeCount(db *sql.DB, dictionaryIDs []int) (int, error) {
