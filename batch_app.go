@@ -1384,7 +1384,7 @@ func batchSimulationEnergyEdgeSection(result simulation.MultiSimulationResult) t
 func batchSimulationEnergyReconciliationSection(result simulation.MultiSimulationResult) tabular.Section {
 	section := tabular.Section{
 		Title:   "energy_reconciliation",
-		Headers: []string{"file", "status", "run_id", "period", "id", "label", "level", "expected", "explained", "residual", "unit", "basis", "formula", "zone", "service_kind", "source_ids"},
+		Headers: []string{"file", "status", "run_id", "period", "id", "label", "level", "reconciliation_status", "expected", "explained", "residual", "unit", "basis", "formula", "zone", "service_kind", "source_ids"},
 	}
 	for _, item := range result.Results {
 		if item.PurposeResults == nil {
@@ -1401,6 +1401,7 @@ func batchSimulationEnergyReconciliationSection(result simulation.MultiSimulatio
 					row.ID,
 					row.Label,
 					row.Level,
+					row.Status,
 					formatBatchSimulationFloat(row.ExpectedValue),
 					formatBatchSimulationFloat(row.ExplainedValue),
 					formatBatchSimulationFloat(row.ResidualValue),

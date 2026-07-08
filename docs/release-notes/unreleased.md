@@ -177,6 +177,8 @@ The release script infers bump size from these sections:
   summary/source/edge/reconciliation workbook sheets as XLSX.
 - Batch Simulation CSV and XLSX exports now include Basic Energy explanation
   warning rows, including monthly or selected-range period warnings.
+- Batch Simulation XLSX reconciliation sheets now include the
+  `balanced`/`residual`/`overmapped` status column.
 - Batch Simulation energy-explanation deltas now expose explicit baseline and
   target selectors so two-case Sankey and summary changes are traceable.
 - Batch Simulation now shows a compact annual Sankey edge delta bar view with

@@ -240,6 +240,9 @@ func TestFrontendBatchEnergyExplanationDeltaContracts(t *testing.T) {
 			t.Fatalf("batch simulation warning workbook export missing %q", term)
 		}
 	}
+	if !strings.Contains(batchApp, "reconciliation_status") || !strings.Contains(batchApp, "row.Status") {
+		t.Fatalf("batch simulation reconciliation workbook status export is missing")
+	}
 	styles := readTestFile(t, "frontend/src/styles/workspace.css")
 	if !strings.Contains(styles, ".batch-energy-edge-delta-view") || !strings.Contains(styles, ".batch-energy-edge-delta-track") {
 		t.Fatalf("batch energy edge delta styles are missing")
