@@ -3027,8 +3027,8 @@ func sortEnergyExplanationEdges(edges []EnergyExplanationEdge) {
 	})
 }
 
-func edgeID(prefix string, period string, fromID string, toID string) string {
-	return prefix + "." + period + "." + metricID(fromID) + "." + metricID(toID)
+func edgeID(prefix string, _ string, fromID string, toID string) string {
+	return prefix + "." + metricID(fromID) + "." + metricID(toID)
 }
 
 func appendUniqueStrings(values []string, next ...string) []string {

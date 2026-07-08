@@ -46,6 +46,9 @@ The release script infers bump size from these sections:
   matching line styles and legend samples.
 - Basic Energy Monthly chart bars and ledger rows now open the matching Sankey
   period so month-level accounting changes are easier to inspect.
+- Energy explanation edge IDs are now period-stable while the period remains a
+  separate field, so Sankey selections and batch edge comparisons can survive
+  period switches.
 - Basic Energy Sankey inspector actions now expose zone focus and related
   service-path focus jumps alongside HVAC and Heat Flow drilldowns.
 - Basic Energy Sankey inspector zone actions can now jump directly into the

@@ -1247,6 +1247,12 @@ func TestBuildEnergyExplanationSankeyGraphContracts(t *testing.T) {
 		if monthlyEdge == nil || monthlyEdge.Relation != expected.relation || monthlyEdge.Basis != expected.basis || monthlyEdge.RuleID != expected.ruleID {
 			t.Fatalf("monthly edge %s -> %s = %#v", expected.from, expected.to, monthlyEdge)
 		}
+		if edge.ID != monthlyEdge.ID {
+			t.Fatalf("edge ID should be period-stable for %s -> %s: annual=%q monthly=%q", expected.from, expected.to, edge.ID, monthlyEdge.ID)
+		}
+		if strings.Contains(edge.ID, ".annual.") || strings.Contains(monthlyEdge.ID, ".M1.") {
+			t.Fatalf("edge ID should not embed period: annual=%q monthly=%q", edge.ID, monthlyEdge.ID)
+		}
 	}
 }
 
