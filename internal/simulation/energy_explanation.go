@@ -1392,13 +1392,14 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 		}
 		heatValue := roundedEnergyNumber(heatValueByZoneService[key])
 		residual := roundedEnergyNumber(loadValue - heatValue)
+		status := energyReconciliationStatus(loadValue, residual)
 		sourceIDs := appendUniqueStrings(loadSources, heatSourcesByZoneService[key]...)
 		reconciliation = append(reconciliation, EnergyReconciliation{
 			ID:             "reconcile.heat." + serviceKind + "." + zoneID + "." + period,
 			Level:          "heat",
 			Period:         period,
 			Label:          energyServiceLabel(serviceKind) + " heat-driver basis - " + zoneName,
-			Status:         energyReconciliationStatus(loadValue, residual),
+			Status:         status,
 			ZoneName:       zoneName,
 			ServiceKind:    serviceKind,
 			ExpectedValue:  roundedEnergyNumber(loadValue),
@@ -1409,6 +1410,14 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 			Formula:        "zone delivered load - mapped zone heat drivers",
 			SourceIDs:      sourceIDs,
 		})
+		if status != "balanced" {
+			warnings = append(warnings, EnergyWarning{
+				Severity: "warning",
+				Code:     "zone_heat_residual_gap",
+				Message:  fmt.Sprintf("%s %s heat-driver reconciliation has %s residual %g %s.", zoneName, energyServiceLabel(serviceKind), status, residual, loadUnit),
+				Period:   period,
+			})
+		}
 	}
 
 	outNodes := make([]EnergyExplanationNode, 0, len(nodes))

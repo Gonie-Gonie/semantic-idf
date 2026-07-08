@@ -127,6 +127,8 @@ The release script infers bump size from these sections:
   heat residuals for the selected annual or monthly period.
 - Basic Energy reconciliation rows now expose `balanced`, `residual`, and
   `overmapped` statuses in the app, HTML reports, and batch CSV exports.
+- Basic Energy reconciliation now emits period warnings for non-balanced
+  zone/service heat residual rows.
 - Energy reconciliation source IDs now include both the expected facility total
   source and the mapped consumption end-use sources used in the residual
   formula.

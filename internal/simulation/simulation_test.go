@@ -613,6 +613,9 @@ func TestParseSimulationEnergyExplanationSQLBuildsAccountingGraph(t *testing.T) 
 	if monthlyZoneHeatReconciliation == nil || monthlyZoneHeatReconciliation.Status != "overmapped" || monthlyZoneHeatReconciliation.ZoneName != "ZONE ONE" || monthlyZoneHeatReconciliation.ExpectedValue != 0.25 || monthlyZoneHeatReconciliation.ExplainedValue != 0.5 || monthlyZoneHeatReconciliation.ResidualValue != -0.25 {
 		t.Fatalf("monthly zone heat reconciliation = %#v", result.Periods[1].Reconciliation)
 	}
+	if warning := energyExplanationWarningByCode(result.Periods[1].Warnings, "zone_heat_residual_gap"); warning == nil || warning.Period != "M1" || !strings.Contains(warning.Message, "ZONE ONE") {
+		t.Fatalf("monthly zone heat residual warning = %#v", result.Periods[1].Warnings)
+	}
 	if result.Completeness.HeatDrivers.Found != 2 || result.Completeness.HeatDrivers.Total != 2 || result.Completeness.DeliveredLoad.Found != 1 || result.Completeness.DeliveredLoad.Total != 1 {
 		t.Fatalf("explanation completeness = %#v", result.Completeness)
 	}
@@ -1696,6 +1699,15 @@ func energyExplanationSourceByName(sources []EnergyDataSource, name string) *Ene
 func energyExplanationReconciliationByID(items []EnergyReconciliation, id string) *EnergyReconciliation {
 	for index := range items {
 		if items[index].ID == id {
+			return &items[index]
+		}
+	}
+	return nil
+}
+
+func energyExplanationWarningByCode(items []EnergyWarning, code string) *EnergyWarning {
+	for index := range items {
+		if items[index].Code == code {
 			return &items[index]
 		}
 	}

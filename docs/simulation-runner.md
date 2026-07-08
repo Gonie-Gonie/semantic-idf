@@ -298,7 +298,9 @@ Purpose result viewers now include:
   annual or monthly period. Each reconciliation row carries a `balanced`,
   `residual`, or `overmapped` status, and the subview ranks the largest
   non-balanced zone/service heat residuals for the active period below the full
-  reconciliation table.
+  reconciliation table. Non-balanced zone/service heat residuals also emit
+  period warnings so exported HTML and the Reconciliation warning strip identify
+  the affected zone and service.
   The `Zones` subview summarizes each zone/service period as Delivered Load,
   Cooling Pressure, Heating Pressure, signed heat, and residual values, with
   direct jumps to the matching Sankey zone focus, Heat-Flow Ledger zone, and
