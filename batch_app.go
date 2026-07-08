@@ -143,6 +143,10 @@ type BatchSummaryXLSXExportRequest struct {
 	CompareIndex  int                `json:"compareIndex"`
 }
 
+type BatchSimulationXLSXExportRequest struct {
+	Result simulation.MultiSimulationResult `json:"result"`
+}
+
 type BatchSimulationPlanPreviewResult struct {
 	Total             int                              `json:"total"`
 	Completed         int                              `json:"completed"`
@@ -224,6 +228,33 @@ func (a *App) SaveBatchSummaryXLSX(request BatchSummaryXLSXExportRequest) (*Save
 	path, err := wailsruntime.SaveFileDialog(a.ctx, wailsruntime.SaveDialogOptions{
 		Title:           "Save Batch Summary workbook",
 		DefaultFilename: "batch-summary.xlsx",
+		Filters: []wailsruntime.FileFilter{
+			{DisplayName: "Excel workbook (*.xlsx)", Pattern: "*.xlsx"},
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	if path == "" {
+		return &SaveFileResult{Canceled: true}, nil
+	}
+	if err := os.WriteFile(path, b.Bytes(), 0o644); err != nil {
+		return nil, err
+	}
+	return &SaveFileResult{Path: path, Filename: filepath.Base(path)}, nil
+}
+
+func (a *App) SaveBatchSimulationXLSX(request BatchSimulationXLSXExportRequest) (*SaveFileResult, error) {
+	if a.ctx == nil {
+		return nil, fmt.Errorf("desktop runtime is not ready")
+	}
+	var b bytes.Buffer
+	if err := tabular.WriteWorkbookXLSX(&b, batchSimulationWorkbookSheets(request)); err != nil {
+		return nil, err
+	}
+	path, err := wailsruntime.SaveFileDialog(a.ctx, wailsruntime.SaveDialogOptions{
+		Title:           "Save Batch Simulation workbook",
+		DefaultFilename: "batch-simulation-purpose-results.xlsx",
 		Filters: []wailsruntime.FileFilter{
 			{DisplayName: "Excel workbook (*.xlsx)", Pattern: "*.xlsx"},
 		},
@@ -745,6 +776,249 @@ func batchSummaryWorkbookSheets(request BatchSummaryXLSXExportRequest) []tabular
 		sheets = append(sheets, tabular.WorkbookSheet{Name: "Delta", Sections: []tabular.Section{delta}})
 	}
 	return sheets
+}
+
+func batchSimulationWorkbookSheets(request BatchSimulationXLSXExportRequest) []tabular.WorkbookSheet {
+	sections := []tabular.WorkbookSheet{
+		{Name: "Purpose Metrics", Sections: []tabular.Section{batchSimulationPurposeMetricSection(request.Result)}},
+	}
+	if summary := batchSimulationEnergySummarySection(request.Result); len(summary.Rows) > 0 {
+		sections = append(sections, tabular.WorkbookSheet{Name: "Energy Summary", Sections: []tabular.Section{summary}})
+	}
+	if sources := batchSimulationEnergySourceSection(request.Result); len(sources.Rows) > 0 {
+		sections = append(sections, tabular.WorkbookSheet{Name: "Energy Sources", Sections: []tabular.Section{sources}})
+	}
+	if edges := batchSimulationEnergyEdgeSection(request.Result); len(edges.Rows) > 0 {
+		sections = append(sections, tabular.WorkbookSheet{Name: "Energy Edges", Sections: []tabular.Section{edges}})
+	}
+	if reconciliation := batchSimulationEnergyReconciliationSection(request.Result); len(reconciliation.Rows) > 0 {
+		sections = append(sections, tabular.WorkbookSheet{Name: "Reconciliation", Sections: []tabular.Section{reconciliation}})
+	}
+	return sections
+}
+
+func batchSimulationPurposeMetricSection(result simulation.MultiSimulationResult) tabular.Section {
+	section := tabular.Section{
+		Title:   "purpose_metrics",
+		Headers: []string{"file", "status", "run_id", "metric_id", "label", "value", "unit", "display_value", "purpose_id", "metric_status"},
+	}
+	for _, item := range result.Results {
+		file := batchSimulationFileLabel(item)
+		for _, metric := range item.PurposeMetrics {
+			section.Rows = append(section.Rows, []string{
+				file,
+				item.Status,
+				item.RunID,
+				metric.ID,
+				metric.Label,
+				formatBatchSimulationFloat(metric.Value),
+				metric.Unit,
+				metric.DisplayValue,
+				string(metric.PurposeID),
+				metric.Status,
+			})
+		}
+	}
+	return section
+}
+
+func batchSimulationEnergySummarySection(result simulation.MultiSimulationResult) tabular.Section {
+	section := tabular.Section{
+		Title:   "energy_summary",
+		Headers: []string{"file", "status", "run_id", "type", "id", "label", "value", "unit", "level", "service_kind", "path_type", "carrier", "end_use", "basis", "source_ids"},
+	}
+	for _, item := range result.Results {
+		summary := simulation.EnergyExplanationSummary{}
+		if item.PurposeResults != nil {
+			summary = item.PurposeResults.EnergyExplanationSummary
+		}
+		file := batchSimulationFileLabel(item)
+		for _, group := range batchSimulationSummaryGroups(summary) {
+			for _, metric := range group.items {
+				section.Rows = append(section.Rows, []string{
+					file,
+					item.Status,
+					item.RunID,
+					group.name,
+					metric.ID,
+					metric.Label,
+					formatBatchSimulationFloat(metric.Value),
+					metric.Unit,
+					metric.Level,
+					metric.ServiceKind,
+					metric.PathType,
+					metric.Carrier,
+					metric.EndUse,
+					metric.Basis,
+					strings.Join(metric.SourceIDs, "; "),
+				})
+			}
+		}
+	}
+	return section
+}
+
+func batchSimulationEnergySourceSection(result simulation.MultiSimulationResult) tabular.Section {
+	section := tabular.Section{
+		Title:   "energy_sources",
+		Headers: []string{"file", "status", "run_id", "id", "source_type", "basis", "key", "name", "reporting_frequency", "aggregation", "source_unit", "normalized_unit", "index_group", "object_index", "table", "row", "column"},
+	}
+	for _, item := range result.Results {
+		if item.PurposeResults == nil {
+			continue
+		}
+		file := batchSimulationFileLabel(item)
+		for _, source := range item.PurposeResults.EnergyExplanation.Sources {
+			objectIndex := ""
+			if source.ObjectIndex != nil {
+				objectIndex = fmt.Sprintf("%d", *source.ObjectIndex)
+			}
+			basis := "variable"
+			if source.IsMeter {
+				basis = "meter"
+			}
+			section.Rows = append(section.Rows, []string{
+				file,
+				item.Status,
+				item.RunID,
+				source.ID,
+				source.SourceType,
+				basis,
+				source.KeyValue,
+				source.Name,
+				source.ReportingFrequency,
+				source.AggregationMethod,
+				firstNonEmpty(source.SourceUnit, source.Units),
+				source.NormalizedUnit,
+				source.IndexGroup,
+				objectIndex,
+				source.TableName,
+				source.RowName,
+				source.ColumnName,
+			})
+		}
+	}
+	return section
+}
+
+func batchSimulationEnergyEdgeSection(result simulation.MultiSimulationResult) tabular.Section {
+	section := tabular.Section{
+		Title:   "energy_edges",
+		Headers: []string{"file", "status", "run_id", "period", "id", "from_id", "to_id", "value", "unit", "relation", "basis", "rule_id", "formula", "zone", "service_kind", "source_ids", "related_path_ids"},
+	}
+	for _, item := range result.Results {
+		if item.PurposeResults == nil {
+			continue
+		}
+		file := batchSimulationFileLabel(item)
+		for _, period := range batchSimulationExportPeriods(item.PurposeResults.EnergyExplanation) {
+			for _, edge := range period.Edges {
+				section.Rows = append(section.Rows, []string{
+					file,
+					item.Status,
+					item.RunID,
+					firstNonEmpty(edge.Period, period.ID),
+					edge.ID,
+					edge.FromID,
+					edge.ToID,
+					formatBatchSimulationFloat(edge.Value),
+					edge.Unit,
+					edge.Relation,
+					edge.Basis,
+					edge.RuleID,
+					edge.Formula,
+					edge.ZoneName,
+					edge.ServiceKind,
+					strings.Join(edge.SourceIDs, "; "),
+					strings.Join(edge.RelatedPathIDs, "; "),
+				})
+			}
+		}
+	}
+	return section
+}
+
+func batchSimulationEnergyReconciliationSection(result simulation.MultiSimulationResult) tabular.Section {
+	section := tabular.Section{
+		Title:   "energy_reconciliation",
+		Headers: []string{"file", "status", "run_id", "period", "id", "label", "level", "expected", "explained", "residual", "unit", "basis", "formula", "zone", "service_kind", "source_ids"},
+	}
+	for _, item := range result.Results {
+		if item.PurposeResults == nil {
+			continue
+		}
+		file := batchSimulationFileLabel(item)
+		for _, period := range batchSimulationExportPeriods(item.PurposeResults.EnergyExplanation) {
+			for _, row := range period.Reconciliation {
+				section.Rows = append(section.Rows, []string{
+					file,
+					item.Status,
+					item.RunID,
+					firstNonEmpty(row.Period, period.ID),
+					row.ID,
+					row.Label,
+					row.Level,
+					formatBatchSimulationFloat(row.ExpectedValue),
+					formatBatchSimulationFloat(row.ExplainedValue),
+					formatBatchSimulationFloat(row.ResidualValue),
+					row.Unit,
+					row.Basis,
+					row.Formula,
+					row.ZoneName,
+					row.ServiceKind,
+					strings.Join(row.SourceIDs, "; "),
+				})
+			}
+		}
+	}
+	return section
+}
+
+type batchSimulationSummaryGroup struct {
+	name  string
+	items []simulation.EnergyExplanationSummaryItem
+}
+
+func batchSimulationSummaryGroups(summary simulation.EnergyExplanationSummary) []batchSimulationSummaryGroup {
+	return []batchSimulationSummaryGroup{
+		{name: "energy_by_carrier", items: summary.EnergyByCarrier},
+		{name: "energy_by_end_use", items: summary.EnergyByEndUse},
+		{name: "delivered_load_by_service", items: summary.DeliveredLoadByService},
+		{name: "derived_kpi", items: summary.DerivedKPIs},
+		{name: "heat_drivers", items: summary.HeatDrivers},
+		{name: "residuals", items: summary.Residuals},
+		{name: "top_heat_drivers", items: summary.TopHeatDrivers},
+		{name: "top_zones", items: summary.TopZones},
+	}
+}
+
+func batchSimulationExportPeriods(explanation simulation.EnergyExplanationResult) []simulation.EnergyPeriod {
+	periods := explanation.Periods
+	if len(periods) == 0 && (len(explanation.Edges) > 0 || len(explanation.Reconciliation) > 0) {
+		periods = []simulation.EnergyPeriod{{
+			ID:             "annual",
+			Kind:           "annual",
+			Edges:          explanation.Edges,
+			Reconciliation: explanation.Reconciliation,
+		}}
+	}
+	out := []simulation.EnergyPeriod{}
+	for _, period := range periods {
+		kind := strings.ToLower(strings.TrimSpace(period.Kind))
+		id := strings.ToLower(strings.TrimSpace(period.ID))
+		if kind == "annual" || kind == "monthly" || kind == "selected_range" || id == "annual" || id == "selected_range" {
+			out = append(out, period)
+		}
+	}
+	return out
+}
+
+func batchSimulationFileLabel(item simulation.SimulationRunResult) string {
+	return firstNonEmpty(item.Filename, filepath.Base(item.InputPath), item.RunID)
+}
+
+func formatBatchSimulationFloat(value float64) string {
+	return strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.6f", value), "0"), ".")
 }
 
 func batchSummaryRawSection(result MultiSummaryResult, orientation string) tabular.Section {

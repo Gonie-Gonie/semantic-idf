@@ -363,6 +363,85 @@ func TestBatchSummaryWorkbookSheetsIncludeDelta(t *testing.T) {
 	}
 }
 
+func TestBatchSimulationWorkbookSheetsIncludesPurposeAndEnergySheets(t *testing.T) {
+	result := simulation.MultiSimulationResult{
+		RunID:     "sim-xlsx-test",
+		Total:     1,
+		Completed: 1,
+		Succeeded: 1,
+		Results: []simulation.SimulationRunResult{{
+			RunID:    "run-a",
+			Status:   "succeeded",
+			Filename: "a.idf",
+			PurposeMetrics: []simulation.PurposeMetric{{
+				ID:           "energy_explanation.kpi.cooling_cop",
+				Label:        "Derived KPI: Cooling COP",
+				Value:        2,
+				DisplayValue: "2",
+				Status:       "ok",
+			}},
+			PurposeResults: &simulation.PurposeResultBundle{
+				EnergyExplanationSummary: simulation.EnergyExplanationSummary{
+					Schema: "semantic-idf.energy-explanation-summary/v1",
+					DerivedKPIs: []simulation.EnergyExplanationSummaryItem{{
+						ID:          "kpi.cooling_cop",
+						Level:       "derived_kpi",
+						Label:       "Cooling COP",
+						Value:       2,
+						ServiceKind: "cooling",
+						PathType:    "zone",
+					}},
+				},
+				EnergyExplanation: simulation.EnergyExplanationResult{
+					Schema: "semantic-idf.energy-explanation/v1",
+					Sources: []simulation.EnergyDataSource{{
+						ID:             "sql-rdd-1",
+						SourceType:     "sql_report_data",
+						IsMeter:        true,
+						Name:           "Cooling:Electricity",
+						SourceUnit:     "J",
+						NormalizedUnit: "kWh",
+					}},
+					Periods: []simulation.EnergyPeriod{{
+						ID:   "annual",
+						Kind: "annual",
+						Edges: []simulation.EnergyExplanationEdge{{
+							ID:       "edge-1",
+							FromID:   "energy.carrier.electricity",
+							ToID:     "energy.end_use.cooling.electricity",
+							Value:    1,
+							Unit:     "kWh",
+							Relation: "meter_enduse",
+							Basis:    "measured_meter",
+						}},
+						Reconciliation: []simulation.EnergyReconciliation{{
+							ID:             "reconcile.energy.electricity.annual",
+							Level:          "energy",
+							Period:         "annual",
+							Label:          "Electricity total basis",
+							ExpectedValue:  2,
+							ExplainedValue: 1,
+							ResidualValue:  1,
+							Unit:           "kWh",
+							Basis:          "meter_reconciliation",
+						}},
+					}},
+				},
+			},
+		}},
+	}
+	sheets := batchSimulationWorkbookSheets(BatchSimulationXLSXExportRequest{Result: result})
+	if len(sheets) != 5 || sheets[0].Name != "Purpose Metrics" || sheets[1].Name != "Energy Summary" || sheets[4].Name != "Reconciliation" {
+		t.Fatalf("simulation workbook sheets = %#v", sheets)
+	}
+	if rows := sheets[0].Sections[0].Rows; len(rows) != 1 || rows[0][3] != "energy_explanation.kpi.cooling_cop" {
+		t.Fatalf("purpose metric rows = %#v", rows)
+	}
+	if rows := sheets[1].Sections[0].Rows; len(rows) != 1 || rows[0][3] != "derived_kpi" || rows[0][10] != "zone" {
+		t.Fatalf("energy summary rows = %#v", rows)
+	}
+}
+
 func TestCreateBatchSafeCleanupCopiesWritesCleanedCopyOnly(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "cleanup.idf")

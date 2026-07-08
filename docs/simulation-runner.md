@@ -228,7 +228,9 @@ monthly, and selected-range explanation periods by default; daily and hourly
 periods remain available in the embedded purpose result payload without
 expanding the default spreadsheet export. Compact summary rows also carry their
 source IDs and matching source output object indexes when available. Batch
-Simulation can also export the full batch result as
+Simulation can also export the same core purpose metrics, compact energy
+summary, source metadata, edge, and reconciliation sheets as XLSX. It can export
+the full batch result as
 `semantic-idf.batch-simulation/v1` JSON, preserving embedded purpose result
 payloads such as high-resolution daily/hourly explanation periods that are
 intentionally omitted from the default CSV.

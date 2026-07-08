@@ -135,6 +135,8 @@ The release script infers bump size from these sections:
 - Batch Simulation can now export the full purpose run result as
   `semantic-idf.batch-simulation/v1` JSON, preserving embedded Basic Energy
   explanation payloads that are too detailed for the default CSV.
+- Batch Simulation can now export purpose metrics and Basic Energy explanation
+  summary/source/edge/reconciliation workbook sheets as XLSX.
 - Basic Energy explanations now fall back to annual SQL tabular end-use rows
   when detailed `ReportData` energy rows are unavailable, while preserving
   `sql_tabular` source metadata.

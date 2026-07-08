@@ -56,6 +56,9 @@ export function initializeMultiSimulationTool(context) {
     if (elements.multiSimulationExport) {
       elements.multiSimulationExport.disabled = disabled;
     }
+    if (elements.multiSimulationExportXLSX) {
+      elements.multiSimulationExportXLSX.disabled = disabled;
+    }
     if (elements.multiSimulationExportJSON) {
       elements.multiSimulationExportJSON.disabled = disabled;
     }
@@ -586,6 +589,37 @@ export function initializeMultiSimulationTool(context) {
     downloadCSV(rows, "batch-simulation-purpose-results.csv");
     if (elements.multiSimulationStatus) {
       elements.multiSimulationStatus.textContent = t("status.exportedCsv", {}, "CSV exported");
+    }
+  }
+
+  async function exportMultiSimulationXLSX() {
+    const result = state.multiSimulation.result;
+    if (!result || !(result.results || []).length) {
+      return;
+    }
+    const api = await waitForAppAPI("SaveBatchSimulationXLSX");
+    if (!api) {
+      if (elements.multiSimulationStatus) {
+        elements.multiSimulationStatus.textContent = t("tools.desktopOnly");
+      }
+      return;
+    }
+    if (elements.multiSimulationStatus) {
+      elements.multiSimulationStatus.textContent = t("common.loadingSettings", {}, "Loading");
+    }
+    try {
+      const saved = await api.SaveBatchSimulationXLSX({ result });
+      if (!saved?.canceled && elements.multiSimulationStatus) {
+        elements.multiSimulationStatus.textContent = t(
+          "status.savedNamed",
+          { name: saved?.filename || "batch-simulation-purpose-results.xlsx" },
+          `Saved ${saved?.filename || "batch-simulation-purpose-results.xlsx"}`,
+        );
+      }
+    } catch (error) {
+      if (elements.multiSimulationStatus) {
+        elements.multiSimulationStatus.textContent = error?.message || String(error);
+      }
     }
   }
 
@@ -1256,6 +1290,7 @@ export function initializeMultiSimulationTool(context) {
     elements.multiSimulationSelectFolder?.addEventListener("click", selectFolder);
     elements.multiSimulationRun?.addEventListener("click", run);
     elements.multiSimulationExport?.addEventListener("click", exportMultiSimulationCSV);
+    elements.multiSimulationExportXLSX?.addEventListener("click", exportMultiSimulationXLSX);
     elements.multiSimulationExportJSON?.addEventListener("click", exportMultiSimulationJSON);
     elements.multiSimulationMetric?.addEventListener("change", () => {
       state.multiSimulation.metric = elements.multiSimulationMetric.value || "";
