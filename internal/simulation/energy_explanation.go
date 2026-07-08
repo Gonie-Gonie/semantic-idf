@@ -425,7 +425,7 @@ func buildEnergyExplanationFromDashboard(dashboard EnergyDashboardResult, plan *
 	var series []energyExplanationSeries
 	var sources []EnergyDataSource
 	addSeries := func(item EnergySeries) {
-		def, ok := energyMeterAliasDefinitionForName(item.Name)
+		def, ok := energyMeterAliasOrOtherDefinitionForName(item.Name)
 		if !ok {
 			return
 		}
@@ -1505,7 +1505,7 @@ ORDER BY rdd.%s`, indexExpr, keyExpr, nameExpr, unitsExpr, isMeterExpr, frequenc
 			indexGroup:         strings.TrimSpace(indexGroup),
 			sourceFile:         sourceFile,
 		}
-		if def, ok := energyMeterAliasDefinitionForName(firstNonEmpty(row.keyValue, row.name)); ok {
+		if def, ok := energyMeterAliasOrOtherDefinitionForName(firstNonEmpty(row.keyValue, row.name)); ok {
 			copy := def
 			dictionary.meter = &copy
 			dictionary.isMeter = true
@@ -2221,6 +2221,72 @@ func energyMeterAliasDefinitionForName(name string) (energyMeterAliasDefinition,
 		}
 	}
 	return energyMeterAliasDefinition{}, false
+}
+
+func energyMeterAliasOrOtherDefinitionForName(name string) (energyMeterAliasDefinition, bool) {
+	if def, ok := energyMeterAliasDefinitionForName(name); ok {
+		return def, true
+	}
+	carrier, ok := energyMeterCarrierFromUnknownMeter(name)
+	if !ok {
+		return energyMeterAliasDefinition{}, false
+	}
+	return energyMeterAliasDefinition{
+		Kind:           "energy.other",
+		Label:          "Other " + strings.ToLower(energyCarrierLabel(carrier)) + " use",
+		Carrier:        carrier,
+		EndUse:         "other",
+		HierarchyLevel: "broad_end_use",
+		Aliases:        []string{name},
+	}, true
+}
+
+func energyMeterCarrierFromUnknownMeter(name string) (string, bool) {
+	parts := strings.Split(strings.TrimSpace(name), ":")
+	if len(parts) != 2 {
+		return "", false
+	}
+	left := strings.TrimSpace(parts[0])
+	right := strings.TrimSpace(parts[1])
+	if strings.EqualFold(left, "facility") || strings.EqualFold(right, "facility") {
+		return "", false
+	}
+	if carrier, ok := energyCarrierToken(left); ok {
+		return carrier, true
+	}
+	if carrier, ok := energyCarrierToken(right); ok {
+		return carrier, true
+	}
+	return "", false
+}
+
+func energyCarrierToken(value string) (string, bool) {
+	switch normalizeEnergyOutputName(value) {
+	case "electricity":
+		return "electricity", true
+	case "naturalgas", "gas":
+		return "natural_gas", true
+	case "districtcooling":
+		return "district_cooling", true
+	case "districtheating":
+		return "district_heating", true
+	case "fueloilno1":
+		return "fuel_oil_1", true
+	case "fueloilno2":
+		return "fuel_oil_2", true
+	case "propane":
+		return "propane", true
+	case "otherfuel1":
+		return "other_fuel_1", true
+	case "otherfuel2":
+		return "other_fuel_2", true
+	case "steam":
+		return "steam", true
+	case "water":
+		return "water", true
+	default:
+		return "", false
+	}
 }
 
 func energyLoadAliasDefinitionForName(name string) (energyLoadAliasDefinition, bool) {

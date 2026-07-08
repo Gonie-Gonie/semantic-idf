@@ -862,6 +862,46 @@ func TestEnergyMeterAliasCatalogHandlesCarrierAndEndUseOrder(t *testing.T) {
 	if _, ok := energyMeterAliasDefinitionForName("SomeCustomMeter:Electricity"); ok {
 		t.Fatalf("custom meter should not be classified as a known alias")
 	}
+	other, ok := energyMeterAliasOrOtherDefinitionForName("SomeCustomMeter:Electricity")
+	if !ok || other.Carrier != "electricity" || other.EndUse != "other" || other.HierarchyLevel != "broad_end_use" {
+		t.Fatalf("custom meter fallback = %#v ok=%t", other, ok)
+	}
+}
+
+func TestParseSimulationEnergyExplanationSQLMapsUnknownCarrierMeterToOther(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "eplusout.sql")
+	createTestEnergySQL(t, path)
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO ReportDataDictionary VALUES (30, '', 'SomeCustomMeter:Electricity', 'J')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO ReportData VALUES (30, 1, 30, 3600000.0)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := parseSimulationEnergyExplanationSQL(path, &PurposeRunPlan{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := energyExplanationNodeByID(result.Nodes, "energy.end_use.other.electricity")
+	if other == nil || other.Value != 1 || other.EndUse != "other" || other.Carrier != "electricity" || other.MeterHierarchyLevel != "broad_end_use" || !stringSliceContains(other.SourceIDs, "sql-rdd-30") {
+		t.Fatalf("other electricity node = %#v", other)
+	}
+	source := energyExplanationSourceByID(result.Sources, "sql-rdd-30")
+	if source == nil || source.Name != "SomeCustomMeter:Electricity" || source.KeyValue != "" {
+		t.Fatalf("custom source = %#v", source)
+	}
+	reconciliation := energyExplanationReconciliationByID(result.Reconciliation, "reconcile.energy.electricity.annual")
+	if reconciliation == nil || reconciliation.ExpectedValue != 3 || reconciliation.ExplainedValue != 2 || reconciliation.ResidualValue != 1 {
+		t.Fatalf("custom meter reconciliation = %#v", reconciliation)
+	}
 }
 
 func TestEnergyRelationshipRuleCatalogProvidesEdgeBasis(t *testing.T) {

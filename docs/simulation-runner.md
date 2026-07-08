@@ -173,9 +173,11 @@ a compact shape for batch comparisons and exports. Energy nodes expose
 Sankey inspector can show which meter hierarchy tier is being reconciled. Both
 payloads expose
 `allocationPolicy` so exported results make clear whether allocated edges were
-allowed. With `by_zone_load_share`, cooling/heating end-use energy is allocated
-to zone load nodes by measured delivered-load share and the edge uses
-`relation=allocation`, `basis=allocated`, and the
+allowed. Carrier-qualified meters that are not in the explicit end-use alias
+catalog are retained as `other` end uses while preserving the original meter
+name in source metadata. With `by_zone_load_share`, cooling/heating end-use
+energy is allocated to zone load nodes by measured delivered-load share and the
+edge uses `relation=allocation`, `basis=allocated`, and the
 `allocation.by_zone_load_share` rule. When heat-balance rate
 variables are present, the same payload
 integrates them to `kWh` by timestep and links Delivered Load to Heat Drivers

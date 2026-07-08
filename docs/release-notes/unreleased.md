@@ -44,6 +44,9 @@ The release script infers bump size from these sections:
   purpose is selected.
 - Basic Energy end-use meter coverage now includes heat recovery, exterior
   lighting, refrigeration, and natural-gas interior equipment where applicable.
+- Basic Energy now maps carrier-qualified meters that are not in the explicit
+  end-use alias catalog to `other` end-use nodes while preserving the original
+  meter name as source metadata.
 - Basic Energy and standard output plans now cover additional Level 1 energy
   meters for fuel oil, propane, other fuels, steam, district cooling/heating
   end uses, and onsite electricity production when those model features are
