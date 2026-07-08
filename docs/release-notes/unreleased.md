@@ -54,6 +54,9 @@ The release script infers bump size from these sections:
 - Energy explanation summaries now keep explicitly signed heat-driver gain and
   loss nodes separate, so batch summaries and exports do not merge opposite
   air-exchange directions.
+- Energy explanation periods now carry their own reconciliation and warning
+  rows, and the Reconciliation view can switch between annual and monthly
+  accounting gaps.
 - Basic Energy explanation plans now request the delivered-load alias catalog
   across zone air system, ideal loads, radiant HVAC, coil, and plant demand
   outputs at monthly frequency.

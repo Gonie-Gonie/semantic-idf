@@ -553,7 +553,7 @@ function renderEnergySubviewControls(view, explanation = {}) {
           .join("")}
       </div>
       ${
-        ["sankey", "systems"].includes(view) && periodOptions
+        ["sankey", "systems", "reconciliation"].includes(view) && periodOptions
           ? `<label><span>${escapeHTML(t("common.period", {}, "Period"))}</span><select data-simulation-energy-period>${periodOptions}</select></label>`
           : ""
       }
@@ -1276,7 +1276,12 @@ function renderEnergyExplanationSources(explanation = {}) {
 
 function renderEnergyExplanationReconciliation(explanation = {}) {
   const completeness = renderEnergyExplanationCompleteness(explanation);
-  const rows = (explanation.reconciliation || [])
+  const periodID = state.simulationEnergyPeriod || "annual";
+  const graph = energyExplanationGraphForPeriod(explanation, periodID);
+  const usePeriodRows = periodID !== "annual" || (graph.reconciliation || []).length;
+  const reconciliation = usePeriodRows ? graph.reconciliation || [] : explanation.reconciliation || [];
+  const warningsForPeriod = periodID !== "annual" || (graph.warnings || []).length ? graph.warnings || [] : explanation.warnings || [];
+  const rows = reconciliation
     .map(
       (item) => `
         <tr>
@@ -1290,16 +1295,17 @@ function renderEnergyExplanationReconciliation(explanation = {}) {
         </tr>`,
     )
     .join("");
-  const warnings = (explanation.warnings || [])
+  const warnings = warningsForPeriod
     .map((warning) => `<article class="simulation-hvac-alert ${escapeHTML(warning.severity || "info")}"><strong>${escapeHTML(warning.code || "")}</strong><span>${escapeHTML(warning.message || "")}</span></article>`)
     .join("");
+  const periodLabel = graph.label || periodID;
   return `
     ${completeness}
     ${warnings ? `<div class="simulation-hvac-alert-list">${warnings}</div>` : ""}
     <section class="simulation-energy-block">
       <div class="simulation-energy-block-head">
         <h4>${escapeHTML(t("simulation.energyReconciliation", {}, "Reconciliation"))}</h4>
-        <span>${escapeHTML(t("simulation.accountingGapNote", {}, "Residual is an accounting gap, not automatically a model error."))}</span>
+        <span>${escapeHTML(periodLabel)} / ${escapeHTML(t("simulation.accountingGapNote", {}, "Residual is an accounting gap, not automatically a model error."))}</span>
       </div>
       <div class="output-table-wrap">
         <table class="output-table">
@@ -1314,9 +1320,25 @@ function energyExplanationGraphForPeriod(explanation = {}, periodID = "annual") 
   const id = periodID || "annual";
   const period = (explanation.periods || []).find((item) => item.id === id);
   if (period) {
-    return { nodes: period.nodes || [], edges: period.edges || [] };
+    return {
+      id: period.id || id,
+      label: period.label || period.id || id,
+      kind: period.kind || "",
+      nodes: period.nodes || [],
+      edges: period.edges || [],
+      reconciliation: period.reconciliation || [],
+      warnings: period.warnings || [],
+    };
   }
-  return { nodes: explanation.nodes || [], edges: explanation.edges || [] };
+  return {
+    id,
+    label: id,
+    kind: id === "annual" ? "annual" : "",
+    nodes: explanation.nodes || [],
+    edges: explanation.edges || [],
+    reconciliation: explanation.reconciliation || [],
+    warnings: explanation.warnings || [],
+  };
 }
 
 function focusedEnergyExplanationGraph(graph = {}) {

@@ -165,6 +165,10 @@ change). Result charts and purpose summary tables use these display fields so
 energy, power/rate, temperature, mass-flow, and humidity-ratio units stay
 consistent across viewers.
 
+Energy explanation periods include their own reconciliation rows and warnings,
+so the Reconciliation subview can switch the accounting-gap table between
+annual and monthly periods instead of showing only the annual graph.
+
 Batch purpose simulations also summarize the annual explanation graph into
 compact purpose metrics for Energy Use, Delivered Load, Heat Drivers, residual,
 mapped percent, and the largest heat-driver groups. When two Basic Energy

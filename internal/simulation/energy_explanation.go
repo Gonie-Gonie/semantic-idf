@@ -29,11 +29,13 @@ type EnergyExplanationResult struct {
 }
 
 type EnergyPeriod struct {
-	ID    string                  `json:"id"`
-	Label string                  `json:"label"`
-	Kind  string                  `json:"kind"`
-	Nodes []EnergyExplanationNode `json:"nodes,omitempty"`
-	Edges []EnergyExplanationEdge `json:"edges,omitempty"`
+	ID             string                  `json:"id"`
+	Label          string                  `json:"label"`
+	Kind           string                  `json:"kind"`
+	Nodes          []EnergyExplanationNode `json:"nodes,omitempty"`
+	Edges          []EnergyExplanationEdge `json:"edges,omitempty"`
+	Reconciliation []EnergyReconciliation  `json:"reconciliation,omitempty"`
+	Warnings       []EnergyWarning         `json:"warnings,omitempty"`
 }
 
 type EnergyExplanationSummary struct {
@@ -552,11 +554,13 @@ func buildEnergyExplanationResult(series []energyExplanationSeries, sources []En
 	months := energyExplanationMonths(series)
 	periods := []EnergyPeriod{
 		{
-			ID:    "annual",
-			Label: "Annual",
-			Kind:  "annual",
-			Nodes: append([]EnergyExplanationNode(nil), annual.Nodes...),
-			Edges: append([]EnergyExplanationEdge(nil), annual.Edges...),
+			ID:             "annual",
+			Label:          "Annual",
+			Kind:           "annual",
+			Nodes:          append([]EnergyExplanationNode(nil), annual.Nodes...),
+			Edges:          append([]EnergyExplanationEdge(nil), annual.Edges...),
+			Reconciliation: append([]EnergyReconciliation(nil), annual.Reconciliation...),
+			Warnings:       append([]EnergyWarning(nil), annual.Warnings...),
 		},
 	}
 	for _, month := range months {
@@ -565,11 +569,13 @@ func buildEnergyExplanationResult(series []energyExplanationSeries, sources []En
 			return item.Monthly[month]
 		})
 		periods = append(periods, EnergyPeriod{
-			ID:    periodID,
-			Label: fmt.Sprintf("M%d", month),
-			Kind:  "monthly",
-			Nodes: graph.Nodes,
-			Edges: graph.Edges,
+			ID:             periodID,
+			Label:          fmt.Sprintf("M%d", month),
+			Kind:           "monthly",
+			Nodes:          graph.Nodes,
+			Edges:          graph.Edges,
+			Reconciliation: graph.Reconciliation,
+			Warnings:       graph.Warnings,
 		})
 	}
 	result := EnergyExplanationResult{

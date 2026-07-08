@@ -543,6 +543,10 @@ func TestParseSimulationEnergyExplanationSQLBuildsAccountingGraph(t *testing.T) 
 	if energyReconciliation == nil || energyReconciliation.ResidualValue != 2 || heatReconciliation == nil || heatReconciliation.ResidualValue != 0 || heatReconciliation.ExplainedValue != 0.5 || result.Completeness.MappedPercent != 33.333 {
 		t.Fatalf("reconciliation/completeness = %#v / %#v", result.Reconciliation, result.Completeness)
 	}
+	monthlyHeatReconciliation := energyExplanationReconciliationByID(result.Periods[1].Reconciliation, "reconcile.heat.cooling.M1")
+	if monthlyHeatReconciliation == nil || monthlyHeatReconciliation.ExpectedValue != 0.25 || monthlyHeatReconciliation.ExplainedValue != 0.5 || monthlyHeatReconciliation.ResidualValue != -0.25 {
+		t.Fatalf("monthly heat reconciliation = %#v", result.Periods[1].Reconciliation)
+	}
 	if result.Completeness.HeatDrivers.Found != 2 || result.Completeness.HeatDrivers.Total != 2 || result.Completeness.DeliveredLoad.Found != 1 || result.Completeness.DeliveredLoad.Total != 1 {
 		t.Fatalf("explanation completeness = %#v", result.Completeness)
 	}
