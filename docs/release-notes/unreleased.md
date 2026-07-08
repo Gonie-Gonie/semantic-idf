@@ -99,6 +99,9 @@ The release script infers bump size from these sections:
 - Basic Energy delivered-load nodes now expose `pathType` metadata (`zone`,
   `system`, or `plant`) alongside `serviceKind`, and batch CSV exports include
   the path type.
+- Basic Energy now reports cooling/heating COP as derived KPIs when matching
+  electric end-use energy and delivered load are available, without adding
+  synthetic COP conversion edges to the Sankey graph.
 - Basic Energy explanation plans now request detailed monthly heat-driver
   outputs for people, lights, equipment, infiltration, ventilation, and mixing
   in addition to heat-balance and fan heat drivers.

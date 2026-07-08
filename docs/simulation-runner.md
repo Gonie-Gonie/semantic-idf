@@ -185,6 +185,9 @@ when EnergyPlus reports both source series as positive energy values.
 Delivered-load nodes carry both `serviceKind` and `pathType` metadata, using the
 load alias scope (`zone`, `system`, or `plant`) so HVAC service links and batch
 exports can distinguish zone loads from broader system or plant demand.
+When electric end-use energy and delivered thermal load are both present, Basic
+Energy also reports derived COP KPIs separately from the Sankey graph rather
+than creating synthetic COP conversion edges.
 
 Generic SQL and CSV series keep original values for compatibility and also
 expose display metadata (`displayColumn`, `displayUnit`, `displayMin`,
@@ -199,13 +202,13 @@ annual and monthly periods instead of showing only the annual graph.
 
 Batch purpose simulations also summarize the annual explanation graph into
 compact purpose metrics for Energy Use, Delivered Load, Heat Drivers, residual,
-mapped percent, and the largest heat-driver groups. When two Basic Energy
-purpose rows with explanation summaries are selected, the batch chart also shows
-the largest explanation changes plus end-use, delivered-load, and heat-driver
-delta tables beside the selected metric. Explicit gain/loss heat-driver summary
-rows stay separate so opposite air-exchange directions can be compared. It also
-ranks annual Sankey edge deltas by relation, edge label, rule ID, delta, percent,
-and missing-row status.
+mapped percent, derived COP KPIs, and the largest heat-driver groups. When two
+Basic Energy purpose rows with explanation summaries are selected, the batch
+chart also shows the largest explanation changes plus end-use, delivered-load,
+and heat-driver delta tables beside the selected metric. Explicit gain/loss
+heat-driver summary rows stay separate so opposite air-exchange directions can
+be compared. It also ranks annual Sankey edge deltas by relation, edge label,
+rule ID, delta, percent, and missing-row status.
 Missing summary rows are labeled
 separately from matched rows so an absent output is not silently treated as a
 normal zero. Batch Simulation can export purpose metrics, compact

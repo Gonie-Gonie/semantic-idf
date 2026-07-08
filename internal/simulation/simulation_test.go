@@ -641,6 +641,9 @@ func TestParseSimulationEnergyExplanationSQLBuildsAccountingGraph(t *testing.T) 
 	if item := energyExplanationSummaryItemByID(summary.DeliveredLoadByService, "load.zone_cooling"); item == nil || item.Value != 0.5 || item.PathType != "zone" {
 		t.Fatalf("summary delivered load = %#v", summary.DeliveredLoadByService)
 	}
+	if item := energyExplanationSummaryItemByID(summary.DerivedKPIs, "kpi.cooling_cop"); item == nil || item.Value != 0.5 || item.ServiceKind != "cooling" || item.PathType != "zone" || item.Basis != "derived_kpi" {
+		t.Fatalf("summary derived KPIs = %#v", summary.DerivedKPIs)
+	}
 	if item := energyExplanationSummaryItemByID(summary.TopHeatDrivers, "heat.internal_convective"); item == nil || item.Value != 0.5 {
 		t.Fatalf("summary top heat drivers = %#v", summary.TopHeatDrivers)
 	}

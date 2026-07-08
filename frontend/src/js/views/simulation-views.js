@@ -663,6 +663,7 @@ function renderEnergySubview(view, energy, explanation, facility, endUse, zones)
       return `
         ${renderPurposeCompletenessRow(energy.completeness || [])}
         ${renderEnergyExplanationCompleteness(explanation)}
+        ${renderEnergyDerivedKPISection(explanation)}
         ${renderEnergyMonthlyChart(t("simulation.facilityMonthlyProfile", {}, "Facility monthly profile"), facility)}
         ${renderEnergyMonthlyChart(t("simulation.endUseMonthlyProfile", {}, "End-use monthly profile"), endUse)}
         ${renderEnergyBarSection(t("simulation.facilityEnergy", {}, "Facility energy"), facility)}
@@ -690,6 +691,107 @@ function renderEnergySystemsSubview(explanation = {}) {
         </table>
       </div>
     </section>`;
+}
+
+function renderEnergyDerivedKPISection(explanation = {}) {
+  const graph = energyExplanationGraphForPeriod(explanation, "annual");
+  const rows = energyExplanationDerivedKPIItems(graph.nodes || [])
+    .map(
+      (item) => `
+        <tr>
+          <td>${escapeHTML(simulationServiceKindLabel(item.serviceKind))}</td>
+          <td>${escapeHTML(simulationPathTypeLabel(item.pathType))}</td>
+          <td>${escapeHTML(formatValueWithUnit(item.loadValue, "kWh"))}</td>
+          <td>${escapeHTML(formatValueWithUnit(item.energyValue, "kWh"))}</td>
+          <td>${escapeHTML(formatNumber(item.value))}</td>
+        </tr>`,
+    )
+    .join("");
+  if (!rows) {
+    return "";
+  }
+  return `
+    <section class="simulation-energy-block">
+      <div class="simulation-energy-block-head">
+        <h4>${escapeHTML(t("simulation.derivedKpis", {}, "Derived KPIs"))}</h4>
+        <span>${escapeHTML(t("simulation.annual", {}, "Annual"))}</span>
+      </div>
+      <div class="output-table-wrap">
+        <table class="output-table">
+          <thead><tr><th>Service</th><th>Path type</th><th>Delivered load</th><th>Electric energy</th><th>COP</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </section>`;
+}
+
+function energyExplanationDerivedKPIItems(nodes = []) {
+  return [
+    { serviceKind: "cooling", label: "Cooling COP" },
+    { serviceKind: "heating", label: "Heating COP" },
+  ]
+    .map((definition) => {
+      const energy = energyExplanationElectricEndUseNode(nodes, definition.serviceKind);
+      const load = energyExplanationPreferredLoadNode(nodes, definition.serviceKind);
+      const energyValue = Number(energy?.value) || 0;
+      const loadValue = Number(load?.displayValue ?? load?.value) || 0;
+      if (!energy || !load || energyValue <= 0 || loadValue <= 0) {
+        return null;
+      }
+      return {
+        ...definition,
+        value: loadValue / energyValue,
+        energyValue,
+        loadValue,
+        pathType: load.pathType || "",
+      };
+    })
+    .filter(Boolean);
+}
+
+function energyExplanationElectricEndUseNode(nodes = [], serviceKind = "") {
+  const service = simulationCanonicalServiceKind(serviceKind);
+  return (nodes || []).find(
+    (node) =>
+      node.level === "energy" &&
+      simulationCanonicalServiceKind(node.endUse) === service &&
+      String(node.carrier || "").toLowerCase() === "electricity" &&
+      Number(node.value) > 0,
+  ) || null;
+}
+
+function energyExplanationPreferredLoadNode(nodes = [], serviceKind = "") {
+  const service = simulationCanonicalServiceKind(serviceKind);
+  let best = null;
+  let bestRank = Number.POSITIVE_INFINITY;
+  for (const node of nodes || []) {
+    if (node.level !== "load" || simulationCanonicalServiceKind(node.serviceKind || energyServiceFromNode(node)) !== service) {
+      continue;
+    }
+    const value = Number(node.displayValue ?? node.value) || 0;
+    if (value <= 0) {
+      continue;
+    }
+    const rank = energyExplanationLoadPathPriority(node.pathType);
+    if (!best || rank < bestRank || (rank === bestRank && value > (Number(best.displayValue ?? best.value) || 0))) {
+      best = node;
+      bestRank = rank;
+    }
+  }
+  return best;
+}
+
+function energyExplanationLoadPathPriority(pathType = "") {
+  switch (String(pathType || "").toLowerCase()) {
+    case "zone":
+      return 0;
+    case "system":
+      return 1;
+    case "plant":
+      return 2;
+    default:
+      return 3;
+  }
 }
 
 function simulationEnergyServiceRows(nodes = []) {

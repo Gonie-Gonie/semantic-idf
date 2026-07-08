@@ -623,6 +623,7 @@ export function initializeMultiSimulationTool(context) {
       ["energy_explanation.energy_by_carrier", summary.energyByCarrier || []],
       ["energy_explanation.energy_by_end_use", summary.energyByEndUse || []],
       ["energy_explanation.delivered_load_by_service", summary.deliveredLoadByService || []],
+      ["energy_explanation.derived_kpi", summary.derivedKpis || []],
       ["energy_explanation.heat_drivers", summary.heatDrivers || []],
       ["energy_explanation.residuals", summary.residuals || []],
       ["energy_explanation.top_heat_drivers", summary.topHeatDrivers || []],
@@ -749,6 +750,7 @@ export function initializeMultiSimulationTool(context) {
     const sections = [
       ["Energy Use", "energyByEndUse"],
       ["Delivered Load", "deliveredLoadByService"],
+      ["Derived KPI", "derivedKpis"],
       ["Heat Drivers", "heatDrivers"],
     ]
       .map(([label, key]) => renderEnergyExplanationDeltaSection(label, selected[0], selected[1], key))
@@ -763,6 +765,7 @@ export function initializeMultiSimulationTool(context) {
     const groups = [
       ["Energy Use", "energyByEndUse"],
       ["Delivered Load", "deliveredLoadByService"],
+      ["Derived KPI", "derivedKpis"],
       ["Heat Drivers", "heatDrivers"],
       ["Residual", "residuals"],
     ];

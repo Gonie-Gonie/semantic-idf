@@ -46,6 +46,7 @@ type EnergyExplanationSummary struct {
 	EnergyByCarrier        []EnergyExplanationSummaryItem `json:"energyByCarrier,omitempty"`
 	EnergyByEndUse         []EnergyExplanationSummaryItem `json:"energyByEndUse,omitempty"`
 	DeliveredLoadByService []EnergyExplanationSummaryItem `json:"deliveredLoadByService,omitempty"`
+	DerivedKPIs            []EnergyExplanationSummaryItem `json:"derivedKpis,omitempty"`
 	HeatDrivers            []EnergyExplanationSummaryItem `json:"heatDrivers,omitempty"`
 	Residuals              []EnergyExplanationSummaryItem `json:"residuals,omitempty"`
 	TopHeatDrivers         []EnergyExplanationSummaryItem `json:"topHeatDrivers,omitempty"`
@@ -751,6 +752,7 @@ func buildEnergyExplanationSummary(explanation EnergyExplanationResult) EnergyEx
 	summary.EnergyByCarrier = sortedEnergyExplanationSummaryItems(energyByCarrier)
 	summary.EnergyByEndUse = sortedEnergyExplanationSummaryItems(energyByEndUse)
 	summary.DeliveredLoadByService = sortedEnergyExplanationSummaryItems(loadByService)
+	summary.DerivedKPIs = buildEnergyExplanationDerivedKPIs(summary.EnergyByEndUse, summary.DeliveredLoadByService)
 	summary.HeatDrivers = sortedEnergyExplanationSummaryItems(heatByDriver)
 	summary.Residuals = sortedEnergyExplanationSummaryItems(residuals)
 	summary.TopHeatDrivers = limitEnergyExplanationSummaryItems(summary.HeatDrivers, 5)
@@ -817,6 +819,77 @@ func energyExplanationLoadSummaryKey(node EnergyExplanationNode) string {
 		return service + "." + pathType
 	}
 	return firstNonEmpty(service, node.Kind, node.ID)
+}
+
+func buildEnergyExplanationDerivedKPIs(energyItems, loadItems []EnergyExplanationSummaryItem) []EnergyExplanationSummaryItem {
+	definitions := []struct {
+		service string
+		label   string
+		kind    string
+	}{
+		{service: "cooling", label: "Cooling COP", kind: "kpi.cooling_cop"},
+		{service: "heating", label: "Heating COP", kind: "kpi.heating_cop"},
+	}
+	out := []EnergyExplanationSummaryItem{}
+	for _, def := range definitions {
+		energy := energyExplanationElectricEndUseForService(energyItems, def.service)
+		load := energyExplanationPreferredLoadForService(loadItems, def.service)
+		if energy == nil || load == nil || energy.Value <= 0 || load.Value <= 0 {
+			continue
+		}
+		out = append(out, EnergyExplanationSummaryItem{
+			ID:          def.kind,
+			Level:       "derived_kpi",
+			Kind:        def.kind,
+			Label:       def.label,
+			Value:       roundedEnergyNumber(load.Value / energy.Value),
+			ServiceKind: def.service,
+			PathType:    load.PathType,
+			Basis:       "derived_kpi",
+			SourceIDs:   appendUniqueStrings(appendUniqueStrings(nil, energy.SourceIDs...), load.SourceIDs...),
+		})
+	}
+	return out
+}
+
+func energyExplanationElectricEndUseForService(items []EnergyExplanationSummaryItem, service string) *EnergyExplanationSummaryItem {
+	for i := range items {
+		item := &items[i]
+		if strings.EqualFold(item.EndUse, service) && strings.EqualFold(item.Carrier, "electricity") && item.Value > 0 {
+			return item
+		}
+	}
+	return nil
+}
+
+func energyExplanationPreferredLoadForService(items []EnergyExplanationSummaryItem, service string) *EnergyExplanationSummaryItem {
+	var best *EnergyExplanationSummaryItem
+	bestRank := math.MaxInt
+	for i := range items {
+		item := &items[i]
+		if !strings.EqualFold(item.ServiceKind, service) || item.Value <= 0 {
+			continue
+		}
+		rank := energyExplanationLoadPathPriority(item.PathType)
+		if best == nil || rank < bestRank || rank == bestRank && math.Abs(item.Value) > math.Abs(best.Value) {
+			best = item
+			bestRank = rank
+		}
+	}
+	return best
+}
+
+func energyExplanationLoadPathPriority(pathType string) int {
+	switch strings.ToLower(strings.TrimSpace(pathType)) {
+	case "zone":
+		return 0
+	case "system":
+		return 1
+	case "plant":
+		return 2
+	default:
+		return 3
+	}
 }
 
 func energyExplanationHeatSummaryKey(node EnergyExplanationNode) string {
