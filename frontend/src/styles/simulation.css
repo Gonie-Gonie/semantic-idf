@@ -615,18 +615,30 @@
 
 .simulation-source-cell {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 4px 8px;
   align-items: start;
   min-width: 0;
 }
 
+.simulation-source-output-jump {
+  min-height: 24px;
+  padding-inline: 7px;
+}
+
 .simulation-source-cell .simulation-source-output {
   display: inline-flex;
+  grid-row: 1;
 }
 
 .simulation-source-cell .simulation-source-signature {
   grid-column: 1 / -1;
+}
+
+.simulation-source-cell .simulation-series-inspect {
+  grid-column: 3;
+  grid-row: 1;
+  justify-self: end;
 }
 
 .simulation-series-inspect {

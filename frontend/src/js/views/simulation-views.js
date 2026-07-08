@@ -2913,7 +2913,11 @@ function renderSourceOutputCell(object) {
   }
   const signature = object.signature || [object.objectType, object.keyValue, object.variableName, object.reportingFrequency].filter(Boolean).join(" / ");
   const stateLabel = outputStateLabel(object.state || "");
-  return `<span class="simulation-source-output ${escapeHTML(object.state || "")}" title="${escapeHTML(signature)}">${escapeHTML(stateLabel)}</span><small class="simulation-source-signature" title="${escapeHTML(signature)}">${escapeHTML(signature)}</small>`;
+  const objectIndex = Number(object.objectIndex);
+  const jump = Number.isFinite(objectIndex)
+    ? `<button class="profile-object-link navigable-row simulation-source-output-jump" type="button" data-jump-object-index="${escapeHTML(objectIndex)}" data-jump-object-type="${escapeHTML(object.objectType || "")}">#${escapeHTML(objectIndex + 1)}</button>`
+    : "";
+  return `${jump}<span class="simulation-source-output ${escapeHTML(object.state || "")}" title="${escapeHTML(signature)}">${escapeHTML(stateLabel)}</span><small class="simulation-source-signature" title="${escapeHTML(signature)}">${escapeHTML(signature)}</small>`;
 }
 
 function renderSourceInspectorCell(object, seriesRef = {}) {

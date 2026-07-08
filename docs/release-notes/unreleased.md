@@ -29,6 +29,8 @@ The release script infers bump size from these sections:
   availability rows in the UI.
 - Energy explanation source availability now uses `found`/`missing` status rows
   and populates missing categories from missing source requests.
+- Simulation source output cells now link back to matching existing output
+  request objects when available.
 - Added an annual `energyExplanationSummary` result payload for carrier,
   end-use, delivered-load, heat-driver, residual, and top-zone rollups.
 - Basic Energy explanation plans and result payloads now expose the
