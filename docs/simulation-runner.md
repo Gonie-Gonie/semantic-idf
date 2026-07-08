@@ -156,7 +156,10 @@ Basic Energy output requests use tiered reasons in plan previews and Output
 apply previews: top-level SQL/meters form the light energy basis, monthly
 delivered-load and zone energy variables are labeled as `Basic Energy Explain`,
 and monthly heat-balance, fan heat, internal-gain, and air-exchange variables
-are labeled as `Basic Energy Heat Drivers`.
+are labeled as `Basic Energy Heat Drivers`. The Simulation run plan summarizes
+Basic Energy output sets by tier and state so users can see how many SQL, Light,
+Explain, and Heat Driver requests are existing, temporary, or planned for
+permanent apply before running.
 
 ## Result Reading
 

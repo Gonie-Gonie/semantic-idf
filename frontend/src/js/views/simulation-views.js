@@ -388,6 +388,7 @@ function renderSimulationRunPlanPreview() {
         .map((warning) => `<span class="${escapeHTML(warning.severity || "info")}">${escapeHTML(warning.message || warning.code || "")}</span>`)
         .join("")}</div>`
     : "";
+  const outputSetSummary = renderPurposeOutputSetSummary(objects);
   const rows = objects
     .slice(0, 80)
     .map((object) => {
@@ -413,6 +414,7 @@ function renderSimulationRunPlanPreview() {
       <span>${escapeHTML(plan.requiresSQL ? t("simulation.sqlPrimary", {}, "SQL primary") : t("simulation.sqlOptional", {}, "SQL optional"))}</span>
       ${plan.basicEnergyDetail ? `<span>${escapeHTML(t("simulation.basicEnergyDetail", {}, "Basic Energy detail"))}: ${escapeHTML(basicEnergyDetailLabel(plan.basicEnergyDetail))}</span>` : ""}
     </div>
+    ${outputSetSummary}
     ${warningHTML}
     <div class="output-table-wrap">
       <table class="output-table simulation-plan-table">
@@ -424,25 +426,77 @@ function renderSimulationRunPlanPreview() {
   updatePurposeApplyButton();
 }
 
+function renderPurposeOutputSetSummary(objects = []) {
+  const groups = new Map();
+  for (const object of objects || []) {
+    if (!(object.purposeIds || []).includes("basic_energy")) {
+      continue;
+    }
+    const key = purposeOutputSetKey(object);
+    if (!groups.has(key)) {
+      groups.set(key, { key, total: 0, states: new Map() });
+    }
+    const group = groups.get(key);
+    const state = object.state || "temporary";
+    group.total += 1;
+    group.states.set(state, (group.states.get(state) || 0) + 1);
+  }
+  const order = ["sql", "light", "explain", "heat_drivers", "other"];
+  const rows = order
+    .map((key) => groups.get(key))
+    .filter(Boolean)
+    .map((group) => {
+      const states = ["existing", "temporary", "will_be_persisted", "conflict"]
+        .filter((state) => group.states.has(state))
+        .map((state) => `${group.states.get(state)} ${outputStateLabel(state)}`)
+        .join(" / ");
+      return `<span><b>${escapeHTML(purposeOutputSetDisplayLabel(group.key))}</b>${escapeHTML(states || String(group.total))}</span>`;
+    })
+    .join("");
+  if (!rows) {
+    return "";
+  }
+  return `<div class="simulation-plan-output-sets" aria-label="${escapeHTML(t("simulation.outputSet", {}, "Output set"))}">${rows}</div>`;
+}
+
 function purposeOutputSetLabel(object = {}) {
   if (!(object.purposeIds || []).includes("basic_energy")) {
     return object.reason || "";
   }
+  return purposeOutputSetDisplayLabel(purposeOutputSetKey(object));
+}
+
+function purposeOutputSetKey(object = {}) {
   const objectType = String(object.objectType || "").toLowerCase();
   if (objectType === "output:sqlite") {
-    return t("simulation.outputSetSQL", {}, "SQL");
+    return "sql";
   }
   const evidence = `${object.reason || ""} ${object.description || ""} ${object.variableName || ""}`.toLowerCase();
   if (evidence.includes("heat drivers")) {
-    return t("simulation.basicEnergyDetailHeatDrivers", {}, "Heat drivers");
+    return "heat_drivers";
   }
   if (evidence.includes("explain") || purposeOutputLooksLikeEnergyExplain(object.variableName || "")) {
-    return t("simulation.basicEnergyDetailExplain", {}, "Explain");
+    return "explain";
   }
   if (purposeOutputLooksLikeHeatDriver(object.variableName || "")) {
-    return t("simulation.basicEnergyDetailHeatDrivers", {}, "Heat drivers");
+    return "heat_drivers";
   }
-  return t("simulation.basicEnergyDetailLight", {}, "Light");
+  return "light";
+}
+
+function purposeOutputSetDisplayLabel(key = "") {
+  switch (key) {
+    case "sql":
+      return t("simulation.outputSetSQL", {}, "SQL");
+    case "explain":
+      return t("simulation.basicEnergyDetailExplain", {}, "Explain");
+    case "heat_drivers":
+      return t("simulation.basicEnergyDetailHeatDrivers", {}, "Heat drivers");
+    case "light":
+      return t("simulation.basicEnergyDetailLight", {}, "Light");
+    default:
+      return t("simulation.outputSet", {}, "Output set");
+  }
 }
 
 function purposeOutputLooksLikeEnergyExplain(variableName = "") {

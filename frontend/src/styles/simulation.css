@@ -269,7 +269,8 @@
 }
 
 .simulation-plan-summary,
-.simulation-plan-warnings {
+.simulation-plan-warnings,
+.simulation-plan-output-sets {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
@@ -277,6 +278,7 @@
 
 .simulation-plan-summary span,
 .simulation-plan-warnings span,
+.simulation-plan-output-sets span,
 .simulation-output-state {
   display: inline-flex;
   align-items: center;
@@ -288,6 +290,11 @@
   color: var(--muted);
   font-size: 11px;
   font-weight: 700;
+}
+
+.simulation-plan-output-sets b {
+  margin-right: 4px;
+  color: var(--text);
 }
 
 .simulation-plan-warnings span.warning,

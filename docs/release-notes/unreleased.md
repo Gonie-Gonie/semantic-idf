@@ -159,6 +159,9 @@ The release script infers bump size from these sections:
   traceable on both sides.
 - Batch Simulation Basic Energy comparison now shows residual delta tables in
   the UI, matching the residual rows already exported in workbook deltas.
+- The Simulation run plan now summarizes Basic Energy output sets by tier and
+  state, making SQL, Light, Explain, and Heat Driver request coverage visible
+  before running.
 - Basic Energy source metadata now includes `aggregationMethod` for SQL/report
   sources, and the Sources view, inspector tables, and batch CSV export show it.
 - Basic Energy source metadata now preserves both source units and normalized
