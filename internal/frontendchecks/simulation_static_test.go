@@ -31,7 +31,8 @@ func TestFrontendSimulationEnergySystemsCrossJumpContracts(t *testing.T) {
 		"relationshipRule",
 		"energyExplanationRelationshipRuleLabel",
 		"missingCategories",
-		`allocationPolicy: "direct_only"`,
+		"simulationPurposeAllocationPolicy",
+		"elements.simulationPurposeAllocationPolicy?.value",
 		"navigateHVAC(",
 	} {
 		if !strings.Contains(simulation, term) {
@@ -41,6 +42,10 @@ func TestFrontendSimulationEnergySystemsCrossJumpContracts(t *testing.T) {
 	hvac := readTestFile(t, "frontend/src/js/views/hvac-views.js")
 	if !strings.Contains(hvac, "export function navigateHVAC") {
 		t.Fatalf("hvac navigation should remain exportable for simulation energy cross-jumps")
+	}
+	indexHTML := readTestFile(t, "frontend/src/index.html")
+	if !strings.Contains(indexHTML, "simulationPurposeAllocationPolicy") || !strings.Contains(indexHTML, "by_zone_load_share") {
+		t.Fatalf("simulation allocation policy control is missing")
 	}
 	styles := readTestFile(t, "frontend/src/styles/simulation.css")
 	for _, term := range []string{".energy-related-service-paths", ".energy-service-path-chip", ".simulation-energy-focus-controls", ".energy-source-availability", ".simulation-source-output-jump"} {
@@ -56,7 +61,7 @@ func TestFrontendBatchEnergyExplanationDeltaContracts(t *testing.T) {
 		"renderEnergyExplanationDeltaRanking",
 		"energyExplanationDeltaRows",
 		"energyExplanationDeltaStatus",
-		`allocationPolicy: "direct_only"`,
+		"elements.multiSimulationAllocationPolicy?.value",
 		"exportMultiSimulationCSV",
 		"energyExplanationSummaryExportItems",
 		"energyExplanationSourceExportItems",
@@ -76,5 +81,8 @@ func TestFrontendBatchEnergyExplanationDeltaContracts(t *testing.T) {
 	html := readTestFile(t, "frontend/src/batch.html")
 	if !strings.Contains(html, "multiSimulationExport") {
 		t.Fatalf("batch simulation export button is missing")
+	}
+	if !strings.Contains(html, "multiSimulationAllocationPolicy") || !strings.Contains(html, "by_zone_load_share") {
+		t.Fatalf("batch simulation allocation policy control is missing")
 	}
 }

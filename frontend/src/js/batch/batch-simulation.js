@@ -859,7 +859,7 @@ export function initializeMultiSimulationTool(context) {
     return {
       purposes: purposes.length ? purposes : ["basic_energy"],
       frequencyPolicy: "purpose_default",
-      allocationPolicy: "direct_only",
+      allocationPolicy: elements.multiSimulationAllocationPolicy?.value || "direct_only",
       sqlMode: "sql_first",
       persistOutputs: false,
       discoveryAllowed: false,
@@ -1003,6 +1003,7 @@ export function initializeMultiSimulationTool(context) {
     elements.batchPurposeInputs?.forEach((input) => input.addEventListener("change", schedulePlanPreview));
     elements.multiSimulationWeather?.addEventListener("change", schedulePlanPreview);
     elements.multiSimulationWeatherMode?.addEventListener("change", schedulePlanPreview);
+    elements.multiSimulationAllocationPolicy?.addEventListener("change", schedulePlanPreview);
     elements.multiSimulationWorkers?.addEventListener("change", schedulePlanPreview);
     elements.multiSimulationRecursive?.addEventListener("change", schedulePlanPreview);
   }

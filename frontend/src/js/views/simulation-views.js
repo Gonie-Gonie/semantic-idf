@@ -46,6 +46,7 @@ export function initializeSimulationControls() {
   elements.simulationPurposePeriodStart?.addEventListener("input", () => scheduleSimulationRunPlan());
   elements.simulationPurposePeriodEnd?.addEventListener("input", () => scheduleSimulationRunPlan());
   elements.simulationPurposeFrequencyPolicy?.addEventListener("change", () => scheduleSimulationRunPlan());
+  elements.simulationPurposeAllocationPolicy?.addEventListener("change", () => scheduleSimulationRunPlan());
   elements.simulationPurposeApplyMode?.addEventListener("change", () => updatePurposeApplyButton());
   elements.simulationCustomOutputs?.addEventListener("input", () => {
     saveSimulationCustomOutputsPreset();
@@ -3506,7 +3507,7 @@ function buildSimulationPurposeRequest() {
       customOutputs: parseCustomOutputs(elements.simulationCustomOutputs?.value || ""),
     },
     frequencyPolicy: elements.simulationPurposeFrequencyPolicy?.value || "purpose_default",
-    allocationPolicy: "direct_only",
+    allocationPolicy: elements.simulationPurposeAllocationPolicy?.value || "direct_only",
     outputApplyMode: purposeOutputApplyMode(),
     sqlMode: "sql_first",
     persistOutputs: Boolean(elements.simulationPersistOutputs?.checked),
@@ -3951,6 +3952,9 @@ function updateSimulationControls() {
   }
   if (elements.simulationPurposePeriodMode) {
     elements.simulationPurposePeriodMode.disabled = state.simulationRunning;
+  }
+  if (elements.simulationPurposeAllocationPolicy) {
+    elements.simulationPurposeAllocationPolicy.disabled = state.simulationRunning;
   }
   const customPeriod = elements.simulationPurposePeriodMode?.value === "custom";
   for (const input of [elements.simulationPurposePeriodStart, elements.simulationPurposePeriodEnd]) {

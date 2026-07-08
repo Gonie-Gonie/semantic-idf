@@ -37,7 +37,8 @@ The release script infers bump size from these sections:
   end-use, delivered-load, heat-driver, residual, and top-zone rollups.
 - Basic Energy explanation plans and result payloads now support
   `direct_only` and `by_zone_load_share` allocation policies. The zone-load
-  share mode emits `basis=allocated` Energy Use -> Delivered Load edges.
+  share mode emits `basis=allocated` Energy Use -> Delivered Load edges, and
+  Simulation/Batch Simulation controls can select the policy.
 - Basic Energy purpose runs now request monthly delivered-load and heat-driver
   explanation outputs while reusing hourly Zone Heat Flow outputs when that
   purpose is selected.

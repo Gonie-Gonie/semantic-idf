@@ -49,7 +49,8 @@ is a convenience wrapper that defaults to Basic Energy + Zone Heat Flow.
 `SimulationPurposeRequest.allocationPolicy` defaults to `direct_only`. Basic
 Energy also accepts `by_zone_load_share`, which replaces direct Energy Use ->
 Delivered Load links with `basis=allocated` zone-load-share edges when
-zone-scoped delivered-load variables are available. Service-path allocation is
+zone-scoped delivered-load variables are available. The Simulation and Batch
+Simulation purpose controls expose both policies. Service-path allocation is
 still reserved for a future mode.
 
 ## Purpose Model

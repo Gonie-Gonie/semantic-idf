@@ -274,6 +274,13 @@
                 <option value="advanced" data-i18n="batch.advancedSeries">Advanced series overlay</option>
               </select>
             </label>
+            <label>
+              <span data-i18n="simulation.allocationPolicy">Allocation policy</span>
+              <select id="multiSimulationAllocationPolicy">
+                <option value="direct_only" selected data-i18n="simulation.allocationDirectOnly">Direct only</option>
+                <option value="by_zone_load_share" data-i18n="simulation.allocationByZoneLoadShare">By zone load share</option>
+              </select>
+            </label>
             <label class="settings-check">
               <input id="multiSimulationRecursive" type="checkbox" checked />
               <span data-i18n="tools.recursiveFolders">Search folders recursively</span>

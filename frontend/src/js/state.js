@@ -289,6 +289,7 @@ export const elements = {
   simulationPurposePeriodStart: document.querySelector("#simulationPurposePeriodStart"),
   simulationPurposePeriodEnd: document.querySelector("#simulationPurposePeriodEnd"),
   simulationPurposeFrequencyPolicy: document.querySelector("#simulationPurposeFrequencyPolicy"),
+  simulationPurposeAllocationPolicy: document.querySelector("#simulationPurposeAllocationPolicy"),
   simulationPurposeApplyMode: document.querySelector("#simulationPurposeApplyMode"),
   simulationCustomOutputs: document.querySelector("#simulationCustomOutputs"),
   simulationOutputDiscoveryFilter: document.querySelector("#simulationOutputDiscoveryFilter"),
