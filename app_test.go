@@ -547,6 +547,7 @@ func TestBatchSimulationWorkbookSheetsIncludeRunContext(t *testing.T) {
 }
 
 func TestBatchSimulationWorkbookSheetsIncludeSourceAvailability(t *testing.T) {
+	sourceObjectIndex := 4
 	result := simulation.MultiSimulationResult{
 		Results: []simulation.SimulationRunResult{{
 			RunID:    "run-source-availability",
@@ -554,9 +555,18 @@ func TestBatchSimulationWorkbookSheetsIncludeSourceAvailability(t *testing.T) {
 			Status:   "succeeded",
 			PurposeResults: &simulation.PurposeResultBundle{
 				EnergyExplanation: simulation.EnergyExplanationResult{
+					Sources: []simulation.EnergyDataSource{
+						{
+							ID:          "sql-rdd-20",
+							SourceType:  "sql_report_data",
+							IsMeter:     true,
+							Name:        "Electricity:Facility",
+							ObjectIndex: &sourceObjectIndex,
+						},
+					},
 					Completeness: simulation.EnergyCompleteness{
 						SourceAvailability: []simulation.EnergySourceAvailabilityEntry{
-							{Level: "energy", Name: "Electricity:Facility", Status: "found"},
+							{Level: "energy", Name: "Electricity:Facility", Status: "found", SourceIDs: []string{"sql-rdd-20"}},
 							{Level: "load", Name: "Zone Air System Sensible Cooling Energy", Status: "missing"},
 						},
 					},
@@ -565,10 +575,10 @@ func TestBatchSimulationWorkbookSheetsIncludeSourceAvailability(t *testing.T) {
 		}},
 	}
 	sheets := batchSimulationWorkbookSheets(BatchSimulationXLSXExportRequest{Result: result})
-	if len(sheets) != 2 || sheets[1].Name != "Source Availability" {
+	if len(sheets) != 3 || sheets[1].Name != "Energy Sources" || sheets[2].Name != "Source Availability" {
 		t.Fatalf("source availability sheets = %#v", sheets)
 	}
-	if rows := sheets[1].Sections[0].Rows; len(rows) != 2 || rows[0][5] != "found" || rows[1][4] != "Zone Air System Sensible Cooling Energy" || rows[1][5] != "missing" {
+	if rows := sheets[2].Sections[0].Rows; len(rows) != 2 || rows[0][5] != "found" || rows[0][6] != "sql-rdd-20" || rows[0][7] != "4" || rows[1][4] != "Zone Air System Sensible Cooling Energy" || rows[1][5] != "missing" {
 		t.Fatalf("source availability rows = %#v", rows)
 	}
 }

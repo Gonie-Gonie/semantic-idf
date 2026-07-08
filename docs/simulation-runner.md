@@ -296,8 +296,10 @@ periods remain available in the embedded purpose result payload without
 expanding the default spreadsheet export. Compact summary rows also carry their
 source IDs and matching source output object indexes when available. Batch
 Simulation can also export the same core purpose metrics, compact energy
-summary, source metadata, edge, and reconciliation sheets as XLSX. When a
-baseline and target case are selected, the XLSX workbook also includes
+summary, source metadata, source availability, edge, and reconciliation sheets
+as XLSX. Source availability rows preserve `source_ids` and matching output
+object indexes when the source metadata is available. When a baseline and
+target case are selected, the XLSX workbook also includes
 comparison context, summary delta, and annual Sankey edge delta sheets. The
 workbook also includes a Run Context sheet with the selected paths, purpose
 request, frequency/allocation policy, weather mode/path, worker count, and

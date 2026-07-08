@@ -1504,14 +1504,15 @@ func batchSimulationEnergySourceSection(result simulation.MultiSimulationResult)
 func batchSimulationEnergySourceAvailabilitySection(result simulation.MultiSimulationResult) tabular.Section {
 	section := tabular.Section{
 		Title:   "source_availability",
-		Headers: []string{"file", "run_status", "run_id", "level", "output", "availability_status"},
+		Headers: []string{"file", "run_status", "run_id", "level", "output", "availability_status", "source_ids", "source_object_index"},
 	}
 	for _, item := range result.Results {
 		if item.PurposeResults == nil {
 			continue
 		}
 		file := batchSimulationFileLabel(item)
-		for _, availability := range item.PurposeResults.EnergyExplanation.Completeness.SourceAvailability {
+		explanation := item.PurposeResults.EnergyExplanation
+		for _, availability := range explanation.Completeness.SourceAvailability {
 			section.Rows = append(section.Rows, []string{
 				file,
 				item.Status,
@@ -1519,10 +1520,30 @@ func batchSimulationEnergySourceAvailabilitySection(result simulation.MultiSimul
 				availability.Level,
 				availability.Name,
 				availability.Status,
+				strings.Join(availability.SourceIDs, "; "),
+				batchSimulationSourceObjectIndexes(explanation, availability.SourceIDs),
 			})
 		}
 	}
 	return section
+}
+
+func batchSimulationSourceObjectIndexes(explanation simulation.EnergyExplanationResult, sourceIDs []string) string {
+	sourceByID := map[string]simulation.EnergyDataSource{}
+	for _, source := range explanation.Sources {
+		sourceByID[source.ID] = source
+	}
+	seen := map[int]bool{}
+	indexes := []string{}
+	for _, sourceID := range sourceIDs {
+		source := sourceByID[sourceID]
+		if source.ObjectIndex == nil || seen[*source.ObjectIndex] {
+			continue
+		}
+		seen[*source.ObjectIndex] = true
+		indexes = append(indexes, fmt.Sprintf("%d", *source.ObjectIndex))
+	}
+	return strings.Join(indexes, "; ")
 }
 
 func batchSimulationEnergyEdgeSection(result simulation.MultiSimulationResult) tabular.Section {
