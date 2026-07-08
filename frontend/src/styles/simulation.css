@@ -1371,12 +1371,32 @@
   cursor: pointer;
 }
 
-.energy-sankey-edge.measured_variable {
+.energy-sankey-edge.measured,
+.energy-sankey-edge.measured_meter {
+  stroke: color-mix(in srgb, #2563eb 64%, transparent);
+}
+
+.energy-sankey-edge.measured_variable,
+.energy-sankey-edge.measured_energy_variable {
   stroke: color-mix(in srgb, var(--green) 62%, transparent);
+}
+
+.energy-sankey-edge.integrated_rate_variable {
+  stroke: color-mix(in srgb, var(--green) 62%, transparent);
+  stroke-dasharray: 10 4;
 }
 
 .energy-sankey-edge.derived_balance {
   stroke: color-mix(in srgb, #7c3aed 62%, transparent);
+}
+
+.energy-sankey-edge.derived_kpi {
+  stroke: color-mix(in srgb, #0f766e 62%, transparent);
+}
+
+.energy-sankey-edge.tabular_annual_value {
+  stroke: color-mix(in srgb, #64748b 62%, transparent);
+  stroke-dasharray: 2 5;
 }
 
 .energy-sankey-edge.allocated {
@@ -1632,6 +1652,10 @@
 .energy-sankey-legend i.node.other {
   background: color-mix(in srgb, #94a3b8 24%, var(--surface-2));
   border-color: #64748b;
+}
+
+.energy-sankey-legend i.measured_meter {
+  background: #2563eb;
 }
 
 .energy-sankey-legend i.measured_variable {

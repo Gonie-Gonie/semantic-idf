@@ -41,6 +41,9 @@ The release script infers bump size from these sections:
 - Energy explanation Sankey now uses carrier/service-specific node colors and a
   legend for common electricity, fuel, district cooling/heating, cooling, and
   heating classes.
+- Energy explanation Sankey edges now carry normalized relation/basis classes
+  so measured, integrated, derived, allocated, and residual flows render with
+  matching line styles and legend samples.
 - Basic Energy Monthly chart bars and ledger rows now open the matching Sankey
   period so month-level accounting changes are easier to inspect.
 - Basic Energy Monthly view now includes a compact Energy Use, Delivered Load,
