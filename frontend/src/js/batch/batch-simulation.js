@@ -526,6 +526,38 @@ export function initializeMultiSimulationTool(context) {
           (edge.relatedPathIds || []).join("; "),
         ]);
       });
+      energyExplanationReconciliationExportItems(item.purposeResults?.energyExplanation || {}).forEach((reconciliation) => {
+        rows.push([
+          file,
+          item.status || "",
+          item.runId || "",
+          "energy_explanation.reconciliation",
+          reconciliation.id || "",
+          reconciliation.label || "",
+          reconciliation.residualValue ?? "",
+          reconciliation.unit || "",
+          formatSignedValue(reconciliation.residualValue, reconciliation.unit || ""),
+          reconciliation.level || "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          reconciliation.period || "",
+          "reconciliation",
+          reconciliation.basis || "",
+          "",
+          reconciliation.formula || "",
+          "",
+          "",
+          "",
+          reconciliation.serviceKind || "",
+          (reconciliation.sourceIds || []).join("; "),
+          "",
+        ]);
+      });
     });
     downloadCSV(rows, "batch-simulation-purpose-results.csv");
     if (elements.multiSimulationStatus) {
@@ -574,6 +606,20 @@ export function initializeMultiSimulationTool(context) {
         label: `${nodeLabels.get(edge.fromId) || edge.fromId || ""} -> ${nodeLabels.get(edge.toId) || edge.toId || ""}`,
       }));
     });
+  }
+
+  function energyExplanationReconciliationExportItems(explanation = {}) {
+    const periodGraphs = (explanation.periods || []).filter((period) => (period.reconciliation || []).length);
+    const graphs = periodGraphs.length
+      ? periodGraphs
+      : [{ id: "annual", label: "Annual", reconciliation: explanation.reconciliation || [] }];
+    return graphs.flatMap((graph) =>
+      (graph.reconciliation || []).map((item) => ({
+        ...item,
+        period: item.period || graph.id || "",
+        periodLabel: graph.label || graph.id || "",
+      })),
+    );
   }
 
   function energyExplanationSourceExportItems(explanation = {}) {
