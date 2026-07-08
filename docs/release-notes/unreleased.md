@@ -96,6 +96,9 @@ The release script infers bump size from these sections:
 - Basic Energy explanation plans now request the delivered-load alias catalog
   across zone air system, ideal loads, radiant HVAC, coil, and plant demand
   outputs at monthly frequency.
+- Basic Energy delivered-load nodes now expose `pathType` metadata (`zone`,
+  `system`, or `plant`) alongside `serviceKind`, and batch CSV exports include
+  the path type.
 - Basic Energy explanation plans now request detailed monthly heat-driver
   outputs for people, lights, equipment, infiltration, ventilation, and mixing
   in addition to heat-balance and fan heat drivers.

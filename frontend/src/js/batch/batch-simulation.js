@@ -431,6 +431,7 @@ export function initializeMultiSimulationTool(context) {
       "related_path_ids",
       "source_unit",
       "normalized_unit",
+      "path_type",
     ]];
     (result.results || []).forEach((item) => {
       const file = item.filename || fileName(item.inputPath);
@@ -458,6 +459,7 @@ export function initializeMultiSimulationTool(context) {
           "",
           ...emptyEnergyExplanationEdgeExportFields(),
           ...emptyEnergyExplanationSourceUnitExportFields(),
+          "",
         ]);
       }
       energyExplanationSummaryExportItems(explanationSummary).forEach((metric) => {
@@ -482,6 +484,7 @@ export function initializeMultiSimulationTool(context) {
           energyExplanationSourceObjectIndexes(explanation, metric.sourceIds || []),
           ...emptyEnergyExplanationEdgeExportFields(metric.sourceIds || []),
           ...emptyEnergyExplanationSourceUnitExportFields(),
+          metric.pathType || "",
         ]);
       });
       energyExplanationSourceExportItems(explanation).forEach((source) => {
@@ -506,6 +509,7 @@ export function initializeMultiSimulationTool(context) {
           source.objectIndex ?? "",
           ...emptyEnergyExplanationEdgeExportFields(),
           ...energyExplanationSourceUnitExportFields(source),
+          "",
         ]);
       });
       energyExplanationEdgeExportItems(explanation).forEach((edge) => {
@@ -540,6 +544,7 @@ export function initializeMultiSimulationTool(context) {
           (edge.sourceIds || []).join("; "),
           (edge.relatedPathIds || []).join("; "),
           ...emptyEnergyExplanationSourceUnitExportFields(),
+          edge.pathType || "",
         ]);
       });
       energyExplanationReconciliationExportItems(explanation).forEach((reconciliation) => {
@@ -574,6 +579,7 @@ export function initializeMultiSimulationTool(context) {
           (reconciliation.sourceIds || []).join("; "),
           "",
           ...emptyEnergyExplanationSourceUnitExportFields(),
+          "",
         ]);
       });
     });
@@ -630,6 +636,7 @@ export function initializeMultiSimulationTool(context) {
         value: item.value,
         unit: item.unit || "",
         level: item.level || item.kind || "",
+        pathType: item.pathType || "",
         status: summary.completeness?.status || "",
         sourceIds: item.sourceIds || [],
       })),

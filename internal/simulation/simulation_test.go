@@ -551,7 +551,7 @@ func TestParseSimulationEnergyExplanationSQLBuildsAccountingGraph(t *testing.T) 
 		t.Fatalf("cooling node = %#v", cooling)
 	}
 	load := energyExplanationNodeByID(result.Nodes, "load.cooling.zone_one")
-	if load == nil || load.Level != "load" || load.Value != 0.5 || load.ServiceKind != "cooling" || load.ZoneName != "ZONE ONE" || !stringSliceContains(load.SourceIDs, "sql-rdd-23") {
+	if load == nil || load.Level != "load" || load.Value != 0.5 || load.ServiceKind != "cooling" || load.PathType != "zone" || load.ZoneName != "ZONE ONE" || !stringSliceContains(load.SourceIDs, "sql-rdd-23") {
 		t.Fatalf("load node = %#v", load)
 	}
 	heat := energyExplanationNodeByID(result.Nodes, "heat.internal_convective.zone_one")
@@ -638,7 +638,7 @@ func TestParseSimulationEnergyExplanationSQLBuildsAccountingGraph(t *testing.T) 
 	if summary.Schema != energyExplanationSummarySchema || summary.AllocationPolicy != PurposeAllocationPolicyDirectOnly || len(summary.EnergyByCarrier) != 1 || summary.EnergyByCarrier[0].Value != 3 {
 		t.Fatalf("summary energy = %#v", summary)
 	}
-	if item := energyExplanationSummaryItemByID(summary.DeliveredLoadByService, "load.zone_cooling"); item == nil || item.Value != 0.5 {
+	if item := energyExplanationSummaryItemByID(summary.DeliveredLoadByService, "load.zone_cooling"); item == nil || item.Value != 0.5 || item.PathType != "zone" {
 		t.Fatalf("summary delivered load = %#v", summary.DeliveredLoadByService)
 	}
 	if item := energyExplanationSummaryItemByID(summary.TopHeatDrivers, "heat.internal_convective"); item == nil || item.Value != 0.5 {

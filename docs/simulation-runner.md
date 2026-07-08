@@ -182,6 +182,9 @@ integrates them to `kWh` by timestep and links Delivered Load to Heat Drivers
 with signed driver values and residual reconciliation. Explicit sensible heat
 gain/loss outputs are kept as separate positive/negative heat-driver nodes even
 when EnergyPlus reports both source series as positive energy values.
+Delivered-load nodes carry both `serviceKind` and `pathType` metadata, using the
+load alias scope (`zone`, `system`, or `plant`) so HVAC service links and batch
+exports can distinguish zone loads from broader system or plant demand.
 
 Generic SQL and CSV series keep original values for compatibility and also
 expose display metadata (`displayColumn`, `displayUnit`, `displayMin`,
@@ -209,13 +212,13 @@ normal zero. Batch Simulation can export purpose metrics, compact
 `energyExplanationSummary` rows, `energyExplanation` source metadata rows,
 reconciliation rows, and Sankey edge metadata rows with period, relation, basis,
 `ruleId`, formula, endpoint, service, zone, source IDs, related source output
-object indexes, source/normalized units, and related HVAC service path IDs as
-CSV for spreadsheet comparison. The batch CSV keeps annual, monthly, and
-selected-range explanation periods by default; daily periods remain available in
-the embedded purpose result payload without expanding the default spreadsheet
-export. Compact summary rows also carry their source IDs and matching source
-output object indexes when available. Batch Simulation can also export the full
-batch result as
+object indexes, source/normalized units, load path type, and related HVAC
+service path IDs as CSV for spreadsheet comparison. The batch CSV keeps annual,
+monthly, and selected-range explanation periods by default; daily periods remain
+available in the embedded purpose result payload without expanding the default
+spreadsheet export. Compact summary rows also carry their source IDs and
+matching source output object indexes when available. Batch Simulation can also
+export the full batch result as
 `semantic-idf.batch-simulation/v1` JSON, preserving embedded purpose result
 payloads such as high-resolution daily explanation periods that are intentionally
 omitted from the default CSV.

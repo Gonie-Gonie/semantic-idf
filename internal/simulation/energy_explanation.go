@@ -62,6 +62,7 @@ type EnergyExplanationSummaryItem struct {
 	Unit                string   `json:"unit,omitempty"`
 	ZoneName            string   `json:"zoneName,omitempty"`
 	ServiceKind         string   `json:"serviceKind,omitempty"`
+	PathType            string   `json:"pathType,omitempty"`
 	Carrier             string   `json:"carrier,omitempty"`
 	EndUse              string   `json:"endUse,omitempty"`
 	MeterHierarchyLevel string   `json:"meterHierarchyLevel,omitempty"`
@@ -83,6 +84,7 @@ type EnergyExplanationNode struct {
 	ZoneName            string   `json:"zoneName,omitempty"`
 	LoopName            string   `json:"loopName,omitempty"`
 	ServiceKind         string   `json:"serviceKind,omitempty"`
+	PathType            string   `json:"pathType,omitempty"`
 	Carrier             string   `json:"carrier,omitempty"`
 	EndUse              string   `json:"endUse,omitempty"`
 	MeterHierarchyLevel string   `json:"meterHierarchyLevel,omitempty"`
@@ -257,6 +259,7 @@ type energyExplanationSeries struct {
 	EndUse              string
 	MeterHierarchyLevel string
 	ServiceKind         string
+	PathType            string
 	ZoneName            string
 	LoopName            string
 	HeatCategory        string
@@ -723,7 +726,7 @@ func buildEnergyExplanationSummary(explanation EnergyExplanationResult) EnergyEx
 			key := node.EndUse + "." + node.Carrier
 			addEnergyExplanationSummaryNode(energyByEndUse, key, node, value)
 		case node.Level == "load":
-			key := firstNonEmpty(node.ServiceKind, node.Kind, node.ID)
+			key := energyExplanationLoadSummaryKey(node)
 			addEnergyExplanationSummaryNode(loadByService, key, node, value)
 		case node.Level == "heat":
 			key := energyExplanationHeatSummaryKey(node)
@@ -777,6 +780,7 @@ func addEnergyExplanationSummaryNode(groups map[string]*EnergyExplanationSummary
 			Unit:                node.Unit,
 			ZoneName:            node.ZoneName,
 			ServiceKind:         node.ServiceKind,
+			PathType:            node.PathType,
 			Carrier:             node.Carrier,
 			EndUse:              node.EndUse,
 			MeterHierarchyLevel: node.MeterHierarchyLevel,
@@ -804,6 +808,15 @@ func energyExplanationSummaryItemID(key string, node EnergyExplanationNode) stri
 		return node.Kind
 	}
 	return firstNonEmpty(node.ID, key)
+}
+
+func energyExplanationLoadSummaryKey(node EnergyExplanationNode) string {
+	service := strings.TrimSpace(node.ServiceKind)
+	pathType := strings.TrimSpace(node.PathType)
+	if service != "" && pathType != "" {
+		return service + "." + pathType
+	}
+	return firstNonEmpty(service, node.Kind, node.ID)
 }
 
 func energyExplanationHeatSummaryKey(node EnergyExplanationNode) string {
@@ -888,6 +901,9 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 		existing.node.DisplayValue = roundedEnergyNumber(existing.node.DisplayValue + node.DisplayValue)
 		existing.node.SourceIDs = appendUniqueStrings(existing.node.SourceIDs, node.SourceIDs...)
 		existing.node.RelatedPathIDs = appendUniqueStrings(existing.node.RelatedPathIDs, node.RelatedPathIDs...)
+		if existing.node.PathType == "" {
+			existing.node.PathType = node.PathType
+		}
 	}
 	for _, item := range series {
 		value := valueFor(item)
@@ -933,6 +949,7 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 				ZoneName:    item.ZoneName,
 				LoopName:    item.LoopName,
 				ServiceKind: item.ServiceKind,
+				PathType:    item.PathType,
 				SourceIDs:   item.SourceIDs,
 			})
 			loadNodesByService[item.ServiceKind] = appendUniqueStrings(loadNodesByService[item.ServiceKind], nodeID)
@@ -1469,6 +1486,7 @@ func energyExplanationSeriesForBuilder(builder *energyExplanationSeriesBuilder, 
 			Label:            def.Label,
 			Unit:             builder.unit,
 			ServiceKind:      def.ServiceKind,
+			PathType:         def.Scope,
 			ZoneName:         zoneName,
 			LoopName:         loopName,
 			Basis:            "measured_variable",

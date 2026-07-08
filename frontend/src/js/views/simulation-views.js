@@ -1225,6 +1225,9 @@ function renderEnergyExplanationInspector(selection, explanation = {}) {
   if (selection.serviceKind) {
     inspectorFields.push({ label: t("simulation.service", {}, "Service"), value: selection.serviceKind });
   }
+  if (selection.pathType) {
+    inspectorFields.push({ label: t("simulation.pathType", {}, "Path type"), value: simulationPathTypeLabel(selection.pathType) });
+  }
   const relatedPaths = renderSimulationEnergyRelatedServicePaths(selection);
   return `
     <section class="energy-explanation-inspector">
