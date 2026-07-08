@@ -7,6 +7,9 @@ import (
 
 func TestFrontendSimulationEnergySystemsCrossJumpContracts(t *testing.T) {
 	simulation := readTestFile(t, "frontend/src/js/views/simulation-views.js")
+	if strings.Contains(strings.ToLower(simulation), "confidence") {
+		t.Fatalf("simulation energy renderer should describe basis without confidence vocabulary")
+	}
 	for _, term := range []string{
 		`["systems", t("simulation.systems"`,
 		"renderEnergySystemsSubview",

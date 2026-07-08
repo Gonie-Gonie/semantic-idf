@@ -1243,7 +1243,7 @@ function renderEnergyMonthlySubview(explanation = {}, facility = [], endUse = []
     <section class="simulation-energy-block">
       <div class="simulation-energy-block-head">
         <h4>${escapeHTML(t("simulation.energyExplanationMonthly", {}, "Explanation monthly ledger"))}</h4>
-        <span>${escapeHTML(t("simulation.energyBasisNote", {}, "Basis is accounting/source type, not confidence."))}</span>
+        <span>${escapeHTML(t("simulation.energyBasisNote", {}, "Basis is accounting/source type."))}</span>
       </div>
       <div class="output-table-wrap">
         <table class="output-table">
@@ -1346,7 +1346,7 @@ function renderEnergyZonesSubview(zones = [], explanation = {}) {
     <section class="simulation-energy-block">
       <div class="simulation-energy-block-head">
         <h4>${escapeHTML(t("simulation.zoneHeatDrivers", {}, "Zone heat drivers"))}</h4>
-        <span>${escapeHTML(t("simulation.energyBasisNote", {}, "Basis is accounting/source type, not confidence."))}</span>
+        <span>${escapeHTML(t("simulation.energyBasisNote", {}, "Basis is accounting/source type."))}</span>
       </div>
       <div class="output-table-wrap">
         <table class="output-table">
@@ -1677,7 +1677,7 @@ function renderEnergyExplanationSankey(explanation = {}) {
     <section class="simulation-energy-block">
       <div class="simulation-energy-block-head">
         <h4>${escapeHTML(t("simulation.energyPath", {}, "Energy Use -> Delivered Load -> Heat Drivers"))}</h4>
-        <span>${escapeHTML(t("simulation.energyBasisNote", {}, "Basis is accounting/source type, not confidence."))} / ${escapeHTML(energyExplanationSignModeLabel(state.simulationEnergySignMode || "display"))}</span>
+        <span>${escapeHTML(t("simulation.energyBasisNote", {}, "Basis is accounting/source type."))} / ${escapeHTML(energyExplanationSignModeLabel(state.simulationEnergySignMode || "display"))}</span>
       </div>
       ${svg}
       ${renderEnergyExplanationGroupingNotice(graph.grouping)}
