@@ -759,6 +759,65 @@ func TestParseSimulationEnergyExplanationSQLPrefersEnergyOverRateFallback(t *tes
 	}
 }
 
+func TestParseSimulationEnergyExplanationSQLIntegratesRateOnlyOutputs(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "eplusout.sql")
+	createTestEnergySQL(t, path)
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`INSERT INTO ReportDataDictionary VALUES
+		(23, 'ZONE ONE', 'Zone Air System Sensible Cooling Rate', 'W'),
+		(24, 'ZONE ONE', 'Zone Air Heat Balance Internal Convective Heat Gain Rate', 'W')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO "Time" VALUES
+		(3, 1, 1, 1, 0),
+		(4, 1, 1, 2, 0)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO ReportData VALUES
+		(7, 3, 23, 1000.0),
+		(8, 4, 23, 1000.0),
+		(9, 3, 24, 250.0),
+		(10, 4, 24, 250.0)`); err != nil {
+		t.Fatal(err)
+	}
+
+	plan := &PurposeRunPlan{OutputObjects: []PurposeOutputObject{
+		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, VariableName: "Zone Air System Sensible Cooling Rate"},
+		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, VariableName: "Zone Air Heat Balance Internal Convective Heat Gain Rate"},
+	}}
+	result, err := parseSimulationEnergyExplanationSQL(path, plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	load := energyExplanationNodeByID(result.Nodes, "load.cooling.zone_one")
+	if load == nil || load.Value != 2 || load.Unit != "kWh" || !stringSliceContains(load.SourceIDs, "sql-rdd-23") {
+		t.Fatalf("rate-integrated load node = %#v", load)
+	}
+	heat := energyExplanationNodeByID(result.Nodes, "heat.internal_convective.zone_one")
+	if heat == nil || heat.Value != 0.5 || heat.Unit != "kWh" || heat.SignedValue != 0.5 || !stringSliceContains(heat.SourceIDs, "sql-rdd-24") {
+		t.Fatalf("rate-integrated heat node = %#v", heat)
+	}
+	monthly := result.Periods[1]
+	if monthly.ID != "M1" {
+		t.Fatalf("first monthly period = %#v", monthly)
+	}
+	if monthLoad := energyExplanationNodeByID(monthly.Nodes, "load.cooling.zone_one"); monthLoad == nil || monthLoad.Value != 2 {
+		t.Fatalf("monthly rate-integrated load = %#v", monthLoad)
+	}
+	if source := energyExplanationSourceByID(result.Sources, "sql-rdd-23"); source == nil || source.AggregationMethod != "integrate_rate_by_time_interval" || source.NormalizedUnit != "kWh" {
+		t.Fatalf("rate load source metadata = %#v", source)
+	}
+	if source := energyExplanationSourceByID(result.Sources, "sql-rdd-24"); source == nil || source.AggregationMethod != "integrate_rate_by_time_interval" || source.NormalizedUnit != "kWh" {
+		t.Fatalf("rate heat source metadata = %#v", source)
+	}
+}
+
 func TestParseSimulationEnergyExplanationSQLScopesDeliveredLoadNodes(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "eplusout.sql")
