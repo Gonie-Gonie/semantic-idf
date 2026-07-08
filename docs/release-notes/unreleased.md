@@ -36,7 +36,8 @@ The release script infers bump size from these sections:
   and heating pressure, signed heat, and residual values with Sankey focus
   jumps, Heat-Flow Ledger jumps, and HVAC service-path links.
 - Basic Energy Systems view now shows service-path source energy, delivered
-  load, heat-driver totals, connected systems, and supporting assets together.
+  load, heat-driver totals, connected systems, and supporting assets together,
+  with a direct Sankey service-path focus jump.
 - Basic Energy Overview now includes an annual Energy Use breakdown by carrier
   and end use, with source links for each row.
 - Energy explanation completeness now surfaces missing categories and source

@@ -802,6 +802,7 @@ const dictionaries = {
     "simulation.outputDiscoveryNone": "No catalog",
     "simulation.outputDiscoveryStats": "{shown} of {total} outputs",
     "simulation.openSankeyPeriod": "Open {period} in Sankey",
+    "simulation.openServicePathInSankey": "Sankey",
     "simulation.openZoneInSankey": "Sankey",
     "simulation.openZoneHeatFlow": "Heat Flow",
     "simulation.periodCustom": "Custom dates",

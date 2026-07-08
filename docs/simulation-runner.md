@@ -295,7 +295,8 @@ Purpose result viewers now include:
   current HVAC service model by zone and service kind, then link directly to the
   related HVAC service path. The Systems table now shows source energy,
   delivered load, heat-driver totals, connected plant/air/source systems, and
-  supporting assets on the same service-path row. Sankey and Systems can focus the graph by all
+  supporting assets on the same service-path row, and each row can open the
+  matching Sankey service-path focus. Sankey and Systems can focus the graph by all
   results, a selected zone, or a selected HVAC service path without changing the
   stored explanation payload. The Sankey view can switch heat-driver rendering
   between display magnitude, signed balance, cooling-pressure, and

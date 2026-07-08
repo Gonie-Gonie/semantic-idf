@@ -726,8 +726,8 @@ function renderEnergySystemsSubview(explanation = {}) {
       </div>
       <div class="output-table-wrap">
         <table class="output-table">
-          <thead><tr><th>Zone</th><th>Service</th><th>${escapeHTML(t("simulation.sourceEnergy", {}, "Source energy"))}</th><th>${escapeHTML(t("simulation.deliveredLoad", {}, "Delivered Load"))}</th><th>${escapeHTML(t("simulation.heatDrivers", {}, "Heat Drivers"))}</th><th>${escapeHTML(t("hvac.delivery", {}, "Delivery"))}</th><th>${escapeHTML(t("hvac.connectedSystems", {}, "Connected systems"))}</th><th>${escapeHTML(t("hvac.supportingAssets", {}, "Supporting assets"))}</th><th>Path type</th></tr></thead>
-          <tbody>${rows || `<tr><td colspan="9">${escapeHTML(hasHVAC ? t("simulation.noRelatedSystems", {}, "No related service paths for the current energy graph.") : t("hvac.noServicePaths", {}, "No service paths"))}</td></tr>`}</tbody>
+          <thead><tr><th>Zone</th><th>Service</th><th>${escapeHTML(t("simulation.sourceEnergy", {}, "Source energy"))}</th><th>${escapeHTML(t("simulation.deliveredLoad", {}, "Delivered Load"))}</th><th>${escapeHTML(t("simulation.heatDrivers", {}, "Heat Drivers"))}</th><th>${escapeHTML(t("hvac.delivery", {}, "Delivery"))}</th><th>${escapeHTML(t("hvac.connectedSystems", {}, "Connected systems"))}</th><th>${escapeHTML(t("hvac.supportingAssets", {}, "Supporting assets"))}</th><th>Path type</th><th>${escapeHTML(t("common.view", {}, "View"))}</th></tr></thead>
+          <tbody>${rows || `<tr><td colspan="10">${escapeHTML(hasHVAC ? t("simulation.noRelatedSystems", {}, "No related service paths for the current energy graph.") : t("hvac.noServicePaths", {}, "No service paths"))}</td></tr>`}</tbody>
         </table>
       </div>
     </section>`;
@@ -857,6 +857,7 @@ function simulationEnergyServiceRows(graph = {}) {
           <td>${escapeHTML(simulationServicePathConnectedSystems(path).join(", ") || "N/A")}</td>
           <td>${escapeHTML(simulationServicePathSupportingAssets(path).join(", ") || "N/A")}</td>
           <td>${escapeHTML(simulationPathTypeLabel(path.pathType))}</td>
+          <td><button class="simulation-series-inspect" type="button" data-simulation-energy-service-path-jump="${escapeHTML(path.id || "")}">${escapeHTML(t("simulation.openServicePathInSankey", {}, "Sankey"))}</button></td>
         </tr>`;
     })
     .join("");
@@ -3555,6 +3556,15 @@ function handleSimulationSeriesInspectClick(event) {
     renderSimulationResultTabs(state.simulationResult);
     toggleSimulationResultSections();
     renderSimulationHeatFlow();
+    return;
+  }
+  const energyServicePathJump = event.target.closest("[data-simulation-energy-service-path-jump]");
+  if (energyServicePathJump) {
+    state.simulationEnergyFocusMode = "service_path";
+    state.simulationEnergyServicePathFocus = energyServicePathJump.dataset.simulationEnergyServicePathJump || "";
+    state.simulationEnergySelection = "";
+    state.simulationEnergyView = "sankey";
+    renderSimulationEnergyDashboard(state.simulationResult);
     return;
   }
   const hvacPath = event.target.closest("[data-simulation-hvac-path-id]");
