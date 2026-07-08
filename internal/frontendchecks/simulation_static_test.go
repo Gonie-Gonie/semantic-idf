@@ -44,11 +44,17 @@ func TestFrontendBatchEnergyExplanationDeltaContracts(t *testing.T) {
 		"energyExplanationDeltaRows",
 		"energyExplanationDeltaStatus",
 		`allocationPolicy: "direct_only"`,
+		"exportMultiSimulationCSV",
+		"energyExplanationSummaryExportItems",
 		"Largest Energy Explanation Changes",
 		"missing in baseline",
 	} {
 		if !strings.Contains(batch, term) {
 			t.Fatalf("batch energy explanation delta contract missing %q", term)
 		}
+	}
+	html := readTestFile(t, "frontend/src/batch.html")
+	if !strings.Contains(html, "multiSimulationExport") {
+		t.Fatalf("batch simulation export button is missing")
 	}
 }

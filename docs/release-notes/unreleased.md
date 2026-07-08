@@ -40,6 +40,8 @@ The release script infers bump size from these sections:
   for end-use energy, delivered loads, and heat drivers. The batch explanation
   comparison also ranks the largest annual changes and labels missing baseline
   or comparison rows.
+- Batch Simulation can export purpose metrics and compact Basic Energy
+  explanation summary rows as CSV.
 
 ## Changed
 

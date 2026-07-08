@@ -85,6 +85,7 @@ const elements = {
   multiSimulationSelectFiles: document.querySelector("#multiSimulationSelectFiles"),
   multiSimulationSelectFolder: document.querySelector("#multiSimulationSelectFolder"),
   multiSimulationRun: document.querySelector("#multiSimulationRun"),
+  multiSimulationExport: document.querySelector("#multiSimulationExport"),
   multiSimulationEnergyPlus: document.querySelector("#multiSimulationEnergyPlus"),
   multiSimulationWeather: document.querySelector("#multiSimulationWeather"),
   multiSimulationWeatherMode: document.querySelector("#multiSimulationWeatherMode"),
@@ -1116,6 +1117,7 @@ multiSimulationTool = initializeMultiSimulationTool({
   escapeHTML,
   postJSON,
   t,
+  downloadCSV,
 });
 elements.selectButton.addEventListener("click", runMultiSummary);
 elements.exportButton.addEventListener("click", exportCSV);

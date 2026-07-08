@@ -1,5 +1,5 @@
 export function initializeMultiSimulationTool(context) {
-  const { state, elements, waitForAppAPI, waitForProgressRuntime, escapeHTML, postJSON, t } = context;
+  const { state, elements, waitForAppAPI, waitForProgressRuntime, escapeHTML, postJSON, t, downloadCSV } = context;
   let planPreviewTimer = 0;
 
   async function loadEnvironment() {
@@ -88,6 +88,9 @@ export function initializeMultiSimulationTool(context) {
     state.multiSimulation.selectedRows.clear();
     state.multiSimulation.metric = "";
     elements.multiSimulationRun.disabled = !state.multiSimulation.selectedPaths.length || state.multiSimulation.running;
+    if (elements.multiSimulationExport) {
+      elements.multiSimulationExport.disabled = true;
+    }
     elements.multiSimulationStats.textContent = t(
       "tools.simulationFilesSelected",
       { count: state.multiSimulation.selectedPaths.length },
@@ -205,6 +208,9 @@ export function initializeMultiSimulationTool(context) {
   function renderResult() {
     const result = state.multiSimulation.result;
     if (!result) {
+      if (elements.multiSimulationExport) {
+        elements.multiSimulationExport.disabled = true;
+      }
       elements.multiSimulationMetric.innerHTML = `<option value="">${escapeHTML(t("simulation.noSeries", {}, "No CSV series"))}</option>`;
       elements.multiSimulationChart.innerHTML = `<div class="empty">${escapeHTML(t("tools.noSimulationResult", {}, "Run the selected files to compare simulation output."))}</div>`;
       elements.multiSimulationTable.innerHTML = state.multiSimulation.selectedPaths.length
@@ -215,6 +221,9 @@ export function initializeMultiSimulationTool(context) {
     const total = result.total || 0;
     const succeeded = result.succeeded || 0;
     const failed = result.failed || 0;
+    if (elements.multiSimulationExport) {
+      elements.multiSimulationExport.disabled = !(result.results || []).length;
+    }
     elements.multiSimulationStats.textContent = t(
       "tools.simulationResultStats",
       { total, succeeded, failed, workers: result.workers || 0 },
@@ -380,6 +389,74 @@ export function initializeMultiSimulationTool(context) {
           .join("")}
       </div>
       ${renderEnergyExplanationBatchCompare(result)}`;
+  }
+
+  function exportMultiSimulationCSV() {
+    const result = state.multiSimulation.result;
+    if (!result || !(result.results || []).length || typeof downloadCSV !== "function") {
+      return;
+    }
+    const rows = [["file", "status", "run_id", "metric_type", "metric_id", "label", "value", "unit", "display_value", "level", "detail_status"]];
+    (result.results || []).forEach((item) => {
+      const file = item.filename || fileName(item.inputPath);
+      for (const metric of item.purposeMetrics || []) {
+        rows.push([
+          file,
+          item.status || "",
+          item.runId || "",
+          "purpose_metric",
+          metric.id || "",
+          metric.label || "",
+          metric.value ?? "",
+          metric.unit || "",
+          metric.displayValue || "",
+          metric.purposeId || "",
+          metric.status || "",
+        ]);
+      }
+      energyExplanationSummaryExportItems(item.purposeResults?.energyExplanationSummary || {}).forEach((metric) => {
+        rows.push([
+          file,
+          item.status || "",
+          item.runId || "",
+          metric.type,
+          metric.id || "",
+          metric.label || "",
+          metric.value ?? "",
+          metric.unit || "",
+          "",
+          metric.level || "",
+          metric.status || "",
+        ]);
+      });
+    });
+    downloadCSV(rows, "batch-simulation-purpose-results.csv");
+    if (elements.multiSimulationStatus) {
+      elements.multiSimulationStatus.textContent = t("status.exportedCsv", {}, "CSV exported");
+    }
+  }
+
+  function energyExplanationSummaryExportItems(summary = {}) {
+    const groups = [
+      ["energy_explanation.energy_by_carrier", summary.energyByCarrier || []],
+      ["energy_explanation.energy_by_end_use", summary.energyByEndUse || []],
+      ["energy_explanation.delivered_load_by_service", summary.deliveredLoadByService || []],
+      ["energy_explanation.heat_drivers", summary.heatDrivers || []],
+      ["energy_explanation.residuals", summary.residuals || []],
+      ["energy_explanation.top_heat_drivers", summary.topHeatDrivers || []],
+      ["energy_explanation.top_zones", summary.topZones || []],
+    ];
+    return groups.flatMap(([type, items]) =>
+      (items || []).map((item) => ({
+        type,
+        id: item.id || "",
+        label: energyExplanationSummaryLabel(item),
+        value: item.value,
+        unit: item.unit || "",
+        level: item.level || item.kind || "",
+        status: summary.completeness?.status || "",
+      })),
+    );
   }
 
   function renderEnergyExplanationBatchCompare(result) {
@@ -759,6 +836,7 @@ export function initializeMultiSimulationTool(context) {
     elements.multiSimulationSelectFiles?.addEventListener("click", selectFiles);
     elements.multiSimulationSelectFolder?.addEventListener("click", selectFolder);
     elements.multiSimulationRun?.addEventListener("click", run);
+    elements.multiSimulationExport?.addEventListener("click", exportMultiSimulationCSV);
     elements.multiSimulationMetric?.addEventListener("change", () => {
       state.multiSimulation.metric = elements.multiSimulationMetric.value || "";
       if (state.multiSimulation.result) {
