@@ -110,7 +110,8 @@ related edges also include `relatedPathIds` from the HVAC service model. The
 Sankey inspector and Systems view use those IDs before falling back to
 zone/service-kind matching. SQL source metadata also records the matching output
 request `objectIndex` when the run plan references an existing output object, so
-source tables and batch source CSV rows can jump back to the original request.
+source tables, Sankey inspectors, and batch source CSV rows can jump back to the
+original request before falling back to output-name matching.
 
 Output states:
 

@@ -1181,9 +1181,7 @@ function renderEnergyExplanationInspector(selection, explanation = {}) {
   const sources = energyExplanationSourcesForIDs(explanation, selection.sourceIds || []);
   const sourceRows = sources
     .map((source) => {
-      const object = source.isMeter
-        ? findPurposeOutputObject("Output:Meter", source.keyValue || source.name || "", "")
-        : sourceOutputForVariable(source.keyValue || "", source.name || "");
+      const object = sourceOutputForEnergySource(source);
       return `
         <tr>
           <td>${escapeHTML(source.id || "")}</td>
@@ -1243,9 +1241,7 @@ function renderEnergyExplanationInspector(selection, explanation = {}) {
 function renderEnergyExplanationSources(explanation = {}) {
   const rows = (explanation.sources || [])
     .map((source) => {
-      const object = source.isMeter
-        ? findPurposeOutputObject("Output:Meter", source.keyValue || source.name || "", "")
-        : sourceOutputForVariable(source.keyValue || "", source.name || "");
+      const object = sourceOutputForEnergySource(source);
       return `
         <tr>
           <td>${escapeHTML(source.id || "")}</td>
@@ -2928,8 +2924,26 @@ function sourceOutputForSeriesColumn(column) {
   return sourceOutputForVariable(seriesNodeKey(column), seriesVariableName(column));
 }
 
+function sourceOutputForEnergySource(source = {}) {
+  const indexed = findPurposeOutputObjectByIndex(source.objectIndex);
+  if (indexed) {
+    return indexed;
+  }
+  return source.isMeter
+    ? findPurposeOutputObject("Output:Meter", source.keyValue || source.name || "", "")
+    : sourceOutputForVariable(source.keyValue || "", source.name || "");
+}
+
 function sourceOutputForVariable(keyValue, variableName) {
   return findPurposeOutputObject("Output:Variable", keyValue, variableName);
+}
+
+function findPurposeOutputObjectByIndex(objectIndex) {
+  const index = Number(objectIndex);
+  if (!Number.isFinite(index)) {
+    return null;
+  }
+  return activePurposeOutputObjects().find((object) => Number(object.objectIndex) === index) || null;
 }
 
 function findPurposeOutputObject(objectType, keyValue, variableName) {
