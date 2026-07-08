@@ -145,6 +145,22 @@ func energyExplanationPurposeMetrics(explanation EnergyExplanationResult) []Purp
 			Status:       explanation.Completeness.Status,
 		})
 	}
+	for _, item := range summary.DerivedKPIs {
+		if item.Value == 0 {
+			continue
+		}
+		id := strings.TrimPrefix(item.ID, "kpi.")
+		label := strings.TrimSpace("Derived KPI: " + firstNonEmpty(item.Label, item.Kind, item.ID))
+		metrics = append(metrics, PurposeMetric{
+			ID:           "energy_explanation.kpi." + metricID(id),
+			Label:        label,
+			PurposeID:    SimulationPurposeBasicEnergy,
+			Value:        item.Value,
+			Unit:         item.Unit,
+			DisplayValue: formatPurposeMetric(item.Value, item.Unit),
+			Status:       "ok",
+		})
+	}
 	for _, item := range summary.TopHeatDrivers {
 		if item.Value == 0 {
 			continue

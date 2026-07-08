@@ -187,7 +187,9 @@ load alias scope (`zone`, `system`, or `plant`) so HVAC service links and batch
 exports can distinguish zone loads from broader system or plant demand.
 When electric end-use energy and delivered thermal load are both present, Basic
 Energy also reports derived COP KPIs separately from the Sankey graph rather
-than creating synthetic COP conversion edges.
+than creating synthetic COP conversion edges. Batch purpose metrics expose those
+derived KPIs so COP can be selected directly in the Batch Simulation chart and
+table.
 
 Generic SQL and CSV series keep original values for compatibility and also
 expose display metadata (`displayColumn`, `displayUnit`, `displayMin`,

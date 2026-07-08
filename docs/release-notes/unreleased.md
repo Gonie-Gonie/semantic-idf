@@ -101,7 +101,8 @@ The release script infers bump size from these sections:
   the path type.
 - Basic Energy now reports cooling/heating COP as derived KPIs when matching
   electric end-use energy and delivered load are available, without adding
-  synthetic COP conversion edges to the Sankey graph.
+  synthetic COP conversion edges to the Sankey graph. Batch Simulation exposes
+  those KPIs as selectable purpose metrics.
 - Basic Energy explanation plans now request detailed monthly heat-driver
   outputs for people, lights, equipment, infiltration, ventilation, and mixing
   in addition to heat-balance and fan heat drivers.

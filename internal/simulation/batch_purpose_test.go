@@ -8,8 +8,8 @@ func TestSummarizePurposeMetricsIncludesEnergyExplanationLevels(t *testing.T) {
 			Schema: energyExplanationSchema,
 			Nodes: []EnergyExplanationNode{
 				{ID: "energy.carrier.electricity", Level: "energy", Label: "Electricity", Value: 10, Unit: "kWh"},
-				{ID: "energy.end_use.cooling.electricity", Level: "energy", Label: "Cooling", Value: 4, Unit: "kWh"},
-				{ID: "load.cooling", Level: "load", Label: "Cooling load", Value: 8, Unit: "kWh"},
+				{ID: "energy.end_use.cooling.electricity", Level: "energy", Label: "Cooling", Value: 4, Unit: "kWh", Carrier: "electricity", EndUse: "cooling"},
+				{ID: "load.cooling", Level: "load", Label: "Cooling load", Value: 8, Unit: "kWh", ServiceKind: "cooling", PathType: "zone"},
 				{ID: "heat.internal_convective", Level: "heat", Label: "Internal gains", Value: 3, DisplayValue: 3, Unit: "kWh"},
 				{ID: "residual.energy.electricity", Level: "residual", Label: "Residual", Value: 2, Unit: "kWh"},
 			},
@@ -32,6 +32,9 @@ func TestSummarizePurposeMetricsIncludesEnergyExplanationLevels(t *testing.T) {
 	}
 	if metric := purposeMetricByID(metrics, "energy_explanation.mapped_percent"); metric == nil || metric.Value != 40 || metric.Status != "partial" {
 		t.Fatalf("mapped percent metric = %#v", metric)
+	}
+	if metric := purposeMetricByID(metrics, "energy_explanation.kpi.cooling_cop"); metric == nil || metric.Value != 2 || metric.DisplayValue != "2" || metric.Label != "Derived KPI: Cooling COP" {
+		t.Fatalf("derived KPI metric = %#v", metric)
 	}
 }
 
