@@ -88,6 +88,16 @@ Output:SQLite,
 	if fanHeat == nil || fanHeat.ReportingFrequency != "Monthly" || fanHeat.Reason != "Basic Energy Heat Drivers output" {
 		t.Fatalf("missing monthly fan heat-driver output in %#v", plan.OutputObjects)
 	}
+	for _, variable := range []string{
+		"Zone People Total Heating Energy",
+		"Zone Infiltration Sensible Heat Loss Energy",
+		"Zone Ventilation Sensible Heat Gain Rate",
+	} {
+		detailedHeatDriver := findPurposeOutput(plan, "Output:Variable", "*", variable)
+		if detailedHeatDriver == nil || detailedHeatDriver.ReportingFrequency != "Monthly" || detailedHeatDriver.Reason != "Basic Energy Heat Drivers output" {
+			t.Fatalf("missing detailed heat-driver output %q in %#v", variable, plan.OutputObjects)
+		}
+	}
 	if plan.EstimatedFrames != 12 {
 		t.Fatalf("estimated frames = %d, want 12 for monthly energy", plan.EstimatedFrames)
 	}
@@ -480,16 +490,36 @@ output|Output:Variable|*|Zone Air System Sensible Cooling Rate|Monthly|temporary
 output|Output:Variable|*|Zone Air System Sensible Heating Energy|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Air System Sensible Heating Rate|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Electric Equipment Electricity Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Electric Equipment Total Heating Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Electric Equipment Total Heating Rate|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Gas Equipment Gas Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Gas Equipment Total Heating Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Gas Equipment Total Heating Rate|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Ideal Loads Supply Air Total Cooling Energy|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Ideal Loads Supply Air Total Heating Energy|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Ideal Loads Zone Sensible Cooling Energy|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Ideal Loads Zone Sensible Heating Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Infiltration Sensible Heat Gain Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Infiltration Sensible Heat Gain Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Infiltration Sensible Heat Loss Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Infiltration Sensible Heat Loss Rate|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Lights Electricity Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Lights Total Heating Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Lights Total Heating Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Mixing Sensible Heat Gain Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Mixing Sensible Heat Gain Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Mixing Sensible Heat Loss Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Mixing Sensible Heat Loss Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone People Total Heating Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone People Total Heating Rate|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Radiant HVAC Cooling Energy|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Radiant HVAC Cooling Rate|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Radiant HVAC Heating Energy|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Radiant HVAC Heating Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Ventilation Sensible Heat Gain Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Ventilation Sensible Heat Gain Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Ventilation Sensible Heat Loss Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Ventilation Sensible Heat Loss Rate|Monthly|temporary|basic_energy
 `,
 		},
 		{

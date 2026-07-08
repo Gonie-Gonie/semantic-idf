@@ -2268,6 +2268,9 @@ func (builder *purposePlanBuilder) addBasicEnergy() {
 	for _, variable := range basicEnergyObjectHeatDriverVariableNames() {
 		builder.addVariableWithReason(SimulationPurposeBasicEnergy, "*", variable, "Monthly", "medium", "Basic Energy Heat Drivers: monthly object-level heat-driver explanation output.", "Basic Energy Heat Drivers output")
 	}
+	for _, variable := range basicEnergyDetailedHeatDriverVariableNames() {
+		builder.addVariableWithReason(SimulationPurposeBasicEnergy, "*", variable, "Monthly", "medium", "Basic Energy Heat Drivers: monthly detailed zone heat-driver explanation output.", "Basic Energy Heat Drivers output")
+	}
 	if purposeIDsContain(builder.request.Purposes, SimulationPurposeZoneHeatFlow) {
 		return
 	}
@@ -3285,6 +3288,26 @@ func basicEnergyObjectHeatDriverVariableNames() []string {
 		"Fan Air Heat Gain Energy",
 		"Fan Air Heat Gain Rate",
 	}
+}
+
+func basicEnergyDetailedHeatDriverVariableNames() []string {
+	excluded := map[string]bool{}
+	for _, variable := range zoneHeatFlowVariableNames() {
+		excluded[normalizeEnergyOutputName(variable)] = true
+	}
+	for _, variable := range basicEnergyObjectHeatDriverVariableNames() {
+		excluded[normalizeEnergyOutputName(variable)] = true
+	}
+	out := []string{}
+	for _, def := range energyHeatAliasCatalog() {
+		for _, alias := range def.Aliases {
+			if excluded[normalizeEnergyOutputName(alias)] {
+				continue
+			}
+			out = appendUniquePurposeString(out, alias)
+		}
+	}
+	return out
 }
 
 func comfortCheckVariables() []string {
