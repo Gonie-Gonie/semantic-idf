@@ -715,7 +715,7 @@ function renderEnergyUseBreakdownSection(explanation = {}) {
 
 function renderEnergySystemsSubview(explanation = {}) {
   const graph = focusedEnergyExplanationGraph(energyExplanationGraphForPeriod(explanation, state.simulationEnergyPeriod || "annual"));
-  const rows = simulationEnergyServiceRows(graph.nodes || []);
+  const rows = simulationEnergyServiceRows(graph);
   const hasHVAC = simulationHVACServicePaths().length > 0;
   return `
     ${renderEnergyExplanationCompleteness(explanation)}
@@ -726,8 +726,8 @@ function renderEnergySystemsSubview(explanation = {}) {
       </div>
       <div class="output-table-wrap">
         <table class="output-table">
-          <thead><tr><th>Zone</th><th>Service</th><th>${escapeHTML(t("hvac.delivery", {}, "Delivery"))}</th><th>${escapeHTML(t("hvac.connectedSystems", {}, "Connected systems"))}</th><th>Path type</th><th>Load</th><th>Heat drivers</th></tr></thead>
-          <tbody>${rows || `<tr><td colspan="7">${escapeHTML(hasHVAC ? t("simulation.noRelatedSystems", {}, "No related service paths for the current energy graph.") : t("hvac.noServicePaths", {}, "No service paths"))}</td></tr>`}</tbody>
+          <thead><tr><th>Zone</th><th>Service</th><th>${escapeHTML(t("simulation.sourceEnergy", {}, "Source energy"))}</th><th>${escapeHTML(t("simulation.deliveredLoad", {}, "Delivered Load"))}</th><th>${escapeHTML(t("simulation.heatDrivers", {}, "Heat Drivers"))}</th><th>${escapeHTML(t("hvac.delivery", {}, "Delivery"))}</th><th>${escapeHTML(t("hvac.connectedSystems", {}, "Connected systems"))}</th><th>${escapeHTML(t("hvac.supportingAssets", {}, "Supporting assets"))}</th><th>Path type</th></tr></thead>
+          <tbody>${rows || `<tr><td colspan="9">${escapeHTML(hasHVAC ? t("simulation.noRelatedSystems", {}, "No related service paths for the current energy graph.") : t("hvac.noServicePaths", {}, "No service paths"))}</td></tr>`}</tbody>
         </table>
       </div>
     </section>`;
@@ -834,47 +834,79 @@ function energyExplanationLoadPathPriority(pathType = "") {
   }
 }
 
-function simulationEnergyServiceRows(nodes = []) {
+function simulationEnergyServiceRows(graph = {}) {
+  const nodes = Array.isArray(graph) ? graph : graph.nodes || [];
+  const edges = Array.isArray(graph) ? [] : graph.edges || [];
   const paths = simulationRelatedServicePathsForEnergyNodes(nodes);
-  const loadByService = new Map();
-  const loadByZoneService = new Map();
-  const heatByZoneService = new Map();
-  nodes.forEach((node) => {
+  const aggregates = simulationEnergyServiceAggregates(nodes, edges);
+  return paths
+    .map((path) => {
+      const service = simulationCanonicalServiceKind(path.serviceKind);
+      const zoneServiceKey = `${simulationZoneKey(path.zoneName || path.servedSubject?.zoneName || "")}|${service}`;
+      const sourceEnergy = aggregates.energyByPath.get(path.id) || aggregates.energyByService.get(service) || 0;
+      const load = aggregates.loadByPath.get(path.id) || aggregates.loadByZoneService.get(zoneServiceKey) || aggregates.loadByService.get(service) || 0;
+      const heat = aggregates.heatByPath.get(path.id) || aggregates.heatByZoneService.get(zoneServiceKey) || 0;
+      return `
+        <tr>
+          <td>${renderSimulationEnergyServicePathButton(path, simulationServedSubjectLabel(path.servedSubject || path))}</td>
+          <td>${escapeHTML(simulationServiceKindLabel(path.serviceKind))}</td>
+          <td>${escapeHTML(formatValueWithUnit(sourceEnergy, "kWh"))}</td>
+          <td>${escapeHTML(formatValueWithUnit(load, "kWh"))}</td>
+          <td>${escapeHTML(formatValueWithUnit(heat, "kWh"))}</td>
+          <td>${escapeHTML(simulationDeliveryLabel(path))}</td>
+          <td>${escapeHTML(simulationServicePathConnectedSystems(path).join(", ") || "N/A")}</td>
+          <td>${escapeHTML(simulationServicePathSupportingAssets(path).join(", ") || "N/A")}</td>
+          <td>${escapeHTML(simulationPathTypeLabel(path.pathType))}</td>
+        </tr>`;
+    })
+    .join("");
+}
+
+function simulationEnergyServiceAggregates(nodes = [], edges = []) {
+  const nodeByID = new Map((nodes || []).map((node) => [node.id, node]));
+  const aggregates = {
+    energyByService: new Map(),
+    energyByPath: new Map(),
+    loadByService: new Map(),
+    loadByZoneService: new Map(),
+    loadByPath: new Map(),
+    heatByZoneService: new Map(),
+    heatByPath: new Map(),
+  };
+  const add = (map, key, value) => {
+    if (!key) {
+      return;
+    }
+    map.set(key, (map.get(key) || 0) + Math.abs(Number(value) || 0));
+  };
+  (nodes || []).forEach((node) => {
     const service = simulationCanonicalServiceKind(node.serviceKind || energyServiceFromNode(node));
     if (!service) {
       return;
     }
     const value = Number(node.displayValue ?? node.value) || 0;
-    if (node.level === "load") {
-      loadByService.set(service, (loadByService.get(service) || 0) + value);
+    if (node.level === "energy" && String(node.id || "").includes(".end_use.")) {
+      add(aggregates.energyByService, service, value);
+    } else if (node.level === "load") {
+      add(aggregates.loadByService, service, value);
       if (node.zoneName) {
-        const key = `${simulationZoneKey(node.zoneName || "")}|${service}`;
-        loadByZoneService.set(key, (loadByZoneService.get(key) || 0) + value);
+        add(aggregates.loadByZoneService, `${simulationZoneKey(node.zoneName || "")}|${service}`, value);
       }
+      (node.relatedPathIds || []).forEach((pathID) => add(aggregates.loadByPath, pathID, value));
     } else if (node.level === "heat") {
       const zoneKey = simulationZoneKey(node.zoneName || "");
-      const key = `${zoneKey}|${service}`;
-      heatByZoneService.set(key, (heatByZoneService.get(key) || 0) + value);
+      add(aggregates.heatByZoneService, `${zoneKey}|${service}`, value);
+      (node.relatedPathIds || []).forEach((pathID) => add(aggregates.heatByPath, pathID, value));
     }
   });
-  return paths
-    .map((path) => {
-      const service = simulationCanonicalServiceKind(path.serviceKind);
-      const zoneServiceKey = `${simulationZoneKey(path.zoneName || path.servedSubject?.zoneName || "")}|${service}`;
-      const heat = heatByZoneService.get(zoneServiceKey) || 0;
-      const load = loadByZoneService.get(zoneServiceKey) || loadByService.get(service) || 0;
-      return `
-        <tr>
-          <td>${renderSimulationEnergyServicePathButton(path, simulationServedSubjectLabel(path.servedSubject || path))}</td>
-          <td>${escapeHTML(simulationServiceKindLabel(path.serviceKind))}</td>
-          <td>${escapeHTML(simulationDeliveryLabel(path))}</td>
-          <td>${escapeHTML(simulationServicePathConnectedSystems(path).join(", ") || "N/A")}</td>
-          <td>${escapeHTML(simulationPathTypeLabel(path.pathType))}</td>
-          <td>${escapeHTML(formatValueWithUnit(load, "kWh"))}</td>
-          <td>${escapeHTML(formatValueWithUnit(heat, "kWh"))}</td>
-        </tr>`;
-    })
-    .join("");
+  (edges || []).forEach((edge) => {
+    const source = nodeByID.get(edge.fromId);
+    if (edge.relation !== "allocation" || source?.level !== "energy") {
+      return;
+    }
+    (edge.relatedPathIds || []).forEach((pathID) => add(aggregates.energyByPath, pathID, edge.value));
+  });
+  return aggregates;
 }
 
 function renderEnergyMonthlySubview(explanation = {}, facility = [], endUse = []) {
@@ -2079,6 +2111,14 @@ function simulationServicePathConnectedSystems(path = {}) {
     path.refrigerantSystem?.name ? `${path.refrigerantSystem.type || "Refrigerant"} ${path.refrigerantSystem.name}` : "",
     path.sourceSystem?.name ? `${path.sourceSystem.type || "Source"} ${path.sourceSystem.name}` : "",
   ].filter(Boolean);
+}
+
+function simulationServicePathSupportingAssets(path = {}) {
+  const couplingByID = new Map((simulationHVACServiceModel().couplings || []).map((coupling) => [coupling.id, coupling]));
+  return (path.supportingCouplingIds || []).map((id) => {
+    const coupling = couplingByID.get(id) || {};
+    return coupling.object?.displayName || coupling.object?.objectName || coupling.role || id;
+  }).filter(Boolean);
 }
 
 function simulationEnergyServicePathFocusLabel(path = {}) {

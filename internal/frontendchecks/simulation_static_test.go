@@ -10,6 +10,9 @@ func TestFrontendSimulationEnergySystemsCrossJumpContracts(t *testing.T) {
 	for _, term := range []string{
 		`["systems", t("simulation.systems"`,
 		"renderEnergySystemsSubview",
+		"simulationEnergyServiceAggregates",
+		"simulationServicePathSupportingAssets",
+		"simulation.sourceEnergy",
 		"data-simulation-hvac-path-id",
 		"simulationRelatedServicePathsForEnergySelection",
 		"simulationHVACServicePathsByIDs",

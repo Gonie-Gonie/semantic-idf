@@ -903,6 +903,7 @@ const dictionaries = {
     "simulation.seriesRangeAll": "All",
     "simulation.seriesRangeEmpty": "No range",
     "simulation.seriesStats": "{count} SQL/CSV series",
+    "simulation.sourceEnergy": "Source energy",
     "simulation.speed": "Speed",
     "simulation.standardOutputRun": "Use legacy output preset for this run",
     "simulation.setup": "Setup",
