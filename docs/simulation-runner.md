@@ -209,8 +209,9 @@ Batch purpose simulations also summarize the annual explanation graph into
 compact purpose metrics for Energy Use, Delivered Load, Heat Drivers, residual,
 mapped percent, derived COP KPIs, and the largest heat-driver groups. When two
 Basic Energy purpose rows with explanation summaries are selected, the batch
-chart also shows the largest explanation changes plus end-use, delivered-load,
-and heat-driver delta tables beside the selected metric. It flags completeness
+chart also lets the user pin an explicit baseline and target case, then shows
+the largest explanation changes plus end-use, delivered-load, and heat-driver
+delta tables beside the selected metric. It flags completeness
 differences between the two selected cases, including mapped percent and missing
 category changes. Explicit gain/loss heat-driver summary rows stay separate so
 opposite air-exchange directions can be compared. It also ranks annual Sankey

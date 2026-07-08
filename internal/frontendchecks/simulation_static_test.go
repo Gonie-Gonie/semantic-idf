@@ -87,6 +87,9 @@ func TestFrontendBatchEnergyExplanationDeltaContracts(t *testing.T) {
 		"energyExplanationAnnualEdgeItems",
 		"energyExplanationDeltaStatus",
 		"renderEnergyExplanationCompletenessDelta",
+		"renderEnergyCompareSelects",
+		"selectedEnergyCompareResults",
+		"handleEnergyCompareSelectChange",
 		"energyExplanationMissingCategorySummary",
 		"elements.multiSimulationAllocationPolicy?.value",
 		"exportMultiSimulationCSV",
@@ -125,6 +128,9 @@ func TestFrontendBatchEnergyExplanationDeltaContracts(t *testing.T) {
 	html := readTestFile(t, "frontend/src/batch.html")
 	if !strings.Contains(html, "multiSimulationExport") || !strings.Contains(html, "multiSimulationExportXLSX") || !strings.Contains(html, "multiSimulationExportJSON") {
 		t.Fatalf("batch simulation export button is missing")
+	}
+	if !strings.Contains(html, "multiSimulationCompareBaseline") || !strings.Contains(html, "multiSimulationCompareTarget") {
+		t.Fatalf("batch simulation energy comparison selectors are missing")
 	}
 	if !strings.Contains(html, "multiSimulationAllocationPolicy") || !strings.Contains(html, "by_zone_load_share") {
 		t.Fatalf("batch simulation allocation policy control is missing")

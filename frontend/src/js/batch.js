@@ -39,6 +39,8 @@ const state = {
     selectedRows: new Set(),
     metric: "",
     sort: "filename",
+    compareBaselineId: "",
+    compareTargetId: "",
   },
 };
 
@@ -102,6 +104,8 @@ const elements = {
   multiSimulationProgressBar: document.querySelector("#multiSimulationProgressBar"),
   multiSimulationFiles: document.querySelector("#multiSimulationFiles"),
   multiSimulationMetric: document.querySelector("#multiSimulationMetric"),
+  multiSimulationCompareBaseline: document.querySelector("#multiSimulationCompareBaseline"),
+  multiSimulationCompareTarget: document.querySelector("#multiSimulationCompareTarget"),
   multiSimulationChart: document.querySelector("#multiSimulationChart"),
   multiSimulationTable: document.querySelector("#multiSimulationTable"),
   batchSimulationPlanPreview: document.querySelector("#batchSimulationPlanPreview"),

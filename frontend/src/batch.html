@@ -317,7 +317,17 @@
           <section class="simulation-section">
             <div class="profile-section-head">
               <h3 data-i18n="tools.simulationComparison">Simulation comparison</h3>
-              <select id="multiSimulationMetric"></select>
+              <div class="batch-simulation-compare-controls">
+                <select id="multiSimulationMetric"></select>
+                <label>
+                  <span data-i18n="batch.baselineCase">Baseline</span>
+                  <select id="multiSimulationCompareBaseline" disabled></select>
+                </label>
+                <label>
+                  <span data-i18n="batch.targetCase">Target</span>
+                  <select id="multiSimulationCompareTarget" disabled></select>
+                </label>
+              </div>
             </div>
             <div id="multiSimulationChart" class="simulation-chart"></div>
           </section>

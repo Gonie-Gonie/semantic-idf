@@ -99,6 +99,8 @@ export function initializeMultiSimulationTool(context) {
     state.multiSimulation.result = null;
     state.multiSimulation.selectedRows.clear();
     state.multiSimulation.metric = "";
+    state.multiSimulation.compareBaselineId = "";
+    state.multiSimulation.compareTargetId = "";
     elements.multiSimulationRun.disabled = !state.multiSimulation.selectedPaths.length || state.multiSimulation.running;
     setExportButtonsDisabled(true);
     elements.multiSimulationStats.textContent = t(
@@ -170,6 +172,7 @@ export function initializeMultiSimulationTool(context) {
       state.multiSimulation.result = result;
       state.multiSimulation.selectedRows = new Set((result.results || []).filter((item) => item.status === "succeeded").slice(0, 12).map(rowID));
       state.multiSimulation.metric = firstMetric(result);
+      normalizeEnergyCompareSelection(result, true);
       updateProgress(result.completed || 0, result.total || paths.length, t("tools.simulationComplete", {}, "Batch simulation complete"), "complete");
       renderResult();
     } catch (error) {
@@ -220,6 +223,7 @@ export function initializeMultiSimulationTool(context) {
     if (!result) {
       setExportButtonsDisabled(true);
       elements.multiSimulationMetric.innerHTML = `<option value="">${escapeHTML(t("simulation.noSeries", {}, "No CSV series"))}</option>`;
+      renderEnergyCompareSelects(null);
       elements.multiSimulationChart.innerHTML = `<div class="empty">${escapeHTML(t("tools.noSimulationResult", {}, "Run the selected files to compare simulation output."))}</div>`;
       elements.multiSimulationTable.innerHTML = state.multiSimulation.selectedPaths.length
         ? `<div class="empty">${escapeHTML(t("tools.readyToRun", {}, "Ready to run"))}</div>`
@@ -236,6 +240,7 @@ export function initializeMultiSimulationTool(context) {
       `${total} runs, ${succeeded} succeeded, ${failed} failed`,
     );
     renderMetricSelect(result);
+    renderEnergyCompareSelects(result);
     renderChart(result);
     renderTable(result);
   }
@@ -302,6 +307,8 @@ export function initializeMultiSimulationTool(context) {
         } else {
           state.multiSimulation.selectedRows.delete(input.dataset.multiSimRow);
         }
+        normalizeEnergyCompareSelection(result, true);
+        renderEnergyCompareSelects(result);
         renderChart(result);
       });
     });
@@ -775,9 +782,7 @@ export function initializeMultiSimulationTool(context) {
   }
 
   function renderEnergyExplanationBatchCompare(result) {
-    const selected = (result.results || [])
-      .filter((item) => state.multiSimulation.selectedRows.has(rowID(item)) && item.purposeResults?.energyExplanationSummary?.schema)
-      .slice(0, 2);
+    const selected = selectedEnergyCompareResults(result);
     if (selected.length < 2) {
       return "";
     }
@@ -793,7 +798,119 @@ export function initializeMultiSimulationTool(context) {
     const completeness = renderEnergyExplanationCompletenessDelta(selected[0], selected[1]);
     const ranking = renderEnergyExplanationDeltaRanking(selected[0], selected[1]);
     const edgeRanking = renderEnergyExplanationEdgeDeltaRanking(selected[0], selected[1]);
-    return completeness || sections || ranking || edgeRanking ? `<div class="batch-energy-explanation-compare">${completeness}${ranking}${edgeRanking}${sections}</div>` : "";
+    return completeness || sections || ranking || edgeRanking
+      ? `<div class="batch-energy-explanation-compare">${renderEnergyComparePair(selected[0], selected[1])}${completeness}${ranking}${edgeRanking}${sections}</div>`
+      : "";
+  }
+
+  function renderEnergyComparePair(leftResult, rightResult) {
+    return `
+      <div class="batch-energy-compare-pair">
+        <div><span>${escapeHTML(t("batch.baselineCase", {}, "Baseline"))}</span><strong>${escapeHTML(leftResult.filename || fileName(leftResult.inputPath))}</strong></div>
+        <div><span>${escapeHTML(t("batch.targetCase", {}, "Target"))}</span><strong>${escapeHTML(rightResult.filename || fileName(rightResult.inputPath))}</strong></div>
+      </div>`;
+  }
+
+  function renderEnergyCompareSelects(result) {
+    if (!elements.multiSimulationCompareBaseline || !elements.multiSimulationCompareTarget) {
+      return;
+    }
+    const candidates = energyCompareCandidates(result);
+    if (candidates.length < 2) {
+      const empty = `<option value="">${escapeHTML(t("batch.needTwoEnergyCases", {}, "Need two Basic Energy results"))}</option>`;
+      elements.multiSimulationCompareBaseline.innerHTML = empty;
+      elements.multiSimulationCompareTarget.innerHTML = empty;
+      elements.multiSimulationCompareBaseline.disabled = true;
+      elements.multiSimulationCompareTarget.disabled = true;
+      state.multiSimulation.compareBaselineId = "";
+      state.multiSimulation.compareTargetId = "";
+      return;
+    }
+    normalizeEnergyCompareSelection(result);
+    const options = candidates
+      .map((item) => {
+        const id = rowID(item);
+        const label = item.filename || fileName(item.inputPath) || id;
+        return `<option value="${escapeHTML(id)}">${escapeHTML(label)}</option>`;
+      })
+      .join("");
+    elements.multiSimulationCompareBaseline.innerHTML = options;
+    elements.multiSimulationCompareTarget.innerHTML = options;
+    elements.multiSimulationCompareBaseline.value = state.multiSimulation.compareBaselineId || "";
+    elements.multiSimulationCompareTarget.value = state.multiSimulation.compareTargetId || "";
+    elements.multiSimulationCompareBaseline.disabled = false;
+    elements.multiSimulationCompareTarget.disabled = false;
+  }
+
+  function selectedEnergyCompareResults(result) {
+    normalizeEnergyCompareSelection(result);
+    const candidates = energyCompareCandidates(result);
+    const byID = new Map(candidates.map((item) => [rowID(item), item]));
+    const left = byID.get(state.multiSimulation.compareBaselineId || "");
+    const right = byID.get(state.multiSimulation.compareTargetId || "");
+    if (left && right && rowID(left) !== rowID(right)) {
+      return [left, right];
+    }
+    return candidates.filter((item) => state.multiSimulation.selectedRows.has(rowID(item))).slice(0, 2);
+  }
+
+  function energyCompareCandidates(result) {
+    return (result?.results || []).filter((item) => item.purposeResults?.energyExplanationSummary?.schema);
+  }
+
+  function normalizeEnergyCompareSelection(result, preferCheckedRows = false) {
+    const candidates = energyCompareCandidates(result);
+    const candidateIDs = candidates.map(rowID);
+    if (candidateIDs.length < 2) {
+      state.multiSimulation.compareBaselineId = "";
+      state.multiSimulation.compareTargetId = "";
+      return;
+    }
+    const checkedIDs = candidates.filter((item) => state.multiSimulation.selectedRows.has(rowID(item))).map(rowID);
+    if (preferCheckedRows && checkedIDs.length >= 2) {
+      state.multiSimulation.compareBaselineId = checkedIDs[0];
+      state.multiSimulation.compareTargetId = checkedIDs.find((id) => id !== checkedIDs[0]) || checkedIDs[1];
+      return;
+    }
+    if (!candidateIDs.includes(state.multiSimulation.compareBaselineId || "")) {
+      state.multiSimulation.compareBaselineId = checkedIDs[0] || candidateIDs[0];
+    }
+    if (
+      !candidateIDs.includes(state.multiSimulation.compareTargetId || "") ||
+      state.multiSimulation.compareTargetId === state.multiSimulation.compareBaselineId
+    ) {
+      state.multiSimulation.compareTargetId =
+        checkedIDs.find((id) => id !== state.multiSimulation.compareBaselineId) ||
+        candidateIDs.find((id) => id !== state.multiSimulation.compareBaselineId) ||
+        "";
+    }
+  }
+
+  function handleEnergyCompareSelectChange(changed) {
+    const result = state.multiSimulation.result;
+    if (!result) {
+      return;
+    }
+    state.multiSimulation.compareBaselineId = elements.multiSimulationCompareBaseline?.value || "";
+    state.multiSimulation.compareTargetId = elements.multiSimulationCompareTarget?.value || "";
+    if (state.multiSimulation.compareBaselineId === state.multiSimulation.compareTargetId) {
+      const candidateIDs = energyCompareCandidates(result).map(rowID);
+      const replacement = candidateIDs.find((id) => id !== state.multiSimulation.compareBaselineId) || "";
+      if (changed === "baseline") {
+        state.multiSimulation.compareTargetId = replacement;
+      } else {
+        state.multiSimulation.compareBaselineId = replacement;
+      }
+    }
+    if (state.multiSimulation.compareBaselineId) {
+      state.multiSimulation.selectedRows.add(state.multiSimulation.compareBaselineId);
+    }
+    if (state.multiSimulation.compareTargetId) {
+      state.multiSimulation.selectedRows.add(state.multiSimulation.compareTargetId);
+    }
+    renderEnergyCompareSelects(result);
+    renderChart(result);
+    renderTable(result);
   }
 
   function renderEnergyExplanationCompletenessDelta(leftResult, rightResult) {
@@ -1302,9 +1419,12 @@ export function initializeMultiSimulationTool(context) {
       if (state.multiSimulation.result) {
         state.multiSimulation.metric = firstMetric(state.multiSimulation.result);
         renderMetricSelect(state.multiSimulation.result);
+        renderEnergyCompareSelects(state.multiSimulation.result);
         renderChart(state.multiSimulation.result);
       }
     });
+    elements.multiSimulationCompareBaseline?.addEventListener("change", () => handleEnergyCompareSelectChange("baseline"));
+    elements.multiSimulationCompareTarget?.addEventListener("change", () => handleEnergyCompareSelectChange("target"));
     elements.multiSimulationSort?.addEventListener("change", () => {
       state.multiSimulation.sort = elements.multiSimulationSort.value || "filename";
       if (state.multiSimulation.result) {

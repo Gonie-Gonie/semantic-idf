@@ -1374,10 +1374,59 @@ th.input-jump-highlight {
   background: var(--teal);
 }
 
+.batch-simulation-compare-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.batch-simulation-compare-controls label {
+  display: grid;
+  gap: 3px;
+  min-width: 150px;
+  margin: 0;
+}
+
+.batch-simulation-compare-controls span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
 .batch-energy-explanation-compare {
   display: grid;
   gap: 12px;
   margin-top: 14px;
+}
+
+.batch-energy-compare-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.batch-energy-compare-pair div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.batch-energy-compare-pair span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.batch-energy-compare-pair strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .batch-energy-explanation-compare h4 {

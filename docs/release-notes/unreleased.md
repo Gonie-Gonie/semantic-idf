@@ -137,6 +137,8 @@ The release script infers bump size from these sections:
   explanation payloads that are too detailed for the default CSV.
 - Batch Simulation can now export purpose metrics and Basic Energy explanation
   summary/source/edge/reconciliation workbook sheets as XLSX.
+- Batch Simulation energy-explanation deltas now expose explicit baseline and
+  target selectors so two-case Sankey and summary changes are traceable.
 - Basic Energy explanations now fall back to annual SQL tabular end-use rows
   when detailed `ReportData` energy rows are unavailable, while preserving
   `sql_tabular` source metadata.
