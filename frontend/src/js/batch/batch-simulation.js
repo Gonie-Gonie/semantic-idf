@@ -428,6 +428,9 @@ export function initializeMultiSimulationTool(context) {
       "source_aggregation",
       "source_index_group",
       "source_object_index",
+      "source_table",
+      "source_row",
+      "source_column",
       "period",
       "relation",
       "basis",
@@ -475,6 +478,7 @@ export function initializeMultiSimulationTool(context) {
           "",
           "",
           "",
+          ...emptyEnergyExplanationSourceTableExportFields(),
           ...emptyEnergyExplanationEdgeExportFields(),
           ...emptyEnergyExplanationSourceUnitExportFields(),
           "",
@@ -502,6 +506,7 @@ export function initializeMultiSimulationTool(context) {
           "",
           "",
           energyExplanationSourceObjectIndexes(explanation, metric.sourceIds || []),
+          ...emptyEnergyExplanationSourceTableExportFields(),
           ...energyExplanationSummaryEdgeExportFields(metric),
           ...emptyEnergyExplanationSourceUnitExportFields(),
           metric.pathType || "",
@@ -529,6 +534,7 @@ export function initializeMultiSimulationTool(context) {
           source.aggregationMethod || "",
           source.indexGroup || "",
           source.objectIndex ?? "",
+          ...energyExplanationSourceTableExportFields(source),
           ...emptyEnergyExplanationEdgeExportFields(),
           ...energyExplanationSourceUnitExportFields(source),
           "",
@@ -556,6 +562,7 @@ export function initializeMultiSimulationTool(context) {
           "",
           "",
           energyExplanationSourceObjectIndexes(explanation, availability.sourceIds || []),
+          ...emptyEnergyExplanationSourceTableExportFields(),
           ...emptyEnergyExplanationEdgeExportFields(availability.sourceIds || []),
           ...emptyEnergyExplanationSourceUnitExportFields(),
           "",
@@ -583,6 +590,7 @@ export function initializeMultiSimulationTool(context) {
           "",
           edge.ruleId || "",
           energyExplanationSourceObjectIndexes(explanation, edge.sourceIds || []),
+          ...emptyEnergyExplanationSourceTableExportFields(),
           edge.period || "",
           edge.relation || "",
           edge.basis || "",
@@ -620,6 +628,7 @@ export function initializeMultiSimulationTool(context) {
           "",
           "",
           energyExplanationSourceObjectIndexes(explanation, reconciliation.sourceIds || []),
+          ...emptyEnergyExplanationSourceTableExportFields(),
           reconciliation.period || "",
           "reconciliation",
           reconciliation.basis || "",
@@ -657,6 +666,7 @@ export function initializeMultiSimulationTool(context) {
           "",
           "",
           "",
+          ...emptyEnergyExplanationSourceTableExportFields(),
           warning.period || "",
           "warning",
           "",
@@ -825,6 +835,14 @@ export function initializeMultiSimulationTool(context) {
 
   function emptyEnergyExplanationSourceUnitExportFields() {
     return ["", ""];
+  }
+
+  function energyExplanationSourceTableExportFields(source = {}) {
+    return [source.tableName || "", source.rowName || "", source.columnName || ""];
+  }
+
+  function emptyEnergyExplanationSourceTableExportFields() {
+    return ["", "", ""];
   }
 
   function emptyEnergyExplanationRatioExportFields() {

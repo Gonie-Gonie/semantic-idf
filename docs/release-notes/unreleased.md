@@ -36,6 +36,9 @@ The release script infers bump size from these sections:
 - The shared SQL `QueryReportData` layer can now filter by
   `ReportDataDictionary.IndexGroup` while preserving that source metadata for
   purpose result parsers.
+- Basic Energy Sources tables, Sankey inspectors, HTML reports, and batch CSV
+  exports now show SQL tabular source table, row, and column metadata when a
+  value falls back to tabular annual data.
 - Energy explanation Sankey and Systems views can now focus by all results, a
   selected zone, selected HVAC service path, or selected HVAC loop.
 - Energy explanation Sankey now has Detailed and Compact column modes, with

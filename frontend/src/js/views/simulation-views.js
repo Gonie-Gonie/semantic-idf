@@ -1892,6 +1892,9 @@ function renderEnergyExplanationInspector(selection, explanation = {}) {
           <td>${escapeHTML(source.name || "")}</td>
           <td>${escapeHTML(source.reportingFrequency || "")}</td>
           <td>${escapeHTML(source.aggregationMethod || "")}</td>
+          <td>${escapeHTML(source.tableName || "")}</td>
+          <td>${escapeHTML(source.rowName || "")}</td>
+          <td>${escapeHTML(source.columnName || "")}</td>
           <td>${escapeHTML(source.sourceUnit || source.units || "")}</td>
           <td>${escapeHTML(source.normalizedUnit || "")}</td>
           <td>${renderSourceOutputCell(object)}</td>
@@ -1958,8 +1961,8 @@ function renderEnergyExplanationInspector(selection, explanation = {}) {
       ${relatedPaths}
       <div class="output-table-wrap">
         <table class="output-table">
-          <thead><tr><th>ID</th><th>${escapeHTML(t("common.type", {}, "Type"))}</th><th>Key</th><th>Name</th><th>Frequency</th><th>Aggregation</th><th>Source Unit</th><th>Normalized Unit</th><th>${escapeHTML(t("simulation.sourceOutput", {}, "Source output"))}</th><th>${escapeHTML(t("simulation.inspectSeriesAction", {}, "Chart"))}</th></tr></thead>
-          <tbody>${sourceRows || `<tr><td colspan="10">${escapeHTML(t("common.notAvailable", {}, "N/A"))}</td></tr>`}</tbody>
+          <thead><tr><th>ID</th><th>${escapeHTML(t("common.type", {}, "Type"))}</th><th>Key</th><th>Name</th><th>Frequency</th><th>Aggregation</th><th>Table</th><th>Row</th><th>Column</th><th>Source Unit</th><th>Normalized Unit</th><th>${escapeHTML(t("simulation.sourceOutput", {}, "Source output"))}</th><th>${escapeHTML(t("simulation.inspectSeriesAction", {}, "Chart"))}</th></tr></thead>
+          <tbody>${sourceRows || `<tr><td colspan="13">${escapeHTML(t("common.notAvailable", {}, "N/A"))}</td></tr>`}</tbody>
         </table>
       </div>
     </section>`;
@@ -1978,6 +1981,9 @@ function renderEnergyExplanationSources(explanation = {}) {
           <td>${escapeHTML(source.name || "")}</td>
           <td>${escapeHTML(source.reportingFrequency || "")}</td>
           <td>${escapeHTML(source.aggregationMethod || "")}</td>
+          <td>${escapeHTML(source.tableName || "")}</td>
+          <td>${escapeHTML(source.rowName || "")}</td>
+          <td>${escapeHTML(source.columnName || "")}</td>
           <td>${escapeHTML(source.sourceUnit || source.units || "")}</td>
           <td>${escapeHTML(source.normalizedUnit || "")}</td>
           <td>${renderSourceOutputCell(object)}</td>
@@ -1993,8 +1999,8 @@ function renderEnergyExplanationSources(explanation = {}) {
       </div>
       <div class="output-table-wrap">
         <table class="output-table">
-          <thead><tr><th>ID</th><th>Source</th><th>Basis</th><th>Key</th><th>Name</th><th>Frequency</th><th>Aggregation</th><th>Source Unit</th><th>Normalized Unit</th><th>${escapeHTML(t("simulation.sourceOutput", {}, "Source output"))}</th><th>${escapeHTML(t("simulation.inspectSeriesAction", {}, "Chart"))}</th></tr></thead>
-          <tbody>${rows || `<tr><td colspan="11">${escapeHTML(t("simulation.noEnergyExplanation", {}, "No energy explanation graph is available."))}</td></tr>`}</tbody>
+          <thead><tr><th>ID</th><th>Source</th><th>Basis</th><th>Key</th><th>Name</th><th>Frequency</th><th>Aggregation</th><th>Table</th><th>Row</th><th>Column</th><th>Source Unit</th><th>Normalized Unit</th><th>${escapeHTML(t("simulation.sourceOutput", {}, "Source output"))}</th><th>${escapeHTML(t("simulation.inspectSeriesAction", {}, "Chart"))}</th></tr></thead>
+          <tbody>${rows || `<tr><td colspan="14">${escapeHTML(t("simulation.noEnergyExplanation", {}, "No energy explanation graph is available."))}</td></tr>`}</tbody>
         </table>
       </div>
     </section>`;
@@ -7677,6 +7683,9 @@ function renderPurposeHTMLEnergyExplanation(summary = {}, explanation = {}) {
       source.name || "",
       source.reportingFrequency || "",
       source.aggregationMethod || "",
+      source.tableName || "",
+      source.rowName || "",
+      source.columnName || "",
       source.sourceUnit || source.units || "",
       source.normalizedUnit || "",
       source.objectIndex ?? "",
@@ -7684,7 +7693,7 @@ function renderPurposeHTMLEnergyExplanation(summary = {}, explanation = {}) {
   if (sourceRows.length) {
     sections.push(
       `<h2>Energy Explanation Sources</h2>${renderPurposeHTMLTable(
-        ["ID", "Source", "Basis", "Key", "Name", "Frequency", "Aggregation", "Source Unit", "Normalized Unit", "Output Object"],
+        ["ID", "Source", "Basis", "Key", "Name", "Frequency", "Aggregation", "Table", "Row", "Column", "Source Unit", "Normalized Unit", "Output Object"],
         sourceRows,
       )}`,
     );

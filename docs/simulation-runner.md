@@ -288,8 +288,9 @@ can export purpose metrics, compact
 source availability rows, reconciliation rows, and Sankey edge metadata rows
 with period, relation, basis,
 `ruleId`, formula, endpoint, service, zone, source IDs, related source output
-object indexes, source/normalized units, load path type, and related HVAC
-service path IDs as CSV for spreadsheet comparison. The batch CSV keeps annual,
+object indexes, SQL tabular table/row/column names, source/normalized units,
+load path type, and related HVAC service path IDs as CSV for spreadsheet
+comparison. The batch CSV keeps annual,
 monthly, and selected-range explanation periods by default; daily and hourly
 periods remain available in the embedded purpose result payload without
 expanding the default spreadsheet export. Compact summary rows also carry their
@@ -322,8 +323,9 @@ Purpose result viewers now include:
   energy table, and `Overview` / `Sankey` / `Monthly` / `Zones` / `Sources` /
   `Reconciliation` subviews for tracing Energy Use to Delivered Load and Heat
   Drivers with source metadata. The Sankey inspector shows edge relation, basis,
-  rule, formula, sources, and related service paths, and the selected edge plus
-  its endpoint nodes are highlighted in the graph while the inspector is open.
+  rule, formula, sources, SQL tabular table/row/column metadata, and related
+  service paths, and the selected edge plus its endpoint nodes are highlighted
+  in the graph while the inspector is open.
   The Overview subview also includes an annual Energy Use breakdown by carrier
   and end use so fuel-qualified uses remain distinct in comparison.
   The completeness panel
