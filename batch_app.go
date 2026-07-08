@@ -144,7 +144,13 @@ type BatchSummaryXLSXExportRequest struct {
 }
 
 type BatchSimulationXLSXExportRequest struct {
-	Result simulation.MultiSimulationResult `json:"result"`
+	Result     simulation.MultiSimulationResult     `json:"result"`
+	Comparison BatchSimulationComparisonXLSXContext `json:"comparison,omitempty"`
+}
+
+type BatchSimulationComparisonXLSXContext struct {
+	BaselineRowID string `json:"baselineRowId,omitempty"`
+	TargetRowID   string `json:"targetRowId,omitempty"`
 }
 
 type BatchSimulationPlanPreviewResult struct {
@@ -782,6 +788,16 @@ func batchSimulationWorkbookSheets(request BatchSimulationXLSXExportRequest) []t
 	sections := []tabular.WorkbookSheet{
 		{Name: "Purpose Metrics", Sections: []tabular.Section{batchSimulationPurposeMetricSection(request.Result)}},
 	}
+	left, right, ok := batchSimulationComparisonResults(request)
+	if ok {
+		sections = append(sections, tabular.WorkbookSheet{Name: "Comparison", Sections: []tabular.Section{batchSimulationComparisonSection(left, right)}})
+		if delta := batchSimulationEnergyDeltaSection(left, right); len(delta.Rows) > 0 {
+			sections = append(sections, tabular.WorkbookSheet{Name: "Energy Delta", Sections: []tabular.Section{delta}})
+		}
+		if edgeDelta := batchSimulationEnergyEdgeDeltaSection(left, right); len(edgeDelta.Rows) > 0 {
+			sections = append(sections, tabular.WorkbookSheet{Name: "Sankey Edge Delta", Sections: []tabular.Section{edgeDelta}})
+		}
+	}
 	if summary := batchSimulationEnergySummarySection(request.Result); len(summary.Rows) > 0 {
 		sections = append(sections, tabular.WorkbookSheet{Name: "Energy Summary", Sections: []tabular.Section{summary}})
 	}
@@ -795,6 +811,323 @@ func batchSimulationWorkbookSheets(request BatchSimulationXLSXExportRequest) []t
 		sections = append(sections, tabular.WorkbookSheet{Name: "Reconciliation", Sections: []tabular.Section{reconciliation}})
 	}
 	return sections
+}
+
+func batchSimulationComparisonResults(request BatchSimulationXLSXExportRequest) (simulation.SimulationRunResult, simulation.SimulationRunResult, bool) {
+	candidates := make([]simulation.SimulationRunResult, 0, len(request.Result.Results))
+	byID := map[string]simulation.SimulationRunResult{}
+	for _, item := range request.Result.Results {
+		if item.PurposeResults == nil || item.PurposeResults.EnergyExplanationSummary.Schema == "" {
+			continue
+		}
+		candidates = append(candidates, item)
+		if id := batchSimulationRowID(item); id != "" {
+			byID[id] = item
+		}
+	}
+	if request.Comparison.BaselineRowID != "" && request.Comparison.TargetRowID != "" && request.Comparison.BaselineRowID != request.Comparison.TargetRowID {
+		left, leftOK := byID[request.Comparison.BaselineRowID]
+		right, rightOK := byID[request.Comparison.TargetRowID]
+		if leftOK && rightOK {
+			return left, right, true
+		}
+	}
+	if len(candidates) >= 2 {
+		return candidates[0], candidates[1], true
+	}
+	return simulation.SimulationRunResult{}, simulation.SimulationRunResult{}, false
+}
+
+func batchSimulationComparisonSection(left, right simulation.SimulationRunResult) tabular.Section {
+	return tabular.Section{
+		Title:   "comparison",
+		Headers: []string{"role", "row_id", "file", "run_id", "status", "input_path"},
+		Rows: [][]string{
+			{"baseline", batchSimulationRowID(left), batchSimulationFileLabel(left), left.RunID, left.Status, left.InputPath},
+			{"target", batchSimulationRowID(right), batchSimulationFileLabel(right), right.RunID, right.Status, right.InputPath},
+		},
+	}
+}
+
+type batchSimulationDeltaRow struct {
+	Group          string
+	ID             string
+	Label          string
+	LeftValue      float64
+	RightValue     float64
+	Delta          float64
+	Percent        string
+	Unit           string
+	Status         string
+	Level          string
+	ServiceKind    string
+	PathType       string
+	Basis          string
+	Relation       string
+	RuleID         string
+	FromID         string
+	ToID           string
+	SourceIDs      []string
+	RelatedPathIDs []string
+}
+
+func batchSimulationEnergyDeltaSection(left, right simulation.SimulationRunResult) tabular.Section {
+	section := tabular.Section{
+		Title:   "energy_delta",
+		Headers: []string{"type", "id", "label", "baseline_file", "target_file", "baseline_value", "target_value", "delta", "percent", "unit", "status", "level", "service_kind", "path_type", "basis"},
+	}
+	leftSummary := left.PurposeResults.EnergyExplanationSummary
+	rightSummary := right.PurposeResults.EnergyExplanationSummary
+	rows := []batchSimulationDeltaRow{}
+	for _, group := range []struct {
+		name  string
+		left  []simulation.EnergyExplanationSummaryItem
+		right []simulation.EnergyExplanationSummaryItem
+	}{
+		{name: "energy_by_end_use", left: leftSummary.EnergyByEndUse, right: rightSummary.EnergyByEndUse},
+		{name: "delivered_load_by_service", left: leftSummary.DeliveredLoadByService, right: rightSummary.DeliveredLoadByService},
+		{name: "derived_kpi", left: leftSummary.DerivedKPIs, right: rightSummary.DerivedKPIs},
+		{name: "heat_drivers", left: leftSummary.HeatDrivers, right: rightSummary.HeatDrivers},
+		{name: "residuals", left: leftSummary.Residuals, right: rightSummary.Residuals},
+	} {
+		rows = append(rows, batchSimulationSummaryDeltaRows(group.name, group.left, group.right)...)
+	}
+	sortBatchSimulationDeltaRows(rows)
+	for _, row := range rows {
+		section.Rows = append(section.Rows, []string{
+			row.Group,
+			row.ID,
+			row.Label,
+			batchSimulationFileLabel(left),
+			batchSimulationFileLabel(right),
+			formatBatchSimulationFloat(row.LeftValue),
+			formatBatchSimulationFloat(row.RightValue),
+			formatBatchSimulationFloat(row.Delta),
+			row.Percent,
+			row.Unit,
+			row.Status,
+			row.Level,
+			row.ServiceKind,
+			row.PathType,
+			row.Basis,
+		})
+	}
+	return section
+}
+
+func batchSimulationSummaryDeltaRows(group string, leftItems, rightItems []simulation.EnergyExplanationSummaryItem) []batchSimulationDeltaRow {
+	left := map[string]simulation.EnergyExplanationSummaryItem{}
+	right := map[string]simulation.EnergyExplanationSummaryItem{}
+	ids := map[string]struct{}{}
+	for _, item := range leftItems {
+		if item.ID == "" {
+			continue
+		}
+		left[item.ID] = item
+		ids[item.ID] = struct{}{}
+	}
+	for _, item := range rightItems {
+		if item.ID == "" {
+			continue
+		}
+		right[item.ID] = item
+		ids[item.ID] = struct{}{}
+	}
+	rows := make([]batchSimulationDeltaRow, 0, len(ids))
+	for id := range ids {
+		leftItem, leftOK := left[id]
+		rightItem, rightOK := right[id]
+		leftValue := 0.0
+		if leftOK {
+			leftValue = leftItem.Value
+		}
+		rightValue := 0.0
+		if rightOK {
+			rightValue = rightItem.Value
+		}
+		item := rightItem
+		if !rightOK {
+			item = leftItem
+		}
+		rows = append(rows, batchSimulationDeltaRow{
+			Group:       group,
+			ID:          id,
+			Label:       firstNonEmpty(item.Label, id),
+			LeftValue:   leftValue,
+			RightValue:  rightValue,
+			Delta:       rightValue - leftValue,
+			Percent:     batchSimulationPercentDelta(leftValue, rightValue-leftValue),
+			Unit:        firstNonEmpty(rightItem.Unit, leftItem.Unit),
+			Status:      batchSimulationDeltaStatus(leftOK, rightOK),
+			Level:       firstNonEmpty(rightItem.Level, leftItem.Level),
+			ServiceKind: firstNonEmpty(rightItem.ServiceKind, leftItem.ServiceKind),
+			PathType:    firstNonEmpty(rightItem.PathType, leftItem.PathType),
+			Basis:       firstNonEmpty(rightItem.Basis, leftItem.Basis),
+		})
+	}
+	return rows
+}
+
+func batchSimulationEnergyEdgeDeltaSection(left, right simulation.SimulationRunResult) tabular.Section {
+	section := tabular.Section{
+		Title:   "sankey_edge_delta",
+		Headers: []string{"relation", "edge", "rule_id", "baseline_file", "target_file", "baseline_value", "target_value", "delta", "percent", "unit", "status", "basis", "from_id", "to_id", "source_ids", "related_path_ids"},
+	}
+	rows := batchSimulationEdgeDeltaRows(left.PurposeResults.EnergyExplanation, right.PurposeResults.EnergyExplanation)
+	sortBatchSimulationDeltaRows(rows)
+	for _, row := range rows {
+		section.Rows = append(section.Rows, []string{
+			row.Relation,
+			row.Label,
+			row.RuleID,
+			batchSimulationFileLabel(left),
+			batchSimulationFileLabel(right),
+			formatBatchSimulationFloat(row.LeftValue),
+			formatBatchSimulationFloat(row.RightValue),
+			formatBatchSimulationFloat(row.Delta),
+			row.Percent,
+			row.Unit,
+			row.Status,
+			row.Basis,
+			row.FromID,
+			row.ToID,
+			strings.Join(row.SourceIDs, "; "),
+			strings.Join(row.RelatedPathIDs, "; "),
+		})
+	}
+	return section
+}
+
+func batchSimulationEdgeDeltaRows(leftExplanation, rightExplanation simulation.EnergyExplanationResult) []batchSimulationDeltaRow {
+	left := batchSimulationAnnualEdgeMap(leftExplanation)
+	right := batchSimulationAnnualEdgeMap(rightExplanation)
+	ids := map[string]struct{}{}
+	for id := range left {
+		ids[id] = struct{}{}
+	}
+	for id := range right {
+		ids[id] = struct{}{}
+	}
+	rows := make([]batchSimulationDeltaRow, 0, len(ids))
+	for id := range ids {
+		leftEdge, leftOK := left[id]
+		rightEdge, rightOK := right[id]
+		leftValue := 0.0
+		if leftOK {
+			leftValue = leftEdge.LeftValue
+		}
+		rightValue := 0.0
+		if rightOK {
+			rightValue = rightEdge.RightValue
+		}
+		item := rightEdge
+		if !rightOK {
+			item = leftEdge
+		}
+		item.ID = id
+		item.LeftValue = leftValue
+		item.RightValue = rightValue
+		item.Delta = rightValue - leftValue
+		item.Percent = batchSimulationPercentDelta(leftValue, item.Delta)
+		item.Status = batchSimulationDeltaStatus(leftOK, rightOK)
+		rows = append(rows, item)
+	}
+	return rows
+}
+
+func batchSimulationAnnualEdgeMap(explanation simulation.EnergyExplanationResult) map[string]batchSimulationDeltaRow {
+	period := batchSimulationAnnualPeriod(explanation)
+	nodeLabels := map[string]string{}
+	for _, node := range period.Nodes {
+		nodeLabels[node.ID] = firstNonEmpty(node.Label, node.Kind, node.ID)
+	}
+	out := map[string]batchSimulationDeltaRow{}
+	for _, edge := range period.Edges {
+		id := firstNonEmpty(edge.ID, batchSimulationEdgeFallbackID(edge))
+		if id == "" {
+			continue
+		}
+		out[id] = batchSimulationDeltaRow{
+			ID:             id,
+			Label:          fmt.Sprintf("%s -> %s", firstNonEmpty(nodeLabels[edge.FromID], edge.FromID), firstNonEmpty(nodeLabels[edge.ToID], edge.ToID)),
+			LeftValue:      edge.Value,
+			RightValue:     edge.Value,
+			Unit:           edge.Unit,
+			Relation:       edge.Relation,
+			RuleID:         edge.RuleID,
+			Basis:          edge.Basis,
+			FromID:         edge.FromID,
+			ToID:           edge.ToID,
+			SourceIDs:      edge.SourceIDs,
+			RelatedPathIDs: edge.RelatedPathIDs,
+		}
+	}
+	return out
+}
+
+func batchSimulationEdgeFallbackID(edge simulation.EnergyExplanationEdge) string {
+	parts := []string{}
+	for _, part := range []string{edge.Relation, edge.RuleID, edge.FromID, edge.ToID} {
+		if part != "" {
+			parts = append(parts, part)
+		}
+	}
+	return strings.Join(parts, "|")
+}
+
+func batchSimulationAnnualPeriod(explanation simulation.EnergyExplanationResult) simulation.EnergyPeriod {
+	for _, period := range batchSimulationExportPeriods(explanation) {
+		if period.ID == "annual" || period.Kind == "annual" {
+			return period
+		}
+	}
+	return simulation.EnergyPeriod{
+		ID:             "annual",
+		Kind:           "annual",
+		Nodes:          explanation.Nodes,
+		Edges:          explanation.Edges,
+		Reconciliation: explanation.Reconciliation,
+	}
+}
+
+func sortBatchSimulationDeltaRows(rows []batchSimulationDeltaRow) {
+	sort.Slice(rows, func(i, j int) bool {
+		if left, right := absBatchSimulationFloat(rows[i].Delta), absBatchSimulationFloat(rows[j].Delta); left != right {
+			return left > right
+		}
+		if rows[i].Group != rows[j].Group {
+			return rows[i].Group < rows[j].Group
+		}
+		if rows[i].Relation != rows[j].Relation {
+			return rows[i].Relation < rows[j].Relation
+		}
+		return rows[i].Label < rows[j].Label
+	})
+}
+
+func batchSimulationDeltaStatus(leftOK, rightOK bool) string {
+	switch {
+	case !leftOK && rightOK:
+		return "missing in baseline"
+	case leftOK && !rightOK:
+		return "missing in comparison"
+	default:
+		return "matched"
+	}
+}
+
+func batchSimulationPercentDelta(leftValue, delta float64) string {
+	if leftValue == 0 {
+		return "N/A"
+	}
+	return formatBatchSimulationFloat((delta/leftValue)*100) + "%"
+}
+
+func absBatchSimulationFloat(value float64) float64 {
+	if value < 0 {
+		return -value
+	}
+	return value
 }
 
 func batchSimulationPurposeMetricSection(result simulation.MultiSimulationResult) tabular.Section {
@@ -1015,6 +1348,10 @@ func batchSimulationExportPeriods(explanation simulation.EnergyExplanationResult
 
 func batchSimulationFileLabel(item simulation.SimulationRunResult) string {
 	return firstNonEmpty(item.Filename, filepath.Base(item.InputPath), item.RunID)
+}
+
+func batchSimulationRowID(item simulation.SimulationRunResult) string {
+	return firstNonEmpty(item.RunID, item.InputPath, item.Filename)
 }
 
 func formatBatchSimulationFloat(value float64) string {

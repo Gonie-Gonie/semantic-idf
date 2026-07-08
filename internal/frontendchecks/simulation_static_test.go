@@ -95,6 +95,8 @@ func TestFrontendBatchEnergyExplanationDeltaContracts(t *testing.T) {
 		"exportMultiSimulationCSV",
 		"exportMultiSimulationXLSX",
 		"exportMultiSimulationJSON",
+		"multiSimulationComparisonContext",
+		"SaveBatchSimulationXLSX({ result, comparison",
 		"semantic-idf.batch-simulation/v1",
 		"baselineRowId",
 		"targetRowId",

@@ -615,7 +615,7 @@ export function initializeMultiSimulationTool(context) {
       elements.multiSimulationStatus.textContent = t("common.loadingSettings", {}, "Loading");
     }
     try {
-      const saved = await api.SaveBatchSimulationXLSX({ result });
+      const saved = await api.SaveBatchSimulationXLSX({ result, comparison: multiSimulationComparisonContext(result) });
       if (!saved?.canceled && elements.multiSimulationStatus) {
         elements.multiSimulationStatus.textContent = t(
           "status.savedNamed",
@@ -644,10 +644,7 @@ export function initializeMultiSimulationTool(context) {
         selectedRowIds: Array.from(state.multiSimulation.selectedRows || []),
         metric: state.multiSimulation.metric || "",
         sort: state.multiSimulation.sort || "filename",
-        comparison: {
-          baselineRowId: state.multiSimulation.compareBaselineId || "",
-          targetRowId: state.multiSimulation.compareTargetId || "",
-        },
+        comparison: multiSimulationComparisonContext(result),
       },
       result,
     };
@@ -661,6 +658,16 @@ export function initializeMultiSimulationTool(context) {
     if (elements.multiSimulationStatus) {
       elements.multiSimulationStatus.textContent = t("status.exportedJson", {}, "JSON exported");
     }
+  }
+
+  function multiSimulationComparisonContext(result) {
+    if (result) {
+      normalizeEnergyCompareSelection(result);
+    }
+    return {
+      baselineRowId: state.multiSimulation.compareBaselineId || "",
+      targetRowId: state.multiSimulation.compareTargetId || "",
+    };
   }
 
   function energyExplanationSummaryExportItems(summary = {}) {

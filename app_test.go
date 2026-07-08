@@ -442,6 +442,114 @@ func TestBatchSimulationWorkbookSheetsIncludesPurposeAndEnergySheets(t *testing.
 	}
 }
 
+func TestBatchSimulationWorkbookSheetsIncludeComparisonDelta(t *testing.T) {
+	result := simulation.MultiSimulationResult{
+		Results: []simulation.SimulationRunResult{
+			{
+				RunID:    "baseline-run",
+				Filename: "baseline.idf",
+				Status:   "succeeded",
+				PurposeResults: &simulation.PurposeResultBundle{
+					EnergyExplanationSummary: simulation.EnergyExplanationSummary{
+						Schema: "semantic-idf.energy-explanation-summary/v1",
+						EnergyByEndUse: []simulation.EnergyExplanationSummaryItem{{
+							ID:      "cooling.electricity",
+							Label:   "Cooling electricity",
+							Value:   10,
+							Unit:    "kWh",
+							Level:   "energy",
+							Carrier: "electricity",
+							EndUse:  "cooling",
+							Basis:   "measured_meter",
+						}},
+					},
+					EnergyExplanation: simulation.EnergyExplanationResult{
+						Schema: "semantic-idf.energy-explanation/v1",
+						Periods: []simulation.EnergyPeriod{{
+							ID:   "annual",
+							Kind: "annual",
+							Nodes: []simulation.EnergyExplanationNode{
+								{ID: "energy.carrier.electricity", Label: "Electricity"},
+								{ID: "energy.end_use.cooling.electricity", Label: "Cooling electricity"},
+							},
+							Edges: []simulation.EnergyExplanationEdge{{
+								ID:       "edge.cooling",
+								FromID:   "energy.carrier.electricity",
+								ToID:     "energy.end_use.cooling.electricity",
+								Value:    10,
+								Unit:     "kWh",
+								Relation: "meter_enduse",
+								Basis:    "measured_meter",
+								RuleID:   "meter.cooling_electricity",
+							}},
+						}},
+					},
+				},
+			},
+			{
+				RunID:    "target-run",
+				Filename: "target.idf",
+				Status:   "succeeded",
+				PurposeResults: &simulation.PurposeResultBundle{
+					EnergyExplanationSummary: simulation.EnergyExplanationSummary{
+						Schema: "semantic-idf.energy-explanation-summary/v1",
+						EnergyByEndUse: []simulation.EnergyExplanationSummaryItem{{
+							ID:      "cooling.electricity",
+							Label:   "Cooling electricity",
+							Value:   15,
+							Unit:    "kWh",
+							Level:   "energy",
+							Carrier: "electricity",
+							EndUse:  "cooling",
+							Basis:   "measured_meter",
+						}},
+					},
+					EnergyExplanation: simulation.EnergyExplanationResult{
+						Schema: "semantic-idf.energy-explanation/v1",
+						Periods: []simulation.EnergyPeriod{{
+							ID:   "annual",
+							Kind: "annual",
+							Nodes: []simulation.EnergyExplanationNode{
+								{ID: "energy.carrier.electricity", Label: "Electricity"},
+								{ID: "energy.end_use.cooling.electricity", Label: "Cooling electricity"},
+							},
+							Edges: []simulation.EnergyExplanationEdge{{
+								ID:       "edge.cooling",
+								FromID:   "energy.carrier.electricity",
+								ToID:     "energy.end_use.cooling.electricity",
+								Value:    15,
+								Unit:     "kWh",
+								Relation: "meter_enduse",
+								Basis:    "measured_meter",
+								RuleID:   "meter.cooling_electricity",
+							}},
+						}},
+					},
+				},
+			},
+		},
+	}
+	sheets := batchSimulationWorkbookSheets(BatchSimulationXLSXExportRequest{
+		Result: result,
+		Comparison: BatchSimulationComparisonXLSXContext{
+			BaselineRowID: "baseline-run",
+			TargetRowID:   "target-run",
+		},
+	})
+	if len(sheets) != 6 || sheets[1].Name != "Comparison" || sheets[2].Name != "Energy Delta" || sheets[3].Name != "Sankey Edge Delta" {
+		t.Fatalf("simulation comparison workbook sheets = %#v", sheets)
+	}
+	if rows := sheets[1].Sections[0].Rows; len(rows) != 2 || rows[0][1] != "baseline-run" || rows[1][1] != "target-run" {
+		t.Fatalf("comparison rows = %#v", rows)
+	}
+	if rows := sheets[2].Sections[0].Rows; len(rows) != 1 || rows[0][1] != "cooling.electricity" || rows[0][7] != "5" || rows[0][8] != "50%" {
+		t.Fatalf("energy delta rows = %#v", rows)
+	}
+	if rows := sheets[3].Sections[0].Rows; len(rows) != 1 || rows[0][0] != "meter_enduse" || rows[0][7] != "5" || rows[0][10] != "matched" {
+		t.Fatalf("edge delta rows = %#v", rows)
+	}
+}
+
 func TestCreateBatchSafeCleanupCopiesWritesCleanedCopyOnly(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "cleanup.idf")
