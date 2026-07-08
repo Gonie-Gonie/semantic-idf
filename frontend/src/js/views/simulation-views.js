@@ -1307,7 +1307,7 @@ function renderEnergyExplanationCompleteness(explanation = {}) {
         <tr>
           <td>${escapeHTML(energyExplanationLevelLabel(item.level || ""))}</td>
           <td>${escapeHTML(item.name || "")}</td>
-          <td>${escapeHTML(item.status || "")}</td>
+          <td><span class="energy-source-availability-status ${escapeHTML(item.status || "")}">${escapeHTML(item.status || "")}</span></td>
         </tr>`,
     )
     .join("");
