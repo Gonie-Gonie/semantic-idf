@@ -140,9 +140,10 @@ original request before falling back to output-name matching. SQL source
 metadata also records an `aggregationMethod` such as `sum_report_data` or
 `integrate_rate_by_time_interval`, and source tables, inspectors, and batch CSV
 exports show that method beside frequency and unit. Source availability rows
-also preserve matching `sourceIds` for found outputs, so HTML and batch exports
-can connect availability status back to the exact SQL source and output request
-object.
+also use the energy meter alias catalog when matching planned meter names such
+as `Cooling:Electricity` to SQL/MDD source names such as `Electricity:Cooling`.
+Found rows preserve matching `sourceIds`, so HTML and batch exports can connect
+availability status back to the exact SQL source and output request object.
 
 Output states:
 

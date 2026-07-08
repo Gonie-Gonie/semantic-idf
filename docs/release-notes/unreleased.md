@@ -30,6 +30,9 @@ The release script infers bump size from these sections:
 - Basic Energy source availability rows now carry matching source IDs for found
   outputs, so HTML and batch exports can trace availability status back to SQL
   sources and output requests.
+- Basic Energy source availability and SQL source output-request links now use
+  the energy meter alias catalog, so carrier/end-use meter order variants stay
+  traceable.
 - Energy explanation Sankey and Systems views can now focus by all results, a
   selected zone, selected HVAC service path, or selected HVAC loop.
 - Energy explanation Sankey now has Detailed and Compact column modes, with

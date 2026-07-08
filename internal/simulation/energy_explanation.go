@@ -2163,7 +2163,7 @@ func energyExplanationObjectIndexForDictionary(dictionary energyExplanationDicti
 			if !energyExplanationIsMeterObjectType(object.ObjectType) {
 				continue
 			}
-			if normalizeEnergyOutputName(object.KeyValue) == normalizeEnergyOutputName(sourceName) {
+			if normalizeEnergyOutputName(object.KeyValue) == normalizeEnergyOutputName(sourceName) || energyNamesShareEnergyAliasGroup(object.KeyValue, sourceName) {
 				return object.ObjectIndex
 			}
 		}
@@ -3024,7 +3024,7 @@ func sourceAvailabilityEntries(expected []string, level string, sources []Energy
 		status := "missing"
 		sourceIDs := []string{}
 		for _, source := range sources {
-			if energySourceMatchesAvailabilityName(source, name) {
+			if energySourceMatchesAvailabilityName(source, name, level) {
 				status = "found"
 				if source.ID != "" {
 					sourceIDs = appendUniquePurposeString(sourceIDs, source.ID)
@@ -3036,8 +3036,41 @@ func sourceAvailabilityEntries(expected []string, level string, sources []Energy
 	return out
 }
 
-func energySourceMatchesAvailabilityName(source EnergyDataSource, name string) bool {
-	return strings.EqualFold(source.Name, name) || strings.EqualFold(source.KeyValue, name)
+func energySourceMatchesAvailabilityName(source EnergyDataSource, name string, level string) bool {
+	if strings.EqualFold(source.Name, name) || strings.EqualFold(source.KeyValue, name) {
+		return true
+	}
+	if level == "energy" {
+		return energyNamesShareEnergyAliasGroup(source.Name, name) || energyNamesShareEnergyAliasGroup(source.KeyValue, name)
+	}
+	return false
+}
+
+func energyNamesShareEnergyAliasGroup(left string, right string) bool {
+	leftKey := energyKnownAliasGroupKey(left)
+	rightKey := energyKnownAliasGroupKey(right)
+	return leftKey != "" && leftKey == rightKey
+}
+
+func energyKnownAliasGroupKey(name string) string {
+	if def, ok := energyMeterAliasDefinitionForName(name); ok {
+		return energyMeterDefinitionGroupKey(def)
+	}
+	if def, ok := energyVariableAliasDefinitionForName(name); ok {
+		return energyMeterDefinitionGroupKey(def)
+	}
+	if def, ok := energyMeterEndUseCarrierDefinitionForName(name); ok {
+		return energyMeterDefinitionGroupKey(def)
+	}
+	return ""
+}
+
+func energyMeterDefinitionGroupKey(def energyMeterAliasDefinition) string {
+	return strings.Join([]string{
+		def.Kind,
+		normalizeEnergyOutputName(def.Carrier),
+		normalizeEnergyOutputName(def.EndUse),
+	}, "|")
 }
 
 func sourceAvailabilityEntriesForLevel(expected []string, level string, sources []EnergyDataSource) []EnergySourceAvailabilityEntry {

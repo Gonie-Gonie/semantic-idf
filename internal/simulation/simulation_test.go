@@ -639,7 +639,7 @@ func TestParseSimulationEnergyExplanationSQLBuildsAccountingGraph(t *testing.T) 
 	surfaceHeatObjectIndex := 4
 	plan := &PurposeRunPlan{OutputObjects: []PurposeOutputObject{
 		{ObjectType: "Output:Meter", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, KeyValue: "Electricity:Facility", ObjectIndex: &facilityObjectIndex},
-		{ObjectType: "Output:Meter", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, KeyValue: "Electricity:Cooling", ObjectIndex: &coolingObjectIndex},
+		{ObjectType: "Output:Meter", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, KeyValue: "Cooling:Electricity", ObjectIndex: &coolingObjectIndex},
 		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, KeyValue: "*", VariableName: "Zone Air System Sensible Cooling Energy", ObjectIndex: &loadObjectIndex},
 		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, KeyValue: "*", VariableName: "Zone Air Heat Balance Internal Convective Heat Gain Rate", ObjectIndex: &internalHeatObjectIndex},
 		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, KeyValue: "*", VariableName: "Zone Air Heat Balance Surface Convection Rate", ObjectIndex: &surfaceHeatObjectIndex},
@@ -747,11 +747,17 @@ func TestParseSimulationEnergyExplanationSQLBuildsAccountingGraph(t *testing.T) 
 	if availability := energyExplanationSourceAvailabilityByName(result.Completeness.SourceAvailability, "Zone Air Heat Balance Surface Convection Rate"); availability == nil || availability.Status != "found" || availability.Level != "heat" || !stringSliceContains(availability.SourceIDs, "sql-rdd-25") {
 		t.Fatalf("source availability = %#v", result.Completeness.SourceAvailability)
 	}
+	if availability := energyExplanationSourceAvailabilityByName(result.Completeness.SourceAvailability, "Cooling:Electricity"); availability == nil || availability.Status != "found" || availability.Level != "energy" || !stringSliceContains(availability.SourceIDs, "sql-rdd-21") {
+		t.Fatalf("aliased source availability = %#v", result.Completeness.SourceAvailability)
+	}
 	if len(result.Sources) != 5 || !energyExplanationHasSource(result.Sources, "sql-rdd-20", true, "Electricity:Facility") || !energyExplanationHasSource(result.Sources, "sql-rdd-24", false, "Zone Air Heat Balance Internal Convective Heat Gain Rate") {
 		t.Fatalf("sources = %#v", result.Sources)
 	}
 	if source := energyExplanationSourceByID(result.Sources, "sql-rdd-20"); source == nil || source.ObjectIndex == nil || *source.ObjectIndex != facilityObjectIndex || source.AggregationMethod != "sum_report_data" {
 		t.Fatalf("facility source object index = %#v", source)
+	}
+	if source := energyExplanationSourceByID(result.Sources, "sql-rdd-21"); source == nil || source.ObjectIndex == nil || *source.ObjectIndex != coolingObjectIndex {
+		t.Fatalf("aliased cooling source object index = %#v", source)
 	}
 	if source := energyExplanationSourceByID(result.Sources, "sql-rdd-20"); source == nil || source.Units != "J" || source.SourceUnit != "J" || source.NormalizedUnit != "kWh" {
 		t.Fatalf("facility source units = %#v", source)
