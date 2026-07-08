@@ -21,6 +21,8 @@ The release script infers bump size from these sections:
   available.
 - Energy explanation Sankey and Systems views can now focus by all results, a
   selected zone, or a selected HVAC service path.
+- Energy explanation Sankey can now switch heat drivers between display
+  magnitude, signed balance, cooling-pressure, and heating-pressure views.
 - Energy explanation completeness now surfaces missing categories and source
   availability rows in the UI.
 - Added an annual `energyExplanationSummary` result payload for carrier,

@@ -163,7 +163,9 @@ Purpose result viewers now include:
   current HVAC service model by zone and service kind, then link directly to the
   related HVAC service path. Sankey and Systems can focus the graph by all
   results, a selected zone, or a selected HVAC service path without changing the
-  stored explanation payload.
+  stored explanation payload. The Sankey view can switch heat-driver rendering
+  between display magnitude, signed balance, cooling-pressure, and
+  heating-pressure modes.
 - Zone Heat Flow SQL or CSV/ESO ledger with frame sampling metadata and
   time-range controls.
 - HVAC Loop Check node summaries, component operation summaries for fans,

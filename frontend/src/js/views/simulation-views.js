@@ -557,7 +557,26 @@ function renderEnergySubviewControls(view, explanation = {}) {
           : ""
       }
       ${["sankey", "systems"].includes(view) && energyExplanationHasPayload(explanation) ? renderEnergyFocusControls(explanation) : ""}
+      ${view === "sankey" && energyExplanationHasPayload(explanation) ? renderEnergySignModeControls() : ""}
     </div>`;
+}
+
+function renderEnergySignModeControls() {
+  const mode = energyExplanationSignMode(state.simulationEnergySignMode || "display");
+  state.simulationEnergySignMode = mode;
+  const options = [
+    ["display", t("simulation.energyDisplayMagnitude", {}, "Display magnitude")],
+    ["signed", t("simulation.energySignedBalance", {}, "Signed balance")],
+    ["cooling_pressure", t("simulation.coolingPressure", {}, "Cooling pressure")],
+    ["heating_pressure", t("simulation.heatingPressure", {}, "Heating pressure")],
+  ]
+    .map(([value, label]) => `<option value="${escapeHTML(value)}" ${mode === value ? "selected" : ""}>${escapeHTML(label)}</option>`)
+    .join("");
+  return `
+    <label>
+      <span>${escapeHTML(t("simulation.heatDriverView", {}, "Heat driver view"))}</span>
+      <select data-simulation-energy-sign-mode>${options}</select>
+    </label>`;
 }
 
 function renderEnergyFocusControls(explanation = {}) {
@@ -858,7 +877,7 @@ function energyAllocationPolicyLabel(policy = "") {
 }
 
 function renderEnergyExplanationSankey(explanation = {}) {
-  const graph = focusedEnergyExplanationGraph(energyExplanationGraphForPeriod(explanation, state.simulationEnergyPeriod || "annual"));
+  const graph = energyExplanationSignModeGraph(focusedEnergyExplanationGraph(energyExplanationGraphForPeriod(explanation, state.simulationEnergyPeriod || "annual")));
   const nodes = graph.nodes || [];
   const edges = graph.edges || [];
   if (!nodes.length) {
@@ -871,12 +890,91 @@ function renderEnergyExplanationSankey(explanation = {}) {
     <section class="simulation-energy-block">
       <div class="simulation-energy-block-head">
         <h4>${escapeHTML(t("simulation.energyPath", {}, "Energy Use -> Delivered Load -> Heat Drivers"))}</h4>
-        <span>${escapeHTML(t("simulation.energyBasisNote", {}, "Basis is accounting/source type, not confidence."))}</span>
+        <span>${escapeHTML(t("simulation.energyBasisNote", {}, "Basis is accounting/source type, not confidence."))} / ${escapeHTML(energyExplanationSignModeLabel(state.simulationEnergySignMode || "display"))}</span>
       </div>
       ${svg}
       ${renderEnergyExplanationLegend()}
       ${renderEnergyExplanationInspector(selected, explanation)}
     </section>`;
+}
+
+function energyExplanationSignModeGraph(graph = {}) {
+  const mode = energyExplanationSignMode(state.simulationEnergySignMode || "display");
+  if (mode === "display") {
+    return graph;
+  }
+  const sourceNodes = graph.nodes || [];
+  const nodes = sourceNodes
+    .filter((node) => energyExplanationNodeVisibleForSignMode(node, mode))
+    .map((node) => energyExplanationNodeForSignMode(node, mode));
+  const nodeIDs = new Set(nodes.map((node) => node.id));
+  const edges = (graph.edges || [])
+    .filter((edge) => nodeIDs.has(edge.fromId) && nodeIDs.has(edge.toId) && energyExplanationEdgeVisibleForSignMode(edge, mode, sourceNodes))
+    .map((edge) => energyExplanationEdgeForSignMode(edge, mode));
+  return { nodes, edges };
+}
+
+function energyExplanationSignMode(mode = "") {
+  return ["display", "signed", "cooling_pressure", "heating_pressure"].includes(mode) ? mode : "display";
+}
+
+function energyExplanationSignModeLabel(mode = "") {
+  const labels = {
+    display: t("simulation.energyDisplayMagnitude", {}, "Display magnitude"),
+    signed: t("simulation.energySignedBalance", {}, "Signed balance"),
+    cooling_pressure: t("simulation.coolingPressure", {}, "Cooling pressure"),
+    heating_pressure: t("simulation.heatingPressure", {}, "Heating pressure"),
+  };
+  return labels[energyExplanationSignMode(mode)] || labels.display;
+}
+
+function energyExplanationNodeVisibleForSignMode(node = {}, mode = "display") {
+  if (node.level !== "heat") {
+    return true;
+  }
+  const signed = Number(node.signedValue ?? node.value) || 0;
+  if (mode === "cooling_pressure") {
+    return signed >= 0;
+  }
+  if (mode === "heating_pressure") {
+    return signed < 0;
+  }
+  return true;
+}
+
+function energyExplanationEdgeVisibleForSignMode(edge = {}, mode = "display", nodes = []) {
+  if (edge.relation !== "heat_driver") {
+    return true;
+  }
+  const signed = Number(edge.signedValue ?? edge.value) || 0;
+  if (mode === "cooling_pressure") {
+    return signed >= 0;
+  }
+  if (mode === "heating_pressure") {
+    return signed < 0;
+  }
+  const target = nodes.find((node) => node.id === edge.toId);
+  return energyExplanationNodeVisibleForSignMode(target || {}, mode);
+}
+
+function energyExplanationNodeForSignMode(node = {}, mode = "display") {
+  if (node.level !== "heat") {
+    return { ...node };
+  }
+  const signed = Number(node.signedValue ?? node.value) || 0;
+  const displayValue = Number(node.displayValue ?? node.value) || 0;
+  const value = mode === "signed" ? signed : Math.abs(mode === "display" ? displayValue : signed);
+  return { ...node, value };
+}
+
+function energyExplanationEdgeForSignMode(edge = {}, mode = "display") {
+  if (edge.relation !== "heat_driver") {
+    return { ...edge };
+  }
+  const signed = Number(edge.signedValue ?? edge.value) || 0;
+  const displayValue = Number(edge.displayValue ?? edge.value) || 0;
+  const value = mode === "signed" ? signed : Math.abs(mode === "display" ? displayValue : signed);
+  return { ...edge, value };
 }
 
 function renderEnergyExplanationSVG(nodes = [], edges = []) {
@@ -2825,6 +2923,13 @@ function handleSimulationEnergyDashboardChange(event) {
   const pathFocus = event.target.closest("[data-simulation-energy-service-path-focus]");
   if (pathFocus) {
     state.simulationEnergyServicePathFocus = pathFocus.value || "";
+    state.simulationEnergySelection = "";
+    renderSimulationEnergyDashboard(state.simulationResult);
+    return;
+  }
+  const signMode = event.target.closest("[data-simulation-energy-sign-mode]");
+  if (signMode) {
+    state.simulationEnergySignMode = energyExplanationSignMode(signMode.value || "display");
     state.simulationEnergySelection = "";
     renderSimulationEnergyDashboard(state.simulationResult);
     return;
