@@ -23,6 +23,9 @@ The release script infers bump size from these sections:
   selected zone, or a selected HVAC service path.
 - Energy explanation Sankey can now switch heat drivers between display
   magnitude, signed balance, cooling-pressure, and heating-pressure views.
+- Energy explanation Sankey now states the heat-driver sign convention: positive
+  drivers add cooling pressure, negative drivers add heating pressure, and
+  signed mode preserves the heat-balance sign.
 - Energy explanation Sankey can cap visible heat-driver nodes, group omitted
   drivers as `Other heat drivers` for large models, and expand grouped drivers
   with an `All` action.

@@ -1445,6 +1445,11 @@
   gap: 5px;
 }
 
+.energy-sankey-sign-note {
+  color: var(--muted);
+  font-size: 11px;
+}
+
 .energy-sankey-legend i {
   width: 18px;
   height: 3px;

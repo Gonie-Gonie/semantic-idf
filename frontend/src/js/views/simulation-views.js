@@ -1293,6 +1293,7 @@ function renderEnergyExplanationSankey(explanation = {}) {
       ${svg}
       ${renderEnergyExplanationGroupingNotice(graph.grouping)}
       ${renderEnergyExplanationLegend()}
+      ${renderEnergySignConventionNote()}
       ${renderEnergyExplanationInspector(selected, explanation)}
     </section>`;
 }
@@ -1598,6 +1599,10 @@ function renderEnergyExplanationLegend() {
       <span><i class="allocated"></i>${escapeHTML(t("simulation.basisAllocated", {}, "allocated"))}</span>
       <span><i class="residual"></i>${escapeHTML(t("simulation.basisResidual", {}, "residual"))}</span>
     </div>`;
+}
+
+function renderEnergySignConventionNote() {
+  return `<div class="energy-sankey-sign-note">${escapeHTML(t("simulation.energySignConvention", {}, "Positive heat drivers add cooling pressure; negative heat drivers add heating pressure. Signed mode preserves the original heat-balance sign."))}</div>`;
 }
 
 function renderEnergyExplanationInspector(selection, explanation = {}) {
