@@ -261,6 +261,8 @@ func TestFrontendBatchEnergyExplanationDeltaContracts(t *testing.T) {
 		"energyExplanationEdgeExportItems",
 		"energyExplanationWarningExportItems",
 		"energyExplanationBatchExportPeriods",
+		"energyExplanationSourceTableExportFieldsForIDs",
+		"energyExplanationSourceUnitExportFieldsForIDs",
 		"energyExplanationSummaryEdgeExportFields",
 		"energyExplanationRatioExportFields",
 		"energyExplanationSourceObjectIndexes",

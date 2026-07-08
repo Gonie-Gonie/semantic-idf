@@ -562,9 +562,9 @@ export function initializeMultiSimulationTool(context) {
           "",
           "",
           energyExplanationSourceObjectIndexes(explanation, availability.sourceIds || []),
-          ...emptyEnergyExplanationSourceTableExportFields(),
+          ...energyExplanationSourceTableExportFieldsForIDs(explanation, availability.sourceIds || []),
           ...emptyEnergyExplanationEdgeExportFields(availability.sourceIds || []),
-          ...emptyEnergyExplanationSourceUnitExportFields(),
+          ...energyExplanationSourceUnitExportFieldsForIDs(explanation, availability.sourceIds || []),
           "",
           ...emptyEnergyExplanationHeatExportFields(),
           ...emptyEnergyExplanationRatioExportFields(),
@@ -841,6 +841,14 @@ export function initializeMultiSimulationTool(context) {
     return [source.tableName || "", source.rowName || "", source.columnName || ""];
   }
 
+  function energyExplanationSourceTableExportFieldsForIDs(explanation = {}, sourceIDs = []) {
+    return [
+      energyExplanationSourceValueSummary(explanation, sourceIDs, (source) => source.tableName),
+      energyExplanationSourceValueSummary(explanation, sourceIDs, (source) => source.rowName),
+      energyExplanationSourceValueSummary(explanation, sourceIDs, (source) => source.columnName),
+    ];
+  }
+
   function emptyEnergyExplanationSourceTableExportFields() {
     return ["", "", ""];
   }
@@ -875,6 +883,26 @@ export function initializeMultiSimulationTool(context) {
 
   function energyExplanationSourceUnitExportFields(source = {}) {
     return [source.sourceUnit || source.units || "", source.normalizedUnit || ""];
+  }
+
+  function energyExplanationSourceUnitExportFieldsForIDs(explanation = {}, sourceIDs = []) {
+    return [
+      energyExplanationSourceValueSummary(explanation, sourceIDs, (source) => source.sourceUnit || source.units),
+      energyExplanationSourceValueSummary(explanation, sourceIDs, (source) => source.normalizedUnit),
+    ];
+  }
+
+  function energyExplanationSourceValueSummary(explanation = {}, sourceIDs = [], valueFn = () => "") {
+    const sourceByID = new Map((explanation.sources || []).map((source) => [source.id, source]));
+    const values = [];
+    for (const sourceID of sourceIDs || []) {
+      const source = sourceByID.get(sourceID);
+      const value = String(valueFn(source || {}) || "").trim();
+      if (value && !values.includes(value)) {
+        values.push(value);
+      }
+    }
+    return values.join("; ");
   }
 
   function energyExplanationSourceObjectIndexes(explanation = {}, sourceIDs = []) {

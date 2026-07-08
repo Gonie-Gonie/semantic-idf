@@ -1508,7 +1508,7 @@ func batchSimulationEnergySourceSection(result simulation.MultiSimulationResult)
 func batchSimulationEnergySourceAvailabilitySection(result simulation.MultiSimulationResult) tabular.Section {
 	section := tabular.Section{
 		Title:   "source_availability",
-		Headers: []string{"file", "run_status", "run_id", "level", "output", "availability_status", "source_ids", "source_object_index"},
+		Headers: []string{"file", "run_status", "run_id", "level", "output", "availability_status", "source_ids", "source_object_index", "source_table", "source_row", "source_column", "source_unit", "normalized_unit"},
 	}
 	for _, item := range result.Results {
 		if item.PurposeResults == nil {
@@ -1526,6 +1526,13 @@ func batchSimulationEnergySourceAvailabilitySection(result simulation.MultiSimul
 				availability.Status,
 				strings.Join(availability.SourceIDs, "; "),
 				batchSimulationSourceObjectIndexes(explanation, availability.SourceIDs),
+				batchSimulationSourceValueSummary(explanation, availability.SourceIDs, func(source simulation.EnergyDataSource) string { return source.TableName }),
+				batchSimulationSourceValueSummary(explanation, availability.SourceIDs, func(source simulation.EnergyDataSource) string { return source.RowName }),
+				batchSimulationSourceValueSummary(explanation, availability.SourceIDs, func(source simulation.EnergyDataSource) string { return source.ColumnName }),
+				batchSimulationSourceValueSummary(explanation, availability.SourceIDs, func(source simulation.EnergyDataSource) string {
+					return firstNonEmpty(source.SourceUnit, source.Units)
+				}),
+				batchSimulationSourceValueSummary(explanation, availability.SourceIDs, func(source simulation.EnergyDataSource) string { return source.NormalizedUnit }),
 			})
 		}
 	}
@@ -1533,21 +1540,31 @@ func batchSimulationEnergySourceAvailabilitySection(result simulation.MultiSimul
 }
 
 func batchSimulationSourceObjectIndexes(explanation simulation.EnergyExplanationResult, sourceIDs []string) string {
+	return batchSimulationSourceValueSummary(explanation, sourceIDs, func(source simulation.EnergyDataSource) string {
+		if source.ObjectIndex == nil {
+			return ""
+		}
+		return fmt.Sprintf("%d", *source.ObjectIndex)
+	})
+}
+
+func batchSimulationSourceValueSummary(explanation simulation.EnergyExplanationResult, sourceIDs []string, value func(simulation.EnergyDataSource) string) string {
 	sourceByID := map[string]simulation.EnergyDataSource{}
 	for _, source := range explanation.Sources {
 		sourceByID[source.ID] = source
 	}
-	seen := map[int]bool{}
-	indexes := []string{}
+	seen := map[string]bool{}
+	values := []string{}
 	for _, sourceID := range sourceIDs {
 		source := sourceByID[sourceID]
-		if source.ObjectIndex == nil || seen[*source.ObjectIndex] {
+		field := strings.TrimSpace(value(source))
+		if field == "" || seen[field] {
 			continue
 		}
-		seen[*source.ObjectIndex] = true
-		indexes = append(indexes, fmt.Sprintf("%d", *source.ObjectIndex))
+		seen[field] = true
+		values = append(values, field)
 	}
-	return strings.Join(indexes, "; ")
+	return strings.Join(values, "; ")
 }
 
 func batchSimulationEnergyEdgeSection(result simulation.MultiSimulationResult) tabular.Section {

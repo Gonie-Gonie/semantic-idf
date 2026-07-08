@@ -557,11 +557,16 @@ func TestBatchSimulationWorkbookSheetsIncludeSourceAvailability(t *testing.T) {
 				EnergyExplanation: simulation.EnergyExplanationResult{
 					Sources: []simulation.EnergyDataSource{
 						{
-							ID:          "sql-rdd-20",
-							SourceType:  "sql_report_data",
-							IsMeter:     true,
-							Name:        "Electricity:Facility",
-							ObjectIndex: &sourceObjectIndex,
+							ID:             "sql-rdd-20",
+							SourceType:     "sql_report_data",
+							IsMeter:        true,
+							Name:           "Electricity:Facility",
+							SourceUnit:     "J",
+							NormalizedUnit: "kWh",
+							TableName:      "ReportData",
+							RowName:        "Electricity:Facility",
+							ColumnName:     "Value [J]",
+							ObjectIndex:    &sourceObjectIndex,
 						},
 					},
 					Completeness: simulation.EnergyCompleteness{
@@ -578,7 +583,7 @@ func TestBatchSimulationWorkbookSheetsIncludeSourceAvailability(t *testing.T) {
 	if len(sheets) != 3 || sheets[1].Name != "Energy Sources" || sheets[2].Name != "Source Availability" {
 		t.Fatalf("source availability sheets = %#v", sheets)
 	}
-	if rows := sheets[2].Sections[0].Rows; len(rows) != 2 || rows[0][5] != "found" || rows[0][6] != "sql-rdd-20" || rows[0][7] != "4" || rows[1][4] != "Zone Air System Sensible Cooling Energy" || rows[1][5] != "missing" {
+	if rows := sheets[2].Sections[0].Rows; len(rows) != 2 || rows[0][5] != "found" || rows[0][6] != "sql-rdd-20" || rows[0][7] != "4" || rows[0][8] != "ReportData" || rows[0][9] != "Electricity:Facility" || rows[0][10] != "Value [J]" || rows[0][11] != "J" || rows[0][12] != "kWh" || rows[1][4] != "Zone Air System Sensible Cooling Energy" || rows[1][5] != "missing" {
 		t.Fatalf("source availability rows = %#v", rows)
 	}
 }
