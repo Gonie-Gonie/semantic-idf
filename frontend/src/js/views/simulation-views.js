@@ -1191,8 +1191,11 @@ function renderEnergyExplanationCompleteness(explanation = {}) {
   const missingAvailability = (completeness.sourceAvailability || []).filter((item) => item.status && item.status !== "found" && item.status !== "not_applicable");
   const hasIncompleteItems = items.some((item) => item.status && item.status !== "complete" && item.status !== "not_applicable");
   const hasOutputShortage = missingCategories.length > 0 || missingAvailability.length > 0;
+  const basicEnergyDetail = currentBasicEnergyDetail();
   const coverageNote = hasOutputShortage
-    ? t("simulation.energyOutputShortageHint", {}, "Source output shortage: open the output plan, make missing outputs permanent, then rerun Basic Energy.")
+    ? basicEnergyDetail === "light"
+      ? t("simulation.energyDetailTierHint", {}, "Source output shortage: switch Basic Energy detail to Explain or Heat drivers, refresh the output plan, then rerun Basic Energy.")
+      : t("simulation.energyOutputShortageHint", {}, "Source output shortage: open the output plan, make missing outputs permanent, then rerun Basic Energy.")
     : hasIncompleteItems
       ? t("simulation.energyAccountingCoverageHint", {}, "No source output shortage is reported; remaining gaps are accounting coverage or model applicability.")
       : "";
@@ -1287,6 +1290,15 @@ function basicEnergyDetailLabel(detail = "") {
     default:
       return titleCaseEnergyToken(detail || "heat_drivers");
   }
+}
+
+function currentBasicEnergyDetail() {
+  return String(
+    state.simulationResult?.purposeRunPlan?.basicEnergyDetail ||
+      state.simulationPurposePlan?.basicEnergyDetail ||
+      elements.simulationPurposeEnergyDetail?.value ||
+      "",
+  ).toLowerCase();
 }
 
 function renderEnergyExplanationSankey(explanation = {}) {

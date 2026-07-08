@@ -730,6 +730,7 @@ const dictionaries = {
     "simulation.energyExplanationMonthlyLevels": "Monthly explanation levels",
     "simulation.energySankeyGrouped": "Showing top {limit} heat drivers; {count} grouped as Other.",
     "simulation.energySignConvention": "Positive heat drivers add cooling pressure; negative heat drivers add heating pressure. Signed mode preserves the original heat-balance sign.",
+    "simulation.energyDetailTierHint": "Source output shortage: switch Basic Energy detail to Explain or Heat drivers, refresh the output plan, then rerun Basic Energy.",
     "simulation.energyZoneBreakdown": "Zone energy/load/heat breakdown",
     "simulation.reconciliationBalanced": "Balanced",
     "simulation.reconciliationOvermapped": "Overmapped",

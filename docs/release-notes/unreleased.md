@@ -109,6 +109,8 @@ The release script infers bump size from these sections:
   both values.
 - Basic Energy energy nodes now carry `meterHierarchyLevel` metadata such as
   `facility_total` and `broad_end_use`, and the Sankey inspector shows it.
+- Basic Energy completeness hints now tell light-tier users to switch the detail
+  tier before rerunning when explanation outputs are missing.
 - The Basic Energy Reconciliation subview now expands each accounting row's
   source IDs into compact source/output links, so residual checks can jump back
   to the matching output request when one is known.
