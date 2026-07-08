@@ -241,7 +241,8 @@ export the full batch result as
 payloads such as high-resolution daily/hourly explanation periods that are
 intentionally omitted from the default CSV. The export context also preserves
 the selected baseline and target row IDs used by the two-case explanation delta
-view.
+view, along with the purpose request, frequency/allocation policy, weather
+mode/path, worker count, and selected batch view mode.
 
 `parseSimulationSQL` is the combined SQLite entrypoint. It gathers generic
 time-series rows, Basic Energy dashboard data, SQL heat-flow data, Integrity
