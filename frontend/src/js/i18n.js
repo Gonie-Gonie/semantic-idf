@@ -722,6 +722,7 @@ const dictionaries = {
     "simulation.energyStats": "{facility} facility, {enduse} end-use, {zones} zone series",
     "simulation.energyUseBreakdown": "Energy use by carrier and end use",
     "simulation.energyUseBreakdownHint": "Carrier and end use stay separate for comparison.",
+    "simulation.energyExplanationMonthlyLevels": "Monthly explanation levels",
     "simulation.endUse": "End use",
     "simulation.endUseEnergy": "End-use energy",
     "simulation.endUseMonthlyProfile": "End-use monthly profile",

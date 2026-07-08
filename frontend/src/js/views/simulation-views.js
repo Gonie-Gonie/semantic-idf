@@ -893,6 +893,7 @@ function renderEnergyMonthlySubview(explanation = {}, facility = [], endUse = []
     .join("");
   return `
     ${renderEnergyExplanationCompleteness(explanation)}
+    ${renderEnergyExplanationMonthlyLevelChart(explanation)}
     ${renderEnergyMonthlyChart(t("simulation.facilityMonthlyProfile", {}, "Facility monthly profile"), facility, explanation)}
     ${renderEnergyMonthlyChart(t("simulation.endUseMonthlyProfile", {}, "End-use monthly profile"), endUse, explanation)}
     <section class="simulation-energy-block">
@@ -905,6 +906,68 @@ function renderEnergyMonthlySubview(explanation = {}, facility = [], endUse = []
           <thead><tr><th>${escapeHTML(t("common.period", {}, "Period"))}</th><th>Energy Use</th><th>Delivered Load</th><th>Heat Drivers</th><th>Residual</th></tr></thead>
           <tbody>${rows || `<tr><td colspan="5">${escapeHTML(t("common.notAvailable", {}, "N/A"))}</td></tr>`}</tbody>
         </table>
+      </div>
+    </section>`;
+}
+
+function renderEnergyExplanationMonthlyLevelChart(explanation = {}) {
+  const periods = (explanation.periods || []).filter((period) => period.kind === "monthly");
+  if (!periods.length) {
+    return "";
+  }
+  const levels = [
+    { key: "energy", label: t("simulation.energyUse", {}, "Energy Use"), color: "#2563eb" },
+    { key: "load", label: t("simulation.deliveredLoad", {}, "Delivered Load"), color: "#16a34a" },
+    { key: "heat", label: t("simulation.heatDrivers", {}, "Heat Drivers"), color: "#d97706" },
+    { key: "residual", label: t("simulation.residual", {}, "Residual"), color: "#dc2626" },
+  ];
+  const rows = periods.map((period) => ({ period, totals: energyExplanationLevelTotals(period.nodes || []) }));
+  const maxValue = Math.max(
+    ...rows.flatMap((row) => levels.map((level) => Math.abs(Number(row.totals[level.key]) || 0))),
+    1,
+  );
+  const width = 760;
+  const height = 230;
+  const margin = { top: 18, right: 18, bottom: 44, left: 58 };
+  const plotWidth = width - margin.left - margin.right;
+  const plotHeight = height - margin.top - margin.bottom;
+  const groupGap = 10;
+  const groupWidth = Math.max(30, (plotWidth - groupGap * Math.max(0, rows.length - 1)) / rows.length);
+  const barGap = 3;
+  const barWidth = Math.max(4, (groupWidth - barGap * (levels.length - 1)) / levels.length);
+  const groups = rows
+    .map((row, rowIndex) => {
+      const x0 = margin.left + rowIndex * (groupWidth + groupGap);
+      const bars = levels
+        .map((level, levelIndex) => {
+          const value = Math.abs(Number(row.totals[level.key]) || 0);
+          const barHeight = Math.max(value > 0 ? 1 : 0, (value / maxValue) * plotHeight);
+          const x = x0 + levelIndex * (barWidth + barGap);
+          const y = margin.top + plotHeight - barHeight;
+          return `<rect x="${roundSVG(x)}" y="${roundSVG(y)}" width="${roundSVG(barWidth)}" height="${roundSVG(barHeight)}" fill="${level.color}"><title>${escapeHTML(`${row.period.label || row.period.id || ""} / ${level.label}: ${formatValueWithUnit(value, row.totals.unit)}`)}</title></rect>`;
+        })
+        .join("");
+      const labelY = margin.top + plotHeight + 16;
+      return `
+        <g class="simulation-energy-chart-period" data-simulation-energy-period-jump="${escapeHTML(row.period.id || "")}">
+          ${bars}
+          <rect class="simulation-energy-chart-hit" x="${roundSVG(x0)}" y="${margin.top}" width="${roundSVG(groupWidth)}" height="${plotHeight}" fill="transparent"><title>${escapeHTML(t("simulation.openSankeyPeriod", { period: row.period.label || row.period.id || "" }, `Open ${row.period.label || row.period.id || ""} in Sankey`))}</title></rect>
+          <text x="${roundSVG(x0 + groupWidth / 2)}" y="${labelY}" class="simulation-axis" text-anchor="middle">${escapeHTML(row.period.label || row.period.id || "")}</text>
+        </g>`;
+    })
+    .join("");
+  const legend = levels.map((level) => `<span><i style="background:${level.color}"></i>${escapeHTML(level.label)}</span>`).join("");
+  return `
+    <section class="simulation-energy-block">
+      <h4>${escapeHTML(t("simulation.energyExplanationMonthlyLevels", {}, "Monthly explanation levels"))}</h4>
+      <div class="simulation-energy-chart-wrap">
+        <svg class="simulation-energy-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHTML(t("simulation.energyExplanationMonthlyLevels", {}, "Monthly explanation levels"))}">
+          <line x1="${margin.left}" y1="${margin.top + plotHeight}" x2="${width - margin.right}" y2="${margin.top + plotHeight}" class="simulation-axis-line"></line>
+          <line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${margin.top + plotHeight}" class="simulation-axis-line"></line>
+          <text x="${margin.left}" y="12" class="simulation-title">${escapeHTML(formatValueWithUnit(maxValue, rows[0]?.totals?.unit || "kWh"))}</text>
+          ${groups}
+        </svg>
+        <div class="simulation-energy-legend">${legend}</div>
       </div>
     </section>`;
 }
