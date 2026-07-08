@@ -225,9 +225,10 @@ category changes. Explicit gain/loss heat-driver summary rows stay separate so
 opposite air-exchange directions can be compared. It also ranks annual Sankey
 edge deltas by relation, edge label, rule ID, delta, percent, and missing-row
 status.
-Missing summary rows are labeled
-separately from matched rows so an absent output is not silently treated as a
-normal zero. Batch Simulation can export purpose metrics, compact
+Missing summary and edge rows are labeled separately from matched rows, and the
+comparison value cell renders `Missing` instead of numeric `0` so an absent
+output is not silently treated as a normal zero. Batch Simulation can export
+purpose metrics, compact
 `energyExplanationSummary` rows, `energyExplanation` source metadata rows,
 reconciliation rows, and Sankey edge metadata rows with period, relation, basis,
 `ruleId`, formula, endpoint, service, zone, source IDs, related source output

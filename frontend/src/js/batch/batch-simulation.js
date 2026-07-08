@@ -1008,10 +1008,10 @@ export function initializeMultiSimulationTool(context) {
           <tr>
             <td>${escapeHTML(row.group)}</td>
             <td>${escapeHTML(row.label)}</td>
-            <td>${escapeHTML(formatValue(row.leftValue, row.unit))}</td>
-            <td>${escapeHTML(formatValue(row.rightValue, row.unit))}</td>
+            <td>${escapeHTML(energyExplanationDeltaValue(row, "left"))}</td>
+            <td>${escapeHTML(energyExplanationDeltaValue(row, "right"))}</td>
             <td>${escapeHTML(formatSignedValue(row.delta, row.unit))}</td>
-            <td>${escapeHTML(row.percent === null ? t("common.notAvailable", {}, "N/A") : `${formatNumber(row.percent)}%`)}</td>
+            <td>${escapeHTML(energyExplanationDeltaPercent(row))}</td>
             <td>${escapeHTML(row.status)}</td>
           </tr>`,
       )
@@ -1041,10 +1041,10 @@ export function initializeMultiSimulationTool(context) {
             <td>${escapeHTML(row.relation)}</td>
             <td>${escapeHTML(row.label)}</td>
             <td>${escapeHTML(row.ruleId || "")}</td>
-            <td>${escapeHTML(formatValue(row.leftValue, row.unit))}</td>
-            <td>${escapeHTML(formatValue(row.rightValue, row.unit))}</td>
+            <td>${escapeHTML(energyExplanationDeltaValue(row, "left"))}</td>
+            <td>${escapeHTML(energyExplanationDeltaValue(row, "right"))}</td>
             <td>${escapeHTML(formatSignedValue(row.delta, row.unit))}</td>
-            <td>${escapeHTML(row.percent === null ? t("common.notAvailable", {}, "N/A") : `${formatNumber(row.percent)}%`)}</td>
+            <td>${escapeHTML(energyExplanationDeltaPercent(row))}</td>
             <td>${escapeHTML(row.status)}</td>
           </tr>`,
       )
@@ -1072,10 +1072,10 @@ export function initializeMultiSimulationTool(context) {
         (row) => `
           <tr>
             <td>${escapeHTML(row.label)}</td>
-            <td>${escapeHTML(formatValue(row.leftValue, row.unit))}</td>
-            <td>${escapeHTML(formatValue(row.rightValue, row.unit))}</td>
+            <td>${escapeHTML(energyExplanationDeltaValue(row, "left"))}</td>
+            <td>${escapeHTML(energyExplanationDeltaValue(row, "right"))}</td>
             <td>${escapeHTML(formatSignedValue(row.delta, row.unit))}</td>
-            <td>${escapeHTML(row.percent === null ? t("common.notAvailable", {}, "N/A") : `${formatNumber(row.percent)}%`)}</td>
+            <td>${escapeHTML(energyExplanationDeltaPercent(row))}</td>
             <td>${escapeHTML(row.status)}</td>
           </tr>`,
       )
@@ -1112,6 +1112,8 @@ export function initializeMultiSimulationTool(context) {
         label: energyExplanationSummaryLabel(leftItem || rightItem),
         leftValue,
         rightValue,
+        leftMissing: !leftItem,
+        rightMissing: !rightItem,
         delta,
         percent,
         unit,
@@ -1139,6 +1141,8 @@ export function initializeMultiSimulationTool(context) {
         ruleId: rightEdge?.ruleId || leftEdge?.ruleId || "",
         leftValue,
         rightValue,
+        leftMissing: !leftEdge,
+        rightMissing: !rightEdge,
         delta,
         percent,
         unit,
@@ -1181,6 +1185,20 @@ export function initializeMultiSimulationTool(context) {
 
   function energyExplanationSummaryLabel(item = {}) {
     return item.label || item.id || "";
+  }
+
+  function energyExplanationDeltaValue(row = {}, side = "left") {
+    if (side === "left" ? row.leftMissing : row.rightMissing) {
+      return t("common.missing", {}, "Missing");
+    }
+    return formatValue(side === "left" ? row.leftValue : row.rightValue, row.unit);
+  }
+
+  function energyExplanationDeltaPercent(row = {}) {
+    if (row.leftMissing || row.percent === null) {
+      return t("common.notAvailable", {}, "N/A");
+    }
+    return `${formatNumber(row.percent)}%`;
   }
 
   function energyExplanationDeltaStatus(leftItem, rightItem) {

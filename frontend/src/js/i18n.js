@@ -84,6 +84,7 @@ const dictionaries = {
     "common.metric": "Metric",
     "common.metrics": "Metrics",
     "common.max": "Max",
+    "common.missing": "Missing",
     "common.name": "name",
     "common.newValue": "New value",
     "common.no": "No",

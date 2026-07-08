@@ -198,7 +198,8 @@ The release script infers bump size from these sections:
   values from the Basic Energy explanation summary, plus two-row delta tables
   for end-use energy, delivered loads, and heat drivers. The batch explanation
   comparison also ranks the largest annual summary and Sankey edge changes, and
-  labels missing baseline or comparison rows.
+  labels missing baseline or comparison rows without rendering missing values as
+  numeric zero.
 - Batch Simulation now flags Basic Energy explanation completeness differences
   between two selected cases, including mapped-percent and missing-category
   changes.
