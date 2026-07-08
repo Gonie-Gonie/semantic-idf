@@ -624,6 +624,59 @@ func TestParseSimulationEnergyExplanationSQLPrefersEnergyOverRateFallback(t *tes
 	}
 }
 
+func TestParseSimulationEnergyExplanationSQLScopesDeliveredLoadNodes(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "eplusout.sql")
+	createTestEnergySQL(t, path)
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`INSERT INTO ReportDataDictionary VALUES
+		(23, 'ZONE ONE', 'Zone Air System Sensible Cooling Energy', 'J'),
+		(24, 'Cooling Coil', 'Cooling Coil Total Cooling Energy', 'J'),
+		(25, 'CHW Loop', 'Plant Loop Cooling Demand Energy', 'J')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO ReportData VALUES
+		(7, 1, 23, 900000.0),
+		(8, 2, 23, 900000.0),
+		(9, 1, 24, 1800000.0),
+		(10, 2, 24, 1800000.0),
+		(11, 1, 25, 3600000.0),
+		(12, 2, 25, 3600000.0)`); err != nil {
+		t.Fatal(err)
+	}
+
+	plan := &PurposeRunPlan{OutputObjects: []PurposeOutputObject{
+		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, VariableName: "Zone Air System Sensible Cooling Energy"},
+		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, VariableName: "Cooling Coil Total Cooling Energy"},
+		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, VariableName: "Plant Loop Cooling Demand Energy"},
+	}}
+	result, err := parseSimulationEnergyExplanationSQL(path, plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	zoneLoad := energyExplanationNodeByID(result.Nodes, "load.cooling.zone_one")
+	if zoneLoad == nil || zoneLoad.ZoneName != "ZONE ONE" || zoneLoad.LoopName != "" || zoneLoad.Value != 0.5 {
+		t.Fatalf("zone load node = %#v", zoneLoad)
+	}
+	systemLoad := energyExplanationNodeByID(result.Nodes, "load.cooling")
+	if systemLoad == nil || systemLoad.ZoneName != "" || systemLoad.LoopName != "" || systemLoad.Value != 1 {
+		t.Fatalf("system load node = %#v", systemLoad)
+	}
+	plantLoad := energyExplanationNodeByID(result.Nodes, "load.cooling.chw_loop")
+	if plantLoad == nil || plantLoad.ZoneName != "" || plantLoad.LoopName != "CHW Loop" || plantLoad.Value != 2 {
+		t.Fatalf("plant load node = %#v", plantLoad)
+	}
+	heatReconciliation := energyExplanationReconciliationByID(result.Reconciliation, "reconcile.heat.cooling.annual")
+	if heatReconciliation == nil || heatReconciliation.ExpectedValue != 0.5 {
+		t.Fatalf("heat reconciliation should use zone load basis when available: %#v", heatReconciliation)
+	}
+}
+
 func TestSQLTimeIntervalHoursUsesElapsedFirstPeriod(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "eplusout.sql")

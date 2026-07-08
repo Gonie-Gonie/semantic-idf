@@ -96,6 +96,10 @@ heat-driver target, the explanation parser uses the reported energy series and
 keeps the rate series only as traceable fallback source metadata. Completeness
 uses the canonical target count for these fallback groups while source
 availability still lists each requested output name.
+Delivered-load nodes keep zone loads in `zoneName`, plant demand in `loopName`,
+and aggregate coil/system loads at the system layer; heat-driver reconciliation
+uses zone loads when they are available so plant and system layers are not
+double-counted against zone heat-balance drivers.
 
 Output states:
 

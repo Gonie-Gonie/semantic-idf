@@ -51,6 +51,10 @@ The release script infers bump size from these sections:
 - Basic Energy explanation plans now request the delivered-load alias catalog
   across zone air system, ideal loads, radiant HVAC, coil, and plant demand
   outputs at monthly frequency.
+- Delivered-load explanation nodes now scope zone loads to `zoneName`, plant
+  demand loads to `loopName`, and keep coil/system loads as aggregate system
+  nodes so heat-driver reconciliation does not double-count system and plant
+  layers when zone loads are available.
 - Basic Energy heat-driver extraction now recognizes object-level fan heat-to-air
   outputs separately from fan electricity use.
 - Basic Energy output plan rows now label monthly delivered-load/zone-energy

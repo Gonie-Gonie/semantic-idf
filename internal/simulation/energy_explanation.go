@@ -202,6 +202,7 @@ type energyLoadAliasDefinition struct {
 	Kind        string
 	Label       string
 	ServiceKind string
+	Scope       string
 	Aliases     []string
 }
 
@@ -240,6 +241,7 @@ type energyExplanationSeries struct {
 	EndUse       string
 	ServiceKind  string
 	ZoneName     string
+	LoopName     string
 	HeatCategory string
 	Basis        string
 	SourceIDs    []string
@@ -431,11 +433,12 @@ func preferredEnergyExplanationSeries(series []energyExplanationSeries) []energy
 func energyExplanationSeriesSelectionKey(item energyExplanationSeries) string {
 	switch item.Level {
 	case "load":
+		scope := firstNonEmpty(item.ZoneName, item.LoopName, item.sourceKeyValue)
 		return strings.Join([]string{
 			item.Level,
 			item.Kind,
 			normalizeEnergyOutputName(item.ServiceKind),
-			normalizeEnergyOutputName(item.ZoneName),
+			normalizeEnergyOutputName(scope),
 		}, "|")
 	case "heat":
 		scope := item.ZoneName
@@ -499,6 +502,18 @@ func energyAliasPriority(name string, aliases []string) int {
 		}
 	}
 	return len(aliases) + 100
+}
+
+func energyLoadScopeNames(scope string, keyValue string) (string, string) {
+	keyValue = strings.TrimSpace(keyValue)
+	switch strings.ToLower(strings.TrimSpace(scope)) {
+	case "zone":
+		return keyValue, ""
+	case "plant":
+		return "", keyValue
+	default:
+		return "", ""
+	}
 }
 
 func emptyEnergyExplanationResult(plan *PurposeRunPlan) EnergyExplanationResult {
@@ -710,6 +725,7 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 	endUseNodesByCarrier := map[string][]string{}
 	loadNodesByService := map[string][]string{}
 	loadNodesByZoneService := map[string][]string{}
+	zoneLoadNodesByService := map[string][]string{}
 	heatValueByService := map[string]float64{}
 	heatSourcesByService := map[string][]string{}
 	addNode := func(node EnergyExplanationNode) {
@@ -766,6 +782,7 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 				Unit:        item.Unit,
 				Period:      period,
 				ZoneName:    item.ZoneName,
+				LoopName:    item.LoopName,
 				ServiceKind: item.ServiceKind,
 				SourceIDs:   item.SourceIDs,
 			})
@@ -773,6 +790,7 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 			if item.ZoneName != "" && item.ServiceKind != "" {
 				key := energyExplanationZoneServiceKey(item.ZoneName, item.ServiceKind)
 				loadNodesByZoneService[key] = appendUniqueStrings(loadNodesByZoneService[key], nodeID)
+				zoneLoadNodesByService[item.ServiceKind] = appendUniqueStrings(zoneLoadNodesByService[item.ServiceKind], nodeID)
 			}
 		case "heat":
 			nodeID := energyExplanationHeatNodeID(item)
@@ -959,10 +977,14 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 		if serviceKind == "" {
 			continue
 		}
+		reconciliationLoadIDs := zoneLoadNodesByService[serviceKind]
+		if len(reconciliationLoadIDs) == 0 {
+			reconciliationLoadIDs = loadIDs
+		}
 		loadValue := 0.0
 		loadUnit := "kWh"
 		loadSources := []string{}
-		for _, loadID := range loadIDs {
+		for _, loadID := range reconciliationLoadIDs {
 			loadNode := nodes[loadID]
 			if loadNode == nil {
 				continue
@@ -995,7 +1017,7 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 		if math.Abs(residual) <= energyResidualVisibilityThreshold(loadValue) {
 			continue
 		}
-		loadID := firstExistingNodeID(nodes, loadIDs...)
+		loadID := firstExistingNodeID(nodes, reconciliationLoadIDs...)
 		if loadID == "" {
 			continue
 		}
@@ -1203,13 +1225,15 @@ func energyExplanationSeriesForBuilder(builder *energyExplanationSeriesBuilder, 
 	}
 	if dictionary.load != nil {
 		def := dictionary.load
+		zoneName, loopName := energyLoadScopeNames(def.Scope, dictionary.row.keyValue)
 		return energyExplanationSeries{
 			Level:           "load",
 			Kind:            def.Kind,
 			Label:           def.Label,
 			Unit:            builder.unit,
 			ServiceKind:     def.ServiceKind,
-			ZoneName:        strings.TrimSpace(dictionary.row.keyValue),
+			ZoneName:        zoneName,
+			LoopName:        loopName,
 			Basis:           "measured_variable",
 			SourceIDs:       []string{sourceID},
 			Total:           roundedEnergyNumber(builder.total),
@@ -1491,14 +1515,14 @@ func energyMeterAliasCatalog() []energyMeterAliasDefinition {
 
 func energyLoadAliasCatalog() []energyLoadAliasDefinition {
 	return []energyLoadAliasDefinition{
-		{Kind: "load.zone_cooling", Label: "Zone cooling load", ServiceKind: "cooling", Aliases: []string{"Zone Air System Sensible Cooling Energy", "Zone Air System Sensible Cooling Rate", "Zone Ideal Loads Zone Sensible Cooling Energy", "Zone Ideal Loads Supply Air Total Cooling Energy"}},
-		{Kind: "load.zone_heating", Label: "Zone heating load", ServiceKind: "heating", Aliases: []string{"Zone Air System Sensible Heating Energy", "Zone Air System Sensible Heating Rate", "Zone Ideal Loads Zone Sensible Heating Energy", "Zone Ideal Loads Supply Air Total Heating Energy"}},
-		{Kind: "load.zone_radiant_cooling", Label: "Radiant cooling load", ServiceKind: "cooling", Aliases: []string{"Zone Radiant HVAC Cooling Energy", "Zone Radiant HVAC Cooling Rate"}},
-		{Kind: "load.zone_radiant_heating", Label: "Radiant heating load", ServiceKind: "heating", Aliases: []string{"Zone Radiant HVAC Heating Energy", "Zone Radiant HVAC Heating Rate"}},
-		{Kind: "load.system_cooling", Label: "System cooling delivered", ServiceKind: "cooling", Aliases: []string{"Cooling Coil Total Cooling Energy", "Cooling Coil Sensible Cooling Energy", "Cooling Coil Total Cooling Rate"}},
-		{Kind: "load.system_heating", Label: "System heating delivered", ServiceKind: "heating", Aliases: []string{"Heating Coil Heating Energy", "Heating Coil Heating Rate"}},
-		{Kind: "load.plant_cooling", Label: "Plant cooling demand", ServiceKind: "cooling", Aliases: []string{"Plant Supply Side Cooling Demand Rate", "Plant Loop Cooling Demand Energy"}},
-		{Kind: "load.plant_heating", Label: "Plant heating demand", ServiceKind: "heating", Aliases: []string{"Plant Supply Side Heating Demand Rate", "Plant Loop Heating Demand Energy"}},
+		{Kind: "load.zone_cooling", Label: "Zone cooling load", ServiceKind: "cooling", Scope: "zone", Aliases: []string{"Zone Air System Sensible Cooling Energy", "Zone Air System Sensible Cooling Rate", "Zone Ideal Loads Zone Sensible Cooling Energy", "Zone Ideal Loads Supply Air Total Cooling Energy"}},
+		{Kind: "load.zone_heating", Label: "Zone heating load", ServiceKind: "heating", Scope: "zone", Aliases: []string{"Zone Air System Sensible Heating Energy", "Zone Air System Sensible Heating Rate", "Zone Ideal Loads Zone Sensible Heating Energy", "Zone Ideal Loads Supply Air Total Heating Energy"}},
+		{Kind: "load.zone_radiant_cooling", Label: "Radiant cooling load", ServiceKind: "cooling", Scope: "zone", Aliases: []string{"Zone Radiant HVAC Cooling Energy", "Zone Radiant HVAC Cooling Rate"}},
+		{Kind: "load.zone_radiant_heating", Label: "Radiant heating load", ServiceKind: "heating", Scope: "zone", Aliases: []string{"Zone Radiant HVAC Heating Energy", "Zone Radiant HVAC Heating Rate"}},
+		{Kind: "load.system_cooling", Label: "System cooling delivered", ServiceKind: "cooling", Scope: "system", Aliases: []string{"Cooling Coil Total Cooling Energy", "Cooling Coil Sensible Cooling Energy", "Cooling Coil Total Cooling Rate"}},
+		{Kind: "load.system_heating", Label: "System heating delivered", ServiceKind: "heating", Scope: "system", Aliases: []string{"Heating Coil Heating Energy", "Heating Coil Heating Rate"}},
+		{Kind: "load.plant_cooling", Label: "Plant cooling demand", ServiceKind: "cooling", Scope: "plant", Aliases: []string{"Plant Supply Side Cooling Demand Rate", "Plant Loop Cooling Demand Energy"}},
+		{Kind: "load.plant_heating", Label: "Plant heating demand", ServiceKind: "heating", Scope: "plant", Aliases: []string{"Plant Supply Side Heating Demand Rate", "Plant Loop Heating Demand Energy"}},
 	}
 }
 
@@ -1779,6 +1803,8 @@ func energyExplanationLoadNodeID(item energyExplanationSeries) string {
 		nodeID = item.Kind
 	}
 	if suffix := energyExplanationZoneSuffix(item.ZoneName); suffix != "" {
+		nodeID += "." + suffix
+	} else if suffix := energyExplanationZoneSuffix(item.LoopName); suffix != "" {
 		nodeID += "." + suffix
 	}
 	return nodeID
