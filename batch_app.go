@@ -1107,7 +1107,7 @@ type batchSimulationDeltaRow struct {
 func batchSimulationEnergyDeltaSection(left, right simulation.SimulationRunResult) tabular.Section {
 	section := tabular.Section{
 		Title:   "energy_delta",
-		Headers: []string{"type", "id", "label", "baseline_file", "target_file", "baseline_value", "target_value", "delta", "percent", "unit", "status", "level", "service_kind", "path_type", "basis", "heat_category", "sign", "formula", "numerator_label", "baseline_numerator", "target_numerator", "numerator_unit", "denominator_label", "baseline_denominator", "target_denominator", "denominator_unit", "baseline_source_ids", "target_source_ids", "baseline_source_object_index", "target_source_object_index"},
+		Headers: []string{"type", "id", "label", "baseline_file", "target_file", "baseline_value", "target_value", "delta", "percent", "unit", "status", "level", "service_kind", "path_type", "basis", "heat_category", "sign", "formula", "numerator_label", "baseline_numerator", "target_numerator", "numerator_unit", "denominator_label", "baseline_denominator", "target_denominator", "denominator_unit", "baseline_source_ids", "target_source_ids", "baseline_source_object_index", "target_source_object_index", "baseline_source_table", "target_source_table", "baseline_source_row", "target_source_row", "baseline_source_column", "target_source_column", "baseline_source_unit", "target_source_unit", "baseline_normalized_unit", "target_normalized_unit"},
 	}
 	leftSummary := left.PurposeResults.EnergyExplanationSummary
 	rightSummary := right.PurposeResults.EnergyExplanationSummary
@@ -1129,7 +1129,7 @@ func batchSimulationEnergyDeltaSection(left, right simulation.SimulationRunResul
 	}
 	sortBatchSimulationDeltaRows(rows)
 	for _, row := range rows {
-		section.Rows = append(section.Rows, []string{
+		values := []string{
 			row.Group,
 			row.ID,
 			row.Label,
@@ -1160,7 +1160,9 @@ func batchSimulationEnergyDeltaSection(left, right simulation.SimulationRunResul
 			strings.Join(row.RightSourceIDs, "; "),
 			batchSimulationSourceObjectIndexes(leftExplanation, row.LeftSourceIDs),
 			batchSimulationSourceObjectIndexes(rightExplanation, row.RightSourceIDs),
-		})
+		}
+		values = append(values, batchSimulationSourceMetadataDeltaFields(leftExplanation, rightExplanation, row.LeftSourceIDs, row.RightSourceIDs)...)
+		section.Rows = append(section.Rows, values)
 	}
 	return section
 }
@@ -1247,14 +1249,14 @@ func batchSimulationSummaryRatioPresent(item simulation.EnergyExplanationSummary
 func batchSimulationEnergyEdgeDeltaSection(left, right simulation.SimulationRunResult) tabular.Section {
 	section := tabular.Section{
 		Title:   "sankey_edge_delta",
-		Headers: []string{"relation", "edge", "rule_id", "baseline_file", "target_file", "baseline_value", "target_value", "delta", "percent", "unit", "status", "basis", "from_id", "to_id", "baseline_source_ids", "target_source_ids", "baseline_source_object_index", "target_source_object_index", "baseline_related_path_ids", "target_related_path_ids"},
+		Headers: []string{"relation", "edge", "rule_id", "baseline_file", "target_file", "baseline_value", "target_value", "delta", "percent", "unit", "status", "basis", "from_id", "to_id", "baseline_source_ids", "target_source_ids", "baseline_source_object_index", "target_source_object_index", "baseline_related_path_ids", "target_related_path_ids", "baseline_source_table", "target_source_table", "baseline_source_row", "target_source_row", "baseline_source_column", "target_source_column", "baseline_source_unit", "target_source_unit", "baseline_normalized_unit", "target_normalized_unit"},
 	}
 	leftExplanation := left.PurposeResults.EnergyExplanation
 	rightExplanation := right.PurposeResults.EnergyExplanation
 	rows := batchSimulationEdgeDeltaRows(leftExplanation, rightExplanation)
 	sortBatchSimulationDeltaRows(rows)
 	for _, row := range rows {
-		section.Rows = append(section.Rows, []string{
+		values := []string{
 			row.Relation,
 			row.Label,
 			row.RuleID,
@@ -1275,7 +1277,9 @@ func batchSimulationEnergyEdgeDeltaSection(left, right simulation.SimulationRunR
 			batchSimulationSourceObjectIndexes(rightExplanation, row.RightSourceIDs),
 			strings.Join(row.LeftRelatedPathIDs, "; "),
 			strings.Join(row.RightRelatedPathIDs, "; "),
-		})
+		}
+		values = append(values, batchSimulationSourceMetadataDeltaFields(leftExplanation, rightExplanation, row.LeftSourceIDs, row.RightSourceIDs)...)
+		section.Rows = append(section.Rows, values)
 	}
 	return section
 }
@@ -1578,6 +1582,25 @@ func batchSimulationSourceObjectIndexes(explanation simulation.EnergyExplanation
 		}
 		return fmt.Sprintf("%d", *source.ObjectIndex)
 	})
+}
+
+func batchSimulationSourceMetadataDeltaFields(leftExplanation, rightExplanation simulation.EnergyExplanationResult, leftSourceIDs, rightSourceIDs []string) []string {
+	return []string{
+		batchSimulationSourceValueSummary(leftExplanation, leftSourceIDs, func(source simulation.EnergyDataSource) string { return source.TableName }),
+		batchSimulationSourceValueSummary(rightExplanation, rightSourceIDs, func(source simulation.EnergyDataSource) string { return source.TableName }),
+		batchSimulationSourceValueSummary(leftExplanation, leftSourceIDs, func(source simulation.EnergyDataSource) string { return source.RowName }),
+		batchSimulationSourceValueSummary(rightExplanation, rightSourceIDs, func(source simulation.EnergyDataSource) string { return source.RowName }),
+		batchSimulationSourceValueSummary(leftExplanation, leftSourceIDs, func(source simulation.EnergyDataSource) string { return source.ColumnName }),
+		batchSimulationSourceValueSummary(rightExplanation, rightSourceIDs, func(source simulation.EnergyDataSource) string { return source.ColumnName }),
+		batchSimulationSourceValueSummary(leftExplanation, leftSourceIDs, func(source simulation.EnergyDataSource) string {
+			return firstNonEmpty(source.SourceUnit, source.Units)
+		}),
+		batchSimulationSourceValueSummary(rightExplanation, rightSourceIDs, func(source simulation.EnergyDataSource) string {
+			return firstNonEmpty(source.SourceUnit, source.Units)
+		}),
+		batchSimulationSourceValueSummary(leftExplanation, leftSourceIDs, func(source simulation.EnergyDataSource) string { return source.NormalizedUnit }),
+		batchSimulationSourceValueSummary(rightExplanation, rightSourceIDs, func(source simulation.EnergyDataSource) string { return source.NormalizedUnit }),
+	}
 }
 
 func batchSimulationSourceValueSummary(explanation simulation.EnergyExplanationResult, sourceIDs []string, value func(simulation.EnergyDataSource) string) string {

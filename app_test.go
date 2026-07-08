@@ -729,10 +729,15 @@ func TestBatchSimulationWorkbookSheetsIncludeComparisonDelta(t *testing.T) {
 					EnergyExplanation: simulation.EnergyExplanationResult{
 						Schema: "semantic-idf.energy-explanation/v1",
 						Sources: []simulation.EnergyDataSource{{
-							ID:          "baseline-source",
-							SourceType:  "sql_report_data",
-							Name:        "Cooling:Electricity",
-							ObjectIndex: &baselineSourceObjectIndex,
+							ID:             "baseline-source",
+							SourceType:     "sql_report_data",
+							Name:           "Cooling:Electricity",
+							ObjectIndex:    &baselineSourceObjectIndex,
+							TableName:      "ReportData",
+							RowName:        "Baseline Cooling",
+							ColumnName:     "Value [J]",
+							SourceUnit:     "J",
+							NormalizedUnit: "kWh",
 						}},
 						Periods: []simulation.EnergyPeriod{{
 							ID:   "annual",
@@ -796,10 +801,15 @@ func TestBatchSimulationWorkbookSheetsIncludeComparisonDelta(t *testing.T) {
 					EnergyExplanation: simulation.EnergyExplanationResult{
 						Schema: "semantic-idf.energy-explanation/v1",
 						Sources: []simulation.EnergyDataSource{{
-							ID:          "target-source",
-							SourceType:  "sql_report_data",
-							Name:        "Cooling:Electricity",
-							ObjectIndex: &targetSourceObjectIndex,
+							ID:             "target-source",
+							SourceType:     "sql_report_data",
+							Name:           "Cooling:Electricity",
+							ObjectIndex:    &targetSourceObjectIndex,
+							TableName:      "ReportData",
+							RowName:        "Target Cooling",
+							ColumnName:     "Value [J]",
+							SourceUnit:     "J",
+							NormalizedUnit: "kWh",
 						}},
 						Periods: []simulation.EnergyPeriod{{
 							ID:   "annual",
@@ -841,9 +851,27 @@ func TestBatchSimulationWorkbookSheetsIncludeComparisonDelta(t *testing.T) {
 	}
 	if rows := sheets[2].Sections[0].Rows; len(rows) != 2 || rows[0][1] != "cooling.electricity" || rows[0][7] != "5" || rows[0][8] != "50%" || rows[0][26] != "baseline-source" || rows[0][27] != "target-source" || rows[0][28] != "21" || rows[0][29] != "22" || rows[1][1] != "kpi.cooling_cop" || rows[1][17] == "" || rows[1][19] != "8" || rows[1][20] != "9" || rows[1][23] != "4" || rows[1][24] != "3" {
 		t.Fatalf("energy delta rows = %#v", rows)
+	} else if len(rows[0]) != 40 {
+		t.Fatalf("energy delta row width = %d, want 40: %#v", len(rows[0]), rows[0])
+	} else {
+		want := []string{"ReportData", "ReportData", "Baseline Cooling", "Target Cooling", "Value [J]", "Value [J]", "J", "J", "kWh", "kWh"}
+		for i, expected := range want {
+			if rows[0][30+i] != expected {
+				t.Fatalf("energy delta source metadata column %d = %q, want %q in %#v", 30+i, rows[0][30+i], expected, rows[0])
+			}
+		}
 	}
 	if rows := sheets[3].Sections[0].Rows; len(rows) != 1 || rows[0][0] != "meter_enduse" || rows[0][7] != "5" || rows[0][10] != "matched" || rows[0][14] != "baseline-source" || rows[0][15] != "target-source" || rows[0][16] != "21" || rows[0][17] != "22" || rows[0][18] != "baseline-path" || rows[0][19] != "target-path" {
 		t.Fatalf("edge delta rows = %#v", rows)
+	} else if len(rows[0]) != 30 {
+		t.Fatalf("edge delta row width = %d, want 30: %#v", len(rows[0]), rows[0])
+	} else {
+		want := []string{"ReportData", "ReportData", "Baseline Cooling", "Target Cooling", "Value [J]", "Value [J]", "J", "J", "kWh", "kWh"}
+		for i, expected := range want {
+			if rows[0][20+i] != expected {
+				t.Fatalf("edge delta source metadata column %d = %q, want %q in %#v", 20+i, rows[0][20+i], expected, rows[0])
+			}
+		}
 	}
 }
 
