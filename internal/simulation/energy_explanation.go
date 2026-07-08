@@ -119,6 +119,8 @@ type EnergyDataSource struct {
 	KeyValue           string `json:"keyValue,omitempty"`
 	Name               string `json:"name,omitempty"`
 	Units              string `json:"units,omitempty"`
+	SourceUnit         string `json:"sourceUnit,omitempty"`
+	NormalizedUnit     string `json:"normalizedUnit,omitempty"`
 	ReportingFrequency string `json:"reportingFrequency,omitempty"`
 	AggregationMethod  string `json:"aggregationMethod,omitempty"`
 	IndexGroup         string `json:"indexGroup,omitempty"`
@@ -397,6 +399,7 @@ func parseSimulationEnergyExplanationSQL(path string, plan *PurposeRunPlan) (Ene
 				}
 				source := energyDataSourceForDictionary(dictionary)
 				source.ObjectIndex = energyExplanationObjectIndexForDictionary(dictionary, plan)
+				source.NormalizedUnit = builder.unit
 				sources = append(sources, source)
 				series = append(series, energyExplanationSeriesForBuilder(builder, source.ID))
 			}
@@ -429,6 +432,8 @@ func buildEnergyExplanationFromDashboard(dashboard EnergyDashboardResult, plan *
 			IsMeter:           true,
 			Name:              item.Name,
 			Units:             item.Unit,
+			SourceUnit:        item.Unit,
+			NormalizedUnit:    item.Unit,
 			AggregationMethod: "sum_dashboard_series",
 		})
 		monthly := map[int]float64{}
@@ -1520,6 +1525,7 @@ func energyDataSourceForDictionary(dictionary energyExplanationDictionary) Energ
 		KeyValue:           strings.TrimSpace(row.keyValue),
 		Name:               strings.TrimSpace(row.name),
 		Units:              strings.TrimSpace(row.units),
+		SourceUnit:         strings.TrimSpace(row.units),
 		ReportingFrequency: strings.TrimSpace(dictionary.reportingFrequency),
 		AggregationMethod:  energyExplanationAggregationMethod(dictionary),
 		IndexGroup:         strings.TrimSpace(dictionary.indexGroup),
@@ -1605,6 +1611,8 @@ ORDER BY %s`,
 			KeyValue:           alias,
 			Name:               alias,
 			Units:              strings.TrimSpace(units),
+			SourceUnit:         strings.TrimSpace(units),
+			NormalizedUnit:     unit,
 			ReportingFrequency: "Annual",
 			AggregationMethod:  "tabular_annual_value",
 			TableName:          strings.TrimSpace(tableName),

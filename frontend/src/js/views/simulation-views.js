@@ -1190,7 +1190,8 @@ function renderEnergyExplanationInspector(selection, explanation = {}) {
           <td>${escapeHTML(source.name || "")}</td>
           <td>${escapeHTML(source.reportingFrequency || "")}</td>
           <td>${escapeHTML(source.aggregationMethod || "")}</td>
-          <td>${escapeHTML(source.units || "")}</td>
+          <td>${escapeHTML(source.sourceUnit || source.units || "")}</td>
+          <td>${escapeHTML(source.normalizedUnit || "")}</td>
           <td>${renderSourceOutputCell(object)}</td>
         </tr>`;
     })
@@ -1238,8 +1239,8 @@ function renderEnergyExplanationInspector(selection, explanation = {}) {
       ${relatedPaths}
       <div class="output-table-wrap">
         <table class="output-table">
-          <thead><tr><th>ID</th><th>${escapeHTML(t("common.type", {}, "Type"))}</th><th>Key</th><th>Name</th><th>Frequency</th><th>Aggregation</th><th>Unit</th><th>${escapeHTML(t("simulation.sourceOutput", {}, "Source output"))}</th></tr></thead>
-          <tbody>${sourceRows || `<tr><td colspan="8">${escapeHTML(t("common.notAvailable", {}, "N/A"))}</td></tr>`}</tbody>
+          <thead><tr><th>ID</th><th>${escapeHTML(t("common.type", {}, "Type"))}</th><th>Key</th><th>Name</th><th>Frequency</th><th>Aggregation</th><th>Source Unit</th><th>Normalized Unit</th><th>${escapeHTML(t("simulation.sourceOutput", {}, "Source output"))}</th></tr></thead>
+          <tbody>${sourceRows || `<tr><td colspan="9">${escapeHTML(t("common.notAvailable", {}, "N/A"))}</td></tr>`}</tbody>
         </table>
       </div>
     </section>`;
@@ -1258,7 +1259,8 @@ function renderEnergyExplanationSources(explanation = {}) {
           <td>${escapeHTML(source.name || "")}</td>
           <td>${escapeHTML(source.reportingFrequency || "")}</td>
           <td>${escapeHTML(source.aggregationMethod || "")}</td>
-          <td>${escapeHTML(source.units || "")}</td>
+          <td>${escapeHTML(source.sourceUnit || source.units || "")}</td>
+          <td>${escapeHTML(source.normalizedUnit || "")}</td>
           <td>${renderSourceOutputCell(object)}</td>
         </tr>`;
     })
@@ -1271,8 +1273,8 @@ function renderEnergyExplanationSources(explanation = {}) {
       </div>
       <div class="output-table-wrap">
         <table class="output-table">
-          <thead><tr><th>ID</th><th>Source</th><th>Basis</th><th>Key</th><th>Name</th><th>Frequency</th><th>Aggregation</th><th>Unit</th><th>${escapeHTML(t("simulation.sourceOutput", {}, "Source output"))}</th></tr></thead>
-          <tbody>${rows || `<tr><td colspan="9">${escapeHTML(t("simulation.noEnergyExplanation", {}, "No energy explanation graph is available."))}</td></tr>`}</tbody>
+          <thead><tr><th>ID</th><th>Source</th><th>Basis</th><th>Key</th><th>Name</th><th>Frequency</th><th>Aggregation</th><th>Source Unit</th><th>Normalized Unit</th><th>${escapeHTML(t("simulation.sourceOutput", {}, "Source output"))}</th></tr></thead>
+          <tbody>${rows || `<tr><td colspan="10">${escapeHTML(t("simulation.noEnergyExplanation", {}, "No energy explanation graph is available."))}</td></tr>`}</tbody>
         </table>
       </div>
     </section>`;

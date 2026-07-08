@@ -625,8 +625,14 @@ func TestParseSimulationEnergyExplanationSQLBuildsAccountingGraph(t *testing.T) 
 	if source := energyExplanationSourceByID(result.Sources, "sql-rdd-20"); source == nil || source.ObjectIndex == nil || *source.ObjectIndex != facilityObjectIndex || source.AggregationMethod != "sum_report_data" {
 		t.Fatalf("facility source object index = %#v", source)
 	}
+	if source := energyExplanationSourceByID(result.Sources, "sql-rdd-20"); source == nil || source.Units != "J" || source.SourceUnit != "J" || source.NormalizedUnit != "kWh" {
+		t.Fatalf("facility source units = %#v", source)
+	}
 	if source := energyExplanationSourceByID(result.Sources, "sql-rdd-24"); source == nil || source.ObjectIndex == nil || *source.ObjectIndex != internalHeatObjectIndex || source.AggregationMethod != "integrate_rate_by_time_interval" {
 		t.Fatalf("heat source object index = %#v", source)
+	}
+	if source := energyExplanationSourceByID(result.Sources, "sql-rdd-24"); source == nil || source.Units != "W" || source.SourceUnit != "W" || source.NormalizedUnit != "kWh" {
+		t.Fatalf("heat source units = %#v", source)
 	}
 	summary := buildEnergyExplanationSummary(result)
 	if summary.Schema != energyExplanationSummarySchema || summary.AllocationPolicy != PurposeAllocationPolicyDirectOnly || len(summary.EnergyByCarrier) != 1 || summary.EnergyByCarrier[0].Value != 3 {

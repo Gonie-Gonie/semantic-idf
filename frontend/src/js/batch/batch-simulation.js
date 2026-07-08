@@ -429,6 +429,8 @@ export function initializeMultiSimulationTool(context) {
       "service_kind",
       "source_ids",
       "related_path_ids",
+      "source_unit",
+      "normalized_unit",
     ]];
     (result.results || []).forEach((item) => {
       const file = item.filename || fileName(item.inputPath);
@@ -455,6 +457,7 @@ export function initializeMultiSimulationTool(context) {
           "",
           "",
           ...emptyEnergyExplanationEdgeExportFields(),
+          ...emptyEnergyExplanationSourceUnitExportFields(),
         ]);
       }
       energyExplanationSummaryExportItems(explanationSummary).forEach((metric) => {
@@ -478,6 +481,7 @@ export function initializeMultiSimulationTool(context) {
           "",
           energyExplanationSourceObjectIndexes(explanation, metric.sourceIds || []),
           ...emptyEnergyExplanationEdgeExportFields(metric.sourceIds || []),
+          ...emptyEnergyExplanationSourceUnitExportFields(),
         ]);
       });
       energyExplanationSourceExportItems(explanation).forEach((source) => {
@@ -501,6 +505,7 @@ export function initializeMultiSimulationTool(context) {
           source.indexGroup || "",
           source.objectIndex ?? "",
           ...emptyEnergyExplanationEdgeExportFields(),
+          ...energyExplanationSourceUnitExportFields(source),
         ]);
       });
       energyExplanationEdgeExportItems(explanation).forEach((edge) => {
@@ -534,6 +539,7 @@ export function initializeMultiSimulationTool(context) {
           edge.serviceKind || "",
           (edge.sourceIds || []).join("; "),
           (edge.relatedPathIds || []).join("; "),
+          ...emptyEnergyExplanationSourceUnitExportFields(),
         ]);
       });
       energyExplanationReconciliationExportItems(explanation).forEach((reconciliation) => {
@@ -567,6 +573,7 @@ export function initializeMultiSimulationTool(context) {
           reconciliation.serviceKind || "",
           (reconciliation.sourceIds || []).join("; "),
           "",
+          ...emptyEnergyExplanationSourceUnitExportFields(),
         ]);
       });
     });
@@ -631,6 +638,14 @@ export function initializeMultiSimulationTool(context) {
 
   function emptyEnergyExplanationEdgeExportFields(sourceIDs = [], relatedPathIDs = []) {
     return ["", "", "", "", "", "", "", "", "", (sourceIDs || []).join("; "), (relatedPathIDs || []).join("; ")];
+  }
+
+  function emptyEnergyExplanationSourceUnitExportFields() {
+    return ["", ""];
+  }
+
+  function energyExplanationSourceUnitExportFields(source = {}) {
+    return [source.sourceUnit || source.units || "", source.normalizedUnit || ""];
   }
 
   function energyExplanationSourceObjectIndexes(explanation = {}, sourceIDs = []) {
