@@ -665,8 +665,8 @@ function renderEnergySubview(view, energy, explanation, facility, endUse, zones)
         ${renderEnergyExplanationCompleteness(explanation)}
         ${renderEnergyDerivedKPISection(explanation)}
         ${renderEnergyUseBreakdownSection(explanation)}
-        ${renderEnergyMonthlyChart(t("simulation.facilityMonthlyProfile", {}, "Facility monthly profile"), facility)}
-        ${renderEnergyMonthlyChart(t("simulation.endUseMonthlyProfile", {}, "End-use monthly profile"), endUse)}
+        ${renderEnergyMonthlyChart(t("simulation.facilityMonthlyProfile", {}, "Facility monthly profile"), facility, explanation)}
+        ${renderEnergyMonthlyChart(t("simulation.endUseMonthlyProfile", {}, "End-use monthly profile"), endUse, explanation)}
         ${renderEnergyBarSection(t("simulation.facilityEnergy", {}, "Facility energy"), facility)}
         ${renderEnergyBarSection(t("simulation.endUseEnergy", {}, "End-use energy"), endUse)}
         ${renderZoneEnergyMatrix(zones)}
@@ -893,8 +893,8 @@ function renderEnergyMonthlySubview(explanation = {}, facility = [], endUse = []
     .join("");
   return `
     ${renderEnergyExplanationCompleteness(explanation)}
-    ${renderEnergyMonthlyChart(t("simulation.facilityMonthlyProfile", {}, "Facility monthly profile"), facility)}
-    ${renderEnergyMonthlyChart(t("simulation.endUseMonthlyProfile", {}, "End-use monthly profile"), endUse)}
+    ${renderEnergyMonthlyChart(t("simulation.facilityMonthlyProfile", {}, "Facility monthly profile"), facility, explanation)}
+    ${renderEnergyMonthlyChart(t("simulation.endUseMonthlyProfile", {}, "End-use monthly profile"), endUse, explanation)}
     <section class="simulation-energy-block">
       <div class="simulation-energy-block-head">
         <h4>${escapeHTML(t("simulation.energyExplanationMonthly", {}, "Explanation monthly ledger"))}</h4>
@@ -2874,11 +2874,12 @@ function renderEnergyBarSection(title, series) {
     </section>`;
 }
 
-function renderEnergyMonthlyChart(title, series) {
+function renderEnergyMonthlyChart(title, series, explanation = {}) {
   const frames = energyChartFrames(series);
   if (!series.length || !frames.length) {
     return "";
   }
+  const availablePeriodIDs = new Set((explanation.periods || []).map((period) => period.id).filter(Boolean));
   const width = 760;
   const height = 240;
   const margin = { top: 18, right: 18, bottom: 44, left: 58 };
@@ -2901,6 +2902,8 @@ function renderEnergyMonthlyChart(title, series) {
   const bars = stacks
     .map((frame, index) => {
       const x = margin.left + index * (barWidth + barGap);
+      const periodID = availablePeriodIDs.has(frame.periodID) ? frame.periodID : "";
+      const periodAttrs = periodID ? ` class="simulation-energy-chart-period" data-simulation-energy-period-jump="${escapeHTML(periodID)}"` : "";
       const segments = frame.segments
         .filter((segment) => segment.value > 0)
         .map((segment) => {
@@ -2910,7 +2913,10 @@ function renderEnergyMonthlyChart(title, series) {
         })
         .join("");
       const labelY = margin.top + plotHeight + 16;
-      return `${segments}<text x="${roundSVG(x + barWidth / 2)}" y="${labelY}" class="simulation-axis" text-anchor="middle">${escapeHTML(frame.label)}</text>`;
+      const hitTarget = periodID
+        ? `<rect class="simulation-energy-chart-hit" x="${roundSVG(x)}" y="${margin.top}" width="${roundSVG(barWidth)}" height="${plotHeight}" fill="transparent"><title>${escapeHTML(t("simulation.openSankeyPeriod", { period: frame.label }, `Open ${frame.label} in Sankey`))}</title></rect>`
+        : "";
+      return `<g${periodAttrs}>${segments}${hitTarget}<text x="${roundSVG(x + barWidth / 2)}" y="${labelY}" class="simulation-axis" text-anchor="middle">${escapeHTML(frame.label)}</text></g>`;
     })
     .join("");
   const legend = series
@@ -2938,11 +2944,31 @@ function energyChartFrames(series) {
     for (const point of item.points || []) {
       const key = String(point.x ?? point.label ?? frameMap.size + 1);
       if (!frameMap.has(key)) {
-        frameMap.set(key, { key, label: energyPointLabel(point, frameMap.size) });
+        frameMap.set(key, { key, label: energyPointLabel(point, frameMap.size), periodID: energyPointPeriodID(point, frameMap.size) });
       }
     }
   }
   return [...frameMap.values()].slice(0, 12);
+}
+
+function energyPointPeriodID(point, index) {
+  const candidates = [point.period, point.periodId, point.id, point.x, point.label, index + 1]
+    .map((value) => String(value ?? "").trim())
+    .filter(Boolean);
+  for (const candidate of candidates) {
+    const explicit = candidate.match(/^M(\d{1,2})$/i);
+    if (explicit) {
+      return `M${Number(explicit[1])}`;
+    }
+    const numeric = candidate.match(/^(\d{1,2})(?:$|[/-])/);
+    if (numeric) {
+      const month = Number(numeric[1]);
+      if (month >= 1 && month <= 12) {
+        return `M${month}`;
+      }
+    }
+  }
+  return "";
 }
 
 function energyPointLabel(point, index) {

@@ -799,6 +799,7 @@ const dictionaries = {
     "simulation.outputDiscoveryLoading": "Loading catalog",
     "simulation.outputDiscoveryNone": "No catalog",
     "simulation.outputDiscoveryStats": "{shown} of {total} outputs",
+    "simulation.openSankeyPeriod": "Open {period} in Sankey",
     "simulation.periodCustom": "Custom dates",
     "simulation.periodDatePlaceholder": "01-01",
     "simulation.periodEnd": "Period end",

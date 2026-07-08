@@ -1853,6 +1853,16 @@
   height: 240px;
 }
 
+.simulation-energy-chart-period {
+  cursor: pointer;
+}
+
+.simulation-energy-chart-period:hover rect:not(.simulation-energy-chart-hit) {
+  filter: brightness(1.08);
+  stroke: color-mix(in srgb, var(--focus) 42%, transparent);
+  stroke-width: 1;
+}
+
 .simulation-energy-legend {
   display: flex;
   flex-wrap: wrap;

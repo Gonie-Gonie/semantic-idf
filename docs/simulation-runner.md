@@ -275,9 +275,9 @@ Purpose result viewers now include:
   Source availability uses `found` and `missing` status values so missing rows
   are not confused with present SQL dictionary sources. Source output cells link
   back to the matching existing output request object when the run plan can
-  identify one. Monthly ledger rows link directly to the same period in the
-  Sankey subview so month-level explanation changes can be inspected without
-  manually changing views. The Reconciliation subview expands row `sourceIds`
+  identify one. Monthly charts and ledger rows link directly to the same period
+  in the Sankey subview so month-level explanation changes can be inspected
+  without manually changing views. The Reconciliation subview expands row `sourceIds`
   into compact source/output links so residual checks remain traceable to their
   meter or variable requests. Energy residual rows include both the expected facility
   total source and the mapped consumption end-use sources referenced by the
