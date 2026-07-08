@@ -384,12 +384,20 @@ func TestBatchSimulationWorkbookSheetsIncludesPurposeAndEnergySheets(t *testing.
 				EnergyExplanationSummary: simulation.EnergyExplanationSummary{
 					Schema: "semantic-idf.energy-explanation-summary/v1",
 					DerivedKPIs: []simulation.EnergyExplanationSummaryItem{{
-						ID:          "kpi.cooling_cop",
-						Level:       "derived_kpi",
-						Label:       "Cooling COP",
-						Value:       2,
-						ServiceKind: "cooling",
-						PathType:    "zone",
+						ID:               "kpi.cooling_cop",
+						Level:            "derived_kpi",
+						Label:            "Cooling COP",
+						Value:            2,
+						ServiceKind:      "cooling",
+						PathType:         "zone",
+						Basis:            "derived_kpi",
+						Formula:          "delivered_load / electric_end_use_energy",
+						NumeratorLabel:   "Cooling load",
+						NumeratorValue:   8,
+						NumeratorUnit:    "kWh",
+						DenominatorLabel: "Cooling electricity",
+						DenominatorValue: 4,
+						DenominatorUnit:  "kWh",
 					}},
 				},
 				EnergyExplanation: simulation.EnergyExplanationResult{
@@ -450,7 +458,7 @@ func TestBatchSimulationWorkbookSheetsIncludesPurposeAndEnergySheets(t *testing.
 	if rows := sheets[0].Sections[0].Rows; len(rows) != 1 || rows[0][3] != "energy_explanation.kpi.cooling_cop" {
 		t.Fatalf("purpose metric rows = %#v", rows)
 	}
-	if rows := sheets[1].Sections[0].Rows; len(rows) != 1 || rows[0][3] != "derived_kpi" || rows[0][10] != "zone" {
+	if rows := sheets[1].Sections[0].Rows; len(rows) != 1 || rows[0][3] != "derived_kpi" || rows[0][10] != "zone" || rows[0][13] != "derived_kpi" || rows[0][16] != "8" || rows[0][19] != "4" {
 		t.Fatalf("energy summary rows = %#v", rows)
 	}
 	if rows := sheets[4].Sections[0].Rows; len(rows) != 1 || rows[0][7] != "residual" {

@@ -69,6 +69,13 @@ type EnergyExplanationSummaryItem struct {
 	MeterHierarchyLevel string   `json:"meterHierarchyLevel,omitempty"`
 	HeatCategory        string   `json:"heatCategory,omitempty"`
 	Basis               string   `json:"basis,omitempty"`
+	Formula             string   `json:"formula,omitempty"`
+	NumeratorLabel      string   `json:"numeratorLabel,omitempty"`
+	NumeratorValue      float64  `json:"numeratorValue,omitempty"`
+	NumeratorUnit       string   `json:"numeratorUnit,omitempty"`
+	DenominatorLabel    string   `json:"denominatorLabel,omitempty"`
+	DenominatorValue    float64  `json:"denominatorValue,omitempty"`
+	DenominatorUnit     string   `json:"denominatorUnit,omitempty"`
 	SourceIDs           []string `json:"sourceIds,omitempty"`
 }
 
@@ -858,15 +865,22 @@ func buildEnergyExplanationDerivedKPIs(energyItems, loadItems []EnergyExplanatio
 			continue
 		}
 		out = append(out, EnergyExplanationSummaryItem{
-			ID:          def.kind,
-			Level:       "derived_kpi",
-			Kind:        def.kind,
-			Label:       def.label,
-			Value:       roundedEnergyNumber(load.Value / energy.Value),
-			ServiceKind: def.service,
-			PathType:    load.PathType,
-			Basis:       "derived_kpi",
-			SourceIDs:   appendUniqueStrings(appendUniqueStrings(nil, energy.SourceIDs...), load.SourceIDs...),
+			ID:               def.kind,
+			Level:            "derived_kpi",
+			Kind:             def.kind,
+			Label:            def.label,
+			Value:            roundedEnergyNumber(load.Value / energy.Value),
+			ServiceKind:      def.service,
+			PathType:         load.PathType,
+			Basis:            "derived_kpi",
+			Formula:          "delivered_load / electric_end_use_energy",
+			NumeratorLabel:   firstNonEmpty(load.Label, load.Kind, load.ID),
+			NumeratorValue:   load.Value,
+			NumeratorUnit:    load.Unit,
+			DenominatorLabel: firstNonEmpty(energy.Label, energy.Kind, energy.ID),
+			DenominatorValue: energy.Value,
+			DenominatorUnit:  energy.Unit,
+			SourceIDs:        appendUniqueStrings(appendUniqueStrings(nil, energy.SourceIDs...), load.SourceIDs...),
 		})
 	}
 	return out

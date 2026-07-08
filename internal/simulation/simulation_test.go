@@ -769,7 +769,7 @@ func TestParseSimulationEnergyExplanationSQLBuildsAccountingGraph(t *testing.T) 
 	if item := energyExplanationSummaryItemByID(summary.DeliveredLoadByService, "load.zone_cooling"); item == nil || item.Value != 0.5 || item.PathType != "zone" {
 		t.Fatalf("summary delivered load = %#v", summary.DeliveredLoadByService)
 	}
-	if item := energyExplanationSummaryItemByID(summary.DerivedKPIs, "kpi.cooling_cop"); item == nil || item.Value != 0.5 || item.ServiceKind != "cooling" || item.PathType != "zone" || item.Basis != "derived_kpi" {
+	if item := energyExplanationSummaryItemByID(summary.DerivedKPIs, "kpi.cooling_cop"); item == nil || item.Value != 0.5 || item.ServiceKind != "cooling" || item.PathType != "zone" || item.Basis != "derived_kpi" || item.Formula == "" || item.NumeratorValue != 0.5 || item.NumeratorUnit != "kWh" || item.DenominatorValue != 1 || item.DenominatorUnit != "kWh" || !stringSliceContains(item.SourceIDs, "sql-rdd-21") || !stringSliceContains(item.SourceIDs, "sql-rdd-23") {
 		t.Fatalf("summary derived KPIs = %#v", summary.DerivedKPIs)
 	}
 	if item := energyExplanationSummaryItemByID(summary.TopHeatDrivers, "heat.internal_convective"); item == nil || item.Value != 0.5 {

@@ -868,8 +868,8 @@ function renderEnergyDerivedKPISection(explanation = {}, explanationSummary = {}
         <tr>
           <td>${escapeHTML(simulationServiceKindLabel(item.serviceKind))}</td>
           <td>${escapeHTML(simulationPathTypeLabel(item.pathType))}</td>
-          <td>${escapeHTML(formatOptionalValueWithUnit(item.loadValue, "kWh"))}</td>
-          <td>${escapeHTML(formatOptionalValueWithUnit(item.energyValue, "kWh"))}</td>
+          <td>${escapeHTML(formatOptionalValueWithUnit(item.loadValue, item.loadUnit || "kWh"))}</td>
+          <td>${escapeHTML(formatOptionalValueWithUnit(item.energyValue, item.energyUnit || "kWh"))}</td>
           <td>${escapeHTML(formatNumber(item.value))}</td>
         </tr>`,
     )
@@ -919,12 +919,25 @@ function energyExplanationDerivedKPIItems(nodes = [], explanationSummary = {}) {
         serviceKind,
         pathType: item.pathType || match?.pathType || "",
         value: Number(item.value) || match?.value || 0,
-        energyValue: match?.energyValue,
-        loadValue: match?.loadValue,
+        energyValue: firstPositiveNumber(item.denominatorValue, match?.energyValue),
+        energyUnit: item.denominatorUnit || match?.energyUnit || "kWh",
+        loadValue: firstPositiveNumber(item.numeratorValue, match?.loadValue),
+        loadUnit: item.numeratorUnit || match?.loadUnit || "kWh",
         basis: item.basis || match?.basis || "",
+        formula: item.formula || match?.formula || "",
       };
     })
     .filter((item) => item.serviceKind && item.value > 0);
+}
+
+function firstPositiveNumber(...values) {
+  for (const value of values) {
+    const number = Number(value);
+    if (Number.isFinite(number) && number > 0) {
+      return number;
+    }
+  }
+  return 0;
 }
 
 function energyExplanationKPIServiceKind(item = {}) {
@@ -955,8 +968,11 @@ function energyExplanationGraphDerivedKPIItems(nodes = []) {
         ...definition,
         value: loadValue / energyValue,
         energyValue,
+        energyUnit: energy.unit || "kWh",
         loadValue,
+        loadUnit: load.unit || "kWh",
         pathType: load.pathType || "",
+        formula: "delivered_load / electric_end_use_energy",
       };
     })
     .filter(Boolean);
@@ -7575,7 +7591,21 @@ function renderPurposeHTMLEnergyExplanation(summary = {}, explanation = {}) {
   if (summaryRows.length) {
     sections.push(
       `<h2>Energy Explanation Summary</h2>${renderPurposeHTMLTable(
-        ["Type", "Metric", "Label", "Value", "Unit", "Level", "Service", "Path", "Basis", "Source IDs"],
+        [
+          "Type",
+          "Metric",
+          "Label",
+          "Value",
+          "Unit",
+          "Level",
+          "Service",
+          "Path",
+          "Basis",
+          "Formula",
+          "Numerator",
+          "Denominator",
+          "Source IDs",
+        ],
         summaryRows.slice(0, 180),
       )}`,
     );
@@ -7682,9 +7712,20 @@ function purposeHTMLEnergySummaryRows(summary = {}) {
       item.serviceKind || "",
       item.pathType || "",
       item.basis || "",
+      item.formula || "",
+      energyExplanationSummaryRatioPart(item.numeratorLabel, item.numeratorValue, item.numeratorUnit),
+      energyExplanationSummaryRatioPart(item.denominatorLabel, item.denominatorValue, item.denominatorUnit),
       (item.sourceIds || []).join(", "),
     ]),
   );
+}
+
+function energyExplanationSummaryRatioPart(label = "", value, unit = "") {
+  const number = Number(value);
+  if (!label && (!Number.isFinite(number) || number === 0) && !unit) {
+    return "";
+  }
+  return [label, Number.isFinite(number) && number !== 0 ? formatValueWithUnit(number, unit) : ""].filter(Boolean).join(": ");
 }
 
 function purposeHTMLEnergyMonthlyRows(explanation = {}) {

@@ -1269,7 +1269,7 @@ func batchSimulationPurposeMetricSection(result simulation.MultiSimulationResult
 func batchSimulationEnergySummarySection(result simulation.MultiSimulationResult) tabular.Section {
 	section := tabular.Section{
 		Title:   "energy_summary",
-		Headers: []string{"file", "status", "run_id", "type", "id", "label", "value", "unit", "level", "service_kind", "path_type", "carrier", "end_use", "basis", "source_ids"},
+		Headers: []string{"file", "status", "run_id", "type", "id", "label", "value", "unit", "level", "service_kind", "path_type", "carrier", "end_use", "basis", "formula", "numerator_label", "numerator_value", "numerator_unit", "denominator_label", "denominator_value", "denominator_unit", "source_ids"},
 	}
 	for _, item := range result.Results {
 		summary := simulation.EnergyExplanationSummary{}
@@ -1294,6 +1294,13 @@ func batchSimulationEnergySummarySection(result simulation.MultiSimulationResult
 					metric.Carrier,
 					metric.EndUse,
 					metric.Basis,
+					metric.Formula,
+					metric.NumeratorLabel,
+					formatBatchSimulationOptionalFloat(metric.NumeratorValue, metric.NumeratorLabel, metric.NumeratorUnit),
+					metric.NumeratorUnit,
+					metric.DenominatorLabel,
+					formatBatchSimulationOptionalFloat(metric.DenominatorValue, metric.DenominatorLabel, metric.DenominatorUnit),
+					metric.DenominatorUnit,
 					strings.Join(metric.SourceIDs, "; "),
 				})
 			}
@@ -1522,6 +1529,13 @@ func batchSimulationRowID(item simulation.SimulationRunResult) string {
 
 func formatBatchSimulationFloat(value float64) string {
 	return strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.6f", value), "0"), ".")
+}
+
+func formatBatchSimulationOptionalFloat(value float64, label string, unit string) string {
+	if value == 0 && strings.TrimSpace(label) == "" && strings.TrimSpace(unit) == "" {
+		return ""
+	}
+	return formatBatchSimulationFloat(value)
 }
 
 func batchSummaryRawSection(result MultiSummaryResult, orientation string) tabular.Section {

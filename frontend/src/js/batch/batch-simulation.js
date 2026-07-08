@@ -442,6 +442,12 @@ export function initializeMultiSimulationTool(context) {
       "source_unit",
       "normalized_unit",
       "path_type",
+      "numerator_label",
+      "numerator_value",
+      "numerator_unit",
+      "denominator_label",
+      "denominator_value",
+      "denominator_unit",
     ]];
     (result.results || []).forEach((item) => {
       const file = item.filename || fileName(item.inputPath);
@@ -470,6 +476,7 @@ export function initializeMultiSimulationTool(context) {
           ...emptyEnergyExplanationEdgeExportFields(),
           ...emptyEnergyExplanationSourceUnitExportFields(),
           "",
+          ...emptyEnergyExplanationRatioExportFields(),
         ]);
       }
       energyExplanationSummaryExportItems(explanationSummary).forEach((metric) => {
@@ -492,9 +499,10 @@ export function initializeMultiSimulationTool(context) {
           "",
           "",
           energyExplanationSourceObjectIndexes(explanation, metric.sourceIds || []),
-          ...emptyEnergyExplanationEdgeExportFields(metric.sourceIds || []),
+          ...energyExplanationSummaryEdgeExportFields(metric),
           ...emptyEnergyExplanationSourceUnitExportFields(),
           metric.pathType || "",
+          ...energyExplanationRatioExportFields(metric),
         ]);
       });
       energyExplanationSourceExportItems(explanation).forEach((source) => {
@@ -520,6 +528,7 @@ export function initializeMultiSimulationTool(context) {
           ...emptyEnergyExplanationEdgeExportFields(),
           ...energyExplanationSourceUnitExportFields(source),
           "",
+          ...emptyEnergyExplanationRatioExportFields(),
         ]);
       });
       energyExplanationEdgeExportItems(explanation).forEach((edge) => {
@@ -555,6 +564,7 @@ export function initializeMultiSimulationTool(context) {
           (edge.relatedPathIds || []).join("; "),
           ...emptyEnergyExplanationSourceUnitExportFields(),
           edge.pathType || "",
+          ...emptyEnergyExplanationRatioExportFields(),
         ]);
       });
       energyExplanationReconciliationExportItems(explanation).forEach((reconciliation) => {
@@ -590,6 +600,7 @@ export function initializeMultiSimulationTool(context) {
           "",
           ...emptyEnergyExplanationSourceUnitExportFields(),
           "",
+          ...emptyEnergyExplanationRatioExportFields(),
         ]);
       });
       energyExplanationWarningExportItems(explanation).forEach((warning) => {
@@ -625,6 +636,7 @@ export function initializeMultiSimulationTool(context) {
           "",
           ...emptyEnergyExplanationSourceUnitExportFields(),
           "",
+          ...emptyEnergyExplanationRatioExportFields(),
         ]);
       });
     });
@@ -739,10 +751,35 @@ export function initializeMultiSimulationTool(context) {
         unit: item.unit || "",
         level: item.level || item.kind || "",
         pathType: item.pathType || "",
+        serviceKind: item.serviceKind || "",
+        basis: item.basis || "",
+        formula: item.formula || "",
+        numeratorLabel: item.numeratorLabel || "",
+        numeratorValue: item.numeratorValue,
+        numeratorUnit: item.numeratorUnit || "",
+        denominatorLabel: item.denominatorLabel || "",
+        denominatorValue: item.denominatorValue,
+        denominatorUnit: item.denominatorUnit || "",
         status: summary.completeness?.status || "",
         sourceIds: item.sourceIds || [],
       })),
     );
+  }
+
+  function energyExplanationSummaryEdgeExportFields(metric = {}) {
+    return [
+      "",
+      "",
+      metric.basis || "",
+      "",
+      metric.formula || "",
+      "",
+      "",
+      "",
+      metric.serviceKind || "",
+      (metric.sourceIds || []).join("; "),
+      "",
+    ];
   }
 
   function emptyEnergyExplanationEdgeExportFields(sourceIDs = [], relatedPathIDs = []) {
@@ -751,6 +788,26 @@ export function initializeMultiSimulationTool(context) {
 
   function emptyEnergyExplanationSourceUnitExportFields() {
     return ["", ""];
+  }
+
+  function emptyEnergyExplanationRatioExportFields() {
+    return ["", "", "", "", "", ""];
+  }
+
+  function energyExplanationRatioExportFields(metric = {}) {
+    return [
+      metric.numeratorLabel || "",
+      optionalEnergyExplanationNumber(metric.numeratorValue),
+      metric.numeratorUnit || "",
+      metric.denominatorLabel || "",
+      optionalEnergyExplanationNumber(metric.denominatorValue),
+      metric.denominatorUnit || "",
+    ];
+  }
+
+  function optionalEnergyExplanationNumber(value) {
+    const number = Number(value);
+    return Number.isFinite(number) && number !== 0 ? number : "";
   }
 
   function energyExplanationSourceUnitExportFields(source = {}) {
