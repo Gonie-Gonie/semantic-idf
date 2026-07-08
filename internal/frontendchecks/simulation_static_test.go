@@ -86,6 +86,8 @@ func TestFrontendBatchEnergyExplanationDeltaContracts(t *testing.T) {
 		"energyExplanationEdgeDeltaRows",
 		"energyExplanationAnnualEdgeItems",
 		"energyExplanationDeltaStatus",
+		"renderEnergyExplanationCompletenessDelta",
+		"energyExplanationMissingCategorySummary",
 		"elements.multiSimulationAllocationPolicy?.value",
 		"exportMultiSimulationCSV",
 		"exportMultiSimulationJSON",

@@ -756,9 +756,63 @@ export function initializeMultiSimulationTool(context) {
       .map(([label, key]) => renderEnergyExplanationDeltaSection(label, selected[0], selected[1], key))
       .filter(Boolean)
       .join("");
+    const completeness = renderEnergyExplanationCompletenessDelta(selected[0], selected[1]);
     const ranking = renderEnergyExplanationDeltaRanking(selected[0], selected[1]);
     const edgeRanking = renderEnergyExplanationEdgeDeltaRanking(selected[0], selected[1]);
-    return sections || ranking || edgeRanking ? `<div class="batch-energy-explanation-compare">${ranking}${edgeRanking}${sections}</div>` : "";
+    return completeness || sections || ranking || edgeRanking ? `<div class="batch-energy-explanation-compare">${completeness}${ranking}${edgeRanking}${sections}</div>` : "";
+  }
+
+  function renderEnergyExplanationCompletenessDelta(leftResult, rightResult) {
+    const left = leftResult.purposeResults?.energyExplanationSummary?.completeness || {};
+    const right = rightResult.purposeResults?.energyExplanationSummary?.completeness || {};
+    const rows = [
+      {
+        label: "Status",
+        left: left.status || "",
+        right: right.status || "",
+      },
+      {
+        label: "Mapped energy",
+        left: Number.isFinite(Number(left.mappedPercent)) ? `${formatNumber(left.mappedPercent)}%` : "",
+        right: Number.isFinite(Number(right.mappedPercent)) ? `${formatNumber(right.mappedPercent)}%` : "",
+      },
+      {
+        label: "Missing categories",
+        left: energyExplanationMissingCategorySummary(left.missingCategories || []),
+        right: energyExplanationMissingCategorySummary(right.missingCategories || []),
+      },
+    ].filter((row) => row.left !== row.right);
+    if (!rows.length) {
+      return "";
+    }
+    return `
+      <section>
+        <h4>${escapeHTML(t("simulation.energyCompletenessDelta", {}, "Completeness Delta"))}</h4>
+        <div class="tool-table-wrap">
+          <table class="tool-table">
+            <thead><tr><th>${escapeHTML(t("common.metric", {}, "Metric"))}</th><th>${escapeHTML(leftResult.filename || fileName(leftResult.inputPath))}</th><th>${escapeHTML(rightResult.filename || fileName(rightResult.inputPath))}</th></tr></thead>
+            <tbody>${rows
+              .map(
+                (row) => `
+                  <tr>
+                    <td>${escapeHTML(row.label)}</td>
+                    <td>${escapeHTML(row.left || t("common.notAvailable", {}, "N/A"))}</td>
+                    <td>${escapeHTML(row.right || t("common.notAvailable", {}, "N/A"))}</td>
+                  </tr>`,
+              )
+              .join("")}</tbody>
+          </table>
+        </div>
+      </section>`;
+  }
+
+  function energyExplanationMissingCategorySummary(items = []) {
+    const values = (items || []).filter(Boolean);
+    if (!values.length) {
+      return "0";
+    }
+    const preview = values.slice(0, 3).join("; ");
+    return values.length > 3 ? `${values.length}: ${preview}; ...` : `${values.length}: ${preview}`;
   }
 
   function renderEnergyExplanationDeltaRanking(leftResult, rightResult) {

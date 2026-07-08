@@ -144,6 +144,9 @@ The release script infers bump size from these sections:
   for end-use energy, delivered loads, and heat drivers. The batch explanation
   comparison also ranks the largest annual summary and Sankey edge changes, and
   labels missing baseline or comparison rows.
+- Batch Simulation now flags Basic Energy explanation completeness differences
+  between two selected cases, including mapped-percent and missing-category
+  changes.
 - Batch Simulation can export purpose metrics, compact Basic Energy
   explanation summary/source metadata rows, and Sankey edge metadata rows as CSV.
   Edge export rows include related HVAC service path IDs when available.
