@@ -1120,6 +1120,28 @@
   max-width: 220px;
 }
 
+.simulation-energy-period-row {
+  cursor: pointer;
+}
+
+.simulation-energy-period-row:hover {
+  background: color-mix(in srgb, var(--focus) 7%, transparent);
+}
+
+.simulation-energy-period-row button {
+  border: 0;
+  background: none;
+  color: var(--focus);
+  font: inherit;
+  font-weight: 650;
+  padding: 0;
+  cursor: pointer;
+}
+
+.simulation-energy-period-row button:hover {
+  text-decoration: underline;
+}
+
 .simulation-energy-explain-grid,
 .energy-explanation-inspector-grid {
   display: grid;

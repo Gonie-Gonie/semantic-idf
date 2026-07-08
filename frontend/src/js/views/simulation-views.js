@@ -843,8 +843,8 @@ function renderEnergyMonthlySubview(explanation = {}, facility = [], endUse = []
     .map((period) => {
       const totals = energyExplanationLevelTotals(period.nodes || []);
       return `
-        <tr>
-          <td>${escapeHTML(period.label || period.id || "")}</td>
+        <tr class="simulation-energy-period-row" data-simulation-energy-period-jump="${escapeHTML(period.id || "")}">
+          <td><button type="button" data-simulation-energy-period-jump="${escapeHTML(period.id || "")}">${escapeHTML(period.label || period.id || "")}</button></td>
           <td>${escapeHTML(formatValueWithUnit(totals.energy, totals.unit))}</td>
           <td>${escapeHTML(formatValueWithUnit(totals.load, totals.unit))}</td>
           <td>${escapeHTML(formatValueWithUnit(totals.heat, totals.unit))}</td>
@@ -3250,6 +3250,14 @@ function handleSimulationSeriesInspectClick(event) {
   const energyEdge = event.target.closest("[data-energy-explanation-edge]");
   if (energyEdge) {
     state.simulationEnergySelection = energyEdge.dataset.energyExplanationEdge || "";
+    renderSimulationEnergyDashboard(state.simulationResult);
+    return;
+  }
+  const energyPeriodJump = event.target.closest("[data-simulation-energy-period-jump]");
+  if (energyPeriodJump) {
+    state.simulationEnergyPeriod = energyPeriodJump.dataset.simulationEnergyPeriodJump || "annual";
+    state.simulationEnergySelection = "";
+    state.simulationEnergyView = "sankey";
     renderSimulationEnergyDashboard(state.simulationResult);
     return;
   }

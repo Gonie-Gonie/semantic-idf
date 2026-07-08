@@ -28,6 +28,8 @@ The release script infers bump size from these sections:
 - Energy explanation Sankey now uses carrier/service-specific node colors and a
   legend for common electricity, fuel, district cooling/heating, cooling, and
   heating classes.
+- Basic Energy Monthly ledger rows now open the matching Sankey period so
+  month-level accounting changes are easier to inspect.
 - Energy explanation completeness now surfaces missing categories and source
   availability rows in the UI.
 - Energy explanation source availability now uses `found`/`missing` status rows
