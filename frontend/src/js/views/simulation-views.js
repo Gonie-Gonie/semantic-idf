@@ -679,8 +679,11 @@ function renderEnergySubview(view, energy, explanation, facility, endUse, zones)
 
 function renderEnergyUseBreakdownSection(explanation = {}) {
   const graph = energyExplanationGraphForPeriod(explanation, "annual");
-  const rows = (graph.nodes || [])
-    .filter((node) => node.level === "energy" && String(node.id || "").includes(".end_use.") && node.endUse && node.endUse !== "total")
+  const endUseNodes = (graph.nodes || []).filter(
+    (node) => node.level === "energy" && String(node.id || "").includes(".end_use.") && node.endUse && node.endUse !== "total",
+  );
+  const totalBasisNote = energyUseTotalBasisNote(endUseNodes);
+  const rows = endUseNodes
     .sort((a, b) => {
       const carrierCompare = String(a.carrier || "").localeCompare(String(b.carrier || ""));
       if (carrierCompare) return carrierCompare;
@@ -706,6 +709,7 @@ function renderEnergyUseBreakdownSection(explanation = {}) {
         <h4>${escapeHTML(t("simulation.energyUseBreakdown", {}, "Energy use by carrier and end use"))}</h4>
         <span>${escapeHTML(t("simulation.energyUseBreakdownHint", {}, "Carrier and end use stay separate for comparison."))}</span>
       </div>
+      ${totalBasisNote ? `<div class="energy-use-total-basis">${escapeHTML(totalBasisNote)}</div>` : ""}
       <div class="output-table-wrap">
         <table class="output-table">
           <thead><tr><th>${escapeHTML(t("simulation.carrier", {}, "Carrier"))}</th><th>${escapeHTML(t("simulation.endUse", {}, "End use"))}</th><th>${escapeHTML(t("common.metric", {}, "Metric"))}</th><th>${escapeHTML(t("common.value", {}, "Value"))}</th><th>${escapeHTML(t("common.source", {}, "Source"))}</th></tr></thead>
@@ -713,6 +717,33 @@ function renderEnergyUseBreakdownSection(explanation = {}) {
         </table>
       </div>
     </section>`;
+}
+
+function energyUseTotalBasisNote(nodes = []) {
+  const levels = [
+    ...new Set(
+      (nodes || [])
+        .map((node) => String(node.meterHierarchyLevel || "").trim())
+        .filter(Boolean),
+    ),
+  ];
+  if (!levels.length) {
+    return "";
+  }
+  const basis = levels.map((level) => energyMeterHierarchyLabel(level)).join(", ");
+  return t("simulation.energyUseTotalBasis", { basis }, `Total basis: ${basis}. Facility totals stay separate from end-use rows.`);
+}
+
+function energyMeterHierarchyLabel(level = "") {
+  const labels = {
+    facility_total: t("simulation.meterHierarchyFacilityTotal", {}, "facility total meters"),
+    fuel_total: t("simulation.meterHierarchyFuelTotal", {}, "fuel total meters"),
+    broad_end_use: t("simulation.meterHierarchyBroadEndUse", {}, "broad end-use meters"),
+    sub_end_use: t("simulation.meterHierarchySubEndUse", {}, "sub-end-use meters"),
+    equipment_class: t("simulation.meterHierarchyEquipmentClass", {}, "equipment-class meters"),
+    equipment_instance: t("simulation.meterHierarchyEquipmentInstance", {}, "equipment-instance meters"),
+  };
+  return labels[String(level || "").toLowerCase()] || titleCaseEnergyToken(level);
 }
 
 function renderEnergySystemsSubview(explanation = {}) {

@@ -1118,6 +1118,12 @@
   font: inherit;
 }
 
+.energy-use-total-basis {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .simulation-energy-subnav {
   display: flex;
   flex-wrap: wrap;
