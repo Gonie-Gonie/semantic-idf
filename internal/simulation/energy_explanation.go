@@ -3048,6 +3048,12 @@ func energySourceMatchesAvailabilityName(source EnergyDataSource, name string, l
 	if level == "energy" {
 		return energyNamesShareEnergyAliasGroup(source.Name, name) || energyNamesShareEnergyAliasGroup(source.KeyValue, name)
 	}
+	if level == "load" {
+		return energyNamesShareLoadAliasGroup(source.Name, name) || energyNamesShareLoadAliasGroup(source.KeyValue, name)
+	}
+	if level == "heat" {
+		return energyNamesShareHeatAliasGroup(source.Name, name) || energyNamesShareHeatAliasGroup(source.KeyValue, name)
+	}
 	return false
 }
 
@@ -3055,6 +3061,27 @@ func energyNamesShareEnergyAliasGroup(left string, right string) bool {
 	leftKey := energyKnownAliasGroupKey(left)
 	rightKey := energyKnownAliasGroupKey(right)
 	return leftKey != "" && leftKey == rightKey
+}
+
+func energyNamesShareLoadAliasGroup(left string, right string) bool {
+	leftDef, leftOK := energyLoadAliasDefinitionForName(left)
+	rightDef, rightOK := energyLoadAliasDefinitionForName(right)
+	if !leftOK || !rightOK {
+		return false
+	}
+	return leftDef.Kind == rightDef.Kind && leftDef.ServiceKind == rightDef.ServiceKind && leftDef.Scope == rightDef.Scope
+}
+
+func energyNamesShareHeatAliasGroup(left string, right string) bool {
+	leftDef, leftOK := energyHeatAliasDefinitionForName(left)
+	rightDef, rightOK := energyHeatAliasDefinitionForName(right)
+	if !leftOK || !rightOK {
+		return false
+	}
+	return leftDef.Kind == rightDef.Kind &&
+		leftDef.HeatCategory == rightDef.HeatCategory &&
+		leftDef.ObjectScoped == rightDef.ObjectScoped &&
+		energyHeatAliasExplicitSign(left) == energyHeatAliasExplicitSign(right)
 }
 
 func energyKnownAliasGroupKey(name string) string {

@@ -101,6 +101,9 @@ The release script infers bump size from these sections:
 - Basic Energy completeness now treats energy meters that were not requested by
   the active model-aware output plan as `not_applicable` instead of reporting a
   source shortage from the fallback meter catalog.
+- Basic Energy source availability now matches delivered-load aliases and same-
+  sign heat-driver aliases before reporting missing outputs, avoiding false
+  shortages when EnergyPlus reports an equivalent Energy/Rate variable.
 - Basic Energy Overview now includes an annual Energy Use breakdown by carrier
   and end use, with source links for each row.
 - Energy explanation completeness now surfaces missing categories and source

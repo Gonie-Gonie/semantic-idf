@@ -1968,6 +1968,57 @@ Zone,
 	}
 }
 
+func TestEnergyExplanationSourceAvailabilityMatchesLoadAndSignedHeatAliases(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "eplusout.sql")
+	createTestEnergySQL(t, path)
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`INSERT INTO ReportDataDictionary VALUES
+		(23, 'ZONE ONE', 'Zone Ideal Loads Zone Sensible Cooling Energy', 'J'),
+		(24, 'ZONE ONE', 'Zone Infiltration Sensible Heat Gain Rate', 'W')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO ReportData VALUES
+		(7, 1, 23, 900000.0),
+		(8, 2, 23, 900000.0),
+		(9, 1, 24, 100.0),
+		(10, 2, 24, 100.0)`); err != nil {
+		t.Fatal(err)
+	}
+
+	plan := &PurposeRunPlan{OutputObjects: []PurposeOutputObject{
+		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, VariableName: "Zone Air System Sensible Cooling Energy"},
+		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, VariableName: "Zone Infiltration Sensible Heat Gain Energy"},
+		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, VariableName: "Zone Infiltration Sensible Heat Loss Energy"},
+	}}
+	result, err := parseSimulationEnergyExplanationSQL(path, plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	load := energyExplanationSourceAvailabilityByName(result.Completeness.SourceAvailability, "Zone Air System Sensible Cooling Energy")
+	if load == nil || load.Status != "found" || !stringSliceContains(load.SourceIDs, "sql-rdd-23") {
+		t.Fatalf("load alias availability = %#v", result.Completeness.SourceAvailability)
+	}
+	heatGain := energyExplanationSourceAvailabilityByName(result.Completeness.SourceAvailability, "Zone Infiltration Sensible Heat Gain Energy")
+	if heatGain == nil || heatGain.Status != "found" || !stringSliceContains(heatGain.SourceIDs, "sql-rdd-24") {
+		t.Fatalf("heat gain alias availability = %#v", result.Completeness.SourceAvailability)
+	}
+	heatLoss := energyExplanationSourceAvailabilityByName(result.Completeness.SourceAvailability, "Zone Infiltration Sensible Heat Loss Energy")
+	if heatLoss == nil || heatLoss.Status != "missing" || len(heatLoss.SourceIDs) != 0 {
+		t.Fatalf("heat loss availability should not match opposite sign aliases: %#v", result.Completeness.SourceAvailability)
+	}
+	for _, category := range result.Completeness.MissingCategories {
+		if strings.HasPrefix(category, "load:") || category == "heat: Zone Infiltration Sensible Heat Gain Energy" {
+			t.Fatalf("alias-matched sources should not be reported missing: %#v", result.Completeness.MissingCategories)
+		}
+	}
+}
+
 func TestPurposeResultBundleAppliesEnergyExplanationPeriodScope(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "eplusout.sql")

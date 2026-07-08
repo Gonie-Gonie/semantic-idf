@@ -427,7 +427,9 @@ request set, and invoke the same permanent output application flow before the
 user reruns Basic Energy with explanation outputs. If the active model-aware
 purpose plan did not request any Basic Energy meter outputs, Energy Use source
 availability is reported as `not_applicable` instead of falling back to a broad
-missing-meter catalog.
+missing-meter catalog. Delivered-load source availability also treats variables
+in the same alias group as found, and heat-driver availability does the same for
+same-sign aliases while keeping gain and loss requests distinct.
 
 ## Output Discovery
 
