@@ -414,6 +414,16 @@ export function initializeMultiSimulationTool(context) {
       "source_frequency",
       "source_index_group",
       "source_object_index",
+      "period",
+      "relation",
+      "basis",
+      "rule_id",
+      "formula",
+      "from_id",
+      "to_id",
+      "zone",
+      "service_kind",
+      "source_ids",
     ]];
     (result.results || []).forEach((item) => {
       const file = item.filename || fileName(item.inputPath);
@@ -436,6 +446,7 @@ export function initializeMultiSimulationTool(context) {
           "",
           "",
           "",
+          ...emptyEnergyExplanationEdgeExportFields(),
         ]);
       }
       energyExplanationSummaryExportItems(item.purposeResults?.energyExplanationSummary || {}).forEach((metric) => {
@@ -457,6 +468,7 @@ export function initializeMultiSimulationTool(context) {
           "",
           "",
           "",
+          ...emptyEnergyExplanationEdgeExportFields(),
         ]);
       });
       energyExplanationSourceExportItems(item.purposeResults?.energyExplanation || {}).forEach((source) => {
@@ -478,6 +490,38 @@ export function initializeMultiSimulationTool(context) {
           source.reportingFrequency || "",
           source.indexGroup || "",
           source.objectIndex || "",
+          ...emptyEnergyExplanationEdgeExportFields(),
+        ]);
+      });
+      energyExplanationEdgeExportItems(item.purposeResults?.energyExplanation || {}).forEach((edge) => {
+        rows.push([
+          file,
+          item.status || "",
+          item.runId || "",
+          "energy_explanation.edge",
+          edge.id || "",
+          edge.label || "",
+          edge.value ?? "",
+          edge.unit || "",
+          edge.displayValue ?? "",
+          edge.relation || "",
+          edge.basis || "",
+          "edge",
+          edge.fromId || "",
+          edge.toId || "",
+          edge.period || "",
+          edge.ruleId || "",
+          "",
+          edge.period || "",
+          edge.relation || "",
+          edge.basis || "",
+          edge.ruleId || "",
+          edge.formula || "",
+          edge.fromId || "",
+          edge.toId || "",
+          edge.zoneName || "",
+          edge.serviceKind || "",
+          (edge.sourceIds || []).join("; "),
         ]);
       });
     });
@@ -508,6 +552,26 @@ export function initializeMultiSimulationTool(context) {
         status: summary.completeness?.status || "",
       })),
     );
+  }
+
+  function emptyEnergyExplanationEdgeExportFields() {
+    return ["", "", "", "", "", "", "", "", "", ""];
+  }
+
+  function energyExplanationEdgeExportItems(explanation = {}) {
+    const periodGraphs = (explanation.periods || []).filter((period) => (period.edges || []).length);
+    const graphs = periodGraphs.length
+      ? periodGraphs
+      : [{ id: "annual", label: "Annual", nodes: explanation.nodes || [], edges: explanation.edges || [] }];
+    return graphs.flatMap((graph) => {
+      const nodeLabels = new Map((graph.nodes || []).map((node) => [node.id, node.label || node.kind || node.id || ""]));
+      return (graph.edges || []).map((edge) => ({
+        ...edge,
+        period: edge.period || graph.id || "",
+        periodLabel: graph.label || graph.id || "",
+        label: `${nodeLabels.get(edge.fromId) || edge.fromId || ""} -> ${nodeLabels.get(edge.toId) || edge.toId || ""}`,
+      }));
+    });
   }
 
   function energyExplanationSourceExportItems(explanation = {}) {

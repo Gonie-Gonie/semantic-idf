@@ -145,8 +145,9 @@ the largest explanation changes plus end-use, delivered-load, and heat-driver
 delta tables beside the selected metric. Missing summary rows are labeled
 separately from matched rows so an absent output is not silently treated as a
 normal zero. Batch Simulation can export purpose metrics, compact
-`energyExplanationSummary` rows, and `energyExplanation` source metadata rows
-as CSV for spreadsheet comparison.
+`energyExplanationSummary` rows, `energyExplanation` source metadata rows, and
+Sankey edge metadata rows with period, relation, basis, `ruleId`, formula,
+endpoint, service, zone, and source IDs as CSV for spreadsheet comparison.
 
 `parseSimulationSQL` is the combined SQLite entrypoint. It gathers generic
 time-series rows, Basic Energy dashboard data, SQL heat-flow data, Integrity
