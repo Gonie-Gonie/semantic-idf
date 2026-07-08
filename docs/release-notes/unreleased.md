@@ -82,6 +82,9 @@ The release script infers bump size from these sections:
   allocation policy plus related path IDs for allocation/service-path traces.
 - Basic Energy Sankey inspector and Sources tables now expose Chart actions for
   matching source meters and variables.
+- Purpose HTML exports now include Basic Energy annual node rows with level,
+  kind, value, zone/service/path, source IDs, source metadata, and related
+  service-path IDs.
 - Basic Energy Monthly view now includes a compact Energy Use, Delivered Load,
   Heat Drivers, and Residual level chart.
 - Basic Energy Zones view now summarizes zone/service delivered load, cooling

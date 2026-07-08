@@ -8121,6 +8121,58 @@ function renderPurposeHTMLEnergyExplanation(summary = {}, explanation = {}) {
     sections.push(`<h2>Energy Explanation Monthly Ledger</h2>${renderPurposeHTMLTable(["Period", "Energy Use", "Delivered Load", "Heat Drivers", "Residual"], monthlyRows)}`);
   }
   const graph = purposeHTMLAnnualEnergyGraph(explanation);
+  const nodeRows = (graph.nodes || [])
+    .slice(0, 240)
+    .map((node) => [
+      node.id || "",
+      node.level || "",
+      node.kind || "",
+      node.label || "",
+      formatValueWithUnit(node.value, node.unit),
+      node.period || graph.id || "annual",
+      node.zoneName || "",
+      node.serviceKind || "",
+      node.pathType || "",
+      node.carrier || "",
+      node.endUse || "",
+      node.heatCategory || "",
+      node.sign || "",
+      node.basis || "",
+      (node.sourceIds || []).join(", "),
+      ...purposeHTMLSourceMetadataFields(explanation, node.sourceIds || []),
+      (node.relatedPathIds || []).join(", "),
+    ]);
+  if (nodeRows.length) {
+    sections.push(
+      `<h2>Energy Explanation Annual Nodes</h2>${renderPurposeHTMLTable(
+        [
+          "ID",
+          "Level",
+          "Kind",
+          "Label",
+          "Value",
+          "Period",
+          "Zone",
+          "Service",
+          "Path",
+          "Carrier",
+          "End Use",
+          "Heat Category",
+          "Sign",
+          "Basis",
+          "Source IDs",
+          "Output Object",
+          "Table",
+          "Row",
+          "Column",
+          "Source Unit",
+          "Normalized Unit",
+          "Related Paths",
+        ],
+        nodeRows,
+      )}`,
+    );
+  }
   const nodeLabels = new Map((graph.nodes || []).map((node) => [node.id, node.label || node.kind || node.id || ""]));
   const edgeRows = (graph.edges || [])
     .slice(0, 180)

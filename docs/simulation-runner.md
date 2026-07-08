@@ -487,8 +487,8 @@ result JSON bundle or a standalone HTML report that embeds run metadata,
 including EnergyPlus executable/version metadata, the run plan, parsed purpose
 results, purpose-specific Energy/Heat Flow/HVAC/Comfort summary tables,
 Basic Energy explanation completeness, source availability, relationship rules,
-summary/monthly ledger/source/annual edge/reconciliation/warning evidence, file
+summary/monthly ledger/source/annual node/annual edge/reconciliation/warning evidence, file
 references, source IDs and related service path IDs for exported explanation
-rows, source output object/table/row/column/unit metadata for summary, edge,
+rows, source output object/table/row/column/unit metadata for summary, node, edge,
 reconciliation, and source availability rows, and the source output signatures
 visible in result tables.
