@@ -72,6 +72,8 @@ Output:SQLite,
 	for _, variable := range []string{
 		"Zone Air System Sensible Cooling Rate",
 		"Zone Ideal Loads Zone Sensible Heating Energy",
+		"Zone Ideal Loads Supply Air Latent Cooling Energy",
+		"Zone Ideal Loads Outdoor Air Total Heating Energy",
 		"Zone Radiant HVAC Cooling Energy",
 		"Cooling Coil Total Cooling Energy",
 		"Plant Supply Side Cooling Demand Rate",
@@ -656,8 +658,28 @@ output|Output:Variable|*|Zone Electric Equipment Total Heating Rate|Monthly|temp
 output|Output:Variable|*|Zone Gas Equipment Gas Energy|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Gas Equipment Total Heating Energy|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Gas Equipment Total Heating Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Ideal Loads Outdoor Air Latent Cooling Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Ideal Loads Outdoor Air Latent Cooling Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Ideal Loads Outdoor Air Latent Heating Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Ideal Loads Outdoor Air Latent Heating Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Ideal Loads Outdoor Air Sensible Cooling Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Ideal Loads Outdoor Air Sensible Cooling Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Ideal Loads Outdoor Air Sensible Heating Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Ideal Loads Outdoor Air Sensible Heating Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Ideal Loads Outdoor Air Total Cooling Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Ideal Loads Outdoor Air Total Cooling Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Ideal Loads Outdoor Air Total Heating Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Ideal Loads Outdoor Air Total Heating Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Ideal Loads Supply Air Latent Cooling Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Ideal Loads Supply Air Latent Cooling Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Ideal Loads Supply Air Latent Heating Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Ideal Loads Supply Air Latent Heating Rate|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Ideal Loads Supply Air Total Cooling Energy|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Ideal Loads Supply Air Total Heating Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Ideal Loads Zone Latent Cooling Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Ideal Loads Zone Latent Cooling Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Ideal Loads Zone Latent Heating Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Ideal Loads Zone Latent Heating Rate|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Ideal Loads Zone Sensible Cooling Energy|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Ideal Loads Zone Sensible Heating Energy|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Infiltration Sensible Heat Gain Energy|Monthly|temporary|basic_energy

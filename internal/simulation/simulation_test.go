@@ -893,6 +893,67 @@ func TestParseSimulationEnergyExplanationSQLMapsWindowHeatGainLossDrivers(t *tes
 	}
 }
 
+func TestParseSimulationEnergyExplanationSQLMapsLatentAndVentilationLoads(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "eplusout.sql")
+	createTestEnergySQL(t, path)
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`INSERT INTO ReportDataDictionary VALUES
+		(23, 'ZONE ONE', 'Zone Ideal Loads Supply Air Latent Heating Energy', 'J'),
+		(24, 'ZONE ONE', 'Zone Ideal Loads Supply Air Latent Cooling Energy', 'J'),
+		(25, 'ZONE ONE', 'Zone Ideal Loads Outdoor Air Total Heating Energy', 'J')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO ReportData VALUES
+		(7, 1, 23, 900000.0),
+		(8, 2, 23, 900000.0),
+		(9, 1, 24, 1800000.0),
+		(10, 2, 24, 1800000.0),
+		(11, 1, 25, 2700000.0),
+		(12, 2, 25, 2700000.0)`); err != nil {
+		t.Fatal(err)
+	}
+
+	plan := &PurposeRunPlan{OutputObjects: []PurposeOutputObject{
+		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, VariableName: "Zone Ideal Loads Supply Air Latent Heating Energy"},
+		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, VariableName: "Zone Ideal Loads Supply Air Latent Cooling Energy"},
+		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, VariableName: "Zone Ideal Loads Outdoor Air Total Heating Energy"},
+	}}
+	result, err := parseSimulationEnergyExplanationSQL(path, plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	humidification := energyExplanationNodeByID(result.Nodes, "load.humidification.zone_one")
+	if humidification == nil || humidification.Value != 0.5 || humidification.ServiceKind != "humidification" || humidification.Kind != "load.zone_humidification" || !stringSliceContains(humidification.SourceIDs, "sql-rdd-23") {
+		t.Fatalf("humidification load node = %#v", humidification)
+	}
+	dehumidification := energyExplanationNodeByID(result.Nodes, "load.dehumidification.zone_one")
+	if dehumidification == nil || dehumidification.Value != 1 || dehumidification.ServiceKind != "dehumidification" || dehumidification.Kind != "load.zone_dehumidification" || !stringSliceContains(dehumidification.SourceIDs, "sql-rdd-24") {
+		t.Fatalf("dehumidification load node = %#v", dehumidification)
+	}
+	ventilation := energyExplanationNodeByID(result.Nodes, "load.ventilation.zone_one")
+	if ventilation == nil || ventilation.Value != 1.5 || ventilation.ServiceKind != "ventilation" || ventilation.Kind != "load.ventilation_conditioning" || !stringSliceContains(ventilation.SourceIDs, "sql-rdd-25") {
+		t.Fatalf("ventilation conditioning load node = %#v", ventilation)
+	}
+	if result.Completeness.DeliveredLoad.Found != 3 || result.Completeness.DeliveredLoad.Total != 3 {
+		t.Fatalf("latent/ventilation load completeness = %#v", result.Completeness.DeliveredLoad)
+	}
+	summary := buildEnergyExplanationSummary(result)
+	if item := energyExplanationSummaryItemByID(summary.DeliveredLoadByService, "load.zone_humidification"); item == nil || item.Value != 0.5 || item.ServiceKind != "humidification" {
+		t.Fatalf("summary humidification load = %#v", summary.DeliveredLoadByService)
+	}
+	if item := energyExplanationSummaryItemByID(summary.DeliveredLoadByService, "load.zone_dehumidification"); item == nil || item.Value != 1 || item.ServiceKind != "dehumidification" {
+		t.Fatalf("summary dehumidification load = %#v", summary.DeliveredLoadByService)
+	}
+	if item := energyExplanationSummaryItemByID(summary.DeliveredLoadByService, "load.ventilation_conditioning"); item == nil || item.Value != 1.5 || item.ServiceKind != "ventilation" {
+		t.Fatalf("summary ventilation load = %#v", summary.DeliveredLoadByService)
+	}
+}
+
 func TestParseSimulationEnergyExplanationSQLPrefersEnergyOverRateFallback(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "eplusout.sql")
