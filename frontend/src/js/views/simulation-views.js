@@ -989,8 +989,8 @@ function renderEnergyDerivedKPISection(explanation = {}, explanationSummary = {}
         <tr>
           <td>${escapeHTML(simulationServiceKindLabel(item.serviceKind))}</td>
           <td>${escapeHTML(simulationPathTypeLabel(item.pathType))}</td>
-          <td>${escapeHTML(formatOptionalValueWithUnit(item.loadValue, item.loadUnit || "kWh"))}</td>
-          <td>${escapeHTML(formatOptionalValueWithUnit(item.energyValue, item.energyUnit || "kWh"))}</td>
+          <td>${escapeHTML(formatPositiveValueWithUnit(item.loadValue, item.loadUnit || "kWh"))}</td>
+          <td>${escapeHTML(formatPositiveValueWithUnit(item.energyValue, item.energyUnit || "kWh"))}</td>
           <td>${escapeHTML(formatNumber(item.value))}</td>
         </tr>`,
     )
@@ -1013,7 +1013,7 @@ function renderEnergyDerivedKPISection(explanation = {}, explanationSummary = {}
     </section>`;
 }
 
-function formatOptionalValueWithUnit(value, unit = "") {
+function formatPositiveValueWithUnit(value, unit = "") {
   const number = Number(value);
   return Number.isFinite(number) && number !== 0 ? formatValueWithUnit(number, unit) : "-";
 }
