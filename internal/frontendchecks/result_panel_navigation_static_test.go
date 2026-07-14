@@ -101,9 +101,9 @@ func TestGenericResultPanelRevealAndCompactContextContract(t *testing.T) {
 	for _, required := range []string{
 		"expandAncestorDetails(target)",
 		"refreshResultPanelSelectionStyles",
-		`classList.add("semantic-selected")`,
-		"scrollIntoView",
-		"target.focus({ preventScroll: true })",
+		`querySelector?.("[data-semantic-selected]")`,
+		"primary.scrollIntoView",
+		"primary.focus({ preventScroll: true })",
 	} {
 		if !strings.Contains(reveal, required) {
 			t.Fatalf("generic result reveal is missing %q", required)

@@ -13,7 +13,7 @@ func TestSummaryMetricsUseSemanticGroupsAndSeparateContributingSources(t *testin
 		"summaryMetricContributingSources(metric)",
 		"panelTargetId: metric.id",
 		"data-summary-metric-id",
-		"renderSummarySourceChooser(contributingSources)",
+		"renderSummarySourceChooser(contributingSources, metric)",
 	} {
 		if !strings.Contains(renderer, required) {
 			t.Fatalf("summary metric navigation renderer is missing %q", required)
@@ -46,7 +46,13 @@ func TestSummaryMetricsUseSemanticGroupsAndSeparateContributingSources(t *testin
 		}
 	}
 	chooser := sliceBetween(content, "function renderSummarySourceChooser", "function sourceAnchorLabel")
-	for _, required := range []string{"Source objects", "summary-source-object-list", "panelNavigationAttributes(source.navigation)"} {
+	for _, required := range []string{
+		"Source objects",
+		"summary-source-object-list",
+		"panelNavigationAttributes({",
+		"...source.navigation",
+		"summarySourcePanelTargetID(metric, source, index)",
+	} {
 		if !strings.Contains(chooser, required) {
 			t.Fatalf("summary contributing-source chooser is missing %q", required)
 		}

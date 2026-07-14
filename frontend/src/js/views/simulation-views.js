@@ -973,8 +973,6 @@ function focusSimulationNavigationTarget(target, options = {}) {
     details.open = true;
     details = details.parentElement?.closest?.("details") || null;
   }
-  target.classList.add("semantic-selected");
-  target.toggleAttribute("data-semantic-selected", true);
   if (options.scroll !== false) {
     target.scrollIntoView?.({ block: "nearest", inline: "nearest", behavior: options.behavior || "auto" });
   }

@@ -2135,8 +2135,6 @@ function focusProfileNavigationElement(element, options = {}) {
     details.open = true;
     details = details.parentElement?.closest?.("details") || null;
   }
-  element.classList.add("semantic-selected");
-  element.toggleAttribute("data-semantic-selected", true);
   if (options.scroll !== false) {
     element.scrollIntoView?.({ block: "nearest", inline: "nearest", behavior: options.behavior || "auto" });
   }

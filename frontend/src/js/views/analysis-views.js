@@ -847,7 +847,7 @@ function sourceRecordNavigation(record, sections = []) {
     : { entity: null, occurrence: null, sourceAnchor: { ...record.anchor } };
 }
 
-function renderSummarySourceChooser(sources) {
+function renderSummarySourceChooser(sources, metric = {}) {
   if (!sources.length) {
     return "";
   }
@@ -856,14 +856,24 @@ function renderSummarySourceChooser(sources) {
     <details class="summary-source-objects">
       <summary title="Contributing source objects">Source objects <span class="badge">${escapeHTML(sources.length)}</span></summary>
       <div class="summary-source-object-list" role="listbox" aria-label="Contributing source objects">
-        ${rendered.map((source) => `
-          <button class="summary-source-object navigable-row" type="button" role="option" ${panelNavigationAttributes(source.navigation)}>
+        ${rendered.map((source, index) => `
+          <button class="summary-source-object navigable-row" type="button" role="option" ${panelNavigationAttributes({
+            ...source.navigation,
+            panelTargetId: summarySourcePanelTargetID(metric, source, index),
+          })}>
             <strong>${escapeHTML(sourceAnchorLabel(source.anchor))}</strong>
             <small>${escapeHTML(source.anchor.objectType || "Source object")}</small>
           </button>`).join("")}
         ${sources.length > rendered.length ? `<small>${escapeHTML(sources.length - rendered.length)} more source objects</small>` : ""}
       </div>
     </details>`;
+}
+
+function summarySourcePanelTargetID(metric = {}, source = {}, index = 0) {
+  const metricID = String(metric.id || metric.categoryId || "metric");
+  const anchor = source.anchor || {};
+  const sourceID = String(anchor.objectId || (hasNavigationIndex(anchor.objectIndex) ? `index:${anchor.objectIndex}` : index));
+  return `summary-source:${metricID}:${sourceID}`;
 }
 
 function sourceAnchorLabel(anchor = {}) {
@@ -1023,7 +1033,7 @@ function renderMetricRow(metric, category = {}) {
     })}>
       <div class="summary-name" role="cell">
         <strong title="${escapeHTML(metric.name)}">${escapeHTML(metric.name)}</strong>
-        ${renderSummarySourceChooser(contributingSources)}
+        ${renderSummarySourceChooser(contributingSources, metric)}
       </div>
       <div class="summary-value${valueClass}" role="cell">
         ${renderMetricDisplayValue(metric)}
@@ -1158,27 +1168,25 @@ function refreshSummaryNavigationStyles() {
   if (elements.summaryCategories) {
     refreshResultPanelSelectionStyles("summary", state.globalSelection, state.globalHover);
   }
-  const selectedMetricID = state.globalSelection?.originView === "summary"
-    ? String(state.globalSelection.originTargetId || "")
-    : "";
-  if (selectedMetricID) {
-    for (const row of elements.summaryCategories?.querySelectorAll?.("[data-summary-metric-id]") || []) {
-      const selected = row.dataset.summaryMetricId === selectedMetricID;
-      row.classList.toggle("semantic-selected", selected);
-      row.toggleAttribute("data-semantic-selected", selected);
-    }
-  }
 }
 
 function refreshDiagnoseNavigationStyles() {
+  let selectedCount = 0;
   if (elements.diagnosticList) {
-    refreshResultPanelSelectionStyles("diagnose", state.globalSelection, state.globalHover);
+    selectedCount = refreshResultPanelSelectionStyles("diagnose", state.globalSelection, state.globalHover);
   }
-  if (diagnoseSelectedDiagnosticID) {
+  if (selectedCount === 0 && diagnoseSelectedDiagnosticID) {
     for (const item of elements.diagnosticList?.querySelectorAll?.("[data-diagnostic-id]") || []) {
       const selected = item.dataset.diagnosticId === diagnoseSelectedDiagnosticID;
       item.classList.toggle("semantic-selected", selected);
       item.toggleAttribute("data-semantic-selected", selected);
+      if (selected) {
+        item.classList.remove("semantic-related");
+        item.removeAttribute("data-semantic-related");
+        item.setAttribute("aria-current", "location");
+      } else {
+        item.removeAttribute("aria-current");
+      }
     }
   }
 }
@@ -1211,11 +1219,6 @@ async function restoreSummaryNavigationContext(snapshot = {}, context = {}) {
       category.open = expanded.has(category.dataset.summaryCategoryId);
     }
   }
-  const selectedMetricID = String(snapshot.selectedMetricID || "");
-  const selected = [...(elements.summaryCategories?.querySelectorAll?.("[data-summary-metric-id]") || [])]
-    .find((row) => row.dataset.summaryMetricId === selectedMetricID);
-  selected?.classList.add("semantic-selected");
-  selected?.toggleAttribute("data-semantic-selected", true);
   const scrollHost = elements.summaryCategories?.closest?.(".summary-pane");
   if (scrollHost) {
     scrollHost.scrollTop = Number(snapshot.scrollTop) || 0;
@@ -1306,8 +1309,6 @@ export async function restoreDiagnoseNavigationContext(snapshot = {}, context = 
     ? [...(elements.diagnosticList?.querySelectorAll?.("[data-diagnostic-id]") || [])]
       .find((item) => item.dataset.diagnosticId === diagnoseSelectedDiagnosticID)
     : null;
-  target?.classList.add("semantic-selected");
-  target?.toggleAttribute("data-semantic-selected", true);
   if (resolved && elements.diagnosticList) {
     const status = document.createElement("div");
     status.className = "diagnostic-resolved-status";
@@ -1401,8 +1402,6 @@ function revealNavigationTarget(target, options = {}) {
     details.open = true;
     details = details.parentElement?.closest?.("details") || null;
   }
-  target.classList.add("semantic-selected");
-  target.toggleAttribute("data-semantic-selected", true);
   if (options.scroll !== false) {
     target.scrollIntoView?.({ block: options.block || "nearest", inline: "nearest", behavior: options.behavior || "auto" });
   }

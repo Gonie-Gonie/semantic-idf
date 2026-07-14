@@ -343,8 +343,6 @@ function initializeOutputNavigation() {
         : null;
       const targetElement = focused || context.genericFindTarget(selection) || elements.outputExisting;
       if (targetElement) {
-        targetElement.classList?.add("semantic-selected");
-        targetElement.toggleAttribute?.("data-semantic-selected", true);
         if (options.scroll !== false) {
           targetElement.scrollIntoView?.({ block: "nearest", inline: "nearest", behavior: "auto" });
         }

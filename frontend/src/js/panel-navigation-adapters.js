@@ -131,34 +131,39 @@ export function refreshResultPanelSelectionStyles(
   if (!root) {
     return 0;
   }
-  const selectedEntityId = String(selection?.entityId || "");
   const hoveredEntityId = String(hover?.entityId || "");
   const related = new Set(uniqueStrings(selection?.relatedEntityIds || []));
   const navigation = navigationIndex();
-  const selectedTargetIds = new Set(viewTargetIdsForSelection(view, selection, navigation));
   const hoveredTargetIds = new Set(viewTargetIdsForSelection(view, hover, navigation));
+  const items = panelItems(root);
+  const selectionScores = panelItemSelectionScores(view, items, selection, navigation);
+  const selectionScoreByItem = new Map(selectionScores.map(({ item, score }) => [item, score]));
+  const primary = primaryPanelItem(selectionScores);
   let selectedCount = 0;
 
-  for (const item of panelItems(root)) {
+  for (const item of items) {
     const itemEntityId = String(item.dataset.entityId || "");
     const itemTargetId = String(item.dataset.panelTargetId || "");
-    const isSelected = Boolean(
-      (selectedEntityId && itemEntityId === selectedEntityId) ||
-      (itemTargetId && selectedTargetIds.has(itemTargetId)),
-    );
+    const matchesSelection = (selectionScoreByItem.get(item) || 0) > 0;
+    const isSelected = item === primary;
     const isHovered = Boolean(
       (hoveredEntityId && itemEntityId === hoveredEntityId) ||
       (itemTargetId && hoveredTargetIds.has(itemTargetId)),
     );
-    const isRelated = Boolean(itemEntityId && related.has(itemEntityId) && !isSelected);
+    const isRelated = !isSelected && Boolean(matchesSelection || (itemEntityId && related.has(itemEntityId)));
     item.classList.toggle("semantic-selected", isSelected);
     item.classList.toggle("semantic-hovered", isHovered);
     item.classList.toggle("semantic-related", isRelated);
     item.toggleAttribute("data-semantic-selected", isSelected);
+    item.toggleAttribute("data-semantic-related", isRelated);
     if (!item.hasAttribute("tabindex")) {
       item.tabIndex = 0;
     }
-    item.setAttribute("aria-selected", isSelected ? "true" : "false");
+    if (supportsARIASelected(item)) {
+      item.setAttribute("aria-selected", isSelected ? "true" : "false");
+    } else {
+      item.removeAttribute("aria-selected");
+    }
     if (isSelected) {
       item.setAttribute("aria-current", "location");
     } else {
@@ -168,6 +173,68 @@ export function refreshResultPanelSelectionStyles(
     selectedCount += Number(isSelected);
   }
   return selectedCount;
+}
+
+function panelItemSelectionScores(viewId, items, selection, navigation) {
+  const targetIds = new Set(viewTargetIdsForSelection(viewId, selection, navigation));
+  const originTargetId = String(selection?.originView || "").toLowerCase() === viewId
+    ? String(selection?.originTargetId || "")
+    : "";
+  return items.map((item) => ({
+    item,
+    score: panelItemSelectionScore(item, selection, targetIds, originTargetId),
+  }));
+}
+
+function primaryPanelItem(selectionScores) {
+  let primary = null;
+  for (const candidate of selectionScores) {
+    if (candidate.score > 0 && (!primary || candidate.score > primary.score)) {
+      primary = candidate;
+    }
+  }
+  return primary?.item || null;
+}
+
+function panelItemSelectionScore(item, selection, targetIds, originTargetId) {
+  const itemEntityId = String(item.dataset.entityId || "");
+  const itemOccurrenceId = String(item.dataset.occurrenceId || "");
+  const itemTargetId = String(item.dataset.panelTargetId || "");
+  return (
+    Number(Boolean(originTargetId) && itemTargetId === originTargetId) * 1_000_000_000_000 +
+    Number(Boolean(itemTargetId) && targetIds.has(itemTargetId)) * 1_000_000_000 +
+    Number(Boolean(selection?.occurrenceId) && itemOccurrenceId === String(selection.occurrenceId)) * 100_000_000 +
+    Number(panelSourceAnchorMatches(item, selection?.sourceAnchor)) * 10_000_000 +
+    Number(Boolean(selection?.entityId) && itemEntityId === String(selection.entityId)) * 1_000_000
+  );
+}
+
+function panelSourceAnchorMatches(item, sourceAnchor = null) {
+  if (!sourceAnchor) {
+    return false;
+  }
+  const itemAnchor = sourceAnchorFromElement(item);
+  if (!itemAnchor) {
+    return false;
+  }
+  if (sourceAnchor.objectId) {
+    if (itemAnchor.objectId !== String(sourceAnchor.objectId)) {
+      return false;
+    }
+  } else if (hasIndex(sourceAnchor.objectIndex)) {
+    if (!hasIndex(itemAnchor.objectIndex) || Number(itemAnchor.objectIndex) !== Number(sourceAnchor.objectIndex)) {
+      return false;
+    }
+  } else {
+    return false;
+  }
+  return !hasIndex(sourceAnchor.fieldIndex) || !hasIndex(itemAnchor.fieldIndex) ||
+    Number(itemAnchor.fieldIndex) === Number(sourceAnchor.fieldIndex);
+}
+
+function supportsARIASelected(item) {
+  return ["columnheader", "gridcell", "option", "row", "rowheader", "tab", "treeitem"]
+    .includes(String(item.getAttribute("role") || "").toLowerCase());
 }
 
 function createResultPanelNavigationAdapter(viewId) {
@@ -287,23 +354,9 @@ function genericFindTarget(viewId, selection = {}, context = {}) {
       return handled;
     }
   }
-  const targetIds = viewTargetIdsForSelection(viewId, selection, context.navigation || navigationIndex());
-  const entityId = String(selection?.entityId || "");
-  const occurrenceId = String(selection?.occurrenceId || "");
-  const anchor = selection?.sourceAnchor || {};
   const items = panelItems(root);
-  for (const targetId of targetIds) {
-    const target = items.find((item) => item.dataset.panelTargetId === targetId);
-    if (target) {
-      return target;
-    }
-  }
-  return items.find((item) => (
-    (occurrenceId && item.dataset.occurrenceId === occurrenceId) ||
-    (entityId && item.dataset.entityId === entityId) ||
-    (anchor.objectId && item.dataset.sourceObjectId === String(anchor.objectId)) ||
-    (hasIndex(anchor.objectIndex) && item.dataset.sourceObjectIndex === String(anchor.objectIndex))
-  )) || null;
+  const navigation = context.navigation || navigationIndex();
+  return primaryPanelItem(panelItemSelectionScores(viewId, items, selection, navigation));
 }
 
 async function genericReveal(viewId, selection, options = {}, context = {}) {
@@ -313,20 +366,19 @@ async function genericReveal(viewId, selection, options = {}, context = {}) {
   }
   expandAncestorDetails(target);
   refreshResultPanelSelectionStyles(viewId, selection, state.globalHover);
-  target.classList.add("semantic-selected");
-  target.toggleAttribute("data-semantic-selected", true);
-  if (options.scroll !== false && typeof target.scrollIntoView === "function") {
-    target.scrollIntoView({
+  const primary = (context.root || resultPanelRoot(viewId))?.querySelector?.("[data-semantic-selected]") || target;
+  if (options.scroll !== false && typeof primary.scrollIntoView === "function") {
+    primary.scrollIntoView({
       block: options.block || "nearest",
       inline: options.inline || "nearest",
       behavior: options.behavior || "auto",
     });
   }
-  if (options.focus !== false && typeof target.focus === "function") {
-    if (!target.matches("a[href], button, input, select, textarea, [tabindex]")) {
-      target.tabIndex = -1;
+  if (options.focus !== false && typeof primary.focus === "function") {
+    if (!primary.matches("a[href], button, input, select, textarea, [tabindex]")) {
+      primary.tabIndex = -1;
     }
-    target.focus({ preventScroll: true });
+    primary.focus({ preventScroll: true });
   }
   return true;
 }
