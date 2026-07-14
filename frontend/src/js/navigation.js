@@ -1,6 +1,11 @@
 import { elements, setStatus, state } from "./state.js";
 import { t } from "./i18n.js";
-import { analyze, prioritizeAnalysisStageForTab } from "./actions.js";
+import { prioritizeAnalysisStageForTab } from "./actions.js";
+import { getPanelNavigationAdapter, registerPanelNavigationAdapter } from "./panel-navigation-registry.js";
+import {
+  revealSelectionSource,
+  selectSemanticEntity,
+} from "./selection-controller.js";
 import { renderReport } from "./views/analysis-views.js";
 import { renderGeometry, resizeGeometry } from "./geometry-loader.js";
 import {
@@ -102,46 +107,139 @@ function focusNavigatedInputTarget(element) {
   focusTarget.focus({ preventScroll: true });
 }
 
+function sourceViewForInputTarget(candidate = "") {
+  const normalized = String(candidate || "").trim().toLowerCase().replace(/^input-/, "");
+  const viewName = ["text", "json", "table"].includes(normalized)
+    ? normalized
+    : ["text", "json", "table"].includes(state.activeInputView)
+      ? state.activeInputView
+      : "text";
+  return `input-${viewName}`;
+}
+
+function semanticSelectionForSourceTarget(target = {}) {
+  const navigation = state.semanticProjection?.navigation || {};
+  const occurrences = Array.isArray(navigation.occurrences) ? navigation.occurrences : [];
+  const entities = Array.isArray(navigation.entities) ? navigation.entities : [];
+  const hasObjectIndex = target.objectIndex !== undefined && target.objectIndex !== null && String(target.objectIndex) !== "";
+  const objectIndex = hasObjectIndex ? Number(target.objectIndex) : null;
+  let occurrenceIds = hasObjectIndex ? navigation.byObjectIndex?.[String(objectIndex)] || [] : [];
+  if (!occurrenceIds.length && target.objectType) {
+    occurrenceIds = occurrences
+      .filter((occurrence) => occurrence.sourceAnchor?.objectType === target.objectType)
+      .map((occurrence) => occurrence.occurrenceId);
+  }
+  const candidates = occurrenceIds
+    .map((occurrenceId) => occurrences.find((occurrence) => occurrence.occurrenceId === occurrenceId))
+    .filter(Boolean);
+  const requestedField = target.fieldIndex === undefined || target.fieldIndex === null || String(target.fieldIndex) === ""
+    ? null
+    : Number(target.fieldIndex);
+  const occurrence = candidates.find((candidate) => (
+    requestedField !== null && Number(candidate.sourceAnchor?.fieldIndex) === requestedField
+  )) || candidates[0];
+  if (!occurrence) {
+    return {};
+  }
+  const entity = entities.find((candidate) => candidate.id === occurrence.entityId) || {};
+  const sourceAnchor = {
+    ...(occurrence.sourceAnchor || entity.sourceAnchors?.[0] || {}),
+  };
+  if (hasObjectIndex) {
+    sourceAnchor.objectIndex = objectIndex;
+  }
+  if (target.objectType) {
+    sourceAnchor.objectType = target.objectType;
+  }
+  if (requestedField !== null) {
+    sourceAnchor.fieldIndex = requestedField;
+  }
+  return {
+    entityId: occurrence.entityId || entity.id || "",
+    entityKind: entity.kind || "",
+    occurrenceId: occurrence.occurrenceId || "",
+    sourceAnchor,
+    originTargetId: target.targetId || "",
+    semanticPathHint: occurrence.path || "",
+    relatedEntityIds: entity.relatedEntityIds || [],
+  };
+}
+
 export async function focusInputObject(target, options = {}) {
   const hasObjectIndex = target.objectIndex !== undefined && target.objectIndex !== null && String(target.objectIndex) !== "";
   if (!hasObjectIndex && !target.objectType) {
-    return;
+    return false;
+  }
+  const selection = semanticSelectionForSourceTarget(target);
+  if (!selection.entityId) {
+    return revealLegacySourceTarget(target, options);
   }
   if (options.recordHistory !== false) {
     recordViewHistory();
   }
-  if (hasObjectIndex) {
-    state.jsonSelectedObjectIndex = String(target.objectIndex);
+  await selectSemanticEntity(selection, {
+    originView: options.originView || `input-${state.activeInputView || "text"}`,
+    action: options.action || "reveal_source",
+    recordHistory: false,
+    follow: false,
+    preserveFilters: options.preserveFilters !== false,
+    transactionId: options.transactionId,
+  });
+  return revealSelectionSource({
+    originView: options.originView || `input-${state.activeInputView || "text"}`,
+    action: "reveal_source",
+    recordHistory: false,
+    preserveFilters: options.preserveFilters !== false,
+    transactionId: options.revealTransactionId,
+    view: sourceViewForInputTarget(options.view),
+  });
+}
+
+async function revealLegacySourceTarget(target, options = {}) {
+  if (options.recordHistory !== false) {
+    recordViewHistory();
   }
-  if (state.lastAnalyzedText !== elements.idfInput.value) {
-    await analyze();
+  const requestedView = sourceViewForInputTarget(options.view);
+  const viewName = requestedView.slice("input-".length);
+  if (state.activeInputView !== viewName) {
+    await switchInputView(viewName, { recordHistory: false });
   } else {
     renderInputViews();
   }
+  return revealInputSourceTarget(target, options);
+}
 
+function revealInputSourceTarget(target, options = {}) {
+  const hasObjectIndex = target.objectIndex !== undefined && target.objectIndex !== null && String(target.objectIndex) !== "";
+  if (hasObjectIndex) {
+    state.jsonSelectedObjectIndex = String(target.objectIndex);
+    state.semanticSelectedObjectIndex = String(target.objectIndex);
+  }
+  const fieldIndex = target.fieldIndex === undefined || target.fieldIndex === null || String(target.fieldIndex) === ""
+    ? null
+    : Number(target.fieldIndex);
+  const rawLocated = hasObjectIndex
+    ? syncRawTextToObjectField(Number(target.objectIndex), fieldIndex, target.fieldIndexKind || "idf")
+    : false;
   let element = findInputTarget(target);
-  if (!element && state.inputFilterQuery) {
+  if (!element && state.inputFilterQuery && options.preserveFilters === false) {
     clearInputFilter();
     element = findInputTarget(target);
   }
-  if (!element && state.activeInputView !== "text") {
-    await switchInputView("text", { recordHistory: false });
-    element = findInputTarget(target);
-  }
   if (!element) {
+    if (rawLocated) {
+      setStatus(t("input.objectLocated"), "ok");
+      return true;
+    }
     setStatus(t("input.objectTargetMissing"), "warn");
-    return;
+    return false;
   }
-
   expandDetailsFor(element);
-  if (state.syncTextRawPosition && hasObjectIndex) {
-    const fieldIndex = target.fieldIndex === undefined || target.fieldIndex === null || String(target.fieldIndex) === "" ? null : Number(target.fieldIndex);
-    syncRawTextToObjectField(Number(target.objectIndex), fieldIndex, target.fieldIndexKind || "idf");
-  }
   scrollInputTargetIntoView(element);
   highlightInputTarget(element);
   focusNavigatedInputTarget(element);
   setStatus(t("input.objectLocated"), "ok");
+  return true;
 }
 
 export function handleInputJumpActivation(element) {
@@ -197,12 +295,181 @@ export function handleAnalysisActivation(element) {
   if (!element) {
     return;
   }
+  const adapter = getPanelNavigationAdapter(state.activeResultTab);
+  const selection = adapter?.selectFromElement?.(element) || null;
+  if (selection?.entityId) {
+    selectSemanticEntity(selection, {
+      originView: state.activeResultTab,
+      action: "select",
+    });
+    return;
+  }
   const jumpTarget = element.closest("[data-jump-object-index], [data-jump-object-type]");
   if (jumpTarget) {
     focusInputObject({
       objectIndex: jumpTarget.dataset.jumpObjectIndex,
       objectType: jumpTarget.dataset.jumpObjectType,
     });
+  }
+}
+
+let legacyInputAdaptersInitialized = false;
+
+export function initializeLegacyInputNavigationAdapters() {
+  if (legacyInputAdaptersInitialized) {
+    return;
+  }
+  legacyInputAdaptersInitialized = true;
+  ["semantic", "text", "json", "table"].forEach((viewName) => {
+    const viewId = `input-${viewName}`;
+    registerPanelNavigationAdapter(viewId, createLegacyInputNavigationAdapter(viewName));
+  });
+}
+
+function createLegacyInputNavigationAdapter(viewName) {
+  const viewId = `input-${viewName}`;
+  return {
+    canReveal(selection) {
+      if (viewName === "semantic") {
+        return Boolean(selection?.entityId && semanticOccurrenceIDs(selection.entityId).length);
+      }
+      const objectIndex = selection?.sourceAnchor?.objectIndex;
+      return Boolean(
+        selection?.sourceAnchor?.objectId ||
+        (objectIndex !== undefined && objectIndex !== null && String(objectIndex) !== ""),
+      );
+    },
+    async reveal(selection, options = {}) {
+      if (viewName === "semantic" && state.activeInputView !== "semantic" && options.action === "select") {
+        window.dispatchEvent(new CustomEvent("idfAnalyzer:semanticRevealAvailable", { detail: { selection, options } }));
+        return false;
+      }
+      if (state.activeInputView !== viewName) {
+        await switchInputView(viewName, { recordHistory: false });
+      } else {
+        renderInputViews();
+      }
+      const element = findInputSelectionElement(selection);
+      if (element) {
+        expandDetailsFor(element);
+        scrollInputTargetIntoView(element);
+        highlightInputTarget(element);
+        focusNavigatedInputTarget(element);
+        return true;
+      }
+      if (viewName === "semantic") {
+        return false;
+      }
+      const anchor = selection?.sourceAnchor || {};
+      return revealInputSourceTarget({
+        objectIndex: anchor.objectIndex,
+        objectType: anchor.objectType,
+        fieldIndex: anchor.fieldIndex,
+        fieldIndexKind: "idf",
+      }, options);
+    },
+    selectFromElement(element) {
+      const target = element?.closest?.("[data-entity-id], [data-occurrence-id], [data-object-index], [data-object-type]");
+      if (!target) {
+        return null;
+      }
+      if (target.dataset.entityId) {
+        return {
+          entityId: target.dataset.entityId,
+          entityKind: target.dataset.entityKind || "",
+          occurrenceId: target.dataset.occurrenceId || "",
+          originView: viewId,
+          originTargetId: target.dataset.panelTargetId || "",
+          semanticPathHint: target.dataset.semanticPath || "",
+        };
+      }
+      return {
+        ...semanticSelectionForSourceTarget({
+          objectIndex: target.dataset.objectIndex,
+          objectType: target.dataset.objectType,
+          fieldIndex: target.dataset.fieldIndex,
+          fieldIndexKind: target.dataset.fieldIndexKind || "idf",
+        }),
+        originView: viewId,
+      };
+    },
+    captureContext() {
+      const container = inputViewContainer(viewName);
+      return {
+        view: viewName,
+        scrollTop: Number(container?.scrollTop) || 0,
+        scrollLeft: Number(container?.scrollLeft) || 0,
+      };
+    },
+    async restoreContext(context = {}) {
+      if (state.activeInputView !== viewName) {
+        await switchInputView(viewName, { recordHistory: false });
+      }
+      const container = inputViewContainer(viewName);
+      if (container) {
+        container.scrollTop = Number(context.scrollTop) || 0;
+        container.scrollLeft = Number(context.scrollLeft) || 0;
+      }
+    },
+    preferredSemanticOccurrence(selection) {
+      if (selection?.occurrenceId) {
+        return selection.occurrenceId;
+      }
+      const occurrences = semanticOccurrences(selection?.entityId);
+      if (selection?.semanticPathHint) {
+        const contextual = occurrences.find((occurrence) => occurrence.path === selection.semanticPathHint);
+        if (contextual) {
+          return contextual.occurrenceId;
+        }
+      }
+      return occurrences[0]?.occurrenceId || "";
+    },
+  };
+}
+
+function semanticOccurrences(entityId) {
+  const navigation = state.semanticProjection?.navigation || {};
+  const ids = navigation.byEntityId?.[entityId] || [];
+  const byID = new Map((navigation.occurrences || []).map((occurrence) => [occurrence.occurrenceId, occurrence]));
+  return ids.map((id) => byID.get(id)).filter(Boolean);
+}
+
+function semanticOccurrenceIDs(entityId) {
+  return semanticOccurrences(entityId).map((occurrence) => occurrence.occurrenceId);
+}
+
+function findInputSelectionElement(selection = {}) {
+  const view = currentInputViewElement();
+  if (!view) {
+    return null;
+  }
+  const candidates = [...view.querySelectorAll("[data-occurrence-id], [data-entity-id], [data-object-index], [data-object-type]")];
+  if (selection.occurrenceId) {
+    const occurrence = candidates.find((element) => element.dataset.occurrenceId === selection.occurrenceId);
+    if (occurrence) {
+      return occurrence;
+    }
+  }
+  if (selection.entityId) {
+    const entity = candidates.find((element) => element.dataset.entityId === selection.entityId);
+    if (entity) {
+      return entity;
+    }
+  }
+  const anchor = selection.sourceAnchor || {};
+  return findInputTarget({
+    objectIndex: anchor.objectIndex,
+    objectType: anchor.objectType,
+    fieldIndex: anchor.fieldIndex,
+  });
+}
+
+function inputViewContainer(viewName) {
+  switch (viewName) {
+    case "semantic": return elements.semanticEditor;
+    case "json": return elements.jsonStructuredView;
+    case "table": return elements.fieldTable;
+    default: return elements.textObjectView;
   }
 }
 

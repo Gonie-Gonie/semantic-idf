@@ -99,7 +99,7 @@ function groupedReportObjects() {
 }
 
 function hasCurrentAnalysis() {
-  return state.lastAnalyzedText !== "" && state.lastAnalyzedText === elements.idfInput.value;
+  return state.reportAnalyzedText !== "" && state.reportAnalyzedText === elements.idfInput.value;
 }
 
 function pendingViewMessage(viewName) {
@@ -1190,11 +1190,23 @@ async function commitJSONValueEdit(editor, nextRaw, restore) {
     state.lastAnalyzedText = result.text;
     state.analysisKey = result.analysisKey || "";
     state.lastAnalyzedKey = state.analysisKey;
+    state.reportAnalyzedText = result.text;
+    state.reportAnalysisKey = state.analysisKey;
     state.analysisStage = "complete";
     state.diagnosticsReady = true;
     state.geometryReady = true;
+    Object.keys(state.analysisReady || {}).forEach((view) => {
+      state.analysisReady[view] = true;
+    });
+    state.reportAnalysisStage = state.analysisStage;
+    state.reportAnalysisReady = { ...(state.analysisReady || {}) };
+    state.reportDiagnosticsReady = true;
+    state.reportGeometryReady = true;
     window.dispatchEvent(new Event("idfAnalyzer:documentChanged"));
     renderReportCallback();
+    window.dispatchEvent(new CustomEvent("idfAnalyzer:analysisComplete", {
+      detail: { text: result.text, analysisKey: state.reportAnalysisKey, stage: "complete" },
+    }));
     setStatus(t("input.jsonValueUpdated"), "ok");
   } catch (error) {
     setStatus(error.message || String(error), "error");

@@ -11,6 +11,7 @@ import {
   openInputFile,
   openSettings,
   openBatch,
+  prioritizeAnalysisStageForTab,
   currentDocumentStorageKey,
   registerLoadedDocument,
   revertToLoadedDocument,
@@ -36,12 +37,18 @@ import {
   focusInputObject,
   handleAnalysisActivation,
   handleInputJumpActivation,
+  initializeLegacyInputNavigationAdapters,
   jumpInputDefinition,
   jumpInputReferences,
   redoViewNavigation,
   switchResultTab,
   undoViewNavigation,
 } from "./navigation.js";
+import {
+  configureSelectionController,
+  resumePendingSemanticNavigation,
+} from "./selection-controller.js";
+import { recordViewHistory } from "./view-history.js";
 import { initializeProfileControls, renderProfile } from "./views/profile-views.js";
 import { initializeSimulationControls, loadSimulationEnvironment } from "./views/simulation-views.js";
 import { normalizeAnalyzeTabOrder, t, translatePage } from "./i18n.js";
@@ -50,6 +57,61 @@ import { initializeKeyboardShortcuts } from "./shortcuts.js";
 loadAndApplyAppSettings().then((result) => applyRuntimeSettings(result.settings));
 
 configureInputViews({ analyze, renderReport });
+initializeLegacyInputNavigationAdapters();
+configureSelectionController({
+  state,
+  getNavigationIndex: () => state.semanticProjection?.navigation || {},
+  getCurrentText: () => elements.idfInput?.value || "",
+  getReportAnalysisKey: () => state.reportAnalysisKey || "",
+  isAnalysisCurrent: () => (
+    state.reportAnalyzedText !== "" && state.reportAnalyzedText === (elements.idfInput?.value || "")
+  ),
+  getActiveInputView: () => `input-${state.activeInputView || "semantic"}`,
+  getActivePanelView: () => state.activeResultTab || "summary",
+  recordHistory: () => recordViewHistory(),
+  openView: async (view, options = {}) => {
+    if (String(view).startsWith("input-")) {
+      await switchInputView(String(view).slice("input-".length), { ...options, recordHistory: false });
+      return;
+    }
+    switchResultTab(view, { ...options, recordHistory: false });
+  },
+  queueAnalysisTarget: ({ view }) => {
+    if (view && !String(view).startsWith("input-")) {
+      prioritizeAnalysisStageForTab(view);
+    }
+  },
+  onAnalysisPending: () => {
+    setStatus(t("status.navigationAnalysisPending", {}, "Analysis pending; navigation target will be restored when ready."), "muted");
+  },
+  onSelectionChange: ({ selection, options }) => {
+    const objectIndex = selection.sourceAnchor?.objectIndex;
+    state.semanticSelectedObjectIndex = objectIndex === undefined || objectIndex === null ? "" : String(objectIndex);
+    window.dispatchEvent(new CustomEvent("idfAnalyzer:semanticSelectionChanged", { detail: { selection, options } }));
+  },
+  onHoverChange: ({ hover, options }) => {
+    window.dispatchEvent(new CustomEvent("idfAnalyzer:semanticHoverChanged", { detail: { hover, options } }));
+  },
+  onTemporaryReveal: ({ reveal, options }) => {
+    window.dispatchEvent(new CustomEvent("idfAnalyzer:semanticTemporaryReveal", { detail: { reveal, options } }));
+  },
+  onChooserRequested: (detail) => {
+    window.dispatchEvent(new CustomEvent("idfAnalyzer:semanticChooserRequested", { detail }));
+  },
+});
+
+const resumePendingNavigationAfterRender = (event) => {
+  const eventText = event.detail?.text;
+  const currentText = elements.idfInput?.value || "";
+  if (eventText && eventText !== currentText) {
+    return;
+  }
+  window.requestAnimationFrame(() => {
+    resumePendingSemanticNavigation({ recordHistory: false });
+  });
+};
+window.addEventListener("idfAnalyzer:analysisStageReady", resumePendingNavigationAfterRender);
+window.addEventListener("idfAnalyzer:analysisComplete", resumePendingNavigationAfterRender);
 
 elements.openButton.addEventListener("click", openInputFile);
 elements.fileInput.addEventListener("change", async (event) => {
@@ -172,10 +234,14 @@ window.addEventListener("idfAnalyzer:profileApplied", (event) => {
   state.lastAnalyzedText = result.text;
   state.analysisKey = result.analysisKey || "";
   state.lastAnalyzedKey = state.analysisKey;
+  state.reportAnalyzedText = result.text;
+  state.reportAnalysisKey = state.analysisKey;
   state.analysisStage = "complete";
   state.diagnosticsReady = true;
   state.geometryReady = true;
+  markInstalledAnalysisReady();
   renderReport();
+  dispatchInstalledAnalysisComplete(result);
   updateDocumentActions();
   const changeCount = result.preview?.changes?.length || 0;
   setStatus(t("status.profileApplied", { count: changeCount }), "ok");
@@ -194,10 +260,14 @@ window.addEventListener("idfAnalyzer:hvacApplied", (event) => {
   state.lastAnalyzedText = result.text;
   state.analysisKey = result.analysisKey || "";
   state.lastAnalyzedKey = state.analysisKey;
+  state.reportAnalyzedText = result.text;
+  state.reportAnalysisKey = state.analysisKey;
   state.analysisStage = "complete";
   state.diagnosticsReady = true;
   state.geometryReady = true;
+  markInstalledAnalysisReady();
   renderReport();
+  dispatchInstalledAnalysisComplete(result);
   updateDocumentActions();
   const changeCount = result.preview?.changes?.filter((change) => change.requiresSave).length || 0;
   setStatus(t("status.hvacApplied", { count: changeCount }), "ok");
@@ -216,14 +286,38 @@ window.addEventListener("idfAnalyzer:outputApplied", (event) => {
   state.lastAnalyzedText = result.text;
   state.analysisKey = result.analysisKey || "";
   state.lastAnalyzedKey = state.analysisKey;
+  state.reportAnalyzedText = result.text;
+  state.reportAnalysisKey = state.analysisKey;
   state.analysisStage = "complete";
   state.diagnosticsReady = true;
   state.geometryReady = true;
+  markInstalledAnalysisReady();
   renderReport();
+  dispatchInstalledAnalysisComplete(result);
   updateDocumentActions();
   const changeCount = result.preview?.changes?.filter((change) => change.requiresSave).length || 0;
   setStatus(t("status.outputApplied", { count: changeCount }), "ok");
 });
+
+function dispatchInstalledAnalysisComplete(result = {}) {
+  window.dispatchEvent(new CustomEvent("idfAnalyzer:analysisComplete", {
+    detail: {
+      text: result.text || state.reportAnalyzedText || "",
+      analysisKey: result.analysisKey || state.reportAnalysisKey || "",
+      stage: "complete",
+    },
+  }));
+}
+
+function markInstalledAnalysisReady() {
+  Object.keys(state.analysisReady || {}).forEach((view) => {
+    state.analysisReady[view] = true;
+  });
+  state.reportAnalysisStage = state.analysisStage || "complete";
+  state.reportAnalysisReady = { ...(state.analysisReady || {}) };
+  state.reportDiagnosticsReady = Boolean(state.diagnosticsReady);
+  state.reportGeometryReady = Boolean(state.geometryReady);
+}
 
 function toggleExpandedPane(pane) {
   state.expandedPane = state.expandedPane === pane ? "" : pane;

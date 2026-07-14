@@ -10,6 +10,7 @@ import {
 } from "./views/analysis-views.js";
 import { preloadGeometryRenderer, renderGeometry } from "./geometry-loader.js";
 import { t } from "./i18n.js";
+import { clearSemanticHover, clearSemanticSelection } from "./selection-controller.js";
 
 export const currentDocumentStorageKey = "idfAnalyzer.currentDocument";
 
@@ -97,8 +98,9 @@ async function runQueuedStageAnalysis(api, text, analysisKey, runID, options) {
     return null;
   }
   state.analysisStage = "complete";
+  captureInstalledReportReadiness();
   scheduleIdlePreRender();
-  window.dispatchEvent(new CustomEvent("idfAnalyzer:analysisComplete", { detail: { text } }));
+  dispatchAnalysisLifecycleEvent("idfAnalyzer:analysisComplete", { text, analysisKey, stage: "complete" });
   setStatus(options.statusMessage || t("status.analysisComplete"), "ok");
   return { ...quick, report: state.report, stages: results.filter(Boolean) };
 }
@@ -157,7 +159,7 @@ async function runFullAnalysis(api, text, analysisKey, runID, options) {
   }
   applyOverviewResult(result, text, { complete: true, analysisKey });
   scheduleIdlePreRender();
-  window.dispatchEvent(new CustomEvent("idfAnalyzer:analysisComplete", { detail: { text } }));
+  dispatchAnalysisLifecycleEvent("idfAnalyzer:analysisComplete", { text, analysisKey, stage: "complete" });
   setStatus(options.statusMessage || t("status.analysisComplete"), "ok");
   return result;
 }
@@ -178,11 +180,14 @@ async function runStagedAnalysis(api, text, analysisKey, runID, options) {
   state.report = state.report || {};
   state.report.diagnostics = diagnostics || [];
   state.diagnosticsReady = true;
+  state.analysisReady.diagnose = true;
   state.analysisStage = "diagnostics";
   markAnalysisDirty("diagnose");
   if (state.activeResultTab === "diagnose") {
     renderDiagnostics();
   }
+  captureInstalledReportReadiness();
+  dispatchAnalysisLifecycleEvent("idfAnalyzer:analysisStageReady", { stage: "diagnostics" });
   setStatus(t("status.diagnosticsReadyGeometry"), "loading");
   await nextPaint();
 
@@ -196,13 +201,15 @@ async function runStagedAnalysis(api, text, analysisKey, runID, options) {
   state.report = state.report || {};
   state.report.geometry = geometry || {};
   state.geometryReady = true;
+  state.analysisReady.geometry = true;
   state.analysisStage = "complete";
   markAnalysisDirty("geometry");
   if (state.activeResultTab === "geometry") {
     renderGeometry(state.report.geometry);
   }
+  captureInstalledReportReadiness();
   scheduleIdlePreRender();
-  window.dispatchEvent(new CustomEvent("idfAnalyzer:analysisComplete", { detail: { text } }));
+  dispatchAnalysisLifecycleEvent("idfAnalyzer:analysisComplete", { text, analysisKey, stage: "complete" });
   setStatus(options.statusMessage || t("status.analysisComplete"), "ok");
   return { ...overview, report: state.report };
 }
@@ -247,12 +254,18 @@ function applyStageResult(stage, result) {
   } else {
     updateResultTabReadiness();
   }
+  captureInstalledReportReadiness();
+  dispatchAnalysisLifecycleEvent("idfAnalyzer:analysisStageReady", { stage });
 }
 
 export function prioritizeAnalysisStageForTab(tab = state.activeResultTab) {
   const stage = resultTabStage(tab);
-  if (!stage || !activeStageQueue) {
+  if (!stage) {
     return false;
+  }
+  if (!activeStageQueue) {
+    state.pendingAnalysisPriorityTab = tab;
+    return true;
   }
   if (activeStageQueue.analysisKey && state.analysisKey && activeStageQueue.analysisKey !== state.analysisKey) {
     return false;
@@ -266,7 +279,9 @@ export function prioritizeAnalysisStageForTab(tab = state.activeResultTab) {
 
 function orderedAnalysisStages(activeTab) {
   const stages = ["profile", "hvac", "output", "diagnostics", "geometry"];
-  const priority = resultTabStage(activeTab);
+  const pendingPriorityTab = state.pendingAnalysisPriorityTab || "";
+  state.pendingAnalysisPriorityTab = "";
+  const priority = resultTabStage(pendingPriorityTab) || resultTabStage(activeTab);
   if (!priority) {
     return stages;
   }
@@ -315,7 +330,7 @@ async function readBackendCachedAnalysis(api, text, analysisKey, runID, options)
   }
   applyOverviewResult(cached, text, { complete: true, analysisKey });
   scheduleIdlePreRender();
-  window.dispatchEvent(new CustomEvent("idfAnalyzer:analysisComplete", { detail: { text } }));
+  dispatchAnalysisLifecycleEvent("idfAnalyzer:analysisComplete", { text, analysisKey, stage: "complete" });
   setStatus(options.statusMessage || t("status.analysisComplete"), "ok");
   return cached;
 }
@@ -336,6 +351,8 @@ function applyOverviewResult(result, text, { complete = false, analysisKey = "" 
   state.lastAnalyzedText = text;
   state.analysisKey = result.analysisKey || analysisKey || state.analysisKey;
   state.lastAnalyzedKey = state.analysisKey;
+  state.reportAnalyzedText = text;
+  state.reportAnalysisKey = state.analysisKey;
   state.hvacServiceGraphLayoutCache?.clear?.();
   state.profileViewCache?.clear?.();
   state.geometryPlanLayoutCache?.clear?.();
@@ -345,6 +362,7 @@ function applyOverviewResult(result, text, { complete = false, analysisKey = "" 
   state.diagnosticsReady = complete;
   state.geometryReady = complete;
   setAnalysisReadiness(complete);
+  captureInstalledReportReadiness();
   markAllAnalysisDirty();
   renderReport({ scope: "active" });
   updateDocumentActions();
@@ -413,6 +431,11 @@ export function scheduleAnalyzeAfterPaint(options = {}) {
 
 export function scheduleAutoAnalyze(delay = state.autoAnalyzeDelayMs) {
   clearScheduledAnalyze();
+  if (restoreInstalledReportIfCurrent()) {
+    updateDocumentActions();
+    setStatus(t("status.analysisComplete"), "ok");
+    return;
+  }
   state.lastAnalyzedText = "";
   state.lastAnalyzedKey = "";
   updateDocumentActions();
@@ -427,12 +450,20 @@ export function scheduleAutoAnalyze(delay = state.autoAnalyzeDelayMs) {
 }
 
 export function registerLoadedDocument(text, { path = "", filename = "" } = {}) {
+  clearSemanticHover();
+  clearSemanticSelection();
   state.currentFilePath = path;
   state.currentFilename = filename;
   state.loadedText = text;
   state.savedText = text;
   state.lastAnalyzedText = "";
   state.lastAnalyzedKey = "";
+  state.reportAnalyzedText = "";
+  state.reportAnalysisKey = "";
+  state.reportAnalysisStage = "idle";
+  state.reportAnalysisReady = null;
+  state.reportDiagnosticsReady = false;
+  state.reportGeometryReady = false;
   state.analysisKey = "";
   resetAnalysisReadiness();
   state.report = null;
@@ -443,6 +474,8 @@ export function registerLoadedDocument(text, { path = "", filename = "" } = {}) 
   state.analysisStageTimings = {};
   state.renderTiming = { tabs: {}, last: null };
   state.semanticSelectedObjectIndex = "";
+  state.semanticPendingNavigation = null;
+  state.pendingAnalysisPriorityTab = "";
   state.semanticExpandedSectionIds = new Set(["project"]);
   state.analysisStage = "idle";
   state.diagnosticsReady = false;
@@ -452,6 +485,12 @@ export function registerLoadedDocument(text, { path = "", filename = "" } = {}) 
 }
 
 export function markDocumentChanged() {
+  if (restoreInstalledReportIfCurrent()) {
+    state.analysisTiming = state.analysisTiming || null;
+    updateDocumentActions();
+    window.dispatchEvent(new Event("idfAnalyzer:documentChanged"));
+    return false;
+  }
   state.lastAnalyzedText = "";
   state.lastAnalyzedKey = "";
   state.analysisKey = "";
@@ -464,6 +503,7 @@ export function markDocumentChanged() {
   state.geometryReady = false;
   updateDocumentActions();
   window.dispatchEvent(new Event("idfAnalyzer:documentChanged"));
+  return true;
 }
 
 export function updateDocumentActions() {
@@ -659,6 +699,8 @@ export function applyCachedAnalysisResult(result, snapshot = {}) {
   state.lastAnalyzedText = text;
   state.analysisKey = analysisKey;
   state.lastAnalyzedKey = analysisKey;
+  state.reportAnalyzedText = text;
+  state.reportAnalysisKey = analysisKey;
   state.hvacServiceGraphLayoutCache?.clear?.();
   state.profileViewCache?.clear?.();
   state.geometryPlanLayoutCache?.clear?.();
@@ -669,11 +711,48 @@ export function applyCachedAnalysisResult(result, snapshot = {}) {
   state.diagnosticsReady = complete;
   state.geometryReady = complete;
   setAnalysisReadiness(complete);
+  captureInstalledReportReadiness();
   markAllAnalysisDirty();
   renderReport({ scope: "active" });
   scheduleIdlePreRender();
   updateDocumentActions();
   return complete;
+}
+
+function dispatchAnalysisLifecycleEvent(name, detail = {}) {
+  window.dispatchEvent(new CustomEvent(name, {
+    detail: {
+      text: detail.text ?? state.reportAnalyzedText ?? "",
+      analysisKey: detail.analysisKey ?? state.reportAnalysisKey ?? "",
+      stage: detail.stage || state.analysisStage || "",
+    },
+  }));
+}
+
+function captureInstalledReportReadiness() {
+  state.reportAnalysisStage = state.analysisStage || "idle";
+  state.reportAnalysisReady = { ...(state.analysisReady || {}) };
+  state.reportDiagnosticsReady = Boolean(state.diagnosticsReady);
+  state.reportGeometryReady = Boolean(state.geometryReady);
+}
+
+function restoreInstalledReportIfCurrent() {
+  const currentText = elements.idfInput?.value || "";
+  if (!state.reportAnalyzedText || currentText !== state.reportAnalyzedText || !state.report) {
+    return false;
+  }
+  state.lastAnalyzedText = state.reportAnalyzedText;
+  state.lastAnalyzedKey = state.reportAnalysisKey || "";
+  state.analysisKey = state.reportAnalysisKey || "";
+  state.analysisStage = state.reportAnalysisStage || "complete";
+  state.analysisReady = {
+    ...(state.analysisReady || {}),
+    ...(state.reportAnalysisReady || {}),
+  };
+  state.diagnosticsReady = Boolean(state.reportDiagnosticsReady);
+  state.geometryReady = Boolean(state.reportGeometryReady);
+  updateResultTabReadiness();
+  return true;
 }
 
 function recordAnalysisTiming(timing, stage = "") {
