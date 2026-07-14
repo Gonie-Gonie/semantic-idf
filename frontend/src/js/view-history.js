@@ -1,6 +1,9 @@
 import { elements, state } from "./state.js";
+import { getPanelNavigationAdapter, PANEL_NAVIGATION_VIEW_IDS } from "./panel-navigation-registry.js";
 
 const MAX_HISTORY = 80;
+const MAX_CONTEXT_ARRAY_LENGTH = 96;
+const MAX_CONTEXT_DEPTH = 7;
 
 export function captureViewSnapshot() {
   return {
@@ -17,6 +20,19 @@ export function captureViewSnapshot() {
     activeObjectIndex: activeElementDataset("objectIndex"),
     activeFieldIndex: activeElementDataset("fieldIndex"),
     activeFieldIndexKind: activeElementDataset("fieldIndexKind"),
+    globalSelection: cloneHistorySelection(state.globalSelection),
+    semanticTemporaryReveal: state.semanticTemporaryReveal ? { ...state.semanticTemporaryReveal } : null,
+    semanticCurrentOccurrenceId: state.semanticCurrentOccurrenceId || "",
+    semanticCurrentPath: state.semanticCurrentPath || "",
+    semantic: {
+      mode: state.semanticProjectionMode || "basic",
+      facet: state.semanticProjectionFacet || "all",
+      filter: state.inputFilterQuery || "",
+      temporaryReveal: compactClone(state.semanticTemporaryReveal),
+      scrollTop: Number(elements.semanticEditor?.scrollTop) || 0,
+      expandedSectionIds: [...(state.semanticExpandedSectionIds || [])].map(String),
+    },
+    panelContexts: capturePanelContexts(),
   };
 }
 
@@ -69,4 +85,77 @@ function activeElementDataset(key) {
 
 function snapshotsEqual(a, b) {
   return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function cloneHistorySelection(selection = {}) {
+  return {
+    entityId: String(selection.entityId || ""),
+    entityKind: String(selection.entityKind || ""),
+    occurrenceId: String(selection.occurrenceId || ""),
+    sourceAnchor: selection.sourceAnchor ? { ...selection.sourceAnchor } : null,
+    originView: String(selection.originView || ""),
+    originTargetId: String(selection.originTargetId || ""),
+    semanticPathHint: String(selection.semanticPathHint || ""),
+    relatedEntityIds: [...(selection.relatedEntityIds || [])],
+    transactionId: "",
+  };
+}
+
+/**
+ * Panel adapters own panel-local state. Capturing through the registry keeps
+ * history lightweight and prevents this module from importing seven views.
+ */
+export function capturePanelContexts(viewIDs = PANEL_NAVIGATION_VIEW_IDS) {
+  const contexts = {};
+  for (const viewID of viewIDs) {
+    const adapter = getPanelNavigationAdapter(viewID);
+    if (!adapter) {
+      continue;
+    }
+    try {
+      const context = compactClone(adapter.captureContext());
+      if (context !== undefined) {
+        contexts[viewID] = context;
+      }
+    } catch {
+      // A panel that has not mounted yet must not break global history.
+    }
+  }
+  return contexts;
+}
+
+function compactClone(value, depth = 0, seen = new WeakSet()) {
+  if (value === null || value === undefined || typeof value === "string" || typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : 0;
+  }
+  if (typeof value !== "object" || depth >= MAX_CONTEXT_DEPTH) {
+    return undefined;
+  }
+  if (seen.has(value)) {
+    return undefined;
+  }
+  seen.add(value);
+  if (Array.isArray(value)) {
+    return value
+      .slice(0, MAX_CONTEXT_ARRAY_LENGTH)
+      .map((item) => compactClone(item, depth + 1, seen))
+      .filter((item) => item !== undefined);
+  }
+  if (value instanceof Set) {
+    return compactClone([...value], depth + 1, seen);
+  }
+  if (value instanceof Map || (globalThis.HTMLElement && value instanceof globalThis.HTMLElement)) {
+    return undefined;
+  }
+  const result = {};
+  for (const [key, item] of Object.entries(value)) {
+    const cloned = compactClone(item, depth + 1, seen);
+    if (cloned !== undefined) {
+      result[key] = cloned;
+    }
+  }
+  return result;
 }

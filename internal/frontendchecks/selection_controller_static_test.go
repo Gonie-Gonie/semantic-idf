@@ -152,7 +152,9 @@ func TestSelectionControllerTransactionsAndFollowContract(t *testing.T) {
 	selection := sliceBetween(content, "async function selectSemanticEntity", "async function hoverSemanticEntity")
 	for _, required := range []string{
 		"entityChanged",
-		"options.recordHistory && entityChanged",
+		"occurrenceChanged",
+		"selectionChanged",
+		"options.recordHistory && selectionChanged",
 		"controllerState.globalSelection = selection",
 		"controllerState.semanticLinkMode && options.follow",
 	} {

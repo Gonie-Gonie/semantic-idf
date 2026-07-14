@@ -1,8 +1,11 @@
 import { elements, setStatus, state } from "./state.js";
 import { t } from "./i18n.js";
+import { bundledAppInfo } from "./app-info.js";
 import { prioritizeAnalysisStageForTab } from "./actions.js";
 import { getPanelNavigationAdapter, registerPanelNavigationAdapter } from "./panel-navigation-registry.js";
+import { getSemanticNavigationCache } from "./semantic-navigation-cache.js";
 import {
+  clearSemanticSelection,
   revealSelectionSource,
   selectSemanticEntity,
 } from "./selection-controller.js";
@@ -118,19 +121,17 @@ function sourceViewForInputTarget(candidate = "") {
 }
 
 function semanticSelectionForSourceTarget(target = {}) {
-  const navigation = state.semanticProjection?.navigation || {};
-  const occurrences = Array.isArray(navigation.occurrences) ? navigation.occurrences : [];
-  const entities = Array.isArray(navigation.entities) ? navigation.entities : [];
+  const cache = semanticNavigationCache();
   const hasObjectIndex = target.objectIndex !== undefined && target.objectIndex !== null && String(target.objectIndex) !== "";
   const objectIndex = hasObjectIndex ? Number(target.objectIndex) : null;
-  let occurrenceIds = hasObjectIndex ? navigation.byObjectIndex?.[String(objectIndex)] || [] : [];
+  let occurrenceIds = hasObjectIndex ? cache.occurrenceIdsByObjectIndex.get(String(objectIndex)) || [] : [];
   if (!occurrenceIds.length && target.objectType) {
-    occurrenceIds = occurrences
+    occurrenceIds = cache.sourceIdentityCandidates({ objectType: target.objectType })
       .filter((occurrence) => occurrence.sourceAnchor?.objectType === target.objectType)
       .map((occurrence) => occurrence.occurrenceId);
   }
   const candidates = occurrenceIds
-    .map((occurrenceId) => occurrences.find((occurrence) => occurrence.occurrenceId === occurrenceId))
+    .map((occurrenceId) => cache.occurrence(occurrenceId))
     .filter(Boolean);
   const requestedField = target.fieldIndex === undefined || target.fieldIndex === null || String(target.fieldIndex) === ""
     ? null
@@ -141,7 +142,7 @@ function semanticSelectionForSourceTarget(target = {}) {
   if (!occurrence) {
     return {};
   }
-  const entity = entities.find((candidate) => candidate.id === occurrence.entityId) || {};
+  const entity = cache.entity(occurrence.entityId) || {};
   const sourceAnchor = {
     ...(occurrence.sourceAnchor || entity.sourceAnchors?.[0] || {}),
   };
@@ -256,22 +257,24 @@ export function handleInputJumpActivation(element) {
   return true;
 }
 
-export function jumpInputDefinition() {
-  jumpFromInputSource("definition", currentInputJumpSource());
+export function jumpInputDefinition(options = {}) {
+  jumpFromInputSource("definition", currentInputJumpSource(), options);
 }
 
-export function jumpInputReferences() {
-  jumpFromInputSource("references", currentInputJumpSource());
+export function jumpInputReferences(options = {}) {
+  jumpFromInputSource("references", currentInputJumpSource(), options);
 }
 
-function jumpFromInputSource(kind, source) {
+function jumpFromInputSource(kind, source, options = {}) {
   const targets = resolveInputJumpTargets(kind, source);
   if (!targets.length) {
     setStatus(kind === "definition" ? t("input.noDefinitionTarget") : t("input.noReferenceTarget"), "warn");
     return;
   }
   const target = kind === "references" ? nextReferenceTarget(source, targets) : targets[0];
-  recordViewHistory();
+  if (options.recordHistory !== false) {
+    recordViewHistory();
+  }
   focusInputObject(target, { recordHistory: false });
   setStatus(
     kind === "definition"
@@ -295,22 +298,74 @@ export function handleAnalysisActivation(element) {
   if (!element) {
     return;
   }
-  const adapter = getPanelNavigationAdapter(state.activeResultTab);
-  const selection = adapter?.selectFromElement?.(element) || null;
-  if (selection?.entityId) {
-    selectSemanticEntity(selection, {
-      originView: state.activeResultTab,
-      action: "select",
-    });
-    return;
-  }
   const jumpTarget = element.closest("[data-jump-object-index], [data-jump-object-type]");
   if (jumpTarget) {
     focusInputObject({
       objectIndex: jumpTarget.dataset.jumpObjectIndex,
       objectType: jumpTarget.dataset.jumpObjectType,
     });
+    return;
   }
+  const interactive = element.closest("button, input, select, textarea, a[href], [contenteditable='true']");
+  if (interactive && !interactive.matches("[data-entity-id], [data-panel-target-id]")) {
+    return;
+  }
+  const adapter = getPanelNavigationAdapter(state.activeResultTab);
+  const selection = adapter?.selectFromElement?.(element) || null;
+  if (selection?.entityId) {
+    const selectionTarget = element.closest?.("[data-choose-semantic-occurrence]");
+    selectSemanticEntity(selection, {
+      originView: state.activeResultTab,
+      action: "select",
+      chooseOccurrence: selection.chooseOccurrence === true || selectionTarget?.dataset.chooseSemanticOccurrence === "true",
+    });
+    return;
+  }
+}
+
+export function handleInputSelectionActivation(element) {
+  if (!element || state.activeInputView === "semantic") {
+    return false;
+  }
+  if (element.closest?.("button, input, select, textarea, a[href], [contenteditable='true']")) {
+    return false;
+  }
+  const viewId = `input-${state.activeInputView}`;
+  const adapter = getPanelNavigationAdapter(viewId);
+  const selection = adapter?.selectFromElement?.(element) || null;
+  if (!selection?.entityId) {
+    return false;
+  }
+  selectSemanticEntity(selection, {
+    originView: viewId,
+    action: "select",
+    recordHistory: true,
+    follow: false,
+  });
+  return true;
+}
+
+export function refreshInputSelectionStyles(selection = state.globalSelection) {
+  if (state.activeInputView === "semantic") {
+    return 0;
+  }
+  const root = currentInputViewElement();
+  if (!root) {
+    return 0;
+  }
+  const anchor = selection?.sourceAnchor || {};
+  const objectIndex = anchor.objectIndex === undefined || anchor.objectIndex === null ? "" : String(anchor.objectIndex);
+  const fieldIndex = anchor.fieldIndex === undefined || anchor.fieldIndex === null ? "" : String(anchor.fieldIndex);
+  let selectedCount = 0;
+  root.querySelectorAll("[data-object-index]").forEach((item) => {
+    const sameObject = Boolean(objectIndex && item.dataset.objectIndex === objectIndex);
+    const sameField = !fieldIndex || !item.dataset.fieldIndex || item.dataset.fieldIndex === fieldIndex;
+    const selected = sameObject && sameField;
+    item.classList.toggle("semantic-selected", selected);
+    item.toggleAttribute("data-semantic-selected", selected);
+    selectedCount += Number(selected);
+  });
+  return selectedCount;
 }
 
 let legacyInputAdaptersInitialized = false;
@@ -345,12 +400,16 @@ function createLegacyInputNavigationAdapter(viewName) {
         return false;
       }
       if (state.activeInputView !== viewName) {
-        await switchInputView(viewName, { recordHistory: false });
+        await switchInputView(viewName, { recordHistory: false, revealSelection: false });
       } else {
         renderInputViews();
       }
       const element = findInputSelectionElement(selection);
       if (element) {
+        if (viewName === "semantic") {
+          state.semanticCurrentOccurrenceId = selection.occurrenceId || element.dataset.occurrenceId || "";
+          state.semanticCurrentPath = selection.semanticPathHint || element.dataset.semanticPath || "";
+        }
         expandDetailsFor(element);
         scrollInputTargetIntoView(element);
         highlightInputTarget(element);
@@ -403,7 +462,7 @@ function createLegacyInputNavigationAdapter(viewName) {
     },
     async restoreContext(context = {}) {
       if (state.activeInputView !== viewName) {
-        await switchInputView(viewName, { recordHistory: false });
+        await switchInputView(viewName, { recordHistory: false, revealSelection: false });
       }
       const container = inputViewContainer(viewName);
       if (container) {
@@ -422,16 +481,22 @@ function createLegacyInputNavigationAdapter(viewName) {
           return contextual.occurrenceId;
         }
       }
-      return occurrences[0]?.occurrenceId || "";
+      return "";
     },
   };
 }
 
 function semanticOccurrences(entityId) {
-  const navigation = state.semanticProjection?.navigation || {};
-  const ids = navigation.byEntityId?.[entityId] || [];
-  const byID = new Map((navigation.occurrences || []).map((occurrence) => [occurrence.occurrenceId, occurrence]));
-  return ids.map((id) => byID.get(id)).filter(Boolean);
+  const cache = semanticNavigationCache();
+  return cache.occurrencesForIDs(cache.occurrenceIdsByEntityId.get(String(entityId || "")) || []);
+}
+
+function semanticNavigationCache() {
+  return getSemanticNavigationCache(state.semanticProjection, {
+    textHash: state.reportAnalysisKey || state.lastAnalyzedKey || state.analysisKey || "",
+    analyzerVersion: bundledAppInfo.version,
+    schemaVersion: state.semanticProjection?.schema || "",
+  });
 }
 
 function semanticOccurrenceIDs(entityId) {
@@ -523,9 +588,26 @@ export async function redoViewNavigation(options = {}) {
   await restoreViewSnapshot(snapshot, options);
 }
 
-async function restoreViewSnapshot(snapshot, options = {}) {
+export async function restoreViewSnapshot(snapshot, options = {}) {
   const scope = options.scope || "all";
   await withHistoryRestore(async () => {
+    restoreSemanticSnapshotState(snapshot);
+    if (snapshot.globalSelection?.entityId) {
+      await selectSemanticEntity(snapshot.globalSelection, {
+        originView: snapshot.globalSelection.originView || "history",
+        action: "restore",
+        recordHistory: false,
+        follow: false,
+      });
+    } else if (snapshot.globalSelection) {
+      await clearSemanticSelection({ recordHistory: false, follow: false });
+    }
+    state.semanticTemporaryReveal = snapshot.semanticTemporaryReveal || null;
+    if (snapshot.semantic && Object.prototype.hasOwnProperty.call(snapshot.semantic, "temporaryReveal")) {
+      state.semanticTemporaryReveal = snapshot.semantic.temporaryReveal || null;
+    }
+    state.semanticCurrentOccurrenceId = snapshot.semanticCurrentOccurrenceId || snapshot.globalSelection?.occurrenceId || "";
+    state.semanticCurrentPath = snapshot.semanticCurrentPath || snapshot.globalSelection?.semanticPathHint || "";
     state.jsonSelectedObjectIndex = snapshot.jsonSelectedObjectIndex || "";
     if (scope !== "input" && snapshot.resultTab && snapshot.resultTab !== state.activeResultTab) {
       switchResultTab(snapshot.resultTab, { recordHistory: false });
@@ -535,6 +617,10 @@ async function restoreViewSnapshot(snapshot, options = {}) {
     } else {
       renderInputViews();
     }
+    await restoreRegisteredPanelContext(`input-${state.activeInputView}`, snapshot.panelContexts);
+    if (scope !== "input") {
+      await restoreRegisteredPanelContext(state.activeResultTab, snapshot.panelContexts);
+    }
     if (snapshot.activeObjectIndex !== undefined && snapshot.activeObjectIndex !== null && String(snapshot.activeObjectIndex) !== "") {
       await focusInputObject({
         objectIndex: snapshot.activeObjectIndex,
@@ -542,10 +628,79 @@ async function restoreViewSnapshot(snapshot, options = {}) {
         fieldIndexKind: snapshot.activeFieldIndexKind || "idf",
       }, { recordHistory: false });
     }
+    await revealRestoredSelection(scope);
     restoreRawEditorPosition(snapshot);
     restoreViewScrolls(snapshot);
   });
-  setStatus(t("status.viewHistoryRestored"), "ok");
+  if (!options.quiet) {
+    setStatus(t("status.viewHistoryRestored"), "ok");
+  }
+}
+
+function restoreSemanticSnapshotState(snapshot = {}) {
+  const semantic = snapshot.semantic || {};
+  if (semantic.mode) {
+    state.semanticProjectionMode = semantic.mode;
+  }
+  if (semantic.facet) {
+    state.semanticProjectionFacet = semantic.facet;
+  }
+  if (Object.prototype.hasOwnProperty.call(semantic, "filter")) {
+    state.inputFilterQuery = String(semantic.filter || "");
+    if (elements.inputFilter) {
+      elements.inputFilter.value = state.inputFilterQuery;
+    }
+  }
+  if (Array.isArray(semantic.expandedSectionIds)) {
+    state.semanticExpandedSectionIds = new Set(semantic.expandedSectionIds.map(String));
+  }
+}
+
+async function restoreRegisteredPanelContext(viewID, contexts = {}) {
+  const context = contexts?.[viewID];
+  const adapter = context ? getPanelNavigationAdapter(viewID) : null;
+  if (!adapter) {
+    return false;
+  }
+  try {
+    await adapter.restoreContext(context);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function revealRestoredSelection(scope = "all") {
+  const selection = state.globalSelection;
+  if (!selection?.entityId) {
+    return false;
+  }
+  const viewIDs = new Set([`input-${state.activeInputView}`]);
+  if (scope !== "input" && state.activeResultTab) {
+    viewIDs.add(state.activeResultTab);
+  }
+  let revealed = false;
+  for (const viewID of viewIDs) {
+    const adapter = getPanelNavigationAdapter(viewID);
+    if (!adapter) {
+      continue;
+    }
+    try {
+      if (await adapter.canReveal(selection)) {
+        revealed = Boolean(await adapter.reveal(selection, {
+          action: "restore",
+          recordHistory: false,
+          follow: false,
+          preserveFilters: true,
+          scroll: false,
+          focus: false,
+        })) || revealed;
+      }
+    } catch {
+      // A panel can become unavailable while a workspace snapshot is loading.
+    }
+  }
+  return revealed;
 }
 
 function restoreRawEditorPosition(snapshot) {
@@ -563,4 +718,5 @@ function restoreViewScrolls(snapshot) {
   if (elements.textObjectView) elements.textObjectView.scrollTop = Number(snapshot.textScrollTop) || 0;
   if (elements.jsonStructuredView) elements.jsonStructuredView.scrollTop = Number(snapshot.jsonScrollTop) || 0;
   if (elements.fieldTable) elements.fieldTable.scrollTop = Number(snapshot.tableScrollTop) || 0;
+  if (elements.semanticEditor) elements.semanticEditor.scrollTop = Number(snapshot.semantic?.scrollTop) || 0;
 }

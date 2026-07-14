@@ -1,5 +1,9 @@
 import { backend, elements, escapeHTML, setStatus, state } from "../state.js";
 import { t } from "../i18n.js";
+import { chooseViewTarget } from "../navigation-chooser.js";
+import { configureResultPanelNavigationHooks } from "../panel-navigation-adapters.js";
+import { getSemanticNavigationCache } from "../semantic-navigation-cache.js";
+import { selectSemanticEntity } from "../selection-controller.js";
 import { navigateHVAC, renderHVACLoopDiagram } from "./hvac-views.js";
 import { openStandardOutputApplyDialog } from "./output-views.js";
 import { renderProfile } from "./profile-views.js";
@@ -8,6 +12,11 @@ let progressListenerRegistered = false;
 let heatFlowPlayTimer = 0;
 let simulationRunPlanTimer = 0;
 let simulationRunPlanSequence = 0;
+let simulationNavigationCleanup = null;
+let simulationNavigationRevealTarget = null;
+
+const simulationSemanticBindings = new Map();
+const simulationEnergySourceByIDCache = new WeakMap();
 
 const simulationCustomOutputsStorageKey = "idfAnalyzer.simulationCustomOutputs";
 
@@ -20,7 +29,488 @@ const simulationPurposeDefinitions = [
   { id: "custom_outputs", label: "Custom Outputs" },
 ];
 
+function simulationSemanticNavigationIndex() {
+  return state.semanticProjection?.navigation || {};
+}
+
+function simulationSemanticNavigationCache() {
+  return getSemanticNavigationCache(state.semanticProjection, {
+    textHash: state.reportAnalysisKey || state.lastAnalyzedKey || "",
+  });
+}
+
+function simulationEnergySemanticAttributes(item = {}, kind = "node") {
+  const explanation = state.simulationResult?.purposeResults?.energyExplanation || {};
+  const sourceByID = simulationEnergySourceByID(explanation);
+  const pathCandidates = (item.relatedPathIds || []).map(simulationHVACPathSemanticCandidate);
+  const zoneCandidates = item.zoneName
+    ? [simulationZoneSemanticCandidate(item.zoneName, ["zone_service", "zone_output", "definition"])]
+    : [];
+  const sourceCandidates = (item.sourceIds || [])
+    .map((sourceID) => sourceByID.get(sourceID))
+    .filter(Boolean)
+    .map((source) => simulationOutputSourceSemanticCandidate(source, sourceOutputForEnergySource(source)));
+  const modelCandidates = simulationEnergyGroupSemanticCandidates(item);
+  const panelTargetID = `simulation:energy:${kind}:${state.simulationEnergyPeriod || "annual"}:${item.id || "unknown"}`;
+  return simulationSemanticNavigationAttributes(
+    [pathCandidates, zoneCandidates, sourceCandidates, modelCandidates],
+    panelTargetID,
+  );
+}
+
+function simulationEnergySourceByID(explanation = {}) {
+  let sourceByID = simulationEnergySourceByIDCache.get(explanation);
+  if (!sourceByID) {
+    sourceByID = new Map((explanation.sources || []).map((source) => [source.id, source]));
+    simulationEnergySourceByIDCache.set(explanation, sourceByID);
+  }
+  return sourceByID;
+}
+
+function simulationSourceSemanticAttributes(source = {}, object = null) {
+  return simulationSemanticNavigationAttributes(
+    [[simulationOutputSourceSemanticCandidate(source, object)]],
+    simulationSourcePanelTargetID(source, object),
+  );
+}
+
+function simulationSourcePanelTargetID(source = {}, object = null) {
+  const sourceID = source.id || object?.signature || (object?.objectIndex === undefined ? "unknown" : String(object.objectIndex));
+  return `simulation:source:${sourceID}`;
+}
+
+function simulationHeatFlowZoneSemanticAttributes(zoneName = "") {
+  const pathCandidates = simulationHVACServicePaths()
+    .filter((path) => simulationZoneKey(path.zoneName || path.servedSubject?.zoneName || path.servedSubject?.name || "") === simulationZoneKey(zoneName))
+    .map(simulationHVACPathSemanticCandidate);
+  return simulationSemanticNavigationAttributes(
+    [
+      [simulationZoneSemanticCandidate(zoneName, ["zone_service", "zone_geometry", "zone_profile", "definition"])],
+      pathCandidates,
+    ],
+    `simulation:heat-flow-zone:${simulationZoneKey(zoneName)}`,
+  );
+}
+
+function simulationHVACLoopSemanticAttributes(loop = {}) {
+  const loopCandidates = simulationHVACResultLoopCandidates(loop).map(simulationHVACLoopSemanticCandidate);
+  return simulationSemanticNavigationAttributes(
+    [loopCandidates],
+    `simulation:hvac-loop:${simulationSemanticToken(loop.loopType)}:${simulationSemanticToken(loop.name)}`,
+  );
+}
+
+function simulationComfortZoneSemanticAttributes(zoneName = "", object = null, metric = {}) {
+  const source = {
+    id: `comfort:${zoneName}:${metric.name || ""}`,
+    objectIndex: object?.objectIndex,
+    keyValue: zoneName,
+    name: metric.name || "",
+  };
+  return simulationSemanticNavigationAttributes(
+    [
+      [simulationZoneSemanticCandidate(zoneName, ["zone_profile", "zone_output", "definition"])],
+      [simulationOutputSourceSemanticCandidate(source, object)],
+    ],
+    `simulation:comfort-zone:${simulationZoneKey(zoneName)}:${simulationSemanticToken(metric.name)}`,
+  );
+}
+
+function simulationSeriesSemanticAttributes(series = null, object = null, seriesRef = {}) {
+  const id = series ? seriesID(series) : [seriesRef.keyValue, seriesRef.variableName, seriesRef.meterName].filter(Boolean).join(":");
+  const source = {
+    id: `series:${id}`,
+    objectIndex: object?.objectIndex,
+    keyValue: seriesRef.keyValue || seriesRef.meterName || (series ? seriesNodeKey(series.column) : ""),
+    name: seriesRef.variableName || (series ? seriesVariableName(series.column) : ""),
+  };
+  return simulationSemanticNavigationAttributes(
+    [[simulationOutputSourceSemanticCandidate(source, object)]],
+    `simulation:series:${id || "unknown"}`,
+  );
+}
+
+function simulationHVACPathSemanticCandidate(path = {}) {
+  const resolved = typeof path === "string"
+    ? simulationHVACServicePaths().find((candidate) => candidate.id === path) || { id: path }
+    : path;
+  return {
+    group: "HVAC service paths",
+    view: "hvac",
+    targetKind: "service-path",
+    targetId: String(resolved.id || ""),
+    entityKinds: ["hvac-path"],
+    contextKinds: ["zone_service", "system_definition"],
+    label: [
+      simulationServedSubjectLabel(resolved.servedSubject || resolved),
+      simulationServiceKindLabel(resolved.serviceKind || ""),
+    ].filter(Boolean).join(" / ") || String(resolved.id || ""),
+  };
+}
+
+function simulationZoneSemanticCandidate(zoneName = "", contextKinds = []) {
+  return {
+    group: "Zones",
+    view: "profile",
+    targetKind: "zone",
+    targetId: String(zoneName || ""),
+    entityKinds: ["zone"],
+    contextKinds,
+    label: String(zoneName || ""),
+  };
+}
+
+function simulationOutputSourceSemanticCandidate(source = {}, object = null) {
+  const objectIndex = simulationOptionalIndex(object?.objectIndex ?? source.objectIndex);
+  return {
+    group: "Output sources",
+    view: "output",
+    targetKind: "request",
+    targetId: String(object?.signature || ""),
+    entityKinds: ["output"],
+    contextKinds: ["output_request", "zone_output"],
+    sourceAnchor: {
+      objectId: String(object?.objectId || source.objectId || ""),
+      objectIndex,
+      objectType: String(object?.objectType || source.objectType || ""),
+      objectName: String(object?.objectName || source.objectName || ""),
+    },
+    label: [
+      object?.objectType || (source.isMeter ? "Output:Meter" : "Output:Variable"),
+      source.keyValue || object?.keyValue,
+      source.name || object?.variableName,
+    ].filter(Boolean).join(" / "),
+  };
+}
+
+function simulationHVACLoopSemanticCandidate(loop = {}) {
+  return {
+    group: "Model entities",
+    view: "hvac",
+    targetKind: "hvac-loop",
+    targetId: simulationNavigationLoopEntityID(loop.type || loop.loopType, loop.name),
+    entityKinds: ["hvac-loop"],
+    contextKinds: ["loop_occurrence", "system_definition"],
+    label: [loop.type || loop.loopType, loop.name].filter(Boolean).join(" / "),
+  };
+}
+
+function simulationEnergyGroupSemanticCandidates(item = {}) {
+  const label = [item.carrier, item.endUse, item.serviceKind, item.heatCategory].filter(Boolean).join(" / ");
+  return [
+    {
+      group: "Model entities",
+      view: "output",
+      targetKind: "section",
+      targetId: "outputs",
+      entityKinds: ["semantic-section"],
+      contextKinds: ["definition"],
+      label: label || "Outputs",
+    },
+    {
+      group: "Model entities",
+      view: "summary",
+      targetKind: "category",
+      targetId: "model_inventory",
+      entityKinds: ["semantic-section", "project", "building"],
+      contextKinds: ["definition"],
+      label: label || "Model summary",
+    },
+  ];
+}
+
+function simulationHVACResultLoopCandidates(resultLoop = {}) {
+  const resultName = simulationHVACGraphName(resultLoop.name || "");
+  const resultTypes = String(resultLoop.loopType || "")
+    .split(",")
+    .map(simulationHVACGraphName)
+    .filter(Boolean);
+  const loops = state.report?.hvac?.loops || [];
+  const exact = loops.filter((loop) => (
+    simulationHVACGraphName(loop.name) === resultName &&
+    (!resultTypes.length || resultTypes.some((type) => simulationHVACLoopTypesMatch(type, loop.type)))
+  ));
+  if (exact.length) {
+    return exact;
+  }
+  if (/^\d+ selected hvac loops$/i.test(String(resultLoop.name || "")) || resultTypes.length > 1) {
+    return loops.filter((loop) => !resultTypes.length || resultTypes.some((type) => simulationHVACLoopTypesMatch(type, loop.type)));
+  }
+  return [];
+}
+
+function simulationHVACLoopTypesMatch(left = "", right = "") {
+  const normalize = (value) => {
+    const token = simulationHVACGraphName(value).replace(/[^a-z0-9]+/g, "");
+    if (token.includes("airloop")) return "air";
+    if (token.includes("condenser")) return "condenser";
+    if (token.includes("plant")) return "plant";
+    return token;
+  };
+  return normalize(left) === normalize(right);
+}
+
+function simulationSemanticNavigationAttributes(candidateGroups = [], panelTargetID = "") {
+  const binding = simulationSemanticBinding(candidateGroups, panelTargetID);
+  if (!binding) {
+    return simulationSemanticDataAttribute("data-panel-target-id", panelTargetID);
+  }
+  const primary = binding.selections.length === 1 ? binding.selections[0] : null;
+  const anchor = primary?.sourceAnchor || {};
+  const selected = Boolean(primary?.entityId && state.globalSelection?.entityId === primary.entityId);
+  return [
+    simulationSemanticDataAttribute("data-entity-id", primary?.entityId, true),
+    simulationSemanticDataAttribute("data-entity-kind", primary?.entityKind, true),
+    simulationSemanticDataAttribute("data-occurrence-id", primary?.occurrenceId, true),
+    simulationSemanticDataAttribute("data-occurrence-context", primary?.occurrenceContext, true),
+    simulationSemanticDataAttribute("data-semantic-path", primary?.semanticPathHint, true),
+    simulationSemanticDataAttribute("data-source-object-id", anchor.objectId, true),
+    simulationSemanticDataAttribute("data-source-object-index", anchor.objectIndex, true),
+    simulationSemanticDataAttribute("data-source-field-index", anchor.fieldIndex, true),
+    simulationSemanticDataAttribute("data-source-object-type", anchor.objectType, true),
+    simulationSemanticDataAttribute("data-source-object-name", anchor.objectName, true),
+    simulationSemanticDataAttribute("data-source-field-name", anchor.fieldName, true),
+    simulationSemanticDataAttribute("data-panel-target-id", panelTargetID, true),
+    simulationSemanticDataAttribute("data-simulation-semantic-binding-id", binding.id, true),
+    'data-simulation-semantic-select="true"',
+    binding.selections.length > 1 ? 'data-simulation-model-target-chooser="true"' : "",
+    binding.chooseOccurrence ? 'data-choose-semantic-occurrence="true"' : "",
+    binding.selections.length > 1 ? 'aria-haspopup="dialog"' : "",
+    `aria-selected="${selected ? "true" : "false"}"`,
+  ].filter(Boolean).join(" ");
+}
+
+function simulationSemanticBinding(candidateGroups = [], panelTargetID = "") {
+  const resolvedGroups = (candidateGroups || [])
+    .map((candidates) => simulationResolvedSemanticGroup(candidates || []))
+    .filter((group) => group.selections.length);
+  const preferred = resolvedGroups[0];
+  if (!preferred) {
+    return null;
+  }
+  const selections = preferred.selections.length > 1
+    ? simulationUniqueSelections(resolvedGroups.flatMap((group) => group.selections))
+    : preferred.selections;
+  const id = [
+    panelTargetID,
+    ...selections.map((selection) => `${selection.entityId}:${selection.occurrenceId || "choose"}`),
+  ].join("|");
+  const binding = {
+    id,
+    panelTargetID,
+    selections,
+    chooseOccurrence: selections.length === 1 && selections[0].chooseOccurrence === true,
+  };
+  simulationSemanticBindings.set(id, binding);
+  return binding;
+}
+
+function pruneSimulationSemanticBindings() {
+  const root = document.getElementById("simulationPane");
+  if (!root) {
+    simulationSemanticBindings.clear();
+    return;
+  }
+  const liveIDs = new Set(
+    [...root.querySelectorAll("[data-simulation-semantic-binding-id]")]
+      .map((element) => element.dataset.simulationSemanticBindingId)
+      .filter(Boolean),
+  );
+  for (const bindingID of simulationSemanticBindings.keys()) {
+    if (!liveIDs.has(bindingID)) {
+      simulationSemanticBindings.delete(bindingID);
+    }
+  }
+}
+
+function simulationResolvedSemanticGroup(candidates = []) {
+  const records = candidates.flatMap((candidate) => simulationSemanticRecordsForCandidate(candidate));
+  const recordsByEntity = new Map();
+  for (const record of records) {
+    const existing = recordsByEntity.get(record.entity.id) || [];
+    if (!existing.some((item) => item.occurrence.occurrenceId === record.occurrence.occurrenceId)) {
+      existing.push(record);
+    }
+    recordsByEntity.set(record.entity.id, existing);
+  }
+  return {
+    selections: [...recordsByEntity.values()].map(simulationSelectionForSemanticRecords),
+  };
+}
+
+function simulationSemanticRecordsForCandidate(candidate = {}) {
+  if (!candidate || (!candidate.targetId && candidate.sourceAnchor?.objectIndex === undefined && !candidate.sourceAnchor?.objectId)) {
+    return [];
+  }
+  const cache = simulationSemanticNavigationCache();
+  const occurrenceIDs = [];
+  if (candidate.view && candidate.targetId) {
+    occurrenceIDs.push(...cache.occurrenceIDs("view-target", `${candidate.view}|${candidate.targetId}`));
+  }
+  if (candidate.sourceAnchor?.objectId) {
+    occurrenceIDs.push(...cache.occurrenceIDs("object-id", candidate.sourceAnchor.objectId));
+  }
+  if (candidate.sourceAnchor?.objectIndex !== undefined) {
+    occurrenceIDs.push(...cache.occurrenceIDs("object-index", candidate.sourceAnchor.objectIndex));
+  }
+  const entityKinds = new Set(candidate.entityKinds || []);
+  const out = [];
+  for (const occurrenceID of new Set(occurrenceIDs)) {
+    const occurrence = cache.occurrence(occurrenceID);
+    const entity = cache.entity(occurrence?.entityId);
+    if (!occurrence || !entity || (entityKinds.size && !entityKinds.has(entity.kind))) {
+      continue;
+    }
+    const viewTargetMatches = (occurrence.viewTargets || []).some((target) => (
+      String(target.view || "").toLowerCase() === candidate.view &&
+      target.targetId === candidate.targetId &&
+      (!candidate.targetKind || target.targetKind === candidate.targetKind)
+    ));
+    const sourceAnchorMatches = Boolean(
+      (candidate.sourceAnchor?.objectId && occurrence.sourceAnchor?.objectId === candidate.sourceAnchor.objectId) ||
+      (candidate.sourceAnchor?.objectIndex !== undefined && Number(occurrence.sourceAnchor?.objectIndex) === Number(candidate.sourceAnchor.objectIndex))
+    );
+    if (candidate.view && candidate.targetId && !viewTargetMatches && !sourceAnchorMatches) {
+      continue;
+    }
+    out.push({ candidate, occurrence, entity });
+  }
+  return out;
+}
+
+function simulationSelectionForSemanticRecords(records = []) {
+  const sorted = [...records].sort((left, right) => (
+    simulationSemanticRecordScore(right) - simulationSemanticRecordScore(left) ||
+    String(left.occurrence.path || "").localeCompare(String(right.occurrence.path || ""))
+  ));
+  const best = sorted[0];
+  const uniqueBest = sorted.length === 1 || simulationSemanticRecordScore(sorted[0]) > simulationSemanticRecordScore(sorted[1]);
+  const occurrence = uniqueBest ? best.occurrence : null;
+  const anchors = records
+    .map((record) => record.occurrence.sourceAnchor)
+    .filter(Boolean);
+  const uniqueAnchors = new Map(anchors.map((anchor) => [simulationSourceAnchorKey(anchor), anchor]));
+  const sourceAnchor = occurrence?.sourceAnchor || (uniqueAnchors.size === 1 ? uniqueAnchors.values().next().value : best.entity.sourceAnchors?.[0]) || null;
+  return {
+    entityId: best.entity.id,
+    entityKind: best.entity.kind || "",
+    occurrenceId: occurrence?.occurrenceId || "",
+    occurrenceContext: occurrence?.contextKind || "",
+    sourceAnchor: sourceAnchor ? { ...sourceAnchor } : null,
+    originView: "simulation",
+    semanticPathHint: occurrence?.path || "",
+    relatedEntityIds: [...(best.entity.relatedEntityIds || [])],
+    chooseOccurrence: !uniqueBest && sorted.length > 1,
+    choiceGroup: best.candidate.group || "Model entities",
+    choiceLabel: best.candidate.label || best.entity.label || best.entity.id,
+  };
+}
+
+function simulationSemanticRecordScore(record = {}) {
+  const occurrence = record.occurrence || {};
+  const expectedContexts = record.candidate?.contextKinds || [];
+  const contextIndex = expectedContexts.indexOf(occurrence.contextKind);
+  const currentPath = state.globalSelection?.semanticPathHint || state.semanticCurrentPath || "";
+  return (
+    Number(occurrence.occurrenceId === state.semanticCurrentOccurrenceId) * 1_000_000_000 +
+    (contextIndex >= 0 ? expectedContexts.length - contextIndex : 0) * 100_000_000 +
+    simulationCommonPathPrefixLength(occurrence.path, currentPath) * 1_000_000 +
+    Number(occurrence.preferredView === record.candidate?.view) * 100_000 +
+    Number(occurrence.contextKind === "definition")
+  );
+}
+
+function simulationUniqueSelections(selections = []) {
+  const out = [];
+  const seen = new Set();
+  for (const selection of selections) {
+    const key = selection.entityId;
+    if (!selection.entityId || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    out.push(selection);
+  }
+  return out;
+}
+
+async function requestSimulationModelSelection(element) {
+  const bindingID = String(element?.dataset?.simulationSemanticBindingId || "");
+  const binding = simulationSemanticBindings.get(bindingID);
+  if (!binding?.selections?.length) {
+    return false;
+  }
+  let selection = binding.selections[0];
+  if (binding.selections.length > 1) {
+    const targets = binding.selections.map((candidate, index) => ({
+      view: "simulation",
+      targetKind: candidate.choiceGroup,
+      targetId: String(index),
+      label: `${candidate.choiceGroup} · ${candidate.choiceLabel}`,
+    }));
+    const chosen = await chooseViewTarget({
+      view: "simulation",
+      selection: { entityId: "", originTargetId: binding.panelTargetID },
+      targets,
+    });
+    if (chosen === null || chosen === undefined || !binding.selections[Number(chosen)]) {
+      return false;
+    }
+    selection = binding.selections[Number(chosen)];
+  }
+  await selectSemanticEntity({
+    ...selection,
+    originView: "simulation",
+    originTargetId: binding.panelTargetID,
+  }, {
+    originView: "simulation",
+    action: "select",
+    chooseOccurrence: selection.chooseOccurrence === true,
+    preserveFilters: true,
+  });
+  return true;
+}
+
+function simulationSemanticDataAttribute(name, value, includeEmpty = false) {
+  if (!includeEmpty && (value === undefined || value === null || String(value) === "")) {
+    return "";
+  }
+  const normalized = value === undefined || value === null ? "" : String(value);
+  return `${name}="${escapeHTML(normalized)}"`;
+}
+
+function simulationSourceAnchorKey(anchor = {}) {
+  return [anchor.objectId || "", anchor.objectIndex ?? "", anchor.fieldIndex ?? "", anchor.objectType || "", anchor.objectName || ""].join("|");
+}
+
+function simulationCommonPathPrefixLength(left = "", right = "") {
+  const leftParts = String(left || "").split("/").filter(Boolean);
+  const rightParts = String(right || "").split("/").filter(Boolean);
+  let length = 0;
+  while (length < leftParts.length && leftParts[length] === rightParts[length]) {
+    length += 1;
+  }
+  return length;
+}
+
+function simulationOptionalIndex(value) {
+  if (value === undefined || value === null || String(value) === "") {
+    return undefined;
+  }
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : undefined;
+}
+
+function simulationSemanticToken(value = "") {
+  return encodeURIComponent(String(value || "").trim().toLowerCase()).toLowerCase();
+}
+
+function simulationNavigationLoopEntityID(loopType = "", loopName = "") {
+  return `loop:${simulationHVACLoopRefGraphKey(loopType, loopName)}`;
+}
+
 export function initializeSimulationControls() {
+  configureSimulationPanelNavigation();
   state.simulationHeatFlowInspectorCollapsed = readHeatFlowInspectorCollapsed();
   if (elements.simulationStandardOutput) {
     elements.simulationStandardOutput.checked = state.simulationStandardOutput !== false;
@@ -181,6 +671,475 @@ export function initializeSimulationControls() {
   renderSimulationEmpty();
 }
 
+function configureSimulationPanelNavigation() {
+  if (simulationNavigationCleanup) {
+    return;
+  }
+  simulationNavigationCleanup = configureResultPanelNavigationHooks("simulation", {
+    canReveal(selection, context) {
+      return Boolean(simulationNavigationDestination(selection, context) || context.genericCanReveal(selection));
+    },
+    async reveal(selection, options, context) {
+      const destination = simulationNavigationDestination(selection, context);
+      if (!destination) {
+        return context.genericReveal(selection, options);
+      }
+      simulationNavigationRevealTarget = destination;
+      applySimulationNavigationDestination(destination);
+      context.refreshSelectionStyles(selection, state.globalHover);
+      const target = findSimulationNavigationTarget(selection, context, destination);
+      if (!target) {
+        return false;
+      }
+      focusSimulationNavigationTarget(target, options);
+      return true;
+    },
+    selectFromElement(element, context) {
+      const bindingID = String(element?.closest?.("[data-simulation-semantic-binding-id]")?.dataset?.simulationSemanticBindingId || "");
+      const binding = simulationSemanticBindings.get(bindingID);
+      if (!binding) {
+        return context.extractSelection(element);
+      }
+      if (binding.selections.length !== 1) {
+        return null;
+      }
+      return {
+        ...binding.selections[0],
+        originView: "simulation",
+        originTargetId: binding.panelTargetID,
+        chooseOccurrence: binding.chooseOccurrence,
+      };
+    },
+    findTarget(selection, context) {
+      return findSimulationNavigationTarget(selection, context, simulationNavigationRevealTarget)
+        || context.genericFindTarget(selection);
+    },
+    captureContext(context) {
+      return captureSimulationNavigationContext(context);
+    },
+    async restoreContext(snapshot, context) {
+      return restoreSimulationNavigationContext(snapshot, context);
+    },
+    preferredSemanticOccurrence(selection, context) {
+      return preferredSimulationSemanticOccurrence(selection, context);
+    },
+  });
+}
+
+function simulationNavigationDestination(selection = {}, context = {}) {
+  if (!state.simulationResult) {
+    return null;
+  }
+  const direct = findSimulationNavigationTarget(selection, context, null);
+  if (direct) {
+    const section = direct.closest?.("[data-simulation-result-view]");
+    return {
+      resultView: section?.dataset?.simulationResultView || state.simulationActiveResultView || "energy",
+      panelTargetID: direct.dataset.panelTargetId || "",
+      direct,
+    };
+  }
+  const navigation = context.navigation || simulationSemanticNavigationIndex();
+  const occurrence = (navigation.occurrences || []).find((candidate) => candidate.occurrenceId === selection.occurrenceId);
+  const entity = (navigation.entities || []).find((candidate) => candidate.id === selection.entityId);
+  const targets = [...(occurrence?.viewTargets || []), ...(entity?.viewTargets || [])];
+  const servicePathTarget = targets.find((target) => String(target.view || "").toLowerCase() === "hvac" && target.targetKind === "service-path");
+  if (servicePathTarget) {
+    const item = simulationEnergyItemForServicePath(servicePathTarget.targetId);
+    if (item) {
+      return {
+        resultView: "energy",
+        energyView: "sankey",
+        energySelection: item.id,
+        panelTargetID: `simulation:energy:${item.fromId ? "edge" : "node"}:${state.simulationEnergyPeriod || "annual"}:${item.id}`,
+      };
+    }
+  }
+  if (entity?.kind === "hvac-loop") {
+    const loop = (state.simulationResult?.purposeResults?.hvacLoops || []).find((candidate) => (
+      simulationHVACResultLoopCandidates(candidate).some((modelLoop) => (
+        simulationNavigationLoopEntityID(modelLoop.type, modelLoop.name) === entity.id ||
+        simulationNavigationLoopEntityID(modelLoop.type, modelLoop.name) === targets.find((target) => target.targetKind === "hvac-loop")?.targetId
+      ))
+    ));
+    if (loop) {
+      return {
+        resultView: "hvac_loops",
+        panelTargetID: `simulation:hvac-loop:${simulationSemanticToken(loop.loopType)}:${simulationSemanticToken(loop.name)}`,
+      };
+    }
+  }
+  if (entity?.kind === "zone") {
+    const zoneName = simulationZoneNameForSelection(selection, entity, targets);
+    const zoneDestination = simulationZoneNavigationDestination(zoneName, occurrence?.contextKind || "");
+    if (zoneDestination) {
+      return zoneDestination;
+    }
+  }
+  if (entity?.kind === "output" || selection.sourceAnchor) {
+    const source = simulationEnergySourceForSelection(selection);
+    if (source) {
+      const object = sourceOutputForEnergySource(source);
+      return {
+        resultView: "energy",
+        energyView: "sources",
+        panelTargetID: simulationSourcePanelTargetID(source, object),
+      };
+    }
+    const series = simulationSeriesForSelection(selection);
+    if (series) {
+      return {
+        resultView: "series",
+        selectedSeries: seriesID(series),
+        panelTargetID: `simulation:series:${seriesID(series)}`,
+      };
+    }
+  }
+  return null;
+}
+
+function simulationEnergyItemForServicePath(pathID = "") {
+  const explanation = state.simulationResult?.purposeResults?.energyExplanation || {};
+  const graph = energyExplanationGraphForPeriod(explanation, state.simulationEnergyPeriod || "annual");
+  return [...(graph.nodes || []), ...(graph.edges || [])].find((item) => (item.relatedPathIds || []).includes(pathID))
+    || [...(explanation.nodes || []), ...(explanation.edges || [])].find((item) => (item.relatedPathIds || []).includes(pathID))
+    || null;
+}
+
+function simulationZoneNameForSelection(selection = {}, entity = {}, targets = []) {
+  const profileTarget = targets.find((target) => String(target.view || "").toLowerCase() === "profile" && target.targetKind === "zone");
+  if (profileTarget?.targetId) {
+    return profileTarget.targetId;
+  }
+  const anchorName = selection.sourceAnchor?.objectName || entity.sourceAnchors?.[0]?.objectName || "";
+  return anchorName || entity.label || "";
+}
+
+function simulationZoneNavigationDestination(zoneName = "", contextKind = "") {
+  const zoneKey = simulationZoneKey(zoneName);
+  if (!zoneKey) {
+    return null;
+  }
+  const heatZone = (activeHeatFlowDataset()?.zones || []).find((zone) => simulationZoneKey(zone.name || zone.zoneName || "") === zoneKey);
+  const comfortZone = (state.simulationResult?.purposeResults?.comfort?.zones || []).find((zone) => simulationZoneKey(zone.zoneName || "") === zoneKey);
+  const explanation = state.simulationResult?.purposeResults?.energyExplanation || {};
+  const graph = energyExplanationGraphForPeriod(explanation, state.simulationEnergyPeriod || "annual");
+  const energyItem = [...(graph.nodes || []), ...(graph.edges || [])].find((item) => simulationZoneKey(item.zoneName || "") === zoneKey);
+  const active = state.simulationActiveResultView;
+  if (comfortZone && (active === "comfort" || contextKind === "zone_profile")) {
+    const metric = comfortZone.metrics?.[0];
+    return {
+      resultView: "comfort",
+      comfortZone: comfortZone.zoneName,
+      panelTargetPrefix: `simulation:comfort-zone:${zoneKey}:`,
+      panelTargetID: metric ? `simulation:comfort-zone:${zoneKey}:${simulationSemanticToken(metric.name)}` : "",
+    };
+  }
+  if (heatZone && (active === "zone_heat_flow" || ["zone_service", "zone_geometry", "definition"].includes(contextKind))) {
+    return {
+      resultView: "zone_heat_flow",
+      heatFlowZone: heatZone.name || heatZone.zoneName || zoneName,
+      panelTargetID: `simulation:heat-flow-zone:${zoneKey}`,
+    };
+  }
+  if (energyItem) {
+    return {
+      resultView: "energy",
+      energyView: "sankey",
+      energySelection: energyItem.id,
+      panelTargetID: `simulation:energy:${energyItem.fromId ? "edge" : "node"}:${state.simulationEnergyPeriod || "annual"}:${energyItem.id}`,
+    };
+  }
+  if (heatZone) {
+    return {
+      resultView: "zone_heat_flow",
+      heatFlowZone: heatZone.name || heatZone.zoneName || zoneName,
+      panelTargetID: `simulation:heat-flow-zone:${zoneKey}`,
+    };
+  }
+  if (comfortZone) {
+    return {
+      resultView: "comfort",
+      comfortZone: comfortZone.zoneName,
+      panelTargetPrefix: `simulation:comfort-zone:${zoneKey}:`,
+    };
+  }
+  return null;
+}
+
+function simulationEnergySourceForSelection(selection = {}) {
+  const explanation = state.simulationResult?.purposeResults?.energyExplanation || {};
+  const anchor = selection.sourceAnchor || {};
+  return (explanation.sources || []).find((source) => {
+    const object = sourceOutputForEnergySource(source);
+    return Boolean(
+      (anchor.objectId && object?.objectId === anchor.objectId) ||
+      (anchor.objectIndex !== undefined && Number(object?.objectIndex ?? source.objectIndex) === Number(anchor.objectIndex))
+    );
+  }) || null;
+}
+
+function simulationSeriesForSelection(selection = {}) {
+  const anchor = selection.sourceAnchor || {};
+  const output = activePurposeOutputObjects().find((object) => (
+    (anchor.objectId && object.objectId === anchor.objectId) ||
+    (anchor.objectIndex !== undefined && Number(object.objectIndex) === Number(anchor.objectIndex))
+  ));
+  return output ? customOutputSeriesRef(output).series : null;
+}
+
+function applySimulationNavigationDestination(destination = {}) {
+  if (!state.simulationResult) {
+    return;
+  }
+  state.simulationActiveResultView = destination.resultView || state.simulationActiveResultView || "energy";
+  if (destination.energyView) {
+    state.simulationEnergyView = destination.energyView;
+  }
+  if (destination.energySelection !== undefined) {
+    state.simulationEnergySelection = destination.energySelection || "";
+  }
+  if (destination.heatFlowZone) {
+    state.simulationHeatFlowSelectedZone = destination.heatFlowZone;
+  }
+  if (destination.comfortZone) {
+    state.simulationComfortZone = destination.comfortZone;
+  }
+  if (destination.selectedSeries) {
+    state.simulationSelectedSeries = destination.selectedSeries;
+  }
+  renderSimulationResultTabs(state.simulationResult);
+  switch (state.simulationActiveResultView) {
+    case "energy":
+      renderSimulationEnergyDashboard(state.simulationResult);
+      break;
+    case "zone_heat_flow":
+      renderSimulationHeatFlow();
+      break;
+    case "hvac_loops":
+      renderSimulationHVACLoops(state.simulationResult);
+      break;
+    case "comfort":
+      renderSimulationComfort(state.simulationResult);
+      break;
+    case "series":
+      renderSimulationSeriesSelect(state.simulationResult);
+      renderSimulationChart();
+      break;
+    default:
+      break;
+  }
+  toggleSimulationResultSections();
+}
+
+function findSimulationNavigationTarget(selection = {}, context = {}, destination = null) {
+  const root = context.root || document.getElementById("simulationPane");
+  if (!root) {
+    return null;
+  }
+  const items = [...root.querySelectorAll("[data-simulation-semantic-binding-id]")];
+  const panelTargetID = String(destination?.panelTargetID || "");
+  const panelTargetPrefix = String(destination?.panelTargetPrefix || "");
+  const entityID = String(selection.entityId || "");
+  const occurrenceID = String(selection.occurrenceId || "");
+  const anchor = selection.sourceAnchor || {};
+  const candidates = items.filter((item) => {
+    const binding = simulationSemanticBindings.get(item.dataset.simulationSemanticBindingId || "");
+    return (binding?.selections || []).some((candidate) => (
+      (!entityID || candidate.entityId === entityID) &&
+      (!occurrenceID || !candidate.occurrenceId || candidate.occurrenceId === occurrenceID) &&
+      (!anchor.objectId || candidate.sourceAnchor?.objectId === anchor.objectId) &&
+      (anchor.objectIndex === undefined || candidate.sourceAnchor?.objectIndex === undefined || Number(candidate.sourceAnchor.objectIndex) === Number(anchor.objectIndex))
+    ));
+  });
+  candidates.sort((left, right) => simulationNavigationElementScore(right, panelTargetID, panelTargetPrefix) - simulationNavigationElementScore(left, panelTargetID, panelTargetPrefix));
+  return candidates[0] || null;
+}
+
+function simulationNavigationElementScore(element, panelTargetID = "", panelTargetPrefix = "") {
+  const targetID = String(element.dataset.panelTargetId || "");
+  const resultView = element.closest?.("[data-simulation-result-view]")?.dataset?.simulationResultView || "";
+  return (
+    Number(panelTargetID && targetID === panelTargetID) * 1_000_000_000 +
+    Number(panelTargetPrefix && targetID.startsWith(panelTargetPrefix)) * 100_000_000 +
+    Number(resultView === state.simulationActiveResultView) * 10_000_000 +
+    Number(element.dataset.occurrenceId === state.semanticCurrentOccurrenceId) * 1_000_000
+  );
+}
+
+function focusSimulationNavigationTarget(target, options = {}) {
+  let details = target.closest?.("details") || null;
+  while (details) {
+    details.open = true;
+    details = details.parentElement?.closest?.("details") || null;
+  }
+  target.classList.add("semantic-selected");
+  target.toggleAttribute("data-semantic-selected", true);
+  if (options.scroll !== false) {
+    target.scrollIntoView?.({ block: "nearest", inline: "nearest", behavior: options.behavior || "auto" });
+  }
+  if (options.focus !== false) {
+    if (!target.matches("a[href], button, input, select, textarea, [tabindex]")) {
+      target.tabIndex = -1;
+    }
+    target.focus?.({ preventScroll: true });
+  }
+}
+
+function captureSimulationNavigationContext(context) {
+  return {
+    ...context.genericCaptureContext(),
+    navigationRevealTarget: simulationNavigationRevealTarget ? { ...simulationNavigationRevealTarget, direct: null } : null,
+    activeResultView: state.simulationActiveResultView || "energy",
+    energyView: state.simulationEnergyView || "overview",
+    energyPeriod: state.simulationEnergyPeriod || "annual",
+    energyPeriodKind: state.simulationEnergyPeriodKind || "",
+    energySelection: state.simulationEnergySelection || "",
+    energyFocusMode: state.simulationEnergyFocusMode || "all",
+    energyZoneFocus: state.simulationEnergyZoneFocus || "",
+    energyServicePathFocus: state.simulationEnergyServicePathFocus || "",
+    energyLoopFocus: state.simulationEnergyLoopFocus || "",
+    energySankeyMode: state.simulationEnergySankeyMode || "detailed",
+    energySignMode: state.simulationEnergySignMode || "display",
+    energyNodeLimit: state.simulationEnergyNodeLimit,
+    zoneEnergyMetric: state.simulationZoneEnergyMetric || "__total",
+    hvacPanels: { ...(state.simulationHVACPanels || {}) },
+    hvacVisibleGroups: { ...(state.simulationHVACVisibleGroups || {}) },
+    hvacFrameIndex: Number(state.simulationHVACFrameIndex) || 0,
+    comfortZone: state.simulationComfortZone || "",
+    heatFlowSelectedZone: state.simulationHeatFlowSelectedZone || "",
+    heatFlowStory: state.simulationHeatFlowStory || "all",
+    heatFlowOverlay: state.simulationHeatFlowOverlay || "net",
+    heatFlowFrameIndex: Number(state.simulationHeatFlowFrameIndex) || 0,
+    heatFlowRangeStart: Number(state.simulationHeatFlowRangeStart) || 0,
+    heatFlowRangeEnd: Number.isFinite(Number(state.simulationHeatFlowRangeEnd)) ? Number(state.simulationHeatFlowRangeEnd) : -1,
+    heatFlowInspectorCollapsed: Boolean(state.simulationHeatFlowInspectorCollapsed),
+    heatFlowPlanScale: Number(state.simulationHeatFlowPlanScale) || 1,
+    heatFlowPlanPanX: Number(state.simulationHeatFlowPlanPanX) || 0,
+    heatFlowPlanPanY: Number(state.simulationHeatFlowPlanPanY) || 0,
+    seriesGroup: state.simulationSeriesGroup || "all",
+    selectedSeries: state.simulationSelectedSeries || "",
+    seriesRangeStart: Number(state.simulationSeriesRangeStart) || 0,
+    seriesRangeEnd: Number.isFinite(Number(state.simulationSeriesRangeEnd)) ? Number(state.simulationSeriesRangeEnd) : -1,
+    integrityQuery: state.simulationIntegrityQuery || "",
+    energyScrollTop: Number(elements.simulationEnergyDashboard?.scrollTop) || 0,
+    heatFlowScrollTop: Number(elements.simulationHeatFlow?.scrollTop) || 0,
+    hvacScrollTop: Number(elements.simulationHVACLoopResults?.scrollTop) || 0,
+    comfortScrollTop: Number(elements.simulationComfortResults?.scrollTop) || 0,
+  };
+}
+
+async function restoreSimulationNavigationContext(snapshot = {}, context) {
+  if (!state.simulationResult) {
+    return false;
+  }
+  const assignments = {
+    simulationActiveResultView: snapshot.activeResultView,
+    simulationEnergyView: snapshot.energyView,
+    simulationEnergyPeriod: snapshot.energyPeriod,
+    simulationEnergyPeriodKind: snapshot.energyPeriodKind,
+    simulationEnergySelection: snapshot.energySelection,
+    simulationEnergyFocusMode: snapshot.energyFocusMode,
+    simulationEnergyZoneFocus: snapshot.energyZoneFocus,
+    simulationEnergyServicePathFocus: snapshot.energyServicePathFocus,
+    simulationEnergyLoopFocus: snapshot.energyLoopFocus,
+    simulationEnergySankeyMode: snapshot.energySankeyMode,
+    simulationEnergySignMode: snapshot.energySignMode,
+    simulationEnergyNodeLimit: snapshot.energyNodeLimit,
+    simulationZoneEnergyMetric: snapshot.zoneEnergyMetric,
+    simulationHVACPanels: snapshot.hvacPanels ? { ...snapshot.hvacPanels } : undefined,
+    simulationHVACVisibleGroups: snapshot.hvacVisibleGroups ? { ...snapshot.hvacVisibleGroups } : undefined,
+    simulationHVACFrameIndex: snapshot.hvacFrameIndex,
+    simulationComfortZone: snapshot.comfortZone,
+    simulationHeatFlowSelectedZone: snapshot.heatFlowSelectedZone,
+    simulationHeatFlowStory: snapshot.heatFlowStory,
+    simulationHeatFlowOverlay: snapshot.heatFlowOverlay,
+    simulationHeatFlowFrameIndex: snapshot.heatFlowFrameIndex,
+    simulationHeatFlowRangeStart: snapshot.heatFlowRangeStart,
+    simulationHeatFlowRangeEnd: snapshot.heatFlowRangeEnd,
+    simulationHeatFlowInspectorCollapsed: snapshot.heatFlowInspectorCollapsed,
+    simulationHeatFlowPlanScale: snapshot.heatFlowPlanScale,
+    simulationHeatFlowPlanPanX: snapshot.heatFlowPlanPanX,
+    simulationHeatFlowPlanPanY: snapshot.heatFlowPlanPanY,
+    simulationSeriesGroup: snapshot.seriesGroup,
+    simulationSelectedSeries: snapshot.selectedSeries,
+    simulationSeriesRangeStart: snapshot.seriesRangeStart,
+    simulationSeriesRangeEnd: snapshot.seriesRangeEnd,
+    simulationIntegrityQuery: snapshot.integrityQuery,
+  };
+  for (const [key, value] of Object.entries(assignments)) {
+    if (value !== undefined) {
+      state[key] = value;
+    }
+  }
+  simulationNavigationRevealTarget = snapshot.navigationRevealTarget ? { ...snapshot.navigationRevealTarget } : null;
+  renderSimulation();
+  await context.genericRestoreContext(snapshot);
+  restoreSimulationElementScroll(elements.simulationEnergyDashboard, snapshot.energyScrollTop);
+  restoreSimulationElementScroll(elements.simulationHeatFlow, snapshot.heatFlowScrollTop);
+  restoreSimulationElementScroll(elements.simulationHVACLoopResults, snapshot.hvacScrollTop);
+  restoreSimulationElementScroll(elements.simulationComfortResults, snapshot.comfortScrollTop);
+  return true;
+}
+
+function preferredSimulationSemanticOccurrence(selection = {}, context = {}) {
+  const navigation = context.navigation || simulationSemanticNavigationIndex();
+  const requested = (navigation.occurrences || []).find((occurrence) => occurrence.occurrenceId === selection.occurrenceId);
+  if (requested && (!selection.entityId || requested.entityId === selection.entityId)) {
+    return requested.occurrenceId;
+  }
+  const occurrenceByID = new Map((navigation.occurrences || []).map((occurrence) => [occurrence.occurrenceId, occurrence]));
+  const occurrences = (navigation.byEntityId?.[selection.entityId] || [])
+    .map((occurrenceID) => occurrenceByID.get(occurrenceID))
+    .filter(Boolean);
+  if (!occurrences.length) {
+    return context.genericPreferredSemanticOccurrence(selection);
+  }
+  const expectedContexts = simulationPreferredOccurrenceContexts();
+  const pathToken = simulationSemanticToken(state.simulationEnergyServicePathFocus || "");
+  const anchor = selection.sourceAnchor || {};
+  const scored = occurrences.map((occurrence, order) => ({
+    occurrence,
+    order,
+    score:
+      Number(occurrence.occurrenceId === state.semanticCurrentOccurrenceId) * 1_000_000_000 +
+      Math.max(0, expectedContexts.length - expectedContexts.indexOf(occurrence.contextKind)) * Number(expectedContexts.includes(occurrence.contextKind)) * 100_000_000 +
+      Number(pathToken && String(occurrence.path || "").toLowerCase().includes(pathToken)) * 10_000_000 +
+      Number(anchor.objectId && occurrence.sourceAnchor?.objectId === anchor.objectId) * 5_000_000 +
+      Number(anchor.objectIndex !== undefined && Number(occurrence.sourceAnchor?.objectIndex) === Number(anchor.objectIndex)) * 1_000_000 +
+      simulationCommonPathPrefixLength(occurrence.path, state.semanticCurrentPath || "") * 100_000,
+  })).sort((left, right) => right.score - left.score || left.order - right.order);
+  if (scored.length === 1 || scored[0].score > scored[1].score) {
+    return scored[0].occurrence.occurrenceId;
+  }
+  return "";
+}
+
+function simulationPreferredOccurrenceContexts() {
+  switch (state.simulationActiveResultView) {
+    case "zone_heat_flow":
+      return ["zone_service", "zone_geometry", "definition"];
+    case "hvac_loops":
+      return ["loop_occurrence", "component_occurrence", "system_definition"];
+    case "comfort":
+      return ["zone_profile", "zone_output", "definition"];
+    case "series":
+      return ["output_request", "zone_output"];
+    case "energy":
+      return state.simulationEnergyView === "sources"
+        ? ["output_request", "zone_output"]
+        : ["zone_service", "output_request", "definition"];
+    default:
+      return ["definition"];
+  }
+}
+
+function restoreSimulationElementScroll(element, value) {
+  if (element && Number.isFinite(Number(value))) {
+    element.scrollTop = Number(value);
+  }
+}
+
 export async function loadSimulationEnvironment() {
   try {
     const env = await callSimulationAPI("GetSimulationEnvironment", "/api/simulation-environment");
@@ -201,6 +1160,7 @@ export async function loadSimulationEnvironment() {
 }
 
 export function renderSimulation() {
+  simulationSemanticBindings.clear();
   setSimulationPreviewMode(false);
   renderSimulationEnvironment();
   renderSimulationPurposeSetup();
@@ -581,6 +1541,7 @@ function renderSimulationEnergyEmpty(message) {
   if (elements.simulationEnergyDashboard) {
     elements.simulationEnergyDashboard.innerHTML = `<div class="empty">${escapeHTML(message)}</div>`;
   }
+  pruneSimulationSemanticBindings();
 }
 
 function renderSimulationEnergyDashboard(result) {
@@ -624,6 +1585,7 @@ function renderSimulationEnergyDashboard(result) {
     <div class="simulation-energy-kpis">${kpis || `<div><span>${escapeHTML(t("common.notAvailable", {}, "N/A"))}</span><strong>0</strong></div>`}</div>
     ${renderEnergySubviewControls(view, explanation)}
     ${viewBody}`;
+  pruneSimulationSemanticBindings();
 }
 
 function energySubview(explanation = {}) {
@@ -1664,7 +2626,11 @@ function currentBasicEnergyDetail() {
 }
 
 function renderEnergyExplanationSankey(explanation = {}) {
-  const graph = groupedEnergyExplanationGraph(categoryGroupedEnergyExplanationGraph(energyExplanationSignModeGraph(focusedEnergyExplanationGraph(energyExplanationGraphForPeriod(explanation, state.simulationEnergyPeriod || "annual")))));
+  const sourceGraph = energyExplanationGraphForPeriod(explanation, state.simulationEnergyPeriod || "annual");
+  const graph = materializeSimulationEnergyNavigationTarget(
+    groupedEnergyExplanationGraph(categoryGroupedEnergyExplanationGraph(energyExplanationSignModeGraph(focusedEnergyExplanationGraph(sourceGraph)))),
+    sourceGraph,
+  );
   const nodes = graph.nodes || [];
   const edges = graph.edges || [];
   if (!nodes.length) {
@@ -1685,6 +2651,42 @@ function renderEnergyExplanationSankey(explanation = {}) {
       ${renderEnergySignConventionNote()}
       ${renderEnergyExplanationInspector(selected, explanation)}
     </section>`;
+}
+
+function materializeSimulationEnergyNavigationTarget(graph = {}, sourceGraph = {}) {
+  const destination = simulationNavigationRevealTarget;
+  const targetID = destination?.resultView === "energy" && destination?.energyView === "sankey"
+    ? String(destination.energySelection || "")
+    : "";
+  if (!targetID || (graph.nodes || []).some((node) => node.id === targetID) || (graph.edges || []).some((edge) => edge.id === targetID)) {
+    return graph;
+  }
+  const sourceNode = (sourceGraph.nodes || []).find((node) => node.id === targetID);
+  const sourceEdge = (sourceGraph.edges || []).find((edge) => edge.id === targetID);
+  if (!sourceNode && !sourceEdge) {
+    return graph;
+  }
+  const nodes = [...(graph.nodes || [])];
+  const nodeIDs = new Set(nodes.map((node) => node.id));
+  const appendNode = (nodeID) => {
+    const node = (sourceGraph.nodes || []).find((candidate) => candidate.id === nodeID);
+    if (node && !nodeIDs.has(node.id)) {
+      nodes.push(node);
+      nodeIDs.add(node.id);
+    }
+  };
+  if (sourceNode) {
+    appendNode(sourceNode.id);
+  }
+  if (sourceEdge) {
+    appendNode(sourceEdge.fromId);
+    appendNode(sourceEdge.toId);
+  }
+  return {
+    ...graph,
+    nodes,
+    edges: sourceEdge ? [...(graph.edges || []), sourceEdge] : [...(graph.edges || [])],
+  };
 }
 
 function energyExplanationSignModeGraph(graph = {}) {
@@ -2037,7 +3039,7 @@ function renderEnergyExplanationSVG(nodes = [], edges = []) {
       const strokeWidth = Math.max(2, Math.min(18, 2 + 16 * Math.abs(Number(edge.value) || 0) / maxEdge));
       const selected = state.simulationEnergySelection === edge.id ? " selected" : "";
       const classTokens = energyExplanationEdgeClassTokens(edge);
-      return `<path class="energy-sankey-edge ${escapeHTML(classTokens)}${selected}" d="M ${roundSVG(x1)} ${roundSVG(y1)} C ${roundSVG(x1 + mid)} ${roundSVG(y1)}, ${roundSVG(x2 - mid)} ${roundSVG(y2)}, ${roundSVG(x2)} ${roundSVG(y2)}" stroke-width="${roundSVG(strokeWidth)}" data-energy-explanation-edge="${escapeHTML(edge.id || "")}"><title>${escapeHTML(energyExplanationEdgeTitle(edge))}</title></path>`;
+      return `<path class="energy-sankey-edge ${escapeHTML(classTokens)}${selected}" d="M ${roundSVG(x1)} ${roundSVG(y1)} C ${roundSVG(x1 + mid)} ${roundSVG(y1)}, ${roundSVG(x2 - mid)} ${roundSVG(y2)}, ${roundSVG(x2)} ${roundSVG(y2)}" stroke-width="${roundSVG(strokeWidth)}" data-energy-explanation-edge="${escapeHTML(edge.id || "")}" ${simulationEnergySemanticAttributes(edge, "edge")} tabindex="0" role="option"><title>${escapeHTML(energyExplanationEdgeTitle(edge))}</title></path>`;
     })
     .join("");
   const nodeRects = displayNodes
@@ -2050,7 +3052,7 @@ function renderEnergyExplanationSVG(nodes = [], edges = []) {
       const connected = connectedNodeIDs.has(node.id) ? " connected" : "";
       const classTokens = energyExplanationNodeClassTokens(node);
       return `
-        <g class="energy-sankey-node ${escapeHTML(classTokens)}${selected}${connected}" data-energy-explanation-node="${escapeHTML(node.id || "")}" transform="translate(${roundSVG(pos.x)} ${roundSVG(pos.y)})">
+        <g class="energy-sankey-node ${escapeHTML(classTokens)}${selected}${connected}" data-energy-explanation-node="${escapeHTML(node.id || "")}" ${simulationEnergySemanticAttributes(node, "node")} tabindex="0" role="option" transform="translate(${roundSVG(pos.x)} ${roundSVG(pos.y)})">
           <rect width="${pos.w}" height="${pos.h}" rx="5"></rect>
           <text x="8" y="12">${escapeHTML(shortEnergyExplanationLabel(node.label || node.kind || ""))}</text>
           <text x="8" y="24">${escapeHTML(formatValueWithUnit(node.value, node.unit))}</text>
@@ -2097,9 +3099,14 @@ function energyExplanationSankeyDisplayGraph(nodes = [], edges = [], mode = "det
   if (energyExplanationSankeyMode(mode) !== "compact") {
     return { nodes, edges };
   }
+  const revealTargetID = simulationNavigationRevealTarget?.resultView === "energy"
+    ? String(simulationNavigationRevealTarget.energySelection || "")
+    : "";
+  const revealEdge = (edges || []).find((edge) => edge.id === revealTargetID);
+  const revealNodeIDs = new Set([revealTargetID, revealEdge?.fromId, revealEdge?.toId].filter(Boolean));
   const hiddenEnergyIDs = new Set(
     (nodes || [])
-      .filter((node) => node.level === "energy" && !String(node.id || "").includes(".end_use."))
+      .filter((node) => node.level === "energy" && !String(node.id || "").includes(".end_use.") && !revealNodeIDs.has(node.id))
       .map((node) => node.id),
   );
   const visibleNodes = (nodes || []).filter((node) => !hiddenEnergyIDs.has(node.id));
@@ -2107,7 +3114,7 @@ function energyExplanationSankeyDisplayGraph(nodes = [], edges = [], mode = "det
   const visibleEdges = (edges || []).filter((edge) => {
     const from = nodeByID.get(edge.fromId);
     const to = nodeByID.get(edge.toId);
-    return from && to && energyExplanationColumn(from, mode) < energyExplanationColumn(to, mode);
+    return from && to && (edge.id === revealTargetID || energyExplanationColumn(from, mode) < energyExplanationColumn(to, mode));
   });
   return { nodes: visibleNodes, edges: visibleEdges };
 }
@@ -2174,7 +3181,7 @@ function renderEnergyExplanationInspector(selection, explanation = {}) {
     .map((source) => {
       const object = sourceOutputForEnergySource(source);
       return `
-        <tr>
+        <tr class="navigable-row" ${simulationSourceSemanticAttributes(source, object)} tabindex="0" role="option">
           <td>${escapeHTML(source.id || "")}</td>
           <td>${escapeHTML(energyExplanationSourceTypeLabel(source))}</td>
           <td>${escapeHTML(source.keyValue || "")}</td>
@@ -2264,7 +3271,7 @@ function renderEnergyExplanationSources(explanation = {}) {
     .map((source) => {
       const object = sourceOutputForEnergySource(source);
       return `
-        <tr>
+        <tr class="navigable-row" ${simulationSourceSemanticAttributes(source, object)} tabindex="0" role="option">
           <td>${escapeHTML(source.id || "")}</td>
           <td>${escapeHTML(source.sourceType || "")}</td>
           <td>${escapeHTML(source.isMeter ? "meter" : "variable")}</td>
@@ -3212,6 +4219,7 @@ function renderSimulationHVACLoopEmpty(message) {
   if (elements.simulationHVACLoopResults) {
     elements.simulationHVACLoopResults.innerHTML = `<div class="empty">${escapeHTML(message)}</div>`;
   }
+  pruneSimulationSemanticBindings();
 }
 
 function renderSimulationHVACLoops(result) {
@@ -3229,6 +4237,7 @@ function renderSimulationHVACLoops(result) {
     );
   }
   elements.simulationHVACLoopResults.innerHTML = loops.map(renderSimulationHVACLoopResult).join("");
+  pruneSimulationSemanticBindings();
 }
 
 function renderSimulationHVACLoopResult(loop) {
@@ -3256,7 +4265,7 @@ function renderSimulationHVACLoopResult(loop) {
     )
     .join("");
   return `
-    <section class="simulation-hvac-loop-result">
+    <section class="simulation-hvac-loop-result navigable-row" ${simulationHVACLoopSemanticAttributes(loop)} tabindex="0" role="option">
       <div class="simulation-hvac-loop-head">
         <div>
           <h4>${escapeHTML(loop.name || t("simulation.hvacLoops", {}, "HVAC Loops"))}</h4>
@@ -3838,6 +4847,7 @@ function renderSimulationComfortEmpty(message) {
   if (elements.simulationComfortResults) {
     elements.simulationComfortResults.innerHTML = `<div class="empty">${escapeHTML(message)}</div>`;
   }
+  pruneSimulationSemanticBindings();
 }
 
 function renderSimulationComfort(result) {
@@ -3866,9 +4876,10 @@ function renderSimulationComfort(result) {
   const rows = zones
     .flatMap((zone) => (zone.metrics || []).map((metric) => ({ zoneName: zone.zoneName, metric })))
     .slice(0, 120)
-    .map(
-      ({ zoneName, metric }) => `
-        <tr>
+    .map(({ zoneName, metric }) => {
+      const object = sourceOutputForVariable(zoneName, metric.name);
+      return `
+        <tr class="navigable-row" ${simulationComfortZoneSemanticAttributes(zoneName, object, metric)} tabindex="0" role="option">
           <td>${escapeHTML(zoneName || "")}</td>
           <td>${escapeHTML(metric.name || "")}</td>
           <td>${escapeHTML(metric.unit || "")}</td>
@@ -3876,10 +4887,10 @@ function renderSimulationComfort(result) {
           <td>${escapeHTML(formatNumber(metric.max))}</td>
           <td>${escapeHTML(formatNumber(metric.average))}</td>
           <td>${escapeHTML(metric.source || "")}</td>
-          <td>${renderSourceInspectorCell(sourceOutputForVariable(zoneName, metric.name), { keyValue: zoneName, variableName: metric.name })}</td>
+          <td>${renderSourceInspectorCell(object, { keyValue: zoneName, variableName: metric.name })}</td>
           <td>${escapeHTML(metric.points?.length || 0)}</td>
-        </tr>`,
-    )
+        </tr>`;
+    })
     .join("");
   elements.simulationComfortResults.innerHTML = `
     ${completenessHTML}
@@ -3893,6 +4904,7 @@ function renderSimulationComfort(result) {
         <tbody>${rows || `<tr><td colspan="9">${escapeHTML(t("simulation.noComfortResult", {}, "No comfort result"))}</td></tr>`}</tbody>
       </table>
     </div>`;
+  pruneSimulationSemanticBindings();
 }
 
 function renderComfortTimeline(zones = []) {
@@ -4622,7 +5634,7 @@ function renderSourceOutputCell(object, options = {}) {
 }
 
 function renderSourceInspectorCell(object, seriesRef = {}) {
-  return `<div class="simulation-source-cell">${renderSourceOutputCell(object)}${renderSeriesInspectButton(seriesRef)}</div>`;
+  return `<div class="simulation-source-cell">${renderSourceOutputCell(object)}${renderSeriesInspectButton({ ...seriesRef, sourceObject: object })}</div>`;
 }
 
 function renderSeriesInspectButton(seriesRef = {}) {
@@ -4634,6 +5646,9 @@ function renderSeriesInspectButton(seriesRef = {}) {
   const title = series
     ? t("simulation.inspectSeries", {}, "Inspect this output in the common Series chart")
     : t("simulation.inspectSeriesUnavailable", {}, "No matching SQL/CSV series is available for this row");
+  const sourceObject = seriesRef.sourceObject
+    || (seriesRef.meterName ? findPurposeOutputObject("Output:Meter", seriesRef.meterName, "") : null)
+    || sourceOutputForVariable(seriesRef.keyValue || "", seriesRef.variableName || "");
   return `
     <button
       type="button"
@@ -4643,13 +5658,14 @@ function renderSeriesInspectButton(seriesRef = {}) {
       data-simulation-series-key="${escapeHTML(seriesRef.keyValue || "")}"
       data-simulation-series-metric="${escapeHTML(seriesRef.variableName || "")}"
       data-simulation-series-meter="${escapeHTML(seriesRef.meterName || "")}"
+      ${simulationSeriesSemanticAttributes(series, sourceObject, seriesRef)}
       title="${escapeHTML(title)}"
       ${series ? "" : "disabled"}
     >${escapeHTML(label)}</button>`;
 }
 
 function renderEnergySourceSeriesInspectButton(source = {}) {
-  return renderSeriesInspectButton(energySourceSeriesRef(source));
+  return renderSeriesInspectButton({ ...energySourceSeriesRef(source), sourceObject: sourceOutputForEnergySource(source) });
 }
 
 function energySourceSeriesRef(source = {}) {
@@ -4668,6 +5684,10 @@ function energySourceSeriesRef(source = {}) {
 function handleSimulationSeriesInspectClick(event) {
   if (!(event.target instanceof Element)) {
     return;
+  }
+  const semanticTarget = event.target.closest("[data-simulation-semantic-select]");
+  if (semanticTarget) {
+    void requestSimulationModelSelection(semanticTarget);
   }
   const energyViewButton = event.target.closest("[data-simulation-energy-view]");
   if (energyViewButton && !energyViewButton.disabled) {
@@ -6559,7 +7579,12 @@ function renderSimulationSeriesSelect(result) {
     }
     return;
   }
-  const visibleSeries = selectedGroup === "all" ? series : series.filter((item) => simulationSeriesGroupID(item) === selectedGroup);
+  const revealSeriesID = simulationNavigationRevealTarget?.resultView === "series"
+    ? String(simulationNavigationRevealTarget.selectedSeries || "")
+    : "";
+  const visibleSeries = selectedGroup === "all"
+    ? series
+    : series.filter((item) => simulationSeriesGroupID(item) === selectedGroup || seriesID(item) === revealSeriesID);
   if (!visibleSeries.length) {
     state.simulationSelectedSeries = "";
     elements.simulationSeriesSelect.innerHTML = `<option value="">${escapeHTML(t("simulation.noSeriesInGroup", {}, "No series in this group"))}</option>`;
@@ -6898,6 +7923,7 @@ function renderSimulationHeatFlow() {
     </div>
     <div class="heatflow-tooltip hidden" role="tooltip"></div>`;
   bindHeatFlowInteractions(dataset, geometry, zoneMap);
+  pruneSimulationSemanticBindings();
 }
 
 function activeHeatFlowDataset() {
@@ -7037,6 +8063,7 @@ function renderSimulationHeatFlowEmpty(message) {
   if (elements.simulationHeatFlow) {
     elements.simulationHeatFlow.innerHTML = `<div class="empty">${escapeHTML(message)}</div>`;
   }
+  pruneSimulationSemanticBindings();
 }
 
 function normalizeHeatFlowFrameRange(frameCount = Number(state.simulationResult?.heatFlow?.frameCount) || 0, changed = "") {
@@ -7112,7 +8139,24 @@ function visibleHeatFlowStories(geometry) {
     return stories;
   }
   const selected = stories.find((story) => String(story.index) === String(state.simulationHeatFlowStory));
-  return selected ? [selected] : stories;
+  const visible = selected ? [selected] : [...stories];
+  const revealZone = simulationNavigationRevealTarget?.resultView === "zone_heat_flow"
+    ? normalizeHeatFlowName(simulationNavigationRevealTarget.heatFlowZone || "")
+    : "";
+  if (!revealZone || !selected) {
+    return visible;
+  }
+  const revealStoryIDs = new Set(
+    (geometry?.surfaces || [])
+      .filter((surface) => normalizeHeatFlowName(surface.zoneName || "") === revealZone)
+      .map((surface) => String(surface.storyIndex)),
+  );
+  stories.forEach((story) => {
+    if (revealStoryIDs.has(String(story.index)) && !visible.includes(story)) {
+      visible.push(story);
+    }
+  });
+  return visible;
 }
 
 function heatFlowVisibleRange(dataset) {
@@ -7151,7 +8195,7 @@ function renderHeatFlowStoryCard(geometry, story, dataset, zoneMap, frameIndex) 
     const fill = heatFlowZoneFill(zoneSeries, dataset, frameIndex);
     const selected = normalizeHeatFlowName(zoneName) === normalizeHeatFlowName(state.simulationHeatFlowSelectedZone);
     return `
-      <g class="heatflow-zone ${selected ? "selected" : ""} ${zoneSeries ? "" : "missing"}" data-heat-zone="${escapeHTML(zoneName)}">
+      <g class="heatflow-zone ${selected ? "selected" : ""} ${zoneSeries ? "" : "missing"}" data-heat-zone="${escapeHTML(zoneName)}" ${simulationHeatFlowZoneSemanticAttributes(zoneName)} tabindex="0" role="option">
         <polygon points="${pointText}" style="--heatflow-fill: ${fill};"></polygon>
         ${zoneSeries ? renderHeatFlowZoneStack(zoneSeries, dataset, frameIndex, center, value) : ""}
         <title>${escapeHTML(heatFlowZoneTitle(zoneName, zoneSeries, dataset, frameIndex))}</title>
@@ -7317,6 +8361,7 @@ function bindHeatFlowInteractions(dataset, geometry, zoneMap) {
     shape.addEventListener("pointerleave", () => hideHeatFlowTooltip(tooltip));
     shape.addEventListener("click", () => {
       state.simulationHeatFlowSelectedZone = shape.dataset.heatZone || "";
+      void requestSimulationModelSelection(shape);
       renderSimulationHeatFlow();
     });
   });

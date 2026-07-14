@@ -1,8 +1,29 @@
 import * as THREE from "../../vendor/three.module.js";
 import { elements, escapeHTML, state } from "../state.js";
 import { t } from "../i18n.js";
+import { refreshResultPanelSelectionStyles } from "../panel-navigation-adapters.js";
+import { selectSemanticEntity } from "../selection-controller.js";
 
 let rendererState = null;
+let temporaryGeometryReveal = null;
+let geometrySelectionRequest = 0;
+
+window.addEventListener("idfAnalyzer:semanticSelectionChanged", (event) => {
+  if (!temporaryGeometryReveal) {
+    return;
+  }
+  const selection = geometrySelectionForTarget(temporaryGeometryReveal.kind, temporaryGeometryReveal.id);
+  if (!selection?.entityId || selection.entityId !== event.detail?.selection?.entityId) {
+    temporaryGeometryReveal = null;
+    if (state.activeResultTab === "geometry" && state.report?.geometry) {
+      renderGeometry();
+    }
+  }
+});
+window.addEventListener("idfAnalyzer:documentChanged", () => {
+  temporaryGeometryReveal = null;
+  geometrySelectionRequest += 1;
+});
 
 export function renderGeometry(geometry = state.report?.geometry) {
   if (!elements.geometryStats || !elements.geometryCanvasHost) {
@@ -55,13 +76,118 @@ export function setGeometrySelectionAid(enabled) {
   renderGeometry();
 }
 
-export function selectGeometry(kind, id) {
-  state.selectedGeometryKind = kind || "";
-  state.selectedGeometryId = id || "";
+export async function selectGeometry(kind, id, options = {}) {
+  const request = ++geometrySelectionRequest;
+  const geometry = state.report?.geometry;
+  const normalizedKind = normalizeGeometryKind(kind);
+  const targetId = String(id || "");
+  const entity = geometryTargetEntity({ targetKind: normalizedKind, targetId }, geometry);
+  const selection = geometrySelectionForTarget(normalizedKind, targetId);
+  const syncLocate = options.syncLocate !== false && state.geometrySyncLocate && Boolean(entity);
+
+  // The legacy source locator already records a history entry. Run it before
+  // changing either selection so a geometry click remains one atomic action.
+  if (syncLocate) {
+    syncLocatedInputEntity(entity);
+  }
+  if (options.syncSemantic !== false && selection) {
+    await selectSemanticEntity(selection, {
+      originView: "geometry",
+      action: "select",
+      recordHistory: syncLocate ? false : options.recordHistory !== false,
+      follow: options.follow,
+      rememberForOriginView: "geometry",
+    });
+  }
+  if (request !== geometrySelectionRequest) {
+    return;
+  }
+
+  temporaryGeometryReveal = null;
+  state.selectedGeometryKind = normalizedKind;
+  state.selectedGeometryId = targetId;
   renderGeometryDetails();
   highlightSelectedMeshes();
   highlightSelectedPlan();
-  syncLocatedInputFromSelection();
+  refreshResultPanelSelectionStyles("geometry", state.globalSelection, state.globalHover);
+}
+
+export async function revealGeometrySelection(selection, options = {}, context) {
+  geometrySelectionRequest += 1;
+  const geometry = state.report?.geometry;
+  const target = geometryViewTargetForSelection(selection, context?.navigation);
+  const entity = geometryTargetEntity(target, geometry);
+  if (!target || !entity) {
+    return context?.genericReveal(selection, options) || false;
+  }
+
+  if (entity.kind === "story") {
+    state.selectedGeometryStory = entity.item.index;
+    temporaryGeometryReveal = null;
+    renderGeometry(geometry);
+    const storySelect = elements.geometryStorySelect;
+    if (options.focus !== false) {
+      storySelect?.focus?.({ preventScroll: true });
+    }
+    context?.refreshSelectionStyles(selection, state.globalHover);
+    return Boolean(storySelect);
+  }
+
+  const ownerZone = owningZoneForGeometryEntity(entity, geometry);
+  const storyIndex = geometryStoryIndexForEntity(entity, geometry);
+  if (Number.isInteger(storyIndex)) {
+    state.selectedGeometryStory = storyIndex;
+  }
+  if (state.geometryMode === "plan" && !geometryEntityHasPlanShape(entity, geometry)) {
+    state.geometryMode = "3d";
+  }
+  temporaryGeometryReveal = {
+    kind: entity.kind,
+    id: entity.id,
+    ownerZoneId: ownerZone?.id || "",
+    baseSurfaceId: entity.kind === "window" ? baseSurfaceForWindow(geometry, entity.item)?.id || "" : "",
+  };
+  state.selectedGeometryKind = entity.kind;
+  state.selectedGeometryId = entity.id;
+  renderGeometry(geometry);
+  context?.refreshSelectionStyles(selection, state.globalHover);
+  await nextGeometryFrame();
+  const targetElement = findGeometryNavigationTarget(selection, target, context) || elements.geometryDetails;
+  if (options.scroll !== false) {
+    targetElement?.scrollIntoView?.({ block: options.block || "nearest", inline: "nearest", behavior: options.behavior || "auto" });
+  }
+  if (options.focus !== false) {
+    targetElement?.focus?.({ preventScroll: true });
+  }
+  return Boolean(targetElement);
+}
+
+export async function restoreGeometryNavigationContext(snapshot = {}, context) {
+  geometrySelectionRequest += 1;
+  state.geometryMode = snapshot.mode === "plan" ? "plan" : "3d";
+  state.selectedGeometryStory = snapshot.story === "all" ? "all" : Number(snapshot.story) || 0;
+  state.selectedGeometryKind = normalizeGeometryKind(snapshot.selectedKind);
+  state.selectedGeometryId = String(snapshot.selectedId || "");
+  state.geometrySelectionAid = Boolean(snapshot.selectionAid);
+  state.geometrySyncLocate = snapshot.syncLocate !== false;
+  if (elements.geometryShowZones && typeof snapshot.visibility?.zones === "boolean") {
+    elements.geometryShowZones.checked = snapshot.visibility.zones;
+  }
+  if (elements.geometryShowWalls && typeof snapshot.visibility?.walls === "boolean") {
+    elements.geometryShowWalls.checked = snapshot.visibility.walls;
+  }
+  if (elements.geometryShowWindows && typeof snapshot.visibility?.windows === "boolean") {
+    elements.geometryShowWindows.checked = snapshot.visibility.windows;
+  }
+  temporaryGeometryReveal = null;
+  renderGeometry();
+  return context?.genericRestoreContext(snapshot) ?? true;
+}
+
+export function preferredGeometrySemanticOccurrence(selection, context) {
+  const target = geometryViewTargetForSelection(selection, context?.navigation);
+  const preferred = preferredOccurrenceForGeometryTarget(target?.targetId, selection, context?.navigation);
+  return preferred?.occurrenceId || context?.genericPreferredSemanticOccurrence(selection) || "";
 }
 
 export function resizeGeometry() {
@@ -104,7 +230,7 @@ function renderStoryOptions(geometry) {
   const storyOptions = stories
     .map(
       (story) =>
-        `<option value="${escapeHTML(story.index)}" ${story.index === state.selectedGeometryStory ? "selected" : ""}>${escapeHTML(story.name)} (${formatNumber(story.elevation)} m)</option>`,
+        `<option value="${escapeHTML(story.index)}" ${geometryNavigationAttributes("story", geometryStoryTargetID(story), { objectName: story.name }, { tabindex: false })} ${story.index === state.selectedGeometryStory ? "selected" : ""}>${escapeHTML(story.name)} (${formatNumber(story.elevation)} m)</option>`,
     )
     .join("");
   elements.geometryStorySelect.innerHTML = `${allOption}${storyOptions}`;
@@ -143,21 +269,25 @@ function renderScene(geometry) {
     ? Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY, bounds.maxZ - bounds.minZ, 1)
     : 18;
 
-  if (elements.geometryShowZones.checked && !state.geometrySelectionAid) {
+  if (!state.geometrySelectionAid) {
     (geometry.surfaces || [])
-      .filter((surface) => matchesSelectedStory(surface) && surface.surfaceType?.toLowerCase() === "floor")
+      .filter((surface) => (
+        matchesSelectedStory(surface) &&
+        surface.surfaceType?.toLowerCase() === "floor" &&
+        (elements.geometryShowZones.checked || geometryZoneSurfaceIsTemporarilyVisible(surface, geometry))
+      ))
       .forEach((surface) => addSurfaceMesh(group, surface, "zone", zoneIdForName(geometry, surface.zoneName), center));
   }
-  if (elements.geometryShowWalls.checked) {
-    (geometry.surfaces || [])
-      .filter((surface) => matchesSelectedStory(surface) && (state.geometrySelectionAid || surface.surfaceType?.toLowerCase() !== "floor"))
-      .forEach((surface) => addSurfaceMesh(group, surface, "surface", surface.id, center));
-  }
-  if (elements.geometryShowWindows.checked) {
-    (geometry.windows || [])
-      .filter((windowItem) => matchesSelectedStory(windowItem))
-      .forEach((windowItem) => addWindowMesh(group, windowItem, center));
-  }
+  (geometry.surfaces || [])
+    .filter((surface) => (
+      matchesSelectedStory(surface) &&
+      (state.geometrySelectionAid || surface.surfaceType?.toLowerCase() !== "floor") &&
+      (elements.geometryShowWalls.checked || geometrySurfaceIsTemporarilyVisible(surface))
+    ))
+    .forEach((surface) => addSurfaceMesh(group, surface, "surface", surface.id, center));
+  (geometry.windows || [])
+    .filter((windowItem) => matchesSelectedStory(windowItem) && (elements.geometryShowWindows.checked || geometryWindowIsTemporarilyVisible(windowItem)))
+    .forEach((windowItem) => addWindowMesh(group, windowItem, center));
 
   addAxes(group, bounds, center);
   resizeRenderer();
@@ -282,7 +412,7 @@ function pickMesh(event) {
   const hits = rendererState.raycaster.intersectObjects(rendererState.group.children, true);
   const hit = hits.find((item) => item.object.userData?.geometryId);
   if (hit) {
-    selectGeometry(hit.object.userData.geometryKind, hit.object.userData.geometryId);
+    void selectGeometry(hit.object.userData.geometryKind, hit.object.userData.geometryId);
   }
 }
 
@@ -315,7 +445,13 @@ function addSurfaceMesh(group, surface, kind, id, center) {
     side: THREE.DoubleSide,
   });
   const mesh = new THREE.Mesh(geometry, material);
-  mesh.userData = { geometryKind: kind, geometryId: id, baseColor: material.color.getHex(), baseOpacity: material.opacity };
+  mesh.userData = {
+    geometryKind: kind,
+    geometryId: id,
+    semanticSelection: geometrySelectionForTarget(kind, id),
+    baseColor: material.color.getHex(),
+    baseOpacity: material.opacity,
+  };
   group.add(mesh);
   if (state.geometrySelectionAid && kind === "surface") {
     addSurfaceOutline(group, surface, id, center, baseColor);
@@ -338,7 +474,13 @@ function addWindowMesh(group, windowItem, center) {
     side: THREE.DoubleSide,
   });
   const mesh = new THREE.Mesh(geometry, material);
-  mesh.userData = { geometryKind: "window", geometryId: windowItem.id, baseColor: material.color.getHex(), baseOpacity: material.opacity };
+  mesh.userData = {
+    geometryKind: "window",
+    geometryId: windowItem.id,
+    semanticSelection: geometrySelectionForTarget("window", windowItem.id),
+    baseColor: material.color.getHex(),
+    baseOpacity: material.opacity,
+  };
   group.add(mesh);
 }
 
@@ -412,25 +554,39 @@ function renderPlan(geometry) {
   const zoneFloorPolygons = elements.geometryShowZones.checked
     ? layout.surfaces
         .filter((surface) => surface.isFloor)
-        .map((surface) => `<polygon class="plan-zone" data-geometry-kind="zone" data-geometry-id="${escapeHTML(surface.zoneID)}" points="${surface.openPoints}"></polygon>`)
+        .map((surface) => `<polygon class="plan-zone navigable-row" data-geometry-kind="zone" data-geometry-id="${escapeHTML(surface.zoneID)}" ${geometryNavigationAttributes("zone", surface.zoneID)} points="${surface.openPoints}"></polygon>`)
         .join("")
-    : "";
-  const wallLines = elements.geometryShowWalls.checked
-    ? layout.surfaces
-        .filter((surface) => state.geometrySelectionAid || !surface.isFloor)
-        .map(renderPlanSurfaceShape)
-        .join("")
-    : "";
-  const windowLines = elements.geometryShowWindows.checked
-    ? layout.windows
-        .map((windowItem) => `<polyline class="plan-window" data-geometry-kind="window" data-geometry-id="${escapeHTML(windowItem.id)}" points="${windowItem.closedPoints}"></polyline>`)
-        .join("")
-    : "";
+    : layout.surfaces
+        .filter((surface) => surface.isFloor && temporaryGeometryReveal?.ownerZoneId === surface.zoneID)
+        .map((surface) => `<polygon class="plan-zone navigable-row" data-geometry-kind="zone" data-geometry-id="${escapeHTML(surface.zoneID)}" ${geometryNavigationAttributes("zone", surface.zoneID)} points="${surface.openPoints}"></polygon>`)
+        .join("");
+  const wallLines = layout.surfaces
+    .filter((surface) => (
+      (state.geometrySelectionAid || !surface.isFloor) &&
+      (elements.geometryShowWalls.checked || projectedSurfaceIsTemporarilyVisible(surface))
+    ))
+    .map(renderPlanSurfaceShape)
+    .join("");
+  const windowLines = layout.windows
+    .filter((windowItem) => elements.geometryShowWindows.checked || temporaryGeometryReveal?.id === windowItem.id)
+    .map((windowItem) => `<polyline class="plan-window navigable-row" data-geometry-kind="window" data-geometry-id="${escapeHTML(windowItem.id)}" ${geometryNavigationAttributes("fenestration", windowItem.id)} points="${windowItem.closedPoints}"></polyline>`)
+    .join("");
 
   elements.geometryPlan.setAttribute("viewBox", `0 0 ${layout.viewWidth} ${layout.viewHeight}`);
   elements.geometryPlan.innerHTML = `${zoneFloorPolygons}${wallLines}${windowLines}`;
   elements.geometryPlan.querySelectorAll("[data-geometry-id]").forEach((shape) => {
-    shape.addEventListener("click", () => selectGeometry(shape.dataset.geometryKind, shape.dataset.geometryId));
+    shape.addEventListener("click", (event) => {
+      event.stopPropagation();
+      void selectGeometry(shape.dataset.geometryKind, shape.dataset.geometryId);
+    });
+    shape.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      void selectGeometry(shape.dataset.geometryKind, shape.dataset.geometryId);
+    });
   });
   highlightSelectedPlan();
 }
@@ -490,6 +646,7 @@ function buildGeometryPlanLayout(geometry, storyIndex) {
       isHorizontal: isHorizontalSurface(surface),
       isFloor: surface.surfaceType?.toLowerCase() === "floor",
       zoneID: zoneIdForName(geometry, surface.zoneName),
+      spaceName: surface.spaceName || "",
     };
   });
   const projectedWindows = windows.map((windowItem) => {
@@ -504,10 +661,11 @@ function buildGeometryPlanLayout(geometry, storyIndex) {
 
 function renderPlanSurfaceShape(surface) {
   const title = escapeHTML(surface.title);
+  const attributes = geometryNavigationAttributes("surface", surface.id);
   if (surface.isHorizontal) {
-    return `<polygon class="${surface.className}" data-geometry-kind="surface" data-geometry-id="${escapeHTML(surface.id)}" points="${surface.closedPoints}"><title>${title}</title></polygon>`;
+    return `<polygon class="${surface.className} navigable-row" data-geometry-kind="surface" data-geometry-id="${escapeHTML(surface.id)}" ${attributes} points="${surface.closedPoints}"><title>${title}</title></polygon>`;
   }
-  return `<polyline class="plan-wall ${surface.className}" data-geometry-kind="surface" data-geometry-id="${escapeHTML(surface.id)}" points="${surface.closedPoints}"><title>${title}</title></polyline>`;
+  return `<polyline class="plan-wall ${surface.className} navigable-row" data-geometry-kind="surface" data-geometry-id="${escapeHTML(surface.id)}" ${attributes} points="${surface.closedPoints}"><title>${title}</title></polyline>`;
 }
 
 function hasPlanVertices(item) {
@@ -538,7 +696,11 @@ function renderGeometryDetails(geometry = state.report?.geometry) {
   }
   const relatedGroups = geometryRelatedGroups(geometry, entity);
   elements.geometryDetails.innerHTML = `
-    <div class="geometry-detail-head">
+    <div class="geometry-detail-head navigable-row" ${geometryNavigationAttributes(entity.kind, entity.id, {
+      objectIndex: entity.objectIndex,
+      objectType: entity.objectType,
+      objectName: entity.title,
+    })}>
       <div>
         <h3>${escapeHTML(entity.title)}</h3>
         <span>${escapeHTML(entity.subtitle)}</span>
@@ -559,11 +721,7 @@ function renderGeometryDetails(geometry = state.report?.geometry) {
   bindGeometryDetailControls();
 }
 
-function syncLocatedInputFromSelection() {
-  if (!state.geometrySyncLocate) {
-    return;
-  }
-  const entity = selectedGeometryEntity(state.report?.geometry);
+function syncLocatedInputEntity(entity) {
   if (!entity) {
     return;
   }
@@ -600,6 +758,21 @@ function selectedGeometryEntity(geometry) {
       objectIndex: zone.objectIndex,
       objectType: "Zone",
       metrics: zone.metrics,
+    };
+  }
+  if (state.selectedGeometryKind === "space") {
+    const space = (geometry.spaces || []).find((item) => item.id === state.selectedGeometryId);
+    const zone = space ? zoneByName(geometry, space.zoneName) : null;
+    return space && {
+      kind: "space",
+      id: space.id,
+      item: space,
+      title: space.name,
+      subtitle: `Space${space.zoneName ? ` / ${space.zoneName}` : ""}`,
+      objectIndex: space.objectIndex,
+      objectType: "Space",
+      storyIndex: zone?.storyIndex,
+      metrics: [],
     };
   }
   if (state.selectedGeometryKind === "window") {
@@ -643,6 +816,9 @@ function geometryRelatedGroups(geometry, entity) {
   if (entity.kind === "zone") {
     return geometryRelatedGroupsForZone(geometry, entity.item);
   }
+  if (entity.kind === "space") {
+    return geometryRelatedGroupsForSpace(geometry, entity.item);
+  }
   if (entity.kind === "window") {
     return geometryRelatedGroupsForWindow(geometry, entity.item);
   }
@@ -650,6 +826,7 @@ function geometryRelatedGroups(geometry, entity) {
 }
 
 function geometryRelatedGroupsForZone(geometry, zone) {
+  const spaces = (geometry.spaces || []).filter((space) => normalizeGeometryName(space.zoneName) === normalizeGeometryName(zone.name));
   const surfaces = (zone.surfaceIds || []).map((id) => surfaceByID(geometry, id)).filter(Boolean);
   const windows = (zone.windowIds || []).map((id) => windowByID(geometry, id)).filter(Boolean);
   const adjacent = uniqueRelatedItems(
@@ -665,14 +842,27 @@ function geometryRelatedGroupsForZone(geometry, zone) {
       .filter(Boolean),
   );
   return [
+    { title: "Spaces", items: spaces.map((space) => relatedItemForSpace(space, "Space", geometry)) },
     { title: "Boundary Surfaces", items: surfaces.map((surface) => relatedItemForSurface(surface, surface.surfaceType || "Surface", geometry)) },
     { title: "Openings", items: windows.map((windowItem) => relatedItemForWindow(windowItem, windowItem.surfaceType || "Window", geometry)) },
     { title: "Adjacent", items: adjacent },
   ];
 }
 
+function geometryRelatedGroupsForSpace(geometry, space) {
+  const parentZone = zoneByName(geometry, space.zoneName);
+  const surfaces = (geometry.surfaces || []).filter((surface) => normalizeGeometryName(surface.spaceName) === normalizeGeometryName(space.name));
+  const windows = surfaces.flatMap((surface) => windowsForSurface(geometry, surface));
+  return [
+    { title: "Parent", items: parentZone ? [relatedItemForZone(parentZone, "Zone")] : [] },
+    { title: "Boundary Surfaces", items: surfaces.map((surface) => relatedItemForSurface(surface, surface.surfaceType || "Surface", geometry)) },
+    { title: "Openings", items: uniqueRelatedItems(windows.map((item) => relatedItemForWindow(item, item.surfaceType || "Window", geometry))) },
+  ];
+}
+
 function geometryRelatedGroupsForSurface(geometry, surface) {
   const parentZone = zoneByName(geometry, surface.zoneName);
+  const parentSpace = spaceByName(geometry, surface.spaceName);
   const windows = windowsForSurface(geometry, surface);
   const adjacentSurface = adjacentSurfaceForSurface(geometry, surface);
   const adjacentZone = adjacentSurface ? zoneByName(geometry, adjacentSurface.zoneName) : null;
@@ -681,7 +871,7 @@ function geometryRelatedGroupsForSurface(geometry, surface) {
     adjacentSurface ? relatedItemForSurface(adjacentSurface, "Adjacent surface", geometry) : referencedBoundaryItem(surface),
   ].filter(Boolean);
   return [
-    { title: "Parent", items: parentZone ? [relatedItemForZone(parentZone, "Zone")] : [] },
+    { title: "Parent", items: [parentZone && relatedItemForZone(parentZone, "Zone"), parentSpace && relatedItemForSpace(parentSpace, "Space", geometry)].filter(Boolean) },
     { title: "Openings", items: windows.map((windowItem) => relatedItemForWindow(windowItem, windowItem.surfaceType || "Window", geometry)) },
     { title: "Adjacent", items: adjacentItems },
   ];
@@ -940,14 +1130,17 @@ function renderRelatedItem(item) {
     </span>
     <span class="geometry-related-role">${escapeHTML(item.role)}</span>`;
   if (item.kind && item.id) {
-    return `<button class="geometry-related-row" type="button" data-geometry-kind="${escapeHTML(item.kind)}" data-geometry-id="${escapeHTML(item.id)}">${content}</button>`;
+    return `<button class="geometry-related-row navigable-row" type="button" data-geometry-kind="${escapeHTML(item.kind)}" data-geometry-id="${escapeHTML(item.id)}" ${geometryNavigationAttributes(item.kind, item.id, item.sourceAnchor)}>${content}</button>`;
   }
   return `<div class="geometry-related-row geometry-related-static">${content}</div>`;
 }
 
 function bindGeometryDetailControls() {
   elements.geometryDetails.querySelectorAll(".geometry-related-row[data-geometry-id]").forEach((button) => {
-    button.addEventListener("click", () => selectGeometry(button.dataset.geometryKind, button.dataset.geometryId));
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      void selectGeometry(button.dataset.geometryKind, button.dataset.geometryId);
+    });
   });
   elements.geometryDetails.querySelectorAll(".construction-layer[data-object-index]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -973,6 +1166,19 @@ function relatedItemForZone(zone, role) {
     role,
     title: zone.name,
     subtitle: storyLabelForIndex(state.report?.geometry, zone.storyIndex),
+    sourceAnchor: { objectIndex: zone.objectIndex, objectType: "Zone", objectName: zone.name },
+  };
+}
+
+function relatedItemForSpace(space, role, geometry = state.report?.geometry) {
+  const zone = zoneByName(geometry, space.zoneName);
+  return {
+    kind: "space",
+    id: space.id,
+    role,
+    title: space.name,
+    subtitle: [space.zoneName, storyLabelForIndex(geometry, zone?.storyIndex)].filter(Boolean).join(" / "),
+    sourceAnchor: { objectIndex: space.objectIndex, objectType: "Space", objectName: space.name },
   };
 }
 
@@ -991,6 +1197,7 @@ function relatedItemForSurface(surface, role, geometry = state.report?.geometry)
     title: surface.name || surface.type,
     subtitle: `${surface.surfaceType || surface.type}${surface.construction ? ` / ${surface.construction}` : ""}`,
     detail: details.join(" / "),
+    sourceAnchor: { objectIndex: surface.objectIndex, objectType: surface.type, objectName: surface.name },
   };
 }
 
@@ -1009,6 +1216,7 @@ function relatedItemForWindow(windowItem, role, geometry = state.report?.geometr
     title: windowItem.name || windowItem.type,
     subtitle: `${windowItem.surfaceType || windowItem.type}${windowItem.construction ? ` / ${windowItem.construction}` : ""}`,
     detail: details.join(" / "),
+    sourceAnchor: { objectIndex: windowItem.objectIndex, objectType: windowItem.type, objectName: windowItem.name },
   };
 }
 
@@ -1036,9 +1244,308 @@ function uniqueRelatedItems(items) {
   });
 }
 
+function geometryViewTargetForSelection(selection = {}, navigation = state.semanticProjection?.navigation || {}) {
+  const direct = selection.viewTarget;
+  if (String(direct?.view || "").toLowerCase() === "geometry" && direct.targetId) {
+    return direct;
+  }
+  const occurrence = (navigation.occurrences || []).find((candidate) => candidate.occurrenceId === selection.occurrenceId);
+  const entity = (navigation.entities || []).find((candidate) => candidate.id === selection.entityId);
+  const targets = [...(occurrence?.viewTargets || []), ...(entity?.viewTargets || [])]
+    .filter((target) => String(target?.view || "").toLowerCase() === "geometry" && target.targetId)
+    .sort((left, right) => Number(right.priority || 0) - Number(left.priority || 0));
+  if (selection.originView === "geometry" && selection.originTargetId) {
+    return targets.find((target) => target.targetId === selection.originTargetId) || {
+      view: "geometry",
+      targetKind: selection.entityKind || "",
+      targetId: selection.originTargetId,
+    };
+  }
+  return targets[0] || null;
+}
+
+function geometryTargetEntity(target, geometry = state.report?.geometry) {
+  if (!target || !geometry) {
+    return null;
+  }
+  const targetId = String(target.targetId || "");
+  const requestedKind = normalizeGeometryKind(target.targetKind);
+  const candidates = requestedKind ? [requestedKind] : ["zone", "space", "surface", "window", "story"];
+  for (const kind of candidates) {
+    if (kind === "zone") {
+      const item = (geometry.zones || []).find((candidate) => candidate.id === targetId);
+      if (item) return { kind, id: item.id, item, objectIndex: item.objectIndex, objectType: "Zone", storyIndex: item.storyIndex };
+    } else if (kind === "space") {
+      const item = (geometry.spaces || []).find((candidate) => candidate.id === targetId);
+      const zone = item ? zoneByName(geometry, item.zoneName) : null;
+      if (item) return { kind, id: item.id, item, objectIndex: item.objectIndex, objectType: "Space", storyIndex: zone?.storyIndex };
+    } else if (kind === "surface") {
+      const item = (geometry.surfaces || []).find((candidate) => candidate.id === targetId);
+      if (item) return { kind, id: item.id, item, objectIndex: item.objectIndex, objectType: item.type, storyIndex: item.storyIndex };
+    } else if (kind === "window") {
+      const item = (geometry.windows || []).find((candidate) => candidate.id === targetId);
+      if (item) return { kind, id: item.id, item, objectIndex: item.objectIndex, objectType: item.type, storyIndex: item.storyIndex };
+    } else if (kind === "story") {
+      const item = (geometry.stories || []).find((story) => geometryStoryMatchesTarget(story, targetId));
+      if (item) return { kind, id: geometryStoryTargetID(item), item, storyIndex: item.index };
+    }
+  }
+  if (requestedKind) {
+    return geometryTargetEntity({ ...target, targetKind: "" }, geometry);
+  }
+  return null;
+}
+
+function geometrySelectionForTarget(kind, targetId, navigation = state.semanticProjection?.navigation || {}) {
+  if (!targetId) {
+    return null;
+  }
+  const occurrence = preferredOccurrenceForGeometryTarget(targetId, state.globalSelection, navigation);
+  const entity = (navigation.entities || []).find((candidate) => candidate.id === occurrence?.entityId) || null;
+  if (!occurrence || !entity) {
+    return null;
+  }
+  return {
+    entityId: entity.id,
+    entityKind: entity.kind || normalizeGeometryEntityKind(kind),
+    occurrenceId: occurrence.occurrenceId,
+    sourceAnchor: { ...(occurrence.sourceAnchor || entity.sourceAnchors?.[0] || {}) },
+    originView: "geometry",
+    originTargetId: String(targetId),
+    semanticPathHint: occurrence.path || "",
+    relatedEntityIds: [...(entity.relatedEntityIds || [])],
+  };
+}
+
+function preferredOccurrenceForGeometryTarget(targetId, selection = {}, navigation = state.semanticProjection?.navigation || {}) {
+  const occurrenceIds = navigation.byViewTarget?.[`geometry|${targetId}`] || [];
+  const currentPath = String(selection.semanticPathHint || state.semanticCurrentPath || "");
+  return (navigation.occurrences || [])
+    .filter((occurrence) => occurrenceIds.includes(occurrence.occurrenceId))
+    .map((occurrence, order) => ({
+      occurrence,
+      order,
+      exact: Number(occurrence.occurrenceId === selection.occurrenceId),
+      current: Number(occurrence.occurrenceId === state.semanticCurrentOccurrenceId),
+      geometryContext: Number(occurrence.contextKind === "zone_geometry" || /(^|\/)geometry(\/|$)/.test(occurrence.path || "")),
+      path: commonPathPrefixLength(occurrence.path, currentPath),
+      preferred: Number(occurrence.preferredView === "geometry"),
+    }))
+    .sort((left, right) => (
+      right.geometryContext - left.geometryContext ||
+      right.exact - left.exact ||
+      right.current - left.current ||
+      right.path - left.path ||
+      right.preferred - left.preferred ||
+      left.order - right.order
+    ))[0]?.occurrence || null;
+}
+
+function geometryNavigationAttributes(kind, targetId, explicitAnchor = {}, options = {}) {
+  const navigation = state.semanticProjection?.navigation || {};
+  const occurrence = preferredOccurrenceForGeometryTarget(targetId, state.globalSelection, navigation);
+  const entity = (navigation.entities || []).find((candidate) => candidate.id === occurrence?.entityId) || null;
+  const sourceAnchor = { ...(occurrence?.sourceAnchor || entity?.sourceAnchors?.[0] || {}), ...explicitAnchor };
+  const selected = Boolean(
+    (entity?.id && entity.id === state.globalSelection?.entityId) ||
+    (String(targetId || "") === state.selectedGeometryId && normalizeGeometryKind(kind) === state.selectedGeometryKind),
+  );
+  const attributes = [
+    `data-entity-id="${escapeHTML(entity?.id || "")}"`,
+    `data-entity-kind="${escapeHTML(entity?.kind || normalizeGeometryEntityKind(kind))}"`,
+    `data-occurrence-id="${escapeHTML(occurrence?.occurrenceId || "")}"`,
+    `data-occurrence-context="${escapeHTML(occurrence?.occurrenceId || "")}"`,
+    `data-semantic-path="${escapeHTML(occurrence?.path || "")}"`,
+    `data-panel-target-id="${escapeHTML(targetId || "")}"`,
+    `data-source-object-id="${escapeHTML(sourceAnchor.objectId || "")}"`,
+    `data-source-object-index="${escapeHTML(sourceAnchor.objectIndex ?? "")}"`,
+    `data-source-object-type="${escapeHTML(sourceAnchor.objectType || "")}"`,
+    `data-source-object-name="${escapeHTML(sourceAnchor.objectName || "")}"`,
+    `data-source-field-index="${escapeHTML(sourceAnchor.fieldIndex ?? "")}"`,
+    `aria-selected="${selected ? "true" : "false"}"`,
+  ];
+  if (options.tabindex !== false) {
+    attributes.push('tabindex="0"', 'role="button"');
+  }
+  return attributes.join(" ");
+}
+
+function normalizeGeometryKind(kind) {
+  const normalized = String(kind || "").trim().toLowerCase();
+  return normalized === "fenestration" ? "window" : normalized;
+}
+
+function normalizeGeometryEntityKind(kind) {
+  return normalizeGeometryKind(kind) === "window" ? "fenestration" : normalizeGeometryKind(kind);
+}
+
+function geometryStoryTargetID(story, navigation = state.semanticProjection?.navigation || {}) {
+  for (const occurrence of navigation.occurrences || []) {
+    const target = (occurrence.viewTargets || []).find((candidate) => (
+      String(candidate?.view || "").toLowerCase() === "geometry" &&
+      normalizeGeometryKind(candidate.targetKind) === "story" &&
+      geometryStoryMatchesTarget(story, candidate.targetId)
+    ));
+    if (target?.targetId) {
+      return target.targetId;
+    }
+  }
+  return `story-${story.index}`;
+}
+
+function geometryStoryMatchesTarget(story, targetId) {
+  const normalized = String(targetId || "").trim().toLowerCase();
+  return normalized === String(story.index) ||
+    normalized === `story-${story.index}` ||
+    normalized === String(story.name || "").trim().toLowerCase();
+}
+
+function owningZoneForGeometryEntity(entity, geometry) {
+  if (entity?.kind === "zone") {
+    return entity.item;
+  }
+  if (entity?.kind === "space") {
+    return zoneByName(geometry, entity.item.zoneName);
+  }
+  if (entity?.kind === "surface") {
+    return zoneByName(geometry, entity.item.zoneName);
+  }
+  if (entity?.kind === "window") {
+    const baseSurface = baseSurfaceForWindow(geometry, entity.item);
+    return zoneByName(geometry, entity.item.zoneName || baseSurface?.zoneName);
+  }
+  return null;
+}
+
+function geometryStoryIndexForEntity(entity, geometry) {
+  if (Number.isInteger(entity?.storyIndex)) {
+    return entity.storyIndex;
+  }
+  return owningZoneForGeometryEntity(entity, geometry)?.storyIndex;
+}
+
+function geometryEntityHasPlanShape(entity, geometry) {
+  if (entity?.kind === "zone") {
+    return (entity.item.surfaceIds || []).some((id) => {
+      const surface = surfaceByID(geometry, id);
+      return surface?.surfaceType?.toLowerCase() === "floor" && hasPlanVertices(surface);
+    });
+  }
+  if (entity?.kind === "space") {
+    return (geometry.surfaces || []).some((surface) => (
+      normalizeGeometryName(surface.spaceName) === normalizeGeometryName(entity.item.name) && hasPlanVertices(surface)
+    ));
+  }
+  return entity?.kind === "surface" || entity?.kind === "window" ? hasPlanVertices(entity.item) : true;
+}
+
+function baseSurfaceForWindow(geometry, windowItem) {
+  return windowItem?.baseSurfaceId
+    ? surfaceByID(geometry, windowItem.baseSurfaceId)
+    : surfaceByName(geometry, windowItem?.baseSurfaceName);
+}
+
+function findGeometryNavigationTarget(selection, target, context) {
+  const root = context?.root || document.getElementById("geometryPane");
+  const items = [...(root?.querySelectorAll?.("[data-panel-target-id], [data-entity-id]") || [])];
+  return items.find((item) => item.dataset.panelTargetId === String(target?.targetId || "")) ||
+    items.find((item) => item.dataset.entityId === String(selection?.entityId || "")) ||
+    context?.genericFindTarget(selection) || null;
+}
+
+function nextGeometryFrame() {
+  if (typeof window === "undefined" || typeof window.requestAnimationFrame !== "function") {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => window.requestAnimationFrame(resolve));
+}
+
+function commonPathPrefixLength(left, right) {
+  const leftParts = String(left || "").split("/").filter(Boolean);
+  const rightParts = String(right || "").split("/").filter(Boolean);
+  let length = 0;
+  while (length < leftParts.length && leftParts[length] === rightParts[length]) {
+    length += 1;
+  }
+  return length;
+}
+
+function geometryZoneSurfaceIsTemporarilyVisible(surface, geometry) {
+  return Boolean(
+    temporaryGeometryReveal?.ownerZoneId &&
+    temporaryGeometryReveal.ownerZoneId === zoneIdForName(geometry, surface.zoneName),
+  );
+}
+
+function geometrySurfaceIsTemporarilyVisible(surface) {
+  if (temporaryGeometryReveal?.kind === "surface" && temporaryGeometryReveal.id === surface.id) {
+    return true;
+  }
+  if (temporaryGeometryReveal?.kind === "space") {
+    const space = spaceByID(state.report?.geometry, temporaryGeometryReveal.id);
+    return Boolean(space && normalizeGeometryName(surface.spaceName) === normalizeGeometryName(space.name));
+  }
+  if (temporaryGeometryReveal?.kind === "zone") {
+    const zone = zoneByName(state.report?.geometry, surface.zoneName);
+    return zone?.id === temporaryGeometryReveal.id;
+  }
+  return temporaryGeometryReveal?.baseSurfaceId === surface.id;
+}
+
+function projectedSurfaceIsTemporarilyVisible(surface) {
+  if (temporaryGeometryReveal?.kind === "surface" && temporaryGeometryReveal.id === surface.id) {
+    return true;
+  }
+  if (temporaryGeometryReveal?.kind === "space") {
+    const space = spaceByID(state.report?.geometry, temporaryGeometryReveal.id);
+    return Boolean(space && normalizeGeometryName(surface.spaceName) === normalizeGeometryName(space.name));
+  }
+  if (temporaryGeometryReveal?.kind === "zone") {
+    return surface.zoneID === temporaryGeometryReveal.id;
+  }
+  return temporaryGeometryReveal?.baseSurfaceId === surface.id;
+}
+
+function geometryWindowIsTemporarilyVisible(windowItem) {
+  return temporaryGeometryReveal?.kind === "window" && temporaryGeometryReveal.id === windowItem.id;
+}
+
+function geometryRenderableMatchesSelection(kind, id) {
+  const normalizedKind = normalizeGeometryKind(kind);
+  if (normalizedKind === state.selectedGeometryKind && String(id || "") === state.selectedGeometryId) {
+    return true;
+  }
+  if (state.selectedGeometryKind === "zone" && normalizedKind === "surface") {
+    const zone = (state.report?.geometry?.zones || []).find((item) => item.id === state.selectedGeometryId);
+    const surface = surfaceByID(state.report?.geometry, id);
+    return Boolean(zone && surface && normalizeGeometryName(surface.zoneName) === normalizeGeometryName(zone.name));
+  }
+  if (state.selectedGeometryKind !== "space") {
+    return false;
+  }
+  const space = spaceByID(state.report?.geometry, state.selectedGeometryId);
+  if (normalizedKind === "zone") {
+    return Boolean(space && zoneByName(state.report?.geometry, space.zoneName)?.id === id);
+  }
+  if (normalizedKind !== "surface") {
+    return false;
+  }
+  const surface = surfaceByID(state.report?.geometry, id);
+  return Boolean(space && surface && normalizeGeometryName(surface.spaceName) === normalizeGeometryName(space.name));
+}
+
 function zoneByName(geometry, zoneName) {
   const key = normalizeGeometryName(zoneName);
   return key ? (geometry?.zones || []).find((zone) => normalizeGeometryName(zone.name) === key) || null : null;
+}
+
+function spaceByID(geometry, id) {
+  return (geometry?.spaces || []).find((space) => space.id === id) || null;
+}
+
+function spaceByName(geometry, name) {
+  const key = normalizeGeometryName(name);
+  return key ? (geometry?.spaces || []).find((space) => normalizeGeometryName(space.name) === key) || null : null;
 }
 
 function surfaceByID(geometry, id) {
@@ -1104,7 +1611,7 @@ function highlightSelectedMeshes() {
     if (!object.material || !object.userData?.geometryId) {
       return;
     }
-    const selected = object.userData.geometryId === state.selectedGeometryId && object.userData.geometryKind === state.selectedGeometryKind;
+    const selected = geometryRenderableMatchesSelection(object.userData.geometryKind, object.userData.geometryId);
     object.material.color.setHex(selected ? selectedColor : object.userData.baseColor);
     object.material.opacity = selected ? 0.95 : object.userData.baseOpacity;
   });
@@ -1115,7 +1622,7 @@ function highlightSelectedPlan() {
   elements.geometryPlan.querySelectorAll("[data-geometry-id]").forEach((shape) => {
     shape.classList.toggle(
       "selected",
-      shape.dataset.geometryId === state.selectedGeometryId && shape.dataset.geometryKind === state.selectedGeometryKind,
+      geometryRenderableMatchesSelection(shape.dataset.geometryKind, shape.dataset.geometryId),
     );
   });
 }

@@ -1,5 +1,9 @@
 import { backend, elements, escapeHTML, state } from "../state.js";
 import { t } from "../i18n.js";
+import {
+  configureResultPanelNavigationHooks,
+  refreshResultPanelSelectionStyles,
+} from "../panel-navigation-adapters.js";
 
 const OUTPUT_PURPOSE_FILTERS = [
   { id: "basic_energy", labelKey: "simulation.purposeBasicEnergy", fallback: "Basic Energy" },
@@ -10,8 +14,10 @@ const OUTPUT_PURPOSE_FILTERS = [
   { id: "custom_outputs", labelKey: "simulation.purposeCustom", fallback: "Custom Outputs" },
 ];
 const OUTPUT_RENDER_LIMIT = 500;
+let outputNavigationInitialized = false;
 
 export function initializeOutputControls() {
+  initializeOutputNavigation();
   elements.outputFilter?.addEventListener("input", () => renderOutput());
   elements.outputPurposeFilter?.addEventListener("change", () => {
     state.outputPurposeFilter = elements.outputPurposeFilter.value || "all";
@@ -56,7 +62,11 @@ export function renderOutput(output = state.report?.output) {
   const purposeFilter = elements.outputPurposeFilter?.value || state.outputPurposeFilter || "all";
   state.outputPurposeFilter = purposeFilter;
   syncOutputPurposeFilter(output, purposeFilter);
-  const existing = (output.existing || []).filter((item) => outputItemMatchesQuery(item, query) && outputItemMatchesPurpose(item, purposeFilter));
+  let existing = (output.existing || []).filter((item) => outputItemMatchesQuery(item, query) && outputItemMatchesPurpose(item, purposeFilter));
+  const temporarilyRevealed = (output.existing || []).find((item) => item.signature === state.outputTemporaryRevealSignature);
+  if (temporarilyRevealed && !existing.some((item) => item.signature === temporarilyRevealed.signature)) {
+    existing = [...existing, temporarilyRevealed];
+  }
   const recommendations = (output.recommendations || []).filter(
     (item) => outputRecommendationMatchesQuery(item, query) && outputItemMatchesPurpose(item, purposeFilter),
   );
@@ -85,6 +95,7 @@ export function renderOutput(output = state.report?.output) {
   elements.outputWarnings.innerHTML = warnings.length
     ? `${renderHiddenRowsNotice(warnings.length - renderedWarnings.length, "warnings")}${renderedWarnings.map(renderOutputWarning).join("")}`
     : `<div class="empty">${t("output.noWarnings")}</div>`;
+  refreshResultPanelSelectionStyles("output");
 }
 
 function renderHiddenRowsNotice(hiddenCount, label) {
@@ -154,8 +165,13 @@ function renderOutputRequestTable(items) {
 }
 
 function renderOutputRequestRow(item) {
+  const navigationAttributes = outputNavigationAttributes(item.signature, {
+    objectIndex: item.objectIndex,
+    objectType: item.objectType,
+    objectName: item.objectName,
+  });
   return `
-    <tr class="${item.duplicate ? "warning" : ""}">
+    <tr class="navigable-row ${item.duplicate ? "warning" : ""}" ${navigationAttributes} data-output-signature="${escapeHTML(item.signature || "")}" tabindex="0">
       <td>
         <strong title="${escapeHTML(outputScope(item))}">${escapeHTML(outputScope(item))}</strong>
         <small title="${escapeHTML(outputScopeMeta(item))}">${escapeHTML(outputScopeMeta(item))}</small>
@@ -163,7 +179,7 @@ function renderOutputRequestRow(item) {
       <td>
         <strong title="${escapeHTML(outputRequestName(item))}">${escapeHTML(outputRequestName(item))}</strong>
         <small title="${escapeHTML(item.objectType)}">${escapeHTML(outputRequestMeta(item))}</small>
-        ${renderOutputPurposeTags(item.purposeTags)}
+        ${renderOutputPurposeTags(item.purposeTags, item.signature)}
         ${renderOutputEnergySetTag(item)}
       </td>
       <td>${renderOutputFrequencyCell(item)}</td>
@@ -175,7 +191,7 @@ function renderOutputRequestRow(item) {
       </td>
       <td>
         <div class="output-row-actions">
-          <button class="profile-object-link navigable-row" type="button" data-jump-object-index="${escapeHTML(item.objectIndex)}" data-jump-object-type="${escapeHTML(item.objectType)}">#${escapeHTML(Number(item.objectIndex) + 1)}</button>
+          <button class="profile-object-link navigable-row" type="button" data-jump-object-index="${escapeHTML(item.objectIndex)}" data-jump-object-type="${escapeHTML(item.objectType)}" title="${escapeHTML(t("panelNavigation.revealSource", {}, "Reveal source"))}" aria-label="${escapeHTML(t("panelNavigation.revealSource", {}, "Reveal source"))}">#${escapeHTML(Number(item.objectIndex) + 1)}</button>
           <button type="button" data-output-remove="${escapeHTML(item.objectIndex)}">${escapeHTML(t("output.remove"))}</button>
         </div>
         <details class="output-field-details">
@@ -243,8 +259,9 @@ function renderOutputRecommendationTable(items) {
 }
 
 function renderOutputRecommendationRow(item) {
+  const navigationAttributes = outputNavigationAttributes("outputs");
   return `
-    <tr class="${item.exists ? "exists" : ""}">
+    <tr class="navigable-row ${item.exists ? "exists" : ""}" ${navigationAttributes} data-output-recommendation-id="${escapeHTML(item.id || "")}" tabindex="0">
       <td>
         <strong>${escapeHTML(outputCategoryLabel(item.category))}</strong>
         <small>${escapeHTML(item.objectType)}</small>
@@ -252,7 +269,7 @@ function renderOutputRecommendationRow(item) {
       <td>
         <strong title="${escapeHTML(item.label)}">${escapeHTML(item.label)}</strong>
         <small title="${escapeHTML(item.description || "")}">${escapeHTML(item.description || "")}</small>
-        ${renderOutputPurposeTags(item.purposeTags)}
+        ${renderOutputPurposeTags(item.purposeTags, "outputs")}
         ${renderOutputEnergySetTag(item)}
       </td>
       <td>${escapeHTML(recommendationDestination(item))}</td>
@@ -280,12 +297,12 @@ function renderOutputWarning(warning) {
     </article>`;
 }
 
-function renderOutputPurposeTags(tags = []) {
+function renderOutputPurposeTags(tags = [], targetId = "outputs") {
   const values = (tags || []).filter(Boolean);
   if (!values.length) {
     return "";
   }
-  return `<div class="output-purpose-tags">${values.map((tag) => `<span title="${escapeHTML(tag)}">${escapeHTML(outputPurposeLabel(tag))}</span>`).join("")}</div>`;
+  return `<div class="output-purpose-tags">${values.map((tag) => `<span class="navigable-row" ${outputNavigationAttributes(targetId, {}, tag)} data-output-purpose="${escapeHTML(tag)}" title="${escapeHTML(tag)}" tabindex="0">${escapeHTML(outputPurposeLabel(tag))}</span>`).join("")}</div>`;
 }
 
 function outputPurposeLabel(tag) {
@@ -294,6 +311,158 @@ function outputPurposeLabel(tag) {
     return String(tag || "").replaceAll("_", " ");
   }
   return t(purpose.labelKey, {}, purpose.fallback);
+}
+
+function initializeOutputNavigation() {
+  if (outputNavigationInitialized) {
+    return;
+  }
+  outputNavigationInitialized = true;
+  configureResultPanelNavigationHooks("output", {
+    canReveal(selection, context) {
+      const target = outputTargetForSelection(selection);
+      return Boolean(target && (target.targetId === "outputs" || outputRequestForTarget(target))) || context.genericCanReveal(selection);
+    },
+    async reveal(selection, options, context) {
+      const target = outputTargetForSelection(selection);
+      if (!target) {
+        return undefined;
+      }
+      const request = outputRequestForTarget(target);
+      if (request) {
+        state.outputFocusedSignature = request.signature || "";
+        state.outputTemporaryRevealSignature = outputRequestIsVisible(request) ? "" : request.signature || "";
+      } else {
+        state.outputFocusedSignature = "";
+        state.outputTemporaryRevealSignature = "";
+      }
+      renderOutput();
+      const focused = request
+        ? [...(elements.outputExisting?.querySelectorAll("[data-output-signature]") || [])]
+            .find((element) => element.dataset.outputSignature === request.signature)
+        : null;
+      const targetElement = focused || context.genericFindTarget(selection) || elements.outputExisting;
+      if (targetElement) {
+        targetElement.classList?.add("semantic-selected");
+        targetElement.toggleAttribute?.("data-semantic-selected", true);
+        if (options.scroll !== false) {
+          targetElement.scrollIntoView?.({ block: "nearest", inline: "nearest", behavior: "auto" });
+        }
+        if (focused && options.focus !== false) {
+          focused.focus?.({ preventScroll: true });
+        }
+      }
+      refreshResultPanelSelectionStyles("output", selection, state.globalHover);
+      return Boolean(targetElement);
+    },
+    captureContext(context) {
+      return {
+        ...context.genericCaptureContext(),
+        filter: elements.outputFilter?.value || "",
+        purposeFilter: elements.outputPurposeFilter?.value || state.outputPurposeFilter || "all",
+        focusedSignature: state.outputFocusedSignature || "",
+        temporaryRevealSignature: state.outputTemporaryRevealSignature || "",
+      };
+    },
+    async restoreContext(snapshot, context) {
+      if (elements.outputFilter) {
+        elements.outputFilter.value = snapshot.filter || "";
+      }
+      state.outputPurposeFilter = snapshot.purposeFilter || "all";
+      if (elements.outputPurposeFilter) {
+        elements.outputPurposeFilter.value = state.outputPurposeFilter;
+      }
+      state.outputFocusedSignature = snapshot.focusedSignature || "";
+      state.outputTemporaryRevealSignature = snapshot.temporaryRevealSignature || "";
+      renderOutput();
+      return context.genericRestoreContext(snapshot);
+    },
+    preferredSemanticOccurrence(selection, context) {
+      return context.genericPreferredSemanticOccurrence(selection);
+    },
+  });
+}
+
+function outputNavigationAttributes(targetId, explicitAnchor = {}, attachmentContext = "") {
+  const navigation = state.semanticProjection?.navigation || {};
+  const occurrenceIds = navigation.byViewTarget?.[`output|${targetId}`] || [];
+  const occurrences = (navigation.occurrences || []).filter((occurrence) => occurrenceIds.includes(occurrence.occurrenceId));
+  const currentPath = state.globalSelection?.semanticPathHint || state.semanticCurrentPath || "";
+  const occurrence = occurrences.find((candidate) => candidate.occurrenceId === state.globalSelection?.occurrenceId) ||
+    occurrences.sort((left, right) => commonOutputPathPrefix(right.path, currentPath) - commonOutputPathPrefix(left.path, currentPath))[0] || null;
+  const entity = (navigation.entities || []).find((candidate) => candidate.id === occurrence?.entityId) || null;
+  const sourceAnchor = { ...(occurrence?.sourceAnchor || entity?.sourceAnchors?.[0] || {}), ...explicitAnchor };
+  const selected = Boolean(
+    (entity?.id && state.globalSelection?.entityId === entity.id) ||
+    (targetId && state.outputFocusedSignature === targetId),
+  );
+  return [
+    `data-entity-id="${escapeHTML(entity?.id || "")}"`,
+    `data-entity-kind="${escapeHTML(entity?.kind || "")}"`,
+    `data-occurrence-context="${escapeHTML(occurrence?.occurrenceId || "")}"`,
+    `data-source-object-id="${escapeHTML(sourceAnchor.objectId || "")}"`,
+    `data-source-object-index="${escapeHTML(sourceAnchor.objectIndex ?? "")}"`,
+    `data-source-field-index="${escapeHTML(sourceAnchor.fieldIndex ?? "")}"`,
+    `data-panel-target-id="${escapeHTML(targetId || "")}"`,
+    `data-output-attachment-context="${escapeHTML(attachmentContext)}"`,
+    `aria-selected="${selected ? "true" : "false"}"`,
+  ].join(" ");
+}
+
+function outputTargetForSelection(selection = {}) {
+  const direct = selection.viewTarget;
+  if (String(direct?.view || "").toLowerCase() === "output" && direct.targetId) {
+    return direct;
+  }
+  const navigation = state.semanticProjection?.navigation || {};
+  const occurrence = (navigation.occurrences || []).find((candidate) => candidate.occurrenceId === selection.occurrenceId);
+  const entity = (navigation.entities || []).find((candidate) => candidate.id === selection.entityId);
+  const targets = [...(occurrence?.viewTargets || []), ...(entity?.viewTargets || [])]
+    .filter((target) => String(target.view || "").toLowerCase() === "output" && target.targetId)
+    .sort((left, right) => Number(right.priority || 0) - Number(left.priority || 0));
+  if (selection.originView === "output" && selection.originTargetId) {
+    return targets.find((target) => target.targetId === selection.originTargetId) || {
+      view: "output",
+      targetKind: "request",
+      targetId: selection.originTargetId,
+    };
+  }
+  return targets[0] || null;
+}
+
+function outputRequestForTarget(target, output = state.report?.output) {
+  const requests = output?.existing || [];
+  const targetId = String(target?.targetId || "");
+  const exact = requests.find((item) => item.signature === targetId);
+  if (exact) {
+    return exact;
+  }
+  if (["zone", "attachment"].includes(String(target?.targetKind || "").toLowerCase())) {
+    const normalizedTarget = normalizeOutputNavigationText(targetId);
+    return requests.find((item) => [item.keyValue, item.objectName, outputScope(item)]
+      .some((value) => normalizeOutputNavigationText(value) === normalizedTarget)) || null;
+  }
+  return null;
+}
+
+function outputRequestIsVisible(item) {
+  const query = (elements.outputFilter?.value || "").trim().toLowerCase();
+  const purpose = elements.outputPurposeFilter?.value || state.outputPurposeFilter || "all";
+  return outputItemMatchesQuery(item, query) && outputItemMatchesPurpose(item, purpose);
+}
+
+function normalizeOutputNavigationText(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function commonOutputPathPrefix(left = "", right = "") {
+  const leftParts = String(left || "").split("/").filter(Boolean);
+  const rightParts = String(right || "").split("/").filter(Boolean);
+  let length = 0;
+  while (length < leftParts.length && leftParts[length] === rightParts[length]) {
+    length += 1;
+  }
+  return length;
 }
 
 function renderOutputEnergySetTag(item = {}) {

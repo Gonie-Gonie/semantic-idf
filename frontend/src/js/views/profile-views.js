@@ -1,8 +1,11 @@
 import { backend, elements, escapeHTML, setStatus, state } from "../state.js";
 import { getCurrentAppSettings, saveAppSettings } from "../settings-client.js";
 import { profileDimensionLabel as i18nProfileDimensionLabel, profileMetricLabel, t } from "../i18n.js";
+import { configureResultPanelNavigationHooks } from "../panel-navigation-adapters.js";
 
 let lastProfileView = null;
+let profileNavigationCleanup = null;
+let profileNavigationRevealTarget = null;
 const PROFILE_MATRIX_RENDER_LIMIT = 500;
 
 export function renderProfile(profile = state.report?.profile) {
@@ -23,8 +26,12 @@ export function renderProfile(profile = state.report?.profile) {
   }
 
   const query = profileQuery();
-  const visibleGroups = lastProfileView.groups.filter((group) => profileGroupMatchesQuery(group, query));
-  const visibleRows = lastProfileView.matrix.filter((row) => profileMatrixRowMatchesQuery(row, query));
+  const visibleGroups = lastProfileView.groups.filter(
+    (group) => profileGroupMatchesQuery(group, query) || profileRevealMatchesGroup(group),
+  );
+  const visibleRows = lastProfileView.matrix.filter(
+    (row) => profileMatrixRowMatchesQuery(row, query) || profileRevealMatchesRow(row),
+  );
   if (query && !visibleGroups.some((group) => group.id === state.activeProfileGroupId)) {
     state.activeProfileGroupId = visibleGroups[0]?.id || "";
   }
@@ -129,6 +136,159 @@ function optionHTML(value, label, selected) {
   return `<option value="${escapeHTML(value)}" ${String(selected) === String(value) ? "selected" : ""}>${escapeHTML(label)}</option>`;
 }
 
+function profileNavigationIndex() {
+  return state.semanticProjection?.navigation || {};
+}
+
+function profileSemanticAttributes(targetIDs, options = {}) {
+  const targets = [...new Set((targetIDs || []).map((value) => String(value || "").trim()).filter(Boolean))];
+  for (const targetID of targets) {
+    const record = profileSemanticRecordForTarget(targetID);
+    if (!record) {
+      continue;
+    }
+    const attributes = [
+      semanticDataAttribute("data-entity-id", record.entity.id),
+      semanticDataAttribute("data-entity-kind", record.entity.kind),
+      semanticDataAttribute("data-panel-target-id", targetID),
+      semanticDataAttribute("data-occurrence-id", record.occurrences.length === 1 ? record.occurrences[0].occurrenceId : ""),
+      semanticDataAttribute(
+        "data-occurrence-context",
+        options.occurrenceContext || uniqueSemanticValue(record.occurrences, "contextKind"),
+      ),
+      semanticDataAttribute("data-source-object-id", record.sourceAnchor?.objectId),
+      semanticDataAttribute("data-source-object-index", record.sourceAnchor?.objectIndex),
+      semanticDataAttribute("data-source-field-index", record.sourceAnchor?.fieldIndex),
+      semanticDataAttribute("data-source-object-type", record.sourceAnchor?.objectType),
+      semanticDataAttribute("data-source-object-name", record.sourceAnchor?.objectName),
+      semanticDataAttribute("data-source-field-name", record.sourceAnchor?.fieldName),
+    ].filter(Boolean);
+    return attributes.join(" ");
+  }
+  return "";
+}
+
+function profileSemanticRecordForTarget(targetID) {
+  const navigation = profileNavigationIndex();
+  const occurrenceByID = new Map((navigation.occurrences || []).map((occurrence) => [occurrence.occurrenceId, occurrence]));
+  const occurrences = (navigation.byViewTarget?.[`profile|${targetID}`] || [])
+    .map((occurrenceID) => occurrenceByID.get(occurrenceID))
+    .filter(Boolean);
+  const entityIDs = [...new Set(occurrences.map((occurrence) => occurrence.entityId).filter(Boolean))];
+  if (entityIDs.length !== 1) {
+    return null;
+  }
+  const entity = (navigation.entities || []).find((candidate) => candidate.id === entityIDs[0]);
+  if (!entity) {
+    return null;
+  }
+  const anchors = [...occurrences.map((occurrence) => occurrence.sourceAnchor), ...(entity.sourceAnchors || [])]
+    .filter(Boolean);
+  const anchorsByKey = new Map(anchors.map((anchor) => [profileSourceAnchorKey(anchor), anchor]));
+  return {
+    entity,
+    occurrences,
+    sourceAnchor: anchorsByKey.size === 1 ? anchorsByKey.values().next().value : null,
+  };
+}
+
+function semanticDataAttribute(name, value) {
+  if (value === undefined || value === null || String(value) === "") {
+    return "";
+  }
+  return `${name}="${escapeHTML(String(value))}"`;
+}
+
+function uniqueSemanticValue(items, key) {
+  const values = [...new Set((items || []).map((item) => String(item?.[key] || "")).filter(Boolean))];
+  return values.length === 1 ? values[0] : "";
+}
+
+function profileSourceAnchorKey(anchor = {}) {
+  return [anchor.objectId || "", anchor.objectIndex ?? "", anchor.fieldIndex ?? "", anchor.objectType || "", anchor.objectName || ""].join("|");
+}
+
+function profileMatrixSemanticTargets(zoneName, dimension, itemIDs = []) {
+  const targets = [profileZoneDimensionTargetID(zoneName, dimension)];
+  if (itemIDs.length === 1) {
+    targets.push(itemIDs[0]);
+  }
+  return targets;
+}
+
+function profileGroupSemanticTargets(group = {}) {
+  const reportGroup = (state.report?.profile?.groups || []).find((candidate) => (
+    sameStringSet(candidate.zoneNames, group.zoneNames) && sameStringSet(candidate.itemIds, group.itemIds)
+  ));
+  return reportGroup?.id ? [reportGroup.id] : [];
+}
+
+function profileSeriesSemanticTargets(series = {}) {
+  const targets = [];
+  if ((series.sourceItemIds || []).length === 1) {
+    targets.push(series.sourceItemIds[0]);
+  }
+  if (series.scopeType === "group" && series.groupId) {
+    targets.push(series.groupId);
+  }
+  if (series.zoneName && series.dimension) {
+    targets.push(profileZoneDimensionTargetID(series.zoneName, series.dimension));
+  }
+  targets.push(...profileScheduleTargetNames(series.scheduleName));
+  return targets;
+}
+
+function profileAggregateSemanticTargets(item = {}) {
+  const targets = [];
+  if ((item.sourceItemIds || []).length === 1) {
+    targets.push(item.sourceItemIds[0]);
+  }
+  if (item.zoneName && item.dimension) {
+    targets.push(profileZoneDimensionTargetID(item.zoneName, item.dimension));
+  }
+  if (item.groupId) {
+    targets.push(item.groupId);
+  }
+  return targets;
+}
+
+function profileScheduleSemanticAttributes(cluster = {}) {
+  const scheduleNames = (cluster.scheduleNames || []).map((value) => String(value || "").trim()).filter(Boolean);
+  if (scheduleNames.length !== 1) {
+    return "";
+  }
+  return profileSemanticAttributes(scheduleNames, { occurrenceContext: "zone_profile" });
+}
+
+function profileScheduleTargetNames(value) {
+  const normalized = String(value || "").trim();
+  if (!normalized) {
+    return [];
+  }
+  return [normalized, ...normalized.split(/\s+\+\s+/).map((item) => item.trim()).filter(Boolean)];
+}
+
+function profileZoneDimensionTargetID(zoneName, dimension) {
+  return `profile-zone-dimension:${profileSemanticToken(zoneName)}:${profileSemanticToken(dimension)}`;
+}
+
+function profileSemanticToken(value) {
+  const bytes = new TextEncoder().encode(String(value || "").trim().toLowerCase());
+  return [...bytes]
+    .map((byte) => (
+      (byte >= 97 && byte <= 122) || (byte >= 48 && byte <= 57) || byte === 45 || byte === 95 || byte === 46
+        ? String.fromCharCode(byte)
+        : `%${byte.toString(16).padStart(2, "0")}`
+    ))
+    .join("");
+}
+
+function sameStringSet(left = [], right = []) {
+  const first = [...new Set(left.map((item) => String(item || "")))].sort();
+  const second = [...new Set(right.map((item) => String(item || "")))].sort();
+  return first.length === second.length && first.every((item, index) => item === second[index]);
+}
+
 function renderProfileOverview(groups, rows) {
   if (state.activeProfileView === "zone") {
     elements.profileOverview.innerHTML = rows.length
@@ -144,7 +304,8 @@ function renderProfileOverview(groups, rows) {
 function renderProfileGroupCard(group) {
   const active = group.id === state.activeProfileGroupId ? "active" : "";
   return `
-    <button class="profile-group-card ${active}" data-profile-group-id="${escapeHTML(group.id)}" type="button">
+    <button class="profile-group-card navigable-row ${active}" data-profile-group-id="${escapeHTML(group.id)}" type="button"
+      ${profileSemanticAttributes(profileGroupSemanticTargets(group), { occurrenceContext: "zone_profile" })}>
       <span>
         <strong>${escapeHTML(group.name)}</strong>
         <small>${escapeHTML(t("count.zones", { count: group.zoneCount }))}</small>
@@ -157,7 +318,8 @@ function renderProfileGroupCard(group) {
 function renderProfileZoneCard(row) {
   const active = row.zoneName === state.activeProfileZoneName ? "active" : "";
   return `
-    <button class="profile-group-card profile-zone-card ${active}" data-profile-zone="${escapeHTML(row.zoneName)}" type="button">
+    <button class="profile-group-card profile-zone-card navigable-row ${active}" data-profile-zone="${escapeHTML(row.zoneName)}" type="button"
+      ${profileSemanticAttributes([row.zoneName], { occurrenceContext: "zone_profile" })}>
       <span>
         <strong>${escapeHTML(row.zoneName)}</strong>
         <small>${escapeHTML(row.groupName || t("profile.noProfileGroup"))}</small>
@@ -217,7 +379,8 @@ function renderProfileItemRow(item) {
     .map((metric) => `${profileMetricLabel(item.dimension, metric.id, metric.label)}: ${metric.displayValue}`)
     .join("; ");
   return `
-    <div class="profile-item-row" role="row">
+    <div class="profile-item-row navigable-row" role="row" tabindex="0"
+      ${profileSemanticAttributes([item.id], { occurrenceContext: "zone_profile" })}>
       <span>${escapeHTML(profileDimensionLabel(item.dimension))}</span>
       <span>
         <button class="profile-object-link navigable-row" data-jump-object-index="${escapeHTML(item.objectIndex)}" data-jump-object-type="${escapeHTML(item.objectType)}" type="button">
@@ -225,7 +388,8 @@ function renderProfileItemRow(item) {
         </button>
         ${escapeHTML(item.objectName || item.objectType)}
       </span>
-      <span>${escapeHTML(item.scheduleName || "N/A")}<small>${escapeHTML(item.schedulePattern || "")}</small></span>
+      <span class="navigable-row" tabindex="0" data-choose-semantic-occurrence="true"
+        ${profileSemanticAttributes(profileScheduleTargetNames(item.scheduleName), { occurrenceContext: "zone_profile" })}>${escapeHTML(item.scheduleName || "N/A")}<small>${escapeHTML(item.schedulePattern || "")}</small></span>
       <span>${escapeHTML(item.rawMethod || "N/A")}<small>${escapeHTML(item.rawValue || "")}</small></span>
       <span>${escapeHTML(metrics || "N/A")}</span>
     </div>`;
@@ -244,14 +408,16 @@ function renderProfileSourceAccordion(item) {
     .map((metric) => `<span>${escapeHTML(profileMetricLabel(item.dimension, metric.id, metric.label))}: ${escapeHTML(metric.displayValue || "N/A")}</span>`)
     .join("");
   return `
-    <details class="profile-source-accordion">
-      <summary>
+    <details class="profile-source-accordion" ${profileSemanticAttributes([item.id], { occurrenceContext: "zone_profile" })}>
+      <summary class="navigable-row" tabindex="0">
         <span>${escapeHTML(profileDimensionLabel(item.dimension))}</span>
         <strong>${escapeHTML(item.objectName || item.objectType)}</strong>
-        <small>${escapeHTML(item.scheduleName || item.schedulePattern || t("profile.noSchedule"))}</small>
+        <small class="navigable-row" tabindex="0" data-choose-semantic-occurrence="true"
+          ${profileSemanticAttributes(profileScheduleTargetNames(item.scheduleName), { occurrenceContext: "zone_profile" })}>${escapeHTML(item.scheduleName || item.schedulePattern || t("profile.noSchedule"))}</small>
       </summary>
       <div>
-        <button class="profile-object-link navigable-row" data-jump-object-index="${escapeHTML(item.objectIndex)}" data-jump-object-type="${escapeHTML(item.objectType)}" type="button">
+        <button class="profile-object-link navigable-row" data-jump-object-index="${escapeHTML(item.objectIndex)}" data-jump-object-type="${escapeHTML(item.objectType)}" type="button"
+          ${profileSemanticAttributes([item.id], { occurrenceContext: "zone_profile" })}>
           #${escapeHTML(Number(item.objectIndex) + 1)} ${escapeHTML(item.objectType)}
         </button>
         <span>${escapeHTML(item.rawMethod || "N/A")} ${escapeHTML(item.rawValue || "")}</span>
@@ -264,7 +430,10 @@ function renderProfileMatrix(rows, query, profile) {
   const visibleRows = rows.filter((row) => profileMatrixRowMatchesQuery(row, query));
   const renderedRows = visibleRows.slice(0, PROFILE_MATRIX_RENDER_LIMIT);
   const hiddenRows = Math.max(0, visibleRows.length - renderedRows.length);
-  const dimensions = (lastProfileView?.dimensions || []).filter((dimension) => state.profileSettings.enabledDimensions.includes(dimension.id));
+  const dimensions = (lastProfileView?.dimensions || []).filter((dimension) => (
+    state.profileSettings.enabledDimensions.includes(dimension.id) ||
+    dimension.id === profileNavigationRevealTarget?.dimension
+  ));
   const itemMap = profileItemMap(profile);
   elements.profileMatrixStats.textContent = t("count.zones", { count: visibleRows.length });
   elements.profileMatrix.innerHTML = visibleRows.length
@@ -278,7 +447,8 @@ function renderProfileMatrix(rows, query, profile) {
           ${renderedRows
             .map(
               (row) => `
-                <tr class="${profileMatrixRowActive(row) ? "active" : ""}" data-profile-zone="${escapeHTML(row.zoneName)}">
+                <tr class="${profileMatrixRowActive(row) ? "active" : ""}" data-profile-zone="${escapeHTML(row.zoneName)}"
+                  ${profileSemanticAttributes([row.zoneName], { occurrenceContext: "zone_profile" })}>
                   <th>
                     <button class="profile-object-link navigable-row" data-jump-object-index="${escapeHTML(row.zoneObjectIndex)}" data-jump-object-type="Zone" type="button">
                       #${escapeHTML(Number(row.zoneObjectIndex) + 1)}
@@ -288,7 +458,8 @@ function renderProfileMatrix(rows, query, profile) {
                   </th>
                   ${dimensions
                     .map((dimension) => {
-                      const summary = row.dimensions.find((item) => item.dimension === dimension.id);
+                      const summary = row.dimensions.find((item) => item.dimension === dimension.id) ||
+                        temporaryProfileDimensionSummary(profile, row.zoneName, dimension.id);
                       return renderProfileMatrixCell(summary, itemMap, row);
                     })
                     .join("")}
@@ -306,12 +477,14 @@ function renderProfileMatrixCell(summary, itemMap, row) {
   }
   const cellClasses = profileMatrixCellClasses(summary, row);
   const itemIds = (summary.itemIds || []).join(",");
+  const semanticTargets = profileMatrixSemanticTargets(row.zoneName, summary.dimension, summary.itemIds || []);
   const objects = (summary.itemIds || [])
     .map((id) => itemMap.get(id))
     .filter(Boolean)
     .map(
       (item) => `
-        <button class="profile-object-link navigable-row" data-jump-object-index="${escapeHTML(item.objectIndex)}" data-jump-object-type="${escapeHTML(item.objectType)}" type="button">
+        <button class="profile-object-link navigable-row" data-jump-object-index="${escapeHTML(item.objectIndex)}" data-jump-object-type="${escapeHTML(item.objectType)}" type="button"
+          ${profileSemanticAttributes([item.id], { occurrenceContext: "zone_profile" })}>
           #${escapeHTML(Number(item.objectIndex) + 1)} ${escapeHTML(shortObjectType(item.objectType))}
         </button>`,
     )
@@ -326,11 +499,19 @@ function renderProfileMatrixCell(summary, itemMap, row) {
       data-profile-schedule-name="${escapeHTML(summary.scheduleName || "")}"
       data-profile-value="${escapeHTML(String(summary.value ?? ""))}"
       data-profile-item-ids="${escapeHTML(itemIds)}"
+      ${profileSemanticAttributes(semanticTargets, { occurrenceContext: "zone_profile" })}
       aria-label="${escapeHTML(`${row.zoneName} ${summary.label} ${summary.displayValue}`)}">
       <strong>${escapeHTML(summary.displayValue)}</strong>
       <small>${escapeHTML(summary.schedulePattern || summary.scheduleName || "")}</small>
       ${objects ? `<div class="profile-matrix-objects">${objects}</div>` : ""}
     </td>`;
+}
+
+function temporaryProfileDimensionSummary(profile, zoneName, dimensionID) {
+  if (dimensionID !== profileNavigationRevealTarget?.dimension) {
+    return null;
+  }
+  return profileDimensionSummary(profile, zoneName, dimensionID);
 }
 
 function renderProfileGraph(group, profile, zoneRow = null) {
@@ -436,7 +617,8 @@ function renderProfileSeriesCard(series, deck, sharedMax = 0) {
   const schedule = series.schedulePattern || series.scheduleName || t("profile.noSchedule");
   const warnings = (series.warnings || []).slice(0, 2).map(renderProfileWarning).join("");
   return `
-    <article class="profile-graph-card ${pinned ? "pinned" : ""}" data-profile-series-id="${escapeHTML(series.id)}">
+    <article class="profile-graph-card navigable-row ${pinned ? "pinned" : ""}" data-profile-series-id="${escapeHTML(series.id)}"
+      tabindex="0" role="group" ${profileSemanticAttributes(profileSeriesSemanticTargets(series), { occurrenceContext: "zone_profile" })}>
       <div class="profile-graph-card-head">
         <div>
           <strong>${escapeHTML(series.dimensionLabel || profileDimensionLabel(series.dimension))}</strong>
@@ -458,7 +640,8 @@ function renderProfileOverlay(series, deck) {
   const metrics = series.slice(0, 12).map((item) => ({ series: item, metric: profileSeriesMetric(item, deck) }));
   const max = sharedProfileSeriesMax(series, { ...deck, scaleMode: "shared" });
   const labels = metrics
-    .map(({ series: item }, index) => `<span><i style="background:${profileSeriesColor(index)}"></i>${escapeHTML(item.zoneName || item.groupName || item.label)}</span>`)
+    .map(({ series: item }, index) => `<span class="navigable-row" role="button" tabindex="0" data-profile-series-id="${escapeHTML(item.id)}"
+      ${profileSemanticAttributes(profileSeriesSemanticTargets(item), { occurrenceContext: "zone_profile" })}><i style="background:${profileSeriesColor(index)}"></i>${escapeHTML(item.zoneName || item.groupName || item.label)}</span>`)
     .join("");
   return `
     <div class="profile-overlay-panel">
@@ -473,7 +656,7 @@ function renderOverlayGraph(items, max, unit = "") {
   const height = plot.bottom - plot.top;
   const y = (value) => plot.bottom - (clampGraphValue(value, max) / max) * height;
   const paths = items
-    .map(({ metric }, index) => {
+    .map(({ series, metric }, index) => {
       const data = metric.values.length > 420 ? downsampleValues(metric.values, 420) : metric.values;
       const path = data
         .map((value, valueIndex) => {
@@ -481,7 +664,8 @@ function renderOverlayGraph(items, max, unit = "") {
           return `${valueIndex === 0 ? "M" : "L"}${x.toFixed(2)},${y(value).toFixed(2)}`;
         })
         .join(" ");
-      return `<path d="${path}" stroke="${profileSeriesColor(index)}"></path>`;
+      return `<path d="${path}" stroke="${profileSeriesColor(index)}" data-profile-series-id="${escapeHTML(series.id)}"
+        ${profileSemanticAttributes(profileSeriesSemanticTargets(series), { occurrenceContext: "zone_profile" })}></path>`;
     })
     .join("");
   return `
@@ -509,7 +693,8 @@ function renderProfileSeriesRanking(series, deck) {
         .map(({ series: item, metric }) => {
           const value = Math.max(...metric.values, 0);
           return `
-            <button class="profile-ranking-row" type="button" data-profile-series-focus="${escapeHTML(item.id)}" role="row">
+            <button class="profile-ranking-row navigable-row" type="button" data-profile-series-focus="${escapeHTML(item.id)}" role="row"
+              ${profileSemanticAttributes(profileSeriesSemanticTargets(item), { occurrenceContext: "zone_profile" })}>
               <span>${escapeHTML(item.zoneName || item.groupName || item.label)}</span>
               <span>${escapeHTML(item.dimensionLabel || item.dimension)}</span>
               <span>${escapeHTML(formatGraphNumber(value, metric.unit))}</span>
@@ -533,7 +718,8 @@ function renderProfileScheduleSimilarity(profile) {
         ${clusters
           .map(
             (cluster) => `
-              <button class="profile-cluster-row" type="button" data-profile-schedule-hash="${escapeHTML(cluster.scheduleHash)}" role="row">
+              <button class="profile-cluster-row navigable-row" type="button" data-profile-schedule-hash="${escapeHTML(cluster.scheduleHash)}" role="row"
+                data-choose-semantic-occurrence="true" ${profileScheduleSemanticAttributes(cluster)}>
                 <span>${escapeHTML(cluster.pattern || cluster.label || "")}</span>
                 <span>${escapeHTML((cluster.scheduleNames || []).join(", ") || cluster.scheduleHash)}</span>
                 <span>${escapeHTML(String((cluster.zoneNames || []).length))}</span>
@@ -553,7 +739,8 @@ function renderScheduleClusterScatter(clusters) {
       const x = 30 + ((Number(cluster.centroidX) || 0) / maxX) * 250;
       const y = 170 - ((Number(cluster.centroidY) || 0) / maxY) * 145;
       const radius = Math.min(18, 5 + Math.sqrt((cluster.zoneNames || []).length || (cluster.scheduleNames || []).length || 1));
-      return `<button class="profile-scatter-point" style="--x:${x}px;--y:${y}px;--r:${radius}px;--c:${profileSeriesColor(index)}" data-profile-schedule-hash="${escapeHTML(cluster.scheduleHash)}" title="${escapeHTML((cluster.scheduleNames || []).join(", "))}" aria-label="${escapeHTML(cluster.label || cluster.scheduleHash)}"></button>`;
+      return `<button class="profile-scatter-point navigable-row" style="--x:${x}px;--y:${y}px;--r:${radius}px;--c:${profileSeriesColor(index)}" data-profile-schedule-hash="${escapeHTML(cluster.scheduleHash)}"
+        data-choose-semantic-occurrence="true" ${profileScheduleSemanticAttributes(cluster)} title="${escapeHTML((cluster.scheduleNames || []).join(", "))}" aria-label="${escapeHTML(cluster.label || cluster.scheduleHash)}"></button>`;
     })
     .join("");
   return `
@@ -582,7 +769,8 @@ function renderProfileOutlierDeck(profile) {
 
 function renderProfileOutlierRow(hint) {
   return `
-    <button class="profile-qa-row ${escapeHTML(hint.severity || "info")}" type="button" data-profile-outlier-zone="${escapeHTML(hint.zoneName || "")}" data-profile-dimension="${escapeHTML(hint.dimension || "")}" data-profile-schedule-hash="${escapeHTML(hint.scheduleHash || "")}">
+    <button class="profile-qa-row navigable-row ${escapeHTML(hint.severity || "info")}" type="button" data-profile-outlier-zone="${escapeHTML(hint.zoneName || "")}" data-profile-dimension="${escapeHTML(hint.dimension || "")}" data-profile-schedule-hash="${escapeHTML(hint.scheduleHash || "")}"
+      ${profileSemanticAttributes(profileAggregateSemanticTargets(hint), { occurrenceContext: "zone_profile" })}>
       <strong>${escapeHTML(hint.ruleId || hint.severity || "QA")}</strong>
       <span>${escapeHTML(hint.message || "")}</span>
       <small>${escapeHTML([hint.zoneName, profileDimensionLabel(hint.dimension), hint.scheduleName].filter(Boolean).join(" / "))}</small>
@@ -591,7 +779,8 @@ function renderProfileOutlierRow(hint) {
 
 function renderProfileCandidateRow(candidate) {
   return `
-    <button class="profile-qa-row candidate ${escapeHTML(candidate.severity || "info")}" type="button" data-profile-candidate-id="${escapeHTML(candidate.id)}" data-profile-dimension="${escapeHTML(candidate.dimension || "")}">
+    <button class="profile-qa-row candidate navigable-row ${escapeHTML(candidate.severity || "info")}" type="button" data-profile-candidate-id="${escapeHTML(candidate.id)}" data-profile-dimension="${escapeHTML(candidate.dimension || "")}"
+      ${profileSemanticAttributes(profileAggregateSemanticTargets(candidate), { occurrenceContext: "zone_profile" })}>
       <strong>${escapeHTML(candidate.label || candidate.id)}</strong>
       <span>${escapeHTML(candidate.reason || "")}</span>
       <small>${escapeHTML(`${(candidate.zoneNames || []).length} zones 쨌 ${formatGraphNumber(candidate.currentMin, "")}..${formatGraphNumber(candidate.currentMax, "")}`)}</small>
@@ -613,7 +802,8 @@ function renderProfileGraphSummary(group, zoneRow, dimensions) {
           ${group.zoneNames
             .map(
               (zoneName) => `
-                <button class="${zoneName === zoneRow?.zoneName ? "active" : ""}" type="button" data-profile-zone-ref="${escapeHTML(zoneName)}" title="${escapeHTML(zoneName)}">
+                <button class="navigable-row ${zoneName === zoneRow?.zoneName ? "active" : ""}" type="button" data-profile-zone-ref="${escapeHTML(zoneName)}" title="${escapeHTML(zoneName)}"
+                  ${profileSemanticAttributes([zoneName], { occurrenceContext: "zone_profile" })}>
                   ${escapeHTML(zoneName)}
                 </button>`,
             )
@@ -1477,7 +1667,7 @@ function selectProfileMatrixCell(cell) {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
-  const selected = {
+  selectProfileCellData({
     zoneName: cell.dataset.profileZone || "",
     groupId: cell.dataset.profileGroupId || "",
     dimension: cell.dataset.profileDimension || "",
@@ -1485,7 +1675,10 @@ function selectProfileMatrixCell(cell) {
     scheduleName: cell.dataset.profileScheduleName || "",
     value: Number(cell.dataset.profileValue) || 0,
     itemIds,
-  };
+  });
+}
+
+function selectProfileCellData(selected) {
   state.profileSelectedCell = selected;
   if (selected.zoneName) {
     selectProfileZone(selected.zoneName);
@@ -1499,6 +1692,489 @@ function selectProfileMatrixCell(cell) {
     selectedScheduleHashes: selected.scheduleHash ? [selected.scheduleHash] : [],
     selectedDimensions: selected.dimension ? [selected.dimension] : state.profileGraphDeck?.selectedDimensions || [],
   };
+}
+
+function configureProfilePanelNavigation() {
+  if (profileNavigationCleanup) {
+    return;
+  }
+  profileNavigationCleanup = configureResultPanelNavigationHooks("profile", {
+    canReveal: profileCanRevealSelection,
+    reveal: revealProfileSelection,
+    selectFromElement: selectProfileSemanticFromElement,
+    findTarget: findProfileNavigationTarget,
+    captureContext: captureProfileNavigationContext,
+    restoreContext: restoreProfileNavigationContext,
+    preferredSemanticOccurrence: preferredProfileSemanticOccurrence,
+  });
+}
+
+function profileCanRevealSelection(selection, context) {
+  if (!state.report?.profile) {
+    return false;
+  }
+  const target = profileViewTargetForSelection(selection, context.navigation);
+  if (!target) {
+    return context.genericCanReveal(selection);
+  }
+  return Boolean(profileNavigationTargetData(target));
+}
+
+async function revealProfileSelection(selection, options, context) {
+  const profile = state.report?.profile;
+  if (!profile) {
+    return false;
+  }
+  if (!lastProfileView) {
+    renderProfile(profile);
+  }
+  const target = profileViewTargetForSelection(selection, context.navigation);
+  const targetData = target ? profileNavigationTargetData(target) : null;
+  if (!target || !targetData || !applyProfileNavigationTarget(targetData, selection)) {
+    return context.genericReveal(selection, options);
+  }
+  profileNavigationRevealTarget = {
+    targetId: target.targetId,
+    targetKind: target.targetKind,
+    zoneName: targetData.zoneName || "",
+    groupId: targetData.currentGroup?.id || "",
+    dimension: targetData.dimension || "",
+  };
+  renderProfile(profile);
+  context.refreshSelectionStyles(selection, state.globalHover);
+  const targetElement = findProfileNavigationTarget({ ...selection, viewTarget: target }, context);
+  if (!targetElement) {
+    return false;
+  }
+  focusProfileNavigationElement(targetElement, options);
+  return true;
+}
+
+function selectProfileSemanticFromElement(element, context) {
+  const selection = context.extractSelection(element);
+  if (!selection) {
+    return null;
+  }
+  const target = element?.closest?.("[data-choose-semantic-occurrence]");
+  if (target?.dataset.chooseSemanticOccurrence === "true") {
+    return {
+      ...selection,
+      occurrenceId: "",
+      semanticPathHint: "",
+      chooseOccurrence: true,
+    };
+  }
+  return selection;
+}
+
+function findProfileNavigationTarget(selection, context) {
+  const target = profileViewTargetForSelection(selection, context.navigation);
+  if (!target) {
+    return context.genericFindTarget(selection);
+  }
+  const root = context.root;
+  if (!root) {
+    return null;
+  }
+  if (target.targetKind === "profile-item") {
+    const matrixCell = [...(elements.profileMatrix?.querySelectorAll("[data-profile-item-ids]") || [])]
+      .find((cell) => String(cell.dataset.profileItemIds || "").split(",").includes(target.targetId));
+    if (matrixCell) {
+      return matrixCell;
+    }
+  }
+  const containers = target.targetKind === "schedule"
+    ? [elements.profileGraph, elements.profileDetail, elements.profileMatrix, elements.profileOverview]
+    : target.targetKind === "profile-group" || target.targetKind === "zone"
+      ? [elements.profileOverview, elements.profileMatrix, elements.profileGraph, elements.profileDetail]
+      : [elements.profileMatrix, elements.profileGraph, elements.profileDetail, elements.profileOverview];
+  for (const container of containers) {
+    const match = panelTargetElement(container, target.targetId);
+    if (match) {
+      return match;
+    }
+  }
+  return context.genericFindTarget({ ...selection, viewTarget: target });
+}
+
+function captureProfileNavigationContext(context) {
+  return {
+    ...context.genericCaptureContext(),
+    activeProfileView: state.activeProfileView,
+    activeProfileZoneName: state.activeProfileZoneName,
+    activeProfileGroupId: state.activeProfileGroupId,
+    profileSelectedCell: cloneProfileSelectedCell(state.profileSelectedCell),
+    profilePinnedSeriesIds: [...(state.profilePinnedSeriesIds || [])],
+    profileGraphDeck: cloneProfileGraphDeck(state.profileGraphDeck),
+    profileFilter: String(elements.profileFilter?.value || ""),
+    navigationRevealTarget: profileNavigationRevealTarget ? { ...profileNavigationRevealTarget } : null,
+    overviewScrollTop: Number(elements.profileOverview?.scrollTop) || 0,
+    graphScrollTop: Number(elements.profileGraph?.scrollTop) || 0,
+    matrixScrollTop: Number(elements.profileMatrix?.scrollTop) || 0,
+    detailScrollTop: Number(elements.profileDetail?.scrollTop) || 0,
+  };
+}
+
+async function restoreProfileNavigationContext(snapshot = {}, context) {
+  if (!state.report?.profile) {
+    return false;
+  }
+  if (Object.prototype.hasOwnProperty.call(snapshot, "activeProfileView")) {
+    state.activeProfileView = snapshot.activeProfileView === "zone" ? "zone" : "profile";
+  }
+  if (Object.prototype.hasOwnProperty.call(snapshot, "activeProfileZoneName")) {
+    state.activeProfileZoneName = String(snapshot.activeProfileZoneName || "");
+  }
+  if (Object.prototype.hasOwnProperty.call(snapshot, "activeProfileGroupId")) {
+    state.activeProfileGroupId = String(snapshot.activeProfileGroupId || "");
+  }
+  if (Object.prototype.hasOwnProperty.call(snapshot, "profileSelectedCell")) {
+    state.profileSelectedCell = cloneProfileSelectedCell(snapshot.profileSelectedCell);
+  }
+  if (Object.prototype.hasOwnProperty.call(snapshot, "profilePinnedSeriesIds")) {
+    state.profilePinnedSeriesIds = [...(snapshot.profilePinnedSeriesIds || [])];
+  }
+  if (snapshot.profileGraphDeck) {
+    state.profileGraphDeck = cloneProfileGraphDeck(snapshot.profileGraphDeck);
+    state.profileGraphDeck.pinnedSeriesIds = [...state.profilePinnedSeriesIds];
+  }
+  if (elements.profileFilter && Object.prototype.hasOwnProperty.call(snapshot, "profileFilter")) {
+    elements.profileFilter.value = String(snapshot.profileFilter || "");
+  }
+  profileNavigationRevealTarget = snapshot.navigationRevealTarget ? { ...snapshot.navigationRevealTarget } : null;
+  renderProfile(state.report.profile);
+  context.refreshSelectionStyles(state.globalSelection, state.globalHover);
+  await context.genericRestoreContext(snapshot);
+  restoreElementScroll(elements.profileOverview, snapshot.overviewScrollTop);
+  restoreElementScroll(elements.profileGraph, snapshot.graphScrollTop);
+  restoreElementScroll(elements.profileMatrix, snapshot.matrixScrollTop);
+  restoreElementScroll(elements.profileDetail, snapshot.detailScrollTop);
+  return true;
+}
+
+function preferredProfileSemanticOccurrence(selection, context) {
+  const navigation = context.navigation;
+  const requested = (navigation.occurrences || []).find((occurrence) => occurrence.occurrenceId === selection?.occurrenceId);
+  if (requested && (!selection.entityId || requested.entityId === selection.entityId)) {
+    return requested.occurrenceId;
+  }
+  const target = profileViewTargetForSelection(selection, navigation);
+  if (!target) {
+    return context.genericPreferredSemanticOccurrence(selection);
+  }
+  const occurrences = profileOccurrencesForTarget(target.targetId, navigation)
+    .filter((occurrence) => !selection.entityId || occurrence.entityId === selection.entityId);
+  if (!occurrences.length) {
+    return "";
+  }
+  if (target.targetKind === "schedule" && occurrences.length > 1) {
+    return "";
+  }
+  if (occurrences.length === 1) {
+    return occurrences[0].occurrenceId;
+  }
+  const dimension = state.profileSelectedCell?.dimension || profileNavigationRevealTarget?.dimension || "";
+  const contextual = occurrences.filter((occurrence) => (
+    occurrence.contextKind === "zone_profile" &&
+    semanticProfilePathMatches(occurrence.path, state.activeProfileZoneName, dimension)
+  ));
+  return contextual.length === 1 ? contextual[0].occurrenceId : "";
+}
+
+function profileViewTargetForSelection(selection = {}, navigation = profileNavigationIndex()) {
+  if (String(selection.viewTarget?.view || "").toLowerCase() === "profile" && selection.viewTarget?.targetId) {
+    return normalizeProfileViewTarget(selection.viewTarget);
+  }
+  const requestedTargetID = String(selection.originTargetId || "");
+  const occurrence = (navigation.occurrences || []).find((candidate) => candidate.occurrenceId === selection.occurrenceId);
+  const entity = (navigation.entities || []).find((candidate) => candidate.id === selection.entityId);
+  const targets = [...(occurrence?.viewTargets || []), ...(entity?.viewTargets || [])]
+    .filter((target) => String(target?.view || "").toLowerCase() === "profile" && target?.targetId);
+  if (requestedTargetID) {
+    const requested = targets.find((target) => target.targetId === requestedTargetID);
+    if (requested) {
+      return normalizeProfileViewTarget(requested);
+    }
+  }
+  return targets.length ? normalizeProfileViewTarget(targets[0]) : null;
+}
+
+function normalizeProfileViewTarget(target = {}) {
+  return {
+    view: "profile",
+    targetKind: String(target.targetKind || ""),
+    targetId: String(target.targetId || ""),
+    label: String(target.label || ""),
+  };
+}
+
+function profileNavigationTargetData(target) {
+  const profile = state.report?.profile;
+  if (!profile || !target?.targetId) {
+    return null;
+  }
+  switch (target.targetKind) {
+    case "profile-item": {
+      const item = profileItemByID(target.targetId, profile);
+      return item ? { item, zoneName: item.zoneName, dimension: item.dimension } : null;
+    }
+    case "zone-dimension": {
+      const match = profileZoneDimensionForTarget(target.targetId);
+      return match ? { ...match } : null;
+    }
+    case "profile-group": {
+      const reportGroup = (profile.groups || []).find((group) => group.id === target.targetId);
+      const currentGroup = reportGroup ? currentProfileGroupForReportGroup(reportGroup) : null;
+      return reportGroup ? { reportGroup, currentGroup, zoneName: reportGroup.zoneNames?.[0] || "" } : null;
+    }
+    case "schedule": {
+      const schedules = profileSchedulesForTarget(target.targetId);
+      const scheduleHashes = [...new Set(schedules.map((schedule) => schedule.contentHash).filter(Boolean))];
+      const series = (profile.graphDataset?.series || []).find((candidate) => (
+        profileScheduleTargetNames(candidate.scheduleName).some((name) => sameProfileName(name, target.targetId)) ||
+        scheduleHashes.some((hash) => String(candidate.scheduleHash || "").split("+").includes(hash))
+      ));
+      const reportGroup = (profile.groups || []).find((group) => group.id === series?.groupId);
+      const currentGroup = series?.zoneName
+        ? groupForZoneName(series.zoneName)
+        : reportGroup ? currentProfileGroupForReportGroup(reportGroup) : null;
+      return schedules.length ? {
+        schedules,
+        scheduleHashes,
+        currentGroup: currentGroup || selectedProfileGroup(),
+        zoneName: series?.zoneName || currentGroup?.zoneNames?.[0] || "",
+      } : null;
+    }
+    case "zone": {
+      const zone = (profile.zoneProfiles || []).find((candidate) => sameProfileName(candidate.zoneName, target.targetId));
+      return zone ? { zoneName: zone.zoneName } : null;
+    }
+    default:
+      return null;
+  }
+}
+
+function applyProfileNavigationTarget(targetData, selection = {}) {
+  if (targetData.item) {
+    selectProfileItemForNavigation(targetData.item);
+    return true;
+  }
+  if (targetData.dimension && targetData.zoneName) {
+    selectProfileZoneDimensionForNavigation(targetData.zoneName, targetData.dimension);
+    return true;
+  }
+  if (targetData.reportGroup) {
+    const currentGroup = targetData.currentGroup || currentProfileGroupForReportGroup(targetData.reportGroup);
+    if (!currentGroup) {
+      return false;
+    }
+    state.activeProfileView = "profile";
+    state.activeProfileGroupId = currentGroup.id;
+    if (!currentGroup.zoneNames.includes(state.activeProfileZoneName)) {
+      state.activeProfileZoneName = currentGroup.zoneNames[0] || "";
+    }
+    state.profileSelectedCell = null;
+    state.profileGraphDeck = {
+      ...(state.profileGraphDeck || {}),
+      scopeType: "group",
+      compareMode: "single",
+      selectedGroupIds: [targetData.reportGroup.id],
+    };
+    return true;
+  }
+  if (targetData.schedules) {
+    const exact = profileScheduleForSelection(targetData.schedules, selection);
+    const hashes = exact?.contentHash ? [exact.contentHash] : targetData.scheduleHashes;
+    state.profileSelectedCell = null;
+    state.profileGraphDeck = {
+      ...(state.profileGraphDeck || {}),
+      scopeType: "schedule",
+      compareMode: "similarity",
+      metricMode: "multiplier",
+      selectedScheduleHashes: hashes,
+    };
+    if (targetData.currentGroup) {
+      state.activeProfileGroupId = targetData.currentGroup.id;
+    }
+    if (targetData.zoneName) {
+      state.activeProfileZoneName = targetData.zoneName;
+    }
+    return true;
+  }
+  if (targetData.zoneName) {
+    selectProfileZone(targetData.zoneName);
+    state.profileSelectedCell = null;
+    state.profileGraphDeck = {
+      ...(state.profileGraphDeck || {}),
+      scopeType: "zone",
+      selectedZoneNames: [targetData.zoneName],
+    };
+    return true;
+  }
+  return false;
+}
+
+function selectProfileItemForNavigation(item) {
+  const row = lastProfileView?.matrix.find((candidate) => sameProfileName(candidate.zoneName, item.zoneName));
+  const summary = row?.dimensions.find((candidate) => candidate.dimension === item.dimension);
+  selectProfileCellData({
+    zoneName: item.zoneName,
+    groupId: row?.groupId || groupForZoneName(item.zoneName)?.id || "",
+    dimension: item.dimension,
+    scheduleHash: item.scheduleHash || summary?.scheduleHash || "",
+    scheduleName: item.scheduleName || summary?.scheduleName || "",
+    value: Number(summary?.value) || 0,
+    itemIds: summary?.itemIds || [item.id],
+  });
+  pinProfileSeries({ itemID: item.id, zoneName: item.zoneName, dimension: item.dimension });
+}
+
+function selectProfileZoneDimensionForNavigation(zoneName, dimension) {
+  const row = lastProfileView?.matrix.find((candidate) => sameProfileName(candidate.zoneName, zoneName));
+  const profile = state.report?.profile;
+  const summary = row?.dimensions.find((candidate) => candidate.dimension === dimension) ||
+    profileDimensionSummary(profile, zoneName, dimension);
+  selectProfileCellData({
+    zoneName: row?.zoneName || zoneName,
+    groupId: row?.groupId || groupForZoneName(zoneName)?.id || "",
+    dimension,
+    scheduleHash: summary?.scheduleHash || "",
+    scheduleName: summary?.scheduleName || "",
+    value: Number(summary?.value) || 0,
+    itemIds: summary?.itemIds || [],
+  });
+  pinProfileSeries({ zoneName, dimension });
+}
+
+function pinProfileSeries(criteria = {}) {
+  const series = (state.report?.profile?.graphDataset?.series || []).find((candidate) => (
+    (!criteria.itemID || (candidate.sourceItemIds || []).includes(criteria.itemID)) &&
+    (!criteria.zoneName || sameProfileName(candidate.zoneName, criteria.zoneName)) &&
+    (!criteria.dimension || candidate.dimension === criteria.dimension)
+  ));
+  if (!series) {
+    return;
+  }
+  state.profilePinnedSeriesIds = [...new Set([...(state.profilePinnedSeriesIds || []), series.id])];
+  state.profileGraphDeck = {
+    ...(state.profileGraphDeck || {}),
+    pinnedSeriesIds: [...state.profilePinnedSeriesIds],
+  };
+}
+
+function profileZoneDimensionForTarget(targetID) {
+  const prefix = "profile-zone-dimension:";
+  if (!String(targetID).startsWith(prefix)) {
+    return null;
+  }
+  const [zoneToken = "", dimensionToken = ""] = String(targetID).slice(prefix.length).split(":");
+  const rows = [...(lastProfileView?.matrix || []), ...(state.report?.profile?.zoneProfiles || [])];
+  const row = rows.find((candidate) => (
+    profileSemanticToken(candidate.zoneName) === zoneToken &&
+    candidate.dimensions.some((dimension) => profileSemanticToken(dimension.dimension) === dimensionToken)
+  ));
+  const dimension = row?.dimensions.find((candidate) => profileSemanticToken(candidate.dimension) === dimensionToken)?.dimension;
+  return row && dimension ? { zoneName: row.zoneName, dimension } : null;
+}
+
+function profileDimensionSummary(profile, zoneName, dimensionID) {
+  const zone = (profile?.zoneProfiles || []).find((candidate) => sameProfileName(candidate.zoneName, zoneName));
+  const dimension = (profile?.dimensions || []).find((candidate) => candidate.id === dimensionID);
+  const metricID = state.profileSettings?.displayMetrics?.[dimensionID];
+  return zone && dimension ? summarizeDimension(zone, dimension, metricID) : null;
+}
+
+function profileItemByID(itemID, profile = state.report?.profile) {
+  for (const zone of profile?.zoneProfiles || []) {
+    const item = (zone.items || []).find((candidate) => candidate.id === itemID);
+    if (item) {
+      return item;
+    }
+  }
+  return null;
+}
+
+function currentProfileGroupForReportGroup(reportGroup) {
+  return lastProfileView?.groups.find((group) => (
+    sameStringSet(group.zoneNames, reportGroup.zoneNames) && sameStringSet(group.itemIds, reportGroup.itemIds)
+  )) || null;
+}
+
+function profileSchedulesForTarget(targetID) {
+  const target = String(targetID || "");
+  return (state.report?.profile?.schedules || []).filter((schedule) => sameProfileName(schedule.scheduleName, target));
+}
+
+function profileScheduleForSelection(schedules, selection = {}) {
+  const objectIndex = selection.sourceAnchor?.objectIndex;
+  return schedules.find((schedule) => objectIndex !== undefined && objectIndex !== null && schedule.objectIndex === Number(objectIndex)) || schedules[0] || null;
+}
+
+function profileOccurrencesForTarget(targetID, navigation = profileNavigationIndex()) {
+  const occurrenceByID = new Map((navigation.occurrences || []).map((occurrence) => [occurrence.occurrenceId, occurrence]));
+  return (navigation.byViewTarget?.[`profile|${targetID}`] || [])
+    .map((occurrenceID) => occurrenceByID.get(occurrenceID))
+    .filter(Boolean);
+}
+
+function semanticProfilePathMatches(path, zoneName, dimension = "") {
+  const normalizedPath = String(path || "").toLowerCase();
+  const zone = String(zoneName || "").toLowerCase();
+  const profilePath = zone && normalizedPath.includes(`zones/${zone}/profiles/`);
+  return Boolean(profilePath && (!dimension || normalizedPath.includes(`/${String(dimension).toLowerCase()}`)));
+}
+
+function panelTargetElement(container, targetID) {
+  return [...(container?.querySelectorAll("[data-panel-target-id]") || [])]
+    .find((element) => element.dataset.panelTargetId === targetID) || null;
+}
+
+function focusProfileNavigationElement(element, options = {}) {
+  let details = element.closest?.("details") || null;
+  while (details) {
+    details.open = true;
+    details = details.parentElement?.closest?.("details") || null;
+  }
+  element.classList.add("semantic-selected");
+  element.toggleAttribute("data-semantic-selected", true);
+  if (options.scroll !== false) {
+    element.scrollIntoView?.({ block: "nearest", inline: "nearest", behavior: options.behavior || "auto" });
+  }
+  if (options.focus !== false) {
+    if (!element.matches("a[href], button, input, select, textarea, [tabindex]")) {
+      element.tabIndex = -1;
+    }
+    element.focus?.({ preventScroll: true });
+  }
+}
+
+function cloneProfileSelectedCell(cell) {
+  return cell ? { ...cell, itemIds: [...(cell.itemIds || [])] } : null;
+}
+
+function cloneProfileGraphDeck(deck) {
+  if (!deck) {
+    return null;
+  }
+  return {
+    ...deck,
+    selectedGroupIds: [...(deck.selectedGroupIds || [])],
+    selectedZoneNames: [...(deck.selectedZoneNames || [])],
+    selectedScheduleHashes: [...(deck.selectedScheduleHashes || [])],
+    selectedDimensions: [...(deck.selectedDimensions || [])],
+    timeRange: [...(deck.timeRange || [])],
+    pinnedSeriesIds: [...(deck.pinnedSeriesIds || [])],
+  };
+}
+
+function restoreElementScroll(element, value) {
+  if (element) {
+    element.scrollTop = Number(value) || 0;
+  }
+}
+
+function sameProfileName(left, right) {
+  return String(left || "").trim().toLowerCase() === String(right || "").trim().toLowerCase();
 }
 
 function bindProfileControls(profile) {
@@ -1553,6 +2229,23 @@ function bindProfileControls(profile) {
       renderProfile(profile);
     });
   });
+  elements.profileGraph.querySelectorAll("[data-profile-series-id]").forEach((element) => {
+    const activate = (event) => {
+      if (event.target.closest?.("[data-profile-pin-series]")) {
+        return;
+      }
+      focusProfileSeries(element.dataset.profileSeriesId || "");
+      renderProfile(profile);
+    };
+    element.addEventListener("click", activate);
+    element.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") {
+        return;
+      }
+      event.preventDefault();
+      activate(event);
+    });
+  });
   elements.profileGraph.querySelectorAll("[data-profile-pin-series]").forEach((button) => {
     button.addEventListener("click", (event) => {
       event.stopPropagation();
@@ -1601,7 +2294,6 @@ function bindProfileControls(profile) {
       if (event.target.closest(".profile-object-link")) {
         return;
       }
-      event.stopPropagation();
       selectProfileMatrixCell(cell);
       renderProfile(profile);
     });
@@ -1610,7 +2302,6 @@ function bindProfileControls(profile) {
         return;
       }
       event.preventDefault();
-      event.stopPropagation();
       selectProfileMatrixCell(cell);
       renderProfile(profile);
     });
@@ -1642,7 +2333,22 @@ function bindSettingControl(selector, update) {
 }
 
 export function initializeProfileControls() {
-  elements.profileFilter?.addEventListener("input", () => renderProfile());
+  configureProfilePanelNavigation();
+  window.addEventListener("idfAnalyzer:semanticSelectionChanged", (event) => {
+    if (!event.detail?.selection?.entityId) {
+      profileNavigationRevealTarget = null;
+    }
+  });
+  elements.profileOverview?.closest("#profilePane")?.addEventListener("click", (event) => {
+    const targetID = event.target.closest?.("[data-panel-target-id]")?.dataset.panelTargetId || "";
+    if (!profileNavigationRevealTarget || targetID !== profileNavigationRevealTarget.targetId) {
+      profileNavigationRevealTarget = null;
+    }
+  }, { capture: true });
+  elements.profileFilter?.addEventListener("input", () => {
+    profileNavigationRevealTarget = null;
+    renderProfile();
+  });
   elements.profileApplyButton?.addEventListener("click", openProfileApplyDialog);
   elements.profileApplyClose?.addEventListener("click", closeProfileApplyDialog);
   elements.profilePreviewApply?.addEventListener("click", previewProfileApply);
@@ -2042,6 +2748,23 @@ function profileItemMap(profile) {
 
 function profileQuery() {
   return String(elements.profileFilter?.value || "").trim().toLowerCase();
+}
+
+function profileRevealMatchesGroup(group) {
+  if (!profileNavigationRevealTarget) {
+    return false;
+  }
+  return Boolean(
+    (profileNavigationRevealTarget.groupId && group.id === profileNavigationRevealTarget.groupId) ||
+    (profileNavigationRevealTarget.zoneName && group.zoneNames.includes(profileNavigationRevealTarget.zoneName)),
+  );
+}
+
+function profileRevealMatchesRow(row) {
+  return Boolean(
+    profileNavigationRevealTarget?.zoneName &&
+    sameProfileName(row.zoneName, profileNavigationRevealTarget.zoneName),
+  );
 }
 
 function profileGroupMatchesQuery(group, query) {

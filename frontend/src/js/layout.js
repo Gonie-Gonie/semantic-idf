@@ -8,6 +8,28 @@ const workspacePresetWidths = {
 };
 const defaultWorkspacePreset = "balanced";
 
+export function captureWorkspaceLayout() {
+  return {
+    editorWidth: cssCustomProperty(elements.workspace, "--editor-width") || localStorage.getItem("idfAnalyzer.editorWidth") || "",
+    rawHeight: cssCustomProperty(elements.editorPanel, "--raw-height") || localStorage.getItem("idfAnalyzer.rawHeight") || "",
+    geometryDetailsHeight:
+      cssCustomProperty(elements.geometryBody, "--geometry-details-height") || localStorage.getItem("idfAnalyzer.geometryDetailsHeight") || "",
+  };
+}
+
+export function restoreWorkspaceLayout(snapshot = {}) {
+  restoreLayoutValue(elements.workspace, "--editor-width", "idfAnalyzer.editorWidth", snapshot.editorWidth);
+  restoreLayoutValue(elements.editorPanel, "--raw-height", "idfAnalyzer.rawHeight", snapshot.rawHeight);
+  restoreLayoutValue(
+    elements.geometryBody,
+    "--geometry-details-height",
+    "idfAnalyzer.geometryDetailsHeight",
+    snapshot.geometryDetailsHeight,
+  );
+  updateWorkspacePresetButtons(workspacePresetForWidth(snapshot.editorWidth || ""));
+  resizeGeometry();
+}
+
 export function initializeWorkspaceSplitter() {
   const savedWidth = localStorage.getItem("idfAnalyzer.editorWidth");
   const initialWidth = savedWidth || workspacePresetWidths[defaultWorkspacePreset];
@@ -108,6 +130,19 @@ function updateWorkspacePresetButtons(activePreset) {
   elements.layoutPresetButtons?.forEach((button) => {
     button.classList.toggle("active", button.dataset.layoutPreset === activePreset);
   });
+}
+
+function cssCustomProperty(element, property) {
+  return element?.style?.getPropertyValue(property)?.trim?.() || "";
+}
+
+function restoreLayoutValue(element, property, storageKey, value) {
+  const normalized = String(value || "").trim();
+  if (!element || !normalized || !/^\d+(?:\.\d+)?(?:px|%)$/.test(normalized)) {
+    return;
+  }
+  element.style.setProperty(property, normalized);
+  localStorage.setItem(storageKey, normalized);
 }
 
 export function initializeVerticalSplitters() {

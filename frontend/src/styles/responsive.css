@@ -54,6 +54,19 @@
     display: none;
   }
 
+  .workspace-link-bar__targets {
+    display: none;
+  }
+
+  .workspace-link-bar__menu {
+    display: block;
+    margin-inline-start: auto;
+  }
+
+  .workspace-link-bar__selection {
+    max-width: 32vw;
+  }
+
   .editor-panel {
     min-height: 0;
     border-bottom: 1px solid var(--line);
@@ -163,9 +176,31 @@
   .cleanup-candidates {
     max-height: 420px;
   }
+
+  .semantic-context-bar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .semantic-context-bar__actions {
+    justify-content: flex-start;
+  }
 }
 
 @media (max-width: 560px) {
+  .workspace-link-bar {
+    gap: 0.3rem;
+    padding-inline: 0.35rem;
+  }
+
+  .workspace-link-bar__modes button {
+    padding-inline: 0.45rem;
+  }
+
+  .workspace-link-bar__selection {
+    min-width: 0;
+    max-width: 24vw;
+  }
+
   .toolbar {
     width: 100%;
     justify-content: stretch;
@@ -277,6 +312,39 @@
 
   .profile-scatter {
     min-height: 180px;
+  }
+
+  .semantic-toolbar,
+  .semantic-context-bar {
+    align-items: stretch;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .semantic-toolbar {
+    flex-direction: column;
+  }
+
+  .semantic-actions {
+    justify-content: flex-start;
+  }
+
+  .semantic-context-bar button,
+  .semantic-context-bar [role="button"],
+  .semantic-target-chips button,
+  .semantic-target-chips [role="button"] {
+    flex: 0 0 auto;
+  }
+
+  .semantic-target-chips {
+    float: none;
+    justify-content: flex-start;
+    max-width: 100%;
+    margin: 3px 0 1px;
+  }
+
+  .semantic-occurrence-chooser__option,
+  .semantic-occurrence-chooser [role="option"] {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 

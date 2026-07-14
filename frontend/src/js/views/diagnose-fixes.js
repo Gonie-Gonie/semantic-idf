@@ -1,9 +1,14 @@
 import { backend, elements, escapeHTML, setStatus, state, updateTextStats } from "../state.js";
 import { markDocumentChanged, scheduleAnalyzeAfterPaint } from "../actions.js";
 import { t } from "../i18n.js";
+import {
+  captureDiagnoseNavigationContext,
+  restoreDiagnoseNavigationContext,
+} from "./analysis-views.js";
 
 const compactFormattingRuleID = "compact_formatting";
 let refreshTimer = 0;
+let pendingFixNavigationContext = null;
 
 export function initializeDiagnoseFixes() {
   if (!elements.diagnoseFixRules || !elements.diagnoseFixCandidates) {
@@ -24,6 +29,16 @@ export function initializeDiagnoseFixes() {
   });
   window.addEventListener("idfAnalyzer:analysisComplete", () => {
     scheduleFixRefresh(80);
+    if (pendingFixNavigationContext) {
+      const context = pendingFixNavigationContext;
+      pendingFixNavigationContext = null;
+      window.requestAnimationFrame(async () => {
+        const restored = await restoreDiagnoseNavigationContext(context, { afterApply: true });
+        if (restored.resolved) {
+          elements.diagnoseFixStatus.textContent = `Resolved · ${context.selectedDiagnosticID || "diagnostic"}`;
+        }
+      });
+    }
   });
   renderDiagnoseFixStale();
 }
@@ -70,6 +85,7 @@ async function previewDiagnoseFixes() {
   if (!canRunFixes()) {
     return;
   }
+  const navigationContext = captureDiagnoseNavigationContext();
   setFixBusy(true);
   try {
     const preview = await buildFixPreview();
@@ -79,6 +95,7 @@ async function previewDiagnoseFixes() {
     elements.diagnoseFixStatus.textContent = error?.message || String(error);
   } finally {
     setFixBusy(false);
+    await restoreDiagnoseNavigationContext(navigationContext, { afterPreview: true });
   }
 }
 
@@ -86,6 +103,8 @@ async function applyDiagnoseFixes() {
   if (!canRunFixes()) {
     return;
   }
+  const navigationContext = captureDiagnoseNavigationContext();
+  pendingFixNavigationContext = navigationContext;
   setFixBusy(true);
   try {
     const beforeDiagnostics = state.report?.diagnostics || [];
@@ -111,6 +130,8 @@ async function applyDiagnoseFixes() {
     renderDiagnoseFixStale();
     setStatus(t("diagnoseFix.applied", { count: preview.removedCount || 0 }, "Selected fixes applied."), "ok");
   } catch (error) {
+    pendingFixNavigationContext = null;
+    await restoreDiagnoseNavigationContext(navigationContext, { afterApplyError: true });
     elements.diagnoseFixStatus.textContent = error?.message || String(error);
     setStatus(error?.message || String(error), "error");
   } finally {
@@ -267,7 +288,7 @@ function renderFixCandidate(candidate) {
   const selected = ruleSelected && !excluded;
   const objectLabel = candidate.objectName || `#${Number(candidate.objectIndex) + 1}`;
   return `
-    <label class="cleanup-candidate ${selected ? "selected" : ""} ${ruleSelected ? "" : "inactive"}">
+    <label class="cleanup-candidate ${selected ? "selected" : ""} ${ruleSelected ? "" : "inactive"}" ${fixCandidateNavigationAttributes(candidate)}>
       <input data-cleanup-candidate="${escapeHTML(candidate.key)}" type="checkbox" ${selected ? "checked" : ""} ${ruleSelected ? "" : "disabled"} />
       <span>
         <strong>${escapeHTML(objectLabel)}</strong>
@@ -369,6 +390,54 @@ function updateFixButtons() {
   if (elements.diagnoseFixSaveAs) {
     elements.diagnoseFixSaveAs.disabled = disabled;
   }
+}
+
+function fixCandidateNavigationAttributes(candidate = {}) {
+  const navigation = state.semanticProjection?.navigation || {};
+  const occurrenceIDs = navigation.byObjectIndex?.[String(candidate.objectIndex)] || [];
+  const occurrences = occurrenceIDs
+    .map((occurrenceID) => (navigation.occurrences || []).find((occurrence) => occurrence.occurrenceId === occurrenceID))
+    .filter((occurrence) => occurrence && String(occurrence.contextKind || "") !== "diagnostic_occurrence")
+    .sort((left, right) => fixOccurrencePriority(right) - fixOccurrencePriority(left));
+  const occurrence = occurrences[0] || null;
+  const entity = (navigation.entities || []).find((item) => item.id === occurrence?.entityId) || null;
+  const sourceAnchor = occurrence?.sourceAnchor || {
+    objectIndex: candidate.objectIndex,
+    objectType: candidate.objectType || "",
+    objectName: candidate.objectName || "",
+  };
+  const attributes = [];
+  const add = (name, value) => {
+    if (value === undefined || value === null || String(value) === "") {
+      return;
+    }
+    attributes.push(`${name}="${escapeHTML(value)}"`);
+  };
+  add("data-entity-id", entity?.id || occurrence?.entityId);
+  add("data-entity-kind", entity?.kind);
+  add("data-occurrence-id", occurrence?.occurrenceId);
+  add("data-occurrence-context", occurrence?.contextKind || occurrence?.path);
+  add("data-semantic-path", occurrence?.path);
+  add("data-source-object-id", sourceAnchor.objectId);
+  add("data-source-object-index", sourceAnchor.objectIndex);
+  add("data-source-object-type", sourceAnchor.objectType);
+  add("data-source-object-name", sourceAnchor.objectName);
+  add("data-source-field-index", sourceAnchor.fieldIndex);
+  add("data-source-field-name", sourceAnchor.fieldName);
+  add("data-panel-target-id", candidate.key);
+  return attributes.join(" ");
+}
+
+function fixOccurrencePriority(occurrence = {}) {
+  const contextPriority = {
+    zone_service: 7,
+    zone_profile: 6,
+    zone_geometry: 5,
+    zone_output: 4,
+    definition: 3,
+    source_only: 1,
+  }[String(occurrence.contextKind || "")] || 2;
+  return contextPriority * 100_000 + Number((occurrence.lineIndexes || []).length > 0) * 10_000;
 }
 
 function candidateMatches(candidate, query) {

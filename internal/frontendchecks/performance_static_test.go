@@ -115,11 +115,11 @@ func TestFrontendNavigationCacheRestoreContract(t *testing.T) {
 func TestFrontendContextualNavigationShortcutContracts(t *testing.T) {
 	main := readTestFile(t, "frontend/src/js/main.js")
 	for _, term := range []string{
-		"backHVAC, forwardHVAC, initializeHVACControls",
+		"initializeHVACControls",
 		"function handleUndoShortcut(event)",
 		"function handleRedoShortcut(event)",
-		"undoViewNavigation({ scope: \"input\" })",
-		"redoViewNavigation({ scope: \"input\" })",
+		"undoViewNavigation();",
+		"redoViewNavigation();",
 		"function handleAnalysisTabCycleKey(event)",
 		`event.key !== "PageUp" && event.key !== "PageDown"`,
 		"switchResultTabByOffset(event.key === \"PageUp\" ? -1 : 1)",
@@ -138,7 +138,7 @@ func TestFrontendContextualNavigationShortcutContracts(t *testing.T) {
 	for _, term := range []string{
 		"export async function undoViewNavigation(options = {})",
 		"export async function redoViewNavigation(options = {})",
-		"async function restoreViewSnapshot(snapshot, options = {})",
+		"export async function restoreViewSnapshot(snapshot, options = {})",
 		`const scope = options.scope || "all"`,
 		`scope !== "input" && snapshot.resultTab`,
 	} {

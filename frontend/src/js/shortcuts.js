@@ -5,8 +5,14 @@ export function initializeKeyboardShortcuts(actions) {
 }
 
 function handleShortcutKeydown(event, actions) {
+  if (event.defaultPrevented) {
+    return;
+  }
   const shortcutID = shortcutIDForEvent(event);
   if (!shortcutID) {
+    return;
+  }
+  if ((shortcutID === "undoView" || shortcutID === "redoView") && isDocumentUndoRedo(event)) {
     return;
   }
 
@@ -22,6 +28,14 @@ function handleShortcutKeydown(event, actions) {
 
   event.preventDefault();
   action(event);
+}
+
+function isDocumentUndoRedo(event) {
+  if (!(event.ctrlKey || event.metaKey) || event.altKey) {
+    return false;
+  }
+  const key = String(event.key || "").toLowerCase();
+  return key === "z" || key === "y";
 }
 
 function shortcutIDForEvent(event) {
@@ -41,6 +55,14 @@ function shortcutAction(id, actions) {
     redoView: actions.redoView,
     jumpDefinition: actions.jumpDefinition,
     jumpReferences: actions.jumpReferences,
+    commandPalette: actions.commandPalette,
+    revealSemantic: actions.revealSemantic,
+    revealSource: actions.revealSource,
+    paneFocus: actions.paneFocus,
+    currentSearch: actions.currentSearch,
+    primaryOpen: actions.primaryOpen,
+    availableViews: actions.availableViews,
+    clearSelection: actions.clearSelection,
     inputSemantic: () => actions.switchInputView?.("semantic"),
     inputText: () => actions.switchInputView?.("text"),
     inputJson: () => actions.switchInputView?.("json"),
@@ -115,6 +137,16 @@ function normalizedKey(value) {
   }
   if (/^f\d{1,2}$/i.test(key)) {
     return key.toUpperCase();
+  }
+  const aliases = {
+    ArrowLeft: "Left",
+    ArrowRight: "Right",
+    ArrowUp: "Up",
+    ArrowDown: "Down",
+    Esc: "Escape",
+  };
+  if (aliases[key]) {
+    return aliases[key];
   }
   if (key === " ") {
     return "Space";

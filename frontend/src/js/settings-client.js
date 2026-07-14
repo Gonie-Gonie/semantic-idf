@@ -34,10 +34,18 @@ export const defaultAppSettings = {
     shortcuts: {
       save: "Ctrl+S",
       open: "Ctrl+O",
-      undoView: "Ctrl+Z",
-      redoView: "Ctrl+Y, Ctrl+Shift+Z",
+      undoView: "Alt+Left",
+      redoView: "Alt+Right",
       jumpDefinition: "F12",
       jumpReferences: "Shift+F12",
+      commandPalette: "Ctrl+K",
+      revealSemantic: "Ctrl+Shift+L",
+      revealSource: "Ctrl+Shift+S",
+      paneFocus: "F6",
+      currentSearch: "/",
+      primaryOpen: "Enter",
+      availableViews: "Alt+Enter",
+      clearSelection: "Escape",
       inputSemantic: "Ctrl+1",
       inputText: "Ctrl+2",
       inputJson: "Ctrl+3",
@@ -227,7 +235,7 @@ export function mergeSettings(settingsInput = {}) {
         typeof interaction.geometrySyncLocate === "boolean"
           ? interaction.geometrySyncLocate
           : defaultAppSettings.interaction.geometrySyncLocate,
-      shortcuts: normalizeShortcuts(interaction.shortcuts, defaultShortcuts),
+      shortcuts: migrateLegacyNavigationShortcuts(normalizeShortcuts(interaction.shortcuts, defaultShortcuts)),
     },
     profile: {
       enabledDimensions: normalizeEnabledDimensions(profile.enabledDimensions, defaultProfile.enabledDimensions),
@@ -271,6 +279,26 @@ export function mergeSettings(settingsInput = {}) {
         typeof simulation.autoRunOnOpen === "boolean" ? simulation.autoRunOnOpen : defaultSimulation.autoRunOnOpen,
     },
   };
+}
+
+function migrateLegacyNavigationShortcuts(shortcuts) {
+  const migrated = { ...shortcuts };
+  if (normalizedShortcutList(migrated.undoView) === "Ctrl+Z") {
+    migrated.undoView = "Alt+Left";
+  }
+  const redo = normalizedShortcutList(migrated.redoView);
+  if (redo === "Ctrl+Y, Ctrl+Shift+Z" || redo === "Ctrl+Shift+Z, Ctrl+Y" || redo === "Ctrl+Y") {
+    migrated.redoView = "Alt+Right";
+  }
+  return migrated;
+}
+
+function normalizedShortcutList(value) {
+  return String(value || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .join(", ");
 }
 
 function normalizeEnergyPlusInstallation(value) {

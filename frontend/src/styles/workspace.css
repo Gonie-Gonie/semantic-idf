@@ -133,15 +133,15 @@
 }
 
 .input-jump-highlight {
-  outline: 2px solid var(--amber);
+  outline: 2px solid var(--selection-source);
   outline-offset: -2px;
-  background: var(--warn-bg);
+  background: color-mix(in srgb, var(--selection-source) 12%, var(--surface));
 }
 
 tr.input-jump-highlight > td,
 td.input-jump-highlight,
 th.input-jump-highlight {
-  background: var(--warn-bg);
+  background: color-mix(in srgb, var(--selection-source) 12%, var(--surface));
 }
 
 .row-main {

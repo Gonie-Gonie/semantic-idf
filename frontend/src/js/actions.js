@@ -11,10 +11,12 @@ import {
 import { preloadGeometryRenderer, renderGeometry } from "./geometry-loader.js";
 import { t } from "./i18n.js";
 import { clearSemanticHover, clearSemanticSelection } from "./selection-controller.js";
+import { captureViewSnapshot } from "./view-history.js";
+import { captureWorkspaceLayout } from "./layout.js";
 
 export const currentDocumentStorageKey = "idfAnalyzer.currentDocument";
 
-const workspaceSnapshotVersion = 2;
+const workspaceSnapshotVersion = 3;
 
 let autoAnalyzeTimer = 0;
 let afterPaintAnalyzeTimer = 0;
@@ -451,7 +453,7 @@ export function scheduleAutoAnalyze(delay = state.autoAnalyzeDelayMs) {
 
 export function registerLoadedDocument(text, { path = "", filename = "" } = {}) {
   clearSemanticHover();
-  clearSemanticSelection();
+  clearSemanticSelection({ resetMemory: true });
   state.currentFilePath = path;
   state.currentFilename = filename;
   state.loadedText = text;
@@ -474,6 +476,12 @@ export function registerLoadedDocument(text, { path = "", filename = "" } = {}) 
   state.analysisStageTimings = {};
   state.renderTiming = { tabs: {}, last: null };
   state.semanticSelectedObjectIndex = "";
+  state.semanticCurrentOccurrenceId = "";
+  state.semanticCurrentPath = "";
+  state.semanticPinnedEntityIds?.clear?.();
+  state.outputFocusedSignature = "";
+  state.outputTemporaryRevealSignature = "";
+  state.semanticEditSelectionRestore = null;
   state.semanticPendingNavigation = null;
   state.pendingAnalysisPriorityTab = "";
   state.semanticExpandedSectionIds = new Set(["project"]);
@@ -661,9 +669,11 @@ export async function saveWorkspaceSnapshot() {
     return;
   }
   const analysisKey = state.analysisKey || state.lastAnalyzedKey || (await computeAnalysisKey(text));
+  const viewSnapshot = captureViewSnapshot();
   const snapshot = {
     schemaVersion: workspaceSnapshotVersion,
     text,
+    textHash: analysisKey,
     path: state.currentFilePath || "",
     filename: state.currentFilename || "",
     loadedText: state.loadedText || "",
@@ -674,6 +684,13 @@ export async function saveWorkspaceSnapshot() {
     analysisStage: state.analysisStage || "idle",
     diagnosticsReady: Boolean(state.diagnosticsReady),
     geometryReady: Boolean(state.geometryReady),
+    globalSelection: viewSnapshot.globalSelection,
+    semanticOccurrenceId: viewSnapshot.semanticCurrentOccurrenceId || viewSnapshot.globalSelection?.occurrenceId || "",
+    viewSnapshot,
+    panelContexts: viewSnapshot.panelContexts || {},
+    layout: captureWorkspaceLayout(),
+    semanticLinkMode: Boolean(state.semanticLinkMode),
+    semanticFollowSelection: Boolean(state.semanticFollowSelection),
     capturedAt: new Date().toISOString(),
   };
   try {

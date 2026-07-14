@@ -1,12 +1,52 @@
 import { backend, elements, escapeHTML, setStatus, state, updateTextStats } from "../state.js";
 import { t } from "../i18n.js";
 import { recordViewHistory } from "../view-history.js";
+import {
+  clearSemanticHover,
+  clearSemanticSelection,
+  currentSemanticSelection,
+  hoverSemanticEntity,
+  openSelectionInView,
+  revealSelectionInSemantic,
+  revealSelectionSource,
+  selectSemanticEntity,
+  selectionTargetsForView,
+  semanticOccurrenceChoices,
+} from "../selection-controller.js";
+import { getPanelNavigationAdapter } from "../panel-navigation-registry.js";
 
 const FIELD_TABLE_RENDER_LIMIT = 500;
 
 let analyzeCallback = async () => {};
 let renderReportCallback = () => renderInputViews();
 let jumpIndexCache = { report: null, definitions: new Map(), references: new Map() };
+let semanticClickHistoryKey = "";
+let semanticTargetViewCache = new Map();
+
+window.addEventListener("idfAnalyzer:semanticSelectionChanged", (event) => {
+  if (state.activeInputView === "semantic") {
+    if (event.detail?.temporaryRevealCleared) {
+      renderSemanticView();
+    } else {
+      renderSemanticSelectionOnly();
+      refreshSemanticSelectionContext();
+    }
+  }
+});
+window.addEventListener("idfAnalyzer:semanticHoverChanged", () => {
+  if (state.activeInputView === "semantic") {
+    renderSemanticSelectionOnly();
+  }
+});
+window.addEventListener("idfAnalyzer:semanticTemporaryReveal", (event) => {
+  ensureSemanticOccurrenceVisible(event.detail?.reveal || currentSemanticSelection());
+});
+window.addEventListener("idfAnalyzer:semanticSelectionRemapped", (event) => {
+  const selection = event.detail?.selection || currentSemanticSelection();
+  if (selection?.entityId) {
+    restoreSemanticSelectionAfterAnalysis(selection);
+  }
+});
 
 export function configureInputViews(callbacks) {
   analyzeCallback = callbacks.analyze || analyzeCallback;
@@ -111,6 +151,7 @@ function pendingViewMessage(viewName) {
 
 function renderSemanticView() {
   clearSemanticStickyPathBinding();
+  semanticTargetViewCache = new Map();
   const projection = state.semanticProjection;
   if (!projection || !Array.isArray(projection.lines) || !hasCurrentAnalysis()) {
     elements.semanticEditor.innerHTML = `<div class="empty">${escapeHTML(pendingViewMessage("semantic YAML"))}</div>`;
@@ -129,6 +170,7 @@ function renderSemanticView() {
   const sourceNameConflicts = projection.sourceNameConflicts || [];
   const mode = semanticProjectionMode();
   const facet = semanticProjectionFacet();
+  elements.semanticEditor.dataset.semanticMode = mode;
   elements.semanticEditor.innerHTML = `
     <div class="semantic-toolbar">
       <div class="json-meta">
@@ -151,10 +193,12 @@ function renderSemanticView() {
         </button>
       </div>
     </div>
+    <div id="semanticSelectionContext">${renderSemanticSelectionContext(currentSemanticSelection())}</div>
+    ${renderSemanticTemporaryReveal()}
     ${renderSemanticWarnings(projection)}
     ${renderSemanticSectionIndex(projection.lines)}
     <div class="semantic-sticky-path" aria-live="polite"></div>
-    <div class="semantic-yaml" role="tree" aria-label="Semantic YAML projection">
+    <div class="semantic-yaml" data-semantic-mode="${escapeHTML(mode)}" role="tree" aria-label="Semantic YAML projection">
       ${visibleLines.map((line, index) => renderSemanticLine(line, index, keyWidths)).join("")}
     </div>
   `;
@@ -184,7 +228,7 @@ function semanticVisibleLines(lines, terms) {
       : basicSemanticLines(lines);
   const facetLines = semanticLinesForFacet(compactLines, facet);
   if (!terms.length) {
-    return facetLines;
+    return semanticLinesWithTemporaryReveal(lines, facetLines);
   }
   const matchingObjects = new Set();
   const objectText = new Map();
@@ -200,12 +244,32 @@ function semanticVisibleLines(lines, terms) {
       matchingObjects.add(objectIndex);
     }
   }
-  return facetLines.filter((line) => {
+  const filteredLines = facetLines.filter((line) => {
     if (line.objectIndex === undefined || line.objectIndex === null) {
       return true;
     }
     return matchingObjects.has(String(line.objectIndex));
   });
+  return semanticLinesWithTemporaryReveal(lines, filteredLines);
+}
+
+function semanticLinesWithTemporaryReveal(allLines, visibleLines) {
+  const reveal = state.semanticTemporaryReveal;
+  if (!reveal?.entityId && !reveal?.occurrenceId) {
+    return visibleLines;
+  }
+  const keep = new Set(visibleLines);
+  allLines.forEach((line, index) => {
+    const matches = reveal.occurrenceId
+      ? line.occurrenceId === reveal.occurrenceId
+      : line.entityId === reveal.entityId;
+    if (!matches) {
+      return;
+    }
+    keep.add(line);
+    semanticAncestorLineIndexes(allLines, index).forEach((ancestorIndex) => keep.add(allLines[ancestorIndex]));
+  });
+  return allLines.filter((line) => keep.has(line));
 }
 
 function semanticProjectionMode() {
@@ -541,10 +605,16 @@ function renderSemanticWarnings(projection) {
 function renderSemanticLine(line, lineIndex, keyWidths = new Map()) {
   const objectIndex = line.objectIndex ?? "";
   const fieldIndex = line.fieldIndex ?? "";
-  const selected = objectIndex !== "" && String(objectIndex) === String(state.semanticSelectedObjectIndex);
+  const selection = currentSemanticSelection();
+  const selected = Boolean(
+    line.entityId && selection.entityId === line.entityId &&
+    (!selection.occurrenceId || !line.occurrenceId || selection.occurrenceId === line.occurrenceId),
+  );
+  const related = Boolean(line.entityId && selection.entityId === line.entityId && !selected);
   const indent = Number(line.indent || 0);
   const style = semanticLineHasValue(line) ? `style="--semantic-key-width:${keyWidths.get(indent) || 12}ch"` : "";
-  const classes = semanticLineClassNames(line, selected);
+  const classes = semanticLineClassNames(line, selected, related);
+  const sourceObjectID = line.sourceAnchor?.objectId || "";
   const attrs = [
     `data-semantic-line="${lineIndex}"`,
     `data-object-index="${escapeHTML(objectIndex)}"`,
@@ -555,14 +625,29 @@ function renderSemanticLine(line, lineIndex, keyWidths = new Map()) {
     `data-semantic-key="${escapeHTML(line.key || "")}"`,
     `data-semantic-role="${escapeHTML(line.role || "")}"`,
     `data-semantic-text="${escapeHTML(line.text || "")}"`,
+    `data-entity-id="${escapeHTML(line.entityId || "")}"`,
+    `data-entity-kind="${escapeHTML(line.entityKind || "")}"`,
+    `data-occurrence-id="${escapeHTML(line.occurrenceId || "")}"`,
+    `data-semantic-path="${escapeHTML(line.semanticPath || "")}"`,
+    `data-preferred-view="${escapeHTML(line.preferredView || "")}"`,
+    `data-preferred-target-id="${escapeHTML(line.preferredTargetId || "")}"`,
+    `data-source-object-id="${escapeHTML(sourceObjectID)}"`,
+    `tabindex="${line.entityId ? "0" : "-1"}"`,
+    `role="treeitem"`,
+    `aria-selected="${selected ? "true" : "false"}"`,
+    `aria-current="${selected ? "location" : "false"}"`,
+    `aria-describedby="semanticNavigationHelp"`,
   ].join(" ");
-  return `<div class="${classes}" ${style} ${attrs}>${renderSemanticLineContent(line)}</div>`;
+  return `<div class="${classes}" ${style} ${attrs}>${renderSemanticLineContent(line)}${renderSemanticTargetChips(line)}</div>`;
 }
 
-function semanticLineClassNames(line, selected) {
+function semanticLineClassNames(line, selected, related = false) {
   const classes = ["semantic-line"];
   if (selected) {
     classes.push("selected");
+  }
+  if (related) {
+    classes.push("related");
   }
   if (line.editable) {
     classes.push("editable");
@@ -639,6 +724,140 @@ function semanticDisplayKey(line) {
   return key;
 }
 
+function semanticSelectionForLine(line) {
+  const navigation = state.semanticProjection?.navigation || {};
+  const occurrenceId = line.dataset.occurrenceId || "";
+  const entityId = line.dataset.entityId || "";
+  const occurrence = (navigation.occurrences || []).find((item) => item.occurrenceId === occurrenceId) || null;
+  const entity = (navigation.entities || []).find((item) => item.id === (entityId || occurrence?.entityId)) || null;
+  const objectIndex = line.dataset.objectIndex === "" ? null : Number(line.dataset.objectIndex);
+  const fieldIndex = line.dataset.fieldIndex === "" ? null : Number(line.dataset.fieldIndex);
+  const sourceAnchor = occurrence?.sourceAnchor || entity?.sourceAnchors?.[0] || (
+    objectIndex === null && !line.dataset.sourceObjectId
+      ? null
+      : {
+          objectId: line.dataset.sourceObjectId || "",
+          objectIndex,
+          objectType: line.dataset.objectType || "",
+          fieldIndex,
+        }
+  );
+  return {
+    entityId: entityId || occurrence?.entityId || "",
+    entityKind: line.dataset.entityKind || entity?.kind || "",
+    occurrenceId,
+    sourceAnchor,
+    originView: "input-semantic",
+    originTargetId: line.dataset.preferredTargetId || "",
+    semanticPathHint: line.dataset.semanticPath || occurrence?.path || "",
+    relatedEntityIds: entity?.relatedEntityIds || [],
+  };
+}
+
+function semanticAvailableViews(selection) {
+  if (!selection?.entityId) {
+    return [];
+  }
+  const cacheKey = `${selection.entityId}\u0000${selection.occurrenceId || ""}`;
+  if (semanticTargetViewCache.has(cacheKey)) {
+    return semanticTargetViewCache.get(cacheKey);
+  }
+  const views = ["summary", "profile", "hvac", "output", "simulation", "diagnose", "geometry"]
+    .map((view) => ({ view, targets: selectionTargetsForView(view, selection) }))
+    .filter((item) => item.targets.length);
+  semanticTargetViewCache.set(cacheKey, views);
+  return views;
+}
+
+function renderSemanticTargetChips(line) {
+  if (!line.entityId) {
+    return "";
+  }
+  const selection = semanticSelectionForProjectionLine(line);
+  const views = semanticAvailableViews(selection);
+  if (!views.length) {
+    return "";
+  }
+  const ordered = [...views].sort((left, right) => (
+    Number(right.view === line.preferredView) - Number(left.view === line.preferredView) || left.view.localeCompare(right.view)
+  ));
+  return `<span class="semantic-target-chips" aria-label="${escapeHTML(t("semantic.views", {}, "Views"))}">
+    ${ordered.map(({ view, targets }) => `<button class="semantic-target-chip" type="button" data-semantic-target-view="${escapeHTML(view)}" data-semantic-target-id="${escapeHTML(targets[0]?.targetId || "")}" aria-label="${escapeHTML(t("semantic.openInView", { view: semanticViewLabel(view) }, `Open in ${semanticViewLabel(view)}`))}">${escapeHTML(semanticViewLabel(view))}</button>`).join("")}
+  </span>`;
+}
+
+function semanticSelectionForProjectionLine(line = {}) {
+  return {
+    entityId: line.entityId || "",
+    entityKind: line.entityKind || "",
+    occurrenceId: line.occurrenceId || "",
+    sourceAnchor: line.sourceAnchor || null,
+    originView: "input-semantic",
+    originTargetId: line.preferredTargetId || "",
+    semanticPathHint: line.semanticPath || "",
+  };
+}
+
+function semanticViewLabel(view) {
+  return String(view || "").slice(0, 1).toUpperCase() + String(view || "").slice(1);
+}
+
+function renderSemanticSelectionContext(selection = currentSemanticSelection()) {
+  if (!selection?.entityId) {
+    return "";
+  }
+  const navigation = state.semanticProjection?.navigation || {};
+  const entity = (navigation.entities || []).find((item) => item.id === selection.entityId) || {};
+  const choices = semanticOccurrenceChoices(selection, { originView: selection.originView });
+  const views = semanticAvailableViews(selection);
+  const sourceAnchor = selection.sourceAnchor || {};
+  const source = [sourceAnchor.objectType, sourceAnchor.objectName, sourceAnchor.fieldName].filter(Boolean).join(" / ") ||
+    sourceAnchor.objectId || "—";
+  return `<section class="semantic-context-bar" aria-label="Semantic selection">
+    <div class="semantic-context-bar__identity"><span class="semantic-context-bar__label">${escapeHTML(t("semantic.selected", {}, "Selected"))}</span><span class="semantic-context-bar__value">${escapeHTML(entity.label || selection.semanticPathHint || selection.entityId)}</span></div>
+    <div class="semantic-context-bar__item"><span class="semantic-context-bar__label">${escapeHTML(t("semantic.source", {}, "Source"))}</span><span class="semantic-context-bar__value semantic-context-bar__source">${escapeHTML(source)}</span></div>
+    <div class="semantic-context-bar__views"><span class="semantic-context-bar__label">${escapeHTML(t("semantic.views", {}, "Views"))}</span>${views.map(({ view }) => `<button type="button" data-semantic-context-view="${escapeHTML(view)}">${escapeHTML(semanticViewLabel(view))}</button>`).join("")}</div>
+    <div class="semantic-context-bar__actions">
+      <button type="button" data-semantic-context-action="source" ${selection.sourceAnchor ? "" : "disabled"}>${escapeHTML(t("semantic.revealSource", {}, "Reveal source"))}</button>
+      <button type="button" data-semantic-context-action="occurrences" ${choices.length > 1 ? "" : "disabled"}>${escapeHTML(t("semantic.occurrences", { count: choices.length }, `Occurrences ${choices.length}`))}</button>
+      <button type="button" data-semantic-context-action="clear">${escapeHTML(t("semantic.clearSelection", {}, "Clear"))}</button>
+    </div>
+    ${renderSemanticOccurrenceChooser(selection, choices)}
+  </section>`;
+}
+
+function renderSemanticOccurrenceChooser(selection, choices = semanticOccurrenceChoices(selection)) {
+  if (!selection?.entityId || choices.length < 2) {
+    return "";
+  }
+  const first = choices[0];
+  return `<div class="semantic-occurrence-chooser" data-semantic-occurrence-chooser role="listbox" aria-label="${escapeHTML(t("semantic.chooseOccurrence", {}, "Choose where to reveal this item"))}" hidden>
+    <p class="semantic-occurrence-chooser__heading">${escapeHTML(t("semantic.appearsIn", { name: selection.entityId }, `${selection.entityId} appears in:`))}</p>
+    <ul class="semantic-occurrence-chooser__list">
+      ${choices.map((choice) => {
+        const canonical = choice.contextKind === "definition" || /(^|\/)definitions?(\/|$)/i.test(choice.path || "");
+        return `<li><button class="semantic-occurrence-chooser__option" type="button" role="option" data-semantic-occurrence-id="${escapeHTML(choice.occurrenceId)}" aria-selected="${choice.occurrenceId === selection.occurrenceId ? "true" : "false"}"><span class="semantic-occurrence-chooser__path">${escapeHTML(choice.path || choice.occurrenceId)}</span><span class="semantic-occurrence-chooser__meta">${escapeHTML(canonical ? `Definition / canonical` : choice.contextKind || (choice.occurrenceId === first?.occurrenceId ? "First" : "Context"))}</span></button></li>`;
+      }).join("")}
+    </ul>
+  </div>`;
+}
+
+function renderSemanticTemporaryReveal() {
+  if (!state.semanticTemporaryReveal) {
+    return "";
+  }
+  return `<div class="semantic-temporary-reveal" role="status">${escapeHTML(t("semantic.temporaryReveal", {}, "Temporarily revealing selected item"))}<button class="semantic-temporary-reveal__clear" type="button" data-semantic-clear-temporary>${escapeHTML(t("semantic.clearTemporaryReveal", {}, "Clear temporary reveal"))}</button></div>`;
+}
+
+function refreshSemanticSelectionContext() {
+  const host = elements.semanticEditor?.querySelector("#semanticSelectionContext");
+  if (!host) {
+    return;
+  }
+  host.innerHTML = renderSemanticSelectionContext(currentSemanticSelection());
+  bindSemanticSelectionContext();
+}
+
 function bindSemanticControls() {
   elements.semanticEditor.querySelectorAll("[data-semantic-mode]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -676,13 +895,49 @@ function bindSemanticControls() {
   });
   elements.semanticEditor.querySelector("#semanticFocusObjectButton")?.addEventListener("click", () => focusSelectedSemanticObject());
   elements.semanticEditor.querySelector("#semanticFixDuplicatesButton")?.addEventListener("click", () => applySemanticDuplicateFixes());
-  elements.semanticEditor.querySelectorAll(".semantic-line[data-object-index]").forEach((line) => {
-    if (line.dataset.objectIndex === "") {
-      return;
-    }
-    line.addEventListener("pointerenter", () => highlightSemanticObject(line.dataset.objectIndex, true));
-    line.addEventListener("pointerleave", () => highlightSemanticObject(line.dataset.objectIndex, false));
-    line.addEventListener("click", () => selectSemanticLine(line));
+  elements.semanticEditor.querySelectorAll(".semantic-line[data-entity-id]:not([data-entity-id=''])").forEach((line) => {
+    line.addEventListener("pointerenter", () => {
+      line.classList.add("hovered");
+      hoverSemanticEntity(semanticSelectionForLine(line), { originView: "input-semantic", action: "hover" });
+    });
+    line.addEventListener("pointerleave", () => {
+      line.classList.remove("hovered");
+      clearSemanticHover();
+    });
+    line.addEventListener("click", (event) => {
+      if (event.target.closest("button, input, [data-semantic-target-view]")) {
+        return;
+      }
+      if (event.detail > 1) {
+        return;
+      }
+      const selection = semanticSelectionForLine(line);
+      semanticClickHistoryKey = semanticSelectionIdentityKey(currentSemanticSelection()) === semanticSelectionIdentityKey(selection)
+        ? ""
+        : semanticSelectionIdentityKey(selection);
+      selectSemanticLine(line);
+    });
+    line.addEventListener("dblclick", (event) => {
+      event.preventDefault();
+      const historyAlreadyRecorded = semanticClickHistoryKey === semanticSelectionIdentityKey(semanticSelectionForLine(line));
+      semanticClickHistoryKey = "";
+      openSemanticLine(line, "", "", { historyAlreadyRecorded });
+    });
+    line.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !event.altKey) {
+        event.preventDefault();
+        openSemanticLine(line);
+      }
+    });
+  });
+  elements.semanticEditor.querySelectorAll("[data-semantic-target-view]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const line = button.closest(".semantic-line");
+      if (line) {
+        openSemanticLine(line, button.dataset.semanticTargetView, button.dataset.semanticTargetId);
+      }
+    });
   });
   elements.semanticEditor.querySelectorAll(".semantic-value-token").forEach((button) => {
     button.addEventListener("click", (event) => {
@@ -690,7 +945,39 @@ function bindSemanticControls() {
       editSemanticValue(button);
     });
   });
+  bindSemanticSelectionContext();
+  elements.semanticEditor.querySelector("[data-semantic-clear-temporary]")?.addEventListener("click", clearSemanticTemporaryReveal);
   bindSemanticStickyPath();
+}
+
+function bindSemanticSelectionContext() {
+  elements.semanticEditor?.querySelectorAll("[data-semantic-context-view]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      openSelectionInView(button.dataset.semanticContextView, {
+        originView: "input-semantic",
+        action: "open",
+        recordHistory: true,
+      });
+    });
+  });
+  const context = elements.semanticEditor?.querySelector("#semanticSelectionContext");
+  context?.querySelector("[data-semantic-context-action='source']")?.addEventListener("click", () => {
+    revealSelectionSource({ originView: "input-semantic", action: "reveal_source", recordHistory: true });
+  });
+  context?.querySelector("[data-semantic-context-action='clear']")?.addEventListener("click", () => {
+    clearSemanticSelection();
+  });
+  context?.querySelector("[data-semantic-context-action='occurrences']")?.addEventListener("click", () => {
+    const chooser = context.querySelector("[data-semantic-occurrence-chooser]");
+    if (chooser) {
+      chooser.hidden = !chooser.hidden;
+      if (!chooser.hidden) chooser.querySelector("[role='option']")?.focus();
+    }
+  });
+  context?.querySelectorAll("[data-semantic-occurrence-id]").forEach((button) => {
+    button.addEventListener("click", () => chooseSemanticOccurrence(button.dataset.semanticOccurrenceId));
+  });
 }
 
 function scrollSemanticSectionIntoView(sectionText) {
@@ -791,15 +1078,84 @@ function semanticPathLabel(line) {
   return "";
 }
 
-function selectSemanticLine(line) {
-  state.semanticSelectedObjectIndex = line.dataset.objectIndex || "";
+async function selectSemanticLine(line) {
+  const selection = semanticSelectionForLine(line);
+  if (!selection.entityId) {
+    return false;
+  }
+  state.semanticCurrentOccurrenceId = selection.occurrenceId || "";
+  state.semanticCurrentPath = selection.semanticPathHint || "";
+  await selectSemanticEntity(selection, {
+    originView: "input-semantic",
+    action: "select",
+    recordHistory: true,
+    follow: true,
+    preserveFilters: true,
+  });
   syncRawTextToFormattedTarget(line);
   renderSemanticSelectionOnly();
+  refreshSemanticSelectionContext();
+  return true;
+}
+
+async function openSemanticLine(line, requestedView = "", requestedTargetId = "", options = {}) {
+  const selection = semanticSelectionForLine(line);
+  if (!selection.entityId) {
+    return false;
+  }
+  const current = currentSemanticSelection();
+  const selectionChanged = semanticSelectionIdentityKey(current) !== semanticSelectionIdentityKey(selection);
+  await selectSemanticEntity(selection, {
+    originView: "input-semantic",
+    action: "select",
+    recordHistory: selectionChanged,
+    follow: false,
+    preserveFilters: true,
+  });
+  state.semanticCurrentOccurrenceId = selection.occurrenceId || "";
+  state.semanticCurrentPath = selection.semanticPathHint || "";
+  syncRawTextToFormattedTarget(line);
+  const view = requestedView || line.dataset.preferredView || semanticAvailableViews(selection)[0]?.view || "";
+  if (!view) {
+    setStatus(t("semantic.noAvailableView", {}, "No available view can reveal this selection"), "warn");
+    return false;
+  }
+  const opened = await openSelectionInView(view, {
+    originView: "input-semantic",
+    action: "open",
+    recordHistory: options.historyAlreadyRecorded ? false : !selectionChanged,
+    follow: false,
+    preserveFilters: true,
+    targetId: requestedTargetId || line.dataset.preferredTargetId || "",
+  });
+  renderSemanticSelectionOnly();
+  refreshSemanticSelectionContext();
+  return opened;
+}
+
+function semanticSelectionIdentityKey(selection = {}) {
+  const anchor = selection.sourceAnchor || {};
+  return [selection.entityId, selection.occurrenceId, anchor.objectId, anchor.objectIndex, anchor.fieldIndex]
+    .map((value) => String(value ?? ""))
+    .join("\u0000");
 }
 
 function renderSemanticSelectionOnly() {
-  elements.semanticEditor.querySelectorAll(".semantic-line[data-object-index]").forEach((line) => {
-    line.classList.toggle("selected", line.dataset.objectIndex === String(state.semanticSelectedObjectIndex));
+  const selection = currentSemanticSelection();
+  const hover = state.globalHover || {};
+  elements.semanticEditor?.querySelectorAll(".semantic-line[data-entity-id]").forEach((line) => {
+    const sameEntity = Boolean(selection.entityId && line.dataset.entityId === selection.entityId);
+    const selected = sameEntity && (
+      !selection.occurrenceId || !line.dataset.occurrenceId || line.dataset.occurrenceId === selection.occurrenceId
+    );
+    line.classList.toggle("selected", selected);
+    line.classList.toggle("related", sameEntity && !selected);
+    line.classList.toggle("hovered", Boolean(
+      hover.entityId && line.dataset.entityId === hover.entityId &&
+      (!hover.occurrenceId || line.dataset.occurrenceId === hover.occurrenceId),
+    ));
+    line.setAttribute("aria-selected", selected ? "true" : "false");
+    line.setAttribute("aria-current", selected ? "location" : "false");
   });
 }
 
@@ -807,6 +1163,114 @@ function highlightSemanticObject(objectIndex, active) {
   elements.semanticEditor.querySelectorAll(`.semantic-line[data-object-index="${cssAttrEscape(objectIndex)}"]`).forEach((line) => {
     line.classList.toggle("hovered", active);
   });
+}
+
+async function chooseSemanticOccurrence(occurrenceId) {
+  const current = currentSemanticSelection();
+  const choice = semanticOccurrenceChoices(current).find((item) => item.occurrenceId === occurrenceId);
+  if (!choice) {
+    return false;
+  }
+  const selection = {
+    ...current,
+    occurrenceId,
+    sourceAnchor: choice.sourceAnchor || current.sourceAnchor,
+    semanticPathHint: choice.path || current.semanticPathHint,
+  };
+  await selectSemanticEntity(selection, {
+    originView: "input-semantic",
+    action: "select",
+    recordHistory: true,
+    follow: false,
+    preserveFilters: true,
+    rememberForOriginView: current.originView || "input-semantic",
+  });
+  ensureSemanticOccurrenceVisible(selection);
+  await revealSelectionInSemantic({ originView: "input-semantic", action: "reveal", recordHistory: false, preserveFilters: true });
+  return true;
+}
+
+function ensureSemanticOccurrenceVisible(selection = currentSemanticSelection(), options = {}) {
+  const projection = state.semanticProjection;
+  if (!selection?.entityId || !Array.isArray(projection?.lines)) {
+    return false;
+  }
+  const occurrenceId = selection.occurrenceId || "";
+  const lineIndex = projection.lines.findIndex((line) => occurrenceId
+    ? line.occurrenceId === occurrenceId
+    : line.entityId === selection.entityId);
+  if (lineIndex < 0) {
+    return false;
+  }
+  if (!(state.semanticExpandedSectionIds instanceof Set)) {
+    state.semanticExpandedSectionIds = new Set(["project"]);
+  }
+  for (let index = lineIndex; index >= 0; index -= 1) {
+    if (semanticTopLevelSectionLine(projection.lines[index])) {
+      state.semanticExpandedSectionIds.add(semanticSectionId(projection.lines[index]));
+      break;
+    }
+  }
+  state.semanticTemporaryReveal = null;
+  const currentlyVisible = semanticVisibleLines(projection.lines, currentInputFilterTerms()).some((line) => (
+    occurrenceId ? line.occurrenceId === occurrenceId : line.entityId === selection.entityId
+  ));
+  if (options.temporary !== false && !currentlyVisible) {
+    state.semanticTemporaryReveal = {
+      entityId: selection.entityId,
+      occurrenceId,
+      semanticPathHint: selection.semanticPathHint || projection.lines[lineIndex].semanticPath || "",
+    };
+  }
+  state.semanticCurrentOccurrenceId = occurrenceId;
+  state.semanticCurrentPath = selection.semanticPathHint || projection.lines[lineIndex].semanticPath || "";
+  if (state.activeInputView === "semantic") {
+    renderSemanticView();
+    window.requestAnimationFrame(() => {
+      const target = [...elements.semanticEditor.querySelectorAll(".semantic-line")].find((line) => (
+        occurrenceId ? line.dataset.occurrenceId === occurrenceId : line.dataset.entityId === selection.entityId
+      ));
+      target?.scrollIntoView({ block: "center", inline: "nearest" });
+      target?.focus?.({ preventScroll: true });
+    });
+  }
+  return true;
+}
+
+function clearSemanticTemporaryReveal() {
+  state.semanticTemporaryReveal = null;
+  if (state.activeInputView === "semantic") {
+    renderSemanticView();
+  }
+}
+
+function captureSemanticEditSelection() {
+  const selection = currentSemanticSelection();
+  if (!selection.entityId) {
+    state.semanticEditSelectionRestore = null;
+    return null;
+  }
+  const panelView = state.activeResultTab || "summary";
+  const adapter = getPanelNavigationAdapter(panelView);
+  state.semanticEditSelectionRestore = {
+    selection,
+    parentEntityId: selection.relatedEntityIds?.[0] || "",
+    objectCount: state.report?.objects?.length || 0,
+    panelView,
+    panelContext: adapter?.captureContext?.() || null,
+  };
+  return state.semanticEditSelectionRestore;
+}
+
+async function restoreSemanticSelectionAfterAnalysis(selection = currentSemanticSelection()) {
+  ensureSemanticOccurrenceVisible(selection, { temporary: true });
+  const restore = state.semanticEditSelectionRestore;
+  if (!restore) {
+    return;
+  }
+  state.semanticEditSelectionRestore = null;
+  const adapter = getPanelNavigationAdapter(restore.panelView);
+  await adapter?.restoreContext?.(restore.panelContext || {});
 }
 
 function focusSelectedSemanticObject() {
@@ -876,6 +1340,7 @@ async function applySemanticDuplicateFixes() {
     return;
   }
   try {
+    captureSemanticEditSelection();
     const result = await api.ApplySemanticDuplicateNameFixText(elements.idfInput.value);
     elements.idfInput.value = result.text;
     updateTextStats();
@@ -1174,6 +1639,7 @@ async function commitJSONValueEdit(editor, nextRaw, restore) {
   }
 
   try {
+    captureSemanticEditSelection();
     const result = await api.PatchModelValueText(
       elements.idfInput.value,
       Number(editor.dataset.objectIndex),
@@ -1538,6 +2004,7 @@ async function applyFieldValue(input, successMessage = t("input.fieldUpdated")) 
   input.disabled = true;
 
   try {
+    captureSemanticEditSelection();
     const result = await api.UpdateFieldText(elements.idfInput.value, objectIndex, fieldIndex, nextValue);
     elements.idfInput.value = result.text;
     updateTextStats();
@@ -1555,10 +2022,9 @@ async function applyFieldValue(input, successMessage = t("input.fieldUpdated")) 
 }
 
 function syncRawTextToFormattedTarget(element) {
-  if (!state.syncTextRawPosition) {
+  if (!state.syncTextRawPosition || element?.dataset?.objectIndex === "") {
     return;
   }
-  recordViewHistory();
   const objectIndex = Number(element.dataset.objectIndex);
   const fieldIndex = element.dataset.fieldIndex === undefined ? null : Number(element.dataset.fieldIndex);
   syncRawTextToObjectField(objectIndex, fieldIndex, element.dataset.fieldIndexKind || "idf");
@@ -2264,6 +2730,29 @@ export async function switchInputView(viewName, options = {}) {
     view.classList.toggle("active", view.id === `${viewName}InputView`);
   });
   renderInputViews();
+  window.requestAnimationFrame(() => {
+    window.dispatchEvent(new CustomEvent("idfAnalyzer:inputViewChanged", { detail: { viewName } }));
+  });
+  if (options.revealSelection === false) {
+    return;
+  }
+  const selection = currentSemanticSelection();
+  if (!selection.entityId) {
+    return;
+  }
+  if (viewName === "semantic") {
+    ensureSemanticOccurrenceVisible(selection, { temporary: true });
+    return;
+  }
+  const adapter = getPanelNavigationAdapter(`input-${viewName}`);
+  if (adapter && await adapter.canReveal(selection)) {
+    await adapter.reveal(selection, {
+      action: "view_switch",
+      follow: false,
+      preserveFilters: true,
+      recordHistory: false,
+    });
+  }
 }
 
 export function setTableOrientation(orientation) {

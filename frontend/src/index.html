@@ -14,7 +14,7 @@
             <span data-app-name>SemanticIDF</span>
             <span class="app-version" data-app-version>v0.4.2</span>
           </h1>
-          <p id="runtimeStatus" class="status-loading" data-i18n="status.loadingInterface">Loading interface</p>
+          <p id="runtimeStatus" class="status-loading" role="status" aria-live="polite" aria-atomic="true" data-i18n="status.loadingInterface">Loading interface</p>
         </div>
         <div class="toolbar" role="toolbar" aria-label="IDF controls">
           <button id="openButton" class="toolbar-button" type="button" title="Open" aria-label="Open" data-i18n-title="action.open" data-i18n-aria-label="action.open">
@@ -85,6 +85,24 @@
         </div>
       </header>
 
+      <section id="workspaceLinkBar" class="workspace-link-bar" aria-label="Linked semantic navigation" data-i18n-aria-label="navigation.linkBar">
+        <span id="semanticNavigationHelp" class="sr-only" data-i18n="navigation.keyboardHelp">Select an item, press Enter to open it, or use Alt+Enter for available views.</span>
+        <div class="workspace-link-bar__modes" role="group" aria-label="Navigation modes" data-i18n-aria-label="navigation.modes">
+          <button id="semanticLinkedToggle" type="button" aria-pressed="true"><span data-i18n="navigation.linked">Linked</span><span class="workspace-link-bar__status-dot" aria-hidden="true"></span></button>
+          <button id="semanticFollowToggle" type="button" aria-pressed="true"><span data-i18n="navigation.follow">Follow</span><span class="workspace-link-bar__status-dot" aria-hidden="true"></span></button>
+        </div>
+        <span id="workspaceSelectionLabel" class="workspace-link-bar__selection" data-i18n="navigation.noSelection">No semantic selection</span>
+        <nav id="workspaceLinkTargets" class="workspace-link-bar__targets" aria-label="Available navigation targets" data-i18n-aria-label="navigation.availableTargets"></nav>
+        <details class="workspace-link-bar__menu">
+          <summary aria-label="Open navigation targets" data-i18n-aria-label="navigation.openTargets">Views</summary>
+          <nav id="workspaceLinkMenuTargets" aria-label="Available navigation targets" data-i18n-aria-label="navigation.availableTargets"></nav>
+        </details>
+        <div class="workspace-link-bar__history" role="group" aria-label="View history" data-i18n-aria-label="navigation.history">
+          <button id="workspaceBackButton" type="button" title="Back" aria-label="Back" data-i18n-title="navigation.back" data-i18n-aria-label="navigation.back">←</button>
+          <button id="workspaceForwardButton" type="button" title="Forward" aria-label="Forward" data-i18n-title="navigation.forward" data-i18n-aria-label="navigation.forward">→</button>
+        </div>
+      </section>
+
       <section class="workspace">
         <aside class="editor-panel" aria-label="IDF editor">
           <div class="panel-head editor-head">
@@ -98,6 +116,7 @@
               <button class="view-tab" data-input-view="json" type="button">JSON</button>
               <button class="view-tab" data-input-view="table" type="button">Table</button>
             </div>
+            <button id="semanticRevealIndicator" class="semantic-reveal-indicator" type="button" hidden data-i18n="semantic.revealInSemantic">Reveal in Semantic</button>
           </div>
           <div class="input-filter-bar" role="search">
             <input id="inputFilter" type="search" placeholder="Filter objects, fields, values" aria-label="Filter input objects" data-i18n-placeholder="input.filter" />
