@@ -313,7 +313,8 @@ elements.tableOrientationButtons.forEach((button) => {
 });
 elements.analysisPanel.addEventListener("click", (event) => handleAnalysisActivation(event.target));
 elements.analysisPanel.addEventListener("keydown", (event) => {
-  if (event.key !== "Enter" && event.key !== " ") {
+  const isLocalActivationKey = event.key === "Enter" || event.key === " ";
+  if (!isLocalActivationKey || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
     return;
   }
   const target = event.target.closest(".navigable-row");
