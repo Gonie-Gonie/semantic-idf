@@ -8,15 +8,11 @@ import (
 )
 
 type semanticYAMLBuilder struct {
-	model       *SemanticModel
-	ctx         *semanticContext
-	occurrences map[int][]SemanticOccurrence
+	model *SemanticModel
+	ctx   *semanticContext
 }
 
 func buildSemanticProjectionNodes(builder *semanticYAMLBuilder, ctx *semanticContext, metadata SemanticYAMLMetadata) {
-	if builder.occurrences == nil {
-		builder.occurrences = map[int][]SemanticOccurrence{}
-	}
 	builder.raw(0, "semantic_energyplus_model:")
 	builder.kv(1, "schema", semanticYAMLSchema)
 	if strings.TrimSpace(metadata.EnergyPlusVersion) != "" {
@@ -62,8 +58,10 @@ type semanticContext struct {
 	objectByIndex                map[int]Object
 	mapped                       map[int]bool
 	geometry                     GeometryReport
+	profile                      ProfileReport
 	hvac                         HVACReport
 	output                       OutputReport
+	diagnostics                  []Diagnostic
 	surfacesByZone               map[string][]GeometrySurface
 	windowsBySurface             map[string][]GeometryWindow
 	loadsByZone                  map[string]map[string][]Object
@@ -110,14 +108,19 @@ func buildSemanticContext(doc Document, metadata SemanticYAMLMetadata) *semantic
 	if err != nil {
 		adapter = fieldCatalogAdapter(metadata.EnergyPlusVersion)
 	}
+	geometry := AnalyzeGeometry(doc)
+	profile := analyzeProfileWithGeometry(doc, geometry)
+	hvac := AnalyzeHVAC(doc)
 	ctx := &semanticContext{
 		doc:              doc,
 		adapter:          adapter,
 		objectByIndex:    map[int]Object{},
 		mapped:           map[int]bool{},
-		geometry:         AnalyzeGeometry(doc),
-		hvac:             AnalyzeHVAC(doc),
+		geometry:         geometry,
+		profile:          profile,
+		hvac:             hvac,
 		output:           AnalyzeOutput(doc),
+		diagnostics:      analyzeDiagnosticsWithHVAC(doc, hvac),
 		surfacesByZone:   map[string][]GeometrySurface{},
 		windowsBySurface: map[string][]GeometryWindow{},
 		loadsByZone:      map[string]map[string][]Object{},

@@ -20,6 +20,7 @@ type OutputReport struct {
 }
 
 type OutputObjectSummary struct {
+	Signature          string               `json:"signature"`
 	ObjectIndex        int                  `json:"objectIndex"`
 	ObjectType         string               `json:"objectType"`
 	ObjectName         string               `json:"objectName,omitempty"`
@@ -70,6 +71,7 @@ func AnalyzeOutput(doc Document) OutputReport {
 		}
 		summary := summarizeOutputObject(obj)
 		signature := outputObjectSignature(obj.Type, outputFieldValues(obj))
+		summary.Signature = signature
 		if first, ok := signatures[signature]; ok {
 			summary.Duplicate = true
 			report.Warnings = append(report.Warnings, Diagnostic{

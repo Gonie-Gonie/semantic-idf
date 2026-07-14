@@ -15,21 +15,29 @@ func BuildSemanticLines(model SemanticModel) []SemanticYAMLLine {
 	for _, node := range model.Nodes {
 		display := node.DisplayValue
 		line := SemanticYAMLLine{
-			Text:         semanticNodeText(node),
-			Indent:       node.Indent,
-			Key:          node.Key,
-			Value:        display,
-			DisplayValue: display,
-			PatchValue:   node.PatchValue,
-			SourceValue:  node.SourceValue,
-			ObjectIndex:  node.ObjectIndex,
-			ObjectType:   node.ObjectType,
-			ObjectName:   node.ObjectName,
-			FieldIndex:   node.FieldIndex,
-			SourceKind:   node.SourceKind,
-			EditKind:     node.EditKind,
-			Editable:     node.Editable,
-			Role:         node.Role,
+			Text:              semanticNodeText(node),
+			Indent:            node.Indent,
+			Key:               node.Key,
+			Value:             display,
+			DisplayValue:      display,
+			PatchValue:        node.PatchValue,
+			SourceValue:       node.SourceValue,
+			ObjectIndex:       node.ObjectIndex,
+			ObjectType:        node.ObjectType,
+			ObjectName:        node.ObjectName,
+			FieldIndex:        node.FieldIndex,
+			SourceKind:        node.SourceKind,
+			EditKind:          node.EditKind,
+			Editable:          node.Editable,
+			Role:              node.Role,
+			EntityID:          node.EntityID,
+			EntityKind:        node.EntityKind,
+			OccurrenceID:      node.OccurrenceID,
+			SemanticPath:      node.SemanticPath,
+			SourceAnchor:      cloneSemanticSourceAnchor(node.SourceAnchor),
+			ViewTargets:       append([]SemanticViewTarget(nil), node.ViewTargets...),
+			PreferredView:     node.PreferredView,
+			PreferredTargetID: node.PreferredTargetID,
 		}
 		lines = append(lines, line)
 	}
@@ -52,7 +60,6 @@ func semanticNodeText(node SemanticYAMLNode) string {
 
 func (builder *semanticYAMLBuilder) addNode(node SemanticYAMLNode) {
 	builder.model.Nodes = append(builder.model.Nodes, node)
-	builder.trackOccurrence(node)
 }
 
 func (builder *semanticYAMLBuilder) raw(indent int, raw string) {
@@ -141,57 +148,6 @@ func (builder *semanticYAMLBuilder) fieldValue(indent int, key string, displayVa
 	})
 }
 
-func (builder *semanticYAMLBuilder) trackOccurrence(node SemanticYAMLNode) {
-	if node.ObjectIndex == nil || *node.ObjectIndex < 0 {
-		return
-	}
-	if strings.TrimSpace(node.ObjectType) == "" && strings.TrimSpace(node.ObjectName) == "" {
-		return
-	}
-	label := strings.TrimPrefix(strings.TrimSpace(node.Raw), "- ")
-	if label == "" && node.Key == "name" {
-		label = strings.TrimSpace(node.DisplayValue)
-	}
-	if label == "" {
-		return
-	}
-	path := semanticOccurrencePath(builder.model.Nodes)
-	occurrence := SemanticOccurrence{
-		OccurrenceID:   "occ-" + semanticNumber(float64(len(builder.occurrences[*node.ObjectIndex])+1)) + "-obj-" + semanticNumber(float64(*node.ObjectIndex)),
-		SourceObjectID: "obj-" + semanticNumber(float64(*node.ObjectIndex)),
-		Path:           path,
-		RoleHere:       semanticRoleForPath(path),
-		Class:          node.ObjectType,
-		Name:           node.ObjectName,
-	}
-	builder.occurrences[*node.ObjectIndex] = append(builder.occurrences[*node.ObjectIndex], occurrence)
-}
-
-func semanticOccurrencePath(nodes []SemanticYAMLNode) string {
-	stack := []struct {
-		indent int
-		label  string
-	}{}
-	for _, node := range nodes {
-		label := semanticNodePathLabel(node)
-		if label == "" {
-			continue
-		}
-		for len(stack) > 0 && stack[len(stack)-1].indent >= node.Indent {
-			stack = stack[:len(stack)-1]
-		}
-		stack = append(stack, struct {
-			indent int
-			label  string
-		}{indent: node.Indent, label: label})
-	}
-	labels := make([]string, 0, len(stack))
-	for _, item := range stack {
-		labels = append(labels, item.label)
-	}
-	return strings.Join(labels, "/")
-}
-
 func semanticNodePathLabel(node SemanticYAMLNode) string {
 	raw := strings.TrimSpace(node.Raw)
 	if raw == "semantic_energyplus_model:" {
@@ -213,23 +169,6 @@ func semanticNodePathLabel(node SemanticYAMLNode) string {
 		return node.DisplayValue
 	}
 	return ""
-}
-
-func semanticRoleForPath(path string) string {
-	switch {
-	case strings.Contains(path, "/zones/") && strings.Contains(path, "/loads/"):
-		return "zone_load"
-	case strings.Contains(path, "/zones/") && strings.Contains(path, "/air_exchange/"):
-		return "zone_air_exchange"
-	case strings.Contains(path, "/zones/") && strings.Contains(path, "/geometry/"):
-		return "zone_geometry"
-	case strings.Contains(path, "/hvac/"):
-		return "loop_component"
-	case strings.Contains(path, "/schedules/"):
-		return "schedule_library"
-	default:
-		return "semantic_view"
-	}
 }
 
 func semanticLineText(indent int, raw string) string {

@@ -5,7 +5,6 @@ import (
 )
 
 const semanticYAMLSchema = "eplus-semantic/0.2"
-const semanticYAMLBasicLineBudget = 250
 
 type SemanticYAMLMetadata struct {
 	EnergyPlusVersion string
@@ -18,6 +17,7 @@ type SemanticYAMLProjection struct {
 	SourceFormat          string                       `json:"sourceFormat,omitempty"`
 	Text                  string                       `json:"text"`
 	Lines                 []SemanticYAMLLine           `json:"lines"`
+	Navigation            SemanticNavigationIndex      `json:"navigation"`
 	BasicVisibleLineCount int                          `json:"basicVisibleLineCount"`
 	SourceNameConflicts   []SemanticSourceNameConflict `json:"sourceNameConflicts,omitempty"`
 	ObjectCount           int                          `json:"objectCount"`
@@ -41,6 +41,15 @@ type SemanticYAMLLine struct {
 	EditKind   string `json:"editKind,omitempty"`
 	Editable   bool   `json:"editable,omitempty"`
 	Role       string `json:"role,omitempty"`
+
+	EntityID          string                `json:"entityId,omitempty"`
+	EntityKind        string                `json:"entityKind,omitempty"`
+	OccurrenceID      string                `json:"occurrenceId,omitempty"`
+	SemanticPath      string                `json:"semanticPath,omitempty"`
+	SourceAnchor      *SemanticSourceAnchor `json:"sourceAnchor,omitempty"`
+	ViewTargets       []SemanticViewTarget  `json:"viewTargets,omitempty"`
+	PreferredView     string                `json:"preferredView,omitempty"`
+	PreferredTargetID string                `json:"preferredTargetId,omitempty"`
 }
 
 type SemanticSourceNameConflict struct {
@@ -65,6 +74,7 @@ type SemanticModel struct {
 	SourceFormat      string
 	Source            SemanticModelSource
 	Nodes             []SemanticYAMLNode
+	Navigation        SemanticNavigationIndex
 }
 
 type SemanticYAMLNode struct {
@@ -85,6 +95,15 @@ type SemanticYAMLNode struct {
 	EditKind   string
 	Editable   bool
 	Role       string
+
+	EntityID          string
+	EntityKind        string
+	OccurrenceID      string
+	SemanticPath      string
+	SourceAnchor      *SemanticSourceAnchor
+	ViewTargets       []SemanticViewTarget
+	PreferredView     string
+	PreferredTargetID string
 }
 
 type SemanticModelSource struct {
@@ -96,12 +115,19 @@ type SemanticModelSource struct {
 }
 
 type SemanticOccurrence struct {
-	OccurrenceID   string
-	SourceObjectID string
-	Path           string
-	RoleHere       string
-	Class          string
-	Name           string
+	OccurrenceID      string                `json:"occurrenceId"`
+	EntityID          string                `json:"entityId"`
+	SourceObjectID    string                `json:"sourceObjectId,omitempty"`
+	Path              string                `json:"path"`
+	RoleHere          string                `json:"roleHere,omitempty"`
+	ContextKind       string                `json:"contextKind,omitempty"`
+	PreferredView     string                `json:"preferredView,omitempty"`
+	PreferredTargetID string                `json:"preferredTargetId,omitempty"`
+	Class             string                `json:"class,omitempty"`
+	Name              string                `json:"name,omitempty"`
+	SourceAnchor      *SemanticSourceAnchor `json:"sourceAnchor,omitempty"`
+	ViewTargets       []SemanticViewTarget  `json:"viewTargets,omitempty"`
+	LineIndexes       []int                 `json:"lineIndexes,omitempty"`
 }
 
 func BuildSemanticYAMLProjection(doc Document, metadata SemanticYAMLMetadata) SemanticYAMLProjection {
@@ -113,6 +139,7 @@ func BuildSemanticYAMLProjection(doc Document, metadata SemanticYAMLMetadata) Se
 		SourceFormat:          model.SourceFormat,
 		Text:                  RenderSemanticYAML(model),
 		Lines:                 lines,
+		Navigation:            model.Navigation,
 		BasicVisibleLineCount: len(basicSemanticYAMLLines(lines)),
 		SourceNameConflicts:   model.Source.NameConflicts,
 		ObjectCount:           model.Source.ObjectCount,
@@ -181,9 +208,6 @@ func basicSemanticYAMLLines(lines []SemanticYAMLLine) []SemanticYAMLLine {
 		if semanticYAMLLineHasValue(line) && indent <= 4 && keepKeys[key] && semanticYAMLBasicKeepsValueLine(line) {
 			out = append(out, line)
 		}
-	}
-	if len(out) > semanticYAMLBasicLineBudget {
-		return out[:semanticYAMLBasicLineBudget]
 	}
 	return out
 }
@@ -275,10 +299,10 @@ func BuildSemanticModel(doc Document, metadata SemanticYAMLMetadata) SemanticMod
 	ctx := buildSemanticContext(doc, metadata)
 	builder := &semanticYAMLBuilder{model: &model, ctx: ctx}
 	buildSemanticProjectionNodes(builder, ctx, metadata)
+	buildSemanticNavigation(doc, ctx, &model)
 	for objectIndex := range ctx.mapped {
 		model.Source.ProjectedObjects[objectIndex] = true
 		model.Source.UnshownFieldCount[objectIndex] = semanticUnshownFieldCount(ctx, objectIndex)
 	}
-	model.Source.OccurrenceIndex = builder.occurrences
 	return model
 }

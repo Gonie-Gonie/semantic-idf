@@ -13,6 +13,7 @@ const (
 )
 
 type Diagnostic struct {
+	ID          string `json:"id,omitempty"`
 	Severity    string `json:"severity"`
 	Category    string `json:"category"`
 	Code        string `json:"code"`
@@ -70,6 +71,10 @@ var diagnosticReferenceKinds = []diagnosticRefKind{
 }
 
 func AnalyzeDiagnostics(doc Document) []Diagnostic {
+	return analyzeDiagnosticsWithHVAC(doc, AnalyzeHVAC(doc))
+}
+
+func analyzeDiagnosticsWithHVAC(doc Document, hvac HVACReport) []Diagnostic {
 	var diagnostics []Diagnostic
 	diagnostics = append(diagnostics, requiredObjectDiagnostics(doc)...)
 	diagnostics = append(diagnostics, duplicateNameDiagnostics(doc)...)
@@ -78,9 +83,12 @@ func AnalyzeDiagnostics(doc Document) []Diagnostic {
 	diagnostics = append(diagnostics, orphanDiagnostics(doc)...)
 	diagnostics = append(diagnostics, geometryDiagnostics(doc)...)
 	diagnostics = append(diagnostics, scheduleDiagnostics(doc)...)
-	diagnostics = append(diagnostics, hvacNodeDiagnostics(doc)...)
-	diagnostics = append(diagnostics, hvacConnectionDiagnostics(doc)...)
+	diagnostics = append(diagnostics, hvacNodeDiagnosticsForReport(hvac)...)
+	diagnostics = append(diagnostics, hvacConnectionDiagnosticsForReport(hvac)...)
 	diagnostics = mergeDiagnostics(diagnostics)
+	for index := range diagnostics {
+		diagnostics[index].ID = semanticDiagnosticEntityID(diagnostics[index])
+	}
 
 	sort.SliceStable(diagnostics, func(i, j int) bool {
 		if diagnostics[i].Severity != diagnostics[j].Severity {
@@ -302,7 +310,10 @@ func scheduleDiagnostics(doc Document) []Diagnostic {
 }
 
 func hvacNodeDiagnostics(doc Document) []Diagnostic {
-	report := AnalyzeHVAC(doc)
+	return hvacNodeDiagnosticsForReport(AnalyzeHVAC(doc))
+}
+
+func hvacNodeDiagnosticsForReport(report HVACReport) []Diagnostic {
 	nodeRefs := map[string][]HVACNodeUsage{}
 	degree := map[string]int{}
 	graph := map[string]map[string]bool{}

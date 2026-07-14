@@ -186,6 +186,7 @@ export const state = {
   semanticSelectedObjectIndex: "",
   semanticProjectionMode: "basic",
   semanticProjectionFacet: "all",
+  semanticExpandedSectionIds: new Set(["project"]),
   jsonCollapseDepth: 2,
   jsonSelectedObjectIndex: "",
   syncTextRawPosition: true,

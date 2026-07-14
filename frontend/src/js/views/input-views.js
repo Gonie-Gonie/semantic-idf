@@ -2,7 +2,6 @@ import { backend, elements, escapeHTML, setStatus, state, updateTextStats } from
 import { t } from "../i18n.js";
 import { recordViewHistory } from "../view-history.js";
 
-const SEMANTIC_BASIC_LINE_BUDGET = 250;
 const FIELD_TABLE_RENDER_LIMIT = 500;
 
 let analyzeCallback = async () => {};
@@ -376,7 +375,27 @@ function basicSemanticLines(lines) {
       out.push(line);
     }
   }
-  return out.length > SEMANTIC_BASIC_LINE_BUDGET ? out.slice(0, SEMANTIC_BASIC_LINE_BUDGET) : out;
+  return materializedBasicSemanticLines(out);
+}
+
+function materializedBasicSemanticLines(lines) {
+  const expanded = state.semanticExpandedSectionIds instanceof Set
+    ? state.semanticExpandedSectionIds
+    : new Set(["project"]);
+  const out = [];
+  let sectionId = "";
+  for (const line of lines) {
+    const indent = Number(line.indent || 0);
+    if (semanticTopLevelSectionLine(line)) {
+      sectionId = semanticSectionId(line);
+      out.push(line);
+      continue;
+    }
+    if (indent <= 1 || !sectionId || expanded.has(sectionId)) {
+      out.push(line);
+    }
+  }
+  return out;
 }
 
 function semanticBasicKeepsSyntax(line = {}) {
@@ -439,23 +458,57 @@ function compactSemanticLines(lines) {
 }
 
 function renderSemanticSectionIndex(lines = []) {
-  const sections = lines.filter((line) =>
-    line.role === "syntax" &&
-    Number(line.indent || 0) === 1 &&
-    String(line.text || "").trim() !== "semantic_energyplus_model:",
-  );
+  const sections = lines
+    .map((line, index) => ({ line, index }))
+    .filter(({ line }) => semanticTopLevelSectionLine(line));
   if (!sections.length) {
     return "";
   }
+  const expanded = state.semanticExpandedSectionIds instanceof Set
+    ? state.semanticExpandedSectionIds
+    : new Set();
   return `
     <nav class="semantic-section-index" aria-label="Semantic sections">
       ${sections
-        .map((line) => {
+        .map(({ line, index }) => {
           const label = semanticSectionLabel(line);
-          return `<button type="button" data-semantic-section-text="${escapeHTML(line.text || "")}">${escapeHTML(label)}</button>`;
+          const sectionId = semanticSectionId(line);
+          const count = semanticSectionEntityCount(lines, index);
+          const isExpanded = expanded.has(sectionId);
+          return `<button type="button" data-semantic-section-id="${escapeHTML(sectionId)}" data-semantic-section-text="${escapeHTML(line.text || "")}" aria-expanded="${isExpanded ? "true" : "false"}">${escapeHTML(label)}${count ? ` <span aria-hidden="true">(${escapeHTML(count)})</span>` : ""}</button>`;
         })
         .join("")}
     </nav>`;
+}
+
+function semanticTopLevelSectionLine(line = {}) {
+  return line.role === "syntax" &&
+    Number(line.indent || 0) === 1 &&
+    String(line.text || "").trim() !== "semantic_energyplus_model:" &&
+    semanticLineIsBranch(line);
+}
+
+function semanticSectionId(line = {}) {
+  return semanticLineKeyToken(line).trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-") || "section";
+}
+
+function semanticSectionEntityCount(lines, sectionIndex) {
+  const identities = new Set();
+  for (let index = sectionIndex + 1; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (Number(line.indent || 0) <= 1) {
+      break;
+    }
+    const identity = line.entityId || (
+      line.objectIndex === undefined || line.objectIndex === null
+        ? ""
+        : `object:${line.objectIndex}`
+    );
+    if (identity) {
+      identities.add(String(identity));
+    }
+  }
+  return identities.size;
 }
 
 function semanticSectionLabel(line) {
@@ -601,6 +654,19 @@ function bindSemanticControls() {
   });
   elements.semanticEditor.querySelectorAll("[data-semantic-section-text]").forEach((button) => {
     button.addEventListener("click", () => {
+      if (semanticProjectionMode() === "basic") {
+        if (!(state.semanticExpandedSectionIds instanceof Set)) {
+          state.semanticExpandedSectionIds = new Set(["project"]);
+        }
+        const sectionId = button.dataset.semanticSectionId || "";
+        if (state.semanticExpandedSectionIds.has(sectionId)) {
+          state.semanticExpandedSectionIds.delete(sectionId);
+        } else if (sectionId) {
+          state.semanticExpandedSectionIds.add(sectionId);
+        }
+        renderSemanticView();
+        return;
+      }
       scrollSemanticSectionIntoView(button.dataset.semanticSectionText || "");
     });
   });

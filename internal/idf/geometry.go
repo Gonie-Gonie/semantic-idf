@@ -9,6 +9,7 @@ import (
 
 type GeometryReport struct {
 	Zones                  []GeometryZone         `json:"zones"`
+	Spaces                 []GeometrySpace        `json:"spaces,omitempty"`
 	Surfaces               []GeometrySurface      `json:"surfaces"`
 	Windows                []GeometryWindow       `json:"windows"`
 	Constructions          []GeometryConstruction `json:"constructions,omitempty"`
@@ -20,6 +21,13 @@ type GeometryReport struct {
 	ZoneCount              int                    `json:"zoneCount"`
 	SurfaceCount           int                    `json:"surfaceCount"`
 	WindowCount            int                    `json:"windowCount"`
+}
+
+type GeometrySpace struct {
+	ID          string `json:"id"`
+	ObjectIndex int    `json:"objectIndex"`
+	Name        string `json:"name"`
+	ZoneName    string `json:"zoneName"`
 }
 
 type GeometryZone struct {
@@ -189,6 +197,8 @@ func AnalyzeGeometry(doc Document) GeometryReport {
 			report.Zones = append(report.Zones, zone)
 			ctx.zoneDirections[normalizeName(zone.Name)] = numericFieldOrDefault(obj, 0, "direction", "relative", "north")
 			ctx.zoneMultipliers[normalizeName(zone.Name)] = numericFieldOrDefault(obj, 1, "multiplier")
+		case strings.EqualFold(obj.Type, "Space"):
+			report.Spaces = append(report.Spaces, geometrySpaceFromObject(obj))
 		}
 	}
 
@@ -242,6 +252,23 @@ func AnalyzeGeometry(doc Document) GeometryReport {
 	report.SurfaceCount = len(report.Surfaces)
 	report.WindowCount = len(report.Windows)
 	return report
+}
+
+func geometrySpaceFromObject(obj Object) GeometrySpace {
+	name := objectName(obj)
+	if name == "" {
+		name = obj.Type + " #" + strconv.Itoa(obj.Index)
+	}
+	zoneName := fieldValueByCatalogName(obj, "Zone Name")
+	if zoneName == "" && len(obj.Fields) > 1 {
+		zoneName = strings.TrimSpace(obj.Fields[1].Value)
+	}
+	return GeometrySpace{
+		ID:          "space-" + strconv.Itoa(obj.Index),
+		ObjectIndex: obj.Index,
+		Name:        name,
+		ZoneName:    zoneName,
+	}
 }
 
 func geometryZoneFromObject(obj Object) GeometryZone {

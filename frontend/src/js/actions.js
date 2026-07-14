@@ -443,6 +443,7 @@ export function registerLoadedDocument(text, { path = "", filename = "" } = {}) 
   state.analysisStageTimings = {};
   state.renderTiming = { tabs: {}, last: null };
   state.semanticSelectedObjectIndex = "";
+  state.semanticExpandedSectionIds = new Set(["project"]);
   state.analysisStage = "idle";
   state.diagnosticsReady = false;
   state.geometryReady = false;

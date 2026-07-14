@@ -3444,7 +3444,10 @@ func objectNameSuggestionsByPredicate(doc Document, match func(string) bool) []F
 }
 
 func hvacConnectionDiagnostics(doc Document) []Diagnostic {
-	report := AnalyzeHVAC(doc)
+	return hvacConnectionDiagnosticsForReport(AnalyzeHVAC(doc))
+}
+
+func hvacConnectionDiagnosticsForReport(report HVACReport) []Diagnostic {
 	var diagnostics []Diagnostic
 	for _, warning := range report.Warnings {
 		diagnostics = append(diagnostics, Diagnostic{

@@ -223,7 +223,11 @@ type profileContext struct {
 }
 
 func AnalyzeProfile(doc Document) ProfileReport {
-	ctx := newProfileContext(doc)
+	return analyzeProfileWithGeometry(doc, AnalyzeGeometry(doc))
+}
+
+func analyzeProfileWithGeometry(doc Document, geometry GeometryReport) ProfileReport {
+	ctx := newProfileContextWithGeometry(doc, geometry)
 	report := ProfileReport{
 		ZoneCount:       len(ctx.zones),
 		Dimensions:      profileDimensionOptions(),
@@ -361,6 +365,10 @@ func profileMetricOptions() []ProfileMetricOption {
 }
 
 func newProfileContext(doc Document) profileContext {
+	return newProfileContextWithGeometry(doc, AnalyzeGeometry(doc))
+}
+
+func newProfileContextWithGeometry(doc Document, geometry GeometryReport) profileContext {
 	ctx := profileContext{
 		doc:           doc,
 		zoneByKey:     map[string]profileZoneContext{},
@@ -371,7 +379,6 @@ func newProfileContext(doc Document) profileContext {
 		peopleDensity: map[string]float64{},
 		peopleCount:   map[string]float64{},
 	}
-	geometry := AnalyzeGeometry(doc)
 	geometryZones := map[string]GeometryZone{}
 	for _, zone := range geometry.Zones {
 		geometryZones[normalizeName(zone.Name)] = zone
