@@ -36,6 +36,8 @@ const (
 	PurposeBasicEnergyDetailLight                 = "light"
 	PurposeBasicEnergyDetailExplain               = "explain"
 	PurposeBasicEnergyDetailHeatDrivers           = "heat_drivers"
+	PurposeZoneHeatFlowDetailZone                 = "zone"
+	PurposeZoneHeatFlowDetailSurface              = "surface"
 	PurposeOutputStateExisting                    = "existing"
 	PurposeOutputStateTemporary                   = "temporary"
 	PurposeOutputStateWillPersist                 = "will_be_persisted"
@@ -47,15 +49,16 @@ const (
 )
 
 type SimulationPurposeRequest struct {
-	Purposes          []SimulationPurposeID  `json:"purposes"`
-	Scope             SimulationPurposeScope `json:"scope"`
-	FrequencyPolicy   string                 `json:"frequencyPolicy,omitempty"`
-	SQLMode           string                 `json:"sqlMode,omitempty"`
-	AllocationPolicy  string                 `json:"allocationPolicy,omitempty"`
-	BasicEnergyDetail string                 `json:"basicEnergyDetail,omitempty"`
-	PersistOutputs    bool                   `json:"persistOutputs,omitempty"`
-	DiscoveryAllowed  bool                   `json:"discoveryAllowed,omitempty"`
-	OutputApplyMode   string                 `json:"outputApplyMode,omitempty"`
+	Purposes           []SimulationPurposeID  `json:"purposes"`
+	Scope              SimulationPurposeScope `json:"scope"`
+	FrequencyPolicy    string                 `json:"frequencyPolicy,omitempty"`
+	SQLMode            string                 `json:"sqlMode,omitempty"`
+	AllocationPolicy   string                 `json:"allocationPolicy,omitempty"`
+	BasicEnergyDetail  string                 `json:"basicEnergyDetail,omitempty"`
+	ZoneHeatFlowDetail string                 `json:"zoneHeatFlowDetail,omitempty"`
+	PersistOutputs     bool                   `json:"persistOutputs,omitempty"`
+	DiscoveryAllowed   bool                   `json:"discoveryAllowed,omitempty"`
+	OutputApplyMode    string                 `json:"outputApplyMode,omitempty"`
 }
 
 type SimulationPurposeScope struct {
@@ -83,19 +86,20 @@ type PurposeCustomOutput struct {
 }
 
 type PurposeRunPlan struct {
-	Purposes          []SimulationPurposeID `json:"purposes"`
-	OutputObjects     []PurposeOutputObject `json:"outputObjects"`
-	EstimatedWeight   string                `json:"estimatedWeight"`
-	EstimatedSeries   int                   `json:"estimatedSeries"`
-	EstimatedFrames   int                   `json:"estimatedFrames"`
-	RequiresSQL       bool                  `json:"requiresSQL"`
-	RequiresDiscovery bool                  `json:"requiresDiscovery"`
-	AllocationPolicy  string                `json:"allocationPolicy,omitempty"`
-	BasicEnergyDetail string                `json:"basicEnergyDetail,omitempty"`
-	PeriodMode        string                `json:"periodMode,omitempty"`
-	PeriodStart       string                `json:"periodStart,omitempty"`
-	PeriodEnd         string                `json:"periodEnd,omitempty"`
-	Warnings          []PurposeRunWarning   `json:"warnings,omitempty"`
+	Purposes           []SimulationPurposeID `json:"purposes"`
+	OutputObjects      []PurposeOutputObject `json:"outputObjects"`
+	EstimatedWeight    string                `json:"estimatedWeight"`
+	EstimatedSeries    int                   `json:"estimatedSeries"`
+	EstimatedFrames    int                   `json:"estimatedFrames"`
+	RequiresSQL        bool                  `json:"requiresSQL"`
+	RequiresDiscovery  bool                  `json:"requiresDiscovery"`
+	AllocationPolicy   string                `json:"allocationPolicy,omitempty"`
+	BasicEnergyDetail  string                `json:"basicEnergyDetail,omitempty"`
+	ZoneHeatFlowDetail string                `json:"zoneHeatFlowDetail,omitempty"`
+	PeriodMode         string                `json:"periodMode,omitempty"`
+	PeriodStart        string                `json:"periodStart,omitempty"`
+	PeriodEnd          string                `json:"periodEnd,omitempty"`
+	Warnings           []PurposeRunWarning   `json:"warnings,omitempty"`
 }
 
 type PurposeOutputObject struct {
@@ -122,15 +126,16 @@ type PurposeRunWarning struct {
 }
 
 type PurposeResultBundle struct {
-	Energy                   EnergyDashboardResult     `json:"energy,omitempty"`
-	EnergyExplanation        EnergyExplanationResult   `json:"energyExplanation,omitempty"`
-	EnergyExplanationSummary EnergyExplanationSummary  `json:"energyExplanationSummary,omitempty"`
-	ZoneHeatFlow             HeatFlowDataset           `json:"zoneHeatFlow,omitempty"`
-	HVACLoops                []HVACLoopRunResult       `json:"hvacLoops,omitempty"`
-	Comfort                  ComfortResult             `json:"comfort,omitempty"`
-	Integrity                IntegrityResult           `json:"integrity,omitempty"`
-	Series                   []SimulationSeries        `json:"series,omitempty"`
-	Completeness             []PurposeCompletenessItem `json:"completeness,omitempty"`
+	Energy                   EnergyDashboardResult           `json:"energy,omitempty"`
+	EnergyExplanation        EnergyExplanationResult         `json:"energyExplanation,omitempty"`
+	EnergyExplanationSummary EnergyExplanationSummary        `json:"energyExplanationSummary,omitempty"`
+	ZoneHeatFlow             HeatFlowDataset                 `json:"zoneHeatFlow,omitempty"`
+	ThermalTopology          ThermalTopologySimulationResult `json:"thermalTopology,omitempty"`
+	HVACLoops                []HVACLoopRunResult             `json:"hvacLoops,omitempty"`
+	Comfort                  ComfortResult                   `json:"comfort,omitempty"`
+	Integrity                IntegrityResult                 `json:"integrity,omitempty"`
+	Series                   []SimulationSeries              `json:"series,omitempty"`
+	Completeness             []PurposeCompletenessItem       `json:"completeness,omitempty"`
 }
 
 type EnergyDashboardResult struct {
@@ -369,6 +374,7 @@ func NormalizeSimulationPurposeRequest(request *SimulationPurposeRequest) Simula
 	}
 	normalized.AllocationPolicy = normalizePurposeAllocationPolicy(normalized.AllocationPolicy)
 	normalized.BasicEnergyDetail = normalizePurposeBasicEnergyDetail(normalized.BasicEnergyDetail)
+	normalized.ZoneHeatFlowDetail = normalizePurposeZoneHeatFlowDetail(normalized.ZoneHeatFlowDetail)
 	normalized.OutputApplyMode = normalizePurposeOutputApplyMode(normalized.OutputApplyMode)
 	normalized.Scope.ZoneMode = strings.TrimSpace(normalized.Scope.ZoneMode)
 	if normalized.Scope.ZoneMode == "" {
@@ -391,6 +397,13 @@ func NormalizeSimulationPurposeRequest(request *SimulationPurposeRequest) Simula
 	normalized.Scope.ComponentIDs = normalizePurposeStrings(normalized.Scope.ComponentIDs)
 	normalized.Scope.OutputSignatures = normalizePurposeStrings(normalized.Scope.OutputSignatures)
 	return normalized
+}
+
+func normalizePurposeZoneHeatFlowDetail(detail string) string {
+	if strings.EqualFold(strings.TrimSpace(detail), PurposeZoneHeatFlowDetailSurface) {
+		return PurposeZoneHeatFlowDetailSurface
+	}
+	return PurposeZoneHeatFlowDetailZone
 }
 
 func normalizePurposeAllocationPolicy(policy string) string {
@@ -581,6 +594,10 @@ func BuildPurposeResultBundle(result *SimulationRunResult, request SimulationPur
 			bundle.ZoneHeatFlow = result.HeatFlow
 			bundle.ZoneHeatFlow.Completeness = zoneHeatFlowCompleteness(result.HeatFlow)
 			bundle.Completeness = append(bundle.Completeness, bundle.ZoneHeatFlow.Completeness...)
+			bundle.ThermalTopology = buildThermalTopologySimulationResult(result, request)
+			if request.ZoneHeatFlowDetail == PurposeZoneHeatFlowDetailSurface {
+				bundle.Completeness = append(bundle.Completeness, bundle.ThermalTopology.Completeness...)
+			}
 		case SimulationPurposeHVACLoopCheck:
 			bundle.HVACLoops = buildHVACLoopRunResults(result.Series, request)
 			hasNodeSeries := len(bundle.HVACLoops) > 0 && len(bundle.HVACLoops[0].Series) > 0
@@ -2422,6 +2439,82 @@ func (builder *purposePlanBuilder) addZoneHeatFlow() {
 			builder.addVariable(SimulationPurposeZoneHeatFlow, key, variable, "Hourly", "medium", "Hourly zone heat-balance ledger variable.")
 		}
 	}
+	if builder.request.ZoneHeatFlowDetail == PurposeZoneHeatFlowDetailSurface {
+		builder.addSurfaceHeatFlow()
+	}
+}
+
+func (builder *purposePlanBuilder) addSurfaceHeatFlow() {
+	targets := surfaceHeatFlowTargets(builder.doc)
+	if len(targets) == 0 {
+		builder.warn("warning", "surface_heat_flow_scope_empty", "Surface heat-flow detail needs heat-transfer surfaces, but none were found.", SimulationPurposeZoneHeatFlow, "")
+		return
+	}
+	for _, target := range targets {
+		for _, definition := range surfaceHeatFlowVariableDefinitions(target.Opening) {
+			builder.addVariable(SimulationPurposeZoneHeatFlow, target.Name, definition.EnergyName, "Hourly", "heavy", definition.Description)
+		}
+	}
+	builder.addObject(PurposeOutputObject{
+		ObjectType: "Output:Diagnostics",
+		Fields: []idf.OutputFieldValue{
+			{Name: "Key 1", Value: "DisplayAdvancedReportVariables"},
+		},
+		PurposeIDs:  []SimulationPurposeID{SimulationPurposeZoneHeatFlow},
+		Weight:      "light",
+		Description: "Enables the advanced opaque-surface conduction variables used by the thermal topology ledger.",
+		Reason:      "Surface heat-flow detail",
+	})
+	builder.warn("info", "surface_heat_flow_enabled", fmt.Sprintf("Surface heat-flow detail adds %d model-aware surface series targets; energy outputs are preferred and rate aliases are accepted during result discovery.", len(targets)), SimulationPurposeZoneHeatFlow, "")
+}
+
+type surfaceHeatFlowTarget struct {
+	Name    string
+	Opening bool
+}
+
+type surfaceHeatFlowVariableDefinition struct {
+	Family        string
+	EnergyName    string
+	EnergyAliases []string
+	RateNames     []string
+	Description   string
+}
+
+func surfaceHeatFlowVariableDefinitions(opening bool) []surfaceHeatFlowVariableDefinition {
+	if opening {
+		return []surfaceHeatFlowVariableDefinition{
+			{Family: "window_gain", EnergyName: "Surface Window Heat Gain Energy", RateNames: []string{"Surface Window Heat Gain Rate"}, Description: "Hourly window heat gain for the thermal topology boundary ledger."},
+			{Family: "window_loss", EnergyName: "Surface Window Heat Loss Energy", RateNames: []string{"Surface Window Heat Loss Rate"}, Description: "Hourly window heat loss for the thermal topology boundary ledger."},
+		}
+	}
+	return []surfaceHeatFlowVariableDefinition{
+		{Family: "average_conduction", EnergyName: "Surface Average Face Conduction Heat Transfer Energy", RateNames: []string{"Surface Average Face Conduction Heat Transfer Rate"}, Description: "Hourly opaque face-average conduction, with positive values entering the owning zone."},
+		{Family: "inside_conduction", EnergyName: "Surface Inside Face Conduction Heat Transfer Energy", EnergyAliases: []string{"Opaque Surface Inside Face Conduction Heat Transfer Energy"}, RateNames: []string{"Surface Inside Face Conduction Heat Transfer Rate", "Opaque Surface Inside Face Conduction Heat Transfer Rate"}, Description: "Hourly opaque inside-face conduction trace for the thermal topology boundary ledger."},
+		{Family: "outside_conduction", EnergyName: "Surface Outside Face Conduction Heat Transfer Energy", EnergyAliases: []string{"Opaque Surface Outside Face Conduction Heat Transfer Energy"}, RateNames: []string{"Surface Outside Face Conduction Heat Transfer Rate", "Opaque Surface Outside Face Conduction Heat Transfer Rate"}, Description: "Hourly opaque outside-face conduction trace for source reconciliation."},
+	}
+}
+
+func surfaceHeatFlowTargets(doc idf.Document) []surfaceHeatFlowTarget {
+	values := []surfaceHeatFlowTarget{}
+	seen := map[string]bool{}
+	for _, object := range doc.Objects {
+		typeName := strings.ToLower(strings.TrimSpace(object.Type))
+		opening := strings.Contains(typeName, "fenestration") || strings.HasPrefix(typeName, "window") || strings.HasPrefix(typeName, "door") || strings.Contains(typeName, "glazeddoor")
+		opaque := strings.Contains(typeName, "buildingsurface") || strings.HasPrefix(typeName, "wall") || strings.HasPrefix(typeName, "roof") || strings.HasPrefix(typeName, "floor") || strings.HasPrefix(typeName, "ceiling")
+		if !opening && !opaque {
+			continue
+		}
+		name := purposeObjectName(object)
+		key := normalizePurposeToken(name)
+		if key == "" || seen[key] {
+			continue
+		}
+		seen[key] = true
+		values = append(values, surfaceHeatFlowTarget{Name: name, Opening: opening})
+	}
+	sort.SliceStable(values, func(i, j int) bool { return strings.ToLower(values[i].Name) < strings.ToLower(values[j].Name) })
+	return values
 }
 
 func purposeZoneKeysForScope(scope SimulationPurposeScope) ([]string, bool, string) {
@@ -2973,19 +3066,20 @@ func (builder *purposePlanBuilder) plan() PurposeRunPlan {
 		builder.warnings = append(builder.warnings, warning)
 	}
 	return PurposeRunPlan{
-		Purposes:          append([]SimulationPurposeID(nil), builder.request.Purposes...),
-		OutputObjects:     builder.objects,
-		EstimatedWeight:   weight,
-		EstimatedSeries:   seriesCount,
-		EstimatedFrames:   frameCount,
-		RequiresSQL:       true,
-		RequiresDiscovery: builder.request.DiscoveryAllowed,
-		AllocationPolicy:  builder.request.AllocationPolicy,
-		BasicEnergyDetail: purposeRunPlanBasicEnergyDetail(builder.request),
-		PeriodMode:        builder.request.Scope.PeriodMode,
-		PeriodStart:       builder.request.Scope.PeriodStart,
-		PeriodEnd:         builder.request.Scope.PeriodEnd,
-		Warnings:          builder.warnings,
+		Purposes:           append([]SimulationPurposeID(nil), builder.request.Purposes...),
+		OutputObjects:      builder.objects,
+		EstimatedWeight:    weight,
+		EstimatedSeries:    seriesCount,
+		EstimatedFrames:    frameCount,
+		RequiresSQL:        true,
+		RequiresDiscovery:  builder.request.DiscoveryAllowed,
+		AllocationPolicy:   builder.request.AllocationPolicy,
+		BasicEnergyDetail:  purposeRunPlanBasicEnergyDetail(builder.request),
+		ZoneHeatFlowDetail: builder.request.ZoneHeatFlowDetail,
+		PeriodMode:         builder.request.Scope.PeriodMode,
+		PeriodStart:        builder.request.Scope.PeriodStart,
+		PeriodEnd:          builder.request.Scope.PeriodEnd,
+		Warnings:           builder.warnings,
 	}
 }
 

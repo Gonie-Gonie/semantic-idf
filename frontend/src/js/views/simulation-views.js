@@ -537,6 +537,7 @@ export function initializeSimulationControls() {
   elements.simulationPurposePeriodStart?.addEventListener("input", () => scheduleSimulationRunPlan());
   elements.simulationPurposePeriodEnd?.addEventListener("input", () => scheduleSimulationRunPlan());
   elements.simulationPurposeEnergyDetail?.addEventListener("change", () => scheduleSimulationRunPlan());
+  elements.simulationPurposeZoneHeatFlowDetail?.addEventListener("change", () => scheduleSimulationRunPlan());
   elements.simulationPurposeFrequencyPolicy?.addEventListener("change", () => scheduleSimulationRunPlan());
   elements.simulationPurposeAllocationPolicy?.addEventListener("change", () => scheduleSimulationRunPlan());
   elements.simulationPurposeApplyMode?.addEventListener("change", () => updatePurposeApplyButton());
@@ -656,6 +657,7 @@ export function initializeSimulationControls() {
     renderSimulation();
   });
   window.addEventListener("idfAnalyzer:outputApplied", () => scheduleSimulationRunPlan(0));
+  window.addEventListener("idfAnalyzer:openSimulationPurposePlan", () => openSimulationPurposeOutputPlan());
   window.addEventListener("idfAnalyzer:hvacSelectionChanged", () => {
     renderSimulationPurposeSetup();
     scheduleSimulationRunPlan(0);
@@ -1372,6 +1374,7 @@ function renderSimulationRunPlanPreview() {
       <span>${escapeHTML(t("simulation.estimatedFrames", { count: plan.estimatedFrames || 0 }, `${plan.estimatedFrames || 0} frames`))}</span>
       <span>${escapeHTML(plan.requiresSQL ? t("simulation.sqlPrimary", {}, "SQL primary") : t("simulation.sqlOptional", {}, "SQL optional"))}</span>
       ${plan.basicEnergyDetail ? `<span>${escapeHTML(t("simulation.basicEnergyDetail", {}, "Basic Energy detail"))}: ${escapeHTML(basicEnergyDetailLabel(plan.basicEnergyDetail))}</span>` : ""}
+      ${plan.zoneHeatFlowDetail ? `<span>Zone Heat Flow: ${escapeHTML(plan.zoneHeatFlowDetail === "surface" ? "Surface topology overlay" : "Zone ledger")}</span>` : ""}
     </div>
     ${outputSetSummary}
     ${warningHTML}
@@ -6472,6 +6475,7 @@ function buildSimulationPurposeRequest() {
       customOutputs: parseCustomOutputs(elements.simulationCustomOutputs?.value || ""),
     },
     basicEnergyDetail: elements.simulationPurposeEnergyDetail?.value || "light",
+    zoneHeatFlowDetail: elements.simulationPurposeZoneHeatFlowDetail?.value || "zone",
     frequencyPolicy: elements.simulationPurposeFrequencyPolicy?.value || "purpose_default",
     allocationPolicy: elements.simulationPurposeAllocationPolicy?.value || "direct_only",
     outputApplyMode: purposeOutputApplyMode(),
@@ -6921,6 +6925,9 @@ function updateSimulationControls() {
   }
   if (elements.simulationPurposeEnergyDetail) {
     elements.simulationPurposeEnergyDetail.disabled = state.simulationRunning;
+  }
+  if (elements.simulationPurposeZoneHeatFlowDetail) {
+    elements.simulationPurposeZoneHeatFlowDetail.disabled = state.simulationRunning;
   }
   if (elements.simulationPurposeFrequencyPolicy) {
     elements.simulationPurposeFrequencyPolicy.disabled = state.simulationRunning;
@@ -9725,6 +9732,7 @@ async function runCurrentSimulation({ silent = false, auto = false } = {}) {
       return result;
     }
     state.simulationResult = result;
+    window.dispatchEvent(new CustomEvent("idfAnalyzer:simulationResultChanged", { detail: { result } }));
     state.simulationPurposePlan = result?.purposeRunPlan || state.simulationPurposePlan;
     state.simulationRunning = false;
     state.simulationStale = state.simulationRunText !== (elements.idfInput?.value || "");

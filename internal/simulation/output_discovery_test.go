@@ -167,6 +167,30 @@ func TestDiscoverAvailableOutputsMarksPurposeAlias(t *testing.T) {
 	}
 }
 
+func TestDiscoverAvailableOutputsResolvesSurfaceHeatFlowRateAlias(t *testing.T) {
+	dir := t.TempDir()
+	rddPath := filepath.Join(dir, "eplusout.rdd")
+	if err := os.WriteFile(rddPath, []byte("South Wall,Sum,Surface Average Face Conduction Heat Transfer Rate [W]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := DiscoverAvailableOutputs(OutputDiscoveryRequest{
+		Text:    thermalTopologySimulationFixture,
+		RDDPath: rddPath,
+		PurposeRequest: &SimulationPurposeRequest{
+			Purposes:           []SimulationPurposeID{SimulationPurposeZoneHeatFlow},
+			ZoneHeatFlowDetail: PurposeZoneHeatFlowDetailSurface,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, ok := discoveryFind(result.Items, "Output:Variable", "South Wall", "Surface Average Face Conduction Heat Transfer Energy", "alias")
+	if !ok || item.AliasOf != "Surface Average Face Conduction Heat Transfer Rate" {
+		t.Fatalf("missing surface rate alias: %#v", result.Items)
+	}
+}
+
 func TestDiscoverAvailableOutputsMarksPurposeMeterAlias(t *testing.T) {
 	dir := t.TempDir()
 	mddPath := filepath.Join(dir, "eplusout.mdd")

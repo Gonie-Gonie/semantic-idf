@@ -508,6 +508,23 @@ func outputDiscoveryKey(objectType string, keyValue string, name string) string 
 func outputDiscoveryAliases(objectType string, name string) []string {
 	switch strings.ToLower(strings.TrimSpace(objectType)) {
 	case "output:variable":
+		for _, opening := range []bool{false, true} {
+			for _, definition := range surfaceHeatFlowVariableDefinitions(opening) {
+				if normalizePurposeToken(name) == normalizePurposeToken(definition.EnergyName) {
+					return append(append([]string(nil), definition.EnergyAliases...), definition.RateNames...)
+				}
+				for _, energyAlias := range definition.EnergyAliases {
+					if normalizePurposeToken(name) == normalizePurposeToken(energyAlias) {
+						return append([]string{definition.EnergyName}, append(definition.EnergyAliases, definition.RateNames...)...)
+					}
+				}
+				for _, rateName := range definition.RateNames {
+					if normalizePurposeToken(name) == normalizePurposeToken(rateName) {
+						return append([]string{definition.EnergyName}, append(definition.EnergyAliases, definition.RateNames...)...)
+					}
+				}
+			}
+		}
 		switch normalizePurposeToken(name) {
 		case "zone mean air temperature":
 			return []string{"Zone Air Temperature", "Space Mean Air Temperature"}

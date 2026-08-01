@@ -340,13 +340,17 @@ function renderProfileDetail(group, profile, zoneRow = null) {
   const items = uniqueProfileItems(itemIds.map((id) => itemMap.get(id)).filter(Boolean));
   const warnings = [...(zoneRow?.warnings || []), ...group.warnings, ...items.flatMap((item) => item.warnings || [])];
   const candidates = profileCandidatesForDimensions(profile, dimensions.map((dimension) => dimension.dimension));
+  const topologyZoneName = zoneRow?.zoneName || group.zoneNames?.[0] || "";
   elements.profileDetail.innerHTML = `
     <div class="profile-detail-head">
       <div>
         <h3>${escapeHTML(zoneRow ? zoneRow.zoneName : group.name)}</h3>
         <p>${escapeHTML(zoneRow ? t("profile.receivesProfile", { profile: group.name }) : group.zoneNames.join(", "))}</p>
       </div>
-      <span class="badge">${escapeHTML(t("count.zones", { count: group.zoneCount }))}</span>
+      <div class="profile-detail-actions">
+        <button type="button" data-profile-open-topology="${escapeHTML(topologyZoneName)}" ${topologyZoneName ? "" : "disabled"}>Open Topology</button>
+        <span class="badge">${escapeHTML(t("count.zones", { count: group.zoneCount }))}</span>
+      </div>
     </div>
     <div class="profile-dimension-grid">
       ${dimensions.map(renderProfileDimensionSummary).join("")}
@@ -2176,6 +2180,19 @@ function sameProfileName(left, right) {
 }
 
 function bindProfileControls(profile) {
+  elements.profileDetail.querySelector("[data-profile-open-topology]")?.addEventListener("click", (event) => {
+    const zoneName = event.currentTarget.dataset.profileOpenTopology || "";
+    const node = (state.report?.geometry?.topology?.nodes || []).find((item) => (
+      (item.kind === "zone" || item.kind === "space") && sameProfileName(item.zoneName || item.label || item.objectName, zoneName)
+    ));
+    if (!node) return;
+    state.geometryMode = "thermal";
+    state.thermalTopologySelectedEntityKind = node.kind || "zone";
+    state.thermalTopologySelectedEntityId = node.entityId || node.id;
+    state.selectedGeometryKind = node.kind || "zone";
+    state.selectedGeometryId = node.entityId || node.id;
+    [...(elements.resultTabButtons || [])].find((button) => button.dataset.resultTab === "geometry")?.click();
+  });
   elements.profileSettings.querySelectorAll("[data-profile-view]").forEach((button) => {
     button.addEventListener("click", () => {
       state.activeProfileView = button.dataset.profileView === "zone" ? "zone" : "profile";

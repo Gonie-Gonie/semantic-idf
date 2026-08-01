@@ -264,6 +264,14 @@ elements.thermalTopologyAreaComponent.addEventListener("change", () => {
 elements.thermalTopologyScope.addEventListener("change", () => {
   updateThermalTopologySetting("thermalTopologyScope", normalizeThermalTopologyScope(elements.thermalTopologyScope.value));
 });
+elements.thermalTopologySimulationPeriod?.addEventListener("change", () => {
+  state.thermalTopologySimulationFrame = 0;
+  updateThermalTopologySetting("thermalTopologySimulationPeriod", elements.thermalTopologySimulationPeriod.value || "annual");
+});
+elements.thermalTopologySimulationFrame?.addEventListener("input", () => {
+  state.thermalTopologySimulationFrame = Math.max(0, Number(elements.thermalTopologySimulationFrame.value) || 0);
+  renderGeometry();
+});
 elements.thermalTopologyLayout.addEventListener("change", () => {
   updateThermalTopologySetting("thermalTopologyLayout", normalizeThermalTopologyLayout(elements.thermalTopologyLayout.value));
 });

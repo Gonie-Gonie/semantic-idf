@@ -472,6 +472,13 @@
                     </select>
                   </label>
                   <label>
+                    <span>Zone Heat Flow detail</span>
+                    <select id="simulationPurposeZoneHeatFlowDetail">
+                      <option value="zone" selected>Zone ledger</option>
+                      <option value="surface">Surface topology overlay</option>
+                    </select>
+                  </label>
+                  <label>
                     <span data-i18n="simulation.frequencyPolicy">Frequency policy</span>
                     <select id="simulationPurposeFrequencyPolicy">
                       <option value="purpose_default" selected data-i18n="simulation.frequencyPurposeDefault">Purpose default</option>
@@ -775,6 +782,22 @@
                       <option value="neighbors" data-i18n="topology.scopeNeighbors">Neighbors</option>
                     </select>
                   </label>
+                  <div id="thermalTopologySimulationControls" class="thermal-topology-simulation-controls" hidden>
+                    <label class="topology-select-control">
+                      <span>Period</span>
+                      <select id="thermalTopologySimulationPeriod" aria-label="Simulation overlay period">
+                        <option value="annual">Annual</option>
+                        <option value="monthly">Monthly</option>
+                        <option value="daily">Daily</option>
+                        <option value="hourly">Hourly</option>
+                        <option value="selected_range">Selected range</option>
+                      </select>
+                    </label>
+                    <label id="thermalTopologySimulationFrameControl" class="thermal-topology-frame-control" hidden>
+                      <span id="thermalTopologySimulationFrameLabel">Frame</span>
+                      <input id="thermalTopologySimulationFrame" type="range" min="0" max="0" value="0" aria-label="Simulation overlay frame" />
+                    </label>
+                  </div>
                   <button id="thermalTopologyFit" class="geometry-mode-button" type="button" data-i18n="topology.fit">Fit</button>
                   <details id="thermalTopologyAdvanced" class="thermal-topology-advanced">
                     <summary data-i18n="topology.advanced">Advanced</summary>
