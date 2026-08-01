@@ -13,6 +13,13 @@ func TestTopologyViewSwitchSupportsThermalAndNormalizesInvalidModes(t *testing.T
 		`data-geometry-mode="thermal"`,
 		`data-i18n-title="topology.thermalTooltip"`,
 		`id="thermalTopologyGraph"`,
+		`id="thermalTopologyView"`,
+		`id="thermalTopologyMatrix"`,
+		`id="thermalTopologyInspector"`,
+		`id="thermalTopologyGraphLevel"`,
+		`id="thermalTopologyMetric"`,
+		`id="thermalTopologyScope"`,
+		`id="thermalTopologyAdvanced"`,
 		`id="thermalTopologyAreaBasis"`,
 		`value="effective"`,
 		`value="physical"`,
@@ -43,11 +50,69 @@ func TestTopologyAreaBasisDefaultsToEffectiveAndGeometryLabelsUsePhysicalArea(t 
 	for _, required := range []string{
 		`surface.physicalArea ?? surface.area`,
 		`windowItem.physicalArea ?? windowItem.area`,
-		`"physicalGrossArea" : "effectiveGrossArea"`,
 	} {
 		if !strings.Contains(view, required) {
 			t.Fatalf("area basis rendering contract is missing %q", required)
 		}
+	}
+	layout := readTestFile(t, "frontend/src/js/views/thermal-topology-layout.js")
+	if !strings.Contains(layout, `"physicalGrossArea" : "effectiveGrossArea"`) {
+		t.Fatal("thermal layout must select physical or effective boundary area explicitly")
+	}
+}
+
+func TestTopologyThermalRendererIsSplitAndLazyLoaded(t *testing.T) {
+	view := readTestFile(t, "frontend/src/js/views/geometry-view.js")
+	for _, required := range []string{
+		`import("./thermal-topology-view.js")`,
+		`renderThermalTopologyLazy(geometry)`,
+		`export function geometrySelectionForTarget`,
+		`export function geometryNavigationAttributes`,
+	} {
+		if !strings.Contains(view, required) {
+			t.Fatalf("geometry renderer split is missing %q", required)
+		}
+	}
+	for _, file := range []string{
+		"frontend/src/js/views/thermal-topology-view.js",
+		"frontend/src/js/views/thermal-topology-layout.js",
+		"frontend/src/js/views/thermal-topology-inspector.js",
+	} {
+		if body := readTestFile(t, file); body == "" {
+			t.Fatalf("thermal topology module %s is empty", file)
+		}
+	}
+}
+
+func TestTopologyToolbarSeparatesSpatialAndThermalControls(t *testing.T) {
+	index := readTestFile(t, "frontend/src/index.html")
+	for _, required := range []string{
+		`id="geometrySpatialControls"`,
+		`id="thermalTopologyControls"`,
+		`id="thermalTopologyLayout"`,
+		`id="thermalTopologyShowOpenings"`,
+		`id="thermalTopologyShowAirCoupling"`,
+		`id="thermalTopologyExpandExternalTargets"`,
+		`id="thermalTopologyShowLabels"`,
+	} {
+		if !strings.Contains(index, required) {
+			t.Fatalf("topology toolbar is missing %q", required)
+		}
+	}
+
+	view := readTestFile(t, "frontend/src/js/views/geometry-view.js")
+	for _, required := range []string{
+		`elements.geometrySpatialControls.hidden = state.geometryMode === "thermal"`,
+		`elements.thermalTopologyControls.hidden = state.geometryMode !== "thermal"`,
+	} {
+		if !strings.Contains(view, required) {
+			t.Fatalf("topology mode control visibility is missing %q", required)
+		}
+	}
+
+	styles := readTestFile(t, "frontend/src/styles/geometry.css")
+	if !strings.Contains(styles, `@media (max-width: 1280px)`) || !strings.Contains(styles, `.thermal-topology-advanced-menu`) {
+		t.Fatal("thermal toolbar must collapse its advanced controls at narrow widths")
 	}
 }
 

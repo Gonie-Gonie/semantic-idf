@@ -4,6 +4,10 @@ import {
   backend,
   elements,
   normalizeThermalTopologyAreaBasis,
+  normalizeThermalTopologyGraphLevel,
+  normalizeThermalTopologyLayout,
+  normalizeThermalTopologyMetric,
+  normalizeThermalTopologyScope,
   resetThermalTopologyDocumentState,
   setStatus,
   state,
@@ -246,9 +250,35 @@ elements.geometryModeButtons.forEach((button) => {
   button.addEventListener("click", () => setGeometryMode(button.dataset.geometryMode));
 });
 elements.geometryStorySelect.addEventListener("change", () => setGeometryStory(elements.geometryStorySelect.value));
+elements.thermalTopologyGraphLevel.addEventListener("change", () => {
+  updateThermalTopologySetting("thermalTopologyGraphLevel", normalizeThermalTopologyGraphLevel(elements.thermalTopologyGraphLevel.value));
+});
+elements.thermalTopologyMetric.addEventListener("change", () => {
+  updateThermalTopologySetting("thermalTopologyMetric", normalizeThermalTopologyMetric(elements.thermalTopologyMetric.value));
+});
+elements.thermalTopologyScope.addEventListener("change", () => {
+  updateThermalTopologySetting("thermalTopologyScope", normalizeThermalTopologyScope(elements.thermalTopologyScope.value));
+});
+elements.thermalTopologyLayout.addEventListener("change", () => {
+  updateThermalTopologySetting("thermalTopologyLayout", normalizeThermalTopologyLayout(elements.thermalTopologyLayout.value));
+});
 elements.thermalTopologyAreaBasis.addEventListener("change", () => {
-  state.thermalTopologyAreaBasis = normalizeThermalTopologyAreaBasis(elements.thermalTopologyAreaBasis.value);
-  renderGeometry();
+  updateThermalTopologySetting("thermalTopologyAreaBasis", normalizeThermalTopologyAreaBasis(elements.thermalTopologyAreaBasis.value));
+});
+elements.thermalTopologyShowOpenings.addEventListener("change", () => {
+  updateThermalTopologySetting("thermalTopologyShowOpenings", elements.thermalTopologyShowOpenings.checked);
+});
+elements.thermalTopologyShowAirCoupling.addEventListener("change", () => {
+  updateThermalTopologySetting("thermalTopologyShowAirCoupling", elements.thermalTopologyShowAirCoupling.checked);
+});
+elements.thermalTopologyExpandExternalTargets.addEventListener("change", () => {
+  updateThermalTopologySetting("thermalTopologyExpandExternalTargets", elements.thermalTopologyExpandExternalTargets.checked);
+});
+elements.thermalTopologyShowLabels.addEventListener("change", () => {
+  updateThermalTopologySetting("thermalTopologyShowLabels", elements.thermalTopologyShowLabels.checked);
+});
+elements.thermalTopologyFit.addEventListener("click", () => {
+  window.dispatchEvent(new CustomEvent("idfAnalyzer:thermalTopologyFit"));
 });
 elements.geometrySelectionAid.addEventListener("click", () => setGeometrySelectionAid(!state.geometrySelectionAid));
 elements.geometrySyncLocate.addEventListener("change", () => {
@@ -260,6 +290,16 @@ elements.geometryShowWalls.addEventListener("change", () => renderGeometry());
 elements.geometryShowWindows.addEventListener("change", () => renderGeometry());
 elements.hvacExpandButton.addEventListener("click", () => toggleExpandedPane("hvac"));
 elements.geometryExpandButton.addEventListener("click", () => toggleExpandedPane("geometry"));
+
+function updateThermalTopologySetting(key, value) {
+  if (state[key] === value) {
+    return;
+  }
+  recordViewHistory();
+  state[key] = value;
+  renderGeometry();
+}
+
 elements.inputViewButtons.forEach((button) => {
   button.addEventListener("click", async () => {
     await switchInputView(button.dataset.inputView);

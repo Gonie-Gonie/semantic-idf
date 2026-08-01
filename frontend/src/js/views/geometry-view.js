@@ -3,21 +3,20 @@ import {
   elements,
   escapeHTML,
   normalizeGeometryMode,
-  normalizeThermalTopologyAreaBasis,
   restoreThermalTopologyState,
   state,
 } from "../state.js";
 import { t } from "../i18n.js";
 import { refreshResultPanelSelectionStyles } from "../panel-navigation-adapters.js";
 import { selectSemanticEntity } from "../selection-controller.js";
-import {
-  isThermalTopologyTargetKind,
-  resolveThermalTopologyTarget,
-} from "../thermal-topology-targets.js";
+import { resolveThermalTopologyTarget } from "../thermal-topology-targets.js";
 
 let rendererState = null;
 let temporaryGeometryReveal = null;
 let geometrySelectionRequest = 0;
+let thermalTopologyModule = null;
+let thermalTopologyModulePromise = null;
+let thermalTopologyRenderRequest = 0;
 
 window.addEventListener("idfAnalyzer:semanticSelectionChanged", (event) => {
   if (!temporaryGeometryReveal) {
@@ -62,7 +61,7 @@ export function renderGeometry(geometry = state.report?.geometry) {
   } else if (state.geometryMode === "3d") {
     renderScene(geometry);
   } else {
-    renderThermalTopology(geometry);
+    renderThermalTopologyLazy(geometry);
   }
   renderGeometryDetails(geometry);
 }
@@ -223,9 +222,9 @@ function renderEmptyGeometry() {
   elements.geometryStorySelect.innerHTML = "";
   elements.geometryCanvasHost.innerHTML = `<div class="empty">${t("geometry.noGeometry")}</div>`;
   elements.geometryPlan.innerHTML = "";
-  if (elements.thermalTopologyGraph) {
-    elements.thermalTopologyGraph.innerHTML = `<div class="empty">${t("topology.noConnections")}</div>`;
-  }
+  elements.thermalTopologyGraph.innerHTML = `<div class="empty">${t("topology.noConnections")}</div>`;
+  elements.thermalTopologyMatrix.innerHTML = "";
+  elements.thermalTopologyInspector.innerHTML = "";
   elements.geometryDetails.innerHTML = `<div class="empty">${t("geometry.selectObject")}</div>`;
 }
 
@@ -262,36 +261,47 @@ function renderStoryOptions(geometry) {
 function updateModeVisibility() {
   elements.geometryCanvasHost.classList.toggle("active", state.geometryMode === "3d");
   elements.geometryPlan.classList.toggle("active", state.geometryMode === "plan");
-  elements.thermalTopologyGraph?.classList.toggle("active", state.geometryMode === "thermal");
-  if (elements.thermalTopologyAreaBasisControl) {
-    elements.thermalTopologyAreaBasisControl.hidden = state.geometryMode !== "thermal";
-  }
-  if (elements.thermalTopologyAreaBasis) {
-    elements.thermalTopologyAreaBasis.value = normalizeThermalTopologyAreaBasis(state.thermalTopologyAreaBasis);
-  }
+  elements.thermalTopologyView?.classList.toggle("active", state.geometryMode === "thermal");
+  elements.geometrySpatialControls.hidden = state.geometryMode === "thermal";
+  elements.thermalTopologyControls.hidden = state.geometryMode !== "thermal";
   elements.geometryModeButtons.forEach((button) => {
     button.classList.toggle("active", button.dataset.geometryMode === state.geometryMode);
   });
 }
 
-function renderThermalTopology(geometry) {
-  if (!elements.thermalTopologyGraph) {
-    return;
+function renderThermalTopologyLazy(geometry) {
+  const request = ++thermalTopologyRenderRequest;
+  if (!thermalTopologyModule) {
+    elements.thermalTopologyGraph.innerHTML = `<div class="thermal-topology-shell-status status-loading">${escapeHTML(t("topology.loadingGraph"))}</div>`;
   }
-  const topology = geometry?.topology;
-  const connections = topology?.connections || [];
-  const boundaries = topology?.boundaries || [];
-  const count = connections.length || boundaries.length;
-  const areaField = normalizeThermalTopologyAreaBasis(state.thermalTopologyAreaBasis) === "physical" ? "physicalGrossArea" : "effectiveGrossArea";
-  const totalArea = boundaries.reduce((sum, boundary) => sum + (Number(boundary?.[areaField]) || 0), 0);
-  const selectedTargetAttributes = isThermalTopologyTargetKind(state.selectedGeometryKind) && state.selectedGeometryId
-    ? geometryNavigationAttributes(state.selectedGeometryKind, state.selectedGeometryId)
-    : "";
-  elements.thermalTopologyGraph.innerHTML = `<div class="empty" ${selectedTargetAttributes}>${escapeHTML(
-    count
-      ? t("topology.connectionAreaSummary", { count, area: formatArea(totalArea) })
-      : t("topology.noConnections"),
-  )}</div>`;
+  loadThermalTopologyModule()
+    .then((module) => {
+      if (request !== thermalTopologyRenderRequest || state.geometryMode !== "thermal" || geometry !== state.report?.geometry) {
+        return;
+      }
+      module.renderThermalTopology(geometry, {
+        navigationAttributes: geometryNavigationAttributes,
+        selectGeometry,
+      });
+    })
+    .catch((error) => {
+      if (request === thermalTopologyRenderRequest && state.geometryMode === "thermal") {
+        elements.thermalTopologyGraph.innerHTML = `<div class="thermal-topology-shell-status">${escapeHTML(error?.message || String(error))}</div>`;
+      }
+    });
+}
+
+function loadThermalTopologyModule() {
+  if (thermalTopologyModule) {
+    return Promise.resolve(thermalTopologyModule);
+  }
+  if (!thermalTopologyModulePromise) {
+    thermalTopologyModulePromise = import("./thermal-topology-view.js").then((module) => {
+      thermalTopologyModule = module;
+      return module;
+    });
+  }
+  return thermalTopologyModulePromise;
 }
 
 function updateSelectionAidControl() {
@@ -1355,7 +1365,7 @@ function geometryTargetEntity(target, geometry = state.report?.geometry) {
   return null;
 }
 
-function geometrySelectionForTarget(kind, targetId, navigation = state.semanticProjection?.navigation || {}) {
+export function geometrySelectionForTarget(kind, targetId, navigation = state.semanticProjection?.navigation || {}) {
   if (!targetId) {
     return null;
   }
@@ -1412,7 +1422,7 @@ function thermalOccurrenceContextPriority(occurrence) {
   return context === "definition" ? 1 : 0;
 }
 
-function geometryNavigationAttributes(kind, targetId, explicitAnchor = {}, options = {}) {
+export function geometryNavigationAttributes(kind, targetId, explicitAnchor = {}, options = {}) {
   const navigation = state.semanticProjection?.navigation || {};
   const occurrence = preferredOccurrenceForGeometryTarget(targetId, state.globalSelection, navigation);
   const entity = (navigation.entities || []).find((candidate) => candidate.id === occurrence?.entityId) || null;

@@ -720,34 +720,89 @@
                 <span id="geometryStats">0 zones, 0 surfaces, 0 windows</span>
               </div>
               <div class="geometry-tools">
-                <div class="geometry-control-group">
+                <div class="geometry-control-group geometry-mode-controls" role="group" aria-label="Topology view">
                   <button class="geometry-mode-button active" data-geometry-mode="3d" type="button">3D</button>
                   <button class="geometry-mode-button" data-geometry-mode="plan" type="button">Plan</button>
                   <button class="geometry-mode-button" data-geometry-mode="thermal" type="button" title="Thermal topology and boundary network" data-i18n-title="topology.thermalTooltip">Thermal</button>
+                </div>
+                <div class="geometry-control-group geometry-common-controls">
                   <select id="geometryStorySelect" aria-label="Topology story"></select>
+                  <button id="geometryExpandButton" class="geometry-mode-button" type="button" data-expand-pane="geometry" data-i18n="action.expand">Expand</button>
                 </div>
-                <label id="thermalTopologyAreaBasisControl" class="geometry-toggle topology-area-basis" hidden>
-                  <span data-i18n="topology.areaBasis">Area basis</span>
-                  <select id="thermalTopologyAreaBasis">
-                    <option value="effective" data-i18n="topology.areaBasisEffective">Model total</option>
-                    <option value="physical" data-i18n="topology.areaBasisPhysical">Physical</option>
-                  </select>
-                </label>
-                <button id="geometrySelectionAid" class="geometry-mode-button" type="button" aria-pressed="false" data-i18n="geometry.selectAid">Select aid</button>
-                <label class="geometry-toggle geometry-sync-toggle"><input id="geometrySyncLocate" type="checkbox" checked /> <span data-i18n="geometry.syncLocate">Sync locate</span></label>
-                <div class="geometry-control-group geometry-visibility-controls" aria-label="Topology visibility">
-                  <label class="geometry-toggle"><input id="geometryShowZones" type="checkbox" checked /> <span data-i18n="geometry.showZones">Zones</span></label>
-                  <label class="geometry-toggle"><input id="geometryShowWalls" type="checkbox" checked /> <span data-i18n="geometry.showWalls">Walls</span></label>
-                  <label class="geometry-toggle"><input id="geometryShowWindows" type="checkbox" checked /> <span data-i18n="geometry.showWindows">Windows</span></label>
+                <div id="geometrySpatialControls" class="geometry-control-group geometry-spatial-controls">
+                  <button id="geometrySelectionAid" class="geometry-mode-button" type="button" aria-pressed="false" data-i18n="geometry.selectAid">Select aid</button>
+                  <label class="geometry-toggle geometry-sync-toggle"><input id="geometrySyncLocate" type="checkbox" checked /> <span data-i18n="geometry.syncLocate">Sync locate</span></label>
+                  <div class="geometry-control-group geometry-visibility-controls" aria-label="Topology visibility">
+                    <label class="geometry-toggle"><input id="geometryShowZones" type="checkbox" checked /> <span data-i18n="geometry.showZones">Zones</span></label>
+                    <label class="geometry-toggle"><input id="geometryShowWalls" type="checkbox" checked /> <span data-i18n="geometry.showWalls">Walls</span></label>
+                    <label class="geometry-toggle"><input id="geometryShowWindows" type="checkbox" checked /> <span data-i18n="geometry.showWindows">Windows</span></label>
+                  </div>
                 </div>
-                <button id="geometryExpandButton" class="geometry-mode-button" type="button" data-expand-pane="geometry" data-i18n="action.expand">Expand</button>
+                <div id="thermalTopologyControls" class="thermal-topology-controls" hidden>
+                  <label class="topology-select-control">
+                    <span data-i18n="topology.graph">Graph</span>
+                    <select id="thermalTopologyGraphLevel" aria-label="Thermal graph level">
+                      <option value="zone" data-i18n="topology.graphZones">Zones</option>
+                      <option value="boundary" data-i18n="topology.graphBoundaries">Boundaries</option>
+                    </select>
+                  </label>
+                  <label class="topology-select-control">
+                    <span data-i18n="topology.metric">Metric</span>
+                    <select id="thermalTopologyMetric" aria-label="Thermal graph metric">
+                      <option value="topology" data-i18n="topology.metricConnectivity">Connectivity</option>
+                      <option value="area" data-i18n="topology.metricArea">Area</option>
+                      <option value="ua" data-i18n="topology.metricUA">UA</option>
+                      <option value="exposure" data-i18n="topology.metricExposure">Exposure</option>
+                      <option value="qa" data-i18n="topology.metricQA">QA</option>
+                      <option value="air" data-i18n="topology.metricAir">Air</option>
+                      <option value="simulated_heat" data-i18n="topology.metricSimulatedHeat">Simulated Heat</option>
+                    </select>
+                  </label>
+                  <label class="topology-select-control">
+                    <span data-i18n="topology.scope">Scope</span>
+                    <select id="thermalTopologyScope" aria-label="Thermal graph scope">
+                      <option value="building" data-i18n="topology.scopeBuilding">Building</option>
+                      <option value="story" data-i18n="topology.scopeStory">Story</option>
+                      <option value="selection" data-i18n="topology.scopeSelection">Selection</option>
+                      <option value="neighbors" data-i18n="topology.scopeNeighbors">Neighbors</option>
+                    </select>
+                  </label>
+                  <button id="thermalTopologyFit" class="geometry-mode-button" type="button" data-i18n="topology.fit">Fit</button>
+                  <details id="thermalTopologyAdvanced" class="thermal-topology-advanced">
+                    <summary data-i18n="topology.advanced">Advanced</summary>
+                    <div class="thermal-topology-advanced-menu">
+                      <label class="topology-select-control">
+                        <span data-i18n="topology.layout">Layout</span>
+                        <select id="thermalTopologyLayout">
+                          <option value="spatial" data-i18n="topology.layoutSpatial">Spatial</option>
+                          <option value="network" data-i18n="topology.layoutNetwork">Network</option>
+                        </select>
+                      </label>
+                      <label id="thermalTopologyAreaBasisControl" class="topology-select-control">
+                        <span data-i18n="topology.areaBasis">Area basis</span>
+                        <select id="thermalTopologyAreaBasis">
+                          <option value="effective" data-i18n="topology.areaBasisEffective">Model total</option>
+                          <option value="physical" data-i18n="topology.areaBasisPhysical">Physical</option>
+                        </select>
+                      </label>
+                      <label class="geometry-toggle"><input id="thermalTopologyShowOpenings" type="checkbox" checked /> <span data-i18n="topology.showOpenings">Openings</span></label>
+                      <label class="geometry-toggle"><input id="thermalTopologyShowAirCoupling" type="checkbox" /> <span data-i18n="topology.showAirCoupling">Air coupling</span></label>
+                      <label class="geometry-toggle"><input id="thermalTopologyExpandExternalTargets" type="checkbox" /> <span data-i18n="topology.expandExternalTargets">Expand external targets</span></label>
+                      <label class="geometry-toggle"><input id="thermalTopologyShowLabels" type="checkbox" checked /> <span data-i18n="topology.showLabels">Labels</span></label>
+                    </div>
+                  </details>
+                </div>
               </div>
             </div>
             <div class="geometry-body">
               <div id="geometryViewport" class="geometry-viewport">
                 <div id="geometryCanvasHost" class="geometry-canvas-host"></div>
                 <svg id="geometryPlan" class="geometry-plan" role="img" aria-label="Topology floor plan"></svg>
-                <div id="thermalTopologyGraph" class="thermal-topology-graph" role="img" aria-label="Thermal topology and boundary network" data-i18n-aria-label="topology.thermalTooltip"></div>
+                <div id="thermalTopologyView" class="thermal-topology-view">
+                  <div id="thermalTopologyGraph" class="thermal-topology-graph" role="img" aria-label="Thermal topology and boundary network" data-i18n-aria-label="topology.thermalTooltip"></div>
+                  <div id="thermalTopologyMatrix" class="thermal-topology-matrix" hidden></div>
+                  <aside id="thermalTopologyInspector" class="thermal-topology-inspector" aria-label="Thermal topology inspector" data-i18n-aria-label="topology.inspector"></aside>
+                </div>
               </div>
               <div id="geometryDetailsSplitter" class="vertical-splitter" role="separator" aria-orientation="horizontal" aria-label="Resize geometry view and properties"></div>
               <section id="geometryDetails" class="geometry-details" aria-label="Selected geometry properties">
