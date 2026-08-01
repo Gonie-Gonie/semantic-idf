@@ -23,6 +23,7 @@ export function thermalTopologyLayoutCacheKey(geometry, options = {}, viewport =
     options.areaComponent || "gross",
     options.storyIndex ?? "all",
     options.selectedEntityId || "",
+    options.selectedEntityKind || "",
     Math.min(3, Math.max(1, Number(options.neighborDepth) || 1)),
     Boolean(options.showOpenings),
     Boolean(options.showAirCoupling),
@@ -47,7 +48,8 @@ export function createThermalTopologyLayoutModel(geometry, options = {}) {
     nodes: [...(topology.nodes || [])],
     connections: (topology.connections || []).filter((connection) => options.showAirCoupling || connection.relationKind !== "air_coupling"),
     boundaries: [...(topology.boundaries || [])],
-    openings: options.showOpenings ? [...(topology.openings || [])] : [],
+    openings: options.showOpenings || options.selectedEntityKind === "window" ? [...(topology.openings || [])] : [],
+    allOpenings: [...(topology.openings || [])],
     airCouplings: options.showAirCoupling ? [...(topology.airCouplings || [])] : [],
     issueLinks: [...(topology.issueLinks || [])],
     zoneSignatures: [...(topology.zoneSignatures || [])],
@@ -280,6 +282,11 @@ function selectedNodeIDs(model, selectedEntityId) {
   if (connection) return [connection.fromNodeId, connection.toNodeId];
   const boundary = model.boundaries.find((item) => item.id === selected || item.surfaceId === selected || item.surfaceEntityId === selected);
   if (boundary) return [boundary.ownerSpaceId || boundary.ownerZoneId, boundary.targetId].filter(Boolean);
+  const opening = (model.allOpenings || []).find((item) => item.id === selected || item.windowId === selected || item.entityId === selected);
+  if (opening) {
+    const base = model.boundaries.find((item) => item.surfaceId === opening.baseSurfaceId || item.id === opening.baseSurfaceId);
+    if (base) return [base.ownerSpaceId || base.ownerZoneId, base.targetId].filter(Boolean);
+  }
   return [];
 }
 
@@ -337,7 +344,7 @@ function createBoundaryDetailModel(model, options) {
     } else if (boundary.targetId) {
       detailConnections.push(detailConnection(`detail-target:${boundary.id}`, boundary.id, boundary.targetId, boundary.id, "boundary_target"));
     }
-    if (options.showOpenings) {
+    if (options.showOpenings || options.selectedEntityKind === "window") {
       for (const openingID of boundary.openingIds || []) {
         const opening = openingByID.get(openingID);
         if (!opening) continue;

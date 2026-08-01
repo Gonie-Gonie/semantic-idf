@@ -36,7 +36,7 @@ export function renderThermalTopologyInspector(geometry, helpers = {}) {
 
 function resolveInspectorSelection(geometry) {
   const id = state.thermalTopologySelectedEntityId || state.selectedGeometryId;
-  const kind = state.selectedGeometryKind;
+  const kind = state.thermalTopologySelectedEntityKind || state.selectedGeometryKind;
   if (!id) return null;
   const thermal = resolveThermalTopologyTarget({ targetKind: kind, targetId: id }, geometry);
   if (thermal?.item) return { ...thermal, item: thermal.item };
@@ -241,6 +241,9 @@ function bindInspectorActions() {
       const mode = button.dataset.inspectorMode;
       const reveal = geometryRevealTarget(activeSelection, activeGeometry);
       recordViewHistory();
+      if (mode !== "thermal" && activeSelection.kind.startsWith("thermal_") && activeHelpers.revealThermalTargetInGeometry?.(activeSelection.kind, activeSelection.id, mode)) {
+        return;
+      }
       activeHelpers.setGeometryMode?.(mode);
       if (reveal && mode !== "thermal") await activeHelpers.selectGeometry?.(reveal.kind, reveal.id, { syncLocate: false, recordHistory: false });
     });

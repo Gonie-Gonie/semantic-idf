@@ -5,6 +5,7 @@ import {
   elements,
   normalizeThermalTopologyAreaComponent,
   normalizeThermalTopologyAreaBasis,
+  normalizeThermalTopologyDisplay,
   normalizeThermalTopologyGraphLevel,
   normalizeThermalTopologyLayout,
   normalizeThermalTopologyMetric,
@@ -283,6 +284,15 @@ elements.thermalTopologyShowLabels.addEventListener("change", () => {
 });
 elements.thermalTopologyFit.addEventListener("click", () => {
   window.dispatchEvent(new CustomEvent("idfAnalyzer:thermalTopologyFit"));
+});
+elements.thermalTopologyDisplayButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    updateThermalTopologySetting("thermalTopologyDisplay", normalizeThermalTopologyDisplay(button.dataset.thermalTopologyDisplay));
+  });
+});
+elements.thermalTopologyMatrixQuery.addEventListener("input", () => {
+  state.thermalTopologyMatrixQuery = elements.thermalTopologyMatrixQuery.value;
+  renderGeometry();
 });
 elements.geometrySelectionAid.addEventListener("click", () => setGeometrySelectionAid(!state.geometrySelectionAid));
 elements.geometrySyncLocate.addEventListener("change", () => {

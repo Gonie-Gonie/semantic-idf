@@ -807,6 +807,11 @@
                 <div id="geometryCanvasHost" class="geometry-canvas-host"></div>
                 <svg id="geometryPlan" class="geometry-plan" role="img" aria-label="Topology floor plan"></svg>
                 <div id="thermalTopologyView" class="thermal-topology-view">
+                  <div class="thermal-topology-display-switch" role="group" aria-label="Thermal topology presentation">
+                    <button class="active" type="button" data-thermal-topology-display="graph" data-i18n="topology.graphTab">Graph</button>
+                    <button type="button" data-thermal-topology-display="matrix" data-i18n="topology.matrixTab">Matrix</button>
+                    <input id="thermalTopologyMatrixQuery" type="search" placeholder="Filter matrix" data-i18n-placeholder="topology.matrixFilter" hidden />
+                  </div>
                   <div id="thermalTopologyGraph" class="thermal-topology-graph" role="img" aria-label="Thermal topology and boundary network" data-i18n-aria-label="topology.thermalTooltip"></div>
                   <div id="thermalTopologyMatrix" class="thermal-topology-matrix" hidden></div>
                   <aside id="thermalTopologyInspector" class="thermal-topology-inspector" aria-label="Thermal topology inspector" data-i18n-aria-label="topology.inspector"></aside>

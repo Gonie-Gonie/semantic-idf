@@ -93,7 +93,7 @@ func TestThermalTopologyRendererBrowserHarness(t *testing.T) {
 	if !strings.Contains(document, `data-thermal-renderer-status="passed"`) {
 		t.Fatalf("thermal topology renderer harness did not pass:\n%s", document)
 	}
-	for _, signal := range []string{`"svg":true`, `"metricWidth":true`, `"inspector":true`, `"boundaryExpanded":true`, `"backRestored":true`} {
+	for _, signal := range []string{`"svg":true`, `"metricWidth":true`, `"inspector":true`, `"boundaryExpanded":true`, `"backRestored":true`, `"matrix":true`, `"matrixSelected":true`} {
 		if !strings.Contains(document, signal) {
 			t.Fatalf("thermal topology renderer result is missing %s:\n%s", signal, document)
 		}
@@ -152,6 +152,7 @@ const thermalTopologyRendererHarnessHTML = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Thermal topology renderer harness</title></head>
 <body data-thermal-renderer-status="pending">
 <div id="thermalTopologyGraph" style="width:900px;height:600px"></div><div id="thermalTopologyMatrix"></div><aside id="thermalTopologyInspector"></aside>
+<button data-thermal-topology-display="graph"></button><button data-thermal-topology-display="matrix"></button><input id="thermalTopologyMatrixQuery">
 <select id="thermalTopologyGraphLevel"><option value="zone">zone</option><option value="boundary">boundary</option></select>
 <select id="thermalTopologyMetric"><option value="topology">topology</option><option value="area">area</option><option value="ua">ua</option><option value="qa">qa</option><option value="air">air</option></select>
 <label id="thermalTopologyAreaComponentControl"><select id="thermalTopologyAreaComponent"><option value="gross">gross</option><option value="opaque">opaque</option><option value="openings">openings</option></select></label>
@@ -188,8 +189,12 @@ try {
   const boundaryExpanded = state.thermalTopologyGraphLevel === "boundary" && Boolean(document.querySelector(".thermal-node.thermal_boundary"));
   document.querySelector("[data-topology-back]").click();
   const backRestored = state.thermalTopologyGraphLevel === "zone";
-  assert(svg && metricWidth && inspector && boundaryExpanded && backRestored, "renderer contract failed");
-  document.getElementById("result").textContent = JSON.stringify({svg,metricWidth,inspector,boundaryExpanded,backRestored});
+  state.thermalTopologyDisplay = "matrix"; view.renderThermalTopology(geometry, helpers);
+  const matrix = Boolean(document.querySelector(".thermal-matrix-table"));
+  document.querySelector(".thermal-matrix-cell:not(.empty-cell)").click();
+  const matrixSelected = state.thermalTopologySelectedEntityId === "thermal-connection:a:outdoors";
+  assert(svg && metricWidth && inspector && boundaryExpanded && backRestored && matrix && matrixSelected, "renderer contract failed");
+  document.getElementById("result").textContent = JSON.stringify({svg,metricWidth,inspector,boundaryExpanded,backRestored,matrix,matrixSelected});
   document.body.dataset.thermalRendererStatus = "passed";
 } catch (error) {
   document.getElementById("result").textContent = error.stack || String(error);

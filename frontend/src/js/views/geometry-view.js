@@ -8,11 +8,13 @@ import {
 } from "../state.js";
 import { t } from "../i18n.js";
 import { refreshResultPanelSelectionStyles } from "../panel-navigation-adapters.js";
-import { selectSemanticEntity } from "../selection-controller.js";
+import { clearSemanticHover, hoverSemanticEntity, selectSemanticEntity } from "../selection-controller.js";
 import { resolveThermalTopologyTarget } from "../thermal-topology-targets.js";
 
 let rendererState = null;
 let temporaryGeometryReveal = null;
+let temporaryGeometryHover = null;
+let geometryHoverTargetKey = "";
 let geometrySelectionRequest = 0;
 let thermalTopologyModule = null;
 let thermalTopologyModulePromise = null;
@@ -32,7 +34,14 @@ window.addEventListener("idfAnalyzer:semanticSelectionChanged", (event) => {
 });
 window.addEventListener("idfAnalyzer:documentChanged", () => {
   temporaryGeometryReveal = null;
+  temporaryGeometryHover = null;
+  geometryHoverTargetKey = "";
   geometrySelectionRequest += 1;
+});
+window.addEventListener("idfAnalyzer:semanticHoverChanged", (event) => {
+  temporaryGeometryHover = geometryProjectionForSemanticSelection(event.detail?.hover, state.report?.geometry);
+  highlightSelectedMeshes();
+  highlightSelectedPlan();
 });
 
 export function renderGeometry(geometry = state.report?.geometry) {
@@ -118,6 +127,7 @@ export async function selectGeometry(kind, id, options = {}) {
   temporaryGeometryReveal = null;
   state.selectedGeometryKind = normalizedKind;
   state.selectedGeometryId = targetId;
+  projectGeometrySelectionToThermal(normalizedKind, targetId, geometry);
   renderGeometryDetails();
   highlightSelectedMeshes();
   highlightSelectedPlan();
@@ -153,6 +163,7 @@ export async function revealGeometrySelection(selection, options = {}, context) 
   if (entity.thermalTarget) {
     state.geometryMode = "thermal";
     state.thermalTopologySelectedEntityId = entity.id;
+    state.thermalTopologySelectedEntityKind = entity.kind;
   } else if (state.geometryMode === "plan" && !geometryEntityHasPlanShape(entity, geometry)) {
     state.geometryMode = "3d";
   }
@@ -162,11 +173,13 @@ export async function revealGeometrySelection(selection, options = {}, context) 
     ownerZoneId: ownerZone?.id || "",
     baseSurfaceId: entity.kind === "window" ? baseSurfaceForWindow(geometry, entity.item)?.id || "" : "",
     surfaceIds: [...(entity.thermalTarget?.surfaceIds || [])],
+    primarySurfaceId: entity.thermalTarget?.surfaceIds?.[0] || "",
     windowIds: [...(entity.thermalTarget?.windowIds || [])],
     nodeIds: [...(entity.thermalTarget?.nodeIds || [])],
   };
   state.selectedGeometryKind = entity.kind;
   state.selectedGeometryId = entity.id;
+  projectGeometrySelectionToThermal(entity.kind, entity.id, geometry);
   renderGeometry(geometry);
   context?.refreshSelectionStyles(selection, state.globalHover);
   await nextGeometryFrame();
@@ -215,6 +228,32 @@ export function resizeGeometry() {
   }
   resizeRenderer();
   rendererState.renderer.render(rendererState.scene, rendererState.camera);
+}
+
+export function revealThermalTargetInGeometry(kind, id, mode = "3d") {
+  const geometry = state.report?.geometry;
+  const thermalTarget = resolveThermalTopologyTarget({ targetKind: kind, targetId: id }, geometry);
+  if (!thermalTarget) return false;
+  const representativeSurface = (thermalTarget.surfaceIds || []).map((surfaceID) => surfaceByID(geometry, surfaceID)).find(Boolean);
+  const representativeWindow = (thermalTarget.windowIds || []).map((windowID) => windowByID(geometry, windowID)).find(Boolean);
+  const representativeNode = (thermalTarget.nodeIds || []).map((nodeID) => (
+    (geometry.zones || []).find((zone) => zone.id === nodeID) || (geometry.spaces || []).find((space) => space.id === nodeID)
+  )).find(Boolean);
+  const storyIndex = representativeSurface?.storyIndex ?? representativeWindow?.storyIndex ?? representativeNode?.storyIndex;
+  if (Number.isInteger(storyIndex)) state.selectedGeometryStory = storyIndex;
+  temporaryGeometryReveal = {
+    kind,
+    id,
+    ownerZoneId: thermalTarget.nodeIds?.find((nodeID) => (geometry.zones || []).some((zone) => zone.id === nodeID)) || "",
+    baseSurfaceId: representativeWindow ? baseSurfaceForWindow(geometry, representativeWindow)?.id || "" : "",
+    surfaceIds: [...(thermalTarget.surfaceIds || [])],
+    primarySurfaceId: thermalTarget.surfaceIds?.[0] || "",
+    windowIds: [...(thermalTarget.windowIds || [])],
+    nodeIds: [...(thermalTarget.nodeIds || [])],
+  };
+  state.geometryMode = normalizeGeometryMode(mode);
+  renderGeometry(geometry);
+  return true;
 }
 
 function renderEmptyGeometry() {
@@ -283,6 +322,8 @@ function renderThermalTopologyLazy(geometry) {
         navigationAttributes: geometryNavigationAttributes,
         selectGeometry,
         setGeometryMode,
+        revealThermalTargetInGeometry,
+        selectionForTarget: geometrySelectionForTarget,
       });
     })
     .catch((error) => {
@@ -437,6 +478,7 @@ function installCanvasInteractions() {
   });
   canvas.addEventListener("pointermove", (event) => {
     if (!rendererState.dragStart) {
+      hoverMesh(event);
       return;
     }
     const dx = event.clientX - rendererState.dragStart.x;
@@ -448,6 +490,7 @@ function installCanvasInteractions() {
     rendererState.group.rotation.x = rendererState.dragStart.rx + dy * 0.006;
     rendererState.renderer.render(rendererState.scene, rendererState.camera);
   });
+  canvas.addEventListener("pointerleave", clearGeometryHover);
   canvas.addEventListener("pointerup", (event) => {
     canvas.releasePointerCapture(event.pointerId);
     const wasDragging = rendererState.dragging;
@@ -465,13 +508,37 @@ function installCanvasInteractions() {
   }, { passive: false });
 }
 
-function pickMesh(event) {
+function hoverMesh(event) {
+  const hit = meshAtPointer(event);
+  const kind = hit?.object.userData?.geometryKind || "";
+  const id = hit?.object.userData?.geometryId || "";
+  const key = `${kind}|${id}`;
+  if (key === geometryHoverTargetKey) return;
+  geometryHoverTargetKey = key;
+  if (!id) {
+    clearSemanticHover({ originView: "geometry", action: "hover" });
+    return;
+  }
+  const selection = geometrySelectionForTarget(kind, id);
+  if (selection) hoverSemanticEntity(selection, { originView: "geometry", action: "hover", recordHistory: false, follow: false });
+}
+
+function clearGeometryHover() {
+  if (!geometryHoverTargetKey) return;
+  geometryHoverTargetKey = "";
+  clearSemanticHover({ originView: "geometry", action: "hover" });
+}
+
+function meshAtPointer(event) {
   const rect = rendererState.renderer.domElement.getBoundingClientRect();
   rendererState.pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
   rendererState.pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
   rendererState.raycaster.setFromCamera(rendererState.pointer, rendererState.camera);
-  const hits = rendererState.raycaster.intersectObjects(rendererState.group.children, true);
-  const hit = hits.find((item) => item.object.userData?.geometryId);
+  return rendererState.raycaster.intersectObjects(rendererState.group.children, true).find((item) => item.object.userData?.geometryId) || null;
+}
+
+function pickMesh(event) {
+  const hit = meshAtPointer(event);
   if (hit) {
     void selectGeometry(hit.object.userData.geometryKind, hit.object.userData.geometryId);
   }
@@ -648,6 +715,11 @@ function renderPlan(geometry) {
       event.stopPropagation();
       void selectGeometry(shape.dataset.geometryKind, shape.dataset.geometryId);
     });
+    shape.addEventListener("pointerenter", () => {
+      const selection = geometrySelectionForTarget(shape.dataset.geometryKind, shape.dataset.geometryId);
+      if (selection) hoverSemanticEntity(selection, { originView: "geometry", action: "hover", recordHistory: false, follow: false });
+    });
+    shape.addEventListener("pointerleave", () => clearSemanticHover({ originView: "geometry", action: "hover" }));
   });
   highlightSelectedPlan();
 }
@@ -1651,6 +1723,75 @@ function geometryRenderableMatchesSelection(kind, id) {
   return Boolean(space && surface && normalizeGeometryName(surface.spaceName) === normalizeGeometryName(space.name));
 }
 
+function geometryRenderableSelectionRole(kind, id) {
+  if (!geometryRenderableMatchesSelection(kind, id)) return "";
+  const normalizedKind = normalizeGeometryKind(kind);
+  if (normalizedKind === "surface" && temporaryGeometryReveal?.surfaceIds?.length > 1) {
+    return String(id || "") === temporaryGeometryReveal.primarySurfaceId ? "primary" : "counterpart";
+  }
+  return "primary";
+}
+
+function geometryRenderableMatchesHover(kind, id) {
+  const normalizedKind = normalizeGeometryKind(kind);
+  const targetID = String(id || "");
+  if (normalizedKind === temporaryGeometryHover?.kind && targetID === temporaryGeometryHover?.id) return true;
+  if (normalizedKind === "surface" && temporaryGeometryHover?.surfaceIds?.includes(targetID)) return true;
+  if (normalizedKind === "window" && temporaryGeometryHover?.windowIds?.includes(targetID)) return true;
+  if ((normalizedKind === "zone" || normalizedKind === "space") && temporaryGeometryHover?.nodeIds?.includes(targetID)) return true;
+  return false;
+}
+
+function geometryProjectionForSemanticSelection(selection, geometry) {
+  if (!selection?.entityId || !geometry) return null;
+  const target = geometryViewTargetForSelection(selection, state.semanticProjection?.navigation || {});
+  const entity = geometryTargetEntity(target, geometry);
+  if (!entity) return null;
+  const ownerZone = owningZoneForGeometryEntity(entity, geometry);
+  return {
+    kind: entity.kind,
+    id: entity.id,
+    ownerZoneId: ownerZone?.id || "",
+    baseSurfaceId: entity.kind === "window" ? baseSurfaceForWindow(geometry, entity.item)?.id || "" : "",
+    surfaceIds: [...(entity.thermalTarget?.surfaceIds || [])],
+    windowIds: [...(entity.thermalTarget?.windowIds || [])],
+    nodeIds: [...(entity.thermalTarget?.nodeIds || [])],
+  };
+}
+
+function projectGeometrySelectionToThermal(kind, id, geometry) {
+  const normalizedKind = normalizeGeometryKind(kind);
+  if (isThermalSelectionKind(normalizedKind)) {
+    state.thermalTopologySelectedEntityKind = normalizedKind;
+    state.thermalTopologySelectedEntityId = String(id || "");
+    return;
+  }
+  if (normalizedKind === "surface") {
+    const boundary = (geometry?.topology?.boundaries || []).find((item) => item.surfaceId === id || item.surfaceEntityId === id);
+    if (boundary) {
+      state.thermalTopologySelectedEntityKind = "thermal_boundary";
+      state.thermalTopologySelectedEntityId = boundary.id;
+      return;
+    }
+  }
+  if (normalizedKind === "window") {
+    const opening = (geometry?.topology?.openings || []).find((item) => item.windowId === id || item.entityId === id);
+    if (opening) {
+      state.thermalTopologySelectedEntityKind = "window";
+      state.thermalTopologySelectedEntityId = opening.entityId || opening.windowId;
+      return;
+    }
+  }
+  if (normalizedKind === "zone" || normalizedKind === "space") {
+    state.thermalTopologySelectedEntityKind = normalizedKind;
+    state.thermalTopologySelectedEntityId = String(id || "");
+  }
+}
+
+function isThermalSelectionKind(kind) {
+  return ["thermal_boundary", "thermal_interface", "thermal_connection", "thermal_environment", "thermal_air_coupling", "thermal_issue"].includes(kind);
+}
+
 function zoneByName(geometry, zoneName) {
   const key = normalizeGeometryName(zoneName);
   return key ? (geometry?.zones || []).find((zone) => normalizeGeometryName(zone.name) === key) || null : null;
@@ -1724,13 +1865,17 @@ function highlightSelectedMeshes() {
     return;
   }
   const selectedColor = geometryColor("selected", 0xf0a202);
+  const hoverColor = geometryColor("hover", 0x31a7a0);
+  const counterpartColor = geometryColor("counterpart", 0x6c7fd8);
   rendererState.group.traverse((object) => {
     if (!object.material || !object.userData?.geometryId) {
       return;
     }
-    const selected = geometryRenderableMatchesSelection(object.userData.geometryKind, object.userData.geometryId);
-    object.material.color.setHex(selected ? selectedColor : object.userData.baseColor);
-    object.material.opacity = selected ? 0.95 : object.userData.baseOpacity;
+    const selectionRole = geometryRenderableSelectionRole(object.userData.geometryKind, object.userData.geometryId);
+    const selected = Boolean(selectionRole);
+    const hovered = !selected && geometryRenderableMatchesHover(object.userData.geometryKind, object.userData.geometryId);
+    object.material.color.setHex(selectionRole === "counterpart" ? counterpartColor : selected ? selectedColor : hovered ? hoverColor : object.userData.baseColor);
+    object.material.opacity = selected ? 0.95 : hovered ? Math.max(0.72, object.userData.baseOpacity) : object.userData.baseOpacity;
   });
   rendererState.renderer.render(rendererState.scene, rendererState.camera);
 }
@@ -1741,6 +1886,8 @@ function highlightSelectedPlan() {
       "selected",
       geometryRenderableMatchesSelection(shape.dataset.geometryKind, shape.dataset.geometryId),
     );
+    shape.classList.toggle("hovered", geometryRenderableMatchesHover(shape.dataset.geometryKind, shape.dataset.geometryId));
+    shape.classList.toggle("counterpart", geometryRenderableSelectionRole(shape.dataset.geometryKind, shape.dataset.geometryId) === "counterpart");
   });
 }
 
