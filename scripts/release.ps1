@@ -151,6 +151,25 @@ function Set-StaticHTMLAppVersion {
     }
 }
 
+function Set-ReadmeAppVersion {
+    param(
+        [string]$Path,
+        [string]$TargetVersion
+    )
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        throw "Missing README file: $Path"
+    }
+
+    $text = Normalize-NewLine -Text (Get-Content -LiteralPath $Path -Raw)
+    $text = [regex]::Replace(
+        $text,
+        'semantic-idf-v\d+\.\d+\.\d+\.exe',
+        "semantic-idf-v$TargetVersion.exe"
+    )
+    Write-TextFile -Path $Path -Text $text
+}
+
 function Parse-SemVer {
     param([string]$Text)
 
@@ -640,9 +659,11 @@ $appInfoPath = Join-Path $repoRoot "frontend\src\js\app-info.js"
 $staticHTMLPaths = @(
     (Join-Path $repoRoot "frontend\src\index.html"),
     (Join-Path $repoRoot "frontend\src\guide.html"),
+    (Join-Path $repoRoot "frontend\src\batch.html"),
     (Join-Path $repoRoot "frontend\src\tools.html"),
     (Join-Path $repoRoot "frontend\src\settings.html")
 )
+$readmePath = Join-Path $repoRoot "README.md"
 $changelogPath = Join-Path $repoRoot "CHANGELOG.md"
 $releaseDate = (Get-Date).ToString("yyyy-MM-dd")
 
@@ -685,6 +706,7 @@ if ($noteSource.Source -eq "versioned" -and $temporaryVersionedPath -ne $version
 Set-WailsReleaseMetadata -Path $wailsPath -TargetVersion $targetVersion
 Set-AppInfoModuleVersion -Path $appInfoPath -TargetVersion $targetVersion
 Set-StaticHTMLAppVersion -Paths $staticHTMLPaths -ProductName (Get-WailsProductName -Path $wailsPath) -TargetVersion $targetVersion
+Set-ReadmeAppVersion -Path $readmePath -TargetVersion $targetVersion
 Update-Changelog -Path $changelogPath -TargetVersion $targetVersion -ReleaseDate $releaseDate -ReleaseNoteBody $noteSource.Body
 Write-VersionedReleaseNotes -Path $versionedNotesPath -TargetVersion $targetVersion -ReleaseDate $releaseDate -ReleaseNoteBody $noteSource.Body
 
@@ -700,7 +722,8 @@ if ($shouldPackage) {
 if ($shouldCommit) {
     $metadataPaths = @(
         $wailsPath,
-        $appInfoPath
+        $appInfoPath,
+        $readmePath
     ) + $staticHTMLPaths + @(
         $changelogPath,
         $unreleasedPath,

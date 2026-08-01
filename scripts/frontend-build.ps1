@@ -5,6 +5,7 @@ $assetRoot = Join-Path $frontendRoot "src"
 $index = Join-Path $assetRoot "index.html"
 $tools = Join-Path $assetRoot "tools.html"
 $guide = Join-Path $assetRoot "guide.html"
+$batch = Join-Path $assetRoot "batch.html"
 $settings = Join-Path $assetRoot "settings.html"
 $entry = Join-Path $assetRoot "app.js"
 $moduleDir = Join-Path $assetRoot "js"
@@ -19,6 +20,10 @@ if (-not (Test-Path $tools)) {
 
 if (-not (Test-Path $guide)) {
     throw "Missing frontend/src/guide.html"
+}
+
+if (-not (Test-Path $batch)) {
+    throw "Missing frontend/src/batch.html"
 }
 
 if (-not (Test-Path $settings)) {
@@ -124,6 +129,7 @@ $staticVersionChecks = @(
     @($index, 'data-app-version[^>]*>v' + [regex]::Escape($productVersion) + '<'),
     @($tools, 'data-app-brand-version[^>]*>SemanticIDF v' + [regex]::Escape($productVersion) + '<'),
     @($guide, 'data-app-brand-version[^>]*>SemanticIDF v' + [regex]::Escape($productVersion) + '<'),
+    @($batch, 'data-app-brand-version[^>]*>SemanticIDF v' + [regex]::Escape($productVersion) + '<'),
     @($settings, 'data-app-brand-version[^>]*>SemanticIDF v' + [regex]::Escape($productVersion) + '<')
 )
 foreach ($check in $staticVersionChecks) {
