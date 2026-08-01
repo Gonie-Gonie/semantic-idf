@@ -231,16 +231,16 @@ func (builder *thermalTopologyBuilder) compareDeclaredGeometry(boundaryA Thermal
 func (builder *thermalTopologyBuilder) addGeometryCheckIssues(boundary *ThermalBoundaryRecord, check ThermalGeometryCheck, tolerance float64) {
 	evidence := fmt.Sprintf(" Geometry QA tolerance: %.8g m.", tolerance)
 	if check.AreaDifferencePct > 1 {
-		builder.addBoundaryIssue(boundary, "surface_pair_area_mismatch", "warning", fmt.Sprintf("Surface pair area differs by %.3f%%.%s", check.AreaDifferencePct, evidence))
+		builder.addBoundaryIssue(boundary, thermalDiagnosticSurfacePairAreaMismatch, "warning", fmt.Sprintf("Surface pair area differs by %.3f%%.%s", check.AreaDifferencePct, evidence))
 	}
 	if check.PlaneDistance > tolerance*10 {
-		builder.addBoundaryIssue(boundary, "surface_pair_plane_mismatch", "warning", fmt.Sprintf("Surface pair plane distance is %.8g m.%s", check.PlaneDistance, evidence))
+		builder.addBoundaryIssue(boundary, thermalDiagnosticSurfacePairPlaneMismatch, "warning", fmt.Sprintf("Surface pair plane distance is %.8g m.%s", check.PlaneDistance, evidence))
 	}
 	if check.NormalDot > -0.99 {
-		builder.addBoundaryIssue(boundary, "surface_pair_normal_mismatch", "warning", fmt.Sprintf("Surface pair normals have dot product %.4f.%s", check.NormalDot, evidence))
+		builder.addBoundaryIssue(boundary, thermalDiagnosticSurfacePairNormalMismatch, "warning", fmt.Sprintf("Surface pair normals have dot product %.4f.%s", check.NormalDot, evidence))
 	}
 	if check.OverlapRatio < 0.99 {
-		builder.addBoundaryIssue(boundary, "surface_pair_overlap_mismatch", "warning", fmt.Sprintf("Surface pair overlap ratio is %.4f.%s", check.OverlapRatio, evidence))
+		builder.addBoundaryIssue(boundary, thermalDiagnosticSurfacePairOverlapMismatch, "warning", fmt.Sprintf("Surface pair overlap ratio is %.4f.%s", check.OverlapRatio, evidence))
 	}
 }
 
@@ -500,13 +500,13 @@ func (builder *thermalTopologyBuilder) buildZoneEnclosures(tolerance float64) {
 			return thermalEdgeSignature(enclosure.OpenEdges[i].Start, enclosure.OpenEdges[i].End, tolerance) < thermalEdgeSignature(enclosure.OpenEdges[j].Start, enclosure.OpenEdges[j].End, tolerance)
 		})
 		if enclosure.OpenEdgeCount > 0 {
-			builder.addZoneEnclosureIssue(&enclosure, "zone_shell_open", fmt.Sprintf("Zone %q shell has %d open edges (tolerance %.8g m).", zone.Name, enclosure.OpenEdgeCount, tolerance))
+			builder.addZoneEnclosureIssue(&enclosure, thermalDiagnosticZoneShellOpen, fmt.Sprintf("Zone %q shell has %d open edges (tolerance %.8g m).", zone.Name, enclosure.OpenEdgeCount, tolerance))
 		}
 		if enclosure.NonManifoldEdgeCount > 0 {
-			builder.addZoneEnclosureIssue(&enclosure, "zone_shell_non_manifold", fmt.Sprintf("Zone %q shell has %d non-manifold edges (tolerance %.8g m).", zone.Name, enclosure.NonManifoldEdgeCount, tolerance))
+			builder.addZoneEnclosureIssue(&enclosure, thermalDiagnosticZoneShellNonManifold, fmt.Sprintf("Zone %q shell has %d non-manifold edges (tolerance %.8g m).", zone.Name, enclosure.NonManifoldEdgeCount, tolerance))
 		}
 		if enclosure.VolumeDifferencePct > 10 {
-			builder.addZoneEnclosureIssue(&enclosure, "zone_volume_mismatch", fmt.Sprintf("Zone %q computed and declared volume differ by %.2f%%.", zone.Name, enclosure.VolumeDifferencePct))
+			builder.addZoneEnclosureIssue(&enclosure, thermalDiagnosticZoneVolumeMismatch, fmt.Sprintf("Zone %q computed and declared volume differ by %.2f%%.", zone.Name, enclosure.VolumeDifferencePct))
 		}
 		builder.report.ZoneEnclosures = append(builder.report.ZoneEnclosures, enclosure)
 	}
@@ -553,11 +553,12 @@ func (builder *thermalTopologyBuilder) addZoneEnclosureIssue(enclosure *ZoneEncl
 		builder.report.Nodes[nodeIndex].DiagnosticIDs = appendUniqueString(builder.report.Nodes[nodeIndex].DiagnosticIDs, issueID)
 	}
 	builder.report.IssueLinks = append(builder.report.IssueLinks, ThermalTopologyIssueLink{
-		ID:            issueID,
-		Code:          code,
-		Severity:      "warning",
-		Message:       message,
-		EntityID:      enclosure.ZoneID,
-		SourceAnchors: anchors,
+		ID:               issueID,
+		Code:             code,
+		Severity:         "warning",
+		Message:          message,
+		EntityID:         enclosure.ZoneID,
+		RelatedEntityIDs: []string{enclosure.ZoneID},
+		SourceAnchors:    anchors,
 	})
 }

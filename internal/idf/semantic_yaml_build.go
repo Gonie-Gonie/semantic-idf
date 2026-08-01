@@ -120,7 +120,7 @@ func buildSemanticContext(doc Document, metadata SemanticYAMLMetadata) *semantic
 		profile:          profile,
 		hvac:             hvac,
 		output:           AnalyzeOutput(doc),
-		diagnostics:      analyzeDiagnosticsWithHVAC(doc, hvac),
+		diagnostics:      analyzeDiagnosticsWithReports(doc, hvac, geometry),
 		surfacesByZone:   map[string][]GeometrySurface{},
 		windowsBySurface: map[string][]GeometryWindow{},
 		loadsByZone:      map[string]map[string][]Object{},

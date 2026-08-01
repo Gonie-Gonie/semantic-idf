@@ -13,20 +13,21 @@ const (
 )
 
 type Diagnostic struct {
-	ID          string `json:"id,omitempty"`
-	Severity    string `json:"severity"`
-	Category    string `json:"category"`
-	Code        string `json:"code"`
-	Source      string `json:"source,omitempty"`
-	Confidence  string `json:"confidence,omitempty"`
-	Message     string `json:"message"`
-	ObjectIndex int    `json:"objectIndex,omitempty"`
-	ObjectType  string `json:"objectType,omitempty"`
-	ObjectName  string `json:"objectName,omitempty"`
-	FieldIndex  int    `json:"fieldIndex,omitempty"`
-	Field       string `json:"field,omitempty"`
-	Value       string `json:"value,omitempty"`
-	Evidence    string `json:"evidence,omitempty"`
+	ID               string   `json:"id,omitempty"`
+	Severity         string   `json:"severity"`
+	Category         string   `json:"category"`
+	Code             string   `json:"code"`
+	Source           string   `json:"source,omitempty"`
+	Confidence       string   `json:"confidence,omitempty"`
+	Message          string   `json:"message"`
+	ObjectIndex      int      `json:"objectIndex,omitempty"`
+	ObjectType       string   `json:"objectType,omitempty"`
+	ObjectName       string   `json:"objectName,omitempty"`
+	FieldIndex       int      `json:"fieldIndex,omitempty"`
+	Field            string   `json:"field,omitempty"`
+	Value            string   `json:"value,omitempty"`
+	Evidence         string   `json:"evidence,omitempty"`
+	RelatedEntityIDs []string `json:"relatedEntityIds,omitempty"`
 }
 
 type diagnosticRefKind struct {
@@ -71,23 +72,27 @@ var diagnosticReferenceKinds = []diagnosticRefKind{
 }
 
 func AnalyzeDiagnostics(doc Document) []Diagnostic {
-	return analyzeDiagnosticsWithHVAC(doc, AnalyzeHVAC(doc))
+	index := NewDocumentIndex(doc)
+	return analyzeDiagnosticsWithReports(doc, AnalyzeHVACFromIndex(index), AnalyzeGeometryFromIndex(index))
 }
 
-func analyzeDiagnosticsWithHVAC(doc Document, hvac HVACReport) []Diagnostic {
+func analyzeDiagnosticsWithReports(doc Document, hvac HVACReport, geometry GeometryReport) []Diagnostic {
 	var diagnostics []Diagnostic
 	diagnostics = append(diagnostics, requiredObjectDiagnostics(doc)...)
 	diagnostics = append(diagnostics, duplicateNameDiagnostics(doc)...)
 	diagnostics = append(diagnostics, referenceDiagnostics(doc)...)
 	diagnostics = append(diagnostics, fieldCatalogDiagnostics(doc)...)
 	diagnostics = append(diagnostics, orphanDiagnostics(doc)...)
-	diagnostics = append(diagnostics, geometryDiagnostics(doc)...)
+	diagnostics = append(diagnostics, geometryDiagnosticsFromReport(doc, geometry)...)
+	diagnostics = append(diagnostics, thermalTopologyDiagnostics(geometry.Topology)...)
 	diagnostics = append(diagnostics, scheduleDiagnostics(doc)...)
 	diagnostics = append(diagnostics, hvacNodeDiagnosticsForReport(hvac)...)
 	diagnostics = append(diagnostics, hvacConnectionDiagnosticsForReport(hvac)...)
 	diagnostics = mergeDiagnostics(diagnostics)
 	for index := range diagnostics {
-		diagnostics[index].ID = semanticDiagnosticEntityID(diagnostics[index])
+		if diagnostics[index].ID == "" {
+			diagnostics[index].ID = semanticDiagnosticEntityID(diagnostics[index])
+		}
 	}
 
 	sort.SliceStable(diagnostics, func(i, j int) bool {
@@ -236,8 +241,7 @@ func orphanDiagnostics(doc Document) []Diagnostic {
 	return diagnostics
 }
 
-func geometryDiagnostics(doc Document) []Diagnostic {
-	geometry := AnalyzeGeometry(doc)
+func geometryDiagnosticsFromReport(doc Document, geometry GeometryReport) []Diagnostic {
 	geometryByObjectIndex := map[int]struct {
 		physicalArea float64
 		zoneName     string
@@ -289,6 +293,94 @@ func geometryDiagnostics(doc Document) []Diagnostic {
 		}
 	}
 	return diagnostics
+}
+
+func thermalTopologyDiagnostics(topology ThermalTopologyReport) []Diagnostic {
+	diagnostics := make([]Diagnostic, 0, len(topology.IssueLinks))
+	for _, issue := range topology.IssueLinks {
+		diagnostic := Diagnostic{
+			ID:               issue.ID,
+			Severity:         firstNonEmpty(issue.Severity, DiagnosticWarning),
+			Category:         "Topology",
+			Code:             issue.Code,
+			Source:           "energyplus_rule",
+			Confidence:       "high",
+			Message:          issue.Message,
+			Evidence:         thermalTopologyIssueEvidence(issue),
+			RelatedEntityIDs: thermalTopologyIssueEntityIDs(issue),
+		}
+		if anchor, ok := preferredThermalIssueAnchor(issue); ok {
+			if anchor.ObjectIndex != nil {
+				diagnostic.ObjectIndex = *anchor.ObjectIndex
+			}
+			diagnostic.ObjectType = anchor.ObjectType
+			diagnostic.ObjectName = anchor.ObjectName
+			if anchor.FieldIndex != nil {
+				diagnostic.FieldIndex = *anchor.FieldIndex
+			}
+			diagnostic.Field = anchor.FieldName
+		}
+		diagnostics = append(diagnostics, diagnostic)
+	}
+	return diagnostics
+}
+
+func preferredThermalIssueAnchor(issue ThermalTopologyIssueLink) (SemanticSourceAnchor, bool) {
+	anchors := issue.SourceAnchors
+	if len(anchors) == 0 {
+		return SemanticSourceAnchor{}, false
+	}
+	preferredField := ""
+	switch issue.Code {
+	case thermalDiagnosticMissingBoundaryTarget, thermalDiagnosticSurfaceCounterpartMissing, thermalDiagnosticSurfaceCounterpartOneWay, thermalDiagnosticSurfaceCounterpartDuplicate, thermalDiagnosticSurfaceSelfReferenceInvalid, thermalDiagnosticSurfacePairZoneMismatch, thermalDiagnosticFenestrationCounterpartMissing, thermalDiagnosticFenestrationCounterpartOneWay:
+		preferredField = "Outside Boundary Condition Object"
+	case thermalDiagnosticInvalidBoundaryCondition, thermalDiagnosticBoundaryExposureRuleMismatch:
+		preferredField = "Outside Boundary Condition"
+	case thermalDiagnosticFenestrationBaseSurfaceMissing, thermalDiagnosticFenestrationZoneMismatch, thermalDiagnosticFenestrationAreaExceedsBase:
+		preferredField = "Building Surface Name"
+	case thermalDiagnosticSurfaceMissingConstruction, thermalDiagnosticSurfaceConstructionUnresolved, thermalDiagnosticSurfacePairConstructionMismatch, thermalDiagnosticSurfacePairLayerOrderMismatch, thermalDiagnosticFenestrationConstructionMismatch:
+		preferredField = "Construction Name"
+	}
+	if preferredField != "" {
+		for _, anchor := range anchors {
+			if strings.EqualFold(anchor.FieldName, preferredField) {
+				return anchor, true
+			}
+		}
+	}
+	for _, anchor := range anchors {
+		if anchor.FieldIndex != nil {
+			return anchor, true
+		}
+	}
+	return anchors[0], true
+}
+
+func thermalTopologyIssueEntityIDs(issue ThermalTopologyIssueLink) []string {
+	values := append([]string(nil), issue.RelatedEntityIDs...)
+	for _, value := range []string{issue.EntityID, issue.BoundaryID, issue.OpeningID, issue.AirCouplingID} {
+		if value != "" {
+			values = appendUniqueString(values, value)
+		}
+	}
+	return values
+}
+
+func thermalTopologyIssueEvidence(issue ThermalTopologyIssueLink) string {
+	parts := []string{"Generated by authoritative thermal topology analysis."}
+	if issue.EntityID != "" {
+		parts = append(parts, "entity="+issue.EntityID)
+	}
+	if issue.BoundaryID != "" {
+		parts = append(parts, "boundary="+issue.BoundaryID)
+	}
+	if issue.OpeningID != "" {
+		parts = append(parts, "opening="+issue.OpeningID)
+	}
+	if issue.AirCouplingID != "" {
+		parts = append(parts, "air_coupling="+issue.AirCouplingID)
+	}
+	return strings.Join(parts, " ")
 }
 
 func scheduleDiagnostics(doc Document) []Diagnostic {

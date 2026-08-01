@@ -84,7 +84,7 @@ func AnalyzeDiagnosticsFromIndex(index *DocumentIndex) []Diagnostic {
 	if index == nil {
 		return nil
 	}
-	return AnalyzeDiagnostics(index.Doc)
+	return analyzeDiagnosticsWithReports(index.Doc, AnalyzeHVACFromIndex(index), AnalyzeGeometryFromIndex(index))
 }
 
 func AnalyzeGeometryFromIndex(index *DocumentIndex) GeometryReport {

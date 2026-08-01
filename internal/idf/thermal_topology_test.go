@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -222,7 +223,8 @@ func TestDeclaredSurfaceGeometryValidationUsesWorldPolygons(t *testing.T) {
 }
 
 func TestGeometricAdjacencyRemainsQAOnly(t *testing.T) {
-	topology := AnalyzeGeometry(thermalGeometryPairTestDocument(0, false)).Topology
+	document := thermalGeometryPairTestDocument(0, false)
+	topology := AnalyzeGeometry(document).Topology
 	boundary := findThermalBoundary(t, topology, "Pair A")
 	if boundary.RelationKind != "adiabatic_explicit" {
 		t.Fatalf("geometric adjacency changed authoritative relation to %q", boundary.RelationKind)
@@ -230,6 +232,143 @@ func TestGeometricAdjacencyRemainsQAOnly(t *testing.T) {
 	if !hasAdjacencyObservation(topology, "geometrically_adjacent_but_thermally_disconnected") {
 		t.Fatal("disconnected geometric adjacency observation missing")
 	}
+	for _, diagnostic := range AnalyzeDiagnostics(document) {
+		if strings.HasPrefix(diagnostic.Code, "surface_pair_") {
+			t.Fatalf("geometric adjacency observation became diagnostic %#v", diagnostic)
+		}
+	}
+}
+
+func TestTopologyDiagnosticsReuseIssueIdentityAndEvidence(t *testing.T) {
+	document := thermalGeometryPairTestDocument(0.5, true)
+	topology := AnalyzeGeometry(document).Topology
+	var issue ThermalTopologyIssueLink
+	for _, candidate := range topology.IssueLinks {
+		if candidate.Code == thermalDiagnosticSurfacePairOverlapMismatch {
+			issue = candidate
+			break
+		}
+	}
+	if issue.ID == "" {
+		t.Fatal("surface pair overlap issue missing")
+	}
+	for _, diagnostic := range AnalyzeDiagnostics(document) {
+		if diagnostic.ID != issue.ID {
+			continue
+		}
+		if diagnostic.Code != issue.Code || diagnostic.Source != "energyplus_rule" || diagnostic.Field == "" || diagnostic.Evidence == "" || len(diagnostic.RelatedEntityIDs) == 0 {
+			t.Fatalf("topology diagnostic lost shared identity or evidence: issue %#v diagnostic %#v", issue, diagnostic)
+		}
+		return
+	}
+	t.Fatalf("Diagnose result does not contain topology issue ID %q", issue.ID)
+}
+
+func TestAnalysisSessionBuildsThermalTopologyOnce(t *testing.T) {
+	document := thermalTopologyTestDocument()
+	session := newAnalysisSession(NewDocumentIndex(document))
+	wantCacheKey := semanticStableHash(document.String()+"\x00"+fieldCatalogAdapter(thermalEnergyPlusVersion(document)).AdapterVersion+"\x00"+thermalTopologySchema, 32)
+	if session.cacheKey == "" || session.cacheKey != wantCacheKey {
+		t.Fatalf("analysis cache key = %q, want %q", session.cacheKey, wantCacheKey)
+	}
+
+	var waitGroup sync.WaitGroup
+	for _, work := range []func(){
+		func() { _ = session.Geometry() },
+		func() { _ = session.Profile() },
+		func() { _ = session.Diagnostics() },
+		func() { _ = session.HVAC() },
+		func() { _ = session.Geometry() },
+	} {
+		waitGroup.Add(1)
+		go func(work func()) {
+			defer waitGroup.Done()
+			work()
+		}(work)
+	}
+	waitGroup.Wait()
+	if session.geometryBuildCount != 1 {
+		t.Fatalf("thermal topology build count = %d, want 1", session.geometryBuildCount)
+	}
+}
+
+func TestThermalTopologyStableIDsSurviveReparse(t *testing.T) {
+	document := thermalAirCouplingTestDocument()
+	first := AnalyzeGeometry(document).Topology
+	reparsed, err := Parse(document.String())
+	if err != nil {
+		t.Fatalf("Parse(document.String()) error = %v", err)
+	}
+	second := AnalyzeGeometry(reparsed).Topology
+	if got, want := thermalTopologyStableIDs(second), thermalTopologyStableIDs(first); strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("stable topology IDs changed after reparse:\nfirst:  %q\nsecond: %q", want, got)
+	}
+	for _, boundary := range first.Boundaries {
+		if !strings.HasPrefix(boundary.ID, "thermal-boundary:"+boundary.SurfaceEntityID) {
+			t.Errorf("boundary ID does not follow contract: %#v", boundary)
+		}
+		if boundary.PairID != "" && !strings.HasPrefix(boundary.PairID, "thermal-interface:") {
+			t.Errorf("interface ID does not follow contract: %q", boundary.PairID)
+		}
+	}
+	for _, connection := range first.Connections {
+		want := thermalConnectionID(connection.FromNodeID, connection.ToNodeID, connection.RelationKind)
+		if connection.ID != want {
+			t.Errorf("connection ID = %q, want %q", connection.ID, want)
+		}
+	}
+	for _, coupling := range first.AirCouplings {
+		if !strings.HasPrefix(coupling.ID, "thermal-air-coupling:source-object:") {
+			t.Errorf("air coupling ID does not follow contract: %q", coupling.ID)
+		}
+	}
+	for _, cell := range first.Matrix {
+		if cell.ID != "thermal-matrix-cell:"+cell.RowNodeID+":"+cell.ColumnNodeID {
+			t.Errorf("matrix cell ID does not follow contract: %#v", cell)
+		}
+	}
+	seenMatrixIDs := map[string]bool{}
+	for _, cell := range first.Matrix {
+		if seenMatrixIDs[cell.ID] {
+			t.Errorf("matrix cell ID is not unique: %q", cell.ID)
+		}
+		seenMatrixIDs[cell.ID] = true
+		if connection := thermalConnectionByID(first, cell.ConnectionID); connection.RelationKind == "air_coupling" {
+			t.Errorf("air coupling leaked into conductive boundary matrix: %#v", cell)
+		}
+	}
+}
+
+func thermalConnectionByID(topology ThermalTopologyReport, id string) ThermalConnectionAggregate {
+	for _, connection := range topology.Connections {
+		if connection.ID == id {
+			return connection
+		}
+	}
+	return ThermalConnectionAggregate{}
+}
+
+func thermalTopologyStableIDs(topology ThermalTopologyReport) []string {
+	values := []string{}
+	for _, node := range topology.Nodes {
+		values = append(values, node.ID)
+	}
+	for _, boundary := range topology.Boundaries {
+		values = append(values, boundary.ID, boundary.PairID)
+	}
+	for _, connection := range topology.Connections {
+		values = append(values, connection.ID)
+	}
+	for _, opening := range topology.Openings {
+		values = append(values, opening.ID, opening.PairID)
+	}
+	for _, coupling := range topology.AirCouplings {
+		values = append(values, coupling.ID)
+	}
+	for _, cell := range topology.Matrix {
+		values = append(values, cell.ID)
+	}
+	return sortedUniqueStrings(values)
 }
 
 func TestZoneEnclosureIntegrityFindsClosedAndOpenShells(t *testing.T) {

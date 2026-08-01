@@ -8,6 +8,36 @@ import (
 
 const thermalTopologySchema = "semantic-idf.thermal-topology/v1"
 
+const (
+	thermalDiagnosticMissingBoundaryTarget            = "missing_boundary_target"
+	thermalDiagnosticInvalidBoundaryCondition         = "invalid_boundary_condition"
+	thermalDiagnosticSurfaceSelfReferenceInvalid      = "surface_self_reference_invalid"
+	thermalDiagnosticSurfaceCounterpartMissing        = "surface_counterpart_missing"
+	thermalDiagnosticSurfaceCounterpartOneWay         = "surface_counterpart_one_way"
+	thermalDiagnosticSurfaceCounterpartDuplicate      = "surface_counterpart_duplicate"
+	thermalDiagnosticSurfacePairZoneMismatch          = "surface_pair_zone_mismatch"
+	thermalDiagnosticSurfacePairAreaMismatch          = "surface_pair_area_mismatch"
+	thermalDiagnosticSurfacePairPlaneMismatch         = "surface_pair_plane_mismatch"
+	thermalDiagnosticSurfacePairNormalMismatch        = "surface_pair_normal_mismatch"
+	thermalDiagnosticSurfacePairOverlapMismatch       = "surface_pair_overlap_mismatch"
+	thermalDiagnosticSurfacePairConstructionMismatch  = "surface_pair_construction_mismatch"
+	thermalDiagnosticSurfacePairLayerOrderMismatch    = "surface_pair_layer_order_mismatch"
+	thermalDiagnosticFenestrationBaseSurfaceMissing   = "fenestration_base_surface_missing"
+	thermalDiagnosticFenestrationZoneMismatch         = "fenestration_zone_mismatch"
+	thermalDiagnosticFenestrationCounterpartMissing   = "fenestration_counterpart_missing"
+	thermalDiagnosticFenestrationCounterpartOneWay    = "fenestration_counterpart_one_way"
+	thermalDiagnosticFenestrationAreaExceedsBase      = "fenestration_area_exceeds_base"
+	thermalDiagnosticFenestrationConstructionMismatch = "fenestration_construction_mismatch"
+	thermalDiagnosticSurfaceMissingConstruction       = "surface_missing_construction"
+	thermalDiagnosticSurfaceConstructionUnresolved    = "surface_construction_unresolved"
+	thermalDiagnosticBoundaryExposureRuleMismatch     = "boundary_exposure_rule_mismatch"
+	thermalDiagnosticZoneShellOpen                    = "zone_shell_open"
+	thermalDiagnosticZoneShellNonManifold             = "zone_shell_non_manifold"
+	thermalDiagnosticZoneVolumeMismatch               = "zone_volume_mismatch"
+	thermalDiagnosticAirCouplingTargetMissing         = "air_coupling_target_missing"
+	thermalDiagnosticAirflowNetworkSurfaceMissing     = "airflow_network_surface_missing"
+)
+
 type ThermalTopologyReport struct {
 	Schema                string                          `json:"schema"`
 	Nodes                 []ThermalTopologyNode           `json:"nodes"`
@@ -203,6 +233,7 @@ type ZoneThermalSignature struct {
 }
 
 type ThermalMatrixCell struct {
+	ID              string  `json:"id"`
 	RowNodeID       string  `json:"rowNodeId"`
 	ColumnNodeID    string  `json:"columnNodeId"`
 	ConnectionID    string  `json:"connectionId,omitempty"`
@@ -214,15 +245,16 @@ type ThermalMatrixCell struct {
 }
 
 type ThermalTopologyIssueLink struct {
-	ID            string                 `json:"id"`
-	Code          string                 `json:"code"`
-	Severity      string                 `json:"severity"`
-	Message       string                 `json:"message"`
-	EntityID      string                 `json:"entityId,omitempty"`
-	BoundaryID    string                 `json:"boundaryId,omitempty"`
-	OpeningID     string                 `json:"openingId,omitempty"`
-	AirCouplingID string                 `json:"airCouplingId,omitempty"`
-	SourceAnchors []SemanticSourceAnchor `json:"sourceAnchors,omitempty"`
+	ID               string                 `json:"id"`
+	Code             string                 `json:"code"`
+	Severity         string                 `json:"severity"`
+	Message          string                 `json:"message"`
+	EntityID         string                 `json:"entityId,omitempty"`
+	BoundaryID       string                 `json:"boundaryId,omitempty"`
+	OpeningID        string                 `json:"openingId,omitempty"`
+	AirCouplingID    string                 `json:"airCouplingId,omitempty"`
+	RelatedEntityIDs []string               `json:"relatedEntityIds,omitempty"`
+	SourceAnchors    []SemanticSourceAnchor `json:"sourceAnchors,omitempty"`
 }
 
 type ThermalTopologyStats struct {
@@ -401,9 +433,9 @@ func (builder *thermalTopologyBuilder) addBoundaryRecords() {
 		builder.boundaryIndexesByName[normalizeName(surface.Name)] = append(builder.boundaryIndexesByName[normalizeName(surface.Name)], boundaryIndex)
 		builder.boundaryIndexBySurfaceID[surface.ID] = boundaryIndex
 		if surface.Construction == "" {
-			builder.addBoundaryIssue(&builder.report.Boundaries[boundaryIndex], "surface_missing_construction", "warning", fmt.Sprintf("Surface %q has no construction.", surface.Name))
+			builder.addBoundaryIssue(&builder.report.Boundaries[boundaryIndex], thermalDiagnosticSurfaceMissingConstruction, "warning", fmt.Sprintf("Surface %q has no construction.", surface.Name))
 		} else if construction.Name == "" {
-			builder.addBoundaryIssue(&builder.report.Boundaries[boundaryIndex], "surface_construction_unresolved", "warning", fmt.Sprintf("Surface %q references unresolved construction %q.", surface.Name, surface.Construction))
+			builder.addBoundaryIssue(&builder.report.Boundaries[boundaryIndex], thermalDiagnosticSurfaceConstructionUnresolved, "warning", fmt.Sprintf("Surface %q references unresolved construction %q.", surface.Name, surface.Construction))
 		}
 	}
 }
@@ -450,12 +482,12 @@ func (builder *thermalTopologyBuilder) addOpeningRecords() {
 		openingIndex := len(builder.report.Openings) - 1
 		builder.openingIndexesByName[normalizeName(window.Name)] = append(builder.openingIndexesByName[normalizeName(window.Name)], openingIndex)
 		if _, found := builder.boundaryIndexBySurfaceID[window.BaseSurfaceID]; !found {
-			builder.addOpeningIssue(&builder.report.Openings[openingIndex], "fenestration_base_surface_missing", "warning", fmt.Sprintf("Opening %q has no resolvable heat-transfer base surface.", window.Name))
+			builder.addOpeningIssue(&builder.report.Openings[openingIndex], thermalDiagnosticFenestrationBaseSurfaceMissing, "warning", fmt.Sprintf("Opening %q has no resolvable heat-transfer base surface.", window.Name))
 		} else if !builder.openingBaseReferenceIsExact(object, window.BaseSurfaceID) {
-			builder.addOpeningIssue(&builder.report.Openings[openingIndex], "fenestration_base_surface_missing", "warning", fmt.Sprintf("Opening %q has an ambiguous or mismatched base surface reference.", window.Name))
+			builder.addOpeningIssue(&builder.report.Openings[openingIndex], thermalDiagnosticFenestrationBaseSurfaceMissing, "warning", fmt.Sprintf("Opening %q has an ambiguous or mismatched base surface reference.", window.Name))
 		}
 		if window.Construction == "" || construction.Name == "" {
-			builder.addOpeningIssue(&builder.report.Openings[openingIndex], "fenestration_construction_mismatch", "warning", fmt.Sprintf("Opening %q has no resolvable construction %q.", window.Name, window.Construction))
+			builder.addOpeningIssue(&builder.report.Openings[openingIndex], thermalDiagnosticFenestrationConstructionMismatch, "warning", fmt.Sprintf("Opening %q has no resolvable construction %q.", window.Name, window.Construction))
 		}
 	}
 }
@@ -489,27 +521,27 @@ func (builder *thermalTopologyBuilder) resolveOpeningCounterparts() {
 		object := builder.objectsByIndex[opening.ObjectIndex]
 		counterpartName := geometryStringField(object, "Outside Boundary Condition Object")
 		if counterpartName == "" {
-			builder.addOpeningIssue(opening, "fenestration_counterpart_missing", "warning", fmt.Sprintf("Interzone opening %q does not name a counterpart opening.", opening.Name))
+			builder.addOpeningIssue(opening, thermalDiagnosticFenestrationCounterpartMissing, "warning", fmt.Sprintf("Interzone opening %q does not name a counterpart opening.", opening.Name))
 			continue
 		}
 		counterpartIndexes := builder.openingIndexesByName[normalizeName(counterpartName)]
 		if len(counterpartIndexes) != 1 {
-			builder.addOpeningIssue(opening, "fenestration_counterpart_missing", "warning", fmt.Sprintf("Interzone opening %q cannot resolve counterpart %q.", opening.Name, counterpartName))
+			builder.addOpeningIssue(opening, thermalDiagnosticFenestrationCounterpartMissing, "warning", fmt.Sprintf("Interzone opening %q cannot resolve counterpart %q.", opening.Name, counterpartName))
 			continue
 		}
 		counterpart := &builder.report.Openings[counterpartIndexes[0]]
 		if counterpart.EntityID == opening.EntityID {
-			builder.addOpeningIssue(opening, "fenestration_counterpart_missing", "warning", fmt.Sprintf("Interzone opening %q references itself.", opening.Name))
+			builder.addOpeningIssue(opening, thermalDiagnosticFenestrationCounterpartMissing, "warning", fmt.Sprintf("Interzone opening %q references itself.", opening.Name))
 			continue
 		}
 		counterpartBaseIndex, targetBaseFound := builder.boundaryIndexBySurfaceID[counterpart.BaseSurfaceID]
 		if !targetBaseFound || builder.report.Boundaries[counterpartBaseIndex].SurfaceID != baseBoundary.CounterpartSurfaceID {
-			builder.addOpeningIssue(opening, "fenestration_zone_mismatch", "warning", fmt.Sprintf("Opening %q counterpart %q is not on the paired base surface.", opening.Name, counterpart.Name))
+			builder.addOpeningIssue(opening, thermalDiagnosticFenestrationZoneMismatch, "warning", fmt.Sprintf("Opening %q counterpart %q is not on the paired base surface.", opening.Name, counterpart.Name))
 			continue
 		}
 		counterpartObject := builder.objectsByIndex[counterpart.ObjectIndex]
 		if !strings.EqualFold(strings.TrimSpace(geometryStringField(counterpartObject, "Outside Boundary Condition Object")), strings.TrimSpace(opening.Name)) {
-			builder.addOpeningIssue(opening, "fenestration_counterpart_one_way", "warning", fmt.Sprintf("Opening pair %q and %q is not reciprocal.", opening.Name, counterpart.Name))
+			builder.addOpeningIssue(opening, thermalDiagnosticFenestrationCounterpartOneWay, "warning", fmt.Sprintf("Opening pair %q and %q is not reciprocal.", opening.Name, counterpart.Name))
 			continue
 		}
 		if relativeDifference(opening.PhysicalArea, counterpart.PhysicalArea) > 0.01 {
@@ -519,7 +551,7 @@ func (builder *thermalTopologyBuilder) resolveOpeningCounterparts() {
 		status := thermalConstructionEquivalence(opening.ConstructionName, counterpart.ConstructionName, builder.constructionByName)
 		opening.ConstructionStatus = status
 		if status == "mismatch" || status == "missing_construction" {
-			builder.addOpeningIssue(opening, "fenestration_construction_mismatch", "warning", fmt.Sprintf("Opening pair %q and %q has construction status %s.", opening.Name, counterpart.Name, status))
+			builder.addOpeningIssue(opening, thermalDiagnosticFenestrationConstructionMismatch, "warning", fmt.Sprintf("Opening pair %q and %q has construction status %s.", opening.Name, counterpart.Name, status))
 			continue
 		}
 		opening.CounterpartOpeningID = counterpart.ID
@@ -535,7 +567,7 @@ func (builder *thermalTopologyBuilder) calculateBoundaryUA() {
 	for index := range builder.report.Boundaries {
 		boundary := &builder.report.Boundaries[index]
 		if boundary.PhysicalOpeningArea > boundary.PhysicalGrossArea+1e-6 || boundary.EffectiveOpeningArea > boundary.EffectiveGrossArea+1e-6 {
-			builder.addBoundaryIssue(boundary, "fenestration_area_exceeds_base", "warning", fmt.Sprintf("Openings on surface %q exceed its gross area.", boundary.SurfaceName))
+			builder.addBoundaryIssue(boundary, thermalDiagnosticFenestrationAreaExceedsBase, "warning", fmt.Sprintf("Openings on surface %q exceed its gross area.", boundary.SurfaceName))
 		}
 		opaqueUA, openingUA, totalUA, hasUA := thermalBoundaryUAForAreaBasis(*boundary, openingsByID, "effective")
 		boundary.OpaqueUA = opaqueUA
@@ -592,9 +624,14 @@ func (builder *thermalTopologyBuilder) validateReciprocalConstructions() {
 		counterpart.ConstructionStatus = status
 		switch status {
 		case "mismatch":
-			builder.addBoundaryIssue(boundary, "surface_pair_construction_mismatch", "warning", fmt.Sprintf("Surface pair %q and %q has mismatched constructions.", boundary.SurfaceName, counterpart.SurfaceName))
+			builder.addBoundaryIssue(boundary, thermalDiagnosticSurfacePairConstructionMismatch, "warning", fmt.Sprintf("Surface pair %q and %q has mismatched constructions.", boundary.SurfaceName, counterpart.SurfaceName))
+			constructionA := builder.constructionByName[normalizeName(boundary.ConstructionName)]
+			constructionB := builder.constructionByName[normalizeName(counterpart.ConstructionName)]
+			if thermalLayersHaveSameMembers(constructionA.Layers, constructionB.Layers) {
+				builder.addBoundaryIssue(boundary, thermalDiagnosticSurfacePairLayerOrderMismatch, "warning", fmt.Sprintf("Surface pair %q and %q uses the same layers in a non-reciprocal order.", boundary.SurfaceName, counterpart.SurfaceName))
+			}
 		case "missing_construction":
-			builder.addBoundaryIssue(boundary, "surface_missing_construction", "warning", fmt.Sprintf("Surface pair %q and %q has a missing construction.", boundary.SurfaceName, counterpart.SurfaceName))
+			builder.addBoundaryIssue(boundary, thermalDiagnosticSurfaceMissingConstruction, "warning", fmt.Sprintf("Surface pair %q and %q has a missing construction.", boundary.SurfaceName, counterpart.SurfaceName))
 		}
 	}
 }
@@ -629,6 +666,29 @@ func thermalLayersAreReverseEquivalent(layersA []GeometryMaterialLayer, layersB 
 	return true
 }
 
+func thermalLayersHaveSameMembers(layersA []GeometryMaterialLayer, layersB []GeometryMaterialLayer) bool {
+	if len(layersA) == 0 || len(layersA) != len(layersB) {
+		return false
+	}
+	counts := map[string]int{}
+	for _, layer := range layersA {
+		counts[normalizeName(layer.Name)]++
+	}
+	for _, layer := range layersB {
+		key := normalizeName(layer.Name)
+		counts[key]--
+		if counts[key] < 0 {
+			return false
+		}
+	}
+	for _, count := range counts {
+		if count != 0 {
+			return false
+		}
+	}
+	return true
+}
+
 func relativeDifference(a float64, b float64) float64 {
 	denominator := thermalMax(a, b)
 	if denominator <= 1e-9 {
@@ -649,7 +709,7 @@ func (builder *thermalTopologyBuilder) resolveBoundaryRecords() {
 func (builder *thermalTopologyBuilder) resolveBoundaryRecord(boundaryIndex int) {
 	boundary := &builder.report.Boundaries[boundaryIndex]
 	if boundary.OwnerZoneID == "" {
-		builder.invalidateBoundary(boundary, "missing_boundary_target", fmt.Sprintf("Surface %q has no resolvable owner zone.", boundary.SurfaceName))
+		builder.invalidateBoundary(boundary, thermalDiagnosticMissingBoundaryTarget, fmt.Sprintf("Surface %q has no resolvable owner zone.", boundary.SurfaceName))
 		return
 	}
 	switch boundary.BoundaryCondition {
@@ -683,10 +743,10 @@ func (builder *thermalTopologyBuilder) resolveBoundaryRecord(boundaryIndex int) 
 	case "OtherSideConditionsModel":
 		builder.resolveNamedExternalObject(boundary, "other_side_conditions_model", "other_side_conditions_model", []string{"SurfaceProperty:OtherSideConditionsModel"})
 	default:
-		builder.invalidateBoundary(boundary, "invalid_boundary_condition", fmt.Sprintf("Surface %q uses invalid outside boundary condition %q.", boundary.SurfaceName, boundary.BoundaryConditionRaw))
+		builder.invalidateBoundary(boundary, thermalDiagnosticInvalidBoundaryCondition, fmt.Sprintf("Surface %q uses invalid outside boundary condition %q.", boundary.SurfaceName, boundary.BoundaryConditionRaw))
 	}
 	if boundary.RelationKind != "exterior" && (strings.EqualFold(boundary.SunExposure, "SunExposed") || strings.EqualFold(boundary.WindExposure, "WindExposed")) {
-		builder.addBoundaryIssue(boundary, "boundary_exposure_rule_mismatch", "warning", "A non-outdoor boundary is marked as sun- or wind-exposed.")
+		builder.addBoundaryIssue(boundary, thermalDiagnosticBoundaryExposureRuleMismatch, "warning", "A non-outdoor boundary is marked as sun- or wind-exposed.")
 	}
 }
 
@@ -694,11 +754,17 @@ func (builder *thermalTopologyBuilder) resolveSurfaceBoundary(boundaryIndex int)
 	boundary := &builder.report.Boundaries[boundaryIndex]
 	targetIndexes := builder.boundaryIndexesByName[normalizeName(boundary.BoundaryObjectRaw)]
 	if len(targetIndexes) == 0 {
-		builder.invalidateBoundary(boundary, "surface_counterpart_missing", fmt.Sprintf("Surface %q references missing counterpart %q.", boundary.SurfaceName, boundary.BoundaryObjectRaw))
+		builder.invalidateBoundary(boundary, thermalDiagnosticSurfaceCounterpartMissing, fmt.Sprintf("Surface %q references missing counterpart %q.", boundary.SurfaceName, boundary.BoundaryObjectRaw))
 		return
 	}
 	if len(targetIndexes) > 1 {
-		builder.invalidateBoundary(boundary, "surface_counterpart_duplicate", fmt.Sprintf("Surface %q references duplicate counterpart name %q.", boundary.SurfaceName, boundary.BoundaryObjectRaw))
+		builder.invalidateBoundary(boundary, thermalDiagnosticSurfaceCounterpartDuplicate, fmt.Sprintf("Surface %q references duplicate counterpart name %q.", boundary.SurfaceName, boundary.BoundaryObjectRaw))
+		for _, targetIndex := range targetIndexes {
+			if builder.report.Boundaries[targetIndex].SurfaceEntityID == boundary.SurfaceEntityID {
+				builder.addBoundaryIssue(boundary, thermalDiagnosticSurfaceSelfReferenceInvalid, "warning", fmt.Sprintf("Surface %q self-reference is ambiguous because its name is duplicated.", boundary.SurfaceName))
+				break
+			}
+		}
 		return
 	}
 	target := &builder.report.Boundaries[targetIndexes[0]]
@@ -710,7 +776,11 @@ func (builder *thermalTopologyBuilder) resolveSurfaceBoundary(boundaryIndex int)
 		return
 	}
 	if target.BoundaryCondition != "Surface" || !strings.EqualFold(strings.TrimSpace(target.BoundaryObjectRaw), strings.TrimSpace(boundary.SurfaceName)) {
-		builder.invalidateBoundary(boundary, "surface_counterpart_one_way", fmt.Sprintf("Surface pair %q and %q is not reciprocal.", boundary.SurfaceName, target.SurfaceName))
+		builder.invalidateBoundary(boundary, thermalDiagnosticSurfaceCounterpartOneWay, fmt.Sprintf("Surface pair %q and %q is not reciprocal.", boundary.SurfaceName, target.SurfaceName))
+		return
+	}
+	if target.OwnerZoneID == "" {
+		builder.invalidateBoundary(boundary, thermalDiagnosticSurfacePairZoneMismatch, fmt.Sprintf("Surface pair %q and %q does not resolve ownership on both sides.", boundary.SurfaceName, target.SurfaceName))
 		return
 	}
 	boundary.RelationKind = "interzone_explicit_surface"
@@ -730,7 +800,7 @@ func (builder *thermalTopologyBuilder) resolveImplicitOwnedBoundary(boundary *Th
 		}
 	}
 	if len(matches) != 1 {
-		builder.invalidateBoundary(boundary, "missing_boundary_target", fmt.Sprintf("Surface %q cannot resolve %s target %q.", boundary.SurfaceName, kind, boundary.BoundaryObjectRaw))
+		builder.invalidateBoundary(boundary, thermalDiagnosticMissingBoundaryTarget, fmt.Sprintf("Surface %q cannot resolve %s target %q.", boundary.SurfaceName, kind, boundary.BoundaryObjectRaw))
 		return
 	}
 	targetID := thermalSemanticEntityID(matches[0], builder.registry)
@@ -756,7 +826,7 @@ func (builder *thermalTopologyBuilder) resolveNamedExternalObject(boundary *Ther
 		}
 	}
 	if len(matches) != 1 {
-		builder.invalidateBoundary(boundary, "missing_boundary_target", fmt.Sprintf("Surface %q cannot resolve %s target %q.", boundary.SurfaceName, boundary.BoundaryCondition, boundary.BoundaryObjectRaw))
+		builder.invalidateBoundary(boundary, thermalDiagnosticMissingBoundaryTarget, fmt.Sprintf("Surface %q cannot resolve %s target %q.", boundary.SurfaceName, boundary.BoundaryCondition, boundary.BoundaryObjectRaw))
 		return
 	}
 	target := matches[0]
@@ -793,13 +863,14 @@ func (builder *thermalTopologyBuilder) addBoundaryIssue(boundary *ThermalBoundar
 	issueID := "topology-issue:" + semanticStableHash(strings.Join([]string{code, boundary.SurfaceEntityID, message}, "\x00"), 20)
 	boundary.DiagnosticIDs = appendUniqueString(boundary.DiagnosticIDs, issueID)
 	builder.report.IssueLinks = append(builder.report.IssueLinks, ThermalTopologyIssueLink{
-		ID:            issueID,
-		Code:          code,
-		Severity:      severity,
-		Message:       message,
-		EntityID:      boundary.SurfaceEntityID,
-		BoundaryID:    boundary.ID,
-		SourceAnchors: append([]SemanticSourceAnchor(nil), boundary.SourceAnchors...),
+		ID:               issueID,
+		Code:             code,
+		Severity:         severity,
+		Message:          message,
+		EntityID:         boundary.SurfaceEntityID,
+		BoundaryID:       boundary.ID,
+		RelatedEntityIDs: appendUniqueStrings(nil, boundary.ID, boundary.SurfaceEntityID, boundary.PairID, boundary.CounterpartSurfaceEntityID),
+		SourceAnchors:    append([]SemanticSourceAnchor(nil), boundary.SourceAnchors...),
 	})
 }
 
@@ -807,13 +878,14 @@ func (builder *thermalTopologyBuilder) addOpeningIssue(opening *ThermalOpeningRe
 	issueID := "topology-issue:" + semanticStableHash(strings.Join([]string{code, opening.EntityID, message}, "\x00"), 20)
 	opening.DiagnosticIDs = appendUniqueString(opening.DiagnosticIDs, issueID)
 	builder.report.IssueLinks = append(builder.report.IssueLinks, ThermalTopologyIssueLink{
-		ID:            issueID,
-		Code:          code,
-		Severity:      severity,
-		Message:       message,
-		EntityID:      opening.EntityID,
-		OpeningID:     opening.ID,
-		SourceAnchors: append([]SemanticSourceAnchor(nil), opening.SourceAnchors...),
+		ID:               issueID,
+		Code:             code,
+		Severity:         severity,
+		Message:          message,
+		EntityID:         opening.EntityID,
+		OpeningID:        opening.ID,
+		RelatedEntityIDs: appendUniqueStrings(nil, opening.ID, opening.EntityID, opening.PairID, opening.CounterpartOpeningID, opening.BaseSurfaceID),
+		SourceAnchors:    append([]SemanticSourceAnchor(nil), opening.SourceAnchors...),
 	})
 }
 
@@ -864,7 +936,7 @@ func (builder *thermalTopologyBuilder) addNode(node ThermalTopologyNode) {
 
 func (builder *thermalTopologyBuilder) boundarySourceAnchors(object Object) []SemanticSourceAnchor {
 	anchors := []SemanticSourceAnchor{builder.sourceAnchor(object, nil, "")}
-	for _, fieldName := range []string{"Outside Boundary Condition", "Outside Boundary Condition Object"} {
+	for _, fieldName := range []string{"Outside Boundary Condition", "Outside Boundary Condition Object", "Construction Name"} {
 		if fieldIndex, ok := thermalFieldIndex(object, fieldName); ok {
 			anchors = appendUniqueSemanticSourceAnchor(anchors, builder.sourceAnchor(object, intPtr(fieldIndex), fieldName))
 		}
@@ -874,7 +946,7 @@ func (builder *thermalTopologyBuilder) boundarySourceAnchors(object Object) []Se
 
 func (builder *thermalTopologyBuilder) openingSourceAnchors(object Object) []SemanticSourceAnchor {
 	anchors := []SemanticSourceAnchor{builder.sourceAnchor(object, nil, "")}
-	for _, fieldName := range []string{"Building Surface Name", "Outside Boundary Condition Object"} {
+	for _, fieldName := range []string{"Building Surface Name", "Outside Boundary Condition Object", "Construction Name"} {
 		if fieldIndex, ok := thermalFieldIndex(object, fieldName); ok {
 			anchors = appendUniqueSemanticSourceAnchor(anchors, builder.sourceAnchor(object, intPtr(fieldIndex), fieldName))
 		}
@@ -1018,7 +1090,7 @@ func thermalEnergyPlusVersion(doc Document) string {
 func thermalSurfacePairID(surfaceEntityA string, surfaceEntityB string) string {
 	values := []string{surfaceEntityA, surfaceEntityB}
 	sort.Strings(values)
-	return "thermal-pair:" + semanticStableHash(strings.Join(values, "\x00"), 20)
+	return "thermal-interface:" + strings.Join(values, "|")
 }
 
 func thermalConstructionIndex(constructions []GeometryConstruction) map[string]GeometryConstruction {

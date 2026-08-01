@@ -50,7 +50,7 @@ func (builder *thermalTopologyBuilder) buildConnectionAggregates() {
 		if !exists {
 			fromNodeID, toNodeID := thermalSortedNodeIDs(contribution.fromNodeID, contribution.toNodeID)
 			builder.report.Connections = append(builder.report.Connections, ThermalConnectionAggregate{
-				ID:           "thermal-connection:" + semanticStableHash(key, 20),
+				ID:           thermalConnectionID(fromNodeID, toNodeID, contribution.relationKind),
 				FromNodeID:   fromNodeID,
 				ToNodeID:     toNodeID,
 				RelationKind: contribution.relationKind,
@@ -96,7 +96,7 @@ func (builder *thermalTopologyBuilder) buildConnectionAggregates() {
 		if !exists {
 			fromNodeID, toNodeID = thermalSortedNodeIDs(fromNodeID, toNodeID)
 			builder.report.Connections = append(builder.report.Connections, ThermalConnectionAggregate{
-				ID:           "thermal-connection:" + semanticStableHash(key, 20),
+				ID:           thermalConnectionID(fromNodeID, toNodeID, "air_coupling"),
 				FromNodeID:   fromNodeID,
 				ToNodeID:     toNodeID,
 				RelationKind: "air_coupling",
@@ -249,6 +249,11 @@ func thermalPairedOpeningsAreComplete(boundary ThermalBoundaryRecord, counterpar
 func thermalConnectionKey(fromNodeID string, toNodeID string, relationKind string) string {
 	fromNodeID, toNodeID = thermalSortedNodeIDs(fromNodeID, toNodeID)
 	return strings.Join([]string{relationKind, fromNodeID, toNodeID}, "\x00")
+}
+
+func thermalConnectionID(fromNodeID string, toNodeID string, relationKind string) string {
+	fromNodeID, toNodeID = thermalSortedNodeIDs(fromNodeID, toNodeID)
+	return "thermal-connection:" + fromNodeID + ":" + toNodeID + ":" + semanticIDToken(relationKind)
 }
 
 func thermalSortedNodeIDs(left string, right string) (string, string) {
@@ -410,6 +415,11 @@ func (builder *thermalTopologyBuilder) buildZoneSignatures(areaBasis string) {
 func (builder *thermalTopologyBuilder) buildThermalMatrix(areaBasis string) {
 	builder.report.Matrix = []ThermalMatrixCell{}
 	for _, connection := range builder.report.Connections {
+		// Air exchange is a separate topology layer and has no conductive Area/UA
+		// matrix value. Omitting it also keeps the row/column cell identity unique.
+		if connection.RelationKind == "air_coupling" {
+			continue
+		}
 		area := connection.EffectiveGrossArea
 		ua := connection.TotalUA
 		hasUA := connection.HasUA
@@ -419,6 +429,7 @@ func (builder *thermalTopologyBuilder) buildThermalMatrix(areaBasis string) {
 			hasUA = connection.HasPhysicalUA
 		}
 		cell := ThermalMatrixCell{
+			ID:              "thermal-matrix-cell:" + connection.FromNodeID + ":" + connection.ToNodeID,
 			RowNodeID:       connection.FromNodeID,
 			ColumnNodeID:    connection.ToNodeID,
 			ConnectionID:    connection.ID,
@@ -432,6 +443,7 @@ func (builder *thermalTopologyBuilder) buildThermalMatrix(areaBasis string) {
 		if connection.FromNodeID != connection.ToNodeID {
 			mirror := cell
 			mirror.RowNodeID, mirror.ColumnNodeID = cell.ColumnNodeID, cell.RowNodeID
+			mirror.ID = "thermal-matrix-cell:" + mirror.RowNodeID + ":" + mirror.ColumnNodeID
 			builder.report.Matrix = append(builder.report.Matrix, mirror)
 		}
 	}

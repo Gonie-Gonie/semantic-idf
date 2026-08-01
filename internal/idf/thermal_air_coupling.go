@@ -85,7 +85,7 @@ func (builder *thermalTopologyBuilder) addAirBoundaryCouplings() {
 		fromNodeID := firstNonEmpty(boundary.OwnerSpaceID, boundary.OwnerZoneID)
 		toNodeID := boundary.TargetID
 		coupling := builder.newAirCoupling(constructionObject, fromNodeID, toNodeID, "bidirectional", "construction_air_boundary")
-		coupling.ID = "thermal-air-coupling:air-boundary:" + semanticStableHash(key, 20)
+		coupling.ID = coupling.ID + ":" + semanticStableHash(key, 16)
 		coupling.EntityID = coupling.ID
 		coupling.SurfaceID = boundary.SurfaceID
 		coupling.ScheduleName = geometryStringField(constructionObject, "Simple Mixing Schedule Name")
@@ -137,6 +137,9 @@ func (builder *thermalTopologyBuilder) addAirflowNetworkCouplings() {
 			}
 		}
 		valid := found && coupling.FromNodeID != "" && coupling.ToNodeID != "" && boundary.RelationKind != "invalid"
+		if !found {
+			builder.addAirCouplingIssue(&coupling, thermalDiagnosticAirflowNetworkSurfaceMissing, fmt.Sprintf("AirflowNetwork surface %q cannot resolve heat-transfer surface or opening %q.", objectLabel(object), surfaceName))
+		}
 		builder.appendAirCoupling(coupling, valid, fmt.Sprintf("AirflowNetwork surface %q cannot resolve heat-transfer surface or opening %q.", objectLabel(object), surfaceName))
 	}
 }
@@ -157,7 +160,7 @@ func (builder *thermalTopologyBuilder) airflowNetworkBoundary(surfaceName string
 
 func (builder *thermalTopologyBuilder) newAirCoupling(object Object, fromNodeID string, toNodeID string, direction string, kind string) ThermalAirCoupling {
 	objectID := builder.registry.byObjectIndex[object.Index]
-	entityID := "thermal-air-coupling:" + semanticStableHash(strings.Join([]string{objectID, kind}, "\x00"), 20)
+	entityID := "thermal-air-coupling:" + semanticSourceObjectEntityID(objectID)
 	anchors := []SemanticSourceAnchor{builder.sourceAnchor(object, nil, "")}
 	for _, fieldName := range []string{"Zone or Space Name", "Source Zone or Space Name", "Zone 1 Name", "Zone 2 Name", "Surface Name", "Leakage Component Name"} {
 		if fieldIndex, ok := thermalFieldIndex(object, fieldName); ok {
@@ -186,7 +189,7 @@ func (builder *thermalTopologyBuilder) appendAirCoupling(coupling ThermalAirCoup
 		if coupling.ToNodeID == "" {
 			coupling.ToNodeID = builder.addUnresolvedNode("Unresolved air coupling target", coupling.SourceAnchors)
 		}
-		builder.addAirCouplingIssue(&coupling, "air_coupling_target_missing", issueMessage)
+		builder.addAirCouplingIssue(&coupling, thermalDiagnosticAirCouplingTargetMissing, issueMessage)
 	}
 	builder.report.AirCouplings = append(builder.report.AirCouplings, coupling)
 }
@@ -195,13 +198,14 @@ func (builder *thermalTopologyBuilder) addAirCouplingIssue(coupling *ThermalAirC
 	issueID := "topology-issue:" + semanticStableHash(strings.Join([]string{code, coupling.EntityID, message}, "\x00"), 20)
 	coupling.DiagnosticIDs = appendUniqueString(coupling.DiagnosticIDs, issueID)
 	builder.report.IssueLinks = append(builder.report.IssueLinks, ThermalTopologyIssueLink{
-		ID:            issueID,
-		Code:          code,
-		Severity:      "warning",
-		Message:       message,
-		EntityID:      coupling.EntityID,
-		AirCouplingID: coupling.ID,
-		SourceAnchors: append([]SemanticSourceAnchor(nil), coupling.SourceAnchors...),
+		ID:               issueID,
+		Code:             code,
+		Severity:         "warning",
+		Message:          message,
+		EntityID:         coupling.EntityID,
+		AirCouplingID:    coupling.ID,
+		RelatedEntityIDs: appendUniqueStrings(nil, coupling.ID, coupling.EntityID, coupling.FromNodeID, coupling.ToNodeID, coupling.SurfaceID),
+		SourceAnchors:    append([]SemanticSourceAnchor(nil), coupling.SourceAnchors...),
 	})
 }
 

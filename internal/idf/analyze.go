@@ -107,6 +107,7 @@ func AnalyzeQuickFromIndex(index *DocumentIndex, timer StageTimer) Report {
 
 func AnalyzeOverviewTimed(doc Document, timer StageTimer) Report {
 	index := NewDocumentIndex(doc)
+	session := newAnalysisSession(index)
 	var report Report
 	timeAnalysisStage(timer, "core", func() {
 		report = analyzeCore(doc)
@@ -118,10 +119,10 @@ func AnalyzeOverviewTimed(doc Document, timer StageTimer) Report {
 		report.Output = AnalyzeOutputFromIndex(index)
 	})
 	timeAnalysisStage(timer, "profile", func() {
-		report.Profile = AnalyzeProfileFromIndex(index)
+		report.Profile = session.Profile()
 	})
 	timeAnalysisStage(timer, "hvac", func() {
-		report.HVAC = AnalyzeHVACFromIndex(index)
+		report.HVAC = session.HVAC()
 	})
 	return report
 }
@@ -132,6 +133,7 @@ func Analyze(doc Document) Report {
 
 func AnalyzeTimed(doc Document, timer StageTimer) Report {
 	index := NewDocumentIndex(doc)
+	session := newAnalysisSession(index)
 	var report Report
 	timeAnalysisStage(timer, "core", func() {
 		report = analyzeCore(doc)
@@ -143,6 +145,9 @@ func AnalyzeTimed(doc Document, timer StageTimer) Report {
 	var hvac HVACReport
 	var geometry GeometryReport
 	var diagnostics []Diagnostic
+	timeAnalysisStage(timer, "geometry", func() {
+		geometry = session.Geometry()
+	})
 
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, MaxAnalysisWorkers())
@@ -174,22 +179,17 @@ func AnalyzeTimed(doc Document, timer StageTimer) Report {
 	})
 	run(func() {
 		timeAnalysisStage(timer, "profile", func() {
-			profile = AnalyzeProfileFromIndex(index)
+			profile = session.Profile()
 		})
 	})
 	run(func() {
 		timeAnalysisStage(timer, "hvac", func() {
-			hvac = AnalyzeHVACFromIndex(index)
-		})
-	})
-	run(func() {
-		timeAnalysisStage(timer, "geometry", func() {
-			geometry = AnalyzeGeometryFromIndex(index)
+			hvac = session.HVAC()
 		})
 	})
 	run(func() {
 		timeAnalysisStage(timer, "diagnostics", func() {
-			diagnostics = AnalyzeDiagnosticsFromIndex(index)
+			diagnostics = session.Diagnostics()
 		})
 	})
 	wg.Wait()
