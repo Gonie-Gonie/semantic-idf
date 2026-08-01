@@ -12,430 +12,96 @@ The release script infers bump size from these sections:
 
 - _None._
 
+## Highlights Compared With v0.4.2
+
+- Geometry evolves into Spatial & Thermal Topology, turning EnergyPlus geometry
+  into an inspectable zone, boundary, opening, and air-coupling network with
+  Graph and Matrix views, QA evidence, thermal metrics, simulation overlays,
+  batch comparison, and portable exports.
+- Basic Energy now provides a source-traceable accounting workflow from energy
+  carriers and end uses through delivered loads and heat drivers, with Sankey
+  drill-down, period reconciliation, completeness checks, HVAC navigation, and
+  batch deltas.
+- Semantic Text and analysis panels now share bidirectional semantic navigation
+  with stable identities, linked and follow selection, context-preserving
+  history, target choice, and keyboard access.
+- The product and release artifacts are now named SemanticIDF and
+  `semantic-idf-*`.
+
 ## Added
 
-- Added a canonical `geometry.topology` thermal-network report with stable
-  zone, boundary, opening, connection, air-coupling, diagnostic, matrix, and
-  source-anchor identities; JSON, GraphML, and DOT exports; normalized Batch
-  Summary comparison fields; and a separately versioned signed simulation
-  heat-flow overlay.
-- Added Graph and Matrix Thermal views at zone and boundary levels with
-  Connectivity, Area, UA, Exposure, QA, Air, and Simulated Heat metrics,
-  physical/model-total area bases, source inspection, cross-panel navigation,
-  keyboard operation, and cached deterministic layouts.
-- Added the user-facing `Topology` tab name (`공간·열 연결` in Korean) and
-  `Spatial & Thermal Topology` panel title while retaining the existing
-  `geometry` API, DOM, route, workspace, and `tabGeometry` shortcut contracts.
+### Spatial & Thermal Topology
 
-- Added a Basic Energy `energyExplanation` result payload and Energy tab
-  subviews for Sankey-style accounting, monthly/zoned explanation ledgers, SQL
-  source metadata, HVAC service-path cross-jumps, and residual reconciliation,
-  including heat-driver links from delivered loads when heat-balance outputs are
-  available.
-- Basic Energy run setup now exposes `light`, `explain`, and `heat_drivers`
-  detail tiers; the app and batch UI default to the light meter-only tier.
-- Basic Energy detail outputs now honor the `highest_resolution` frequency
-  policy by requesting hourly explain and heat-driver variables.
-- Basic Energy explanation completeness now marks unrequested light-tier
-  delivered-load and heat-driver details as `not_applicable` instead of missing.
-- Basic Energy source availability now emits `not_applicable` placeholder rows
-  for unrequested detail levels, keeping exports distinct from missing outputs.
-- Basic Energy source availability rows now carry matching source IDs for found
-  outputs, so HTML and batch exports can trace availability status back to SQL
-  sources and output requests.
-- Basic Energy source availability and SQL source output-request links now use
-  the energy meter alias catalog, so carrier/end-use meter order variants stay
-  traceable.
-- The shared SQL `QueryReportData` layer can now filter by
-  `ReportDataDictionary.IndexGroup` while preserving that source metadata for
-  purpose result parsers.
-- Basic Energy Sources tables, Sankey inspectors, HTML reports, and batch CSV
-  exports now show SQL tabular source table, row, and column metadata when a
-  value falls back to tabular annual data.
-- Batch Simulation XLSX Source Availability sheets now include source IDs and
-  matching output object indexes for found Basic Energy source rows.
-- Batch Simulation CSV and XLSX source availability rows now include matched
-  source table/row/column labels and source/normalized units when available.
-- Batch Simulation CSV and XLSX exports now include Basic Energy node rows with
-  period, level/kind, scope, source IDs, source metadata, and related service
-  path IDs.
-- Energy explanation Sankey and Systems views can now focus by all results, a
-  selected zone, selected HVAC service path, or selected HVAC loop.
-- Energy explanation Sankey now has Detailed and Compact column modes, with
-  Detailed separating Energy Carrier and End-use Energy columns and Compact
-  collapsing to Energy Use -> Delivered Load -> Heat Drivers.
-- Energy explanation Sankey can now switch heat drivers between display
-  magnitude, signed balance, cooling-pressure, and heating-pressure views.
-- Energy explanation Sankey now states the heat-driver sign convention: positive
-  drivers add cooling pressure, negative drivers add heating pressure, and
-  signed mode preserves the heat-balance sign.
-- Energy explanation Sankey can cap visible heat-driver nodes, group omitted
-  drivers as `Other heat drivers` for large models, and expand grouped drivers
-  with an `All` action.
-- Grouped `Other heat drivers` Sankey nodes now preserve aggregate signed and
-  display heat values, so signed heat-balance mode keeps its accounting basis
-  after top-N grouping.
-- Grouped Basic Energy heat-driver nodes now preserve related HVAC service-path
-  IDs, so the Sankey inspector keeps service jump context after top-N grouping.
-- Energy explanation Sankey now uses carrier/service-specific node colors and a
-  legend for common electricity, fuel, district cooling/heating, cooling, and
-  heating classes.
-- Energy explanation Sankey edges now carry normalized relation/basis classes
-  so measured, integrated, derived, allocated, and residual flows render with
-  matching line styles and legend samples.
-- Basic Energy Monthly chart bars and ledger rows now open the matching Sankey
-  period so month-level accounting changes are easier to inspect.
-- Energy explanation edge IDs are now period-stable while the period remains a
-  separate field, so Sankey selections and batch edge comparisons can survive
-  period switches.
-- Basic Energy Sankey inspector actions now expose zone focus and related
-  service-path focus jumps alongside HVAC and Heat Flow drilldowns.
-- Basic Energy Sankey inspectors now list connected HVAC loops and supporting
-  coupling assets for the selected service path, with direct jumps into the HVAC
-  tab.
-- Basic Energy Sankey inspector zone actions can now jump directly into the
-  matching Profile tab zone view when profile analysis is available.
-- Basic Energy Sankey inspectors now list related zones inferred from selected
-  HVAC service paths, with one-click zone focus.
-- Basic Energy Sankey inspectors now preserve unresolved source IDs and show
-  allocation policy plus related path IDs for allocation/service-path traces.
-- Basic Energy Sankey inspector and Sources tables now expose Chart actions for
-  matching source meters and variables.
-- Purpose HTML exports now include Basic Energy annual node rows with level,
-  kind, value, zone/service/path, source IDs, source metadata, and related
-  service-path IDs.
-- Purpose HTML annual edge rows now include edge IDs, period, endpoint IDs,
-  zone/service/path scope, source metadata, and related service-path IDs.
-- Basic Energy Monthly view now includes a compact Energy Use, Delivered Load,
-  Heat Drivers, and Residual level chart.
-- Basic Energy Zones view now summarizes zone/service delivered load, cooling
-  and heating pressure, signed heat, and residual values with Sankey focus
-  jumps, Heat-Flow Ledger jumps, and HVAC service-path links.
-- Basic Energy Systems view now shows service-path source energy, delivered
-  load, heat-driver totals, connected systems, and supporting assets together,
-  with a direct Sankey service-path focus jump.
-- Basic Energy Systems rows now render connected HVAC loops and supporting
-  coupling assets as jump targets into the HVAC tab.
-- Basic Energy Systems loop rows now include a direct Sankey loop-focus action
-  without replacing the HVAC loop jump.
-- Basic Energy heat residual nodes now retain related HVAC service path IDs, so
-  service-level accounting gaps remain traceable from Sankey inspectors.
-- Basic Energy energy residual nodes now retain `residual` basis metadata, so
-  node inspectors and exports identify residual accounting gaps consistently.
-- Basic Energy completeness panels now distinguish missing source outputs from
-  accounting/model coverage gaps and can jump directly to the purpose output
-  plan or apply missing purpose outputs permanently.
-- Basic Energy source availability rows now use status badges for missing and
-  not-applicable outputs.
-- Basic Energy completeness now treats energy meters that were not requested by
-  the active model-aware output plan as `not_applicable` instead of reporting a
-  source shortage from the fallback meter catalog.
-- Basic Energy source availability now matches delivered-load aliases and same-
-  sign heat-driver aliases before reporting missing outputs, avoiding false
-  shortages when EnergyPlus reports an equivalent Energy/Rate variable.
-- Basic Energy Overview now includes an annual Energy Use breakdown by carrier
-  and end use, with source links for each row.
-- Energy explanation completeness now surfaces missing categories and source
-  availability rows in the UI.
-- Energy explanation source availability now uses `found`/`missing` status rows
-  and populates missing categories from missing source requests.
-- Simulation source output cells now link back to matching existing output
-  request objects when available.
-- Energy explanation payloads now include relationship rule catalogs, and edges
-  expose `ruleId` values shown in the Sankey inspector.
-- Basic Energy relationship rules now link matching internal-gain end-use energy
-  and zone heat-gain variables, such as interior lighting energy to lighting
-  heat, with an explicit measured meter/variable basis.
-- Added an annual `energyExplanationSummary` result payload for carrier,
-  end-use, delivered-load, heat-driver, residual, and top-zone rollups.
-- Basic Energy explanation plans and result payloads now support
-  `direct_only` and `by_zone_load_share` allocation policies. The zone-load
-  share mode emits `basis=allocated` Energy Use -> Delivered Load edges, and
-  Simulation/Batch Simulation controls can select the policy.
-- Basic Energy allocation policy now also supports `by_service_path_load_share`
-  when delivered-load nodes can be matched to HVAC service paths.
-- Basic Energy purpose runs now request monthly delivered-load and heat-driver
-  explanation outputs while reusing hourly Zone Heat Flow outputs when that
-  purpose is selected.
-- Basic Energy end-use meter coverage now includes heat recovery, exterior
-  lighting, refrigeration, and natural-gas interior equipment where applicable.
-- Basic Energy now maps carrier-qualified meters that are not in the explicit
-  end-use alias catalog to `other` end-use nodes while preserving the original
-  meter name as source metadata.
-- Basic Energy and standard output plans now cover additional Level 1 energy
-  meters for fuel oil, propane, other fuels, steam, district cooling/heating
-  end uses, and onsite electricity production when those model features are
-  detected.
-- Basic Energy explanation summaries now keep energy end-use carrier IDs
-  distinct, and onsite electricity production no longer counts as mapped
-  facility consumption in residual and mapped-percent calculations.
-- Basic Energy Sankey payloads now link onsite electricity production to the
-  carrier total with an `onsite_production` support relation instead of treating
-  it as a facility consumption end-use.
-- Basic Energy explanation parsing now prefers reported energy variables over
-  rate fallbacks for the same delivered-load or heat-driver target, avoiding
-  duplicate Sankey accounting when both are present; completeness now counts
-  those fallback aliases by canonical target instead of raw output-name count.
-- Basic Energy heat-driver parsing now preserves explicit sensible heat
-  gain/loss signs, keeping positive and negative air-exchange drivers as
-  separate Sankey nodes when EnergyPlus reports both as positive energy values.
-- Energy explanation summaries now keep explicitly signed heat-driver gain and
-  loss nodes separate, so batch summaries and exports do not merge opposite
-  air-exchange directions; summary exports now also include heat category and
-  sign fields.
-- Energy explanation periods now carry their own reconciliation and warning
-  rows, and the Reconciliation view can switch between annual and monthly
-  accounting gaps.
-- Batch Simulation purpose-result CSV exports now include annual/monthly energy
-  explanation reconciliation rows with residual, basis, formula, period, and
-  source IDs.
-- Batch Simulation energy explanation summary, edge, and reconciliation CSV
-  rows now fill `source_ids` and `source_object_index` when their source IDs can
-  be matched to output request objects.
-- Batch Simulation XLSX energy summary, edge, and reconciliation sheets now
-  include `source_object_index` beside `source_ids`.
-- Batch Simulation XLSX Energy Delta and Sankey Edge Delta sheets now split
-  baseline and target source IDs/object indexes so comparison rows remain
-  traceable on both sides.
-- Batch Simulation XLSX Energy Delta and Sankey Edge Delta sheets now include
-  baseline/target source table, row, column, source unit, and normalized unit
-  fields directly on delta rows.
-- Batch Simulation XLSX energy summary, Sankey edge, reconciliation, and source
-  availability rows now include source table, row, column, source unit, and
-  normalized unit fields directly.
-- Batch Simulation CSV energy summary, Sankey edge, and reconciliation rows now
-  fill source table, row, column, source unit, and normalized unit fields from
-  their source IDs.
-- Batch Simulation Basic Energy comparison tables now show baseline/target
-  source IDs, output object numbers, table/row/column references, and units
-  directly beside each summary and Sankey edge delta.
-- Purpose HTML exports now include source output object, table, row, column,
-  source unit, and normalized unit fields directly in Energy Explanation
-  summary, annual edge, reconciliation, and source availability rows.
-- Batch Simulation Basic Energy comparison now shows residual delta tables in
-  the UI, matching the residual rows already exported in workbook deltas.
-- The Simulation run plan now summarizes Basic Energy output sets by tier and
-  state, making SQL, Light, Explain, and Heat Driver request coverage visible
-  before running.
-- The Basic Energy completeness panel now summarizes source availability counts
-  by level and status before listing missing or not-applicable source rows.
-- The Basic Energy completeness panel now treats Light-tier not-applicable
-  load/heat detail as a detail-tier gap and links users back to the output plan
-  instead of hiding the rerun guidance.
-- Basic Energy Sankey, zone, system, and reconciliation views now split period
-  selection by annual/selected/monthly/daily/hourly kind and use a range slider
-  for very large high-resolution period sets.
-- Basic Energy purpose requests now default omitted `basicEnergyDetail` values
-  to the light tier, keeping default run plans monthly and meter-focused unless
-  Explain or Heat Drivers is explicitly selected.
-- Basic Energy source metadata now includes `aggregationMethod` for SQL/report
-  sources, and the Sources view, inspector tables, and batch CSV export show it.
-- Basic Energy source metadata now preserves both source units and normalized
-  graph units, and the Sources view, inspector tables, and batch CSV export show
-  both values.
-- Basic Energy SQL `ReportData` sources now fill readable table row and value
-  column metadata such as `Electricity:Facility` and `Value [J]`.
-- Basic Energy energy nodes now carry `meterHierarchyLevel` metadata such as
-  `facility_total` and `broad_end_use`, and the Sankey inspector shows it.
-- Basic Energy Overview now states the Energy Use total basis from
-  `meterHierarchyLevel`, keeping facility totals distinct from end-use rows.
-- Basic Energy Overview now renders derived COP values from the summary
-  `derivedKpis` payload, using the annual graph only to fill matching electric
-  energy and delivered-load display details.
-- Basic Energy derived KPI summary rows now preserve the COP formula plus
-  numerator and denominator values for CSV, XLSX, HTML, and JSON exports.
-- Batch Simulation energy delta views now include derived KPI formula and
-  numerator/denominator details for COP comparison rows.
-- Batch Simulation CSV and XLSX exports now include Basic Energy source
-  availability rows, preserving missing and not-applicable expected outputs.
-- Batch Simulation completeness deltas now compare missing and not-applicable
-  Basic Energy source availability outputs between selected cases.
-- Batch Simulation now labels zero baseline/comparison rows separately from
-  missing Basic Energy explanation rows in the app, CSV, and XLSX exports and
-  keeps percent deltas as `N/A` when the baseline value is zero.
-- Basic Energy completeness hints now tell light-tier users to switch the detail
-  tier before rerunning when explanation outputs are missing.
-- The Basic Energy Reconciliation subview now expands each accounting row's
-  source IDs into compact source/output links, so residual checks can jump back
-  to the matching output request when one is known.
-- The Basic Energy Sankey inspector now shows the selected edge `relation`
-  alongside basis, rule, formula, and source metadata.
-- Heat-driver reconciliation now includes zone/service rows when zone delivered
-  load and zone heat-driver sources are available, including monthly period
-  rows.
-- The Basic Energy Reconciliation subview now ranks the largest zone/service
-  heat residuals for the selected annual or monthly period.
-- Basic Energy reconciliation rows now expose `balanced`, `residual`, and
-  `overmapped` statuses in the app, HTML reports, and batch CSV exports.
-- Basic Energy reconciliation now emits period warnings for non-balanced
-  zone/service heat residual rows.
-- Energy reconciliation source IDs now include both the expected facility total
-  source and the mapped consumption end-use sources used in the residual
-  formula.
-- Basic Energy explanation plans now request the delivered-load alias catalog
-  across zone air system, ideal loads, radiant HVAC, coil, and plant demand
-  outputs at monthly frequency.
-- Basic Energy delivered-load nodes now expose `pathType` metadata (`zone`,
-  `system`, or `plant`) alongside `serviceKind`, and batch CSV exports include
-  the path type.
-- Basic Energy now reports cooling/heating COP as derived KPIs when matching
-  electric end-use energy and delivered load are available, without adding
-  synthetic COP conversion edges to the Sankey graph. Batch Simulation exposes
-  those KPIs as selectable purpose metrics.
-- Basic Energy explanation plans now request detailed monthly heat-driver
-  outputs for people, lights, equipment, infiltration, ventilation, and mixing
-  in addition to heat-balance and fan heat drivers.
-- Delivered-load explanation nodes now scope zone loads to `zoneName`, plant
-  demand loads to `loopName`, and keep coil/system loads as aggregate system
-  nodes so heat-driver reconciliation does not double-count system and plant
-  layers when zone loads are available.
-- Basic Energy explanation nodes and edges now include related HVAC service path
-  IDs when the source model can be analyzed, so Sankey inspectors and Systems
-  views can jump to the matching zone service paths directly.
-- Basic Energy SQL source metadata now carries matching output request object
-  indexes when the run plan references existing outputs, including object index
-  `0`, and batch source CSV exports preserve those indexes.
-- Basic Energy SQL explanations now preserve custom purpose period scopes and
-  emit a `selected_range` period with row-level values, edges, and
-  reconciliation for the selected dates.
-- Basic Energy SQL explanations now emit daily `D<n>` periods for Daily,
-  Hourly, Timestep, or Detailed sources while leaving Monthly/RunPeriod sources
-  annual/monthly only.
-- Basic Energy SQL explanations now emit hourly `H<n>` periods for Hourly,
-  Timestep, or Detailed sources while leaving Daily/Monthly/RunPeriod sources at
-  coarser periods.
-- Batch Simulation energy explanation CSV exports now keep annual, monthly, and
-  selected-range edge/reconciliation rows by default, leaving daily/hourly
-  periods in the embedded JSON payload to avoid oversized high-resolution CSV
+- Added the canonical `geometry.topology` thermal-network report with stable
+  identities for zones, boundaries, openings, connections, air couplings,
+  diagnostics, matrices, and source anchors, plus JSON, GraphML, and DOT
   exports.
-- Batch Simulation can now export the full purpose run result as
-  `semantic-idf.batch-simulation/v1` JSON, preserving embedded Basic Energy
-  explanation payloads that are too detailed for the default CSV.
-- Batch Simulation can now export purpose metrics and Basic Energy explanation
-  summary/source/edge/reconciliation workbook sheets as XLSX.
-- Batch Simulation CSV and XLSX exports now include Basic Energy explanation
-  warning rows, including monthly or selected-range period warnings.
-- Batch Simulation XLSX reconciliation sheets now include the
-  `balanced`/`residual`/`overmapped` status column.
-- Batch Simulation energy-explanation deltas now expose explicit baseline and
-  target selectors so two-case Sankey and summary changes are traceable.
-- Batch Simulation now shows a compact annual Sankey edge delta bar view with
-  relation, basis, baseline value, target delta, percent, and missing-row state.
-- Batch Simulation JSON export now preserves the selected baseline and target
-  comparison row IDs in its export context.
-- Batch Simulation XLSX export now carries the selected comparison context plus
-  Basic Energy summary and annual Sankey edge delta sheets.
-- Batch Simulation XLSX export now includes a Run Context sheet preserving the
-  selected files, purpose request, frequency/allocation policy, weather mode,
-  worker count, and batch view options.
-- Batch Simulation XLSX Run Context now records the Basic Energy detail tier
-  used for the run.
-- Basic Energy Sankey now visually highlights the selected edge and endpoint
-  nodes while its inspector details are shown.
-- Purpose HTML export now includes Basic Energy explanation summary, annual
-  edge, reconciliation, and source metadata tables instead of leaving that
-  evidence only in the raw JSON bundle.
-- Purpose HTML export now also includes Basic Energy source availability,
-  relationship rule, and warning tables for the explanation graph.
-- Purpose HTML export now includes the Basic Energy monthly explanation ledger
-  for Energy Use, Delivered Load, Heat Drivers, and Residual totals.
-- Purpose HTML export now includes source IDs and related service path IDs on
-  Basic Energy explanation summary, annual edge, and reconciliation rows.
-- Batch Simulation now exposes the purpose frequency policy selector, including
-  the highest-resolution mode for Basic Energy drilldown runs.
-- Batch Simulation JSON export now preserves the purpose request and run-option
-  context, including frequency/allocation policy, weather mode, workers, and
-  view mode.
-- Basic Energy explanations now fall back to annual SQL tabular end-use rows
-  when detailed `ReportData` energy rows are unavailable, while preserving
-  `sql_tabular` source metadata.
-- Energy explanation source tables and Sankey inspectors now prefer exact
-  source `objectIndex` links before falling back to output-name matching.
-- Energy explanation source tables and Sankey inspectors now use meter
-  carrier/end-use alias matching for fallback output links, so sources such as
-  `Cooling:Electricity` can still connect to `Electricity:Cooling` requests.
-- Basic Energy SQL source metadata now also attaches output request object
-  indexes through delivered-load and same-sign heat-driver aliases.
-- Basic Energy heat-driver extraction now recognizes object-level fan heat-to-air
-  outputs separately from fan electricity use.
-- Basic Energy output plan rows now label monthly delivered-load/zone-energy
-  requests as `Basic Energy Explain` and monthly heat-balance/fan heat requests
-  as `Basic Energy Heat Drivers`.
-- Basic Energy run-plan tables now expose an `Output set` column so SQL, Light,
-  Explain, and Heat Drivers requests are distinguishable before running.
-- The Output tab now tags more Basic Energy explanation and heat-driver outputs
-  and shows Basic Energy output-set badges for existing and recommended output
-  requests.
-- Basic Energy now requests and parses electric storage charge/discharge energy
-  variables when electric storage is present, tagging charge as measured energy
-  use and discharge as a separate support flow outside facility-consumption
-  residuals.
-- Basic Energy heat-driver detail now includes zone window transmitted solar
-  radiation outputs so solar gains can appear as a Level 3 heat-driver term
-  when EnergyPlus reports them.
-- Basic Energy heat-driver detail now also recognizes zone window heat
-  gain/loss outputs, preserving gains and losses as signed surface-envelope
-  drivers.
-- Basic Energy Explain now requests and parses Ideal Loads latent
-  humidification/dehumidification and outdoor-air ventilation-conditioning load
-  outputs as separate Delivered Load service kinds.
-- Basic Energy Explain now keeps plant and condenser loop unmet/not-distributed
-  demand rate outputs as Level 2 unmet/residual delivered-load nodes.
-- Basic Energy Overview SQL parsing now classifies end-use meter aliases through
-  the shared energy meter catalog, preserving both carrier-first and end-use-first
-  meter names.
-- Basic Energy energy explanations now split generic carrier/end-use meters such
-  as `Heating:Propane` and `WaterSystems:Steam` into canonical end-use and
-  carrier nodes, including DHW, exterior equipment, humidifier, cogeneration,
-  and miscellaneous end-use tokens, before falling back to `Other`.
-- Batch purpose simulation metrics now include compact annual Energy Use,
-  Delivered Load, Heat Driver, residual, mapped-percent, and top heat-driver
-  values from the Basic Energy explanation summary, plus two-row delta tables
-  for end-use energy, delivered loads, and heat drivers. The batch explanation
-  comparison also ranks the largest annual summary and Sankey edge changes, and
-  labels missing baseline or comparison rows without rendering missing values as
-  numeric zero.
-- Batch Simulation now flags Basic Energy explanation completeness differences
-  between two selected cases, including mapped-percent and missing-category
-  changes.
-- Batch Simulation can export purpose metrics, compact Basic Energy
-  explanation summary/source metadata rows, and Sankey edge metadata rows as CSV.
-  Edge export rows include related HVAC service path IDs when available.
+- Added zone- and boundary-level Graph and Matrix views covering connectivity,
+  area, UA, exposure, QA, air coupling, and signed simulated heat flow, with
+  physical and model-total area bases, source inspection, and deterministic
+  cached layouts.
+- Added authoritative boundary pairing, opening aggregation, static UA,
+  geometry-adjacency QA observations, ZoneMixing and AirflowNetwork paths,
+  cross-panel navigation, full keyboard operation, and Batch Summary
+  comparison.
+- Added a separately versioned signed simulation heat-flow overlay so reported
+  thermal flows remain distinguishable from the static topology model.
+
+### Basic Energy Explanation
+
+- Added `energyExplanation` and `energyExplanationSummary` payloads with
+  carrier, end-use, delivered-load, heat-driver, residual, source, and rule
+  evidence.
+- Added Sankey, Monthly, Zones, Systems, Sources, and Reconciliation workflows
+  with annual through high-resolution period selection, compact and detailed
+  graph modes, signed heat-driver views, and zone, HVAC, Profile, and Heat Flow
+  drill-downs.
+- Added Light, Explain, and Heat Drivers detail tiers, model-aware output plans,
+  direct, zone-load-share, and service-path-load-share allocation policies, and
+  expanded meter, delivered-load, heat-driver, storage, onsite-production, and
+  derived COP coverage.
+- Added explicit `found`, `missing`, and `not_applicable` completeness states,
+  `balanced`, `residual`, and `overmapped` reconciliation states, and
+  traceability to SQL rows, units, aggregation methods, output requests, and
+  HVAC service paths.
+- Added CSV, XLSX, JSON, and standalone HTML evidence exports plus Batch
+  Simulation case selection, summary, Sankey, residual and completeness deltas,
+  and preserved run context.
+
+### Semantic Navigation
+
+- Added stable entity, occurrence, and source-anchor metadata connecting
+  Semantic Text with Summary, Profile, HVAC, Output, Simulation, Diagnose, and
+  Topology.
+- Added linked and follow selection, open, reveal, definition, and reference
+  actions, target selection, cached navigation indexes, context history, and
+  equivalent mouse and keyboard workflows.
 
 ## Changed
 
-- Renamed only the visible Geometry result tab to Topology. Integrations and
-  UI automation must continue to use `[data-result-tab="geometry"]` instead of
-  matching the translated visible label; saved workspaces and shortcut
-  customizations require no migration.
-
-- SQL result parsing now uses a shared `QueryReportData` layer that joins
-  `ReportDataDictionary`, `ReportData`, and `Time` while preserving dictionary
-  filters, meter status, reporting frequency, and time interval metadata for
-  legacy series, Energy dashboard, Heat Flow, and Basic Energy explanation
-  rows.
-- Basic Energy delivered-load nodes now expose whether their values came from
-  reported energy variables or rate variables integrated over SQL time
-  intervals through the node `basis` field.
-- Basic Energy Sankey now maps more canonical end-use IDs, including fans,
-  pumps, heat recovery, water systems, refrigeration, onsite generation,
-  storage, and other energy use, to stable labels and node colors.
-- Basic Energy Sankey inspectors and legends now label delivered-load source
-  basis values such as reported energy variables and integrated rate variables.
-- Basic Energy Sankey all-results focus now groups heat-driver detail by heat
-  category/sign before applying the default top-N node budget, while the `All`
-  action still expands back to detail nodes.
-- Basic Energy Sankey default grouping now applies a 100-node display budget,
-  reducing visible heat-driver nodes further when non-heat graph nodes would
-  otherwise push the default view past the budget.
-- Basic Energy reconciliation now emits period warnings when zone heat-balance
-  deviation terms are large relative to the delivered-load basis.
-- Basic Energy Sankey inspectors can now jump directly from zone heat/load
-  selections to matching Zone Heat Flow ledger rows when that output is
-  available.
+- Renamed the product from IDF Analyzer to SemanticIDF. Release assets and CLI
+  examples now use the `semantic-idf-*` name; scripts that reference the former
+  executable filename must be updated.
+- Renamed only the visible Geometry result tab to Topology (`공간·열 연결` in
+  Korean). Integrations and UI automation must continue to use
+  `[data-result-tab="geometry"]`; the `geometry` API, route, workspace state,
+  and `tabGeometry` shortcut remain compatible, and saved workspaces and
+  shortcut customizations require no migration.
+- Unified SQL result access through the shared `QueryReportData` layer while
+  preserving reporting frequency, interval, dictionary, source, aggregation,
+  and unit metadata.
+- Basic Energy now defaults to the meter-focused Light tier unless Explain or
+  Heat Drivers is explicitly selected, and its default Sankey view applies a
+  bounded node budget for large models.
+- Cached topology analysis, semantic navigation indexes, and deferred heavy
+  rendering reduce repeated work while preserving deterministic output.
 
 ## Fixed
 
-- QA adjacency edges now retain both source surfaces as a stable
-  `thermal_observation` selection, so Show in 3D/Plan and the inspector expose
-  the complete geometric evidence without creating a thermal relation.
+- Fixed ambiguous result-panel selection and preserved semantic navigation
+  context, linked-selection state, browser history, and existing shortcut
+  behavior.
+- Fixed a duplicate Simulation formatter declaration that could interrupt
+  frontend startup.
+- Fixed QA adjacency selection so both source surfaces remain available to the
+  inspector and 3D or Plan reveal without creating a false thermal relation.
