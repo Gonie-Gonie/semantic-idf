@@ -75,17 +75,18 @@ export function renderThermalTopology(geometry, helpers = {}) {
 
   const viewport = graphViewport();
   const options = thermalTopologyOptions();
-  const cacheKey = thermalTopologyLayoutCacheKey(geometry, options, viewport);
   currentModel = createThermalTopologyLayoutModel(geometry, options);
-  currentLayout = state.thermalTopologyLayoutCache.get(cacheKey) || computeThermalTopologyLayout(currentModel, viewport);
-  if (!state.thermalTopologyLayoutCache.has(cacheKey)) {
-    rememberThermalTopologyLayout(cacheKey, currentLayout);
-  }
   if (state.thermalTopologyDisplay === "matrix") {
+    currentLayout = null;
     elements.thermalTopologyGraph.hidden = true;
     elements.thermalTopologyMatrix.hidden = false;
     renderThermalTopologyMatrix(currentModel);
   } else {
+    const cacheKey = thermalTopologyLayoutCacheKey(geometry, options, viewport);
+    currentLayout = state.thermalTopologyLayoutCache.get(cacheKey) || computeThermalTopologyLayout(currentModel, viewport);
+    if (!state.thermalTopologyLayoutCache.has(cacheKey)) {
+      rememberThermalTopologyLayout(cacheKey, currentLayout);
+    }
     elements.thermalTopologyGraph.hidden = false;
     elements.thermalTopologyMatrix.hidden = true;
     renderThermalTopologySVG(currentModel, currentLayout);

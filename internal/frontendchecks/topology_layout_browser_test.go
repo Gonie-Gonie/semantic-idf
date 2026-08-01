@@ -53,7 +53,7 @@ func TestThermalTopologyLayoutBrowserHarness(t *testing.T) {
 	if !strings.Contains(document, `data-thermal-layout-status="passed"`) {
 		t.Fatalf("thermal topology layout harness did not pass:\n%s", document)
 	}
-	for _, signal := range []string{`"deterministic":true`, `"portsAvoidCenters":true`, `"neighborNodes":3`, `"selfLoop":true`} {
+	for _, signal := range []string{`"deterministic":true`, `"noOverlap":true`, `"portsAvoidCenters":true`, `"externalPlacement":true`, `"parallelOffset":true`, `"selectionCacheStable":true`, `"scopeCacheChanges":true`, `"neighborNodes":3`, `"selfLoop":true`} {
 		if !strings.Contains(document, signal) {
 			t.Fatalf("thermal topology layout result is missing %s:\n%s", signal, document)
 		}
@@ -93,7 +93,7 @@ func TestThermalTopologyRendererBrowserHarness(t *testing.T) {
 	if !strings.Contains(document, `data-thermal-renderer-status="passed"`) {
 		t.Fatalf("thermal topology renderer harness did not pass:\n%s", document)
 	}
-	for _, signal := range []string{`"svg":true`, `"metricWidth":true`, `"inspector":true`, `"accessibleTargets":true`, `"deterministicTabOrder":true`, `"keyboardNode":true`, `"inspectorHeading":true`, `"patternLegend":true`, `"boundaryExpanded":true`, `"backRestored":true`, `"matrix":true`, `"matrixSelected":true`, `"simulationGain":true`, `"simulationArrow":true`, `"simulationLedger":true`} {
+	for _, signal := range []string{`"svg":true`, `"metricWidth":true`, `"inspector":true`, `"accessibleTargets":true`, `"deterministicTabOrder":true`, `"keyboardNode":true`, `"inspectorHeading":true`, `"patternLegend":true`, `"boundaryExpanded":true`, `"backRestored":true`, `"simulationDisabled":true`, `"outputPlanCTA":true`, `"matrix":true`, `"graphMatrixAreaEqual":true`, `"graphMatrixUAEqual":true`, `"matrixRowSelected":true`, `"matrixColumnSelected":true`, `"matrixSelected":true`, `"matrixVirtualized":true`, `"matrixWindowMoved":true`, `"simulationGain":true`, `"simulationArrow":true`, `"simulationPeriod":true`, `"separateSimulationLegend":true`, `"simulationLedger":true`, `"ledgerJump":true`} {
 		if !strings.Contains(document, signal) {
 			t.Fatalf("thermal topology renderer result is missing %s:\n%s", signal, document)
 		}
@@ -109,6 +109,7 @@ try {
   const layout = await import("/src/js/views/thermal-topology-layout.js");
   const geometry = { topology: {
     schema: "semantic-idf.thermal-topology/v1",
+    sourceModelHash: "fixture-hash",
     nodes: [
       { id: "zone:a", kind: "zone", label: "A", storyIndex: 0, centroid: { x: 0, y: 0, z: 0 } },
       { id: "zone:b", kind: "zone", label: "B", storyIndex: 0, centroid: { x: 10, y: 0, z: 0 } },
@@ -118,6 +119,7 @@ try {
     ],
     connections: [
       { id: "edge:ab", fromNodeId: "zone:a", toNodeId: "zone:b", relationKind: "interzone", surfaceCount: 2, effectiveGrossArea: 20 },
+      { id: "edge:ab:air", fromNodeId: "zone:a", toNodeId: "zone:b", relationKind: "air_coupling", airCouplingIds: ["air:ab"] },
       { id: "edge:bc", fromNodeId: "zone:b", toNodeId: "zone:c", relationKind: "interzone", surfaceCount: 2, effectiveGrossArea: 18 },
       { id: "edge:out", fromNodeId: "zone:a", toNodeId: "thermal-environment:outdoors", relationKind: "outdoors", orientations: ["North"], surfaceCount: 1 },
       { id: "edge:ground", fromNodeId: "zone:c", toNodeId: "thermal-environment:ground", relationKind: "ground", surfaceCount: 1 },
@@ -125,22 +127,31 @@ try {
     ],
     boundaries: [], openings: [], airCouplings: [],
   }};
-  const options = { graphLevel: "zone", layout: "spatial", scope: "building", areaBasis: "effective", selectedEntityId: "zone:b", neighborDepth: 1 };
+  const options = { graphLevel: "zone", layout: "spatial", scope: "building", areaBasis: "effective", selectedEntityId: "zone:b", neighborDepth: 1, showAirCoupling: true };
   const model = layout.createThermalTopologyLayoutModel(geometry, options);
   const first = layout.computeThermalTopologyLayout(model, { width: 900, height: 600 });
   const second = layout.computeThermalTopologyLayout(model, { width: 900, height: 600 });
   const deterministic = JSON.stringify(first) === JSON.stringify(second);
   assert(deterministic, "layout is not deterministic");
+  const internalPositions = ["zone:a", "zone:b", "zone:c"].map((id) => first.positions[id]);
+  const noOverlap = internalPositions.every((left, index) => internalPositions.slice(index + 1).every((right) => Math.abs(left.x - right.x) >= layout.THERMAL_NODE_WIDTH || Math.abs(left.y - right.y) >= layout.THERMAL_NODE_HEIGHT));
+  assert(noOverlap, "fixture nodes overlap");
   const ab = first.edges.find((edge) => edge.id === "edge:ab");
   const portsAvoidCenters = ab.route.sourcePort !== "center" && ab.route.targetPort !== "center" && /C/.test(ab.route.path);
   assert(portsAvoidCenters, "edge routing used node centers");
-  assert(first.positions["thermal-environment:ground"].y > first.positions["zone:c"].y, "ground node is not below zones");
+  const externalPlacement = first.positions["thermal-environment:ground"].y > first.positions["zone:c"].y && first.positions["thermal-environment:outdoors"].x > first.positions["zone:a"].x;
+  assert(externalPlacement, "external nodes are not outside the zone field");
+  const parallelOffset = ab.route.path !== first.edges.find((edge) => edge.id === "edge:ab:air").route.path;
+  assert(parallelOffset, "conductive and air paths overlap");
+  const selectionCacheStable = layout.thermalTopologyLayoutCacheKey(geometry, options, {width:900,height:600}) === layout.thermalTopologyLayoutCacheKey(geometry, {...options,selectedEntityId:"zone:a"}, {width:900,height:600});
+  const scopeCacheChanges = layout.thermalTopologyLayoutCacheKey(geometry, {...options,scope:"neighbors",selectedEntityId:"zone:a"}, {width:900,height:600}) !== layout.thermalTopologyLayoutCacheKey(geometry, {...options,scope:"neighbors",selectedEntityId:"zone:b"}, {width:900,height:600});
+  assert(selectionCacheStable && scopeCacheChanges, "selection/layout cache boundary is incorrect");
   const neighborModel = layout.createThermalTopologyLayoutModel(geometry, { ...options, scope: "neighbors", selectedEntityId: "zone:a" });
   const neighborNodes = neighborModel.nodes.filter((node) => node.kind === "zone").length;
   assert(neighborNodes === 2, "one-hop scope did not isolate selected neighbors");
   const selfLoop = first.edges.find((edge) => edge.id === "edge:loop").route.selfLoop;
   assert(selfLoop, "adiabatic self-loop route missing");
-  document.getElementById("result").textContent = JSON.stringify({ deterministic, portsAvoidCenters, neighborNodes: neighborModel.nodes.length, selfLoop });
+  document.getElementById("result").textContent = JSON.stringify({ deterministic, noOverlap, portsAvoidCenters, externalPlacement, parallelOffset, selectionCacheStable, scopeCacheChanges, neighborNodes: neighborModel.nodes.length, selfLoop });
   document.body.dataset.thermalLayoutStatus = "passed";
 } catch (error) {
   document.getElementById("result").textContent = error.stack || String(error);
@@ -151,7 +162,7 @@ try {
 const thermalTopologyRendererHarnessHTML = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Thermal topology renderer harness</title></head>
 <body data-thermal-renderer-status="pending">
-<div id="thermalTopologyGraph" style="width:900px;height:600px"></div><div id="thermalTopologyMatrix"></div><aside id="thermalTopologyInspector"></aside>
+<div id="thermalTopologyGraph" style="width:900px;height:600px"></div><div id="thermalTopologyMatrix" style="height:300px;overflow:auto"></div><aside id="thermalTopologyInspector"></aside>
 <button data-thermal-topology-display="graph"></button><button data-thermal-topology-display="matrix"></button><input id="thermalTopologyMatrixQuery">
 <select id="thermalTopologyGraphLevel"><option value="zone">zone</option><option value="boundary">boundary</option></select>
 <select id="thermalTopologyMetric"><option value="topology">topology</option><option value="area">area</option><option value="ua">ua</option><option value="qa">qa</option><option value="air">air</option><option value="simulated_heat">simulated heat</option></select>
@@ -181,11 +192,23 @@ try {
   }};
   const state = stateModule.state;
   state.geometryMode = "thermal"; state.report = {geometry}; state.thermalTopologyMetric = "area"; state.thermalTopologyAreaComponent = "gross"; state.thermalTopologyGraphLevel = "zone"; state.thermalTopologyScope = "building"; state.thermalTopologySelectedEntityId = "thermal-connection:a:outdoors"; state.selectedGeometryKind = "thermal_connection"; state.selectedGeometryId = "thermal-connection:a:outdoors";
-  state.simulationResult = { purposeResults: { thermalTopology: { available:true, state:"simulation_overlay", signConvention:"positive enters the owning zone; negative leaves the owning zone", periods:[{id:"annual",label:"Annual",kind:"annual",labels:["Annual"],frameCount:1,boundaryFlows:[{boundaryId:"thermal-boundary:surface:a",relatedBoundaryIds:["thermal-boundary:surface:a"],connectionId:"thermal-connection:a:outdoors",ownerNodeId:"zone:a",targetNodeId:"thermal-environment:outdoors",value:1.5,values:[1.5],unit:"kWh",sourceIds:["thermal-source:a"]}],connectionFlows:[{connectionId:"thermal-connection:a:outdoors",fromNodeId:"zone:a",toNodeId:"thermal-environment:outdoors",ownerNodeId:"zone:a",value:1.5,values:[1.5],unit:"kWh",sourceIds:["thermal-source:a"]}]}],sources:[{id:"thermal-source:a",name:"Surface Average Face Conduction Heat Transfer Energy",keyValue:"Wall A",sourceUnit:"J",normalizedUnit:"kWh",aggregationMethod:"sum_reported_energy"}] } } };
+  const simulatedResult = { purposeResults: { thermalTopology: { available:true, state:"simulation_overlay", signConvention:"positive enters the owning zone; negative leaves the owning zone", periods:[{id:"annual",label:"Annual",kind:"annual",labels:["Annual"],frameCount:1,boundaryFlows:[{boundaryId:"thermal-boundary:surface:a",relatedBoundaryIds:["thermal-boundary:surface:a"],connectionId:"thermal-connection:a:outdoors",ownerNodeId:"zone:a",targetNodeId:"thermal-environment:outdoors",value:1.5,values:[1.5],unit:"kWh",sourceIds:["thermal-source:a"]}],connectionFlows:[{connectionId:"thermal-connection:a:outdoors",fromNodeId:"zone:a",toNodeId:"thermal-environment:outdoors",ownerNodeId:"zone:a",value:1.5,values:[1.5],unit:"kWh",sourceIds:["thermal-source:a"]}]}],sources:[{id:"thermal-source:a",name:"Surface Average Face Conduction Heat Transfer Energy",keyValue:"Wall A",sourceUnit:"J",normalizedUnit:"kWh",aggregationMethod:"sum_reported_energy"}] } } };
   const helpers = { navigationAttributes: () => 'data-entity-id="test"', selectGeometry: async () => true, setGeometryMode: () => {} };
+  state.simulationResult = null;
+  view.renderThermalTopology(geometry, helpers);
+  const simulationDisabled = document.querySelector("#thermalTopologyMetric option[value='simulated_heat']").disabled;
+  state.thermalTopologyMetric = "simulated_heat";
+  view.renderThermalTopology(geometry, helpers);
+  let purposePlanOpened = false;
+  window.addEventListener("idfAnalyzer:openSimulationPurposePlan", () => { purposePlanOpened = true; });
+  const purposePlanButton = document.querySelector("[data-inspector-purpose-plan]");
+  purposePlanButton?.click();
+  const outputPlanCTA = Boolean(purposePlanButton) && purposePlanOpened;
+  state.thermalTopologyMetric = "area";
   view.renderThermalTopology(geometry, helpers);
   const svg = Boolean(document.querySelector(".thermal-topology-svg"));
   const metricWidth = /--thermal-edge-width:(?!2\.00)/.test(document.querySelector(".thermal-edge").getAttribute("style"));
+  const graphAreaValue = Number.parseFloat(document.querySelector(".thermal-edge-label")?.textContent || "NaN");
   const inspector = document.getElementById("thermalTopologyInspector").textContent.includes("Model total");
   const targets = [...document.querySelectorAll(".thermal-edge-group[tabindex='0'], .thermal-node[tabindex='0']")];
   const accessibleTargets = targets.length === 3 && targets.every((target) => ["entity", "relation", "metric", "issues"].every((term) => target.getAttribute("aria-label").includes(term)));
@@ -203,15 +226,48 @@ try {
   const backRestored = state.thermalTopologyGraphLevel === "zone";
   state.thermalTopologyDisplay = "matrix"; view.renderThermalTopology(geometry, helpers);
   const matrix = Boolean(document.querySelector(".thermal-matrix-table"));
+  const matrixAreaValue = Number.parseFloat(document.querySelector(".thermal-matrix-cell:not(.empty-cell)")?.textContent || "NaN");
+  const graphMatrixAreaEqual = graphAreaValue === matrixAreaValue;
+  document.querySelector(".thermal-matrix-header.row[data-thermal-target-id='zone:a']")?.click();
+  const matrixRowSelected = state.thermalTopologySelectedEntityId === "zone:a";
+  document.querySelector(".thermal-matrix-header.column[data-thermal-target-id='thermal-environment:outdoors']")?.click();
+  const matrixColumnSelected = state.thermalTopologySelectedEntityId === "thermal-environment:outdoors";
   document.querySelector(".thermal-matrix-cell:not(.empty-cell)").click();
   const matrixSelected = state.thermalTopologySelectedEntityId === "thermal-connection:a:outdoors";
+  state.thermalTopologyMetric = "ua"; view.renderThermalTopology(geometry, helpers);
+  const matrixUAValue = Number.parseFloat(document.querySelector(".thermal-matrix-cell:not(.empty-cell)")?.textContent || "NaN");
+  state.thermalTopologyDisplay = "graph"; view.renderThermalTopology(geometry, helpers);
+  const graphUAValue = Number.parseFloat(document.querySelector(".thermal-edge-label")?.textContent || "NaN");
+  const graphMatrixUAEqual = graphUAValue === matrixUAValue;
+
+  const originalNodes = [...geometry.topology.nodes];
+  for (let index = 0; index < 240; index += 1) geometry.topology.nodes.push({id:"zone:virtual:" + String(index).padStart(3,"0"),entityId:"zone:virtual:" + index,kind:"zone",label:"Virtual " + String(index).padStart(3,"0"),storyIndex:0});
+  state.thermalTopologyDisplay = "matrix"; state.thermalTopologyMetric = "area"; view.renderThermalTopology(geometry, helpers);
+  const renderedMatrixRows = document.querySelectorAll(".thermal-matrix-table tbody tr:not(.thermal-matrix-spacer)").length;
+  const matrixVirtualized = renderedMatrixRows > 0 && renderedMatrixRows < 241 && Boolean(document.querySelector(".thermal-matrix-spacer"));
+  const rowWindowBefore = document.querySelector(".thermal-matrix-row-window")?.textContent || "";
+  document.getElementById("thermalTopologyMatrix").scrollTop = 34 * 160;
+  document.getElementById("thermalTopologyMatrix").dispatchEvent(new Event("scroll"));
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  const rowWindowAfter = document.querySelector(".thermal-matrix-row-window")?.textContent || "";
+  const matrixWindowMoved = rowWindowAfter !== rowWindowBefore && /of 241/.test(rowWindowAfter);
+  geometry.topology.nodes.splice(0, geometry.topology.nodes.length, ...originalNodes);
+  document.getElementById("thermalTopologyMatrix").scrollTop = 0;
+
+  state.simulationResult = simulatedResult; state.thermalTopologySelectedEntityId = "thermal-connection:a:outdoors"; state.selectedGeometryKind = "thermal_connection"; state.selectedGeometryId = "thermal-connection:a:outdoors";
   state.thermalTopologyDisplay = "graph"; state.thermalTopologyMetric = "simulated_heat"; state.thermalTopologySimulationPeriod = "annual"; view.renderThermalTopology(geometry, helpers);
   const simulationEdge = document.querySelector(".thermal-edge.metric-simulated-heat");
   const simulationGain = simulationEdge?.classList.contains("metric-gain") && /1\.5 kWh/.test(document.querySelector(".thermal-edge-label")?.textContent || "");
   const simulationArrow = simulationEdge?.getAttribute("marker-start")?.includes("thermalTopologyHeatArrow") === true;
+  const simulationPeriod = !document.getElementById("thermalTopologySimulationControls").hidden && !document.getElementById("thermalTopologySimulationPeriod").disabled && document.getElementById("thermalTopologySimulationPeriod").value === "annual";
+  const simulationLegendText = document.querySelector(".thermal-topology-legend")?.textContent || "";
+  const separateSimulationLegend = simulationLegendText.includes("Simulation overlay") && !simulationLegendText.includes("Total UA") && (document.querySelector(".thermal-edge-group title")?.textContent || "").includes("not compared directly with static UA");
   const simulationLedger = document.getElementById("thermalTopologyInspector").textContent.includes("sum_reported_energy");
-  assert(svg && metricWidth && inspector && accessibleTargets && deterministicTabOrder && keyboardNode && inspectorHeading && patternLegend && boundaryExpanded && backRestored && matrix && matrixSelected && simulationGain && simulationArrow && simulationLedger, "renderer contract failed");
-  document.getElementById("result").textContent = JSON.stringify({svg,metricWidth,inspector,accessibleTargets,deterministicTabOrder,keyboardNode,inspectorHeading,patternLegend,boundaryExpanded,backRestored,matrix,matrixSelected,simulationGain,simulationArrow,simulationLedger});
+  let ledgerJump = false;
+  window.addEventListener("idfAnalyzer:openSimulationPurposePlan", () => { ledgerJump = true; });
+  document.querySelector("[data-inspector-output-source]")?.click();
+  assert(svg && metricWidth && inspector && accessibleTargets && deterministicTabOrder && keyboardNode && inspectorHeading && patternLegend && boundaryExpanded && backRestored && simulationDisabled && outputPlanCTA && matrix && graphMatrixAreaEqual && graphMatrixUAEqual && matrixRowSelected && matrixColumnSelected && matrixSelected && matrixVirtualized && matrixWindowMoved && simulationGain && simulationArrow && simulationPeriod && separateSimulationLegend && simulationLedger && ledgerJump, "renderer contract failed");
+  document.getElementById("result").textContent = JSON.stringify({svg,metricWidth,inspector,accessibleTargets,deterministicTabOrder,keyboardNode,inspectorHeading,patternLegend,boundaryExpanded,backRestored,simulationDisabled,outputPlanCTA,matrix,graphMatrixAreaEqual,graphMatrixUAEqual,matrixRowSelected,matrixColumnSelected,matrixSelected,matrixVirtualized,matrixWindowMoved,simulationGain,simulationArrow,simulationPeriod,separateSimulationLegend,simulationLedger,ledgerJump});
   document.body.dataset.thermalRendererStatus = "passed";
 } catch (error) {
   document.getElementById("result").textContent = error.stack || String(error);
