@@ -2,6 +2,100 @@
 
 All notable changes to SemanticIDF are recorded here from release notes.
 
+## [0.4.3] - 2026-08-01
+
+## Highlights Compared With v0.4.2
+
+- Geometry evolves into Spatial & Thermal Topology, turning EnergyPlus geometry
+  into an inspectable zone, boundary, opening, and air-coupling network with
+  Graph and Matrix views, QA evidence, thermal metrics, simulation overlays,
+  batch comparison, and portable exports.
+- Basic Energy now provides a source-traceable accounting workflow from energy
+  carriers and end uses through delivered loads and heat drivers, with Sankey
+  drill-down, period reconciliation, completeness checks, HVAC navigation, and
+  batch deltas.
+- Semantic Text and analysis panels now share bidirectional semantic navigation
+  with stable identities, linked and follow selection, context-preserving
+  history, target choice, and keyboard access.
+- The product and release artifacts are now named SemanticIDF and
+  `semantic-idf-*`.
+
+### Spatial & Thermal Topology
+
+- Added the canonical `geometry.topology` thermal-network report with stable
+  identities for zones, boundaries, openings, connections, air couplings,
+  diagnostics, matrices, and source anchors, plus JSON, GraphML, and DOT
+  exports.
+- Added zone- and boundary-level Graph and Matrix views covering connectivity,
+  area, UA, exposure, QA, air coupling, and signed simulated heat flow, with
+  physical and model-total area bases, source inspection, and deterministic
+  cached layouts.
+- Added authoritative boundary pairing, opening aggregation, static UA,
+  geometry-adjacency QA observations, ZoneMixing and AirflowNetwork paths,
+  cross-panel navigation, full keyboard operation, and Batch Summary
+  comparison.
+- Added a separately versioned signed simulation heat-flow overlay so reported
+  thermal flows remain distinguishable from the static topology model.
+
+### Basic Energy Explanation
+
+- Added `energyExplanation` and `energyExplanationSummary` payloads with
+  carrier, end-use, delivered-load, heat-driver, residual, source, and rule
+  evidence.
+- Added Sankey, Monthly, Zones, Systems, Sources, and Reconciliation workflows
+  with annual through high-resolution period selection, compact and detailed
+  graph modes, signed heat-driver views, and zone, HVAC, Profile, and Heat Flow
+  drill-downs.
+- Added Light, Explain, and Heat Drivers detail tiers, model-aware output plans,
+  direct, zone-load-share, and service-path-load-share allocation policies, and
+  expanded meter, delivered-load, heat-driver, storage, onsite-production, and
+  derived COP coverage.
+- Added explicit `found`, `missing`, and `not_applicable` completeness states,
+  `balanced`, `residual`, and `overmapped` reconciliation states, and
+  traceability to SQL rows, units, aggregation methods, output requests, and
+  HVAC service paths.
+- Added CSV, XLSX, JSON, and standalone HTML evidence exports plus Batch
+  Simulation case selection, summary, Sankey, residual and completeness deltas,
+  and preserved run context.
+
+### Semantic Navigation
+
+- Added stable entity, occurrence, and source-anchor metadata connecting
+  Semantic Text with Summary, Profile, HVAC, Output, Simulation, Diagnose, and
+  Topology.
+- Added linked and follow selection, open, reveal, definition, and reference
+  actions, target selection, cached navigation indexes, context history, and
+  equivalent mouse and keyboard workflows.
+
+## Changed
+
+- Renamed the product from IDF Analyzer to SemanticIDF. Release assets and CLI
+  examples now use the `semantic-idf-*` name; scripts that reference the former
+  executable filename must be updated.
+- Renamed only the visible Geometry result tab to Topology (`怨듦컙쨌???곌껐` in
+  Korean). Integrations and UI automation must continue to use
+  `[data-result-tab="geometry"]`; the `geometry` API, route, workspace state,
+  and `tabGeometry` shortcut remain compatible, and saved workspaces and
+  shortcut customizations require no migration.
+- Unified SQL result access through the shared `QueryReportData` layer while
+  preserving reporting frequency, interval, dictionary, source, aggregation,
+  and unit metadata.
+- Basic Energy now defaults to the meter-focused Light tier unless Explain or
+  Heat Drivers is explicitly selected, and its default Sankey view applies a
+  bounded node budget for large models.
+- Cached topology analysis, semantic navigation indexes, and deferred heavy
+  rendering reduce repeated work while preserving deterministic output.
+
+## Fixed
+
+- Fixed ambiguous result-panel selection and preserved semantic navigation
+  context, linked-selection state, browser history, and existing shortcut
+  behavior.
+- Fixed a duplicate Simulation formatter declaration that could interrupt
+  frontend startup.
+- Fixed QA adjacency selection so both source surfaces remain available to the
+  inspector and 3D or Plan reveal without creating a false thermal relation.
+
 ## [0.4.2] - 2026-06-17
 
 ## Highlights Compared With v0.4.1

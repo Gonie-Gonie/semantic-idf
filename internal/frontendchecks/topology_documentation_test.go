@@ -50,7 +50,7 @@ func TestThermalTopologySchemaDocumentsStableContracts(t *testing.T) {
 }
 
 func TestThermalTopologyReleaseNotesExplainCompatibilityMigration(t *testing.T) {
-	doc := readTestFile(t, "docs/release-notes/unreleased.md")
+	doc := readTestFile(t, "docs/release-notes/v0.4.3.md")
 	for _, required := range []string{
 		"canonical `geometry.topology` thermal-network report",
 		"separately versioned signed simulation",

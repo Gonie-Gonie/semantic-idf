@@ -259,6 +259,7 @@ import {
   getSemanticNavigationCacheStats,
   resetSemanticNavigationCacheForTests,
 } from "/frontend/src/js/semantic-navigation-cache.js";
+import { bundledAppInfo } from "/frontend/src/js/app-info.js";
 import { createSelectionController } from "/frontend/src/js/selection-controller.js";
 
 resetSemanticNavigationCacheForTests();
@@ -301,7 +302,7 @@ navigation.occurrences.push({
 navigation.byEntityId["entity:zone"].push("parent:12");
 
 const projection = { schema: "eplus-semantic/0.2", navigation };
-const metadata = { textHash: "large-model-hash", analyzerVersion: "0.4.2" };
+const metadata = { textHash: "large-model-hash", analyzerVersion: bundledAppInfo.version };
 const buildStart = performance.now();
 const cache = getSemanticNavigationCache(projection, metadata);
 const buildElapsedMs = performance.now() - buildStart;
@@ -352,7 +353,7 @@ for (let index = 0; index < 10; index += 1) {
       occurrences: [],
       byEntityId: {},
     },
-  }, { textHash: ` + "`tiny-hash:${index}`" + `, analyzerVersion: "0.4.2" });
+  }, { textHash: ` + "`tiny-hash:${index}`" + `, analyzerVersion: bundledAppInfo.version });
 }
 const boundedStats = getSemanticNavigationCacheStats();
 const passed = Boolean(

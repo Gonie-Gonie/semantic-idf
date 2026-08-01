@@ -67,26 +67,26 @@ The packaged executable opens the desktop app when run without arguments. It als
 
 ```powershell
 # Summary / Diagnose / full analysis
-.\build\bin\semantic-idf-v0.4.2.exe cli summary -format text .\model.idf
-.\build\bin\semantic-idf-v0.4.2.exe cli summary -format json -o .\summary.json .\model.idf
-.\build\bin\semantic-idf-v0.4.2.exe cli summary -format xlsx -o .\summary.xlsx .\model.idf
-.\build\bin\semantic-idf-v0.4.2.exe cli diagnostics -format csv -o .\diagnostics.csv .\model.idf
-.\build\bin\semantic-idf-v0.4.2.exe cli analyze -format json -o .\report.json .\model.idf
+.\build\bin\semantic-idf-v0.4.3.exe cli summary -format text .\model.idf
+.\build\bin\semantic-idf-v0.4.3.exe cli summary -format json -o .\summary.json .\model.idf
+.\build\bin\semantic-idf-v0.4.3.exe cli summary -format xlsx -o .\summary.xlsx .\model.idf
+.\build\bin\semantic-idf-v0.4.3.exe cli diagnostics -format csv -o .\diagnostics.csv .\model.idf
+.\build\bin\semantic-idf-v0.4.3.exe cli analyze -format json -o .\report.json .\model.idf
 
 # Multi-file summary
-.\build\bin\semantic-idf-v0.4.2.exe cli multi-summary -format csv -o .\compare.csv .\a.idf .\b.epjson
-.\build\bin\semantic-idf-v0.4.2.exe cli multi-summary -format xlsx -orientation files -o .\compare.xlsx .\a.idf .\b.idf
+.\build\bin\semantic-idf-v0.4.3.exe cli multi-summary -format csv -o .\compare.csv .\a.idf .\b.epjson
+.\build\bin\semantic-idf-v0.4.3.exe cli multi-summary -format xlsx -orientation files -o .\compare.xlsx .\a.idf .\b.idf
 
 # Cleanup
-.\build\bin\semantic-idf-v0.4.2.exe cli clean --dry-run .\model.idf
-.\build\bin\semantic-idf-v0.4.2.exe cli clean -rules all --compact -o .\cleaned.idf .\model.idf
-.\build\bin\semantic-idf-v0.4.2.exe cli clean -rules none --semantic-duplicates -o .\semantic-fixed.idf .\model.idf
+.\build\bin\semantic-idf-v0.4.3.exe cli clean --dry-run .\model.idf
+.\build\bin\semantic-idf-v0.4.3.exe cli clean -rules all --compact -o .\cleaned.idf .\model.idf
+.\build\bin\semantic-idf-v0.4.3.exe cli clean -rules none --semantic-duplicates -o .\semantic-fixed.idf .\model.idf
 
 # Conversion
-.\build\bin\semantic-idf-v0.4.2.exe cli convert -to idf -o .\model.idf .\model.epjson
-.\build\bin\semantic-idf-v0.4.2.exe cli convert -to json -o .\model.epjson .\model.idf
-.\build\bin\semantic-idf-v0.4.2.exe cli convert -to semantic-yaml -o .\model.semantic.yaml .\model.idf
-.\build\bin\semantic-idf-v0.4.2.exe cli convert -to table -o .\model.tables.xlsx .\model.idf
+.\build\bin\semantic-idf-v0.4.3.exe cli convert -to idf -o .\model.idf .\model.epjson
+.\build\bin\semantic-idf-v0.4.3.exe cli convert -to json -o .\model.epjson .\model.idf
+.\build\bin\semantic-idf-v0.4.3.exe cli convert -to semantic-yaml -o .\model.semantic.yaml .\model.idf
+.\build\bin\semantic-idf-v0.4.3.exe cli convert -to table -o .\model.tables.xlsx .\model.idf
 ```
 
 `convert -to semantic-yaml` writes a one-way semantic YAML projection for inspection and token editing. `-to yaml`
