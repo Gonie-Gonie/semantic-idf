@@ -509,17 +509,6 @@ func (builder *thermalTopologyBuilder) buildZoneEnclosures(tolerance float64) {
 			builder.addZoneEnclosureIssue(&enclosure, "zone_volume_mismatch", fmt.Sprintf("Zone %q computed and declared volume differ by %.2f%%.", zone.Name, enclosure.VolumeDifferencePct))
 		}
 		builder.report.ZoneEnclosures = append(builder.report.ZoneEnclosures, enclosure)
-		builder.report.ZoneSignatures = append(builder.report.ZoneSignatures, ZoneThermalSignature{
-			ZoneID:               enclosure.ZoneID,
-			ZoneName:             enclosure.ZoneName,
-			ClosedShell:          enclosure.ClosedShell,
-			OpenEdgeCount:        enclosure.OpenEdgeCount,
-			NonManifoldEdgeCount: enclosure.NonManifoldEdgeCount,
-			ComputedVolume:       enclosure.ComputedVolume,
-			DeclaredVolume:       enclosure.DeclaredVolume,
-			VolumeDifferencePct:  enclosure.VolumeDifferencePct,
-			DiagnosticIDs:        append([]string(nil), enclosure.DiagnosticIDs...),
-		})
 	}
 	sort.SliceStable(builder.report.ZoneEnclosures, func(i, j int) bool {
 		return builder.report.ZoneEnclosures[i].ZoneID < builder.report.ZoneEnclosures[j].ZoneID

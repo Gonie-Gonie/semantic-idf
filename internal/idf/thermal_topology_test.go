@@ -97,6 +97,10 @@ func TestThermalTopologyResolvesEnergyPlusBoundaryFamilies(t *testing.T) {
 	if topology.Stats.InvalidBoundaryCount != 1 || topology.Stats.DiagnosticCount == 0 {
 		t.Fatalf("topology stats do not reconcile invalid boundary: %#v", topology.Stats)
 	}
+	invalidConnection := findThermalConnection(t, topology, "invalid")
+	if !invalidConnection.QAOnly || invalidConnection.HasUA || len(invalidConnection.BoundaryIDs) != 1 {
+		t.Fatalf("invalid boundary QA-only connection = %#v", invalidConnection)
+	}
 }
 
 func TestCanonicalOutsideBoundaryConditionNormalizesEnergyPlusFamilies(t *testing.T) {
@@ -320,6 +324,85 @@ func TestAirCouplingMissingTargetSurvivesWithDiagnostic(t *testing.T) {
 	}
 }
 
+func TestCompactConnectionsDeduplicateReciprocalInterfaces(t *testing.T) {
+	topology := AnalyzeGeometry(thermalOpeningTestDocument()).Topology
+	connection := findThermalConnection(t, topology, "interzone_explicit_surface")
+	if connection.SurfaceCount != 1 || len(connection.BoundaryIDs) != 2 {
+		t.Fatalf("paired interface aggregation = surface count %d boundary IDs %#v", connection.SurfaceCount, connection.BoundaryIDs)
+	}
+	if connection.OpeningCount != 1 || len(connection.OpeningIDs) != 1 {
+		t.Fatalf("paired opening aggregation = opening count %d IDs %#v", connection.OpeningCount, connection.OpeningIDs)
+	}
+	if connection.PhysicalGrossArea != 4 || connection.EffectiveGrossArea != 8 || connection.EffectiveOpeningArea != 6 {
+		t.Fatalf("connection areas = physical gross %v effective gross %v opening %v", connection.PhysicalGrossArea, connection.EffectiveGrossArea, connection.EffectiveOpeningArea)
+	}
+	if !connection.HasUA || connection.TotalUA != 14.8572 || !connection.HasPhysicalUA || connection.PhysicalTotalUA != 7.4286 {
+		t.Fatalf("connection UA = effective %v/%v physical %v/%v", connection.TotalUA, connection.HasUA, connection.PhysicalTotalUA, connection.HasPhysicalUA)
+	}
+	if connection.FromNodeID > connection.ToNodeID {
+		t.Fatalf("connection node order is not deterministic: %q > %q", connection.FromNodeID, connection.ToNodeID)
+	}
+}
+
+func TestZoneSignatureAndMatrixReconcileWithConnections(t *testing.T) {
+	topology := AnalyzeGeometry(thermalOpeningTestDocument()).Topology
+	zoneA := findZoneThermalSignature(t, topology, "Zone A")
+	if zoneA.AreaBasis != "effective" || zoneA.InterzoneArea != 8 || zoneA.WindowArea != 6 || zoneA.InterzoneUA != 14.8572 || zoneA.TotalUA != 14.8572 || !zoneA.HasTotalUA || zoneA.UACoverage != 1 {
+		t.Fatalf("zone A thermal signature = %#v", zoneA)
+	}
+	if len(zoneA.AdjacentZoneIDs) != 1 || zoneA.AdjacentZoneIDs[0] != "zone:zone%20b" {
+		t.Fatalf("zone A adjacency = %#v", zoneA.AdjacentZoneIDs)
+	}
+	connection := findThermalConnection(t, topology, "interzone_explicit_surface")
+	cells := thermalMatrixCellsForConnection(topology, connection.ID)
+	if len(cells) != 2 {
+		t.Fatalf("matrix cells for connection = %d, want symmetric pair", len(cells))
+	}
+	for _, cell := range cells {
+		if cell.Area != connection.EffectiveGrossArea || cell.UA != connection.TotalUA || cell.HasUA != connection.HasUA || cell.SurfaceCount != connection.SurfaceCount {
+			t.Errorf("matrix cell does not reconcile with connection: cell %#v connection %#v", cell, connection)
+		}
+	}
+}
+
+func TestConnectionTotalsReconcileWithoutDoubleCounting(t *testing.T) {
+	document, err := Parse(summaryFixtureIDF)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	topology := AnalyzeGeometry(document).Topology
+	boundaryGrossArea := 0.0
+	for _, boundary := range topology.Boundaries {
+		if boundary.RelationKind != "invalid" {
+			boundaryGrossArea += boundary.EffectiveGrossArea
+		}
+	}
+	connectionGrossArea := 0.0
+	for _, connection := range topology.Connections {
+		if connection.RelationKind != "air_coupling" {
+			connectionGrossArea += connection.EffectiveGrossArea
+		}
+	}
+	if connectionGrossArea != boundaryGrossArea {
+		t.Fatalf("connection/boundary gross area = %v/%v", connectionGrossArea, boundaryGrossArea)
+	}
+	zone := findZoneThermalSignature(t, topology, "Zone 1")
+	if zone.ExteriorArea != 380 || zone.GroundArea != 200 || zone.WindowArea != 6 || zone.ExteriorWWR != 0.0333 {
+		t.Fatalf("summary fixture thermal signature = %#v", zone)
+	}
+	if zone.HasTotalUA || zone.TotalUA != 0 || zone.UACoverage != 0 {
+		t.Fatalf("missing U-values were exposed as a partial total: %#v", zone)
+	}
+}
+
+func TestAirCouplingsUseSeparateCompactConnections(t *testing.T) {
+	topology := AnalyzeGeometry(thermalAirCouplingTestDocument()).Topology
+	airConnection := findThermalConnection(t, topology, "air_coupling")
+	if len(airConnection.AirCouplingIDs) == 0 || airConnection.SurfaceCount != 0 || airConnection.EffectiveGrossArea != 0 || airConnection.HasUA {
+		t.Fatalf("air coupling connection was mixed with conduction: %#v", airConnection)
+	}
+}
+
 func hasAdjacencyObservation(topology ThermalTopologyReport, kind string) bool {
 	for _, observation := range topology.AdjacencyObservations {
 		if observation.ObservationKind == kind {
@@ -391,6 +474,38 @@ func findThermalAirCouplingByName(t *testing.T, topology ThermalTopologyReport, 
 	}
 	t.Fatalf("thermal air coupling %q not found", name)
 	return ThermalAirCoupling{}
+}
+
+func findThermalConnection(t *testing.T, topology ThermalTopologyReport, relationKind string) ThermalConnectionAggregate {
+	t.Helper()
+	for _, connection := range topology.Connections {
+		if connection.RelationKind == relationKind {
+			return connection
+		}
+	}
+	t.Fatalf("thermal connection relation %q not found", relationKind)
+	return ThermalConnectionAggregate{}
+}
+
+func findZoneThermalSignature(t *testing.T, topology ThermalTopologyReport, zoneName string) ZoneThermalSignature {
+	t.Helper()
+	for _, signature := range topology.ZoneSignatures {
+		if signature.ZoneName == zoneName {
+			return signature
+		}
+	}
+	t.Fatalf("zone thermal signature %q not found", zoneName)
+	return ZoneThermalSignature{}
+}
+
+func thermalMatrixCellsForConnection(topology ThermalTopologyReport, connectionID string) []ThermalMatrixCell {
+	var cells []ThermalMatrixCell
+	for _, cell := range topology.Matrix {
+		if cell.ConnectionID == connectionID {
+			cells = append(cells, cell)
+		}
+	}
+	return cells
 }
 
 func thermalTopologyTestDocument() Document {

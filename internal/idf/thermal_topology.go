@@ -148,6 +148,7 @@ type ThermalConnectionAggregate struct {
 	FromNodeID           string                 `json:"fromNodeId"`
 	ToNodeID             string                 `json:"toNodeId"`
 	RelationKind         string                 `json:"relationKind"`
+	QAOnly               bool                   `json:"qaOnly,omitempty"`
 	BoundaryIDs          []string               `json:"boundaryIds"`
 	OpeningIDs           []string               `json:"openingIds,omitempty"`
 	AirCouplingIDs       []string               `json:"airCouplingIds,omitempty"`
@@ -163,6 +164,10 @@ type ThermalConnectionAggregate struct {
 	OpeningUA            float64                `json:"openingUa,omitempty"`
 	TotalUA              float64                `json:"totalUa,omitempty"`
 	HasUA                bool                   `json:"hasUa"`
+	PhysicalOpaqueUA     float64                `json:"physicalOpaqueUa,omitempty"`
+	PhysicalOpeningUA    float64                `json:"physicalOpeningUa,omitempty"`
+	PhysicalTotalUA      float64                `json:"physicalTotalUa,omitempty"`
+	HasPhysicalUA        bool                   `json:"hasPhysicalUa"`
 	Orientations         []string               `json:"orientations,omitempty"`
 	DiagnosticIDs        []string               `json:"diagnosticIds,omitempty"`
 	SourceAnchors        []SemanticSourceAnchor `json:"sourceAnchors,omitempty"`
@@ -171,6 +176,7 @@ type ThermalConnectionAggregate struct {
 type ZoneThermalSignature struct {
 	ZoneID               string   `json:"zoneId"`
 	ZoneName             string   `json:"zoneName"`
+	AreaBasis            string   `json:"areaBasis"`
 	SpaceIDs             []string `json:"spaceIds,omitempty"`
 	ExteriorArea         float64  `json:"exteriorArea"`
 	GroundArea           float64  `json:"groundArea"`
@@ -181,6 +187,8 @@ type ZoneThermalSignature struct {
 	GroundUA             float64  `json:"groundUa,omitempty"`
 	InterzoneUA          float64  `json:"interzoneUa,omitempty"`
 	TotalUA              float64  `json:"totalUa,omitempty"`
+	HasTotalUA           bool     `json:"hasTotalUa"`
+	UACoverage           float64  `json:"uaCoverage"`
 	WindowArea           float64  `json:"windowArea"`
 	ExteriorWWR          float64  `json:"exteriorWwr,omitempty"`
 	AdjacentZoneIDs      []string `json:"adjacentZoneIds,omitempty"`
@@ -286,6 +294,9 @@ func BuildThermalTopology(doc Document, geometry GeometryReport, documentIndex *
 	builder.validateReciprocalConstructions()
 	builder.addAirCouplings()
 	builder.analyzeGeometryQA()
+	builder.buildConnectionAggregates()
+	builder.buildZoneSignatures("effective")
+	builder.buildThermalMatrix("effective")
 	builder.finalize()
 	return builder.report
 }
