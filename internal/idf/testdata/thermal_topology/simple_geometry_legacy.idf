@@ -1,0 +1,11 @@
+Version,22.1;
+GlobalGeometryRules,UpperLeftCorner,CounterClockWise,World,World,World;
+Material:NoMass,Rough Layer,Rough,0.5;
+WindowMaterial:SimpleGlazingSystem,Simple Glass,1.5,0.4,0.6;
+Construction,Opaque,Rough Layer;
+Construction,Glazing,Simple Glass;
+Zone,Legacy Zone,0,0,0,0,1,1;
+Wall:Exterior,Legacy Wall,Opaque,Legacy Zone,,180,90,4,0,0,4,3;
+Roof,Legacy Roof,Opaque,Legacy Zone,,0,0,0,0,3,4,5;
+Floor:GroundContact,Legacy Floor,Opaque,Legacy Zone,,0,180,0,0,0,4,5;
+Window,Legacy Window,Glazing,Legacy Wall,,1,1,1,2,1;

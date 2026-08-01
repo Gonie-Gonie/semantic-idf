@@ -1,0 +1,9 @@
+Version,24.1;
+GlobalGeometryRules,UpperLeftCorner,CounterClockWise,World,World,World;
+Material:NoMass,Rough Layer,Rough,0.5;
+Construction,Opaque,Rough Layer;
+Zone,Basement,0,0,0,-3,1,1;
+Foundation:Kiva,Basement Foundation;
+BuildingSurface:Detailed,Kiva Floor,Floor,Opaque,Basement,,Foundation,Basement Foundation,NoSun,NoWind,0.5,4,0,0,-3,4,0,-3,4,5,-3,0,5,-3;
+BuildingSurface:Detailed,Basement Wall,Wall,Opaque,Basement,,GroundBasementPreprocessorAverageWall,,NoSun,NoWind,0.5,4,0,0,-3,4,0,-3,4,0,0,0,0,0;
+BuildingSurface:Detailed,Above Grade Wall,Wall,Opaque,Basement,,Outdoors,,SunExposed,WindExposed,0.5,4,0,5,-3,4,5,-3,4,5,0,0,5,0;

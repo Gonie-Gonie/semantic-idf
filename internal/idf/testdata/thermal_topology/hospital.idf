@@ -1,0 +1,18 @@
+Version,24.1;
+GlobalGeometryRules,UpperLeftCorner,CounterClockWise,World,World,World;
+Material:NoMass,Rough Layer,Rough,0.5;
+Construction,Opaque,Rough Layer;
+Zone,Ward A,0,0,0,0,1,1;
+Zone,Ward B,0,0,0,0,1,1;
+Zone,Ward C,0,0,0,0,1,1;
+Zone,Ward D,0,0,0,0,1,1;
+BuildingSurface:Detailed,Ward A Exterior,Wall,Opaque,Ward A,,Outdoors,,SunExposed,WindExposed,0.5,4,0,0,0,4,0,0,4,0,3,0,0,3;
+BuildingSurface:Detailed,Ward B Exterior,Wall,Opaque,Ward B,,Outdoors,,SunExposed,WindExposed,0.5,4,10,0,0,14,0,0,14,0,3,10,0,3;
+BuildingSurface:Detailed,Ward C Exterior,Wall,Opaque,Ward C,,Outdoors,,SunExposed,WindExposed,0.5,4,20,0,0,24,0,0,24,0,3,20,0,3;
+BuildingSurface:Detailed,Ward D Exterior,Wall,Opaque,Ward D,,Outdoors,,SunExposed,WindExposed,0.5,4,30,0,0,34,0,0,34,0,3,30,0,3;
+BuildingSurface:Detailed,A-B A,Wall,Opaque,Ward A,,Surface,A-B B,NoSun,NoWind,0.5,4,0,5,0,4,5,0,4,5,3,0,5,3;
+BuildingSurface:Detailed,A-B B,Wall,Opaque,Ward B,,Surface,A-B A,NoSun,NoWind,0.5,4,4,5,0,0,5,0,0,5,3,4,5,3;
+BuildingSurface:Detailed,B-C B,Wall,Opaque,Ward B,,Surface,B-C C,NoSun,NoWind,0.5,4,10,5,0,14,5,0,14,5,3,10,5,3;
+BuildingSurface:Detailed,B-C C,Wall,Opaque,Ward C,,Surface,B-C B,NoSun,NoWind,0.5,4,14,5,0,10,5,0,10,5,3,14,5,3;
+BuildingSurface:Detailed,C-D C,Wall,Opaque,Ward C,,Surface,C-D D,NoSun,NoWind,0.5,4,20,5,0,24,5,0,24,5,3,20,5,3;
+BuildingSurface:Detailed,C-D D,Wall,Opaque,Ward D,,Surface,C-D C,NoSun,NoWind,0.5,4,24,5,0,20,5,0,20,5,3,24,5,3;

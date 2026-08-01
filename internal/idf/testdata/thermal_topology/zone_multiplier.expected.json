@@ -1,0 +1,1 @@
+{"modelFamily":"Zone multiplier","supportedVersions":["22.1","24.1","26.1"],"expected":{"zoneCount":1,"surfaceCount":1,"openingCount":0,"connectionCount":1,"exteriorArea":36,"groundArea":0,"interzoneArea":0,"uaCoverage":1,"diagnosticCodes":["zone_shell_open"],"closedShellCount":0,"airCouplingCount":0}}

@@ -1,0 +1,1 @@
+{"modelFamily":"Hospital","supportedVersions":["22.1","24.1","26.1"],"expected":{"zoneCount":4,"surfaceCount":10,"openingCount":0,"connectionCount":7,"exteriorArea":48,"groundArea":0,"interzoneArea":36,"uaCoverage":1,"diagnosticCodes":["zone_shell_open"],"closedShellCount":0,"airCouplingCount":0}}

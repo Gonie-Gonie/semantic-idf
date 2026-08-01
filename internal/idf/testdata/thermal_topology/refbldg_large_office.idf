@@ -1,0 +1,14 @@
+Version,24.1;
+GlobalGeometryRules,UpperLeftCorner,CounterClockWise,World,World,World;
+Material:NoMass,Rough Layer,Rough,0.5;
+Construction,Opaque,Rough Layer;
+Zone,Office L1,0,0,0,0,1,1;
+Zone,Office L2,0,0,0,3,1,1;
+Zone,Office L3,0,0,0,6,1,1;
+BuildingSurface:Detailed,L1 Exterior,Wall,Opaque,Office L1,,Outdoors,,SunExposed,WindExposed,0.5,4,0,0,0,4,0,0,4,0,3,0,0,3;
+BuildingSurface:Detailed,L2 Exterior,Wall,Opaque,Office L2,,Outdoors,,SunExposed,WindExposed,0.5,4,0,0,3,4,0,3,4,0,6,0,0,6;
+BuildingSurface:Detailed,L3 Exterior,Wall,Opaque,Office L3,,Outdoors,,SunExposed,WindExposed,0.5,4,0,0,6,4,0,6,4,0,9,0,0,9;
+BuildingSurface:Detailed,L1 Ceiling,Ceiling,Opaque,Office L1,,Surface,L2 Floor,NoSun,NoWind,0.5,4,0,0,3,0,5,3,4,5,3,4,0,3;
+BuildingSurface:Detailed,L2 Floor,Floor,Opaque,Office L2,,Surface,L1 Ceiling,NoSun,NoWind,0.5,4,4,0,3,4,5,3,0,5,3,0,0,3;
+BuildingSurface:Detailed,L2 Ceiling,Ceiling,Opaque,Office L2,,Surface,L3 Floor,NoSun,NoWind,0.5,4,0,0,6,0,5,6,4,5,6,4,0,6;
+BuildingSurface:Detailed,L3 Floor,Floor,Opaque,Office L3,,Surface,L2 Ceiling,NoSun,NoWind,0.5,4,4,0,6,4,5,6,0,5,6,0,0,6;

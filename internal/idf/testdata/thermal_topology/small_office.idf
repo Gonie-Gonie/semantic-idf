@@ -1,0 +1,14 @@
+Version,24.1;
+GlobalGeometryRules,UpperLeftCorner,CounterClockWise,World,World,World;
+Material:NoMass,Rough Layer,Rough,0.5;
+WindowMaterial:SimpleGlazingSystem,Simple Glass,1.5,0.4,0.6;
+Construction,Opaque,Rough Layer;
+Construction,Glazing,Simple Glass;
+Zone,Small Office,0,0,0,0,1,1,3,60;
+BuildingSurface:Detailed,Floor,Floor,Opaque,Small Office,,Ground,,NoSun,NoWind,0.5,4,0,0,0,4,0,0,4,5,0,0,5,0;
+BuildingSurface:Detailed,Roof,Roof,Opaque,Small Office,,Outdoors,,SunExposed,WindExposed,0.5,4,0,5,3,4,5,3,4,0,3,0,0,3;
+BuildingSurface:Detailed,South Wall,Wall,Opaque,Small Office,,Outdoors,,SunExposed,WindExposed,0.5,4,0,0,0,4,0,0,4,0,3,0,0,3;
+BuildingSurface:Detailed,East Wall,Wall,Opaque,Small Office,,Outdoors,,SunExposed,WindExposed,0.5,4,4,0,0,4,5,0,4,5,3,4,0,3;
+BuildingSurface:Detailed,North Wall,Wall,Opaque,Small Office,,Outdoors,,SunExposed,WindExposed,0.5,4,4,5,0,0,5,0,0,5,3,4,5,3;
+BuildingSurface:Detailed,West Wall,Wall,Opaque,Small Office,,Outdoors,,SunExposed,WindExposed,0.5,4,0,5,0,0,0,0,0,0,3,0,5,3;
+FenestrationSurface:Detailed,South Window,Window,Glazing,South Wall,,0.5,,1,4,1,0,1,3,0,1,3,0,2,1,0,2;

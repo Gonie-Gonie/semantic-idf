@@ -1,0 +1,1 @@
+{"modelFamily":"Small Office","supportedVersions":["22.1","24.1","26.1"],"expected":{"zoneCount":1,"surfaceCount":6,"openingCount":1,"connectionCount":2,"exteriorArea":74,"groundArea":20,"interzoneArea":0,"uaCoverage":1,"diagnosticCodes":[],"closedShellCount":1,"airCouplingCount":0}}

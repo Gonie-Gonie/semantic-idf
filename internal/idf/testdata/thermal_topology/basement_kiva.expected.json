@@ -1,0 +1,1 @@
+{"modelFamily":"Basement/Kiva","supportedVersions":["22.1","24.1","26.1"],"expected":{"zoneCount":1,"surfaceCount":3,"openingCount":0,"connectionCount":3,"exteriorArea":12,"groundArea":32,"interzoneArea":0,"uaCoverage":1,"diagnosticCodes":["zone_shell_open"],"closedShellCount":0,"airCouplingCount":0}}

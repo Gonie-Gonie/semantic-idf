@@ -1,0 +1,11 @@
+Version,24.1;
+GlobalGeometryRules,UpperLeftCorner,CounterClockWise,World,World,World;
+Material:NoMass,Rough Layer,Rough,0.5;
+Construction,Opaque,Rough Layer;
+Zone,Zone A,0,0,0,0,1,1;
+Zone,Zone B,0,0,0,0,1,1;
+Space,Space A,Zone A;
+Space,Space B,Zone B;
+SpaceList,Clinical Spaces,Space A,Space B;
+BuildingSurface:Detailed,Implicit Space Boundary,Wall,Opaque,,Space A,Space,Space B,NoSun,NoWind,0.5,4,0,0,0,4,0,0,4,0,3,0,0,3;
+BuildingSurface:Detailed,Space B Exterior,Wall,Opaque,,Space B,Outdoors,,SunExposed,WindExposed,0.5,4,10,0,0,14,0,0,14,0,3,10,0,3;

@@ -1,0 +1,1 @@
+{"modelFamily":"RefBldgLargeOffice","supportedVersions":["22.1","24.1","26.1"],"expected":{"zoneCount":3,"surfaceCount":7,"openingCount":0,"connectionCount":5,"exteriorArea":36,"groundArea":0,"interzoneArea":40,"uaCoverage":1,"diagnosticCodes":["zone_shell_open"],"closedShellCount":0,"airCouplingCount":0}}

@@ -1,0 +1,14 @@
+Version,24.1;
+GlobalGeometryRules,UpperLeftCorner,CounterClockWise,World,World,World;
+Material:NoMass,Layer A,Rough,0.5;
+Material:AirGap,Layer B,0.2;
+WindowMaterial:SimpleGlazingSystem,Simple Glass,1.5,0.4,0.6;
+Construction,Opaque A,Layer A,Layer B;
+Construction,Opaque B,Layer B,Layer A;
+Construction,Glazing,Simple Glass;
+Zone,Zone A,0,0,0,0,1,1;
+Zone,Zone B,0,0,0,0,1,1;
+BuildingSurface:Detailed,Pair A,Wall,Opaque A,Zone A,,Surface,Pair B,NoSun,NoWind,0.5,4,0,0,0,0,0,3,4,0,3,4,0,0;
+BuildingSurface:Detailed,Pair B,Wall,Opaque B,Zone B,,Surface,Pair A,NoSun,NoWind,0.5,4,4,0,0,4,0,3,0,0,3,0,0,0;
+FenestrationSurface:Detailed,Interior Window A,Window,Glazing,Pair A,Interior Window B,0.5,,1,4,1,0,1,1,0,2,3,0,2,3,0,1;
+FenestrationSurface:Detailed,Interior Window B,Window,Glazing,Pair B,Interior Window A,0.5,,1,4,3,0,1,3,0,2,1,0,2,1,0,1;

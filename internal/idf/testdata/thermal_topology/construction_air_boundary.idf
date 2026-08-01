@@ -1,0 +1,7 @@
+Version,24.1;
+GlobalGeometryRules,UpperLeftCorner,CounterClockWise,World,World,World;
+Zone,Zone A,0,0,0,0,1,1,,360;
+Zone,Zone B,0,0,0,0,1,1,,360;
+Construction:AirBoundary,Open Partition,SimpleMixing,1,Always On;
+BuildingSurface:Detailed,Pair A,Wall,Open Partition,Zone A,,Surface,Pair B,NoSun,NoWind,0.5,4,0,0,0,0,0,3,4,0,3,4,0,0;
+BuildingSurface:Detailed,Pair B,Wall,Open Partition,Zone B,,Surface,Pair A,NoSun,NoWind,0.5,4,4,0,0,4,0,3,0,0,3,0,0,0;
