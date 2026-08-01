@@ -131,6 +131,69 @@ func TestThermalTopologyExcludesShadingSurfaces(t *testing.T) {
 	}
 }
 
+func TestThermalTopologyBuildsOpeningRecordsAndUA(t *testing.T) {
+	geometry := AnalyzeGeometry(thermalOpeningTestDocument())
+	if len(geometry.Topology.Openings) != 2 {
+		t.Fatalf("opening count = %d, want 2", len(geometry.Topology.Openings))
+	}
+	openingA := findThermalOpening(t, geometry.Topology, "Window A")
+	openingB := findThermalOpening(t, geometry.Topology, "Window B")
+	if openingA.CounterpartOpeningID != openingB.ID || openingA.PairID == "" || openingA.PairID != openingB.PairID {
+		t.Fatalf("opening pair was not resolved: A %#v B %#v", openingA, openingB)
+	}
+	if openingA.PhysicalArea != 3 || openingA.EffectiveArea != 6 || openingA.UValue != 2 || openingA.UA != 12 || !openingA.HasUA {
+		t.Fatalf("opening area/UA = physical %v effective %v U %v UA %v has %v", openingA.PhysicalArea, openingA.EffectiveArea, openingA.UValue, openingA.UA, openingA.HasUA)
+	}
+
+	boundaryA := findThermalBoundary(t, geometry.Topology, "Pair A")
+	if boundaryA.PhysicalGrossArea != 4 || boundaryA.PhysicalOpeningArea != 3 || boundaryA.PhysicalOpaqueArea != 1 {
+		t.Fatalf("physical boundary areas = gross %v opening %v opaque %v", boundaryA.PhysicalGrossArea, boundaryA.PhysicalOpeningArea, boundaryA.PhysicalOpaqueArea)
+	}
+	if boundaryA.EffectiveGrossArea != 8 || boundaryA.EffectiveOpeningArea != 6 || boundaryA.EffectiveOpaqueArea != 2 {
+		t.Fatalf("effective boundary areas = gross %v opening %v opaque %v", boundaryA.EffectiveGrossArea, boundaryA.EffectiveOpeningArea, boundaryA.EffectiveOpaqueArea)
+	}
+	if boundaryA.ConstructionStatus != "reverse_layer_equivalent" || !boundaryA.HasUA {
+		t.Fatalf("boundary construction/UA status = %q / %v", boundaryA.ConstructionStatus, boundaryA.HasUA)
+	}
+	if boundaryA.OpaqueUA != 2.8572 || boundaryA.OpeningUA != 12 || boundaryA.TotalUA != 14.8572 {
+		t.Fatalf("effective boundary UA = opaque %v opening %v total %v", boundaryA.OpaqueUA, boundaryA.OpeningUA, boundaryA.TotalUA)
+	}
+
+	openingsByID := map[string]ThermalOpeningRecord{openingA.ID: openingA}
+	opaqueUA, openingUA, totalUA, hasUA := thermalBoundaryUAForAreaBasis(boundaryA, openingsByID, "physical")
+	if !hasUA || opaqueUA != 1.4286 || openingUA != 6 || totalUA != 7.4286 {
+		t.Fatalf("physical boundary UA = opaque %v opening %v total %v has %v", opaqueUA, openingUA, totalUA, hasUA)
+	}
+}
+
+func TestGeometryConstructionIndexCoversStaticPerformanceFamilies(t *testing.T) {
+	document := thermalConstructionTestDocument()
+	constructions := geometryConstructionsFromDocument(document)
+	index := thermalConstructionIndex(constructions)
+	tests := []struct {
+		name string
+		kind string
+		u    float64
+		hasU bool
+	}{
+		{name: "Opaque A", kind: "layer_based_opaque", u: 1.4286, hasU: true},
+		{name: "Window Construction", kind: "layer_based_window", u: 2, hasU: true},
+		{name: "C Factor Construction", kind: "c_factor", u: 0.5, hasU: true},
+		{name: "F Factor Construction", kind: "f_factor", u: 0.2, hasU: true},
+		{name: "Complex State", kind: "complex_fenestration", hasU: false},
+	}
+	for _, test := range tests {
+		construction, ok := index[normalizeName(test.name)]
+		if !ok {
+			t.Errorf("construction %q missing from shared index", test.name)
+			continue
+		}
+		if construction.Kind != test.kind || construction.HasThermalPerformance != test.hasU || construction.UValue != test.u {
+			t.Errorf("construction %q = kind %q U %v has %v", test.name, construction.Kind, construction.UValue, construction.HasThermalPerformance)
+		}
+	}
+}
+
 func findThermalNode(t *testing.T, topology ThermalTopologyReport, id string) ThermalTopologyNode {
 	t.Helper()
 	for _, node := range topology.Nodes {
@@ -151,6 +214,17 @@ func findThermalBoundary(t *testing.T, topology ThermalTopologyReport, name stri
 	}
 	t.Fatalf("thermal boundary %q not found", name)
 	return ThermalBoundaryRecord{}
+}
+
+func findThermalOpening(t *testing.T, topology ThermalTopologyReport, name string) ThermalOpeningRecord {
+	t.Helper()
+	for _, opening := range topology.Openings {
+		if opening.Name == name {
+			return opening
+		}
+	}
+	t.Fatalf("thermal opening %q not found", name)
+	return ThermalOpeningRecord{}
 }
 
 func thermalTopologyTestDocument() Document {
@@ -180,6 +254,74 @@ func thermalTopologyTestDocument() Document {
 		objects[index].Index = index
 	}
 	return Document{Objects: objects}
+}
+
+func thermalOpeningTestDocument() Document {
+	document := Document{Objects: []Object{
+		{Type: "Version", Fields: []Field{{Value: "22.1"}}},
+		{Type: "GlobalGeometryRules", Fields: []Field{{Value: "UpperLeftCorner"}, {Value: "CounterClockWise"}, {Value: "World"}, {Value: "World"}, {Value: "World"}}},
+		thermalZoneObjectWithMultiplier("Zone A", 2),
+		thermalZoneObjectWithMultiplier("Zone B", 2),
+		{Type: "Space", Fields: []Field{{Value: "Space A"}, {Value: "Zone A"}}},
+		{Type: "Space", Fields: []Field{{Value: "Space B"}, {Value: "Zone B"}}},
+		thermalSurfaceObjectWithConstruction("Pair A", "Zone A", "Space A", "Opaque A", "Surface", "Pair B", 0),
+		thermalSurfaceObjectWithConstruction("Pair B", "Zone B", "Space B", "Opaque Reverse", "Surface", "Pair A", 0),
+		thermalOpeningObject("Window A", "Pair A", "Window B", 0),
+		thermalOpeningObject("Window B", "Pair B", "Window A", 0),
+	}}
+	document.Objects = append(document.Objects, thermalConstructionTestDocument().Objects...)
+	for index := range document.Objects {
+		document.Objects[index].Index = index
+	}
+	return document
+}
+
+func thermalConstructionTestDocument() Document {
+	objects := []Object{
+		{Type: "Material:NoMass", Fields: []Field{{Value: "Insulation"}, {Value: "Rough"}, {Value: "0.5"}}},
+		{Type: "Material:AirGap", Fields: []Field{{Value: "Air Gap"}, {Value: "0.2"}}},
+		{Type: "WindowMaterial:SimpleGlazingSystem", Fields: []Field{{Value: "Simple Glass"}, {Value: "2"}, {Value: "0.4"}, {Value: "0.6"}}},
+		{Type: "Construction", Fields: []Field{{Value: "Opaque A"}, {Value: "Insulation"}, {Value: "Air Gap"}}},
+		{Type: "Construction", Fields: []Field{{Value: "Opaque Reverse"}, {Value: "Air Gap"}, {Value: "Insulation"}}},
+		{Type: "Construction", Fields: []Field{{Value: "Window Construction"}, {Value: "Simple Glass"}}},
+		{Type: "Construction:CfactorUndergroundWall", Fields: []Field{{Value: "C Factor Construction"}, {Value: "0.5"}, {Value: "3"}}},
+		{Type: "Construction:FfactorGroundFloor", Fields: []Field{{Value: "F Factor Construction"}, {Value: "0.8"}, {Value: "40"}, {Value: "10"}}},
+		{Type: "Construction:ComplexFenestrationState", Fields: []Field{{Value: "Complex State"}}},
+	}
+	for index := range objects {
+		objects[index].Index = index
+	}
+	return Document{Objects: objects}
+}
+
+func thermalZoneObjectWithMultiplier(name string, multiplier float64) Object {
+	zone := thermalZoneObject(name)
+	zone.Fields[6].Value = formatNumber(multiplier)
+	return zone
+}
+
+func thermalSurfaceObjectWithConstruction(name string, zoneName string, spaceName string, constructionName string, boundary string, boundaryObject string, x float64) Object {
+	surface := thermalSurfaceObject(name, zoneName, spaceName, boundary, boundaryObject, x)
+	surface.Fields[2].Value = constructionName
+	return surface
+}
+
+func thermalOpeningObject(name string, baseSurfaceName string, counterpartName string, x float64) Object {
+	return Object{Type: "FenestrationSurface:Detailed", Fields: []Field{
+		{Value: name},
+		{Value: "Window"},
+		{Value: "Window Construction"},
+		{Value: baseSurfaceName},
+		{Value: counterpartName},
+		{Value: "0.5"},
+		{Value: ""},
+		{Value: "3"},
+		{Value: "4"},
+		{Value: formatNumber(x + 0.5)}, {Value: "0"}, {Value: "0.5"},
+		{Value: formatNumber(x + 0.5)}, {Value: "0"}, {Value: "1.5"},
+		{Value: formatNumber(x + 1.5)}, {Value: "0"}, {Value: "1.5"},
+		{Value: formatNumber(x + 1.5)}, {Value: "0"}, {Value: "0.5"},
+	}}
 }
 
 func thermalZoneObject(name string) Object {

@@ -142,6 +142,7 @@ type GeometryConstruction struct {
 	Name                  string                  `json:"name"`
 	ObjectType            string                  `json:"objectType"`
 	ObjectIndex           int                     `json:"objectIndex"`
+	Kind                  string                  `json:"kind"`
 	Layers                []GeometryMaterialLayer `json:"layers"`
 	TotalThickness        float64                 `json:"totalThickness,omitempty"`
 	HasThickness          bool                    `json:"hasThickness"`
@@ -849,15 +850,16 @@ func geometryConstructionsFromDocument(doc Document) []GeometryConstruction {
 	materials := geometryMaterialsByName(doc)
 	var constructions []GeometryConstruction
 	for _, obj := range doc.Objects {
-		if !strings.EqualFold(obj.Type, "Construction") {
+		if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(obj.Type)), "construction") {
 			continue
 		}
 		construction := GeometryConstruction{
 			Name:        objectName(obj),
 			ObjectType:  obj.Type,
 			ObjectIndex: obj.Index,
+			Kind:        geometryConstructionKind(obj.Type),
 		}
-		for index := 1; index < len(obj.Fields); index++ {
+		for _, index := range geometryConstructionLayerFieldIndexes(obj) {
 			layerName := strings.TrimSpace(obj.Fields[index].Value)
 			if layerName == "" {
 				continue
@@ -872,6 +874,15 @@ func geometryConstructionsFromDocument(doc Document) []GeometryConstruction {
 				construction.HasThickness = true
 			}
 		}
+		if construction.Kind == "layer_based_opaque" {
+			for _, layer := range construction.Layers {
+				if strings.HasPrefix(strings.ToLower(layer.ObjectType), "windowmaterial:") {
+					construction.Kind = "layer_based_window"
+					break
+				}
+			}
+		}
+		applyDirectGeometryConstructionPerformance(&construction, obj)
 		construction.TotalThickness = roundedNumber(construction.TotalThickness, 4)
 		finalizeGeometryConstructionPerformance(&construction)
 		constructions = append(constructions, construction)
@@ -894,23 +905,23 @@ func geometryMaterialsByName(doc Document) map[string]GeometryMaterialLayer {
 			ObjectType:  obj.Type,
 			ObjectIndex: obj.Index,
 		}
-		if thickness, ok := findNumericFieldByCommentWords(obj, "thickness"); ok {
+		if thickness, ok := geometryNumericField(obj, "Thickness"); ok {
 			layer.Thickness = roundedNumber(thickness, 4)
 			layer.HasThickness = true
 		}
-		if resistance, ok := findNumericFieldByCommentWords(obj, "thermal", "resistance"); ok {
+		if resistance, ok := geometryNumericField(obj, "Thermal Resistance"); ok {
 			layer.ThermalResistance = roundedNumber(resistance, 4)
 		}
-		if uFactor, ok := findNumericFieldByCommentWords(obj, "u", "factor"); ok {
+		if uFactor, ok := geometryNumericField(obj, "U-Factor"); ok {
 			layer.UFactor = roundedNumber(uFactor, 4)
 		}
-		if conductivity, ok := findNumericFieldByCommentWords(obj, "conductivity"); ok {
+		if conductivity, ok := geometryNumericField(obj, "Conductivity"); ok {
 			layer.Conductivity = roundedNumber(conductivity, 4)
 		}
-		if density, ok := findNumericFieldByCommentWords(obj, "density"); ok {
+		if density, ok := geometryNumericField(obj, "Density"); ok {
 			layer.Density = roundedNumber(density, 3)
 		}
-		if specificHeat, ok := findNumericFieldByCommentWords(obj, "specific", "heat"); ok {
+		if specificHeat, ok := geometryNumericField(obj, "Specific Heat"); ok {
 			layer.SpecificHeat = roundedNumber(specificHeat, 2)
 		}
 		if layer.HasThickness && layer.Density > 0 && layer.SpecificHeat > 0 {
@@ -919,6 +930,60 @@ func geometryMaterialsByName(doc Document) map[string]GeometryMaterialLayer {
 		materials[normalizeName(name)] = layer
 	}
 	return materials
+}
+
+func geometryConstructionKind(objectType string) string {
+	lower := strings.ToLower(strings.TrimSpace(objectType))
+	switch {
+	case lower == "construction:internalsource":
+		return "internal_source"
+	case lower == "construction:cfactorundergroundwall":
+		return "c_factor"
+	case lower == "construction:ffactorgroundfloor":
+		return "f_factor"
+	case lower == "construction:complexfenestrationstate":
+		return "complex_fenestration"
+	case strings.Contains(lower, "window"):
+		return "layer_based_window"
+	default:
+		return "layer_based_opaque"
+	}
+}
+
+func geometryConstructionLayerFieldIndexes(obj Object) []int {
+	lower := strings.ToLower(strings.TrimSpace(obj.Type))
+	if lower == "construction:cfactorundergroundwall" || lower == "construction:ffactorgroundfloor" || lower == "construction:complexfenestrationstate" {
+		return nil
+	}
+	start := 1
+	if lower == "construction:internalsource" {
+		start = 6
+	}
+	indexes := make([]int, 0, len(obj.Fields)-start)
+	for index := start; index < len(obj.Fields); index++ {
+		indexes = append(indexes, index)
+	}
+	return indexes
+}
+
+func applyDirectGeometryConstructionPerformance(construction *GeometryConstruction, obj Object) {
+	switch construction.Kind {
+	case "c_factor":
+		if cFactor, ok := geometryNumericField(obj, "C-Factor"); ok && cFactor > 0 {
+			construction.UValue = roundedNumber(cFactor, 4)
+			construction.ThermalResistance = roundedNumber(1/cFactor, 4)
+			construction.HasThermalPerformance = true
+		}
+	case "f_factor":
+		fFactor, hasF := geometryNumericField(obj, "F-Factor")
+		area, hasArea := geometryNumericField(obj, "Area")
+		perimeter, hasPerimeter := geometryNumericField(obj, "Perimeter Exposed")
+		if hasF && hasArea && hasPerimeter && fFactor > 0 && area > 0 && perimeter > 0 {
+			construction.UValue = roundedNumber(fFactor*perimeter/area, 4)
+			construction.ThermalResistance = roundedNumber(1/construction.UValue, 4)
+			construction.HasThermalPerformance = true
+		}
+	}
 }
 
 func finalizeGeometryConstructionPerformance(construction *GeometryConstruction) {
