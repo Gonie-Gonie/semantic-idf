@@ -7,6 +7,81 @@ import (
 	"testing"
 )
 
+func TestSemanticThermalProjectionLinksCompactConnectionsAndSurfaceBoundaries(t *testing.T) {
+	projection := BuildSemanticYAMLProjection(thermalOpeningTestDocument(), SemanticYAMLMetadata{})
+	if !strings.Contains(projection.Text, "thermal_connections:") ||
+		!strings.Contains(projection.Text, "relation: interzone_explicit_surface") ||
+		!strings.Contains(projection.Text, "geometry_check:") {
+		t.Fatalf("semantic thermal projection is incomplete:\n%s", projection.Text)
+	}
+
+	connectionID := ""
+	boundaryID := ""
+	interfaceID := ""
+	foundEditableCondition := false
+	foundEditableTarget := false
+	foundUAConstructionTarget := false
+	for _, line := range projection.Lines {
+		switch {
+		case line.Key == "connection" && strings.HasPrefix(line.DisplayValue, "thermal-connection:"):
+			connectionID = line.DisplayValue
+			if line.Editable || line.EditKind != "readonly" || line.EntityKind != "thermal_connection" {
+				t.Fatalf("thermal connection summary must be readonly topology metadata: %#v", line)
+			}
+			if got, ok := semanticViewTargetID(line.ViewTargets, "geometry", "thermal_connection"); !ok || got != connectionID {
+				t.Fatalf("thermal connection line target = %q/%v, want %q", got, ok, connectionID)
+			}
+		case line.Key == "relation" && line.DisplayValue == "interzone_explicit_surface" && line.EntityKind == "thermal_boundary":
+			boundaryID = line.EntityID
+			if line.Editable || line.EditKind != "readonly" {
+				t.Fatalf("surface relationship line must be readonly: %#v", line)
+			}
+		case line.Key == "interface" && strings.HasPrefix(line.DisplayValue, "thermal-interface:"):
+			interfaceID = line.DisplayValue
+		case line.Key == "condition" && isBuildingSurfaceType(line.ObjectType):
+			foundEditableCondition = foundEditableCondition || line.Editable && line.EditKind == "raw_field" && line.FieldIndex != nil
+		case line.Key == "object" && isBuildingSurfaceType(line.ObjectType):
+			foundEditableTarget = foundEditableTarget || line.Editable && line.EditKind == "raw_field" && line.FieldIndex != nil
+		case line.Key == "ua" && line.EntityKind == "thermal_boundary":
+			_, hasConstructionTarget := semanticViewTargetID(line.ViewTargets, "geometry", "construction")
+			foundUAConstructionTarget = foundUAConstructionTarget || hasConstructionTarget
+		}
+	}
+	if connectionID == "" || boundaryID == "" || interfaceID == "" {
+		t.Fatalf("thermal semantic IDs missing: connection=%q boundary=%q interface=%q", connectionID, boundaryID, interfaceID)
+	}
+	if !foundEditableCondition || !foundEditableTarget {
+		t.Fatalf("raw Outside Boundary fields lost editability: condition=%v target=%v", foundEditableCondition, foundEditableTarget)
+	}
+	if !foundUAConstructionTarget {
+		t.Fatal("UA line does not expose its construction definition target")
+	}
+
+	occurrenceIDs := projection.Navigation.ByViewTarget["geometry|"+connectionID]
+	contexts := map[string]bool{}
+	for _, occurrence := range projection.Navigation.Occurrences {
+		if stringSliceContains(occurrenceIDs, occurrence.OccurrenceID) {
+			contexts[occurrence.ContextKind] = true
+		}
+	}
+	if !contexts["thermal_connection_context"] || !contexts["surface_boundary_context"] {
+		t.Fatalf("connection reverse navigation contexts = %#v, want compact and surface contexts", contexts)
+	}
+}
+
+func TestTopologyDiagnosticNavigationTargetsExactThermalIssue(t *testing.T) {
+	projection := BuildSemanticYAMLProjection(thermalGeometryPairTestDocument(0.5, true), SemanticYAMLMetadata{})
+	for _, entity := range projection.Navigation.Entities {
+		if !strings.HasPrefix(entity.ID, "topology-issue:") {
+			continue
+		}
+		if targetID, ok := semanticViewTargetID(entity.ViewTargets, "geometry", "thermal_issue"); ok && targetID == entity.ID && len(entity.RelatedEntityIDs) > 0 {
+			return
+		}
+	}
+	t.Fatal("topology diagnostic entity does not target the exact Thermal issue with related entities")
+}
+
 func TestSemanticNavigationStableEntityIDsAcrossRenderAndObjectOrder(t *testing.T) {
 	doc := mustParseSemanticNavigationFixture(t)
 	first := BuildSemanticYAMLProjection(doc, SemanticYAMLMetadata{})

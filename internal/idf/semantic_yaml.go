@@ -91,10 +91,11 @@ type SemanticYAMLNode struct {
 	ObjectName  string
 	FieldIndex  *int
 
-	SourceKind string
-	EditKind   string
-	Editable   bool
-	Role       string
+	SourceKind  string
+	EditKind    string
+	Editable    bool
+	Role        string
+	EntityLabel string
 
 	EntityID          string
 	EntityKind        string

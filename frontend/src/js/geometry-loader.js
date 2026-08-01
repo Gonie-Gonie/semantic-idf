@@ -2,6 +2,7 @@ import { elements, normalizeGeometryMode, normalizeTopologyAreaBasis, state } fr
 import { t } from "./i18n.js";
 import { configureResultPanelNavigationHooks } from "./panel-navigation-adapters.js";
 import { recordViewHistory } from "./view-history.js";
+import { isThermalTopologyTargetKind, thermalTopologyTargetExists } from "./thermal-topology-targets.js";
 
 let geometryModule = null;
 let geometryModulePromise = null;
@@ -178,6 +179,9 @@ function geometryTargetExists(target, geometry) {
   }
   const kind = normalizeGeometryTargetKind(target.targetKind);
   const targetId = String(target.targetId || "");
+  if (isThermalTopologyTargetKind(kind)) {
+    return thermalTopologyTargetExists(target, geometry);
+  }
   if (kind === "zone") {
     return (geometry.zones || []).some((item) => item.id === targetId);
   }
@@ -209,18 +213,30 @@ function preferredGeometryOccurrenceFromTarget(selection, context) {
     .map((occurrence, order) => ({
       occurrence,
       order,
+      contextPriority: thermalOccurrenceContextPriority(occurrence),
       exact: Number(occurrence.occurrenceId === selection.occurrenceId),
       geometryContext: Number(occurrence.contextKind === "zone_geometry" || /(^|\/)geometry(\/|$)/.test(occurrence.path || "")),
       path: commonPathPrefixLength(occurrence.path, currentPath),
       preferred: Number(occurrence.preferredView === "geometry"),
     }))
     .sort((left, right) => (
+      right.contextPriority - left.contextPriority ||
       right.geometryContext - left.geometryContext ||
       right.exact - left.exact ||
       right.path - left.path ||
       right.preferred - left.preferred ||
       left.order - right.order
     ))[0]?.occurrence?.occurrenceId || "";
+}
+
+function thermalOccurrenceContextPriority(occurrence) {
+  const context = String(occurrence?.contextKind || "");
+  if (context === "thermal_connection_context") return 4;
+  if (context === "surface_boundary_context") return 3;
+  if (context === "zone_geometry") {
+    return /(^|\/)surfaces(\/|$)/.test(String(occurrence?.path || "")) ? 1 : 2;
+  }
+  return context === "definition" ? 1 : 0;
 }
 
 function normalizeGeometryTargetKind(kind) {

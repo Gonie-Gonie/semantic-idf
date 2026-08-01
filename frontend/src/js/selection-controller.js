@@ -865,6 +865,9 @@ function occurrenceChoiceScore(occurrence, context = {}) {
   if (occurrenceMatchesOrigin(occurrence, context.originView)) {
     score += 1_000_000_000;
   }
+  if (String(context.originView || "").toLowerCase().replace(/^input-/, "") === "geometry") {
+    score += thermalOccurrenceContextPriority(occurrence) * 10_000_000;
+  }
   if (context.currentOccurrenceId && occurrence.occurrenceId === context.currentOccurrenceId) {
     score += 2_000_000;
   } else if (
@@ -880,6 +883,16 @@ function occurrenceChoiceScore(occurrence, context = {}) {
     score += 1;
   }
   return score;
+}
+
+function thermalOccurrenceContextPriority(occurrence) {
+  const context = String(occurrence?.contextKind || "");
+  if (context === "thermal_connection_context") return 4;
+  if (context === "surface_boundary_context") return 3;
+  if (context === "zone_geometry") {
+    return /(^|\/)surfaces(\/|$)/.test(String(occurrence?.path || "")) ? 1 : 2;
+  }
+  return context === "definition" ? 1 : 0;
 }
 
 function occurrenceMatchesOrigin(occurrence, originView = "") {

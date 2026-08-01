@@ -94,6 +94,39 @@ func (builder *semanticYAMLBuilder) kvForObject(indent int, key string, value st
 	builder.objectValue(indent, key, value, objectIndex, objectType, objectName, "derived", "readonly")
 }
 
+func (builder *semanticYAMLBuilder) topologyValue(
+	indent int,
+	key string,
+	value string,
+	entityID string,
+	entityKind string,
+	entityLabel string,
+	anchor *SemanticSourceAnchor,
+	targets ...SemanticViewTarget,
+) {
+	listItem := strings.TrimSpace(key)
+	node := SemanticYAMLNode{
+		Indent:       indent,
+		Key:          strings.TrimPrefix(key, "- "),
+		ListItem:     strings.HasPrefix(listItem, "- "),
+		DisplayValue: value,
+		SourceKind:   "derived",
+		EditKind:     "readonly",
+		Role:         "relationship",
+		EntityID:     entityID,
+		EntityKind:   entityKind,
+		EntityLabel:  entityLabel,
+		SourceAnchor: cloneSemanticSourceAnchor(anchor),
+		ViewTargets:  append([]SemanticViewTarget(nil), targets...),
+	}
+	if anchor != nil {
+		node.ObjectIndex = cloneIntPtr(anchor.ObjectIndex)
+		node.ObjectType = anchor.ObjectType
+		node.ObjectName = anchor.ObjectName
+	}
+	builder.addNode(node)
+}
+
 func (builder *semanticYAMLBuilder) objectKV(indent int, key string, value string, objectIndex int, objectType string, objectName string) {
 	builder.objectValue(indent, key, value, objectIndex, objectType, objectName, "derived", "readonly")
 }

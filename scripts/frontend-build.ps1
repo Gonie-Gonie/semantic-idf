@@ -48,6 +48,7 @@ $modules = @(
     "settings-client.js",
     "shortcuts.js",
     "state.js",
+    "thermal-topology-targets.js",
     "tools.js",
     "view-history.js"
 )

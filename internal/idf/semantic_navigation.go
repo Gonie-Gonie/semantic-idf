@@ -118,7 +118,9 @@ func buildSemanticNavigation(doc Document, ctx *semanticContext, model *Semantic
 		path := paths[lineIndex]
 		state.prepareZoneContext(*node, path)
 		node.SemanticPath = path
-		node.SourceAnchor = state.sourceAnchorForNode(*node)
+		if node.SourceAnchor == nil {
+			node.SourceAnchor = state.sourceAnchorForNode(*node)
+		}
 
 		descriptor := state.entityForNode(*node, path)
 		if descriptor.ID == "" {
@@ -161,6 +163,7 @@ func buildSemanticNavigation(doc Document, ctx *semanticContext, model *Semantic
 	// Synthetic occurrences carry explicit relationships. Do not let the last
 	// zone visited by the linear renderer leak into those records.
 	state.activeZone = semanticEntityDescriptor{}
+	state.addThermalTopologyRelationships()
 	state.addProfileGroupEntities()
 	state.addHVACDerivedEntities()
 	state.addDiagnosticEntities()
@@ -460,6 +463,13 @@ func (state *semanticNavigationBuildState) objectByIndex(index int) (Object, boo
 }
 
 func (state *semanticNavigationBuildState) entityForNode(node SemanticYAMLNode, path string) semanticEntityDescriptor {
+	if node.EntityID != "" && node.EntityKind != "" {
+		return semanticEntityDescriptor{
+			ID:    node.EntityID,
+			Kind:  node.EntityKind,
+			Label: firstNonEmpty(node.EntityLabel, node.ObjectName, node.DisplayValue, semanticLastPathSegment(path), node.EntityKind),
+		}
+	}
 	if referenced, ok := state.referencedEntityForNode(node); ok {
 		return referenced
 	}
@@ -629,7 +639,7 @@ func (state *semanticNavigationBuildState) hvacComponentEntity(object Object) se
 }
 
 func (state *semanticNavigationBuildState) viewTargetsFor(descriptor semanticEntityDescriptor, node SemanticYAMLNode, path string) []SemanticViewTarget {
-	var targets []SemanticViewTarget
+	targets := append([]SemanticViewTarget(nil), node.ViewTargets...)
 	add := func(target SemanticViewTarget) {
 		if target.View == "" || target.TargetID == "" {
 			return
@@ -686,6 +696,8 @@ func (state *semanticNavigationBuildState) viewTargetsFor(descriptor semanticEnt
 		add(SemanticViewTarget{View: "output", TargetKind: "request", TargetID: state.outputPanelTarget(node, descriptor), Label: descriptor.Label, Priority: 100})
 	case "diagnostic":
 		add(SemanticViewTarget{View: "diagnose", TargetKind: "diagnostic", TargetID: descriptor.ID, Label: descriptor.Label, Priority: 100})
+	case "thermal_boundary", "thermal_interface", "thermal_connection", "thermal_environment", "thermal_air_coupling", "thermal_issue":
+		add(SemanticViewTarget{View: "geometry", TargetKind: descriptor.Kind, TargetID: descriptor.ID, Label: descriptor.Label, Priority: 120})
 	case "construction", "material":
 		add(SemanticViewTarget{View: "geometry", TargetKind: descriptor.Kind, TargetID: descriptor.Label, Label: descriptor.Label, Priority: 70})
 	case "source-object":
@@ -801,6 +813,8 @@ func semanticPreferredTarget(path string, descriptor semanticEntityDescriptor, t
 		switch descriptor.Kind {
 		case "surface", "fenestration", "space":
 			preferredView = "geometry"
+		case "thermal_boundary", "thermal_interface", "thermal_connection", "thermal_environment", "thermal_air_coupling", "thermal_issue":
+			preferredView = "geometry"
 		case "schedule", "profile-item", "profile-group":
 			preferredView = "profile"
 		case "hvac-path", "hvac-loop", "hvac-component", "hvac-coupling", "hvac-network":
@@ -843,6 +857,14 @@ func semanticPreferredTarget(path string, descriptor semanticEntityDescriptor, t
 }
 
 func semanticContextKind(path string, entityKind string) string {
+	switch entityKind {
+	case "thermal_connection", "thermal_environment", "thermal_air_coupling":
+		return "thermal_connection_context"
+	case "thermal_boundary", "thermal_interface":
+		return "surface_boundary_context"
+	case "thermal_issue":
+		return "thermal_issue_context"
+	}
 	segments := semanticPathSegments(path)
 	if len(segments) >= 2 && segments[0] == "zones" {
 		sectionIndex := 2
@@ -887,6 +909,14 @@ func semanticContextKind(path string, entityKind string) string {
 		return "source_only"
 	}
 	return "definition"
+}
+
+func semanticLastPathSegment(path string) string {
+	segments := semanticPathSegments(path)
+	if len(segments) == 0 {
+		return ""
+	}
+	return segments[len(segments)-1]
 }
 
 func semanticOccurrenceRootPath(path string, descriptor semanticEntityDescriptor, anchor *SemanticSourceAnchor) string {
@@ -1228,15 +1258,128 @@ func (state *semanticNavigationBuildState) addDiagnosticEntities() {
 		}
 		path := "diagnostics/" + semanticIDToken(diagnostic.Code)
 		lineIndexes := []int(nil)
-		var related []string
+		related := append([]string(nil), diagnostic.RelatedEntityIDs...)
 		if base != nil {
 			path = base.Path + "/diagnostics/" + semanticIDToken(diagnostic.Code)
 			lineIndexes = append(lineIndexes, base.LineIndexes...)
 			related = append(related, base.EntityID)
 		}
-		target := SemanticViewTarget{View: "diagnose", TargetKind: "diagnostic", TargetID: diagnosticID, Label: descriptor.Label, Priority: 100}
-		state.addSyntheticOccurrence(descriptor, path, "diagnostic_occurrence", anchor, []SemanticViewTarget{target}, lineIndexes, related, "diagnose")
+		targets := []SemanticViewTarget{{View: "diagnose", TargetKind: "diagnostic", TargetID: diagnosticID, Label: descriptor.Label, Priority: 100}}
+		if strings.HasPrefix(diagnosticID, "topology-issue:") || strings.EqualFold(diagnostic.Category, "Topology") {
+			targets = append(targets, SemanticViewTarget{View: "geometry", TargetKind: "thermal_issue", TargetID: diagnosticID, Label: descriptor.Label, Priority: 120})
+		}
+		state.addSyntheticOccurrence(descriptor, path, "diagnostic_occurrence", anchor, targets, lineIndexes, related, "diagnose")
 	}
+}
+
+func (state *semanticNavigationBuildState) addThermalTopologyRelationships() {
+	if state.ctx == nil {
+		return
+	}
+	topology := state.ctx.geometry.Topology
+	nodesByID := map[string]ThermalTopologyNode{}
+	for _, node := range topology.Nodes {
+		nodesByID[node.ID] = node
+		if strings.HasPrefix(node.ID, "thermal-environment:") || strings.HasPrefix(node.ID, "thermal-external:") || strings.HasPrefix(node.ID, "thermal-unresolved:") {
+			state.ensureEntity(semanticEntityDescriptor{ID: node.ID, Kind: "thermal_environment", Label: node.Label})
+		}
+	}
+
+	for _, boundary := range topology.Boundaries {
+		boundaryDescriptor := semanticEntityDescriptor{ID: boundary.ID, Kind: "thermal_boundary", Label: boundary.SurfaceName}
+		state.ensureEntity(boundaryDescriptor)
+		state.relateSemanticEntities(boundaryDescriptor.ID, boundary.SurfaceEntityID)
+		state.relateSemanticEntities(boundaryDescriptor.ID, boundary.OwnerZoneID)
+		state.relateSemanticEntities(boundaryDescriptor.ID, boundary.OwnerSpaceID)
+		state.relateSemanticEntities(boundaryDescriptor.ID, boundary.TargetID)
+		if boundary.PairID != "" {
+			interfaceDescriptor := semanticEntityDescriptor{ID: boundary.PairID, Kind: "thermal_interface", Label: thermalInterfaceLabel(boundary, topology.Boundaries)}
+			state.ensureEntity(interfaceDescriptor)
+			state.relateSemanticEntities(interfaceDescriptor.ID, boundaryDescriptor.ID)
+			state.relateSemanticEntities(interfaceDescriptor.ID, boundary.SurfaceEntityID)
+			state.relateSemanticEntities(interfaceDescriptor.ID, boundary.CounterpartSurfaceEntityID)
+		}
+	}
+
+	for _, coupling := range topology.AirCouplings {
+		descriptor := semanticEntityDescriptor{ID: coupling.ID, Kind: "thermal_air_coupling", Label: firstNonEmpty(coupling.ObjectName, coupling.CouplingKind)}
+		state.ensureEntity(descriptor)
+		state.relateSemanticEntities(descriptor.ID, coupling.FromNodeID)
+		state.relateSemanticEntities(descriptor.ID, coupling.ToNodeID)
+		state.relateSemanticEntities(descriptor.ID, coupling.EntityID)
+	}
+
+	for _, connection := range topology.Connections {
+		descriptor := semanticEntityDescriptor{
+			ID:    connection.ID,
+			Kind:  "thermal_connection",
+			Label: thermalConnectionLabel(connection, nodesByID),
+		}
+		state.ensureEntity(descriptor)
+		state.relateSemanticEntities(descriptor.ID, connection.FromNodeID)
+		state.relateSemanticEntities(descriptor.ID, connection.ToNodeID)
+		relatedIDs := appendUniqueStrings(nil, connection.BoundaryIDs...)
+		relatedIDs = appendUniqueStrings(relatedIDs, connection.OpeningIDs...)
+		relatedIDs = appendUniqueStrings(relatedIDs, connection.AirCouplingIDs...)
+		for _, relatedID := range relatedIDs {
+			state.relateSemanticEntities(descriptor.ID, relatedID)
+		}
+	}
+}
+
+func (state *semanticNavigationBuildState) relateSemanticEntities(leftID string, rightID string) {
+	leftID = strings.TrimSpace(leftID)
+	rightID = strings.TrimSpace(rightID)
+	if leftID == "" || rightID == "" || leftID == rightID {
+		return
+	}
+	left := state.ensureEntity(semanticEntityDescriptor{ID: leftID, Kind: semanticTopologyEntityKind(leftID), Label: leftID})
+	left.RelatedEntityIDs = appendUniqueString(left.RelatedEntityIDs, rightID)
+	right := state.ensureEntity(semanticEntityDescriptor{ID: rightID, Kind: semanticTopologyEntityKind(rightID), Label: rightID})
+	right.RelatedEntityIDs = appendUniqueString(right.RelatedEntityIDs, leftID)
+}
+
+func semanticTopologyEntityKind(entityID string) string {
+	switch {
+	case strings.HasPrefix(entityID, "thermal-boundary:"):
+		return "thermal_boundary"
+	case strings.HasPrefix(entityID, "thermal-interface:"):
+		return "thermal_interface"
+	case strings.HasPrefix(entityID, "thermal-connection:"):
+		return "thermal_connection"
+	case strings.HasPrefix(entityID, "thermal-environment:"), strings.HasPrefix(entityID, "thermal-external:"), strings.HasPrefix(entityID, "thermal-unresolved:"):
+		return "thermal_environment"
+	case strings.HasPrefix(entityID, "thermal-air-coupling:"):
+		return "thermal_air_coupling"
+	case strings.HasPrefix(entityID, "topology-issue:"):
+		return "diagnostic"
+	case strings.HasPrefix(entityID, "zone:"):
+		return "zone"
+	case strings.HasPrefix(entityID, "space:"):
+		return "space"
+	case strings.HasPrefix(entityID, "surface:"):
+		return "surface"
+	case strings.HasPrefix(entityID, "fenestration:"):
+		return "fenestration"
+	default:
+		return "source-object"
+	}
+}
+
+func thermalInterfaceLabel(boundary ThermalBoundaryRecord, boundaries []ThermalBoundaryRecord) string {
+	for _, counterpart := range boundaries {
+		if counterpart.ID == boundary.ID || counterpart.PairID != boundary.PairID {
+			continue
+		}
+		return boundary.SurfaceName + " ↔ " + counterpart.SurfaceName
+	}
+	return boundary.SurfaceName
+}
+
+func thermalConnectionLabel(connection ThermalConnectionAggregate, nodesByID map[string]ThermalTopologyNode) string {
+	fromLabel := firstNonEmpty(nodesByID[connection.FromNodeID].Label, connection.FromNodeID)
+	toLabel := firstNonEmpty(nodesByID[connection.ToNodeID].Label, connection.ToNodeID)
+	return fromLabel + " ↔ " + toLabel
 }
 
 func (state *semanticNavigationBuildState) addSyntheticOccurrence(

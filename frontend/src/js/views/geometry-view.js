@@ -3,6 +3,10 @@ import { elements, escapeHTML, normalizeGeometryMode, normalizeTopologyAreaBasis
 import { t } from "../i18n.js";
 import { refreshResultPanelSelectionStyles } from "../panel-navigation-adapters.js";
 import { selectSemanticEntity } from "../selection-controller.js";
+import {
+  isThermalTopologyTargetKind,
+  resolveThermalTopologyTarget,
+} from "../thermal-topology-targets.js";
 
 let rendererState = null;
 let temporaryGeometryReveal = null;
@@ -140,7 +144,9 @@ export async function revealGeometrySelection(selection, options = {}, context) 
   if (Number.isInteger(storyIndex)) {
     state.selectedGeometryStory = storyIndex;
   }
-  if (state.geometryMode === "plan" && !geometryEntityHasPlanShape(entity, geometry)) {
+  if (entity.thermalTarget) {
+    state.geometryMode = "thermal";
+  } else if (state.geometryMode === "plan" && !geometryEntityHasPlanShape(entity, geometry)) {
     state.geometryMode = "3d";
   }
   temporaryGeometryReveal = {
@@ -148,6 +154,9 @@ export async function revealGeometrySelection(selection, options = {}, context) 
     id: entity.id,
     ownerZoneId: ownerZone?.id || "",
     baseSurfaceId: entity.kind === "window" ? baseSurfaceForWindow(geometry, entity.item)?.id || "" : "",
+    surfaceIds: [...(entity.thermalTarget?.surfaceIds || [])],
+    windowIds: [...(entity.thermalTarget?.windowIds || [])],
+    nodeIds: [...(entity.thermalTarget?.nodeIds || [])],
   };
   state.selectedGeometryKind = entity.kind;
   state.selectedGeometryId = entity.id;
@@ -267,7 +276,10 @@ function renderThermalTopology(geometry) {
   const count = connections.length || boundaries.length;
   const areaField = normalizeTopologyAreaBasis(state.topologyAreaBasis) === "physical" ? "physicalGrossArea" : "effectiveGrossArea";
   const totalArea = boundaries.reduce((sum, boundary) => sum + (Number(boundary?.[areaField]) || 0), 0);
-  elements.thermalTopologyGraph.innerHTML = `<div class="empty">${escapeHTML(
+  const selectedTargetAttributes = isThermalTopologyTargetKind(state.selectedGeometryKind) && state.selectedGeometryId
+    ? geometryNavigationAttributes(state.selectedGeometryKind, state.selectedGeometryId)
+    : "";
+  elements.thermalTopologyGraph.innerHTML = `<div class="empty" ${selectedTargetAttributes}>${escapeHTML(
     count
       ? t("topology.connectionAreaSummary", { count, area: formatArea(totalArea) })
       : t("topology.noConnections"),
@@ -1300,6 +1312,15 @@ function geometryTargetEntity(target, geometry = state.report?.geometry) {
   }
   const targetId = String(target.targetId || "");
   const requestedKind = normalizeGeometryKind(target.targetKind);
+  const thermalTarget = resolveThermalTopologyTarget(target, geometry);
+  if (thermalTarget) {
+    return {
+      kind: thermalTarget.kind,
+      id: thermalTarget.id,
+      item: thermalTarget.item,
+      thermalTarget,
+    };
+  }
   const candidates = requestedKind ? [requestedKind] : ["zone", "space", "surface", "window", "story"];
   for (const kind of candidates) {
     if (kind === "zone") {
@@ -1355,6 +1376,7 @@ function preferredOccurrenceForGeometryTarget(targetId, selection = {}, navigati
     .map((occurrence, order) => ({
       occurrence,
       order,
+      contextPriority: thermalOccurrenceContextPriority(occurrence),
       exact: Number(occurrence.occurrenceId === selection.occurrenceId),
       current: Number(occurrence.occurrenceId === state.semanticCurrentOccurrenceId),
       geometryContext: Number(occurrence.contextKind === "zone_geometry" || /(^|\/)geometry(\/|$)/.test(occurrence.path || "")),
@@ -1362,6 +1384,7 @@ function preferredOccurrenceForGeometryTarget(targetId, selection = {}, navigati
       preferred: Number(occurrence.preferredView === "geometry"),
     }))
     .sort((left, right) => (
+      right.contextPriority - left.contextPriority ||
       right.geometryContext - left.geometryContext ||
       right.exact - left.exact ||
       right.current - left.current ||
@@ -1369,6 +1392,16 @@ function preferredOccurrenceForGeometryTarget(targetId, selection = {}, navigati
       right.preferred - left.preferred ||
       left.order - right.order
     ))[0]?.occurrence || null;
+}
+
+function thermalOccurrenceContextPriority(occurrence) {
+  const context = String(occurrence?.contextKind || "");
+  if (context === "thermal_connection_context") return 4;
+  if (context === "surface_boundary_context") return 3;
+  if (context === "zone_geometry") {
+    return /(^|\/)surfaces(\/|$)/.test(String(occurrence?.path || "")) ? 1 : 2;
+  }
+  return context === "definition" ? 1 : 0;
 }
 
 function geometryNavigationAttributes(kind, targetId, explicitAnchor = {}, options = {}) {
@@ -1431,6 +1464,20 @@ function geometryStoryMatchesTarget(story, targetId) {
 }
 
 function owningZoneForGeometryEntity(entity, geometry) {
+  if (entity?.thermalTarget) {
+    for (const surfaceId of entity.thermalTarget.surfaceIds || []) {
+      const surface = surfaceByID(geometry, surfaceId);
+      const zone = surface ? zoneByName(geometry, surface.zoneName) : null;
+      if (zone) return zone;
+    }
+    for (const nodeId of entity.thermalTarget.nodeIds || []) {
+      const zone = (geometry?.zones || []).find((candidate) => candidate.id === nodeId);
+      if (zone) return zone;
+      const space = spaceByID(geometry, nodeId);
+      const owner = space ? zoneByName(geometry, space.zoneName) : null;
+      if (owner) return owner;
+    }
+  }
   if (entity?.kind === "zone") {
     return entity.item;
   }
@@ -1455,6 +1502,10 @@ function geometryStoryIndexForEntity(entity, geometry) {
 }
 
 function geometryEntityHasPlanShape(entity, geometry) {
+  if (entity?.thermalTarget) {
+    return (entity.thermalTarget.surfaceIds || []).some((id) => hasPlanVertices(surfaceByID(geometry, id))) ||
+      (entity.thermalTarget.windowIds || []).some((id) => hasPlanVertices(windowByID(geometry, id)));
+  }
   if (entity?.kind === "zone") {
     return (entity.item.surfaceIds || []).some((id) => {
       const surface = surfaceByID(geometry, id);
@@ -1501,13 +1552,17 @@ function commonPathPrefixLength(left, right) {
 }
 
 function geometryZoneSurfaceIsTemporarilyVisible(surface, geometry) {
+  const zoneID = zoneIdForName(geometry, surface.zoneName);
   return Boolean(
-    temporaryGeometryReveal?.ownerZoneId &&
-    temporaryGeometryReveal.ownerZoneId === zoneIdForName(geometry, surface.zoneName),
+    (temporaryGeometryReveal?.ownerZoneId && temporaryGeometryReveal.ownerZoneId === zoneID) ||
+    temporaryGeometryReveal?.nodeIds?.includes(zoneID),
   );
 }
 
 function geometrySurfaceIsTemporarilyVisible(surface) {
+  if (temporaryGeometryReveal?.surfaceIds?.includes(surface.id)) {
+    return true;
+  }
   if (temporaryGeometryReveal?.kind === "surface" && temporaryGeometryReveal.id === surface.id) {
     return true;
   }
@@ -1523,6 +1578,9 @@ function geometrySurfaceIsTemporarilyVisible(surface) {
 }
 
 function projectedSurfaceIsTemporarilyVisible(surface) {
+  if (temporaryGeometryReveal?.surfaceIds?.includes(surface.id)) {
+    return true;
+  }
   if (temporaryGeometryReveal?.kind === "surface" && temporaryGeometryReveal.id === surface.id) {
     return true;
   }
@@ -1537,11 +1595,21 @@ function projectedSurfaceIsTemporarilyVisible(surface) {
 }
 
 function geometryWindowIsTemporarilyVisible(windowItem) {
-  return temporaryGeometryReveal?.kind === "window" && temporaryGeometryReveal.id === windowItem.id;
+  return temporaryGeometryReveal?.windowIds?.includes(windowItem.id) ||
+    temporaryGeometryReveal?.kind === "window" && temporaryGeometryReveal.id === windowItem.id;
 }
 
 function geometryRenderableMatchesSelection(kind, id) {
   const normalizedKind = normalizeGeometryKind(kind);
+  if (normalizedKind === "surface" && temporaryGeometryReveal?.surfaceIds?.includes(String(id || ""))) {
+    return true;
+  }
+  if (normalizedKind === "window" && temporaryGeometryReveal?.windowIds?.includes(String(id || ""))) {
+    return true;
+  }
+  if ((normalizedKind === "zone" || normalizedKind === "space") && temporaryGeometryReveal?.nodeIds?.includes(String(id || ""))) {
+    return true;
+  }
   if (normalizedKind === state.selectedGeometryKind && String(id || "") === state.selectedGeometryId) {
     return true;
   }

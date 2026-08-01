@@ -760,6 +760,7 @@ func writeSemanticZoneGeometry(builder *semanticYAMLBuilder, ctx *semanticContex
 	builder.kv(5, "coordinate_system", blankAs(ctx.geometry.CoordinateSystem, "relative"))
 	builder.kv(5, "vertex_entry_direction", blankAs(ctx.geometry.VertexEntryDirection, "counterclockwise"))
 	builder.kv(5, "starting_vertex_position", blankAs(ctx.geometry.StartingVertexPosition, "upperleftcorner"))
+	writeSemanticZoneThermalConnections(builder, ctx, zoneName)
 	if len(surfaces) == 0 {
 		return
 	}
@@ -779,7 +780,7 @@ func writeSemanticZoneGeometry(builder *semanticYAMLBuilder, ctx *semanticContex
 		builder.rawForObject(6, "boundary:", surface.ObjectIndex, surface.Type, surface.Name)
 		semanticFieldByNames(builder, 7, "condition", ctx.objectByIndex[surface.ObjectIndex], surface.OutsideBoundary, "Outside Boundary Condition")
 		semanticFieldByNames(builder, 7, "object", ctx.objectByIndex[surface.ObjectIndex], "", "Outside Boundary Condition Object")
-		writeSemanticSurfaceBoundaryResolution(builder, ctx, 7, surface)
+		writeSemanticSurfaceThermalBoundary(builder, ctx, 7, surface)
 		builder.rawForObject(6, "exposure:", surface.ObjectIndex, surface.Type, surface.Name)
 		semanticFieldByNames(builder, 7, "sun", ctx.objectByIndex[surface.ObjectIndex], "", "Sun Exposure")
 		semanticFieldByNames(builder, 7, "wind", ctx.objectByIndex[surface.ObjectIndex], "", "Wind Exposure")
@@ -852,6 +853,7 @@ func writeSemanticSpaces(builder *semanticYAMLBuilder, ctx *semanticContext, zon
 		if space.SpaceType != "" {
 			builder.kvForObject(5, "space_type", space.SpaceType, objectIndex, objectType, space.Name)
 		}
+		writeSemanticSpaceThermalConnections(builder, ctx, 5, space)
 		writeSemanticSpaceLoads(builder, ctx, 5, space.Name)
 		writeSemanticSpaceHVAC(builder, ctx, 5, space.Name)
 	}
@@ -2300,26 +2302,261 @@ func semanticOutdoorAirSpecsForZone(ctx *semanticContext, zoneName string) []Obj
 	return out
 }
 
-func writeSemanticSurfaceBoundaryResolution(builder *semanticYAMLBuilder, ctx *semanticContext, indent int, surface GeometrySurface) {
-	if !strings.EqualFold(surface.OutsideBoundary, "Surface") {
+func writeSemanticZoneThermalConnections(builder *semanticYAMLBuilder, ctx *semanticContext, zoneName string) {
+	topology := ctx.geometry.Topology
+	zoneID := ""
+	for _, signature := range topology.ZoneSignatures {
+		if strings.EqualFold(signature.ZoneName, zoneName) {
+			zoneID = signature.ZoneID
+			break
+		}
+	}
+	if zoneID == "" {
 		return
 	}
-	counterpart, _, _ := semanticFieldValue(ctx.objectByIndex[surface.ObjectIndex], "Outside Boundary Condition Object")
-	resolution := "missing"
-	if counterpart != "" {
-		resolution = "one_way"
-		for _, other := range ctx.geometry.Surfaces {
-			if strings.EqualFold(other.Name, counterpart) {
-				reverse, _, _ := semanticFieldValue(ctx.objectByIndex[other.ObjectIndex], "Outside Boundary Condition Object")
-				if strings.EqualFold(reverse, surface.Name) {
-					resolution = "resolved"
-				}
-				break
+	nodesByID := semanticThermalNodesByID(topology.Nodes)
+	connections := []ThermalConnectionAggregate{}
+	for _, connection := range topology.Connections {
+		if connection.FromNodeID == zoneID || connection.ToNodeID == zoneID {
+			connections = append(connections, connection)
+		}
+	}
+	airCouplings := semanticThermalAirCouplingsForZone(topology, zoneID, zoneName, nodesByID)
+	if len(connections) == 0 && len(airCouplings) == 0 {
+		return
+	}
+
+	builder.raw(4, "thermal_connections:")
+	usedKeys := map[string]int{}
+	for _, connection := range connections {
+		if connection.RelationKind == "air_coupling" {
+			continue
+		}
+		otherNodeID := semanticOtherThermalNodeID(connection, zoneID)
+		otherNode := nodesByID[otherNodeID]
+		if otherNode.Kind == "zone" {
+			continue
+		}
+		key := semanticThermalConnectionKey(connection, otherNode)
+		usedKeys[key]++
+		if usedKeys[key] > 1 {
+			key += "_" + fmt.Sprintf("%d", usedKeys[key])
+		}
+		builder.raw(5, key+":")
+		writeSemanticThermalConnectionMetrics(builder, 6, connection, otherNode, semanticTopologyAnchor(connection.SourceAnchors, ""))
+	}
+
+	adjacent := []ThermalConnectionAggregate{}
+	for _, connection := range connections {
+		if connection.RelationKind == "air_coupling" {
+			continue
+		}
+		if nodesByID[semanticOtherThermalNodeID(connection, zoneID)].Kind == "zone" {
+			adjacent = append(adjacent, connection)
+		}
+	}
+	if len(adjacent) > 0 {
+		builder.raw(5, "adjacent_zones:")
+		for _, connection := range adjacent {
+			otherNode := nodesByID[semanticOtherThermalNodeID(connection, zoneID)]
+			anchor := semanticTopologyAnchor(connection.SourceAnchors, "")
+			target := semanticThermalViewTarget("thermal_connection", connection.ID, thermalConnectionLabel(connection, nodesByID), 120)
+			builder.topologyValue(6, "- zone", firstNonEmpty(otherNode.Label, otherNode.ZoneName, otherNode.ID), connection.ID, "thermal_connection", target.Label, anchor, target)
+			writeSemanticThermalConnectionMetrics(builder, 7, connection, otherNode, anchor)
+		}
+	}
+	if len(airCouplings) > 0 {
+		builder.raw(5, "air_couplings:")
+		for _, coupling := range airCouplings {
+			otherNodeID := coupling.ToNodeID
+			if semanticThermalNodeBelongsToZone(nodesByID[coupling.ToNodeID], zoneID, zoneName) {
+				otherNodeID = coupling.FromNodeID
+			}
+			otherNode := nodesByID[otherNodeID]
+			label := firstNonEmpty(coupling.ObjectName, coupling.CouplingKind)
+			target := semanticThermalViewTarget("thermal_air_coupling", coupling.ID, label, 120)
+			anchor := semanticTopologyAnchor(coupling.SourceAnchors, "")
+			builder.topologyValue(6, "- target", firstNonEmpty(otherNode.Label, "Unresolved"), coupling.ID, "thermal_air_coupling", label, anchor, target)
+			builder.topologyValue(7, "kind", coupling.CouplingKind, coupling.ID, "thermal_air_coupling", label, anchor, target)
+			if coupling.DesignFlowRate > 0 {
+				builder.topologyValue(7, "design_flow", semanticQuantity(coupling.DesignFlowRate, blankAs(coupling.Unit, "m3/s")), coupling.ID, "thermal_air_coupling", label, anchor, target)
+			}
+			builder.topologyValue(7, "coupling", coupling.ID, coupling.ID, "thermal_air_coupling", label, anchor, target)
+		}
+	}
+}
+
+func writeSemanticThermalConnectionMetrics(builder *semanticYAMLBuilder, indent int, connection ThermalConnectionAggregate, otherNode ThermalTopologyNode, anchor *SemanticSourceAnchor) {
+	label := firstNonEmpty(otherNode.Label, connection.RelationKind)
+	target := semanticThermalViewTarget("thermal_connection", connection.ID, label, 120)
+	if otherNode.ID != "" && otherNode.Kind != "zone" && otherNode.Kind != "space" {
+		environmentTarget := semanticThermalViewTarget("thermal_environment", otherNode.ID, label, 115)
+		builder.topologyValue(indent, "environment", label, otherNode.ID, "thermal_environment", label, anchor, environmentTarget, target)
+	}
+	builder.topologyValue(indent, "area", semanticQuantity(connection.EffectiveGrossArea, "m2"), connection.ID, "thermal_connection", label, anchor, target)
+	ua := "unresolved"
+	if connection.HasUA {
+		ua = semanticQuantity(connection.TotalUA, "W/K")
+	}
+	builder.topologyValue(indent, "ua", ua, connection.ID, "thermal_connection", label, anchor, target)
+	builder.topologyValue(indent, "connection", connection.ID, connection.ID, "thermal_connection", label, anchor, target)
+}
+
+func writeSemanticSpaceThermalConnections(builder *semanticYAMLBuilder, ctx *semanticContext, indent int, space semanticSpace) {
+	spaceID := ""
+	for _, node := range ctx.geometry.Topology.Nodes {
+		if node.Kind == "space" && strings.EqualFold(node.SpaceName, space.Name) {
+			spaceID = node.ID
+			break
+		}
+	}
+	if spaceID == "" {
+		return
+	}
+	nodesByID := semanticThermalNodesByID(ctx.geometry.Topology.Nodes)
+	boundaries := []ThermalBoundaryRecord{}
+	for _, boundary := range ctx.geometry.Topology.Boundaries {
+		if boundary.OwnerSpaceID == spaceID {
+			boundaries = append(boundaries, boundary)
+		}
+	}
+	if len(boundaries) == 0 {
+		return
+	}
+	builder.raw(indent, "thermal_connections:")
+	for _, boundary := range boundaries {
+		anchor := semanticTopologyAnchor(boundary.SourceAnchors, "Outside Boundary Condition")
+		label := firstNonEmpty(nodesByID[boundary.TargetID].Label, boundary.TargetName, boundary.BoundaryCondition)
+		target := semanticThermalViewTarget("thermal_boundary", boundary.ID, boundary.SurfaceName, 120)
+		builder.topologyValue(indent+1, "- target", label, boundary.ID, "thermal_boundary", boundary.SurfaceName, anchor, target)
+		builder.topologyValue(indent+2, "relation", boundary.RelationKind, boundary.ID, "thermal_boundary", boundary.SurfaceName, anchor, target)
+		builder.topologyValue(indent+2, "area", semanticQuantity(boundary.EffectiveGrossArea, "m2"), boundary.ID, "thermal_boundary", boundary.SurfaceName, anchor, target)
+		ua := "unresolved"
+		if boundary.HasUA {
+			ua = semanticQuantity(boundary.TotalUA, "W/K")
+		}
+		builder.topologyValue(indent+2, "ua", ua, boundary.ID, "thermal_boundary", boundary.SurfaceName, anchor, target)
+		builder.topologyValue(indent+2, "boundary", boundary.ID, boundary.ID, "thermal_boundary", boundary.SurfaceName, anchor, target)
+		if boundary.PairID != "" {
+			interfaceTarget := semanticThermalViewTarget("thermal_interface", boundary.PairID, boundary.SurfaceName, 125)
+			builder.topologyValue(indent+2, "interface", boundary.PairID, boundary.PairID, "thermal_interface", boundary.SurfaceName, anchor, interfaceTarget)
+		}
+	}
+}
+
+func writeSemanticSurfaceThermalBoundary(builder *semanticYAMLBuilder, ctx *semanticContext, indent int, surface GeometrySurface) {
+	boundary, found := semanticThermalBoundaryForSurface(ctx.geometry.Topology, surface)
+	if !found {
+		return
+	}
+	nodesByID := semanticThermalNodesByID(ctx.geometry.Topology.Nodes)
+	label := boundary.SurfaceName
+	anchor := semanticTopologyAnchor(boundary.SourceAnchors, "Outside Boundary Condition")
+	target := semanticThermalViewTarget("thermal_boundary", boundary.ID, label, 120)
+	boundaryTargets := []SemanticViewTarget{target}
+	if connection, ok := semanticThermalConnectionForBoundary(ctx.geometry.Topology, boundary.ID); ok {
+		boundaryTargets = append(boundaryTargets, semanticThermalViewTarget("thermal_connection", connection.ID, thermalConnectionLabel(connection, nodesByID), 110))
+	}
+	targetLabel := firstNonEmpty(boundary.TargetName, nodesByID[boundary.TargetID].Label, boundary.BoundaryObjectRaw, boundary.BoundaryCondition)
+	builder.topologyValue(indent, "target", targetLabel, boundary.ID, "thermal_boundary", label, anchor, boundaryTargets...)
+	builder.topologyValue(indent, "relation", boundary.RelationKind, boundary.ID, "thermal_boundary", label, anchor, boundaryTargets...)
+	geometryCheck := firstNonEmpty(boundary.GeometryCheck.Status, "not_applicable")
+	builder.topologyValue(indent, "geometry_check", geometryCheck, boundary.ID, "thermal_boundary", label, anchor, boundaryTargets...)
+	if boundary.PairID != "" {
+		interfaceTarget := semanticThermalViewTarget("thermal_interface", boundary.PairID, label, 125)
+		interfaceTargets := append([]SemanticViewTarget{interfaceTarget}, boundaryTargets[1:]...)
+		builder.topologyValue(indent, "interface", boundary.PairID, boundary.PairID, "thermal_interface", label, anchor, interfaceTargets...)
+	}
+	ua := "unresolved"
+	if boundary.HasUA {
+		ua = semanticQuantity(boundary.TotalUA, "W/K")
+	}
+	targets := append([]SemanticViewTarget(nil), boundaryTargets...)
+	if boundary.ConstructionName != "" {
+		targets = append(targets, SemanticViewTarget{View: "geometry", TargetKind: "construction", TargetID: boundary.ConstructionName, Label: boundary.ConstructionName, Priority: 80})
+	}
+	builder.topologyValue(indent, "ua", ua, boundary.ID, "thermal_boundary", label, semanticTopologyAnchor(boundary.SourceAnchors, "Construction Name"), targets...)
+}
+
+func semanticThermalConnectionForBoundary(topology ThermalTopologyReport, boundaryID string) (ThermalConnectionAggregate, bool) {
+	for _, connection := range topology.Connections {
+		for _, candidateID := range connection.BoundaryIDs {
+			if candidateID == boundaryID {
+				return connection, true
 			}
 		}
 	}
-	builder.kvForObject(indent, "counterpart", blankAs(counterpart, "missing"), surface.ObjectIndex, surface.Type, surface.Name)
-	builder.kvForObject(indent, "resolution", resolution, surface.ObjectIndex, surface.Type, surface.Name)
+	return ThermalConnectionAggregate{}, false
+}
+
+func semanticThermalBoundaryForSurface(topology ThermalTopologyReport, surface GeometrySurface) (ThermalBoundaryRecord, bool) {
+	for _, boundary := range topology.Boundaries {
+		if boundary.SurfaceID == surface.ID || boundary.SurfaceObjectIndex == surface.ObjectIndex {
+			return boundary, true
+		}
+	}
+	return ThermalBoundaryRecord{}, false
+}
+
+func semanticThermalNodesByID(nodes []ThermalTopologyNode) map[string]ThermalTopologyNode {
+	byID := make(map[string]ThermalTopologyNode, len(nodes))
+	for _, node := range nodes {
+		byID[node.ID] = node
+	}
+	return byID
+}
+
+func semanticOtherThermalNodeID(connection ThermalConnectionAggregate, ownerNodeID string) string {
+	if connection.FromNodeID == ownerNodeID {
+		return connection.ToNodeID
+	}
+	return connection.FromNodeID
+}
+
+func semanticThermalConnectionKey(connection ThermalConnectionAggregate, target ThermalTopologyNode) string {
+	switch connection.RelationKind {
+	case "exterior":
+		return "outdoors"
+	case "ground", "foundation", "ground_preprocessor":
+		return "ground"
+	case "adiabatic_explicit", "adiabatic_self_reference":
+		return "adiabatic"
+	case "invalid":
+		return "invalid"
+	}
+	return firstNonEmpty(semanticIDToken(target.Kind), semanticIDToken(connection.RelationKind), "other_boundary")
+}
+
+func semanticThermalAirCouplingsForZone(topology ThermalTopologyReport, zoneID string, zoneName string, nodesByID map[string]ThermalTopologyNode) []ThermalAirCoupling {
+	values := []ThermalAirCoupling{}
+	for _, coupling := range topology.AirCouplings {
+		if semanticThermalNodeBelongsToZone(nodesByID[coupling.FromNodeID], zoneID, zoneName) || semanticThermalNodeBelongsToZone(nodesByID[coupling.ToNodeID], zoneID, zoneName) {
+			values = append(values, coupling)
+		}
+	}
+	return values
+}
+
+func semanticThermalNodeBelongsToZone(node ThermalTopologyNode, zoneID string, zoneName string) bool {
+	return node.ID == zoneID || strings.EqualFold(node.ZoneName, zoneName)
+}
+
+func semanticTopologyAnchor(anchors []SemanticSourceAnchor, preferredField string) *SemanticSourceAnchor {
+	for _, anchor := range anchors {
+		if preferredField != "" && strings.EqualFold(anchor.FieldName, preferredField) {
+			copy := anchor
+			return &copy
+		}
+	}
+	if len(anchors) == 0 {
+		return nil
+	}
+	copy := anchors[0]
+	return &copy
+}
+
+func semanticThermalViewTarget(kind string, id string, label string, priority int) SemanticViewTarget {
+	return SemanticViewTarget{View: "geometry", TargetKind: kind, TargetID: id, Label: label, Priority: priority}
 }
 
 func writeSemanticBoundaryExposureValidation(builder *semanticYAMLBuilder, ctx *semanticContext, indent int, surface GeometrySurface) {

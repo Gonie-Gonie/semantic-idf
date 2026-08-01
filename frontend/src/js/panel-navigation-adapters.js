@@ -500,11 +500,22 @@ function preferredOccurrence(occurrences, context = {}) {
         Number(String(occurrence.contextKind || "") === occurrenceContext) * 800_000_000 +
         Number(viewTargetMatches(occurrence, context.viewId, context.targetId)) * 100_000_000 +
         Number(occurrence.occurrenceId === state.semanticCurrentOccurrenceId) * 10_000_000 +
+        Number(context.viewId === "geometry") * thermalOccurrenceContextPriority(occurrence) * 1_000_000 +
         commonPathPrefixLength(occurrence.path, currentPath) * 100_000 +
         Number(String(occurrence.preferredView || "") === context.viewId) * 10_000 +
         Number(/(^|\/)definitions?(\/|$)/i.test(occurrence.path || "")),
     }))
     .sort((left, right) => right.score - left.score || left.order - right.order)[0]?.occurrence || null;
+}
+
+function thermalOccurrenceContextPriority(occurrence) {
+  const context = String(occurrence?.contextKind || "");
+  if (context === "thermal_connection_context") return 4;
+  if (context === "surface_boundary_context") return 3;
+  if (context === "zone_geometry") {
+    return /(^|\/)surfaces(\/|$)/.test(String(occurrence?.path || "")) ? 1 : 2;
+  }
+  return context === "definition" ? 1 : 0;
 }
 
 function viewTargetIdsForSelection(viewId, selection, navigation) {
