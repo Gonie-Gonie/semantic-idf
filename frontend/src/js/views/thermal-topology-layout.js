@@ -19,6 +19,8 @@ export function thermalTopologyLayoutCacheKey(geometry, options = {}, viewport =
     normalizeThermalTopologyGraphLevel(options.graphLevel),
     normalizeThermalTopologyLayout(options.layout),
     normalizeThermalTopologyScope(options.scope),
+    options.metric || "topology",
+    options.areaComponent || "gross",
     options.storyIndex ?? "all",
     options.selectedEntityId || "",
     Math.min(3, Math.max(1, Number(options.neighborDepth) || 1)),
@@ -38,6 +40,8 @@ export function createThermalTopologyLayoutModel(geometry, options = {}) {
     graphLevel: normalizeThermalTopologyGraphLevel(options.graphLevel),
     layout: normalizeThermalTopologyLayout(options.layout),
     scope: normalizeThermalTopologyScope(options.scope),
+    metric: String(options.metric || "topology"),
+    areaComponent: String(options.areaComponent || "gross"),
     areaBasis,
     areaField: areaBasis === "physical" ? "physicalGrossArea" : "effectiveGrossArea",
     nodes: [...(topology.nodes || [])],
@@ -45,11 +49,17 @@ export function createThermalTopologyLayoutModel(geometry, options = {}) {
     boundaries: [...(topology.boundaries || [])],
     openings: options.showOpenings ? [...(topology.openings || [])] : [],
     airCouplings: options.showAirCoupling ? [...(topology.airCouplings || [])] : [],
+    issueLinks: [...(topology.issueLinks || [])],
+    zoneSignatures: [...(topology.zoneSignatures || [])],
   };
-  const expanded = options.expandExternalTargets ? expandExternalTargets(base) : base;
-  const scoped = applyThermalTopologyScope(expanded, options);
+  if (base.metric === "qa") {
+    base.connections.push(...qaObservationConnections(topology, base.boundaries));
+  }
+  const scoped = applyThermalTopologyScope(base, options);
+  const expanded = options.expandExternalTargets ? expandExternalTargets(scoped) : scoped;
+  const detailed = base.graphLevel === "boundary" ? createBoundaryDetailModel(expanded, options) : expanded;
   return {
-    ...scoped,
+    ...detailed,
     cacheKey: thermalTopologyLayoutCacheKey(geometry, options),
   };
 }
@@ -57,9 +67,11 @@ export function createThermalTopologyLayoutModel(geometry, options = {}) {
 export function computeThermalTopologyLayout(model, viewport = {}) {
   const width = Math.max(360, Number(viewport.width) || 900);
   const height = Math.max(280, Number(viewport.height) || 600);
-  const positions = model.layout === "network"
-    ? computeNetworkLayout(model, { width, height })
-    : computeSpatialLayout(model, { width, height });
+  const positions = model.graphLevel === "boundary"
+    ? computeBoundaryLayout(model, { width, height })
+    : model.layout === "network"
+      ? computeNetworkLayout(model, { width, height })
+      : computeSpatialLayout(model, { width, height });
   resolveNodeCollisions(positions, model.nodes, { width, height });
   const parallelCounts = new Map();
   const edges = model.connections.map((connection) => {
@@ -78,6 +90,29 @@ export function computeThermalTopologyLayout(model, viewport = {}) {
     };
   }).filter((edge) => edge.route);
   return { width, height, positions, edges };
+}
+
+export function computeBoundaryLayout(model, viewport = {}) {
+  const width = Math.max(560, Number(viewport.width) || 900);
+  const height = Math.max(320, Number(viewport.height) || 600);
+  const positions = {};
+  const boundaries = model.nodes.filter((node) => node.kind === "thermal_boundary").sort(compareNodes);
+  const interfaces = model.nodes.filter((node) => node.kind === "thermal_interface").sort(compareNodes);
+  const openings = model.nodes.filter((node) => node.kind === "window").sort(compareNodes);
+  const owners = model.nodes.filter((node) => node.kind === "zone" || node.kind === "space").sort(compareNodes);
+  const external = model.nodes.filter(isExternalNode).sort(compareNodes);
+  const rowY = (index, count) => LAYOUT_PADDING + (index + 1) * ((height - LAYOUT_PADDING * 2) / (count + 1));
+  owners.forEach((node, index) => { positions[node.id] = { x: LAYOUT_PADDING, y: rowY(index, owners.length) }; });
+  boundaries.forEach((node, index) => { positions[node.id] = { x: width * 0.37, y: rowY(index, boundaries.length) }; });
+  interfaces.forEach((node, index) => { positions[node.id] = { x: width * 0.64, y: rowY(index, interfaces.length) }; });
+  external.forEach((node, index) => { positions[node.id] = { x: width - LAYOUT_PADDING, y: rowY(index, external.length) }; });
+  openings.forEach((node, index) => {
+    const parent = positions[node.parentBoundaryId];
+    positions[node.id] = parent
+      ? { x: parent.x, y: parent.y + THERMAL_NODE_HEIGHT + 24 + (index % 3) * 18 }
+      : { x: width * 0.48, y: rowY(index, openings.length) };
+  });
+  return positions;
 }
 
 export function computeSpatialLayout(model, viewport = {}) {
@@ -248,6 +283,132 @@ function selectedNodeIDs(model, selectedEntityId) {
   return [];
 }
 
+function createBoundaryDetailModel(model, options) {
+  const selectedID = String(options.selectedEntityId || "");
+  const selectedConnection = model.connections.find((connection) => connection.id === selectedID);
+  const allowedBoundaryIDs = new Set(selectedConnection?.boundaryIds || []);
+  const visibleNodeIDs = new Set(model.nodes.map((node) => node.id));
+  let boundaries = model.boundaries.filter((boundary) => (
+    allowedBoundaryIDs.size
+      ? allowedBoundaryIDs.has(boundary.id)
+      : visibleNodeIDs.has(boundary.ownerSpaceId || boundary.ownerZoneId) || visibleNodeIDs.has(boundary.targetId)
+  ));
+  const hiddenBoundaryCount = Math.max(0, boundaries.length - 120);
+  boundaries = boundaries.slice(0, 120);
+  const sourceNodes = new Map(model.nodes.map((node) => [node.id, node]));
+  const detailNodes = new Map();
+  const detailConnections = [];
+  const openingByID = new Map(model.openings.map((opening) => [opening.id, opening]));
+  const addExistingNode = (id) => {
+    const node = sourceNodes.get(id);
+    if (node) detailNodes.set(node.id, node);
+  };
+
+  for (const boundary of boundaries) {
+    const ownerID = boundary.ownerSpaceId || boundary.ownerZoneId;
+    addExistingNode(ownerID);
+    addExistingNode(boundary.targetId);
+    detailNodes.set(boundary.id, {
+      id: boundary.id,
+      sourceId: boundary.id,
+      kind: "thermal_boundary",
+      label: boundary.surfaceName,
+      subtitle: [boundary.surfaceType, boundary.constructionName].filter(Boolean).join(" · "),
+      diagnosticIds: boundary.diagnosticIds || [],
+      sourceAnchors: boundary.sourceAnchors || [],
+      boundary,
+    });
+    detailConnections.push(detailConnection(`detail-owner:${boundary.id}`, ownerID, boundary.id, boundary.id, "boundary_source"));
+    if (boundary.pairId) {
+      if (!detailNodes.has(boundary.pairId)) {
+        detailNodes.set(boundary.pairId, {
+          id: boundary.pairId,
+          sourceId: boundary.pairId,
+          kind: "thermal_interface",
+          label: "Reciprocal interface",
+          subtitle: boundary.relationKind,
+        });
+      }
+      detailConnections.push(detailConnection(`detail-interface:${boundary.id}`, boundary.id, boundary.pairId, boundary.id, "boundary_pair"));
+      if (boundary.targetId) {
+        addExistingNode(boundary.targetId);
+        detailConnections.push(detailConnection(`detail-target:${boundary.id}`, boundary.pairId, boundary.targetId, boundary.id, "boundary_target"));
+      }
+    } else if (boundary.targetId) {
+      detailConnections.push(detailConnection(`detail-target:${boundary.id}`, boundary.id, boundary.targetId, boundary.id, "boundary_target"));
+    }
+    if (options.showOpenings) {
+      for (const openingID of boundary.openingIds || []) {
+        const opening = openingByID.get(openingID);
+        if (!opening) continue;
+        const nodeID = opening.entityId || opening.windowId || opening.id;
+        detailNodes.set(nodeID, {
+          id: nodeID,
+          sourceId: nodeID,
+          kind: "window",
+          label: opening.name,
+          subtitle: [opening.surfaceType, opening.constructionName].filter(Boolean).join(" · "),
+          parentBoundaryId: boundary.id,
+          diagnosticIds: opening.diagnosticIds || [],
+          sourceAnchors: opening.sourceAnchors || [],
+          opening,
+        });
+        detailConnections.push({
+          ...detailConnection(`detail-opening:${opening.id}`, boundary.id, nodeID, nodeID, "boundary_opening"),
+          targetKind: "window",
+        });
+      }
+    }
+  }
+  if (hiddenBoundaryCount) {
+    const nodeID = "thermal-boundary-group:hidden";
+    detailNodes.set(nodeID, { id: nodeID, kind: "thermal_boundary_group", label: `${hiddenBoundaryCount} more boundaries`, subtitle: "Narrow the graph scope" });
+  }
+  return {
+    ...model,
+    nodes: [...detailNodes.values()],
+    connections: detailConnections,
+    boundaries,
+    hiddenBoundaryCount,
+  };
+}
+
+function detailConnection(id, fromNodeId, toNodeId, targetId, relationKind) {
+  return {
+    id,
+    fromNodeId,
+    toNodeId,
+    targetKind: "thermal_boundary",
+    targetId,
+    relationKind,
+    surfaceCount: 1,
+    boundaryIds: targetId ? [targetId] : [],
+    diagnosticIds: [],
+  };
+}
+
+function qaObservationConnections(topology, boundaries) {
+  const bySurfaceID = new Map(boundaries.map((boundary) => [boundary.surfaceId, boundary]));
+  return (topology.adjacencyObservations || []).map((observation, index) => {
+    const left = bySurfaceID.get(observation.surfaceAId);
+    const right = bySurfaceID.get(observation.surfaceBId);
+    if (!left || !right) return null;
+    return {
+      id: `thermal-observation:${observation.surfaceAId}:${observation.surfaceBId}:${index}`,
+      fromNodeId: left.ownerSpaceId || left.ownerZoneId,
+      toNodeId: right.ownerSpaceId || right.ownerZoneId,
+      targetKind: "thermal_boundary",
+      targetId: left.id,
+      relationKind: "qa_observation",
+      observationKind: observation.observationKind,
+      qaOnly: true,
+      boundaryIds: [left.id, right.id],
+      diagnosticIds: [],
+      surfaceCount: 0,
+    };
+  }).filter(Boolean);
+}
+
 function expandExternalTargets(model) {
   const nodeByID = new Map(model.nodes.map((node) => [node.id, node]));
   const nodes = [...model.nodes];
@@ -400,7 +561,7 @@ function nodeDegrees(connections) {
 
 function isExternalNode(node) {
   if (!node) return false;
-  return node.kind !== "zone" && node.kind !== "space";
+  return !["zone", "space", "thermal_boundary", "thermal_interface", "window", "thermal_boundary_group"].includes(node.kind);
 }
 
 function normalizeRange(value, minimum, maximum, fallback) {

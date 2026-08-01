@@ -147,6 +147,52 @@ func TestTopologySVGRendererUsesPortsPanZoomAndLayoutCache(t *testing.T) {
 	}
 }
 
+func TestTopologyMetricModesAndBoundaryInspectorExposeRequiredContracts(t *testing.T) {
+	index := readTestFile(t, "frontend/src/index.html")
+	for _, required := range []string{`id="thermalTopologyAreaComponent"`, `value="gross"`, `value="opaque"`, `value="openings"`} {
+		if !strings.Contains(index, required) {
+			t.Fatalf("thermal area metric selector is missing %q", required)
+		}
+	}
+	view := readTestFile(t, "frontend/src/js/views/thermal-topology-view.js")
+	for _, required := range []string{
+		`edgeMetricPresentation`,
+		`connectionAreaValue`,
+		`connectionUAValue`,
+		`metric-na`,
+		`qa-observation`,
+		`air-emphasis`,
+		`zoneSignatures.find`,
+	} {
+		if !strings.Contains(view, required) {
+			t.Fatalf("thermal metric renderer is missing %q", required)
+		}
+	}
+	layout := readTestFile(t, "frontend/src/js/views/thermal-topology-layout.js")
+	for _, required := range []string{`createBoundaryDetailModel`, `computeBoundaryLayout`, `hiddenBoundaryCount`, `qaObservationConnections`} {
+		if !strings.Contains(layout, required) {
+			t.Fatalf("detailed boundary graph is missing %q", required)
+		}
+	}
+	inspector := readTestFile(t, "frontend/src/js/views/thermal-topology-inspector.js")
+	for _, required := range []string{
+		`renderZoneDetails`,
+		`renderConnectionDetails`,
+		`renderBoundaryDetails`,
+		`renderOpeningDetails`,
+		`renderAirCouplingDetails`,
+		`renderEnvironmentDetails`,
+		`data-inspector-mode="3d"`,
+		`data-inspector-semantic`,
+		`data-inspector-source`,
+		`data-inspector-diagnostic`,
+	} {
+		if !strings.Contains(inspector, required) {
+			t.Fatalf("thermal inspector is missing %q", required)
+		}
+	}
+}
+
 func TestTopologyModeHistoryPreservesSharedSelection(t *testing.T) {
 	loader := readTestFile(t, "frontend/src/js/geometry-loader.js")
 	setter := sliceBetween(loader, "export function setGeometryMode", "export function setGeometryStory")

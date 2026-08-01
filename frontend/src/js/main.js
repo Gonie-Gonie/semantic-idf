@@ -3,6 +3,7 @@ import { loadAndApplyAppSettings } from "./settings-client.js";
 import {
   backend,
   elements,
+  normalizeThermalTopologyAreaComponent,
   normalizeThermalTopologyAreaBasis,
   normalizeThermalTopologyGraphLevel,
   normalizeThermalTopologyLayout,
@@ -255,6 +256,9 @@ elements.thermalTopologyGraphLevel.addEventListener("change", () => {
 });
 elements.thermalTopologyMetric.addEventListener("change", () => {
   updateThermalTopologySetting("thermalTopologyMetric", normalizeThermalTopologyMetric(elements.thermalTopologyMetric.value));
+});
+elements.thermalTopologyAreaComponent.addEventListener("change", () => {
+  updateThermalTopologySetting("thermalTopologyAreaComponent", normalizeThermalTopologyAreaComponent(elements.thermalTopologyAreaComponent.value));
 });
 elements.thermalTopologyScope.addEventListener("change", () => {
   updateThermalTopologySetting("thermalTopologyScope", normalizeThermalTopologyScope(elements.thermalTopologyScope.value));

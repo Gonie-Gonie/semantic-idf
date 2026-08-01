@@ -282,6 +282,7 @@ function renderThermalTopologyLazy(geometry) {
       module.renderThermalTopology(geometry, {
         navigationAttributes: geometryNavigationAttributes,
         selectGeometry,
+        setGeometryMode,
       });
     })
     .catch((error) => {

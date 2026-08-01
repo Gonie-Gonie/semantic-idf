@@ -1,6 +1,7 @@
 import {
   elements,
   escapeHTML,
+  normalizeThermalTopologyAreaComponent,
   normalizeThermalTopologyAreaBasis,
   normalizeThermalTopologyGraphLevel,
   normalizeThermalTopologyLayout,
@@ -50,7 +51,7 @@ export function renderThermalTopology(geometry, helpers = {}) {
   }
   renderThermalTopologySVG(currentModel, currentLayout);
   elements.thermalTopologyMatrix.hidden = true;
-  renderThermalTopologyInspector(geometry, helpers.navigationAttributes);
+  renderThermalTopologyInspector(geometry, helpers);
 }
 
 export function fitThermalTopology() {
@@ -80,10 +81,11 @@ function renderThermalTopologySVG(model, layout) {
   const selectedID = state.thermalTopologySelectedEntityId || state.selectedGeometryId;
   const edges = [...layout.edges].sort((left, right) => Number(left.id === selectedID) - Number(right.id === selectedID));
   const nodes = [...model.nodes].sort((left, right) => String(left.id).localeCompare(String(right.id)));
+  const metricContext = createMetricContext(model);
   const backButton = state.thermalTopologyGraphLevel === "boundary"
     ? `<button class="thermal-topology-back" type="button" data-topology-back>${escapeHTML(t("action.back", {}, "Back"))}</button>`
     : "";
-  elements.thermalTopologyGraph.innerHTML = `${backButton}
+  elements.thermalTopologyGraph.innerHTML = `${backButton}${renderMetricLegend(metricContext)}
     <svg class="thermal-topology-svg" viewBox="0 0 ${layout.width} ${layout.height}" preserveAspectRatio="xMidYMid meet" tabindex="0" aria-label="${escapeHTML(t("topology.thermalTooltip"))}">
       <defs>
         <marker id="thermalTopologyArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
@@ -94,38 +96,44 @@ function renderThermalTopologySVG(model, layout) {
         </marker>
       </defs>
       <g class="thermal-topology-panzoom" transform="${graphTransform()}">
-        <g class="thermal-topology-edges">${edges.map((edge) => renderEdge(edge, model, selectedID)).join("")}</g>
-        <g class="thermal-topology-nodes">${nodes.map((node) => renderNode(node, layout.positions[node.id], selectedID)).join("")}</g>
+        <g class="thermal-topology-edges">${edges.map((edge) => renderEdge(edge, model, selectedID, metricContext)).join("")}</g>
+        <g class="thermal-topology-nodes">${nodes.map((node) => renderNode(node, layout.positions[node.id], selectedID, model, metricContext)).join("")}</g>
       </g>
     </svg>`;
   bindGraphInteractions();
 }
 
-function renderEdge(edge, model, selectedID) {
+function renderEdge(edge, model, selectedID, metricContext) {
   const selected = edge.id === selectedID;
   const air = edge.relationKind === "air_coupling" || (edge.airCouplingIds || []).length > 0;
   const invalid = edge.qaOnly || edge.relationKind === "invalid";
-  const classes = ["thermal-edge", air ? "air" : "conductive", invalid ? "invalid" : "", selected ? "selected" : ""].filter(Boolean).join(" ");
-  const label = connectionLabel(edge, model);
-  const targetKind = "thermal_connection";
-  const attributes = currentHelpers?.navigationAttributes?.(targetKind, baseExpandedID(edge.id)) || "";
-  return `<g class="thermal-edge-group navigable-row" data-thermal-target-kind="${targetKind}" data-thermal-target-id="${escapeHTML(baseExpandedID(edge.id))}" ${attributes}>
-    <path class="${classes}" d="${edge.route.path}" marker-end="url(#${air ? "thermalTopologyAirArrow" : "thermalTopologyArrow"})"></path>
+  const presentation = edgeMetricPresentation(edge, model, metricContext);
+  const classes = ["thermal-edge", `relation-${cssToken(edge.relationKind)}`, air ? "air" : "conductive", invalid ? "invalid" : "", ...presentation.classes, selected ? "selected" : ""].filter(Boolean).join(" ");
+  const label = connectionLabel(edge, model, metricContext);
+  const targetKind = edge.targetKind || "thermal_connection";
+  const targetID = edge.targetId || baseExpandedID(edge.id);
+  const attributes = currentHelpers?.navigationAttributes?.(targetKind, targetID) || "";
+  const tooltip = connectionTooltip(edge, model);
+  return `<g class="thermal-edge-group navigable-row" data-thermal-target-kind="${targetKind}" data-thermal-target-id="${escapeHTML(targetID)}" ${attributes}>
+    <title>${escapeHTML(tooltip)}</title>
+    <path class="${classes}" style="--thermal-edge-width:${presentation.width}" d="${edge.route.path}" marker-end="url(#${air ? "thermalTopologyAirArrow" : "thermalTopologyArrow"})"></path>
     <path class="thermal-edge-hit" d="${edge.route.path}" tabindex="0" role="button" aria-label="${escapeHTML(label)}"></path>
     ${state.thermalTopologyShowLabels ? `<text class="thermal-edge-label${selected ? " selected" : ""}" x="${edge.route.labelX}" y="${edge.route.labelY}">${escapeHTML(label)}</text>` : ""}
   </g>`;
 }
 
-function renderNode(node, position, selectedID) {
+function renderNode(node, position, selectedID, model, metricContext) {
   if (!position) return "";
-  const external = node.kind !== "zone" && node.kind !== "space";
+  const external = !["zone", "space", "thermal_boundary", "thermal_interface", "window", "thermal_boundary_group"].includes(node.kind);
   const selected = node.id === selectedID || node.entityId === selectedID;
   const targetKind = external ? "thermal_environment" : node.kind;
   const targetID = node.sourceId || node.entityId || node.id;
   const attributes = currentHelpers?.navigationAttributes?.(targetKind, targetID) || "";
   const label = trimLabel(node.label || node.objectName || node.id, 25);
-  const subtitle = nodeSubtitle(node);
-  return `<g class="thermal-node ${external ? "external" : "zone"}${selected ? " selected" : ""} navigable-row" transform="translate(${position.x} ${position.y})" data-thermal-target-kind="${escapeHTML(targetKind)}" data-thermal-target-id="${escapeHTML(targetID)}" ${attributes}>
+  const subtitle = nodeMetricSubtitle(node, model, metricContext);
+  const nodeIssues = (node.diagnosticIds || []).length;
+  const classes = ["thermal-node", external ? "external" : cssToken(node.kind), selected ? "selected" : "", model.metric === "qa" && !nodeIssues ? "qa-muted" : ""].filter(Boolean).join(" ");
+  return `<g class="${classes} navigable-row" transform="translate(${position.x} ${position.y})" data-thermal-target-kind="${escapeHTML(targetKind)}" data-thermal-target-id="${escapeHTML(targetID)}" ${attributes}>
     <rect x="${-THERMAL_NODE_WIDTH / 2}" y="${-THERMAL_NODE_HEIGHT / 2}" width="${THERMAL_NODE_WIDTH}" height="${THERMAL_NODE_HEIGHT}" rx="9"></rect>
     <circle class="thermal-node-port left" cx="${-THERMAL_NODE_WIDTH / 2}" cy="0" r="3"></circle>
     <circle class="thermal-node-port right" cx="${THERMAL_NODE_WIDTH / 2}" cy="0" r="3"></circle>
@@ -133,6 +141,7 @@ function renderNode(node, position, selectedID) {
     <circle class="thermal-node-port bottom" cx="0" cy="${THERMAL_NODE_HEIGHT / 2}" r="3"></circle>
     <text class="thermal-node-label" text-anchor="middle" y="-4">${escapeHTML(label)}</text>
     <text class="thermal-node-subtitle" text-anchor="middle" y="14">${escapeHTML(subtitle)}</text>
+    ${nodeIssues ? `<text class="thermal-node-issue-badge" x="${THERMAL_NODE_WIDTH / 2 - 8}" y="${-THERMAL_NODE_HEIGHT / 2 + 11}" text-anchor="middle">${nodeIssues}</text>` : ""}
   </g>`;
 }
 
@@ -207,7 +216,7 @@ function activateGraphTarget(kind, id) {
   state.selectedGeometryId = id;
   markGraphTargetSelected(kind, id);
   currentHelpers?.selectGeometry?.(kind, id, { syncLocate: true, syncSemantic: true });
-  renderThermalTopologyInspector(currentGeometry, currentHelpers?.navigationAttributes);
+  renderThermalTopologyInspector(currentGeometry, currentHelpers);
 }
 
 function markGraphTargetSelected(kind, id) {
@@ -221,7 +230,7 @@ function markGraphTargetSelected(kind, id) {
 
 function expandConnection(id) {
   recordViewHistory();
-  compactSelection = { kind: "thermal_connection", id };
+  compactSelection = { kind: "thermal_connection", id, scope: state.thermalTopologyScope };
   state.thermalTopologyGraphLevel = "boundary";
   state.thermalTopologyScope = "selection";
   state.thermalTopologySelectedEntityId = id;
@@ -234,6 +243,7 @@ function collapseBoundaryGraph() {
   recordViewHistory();
   state.thermalTopologyGraphLevel = "zone";
   if (compactSelection) {
+    state.thermalTopologyScope = compactSelection.scope;
     state.thermalTopologySelectedEntityId = compactSelection.id;
     state.selectedGeometryKind = compactSelection.kind;
     state.selectedGeometryId = compactSelection.id;
@@ -269,6 +279,8 @@ function ensureResizeObserver() {
 function thermalTopologyOptions() {
   return {
     graphLevel: state.thermalTopologyGraphLevel,
+    metric: state.thermalTopologyMetric,
+    areaComponent: state.thermalTopologyAreaComponent,
     layout: state.thermalTopologyLayout,
     scope: state.thermalTopologyScope,
     storyIndex: state.selectedGeometryStory,
@@ -276,7 +288,7 @@ function thermalTopologyOptions() {
     neighborDepth: state.thermalTopologyNeighborDepth,
     areaBasis: state.thermalTopologyAreaBasis,
     showOpenings: state.thermalTopologyShowOpenings,
-    showAirCoupling: state.thermalTopologyShowAirCoupling,
+    showAirCoupling: state.thermalTopologyShowAirCoupling || state.thermalTopologyMetric === "air",
     expandExternalTargets: state.thermalTopologyExpandExternalTargets,
   };
 }
@@ -291,6 +303,8 @@ function graphViewport() {
 function syncThermalTopologyControls() {
   elements.thermalTopologyGraphLevel.value = normalizeThermalTopologyGraphLevel(state.thermalTopologyGraphLevel);
   elements.thermalTopologyMetric.value = normalizeThermalTopologyMetric(state.thermalTopologyMetric);
+  elements.thermalTopologyAreaComponent.value = normalizeThermalTopologyAreaComponent(state.thermalTopologyAreaComponent);
+  elements.thermalTopologyAreaComponentControl.hidden = state.thermalTopologyMetric !== "area";
   elements.thermalTopologyScope.value = normalizeThermalTopologyScope(state.thermalTopologyScope);
   elements.thermalTopologyLayout.value = normalizeThermalTopologyLayout(state.thermalTopologyLayout);
   elements.thermalTopologyAreaBasis.value = normalizeThermalTopologyAreaBasis(state.thermalTopologyAreaBasis);
@@ -300,24 +314,137 @@ function syncThermalTopologyControls() {
   elements.thermalTopologyShowLabels.checked = Boolean(state.thermalTopologyShowLabels);
 }
 
-function connectionLabel(connection, model) {
-  const area = Number(connection?.[model.areaField]) || 0;
+function connectionLabel(connection, model, metricContext) {
+  if (model.graphLevel === "boundary") {
+    return String(connection.relationKind || "boundary").replaceAll("_", " ");
+  }
+  const area = connectionAreaValue(connection, model);
   const gross = Math.max(area, 0.000001);
   const openingField = model.areaBasis === "physical" ? "physicalOpeningArea" : "effectiveOpeningArea";
   const openingRatio = Math.max(0, Number(connection?.[openingField]) || 0) / gross;
-  const parts = [`${Number(connection.surfaceCount) || (connection.boundaryIds || []).length} surfaces`];
-  if (connection.hasUa) parts.push(`${formatNumber(connection.totalUa)} W/K`);
-  else if (area > 0) parts.push(formatArea(area));
-  if (openingRatio > 0) parts.push(`${Math.round(openingRatio * 100)}% open`);
-  if ((connection.diagnosticIds || []).length) parts.push(`${connection.diagnosticIds.length} issues`);
+  const parts = [];
+  if (model.metric === "area") parts.push(formatArea(area));
+  else if (model.metric === "ua") parts.push(connectionUAValue(connection, model).available ? `${formatNumber(connectionUAValue(connection, model).value)} W/K` : "N/A");
+  else if (model.metric === "qa") parts.push((connection.diagnosticIds || []).length ? `${connection.diagnosticIds.length} issues` : connection.observationKind || "OK");
+  else if (model.metric === "air") {
+    const couplings = airCouplingsForConnection(connection, model);
+    const flow = couplings.reduce((sum, coupling) => sum + (Number(coupling.designFlowRate) || 0), 0);
+    parts.push(flow > 0 ? `${formatNumber(flow)} ${couplings[0]?.unit || "m³/s"}` : couplings[0]?.scheduleName || "Air coupling");
+  } else {
+    parts.push(`${Number(connection.surfaceCount) || (connection.boundaryIds || []).length} surfaces`);
+    parts.push(String(connection.relationKind || "connection").replaceAll("_", " "));
+  }
+  if (model.metric === "area" && openingRatio > 0) parts.push(`${Math.round(openingRatio * 100)}% open`);
   return parts.join(" · ");
 }
 
-function nodeSubtitle(node) {
+function nodeMetricSubtitle(node, model) {
+  if (node.subtitle) return node.subtitle;
+  if (model.metric === "exposure" && (node.kind === "zone" || node.kind === "space")) {
+    const signature = model.zoneSignatures.find((item) => item.zoneId === node.id || item.zoneName === node.zoneName || item.zoneName === node.label);
+    if (signature) {
+      const total = signature.exteriorArea + signature.groundArea + signature.interzoneArea + signature.adiabaticArea + signature.otherBoundaryArea;
+      const exterior = total > 0 ? Math.round((signature.exteriorArea / total) * 100) : 0;
+      const ground = total > 0 ? Math.round((signature.groundArea / total) * 100) : 0;
+      return `${exterior}% exterior · ${ground}% ground`;
+    }
+  }
   if (node.kind === "zone" || node.kind === "space") {
     return node.storyIndex === undefined ? node.kind : `${node.kind} · story ${Number(node.storyIndex) + 1}`;
   }
   return String(node.kind || "external").replaceAll("_", " ");
+}
+
+function createMetricContext(model) {
+  const values = model.connections.map((connection) => {
+    if (model.metric === "area") return connectionAreaValue(connection, model);
+    if (model.metric === "ua") return connectionUAValue(connection, model).value;
+    if (model.metric === "air") return airCouplingsForConnection(connection, model).reduce((sum, coupling) => sum + (Number(coupling.designFlowRate) || 0), 0);
+    return 1;
+  });
+  return { maximum: Math.max(...values, 1) };
+}
+
+function edgeMetricPresentation(connection, model, context) {
+  const classes = [];
+  let width = 2;
+  if (model.metric === "area") {
+    width = 1.75 + 8.25 * Math.sqrt(connectionAreaValue(connection, model) / context.maximum);
+    classes.push("metric-area");
+  } else if (model.metric === "ua") {
+    const ua = connectionUAValue(connection, model);
+    width = ua.available ? 1.75 + 8.25 * Math.sqrt(ua.value / context.maximum) : 2.5;
+    classes.push("metric-ua", ua.available ? "" : "metric-na");
+  } else if (model.metric === "qa") {
+    classes.push("metric-qa", (connection.diagnosticIds || []).length || connection.observationKind ? "has-issues" : "qa-muted");
+    if (connection.observationKind) classes.push("qa-observation", `observation-${cssToken(connection.observationKind)}`);
+    const severity = issueSeverity(connection.diagnosticIds, model.issueLinks);
+    if (severity) classes.push(`severity-${severity}`);
+  } else if (model.metric === "air") {
+    classes.push("metric-air", connection.relationKind === "air_coupling" ? "air-emphasis" : "air-background");
+    if (connection.relationKind === "air_coupling") width = 4.5;
+  } else if (model.metric === "exposure") {
+    classes.push("metric-exposure");
+  } else {
+    classes.push("metric-connectivity");
+  }
+  return { width: Math.max(1.5, Number(width) || 1.5).toFixed(2), classes: classes.filter(Boolean) };
+}
+
+function renderMetricLegend(context) {
+  const metric = state.thermalTopologyMetric;
+  const topology = currentGeometry?.topology || {};
+  let text = "Relation colors · hover for area and UA";
+  if (metric === "area") text = `${state.thermalTopologyAreaComponent} area · ${state.thermalTopologyAreaBasis === "physical" ? "Physical" : "Model total"} · m²`;
+  else if (metric === "ua") {
+    const valid = (currentModel?.connections || []).filter((connection) => connectionUAValue(connection, currentModel).available).length;
+    const total = currentModel?.connections?.length || 0;
+    text = `Total UA · W/K · coverage ${total ? Math.round((valid / total) * 100) : 0}% · hatch = N/A`;
+  } else if (metric === "exposure") text = "Exterior · Ground · Adjacent zone · Adiabatic";
+  else if (metric === "qa") text = `${topology.issueLinks?.length || 0} issues · solid = declared mismatch · dotted = observation`;
+  else if (metric === "air") text = "Air coupling emphasized · conductive boundaries muted";
+  else if (metric === "simulated_heat") text = "Simulated heat results not loaded";
+  return `<div class="thermal-topology-legend" data-topology-metric="${escapeHTML(metric)}">${escapeHTML(text)}${context.maximum > 1 && ["area", "ua"].includes(metric) ? ` · max ${escapeHTML(formatNumber(context.maximum))}` : ""}</div>`;
+}
+
+function connectionAreaValue(connection, model) {
+  const basis = model.areaBasis === "physical" ? "physical" : "effective";
+  const suffix = model.areaComponent === "opaque" ? "OpaqueArea" : model.areaComponent === "openings" ? "OpeningArea" : "GrossArea";
+  return Math.max(0, Number(connection?.[`${basis}${suffix}`]) || 0);
+}
+
+function connectionUAValue(connection, model) {
+  if (model.areaBasis === "physical") {
+    return { value: Math.max(0, Number(connection.physicalTotalUa) || 0), available: Boolean(connection.hasPhysicalUa) };
+  }
+  return { value: Math.max(0, Number(connection.totalUa) || 0), available: Boolean(connection.hasUa) };
+}
+
+function airCouplingsForConnection(connection, model) {
+  const ids = new Set(connection.airCouplingIds || []);
+  return model.airCouplings.filter((coupling) => ids.has(coupling.id));
+}
+
+function connectionTooltip(connection, model) {
+  const area = model.areaBasis === "physical" ? connection.physicalGrossArea : connection.effectiveGrossArea;
+  const ua = connectionUAValue(connection, model);
+  return [
+    String(connection.relationKind || "connection").replaceAll("_", " "),
+    `${formatArea(area)}`,
+    ua.available ? `${formatNumber(ua.value)} W/K` : "UA N/A",
+  ].join(" · ");
+}
+
+function issueSeverity(diagnosticIDs = [], issueLinks = []) {
+  const ids = new Set(diagnosticIDs);
+  const severities = issueLinks.filter((issue) => ids.has(issue.id)).map((issue) => String(issue.severity || "").toLowerCase());
+  if (severities.includes("error")) return "error";
+  if (severities.includes("warning") || severities.includes("warn")) return "warning";
+  return severities.length ? "info" : "";
+}
+
+function cssToken(value) {
+  return String(value || "unknown").toLowerCase().replace(/[^a-z0-9_-]+/g, "-");
 }
 
 function baseExpandedID(id) {

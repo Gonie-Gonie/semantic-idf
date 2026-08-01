@@ -268,7 +268,7 @@
 .thermal-edge {
   fill: none;
   stroke: color-mix(in srgb, var(--ink), transparent 50%);
-  stroke-width: 2;
+  stroke-width: var(--thermal-edge-width, 2);
   vector-effect: non-scaling-stroke;
   pointer-events: none;
 }
@@ -286,6 +286,64 @@
 .thermal-edge.selected {
   stroke: var(--geometry-selected);
   stroke-width: 4;
+}
+
+.thermal-edge.metric-connectivity.relation-outdoors,
+.thermal-edge.metric-connectivity.relation-zone,
+.thermal-edge.metric-connectivity.relation-space {
+  stroke: #3b82a0;
+}
+
+.thermal-edge.metric-connectivity.relation-ground {
+  stroke: #8b6b45;
+}
+
+.thermal-edge.metric-connectivity.relation-adiabatic {
+  stroke: #8b75a8;
+}
+
+.thermal-edge.metric-connectivity.relation-other_side_coefficients,
+.thermal-edge.metric-connectivity.relation-other_side_conditions_model {
+  stroke: #b06f3f;
+}
+
+.thermal-edge.metric-na {
+  stroke: var(--muted);
+  stroke-dasharray: 2 5;
+}
+
+.thermal-edge.metric-qa.qa-muted,
+.thermal-node.qa-muted {
+  opacity: 0.2;
+}
+
+.thermal-edge.metric-qa.has-issues {
+  stroke: var(--amber);
+  stroke-width: max(var(--thermal-edge-width, 2), 3);
+}
+
+.thermal-edge.metric-qa.severity-error {
+  stroke: var(--red);
+}
+
+.thermal-edge.qa-observation {
+  stroke: #8a6fb5;
+  stroke-dasharray: 2 6;
+}
+
+.thermal-edge.metric-air.air-background {
+  opacity: 0.16;
+}
+
+.thermal-edge.metric-air.air-emphasis {
+  opacity: 1;
+  stroke: var(--teal);
+}
+
+.thermal-edge.selected {
+  opacity: 1;
+  stroke: var(--geometry-selected);
+  stroke-width: max(var(--thermal-edge-width, 2), 4);
 }
 
 .thermal-edge-hit {
@@ -353,6 +411,16 @@
   pointer-events: none;
 }
 
+.thermal-node-issue-badge {
+  fill: var(--red);
+  font-size: 9px;
+  font-weight: 800;
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 3px;
+  pointer-events: none;
+}
+
 .thermal-node-subtitle {
   fill: var(--muted);
   font-size: 9px;
@@ -377,6 +445,22 @@
   background: var(--surface);
 }
 
+.thermal-topology-legend {
+  position: absolute;
+  z-index: 2;
+  right: 10px;
+  bottom: 10px;
+  max-width: min(520px, calc(100% - 20px));
+  border: 1px solid color-mix(in srgb, var(--line), transparent 12%);
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: color-mix(in srgb, var(--surface), transparent 5%);
+  color: var(--muted);
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--ink), transparent 90%);
+  font-size: 10px;
+  pointer-events: none;
+}
+
 .thermal-topology-matrix {
   min-width: 0;
   min-height: 0;
@@ -390,6 +474,123 @@
   border-left: 1px solid var(--line);
   overflow: auto;
   background: var(--surface);
+}
+
+.thermal-inspector-head {
+  min-height: 54px;
+  border-bottom: 1px solid var(--line);
+  padding: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.thermal-inspector-head h3,
+.thermal-inspector-section h4,
+.thermal-inspector-actions h4 {
+  margin: 0;
+}
+
+.thermal-inspector-head h3 {
+  font-size: 13px;
+}
+
+.thermal-inspector-head span {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 10px;
+  text-transform: capitalize;
+}
+
+.thermal-inspector-content {
+  display: grid;
+}
+
+.thermal-inspector-section,
+.thermal-inspector-actions {
+  border-bottom: 1px solid var(--line);
+  padding: 10px;
+}
+
+.thermal-inspector-section h4,
+.thermal-inspector-actions h4 {
+  margin-bottom: 7px;
+  color: var(--ink-soft);
+  font-size: 11px;
+  letter-spacing: 0.025em;
+}
+
+.thermal-inspector-rows {
+  margin: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.thermal-inspector-rows > div {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(84px, 38%) minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  font-size: 10px;
+}
+
+.thermal-inspector-rows dt {
+  color: var(--muted);
+}
+
+.thermal-inspector-rows dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  font-weight: 600;
+  text-align: right;
+}
+
+.thermal-inspector-chips,
+.thermal-inspector-actions > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.thermal-inspector-chips span {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 6px;
+  background: var(--surface-3);
+  color: var(--ink-soft);
+  font-size: 9px;
+}
+
+.thermal-inspector-source-list {
+  display: grid;
+  gap: 5px;
+}
+
+.thermal-inspector-source-list button,
+.thermal-inspector-actions button {
+  min-width: 0;
+  min-height: 27px;
+  border-color: var(--line);
+  padding: 4px 7px;
+  background: var(--control);
+  color: var(--ink-soft);
+  font-size: 9px;
+  text-align: left;
+}
+
+.thermal-inspector-source-list button {
+  display: grid;
+  gap: 2px;
+}
+
+.thermal-inspector-source-list button span {
+  color: var(--muted);
+  font-weight: 400;
 }
 
 .thermal-topology-shell-status {
