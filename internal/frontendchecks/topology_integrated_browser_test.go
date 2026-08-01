@@ -32,6 +32,8 @@ func TestTOPO280To285IntegratedBrowserFlows(t *testing.T) {
 	defer cancel()
 	command := exec.CommandContext(ctx, chrome,
 		"--headless=new", "--disable-gpu", "--disable-dev-shm-usage", "--no-sandbox", "--no-first-run", "--no-default-browser-check",
+		"--disable-background-networking", "--disable-default-apps", "--disable-extensions", "--disable-sync",
+		"--disable-background-timer-throttling", "--disable-renderer-backgrounding",
 		"--virtual-time-budget=30000", "--user-data-dir="+t.TempDir(), "--dump-dom", server.URL+"/thermal-topology-integrated",
 	)
 	output, err := command.CombinedOutput()
@@ -69,7 +71,7 @@ const thermalTopologyIntegratedHarnessHTML = `<!doctype html>
 <pre id="result">pending</pre>
 <script type="module">
 const assert = (condition, message) => { if (!condition) throw new Error(message); };
-const tick = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+const tick = () => new Promise((resolve) => setTimeout(() => setTimeout(resolve, 0), 0));
 try {
   const stateModule = await import("/src/js/state.js");
   const renderer = await import("/src/js/views/thermal-topology-view.js");
