@@ -955,6 +955,8 @@ func geometryConstructionKind(objectType string) string {
 		return "f_factor"
 	case lower == "construction:complexfenestrationstate":
 		return "complex_fenestration"
+	case lower == "construction:airboundary":
+		return "air_boundary"
 	case strings.Contains(lower, "window"):
 		return "layer_based_window"
 	default:
@@ -964,7 +966,7 @@ func geometryConstructionKind(objectType string) string {
 
 func geometryConstructionLayerFieldIndexes(obj Object) []int {
 	lower := strings.ToLower(strings.TrimSpace(obj.Type))
-	if lower == "construction:cfactorundergroundwall" || lower == "construction:ffactorgroundfloor" || lower == "construction:complexfenestrationstate" {
+	if lower == "construction:cfactorundergroundwall" || lower == "construction:ffactorgroundfloor" || lower == "construction:complexfenestrationstate" || lower == "construction:airboundary" {
 		return nil
 	}
 	start := 1

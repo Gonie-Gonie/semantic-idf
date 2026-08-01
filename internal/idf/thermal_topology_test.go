@@ -260,6 +260,66 @@ func TestZoneEnclosureIntegrityFindsClosedAndOpenShells(t *testing.T) {
 	}
 }
 
+func TestThermalTopologyBuildsExplicitAndAirflowNetworkCouplings(t *testing.T) {
+	topology := AnalyzeGeometry(thermalAirCouplingTestDocument()).Topology
+	if len(topology.AirCouplings) != 5 {
+		t.Fatalf("air coupling count = %d, want 5: %#v", len(topology.AirCouplings), topology.AirCouplings)
+	}
+	mixing := findThermalAirCoupling(t, topology, "zone_mixing")
+	if mixing.Direction != "directed" || mixing.DesignFlowRate != 0.1 || mixing.Unit != "m3/s" || mixing.FromNodeID != "zone:zone%20b" || mixing.ToNodeID != "zone:zone%20a" {
+		t.Fatalf("zone mixing coupling = %#v", mixing)
+	}
+	cross := findThermalAirCoupling(t, topology, "zone_cross_mixing")
+	if cross.Direction != "bidirectional" || cross.DesignFlowRate != 0.2 {
+		t.Fatalf("cross mixing coupling = %#v", cross)
+	}
+	door := findThermalAirCoupling(t, topology, "refrigeration_door_mixing")
+	if door.Direction != "bidirectional" || door.FromNodeID == "" || door.ToNodeID == "" {
+		t.Fatalf("door mixing coupling = %#v", door)
+	}
+	ventilation := findThermalAirCoupling(t, topology, "outdoor_ventilation")
+	if ventilation.FromNodeID != "thermal-environment:outdoors" || ventilation.DesignFlowRate != 0.3 {
+		t.Fatalf("outdoor ventilation coupling = %#v", ventilation)
+	}
+	afn := findThermalAirCoupling(t, topology, "airflow_network")
+	if afn.SurfaceID == "" || afn.ComponentName != "Pair Crack" || afn.ToNodeID != "space:zone%20b:space%20b" || len(afn.SourceAnchors) < 3 {
+		t.Fatalf("AFN coupling = %#v", afn)
+	}
+	if hasTopologyIssueCode(topology, "air_coupling_target_missing") {
+		t.Fatal("valid air coupling fixture produced missing-target diagnostic")
+	}
+}
+
+func TestConstructionAirBoundaryCreatesSingleBidirectionalCoupling(t *testing.T) {
+	topology := AnalyzeGeometry(thermalAirBoundaryTestDocument()).Topology
+	var airBoundaries []ThermalAirCoupling
+	for _, coupling := range topology.AirCouplings {
+		if coupling.CouplingKind == "construction_air_boundary" {
+			airBoundaries = append(airBoundaries, coupling)
+		}
+	}
+	if len(airBoundaries) != 1 {
+		t.Fatalf("air boundary coupling count = %d, want 1: %#v", len(airBoundaries), airBoundaries)
+	}
+	coupling := airBoundaries[0]
+	if coupling.Direction != "bidirectional" || coupling.ScheduleName != "Always On" || coupling.DesignFlowRate != 0.1 || coupling.SurfaceID == "" {
+		t.Fatalf("air boundary coupling = %#v", coupling)
+	}
+}
+
+func TestAirCouplingMissingTargetSurvivesWithDiagnostic(t *testing.T) {
+	document := thermalAirCouplingTestDocument()
+	document.Objects = append(document.Objects, Object{Type: "ZoneMixing", Fields: []Field{
+		{Value: "Broken Mixing"}, {Value: "Zone A"}, {Value: "Always On"}, {Value: "Flow/Zone"}, {Value: "0.1"}, {Value: ""}, {Value: ""}, {Value: ""}, {Value: "Missing Zone"},
+	}})
+	document.Objects[len(document.Objects)-1].Index = len(document.Objects) - 1
+	topology := AnalyzeGeometry(document).Topology
+	broken := findThermalAirCouplingByName(t, topology, "Broken Mixing")
+	if len(broken.DiagnosticIDs) == 0 || broken.FromNodeID == "" || !hasTopologyIssueCode(topology, "air_coupling_target_missing") {
+		t.Fatalf("broken air coupling was not retained with diagnostic: %#v", broken)
+	}
+}
+
 func hasAdjacencyObservation(topology ThermalTopologyReport, kind string) bool {
 	for _, observation := range topology.AdjacencyObservations {
 		if observation.ObservationKind == kind {
@@ -309,6 +369,28 @@ func findThermalOpening(t *testing.T, topology ThermalTopologyReport, name strin
 	}
 	t.Fatalf("thermal opening %q not found", name)
 	return ThermalOpeningRecord{}
+}
+
+func findThermalAirCoupling(t *testing.T, topology ThermalTopologyReport, kind string) ThermalAirCoupling {
+	t.Helper()
+	for _, coupling := range topology.AirCouplings {
+		if coupling.CouplingKind == kind {
+			return coupling
+		}
+	}
+	t.Fatalf("thermal air coupling kind %q not found", kind)
+	return ThermalAirCoupling{}
+}
+
+func findThermalAirCouplingByName(t *testing.T, topology ThermalTopologyReport, name string) ThermalAirCoupling {
+	t.Helper()
+	for _, coupling := range topology.AirCouplings {
+		if coupling.ObjectName == name {
+			return coupling
+		}
+	}
+	t.Fatalf("thermal air coupling %q not found", name)
+	return ThermalAirCoupling{}
 }
 
 func thermalTopologyTestDocument() Document {
@@ -380,6 +462,55 @@ func thermalGeometryPairTestDocument(shift float64, declared bool) Document {
 				object.Fields[6].Value = ""
 			}
 		}
+	}
+	return document
+}
+
+func thermalAirCouplingTestDocument() Document {
+	document := thermalGeometryPairTestDocument(0, true)
+	document.Objects = append(document.Objects,
+		Object{Type: "ZoneMixing", Fields: []Field{
+			{Value: "Mix B to A"}, {Value: "Zone A"}, {Value: "Always On"}, {Value: "Flow/Zone"}, {Value: "0.1"}, {Value: ""}, {Value: ""}, {Value: ""}, {Value: "Zone B"},
+		}},
+		Object{Type: "ZoneCrossMixing", Fields: []Field{
+			{Value: "Cross A B"}, {Value: "Zone A"}, {Value: "Always On"}, {Value: "Flow/Zone"}, {Value: "0.2"}, {Value: ""}, {Value: ""}, {Value: ""}, {Value: "Zone B"},
+		}},
+		Object{Type: "ZoneRefrigerationDoorMixing", Fields: []Field{
+			{Value: "Door A B"}, {Value: "Zone A"}, {Value: "Zone B"}, {Value: "Always On"}, {Value: "2"}, {Value: "2"}, {Value: "None"},
+		}},
+		Object{Type: "ZoneVentilation:DesignFlowRate", Fields: []Field{
+			{Value: "Vent A"}, {Value: "Zone A"}, {Value: "Always On"}, {Value: "Flow/Zone"}, {Value: "0.3"}, {Value: ""}, {Value: ""}, {Value: ""},
+		}},
+		Object{Type: "AirflowNetwork:MultiZone:Zone", Fields: []Field{{Value: "Zone A"}}},
+		Object{Type: "AirflowNetwork:MultiZone:Zone", Fields: []Field{{Value: "Zone B"}}},
+		Object{Type: "AirflowNetwork:MultiZone:Surface", Fields: []Field{{Value: "Pair A"}, {Value: "Pair Crack"}, {Value: ""}}},
+		Object{Type: "AirflowNetwork:MultiZone:Surface:Crack", Fields: []Field{{Value: "Pair Crack"}, {Value: "0.001"}, {Value: "0.65"}}},
+	)
+	for index := range document.Objects {
+		document.Objects[index].Index = index
+	}
+	return document
+}
+
+func thermalAirBoundaryTestDocument() Document {
+	document := thermalGeometryPairTestDocument(0, true)
+	for index := range document.Objects {
+		object := &document.Objects[index]
+		if isBuildingSurfaceType(object.Type) && (objectName(*object) == "Pair A" || objectName(*object) == "Pair B") {
+			object.Fields[2].Value = "Open Partition"
+		}
+		if strings.EqualFold(object.Type, "Zone") {
+			for len(object.Fields) <= 8 {
+				object.Fields = append(object.Fields, Field{})
+			}
+			object.Fields[8].Value = "360"
+		}
+	}
+	document.Objects = append(document.Objects, Object{Type: "Construction:AirBoundary", Fields: []Field{
+		{Value: "Open Partition"}, {Value: "SimpleMixing"}, {Value: "1"}, {Value: "Always On"},
+	}})
+	for index := range document.Objects {
+		document.Objects[index].Index = index
 	}
 	return document
 }

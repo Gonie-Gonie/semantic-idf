@@ -242,6 +242,7 @@ type thermalTopologyBuilder struct {
 	openingIndexesByName     map[string][]int
 	constructionByName       map[string]GeometryConstruction
 	surfaceByID              map[string]GeometrySurface
+	peopleCountByZone        map[string]float64
 	report                   ThermalTopologyReport
 }
 
@@ -264,6 +265,7 @@ func BuildThermalTopology(doc Document, geometry GeometryReport, documentIndex *
 		openingIndexesByName:     map[string][]int{},
 		constructionByName:       thermalConstructionIndex(geometry.Constructions),
 		surfaceByID:              thermalSurfaceIndex(geometry.Surfaces),
+		peopleCountByZone:        thermalPeopleCounts(doc, geometry),
 		report: ThermalTopologyReport{
 			Schema:         thermalTopologySchema,
 			Nodes:          []ThermalTopologyNode{},
@@ -282,6 +284,7 @@ func BuildThermalTopology(doc Document, geometry GeometryReport, documentIndex *
 	builder.resolveOpeningCounterparts()
 	builder.calculateBoundaryUA()
 	builder.validateReciprocalConstructions()
+	builder.addAirCouplings()
 	builder.analyzeGeometryQA()
 	builder.finalize()
 	return builder.report
