@@ -1329,6 +1329,20 @@ func outputApplyPreviewHasAction(changes []idf.OutputApplyChange, action string,
 	return false
 }
 
+func TestDefaultSettingsRetainThermalTopologyShortcuts(t *testing.T) {
+	settings := normalizeAppSettings(AppSettings{})
+	want := map[string]string{
+		"geometry3D": "1", "geometryPlan": "2", "geometryThermal": "3", "geometryFit": "F",
+		"topologyDisplay": "G", "topologyConnectivity": "T", "topologyArea": "A", "topologyUA": "U", "topologyQA": "Q", "topologyNeighbors": "N",
+		"primaryOpen": "Enter", "availableViews": "Alt+Enter", "clearSelection": "Escape",
+	}
+	for id, accelerator := range want {
+		if settings.Interaction.Shortcuts[id] != accelerator {
+			t.Fatalf("shortcut %s = %q, want %q", id, settings.Interaction.Shortcuts[id], accelerator)
+		}
+	}
+}
+
 func TestAnalyzeMultiSummaryPaths(t *testing.T) {
 	tempDir := t.TempDir()
 	first := filepath.Join(tempDir, "first.idf")

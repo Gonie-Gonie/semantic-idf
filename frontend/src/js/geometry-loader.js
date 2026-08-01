@@ -95,6 +95,10 @@ export function resizeGeometry() {
   geometryModule.resizeGeometry();
 }
 
+export function fitGeometryView() {
+  return loadGeometryModule().then((module) => module.fitGeometryView());
+}
+
 export function setGeometryMode(mode) {
   const nextMode = normalizeGeometryMode(mode);
   if (nextMode === state.geometryMode) {

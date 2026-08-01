@@ -14,15 +14,17 @@ export function renderThermalTopologyInspector(geometry, helpers = {}) {
   activeHelpers = helpers;
   activeSelection = resolveInspectorSelection(geometry);
   if (!activeSelection?.item) {
+    elements.thermalTopologyInspector.removeAttribute("aria-labelledby");
     elements.thermalTopologyInspector.innerHTML = `<div class="empty">${escapeHTML(t("topology.inspectorEmpty", {}, "Select a thermal node or connection"))}</div>`;
     return;
   }
   const { kind, id, item } = activeSelection;
   const attributes = helpers.navigationAttributes?.(kind, id) || "";
+  elements.thermalTopologyInspector.setAttribute("aria-labelledby", "thermalTopologyInspectorHeading");
   elements.thermalTopologyInspector.innerHTML = `
     <div class="thermal-inspector-head navigable-row" ${attributes}>
       <div>
-        <h3>${escapeHTML(selectionTitle(activeSelection))}</h3>
+        <h3 id="thermalTopologyInspectorHeading">${escapeHTML(selectionTitle(activeSelection))}</h3>
         <span>${escapeHTML(selectionSubtitle(activeSelection))}</span>
       </div>
       <button type="button" class="geometry-mode-button" data-panel-action-menu aria-label="Navigation actions">•••</button>

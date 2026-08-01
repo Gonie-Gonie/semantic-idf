@@ -26,8 +26,11 @@ function handleShortcutKeydown(event, actions) {
     return;
   }
 
+  const handled = action(event);
+  if (handled === false) {
+    return;
+  }
   event.preventDefault();
-  action(event);
 }
 
 function isDocumentUndoRedo(event) {
@@ -74,6 +77,16 @@ function shortcutAction(id, actions) {
     tabSimulation: () => actions.switchResultTab?.("simulation"),
     tabDiagnose: () => actions.switchResultTab?.("diagnose"),
     tabGeometry: () => actions.switchResultTab?.("geometry"),
+    geometry3D: () => actions.setGeometryMode?.("3d"),
+    geometryPlan: () => actions.setGeometryMode?.("plan"),
+    geometryThermal: () => actions.setGeometryMode?.("thermal"),
+    geometryFit: actions.fitGeometry,
+    topologyDisplay: actions.toggleTopologyDisplay,
+    topologyConnectivity: () => actions.setTopologyMetric?.("topology"),
+    topologyArea: () => actions.setTopologyMetric?.("area"),
+    topologyUA: () => actions.setTopologyMetric?.("ua"),
+    topologyQA: () => actions.setTopologyMetric?.("qa"),
+    topologyNeighbors: actions.setTopologyNeighbors,
   };
   return map[id] || null;
 }

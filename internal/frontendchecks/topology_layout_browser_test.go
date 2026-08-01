@@ -93,7 +93,7 @@ func TestThermalTopologyRendererBrowserHarness(t *testing.T) {
 	if !strings.Contains(document, `data-thermal-renderer-status="passed"`) {
 		t.Fatalf("thermal topology renderer harness did not pass:\n%s", document)
 	}
-	for _, signal := range []string{`"svg":true`, `"metricWidth":true`, `"inspector":true`, `"boundaryExpanded":true`, `"backRestored":true`, `"matrix":true`, `"matrixSelected":true`, `"simulationGain":true`, `"simulationArrow":true`, `"simulationLedger":true`} {
+	for _, signal := range []string{`"svg":true`, `"metricWidth":true`, `"inspector":true`, `"accessibleTargets":true`, `"deterministicTabOrder":true`, `"keyboardNode":true`, `"inspectorHeading":true`, `"patternLegend":true`, `"boundaryExpanded":true`, `"backRestored":true`, `"matrix":true`, `"matrixSelected":true`, `"simulationGain":true`, `"simulationArrow":true`, `"simulationLedger":true`} {
 		if !strings.Contains(document, signal) {
 			t.Fatalf("thermal topology renderer result is missing %s:\n%s", signal, document)
 		}
@@ -187,7 +187,17 @@ try {
   const svg = Boolean(document.querySelector(".thermal-topology-svg"));
   const metricWidth = /--thermal-edge-width:(?!2\.00)/.test(document.querySelector(".thermal-edge").getAttribute("style"));
   const inspector = document.getElementById("thermalTopologyInspector").textContent.includes("Model total");
-  document.querySelector(".thermal-edge-hit").dispatchEvent(new KeyboardEvent("keydown", {key:"Enter",bubbles:true}));
+  const targets = [...document.querySelectorAll(".thermal-edge-group[tabindex='0'], .thermal-node[tabindex='0']")];
+  const accessibleTargets = targets.length === 3 && targets.every((target) => ["entity", "relation", "metric", "issues"].every((term) => target.getAttribute("aria-label").includes(term)));
+  const edgeOrder = [...document.querySelectorAll(".thermal-edge-group")].map((target) => target.dataset.thermalTargetId);
+  const nodeOrder = [...document.querySelectorAll(".thermal-node")].map((target) => target.dataset.thermalTargetId);
+  const deterministicTabOrder = edgeOrder.join() === [...edgeOrder].sort().join() && nodeOrder.join() === [...nodeOrder].sort().join();
+  const zoneTarget = document.querySelector(".thermal-node[data-thermal-target-id='zone:a']");
+  zoneTarget.focus(); zoneTarget.dispatchEvent(new KeyboardEvent("keydown", {key:"Enter",bubbles:true}));
+  const keyboardNode = state.thermalTopologySelectedEntityId === "zone:a";
+  const inspectorHeading = document.getElementById("thermalTopologyInspector").getAttribute("aria-labelledby") === "thermalTopologyInspectorHeading" && Boolean(document.getElementById("thermalTopologyInspectorHeading"));
+  const patternLegend = document.querySelectorAll(".thermal-legend-line").length >= 4;
+  document.querySelector(".thermal-edge-group").dispatchEvent(new KeyboardEvent("keydown", {key:"Enter",bubbles:true}));
   const boundaryExpanded = state.thermalTopologyGraphLevel === "boundary" && Boolean(document.querySelector(".thermal-node.thermal_boundary"));
   document.querySelector("[data-topology-back]").click();
   const backRestored = state.thermalTopologyGraphLevel === "zone";
@@ -200,8 +210,8 @@ try {
   const simulationGain = simulationEdge?.classList.contains("metric-gain") && /1\.5 kWh/.test(document.querySelector(".thermal-edge-label")?.textContent || "");
   const simulationArrow = simulationEdge?.getAttribute("marker-start")?.includes("thermalTopologyHeatArrow") === true;
   const simulationLedger = document.getElementById("thermalTopologyInspector").textContent.includes("sum_reported_energy");
-  assert(svg && metricWidth && inspector && boundaryExpanded && backRestored && matrix && matrixSelected && simulationGain && simulationArrow && simulationLedger, "renderer contract failed");
-  document.getElementById("result").textContent = JSON.stringify({svg,metricWidth,inspector,boundaryExpanded,backRestored,matrix,matrixSelected,simulationGain,simulationArrow,simulationLedger});
+  assert(svg && metricWidth && inspector && accessibleTargets && deterministicTabOrder && keyboardNode && inspectorHeading && patternLegend && boundaryExpanded && backRestored && matrix && matrixSelected && simulationGain && simulationArrow && simulationLedger, "renderer contract failed");
+  document.getElementById("result").textContent = JSON.stringify({svg,metricWidth,inspector,accessibleTargets,deterministicTabOrder,keyboardNode,inspectorHeading,patternLegend,boundaryExpanded,backRestored,matrix,matrixSelected,simulationGain,simulationArrow,simulationLedger});
   document.body.dataset.thermalRendererStatus = "passed";
 } catch (error) {
   document.getElementById("result").textContent = error.stack || String(error);

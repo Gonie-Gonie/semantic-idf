@@ -35,7 +35,7 @@ import {
   updateDocumentActions,
 } from "./actions.js";
 import { markAnalysisDirty, renderDiagnostics, renderEmpty, renderReport, renderSummary } from "./views/analysis-views.js";
-import { renderGeometry, resizeGeometry, setGeometryMode, setGeometrySelectionAid, setGeometryStory } from "./geometry-loader.js";
+import { fitGeometryView, renderGeometry, resizeGeometry, setGeometryMode, setGeometrySelectionAid, setGeometryStory } from "./geometry-loader.js";
 import { initializeDiagnoseFixes } from "./views/diagnose-fixes.js";
 import { initializeHVACControls } from "./views/hvac-views.js";
 import { initializeOutputControls } from "./views/output-views.js";
@@ -325,6 +325,29 @@ function updateThermalTopologySetting(key, value) {
   renderGeometry();
 }
 
+function activateGeometryModeShortcut(mode) {
+  if (state.activeResultTab !== "geometry") return false;
+  setGeometryMode(mode);
+  return true;
+}
+
+function activateGeometryFitShortcut() {
+  if (state.activeResultTab !== "geometry") return false;
+  void fitGeometryView();
+  return true;
+}
+
+function activateThermalTopologySettingShortcut(key, value) {
+  if (state.activeResultTab !== "geometry" || state.geometryMode !== "thermal") return false;
+  updateThermalTopologySetting(key, value);
+  return true;
+}
+
+function toggleThermalTopologyDisplayShortcut() {
+  const display = state.thermalTopologyDisplay === "matrix" ? "graph" : "matrix";
+  return activateThermalTopologySettingShortcut("thermalTopologyDisplay", display);
+}
+
 elements.inputViewButtons.forEach((button) => {
   button.addEventListener("click", async () => {
     await switchInputView(button.dataset.inputView);
@@ -391,6 +414,9 @@ elements.tableOrientationButtons.forEach((button) => {
 });
 elements.analysisPanel.addEventListener("click", (event) => handleAnalysisActivation(event.target));
 elements.analysisPanel.addEventListener("keydown", (event) => {
+  if (event.defaultPrevented) {
+    return;
+  }
   const isLocalActivationKey = event.key === "Enter" || event.key === " ";
   if (!isLocalActivationKey || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
     return;
@@ -799,6 +825,11 @@ initializeKeyboardShortcuts({
   clearSelection: clearSelectionOrTransientUI,
   switchInputView,
   switchResultTab,
+  setGeometryMode: activateGeometryModeShortcut,
+  fitGeometry: activateGeometryFitShortcut,
+  toggleTopologyDisplay: toggleThermalTopologyDisplayShortcut,
+  setTopologyMetric: (metric) => activateThermalTopologySettingShortcut("thermalTopologyMetric", normalizeThermalTopologyMetric(metric)),
+  setTopologyNeighbors: () => activateThermalTopologySettingShortcut("thermalTopologyScope", "neighbors"),
 });
 renderEmpty();
 updateDocumentActions();

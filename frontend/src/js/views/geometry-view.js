@@ -91,6 +91,14 @@ export function setGeometryMode(mode) {
   renderGeometry();
 }
 
+export function fitGeometryView() {
+  if (state.geometryMode === "thermal") {
+    return loadThermalTopologyModule().then((module) => module.fitThermalTopology());
+  }
+  renderGeometry();
+  return Promise.resolve(true);
+}
+
 export function setGeometryStory(storyIndex) {
   state.selectedGeometryStory = storyIndex === "all" ? "all" : Number(storyIndex) || 0;
   renderGeometry();

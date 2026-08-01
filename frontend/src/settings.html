@@ -92,6 +92,16 @@
         ["tabSimulation", "shortcut.tabSimulation"],
         ["tabDiagnose", "shortcut.tabDiagnose"],
         ["tabGeometry", "shortcut.tabGeometry"],
+        ["geometry3D", "shortcut.geometry3D"],
+        ["geometryPlan", "shortcut.geometryPlan"],
+        ["geometryThermal", "shortcut.geometryThermal"],
+        ["geometryFit", "shortcut.geometryFit"],
+        ["topologyDisplay", "shortcut.topologyDisplay"],
+        ["topologyConnectivity", "shortcut.topologyConnectivity"],
+        ["topologyArea", "shortcut.topologyArea"],
+        ["topologyUA", "shortcut.topologyUA"],
+        ["topologyQA", "shortcut.topologyQA"],
+        ["topologyNeighbors", "shortcut.topologyNeighbors"],
       ];
       const profileMetricOptions = {
         occupancy: [
@@ -566,6 +576,7 @@
         };
         bindAnalysisTabOrderControls(updatePreview);
         bindShortcutCapture();
+        validateShortcutConflicts();
         form.addEventListener("input", (event) => {
           if (event.target === rangeInput) {
             numberInput.value = rangeInput.value;
@@ -579,6 +590,7 @@
           if (event.target === workerFractionInput) {
             workerFractionRange.value = workerFractionInput.value;
           }
+          validateShortcutConflicts();
           updatePreview(event);
         });
         form.addEventListener("change", updatePreview);
@@ -681,7 +693,8 @@
             }
             const isFunctionKey = /^f\d{1,2}$/i.test(event.key || "");
             const isModified = event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || isFunctionKey;
-            if (!isModified) {
+            const allowsBareKey = /^(geometry|topology)/.test(input.dataset.shortcutId || "");
+            if (!isModified && !allowsBareKey) {
               return;
             }
             event.preventDefault();
@@ -695,6 +708,26 @@
               input.value = accelerator;
             }
             input.dispatchEvent(new Event("input", { bubbles: true }));
+          });
+        });
+      }
+
+      function validateShortcutConflicts() {
+        const owners = new Map();
+        document.querySelectorAll("[data-shortcut-id]").forEach((input) => {
+          input.setCustomValidity("");
+          input.removeAttribute("aria-invalid");
+          String(input.value || "").split(",").map((item) => item.trim().toUpperCase()).filter(Boolean).forEach((accelerator) => {
+            const group = owners.get(accelerator) || [];
+            group.push(input);
+            owners.set(accelerator, group);
+          });
+        });
+        owners.forEach((inputs, accelerator) => {
+          if (inputs.length < 2) return;
+          inputs.forEach((input) => {
+            input.setCustomValidity(`Shortcut ${accelerator} is already assigned.`);
+            input.setAttribute("aria-invalid", "true");
           });
         });
       }
