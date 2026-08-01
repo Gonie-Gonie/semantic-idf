@@ -33,18 +33,20 @@ type GeometrySpace struct {
 }
 
 type GeometryZone struct {
-	ID          string           `json:"id"`
-	ObjectIndex int              `json:"objectIndex"`
-	Name        string           `json:"name"`
-	StoryIndex  int              `json:"storyIndex"`
-	FloorArea   float64          `json:"floorArea"`
-	Volume      float64          `json:"volume"`
-	MinZ        float64          `json:"minZ"`
-	MaxZ        float64          `json:"maxZ"`
-	SurfaceIDs  []string         `json:"surfaceIds"`
-	WindowIDs   []string         `json:"windowIds"`
-	Metrics     []GeometryMetric `json:"metrics"`
-	Fields      []Field          `json:"fields"`
+	ID                string           `json:"id"`
+	ObjectIndex       int              `json:"objectIndex"`
+	Name              string           `json:"name"`
+	StoryIndex        int              `json:"storyIndex"`
+	FloorArea         float64          `json:"floorArea"`
+	Volume            float64          `json:"volume"`
+	DeclaredVolume    float64          `json:"declaredVolume,omitempty"`
+	HasDeclaredVolume bool             `json:"hasDeclaredVolume"`
+	MinZ              float64          `json:"minZ"`
+	MaxZ              float64          `json:"maxZ"`
+	SurfaceIDs        []string         `json:"surfaceIds"`
+	WindowIDs         []string         `json:"windowIds"`
+	Metrics           []GeometryMetric `json:"metrics"`
+	Fields            []Field          `json:"fields"`
 }
 
 type GeometrySurface struct {
@@ -337,16 +339,26 @@ func geometryZoneFromObject(obj Object) GeometryZone {
 	if name == "" {
 		name = obj.Type + " #" + strconv.Itoa(obj.Index)
 	}
-	volume, _ := findNumericFieldByCommentWords(obj, "volume")
+	volumeText := fieldValueByCatalogName(obj, "Volume")
+	if volumeText == "" {
+		volumeText = findFieldByCommentWords(obj, "volume")
+	}
+	volume, hasDeclaredVolume := parseFloatField(volumeText)
+	if strings.EqualFold(strings.TrimSpace(volumeText), "autocalculate") {
+		volume = 0
+		hasDeclaredVolume = false
+	}
 	return GeometryZone{
-		ID:          "zone-" + strconv.Itoa(obj.Index),
-		ObjectIndex: obj.Index,
-		Name:        name,
-		StoryIndex:  -1,
-		Volume:      volume,
-		MinZ:        math.Inf(1),
-		MaxZ:        math.Inf(-1),
-		Fields:      append([]Field(nil), obj.Fields...),
+		ID:                "zone-" + strconv.Itoa(obj.Index),
+		ObjectIndex:       obj.Index,
+		Name:              name,
+		StoryIndex:        -1,
+		Volume:            volume,
+		DeclaredVolume:    volume,
+		HasDeclaredVolume: hasDeclaredVolume,
+		MinZ:              math.Inf(1),
+		MaxZ:              math.Inf(-1),
+		Fields:            append([]Field(nil), obj.Fields...),
 	}
 }
 

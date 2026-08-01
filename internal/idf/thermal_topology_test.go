@@ -194,6 +194,90 @@ func TestGeometryConstructionIndexCoversStaticPerformanceFamilies(t *testing.T) 
 	}
 }
 
+func TestDeclaredSurfaceGeometryValidationUsesWorldPolygons(t *testing.T) {
+	validTopology := AnalyzeGeometry(thermalGeometryPairTestDocument(0, true)).Topology
+	valid := findThermalBoundary(t, validTopology, "Pair A")
+	if valid.GeometryCheck.Status != "valid" || valid.GeometryCheck.OverlapRatio != 1 || valid.GeometryCheck.NormalDot != -1 {
+		t.Fatalf("valid declared pair geometry = %#v", valid.GeometryCheck)
+	}
+	if !hasAdjacencyObservation(validTopology, "declared_and_geometrically_matched") {
+		t.Fatal("valid declared pair observation missing")
+	}
+
+	invalidTopology := AnalyzeGeometry(thermalGeometryPairTestDocument(0.5, true)).Topology
+	invalid := findThermalBoundary(t, invalidTopology, "Pair A")
+	if invalid.GeometryCheck.Status != "invalid" || invalid.GeometryCheck.OverlapRatio >= 0.99 {
+		t.Fatalf("shifted declared pair geometry = %#v", invalid.GeometryCheck)
+	}
+	if !hasTopologyIssueCode(invalidTopology, "surface_pair_overlap_mismatch") {
+		t.Fatalf("shifted declared pair did not link overlap diagnostic: %#v", invalid.DiagnosticIDs)
+	}
+	if !strings.Contains(invalid.GeometryCheck.Message, "tolerance") {
+		t.Fatalf("geometry check does not expose tolerance evidence: %q", invalid.GeometryCheck.Message)
+	}
+}
+
+func TestGeometricAdjacencyRemainsQAOnly(t *testing.T) {
+	topology := AnalyzeGeometry(thermalGeometryPairTestDocument(0, false)).Topology
+	boundary := findThermalBoundary(t, topology, "Pair A")
+	if boundary.RelationKind != "adiabatic_explicit" {
+		t.Fatalf("geometric adjacency changed authoritative relation to %q", boundary.RelationKind)
+	}
+	if !hasAdjacencyObservation(topology, "geometrically_adjacent_but_thermally_disconnected") {
+		t.Fatal("disconnected geometric adjacency observation missing")
+	}
+}
+
+func TestZoneEnclosureIntegrityFindsClosedAndOpenShells(t *testing.T) {
+	document, err := Parse(summaryFixtureIDF)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	closed := AnalyzeGeometry(document).Topology.ZoneEnclosures
+	if len(closed) != 1 || !closed[0].ClosedShell || closed[0].OpenEdgeCount != 0 || closed[0].NonManifoldEdgeCount != 0 {
+		t.Fatalf("closed box enclosure = %#v", closed)
+	}
+	if closed[0].ComputedVolume != 600 || closed[0].DeclaredVolume != 600 || closed[0].VolumeDifferencePct != 0 {
+		t.Fatalf("closed box volume = computed %v declared %v difference %v", closed[0].ComputedVolume, closed[0].DeclaredVolume, closed[0].VolumeDifferencePct)
+	}
+
+	openDocument := document
+	openDocument.Objects = append([]Object(nil), document.Objects...)
+	filtered := openDocument.Objects[:0]
+	for _, object := range openDocument.Objects {
+		if isBuildingSurfaceType(object.Type) && objectName(object) == "West Wall" {
+			continue
+		}
+		filtered = append(filtered, object)
+	}
+	openDocument.Objects = filtered
+	open := AnalyzeGeometry(openDocument).Topology.ZoneEnclosures
+	if len(open) != 1 || open[0].ClosedShell || open[0].OpenEdgeCount != 4 || len(open[0].OpenEdges) != 4 {
+		t.Fatalf("open box enclosure = %#v", open)
+	}
+	if !hasTopologyIssueCode(AnalyzeGeometry(openDocument).Topology, "zone_shell_open") {
+		t.Fatal("open shell diagnostic link missing")
+	}
+}
+
+func hasAdjacencyObservation(topology ThermalTopologyReport, kind string) bool {
+	for _, observation := range topology.AdjacencyObservations {
+		if observation.ObservationKind == kind {
+			return true
+		}
+	}
+	return false
+}
+
+func hasTopologyIssueCode(topology ThermalTopologyReport, code string) bool {
+	for _, issue := range topology.IssueLinks {
+		if issue.Code == code {
+			return true
+		}
+	}
+	return false
+}
+
 func findThermalNode(t *testing.T, topology ThermalTopologyReport, id string) ThermalTopologyNode {
 	t.Helper()
 	for _, node := range topology.Nodes {
@@ -274,6 +358,47 @@ func thermalOpeningTestDocument() Document {
 		document.Objects[index].Index = index
 	}
 	return document
+}
+
+func thermalGeometryPairTestDocument(shift float64, declared bool) Document {
+	document := thermalOpeningTestDocument()
+	for objectIndex := range document.Objects {
+		object := &document.Objects[objectIndex]
+		if !isBuildingSurfaceType(object.Type) {
+			continue
+		}
+		switch objectName(*object) {
+		case "Pair A":
+			if !declared {
+				object.Fields[5].Value = "Adiabatic"
+				object.Fields[6].Value = ""
+			}
+		case "Pair B":
+			reverseThermalSurfaceVertices(object, shift)
+			if !declared {
+				object.Fields[5].Value = "Adiabatic"
+				object.Fields[6].Value = ""
+			}
+		}
+	}
+	return document
+}
+
+func reverseThermalSurfaceVertices(object *Object, shift float64) {
+	const vertexStart = 11
+	const vertexCount = 4
+	vertices := make([][]Field, vertexCount)
+	for index := 0; index < vertexCount; index++ {
+		offset := vertexStart + index*3
+		vertices[index] = append([]Field(nil), object.Fields[offset:offset+3]...)
+	}
+	for index := 0; index < vertexCount; index++ {
+		offset := vertexStart + index*3
+		vertex := vertices[vertexCount-1-index]
+		x, _ := strconv.ParseFloat(vertex[0].Value, 64)
+		vertex[0].Value = formatNumber(x + shift)
+		copy(object.Fields[offset:offset+3], vertex)
+	}
 }
 
 func thermalConstructionTestDocument() Document {

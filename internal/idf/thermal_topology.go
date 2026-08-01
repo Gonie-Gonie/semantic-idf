@@ -9,16 +9,21 @@ import (
 const thermalTopologySchema = "semantic-idf.thermal-topology/v1"
 
 type ThermalTopologyReport struct {
-	Schema         string                       `json:"schema"`
-	Nodes          []ThermalTopologyNode        `json:"nodes"`
-	Boundaries     []ThermalBoundaryRecord      `json:"boundaries"`
-	Connections    []ThermalConnectionAggregate `json:"connections"`
-	Openings       []ThermalOpeningRecord       `json:"openings,omitempty"`
-	AirCouplings   []ThermalAirCoupling         `json:"airCouplings,omitempty"`
-	ZoneSignatures []ZoneThermalSignature       `json:"zoneSignatures"`
-	Matrix         []ThermalMatrixCell          `json:"matrix,omitempty"`
-	IssueLinks     []ThermalTopologyIssueLink   `json:"issueLinks,omitempty"`
-	Stats          ThermalTopologyStats         `json:"stats"`
+	Schema                string                          `json:"schema"`
+	Nodes                 []ThermalTopologyNode           `json:"nodes"`
+	Boundaries            []ThermalBoundaryRecord         `json:"boundaries"`
+	Connections           []ThermalConnectionAggregate    `json:"connections"`
+	Openings              []ThermalOpeningRecord          `json:"openings,omitempty"`
+	AirCouplings          []ThermalAirCoupling            `json:"airCouplings,omitempty"`
+	ZoneSignatures        []ZoneThermalSignature          `json:"zoneSignatures"`
+	Matrix                []ThermalMatrixCell             `json:"matrix,omitempty"`
+	IssueLinks            []ThermalTopologyIssueLink      `json:"issueLinks,omitempty"`
+	GeometryDescriptors   []SurfaceGeometryDescriptor     `json:"geometryDescriptors,omitempty"`
+	AdjacencyObservations []GeometricAdjacencyObservation `json:"adjacencyObservations,omitempty"`
+	ZoneEnclosures        []ZoneEnclosureIntegrity        `json:"zoneEnclosures,omitempty"`
+	GeometryTolerance     float64                         `json:"geometryTolerance,omitempty"`
+	GeometryRuleVersion   string                          `json:"geometryRuleVersion,omitempty"`
+	Stats                 ThermalTopologyStats            `json:"stats"`
 }
 
 type ThermalTopologyNode struct {
@@ -92,6 +97,7 @@ type ThermalBoundaryRecord struct {
 	OpeningIDs    []string               `json:"openingIds,omitempty"`
 	DiagnosticIDs []string               `json:"diagnosticIds,omitempty"`
 	SourceAnchors []SemanticSourceAnchor `json:"sourceAnchors,omitempty"`
+	GeometryCheck ThermalGeometryCheck   `json:"geometryCheck,omitempty"`
 }
 
 type ThermalOpeningRecord struct {
@@ -163,25 +169,29 @@ type ThermalConnectionAggregate struct {
 }
 
 type ZoneThermalSignature struct {
-	ZoneID            string   `json:"zoneId"`
-	ZoneName          string   `json:"zoneName"`
-	SpaceIDs          []string `json:"spaceIds,omitempty"`
-	ExteriorArea      float64  `json:"exteriorArea"`
-	GroundArea        float64  `json:"groundArea"`
-	InterzoneArea     float64  `json:"interzoneArea"`
-	AdiabaticArea     float64  `json:"adiabaticArea"`
-	OtherBoundaryArea float64  `json:"otherBoundaryArea"`
-	ExteriorUA        float64  `json:"exteriorUa,omitempty"`
-	GroundUA          float64  `json:"groundUa,omitempty"`
-	InterzoneUA       float64  `json:"interzoneUa,omitempty"`
-	TotalUA           float64  `json:"totalUa,omitempty"`
-	WindowArea        float64  `json:"windowArea"`
-	ExteriorWWR       float64  `json:"exteriorWwr,omitempty"`
-	AdjacentZoneIDs   []string `json:"adjacentZoneIds,omitempty"`
-	AirCoupledZoneIDs []string `json:"airCoupledZoneIds,omitempty"`
-	ClosedShell       bool     `json:"closedShell"`
-	OpenEdgeCount     int      `json:"openEdgeCount,omitempty"`
-	DiagnosticIDs     []string `json:"diagnosticIds,omitempty"`
+	ZoneID               string   `json:"zoneId"`
+	ZoneName             string   `json:"zoneName"`
+	SpaceIDs             []string `json:"spaceIds,omitempty"`
+	ExteriorArea         float64  `json:"exteriorArea"`
+	GroundArea           float64  `json:"groundArea"`
+	InterzoneArea        float64  `json:"interzoneArea"`
+	AdiabaticArea        float64  `json:"adiabaticArea"`
+	OtherBoundaryArea    float64  `json:"otherBoundaryArea"`
+	ExteriorUA           float64  `json:"exteriorUa,omitempty"`
+	GroundUA             float64  `json:"groundUa,omitempty"`
+	InterzoneUA          float64  `json:"interzoneUa,omitempty"`
+	TotalUA              float64  `json:"totalUa,omitempty"`
+	WindowArea           float64  `json:"windowArea"`
+	ExteriorWWR          float64  `json:"exteriorWwr,omitempty"`
+	AdjacentZoneIDs      []string `json:"adjacentZoneIds,omitempty"`
+	AirCoupledZoneIDs    []string `json:"airCoupledZoneIds,omitempty"`
+	ClosedShell          bool     `json:"closedShell"`
+	OpenEdgeCount        int      `json:"openEdgeCount,omitempty"`
+	NonManifoldEdgeCount int      `json:"nonManifoldEdgeCount,omitempty"`
+	ComputedVolume       float64  `json:"computedVolume,omitempty"`
+	DeclaredVolume       float64  `json:"declaredVolume,omitempty"`
+	VolumeDifferencePct  float64  `json:"volumeDifferencePct,omitempty"`
+	DiagnosticIDs        []string `json:"diagnosticIds,omitempty"`
 }
 
 type ThermalMatrixCell struct {
@@ -231,6 +241,7 @@ type thermalTopologyBuilder struct {
 	boundaryIndexBySurfaceID map[string]int
 	openingIndexesByName     map[string][]int
 	constructionByName       map[string]GeometryConstruction
+	surfaceByID              map[string]GeometrySurface
 	report                   ThermalTopologyReport
 }
 
@@ -252,6 +263,7 @@ func BuildThermalTopology(doc Document, geometry GeometryReport, documentIndex *
 		boundaryIndexBySurfaceID: map[string]int{},
 		openingIndexesByName:     map[string][]int{},
 		constructionByName:       thermalConstructionIndex(geometry.Constructions),
+		surfaceByID:              thermalSurfaceIndex(geometry.Surfaces),
 		report: ThermalTopologyReport{
 			Schema:         thermalTopologySchema,
 			Nodes:          []ThermalTopologyNode{},
@@ -270,6 +282,7 @@ func BuildThermalTopology(doc Document, geometry GeometryReport, documentIndex *
 	builder.resolveOpeningCounterparts()
 	builder.calculateBoundaryUA()
 	builder.validateReciprocalConstructions()
+	builder.analyzeGeometryQA()
 	builder.finalize()
 	return builder.report
 }
@@ -1000,6 +1013,16 @@ func thermalConstructionIndex(constructions []GeometryConstruction) map[string]G
 		name := normalizeName(construction.Name)
 		if name != "" {
 			index[name] = construction
+		}
+	}
+	return index
+}
+
+func thermalSurfaceIndex(surfaces []GeometrySurface) map[string]GeometrySurface {
+	index := make(map[string]GeometrySurface, len(surfaces))
+	for _, surface := range surfaces {
+		if surface.ID != "" {
+			index[surface.ID] = surface
 		}
 	}
 	return index
