@@ -303,6 +303,7 @@ elements.thermalTopologyDisplayButtons.forEach((button) => {
 });
 elements.thermalTopologyMatrixQuery.addEventListener("input", () => {
   state.thermalTopologyMatrixQuery = elements.thermalTopologyMatrixQuery.value;
+  elements.thermalTopologyMatrix.scrollTop = 0;
   renderGeometry();
 });
 elements.geometrySelectionAid.addEventListener("click", () => setGeometrySelectionAid(!state.geometrySelectionAid));

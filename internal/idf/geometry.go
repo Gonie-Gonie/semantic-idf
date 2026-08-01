@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type GeometryReport struct {
@@ -183,10 +184,16 @@ type geometryContext struct {
 }
 
 func AnalyzeGeometry(doc Document) GeometryReport {
-	return analyzeGeometryWithIndex(doc, NewDocumentIndex(doc))
+	return AnalyzeGeometryFromIndex(NewDocumentIndex(doc))
 }
 
 func analyzeGeometryWithIndex(doc Document, documentIndex *DocumentIndex) GeometryReport {
+	report, _, _ := analyzeGeometryWithIndexMeasured(doc, documentIndex)
+	return report
+}
+
+func analyzeGeometryWithIndexMeasured(doc Document, documentIndex *DocumentIndex) (GeometryReport, time.Duration, time.Duration) {
+	transformStart := time.Now()
 	ctx := geometryContext{
 		coordinateSystem:            "relative",
 		rectangularCoordinateSystem: "relative",
@@ -313,8 +320,10 @@ func analyzeGeometryWithIndex(doc Document, documentIndex *DocumentIndex) Geomet
 	report.ZoneCount = len(report.Zones)
 	report.SurfaceCount = len(report.Surfaces)
 	report.WindowCount = len(report.Windows)
+	transformDuration := time.Since(transformStart)
+	topologyStart := time.Now()
 	report.Topology = BuildThermalTopology(doc, report, documentIndex)
-	return report
+	return report, transformDuration, time.Since(topologyStart)
 }
 
 func geometrySpaceFromObject(obj Object) GeometrySpace {

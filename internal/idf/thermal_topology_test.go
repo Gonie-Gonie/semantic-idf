@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestAnalyzeGeometryIncludesThermalTopologySchema(t *testing.T) {
@@ -267,7 +268,7 @@ func TestTopologyDiagnosticsReuseIssueIdentityAndEvidence(t *testing.T) {
 func TestAnalysisSessionBuildsThermalTopologyOnce(t *testing.T) {
 	document := thermalTopologyTestDocument()
 	session := newAnalysisSession(NewDocumentIndex(document))
-	wantCacheKey := semanticStableHash(document.String()+"\x00"+fieldCatalogAdapter(thermalEnergyPlusVersion(document)).AdapterVersion+"\x00"+thermalTopologySchema, 32)
+	wantCacheKey := newThermalGeometryCacheKey(NewDocumentIndex(document)).String()
 	if session.cacheKey == "" || session.cacheKey != wantCacheKey {
 		t.Fatalf("analysis cache key = %q, want %q", session.cacheKey, wantCacheKey)
 	}
@@ -289,6 +290,69 @@ func TestAnalysisSessionBuildsThermalTopologyOnce(t *testing.T) {
 	waitGroup.Wait()
 	if session.geometryBuildCount != 1 {
 		t.Fatalf("thermal topology build count = %d, want 1", session.geometryBuildCount)
+	}
+}
+
+func TestThermalGeometryCacheSharesReportsArtifactsAndFlights(t *testing.T) {
+	document := thermalTopologyTestDocument()
+	index := NewDocumentIndex(document)
+	key := newThermalGeometryCacheKey(index)
+	if key.DocumentTextHash == "" || key.SchemaAdapterVersion == "" || key.TopologySchemaVersion != thermalTopologySchema || key.GeometryTransformVersion != thermalGeometryTransformVersion {
+		t.Fatalf("incomplete geometry cache key: %#v", key)
+	}
+
+	cache := newThermalGeometryAnalysisCache(4)
+	const callers = 8
+	entries := make(chan thermalGeometryCacheEntry, callers)
+	var waitGroup sync.WaitGroup
+	for caller := 0; caller < callers; caller++ {
+		waitGroup.Add(1)
+		go func() {
+			defer waitGroup.Done()
+			entry, _ := cache.getOrCompute(index)
+			entries <- entry
+		}()
+	}
+	waitGroup.Wait()
+	close(entries)
+	if cache.buildCount != 1 {
+		t.Fatalf("concurrent geometry cache build count = %d, want 1", cache.buildCount)
+	}
+	for entry := range entries {
+		if entry.report.Topology.SourceModelHash == "" || entry.report.Topology.SourceModelHash != entry.key.DocumentTextHash {
+			t.Fatalf("cached geometry and topology were not restored together: %#v", entry.key)
+		}
+		if entry.artifacts.WorldGeometryDescriptor.SurfaceCount != entry.report.SurfaceCount || len(entry.artifacts.SpatialAdjacencyIndex) == 0 {
+			t.Fatalf("shared geometry artifacts were not cached: %#v", entry.artifacts.WorldGeometryDescriptor)
+		}
+	}
+
+	changed, err := Parse(document.String())
+	if err != nil {
+		t.Fatalf("Parse(document.String()) error = %v", err)
+	}
+	changed.Objects[0].Fields[0].Value += " edited"
+	changedIndex := NewDocumentIndex(changed)
+	if newThermalGeometryCacheKey(changedIndex).DocumentTextHash == key.DocumentTextHash {
+		t.Fatal("field edit did not change geometry cache document hash")
+	}
+	if _, hit := cache.getOrCompute(changedIndex); hit || cache.buildCount != 2 {
+		t.Fatalf("field edit should populate a new cache entry: hit=%v builds=%d", hit, cache.buildCount)
+	}
+}
+
+func TestAnalyzeGeometryTimedReportsTransformAndTopologyStages(t *testing.T) {
+	stages := map[string]bool{}
+	report := AnalyzeGeometryFromIndexTimed(NewDocumentIndex(thermalTopologyTestDocument()), func(stage string, _ time.Duration) {
+		stages[stage] = true
+	})
+	if report.Topology.Schema != thermalTopologySchema {
+		t.Fatalf("timed geometry omitted topology: %#v", report.Topology.Stats)
+	}
+	for _, stage := range []string{"geometry_transform", "topology"} {
+		if !stages[stage] {
+			t.Fatalf("timed geometry omitted %q stage", stage)
+		}
 	}
 }
 

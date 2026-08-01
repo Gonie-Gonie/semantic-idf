@@ -88,10 +88,7 @@ func AnalyzeDiagnosticsFromIndex(index *DocumentIndex) []Diagnostic {
 }
 
 func AnalyzeGeometryFromIndex(index *DocumentIndex) GeometryReport {
-	if index == nil {
-		return GeometryReport{}
-	}
-	return analyzeGeometryWithIndex(index.Doc, index)
+	return AnalyzeGeometryFromIndexTimed(index, nil)
 }
 
 func typeNameIndexKey(typeName, name string) string {

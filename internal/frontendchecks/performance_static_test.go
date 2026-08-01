@@ -76,6 +76,45 @@ func TestFrontendGeometryPlanLayoutCacheContract(t *testing.T) {
 	}
 }
 
+func TestFrontendThermalTopologyPerformanceContracts(t *testing.T) {
+	geometryView := readTestFile(t, "frontend/src/js/views/geometry-view.js")
+	if !strings.Contains(geometryView, `import("./thermal-topology-view.js")`) {
+		t.Fatal("thermal topology module should load lazily on first use")
+	}
+
+	layout := readTestFile(t, "frontend/src/js/views/thermal-topology-layout.js")
+	for _, term := range []string{
+		"topology.sourceModelHash",
+		"normalizeThermalTopologyAreaBasis(options.areaBasis)",
+		"selectionAffectsScope",
+		`scope === "neighbors"`,
+		"Boolean(options.showLabels)",
+	} {
+		if !strings.Contains(layout, term) {
+			t.Fatalf("thermal layout cache key contract missing %q", term)
+		}
+	}
+
+	view := readTestFile(t, "frontend/src/js/views/thermal-topology-view.js")
+	for _, term := range []string{
+		"THERMAL_LAYOUT_CACHE_LIMIT = 24",
+		"rememberThermalTopologyLayout",
+		"THERMAL_MATRIX_ROW_OVERSCAN",
+		"allRowNodes.slice(firstRowIndex, lastRowIndex)",
+		"thermal-matrix-spacer",
+		"bindThermalMatrixVirtualScroll",
+		"markGraphTargetSelected(kind, id)",
+	} {
+		if !strings.Contains(view, term) {
+			t.Fatalf("thermal rendering performance contract missing %q", term)
+		}
+	}
+	selectionBody := sliceBetween(view, "function activateGraphTarget", "function markGraphTargetSelected")
+	if strings.Contains(selectionBody, "computeThermalTopologyLayout") || strings.Contains(selectionBody, "renderThermalTopology(") {
+		t.Fatal("selection-only updates should not recompute thermal layout")
+	}
+}
+
 func TestFrontendNavigationCacheRestoreContract(t *testing.T) {
 	actions := readTestFile(t, "frontend/src/js/actions.js")
 	for _, term := range []string{

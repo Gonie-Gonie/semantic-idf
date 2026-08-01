@@ -12,22 +12,29 @@ const STORY_LANE_GAP = 150;
 
 export function thermalTopologyLayoutCacheKey(geometry, options = {}, viewport = {}) {
   const topology = geometry?.topology || {};
-  return [
+  const scope = normalizeThermalTopologyScope(options.scope);
+  const selectionAffectsScope = scope === "selection" || scope === "neighbors";
+  const topologyHash = topology.sourceModelHash || [
     topology.schema || "thermal-topology",
-    topology.nodes?.length || 0,
-    topology.connections?.length || 0,
+    ...(topology.nodes || []).map((node) => node.id),
+    ...(topology.connections || []).map((connection) => connection.id),
+  ].join(":");
+  return [
+    topologyHash,
     normalizeThermalTopologyGraphLevel(options.graphLevel),
     normalizeThermalTopologyLayout(options.layout),
-    normalizeThermalTopologyScope(options.scope),
+    scope,
     options.metric || "topology",
     options.areaComponent || "gross",
+    normalizeThermalTopologyAreaBasis(options.areaBasis),
     options.storyIndex ?? "all",
-    options.selectedEntityId || "",
-    options.selectedEntityKind || "",
-    Math.min(3, Math.max(1, Number(options.neighborDepth) || 1)),
+    selectionAffectsScope ? options.selectedEntityId || "" : "",
+    selectionAffectsScope ? options.selectedEntityKind || "" : "",
+    scope === "neighbors" ? Math.min(3, Math.max(1, Number(options.neighborDepth) || 1)) : "",
     Boolean(options.showOpenings),
     Boolean(options.showAirCoupling),
     Boolean(options.expandExternalTargets),
+    Boolean(options.showLabels),
     Math.round((Number(viewport.width) || 900) / 50) * 50,
     Math.round((Number(viewport.height) || 600) / 50) * 50,
   ].join("|");

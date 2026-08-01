@@ -146,7 +146,7 @@ func AnalyzeTimed(doc Document, timer StageTimer) Report {
 	var geometry GeometryReport
 	var diagnostics []Diagnostic
 	timeAnalysisStage(timer, "geometry", func() {
-		geometry = session.Geometry()
+		geometry = session.GeometryTimed(timer)
 	})
 
 	var wg sync.WaitGroup

@@ -627,6 +627,23 @@
   text-align: center;
 }
 
+.thermal-matrix-spacer td {
+  height: 0;
+  padding: 0;
+  border: 0;
+}
+
+.thermal-matrix-row-window {
+  position: sticky;
+  z-index: 3;
+  top: 10px;
+  width: max-content;
+  margin-left: auto;
+  margin-right: 12px;
+  color: var(--ink-soft);
+  font-size: 10px;
+}
+
 .thermal-matrix-table thead th {
   position: sticky;
   z-index: 2;

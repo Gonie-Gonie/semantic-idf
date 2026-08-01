@@ -10,6 +10,7 @@ type analysisSession struct {
 	diagnosticsOnce    sync.Once
 	profileOnce        sync.Once
 	geometry           GeometryReport
+	geometryTiming     GeometryAnalysisTiming
 	hvac               HVACReport
 	diagnostics        []Diagnostic
 	profile            ProfileReport
@@ -20,17 +21,22 @@ func newAnalysisSession(index *DocumentIndex) *analysisSession {
 	if index == nil {
 		index = NewDocumentIndex(Document{})
 	}
-	version := thermalEnergyPlusVersion(index.Doc)
-	adapterVersion := fieldCatalogAdapter(version).AdapterVersion
-	cacheKey := semanticStableHash(index.Doc.String()+"\x00"+adapterVersion+"\x00"+thermalTopologySchema, 32)
-	return &analysisSession{index: index, cacheKey: cacheKey}
+	return &analysisSession{index: index, cacheKey: newThermalGeometryCacheKey(index).String()}
 }
 
 func (session *analysisSession) Geometry() GeometryReport {
+	return session.GeometryTimed(nil)
+}
+
+func (session *analysisSession) GeometryTimed(timer StageTimer) GeometryReport {
 	session.geometryOnce.Do(func() {
 		session.geometryBuildCount++
-		session.geometry = AnalyzeGeometryFromIndex(session.index)
+		session.geometry, session.geometryTiming = analyzeGeometryFromIndexCached(session.index)
 	})
+	if timer != nil {
+		timer("geometry_transform", session.geometryTiming.GeometryTransform)
+		timer("topology", session.geometryTiming.ThermalTopology)
+	}
 	return session.geometry
 }
 

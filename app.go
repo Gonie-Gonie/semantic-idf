@@ -463,6 +463,7 @@ func (a *App) analyzeInputStageText(text string, mode string) (*InputAnalysisRes
 		stageStart := time.Now()
 		report := idf.Report{}
 		stageName := mode
+		stageDetails := map[string]int64{}
 		index := idf.NewDocumentIndex(doc)
 		switch mode {
 		case "profile":
@@ -476,13 +477,18 @@ func (a *App) analyzeInputStageText(text string, mode string) (*InputAnalysisRes
 		case "diagnostics":
 			report.Diagnostics = idf.AnalyzeDiagnosticsFromIndex(index)
 		case "geometry":
-			geometry := idf.AnalyzeGeometryFromIndex(index)
+			stageTimer, stageSnapshot := analysisStageRecorder()
+			geometry := idf.AnalyzeGeometryFromIndexTimed(index, stageTimer)
 			report.Geometry = geometry
+			for name, duration := range stageSnapshot() {
+				stageDetails[name] = duration
+			}
 		default:
 			return nil, fmt.Errorf("unsupported analysis stage %q", mode)
 		}
 		slimReportForMode(&report, mode)
 		stageMS := analysisDurationMS(time.Since(stageStart))
+		stageDetails[stageName] = stageMS
 
 		return &InputAnalysisResult{
 			AnalysisKey: textHash,
@@ -495,7 +501,7 @@ func (a *App) analyzeInputStageText(text string, mode string) (*InputAnalysisRes
 				TotalMS:   analysisDurationMS(time.Since(requestStart)),
 				ParseMS:   parseMS,
 				AnalyzeMS: stageMS,
-				Stages:    map[string]int64{stageName: stageMS},
+				Stages:    stageDetails,
 			},
 		}, nil
 	})
