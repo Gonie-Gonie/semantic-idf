@@ -7,6 +7,7 @@ const MAX_CONTEXT_DEPTH = 7;
 
 export function captureViewSnapshot() {
   return {
+    analysisKey: state.reportAnalysisKey || state.analysisKey || "",
     inputView: state.activeInputView,
     resultTab: state.activeResultTab,
     jsonSelectedObjectIndex: state.jsonSelectedObjectIndex,

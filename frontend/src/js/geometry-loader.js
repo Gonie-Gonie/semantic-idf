@@ -1,4 +1,9 @@
-import { elements, normalizeGeometryMode, normalizeTopologyAreaBasis, state } from "./state.js";
+import {
+  captureThermalTopologyState,
+  elements,
+  normalizeGeometryMode,
+  state,
+} from "./state.js";
 import { t } from "./i18n.js";
 import { configureResultPanelNavigationHooks } from "./panel-navigation-adapters.js";
 import { recordViewHistory } from "./view-history.js";
@@ -128,10 +133,10 @@ configureResultPanelNavigationHooks("geometry", {
     return {
       ...context.genericCaptureContext(),
       mode: normalizeGeometryMode(state.geometryMode),
-      areaBasis: normalizeTopologyAreaBasis(state.topologyAreaBasis),
       story: state.selectedGeometryStory,
       selectedKind: state.selectedGeometryKind || "",
       selectedId: state.selectedGeometryId || "",
+      ...captureThermalTopologyState(state),
       selectionAid: Boolean(state.geometrySelectionAid),
       syncLocate: Boolean(state.geometrySyncLocate),
       visibility: {

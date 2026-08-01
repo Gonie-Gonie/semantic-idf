@@ -6,6 +6,7 @@ import { getPanelNavigationAdapter, registerPanelNavigationAdapter } from "./pan
 import { getSemanticNavigationCache } from "./semantic-navigation-cache.js";
 import {
   clearSemanticSelection,
+  remapSemanticSelection,
   revealSelectionSource,
   selectSemanticEntity,
 } from "./selection-controller.js";
@@ -590,16 +591,17 @@ export async function redoViewNavigation(options = {}) {
 
 export async function restoreViewSnapshot(snapshot, options = {}) {
   const scope = options.scope || "all";
+  const analysisCacheHit = !snapshot.analysisKey || snapshot.analysisKey === (state.reportAnalysisKey || state.analysisKey || "");
   await withHistoryRestore(async () => {
     restoreSemanticSnapshotState(snapshot);
-    if (snapshot.globalSelection?.entityId) {
+    if (analysisCacheHit && snapshot.globalSelection?.entityId) {
       await selectSemanticEntity(snapshot.globalSelection, {
         originView: snapshot.globalSelection.originView || "history",
         action: "restore",
         recordHistory: false,
         follow: false,
       });
-    } else if (snapshot.globalSelection) {
+    } else if (analysisCacheHit && snapshot.globalSelection) {
       await clearSemanticSelection({ recordHistory: false, follow: false });
     }
     state.semanticTemporaryReveal = snapshot.semanticTemporaryReveal || null;
@@ -620,6 +622,14 @@ export async function restoreViewSnapshot(snapshot, options = {}) {
     await restoreRegisteredPanelContext(`input-${state.activeInputView}`, snapshot.panelContexts);
     if (scope !== "input") {
       await restoreRegisteredPanelContext(state.activeResultTab, snapshot.panelContexts);
+    }
+    if (analysisCacheHit && snapshot.globalSelection?.entityId) {
+      await remapSemanticSelection({
+        originView: snapshot.globalSelection.originView || "history",
+        action: "restore",
+        recordHistory: false,
+        follow: false,
+      });
     }
     if (snapshot.activeObjectIndex !== undefined && snapshot.activeObjectIndex !== null && String(snapshot.activeObjectIndex) !== "") {
       await focusInputObject({

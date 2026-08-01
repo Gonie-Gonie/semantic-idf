@@ -1,5 +1,12 @@
 import * as THREE from "../../vendor/three.module.js";
-import { elements, escapeHTML, normalizeGeometryMode, normalizeTopologyAreaBasis, state } from "../state.js";
+import {
+  elements,
+  escapeHTML,
+  normalizeGeometryMode,
+  normalizeThermalTopologyAreaBasis,
+  restoreThermalTopologyState,
+  state,
+} from "../state.js";
 import { t } from "../i18n.js";
 import { refreshResultPanelSelectionStyles } from "../panel-navigation-adapters.js";
 import { selectSemanticEntity } from "../selection-controller.js";
@@ -146,6 +153,7 @@ export async function revealGeometrySelection(selection, options = {}, context) 
   }
   if (entity.thermalTarget) {
     state.geometryMode = "thermal";
+    state.thermalTopologySelectedEntityId = entity.id;
   } else if (state.geometryMode === "plan" && !geometryEntityHasPlanShape(entity, geometry)) {
     state.geometryMode = "3d";
   }
@@ -176,7 +184,7 @@ export async function revealGeometrySelection(selection, options = {}, context) 
 export async function restoreGeometryNavigationContext(snapshot = {}, context) {
   geometrySelectionRequest += 1;
   state.geometryMode = normalizeGeometryMode(snapshot.mode);
-  state.topologyAreaBasis = normalizeTopologyAreaBasis(snapshot.areaBasis);
+  restoreThermalTopologyState(snapshot, state);
   state.selectedGeometryStory = snapshot.story === "all" ? "all" : Number(snapshot.story) || 0;
   state.selectedGeometryKind = normalizeGeometryKind(snapshot.selectedKind);
   state.selectedGeometryId = String(snapshot.selectedId || "");
@@ -255,11 +263,11 @@ function updateModeVisibility() {
   elements.geometryCanvasHost.classList.toggle("active", state.geometryMode === "3d");
   elements.geometryPlan.classList.toggle("active", state.geometryMode === "plan");
   elements.thermalTopologyGraph?.classList.toggle("active", state.geometryMode === "thermal");
-  if (elements.topologyAreaBasisControl) {
-    elements.topologyAreaBasisControl.hidden = state.geometryMode !== "thermal";
+  if (elements.thermalTopologyAreaBasisControl) {
+    elements.thermalTopologyAreaBasisControl.hidden = state.geometryMode !== "thermal";
   }
-  if (elements.topologyAreaBasis) {
-    elements.topologyAreaBasis.value = normalizeTopologyAreaBasis(state.topologyAreaBasis);
+  if (elements.thermalTopologyAreaBasis) {
+    elements.thermalTopologyAreaBasis.value = normalizeThermalTopologyAreaBasis(state.thermalTopologyAreaBasis);
   }
   elements.geometryModeButtons.forEach((button) => {
     button.classList.toggle("active", button.dataset.geometryMode === state.geometryMode);
@@ -274,7 +282,7 @@ function renderThermalTopology(geometry) {
   const connections = topology?.connections || [];
   const boundaries = topology?.boundaries || [];
   const count = connections.length || boundaries.length;
-  const areaField = normalizeTopologyAreaBasis(state.topologyAreaBasis) === "physical" ? "physicalGrossArea" : "effectiveGrossArea";
+  const areaField = normalizeThermalTopologyAreaBasis(state.thermalTopologyAreaBasis) === "physical" ? "physicalGrossArea" : "effectiveGrossArea";
   const totalArea = boundaries.reduce((sum, boundary) => sum + (Number(boundary?.[areaField]) || 0), 0);
   const selectedTargetAttributes = isThermalTopologyTargetKind(state.selectedGeometryKind) && state.selectedGeometryId
     ? geometryNavigationAttributes(state.selectedGeometryKind, state.selectedGeometryId)

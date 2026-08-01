@@ -1,14 +1,121 @@
 import { t } from "./i18n.js";
 
 export const geometryModes = Object.freeze(["3d", "plan", "thermal"]);
+export const thermalTopologyGraphLevels = Object.freeze(["zone", "boundary"]);
+export const thermalTopologyMetrics = Object.freeze(["topology", "area", "ua", "exposure", "qa", "air", "simulated_heat"]);
+export const thermalTopologyScopes = Object.freeze(["building", "story", "selection", "neighbors"]);
+export const thermalTopologyLayouts = Object.freeze(["spatial", "network"]);
 
 export function normalizeGeometryMode(value) {
   const mode = String(value || "").toLowerCase();
   return geometryModes.includes(mode) ? mode : "3d";
 }
 
-export function normalizeTopologyAreaBasis(value) {
+export function normalizeThermalTopologyAreaBasis(value) {
   return String(value || "").toLowerCase() === "physical" ? "physical" : "effective";
+}
+
+export function normalizeThermalTopologyGraphLevel(value) {
+  const level = String(value || "").toLowerCase();
+  return thermalTopologyGraphLevels.includes(level) ? level : "zone";
+}
+
+export function normalizeThermalTopologyMetric(value) {
+  const metric = String(value || "").toLowerCase();
+  return thermalTopologyMetrics.includes(metric) ? metric : "topology";
+}
+
+export function normalizeThermalTopologyScope(value) {
+  const scope = String(value || "").toLowerCase();
+  return thermalTopologyScopes.includes(scope) ? scope : "building";
+}
+
+export function normalizeThermalTopologyLayout(value) {
+  const layout = String(value || "").toLowerCase();
+  return thermalTopologyLayouts.includes(layout) ? layout : "spatial";
+}
+
+export function normalizeThermalTopologyState(target = state) {
+  target.geometryMode = normalizeGeometryMode(target.geometryMode);
+  target.thermalTopologyGraphLevel = normalizeThermalTopologyGraphLevel(target.thermalTopologyGraphLevel);
+  target.thermalTopologyMetric = normalizeThermalTopologyMetric(target.thermalTopologyMetric);
+  target.thermalTopologyScope = normalizeThermalTopologyScope(target.thermalTopologyScope);
+  target.thermalTopologyLayout = normalizeThermalTopologyLayout(target.thermalTopologyLayout);
+  target.thermalTopologyAreaBasis = normalizeThermalTopologyAreaBasis(target.thermalTopologyAreaBasis);
+  target.thermalTopologyShowOpenings = normalizeBoolean(target.thermalTopologyShowOpenings, true);
+  target.thermalTopologyShowAirCoupling = normalizeBoolean(target.thermalTopologyShowAirCoupling, false);
+  target.thermalTopologyExpandExternalTargets = normalizeBoolean(target.thermalTopologyExpandExternalTargets, false);
+  target.thermalTopologyShowLabels = normalizeBoolean(target.thermalTopologyShowLabels, true);
+  target.thermalTopologySelectedEntityId = String(target.thermalTopologySelectedEntityId || "");
+  target.thermalTopologyNeighborDepth = clampInteger(target.thermalTopologyNeighborDepth, 1, 4, 1);
+  target.thermalTopologyPanX = finiteNumber(target.thermalTopologyPanX, 0);
+  target.thermalTopologyPanY = finiteNumber(target.thermalTopologyPanY, 0);
+  target.thermalTopologyScale = clampNumber(target.thermalTopologyScale, 0.1, 8, 1);
+  target.thermalTopologyLayoutCache = target.thermalTopologyLayoutCache instanceof Map ? target.thermalTopologyLayoutCache : new Map();
+  target.thermalTopologySimulationPeriod = String(target.thermalTopologySimulationPeriod || "");
+  target.thermalTopologySimulationFrame = clampInteger(target.thermalTopologySimulationFrame, 0, Number.MAX_SAFE_INTEGER, 0);
+  return target;
+}
+
+export function captureThermalTopologyState(source = state) {
+  normalizeThermalTopologyState(source);
+  return {
+    thermalTopologyGraphLevel: source.thermalTopologyGraphLevel,
+    thermalTopologyMetric: source.thermalTopologyMetric,
+    thermalTopologyScope: source.thermalTopologyScope,
+    thermalTopologyLayout: source.thermalTopologyLayout,
+    thermalTopologyAreaBasis: source.thermalTopologyAreaBasis,
+    thermalTopologyShowOpenings: source.thermalTopologyShowOpenings,
+    thermalTopologyShowAirCoupling: source.thermalTopologyShowAirCoupling,
+    thermalTopologyExpandExternalTargets: source.thermalTopologyExpandExternalTargets,
+    thermalTopologyShowLabels: source.thermalTopologyShowLabels,
+    thermalTopologySelectedEntityId: source.thermalTopologySelectedEntityId,
+    thermalTopologyNeighborDepth: source.thermalTopologyNeighborDepth,
+    thermalTopologyPanX: source.thermalTopologyPanX,
+    thermalTopologyPanY: source.thermalTopologyPanY,
+    thermalTopologyScale: source.thermalTopologyScale,
+    thermalTopologySimulationPeriod: source.thermalTopologySimulationPeriod,
+    thermalTopologySimulationFrame: source.thermalTopologySimulationFrame,
+  };
+}
+
+export function restoreThermalTopologyState(snapshot = {}, target = state) {
+  for (const key of Object.keys(captureThermalTopologyState(target))) {
+    if (Object.prototype.hasOwnProperty.call(snapshot, key)) {
+      target[key] = snapshot[key];
+    }
+  }
+  return normalizeThermalTopologyState(target);
+}
+
+export function resetThermalTopologyDocumentState(target = state) {
+  target.thermalTopologySelectedEntityId = "";
+  target.thermalTopologyPanX = 0;
+  target.thermalTopologyPanY = 0;
+  target.thermalTopologyScale = 1;
+  target.thermalTopologySimulationPeriod = "";
+  target.thermalTopologySimulationFrame = 0;
+  target.thermalTopologyLayoutCache?.clear?.();
+  if (!(target.thermalTopologyLayoutCache instanceof Map)) {
+    target.thermalTopologyLayoutCache = new Map();
+  }
+}
+
+function normalizeBoolean(value, fallback) {
+  return typeof value === "boolean" ? value : fallback;
+}
+
+function finiteNumber(value, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function clampNumber(value, minimum, maximum, fallback) {
+  return Math.min(maximum, Math.max(minimum, finiteNumber(value, fallback)));
+}
+
+function clampInteger(value, minimum, maximum, fallback) {
+  return Math.min(maximum, Math.max(minimum, Math.trunc(finiteNumber(value, fallback))));
 }
 
 export const state = {
@@ -173,7 +280,23 @@ export const state = {
   profileSettings: null,
   profileApplyPreview: null,
   geometryMode: "3d",
-  topologyAreaBasis: "effective",
+  thermalTopologyGraphLevel: "zone",
+  thermalTopologyMetric: "topology",
+  thermalTopologyScope: "building",
+  thermalTopologyLayout: "spatial",
+  thermalTopologyAreaBasis: "effective",
+  thermalTopologyShowOpenings: true,
+  thermalTopologyShowAirCoupling: false,
+  thermalTopologyExpandExternalTargets: false,
+  thermalTopologyShowLabels: true,
+  thermalTopologySelectedEntityId: "",
+  thermalTopologyNeighborDepth: 1,
+  thermalTopologyPanX: 0,
+  thermalTopologyPanY: 0,
+  thermalTopologyScale: 1,
+  thermalTopologyLayoutCache: new Map(),
+  thermalTopologySimulationPeriod: "",
+  thermalTopologySimulationFrame: 0,
   geometryPlanLayoutCache: new Map(),
   selectedGeometryId: "",
   selectedGeometryKind: "",
@@ -424,8 +547,8 @@ export const elements = {
   geometryDetails: document.querySelector("#geometryDetails"),
   geometryModeButtons: document.querySelectorAll("[data-geometry-mode]"),
   geometryStorySelect: document.querySelector("#geometryStorySelect"),
-  topologyAreaBasisControl: document.querySelector("#topologyAreaBasisControl"),
-  topologyAreaBasis: document.querySelector("#topologyAreaBasis"),
+  thermalTopologyAreaBasisControl: document.querySelector("#thermalTopologyAreaBasisControl"),
+  thermalTopologyAreaBasis: document.querySelector("#thermalTopologyAreaBasis"),
   geometrySelectionAid: document.querySelector("#geometrySelectionAid"),
   geometryExpandButton: document.querySelector("#geometryExpandButton"),
   geometrySyncLocate: document.querySelector("#geometrySyncLocate"),

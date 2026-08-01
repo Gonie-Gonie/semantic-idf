@@ -13,7 +13,7 @@ func TestTopologyViewSwitchSupportsThermalAndNormalizesInvalidModes(t *testing.T
 		`data-geometry-mode="thermal"`,
 		`data-i18n-title="topology.thermalTooltip"`,
 		`id="thermalTopologyGraph"`,
-		`id="topologyAreaBasis"`,
+		`id="thermalTopologyAreaBasis"`,
 		`value="effective"`,
 		`value="physical"`,
 	} {
@@ -35,7 +35,7 @@ func TestTopologyViewSwitchSupportsThermalAndNormalizesInvalidModes(t *testing.T
 
 func TestTopologyAreaBasisDefaultsToEffectiveAndGeometryLabelsUsePhysicalArea(t *testing.T) {
 	state := readTestFile(t, "frontend/src/js/state.js")
-	if !strings.Contains(state, `topologyAreaBasis: "effective"`) {
+	if !strings.Contains(state, `thermalTopologyAreaBasis: "effective"`) {
 		t.Fatal("thermal topology area basis must default to effective model-total area")
 	}
 
@@ -59,7 +59,7 @@ func TestTopologyModeHistoryPreservesSharedSelection(t *testing.T) {
 			t.Fatalf("geometry mode setter is missing %q", required)
 		}
 	}
-	for _, forbidden := range []string{"selectedGeometryId =", "selectedGeometryKind =", "globalSelection ="} {
+	for _, forbidden := range []string{"selectedGeometryId =", "selectedGeometryKind =", "globalSelection =", "analyze(", "backend."} {
 		if strings.Contains(setter, forbidden) {
 			t.Fatalf("mode switching must preserve the shared selection; found %q", forbidden)
 		}

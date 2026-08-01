@@ -1,6 +1,14 @@
 import { defaultSample, loadDefaultSampleIDF } from "./sample.js";
 import { loadAndApplyAppSettings } from "./settings-client.js";
-import { backend, elements, setStatus, state, updateTextStats } from "./state.js";
+import {
+  backend,
+  elements,
+  normalizeThermalTopologyAreaBasis,
+  resetThermalTopologyDocumentState,
+  setStatus,
+  state,
+  updateTextStats,
+} from "./state.js";
 import {
   analyze,
   applyCachedAnalysisResult,
@@ -238,8 +246,8 @@ elements.geometryModeButtons.forEach((button) => {
   button.addEventListener("click", () => setGeometryMode(button.dataset.geometryMode));
 });
 elements.geometryStorySelect.addEventListener("change", () => setGeometryStory(elements.geometryStorySelect.value));
-elements.topologyAreaBasis.addEventListener("change", () => {
-  state.topologyAreaBasis = elements.topologyAreaBasis.value === "physical" ? "physical" : "effective";
+elements.thermalTopologyAreaBasis.addEventListener("change", () => {
+  state.thermalTopologyAreaBasis = normalizeThermalTopologyAreaBasis(elements.thermalTopologyAreaBasis.value);
   renderGeometry();
 });
 elements.geometrySelectionAid.addEventListener("click", () => setGeometrySelectionAid(!state.geometrySelectionAid));
@@ -303,6 +311,7 @@ window.addEventListener("keydown", (event) => {
 window.addEventListener("mousedown", handleHardwareHistoryMouseButton, { capture: true });
 window.addEventListener("auxclick", handleHardwareHistoryMouseButton, { capture: true });
 window.addEventListener("idfAnalyzer:documentChanged", () => {
+  resetThermalTopologyDocumentState(state);
   updateDocumentActions();
 });
 window.addEventListener("idfAnalyzer:geometryLocate", (event) => {

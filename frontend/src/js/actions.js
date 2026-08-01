@@ -358,6 +358,7 @@ function applyOverviewResult(result, text, { complete = false, analysisKey = "" 
   state.hvacServiceGraphLayoutCache?.clear?.();
   state.profileViewCache?.clear?.();
   state.geometryPlanLayoutCache?.clear?.();
+  state.thermalTopologyLayoutCache?.clear?.();
   state.analysisStageTimings = {};
   recordAnalysisTiming(result.timing);
   state.analysisStage = complete ? "complete" : "overview";
@@ -721,6 +722,7 @@ export function applyCachedAnalysisResult(result, snapshot = {}) {
   state.hvacServiceGraphLayoutCache?.clear?.();
   state.profileViewCache?.clear?.();
   state.geometryPlanLayoutCache?.clear?.();
+  state.thermalTopologyLayoutCache?.clear?.();
   state.analysisStageTimings = {};
   recordAnalysisTiming(result.timing);
   const complete = isCompleteAnalysisResult(result);
