@@ -240,6 +240,143 @@
   overflow: hidden;
 }
 
+.thermal-topology-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--line), transparent 42%) 1px, transparent 0) 0 0 / 22px 22px,
+    var(--surface-3);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.thermal-topology-svg.panning {
+  cursor: grabbing;
+}
+
+.thermal-topology-svg marker path {
+  fill: var(--muted);
+}
+
+.thermal-topology-svg #thermalTopologyAirArrow path {
+  fill: var(--teal);
+}
+
+.thermal-edge {
+  fill: none;
+  stroke: color-mix(in srgb, var(--ink), transparent 50%);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.thermal-edge.air {
+  stroke: var(--teal);
+  stroke-dasharray: 7 5;
+}
+
+.thermal-edge.invalid {
+  stroke: var(--red);
+  stroke-dasharray: 4 4;
+}
+
+.thermal-edge.selected {
+  stroke: var(--geometry-selected);
+  stroke-width: 4;
+}
+
+.thermal-edge-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 16;
+  cursor: pointer;
+  vector-effect: non-scaling-stroke;
+}
+
+.thermal-edge-group:hover .thermal-edge {
+  stroke: var(--geometry-selected);
+  stroke-width: 3;
+}
+
+.thermal-edge-label {
+  paint-order: stroke;
+  stroke: var(--surface-3);
+  stroke-width: 5px;
+  stroke-linejoin: round;
+  fill: var(--muted);
+  font-size: 10px;
+  text-anchor: middle;
+  pointer-events: none;
+}
+
+.thermal-edge-label.selected {
+  fill: var(--ink);
+  font-weight: 700;
+}
+
+.thermal-node {
+  cursor: pointer;
+  outline: none;
+}
+
+.thermal-node rect {
+  fill: var(--surface);
+  stroke: color-mix(in srgb, var(--teal), var(--ink) 28%);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.thermal-node.external rect {
+  fill: color-mix(in srgb, var(--surface), var(--geometry-roof) 10%);
+  stroke-dasharray: 5 3;
+}
+
+.thermal-node:hover rect,
+.thermal-node:focus rect,
+.thermal-node.selected rect {
+  stroke: var(--geometry-selected);
+  stroke-width: 3;
+}
+
+.thermal-node.selected rect {
+  fill: color-mix(in srgb, var(--geometry-selected), var(--surface) 88%);
+}
+
+.thermal-node-label,
+.thermal-node-subtitle {
+  fill: var(--ink);
+  font-size: 11px;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.thermal-node-subtitle {
+  fill: var(--muted);
+  font-size: 9px;
+  font-weight: 500;
+}
+
+.thermal-node-port {
+  fill: var(--surface);
+  stroke: var(--teal);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.thermal-topology-back {
+  position: absolute;
+  z-index: 3;
+  top: 10px;
+  left: 10px;
+  min-height: 30px;
+  border-color: var(--line);
+  background: var(--surface);
+}
+
 .thermal-topology-matrix {
   min-width: 0;
   min-height: 0;

@@ -116,6 +116,37 @@ func TestTopologyToolbarSeparatesSpatialAndThermalControls(t *testing.T) {
 	}
 }
 
+func TestTopologySVGRendererUsesPortsPanZoomAndLayoutCache(t *testing.T) {
+	view := readTestFile(t, "frontend/src/js/views/thermal-topology-view.js")
+	for _, required := range []string{
+		`preserveAspectRatio="xMidYMid meet"`,
+		`class="thermal-topology-panzoom"`,
+		`new ResizeObserver`,
+		`svg.addEventListener("wheel"`,
+		`svg.addEventListener("pointerdown"`,
+		`state.thermalTopologyLayoutCache.get(cacheKey)`,
+		`expandConnection(element.dataset.thermalTargetId)`,
+		`data-topology-back`,
+	} {
+		if !strings.Contains(view, required) {
+			t.Fatalf("thermal SVG renderer is missing %q", required)
+		}
+	}
+	layout := readTestFile(t, "frontend/src/js/views/thermal-topology-layout.js")
+	for _, required := range []string{
+		`export function computeSpatialLayout`,
+		`export function computeNetworkLayout`,
+		`export function routeThermalEdge`,
+		`resolveNodeCollisions`,
+		`barycentricOrder`,
+		`Math.min(3, Math.max(1`,
+	} {
+		if !strings.Contains(layout, required) {
+			t.Fatalf("thermal layout/routing module is missing %q", required)
+		}
+	}
+}
+
 func TestTopologyModeHistoryPreservesSharedSelection(t *testing.T) {
 	loader := readTestFile(t, "frontend/src/js/geometry-loader.js")
 	setter := sliceBetween(loader, "export function setGeometryMode", "export function setGeometryStory")
