@@ -72,7 +72,7 @@ All notable changes to SemanticIDF are recorded here from release notes.
 - Renamed the product from IDF Analyzer to SemanticIDF. Release assets and CLI
   examples now use the `semantic-idf-*` name; scripts that reference the former
   executable filename must be updated.
-- Renamed only the visible Geometry result tab to Topology (`怨듦컙쨌???곌껐` in
+- Renamed only the visible Geometry result tab to Topology (`?⑤벀而숈쮯???怨뚭퍙` in
   Korean). Integrations and UI automation must continue to use
   `[data-result-tab="geometry"]`; the `geometry` API, route, workspace state,
   and `tabGeometry` shortcut remain compatible, and saved workspaces and
