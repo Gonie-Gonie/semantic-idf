@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -263,6 +264,10 @@ func (a *App) SaveBatchSummaryXLSX(request BatchSummaryXLSXExportRequest) (*Save
 		return nil, err
 	}
 	return &SaveFileResult{Path: path, Filename: filepath.Base(path)}, nil
+}
+
+func (a *App) ExportBatchTopologyCSV(result MultiSummaryResult) (string, error) {
+	return batchTopologyNormalizedCSV(result), nil
 }
 
 func (a *App) SaveBatchSimulationXLSX(request BatchSimulationXLSXExportRequest) (*SaveFileResult, error) {
@@ -796,7 +801,179 @@ func batchSummaryWorkbookSheets(request BatchSummaryXLSXExportRequest) []tabular
 	if len(delta.Rows) > 0 {
 		sheets = append(sheets, tabular.WorkbookSheet{Name: "Delta", Sections: []tabular.Section{delta}})
 	}
+	if batchSummaryHasTopologyData(request.Result) {
+		sheets = append(sheets,
+			tabular.WorkbookSheet{Name: "Topology Summary", Sections: []tabular.Section{batchTopologySummarySection(request.Result)}},
+			tabular.WorkbookSheet{Name: "Zone Signatures", Sections: []tabular.Section{batchTopologyZoneSignatureSection(request.Result)}},
+			tabular.WorkbookSheet{Name: "Thermal Connections", Sections: []tabular.Section{batchTopologyConnectionSection(request.Result)}},
+			tabular.WorkbookSheet{Name: "Boundary Issues", Sections: []tabular.Section{batchTopologyIssueSection(request.Result)}},
+		)
+	}
 	return sheets
+}
+
+func batchSummaryHasTopologyData(result MultiSummaryResult) bool {
+	for _, file := range result.Files {
+		if file.TopologyData != nil {
+			return true
+		}
+	}
+	return false
+}
+
+func batchTopologySummarySection(result MultiSummaryResult) tabular.Section {
+	definitions := idf.ThermalTopologyBatchMetricDefinitions()
+	headers := []string{"file", "path", "area_basis", "ua_coverage", "status"}
+	for _, definition := range definitions {
+		headers = append(headers, definition.ID)
+	}
+	rows := make([][]string, 0, len(result.Files))
+	for _, file := range result.Files {
+		row := []string{firstNonEmpty(file.Label, file.Filename), file.Path, result.AreaBasis, "", file.Status}
+		if file.TopologyData != nil {
+			row[2] = file.TopologyData.Summary.AreaBasis
+			row[3] = formatBatchSummaryNumber(file.TopologyData.Summary.UACoverage * 100)
+		}
+		for _, definition := range definitions {
+			row = append(row, batchSummaryValue(file, definition.ID))
+		}
+		rows = append(rows, row)
+	}
+	return tabular.Section{Title: "topology_summary", Headers: headers, Rows: rows}
+}
+
+func batchTopologyZoneSignatureSection(result MultiSummaryResult) tabular.Section {
+	section := tabular.Section{Title: "zone_signatures", Headers: []string{
+		"file", "area_basis", "zone_id", "zone_name", "exterior_area", "ground_area", "interzone_area", "adiabatic_area", "window_area", "exterior_wwr", "total_ua", "ua_coverage", "closed_shell", "diagnostic_ids", "source_entity_ids", "source_object_indices",
+	}}
+	for _, file := range result.Files {
+		if file.TopologyData == nil {
+			continue
+		}
+		nodes := map[string]idf.ThermalTopologyNode{}
+		for _, node := range file.TopologyData.Nodes {
+			nodes[node.ID] = node
+		}
+		for _, signature := range file.TopologyData.Signatures {
+			node := nodes[signature.ZoneID]
+			entityIDs, objectIndices := batchTopologyAnchorColumns(node.SourceAnchors)
+			section.Rows = append(section.Rows, []string{
+				firstNonEmpty(file.Label, file.Filename), signature.AreaBasis, signature.ZoneID, signature.ZoneName,
+				formatBatchSummaryNumber(signature.ExteriorArea), formatBatchSummaryNumber(signature.GroundArea), formatBatchSummaryNumber(signature.InterzoneArea), formatBatchSummaryNumber(signature.AdiabaticArea),
+				formatBatchSummaryNumber(signature.WindowArea), formatBatchSummaryNumber(signature.ExteriorWWR), formatBatchSummaryNumber(signature.TotalUA), formatBatchSummaryNumber(signature.UACoverage * 100),
+				fmt.Sprintf("%t", signature.ClosedShell), strings.Join(signature.DiagnosticIDs, "|"), entityIDs, objectIndices,
+			})
+		}
+	}
+	return section
+}
+
+func batchTopologyConnectionSection(result MultiSummaryResult) tabular.Section {
+	section := tabular.Section{Title: "thermal_connections", Headers: []string{
+		"file", "area_basis", "connection_id", "from_node_id", "to_node_id", "relation_kind", "surface_count", "opening_count", "gross_area", "opening_area", "total_ua", "ua_status", "boundary_ids", "diagnostic_ids", "source_entity_ids", "source_object_indices",
+	}}
+	for _, file := range result.Files {
+		if file.TopologyData == nil {
+			continue
+		}
+		physical := file.TopologyData.Summary.AreaBasis == "physical"
+		for _, connection := range file.TopologyData.Connections {
+			grossArea, openingArea, totalUA, hasUA := connection.EffectiveGrossArea, connection.EffectiveOpeningArea, connection.TotalUA, connection.HasUA
+			if physical {
+				grossArea, openingArea, totalUA, hasUA = connection.PhysicalGrossArea, connection.PhysicalOpeningArea, connection.PhysicalTotalUA, connection.HasPhysicalUA
+			}
+			entityIDs, objectIndices := batchTopologyAnchorColumns(connection.SourceAnchors)
+			section.Rows = append(section.Rows, []string{
+				firstNonEmpty(file.Label, file.Filename), file.TopologyData.Summary.AreaBasis, connection.ID, connection.FromNodeID, connection.ToNodeID, connection.RelationKind,
+				fmt.Sprintf("%d", connection.SurfaceCount), fmt.Sprintf("%d", connection.OpeningCount), formatBatchSummaryNumber(grossArea), formatBatchSummaryNumber(openingArea), formatBatchSummaryNumber(totalUA), thermalTopologyAvailabilityLabel(hasUA),
+				strings.Join(connection.BoundaryIDs, "|"), strings.Join(connection.DiagnosticIDs, "|"), entityIDs, objectIndices,
+			})
+		}
+	}
+	return section
+}
+
+func batchTopologyIssueSection(result MultiSummaryResult) tabular.Section {
+	section := tabular.Section{Title: "boundary_issues", Headers: []string{
+		"file", "issue_id", "code", "severity", "message", "entity_id", "boundary_id", "opening_id", "air_coupling_id", "related_entity_ids", "source_entity_ids", "source_object_indices",
+	}}
+	for _, file := range result.Files {
+		if file.TopologyData == nil {
+			continue
+		}
+		for _, issue := range file.TopologyData.Issues {
+			entityIDs, objectIndices := batchTopologyAnchorColumns(issue.SourceAnchors)
+			section.Rows = append(section.Rows, []string{
+				firstNonEmpty(file.Label, file.Filename), issue.ID, issue.Code, issue.Severity, issue.Message, issue.EntityID, issue.BoundaryID, issue.OpeningID, issue.AirCouplingID,
+				strings.Join(issue.RelatedEntityIDs, "|"), entityIDs, objectIndices,
+			})
+		}
+	}
+	return section
+}
+
+func batchTopologyNormalizedCSV(result MultiSummaryResult) string {
+	var buffer bytes.Buffer
+	writer := csv.NewWriter(&buffer)
+	_ = writer.Write([]string{"row_kind", "file", "area_basis", "id", "name", "value", "unit", "status", "coverage_percent", "from_id", "to_id", "relation", "source_entity_ids", "source_object_indices"})
+	definitions := idf.ThermalTopologyBatchMetricDefinitions()
+	for _, file := range result.Files {
+		label := firstNonEmpty(file.Label, file.Filename)
+		for _, definition := range definitions {
+			value := file.MetricValues[definition.ID]
+			coverage := ""
+			if value.HasCoverage {
+				coverage = formatBatchSummaryNumber(value.Coverage * 100)
+			}
+			_ = writer.Write([]string{"metric", label, value.AreaBasis, definition.ID, definition.Name, value.DisplayValue, definition.Unit, value.Status, coverage, "", "", "", "", ""})
+		}
+		if file.TopologyData == nil {
+			continue
+		}
+		nodes := map[string]idf.ThermalTopologyNode{}
+		for _, node := range file.TopologyData.Nodes {
+			nodes[node.ID] = node
+		}
+		for _, signature := range file.TopologyData.Signatures {
+			entityIDs, objectIndices := batchTopologyAnchorColumns(nodes[signature.ZoneID].SourceAnchors)
+			_ = writer.Write([]string{"zone_signature", label, signature.AreaBasis, signature.ZoneID, signature.ZoneName, formatBatchSummaryNumber(signature.TotalUA), "W/K", thermalTopologyAvailabilityLabel(signature.HasTotalUA), formatBatchSummaryNumber(signature.UACoverage * 100), "", "", "", entityIDs, objectIndices})
+		}
+		for _, connection := range file.TopologyData.Connections {
+			entityIDs, objectIndices := batchTopologyAnchorColumns(connection.SourceAnchors)
+			_ = writer.Write([]string{"thermal_connection", label, file.TopologyData.Summary.AreaBasis, connection.ID, "", "", "", thermalTopologyAvailabilityLabel(connection.HasUA), "", connection.FromNodeID, connection.ToNodeID, connection.RelationKind, entityIDs, objectIndices})
+		}
+		for _, issue := range file.TopologyData.Issues {
+			entityIDs, objectIndices := batchTopologyAnchorColumns(issue.SourceAnchors)
+			_ = writer.Write([]string{"boundary_issue", label, file.TopologyData.Summary.AreaBasis, issue.ID, issue.Code, "", "", issue.Severity, "", issue.EntityID, issue.BoundaryID, "", entityIDs, objectIndices})
+		}
+	}
+	writer.Flush()
+	return buffer.String()
+}
+
+func batchTopologyAnchorColumns(anchors []idf.SemanticSourceAnchor) (string, string) {
+	entityIDs := []string{}
+	objectIndices := []string{}
+	seenEntities := map[string]bool{}
+	seenIndices := map[int]bool{}
+	for _, anchor := range anchors {
+		if anchor.ObjectID != "" && !seenEntities[anchor.ObjectID] {
+			seenEntities[anchor.ObjectID] = true
+			entityIDs = append(entityIDs, anchor.ObjectID)
+		}
+		if anchor.ObjectIndex != nil && !seenIndices[*anchor.ObjectIndex] {
+			seenIndices[*anchor.ObjectIndex] = true
+			objectIndices = append(objectIndices, fmt.Sprintf("%d", *anchor.ObjectIndex))
+		}
+	}
+	return strings.Join(entityIDs, "|"), strings.Join(objectIndices, "|")
+}
+
+func thermalTopologyAvailabilityLabel(available bool) string {
+	if available {
+		return "ok"
+	}
+	return "missing"
 }
 
 func batchSimulationWorkbookSheets(request BatchSimulationXLSXExportRequest) []tabular.WorkbookSheet {
@@ -1940,6 +2117,9 @@ func batchSummaryDeltaRow(metric MultiSummaryMetric, baseline MultiSummaryFile, 
 	aNumber, aOK := parseBatchSummaryNumber(a.DisplayValue)
 	bNumber, bOK := parseBatchSummaryNumber(b.DisplayValue)
 	status := firstNonEmpty(a.Status, "missing") + " -> " + firstNonEmpty(b.Status, "missing")
+	if reason := batchSummaryNotComparableReason(a, b); reason != "" {
+		return []string{firstNonEmpty(metric.CSVName, metric.ID), metric.Category, metric.Unit, a.DisplayValue, b.DisplayValue, "not comparable", "N/A", reason}
+	}
 	if aOK && bOK && batchSummaryUnit(metric, a.DisplayValue) == batchSummaryUnit(metric, b.DisplayValue) {
 		delta := bNumber - aNumber
 		percent := "N/A"
@@ -1962,6 +2142,20 @@ func batchSummaryDeltaRow(metric MultiSummaryMetric, baseline MultiSummaryFile, 
 		change = "changed"
 	}
 	return []string{firstNonEmpty(metric.CSVName, metric.ID), metric.Category, metric.Unit, a.DisplayValue, b.DisplayValue, change, "N/A", status}
+}
+
+func batchSummaryNotComparableReason(a MultiSummaryValue, b MultiSummaryValue) string {
+	if a.BasisSensitive || b.BasisSensitive {
+		if firstNonEmpty(a.AreaBasis, "effective") != firstNonEmpty(b.AreaBasis, "effective") {
+			return "not comparable: area basis differs"
+		}
+	}
+	if a.HasCoverage || b.HasCoverage {
+		if a.HasCoverage != b.HasCoverage || absBatchSimulationFloat(a.Coverage-b.Coverage) > 0.0001 {
+			return "not comparable: U-value coverage differs"
+		}
+	}
+	return ""
 }
 
 func batchSummaryFileByIndex(files []MultiSummaryFile, index int) (MultiSummaryFile, bool) {

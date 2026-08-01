@@ -186,13 +186,17 @@ func appAssetHandler(app *App) http.Handler {
 				return
 			}
 			var request struct {
-				RunID string `json:"runId"`
+				RunID               string `json:"runId"`
+				AreaBasis           string `json:"areaBasis"`
+				IncludeFullTopology bool   `json:"includeFullTopology,omitempty"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
-			result, err := app.AnalyzeMultiIDFSummary(request.RunID)
+			result, err := app.AnalyzeMultiIDFSummaryWithOptions(MultiSummaryRequest{
+				RunID: request.RunID, AreaBasis: request.AreaBasis, IncludeFullTopology: request.IncludeFullTopology,
+			})
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return

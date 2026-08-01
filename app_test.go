@@ -1358,8 +1358,8 @@ Zone, Perimeter;
 	if len(progress) != 2 {
 		t.Fatalf("progress events = %d, want 2", len(progress))
 	}
-	if len(result.Metrics) != 59 {
-		t.Fatalf("multi summary metrics = %d, want 59", len(result.Metrics))
+	if len(result.Metrics) != 76 {
+		t.Fatalf("multi summary metrics = %d, want 76", len(result.Metrics))
 	}
 	if result.Files[0].Label != "Alpha" || result.Files[1].Label != "Beta" {
 		t.Fatalf("multi summary labels = %q, %q; want Alpha, Beta", result.Files[0].Label, result.Files[1].Label)
@@ -1367,7 +1367,65 @@ Zone, Perimeter;
 	if got := result.Files[1].MetricValues["zone_count"].DisplayValue; got != "2" {
 		t.Fatalf("second zone_count = %q, want 2", got)
 	}
+	if got := result.Files[1].MetricValues["topology_zone_count"].DisplayValue; got != "2" {
+		t.Fatalf("second topology zone count = %q, want 2", got)
+	}
+	if result.AreaBasis != "effective" || result.Files[0].TopologyData == nil || result.Files[0].Topology != nil {
+		t.Fatalf("default topology batch contract = basis %q data %#v full %#v", result.AreaBasis, result.Files[0].TopologyData, result.Files[0].Topology)
+	}
 	if result.Metrics[0].CSVName != "energyplus_version [-]" {
 		t.Fatalf("first CSV metric name = %q, want energyplus_version [-]", result.Metrics[0].CSVName)
+	}
+}
+
+func TestBatchTopologyOptionsExportsDetailsAndFullReport(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "topology.idf")
+	text := `Version,24.1;
+Zone,Office;
+BuildingSurface:Detailed,
+  Office Floor, Floor, Floor Construction, Office, , Ground, , NoSun, NoWind, 0.5, 4,
+  0,0,0, 10,0,0, 10,10,0, 0,10,0;
+`
+	if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
+		t.Fatalf("write topology fixture: %v", err)
+	}
+	result := analyzeMultiSummaryPathsWithOptions([]string{path}, MultiSummaryRequest{RunID: "topology", AreaBasis: "physical", IncludeFullTopology: true}, nil)
+	if result.AreaBasis != "physical" || !result.IncludesFullTopology || result.Files[0].Topology == nil {
+		t.Fatalf("topology batch options were not retained: %#v", result)
+	}
+	if result.Files[0].Topology.AreaBasis != "physical" || len(result.Files[0].TopologyData.Connections) == 0 {
+		t.Fatalf("full topology/details missing: %#v", result.Files[0])
+	}
+	sheets := batchSummaryWorkbookSheets(BatchSummaryXLSXExportRequest{Result: *result, BaselineIndex: -1, CompareIndex: -1})
+	wantSheets := []string{"Raw", "Topology Summary", "Zone Signatures", "Thermal Connections", "Boundary Issues"}
+	if len(sheets) != len(wantSheets) {
+		t.Fatalf("topology workbook sheets = %#v", sheets)
+	}
+	for index, want := range wantSheets {
+		if sheets[index].Name != want {
+			t.Fatalf("sheet %d = %q, want %q", index, sheets[index].Name, want)
+		}
+	}
+	csvText := batchTopologyNormalizedCSV(*result)
+	for _, want := range []string{"row_kind,file,area_basis", "thermal_connection", "source_entity_ids", "source_object_indices"} {
+		if !strings.Contains(csvText, want) {
+			t.Fatalf("normalized topology CSV missing %q:\n%s", want, csvText)
+		}
+	}
+}
+
+func TestBatchTopologyDeltaRejectsDifferentBasisOrCoverage(t *testing.T) {
+	metric := MultiSummaryMetric{ID: "topology_exterior_ua", Category: "Topology", Unit: "W/K"}
+	value := func(basis string, coverage float64) MultiSummaryValue {
+		return MultiSummaryValue{DisplayValue: "10", Status: "partial", AreaBasis: basis, Coverage: coverage, HasCoverage: true, BasisSensitive: true}
+	}
+	baseline := MultiSummaryFile{MetricValues: map[string]MultiSummaryValue{metric.ID: value("effective", 0.8)}}
+	compare := MultiSummaryFile{MetricValues: map[string]MultiSummaryValue{metric.ID: value("physical", 0.8)}}
+	if row := batchSummaryDeltaRow(metric, baseline, compare); row[5] != "not comparable" || !strings.Contains(row[7], "basis") {
+		t.Fatalf("different-basis delta row = %#v", row)
+	}
+	compare.MetricValues[metric.ID] = value("effective", 0.9)
+	if row := batchSummaryDeltaRow(metric, baseline, compare); row[5] != "not comparable" || !strings.Contains(row[7], "coverage") {
+		t.Fatalf("different-coverage delta row = %#v", row)
 	}
 }

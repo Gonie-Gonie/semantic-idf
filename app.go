@@ -165,15 +165,17 @@ type SettingsResult struct {
 }
 
 type MultiSummaryResult struct {
-	Canceled    bool                 `json:"canceled,omitempty"`
-	RunID       string               `json:"runId,omitempty"`
-	Total       int                  `json:"total"`
-	Completed   int                  `json:"completed"`
-	Succeeded   int                  `json:"succeeded"`
-	Failed      int                  `json:"failed"`
-	Concurrency int                  `json:"concurrency"`
-	Metrics     []MultiSummaryMetric `json:"metrics"`
-	Files       []MultiSummaryFile   `json:"files"`
+	Canceled             bool                 `json:"canceled,omitempty"`
+	RunID                string               `json:"runId,omitempty"`
+	Total                int                  `json:"total"`
+	Completed            int                  `json:"completed"`
+	Succeeded            int                  `json:"succeeded"`
+	Failed               int                  `json:"failed"`
+	Concurrency          int                  `json:"concurrency"`
+	AreaBasis            string               `json:"areaBasis"`
+	IncludesFullTopology bool                 `json:"includesFullTopology,omitempty"`
+	Metrics              []MultiSummaryMetric `json:"metrics"`
+	Files                []MultiSummaryFile   `json:"files"`
 }
 
 type MultiSummaryMetric struct {
@@ -195,11 +197,31 @@ type MultiSummaryFile struct {
 	Error        string                       `json:"error,omitempty"`
 	ObjectCount  int                          `json:"objectCount,omitempty"`
 	MetricValues map[string]MultiSummaryValue `json:"metricValues,omitempty"`
+	TopologyData *MultiSummaryTopologyData    `json:"topologyData,omitempty"`
+	Topology     *idf.ThermalTopologyReport   `json:"topology,omitempty"`
 }
 
 type MultiSummaryValue struct {
-	DisplayValue string `json:"displayValue"`
-	Status       string `json:"status"`
+	DisplayValue   string  `json:"displayValue"`
+	Status         string  `json:"status"`
+	AreaBasis      string  `json:"areaBasis,omitempty"`
+	Coverage       float64 `json:"coverage,omitempty"`
+	HasCoverage    bool    `json:"hasCoverage,omitempty"`
+	BasisSensitive bool    `json:"basisSensitive,omitempty"`
+}
+
+type MultiSummaryTopologyData struct {
+	Summary     idf.ThermalTopologyBatchSummary  `json:"summary"`
+	Nodes       []idf.ThermalTopologyNode        `json:"nodes,omitempty"`
+	Signatures  []idf.ZoneThermalSignature       `json:"zoneSignatures,omitempty"`
+	Connections []idf.ThermalConnectionAggregate `json:"thermalConnections,omitempty"`
+	Issues      []idf.ThermalTopologyIssueLink   `json:"boundaryIssues,omitempty"`
+}
+
+type MultiSummaryRequest struct {
+	RunID               string `json:"runId"`
+	AreaBasis           string `json:"areaBasis"`
+	IncludeFullTopology bool   `json:"includeFullTopology,omitempty"`
 }
 
 type MultiSummaryProgress struct {
@@ -701,6 +723,10 @@ func (a *App) OpenInputFile() (*InputFileResult, error) {
 }
 
 func (a *App) AnalyzeMultiIDFSummary(runID string) (*MultiSummaryResult, error) {
+	return a.AnalyzeMultiIDFSummaryWithOptions(MultiSummaryRequest{RunID: runID, AreaBasis: "effective"})
+}
+
+func (a *App) AnalyzeMultiIDFSummaryWithOptions(request MultiSummaryRequest) (*MultiSummaryResult, error) {
 	if a.ctx == nil {
 		return nil, fmt.Errorf("desktop runtime is not ready")
 	}
@@ -712,10 +738,10 @@ func (a *App) AnalyzeMultiIDFSummary(runID string) (*MultiSummaryResult, error) 
 		return nil, err
 	}
 	if len(paths) == 0 {
-		return &MultiSummaryResult{Canceled: true, RunID: runID}, nil
+		return &MultiSummaryResult{Canceled: true, RunID: request.RunID, AreaBasis: normalizeMultiSummaryAreaBasis(request.AreaBasis)}, nil
 	}
 
-	return analyzeMultiSummaryPaths(paths, runID, throttleMultiSummaryProgress(func(progress MultiSummaryProgress) {
+	return analyzeMultiSummaryPathsWithOptions(paths, request, throttleMultiSummaryProgress(func(progress MultiSummaryProgress) {
 		if a.ctx != nil {
 			wailsruntime.EventsEmit(a.ctx, "idfAnalyzer:multiSummaryProgress", progress)
 			wailsruntime.EventsEmit(a.ctx, "idfAnalyzer:batchProgress", progress)
@@ -1067,14 +1093,22 @@ func (a *App) GetSummaryMetricGuides() []idf.SummaryGuide {
 }
 
 func analyzeMultiSummaryPaths(paths []string, runID string, emit func(MultiSummaryProgress)) *MultiSummaryResult {
+	return analyzeMultiSummaryPathsWithOptions(paths, MultiSummaryRequest{RunID: runID, AreaBasis: "effective"}, emit)
+}
+
+func analyzeMultiSummaryPathsWithOptions(paths []string, request MultiSummaryRequest, emit func(MultiSummaryProgress)) *MultiSummaryResult {
+	areaBasis := normalizeMultiSummaryAreaBasis(request.AreaBasis)
 	result := &MultiSummaryResult{
-		RunID:       runID,
-		Total:       len(paths),
-		Completed:   0,
-		Concurrency: multiSummaryConcurrency(len(paths)),
-		Metrics:     multiSummaryMetrics(idf.AnalyzeSummary(idf.Document{})),
-		Files:       make([]MultiSummaryFile, len(paths)),
+		RunID:                request.RunID,
+		Total:                len(paths),
+		Completed:            0,
+		Concurrency:          multiSummaryConcurrency(len(paths)),
+		AreaBasis:            areaBasis,
+		IncludesFullTopology: request.IncludeFullTopology,
+		Metrics:              multiSummaryMetrics(idf.AnalyzeSummary(idf.Document{})),
+		Files:                make([]MultiSummaryFile, len(paths)),
 	}
+	result.Metrics = append(result.Metrics, multiSummaryTopologyMetrics()...)
 	if len(paths) == 0 {
 		return result
 	}
@@ -1092,7 +1126,7 @@ func analyzeMultiSummaryPaths(paths []string, runID string, emit func(MultiSumma
 		go func() {
 			defer wg.Done()
 			for item := range jobs {
-				results <- analyzeMultiSummaryFile(item.index, item.path)
+				results <- analyzeMultiSummaryFileWithOptions(item.index, item.path, areaBasis, request.IncludeFullTopology)
 			}
 		}()
 	}
@@ -1115,13 +1149,16 @@ func analyzeMultiSummaryPaths(paths []string, runID string, emit func(MultiSumma
 			result.Failed++
 		}
 		if emit != nil {
+			progressFile := file
+			progressFile.TopologyData = nil
+			progressFile.Topology = nil
 			emit(MultiSummaryProgress{
-				RunID:     runID,
+				RunID:     request.RunID,
 				Total:     result.Total,
 				Completed: result.Completed,
 				Succeeded: result.Succeeded,
 				Failed:    result.Failed,
-				File:      file,
+				File:      progressFile,
 			})
 		}
 	}
@@ -1131,6 +1168,10 @@ func analyzeMultiSummaryPaths(paths []string, runID string, emit func(MultiSumma
 }
 
 func analyzeMultiSummaryFile(index int, path string) MultiSummaryFile {
+	return analyzeMultiSummaryFileWithOptions(index, path, "effective", false)
+}
+
+func analyzeMultiSummaryFileWithOptions(index int, path string, areaBasis string, includeFullTopology bool) MultiSummaryFile {
 	file := MultiSummaryFile{
 		Index:    index,
 		Path:     path,
@@ -1139,22 +1180,16 @@ func analyzeMultiSummaryFile(index int, path string) MultiSummaryFile {
 		Status:   "ok",
 	}
 
-	content, err := os.ReadFile(path)
+	model, doc, err := parseCachedBatchInput(path)
 	if err != nil {
 		file.Status = "error"
 		file.Error = err.Error()
 		return file
 	}
 
-	model, err := epinput.Parse(path, content)
-	if err != nil {
-		file.Status = "error"
-		file.Error = err.Error()
-		return file
-	}
-
-	doc := epinput.ToIDFDocument(model)
 	summary := idf.AnalyzeSummary(doc)
+	topology := idf.AnalyzeGeometryFromIndex(idf.NewDocumentIndex(doc)).Topology
+	topologySummary := idf.SummarizeThermalTopologyForBatch(topology, areaBasis)
 	file.Format = string(model.Format)
 	file.Version = model.Version.Raw
 	file.ObjectCount = len(doc.Objects)
@@ -1166,6 +1201,24 @@ func analyzeMultiSummaryFile(index int, path string) MultiSummaryFile {
 				Status:       metric.Status,
 			}
 		}
+	}
+	for metricID, value := range topologySummary.Metrics {
+		file.MetricValues[metricID] = MultiSummaryValue{
+			DisplayValue: value.DisplayValue, Status: value.Status, AreaBasis: value.AreaBasis,
+			Coverage: value.Coverage, HasCoverage: value.HasCoverage, BasisSensitive: value.BasisSensitive,
+		}
+	}
+	file.TopologyData = &MultiSummaryTopologyData{
+		Summary:     topologySummary,
+		Nodes:       append([]idf.ThermalTopologyNode(nil), topology.Nodes...),
+		Signatures:  append([]idf.ZoneThermalSignature(nil), topology.ZoneSignatures...),
+		Connections: append([]idf.ThermalConnectionAggregate(nil), topology.Connections...),
+		Issues:      append([]idf.ThermalTopologyIssueLink(nil), topology.IssueLinks...),
+	}
+	if includeFullTopology {
+		copy := topology
+		copy.AreaBasis = areaBasis
+		file.Topology = &copy
 	}
 	if buildingName := strings.TrimSpace(file.MetricValues["building_name"].DisplayValue); buildingName != "" && !strings.EqualFold(buildingName, "N/A") {
 		file.Label = buildingName
@@ -1188,6 +1241,24 @@ func multiSummaryMetrics(summary idf.SummaryReport) []MultiSummaryMetric {
 		}
 	}
 	return metrics
+}
+
+func multiSummaryTopologyMetrics() []MultiSummaryMetric {
+	definitions := idf.ThermalTopologyBatchMetricDefinitions()
+	metrics := make([]MultiSummaryMetric, 0, len(definitions))
+	for _, definition := range definitions {
+		metrics = append(metrics, MultiSummaryMetric{
+			ID: definition.ID, Name: definition.Name, Category: "Topology", Unit: definition.Unit, CSVName: definition.ID,
+		})
+	}
+	return metrics
+}
+
+func normalizeMultiSummaryAreaBasis(value string) string {
+	if strings.EqualFold(strings.TrimSpace(value), "physical") {
+		return "physical"
+	}
+	return "effective"
 }
 
 func multiSummaryConcurrency(count int) int {

@@ -18,6 +18,8 @@ const state = {
   deltaSort: "table",
   deltaBaselineIndex: null,
   deltaCompareIndex: null,
+  areaBasis: "effective",
+  includeFullTopology: false,
   running: false,
   progressFiles: new Map(),
   progressListenerRegistered: false,
@@ -51,6 +53,7 @@ const elements = {
   batchPanels: document.querySelectorAll("[data-batch-panel]"),
   selectButton: document.querySelector("#multiSummarySelect"),
   exportButton: document.querySelector("#multiSummaryExport"),
+  exportJSONButton: document.querySelector("#multiSummaryExportJSON"),
   exportXLSXButton: document.querySelector("#multiSummaryExportXLSX"),
   stats: document.querySelector("#multiSummaryStats"),
   status: document.querySelector("#multiSummaryStatus"),
@@ -60,6 +63,8 @@ const elements = {
   table: document.querySelector("#multiSummaryTable"),
   orientationButtons: document.querySelectorAll("[data-summary-orientation]"),
   metricGroup: document.querySelector("#batchSummaryMetricGroup"),
+  areaBasis: document.querySelector("#batchSummaryAreaBasis"),
+  includeFullTopology: document.querySelector("#batchSummaryIncludeTopology"),
   statusFilter: document.querySelector("#batchSummaryStatusFilter"),
   deltaSort: document.querySelector("#batchSummaryDeltaSort"),
   delta: document.querySelector("#batchSummaryDelta"),
@@ -191,6 +196,7 @@ function setRunning(running) {
   state.running = running;
   elements.selectButton.disabled = running;
   elements.exportButton.disabled = running || !state.result;
+  if (elements.exportJSONButton) elements.exportJSONButton.disabled = running || !state.result;
   if (elements.exportXLSXButton) {
     elements.exportXLSXButton.disabled = running || !state.result;
   }
@@ -229,13 +235,14 @@ async function runMultiSummary() {
 }
 
 async function analyzeMultiSummary(runID) {
+  const request = { runId: runID, areaBasis: state.areaBasis, includeFullTopology: state.includeFullTopology };
   let responseError = "";
   try {
     for (const url of ["/api/batch-summary", "/api/multi-idf-summary"]) {
       const response = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ runId: runID }),
+        body: JSON.stringify(request),
       });
       if (response.ok) {
         return response.json();
@@ -246,9 +253,9 @@ async function analyzeMultiSummary(runID) {
     responseError = error?.message || String(error);
   }
 
-  const api = await waitForAppAPI("AnalyzeMultiIDFSummary");
+  const api = await waitForAppAPI("AnalyzeMultiIDFSummaryWithOptions");
   if (api) {
-    return api.AnalyzeMultiIDFSummary(runID);
+    return api.AnalyzeMultiIDFSummaryWithOptions(request);
   }
 
   throw new Error(responseError || t("tools.desktopOnly"));
@@ -264,9 +271,11 @@ function renderResult() {
   const failed = result.failed || 0;
   const workers = result.concurrency || 0;
   elements.stats.textContent = t("count.filesSummary", { total, ok: succeeded, failed, workers });
+  elements.stats.textContent += ` · topology basis: ${result.areaBasis || "effective"}`;
   renderFileList(result.files || []);
   renderTable();
   elements.exportButton.disabled = state.running || !result.metrics?.length;
+  if (elements.exportJSONButton) elements.exportJSONButton.disabled = state.running || !result.metrics?.length;
   if (elements.exportXLSXButton) {
     elements.exportXLSXButton.disabled = state.running || !result.metrics?.length;
   }
@@ -375,7 +384,9 @@ function renderValueCell(file, metricID) {
   }
   const value = file.metricValues?.[metricID];
   const status = value?.status || "missing";
-  return `<td class="tool-value ${escapeHTML(status)}" title="${escapeHTML(status)}">${escapeHTML(value?.displayValue ?? t("common.notAvailable"))}</td>`;
+  const coverage = value?.hasCoverage ? ` · U coverage ${formatNumber(Number(value.coverage || 0) * 100)}%` : "";
+  const basis = value?.basisSensitive ? ` · ${value.areaBasis || "effective"}` : "";
+  return `<td class="tool-value ${escapeHTML(status)}" title="${escapeHTML(`${status}${coverage}${basis}`)}">${escapeHTML(value?.displayValue ?? t("common.notAvailable"))}${coverage ? `<span>${escapeHTML(coverage.slice(3))}</span>` : ""}</td>`;
 }
 
 function renderBatchHiddenRowsNotice(hiddenCount, label) {
@@ -520,6 +531,21 @@ function summaryDeltaRow(metric, baseline, compare) {
   const bStatus = summaryValueStatus(compare, metric.id);
   const sameUnit = summaryUnit(metric, a?.displayValue) === summaryUnit(metric, b?.displayValue);
   const status = [aStatus, bStatus].join(" -> ");
+  const notComparable = summaryNotComparableReason(a, b);
+  if (notComparable) {
+    return {
+      metric,
+      a: a?.displayValue ?? t("common.notAvailable"),
+      b: b?.displayValue ?? t("common.notAvailable"),
+      delta: "not comparable",
+      percent: t("common.notAvailable"),
+      deltaValue: null,
+      percentValue: null,
+      missing: false,
+      statusChanged: true,
+      status: notComparable,
+    };
+  }
   if (aNumber.ok && bNumber.ok && sameUnit) {
     const delta = bNumber.value - aNumber.value;
     const percentValue = aNumber.value === 0 ? null : (delta / aNumber.value) * 100;
@@ -549,6 +575,18 @@ function summaryDeltaRow(metric, baseline, compare) {
     statusChanged: aStatus !== bStatus || changed !== t("batch.unchanged", {}, "unchanged"),
     status,
   };
+}
+
+function summaryNotComparableReason(a, b) {
+  if ((a?.basisSensitive || b?.basisSensitive) && String(a?.areaBasis || "effective") !== String(b?.areaBasis || "effective")) {
+    return "not comparable: area basis differs";
+  }
+  if (a?.hasCoverage || b?.hasCoverage) {
+    if (Boolean(a?.hasCoverage) !== Boolean(b?.hasCoverage) || Math.abs(Number(a?.coverage || 0) - Number(b?.coverage || 0)) > 0.0001) {
+      return "not comparable: U-value coverage differs";
+    }
+  }
+  return "";
 }
 
 function sortSummaryDeltaRows(rows) {
@@ -627,10 +665,18 @@ function formatNumber(value) {
   return Number(value.toFixed(digits)).toLocaleString();
 }
 
-function exportCSV() {
+async function exportCSV() {
   const result = state.result;
   if (!result) {
     return;
+  }
+  if (state.metricGroup === "topology") {
+    const api = await waitForAppAPI("ExportBatchTopologyCSV");
+    if (api) {
+      const csvText = await api.ExportBatchTopologyCSV(result);
+      downloadText(csvText, "batch-topology-normalized.csv", "text/csv");
+      return;
+    }
   }
   const metrics = filteredSummaryMetrics(result.metrics || [], result.files || []);
   const files = result.files || [];
@@ -656,6 +702,21 @@ function exportCSV() {
   const link = document.createElement("a");
   link.href = url;
   link.download = `multi-idf-summary-${state.orientation}.csv`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function exportJSON() {
+  if (!state.result) return;
+  downloadText(`${JSON.stringify(state.result, null, 2)}\n`, "batch-summary.json", "application/json");
+}
+
+function downloadText(text, filename, mime) {
+  const blob = new Blob([text], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
   link.click();
   URL.revokeObjectURL(url);
 }
@@ -1130,6 +1191,7 @@ multiSimulationTool = initializeMultiSimulationTool({
 });
 elements.selectButton.addEventListener("click", runMultiSummary);
 elements.exportButton.addEventListener("click", exportCSV);
+elements.exportJSONButton?.addEventListener("click", exportJSON);
 elements.exportXLSXButton?.addEventListener("click", exportXLSX);
 
 elements.batchNavButtons.forEach((button) => {
@@ -1145,6 +1207,12 @@ elements.orientationButtons.forEach((button) => {
 elements.metricGroup?.addEventListener("change", () => {
   state.metricGroup = elements.metricGroup.value || "all";
   renderTable();
+});
+elements.areaBasis?.addEventListener("change", () => {
+  state.areaBasis = elements.areaBasis.value === "physical" ? "physical" : "effective";
+});
+elements.includeFullTopology?.addEventListener("change", () => {
+  state.includeFullTopology = Boolean(elements.includeFullTopology.checked);
 });
 elements.statusFilter?.addEventListener("change", () => {
   state.statusFilter = elements.statusFilter.value || "all";

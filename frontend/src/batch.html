@@ -57,6 +57,7 @@
             <div class="tool-actions">
               <button id="multiSummarySelect" type="button" data-i18n="action.selectFiles">Select Files</button>
               <button id="multiSummaryExport" type="button" disabled data-i18n="action.exportCsv">Export CSV</button>
+              <button id="multiSummaryExportJSON" type="button" disabled>Export JSON</button>
               <button id="multiSummaryExportXLSX" type="button" disabled data-i18n="action.exportXlsx">Export XLSX</button>
             </div>
           </div>
@@ -71,7 +72,8 @@
               <select id="batchSummaryMetricGroup">
                 <option value="all" data-i18n="common.all">All</option>
                 <option value="inventory">Inventory</option>
-                <option value="geometry">Topology</option>
+                <option value="geometry">Geometry</option>
+                <option value="topology">Topology</option>
                 <option value="envelope">Envelope</option>
                 <option value="loads">Internal Loads</option>
                 <option value="schedules">Schedules</option>
@@ -80,12 +82,21 @@
               </select>
             </label>
             <label class="tool-inline-control">
+              <span>Topology area basis</span>
+              <select id="batchSummaryAreaBasis">
+                <option value="effective">Model total (effective)</option>
+                <option value="physical">Physical</option>
+              </select>
+            </label>
+            <label class="tool-inline-control"><input id="batchSummaryIncludeTopology" type="checkbox" /> Include full topology in JSON</label>
+            <label class="tool-inline-control">
               <span data-i18n="common.status">Status</span>
               <select id="batchSummaryStatusFilter">
                 <option value="all" data-i18n="common.all">All</option>
                 <option value="ok">ok</option>
                 <option value="partial">partial</option>
                 <option value="missing">missing</option>
+                <option value="not_applicable">not applicable</option>
                 <option value="inferred">inferred</option>
                 <option value="analyzer-limited">analyzer-limited</option>
               </select>
