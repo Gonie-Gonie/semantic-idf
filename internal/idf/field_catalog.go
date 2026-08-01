@@ -135,16 +135,41 @@ var objectFieldCatalog = map[string]ObjectSpec{
 		numericField("View Factor to Ground", true),
 		numericField("Number of Vertices", false),
 	),
+	"wall:detailed":        legacyDetailedSurfaceCatalog("Wall:Detailed"),
+	"roofceiling:detailed": legacyDetailedSurfaceCatalog("RoofCeiling:Detailed"),
+	"floor:detailed":       legacyDetailedSurfaceCatalog("Floor:Detailed"),
+	"wall:exterior":        rectangularSurfaceCatalog("Wall:Exterior", false, "Height"),
+	"wall:adiabatic":       rectangularSurfaceCatalog("Wall:Adiabatic", false, "Height"),
+	"wall:underground":     rectangularSurfaceCatalog("Wall:Underground", false, "Height"),
+	"wall:interzone":       rectangularSurfaceCatalog("Wall:Interzone", true, "Height"),
+	"roof":                 rectangularSurfaceCatalog("Roof", false, "Width"),
+	"ceiling:adiabatic":    rectangularSurfaceCatalog("Ceiling:Adiabatic", false, "Width"),
+	"ceiling:interzone":    rectangularSurfaceCatalog("Ceiling:Interzone", true, "Width"),
+	"floor:groundcontact":  rectangularSurfaceCatalog("Floor:GroundContact", false, "Width"),
+	"floor:adiabatic":      rectangularSurfaceCatalog("Floor:Adiabatic", false, "Width"),
+	"floor:interzone":      rectangularSurfaceCatalog("Floor:Interzone", true, "Width"),
 	"fenestrationsurface:detailed": catalogObject("FenestrationSurface:Detailed",
 		field("Name", fieldRoleName),
 		field("Surface Type", ""),
 		targetField("Construction Name", fieldRoleConstructionRef, "construction", "constructions", "uses"),
 		targetField("Building Surface Name", fieldRoleObjectRef, "surface", "surfaces", "subsurface_of"),
+		targetField("Outside Boundary Condition Object", fieldRoleObjectRef, "opening", "openings", "references"),
 		numericField("View Factor to Ground", true),
 		targetField("Frame and Divider Name", fieldRoleObjectRef, "frame_divider", "frames", "uses"),
 		numericField("Multiplier", false),
 		numericField("Number of Vertices", false),
 	),
+	"window":                    rectangularOpeningCatalog("Window", false, true),
+	"window:interzone":          rectangularOpeningCatalog("Window:Interzone", true, true),
+	"door":                      rectangularOpeningCatalog("Door", false, false),
+	"door:interzone":            rectangularOpeningCatalog("Door:Interzone", true, false),
+	"glazeddoor":                rectangularOpeningCatalog("GlazedDoor", false, true),
+	"glazeddoor:interzone":      rectangularOpeningCatalog("GlazedDoor:Interzone", true, true),
+	"shading:site":              rectangularShadingCatalog("Shading:Site"),
+	"shading:building":          rectangularShadingCatalog("Shading:Building"),
+	"shading:site:detailed":     detailedShadingCatalog("Shading:Site:Detailed", false),
+	"shading:building:detailed": detailedShadingCatalog("Shading:Building:Detailed", false),
+	"shading:zone:detailed":     detailedShadingCatalog("Shading:Zone:Detailed", true),
 	"airloophvac": catalogObject("AirLoopHVAC",
 		field("Name", fieldRoleName),
 		field("Controller List Name", fieldRoleObjectRef),
@@ -1577,6 +1602,91 @@ type EnergyPlusSchemaAdapter struct {
 }
 
 const manualFieldCatalogAdapterVersion = "manual-catalog-fallback/0.3"
+
+func legacyDetailedSurfaceCatalog(objectType string) ObjectSpec {
+	return catalogObject(objectType,
+		field("Name", fieldRoleName),
+		targetField("Construction Name", fieldRoleConstructionRef, "construction", "constructions", "uses"),
+		targetField("Zone Name", fieldRoleZoneRef, "zone", "zones", "contained_by"),
+		targetField("Space Name", fieldRoleSpaceRef, "space", "spaces", "contained_by"),
+		field("Outside Boundary Condition", ""),
+		targetField("Outside Boundary Condition Object", fieldRoleObjectRef, "surface", "surfaces", "references"),
+		choiceField("Sun Exposure", "", "SunExposed", "NoSun"),
+		choiceField("Wind Exposure", "", "WindExposed", "NoWind"),
+		numericField("View Factor to Ground", true),
+		numericField("Number of Vertices", false),
+	)
+}
+
+func rectangularSurfaceCatalog(objectType string, hasBoundaryObject bool, secondDimension string) ObjectSpec {
+	fields := []FieldSpec{
+		field("Name", fieldRoleName),
+		targetField("Construction Name", fieldRoleConstructionRef, "construction", "constructions", "uses"),
+		targetField("Zone Name", fieldRoleZoneRef, "zone", "zones", "contained_by"),
+		targetField("Space Name", fieldRoleSpaceRef, "space", "spaces", "contained_by"),
+	}
+	if hasBoundaryObject {
+		fields = append(fields, targetField("Outside Boundary Condition Object", fieldRoleObjectRef, "surface", "surfaces", "references"))
+	}
+	fields = append(fields,
+		numericUnitField("Azimuth Angle", "deg", false),
+		numericUnitField("Tilt Angle", "deg", false),
+		numericUnitField("Starting X Coordinate", "m", false),
+		numericUnitField("Starting Y Coordinate", "m", false),
+		numericUnitField("Starting Z Coordinate", "m", false),
+		numericUnitField("Length", "m", false),
+		numericUnitField(secondDimension, "m", false),
+	)
+	return catalogObject(objectType, fields...)
+}
+
+func rectangularOpeningCatalog(objectType string, hasBoundaryObject bool, hasFrame bool) ObjectSpec {
+	fields := []FieldSpec{
+		field("Name", fieldRoleName),
+		targetField("Construction Name", fieldRoleConstructionRef, "construction", "constructions", "uses"),
+		targetField("Building Surface Name", fieldRoleObjectRef, "surface", "surfaces", "subsurface_of"),
+	}
+	if hasBoundaryObject {
+		fields = append(fields, targetField("Outside Boundary Condition Object", fieldRoleObjectRef, "opening", "openings", "references"))
+	}
+	if hasFrame {
+		fields = append(fields, targetField("Frame and Divider Name", fieldRoleObjectRef, "frame_divider", "frames", "uses"))
+	}
+	fields = append(fields,
+		numericField("Multiplier", false),
+		numericUnitField("Starting X Coordinate", "m", false),
+		numericUnitField("Starting Z Coordinate", "m", false),
+		numericUnitField("Length", "m", false),
+		numericUnitField("Height", "m", false),
+	)
+	return catalogObject(objectType, fields...)
+}
+
+func rectangularShadingCatalog(objectType string) ObjectSpec {
+	return catalogObject(objectType,
+		field("Name", fieldRoleName),
+		numericUnitField("Azimuth Angle", "deg", false),
+		numericUnitField("Tilt Angle", "deg", false),
+		numericUnitField("Starting X Coordinate", "m", false),
+		numericUnitField("Starting Y Coordinate", "m", false),
+		numericUnitField("Starting Z Coordinate", "m", false),
+		numericUnitField("Length", "m", false),
+		numericUnitField("Height", "m", false),
+		targetField("Transmittance Schedule Name", fieldRoleScheduleRef, "schedule", "schedules", "uses"),
+	)
+}
+
+func detailedShadingCatalog(objectType string, attached bool) ObjectSpec {
+	fields := []FieldSpec{field("Name", fieldRoleName)}
+	if attached {
+		fields = append(fields, targetField("Base Surface Name", fieldRoleObjectRef, "surface", "surfaces", "attached_to"))
+	}
+	fields = append(fields,
+		targetField("Transmittance Schedule Name", fieldRoleScheduleRef, "schedule", "schedules", "uses"),
+		numericField("Number of Vertices", false),
+	)
+	return catalogObject(objectType, fields...)
+}
 
 func catalogObject(objectType string, fields ...FieldSpec) ObjectSpec {
 	for index := range fields {

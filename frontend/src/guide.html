@@ -27,7 +27,7 @@
         <a href="#input-views" data-i18n="guide.nav.inputViews">Input Views</a>
         <a href="#summary" data-i18n="guide.nav.summary">Summary</a>
         <a href="#diagnose" data-i18n="guide.nav.diagnose">Diagnose</a>
-        <a href="#geometry" data-i18n="guide.nav.geometry">Geometry</a>
+        <a href="#geometry" data-i18n="guide.nav.geometry">Topology</a>
         <a href="#summary-metrics" data-i18n="guide.nav.metricCatalog">Metric Catalog</a>
         <a href="#multi-idf-summary" data-i18n="guide.nav.multiSummary">Batch Summary</a>
         <a href="#diagnose-fixes" data-i18n="guide.nav.cleanup">Diagnose / Fixes</a>
@@ -40,7 +40,7 @@
           <h2 data-i18n="guide.start.title">Start</h2>
           <p data-i18n="guide.start.body">
             SemanticIDF opens EnergyPlus IDF, IMF, and epJSON-style files, shows the input in synchronized Text,
-            JSON, and Table views, and calculates Summary, Diagnose, and Geometry results in the right panel. A
+            JSON, and Table views, and calculates Summary, Diagnose, and Topology results in the right panel. A
             reference office model loads at startup so the interface is usable before you open a project file; analysis
             starts after the first screen is visible and fills in the visible Summary first.
           </p>
@@ -157,9 +157,9 @@ type model.idf | semantic-idf cli convert -to json -o - -</code></pre>
         </section>
 
         <section id="geometry" class="guide-section">
-          <h2 data-i18n="guide.geometry.title">Geometry</h2>
+          <h2 data-i18n="guide.geometry.title">Spatial &amp; Thermal Topology</h2>
           <p data-i18n="guide.geometry.body">
-            Geometry shows parsed zones, surfaces, and fenestration in 3D and plan views. Selecting an item shows key
+            Topology shows parsed zones, surfaces, and fenestration in 3D and plan views. Selecting an item shows key
             metrics and related objects such as parent zones, base surfaces, child windows, adjacent zones, and matching
             surfaces. Sync locate can move the input view to the selected model object.
           </p>
@@ -200,9 +200,9 @@ type model.idf | semantic-idf cli convert -to json -o - -</code></pre>
         <section id="settings" class="guide-section">
           <h2 data-i18n="guide.settings.title">Settings</h2>
           <p data-i18n="guide.settings.body">
-            Settings opens as its own page. Appearance controls choose the app theme and Geometry colors for zones,
+            Settings opens as its own page. Appearance controls choose the app theme and Topology colors for zones,
             walls, roofs, windows, selections, and the 3D background. Behavior controls store defaults for automatic
-            analysis delay, raw text sync, and Geometry sync locate.
+            analysis delay, raw text sync, and Topology sync locate.
           </p>
         </section>
 
@@ -210,15 +210,15 @@ type model.idf | semantic-idf cli convert -to json -o - -</code></pre>
           <h2 data-i18n="guide.updates.title">Recent Changes</h2>
           <ul class="guide-log">
             <li data-i18n="guide.updates.cleanupCurrent">2026-05-31 Diagnose / Fixes now operates on the current input with rule and candidate checkboxes plus Apply / Save cleaned copy.</li>
-            <li data-i18n="guide.updates.appearance">2026-05-31 Added persistent Appearance settings for app theme and Geometry object colors.</li>
+            <li data-i18n="guide.updates.appearance">2026-05-31 Added persistent Appearance settings for app theme and Topology object colors.</li>
             <li data-i18n="guide.updates.toolsLayout">2026-05-31 Reorganized Tools into Batch with a left-selector tab layout.</li>
             <li data-i18n="guide.updates.diagnoseCleanup">2026-05-31 Added Diagnose results and moved remove-unused cleanup into the Diagnose / Fixes review flow.</li>
-            <li data-i18n="guide.updates.startupStages">2026-05-31 Startup analysis now runs in visible-first stages, then prepares Diagnose and Geometry in the background.</li>
+            <li data-i18n="guide.updates.startupStages">2026-05-31 Startup analysis now runs in visible-first stages, then prepares Diagnose and Topology in the background.</li>
             <li data-i18n="guide.updates.summaryCsv">2026-05-31 Summary CSV now writes every metric as `variable [unit],value`, using `[-]` when no unit applies.</li>
-            <li data-i18n="guide.updates.performance">2026-05-31 Improved startup and splitter responsiveness by deferring startup sample analysis and Geometry rendering work.</li>
+            <li data-i18n="guide.updates.performance">2026-05-31 Improved startup and splitter responsiveness by deferring startup sample analysis and Topology rendering work.</li>
             <li data-i18n="guide.updates.multiSummary">2026-05-31 Added Batch Summary with multi-file selection, progress, table transpose, delta comparison, and CSV export.</li>
             <li data-i18n="guide.updates.topNavigation">2026-05-31 Batch, Guide, and Settings are separate top-level navigation buttons.</li>
-            <li data-i18n="guide.updates.geometryDetails">2026-05-30 Geometry details show related zones, surfaces, and openings for the selected object.</li>
+            <li data-i18n="guide.updates.geometryDetails">2026-05-30 Topology details show related zones, surfaces, and openings for the selected object.</li>
             <li data-i18n="guide.updates.inputFilter">2026-05-30 The left-panel filter now works consistently across Text, JSON, and Table views.</li>
           </ul>
         </section>

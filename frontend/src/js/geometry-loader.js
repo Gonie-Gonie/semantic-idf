@@ -1,6 +1,7 @@
-import { elements, state } from "./state.js";
+import { elements, normalizeGeometryMode, normalizeTopologyAreaBasis, state } from "./state.js";
 import { t } from "./i18n.js";
 import { configureResultPanelNavigationHooks } from "./panel-navigation-adapters.js";
+import { recordViewHistory } from "./view-history.js";
 
 let geometryModule = null;
 let geometryModulePromise = null;
@@ -21,6 +22,7 @@ function renderGeometryPlaceholder(geometry) {
     elements.geometryStats.textContent = t("geometry.pending");
     elements.geometryCanvasHost.innerHTML = `<div class="empty status-loading">${t("geometry.running")}</div>`;
     elements.geometryPlan.innerHTML = "";
+    elements.thermalTopologyGraph.innerHTML = "";
     elements.geometryDetails.innerHTML = `<div class="empty">${t("geometry.detailsReadySoon")}</div>`;
     return;
   }
@@ -28,6 +30,7 @@ function renderGeometryPlaceholder(geometry) {
   if (!geometry) {
     elements.geometryCanvasHost.innerHTML = `<div class="empty">${t("geometry.noGeometry")}</div>`;
     elements.geometryPlan.innerHTML = "";
+    elements.thermalTopologyGraph.innerHTML = "";
     elements.geometryDetails.innerHTML = `<div class="empty">${t("geometry.selectObject")}</div>`;
     return;
   }
@@ -87,7 +90,12 @@ export function resizeGeometry() {
 }
 
 export function setGeometryMode(mode) {
-  state.geometryMode = mode === "plan" ? "plan" : "3d";
+  const nextMode = normalizeGeometryMode(mode);
+  if (nextMode === state.geometryMode) {
+    return;
+  }
+  recordViewHistory();
+  state.geometryMode = nextMode;
   loadGeometryModule().then((module) => module.setGeometryMode(state.geometryMode));
 }
 
@@ -118,7 +126,8 @@ configureResultPanelNavigationHooks("geometry", {
   captureContext(context) {
     return {
       ...context.genericCaptureContext(),
-      mode: state.geometryMode === "plan" ? "plan" : "3d",
+      mode: normalizeGeometryMode(state.geometryMode),
+      areaBasis: normalizeTopologyAreaBasis(state.topologyAreaBasis),
       story: state.selectedGeometryStory,
       selectedKind: state.selectedGeometryKind || "",
       selectedId: state.selectedGeometryId || "",

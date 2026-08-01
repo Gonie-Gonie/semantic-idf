@@ -96,14 +96,16 @@
 }
 
 .geometry-canvas-host,
-.geometry-plan {
+.geometry-plan,
+.thermal-topology-graph {
   display: none;
   width: 100%;
   height: 100%;
 }
 
 .geometry-canvas-host.active,
-.geometry-plan.active {
+.geometry-plan.active,
+.thermal-topology-graph.active {
   display: block;
 }
 
@@ -123,6 +125,11 @@
 }
 
 .geometry-plan {
+  background: var(--surface-3);
+}
+
+.thermal-topology-graph {
+  min-height: 240px;
   background: var(--surface-3);
 }
 
@@ -572,4 +579,3 @@ button.geometry-related-row:hover {
   font-weight: 700;
   white-space: nowrap;
 }
-

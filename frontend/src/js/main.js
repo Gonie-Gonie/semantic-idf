@@ -238,6 +238,10 @@ elements.geometryModeButtons.forEach((button) => {
   button.addEventListener("click", () => setGeometryMode(button.dataset.geometryMode));
 });
 elements.geometryStorySelect.addEventListener("change", () => setGeometryStory(elements.geometryStorySelect.value));
+elements.topologyAreaBasis.addEventListener("change", () => {
+  state.topologyAreaBasis = elements.topologyAreaBasis.value === "physical" ? "physical" : "effective";
+  renderGeometry();
+});
 elements.geometrySelectionAid.addEventListener("click", () => setGeometrySelectionAid(!state.geometrySelectionAid));
 elements.geometrySyncLocate.addEventListener("change", () => {
   state.geometrySyncLocate = elements.geometrySyncLocate.checked;

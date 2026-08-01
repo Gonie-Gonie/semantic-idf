@@ -159,7 +159,7 @@
         <section class="analysis-panel" aria-label="Analysis results">
           <nav class="tabs" aria-label="Result tabs">
             <button class="tab active" data-result-tab="summary" type="button" data-i18n="tab.summary">Summary</button>
-            <button class="tab" data-result-tab="geometry" type="button" data-i18n="tab.geometry">Geometry</button>
+            <button class="tab" data-result-tab="geometry" type="button" data-i18n="tab.geometry">Topology</button>
             <button class="tab" data-result-tab="profile" type="button" data-i18n="tab.profile">Profile</button>
             <button class="tab" data-result-tab="hvac" type="button" data-i18n="tab.hvac">HVAC</button>
             <button class="tab" data-result-tab="diagnose" type="button" data-i18n="tab.diagnose">Diagnose</button>
@@ -716,18 +716,26 @@
           <div class="result-pane" id="geometryPane">
             <div class="geometry-head">
               <div>
-                <h2 data-i18n="tab.geometry">Geometry</h2>
+                <h2 data-i18n="topology.panelTitle">Spatial &amp; Thermal Topology</h2>
                 <span id="geometryStats">0 zones, 0 surfaces, 0 windows</span>
               </div>
               <div class="geometry-tools">
                 <div class="geometry-control-group">
                   <button class="geometry-mode-button active" data-geometry-mode="3d" type="button">3D</button>
                   <button class="geometry-mode-button" data-geometry-mode="plan" type="button">Plan</button>
-                  <select id="geometryStorySelect" aria-label="Geometry story"></select>
+                  <button class="geometry-mode-button" data-geometry-mode="thermal" type="button" title="Thermal topology and boundary network" data-i18n-title="topology.thermalTooltip">Thermal</button>
+                  <select id="geometryStorySelect" aria-label="Topology story"></select>
                 </div>
+                <label id="topologyAreaBasisControl" class="geometry-toggle topology-area-basis" hidden>
+                  <span data-i18n="topology.areaBasis">Area basis</span>
+                  <select id="topologyAreaBasis">
+                    <option value="effective" data-i18n="topology.areaBasisEffective">Model total</option>
+                    <option value="physical" data-i18n="topology.areaBasisPhysical">Physical</option>
+                  </select>
+                </label>
                 <button id="geometrySelectionAid" class="geometry-mode-button" type="button" aria-pressed="false" data-i18n="geometry.selectAid">Select aid</button>
                 <label class="geometry-toggle geometry-sync-toggle"><input id="geometrySyncLocate" type="checkbox" checked /> <span data-i18n="geometry.syncLocate">Sync locate</span></label>
-                <div class="geometry-control-group geometry-visibility-controls" aria-label="Geometry visibility">
+                <div class="geometry-control-group geometry-visibility-controls" aria-label="Topology visibility">
                   <label class="geometry-toggle"><input id="geometryShowZones" type="checkbox" checked /> <span data-i18n="geometry.showZones">Zones</span></label>
                   <label class="geometry-toggle"><input id="geometryShowWalls" type="checkbox" checked /> <span data-i18n="geometry.showWalls">Walls</span></label>
                   <label class="geometry-toggle"><input id="geometryShowWindows" type="checkbox" checked /> <span data-i18n="geometry.showWindows">Windows</span></label>
@@ -738,7 +746,8 @@
             <div class="geometry-body">
               <div id="geometryViewport" class="geometry-viewport">
                 <div id="geometryCanvasHost" class="geometry-canvas-host"></div>
-                <svg id="geometryPlan" class="geometry-plan" role="img" aria-label="Geometry floor plan"></svg>
+                <svg id="geometryPlan" class="geometry-plan" role="img" aria-label="Topology floor plan"></svg>
+                <div id="thermalTopologyGraph" class="thermal-topology-graph" role="img" aria-label="Thermal topology and boundary network" data-i18n-aria-label="topology.thermalTooltip"></div>
               </div>
               <div id="geometryDetailsSplitter" class="vertical-splitter" role="separator" aria-orientation="horizontal" aria-label="Resize geometry view and properties"></div>
               <section id="geometryDetails" class="geometry-details" aria-label="Selected geometry properties">

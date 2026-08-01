@@ -1866,6 +1866,19 @@ func detailedVertices(obj Object) ([]point3, bool) {
 			}
 		}
 	}
+	if vertexCountIndex < 0 {
+		for index, field := range obj.Fields {
+			spec, ok := fieldSpecAt(obj.Type, index)
+			if !ok || normalizeFieldName(spec.Name) != normalizeFieldName("Number of Vertices") {
+				continue
+			}
+			if value, ok := parseFloatField(field.Value); ok {
+				vertexCountIndex = index
+				vertexCount = int(math.Round(value))
+				break
+			}
+		}
+	}
 	if vertexCountIndex < 0 || vertexCount <= 0 || len(obj.Fields) < vertexCountIndex+1+vertexCount*3 {
 		return nil, false
 	}
@@ -2013,22 +2026,8 @@ func fenestrationSurfaceType(obj Object) string {
 }
 
 func isBuildingSurfaceType(objectType string) bool {
-	lower := strings.ToLower(objectType)
-	if lower == "buildingsurface:detailed" {
-		return true
-	}
-	return lower == "wall:exterior" ||
-		lower == "wall:adiabatic" ||
-		lower == "wall:underground" ||
-		lower == "wall:interzone" ||
-		lower == "roof" ||
-		lower == "roofceiling:detailed" ||
-		lower == "ceiling:adiabatic" ||
-		lower == "ceiling:interzone" ||
-		lower == "floor:groundcontact" ||
-		lower == "floor:adiabatic" ||
-		lower == "floor:interzone" ||
-		lower == "floor:detailed"
+	_, ok := heatTransferSurfaceFamilyFor(objectType)
+	return ok
 }
 
 func isFenestrationType(objectType string) bool {

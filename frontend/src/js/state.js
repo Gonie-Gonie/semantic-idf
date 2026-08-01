@@ -1,5 +1,16 @@
 import { t } from "./i18n.js";
 
+export const geometryModes = Object.freeze(["3d", "plan", "thermal"]);
+
+export function normalizeGeometryMode(value) {
+  const mode = String(value || "").toLowerCase();
+  return geometryModes.includes(mode) ? mode : "3d";
+}
+
+export function normalizeTopologyAreaBasis(value) {
+  return String(value || "").toLowerCase() === "physical" ? "physical" : "effective";
+}
+
 export const state = {
   report: null,
   model: null,
@@ -162,6 +173,7 @@ export const state = {
   profileSettings: null,
   profileApplyPreview: null,
   geometryMode: "3d",
+  topologyAreaBasis: "effective",
   geometryPlanLayoutCache: new Map(),
   selectedGeometryId: "",
   selectedGeometryKind: "",
@@ -408,9 +420,12 @@ export const elements = {
   geometryDetailsSplitter: document.querySelector("#geometryDetailsSplitter"),
   geometryCanvasHost: document.querySelector("#geometryCanvasHost"),
   geometryPlan: document.querySelector("#geometryPlan"),
+  thermalTopologyGraph: document.querySelector("#thermalTopologyGraph"),
   geometryDetails: document.querySelector("#geometryDetails"),
   geometryModeButtons: document.querySelectorAll("[data-geometry-mode]"),
   geometryStorySelect: document.querySelector("#geometryStorySelect"),
+  topologyAreaBasisControl: document.querySelector("#topologyAreaBasisControl"),
+  topologyAreaBasis: document.querySelector("#topologyAreaBasis"),
   geometrySelectionAid: document.querySelector("#geometrySelectionAid"),
   geometryExpandButton: document.querySelector("#geometryExpandButton"),
   geometrySyncLocate: document.querySelector("#geometrySyncLocate"),

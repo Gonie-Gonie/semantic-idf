@@ -8,19 +8,20 @@ import (
 )
 
 type GeometryReport struct {
-	Zones                  []GeometryZone         `json:"zones"`
-	Spaces                 []GeometrySpace        `json:"spaces,omitempty"`
-	Surfaces               []GeometrySurface      `json:"surfaces"`
-	Windows                []GeometryWindow       `json:"windows"`
-	Constructions          []GeometryConstruction `json:"constructions,omitempty"`
-	Stories                []GeometryStory        `json:"stories"`
-	Bounds                 GeometryBounds         `json:"bounds"`
-	CoordinateSystem       string                 `json:"coordinateSystem,omitempty"`
-	VertexEntryDirection   string                 `json:"vertexEntryDirection,omitempty"`
-	StartingVertexPosition string                 `json:"startingVertexPosition,omitempty"`
-	ZoneCount              int                    `json:"zoneCount"`
-	SurfaceCount           int                    `json:"surfaceCount"`
-	WindowCount            int                    `json:"windowCount"`
+	Zones                       []GeometryZone         `json:"zones"`
+	Spaces                      []GeometrySpace        `json:"spaces,omitempty"`
+	Surfaces                    []GeometrySurface      `json:"surfaces"`
+	Windows                     []GeometryWindow       `json:"windows"`
+	Constructions               []GeometryConstruction `json:"constructions,omitempty"`
+	Stories                     []GeometryStory        `json:"stories"`
+	Bounds                      GeometryBounds         `json:"bounds"`
+	CoordinateSystem            string                 `json:"coordinateSystem,omitempty"`
+	RectangularCoordinateSystem string                 `json:"rectangularCoordinateSystem,omitempty"`
+	VertexEntryDirection        string                 `json:"vertexEntryDirection,omitempty"`
+	StartingVertexPosition      string                 `json:"startingVertexPosition,omitempty"`
+	ZoneCount                   int                    `json:"zoneCount"`
+	SurfaceCount                int                    `json:"surfaceCount"`
+	WindowCount                 int                    `json:"windowCount"`
 }
 
 type GeometrySpace struct {
@@ -46,25 +47,33 @@ type GeometryZone struct {
 }
 
 type GeometrySurface struct {
-	ID              string           `json:"id"`
-	ObjectIndex     int              `json:"objectIndex"`
-	Name            string           `json:"name"`
-	Type            string           `json:"type"`
-	SurfaceType     string           `json:"surfaceType"`
-	ZoneName        string           `json:"zoneName"`
-	SpaceName       string           `json:"spaceName,omitempty"`
-	Construction    string           `json:"construction"`
-	OutsideBoundary string           `json:"outsideBoundary"`
-	StoryIndex      int              `json:"storyIndex"`
-	Area            float64          `json:"area"`
-	Azimuth         float64          `json:"azimuth"`
-	Orientation     string           `json:"orientation"`
-	MinZ            float64          `json:"minZ"`
-	MaxZ            float64          `json:"maxZ"`
-	Vertices        []GeometryPoint  `json:"vertices"`
-	VerticesSource  string           `json:"verticesSource"`
-	Metrics         []GeometryMetric `json:"metrics"`
-	Fields          []Field          `json:"fields"`
+	ID                string           `json:"id"`
+	ObjectIndex       int              `json:"objectIndex"`
+	Name              string           `json:"name"`
+	Type              string           `json:"type"`
+	SurfaceType       string           `json:"surfaceType"`
+	ZoneName          string           `json:"zoneName"`
+	SpaceName         string           `json:"spaceName,omitempty"`
+	Construction      string           `json:"construction"`
+	OutsideBoundary   string           `json:"outsideBoundary"`
+	StoryIndex        int              `json:"storyIndex"`
+	Area              float64          `json:"area"`
+	PhysicalArea      float64          `json:"physicalArea"`
+	EffectiveArea     float64          `json:"effectiveArea"`
+	ZoneMultiplier    float64          `json:"zoneMultiplier,omitempty"`
+	SurfaceMultiplier float64          `json:"surfaceMultiplier,omitempty"`
+	AreaBasis         string           `json:"areaBasis"`
+	IsShading         bool             `json:"isShading,omitempty"`
+	Azimuth           float64          `json:"azimuth"`
+	Orientation       string           `json:"orientation"`
+	MinZ              float64          `json:"minZ"`
+	MaxZ              float64          `json:"maxZ"`
+	RawVertices       []GeometryPoint  `json:"rawVertices,omitempty"`
+	WorldVertices     []GeometryPoint  `json:"worldVertices"`
+	Vertices          []GeometryPoint  `json:"vertices"`
+	VerticesSource    string           `json:"verticesSource"`
+	Metrics           []GeometryMetric `json:"metrics"`
+	Fields            []Field          `json:"fields"`
 }
 
 type GeometryWindow struct {
@@ -79,10 +88,17 @@ type GeometryWindow struct {
 	ZoneName               string           `json:"zoneName,omitempty"`
 	StoryIndex             int              `json:"storyIndex"`
 	Area                   float64          `json:"area"`
+	PhysicalArea           float64          `json:"physicalArea"`
+	EffectiveArea          float64          `json:"effectiveArea"`
+	ZoneMultiplier         float64          `json:"zoneMultiplier,omitempty"`
+	SurfaceMultiplier      float64          `json:"surfaceMultiplier,omitempty"`
+	AreaBasis              string           `json:"areaBasis"`
 	AreaIncludesMultiplier bool             `json:"areaIncludesMultiplier"`
 	Multiplier             float64          `json:"multiplier,omitempty"`
 	Azimuth                float64          `json:"azimuth"`
 	Orientation            string           `json:"orientation"`
+	RawVertices            []GeometryPoint  `json:"rawVertices,omitempty"`
+	WorldVertices          []GeometryPoint  `json:"worldVertices"`
 	Vertices               []GeometryPoint  `json:"vertices"`
 	VerticesSource         string           `json:"verticesSource"`
 	Metrics                []GeometryMetric `json:"metrics"`
@@ -150,22 +166,28 @@ type GeometryMaterialLayer struct {
 }
 
 type geometryContext struct {
-	buildingNorthAxis      float64
-	hasBuildingNorthAxis   bool
-	coordinateSystem       string
-	startingVertexPosition string
-	vertexEntryDirection   string
-	zoneDirections         map[string]float64
-	zoneMultipliers        map[string]float64
+	buildingNorthAxis           float64
+	hasBuildingNorthAxis        bool
+	coordinateSystem            string
+	rectangularCoordinateSystem string
+	startingVertexPosition      string
+	vertexEntryDirection        string
+	zoneDirections              map[string]float64
+	zoneMultipliers             map[string]float64
+	zoneOrigins                 map[string]point3
+	spaceZones                  map[string]string
 }
 
 func AnalyzeGeometry(doc Document) GeometryReport {
 	ctx := geometryContext{
-		coordinateSystem:       "relative",
-		startingVertexPosition: "upperleftcorner",
-		vertexEntryDirection:   "counterclockwise",
-		zoneDirections:         map[string]float64{},
-		zoneMultipliers:        map[string]float64{},
+		coordinateSystem:            "relative",
+		rectangularCoordinateSystem: "relative",
+		startingVertexPosition:      "upperleftcorner",
+		vertexEntryDirection:        "counterclockwise",
+		zoneDirections:              map[string]float64{},
+		zoneMultipliers:             map[string]float64{},
+		zoneOrigins:                 map[string]point3{},
+		spaceZones:                  map[string]string{},
 	}
 	report := GeometryReport{}
 	zoneByName := map[string]int{}
@@ -173,13 +195,19 @@ func AnalyzeGeometry(doc Document) GeometryReport {
 	for _, obj := range doc.Objects {
 		switch {
 		case strings.EqualFold(obj.Type, "Building"):
-			if value, ok := parseFloatField(findFieldByCommentWords(obj, "north", "axis")); ok {
+			valueText := fieldValueByCatalogName(obj, "North Axis")
+			if valueText == "" {
+				valueText = findFieldByCommentWords(obj, "north", "axis")
+			}
+			if value, ok := parseFloatField(valueText); ok {
 				ctx.buildingNorthAxis = value
 				ctx.hasBuildingNorthAxis = true
 			}
 		case strings.EqualFold(obj.Type, "GlobalGeometryRules"):
 			if value := findFieldByCommentWords(obj, "vertex", "entry", "direction"); value != "" {
 				ctx.vertexEntryDirection = strings.ToLower(strings.TrimSpace(value))
+			} else if len(obj.Fields) > 1 && strings.TrimSpace(obj.Fields[1].Value) != "" {
+				ctx.vertexEntryDirection = strings.ToLower(strings.TrimSpace(obj.Fields[1].Value))
 			}
 			if value := findFieldByCommentWords(obj, "coordinate", "system"); value != "" {
 				ctx.coordinateSystem = strings.ToLower(strings.TrimSpace(value))
@@ -191,14 +219,27 @@ func AnalyzeGeometry(doc Document) GeometryReport {
 			} else if len(obj.Fields) > 0 && strings.TrimSpace(obj.Fields[0].Value) != "" {
 				ctx.startingVertexPosition = strings.ToLower(strings.TrimSpace(obj.Fields[0].Value))
 			}
+			if value := findFieldByCommentWords(obj, "rectangular", "surface", "coordinate", "system"); value != "" {
+				ctx.rectangularCoordinateSystem = strings.ToLower(strings.TrimSpace(value))
+			} else if len(obj.Fields) > 4 && strings.TrimSpace(obj.Fields[4].Value) != "" {
+				ctx.rectangularCoordinateSystem = strings.ToLower(strings.TrimSpace(obj.Fields[4].Value))
+			}
 		case strings.EqualFold(obj.Type, "Zone"):
 			zone := geometryZoneFromObject(obj)
 			zoneByName[normalizeName(zone.Name)] = len(report.Zones)
 			report.Zones = append(report.Zones, zone)
-			ctx.zoneDirections[normalizeName(zone.Name)] = numericFieldOrDefault(obj, 0, "direction", "relative", "north")
-			ctx.zoneMultipliers[normalizeName(zone.Name)] = numericFieldOrDefault(obj, 1, "multiplier")
+			zoneKey := normalizeName(zone.Name)
+			ctx.zoneDirections[zoneKey] = geometryNumericFieldOrDefault(obj, 0, "Direction of Relative North")
+			ctx.zoneMultipliers[zoneKey] = geometryNumericFieldOrDefault(obj, 1, "Multiplier")
+			ctx.zoneOrigins[zoneKey] = point3{
+				x: geometryNumericFieldOrDefault(obj, 0, "X Origin"),
+				y: geometryNumericFieldOrDefault(obj, 0, "Y Origin"),
+				z: geometryNumericFieldOrDefault(obj, 0, "Z Origin"),
+			}
 		case strings.EqualFold(obj.Type, "Space"):
-			report.Spaces = append(report.Spaces, geometrySpaceFromObject(obj))
+			space := geometrySpaceFromObject(obj)
+			report.Spaces = append(report.Spaces, space)
+			ctx.spaceZones[normalizeName(space.Name)] = space.ZoneName
 		}
 	}
 
@@ -210,7 +251,7 @@ func AnalyzeGeometry(doc Document) GeometryReport {
 		if !ok {
 			continue
 		}
-		report.addBounds(surface.Vertices)
+		report.addBounds(surface.WorldVertices)
 		report.Surfaces = append(report.Surfaces, surface)
 		if index, ok := zoneByName[normalizeName(surface.ZoneName)]; ok {
 			zone := &report.Zones[index]
@@ -228,6 +269,18 @@ func AnalyzeGeometry(doc Document) GeometryReport {
 	}
 
 	for _, obj := range doc.Objects {
+		if !isGeometryShadingType(obj.Type) {
+			continue
+		}
+		shading, ok := geometryShadingSurfaceFromObject(obj, ctx, surfaceByName)
+		if !ok {
+			continue
+		}
+		report.addBounds(shading.WorldVertices)
+		report.Surfaces = append(report.Surfaces, shading)
+	}
+
+	for _, obj := range doc.Objects {
 		if !isFenestrationType(obj.Type) {
 			continue
 		}
@@ -235,7 +288,7 @@ func AnalyzeGeometry(doc Document) GeometryReport {
 		if !ok {
 			continue
 		}
-		report.addBounds(window.Vertices)
+		report.addBounds(window.WorldVertices)
 		report.Windows = append(report.Windows, window)
 		if index, ok := zoneByName[normalizeName(window.ZoneName)]; ok {
 			report.Zones[index].WindowIDs = append(report.Zones[index].WindowIDs, window.ID)
@@ -246,6 +299,7 @@ func AnalyzeGeometry(doc Document) GeometryReport {
 	report.assignStories()
 	report.Constructions = geometryConstructionsFromDocument(doc)
 	report.CoordinateSystem = ctx.coordinateSystem
+	report.RectangularCoordinateSystem = ctx.rectangularCoordinateSystem
 	report.VertexEntryDirection = ctx.vertexEntryDirection
 	report.StartingVertexPosition = ctx.startingVertexPosition
 	report.ZoneCount = len(report.Zones)
@@ -290,26 +344,47 @@ func geometryZoneFromObject(obj Object) GeometryZone {
 }
 
 func geometrySurfaceFromObject(obj Object, ctx geometryContext) (GeometrySurface, bool) {
-	vertices, ok := detailedVertices(obj)
-	if !ok {
+	family, supported := heatTransferSurfaceFamilyFor(obj.Type)
+	if !supported {
 		return GeometrySurface{}, false
 	}
-	area, ok := polygonArea(vertices)
+	rawVertices, worldVertices, verticesSource, ok := heatTransferSurfaceVertices(obj, family, ctx)
 	if !ok {
 		return GeometrySurface{}, false
 	}
 	zoneName := semanticGeometryFieldValue(obj, 3, "Zone Name")
 	spaceName := semanticGeometrySpaceName(obj)
+	if zoneName == "" && spaceName != "" {
+		zoneName = ctx.spaceZones[normalizeName(spaceName)]
+	}
+	polygonPhysicalArea, ok := polygonArea(worldVertices)
+	if !ok {
+		return GeometrySurface{}, false
+	}
 	outsideBoundary := semanticGeometryOutsideBoundary(obj)
-	area *= zoneMultiplierFor(ctx.zoneMultipliers, zoneName)
-	points := geometryPoints(vertices)
-	minZ, maxZ, _ := verticesZStats(vertices)
-	azimuth, hasAzimuth := geometryAzimuth(obj, vertices, zoneName, ctx)
+	if outsideBoundary == "" {
+		outsideBoundary = family.BoundaryCondition
+	}
+	zoneMultiplier := zoneMultiplierFor(ctx.zoneMultipliers, zoneName)
+	surfaceMultiplier := geometryNumericFieldOrDefault(obj, 1, "Multiplier")
+	physicalArea := polygonPhysicalArea * surfaceMultiplier
+	effectiveArea := physicalArea * zoneMultiplier
+	rawPoints := geometryPoints(rawVertices)
+	worldPoints := geometryPoints(worldVertices)
+	minZ, maxZ, _ := verticesZStats(worldVertices)
+	surfaceCoordinateSystem := ctx.coordinateSystem
+	if family.PolygonKind == geometryPolygonRectangular {
+		surfaceCoordinateSystem = ctx.rectangularCoordinateSystem
+	}
+	azimuth, hasAzimuth := geometryAzimuthForCoordinateSystem(obj, worldVertices, zoneName, surfaceCoordinateSystem, ctx)
 	orientation := ""
 	if hasAzimuth {
 		orientation = orientationFromAzimuth(azimuth)
 	}
-	surfaceType := buildingSurfaceType(obj)
+	surfaceType := family.SurfaceType
+	if surfaceType == "" {
+		surfaceType = buildingSurfaceType(obj)
+	}
 	surface := GeometrySurface{
 		ID:              "surface-" + strconv.Itoa(obj.Index),
 		ObjectIndex:     obj.Index,
@@ -318,48 +393,59 @@ func geometrySurfaceFromObject(obj Object, ctx geometryContext) (GeometrySurface
 		SurfaceType:     surfaceType,
 		ZoneName:        zoneName,
 		SpaceName:       spaceName,
-		Construction:    findFieldByCommentWords(obj, "construction", "name"),
+		Construction:    geometryStringField(obj, "Construction Name"),
 		OutsideBoundary: outsideBoundary,
 		StoryIndex:      -1,
-		Area:            roundedNumber(area, 3),
-		Azimuth:         roundedNumber(azimuth, 2),
-		Orientation:     orientation,
-		MinZ:            roundedNumber(minZ, 3),
-		MaxZ:            roundedNumber(maxZ, 3),
-		Vertices:        points,
-		VerticesSource:  "computed_geometry",
-		Fields:          append([]Field(nil), obj.Fields...),
+		// Area remains an EffectiveArea alias for one compatibility release.
+		Area:              roundedNumber(effectiveArea, 3),
+		PhysicalArea:      roundedNumber(physicalArea, 3),
+		EffectiveArea:     roundedNumber(effectiveArea, 3),
+		ZoneMultiplier:    zoneMultiplier,
+		SurfaceMultiplier: surfaceMultiplier,
+		AreaBasis:         "effective",
+		Azimuth:           roundedNumber(azimuth, 2),
+		Orientation:       orientation,
+		MinZ:              roundedNumber(minZ, 3),
+		MaxZ:              roundedNumber(maxZ, 3),
+		RawVertices:       rawPoints,
+		WorldVertices:     worldPoints,
+		// Vertices remains a WorldVertices alias for one compatibility release.
+		Vertices:       append([]GeometryPoint(nil), worldPoints...),
+		VerticesSource: verticesSource,
+		Fields:         append([]Field(nil), obj.Fields...),
 	}
-	surface.Metrics = []GeometryMetric{
-		geometryMetric("Area", surface.Area, "m2", 2),
+	surface.Metrics = geometryAreaMetrics(surface.PhysicalArea, surface.EffectiveArea, surface.ZoneMultiplier, surface.SurfaceMultiplier)
+	surface.Metrics = append(surface.Metrics,
 		geometryMetric("Azimuth", surface.Azimuth, "deg", 1),
 		geometryMetric("Orientation", surface.Orientation, "", 0),
 		geometryMetric("Minimum Z", surface.MinZ, "m", 2),
 		geometryMetric("Maximum Z", surface.MaxZ, "m", 2),
-	}
+	)
 	return surface, true
 }
 
 func geometryWindowFromObject(obj Object, ctx geometryContext, surfaces map[string]GeometrySurface) (GeometryWindow, bool) {
-	vertices, ok := detailedVertices(obj)
-	if !ok {
-		return GeometryWindow{}, false
-	}
-	area, ok := polygonArea(vertices)
-	if !ok {
-		return GeometryWindow{}, false
-	}
-	baseName := findFieldByCommentWords(obj, "building", "surface", "name")
+	baseName := geometryStringField(obj, "Building Surface Name")
 	if baseName == "" {
 		baseName = findFieldByCommentWords(obj, "surface", "name")
 	}
 	base := surfaces[normalizeName(baseName)]
-	multiplier := numericFieldOrDefault(obj, 1, "multiplier")
-	area *= multiplier
-	if base.ZoneName != "" {
-		area *= zoneMultiplierFor(ctx.zoneMultipliers, base.ZoneName)
+	if base.ID == "" {
+		return GeometryWindow{}, false
 	}
-	azimuth, hasAzimuth := geometryAzimuth(obj, vertices, base.ZoneName, ctx)
+	rawVertices, worldVertices, verticesSource, ok := heatTransferOpeningVertices(obj, base, ctx)
+	if !ok {
+		return GeometryWindow{}, false
+	}
+	basePhysicalArea, ok := polygonArea(worldVertices)
+	if !ok {
+		return GeometryWindow{}, false
+	}
+	openingMultiplier := geometryNumericFieldOrDefault(obj, 1, "Multiplier")
+	physicalArea := basePhysicalArea * openingMultiplier
+	zoneMultiplier := zoneMultiplierFor(ctx.zoneMultipliers, base.ZoneName)
+	effectiveArea := physicalArea * zoneMultiplier
+	azimuth, hasAzimuth := geometryAzimuth(obj, worldVertices, base.ZoneName, ctx)
 	if !hasAzimuth && base.Orientation != "" {
 		azimuth = base.Azimuth
 	}
@@ -368,32 +454,108 @@ func geometryWindowFromObject(obj Object, ctx geometryContext, surfaces map[stri
 		orientation = orientationFromAzimuth(azimuth)
 	}
 	window := GeometryWindow{
-		ID:                     "window-" + strconv.Itoa(obj.Index),
-		ObjectIndex:            obj.Index,
-		Name:                   objectName(obj),
-		Type:                   obj.Type,
-		SurfaceType:            fenestrationSurfaceType(obj),
-		Construction:           findFieldByCommentWords(obj, "construction", "name"),
-		BaseSurfaceID:          base.ID,
-		BaseSurfaceName:        baseName,
-		ZoneName:               base.ZoneName,
-		StoryIndex:             -1,
-		Area:                   roundedNumber(area, 3),
-		AreaIncludesMultiplier: multiplier != 1,
-		Multiplier:             multiplier,
+		ID:              "window-" + strconv.Itoa(obj.Index),
+		ObjectIndex:     obj.Index,
+		Name:            objectName(obj),
+		Type:            obj.Type,
+		SurfaceType:     fenestrationSurfaceType(obj),
+		Construction:    geometryStringField(obj, "Construction Name"),
+		BaseSurfaceID:   base.ID,
+		BaseSurfaceName: baseName,
+		ZoneName:        base.ZoneName,
+		StoryIndex:      -1,
+		// Area remains an EffectiveArea alias for one compatibility release.
+		Area:                   roundedNumber(effectiveArea, 3),
+		PhysicalArea:           roundedNumber(physicalArea, 3),
+		EffectiveArea:          roundedNumber(effectiveArea, 3),
+		ZoneMultiplier:         zoneMultiplier,
+		SurfaceMultiplier:      openingMultiplier,
+		AreaBasis:              "effective",
+		AreaIncludesMultiplier: openingMultiplier != 1,
+		Multiplier:             openingMultiplier,
 		Azimuth:                roundedNumber(azimuth, 2),
 		Orientation:            orientation,
-		Vertices:               geometryPoints(vertices),
-		VerticesSource:         "computed_geometry",
-		Fields:                 append([]Field(nil), obj.Fields...),
+		RawVertices:            geometryPoints(rawVertices),
+		WorldVertices:          geometryPoints(worldVertices),
+		// Vertices remains a WorldVertices alias for one compatibility release.
+		Vertices:       geometryPoints(worldVertices),
+		VerticesSource: verticesSource,
+		Fields:         append([]Field(nil), obj.Fields...),
 	}
-	window.Metrics = []GeometryMetric{
-		geometryMetric("Area", window.Area, "m2", 2),
+	window.Metrics = geometryAreaMetrics(window.PhysicalArea, window.EffectiveArea, window.ZoneMultiplier, window.SurfaceMultiplier)
+	window.Metrics = append(window.Metrics,
 		geometryMetric("Azimuth", window.Azimuth, "deg", 1),
 		geometryMetric("Orientation", window.Orientation, "", 0),
-		geometryMetric("Multiplier", multiplier, "", 2),
-	}
+	)
 	return window, true
+}
+
+func geometryAreaMetrics(physicalArea float64, effectiveArea float64, zoneMultiplier float64, surfaceMultiplier float64) []GeometryMetric {
+	metrics := []GeometryMetric{
+		geometryMetric("Physical area", physicalArea, "m2", 2),
+	}
+	if math.Abs(effectiveArea-physicalArea) > 1e-9 {
+		metrics = append(metrics, geometryMetric("Model total area", effectiveArea, "m2", 2))
+	}
+	metrics = append(metrics,
+		geometryMetric("Zone multiplier", zoneMultiplier, "", 2),
+		geometryMetric("Surface multiplier", surfaceMultiplier, "", 2),
+		geometryMetric("Area basis", "Area is a compatibility alias of EffectiveArea", "", 0),
+	)
+	return metrics
+}
+
+func geometryNumericFieldOrDefault(obj Object, fallback float64, fieldName string) float64 {
+	if value, ok := parseFloatField(fieldValueByCatalogName(obj, fieldName)); ok {
+		return value
+	}
+	words := strings.Fields(strings.ToLower(strings.ReplaceAll(fieldName, "-", " ")))
+	if value, ok := parseFloatField(findFieldByCommentWords(obj, words...)); ok {
+		return value
+	}
+	return fallback
+}
+
+func geometryWorldVertices(rawVertices []point3, zoneName string, ctx geometryContext) []point3 {
+	return geometryWorldVerticesForCoordinateSystem(rawVertices, zoneName, ctx.coordinateSystem, ctx)
+}
+
+func geometryWorldVerticesForCoordinateSystem(rawVertices []point3, zoneName string, coordinateSystem string, ctx geometryContext) []point3 {
+	worldVertices := append([]point3(nil), rawVertices...)
+	if isWorldGeometryCoordinateSystem(coordinateSystem) {
+		return worldVertices
+	}
+
+	zoneKey := normalizeName(zoneName)
+	zoneOrigin := ctx.zoneOrigins[zoneKey]
+	worldZoneOrigin := rotateGeometryPoint(zoneOrigin, ctx.buildingNorthAxis)
+	totalRotation := ctx.buildingNorthAxis + ctx.zoneDirections[zoneKey]
+	for index, rawVertex := range rawVertices {
+		rotatedVertex := rotateGeometryPoint(rawVertex, totalRotation)
+		worldVertices[index] = point3{
+			x: worldZoneOrigin.x + rotatedVertex.x,
+			y: worldZoneOrigin.y + rotatedVertex.y,
+			z: worldZoneOrigin.z + rotatedVertex.z,
+		}
+	}
+	return worldVertices
+}
+
+func rotateGeometryPoint(point point3, clockwiseDegrees float64) point3 {
+	radians := clockwiseDegrees * math.Pi / 180
+	cosine := math.Cos(radians)
+	sine := math.Sin(radians)
+	return point3{
+		x: point.x*cosine - point.y*sine,
+		y: point.x*sine + point.y*cosine,
+		z: point.z,
+	}
+}
+
+func isWorldGeometryCoordinateSystem(value string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	normalized = strings.ReplaceAll(normalized, " ", "")
+	return strings.HasPrefix(normalized, "world")
 }
 
 func semanticGeometryFieldValue(obj Object, fallbackIndex int, names ...string) string {
@@ -448,7 +610,15 @@ func isSurfaceBoundaryCondition(value string) bool {
 }
 
 func geometryAzimuth(obj Object, vertices []point3, zoneName string, ctx geometryContext) (float64, bool) {
-	if value, ok := parseFloatField(findFieldByCommentWords(obj, "azimuth")); ok {
+	return geometryAzimuthForCoordinateSystem(obj, vertices, zoneName, ctx.coordinateSystem, ctx)
+}
+
+func geometryAzimuthForCoordinateSystem(obj Object, vertices []point3, zoneName string, coordinateSystem string, ctx geometryContext) (float64, bool) {
+	valueText := geometryStringField(obj, "Azimuth Angle")
+	if value, ok := parseFloatField(valueText); ok {
+		if isWorldGeometryCoordinateSystem(coordinateSystem) {
+			return normalizeDegrees(value), true
+		}
 		return normalizeDegrees(value + geometryRotation(zoneName, ctx)), true
 	}
 	normal, ok := polygonNormal(vertices)
@@ -464,7 +634,7 @@ func geometryAzimuth(obj Object, vertices []point3, zoneName string, ctx geometr
 		return 0, false
 	}
 	azimuth := math.Atan2(normal.x, normal.y) * 180 / math.Pi
-	return normalizeDegrees(azimuth + geometryRotation(zoneName, ctx)), true
+	return normalizeDegrees(azimuth), true
 }
 
 func geometryRotation(zoneName string, ctx geometryContext) float64 {
@@ -492,7 +662,7 @@ func geometryPoints(vertices []point3) []GeometryPoint {
 
 func floorAreaContribution(surface GeometrySurface) float64 {
 	if strings.EqualFold(surface.SurfaceType, "Floor") {
-		return surface.Area
+		return surface.EffectiveArea
 	}
 	return 0
 }

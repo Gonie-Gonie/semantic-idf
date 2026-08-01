@@ -4777,7 +4777,7 @@ function renderHVACInspectorZoneFocus(entity, paths = []) {
     ${renderZoneServiceDashboard(paths)}
     <div class="hvac-loop-actions">
       <button type="button" data-result-tab="profile">${escapeHTML(t("tab.profile", {}, "Profile"))}</button>
-      <button type="button" data-result-tab="geometry">${escapeHTML(t("tab.geometry", {}, "Geometry"))}</button>
+      <button type="button" data-result-tab="geometry">${escapeHTML(t("tab.geometry", {}, "Topology"))}</button>
       <button type="button" data-result-tab="output">${escapeHTML(t("tab.output", {}, "Output"))}</button>
       <button type="button" data-result-tab="simulation">${escapeHTML(t("tab.simulation", {}, "Simulation"))}</button>
       ${renderObjectLink(entity.objectIndex, entity.kind === "space" ? "Space" : "Zone")}

@@ -1,5 +1,5 @@
 import * as THREE from "../../vendor/three.module.js";
-import { elements, escapeHTML, state } from "../state.js";
+import { elements, escapeHTML, normalizeGeometryMode, normalizeTopologyAreaBasis, state } from "../state.js";
 import { t } from "../i18n.js";
 import { refreshResultPanelSelectionStyles } from "../panel-navigation-adapters.js";
 import { selectSemanticEntity } from "../selection-controller.js";
@@ -48,14 +48,16 @@ export function renderGeometry(geometry = state.report?.geometry) {
   updateModeVisibility();
   if (state.geometryMode === "plan") {
     renderPlan(geometry);
-  } else {
+  } else if (state.geometryMode === "3d") {
     renderScene(geometry);
+  } else {
+    renderThermalTopology(geometry);
   }
   renderGeometryDetails(geometry);
 }
 
 export function setGeometryMode(mode) {
-  state.geometryMode = mode === "plan" ? "plan" : "3d";
+  state.geometryMode = normalizeGeometryMode(mode);
   if (state.geometryMode === "plan" && state.selectedGeometryStory === "all") {
     state.selectedGeometryStory = firstStoryIndex(state.report?.geometry);
   }
@@ -164,7 +166,8 @@ export async function revealGeometrySelection(selection, options = {}, context) 
 
 export async function restoreGeometryNavigationContext(snapshot = {}, context) {
   geometrySelectionRequest += 1;
-  state.geometryMode = snapshot.mode === "plan" ? "plan" : "3d";
+  state.geometryMode = normalizeGeometryMode(snapshot.mode);
+  state.topologyAreaBasis = normalizeTopologyAreaBasis(snapshot.areaBasis);
   state.selectedGeometryStory = snapshot.story === "all" ? "all" : Number(snapshot.story) || 0;
   state.selectedGeometryKind = normalizeGeometryKind(snapshot.selectedKind);
   state.selectedGeometryId = String(snapshot.selectedId || "");
@@ -203,16 +206,19 @@ function renderEmptyGeometry() {
   elements.geometryStorySelect.innerHTML = "";
   elements.geometryCanvasHost.innerHTML = `<div class="empty">${t("geometry.noGeometry")}</div>`;
   elements.geometryPlan.innerHTML = "";
+  if (elements.thermalTopologyGraph) {
+    elements.thermalTopologyGraph.innerHTML = `<div class="empty">${t("topology.noConnections")}</div>`;
+  }
   elements.geometryDetails.innerHTML = `<div class="empty">${t("geometry.selectObject")}</div>`;
 }
 
 function ensureSelectedStory(geometry) {
   const stories = geometry.stories || [];
   if (!stories.length) {
-    state.selectedGeometryStory = state.geometryMode === "3d" ? "all" : 0;
+    state.selectedGeometryStory = state.geometryMode === "plan" ? 0 : "all";
     return;
   }
-  if (state.geometryMode === "3d" && state.selectedGeometryStory === "all") {
+  if (state.geometryMode !== "plan" && state.selectedGeometryStory === "all") {
     return;
   }
   const exists = stories.some((story) => story.index === state.selectedGeometryStory);
@@ -224,7 +230,7 @@ function ensureSelectedStory(geometry) {
 function renderStoryOptions(geometry) {
   const stories = geometry.stories || [];
   const allOption =
-    state.geometryMode === "3d"
+    state.geometryMode !== "plan"
       ? `<option value="all" ${state.selectedGeometryStory === "all" ? "selected" : ""}>${t("geometry.allLevels")}</option>`
       : "";
   const storyOptions = stories
@@ -239,9 +245,33 @@ function renderStoryOptions(geometry) {
 function updateModeVisibility() {
   elements.geometryCanvasHost.classList.toggle("active", state.geometryMode === "3d");
   elements.geometryPlan.classList.toggle("active", state.geometryMode === "plan");
+  elements.thermalTopologyGraph?.classList.toggle("active", state.geometryMode === "thermal");
+  if (elements.topologyAreaBasisControl) {
+    elements.topologyAreaBasisControl.hidden = state.geometryMode !== "thermal";
+  }
+  if (elements.topologyAreaBasis) {
+    elements.topologyAreaBasis.value = normalizeTopologyAreaBasis(state.topologyAreaBasis);
+  }
   elements.geometryModeButtons.forEach((button) => {
     button.classList.toggle("active", button.dataset.geometryMode === state.geometryMode);
   });
+}
+
+function renderThermalTopology(geometry) {
+  if (!elements.thermalTopologyGraph) {
+    return;
+  }
+  const topology = geometry?.topology;
+  const connections = topology?.connections || [];
+  const boundaries = topology?.boundaries || [];
+  const count = connections.length || boundaries.length;
+  const areaField = normalizeTopologyAreaBasis(state.topologyAreaBasis) === "physical" ? "physicalGrossArea" : "effectiveGrossArea";
+  const totalArea = boundaries.reduce((sum, boundary) => sum + (Number(boundary?.[areaField]) || 0), 0);
+  elements.thermalTopologyGraph.innerHTML = `<div class="empty">${escapeHTML(
+    count
+      ? t("topology.connectionAreaSummary", { count, area: formatArea(totalArea) })
+      : t("topology.noConnections"),
+  )}</div>`;
 }
 
 function updateSelectionAidControl() {
@@ -417,7 +447,7 @@ function pickMesh(event) {
 }
 
 function addSurfaceMesh(group, surface, kind, id, center) {
-  const geometry = polygonGeometry(surface.vertices, center, state.geometrySelectionAid && kind === "surface" ? 0.055 : 0);
+  const geometry = polygonGeometry(surface.worldVertices, center, state.geometrySelectionAid && kind === "surface" ? 0.055 : 0);
   if (!geometry) {
     return;
   }
@@ -459,7 +489,7 @@ function addSurfaceMesh(group, surface, kind, id, center) {
 }
 
 function addWindowMesh(group, windowItem, center) {
-  const geometry = polygonGeometry(windowItem.vertices, center, 0.035);
+  const geometry = polygonGeometry(windowItem.worldVertices, center, 0.035);
   if (!geometry) {
     return;
   }
@@ -510,10 +540,10 @@ function polygonGeometry(points, center, offset) {
 }
 
 function addSurfaceOutline(group, surface, id, center, color) {
-  if (!surface.vertices || surface.vertices.length < 2) {
+  if (!surface.worldVertices || surface.worldVertices.length < 2) {
     return;
   }
-  const points = surface.vertices.map((point) => new THREE.Vector3(point.x - center.x, point.z - center.y, point.y - center.z));
+  const points = surface.worldVertices.map((point) => new THREE.Vector3(point.x - center.x, point.z - center.y, point.y - center.z));
   points.push(points[0].clone());
   const geometry = new THREE.BufferGeometry().setFromPoints(points);
   const material = new THREE.LineBasicMaterial({
@@ -636,13 +666,13 @@ function buildGeometryPlanLayout(geometry, storyIndex) {
   const scale = Math.min((viewWidth - pad * 2) / width, (viewHeight - pad * 2) / height);
   const project = (point) => `${pad + (point.x - bounds.minX) * scale},${viewHeight - pad - (point.y - bounds.minY) * scale}`;
   const projectedSurfaces = surfaces.map((surface) => {
-    const openPoints = surface.vertices.map(project).join(" ");
+    const openPoints = surface.worldVertices.map(project).join(" ");
     return {
       id: surface.id,
       title: `${surface.name || surface.type} / ${surface.surfaceType || "Surface"}`,
       className: `plan-surface ${planSurfaceClass(surface)}`,
       openPoints,
-      closedPoints: `${openPoints} ${project(surface.vertices[0])}`,
+      closedPoints: `${openPoints} ${project(surface.worldVertices[0])}`,
       isHorizontal: isHorizontalSurface(surface),
       isFloor: surface.surfaceType?.toLowerCase() === "floor",
       zoneID: zoneIdForName(geometry, surface.zoneName),
@@ -650,10 +680,10 @@ function buildGeometryPlanLayout(geometry, storyIndex) {
     };
   });
   const projectedWindows = windows.map((windowItem) => {
-    const openPoints = windowItem.vertices.map(project).join(" ");
+    const openPoints = windowItem.worldVertices.map(project).join(" ");
     return {
       id: windowItem.id,
-      closedPoints: `${openPoints} ${project(windowItem.vertices[0])}`,
+      closedPoints: `${openPoints} ${project(windowItem.worldVertices[0])}`,
     };
   });
   return { ok: true, viewWidth, viewHeight, surfaces: projectedSurfaces, windows: projectedWindows };
@@ -669,7 +699,7 @@ function renderPlanSurfaceShape(surface) {
 }
 
 function hasPlanVertices(item) {
-  return Array.isArray(item?.vertices) && item.vertices.length > 0;
+  return Array.isArray(item?.worldVertices) && item.worldVertices.length > 0;
 }
 
 function planSurfaceClass(surface) {
@@ -1186,7 +1216,7 @@ function relatedItemForSurface(surface, role, geometry = state.report?.geometry)
   const construction = constructionForName(geometry, surface.construction);
   const performance = constructionPerformance(construction);
   const details = [
-    `${t("geometry.area", {}, "Area")} ${formatArea(surface.area)}`,
+    `${t("geometry.area", {}, "Area")} ${formatArea(surface.physicalArea ?? surface.area)}`,
     `${t("geometry.uValue", {}, "U-value")} ${formatUValue(performance.uValue)}`,
     `${t("geometry.boundary", {}, "Boundary")} ${surfaceOutsideLabel(geometry, surface)}`,
   ];
@@ -1205,7 +1235,7 @@ function relatedItemForWindow(windowItem, role, geometry = state.report?.geometr
   const construction = constructionForName(geometry, windowItem.construction);
   const performance = constructionPerformance(construction);
   const details = [
-    `${t("geometry.area", {}, "Area")} ${formatArea(windowItem.area)}`,
+    `${t("geometry.area", {}, "Area")} ${formatArea(windowItem.physicalArea ?? windowItem.area)}`,
     `${t("geometry.uValue", {}, "U-value")} ${formatUValue(performance.uValue)}`,
     windowItem.baseSurfaceName ? `${t("geometry.baseSurface", {}, "Base surface")} ${windowItem.baseSurfaceName}` : "",
   ].filter(Boolean);

@@ -237,6 +237,23 @@ func orphanDiagnostics(doc Document) []Diagnostic {
 }
 
 func geometryDiagnostics(doc Document) []Diagnostic {
+	geometry := AnalyzeGeometry(doc)
+	geometryByObjectIndex := map[int]struct {
+		physicalArea float64
+		zoneName     string
+	}{}
+	for _, surface := range geometry.Surfaces {
+		geometryByObjectIndex[surface.ObjectIndex] = struct {
+			physicalArea float64
+			zoneName     string
+		}{physicalArea: surface.PhysicalArea, zoneName: surface.ZoneName}
+	}
+	for _, opening := range geometry.Windows {
+		geometryByObjectIndex[opening.ObjectIndex] = struct {
+			physicalArea float64
+			zoneName     string
+		}{physicalArea: opening.PhysicalArea, zoneName: opening.ZoneName}
+	}
 	zoneNames := map[string]bool{}
 	for _, obj := range doc.Objects {
 		if isZoneLikeType(obj.Type) {
@@ -251,24 +268,20 @@ func geometryDiagnostics(doc Document) []Diagnostic {
 		if !isBuildingSurfaceType(obj.Type) && !isFenestrationType(obj.Type) {
 			continue
 		}
-		vertices, hasVertices := detailedVertices(obj)
-		if !hasVertices {
-			diagnostic := diagnosticForObject(DiagnosticNotice, "Geometry", "unsupported_geometry_object", obj,
-				fmt.Sprintf("%s %q does not have detailed vertices; geometry checks are limited for this object.", obj.Type, objectLabel(obj)))
-			diagnostic = diagnostic.withSource("analyzer_limitation", "Simple geometry objects are preserved but not treated as detailed polygon errors.")
-			diagnostics = append(diagnostics, diagnostic)
+		resolvedGeometry, hasGeometry := geometryByObjectIndex[obj.Index]
+		if !hasGeometry {
+			diagnostics = append(diagnostics, diagnosticForObject(DiagnosticWarning, "Geometry", "invalid_geometry", obj,
+				fmt.Sprintf("%s %q could not be converted to a valid world-space polygon.", obj.Type, objectLabel(obj))).withSource("energyplus_rule", "Heat-transfer surfaces require a valid detailed or rectangular geometry definition."))
+			diagnostics = append(diagnostics, diagnosticForObject(DiagnosticWarning, "Geometry", "zero_area", obj,
+				fmt.Sprintf("%s %q has zero or invalid area.", obj.Type, objectLabel(obj))).withSource("energyplus_rule", "Surface polygons require a valid physical area."))
 			continue
 		}
-		area, ok := polygonArea(vertices)
-		if !ok || area <= 0 {
+		if resolvedGeometry.physicalArea <= 0 {
 			diagnostics = append(diagnostics, diagnosticForObject(DiagnosticWarning, "Geometry", "zero_area", obj,
-				fmt.Sprintf("%s %q has zero or invalid area.", obj.Type, objectLabel(obj))).withSource("energyplus_rule", "Detailed surfaces require a valid polygon area."))
+				fmt.Sprintf("%s %q has zero or invalid area.", obj.Type, objectLabel(obj))).withSource("energyplus_rule", "Surface polygons require a valid physical area."))
 		}
 		if isBuildingSurfaceType(obj.Type) {
-			zoneName := fieldValueByCatalogName(obj, "Zone Name")
-			if zoneName == "" {
-				zoneName = findFieldByCommentWords(obj, "zone", "name")
-			}
+			zoneName := resolvedGeometry.zoneName
 			if zoneName == "" || !zoneNames[normalizeName(zoneName)] {
 				diagnostics = append(diagnostics, diagnosticForObject(DiagnosticWarning, "Geometry", "surface_unconnected_zone", obj,
 					fmt.Sprintf("Surface %q references missing zone %q.", objectLabel(obj), zoneName)).withSource("energyplus_rule", "BuildingSurface:Detailed Zone Name must resolve to a Zone or Space."))

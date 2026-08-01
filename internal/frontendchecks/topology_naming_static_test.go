@@ -1,0 +1,38 @@
+package frontendchecks
+
+import (
+	"strings"
+	"testing"
+)
+
+func TestTopologyNamingKeepsGeometryCompatibilityContracts(t *testing.T) {
+	index := readTestFile(t, "frontend/src/index.html")
+	for _, required := range []string{
+		`data-result-tab="geometry"`,
+		`id="geometryPane"`,
+		`data-i18n="tab.geometry">Topology`,
+		`data-i18n="topology.panelTitle">Spatial &amp; Thermal Topology`,
+	} {
+		if !strings.Contains(index, required) {
+			t.Fatalf("topology panel compatibility or naming contract is missing %q", required)
+		}
+	}
+
+	translations := readTestFile(t, "frontend/src/js/i18n.js")
+	for _, required := range []string{
+		`"tab.geometry": "Topology"`,
+		`"topology.panelTitle": "Spatial & Thermal Topology"`,
+		`"tab.geometry": "공간·열 연결"`,
+		`"topology.panelTitle": "공간·열 토폴로지"`,
+		`"shortcut.tabGeometry": "Analyze tab: Topology"`,
+	} {
+		if !strings.Contains(translations, required) {
+			t.Fatalf("topology translation contract is missing %q", required)
+		}
+	}
+
+	shortcuts := readTestFile(t, "frontend/src/js/shortcuts.js")
+	if !strings.Contains(shortcuts, `tabGeometry: () => actions.switchResultTab?.("geometry")`) {
+		t.Fatal("legacy tabGeometry shortcut must continue to activate the geometry result-tab ID")
+	}
+}

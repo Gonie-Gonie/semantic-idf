@@ -14,6 +14,10 @@ The release script infers bump size from these sections:
 
 ## Added
 
+- Added the user-facing `Topology` tab name (`공간·열 연결` in Korean) and
+  `Spatial & Thermal Topology` panel title while retaining the existing
+  `geometry` API, DOM, route, workspace, and `tabGeometry` shortcut contracts.
+
 - Added a Basic Energy `energyExplanation` result payload and Energy tab
   subviews for Sankey-style accounting, monthly/zoned explanation ledgers, SQL
   source metadata, HVAC service-path cross-jumps, and residual reconciliation,
