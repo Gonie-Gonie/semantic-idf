@@ -35,4 +35,9 @@ func TestTopologyNamingKeepsGeometryCompatibilityContracts(t *testing.T) {
 	if !strings.Contains(shortcuts, `tabGeometry: () => actions.switchResultTab?.("geometry")`) {
 		t.Fatal("legacy tabGeometry shortcut must continue to activate the geometry result-tab ID")
 	}
+
+	state := readTestFile(t, "frontend/src/js/state.js")
+	if !strings.Contains(state, `document.querySelectorAll("[data-result-tab]")`) {
+		t.Fatal("result-tab automation must use the stable data-result-tab contract")
+	}
 }

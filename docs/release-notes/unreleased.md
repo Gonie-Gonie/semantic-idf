@@ -14,6 +14,15 @@ The release script infers bump size from these sections:
 
 ## Added
 
+- Added a canonical `geometry.topology` thermal-network report with stable
+  zone, boundary, opening, connection, air-coupling, diagnostic, matrix, and
+  source-anchor identities; JSON, GraphML, and DOT exports; normalized Batch
+  Summary comparison fields; and a separately versioned signed simulation
+  heat-flow overlay.
+- Added Graph and Matrix Thermal views at zone and boundary levels with
+  Connectivity, Area, UA, Exposure, QA, Air, and Simulated Heat metrics,
+  physical/model-total area bases, source inspection, cross-panel navigation,
+  keyboard operation, and cached deterministic layouts.
 - Added the user-facing `Topology` tab name (`공간·열 연결` in Korean) and
   `Spatial & Thermal Topology` panel title while retaining the existing
   `geometry` API, DOM, route, workspace, and `tabGeometry` shortcut contracts.
@@ -394,6 +403,11 @@ The release script infers bump size from these sections:
   Edge export rows include related HVAC service path IDs when available.
 
 ## Changed
+
+- Renamed only the visible Geometry result tab to Topology. Integrations and
+  UI automation must continue to use `[data-result-tab="geometry"]` instead of
+  matching the translated visible label; saved workspaces and shortcut
+  customizations require no migration.
 
 - SQL result parsing now uses a shared `QueryReportData` layer that joins
   `ReportDataDictionary`, `ReportData`, and `Time` while preserving dictionary
