@@ -3,6 +3,7 @@ package main
 import (
 	"embed"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 
@@ -105,6 +106,43 @@ func appAssetHandler(app *App) http.Handler {
 			if err := json.NewEncoder(w).Encode(currentAppInfo()); err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 			}
+		case "/api/topology":
+			if r.Method != http.MethodPost {
+				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			var request struct {
+				Text    string                               `json:"text"`
+				Format  string                               `json:"format"`
+				Options idf.ThermalTopologyProjectionOptions `json:"options"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			topology, err := app.AnalyzeInputTopologyText(request.Text)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			var payload []byte
+			switch request.Format {
+			case "", "json":
+				payload, err = idf.ExportThermalTopologyJSON(*topology, request.Options)
+			case "graphml":
+				w.Header().Set("Content-Type", "application/graphml+xml")
+				payload, err = idf.ExportThermalTopologyGraphML(*topology, request.Options)
+			case "dot":
+				w.Header().Set("Content-Type", "text/vnd.graphviz; charset=utf-8")
+				payload, err = idf.ExportThermalTopologyDOT(*topology, request.Options)
+			default:
+				err = fmt.Errorf("unsupported topology format %q", request.Format)
+			}
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			_, _ = w.Write(payload)
 		case "/api/summary-metric-guides":
 			if r.Method != http.MethodGet {
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

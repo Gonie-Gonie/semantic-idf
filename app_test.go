@@ -1288,6 +1288,38 @@ func TestAppAssetHandlerServesSummaryMetricGuides(t *testing.T) {
 	}
 }
 
+func TestAnalyzeInputTopologyTextUsesGeometryStageReport(t *testing.T) {
+	app := NewApp()
+	first, err := app.AnalyzeInputTopologyText(appSummaryIDF)
+	if err != nil {
+		t.Fatalf("AnalyzeInputTopologyText() error = %v", err)
+	}
+	second, err := app.AnalyzeInputTopologyText(appSummaryIDF)
+	if err != nil {
+		t.Fatalf("second AnalyzeInputTopologyText() error = %v", err)
+	}
+	if first.Schema == "" || first.SourceModelHash == "" || first.SourceModelHash != second.SourceModelHash {
+		t.Fatalf("cached topology identity was not stable: %#v / %#v", first, second)
+	}
+}
+
+func TestAppAssetHandlerExportsTopology(t *testing.T) {
+	body := `{"text":"Version,24.1; Zone,Office;","format":"json","options":{"areaBasis":"physical"}}`
+	request := httptest.NewRequest(http.MethodPost, "/api/topology", strings.NewReader(body))
+	response := httptest.NewRecorder()
+	appAssetHandler(NewApp()).ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("topology API status = %d: %s", response.Code, response.Body.String())
+	}
+	var topology idf.ThermalTopologyReport
+	if err := json.NewDecoder(response.Body).Decode(&topology); err != nil {
+		t.Fatalf("topology API did not return report JSON: %v", err)
+	}
+	if topology.Schema == "" || topology.SourceModelHash == "" || topology.AreaBasis != "physical" {
+		t.Fatalf("topology API metadata = %#v", topology)
+	}
+}
+
 func outputApplyPreviewHasAction(changes []idf.OutputApplyChange, action string, objectType string) bool {
 	for _, change := range changes {
 		if change.Action == action && change.ObjectType == objectType {

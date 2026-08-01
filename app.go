@@ -284,12 +284,22 @@ func (a *App) AnalyzeInputDiagnosticsText(text string) ([]idf.Diagnostic, error)
 }
 
 func (a *App) AnalyzeInputGeometryText(text string) (*idf.GeometryReport, error) {
-	_, doc, err := parseInputDocument(text)
+	result, err := a.analyzeInputStageText(text, "geometry")
 	if err != nil {
 		return nil, err
 	}
-	geometry := idf.AnalyzeGeometry(doc)
+	geometry := result.Report.Geometry
 	return &geometry, nil
+}
+
+// AnalyzeInputTopologyText returns the same cached topology report used by the Geometry view.
+func (a *App) AnalyzeInputTopologyText(text string) (*idf.ThermalTopologyReport, error) {
+	geometry, err := a.AnalyzeInputGeometryText(text)
+	if err != nil {
+		return nil, err
+	}
+	topology := geometry.Topology
+	return &topology, nil
 }
 
 func (a *App) AnalyzeInputProfileText(text string) (*idf.ProfileReport, error) {

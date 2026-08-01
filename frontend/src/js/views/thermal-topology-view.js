@@ -33,6 +33,30 @@ let observedHeight = 0;
 let compactSelection = null;
 
 window.addEventListener("idfAnalyzer:thermalTopologyFit", () => fitThermalTopology());
+window.addEventListener("idfAnalyzer:thermalTopologyExport", () => exportThermalTopologyJSON());
+
+export function thermalTopologyExportPayload(geometry, areaBasis = "effective") {
+  const topology = geometry?.topology;
+  if (!topology) return null;
+  return {
+    ...topology,
+    areaBasis: normalizeThermalTopologyAreaBasis(areaBasis),
+  };
+}
+
+export function exportThermalTopologyJSON() {
+  const payload = thermalTopologyExportPayload(currentGeometry, state.thermalTopologyAreaBasis);
+  if (!payload) return false;
+  const blob = new Blob([`${JSON.stringify(payload, null, 2)}\n`], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  const sourceName = String(state.currentFilename || "model.idf").replace(/\.(idf|json|epjson)$/i, "");
+  link.href = url;
+  link.download = `${sourceName}.thermal-topology.json`;
+  link.click();
+  URL.revokeObjectURL(url);
+  return true;
+}
 
 export function renderThermalTopology(geometry, helpers = {}) {
   if (!elements.thermalTopologyGraph) {

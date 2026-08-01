@@ -40,6 +40,8 @@ const (
 
 type ThermalTopologyReport struct {
 	Schema                string                          `json:"schema"`
+	SourceModelHash       string                          `json:"sourceModelHash"`
+	AreaBasis             string                          `json:"areaBasis"`
 	Nodes                 []ThermalTopologyNode           `json:"nodes"`
 	Boundaries            []ThermalBoundaryRecord         `json:"boundaries"`
 	Connections           []ThermalConnectionAggregate    `json:"connections"`
@@ -307,11 +309,13 @@ func BuildThermalTopology(doc Document, geometry GeometryReport, documentIndex *
 		surfaceByID:              thermalSurfaceIndex(geometry.Surfaces),
 		peopleCountByZone:        thermalPeopleCounts(doc, geometry),
 		report: ThermalTopologyReport{
-			Schema:         thermalTopologySchema,
-			Nodes:          []ThermalTopologyNode{},
-			Boundaries:     []ThermalBoundaryRecord{},
-			Connections:    []ThermalConnectionAggregate{},
-			ZoneSignatures: []ZoneThermalSignature{},
+			Schema:          thermalTopologySchema,
+			SourceModelHash: semanticStableHash(doc.String(), 32),
+			AreaBasis:       "effective",
+			Nodes:           []ThermalTopologyNode{},
+			Boundaries:      []ThermalBoundaryRecord{},
+			Connections:     []ThermalConnectionAggregate{},
+			ZoneSignatures:  []ZoneThermalSignature{},
 		},
 	}
 	for _, object := range doc.Objects {

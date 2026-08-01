@@ -591,6 +591,7 @@ export const elements = {
   thermalTopologySimulationFrame: document.querySelector("#thermalTopologySimulationFrame"),
   thermalTopologySimulationFrameLabel: document.querySelector("#thermalTopologySimulationFrameLabel"),
   thermalTopologyFit: document.querySelector("#thermalTopologyFit"),
+  thermalTopologyExportJSON: document.querySelector("#thermalTopologyExportJSON"),
   thermalTopologyAdvanced: document.querySelector("#thermalTopologyAdvanced"),
   thermalTopologyLayout: document.querySelector("#thermalTopologyLayout"),
   thermalTopologyAreaBasisControl: document.querySelector("#thermalTopologyAreaBasisControl"),

@@ -293,6 +293,9 @@ elements.thermalTopologyShowLabels.addEventListener("change", () => {
 elements.thermalTopologyFit.addEventListener("click", () => {
   window.dispatchEvent(new CustomEvent("idfAnalyzer:thermalTopologyFit"));
 });
+elements.thermalTopologyExportJSON.addEventListener("click", () => {
+  window.dispatchEvent(new CustomEvent("idfAnalyzer:thermalTopologyExport"));
+});
 elements.thermalTopologyDisplayButtons.forEach((button) => {
   button.addEventListener("click", () => {
     updateThermalTopologySetting("thermalTopologyDisplay", normalizeThermalTopologyDisplay(button.dataset.thermalTopologyDisplay));

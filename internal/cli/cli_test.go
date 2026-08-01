@@ -213,6 +213,31 @@ func TestCLIHVACGraphExports(t *testing.T) {
 	}
 }
 
+func TestCLITopologyExportsCanonicalJSONGraphMLAndDOT(t *testing.T) {
+	input := writeCLITestInput(t, cliProfileFixtureIDF)
+	tests := []struct {
+		format string
+		want   []string
+	}{
+		{format: "json", want: []string{`"schema": "semantic-idf.thermal-topology/v1"`, `"sourceModelHash"`, `"areaBasis": "physical"`, `"sourceAnchors"`}},
+		{format: "graphml", want: []string{"<graphml", "thermal-boundary"}},
+		{format: "dot", want: []string{"graph thermal_topology", "thermal-boundary"}},
+	}
+	for _, test := range tests {
+		var stdout bytes.Buffer
+		var stderr bytes.Buffer
+		code := runCLI([]string{"topology", "--level", "boundary", "--metric", "area", "--scope", "building", "--area-basis", "physical", "--format", test.format, "--output", "-", input}, strings.NewReader(""), &stdout, &stderr, "0.4.1")
+		if code != 0 {
+			t.Fatalf("topology %s exit = %d, stderr = %s", test.format, code, stderr.String())
+		}
+		for _, want := range test.want {
+			if !strings.Contains(stdout.String(), want) {
+				t.Fatalf("topology %s missing %q:\n%s", test.format, want, stdout.String())
+			}
+		}
+	}
+}
+
 func TestCLIConvertTableXLSX(t *testing.T) {
 	input := writeCLITestInput(t, cliFixtureIDF)
 	output := filepath.Join(t.TempDir(), "tables.xlsx")
