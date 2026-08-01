@@ -127,8 +127,10 @@ func (builder *thermalTopologyBuilder) addAirflowNetworkCouplings() {
 				coupling.SourceAnchors = appendUniqueThermalAnchors(coupling.SourceAnchors, afnZoneAnchors[normalizeName(zone.Name)]...)
 			}
 		}
+		componentFound := false
 		for _, candidate := range builder.documentIndex.ObjectsNamed(componentName) {
 			if strings.HasPrefix(strings.ToLower(candidate.Type), "airflownetwork:multizone:") {
+				componentFound = true
 				coupling.SourceAnchors = appendUniqueThermalAnchors(coupling.SourceAnchors, builder.sourceAnchor(candidate, nil, ""))
 				if strings.Contains(strings.ToLower(candidate.Type), "zoneexhaustfan") || strings.Contains(strings.ToLower(candidate.Type), "specifiedflowrate") {
 					coupling.Direction = "directed"
@@ -139,6 +141,9 @@ func (builder *thermalTopologyBuilder) addAirflowNetworkCouplings() {
 		valid := found && coupling.FromNodeID != "" && coupling.ToNodeID != "" && boundary.RelationKind != "invalid"
 		if !found {
 			builder.addAirCouplingIssue(&coupling, thermalDiagnosticAirflowNetworkSurfaceMissing, fmt.Sprintf("AirflowNetwork surface %q cannot resolve heat-transfer surface or opening %q.", objectLabel(object), surfaceName))
+		}
+		if !componentFound {
+			builder.addAirCouplingIssue(&coupling, thermalDiagnosticAirflowNetworkComponentMissing, fmt.Sprintf("AirflowNetwork surface %q cannot resolve leakage component %q.", objectLabel(object), componentName))
 		}
 		builder.appendAirCoupling(coupling, valid, fmt.Sprintf("AirflowNetwork surface %q cannot resolve heat-transfer surface or opening %q.", objectLabel(object), surfaceName))
 	}

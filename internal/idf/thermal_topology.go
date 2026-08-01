@@ -36,6 +36,7 @@ const (
 	thermalDiagnosticZoneVolumeMismatch               = "zone_volume_mismatch"
 	thermalDiagnosticAirCouplingTargetMissing         = "air_coupling_target_missing"
 	thermalDiagnosticAirflowNetworkSurfaceMissing     = "airflow_network_surface_missing"
+	thermalDiagnosticAirflowNetworkComponentMissing   = "airflow_network_component_missing"
 )
 
 type ThermalTopologyReport struct {
@@ -785,6 +786,10 @@ func (builder *thermalTopologyBuilder) resolveSurfaceBoundary(boundaryIndex int)
 	}
 	if target.OwnerZoneID == "" {
 		builder.invalidateBoundary(boundary, thermalDiagnosticSurfacePairZoneMismatch, fmt.Sprintf("Surface pair %q and %q does not resolve ownership on both sides.", boundary.SurfaceName, target.SurfaceName))
+		return
+	}
+	if target.OwnerZoneID == boundary.OwnerZoneID {
+		builder.invalidateBoundary(boundary, thermalDiagnosticSurfacePairZoneMismatch, fmt.Sprintf("Surface pair %q and %q resolves to the same owning zone.", boundary.SurfaceName, target.SurfaceName))
 		return
 	}
 	boundary.RelationKind = "interzone_explicit_surface"

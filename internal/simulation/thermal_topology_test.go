@@ -49,6 +49,19 @@ FenestrationSurface:Detailed,
   1, 0, 2;
 `
 
+const thermalTopologyInterzoneSimulationFixture = `
+Version, 24.1;
+GlobalGeometryRules, UpperLeftCorner, CounterClockWise, World, World, World;
+Zone, Zone A, 0, 0, 0, 0, 1, 1;
+Zone, Zone B, 0, 0, 0, 0, 1, 1;
+BuildingSurface:Detailed,
+  Pair A, Wall, , Zone A, , Surface, Pair B, NoSun, NoWind, 0.5, 4,
+  0,0,0, 0,0,2, 2,0,2, 2,0,0;
+BuildingSurface:Detailed,
+  Pair B, Wall, , Zone B, , Surface, Pair A, NoSun, NoWind, 0.5, 4,
+  2,0,0, 2,0,2, 0,0,2, 0,0,0;
+`
+
 func TestPurposeRunPlanSurfaceHeatFlowIsModelAware(t *testing.T) {
 	doc, err := idf.Parse(thermalTopologySimulationFixture)
 	if err != nil {
@@ -110,6 +123,12 @@ func TestBuildThermalTopologySimulationResultMapsBoundaryAndNormalizesEnergy(t *
 	if len(overlay.Periods) != 4 || len(overlay.Sources) != 5 {
 		t.Fatalf("period/source counts = %d/%d", len(overlay.Periods), len(overlay.Sources))
 	}
+	for _, periodID := range []string{"annual", "monthly", "daily", "hourly"} {
+		_ = findThermalTopologySimulationPeriod(t, overlay.Periods, periodID)
+	}
+	if overlay.SignConvention == "" || len(overlay.Completeness) != 1 || !overlay.Completeness[0].Found {
+		t.Fatalf("simulation sign/completeness metadata = %q / %#v", overlay.SignConvention, overlay.Completeness)
+	}
 	annual := findThermalTopologySimulationPeriod(t, overlay.Periods, "annual")
 	if len(annual.BoundaryFlows) != 1 {
 		t.Fatalf("annual boundary flows = %#v", annual.BoundaryFlows)
@@ -121,11 +140,46 @@ func TestBuildThermalTopologySimulationResultMapsBoundaryAndNormalizesEnergy(t *
 	if flow.BoundaryID == "" || flow.ConnectionID == "" || flow.OwnerNodeID == "" || len(flow.SourceIDs) != 3 {
 		t.Fatalf("boundary topology/provenance links = %+v", flow)
 	}
+	if flow.SignConvention != "positive enters owner" || flow.Direction != "gain" || len(flow.Traces) < 3 {
+		t.Fatalf("boundary sign/source trace = %+v", flow)
+	}
 	if len(overlay.Reconciliation) != 1 || overlay.Reconciliation[0].Status != "ok" {
 		t.Fatalf("reconciliation = %#v", overlay.Reconciliation)
 	}
 	if overlay.OutputWeight.Series != 5 || overlay.OutputWeight.Frames != 2 || overlay.OutputWeight.Values != 10 {
 		t.Fatalf("output weight = %+v", overlay.OutputWeight)
+	}
+}
+
+func TestThermalTopologySimulationUsesCanonicalInterzoneSide(t *testing.T) {
+	directory := t.TempDir()
+	inputPath := filepath.Join(directory, "interzone.idf")
+	if err := os.WriteFile(inputPath, []byte(thermalTopologyInterzoneSimulationFixture), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result := &SimulationRunResult{
+		InputPath: inputPath,
+		Series: []SimulationSeries{{
+			File:   "eplusout.csv",
+			Column: "Pair B:Surface Average Face Conduction Heat Transfer Energy [J]",
+			Points: []SimulationPoint{{X: 1, Label: "01/01 01:00", Value: 3_600_000}},
+		}},
+	}
+	bundle := BuildPurposeResultBundle(result, SimulationPurposeRequest{
+		Purposes:           []SimulationPurposeID{SimulationPurposeZoneHeatFlow},
+		ZoneHeatFlowDetail: PurposeZoneHeatFlowDetailSurface,
+	})
+	overlay := bundle.ThermalTopology
+	if !overlay.Available {
+		t.Fatalf("interzone overlay unavailable: %+v", overlay)
+	}
+	annual := findThermalTopologySimulationPeriod(t, overlay.Periods, "annual")
+	if len(annual.BoundaryFlows) != 1 || len(annual.ConnectionFlows) != 1 {
+		t.Fatalf("reciprocal interzone flow was double-counted: %#v", annual)
+	}
+	flow := annual.BoundaryFlows[0]
+	if len(flow.RelatedBoundaryIDs) != 2 || flow.BoundaryID != flow.RelatedBoundaryIDs[0] || flow.Value != -1 || flow.Direction != "loss" {
+		t.Fatalf("non-canonical pair side was not inverted onto canonical owner: %#v", flow)
 	}
 }
 
