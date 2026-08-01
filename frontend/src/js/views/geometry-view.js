@@ -1802,7 +1802,7 @@ function projectGeometrySelectionToThermal(kind, id, geometry) {
 }
 
 function isThermalSelectionKind(kind) {
-  return ["thermal_boundary", "thermal_interface", "thermal_connection", "thermal_environment", "thermal_air_coupling", "thermal_issue"].includes(kind);
+  return ["thermal_boundary", "thermal_interface", "thermal_connection", "thermal_environment", "thermal_air_coupling", "thermal_issue", "thermal_observation"].includes(kind);
 }
 
 function zoneByName(geometry, zoneName) {

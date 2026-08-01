@@ -436,4 +436,6 @@ The release script infers bump size from these sections:
 
 ## Fixed
 
-- _None._
+- QA adjacency edges now retain both source surfaces as a stable
+  `thermal_observation` selection, so Show in 3D/Plan and the inspector expose
+  the complete geometric evidence without creating a thermal relation.

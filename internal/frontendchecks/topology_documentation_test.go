@@ -63,3 +63,21 @@ func TestThermalTopologyReleaseNotesExplainCompatibilityMigration(t *testing.T) 
 		}
 	}
 }
+
+func TestThermalTopologyAcceptanceRecordMapsFinalFlows(t *testing.T) {
+	doc := readTestFile(t, "docs/thermal-topology-acceptance.md")
+	for _, required := range []string{
+		"TOPO-280 Exterior zone",
+		"TOPO-281 Interzone pair",
+		"TOPO-282 Modeling decision/QA",
+		"TOPO-283 Air coupling",
+		"TOPO-284 Simulation overlay",
+		"TOPO-285 Settings/Batch",
+		"backend calls",
+		"Wails build",
+	} {
+		if !strings.Contains(doc, required) {
+			t.Fatalf("thermal topology acceptance record is missing %q", required)
+		}
+	}
+}

@@ -93,6 +93,57 @@ func TestPurposeRunPlanSurfaceHeatFlowIsModelAware(t *testing.T) {
 	}
 }
 
+func TestTOPO284SimulationOverlayIntegratedFlow(t *testing.T) {
+	document, err := idf.Parse(thermalTopologySimulationFixture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := SimulationPurposeRequest{
+		Purposes:           []SimulationPurposeID{SimulationPurposeZoneHeatFlow},
+		ZoneHeatFlowDetail: PurposeZoneHeatFlowDetailSurface,
+	}
+	plan := BuildPurposeRunPlan(document, request)
+	if plan.EstimatedWeight == "Light" || plan.EstimatedFrames == 0 || findPurposeOutput(plan, "Output:Variable", "South Wall", "Surface Average Face Conduction Heat Transfer Energy") == nil {
+		t.Fatalf("surface-detail purpose plan weight/output requests = %#v", plan)
+	}
+
+	inputPath := filepath.Join(t.TempDir(), "model.idf")
+	if err := os.WriteFile(inputPath, []byte(thermalTopologySimulationFixture), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result := &SimulationRunResult{
+		InputPath: inputPath,
+		Series: []SimulationSeries{{
+			File:   "eplusout.csv",
+			Column: "South Wall:Surface Average Face Conduction Heat Transfer Energy [J]",
+			Points: []SimulationPoint{
+				{X: 1, Label: "01/15 01:00", Value: 3_600_000},
+				{X: 2, Label: "02/15 01:00", Value: -1_800_000},
+			},
+		}},
+	}
+	bundle := BuildPurposeResultBundle(result, request)
+	overlay := bundle.ThermalTopology
+	if !overlay.Available || overlay.State != "simulation_overlay" || overlay.SignConvention == "" {
+		t.Fatalf("simulation overlay state/sign convention = %#v", overlay)
+	}
+	monthly := findThermalTopologySimulationPeriod(t, overlay.Periods, "monthly")
+	if monthly.FrameCount != 2 || len(monthly.BoundaryFlows) != 1 || len(monthly.ConnectionFlows) != 1 {
+		t.Fatalf("monthly topology period = %#v", monthly)
+	}
+	flow := monthly.BoundaryFlows[0]
+	if len(flow.Values) != 2 || flow.Values[0] != 1 || flow.Values[1] != -0.5 || flow.Unit != "kWh" || flow.BoundaryID == "" || flow.ConnectionID == "" || len(flow.SourceIDs) != 1 {
+		t.Fatalf("monthly signed flow/direction/source mapping = %#v", flow)
+	}
+	if len(overlay.Sources) != 1 || overlay.Sources[0].AggregationMethod != "sum_reported_energy" || overlay.Sources[0].SourceUnit != "J" || overlay.Sources[0].NormalizedUnit != "kWh" {
+		t.Fatalf("heat-flow ledger provenance = %#v", overlay.Sources)
+	}
+	staticTopology := idf.AnalyzeGeometry(document).Topology
+	if staticTopology.Schema == overlay.Schema || staticTopology.Boundaries[0].TotalUA == flow.Value {
+		t.Fatalf("static UA and simulated heat were conflated: static %q/%v simulated %q/%v", staticTopology.Schema, staticTopology.Boundaries[0].TotalUA, overlay.Schema, flow.Value)
+	}
+}
+
 func TestBuildThermalTopologySimulationResultMapsBoundaryAndNormalizesEnergy(t *testing.T) {
 	dir := t.TempDir()
 	inputPath := filepath.Join(dir, "model.idf")

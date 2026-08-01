@@ -130,6 +130,9 @@ An issue link contains `id`, `code`, `severity`, `message`, optional
 `entityId`/`boundaryId`/`openingId`/`airCouplingId`, `relatedEntityIds`, and
 `sourceAnchors`. A geometric adjacency observation contains `surfaceAId`,
 `surfaceBId`, `overlapRatio`, `declaredConnection`, and `observationKind`.
+The UI derives a deterministic `thermal_observation` target from the sorted
+surface IDs and observation kind so both source surfaces remain selected in QA
+and 3D/Plan without changing the canonical static schema.
 Enclosure records include zone identity, closed/open/non-manifold counts,
 computed/declared volume, difference, open edges, and diagnostic IDs.
 

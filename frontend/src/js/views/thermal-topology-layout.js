@@ -4,6 +4,7 @@ import {
   normalizeThermalTopologyLayout,
   normalizeThermalTopologyScope,
 } from "../state.js";
+import { thermalTopologyObservationID } from "../thermal-topology-targets.js";
 
 export const THERMAL_NODE_WIDTH = 148;
 export const THERMAL_NODE_HEIGHT = 56;
@@ -403,16 +404,16 @@ function detailConnection(id, fromNodeId, toNodeId, targetId, relationKind) {
 
 function qaObservationConnections(topology, boundaries) {
   const bySurfaceID = new Map(boundaries.map((boundary) => [boundary.surfaceId, boundary]));
-  return (topology.adjacencyObservations || []).map((observation, index) => {
+  return (topology.adjacencyObservations || []).map((observation) => {
     const left = bySurfaceID.get(observation.surfaceAId);
     const right = bySurfaceID.get(observation.surfaceBId);
     if (!left || !right) return null;
     return {
-      id: `thermal-observation:${observation.surfaceAId}:${observation.surfaceBId}:${index}`,
+      id: thermalTopologyObservationID(observation),
       fromNodeId: left.ownerSpaceId || left.ownerZoneId,
       toNodeId: right.ownerSpaceId || right.ownerZoneId,
-      targetKind: "thermal_boundary",
-      targetId: left.id,
+      targetKind: "thermal_observation",
+      targetId: thermalTopologyObservationID(observation),
       relationKind: "qa_observation",
       observationKind: observation.observationKind,
       qaOnly: true,

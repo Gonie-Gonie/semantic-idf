@@ -68,6 +68,7 @@ function renderSelectionDetails(selection, geometry) {
   else if (selection.kind === "thermal_environment") details = renderEnvironmentDetails(selection.item, geometry);
   else if (selection.kind === "thermal_interface") details = renderInterfaceDetails(selection.item, geometry);
   else if (selection.kind === "thermal_issue") details = renderIssueDetails(selection.item);
+  else if (selection.kind === "thermal_observation") details = renderObservationDetails(selection.item, geometry);
   else details = renderRows([["ID", selection.id], ["Kind", selection.kind]]);
   return details + renderSimulationHeatFlowLedger(selection);
 }
@@ -139,6 +140,7 @@ function renderBoundaryDetails(boundary, geometry) {
       ["Counterpart", boundary.counterpartSurfaceEntityId || (boundary.virtualCounterpart ? "Virtual" : "N/A")],
       ["Relation", humanize(boundary.relationKind)],
       ["Construction", `${boundary.constructionName || "N/A"} · ${boundary.hasUValue ? `${number(boundary.uValue)} W/m²K` : "U N/A"}`],
+      ["Construction validation", humanize(boundary.constructionStatus || "not checked")],
     ])),
     inspectorSection("Area & UA", renderRows([
       ["Physical gross / opening / net", `${area(boundary.physicalGrossArea)} / ${area(boundary.physicalOpeningArea)} / ${area(boundary.physicalOpaqueArea)}`],
@@ -182,6 +184,22 @@ function renderAirCouplingDetails(coupling, geometry) {
       ["AFN surface / component", `${coupling.surfaceId || "N/A"} / ${coupling.componentName || "N/A"}`],
     ])),
     renderDiagnostics(coupling.diagnosticIds, geometry?.topology || {}),
+  ].join("");
+}
+
+function renderObservationDetails(observation, geometry) {
+  const topology = geometry?.topology || {};
+  const boundaries = (topology.boundaries || []).filter((boundary) => (observation.boundaryIds || []).includes(boundary.id));
+  return [
+    inspectorSection("Geometric adjacency QA", renderRows([
+      ["Observation", humanize(observation.observationKind)],
+      ["Overlap", percent(observation.overlapRatio)],
+      ["Declared connection", observation.declaredConnection ? "Yes" : "No"],
+      ["Thermal relation", "Not created · QA evidence only"],
+    ])),
+    inspectorSection("Adjacent source surfaces", boundaries.length
+      ? `<div class="thermal-inspector-source-list">${boundaries.map((boundary) => sourceButton("thermal_boundary", boundary.id, boundary.surfaceName)).join("")}</div>`
+      : emptyValue()),
   ].join("");
 }
 
@@ -439,6 +457,7 @@ function geometryRevealTarget(selection, geometry) {
 
 function selectionTitle(selection) {
   const item = selection.item || {};
+  if (selection.kind === "thermal_observation") return "Geometric adjacency";
   return item.label || item.surfaceName || item.name || item.objectName || item.id || selection.id;
 }
 

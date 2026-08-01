@@ -5,6 +5,7 @@ export const THERMAL_TOPOLOGY_TARGET_KINDS = Object.freeze([
   "thermal_environment",
   "thermal_air_coupling",
   "thermal_issue",
+  "thermal_observation",
 ]);
 
 const thermalTopologyTargetKindSet = new Set(THERMAL_TOPOLOGY_TARGET_KINDS);
@@ -19,6 +20,11 @@ export function isThermalTopologyTargetKind(kind) {
 
 export function thermalTopologyTargetExists(target, geometry) {
   return Boolean(resolveThermalTopologyTarget(target, geometry));
+}
+
+export function thermalTopologyObservationID(observation) {
+  const surfaces = [observation?.surfaceAId, observation?.surfaceBId].map((value) => String(value || "")).sort();
+  return `thermal-observation:${surfaces[0]}:${surfaces[1]}:${String(observation?.observationKind || "adjacency")}`;
 }
 
 export function resolveThermalTopologyTarget(target, geometry) {
@@ -76,6 +82,20 @@ export function resolveThermalTopologyTarget(target, geometry) {
   } else if (kind === "thermal_issue") {
     result.item = issueLinks.find((issue) => issue.id === id) || null;
     addIssueRelations(result, result.item, { boundaries, openings, airCouplings, nodes });
+  } else if (kind === "thermal_observation") {
+    const observation = (topology.adjacencyObservations || []).find((candidate) => thermalTopologyObservationID(candidate) === id) || null;
+    if (observation) {
+      const relatedBoundaries = [observation.surfaceAId, observation.surfaceBId]
+        .map((surfaceID) => boundaries.find((boundary) => boundary.surfaceId === surfaceID))
+        .filter(Boolean);
+      result.item = {
+        ...observation,
+        id,
+        boundaryIds: relatedBoundaries.map((boundary) => boundary.id),
+        sourceAnchors: relatedBoundaries.flatMap((boundary) => boundary.sourceAnchors || []),
+      };
+      relatedBoundaries.forEach((boundary) => addBoundary(result, boundary, openings));
+    }
   }
 
   if (!result.item) {

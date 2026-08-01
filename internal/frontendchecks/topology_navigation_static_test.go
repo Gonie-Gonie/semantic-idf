@@ -14,6 +14,8 @@ func TestThermalTopologyTargetResolverCoversSemanticTargetKinds(t *testing.T) {
 		`"thermal_environment"`,
 		`"thermal_air_coupling"`,
 		`"thermal_issue"`,
+		`"thermal_observation"`,
+		"thermalTopologyObservationID",
 		"resolveThermalTopologyTarget",
 		"surfaceIds",
 		"windowIds",
