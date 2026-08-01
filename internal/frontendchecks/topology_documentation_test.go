@@ -55,6 +55,7 @@ func TestThermalTopologyReleaseNotesExplainCompatibilityMigration(t *testing.T) 
 		"canonical `geometry.topology` thermal-network report",
 		"separately versioned signed simulation",
 		"Renamed only the visible Geometry result tab to Topology",
+		"공간·열 연결",
 		"`[data-result-tab=\"geometry\"]`",
 		"customizations require no migration",
 	} {

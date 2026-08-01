@@ -46,7 +46,7 @@ function Write-TextFile {
 function Get-WailsProductVersion {
     param([string]$Path)
 
-    $config = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
+    $config = Get-Content -LiteralPath $Path -Raw -Encoding utf8 | ConvertFrom-Json
     if (-not $config.info -or -not $config.info.productVersion) {
         throw "Missing info.productVersion in $Path"
     }
@@ -56,7 +56,7 @@ function Get-WailsProductVersion {
 function Get-WailsProductName {
     param([string]$Path)
 
-    $config = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
+    $config = Get-Content -LiteralPath $Path -Raw -Encoding utf8 | ConvertFrom-Json
     if ($config.info -and $config.info.productName) {
         return [string]$config.info.productName
     }
@@ -72,7 +72,7 @@ function Set-WailsReleaseMetadata {
         [string]$TargetVersion
     )
 
-    $text = Normalize-NewLine -Text (Get-Content -LiteralPath $Path -Raw)
+    $text = Normalize-NewLine -Text (Get-Content -LiteralPath $Path -Raw -Encoding utf8)
     $text = Set-JsonStringProperty -Text $text -Name "productVersion" -Value $TargetVersion
     $text = Set-JsonStringProperty -Text $text -Name "outputfilename" -Value "semantic-idf-v$TargetVersion"
     Write-TextFile -Path $Path -Text $text
@@ -107,7 +107,7 @@ function Set-AppInfoModuleVersion {
         throw "Missing app info module: $Path"
     }
 
-    $text = Normalize-NewLine -Text (Get-Content -LiteralPath $Path -Raw)
+    $text = Normalize-NewLine -Text (Get-Content -LiteralPath $Path -Raw -Encoding utf8)
     $versionRegex = New-Object System.Text.RegularExpressions.Regex('version:\s*"[^"]+"')
     $titleRegex = New-Object System.Text.RegularExpressions.Regex('title:\s*"[^"]+"')
     $outputRegex = New-Object System.Text.RegularExpressions.Regex('outputFilename:\s*"[^"]+"')
@@ -130,7 +130,7 @@ function Set-StaticHTMLAppVersion {
             throw "Missing static HTML file: $path"
         }
 
-        $text = Normalize-NewLine -Text (Get-Content -LiteralPath $path -Raw)
+        $text = Normalize-NewLine -Text (Get-Content -LiteralPath $path -Raw -Encoding utf8)
         $text = [regex]::Replace(
             $text,
             '(?i)(<[^>]*\bdata-app-version\b[^>]*>)v\d+\.\d+\.\d+(</[^>]+>)',
@@ -161,7 +161,7 @@ function Set-ReadmeAppVersion {
         throw "Missing README file: $Path"
     }
 
-    $text = Normalize-NewLine -Text (Get-Content -LiteralPath $Path -Raw)
+    $text = Normalize-NewLine -Text (Get-Content -LiteralPath $Path -Raw -Encoding utf8)
     $text = [regex]::Replace(
         $text,
         'semantic-idf-v\d+\.\d+\.\d+\.exe',
@@ -242,7 +242,7 @@ function Read-ReleaseNoteBody {
         }
     }
 
-    $raw = Normalize-NewLine -Text (Get-Content -LiteralPath $Path -Raw)
+    $raw = Normalize-NewLine -Text (Get-Content -LiteralPath $Path -Raw -Encoding utf8)
     $lines = $raw -split "`n"
     $kept = New-Object System.Collections.Generic.List[string]
     $inComment = $false
@@ -380,7 +380,7 @@ function Update-Changelog {
 
     $header = "# Changelog`n`nAll notable changes to SemanticIDF are recorded here from release notes.`n`n"
     if (Test-Path -LiteralPath $Path) {
-        $text = Normalize-NewLine -Text (Get-Content -LiteralPath $Path -Raw)
+        $text = Normalize-NewLine -Text (Get-Content -LiteralPath $Path -Raw -Encoding utf8)
     } else {
         $text = $header
     }
