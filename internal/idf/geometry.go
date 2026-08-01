@@ -22,6 +22,7 @@ type GeometryReport struct {
 	ZoneCount                   int                    `json:"zoneCount"`
 	SurfaceCount                int                    `json:"surfaceCount"`
 	WindowCount                 int                    `json:"windowCount"`
+	Topology                    ThermalTopologyReport  `json:"topology"`
 }
 
 type GeometrySpace struct {
@@ -179,6 +180,10 @@ type geometryContext struct {
 }
 
 func AnalyzeGeometry(doc Document) GeometryReport {
+	return analyzeGeometryWithIndex(doc, NewDocumentIndex(doc))
+}
+
+func analyzeGeometryWithIndex(doc Document, documentIndex *DocumentIndex) GeometryReport {
 	ctx := geometryContext{
 		coordinateSystem:            "relative",
 		rectangularCoordinateSystem: "relative",
@@ -305,6 +310,7 @@ func AnalyzeGeometry(doc Document) GeometryReport {
 	report.ZoneCount = len(report.Zones)
 	report.SurfaceCount = len(report.Surfaces)
 	report.WindowCount = len(report.Windows)
+	report.Topology = BuildThermalTopology(doc, report, documentIndex)
 	return report
 }
 
@@ -602,7 +608,14 @@ func semanticGeometryOutsideBoundary(obj Object) string {
 
 func isSurfaceBoundaryCondition(value string) bool {
 	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "outdoors", "ground", "surface", "adiabatic", "zone", "otherzone", "other side coefficients", "othersidecoefficients", "other side conditions model", "othersideconditionsmodel":
+	case "outdoors", "ground", "surface", "adiabatic", "zone", "otherzone", "space", "foundation",
+		"groundfcfactormethod", "ground fc factor method", "ground slab preprocessor average", "groundslabpreprocessoraverage",
+		"ground slab preprocessor core", "groundslabpreprocessorcore", "ground slab preprocessor perimeter", "groundslabpreprocessorperimeter",
+		"ground basement preprocessor average wall", "groundbasementpreprocessoraveragewall",
+		"ground basement preprocessor average floor", "groundbasementpreprocessoraveragefloor",
+		"ground basement preprocessor upper wall", "groundbasementpreprocessorupperwall",
+		"ground basement preprocessor lower wall", "groundbasementpreprocessorlowerwall",
+		"other side coefficients", "othersidecoefficients", "other side conditions model", "othersideconditionsmodel":
 		return true
 	default:
 		return false

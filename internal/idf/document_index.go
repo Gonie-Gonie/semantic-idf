@@ -91,7 +91,7 @@ func AnalyzeGeometryFromIndex(index *DocumentIndex) GeometryReport {
 	if index == nil {
 		return GeometryReport{}
 	}
-	return AnalyzeGeometry(index.Doc)
+	return analyzeGeometryWithIndex(index.Doc, index)
 }
 
 func typeNameIndexKey(typeName, name string) string {
