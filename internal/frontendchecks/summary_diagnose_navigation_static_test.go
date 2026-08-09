@@ -9,6 +9,9 @@ func TestSummaryMetricsUseSemanticGroupsAndSeparateContributingSources(t *testin
 	content := readTestFile(t, "frontend/src/js/views/analysis-views.js")
 	renderer := sliceBetween(content, "function renderMetricRow", "function isNumericSummaryMetric")
 	for _, required := range []string{
+		`<details class="summary-metric"`,
+		`<summary class="summary-row navigable-row"`,
+		`class="summary-source-drawer"`,
 		"summaryMetricNavigation(metric, category)",
 		"summaryMetricContributingSources(metric)",
 		"panelTargetId: metric.id",
@@ -56,6 +59,9 @@ func TestSummaryMetricsUseSemanticGroupsAndSeparateContributingSources(t *testin
 		if !strings.Contains(chooser, required) {
 			t.Fatalf("summary contributing-source chooser is missing %q", required)
 		}
+	}
+	if strings.Contains(chooser, `class="badge"`) || strings.Contains(chooser, "escapeHTML(sources.length)") {
+		t.Fatal("collapsed summary metrics must not expose contributing source-object counts")
 	}
 }
 

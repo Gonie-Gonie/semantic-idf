@@ -530,15 +530,18 @@ function renderProfileGraph(group, profile, zoneRow = null) {
   elements.profileGraphStats.textContent = profileGraphDeckStats(profile, selectedSeries, deck);
   elements.profileGraph.innerHTML = `
     <div class="profile-graph-toolbar">
-      <div class="profile-preset-row" role="group" aria-label="${escapeHTML(t("profile.chartPresets", {}, "Chart presets"))}">
-        ${profileGraphPresetButton("time_profile", "Time Profile")}
-        ${profileGraphPresetButton("compare_groups", "Compare Groups")}
-        ${profileGraphPresetButton("compare_zones", "Compare Zones")}
-        ${profileGraphPresetButton("schedule_similarity", "Schedule Similarity")}
-        ${profileGraphPresetButton("outliers", "Outliers")}
-        ${profileGraphPresetButton("annual_contribution", "Annual Contribution")}
-        ${profileGraphPresetButton("source_rules", "Source Rules")}
-      </div>
+      <label class="profile-field">
+        <span>${t("profile.graphType", {}, "Graph Type")}</span>
+        <select id="profileGraphPreset">
+          ${optionHTML("time_profile", "Time Profile", currentProfilePresetID())}
+          ${optionHTML("compare_groups", "Compare Groups", currentProfilePresetID())}
+          ${optionHTML("compare_zones", "Compare Zones", currentProfilePresetID())}
+          ${optionHTML("schedule_similarity", "Schedule Similarity", currentProfilePresetID())}
+          ${optionHTML("outliers", "Outliers", currentProfilePresetID())}
+          ${optionHTML("annual_contribution", "Annual Contribution", currentProfilePresetID())}
+          ${optionHTML("source_rules", "Source Rules", currentProfilePresetID())}
+        </select>
+      </label>
       <label class="profile-field">
         <span>${t("common.scope", {}, "Scope")}</span>
         <select id="profileGraphScopeType">
@@ -584,11 +587,6 @@ function renderProfileGraph(group, profile, zoneRow = null) {
     </div>
     ${renderProfileGraphSummary(group, zoneRow, sourceDimensions)}
     ${body}`;
-}
-
-function profileGraphPresetButton(id, label) {
-  const active = currentProfilePresetID() === id ? "active" : "";
-  return `<button class="profile-preset-button ${active}" type="button" data-profile-graph-preset="${escapeHTML(id)}">${escapeHTML(label)}</button>`;
 }
 
 function renderProfileDeckBody(profile, series, deck) {
@@ -2237,13 +2235,14 @@ function bindProfileControls(profile) {
   bindProfileDeckSelect("#profileGraphTimeView", "timeView", profile);
   bindProfileDeckSelect("#profileGraphCompareMode", "compareMode", profile);
   bindProfileDeckSelect("#profileGraphScaleMode", "scaleMode", profile);
-  elements.profileGraph.querySelectorAll("[data-profile-graph-preset]").forEach((button) => {
-    button.addEventListener("click", () => {
-      applyProfileGraphPreset(button.dataset.profileGraphPreset || "time_profile");
+  const graphPreset = elements.profileGraph.querySelector("#profileGraphPreset");
+  if (graphPreset) {
+    graphPreset.addEventListener("change", () => {
+      applyProfileGraphPreset(graphPreset.value || "time_profile");
       persistProfileSettings();
       renderProfile(profile);
     });
-  });
+  }
   elements.profileGraph.querySelectorAll("[data-profile-series-id]").forEach((element) => {
     const activate = (event) => {
       if (event.target.closest?.("[data-profile-pin-series]")) {

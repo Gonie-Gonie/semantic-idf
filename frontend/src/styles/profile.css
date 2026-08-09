@@ -546,38 +546,13 @@
 
 .profile-graph-toolbar {
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) repeat(4, minmax(132px, 170px));
+  grid-template-columns: repeat(5, minmax(132px, 1fr));
   gap: 8px;
   align-items: end;
 }
 
 .profile-graph-toolbar .profile-field {
   width: 100%;
-}
-
-.profile-preset-row {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.profile-preset-button {
-  min-height: 28px;
-  border-color: var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  color: var(--muted);
-  padding: 0 9px;
-  font-size: 12px;
-}
-
-.profile-preset-button:hover,
-.profile-preset-button.active {
-  border-color: var(--teal);
-  background: var(--teal-soft);
-  color: var(--teal-dark);
 }
 
 .profile-graph-summary {

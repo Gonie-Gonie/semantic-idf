@@ -157,14 +157,6 @@
     grid-template-columns: 1fr;
   }
 
-  .profile-preset-row {
-    align-items: stretch;
-  }
-
-  .profile-preset-button {
-    flex: 1 1 145px;
-  }
-
   .geometry-detail-grid {
     grid-template-columns: 1fr;
   }
@@ -222,6 +214,14 @@
 
   .table-row span:nth-child(3) {
     display: none;
+  }
+
+  .summary-table {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .summary-metric:nth-child(odd) {
+    border-right: 0;
   }
 
   .summary-row {

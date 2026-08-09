@@ -14,7 +14,6 @@ import {
 import { currentSemanticSelection, revealSelectionSource, selectSemanticEntity } from "../selection-controller.js";
 
 const DIAGNOSTIC_RENDER_LIMIT = 500;
-const SUMMARY_SOURCE_RENDER_LIMIT = 48;
 
 let summarySourceIndexCache = { navigation: null, records: [] };
 let diagnoseSelectedDiagnosticID = "";
@@ -849,14 +848,13 @@ function sourceRecordNavigation(record, sections = []) {
 
 function renderSummarySourceChooser(sources, metric = {}) {
   if (!sources.length) {
-    return "";
+    return `<div class="summary-source-empty">No source object information</div>`;
   }
-  const rendered = sources.slice(0, SUMMARY_SOURCE_RENDER_LIMIT);
   return `
-    <details class="summary-source-objects">
-      <summary title="Contributing source objects">Source objects <span class="badge">${escapeHTML(sources.length)}</span></summary>
+    <div class="summary-source-objects">
+      <strong class="summary-source-title">Source objects</strong>
       <div class="summary-source-object-list" role="listbox" aria-label="Contributing source objects">
-        ${rendered.map((source, index) => `
+        ${sources.map((source, index) => `
           <button class="summary-source-object navigable-row" type="button" role="option" ${panelNavigationAttributes({
             ...source.navigation,
             panelTargetId: summarySourcePanelTargetID(metric, source, index),
@@ -864,9 +862,8 @@ function renderSummarySourceChooser(sources, metric = {}) {
             <strong>${escapeHTML(sourceAnchorLabel(source.anchor))}</strong>
             <small>${escapeHTML(source.anchor.objectType || "Source object")}</small>
           </button>`).join("")}
-        ${sources.length > rendered.length ? `<small>${escapeHTML(sources.length - rendered.length)} more source objects</small>` : ""}
       </div>
-    </details>`;
+    </div>`;
 }
 
 function summarySourcePanelTargetID(metric = {}, source = {}, index = 0) {
@@ -1027,21 +1024,25 @@ function renderMetricRow(metric, category = {}) {
   const navigation = summaryMetricNavigation(metric, category);
   const contributingSources = summaryMetricContributingSources(metric);
   return `
-    <div class="summary-row navigable-row" role="row" tabindex="0" data-summary-metric-id="${escapeHTML(metric.id)}" ${panelNavigationAttributes({
-      ...navigation,
-      panelTargetId: metric.id,
-    })}>
-      <div class="summary-name" role="cell">
-        <strong title="${escapeHTML(metric.name)}">${escapeHTML(metric.name)}</strong>
+    <details class="summary-metric" role="row">
+      <summary class="summary-row navigable-row" data-summary-metric-id="${escapeHTML(metric.id)}" ${panelNavigationAttributes({
+        ...navigation,
+        panelTargetId: metric.id,
+      })}>
+        <div class="summary-name" role="cell">
+          <strong title="${escapeHTML(metric.name)}">${escapeHTML(metric.name)}</strong>
+        </div>
+        <div class="summary-value${valueClass}" role="cell">
+          ${renderMetricDisplayValue(metric)}
+        </div>
+        <span class="summary-unit" role="cell">${unit}</span>
+        ${meta}
+        ${renderMetricStatus(metric)}
+      </summary>
+      <div class="summary-source-drawer">
         ${renderSummarySourceChooser(contributingSources, metric)}
       </div>
-      <div class="summary-value${valueClass}" role="cell">
-        ${renderMetricDisplayValue(metric)}
-      </div>
-      <span class="summary-unit" role="cell">${unit}</span>
-      ${meta}
-      ${renderMetricStatus(metric)}
-    </div>`;
+    </details>`;
 }
 
 function isNumericSummaryMetric(metric) {
