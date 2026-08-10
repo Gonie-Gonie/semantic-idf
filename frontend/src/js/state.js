@@ -2,7 +2,7 @@ import { t } from "./i18n.js";
 
 export const geometryModes = Object.freeze(["3d", "plan", "thermal"]);
 export const thermalTopologyGraphLevels = Object.freeze(["zone", "boundary"]);
-export const thermalTopologyMetrics = Object.freeze(["topology", "area", "ua", "exposure", "qa", "air", "simulated_heat"]);
+export const thermalTopologyMetrics = Object.freeze(["topology", "area", "ua", "exposure", "qa", "air"]);
 export const thermalTopologyAreaComponents = Object.freeze(["gross", "opaque", "openings"]);
 export const thermalTopologyScopes = Object.freeze(["building", "story", "selection", "neighbors"]);
 export const thermalTopologyLayouts = Object.freeze(["spatial", "network"]);
@@ -59,8 +59,6 @@ export function normalizeThermalTopologyState(target = state) {
   target.thermalTopologyPanY = finiteNumber(target.thermalTopologyPanY, 0);
   target.thermalTopologyScale = clampNumber(target.thermalTopologyScale, 0.1, 8, 1);
   target.thermalTopologyLayoutCache = target.thermalTopologyLayoutCache instanceof Map ? target.thermalTopologyLayoutCache : new Map();
-  target.thermalTopologySimulationPeriod = String(target.thermalTopologySimulationPeriod || "");
-  target.thermalTopologySimulationFrame = clampInteger(target.thermalTopologySimulationFrame, 0, Number.MAX_SAFE_INTEGER, 0);
   return target;
 }
 
@@ -82,8 +80,6 @@ export function captureThermalTopologyState(source = state) {
     thermalTopologyPanX: source.thermalTopologyPanX,
     thermalTopologyPanY: source.thermalTopologyPanY,
     thermalTopologyScale: source.thermalTopologyScale,
-    thermalTopologySimulationPeriod: source.thermalTopologySimulationPeriod,
-    thermalTopologySimulationFrame: source.thermalTopologySimulationFrame,
   };
 }
 
@@ -102,8 +98,6 @@ export function resetThermalTopologyDocumentState(target = state) {
   target.thermalTopologyPanX = 0;
   target.thermalTopologyPanY = 0;
   target.thermalTopologyScale = 1;
-  target.thermalTopologySimulationPeriod = "";
-  target.thermalTopologySimulationFrame = 0;
   target.thermalTopologyLayoutCache?.clear?.();
   if (!(target.thermalTopologyLayoutCache instanceof Map)) {
     target.thermalTopologyLayoutCache = new Map();
@@ -305,8 +299,6 @@ export const state = {
   thermalTopologyPanY: 0,
   thermalTopologyScale: 1,
   thermalTopologyLayoutCache: new Map(),
-  thermalTopologySimulationPeriod: "",
-  thermalTopologySimulationFrame: 0,
   geometryPlanLayoutCache: new Map(),
   selectedGeometryId: "",
   selectedGeometryKind: "",
@@ -565,11 +557,6 @@ export const elements = {
   thermalTopologyAreaComponentControl: document.querySelector("#thermalTopologyAreaComponentControl"),
   thermalTopologyAreaComponent: document.querySelector("#thermalTopologyAreaComponent"),
   thermalTopologyScope: document.querySelector("#thermalTopologyScope"),
-  thermalTopologySimulationControls: document.querySelector("#thermalTopologySimulationControls"),
-  thermalTopologySimulationPeriod: document.querySelector("#thermalTopologySimulationPeriod"),
-  thermalTopologySimulationFrameControl: document.querySelector("#thermalTopologySimulationFrameControl"),
-  thermalTopologySimulationFrame: document.querySelector("#thermalTopologySimulationFrame"),
-  thermalTopologySimulationFrameLabel: document.querySelector("#thermalTopologySimulationFrameLabel"),
   thermalTopologyFit: document.querySelector("#thermalTopologyFit"),
   thermalTopologyExportJSON: document.querySelector("#thermalTopologyExportJSON"),
   thermalTopologyAdvanced: document.querySelector("#thermalTopologyAdvanced"),

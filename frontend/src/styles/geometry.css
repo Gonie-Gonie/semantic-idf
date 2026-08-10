@@ -78,35 +78,6 @@
   max-width: 118px;
 }
 
-.thermal-topology-simulation-controls {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  flex: 1 1 auto;
-  flex-wrap: wrap;
-}
-
-.thermal-topology-frame-control {
-  display: inline-grid;
-  grid-template-columns: minmax(70px, auto) minmax(90px, 150px);
-  align-items: center;
-  gap: 5px;
-  color: var(--muted);
-  font-size: 10px;
-}
-
-.thermal-topology-frame-control > span {
-  max-width: 150px;
-  margin: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.thermal-topology-frame-control input {
-  width: 120px;
-}
-
 .thermal-topology-advanced {
   position: relative;
   flex: 0 0 auto;
@@ -292,10 +263,6 @@
   fill: var(--teal);
 }
 
-.thermal-topology-svg #thermalTopologyHeatArrow path {
-  fill: context-stroke;
-}
-
 .thermal-edge {
   fill: none;
   stroke: color-mix(in srgb, var(--ink), transparent 50%);
@@ -386,14 +353,6 @@
 .thermal-edge.metric-air.air-emphasis {
   opacity: 1;
   stroke: var(--teal);
-}
-
-.thermal-edge.metric-simulated-heat.metric-gain {
-  stroke: var(--red);
-}
-
-.thermal-edge.metric-simulated-heat.metric-loss {
-  stroke: #2563eb;
 }
 
 .thermal-edge.selected {

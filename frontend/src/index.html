@@ -750,7 +750,6 @@
                       <option value="exposure" data-i18n="topology.metricExposure">Exposure</option>
                       <option value="qa" data-i18n="topology.metricQA">QA</option>
                       <option value="air" data-i18n="topology.metricAir">Air</option>
-                      <option value="simulated_heat" data-i18n="topology.metricSimulatedHeat">Simulated Heat</option>
                     </select>
                   </label>
                   <label id="thermalTopologyAreaComponentControl" class="topology-select-control" hidden>
@@ -770,22 +769,6 @@
                       <option value="neighbors" data-i18n="topology.scopeNeighbors">Neighbors</option>
                     </select>
                   </label>
-                  <div id="thermalTopologySimulationControls" class="thermal-topology-simulation-controls" hidden>
-                    <label class="topology-select-control">
-                      <span>Period</span>
-                      <select id="thermalTopologySimulationPeriod" aria-label="Simulation overlay period">
-                        <option value="annual">Annual</option>
-                        <option value="monthly">Monthly</option>
-                        <option value="daily">Daily</option>
-                        <option value="hourly">Hourly</option>
-                        <option value="selected_range">Selected range</option>
-                      </select>
-                    </label>
-                    <label id="thermalTopologySimulationFrameControl" class="thermal-topology-frame-control" hidden>
-                      <span id="thermalTopologySimulationFrameLabel">Frame</span>
-                      <input id="thermalTopologySimulationFrame" type="range" min="0" max="0" value="0" aria-label="Simulation overlay frame" />
-                    </label>
-                  </div>
                   <button id="thermalTopologyFit" class="geometry-mode-button" type="button" data-i18n="topology.fit">Fit</button>
                   <details id="thermalTopologyAdvanced" class="thermal-topology-advanced">
                     <summary data-i18n="topology.advanced">Advanced</summary>

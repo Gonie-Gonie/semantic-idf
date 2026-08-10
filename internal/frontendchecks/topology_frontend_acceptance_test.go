@@ -112,23 +112,12 @@ func TestTOPO263NetworkAcceptance(t *testing.T) {
 	}
 }
 
-func TestTOPO264SimulationUIAcceptance(t *testing.T) {
+func TestTOPO264SimulationUIRemoved(t *testing.T) {
 	view := readTestFile(t, "frontend/src/js/views/thermal-topology-view.js")
-	for _, required := range []string{
-		"simulatedOption.disabled = !overlay.available",
-		"thermalTopologySimulationPeriod",
-		"metric-gain",
-		"metric-loss",
-		"Simulation heat flow is not compared directly with static UA",
-	} {
-		if !strings.Contains(view, required) {
-			t.Fatalf("simulation UI acceptance missing %q", required)
-		}
-	}
 	inspector := readTestFile(t, "frontend/src/js/views/thermal-topology-inspector.js")
-	for _, required := range []string{"Open purpose plan", "Heat-flow ledger", "data-inspector-output-source", "data-inspector-purpose-plan"} {
-		if !strings.Contains(inspector, required) {
-			t.Fatalf("simulation ledger acceptance missing %q", required)
+	for _, removed := range []string{"simulated_heat", "thermalTopologySimulationPeriod", "metric-gain", "metric-loss", "Heat-flow ledger", "data-inspector-output-source"} {
+		if strings.Contains(view, removed) || strings.Contains(inspector, removed) {
+			t.Fatalf("removed simulation topology UI remains: %q", removed)
 		}
 	}
 }

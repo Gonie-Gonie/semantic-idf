@@ -96,8 +96,6 @@ func TestThermalTopologyStateNormalizesAndInvalidatesDocumentContext(t *testing.
 		"thermalTopologyPanY: 0",
 		"thermalTopologyScale: 1",
 		"thermalTopologyLayoutCache: new Map()",
-		`thermalTopologySimulationPeriod: ""`,
-		"thermalTopologySimulationFrame: 0",
 		"normalizeThermalTopologyGraphLevel",
 		"normalizeThermalTopologyMetric",
 		"normalizeThermalTopologyScope",
@@ -137,8 +135,6 @@ func TestThermalTopologyHistoryCapturesContextWithoutGraphOrLayoutCache(t *testi
 		"thermalTopologyPanX",
 		"thermalTopologyPanY",
 		"thermalTopologyScale",
-		"thermalTopologySimulationPeriod",
-		"thermalTopologySimulationFrame",
 	} {
 		if !strings.Contains(capture, required) {
 			t.Fatalf("thermal history snapshot is missing %q", required)

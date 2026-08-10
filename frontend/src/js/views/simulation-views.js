@@ -9732,7 +9732,6 @@ async function runCurrentSimulation({ silent = false, auto = false } = {}) {
       return result;
     }
     state.simulationResult = result;
-    window.dispatchEvent(new CustomEvent("idfAnalyzer:simulationResultChanged", { detail: { result } }));
     state.simulationPurposePlan = result?.purposeRunPlan || state.simulationPurposePlan;
     state.simulationRunning = false;
     state.simulationStale = state.simulationRunText !== (elements.idfInput?.value || "");

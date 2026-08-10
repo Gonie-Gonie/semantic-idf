@@ -7,14 +7,7 @@ import (
 
 func TestThermalTopologySimulationOverlayContract(t *testing.T) {
 	markup := readTestFile(t, "frontend/src/index.html")
-	for _, required := range []string{
-		`id="simulationPurposeZoneHeatFlowDetail"`,
-		`value="surface"`,
-		`id="thermalTopologySimulationControls"`,
-		`id="thermalTopologySimulationPeriod"`,
-		`value="selected_range"`,
-		`id="thermalTopologySimulationFrame"`,
-	} {
+	for _, required := range []string{`id="simulationPurposeZoneHeatFlowDetail"`, `value="surface"`} {
 		if !strings.Contains(markup, required) {
 			t.Fatalf("thermal simulation markup is missing %q", required)
 		}
@@ -24,7 +17,6 @@ func TestThermalTopologySimulationOverlayContract(t *testing.T) {
 	for _, required := range []string{
 		`zoneHeatFlowDetail: elements.simulationPurposeZoneHeatFlowDetail?.value || "zone"`,
 		`idfAnalyzer:openSimulationPurposePlan`,
-		`idfAnalyzer:simulationResultChanged`,
 	} {
 		if !strings.Contains(simulation, required) {
 			t.Fatalf("simulation purpose bridge is missing %q", required)
@@ -32,17 +24,9 @@ func TestThermalTopologySimulationOverlayContract(t *testing.T) {
 	}
 
 	view := readTestFile(t, "frontend/src/js/views/thermal-topology-view.js")
-	for _, required := range []string{
-		`simulatedOption.disabled = !overlay.available`,
-		`metric-simulated-heat`,
-		`metric-gain`,
-		`metric-loss`,
-		`thermalTopologyHeatArrow`,
-		`selected_range`,
-		`Simulation heat flow is not compared directly with static UA`,
-	} {
-		if !strings.Contains(view, required) {
-			t.Fatalf("thermal simulation renderer is missing %q", required)
+	for _, removed := range []string{"simulated_heat", "metric-simulated-heat", "thermalTopologyHeatArrow", "thermalTopologySimulationPeriod"} {
+		if strings.Contains(markup, removed) || strings.Contains(view, removed) {
+			t.Fatalf("removed topology simulation overlay remains: %q", removed)
 		}
 	}
 }
@@ -55,11 +39,6 @@ func TestThermalTopologyInspectorCrossPanelContract(t *testing.T) {
 		`Profile summary`,
 		`HVAC service`,
 		`Output requests`,
-		`Heat-flow ledger`,
-		`data-inspector-output-source`,
-		`data-inspector-purpose-plan`,
-		`source.normalizedUnit`,
-		`source.aggregationMethod`,
 	} {
 		if !strings.Contains(inspector, required) {
 			t.Fatalf("thermal topology inspector is missing %q", required)

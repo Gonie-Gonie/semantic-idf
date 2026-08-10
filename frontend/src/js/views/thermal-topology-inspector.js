@@ -70,7 +70,7 @@ function renderSelectionDetails(selection, geometry) {
   else if (selection.kind === "thermal_issue") details = renderIssueDetails(selection.item);
   else if (selection.kind === "thermal_observation") details = renderObservationDetails(selection.item, geometry);
   else details = renderRows([["ID", selection.id], ["Kind", selection.kind]]);
-  return details + renderSimulationHeatFlowLedger(selection);
+  return details;
 }
 
 function renderZoneDetails(node, geometry) {
@@ -276,106 +276,11 @@ function renderZoneOutputSummary(node) {
     : emptyValue("No applicable Output:Variable request"));
 }
 
-function renderSimulationHeatFlowLedger(selection) {
-  const overlay = state.simulationResult?.purposeResults?.thermalTopology;
-  if (!overlay?.available) {
-    const reason = overlay?.unavailableReason || "Simulation overlay is not loaded.";
-    return inspectorSection("Heat-flow ledger", `<div class="empty compact">${escapeHTML(reason)}</div><button type="button" data-inspector-purpose-plan>Open purpose plan</button>`);
-  }
-  const periodSelection = thermalTopologyInspectorPeriod(overlay);
-  const flows = thermalTopologyInspectorFlows(selection, periodSelection.period);
-  if (!flows.length) {
-    return inspectorSection("Heat-flow ledger", `<div class="empty compact">No mapped surface result for this topology entity.</div><button type="button" data-inspector-purpose-plan>Open purpose plan</button>`);
-  }
-  const sourceIDs = [...new Set(flows.flatMap((flow) => [
-    ...(flow.sourceIds || []),
-    ...(flow.traces || []).flatMap((trace) => trace.sourceIds || []),
-  ]))];
-  const sources = sourceIDs.map((id) => (overlay.sources || []).find((source) => source.id === id)).filter(Boolean);
-  const value = flows.reduce((sum, flow) => sum + thermalTopologyInspectorFlowValue(flow, periodSelection), 0);
-  return inspectorSection("Heat-flow ledger", [
-    renderRows([
-      ["Period", periodSelection.label],
-      ["Signed energy", `${value > 0 ? "+" : ""}${number(value)} kWh`],
-      ["Direction", value > 0 ? "Gain to owner" : value < 0 ? "Loss from owner" : "Balanced"],
-      ["Convention", overlay.signConvention || "Positive enters the owning zone"],
-      ["Sources", sources.length],
-    ]),
-    sources.length
-      ? `<div class="thermal-inspector-source-list">${sources.map((source) => `<button type="button" data-inspector-output-source="${escapeHTML(source.id)}"><strong>${escapeHTML(source.name || source.id)}</strong><span>${escapeHTML(source.keyValue || "*")} · ${escapeHTML(source.sourceUnit || source.units || "")} → ${escapeHTML(source.normalizedUnit || "kWh")} · ${escapeHTML(source.aggregationMethod || "reported")}</span></button>`).join("")}</div>`
-      : emptyValue("No source provenance"),
-  ].join(""));
-}
-
-function thermalTopologyInspectorPeriod(overlay) {
-  const requested = state.thermalTopologySimulationPeriod || "annual";
-  const sourceID = requested === "selected_range" ? "hourly" : requested;
-  const period = (overlay.periods || []).find((item) => item.id === sourceID) || (overlay.periods || [])[0] || null;
-  const frameCount = Math.max(0, Number(period?.frameCount) || period?.labels?.length || 0);
-  const windowSize = requested === "selected_range" ? Math.min(24, frameCount) : 1;
-  const frame = Math.min(Math.max(0, frameCount - windowSize), Math.max(0, Number(state.thermalTopologySimulationFrame) || 0));
-  const start = period?.labels?.[frame] || period?.label || requested;
-  const end = period?.labels?.[Math.min(frameCount - 1, frame + windowSize - 1)] || start;
-  return { requested, period, frame, windowSize, label: requested === "selected_range" ? `${start} – ${end}` : `${period?.label || requested} · ${start}` };
-}
-
-function thermalTopologyInspectorFlows(selection, period) {
-  if (!period) return [];
-  const topology = activeGeometry?.topology || {};
-  if (selection.kind === "thermal_connection") {
-    return (period.connectionFlows || []).filter((flow) => flow.connectionId === selection.id || flow.connectionId === selection.item?.id);
-  }
-  if (selection.kind === "thermal_boundary") {
-    return (period.boundaryFlows || []).filter((flow) => flow.boundaryId === selection.id || (flow.relatedBoundaryIds || []).includes(selection.id));
-  }
-  if (selection.kind === "window") {
-    const opening = selection.opening || selection.item;
-    const boundary = (topology.boundaries || []).find((item) => item.surfaceId === opening.baseSurfaceId || item.id === opening.baseSurfaceId);
-    return boundary ? (period.boundaryFlows || []).filter((flow) => flow.boundaryId === boundary.id || (flow.relatedBoundaryIds || []).includes(boundary.id)) : [];
-  }
-  if (selection.kind === "zone" || selection.kind === "space" || selection.kind === "thermal_environment") {
-    const nodeID = selection.item?.id || selection.id;
-    return (period.boundaryFlows || []).filter((flow) => flow.ownerNodeId === nodeID || flow.targetNodeId === nodeID);
-  }
-  return [];
-}
-
-function thermalTopologyInspectorFlowValue(flow, selection) {
-  const values = flow?.values || [];
-  if (!values.length) return Number(flow?.value) || 0;
-  if (selection.requested === "selected_range") {
-    return values.slice(selection.frame, selection.frame + selection.windowSize).reduce((sum, value) => sum + (Number(value) || 0), 0);
-  }
-  return Number(values[Math.min(values.length - 1, selection.frame)]) || 0;
-}
-
 function renderInspectorViewAction(view, label, selection) {
   const semanticSelection = activeHelpers?.selectionForTarget?.(selection.kind, selection.id);
   const available = selectionTargetsForView(view, semanticSelection).length > 0;
   const reason = available ? `Open linked ${label}` : `No linked ${label} target for this zone`;
   return `<button type="button" data-inspector-view="${escapeHTML(view)}" ${available ? "" : "disabled"} title="${escapeHTML(reason)}">${escapeHTML(label)}</button>`;
-}
-
-function openThermalTopologyOutputSource(sourceID) {
-  const overlay = state.simulationResult?.purposeResults?.thermalTopology || {};
-  const source = (overlay.sources || []).find((item) => item.id === sourceID);
-  if (!source) return;
-  const planned = (state.simulationResult?.purposeRunPlan?.outputObjects || []).find((item) => (
-    item.objectType === "Output:Variable" &&
-    sameThermalTopologyName(item.keyValue, source.keyValue) &&
-    sameThermalTopologyName(item.variableName, source.name)
-  ));
-  const existing = (state.report?.output?.existing || []).find((item) => (
-    (planned?.signature && item.signature === planned.signature) ||
-    (item.objectType === "Output:Variable" && sameThermalTopologyName(item.keyValue, source.keyValue) && sameThermalTopologyName(item.variableName, source.name))
-  ));
-  if (existing) {
-    state.outputFocusedSignature = existing.signature || "";
-    state.outputTemporaryRevealSignature = "";
-    [...(elements.resultTabButtons || [])].find((button) => button.dataset.resultTab === "output")?.click();
-    return;
-  }
-  window.dispatchEvent(new CustomEvent("idfAnalyzer:openSimulationPurposePlan", { detail: { sourceID, signature: planned?.signature || "" } }));
 }
 
 function sameThermalTopologyName(left, right) {
@@ -434,12 +339,6 @@ function bindInspectorActions() {
   });
   elements.thermalTopologyInspector.querySelectorAll("[data-inspector-view]").forEach((button) => {
     button.addEventListener("click", () => openSelectionInView(button.dataset.inspectorView, { originView: "geometry", action: "open" }));
-  });
-  elements.thermalTopologyInspector.querySelectorAll("[data-inspector-output-source]").forEach((button) => {
-    button.addEventListener("click", () => openThermalTopologyOutputSource(button.dataset.inspectorOutputSource));
-  });
-  elements.thermalTopologyInspector.querySelector("[data-inspector-purpose-plan]")?.addEventListener("click", () => {
-    window.dispatchEvent(new CustomEvent("idfAnalyzer:openSimulationPurposePlan"));
   });
 }
 

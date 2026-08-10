@@ -38,11 +38,6 @@ window.addEventListener("idfAnalyzer:documentChanged", () => {
   geometryHoverTargetKey = "";
   geometrySelectionRequest += 1;
 });
-window.addEventListener("idfAnalyzer:simulationResultChanged", () => {
-  if (state.activeResultTab === "geometry" && state.geometryMode === "thermal" && state.report?.geometry) {
-    renderGeometry();
-  }
-});
 window.addEventListener("idfAnalyzer:semanticHoverChanged", (event) => {
   temporaryGeometryHover = geometryProjectionForSemanticSelection(event.detail?.hover, state.report?.geometry);
   highlightSelectedMeshes();

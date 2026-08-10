@@ -120,9 +120,6 @@ function renderThermalTopologySVG(model, layout) {
         <marker id="thermalTopologyAirArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
           <path d="M 0 0 L 10 5 L 0 10 z"></path>
         </marker>
-        <marker id="thermalTopologyHeatArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-          <path d="M 0 0 L 10 5 L 0 10 z"></path>
-        </marker>
       </defs>
       <g class="thermal-topology-panzoom" transform="${graphTransform()}">
         <g class="thermal-topology-edges">${edges.map((edge) => renderEdge(edge, model, selectedID, metricContext)).join("")}</g>
@@ -144,11 +141,10 @@ function renderEdge(edge, model, selectedID, metricContext) {
   const attributes = currentHelpers?.navigationAttributes?.(targetKind, targetID, {}, { tabindex: false }) || "";
   const tooltip = connectionTooltip(edge, model);
   const ariaLabel = connectionAriaLabel(edge, model, targetID, label);
-  const markerStart = presentation.markerStart ? `marker-start="url(#thermalTopologyHeatArrow)"` : "";
-  const markerEnd = presentation.markerEnd ? `marker-end="url(#thermalTopologyHeatArrow)"` : model.metric === "simulated_heat" ? "" : `marker-end="url(#${air ? "thermalTopologyAirArrow" : "thermalTopologyArrow"})"`;
+  const markerEnd = `marker-end="url(#${air ? "thermalTopologyAirArrow" : "thermalTopologyArrow"})"`;
   return `<g class="thermal-edge-group navigable-row" tabindex="0" role="button" data-thermal-target-kind="${targetKind}" data-thermal-target-id="${escapeHTML(targetID)}" aria-label="${escapeHTML(ariaLabel)}" ${attributes}>
     <title>${escapeHTML(tooltip)}</title>
-    <path class="${classes}" style="--thermal-edge-width:${presentation.width}" d="${edge.route.path}" ${markerStart} ${markerEnd}></path>
+    <path class="${classes}" style="--thermal-edge-width:${presentation.width}" d="${edge.route.path}" ${markerEnd}></path>
     <path class="thermal-edge-hit" d="${edge.route.path}" aria-hidden="true"></path>
   </g>`;
 }
@@ -365,31 +361,6 @@ function syncThermalTopologyControls() {
   elements.thermalTopologyShowOpenings.checked = Boolean(state.thermalTopologyShowOpenings);
   elements.thermalTopologyShowAirCoupling.checked = Boolean(state.thermalTopologyShowAirCoupling);
   elements.thermalTopologyExpandExternalTargets.checked = Boolean(state.thermalTopologyExpandExternalTargets);
-  const overlay = thermalTopologySimulationResult();
-  const simulatedOption = [...elements.thermalTopologyMetric.options].find((option) => option.value === "simulated_heat");
-  if (simulatedOption) {
-    simulatedOption.disabled = !overlay.available;
-    simulatedOption.title = overlay.available ? "Simulation surface heat-flow overlay" : overlay.unavailableReason || "Run Zone Heat Flow with Surface detail.";
-  }
-  if (elements.thermalTopologySimulationControls) {
-    elements.thermalTopologySimulationControls.hidden = state.thermalTopologyMetric !== "simulated_heat";
-  }
-  const selection = thermalTopologySimulationSelection();
-  if (elements.thermalTopologySimulationPeriod) {
-    elements.thermalTopologySimulationPeriod.value = selection.requestedPeriod;
-    elements.thermalTopologySimulationPeriod.disabled = !overlay.available;
-  }
-  if (elements.thermalTopologySimulationFrameControl) {
-    elements.thermalTopologySimulationFrameControl.hidden = !overlay.available || selection.maximumFrame <= 0;
-  }
-  if (elements.thermalTopologySimulationFrame) {
-    elements.thermalTopologySimulationFrame.max = String(selection.maximumFrame);
-    elements.thermalTopologySimulationFrame.value = String(selection.frame);
-    elements.thermalTopologySimulationFrame.disabled = !overlay.available;
-  }
-  if (elements.thermalTopologySimulationFrameLabel) {
-    elements.thermalTopologySimulationFrameLabel.textContent = selection.frameLabel;
-  }
 }
 
 function connectionLabel(connection, model, metricContext) {
@@ -401,12 +372,7 @@ function connectionLabel(connection, model, metricContext) {
   const openingField = model.areaBasis === "physical" ? "physicalOpeningArea" : "effectiveOpeningArea";
   const openingRatio = Math.max(0, Number(connection?.[openingField]) || 0) / gross;
   const parts = [];
-  if (model.metric === "simulated_heat") {
-    const flow = thermalTopologyFlowForConnection(connection);
-    const value = thermalTopologySelectedFlowValue(flow);
-    parts.push(flow ? `${signedThermalTopologyValue(value)} kWh` : "No result");
-    if (flow) parts.push(thermalTopologyFlowDirectionLabel(value));
-  } else if (model.metric === "area") parts.push(formatArea(area));
+  if (model.metric === "area") parts.push(formatArea(area));
   else if (model.metric === "ua") parts.push(connectionUAValue(connection, model).available ? `${formatNumber(connectionUAValue(connection, model).value)} W/K` : "N/A");
   else if (model.metric === "qa") parts.push((connection.diagnosticIds || []).length ? `${connection.diagnosticIds.length} issues` : connection.observationKind || "OK");
   else if (model.metric === "air") {
@@ -448,7 +414,6 @@ function createMetricContext(model) {
     if (model.metric === "area") return connectionAreaValue(connection, model);
     if (model.metric === "ua") return connectionUAValue(connection, model).value;
     if (model.metric === "air") return airCouplingsForConnection(connection, model).reduce((sum, coupling) => sum + (Number(coupling.designFlowRate) || 0), 0);
-    if (model.metric === "simulated_heat") return Math.abs(thermalTopologySelectedFlowValue(thermalTopologyFlowForConnection(connection)));
     return 1;
   });
   return { maximum: Math.max(...values, 1) };
@@ -474,13 +439,6 @@ function edgeMetricPresentation(connection, model, context) {
     if (connection.relationKind === "air_coupling") width = 4.5;
   } else if (model.metric === "exposure") {
     classes.push("metric-exposure");
-  } else if (model.metric === "simulated_heat") {
-    const flow = thermalTopologyFlowForConnection(connection);
-    const value = thermalTopologySelectedFlowValue(flow);
-    width = flow ? 1.75 + 8.25 * Math.sqrt(Math.abs(value) / context.maximum) : 1.5;
-    classes.push("metric-simulated-heat", flow ? (value >= 0 ? "metric-gain" : "metric-loss") : "metric-na");
-    const marker = thermalTopologyFlowMarker(connection, flow, value);
-    return { width: Math.max(1.5, Number(width) || 1.5).toFixed(2), classes: classes.filter(Boolean), ...marker };
   } else {
     classes.push("metric-connectivity");
   }
@@ -523,114 +481,7 @@ function connectionTooltip(connection, model) {
     `${formatArea(area)}`,
     ua.available ? `${formatNumber(ua.value)} W/K` : "UA N/A",
   ];
-  if (model.metric === "simulated_heat") {
-    const flow = thermalTopologyFlowForConnection(connection);
-    const value = thermalTopologySelectedFlowValue(flow);
-    values.push(flow ? `${signedThermalTopologyValue(value)} kWh (${thermalTopologyFlowDirectionLabel(value)})` : "No mapped simulation result");
-    values.push("Simulation heat flow is not compared directly with static UA");
-  }
   return values.join(" · ");
-}
-
-function thermalTopologySimulationResult() {
-  return state.simulationResult?.purposeResults?.thermalTopology || {
-    available: false,
-    unavailableReason: "Run Zone Heat Flow with Surface detail to load a simulation overlay.",
-    periods: [],
-    sources: [],
-  };
-}
-
-function thermalTopologySimulationSelection() {
-  const overlay = thermalTopologySimulationResult();
-  const requestedPeriod = ["annual", "monthly", "daily", "hourly", "selected_range"].includes(state.thermalTopologySimulationPeriod)
-    ? state.thermalTopologySimulationPeriod
-    : "annual";
-  const sourcePeriodID = requestedPeriod === "selected_range" ? "hourly" : requestedPeriod;
-  const period = (overlay.periods || []).find((item) => item.id === sourcePeriodID)
-    || (overlay.periods || []).find((item) => item.id === "annual")
-    || null;
-  const frameCount = Math.max(0, Number(period?.frameCount) || period?.labels?.length || 0);
-  const windowSize = requestedPeriod === "selected_range" ? Math.min(24, frameCount) : 1;
-  const maximumFrame = Math.max(0, frameCount - windowSize);
-  const frame = Math.min(maximumFrame, Math.max(0, Number(state.thermalTopologySimulationFrame) || 0));
-  const labels = period?.labels || [];
-  const frameLabel = requestedPeriod === "selected_range"
-    ? `${labels[frame] || `Frame ${frame + 1}`} – ${labels[Math.min(frameCount - 1, frame + windowSize - 1)] || `Frame ${frame + windowSize}`}`
-    : labels[frame] || period?.label || "Frame";
-  return {
-    overlay,
-    requestedPeriod,
-    sourcePeriodID,
-    period,
-    frame,
-    frameCount,
-    windowSize,
-    maximumFrame,
-    frameLabel,
-    displayLabel: requestedPeriod === "selected_range" ? `Selected range ${frameLabel}` : `${period?.label || requestedPeriod} · ${frameLabel}`,
-  };
-}
-
-function thermalTopologyFlowForConnection(connection) {
-  const selection = thermalTopologySimulationSelection();
-  if (!selection.period) return null;
-  const connectionID = baseExpandedID(connection?.id);
-  const direct = (selection.period.connectionFlows || []).find((flow) => flow.connectionId === connectionID);
-  if (direct) return direct;
-  const boundaryIDs = new Set(connection?.boundaryIds || []);
-  if (!boundaryIDs.size) return null;
-  const matches = (selection.period.boundaryFlows || []).filter((flow) => (
-    boundaryIDs.has(flow.boundaryId) || (flow.relatedBoundaryIds || []).some((id) => boundaryIDs.has(id))
-  ));
-  if (!matches.length) return null;
-  if (matches.length === 1) return matches[0];
-  return matches.reduce((combined, flow) => ({
-    ...combined,
-    value: Number(combined.value || 0) + Number(flow.value || 0),
-    values: addThermalTopologyFlowValues(combined.values, flow.values),
-    sourceIds: [...new Set([...(combined.sourceIds || []), ...(flow.sourceIds || [])])],
-    boundaryIds: [...new Set([...(combined.boundaryIds || []), flow.boundaryId, ...(flow.relatedBoundaryIds || [])])],
-    ownerNodeId: combined.ownerNodeId === flow.ownerNodeId ? combined.ownerNodeId : "",
-  }), { value: 0, values: [], sourceIds: [], boundaryIds: [], ownerNodeId: matches[0].ownerNodeId });
-}
-
-function thermalTopologySelectedFlowValue(flow) {
-  if (!flow) return 0;
-  const selection = thermalTopologySimulationSelection();
-  const values = flow.values || [];
-  if (!values.length) return Number(flow.value) || 0;
-  if (selection.requestedPeriod === "selected_range") {
-    return values.slice(selection.frame, selection.frame + selection.windowSize).reduce((sum, value) => sum + (Number(value) || 0), 0);
-  }
-  return Number(values[Math.min(values.length - 1, selection.frame)]) || 0;
-}
-
-function thermalTopologyFlowMarker(connection, flow, value) {
-  if (!flow || value === 0) return {};
-  const ownerID = flow.ownerNodeId || flow.ownerNodeID || "";
-  const destinationID = value > 0
-    ? ownerID
-    : ownerID === connection.fromNodeId ? connection.toNodeId : connection.fromNodeId;
-  if (destinationID === connection.fromNodeId) return { markerStart: true };
-  if (destinationID === connection.toNodeId) return { markerEnd: true };
-  return value > 0 ? { markerEnd: true } : { markerStart: true };
-}
-
-function addThermalTopologyFlowValues(left = [], right = []) {
-  const length = Math.max(left.length, right.length);
-  return Array.from({ length }, (_, index) => (Number(left[index]) || 0) + (Number(right[index]) || 0));
-}
-
-function signedThermalTopologyValue(value) {
-  const number = Number(value) || 0;
-  return `${number > 0 ? "+" : ""}${formatNumber(number)}`;
-}
-
-function thermalTopologyFlowDirectionLabel(value) {
-  if (Number(value) > 0) return "gain to owner";
-  if (Number(value) < 0) return "loss from owner";
-  return "balanced";
 }
 
 function issueSeverity(diagnosticIDs = [], issueLinks = []) {
