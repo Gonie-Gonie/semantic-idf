@@ -225,10 +225,10 @@
   }
 
   .summary-row {
-    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-columns: minmax(0, 1fr) 8ch 5.5ch 22px;
     grid-template-areas:
-      "name name status"
-      "value unit meta";
+      "name name name status"
+      "value unit meta meta";
     align-items: start;
     gap: 4px;
   }
@@ -249,7 +249,7 @@
 
   .summary-meta {
     grid-area: meta;
-    justify-content: flex-start;
+    justify-content: flex-end;
   }
 
   .hvac-component-main,
@@ -261,7 +261,7 @@
 
   .summary-status {
     grid-area: status;
-    justify-self: start;
+    justify-self: end;
   }
 
   .geometry-body {

@@ -197,7 +197,6 @@ function nowMS() {
 }
 
 export function renderEmpty() {
-  elements.summaryMetricCount.textContent = t("count.metrics", { count: 0 });
   elements.summaryCategories.innerHTML = `<div class="empty">${t("summary.empty")}</div>`;
   if (elements.profileStats) {
     elements.profileStats.textContent = t("count.profiles", { profiles: 0, items: 0 });
@@ -267,9 +266,7 @@ export function renderDeferredGeometry(geometry) {
 
 export function renderSummary(summary = state.report?.summary) {
   const categories = summary?.categories || [];
-  const totalMetricCount = summary?.metricCount ?? categories.reduce((sum, category) => sum + (category.metrics?.length || 0), 0);
   const query = (elements.summaryFilter?.value || "").trim().toLowerCase();
-  let visibleMetricCount = 0;
 
   const categoryHTML = categories
     .map((category) => {
@@ -277,16 +274,14 @@ export function renderSummary(summary = state.report?.summary) {
       if (!metrics.length) {
         return "";
       }
-      visibleMetricCount += metrics.length;
       const categoryNavigation = summaryNavigationForCategory(category);
       return `
         <details class="summary-category" data-summary-category-id="${escapeHTML(category.id)}" ${panelNavigationAttributes({
           ...categoryNavigation,
           panelTargetId: category.id,
-        })} open>
+          })} open>
           <summary>
             <span>${escapeHTML(category.name)}</span>
-            <span class="badge">${metrics.length}</span>
           </summary>
           <div class="summary-table" role="table" aria-label="${escapeHTML(category.name)} summary metrics">
             ${metrics.map((metric) => renderMetricRow(metric, category)).join("")}
@@ -295,9 +290,6 @@ export function renderSummary(summary = state.report?.summary) {
     })
     .join("");
 
-  elements.summaryMetricCount.textContent = query
-    ? t("count.metricsOf", { shown: visibleMetricCount, total: totalMetricCount })
-    : t("count.metrics", { count: totalMetricCount });
   elements.summaryCategories.innerHTML = categoryHTML || `<div class="empty">${t("summary.noMatching")}</div>`;
   refreshSummaryNavigationStyles();
 }
@@ -1054,22 +1046,7 @@ function renderMetricDisplayValue(metric) {
   if (!isNumericSummaryMetric(metric)) {
     return `<strong>${escapeHTML(displayValue)}</strong>`;
   }
-  const match = displayValue.match(/^(-?)(\d+)(\.\d+)?$/);
-  if (!match && isNumericSummaryMetric(metric)) {
-    return `
-      <strong class="summary-number">
-        <span class="summary-number-int">${escapeHTML(displayValue)}</span>
-        <span class="summary-number-frac"></span>
-      </strong>`;
-  }
-  if (!match) {
-    return `<strong>${escapeHTML(displayValue)}</strong>`;
-  }
-  return `
-    <strong class="summary-number">
-      <span class="summary-number-int">${escapeHTML(`${match[1]}${match[2]}`)}</span>
-      <span class="summary-number-frac">${escapeHTML(match[3] || "")}</span>
-    </strong>`;
+  return `<strong class="summary-number">${escapeHTML(displayValue)}</strong>`;
 }
 
 function renderMetricMeta(metric) {

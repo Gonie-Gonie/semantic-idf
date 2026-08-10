@@ -133,14 +133,6 @@ function Set-StaticHTMLAppVersion {
         $text = Normalize-NewLine -Text (Get-Content -LiteralPath $path -Raw -Encoding utf8)
         $text = [regex]::Replace(
             $text,
-            '(?i)(<[^>]*\bdata-app-version\b[^>]*>)v\d+\.\d+\.\d+(</[^>]+>)',
-            [System.Text.RegularExpressions.MatchEvaluator]{
-                param($match)
-                return $match.Groups[1].Value + "v$TargetVersion" + $match.Groups[2].Value
-            }
-        )
-        $text = [regex]::Replace(
-            $text,
             '(?i)(<[^>]*\bdata-app-brand-version\b[^>]*>)[^<]*(</[^>]+>)',
             [System.Text.RegularExpressions.MatchEvaluator]{
                 param($match)

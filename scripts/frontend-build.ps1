@@ -126,7 +126,6 @@ if ($appInfoText -notmatch ('outputFilename:\s*"semantic-idf-v' + [regex]::Escap
 }
 
 $staticVersionChecks = @(
-    @($index, 'data-app-version[^>]*>v' + [regex]::Escape($productVersion) + '<'),
     @($tools, 'data-app-brand-version[^>]*>SemanticIDF v' + [regex]::Escape($productVersion) + '<'),
     @($guide, 'data-app-brand-version[^>]*>SemanticIDF v' + [regex]::Escape($productVersion) + '<'),
     @($batch, 'data-app-brand-version[^>]*>SemanticIDF v' + [regex]::Escape($productVersion) + '<'),

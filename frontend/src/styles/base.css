@@ -222,21 +222,6 @@ button:disabled:hover {
   flex-wrap: wrap;
 }
 
-.app-version {
-  display: inline-flex;
-  align-items: center;
-  min-height: 24px;
-  padding: 2px 7px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--surface-3);
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 1;
-  white-space: nowrap;
-}
-
 .topbar p {
   margin: 4px 0 0;
   color: var(--muted);
@@ -2275,7 +2260,7 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
   padding: 9px 11px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 10px;
   font-size: 13px;
   font-weight: 700;
@@ -2299,7 +2284,7 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 .summary-row {
   min-height: 36px;
   display: grid;
-  grid-template-columns: minmax(120px, 1fr) 12ch 4.5ch auto 22px;
+  grid-template-columns: minmax(120px, 1fr) 12ch 8ch 5.5ch 22px;
   gap: 9px;
   align-items: center;
   padding: 5px 10px;
@@ -2398,25 +2383,11 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 
 .summary-value .summary-number {
   width: 100%;
-  display: inline-grid;
-  grid-template-columns: 10ch 5ch;
-  align-items: baseline;
+  display: block;
   font-variant-numeric: tabular-nums;
-}
-
-.summary-number-int {
-  min-width: 0;
-  overflow: hidden;
   text-align: right;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.summary-number-frac {
-  min-width: 0;
   overflow: hidden;
-  text-align: left;
-  text-overflow: clip;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -2437,6 +2408,7 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 
 .summary-meta {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
   gap: 3px;

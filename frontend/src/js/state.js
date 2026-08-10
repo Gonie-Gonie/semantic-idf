@@ -427,7 +427,6 @@ export const elements = {
   analysisPanel: document.querySelector(".analysis-panel"),
   resultTabButtons: document.querySelectorAll("[data-result-tab]"),
   resultPanes: document.querySelectorAll(".result-pane"),
-  summaryMetricCount: document.querySelector("#summaryMetricCount"),
   summaryFilter: document.querySelector("#summaryFilter"),
   profileStats: document.querySelector("#profileStats"),
   profileFilter: document.querySelector("#profileFilter"),

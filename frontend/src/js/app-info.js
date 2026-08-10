@@ -47,9 +47,6 @@ export async function renderAppInfo(appInfoInput) {
   document.querySelectorAll("[data-app-brand-version]").forEach((element) => {
     element.textContent = `${info.name} v${info.version}`;
   });
-  document.querySelectorAll("[data-app-version]").forEach((element) => {
-    element.textContent = `v${info.version}`;
-  });
   updateDocumentTitle(info);
   return info;
 }
