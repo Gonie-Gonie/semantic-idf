@@ -7,6 +7,22 @@ import (
 
 func TestSummaryMetricsUseSemanticGroupsAndSeparateContributingSources(t *testing.T) {
 	content := readTestFile(t, "frontend/src/js/views/analysis-views.js")
+	for _, required := range []string{
+		"bindSummaryTableLayout()",
+		"new ResizeObserver",
+		"requestAnimationFrame",
+		"entry.contentRect.width",
+		"Math.min(4",
+		"rowsPerColumn",
+		"Math.floor(index / rowsPerColumn)",
+	} {
+		if !strings.Contains(content, required) {
+			t.Fatalf("summary table header is missing %q", required)
+		}
+	}
+	if !strings.Contains(content, `class="summary-row-grid"`) {
+		t.Fatal("summary metric cells must use a dedicated grid inside the native summary toggle")
+	}
 	renderer := sliceBetween(content, "function renderMetricRow", "function isNumericSummaryMetric")
 	for _, required := range []string{
 		`<details class="summary-metric"`,

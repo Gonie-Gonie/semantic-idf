@@ -16,6 +16,8 @@ import { currentSemanticSelection, revealSelectionSource, selectSemanticEntity }
 const DIAGNOSTIC_RENDER_LIMIT = 500;
 
 let summarySourceIndexCache = { navigation: null, records: [] };
+let summaryTableResizeObserver = null;
+let summaryTableLayoutFrame = 0;
 let diagnoseSelectedDiagnosticID = "";
 let diagnoseTemporaryRevealID = "";
 let preservingDiagnoseContext = false;
@@ -284,14 +286,67 @@ export function renderSummary(summary = state.report?.summary) {
             <span>${escapeHTML(category.name)}</span>
           </summary>
           <div class="summary-table" role="table" aria-label="${escapeHTML(category.name)} summary metrics">
-            ${metrics.map((metric) => renderMetricRow(metric, category)).join("")}
+            <div class="summary-table-body">
+              ${metrics.map((metric) => renderMetricRow(metric, category)).join("")}
+            </div>
           </div>
         </details>`;
     })
     .join("");
 
   elements.summaryCategories.innerHTML = categoryHTML || `<div class="empty">${t("summary.noMatching")}</div>`;
+  bindSummaryTableLayout();
   refreshSummaryNavigationStyles();
+}
+
+function bindSummaryTableLayout() {
+  summaryTableResizeObserver?.disconnect();
+  if (summaryTableLayoutFrame && typeof cancelAnimationFrame === "function") {
+    cancelAnimationFrame(summaryTableLayoutFrame);
+  }
+  summaryTableLayoutFrame = 0;
+  const tables = [...(elements.summaryCategories?.querySelectorAll?.(".summary-table") || [])];
+  const layout = (table) => {
+    const body = table.querySelector(".summary-table-body");
+    if (!body) {
+      return;
+    }
+    const metrics = [...body.querySelectorAll(".summary-metric")];
+    const width = table.getBoundingClientRect().width || table.clientWidth || 0;
+    table.dataset.summaryWidth = String(Math.round(width));
+    const columnCount = Math.max(1, Math.min(4, metrics.length, Math.floor(width / 420) || 1));
+    if (Number(table.dataset.summaryColumns) === columnCount) {
+      return;
+    }
+    table.dataset.summaryColumns = String(columnCount);
+    table.style.setProperty("--summary-column-count", String(columnCount));
+    const rowsPerColumn = Math.ceil(metrics.length / columnCount);
+    const columns = Array.from({ length: columnCount }, () => {
+      const column = document.createElement("div");
+      column.className = "summary-table-column";
+      return column;
+    });
+    metrics.forEach((metric, index) => {
+      columns[Math.min(columnCount - 1, Math.floor(index / rowsPerColumn))].append(metric);
+    });
+    body.replaceChildren(...columns);
+  };
+  tables.forEach(layout);
+  if (typeof ResizeObserver === "function") {
+    summaryTableResizeObserver = new ResizeObserver((entries) => {
+      const changed = entries.some((entry) => Math.round(entry.contentRect.width) !== Number(entry.target.dataset.summaryWidth));
+      if (!changed || summaryTableLayoutFrame) {
+        return;
+      }
+      summaryTableLayoutFrame = requestAnimationFrame(() => {
+        summaryTableLayoutFrame = 0;
+        entries.forEach((entry) => layout(entry.target));
+      });
+    });
+    tables.forEach((table) => summaryTableResizeObserver.observe(table));
+  } else {
+    summaryTableResizeObserver = null;
+  }
 }
 
 export function renderDiagnostics(diagnostics = state.report?.diagnostics) {
@@ -1021,15 +1076,17 @@ function renderMetricRow(metric, category = {}) {
         ...navigation,
         panelTargetId: metric.id,
       })}>
-        <div class="summary-name" role="cell">
-          <strong title="${escapeHTML(metric.name)}">${escapeHTML(metric.name)}</strong>
+        <div class="summary-row-grid">
+          <div class="summary-name" role="cell">
+            <strong title="${escapeHTML(metric.name)}">${escapeHTML(metric.name)}</strong>
+          </div>
+          <div class="summary-value${valueClass}" role="cell">
+            ${renderMetricDisplayValue(metric)}
+          </div>
+          <span class="summary-unit" role="cell">${unit}</span>
+          ${meta}
+          ${renderMetricStatus(metric)}
         </div>
-        <div class="summary-value${valueClass}" role="cell">
-          ${renderMetricDisplayValue(metric)}
-        </div>
-        <span class="summary-unit" role="cell">${unit}</span>
-        ${meta}
-        ${renderMetricStatus(metric)}
       </summary>
       <div class="summary-source-drawer">
         ${renderSummarySourceChooser(contributingSources, metric)}

@@ -2248,16 +2248,14 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 }
 
 .summary-category {
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface);
-  overflow: hidden;
+  min-width: 0;
+  background: transparent;
 }
 
 .summary-category summary {
-  min-height: 40px;
+  min-height: 32px;
   cursor: pointer;
-  padding: 9px 11px;
+  padding: 2px 4px 7px;
   display: flex;
   align-items: center;
   justify-content: flex-start;
@@ -2267,9 +2265,30 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 }
 
 .summary-table {
-  border-top: 1px solid var(--line);
+  --summary-column-count: 1;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--surface);
+  font-weight: 400;
+}
+
+.summary-table-body {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(var(--summary-column-count), minmax(0, 1fr));
+}
+
+.summary-table-column {
+  min-width: 0;
+}
+
+.summary-table-column:not(:last-child) {
+  border-right: 1px solid var(--line);
+}
+
+.summary-row-grid > :not(:first-child) {
+  padding-left: 8px;
+  border-left: 1px solid var(--surface-3);
 }
 
 .summary-metric {
@@ -2277,20 +2296,24 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
   border-bottom: 1px solid var(--surface-2);
 }
 
-.summary-metric:nth-child(odd) {
-  border-right: 1px solid var(--surface-2);
-}
-
 .summary-row {
+  width: 100%;
   min-height: 36px;
-  display: grid;
-  grid-template-columns: minmax(120px, 1fr) 12ch 8ch 5.5ch 22px;
-  gap: 9px;
-  align-items: center;
-  padding: 5px 10px;
+  display: block;
+  padding: 0;
   font-size: 12px;
   cursor: pointer;
   list-style: none;
+}
+
+.summary-row-grid {
+  width: 100%;
+  min-height: 36px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 18% 11% 8% 22px;
+  gap: 9px;
+  align-items: center;
+  padding: 5px 10px;
 }
 
 .summary-row::-webkit-details-marker {
@@ -2319,6 +2342,7 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 
 .summary-source-title {
   font-size: 11px;
+  font-weight: 400;
   color: var(--muted);
 }
 
@@ -2339,6 +2363,7 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 }
 
 .summary-source-object strong {
+  font-weight: 400;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2364,6 +2389,7 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 13px;
+  font-weight: 400;
 }
 
 .summary-value {
@@ -2428,7 +2454,7 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
   background: var(--surface-3);
   color: var(--muted);
   font-size: 10px;
-  font-weight: 700;
+  font-weight: 400;
   line-height: 1;
   overflow: hidden;
   text-overflow: ellipsis;

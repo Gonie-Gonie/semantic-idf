@@ -216,42 +216,6 @@
     display: none;
   }
 
-  .summary-table {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .summary-metric:nth-child(odd) {
-    border-right: 0;
-  }
-
-  .summary-row {
-    grid-template-columns: minmax(0, 1fr) 8ch 5.5ch 22px;
-    grid-template-areas:
-      "name name name status"
-      "value unit meta meta";
-    align-items: start;
-    gap: 4px;
-  }
-
-  .summary-name {
-    grid-area: name;
-  }
-
-  .summary-value {
-    grid-area: value;
-    min-width: 0;
-  }
-
-  .summary-unit {
-    grid-area: unit;
-    padding-left: 4px;
-  }
-
-  .summary-meta {
-    grid-area: meta;
-    justify-content: flex-end;
-  }
-
   .hvac-component-main,
   .hvac-warning,
   .hvac-node-usage,
