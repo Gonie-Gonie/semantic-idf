@@ -502,21 +502,20 @@
 .thermal-topology-legend {
   position: absolute;
   z-index: 2;
-  right: 10px;
-  bottom: 10px;
-  max-width: min(520px, calc(100% - 20px));
+  top: 10px;
+  left: 10px;
   border: 1px solid color-mix(in srgb, var(--line), transparent 12%);
-  border-radius: 999px;
-  padding: 6px 10px;
+  border-radius: 8px;
+  padding: 7px 9px;
   background: color-mix(in srgb, var(--surface), transparent 5%);
   color: var(--muted);
   box-shadow: 0 4px 14px color-mix(in srgb, var(--ink), transparent 90%);
   font-size: 10px;
   pointer-events: none;
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 9px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
 }
 
 .thermal-legend-item {

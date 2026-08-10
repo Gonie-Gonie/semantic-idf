@@ -111,7 +111,7 @@ function renderThermalTopologySVG(model, layout) {
   const backButton = state.thermalTopologyGraphLevel === "boundary"
     ? `<button class="thermal-topology-back" type="button" data-topology-back>${escapeHTML(t("action.back", {}, "Back"))}</button>`
     : "";
-  elements.thermalTopologyGraph.innerHTML = `${backButton}${renderMetricLegend(metricContext)}
+  elements.thermalTopologyGraph.innerHTML = `${backButton}${renderMetricLegend()}
     <svg class="thermal-topology-svg" viewBox="0 0 ${layout.width} ${layout.height}" preserveAspectRatio="xMidYMid meet" tabindex="0" aria-label="${escapeHTML(t("topology.thermalTooltip"))}">
       <defs>
         <marker id="thermalTopologyArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
@@ -487,33 +487,13 @@ function edgeMetricPresentation(connection, model, context) {
   return { width: Math.max(1.5, Number(width) || 1.5).toFixed(2), classes: classes.filter(Boolean) };
 }
 
-function renderMetricLegend(context) {
+function renderMetricLegend() {
   const metric = state.thermalTopologyMetric;
-  const topology = currentGeometry?.topology || {};
-  let text = "Static topology · relation colors · hover for area and UA";
-  if (metric === "area") text = `Static topology · ${state.thermalTopologyAreaComponent} area · ${state.thermalTopologyAreaBasis === "physical" ? "Physical" : "Model total"} · m²`;
-  else if (metric === "ua") {
-    const valid = (currentModel?.connections || []).filter((connection) => connectionUAValue(connection, currentModel).available).length;
-    const total = currentModel?.connections?.length || 0;
-    text = `Static topology · Total UA · W/K · coverage ${total ? Math.round((valid / total) * 100) : 0}% · hatch = N/A`;
-  } else if (metric === "exposure") text = "Static topology · Exterior · Ground · Adjacent zone · Adiabatic";
-  else if (metric === "qa") text = `Static topology · ${topology.issueLinks?.length || 0} issues · solid = declared mismatch · dotted = observation`;
-  else if (metric === "air") text = "Static topology · air coupling emphasized · conductive boundaries muted";
-  else if (metric === "simulated_heat") {
-    const overlay = thermalTopologySimulationResult();
-    const selection = thermalTopologySimulationSelection();
-    text = overlay.available
-      ? `Simulation overlay · ${selection.displayLabel} · red = gain · blue = loss · signed kWh · positive enters owner`
-      : `Static topology · ${overlay.unavailableReason || "surface heat-flow results not loaded"}`;
-  }
-  const maximum = context.maximum > 1 && ["area", "ua"].includes(metric) ? ` · max ${formatNumber(context.maximum)}` : "";
-  const label = `${text}${maximum}`;
-  return `<div class="thermal-topology-legend" data-topology-metric="${escapeHTML(metric)}" role="note" aria-label="${escapeHTML(label)}">
+  return `<div class="thermal-topology-legend" data-topology-metric="${escapeHTML(metric)}" role="note" aria-label="Network connection types">
     <span class="thermal-legend-item"><i class="thermal-legend-line conductive" aria-hidden="true"></i>Conductive / exterior</span>
     <span class="thermal-legend-item"><i class="thermal-legend-line ground" aria-hidden="true"></i>Ground</span>
     <span class="thermal-legend-item"><i class="thermal-legend-line adiabatic" aria-hidden="true"></i>Adiabatic</span>
     <span class="thermal-legend-item"><i class="thermal-legend-line air" aria-hidden="true"></i>Air / issue pattern</span>
-    <span>${escapeHTML(label)}</span>
   </div>`;
 }
 

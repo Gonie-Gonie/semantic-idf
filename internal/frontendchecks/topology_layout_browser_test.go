@@ -230,8 +230,8 @@ try {
   const simulationGain = simulationEdge?.classList.contains("metric-gain") === true;
   const simulationArrow = simulationEdge?.getAttribute("marker-start")?.includes("thermalTopologyHeatArrow") === true;
   const simulationPeriod = !document.getElementById("thermalTopologySimulationControls").hidden && !document.getElementById("thermalTopologySimulationPeriod").disabled && document.getElementById("thermalTopologySimulationPeriod").value === "annual";
-  const simulationLegendText = document.querySelector(".thermal-topology-legend")?.textContent || "";
-  const separateSimulationLegend = simulationLegendText.includes("Simulation overlay") && !simulationLegendText.includes("Total UA") && (document.querySelector(".thermal-edge-group title")?.textContent || "").includes("not compared directly with static UA");
+  const legendItems = document.querySelectorAll(".thermal-topology-legend > .thermal-legend-item");
+  const separateSimulationLegend = legendItems.length === 4 && !document.querySelector(".thermal-topology-legend > :not(.thermal-legend-item)") && (document.querySelector(".thermal-edge-group title")?.textContent || "").includes("not compared directly with static UA");
   const simulationLedger = document.getElementById("thermalTopologyInspector").textContent.includes("sum_reported_energy");
   let ledgerJump = false;
   window.addEventListener("idfAnalyzer:openSimulationPurposePlan", () => { ledgerJump = true; });

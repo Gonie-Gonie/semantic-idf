@@ -39,7 +39,6 @@ func TestThermalTopologySimulationOverlayContract(t *testing.T) {
 		`metric-loss`,
 		`thermalTopologyHeatArrow`,
 		`selected_range`,
-		`positive enters owner`,
 		`Simulation heat flow is not compared directly with static UA`,
 	} {
 		if !strings.Contains(view, required) {
