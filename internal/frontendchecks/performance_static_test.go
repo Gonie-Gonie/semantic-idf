@@ -88,7 +88,6 @@ func TestFrontendThermalTopologyPerformanceContracts(t *testing.T) {
 		"normalizeThermalTopologyAreaBasis(options.areaBasis)",
 		"selectionAffectsScope",
 		`scope === "neighbors"`,
-		"Boolean(options.showLabels)",
 	} {
 		if !strings.Contains(layout, term) {
 			t.Fatalf("thermal layout cache key contract missing %q", term)
@@ -99,10 +98,6 @@ func TestFrontendThermalTopologyPerformanceContracts(t *testing.T) {
 	for _, term := range []string{
 		"THERMAL_LAYOUT_CACHE_LIMIT = 24",
 		"rememberThermalTopologyLayout",
-		"THERMAL_MATRIX_ROW_OVERSCAN",
-		"allRowNodes.slice(firstRowIndex, lastRowIndex)",
-		"thermal-matrix-spacer",
-		"bindThermalMatrixVirtualScroll",
 		"markGraphTargetSelected(kind, id)",
 	} {
 		if !strings.Contains(view, term) {

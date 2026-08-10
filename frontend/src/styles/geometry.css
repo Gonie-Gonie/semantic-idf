@@ -3,33 +3,27 @@
   padding: 10px 12px;
   border-bottom: 1px solid var(--line);
   background: var(--surface);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.geometry-head h2 {
-  margin: 0;
-  font-size: 16px;
-  line-height: 1.2;
-  letter-spacing: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+  gap: 8px;
 }
 
 .geometry-head span {
   display: block;
-  margin-top: 4px;
+  margin-top: 0;
   color: var(--muted);
   font-size: 12px;
 }
 
 .geometry-tools {
+  width: 100%;
   min-width: 0;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: flex-start;
   gap: 8px;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
 }
 
 .geometry-control-group {
@@ -41,8 +35,7 @@
 
 .geometry-mode-controls,
 .geometry-common-controls,
-.geometry-spatial-controls,
-.thermal-topology-controls {
+.geometry-spatial-controls {
   flex: 0 0 auto;
 }
 
@@ -60,6 +53,8 @@
   display: flex;
   align-items: center;
   gap: 7px;
+  flex: 1 1 680px;
+  flex-wrap: wrap;
   white-space: nowrap;
 }
 
@@ -87,6 +82,8 @@
   display: inline-flex;
   align-items: center;
   gap: 7px;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
 }
 
 .thermal-topology-frame-control {
@@ -431,22 +428,6 @@
   stroke-width: max(var(--thermal-edge-width, 2), 3);
 }
 
-.thermal-edge-label {
-  paint-order: stroke;
-  stroke: var(--surface-3);
-  stroke-width: 5px;
-  stroke-linejoin: round;
-  fill: var(--muted);
-  font-size: 10px;
-  text-anchor: middle;
-  pointer-events: none;
-}
-
-.thermal-edge-label.selected {
-  fill: var(--ink);
-  font-weight: 700;
-}
-
 .thermal-node {
   cursor: pointer;
   outline: none;
@@ -556,15 +537,6 @@
 .thermal-legend-line.adiabatic { border-top-style: dotted; }
 .thermal-legend-line.air { border-top: 3px double var(--teal); }
 
-.thermal-topology-matrix {
-  grid-column: 1;
-  grid-row: 1;
-  min-width: 0;
-  min-height: 0;
-  overflow: auto;
-  background: var(--surface);
-}
-
 .thermal-topology-inspector {
   grid-column: 2;
   grid-row: 1;
@@ -573,143 +545,6 @@
   border-left: 1px solid var(--line);
   overflow: auto;
   background: var(--surface);
-}
-
-.thermal-topology-display-switch {
-  position: absolute;
-  z-index: 4;
-  top: 10px;
-  left: 10px;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.thermal-topology-display-switch button,
-.thermal-topology-display-switch input {
-  min-height: 28px;
-  border-color: var(--line);
-  background: color-mix(in srgb, var(--surface), transparent 4%);
-  font-size: 10px;
-}
-
-.thermal-topology-display-switch button.active {
-  border-color: var(--teal);
-  background: var(--teal);
-  color: #fff;
-}
-
-.thermal-topology-display-switch input {
-  width: min(190px, 24vw);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  padding: 0 8px;
-  color: var(--ink);
-}
-
-.thermal-matrix-table {
-  min-width: 100%;
-  margin-top: 46px;
-  border-collapse: separate;
-  border-spacing: 0;
-  color: var(--ink-soft);
-  font-size: 10px;
-}
-
-.thermal-matrix-table th,
-.thermal-matrix-table td {
-  min-width: 68px;
-  height: 34px;
-  border-right: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-  padding: 5px;
-  background: var(--surface);
-  text-align: center;
-}
-
-.thermal-matrix-spacer td {
-  height: 0;
-  padding: 0;
-  border: 0;
-}
-
-.thermal-matrix-row-window {
-  position: sticky;
-  z-index: 3;
-  top: 10px;
-  width: max-content;
-  margin-left: auto;
-  margin-right: 12px;
-  color: var(--ink-soft);
-  font-size: 10px;
-}
-
-.thermal-matrix-table thead th {
-  position: sticky;
-  z-index: 2;
-  top: 0;
-  max-width: 110px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  background: var(--surface-3);
-  writing-mode: vertical-rl;
-  transform: rotate(180deg);
-}
-
-.thermal-matrix-table .thermal-matrix-corner {
-  left: 0;
-  z-index: 3;
-  writing-mode: initial;
-  transform: none;
-}
-
-.thermal-matrix-table tbody th {
-  position: sticky;
-  z-index: 1;
-  left: 0;
-  max-width: 150px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  background: var(--surface-3);
-  text-align: left;
-}
-
-.thermal-matrix-header,
-.thermal-matrix-cell:not(.empty-cell) {
-  cursor: pointer;
-}
-
-.thermal-matrix-header:hover,
-.thermal-matrix-header:focus,
-.thermal-matrix-header.semantic-hovered,
-.thermal-matrix-cell:not(.empty-cell):hover,
-.thermal-matrix-cell.semantic-hovered {
-  outline: 2px solid var(--teal);
-  outline-offset: -2px;
-}
-
-.thermal-matrix-cell.semantic-selected,
-.thermal-matrix-header.semantic-selected {
-  background: color-mix(in srgb, var(--geometry-selected), var(--surface) 82%);
-  color: var(--ink);
-  font-weight: 800;
-}
-
-.thermal-matrix-cell.empty-cell {
-  color: color-mix(in srgb, var(--muted), transparent 55%);
-}
-
-.thermal-matrix-limit {
-  position: sticky;
-  z-index: 3;
-  top: 0;
-  margin: 46px 10px 0;
-  padding: 5px 8px;
-  background: #fff4d6;
-  color: var(--ink-soft);
-  font-size: 10px;
 }
 
 .thermal-inspector-head {
@@ -839,17 +674,6 @@
 }
 
 @media (max-width: 1280px) {
-  .geometry-head {
-    align-items: flex-start;
-    flex-wrap: wrap;
-  }
-
-  .geometry-tools {
-    flex: 1 1 100%;
-    justify-content: flex-start;
-    flex-wrap: wrap;
-  }
-
   .thermal-topology-controls {
     flex: 1 1 auto;
   }

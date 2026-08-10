@@ -275,7 +275,6 @@ function renderEmptyGeometry() {
   elements.geometryCanvasHost.innerHTML = `<div class="empty">${t("geometry.noGeometry")}</div>`;
   elements.geometryPlan.innerHTML = "";
   elements.thermalTopologyGraph.innerHTML = `<div class="empty">${t("topology.noConnections")}</div>`;
-  elements.thermalTopologyMatrix.innerHTML = "";
   elements.thermalTopologyInspector.innerHTML = "";
   elements.geometryDetails.innerHTML = `<div class="empty">${t("geometry.selectObject")}</div>`;
 }

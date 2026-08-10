@@ -81,7 +81,6 @@ function shortcutAction(id, actions) {
     geometryPlan: () => actions.setGeometryMode?.("plan"),
     geometryThermal: () => actions.setGeometryMode?.("thermal"),
     geometryFit: actions.fitGeometry,
-    topologyDisplay: actions.toggleTopologyDisplay,
     topologyConnectivity: () => actions.setTopologyMetric?.("topology"),
     topologyArea: () => actions.setTopologyMetric?.("area"),
     topologyUA: () => actions.setTopologyMetric?.("ua"),

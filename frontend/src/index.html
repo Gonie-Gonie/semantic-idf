@@ -168,11 +168,7 @@
 
           <div class="result-pane active" id="summaryPane">
             <div class="summary-head">
-              <div>
-                <h2 data-i18n="tab.summary">Summary</h2>
-              </div>
               <div class="summary-tools">
-                <input id="summaryFilter" type="search" placeholder="Filter metrics" data-i18n-placeholder="summary.filter" />
                 <button id="exportSummaryJSONButton" type="button" data-i18n="action.exportJson">Export JSON</button>
                 <button id="exportSummaryCSVButton" type="button" data-i18n="action.exportCsv">Export CSV</button>
               </div>
@@ -185,7 +181,6 @@
           <div class="result-pane" id="profilePane">
             <div class="summary-head profile-head">
               <div>
-                <h2 data-i18n="tab.profile">Profile</h2>
                 <span id="profileStats">0 profiles</span>
               </div>
               <div class="summary-tools">
@@ -240,7 +235,6 @@
           <div class="result-pane" id="hvacPane">
             <div class="summary-head hvac-head">
               <div>
-                <h2 data-i18n="tab.hvac">HVAC</h2>
                 <span id="hvacStats">0 loops, 0 zones</span>
               </div>
               <div class="summary-tools hvac-tools">
@@ -292,7 +286,6 @@
           <div class="result-pane" id="outputPane">
             <div class="summary-head output-head">
               <div>
-                <h2 data-i18n="tab.output">Output</h2>
                 <span id="outputStats">0 output objects</span>
               </div>
               <div class="summary-tools">
@@ -350,7 +343,6 @@
           <div class="result-pane" id="simulationPane">
             <div class="summary-head simulation-head">
               <div>
-                <h2 data-i18n="simulation.runInspect">Run & Inspect</h2>
                 <span id="simulationStats">No run yet</span>
               </div>
               <div class="summary-tools">
@@ -675,7 +667,6 @@
           <div class="result-pane" id="diagnosePane">
             <div class="summary-head">
               <div>
-                <h2 data-i18n="tab.diagnose">Diagnose</h2>
                 <span id="diagnosticCount">0 issues</span>
               </div>
               <div class="summary-tools">
@@ -721,14 +712,13 @@
           <div class="result-pane" id="geometryPane">
             <div class="geometry-head">
               <div>
-                <h2 data-i18n="topology.panelTitle">Spatial &amp; Thermal Topology</h2>
                 <span id="geometryStats">0 zones, 0 surfaces, 0 windows</span>
               </div>
               <div class="geometry-tools">
                 <div class="geometry-control-group geometry-mode-controls" role="group" aria-label="Topology view">
                   <button class="geometry-mode-button active" data-geometry-mode="3d" type="button">3D</button>
                   <button class="geometry-mode-button" data-geometry-mode="plan" type="button">Plan</button>
-                  <button class="geometry-mode-button" data-geometry-mode="thermal" type="button" title="Thermal topology and boundary network" data-i18n-title="topology.thermalTooltip">Thermal</button>
+                  <button class="geometry-mode-button" data-geometry-mode="thermal" type="button" title="Network topology and boundary connections" data-i18n-title="topology.thermalTooltip">Network</button>
                 </div>
                 <div class="geometry-control-group geometry-common-controls">
                   <select id="geometryStorySelect" aria-label="Topology story"></select>
@@ -817,7 +807,6 @@
                       <label class="geometry-toggle"><input id="thermalTopologyShowOpenings" type="checkbox" checked /> <span data-i18n="topology.showOpenings">Openings</span></label>
                       <label class="geometry-toggle"><input id="thermalTopologyShowAirCoupling" type="checkbox" /> <span data-i18n="topology.showAirCoupling">Air coupling</span></label>
                       <label class="geometry-toggle"><input id="thermalTopologyExpandExternalTargets" type="checkbox" /> <span data-i18n="topology.expandExternalTargets">Expand external targets</span></label>
-                      <label class="geometry-toggle"><input id="thermalTopologyShowLabels" type="checkbox" checked /> <span data-i18n="topology.showLabels">Labels</span></label>
                       <button id="thermalTopologyExportJSON" type="button" data-i18n="topology.exportJSON">Export topology JSON</button>
                     </div>
                   </details>
@@ -829,13 +818,7 @@
                 <div id="geometryCanvasHost" class="geometry-canvas-host"></div>
                 <svg id="geometryPlan" class="geometry-plan" role="img" aria-label="Topology floor plan"></svg>
                 <div id="thermalTopologyView" class="thermal-topology-view">
-                  <div class="thermal-topology-display-switch" role="group" aria-label="Thermal topology presentation">
-                    <button class="active" type="button" data-thermal-topology-display="graph" data-i18n="topology.graphTab">Graph</button>
-                    <button type="button" data-thermal-topology-display="matrix" data-i18n="topology.matrixTab">Matrix</button>
-                    <input id="thermalTopologyMatrixQuery" type="search" placeholder="Filter matrix" data-i18n-placeholder="topology.matrixFilter" hidden />
-                  </div>
-                  <div id="thermalTopologyGraph" class="thermal-topology-graph" role="img" aria-label="Thermal topology and boundary network" data-i18n-aria-label="topology.thermalTooltip"></div>
-                  <div id="thermalTopologyMatrix" class="thermal-topology-matrix" hidden></div>
+                  <div id="thermalTopologyGraph" class="thermal-topology-graph" role="img" aria-label="Network topology and boundary connections" data-i18n-aria-label="topology.thermalTooltip"></div>
                   <aside id="thermalTopologyInspector" class="thermal-topology-inspector" aria-label="Thermal topology inspector" data-i18n-aria-label="topology.inspector"></aside>
                 </div>
               </div>

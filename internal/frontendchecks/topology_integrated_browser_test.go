@@ -58,8 +58,7 @@ const thermalTopologyIntegratedHarnessHTML = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Thermal topology integrated acceptance</title></head>
 <body data-topology-integrated-status="pending">
 <div id="geometryStats"></div><div id="geometryCanvasHost"></div><svg id="geometryPlan"></svg><div id="geometryDetails"></div>
-<div id="thermalTopologyGraph" style="width:900px;height:600px"></div><div id="thermalTopologyMatrix" style="height:300px;overflow:auto"></div><aside id="thermalTopologyInspector"></aside>
-<button data-thermal-topology-display="graph"></button><button data-thermal-topology-display="matrix"></button><input id="thermalTopologyMatrixQuery">
+<div id="thermalTopologyGraph" style="width:900px;height:600px"></div><aside id="thermalTopologyInspector"></aside>
 <select id="thermalTopologyGraphLevel"><option value="zone">zone</option><option value="boundary">boundary</option></select>
 <select id="thermalTopologyMetric"><option value="topology">topology</option><option value="area">area</option><option value="ua">ua</option><option value="exposure">exposure</option><option value="qa">qa</option><option value="air">air</option><option value="simulated_heat">simulated heat</option></select>
 <label id="thermalTopologyAreaComponentControl"><select id="thermalTopologyAreaComponent"><option value="gross">gross</option><option value="opaque">opaque</option><option value="openings">openings</option></select></label>
@@ -67,7 +66,7 @@ const thermalTopologyIntegratedHarnessHTML = `<!doctype html>
 <div id="thermalTopologySimulationControls" hidden><select id="thermalTopologySimulationPeriod"><option value="annual">annual</option><option value="monthly">monthly</option><option value="hourly">hourly</option><option value="selected_range">selected range</option></select><label id="thermalTopologySimulationFrameControl"><span id="thermalTopologySimulationFrameLabel"></span><input id="thermalTopologySimulationFrame" type="range"></label></div>
 <select id="thermalTopologyLayout"><option value="spatial">spatial</option><option value="network">network</option></select>
 <select id="thermalTopologyAreaBasis"><option value="effective">effective</option><option value="physical">physical</option></select>
-<input id="thermalTopologyShowOpenings" type="checkbox" checked><input id="thermalTopologyShowAirCoupling" type="checkbox"><input id="thermalTopologyExpandExternalTargets" type="checkbox"><input id="thermalTopologyShowLabels" type="checkbox" checked>
+<input id="thermalTopologyShowOpenings" type="checkbox" checked><input id="thermalTopologyShowAirCoupling" type="checkbox"><input id="thermalTopologyExpandExternalTargets" type="checkbox">
 <pre id="result">pending</pre>
 <script type="module">
 const assert = (condition, message) => { if (!condition) throw new Error(message); };
@@ -123,7 +122,7 @@ try {
     topology:{schema:"semantic-idf.thermal-topology/v1",sourceModelHash:"integrated-fixture",nodes,boundaries,openings,connections,airCouplings,zoneSignatures:[{zoneId:"zone:a",zoneName:"Zone A",interzoneArea:8,exteriorArea:20,totalUa:22.9716,hasTotalUa:true},{zoneId:"zone:b",zoneName:"Zone B",interzoneArea:8,totalUa:12.5716,hasTotalUa:true}],issueLinks:[{id:"issue:missing",code:"surface_counterpart_missing",severity:"error",message:"Missing reciprocal surface",entityId:"surface:bad",boundaryId:"boundary:bad",relatedEntityIds:["surface:bad"],sourceAnchors:anchor(6,"Broken Pair")}],adjacencyObservations:[{surfaceAId:"surface:adi-a",surfaceBId:"surface:adi-b",overlapRatio:1,declaredConnection:false,observationKind:"geometrically_adjacent_but_thermally_disconnected"}]}
   };
   const state = stateModule.state;
-  state.report={geometry,output:{existing:[]}}; state.geometryMode="thermal"; state.thermalTopologyGraphLevel="zone"; state.thermalTopologyScope="building"; state.thermalTopologyLayout="spatial"; state.thermalTopologyDisplay="graph"; state.thermalTopologyAreaBasis="effective"; state.thermalTopologyAreaComponent="gross"; state.thermalTopologyShowOpenings=true; state.thermalTopologyShowAirCoupling=false; state.thermalTopologyShowLabels=true;
+  state.report={geometry,output:{existing:[]}}; state.geometryMode="thermal"; state.thermalTopologyGraphLevel="zone"; state.thermalTopologyScope="building"; state.thermalTopologyLayout="spatial"; state.thermalTopologyAreaBasis="effective"; state.thermalTopologyAreaComponent="gross"; state.thermalTopologyShowOpenings=true; state.thermalTopologyShowAirCoupling=false;
   let backendCalls=0; const reveals=[]; const selections=[];
   const helpers={
     navigationAttributes:()=>'',
@@ -140,7 +139,7 @@ try {
   const openingBreakdown=exteriorInspector.includes('South Window')&&exteriorInspector.includes('Model gross / opening / net');
   const exactSource=[...document.querySelectorAll('[data-inspector-semantic],[data-inspector-source]')].length===2&&!document.querySelector('[data-inspector-source]').disabled&&boundaries[0].sourceAnchors.some((item)=>item.fieldName==='Outside Boundary Condition');
   state.thermalTopologySelectedEntityKind="thermal_connection";state.thermalTopologySelectedEntityId="connection:ext";state.selectedGeometryKind="thermal_connection";state.selectedGeometryId="connection:ext";state.thermalTopologyMetric="ua";renderer.renderThermalTopology(geometry,helpers);
-  const exteriorUA=(document.querySelector('[data-thermal-target-id="connection:ext"] .thermal-edge-label')?.textContent||'').includes('10.4 W/K');
+  const exteriorUA=exteriorInspector.includes('10.4');
   document.querySelector('[data-thermal-target-id="connection:ext"]').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));
   document.querySelector('[data-topology-back]').click();
   const exteriorBack=state.thermalTopologyGraphLevel==='zone'&&state.thermalTopologySelectedEntityId==='connection:ext';
@@ -150,19 +149,14 @@ try {
   const pairResolved=targets.resolveThermalTopologyTarget({targetKind:"thermal_connection",targetId:"connection:pair"},geometry);
   document.querySelector('[data-inspector-mode="3d"]').click();
   const pair3D=reveals.at(-1)?.surfaces.length===2&&pairResolved.surfaceIds.length===2;
-  const graphPairArea=Number.parseFloat(document.querySelector('[data-thermal-target-id="connection:pair"] .thermal-edge-label')?.textContent||'NaN');
   document.querySelector('[data-thermal-target-id="connection:pair"]').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));
   const pairExpanded=document.querySelectorAll('.thermal-node.thermal_boundary').length===2;
   state.thermalTopologySelectedEntityKind="thermal_boundary";state.thermalTopologySelectedEntityId="boundary:pair-a";renderer.renderThermalTopology(geometry,helpers);
   const pairInspector=document.getElementById('thermalTopologyInspector').textContent;
   const reciprocalValidated=pairInspector.includes('surface:pair-b')&&pairInspector.includes('reverse layer equivalent')&&pairInspector.includes('valid');
-  state.thermalTopologyGraphLevel="zone";state.thermalTopologyScope="building";state.thermalTopologyDisplay="matrix";state.thermalTopologyMetric="area";renderer.renderThermalTopology(geometry,helpers);
-  const matrixPairArea=Number.parseFloat(document.querySelector('[data-thermal-target-id="connection:pair"]')?.textContent||'NaN');
-  state.thermalTopologyMetric="ua";renderer.renderThermalTopology(geometry,helpers);
-  const matrixPairUA=Number.parseFloat(document.querySelector('[data-thermal-target-id="connection:pair"]')?.textContent||'NaN');
-  const topo281=pair3D&&pairExpanded&&reciprocalValidated&&graphPairArea===matrixPairArea&&matrixPairUA===12.57&&connections[1].sourceAnchors.filter((item)=>item.fieldName==='Outside Boundary Condition').length===2;
+  const topo281=pair3D&&pairExpanded&&reciprocalValidated&&connections[1].sourceAnchors.filter((item)=>item.fieldName==='Outside Boundary Condition').length===2;
 
-  state.thermalTopologyDisplay="graph";state.thermalTopologyGraphLevel="zone";state.thermalTopologyScope="building";state.thermalTopologyMetric="qa";state.thermalTopologySelectedEntityKind="";state.thermalTopologySelectedEntityId="";renderer.renderThermalTopology(geometry,helpers);
+  state.thermalTopologyGraphLevel="zone";state.thermalTopologyScope="building";state.thermalTopologyMetric="qa";state.thermalTopologySelectedEntityKind="";state.thermalTopologySelectedEntityId="";renderer.renderThermalTopology(geometry,helpers);
   const observationEdge=document.querySelector('.thermal-edge.qa-observation')?.closest('.thermal-edge-group');
   observationEdge?.dispatchEvent(new MouseEvent('click',{bubbles:true}));
   const observationInspector=document.getElementById('thermalTopologyInspector').textContent;
@@ -185,16 +179,18 @@ try {
   state.simulationResult={purposeRunPlan:{estimatedWeight:'Heavy',outputObjects:[{objectType:'Output:Variable',keyValue:'South Wall',variableName:'Surface Average Face Conduction Heat Transfer Energy',signature:'surface-heat'}]},purposeResults:{thermalTopology:{schema:'semantic-idf.thermal-topology-simulation/v1',available:true,state:'simulation_overlay',signConvention:'Positive enters owner; negative leaves owner',periods:[{id:'monthly',label:'Monthly',kind:'monthly',labels:['January','February'],frameCount:2,boundaryFlows:[{boundaryId:'boundary:ext',relatedBoundaryIds:['boundary:ext'],connectionId:'connection:ext',ownerNodeId:'zone:a',targetNodeId:'thermal-environment:outdoors',value:0.5,values:[1,-0.5],unit:'kWh',sourceIds:['source:wall']}],connectionFlows:[{connectionId:'connection:ext',fromNodeId:'zone:a',toNodeId:'thermal-environment:outdoors',ownerNodeId:'zone:a',value:0.5,values:[1,-0.5],unit:'kWh',sourceIds:['source:wall']}]}],sources:[{id:'source:wall',name:'Surface Average Face Conduction Heat Transfer Energy',keyValue:'South Wall',sourceUnit:'J',normalizedUnit:'kWh',aggregationMethod:'sum_reported_energy'}]}}};
   state.thermalTopologySelectedEntityKind="thermal_connection";state.thermalTopologySelectedEntityId="connection:ext";state.thermalTopologyMetric="simulated_heat";state.thermalTopologySimulationPeriod="monthly";state.thermalTopologySimulationFrame=1;renderer.renderThermalTopology(geometry,helpers);
   const simulatedText=document.getElementById('thermalTopologyInspector').textContent;let ledgerJump=false;window.addEventListener('idfAnalyzer:openSimulationPurposePlan',()=>{ledgerJump=true;});document.querySelector('[data-inspector-output-source]')?.click();
-  const simulatedEdgeLabel=document.querySelector('[data-thermal-target-id="connection:ext"] .thermal-edge-label')?.textContent||'';
-  state.thermalTopologyMetric="ua";renderer.renderThermalTopology(geometry,helpers);const staticUALabel=document.querySelector('[data-thermal-target-id="connection:ext"] .thermal-edge-label')?.textContent||'';
-  const topo284=document.getElementById('thermalTopologySimulationPeriod').value==='monthly'&&simulatedEdgeLabel.includes('-0.5 kWh')&&simulatedText.includes('sum_reported_energy')&&simulatedText.includes('Positive enters owner')&&ledgerJump&&staticUALabel.includes('W/K')&&!staticUALabel.includes('kWh')&&state.simulationResult.purposeRunPlan.estimatedWeight==='Heavy';
+  const simulatedEdge=document.querySelector('[data-thermal-target-id="connection:ext"] .thermal-edge.metric-simulated-heat');
+  const simulatedTooltip=document.querySelector('[data-thermal-target-id="connection:ext"] title')?.textContent||'';
+  state.thermalTopologyMetric="ua";renderer.renderThermalTopology(geometry,helpers);
+  const staticUATooltip=document.querySelector('[data-thermal-target-id="connection:ext"] title')?.textContent||'';
+  const topo284=document.getElementById('thermalTopologySimulationPeriod').value==='monthly'&&Boolean(simulatedEdge)&&(simulatedEdge.classList.contains('metric-loss')||simulatedEdge.classList.contains('metric-gain'))&&simulatedTooltip.includes('kWh')&&simulatedText.includes('sum_reported_energy')&&simulatedText.includes('Positive enters owner')&&ledgerJump&&staticUATooltip.includes('W/K')&&!staticUATooltip.includes('kWh')&&!document.querySelector('.thermal-edge-label')&&state.simulationResult.purposeRunPlan.estimatedWeight==='Heavy';
 
-  state.thermalTopologyMetric="area";state.thermalTopologyDisplay="graph";state.thermalTopologySelectedEntityKind="thermal_connection";state.thermalTopologySelectedEntityId="connection:pair";state.thermalTopologyPanX=17;state.thermalTopologyPanY=-9;state.thermalTopologyScale=1.4;
+  state.thermalTopologyMetric="area";state.thermalTopologySelectedEntityKind="thermal_connection";state.thermalTopologySelectedEntityId="connection:pair";state.thermalTopologyPanX=17;state.thermalTopologyPanY=-9;state.thermalTopologyScale=1.4;
   const roundTrip=stateModule.captureThermalTopologyState(state);state.thermalTopologyMetric="qa";state.thermalTopologySelectedEntityId="";state.thermalTopologyPanX=0;stateModule.restoreThermalTopologyState(roundTrip,state);
   const baselineArea=8,compareArea=12,delta=compareArea-baselineArea,percent=delta/baselineArea*100;
   const topo285=state.thermalTopologyMetric==='area'&&state.thermalTopologySelectedEntityId==='connection:pair'&&state.thermalTopologyPanX===17&&state.thermalTopologyScale===1.4&&delta===4&&percent===50&&backendCalls===0;
 
-  assert(topo280&&topo281&&topo282&&topo283&&topo284&&topo285,'one or more integrated acceptance flows failed');
+  assert(topo280&&topo281&&topo282&&topo283&&topo284&&topo285,JSON.stringify({topo280,topo281,topo282,topo283,topo284,topo285}));
   document.getElementById('result').textContent=JSON.stringify({topo280,topo281,topo282,topo283,topo284,topo285,backendCalls});
   document.body.dataset.topologyIntegratedStatus='passed';
 } catch(error) {

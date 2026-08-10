@@ -35,7 +35,6 @@ export function thermalTopologyLayoutCacheKey(geometry, options = {}, viewport =
     Boolean(options.showOpenings),
     Boolean(options.showAirCoupling),
     Boolean(options.expandExternalTargets),
-    Boolean(options.showLabels),
     Math.round((Number(viewport.width) || 900) / 50) * 50,
     Math.round((Number(viewport.height) || 600) / 50) * 50,
   ].join("|");

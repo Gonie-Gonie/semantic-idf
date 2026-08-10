@@ -89,11 +89,8 @@ func TestThermalTopologyStateNormalizesAndInvalidatesDocumentContext(t *testing.
 		"thermalTopologyShowOpenings: true",
 		"thermalTopologyShowAirCoupling: false",
 		"thermalTopologyExpandExternalTargets: false",
-		"thermalTopologyShowLabels: true",
 		`thermalTopologySelectedEntityId: ""`,
 		`thermalTopologySelectedEntityKind: ""`,
-		`thermalTopologyDisplay: "graph"`,
-		`thermalTopologyMatrixQuery: ""`,
 		"thermalTopologyNeighborDepth: 1",
 		"thermalTopologyPanX: 0",
 		"thermalTopologyPanY: 0",
@@ -134,11 +131,8 @@ func TestThermalTopologyHistoryCapturesContextWithoutGraphOrLayoutCache(t *testi
 		"thermalTopologyShowOpenings",
 		"thermalTopologyShowAirCoupling",
 		"thermalTopologyExpandExternalTargets",
-		"thermalTopologyShowLabels",
 		"thermalTopologySelectedEntityId",
 		"thermalTopologySelectedEntityKind",
-		"thermalTopologyDisplay",
-		"thermalTopologyMatrixQuery",
 		"thermalTopologyNeighborDepth",
 		"thermalTopologyPanX",
 		"thermalTopologyPanY",
@@ -179,20 +173,17 @@ func TestThermalTopologyHistoryCapturesContextWithoutGraphOrLayoutCache(t *testi
 	}
 }
 
-func TestThermalTopologySharesSelectionHoverAndMatrixNavigation(t *testing.T) {
+func TestThermalTopologySharesSelectionAndHoverNavigation(t *testing.T) {
 	view := readTestFile(t, "frontend/src/js/views/thermal-topology-view.js")
 	for _, required := range []string{
 		`currentHelpers?.selectGeometry?.(kind, id`,
 		`originView: "geometry"`,
 		`recordHistory: false`,
 		`follow: false`,
-		`renderThermalTopologyMatrix`,
-		`class="thermal-matrix-table"`,
-		`data-thermal-target-kind="thermal_connection"`,
-		`thermalTopologyMatrixQuery`,
+		`data-thermal-target-kind="${targetKind}"`,
 	} {
 		if !strings.Contains(view, required) {
-			t.Fatalf("thermal selection/hover/matrix contract is missing %q", required)
+			t.Fatalf("thermal selection/hover contract is missing %q", required)
 		}
 	}
 	geometry := readTestFile(t, "frontend/src/js/views/geometry-view.js")
@@ -209,9 +200,9 @@ func TestThermalTopologySharesSelectionHoverAndMatrixNavigation(t *testing.T) {
 		}
 	}
 	styles := readTestFile(t, "frontend/src/styles/geometry.css")
-	for _, required := range []string{`position: sticky`, `.thermal-matrix-table`, `.semantic-hovered`} {
+	for _, required := range []string{`.semantic-hovered`, `.thermal-edge-group`} {
 		if !strings.Contains(styles, required) {
-			t.Fatalf("thermal matrix/hover styling is missing %q", required)
+			t.Fatalf("thermal graph/hover styling is missing %q", required)
 		}
 	}
 }

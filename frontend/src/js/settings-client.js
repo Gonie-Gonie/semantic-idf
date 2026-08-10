@@ -61,7 +61,6 @@ export const defaultAppSettings = {
       geometryPlan: "2",
       geometryThermal: "3",
       geometryFit: "F",
-      topologyDisplay: "G",
       topologyConnectivity: "T",
       topologyArea: "A",
       topologyUA: "U",

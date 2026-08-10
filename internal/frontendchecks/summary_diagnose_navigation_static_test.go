@@ -7,6 +7,10 @@ import (
 
 func TestSummaryMetricsUseSemanticGroupsAndSeparateContributingSources(t *testing.T) {
 	content := readTestFile(t, "frontend/src/js/views/analysis-views.js")
+	index := readTestFile(t, "frontend/src/index.html")
+	if strings.Contains(index, "summaryFilter") || strings.Contains(content, "summaryFilter") || strings.Contains(content, "metricMatchesQuery") {
+		t.Fatal("Summary must render all metrics without a metric filter control or filtering path")
+	}
 	for _, required := range []string{
 		"bindSummaryTableLayout()",
 		"new ResizeObserver",
@@ -33,6 +37,7 @@ func TestSummaryMetricsUseSemanticGroupsAndSeparateContributingSources(t *testin
 		"panelTargetId: metric.id",
 		"data-summary-metric-id",
 		"renderSummarySourceChooser(contributingSources, metric)",
+		`title="${escapeHTML(String(metric.displayValue ?? "N/A"))}"`,
 	} {
 		if !strings.Contains(renderer, required) {
 			t.Fatalf("summary metric navigation renderer is missing %q", required)

@@ -12,7 +12,7 @@ func TestThermalTopologyShortcutsAreConfigurableAndContextGuarded(t *testing.T) 
 	main := readTestFile(t, "frontend/src/js/main.js")
 	for _, required := range []string{
 		`geometry3D: "1"`, `geometryPlan: "2"`, `geometryThermal: "3"`, `geometryFit: "F"`,
-		`topologyDisplay: "G"`, `topologyConnectivity: "T"`, `topologyArea: "A"`,
+		`topologyConnectivity: "T"`, `topologyArea: "A"`,
 		`topologyUA: "U"`, `topologyQA: "Q"`, `topologyNeighbors: "N"`,
 		"validateShortcutConflicts", "allowsBareKey", `state.activeResultTab !== "geometry"`, `state.geometryMode !== "thermal"`,
 	} {

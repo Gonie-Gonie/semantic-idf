@@ -92,23 +92,22 @@ func TestTOPO262NavigationAcceptance(t *testing.T) {
 	}
 }
 
-func TestTOPO263MatrixAcceptance(t *testing.T) {
+func TestTOPO263NetworkAcceptance(t *testing.T) {
 	view := readTestFile(t, "frontend/src/js/views/thermal-topology-view.js")
 	for _, required := range []string{
-		"matrixCellValue",
 		"connectionAreaValue",
 		"connectionUAValue",
-		"allRowNodes.slice(firstRowIndex, lastRowIndex)",
-		`data-thermal-target-kind="thermal_connection"`,
+		"thermal-edge-group navigable-row",
+		"connectionAriaLabel",
 	} {
 		if !strings.Contains(view, required) {
-			t.Fatalf("matrix acceptance missing %q", required)
+			t.Fatalf("Network acceptance missing %q", required)
 		}
 	}
 	batch := readTestFile(t, "frontend/src/js/batch.js")
 	for _, required := range []string{`state.metricGroup === "topology"`, "summaryDeltaRow", "deltaValue", "percentValue", "ExportBatchTopologyCSV"} {
 		if !strings.Contains(batch, required) {
-			t.Fatalf("matrix/batch delta-export acceptance missing %q", required)
+			t.Fatalf("topology batch delta-export acceptance missing %q", required)
 		}
 	}
 }

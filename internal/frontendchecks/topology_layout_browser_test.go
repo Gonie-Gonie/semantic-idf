@@ -93,7 +93,7 @@ func TestThermalTopologyRendererBrowserHarness(t *testing.T) {
 	if !strings.Contains(document, `data-thermal-renderer-status="passed"`) {
 		t.Fatalf("thermal topology renderer harness did not pass:\n%s", document)
 	}
-	for _, signal := range []string{`"svg":true`, `"metricWidth":true`, `"inspector":true`, `"accessibleTargets":true`, `"deterministicTabOrder":true`, `"keyboardNode":true`, `"inspectorHeading":true`, `"patternLegend":true`, `"boundaryExpanded":true`, `"backRestored":true`, `"simulationDisabled":true`, `"outputPlanCTA":true`, `"matrix":true`, `"graphMatrixAreaEqual":true`, `"graphMatrixUAEqual":true`, `"matrixRowSelected":true`, `"matrixColumnSelected":true`, `"matrixSelected":true`, `"matrixVirtualized":true`, `"matrixWindowMoved":true`, `"simulationGain":true`, `"simulationArrow":true`, `"simulationPeriod":true`, `"separateSimulationLegend":true`, `"simulationLedger":true`, `"ledgerJump":true`} {
+	for _, signal := range []string{`"svg":true`, `"metricWidth":true`, `"inspector":true`, `"accessibleTargets":true`, `"deterministicTabOrder":true`, `"keyboardNode":true`, `"inspectorHeading":true`, `"patternLegend":true`, `"boundaryExpanded":true`, `"backRestored":true`, `"simulationDisabled":true`, `"outputPlanCTA":true`, `"simulationGain":true`, `"simulationArrow":true`, `"simulationPeriod":true`, `"separateSimulationLegend":true`, `"simulationLedger":true`, `"ledgerJump":true`} {
 		if !strings.Contains(document, signal) {
 			t.Fatalf("thermal topology renderer result is missing %s:\n%s", signal, document)
 		}
@@ -162,8 +162,7 @@ try {
 const thermalTopologyRendererHarnessHTML = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Thermal topology renderer harness</title></head>
 <body data-thermal-renderer-status="pending">
-<div id="thermalTopologyGraph" style="width:900px;height:600px"></div><div id="thermalTopologyMatrix" style="height:300px;overflow:auto"></div><aside id="thermalTopologyInspector"></aside>
-<button data-thermal-topology-display="graph"></button><button data-thermal-topology-display="matrix"></button><input id="thermalTopologyMatrixQuery">
+<div id="thermalTopologyGraph" style="width:900px;height:600px"></div><aside id="thermalTopologyInspector"></aside>
 <select id="thermalTopologyGraphLevel"><option value="zone">zone</option><option value="boundary">boundary</option></select>
 <select id="thermalTopologyMetric"><option value="topology">topology</option><option value="area">area</option><option value="ua">ua</option><option value="qa">qa</option><option value="air">air</option><option value="simulated_heat">simulated heat</option></select>
 <label id="thermalTopologyAreaComponentControl"><select id="thermalTopologyAreaComponent"><option value="gross">gross</option><option value="opaque">opaque</option><option value="openings">openings</option></select></label>
@@ -171,7 +170,7 @@ const thermalTopologyRendererHarnessHTML = `<!doctype html>
 <div id="thermalTopologySimulationControls" hidden><select id="thermalTopologySimulationPeriod"><option value="annual">annual</option><option value="hourly">hourly</option><option value="selected_range">selected range</option></select><label id="thermalTopologySimulationFrameControl"><span id="thermalTopologySimulationFrameLabel"></span><input id="thermalTopologySimulationFrame" type="range"></label></div>
 <select id="thermalTopologyLayout"><option value="spatial">spatial</option><option value="network">network</option></select>
 <select id="thermalTopologyAreaBasis"><option value="effective">effective</option><option value="physical">physical</option></select>
-<input id="thermalTopologyShowOpenings" type="checkbox" checked><input id="thermalTopologyShowAirCoupling" type="checkbox"><input id="thermalTopologyExpandExternalTargets" type="checkbox"><input id="thermalTopologyShowLabels" type="checkbox" checked>
+<input id="thermalTopologyShowOpenings" type="checkbox" checked><input id="thermalTopologyShowAirCoupling" type="checkbox"><input id="thermalTopologyExpandExternalTargets" type="checkbox">
 <pre id="result">pending</pre>
 <script type="module">
 const assert = (condition, message) => { if (!condition) throw new Error(message); };
@@ -208,7 +207,6 @@ try {
   view.renderThermalTopology(geometry, helpers);
   const svg = Boolean(document.querySelector(".thermal-topology-svg"));
   const metricWidth = /--thermal-edge-width:(?!2\.00)/.test(document.querySelector(".thermal-edge").getAttribute("style"));
-  const graphAreaValue = Number.parseFloat(document.querySelector(".thermal-edge-label")?.textContent || "NaN");
   const inspector = document.getElementById("thermalTopologyInspector").textContent.includes("Model total");
   const targets = [...document.querySelectorAll(".thermal-edge-group[tabindex='0'], .thermal-node[tabindex='0']")];
   const accessibleTargets = targets.length === 3 && targets.every((target) => ["entity", "relation", "metric", "issues"].every((term) => target.getAttribute("aria-label").includes(term)));
@@ -224,40 +222,12 @@ try {
   const boundaryExpanded = state.thermalTopologyGraphLevel === "boundary" && Boolean(document.querySelector(".thermal-node.thermal_boundary"));
   document.querySelector("[data-topology-back]").click();
   const backRestored = state.thermalTopologyGraphLevel === "zone";
-  state.thermalTopologyDisplay = "matrix"; view.renderThermalTopology(geometry, helpers);
-  const matrix = Boolean(document.querySelector(".thermal-matrix-table"));
-  const matrixAreaValue = Number.parseFloat(document.querySelector(".thermal-matrix-cell:not(.empty-cell)")?.textContent || "NaN");
-  const graphMatrixAreaEqual = graphAreaValue === matrixAreaValue;
-  document.querySelector(".thermal-matrix-header.row[data-thermal-target-id='zone:a']")?.click();
-  const matrixRowSelected = state.thermalTopologySelectedEntityId === "zone:a";
-  document.querySelector(".thermal-matrix-header.column[data-thermal-target-id='thermal-environment:outdoors']")?.click();
-  const matrixColumnSelected = state.thermalTopologySelectedEntityId === "thermal-environment:outdoors";
-  document.querySelector(".thermal-matrix-cell:not(.empty-cell)").click();
-  const matrixSelected = state.thermalTopologySelectedEntityId === "thermal-connection:a:outdoors";
   state.thermalTopologyMetric = "ua"; view.renderThermalTopology(geometry, helpers);
-  const matrixUAValue = Number.parseFloat(document.querySelector(".thermal-matrix-cell:not(.empty-cell)")?.textContent || "NaN");
-  state.thermalTopologyDisplay = "graph"; view.renderThermalTopology(geometry, helpers);
-  const graphUAValue = Number.parseFloat(document.querySelector(".thermal-edge-label")?.textContent || "NaN");
-  const graphMatrixUAEqual = graphUAValue === matrixUAValue;
-
-  const originalNodes = [...geometry.topology.nodes];
-  for (let index = 0; index < 240; index += 1) geometry.topology.nodes.push({id:"zone:virtual:" + String(index).padStart(3,"0"),entityId:"zone:virtual:" + index,kind:"zone",label:"Virtual " + String(index).padStart(3,"0"),storyIndex:0});
-  state.thermalTopologyDisplay = "matrix"; state.thermalTopologyMetric = "area"; view.renderThermalTopology(geometry, helpers);
-  const renderedMatrixRows = document.querySelectorAll(".thermal-matrix-table tbody tr:not(.thermal-matrix-spacer)").length;
-  const matrixVirtualized = renderedMatrixRows > 0 && renderedMatrixRows < 241 && Boolean(document.querySelector(".thermal-matrix-spacer"));
-  const rowWindowBefore = document.querySelector(".thermal-matrix-row-window")?.textContent || "";
-  document.getElementById("thermalTopologyMatrix").scrollTop = 34 * 160;
-  document.getElementById("thermalTopologyMatrix").dispatchEvent(new Event("scroll"));
-  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-  const rowWindowAfter = document.querySelector(".thermal-matrix-row-window")?.textContent || "";
-  const matrixWindowMoved = rowWindowAfter !== rowWindowBefore && /of 241/.test(rowWindowAfter);
-  geometry.topology.nodes.splice(0, geometry.topology.nodes.length, ...originalNodes);
-  document.getElementById("thermalTopologyMatrix").scrollTop = 0;
 
   state.simulationResult = simulatedResult; state.thermalTopologySelectedEntityId = "thermal-connection:a:outdoors"; state.selectedGeometryKind = "thermal_connection"; state.selectedGeometryId = "thermal-connection:a:outdoors";
-  state.thermalTopologyDisplay = "graph"; state.thermalTopologyMetric = "simulated_heat"; state.thermalTopologySimulationPeriod = "annual"; view.renderThermalTopology(geometry, helpers);
+  state.thermalTopologyMetric = "simulated_heat"; state.thermalTopologySimulationPeriod = "annual"; view.renderThermalTopology(geometry, helpers);
   const simulationEdge = document.querySelector(".thermal-edge.metric-simulated-heat");
-  const simulationGain = simulationEdge?.classList.contains("metric-gain") && /1\.5 kWh/.test(document.querySelector(".thermal-edge-label")?.textContent || "");
+  const simulationGain = simulationEdge?.classList.contains("metric-gain") === true;
   const simulationArrow = simulationEdge?.getAttribute("marker-start")?.includes("thermalTopologyHeatArrow") === true;
   const simulationPeriod = !document.getElementById("thermalTopologySimulationControls").hidden && !document.getElementById("thermalTopologySimulationPeriod").disabled && document.getElementById("thermalTopologySimulationPeriod").value === "annual";
   const simulationLegendText = document.querySelector(".thermal-topology-legend")?.textContent || "";
@@ -266,8 +236,8 @@ try {
   let ledgerJump = false;
   window.addEventListener("idfAnalyzer:openSimulationPurposePlan", () => { ledgerJump = true; });
   document.querySelector("[data-inspector-output-source]")?.click();
-  assert(svg && metricWidth && inspector && accessibleTargets && deterministicTabOrder && keyboardNode && inspectorHeading && patternLegend && boundaryExpanded && backRestored && simulationDisabled && outputPlanCTA && matrix && graphMatrixAreaEqual && graphMatrixUAEqual && matrixRowSelected && matrixColumnSelected && matrixSelected && matrixVirtualized && matrixWindowMoved && simulationGain && simulationArrow && simulationPeriod && separateSimulationLegend && simulationLedger && ledgerJump, "renderer contract failed");
-  document.getElementById("result").textContent = JSON.stringify({svg,metricWidth,inspector,accessibleTargets,deterministicTabOrder,keyboardNode,inspectorHeading,patternLegend,boundaryExpanded,backRestored,simulationDisabled,outputPlanCTA,matrix,graphMatrixAreaEqual,graphMatrixUAEqual,matrixRowSelected,matrixColumnSelected,matrixSelected,matrixVirtualized,matrixWindowMoved,simulationGain,simulationArrow,simulationPeriod,separateSimulationLegend,simulationLedger,ledgerJump});
+  assert(svg && metricWidth && inspector && accessibleTargets && deterministicTabOrder && keyboardNode && inspectorHeading && patternLegend && boundaryExpanded && backRestored && simulationDisabled && outputPlanCTA && simulationGain && simulationArrow && simulationPeriod && separateSimulationLegend && simulationLedger && ledgerJump, "renderer contract failed");
+  document.getElementById("result").textContent = JSON.stringify({svg,metricWidth,inspector,accessibleTargets,deterministicTabOrder,keyboardNode,inspectorHeading,patternLegend,boundaryExpanded,backRestored,simulationDisabled,outputPlanCTA,simulationGain,simulationArrow,simulationPeriod,separateSimulationLegend,simulationLedger,ledgerJump});
   document.body.dataset.thermalRendererStatus = "passed";
 } catch (error) {
   document.getElementById("result").textContent = error.stack || String(error);

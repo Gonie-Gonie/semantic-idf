@@ -3,7 +3,6 @@ import {
   escapeHTML,
   normalizeThermalTopologyAreaComponent,
   normalizeThermalTopologyAreaBasis,
-  normalizeThermalTopologyDisplay,
   normalizeThermalTopologyGraphLevel,
   normalizeThermalTopologyLayout,
   normalizeThermalTopologyMetric,
@@ -31,12 +30,8 @@ let resizeFrame = 0;
 let observedWidth = 0;
 let observedHeight = 0;
 let compactSelection = null;
-let matrixScrollFrame = 0;
 
 const THERMAL_LAYOUT_CACHE_LIMIT = 24;
-const THERMAL_MATRIX_COLUMN_LIMIT = 120;
-const THERMAL_MATRIX_ROW_HEIGHT = 34;
-const THERMAL_MATRIX_ROW_OVERSCAN = 6;
 
 window.addEventListener("idfAnalyzer:thermalTopologyFit", () => fitThermalTopology());
 window.addEventListener("idfAnalyzer:thermalTopologyExport", () => exportThermalTopologyJSON());
@@ -76,21 +71,12 @@ export function renderThermalTopology(geometry, helpers = {}) {
   const viewport = graphViewport();
   const options = thermalTopologyOptions();
   currentModel = createThermalTopologyLayoutModel(geometry, options);
-  if (state.thermalTopologyDisplay === "matrix") {
-    currentLayout = null;
-    elements.thermalTopologyGraph.hidden = true;
-    elements.thermalTopologyMatrix.hidden = false;
-    renderThermalTopologyMatrix(currentModel);
-  } else {
-    const cacheKey = thermalTopologyLayoutCacheKey(geometry, options, viewport);
-    currentLayout = state.thermalTopologyLayoutCache.get(cacheKey) || computeThermalTopologyLayout(currentModel, viewport);
-    if (!state.thermalTopologyLayoutCache.has(cacheKey)) {
-      rememberThermalTopologyLayout(cacheKey, currentLayout);
-    }
-    elements.thermalTopologyGraph.hidden = false;
-    elements.thermalTopologyMatrix.hidden = true;
-    renderThermalTopologySVG(currentModel, currentLayout);
+  const cacheKey = thermalTopologyLayoutCacheKey(geometry, options, viewport);
+  currentLayout = state.thermalTopologyLayoutCache.get(cacheKey) || computeThermalTopologyLayout(currentModel, viewport);
+  if (!state.thermalTopologyLayoutCache.has(cacheKey)) {
+    rememberThermalTopologyLayout(cacheKey, currentLayout);
   }
+  renderThermalTopologySVG(currentModel, currentLayout);
   renderThermalTopologyInspector(geometry, helpers);
 }
 
@@ -164,7 +150,6 @@ function renderEdge(edge, model, selectedID, metricContext) {
     <title>${escapeHTML(tooltip)}</title>
     <path class="${classes}" style="--thermal-edge-width:${presentation.width}" d="${edge.route.path}" ${markerStart} ${markerEnd}></path>
     <path class="thermal-edge-hit" d="${edge.route.path}" aria-hidden="true"></path>
-    ${state.thermalTopologyShowLabels ? `<text class="thermal-edge-label${selected ? " selected" : ""}" x="${edge.route.labelX}" y="${edge.route.labelY}">${escapeHTML(label)}</text>` : ""}
   </g>`;
 }
 
@@ -258,101 +243,12 @@ function bindGraphInteractions() {
   elements.thermalTopologyGraph.querySelector("[data-topology-back]")?.addEventListener("click", collapseBoundaryGraph);
 }
 
-function renderThermalTopologyMatrix(model) {
-  const query = String(state.thermalTopologyMatrixQuery || "").trim().toLowerCase();
-  const matchingNodes = [...model.nodes]
-    .filter((node) => !query || `${node.label || ""} ${node.id || ""} ${node.kind || ""}`.toLowerCase().includes(query))
-    .sort((left, right) => String(left.label || left.id).localeCompare(String(right.label || right.id)));
-  const nodes = matchingNodes.slice(0, THERMAL_MATRIX_COLUMN_LIMIT);
-  const allRowNodes = matchingNodes.filter((node) => node.kind === "zone" || node.kind === "space");
-  const viewportHeight = Math.max(240, elements.thermalTopologyMatrix.clientHeight || 600);
-  const visibleRowCount = Math.ceil(viewportHeight / THERMAL_MATRIX_ROW_HEIGHT) + THERMAL_MATRIX_ROW_OVERSCAN * 2;
-  const firstRowIndex = Math.max(0, Math.floor(elements.thermalTopologyMatrix.scrollTop / THERMAL_MATRIX_ROW_HEIGHT) - THERMAL_MATRIX_ROW_OVERSCAN);
-  const lastRowIndex = Math.min(allRowNodes.length, firstRowIndex + visibleRowCount);
-  const rowNodes = allRowNodes.slice(firstRowIndex, lastRowIndex);
-  const topSpacerHeight = firstRowIndex * THERMAL_MATRIX_ROW_HEIGHT;
-  const bottomSpacerHeight = Math.max(0, (allRowNodes.length - lastRowIndex) * THERMAL_MATRIX_ROW_HEIGHT);
-  const connectionByPair = new Map();
-  const metricContext = createMetricContext(model);
-  for (const connection of model.connections) {
-    connectionByPair.set(`${connection.fromNodeId}|${connection.toNodeId}`, connection);
-    connectionByPair.set(`${connection.toNodeId}|${connection.fromNodeId}`, connection);
-  }
-  if (!allRowNodes.length || !nodes.length) {
-    elements.thermalTopologyMatrix.innerHTML = `<div class="empty">${escapeHTML(t("topology.noConnections"))}</div>`;
-    return;
-  }
-  const limitNote = matchingNodes.length > nodes.length ? `<div class="thermal-matrix-limit">Showing ${THERMAL_MATRIX_COLUMN_LIMIT} of ${matchingNodes.length} columns; filter to narrow</div>` : "";
-  const rowWindowNote = allRowNodes.length > rowNodes.length
-    ? `<div class="thermal-matrix-row-window" aria-live="polite">Rows ${firstRowIndex + 1}-${lastRowIndex} of ${allRowNodes.length}</div>`
-    : "";
-  const spacerRow = (height) => height > 0
-    ? `<tr class="thermal-matrix-spacer" aria-hidden="true"><td colspan="${nodes.length + 1}" style="height:${height}px"></td></tr>`
-    : "";
-  elements.thermalTopologyMatrix.innerHTML = `${limitNote}${rowWindowNote}<table class="thermal-matrix-table" aria-rowcount="${allRowNodes.length + 1}">
-    <thead><tr><th class="thermal-matrix-corner">${escapeHTML(t("topology.matrixTab", {}, "Matrix"))}</th>${nodes.map((node) => matrixHeader(node, "column")).join("")}</tr></thead>
-    <tbody>${spacerRow(topSpacerHeight)}${rowNodes.map((row, rowOffset) => `<tr aria-rowindex="${firstRowIndex + rowOffset + 2}">${matrixHeader(row, "row")}${nodes.map((column) => matrixCell(row, column, connectionByPair.get(`${row.id}|${column.id}`), model, metricContext)).join("")}</tr>`).join("")}${spacerRow(bottomSpacerHeight)}</tbody>
-  </table>`;
-  elements.thermalTopologyMatrix.querySelectorAll("[data-thermal-target-id]").forEach((element) => {
-    element.addEventListener("click", () => activateGraphTarget(element.dataset.thermalTargetKind, element.dataset.thermalTargetId));
-    element.addEventListener("keydown", (event) => {
-      if (event.key !== "Enter" && event.key !== " ") return;
-      event.preventDefault();
-      activateGraphTarget(element.dataset.thermalTargetKind, element.dataset.thermalTargetId);
-    });
-    bindThermalHover(element);
-  });
-  bindThermalMatrixVirtualScroll();
-}
-
-function bindThermalMatrixVirtualScroll() {
-  if (elements.thermalTopologyMatrix.dataset.virtualScrollBound === "true") return;
-  elements.thermalTopologyMatrix.dataset.virtualScrollBound = "true";
-  elements.thermalTopologyMatrix.addEventListener("scroll", () => {
-    window.cancelAnimationFrame(matrixScrollFrame);
-    matrixScrollFrame = window.requestAnimationFrame(() => {
-      if (currentModel && state.thermalTopologyDisplay === "matrix") renderThermalTopologyMatrix(currentModel);
-    });
-  }, { passive: true });
-}
-
 function rememberThermalTopologyLayout(cacheKey, layout) {
   const cache = state.thermalTopologyLayoutCache;
   cache.set(cacheKey, layout);
   while (cache.size > THERMAL_LAYOUT_CACHE_LIMIT) {
     cache.delete(cache.keys().next().value);
   }
-}
-
-function matrixHeader(node, axis) {
-  const external = node.kind !== "zone" && node.kind !== "space";
-  const kind = external ? "thermal_environment" : node.kind;
-  const id = node.sourceId || node.entityId || node.id;
-  const attributes = currentHelpers?.navigationAttributes?.(kind, id) || "";
-  return `<th scope="${axis === "row" ? "row" : "col"}" class="thermal-matrix-header ${axis}" data-thermal-target-kind="${escapeHTML(kind)}" data-thermal-target-id="${escapeHTML(id)}" ${attributes}>${escapeHTML(trimLabel(node.label || node.id, 18))}</th>`;
-}
-
-function matrixCell(row, column, connection, model, metricContext) {
-  if (!connection) return `<td class="thermal-matrix-cell empty-cell" aria-label="No connection">—</td>`;
-  const label = connectionLabel(connection, model, metricContext);
-  const attributes = currentHelpers?.navigationAttributes?.("thermal_connection", connection.id) || "";
-  return `<td class="thermal-matrix-cell navigable-row" data-thermal-target-kind="thermal_connection" data-thermal-target-id="${escapeHTML(connection.id)}" ${attributes} title="${escapeHTML(connectionTooltip(connection, model))}">${escapeHTML(matrixCellValue(connection, model, label))}</td>`;
-}
-
-function matrixCellValue(connection, model, fallback) {
-  if (model.metric === "topology") return String(connection.surfaceCount || (connection.boundaryIds || []).length || "•");
-  if (model.metric === "area") return formatNumber(connectionAreaValue(connection, model));
-  if (model.metric === "ua") {
-    const ua = connectionUAValue(connection, model);
-    return ua.available ? formatNumber(ua.value) : "N/A";
-  }
-  if (model.metric === "qa") return String((connection.diagnosticIds || []).length || (connection.observationKind ? "!" : "—"));
-  if (model.metric === "air") return airCouplingsForConnection(connection, model).length ? fallback : "—";
-  if (model.metric === "simulated_heat") {
-    const flow = thermalTopologyFlowForConnection(connection);
-    return flow ? signedThermalTopologyValue(thermalTopologySelectedFlowValue(flow)) : "N/A";
-  }
-  return fallback;
 }
 
 function bindThermalHover(element) {
@@ -374,14 +270,13 @@ function activateGraphTarget(kind, id) {
 }
 
 function markGraphTargetSelected(kind, id) {
-  elements.thermalTopologyGraph.querySelectorAll(".thermal-node.selected, .thermal-edge.selected, .thermal-edge-label.selected").forEach((element) => element.classList.remove("selected"));
+  elements.thermalTopologyGraph.querySelectorAll(".thermal-node.selected, .thermal-edge.selected").forEach((element) => element.classList.remove("selected"));
   elements.thermalTopologyGraph.querySelectorAll("[data-thermal-target-id]").forEach((element) => element.setAttribute("aria-selected", "false"));
   const target = [...elements.thermalTopologyGraph.querySelectorAll("[data-thermal-target-id]")]
     .find((element) => element.dataset.thermalTargetKind === kind && element.dataset.thermalTargetId === id);
   target?.classList.add("selected");
   target?.setAttribute("aria-selected", "true");
   target?.querySelector(".thermal-edge")?.classList.add("selected");
-  target?.querySelector(".thermal-edge-label")?.classList.add("selected");
 }
 
 function expandConnection(id) {
@@ -449,7 +344,6 @@ function thermalTopologyOptions() {
     showOpenings: state.thermalTopologyShowOpenings,
     showAirCoupling: state.thermalTopologyShowAirCoupling || state.thermalTopologyMetric === "air",
     expandExternalTargets: state.thermalTopologyExpandExternalTargets,
-    showLabels: state.thermalTopologyShowLabels,
   };
 }
 
@@ -471,10 +365,6 @@ function syncThermalTopologyControls() {
   elements.thermalTopologyShowOpenings.checked = Boolean(state.thermalTopologyShowOpenings);
   elements.thermalTopologyShowAirCoupling.checked = Boolean(state.thermalTopologyShowAirCoupling);
   elements.thermalTopologyExpandExternalTargets.checked = Boolean(state.thermalTopologyExpandExternalTargets);
-  elements.thermalTopologyShowLabels.checked = Boolean(state.thermalTopologyShowLabels);
-  elements.thermalTopologyDisplayButtons.forEach((button) => button.classList.toggle("active", button.dataset.thermalTopologyDisplay === normalizeThermalTopologyDisplay(state.thermalTopologyDisplay)));
-  elements.thermalTopologyMatrixQuery.value = state.thermalTopologyMatrixQuery || "";
-  elements.thermalTopologyMatrixQuery.hidden = state.thermalTopologyDisplay !== "matrix";
   const overlay = thermalTopologySimulationResult();
   const simulatedOption = [...elements.thermalTopologyMetric.options].find((option) => option.value === "simulated_heat");
   if (simulatedOption) {
@@ -524,7 +414,6 @@ function connectionLabel(connection, model, metricContext) {
     const flow = couplings.reduce((sum, coupling) => sum + (Number(coupling.designFlowRate) || 0), 0);
     parts.push(flow > 0 ? `${formatNumber(flow)} ${couplings[0]?.unit || "m³/s"}` : couplings[0]?.scheduleName || "Air coupling");
   } else {
-    parts.push(`${Number(connection.surfaceCount) || (connection.boundaryIds || []).length} surfaces`);
     parts.push(String(connection.relationKind || "connection").replaceAll("_", " "));
   }
   if (model.metric === "area" && openingRatio > 0) parts.push(`${Math.round(openingRatio * 100)}% open`);

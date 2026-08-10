@@ -12,9 +12,9 @@ func TestTopologyViewSwitchSupportsThermalAndNormalizesInvalidModes(t *testing.T
 		`data-geometry-mode="plan"`,
 		`data-geometry-mode="thermal"`,
 		`data-i18n-title="topology.thermalTooltip"`,
+		`>Network</button>`,
 		`id="thermalTopologyGraph"`,
 		`id="thermalTopologyView"`,
-		`id="thermalTopologyMatrix"`,
 		`id="thermalTopologyInspector"`,
 		`id="thermalTopologyGraphLevel"`,
 		`id="thermalTopologyMetric"`,
@@ -93,7 +93,6 @@ func TestTopologyToolbarSeparatesSpatialAndThermalControls(t *testing.T) {
 		`id="thermalTopologyShowOpenings"`,
 		`id="thermalTopologyShowAirCoupling"`,
 		`id="thermalTopologyExpandExternalTargets"`,
-		`id="thermalTopologyShowLabels"`,
 	} {
 		if !strings.Contains(index, required) {
 			t.Fatalf("topology toolbar is missing %q", required)
@@ -113,6 +112,15 @@ func TestTopologyToolbarSeparatesSpatialAndThermalControls(t *testing.T) {
 	styles := readTestFile(t, "frontend/src/styles/geometry.css")
 	if !strings.Contains(styles, `@media (max-width: 1280px)`) || !strings.Contains(styles, `.thermal-topology-advanced-menu`) {
 		t.Fatal("thermal toolbar must collapse its advanced controls at narrow widths")
+	}
+}
+
+func TestTopologyNetworkHasNoMatrixOrEdgeLabels(t *testing.T) {
+	content := readTestFile(t, "frontend/src/index.html") + readTestFile(t, "frontend/src/js/views/thermal-topology-view.js") + readTestFile(t, "frontend/src/styles/geometry.css")
+	for _, removed := range []string{"thermalTopologyMatrix", "thermal-matrix", "data-thermal-topology-display", "thermal-edge-label", `} surfaces` } {
+		if strings.Contains(content, removed) {
+			t.Fatalf("Network view still contains removed matrix or edge-label feature %q", removed)
+		}
 	}
 }
 

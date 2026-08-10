@@ -5,7 +5,6 @@ import {
   elements,
   normalizeThermalTopologyAreaComponent,
   normalizeThermalTopologyAreaBasis,
-  normalizeThermalTopologyDisplay,
   normalizeThermalTopologyGraphLevel,
   normalizeThermalTopologyLayout,
   normalizeThermalTopologyMetric,
@@ -239,7 +238,6 @@ elements.syncRawTextToggle.addEventListener("change", () => {
   state.syncTextRawPosition = elements.syncRawTextToggle.checked;
 });
 elements.inputFilter.addEventListener("input", () => setInputFilter(elements.inputFilter.value));
-elements.summaryFilter.addEventListener("input", () => renderSummary());
 elements.diagnosticFilter.addEventListener("input", () => renderDiagnostics());
 elements.resultTabButtons.forEach((button) => {
   button.addEventListener("click", () => {
@@ -287,24 +285,11 @@ elements.thermalTopologyShowAirCoupling.addEventListener("change", () => {
 elements.thermalTopologyExpandExternalTargets.addEventListener("change", () => {
   updateThermalTopologySetting("thermalTopologyExpandExternalTargets", elements.thermalTopologyExpandExternalTargets.checked);
 });
-elements.thermalTopologyShowLabels.addEventListener("change", () => {
-  updateThermalTopologySetting("thermalTopologyShowLabels", elements.thermalTopologyShowLabels.checked);
-});
 elements.thermalTopologyFit.addEventListener("click", () => {
   window.dispatchEvent(new CustomEvent("idfAnalyzer:thermalTopologyFit"));
 });
 elements.thermalTopologyExportJSON.addEventListener("click", () => {
   window.dispatchEvent(new CustomEvent("idfAnalyzer:thermalTopologyExport"));
-});
-elements.thermalTopologyDisplayButtons.forEach((button) => {
-  button.addEventListener("click", () => {
-    updateThermalTopologySetting("thermalTopologyDisplay", normalizeThermalTopologyDisplay(button.dataset.thermalTopologyDisplay));
-  });
-});
-elements.thermalTopologyMatrixQuery.addEventListener("input", () => {
-  state.thermalTopologyMatrixQuery = elements.thermalTopologyMatrixQuery.value;
-  elements.thermalTopologyMatrix.scrollTop = 0;
-  renderGeometry();
 });
 elements.geometrySelectionAid.addEventListener("click", () => setGeometrySelectionAid(!state.geometrySelectionAid));
 elements.geometrySyncLocate.addEventListener("change", () => {
@@ -342,11 +327,6 @@ function activateThermalTopologySettingShortcut(key, value) {
   if (state.activeResultTab !== "geometry" || state.geometryMode !== "thermal") return false;
   updateThermalTopologySetting(key, value);
   return true;
-}
-
-function toggleThermalTopologyDisplayShortcut() {
-  const display = state.thermalTopologyDisplay === "matrix" ? "graph" : "matrix";
-  return activateThermalTopologySettingShortcut("thermalTopologyDisplay", display);
 }
 
 elements.inputViewButtons.forEach((button) => {
@@ -828,7 +808,6 @@ initializeKeyboardShortcuts({
   switchResultTab,
   setGeometryMode: activateGeometryModeShortcut,
   fitGeometry: activateGeometryFitShortcut,
-  toggleTopologyDisplay: toggleThermalTopologyDisplayShortcut,
   setTopologyMetric: (metric) => activateThermalTopologySettingShortcut("thermalTopologyMetric", normalizeThermalTopologyMetric(metric)),
   setTopologyNeighbors: () => activateThermalTopologySettingShortcut("thermalTopologyScope", "neighbors"),
 });

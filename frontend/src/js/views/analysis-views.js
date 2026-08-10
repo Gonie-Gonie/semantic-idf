@@ -268,11 +268,10 @@ export function renderDeferredGeometry(geometry) {
 
 export function renderSummary(summary = state.report?.summary) {
   const categories = summary?.categories || [];
-  const query = (elements.summaryFilter?.value || "").trim().toLowerCase();
 
   const categoryHTML = categories
     .map((category) => {
-      const metrics = (category.metrics || []).filter((metric) => metricMatchesQuery(metric, category, query));
+      const metrics = category.metrics || [];
       if (!metrics.length) {
         return "";
       }
@@ -294,7 +293,7 @@ export function renderSummary(summary = state.report?.summary) {
     })
     .join("");
 
-  elements.summaryCategories.innerHTML = categoryHTML || `<div class="empty">${t("summary.noMatching")}</div>`;
+  elements.summaryCategories.innerHTML = categoryHTML || `<div class="empty">${t("summary.empty")}</div>`;
   bindSummaryTableLayout();
   refreshSummaryNavigationStyles();
 }
@@ -906,7 +905,7 @@ function renderSummarySourceChooser(sources, metric = {}) {
             ...source.navigation,
             panelTargetId: summarySourcePanelTargetID(metric, source, index),
           })}>
-            <strong>${escapeHTML(sourceAnchorLabel(source.anchor))}</strong>
+            <strong title="${escapeHTML(sourceAnchorLabel(source.anchor))}">${escapeHTML(sourceAnchorLabel(source.anchor))}</strong>
             <small>${escapeHTML(source.anchor.objectType || "Source object")}</small>
           </button>`).join("")}
       </div>
@@ -1080,10 +1079,10 @@ function renderMetricRow(metric, category = {}) {
           <div class="summary-name" role="cell">
             <strong title="${escapeHTML(metric.name)}">${escapeHTML(metric.name)}</strong>
           </div>
-          <div class="summary-value${valueClass}" role="cell">
+          <div class="summary-value${valueClass}" role="cell" title="${escapeHTML(String(metric.displayValue ?? "N/A"))}">
             ${renderMetricDisplayValue(metric)}
           </div>
-          <span class="summary-unit" role="cell">${unit}</span>
+          <span class="summary-unit" role="cell" title="${unit}">${unit}</span>
           ${meta}
           ${renderMetricStatus(metric)}
         </div>
@@ -1191,14 +1190,6 @@ function metricStatusTitle(metric) {
   return status;
 }
 
-function metricMatchesQuery(metric, category, query) {
-  if (!query) {
-    return true;
-  }
-  return [metric.name, metric.id, metric.unit, metric.status, metric.displayValue, metric.source, metric.confidence, metric.visibility, metric.evidence, ...(metric.badges || []), category.name]
-    .some((value) => String(value ?? "").toLowerCase().includes(query));
-}
-
 function refreshSummaryNavigationStyles() {
   if (elements.summaryCategories) {
     refreshResultPanelSelectionStyles("summary", state.globalSelection, state.globalHover);
@@ -1233,7 +1224,6 @@ function summaryNavigationContext(context = {}) {
     ...context.genericCaptureContext?.(),
     scrollTop: Number(scrollHost?.scrollTop) || 0,
     scrollLeft: Number(scrollHost?.scrollLeft) || 0,
-    filter: elements.summaryFilter?.value || "",
     expandedCategoryIDs: [...(elements.summaryCategories?.querySelectorAll?.("[data-summary-category-id][open]") || [])]
       .map((category) => category.dataset.summaryCategoryId)
       .filter(Boolean),
@@ -1244,9 +1234,6 @@ function summaryNavigationContext(context = {}) {
 }
 
 async function restoreSummaryNavigationContext(snapshot = {}, context = {}) {
-  if (elements.summaryFilter) {
-    elements.summaryFilter.value = String(snapshot.filter || "");
-  }
   renderSummary();
   const expanded = new Set(snapshot.expandedCategoryIDs || []);
   if (Array.isArray(snapshot.expandedCategoryIDs)) {
