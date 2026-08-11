@@ -30,9 +30,8 @@ func TestPhaseHEndToEndScenarioContracts(t *testing.T) {
 			{path: "frontend/src/js/views/hvac-views.js", terms: []string{"async function revealHVACSelection", "navigateHVAC(navigationTarget, { pushHistory: false", "captureHVACNavigationContext", "restoreHVACNavigationContext", `"loop_occurrence"`}},
 			{path: "frontend/src/js/navigation.js", terms: []string{"popUndoSnapshot", "restoreRegisteredPanelContext"}},
 		},
-		"D simulation path to output": {
-			{path: "frontend/src/js/views/simulation-views.js", terms: []string{"simulationEnergySemanticAttributes", "simulationHVACPathSemanticCandidate", "simulationOutputSourceSemanticCandidate", "requestSimulationModelSelection"}},
-			{path: "frontend/src/js/views/output-views.js", terms: []string{`configureResultPanelNavigationHooks("output"`, "outputNavigationAttributes", "outputFocusedSignature"}},
+		"D simulation output source to input": {
+			{path: "frontend/src/js/views/simulation-views.js", terms: []string{"simulationEnergySemanticAttributes", "simulationHVACPathSemanticCandidate", "simulationOutputSourceSemanticCandidate", `view: "input-text"`, `targetKind: "source"`, "requestSimulationModelSelection"}},
 			{path: "frontend/src/js/views/input-views.js", terms: []string{"revealSelectionInSemantic", "revealSelectionSource"}},
 		},
 		"E diagnose edit remap": {
@@ -76,10 +75,6 @@ func TestPhaseHLargeModelFilterHiddenRevealContracts(t *testing.T) {
 			"hvacNavigationRevealTarget",
 			"serviceKindFilter",
 			"pathTypeFilter",
-		},
-		"frontend/src/js/views/output-views.js": {
-			"outputTemporaryRevealSignature",
-			"temporaryRevealSignature",
 		},
 		"frontend/src/js/views/simulation-views.js": {
 			"simulationNavigationRevealTarget",

@@ -28,7 +28,6 @@ const state = {
   batchDiagnoseCategory: "all",
   batchDiagnoseConfidence: "all",
   batchDiagnoseSeverity: "all",
-  batchOutputQA: null,
   batchCleanupReport: null,
   batchConvertExport: null,
   simulationEnvironment: null,
@@ -77,9 +76,6 @@ const elements = {
   batchDiagnoseStats: document.querySelector("#batchDiagnoseStats"),
   batchDiagnoseSummary: document.querySelector("#batchDiagnoseSummary"),
   batchDiagnoseTable: document.querySelector("#batchDiagnoseTable"),
-  batchOutputQASelect: document.querySelector("#batchOutputQASelect"),
-  batchOutputQAExport: document.querySelector("#batchOutputQAExport"),
-  batchOutputQATable: document.querySelector("#batchOutputQATable"),
   batchConvertSelect: document.querySelector("#batchConvertSelect"),
   batchConvertRun: document.querySelector("#batchConvertRun"),
   batchConvertFormat: document.querySelector("#batchConvertFormat"),
@@ -95,14 +91,9 @@ const elements = {
   multiSimulationExport: document.querySelector("#multiSimulationExport"),
   multiSimulationExportXLSX: document.querySelector("#multiSimulationExportXLSX"),
   multiSimulationExportJSON: document.querySelector("#multiSimulationExportJSON"),
-  multiSimulationEnergyPlus: document.querySelector("#multiSimulationEnergyPlus"),
   multiSimulationWeather: document.querySelector("#multiSimulationWeather"),
   multiSimulationWeatherMode: document.querySelector("#multiSimulationWeatherMode"),
   multiSimulationWorkers: document.querySelector("#multiSimulationWorkers"),
-  multiSimulationViewMode: document.querySelector("#multiSimulationViewMode"),
-  multiSimulationEnergyDetail: document.querySelector("#multiSimulationEnergyDetail"),
-  multiSimulationAllocationPolicy: document.querySelector("#multiSimulationAllocationPolicy"),
-  multiSimulationFrequencyPolicy: document.querySelector("#multiSimulationFrequencyPolicy"),
   multiSimulationRecursive: document.querySelector("#multiSimulationRecursive"),
   multiSimulationStats: document.querySelector("#multiSimulationStats"),
   multiSimulationSort: document.querySelector("#multiSimulationSort"),
@@ -115,7 +106,6 @@ const elements = {
   multiSimulationCompareTarget: document.querySelector("#multiSimulationCompareTarget"),
   multiSimulationChart: document.querySelector("#multiSimulationChart"),
   multiSimulationTable: document.querySelector("#multiSimulationTable"),
-  batchSimulationPlanPreview: document.querySelector("#batchSimulationPlanPreview"),
 };
 
 function appAPI() {
@@ -904,101 +894,6 @@ function exportBatchDiagnoseCSV() {
   downloadCSV(rows, "batch-diagnose.csv");
 }
 
-async function runBatchOutputQA() {
-  const runID = `batch-output-qa-${Date.now()}`;
-  elements.batchOutputQATable.innerHTML = `<div class="empty status-loading">${escapeHTML(t("common.loadingSettings", {}, "Loading"))}</div>`;
-  try {
-    const api = await waitForAppAPI("RunBatchOutputQA");
-    const result = api ? await api.RunBatchOutputQA(runID) : await postJSON("/api/batch-output-qa", { runId: runID, inputPaths: [] });
-    if (result?.canceled) {
-      return;
-    }
-    state.batchOutputQA = result;
-    renderBatchOutputQA();
-  } catch (error) {
-    elements.batchOutputQATable.innerHTML = `<div class="empty">${escapeHTML(error?.message || String(error))}</div>`;
-  }
-}
-
-function renderBatchOutputQA() {
-  const files = state.batchOutputQA?.files || [];
-  elements.batchOutputQAExport.disabled = !files.length;
-  if (!files.length) {
-    elements.batchOutputQATable.innerHTML = `<div class="empty">${escapeHTML(t("batch.selectOutputQAFilesHelp", {}, "Select files to inspect output readiness and heavy output risks."))}</div>`;
-    return;
-  }
-  const renderedFiles = files.slice(0, BATCH_TABLE_RENDER_LIMIT);
-  elements.batchOutputQATable.innerHTML = `
-    ${renderBatchHiddenRowsNotice(files.length - renderedFiles.length, "files")}
-    <table class="tool-table">
-      <thead>
-        <tr>
-          <th class="tool-sticky-col">${escapeHTML(t("common.file"))}</th>
-          <th>SQLite</th>
-          <th>Variable dictionary</th>
-          <th>Output:Variable</th>
-          <th>Output:Meter</th>
-          <th>Output:Table</th>
-          <th>Detailed/Timestep</th>
-          <th>Duplicate</th>
-          <th>Heavy</th>
-          <th>Basic</th>
-          <th>Heat Flow</th>
-          <th>HVAC</th>
-          <th>Integrity</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${renderedFiles
-          .map(
-            (file) => `
-              <tr>
-                <th class="tool-sticky-col">
-                  <strong>${escapeHTML(file.label || file.filename)}</strong>
-                  <span>${escapeHTML(file.error || file.status || "")}</span>
-                </th>
-                <td>${yesNo(file.sqlitePresent)}</td>
-                <td>${yesNo(file.variableDictionary)}</td>
-                <td>${escapeHTML(file.outputVariableCount || 0)}</td>
-                <td>${escapeHTML(file.outputMeterCount || 0)}</td>
-                <td>${escapeHTML(file.outputTableCount || 0)}</td>
-                <td>${escapeHTML(file.detailedOrTimestepCount || 0)}</td>
-                <td>${escapeHTML(file.duplicateOutputCount || 0)}</td>
-                <td>${escapeHTML(file.heavyWarningCount || 0)}</td>
-                <td>${yesNo(file.purposeReadiness?.basic_energy)}</td>
-                <td>${yesNo(file.purposeReadiness?.zone_heat_flow)}</td>
-                <td>${yesNo(file.purposeReadiness?.hvac_loop_check)}</td>
-                <td>${yesNo(file.purposeReadiness?.integrity_check)}</td>
-              </tr>`,
-          )
-          .join("")}
-      </tbody>
-    </table>`;
-}
-
-function exportBatchOutputQACSV() {
-  const rows = [
-    ["file", "status", "sqlite", "variable_dictionary", "output_variable", "output_meter", "output_table", "detailed_timestep", "duplicate", "heavy", "basic_energy_ready", "zone_heat_flow_ready", "hvac_ready", "integrity_ready"],
-    ...(state.batchOutputQA?.files || []).map((file) => [
-      file.label || file.filename,
-      file.status,
-      file.sqlitePresent,
-      file.variableDictionary,
-      file.outputVariableCount || 0,
-      file.outputMeterCount || 0,
-      file.outputTableCount || 0,
-      file.detailedOrTimestepCount || 0,
-      file.duplicateOutputCount || 0,
-      file.heavyWarningCount || 0,
-      file.purposeReadiness?.basic_energy,
-      file.purposeReadiness?.zone_heat_flow,
-      file.purposeReadiness?.hvac_loop_check,
-      file.purposeReadiness?.integrity_check,
-    ]),
-  ];
-  downloadCSV(rows, "batch-output-qa.csv");
-}
-
 async function runBatchCleanupReport() {
   const runID = `batch-cleanup-${Date.now()}`;
   elements.batchCleanupTable.innerHTML = `<div class="empty status-loading">${escapeHTML(t("diagnoseFix.scanning", {}, "Scanning current input for suggested fixes."))}</div>`;
@@ -1240,8 +1135,6 @@ elements.batchDiagnoseSeverityFilter?.addEventListener("change", () => {
   state.batchDiagnoseSeverity = elements.batchDiagnoseSeverityFilter.value || "all";
   renderBatchDiagnose();
 });
-elements.batchOutputQASelect?.addEventListener("click", runBatchOutputQA);
-elements.batchOutputQAExport?.addEventListener("click", exportBatchOutputQACSV);
 elements.batchCleanupSelect?.addEventListener("click", runBatchCleanupReport);
 elements.batchCleanupCreateCopies?.addEventListener("click", createBatchCleanupCopies);
 elements.batchConvertSelect?.addEventListener("click", runBatchConvertExport);

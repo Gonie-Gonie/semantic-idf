@@ -568,7 +568,7 @@ export function switchResultTab(tabName, options = {}) {
 
 function knownResultTabIDs() {
   const ids = [...elements.resultTabButtons].map((button) => button.dataset.resultTab).filter(Boolean);
-  return ids.length ? ids : ["summary", "profile", "hvac", "output", "simulation", "diagnose", "geometry"];
+  return ids.length ? ids : ["summary", "profile", "hvac", "simulation", "diagnose", "geometry"];
 }
 
 export async function undoViewNavigation(options = {}) {

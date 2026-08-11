@@ -1,74 +1,100 @@
 package frontendchecks
 
 import (
+	"os"
 	"strings"
 	"testing"
 )
 
-func TestOutputRowsUseStableSignatureAndStandardNavigationMarkup(t *testing.T) {
-	content := readTestFile(t, "frontend/src/js/views/output-views.js")
-	row := sliceBetween(content, "function renderOutputRequestRow", "function renderOutputField")
-	for _, required := range []string{
-		"item.signature",
-		"outputNavigationAttributes",
-		"data-output-signature",
-		"navigable-row",
-		"tabindex=",
-	} {
-		if !strings.Contains(row, required) {
-			t.Fatalf("output request row is missing %q", required)
+func TestStandaloneOutputTabAndNavigationAreRemoved(t *testing.T) {
+	files := map[string][]string{
+		"frontend/src/index.html": {
+			`data-result-tab="output"`,
+			`id="outputPane"`,
+			`id="outputApplyDialog"`,
+		},
+		"frontend/src/js/main.js": {
+			`./views/output-views.js`,
+			"initializeOutputControls",
+			`idfAnalyzer:outputApplied`,
+		},
+		"frontend/src/js/views/analysis-views.js": {
+			`from "./output-views.js"`,
+			"renderOutput(",
+			`case "output"`,
+		},
+		"frontend/src/js/views/hvac-views.js": {
+			`data-result-tab="output"`,
+			"prepareHVACOutputContext",
+		},
+		"frontend/src/js/actions.js": {
+			"outputFocusedSignature",
+			"outputTemporaryRevealSignature",
+			`case "output":`,
+			`["profile", "hvac", "output", "diagnostics", "geometry"]`,
+		},
+		"frontend/src/js/state.js": {
+			"outputPurposeFilter",
+			"outputFocusedSignature",
+			"outputTemporaryRevealSignature",
+			`document.querySelector("#outputStats")`,
+		},
+		"frontend/src/js/shortcuts.js": {
+			"tabOutput",
+			`switchResultTab?.("output")`,
+		},
+		"frontend/src/settings.html": {
+			"tabOutput",
+			"shortcut.tabOutput",
+		},
+		"scripts/frontend-build.ps1": {
+			`"views/output-views.js"`,
+		},
+	}
+	for path, forbidden := range files {
+		content := readTestFile(t, path)
+		for _, term := range forbidden {
+			if strings.Contains(content, term) {
+				t.Errorf("%s retains removed Output-tab contract %q", path, term)
+			}
 		}
 	}
-	attributes := sliceBetween(content, "function outputNavigationAttributes", "function outputTargetForSelection")
-	for _, attribute := range []string{
-		"data-entity-id",
-		"data-entity-kind",
-		"data-occurrence-context",
-		"data-source-object-id",
-		"data-source-object-index",
-		"data-source-field-index",
-		"data-panel-target-id",
-	} {
-		if !strings.Contains(attributes, attribute) {
-			t.Fatalf("output navigation markup is missing %q", attribute)
-		}
+
+	app := readTestFile(t, "app.go")
+	if strings.Contains(app, `requiredStages := []string{"profile", "hvac", "output"`) {
+		t.Fatal("completed staged analysis still requires the removed Output-tab stage")
 	}
-	if !strings.Contains(attributes, "navigation.byViewTarget") {
-		t.Fatal("output markup must reverse-map the stable signature through navigation.byViewTarget")
+
+	if _, err := os.Stat(repoPath("frontend/src/js/views/output-views.js")); !os.IsNotExist(err) {
+		t.Fatalf("standalone Output view module still exists (stat error: %v)", err)
 	}
 }
 
-func TestOutputAdapterRevealsExactRequestWithoutDestroyingFilters(t *testing.T) {
-	content := readTestFile(t, "frontend/src/js/views/output-views.js")
-	adapter := sliceBetween(content, "function initializeOutputNavigation", "function outputNavigationAttributes")
-	for _, required := range []string{
-		`configureResultPanelNavigationHooks("output"`,
-		"canReveal(selection",
-		"async reveal(selection",
-		"captureContext(context)",
-		"async restoreContext(snapshot",
-		"preferredSemanticOccurrence(selection",
-		"state.outputFocusedSignature",
-		"state.outputTemporaryRevealSignature",
-		"outputRequestIsVisible(request)",
-		"renderOutput()",
-		"scrollIntoView",
-	} {
-		if !strings.Contains(adapter, required) {
-			t.Fatalf("output adapter is missing %q", required)
+func TestCoreOutputAnalysisAndHVACAddMonitorRemain(t *testing.T) {
+	app := readTestFile(t, "app.go")
+	for _, required := range []string{"func (a *App) AnalyzeInputOutputText", "idf.AnalyzeOutput(doc)"} {
+		if !strings.Contains(app, required) {
+			t.Fatalf("core Output analysis contract is missing %q", required)
 		}
 	}
-	if strings.Contains(adapter, `elements.outputFilter.value = ""`) || strings.Contains(adapter, `state.outputPurposeFilter = "all"`) {
-		t.Fatal("output reveal must temporarily materialize a request instead of clearing user filters")
-	}
-}
 
-func TestOutputPurposeTagsRemainSemanticActions(t *testing.T) {
-	content := readTestFile(t, "frontend/src/js/views/output-views.js")
-	tags := sliceBetween(content, "function renderOutputPurposeTags", "function outputPurposeLabel")
-	for _, required := range []string{"outputNavigationAttributes", "data-output-purpose", "navigable-row", "tabindex"} {
-		if !strings.Contains(tags, required) {
-			t.Fatalf("output purpose tag navigation is missing %q", required)
+	analysis := readTestFile(t, "internal/idf/output.go")
+	for _, required := range []string{"type OutputReport struct", "func AnalyzeOutput(doc Document) OutputReport"} {
+		if !strings.Contains(analysis, required) {
+			t.Fatalf("core Output analyzer is missing %q", required)
+		}
+	}
+
+	hvac := readTestFile(t, "frontend/src/js/views/hvac-views.js")
+	for _, required := range []string{
+		"data-hvac-output-variable",
+		"function openHVACOutputDialog",
+		"state.hvacOutputRequest",
+		`callHVACApplyAPI("PreviewHVACApplyText"`,
+		`callHVACApplyAPI("ApplyHVACText"`,
+	} {
+		if !strings.Contains(hvac, required) {
+			t.Fatalf("HVAC inline Add Monitor contract is missing %q", required)
 		}
 	}
 }

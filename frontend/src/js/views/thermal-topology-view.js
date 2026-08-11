@@ -28,7 +28,6 @@ let observedHeight = 0;
 
 const THERMAL_LAYOUT_CACHE_LIMIT = 24;
 
-window.addEventListener("idfAnalyzer:thermalTopologyFit", () => fitThermalTopology());
 window.addEventListener("idfAnalyzer:thermalTopologyExport", () => exportThermalTopologyJSON());
 
 export function thermalTopologyExportPayload(geometry) {
@@ -291,7 +290,6 @@ function thermalTopologyOptions() {
     selectedEntityId: state.thermalTopologySelectedEntityId || state.selectedGeometryId,
     selectedEntityKind: state.thermalTopologySelectedEntityKind || state.selectedGeometryKind,
     neighborDepth: state.thermalTopologyNeighborDepth,
-    showOpenings: state.thermalTopologyShowOpenings,
     showAirCoupling: state.thermalTopologyShowAirCoupling || state.thermalTopologyMetric === "air",
     expandExternalTargets: state.thermalTopologyExpandExternalTargets,
   };
@@ -308,7 +306,6 @@ function syncThermalTopologyControls() {
   elements.thermalTopologyMetric.value = normalizeThermalTopologyMetric(state.thermalTopologyMetric);
   elements.thermalTopologyScope.value = normalizeThermalTopologyScope(state.thermalTopologyScope);
   elements.thermalTopologyLayout.value = normalizeThermalTopologyLayout(state.thermalTopologyLayout);
-  elements.thermalTopologyShowOpenings.checked = Boolean(state.thermalTopologyShowOpenings);
   elements.thermalTopologyShowAirCoupling.checked = Boolean(state.thermalTopologyShowAirCoupling);
   elements.thermalTopologyExpandExternalTargets.checked = Boolean(state.thermalTopologyExpandExternalTargets);
 }

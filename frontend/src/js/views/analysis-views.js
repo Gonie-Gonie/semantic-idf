@@ -2,7 +2,6 @@ import { elements, escapeHTML, refreshStatusTitle, state } from "../state.js";
 import { renderGeometry } from "../geometry-loader.js";
 import { renderHVAC } from "./hvac-views.js";
 import { renderInputViews } from "./input-views.js";
-import { renderOutput } from "./output-views.js";
 import { renderProfile } from "./profile-views.js";
 import { renderSimulation } from "./simulation-views.js";
 import { t } from "../i18n.js";
@@ -35,7 +34,6 @@ export function renderReport(options = {}) {
     renderSummary(report.summary);
     renderProfile(report.profile);
     renderHVAC(report.hvac);
-    renderOutput(report.output);
     renderSimulation();
     renderDiagnostics(report.diagnostics);
     if (state.activeResultTab === "geometry") {
@@ -77,10 +75,6 @@ export function renderResultTab(tab, report = state.report) {
         renderHVAC(report.hvac);
         markAnalysisRendered("hvac");
         break;
-      case "output":
-        renderOutput(report.output);
-        markAnalysisRendered("output");
-        break;
       case "simulation":
         renderSimulation();
         markAnalysisRendered("simulation");
@@ -119,7 +113,6 @@ function renderPendingResultTab(tab) {
       elements.profileDetail.innerHTML = `<div class="empty">${t("profile.readySoon", {}, "Profile details will appear when this stage is ready.")}</div>`;
       elements.profileMatrixStats.textContent = t("profile.pending", {}, "Profile pending");
       elements.profileMatrix.innerHTML = `<div class="empty">${t("profile.readySoon", {}, "Profile details will appear when this stage is ready.")}</div>`;
-      elements.profileGraphStats.textContent = t("profile.pending", {}, "Profile pending");
       elements.profileGraph.innerHTML = `<div class="empty status-loading">${t("profile.running", {}, "Building profile graphs")}</div>`;
       return true;
     case "hvac":
@@ -207,7 +200,6 @@ export function renderEmpty() {
     elements.profileDetail.innerHTML = `<div class="empty">${t("profile.noProfile")}</div>`;
     elements.profileMatrixStats.textContent = t("count.zones", { count: 0 });
     elements.profileMatrix.innerHTML = `<div class="empty">${t("profile.noMatrix")}</div>`;
-    elements.profileGraphStats.textContent = t("graph.annualHeatmap");
     elements.profileGraph.innerHTML = `<div class="empty">${t("profile.noGraph")}</div>`;
     elements.profileApplyButton.disabled = true;
   }
@@ -219,15 +211,6 @@ export function renderEmpty() {
     elements.hvacInspector.innerHTML = `<div class="empty">${t("hvac.noData")}</div>`;
     elements.hvacWarningStats.textContent = t("count.warnings", { count: 0 });
     elements.hvacWarnings.innerHTML = `<div class="empty">${t("hvac.noWarnings")}</div>`;
-  }
-  if (elements.outputStats) {
-    elements.outputStats.textContent = t("count.outputs", { count: 0, variables: 0, meters: 0 });
-    elements.outputExistingStats.textContent = t("count.objects", { count: 0 });
-    elements.outputExisting.innerHTML = `<div class="empty">${t("output.noAnalysis")}</div>`;
-    elements.outputRecommendationStats.textContent = t("count.options", { count: 0 });
-    elements.outputRecommendations.innerHTML = `<div class="empty">${t("output.noRecommendations")}</div>`;
-    elements.outputWarningStats.textContent = t("count.warnings", { count: 0 });
-    elements.outputWarnings.innerHTML = `<div class="empty">${t("output.noWarnings")}</div>`;
   }
   if (elements.simulationStats) {
     renderSimulation();

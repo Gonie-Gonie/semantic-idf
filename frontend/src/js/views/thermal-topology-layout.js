@@ -31,7 +31,6 @@ export function thermalTopologyLayoutCacheKey(geometry, options = {}, viewport =
     selectionAffectsScope ? options.selectedEntityId || "" : "",
     selectionAffectsScope ? options.selectedEntityKind || "" : "",
     scope === "neighbors" ? Math.min(3, Math.max(1, Number(options.neighborDepth) || 1)) : "",
-    Boolean(options.showOpenings),
     Boolean(options.showAirCoupling),
     Boolean(options.expandExternalTargets),
     Math.round((Number(viewport.width) || 900) / 50) * 50,
@@ -52,7 +51,7 @@ export function createThermalTopologyLayoutModel(geometry, options = {}) {
     nodes: [...(topology.nodes || [])],
     connections: (topology.connections || []).filter((connection) => options.showAirCoupling || connection.relationKind !== "air_coupling"),
     boundaries: [...(topology.boundaries || [])],
-    openings: options.showOpenings || options.selectedEntityKind === "window" ? [...(topology.openings || [])] : [],
+    openings: options.selectedEntityKind === "window" ? [...(topology.openings || [])] : [],
     allOpenings: [...(topology.openings || [])],
     airCouplings: options.showAirCoupling ? [...(topology.airCouplings || [])] : [],
     issueLinks: [...(topology.issueLinks || [])],
@@ -348,7 +347,7 @@ function createBoundaryDetailModel(model, options) {
     } else if (boundary.targetId) {
       detailConnections.push(detailConnection(`detail-target:${boundary.id}`, boundary.id, boundary.targetId, boundary.id, "boundary_target"));
     }
-    if (options.showOpenings || options.selectedEntityKind === "window") {
+    if (options.selectedEntityKind === "window") {
       for (const openingID of boundary.openingIds || []) {
         const opening = openingByID.get(openingID);
         if (!opening) continue;

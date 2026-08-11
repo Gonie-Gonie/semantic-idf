@@ -28,7 +28,7 @@ func prepareBatchPurposeSimulationRequest(request SimulationRunRequest, purposeR
 	doc := epinput.ToIDFDocument(model)
 	normalized := NormalizeSimulationPurposeRequest(&purposeRequest)
 	plan := BuildPurposeRunPlan(doc, normalized)
-	updated, preview := idf.ApplyOutput(doc, PurposeRunPlanApplyRequest(plan, PurposeOutputApplyModeKeepExistingAdd))
+	updated, preview := idf.ApplyOutput(doc, PurposeRunPlanApplyRequest(plan, normalized.OutputApplyMode))
 	if !preview.CanApply {
 		return request, fmt.Errorf("purpose output plan has blocking warnings")
 	}

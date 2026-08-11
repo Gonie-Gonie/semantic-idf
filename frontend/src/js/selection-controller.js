@@ -23,6 +23,13 @@ const emptyHover = () => ({
 const maxRememberedTransactions = 512;
 let fallbackTransactionSequence = 0;
 
+export function isProfileTopologyLink(originView, targetView) {
+  const origin = String(originView || "").trim().toLowerCase();
+  const target = String(targetView || "").trim().toLowerCase();
+  return (origin === "profile" && target === "geometry") ||
+    (origin === "geometry" && target === "profile");
+}
+
 /**
  * Adds controller-owned defaults to an application state object. Keeping this
  * explicit makes the controller usable in isolated tests and during staged
@@ -139,6 +146,9 @@ export function createSelectionController(dependencies = {}) {
     const cache = navigationCache();
     const selection = enrichSelection(providedSelection || controllerState.globalSelection, cache);
     if (!selection.entityId) {
+      return [];
+    }
+    if (isProfileTopologyLink(selection.originView, normalizedView)) {
       return [];
     }
     const occurrence = findOccurrence(cache, selection.occurrenceId);
@@ -368,7 +378,11 @@ export function createSelectionController(dependencies = {}) {
       return revealSelectionSource({ ...rawOptions, view: normalizedView });
     }
     const options = optionsFor("open", rawOptions);
-    return inTransaction(options, () => openViewWithinTransaction(normalizedView, currentSemanticSelection(), options));
+    const selection = currentSemanticSelection();
+    if (isProfileTopologyLink(options.originView || selection.originView, normalizedView)) {
+      return false;
+    }
+    return inTransaction(options, () => openViewWithinTransaction(normalizedView, selection, options));
   }
 
   async function revealSelectionSource(rawOptions = {}) {
@@ -908,7 +922,6 @@ function occurrenceMatchesOrigin(occurrence, originView = "") {
     summary: ["summary", "project"],
     profile: ["profile", "schedule", "load"],
     hvac: ["hvac", "service", "air_loop", "plant_loop", "condenser_loop", "system", "coupling"],
-    output: ["output", "variable", "meter"],
     simulation: ["simulation", "result", "service", "output"],
     diagnose: ["diagnostic", "diagnose", "issue"],
     geometry: ["geometry", "surface", "fenestration", "space", "story"],

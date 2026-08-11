@@ -34,8 +34,9 @@
 }
 
 .geometry-mode-controls,
-.geometry-common-controls,
-.geometry-spatial-controls {
+.geometry-story-control,
+.geometry-sync-toggle,
+.geometry-visibility-controls {
   flex: 0 0 auto;
 }
 
@@ -76,6 +77,10 @@
 
 .thermal-topology-controls > .topology-select-control select {
   max-width: 118px;
+}
+
+.geometry-story-control select {
+  max-width: 150px;
 }
 
 .thermal-topology-advanced {
@@ -178,6 +183,15 @@
   position: relative;
   background: var(--geometry-background);
   overflow: hidden;
+}
+
+.geometry-viewport-actions {
+  top: 10px;
+  right: 10px;
+}
+
+.geometry-viewport.network-active .geometry-viewport-actions {
+  right: calc(27% + 22px);
 }
 
 #geometryDetailsSplitter {
@@ -688,14 +702,10 @@
     border-top: 1px solid var(--line);
     border-left: 0;
   }
-}
 
-.geometry-plan.selection-aid {
-  background:
-    linear-gradient(color-mix(in srgb, var(--line), transparent 58%) 1px, transparent 1px),
-    linear-gradient(90deg, color-mix(in srgb, var(--line), transparent 58%) 1px, transparent 1px),
-    var(--surface-3);
-  background-size: 28px 28px;
+  .geometry-viewport.network-active .geometry-viewport-actions {
+    right: 10px;
+  }
 }
 
 .plan-zone {
@@ -704,11 +714,6 @@
   stroke: color-mix(in srgb, var(--geometry-zone), var(--ink) 38%);
   stroke-width: 1.2;
   cursor: pointer;
-}
-
-.geometry-plan.selection-aid .plan-zone {
-  opacity: 0.22;
-  pointer-events: none;
 }
 
 .plan-surface {
@@ -739,10 +744,6 @@
   stroke-width: 3;
   stroke-linejoin: round;
   cursor: pointer;
-}
-
-.geometry-plan.selection-aid .plan-wall {
-  stroke-width: 6;
 }
 
 .plan-window {

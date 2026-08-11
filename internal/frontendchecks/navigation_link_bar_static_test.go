@@ -38,6 +38,9 @@ func TestNavigationLinkBarConciseLabelAndFocusContracts(t *testing.T) {
 		"const existing = new Map(",
 		"existing.get(view) || createTargetButton(view)",
 		"focusedButton.focus({ preventScroll: true })",
+		`import { isProfileTopologyLink } from "./selection-controller.js"`,
+		`!isProfileTopologyLink(state.activeResultTab, target.view)`,
+		`!isProfileTopologyLink(selection.originView, target.view)`,
 	} {
 		if !strings.Contains(content, required) {
 			t.Fatalf("navigation link-bar UX contract missing %q", required)
@@ -121,6 +124,10 @@ const navigationLinkBarRuntimePage = `<!doctype html>
       formatNavigationSelectionLabel,
       renderNavigationLinkBar,
     } from "/frontend/src/js/navigation-link-bar.js";
+    import {
+      createSelectionController,
+      isProfileTopologyLink,
+    } from "/frontend/src/js/selection-controller.js";
 
     const navigation = {
       entities: [
@@ -135,7 +142,11 @@ const navigationLinkBarRuntimePage = `<!doctype html>
           occurrenceId: "occ:zones",
           entityId: "section:zones",
           path: "zones/definitions",
-          viewTargets: [{ view: "summary", targetId: "zones", label: "Zones" }],
+          viewTargets: [
+            { view: "summary", targetId: "zones", label: "Zones" },
+            { view: "profile", targetId: "profile-zone", label: "Zones" },
+            { view: "geometry", targetId: "geometry-zone", label: "Zones" },
+          ],
         },
       ],
       byEntityId: {
@@ -145,12 +156,41 @@ const navigationLinkBarRuntimePage = `<!doctype html>
       },
       byObjectId: {},
       byObjectIndex: {},
-      byViewTarget: { "summary|zones": ["occ:zones"] },
+      byViewTarget: {
+        "summary|zones": ["occ:zones"],
+        "profile|profile-zone": ["occ:zones"],
+        "geometry|geometry-zone": ["occ:zones"],
+      },
     };
     state.semanticProjection = { schema: "eplus-semantic/0.2", navigation };
     state.reportAnalysisKey = "link-bar-labels";
     state.activeInputView = "semantic";
     state.activeResultTab = "summary";
+
+    const isolatedController = createSelectionController({
+      state: {},
+      getNavigationIndex: () => navigation,
+    });
+    const linkedZoneSelection = {
+      entityId: "section:zones",
+      occurrenceId: "occ:zones",
+      semanticPathHint: "zones/definitions",
+    };
+    const controllerBlocksProfileToGeometry = isolatedController.selectionTargetsForView("geometry", {
+      ...linkedZoneSelection,
+      originView: "profile",
+    }).length === 0;
+    const controllerBlocksGeometryToProfile = isolatedController.selectionTargetsForView("profile", {
+      ...linkedZoneSelection,
+      originView: "geometry",
+    }).length === 0;
+    const controllerKeepsSamePanelTargets =
+      isolatedController.selectionTargetsForView("profile", { ...linkedZoneSelection, originView: "profile" }).length === 1 &&
+      isolatedController.selectionTargetsForView("geometry", { ...linkedZoneSelection, originView: "geometry" }).length === 1;
+    const bilateralGuard =
+      isProfileTopologyLink("profile", "geometry") &&
+      isProfileTopologyLink("geometry", "profile") &&
+      !isProfileTopologyLink("profile", "summary");
 
     const schedules = formatNavigationSelectionLabel({
       entityId: "section:schedules",
@@ -183,16 +223,51 @@ const navigationLinkBarRuntimePage = `<!doctype html>
     renderNavigationLinkBar();
     const summaryButtonAfter = document.querySelector('#workspaceLinkTargets [data-navigation-view="summary"]');
     const labelElement = document.getElementById("workspaceSelectionLabel");
+
+    state.globalSelection = { ...state.globalSelection, originView: "profile" };
+    renderNavigationLinkBar();
+    const profileKeepsProfile = Boolean(document.querySelector('#workspaceLinkTargets [data-navigation-view="profile"]'));
+    const profileHidesGeometry = !document.querySelector('#workspaceLinkTargets [data-navigation-view="geometry"]');
+
+    state.globalSelection = { ...state.globalSelection, originView: "geometry" };
+    renderNavigationLinkBar();
+    const geometryKeepsGeometry = Boolean(document.querySelector('#workspaceLinkTargets [data-navigation-view="geometry"]'));
+    const geometryHidesProfile = !document.querySelector('#workspaceLinkTargets [data-navigation-view="profile"]');
+
+    state.globalSelection = { ...state.globalSelection, originView: "input-semantic" };
+    state.activeResultTab = "profile";
+    renderNavigationLinkBar();
+    const activeProfileHidesGeometry = !document.querySelector('#workspaceLinkTargets [data-navigation-view="geometry"]');
+    state.activeResultTab = "geometry";
+    renderNavigationLinkBar();
+    const activeGeometryHidesProfile = !document.querySelector('#workspaceLinkTargets [data-navigation-view="profile"]');
+
+    state.activeResultTab = "summary";
+    state.globalSelection = { ...state.globalSelection, originView: "summary" };
+    renderNavigationLinkBar();
+    const summaryButtonFinal = document.querySelector('#workspaceLinkTargets [data-navigation-view="summary"]');
+
     const passed = Boolean(
       schedules === "Schedules / definitions" &&
       activity === "ACTIVITY_SCH / definitions" &&
       metric === "Zones / Zone count" &&
       summaryButton === summaryButtonAfter &&
-      document.activeElement === summaryButtonAfter &&
+      summaryButtonAfter === summaryButtonFinal &&
+      document.activeElement === summaryButtonFinal &&
       labelElement.textContent === metric &&
       labelElement.getAttribute("role") === "status" &&
       labelElement.getAttribute("aria-live") === "polite" &&
-      labelElement.getAttribute("aria-atomic") === "true"
+      labelElement.getAttribute("aria-atomic") === "true" &&
+      profileKeepsProfile &&
+      profileHidesGeometry &&
+      geometryKeepsGeometry &&
+      geometryHidesProfile &&
+      activeProfileHidesGeometry &&
+      activeGeometryHidesProfile &&
+      controllerBlocksProfileToGeometry &&
+      controllerBlocksGeometryToProfile &&
+      controllerKeepsSamePanelTargets &&
+      bilateralGuard
     );
     document.body.dataset.testStatus = passed ? "pass" : "fail";
     document.getElementById("result").textContent = JSON.stringify({
@@ -200,8 +275,18 @@ const navigationLinkBarRuntimePage = `<!doctype html>
       schedules,
       activity,
       metric,
-      sameButton: summaryButton === summaryButtonAfter,
-      focusPreserved: document.activeElement === summaryButtonAfter,
+      sameButton: summaryButton === summaryButtonAfter && summaryButtonAfter === summaryButtonFinal,
+      focusPreserved: document.activeElement === summaryButtonFinal,
+      profileKeepsProfile,
+      profileHidesGeometry,
+      geometryKeepsGeometry,
+      geometryHidesProfile,
+      activeProfileHidesGeometry,
+      activeGeometryHidesProfile,
+      controllerBlocksProfileToGeometry,
+      controllerBlocksGeometryToProfile,
+      controllerKeepsSamePanelTargets,
+      bilateralGuard,
     });
   </script>
 </body></html>`

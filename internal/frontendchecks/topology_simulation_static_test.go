@@ -7,20 +7,13 @@ import (
 
 func TestThermalTopologySimulationOverlayContract(t *testing.T) {
 	markup := readTestFile(t, "frontend/src/index.html")
-	for _, required := range []string{`id="simulationPurposeZoneHeatFlowDetail"`, `value="surface"`} {
-		if !strings.Contains(markup, required) {
-			t.Fatalf("thermal simulation markup is missing %q", required)
-		}
+	if strings.Contains(markup, `id="simulationPurposeZoneHeatFlowDetail"`) {
+		t.Fatal("thermal simulation markup still exposes the removed Zone Heat Flow detail selector")
 	}
 
 	simulation := readTestFile(t, "frontend/src/js/views/simulation-views.js")
-	for _, required := range []string{
-		`zoneHeatFlowDetail: elements.simulationPurposeZoneHeatFlowDetail?.value || "zone"`,
-		`idfAnalyzer:openSimulationPurposePlan`,
-	} {
-		if !strings.Contains(simulation, required) {
-			t.Fatalf("simulation purpose bridge is missing %q", required)
-		}
+	if !strings.Contains(simulation, `zoneHeatFlowDetail: "surface"`) {
+		t.Fatal("simulation purpose request must keep Surface heat-flow detail as its fixed default")
 	}
 
 	view := readTestFile(t, "frontend/src/js/views/thermal-topology-view.js")
@@ -31,12 +24,10 @@ func TestThermalTopologySimulationOverlayContract(t *testing.T) {
 	}
 }
 
-func TestThermalTopologyInspectorCrossPanelContract(t *testing.T) {
+func TestThermalTopologyInspectorPanelIsolationContract(t *testing.T) {
 	inspector := readTestFile(t, "frontend/src/js/views/thermal-topology-inspector.js")
 	for _, required := range []string{
-		`renderZoneProfileSummary(node)`,
 		`renderZoneHVACSummary(node)`,
-		`Profile summary`,
 		`HVAC service`,
 	} {
 		if !strings.Contains(inspector, required) {
@@ -53,20 +44,27 @@ func TestThermalTopologyInspectorCrossPanelContract(t *testing.T) {
 		`Diagnostics`,
 		`inspectorSection("Actions"`,
 		`thermal-inspector-actions`,
+		`renderZoneProfileSummary`,
+		`Profile summary`,
+		`state.report?.profile`,
+		`No linked occupancy`,
 	} {
 		if strings.Contains(inspector, removed) {
-			t.Fatalf("removed topology inspector section or action remains %q", removed)
+			t.Fatalf("removed topology inspector section, action, or Profile coupling remains %q", removed)
 		}
 	}
 
 	profile := readTestFile(t, "frontend/src/js/views/profile-views.js")
-	for _, required := range []string{
+	for _, removed := range []string{
+		`Open Topology`,
 		`data-profile-open-topology`,
+		`dataset.profileOpenTopology`,
 		`state.geometryMode = "thermal"`,
 		`thermalTopologySelectedEntityId`,
+		`state.report?.geometry?.topology`,
 	} {
-		if !strings.Contains(profile, required) {
-			t.Fatalf("profile topology action is missing %q", required)
+		if strings.Contains(profile, removed) {
+			t.Fatalf("Profile still exposes a direct Topology coupling %q", removed)
 		}
 	}
 }

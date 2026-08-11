@@ -86,7 +86,6 @@ func TestHVACPanelAdapterPreservesContextAndCompatibleOccurrence(t *testing.T) {
 		"pathTypeFilter",
 		"mediumFilter",
 		"graphScale",
-		"inspectorCollapsed",
 		"graphScrollTop",
 		"graphScrollLeft",
 		"navigationRevealTarget",

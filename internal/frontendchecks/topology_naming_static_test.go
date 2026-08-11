@@ -47,7 +47,6 @@ func TestResultTabsAreTheOnlyTopLevelPanelNames(t *testing.T) {
 		`<h2 data-i18n="tab.summary"`,
 		`<h2 data-i18n="tab.profile"`,
 		`<h2 data-i18n="tab.hvac"`,
-		`<h2 data-i18n="tab.output"`,
 		`<h2 data-i18n="tab.diagnose"`,
 		`<h2 data-i18n="simulation.runInspect"`,
 		`<h2 data-i18n="topology.panelTitle"`,

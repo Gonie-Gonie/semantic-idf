@@ -2,8 +2,9 @@ import { elements, state } from "./state.js";
 import { t } from "./i18n.js";
 import { bundledAppInfo } from "./app-info.js";
 import { getSemanticNavigationCache } from "./semantic-navigation-cache.js";
+import { isProfileTopologyLink } from "./selection-controller.js";
 
-const targetOrder = ["input-semantic", "hvac", "profile", "geometry", "output", "simulation", "diagnose", "summary", "source"];
+const targetOrder = ["input-semantic", "hvac", "profile", "geometry", "simulation", "diagnose", "summary", "source"];
 let callbacks = {};
 let initialized = false;
 
@@ -189,7 +190,11 @@ function availableTargets(selection) {
   for (const occurrenceID of occurrenceIDs) {
     const occurrence = cache.occurrence(occurrenceID);
     for (const target of occurrence?.viewTargets || []) {
-      if (target?.view) {
+      if (
+        target?.view &&
+        !isProfileTopologyLink(state.activeResultTab, target.view) &&
+        !isProfileTopologyLink(selection.originView, target.view)
+      ) {
         views.add(String(target.view));
       }
     }

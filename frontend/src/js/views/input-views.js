@@ -762,7 +762,7 @@ function semanticAvailableViews(selection) {
   if (semanticTargetViewCache.has(cacheKey)) {
     return semanticTargetViewCache.get(cacheKey);
   }
-  const views = ["summary", "profile", "hvac", "output", "simulation", "diagnose", "geometry"]
+  const views = ["summary", "profile", "hvac", "simulation", "diagnose", "geometry"]
     .map((view) => ({ view, targets: selectionTargetsForView(view, selection) }))
     .filter((item) => item.targets.length);
   semanticTargetViewCache.set(cacheKey, views);

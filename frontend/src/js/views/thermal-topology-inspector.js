@@ -87,7 +87,6 @@ function renderZoneDetails(node, geometry) {
       ["Total UA", wattsPerKelvin(exposure.totalUa, exposure.hasTotalUA)],
     ])),
     inspectorSection("Adjacent zones", adjacent.length ? `<div class="thermal-inspector-chips">${adjacent.map(chip).join("")}</div>` : emptyValue()),
-    renderZoneProfileSummary(node),
     renderZoneHVACSummary(node),
   ].join("");
 }
@@ -243,16 +242,6 @@ function renderIssueDetails(issue) {
     ["Code", issue.code],
     ["Message", issue.message],
   ]));
-}
-
-function renderZoneProfileSummary(node) {
-  const zoneName = node.zoneName || node.label || node.objectName || "";
-  const profile = (state.report?.profile?.zoneProfiles || []).find((item) => sameThermalTopologyName(item.zoneName, zoneName));
-  const wanted = new Set(["occupancy", "lighting", "equipment", "infiltration", "ventilation"]);
-  const dimensions = (profile?.dimensions || []).filter((item) => wanted.has(item.dimension));
-  return inspectorSection("Profile summary", dimensions.length
-    ? renderRows(dimensions.map((item) => [item.label || humanize(item.dimension), item.displayValue || `${number(item.value)} ${item.unit || ""}`.trim()]))
-    : emptyValue("No linked occupancy, lighting, equipment, infiltration, or ventilation profile"));
 }
 
 function renderZoneHVACSummary(node) {

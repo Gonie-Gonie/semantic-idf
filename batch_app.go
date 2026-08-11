@@ -65,34 +65,6 @@ type BatchIssueCodeSummary struct {
 	FileCounts map[string]int `json:"fileCounts,omitempty"`
 }
 
-type BatchOutputQAResult struct {
-	Canceled  bool                `json:"canceled,omitempty"`
-	RunID     string              `json:"runId,omitempty"`
-	Total     int                 `json:"total"`
-	Completed int                 `json:"completed"`
-	Succeeded int                 `json:"succeeded"`
-	Failed    int                 `json:"failed"`
-	Files     []BatchOutputQAFile `json:"files"`
-}
-
-type BatchOutputQAFile struct {
-	BatchFileResult
-	OutputObjectCount        int                 `json:"outputObjectCount"`
-	OutputVariableCount      int                 `json:"outputVariableCount"`
-	OutputMeterCount         int                 `json:"outputMeterCount"`
-	OutputTableCount         int                 `json:"outputTableCount"`
-	SQLitePresent            bool                `json:"sqlitePresent"`
-	VariableDictionary       bool                `json:"variableDictionary"`
-	DetailedOrTimestepCount  int                 `json:"detailedOrTimestepCount"`
-	DuplicateOutputCount     int                 `json:"duplicateOutputCount"`
-	HeavyWarningCount        int                 `json:"heavyWarningCount"`
-	PurposeReadiness         map[string]bool     `json:"purposeReadiness,omitempty"`
-	MissingPurposeOutputs    map[string][]string `json:"missingPurposeOutputs,omitempty"`
-	OutputWarnings           []idf.Diagnostic    `json:"outputWarnings,omitempty"`
-	PurposeOutputPlanWeight  string              `json:"purposeOutputPlanWeight,omitempty"`
-	PurposeOutputPlanObjects int                 `json:"purposeOutputPlanObjects,omitempty"`
-}
-
 type BatchCleanupReportResult struct {
 	Canceled  bool                     `json:"canceled,omitempty"`
 	RunID     string                   `json:"runId,omitempty"`
@@ -169,46 +141,12 @@ type BatchSimulationComparisonXLSXContext struct {
 	TargetRowID   string `json:"targetRowId,omitempty"`
 }
 
-type BatchSimulationPlanPreviewResult struct {
-	Total             int                              `json:"total"`
-	Completed         int                              `json:"completed"`
-	Succeeded         int                              `json:"succeeded"`
-	Failed            int                              `json:"failed"`
-	Purposes          []simulation.SimulationPurposeID `json:"purposes"`
-	WorkerCount       int                              `json:"workerCount"`
-	WeatherMode       string                           `json:"weatherMode,omitempty"`
-	WeatherPath       string                           `json:"weatherPath,omitempty"`
-	CommonOutputCount int                              `json:"commonOutputCount"`
-	HeavyFileCount    int                              `json:"heavyFileCount"`
-	Files             []BatchSimulationPlanPreviewFile `json:"files"`
-}
-
-type BatchSimulationPlanPreviewFile struct {
-	BatchFileResult
-	OutputCount          int                            `json:"outputCount"`
-	TemporaryOutputCount int                            `json:"temporaryOutputCount"`
-	ExistingOutputCount  int                            `json:"existingOutputCount"`
-	EstimatedWeight      string                         `json:"estimatedWeight,omitempty"`
-	EstimatedSeries      int                            `json:"estimatedSeries"`
-	EstimatedFrames      int                            `json:"estimatedFrames"`
-	RequiresSQL          bool                           `json:"requiresSql"`
-	Warnings             []simulation.PurposeRunWarning `json:"warnings,omitempty"`
-}
-
 func (a *App) RunBatchDiagnose(runID string) (*BatchDiagnoseResult, error) {
 	paths, canceled, err := a.selectBatchInputFiles("Open EnergyPlus inputs for Batch Diagnose")
 	if err != nil || canceled {
 		return &BatchDiagnoseResult{Canceled: canceled, RunID: runID}, err
 	}
 	return AnalyzeBatchDiagnosePaths(BatchJobRequest{RunID: runID, InputPaths: paths}), nil
-}
-
-func (a *App) RunBatchOutputQA(runID string) (*BatchOutputQAResult, error) {
-	paths, canceled, err := a.selectBatchInputFiles("Open EnergyPlus inputs for Batch Output QA")
-	if err != nil || canceled {
-		return &BatchOutputQAResult{Canceled: canceled, RunID: runID}, err
-	}
-	return AnalyzeBatchOutputQAPaths(BatchJobRequest{RunID: runID, InputPaths: paths}), nil
 }
 
 func (a *App) RunBatchCleanupReport(runID string) (*BatchCleanupReportResult, error) {
@@ -295,10 +233,6 @@ func (a *App) SaveBatchSimulationXLSX(request BatchSimulationXLSXExportRequest) 
 		return nil, err
 	}
 	return &SaveFileResult{Path: path, Filename: filepath.Base(path)}, nil
-}
-
-func (a *App) PreviewBatchSimulationPlan(request simulation.MultiSimulationRequest) (*BatchSimulationPlanPreviewResult, error) {
-	return AnalyzeBatchSimulationPlan(request), nil
 }
 
 func (a *App) CreateBatchSafeCleanedCopies(paths []string) (*BatchConvertExportResult, error) {
@@ -411,171 +345,6 @@ func analyzeBatchDiagnoseFile(index int, path string) BatchDiagnoseFile {
 			file.WarningCount++
 		default:
 			file.NoticeCount++
-		}
-	}
-	return file
-}
-
-func AnalyzeBatchOutputQAPaths(request BatchJobRequest) *BatchOutputQAResult {
-	paths := normalizeBatchPaths(request.InputPaths)
-	result := &BatchOutputQAResult{RunID: request.RunID, Total: len(paths)}
-	for index, path := range paths {
-		file := analyzeBatchOutputQAFile(index, path)
-		result.Files = append(result.Files, file)
-		result.Completed++
-		if file.Status == "ok" {
-			result.Succeeded++
-		} else {
-			result.Failed++
-		}
-	}
-	return result
-}
-
-func AnalyzeBatchSimulationPlan(request simulation.MultiSimulationRequest) *BatchSimulationPlanPreviewResult {
-	paths := normalizeBatchPaths(request.InputPaths)
-	purposeRequest := simulation.NormalizeSimulationPurposeRequest(request.PurposeRequest)
-	result := &BatchSimulationPlanPreviewResult{
-		Total:       len(paths),
-		Purposes:    purposeRequest.Purposes,
-		WorkerCount: request.WorkerCount,
-		WeatherMode: request.WeatherMode,
-		WeatherPath: request.WeatherPath,
-	}
-	common := map[string]int{}
-	for index, path := range paths {
-		file := analyzeBatchSimulationPlanFile(index, path, purposeRequest)
-		result.Files = append(result.Files, file)
-		result.Completed++
-		if file.Status == "ok" {
-			result.Succeeded++
-			if strings.EqualFold(file.EstimatedWeight, "Heavy") || strings.EqualFold(file.EstimatedWeight, "Very Heavy") || len(file.Warnings) > 0 {
-				result.HeavyFileCount++
-			}
-			model, doc, err := parseBatchInput(path)
-			if err == nil {
-				_ = model
-				plan := simulation.BuildPurposeRunPlan(doc, purposeRequest)
-				seen := map[string]bool{}
-				for _, object := range plan.OutputObjects {
-					if !seen[object.Signature] {
-						common[object.Signature]++
-						seen[object.Signature] = true
-					}
-				}
-			}
-		} else {
-			result.Failed++
-		}
-	}
-	for _, count := range common {
-		if count == result.Succeeded && result.Succeeded > 0 {
-			result.CommonOutputCount++
-		}
-	}
-	return result
-}
-
-func analyzeBatchSimulationPlanFile(index int, path string, purposeRequest simulation.SimulationPurposeRequest) BatchSimulationPlanPreviewFile {
-	base := newBatchFileResult(index, path)
-	model, doc, err := parseBatchInput(path)
-	if err != nil {
-		base.Status = "error"
-		base.Error = err.Error()
-		return BatchSimulationPlanPreviewFile{BatchFileResult: base}
-	}
-	plan := simulation.BuildPurposeRunPlan(doc, purposeRequest)
-	file := BatchSimulationPlanPreviewFile{
-		BatchFileResult: base,
-		OutputCount:     len(plan.OutputObjects),
-		EstimatedWeight: plan.EstimatedWeight,
-		EstimatedSeries: plan.EstimatedSeries,
-		EstimatedFrames: plan.EstimatedFrames,
-		RequiresSQL:     plan.RequiresSQL,
-		Warnings:        plan.Warnings,
-	}
-	base.Status = "ok"
-	file.BatchFileResult = base
-	file.Format = string(model.Format)
-	file.Version = model.Version.Raw
-	for _, object := range plan.OutputObjects {
-		if object.State == simulation.PurposeOutputStateExisting {
-			file.ExistingOutputCount++
-		} else {
-			file.TemporaryOutputCount++
-		}
-	}
-	return file
-}
-
-func analyzeBatchOutputQAFile(index int, path string) BatchOutputQAFile {
-	base := newBatchFileResult(index, path)
-	model, doc, err := parseBatchInput(path)
-	if err != nil {
-		base.Status = "error"
-		base.Error = err.Error()
-		return BatchOutputQAFile{BatchFileResult: base}
-	}
-	base.Status = "ok"
-	base.Format = string(model.Format)
-	base.Version = model.Version.Raw
-	output := idf.AnalyzeOutput(doc)
-	file := BatchOutputQAFile{
-		BatchFileResult:         base,
-		OutputObjectCount:       output.ObjectCount,
-		OutputVariableCount:     output.VariableCount,
-		OutputMeterCount:        output.MeterCount,
-		OutputWarnings:          output.Warnings,
-		PurposeReadiness:        map[string]bool{},
-		MissingPurposeOutputs:   map[string][]string{},
-		PurposeOutputPlanWeight: "",
-	}
-	for _, item := range output.Existing {
-		lower := strings.ToLower(item.ObjectType)
-		switch {
-		case lower == "output:sqlite":
-			file.SQLitePresent = true
-		case lower == "output:variabledictionary":
-			file.VariableDictionary = true
-		case strings.HasPrefix(lower, "output:table:") || lower == "outputcontrol:table:style":
-			file.OutputTableCount++
-		}
-		if item.Duplicate {
-			file.DuplicateOutputCount++
-		}
-		if strings.EqualFold(item.ReportingFrequency, "Detailed") || strings.EqualFold(item.ReportingFrequency, "Timestep") {
-			file.DetailedOrTimestepCount++
-		}
-	}
-	for _, warning := range output.Warnings {
-		if warning.Code == "high_volume_output" || warning.Code == "duplicate_output_request" {
-			file.HeavyWarningCount++
-		}
-	}
-	if output.VariableCount > 200 {
-		file.HeavyWarningCount++
-	}
-	purposeRequest := simulation.NormalizeSimulationPurposeRequest(&simulation.SimulationPurposeRequest{
-		Purposes: []simulation.SimulationPurposeID{
-			simulation.SimulationPurposeBasicEnergy,
-			simulation.SimulationPurposeZoneHeatFlow,
-			simulation.SimulationPurposeHVACLoopCheck,
-			simulation.SimulationPurposeIntegrity,
-		},
-	})
-	plan := simulation.BuildPurposeRunPlan(doc, purposeRequest)
-	file.PurposeOutputPlanWeight = plan.EstimatedWeight
-	file.PurposeOutputPlanObjects = len(plan.OutputObjects)
-	for _, purposeID := range plan.Purposes {
-		file.PurposeReadiness[string(purposeID)] = true
-	}
-	for _, object := range plan.OutputObjects {
-		for _, purposeID := range object.PurposeIDs {
-			if object.State != simulation.PurposeOutputStateExisting {
-				key := string(purposeID)
-				file.PurposeReadiness[key] = false
-				file.MissingPurposeOutputs[key] = append(file.MissingPurposeOutputs[key], object.Signature)
-			}
 		}
 	}
 	return file

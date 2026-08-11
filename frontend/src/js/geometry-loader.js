@@ -114,15 +114,6 @@ export function setGeometryStory(storyIndex) {
   loadGeometryModule().then((module) => module.setGeometryStory(state.selectedGeometryStory));
 }
 
-export function setGeometrySelectionAid(enabled) {
-  state.geometrySelectionAid = Boolean(enabled);
-  if (elements.geometrySelectionAid) {
-    elements.geometrySelectionAid.classList.toggle("active", state.geometrySelectionAid);
-    elements.geometrySelectionAid.setAttribute("aria-pressed", String(state.geometrySelectionAid));
-  }
-  loadGeometryModule().then((module) => module.setGeometrySelectionAid(state.geometrySelectionAid));
-}
-
 configureResultPanelNavigationHooks("geometry", {
   getRoot: () => document.getElementById("geometryPane"),
   canReveal(selection, context) {
@@ -141,13 +132,9 @@ configureResultPanelNavigationHooks("geometry", {
       selectedKind: state.selectedGeometryKind || "",
       selectedId: state.selectedGeometryId || "",
       ...captureThermalTopologyState(state),
-      selectionAid: Boolean(state.geometrySelectionAid),
       syncLocate: Boolean(state.geometrySyncLocate),
-      visibility: {
-        zones: Boolean(elements.geometryShowZones?.checked),
-        walls: Boolean(elements.geometryShowWalls?.checked),
-        windows: Boolean(elements.geometryShowWindows?.checked),
-      },
+      visibility3D: { ...(state.geometry3DVisibility || {}) },
+      visibilityPlan: { ...(state.geometryPlanVisibility || {}) },
     };
   },
   async restoreContext(snapshot, context) {

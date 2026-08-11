@@ -7,6 +7,7 @@ import {
   openSelectionInView,
   revealSelectionSource,
   selectSemanticEntity,
+  isProfileTopologyLink,
   selectionTargetsForView,
 } from "./selection-controller.js";
 import { elements, state } from "./state.js";
@@ -292,7 +293,7 @@ function panelRevealOptions(context) {
 function relatedPanelTargets(selection, currentView) {
   const out = [];
   for (const view of RESULT_PANEL_NAVIGATION_VIEW_IDS) {
-    if (view === currentView) continue;
+    if (view === currentView || isProfileTopologyLink(currentView, view)) continue;
     for (const target of selectionTargetsForView(view, selection)) {
       out.push({ view, target });
     }

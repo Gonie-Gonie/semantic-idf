@@ -74,6 +74,35 @@ func TestFrontendProfileMatrixCellsDriveDeckSelection(t *testing.T) {
 	}
 }
 
+func TestFrontendProfileGraphOmitsRedundantDeckStats(t *testing.T) {
+	markup := readTestFile(t, "frontend/src/index.html")
+	state := readTestFile(t, "frontend/src/js/state.js")
+	views := readTestFile(t, "frontend/src/js/views/profile-views.js")
+	analysis := readTestFile(t, "frontend/src/js/views/analysis-views.js")
+	for label, content := range map[string]string{
+		"markup":   markup,
+		"state":    state,
+		"views":    views,
+		"analysis": analysis,
+	} {
+		for _, removed := range []string{"profileGraphStats", "profileGraphDeckStats"} {
+			if strings.Contains(content, removed) {
+				t.Fatalf("%s still exposes redundant Profile Graph metadata %q", label, removed)
+			}
+		}
+	}
+	for _, retained := range []string{
+		`id="profileGraphPreset"`,
+		`id="profileGraphTimeView"`,
+		`id="profileGraphCompareMode"`,
+		`id="profileGraphScaleMode"`,
+	} {
+		if !strings.Contains(views, retained) {
+			t.Fatalf("Profile Graph behavior control was removed with its redundant stats: %q", retained)
+		}
+	}
+}
+
 func readTestFile(t *testing.T, path string) string {
 	t.Helper()
 	content, err := os.ReadFile(repoPath(path))

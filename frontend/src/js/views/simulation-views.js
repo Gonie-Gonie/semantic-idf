@@ -5,29 +5,32 @@ import { configureResultPanelNavigationHooks } from "../panel-navigation-adapter
 import { getSemanticNavigationCache } from "../semantic-navigation-cache.js";
 import { selectSemanticEntity } from "../selection-controller.js";
 import { navigateHVAC, renderHVACLoopDiagram } from "./hvac-views.js";
-import { openStandardOutputApplyDialog } from "./output-views.js";
 import { renderProfile } from "./profile-views.js";
 
 let progressListenerRegistered = false;
 let heatFlowPlayTimer = 0;
-let simulationRunPlanTimer = 0;
-let simulationRunPlanSequence = 0;
 let simulationNavigationCleanup = null;
 let simulationNavigationRevealTarget = null;
 
 const simulationSemanticBindings = new Map();
 const simulationEnergySourceByIDCache = new WeakMap();
 
-const simulationCustomOutputsStorageKey = "idfAnalyzer.simulationCustomOutputs";
-
 const simulationPurposeDefinitions = [
   { id: "basic_energy", label: "Basic Energy" },
   { id: "zone_heat_flow", label: "Zone Heat Flow" },
   { id: "hvac_loop_check", label: "HVAC Loop Check" },
-  { id: "integrity_check", label: "Integrity" },
   { id: "comfort_check", label: "Comfort" },
-  { id: "custom_outputs", label: "Custom Outputs" },
 ];
+
+const simulationPurposeDefaults = Object.freeze({
+  allocationPolicy: "direct_only",
+  basicEnergyDetail: "heat_drivers",
+  frequencyPolicy: "purpose_default",
+  outputApplyMode: "add_missing_only",
+  periodMode: "full",
+  zoneHeatFlowDetail: "surface",
+  zoneMode: "all",
+});
 
 function simulationSemanticNavigationIndex() {
   return state.semanticProjection?.navigation || {};
@@ -164,9 +167,9 @@ function simulationOutputSourceSemanticCandidate(source = {}, object = null) {
   const objectIndex = simulationOptionalIndex(object?.objectIndex ?? source.objectIndex);
   return {
     group: "Output sources",
-    view: "output",
-    targetKind: "request",
-    targetId: String(object?.signature || ""),
+    view: "input-text",
+    targetKind: "source",
+    targetId: String(object?.objectId || source.objectId || object?.signature || ""),
     entityKinds: ["output"],
     contextKinds: ["output_request", "zone_output"],
     sourceAnchor: {
@@ -198,15 +201,6 @@ function simulationHVACLoopSemanticCandidate(loop = {}) {
 function simulationEnergyGroupSemanticCandidates(item = {}) {
   const label = [item.carrier, item.endUse, item.serviceKind, item.heatCategory].filter(Boolean).join(" / ");
   return [
-    {
-      group: "Model entities",
-      view: "output",
-      targetKind: "section",
-      targetId: "outputs",
-      entityKinds: ["semantic-section"],
-      contextKinds: ["definition"],
-      label: label || "Outputs",
-    },
     {
       group: "Model entities",
       view: "summary",
@@ -512,69 +506,19 @@ function simulationNavigationLoopEntityID(loopType = "", loopName = "") {
 export function initializeSimulationControls() {
   configureSimulationPanelNavigation();
   state.simulationHeatFlowInspectorCollapsed = readHeatFlowInspectorCollapsed();
-  if (elements.simulationStandardOutput) {
-    elements.simulationStandardOutput.checked = state.simulationStandardOutput !== false;
-  }
-  restoreSimulationCustomOutputsPreset();
-  elements.simulationApplyStandardOutput?.addEventListener("click", () => openStandardOutputApplyDialog());
   elements.simulationPurposeInputs?.forEach((input) => {
     input.checked = state.simulationSelectedPurposes.includes(input.dataset.simulationPurpose);
     input.addEventListener("change", () => {
       syncSimulationPurposeStateFromControls();
-      scheduleSimulationRunPlan();
       renderSimulation();
     });
   });
-  elements.simulationPurposeZoneMode?.addEventListener("change", () => {
-    scheduleSimulationRunPlan();
-    renderSimulation();
-  });
-  elements.simulationPurposeZoneNames?.addEventListener("input", () => scheduleSimulationRunPlan());
-  elements.simulationPurposePeriodMode?.addEventListener("change", () => {
-    scheduleSimulationRunPlan();
-    renderSimulation();
-  });
-  elements.simulationPurposePeriodStart?.addEventListener("input", () => scheduleSimulationRunPlan());
-  elements.simulationPurposePeriodEnd?.addEventListener("input", () => scheduleSimulationRunPlan());
-  elements.simulationPurposeEnergyDetail?.addEventListener("change", () => scheduleSimulationRunPlan());
-  elements.simulationPurposeZoneHeatFlowDetail?.addEventListener("change", () => scheduleSimulationRunPlan());
-  elements.simulationPurposeFrequencyPolicy?.addEventListener("change", () => scheduleSimulationRunPlan());
-  elements.simulationPurposeAllocationPolicy?.addEventListener("change", () => scheduleSimulationRunPlan());
-  elements.simulationPurposeApplyMode?.addEventListener("change", () => updatePurposeApplyButton());
-  elements.simulationCustomOutputs?.addEventListener("input", () => {
-    saveSimulationCustomOutputsPreset();
-    scheduleSimulationRunPlan();
-  });
-  elements.simulationOutputDiscoveryFilter?.addEventListener("input", () => {
-    state.simulationOutputDiscoveryQuery = elements.simulationOutputDiscoveryFilter.value || "";
-    renderSimulationOutputDiscovery();
-  });
-  elements.simulationOutputDiscoveryRefresh?.addEventListener("click", () => refreshSimulationOutputDiscovery({ force: true }));
-  elements.simulationOutputDiscoveryList?.addEventListener("click", (event) => {
-    if (!(event.target instanceof Element)) {
-      return;
-    }
-    const button = event.target.closest("[data-simulation-discovery-add]");
-    if (!button) {
-      return;
-    }
-    appendDiscoveredCustomOutput(Number(button.dataset.simulationDiscoveryAdd));
-  });
-  elements.simulationPersistOutputs?.addEventListener("change", () => scheduleSimulationRunPlan());
-  elements.simulationRefreshPlan?.addEventListener("click", () => refreshSimulationRunPlan({ force: true }));
-  elements.simulationApplyPurposeOutputs?.addEventListener("click", () => applyPurposeOutputsToCurrentIDF());
   elements.simulationResultTabs?.querySelectorAll("[data-simulation-result-view-button]").forEach((button) => {
     button.addEventListener("click", () => {
       state.simulationActiveResultView = button.dataset.simulationResultViewButton || "energy";
       renderSimulationResultTabs(state.simulationResult);
       toggleSimulationResultSections();
     });
-  });
-  elements.simulationIntegrityFilter?.addEventListener("input", () => {
-    state.simulationIntegrityQuery = elements.simulationIntegrityFilter.value || "";
-    if (state.simulationResult && elements.simulationResultSummary) {
-      elements.simulationResultSummary.innerHTML = `${state.simulationRunning ? renderRunningNotice() : ""}${renderSimulationSummary(state.simulationResult, state.simulationStale)}`;
-    }
   });
   elements.simulationEnergyDashboard?.addEventListener("click", handleSimulationSeriesInspectClick);
   elements.simulationEnergyDashboard?.addEventListener("input", handleSimulationEnergyDashboardChange);
@@ -586,14 +530,8 @@ export function initializeSimulationControls() {
   elements.simulationComfortResults?.addEventListener("change", handleSimulationComfortResultsChange);
   elements.simulationExportPurposeJSON?.addEventListener("click", () => exportPurposeResultJSON());
   elements.simulationExportPurposeHTML?.addEventListener("click", () => exportPurposeResultHTML());
-  elements.simulationRefreshEnv?.addEventListener("click", () => loadSimulationEnvironment());
   elements.simulationRunButton?.addEventListener("click", () => runCurrentSimulation({ silent: false }));
-  elements.simulationEnergyPlusSelect?.addEventListener("change", () => renderSimulation());
   elements.simulationWeatherSelect?.addEventListener("change", () => renderSimulation());
-  elements.simulationStandardOutput?.addEventListener("change", () => {
-    state.simulationStandardOutput = elements.simulationStandardOutput.checked;
-    renderSimulation();
-  });
   elements.simulationSeriesGroup?.addEventListener("change", () => {
     state.simulationSeriesGroup = elements.simulationSeriesGroup.value || "all";
     state.simulationSelectedSeries = "";
@@ -644,23 +582,16 @@ export function initializeSimulationControls() {
     state.simulationHeatFlowOverlay = elements.simulationHeatFlowOverlay.value || "net";
     renderSimulationHeatFlow();
   });
-  elements.simulationAutoRunOnOpen?.addEventListener("change", () => {
-    state.simulationAutoRunOnOpen = elements.simulationAutoRunOnOpen.checked;
-  });
   window.addEventListener("idfAnalyzer:simulationProgress", (event) => handleSimulationProgress(event.detail));
   window.addEventListener("idfAnalyzer:documentChanged", () => {
     if (state.simulationResult && state.simulationRunText !== elements.idfInput.value) {
       state.simulationStale = true;
     }
-    scheduleSimulationRunPlan();
     updateSimulationControls();
     renderSimulation();
   });
-  window.addEventListener("idfAnalyzer:outputApplied", () => scheduleSimulationRunPlan(0));
-  window.addEventListener("idfAnalyzer:openSimulationPurposePlan", () => openSimulationPurposeOutputPlan());
   window.addEventListener("idfAnalyzer:hvacSelectionChanged", () => {
     renderSimulationPurposeSetup();
-    scheduleSimulationRunPlan(0);
   });
   window.addEventListener("idfAnalyzer:analysisComplete", () => maybeAutoRunSimulation());
   window.addEventListener("idfAnalyzer:settingsChanged", (event) => {
@@ -669,7 +600,6 @@ export function initializeSimulationControls() {
   });
   waitForProgressRuntime();
   loadSimulationEnvironment();
-  scheduleSimulationRunPlan();
   renderSimulationEmpty();
 }
 
@@ -887,7 +817,7 @@ function simulationSeriesForSelection(selection = {}) {
     (anchor.objectId && object.objectId === anchor.objectId) ||
     (anchor.objectIndex !== undefined && Number(object.objectIndex) === Number(anchor.objectIndex))
   ));
-  return output ? customOutputSeriesRef(output).series : null;
+  return output ? purposeOutputSeriesRef(output).series : null;
 }
 
 function applySimulationNavigationDestination(destination = {}) {
@@ -1021,7 +951,6 @@ function captureSimulationNavigationContext(context) {
     selectedSeries: state.simulationSelectedSeries || "",
     seriesRangeStart: Number(state.simulationSeriesRangeStart) || 0,
     seriesRangeEnd: Number.isFinite(Number(state.simulationSeriesRangeEnd)) ? Number(state.simulationSeriesRangeEnd) : -1,
-    integrityQuery: state.simulationIntegrityQuery || "",
     energyScrollTop: Number(elements.simulationEnergyDashboard?.scrollTop) || 0,
     heatFlowScrollTop: Number(elements.simulationHeatFlow?.scrollTop) || 0,
     hvacScrollTop: Number(elements.simulationHVACLoopResults?.scrollTop) || 0,
@@ -1065,7 +994,6 @@ async function restoreSimulationNavigationContext(snapshot = {}, context) {
     simulationSelectedSeries: snapshot.selectedSeries,
     simulationSeriesRangeStart: snapshot.seriesRangeStart,
     simulationSeriesRangeEnd: snapshot.seriesRangeEnd,
-    simulationIntegrityQuery: snapshot.integrityQuery,
   };
   for (const [key, value] of Object.entries(assignments)) {
     if (value !== undefined) {
@@ -1145,9 +1073,6 @@ export async function loadSimulationEnvironment() {
     const env = await callSimulationAPI("GetSimulationEnvironment", "/api/simulation-environment");
     state.simulationEnvironment = env;
     state.simulationAutoRunOnOpen = env?.settings?.autoRunOnOpen ?? state.simulationAutoRunOnOpen;
-    if (elements.simulationAutoRunOnOpen) {
-      elements.simulationAutoRunOnOpen.checked = Boolean(state.simulationAutoRunOnOpen);
-    }
     renderSimulationEnvironment();
     renderSimulation();
     return env;
@@ -1173,9 +1098,6 @@ export function renderSimulation() {
   const result = state.simulationResult;
   const stale = state.simulationStale;
   const err = result.err || {};
-  const csvCount = result.csvs?.length || 0;
-  const sqlCount = (result.files || []).filter((file) => file.kind === "sqlite").length;
-  const issueCount = err.total || 0;
   const statusLabel = statusText(result.status);
   ensureActiveSimulationResultView(result);
   renderSimulationResultTabs(result);
@@ -1185,17 +1107,11 @@ export function renderSimulation() {
   if (state.simulationRunning) {
     elements.simulationStats.textContent = t("simulation.runningStats", {}, "Simulation running in background");
   }
-  elements.simulationResultMeta.textContent = `${result.filename || "current input"} - ${formatDuration(result.durationMs || 0)} - ${sqlCount} SQL - ${csvCount} CSV - ${issueCount} ERR issues`;
-  if (elements.simulationIntegrityFilter && elements.simulationIntegrityFilter.value !== state.simulationIntegrityQuery) {
-    elements.simulationIntegrityFilter.value = state.simulationIntegrityQuery || "";
-  }
-  elements.simulationResultSummary.innerHTML = `${state.simulationRunning ? renderRunningNotice() : ""}${renderSimulationSummary(result, stale)}`;
   renderSimulationEnergyDashboard(result);
   renderSimulationHVACLoops(result);
   renderSimulationComfort(result);
   renderSimulationHeatFlow();
   renderSimulationSeriesSelect(result);
-  renderSimulationCustomSeriesLinks(result);
   renderSimulationChart();
   renderSimulationFiles(result);
   toggleSimulationResultSections();
@@ -1216,11 +1132,8 @@ function renderSimulationEmpty() {
     setSimulationPreviewMode(false);
     renderSimulationResultTabs(null);
     elements.simulationStats.textContent = t("simulation.runningStats", {}, "Simulation running in background");
-    elements.simulationResultMeta.textContent = t("simulation.backgroundRun", {}, "EnergyPlus is running in the background");
-    elements.simulationResultSummary.innerHTML = renderRunningNotice();
     renderSimulationHeatFlowEmpty(t("simulation.heatFlowAfterRun", {}, "The heat-flow ledger will appear when Zone Heat Flow SQL/CSV output is available."));
     setSimulationSeriesGroupUnavailable();
-    renderSimulationCustomSeriesLinks(null);
     elements.simulationSeriesSelect.innerHTML = `<option value="">${escapeHTML(t("simulation.waitingForCSV", {}, "Waiting for SQL/CSV output"))}</option>`;
     elements.simulationChart.innerHTML = `<div class="simulation-running-empty">${renderMiniProgressSVG()}<span>${escapeHTML(t("simulation.graphAfterRun", {}, "The SQL/CSV graph will appear when the run finishes."))}</span></div>`;
     elements.simulationFiles.innerHTML = `<div class="empty status-loading">${escapeHTML(t("simulation.writingOutputs", {}, "EnergyPlus is writing output files"))}</div>`;
@@ -1238,11 +1151,8 @@ function renderSimulationEmpty() {
     elements.simulationStatus.classList.remove("status-loading");
     elements.simulationPercent.textContent = "0%";
     elements.simulationProgressBar.style.width = "0%";
-    elements.simulationResultMeta.textContent = t("simulation.blockedMeta", {}, "Run requirements need attention");
-    elements.simulationResultSummary.innerHTML = renderSimulationBlocker(blockingIssue);
     renderSimulationHeatFlowEmpty(t("simulation.blockedGraph", {}, "Graph output is unavailable until the run can start."));
     setSimulationSeriesGroupUnavailable();
-    renderSimulationCustomSeriesLinks(null);
     elements.simulationSeriesSelect.innerHTML = `<option value="">${escapeHTML(t("simulation.noSeries", {}, "No SQL/CSV series"))}</option>`;
     elements.simulationChart.innerHTML = `<div class="simulation-blocked-empty">${escapeHTML(t("simulation.blockedGraph", {}, "Graph output is unavailable until the run can start."))}</div>`;
     elements.simulationFiles.innerHTML = `<div class="simulation-blocked-empty">${escapeHTML(t("simulation.blockedFiles", {}, "No output files will be created while simulation is blocked."))}</div>`;
@@ -1265,14 +1175,12 @@ function renderSimulationEmpty() {
   elements.simulationStatus.classList.remove("status-loading");
   elements.simulationPercent.textContent = "0%";
   elements.simulationProgressBar.style.width = "0%";
-  elements.simulationResultSummary.innerHTML = `<div class="empty">${t("simulation.noResult", {}, "Run & Inspect will show purpose results, integrity diagnostics, and SQL/CSV outputs.")}</div>`;
   renderSimulationResultTabs(null);
   renderSimulationEnergyEmpty(t("simulation.noEnergyResult", {}, "Run Basic Energy to inspect monthly energy results."));
   renderSimulationHVACLoopEmpty(t("simulation.noHVACLoopResult", {}, "Run HVAC Loop Check to inspect node state series."));
   renderSimulationComfortEmpty(t("simulation.noComfortResult", {}, "Run Comfort Check to inspect zone temperature and setpoint series."));
   renderSimulationHeatFlowEmpty(t("simulation.noHeatFlow", {}, "Select Zone Heat Flow to inspect the zone heat-flow ledger."));
   setSimulationSeriesGroupUnavailable();
-  renderSimulationCustomSeriesLinks(null);
   elements.simulationSeriesSelect.innerHTML = `<option value="">${escapeHTML(t("simulation.noSeries", {}, "No SQL/CSV series"))}</option>`;
   elements.simulationChart.innerHTML = `<div class="empty">${t("simulation.noGraph", {}, "SQL/CSV graph will appear after a run with numeric output.")}</div>`;
   elements.simulationFiles.innerHTML = `<div class="empty">${t("simulation.noFiles", {}, "No output files yet")}</div>`;
@@ -1289,205 +1197,6 @@ function renderSimulationPurposeSetup() {
       ? [selected.map(purposeLabel).join(" + "), hvacScope].filter(Boolean).join(" | ")
       : t("simulation.noPurposeSelected", {}, "No purposes selected");
   }
-  if (elements.simulationPurposeZoneNames) {
-    const zoneMode = elements.simulationPurposeZoneMode?.value || "all";
-    const editableMode = zoneMode === "selected" || zoneMode === "filtered";
-    elements.simulationPurposeZoneNames.disabled = !editableMode;
-    elements.simulationPurposeZoneNames.closest("label")?.classList.toggle("disabled", !editableMode);
-  }
-  if (elements.simulationCustomOutputs) {
-    const customSelected = selected.includes("custom_outputs");
-    elements.simulationCustomOutputs.disabled = !customSelected;
-    elements.simulationCustomOutputs.closest("label")?.classList.toggle("disabled", !customSelected);
-    elements.simulationOutputDiscoveryFilter?.toggleAttribute("disabled", !customSelected);
-    elements.simulationOutputDiscoveryRefresh?.toggleAttribute("disabled", !customSelected);
-    elements.simulationOutputDiscoveryList?.classList.toggle("disabled", !customSelected);
-  }
-  renderSimulationOutputDiscovery();
-  renderSimulationRunPlanPreview();
-}
-
-function renderSimulationRunPlanPreview() {
-  if (!elements.simulationRunPlan) {
-    return;
-  }
-  const plan = state.simulationPurposePlan;
-  const hasText = Boolean((elements.idfInput?.value || "").trim());
-  if (state.simulationPurposePlanLoading) {
-    elements.simulationRunPlanStats.textContent = t("simulation.planLoading", {}, "Building plan");
-    elements.simulationRunPlan.innerHTML = `<div class="empty status-loading">${escapeHTML(t("simulation.planLoadingDetail", {}, "Checking current IDF outputs and purpose presets."))}</div>`;
-    updatePurposeApplyButton();
-    return;
-  }
-  if (state.simulationPurposePlanError) {
-    elements.simulationRunPlanStats.textContent = t("simulation.planError", {}, "Plan unavailable");
-    elements.simulationRunPlan.innerHTML = `<div class="simulation-error">${escapeHTML(state.simulationPurposePlanError)}</div>`;
-    updatePurposeApplyButton();
-    return;
-  }
-  if (!hasText) {
-    elements.simulationRunPlanStats.textContent = t("simulation.planPending", {}, "Plan pending");
-    elements.simulationRunPlan.innerHTML = `<div class="empty">${escapeHTML(t("simulation.planNeedsInput", {}, "Run plan will appear after an input is available."))}</div>`;
-    updatePurposeApplyButton();
-    return;
-  }
-  if (!plan) {
-    elements.simulationRunPlanStats.textContent = t("simulation.planPending", {}, "Plan pending");
-    elements.simulationRunPlan.innerHTML = `<div class="empty">${escapeHTML(t("simulation.planWillBuild", {}, "Run plan will build automatically."))}</div>`;
-    updatePurposeApplyButton();
-    return;
-  }
-  const objects = plan.outputObjects || [];
-  const warnings = plan.warnings || [];
-  elements.simulationRunPlanStats.textContent = t(
-    "simulation.planStats",
-    { count: objects.length, weight: plan.estimatedWeight || "Light" },
-    `${objects.length} outputs - ${plan.estimatedWeight || "Light"}`,
-  );
-  const warningHTML = warnings.length
-    ? `<div class="simulation-plan-warnings">${warnings
-        .map((warning) => `<span class="${escapeHTML(warning.severity || "info")}">${escapeHTML(warning.message || warning.code || "")}</span>`)
-        .join("")}</div>`
-    : "";
-  const outputSetSummary = renderPurposeOutputSetSummary(objects);
-  const rows = objects
-    .slice(0, 80)
-    .map((object) => {
-      const key = object.keyValue || outputFieldValue(object.fields, "Option Type", "Report 1 Name", "Key 1", "Column Separator") || "-";
-      return `
-        <tr>
-          <td>${escapeHTML(object.objectType || "")}</td>
-          <td>${escapeHTML(key)}</td>
-          <td>${escapeHTML(object.variableName || "")}</td>
-          <td>${escapeHTML(object.reportingFrequency || "")}</td>
-          <td>${escapeHTML((object.purposeIds || []).map(purposeLabel).join(", "))}</td>
-          <td>${escapeHTML(purposeOutputSetLabel(object))}</td>
-          <td><span class="simulation-output-state ${escapeHTML(object.state || "")}">${escapeHTML(outputStateLabel(object.state))}</span></td>
-          <td>${escapeHTML(object.weight || "light")}</td>
-        </tr>`;
-    })
-    .join("");
-  const truncated = objects.length > 80 ? `<div class="tool-muted">${escapeHTML(t("simulation.planTruncated", { count: objects.length - 80 }, `${objects.length - 80} more outputs hidden.`))}</div>` : "";
-  elements.simulationRunPlan.innerHTML = `
-    <div class="simulation-plan-summary">
-      <span>${escapeHTML(t("simulation.estimatedSeries", { count: plan.estimatedSeries || 0 }, `${plan.estimatedSeries || 0} series`))}</span>
-      <span>${escapeHTML(t("simulation.estimatedFrames", { count: plan.estimatedFrames || 0 }, `${plan.estimatedFrames || 0} frames`))}</span>
-      <span>${escapeHTML(plan.requiresSQL ? t("simulation.sqlPrimary", {}, "SQL primary") : t("simulation.sqlOptional", {}, "SQL optional"))}</span>
-      ${plan.basicEnergyDetail ? `<span>${escapeHTML(t("simulation.basicEnergyDetail", {}, "Basic Energy detail"))}: ${escapeHTML(basicEnergyDetailLabel(plan.basicEnergyDetail))}</span>` : ""}
-      ${plan.zoneHeatFlowDetail ? `<span>Zone Heat Flow: ${escapeHTML(plan.zoneHeatFlowDetail === "surface" ? "Surface topology overlay" : "Zone ledger")}</span>` : ""}
-    </div>
-    ${outputSetSummary}
-    ${warningHTML}
-    <div class="output-table-wrap">
-      <table class="output-table simulation-plan-table">
-        <thead><tr><th>${escapeHTML(t("common.type", {}, "Type"))}</th><th>${escapeHTML(t("common.key", {}, "Key"))}</th><th>${escapeHTML(t("common.metric", {}, "Metric"))}</th><th>${escapeHTML(t("common.frequency", {}, "Frequency"))}</th><th>${escapeHTML(t("simulation.purpose", {}, "Purpose"))}</th><th>${escapeHTML(t("simulation.outputSet", {}, "Output set"))}</th><th>${escapeHTML(t("common.status", {}, "Status"))}</th><th>${escapeHTML(t("simulation.weight", {}, "Weight"))}</th></tr></thead>
-        <tbody>${rows || `<tr><td colspan="8">${escapeHTML(t("simulation.noPlanOutputs", {}, "No output objects selected."))}</td></tr>`}</tbody>
-      </table>
-    </div>
-    ${truncated}`;
-  updatePurposeApplyButton();
-}
-
-function renderPurposeOutputSetSummary(objects = []) {
-  const groups = new Map();
-  for (const object of objects || []) {
-    if (!(object.purposeIds || []).includes("basic_energy")) {
-      continue;
-    }
-    const key = purposeOutputSetKey(object);
-    if (!groups.has(key)) {
-      groups.set(key, { key, total: 0, states: new Map() });
-    }
-    const group = groups.get(key);
-    const state = object.state || "temporary";
-    group.total += 1;
-    group.states.set(state, (group.states.get(state) || 0) + 1);
-  }
-  const order = ["sql", "light", "explain", "heat_drivers", "other"];
-  const rows = order
-    .map((key) => groups.get(key))
-    .filter(Boolean)
-    .map((group) => {
-      const states = ["existing", "temporary", "will_be_persisted", "conflict"]
-        .filter((state) => group.states.has(state))
-        .map((state) => `${group.states.get(state)} ${outputStateLabel(state)}`)
-        .join(" / ");
-      return `<span><b>${escapeHTML(purposeOutputSetDisplayLabel(group.key))}</b>${escapeHTML(states || String(group.total))}</span>`;
-    })
-    .join("");
-  if (!rows) {
-    return "";
-  }
-  return `<div class="simulation-plan-output-sets" aria-label="${escapeHTML(t("simulation.outputSet", {}, "Output set"))}">${rows}</div>`;
-}
-
-function purposeOutputSetLabel(object = {}) {
-  if (!(object.purposeIds || []).includes("basic_energy")) {
-    return object.reason || "";
-  }
-  return purposeOutputSetDisplayLabel(purposeOutputSetKey(object));
-}
-
-function purposeOutputSetKey(object = {}) {
-  const objectType = String(object.objectType || "").toLowerCase();
-  if (objectType === "output:sqlite") {
-    return "sql";
-  }
-  const evidence = `${object.reason || ""} ${object.description || ""} ${object.variableName || ""}`.toLowerCase();
-  if (evidence.includes("heat drivers")) {
-    return "heat_drivers";
-  }
-  if (evidence.includes("explain") || purposeOutputLooksLikeEnergyExplain(object.variableName || "")) {
-    return "explain";
-  }
-  if (purposeOutputLooksLikeHeatDriver(object.variableName || "")) {
-    return "heat_drivers";
-  }
-  return "light";
-}
-
-function purposeOutputSetDisplayLabel(key = "") {
-  switch (key) {
-    case "sql":
-      return t("simulation.outputSetSQL", {}, "SQL");
-    case "explain":
-      return t("simulation.basicEnergyDetailExplain", {}, "Explain");
-    case "heat_drivers":
-      return t("simulation.basicEnergyDetailHeatDrivers", {}, "Heat drivers");
-    case "light":
-      return t("simulation.basicEnergyDetailLight", {}, "Light");
-    default:
-      return t("simulation.outputSet", {}, "Output set");
-  }
-}
-
-function purposeOutputLooksLikeEnergyExplain(variableName = "") {
-  const name = String(variableName || "").toLowerCase();
-  return Boolean(
-    name &&
-      (name.includes("sensible cooling") ||
-        name.includes("sensible heating") ||
-        name.includes("cooling demand") ||
-        name.includes("heating demand") ||
-        name.includes("cooling coil") ||
-        name.includes("heating coil") ||
-        name.includes("ideal loads") ||
-        name.includes("radiant hvac") ||
-        name.includes("electricity energy") ||
-        name.includes("gas energy")),
-  );
-}
-
-function purposeOutputLooksLikeHeatDriver(variableName = "") {
-  const name = String(variableName || "").toLowerCase();
-  return Boolean(
-    name &&
-      (name.includes("heat balance") ||
-        name.includes("total heating") ||
-        name.includes("sensible heat gain") ||
-        name.includes("sensible heat loss") ||
-        name.includes("fan air heat gain")),
-  );
 }
 
 function renderSimulationResultTabs(result) {
@@ -1507,12 +1216,12 @@ function ensureActiveSimulationResultView(result) {
   if (availability[state.simulationActiveResultView]) {
     return;
   }
-  state.simulationActiveResultView = ["energy", "zone_heat_flow", "hvac_loops", "comfort", "integrity", "series", "files"].find((view) => availability[view]) || "energy";
+  state.simulationActiveResultView = ["energy", "zone_heat_flow", "hvac_loops", "comfort", "series", "files"].find((view) => availability[view]) || "energy";
 }
 
 function simulationResultViewAvailability(result) {
   if (!result) {
-    return { energy: true, zone_heat_flow: true, hvac_loops: true, comfort: true, integrity: true, series: true, files: true };
+    return { energy: true, zone_heat_flow: true, hvac_loops: true, comfort: true, series: true, files: true };
   }
   const energy = result.purposeResults?.energy || {};
   const heatFlow = result.purposeResults?.zoneHeatFlow?.zones?.length ? result.purposeResults.zoneHeatFlow : result.heatFlow || {};
@@ -1523,7 +1232,6 @@ function simulationResultViewAvailability(result) {
     zone_heat_flow: Boolean((heatFlow.zones || []).length),
     hvac_loops: Boolean(hvacLoops.some((loop) => (loop.series || []).length || hvacComponentSeriesCount(loop.components || []))),
     comfort: Boolean((comfort.zones || []).length || (comfort.series || []).length),
-    integrity: true,
     series: Boolean((result.series || []).length),
     files: Boolean((result.files || []).length),
   };
@@ -2470,15 +2178,14 @@ function renderEnergyExplanationCompleteness(explanation = {}) {
   let coverageTitle = "";
   if (hasOutputShortage) {
     coverageTitle = t("simulation.outputShortage", {}, "Output shortage");
-    coverageNote = t("simulation.energyOutputShortageHint", {}, "Source output shortage: open the output plan, make missing outputs permanent, then rerun Basic Energy.");
+    coverageNote = t("simulation.energyOutputShortageHint", {}, "The default detailed output set was requested; missing rows reflect unavailable or unsupported sources.");
   } else if (hasDetailTierGap) {
     coverageTitle = t("simulation.energyDetailTier", {}, "Detail tier");
-    coverageNote = t("simulation.energyDetailTierHint", {}, "Detailed load/heat outputs were not requested by Light Basic Energy. Switch Basic Energy detail to Explain or Heat drivers, refresh the output plan, then rerun Basic Energy.");
+    coverageNote = t("simulation.energyDetailTierHint", {}, "This result used the legacy Light tier. Rerun Basic Energy to use the default detailed output set.");
   } else if (hasIncompleteItems) {
     coverageTitle = t("simulation.accountingCoverage", {}, "Accounting coverage");
     coverageNote = t("simulation.energyAccountingCoverageHint", {}, "No source output shortage is reported; remaining gaps are accounting coverage or model applicability.");
   }
-  const applyDisabled = purposeOutputApplyState().disabled;
   const availabilitySummary = renderEnergySourceAvailabilitySummary(completeness.sourceAvailability || []);
   const availabilityRows = (completeness.sourceAvailability || [])
     .filter((item) => item.status && item.status !== "found")
@@ -2523,18 +2230,6 @@ function renderEnergyExplanationCompleteness(explanation = {}) {
                 <strong>${escapeHTML(coverageTitle)}</strong>
                 <span>${escapeHTML(coverageNote)}</span>
               </div>
-              ${
-                hasOutputShortage || hasDetailTierGap
-                  ? `<div class="energy-explanation-output-buttons">
-                      <button class="simulation-series-inspect" type="button" data-simulation-energy-output-plan="1">${escapeHTML(t("simulation.openOutputPlan", {}, "Output plan"))}</button>
-                      ${
-                        hasOutputShortage
-                          ? `<button class="simulation-series-inspect" type="button" data-simulation-energy-apply-outputs="1" ${applyDisabled ? "disabled" : ""}>${escapeHTML(t("simulation.makePurposeOutputsPermanent", {}, "Make outputs permanent"))}</button>`
-                          : ""
-                      }
-                    </div>`
-                  : ""
-              }
             </div>`
           : ""
       }
@@ -2621,8 +2316,7 @@ function currentBasicEnergyDetail() {
   return String(
     state.simulationResult?.purposeRunPlan?.basicEnergyDetail ||
       state.simulationPurposePlan?.basicEnergyDetail ||
-      elements.simulationPurposeEnergyDetail?.value ||
-      "",
+      simulationPurposeDefaults.basicEnergyDetail,
   ).toLowerCase();
 }
 
@@ -5767,17 +5461,6 @@ function handleSimulationSeriesInspectClick(event) {
     renderSimulationEnergyDashboard(state.simulationResult);
     return;
   }
-  const energyOutputPlan = event.target.closest("[data-simulation-energy-output-plan]");
-  if (energyOutputPlan) {
-    openSimulationPurposeOutputPlan();
-    return;
-  }
-  const energyApplyOutputs = event.target.closest("[data-simulation-energy-apply-outputs]");
-  if (energyApplyOutputs && !energyApplyOutputs.disabled) {
-    openSimulationPurposeOutputPlan({ status: false });
-    void applyPurposeOutputsToCurrentIDF();
-    return;
-  }
   const hvacPath = event.target.closest("[data-simulation-hvac-path-id]");
   if (hvacPath) {
     openSimulationHVACServicePath(hvacPath.dataset.simulationHvacPathId || "");
@@ -5924,25 +5607,6 @@ function simulationHVACLoopRefGraphKey(loopType = "", loopName = "") {
 
 function simulationHVACGraphName(value = "") {
   return String(value || "").trim().toLowerCase();
-}
-
-function openSimulationPurposeOutputPlan(options = {}) {
-  const simulationTab = [...(elements.resultTabButtons || [])].find((button) => button.dataset.resultTab === "simulation");
-  if (simulationTab) {
-    simulationTab.click();
-  } else {
-    state.activeResultTab = "simulation";
-  }
-  scheduleSimulationRunPlan(0);
-  window.setTimeout(() => {
-    const target = elements.simulationRunPlan || elements.simulationApplyPurposeOutputs || elements.simulationPurposeStats;
-    target?.scrollIntoView({ block: "start", behavior: "smooth" });
-    elements.simulationRunPlan?.classList.add("attention");
-    window.setTimeout(() => elements.simulationRunPlan?.classList.remove("attention"), 1800);
-  }, 0);
-  if (options.status !== false) {
-    setStatus(t("simulation.outputPlanOpened", {}, "Output plan opened"), "ok");
-  }
 }
 
 function handleSimulationEnergyDashboardChange(event) {
@@ -6128,420 +5792,28 @@ function normalizeOutputMatchToken(value) {
   return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
 }
 
-function scheduleSimulationRunPlan(delay = 260) {
-  window.clearTimeout(simulationRunPlanTimer);
-  simulationRunPlanTimer = window.setTimeout(() => refreshSimulationRunPlan(), delay);
-}
-
-async function refreshSimulationRunPlan({ force = false } = {}) {
-  if (!elements.simulationRunPlan) {
-    return null;
-  }
-  const text = elements.idfInput?.value || "";
-  if (!text.trim()) {
-    state.simulationPurposePlan = null;
-    state.simulationPurposePlanKey = "";
-    state.simulationPurposePlanError = "";
-    state.simulationPurposePlanLoading = false;
-    renderSimulationRunPlanPreview();
-    return null;
-  }
-  const purposeRequest = buildSimulationPurposeRequest();
-  const key = `${hashString(text)}:${JSON.stringify(purposeRequest)}`;
-  if (!force && key === state.simulationPurposePlanKey && (state.simulationPurposePlan || state.simulationPurposePlanLoading)) {
-    return state.simulationPurposePlan;
-  }
-  const sequence = ++simulationRunPlanSequence;
-  state.simulationPurposePlanKey = key;
-  state.simulationPurposePlanLoading = true;
-  state.simulationPurposePlanError = "";
-  renderSimulationRunPlanPreview();
-  try {
-    const plan = await callSimulationAPI("BuildSimulationRunPlan", "/api/simulation-run-plan", {
-      text,
-      inputPath: state.currentFilePath || "",
-      filename: state.currentFilename || "current-input.idf",
-      purposeRequest,
-    });
-    if (sequence !== simulationRunPlanSequence) {
-      return plan;
-    }
-    state.simulationPurposePlan = plan;
-    state.simulationPurposePlanError = "";
-    return plan;
-  } catch (error) {
-    if (sequence === simulationRunPlanSequence) {
-      state.simulationPurposePlan = null;
-      state.simulationPurposePlanError = error?.message || String(error);
-    }
-    return null;
-  } finally {
-    if (sequence === simulationRunPlanSequence) {
-      state.simulationPurposePlanLoading = false;
-      renderSimulationRunPlanPreview();
-    }
-  }
-}
-
-async function refreshSimulationOutputDiscovery({ force = false } = {}) {
-  if (!elements.simulationOutputDiscoveryList) {
-    return null;
-  }
-  const text = elements.idfInput?.value || "";
-  const outputDirectory = state.simulationResult?.outputDirectory || "";
-  if (!text.trim() && !outputDirectory) {
-    state.simulationOutputDiscovery = null;
-    state.simulationOutputDiscoveryKey = "";
-    state.simulationOutputDiscoveryError = "";
-    state.simulationOutputDiscoveryLoading = false;
-    renderSimulationOutputDiscovery();
-    return null;
-  }
-  const purposeRequest = { ...buildSimulationPurposeRequest(), discoveryAllowed: true };
-  const key = `${hashString(text)}:${outputDirectory}:${JSON.stringify(purposeRequest)}`;
-  if (!force && key === state.simulationOutputDiscoveryKey && (state.simulationOutputDiscovery || state.simulationOutputDiscoveryLoading)) {
-    return state.simulationOutputDiscovery;
-  }
-  state.simulationOutputDiscoveryKey = key;
-  state.simulationOutputDiscoveryLoading = true;
-  state.simulationOutputDiscoveryError = "";
-  renderSimulationOutputDiscovery();
-  try {
-    const result = await callSimulationAPI("DiscoverAvailableOutputs", "/api/simulation-output-discovery", {
-      text,
-      outputDirectory,
-      purposeRequest,
-    });
-    state.simulationOutputDiscovery = result;
-    state.simulationOutputDiscoveryError = "";
-    return result;
-  } catch (error) {
-    state.simulationOutputDiscovery = null;
-    state.simulationOutputDiscoveryError = error?.message || String(error);
-    return null;
-  } finally {
-    state.simulationOutputDiscoveryLoading = false;
-    renderSimulationOutputDiscovery();
-  }
-}
-
-function renderSimulationOutputDiscovery() {
-  if (!elements.simulationOutputDiscoveryList) {
-    return;
-  }
-  const customSelected = selectedSimulationPurposes().includes("custom_outputs");
-  const result = state.simulationOutputDiscovery;
-  const items = Array.isArray(result?.items) ? result.items : [];
-  const query = (elements.simulationOutputDiscoveryFilter?.value || state.simulationOutputDiscoveryQuery || "").trim().toLowerCase();
-  const filtered = items
-    .map((item, index) => ({ item, index }))
-    .filter(({ item }) => discoveryItemMatchesQuery(item, query));
-  const shown = filtered.slice(0, 40);
-  if (elements.simulationOutputDiscoveryStats) {
-    if (state.simulationOutputDiscoveryLoading) {
-      elements.simulationOutputDiscoveryStats.textContent = t("simulation.outputDiscoveryLoading", {}, "Loading catalog");
-    } else if (state.simulationOutputDiscoveryError) {
-      elements.simulationOutputDiscoveryStats.textContent = t("simulation.outputDiscoveryError", {}, "Catalog unavailable");
-    } else if (result) {
-      elements.simulationOutputDiscoveryStats.textContent = t(
-        "simulation.outputDiscoveryStats",
-        { shown: filtered.length, total: items.length },
-        `${filtered.length} of ${items.length} outputs`,
-      );
-    } else {
-      elements.simulationOutputDiscoveryStats.textContent = t("simulation.outputDiscoveryNone", {}, "No catalog");
-    }
-  }
-  if (!customSelected) {
-    elements.simulationOutputDiscoveryList.innerHTML = "";
-    return;
-  }
-  if (state.simulationOutputDiscoveryLoading) {
-    elements.simulationOutputDiscoveryList.innerHTML = `<div class="empty status-loading">${escapeHTML(t("simulation.outputDiscoveryLoading", {}, "Loading catalog"))}</div>`;
-    return;
-  }
-  if (state.simulationOutputDiscoveryError) {
-    elements.simulationOutputDiscoveryList.innerHTML = `<div class="simulation-error">${escapeHTML(state.simulationOutputDiscoveryError)}</div>`;
-    return;
-  }
-  if (!result) {
-    elements.simulationOutputDiscoveryList.innerHTML = "";
-    return;
-  }
-  elements.simulationOutputDiscoveryList.innerHTML =
-    shown.map(({ item, index }) => renderSimulationOutputDiscoveryItem(item, index)).join("") ||
-    `<div class="empty">${escapeHTML(t("simulation.outputDiscoveryEmpty", {}, "No matching outputs"))}</div>`;
-}
-
-function discoveryItemMatchesQuery(item, query) {
-  if (!query) {
-    return true;
-  }
-  const haystack = [
-    item.objectType,
-    item.keyValue,
-    item.name,
-    item.units,
-    item.resourceType,
-    item.endUseCategory,
-    item.meterGroup,
-    item.reportingFrequency,
-    item.source,
-    item.status,
-    item.aliasOf,
-    item.aliasReason,
-    ...(item.purposeIds || []),
-  ]
-    .join(" ")
-    .toLowerCase();
-  return haystack.includes(query);
-}
-
-function renderSimulationOutputDiscoveryItem(item, index) {
-  const isMeter = String(item.objectType || "").toLowerCase() === "output:meter";
-  const title = isMeter ? item.name || item.keyValue || "" : item.name || "";
-  const alias = item.aliasOf ? `alias: ${item.aliasOf}` : "";
-  const meterParts = [item.resourceType, item.endUseCategory, item.meterGroup].filter(Boolean).join(" / ");
-  const detail = isMeter ? [item.objectType || "Output:Meter", meterParts, alias].filter(Boolean).join(" / ") : [item.keyValue || "*", item.objectType || "Output:Variable", alias].filter(Boolean).join(" / ");
-  const meta = [item.reportingFrequency, item.units, item.source, item.aliasReason].filter(Boolean).join(" - ");
-  return `
-    <div class="simulation-output-discovery-item">
-      <span>
-        <strong title="${escapeHTML(title)}">${escapeHTML(title)}</strong>
-        <small title="${escapeHTML(detail)}">${escapeHTML(detail)}</small>
-        <em>${escapeHTML(meta || item.status || "")}</em>
-      </span>
-      <b class="simulation-discovery-badge ${escapeHTML(item.status || "")}">${escapeHTML(item.status || "")}</b>
-      <button type="button" data-simulation-discovery-add="${index}">${escapeHTML(t("action.add", {}, "Add"))}</button>
-    </div>`;
-}
-
-function appendDiscoveredCustomOutput(index) {
-  const item = state.simulationOutputDiscovery?.items?.[index];
-  const line = customOutputLineFromDiscoveryItem(item);
-  if (!line || !elements.simulationCustomOutputs) {
-    return;
-  }
-  const lines = String(elements.simulationCustomOutputs.value || "")
-    .split(/\r?\n/)
-    .map((value) => value.trim())
-    .filter(Boolean);
-  const lineKey = line.toLowerCase();
-  if (!lines.some((value) => value.toLowerCase() === lineKey)) {
-    lines.push(line);
-  }
-  elements.simulationCustomOutputs.value = lines.join("\n");
-  saveSimulationCustomOutputsPreset();
-  scheduleSimulationRunPlan(0);
-}
-
-function restoreSimulationCustomOutputsPreset() {
-  if (!elements.simulationCustomOutputs || String(elements.simulationCustomOutputs.value || "").trim()) {
-    return;
-  }
-  try {
-    const saved = window.localStorage.getItem(simulationCustomOutputsStorageKey);
-    if (saved) {
-      elements.simulationCustomOutputs.value = saved;
-    }
-  } catch {
-    // localStorage can be unavailable in hardened webview settings.
-  }
-}
-
-function saveSimulationCustomOutputsPreset() {
-  if (!elements.simulationCustomOutputs) {
-    return;
-  }
-  try {
-    const value = normalizeCustomOutputPresetText(elements.simulationCustomOutputs.value || "");
-    if (value) {
-      window.localStorage.setItem(simulationCustomOutputsStorageKey, value);
-    } else {
-      window.localStorage.removeItem(simulationCustomOutputsStorageKey);
-    }
-  } catch {
-    // localStorage can be unavailable in hardened webview settings.
-  }
-}
-
-function normalizeCustomOutputPresetText(value) {
-  return String(value || "")
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .join("\n");
-}
-
-function customOutputLineFromDiscoveryItem(item) {
-  if (!item) {
-    return "";
-  }
-  const objectType = String(item.objectType || "").trim();
-  const frequency = item.reportingFrequency || "Hourly";
-  if (objectType.toLowerCase() === "output:meter") {
-    const meterName = item.aliasOf || item.name || item.keyValue || "";
-    return meterName ? `Output:Meter | ${meterName} | ${frequency}` : "";
-  }
-  const variableName = item.aliasOf || item.name || "";
-  return variableName ? `Output:Variable | ${item.keyValue || "*"} | ${variableName} | ${frequency}` : "";
-}
-
-async function applyPurposeOutputsToCurrentIDF() {
-  const text = elements.idfInput?.value || "";
-  if (!text.trim() || state.simulationRunning) {
-    return;
-  }
-  try {
-    elements.simulationApplyPurposeOutputs.disabled = true;
-    setStatus(t("simulation.applyingPurposeOutputs", {}, "Applying purpose outputs"), "loading");
-    const purposeRequest = buildSimulationPurposeRequest();
-    const api = backend();
-    let result;
-    if (api && typeof api.ApplyPurposeOutputsText === "function") {
-      result = await api.ApplyPurposeOutputsText(text, purposeRequest);
-    } else {
-      const response = await fetch("/api/simulation-purpose-outputs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, purpose: purposeRequest }),
-      });
-      if (!response.ok) {
-        throw new Error(await response.text());
-      }
-      result = await response.json();
-    }
-    window.dispatchEvent(new CustomEvent("idfAnalyzer:outputApplied", { detail: result }));
-    scheduleSimulationRunPlan(0);
-  } catch (error) {
-    setStatus(error?.message || String(error), "error");
-  } finally {
-    updatePurposeApplyButton();
-  }
-}
-
-function updatePurposeApplyButton() {
-  if (!elements.simulationApplyPurposeOutputs) {
-    return;
-  }
-  const applyState = purposeOutputApplyState();
-  elements.simulationApplyPurposeOutputs.disabled = applyState.disabled;
-  elements.simulationApplyPurposeOutputs.title = applyState.hasApplicableOutputs
-    ? t("simulation.makePurposeOutputsPermanent", {}, "Make outputs permanent")
-    : t("simulation.noTemporaryOutputs", {}, "No temporary purpose outputs need to be applied.");
-}
-
-function purposeOutputApplyState() {
-  const hasText = Boolean((elements.idfInput?.value || "").trim());
-  const plan = state.simulationPurposePlan;
-  const mode = purposeOutputApplyMode();
-  const hasApplicableOutputs = (plan?.outputObjects || []).some((object) => purposeOutputAppliesInMode(object, mode));
-  return {
-    hasApplicableOutputs,
-    disabled: state.simulationRunning || state.simulationPurposePlanLoading || !hasText || !plan || !hasApplicableOutputs,
-  };
-}
-
-function purposeOutputApplyMode() {
-  return elements.simulationPurposeApplyMode?.value || "add_missing_only";
-}
-
-function purposeOutputAppliesInMode(object = {}, mode = purposeOutputApplyMode()) {
-  const stateValue = object.state || "";
-  switch (mode) {
-    case "replace_conflicting":
-      return stateValue === "temporary" || stateValue === "will_be_persisted" || stateValue === "conflict";
-    case "keep_existing_and_add":
-      return stateValue !== "existing";
-    case "remove_purpose_outputs":
-      return Number.isFinite(Number(object.objectIndex));
-    default:
-      return stateValue === "temporary" || stateValue === "will_be_persisted";
-  }
-}
-
 function buildSimulationPurposeRequest() {
   const purposes = selectedSimulationPurposes();
-  const zoneMode = elements.simulationPurposeZoneMode?.value || "all";
   return {
     purposes,
     scope: {
-      zoneMode,
-      zoneNames: simulationPurposeZoneNamesForMode(zoneMode),
-      periodMode: elements.simulationPurposePeriodMode?.value || "full",
-      periodStart: elements.simulationPurposePeriodStart?.value || "",
-      periodEnd: elements.simulationPurposePeriodEnd?.value || "",
+      zoneMode: simulationPurposeDefaults.zoneMode,
+      zoneNames: [],
+      periodMode: simulationPurposeDefaults.periodMode,
+      periodStart: "",
+      periodEnd: "",
       ...simulationHVACPurposeScope(purposes),
-      customOutputs: parseCustomOutputs(elements.simulationCustomOutputs?.value || ""),
+      customOutputs: [],
     },
-    basicEnergyDetail: elements.simulationPurposeEnergyDetail?.value || "light",
-    zoneHeatFlowDetail: elements.simulationPurposeZoneHeatFlowDetail?.value || "zone",
-    frequencyPolicy: elements.simulationPurposeFrequencyPolicy?.value || "purpose_default",
-    allocationPolicy: elements.simulationPurposeAllocationPolicy?.value || "direct_only",
-    outputApplyMode: purposeOutputApplyMode(),
+    basicEnergyDetail: simulationPurposeDefaults.basicEnergyDetail,
+    zoneHeatFlowDetail: simulationPurposeDefaults.zoneHeatFlowDetail,
+    frequencyPolicy: simulationPurposeDefaults.frequencyPolicy,
+    allocationPolicy: simulationPurposeDefaults.allocationPolicy,
+    outputApplyMode: simulationPurposeDefaults.outputApplyMode,
     sqlMode: "sql_first",
-    persistOutputs: Boolean(elements.simulationPersistOutputs?.checked),
+    persistOutputs: false,
     discoveryAllowed: false,
   };
-}
-
-function simulationPurposeZoneNamesForMode(zoneMode) {
-  const typed = parseCommaList(elements.simulationPurposeZoneNames?.value || "");
-  switch (zoneMode) {
-    case "selected":
-      return typed;
-    case "visible":
-      return simulationVisibleZoneNames();
-    case "filtered":
-      return simulationFilteredZoneNames(typed);
-    default:
-      return [];
-  }
-}
-
-function simulationVisibleZoneNames() {
-  const geometry = state.report?.geometry;
-  const zones = geometry?.zones || [];
-  if (!zones.length) {
-    return [];
-  }
-  if (state.selectedGeometryStory === "all" || state.selectedGeometryStory === "" || state.selectedGeometryStory === undefined) {
-    return zones.map((zone) => zone.name).filter(Boolean);
-  }
-  return zones
-    .filter((zone) => String(zone.storyIndex) === String(state.selectedGeometryStory))
-    .map((zone) => zone.name)
-    .filter(Boolean);
-}
-
-function simulationFilteredZoneNames(terms) {
-  const zoneNames = simulationAllZoneNames();
-  const filters = (terms || []).map(normalizeOutputMatchToken).filter(Boolean);
-  if (filters.length) {
-    return zoneNames.filter((zoneName) => filters.some((term) => normalizeOutputMatchToken(zoneName).includes(term)));
-  }
-  const activeNames = [state.activeProfileZoneName, selectedGeometryZoneName()].map((value) => String(value || "").trim()).filter(Boolean);
-  return activeNames.length ? activeNames : [];
-}
-
-function simulationAllZoneNames() {
-  const geometryZones = (state.report?.geometry?.zones || []).map((zone) => zone.name).filter(Boolean);
-  if (geometryZones.length) {
-    return [...new Set(geometryZones)].sort((a, b) => a.localeCompare(b));
-  }
-  return (state.model?.objects || [])
-    .filter((object) => String(object.type || "").toLowerCase() === "zone")
-    .map((object) => object.name || object.fields?.[0]?.value || "")
-    .filter(Boolean)
-    .sort((a, b) => a.localeCompare(b));
-}
-
-function selectedGeometryZoneName() {
-  if (state.selectedGeometryKind !== "zone" || !state.selectedGeometryId) {
-    return "";
-  }
-  const zone = (state.report?.geometry?.zones || []).find((item) => item.id === state.selectedGeometryId);
-  return zone?.name || "";
 }
 
 function simulationHVACPurposeScope(purposes = selectedSimulationPurposes()) {
@@ -6657,104 +5929,6 @@ function syncSimulationPurposeInputsFromState() {
   });
 }
 
-function parseCommaList(value) {
-  const seen = new Set();
-  const out = [];
-  String(value || "")
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean)
-    .forEach((item) => {
-      const key = item.toLowerCase();
-      if (!seen.has(key)) {
-        seen.add(key);
-        out.push(item);
-      }
-    });
-  return out;
-}
-
-function parseCustomOutputs(value) {
-  const outputs = [];
-  const seen = new Set();
-  String(value || "")
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .forEach((line) => {
-      const tokens = line
-        .split(line.includes("|") ? "|" : ",")
-        .map((token) => token.trim())
-        .filter(Boolean);
-      const output = customOutputFromTokens(tokens);
-      if (!output) {
-        return;
-      }
-      const key = [
-        output.objectType,
-        output.keyValue || "",
-        output.variableName || "",
-        output.meterName || "",
-        output.reportingFrequency || "",
-      ]
-        .map((token) => token.toLowerCase())
-        .join("|");
-      if (!seen.has(key)) {
-        seen.add(key);
-        outputs.push(output);
-      }
-    });
-  return outputs;
-}
-
-function customOutputFromTokens(tokens) {
-  if (!tokens.length) {
-    return null;
-  }
-  const first = tokens[0].toLowerCase();
-  if (first === "output:meter" || first === "meter") {
-    const meterName = tokens[1] || "";
-    if (!meterName) {
-      return null;
-    }
-    return {
-      objectType: "Output:Meter",
-      meterName,
-      reportingFrequency: tokens[2] || "Hourly",
-    };
-  }
-  if (first === "output:variable" || first === "variable") {
-    const hasExplicitKey = tokens.length >= 4;
-    const keyValue = hasExplicitKey ? tokens[1] : "*";
-    const variableName = hasExplicitKey ? tokens[2] : tokens[1] || "";
-    if (!variableName) {
-      return null;
-    }
-    return {
-      objectType: "Output:Variable",
-      keyValue,
-      variableName,
-      reportingFrequency: hasExplicitKey ? tokens[3] || "Hourly" : tokens[2] || "Hourly",
-    };
-  }
-  if (tokens.length >= 3) {
-    return {
-      objectType: "Output:Variable",
-      keyValue: tokens[0] || "*",
-      variableName: tokens[1],
-      reportingFrequency: tokens[2] || "Hourly",
-    };
-  }
-  if (tokens.length === 2) {
-    return {
-      objectType: "Output:Meter",
-      meterName: tokens[0],
-      reportingFrequency: tokens[1] || "Hourly",
-    };
-  }
-  return null;
-}
-
 function purposeLabel(value) {
   const id = String(value || "");
   const found = simulationPurposeDefinitions.find((item) => item.id === id);
@@ -6783,7 +5957,7 @@ function outputFieldValue(fields = [], ...names) {
 }
 
 function setSimulationPreviewMode(preview) {
-  elements.simulationResultSummary?.closest(".simulation-pane")?.classList.toggle("preview", Boolean(preview));
+  elements.simulationResultTabs?.closest(".simulation-pane")?.classList.toggle("preview", Boolean(preview));
 }
 
 function updateSimulationOutputAvailability(blockingIssue, running) {
@@ -6791,13 +5965,6 @@ function updateSimulationOutputAvailability(blockingIssue, running) {
   const heatFlowOn = purposes.includes("zone_heat_flow");
   const seriesOn = purposes.length > 0;
   const blocked = Boolean(blockingIssue);
-  if (elements.simulationResultMeta) {
-    elements.simulationResultMeta.textContent = running
-      ? t("simulation.outputPending", {}, "Outputs are pending while EnergyPlus runs.")
-      : blocked
-        ? t("simulation.outputBlocked", {}, "Run requirements must be fixed before outputs are available.")
-        : t("simulation.outputAvailable", {}, "After a run, ERR status and SQL/CSV output summaries will be available.");
-  }
   if (elements.simulationHeatFlowStats) {
     elements.simulationHeatFlowStats.textContent = blocked
       ? t("simulation.outputBlockedShort", {}, "Unavailable until run is possible")
@@ -6820,25 +5987,10 @@ function updateSimulationOutputAvailability(blockingIssue, running) {
 }
 
 function renderSimulationEnvironment() {
-  if (!elements.simulationEnergyPlusSelect || !elements.simulationWeatherSelect) {
+  if (!elements.simulationWeatherSelect) {
     return;
   }
-  const currentInstall = elements.simulationEnergyPlusSelect.value;
   const currentWeather = elements.simulationWeatherSelect.value;
-  const installs = state.simulationEnvironment?.installations || [];
-  elements.simulationEnergyPlusSelect.innerHTML = installs.length
-    ? installs
-        .map((install) => {
-          const label = `${install.name || "EnergyPlus"}${install.autoDetected ? " - auto" : ""}`;
-          return `<option value="${escapeHTML(install.executablePath)}" title="${escapeHTML(install.executablePath)}">${escapeHTML(label)}</option>`;
-        })
-        .join("")
-    : `<option value="">${escapeHTML(t("simulation.noEnergyPlus", {}, "No EnergyPlus installation"))}</option>`;
-  const recommendedInstallPath = recommendedEnergyPlusInstallPath(installs, currentInstall);
-  if (recommendedInstallPath && [...elements.simulationEnergyPlusSelect.options].some((option) => option.value === recommendedInstallPath)) {
-    elements.simulationEnergyPlusSelect.value = recommendedInstallPath;
-  }
-
   const folders = state.simulationEnvironment?.weatherFolders || [];
   const weatherHTML = [`<option value="">${escapeHTML(t("simulation.noWeather", {}, "No weather / design-day only"))}</option>`];
   for (const folder of folders) {
@@ -6888,7 +6040,7 @@ function renderSimulationProgress() {
 
 function updateSimulationControls() {
   const hasText = Boolean((elements.idfInput?.value || "").trim());
-  const hasInstall = Boolean(elements.simulationEnergyPlusSelect?.value || state.simulationEnvironment?.installations?.[0]?.executablePath);
+  const hasInstall = Boolean(selectedEnergyPlusInstall()?.executablePath);
   const blockingIssue = simulationBlockingIssue();
   if (elements.simulationRunButton) {
     const disabledReason = blockingIssue
@@ -6905,41 +6057,8 @@ function updateSimulationControls() {
       ? t("simulation.backgroundRun", {}, "EnergyPlus is running in the background")
       : disabledReason;
   }
-  if (elements.simulationApplyStandardOutput) {
-    elements.simulationApplyStandardOutput.disabled = state.simulationRunning || !hasText;
-    elements.simulationApplyStandardOutput.title = hasText
-      ? t("output.standardOutputSummary", {}, "Adds standard meters, zone energy, and hourly heat-balance outputs used by simulation graphs.")
-      : t("simulation.noInputText", {}, "Open or paste an IDF before running simulation");
-  }
-  if (elements.simulationEnergyPlusSelect) {
-    elements.simulationEnergyPlusSelect.disabled = state.simulationRunning;
-  }
   if (elements.simulationWeatherSelect) {
     elements.simulationWeatherSelect.disabled = state.simulationRunning;
-  }
-  if (elements.simulationRefreshPlan) {
-    elements.simulationRefreshPlan.disabled = state.simulationRunning || !hasText;
-  }
-  if (elements.simulationPurposePeriodMode) {
-    elements.simulationPurposePeriodMode.disabled = state.simulationRunning;
-  }
-  if (elements.simulationPurposeEnergyDetail) {
-    elements.simulationPurposeEnergyDetail.disabled = state.simulationRunning;
-  }
-  if (elements.simulationPurposeZoneHeatFlowDetail) {
-    elements.simulationPurposeZoneHeatFlowDetail.disabled = state.simulationRunning;
-  }
-  if (elements.simulationPurposeFrequencyPolicy) {
-    elements.simulationPurposeFrequencyPolicy.disabled = state.simulationRunning;
-  }
-  if (elements.simulationPurposeAllocationPolicy) {
-    elements.simulationPurposeAllocationPolicy.disabled = state.simulationRunning;
-  }
-  const customPeriod = elements.simulationPurposePeriodMode?.value === "custom";
-  for (const input of [elements.simulationPurposePeriodStart, elements.simulationPurposePeriodEnd]) {
-    if (input) {
-      input.disabled = state.simulationRunning || !customPeriod;
-    }
   }
   updatePurposeExportButton();
   if (elements.simulationPurposeInputs?.length) {
@@ -6947,7 +6066,6 @@ function updateSimulationControls() {
       input.disabled = state.simulationRunning;
     });
   }
-  updatePurposeApplyButton();
 }
 
 function updatePurposeExportButton() {
@@ -6969,21 +6087,19 @@ function simulationVersionIssue() {
     return null;
   }
   const selectedInstall = selectedEnergyPlusInstall();
-  if (!selectedInstall?.version) {
-    return null;
-  }
-  const selectedVersion = normalizedVersionKey(selectedInstall.version);
+  const selectedVersion = normalizedVersionKey(selectedInstall?.version);
   if (selectedVersion === requiredVersion) {
     return null;
   }
+  const availableVersion = String(selectedInstall?.version || "").trim() || "unknown version";
   return {
     requiredVersion,
-    selectedVersion: selectedInstall.version,
+    selectedVersion: availableVersion,
     title: t("simulation.versionBlockedTitle", {}, "EnergyPlus version mismatch"),
     message: t(
       "simulation.versionMismatch",
-      { idf: requiredVersion, ep: selectedInstall.version },
-      `IDF Version ${requiredVersion} needs matching EnergyPlus. Selected: ${selectedInstall.version}.`,
+      { idf: requiredVersion, ep: availableVersion },
+      `IDF Version ${requiredVersion} requires a compatible EnergyPlus installation. Available: ${availableVersion}. Register the matching version in Settings.`,
     ),
   };
 }
@@ -6993,7 +6109,7 @@ function simulationBlockingIssue() {
   if (!text.trim()) {
     return null;
   }
-  const hasInstall = Boolean(elements.simulationEnergyPlusSelect?.value || state.simulationEnvironment?.installations?.[0]?.executablePath);
+  const hasInstall = Boolean(selectedEnergyPlusInstall()?.executablePath);
   if (!hasInstall) {
     return {
       title: t("simulation.energyPlusBlockedTitle", {}, "EnergyPlus is not configured"),
@@ -7031,8 +6147,9 @@ function currentInputRequiresWeatherFile(text) {
 }
 
 function selectedEnergyPlusInstall() {
-  const path = elements.simulationEnergyPlusSelect?.value || "";
-  return (state.simulationEnvironment?.installations || []).find((install) => install.executablePath === path) || null;
+  const installs = state.simulationEnvironment?.installations || [];
+  const path = recommendedEnergyPlusInstallPath(installs, "");
+  return installs.find((install) => install.executablePath === path) || null;
 }
 
 function currentInputEnergyPlusVersion() {
@@ -7040,11 +6157,32 @@ function currentInputEnergyPlusVersion() {
 }
 
 function extractInputEnergyPlusVersion(text) {
-  const match = String(text || "").match(/(?:^|\n)\s*Version\s*,\s*([^;!\n]+)/i);
-  if (!match) {
+  const value = String(text || "");
+  const match = value.match(/(?:^|\n)\s*Version\s*,\s*([^;!\n]+)/i);
+  if (match) {
+    return normalizedVersionKey(match[1]);
+  }
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("{")) {
     return "";
   }
-  return normalizedVersionKey(match[1]);
+  try {
+    const epjson = JSON.parse(trimmed);
+    const versionGroup = Object.entries(epjson || {}).find(([key]) => key.toLowerCase() === "version")?.[1];
+    const candidates = [versionGroup, ...Object.values(versionGroup || {})];
+    for (const candidate of candidates) {
+      if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+        continue;
+      }
+      const identifier = Object.entries(candidate).find(([key]) => key.toLowerCase() === "version_identifier")?.[1];
+      if (identifier !== undefined && identifier !== null) {
+        return normalizedVersionKey(identifier);
+      }
+    }
+  } catch {
+    return "";
+  }
+  return "";
 }
 
 function normalizedVersionKey(value) {
@@ -7090,27 +6228,6 @@ function updateSimulationProgressClasses(running) {
   elements.simulationProgressBar?.closest(".simulation-progress-card")?.classList.toggle("running", running);
 }
 
-function renderRunningNotice() {
-  const progress = state.simulationProgress || {};
-  const percent = Math.max(0, Math.min(100, Number(progress.percent || 0)));
-  return `
-    <div class="simulation-running-notice">
-      <div>
-        <strong>${escapeHTML(t("simulation.backgroundRun", {}, "EnergyPlus is running in the background"))}</strong>
-        <span>${escapeHTML(progress.message || t("simulation.running", {}, "EnergyPlus simulation is running"))}</span>
-      </div>
-      <span>${Math.round(percent)}%</span>
-    </div>`;
-}
-
-function renderSimulationBlocker(issue) {
-  return `
-    <div class="simulation-blocker">
-      <strong>${escapeHTML(issue.title || t("simulation.blockedStats", {}, "Cannot run"))}</strong>
-      <span>${escapeHTML(issue.message || "")}</span>
-    </div>`;
-}
-
 function renderMiniProgressSVG() {
   const progress = state.simulationProgress || {};
   const percent = Math.max(0, Math.min(100, Number(progress.percent || 0)));
@@ -7126,414 +6243,15 @@ function renderMiniProgressSVG() {
     </svg>`;
 }
 
-function renderSimulationSummary(result, stale) {
-  const err = result.err || {};
-  const integrity = result.purposeResults?.integrity || {};
-  const staticDiagnostics = integrity.staticDiagnostics || (!stale ? state.report?.diagnostics || [] : []);
-  const crossChecks = integrity.crossChecks || [];
-  const sqlIssues = integrity.sqlIssues || [];
-  const tabularReports = integrity.tabularReports || [];
-  const staleBadge = stale ? `<span class="simulation-badge stale">${escapeHTML(t("simulation.stale", {}, "Stale"))}</span>` : "";
-  const statusBadge = `<span class="simulation-badge ${escapeHTML(result.status || "unknown")}">${escapeHTML(statusText(result.status))}</span>`;
-  const issueSummary = simulationIssueSummary(err.issues || []);
-  const issueRows = errIssueGroups(err.issues || [])
-    .slice(0, 16)
-    .map(
-      (group) => `
-        <tr>
-          <td><span class="simulation-severity ${escapeHTML(group.severity)}">${escapeHTML(group.severity)}</span></td>
-          <td>
-            <details ${group.count === 1 ? "open" : ""}>
-              <summary>${escapeHTML(group.message)}</summary>
-              <small>${escapeHTML(t("common.line", {}, "Line"))}: ${escapeHTML(group.lines.join(", "))}</small>
-            </details>
-          </td>
-          <td>${escapeHTML(group.count)}</td>
-          <td>${escapeHTML(group.lines[0] || "")}</td>
-        </tr>`,
-    )
-    .join("");
-  const csvRows = (result.csvs || [])
-    .map((csv) => {
-      const columns = (csv.columnInfo || []).slice(0, 5).map((column) => `${column.name}: ${formatNumber(column.average)} avg`).join("<br />");
-      return `
-        <tr>
-          <td title="${escapeHTML(csv.path)}">${escapeHTML(csv.filename)}</td>
-          <td>${escapeHTML(csv.rowCount || 0)}</td>
-          <td>${columns || escapeHTML(t("common.notAvailable", {}, "N/A"))}</td>
-        </tr>`;
-    })
-    .join("");
-  return `
-    <div class="simulation-kpis">
-      <div><span>${escapeHTML(t("common.status", {}, "Status"))}</span><strong>${statusBadge}${staleBadge}</strong></div>
-      <div><span>${escapeHTML(t("simulation.errWarnings", {}, "ERR warnings"))}</span><strong>${escapeHTML(err.warnings || 0)}</strong></div>
-      <div><span>${escapeHTML(t("simulation.errSevere", {}, "Severe/Fatal"))}</span><strong>${escapeHTML((err.severe || 0) + (err.fatal || 0))}</strong></div>
-      <div><span>${escapeHTML(t("simulation.csvFiles", {}, "CSV files"))}</span><strong>${escapeHTML(result.csvs?.length || 0)}</strong></div>
-      <div><span>${escapeHTML(t("simulation.staticDiagnostics", {}, "Static diagnostics"))}</span><strong>${escapeHTML(staticDiagnostics.length)}</strong></div>
-      <div><span>${escapeHTML(t("simulation.integrityCrossChecks", {}, "Cross checks"))}</span><strong>${escapeHTML(crossChecks.length)}</strong></div>
-      <div><span>${escapeHTML(t("simulation.sqlDiagnostics", {}, "SQL diagnostics"))}</span><strong>${escapeHTML(sqlIssues.length)}</strong></div>
-      <div><span>${escapeHTML(t("simulation.tabularReports", {}, "Tabular reports"))}</span><strong>${escapeHTML(tabularReports.length)}</strong></div>
-    </div>
-    <div class="simulation-issue-summary">
-      ${issueSummary.map((item) => `<span class="${escapeHTML(item.key)}">${escapeHTML(item.label)} ${escapeHTML(item.count)}</span>`).join("")}
-    </div>
-    ${renderSimulationResultSourceSummary(result)}
-    ${result.error ? `<div class="simulation-error">${escapeHTML(result.error)}</div>` : ""}
-    <div class="simulation-tables">
-      <section>
-        <h4>${escapeHTML(t("simulation.errIssues", {}, "ERR issues"))}</h4>
-        <div class="output-table-wrap">
-          <table class="output-table">
-            <thead><tr><th>${escapeHTML(t("common.type", {}, "Type"))}</th><th>${escapeHTML(t("common.message", {}, "Message"))}</th><th>${escapeHTML(t("common.count", {}, "Count"))}</th><th>${escapeHTML(t("common.firstLine", {}, "First line"))}</th></tr></thead>
-            <tbody>${issueRows || `<tr><td colspan="4">${escapeHTML(t("simulation.noErrIssues", {}, "No ERR warnings or errors parsed."))}</td></tr>`}</tbody>
-          </table>
-        </div>
-      </section>
-      <section>
-        <h4>${escapeHTML(t("simulation.csvSummary", {}, "CSV summary"))}</h4>
-        <div class="output-table-wrap">
-          <table class="output-table">
-            <thead><tr><th>${escapeHTML(t("common.file", {}, "File"))}</th><th>${escapeHTML(t("common.rows", {}, "Rows"))}</th><th>${escapeHTML(t("common.metrics", {}, "Metrics"))}</th></tr></thead>
-            <tbody>${csvRows || `<tr><td colspan="3">${escapeHTML(t("simulation.noCSV", {}, "No CSV output was found."))}</td></tr>`}</tbody>
-          </table>
-        </div>
-      </section>
-    </div>
-    ${renderIntegrityStaticDiagnostics(staticDiagnostics)}
-    ${renderIntegrityCrossChecks(crossChecks)}
-    ${renderIntegritySQLDetails(sqlIssues, tabularReports)}`;
-}
-
-function errIssueGroups(issues = []) {
-  const groups = new Map();
-  for (const issue of issues) {
-    const severity = issue.severity || "info";
-    const message = issue.message || "";
-    const key = `${severity}|${normalizeOutputMatchToken(message)}`;
-    const group = groups.get(key) || { severity, message, count: 0, lines: [] };
-    group.count += 1;
-    if (issue.line) {
-      group.lines.push(issue.line);
-    }
-    groups.set(key, group);
-  }
-  return [...groups.values()].sort((left, right) => {
-    const severityDelta = errSeverityRank(right.severity) - errSeverityRank(left.severity);
-    if (severityDelta !== 0) {
-      return severityDelta;
-    }
-    if (left.count !== right.count) {
-      return right.count - left.count;
-    }
-    return (left.lines[0] || 0) - (right.lines[0] || 0);
-  });
-}
-
-function errSeverityRank(severity) {
-  switch (String(severity || "").toLowerCase()) {
-    case "fatal":
-      return 3;
-    case "severe":
-      return 2;
-    case "warning":
-      return 1;
-    default:
-      return 0;
-  }
-}
-
-function renderIntegritySQLDetails(sqlIssues = [], tabularReports = []) {
-  if (!sqlIssues.length && !tabularReports.length) {
-    return "";
-  }
-  const query = normalizeOutputMatchToken(state.simulationIntegrityQuery);
-  const filteredSQLIssues = query ? sqlIssues.filter((issue) => integritySQLIssueMatches(issue, query)) : sqlIssues;
-  const filteredReports = query
-    ? tabularReports.map((report) => filterIntegrityTabularReport(report, query)).filter(Boolean)
-    : tabularReports;
-  const sqlRows = filteredSQLIssues
-    .slice(0, 24)
-    .map(
-      (issue) => `
-        <tr>
-          <td><span class="simulation-severity ${escapeHTML(issue.severity || "info")}">${escapeHTML(issue.severity || "info")}</span></td>
-          <td>${escapeHTML(issue.message || "")}</td>
-          <td>${escapeHTML(issue.count || "")}</td>
-          <td>${escapeHTML(issue.source || "")}</td>
-        </tr>`,
-    )
-    .join("");
-  const issueSection = `
-    <section>
-      <h4>${escapeHTML(integrityFilteredTitle(t("simulation.sqlDiagnostics", {}, "SQL diagnostics"), filteredSQLIssues.length, sqlIssues.length, query))}</h4>
-      <div class="output-table-wrap">
-        <table class="output-table">
-          <thead><tr><th>${escapeHTML(t("common.type", {}, "Type"))}</th><th>${escapeHTML(t("common.message", {}, "Message"))}</th><th>${escapeHTML(t("common.count", {}, "Count"))}</th><th>${escapeHTML(t("common.source", {}, "Source"))}</th></tr></thead>
-          <tbody>${sqlRows || `<tr><td colspan="4">${escapeHTML(t("simulation.noSQLDiagnostics", {}, "No SQL diagnostics rows were found."))}</td></tr>`}</tbody>
-        </table>
-      </div>
-    </section>`;
-  const reportSections = filteredReports.length
-    ? `<div class="simulation-tabular-reports">${filteredReports.slice(0, 6).map(renderIntegrityTabularReport).join("")}</div>`
-    : `<div class="empty">${escapeHTML(t("simulation.noTabularReports", {}, "No SQL tabular reports were found."))}</div>`;
-  return `
-    <div class="simulation-integrity-sql">
-      ${issueSection}
-      <section>
-        <h4>${escapeHTML(integrityFilteredTitle(t("simulation.tabularReports", {}, "Tabular reports"), filteredReports.length, tabularReports.length, query))}</h4>
-        ${reportSections}
-      </section>
-    </div>`;
-}
-
-function renderIntegrityStaticDiagnostics(diagnostics = []) {
-  if (!diagnostics.length) {
-    return "";
-  }
-  const query = normalizeOutputMatchToken(state.simulationIntegrityQuery);
-  const filtered = query ? diagnostics.filter((diagnostic) => integrityStaticDiagnosticMatches(diagnostic, query)) : diagnostics;
-  const rows = filtered
-    .slice(0, 32)
-    .map(
-      (diagnostic) => `
-        <tr>
-          <td><span class="simulation-severity ${escapeHTML(diagnostic.severity || "notice")}">${escapeHTML(diagnostic.severity || "notice")}</span></td>
-          <td>${escapeHTML(diagnostic.category || "Static Diagnose")}</td>
-          <td>${escapeHTML(diagnostic.message || "")}</td>
-          <td>${escapeHTML(staticDiagnosticLocation(diagnostic))}</td>
-          <td>${escapeHTML(diagnostic.code || "")}</td>
-          <td>${escapeHTML(simulationDiagnosticSourceLabel(diagnostic.source || ""))}</td>
-        </tr>`,
-    )
-    .join("");
-  return `
-    <div class="simulation-integrity-static">
-      <section>
-        <h4>${escapeHTML(integrityFilteredTitle(t("simulation.staticDiagnostics", {}, "Static diagnostics"), filtered.length, diagnostics.length, query))}</h4>
-        <div class="output-table-wrap">
-          <table class="output-table">
-            <thead><tr><th>${escapeHTML(t("common.type", {}, "Type"))}</th><th>${escapeHTML(t("common.category", {}, "Category"))}</th><th>${escapeHTML(t("common.message", {}, "Message"))}</th><th>${escapeHTML(t("common.location", {}, "Location"))}</th><th>${escapeHTML(t("common.code", {}, "Code"))}</th><th>${escapeHTML(t("common.source", {}, "Source"))}</th></tr></thead>
-            <tbody>${rows || `<tr><td colspan="6">${escapeHTML(t("diagnose.noMatching", {}, "No matching diagnostics"))}</td></tr>`}</tbody>
-          </table>
-        </div>
-      </section>
-    </div>`;
-}
-
-function renderIntegrityCrossChecks(crossChecks = []) {
-  if (!crossChecks.length) {
-    return "";
-  }
-  const query = normalizeOutputMatchToken(state.simulationIntegrityQuery);
-  const filtered = query ? crossChecks.filter((item) => integrityCrossCheckMatches(item, query)) : crossChecks;
-  const rows = filtered
-    .slice(0, 48)
-    .map((item) => {
-      const sqlLocation = [item.sqlReport, item.sqlTable].filter(Boolean).join(" / ");
-      const values = Object.entries(item.values || {})
-        .slice(0, 4)
-        .map(([key, value]) => `${key}: ${value}`)
-        .join("; ");
-      return `
-        <tr>
-          <td>${escapeHTML(simulationDiagnosticSourceLabel(item.category || ""))}</td>
-          <td>${escapeHTML(item.name || "")}</td>
-          <td><span class="simulation-crosscheck-status ${escapeHTML(item.status || "info")}">${escapeHTML(simulationIntegrityCrossCheckStatusLabel(item.status || "info"))}</span></td>
-          <td>${escapeHTML(item.staticSource || "")}</td>
-          <td>${escapeHTML(sqlLocation || item.sqlSource || "")}</td>
-          <td>${escapeHTML(item.message || "")}</td>
-          <td>${escapeHTML(values)}</td>
-        </tr>`;
-    })
-    .join("");
-  return `
-    <div class="simulation-integrity-crosscheck">
-      <section>
-        <h4>${escapeHTML(integrityFilteredTitle(t("simulation.integrityCrossChecks", {}, "Cross checks"), filtered.length, crossChecks.length, query))}</h4>
-        <div class="output-table-wrap">
-          <table class="output-table">
-            <thead><tr><th>${escapeHTML(t("common.category", {}, "Category"))}</th><th>${escapeHTML(t("common.name", {}, "Name"))}</th><th>${escapeHTML(t("common.status", {}, "Status"))}</th><th>${escapeHTML(t("simulation.staticSource", {}, "Static source"))}</th><th>${escapeHTML(t("simulation.sqlSource", {}, "SQL source"))}</th><th>${escapeHTML(t("common.message", {}, "Message"))}</th><th>${escapeHTML(t("common.values", {}, "Values"))}</th></tr></thead>
-            <tbody>${rows || `<tr><td colspan="7">${escapeHTML(t("simulation.noIntegrityCrossChecks", {}, "No matching cross checks"))}</td></tr>`}</tbody>
-          </table>
-        </div>
-      </section>
-    </div>`;
-}
-
-function integrityFilteredTitle(title, shown, total, query) {
-  return query ? `${title} (${shown}/${total})` : title;
-}
-
-function integrityStaticDiagnosticMatches(diagnostic, query) {
-  return normalizeOutputMatchToken([
-    diagnostic.severity,
-    diagnostic.category,
-    diagnostic.message,
-    diagnostic.objectType,
-    diagnostic.objectName,
-    diagnostic.field,
-    diagnostic.value,
-    diagnostic.code,
-    diagnostic.source,
-    diagnostic.evidence,
-  ].filter(Boolean).join(" ")).includes(query);
-}
-
-function staticDiagnosticLocation(diagnostic) {
-  return [diagnostic.objectType, diagnostic.objectName, diagnostic.field, diagnostic.value].filter((value) => String(value || "").trim() !== "").join(" / ");
-}
-
 function simulationDiagnosticSourceLabel(source) {
   return String(source || "")
     .replaceAll("_", " ")
     .replace(/\b\w/g, (match) => match.toUpperCase());
 }
 
-function integritySQLIssueMatches(issue, query) {
-  return normalizeOutputMatchToken([issue.severity, issue.message, issue.count, issue.source].filter(Boolean).join(" ")).includes(query);
-}
-
-function integrityCrossCheckMatches(item, query) {
-  return normalizeOutputMatchToken([
-    item.category,
-    item.name,
-    item.status,
-    item.staticSource,
-    item.sqlSource,
-    item.sqlReport,
-    item.sqlTable,
-    item.message,
-    ...Object.keys(item.values || {}),
-    ...Object.values(item.values || {}),
-  ].filter(Boolean).join(" ")).includes(query);
-}
-
-function simulationIntegrityCrossCheckStatusLabel(status) {
-  switch (String(status || "").toLowerCase()) {
-    case "exact":
-      return t("simulation.crossCheckExact", {}, "Exact");
-    case "normalized":
-      return t("simulation.crossCheckNormalized", {}, "Normalized");
-    case "alias":
-      return t("simulation.crossCheckAlias", {}, "Alias");
-    case "static_only":
-      return t("simulation.crossCheckStaticOnly", {}, "Static only");
-    case "sql_only":
-      return t("simulation.crossCheckSQLOnly", {}, "SQL only");
-    default:
-      return simulationDiagnosticSourceLabel(status || "info");
-  }
-}
-
-function filterIntegrityTabularReport(report, query) {
-  const reportText = normalizeOutputMatchToken([report.reportName, report.for, report.tableName, report.source, ...(report.columns || [])].filter(Boolean).join(" "));
-  if (reportText.includes(query)) {
-    return report;
-  }
-  const rows = (report.rows || []).filter((row) => integrityTabularRowMatches(row, query));
-  if (!rows.length) {
-    return null;
-  }
-  return { ...report, rows };
-}
-
-function integrityTabularRowMatches(row, query) {
-  return normalizeOutputMatchToken([row.name, ...Object.values(row.values || {})].filter(Boolean).join(" ")).includes(query);
-}
-
-function renderIntegrityTabularReport(report) {
-  const columns = (report.columns || []).slice(0, 6);
-  const rows = (report.rows || []).slice(0, 10);
-  const header = columns.map((column) => `<th>${escapeHTML(column)}</th>`).join("");
-  const body = rows
-    .map((row) => {
-      const cells = columns.map((column) => `<td>${escapeHTML(row.values?.[column] || "")}</td>`).join("");
-      return `<tr><td>${escapeHTML(row.name || "")}</td>${cells}</tr>`;
-    })
-    .join("");
-  const subtitle = [report.reportName, report.for, report.source].filter(Boolean).join(" - ");
-  return `
-    <article class="simulation-tabular-report">
-      <h5>${escapeHTML(report.tableName || t("simulation.tabularReport", {}, "Tabular report"))}</h5>
-      <span>${escapeHTML(subtitle)}</span>
-      <div class="output-table-wrap">
-        <table class="output-table">
-          <thead><tr><th>${escapeHTML(t("common.row", {}, "Row"))}</th>${header}</tr></thead>
-          <tbody>${body || `<tr><td colspan="${columns.length + 1}">${escapeHTML(t("common.notAvailable", {}, "N/A"))}</td></tr>`}</tbody>
-        </table>
-      </div>
-    </article>`;
-}
-
-function simulationIssueSummary(issues = []) {
-  const counts = { warning: 0, severe: 0, fatal: 0 };
-  for (const issue of issues) {
-    const key = String(issue.severity || "").toLowerCase();
-    if (Object.prototype.hasOwnProperty.call(counts, key)) {
-      counts[key]++;
-    }
-  }
-  return [
-    { key: "warning", label: t("simulation.errWarnings", {}, "Warnings"), count: counts.warning },
-    { key: "severe", label: t("simulation.errSevere", {}, "Severe"), count: counts.severe },
-    { key: "fatal", label: "Fatal", count: counts.fatal },
-  ];
-}
-
-function renderSimulationResultSourceSummary(result) {
-  const priority = result.resultSourcePriority || [];
-  const sources = result.resultSources || [];
-  if (!priority.length && !sources.length) {
-    return "";
-  }
-  return `
-    <div class="simulation-result-sources">
-      ${priority.length ? `<span>${escapeHTML(t("simulation.resultSourcePriority", {}, "Source priority"))}: ${escapeHTML(priority.join(" -> "))}</span>` : ""}
-      ${sources.length ? `<span>${escapeHTML(t("simulation.resultSourcesUsed", {}, "Used sources"))}: ${escapeHTML(sources.join(", "))}</span>` : ""}
-    </div>`;
-}
-
-function renderSimulationCustomSeriesLinks(result) {
-  if (!elements.simulationCustomSeries) {
-    return;
-  }
-  const customOutputs = activePurposeOutputObjects().filter((object) => {
-    const purposeIDs = object.purposeIds || [];
-    return purposeIDs.includes("custom_outputs") && purposeObjectIsSeries(object.objectType);
-  });
-  if (!result || !customOutputs.length) {
-    elements.simulationCustomSeries.innerHTML = "";
-    return;
-  }
-  const rows = customOutputs
-    .slice(0, 32)
-    .map((object) => {
-      const ref = customOutputSeriesRef(object);
-      return `
-        <tr>
-          <td>${escapeHTML(object.objectType || "")}</td>
-          <td>${escapeHTML(customOutputSeriesLabel(object))}</td>
-          <td>${escapeHTML(object.reportingFrequency || "")}</td>
-          <td>${renderSeriesInspectButton(ref)}</td>
-        </tr>`;
-    })
-    .join("");
-  elements.simulationCustomSeries.innerHTML = `
-    <section class="simulation-custom-series-links">
-      <h4>${escapeHTML(t("simulation.customOutputs", {}, "Custom outputs"))}</h4>
-      <div class="output-table-wrap">
-        <table class="output-table">
-          <thead><tr><th>${escapeHTML(t("common.type", {}, "Type"))}</th><th>${escapeHTML(t("simulation.sourceOutput", {}, "Source output"))}</th><th>${escapeHTML(t("hvac.reportingFrequency", {}, "Reporting frequency"))}</th><th>${escapeHTML(t("simulation.inspectSeriesAction", {}, "Chart"))}</th></tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </div>
-    </section>`;
-}
-
-function customOutputSeriesRef(object) {
+function purposeOutputSeriesRef(object) {
   if (outputObjectIsMeter(object.objectType)) {
-    const meterName = object.keyValue || object.meterName || customOutputFieldValue(object, "Key Name");
+    const meterName = object.keyValue || object.meterName || purposeOutputFieldValue(object, "Key Name");
     return { series: findSimulationSeriesForMeter(meterName), keyValue: meterName, variableName: meterName };
   }
   return {
@@ -7543,21 +6261,9 @@ function customOutputSeriesRef(object) {
   };
 }
 
-function customOutputSeriesLabel(object) {
-  if (outputObjectIsMeter(object.objectType)) {
-    return object.keyValue || object.meterName || customOutputFieldValue(object, "Key Name") || "";
-  }
-  return [object.keyValue || "*", object.variableName || customOutputFieldValue(object, "Variable Name")].filter(Boolean).join(" / ");
-}
-
-function customOutputFieldValue(object, fieldName) {
+function purposeOutputFieldValue(object, fieldName) {
   const field = (object.fields || []).find((item) => normalizeOutputMatchToken(item.name) === normalizeOutputMatchToken(fieldName));
   return field?.value || "";
-}
-
-function purposeObjectIsSeries(objectType) {
-  const normalized = normalizeOutputMatchToken(objectType);
-  return normalized === "output:variable" || outputObjectIsMeter(objectType);
 }
 
 function outputObjectIsMeter(objectType) {
@@ -7965,14 +6671,26 @@ function renderHeatFlowSpatialToolbar() {
   const collapsed = Boolean(state.simulationHeatFlowInspectorCollapsed);
   return `
     <div class="heatflow-spatial-toolbar">
-      <div class="heatflow-plan-actions" role="group" aria-label="${escapeHTML(t("simulation.heatFlowPlanView", {}, "Heat-flow plan view"))}">
-        <button type="button" data-heatflow-plan-zoom="out" title="${escapeHTML(t("action.zoomOut", {}, "Zoom out"))}">-</button>
-        <button type="button" data-heatflow-plan-zoom="reset">${escapeHTML(t("action.fit", {}, "Fit"))}</button>
-        <button type="button" data-heatflow-plan-zoom="in" title="${escapeHTML(t("action.zoomIn", {}, "Zoom in"))}">+</button>
-      </div>
       <button class="heatflow-inspector-toggle ${collapsed ? "" : "active"}" type="button" data-heatflow-inspector-toggle aria-expanded="${collapsed ? "false" : "true"}">
         ${escapeHTML(collapsed ? t("simulation.showHeatFlowLedger", {}, "Show ledger") : t("simulation.hideHeatFlowLedger", {}, "Hide ledger"))}
       </button>
+    </div>`;
+}
+
+function renderHeatFlowPlanViewportActions() {
+  const zoomOut = t("action.zoomOut", {}, "Zoom out");
+  const fit = t("action.fit", {}, "Fit");
+  const zoomIn = t("action.zoomIn", {}, "Zoom in");
+  return `
+    <div class="viewport-action-tools heatflow-viewport-actions" role="group" aria-label="${escapeHTML(t("simulation.heatFlowPlanView", {}, "Heat-flow plan view"))}">
+      <button class="viewport-icon-button" type="button" data-heatflow-plan-zoom="out" title="${escapeHTML(zoomOut)}" aria-label="${escapeHTML(zoomOut)}"><span aria-hidden="true">−</span></button>
+      <button class="viewport-icon-button" type="button" data-heatflow-plan-zoom="reset" title="${escapeHTML(fit)}" aria-label="${escapeHTML(fit)}">
+        <svg class="viewport-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M8 4H4v4M16 4h4v4M20 16v4h-4M8 20H4v-4"></path>
+          <rect x="8" y="8" width="8" height="8" rx="1"></rect>
+        </svg>
+      </button>
+      <button class="viewport-icon-button" type="button" data-heatflow-plan-zoom="in" title="${escapeHTML(zoomIn)}" aria-label="${escapeHTML(zoomIn)}"><span aria-hidden="true">+</span></button>
     </div>`;
 }
 
@@ -8210,11 +6928,14 @@ function renderHeatFlowStoryCard(geometry, story, dataset, zoneMap, frameIndex) 
   return `
     <article class="heatflow-floor-card">
       <h4>${escapeHTML(story.name || `Level ${story.index + 1}`)}</h4>
-      <svg class="heatflow-floor-plan" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHTML(story.name || "Floor")} heat-flow plan" data-heatflow-plan="1">
-        <g class="heatflow-plan-content" data-heatflow-plan-content transform="${escapeHTML(heatFlowPlanTransform())}">
-          ${shapes.join("")}
-        </g>
-      </svg>
+      <div class="heatflow-floor-viewport">
+        <svg class="heatflow-floor-plan" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHTML(story.name || "Floor")} heat-flow plan" data-heatflow-plan="1">
+          <g class="heatflow-plan-content" data-heatflow-plan-content transform="${escapeHTML(heatFlowPlanTransform())}">
+            ${shapes.join("")}
+          </g>
+        </svg>
+        ${renderHeatFlowPlanViewportActions()}
+      </div>
     </article>`;
 }
 
@@ -9070,7 +7791,6 @@ function renderPurposeHTMLResultSections(results) {
     renderPurposeHTMLEnergyExplanation(results.energyExplanationSummary || {}, results.energyExplanation || {}),
     renderPurposeHTMLHeatFlow(results.zoneHeatFlow || {}),
     renderPurposeHTMLHVAC(results.hvacLoops || []),
-    renderPurposeHTMLIntegrity(results.integrity || {}),
     renderPurposeHTMLComfort(results.comfort || {}),
   ]
     .filter(Boolean)
@@ -9508,85 +8228,6 @@ function renderPurposeHTMLHVAC(loops) {
     .join("\n");
 }
 
-function renderPurposeHTMLIntegrity(integrity) {
-  const err = integrity.err || {};
-  const errRows = errIssueGroups(err.issues || [])
-    .slice(0, 120)
-    .map((group) => [group.severity || "", group.message || "", group.count || 0, (group.lines || []).join(", ")]);
-  const sqlRows = (integrity.sqlIssues || [])
-    .slice(0, 120)
-    .map((issue) => [issue.severity || "", issue.message || "", issue.count || "", issue.source || ""]);
-  const tabularRows = (integrity.tabularReports || [])
-    .flatMap((report) =>
-      (report.rows || []).slice(0, 40).map((row) => [
-        report.reportName || "",
-        report.tableName || "",
-        row.name || row.rowName || "",
-        Object.entries(row.values || {})
-          .slice(0, 4)
-          .map(([key, value]) => `${key}: ${value}`)
-          .join("; "),
-        report.source || "",
-      ]),
-    )
-    .slice(0, 160);
-  const staticRows = (integrity.staticDiagnostics || [])
-    .slice(0, 120)
-    .map((diagnostic) => [
-      diagnostic.severity || "",
-      diagnostic.category || "",
-      diagnostic.message || "",
-      staticDiagnosticLocation(diagnostic),
-      diagnostic.code || "",
-      simulationDiagnosticSourceLabel(diagnostic.source || ""),
-    ]);
-  const crossCheckRows = (integrity.crossChecks || [])
-    .slice(0, 160)
-    .map((item) => [
-      simulationDiagnosticSourceLabel(item.category || ""),
-      item.name || "",
-      simulationIntegrityCrossCheckStatusLabel(item.status || "info"),
-      item.staticSource || "",
-      [item.sqlReport, item.sqlTable].filter(Boolean).join(" / ") || item.sqlSource || "",
-      item.message || "",
-      Object.entries(item.values || {})
-        .slice(0, 4)
-        .map(([key, value]) => `${key}: ${value}`)
-        .join("; "),
-    ]);
-  if (!staticRows.length && !crossCheckRows.length && !errRows.length && !sqlRows.length && !tabularRows.length && !err.total && !(integrity.tabularReports || []).length) {
-    return "";
-  }
-  const summaryRows = [
-    ["Status", integrity.status || ""],
-    ["ERR completed", err.completed ? "Yes" : "No"],
-    ["ERR warnings", err.warnings || 0],
-    ["ERR severe/fatal", (err.severe || 0) + (err.fatal || 0)],
-    ["Static diagnostics", (integrity.staticDiagnostics || []).length],
-    ["Cross checks", (integrity.crossChecks || []).length],
-    ["SQL diagnostics", (integrity.sqlIssues || []).length],
-    ["Tabular reports", (integrity.tabularReports || []).length],
-  ];
-  return [
-    `<h2>Integrity Summary</h2>${renderPurposeHTMLTable(["Field", "Value"], summaryRows)}`,
-    staticRows.length
-      ? `<h2>Integrity Static Diagnostics</h2>${renderPurposeHTMLTable(["Severity", "Category", "Message", "Location", "Code", "Source"], staticRows)}`
-      : "",
-    crossCheckRows.length
-      ? `<h2>Integrity Cross Checks</h2>${renderPurposeHTMLTable(["Category", "Name", "Status", "Static Source", "SQL Source", "Message", "Values"], crossCheckRows)}`
-      : "",
-    errRows.length ? `<h2>Integrity ERR Issues</h2>${renderPurposeHTMLTable(["Severity", "Message", "Count", "Lines"], errRows)}` : "",
-    sqlRows.length
-      ? `<h2>Integrity SQL Diagnostics</h2>${renderPurposeHTMLTable(["Severity", "Message", "Count", "Source"], sqlRows)}`
-      : "",
-    tabularRows.length
-      ? `<h2>Integrity Tabular Reports</h2>${renderPurposeHTMLTable(["Report", "Table", "Row", "Values", "Source"], tabularRows)}`
-      : "",
-  ]
-    .filter(Boolean)
-    .join("\n");
-}
-
 function renderPurposeHTMLComfort(comfort) {
   const unmetRows = (comfort.unmetHours || [])
     .map((item) => [
@@ -9675,9 +8316,9 @@ async function runCurrentSimulation({ silent = false, auto = false } = {}) {
   if (!text.trim() || state.simulationRunning) {
     return null;
   }
-  const env = state.simulationEnvironment || (await loadSimulationEnvironment());
+  state.simulationEnvironment ||= await loadSimulationEnvironment();
   renderSimulationEnvironment();
-  const installPath = elements.simulationEnergyPlusSelect?.value || env?.installations?.[0]?.executablePath || "";
+  const installPath = selectedEnergyPlusInstall()?.executablePath || "";
   if (!installPath) {
     if (!silent) {
       setStatus(t("simulation.registerEnergyPlus", {}, "Register EnergyPlus in Settings"), "warn");
@@ -9769,8 +8410,8 @@ async function maybeAutoRunSimulation() {
   if (!text.trim()) {
     return;
   }
-  const env = state.simulationEnvironment || (await loadSimulationEnvironment());
-  if (!env?.installations?.length) {
+  state.simulationEnvironment ||= await loadSimulationEnvironment();
+  if (!selectedEnergyPlusInstall()?.executablePath) {
     return;
   }
   renderSimulationEnvironment();

@@ -18,10 +18,14 @@ func TestResultPanelNavigationAdaptersContract(t *testing.T) {
 		assertJSExport(t, content, name)
 	}
 
-	for _, viewID := range []string{"summary", "profile", "hvac", "output", "simulation", "diagnose", "geometry"} {
-		if !strings.Contains(content, `"`+viewID+`"`) {
+	viewIDs := sliceBetween(content, "export const RESULT_PANEL_NAVIGATION_VIEW_IDS", "const SELECTABLE_PANEL_ITEM")
+	for _, viewID := range []string{"summary", "profile", "hvac", "simulation", "diagnose", "geometry"} {
+		if !strings.Contains(viewIDs, `"`+viewID+`"`) {
 			t.Fatalf("common result adapter is missing view %q", viewID)
 		}
+	}
+	if strings.Contains(viewIDs, `"output"`) {
+		t.Fatal("removed Output tab must not retain a result-panel adapter")
 	}
 	if !strings.Contains(content, "registerPanelNavigationAdapter(viewId, adapter)") {
 		t.Fatal("common result adapters must register through the panel navigation registry")
@@ -130,7 +134,7 @@ func TestGenericResultPanelRevealAndCompactContextContract(t *testing.T) {
 
 func TestResultPanelHooksDelegateDynamicallyAndOccurrenceChoiceIsContextual(t *testing.T) {
 	content := readTestFile(t, "frontend/src/js/panel-navigation-adapters.js")
-	configure := sliceBetween(content, "export function configureResultPanelNavigationHooks", "/** Registers the seven")
+	configure := sliceBetween(content, "export function configureResultPanelNavigationHooks", "export function initializeResultPanelNavigationAdapters")
 	if !strings.Contains(configure, "hooksByView.set(view, configured)") ||
 		!strings.Contains(configure, "hooksByView.get(view) !== configured") {
 		t.Fatal("hook configuration must be dynamic and cleanup-safe")
@@ -168,6 +172,6 @@ func TestFrontendReadinessIncludesResultPanelNavigationAdapters(t *testing.T) {
 	}
 	main := readTestFile(t, "frontend/src/js/main.js")
 	if !strings.Contains(main, "initializeResultPanelNavigationAdapters()") {
-		t.Fatal("the application must register all seven result-panel adapters during startup")
+		t.Fatal("the application must register all six result-panel adapters during startup")
 	}
 }

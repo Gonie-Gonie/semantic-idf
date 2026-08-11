@@ -18,12 +18,50 @@ func TestGeometryAdapterRegistersBeforeLazyRenderer(t *testing.T) {
 		"context.genericPreferredSemanticOccurrence",
 		"selectedKind",
 		"selectedId",
-		"selectionAid",
 		"syncLocate",
-		"visibility",
+		"visibility3D",
+		"visibilityPlan",
 	} {
 		if !strings.Contains(loader, required) {
 			t.Fatalf("geometry loader navigation adapter is missing %q", required)
+		}
+	}
+}
+
+func TestGeometrySyncLocateIsCommonAndSelectAidIsRemoved(t *testing.T) {
+	index := readTestFile(t, "frontend/src/index.html")
+	state := readTestFile(t, "frontend/src/js/state.js")
+	settings := readTestFile(t, "frontend/src/js/settings-client.js")
+	main := readTestFile(t, "frontend/src/js/main.js")
+	loader := readTestFile(t, "frontend/src/js/geometry-loader.js")
+	view := readTestFile(t, "frontend/src/js/views/geometry-view.js")
+
+	for _, required := range []string{
+		`id="geometrySyncControl"`,
+		`id="geometrySyncLocate" type="checkbox" checked`,
+		`geometrySyncLocate: true`,
+		`syncLocate: Boolean(state.geometrySyncLocate)`,
+		`state.geometrySyncLocate = snapshot.syncLocate !== false`,
+	} {
+		if !strings.Contains(index+state+settings+loader+view, required) {
+			t.Fatalf("common Sync locate contract is missing %q", required)
+		}
+	}
+	modeVisibility := sliceBetween(view, "function updateModeVisibility", "function renderThermalTopologyLazy")
+	if strings.Contains(modeVisibility, "geometrySyncControl") || strings.Contains(modeVisibility, "geometrySyncLocate") {
+		t.Fatal("Sync locate must remain visible in 3D, Plan, and Network modes")
+	}
+
+	allGeometryUI := index + state + main + loader + view
+	for _, removed := range []string{
+		"geometrySelectionAid",
+		"setGeometrySelectionAid",
+		"selectionAid",
+		"geometry.selectAid",
+		`event.key.toLowerCase() === "h"`,
+	} {
+		if strings.Contains(allGeometryUI, removed) {
+			t.Fatalf("removed Select aid contract remains %q", removed)
 		}
 	}
 }
@@ -97,10 +135,15 @@ func TestGeometryBidirectionalRevealAndAtomicSelection(t *testing.T) {
 			t.Fatalf("semantic-to-geometry reveal is missing %q", required)
 		}
 	}
-	if strings.Contains(reveal, "geometryShowZones.checked =") ||
-		strings.Contains(reveal, "geometryShowWalls.checked =") ||
-		strings.Contains(reveal, "geometryShowWindows.checked =") {
-		t.Fatal("semantic geometry reveal must materialize a target without changing visibility filters")
+	for _, forbidden := range []string{
+		"geometry3DVisibility =",
+		"geometryPlanVisibility =",
+		"geometry3DShowZones.checked =",
+		"geometryPlanShowZones.checked =",
+	} {
+		if strings.Contains(reveal, forbidden) {
+			t.Fatalf("semantic geometry reveal must materialize a target without changing visibility filters: found %q", forbidden)
+		}
 	}
 
 	for _, required := range []string{

@@ -24,8 +24,11 @@ func TestTOPO260ViewSwitchingAcceptance(t *testing.T) {
 	}
 	view := readTestFile(t, "frontend/src/js/views/geometry-view.js")
 	for _, required := range []string{
-		`elements.geometrySpatialControls.hidden = state.geometryMode === "thermal"`,
-		`elements.thermalTopologyControls.hidden = state.geometryMode !== "thermal"`,
+		`elements.geometry3DControls.hidden = !is3D`,
+		`elements.geometryPlanControls.hidden = !isPlan`,
+		`elements.thermalTopologyControls.hidden = !isNetwork`,
+		`elements.geometryStoryControl.hidden = isNetwork && state.thermalTopologyScope !== "story"`,
+		`state.geometryMode === "3d"`,
 		`return state.selectedGeometryStory === "all" || item.storyIndex === state.selectedGeometryStory`,
 		"restoreThermalTopologyState(snapshot, state)",
 	} {

@@ -63,7 +63,6 @@ func TestFrontendHVACStartsOnZoneServices(t *testing.T) {
 		`hvacServiceKindFilter: "all"`,
 		`hvacPathTypeFilter: "all"`,
 		`hvacMediumFilter: "all"`,
-		"outputPendingFocusQuery",
 	} {
 		if !strings.Contains(string(content), required) {
 			t.Fatalf("state.js should include HVAC navigation state %q", required)
@@ -192,11 +191,42 @@ func TestFrontendHVACGraphAreaOwnsScroll(t *testing.T) {
 	for _, required := range []string{
 		".hvac-pane {\n  flex: 1;\n  display: flex;\n  flex-direction: column;",
 		".hvac-layout {\n  flex: 1 1 auto;\n  min-height: 0;",
-		".hvac-main {\n  display: flex;\n  flex-direction: column;",
+		".hvac-main {\n  position: relative;\n  display: flex;\n  flex-direction: column;",
 		".hvac-graph {\n  flex: 1 1 auto;\n  min-height: 0;\n  overflow: auto;",
 	} {
 		if !strings.Contains(text, required) {
 			t.Fatalf("HVAC graph scroll contract missing %q", required)
+		}
+	}
+}
+
+func TestFrontendHVACInspectorIsAlwaysVisibleAndExpandUsesViewportIcon(t *testing.T) {
+	index := readTestFile(t, "frontend/src/index.html")
+	state := readTestFile(t, "frontend/src/js/state.js")
+	view := readTestFile(t, "frontend/src/js/views/hvac-views.js")
+	styles := readTestFile(t, "frontend/src/styles/hvac.css")
+	hvac := sliceBetween(index, `<section class="hvac-main"`, `<aside id="hvacSide"`)
+	for _, required := range []string{
+		`id="hvacExpandButton"`,
+		`class="viewport-icon viewport-icon-expand"`,
+		`class="viewport-icon viewport-icon-collapse"`,
+		`class="sr-only"`,
+	} {
+		if !strings.Contains(hvac, required) {
+			t.Fatalf("HVAC Expand must remain an accessible viewport icon: missing %q", required)
+		}
+	}
+	for _, forbidden := range []string{
+		"hvacInspectorToggle",
+		"hvacInspectorCollapsed",
+		"idfAnalyzer.hvacInspectorCollapsed",
+		"inspector-collapsed",
+		"hvac-inspector-toggle",
+		"Show inspector",
+		"Hide inspector",
+	} {
+		if strings.Contains(index+state+view+styles, forbidden) {
+			t.Fatalf("HVAC inspector toggle state must be removed: found %q", forbidden)
 		}
 	}
 }

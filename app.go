@@ -523,7 +523,7 @@ func (a *App) cachedCompletedStageAnalysis(textHash string) *InputAnalysisResult
 
 	assembled := cloneInputAnalysisResult(quick)
 	report := *quick.Report
-	requiredStages := []string{"profile", "hvac", "output", "diagnostics", "geometry"}
+	requiredStages := []string{"profile", "hvac", "diagnostics", "geometry"}
 	for _, stage := range requiredStages {
 		stageResult, ok := a.analysisCache.LookupTextMode(textHash, stage)
 		if !ok || stageResult == nil || stageResult.Report == nil {
@@ -1494,7 +1494,7 @@ func defaultAppSettings() AppSettings {
 		Appearance: AppearanceSettings{
 			Theme:            "system",
 			Language:         "en",
-			AnalysisTabOrder: []string{"summary", "geometry", "profile", "hvac", "diagnose", "output", "simulation"},
+			AnalysisTabOrder: []string{"summary", "geometry", "profile", "hvac", "diagnose", "simulation"},
 			Geometry: GeometryAppearanceSettings{
 				Background: "#f7fafc",
 				Zone:       "#b8d7b0",
@@ -1532,10 +1532,9 @@ func defaultAppSettings() AppSettings {
 				"tabSummary":           "Ctrl+Alt+1",
 				"tabProfile":           "Ctrl+Alt+2",
 				"tabHVAC":              "Ctrl+Alt+3",
-				"tabOutput":            "Ctrl+Alt+4",
-				"tabSimulation":        "Ctrl+Alt+5",
-				"tabDiagnose":          "Ctrl+Alt+6",
-				"tabGeometry":          "Ctrl+Alt+7",
+				"tabSimulation":        "Ctrl+Alt+4",
+				"tabDiagnose":          "Ctrl+Alt+5",
+				"tabGeometry":          "Ctrl+Alt+6",
 				"geometry3D":           "1",
 				"geometryPlan":         "2",
 				"geometryThermal":      "3",
@@ -1646,7 +1645,6 @@ func normalizeAnalysisTabOrder(values []string, fallback []string) []string {
 		"summary":    true,
 		"profile":    true,
 		"hvac":       true,
-		"output":     true,
 		"simulation": true,
 		"diagnose":   true,
 		"geometry":   true,
@@ -1663,7 +1661,7 @@ func normalizeAnalysisTabOrder(values []string, fallback []string) []string {
 	}
 	source := fallback
 	if len(source) == 0 {
-		source = []string{"summary", "geometry", "profile", "hvac", "diagnose", "output", "simulation"}
+		source = []string{"summary", "geometry", "profile", "hvac", "diagnose", "simulation"}
 	}
 	for _, value := range source {
 		normalized := strings.ToLower(strings.TrimSpace(value))

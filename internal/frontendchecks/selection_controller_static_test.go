@@ -49,6 +49,7 @@ func TestSemanticSelectionStateContract(t *testing.T) {
 func TestSelectionControllerPublicAPIAndBuildContract(t *testing.T) {
 	content := readTestFile(t, "frontend/src/js/selection-controller.js")
 	for _, name := range []string{
+		"isProfileTopologyLink",
 		"selectSemanticEntity",
 		"hoverSemanticEntity",
 		"clearSemanticHover",
@@ -79,16 +80,52 @@ func TestSelectionControllerPublicAPIAndBuildContract(t *testing.T) {
 	}
 }
 
+func TestProfileTopologyCrossPanelIsolationContract(t *testing.T) {
+	controller := readTestFile(t, "frontend/src/js/selection-controller.js")
+	linkGuard := sliceBetween(controller, "export function isProfileTopologyLink", "/**")
+	for _, required := range []string{
+		`origin === "profile" && target === "geometry"`,
+		`origin === "geometry" && target === "profile"`,
+	} {
+		if !strings.Contains(linkGuard, required) {
+			t.Fatalf("central Profile/Topology link guard is missing %q", required)
+		}
+	}
+
+	selectionTargets := sliceBetween(controller, "function selectionTargetsForView", "function semanticOccurrenceChoices")
+	if !strings.Contains(selectionTargets, "isProfileTopologyLink(selection.originView, normalizedView)") ||
+		!strings.Contains(selectionTargets, "return []") {
+		t.Fatal("selectionTargetsForView must centrally suppress Profile/Topology targets in both directions")
+	}
+	openSelection := sliceBetween(controller, "async function openSelectionInView", "async function revealSelectionSource")
+	if !strings.Contains(openSelection, "isProfileTopologyLink(options.originView || selection.originView, normalizedView)") ||
+		!strings.Contains(openSelection, "return false") {
+		t.Fatal("openSelectionInView must reject direct Profile/Topology callers before adapter fallback")
+	}
+
+	main := readTestFile(t, "frontend/src/js/main.js")
+	availableViews := sliceBetween(main, "async function openAvailableViewsForSelection", "async function clearSelectionOrTransientUI")
+	for _, required := range []string{
+		"isProfileTopologyLink(originView, viewID)",
+		"selectionTargetsForView(viewID, { ...selection, originView })",
+		`viewID !== "input-semantic" && !targets.length`,
+	} {
+		if !strings.Contains(availableViews, required) {
+			t.Fatalf("Available Views must rely on the centrally filtered targets: missing %q", required)
+		}
+	}
+}
+
 func TestPanelNavigationRegistryContract(t *testing.T) {
 	content := readTestFile(t, "frontend/src/js/panel-navigation-registry.js")
 	for _, name := range []string{"registerPanelNavigationAdapter", "getPanelNavigationAdapter"} {
 		assertJSExport(t, content, name)
 	}
+	viewIDs := sliceBetween(content, "export const PANEL_NAVIGATION_VIEW_IDS", "const requiredAdapterMethods")
 	for _, viewID := range []string{
 		"summary",
 		"profile",
 		"hvac",
-		"output",
 		"simulation",
 		"diagnose",
 		"geometry",
@@ -97,9 +134,12 @@ func TestPanelNavigationRegistryContract(t *testing.T) {
 		"input-json",
 		"input-table",
 	} {
-		if !strings.Contains(content, `"`+viewID+`"`) {
+		if !strings.Contains(viewIDs, `"`+viewID+`"`) {
 			t.Fatalf("panel navigation registry is missing view %q", viewID)
 		}
+	}
+	if strings.Contains(viewIDs, `"output"`) {
+		t.Fatal("removed Output tab must not remain in the panel navigation registry")
 	}
 	for _, method := range []string{
 		"canReveal",

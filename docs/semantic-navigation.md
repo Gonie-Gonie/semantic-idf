@@ -18,7 +18,7 @@ panel-specific click or jump model.
 
 ### Right Analysis Panels
 
-- Summary, Profile, HVAC, Output, Simulation, Diagnose, and Geometry are
+- Summary, Profile, HVAC, Simulation, Diagnose, and Geometry are
   specialized lenses over the same semantic entities.
 - A target selected in a panel must be able to return to the most appropriate
   occurrence in Semantic Text.
@@ -146,17 +146,21 @@ it must not duplicate this table as a large object-type switch.
 | HVAC loop | HVAC | Loop ID |
 | HVAC component | HVAC | Component ID |
 | Supporting coupling | HVAC | Coupling ID |
-| Output request | Output | Output signature or source object |
-| Simulation-purpose output source | Simulation or Output | Result/source ID |
+| Output request | Input source | Source object or field anchor |
+| Simulation-purpose output source | Simulation or Input source | Result/source ID or source anchor |
 | Diagnostic occurrence | Diagnose | Diagnostic ID |
 | Raw or source-only occurrence | Input source | Source anchor |
 
 A zone name is not forced to one panel: it advertises every supported
-Geometry, Profile, HVAC, Output, and Diagnose target. Occurrences beneath
+Geometry, Profile, HVAC, and Diagnose target. Occurrences beneath
 `zones/<zone>/profiles`, `zones/<zone>/services`, and
 `zones/<zone>/geometry` prefer Profile, HVAC, and Geometry respectively. When
 multiple valid targets or occurrences remain, the UI offers a chooser rather
 than inventing a relationship or silently choosing an unrelated context.
+
+Profile and Geometry/Topology do not advertise each other as direct related
+destinations in result-panel menus or the workspace link bar. Both remain
+independently reachable from Semantic Text and their own top-level tabs.
 
 ## Reveal, filtering, and analysis lifecycle
 
@@ -199,7 +203,8 @@ of these baseline problems from returning:
    `data-jump-object-index` and could not choose a contextual semantic
    occurrence.
 4. View history previously stored input/result tabs and source object/scroll
-   but not Profile, HVAC, Geometry, Output, or Simulation context.
+   but not Profile, HVAC, Geometry, the former Output panel, or Simulation
+   context.
 5. HVAC, Profile, Geometry, and Simulation previously held rich independent
    selection state without a common global entity selection.
 6. Basic Semantic Text previously hard-truncated at 250 lines, so later

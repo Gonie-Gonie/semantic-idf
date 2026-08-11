@@ -231,11 +231,6 @@ function applyStageResult(stage, result) {
       state.analysisReady.hvac = true;
       markAnalysisDirty("hvac");
       break;
-    case "output":
-      state.report.output = report.output || {};
-      state.analysisReady.output = true;
-      markAnalysisDirty("output");
-      break;
     case "diagnostics":
       state.report.diagnostics = report.diagnostics || [];
       state.diagnosticsReady = true;
@@ -280,7 +275,7 @@ export function prioritizeAnalysisStageForTab(tab = state.activeResultTab) {
 }
 
 function orderedAnalysisStages(activeTab) {
-  const stages = ["profile", "hvac", "output", "diagnostics", "geometry"];
+  const stages = ["profile", "hvac", "diagnostics", "geometry"];
   const pendingPriorityTab = state.pendingAnalysisPriorityTab || "";
   state.pendingAnalysisPriorityTab = "";
   const priority = resultTabStage(pendingPriorityTab) || resultTabStage(activeTab);
@@ -298,7 +293,6 @@ function resultTabStage(tab) {
   const stagesByTab = {
     profile: "profile",
     hvac: "hvac",
-    output: "output",
     diagnose: "diagnostics",
     geometry: "geometry",
   };
@@ -311,8 +305,6 @@ function stageStatusMessage(stage) {
       return t("status.buildingProfile", {}, "Building profile graphs");
     case "hvac":
       return t("status.resolvingHVAC", {}, "Resolving HVAC service paths");
-    case "output":
-      return t("status.checkingOutput", {}, "Checking output requests");
     case "diagnostics":
       return t("status.checkingDiagnostics", {}, "Checking diagnostics");
     case "geometry":
@@ -377,7 +369,6 @@ function hasQueuedStageAnalysisAPI(api) {
 
 function setAnalysisReadiness(complete) {
   state.analysisReady.summary = Boolean(state.report?.summary);
-  state.analysisReady.output = complete || Boolean(state.report?.output);
   state.analysisReady.profile = complete;
   state.analysisReady.hvac = complete;
   state.analysisReady.diagnose = complete;
@@ -390,7 +381,6 @@ function resetAnalysisReadiness() {
   state.analysisReady.summary = false;
   state.analysisReady.profile = false;
   state.analysisReady.hvac = false;
-  state.analysisReady.output = false;
   state.analysisReady.diagnose = false;
   state.analysisReady.geometry = false;
   state.analysisReady.simulation = true;
@@ -480,8 +470,6 @@ export function registerLoadedDocument(text, { path = "", filename = "" } = {}) 
   state.semanticCurrentOccurrenceId = "";
   state.semanticCurrentPath = "";
   state.semanticPinnedEntityIds?.clear?.();
-  state.outputFocusedSignature = "";
-  state.outputTemporaryRevealSignature = "";
   state.semanticEditSelectionRestore = null;
   state.semanticPendingNavigation = null;
   state.pendingAnalysisPriorityTab = "";
@@ -848,7 +836,7 @@ function cancelIdlePreRender() {
 }
 
 function nextDirtyInactiveTab() {
-  const tabs = ["summary", "profile", "hvac", "output", "diagnose"];
+  const tabs = ["summary", "profile", "hvac", "diagnose"];
   return tabs.find((tab) => tab !== state.activeResultTab && state.analysisDirty?.[tab]);
 }
 

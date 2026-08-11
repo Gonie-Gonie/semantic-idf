@@ -80,7 +80,6 @@ type semanticNavigationBuildState struct {
 	hvacBySemanticID           map[string]string
 	hvacPathEntityByTarget     map[string]string
 	hvacCouplingEntityByTarget map[string]string
-	outputByObject             map[int]string
 	entityIndex                map[string]int
 	occurrenceIndex            map[string]int
 	entities                   []SemanticNavigationEntity
@@ -177,7 +176,6 @@ func (state *semanticNavigationBuildState) indexPanelTargets() {
 	state.hvacBySemanticID = map[string]string{}
 	state.hvacPathEntityByTarget = map[string]string{}
 	state.hvacCouplingEntityByTarget = map[string]string{}
-	state.outputByObject = map[int]string{}
 	if state.ctx == nil {
 		return
 	}
@@ -221,11 +219,6 @@ func (state *semanticNavigationBuildState) indexPanelTargets() {
 	}
 	for _, coupling := range state.ctx.hvac.ServiceModel.Couplings {
 		state.hvacCouplingEntityByTarget[coupling.ID] = state.stableHVACCouplingEntityID(coupling)
-	}
-	for _, output := range state.ctx.output.Existing {
-		if output.Signature != "" {
-			state.outputByObject[output.ObjectIndex] = output.Signature
-		}
 	}
 }
 
@@ -659,9 +652,6 @@ func (state *semanticNavigationBuildState) viewTargetsFor(descriptor semanticEnt
 		if section == "hvac" {
 			add(SemanticViewTarget{View: "hvac", TargetKind: "section", TargetID: "hvac", Label: "HVAC", Priority: 70})
 		}
-		if section == "outputs" {
-			add(SemanticViewTarget{View: "output", TargetKind: "section", TargetID: "outputs", Label: "Output", Priority: 70})
-		}
 		if section == "source_name_conflicts" {
 			add(SemanticViewTarget{View: "diagnose", TargetKind: "group", TargetID: "source-name-conflicts", Label: "Diagnostics", Priority: 70})
 		}
@@ -676,9 +666,6 @@ func (state *semanticNavigationBuildState) viewTargetsFor(descriptor semanticEnt
 		for _, servicePath := range state.servicePathsForZone(descriptor.Label) {
 			add(SemanticViewTarget{View: "hvac", TargetKind: "service-path", TargetID: servicePath.ID, Label: firstNonEmpty(servicePath.ServiceKind, descriptor.Label), Priority: 90})
 		}
-		if state.zoneHasOutputs(descriptor.Label) {
-			add(SemanticViewTarget{View: "output", TargetKind: "zone", TargetID: descriptor.Label, Label: descriptor.Label, Priority: 60})
-		}
 	case "space":
 		add(SemanticViewTarget{View: "geometry", TargetKind: "space", TargetID: state.geometryPanelTarget("space", node, descriptor), Label: descriptor.Label, Priority: 80})
 	case "surface", "fenestration":
@@ -692,8 +679,6 @@ func (state *semanticNavigationBuildState) viewTargetsFor(descriptor semanticEnt
 	case "hvac-path", "hvac-loop", "hvac-component", "hvac-coupling", "hvac-network":
 		targetID := state.hvacPanelTarget(node, descriptor)
 		add(SemanticViewTarget{View: "hvac", TargetKind: descriptor.Kind, TargetID: targetID, Label: descriptor.Label, Priority: 100})
-	case "output":
-		add(SemanticViewTarget{View: "output", TargetKind: "request", TargetID: state.outputPanelTarget(node, descriptor), Label: descriptor.Label, Priority: 100})
 	case "diagnostic":
 		add(SemanticViewTarget{View: "diagnose", TargetKind: "diagnostic", TargetID: descriptor.ID, Label: descriptor.Label, Priority: 100})
 	case "thermal_boundary", "thermal_interface", "thermal_connection", "thermal_environment", "thermal_air_coupling", "thermal_issue":
@@ -713,13 +698,6 @@ func (state *semanticNavigationBuildState) viewTargetsFor(descriptor semanticEnt
 
 func (state *semanticNavigationBuildState) servicePathsForZone(zoneName string) []ZoneServicePath {
 	return state.serviceByZone[normalizeName(zoneName)]
-}
-
-func (state *semanticNavigationBuildState) zoneHasOutputs(zoneName string) bool {
-	if state.ctx == nil {
-		return false
-	}
-	return len(state.ctx.outputsByTarget[normalizeName(zoneName)]) > 0 || len(state.ctx.wildcardOutputs) > 0
 }
 
 func (state *semanticNavigationBuildState) hvacPanelTarget(node SemanticYAMLNode, descriptor semanticEntityDescriptor) string {
@@ -778,15 +756,6 @@ func (state *semanticNavigationBuildState) profilePanelTarget(node SemanticYAMLN
 	return descriptor.ID
 }
 
-func (state *semanticNavigationBuildState) outputPanelTarget(node SemanticYAMLNode, descriptor semanticEntityDescriptor) string {
-	if node.SourceAnchor != nil && node.SourceAnchor.ObjectIndex != nil {
-		if targetID := state.outputByObject[*node.SourceAnchor.ObjectIndex]; targetID != "" {
-			return targetID
-		}
-	}
-	return descriptor.ID
-}
-
 func semanticPreferredTarget(path string, descriptor semanticEntityDescriptor, targets []SemanticViewTarget) (string, string) {
 	context := semanticContextKind(path, descriptor.Kind)
 	preferredView := ""
@@ -798,7 +767,7 @@ func semanticPreferredTarget(path string, descriptor semanticEntityDescriptor, t
 	case "zone_service", "system_definition", "loop_occurrence", "component_occurrence", "coupling_occurrence":
 		preferredView = "hvac"
 	case "zone_output", "output_request":
-		preferredView = "output"
+		preferredView = "input-text"
 	case "zone_diagnostic", "diagnostic_occurrence":
 		preferredView = "diagnose"
 	case "source_only":
@@ -820,7 +789,7 @@ func semanticPreferredTarget(path string, descriptor semanticEntityDescriptor, t
 		case "hvac-path", "hvac-loop", "hvac-component", "hvac-coupling", "hvac-network":
 			preferredView = "hvac"
 		case "output":
-			preferredView = "output"
+			preferredView = "input-text"
 		case "diagnostic":
 			preferredView = "diagnose"
 		case "project", "building", "semantic-section":

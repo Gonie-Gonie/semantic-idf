@@ -162,7 +162,6 @@
             <button class="tab" data-result-tab="profile" type="button" data-i18n="tab.profile">Profile</button>
             <button class="tab" data-result-tab="hvac" type="button" data-i18n="tab.hvac">HVAC</button>
             <button class="tab" data-result-tab="diagnose" type="button" data-i18n="tab.diagnose">Diagnose</button>
-            <button class="tab" data-result-tab="output" type="button" data-i18n="tab.output">Output</button>
             <button class="tab" data-result-tab="simulation" type="button" data-i18n="tab.simulation">Simulation</button>
           </nav>
 
@@ -197,7 +196,6 @@
                 <section class="profile-visual" aria-label="Profile graph">
                   <div class="profile-section-head">
                     <h3 data-i18n="profile.graph">Profile Graph</h3>
-                    <span id="profileGraphStats" class="tool-muted">Annual heatmap</span>
                   </div>
                   <div id="profileGraph" class="profile-graph"></div>
                 </section>
@@ -239,14 +237,23 @@
               </div>
               <div class="summary-tools hvac-tools">
                 <input id="hvacFilter" type="search" placeholder="Filter loops, zones, nodes" data-i18n-placeholder="hvac.filter" data-i18n-aria-label="hvac.filter" />
-                <button id="hvacInspectorToggle" class="hvac-inspector-toggle" type="button" aria-controls="hvacSide" aria-expanded="true">Hide inspector</button>
-                <button id="hvacExpandButton" type="button" data-expand-pane="hvac" data-i18n="action.expand">Expand</button>
               </div>
             </div>
             <div class="hvac-pane">
               <div id="hvacSummary" class="hvac-summary"></div>
               <div id="hvacLayout" class="hvac-layout">
                 <section class="hvac-main" aria-label="HVAC graph">
+                  <div class="viewport-action-tools hvac-viewport-actions">
+                    <button id="hvacExpandButton" class="viewport-icon-button" type="button" data-expand-pane="hvac" aria-label="Expand" title="Expand" data-i18n-aria-label="action.expand" data-i18n-title="action.expand" aria-pressed="false">
+                      <svg class="viewport-icon viewport-icon-expand" viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M8 3H3v5M16 3h5v5M21 16v5h-5M8 21H3v-5"></path>
+                      </svg>
+                      <svg class="viewport-icon viewport-icon-collapse" viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M3 8h5V3M21 8h-5V3M16 21v-5h5M8 21v-5H3"></path>
+                      </svg>
+                      <span class="sr-only" data-i18n="action.expand">Expand</span>
+                    </button>
+                  </div>
                   <div id="hvacGraph" class="hvac-graph"></div>
                 </section>
                 <aside id="hvacSide" class="hvac-side" aria-label="HVAC inspector">
@@ -283,91 +290,21 @@
             </div>
           </div>
 
-          <div class="result-pane" id="outputPane">
-            <div class="summary-head output-head">
-              <div>
-                <span id="outputStats">0 output objects</span>
-              </div>
-              <div class="summary-tools">
-                <input id="outputFilter" type="search" placeholder="Filter output requests" data-i18n-placeholder="output.filter" />
-                <select id="outputPurposeFilter" aria-label="Filter output requests by purpose">
-                  <option value="all" data-i18n="output.allPurposes">All purposes</option>
-                  <option value="basic_energy" data-i18n="simulation.purposeBasicEnergy">Basic Energy</option>
-                  <option value="zone_heat_flow" data-i18n="simulation.purposeZoneHeatFlow">Zone Heat Flow</option>
-                  <option value="hvac_loop_check" data-i18n="simulation.purposeHVACLoop">HVAC Loop Check</option>
-                  <option value="integrity_check" data-i18n="simulation.purposeIntegrity">Integrity</option>
-                  <option value="comfort_check" data-i18n="simulation.purposeComfort">Comfort</option>
-                  <option value="custom_outputs" data-i18n="simulation.purposeCustom">Custom Outputs</option>
-                </select>
-              </div>
-            </div>
-            <div class="output-pane">
-              <section class="output-section">
-                <div class="profile-section-head">
-                  <h3 data-i18n="output.map">Output request map</h3>
-                  <span id="outputExistingStats" class="tool-muted">0 objects</span>
-                </div>
-                <div id="outputExisting" class="output-table-wrap" data-panel-target-id="outputs"></div>
-              </section>
-              <section class="output-section">
-                <div class="profile-section-head">
-                  <h3 data-i18n="output.library">Output preset library</h3>
-                  <span id="outputRecommendationStats" class="tool-muted">0 options</span>
-                </div>
-                <div id="outputRecommendations" class="output-table-wrap"></div>
-              </section>
-              <section class="output-section">
-                <div class="profile-section-head">
-                  <h3 data-i18n="output.warnings">Output warnings</h3>
-                  <span id="outputWarningStats" class="tool-muted">0 warnings</span>
-                </div>
-                <div id="outputWarnings" class="hvac-warning-list"></div>
-              </section>
-            </div>
-            <div id="outputApplyDialog" class="profile-dialog hidden" role="dialog" aria-modal="true" aria-labelledby="outputApplyTitle">
-              <form id="outputApplyForm" class="profile-dialog-panel">
-                <div class="profile-dialog-head">
-                  <h3 id="outputApplyTitle" data-i18n="output.applyTitle">Edit Output Request</h3>
-                  <button id="outputApplyClose" type="button" data-i18n="action.close">Close</button>
-                </div>
-                <div id="outputApplyBody" class="profile-apply-body"></div>
-                <div class="profile-dialog-actions">
-                  <span id="outputApplyStatus" class="settings-save-status" data-i18n="status.reviewBeforeApplying">Review changes before applying.</span>
-                  <button id="outputPreviewApply" type="button" data-i18n="action.preview">Preview</button>
-                  <button id="outputConfirmApply" type="submit" disabled data-i18n="action.apply">Apply</button>
-                </div>
-              </form>
-            </div>
-          </div>
-
           <div class="result-pane" id="simulationPane">
             <div class="summary-head simulation-head">
               <div>
                 <span id="simulationStats">No run yet</span>
               </div>
               <div class="summary-tools">
-                <button id="simulationRefreshEnv" type="button" data-i18n="action.refresh">Refresh</button>
                 <button id="simulationRunButton" type="button" data-i18n="action.runSimulation">Run & Inspect</button>
               </div>
             </div>
             <div class="simulation-pane">
               <section class="simulation-controls" aria-label="Simulation controls">
                 <label>
-                  <span data-i18n="simulation.energyPlus">EnergyPlus</span>
-                  <select id="simulationEnergyPlusSelect"></select>
-                </label>
-                <label>
                   <span data-i18n="simulation.weather">Weather</span>
                   <select id="simulationWeatherSelect"></select>
                 </label>
-                <details class="simulation-run-options" aria-label="Advanced run options">
-                  <summary data-i18n="simulation.advancedRunOptions">Advanced run options</summary>
-                  <label class="simulation-checkbox">
-                    <input id="simulationAutoRunOnOpen" type="checkbox" />
-                    <span data-i18n="simulation.autoRunOnOpen">Auto-run after opening an input when weather is selected</span>
-                  </label>
-                  <button id="simulationApplyStandardOutput" type="button" data-i18n="action.applyStandardOutput">Apply Legacy Output Preset</button>
-                </details>
               </section>
               <section class="simulation-purpose-panel" aria-label="Purpose setup">
                 <div class="profile-section-head">
@@ -381,7 +318,7 @@
                       <strong data-i18n="simulation.purposeBasicEnergy">Basic Energy</strong>
                       <small data-i18n="simulation.purposeBasicEnergyDesc">Monthly meters and end-use energy; detail tier adds explanations.</small>
                     </span>
-                    <em>Light</em>
+                    <em>Detail</em>
                   </label>
                   <label class="simulation-purpose-card">
                     <input type="checkbox" data-simulation-purpose="zone_heat_flow" checked />
@@ -389,7 +326,7 @@
                       <strong data-i18n="simulation.purposeZoneHeatFlow">Zone Heat Flow</strong>
                       <small data-i18n="simulation.purposeZoneHeatFlowDesc">Hourly zone heat-balance ledger and temperature overlay.</small>
                     </span>
-                    <em>Medium</em>
+                    <em>Detail</em>
                   </label>
                   <label class="simulation-purpose-card">
                     <input type="checkbox" data-simulation-purpose="hvac_loop_check" />
@@ -400,14 +337,6 @@
                     <em>Heavy</em>
                   </label>
                   <label class="simulation-purpose-card">
-                    <input type="checkbox" data-simulation-purpose="integrity_check" />
-                    <span>
-                      <strong data-i18n="simulation.purposeIntegrity">Integrity</strong>
-                      <small data-i18n="simulation.purposeIntegrityDesc">ERR, dictionaries, tabular reports, and diagnostic hints.</small>
-                    </span>
-                    <em>Light</em>
-                  </label>
-                  <label class="simulation-purpose-card">
                     <input type="checkbox" data-simulation-purpose="comfort_check" />
                     <span>
                       <strong data-i18n="simulation.purposeComfort">Comfort</strong>
@@ -415,119 +344,6 @@
                     </span>
                     <em>Medium</em>
                   </label>
-                  <label class="simulation-purpose-card">
-                    <input type="checkbox" data-simulation-purpose="custom_outputs" />
-                    <span>
-                      <strong data-i18n="simulation.purposeCustom">Custom Outputs</strong>
-                      <small data-i18n="simulation.purposeCustomDesc">Use selected custom output objects when provided.</small>
-                    </span>
-                    <em>Variable</em>
-                  </label>
-                </div>
-                <div class="simulation-scope-controls" aria-label="Purpose scope">
-                  <label>
-                    <span data-i18n="simulation.zoneScope">Zone scope</span>
-                    <select id="simulationPurposeZoneMode">
-                      <option value="all" selected data-i18n="common.all">All</option>
-                      <option value="selected" data-i18n="common.selected">Selected</option>
-                      <option value="visible" data-i18n="common.visible">Visible</option>
-                      <option value="filtered" data-i18n="common.filtered">Filtered</option>
-                    </select>
-                  </label>
-                  <label>
-                    <span data-i18n="simulation.selectedZones">Selected zones</span>
-                    <input id="simulationPurposeZoneNames" type="text" placeholder="Office, Lab" data-i18n-placeholder="simulation.selectedZonesPlaceholder" />
-                  </label>
-                  <label>
-                    <span data-i18n="simulation.periodScope">Period scope</span>
-                    <select id="simulationPurposePeriodMode">
-                      <option value="full" selected data-i18n="simulation.periodFull">Full run</option>
-                      <option value="custom" data-i18n="simulation.periodCustom">Custom dates</option>
-                    </select>
-                  </label>
-                  <label>
-                    <span data-i18n="simulation.periodStart">Period start</span>
-                    <input id="simulationPurposePeriodStart" type="text" placeholder="01-01" data-i18n-placeholder="simulation.periodDatePlaceholder" />
-                  </label>
-                  <label>
-                    <span data-i18n="simulation.periodEnd">Period end</span>
-                    <input id="simulationPurposePeriodEnd" type="text" placeholder="12-31" data-i18n-placeholder="simulation.periodDatePlaceholder" />
-                  </label>
-                  <label>
-                    <span data-i18n="simulation.basicEnergyDetail">Basic Energy detail</span>
-                    <select id="simulationPurposeEnergyDetail">
-                      <option value="light" selected data-i18n="simulation.basicEnergyDetailLight">Light</option>
-                      <option value="explain" data-i18n="simulation.basicEnergyDetailExplain">Explain</option>
-                      <option value="heat_drivers" data-i18n="simulation.basicEnergyDetailHeatDrivers">Heat drivers</option>
-                    </select>
-                  </label>
-                  <label>
-                    <span>Zone Heat Flow detail</span>
-                    <select id="simulationPurposeZoneHeatFlowDetail">
-                      <option value="zone" selected>Zone ledger</option>
-                      <option value="surface">Surface topology overlay</option>
-                    </select>
-                  </label>
-                  <label>
-                    <span data-i18n="simulation.frequencyPolicy">Frequency policy</span>
-                    <select id="simulationPurposeFrequencyPolicy">
-                      <option value="purpose_default" selected data-i18n="simulation.frequencyPurposeDefault">Purpose default</option>
-                      <option value="preserve" data-i18n="simulation.frequencyPreserve">Preserve existing</option>
-                      <option value="highest_resolution" data-i18n="simulation.frequencyHighestResolution">Highest resolution</option>
-                    </select>
-                  </label>
-                  <label>
-                    <span data-i18n="simulation.allocationPolicy">Allocation policy</span>
-                    <select id="simulationPurposeAllocationPolicy">
-                      <option value="direct_only" selected data-i18n="simulation.allocationDirectOnly">Direct only</option>
-                      <option value="by_zone_load_share" data-i18n="simulation.allocationByZoneLoadShare">By zone load share</option>
-                      <option value="by_service_path_load_share" data-i18n="simulation.allocationByServicePathLoadShare">By service path load share</option>
-                    </select>
-                  </label>
-                  <label>
-                    <span data-i18n="simulation.outputApplyMode">Output apply mode</span>
-                    <select id="simulationPurposeApplyMode">
-                      <option value="add_missing_only" selected data-i18n="simulation.applyAddMissing">Add missing only</option>
-                      <option value="replace_conflicting" data-i18n="simulation.applyReplaceConflicting">Replace conflicting</option>
-                      <option value="keep_existing_and_add" data-i18n="simulation.applyKeepExistingAdd">Keep existing and add</option>
-                      <option value="remove_purpose_outputs" data-i18n="simulation.applyRemovePurpose">Remove purpose outputs</option>
-                    </select>
-                  </label>
-                  <label class="simulation-checkbox">
-                    <input id="simulationPersistOutputs" type="checkbox" />
-                    <span data-i18n="simulation.persistOutputs">Plan as permanent output edits</span>
-                  </label>
-                  <label class="simulation-custom-output-field">
-                    <span data-i18n="simulation.customOutputs">Custom outputs</span>
-                    <textarea
-                      id="simulationCustomOutputs"
-                      rows="3"
-                      spellcheck="false"
-                      placeholder="Output:Variable | Office | Zone Mean Air Temperature | Hourly&#10;Output:Meter | Electricity:Facility | Monthly"
-                      data-i18n-placeholder="simulation.customOutputsPlaceholder"
-                    ></textarea>
-                  </label>
-                  <div class="simulation-output-discovery" aria-label="Custom output discovery">
-                    <div class="simulation-output-discovery-tools">
-                      <input id="simulationOutputDiscoveryFilter" type="search" placeholder="Filter discovered outputs" data-i18n-placeholder="simulation.outputDiscoveryFilter" />
-                      <button id="simulationOutputDiscoveryRefresh" type="button" data-i18n="simulation.discoverOutputs">Discover outputs</button>
-                      <span id="simulationOutputDiscoveryStats" class="tool-muted">No catalog</span>
-                    </div>
-                    <div id="simulationOutputDiscoveryList" class="simulation-output-discovery-list"></div>
-                  </div>
-                  <div class="simulation-plan-actions">
-                    <button id="simulationRefreshPlan" type="button" data-i18n="simulation.refreshPlan">Refresh plan</button>
-                    <button id="simulationApplyPurposeOutputs" type="button" data-i18n="simulation.makePurposeOutputsPermanent">Make outputs permanent</button>
-                  </div>
-                </div>
-              </section>
-              <section class="simulation-plan-panel" aria-label="Run plan">
-                <div class="profile-section-head">
-                  <h3 data-i18n="simulation.runPlan">Run Plan</h3>
-                  <span id="simulationRunPlanStats" class="tool-muted">Plan pending</span>
-                </div>
-                <div id="simulationRunPlan" class="simulation-run-plan">
-                  <div class="empty">Run plan will appear after an input is available.</div>
                 </div>
               </section>
               <section class="simulation-progress-card" aria-label="Simulation progress">
@@ -544,7 +360,6 @@
                 <button type="button" data-simulation-result-view-button="zone_heat_flow" data-i18n="simulation.heatFlow">Heat-Flow Ledger</button>
                 <button type="button" data-simulation-result-view-button="hvac_loops" data-i18n="simulation.hvacLoops">HVAC Loops</button>
                 <button type="button" data-simulation-result-view-button="comfort" data-i18n="simulation.comfort">Comfort</button>
-                <button type="button" data-simulation-result-view-button="integrity" data-i18n="simulation.integrity">Integrity</button>
                 <button type="button" data-simulation-result-view-button="series" data-i18n="simulation.series">Series</button>
                 <button type="button" data-simulation-result-view-button="files" data-i18n="simulation.files">Output files</button>
               </nav>
@@ -568,14 +383,6 @@
                   <span id="simulationComfortStats" class="tool-muted">No comfort result</span>
                 </div>
                 <div id="simulationComfortResults" class="simulation-comfort-results"></div>
-              </section>
-              <section class="simulation-section" data-simulation-result-view="integrity">
-                <div class="profile-section-head">
-                  <h3 data-i18n="simulation.integrity">Integrity</h3>
-                  <span id="simulationResultMeta" class="tool-muted">ERR / CSV / output files</span>
-                  <input id="simulationIntegrityFilter" type="search" placeholder="Filter diagnostics and tabular reports" aria-label="Filter simulation integrity results" />
-                </div>
-                <div id="simulationResultSummary" class="simulation-summary"></div>
               </section>
               <section class="simulation-section simulation-heatflow-section" data-simulation-result-view="zone_heat_flow">
                 <div class="profile-section-head simulation-heatflow-head">
@@ -647,7 +454,6 @@
                   </label>
                   <output id="simulationSeriesRangeLabel">No range</output>
                 </div>
-                <div id="simulationCustomSeries" class="simulation-custom-series"></div>
                 <div id="simulationChart" class="simulation-chart"></div>
               </section>
               <section class="simulation-section" data-simulation-result-view="files">
@@ -720,18 +526,20 @@
                   <button class="geometry-mode-button" data-geometry-mode="plan" type="button">Plan</button>
                   <button class="geometry-mode-button" data-geometry-mode="thermal" type="button" title="Network topology and boundary connections" data-i18n-title="topology.thermalTooltip">Network</button>
                 </div>
-                <div class="geometry-control-group geometry-common-controls">
+                <label id="geometryStoryControl" class="topology-select-control geometry-story-control">
+                  <span data-i18n="geometry.level">Level</span>
                   <select id="geometryStorySelect" aria-label="Topology story"></select>
-                  <button id="geometryExpandButton" class="geometry-mode-button" type="button" data-expand-pane="geometry" data-i18n="action.expand">Expand</button>
+                </label>
+                <label id="geometrySyncControl" class="geometry-toggle geometry-sync-toggle"><input id="geometrySyncLocate" type="checkbox" checked /> <span data-i18n="geometry.syncLocate">Sync locate</span></label>
+                <div id="geometry3DControls" class="geometry-control-group geometry-visibility-controls" aria-label="3D visibility">
+                  <label class="geometry-toggle"><input id="geometry3DShowZones" type="checkbox" checked /> <span data-i18n="geometry.showZones">Zones</span></label>
+                  <label class="geometry-toggle"><input id="geometry3DShowSurfaces" type="checkbox" checked /> <span data-i18n="geometry.showSurfaces">Surfaces</span></label>
+                  <label class="geometry-toggle"><input id="geometry3DShowOpenings" type="checkbox" checked /> <span data-i18n="topology.showOpenings">Openings</span></label>
                 </div>
-                <div id="geometrySpatialControls" class="geometry-control-group geometry-spatial-controls">
-                  <button id="geometrySelectionAid" class="geometry-mode-button" type="button" aria-pressed="false" data-i18n="geometry.selectAid">Select aid</button>
-                  <label class="geometry-toggle geometry-sync-toggle"><input id="geometrySyncLocate" type="checkbox" checked /> <span data-i18n="geometry.syncLocate">Sync locate</span></label>
-                  <div class="geometry-control-group geometry-visibility-controls" aria-label="Topology visibility">
-                    <label class="geometry-toggle"><input id="geometryShowZones" type="checkbox" checked /> <span data-i18n="geometry.showZones">Zones</span></label>
-                    <label class="geometry-toggle"><input id="geometryShowWalls" type="checkbox" checked /> <span data-i18n="geometry.showWalls">Walls</span></label>
-                    <label class="geometry-toggle"><input id="geometryShowWindows" type="checkbox" checked /> <span data-i18n="geometry.showWindows">Windows</span></label>
-                  </div>
+                <div id="geometryPlanControls" class="geometry-control-group geometry-visibility-controls" aria-label="Plan layers" hidden>
+                  <label class="geometry-toggle"><input id="geometryPlanShowZones" type="checkbox" checked /> <span data-i18n="geometry.planZoneFill">Zone fill</span></label>
+                  <label class="geometry-toggle"><input id="geometryPlanShowBoundaries" type="checkbox" checked /> <span data-i18n="geometry.planBoundaries">Boundaries</span></label>
+                  <label class="geometry-toggle"><input id="geometryPlanShowOpenings" type="checkbox" checked /> <span data-i18n="topology.showOpenings">Openings</span></label>
                 </div>
                 <div id="thermalTopologyControls" class="thermal-topology-controls" hidden>
                   <label class="topology-select-control">
@@ -754,7 +562,6 @@
                       <option value="neighbors" data-i18n="topology.scopeNeighbors">Neighbors</option>
                     </select>
                   </label>
-                  <button id="thermalTopologyFit" class="geometry-mode-button" type="button" data-i18n="topology.fit">Fit</button>
                   <details id="thermalTopologyAdvanced" class="thermal-topology-advanced">
                     <summary data-i18n="topology.advanced">Advanced</summary>
                     <div class="thermal-topology-advanced-menu">
@@ -765,7 +572,6 @@
                           <option value="network" data-i18n="topology.layoutNetwork">Network</option>
                         </select>
                       </label>
-                      <label class="geometry-toggle"><input id="thermalTopologyShowOpenings" type="checkbox" checked /> <span data-i18n="topology.showOpenings">Openings</span></label>
                       <label class="geometry-toggle"><input id="thermalTopologyShowAirCoupling" type="checkbox" /> <span data-i18n="topology.showAirCoupling">Air coupling</span></label>
                       <label class="geometry-toggle"><input id="thermalTopologyExpandExternalTargets" type="checkbox" /> <span data-i18n="topology.expandExternalTargets">Expand external targets</span></label>
                       <button id="thermalTopologyExportJSON" type="button" data-i18n="topology.exportJSON">Export topology JSON</button>
@@ -781,6 +587,24 @@
                 <div id="thermalTopologyView" class="thermal-topology-view">
                   <div id="thermalTopologyGraph" class="thermal-topology-graph" role="img" aria-label="Network topology and boundary connections" data-i18n-aria-label="topology.thermalTooltip"></div>
                   <aside id="thermalTopologyInspector" class="thermal-topology-inspector" aria-label="Thermal topology inspector" data-i18n-aria-label="topology.inspector"></aside>
+                </div>
+                <div class="viewport-action-tools geometry-viewport-actions">
+                  <button id="geometryFitButton" class="viewport-icon-button" type="button" aria-label="Fit" title="Fit" data-i18n-aria-label="topology.fit" data-i18n-title="topology.fit">
+                    <svg class="viewport-icon" viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M8 4H4v4M16 4h4v4M20 16v4h-4M8 20H4v-4"></path>
+                      <rect x="8" y="8" width="8" height="8" rx="1"></rect>
+                    </svg>
+                    <span class="sr-only" data-i18n="topology.fit">Fit</span>
+                  </button>
+                  <button id="geometryExpandButton" class="viewport-icon-button" type="button" data-expand-pane="geometry" aria-label="Expand" title="Expand" data-i18n-aria-label="action.expand" data-i18n-title="action.expand" aria-pressed="false">
+                    <svg class="viewport-icon viewport-icon-expand" viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M8 3H3v5M16 3h5v5M21 16v5h-5M8 21H3v-5"></path>
+                    </svg>
+                    <svg class="viewport-icon viewport-icon-collapse" viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M3 8h5V3M21 8h-5V3M16 21v-5h5M8 21v-5H3"></path>
+                    </svg>
+                    <span class="sr-only" data-i18n="action.expand">Expand</span>
+                  </button>
                 </div>
               </div>
               <div id="geometryDetailsSplitter" class="vertical-splitter" role="separator" aria-orientation="horizontal" aria-label="Resize geometry view and properties"></div>

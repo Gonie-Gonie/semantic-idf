@@ -247,42 +247,6 @@ func TestAnalyzeBatchDiagnosePathsKeepsParseFailuresInResult(t *testing.T) {
 	}
 }
 
-func TestAnalyzeBatchOutputQAReportsInventoryAndReadiness(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "outputs.idf")
-	text := appSummaryIDF + `
-Output:SQLite,
-  SimpleAndTabular;
-
-Output:VariableDictionary,
-  Regular;
-
-Output:Variable,
-  *,
-  Zone Mean Air Temperature,
-  Detailed;
-
-Output:Variable,
-  *,
-  Zone Mean Air Temperature,
-  Detailed;
-`
-	if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	result := AnalyzeBatchOutputQAPaths(BatchJobRequest{RunID: "output-test", InputPaths: []string{path}})
-	if result.Succeeded != 1 || len(result.Files) != 1 {
-		t.Fatalf("output qa result = %+v", result)
-	}
-	file := result.Files[0]
-	if !file.SQLitePresent || !file.VariableDictionary || file.OutputVariableCount != 2 || file.DuplicateOutputCount != 1 || file.DetailedOrTimestepCount != 2 {
-		t.Fatalf("output qa file = %+v", file)
-	}
-	if file.PurposeReadiness["basic_energy"] {
-		t.Fatalf("basic energy readiness should report missing purpose outputs: %+v", file.PurposeReadiness)
-	}
-}
-
 func TestConvertExportBatchRenamePolicyPreservesExistingOutput(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "model.idf")
@@ -1088,30 +1052,6 @@ Schedule:Constant,
 	}
 	if strings.Contains(string(cleaned), "Unused") {
 		t.Fatalf("cleaned copy still contains unused schedule:\n%s", string(cleaned))
-	}
-}
-
-func TestAnalyzeBatchSimulationPlanReportsPurposeWeight(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "model.idf")
-	if err := os.WriteFile(path, []byte(appSummaryIDF), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	purpose := simulation.NormalizeSimulationPurposeRequest(&simulation.SimulationPurposeRequest{
-		Purposes: []simulation.SimulationPurposeID{simulation.SimulationPurposeBasicEnergy},
-	})
-	result := AnalyzeBatchSimulationPlan(simulation.MultiSimulationRequest{
-		InputPaths:     []string{path},
-		WorkerCount:    1,
-		WeatherMode:    "same",
-		PurposeRequest: &purpose,
-	})
-	if result.Total != 1 || result.Succeeded != 1 || len(result.Files) != 1 {
-		t.Fatalf("plan preview result = %+v", result)
-	}
-	file := result.Files[0]
-	if file.OutputCount == 0 || file.TemporaryOutputCount == 0 || result.CommonOutputCount == 0 {
-		t.Fatalf("plan preview file = %+v common=%d", file, result.CommonOutputCount)
 	}
 }
 

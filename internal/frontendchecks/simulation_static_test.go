@@ -164,20 +164,8 @@ func TestFrontendSimulationEnergySystemsCrossJumpContracts(t *testing.T) {
 		"data-simulation-energy-zone-jump",
 		"data-simulation-energy-heatflow-zone-jump",
 		"data-simulation-energy-profile-zone-jump",
-		"data-simulation-energy-output-plan",
-		"data-simulation-energy-apply-outputs",
-		"openSimulationPurposeOutputPlan",
-		"renderPurposeOutputSetSummary",
-		"purposeOutputSetKey",
-		"purposeOutputSetDisplayLabel",
 		"openSimulationProfileZone",
 		"simulationProfileZoneName",
-		"purposeOutputApplyState",
-		"purposeOutputSetLabel",
-		"purposeOutputLooksLikeEnergyExplain",
-		"purposeOutputLooksLikeHeatDriver",
-		"simulation.outputSet",
-		"simulationPurposeEnergyDetail",
 		"basicEnergyDetail",
 		"basicEnergyDetailLabel",
 		"currentBasicEnergyDetail",
@@ -207,8 +195,6 @@ func TestFrontendSimulationEnergySystemsCrossJumpContracts(t *testing.T) {
 		"item.zoneName",
 		"item.serviceKind",
 		"renderSourceOutputCell(object, { compact: true })",
-		"simulationPurposeAllocationPolicy",
-		"elements.simulationPurposeAllocationPolicy?.value",
 		"navigateHVAC(",
 	} {
 		if !strings.Contains(simulation, term) {
@@ -220,24 +206,24 @@ func TestFrontendSimulationEnergySystemsCrossJumpContracts(t *testing.T) {
 		t.Fatalf("hvac navigation should remain exportable for simulation energy cross-jumps")
 	}
 	indexHTML := readTestFile(t, "frontend/src/index.html")
-	if !strings.Contains(indexHTML, "simulationPurposeAllocationPolicy") || !strings.Contains(indexHTML, "simulationPurposeEnergyDetail") || !strings.Contains(indexHTML, "by_zone_load_share") || !strings.Contains(indexHTML, "by_service_path_load_share") {
-		t.Fatalf("simulation allocation policy control is missing")
+	for _, removed := range []string{
+		`id="simulationPurposeAllocationPolicy"`,
+		`id="simulationPurposeApplyMode"`,
+		`id="simulationPurposeFrequencyPolicy"`,
+		`id="simulationPurposeZoneHeatFlowDetail"`,
+		`id="simulationPurposeEnergyDetail"`,
+		`id="simulationPurposePeriodMode"`,
+		`id="simulationPurposeZoneMode"`,
+	} {
+		if strings.Contains(indexHTML, removed) {
+			t.Fatalf("simplified Simulation setup still exposes %q", removed)
+		}
 	}
 	styles := readTestFile(t, "frontend/src/styles/simulation.css")
-	for _, term := range []string{".energy-related-zones", ".energy-related-zone-chip", ".energy-related-service-paths", ".energy-related-hvac-links", ".energy-service-path-chip", ".energy-service-path-action-row", ".simulation-energy-system-links", ".simulation-energy-system-chip", ".energy-explanation-drilldown-actions", ".energy-use-total-basis", ".simulation-energy-focus-controls", ".simulation-energy-period-row", ".simulation-energy-period-slider", ".simulation-energy-zone-paths", ".simulation-energy-zone-actions", ".simulation-energy-chart-period", ".energy-explanation-output-actions", ".energy-source-availability-summary", ".energy-source-availability", ".energy-source-availability-status.missing", ".energy-source-availability-status.not_applicable", ".simulation-source-output-jump", ".simulation-plan-output-sets", ".energy-reconciliation-sources", ".energy-reconciliation-status", ".energy-sankey-grouping-notice", ".energy-sankey-sign-note", ".energy-sankey-edge.measured_meter", ".energy-sankey-edge.measured_energy_variable", ".energy-sankey-edge.integrated_rate_variable", ".energy-sankey-edge.selected", ".energy-sankey-node.connected", ".energy-sankey-node.electricity", ".energy-sankey-node.district_cooling", ".energy-sankey-node.fans", ".energy-sankey-node.pumps", ".energy-sankey-node.heat_recovery", ".energy-sankey-node.water_systems", ".energy-sankey-node.refrigeration", ".energy-sankey-node.generators", ".energy-sankey-node.storage_charge", ".energy-sankey-node.storage_discharge", ".energy-sankey-node.other", ".energy-sankey-legend i.node", ".energy-sankey-legend i.measured_meter", ".energy-sankey-legend i.measured_energy_variable", ".energy-sankey-legend i.integrated_rate_variable"} {
+	for _, term := range []string{".energy-related-zones", ".energy-related-zone-chip", ".energy-related-service-paths", ".energy-related-hvac-links", ".energy-service-path-chip", ".energy-service-path-action-row", ".simulation-energy-system-links", ".simulation-energy-system-chip", ".energy-explanation-drilldown-actions", ".energy-use-total-basis", ".simulation-energy-focus-controls", ".simulation-energy-period-row", ".simulation-energy-period-slider", ".simulation-energy-zone-paths", ".simulation-energy-zone-actions", ".simulation-energy-chart-period", ".energy-explanation-output-actions", ".energy-source-availability-summary", ".energy-source-availability", ".energy-source-availability-status.missing", ".energy-source-availability-status.not_applicable", ".simulation-source-output-jump", ".energy-reconciliation-sources", ".energy-reconciliation-status", ".energy-sankey-grouping-notice", ".energy-sankey-sign-note", ".energy-sankey-edge.measured_meter", ".energy-sankey-edge.measured_energy_variable", ".energy-sankey-edge.integrated_rate_variable", ".energy-sankey-edge.selected", ".energy-sankey-node.connected", ".energy-sankey-node.electricity", ".energy-sankey-node.district_cooling", ".energy-sankey-node.fans", ".energy-sankey-node.pumps", ".energy-sankey-node.heat_recovery", ".energy-sankey-node.water_systems", ".energy-sankey-node.refrigeration", ".energy-sankey-node.generators", ".energy-sankey-node.storage_charge", ".energy-sankey-node.storage_discharge", ".energy-sankey-node.other", ".energy-sankey-legend i.node", ".energy-sankey-legend i.measured_meter", ".energy-sankey-legend i.measured_energy_variable", ".energy-sankey-legend i.integrated_rate_variable"} {
 		if !strings.Contains(styles, term) {
 			t.Fatalf("simulation energy cross-jump style missing %q", term)
 		}
-	}
-	outputView := readTestFile(t, "frontend/src/js/views/output-views.js")
-	for _, term := range []string{"renderOutputEnergySetTag", "outputBasicEnergySetLabel", "outputVariableLooksLikeEnergyUse", "outputVariableLooksLikeEnergyExplain", "outputVariableLooksLikeHeatDriver", "simulation.outputSet"} {
-		if !strings.Contains(outputView, term) {
-			t.Fatalf("output tab Basic Energy output set contract missing %q", term)
-		}
-	}
-	outputStyles := readTestFile(t, "frontend/src/styles/output.css")
-	if !strings.Contains(outputStyles, ".output-set-tags") {
-		t.Fatalf("output tab Basic Energy output set style missing")
 	}
 	if !strings.Contains(simulation, "function energyEndUseLabel") || !strings.Contains(simulation, "energyEndUseGenerators") || !strings.Contains(simulation, "energyEndUseStorageCharge") {
 		t.Fatalf("simulation energy end-use label mapping is missing")
@@ -247,6 +233,249 @@ func TestFrontendSimulationEnergySystemsCrossJumpContracts(t *testing.T) {
 	}
 	if !strings.Contains(simulation, "function renderSimulationEnergyDrilldownActions") || !strings.Contains(simulation, "data-simulation-energy-heatflow-zone-jump") {
 		t.Fatalf("simulation energy drilldown action mapping is missing")
+	}
+}
+
+func TestFrontendSimulationUsesSimplifiedDefaultsAndAutomaticEnergyPlus(t *testing.T) {
+	markup := readTestFile(t, "frontend/src/index.html")
+	for _, removed := range []string{
+		`data-simulation-purpose="integrity_check"`,
+		`data-simulation-purpose="custom_outputs"`,
+		`data-simulation-result-view-button="integrity"`,
+		`data-simulation-result-view="integrity"`,
+		`id="simulationIntegrityFilter"`,
+		`id="simulationCustomOutputs"`,
+		`id="simulationOutputDiscoveryFilter"`,
+		`id="simulationOutputDiscoveryRefresh"`,
+		`id="simulationOutputDiscoveryStats"`,
+		`id="simulationOutputDiscoveryList"`,
+		`id="simulationCustomSeries"`,
+		`id="simulationPurposeZoneNames"`,
+		`id="simulationPurposePeriodStart"`,
+		`id="simulationPurposePeriodEnd"`,
+		`class="simulation-plan-panel"`,
+		`id="simulationRunPlanStats"`,
+		`id="simulationRunPlan"`,
+		`class="simulation-run-options"`,
+		`id="simulationAutoRunOnOpen"`,
+		`id="simulationApplyStandardOutput"`,
+		`id="simulationEnergyPlusSelect"`,
+		`id="simulationRefreshEnv"`,
+	} {
+		if strings.Contains(markup, removed) {
+			t.Fatalf("simplified Simulation markup still exposes %q", removed)
+		}
+	}
+
+	simulation := readTestFile(t, "frontend/src/js/views/simulation-views.js")
+	definitions := sliceBetween(simulation, "const simulationPurposeDefinitions", "function simulationSemanticNavigationIndex")
+	for _, removed := range []string{`id: "integrity_check"`, `id: "custom_outputs"`} {
+		if strings.Contains(definitions, removed) {
+			t.Fatalf("removed Simulation purpose remains in the UI definition: %q", removed)
+		}
+	}
+
+	defaults := sliceBetween(simulation, "const simulationPurposeDefaults", "function simulationSemanticNavigationIndex")
+	for _, required := range []string{
+		`zoneMode: "all"`,
+		`periodMode: "full"`,
+		`basicEnergyDetail: "heat_drivers"`,
+		`zoneHeatFlowDetail: "surface"`,
+		`frequencyPolicy: "purpose_default"`,
+		`allocationPolicy: "direct_only"`,
+		`outputApplyMode: "add_missing_only"`,
+	} {
+		if !strings.Contains(defaults, required) {
+			t.Fatalf("simplified Simulation defaults are missing %q", required)
+		}
+	}
+
+	requestBuilder := sliceBetween(simulation, "function buildSimulationPurposeRequest", "function simulationHVACPurposeScope")
+	for _, required := range []string{
+		`zoneMode: simulationPurposeDefaults.zoneMode`,
+		`zoneNames: []`,
+		`periodMode: simulationPurposeDefaults.periodMode`,
+		`periodStart: ""`,
+		`periodEnd: ""`,
+		`customOutputs: []`,
+		`basicEnergyDetail: simulationPurposeDefaults.basicEnergyDetail`,
+		`zoneHeatFlowDetail: simulationPurposeDefaults.zoneHeatFlowDetail`,
+		`frequencyPolicy: simulationPurposeDefaults.frequencyPolicy`,
+		`allocationPolicy: simulationPurposeDefaults.allocationPolicy`,
+		`outputApplyMode: simulationPurposeDefaults.outputApplyMode`,
+	} {
+		if !strings.Contains(requestBuilder, required) {
+			t.Fatalf("simplified Simulation request is missing fixed default reference %q", required)
+		}
+	}
+	for _, removed := range []string{
+		"simulationPurposeZoneMode",
+		"simulationPurposeZoneNames",
+		"simulationPurposePeriodMode",
+		"simulationPurposePeriodStart",
+		"simulationPurposePeriodEnd",
+		"simulationPurposeEnergyDetail",
+		"simulationPurposeZoneHeatFlowDetail",
+		"simulationPurposeFrequencyPolicy",
+		"simulationPurposeAllocationPolicy",
+		"simulationPurposeApplyMode",
+		"simulationCustomOutputs",
+	} {
+		if strings.Contains(requestBuilder, removed) {
+			t.Fatalf("simplified Simulation request still reads removed control %q", removed)
+		}
+	}
+
+	resultViews := sliceBetween(simulation, "function ensureActiveSimulationResultView", "function toggleSimulationResultSections")
+	if strings.Contains(resultViews, `"integrity"`) || strings.Contains(resultViews, "integrity:") {
+		t.Fatal("removed Integrity result view remains in result-view availability")
+	}
+
+	environmentRenderer := sliceBetween(simulation, "function renderSimulationEnvironment", "function recommendedEnergyPlusInstallPath")
+	if strings.Contains(environmentRenderer, "simulationEnergyPlusSelect") {
+		t.Fatal("Simulation environment renderer still depends on the removed EnergyPlus selector")
+	}
+	for _, required := range []string{"simulationWeatherSelect", "weatherFolders", "currentWeather"} {
+		if !strings.Contains(environmentRenderer, required) {
+			t.Fatalf("Simulation environment renderer must keep weather selection after automatic EnergyPlus selection: missing %q", required)
+		}
+	}
+
+	installResolver := sliceBetween(simulation, "function selectedEnergyPlusInstall", "function currentInputEnergyPlusVersion")
+	if strings.Contains(installResolver, "simulationEnergyPlusSelect") {
+		t.Fatal("automatic EnergyPlus resolution still reads the removed selector")
+	}
+	for _, required := range []string{
+		"state.simulationEnvironment?.installations",
+		"recommendedEnergyPlusInstallPath(installs",
+		"install.executablePath",
+	} {
+		if !strings.Contains(installResolver, required) {
+			t.Fatalf("automatic EnergyPlus resolver is missing %q", required)
+		}
+	}
+
+	installPolicy := sliceBetween(simulation, "function recommendedEnergyPlusInstallPath", "function renderSimulationProgress")
+	for _, required := range []string{
+		"currentInputEnergyPlusVersion()",
+		"normalizedVersionKey(install.version) === requiredVersion",
+		"installs[0].executablePath",
+	} {
+		if !strings.Contains(installPolicy, required) {
+			t.Fatalf("automatic EnergyPlus matching/fallback policy is missing %q", required)
+		}
+	}
+
+	blockingIssue := sliceBetween(simulation, "function simulationBlockingIssue", "function currentInputRequiresWeatherFile")
+	if strings.Contains(blockingIssue, "simulationEnergyPlusSelect") {
+		t.Fatal("Simulation blocker still reads the removed EnergyPlus selector")
+	}
+	for _, required := range []string{"selectedEnergyPlusInstall()", "simulation.energyPlusBlockedTitle", "simulationVersionIssue()"} {
+		if !strings.Contains(blockingIssue, required) {
+			t.Fatalf("automatic EnergyPlus/no-install blocker is missing %q", required)
+		}
+	}
+
+	run := sliceBetween(simulation, "async function runCurrentSimulation", "async function maybeAutoRunSimulation")
+	if strings.Contains(run, "simulationEnergyPlusSelect") || strings.Contains(run, "env?.installations?.[0]?.executablePath") {
+		t.Fatal("Simulation run still bypasses automatic version matching")
+	}
+	for _, required := range []string{"selectedEnergyPlusInstall()", "energyPlusExecutablePath: installPath"} {
+		if !strings.Contains(run, required) {
+			t.Fatalf("Simulation run is missing automatic EnergyPlus contract %q", required)
+		}
+	}
+}
+
+func TestFrontendSimulationRefreshRemovalAndWeatherControlStyle(t *testing.T) {
+	markup := readTestFile(t, "frontend/src/index.html")
+	if strings.Contains(markup, `id="simulationRefreshEnv"`) {
+		t.Fatal("main Simulation must not expose the environment Refresh button")
+	}
+	if !strings.Contains(markup, `id="simulationWeatherSelect"`) {
+		t.Fatal("main Simulation must retain the Weather selector")
+	}
+
+	stateSource := readTestFile(t, "frontend/src/js/state.js")
+	if strings.Contains(stateSource, "simulationRefreshEnv") {
+		t.Fatal("state element registry still retains the removed Simulation Refresh button")
+	}
+
+	simulation := readTestFile(t, "frontend/src/js/views/simulation-views.js")
+	if strings.Contains(simulation, "simulationRefreshEnv") {
+		t.Fatal("Simulation event wiring still retains the removed environment Refresh listener")
+	}
+
+	styles := readTestFile(t, "frontend/src/styles/simulation.css")
+	controls := sliceBetween(styles, ".simulation-controls {", ".simulation-purpose-panel {")
+	for _, required := range []string{
+		"grid-template-columns: minmax(260px, 520px)",
+		".simulation-controls select",
+		"width: 100%",
+		"min-width: 0",
+		"min-height: var(--control-height)",
+		"border: 1px solid var(--line)",
+		"border-radius: var(--radius-sm)",
+		"background: var(--control)",
+		"color: var(--ink)",
+		"padding: 0 9px",
+	} {
+		if !strings.Contains(controls, required) {
+			t.Fatalf("Simulation Weather selector must use the common control style and bounded width: missing %q", required)
+		}
+	}
+}
+
+func TestFrontendSimulationAutomaticEnergyPlusVersionEdges(t *testing.T) {
+	simulation := readTestFile(t, "frontend/src/js/views/simulation-views.js")
+
+	versionReader := sliceBetween(simulation, "function currentInputEnergyPlusVersion", "function normalizedVersionKey")
+	for _, required := range []string{
+		`extractInputEnergyPlusVersion(elements.idfInput?.value || "")`,
+		`JSON.parse(trimmed)`,
+		`key.toLowerCase() === "version"`,
+		`key.toLowerCase() === "version_identifier"`,
+		`return normalizedVersionKey(identifier)`,
+	} {
+		if !strings.Contains(versionReader, required) {
+			t.Fatalf("automatic EnergyPlus version detection is missing the epJSON Version/version_identifier contract %q", required)
+		}
+	}
+
+	installPolicy := sliceBetween(simulation, "function recommendedEnergyPlusInstallPath", "function renderSimulationProgress")
+	exactMatch := `installs.find((install) => normalizedVersionKey(install.version) === requiredVersion)`
+	exactIndex := strings.Index(installPolicy, exactMatch)
+	fallbackIndex := strings.Index(installPolicy, "installs[0].executablePath")
+	if exactIndex < 0 || fallbackIndex < 0 || exactIndex > fallbackIndex {
+		t.Fatal("automatic EnergyPlus resolver must prefer an exact normalized input-version match before its fallback install")
+	}
+
+	versionIssue := sliceBetween(simulation, "function simulationVersionIssue", "function simulationBlockingIssue")
+	for _, required := range []string{
+		"const requiredVersion = currentInputEnergyPlusVersion()",
+		"const selectedInstall = selectedEnergyPlusInstall()",
+		"const selectedVersion = normalizedVersionKey(selectedInstall?.version)",
+		"selectedInstall?.version || \"\"",
+		"unknown version",
+		"simulation.versionMismatch",
+	} {
+		if !strings.Contains(versionIssue, required) {
+			t.Fatalf("automatic EnergyPlus version blocker is missing %q", required)
+		}
+	}
+	compactVersionIssue := strings.Join(strings.Fields(versionIssue), " ")
+	for _, forbidden := range []string{
+		"if (!selectedInstall?.version) { return null; }",
+		"if (!selectedInstall?.version) return null;",
+		"if (!selectedVersion) { return null; }",
+		"if (!selectedVersion) return null;",
+	} {
+		if strings.Contains(compactVersionIssue, forbidden) {
+			t.Fatalf("versioned input must remain blocked when the automatically selected install has a blank or unknown version: found %q", forbidden)
+		}
+	}
+	if strings.Count(versionIssue, "return null;") != 2 {
+		t.Fatal("simulationVersionIssue may return no blocker only for an unversioned input or an exact version match")
 	}
 }
 
@@ -282,9 +511,6 @@ func TestFrontendBatchEnergyExplanationDeltaContracts(t *testing.T) {
 		"selectedEnergyCompareResults",
 		"handleEnergyCompareSelectChange",
 		"energyExplanationMissingCategorySummary",
-		"elements.multiSimulationAllocationPolicy?.value",
-		"elements.multiSimulationEnergyDetail?.value",
-		"elements.multiSimulationFrequencyPolicy?.value",
 		"exportMultiSimulationCSV",
 		"exportMultiSimulationXLSX",
 		"exportMultiSimulationJSON",
@@ -297,7 +523,6 @@ func TestFrontendBatchEnergyExplanationDeltaContracts(t *testing.T) {
 		"baselineRowId",
 		"targetRowId",
 		"purposeRequest: batchPurposeRequest()",
-		"basicEnergyDetail: elements.multiSimulationEnergyDetail?.value",
 		"workerCount: Number(elements.multiSimulationWorkers?.value || 0)",
 		"weatherMode: elements.multiSimulationWeatherMode?.value",
 		"energyExplanationSummaryExportItems",
@@ -368,11 +593,82 @@ func TestFrontendBatchEnergyExplanationDeltaContracts(t *testing.T) {
 	if !strings.Contains(html, "multiSimulationCompareBaseline") || !strings.Contains(html, "multiSimulationCompareTarget") {
 		t.Fatalf("batch simulation energy comparison selectors are missing")
 	}
-	if !strings.Contains(html, "multiSimulationAllocationPolicy") || !strings.Contains(html, "multiSimulationEnergyDetail") || !strings.Contains(html, "by_zone_load_share") || !strings.Contains(html, "by_service_path_load_share") {
-		t.Fatalf("batch simulation allocation policy control is missing")
+	for _, removed := range []string{
+		`data-batch-purpose="integrity_check"`,
+		`id="multiSimulationEnergyPlus"`,
+		`id="multiSimulationViewMode"`,
+		`id="multiSimulationEnergyDetail"`,
+		`id="multiSimulationAllocationPolicy"`,
+		`id="multiSimulationFrequencyPolicy"`,
+		`id="batchSimulationPlanPreview"`,
+	} {
+		if strings.Contains(html, removed) {
+			t.Fatalf("simplified Batch Simulation markup still exposes %q", removed)
+		}
 	}
-	if !strings.Contains(html, "multiSimulationFrequencyPolicy") || !strings.Contains(html, "highest_resolution") {
-		t.Fatalf("batch simulation frequency policy control is missing")
+
+	batchShell := readTestFile(t, "frontend/src/js/batch.js")
+	for _, removed := range []string{
+		"multiSimulationEnergyPlus",
+		"multiSimulationViewMode",
+		"multiSimulationEnergyDetail",
+		"multiSimulationAllocationPolicy",
+		"multiSimulationFrequencyPolicy",
+		"batchSimulationPlanPreview",
+	} {
+		if strings.Contains(batchShell, removed) || strings.Contains(batch, removed) {
+			t.Fatalf("Batch scripts still retain removed control %q", removed)
+		}
+	}
+
+	purposeRequest := sliceBetween(batch, "function batchPurposeRequest", "function bindEvents")
+	for _, required := range []string{
+		`basicEnergyDetail: "heat_drivers"`,
+		`zoneHeatFlowDetail: "surface"`,
+		`frequencyPolicy: "purpose_default"`,
+		`allocationPolicy: "direct_only"`,
+		`outputApplyMode: "add_missing_only"`,
+		`zoneMode: "all"`,
+		`zoneNames: []`,
+		`periodMode: "full"`,
+		`periodStart: ""`,
+		`periodEnd: ""`,
+		`loopMode: "all"`,
+		`customOutputs: []`,
+	} {
+		if !strings.Contains(purposeRequest, required) {
+			t.Fatalf("simplified Batch purpose request is missing fixed default %q", required)
+		}
+	}
+	for _, removed := range []string{
+		"multiSimulationEnergyDetail",
+		"multiSimulationAllocationPolicy",
+		"multiSimulationFrequencyPolicy",
+	} {
+		if strings.Contains(purposeRequest, removed) {
+			t.Fatalf("simplified Batch purpose request still reads removed control %q", removed)
+		}
+	}
+
+	runRequest := sliceBetween(batch, "async function run()", "async function callRunAPI")
+	if !strings.Contains(runRequest, `energyPlusExecutablePath: ""`) {
+		t.Fatal("Batch Simulation must leave the executable blank for backend per-file automatic selection")
+	}
+	if strings.Contains(runRequest, "multiSimulationEnergyPlus") {
+		t.Fatal("Batch Simulation run still reads the removed manual EnergyPlus selector")
+	}
+
+	exportContext := sliceBetween(batch, "function multiSimulationExportContext", "function energyExplanationSummaryExportItems")
+	if !strings.Contains(exportContext, `viewMode: "purpose"`) {
+		t.Fatal("Batch Simulation export context must use the fixed purpose result view")
+	}
+	if strings.Contains(exportContext, "multiSimulationViewMode") {
+		t.Fatal("Batch Simulation export context still reads the removed result-view selector")
+	}
+	for _, removed := range []string{"schedulePlanPreview", "refreshPlanPreview", "renderPlanPreview", "PreviewBatchSimulationPlan"} {
+		if strings.Contains(batch, removed) {
+			t.Fatalf("Batch Simulation still retains removed plan preview behavior %q", removed)
+		}
 	}
 	batchApp := readTestFile(t, "batch_app.go")
 	for _, term := range []string{"batchSimulationEnergyNodeSection", "Energy Nodes", "energy_nodes", "batchSimulationEnergyWarningSection", "batchSimulationEnergyWarningRows", "Energy Warnings", "energy_warnings"} {

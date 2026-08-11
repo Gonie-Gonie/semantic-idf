@@ -57,7 +57,7 @@ export function renderGeometry(geometry = state.report?.geometry) {
   if (elements.geometrySyncLocate) {
     elements.geometrySyncLocate.checked = state.geometrySyncLocate;
   }
-  updateSelectionAidControl();
+  syncGeometryVisibilityControls();
   elements.geometryStats.textContent = t("geometry.stats", {
     zones: geometry.zoneCount || 0,
     surfaces: geometry.surfaceCount || 0,
@@ -96,12 +96,6 @@ export function fitGeometryView() {
 
 export function setGeometryStory(storyIndex) {
   state.selectedGeometryStory = storyIndex === "all" ? "all" : Number(storyIndex) || 0;
-  renderGeometry();
-}
-
-export function setGeometrySelectionAid(enabled) {
-  state.geometrySelectionAid = Boolean(enabled);
-  updateSelectionAidControl();
   renderGeometry();
 }
 
@@ -208,17 +202,20 @@ export async function restoreGeometryNavigationContext(snapshot = {}, context) {
   state.selectedGeometryStory = snapshot.story === "all" ? "all" : Number(snapshot.story) || 0;
   state.selectedGeometryKind = normalizeGeometryKind(snapshot.selectedKind);
   state.selectedGeometryId = String(snapshot.selectedId || "");
-  state.geometrySelectionAid = Boolean(snapshot.selectionAid);
   state.geometrySyncLocate = snapshot.syncLocate !== false;
-  if (elements.geometryShowZones && typeof snapshot.visibility?.zones === "boolean") {
-    elements.geometryShowZones.checked = snapshot.visibility.zones;
-  }
-  if (elements.geometryShowWalls && typeof snapshot.visibility?.walls === "boolean") {
-    elements.geometryShowWalls.checked = snapshot.visibility.walls;
-  }
-  if (elements.geometryShowWindows && typeof snapshot.visibility?.windows === "boolean") {
-    elements.geometryShowWindows.checked = snapshot.visibility.windows;
-  }
+  const legacyVisibility = snapshot.visibility || {};
+  const visibility3D = snapshot.visibility3D || legacyVisibility;
+  const visibilityPlan = snapshot.visibilityPlan || legacyVisibility;
+  state.geometry3DVisibility = {
+    zones: visibility3D.zones !== false,
+    surfaces: (visibility3D.surfaces ?? visibility3D.walls) !== false,
+    openings: (visibility3D.openings ?? visibility3D.windows) !== false,
+  };
+  state.geometryPlanVisibility = {
+    zones: visibilityPlan.zones !== false,
+    boundaries: (visibilityPlan.boundaries ?? visibilityPlan.walls) !== false,
+    openings: (visibilityPlan.openings ?? visibilityPlan.windows) !== false,
+  };
   temporaryGeometryReveal = null;
   renderGeometry();
   return context?.genericRestoreContext(snapshot) ?? true;
@@ -276,11 +273,13 @@ function renderEmptyGeometry() {
 
 function ensureSelectedStory(geometry) {
   const stories = geometry.stories || [];
+  const requiresSpecificStory = state.geometryMode === "plan"
+    || (state.geometryMode === "thermal" && state.thermalTopologyScope === "story");
   if (!stories.length) {
-    state.selectedGeometryStory = state.geometryMode === "plan" ? 0 : "all";
+    state.selectedGeometryStory = requiresSpecificStory ? 0 : "all";
     return;
   }
-  if (state.geometryMode !== "plan" && state.selectedGeometryStory === "all") {
+  if (!requiresSpecificStory && state.selectedGeometryStory === "all") {
     return;
   }
   const exists = stories.some((story) => story.index === state.selectedGeometryStory);
@@ -292,7 +291,7 @@ function ensureSelectedStory(geometry) {
 function renderStoryOptions(geometry) {
   const stories = geometry.stories || [];
   const allOption =
-    state.geometryMode !== "plan"
+    state.geometryMode === "3d"
       ? `<option value="all" ${state.selectedGeometryStory === "all" ? "selected" : ""}>${t("geometry.allLevels")}</option>`
       : "";
   const storyOptions = stories
@@ -305,11 +304,17 @@ function renderStoryOptions(geometry) {
 }
 
 function updateModeVisibility() {
-  elements.geometryCanvasHost.classList.toggle("active", state.geometryMode === "3d");
-  elements.geometryPlan.classList.toggle("active", state.geometryMode === "plan");
-  elements.thermalTopologyView?.classList.toggle("active", state.geometryMode === "thermal");
-  elements.geometrySpatialControls.hidden = state.geometryMode === "thermal";
-  elements.thermalTopologyControls.hidden = state.geometryMode !== "thermal";
+  const is3D = state.geometryMode === "3d";
+  const isPlan = state.geometryMode === "plan";
+  const isNetwork = state.geometryMode === "thermal";
+  elements.geometryCanvasHost.classList.toggle("active", is3D);
+  elements.geometryPlan.classList.toggle("active", isPlan);
+  elements.thermalTopologyView?.classList.toggle("active", isNetwork);
+  elements.geometry3DControls.hidden = !is3D;
+  elements.geometryPlanControls.hidden = !isPlan;
+  elements.thermalTopologyControls.hidden = !isNetwork;
+  elements.geometryStoryControl.hidden = isNetwork && state.thermalTopologyScope !== "story";
+  elements.geometryViewport.classList.toggle("network-active", isNetwork);
   elements.geometryModeButtons.forEach((button) => {
     button.classList.toggle("active", button.dataset.geometryMode === state.geometryMode);
   });
@@ -353,13 +358,15 @@ function loadThermalTopologyModule() {
   return thermalTopologyModulePromise;
 }
 
-function updateSelectionAidControl() {
-  if (!elements.geometrySelectionAid) {
-    return;
-  }
-  elements.geometrySelectionAid.classList.toggle("active", state.geometrySelectionAid);
-  elements.geometrySelectionAid.setAttribute("aria-pressed", String(state.geometrySelectionAid));
-  elements.geometrySelectionAid.title = state.geometrySelectionAid ? "Surface selection aid on (H)" : "Surface selection aid off (H)";
+function syncGeometryVisibilityControls() {
+  const visibility3D = state.geometry3DVisibility || {};
+  const visibilityPlan = state.geometryPlanVisibility || {};
+  elements.geometry3DShowZones.checked = visibility3D.zones !== false;
+  elements.geometry3DShowSurfaces.checked = visibility3D.surfaces !== false;
+  elements.geometry3DShowOpenings.checked = visibility3D.openings !== false;
+  elements.geometryPlanShowZones.checked = visibilityPlan.zones !== false;
+  elements.geometryPlanShowBoundaries.checked = visibilityPlan.boundaries !== false;
+  elements.geometryPlanShowOpenings.checked = visibilityPlan.openings !== false;
 }
 
 function renderScene(geometry) {
@@ -377,25 +384,24 @@ function renderScene(geometry) {
   const modelSize = bounds.ok
     ? Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY, bounds.maxZ - bounds.minZ, 1)
     : 18;
+  const visibility = state.geometry3DVisibility || {};
 
-  if (!state.geometrySelectionAid) {
-    (geometry.surfaces || [])
-      .filter((surface) => (
-        matchesSelectedStory(surface) &&
-        surface.surfaceType?.toLowerCase() === "floor" &&
-        (elements.geometryShowZones.checked || geometryZoneSurfaceIsTemporarilyVisible(surface, geometry))
-      ))
-      .forEach((surface) => addSurfaceMesh(group, surface, "zone", zoneIdForName(geometry, surface.zoneName), center));
-  }
   (geometry.surfaces || [])
     .filter((surface) => (
       matchesSelectedStory(surface) &&
-      (state.geometrySelectionAid || surface.surfaceType?.toLowerCase() !== "floor") &&
-      (elements.geometryShowWalls.checked || geometrySurfaceIsTemporarilyVisible(surface))
+      surface.surfaceType?.toLowerCase() === "floor" &&
+      (visibility.zones !== false || geometryZoneSurfaceIsTemporarilyVisible(surface, geometry))
+    ))
+    .forEach((surface) => addSurfaceMesh(group, surface, "zone", zoneIdForName(geometry, surface.zoneName), center));
+  (geometry.surfaces || [])
+    .filter((surface) => (
+      matchesSelectedStory(surface) &&
+      surface.surfaceType?.toLowerCase() !== "floor" &&
+      (visibility.surfaces !== false || geometrySurfaceIsTemporarilyVisible(surface))
     ))
     .forEach((surface) => addSurfaceMesh(group, surface, "surface", surface.id, center));
   (geometry.windows || [])
-    .filter((windowItem) => matchesSelectedStory(windowItem) && (elements.geometryShowWindows.checked || geometryWindowIsTemporarilyVisible(windowItem)))
+    .filter((windowItem) => matchesSelectedStory(windowItem) && (visibility.openings !== false || geometryWindowIsTemporarilyVisible(windowItem)))
     .forEach((windowItem) => addWindowMesh(group, windowItem, center));
 
   addAxes(group, bounds, center);
@@ -552,14 +558,13 @@ function pickMesh(event) {
 }
 
 function addSurfaceMesh(group, surface, kind, id, center) {
-  const geometry = polygonGeometry(surface.worldVertices, center, state.geometrySelectionAid && kind === "surface" ? 0.055 : 0);
+  const geometry = polygonGeometry(surface.worldVertices, center, 0);
   if (!geometry) {
     return;
   }
   const isZone = kind === "zone";
   const isRoof = /roof|ceiling/i.test(surface.surfaceType || "");
   const isFloor = /floor/i.test(surface.surfaceType || "");
-  const isInterior = /surface|zone|adiabatic/i.test(surface.outsideBoundary || "");
   const baseColor = isZone
     ? geometryColor("zone", 0xb8d7b0)
     : isRoof
@@ -569,14 +574,14 @@ function addSurfaceMesh(group, surface, kind, id, center) {
         : geometryColor("wall", 0x7b9cbc);
   const material = new THREE.MeshStandardMaterial({
     color: baseColor,
-    emissive: state.geometrySelectionAid && kind === "surface" ? new THREE.Color(baseColor).multiplyScalar(isInterior ? 0.35 : 0.22).getHex() : 0x000000,
-    emissiveIntensity: state.geometrySelectionAid && kind === "surface" ? 0.16 : 0,
+    emissive: 0x000000,
+    emissiveIntensity: 0,
     roughness: 0.72,
     metalness: 0,
     transparent: true,
-    opacity: state.geometrySelectionAid && kind === "surface" ? (isFloor ? 0.64 : 0.82) : isZone ? 0.5 : 0.72,
-    depthWrite: !(state.geometrySelectionAid && kind === "surface"),
-    depthTest: !(state.geometrySelectionAid && kind === "surface"),
+    opacity: isZone ? 0.5 : 0.72,
+    depthWrite: true,
+    depthTest: true,
     side: THREE.DoubleSide,
   });
   const mesh = new THREE.Mesh(geometry, material);
@@ -588,9 +593,6 @@ function addSurfaceMesh(group, surface, kind, id, center) {
     baseOpacity: material.opacity,
   };
   group.add(mesh);
-  if (state.geometrySelectionAid && kind === "surface") {
-    addSurfaceOutline(group, surface, id, center, baseColor);
-  }
 }
 
 function addWindowMesh(group, windowItem, center) {
@@ -644,24 +646,6 @@ function polygonGeometry(points, center, offset) {
   return geometry;
 }
 
-function addSurfaceOutline(group, surface, id, center, color) {
-  if (!surface.worldVertices || surface.worldVertices.length < 2) {
-    return;
-  }
-  const points = surface.worldVertices.map((point) => new THREE.Vector3(point.x - center.x, point.z - center.y, point.y - center.z));
-  points.push(points[0].clone());
-  const geometry = new THREE.BufferGeometry().setFromPoints(points);
-  const material = new THREE.LineBasicMaterial({
-    color,
-    transparent: true,
-    opacity: 0.68,
-    depthTest: false,
-  });
-  const line = new THREE.Line(geometry, material);
-  line.userData = { geometryKind: "surface", geometryId: id, baseColor: material.color.getHex(), baseOpacity: material.opacity };
-  group.add(line);
-}
-
 function addAxes(group, bounds, center) {
   if (!bounds.ok) {
     return;
@@ -677,7 +661,6 @@ function addAxes(group, bounds, center) {
 
 function renderPlan(geometry) {
   disposeRendererCanvas();
-  elements.geometryPlan.classList.toggle("selection-aid", state.geometrySelectionAid);
   const storyIndex = state.selectedGeometryStory === "all" ? firstStoryIndex(geometry) : state.selectedGeometryStory;
   const layout = cachedGeometryPlanLayout(geometry, storyIndex);
   if (!layout.ok) {
@@ -686,7 +669,8 @@ function renderPlan(geometry) {
     return;
   }
 
-  const zoneFloorPolygons = elements.geometryShowZones.checked
+  const visibility = state.geometryPlanVisibility || {};
+  const zoneFloorPolygons = visibility.zones !== false
     ? layout.surfaces
         .filter((surface) => surface.isFloor)
         .map((surface) => `<polygon class="plan-zone navigable-row" data-geometry-kind="zone" data-geometry-id="${escapeHTML(surface.zoneID)}" ${geometryNavigationAttributes("zone", surface.zoneID)} points="${surface.openPoints}"></polygon>`)
@@ -697,13 +681,13 @@ function renderPlan(geometry) {
         .join("");
   const wallLines = layout.surfaces
     .filter((surface) => (
-      (state.geometrySelectionAid || !surface.isFloor) &&
-      (elements.geometryShowWalls.checked || projectedSurfaceIsTemporarilyVisible(surface))
+      !surface.isFloor &&
+      (visibility.boundaries !== false || projectedSurfaceIsTemporarilyVisible(surface))
     ))
     .map(renderPlanSurfaceShape)
     .join("");
   const windowLines = layout.windows
-    .filter((windowItem) => elements.geometryShowWindows.checked || temporaryGeometryReveal?.id === windowItem.id)
+    .filter((windowItem) => visibility.openings !== false || temporaryGeometryReveal?.id === windowItem.id)
     .map((windowItem) => `<polyline class="plan-window navigable-row" data-geometry-kind="window" data-geometry-id="${escapeHTML(windowItem.id)}" ${geometryNavigationAttributes("fenestration", windowItem.id)} points="${windowItem.closedPoints}"></polyline>`)
     .join("");
 

@@ -62,7 +62,7 @@ const thermalTopologyIntegratedHarnessHTML = `<!doctype html>
 <select id="thermalTopologyMetric"><option value="topology">topology</option><option value="area">area</option><option value="ua">ua</option><option value="exposure">exposure</option><option value="qa">qa</option><option value="air">air</option></select>
 <select id="thermalTopologyScope"><option value="building">building</option><option value="story">story</option><option value="selection">selection</option><option value="neighbors">neighbors</option></select>
 <select id="thermalTopologyLayout"><option value="spatial">spatial</option><option value="network">network</option></select>
-<input id="thermalTopologyShowOpenings" type="checkbox" checked><input id="thermalTopologyShowAirCoupling" type="checkbox"><input id="thermalTopologyExpandExternalTargets" type="checkbox">
+<input id="thermalTopologyShowAirCoupling" type="checkbox"><input id="thermalTopologyExpandExternalTargets" type="checkbox">
 <pre id="result">pending</pre>
 <script type="module">
 const assert = (condition, message) => { if (!condition) throw new Error(message); };
@@ -121,7 +121,7 @@ try {
     topology:{schema:"semantic-idf.thermal-topology/v1",sourceModelHash:"integrated-fixture",nodes,boundaries,openings,connections,airCouplings,zoneSignatures:[{zoneId:"zone:a",zoneName:"Zone A",interzoneArea:8,exteriorArea:20,totalUa:22.9716,hasTotalUa:true},{zoneId:"zone:b",zoneName:"Zone B",interzoneArea:8,totalUa:12.5716,hasTotalUa:true}],issueLinks:[{id:"issue:missing",code:"surface_counterpart_missing",severity:"error",message:"Missing reciprocal surface",entityId:"surface:bad",boundaryId:"boundary:bad",relatedEntityIds:["surface:bad"],sourceAnchors:anchor(6,"Broken Pair")}],adjacencyObservations:[{surfaceAId:"surface:adi-a",surfaceBId:"surface:adi-b",overlapRatio:1,declaredConnection:false,observationKind:"geometrically_adjacent_but_thermally_disconnected"}]}
   };
   const state = stateModule.state;
-  state.report={geometry,output:{existing:[]}}; state.geometryMode="thermal"; state.thermalTopologyScope="building"; state.thermalTopologyLayout="spatial"; state.thermalTopologyShowOpenings=true; state.thermalTopologyShowAirCoupling=false;
+  state.report={geometry,output:{existing:[]}}; state.geometryMode="thermal"; state.thermalTopologyScope="building"; state.thermalTopologyLayout="spatial"; state.thermalTopologyShowAirCoupling=false;
   let backendCalls=0; const selections=[];
   const helpers={
     navigationAttributes:()=>'',

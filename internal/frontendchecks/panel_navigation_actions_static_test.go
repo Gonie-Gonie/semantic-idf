@@ -28,6 +28,8 @@ func TestPanelNavigationActionMenuOrderAndControllerRouting(t *testing.T) {
 		"openSelectionInView(",
 		"revealSelectionSource(",
 		"selectionTargetsForView(",
+		"isProfileTopologyLink(",
+		"view === currentView || isProfileTopologyLink(currentView, view)",
 		"recordViewHistory()",
 		"recordHistory: false",
 	} {

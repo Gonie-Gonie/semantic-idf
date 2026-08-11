@@ -24,7 +24,17 @@ func TestTopologyViewSwitchSupportsThermalAndNormalizesInvalidModes(t *testing.T
 			t.Fatalf("topology view switch is missing %q", required)
 		}
 	}
-	for _, removed := range []string{`id="thermalTopologyGraphLevel"`, `value="boundary"`, `id="thermalTopologyAreaComponent"`, `value="opaque"`, `value="openings"`, `id="thermalTopologyAreaBasis"`} {
+	for _, removed := range []string{
+		`id="thermalTopologyGraphLevel"`,
+		`value="boundary"`,
+		`id="thermalTopologyAreaComponent"`,
+		`value="opaque"`,
+		`value="openings"`,
+		`id="thermalTopologyAreaBasis"`,
+		`id="thermalTopologyShowOpenings"`,
+		`id="thermalTopologyFit"`,
+		`id="geometrySelectionAid"`,
+	} {
 		if strings.Contains(index, removed) {
 			t.Fatalf("fixed Zone/Gross topology controls still expose %q", removed)
 		}
@@ -93,13 +103,22 @@ func TestTopologyThermalRendererIsSplitAndLazyLoaded(t *testing.T) {
 	}
 }
 
-func TestTopologyToolbarSeparatesSpatialAndThermalControls(t *testing.T) {
+func TestTopologyToolbarSeparatesModeSpecificControls(t *testing.T) {
 	index := readTestFile(t, "frontend/src/index.html")
 	for _, required := range []string{
-		`id="geometrySpatialControls"`,
+		`id="geometryStoryControl"`,
+		`id="geometrySyncControl"`,
+		`id="geometrySyncLocate" type="checkbox" checked`,
+		`id="geometry3DControls"`,
+		`id="geometry3DShowZones"`,
+		`id="geometry3DShowSurfaces"`,
+		`id="geometry3DShowOpenings"`,
+		`id="geometryPlanControls"`,
+		`id="geometryPlanShowZones"`,
+		`id="geometryPlanShowBoundaries"`,
+		`id="geometryPlanShowOpenings"`,
 		`id="thermalTopologyControls"`,
 		`id="thermalTopologyLayout"`,
-		`id="thermalTopologyShowOpenings"`,
 		`id="thermalTopologyShowAirCoupling"`,
 		`id="thermalTopologyExpandExternalTargets"`,
 	} {
@@ -110,8 +129,14 @@ func TestTopologyToolbarSeparatesSpatialAndThermalControls(t *testing.T) {
 
 	view := readTestFile(t, "frontend/src/js/views/geometry-view.js")
 	for _, required := range []string{
-		`elements.geometrySpatialControls.hidden = state.geometryMode === "thermal"`,
-		`elements.thermalTopologyControls.hidden = state.geometryMode !== "thermal"`,
+		`const is3D = state.geometryMode === "3d"`,
+		`const isPlan = state.geometryMode === "plan"`,
+		`const isNetwork = state.geometryMode === "thermal"`,
+		`elements.geometry3DControls.hidden = !is3D`,
+		`elements.geometryPlanControls.hidden = !isPlan`,
+		`elements.thermalTopologyControls.hidden = !isNetwork`,
+		`elements.geometryStoryControl.hidden = isNetwork && state.thermalTopologyScope !== "story"`,
+		`state.geometryMode === "3d"`,
 	} {
 		if !strings.Contains(view, required) {
 			t.Fatalf("topology mode control visibility is missing %q", required)
@@ -121,6 +146,101 @@ func TestTopologyToolbarSeparatesSpatialAndThermalControls(t *testing.T) {
 	styles := readTestFile(t, "frontend/src/styles/geometry.css")
 	if !strings.Contains(styles, `@media (max-width: 1280px)`) || !strings.Contains(styles, `.thermal-topology-advanced-menu`) {
 		t.Fatal("thermal toolbar must collapse its advanced controls at narrow widths")
+	}
+}
+
+func TestTopologyVisibilityStateAndRenderingAreIndependentByMode(t *testing.T) {
+	state := readTestFile(t, "frontend/src/js/state.js")
+	for _, required := range []string{
+		"geometry3DVisibility:",
+		"zones: true",
+		"surfaces: true",
+		"openings: true",
+		"geometryPlanVisibility:",
+		"boundaries: true",
+	} {
+		if !strings.Contains(state, required) {
+			t.Fatalf("mode-specific topology visibility state is missing %q", required)
+		}
+	}
+	for _, removed := range []string{"geometrySelectionAid", "geometryShowZones", "geometryShowWalls", "geometryShowWindows"} {
+		if strings.Contains(state, removed) {
+			t.Fatalf("legacy shared geometry state remains %q", removed)
+		}
+	}
+
+	main := readTestFile(t, "frontend/src/js/main.js")
+	for _, required := range []string{
+		`bindGeometryVisibilityControl(elements.geometry3DShowZones, "geometry3DVisibility", "zones")`,
+		`bindGeometryVisibilityControl(elements.geometry3DShowSurfaces, "geometry3DVisibility", "surfaces")`,
+		`bindGeometryVisibilityControl(elements.geometry3DShowOpenings, "geometry3DVisibility", "openings")`,
+		`bindGeometryVisibilityControl(elements.geometryPlanShowZones, "geometryPlanVisibility", "zones")`,
+		`bindGeometryVisibilityControl(elements.geometryPlanShowBoundaries, "geometryPlanVisibility", "boundaries")`,
+		`bindGeometryVisibilityControl(elements.geometryPlanShowOpenings, "geometryPlanVisibility", "openings")`,
+	} {
+		if !strings.Contains(main, required) {
+			t.Fatalf("mode-specific topology visibility binding is missing %q", required)
+		}
+	}
+
+	view := readTestFile(t, "frontend/src/js/views/geometry-view.js")
+	scene := sliceBetween(view, "function renderScene", "function ensureRenderer")
+	for _, required := range []string{
+		`const visibility = state.geometry3DVisibility || {}`,
+		`visibility.zones !== false`,
+		`visibility.surfaces !== false`,
+		`visibility.openings !== false`,
+	} {
+		if !strings.Contains(scene, required) {
+			t.Fatalf("3D visibility renderer is missing %q", required)
+		}
+	}
+	plan := sliceBetween(view, "function renderPlan", "function cachedGeometryPlanLayout")
+	for _, required := range []string{
+		`const visibility = state.geometryPlanVisibility || {}`,
+		`visibility.zones !== false`,
+		`visibility.boundaries !== false`,
+		`visibility.openings !== false`,
+	} {
+		if !strings.Contains(plan, required) {
+			t.Fatalf("Plan visibility renderer is missing %q", required)
+		}
+	}
+}
+
+func TestTopologyViewportOwnsFitAndExpandIconActions(t *testing.T) {
+	index := readTestFile(t, "frontend/src/index.html")
+	viewport := sliceBetween(index, `id="geometryViewport"`, `id="geometryDetailsSplitter"`)
+	for _, required := range []string{
+		`class="viewport-action-tools geometry-viewport-actions"`,
+		`id="geometryFitButton"`,
+		`id="geometryExpandButton"`,
+		`data-expand-pane="geometry"`,
+		`class="viewport-icon`,
+		`aria-hidden="true"`,
+		`class="sr-only"`,
+	} {
+		if !strings.Contains(viewport, required) {
+			t.Fatalf("geometry viewport action icons are missing %q", required)
+		}
+	}
+
+	main := readTestFile(t, "frontend/src/js/main.js")
+	for _, required := range []string{
+		`elements.geometryFitButton.addEventListener("click", () => void fitGeometryView())`,
+		`updateExpandButton(elements.geometryExpandButton, "geometry")`,
+		`button.setAttribute("aria-pressed", String(active))`,
+		`button.setAttribute("aria-label", label)`,
+	} {
+		if !strings.Contains(main, required) {
+			t.Fatalf("geometry viewport action behavior is missing %q", required)
+		}
+	}
+	thermal := readTestFile(t, "frontend/src/js/views/thermal-topology-view.js")
+	for _, removed := range []string{"idfAnalyzer:thermalTopologyFit", "thermalTopologyFit", "thermalTopologyShowOpenings"} {
+		if strings.Contains(index+main+thermal, removed) {
+			t.Fatalf("legacy Network-only viewport control remains %q", removed)
+		}
 	}
 }
 

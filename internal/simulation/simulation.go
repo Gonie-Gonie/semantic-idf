@@ -825,6 +825,10 @@ func RunMultipleSimulations(request MultiSimulationRequest, progress func(Simula
 	if workers < 1 {
 		workers = 1
 	}
+	batchEnergyPlusInstallations := []EnergyPlusInstallSetting(nil)
+	if strings.TrimSpace(request.EnergyPlusExecutablePath) == "" {
+		batchEnergyPlusInstallations = mergeEnergyPlusInstallations(settings.EnergyPlusInstallations, AutoDetectEnergyPlusInstallations())
+	}
 	result := &MultiSimulationResult{RunID: request.RunID, Total: len(paths), Workers: workers}
 	emitSimulationProgress(progress, request.RunID, "prepare", "running", "Preparing batch simulation", 0, len(paths), "")
 
@@ -839,11 +843,32 @@ func RunMultipleSimulations(request MultiSimulationRequest, progress func(Simula
 			defer wg.Done()
 			for path := range jobs {
 				weatherPath := resolveBatchWeather(path, request)
+				energyPlus := resolveBatchEnergyPlusExecutable(path, request.EnergyPlusExecutablePath, batchEnergyPlusInstallations)
+				if energyPlus.Error != "" {
+					status := energyPlus.FailureStatus
+					if status == "" {
+						status = "failed"
+					}
+					results <- SimulationRunResult{
+						RunID:     request.RunID + "-" + shortPathHash(path),
+						Status:    status,
+						InputPath: path,
+						Filename:  filepath.Base(path),
+						Error:     energyPlus.Error,
+						ExitCode:  -1,
+					}
+					completedMu.Lock()
+					completed++
+					currentCompleted := completed
+					completedMu.Unlock()
+					emitSimulationProgress(progress, request.RunID, "execute", status, filepath.Base(path), currentCompleted, len(paths), path)
+					continue
+				}
 				runRequest := SimulationRunRequest{
 					RunID:                    request.RunID + "-" + shortPathHash(path),
 					InputPath:                path,
 					Filename:                 filepath.Base(path),
-					EnergyPlusExecutablePath: request.EnergyPlusExecutablePath,
+					EnergyPlusExecutablePath: energyPlus.ExecutablePath,
 					WeatherPath:              weatherPath,
 					Silent:                   true,
 				}

@@ -1,6 +1,49 @@
 package simulation
 
-import "testing"
+import (
+	"strings"
+	"testing"
+
+	"github.com/Gonie-Gonie/semantic-idf/internal/idf"
+)
+
+func TestPrepareBatchPurposeSimulationRequestUsesNormalizedOutputApplyMode(t *testing.T) {
+	request := SimulationRunRequest{Text: purposePlanFixtureIDF + `
+Output:Variable,
+  *,
+  Zone Mean Air Temperature,
+  Monthly;
+`}
+	prepared, err := prepareBatchPurposeSimulationRequest(request, SimulationPurposeRequest{
+		Purposes:        []SimulationPurposeID{SimulationPurposeZoneHeatFlow},
+		OutputApplyMode: PurposeOutputApplyModeReplaceConflicts,
+	})
+	if err != nil {
+		t.Fatalf("prepare batch purpose request: %v", err)
+	}
+	if prepared.PurposeRequest == nil || prepared.PurposeRequest.OutputApplyMode != PurposeOutputApplyModeReplaceConflicts {
+		t.Fatalf("prepared purpose request = %#v", prepared.PurposeRequest)
+	}
+
+	doc, err := idf.Parse(prepared.Text)
+	if err != nil {
+		t.Fatalf("parse prepared batch text: %v", err)
+	}
+	matching := 0
+	frequency := ""
+	for _, object := range doc.Objects {
+		if !strings.EqualFold(object.Type, "Output:Variable") || len(object.Fields) < 3 ||
+			!strings.EqualFold(object.Fields[0].Value, "*") ||
+			!strings.EqualFold(object.Fields[1].Value, "Zone Mean Air Temperature") {
+			continue
+		}
+		matching++
+		frequency = object.Fields[2].Value
+	}
+	if matching != 1 || !strings.EqualFold(frequency, "Hourly") {
+		t.Fatalf("prepared conflict output count/frequency = %d/%q, want 1/Hourly", matching, frequency)
+	}
+}
 
 func TestSummarizePurposeMetricsIncludesEnergyExplanationLevels(t *testing.T) {
 	bundle := &PurposeResultBundle{

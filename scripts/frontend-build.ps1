@@ -74,7 +74,6 @@ $nestedModules = @(
     "views/thermal-topology-inspector.js",
     "views/hvac-views.js",
     "views/input-views.js",
-    "views/output-views.js",
     "views/profile-views.js",
     "views/simulation-views.js",
     "tools/multi-simulation.js"

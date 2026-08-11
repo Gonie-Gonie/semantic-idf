@@ -39,3 +39,60 @@ func TestThermalTopologyGraphAccessibilityContract(t *testing.T) {
 		}
 	}
 }
+
+func TestGraphicViewportActionsUseAccessibleIconsInsideTheirFigures(t *testing.T) {
+	index := readTestFile(t, "frontend/src/index.html")
+	hvac := sliceBetween(index, `<section class="hvac-main"`, `<aside id="hvacSide"`)
+	for _, required := range []string{
+		`class="viewport-action-tools hvac-viewport-actions"`,
+		`id="hvacExpandButton"`,
+		`data-expand-pane="hvac"`,
+		`aria-label="Expand"`,
+		`title="Expand"`,
+		`aria-pressed="false"`,
+		`class="viewport-icon viewport-icon-expand"`,
+		`class="sr-only"`,
+	} {
+		if !strings.Contains(hvac, required) {
+			t.Fatalf("HVAC viewport icon contract is missing %q", required)
+		}
+	}
+
+	simulation := readTestFile(t, "frontend/src/js/views/simulation-views.js")
+	for _, required := range []string{
+		"function renderHeatFlowPlanViewportActions()",
+		`class="viewport-action-tools heatflow-viewport-actions"`,
+		`data-heatflow-plan-zoom="out"`,
+		`data-heatflow-plan-zoom="reset"`,
+		`data-heatflow-plan-zoom="in"`,
+		`class="viewport-icon"`,
+		`aria-hidden="true"`,
+		`title="${escapeHTML(fit)}"`,
+		`aria-label="${escapeHTML(fit)}"`,
+	} {
+		if !strings.Contains(simulation, required) {
+			t.Fatalf("Heat Flow viewport icon contract is missing %q", required)
+		}
+	}
+	storyCard := sliceBetween(simulation, "function renderHeatFlowStoryCard", "function heatFlowStoryBounds")
+	if !strings.Contains(storyCard, "renderHeatFlowPlanViewportActions()") || !strings.Contains(storyCard, `class="heatflow-floor-viewport"`) {
+		t.Fatal("Heat Flow zoom/Fit icons must be rendered inside each plan viewport")
+	}
+
+	baseStyles := readTestFile(t, "frontend/src/styles/base.css")
+	geometryStyles := readTestFile(t, "frontend/src/styles/geometry.css")
+	hvacStyles := readTestFile(t, "frontend/src/styles/hvac.css")
+	simulationStyles := readTestFile(t, "frontend/src/styles/simulation.css")
+	for _, required := range []string{
+		".viewport-action-tools",
+		".viewport-icon-button",
+		"button:focus-visible",
+		".geometry-viewport-actions",
+		".hvac-viewport-actions",
+		".heatflow-viewport-actions",
+	} {
+		if !strings.Contains(baseStyles+geometryStyles+hvacStyles+simulationStyles, required) {
+			t.Fatalf("shared viewport action styling is missing %q", required)
+		}
+	}
+}

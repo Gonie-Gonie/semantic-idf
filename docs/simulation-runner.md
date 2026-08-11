@@ -3,8 +3,8 @@
 This document tracks the current runner contract and the purpose-driven
 simulation flow. The runner is intentionally split into a run-copy workflow:
 temporary output requests are applied to the text that EnergyPlus executes, not
-to the source IDF, unless the user explicitly applies those outputs through the
-Output workflow.
+to the source IDF, unless a backend or automation caller explicitly applies
+those outputs through the retained Output apply APIs.
 
 ## Current Request
 
@@ -42,9 +42,11 @@ The purpose flow is:
 7. Build `PurposeResultBundle` while preserving legacy `Series` and
    `HeatFlow` fields.
 
-`BuildSimulationRunPlan` exposes the planning step for UI preview. `RunSimulationText`
-uses the purpose flow when `purposeRequest` is present. `RunPurposeSimulationText`
-is a convenience wrapper that defaults to Basic Energy + Zone Heat Flow.
+`BuildSimulationRunPlan` exposes the planning step to backend clients and
+automation. The main single-file Simulation view no longer renders that plan.
+`RunSimulationText` uses the purpose flow when `purposeRequest` is present.
+`RunPurposeSimulationText` is a convenience wrapper that defaults to Basic
+Energy + Zone Heat Flow.
 
 `SimulationPurposeRequest.allocationPolicy` defaults to `direct_only`. Basic
 Energy also accepts `by_zone_load_share`, which replaces direct Energy Use ->
@@ -52,12 +54,73 @@ Delivered Load links with `basis=allocated` zone-load-share edges when
 zone-scoped delivered-load variables are available. It also accepts
 `by_service_path_load_share`, which applies the same load-share allocation only
 after load nodes are matched to HVAC service paths; if a load group cannot be
-fully matched to service paths, the measured direct edges are preserved. The
-Simulation and Batch Simulation purpose controls expose these policies. Batch
-Simulation also exposes the same frequency policy selector as single-file
-Simulation, so batch users can keep the monthly purpose default, preserve
-existing output frequencies, or ask for the highest available resolution when
-they need drilldown.
+fully matched to service paths, the measured direct edges are preserved. Direct
+backend callers can select any supported allocation or frequency policy. The
+main and Batch Simulation views both use fixed `direct_only` allocation and
+`purpose_default` frequency.
+
+### Main Simulation Defaults
+
+The main single-file Simulation view deliberately uses a compact setup. It
+does not expose Advanced run options, an EnergyPlus version selector, a Run
+Plan display, or selectors for allocation, output application, frequency,
+detail, period, or zone scope. It also omits Integrity and Custom Outputs from
+the purpose setup. The backend purpose model continues to support those
+purposes and options. Batch Simulation follows the separate fixed contract
+below.
+
+The main view sends these fixed values:
+
+- `allocationPolicy`: `direct_only`
+- `outputApplyMode`: `add_missing_only`
+- `frequencyPolicy`: `purpose_default`
+- `basicEnergyDetail`: `heat_drivers`
+- `zoneHeatFlowDetail`: `surface`
+- `scope.periodMode`: `full`
+- `scope.zoneMode`: `all`
+
+Period start/end values and zone-name filters are therefore empty. HVAC loop
+scope can still be derived from the active HVAC selection when HVAC Loop Check
+is enabled.
+
+The main view detects the model version from either IDF or epJSON input and
+automatically selects a compatible registered EnergyPlus installation when
+possible. A manual executable/version choice is not shown there. Simulation is
+unavailable when no usable EnergyPlus installation exists, when the detected
+model version has no compatible installation, or when the registered
+installation has no version metadata to verify. Direct backend requests may
+still supply an explicit executable path.
+
+### Batch Simulation Defaults
+
+Batch Simulation keeps the Basic Energy, Zone Heat Flow, and HVAC Loop Check
+purpose toggles, plus weather mapping, recursive folder search, and worker-count
+controls. It no longer exposes an EnergyPlus selector, Integrity purpose,
+run-plan preview, advanced-series view selector, or allocation, frequency, and
+detail selectors.
+
+The Batch view sends these fixed purpose values:
+
+- `allocationPolicy`: `direct_only`
+- `outputApplyMode`: `add_missing_only`
+- `frequencyPolicy`: `purpose_default`
+- `basicEnergyDetail`: `heat_drivers`
+- `zoneHeatFlowDetail`: `surface`
+- `sqlMode`: `sql_first`
+- `persistOutputs`: `false`
+- `discoveryAllowed`: `false`
+- `scope.zoneMode`: `all`
+- `scope.periodMode`: `full`
+- `scope.loopMode`: `all`
+
+The Batch UI leaves `energyPlusExecutablePath` empty. The runner merges
+configured and auto-detected installations, parses each input independently,
+and selects an installation whose major/minor version matches that file's
+declared EnergyPlus version. A file with a known version and no compatible
+installation is reported as `missing_energyplus` without preventing compatible
+files from running. If an input has no readable version, the first available
+installation is used. Direct backend callers can still provide one explicit
+executable path for the request.
 
 ## Purpose Model
 
@@ -76,8 +139,9 @@ custom output objects. Zone Heat Flow and Comfort use scoped zone names when
 provided. HVAC Loop Check uses selected loop node names when they can be resolved
 from the current HVAC analysis, requests component operation variables for
 resolved loop components, and falls back to wildcard node/component keys when
-scope is broad or unresolved. The Simulation UI passes the active HVAC tab loop
-as selected HVAC scope when HVAC Loop Check is enabled.
+scope is broad or unresolved. The main Simulation view always requests all
+zones, while still passing the active HVAC tab loop as selected HVAC scope when
+HVAC Loop Check is enabled.
 
 `PurposeRunPlan` reports:
 
@@ -98,9 +162,10 @@ variables.
 internal-gain, window solar, window heat gain/loss, and air-exchange
 heat-driver variables, plus zone heat-balance driver variables. Those
 explanation/detail variables are monthly by default and become hourly when the
-frequency policy is `highest_resolution`. The app and batch UI default to
-`light`, and callers that omit the option now use the same light tier unless
-they explicitly request `explain` or `heat_drivers`.
+frequency policy is `highest_resolution`. The backend default remains `light`,
+and callers that omit the option use that tier unless they explicitly request
+`explain` or `heat_drivers`. The main and Batch Simulation views explicitly
+request `heat_drivers`.
 When Zone Heat Flow is also selected, its hourly
 heat-balance outputs are reused instead of adding a duplicate Basic Energy zone
 heat-driver request. Detail levels not requested by the active tier are reported
@@ -160,14 +225,13 @@ Output states:
 - `will_be_persisted`: planned for permanent apply.
 - `conflict`: same output target exists with a different frequency or field set.
 
-Basic Energy output requests use tiered reasons in plan previews and Output
+Basic Energy output requests use tiered reasons in backend plans and Output
 apply previews: top-level SQL/meters form the light energy basis, monthly
 delivered-load and zone energy variables are labeled as `Basic Energy Explain`,
 and monthly heat-balance, fan heat, internal-gain, and air-exchange variables
-are labeled as `Basic Energy Heat Drivers`. The Simulation run plan summarizes
-Basic Energy output sets by tier and state so users can see how many SQL, Light,
-Explain, and Heat Driver requests are existing, temporary, or planned for
-permanent apply before running.
+are labeled as `Basic Energy Heat Drivers`. Backend plans and exported run-plan
+artifacts retain output-set tier and state counts even though the main
+Simulation view no longer displays a Run Plan panel.
 
 ## Result Reading
 
@@ -420,9 +484,10 @@ Purpose result viewers now include:
   normalized multi-series chart, plus variable group toggles for temperature,
   setpoints, mass flow, humidity/enthalpy, rate/load, power/energy, and other
   HVAC outputs.
-- Comfort zone metric summaries for temperature, setpoint, PMV, and PPD series,
-  with optional custom `MM-DD` period scoping for the rendered trends and issue
-  ranking.
+- Comfort zone metric summaries for temperature, setpoint, PMV, and PPD series.
+  Backend callers can optionally provide custom `MM-DD` period scoping for the
+  rendered trends and issue ranking; the main Simulation view uses the full
+  period.
 - Integrity ERR, SQL error table, tabular report previews, and SQL/static
   cross-checks for zone, surface, construction, and nominal-load tabular rows.
   Cross-check statuses distinguish exact names, normalized matches, compact
@@ -434,30 +499,34 @@ will-be-persisted output requests.
 
 ## Permanent Outputs
 
-`ApplyPurposeOutputsText` converts a purpose plan into the existing Output apply
-pipeline. This keeps permanent output edits behind the same preview/apply
-contract as manual Output tab changes. The Output analysis report also annotates
-existing and recommended output requests with purpose tags, and the Output tab
-can filter by purpose. Permanent purpose-output application supports four modes:
-add missing outputs only, replace conflicting frequencies, keep existing outputs
+`ApplyPurposeOutputsText` converts a purpose plan into the retained Output apply
+pipeline and keeps permanent edits behind the same preview/apply contract. The
+main Output tab and Batch Output QA workflow are no longer exposed, but
+`AnalyzeInputOutputText`, `PreviewOutputApplyText`, `ApplyOutputText`, and
+`ApplyPurposeOutputsText` remain available to backend clients and automation.
+The Output analysis report continues to annotate existing and recommended
+requests with purpose tags.
+
+The backend permanent purpose-output application supports four modes: add
+missing outputs only, replace conflicting frequencies, keep existing outputs
 and add purpose-specific duplicates, or remove existing outputs that match the
-selected purpose plan. The EnergyPlus run-copy path still keeps existing outputs
+selected purpose plan. The main and Batch Simulation views fix this mode to add
+missing outputs only. The EnergyPlus run-copy path still keeps existing outputs
 and adds temporary purpose outputs so result parsing can use the requested
 series without editing the source IDF.
 
 Basic Energy completeness panels distinguish source output shortage from
 accounting/model coverage gaps. When missing source requests are reported, the
-result view can jump back to the Simulation output plan, refresh the purpose
-request set, and invoke the same permanent output application flow before the
-user reruns Basic Energy with explanation outputs. Light-tier results that did
-not request load or heat-driver detail also show a detail-tier guidance row that
-links back to the output plan so the user can switch to Explain or Heat Drivers
-and rerun. If the active model-aware
-purpose plan did not request any Basic Energy meter outputs, Energy Use source
-availability is reported as `not_applicable` instead of falling back to a broad
-missing-meter catalog. Delivered-load source availability also treats variables
-in the same alias group as found, and heat-driver availability does the same for
-same-sign aliases while keeping gain and loss requests distinct.
+backend plan identifies the missing purpose outputs and the permanent output
+application flow can add them before a rerun. Light-tier results produced by
+direct backend callers can still report detail-tier guidance; the main and
+Batch Simulation views always request Heat Drivers. If the active
+model-aware purpose plan did not request any Basic Energy meter outputs, Energy
+Use source availability is reported as `not_applicable` instead of falling back
+to a broad missing-meter catalog. Delivered-load source availability also
+treats variables in the same alias group as found, and heat-driver availability
+does the same for same-sign aliases while keeping gain and loss requests
+distinct.
 
 ## Output Discovery
 
@@ -477,8 +546,9 @@ present, then merges selected purpose-plan outputs as `available`, `alias`, or
 Catalog reads are cached per SQL/RDD/MDD path and invalidated when file size or
 modification time changes. Each catalog item reports its object type, key,
 variable or meter name, units, source, status, alias target when applicable, and
-purpose tags. Custom Outputs entered manually or picked from discovery are saved
-locally and restored in later sessions.
+purpose tags. Backend clients can use catalog entries to construct Custom
+Outputs requests; the main Simulation setup no longer provides manual Custom
+Outputs entry or discovery controls.
 
 ## Run Artifacts and Export
 

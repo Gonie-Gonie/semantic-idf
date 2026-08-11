@@ -31,10 +31,9 @@ import {
   updateDocumentActions,
 } from "./actions.js";
 import { markAnalysisDirty, renderDiagnostics, renderEmpty, renderReport, renderSummary } from "./views/analysis-views.js";
-import { fitGeometryView, renderGeometry, resizeGeometry, setGeometryMode, setGeometrySelectionAid, setGeometryStory } from "./geometry-loader.js";
+import { fitGeometryView, renderGeometry, resizeGeometry, setGeometryMode, setGeometryStory } from "./geometry-loader.js";
 import { initializeDiagnoseFixes } from "./views/diagnose-fixes.js";
 import { initializeHVACControls } from "./views/hvac-views.js";
-import { initializeOutputControls } from "./views/output-views.js";
 import {
   configureInputViews,
   setInputFilter,
@@ -65,6 +64,7 @@ import {
   revealSelectionSource,
   revealSelectionInSemantic,
   resumePendingSemanticNavigation,
+  isProfileTopologyLink,
   selectionTargetsForView,
 } from "./selection-controller.js";
 import { initializeResultPanelNavigationAdapters } from "./panel-navigation-adapters.js";
@@ -256,31 +256,38 @@ elements.thermalTopologyScope.addEventListener("change", () => {
 elements.thermalTopologyLayout.addEventListener("change", () => {
   updateThermalTopologySetting("thermalTopologyLayout", normalizeThermalTopologyLayout(elements.thermalTopologyLayout.value));
 });
-elements.thermalTopologyShowOpenings.addEventListener("change", () => {
-  updateThermalTopologySetting("thermalTopologyShowOpenings", elements.thermalTopologyShowOpenings.checked);
-});
 elements.thermalTopologyShowAirCoupling.addEventListener("change", () => {
   updateThermalTopologySetting("thermalTopologyShowAirCoupling", elements.thermalTopologyShowAirCoupling.checked);
 });
 elements.thermalTopologyExpandExternalTargets.addEventListener("change", () => {
   updateThermalTopologySetting("thermalTopologyExpandExternalTargets", elements.thermalTopologyExpandExternalTargets.checked);
 });
-elements.thermalTopologyFit.addEventListener("click", () => {
-  window.dispatchEvent(new CustomEvent("idfAnalyzer:thermalTopologyFit"));
-});
 elements.thermalTopologyExportJSON.addEventListener("click", () => {
   window.dispatchEvent(new CustomEvent("idfAnalyzer:thermalTopologyExport"));
 });
-elements.geometrySelectionAid.addEventListener("click", () => setGeometrySelectionAid(!state.geometrySelectionAid));
+elements.geometryFitButton.addEventListener("click", () => void fitGeometryView());
 elements.geometrySyncLocate.addEventListener("change", () => {
   state.geometrySyncLocate = elements.geometrySyncLocate.checked;
   renderGeometry();
 });
-elements.geometryShowZones.addEventListener("change", () => renderGeometry());
-elements.geometryShowWalls.addEventListener("change", () => renderGeometry());
-elements.geometryShowWindows.addEventListener("change", () => renderGeometry());
+bindGeometryVisibilityControl(elements.geometry3DShowZones, "geometry3DVisibility", "zones");
+bindGeometryVisibilityControl(elements.geometry3DShowSurfaces, "geometry3DVisibility", "surfaces");
+bindGeometryVisibilityControl(elements.geometry3DShowOpenings, "geometry3DVisibility", "openings");
+bindGeometryVisibilityControl(elements.geometryPlanShowZones, "geometryPlanVisibility", "zones");
+bindGeometryVisibilityControl(elements.geometryPlanShowBoundaries, "geometryPlanVisibility", "boundaries");
+bindGeometryVisibilityControl(elements.geometryPlanShowOpenings, "geometryPlanVisibility", "openings");
 elements.hvacExpandButton.addEventListener("click", () => toggleExpandedPane("hvac"));
 elements.geometryExpandButton.addEventListener("click", () => toggleExpandedPane("geometry"));
+
+function bindGeometryVisibilityControl(control, stateKey, optionKey) {
+  control.addEventListener("change", () => {
+    state[stateKey] = {
+      ...(state[stateKey] || {}),
+      [optionKey]: control.checked,
+    };
+    renderGeometry();
+  });
+}
 
 function updateThermalTopologySetting(key, value) {
   if (state[key] === value) {
@@ -350,11 +357,6 @@ window.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && state.expandedPane) {
     event.preventDefault();
     toggleExpandedPane("");
-    return;
-  }
-  if (event.key.toLowerCase() === "h" && state.activeResultTab === "geometry" && !isEditableTarget(event.target)) {
-    event.preventDefault();
-    setGeometrySelectionAid(!state.geometrySelectionAid);
   }
 });
 window.addEventListener("mousedown", handleHardwareHistoryMouseButton, { capture: true });
@@ -444,33 +446,6 @@ window.addEventListener("idfAnalyzer:hvacApplied", (event) => {
   const changeCount = result.preview?.changes?.filter((change) => change.requiresSave).length || 0;
   setStatus(t("status.hvacApplied", { count: changeCount }), "ok");
 });
-window.addEventListener("idfAnalyzer:outputApplied", (event) => {
-  const result = event.detail || {};
-  if (!result.text || !result.report) {
-    return;
-  }
-  elements.idfInput.value = result.text;
-  updateTextStats();
-  state.report = result.report;
-  state.model = result.model || null;
-  state.epjsonText = result.epjson || "";
-  state.semanticProjection = result.semantic || null;
-  state.lastAnalyzedText = result.text;
-  state.analysisKey = result.analysisKey || "";
-  state.lastAnalyzedKey = state.analysisKey;
-  state.reportAnalyzedText = result.text;
-  state.reportAnalysisKey = state.analysisKey;
-  state.analysisStage = "complete";
-  state.diagnosticsReady = true;
-  state.geometryReady = true;
-  markInstalledAnalysisReady();
-  renderReport();
-  dispatchInstalledAnalysisComplete(result);
-  updateDocumentActions();
-  const changeCount = result.preview?.changes?.filter((change) => change.requiresSave).length || 0;
-  setStatus(t("status.outputApplied", { count: changeCount }), "ok");
-});
-
 function dispatchInstalledAnalysisComplete(result = {}) {
   window.dispatchEvent(new CustomEvent("idfAnalyzer:analysisComplete", {
     detail: {
@@ -508,15 +483,20 @@ function toggleExpandedPane(pane) {
 }
 
 function updateExpandButtons() {
-  const expanded = state.expandedPane;
-  if (elements.hvacExpandButton) {
-    elements.hvacExpandButton.textContent = expanded === "hvac" ? t("action.close") : t("action.expand", {}, "Expand");
-    elements.hvacExpandButton.classList.toggle("active", expanded === "hvac");
-  }
-  if (elements.geometryExpandButton) {
-    elements.geometryExpandButton.textContent = expanded === "geometry" ? t("action.close") : t("action.expand", {}, "Expand");
-    elements.geometryExpandButton.classList.toggle("active", expanded === "geometry");
-  }
+  updateExpandButton(elements.hvacExpandButton, "hvac");
+  updateExpandButton(elements.geometryExpandButton, "geometry");
+}
+
+function updateExpandButton(button, pane) {
+  if (!button) return;
+  const active = state.expandedPane === pane;
+  const label = active ? t("action.close") : t("action.expand", {}, "Expand");
+  button.classList.toggle("active", active);
+  button.setAttribute("aria-pressed", String(active));
+  button.setAttribute("aria-label", label);
+  button.title = label;
+  const assistiveLabel = button.querySelector(".sr-only");
+  if (assistiveLabel) assistiveLabel.textContent = label;
 }
 
 function isEditableTarget(target) {
@@ -686,11 +666,15 @@ async function openAvailableViewsForSelection() {
     return false;
   }
   const items = [];
+  const originView = state.activeResultTab || selection.originView;
   for (const viewID of PANEL_NAVIGATION_VIEW_IDS) {
     if (viewID !== "input-semantic" && viewID.startsWith("input-")) {
       continue;
     }
-    const targets = selectionTargetsForView(viewID, selection);
+    if (isProfileTopologyLink(originView, viewID)) {
+      continue;
+    }
+    const targets = selectionTargetsForView(viewID, { ...selection, originView });
     if (viewID !== "input-semantic" && !targets.length) {
       continue;
     }
@@ -699,7 +683,7 @@ async function openAvailableViewsForSelection() {
       label: navigationViewLabel(viewID),
       meta: targets.length > 1 ? t("semantic.occurrences", { count: targets.length }, `${targets.length} targets`) : "",
       run: () => openSelectionInView(viewID, {
-        originView: selection.originView || state.activeResultTab,
+        originView,
         action: "open",
         preserveFilters: true,
       }),
@@ -765,7 +749,6 @@ initializeWorkspaceSplitter();
 initializeVerticalSplitters();
 initializeProfileControls();
 initializeHVACControls();
-initializeOutputControls();
 initializeSimulationControls();
 initializeDiagnoseFixes();
 initializeCommandPalette(commandPaletteItems);
@@ -915,9 +898,6 @@ function applyRuntimeSettings(settings) {
   }
   state.autoAnalyzeDelayMs = settings.behavior?.autoAnalyzeDelayMs || state.autoAnalyzeDelayMs;
   state.simulationAutoRunOnOpen = settings.simulation?.autoRunOnOpen ?? state.simulationAutoRunOnOpen;
-  if (elements.simulationAutoRunOnOpen) {
-    elements.simulationAutoRunOnOpen.checked = Boolean(state.simulationAutoRunOnOpen);
-  }
   loadSimulationEnvironment();
   if (typeof settings.interaction?.syncRawTextPosition === "boolean") {
     state.syncTextRawPosition = settings.interaction.syncRawTextPosition;

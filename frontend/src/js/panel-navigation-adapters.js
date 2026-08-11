@@ -7,7 +7,6 @@ export const RESULT_PANEL_NAVIGATION_VIEW_IDS = Object.freeze([
   "summary",
   "profile",
   "hvac",
-  "output",
   "simulation",
   "diagnose",
   "geometry",

@@ -366,7 +366,14 @@ func TestSemanticNavigationSourceAnchorsAndPanelTargets(t *testing.T) {
 	assertSemanticPreferredContext(t, projection, "zone_geometry", "geometry")
 	assertSemanticPreferredContext(t, projection, "zone_profile", "profile")
 	assertSemanticPreferredKind(t, projection, "schedule", "profile")
-	assertSemanticPreferredKind(t, projection, "output", "output")
+	assertSemanticPreferredKind(t, projection, "output", "input-text")
+	for _, occurrence := range projection.Navigation.Occurrences {
+		for _, target := range occurrence.ViewTargets {
+			if target.View == "output" {
+				t.Fatalf("removed Output view remains on occurrence %q: %#v", occurrence.OccurrenceID, target)
+			}
+		}
+	}
 
 	zone := semanticNavigationEntityByKindLabel(t, projection.Navigation, "zone", "Office")
 	views := map[string]bool{}
@@ -791,7 +798,6 @@ func TestSemanticNavigationProjectionMetadataGolden(t *testing.T) {
     "targets": [
       "geometry|zone|zone-0|80",
       "profile|zone|Office|75",
-      "output|zone|Office|60",
       "input-text|source|obj-1fa10db56c3fbabc5392|20"
     ]
   },
@@ -802,7 +808,6 @@ func TestSemanticNavigationProjectionMetadataGolden(t *testing.T) {
       "profile|zone-dimension|profile-zone-dimension:office:occupancy|95",
       "geometry|zone|zone-0|80",
       "profile|zone|Office|75",
-      "output|zone|Office|60",
       "input-text|source|obj-1da6b4d2796ca95b0025|20",
       "input-text|source|obj-1fa10db56c3fbabc5392|20"
     ]
@@ -814,19 +819,16 @@ func TestSemanticNavigationProjectionMetadataGolden(t *testing.T) {
       "targets": [
         "geometry|zone|zone-0|80",
         "profile|zone|Office|75",
-        "output|zone|Office|60",
         "input-text|source|obj-1fa10db56c3fbabc5392|20"
       ]
     },
     {
       "context": "zone_output",
       "path": "zones/Office/outputs",
-      "preferredView": "output",
-      "preferredTargetId": "Office",
+      "preferredView": "input-text",
       "targets": [
         "geometry|zone|zone-0|80",
-        "profile|zone|Office|75",
-        "output|zone|Office|60"
+        "profile|zone|Office|75"
       ]
     },
     {
@@ -836,8 +838,7 @@ func TestSemanticNavigationProjectionMetadataGolden(t *testing.T) {
       "preferredTargetId": "zone-0",
       "targets": [
         "geometry|zone|zone-0|80",
-        "profile|zone|Office|75",
-        "output|zone|Office|60"
+        "profile|zone|Office|75"
       ]
     },
     {
@@ -849,7 +850,6 @@ func TestSemanticNavigationProjectionMetadataGolden(t *testing.T) {
         "geometry|zone|zone-0|80",
         "profile|zone|Office|75",
         "profile|zone-dimension|profile-zone-dimension:office:occupancy|95",
-        "output|zone|Office|60",
         "input-text|source|obj-1da6b4d2796ca95b0025|20"
       ]
     },
@@ -859,7 +859,6 @@ func TestSemanticNavigationProjectionMetadataGolden(t *testing.T) {
       "targets": [
         "geometry|zone|zone-0|80",
         "profile|zone|Office|75",
-        "output|zone|Office|60",
         "input-text|source|obj-1fa10db56c3fbabc5392|20"
       ]
     },
@@ -871,7 +870,6 @@ func TestSemanticNavigationProjectionMetadataGolden(t *testing.T) {
       "targets": [
         "geometry|zone|zone-0|80",
         "profile|zone|Office|75",
-        "output|zone|Office|60",
         "profile|zone-dimension|profile-zone-dimension:office:occupancy|95"
       ]
     },
@@ -883,7 +881,6 @@ func TestSemanticNavigationProjectionMetadataGolden(t *testing.T) {
       "targets": [
         "geometry|zone|zone-0|80",
         "profile|zone|Office|75",
-        "output|zone|Office|60",
         "input-text|source|obj-1fa10db56c3fbabc5392|20"
       ]
     },
@@ -892,8 +889,7 @@ func TestSemanticNavigationProjectionMetadataGolden(t *testing.T) {
       "path": "zones/Office/spaces",
       "targets": [
         "geometry|zone|zone-0|80",
-        "profile|zone|Office|75",
-        "output|zone|Office|60"
+        "profile|zone|Office|75"
       ]
     }
   ],

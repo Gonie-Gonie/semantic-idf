@@ -1,6 +1,5 @@
 export function initializeMultiSimulationTool(context) {
   const { state, elements, waitForAppAPI, waitForProgressRuntime, escapeHTML, postJSON, t, downloadCSV } = context;
-  let planPreviewTimer = 0;
 
   async function loadEnvironment() {
     try {
@@ -16,24 +15,7 @@ export function initializeMultiSimulationTool(context) {
   }
 
   function renderEnvironment() {
-    if (!elements.multiSimulationEnergyPlus) {
-      return;
-    }
-    const installs = state.simulationEnvironment?.installations || [];
-    const currentInstall = elements.multiSimulationEnergyPlus.value;
-    elements.multiSimulationEnergyPlus.innerHTML = installs.length
-      ? installs
-          .map((install) => {
-            const label = `${install.name || "EnergyPlus"}${install.autoDetected ? " - auto" : ""}`;
-            return `<option value="${escapeHTML(install.executablePath)}" title="${escapeHTML(install.executablePath)}">${escapeHTML(label)}</option>`;
-          })
-          .join("")
-      : `<option value="">${escapeHTML(t("simulation.noEnergyPlus", {}, "No EnergyPlus installation"))}</option>`;
-    if (currentInstall && [...elements.multiSimulationEnergyPlus.options].some((option) => option.value === currentInstall)) {
-      elements.multiSimulationEnergyPlus.value = currentInstall;
-    }
-
-    const currentWeather = elements.multiSimulationWeather.value;
+    const currentWeather = elements.multiSimulationWeather?.value || "";
     const weatherHTML = [`<option value="">${escapeHTML(t("simulation.noWeather", {}, "No weather / design-day only"))}</option>`];
     for (const folder of state.simulationEnvironment?.weatherFolders || []) {
       weatherHTML.push(`<optgroup label="${escapeHTML(`${folder.source || "Weather"} - ${folder.label || folder.path}`)}">`);
@@ -42,9 +24,11 @@ export function initializeMultiSimulationTool(context) {
       }
       weatherHTML.push("</optgroup>");
     }
-    elements.multiSimulationWeather.innerHTML = weatherHTML.join("");
-    if (currentWeather && [...elements.multiSimulationWeather.options].some((option) => option.value === currentWeather)) {
-      elements.multiSimulationWeather.value = currentWeather;
+    if (elements.multiSimulationWeather) {
+      elements.multiSimulationWeather.innerHTML = weatherHTML.join("");
+      if (currentWeather && [...elements.multiSimulationWeather.options].some((option) => option.value === currentWeather)) {
+        elements.multiSimulationWeather.value = currentWeather;
+      }
     }
     const defaultWorkers = state.simulationEnvironment?.defaultWorkerCount || 0;
     if (elements.multiSimulationWorkers && Number(elements.multiSimulationWorkers.value || 0) === 0 && defaultWorkers > 0) {
@@ -111,7 +95,6 @@ export function initializeMultiSimulationTool(context) {
     elements.multiSimulationStatus.textContent = t("tools.readyToRun", {}, "Ready to run");
     updateProgress(0, state.multiSimulation.selectedPaths.length, "", "idle");
     renderSelectedFiles();
-    schedulePlanPreview();
     renderResult();
   }
 
@@ -145,11 +128,6 @@ export function initializeMultiSimulationTool(context) {
       return;
     }
     await loadEnvironment();
-    const executablePath = elements.multiSimulationEnergyPlus?.value || "";
-    if (!executablePath) {
-      elements.multiSimulationStatus.textContent = t("simulation.registerEnergyPlus", {}, "Register EnergyPlus in Settings");
-      return;
-    }
     state.multiSimulation.activeRunID = `multi-sim-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     state.multiSimulation.running = true;
     elements.multiSimulationRun.disabled = true;
@@ -162,7 +140,7 @@ export function initializeMultiSimulationTool(context) {
         inputPaths: paths,
         rootDirectory: state.multiSimulation.rootDirectory || "",
         recursive: Boolean(elements.multiSimulationRecursive?.checked),
-        energyPlusExecutablePath: executablePath,
+        energyPlusExecutablePath: "",
         weatherMode: elements.multiSimulationWeatherMode?.value || "same",
         weatherPath: elements.multiSimulationWeather?.value || "",
         workerCount: Number(elements.multiSimulationWorkers?.value || 0),
@@ -315,8 +293,7 @@ export function initializeMultiSimulationTool(context) {
   }
 
   function renderChart(result) {
-    const viewMode = elements.multiSimulationViewMode?.value || "purpose";
-    if (viewMode !== "advanced" && uniquePurposeMetrics(result).length) {
+    if (uniquePurposeMetrics(result).length) {
       renderPurposeMetricChart(result);
       return;
     }
@@ -806,7 +783,7 @@ export function initializeMultiSimulationTool(context) {
       selectedRowIds: Array.from(state.multiSimulation.selectedRows || []),
       metric: state.multiSimulation.metric || "",
       sort: state.multiSimulation.sort || "filename",
-      viewMode: elements.multiSimulationViewMode?.value || "purpose",
+      viewMode: "purpose",
       weatherMode: elements.multiSimulationWeatherMode?.value || "same",
       weatherPath: elements.multiSimulationWeather?.value || "",
       workerCount: Number(elements.multiSimulationWorkers?.value || 0),
@@ -1697,9 +1674,6 @@ export function initializeMultiSimulationTool(context) {
   }
 
   function uniqueMetrics(result) {
-    if ((elements.multiSimulationViewMode?.value || "purpose") === "advanced") {
-      return uniqueSeriesMetrics(result);
-    }
     const purpose = uniquePurposeMetrics(result);
     if (purpose.length) {
       return purpose;
@@ -1778,123 +1752,29 @@ export function initializeMultiSimulationTool(context) {
       .filter(Boolean);
     return {
       purposes: purposes.length ? purposes : ["basic_energy"],
-      basicEnergyDetail: elements.multiSimulationEnergyDetail?.value || "light",
-      frequencyPolicy: elements.multiSimulationFrequencyPolicy?.value || "purpose_default",
-      allocationPolicy: elements.multiSimulationAllocationPolicy?.value || "direct_only",
+      basicEnergyDetail: "heat_drivers",
+      zoneHeatFlowDetail: "surface",
+      frequencyPolicy: "purpose_default",
+      allocationPolicy: "direct_only",
       sqlMode: "sql_first",
       persistOutputs: false,
       discoveryAllowed: false,
       outputApplyMode: "add_missing_only",
       scope: {
         zoneMode: "all",
-        periodMode: "run_period",
+        zoneNames: [],
+        periodMode: "full",
+        periodStart: "",
+        periodEnd: "",
         loopMode: "all",
+        airLoopNames: [],
+        plantLoopNames: [],
+        condenserLoopNames: [],
+        componentIds: [],
+        outputSignatures: [],
+        customOutputs: [],
       },
     };
-  }
-
-  function selectedPurposeLabels() {
-    return [...(elements.batchPurposeInputs || [])]
-      .filter((input) => input.checked)
-      .map((input) => input.closest("label")?.innerText?.trim() || input.dataset.batchPurpose)
-      .filter(Boolean);
-  }
-
-  function simulationRequestForPreview() {
-    return {
-      inputPaths: state.multiSimulation.selectedPaths || [],
-      rootDirectory: state.multiSimulation.rootDirectory || "",
-      recursive: Boolean(elements.multiSimulationRecursive?.checked),
-      weatherMode: elements.multiSimulationWeatherMode?.value || "same",
-      weatherPath: elements.multiSimulationWeather?.value || "",
-      workerCount: Number(elements.multiSimulationWorkers?.value || 0),
-      purposeRequest: batchPurposeRequest(),
-    };
-  }
-
-  function schedulePlanPreview() {
-    if (!elements.batchSimulationPlanPreview) {
-      return;
-    }
-    clearTimeout(planPreviewTimer);
-    planPreviewTimer = setTimeout(refreshPlanPreview, 250);
-  }
-
-  async function refreshPlanPreview() {
-    const paths = state.multiSimulation.selectedPaths || [];
-    if (!paths.length) {
-      elements.batchSimulationPlanPreview.innerHTML = `<div class="empty">${escapeHTML(t("batch.planPreviewEmpty", {}, "Select files to preview purpose output weight and weather mapping."))}</div>`;
-      return;
-    }
-    elements.batchSimulationPlanPreview.innerHTML = `<div class="empty status-loading">${escapeHTML(t("batch.planPreviewRunning", {}, "Building purpose run plan preview."))}</div>`;
-    const request = simulationRequestForPreview();
-    try {
-      const api = await waitForAppAPI("PreviewBatchSimulationPlan");
-      const result = api ? await api.PreviewBatchSimulationPlan(request) : await postJSON("/api/batch-simulation-plan", request);
-      renderPlanPreview(result);
-    } catch {
-      renderPlanPreview({
-        total: paths.length,
-        commonOutputCount: 0,
-        heavyFileCount: 0,
-        workerCount: request.workerCount,
-        weatherMode: request.weatherMode,
-        weatherPath: request.weatherPath,
-        purposes: request.purposeRequest?.purposes || [],
-        files: paths.map((path, index) => ({ index, path, filename: fileName(path), status: "pending" })),
-      });
-    }
-  }
-
-  function renderPlanPreview(result) {
-    const files = result?.files || [];
-    const purposes = selectedPurposeLabels().join(", ");
-    const weather = result?.weatherMode === "subfolder" ? t("tools.weatherSubfolder", {}, "Nearest EPW by folder") : fileName(result?.weatherPath) || t("simulation.noWeather", {}, "No weather / design-day only");
-    const heavy = result?.heavyFileCount || 0;
-    const summary = t(
-      "batch.planPreview",
-      { count: result?.total || files.length, outputs: result?.commonOutputCount || 0, heavy, weather },
-      `${result?.total || files.length} files, ${result?.commonOutputCount || 0} common outputs, ${heavy} heavy files, weather ${weather}.`,
-    );
-    elements.batchSimulationPlanPreview.innerHTML = `
-      <div class="batch-plan-summary">
-        <div><span>${escapeHTML(t("batch.purposes", {}, "Purposes"))}</span><strong>${escapeHTML(purposes || "basic_energy")}</strong></div>
-        <div><span>${escapeHTML(t("tools.workers", {}, "Workers"))}</span><strong>${escapeHTML(result?.workerCount || 0)}</strong></div>
-        <div><span>${escapeHTML(t("batch.heavyFiles", { count: heavy }, `${heavy} heavy files`))}</span><strong>${escapeHTML(summary)}</strong></div>
-      </div>
-      <div class="tool-table-wrap">
-        <table class="tool-table">
-          <thead>
-            <tr>
-              <th class="tool-sticky-col">${escapeHTML(t("common.file", {}, "File"))}</th>
-              <th>${escapeHTML(t("common.status", {}, "Status"))}</th>
-              <th>${escapeHTML(t("common.outputs", {}, "Outputs"))}</th>
-              <th>${escapeHTML(t("common.existingTarget", {}, "Existing target"))}</th>
-              <th>${escapeHTML(t("simulation.outputAdded", {}, "Temporary"))}</th>
-              <th>${escapeHTML(t("common.scale", {}, "Scale"))}</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${files
-              .slice(0, 40)
-              .map(
-                (file) => `
-                  <tr>
-                    <th class="tool-sticky-col">
-                      <strong>${escapeHTML(file.label || file.filename || fileName(file.path))}</strong>
-                      <span>${escapeHTML(file.error || file.path || "")}</span>
-                    </th>
-                    <td class="tool-value ${escapeHTML(file.status || "")}">${escapeHTML(file.status || "")}</td>
-                    <td>${escapeHTML(file.outputCount ?? "")}</td>
-                    <td>${escapeHTML(file.existingOutputCount ?? "")}</td>
-                    <td>${escapeHTML(file.temporaryOutputCount ?? "")}</td>
-                    <td>${escapeHTML(file.estimatedWeight || "")}</td>
-                  </tr>`,
-              )
-              .join("")}
-          </tbody>
-        </table>
-      </div>`;
   }
 
   function bindEvents() {
@@ -1910,14 +1790,6 @@ export function initializeMultiSimulationTool(context) {
         renderChart(state.multiSimulation.result);
       }
     });
-    elements.multiSimulationViewMode?.addEventListener("change", () => {
-      if (state.multiSimulation.result) {
-        state.multiSimulation.metric = firstMetric(state.multiSimulation.result);
-        renderMetricSelect(state.multiSimulation.result);
-        renderEnergyCompareSelects(state.multiSimulation.result);
-        renderChart(state.multiSimulation.result);
-      }
-    });
     elements.multiSimulationCompareBaseline?.addEventListener("change", () => handleEnergyCompareSelectChange("baseline"));
     elements.multiSimulationCompareTarget?.addEventListener("change", () => handleEnergyCompareSelectChange("target"));
     elements.multiSimulationSort?.addEventListener("change", () => {
@@ -1926,14 +1798,6 @@ export function initializeMultiSimulationTool(context) {
         renderTable(state.multiSimulation.result);
       }
     });
-    elements.batchPurposeInputs?.forEach((input) => input.addEventListener("change", schedulePlanPreview));
-    elements.multiSimulationWeather?.addEventListener("change", schedulePlanPreview);
-    elements.multiSimulationWeatherMode?.addEventListener("change", schedulePlanPreview);
-    elements.multiSimulationEnergyDetail?.addEventListener("change", schedulePlanPreview);
-    elements.multiSimulationAllocationPolicy?.addEventListener("change", schedulePlanPreview);
-    elements.multiSimulationFrequencyPolicy?.addEventListener("change", schedulePlanPreview);
-    elements.multiSimulationWorkers?.addEventListener("change", schedulePlanPreview);
-    elements.multiSimulationRecursive?.addEventListener("change", schedulePlanPreview);
   }
 
   bindEvents();
@@ -1941,6 +1805,5 @@ export function initializeMultiSimulationTool(context) {
   return {
     handleProgress,
     loadEnvironment,
-    schedulePlanPreview,
   };
 }

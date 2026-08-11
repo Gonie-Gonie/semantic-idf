@@ -67,7 +67,6 @@ function renderEmptyProfile() {
   elements.profileMatrix.innerHTML = `<div class="empty">${t("profile.noMatrix")}</div>`;
   elements.profileMatrixStats.textContent = t("count.zones", { count: 0 });
   elements.profileGraph.innerHTML = `<div class="empty">${t("profile.noGraph")}</div>`;
-  elements.profileGraphStats.textContent = t("graph.annualHeatmap");
   elements.profileApplyButton.disabled = true;
 }
 
@@ -340,7 +339,6 @@ function renderProfileDetail(group, profile, zoneRow = null) {
   const items = uniqueProfileItems(itemIds.map((id) => itemMap.get(id)).filter(Boolean));
   const warnings = [...(zoneRow?.warnings || []), ...group.warnings, ...items.flatMap((item) => item.warnings || [])];
   const candidates = profileCandidatesForDimensions(profile, dimensions.map((dimension) => dimension.dimension));
-  const topologyZoneName = zoneRow?.zoneName || group.zoneNames?.[0] || "";
   elements.profileDetail.innerHTML = `
     <div class="profile-detail-head">
       <div>
@@ -348,7 +346,6 @@ function renderProfileDetail(group, profile, zoneRow = null) {
         <p>${escapeHTML(zoneRow ? t("profile.receivesProfile", { profile: group.name }) : group.zoneNames.join(", "))}</p>
       </div>
       <div class="profile-detail-actions">
-        <button type="button" data-profile-open-topology="${escapeHTML(topologyZoneName)}" ${topologyZoneName ? "" : "disabled"}>Open Topology</button>
         <span class="badge">${escapeHTML(t("count.zones", { count: group.zoneCount }))}</span>
       </div>
     </div>
@@ -527,7 +524,6 @@ function renderProfileGraph(group, profile, zoneRow = null) {
   const deck = state.profileGraphDeck || mergeProfileGraphDeck(profile, null);
   const selectedSeries = profileDeckSeries(profile, group, zoneRow);
   const body = renderProfileDeckBody(profile, selectedSeries, deck);
-  elements.profileGraphStats.textContent = profileGraphDeckStats(profile, selectedSeries, deck);
   elements.profileGraph.innerHTML = `
     <div class="profile-graph-toolbar">
       <label class="profile-field">
@@ -1261,16 +1257,6 @@ function sharedProfileSeriesMax(series, deck) {
     const metric = profileSeriesMetric(item, deck);
     return graphScaleMaxForSeries(metric.values, item, { ...deck, scaleMode: deck.scaleMode === "shared" ? "auto" : deck.scaleMode }, metric.unit);
   }), 1e-9);
-}
-
-function profileGraphDeckStats(profile, series, deck) {
-  if (deck.compareMode === "similarity" || deck.scopeType === "schedule") {
-    return `${(profile.scheduleClusters || []).length} schedule clusters`;
-  }
-  if (deck.compareMode === "outliers") {
-    return `${(profile.outliers || []).length} QA hints / ${(profile.parameterCandidates || []).length} candidates`;
-  }
-  return `${series.length} series 쨌 ${deck.metricMode} 쨌 ${deck.timeView} 쨌 ${deck.compareMode}`;
 }
 
 function profileMatrixCellClasses(summary, row) {
@@ -2178,19 +2164,6 @@ function sameProfileName(left, right) {
 }
 
 function bindProfileControls(profile) {
-  elements.profileDetail.querySelector("[data-profile-open-topology]")?.addEventListener("click", (event) => {
-    const zoneName = event.currentTarget.dataset.profileOpenTopology || "";
-    const node = (state.report?.geometry?.topology?.nodes || []).find((item) => (
-      (item.kind === "zone" || item.kind === "space") && sameProfileName(item.zoneName || item.label || item.objectName, zoneName)
-    ));
-    if (!node) return;
-    state.geometryMode = "thermal";
-    state.thermalTopologySelectedEntityKind = node.kind || "zone";
-    state.thermalTopologySelectedEntityId = node.entityId || node.id;
-    state.selectedGeometryKind = node.kind || "zone";
-    state.selectedGeometryId = node.entityId || node.id;
-    [...(elements.resultTabButtons || [])].find((button) => button.dataset.resultTab === "geometry")?.click();
-  });
   elements.profileSettings.querySelectorAll("[data-profile-view]").forEach((button) => {
     button.addEventListener("click", () => {
       state.activeProfileView = button.dataset.profileView === "zone" ? "zone" : "profile";

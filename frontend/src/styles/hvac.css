@@ -262,10 +262,6 @@
   align-items: stretch;
 }
 
-.hvac-layout.inspector-collapsed {
-  grid-template-columns: minmax(0, 1fr);
-}
-
 .hvac-main,
 .hvac-side {
   min-width: 0;
@@ -273,12 +269,19 @@
 }
 
 .hvac-main {
+  position: relative;
   display: flex;
   flex-direction: column;
 }
 
-.hvac-layout.inspector-collapsed .hvac-side {
-  display: none;
+.hvac-viewport-actions {
+  top: 9px;
+  right: 9px;
+}
+
+.hvac-graph > .hvac-loop-title,
+.hvac-graph > .hvac-graphic-shell > .hvac-graph-toolbar {
+  padding-right: 46px;
 }
 
 .hvac-side {
@@ -1355,12 +1358,6 @@
 .hvac-graph-scope button:disabled {
   color: var(--muted);
   opacity: 0.45;
-}
-
-.hvac-inspector-toggle.active {
-  border-color: var(--teal);
-  background: var(--teal-soft);
-  color: var(--teal-dark);
 }
 
 .hvac-loop-meta span,
