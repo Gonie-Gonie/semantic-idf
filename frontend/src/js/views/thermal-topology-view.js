@@ -1,9 +1,6 @@
 import {
   elements,
   escapeHTML,
-  normalizeThermalTopologyAreaComponent,
-  normalizeThermalTopologyAreaBasis,
-  normalizeThermalTopologyGraphLevel,
   normalizeThermalTopologyLayout,
   normalizeThermalTopologyMetric,
   normalizeThermalTopologyScope,
@@ -11,7 +8,6 @@ import {
 } from "../state.js";
 import { t } from "../i18n.js";
 import { clearSemanticHover, hoverSemanticEntity } from "../selection-controller.js";
-import { recordViewHistory } from "../view-history.js";
 import {
   computeThermalTopologyLayout,
   createThermalTopologyLayoutModel,
@@ -29,24 +25,20 @@ let resizeObserver = null;
 let resizeFrame = 0;
 let observedWidth = 0;
 let observedHeight = 0;
-let compactSelection = null;
 
 const THERMAL_LAYOUT_CACHE_LIMIT = 24;
 
 window.addEventListener("idfAnalyzer:thermalTopologyFit", () => fitThermalTopology());
 window.addEventListener("idfAnalyzer:thermalTopologyExport", () => exportThermalTopologyJSON());
 
-export function thermalTopologyExportPayload(geometry, areaBasis = "effective") {
+export function thermalTopologyExportPayload(geometry) {
   const topology = geometry?.topology;
   if (!topology) return null;
-  return {
-    ...topology,
-    areaBasis: normalizeThermalTopologyAreaBasis(areaBasis),
-  };
+  return { ...topology };
 }
 
 export function exportThermalTopologyJSON() {
-  const payload = thermalTopologyExportPayload(currentGeometry, state.thermalTopologyAreaBasis);
+  const payload = thermalTopologyExportPayload(currentGeometry);
   if (!payload) return false;
   const blob = new Blob([`${JSON.stringify(payload, null, 2)}\n`], { type: "application/json" });
   const url = URL.createObjectURL(blob);
@@ -108,10 +100,7 @@ function renderThermalTopologySVG(model, layout) {
   const edges = [...layout.edges].sort((left, right) => String(left.targetId || left.id).localeCompare(String(right.targetId || right.id)));
   const nodes = [...model.nodes].sort((left, right) => String(left.id).localeCompare(String(right.id)));
   const metricContext = createMetricContext(model);
-  const backButton = state.thermalTopologyGraphLevel === "boundary"
-    ? `<button class="thermal-topology-back" type="button" data-topology-back>${escapeHTML(t("action.back", {}, "Back"))}</button>`
-    : "";
-  elements.thermalTopologyGraph.innerHTML = `${backButton}${renderMetricLegend()}
+  elements.thermalTopologyGraph.innerHTML = `${renderMetricLegend()}
     <svg class="thermal-topology-svg" viewBox="0 0 ${layout.width} ${layout.height}" preserveAspectRatio="xMidYMid meet" tabindex="0" aria-label="${escapeHTML(t("topology.thermalTooltip"))}">
       <defs>
         <marker id="thermalTopologyArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
@@ -220,23 +209,14 @@ function bindGraphInteractions() {
       event.stopPropagation();
       activateGraphTarget(element.dataset.thermalTargetKind, element.dataset.thermalTargetId);
     });
-    element.addEventListener("dblclick", (event) => {
-      if (element.dataset.thermalTargetKind !== "thermal_connection") return;
-      event.preventDefault();
-      expandConnection(element.dataset.thermalTargetId);
-    });
     element.addEventListener("keydown", (event) => {
-      if (event.key === "Enter" && element.dataset.thermalTargetKind === "thermal_connection") {
-        event.preventDefault();
-        expandConnection(element.dataset.thermalTargetId);
-      } else if (event.key === "Enter" || event.key === " ") {
+      if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
         activateGraphTarget(element.dataset.thermalTargetKind, element.dataset.thermalTargetId);
       }
     });
     bindThermalHover(element);
   });
-  elements.thermalTopologyGraph.querySelector("[data-topology-back]")?.addEventListener("click", collapseBoundaryGraph);
 }
 
 function rememberThermalTopologyLayout(cacheKey, layout) {
@@ -275,31 +255,6 @@ function markGraphTargetSelected(kind, id) {
   target?.querySelector(".thermal-edge")?.classList.add("selected");
 }
 
-function expandConnection(id) {
-  recordViewHistory();
-  compactSelection = { kind: "thermal_connection", id, scope: state.thermalTopologyScope };
-  state.thermalTopologyGraphLevel = "boundary";
-  state.thermalTopologyScope = "selection";
-  state.thermalTopologySelectedEntityId = id;
-  state.thermalTopologySelectedEntityKind = "thermal_connection";
-  state.selectedGeometryKind = "thermal_connection";
-  state.selectedGeometryId = id;
-  renderThermalTopology(currentGeometry, currentHelpers);
-}
-
-function collapseBoundaryGraph() {
-  recordViewHistory();
-  state.thermalTopologyGraphLevel = "zone";
-  if (compactSelection) {
-    state.thermalTopologyScope = compactSelection.scope;
-    state.thermalTopologySelectedEntityId = compactSelection.id;
-    state.thermalTopologySelectedEntityKind = compactSelection.kind;
-    state.selectedGeometryKind = compactSelection.kind;
-    state.selectedGeometryId = compactSelection.id;
-  }
-  renderThermalTopology(currentGeometry, currentHelpers);
-}
-
 function applyGraphTransform() {
   const group = elements.thermalTopologyGraph.querySelector(".thermal-topology-panzoom");
   if (group) group.setAttribute("transform", graphTransform());
@@ -327,16 +282,15 @@ function ensureResizeObserver() {
 
 function thermalTopologyOptions() {
   return {
-    graphLevel: state.thermalTopologyGraphLevel,
+    graphLevel: "zone",
     metric: state.thermalTopologyMetric,
-    areaComponent: state.thermalTopologyAreaComponent,
+    areaComponent: "gross",
     layout: state.thermalTopologyLayout,
     scope: state.thermalTopologyScope,
     storyIndex: state.selectedGeometryStory,
     selectedEntityId: state.thermalTopologySelectedEntityId || state.selectedGeometryId,
     selectedEntityKind: state.thermalTopologySelectedEntityKind || state.selectedGeometryKind,
     neighborDepth: state.thermalTopologyNeighborDepth,
-    areaBasis: state.thermalTopologyAreaBasis,
     showOpenings: state.thermalTopologyShowOpenings,
     showAirCoupling: state.thermalTopologyShowAirCoupling || state.thermalTopologyMetric === "air",
     expandExternalTargets: state.thermalTopologyExpandExternalTargets,
@@ -351,13 +305,9 @@ function graphViewport() {
 }
 
 function syncThermalTopologyControls() {
-  elements.thermalTopologyGraphLevel.value = normalizeThermalTopologyGraphLevel(state.thermalTopologyGraphLevel);
   elements.thermalTopologyMetric.value = normalizeThermalTopologyMetric(state.thermalTopologyMetric);
-  elements.thermalTopologyAreaComponent.value = normalizeThermalTopologyAreaComponent(state.thermalTopologyAreaComponent);
-  elements.thermalTopologyAreaComponentControl.hidden = state.thermalTopologyMetric !== "area";
   elements.thermalTopologyScope.value = normalizeThermalTopologyScope(state.thermalTopologyScope);
   elements.thermalTopologyLayout.value = normalizeThermalTopologyLayout(state.thermalTopologyLayout);
-  elements.thermalTopologyAreaBasis.value = normalizeThermalTopologyAreaBasis(state.thermalTopologyAreaBasis);
   elements.thermalTopologyShowOpenings.checked = Boolean(state.thermalTopologyShowOpenings);
   elements.thermalTopologyShowAirCoupling.checked = Boolean(state.thermalTopologyShowAirCoupling);
   elements.thermalTopologyExpandExternalTargets.checked = Boolean(state.thermalTopologyExpandExternalTargets);
@@ -369,8 +319,7 @@ function connectionLabel(connection, model, metricContext) {
   }
   const area = connectionAreaValue(connection, model);
   const gross = Math.max(area, 0.000001);
-  const openingField = model.areaBasis === "physical" ? "physicalOpeningArea" : "effectiveOpeningArea";
-  const openingRatio = Math.max(0, Number(connection?.[openingField]) || 0) / gross;
+  const openingRatio = Math.max(0, Number(connection?.physicalOpeningArea) || 0) / gross;
   const parts = [];
   if (model.metric === "area") parts.push(formatArea(area));
   else if (model.metric === "ua") parts.push(connectionUAValue(connection, model).available ? `${formatNumber(connectionUAValue(connection, model).value)} W/K` : "N/A");
@@ -448,24 +397,19 @@ function edgeMetricPresentation(connection, model, context) {
 function renderMetricLegend() {
   const metric = state.thermalTopologyMetric;
   return `<div class="thermal-topology-legend" data-topology-metric="${escapeHTML(metric)}" role="note" aria-label="Network connection types">
-    <span class="thermal-legend-item"><i class="thermal-legend-line conductive" aria-hidden="true"></i>Conductive / exterior</span>
+    <span class="thermal-legend-item"><i class="thermal-legend-line conductive" aria-hidden="true"></i>Conductive and exterior</span>
     <span class="thermal-legend-item"><i class="thermal-legend-line ground" aria-hidden="true"></i>Ground</span>
     <span class="thermal-legend-item"><i class="thermal-legend-line adiabatic" aria-hidden="true"></i>Adiabatic</span>
-    <span class="thermal-legend-item"><i class="thermal-legend-line air" aria-hidden="true"></i>Air / issue pattern</span>
+    <span class="thermal-legend-item"><i class="thermal-legend-line air" aria-hidden="true"></i>Air and issue pattern</span>
   </div>`;
 }
 
 function connectionAreaValue(connection, model) {
-  const basis = model.areaBasis === "physical" ? "physical" : "effective";
-  const suffix = model.areaComponent === "opaque" ? "OpaqueArea" : model.areaComponent === "openings" ? "OpeningArea" : "GrossArea";
-  return Math.max(0, Number(connection?.[`${basis}${suffix}`]) || 0);
+  return Math.max(0, Number(connection?.physicalGrossArea) || 0);
 }
 
-function connectionUAValue(connection, model) {
-  if (model.areaBasis === "physical") {
-    return { value: Math.max(0, Number(connection.physicalTotalUa) || 0), available: Boolean(connection.hasPhysicalUa) };
-  }
-  return { value: Math.max(0, Number(connection.totalUa) || 0), available: Boolean(connection.hasUa) };
+function connectionUAValue(connection) {
+  return { value: Math.max(0, Number(connection.physicalTotalUa) || 0), available: Boolean(connection.hasPhysicalUa) };
 }
 
 function airCouplingsForConnection(connection, model) {
@@ -474,7 +418,7 @@ function airCouplingsForConnection(connection, model) {
 }
 
 function connectionTooltip(connection, model) {
-  const area = model.areaBasis === "physical" ? connection.physicalGrossArea : connection.effectiveGrossArea;
+  const area = connection.physicalGrossArea;
   const ua = connectionUAValue(connection, model);
   const values = [
     String(connection.relationKind || "connection").replaceAll("_", " "),

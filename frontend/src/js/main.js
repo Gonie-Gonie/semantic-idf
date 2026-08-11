@@ -3,9 +3,6 @@ import { loadAndApplyAppSettings } from "./settings-client.js";
 import {
   backend,
   elements,
-  normalizeThermalTopologyAreaComponent,
-  normalizeThermalTopologyAreaBasis,
-  normalizeThermalTopologyGraphLevel,
   normalizeThermalTopologyLayout,
   normalizeThermalTopologyMetric,
   normalizeThermalTopologyScope,
@@ -250,23 +247,14 @@ elements.geometryModeButtons.forEach((button) => {
   button.addEventListener("click", () => setGeometryMode(button.dataset.geometryMode));
 });
 elements.geometryStorySelect.addEventListener("change", () => setGeometryStory(elements.geometryStorySelect.value));
-elements.thermalTopologyGraphLevel.addEventListener("change", () => {
-  updateThermalTopologySetting("thermalTopologyGraphLevel", normalizeThermalTopologyGraphLevel(elements.thermalTopologyGraphLevel.value));
-});
 elements.thermalTopologyMetric.addEventListener("change", () => {
   updateThermalTopologySetting("thermalTopologyMetric", normalizeThermalTopologyMetric(elements.thermalTopologyMetric.value));
-});
-elements.thermalTopologyAreaComponent.addEventListener("change", () => {
-  updateThermalTopologySetting("thermalTopologyAreaComponent", normalizeThermalTopologyAreaComponent(elements.thermalTopologyAreaComponent.value));
 });
 elements.thermalTopologyScope.addEventListener("change", () => {
   updateThermalTopologySetting("thermalTopologyScope", normalizeThermalTopologyScope(elements.thermalTopologyScope.value));
 });
 elements.thermalTopologyLayout.addEventListener("change", () => {
   updateThermalTopologySetting("thermalTopologyLayout", normalizeThermalTopologyLayout(elements.thermalTopologyLayout.value));
-});
-elements.thermalTopologyAreaBasis.addEventListener("change", () => {
-  updateThermalTopologySetting("thermalTopologyAreaBasis", normalizeThermalTopologyAreaBasis(elements.thermalTopologyAreaBasis.value));
 });
 elements.thermalTopologyShowOpenings.addEventListener("change", () => {
   updateThermalTopologySetting("thermalTopologyShowOpenings", elements.thermalTopologyShowOpenings.checked);

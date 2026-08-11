@@ -735,13 +735,6 @@
                 </div>
                 <div id="thermalTopologyControls" class="thermal-topology-controls" hidden>
                   <label class="topology-select-control">
-                    <span data-i18n="topology.graph">Graph</span>
-                    <select id="thermalTopologyGraphLevel" aria-label="Thermal graph level">
-                      <option value="zone" data-i18n="topology.graphZones">Zones</option>
-                      <option value="boundary" data-i18n="topology.graphBoundaries">Boundaries</option>
-                    </select>
-                  </label>
-                  <label class="topology-select-control">
                     <span data-i18n="topology.metric">Metric</span>
                     <select id="thermalTopologyMetric" aria-label="Thermal graph metric">
                       <option value="topology" data-i18n="topology.metricConnectivity">Connectivity</option>
@@ -750,14 +743,6 @@
                       <option value="exposure" data-i18n="topology.metricExposure">Exposure</option>
                       <option value="qa" data-i18n="topology.metricQA">QA</option>
                       <option value="air" data-i18n="topology.metricAir">Air</option>
-                    </select>
-                  </label>
-                  <label id="thermalTopologyAreaComponentControl" class="topology-select-control" hidden>
-                    <span data-i18n="topology.areaComponent">Area</span>
-                    <select id="thermalTopologyAreaComponent" aria-label="Thermal area component">
-                      <option value="gross" data-i18n="topology.areaGross">Gross</option>
-                      <option value="opaque" data-i18n="topology.areaOpaque">Opaque</option>
-                      <option value="openings" data-i18n="topology.areaOpenings">Openings</option>
                     </select>
                   </label>
                   <label class="topology-select-control">
@@ -778,13 +763,6 @@
                         <select id="thermalTopologyLayout">
                           <option value="spatial" data-i18n="topology.layoutSpatial">Spatial</option>
                           <option value="network" data-i18n="topology.layoutNetwork">Network</option>
-                        </select>
-                      </label>
-                      <label id="thermalTopologyAreaBasisControl" class="topology-select-control">
-                        <span data-i18n="topology.areaBasis">Area basis</span>
-                        <select id="thermalTopologyAreaBasis">
-                          <option value="effective" data-i18n="topology.areaBasisEffective">Model total</option>
-                          <option value="physical" data-i18n="topology.areaBasisPhysical">Physical</option>
                         </select>
                       </label>
                       <label class="geometry-toggle"><input id="thermalTopologyShowOpenings" type="checkbox" checked /> <span data-i18n="topology.showOpenings">Openings</span></label>

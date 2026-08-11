@@ -9,7 +9,7 @@ func TestThermalTopologyExportUsesCanonicalReportWithoutViewState(t *testing.T) 
 	markup := readTestFile(t, "frontend/src/index.html")
 	view := readTestFile(t, "frontend/src/js/views/thermal-topology-view.js")
 	main := readTestFile(t, "frontend/src/js/main.js")
-	for _, required := range []string{`id="thermalTopologyExportJSON"`, "idfAnalyzer:thermalTopologyExport", "thermalTopologyExportPayload", "...topology", "areaBasis"} {
+	for _, required := range []string{`id="thermalTopologyExportJSON"`, "idfAnalyzer:thermalTopologyExport", "thermalTopologyExportPayload", "...topology"} {
 		if !strings.Contains(markup+view+main, required) {
 			t.Fatalf("thermal topology export contract is missing %q", required)
 		}
@@ -20,7 +20,7 @@ func TestThermalTopologyExportUsesCanonicalReportWithoutViewState(t *testing.T) 
 		t.Fatal("thermalTopologyExportPayload function not found")
 	}
 	payloadFunction := view[functionStart : functionStart+functionEnd]
-	for _, forbidden := range []string{"thermalTopologyPanX", "thermalTopologyPanY", "thermalTopologyScale", "thermalTopologyLayoutCache"} {
+	for _, forbidden := range []string{"areaBasis", "thermalTopologyPanX", "thermalTopologyPanY", "thermalTopologyScale", "thermalTopologyLayoutCache"} {
 		if strings.Contains(payloadFunction, forbidden) {
 			t.Fatalf("topology export payload contains UI-only state %q", forbidden)
 		}

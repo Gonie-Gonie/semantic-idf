@@ -93,7 +93,7 @@ func TestThermalTopologyRendererBrowserHarness(t *testing.T) {
 	if !strings.Contains(document, `data-thermal-renderer-status="passed"`) {
 		t.Fatalf("thermal topology renderer harness did not pass:\n%s", document)
 	}
-	for _, signal := range []string{`"svg":true`, `"metricWidth":true`, `"inspector":true`, `"accessibleTargets":true`, `"deterministicTabOrder":true`, `"keyboardNode":true`, `"inspectorHeading":true`, `"patternLegend":true`, `"boundaryExpanded":true`, `"backRestored":true`} {
+	for _, signal := range []string{`"svg":true`, `"metricWidth":true`, `"inspector":true`, `"accessibleTargets":true`, `"deterministicTabOrder":true`, `"keyboardNode":true`, `"inspectorHeading":true`, `"patternLegend":true`, `"zoneOnly":true`, `"grossOnly":true`} {
 		if !strings.Contains(document, signal) {
 			t.Fatalf("thermal topology renderer result is missing %s:\n%s", signal, document)
 		}
@@ -118,16 +118,16 @@ try {
       { id: "thermal-environment:ground", kind: "ground", label: "Ground" },
     ],
     connections: [
-      { id: "edge:ab", fromNodeId: "zone:a", toNodeId: "zone:b", relationKind: "interzone", surfaceCount: 2, effectiveGrossArea: 20 },
+      { id: "edge:ab", fromNodeId: "zone:a", toNodeId: "zone:b", relationKind: "interzone", surfaceCount: 2, physicalGrossArea: 20 },
       { id: "edge:ab:air", fromNodeId: "zone:a", toNodeId: "zone:b", relationKind: "air_coupling", airCouplingIds: ["air:ab"] },
-      { id: "edge:bc", fromNodeId: "zone:b", toNodeId: "zone:c", relationKind: "interzone", surfaceCount: 2, effectiveGrossArea: 18 },
+      { id: "edge:bc", fromNodeId: "zone:b", toNodeId: "zone:c", relationKind: "interzone", surfaceCount: 2, physicalGrossArea: 18 },
       { id: "edge:out", fromNodeId: "zone:a", toNodeId: "thermal-environment:outdoors", relationKind: "outdoors", orientations: ["North"], surfaceCount: 1 },
       { id: "edge:ground", fromNodeId: "zone:c", toNodeId: "thermal-environment:ground", relationKind: "ground", surfaceCount: 1 },
       { id: "edge:loop", fromNodeId: "zone:b", toNodeId: "zone:b", relationKind: "adiabatic", surfaceCount: 1 },
     ],
     boundaries: [], openings: [], airCouplings: [],
   }};
-  const options = { graphLevel: "zone", layout: "spatial", scope: "building", areaBasis: "effective", selectedEntityId: "zone:b", neighborDepth: 1, showAirCoupling: true };
+  const options = { layout: "spatial", scope: "building", selectedEntityId: "zone:b", neighborDepth: 1, showAirCoupling: true };
   const model = layout.createThermalTopologyLayoutModel(geometry, options);
   const first = layout.computeThermalTopologyLayout(model, { width: 900, height: 600 });
   const second = layout.computeThermalTopologyLayout(model, { width: 900, height: 600 });
@@ -163,12 +163,9 @@ const thermalTopologyRendererHarnessHTML = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Thermal topology renderer harness</title></head>
 <body data-thermal-renderer-status="pending">
 <div id="thermalTopologyGraph" style="width:900px;height:600px"></div><aside id="thermalTopologyInspector"></aside>
-<select id="thermalTopologyGraphLevel"><option value="zone">zone</option><option value="boundary">boundary</option></select>
 <select id="thermalTopologyMetric"><option value="topology">topology</option><option value="area">area</option><option value="ua">ua</option><option value="qa">qa</option><option value="air">air</option></select>
-<label id="thermalTopologyAreaComponentControl"><select id="thermalTopologyAreaComponent"><option value="gross">gross</option><option value="opaque">opaque</option><option value="openings">openings</option></select></label>
 <select id="thermalTopologyScope"><option value="building">building</option><option value="selection">selection</option></select>
 <select id="thermalTopologyLayout"><option value="spatial">spatial</option><option value="network">network</option></select>
-<select id="thermalTopologyAreaBasis"><option value="effective">effective</option><option value="physical">physical</option></select>
 <input id="thermalTopologyShowOpenings" type="checkbox" checked><input id="thermalTopologyShowAirCoupling" type="checkbox"><input id="thermalTopologyExpandExternalTargets" type="checkbox">
 <pre id="result">pending</pre>
 <script type="module">
@@ -189,12 +186,19 @@ try {
     issueLinks:[{id:"topology-issue:a",code:"surface_pair_area_mismatch",severity:"warning",message:"Area mismatch",boundaryId:"thermal-boundary:surface:a"}], adjacencyObservations:[],
   }};
   const state = stateModule.state;
-  state.geometryMode = "thermal"; state.report = {geometry}; state.thermalTopologyMetric = "area"; state.thermalTopologyAreaComponent = "gross"; state.thermalTopologyGraphLevel = "zone"; state.thermalTopologyScope = "building"; state.thermalTopologySelectedEntityId = "thermal-connection:a:outdoors"; state.selectedGeometryKind = "thermal_connection"; state.selectedGeometryId = "thermal-connection:a:outdoors";
+  state.geometryMode = "thermal"; state.report = {geometry}; state.thermalTopologyMetric = "area"; state.thermalTopologyScope = "building"; state.thermalTopologySelectedEntityId = "thermal-connection:a:outdoors"; state.selectedGeometryKind = "thermal_connection"; state.selectedGeometryId = "thermal-connection:a:outdoors";
   const helpers = { navigationAttributes: () => 'data-entity-id="test"', selectGeometry: async () => true, setGeometryMode: () => {} };
   view.renderThermalTopology(geometry, helpers);
   const svg = Boolean(document.querySelector(".thermal-topology-svg"));
   const metricWidth = /--thermal-edge-width:(?!2\.00)/.test(document.querySelector(".thermal-edge").getAttribute("style"));
-  const inspector = document.getElementById("thermalTopologyInspector").textContent.includes("Model total");
+  const tableHeaders = [...document.querySelectorAll("#thermalTopologyInspector .thermal-inspector-table thead th")].map((cell) => cell.textContent.trim());
+  const tableRows = new Map([...document.querySelectorAll("#thermalTopologyInspector .thermal-inspector-table tbody tr")].map((row) => {
+    const cells = [...row.querySelectorAll("th,td")].map((cell) => cell.textContent.trim());
+    return [cells[0], {value:cells[1],unit:cells[2]}];
+  }));
+  const sourceBoundary = document.querySelector('[data-thermal-inspector-kind="thermal_boundary"][data-thermal-inspector-id="thermal-boundary:surface:a"]');
+  const removedInspectorUI = !document.querySelector('[data-inspector-semantic],[data-inspector-source],[data-inspector-diagnostic],[data-inspector-mode],.thermal-inspector-actions');
+  const inspector = tableHeaders.join() === "Variable,Value,Unit" && tableRows.get("Multiplier")?.value === "2" && tableRows.get("Gross area")?.value === "10" && tableRows.get("Total UA")?.value === "5.2" && Boolean(sourceBoundary) && removedInspectorUI;
   const targets = [...document.querySelectorAll(".thermal-edge-group[tabindex='0'], .thermal-node[tabindex='0']")];
   const accessibleTargets = targets.length === 3 && targets.every((target) => ["entity", "relation", "metric", "issues"].every((term) => target.getAttribute("aria-label").includes(term)));
   const edgeOrder = [...document.querySelectorAll(".thermal-edge-group")].map((target) => target.dataset.thermalTargetId);
@@ -206,13 +210,12 @@ try {
   const inspectorHeading = document.getElementById("thermalTopologyInspector").getAttribute("aria-labelledby") === "thermalTopologyInspectorHeading" && Boolean(document.getElementById("thermalTopologyInspectorHeading"));
   const patternLegend = document.querySelectorAll(".thermal-legend-line").length >= 4;
   document.querySelector(".thermal-edge-group").dispatchEvent(new KeyboardEvent("keydown", {key:"Enter",bubbles:true}));
-  const boundaryExpanded = state.thermalTopologyGraphLevel === "boundary" && Boolean(document.querySelector(".thermal-node.thermal_boundary"));
-  document.querySelector("[data-topology-back]").click();
-  const backRestored = state.thermalTopologyGraphLevel === "zone";
+  const zoneOnly = state.thermalTopologySelectedEntityKind === "thermal_connection" && !document.querySelector(".thermal-node.thermal_boundary") && !document.querySelector("[data-topology-back]") && !document.getElementById("thermalTopologyGraphLevel") && stateModule.normalizeThermalTopologyGraphLevel("boundary") === "zone";
+  const grossOnly = !document.getElementById("thermalTopologyAreaComponent") && !document.getElementById("thermalTopologyAreaBasis") && stateModule.normalizeThermalTopologyAreaComponent("openings") === "gross";
   state.thermalTopologyMetric = "ua"; view.renderThermalTopology(geometry, helpers);
 
-  assert(svg && metricWidth && inspector && accessibleTargets && deterministicTabOrder && keyboardNode && inspectorHeading && patternLegend && boundaryExpanded && backRestored, "renderer contract failed");
-  document.getElementById("result").textContent = JSON.stringify({svg,metricWidth,inspector,accessibleTargets,deterministicTabOrder,keyboardNode,inspectorHeading,patternLegend,boundaryExpanded,backRestored});
+  assert(svg && metricWidth && inspector && accessibleTargets && deterministicTabOrder && keyboardNode && inspectorHeading && patternLegend && zoneOnly && grossOnly, "renderer contract failed");
+  document.getElementById("result").textContent = JSON.stringify({svg,metricWidth,inspector,accessibleTargets,deterministicTabOrder,keyboardNode,inspectorHeading,patternLegend,zoneOnly,grossOnly});
   document.body.dataset.thermalRendererStatus = "passed";
 } catch (error) {
   document.getElementById("result").textContent = error.stack || String(error);

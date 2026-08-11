@@ -16,16 +16,17 @@ func TestTopologyViewSwitchSupportsThermalAndNormalizesInvalidModes(t *testing.T
 		`id="thermalTopologyGraph"`,
 		`id="thermalTopologyView"`,
 		`id="thermalTopologyInspector"`,
-		`id="thermalTopologyGraphLevel"`,
 		`id="thermalTopologyMetric"`,
 		`id="thermalTopologyScope"`,
 		`id="thermalTopologyAdvanced"`,
-		`id="thermalTopologyAreaBasis"`,
-		`value="effective"`,
-		`value="physical"`,
 	} {
 		if !strings.Contains(index, required) {
 			t.Fatalf("topology view switch is missing %q", required)
+		}
+	}
+	for _, removed := range []string{`id="thermalTopologyGraphLevel"`, `value="boundary"`, `id="thermalTopologyAreaComponent"`, `value="opaque"`, `value="openings"`, `id="thermalTopologyAreaBasis"`} {
+		if strings.Contains(index, removed) {
+			t.Fatalf("fixed Zone/Gross topology controls still expose %q", removed)
 		}
 	}
 
@@ -40,10 +41,12 @@ func TestTopologyViewSwitchSupportsThermalAndNormalizesInvalidModes(t *testing.T
 	}
 }
 
-func TestTopologyAreaBasisDefaultsToEffectiveAndGeometryLabelsUsePhysicalArea(t *testing.T) {
+func TestTopologyUsesCanonicalPhysicalGrossAreaWithSeparateMultiplier(t *testing.T) {
 	state := readTestFile(t, "frontend/src/js/state.js")
-	if !strings.Contains(state, `thermalTopologyAreaBasis: "effective"`) {
-		t.Fatal("thermal topology area basis must default to effective model-total area")
+	for _, removed := range []string{"thermalTopologyAreaBasis", "normalizeThermalTopologyAreaBasis"} {
+		if strings.Contains(state, removed) {
+			t.Fatalf("removed area-basis state remains %q", removed)
+		}
 	}
 
 	view := readTestFile(t, "frontend/src/js/views/geometry-view.js")
@@ -56,8 +59,14 @@ func TestTopologyAreaBasisDefaultsToEffectiveAndGeometryLabelsUsePhysicalArea(t 
 		}
 	}
 	layout := readTestFile(t, "frontend/src/js/views/thermal-topology-layout.js")
-	if !strings.Contains(layout, `"physicalGrossArea" : "effectiveGrossArea"`) {
-		t.Fatal("thermal layout must select physical or effective boundary area explicitly")
+	if !strings.Contains(layout, `areaField: "physicalGrossArea"`) || strings.Contains(layout, `effectiveGrossArea`) {
+		t.Fatal("thermal layout must use physical gross area as its single canonical basis")
+	}
+	inspector := readTestFile(t, "frontend/src/js/views/thermal-topology-inspector.js")
+	for _, required := range []string{`renderVariableTable`, `thermal-inspector-table`, `"Multiplier"`, `"Gross area"`, `areaMultiplier`} {
+		if !strings.Contains(inspector, required) {
+			t.Fatalf("separate multiplier table contract is missing %q", required)
+		}
 	}
 }
 
@@ -117,7 +126,7 @@ func TestTopologyToolbarSeparatesSpatialAndThermalControls(t *testing.T) {
 
 func TestTopologyNetworkHasNoMatrixOrEdgeLabels(t *testing.T) {
 	content := readTestFile(t, "frontend/src/index.html") + readTestFile(t, "frontend/src/js/views/thermal-topology-view.js") + readTestFile(t, "frontend/src/styles/geometry.css")
-	for _, removed := range []string{"thermalTopologyMatrix", "thermal-matrix", "data-thermal-topology-display", "thermal-edge-label", `} surfaces` } {
+	for _, removed := range []string{"thermalTopologyMatrix", "thermal-matrix", "data-thermal-topology-display", "thermal-edge-label", `} surfaces`} {
 		if strings.Contains(content, removed) {
 			t.Fatalf("Network view still contains removed matrix or edge-label feature %q", removed)
 		}
@@ -133,11 +142,14 @@ func TestTopologySVGRendererUsesPortsPanZoomAndLayoutCache(t *testing.T) {
 		`svg.addEventListener("wheel"`,
 		`svg.addEventListener("pointerdown"`,
 		`state.thermalTopologyLayoutCache.get(cacheKey)`,
-		`expandConnection(element.dataset.thermalTargetId)`,
-		`data-topology-back`,
 	} {
 		if !strings.Contains(view, required) {
 			t.Fatalf("thermal SVG renderer is missing %q", required)
+		}
+	}
+	for _, removed := range []string{"expandConnection", "collapseBoundaryGraph", "data-topology-back"} {
+		if strings.Contains(view, removed) {
+			t.Fatalf("fixed Zone graph still contains boundary drill-down %q", removed)
 		}
 	}
 	layout := readTestFile(t, "frontend/src/js/views/thermal-topology-layout.js")
@@ -155,15 +167,23 @@ func TestTopologySVGRendererUsesPortsPanZoomAndLayoutCache(t *testing.T) {
 	}
 }
 
-func TestTopologyMetricModesAndBoundaryInspectorExposeRequiredContracts(t *testing.T) {
+func TestTopologyMetricModesAndInspectorExposeRequiredContracts(t *testing.T) {
 	index := readTestFile(t, "frontend/src/index.html")
-	for _, required := range []string{`id="thermalTopologyAreaComponent"`, `value="gross"`, `value="opaque"`, `value="openings"`} {
-		if !strings.Contains(index, required) {
-			t.Fatalf("thermal area metric selector is missing %q", required)
+	for _, removed := range []string{`id="thermalTopologyAreaComponent"`, `value="opaque"`, `value="openings"`, `id="thermalTopologyAreaBasis"`} {
+		if strings.Contains(index, removed) {
+			t.Fatalf("fixed Gross area mode still exposes %q", removed)
+		}
+	}
+	state := readTestFile(t, "frontend/src/js/state.js")
+	for _, required := range []string{`export function normalizeThermalTopologyGraphLevel()`, `return "zone";`, `export function normalizeThermalTopologyAreaComponent()`, `return "gross";`} {
+		if !strings.Contains(state, required) {
+			t.Fatalf("fixed Zone/Gross state contract is missing %q", required)
 		}
 	}
 	view := readTestFile(t, "frontend/src/js/views/thermal-topology-view.js")
 	for _, required := range []string{
+		`graphLevel: "zone"`,
+		`areaComponent: "gross"`,
 		`edgeMetricPresentation`,
 		`connectionAreaValue`,
 		`connectionUAValue`,
@@ -177,9 +197,9 @@ func TestTopologyMetricModesAndBoundaryInspectorExposeRequiredContracts(t *testi
 		}
 	}
 	layout := readTestFile(t, "frontend/src/js/views/thermal-topology-layout.js")
-	for _, required := range []string{`createBoundaryDetailModel`, `computeBoundaryLayout`, `hiddenBoundaryCount`, `qaObservationConnections`} {
+	for _, required := range []string{`areaField: "physicalGrossArea"`, `qaObservationConnections`} {
 		if !strings.Contains(layout, required) {
-			t.Fatalf("detailed boundary graph is missing %q", required)
+			t.Fatalf("fixed Gross topology layout is missing %q", required)
 		}
 	}
 	inspector := readTestFile(t, "frontend/src/js/views/thermal-topology-inspector.js")
@@ -190,13 +210,31 @@ func TestTopologyMetricModesAndBoundaryInspectorExposeRequiredContracts(t *testi
 		`renderOpeningDetails`,
 		`renderAirCouplingDetails`,
 		`renderEnvironmentDetails`,
-		`data-inspector-mode="3d"`,
-		`data-inspector-semantic`,
-		`data-inspector-source`,
-		`data-inspector-diagnostic`,
+		`renderVariableTable`,
+		`thermal-inspector-table`,
+		`data-thermal-inspector-kind`,
+		`"Multiplier"`,
 	} {
 		if !strings.Contains(inspector, required) {
 			t.Fatalf("thermal inspector is missing %q", required)
+		}
+	}
+	for _, removed := range []string{
+		`data-inspector-`,
+		`renderInspectorActions`,
+		`renderDiagnostics`,
+		`renderZoneOutputSummary`,
+		`Output requests`,
+		`Diagnostics`,
+		`inspectorSection("Actions"`,
+		`thermal-inspector-actions`,
+		`Model total`,
+		`Physical / model`,
+		`Gross /`,
+		`Opaque /`,
+	} {
+		if strings.Contains(inspector, removed) {
+			t.Fatalf("removed inspector concept remains %q", removed)
 		}
 	}
 }

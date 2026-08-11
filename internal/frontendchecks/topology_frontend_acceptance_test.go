@@ -49,9 +49,15 @@ func TestTOPO261LayoutRoutingAcceptance(t *testing.T) {
 			t.Fatalf("layout/routing acceptance missing %q", required)
 		}
 	}
+	state := readTestFile(t, "frontend/src/js/state.js")
+	if !strings.Contains(state, `export function normalizeThermalTopologyGraphLevel()`) || !strings.Contains(state, `return "zone";`) {
+		t.Fatal("Network graph type must be fixed to Zone")
+	}
 	view := readTestFile(t, "frontend/src/js/views/thermal-topology-view.js")
-	if !strings.Contains(view, "expandConnection(element.dataset.thermalTargetId)") || !strings.Contains(view, "collapseBoundaryGraph") {
-		t.Fatal("edge bundle expand/collapse acceptance is missing")
+	for _, removed := range []string{"expandConnection", "collapseBoundaryGraph", "data-topology-back"} {
+		if strings.Contains(view, removed) {
+			t.Fatalf("Zone-only Network still exposes boundary drill-down %q", removed)
+		}
 	}
 }
 
@@ -69,14 +75,32 @@ func TestTOPO262NavigationAcceptance(t *testing.T) {
 	}
 	inspector := readTestFile(t, "frontend/src/js/views/thermal-topology-inspector.js")
 	for _, required := range []string{
-		`data-inspector-semantic`,
-		`data-inspector-source`,
-		`data-inspector-diagnostic`,
-		`data-inspector-construction`,
-		`openSelectionInView("diagnose"`,
+		`renderVariableTable`,
+		`thermal-inspector-table`,
+		`data-thermal-inspector-kind`,
+		`activeHelpers.selectGeometry?.`,
+		`"Multiplier"`,
 	} {
 		if !strings.Contains(inspector, required) {
 			t.Fatalf("inspector navigation acceptance missing %q", required)
+		}
+	}
+	for _, removed := range []string{
+		`data-inspector-`,
+		`data-panel-action-menu`,
+		`navigationAttributes`,
+		`navigable-row`,
+		`openSelectionInView(`,
+		`renderInspectorActions`,
+		`renderDiagnostics`,
+		`renderZoneOutputSummary`,
+		`Output requests`,
+		`Diagnostics`,
+		`inspectorSection("Actions"`,
+		`thermal-inspector-actions`,
+	} {
+		if strings.Contains(inspector, removed) {
+			t.Fatalf("removed inspector action remains %q", removed)
 		}
 	}
 	selection := readTestFile(t, "frontend/src/js/selection-controller.js")

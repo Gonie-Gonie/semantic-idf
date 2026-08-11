@@ -34,14 +34,28 @@ func TestThermalTopologySimulationOverlayContract(t *testing.T) {
 func TestThermalTopologyInspectorCrossPanelContract(t *testing.T) {
 	inspector := readTestFile(t, "frontend/src/js/views/thermal-topology-inspector.js")
 	for _, required := range []string{
-		"selectionTargetsForView",
-		`No linked ${label} target for this zone`,
+		`renderZoneProfileSummary(node)`,
+		`renderZoneHVACSummary(node)`,
 		`Profile summary`,
 		`HVAC service`,
-		`Output requests`,
 	} {
 		if !strings.Contains(inspector, required) {
 			t.Fatalf("thermal topology inspector is missing %q", required)
+		}
+	}
+	for _, removed := range []string{
+		`selectionTargetsForView`,
+		`Output requests`,
+		`renderZoneOutputSummary`,
+		`renderDiagnostics`,
+		`renderInspectorActions`,
+		`data-inspector-`,
+		`Diagnostics`,
+		`inspectorSection("Actions"`,
+		`thermal-inspector-actions`,
+	} {
+		if strings.Contains(inspector, removed) {
+			t.Fatalf("removed topology inspector section or action remains %q", removed)
 		}
 	}
 

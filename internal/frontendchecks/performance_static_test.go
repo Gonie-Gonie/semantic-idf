@@ -85,7 +85,9 @@ func TestFrontendThermalTopologyPerformanceContracts(t *testing.T) {
 	layout := readTestFile(t, "frontend/src/js/views/thermal-topology-layout.js")
 	for _, term := range []string{
 		"topology.sourceModelHash",
-		"normalizeThermalTopologyAreaBasis(options.areaBasis)",
+		"normalizeThermalTopologyGraphLevel(options.graphLevel)",
+		"normalizeThermalTopologyAreaComponent(options.areaComponent)",
+		`areaField: "physicalGrossArea"`,
 		"selectionAffectsScope",
 		`scope === "neighbors"`,
 	} {

@@ -1,5 +1,5 @@
 import {
-  normalizeThermalTopologyAreaBasis,
+  normalizeThermalTopologyAreaComponent,
   normalizeThermalTopologyGraphLevel,
   normalizeThermalTopologyLayout,
   normalizeThermalTopologyScope,
@@ -26,8 +26,7 @@ export function thermalTopologyLayoutCacheKey(geometry, options = {}, viewport =
     normalizeThermalTopologyLayout(options.layout),
     scope,
     options.metric || "topology",
-    options.areaComponent || "gross",
-    normalizeThermalTopologyAreaBasis(options.areaBasis),
+    normalizeThermalTopologyAreaComponent(options.areaComponent),
     options.storyIndex ?? "all",
     selectionAffectsScope ? options.selectedEntityId || "" : "",
     selectionAffectsScope ? options.selectedEntityKind || "" : "",
@@ -42,16 +41,14 @@ export function thermalTopologyLayoutCacheKey(geometry, options = {}, viewport =
 
 export function createThermalTopologyLayoutModel(geometry, options = {}) {
   const topology = geometry?.topology || {};
-  const areaBasis = normalizeThermalTopologyAreaBasis(options.areaBasis);
   const base = {
     schema: topology.schema || "",
     graphLevel: normalizeThermalTopologyGraphLevel(options.graphLevel),
     layout: normalizeThermalTopologyLayout(options.layout),
     scope: normalizeThermalTopologyScope(options.scope),
     metric: String(options.metric || "topology"),
-    areaComponent: String(options.areaComponent || "gross"),
-    areaBasis,
-    areaField: areaBasis === "physical" ? "physicalGrossArea" : "effectiveGrossArea",
+    areaComponent: normalizeThermalTopologyAreaComponent(options.areaComponent),
+    areaField: "physicalGrossArea",
     nodes: [...(topology.nodes || [])],
     connections: (topology.connections || []).filter((connection) => options.showAirCoupling || connection.relationKind !== "air_coupling"),
     boundaries: [...(topology.boundaries || [])],
