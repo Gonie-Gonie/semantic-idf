@@ -148,7 +148,7 @@ func TestFrontendProfileOverviewUsesStructuredMetricsAndCountAssignments(t *test
 	for _, required := range []string{
 		"const summaryByDimension = new Map(",
 		"const visibleDimensions = dimensions.length",
-		`const displayValue = summary?.displayValue || t("common.notAvailable")`,
+		`const displayValue = summary?.displayValue || "-"`,
 		`class="profile-card-metrics"`,
 		`class="profile-card-metric ${summary ? "" : "is-missing"}"`,
 		`data-profile-dimension="${escapeHTML(dimension.id)}"`,
@@ -175,6 +175,9 @@ func TestFrontendProfileOverviewUsesStructuredMetricsAndCountAssignments(t *test
 				t.Fatalf("Profile %s row must preserve listbox/option semantics, found %q", label, forbiddenRole)
 			}
 		}
+	}
+	if !strings.Contains(groupCard, `group.zoneNames.join("\n")`) {
+		t.Fatal("Profile assignment hover detail must list zones vertically")
 	}
 	for _, required := range []string{
 		"renderProfileAssignment(group.zoneCount, assignmentDetail)",
@@ -206,7 +209,8 @@ func TestFrontendProfileOverviewUsesStructuredMetricsAndCountAssignments(t *test
 		"cursor: help",
 		".profile-card-profile-name",
 		".profile-card-metrics",
-		"grid-template-columns: repeat(var(--profile-metric-columns, 1), minmax(0, 1fr))",
+		"repeat(var(--profile-metric-columns, 1), minmax(92px, 1fr))",
+		"display: contents",
 		".profile-card-metric",
 		".profile-card-metric-label",
 		".profile-card-metric-value",

@@ -494,6 +494,15 @@ function renderProfileOverview(groups, rows) {
   const metricDimensions = (lastProfileView?.dimensions || [])
     .filter((dimension) => state.profileSettings.enabledDimensions.includes(dimension.id) || dimension.id === profileNavigationRevealDimension)
     .map((dimension) => ({ id: dimension.id, label: profileDimensionLabel(dimension.id) }));
+  const metricColumnCount = Math.max(1, metricDimensions.length);
+  const tableHead = elements.profileOverview?.closest(".profile-overview-table")?.querySelector(".profile-overview-table-head");
+  const metricsHead = tableHead?.querySelector(".profile-overview-metrics-head");
+  tableHead?.style.setProperty("--profile-metric-columns", String(metricColumnCount));
+  if (metricsHead) {
+    metricsHead.innerHTML = metricDimensions.length
+      ? metricDimensions.map((dimension) => `<span title="${escapeHTML(dimension.label)}">${escapeHTML(dimension.label)}</span>`).join("")
+      : `<span>${escapeHTML(t("common.metrics"))}</span>`;
+  }
   if (state.activeProfileView === "zone") {
     const selectedZoneNames = new Set(state.profileSelectedZoneNames || []);
     elements.profileOverview.innerHTML = rows.length
@@ -525,7 +534,7 @@ function renderProfileMetrics(summaries = [], dimensions = []) {
         .map(
           (dimension) => {
             const summary = summaryByDimension.get(dimension.id);
-            const displayValue = summary?.displayValue || t("common.notAvailable");
+            const displayValue = summary?.displayValue || "-";
             return `
               <span class="profile-card-metric ${summary ? "" : "is-missing"}" data-profile-dimension="${escapeHTML(dimension.id)}" title="${escapeHTML(`${dimension.label}: ${displayValue}`)}">
                 <span class="profile-card-metric-label">${escapeHTML(dimension.label)}</span>
@@ -540,9 +549,9 @@ function renderProfileMetrics(summaries = [], dimensions = []) {
 function renderProfileGroupCard(group, selectedGroupIDs = new Set(state.profileSelectedGroupIds || []), metricDimensions = []) {
   const active = group.id === state.activeProfileGroupId ? "active" : "";
   const selected = selectedGroupIDs.has(group.id);
-  const assignmentDetail = group.zoneNames.join(", ");
+  const assignmentDetail = group.zoneNames.join("\n");
   return `
-    <button class="profile-group-card profile-table-row navigable-row ${selected ? "selected" : ""} ${active}" data-profile-group-id="${escapeHTML(group.id)}" data-profile-row-key="${escapeHTML(profileGroupRowKey(group.id))}" type="button" role="option" aria-selected="${selected ? "true" : "false"}"
+    <button class="profile-group-card profile-table-row navigable-row ${selected ? "selected" : ""} ${active}" style="--profile-metric-columns: ${Math.max(1, metricDimensions.length)}" data-profile-group-id="${escapeHTML(group.id)}" data-profile-row-key="${escapeHTML(profileGroupRowKey(group.id))}" type="button" role="option" aria-selected="${selected ? "true" : "false"}"
       ${profileSemanticAttributes(profileGroupSemanticTargets(group), { occurrenceContext: "zone_profile" })}>
       <span>
         <strong>${escapeHTML(group.name)}</strong>
@@ -557,7 +566,7 @@ function renderProfileZoneCard(row, selectedZoneNames = new Set(state.profileSel
   const active = row.zoneName === state.activeProfileZoneName ? "active" : "";
   const selected = selectedZoneNames.has(row.zoneName);
   return `
-    <button class="profile-group-card profile-zone-card profile-table-row navigable-row ${selected ? "selected" : ""} ${active}" data-profile-zone="${escapeHTML(row.zoneName)}" data-profile-row-key="${escapeHTML(profileZoneRowKey(row.zoneName))}" type="button" role="option" aria-selected="${selected ? "true" : "false"}"
+    <button class="profile-group-card profile-zone-card profile-table-row navigable-row ${selected ? "selected" : ""} ${active}" style="--profile-metric-columns: ${Math.max(1, metricDimensions.length)}" data-profile-zone="${escapeHTML(row.zoneName)}" data-profile-row-key="${escapeHTML(profileZoneRowKey(row.zoneName))}" type="button" role="option" aria-selected="${selected ? "true" : "false"}"
       ${profileSemanticAttributes([row.zoneName], { occurrenceContext: "zone_profile" })}>
       <span>
         <strong>${escapeHTML(row.zoneName)}</strong>

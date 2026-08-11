@@ -187,7 +187,7 @@
   width: 100%;
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(92px, 0.85fr) minmax(0, 1.2fr) minmax(0, 1.75fr) minmax(92px, auto);
+  grid-template-columns: minmax(120px, 0.9fr) minmax(92px, 0.7fr) repeat(var(--profile-metric-columns, 1), minmax(92px, 1fr)) minmax(92px, auto);
   align-items: center;
   gap: 10px;
 }
@@ -205,6 +205,18 @@
 .profile-overview-table-head > span,
 .profile-table-row > span {
   min-width: 0;
+}
+
+.profile-overview-metrics-head,
+.profile-card-metrics {
+  display: contents;
+}
+
+.profile-overview-metrics-head > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .profile-overview-apply-head {
@@ -300,23 +312,13 @@
 
 .profile-card-metrics {
   min-width: 0;
-  display: grid;
-  grid-template-columns: repeat(var(--profile-metric-columns, 1), minmax(0, 1fr));
-  align-items: stretch;
-  gap: 1px;
-  border: 1px solid var(--line);
-  border-radius: 5px;
-  background: var(--line);
-  overflow: hidden;
 }
 
 .profile-card-metric {
   min-width: 0;
-  display: grid;
-  align-content: center;
-  gap: 1px;
-  padding: 4px 6px;
-  background: color-mix(in srgb, var(--surface-2) 62%, transparent);
+  display: flex;
+  align-items: center;
+  padding: 4px 8px;
 }
 
 .profile-card-metric-label,
@@ -326,9 +328,7 @@
 }
 
 .profile-card-metric-label {
-  color: var(--muted);
-  font-size: 10px;
-  line-height: 1.2;
+  display: none;
 }
 
 .profile-card-metric-value {

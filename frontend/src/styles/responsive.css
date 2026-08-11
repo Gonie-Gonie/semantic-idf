@@ -142,7 +142,18 @@
   }
 
   .profile-card-metrics {
+    display: grid;
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 96px), 1fr));
+  }
+
+  .profile-card-metric {
+    display: grid;
+    align-content: center;
+    gap: 1px;
+  }
+
+  .profile-card-metric-label {
+    display: block;
   }
 
   .geometry-detail-grid {
@@ -325,7 +336,18 @@
   }
 
   .profile-card-metrics {
+    display: grid;
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 96px), 1fr));
+  }
+
+  .profile-card-metric {
+    display: grid;
+    align-content: center;
+    gap: 1px;
+  }
+
+  .profile-card-metric-label {
+    display: block;
   }
 
   .profile-view-switch {

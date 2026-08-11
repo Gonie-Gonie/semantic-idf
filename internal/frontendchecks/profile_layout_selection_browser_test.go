@@ -135,7 +135,7 @@ const profileLayoutSelectionHarnessHTML = `<!doctype html>
             <div class="profile-overview-table-head">
               <span>Selection</span>
               <span>Assignment</span>
-              <span>Metrics</span>
+              <span class="profile-overview-metrics-head">Metrics</span>
               <span class="profile-overview-apply-head">
                 <button id="profileApplyButton" class="profile-apply-badge" type="button" disabled>Apply Profile</button>
               </span>
@@ -506,7 +506,7 @@ const profileLayoutSelectionHarnessHTML = `<!doctype html>
       expectedProfileNameByZone = Object.fromEntries(rows().flatMap((row) => {
         const profileName = row.querySelector(":scope > span:first-child strong")?.textContent?.trim() || "";
         const zoneNames = (row.querySelector(":scope > .profile-card-assignment[title]")?.getAttribute("title") || "")
-          .split(",")
+          .split("\n")
           .map((zoneName) => zoneName.trim())
           .filter(Boolean);
         return zoneNames.map((zoneName) => [zoneName, profileName]);
@@ -871,7 +871,7 @@ const profileLayoutSelectionHarnessHTML = `<!doctype html>
       );
       const missingMetricPlaceholder = missingLightingCell?.classList.contains("is-missing")
         && missingLightingCell.querySelector(":scope > .profile-card-metric-value")?.textContent?.trim()
-          === i18n.t("common.notAvailable");
+          === "-";
       const overviewMetricCells = profileOverviewPresentation.metricCells
         && zoneOverviewPresentation.metricCells
         && missingMetricPlaceholder;
