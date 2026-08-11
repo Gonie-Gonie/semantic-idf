@@ -43,20 +43,6 @@ export function getPanelNavigationAdapter(viewId) {
   return normalizedViewId ? adapters.get(normalizedViewId) || null : null;
 }
 
-export function hasPanelNavigationAdapter(viewId) {
-  return getPanelNavigationAdapter(viewId) !== null;
-}
-
-export function listPanelNavigationAdapters() {
-  return PANEL_NAVIGATION_VIEW_IDS.filter((viewId) => adapters.has(viewId));
-}
-
-// Intended for isolated controller tests. Production teardown should use the
-// unregister function returned by registerPanelNavigationAdapter().
-export function clearPanelNavigationAdapters() {
-  adapters.clear();
-}
-
 function normalizeViewId(viewId, options = {}) {
   const normalized = String(viewId || "").trim().toLowerCase();
   if (!normalized) {

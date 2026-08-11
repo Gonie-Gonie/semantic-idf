@@ -18,7 +18,6 @@ func TestTopologyViewSwitchSupportsThermalAndNormalizesInvalidModes(t *testing.T
 		`id="thermalTopologyInspector"`,
 		`id="thermalTopologyMetric"`,
 		`id="thermalTopologyScope"`,
-		`id="thermalTopologyAdvanced"`,
 	} {
 		if !strings.Contains(index, required) {
 			t.Fatalf("topology view switch is missing %q", required)
@@ -68,9 +67,9 @@ func TestTopologyUsesCanonicalPhysicalGrossAreaWithSeparateMultiplier(t *testing
 			t.Fatalf("area basis rendering contract is missing %q", required)
 		}
 	}
-	layout := readTestFile(t, "frontend/src/js/views/thermal-topology-layout.js")
-	if !strings.Contains(layout, `areaField: "physicalGrossArea"`) || strings.Contains(layout, `effectiveGrossArea`) {
-		t.Fatal("thermal layout must use physical gross area as its single canonical basis")
+	thermalView := readTestFile(t, "frontend/src/js/views/thermal-topology-view.js")
+	if !strings.Contains(thermalView, `Number(connection?.physicalGrossArea)`) || strings.Contains(thermalView, `connection?.effectiveGrossArea`) {
+		t.Fatal("thermal graph must render physical gross area as its single canonical basis")
 	}
 	inspector := readTestFile(t, "frontend/src/js/views/thermal-topology-inspector.js")
 	for _, required := range []string{`renderVariableTable`, `thermal-inspector-table`, `"Multiplier"`, `"Gross area"`, `areaMultiplier`} {
@@ -107,7 +106,6 @@ func TestTopologyToolbarSeparatesModeSpecificControls(t *testing.T) {
 	index := readTestFile(t, "frontend/src/index.html")
 	for _, required := range []string{
 		`id="geometryStoryControl"`,
-		`id="geometrySyncControl"`,
 		`id="geometrySyncLocate" type="checkbox" checked`,
 		`id="geometry3DControls"`,
 		`id="geometry3DShowZones"`,
@@ -279,11 +277,13 @@ func TestTopologySVGRendererUsesPortsPanZoomAndLayoutCache(t *testing.T) {
 		`export function routeThermalEdge`,
 		`resolveNodeCollisions`,
 		`barycentricOrder`,
-		`Math.min(3, Math.max(1`,
 	} {
 		if !strings.Contains(layout, required) {
 			t.Fatalf("thermal layout/routing module is missing %q", required)
 		}
+	}
+	if strings.Contains(layout, "neighborDepth") {
+		t.Fatal("one-hop topology scope retains the removed neighbor-depth option")
 	}
 }
 
@@ -294,16 +294,8 @@ func TestTopologyMetricModesAndInspectorExposeRequiredContracts(t *testing.T) {
 			t.Fatalf("fixed Gross area mode still exposes %q", removed)
 		}
 	}
-	state := readTestFile(t, "frontend/src/js/state.js")
-	for _, required := range []string{`export function normalizeThermalTopologyGraphLevel()`, `return "zone";`, `export function normalizeThermalTopologyAreaComponent()`, `return "gross";`} {
-		if !strings.Contains(state, required) {
-			t.Fatalf("fixed Zone/Gross state contract is missing %q", required)
-		}
-	}
 	view := readTestFile(t, "frontend/src/js/views/thermal-topology-view.js")
 	for _, required := range []string{
-		`graphLevel: "zone"`,
-		`areaComponent: "gross"`,
 		`edgeMetricPresentation`,
 		`connectionAreaValue`,
 		`connectionUAValue`,
@@ -317,9 +309,14 @@ func TestTopologyMetricModesAndInspectorExposeRequiredContracts(t *testing.T) {
 		}
 	}
 	layout := readTestFile(t, "frontend/src/js/views/thermal-topology-layout.js")
-	for _, required := range []string{`areaField: "physicalGrossArea"`, `qaObservationConnections`} {
+	for _, required := range []string{`qaObservationConnections`, `allOpenings`} {
 		if !strings.Contains(layout, required) {
 			t.Fatalf("fixed Gross topology layout is missing %q", required)
+		}
+	}
+	for _, removed := range []string{"graphLevel", "areaComponent", "areaField", "neighborDepth", "computeBoundaryLayout", "createBoundaryDetailModel", "detailConnection"} {
+		if strings.Contains(layout, removed) || strings.Contains(view, removed) {
+			t.Fatalf("fixed Zone/Gross topology renderer retains dead option path %q", removed)
 		}
 	}
 	inspector := readTestFile(t, "frontend/src/js/views/thermal-topology-inspector.js")

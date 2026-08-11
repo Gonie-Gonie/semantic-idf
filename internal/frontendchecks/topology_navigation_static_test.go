@@ -88,13 +88,10 @@ func TestThermalTopologyStateNormalizesAndInvalidatesDocumentContext(t *testing.
 		"thermalTopologyExpandExternalTargets: false",
 		`thermalTopologySelectedEntityId: ""`,
 		`thermalTopologySelectedEntityKind: ""`,
-		"thermalTopologyNeighborDepth: 1",
 		"thermalTopologyPanX: 0",
 		"thermalTopologyPanY: 0",
 		"thermalTopologyScale: 1",
 		"thermalTopologyLayoutCache: new Map()",
-		"normalizeThermalTopologyGraphLevel",
-		"normalizeThermalTopologyAreaComponent",
 		"normalizeThermalTopologyMetric",
 		"normalizeThermalTopologyScope",
 		"normalizeThermalTopologyLayout",
@@ -106,17 +103,11 @@ func TestThermalTopologyStateNormalizesAndInvalidatesDocumentContext(t *testing.
 			t.Fatalf("thermal topology state contract is missing %q", required)
 		}
 	}
-	for _, removed := range []string{"thermalTopologyAreaBasis", "normalizeThermalTopologyAreaBasis", "thermalTopologyShowOpenings"} {
+	for _, removed := range []string{"thermalTopologyAreaBasis", "normalizeThermalTopologyAreaBasis", "thermalTopologyShowOpenings", "thermalTopologyNeighborDepth"} {
 		if strings.Contains(content, removed) {
 			t.Fatalf("removed area-basis state contract remains %q", removed)
 		}
 	}
-	for _, required := range []string{`export function normalizeThermalTopologyGraphLevel()`, `return "zone";`, `export function normalizeThermalTopologyAreaComponent()`, `return "gross";`} {
-		if !strings.Contains(content, required) {
-			t.Fatalf("fixed Zone/Gross topology state contract is missing %q", required)
-		}
-	}
-
 	main := readTestFile(t, "frontend/src/js/main.js")
 	documentChange := sliceBetween(main, `window.addEventListener("idfAnalyzer:documentChanged"`, `window.addEventListener("idfAnalyzer:geometryLocate"`)
 	if !strings.Contains(documentChange, "resetThermalTopologyDocumentState(state)") {
@@ -135,7 +126,6 @@ func TestThermalTopologyHistoryCapturesContextWithoutGraphOrLayoutCache(t *testi
 		"thermalTopologyExpandExternalTargets",
 		"thermalTopologySelectedEntityId",
 		"thermalTopologySelectedEntityKind",
-		"thermalTopologyNeighborDepth",
 		"thermalTopologyPanX",
 		"thermalTopologyPanY",
 		"thermalTopologyScale",
@@ -144,7 +134,7 @@ func TestThermalTopologyHistoryCapturesContextWithoutGraphOrLayoutCache(t *testi
 			t.Fatalf("thermal history snapshot is missing %q", required)
 		}
 	}
-	for _, forbidden := range []string{"thermalTopologyAreaBasis", "thermalTopologyShowOpenings", "thermalTopologyLayoutCache", "connections", "boundaries", "nodes", "matrix"} {
+	for _, forbidden := range []string{"thermalTopologyAreaBasis", "thermalTopologyShowOpenings", "thermalTopologyNeighborDepth", "thermalTopologyLayoutCache", "connections", "boundaries", "nodes", "matrix"} {
 		if strings.Contains(capture, forbidden) {
 			t.Fatalf("thermal history snapshot must not retain graph/cache data %q", forbidden)
 		}

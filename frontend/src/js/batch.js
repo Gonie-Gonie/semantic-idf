@@ -18,7 +18,6 @@ const state = {
   deltaSort: "table",
   deltaBaselineIndex: null,
   deltaCompareIndex: null,
-  areaBasis: "effective",
   includeFullTopology: false,
   running: false,
   progressFiles: new Map(),
@@ -62,7 +61,6 @@ const elements = {
   table: document.querySelector("#multiSummaryTable"),
   orientationButtons: document.querySelectorAll("[data-summary-orientation]"),
   metricGroup: document.querySelector("#batchSummaryMetricGroup"),
-  areaBasis: document.querySelector("#batchSummaryAreaBasis"),
   includeFullTopology: document.querySelector("#batchSummaryIncludeTopology"),
   statusFilter: document.querySelector("#batchSummaryStatusFilter"),
   deltaSort: document.querySelector("#batchSummaryDeltaSort"),
@@ -225,7 +223,7 @@ async function runMultiSummary() {
 }
 
 async function analyzeMultiSummary(runID) {
-  const request = { runId: runID, areaBasis: state.areaBasis, includeFullTopology: state.includeFullTopology };
+  const request = { runId: runID, areaBasis: "effective", includeFullTopology: state.includeFullTopology };
   let responseError = "";
   try {
     for (const url of ["/api/batch-summary", "/api/multi-idf-summary"]) {
@@ -261,7 +259,6 @@ function renderResult() {
   const failed = result.failed || 0;
   const workers = result.concurrency || 0;
   elements.stats.textContent = t("count.filesSummary", { total, ok: succeeded, failed, workers });
-  elements.stats.textContent += ` · topology basis: ${result.areaBasis || "effective"}`;
   renderFileList(result.files || []);
   renderTable();
   elements.exportButton.disabled = state.running || !result.metrics?.length;
@@ -375,8 +372,7 @@ function renderValueCell(file, metricID) {
   const value = file.metricValues?.[metricID];
   const status = value?.status || "missing";
   const coverage = value?.hasCoverage ? ` · U coverage ${formatNumber(Number(value.coverage || 0) * 100)}%` : "";
-  const basis = value?.basisSensitive ? ` · ${value.areaBasis || "effective"}` : "";
-  return `<td class="tool-value ${escapeHTML(status)}" title="${escapeHTML(`${status}${coverage}${basis}`)}">${escapeHTML(value?.displayValue ?? t("common.notAvailable"))}${coverage ? `<span>${escapeHTML(coverage.slice(3))}</span>` : ""}</td>`;
+  return `<td class="tool-value ${escapeHTML(status)}" title="${escapeHTML(`${status}${coverage}`)}">${escapeHTML(value?.displayValue ?? t("common.notAvailable"))}${coverage ? `<span>${escapeHTML(coverage.slice(3))}</span>` : ""}</td>`;
 }
 
 function renderBatchHiddenRowsNotice(hiddenCount, label) {
@@ -568,9 +564,6 @@ function summaryDeltaRow(metric, baseline, compare) {
 }
 
 function summaryNotComparableReason(a, b) {
-  if ((a?.basisSensitive || b?.basisSensitive) && String(a?.areaBasis || "effective") !== String(b?.areaBasis || "effective")) {
-    return "not comparable: area basis differs";
-  }
   if (a?.hasCoverage || b?.hasCoverage) {
     if (Boolean(a?.hasCoverage) !== Boolean(b?.hasCoverage) || Math.abs(Number(a?.coverage || 0) - Number(b?.coverage || 0)) > 0.0001) {
       return "not comparable: U-value coverage differs";
@@ -1059,10 +1052,6 @@ function renderBatchConvertExport() {
     </table>`;
 }
 
-function yesNo(value) {
-  return escapeHTML(value ? t("common.yes") : t("common.no"));
-}
-
 function downloadCSV(rows, filename) {
   const csvText = `${rows.map((row) => row.map(csvCell).join(",")).join("\r\n")}\r\n`;
   const blob = new Blob([csvText], { type: "text/csv" });
@@ -1102,9 +1091,6 @@ elements.orientationButtons.forEach((button) => {
 elements.metricGroup?.addEventListener("change", () => {
   state.metricGroup = elements.metricGroup.value || "all";
   renderTable();
-});
-elements.areaBasis?.addEventListener("change", () => {
-  state.areaBasis = elements.areaBasis.value === "physical" ? "physical" : "effective";
 });
 elements.includeFullTopology?.addEventListener("change", () => {
   state.includeFullTopology = Boolean(elements.includeFullTopology.checked);

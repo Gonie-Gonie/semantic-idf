@@ -20,9 +20,7 @@ func TestTopologyNamingKeepsGeometryCompatibilityContracts(t *testing.T) {
 	translations := readTestFile(t, "frontend/src/js/i18n.js")
 	for _, required := range []string{
 		`"tab.geometry": "Topology"`,
-		`"topology.panelTitle": "Spatial & Thermal Topology"`,
 		`"tab.geometry": "공간·열 연결"`,
-		`"topology.panelTitle": "공간·열 토폴로지"`,
 		`"shortcut.tabGeometry": "Analyze tab: Topology"`,
 	} {
 		if !strings.Contains(translations, required) {

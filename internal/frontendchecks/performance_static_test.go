@@ -85,14 +85,16 @@ func TestFrontendThermalTopologyPerformanceContracts(t *testing.T) {
 	layout := readTestFile(t, "frontend/src/js/views/thermal-topology-layout.js")
 	for _, term := range []string{
 		"topology.sourceModelHash",
-		"normalizeThermalTopologyGraphLevel(options.graphLevel)",
-		"normalizeThermalTopologyAreaComponent(options.areaComponent)",
-		`areaField: "physicalGrossArea"`,
 		"selectionAffectsScope",
 		`scope === "neighbors"`,
 	} {
 		if !strings.Contains(layout, term) {
 			t.Fatalf("thermal layout cache key contract missing %q", term)
+		}
+	}
+	for _, removed := range []string{"graphLevel", "areaComponent", "areaField", "neighborDepth", "computeBoundaryLayout", "createBoundaryDetailModel"} {
+		if strings.Contains(layout, removed) {
+			t.Fatalf("fixed zone/gross topology cache retains dead dimension %q", removed)
 		}
 	}
 

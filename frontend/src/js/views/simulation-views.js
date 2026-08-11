@@ -577,9 +577,6 @@ export function initializeSimulationControls() {
   });
   window.addEventListener("idfAnalyzer:simulationProgress", (event) => handleSimulationProgress(event.detail));
   window.addEventListener("idfAnalyzer:documentChanged", () => {
-    if (state.simulationResult && state.simulationRunText !== elements.idfInput.value) {
-      state.simulationStale = true;
-    }
     updateSimulationControls();
     renderSimulation();
   });
@@ -3742,14 +3739,6 @@ function simulationServicePathOtherSystems(path = {}) {
   ].filter(Boolean);
 }
 
-function simulationServicePathSupportingAssets(path = {}) {
-  const couplingByID = new Map((simulationHVACServiceModel().couplings || []).map((coupling) => [coupling.id, coupling]));
-  return (path.supportingCouplingIds || []).map((id) => {
-    const coupling = couplingByID.get(id) || {};
-    return coupling.object?.displayName || coupling.object?.objectName || coupling.role || id;
-  }).filter(Boolean);
-}
-
 function simulationServicePathSupportingAssetRefs(path = {}) {
   const couplingByID = new Map((simulationHVACServiceModel().couplings || []).map((coupling) => [coupling.id, coupling]));
   return (path.supportingCouplingIds || [])
@@ -5138,7 +5127,7 @@ function findPurposeOutputObject(objectType, keyValue, variableName) {
 }
 
 function activePurposeOutputObjects() {
-  return state.simulationResult?.purposeRunPlan?.outputObjects || state.simulationPurposePlan?.outputObjects || [];
+  return state.simulationResult?.purposeRunPlan?.outputObjects || [];
 }
 
 function purposeOutputKeyMatches(objectKeyValue, resultKey) {
@@ -5863,12 +5852,6 @@ function outputStateLabel(value) {
     default:
       return value || "";
   }
-}
-
-function outputFieldValue(fields = [], ...names) {
-  const wanted = new Set(names.map((name) => String(name || "").toLowerCase()));
-  const found = fields.find((field) => wanted.has(String(field.name || "").toLowerCase()));
-  return found?.value || "";
 }
 
 function setSimulationPreviewMode(preview) {
@@ -6664,9 +6647,6 @@ function renderHeatFlowTimelineBrush(dataset, zoneSeries, visibleRange, frameInd
 
 function renderSimulationHeatFlowEmpty(message) {
   stopHeatFlowPlayback();
-  state.simulationHeatFlowZoomStart = 0;
-  state.simulationHeatFlowZoomEnd = -1;
-  state.simulationHeatFlowVisibleFrameIndexes = [];
   if (elements.simulationHeatFlowStats) {
     elements.simulationHeatFlowStats.textContent = t("simulation.noHeatFlowShort", {}, "No heat-flow output");
   }
@@ -6721,19 +6701,8 @@ function normalizeHeatFlowFrameRange(frameCount = Number(state.simulationResult?
   }
   state.simulationHeatFlowRangeStart = start;
   state.simulationHeatFlowRangeEnd = end;
-  state.simulationHeatFlowZoomStart = start;
-  state.simulationHeatFlowZoomEnd = end;
-  state.simulationHeatFlowVisibleFrameIndexes = heatFlowFrameIndexes(start, end);
   state.simulationHeatFlowFrameIndex = clampNumber(state.simulationHeatFlowFrameIndex, start, end);
   return { start, end };
-}
-
-function heatFlowFrameIndexes(start, end) {
-  const indexes = [];
-  for (let index = start; index <= end; index += 1) {
-    indexes.push(index);
-  }
-  return indexes;
 }
 
 function updateHeatFlowStorySelect(geometry) {
@@ -7634,7 +7603,6 @@ function sanitizeExportFilename(value) {
 }
 
 function purposeResultHTML(payload) {
-  const planObjects = payload.purposeRunPlan?.outputObjects || [];
   const completeness = payload.purposeResults?.completeness || [];
   const files = payload.files || [];
   const summaryRows = [
@@ -7670,18 +7638,6 @@ pre{max-height:520px;overflow:auto;background:#0f172a;color:#e2e8f0;padding:14px
 <p class="muted">${escapeHTML(payload.filename || payload.runId || "")}</p>
 <h2>Run</h2>
 ${renderPurposeHTMLTable(["Field", "Value"], summaryRows)}
-<h2>Output Plan</h2>
-${renderPurposeHTMLTable(
-  ["Type", "Key", "Metric", "Frequency", "Purpose", "State"],
-  planObjects.map((object) => [
-    object.objectType || "",
-    object.keyValue || "",
-    object.variableName || "",
-    object.reportingFrequency || "",
-    (object.purposeIds || []).join(", "),
-    object.state || "",
-  ]),
-)}
 <h2>Completeness</h2>
 ${renderPurposeHTMLTable(
   ["Purpose", "Required Output", "Found", "Source"],
@@ -8261,8 +8217,6 @@ async function runCurrentSimulation({ silent = false, auto = false } = {}) {
   state.simulationRunning = true;
   state.simulationActiveRunID = runID;
   state.simulationProgress = { runId: runID, percent: 0, message: t("simulation.preparing", {}, "Preparing simulation") };
-  state.simulationRunText = text;
-  state.simulationStale = false;
   renderSimulation();
   if (!silent) {
     setStatus(t("simulation.running", {}, "EnergyPlus simulation is running"), "loading");
@@ -8288,16 +8242,11 @@ async function runCurrentSimulation({ silent = false, auto = false } = {}) {
       return result;
     }
     state.simulationResult = result;
-    state.simulationPurposePlan = result?.purposeRunPlan || state.simulationPurposePlan;
     state.simulationRunning = false;
-    state.simulationStale = state.simulationRunText !== (elements.idfInput?.value || "");
     state.simulationSeriesRangeStart = 0;
     state.simulationSeriesRangeEnd = -1;
     state.simulationHeatFlowRangeStart = 0;
     state.simulationHeatFlowRangeEnd = -1;
-    state.simulationHeatFlowZoomStart = 0;
-    state.simulationHeatFlowZoomEnd = -1;
-    state.simulationHeatFlowVisibleFrameIndexes = [];
     state.simulationHeatFlowFrameIndex = 0;
     state.simulationHeatFlowStory = "all";
     state.simulationProgress = { runId: runID, percent: 100, message: simulationDoneMessage(result), status: result.status };
@@ -8464,14 +8413,6 @@ function simulationDoneMessage(result) {
     return t("simulation.complete", { warnings: result.err?.warnings || 0 }, `Simulation complete (${result.err?.warnings || 0} warnings)`);
   }
   return result?.error || t("simulation.finishedWithIssues", {}, "Simulation finished with issues");
-}
-
-function formatDuration(ms) {
-  const value = Number(ms || 0);
-  if (value < 1000) {
-    return `${value} ms`;
-  }
-  return `${(value / 1000).toFixed(1)} s`;
 }
 
 function formatNumber(value) {

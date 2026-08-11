@@ -593,25 +593,6 @@ export async function revertToLoadedDocument() {
   });
 }
 
-export async function removeUnused() {
-  const api = backend();
-  if (!api) {
-    setStatus(t("status.backendUnavailable"), "warn");
-    return;
-  }
-
-  try {
-    const result = await api.RemoveUnusedObjectsText(elements.idfInput.value);
-    elements.idfInput.value = result.text;
-    updateTextStats();
-    markDocumentChanged();
-    await analyze();
-    setStatus(t("status.unusedRemoved"), "ok");
-  } catch (error) {
-    setStatus(error.message || String(error), "error");
-  }
-}
-
 export async function exportSummary(format) {
   const api = backend();
   if (!api || typeof api.ExportSummaryText !== "function") {
@@ -641,10 +622,6 @@ export function openGuide() {
 export async function openBatch() {
   await saveWorkspaceSnapshot();
   window.location.assign("./batch.html");
-}
-
-export function openTools() {
-  return openBatch();
 }
 
 export async function openSettings() {

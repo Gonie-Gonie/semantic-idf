@@ -10,17 +10,9 @@ export function normalizeGeometryMode(value) {
   return geometryModes.includes(mode) ? mode : "3d";
 }
 
-export function normalizeThermalTopologyGraphLevel() {
-  return "zone";
-}
-
 export function normalizeThermalTopologyMetric(value) {
   const metric = String(value || "").toLowerCase();
   return thermalTopologyMetrics.includes(metric) ? metric : "topology";
-}
-
-export function normalizeThermalTopologyAreaComponent() {
-  return "gross";
 }
 
 export function normalizeThermalTopologyScope(value) {
@@ -42,7 +34,6 @@ export function normalizeThermalTopologyState(target = state) {
   target.thermalTopologyExpandExternalTargets = normalizeBoolean(target.thermalTopologyExpandExternalTargets, false);
   target.thermalTopologySelectedEntityId = String(target.thermalTopologySelectedEntityId || "");
   target.thermalTopologySelectedEntityKind = String(target.thermalTopologySelectedEntityKind || "");
-  target.thermalTopologyNeighborDepth = clampInteger(target.thermalTopologyNeighborDepth, 1, 3, 1);
   target.thermalTopologyPanX = finiteNumber(target.thermalTopologyPanX, 0);
   target.thermalTopologyPanY = finiteNumber(target.thermalTopologyPanY, 0);
   target.thermalTopologyScale = clampNumber(target.thermalTopologyScale, 0.1, 8, 1);
@@ -60,7 +51,6 @@ export function captureThermalTopologyState(source = state) {
     thermalTopologyExpandExternalTargets: source.thermalTopologyExpandExternalTargets,
     thermalTopologySelectedEntityId: source.thermalTopologySelectedEntityId,
     thermalTopologySelectedEntityKind: source.thermalTopologySelectedEntityKind,
-    thermalTopologyNeighborDepth: source.thermalTopologyNeighborDepth,
     thermalTopologyPanX: source.thermalTopologyPanX,
     thermalTopologyPanY: source.thermalTopologyPanY,
     thermalTopologyScale: source.thermalTopologyScale,
@@ -101,10 +91,6 @@ function clampNumber(value, minimum, maximum, fallback) {
   return Math.min(maximum, Math.max(minimum, finiteNumber(value, fallback)));
 }
 
-function clampInteger(value, minimum, maximum, fallback) {
-  return Math.min(maximum, Math.max(minimum, Math.trunc(finiteNumber(value, fallback))));
-}
-
 export const state = {
   report: null,
   model: null,
@@ -137,7 +123,6 @@ export const state = {
   diagnosticsReady: false,
   geometryReady: false,
   activeResultTab: "summary",
-  defaultResultTab: "summary",
   resultTabManuallySelected: false,
   activeInputView: "semantic",
   activeProfileView: "profile",
@@ -181,8 +166,6 @@ export const state = {
   simulationResult: null,
   simulationProgress: null,
   simulationRunning: false,
-  simulationStale: false,
-  simulationRunText: "",
   simulationActiveRunID: "",
   simulationSelectedSeries: "",
   simulationSeriesGroup: "all",
@@ -194,9 +177,6 @@ export const state = {
   simulationHeatFlowStory: "all",
   simulationHeatFlowRangeStart: 0,
   simulationHeatFlowRangeEnd: -1,
-  simulationHeatFlowZoomStart: 0,
-  simulationHeatFlowZoomEnd: -1,
-  simulationHeatFlowVisibleFrameIndexes: [],
   simulationHeatFlowOverlay: "net",
   simulationHeatFlowPlanScale: 1,
   simulationHeatFlowPlanPanX: 0,
@@ -219,7 +199,6 @@ export const state = {
   },
   simulationAutoRunOnOpen: false,
   simulationSelectedPurposes: ["basic_energy", "zone_heat_flow"],
-  simulationPurposePlan: null,
   simulationActiveResultView: "energy",
   simulationEnergyView: "overview",
   simulationEnergyPeriod: "annual",
@@ -235,12 +214,12 @@ export const state = {
   simulationZoneEnergyMetric: "__total",
   simulationComfortZone: "",
   simulationAutoStartedKey: "",
-  profileGraphDeck: null,
   profileViewCache: new Map(),
   profileSelectedCell: null,
-  profilePinnedSeriesIds: [],
-  profileGraphViewMode: "",
-  profileGraphScaleMode: "auto",
+  profileSelectedGroupIds: [],
+  profileSelectedZoneNames: [],
+  profileSelectedDimensions: [],
+  profileSelectionAnchorKey: "",
   profileSettings: null,
   profileApplyPreview: null,
   geometryMode: "3d",
@@ -251,7 +230,6 @@ export const state = {
   thermalTopologyExpandExternalTargets: false,
   thermalTopologySelectedEntityId: "",
   thermalTopologySelectedEntityKind: "",
-  thermalTopologyNeighborDepth: 1,
   thermalTopologyPanX: 0,
   thermalTopologyPanY: 0,
   thermalTopologyScale: 1,
@@ -272,7 +250,6 @@ export const state = {
     openings: true,
   },
   expandedPane: "",
-  geometryRenderer: null,
   reportAnalyzedText: "",
   reportAnalysisKey: "",
   reportAnalysisStage: "idle",
@@ -384,11 +361,14 @@ export const elements = {
   profilePreviewApply: document.querySelector("#profilePreviewApply"),
   profileConfirmApply: document.querySelector("#profileConfirmApply"),
   profileApplyStatus: document.querySelector("#profileApplyStatus"),
+  hvacViewportActions: document.querySelector("#hvacViewportActions"),
+  hvacBackButton: document.querySelector("#hvacBackButton"),
+  hvacForwardButton: document.querySelector("#hvacForwardButton"),
+  hvacClearFocusButton: document.querySelector("#hvacClearFocusButton"),
+  hvacZoneServicesButton: document.querySelector("#hvacZoneServicesButton"),
   hvacExpandButton: document.querySelector("#hvacExpandButton"),
   hvacSummary: document.querySelector("#hvacSummary"),
-  hvacLayout: document.querySelector("#hvacLayout"),
   hvacGraph: document.querySelector("#hvacGraph"),
-  hvacSide: document.querySelector("#hvacSide"),
   hvacInspectorStats: document.querySelector("#hvacInspectorStats"),
   hvacInspector: document.querySelector("#hvacInspector"),
   hvacApplyDialog: document.querySelector("#hvacApplyDialog"),
@@ -466,7 +446,6 @@ export const elements = {
   thermalTopologyMetric: document.querySelector("#thermalTopologyMetric"),
   thermalTopologyScope: document.querySelector("#thermalTopologyScope"),
   thermalTopologyExportJSON: document.querySelector("#thermalTopologyExportJSON"),
-  thermalTopologyAdvanced: document.querySelector("#thermalTopologyAdvanced"),
   thermalTopologyLayout: document.querySelector("#thermalTopologyLayout"),
   thermalTopologyShowAirCoupling: document.querySelector("#thermalTopologyShowAirCoupling"),
   thermalTopologyExpandExternalTargets: document.querySelector("#thermalTopologyExpandExternalTargets"),

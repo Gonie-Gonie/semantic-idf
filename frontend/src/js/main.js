@@ -30,7 +30,7 @@ import {
   scheduleAutoAnalyze,
   updateDocumentActions,
 } from "./actions.js";
-import { markAnalysisDirty, renderDiagnostics, renderEmpty, renderReport, renderSummary } from "./views/analysis-views.js";
+import { markAnalysisDirty, renderEmpty, renderReport } from "./views/analysis-views.js";
 import { fitGeometryView, renderGeometry, resizeGeometry, setGeometryMode, setGeometryStory } from "./geometry-loader.js";
 import { initializeDiagnoseFixes } from "./views/diagnose-fixes.js";
 import { initializeHVACControls } from "./views/hvac-views.js";
@@ -506,10 +506,6 @@ function isEditorPanelTarget(target) {
   return Boolean(target?.closest?.(".editor-panel"));
 }
 
-function isAnalysisPanelTarget(target) {
-  return Boolean(target?.closest?.(".analysis-panel"));
-}
-
 function handleUndoShortcut(event) {
   if (isEditableTarget(event?.target)) {
     return false;
@@ -943,7 +939,6 @@ function applyDefaultResultTab(orderInput) {
   if (!firstTab) {
     return;
   }
-  state.defaultResultTab = firstTab;
   if (!state.resultTabManuallySelected && state.activeResultTab !== firstTab) {
     switchResultTab(firstTab, { recordHistory: false });
   }

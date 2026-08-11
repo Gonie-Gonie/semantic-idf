@@ -92,16 +92,15 @@ func TestFrontendHVACServiceDOMContracts(t *testing.T) {
 		"function backHVAC()",
 		"function forwardHVAC()",
 		"function clearHVACFocus()",
+		"function syncHVACViewportActions(available)",
 		"function pathsForActiveHVACEntity",
 		"function renderHVACGraphScopeControls",
-		"function renderHVACBreadcrumbBar",
 		"function renderHVACServicePicker",
 		"function renderHVACLoopPicker",
 		"function renderHVACComponentPicker",
 		"function renderHVACCouplingPicker",
 		"function renderHVACQuickFilters",
 		"function servicePathMatchesQuickFilters",
-		"function orthogonalPath",
 		"function grasshopperWirePath",
 		"function serviceLinkCurve",
 		"function serviceLinkLaneOffset",
@@ -173,6 +172,10 @@ func TestFrontendHVACUsesHeaderlessCardNavigationWithoutWarnings(t *testing.T) {
 		"function renderHVACDiagnostics",
 		"function renderHVACWarning",
 		"function renderHVACCurrentFocusCard",
+		"function renderHVACBreadcrumbBar",
+		"function renderHVACBreadcrumbSegment",
+		"function hvacBreadcrumbSegments",
+		"renderHVACBreadcrumbBar(hvac)",
 		`data-hvac-open-view="diagnostics"`,
 		"hvac.warningCount",
 		"<span>Issues</span>",
@@ -196,6 +199,9 @@ func TestFrontendHVACUsesHeaderlessCardNavigationWithoutWarnings(t *testing.T) {
 		".hvac-nav-static",
 		".hvac-nav-action",
 		".hvac-nav-card summary em",
+		".hvac-breadcrumb-bar",
+		".hvac-history-actions",
+		".hvac-breadcrumb",
 	} {
 		if strings.Contains(styles, removed) {
 			t.Fatalf("HVAC stylesheet retains removed top navigation, warning, or focus selector %q", removed)
@@ -252,10 +258,6 @@ func TestFrontendHVACUsesHeaderlessCardNavigationWithoutWarnings(t *testing.T) {
 		"function renderHVACLoopPicker({ kind, label, count, loops, active })",
 		"function renderHVACComponentPicker",
 		"function renderHVACCouplingPicker",
-		"function renderHVACBreadcrumbBar",
-		`data-hvac-nav-action="back"`,
-		`data-hvac-nav-action="forward"`,
-		`data-hvac-nav-action="clear"`,
 		"function renderHVACQuickFilters",
 		"function servicePathMatchesQuickFilters",
 		"data-hvac-filter-kind",
@@ -274,6 +276,167 @@ func TestFrontendHVACUsesHeaderlessCardNavigationWithoutWarnings(t *testing.T) {
 			t.Fatalf("HVAC picker card retains removed secondary help contract %q", removed)
 		}
 	}
+}
+
+func TestFrontendHVACViewportActionsAreIconOnlyAndSynchronized(t *testing.T) {
+	index := readTestFile(t, "frontend/src/index.html")
+	state := readTestFile(t, "frontend/src/js/state.js")
+	view := readTestFile(t, "frontend/src/js/views/hvac-views.js")
+	styles := readTestFile(t, "frontend/src/styles/hvac.css")
+	hvac := sliceBetween(index, `<section class="hvac-main"`, `<aside id="hvacSide"`)
+	toolbar := sliceBetween(hvac, `<div id="hvacViewportActions"`, `<div id="hvacGraph"`)
+
+	for _, required := range []string{
+		`id="hvacViewportActions"`,
+		`class="viewport-action-tools hvac-viewport-actions"`,
+		`role="group"`,
+		`aria-label="HVAC view actions"`,
+	} {
+		if !strings.Contains(toolbar, required) {
+			t.Fatalf("HVAC viewport toolbar is missing %q", required)
+		}
+	}
+	if count := strings.Count(toolbar, `class="viewport-icon-button"`); count != 5 {
+		t.Fatalf("HVAC viewport toolbar must contain exactly five shared icon buttons, got %d", count)
+	}
+
+	buttons := []struct {
+		id     string
+		action string
+		label  string
+	}{
+		{id: "hvacBackButton", action: "back", label: "Back"},
+		{id: "hvacForwardButton", action: "forward", label: "Forward"},
+		{id: "hvacClearFocusButton", action: "clear", label: "Clear focus"},
+		{id: "hvacZoneServicesButton", action: "services", label: "Zone Services"},
+	}
+	for _, button := range buttons {
+		markup := htmlButtonByID(toolbar, button.id)
+		for _, required := range []string{
+			`class="viewport-icon-button"`,
+			`data-hvac-nav-action="` + button.action + `"`,
+			`aria-label="` + button.label + `"`,
+			`title="` + button.label + `"`,
+			`<svg class="viewport-icon`,
+			`aria-hidden="true"`,
+			`class="sr-only"`,
+		} {
+			if !strings.Contains(markup, required) {
+				t.Fatalf("HVAC %s icon button is missing %q", button.id, required)
+			}
+		}
+	}
+	expand := htmlButtonByID(toolbar, "hvacExpandButton")
+	for _, required := range []string{
+		`class="viewport-icon-button"`,
+		`data-expand-pane="hvac"`,
+		`aria-label="Expand"`,
+		`title="Expand"`,
+		`class="viewport-icon viewport-icon-expand"`,
+		`class="viewport-icon viewport-icon-collapse"`,
+		`class="sr-only"`,
+	} {
+		if !strings.Contains(expand, required) {
+			t.Fatalf("HVAC Expand icon button is missing %q", required)
+		}
+	}
+
+	for _, required := range []string{
+		`hvacViewportActions: document.querySelector("#hvacViewportActions")`,
+		`hvacBackButton: document.querySelector("#hvacBackButton")`,
+		`hvacForwardButton: document.querySelector("#hvacForwardButton")`,
+		`hvacClearFocusButton: document.querySelector("#hvacClearFocusButton")`,
+		`hvacZoneServicesButton: document.querySelector("#hvacZoneServicesButton")`,
+	} {
+		if !strings.Contains(state, required) {
+			t.Fatalf("HVAC viewport element map is missing %q", required)
+		}
+	}
+	for _, required := range []string{
+		`elements.hvacViewportActions?.addEventListener("click"`,
+		`window.addEventListener("idfAnalyzer:documentChanged", resetHVACNavigationState)`,
+		`handleHVACNavigationAction(navAction.dataset.hvacNavAction || "")`,
+		`function resetHVACNavigationState()`,
+		`state.hvacNavigationStack = []`,
+		`state.hvacForwardStack = []`,
+		`function syncHVACViewportActions(available)`,
+		`elements.hvacBackButton.disabled`,
+		`elements.hvacForwardButton.disabled`,
+		`elements.hvacClearFocusButton.disabled`,
+		`elements.hvacZoneServicesButton.disabled`,
+	} {
+		if !strings.Contains(view, required) {
+			t.Fatalf("HVAC fixed viewport action behavior is missing %q", required)
+		}
+	}
+	if strings.Contains(view, "elements.hvacViewportActions.innerHTML") {
+		t.Fatal("HVAC renderer must preserve the fixed viewport toolbar and its Expand listener/focus")
+	}
+	graphClick := sliceBetween(view, `elements.hvacGraph?.addEventListener("click"`, `elements.hvacGraph?.addEventListener("keydown"`)
+	for _, removed := range []string{`[data-hvac-nav-action]`, `[data-hvac-open-view]`} {
+		if strings.Contains(graphClick, removed) {
+			t.Fatalf("HVAC graph retains dead delegated viewport-action branch %q", removed)
+		}
+	}
+	summaryClick := sliceBetween(view, "function handleHVACNavigationClick", "function handleHVACNavigationToggle")
+	if strings.Contains(summaryClick, `[data-hvac-nav-action]`) {
+		t.Fatal("HVAC summary retains dead delegated viewport-action branch")
+	}
+	loopOverview := sliceBetween(view, "function renderHVACLoopServiceOverview", "function renderHVACLoopRelatedServicePaths")
+	for _, removed := range []string{`data-hvac-nav-action="clear"`, `data-hvac-open-view="services"`, `hvac.showServicePaths`} {
+		if strings.Contains(loopOverview, removed) {
+			t.Fatalf("HVAC loop overview duplicates the fixed icon toolbar action %q", removed)
+		}
+	}
+	renderer := sliceBetween(view, "export function renderHVAC", "function renderEmptyHVAC")
+	if !strings.Contains(renderer, "resetHVACNavigationState()") || !strings.Contains(renderer, "syncHVACViewportActions(true)") {
+		t.Fatal("HVAC renderer must synchronize fixed viewport actions on every render")
+	}
+
+	viewportStyle := sliceBetween(styles, ".hvac-viewport-actions {", "}")
+	for _, required := range []string{
+		"top:",
+		"right:",
+		"flex-wrap: nowrap",
+	} {
+		if !strings.Contains(viewportStyle, required) {
+			t.Fatalf("HVAC upper-right single-row viewport toolbar style is missing %q", required)
+		}
+	}
+	for _, required := range []string{
+		"padding-inline-end: 220px",
+		".hvac-coupling-overview:first-child > .hvac-section-head:first-child",
+		".hvac-graph-detail:first-child > .hvac-section-head:first-child",
+		".hvac-graph > .empty:first-child",
+		"@container hvac-main (max-width: 480px)",
+		"padding-block-start: 52px",
+		"@container hvac-main (max-width: 240px)",
+		"@container hvac-main (max-width: 180px)",
+		"width: 28px",
+		"width: 24px",
+		"gap: 3px",
+	} {
+		if !strings.Contains(styles, required) {
+			t.Fatalf("HVAC viewport toolbar collision/compact layout contract is missing %q", required)
+		}
+	}
+}
+
+func htmlButtonByID(markup, id string) string {
+	marker := `id="` + id + `"`
+	idIndex := strings.Index(markup, marker)
+	if idIndex < 0 {
+		return ""
+	}
+	start := strings.LastIndex(markup[:idIndex], "<button")
+	if start < 0 {
+		return ""
+	}
+	end := strings.Index(markup[idIndex:], "</button>")
+	if end < 0 {
+		return markup[start:]
+	}
+	return markup[start : idIndex+end+len("</button>")]
 }
 
 func TestFrontendHVACNavigationCardsAreCompactAndViewsAreCanonicalized(t *testing.T) {

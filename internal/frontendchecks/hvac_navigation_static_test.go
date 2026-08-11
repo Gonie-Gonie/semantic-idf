@@ -17,7 +17,6 @@ func TestHVACPanelSemanticMarkupUsesProjectionReverseIndex(t *testing.T) {
 		"hvacComponentSemanticAttributes",
 		"hvacCouplingSemanticAttributes",
 		"hvacZoneSemanticAttributes",
-		"hvacNodeSemanticAttributes",
 		`semanticHVACDataAttribute("data-entity-id"`,
 		`semanticHVACDataAttribute("data-entity-kind"`,
 		`semanticHVACDataAttribute("data-occurrence-context"`,
@@ -51,7 +50,6 @@ func TestHVACPanelSemanticMarkupUsesProjectionReverseIndex(t *testing.T) {
 		"hvacComponentSemanticAttributes(component",
 		"hvacCouplingSemanticAttributes(coupling",
 		"hvacZoneSemanticAttributesForName(item.zone)",
-		"hvacNodeSemanticAttributes(nodeName, ownerComponent)",
 	} {
 		if !strings.Contains(content, rendererContract) {
 			t.Fatalf("HVAC selectable renderer is missing %q", rendererContract)

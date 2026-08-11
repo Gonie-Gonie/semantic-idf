@@ -146,7 +146,7 @@ try {
   document.querySelector('[data-thermal-target-id="connection:ext"]').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));
   const fixedControls=!document.getElementById('thermalTopologyGraphLevel')&&!document.getElementById('thermalTopologyAreaComponent')&&!document.getElementById('thermalTopologyAreaBasis');
   const removedInspectorUI=!document.querySelector('[data-inspector-semantic],[data-inspector-source],[data-inspector-diagnostic],[data-inspector-mode],.thermal-inspector-actions');
-  const zoneOnly=state.thermalTopologySelectedEntityId==='connection:ext'&&!document.querySelector('.thermal-node.thermal_boundary')&&!document.querySelector('[data-topology-back]')&&stateModule.normalizeThermalTopologyGraphLevel('boundary')==='zone';
+  const zoneOnly=state.thermalTopologySelectedEntityId==='connection:ext'&&!document.querySelector('.thermal-node.thermal_boundary')&&!document.querySelector('[data-topology-back]');
   const topo280=exteriorProjected&&openingBreakdown&&exactSource&&exteriorUA&&fixedControls&&removedInspectorUI&&zoneOnly;
 
   state.thermalTopologyMetric="area";state.thermalTopologySelectedEntityKind="thermal_connection";state.thermalTopologySelectedEntityId="connection:pair";state.selectedGeometryKind="thermal_connection";state.selectedGeometryId="connection:pair";renderer.renderThermalTopology(geometry,helpers);
@@ -158,7 +158,7 @@ try {
   const pairInspector=document.getElementById('thermalTopologyInspector').textContent;
   const pairBoundaryRows=inspectorTableRows();
   const reciprocalValidated=pairInspector.includes('surface:pair-b')&&pairInspector.includes('reverse layer equivalent')&&pairInspector.includes('valid')&&pairBoundaryRows.get('Multiplier')?.value==='2'&&pairBoundaryRows.get('Gross area')?.value==='4';
-  const grossOnly=stateModule.normalizeThermalTopologyAreaComponent('opaque')==='gross';
+  const grossOnly=pairBoundaryRows.get('Gross area')?.value==='4'&&pairBoundaryRows.get('Multiplier')?.value==='2';
   const topo281=pairSourceSelection&&grossOnly&&!document.querySelector('.thermal-node.thermal_boundary')&&reciprocalValidated&&connections[1].sourceAnchors.filter((item)=>item.fieldName==='Outside Boundary Condition').length===2;
 
   state.thermalTopologyScope="building";state.thermalTopologyMetric="qa";state.thermalTopologySelectedEntityKind="";state.thermalTopologySelectedEntityId="";renderer.renderThermalTopology(geometry,helpers);

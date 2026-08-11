@@ -394,7 +394,7 @@
                   <h3>${escapeHTML(t("simulation.energyPlusInstallations", {}, "EnergyPlus installations"))}</h3>
                   <button id="simulationAddEnergyPlus" type="button">${escapeHTML(t("simulation.addEnergyPlus", {}, "Add executable"))}</button>
                 </div>
-                <div id="simulationInstallations" class="settings-path-list">
+                <div class="settings-path-list">
                   ${simulationInstallationFields(simulation.energyPlusInstallations, activeSimulationEnvironment?.installations || [])}
                 </div>
               </div>
@@ -403,7 +403,7 @@
                   <h3>${escapeHTML(t("simulation.weatherFolders", {}, "Weather folders"))}</h3>
                   <button id="simulationAddWeatherPath" type="button">${escapeHTML(t("simulation.addWeatherFolder", {}, "Add folder"))}</button>
                 </div>
-                <div id="simulationWeatherPaths" class="settings-path-list">
+                <div class="settings-path-list">
                   ${simulationWeatherPathFields(simulation.extraWeatherDataPaths)}
                 </div>
                 <div class="settings-detected-note">
@@ -486,15 +486,14 @@
                   ${optionHTML("resolved", t("profile.scheduleResolved"), profile.scheduleCompareMode)}
                 </select>
               </label>
-              <label class="settings-field" for="profileScheduleSummaryMode">
-                <span>${escapeHTML(t("profile.scheduleSummary"))}</span>
-                <select id="profileScheduleSummaryMode">
-                  ${optionHTML("representative_day", t("graph.representativeDay"), profile.scheduleSummaryMode)}
-                  ${optionHTML("representative_week", t("graph.representativeWeek"), profile.scheduleSummaryMode)}
-                  ${optionHTML("monthly_average", t("graph.monthlyAverage"), profile.scheduleSummaryMode)}
-                  ${optionHTML("hourly_average_by_daytype", t("graph.hourlyByDaytype"), profile.scheduleSummaryMode)}
-                  ${optionHTML("load_duration", t("graph.loadDuration"), profile.scheduleSummaryMode)}
-                  ${optionHTML("annual_heatmap", t("graph.annualHeatmap"), profile.scheduleSummaryMode)}
+              <label class="settings-field" for="profileScaleMode">
+                <span>${escapeHTML(t("common.scale"))}</span>
+                <select id="profileScaleMode">
+                  ${optionHTML("auto", t("common.auto"), profile.scaleMode)}
+                  ${optionHTML("shared", t("common.shared", {}, "Shared"), profile.scaleMode)}
+                  ${optionHTML("design_peak", t("graph.designPeak"), profile.scaleMode)}
+                  ${optionHTML("multiplier_0_1", t("graph.multiplier01"), profile.scaleMode)}
+                  ${optionHTML("percentile", t("common.percentile", {}, "Percentile"), profile.scaleMode)}
                 </select>
               </label>
               <div class="settings-subsection">
@@ -550,7 +549,7 @@
             <div class="settings-actions">
               <span id="settingsSaveStatus" class="settings-save-status">${escapeHTML(t("status.unsavedPreview"))}</span>
               <button id="settingsReset" type="button">${escapeHTML(t("action.resetDefaults"))}</button>
-              <button id="settingsSave" type="submit">${escapeHTML(t("action.saveSettings"))}</button>
+              <button type="submit">${escapeHTML(t("action.saveSettings"))}</button>
             </div>
           </form>`;
         bindSettingsForm();
@@ -771,7 +770,7 @@
           groupingMetrics: readProfileMetricMap("profileGroupingMetric"),
           numericTolerance: document.querySelector("#profileNumericTolerance").value,
           scheduleCompareMode: document.querySelector("#profileScheduleCompare").value,
-          scheduleSummaryMode: document.querySelector("#profileScheduleSummaryMode").value,
+          scaleMode: document.querySelector("#profileScaleMode").value,
           applyBehavior: {
             ...activeSettings.profile.applyBehavior,
             defaultMode: document.querySelector("#profileDefaultApplyMode").value,

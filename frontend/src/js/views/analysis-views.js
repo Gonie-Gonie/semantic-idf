@@ -115,6 +115,11 @@ function renderPendingResultTab(tab) {
       elements.profileGraph.innerHTML = `<div class="empty status-loading">${t("profile.running", {}, "Building profile graphs")}</div>`;
       return true;
     case "hvac":
+      [elements.hvacBackButton, elements.hvacForwardButton, elements.hvacClearFocusButton, elements.hvacZoneServicesButton].forEach((button) => {
+        if (button) {
+          button.disabled = true;
+        }
+      });
       elements.hvacSummary.innerHTML = `<div class="empty status-loading">${t("hvac.running", {}, "Resolving HVAC service paths")}</div>`;
       elements.hvacGraph.innerHTML = `<div class="empty">${t("hvac.readySoon", {}, "HVAC graph will appear when this stage is ready.")}</div>`;
       elements.hvacInspectorStats.textContent = t("hvac.pending", {}, "HVAC pending");
@@ -199,10 +204,7 @@ export function renderEmpty() {
     elements.profileApplyButton.disabled = true;
   }
   if (elements.hvacSummary) {
-    elements.hvacSummary.innerHTML = `<div class="empty">${t("hvac.noHVACAnalysis")}</div>`;
-    elements.hvacGraph.innerHTML = `<div class="empty">${t("hvac.noLoopGraph")}</div>`;
-    elements.hvacInspectorStats.textContent = t("hvac.selectNode");
-    elements.hvacInspector.innerHTML = `<div class="empty">${t("hvac.noData")}</div>`;
+    renderHVAC(null);
   }
   if (elements.simulationRunButton) {
     renderSimulation();

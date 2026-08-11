@@ -1272,6 +1272,39 @@ func outputApplyPreviewHasAction(changes []idf.OutputApplyChange, action string,
 	return false
 }
 
+func TestNormalizeProfileSettingsMigratesLegacyScheduleSummaryTimeView(t *testing.T) {
+	tests := []struct {
+		name            string
+		scheduleSummary string
+		timeView        string
+		want            string
+	}{
+		{name: "representative day", scheduleSummary: "representative_day", want: "day"},
+		{name: "representative week", scheduleSummary: "representative_week", want: "week"},
+		{name: "hourly average by day type", scheduleSummary: "hourly_average_by_daytype", want: "week"},
+		{name: "monthly average", scheduleSummary: "monthly_average", want: "month"},
+		{name: "load duration", scheduleSummary: "load_duration", want: "duration"},
+		{name: "annual heatmap", scheduleSummary: "annual_heatmap", want: "year"},
+		{name: "invalid new value uses legacy", scheduleSummary: "monthly_average", timeView: "unknown", want: "month"},
+		{name: "explicit new value wins", scheduleSummary: "representative_day", timeView: "rules", want: "rules"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			settings := normalizeProfileSettings(idf.ProfileAnalysisSettings{
+				ScheduleSummaryMode: test.scheduleSummary,
+				TimeView:            test.timeView,
+			}, idf.DefaultProfileAnalysisSettings())
+			if settings.TimeView != test.want {
+				t.Fatalf("TimeView = %q, want %q", settings.TimeView, test.want)
+			}
+			if settings.GraphDeck.TimeView != test.want {
+				t.Fatalf("GraphDeck.TimeView = %q, want %q", settings.GraphDeck.TimeView, test.want)
+			}
+		})
+	}
+}
+
 func TestDefaultSettingsRetainThermalTopologyShortcuts(t *testing.T) {
 	settings := normalizeAppSettings(AppSettings{})
 	want := map[string]string{

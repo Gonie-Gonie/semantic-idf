@@ -18,21 +18,6 @@
     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   }
 
-  .profile-layout {
-    grid-template-columns: minmax(230px, 34%) minmax(0, 1fr);
-  }
-
-  .profile-graph-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .profile-graph-toolbar {
-    grid-template-columns: minmax(0, 1fr) repeat(2, minmax(132px, 170px));
-  }
-
-  .profile-similarity-grid {
-    grid-template-columns: 1fr;
-  }
 }
 
 @media (max-width: 920px) {
@@ -41,8 +26,7 @@
     flex-direction: column;
   }
 
-  .workspace,
-  .split-results {
+  .workspace {
     grid-template-columns: 1fr;
   }
 
@@ -70,10 +54,6 @@
   .editor-panel {
     min-height: 0;
     border-bottom: 1px solid var(--line);
-  }
-
-  .metric-grid {
-    grid-template-columns: repeat(2, minmax(120px, 1fr));
   }
 
   .summary-head {
@@ -117,8 +97,7 @@
     width: auto;
   }
 
-  .hvac-layout,
-  .hvac-loop-columns {
+  .hvac-layout {
     grid-template-columns: 1fr;
   }
 
@@ -126,14 +105,6 @@
   .hvac-network-list,
   .hvac-support-grid {
     grid-template-columns: 1fr;
-  }
-
-  .profile-layout {
-    grid-template-columns: 1fr;
-  }
-
-  .profile-settings-grid {
-    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   }
 
   .profile-live-controls {
@@ -145,8 +116,46 @@
     width: 100%;
   }
 
-  .profile-graph-toolbar {
-    grid-template-columns: 1fr;
+  .profile-overview-table-head {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .profile-overview-table-head > span:nth-child(2),
+  .profile-overview-table-head > span:nth-child(3) {
+    display: none;
+  }
+
+  .profile-table-row {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    gap: 4px;
+  }
+
+  .profile-row-apply-slot {
+    display: none;
+  }
+
+  .profile-card-zones,
+  .profile-card-metrics {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .profile-item-table {
+    display: none;
+  }
+
+  .profile-matrix table {
+    font-size: 11px;
+  }
+
+  .profile-matrix th,
+  .profile-matrix td {
+    padding: 6px;
+  }
+
+  .profile-matrix thead th:first-child {
+    width: clamp(100px, 32%, 160px);
   }
 
   .geometry-detail-grid {
@@ -175,6 +184,26 @@
 }
 
 @media (max-width: 560px) {
+  .profile-overview-table-head {
+    padding: 6px 8px;
+  }
+
+  .profile-apply-badge {
+    min-height: 26px;
+    padding-inline: 8px;
+  }
+
+  .profile-heatmap-frame {
+    grid-template-columns: 22px minmax(0, 1fr);
+    gap: 4px;
+    padding-inline: 6px;
+  }
+
+  .profile-heatmap-x span:nth-child(2),
+  .profile-heatmap-x span:nth-child(3) {
+    display: none;
+  }
+
   .workspace-link-bar {
     gap: 0.3rem;
     padding-inline: 0.35rem;
@@ -200,19 +229,6 @@
     flex: 1 1 45%;
   }
 
-  .metric-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .table-row {
-    grid-template-columns: 52px minmax(110px, 1fr) 64px;
-  }
-
-  .table-row span:nth-child(3) {
-    display: none;
-  }
-
-  .hvac-component-main,
   .hvac-node-usage,
   .hvac-relation-row {
     grid-template-columns: 1fr;
@@ -263,14 +279,8 @@
     width: 100%;
   }
 
-  .profile-cluster-row,
-  .profile-ranking-row,
   .profile-source-accordion summary {
     grid-template-columns: 1fr;
-  }
-
-  .profile-scatter {
-    min-height: 180px;
   }
 
   .semantic-toolbar,
@@ -304,6 +314,160 @@
   .semantic-occurrence-chooser__option,
   .semantic-occurrence-chooser [role="option"] {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@container profile-pane (max-width: 520px) {
+  .profile-overview-table-head {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .profile-overview-table-head > span:nth-child(2),
+  .profile-overview-table-head > span:nth-child(3) {
+    display: none;
+  }
+
+  .profile-table-row,
+  .profile-source-accordion summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .profile-item-table {
+    display: none;
+  }
+
+  .profile-table-row {
+    align-items: start;
+    gap: 4px;
+  }
+
+  .profile-row-apply-slot {
+    display: none;
+  }
+
+  .profile-card-zones,
+  .profile-card-metrics {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .profile-detail-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .profile-detail-actions {
+    align-self: flex-start;
+  }
+
+  .profile-matrix thead th:first-child {
+    width: auto;
+  }
+
+  .profile-matrix table,
+  .profile-matrix tbody,
+  .profile-matrix tr,
+  .profile-matrix th,
+  .profile-matrix td {
+    width: 100%;
+    max-width: 100%;
+    display: block;
+  }
+
+  .profile-matrix thead {
+    display: none;
+  }
+
+  .profile-matrix tr {
+    border-bottom: 1px solid var(--surface-2);
+  }
+
+  .profile-matrix tr:last-child {
+    border-bottom: 0;
+  }
+
+  .profile-matrix th,
+  .profile-matrix td {
+    border-right: 0;
+  }
+
+  .profile-matrix-dimension-label {
+    min-width: 0;
+    margin-bottom: 4px;
+    display: block;
+    overflow: hidden;
+    color: var(--muted);
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1.25;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .profile-view-switch {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .profile-segment-button {
+    min-width: 0;
+    padding-inline: 5px;
+  }
+}
+
+@container profile-pane (max-width: 240px) {
+  .profile-overview-table-head {
+    grid-template-columns: minmax(0, 1fr);
+    padding-inline: 8px;
+  }
+
+  .profile-overview-table-head > span:first-child {
+    display: none;
+  }
+
+  .profile-overview-apply-head {
+    justify-content: flex-end;
+  }
+
+  .profile-group-card,
+  .profile-source-accordion summary,
+  .profile-annual-panel,
+  .profile-annual-heatmap-card,
+  .profile-overlay-panel {
+    padding-inline: 8px;
+  }
+
+  .profile-graph-panel-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    justify-content: stretch;
+    gap: 2px;
+  }
+
+  .profile-graph-panel-head strong,
+  .profile-graph-panel-head span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .profile-source-accordion > div {
+    padding-inline: 8px;
+  }
+
+  .profile-source-accordion .profile-object-link {
+    width: fit-content;
+    max-width: 100%;
+    margin-right: 0;
+    white-space: normal;
+  }
+
+  .profile-heatmap-frame {
+    grid-template-columns: 18px minmax(0, 1fr);
+    gap: 3px;
+    padding-inline: 4px;
   }
 }
 

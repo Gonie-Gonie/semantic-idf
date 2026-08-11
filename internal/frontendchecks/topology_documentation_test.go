@@ -72,8 +72,8 @@ func TestThermalTopologyAcceptanceRecordMapsFinalFlows(t *testing.T) {
 		"TOPO-281 Interzone pair",
 		"TOPO-282 Modeling decision/QA",
 		"TOPO-283 Air coupling",
-		"TOPO-284 Simulation overlay",
-		"TOPO-285 Settings/Batch",
+		"TOPO-284 Simulation separation",
+		"TOPO-285 Context/Batch",
 		"backend calls",
 		"Wails build",
 	} {

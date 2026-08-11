@@ -182,12 +182,21 @@
               <div id="profileSettings" class="profile-settings"></div>
               <div class="profile-layout">
                 <section class="profile-overview" aria-label="Profile overview">
-                  <div id="profileOverview" class="profile-overview-list"></div>
+                  <div class="profile-overview-table" aria-label="Profile selection">
+                    <div class="profile-overview-table-head">
+                      <span data-i18n="common.selection">Selection</span>
+                      <span data-i18n="profile.assignment">Assignment</span>
+                      <span data-i18n="common.metrics">Metrics</span>
+                      <span class="profile-overview-apply-head">
+                        <button id="profileApplyButton" class="profile-apply-badge" type="button" disabled data-i18n="action.applyProfile">Apply Profile</button>
+                      </span>
+                    </div>
+                    <div id="profileOverview" class="profile-overview-list" role="listbox" aria-multiselectable="true"></div>
+                  </div>
                 </section>
                 <section class="profile-visual" aria-label="Profile graph">
                   <div class="profile-section-head">
                     <h3 data-i18n="profile.graph">Profile Graph</h3>
-                    <button id="profileApplyButton" type="button" disabled data-i18n="action.applyProfile">Apply Profile</button>
                   </div>
                   <div id="profileGraph" class="profile-graph"></div>
                 </section>
@@ -225,9 +234,39 @@
           <div class="result-pane" id="hvacPane">
             <div class="hvac-pane">
               <div id="hvacSummary" class="hvac-summary"></div>
-              <div id="hvacLayout" class="hvac-layout">
+              <div class="hvac-layout">
                 <section class="hvac-main" aria-label="HVAC graph">
-                  <div class="viewport-action-tools hvac-viewport-actions">
+                  <div id="hvacViewportActions" class="viewport-action-tools hvac-viewport-actions" role="group" aria-label="HVAC view actions" data-i18n-aria-label="hvac.viewportActions">
+                    <button id="hvacBackButton" class="viewport-icon-button" type="button" data-hvac-nav-action="back" aria-label="Back" title="Back" data-i18n-aria-label="common.back" data-i18n-title="common.back" disabled>
+                      <svg class="viewport-icon" viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M15 5l-7 7 7 7"></path>
+                        <path d="M8 12h10"></path>
+                      </svg>
+                      <span class="sr-only" data-i18n="common.back">Back</span>
+                    </button>
+                    <button id="hvacForwardButton" class="viewport-icon-button" type="button" data-hvac-nav-action="forward" aria-label="Forward" title="Forward" data-i18n-aria-label="common.forward" data-i18n-title="common.forward" disabled>
+                      <svg class="viewport-icon" viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M9 5l7 7-7 7"></path>
+                        <path d="M16 12H6"></path>
+                      </svg>
+                      <span class="sr-only" data-i18n="common.forward">Forward</span>
+                    </button>
+                    <button id="hvacClearFocusButton" class="viewport-icon-button" type="button" data-hvac-nav-action="clear" aria-label="Clear focus" title="Clear focus" data-i18n-aria-label="hvac.clearFocus" data-i18n-title="hvac.clearFocus" disabled>
+                      <svg class="viewport-icon" viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M8 3H3v5M16 3h5v5M21 16v5h-5M8 21H3v-5"></path>
+                        <path d="M9 9l6 6M15 9l-6 6"></path>
+                      </svg>
+                      <span class="sr-only" data-i18n="hvac.clearFocus">Clear focus</span>
+                    </button>
+                    <button id="hvacZoneServicesButton" class="viewport-icon-button" type="button" data-hvac-nav-action="services" aria-label="Zone Services" title="Zone Services" data-i18n-aria-label="hvac.zoneServices" data-i18n-title="hvac.zoneServices" disabled>
+                      <svg class="viewport-icon" viewBox="0 0 24 24" aria-hidden="true">
+                        <circle cx="6" cy="6" r="2"></circle>
+                        <circle cx="18" cy="6" r="2"></circle>
+                        <circle cx="12" cy="18" r="2"></circle>
+                        <path d="M7.7 7.2l3.2 8.7M16.3 7.2l-3.2 8.7M8 6h8"></path>
+                      </svg>
+                      <span class="sr-only" data-i18n="hvac.zoneServices">Zone Services</span>
+                    </button>
                     <button id="hvacExpandButton" class="viewport-icon-button" type="button" data-expand-pane="hvac" aria-label="Expand" title="Expand" data-i18n-aria-label="action.expand" data-i18n-title="action.expand" aria-pressed="false">
                       <svg class="viewport-icon viewport-icon-expand" viewBox="0 0 24 24" aria-hidden="true">
                         <path d="M8 3H3v5M16 3h5v5M21 16v5h-5M8 21H3v-5"></path>
@@ -240,7 +279,7 @@
                   </div>
                   <div id="hvacGraph" class="hvac-graph"></div>
                 </section>
-                <aside id="hvacSide" class="hvac-side" aria-label="HVAC inspector">
+                <aside class="hvac-side" aria-label="HVAC inspector">
                   <section class="hvac-inspector-section">
                     <div class="hvac-section-head">
                       <h3 data-i18n="hvac.inspector">Inspector</h3>
@@ -277,7 +316,7 @@
                 <button id="simulationRunButton" type="button" data-i18n="action.runSimulation">Run & Inspect</button>
               </section>
               <section class="simulation-purpose-panel" aria-label="Simulation purposes">
-                <div id="simulationPurposeGrid" class="simulation-purpose-grid">
+                <div class="simulation-purpose-grid">
                   <label class="simulation-purpose-card">
                     <input type="checkbox" data-simulation-purpose="basic_energy" checked />
                     <span>
@@ -488,7 +527,7 @@
                   <span data-i18n="geometry.level">Level</span>
                   <select id="geometryStorySelect" aria-label="Topology story"></select>
                 </label>
-                <label id="geometrySyncControl" class="geometry-toggle geometry-sync-toggle"><input id="geometrySyncLocate" type="checkbox" checked /> <span data-i18n="geometry.syncLocate">Sync locate</span></label>
+                <label class="geometry-toggle geometry-sync-toggle"><input id="geometrySyncLocate" type="checkbox" checked /> <span data-i18n="geometry.syncLocate">Sync locate</span></label>
                 <div id="geometry3DControls" class="geometry-control-group geometry-visibility-controls" aria-label="3D visibility">
                   <label class="geometry-toggle"><input id="geometry3DShowZones" type="checkbox" checked /> <span data-i18n="geometry.showZones">Zones</span></label>
                   <label class="geometry-toggle"><input id="geometry3DShowSurfaces" type="checkbox" checked /> <span data-i18n="geometry.showSurfaces">Surfaces</span></label>
@@ -520,7 +559,7 @@
                       <option value="neighbors" data-i18n="topology.scopeNeighbors">Neighbors</option>
                     </select>
                   </label>
-                  <details id="thermalTopologyAdvanced" class="thermal-topology-advanced">
+                  <details class="thermal-topology-advanced">
                     <summary data-i18n="topology.advanced">Advanced</summary>
                     <div class="thermal-topology-advanced-menu">
                       <label class="topology-select-control">

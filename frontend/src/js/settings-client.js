@@ -87,8 +87,9 @@ export const defaultAppSettings = {
     },
     numericTolerance: 0.001,
     scheduleCompareMode: "name",
-    graphMode: "actual_value",
-    scheduleSummaryMode: "annual_heatmap",
+    metricMode: "actual",
+    timeView: "year",
+    scaleMode: "auto",
     applyBehavior: {
       defaultMode: "clone",
       allowZoneListEdit: false,
@@ -251,11 +252,20 @@ export function mergeSettings(settingsInput = {}) {
       groupingMetrics: normalizeMetricMap(profile.groupingMetrics, defaultProfile.groupingMetrics),
       numericTolerance: clampFloat(profile.numericTolerance, 0.000001, 1000, defaultProfile.numericTolerance),
       scheduleCompareMode: normalizeChoice(profile.scheduleCompareMode, ["none", "name", "resolved"], defaultProfile.scheduleCompareMode),
-      graphMode: normalizeChoice(profile.graphMode, ["multiplier", "actual_value"], defaultProfile.graphMode),
-      scheduleSummaryMode: normalizeChoice(
-        profile.scheduleSummaryMode,
-        ["representative_day", "representative_week", "monthly_average", "hourly_average_by_daytype", "load_duration", "annual_heatmap"],
-        defaultProfile.scheduleSummaryMode,
+      metricMode: normalizeChoice(
+        profile.metricMode,
+        ["design", "multiplier", "actual", "annual"],
+        profileMetricModeFromLegacy(profile.graphMode, defaultProfile.metricMode),
+      ),
+      timeView: normalizeChoice(
+        profile.timeView,
+        ["day", "week", "month", "year", "duration", "rules"],
+        profileTimeViewFromLegacy(profile.scheduleSummaryMode, defaultProfile.timeView),
+      ),
+      scaleMode: normalizeChoice(
+        profile.scaleMode,
+        ["auto", "shared", "design_peak", "multiplier_0_1", "percentile"],
+        defaultProfile.scaleMode,
       ),
       applyBehavior: {
         defaultMode: normalizeChoice(applyBehavior.defaultMode, ["clone", "shared"], defaultProfile.applyBehavior.defaultMode),
@@ -418,6 +428,42 @@ function clampFloat(value, min, max, fallback) {
 function normalizeChoice(value, allowed, fallback) {
   const normalized = String(value || "").trim().toLowerCase();
   return allowed.includes(normalized) ? normalized : fallback;
+}
+
+function profileMetricModeFromLegacy(value, fallback = "actual") {
+  switch (String(value || "").trim().toLowerCase()) {
+    case "design":
+      return "design";
+    case "multiplier":
+      return "multiplier";
+    case "annual":
+      return "annual";
+    case "actual":
+    case "actual_value":
+      return "actual";
+    default:
+      return fallback;
+  }
+}
+
+function profileTimeViewFromLegacy(value, fallback = "year") {
+  switch (String(value || "").trim().toLowerCase()) {
+    case "representative_day":
+      return "day";
+    case "representative_week":
+    case "hourly_average_by_daytype":
+      return "week";
+    case "monthly_average":
+      return "month";
+    case "load_duration":
+      return "duration";
+    case "period_rules":
+      return "rules";
+    case "annual_heatmap":
+      return "year";
+    default:
+      return fallback;
+  }
 }
 
 function normalizeEnabledDimensions(value, fallback) {

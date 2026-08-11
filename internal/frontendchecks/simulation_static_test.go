@@ -17,7 +17,6 @@ func TestFrontendSimulationEnergySystemsCrossJumpContracts(t *testing.T) {
 		"renderSimulationEnergyConnectedSystems",
 		"renderSimulationEnergySupportingAssets",
 		"simulationServicePathLoopRefs",
-		"simulationServicePathSupportingAssets",
 		"simulationServicePathSupportingAssetRefs",
 		"simulation.sourceEnergy",
 		"data-simulation-hvac-path-id",
@@ -297,6 +296,7 @@ func TestFrontendSimulationUsesSimplifiedDefaultsAndAutomaticEnergyPlus(t *testi
 		"hasDetailTierGap",
 		"simulation.energyDetailTier",
 		"simulation.energyDetailTierHint",
+		"Output Plan",
 	} {
 		if strings.Contains(simulation, removed) {
 			t.Fatalf("removed Simulation setup/selection/tier behavior remains in the renderer: %q", removed)

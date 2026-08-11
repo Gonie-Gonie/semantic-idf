@@ -20,8 +20,8 @@ internal result-tab, route, API, workspace, and shortcut ID remains `geometry`.
 | --- | --- | --- |
 | `schema` | string | Static schema identifier. |
 | `sourceModelHash` | string | Hash of the source model used to build the report. |
-| `areaBasis` | string | Canonical aggregate basis; currently `effective`. |
-| `nodes` | node[] | Zone, space, environment, external, interface, and unresolved graph nodes. |
+| `areaBasis` | string | Canonical aggregate basis; currently `effective`, meaning multiplier-adjusted. |
+| `nodes` | node[] | Zone, space, environment/external-target, and unresolved graph nodes. |
 | `boundaries` | boundary[] | One authoritative record per supported heat-transfer surface. |
 | `connections` | connection[] | Compact owner-to-target aggregates, including the separate air layer. |
 | `openings` | opening[] | Fenestration records attached to base boundaries. |
@@ -46,10 +46,17 @@ internal result-tab, route, API, workspace, and shortcut ID remains `geometry`.
 | `physicalArea`, `effectiveArea`, `floorArea`, `volume`, `centroid` | Available spatial quantities. |
 | `diagnosticIds`, `sourceAnchors` | Issue and source navigation links. |
 
-Common `kind` values are `zone`, `space`, `outdoors`, `ground`, `adiabatic`,
-`foundation`, `ground_preprocessor`, `other_side_coefficients`,
-`other_side_conditions_model`, `thermal_boundary`, `thermal_interface`,
-`window`, and `unresolved_target`.
+Common backend `kind` values are `zone`, `space`, `outdoors` and its
+orientation-specific variants, `ground`, `adiabatic`, `foundation`,
+`ground_preprocessor`, `other_side_coefficients`,
+`other_side_conditions_model`, and `unresolved_target`.
+
+`thermal_boundary`, `thermal_interface`, `window`, and
+`thermal_boundary_group` are not serialized `nodes[].kind` values. Boundaries
+and openings are authoritative records in their own arrays and are exposed by
+the current zone-level Network inspector. Older frontend detail projections
+could synthesize those node kinds locally, but they were never part of the
+backend schema and the current renderer does not create them.
 
 ### Boundary
 
@@ -62,7 +69,7 @@ Common `kind` values are `zone`, `space`, `outdoors`, `ground`, `adiabatic`,
 | Reciprocal pair | `counterpartSurfaceId`, `counterpartSurfaceEntityId`, `pairId`, `virtualCounterpart` |
 | Construction | `constructionName`, `constructionObjectIndex`, `constructionStatus`, `uValue`, `hasUValue` |
 | Physical area | `physicalGrossArea`, `physicalOpeningArea`, `physicalOpaqueArea` |
-| Model-total area | `effectiveGrossArea`, `effectiveOpeningArea`, `effectiveOpaqueArea` |
+| Multiplier-adjusted area | `effectiveGrossArea`, `effectiveOpeningArea`, `effectiveOpaqueArea` |
 | Conductance | `opaqueUa`, `openingUa`, `totalUa`, `hasUa` |
 | Exposure | `orientation`, `azimuth`, `sunExposure`, `windExposure` |
 | Related data | `openingIds`, `diagnosticIds`, `geometryCheck` |
@@ -100,10 +107,11 @@ quantities. `diagnosticIds` and `sourceAnchors` preserve evidence.
 `boundaryIds`, `openingIds`, and `airCouplingIds` retain members.
 `surfaceCount` and `openingCount` are canonical counts, so reciprocal pairs are
 not doubled. Physical and effective gross/opaque/opening fields mirror the
-boundary fields. `opaqueUa`, `openingUa`, `totalUa`, and `hasUa` use the
-effective basis; `physicalOpaqueUa`, `physicalOpeningUa`, `physicalTotalUa`, and
-`hasPhysicalUa` provide the physical basis. `orientations`, `diagnosticIds`, and
-`sourceAnchors` provide presentation and traceability.
+boundary fields; the effective fields incorporate the applicable multipliers.
+`opaqueUa`, `openingUa`, `totalUa`, and `hasUa` use that multiplier-adjusted
+basis, while `physicalOpaqueUa`, `physicalOpeningUa`, `physicalTotalUa`, and
+`hasPhysicalUa` retain the single-instance quantities. `orientations`,
+`diagnosticIds`, and `sourceAnchors` provide presentation and traceability.
 
 ### Zone signature
 
@@ -120,9 +128,11 @@ effective basis; `physicalOpaqueUa`, `physicalOpeningUa`, `physicalTotalUa`, and
 ### Matrix cell
 
 `id`, `rowNodeId`, `columnNodeId`, and `connectionId` identify the symmetric
-projection. `surfaceCount`, `area`, `ua`, `hasUa`, and `diagnosticCount` are
-copied from the same compact connection used by Graph. Air couplings are not
-mixed into this conductive matrix.
+backend projection. `surfaceCount`, `area`, `ua`, `hasUa`, and
+`diagnosticCount` use the report's multiplier-adjusted aggregate basis and
+refer to the same compact connection records used by Network. Air couplings
+are not mixed into this conductive matrix. The matrix remains an export/API
+field; the current main UI does not expose a separate Matrix view.
 
 ### Issue link and geometry QA
 
@@ -148,10 +158,19 @@ opening UA = sum(opening area × opening construction U)
 total UA = opaque UA + opening UA
 ```
 
-The selected area basis chooses physical or effective fields consistently.
-`hasUa` is false when any required U-value is unavailable. `uaCoverage` is the
-covered aggregate area divided by total applicable area; no partial value is
-presented as a complete total.
+The static report's `areaBasis` is fixed to `effective` for aggregate zone
+signatures and matrix values. Here, effective means multiplier-adjusted; it
+does not mean a second geometry. Boundary and connection records retain both
+single-instance physical fields and multiplier-adjusted effective fields for
+API and export consumers.
+
+The main Network UI has no area-basis selector. It shows physical Gross area
+and UA with Multiplier as a separate inspector variable. Batch Summary requests
+the fixed multiplier-adjusted basis, while backend and CLI callers can still
+request physical Batch values for compatibility. `hasUa` is false when any
+required U-value is unavailable. `uaCoverage` is the covered aggregate area
+divided by total applicable area; no partial value is presented as a complete
+total.
 
 Reciprocal interzone surfaces and openings use one canonical pair. Their area,
 UA, connection count, matrix quantity, and simulated flow are counted once,
@@ -225,6 +244,10 @@ airflow_network_component_missing
 
 Simulation data is not inserted into the static report. The purpose result uses
 `semantic-idf.thermal-topology-simulation/v1`:
+
+This remains a backend and Simulation-result contract. The current Topology
+tab renders only the static Network report and does not expose overlay metrics,
+period controls, or a heat-flow ledger.
 
 | Field | Meaning |
 | --- | --- |

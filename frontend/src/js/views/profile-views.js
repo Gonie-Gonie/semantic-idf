@@ -2,10 +2,19 @@ import { backend, elements, escapeHTML, setStatus, state } from "../state.js";
 import { getCurrentAppSettings, saveAppSettings } from "../settings-client.js";
 import { profileDimensionLabel as i18nProfileDimensionLabel, profileMetricLabel, t } from "../i18n.js";
 import { configureResultPanelNavigationHooks } from "../panel-navigation-adapters.js";
+import { getPanelNavigationAdapter } from "../panel-navigation-registry.js";
+import { clearSemanticSelection, selectSemanticEntity } from "../selection-controller.js";
+import { captureViewSnapshot, recordViewHistory } from "../view-history.js";
 
 let lastProfileView = null;
+let lastProfileReport = null;
 let profileNavigationCleanup = null;
 let profileNavigationRevealTarget = null;
+let lastProfileSeriesByID = new Map();
+let profileSelectionAnalysisKey = "";
+let previousProfileGroupMembership = new Map();
+let profileHeatmapSequence = 0;
+const profileHeatmapPaintQueue = new Map();
 const PROFILE_MATRIX_RENDER_LIMIT = 500;
 
 export function renderProfile(profile = state.report?.profile) {
@@ -17,19 +26,23 @@ export function renderProfile(profile = state.report?.profile) {
     return;
   }
 
+  resetProfileRowSelectionForDocument(profile);
   state.profileSettings = mergeProfileSettings(profile.defaultSettings, state.profileSettings || getCurrentAppSettings().profile);
-  state.profileGraphDeck = mergeProfileGraphDeck(profile, state.profileGraphDeck);
+  state.profileSelectedDimensions = normalizeProfileSelection(
+    state.profileSelectedDimensions,
+    (profile.dimensions || [])
+      .map((dimension) => dimension.id)
+      .filter((dimension) => state.profileSettings.enabledDimensions.includes(dimension)),
+  );
   state.activeProfileView = state.activeProfileView === "zone" ? "zone" : "profile";
   lastProfileView = cachedProfileView(profile, state.profileSettings);
-  if (!state.activeProfileGroupId || !lastProfileView.groups.some((group) => group.id === state.activeProfileGroupId)) {
-    state.activeProfileGroupId = lastProfileView.groups[0]?.id || "";
-  }
 
   const visibleGroups = lastProfileView.groups;
   const visibleRows = lastProfileView.matrix;
   if (!state.activeProfileZoneName || !lastProfileView.matrix.some((row) => row.zoneName === state.activeProfileZoneName)) {
     state.activeProfileZoneName = visibleRows[0]?.zoneName || lastProfileView.matrix[0]?.zoneName || "";
   }
+  normalizeProfileRowSelections(visibleGroups, visibleRows);
   const selectedGroup = selectedProfileGroup();
   const selectedZone = state.activeProfileView === "zone" ? selectedProfileZoneRow() : null;
   const graphGroup = selectedZone ? groupForZoneName(selectedZone.zoneName) : selectedGroup;
@@ -37,7 +50,7 @@ export function renderProfile(profile = state.report?.profile) {
   elements.profileApplyButton.disabled = !graphGroup;
   renderProfileSettings(profile);
   renderProfileOverview(visibleGroups, visibleRows);
-  renderProfileGraph(graphGroup, profile, selectedZone);
+  renderProfileGraph(graphGroup, profile);
   renderProfileMatrix(lastProfileView.matrix, profile);
   renderProfileDetail(graphGroup, profile, selectedZone);
   bindProfileControls(profile);
@@ -51,6 +64,30 @@ function renderEmptyProfile() {
   elements.profileMatrixStats.textContent = t("count.zones", { count: 0 });
   elements.profileGraph.innerHTML = `<div class="empty">${t("profile.noGraph")}</div>`;
   elements.profileApplyButton.disabled = true;
+  state.profileSelectedGroupIds = [];
+  state.profileSelectedZoneNames = [];
+  state.profileSelectionAnchorKey = "";
+  lastProfileReport = null;
+  profileSelectionAnalysisKey = "";
+  previousProfileGroupMembership = new Map();
+}
+
+function resetProfileRowSelectionForDocument(profile) {
+  const analysisKey = String(state.reportAnalysisKey || state.analysisKey || state.lastAnalyzedKey || "");
+  const changed = analysisKey
+    ? profileSelectionAnalysisKey !== analysisKey
+    : Boolean(lastProfileReport && lastProfileReport !== profile);
+  if (changed) {
+    state.activeProfileGroupId = "";
+    state.activeProfileZoneName = "";
+    state.profileSelectedGroupIds = [];
+    state.profileSelectedZoneNames = [];
+    state.profileSelectionAnchorKey = "";
+    state.profileSelectedCell = null;
+    previousProfileGroupMembership = new Map();
+  }
+  profileSelectionAnalysisKey = analysisKey;
+  lastProfileReport = profile;
 }
 
 function renderProfileSettings(profile) {
@@ -210,7 +247,10 @@ function profileSeriesSemanticTargets(series = {}) {
   if ((series.sourceItemIds || []).length === 1) {
     targets.push(series.sourceItemIds[0]);
   }
-  if (series.scopeType === "group" && series.groupId) {
+  if (series.scopeType === "group" && series.currentGroupId) {
+    const currentGroup = lastProfileView?.groups.find((group) => group.id === series.currentGroupId);
+    targets.push(...profileGroupSemanticTargets(currentGroup));
+  } else if (series.scopeType === "group" && series.groupId) {
     targets.push(series.groupId);
   }
   if (series.zoneName && series.dimension) {
@@ -232,14 +272,6 @@ function profileAggregateSemanticTargets(item = {}) {
     targets.push(item.groupId);
   }
   return targets;
-}
-
-function profileScheduleSemanticAttributes(cluster = {}) {
-  const scheduleNames = (cluster.scheduleNames || []).map((value) => String(value || "").trim()).filter(Boolean);
-  if (scheduleNames.length !== 1) {
-    return "";
-  }
-  return profileSemanticAttributes(scheduleNames, { occurrenceContext: "zone_profile" });
 }
 
 function profileScheduleTargetNames(value) {
@@ -271,6 +303,208 @@ function sameStringSet(left = [], right = []) {
   return first.length === second.length && first.every((item, index) => item === second[index]);
 }
 
+function profileGroupRowKey(groupID) {
+  return `group:${String(groupID || "")}`;
+}
+
+function profileZoneRowKey(zoneName) {
+  return `zone:${String(zoneName || "")}`;
+}
+
+function normalizeProfileSelection(values, validValues) {
+  const valid = new Set(validValues);
+  return [...new Set((values || []).map((value) => String(value || "")).filter((value) => valid.has(value)))];
+}
+
+function currentProfileGroupIDForSeries(series = {}) {
+  if (series.currentGroupId) {
+    return series.currentGroupId;
+  }
+  const reportGroup = (state.report?.profile?.groups || []).find((group) => group.id === series.groupId);
+  if (!reportGroup) {
+    return series.groupId || "";
+  }
+  return currentProfileGroupForReportGroup(reportGroup)?.id || "";
+}
+
+function profileGroupMembership(group = {}) {
+  return {
+    zoneNames: [...new Set(group.zoneNames || [])],
+    itemIds: [...new Set(group.itemIds || [])],
+  };
+}
+
+function profileGroupsForMembership(membership, groups) {
+  if (!membership?.zoneNames?.length) {
+    return [];
+  }
+  const exact = groups.find((group) => (
+    sameStringSet(group.zoneNames, membership.zoneNames) &&
+    (!membership.itemIds?.length || sameStringSet(group.itemIds, membership.itemIds))
+  ));
+  if (exact) {
+    return [exact];
+  }
+  const zones = new Set(membership.zoneNames);
+  return groups.filter((group) => (group.zoneNames || []).some((zoneName) => zones.has(zoneName)));
+}
+
+function mapPreviousProfileGroupIDs(groupIDs, groups) {
+  const mapped = [];
+  (groupIDs || []).forEach((groupID) => {
+    const membership = previousProfileGroupMembership.get(groupID);
+    const matches = membership ? profileGroupsForMembership(membership, groups) : [];
+    if (matches.length) {
+      mapped.push(...matches.map((group) => group.id));
+    } else if (!membership && groups.some((group) => group.id === groupID)) {
+      mapped.push(groupID);
+    }
+  });
+  return [...new Set(mapped)];
+}
+
+function normalizeProfileRowSelections(groups, rows) {
+  const groupIDs = groups.map((group) => group.id);
+  const zoneNames = rows.map((row) => row.zoneName);
+  const previousPrimaryMembership = previousProfileGroupMembership.get(state.activeProfileGroupId);
+  const previousAnchorID = String(state.profileSelectionAnchorKey || "").startsWith("group:")
+    ? String(state.profileSelectionAnchorKey).slice("group:".length)
+    : "";
+  const previousAnchorMembership = previousProfileGroupMembership.get(previousAnchorID);
+  let selectedGroupIDs = normalizeProfileSelection(mapPreviousProfileGroupIDs(state.profileSelectedGroupIds, groups), groupIDs);
+  let selectedZoneNames = normalizeProfileSelection(state.profileSelectedZoneNames, zoneNames);
+  if (!selectedGroupIDs.length && groupIDs.length) {
+    selectedGroupIDs = [groupIDs.includes(state.activeProfileGroupId) ? state.activeProfileGroupId : groupIDs[0]];
+  }
+  if (!selectedZoneNames.length && zoneNames.length) {
+    selectedZoneNames = [zoneNames.includes(state.activeProfileZoneName) ? state.activeProfileZoneName : zoneNames[0]];
+  }
+  state.profileSelectedGroupIds = selectedGroupIDs;
+  state.profileSelectedZoneNames = selectedZoneNames;
+
+  if (state.activeProfileView === "zone") {
+    if (!selectedZoneNames.includes(state.activeProfileZoneName)) {
+      state.activeProfileZoneName = selectedZoneNames[selectedZoneNames.length - 1] || zoneNames[0] || "";
+    }
+    state.activeProfileGroupId = groupForZoneName(state.activeProfileZoneName)?.id || state.activeProfileGroupId;
+  } else {
+    const mappedPrimary = profileGroupsForMembership(previousPrimaryMembership, groups)
+      .find((group) => selectedGroupIDs.includes(group.id) && group.zoneNames.includes(state.activeProfileZoneName)) ||
+      profileGroupsForMembership(previousPrimaryMembership, groups).find((group) => selectedGroupIDs.includes(group.id));
+    if (mappedPrimary) {
+      state.activeProfileGroupId = mappedPrimary.id;
+    } else if (!selectedGroupIDs.includes(state.activeProfileGroupId)) {
+      state.activeProfileGroupId = selectedGroupIDs[selectedGroupIDs.length - 1] || groupIDs[0] || "";
+    }
+  }
+
+  const visibleKeys = state.activeProfileView === "zone"
+    ? zoneNames.map(profileZoneRowKey)
+    : groupIDs.map(profileGroupRowKey);
+  if (state.activeProfileView === "profile" && previousAnchorMembership) {
+    const anchorGroups = profileGroupsForMembership(previousAnchorMembership, groups)
+      .filter((group) => selectedGroupIDs.includes(group.id));
+    const mappedAnchor = anchorGroups.find((group) => group.zoneNames.includes(state.activeProfileZoneName)) || anchorGroups[0];
+    state.profileSelectionAnchorKey = mappedAnchor ? profileGroupRowKey(mappedAnchor.id) : state.profileSelectionAnchorKey;
+  }
+  if (!visibleKeys.includes(state.profileSelectionAnchorKey)) {
+    state.profileSelectionAnchorKey = state.activeProfileView === "zone"
+      ? profileZoneRowKey(state.activeProfileZoneName)
+      : profileGroupRowKey(state.activeProfileGroupId);
+  }
+  previousProfileGroupMembership = new Map(groups.map((group) => [group.id, profileGroupMembership(group)]));
+}
+
+function currentProfileRowKeys() {
+  return state.activeProfileView === "zone"
+    ? (lastProfileView?.matrix || []).map((row) => profileZoneRowKey(row.zoneName))
+    : (lastProfileView?.groups || []).map((group) => profileGroupRowKey(group.id));
+}
+
+function selectedProfileRowKeys() {
+  return state.activeProfileView === "zone"
+    ? (state.profileSelectedZoneNames || []).map(profileZoneRowKey)
+    : (state.profileSelectedGroupIds || []).map(profileGroupRowKey);
+}
+
+function profileGroupIDsForGraphSelection() {
+  if (state.activeProfileView !== "zone") {
+    return [...new Set(state.profileSelectedGroupIds || [])];
+  }
+  return [...new Set((state.profileSelectedZoneNames || [])
+    .map((zoneName) => groupForZoneName(zoneName)?.id || "")
+    .filter(Boolean))];
+}
+
+function applyProfileRowSelection(rowKeys, primaryKey, anchorKey) {
+  const visibleKeys = currentProfileRowKeys();
+  const selectedKeys = visibleKeys.filter((key) => rowKeys.includes(key));
+  if (!selectedKeys.length || !selectedKeys.includes(primaryKey)) {
+    return false;
+  }
+  if (primaryKey.startsWith("zone:")) {
+    const primaryZone = primaryKey.slice("zone:".length);
+    state.activeProfileView = "zone";
+    state.profileSelectedZoneNames = selectedKeys.map((key) => key.slice("zone:".length));
+    state.activeProfileZoneName = primaryZone;
+    state.activeProfileGroupId = groupForZoneName(primaryZone)?.id || state.activeProfileGroupId;
+  } else {
+    const primaryGroupID = primaryKey.slice("group:".length);
+    state.activeProfileView = "profile";
+    state.profileSelectedGroupIds = selectedKeys.map((key) => key.slice("group:".length));
+    state.activeProfileGroupId = primaryGroupID;
+    const primaryGroup = selectedProfileGroup();
+    if (primaryGroup && !primaryGroup.zoneNames.includes(state.activeProfileZoneName)) {
+      state.activeProfileZoneName = primaryGroup.zoneNames[0] || state.activeProfileZoneName;
+    }
+  }
+  state.profileSelectionAnchorKey = anchorKey;
+  state.profileSelectedCell = null;
+  return true;
+}
+
+function handleProfileRowSelection(event, rowKey) {
+  const visibleKeys = currentProfileRowKeys();
+  if (!visibleKeys.includes(rowKey)) {
+    return false;
+  }
+  const additive = event.ctrlKey || event.metaKey;
+  const range = event.shiftKey;
+  const current = new Set(selectedProfileRowKeys());
+  const currentPrimary = state.activeProfileView === "zone"
+    ? profileZoneRowKey(state.activeProfileZoneName)
+    : profileGroupRowKey(state.activeProfileGroupId);
+  let next = [];
+  let primary = rowKey;
+  let anchor = state.profileSelectionAnchorKey;
+
+  if (range && visibleKeys.includes(anchor)) {
+    const start = visibleKeys.indexOf(anchor);
+    const end = visibleKeys.indexOf(rowKey);
+    const rangeKeys = visibleKeys.slice(Math.min(start, end), Math.max(start, end) + 1);
+    next = additive ? visibleKeys.filter((key) => current.has(key) || rangeKeys.includes(key)) : rangeKeys;
+  } else if (additive) {
+    if (current.has(rowKey)) {
+      if (current.size === 1) {
+        return false;
+      }
+      current.delete(rowKey);
+      next = visibleKeys.filter((key) => current.has(key));
+      primary = next.includes(currentPrimary)
+        ? currentPrimary
+        : next[Math.max(0, Math.min(next.length - 1, visibleKeys.indexOf(rowKey) - 1))] || next[next.length - 1];
+    } else {
+      current.add(rowKey);
+      next = visibleKeys.filter((key) => current.has(key));
+    }
+    anchor = rowKey;
+  } else {
+    next = [rowKey];
+    anchor = rowKey;
+  }
+  return applyProfileRowSelection(next, primary, anchor);
+}
+
 function renderProfileOverview(groups, rows) {
   if (state.activeProfileView === "zone") {
     elements.profileOverview.innerHTML = rows.length
@@ -285,8 +519,9 @@ function renderProfileOverview(groups, rows) {
 
 function renderProfileGroupCard(group) {
   const active = group.id === state.activeProfileGroupId ? "active" : "";
+  const selected = (state.profileSelectedGroupIds || []).includes(group.id);
   return `
-    <button class="profile-group-card navigable-row ${active}" data-profile-group-id="${escapeHTML(group.id)}" type="button"
+    <button class="profile-group-card profile-table-row navigable-row ${selected ? "selected" : ""} ${active}" data-profile-group-id="${escapeHTML(group.id)}" data-profile-row-key="${escapeHTML(profileGroupRowKey(group.id))}" type="button" role="option" aria-selected="${selected ? "true" : "false"}"
       ${profileSemanticAttributes(profileGroupSemanticTargets(group), { occurrenceContext: "zone_profile" })}>
       <span>
         <strong>${escapeHTML(group.name)}</strong>
@@ -294,13 +529,15 @@ function renderProfileGroupCard(group) {
       </span>
       <span class="profile-card-zones">${escapeHTML(group.zoneNames.slice(0, 4).join(", "))}${group.zoneNames.length > 4 ? "..." : ""}</span>
       <span class="profile-card-metrics">${group.dimensions.map((dimension) => `${escapeHTML(dimension.label)} ${escapeHTML(dimension.displayValue)}`).join(" / ")}</span>
+      <span class="profile-row-apply-slot" aria-hidden="true"></span>
     </button>`;
 }
 
 function renderProfileZoneCard(row) {
   const active = row.zoneName === state.activeProfileZoneName ? "active" : "";
+  const selected = (state.profileSelectedZoneNames || []).includes(row.zoneName);
   return `
-    <button class="profile-group-card profile-zone-card navigable-row ${active}" data-profile-zone="${escapeHTML(row.zoneName)}" type="button"
+    <button class="profile-group-card profile-zone-card profile-table-row navigable-row ${selected ? "selected" : ""} ${active}" data-profile-zone="${escapeHTML(row.zoneName)}" data-profile-row-key="${escapeHTML(profileZoneRowKey(row.zoneName))}" type="button" role="option" aria-selected="${selected ? "true" : "false"}"
       ${profileSemanticAttributes([row.zoneName], { occurrenceContext: "zone_profile" })}>
       <span>
         <strong>${escapeHTML(row.zoneName)}</strong>
@@ -308,6 +545,7 @@ function renderProfileZoneCard(row) {
       </span>
       <span class="profile-card-zones">${escapeHTML(t("profile.receivesProfile", { profile: row.groupName || t("profile.noProfileGroup") }))}</span>
       <span class="profile-card-metrics">${row.dimensions.map((dimension) => `${escapeHTML(dimension.label)} ${escapeHTML(dimension.displayValue)}`).join(" / ")}</span>
+      <span class="profile-row-apply-slot" aria-hidden="true"></span>
     </button>`;
 }
 
@@ -444,7 +682,7 @@ function renderProfileMatrix(rows, profile) {
                     .map((dimension) => {
                       const summary = row.dimensions.find((item) => item.dimension === dimension.id) ||
                         temporaryProfileDimensionSummary(profile, row.zoneName, dimension.id);
-                      return renderProfileMatrixCell(summary, itemMap, row);
+                      return renderProfileMatrixCell(summary, itemMap, row, dimension);
                     })
                     .join("")}
                 </tr>`,
@@ -455,9 +693,10 @@ function renderProfileMatrix(rows, profile) {
     : `<div class="empty">${t("profile.noMatchingZones")}</div>`;
 }
 
-function renderProfileMatrixCell(summary, itemMap, row) {
+function renderProfileMatrixCell(summary, itemMap, row, dimension = {}) {
+  const dimensionLabel = profileDimensionLabel(dimension.id || summary?.dimension || "");
   if (!summary) {
-    return `<td class="profile-matrix-empty">N/A</td>`;
+    return `<td class="profile-matrix-empty" data-profile-dimension="${escapeHTML(dimension.id || "")}" data-profile-dimension-label="${escapeHTML(dimensionLabel)}" aria-label="${escapeHTML(`${dimensionLabel} N/A`)}"><span class="profile-matrix-dimension-label">${escapeHTML(dimensionLabel)}</span>N/A</td>`;
   }
   const cellClasses = profileMatrixCellClasses(summary, row);
   const itemIds = (summary.itemIds || []).join(",");
@@ -479,12 +718,14 @@ function renderProfileMatrixCell(summary, itemMap, row) {
       data-profile-zone="${escapeHTML(row.zoneName)}"
       data-profile-group-id="${escapeHTML(row.groupId || "")}"
       data-profile-dimension="${escapeHTML(summary.dimension)}"
+      data-profile-dimension-label="${escapeHTML(dimensionLabel)}"
       data-profile-schedule-hash="${escapeHTML(summary.scheduleHash || "")}"
       data-profile-schedule-name="${escapeHTML(summary.scheduleName || "")}"
       data-profile-value="${escapeHTML(String(summary.value ?? ""))}"
       data-profile-item-ids="${escapeHTML(itemIds)}"
       ${profileSemanticAttributes(semanticTargets, { occurrenceContext: "zone_profile" })}
       aria-label="${escapeHTML(`${row.zoneName} ${summary.label} ${summary.displayValue}`)}">
+      <span class="profile-matrix-dimension-label">${escapeHTML(dimensionLabel)}</span>
       <strong>${escapeHTML(summary.displayValue)}</strong>
       <small>${escapeHTML(summary.schedulePattern || summary.scheduleName || "")}</small>
       ${objects ? `<div class="profile-matrix-objects">${objects}</div>` : ""}
@@ -498,137 +739,137 @@ function temporaryProfileDimensionSummary(profile, zoneName, dimensionID) {
   return profileDimensionSummary(profile, zoneName, dimensionID);
 }
 
-function renderProfileGraph(group, profile, zoneRow = null) {
+function renderProfileGraph(group, profile) {
   if (!group) {
+    lastProfileSeriesByID = new Map();
     elements.profileGraph.innerHTML = `<div class="empty">${t("profile.graphSelect")}</div>`;
     return;
   }
-  const sourceDimensions = zoneRow?.dimensions || group.dimensions;
-  const deck = state.profileGraphDeck || mergeProfileGraphDeck(profile, null);
-  const selectedSeries = profileDeckSeries(profile, group, zoneRow);
-  const body = renderProfileDeckBody(profile, selectedSeries, deck);
+  const sourceDimensions = group.dimensions;
+  const options = currentProfileGraphOptions();
+  profileHeatmapPaintQueue.clear();
+  const selectedSeries = profileGraphSeries(profile, group);
+  lastProfileSeriesByID = new Map(selectedSeries.map((series) => [series.id, series]));
+  const body = renderProfileGraphBody(selectedSeries, options);
   elements.profileGraph.innerHTML = `
-    <div class="profile-graph-toolbar">
-      <label class="profile-field">
-        <span>${t("profile.graphType", {}, "Graph Type")}</span>
-        <select id="profileGraphPreset">
-          ${optionHTML("time_profile", "Time Profile", currentProfilePresetID())}
-          ${optionHTML("compare_groups", "Compare Groups", currentProfilePresetID())}
-          ${optionHTML("compare_zones", "Compare Zones", currentProfilePresetID())}
-          ${optionHTML("schedule_similarity", "Schedule Similarity", currentProfilePresetID())}
-          ${optionHTML("outliers", "Outliers", currentProfilePresetID())}
-          ${optionHTML("annual_contribution", "Annual Contribution", currentProfilePresetID())}
-          ${optionHTML("source_rules", "Source Rules", currentProfilePresetID())}
-        </select>
-      </label>
-      <label class="profile-field">
-        <span>${t("common.scope", {}, "Scope")}</span>
-        <select id="profileGraphScopeType">
-          ${optionHTML("group", t("profile.viewProfiles"), deck.scopeType)}
-          ${optionHTML("zone", t("profile.viewZones"), deck.scopeType)}
-          ${optionHTML("schedule", t("profile.scheduleSummary"), deck.scopeType)}
-          ${optionHTML("dimension", t("common.dimension"), deck.scopeType)}
-          ${optionHTML("selection", t("common.selection", {}, "Selection"), deck.scopeType)}
-        </select>
-      </label>
-      <label class="profile-field">
-        <span>${t("common.view")}</span>
-        <select id="profileGraphTimeView">
-          ${optionHTML("day", t("graph.representativeDay"), deck.timeView)}
-          ${optionHTML("week", t("graph.representativeWeek"), deck.timeView)}
-          ${optionHTML("month", t("graph.monthlyAverage"), deck.timeView)}
-          ${optionHTML("year", t("graph.annualHeatmap"), deck.timeView)}
-          ${optionHTML("duration", t("graph.loadDuration"), deck.timeView)}
-          ${optionHTML("rules", t("graph.periodRules"), deck.timeView)}
-        </select>
-      </label>
-      <label class="profile-field">
-        <span>${t("profile.compareMode", {}, "Compare")}</span>
-        <select id="profileGraphCompareMode">
-          ${optionHTML("single", t("profile.compareSingle", {}, "Single"), deck.compareMode)}
-          ${optionHTML("overlay", t("profile.compareOverlay", {}, "Overlay"), deck.compareMode)}
-          ${optionHTML("small_multiples", t("profile.compareSmallMultiples", {}, "Small multiples"), deck.compareMode)}
-          ${optionHTML("ranking", t("profile.compareRanking", {}, "Ranking"), deck.compareMode)}
-          ${optionHTML("similarity", t("profile.compareSimilarity", {}, "Similarity"), deck.compareMode)}
-          ${optionHTML("outliers", t("profile.compareOutliers", {}, "Outliers"), deck.compareMode)}
-        </select>
-      </label>
-      <label class="profile-field">
-        <span>${t("common.scale")}</span>
-        <select id="profileGraphScaleMode">
-          ${optionHTML("auto", t("common.auto"), deck.scaleMode)}
-          ${optionHTML("shared", t("common.shared", {}, "Shared"), deck.scaleMode)}
-          ${optionHTML("design_peak", t("graph.designPeak"), deck.scaleMode)}
-          ${optionHTML("multiplier_0_1", t("graph.multiplier01"), deck.scaleMode)}
-          ${optionHTML("percentile", t("common.percentile", {}, "Percentile"), deck.scaleMode)}
-        </select>
-      </label>
-    </div>
-    ${renderProfileGraphSummary(group, zoneRow, sourceDimensions)}
+    <fieldset class="profile-time-view-control">
+      <legend>${escapeHTML(t("common.view"))}</legend>
+      <div class="profile-graph-view-switch" role="group" aria-label="${escapeHTML(t("common.view"))}">
+        ${[
+          ["day", t("graph.representativeDay")],
+          ["week", t("graph.representativeWeek")],
+          ["month", t("graph.monthlyAverage")],
+          ["year", t("graph.annualHeatmap")],
+          ["duration", t("graph.loadDuration")],
+          ["rules", t("graph.periodRules")],
+        ].map(([value, label]) => `
+          <button class="profile-time-view-button ${options.timeView === value ? "active" : ""}" type="button"
+            data-profile-time-view="${escapeHTML(value)}" aria-pressed="${options.timeView === value ? "true" : "false"}">${escapeHTML(label)}</button>`).join("")}
+      </div>
+    </fieldset>
+    ${renderProfileGraphSummary(group, sourceDimensions)}
     ${body}`;
+  paintProfileHeatmaps();
 }
 
-function renderProfileDeckBody(profile, series, deck) {
-  if (deck.compareMode === "similarity" || deck.scopeType === "schedule") {
-    return renderProfileScheduleSimilarity(profile);
-  }
-  if (deck.compareMode === "outliers") {
-    return renderProfileOutlierDeck(profile);
-  }
-  if (deck.compareMode === "ranking") {
-    return renderProfileSeriesRanking(series, deck);
-  }
+function renderProfileGraphBody(series, options) {
   if (!series.length) {
-    return `<div class="profile-graph-grid"><div class="empty">${t("profile.graphNoValues")}</div></div>`;
+    return `<div class="empty">${t("profile.graphNoValues")}</div>`;
   }
-  if (deck.compareMode === "overlay") {
-    return renderProfileOverlay(series, deck);
-  }
-  const max = deck.scaleMode === "shared" ? sharedProfileSeriesMax(series, deck) : 0;
-  return `
-    <div class="profile-graph-grid ${deck.compareMode === "small_multiples" ? "small-multiples" : ""}">
-      ${series.slice(0, 80).map((item) => renderProfileSeriesCard(item, deck, max)).join("")}
-    </div>`;
+  return options.timeView === "year"
+    ? renderProfileAnnualHeatmaps(series, options)
+    : renderProfileOverlay(series, options);
 }
 
-function renderProfileSeriesCard(series, deck, sharedMax = 0) {
-  const metric = profileSeriesMetric(series, deck);
-  const max = sharedMax || graphScaleMaxForSeries(metric.values, series, deck, metric.unit);
-  const pinned = (state.profilePinnedSeriesIds || []).includes(series.id);
-  const schedule = series.schedulePattern || series.scheduleName || t("profile.noSchedule");
-  const warnings = (series.warnings || []).slice(0, 2).map(renderProfileWarning).join("");
-  return `
-    <article class="profile-graph-card navigable-row ${pinned ? "pinned" : ""}" data-profile-series-id="${escapeHTML(series.id)}"
-      tabindex="0" role="group" ${profileSemanticAttributes(profileSeriesSemanticTargets(series), { occurrenceContext: "zone_profile" })}>
-      <div class="profile-graph-card-head">
-        <div>
-          <strong>${escapeHTML(series.dimensionLabel || profileDimensionLabel(series.dimension))}</strong>
-          <span>${escapeHTML(series.label || series.zoneName || series.groupName || "")}</span>
-        </div>
-        <button class="profile-pin-button ${pinned ? "active" : ""}" type="button" title="${escapeHTML(t("profile.pinSeries", {}, "Pin series"))}" aria-label="${escapeHTML(t("profile.pinSeries", {}, "Pin series"))}" data-profile-pin-series="${escapeHTML(series.id)}">◎</button>
-      </div>
-      <div class="profile-graph-meta">
-        <span>${escapeHTML(schedule)}</span>
-        <span>${escapeHTML(metric.label)} 쨌 ${escapeHTML(formatGraphNumber(Math.max(...metric.values, 0), metric.unit))}</span>
-      </div>
-      ${warnings}
-      ${renderGraphVisual(metric.graphData, metric.values, max, { label: series.dimensionLabel || series.dimension, value: series.designValue }, metric.unit)}
-      <small>${escapeHTML(t("graph.peakScale", { peak: formatGraphNumber(Math.max(...metric.values, 0), metric.unit), scale: formatGraphNumber(max, metric.unit) }))}</small>
-    </article>`;
+function renderProfileOverlay(series, options) {
+  return `<div class="profile-overlay-stack">${profileMetricSeriesGroups(series, options)
+    .map((group) => {
+      const metrics = group.items;
+      const max = sharedProfileMetricMax(metrics, options);
+      return `
+        <section class="profile-overlay-panel" data-profile-dimension="${escapeHTML(group.dimension)}">
+          <div class="profile-graph-panel-head">
+            <strong>${escapeHTML(group.label)}</strong>
+            <span>${escapeHTML(group.unit || t("graph.multiplier"))}</span>
+          </div>
+          ${renderOverlayGraph(metrics, max, group.unit)}
+          ${renderProfileSeriesLegend(metrics)}
+        </section>`;
+    })
+    .join("")}</div>`;
 }
 
-function renderProfileOverlay(series, deck) {
-  const metrics = series.slice(0, 12).map((item) => ({ series: item, metric: profileSeriesMetric(item, deck) }));
-  const max = sharedProfileSeriesMax(series, { ...deck, scaleMode: "shared" });
-  const labels = metrics
-    .map(({ series: item }, index) => `<span class="navigable-row" role="button" tabindex="0" data-profile-series-id="${escapeHTML(item.id)}"
-      ${profileSemanticAttributes(profileSeriesSemanticTargets(item), { occurrenceContext: "zone_profile" })}><i style="background:${profileSeriesColor(index)}"></i>${escapeHTML(item.zoneName || item.groupName || item.label)}</span>`)
-    .join("");
-  return `
-    <div class="profile-overlay-panel">
-      ${renderOverlayGraph(metrics, max, metrics[0]?.metric?.unit || "")}
-      <div class="profile-overlay-legend">${labels}</div>
-    </div>`;
+function renderProfileAnnualHeatmaps(series, options) {
+  return `<div class="profile-annual-stack">${profileMetricSeriesGroups(series, options)
+    .map((group) => {
+      const max = sharedProfileMetricMax(group.items, options);
+      return `
+        <section class="profile-annual-panel" data-profile-dimension="${escapeHTML(group.dimension)}">
+          <div class="profile-graph-panel-head">
+            <strong>${escapeHTML(group.label)}</strong>
+            <span>${escapeHTML(group.unit || t("graph.multiplier"))}</span>
+          </div>
+          <div class="profile-annual-heatmap-grid">
+            ${group.items.map(({ series: item, metric, color }) => `
+              <article class="profile-annual-heatmap-card navigable-row" data-profile-series-id="${escapeHTML(item.id)}"
+                ${profileSemanticAttributes(profileSeriesSemanticTargets(item), { occurrenceContext: "zone_profile" })}>
+                <strong><i style="background:${color}"></i>${escapeHTML(profileSeriesScopeLabel(item))}</strong>
+                ${renderHeatmap(metric.values, max, group.label, group.unit)}
+              </article>`).join("")}
+          </div>
+          ${renderProfileSeriesLegend(group.items)}
+        </section>`;
+    })
+    .join("")}</div>`;
+}
+
+function profileMetricSeriesGroups(series, options) {
+  const groups = new Map();
+  series.forEach((item, index) => {
+    const metric = profileSeriesMetric(item, options);
+    const key = `${item.dimension || "unknown"}\u0000${metric.unit || ""}`;
+    if (!groups.has(key)) {
+      groups.set(key, {
+        dimension: item.dimension || "unknown",
+        label: item.dimensionLabel || profileDimensionLabel(item.dimension),
+        unit: metric.unit || "",
+        items: [],
+      });
+    }
+    groups.get(key).items.push({
+      series: item,
+      metric,
+      color: profileSeriesSelectionColor(item, index),
+    });
+  });
+  return [...groups.values()];
+}
+
+function sharedProfileMetricMax(items, options) {
+  return Math.max(...items.map(({ series, metric }) => (
+    graphScaleMaxForSeries(metric.values, series, {
+      ...options,
+      scaleMode: options.scaleMode === "shared" ? "auto" : options.scaleMode,
+    })
+  )), 1e-9);
+}
+
+function profileSeriesScopeLabel(series) {
+  return series.groupName || series.label || t("common.selection", {}, "Selection");
+}
+
+function profileSeriesSelectionColor(series, fallbackIndex = 0) {
+  const selection = profileGroupIDsForGraphSelection();
+  const selectionKey = currentProfileGroupIDForSeries(series);
+  const selectionIndex = selection.indexOf(selectionKey);
+  return profileSeriesColor(selectionIndex >= 0 ? selectionIndex : fallbackIndex);
+}
+
+function renderProfileSeriesLegend(items) {
+  return `<div class="profile-overlay-legend" aria-label="${escapeHTML(t("common.legend", {}, "Legend"))}">${items
+    .map(({ series: item, color }) => `<span class="navigable-row" role="button" tabindex="0" data-profile-series-id="${escapeHTML(item.id)}"
+      ${profileSemanticAttributes(profileSeriesSemanticTargets(item), { occurrenceContext: "zone_profile" })}><i style="background:${color}"></i>${escapeHTML(profileSeriesScopeLabel(item))}</span>`)
+    .join("")}</div>`;
 }
 
 function renderOverlayGraph(items, max, unit = "") {
@@ -637,7 +878,7 @@ function renderOverlayGraph(items, max, unit = "") {
   const height = plot.bottom - plot.top;
   const y = (value) => plot.bottom - (clampGraphValue(value, max) / max) * height;
   const paths = items
-    .map(({ series, metric }, index) => {
+    .map(({ series, metric, color }, index) => {
       const data = metric.values.length > 420 ? downsampleValues(metric.values, 420) : metric.values;
       const path = data
         .map((value, valueIndex) => {
@@ -645,7 +886,7 @@ function renderOverlayGraph(items, max, unit = "") {
           return `${valueIndex === 0 ? "M" : "L"}${x.toFixed(2)},${y(value).toFixed(2)}`;
         })
         .join(" ");
-      return `<path d="${path}" stroke="${profileSeriesColor(index)}" data-profile-series-id="${escapeHTML(series.id)}"
+      return `<path d="${path}" stroke="${color || profileSeriesColor(index)}" data-profile-series-id="${escapeHTML(series.id)}"
         ${profileSemanticAttributes(profileSeriesSemanticTargets(series), { occurrenceContext: "zone_profile" })}></path>`;
     })
     .join("");
@@ -661,129 +902,30 @@ function renderOverlayGraph(items, max, unit = "") {
     </svg>`;
 }
 
-function renderProfileSeriesRanking(series, deck) {
-  const ranked = series
-    .map((item) => ({ series: item, metric: profileSeriesMetric(item, { ...deck, metricMode: deck.metricMode === "multiplier" ? "actual" : deck.metricMode }) }))
-    .sort((a, b) => Math.max(...b.metric.values, 0) - Math.max(...a.metric.values, 0))
-    .slice(0, 60);
-  const max = Math.max(...ranked.map((item) => Math.max(...item.metric.values, 0)), 1e-9);
-  return `
-    <div class="profile-ranking-table" role="table" aria-label="${escapeHTML(t("profile.compareRanking", {}, "Ranking"))}">
-      <div class="profile-ranking-row head" role="row"><span>${t("common.scope", {}, "Scope")}</span><span>${t("common.dimension")}</span><span>${t("common.value", {}, "Value")}</span><span></span></div>
-      ${ranked
-        .map(({ series: item, metric }) => {
-          const value = Math.max(...metric.values, 0);
-          return `
-            <button class="profile-ranking-row navigable-row" type="button" data-profile-series-focus="${escapeHTML(item.id)}" role="row"
-              ${profileSemanticAttributes(profileSeriesSemanticTargets(item), { occurrenceContext: "zone_profile" })}>
-              <span>${escapeHTML(item.zoneName || item.groupName || item.label)}</span>
-              <span>${escapeHTML(item.dimensionLabel || item.dimension)}</span>
-              <span>${escapeHTML(formatGraphNumber(value, metric.unit))}</span>
-              <i style="--profile-rank-width:${Math.max(2, (value / max) * 100).toFixed(2)}%"></i>
-            </button>`;
-        })
-        .join("")}
-    </div>`;
-}
-
-function renderProfileScheduleSimilarity(profile) {
-  const clusters = profile.scheduleClusters || profile.graphDataset?.scheduleClusters || [];
-  if (!clusters.length) {
-    return `<div class="profile-similarity-grid"><div class="empty">${t("profile.noSchedule")}</div></div>`;
-  }
-  return `
-    <div class="profile-similarity-grid">
-      ${renderScheduleClusterScatter(clusters)}
-      <div class="profile-cluster-table" role="table" aria-label="${escapeHTML(t("profile.compareSimilarity", {}, "Schedule similarity"))}">
-        <div class="profile-cluster-row head" role="row"><span>Pattern</span><span>Schedules</span><span>Zones</span><span>Flags</span></div>
-        ${clusters
-          .map(
-            (cluster) => `
-              <button class="profile-cluster-row navigable-row" type="button" data-profile-schedule-hash="${escapeHTML(cluster.scheduleHash)}" role="row"
-                data-choose-semantic-occurrence="true" ${profileScheduleSemanticAttributes(cluster)}>
-                <span>${escapeHTML(cluster.pattern || cluster.label || "")}</span>
-                <span>${escapeHTML((cluster.scheduleNames || []).join(", ") || cluster.scheduleHash)}</span>
-                <span>${escapeHTML(String((cluster.zoneNames || []).length))}</span>
-                <span>${cluster.sameContentDifferentNames ? "same content / different names" : ""}${cluster.sameNameDifferentContent ? " same name / different content" : ""}</span>
-              </button>`,
-          )
-          .join("")}
-      </div>
-    </div>`;
-}
-
-function renderScheduleClusterScatter(clusters) {
-  const maxX = Math.max(...clusters.map((cluster) => Number(cluster.centroidX) || 0), 1);
-  const maxY = Math.max(...clusters.map((cluster) => Number(cluster.centroidY) || 0), 1);
-  const points = clusters
-    .map((cluster, index) => {
-      const x = 30 + ((Number(cluster.centroidX) || 0) / maxX) * 250;
-      const y = 170 - ((Number(cluster.centroidY) || 0) / maxY) * 145;
-      const radius = Math.min(18, 5 + Math.sqrt((cluster.zoneNames || []).length || (cluster.scheduleNames || []).length || 1));
-      return `<button class="profile-scatter-point navigable-row" style="--x:${x}px;--y:${y}px;--r:${radius}px;--c:${profileSeriesColor(index)}" data-profile-schedule-hash="${escapeHTML(cluster.scheduleHash)}"
-        data-choose-semantic-occurrence="true" ${profileScheduleSemanticAttributes(cluster)} title="${escapeHTML((cluster.scheduleNames || []).join(", "))}" aria-label="${escapeHTML(cluster.label || cluster.scheduleHash)}"></button>`;
-    })
-    .join("");
-  return `
-    <div class="profile-scatter" role="img" aria-label="${escapeHTML(t("profile.compareSimilarity", {}, "Schedule similarity"))}">
-      <span class="profile-scatter-axis x">Average multiplier</span>
-      <span class="profile-scatter-axis y">Operating hours</span>
-      ${points}
-    </div>`;
-}
-
-function renderProfileOutlierDeck(profile) {
-  const outliers = profile.outliers || profile.graphDataset?.outliers || [];
-  const candidates = profile.parameterCandidates || profile.graphDataset?.parameterCandidates || [];
-  return `
-    <div class="profile-qa-grid">
-      <section class="profile-qa-list">
-        <h4>${escapeHTML(t("profile.compareOutliers", {}, "Outliers"))}</h4>
-        ${outliers.length ? outliers.slice(0, 80).map(renderProfileOutlierRow).join("") : `<div class="empty">${t("output.noWarnings", {}, "No warnings")}</div>`}
-      </section>
-      <section class="profile-qa-list">
-        <h4>${escapeHTML(t("profile.parameterCandidates", {}, "Parameter candidates"))}</h4>
-        ${candidates.length ? candidates.slice(0, 40).map(renderProfileCandidateRow).join("") : `<div class="empty">${t("tools.noCandidates", {}, "No candidates")}</div>`}
-      </section>
-    </div>`;
-}
-
-function renderProfileOutlierRow(hint) {
-  return `
-    <button class="profile-qa-row navigable-row ${escapeHTML(hint.severity || "info")}" type="button" data-profile-outlier-zone="${escapeHTML(hint.zoneName || "")}" data-profile-dimension="${escapeHTML(hint.dimension || "")}" data-profile-schedule-hash="${escapeHTML(hint.scheduleHash || "")}"
-      ${profileSemanticAttributes(profileAggregateSemanticTargets(hint), { occurrenceContext: "zone_profile" })}>
-      <strong>${escapeHTML(hint.ruleId || hint.severity || "QA")}</strong>
-      <span>${escapeHTML(hint.message || "")}</span>
-      <small>${escapeHTML([hint.zoneName, profileDimensionLabel(hint.dimension), hint.scheduleName].filter(Boolean).join(" / "))}</small>
-    </button>`;
-}
-
 function renderProfileCandidateRow(candidate) {
   return `
     <button class="profile-qa-row candidate navigable-row ${escapeHTML(candidate.severity || "info")}" type="button" data-profile-candidate-id="${escapeHTML(candidate.id)}" data-profile-dimension="${escapeHTML(candidate.dimension || "")}"
       ${profileSemanticAttributes(profileAggregateSemanticTargets(candidate), { occurrenceContext: "zone_profile" })}>
       <strong>${escapeHTML(candidate.label || candidate.id)}</strong>
       <span>${escapeHTML(candidate.reason || "")}</span>
-      <small>${escapeHTML(`${(candidate.zoneNames || []).length} zones 쨌 ${formatGraphNumber(candidate.currentMin, "")}..${formatGraphNumber(candidate.currentMax, "")}`)}</small>
+      <small>${escapeHTML(`${(candidate.zoneNames || []).length} zones · ${formatGraphNumber(candidate.currentMin, "")}..${formatGraphNumber(candidate.currentMax, "")}`)}</small>
     </button>`;
 }
 
-function renderProfileGraphSummary(group, zoneRow, dimensions) {
-  const title = zoneRow ? zoneRow.zoneName : group.name;
-  const subtitle = zoneRow ? t("profile.receivesProfile", { profile: group.name }) : t("profile.profileServesZones", { count: group.zoneCount });
+function renderProfileGraphSummary(group, dimensions) {
   return `
     <div class="profile-graph-summary">
       <div>
-        <strong>${escapeHTML(title)}</strong>
-        <span>${escapeHTML(subtitle)}</span>
+        <strong>${escapeHTML(group.name)}</strong>
+        <span>${escapeHTML(t("profile.profileServesZones", { count: group.zoneCount }))}</span>
       </div>
       <div class="profile-connection-row">
-        <span>${escapeHTML(zoneRow ? t("profile.sameProfileZones") : t("profile.connectedZones"))}</span>
+        <span>${escapeHTML(t("profile.connectedZones"))}</span>
         <div>
           ${group.zoneNames
             .map(
               (zoneName) => `
-                <button class="navigable-row ${zoneName === zoneRow?.zoneName ? "active" : ""}" type="button" data-profile-zone-ref="${escapeHTML(zoneName)}" title="${escapeHTML(zoneName)}"
+                <button class="navigable-row" type="button" data-profile-zone-ref="${escapeHTML(zoneName)}" title="${escapeHTML(zoneName)}"
                   ${profileSemanticAttributes([zoneName], { occurrenceContext: "zone_profile" })}>
                   ${escapeHTML(zoneName)}
                 </button>`,
@@ -797,199 +939,13 @@ function renderProfileGraphSummary(group, zoneRow, dimensions) {
     </div>`;
 }
 
-function renderProfileGraphCard(dimension, schedule, viewMode, scaleMode) {
-  const graphData = graphDataForDimension(dimension, schedule, viewMode);
-  const values = state.profileSettings.graphMode === "multiplier"
-    ? graphData.values
-    : graphData.values.map((value) => value * dimension.value);
-  const unit = state.profileSettings.graphMode === "multiplier" ? "" : dimension.unit;
-  const max = graphScaleMax(values, dimension, graphData, scaleMode);
-  const warnings = graphData.warning ? `<div class="profile-warning info">${escapeHTML(graphData.warning)}</div>` : "";
-  return `
-    <article class="profile-graph-card">
-      <div>
-        <strong>${escapeHTML(dimension.label)}</strong>
-        <span>${escapeHTML(graphData.label)}</span>
-      </div>
-      <div class="profile-graph-meta">
-        <span>${escapeHTML(t("common.unit"))}: ${escapeHTML(unit || t("graph.multiplier"))}</span>
-        <span>${escapeHTML(t("common.max"))}: ${escapeHTML(formatGraphNumber(Math.max(...values, 0), unit))}</span>
-      </div>
-      ${warnings}
-      ${renderGraphVisual(graphData, values, max, dimension, unit)}
-      <small>${escapeHTML(t("graph.peakScale", { peak: formatGraphNumber(Math.max(...values, 0), unit), scale: formatGraphNumber(max, unit) }))}</small>
-    </article>`;
-}
-
-function renderGraphVisual(graphData, values, max, dimension, unit) {
-  switch (graphData.kind) {
-    case "heatmap":
-      return renderHeatmap(values, max, dimension.label, unit);
-    case "rules":
-      return renderRuleGraph(graphData, values, max, unit);
-    case "day_profiles":
-      return renderDayProfiles(graphData, values, max, unit);
-    default:
-      return renderLineGraph(values, max, `${dimension.label} ${graphData.label}`, unit, graphData.xLabel);
-  }
-}
-
-function graphDataForDimension(dimension, schedule, viewMode) {
-  const unresolvedWarning = schedule && schedule.resolved === false
-    ? t("profile.scheduleUnresolvedWarning")
-    : "";
-  const missingWarning = !schedule && dimension.scheduleName
-    ? t("profile.scheduleMissingGraph", { schedule: dimension.scheduleName })
-    : "";
-  const warning = unresolvedWarning || missingWarning;
-  const pattern = schedule?.detectedPattern || (dimension.scheduleName ? t("profile.scheduleFallback") : t("profile.alwaysOn"));
-  switch (viewMode) {
-    case "representative_week":
-      return {
-        kind: "line",
-        label: `${pattern} / ${t("graph.representativeWeek")}`,
-        values: scheduleWeeklyProfile(schedule),
-        warning,
-        xLabel: "7d",
-      };
-    case "hourly_average_by_daytype": {
-      const profiles = daytypeAverageProfiles(schedule, dimension);
-      return {
-        kind: "day_profiles",
-        label: `${pattern} / ${t("graph.hourlyByDaytype")}`,
-        values: profiles.flatMap((profile) => profile.values),
-        profiles,
-        warning,
-      };
-    }
-    case "monthly_average":
-      return {
-        kind: "line",
-        label: `${pattern} / ${t("graph.monthlyAverage")}`,
-        values: monthlyAverageValues(schedule, dimension),
-        warning,
-        xLabel: "12m",
-      };
-    case "load_duration":
-      return {
-        kind: "line",
-        label: `${pattern} / ${t("graph.loadDuration")}`,
-        values: annualScheduleValues(schedule, dimension).sort((a, b) => b - a),
-        warning,
-        xLabel: "8760h",
-      };
-    case "period_rules":
-      return {
-        kind: "rules",
-        label: `${pattern} / ${t("graph.periodRules")}`,
-        values: scheduleRuleValues(schedule, dimension),
-        rules: scheduleRules(schedule, dimension),
-        warning,
-      };
-    case "representative_day":
-      return {
-        kind: "day_profiles",
-        label: `${pattern} / ${t("graph.representativeDay")}`,
-        values: [
-          ...scheduleDayProfile(schedule, "weekdayProfile"),
-          ...scheduleDayProfile(schedule, "saturdayProfile"),
-          ...scheduleDayProfile(schedule, "sundayProfile"),
-        ],
-        profiles: [
-          { label: t("day.weekday"), values: scheduleDayProfile(schedule, "weekdayProfile") },
-          { label: t("day.saturday"), values: scheduleDayProfile(schedule, "saturdayProfile") },
-          { label: t("day.sunday"), values: scheduleDayProfile(schedule, "sundayProfile") },
-        ],
-        warning,
-      };
-    default:
-      return {
-        kind: "heatmap",
-        label: `${pattern} / ${t("graph.annualHeatmap")}`,
-        values: annualScheduleValues(schedule, dimension),
-        warning,
-      };
-  }
-}
-
-function renderLineGraph(values, max, label, unit = "", xLabel = "") {
-  const data = values.length ? values : [0];
-  const plot = { left: 28, right: 118, top: 10, bottom: 76 };
-  const width = plot.right - plot.left;
-  const y = (value) => plot.bottom - (clampGraphValue(value, max) / max) * (plot.bottom - plot.top);
-  const stepPath = data.reduce((path, value, index) => {
-    const currentY = y(value);
-    const nextX = plot.left + ((index + 1) / data.length) * width;
-    if (index === 0) {
-      return `M${plot.left},${currentY} H${nextX}`;
-    }
-    return `${path} V${currentY} H${nextX}`;
-  }, "");
-  const mid = max / 2;
-  return `
-    <svg class="profile-line-graph" viewBox="0 0 124 92" role="img" aria-label="${escapeHTML(label)}">
-      <line class="profile-grid-line" x1="${plot.left}" y1="${plot.top}" x2="${plot.right}" y2="${plot.top}"></line>
-      <line class="profile-grid-line" x1="${plot.left}" y1="${y(mid)}" x2="${plot.right}" y2="${y(mid)}"></line>
-      <line class="profile-axis-line" x1="${plot.left}" y1="${plot.top}" x2="${plot.left}" y2="${plot.bottom}"></line>
-      <line class="profile-axis-line" x1="${plot.left}" y1="${plot.bottom}" x2="${plot.right}" y2="${plot.bottom}"></line>
-      <text class="profile-axis-label" x="2" y="${plot.top + 4}">${escapeHTML(formatAxisTick(max, unit))}</text>
-      <text class="profile-axis-label" x="2" y="${y(mid) + 4}">${escapeHTML(formatAxisTick(mid, unit))}</text>
-      <text class="profile-axis-label" x="2" y="${plot.bottom + 4}">0</text>
-      <text class="profile-axis-label x" x="${plot.left}" y="88">0</text>
-      <text class="profile-axis-label x" x="${plot.right}" y="88" text-anchor="end">${escapeHTML(xLabel || graphXLabel(data.length))}</text>
-      <path class="profile-step-path" d="${stepPath}"></path>
-    </svg>`;
-}
-
-function renderDayProfiles(graphData, values, max, unit = "") {
-  let offset = 0;
-  return `
-    <div class="profile-day-graphs">
-      ${graphData.profiles
-        .map((profile) => {
-          const profileValues = values.slice(offset, offset + profile.values.length);
-          offset += profile.values.length;
-          return `
-            <div>
-              <span>${escapeHTML(profile.label)}</span>
-              ${renderLineGraph(profileValues, max, profile.label, unit, "24h")}
-            </div>`;
-        })
-        .join("")}
-    </div>`;
-}
-
-function renderRuleGraph(graphData, values, max, unit = "") {
-  const rules = graphData.rules || [];
-  let offset = 0;
-  return `
-    <div class="profile-rule-list">
-      ${rules
-        .map((rule) => {
-          const scaledIntervals = values.slice(offset, offset + (rule.intervals || []).length);
-          offset += (rule.intervals || []).length;
-          const ruleValues = (rule.intervals || []).flatMap((interval, index) => {
-            const hours = Math.max(1, Math.round((Number(interval.endHour) || 0) - (Number(interval.startHour) || 0)));
-            return Array.from({ length: hours }, () => Number(scaledIntervals[index]) || 0);
-          });
-          return `
-            <div class="profile-rule-row">
-              <span>${escapeHTML(rule.label || `${rule.through || ""} ${rule.selector || ""}`)}</span>
-              ${renderLineGraph(ruleValues.length ? ruleValues : [0], max, rule.label || "Schedule rule", unit, "24h")}
-            </div>`;
-        })
-        .join("") || `<div class="empty">${t("profile.noRules")}</div>`}
-    </div>`;
-}
-
 function renderHeatmap(values, max, label, unit = "") {
-  const rects = values
-    .map((value, index) => {
-      const day = Math.floor(index / 24);
-      const hour = index % 24;
-      return `<rect x="${day}" y="${hour}" width="1" height="1" fill="${heatColor(value, max)}"></rect>`;
-    })
-    .join("");
+  profileHeatmapSequence += 1;
+  const key = `profile-heatmap-${profileHeatmapSequence}`;
+  profileHeatmapPaintQueue.set(key, {
+    values: [...values],
+    max: Math.max(Number(max) || 0, 1e-9),
+  });
   return `
     <div class="profile-heatmap-frame" role="img" aria-label="${escapeHTML(`${label} ${t("graph.annualHeatmap")}`)}">
       <div class="profile-heatmap-y">
@@ -997,9 +953,7 @@ function renderHeatmap(values, max, label, unit = "") {
         <span>12</span>
         <span>24</span>
       </div>
-      <svg class="profile-heatmap" viewBox="0 0 365 24" preserveAspectRatio="none" aria-hidden="true">
-        ${rects}
-      </svg>
+      <canvas class="profile-heatmap" width="365" height="24" data-profile-heatmap-key="${escapeHTML(key)}" aria-hidden="true"></canvas>
       <div class="profile-heatmap-x">
         <span>Jan</span>
         <span>${escapeHTML(formatAxisTick(max / 2, unit))}</span>
@@ -1009,150 +963,139 @@ function renderHeatmap(values, max, label, unit = "") {
     </div>`;
 }
 
-function mergeProfileGraphDeck(profile, saved) {
-  const defaults = profile?.graphDataset?.defaultDeck || profile?.defaultSettings?.graphDeck || {};
-  const source = saved || defaults || {};
-  const deck = {
-    scopeType: source.scopeType || defaults.scopeType || "group",
-    selectedGroupIds: Array.isArray(source.selectedGroupIds) ? source.selectedGroupIds : defaults.selectedGroupIds || [],
-    selectedZoneNames: Array.isArray(source.selectedZoneNames) ? source.selectedZoneNames : defaults.selectedZoneNames || [],
-    selectedScheduleHashes: Array.isArray(source.selectedScheduleHashes) ? source.selectedScheduleHashes : defaults.selectedScheduleHashes || [],
-    selectedDimensions: Array.isArray(source.selectedDimensions) ? source.selectedDimensions : defaults.selectedDimensions || state.profileSettings?.enabledDimensions || [],
-    metricMode: source.metricMode || state.profileSettings?.metricMode || profileMetricModeFromLegacy(state.profileSettings?.graphMode) || "actual",
-    timeView: source.timeView || state.profileSettings?.timeView || profileTimeViewFromLegacy(state.profileSettings?.scheduleSummaryMode) || "year",
-    compareMode: source.compareMode || state.profileSettings?.compareMode || "single",
-    scaleMode: source.scaleMode || state.profileSettings?.scaleMode || state.profileGraphScaleMode || "auto",
-    timeRange: Array.isArray(source.timeRange) ? source.timeRange : defaults.timeRange || [],
-    pinnedSeriesIds: Array.isArray(source.pinnedSeriesIds) ? source.pinnedSeriesIds : state.profilePinnedSeriesIds || [],
+function paintProfileHeatmaps() {
+  elements.profileGraph.querySelectorAll("canvas[data-profile-heatmap-key]").forEach((canvas) => {
+    const queued = profileHeatmapPaintQueue.get(canvas.dataset.profileHeatmapKey || "");
+    const context = canvas.getContext?.("2d");
+    if (!queued || !context) {
+      return;
+    }
+    context.clearRect(0, 0, 365, 24);
+    queued.values.slice(0, 8760).forEach((value, index) => {
+      context.fillStyle = heatColor(value, queued.max);
+      context.fillRect(Math.floor(index / 24), index % 24, 1, 1);
+    });
+  });
+  profileHeatmapPaintQueue.clear();
+}
+
+function currentProfileGraphOptions() {
+  return {
+    metricMode: state.profileSettings?.metricMode || "actual",
+    timeView: state.profileSettings?.timeView || "year",
+    scaleMode: state.profileSettings?.scaleMode || "auto",
   };
-  state.profilePinnedSeriesIds = deck.pinnedSeriesIds;
-  state.profileGraphScaleMode = deck.scaleMode;
-  state.profileGraphViewMode = deck.timeView;
-  return deck;
 }
 
 function currentProfileMetricMode() {
-  return state.profileGraphDeck?.metricMode || state.profileSettings?.metricMode || profileMetricModeFromLegacy(state.profileSettings?.graphMode) || "actual";
+  return state.profileSettings?.metricMode || "actual";
 }
 
-function profileMetricModeFromLegacy(value) {
-  switch (String(value || "").trim().toLowerCase()) {
-    case "multiplier":
-      return "multiplier";
-    case "design":
-      return "design";
-    case "annual":
-      return "annual";
-    default:
-      return "actual";
-  }
-}
-
-function profileTimeViewFromLegacy(value) {
-  switch (String(value || "").trim().toLowerCase()) {
-    case "representative_day":
-      return "day";
-    case "representative_week":
-    case "hourly_average_by_daytype":
-      return "week";
-    case "monthly_average":
-      return "month";
-    case "load_duration":
-      return "duration";
-    case "period_rules":
-      return "rules";
-    default:
-      return "year";
-  }
-}
-
-function currentProfilePresetID() {
-  const deck = state.profileGraphDeck || {};
-  if (deck.compareMode === "similarity") return "schedule_similarity";
-  if (deck.compareMode === "outliers") return "outliers";
-  if (deck.compareMode === "ranking" && deck.metricMode === "annual") return "annual_contribution";
-  if (deck.timeView === "rules") return "source_rules";
-  if (deck.scopeType === "group" && deck.compareMode === "overlay") return "compare_groups";
-  if (deck.scopeType === "zone" && (deck.compareMode === "small_multiples" || deck.compareMode === "overlay")) return "compare_zones";
-  return "time_profile";
-}
-
-function profileDeckSeries(profile, group, zoneRow = null) {
-  const deck = state.profileGraphDeck || {};
+function profileGraphSeries(profile, group) {
   const enabledDimensions = new Set(state.profileSettings?.enabledDimensions || []);
-  const selectedDimensions = new Set(deck.selectedDimensions?.length ? deck.selectedDimensions : state.profileSettings?.enabledDimensions || []);
-  const pinned = new Set(state.profilePinnedSeriesIds || []);
-  const cell = state.profileSelectedCell || null;
+  const selectedDimensions = new Set(state.profileSelectedDimensions?.length
+    ? state.profileSelectedDimensions
+    : state.profileSettings?.enabledDimensions || []);
   const allSeries = Array.isArray(profile?.graphDataset?.series) ? profile.graphDataset.series : [];
   const base = allSeries.filter((series) => {
     if (enabledDimensions.size && !enabledDimensions.has(series.dimension)) return false;
     if (selectedDimensions.size && !selectedDimensions.has(series.dimension)) return false;
     return true;
   });
-  const selected = base.filter((series) => profileSeriesInDeckScope(series, deck, group, zoneRow, cell));
-  base.forEach((series) => {
-    if (pinned.has(series.id) && !selected.some((item) => item.id === series.id)) {
-      selected.push(series);
+  const selectedGroupIDs = profileGroupIDsForGraphSelection();
+  return profileCurrentGroupSeries(base, selectedGroupIDs.length
+    ? selectedGroupIDs
+    : [group?.id || state.activeProfileGroupId].filter(Boolean));
+}
+
+function profileCurrentGroupSeries(allSeries, selectedGroupIDs) {
+  const aggregates = [];
+  selectedGroupIDs.forEach((groupID) => {
+    const currentGroup = lastProfileView?.groups.find((group) => group.id === groupID);
+    if (!currentGroup) {
+      return;
     }
+    const zoneNames = new Set(currentGroup.zoneNames || []);
+    const byDimension = new Map();
+    allSeries.forEach((series) => {
+      if (series.scopeType !== "zone" || !zoneNames.has(series.zoneName)) {
+        return;
+      }
+      const members = byDimension.get(series.dimension) || [];
+      members.push(series);
+      byDimension.set(series.dimension, members);
+    });
+    byDimension.forEach((members, dimensionKey) => {
+      const series = members[0];
+      const dimension = series.dimension || dimensionKey;
+      aggregates.push({
+        ...series,
+        id: `profile-series-current-${profileSemanticToken(groupID)}-${profileSemanticToken(dimension)}-${profileSemanticToken(series.unit)}`,
+        label: `${currentGroup.name} / ${series.dimensionLabel || profileDimensionLabel(dimension)}`,
+        scopeType: "group",
+        groupId: groupID,
+        currentGroupId: groupID,
+        groupName: currentGroup.name,
+        zoneName: "",
+        designValue: members.reduce((sum, member) => sum + (Number(member.designValue) || 0), 0) / members.length,
+        scheduleName: [...new Set(members.map((member) => member.scheduleName).filter(Boolean))].join(" + "),
+        scheduleHash: [...new Set(members.map((member) => member.scheduleHash).filter(Boolean))].join("+"),
+        schedulePattern: [...new Set(members.map((member) => member.schedulePattern).filter(Boolean))].join(" + "),
+        sourceItemIds: [...new Set(members.flatMap((member) => member.sourceItemIds || []))],
+        warnings: members.flatMap((member) => member.warnings || []),
+        aggregateSeries: members,
+      });
+    });
   });
-  return selected.slice(0, 120);
+  return aggregates;
 }
 
-function profileSeriesInDeckScope(series, deck, group, zoneRow, cell) {
-  if (deck.scopeType === "selection" && cell) {
-    if (cell.itemIds?.some((id) => (series.sourceItemIds || []).includes(id))) return true;
-    if (cell.scheduleHash && series.scheduleHash === cell.scheduleHash && series.dimension === cell.dimension) return true;
-    return series.zoneName === cell.zoneName && series.dimension === cell.dimension;
+function profileSeriesMetric(series, options) {
+  if (series.aggregateSeries?.length) {
+    const memberMetrics = series.aggregateSeries.map((member) => profileSeriesMetric(member, options));
+    const first = memberMetrics[0];
+    const values = averageProfileMetricValues(memberMetrics.map((metric) => metric.values));
+    return {
+      ...first,
+      values,
+    };
   }
-  if (deck.scopeType === "schedule") {
-    const hashes = new Set([...(deck.selectedScheduleHashes || []), cell?.scheduleHash].filter(Boolean));
-    return hashes.size ? hashes.has(series.scheduleHash) : Boolean(series.scheduleHash);
-  }
-  if (deck.scopeType === "dimension") {
-    return (deck.selectedDimensions || []).includes(series.dimension);
-  }
-  if (deck.scopeType === "zone") {
-    if (deck.compareMode === "small_multiples" || deck.compareMode === "overlay" || deck.compareMode === "ranking") {
-      const groupZones = new Set(group?.zoneNames || []);
-      return series.scopeType === "zone" && groupZones.has(series.zoneName);
-    }
-    const zoneName = zoneRow?.zoneName || cell?.zoneName || state.activeProfileZoneName;
-    return series.scopeType === "zone" && series.zoneName === zoneName;
-  }
-  const groupID = group?.id || state.activeProfileGroupId;
-  if (deck.compareMode === "overlay" || deck.compareMode === "ranking") {
-    return series.scopeType === "group" || ((deck.selectedGroupIds || []).includes(series.groupId));
-  }
-  return series.scopeType === "group" && series.groupId === groupID;
-}
-
-function profileSeriesMetric(series, deck) {
-  const timeView = deck.timeView || "year";
-  const metricMode = deck.metricMode || currentProfileMetricMode();
+  const timeView = options.timeView || "year";
+  const metricMode = options.metricMode || currentProfileMetricMode();
   const multiplier = profileSeriesMultiplier(series, timeView);
   let values = multiplier;
   let unit = "";
-  let label = t("graph.multiplier");
   if (metricMode === "design") {
     values = multiplier.map(() => Number(series.designValue) || 0);
     unit = series.unit || "";
-    label = t("graph.designValue", {}, "Design");
   } else if (metricMode === "actual") {
     values = multiplier.map((value) => value * (Number(series.designValue) || 0));
     unit = series.unit || "";
-    label = t("graph.actualValue");
   } else if (metricMode === "annual") {
     values = annualizedProfileValues(series, multiplier, timeView);
     unit = series.unit ? `${series.unit}h` : "h";
-    label = t("graph.annualContribution", {}, "Annual");
   }
   values = values.map((value) => (Number.isFinite(Number(value)) ? Number(value) : 0));
   return {
-    label,
     unit,
     values,
-    graphData: profileSeriesGraphData(series, deck, multiplier),
   };
+}
+
+function averageProfileMetricValues(valueSets) {
+  const length = Math.max(...valueSets.map((values) => values.length), 0);
+  return Array.from({ length }, (_, index) => {
+    let total = 0;
+    let count = 0;
+    valueSets.forEach((values) => {
+      const value = Number(values[index]);
+      if (Number.isFinite(value)) {
+        total += value;
+        count += 1;
+      }
+    });
+    return count ? total / count : 0;
+  });
 }
 
 function profileSeriesMultiplier(series, timeView) {
@@ -1172,33 +1115,6 @@ function profileSeriesMultiplier(series, timeView) {
   }
 }
 
-function profileSeriesGraphData(series, deck, multiplier) {
-  const pattern = series.schedulePattern || series.scheduleName || t("profile.fallbackAllDays");
-  switch (deck.timeView) {
-    case "day":
-      return {
-        kind: "day_profiles",
-        label: `${pattern} / ${t("graph.representativeDay")}`,
-        values: multiplier,
-        profiles: [
-          { label: t("day.weekday"), values: multiplier.slice(0, 24) },
-          { label: t("day.saturday"), values: multiplier.slice(24, 48) },
-          { label: t("day.sunday"), values: multiplier.slice(48, 72) },
-        ],
-      };
-    case "week":
-      return { kind: "line", label: `${pattern} / ${t("graph.representativeWeek")}`, values: multiplier, xLabel: "7d" };
-    case "month":
-      return { kind: "line", label: `${pattern} / ${t("graph.monthlyAverage")}`, values: multiplier, xLabel: "12m" };
-    case "duration":
-      return { kind: "line", label: `${pattern} / ${t("graph.loadDuration")}`, values: multiplier, xLabel: "8760h" };
-    case "rules":
-      return { kind: "rules", label: `${pattern} / ${t("graph.periodRules")}`, values: multiplier, rules: fallbackRulesForSeries(series, multiplier) };
-    default:
-      return { kind: "heatmap", label: `${pattern} / ${t("graph.annualHeatmap")}`, values: multiplier };
-  }
-}
-
 function annualizedProfileValues(series, multiplier, timeView) {
   const design = Number(series.designValue) || 0;
   if (timeView === "month") {
@@ -1211,35 +1127,18 @@ function annualizedProfileValues(series, multiplier, timeView) {
   return multiplier.map((value) => value * design);
 }
 
-function fallbackRulesForSeries(series, values) {
-  if (!values.length) {
-    return [];
-  }
-  return [{
-    label: series.scheduleName || t("profile.fallbackAllDays"),
-    intervals: values.map((value, index) => ({ startHour: index, endHour: index + 1, value })),
-  }];
-}
-
-function graphScaleMaxForSeries(values, series, deck, unit) {
-  const metricMode = deck.metricMode || currentProfileMetricMode();
-  if (deck.scaleMode === "multiplier_0_1") {
+function graphScaleMaxForSeries(values, series, options) {
+  const metricMode = options.metricMode || currentProfileMetricMode();
+  if (options.scaleMode === "multiplier_0_1") {
     return metricMode === "multiplier" ? 1 : Math.max(Number(series.designValue) || 0, 1e-9);
   }
-  if (deck.scaleMode === "design_peak") {
+  if (options.scaleMode === "design_peak") {
     return Math.max(Number(series.designValue) || 0, Math.max(...values, 0), 1e-9);
   }
-  if (deck.scaleMode === "percentile") {
+  if (options.scaleMode === "percentile") {
     return percentileValue(values, 0.95) || Math.max(...values, 1e-9);
   }
   return Math.max(...values, 1e-9);
-}
-
-function sharedProfileSeriesMax(series, deck) {
-  return Math.max(...series.map((item) => {
-    const metric = profileSeriesMetric(item, deck);
-    return graphScaleMaxForSeries(metric.values, item, { ...deck, scaleMode: deck.scaleMode === "shared" ? "auto" : deck.scaleMode }, metric.unit);
-  }), 1e-9);
 }
 
 function profileMatrixCellClasses(summary, row) {
@@ -1286,230 +1185,6 @@ function profileSeriesColor(index) {
   return colors[index % colors.length];
 }
 
-function currentGraphViewMode() {
-  const allowed = new Set(["annual_heatmap", "representative_week", "hourly_average_by_daytype", "monthly_average", "load_duration", "period_rules", "representative_day"]);
-  if (allowed.has(state.profileGraphViewMode)) {
-    return state.profileGraphViewMode;
-  }
-  return "annual_heatmap";
-}
-
-function graphStatsLabel(viewMode, graphMode) {
-  switch (viewMode) {
-    case "representative_week":
-      return graphMode === "multiplier" ? t("graph.multiplierWeek") : t("graph.actualWeek");
-    case "hourly_average_by_daytype":
-      return `${graphMode === "multiplier" ? t("graph.multiplier") : t("graph.actualValue")}, ${t("graph.hourlyByDaytype")}`;
-    case "monthly_average":
-      return `${graphMode === "multiplier" ? t("graph.multiplier") : t("graph.actualValue")}, ${t("graph.monthlyAverage")}`;
-    case "load_duration":
-      return `${graphMode === "multiplier" ? t("graph.multiplier") : t("graph.actualValue")}, ${t("graph.loadDuration")}`;
-    case "period_rules":
-      return graphMode === "multiplier" ? t("graph.multiplierRules") : t("graph.actualRules");
-    case "representative_day":
-      return graphMode === "multiplier" ? t("graph.multiplierDay") : t("graph.actualDay");
-    default:
-      return graphMode === "multiplier" ? t("graph.multiplierAnnual") : t("graph.actualAnnual");
-  }
-}
-
-function graphScaleMax(values, dimension, graphData, scaleMode) {
-  if (scaleMode === "multiplier_0_1") {
-    return state.profileSettings.graphMode === "multiplier" ? 1 : Math.max(Number(dimension.value) || 0, 1e-9);
-  }
-  if (scaleMode === "design_peak") {
-    return state.profileSettings.graphMode === "multiplier" ? Math.max(...graphData.values, 1) : Math.max(Number(dimension.value) || 0, 1e-9);
-  }
-  return Math.max(...values, 1e-9);
-}
-
-function scheduleLookupMap(schedules) {
-  const map = new Map();
-  schedules.forEach((schedule) => {
-    const name = String(schedule.scheduleName || "").trim();
-    if (!name) {
-      return;
-    }
-    map.set(name, schedule);
-    map.set(normalizeProfileScheduleName(name), schedule);
-  });
-  return map;
-}
-
-function scheduleForProfileDimension(dimension, item, schedules) {
-  const names = [
-    item?.scheduleName,
-    dimension.scheduleName,
-    ...(String(dimension.scheduleName || "")
-      .split("+")
-      .map((name) => name.trim())
-      .filter(Boolean)),
-  ];
-  for (const name of names) {
-    const schedule = schedules.get(name) || schedules.get(normalizeProfileScheduleName(name));
-    if (schedule) {
-      return schedule;
-    }
-  }
-  return null;
-}
-
-function normalizeProfileScheduleName(name) {
-  return String(name || "").trim().toLowerCase();
-}
-
-function scheduleDayProfile(schedule, key) {
-  const values = schedule?.[key];
-  if (Array.isArray(values) && values.length) {
-    return values.map((value) => Number(value) || 0);
-  }
-  return Array.from({ length: 24 }, () => 1);
-}
-
-function scheduleWeeklyProfile(schedule) {
-  if (Array.isArray(schedule?.weeklyProfile) && schedule.weeklyProfile.length) {
-    return schedule.weeklyProfile.map((value) => Number(value) || 0);
-  }
-  return [
-    ...scheduleDayProfile(schedule, "weekdayProfile"),
-    ...scheduleDayProfile(schedule, "weekdayProfile"),
-    ...scheduleDayProfile(schedule, "weekdayProfile"),
-    ...scheduleDayProfile(schedule, "weekdayProfile"),
-    ...scheduleDayProfile(schedule, "weekdayProfile"),
-    ...scheduleDayProfile(schedule, "saturdayProfile"),
-    ...scheduleDayProfile(schedule, "sundayProfile"),
-  ];
-}
-
-function scheduleRules(schedule, dimension = {}) {
-  return Array.isArray(schedule?.rules) && schedule.rules.length
-    ? schedule.rules
-    : [{
-        startDay: 1,
-        endDay: 365,
-        selector: "AllDays",
-        label: dimension.scheduleName ? t("profile.scheduleFallback") : t("profile.alwaysOn"),
-        intervals: [{ startHour: 0, endHour: 24, value: 1 }],
-      }];
-}
-
-function scheduleRuleValues(schedule, dimension = {}) {
-  return scheduleRules(schedule, dimension).flatMap((rule) => (rule.intervals || []).map((interval) => Number(interval.value) || 0));
-}
-
-function annualScheduleValues(schedule, dimension = {}) {
-  const rules = scheduleRules(schedule, dimension);
-  const values = [];
-  for (let day = 1; day <= 365; day += 1) {
-    const rule = rules.find((candidate) => day >= Number(candidate.startDay || 1) && day <= Number(candidate.endDay || 365) && dayMatchesScheduleSelector(day, candidate.selector));
-    values.push(...profileFromRule(rule));
-  }
-  return values;
-}
-
-function monthlyAverageValues(schedule, dimension = {}) {
-  const values = annualScheduleValues(schedule, dimension);
-  const monthDays = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-  let offset = 0;
-  return monthDays.map((days) => {
-    const hours = days * 24;
-    const monthValues = values.slice(offset, offset + hours);
-    offset += hours;
-    if (!monthValues.length) {
-      return 0;
-    }
-    return monthValues.reduce((sum, value) => sum + value, 0) / monthValues.length;
-  });
-}
-
-function daytypeAverageProfiles(schedule, dimension = {}) {
-  const values = annualScheduleValues(schedule, dimension);
-  const buckets = {
-    weekday: Array.from({ length: 24 }, () => []),
-    saturday: Array.from({ length: 24 }, () => []),
-    sunday: Array.from({ length: 24 }, () => []),
-  };
-  for (let day = 1; day <= 365; day += 1) {
-    const dayOfWeek = (day - 1) % 7;
-    const key = dayOfWeek === 5 ? "saturday" : dayOfWeek === 6 ? "sunday" : "weekday";
-    for (let hour = 0; hour < 24; hour += 1) {
-      buckets[key][hour].push(Number(values[(day - 1) * 24 + hour]) || 0);
-    }
-  }
-  return [
-    { label: t("day.weekday"), values: averageHourlyBucket(buckets.weekday) },
-    { label: t("day.saturday"), values: averageHourlyBucket(buckets.saturday) },
-    { label: t("day.sunday"), values: averageHourlyBucket(buckets.sunday) },
-  ];
-}
-
-function averageHourlyBucket(bucket) {
-  return bucket.map((values) => (values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0));
-}
-
-function profileFromRule(rule) {
-  const profile = Array.from({ length: 24 }, () => 0);
-  (rule?.intervals || []).forEach((interval) => {
-    const start = Math.max(0, Math.floor(Number(interval.startHour) || 0));
-    const end = Math.min(24, Math.ceil(Number(interval.endHour) || 0));
-    for (let hour = start; hour < end; hour += 1) {
-      profile[hour] = Number(interval.value) || 0;
-    }
-  });
-  return profile;
-}
-
-function dayMatchesScheduleSelector(day, selectorInput) {
-  const dayOfWeek = (day - 1) % 7;
-  for (const selector of scheduleSelectorTokens(selectorInput || "AllDays")) {
-    switch (selector) {
-      case "alldays":
-      case "everyday":
-      case "allotherdays":
-        return true;
-      case "weekdays":
-        if (dayOfWeek >= 0 && dayOfWeek <= 4) return true;
-        break;
-      case "weekends":
-        if (dayOfWeek === 5 || dayOfWeek === 6) return true;
-        break;
-      case "monday":
-        if (dayOfWeek === 0) return true;
-        break;
-      case "tuesday":
-        if (dayOfWeek === 1) return true;
-        break;
-      case "wednesday":
-        if (dayOfWeek === 2) return true;
-        break;
-      case "thursday":
-        if (dayOfWeek === 3) return true;
-        break;
-      case "friday":
-        if (dayOfWeek === 4) return true;
-        break;
-      case "saturday":
-        if (dayOfWeek === 5) return true;
-        break;
-      case "sunday":
-        if (dayOfWeek === 6) return true;
-        break;
-      default:
-        break;
-    }
-  }
-  return false;
-}
-
-function scheduleSelectorTokens(selectorInput) {
-  return String(selectorInput || "")
-    .replaceAll(",", " ")
-    .trim()
-    .split(/\s+/)
-    .map((selector) => selector.trim().toLowerCase().replaceAll(" ", ""))
-    .filter(Boolean);
-}
-
 function heatColor(value, max) {
   const t = Math.max(0, Math.min(1, max <= 0 ? 0 : value / max));
   const stops = [
@@ -1536,101 +1211,25 @@ function renderProfileWarning(warning) {
   return `<div class="profile-warning ${escapeHTML(warning.severity || "warning")}">${escapeHTML(warning.message || warning.code || t("profile.warning"))}</div>`;
 }
 
-function bindProfileDeckSelect(selector, key, profile) {
-  const input = elements.profileGraph.querySelector(selector);
-  input?.addEventListener("change", () => {
-    state.profileGraphDeck = state.profileGraphDeck || mergeProfileGraphDeck(profile, null);
-    state.profileGraphDeck[key] = input.value;
-    if (key === "scaleMode") {
-      state.profileGraphScaleMode = input.value;
-    }
-    if (key === "timeView") {
-      state.profileGraphViewMode = input.value;
-    }
-    persistProfileSettings();
-    renderProfile(profile);
-  });
-}
-
-function applyProfileGraphPreset(preset) {
-  const deck = state.profileGraphDeck || {};
-  switch (preset) {
-    case "compare_groups":
-      Object.assign(deck, { scopeType: "group", compareMode: "overlay", timeView: deck.timeView || "year" });
-      break;
-    case "compare_zones":
-      Object.assign(deck, { scopeType: "zone", compareMode: "small_multiples", timeView: deck.timeView || "week" });
-      break;
-    case "schedule_similarity":
-      Object.assign(deck, { scopeType: "schedule", compareMode: "similarity", timeView: "week", metricMode: "multiplier" });
-      break;
-    case "outliers":
-      Object.assign(deck, { scopeType: "selection", compareMode: "outliers" });
-      break;
-    case "annual_contribution":
-      Object.assign(deck, { scopeType: "dimension", compareMode: "ranking", timeView: "month", metricMode: "annual", scaleMode: "shared" });
-      break;
-    case "source_rules":
-      Object.assign(deck, { compareMode: "single", timeView: "rules" });
-      break;
-    default:
-      Object.assign(deck, { compareMode: "single", timeView: deck.timeView === "rules" ? "year" : deck.timeView || "year" });
-      break;
-  }
-  state.profileGraphDeck = deck;
-  state.profileSettings.metricMode = deck.metricMode || state.profileSettings.metricMode;
-  state.profileSettings.timeView = deck.timeView || state.profileSettings.timeView;
-  state.profileSettings.compareMode = deck.compareMode || state.profileSettings.compareMode;
-  state.profileSettings.scaleMode = deck.scaleMode || state.profileSettings.scaleMode;
-}
-
-function toggleProfilePinnedSeries(seriesID) {
-  if (!seriesID) {
-    return;
-  }
-  const pinned = new Set(state.profilePinnedSeriesIds || []);
-  if (pinned.has(seriesID)) {
-    pinned.delete(seriesID);
-  } else {
-    pinned.add(seriesID);
-  }
-  state.profilePinnedSeriesIds = [...pinned];
-  state.profileGraphDeck = { ...(state.profileGraphDeck || {}), pinnedSeriesIds: state.profilePinnedSeriesIds };
-}
-
 function focusProfileSeries(seriesID) {
-  const series = (state.report?.profile?.graphDataset?.series || []).find((item) => item.id === seriesID);
+  const series = lastProfileSeriesByID.get(seriesID);
   if (!series) {
     return;
   }
-  if (series.zoneName) {
-    selectProfileZone(series.zoneName);
-  } else if (series.groupId) {
+  if (series.groupId) {
     state.activeProfileView = "profile";
-    state.activeProfileGroupId = series.groupId;
+    state.activeProfileGroupId = currentProfileGroupIDForSeries(series);
+    state.profileSelectedGroupIds = [state.activeProfileGroupId].filter(Boolean);
+    state.profileSelectionAnchorKey = profileGroupRowKey(state.activeProfileGroupId);
   }
   selectProfileDimension(series.dimension);
-  selectProfileScheduleHash(series.scheduleHash || "", false);
-}
-
-function selectProfileScheduleHash(hash, switchMode = true) {
-  if (!hash) {
-    return;
-  }
-  state.profileGraphDeck = state.profileGraphDeck || {};
-  state.profileGraphDeck.selectedScheduleHashes = [hash];
-  if (switchMode) {
-    state.profileGraphDeck.scopeType = "schedule";
-    state.profileGraphDeck.compareMode = "similarity";
-  }
 }
 
 function selectProfileDimension(dimension) {
   if (!dimension) {
     return;
   }
-  state.profileGraphDeck = state.profileGraphDeck || {};
-  state.profileGraphDeck.selectedDimensions = [dimension];
+  state.profileSelectedDimensions = [dimension];
 }
 
 function selectProfileMatrixCell(cell) {
@@ -1654,15 +1253,9 @@ function selectProfileCellData(selected) {
   if (selected.zoneName) {
     selectProfileZone(selected.zoneName);
   }
-  state.profileGraphDeck = {
-    ...(state.profileGraphDeck || {}),
-    scopeType: "selection",
-    compareMode: "single",
-    selectedGroupIds: selected.groupId ? [selected.groupId] : state.profileGraphDeck?.selectedGroupIds || [],
-    selectedZoneNames: selected.zoneName ? [selected.zoneName] : [],
-    selectedScheduleHashes: selected.scheduleHash ? [selected.scheduleHash] : [],
-    selectedDimensions: selected.dimension ? [selected.dimension] : state.profileGraphDeck?.selectedDimensions || [],
-  };
+  if (selected.dimension) {
+    state.profileSelectedDimensions = [selected.dimension];
+  }
 }
 
 function configureProfilePanelNavigation() {
@@ -1701,7 +1294,7 @@ async function revealProfileSelection(selection, options, context) {
   }
   const target = profileViewTargetForSelection(selection, context.navigation);
   const targetData = target ? profileNavigationTargetData(target) : null;
-  if (!target || !targetData || !applyProfileNavigationTarget(targetData, selection)) {
+  if (!target || !targetData || !applyProfileNavigationTarget(targetData)) {
     return context.genericReveal(selection, options);
   }
   profileNavigationRevealTarget = {
@@ -1775,13 +1368,13 @@ function captureProfileNavigationContext(context) {
     activeProfileZoneName: state.activeProfileZoneName,
     activeProfileGroupId: state.activeProfileGroupId,
     profileSelectedCell: cloneProfileSelectedCell(state.profileSelectedCell),
-    profilePinnedSeriesIds: [...(state.profilePinnedSeriesIds || [])],
-    profileGraphDeck: cloneProfileGraphDeck(state.profileGraphDeck),
+    profileSelectedGroupIds: [...(state.profileSelectedGroupIds || [])],
+    profileSelectedZoneNames: [...(state.profileSelectedZoneNames || [])],
+    profileSelectedDimensions: [...(state.profileSelectedDimensions || [])],
+    profileSelectionAnchorKey: state.profileSelectionAnchorKey || "",
     navigationRevealTarget: profileNavigationRevealTarget ? { ...profileNavigationRevealTarget } : null,
-    overviewScrollTop: Number(elements.profileOverview?.scrollTop) || 0,
-    graphScrollTop: Number(elements.profileGraph?.scrollTop) || 0,
+    paneScrollTop: Number(elements.profileOverview?.closest(".profile-pane")?.scrollTop) || 0,
     matrixScrollTop: Number(elements.profileMatrix?.scrollTop) || 0,
-    detailScrollTop: Number(elements.profileDetail?.scrollTop) || 0,
   };
 }
 
@@ -1801,21 +1394,24 @@ async function restoreProfileNavigationContext(snapshot = {}, context) {
   if (Object.prototype.hasOwnProperty.call(snapshot, "profileSelectedCell")) {
     state.profileSelectedCell = cloneProfileSelectedCell(snapshot.profileSelectedCell);
   }
-  if (Object.prototype.hasOwnProperty.call(snapshot, "profilePinnedSeriesIds")) {
-    state.profilePinnedSeriesIds = [...(snapshot.profilePinnedSeriesIds || [])];
+  if (Object.prototype.hasOwnProperty.call(snapshot, "profileSelectedGroupIds")) {
+    state.profileSelectedGroupIds = [...(snapshot.profileSelectedGroupIds || [])];
   }
-  if (snapshot.profileGraphDeck) {
-    state.profileGraphDeck = cloneProfileGraphDeck(snapshot.profileGraphDeck);
-    state.profileGraphDeck.pinnedSeriesIds = [...state.profilePinnedSeriesIds];
+  if (Object.prototype.hasOwnProperty.call(snapshot, "profileSelectedZoneNames")) {
+    state.profileSelectedZoneNames = [...(snapshot.profileSelectedZoneNames || [])];
+  }
+  if (Object.prototype.hasOwnProperty.call(snapshot, "profileSelectedDimensions")) {
+    state.profileSelectedDimensions = [...(snapshot.profileSelectedDimensions || [])];
+  }
+  if (Object.prototype.hasOwnProperty.call(snapshot, "profileSelectionAnchorKey")) {
+    state.profileSelectionAnchorKey = String(snapshot.profileSelectionAnchorKey || "");
   }
   profileNavigationRevealTarget = snapshot.navigationRevealTarget ? { ...snapshot.navigationRevealTarget } : null;
   renderProfile(state.report.profile);
   context.refreshSelectionStyles(state.globalSelection, state.globalHover);
   await context.genericRestoreContext(snapshot);
-  restoreElementScroll(elements.profileOverview, snapshot.overviewScrollTop);
-  restoreElementScroll(elements.profileGraph, snapshot.graphScrollTop);
+  restoreElementScroll(elements.profileOverview?.closest(".profile-pane"), snapshot.paneScrollTop);
   restoreElementScroll(elements.profileMatrix, snapshot.matrixScrollTop);
-  restoreElementScroll(elements.profileDetail, snapshot.detailScrollTop);
   return true;
 }
 
@@ -1921,7 +1517,7 @@ function profileNavigationTargetData(target) {
   }
 }
 
-function applyProfileNavigationTarget(targetData, selection = {}) {
+function applyProfileNavigationTarget(targetData) {
   if (targetData.item) {
     selectProfileItemForNavigation(targetData.item);
     return true;
@@ -1941,27 +1537,17 @@ function applyProfileNavigationTarget(targetData, selection = {}) {
       state.activeProfileZoneName = currentGroup.zoneNames[0] || "";
     }
     state.profileSelectedCell = null;
-    state.profileGraphDeck = {
-      ...(state.profileGraphDeck || {}),
-      scopeType: "group",
-      compareMode: "single",
-      selectedGroupIds: [targetData.reportGroup.id],
-    };
+    state.profileSelectedGroupIds = [currentGroup.id];
+    state.profileSelectionAnchorKey = profileGroupRowKey(currentGroup.id);
     return true;
   }
   if (targetData.schedules) {
-    const exact = profileScheduleForSelection(targetData.schedules, selection);
-    const hashes = exact?.contentHash ? [exact.contentHash] : targetData.scheduleHashes;
     state.profileSelectedCell = null;
-    state.profileGraphDeck = {
-      ...(state.profileGraphDeck || {}),
-      scopeType: "schedule",
-      compareMode: "similarity",
-      metricMode: "multiplier",
-      selectedScheduleHashes: hashes,
-    };
     if (targetData.currentGroup) {
+      state.activeProfileView = "profile";
       state.activeProfileGroupId = targetData.currentGroup.id;
+      state.profileSelectedGroupIds = [targetData.currentGroup.id];
+      state.profileSelectionAnchorKey = profileGroupRowKey(targetData.currentGroup.id);
     }
     if (targetData.zoneName) {
       state.activeProfileZoneName = targetData.zoneName;
@@ -1971,11 +1557,6 @@ function applyProfileNavigationTarget(targetData, selection = {}) {
   if (targetData.zoneName) {
     selectProfileZone(targetData.zoneName);
     state.profileSelectedCell = null;
-    state.profileGraphDeck = {
-      ...(state.profileGraphDeck || {}),
-      scopeType: "zone",
-      selectedZoneNames: [targetData.zoneName],
-    };
     return true;
   }
   return false;
@@ -1993,7 +1574,6 @@ function selectProfileItemForNavigation(item) {
     value: Number(summary?.value) || 0,
     itemIds: summary?.itemIds || [item.id],
   });
-  pinProfileSeries({ itemID: item.id, zoneName: item.zoneName, dimension: item.dimension });
 }
 
 function selectProfileZoneDimensionForNavigation(zoneName, dimension) {
@@ -2010,23 +1590,6 @@ function selectProfileZoneDimensionForNavigation(zoneName, dimension) {
     value: Number(summary?.value) || 0,
     itemIds: summary?.itemIds || [],
   });
-  pinProfileSeries({ zoneName, dimension });
-}
-
-function pinProfileSeries(criteria = {}) {
-  const series = (state.report?.profile?.graphDataset?.series || []).find((candidate) => (
-    (!criteria.itemID || (candidate.sourceItemIds || []).includes(criteria.itemID)) &&
-    (!criteria.zoneName || sameProfileName(candidate.zoneName, criteria.zoneName)) &&
-    (!criteria.dimension || candidate.dimension === criteria.dimension)
-  ));
-  if (!series) {
-    return;
-  }
-  state.profilePinnedSeriesIds = [...new Set([...(state.profilePinnedSeriesIds || []), series.id])];
-  state.profileGraphDeck = {
-    ...(state.profileGraphDeck || {}),
-    pinnedSeriesIds: [...state.profilePinnedSeriesIds],
-  };
 }
 
 function profileZoneDimensionForTarget(targetID) {
@@ -2072,11 +1635,6 @@ function profileSchedulesForTarget(targetID) {
   return (state.report?.profile?.schedules || []).filter((schedule) => sameProfileName(schedule.scheduleName, target));
 }
 
-function profileScheduleForSelection(schedules, selection = {}) {
-  const objectIndex = selection.sourceAnchor?.objectIndex;
-  return schedules.find((schedule) => objectIndex !== undefined && objectIndex !== null && schedule.objectIndex === Number(objectIndex)) || schedules[0] || null;
-}
-
 function profileOccurrencesForTarget(targetID, navigation = profileNavigationIndex()) {
   const occurrenceByID = new Map((navigation.occurrences || []).map((occurrence) => [occurrence.occurrenceId, occurrence]));
   return (navigation.byViewTarget?.[`profile|${targetID}`] || [])
@@ -2117,21 +1675,6 @@ function cloneProfileSelectedCell(cell) {
   return cell ? { ...cell, itemIds: [...(cell.itemIds || [])] } : null;
 }
 
-function cloneProfileGraphDeck(deck) {
-  if (!deck) {
-    return null;
-  }
-  return {
-    ...deck,
-    selectedGroupIds: [...(deck.selectedGroupIds || [])],
-    selectedZoneNames: [...(deck.selectedZoneNames || [])],
-    selectedScheduleHashes: [...(deck.selectedScheduleHashes || [])],
-    selectedDimensions: [...(deck.selectedDimensions || [])],
-    timeRange: [...(deck.timeRange || [])],
-    pinnedSeriesIds: [...(deck.pinnedSeriesIds || [])],
-  };
-}
-
 function restoreElementScroll(element, value) {
   if (element) {
     element.scrollTop = Number(value) || 0;
@@ -2149,19 +1692,43 @@ function bindProfileControls(profile) {
       renderProfile(profile);
     });
   });
-  elements.profileOverview.querySelectorAll("[data-profile-group-id]").forEach((button) => {
-    button.addEventListener("click", () => {
-      state.activeProfileView = "profile";
-      state.activeProfileGroupId = button.dataset.profileGroupId || "";
-      const group = selectedProfileGroup();
-      state.activeProfileZoneName = group?.zoneNames?.[0] || state.activeProfileZoneName;
-      renderProfile(profile);
-    });
-  });
-  elements.profileOverview.querySelectorAll("[data-profile-zone]").forEach((button) => {
-    button.addEventListener("click", () => {
-      selectProfileZone(button.dataset.profileZone || "");
-      renderProfile(profile);
+  elements.profileOverview.querySelectorAll("[data-profile-row-key]").forEach((button) => {
+    const activate = (event) => {
+      event.stopPropagation();
+      const rowKey = button.dataset.profileRowKey || "";
+      const historySnapshot = captureViewSnapshot();
+      if (handleProfileRowSelection(event, rowKey)) {
+        recordViewHistory(historySnapshot);
+        renderProfile(profile);
+        const renderedRows = [...elements.profileOverview.querySelectorAll("[data-profile-row-key]")];
+        renderedRows.find((row) => row.dataset.profileRowKey === rowKey)?.focus({ preventScroll: true });
+        const primaryKey = state.activeProfileView === "zone"
+          ? profileZoneRowKey(state.activeProfileZoneName)
+          : profileGroupRowKey(state.activeProfileGroupId);
+        const primaryRow = renderedRows.find((row) => row.dataset.profileRowKey === primaryKey);
+        const semanticSelection = primaryRow
+          ? getPanelNavigationAdapter("profile")?.selectFromElement?.(primaryRow) || null
+          : null;
+        if (semanticSelection?.entityId) {
+          void selectSemanticEntity(semanticSelection, {
+            originView: "profile",
+            action: "select",
+            recordHistory: false,
+            follow: false,
+          });
+        } else {
+          void clearSemanticSelection({ originView: "profile", recordHistory: false });
+        }
+      }
+    };
+    button.addEventListener("click", activate);
+    button.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      activate(event);
     });
   });
   elements.profileSettings.querySelectorAll("[data-profile-dimension]").forEach((input) => {
@@ -2180,26 +1747,21 @@ function bindProfileControls(profile) {
   });
   bindSettingControl("#profileMetricMode", (input) => {
     state.profileSettings.metricMode = input.value;
-    state.profileSettings.graphMode = input.value === "multiplier" ? "multiplier" : "actual_value";
-    state.profileGraphDeck.metricMode = input.value;
   });
-  bindProfileDeckSelect("#profileGraphScopeType", "scopeType", profile);
-  bindProfileDeckSelect("#profileGraphTimeView", "timeView", profile);
-  bindProfileDeckSelect("#profileGraphCompareMode", "compareMode", profile);
-  bindProfileDeckSelect("#profileGraphScaleMode", "scaleMode", profile);
-  const graphPreset = elements.profileGraph.querySelector("#profileGraphPreset");
-  if (graphPreset) {
-    graphPreset.addEventListener("change", () => {
-      applyProfileGraphPreset(graphPreset.value || "time_profile");
-      persistProfileSettings();
-      renderProfile(profile);
-    });
-  }
-  elements.profileGraph.querySelectorAll("[data-profile-series-id]").forEach((element) => {
-    const activate = (event) => {
-      if (event.target.closest?.("[data-profile-pin-series]")) {
+  elements.profileGraph.querySelectorAll("[data-profile-time-view]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const timeView = button.dataset.profileTimeView || "";
+      if (!["day", "week", "month", "year", "duration", "rules"].includes(timeView)) {
         return;
       }
+      state.profileSettings.timeView = timeView;
+      persistProfileSettings();
+      renderProfile(profile);
+      elements.profileGraph.querySelector(`[data-profile-time-view="${timeView}"]`)?.focus({ preventScroll: true });
+    });
+  });
+  elements.profileGraph.querySelectorAll("[data-profile-series-id]").forEach((element) => {
+    const activate = (event) => {
       focusProfileSeries(element.dataset.profileSeriesId || "");
       renderProfile(profile);
     };
@@ -2212,46 +1774,9 @@ function bindProfileControls(profile) {
       activate(event);
     });
   });
-  elements.profileGraph.querySelectorAll("[data-profile-pin-series]").forEach((button) => {
-    button.addEventListener("click", (event) => {
-      event.stopPropagation();
-      toggleProfilePinnedSeries(button.dataset.profilePinSeries || "");
-      renderProfile(profile);
-    });
-  });
-  elements.profileGraph.querySelectorAll("[data-profile-series-focus]").forEach((button) => {
-    button.addEventListener("click", () => {
-      focusProfileSeries(button.dataset.profileSeriesFocus || "");
-      renderProfile(profile);
-    });
-  });
-  elements.profileGraph.querySelectorAll("[data-profile-schedule-hash]").forEach((button) => {
-    button.addEventListener("click", () => {
-      selectProfileScheduleHash(button.dataset.profileScheduleHash || "");
-      renderProfile(profile);
-    });
-  });
-  elements.profileGraph.querySelectorAll("[data-profile-outlier-zone]").forEach((button) => {
-    button.addEventListener("click", () => {
-      if (button.dataset.profileOutlierZone) {
-        selectProfileZone(button.dataset.profileOutlierZone);
-      }
-      selectProfileDimension(button.dataset.profileDimension || "");
-      selectProfileScheduleHash(button.dataset.profileScheduleHash || "", false);
-      renderProfile(profile);
-    });
-  });
-  elements.profileGraph.querySelectorAll("[data-profile-candidate-id]").forEach((button) => {
-    button.addEventListener("click", () => {
-      selectProfileDimension(button.dataset.profileDimension || "");
-      state.profileGraphDeck.compareMode = "outliers";
-      renderProfile(profile);
-    });
-  });
   elements.profileDetail.querySelectorAll("[data-profile-candidate-id]").forEach((button) => {
     button.addEventListener("click", () => {
       selectProfileDimension(button.dataset.profileDimension || "");
-      state.profileGraphDeck.compareMode = "outliers";
       renderProfile(profile);
     });
   });
@@ -2280,7 +1805,7 @@ function bindProfileControls(profile) {
   });
   elements.profileMatrix.querySelectorAll("tr[data-profile-zone]").forEach((row) => {
     row.addEventListener("click", (event) => {
-      if (event.target.closest(".profile-object-link")) {
+      if (event.target.closest(".profile-object-link, [data-profile-cell]")) {
         return;
       }
       selectProfileZone(row.dataset.profileZone || "");
@@ -2630,24 +2155,19 @@ function profileGroupKey(dimensions, settings) {
 function mergeProfileSettings(defaults = {}, saved = {}) {
   const source = saved || {};
   return {
-    ...defaults,
-    ...source,
     enabledDimensions: Array.isArray(source.enabledDimensions) ? source.enabledDimensions : defaults.enabledDimensions || [],
     displayMetrics: { ...(defaults.displayMetrics || {}), ...(source.displayMetrics || {}) },
     groupingMetrics: { ...(defaults.groupingMetrics || {}), ...(source.groupingMetrics || {}) },
-    graphDeck: { ...(defaults.graphDeck || {}), ...(source.graphDeck || {}) },
+    numericTolerance: Number(source.numericTolerance) > 0 ? Number(source.numericTolerance) : defaults.numericTolerance || 0.001,
+    scheduleCompareMode: source.scheduleCompareMode || defaults.scheduleCompareMode || "name",
+    metricMode: source.metricMode || defaults.metricMode || "actual",
+    timeView: source.timeView || defaults.timeView || "year",
+    scaleMode: source.scaleMode || defaults.scaleMode || "auto",
     applyBehavior: { ...(defaults.applyBehavior || {}), ...(source.applyBehavior || {}) },
   };
 }
 
 function persistProfileSettings() {
-  if (state.profileSettings && state.profileGraphDeck) {
-    state.profileSettings.graphDeck = { ...state.profileGraphDeck };
-    state.profileSettings.metricMode = state.profileGraphDeck.metricMode || state.profileSettings.metricMode;
-    state.profileSettings.timeView = state.profileGraphDeck.timeView || state.profileSettings.timeView;
-    state.profileSettings.compareMode = state.profileGraphDeck.compareMode || state.profileSettings.compareMode;
-    state.profileSettings.scaleMode = state.profileGraphDeck.scaleMode || state.profileSettings.scaleMode;
-  }
   const settings = getCurrentAppSettings();
   saveAppSettings({ ...settings, profile: state.profileSettings }).catch((error) => {
     setStatus(error?.message || String(error), "warn");
@@ -2674,13 +2194,16 @@ function selectProfileZone(zoneName) {
   state.activeProfileView = "zone";
   state.activeProfileZoneName = row.zoneName;
   state.activeProfileGroupId = row.groupId || groupForZoneName(row.zoneName)?.id || state.activeProfileGroupId;
+  state.profileSelectedZoneNames = [row.zoneName];
+  state.profileSelectionAnchorKey = profileZoneRowKey(row.zoneName);
 }
 
 function profileMatrixRowActive(row) {
   if (state.activeProfileView === "zone") {
-    return row.zoneName === state.activeProfileZoneName;
+    return (state.profileSelectedZoneNames || []).includes(row.zoneName);
   }
-  return selectedProfileGroup()?.zoneNames.includes(row.zoneName);
+  const selectedGroups = new Set(state.profileSelectedGroupIds || []);
+  return (lastProfileView?.groups || []).some((group) => selectedGroups.has(group.id) && group.zoneNames.includes(row.zoneName));
 }
 
 function uniqueProfileItems(items) {
@@ -2749,17 +2272,4 @@ function formatAxisTick(value, unit = "") {
       : number.toLocaleString(undefined, { maximumFractionDigits: 3 });
   const shortUnit = String(unit || "").replace("people/", "p/").replace("person", "p");
   return shortUnit ? `${compact} ${shortUnit}` : compact;
-}
-
-function graphXLabel(length) {
-  if (length >= 8760) {
-    return "8760h";
-  }
-  if (length >= 168) {
-    return "7d";
-  }
-  if (length === 12) {
-    return "12m";
-  }
-  return "24h";
 }

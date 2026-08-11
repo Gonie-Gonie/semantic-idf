@@ -138,19 +138,19 @@ The app toolbar includes top-level Tools, Guide, and Settings navigation buttons
 - Text: fully expanded editable object summary first, shared editable raw source below, and optional position sync from editable fields and analysis selections.
 - JSON: structured epJSON-like editor first, with read-only syntax tokens and inline-editable value tokens that patch the backend model; raw source uses the shared Raw Text pane.
 - Table: fully expanded IDF object type tables with fixed row headers, no synthetic Name column, global and per-table row/column orientation controls, and shared raw source sync.
-- Workspace: resizable input and analysis panes with separate scroll areas, no window-level app scrolling, and vertical splitters for Raw Text and Geometry details.
+- Workspace: resizable input and analysis panes with separate scroll areas, no window-level app scrolling, and vertical splitters for Raw Text and Topology details.
 
 ## Analysis Navigation
 
-- The right panel has Summary, Profile, HVAC, Simulation, Diagnose, and Geometry result tabs.
+- The right panel has Summary, Topology, Profile, HVAC, Diagnose, and Simulation result tabs.
 - Summary shows a metric catalog grouped by model, geometry, envelope, loads, schedules, and HVAC categories.
-- Summary can be filtered and exported as categorized JSON or a two-column `name,value` CSV whose names are variable IDs with units in brackets, including `[-]` for unitless values.
+- Summary can be exported as categorized JSON or a two-column `name,value` CSV whose names are variable IDs with units in brackets, including `[-]` for unitless values.
 - Diagnose reports error/warning issues such as missing references, duplicate names, orphan resources, required-object gaps, geometry problems, schedule-hour limits, and HVAC node graph hints.
 - The former main Output tab and Batch Output QA tool are no longer exposed. Output-request analysis and edits remain available to backend and automation callers through `AnalyzeInputOutputText`, `PreviewOutputApplyText`, `ApplyOutputText`, and `ApplyPurposeOutputsText`.
-- Geometry parses detailed zones, walls, roofs, floors, and fenestration into a 3D view that defaults to all levels, optional story filtering, a story-by-story plan view, selectable metrics, related object links, and Sync locate jumps to the matching input object.
+- Topology parses detailed zones, walls, roofs, floors, and fenestration into mode-specific 3D, Plan, and Network views. 3D defaults to all levels, Plan shows one story at a time, and Network shows the zone-level thermal graph with selectable metrics; Sync locate jumps to the matching input object.
 - Summary metric guide entries are loaded from the same backend catalog as the calculated metrics.
 - The startup sample is the official EnergyPlus `RefBldgLargeOfficeNew2004_Chicago.idf` example vendored under `frontend/src/samples/`.
-- The startup sample text is shown first; analysis then runs in visible-first stages so Summary/Text render before Diagnose and Geometry finish in the background.
+- The startup sample text is shown first; analysis then runs in visible-first stages so Summary/Text render before Diagnose and Topology finish in the background.
 - Open uses the desktop file dialog, Save writes the current text back to the opened file or asks for a path, and Revert restores the text from the last opened input snapshot.
 - Analysis runs automatically after file open and after debounced editor changes; larger workflows belong under Tools.
 - Tools includes Multi-IDF Summary, which opens several EnergyPlus inputs, analyzes them concurrently, displays progress, compares Summary metrics in a transposable table, and exports CSV in the selected table direction.

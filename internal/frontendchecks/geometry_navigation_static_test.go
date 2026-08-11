@@ -37,7 +37,6 @@ func TestGeometrySyncLocateIsCommonAndSelectAidIsRemoved(t *testing.T) {
 	view := readTestFile(t, "frontend/src/js/views/geometry-view.js")
 
 	for _, required := range []string{
-		`id="geometrySyncControl"`,
 		`id="geometrySyncLocate" type="checkbox" checked`,
 		`geometrySyncLocate: true`,
 		`syncLocate: Boolean(state.geometrySyncLocate)`,

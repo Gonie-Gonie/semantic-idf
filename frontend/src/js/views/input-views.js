@@ -889,10 +889,6 @@ function bindSemanticControls() {
       scrollSemanticSectionIntoView(button.dataset.semanticSectionText || "");
     });
   });
-  elements.semanticEditor.querySelector("#semanticProjectionModeButton")?.addEventListener("click", () => {
-    state.semanticProjectionMode = semanticProjectionMode() === "source" ? "basic" : "source";
-    renderSemanticView();
-  });
   elements.semanticEditor.querySelector("#semanticFocusObjectButton")?.addEventListener("click", () => focusSelectedSemanticObject());
   elements.semanticEditor.querySelector("#semanticFixDuplicatesButton")?.addEventListener("click", () => applySemanticDuplicateFixes());
   elements.semanticEditor.querySelectorAll(".semantic-line[data-entity-id]:not([data-entity-id=''])").forEach((line) => {
@@ -1156,12 +1152,6 @@ function renderSemanticSelectionOnly() {
     ));
     line.setAttribute("aria-selected", selected ? "true" : "false");
     line.setAttribute("aria-current", selected ? "location" : "false");
-  });
-}
-
-function highlightSemanticObject(objectIndex, active) {
-  elements.semanticEditor.querySelectorAll(`.semantic-line[data-object-index="${cssAttrEscape(objectIndex)}"]`).forEach((line) => {
-    line.classList.toggle("hovered", active);
   });
 }
 
@@ -2397,13 +2387,6 @@ function formatJSONValue(value) {
 
 function formatJSONKey(value) {
   return escapeHTML(JSON.stringify(String(value ?? "")));
-}
-
-function renderJSONFieldValue(value) {
-  if (value && typeof value === "object") {
-    return `<div class="json-inline-tree">${renderJSONReadonlyValue(value, 0, false)}</div>`;
-  }
-  return `<span title="${escapeHTML(formatJSONValue(value))}">${escapeHTML(formatJSONValue(value))}</span>`;
 }
 
 function formatJSONLiteral(value) {

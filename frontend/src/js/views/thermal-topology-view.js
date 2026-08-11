@@ -139,7 +139,7 @@ function renderEdge(edge, model, selectedID, metricContext) {
 
 function renderNode(node, position, selectedID, model, metricContext) {
   if (!position) return "";
-  const external = !["zone", "space", "thermal_boundary", "thermal_interface", "window", "thermal_boundary_group"].includes(node.kind);
+  const external = !["zone", "space"].includes(node.kind);
   const selected = node.id === selectedID || node.entityId === selectedID || node.sourceId === selectedID;
   const targetKind = external ? "thermal_environment" : node.kind;
   const targetID = node.sourceId || node.entityId || node.id;
@@ -281,15 +281,12 @@ function ensureResizeObserver() {
 
 function thermalTopologyOptions() {
   return {
-    graphLevel: "zone",
     metric: state.thermalTopologyMetric,
-    areaComponent: "gross",
     layout: state.thermalTopologyLayout,
     scope: state.thermalTopologyScope,
     storyIndex: state.selectedGeometryStory,
     selectedEntityId: state.thermalTopologySelectedEntityId || state.selectedGeometryId,
     selectedEntityKind: state.thermalTopologySelectedEntityKind || state.selectedGeometryKind,
-    neighborDepth: state.thermalTopologyNeighborDepth,
     showAirCoupling: state.thermalTopologyShowAirCoupling || state.thermalTopologyMetric === "air",
     expandExternalTargets: state.thermalTopologyExpandExternalTargets,
   };
@@ -311,9 +308,6 @@ function syncThermalTopologyControls() {
 }
 
 function connectionLabel(connection, model, metricContext) {
-  if (model.graphLevel === "boundary") {
-    return String(connection.relationKind || "boundary").replaceAll("_", " ");
-  }
   const area = connectionAreaValue(connection, model);
   const gross = Math.max(area, 0.000001);
   const openingRatio = Math.max(0, Number(connection?.physicalOpeningArea) || 0) / gross;
@@ -450,7 +444,7 @@ function edgeMatchesThermalSelection(edge, model) {
     const opening = (currentGeometry?.topology?.openings || []).find((item) => item.entityId === selectedID || item.windowId === selectedID || item.id === selectedID);
     return Boolean(opening && (edge.openingIds || []).includes(opening.id));
   }
-  return model.graphLevel === "boundary" && edge.targetId === selectedID;
+  return false;
 }
 
 function trimLabel(value, maximum) {

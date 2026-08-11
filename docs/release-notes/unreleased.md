@@ -33,6 +33,8 @@ The release script infers bump size from these sections:
   run-plan preview. Each input now automatically uses a registered or detected
   EnergyPlus installation with a compatible major/minor version; an
   incompatible input fails independently without stopping compatible files.
+- Fixed Batch Summary topology metrics to the multiplier-aware effective area
+  basis and removed the Physical/Model-total selector from that workflow.
 - Removed Batch Output QA and the main Output result tab. The core Output
   analysis, preview, apply, purpose-output apply, and discovery APIs remain
   available to backend clients and automation. Semantic output entities now
@@ -54,15 +56,32 @@ The release script infers bump size from these sections:
 - Removed the redundant HVAC and Profile top headers and text search fields.
   HVAC now uses only its compact lower picker cards: the top view switcher,
   Warnings surface, Current focus card, and picker helper text were removed.
-  Apply Profile now sits beside the Profile Graph heading.
+  Back, Forward, Clear focus, Zone Services, and Expand now share a horizontal
+  icon toolbar at the upper-right of the HVAC drawing instead of a text
+  breadcrumb row.
+  Apply Profile now sits at the right edge of the compact Profile selector.
 - Removed the Diagnose result header and its issue-search, severity, source,
   and hide-code filters. Fix actions now sit in the Fixes card; the independent
   fix-candidate search remains available for cleanup review.
 - Removed the redundant Profile Graph deck-status line such as
   `5 series · actual · year · single`.
+- Reworked the Profile overview into a compact, table-aligned selector without
+  horizontal scrolling. A click sets the primary profile or zone, Ctrl/Cmd
+  toggles additional rows, and Shift selects a range. Line views overlay the
+  selected rows with an always-visible legend, while annual heatmaps show each
+  selection in parallel panels for direct comparison.
+- Simplified Profile Graph to a fixed Time Profile over selected Profile
+  assignments. Removed Graph Type, Scope, and Compare selectors, replaced the
+  View dropdown with six direct view buttons, and moved graph Scale to the
+  Profile Analysis section in Settings while preserving legacy view preferences
+  during migration.
 - Removed direct Profile-to-Topology and Topology-to-Profile links, including
   the Profile detail action, Topology Inspector profile summary, and shared
   related-view/link-bar destinations between those two panels.
+- Removed obsolete frontend state, renderers, event branches, styles, and
+  translations left behind by the simplified Output, Simulation, Profile,
+  HVAC, Diagnose, and Topology controls while retaining backend compatibility
+  APIs.
 
 ## Fixed
 

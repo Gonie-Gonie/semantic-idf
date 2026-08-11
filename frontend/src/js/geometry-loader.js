@@ -57,10 +57,6 @@ async function loadGeometryModule() {
   return geometryModulePromise;
 }
 
-export function isGeometryLoaded() {
-  return Boolean(geometryModule);
-}
-
 export function preloadGeometryRenderer() {
   return loadGeometryModule();
 }

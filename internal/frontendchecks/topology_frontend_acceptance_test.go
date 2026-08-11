@@ -52,14 +52,15 @@ func TestTOPO261LayoutRoutingAcceptance(t *testing.T) {
 			t.Fatalf("layout/routing acceptance missing %q", required)
 		}
 	}
-	state := readTestFile(t, "frontend/src/js/state.js")
-	if !strings.Contains(state, `export function normalizeThermalTopologyGraphLevel()`) || !strings.Contains(state, `return "zone";`) {
-		t.Fatal("Network graph type must be fixed to Zone")
-	}
 	view := readTestFile(t, "frontend/src/js/views/thermal-topology-view.js")
 	for _, removed := range []string{"expandConnection", "collapseBoundaryGraph", "data-topology-back"} {
 		if strings.Contains(view, removed) {
 			t.Fatalf("Zone-only Network still exposes boundary drill-down %q", removed)
+		}
+	}
+	for _, removed := range []string{"graphLevel", "areaComponent", "areaField", "neighborDepth", "computeBoundaryLayout", "createBoundaryDetailModel", "detailConnection"} {
+		if strings.Contains(layout, removed) || strings.Contains(view, removed) {
+			t.Fatalf("Zone/Gross-only Network retains dead option path %q", removed)
 		}
 	}
 }

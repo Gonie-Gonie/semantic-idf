@@ -20,7 +20,6 @@ func TestProfilePanelSemanticNavigationContract(t *testing.T) {
 		"data-source-field-index",
 		"profileZoneDimensionTargetID",
 		"profileSeriesSemanticTargets",
-		"profileScheduleSemanticAttributes",
 		"data-choose-semantic-occurrence",
 	} {
 		if !strings.Contains(content, term) {
@@ -36,8 +35,10 @@ func TestProfileSemanticRevealAndHistoryContextContract(t *testing.T) {
 		"activeProfileZoneName",
 		"activeProfileGroupId",
 		"profileSelectedCell",
-		"profilePinnedSeriesIds",
-		"profileGraphDeck",
+		"profileSelectedGroupIds",
+		"profileSelectedZoneNames",
+		"profileSelectedDimensions",
+		"profileSelectionAnchorKey",
 		"profileNavigationRevealTarget",
 		"captureProfileNavigationContext",
 		"restoreProfileNavigationContext",
@@ -55,7 +56,6 @@ func TestProfileSemanticRevealAndHistoryContextContract(t *testing.T) {
 	for _, guard := range []string{
 		"entityIDs.length !== 1",
 		"anchorsByKey.size === 1",
-		"scheduleNames.length !== 1",
 		"sameStringSet(candidate.zoneNames, group.zoneNames)",
 	} {
 		if !strings.Contains(content, guard) {
@@ -65,5 +65,29 @@ func TestProfileSemanticRevealAndHistoryContextContract(t *testing.T) {
 
 	if strings.Contains(content, "profileFilter") {
 		t.Fatal("Profile navigation history still preserves the removed Profile filter")
+	}
+
+	capture := sliceBetween(content, "function captureProfileNavigationContext", "async function restoreProfileNavigationContext")
+	restore := sliceBetween(content, "async function restoreProfileNavigationContext", "function preferredProfileSemanticOccurrence")
+	for _, field := range []string{"profileSelectedGroupIds", "profileSelectedZoneNames", "profileSelectedDimensions", "profileSelectionAnchorKey"} {
+		if !strings.Contains(capture, field) {
+			t.Fatalf("Profile navigation capture does not preserve row-selection field %q", field)
+		}
+		if !strings.Contains(restore, field) || !strings.Contains(restore, "snapshot."+field) {
+			t.Fatalf("Profile navigation restore does not restore row-selection field %q", field)
+		}
+	}
+	if !strings.Contains(content, "normalizeProfileRowSelections") {
+		t.Fatal("Profile render must normalize restored row selections against the current table rows")
+	}
+	for _, removed := range []string{"profileGraphDeck", "overviewScrollTop", "graphScrollTop", "detailScrollTop"} {
+		if strings.Contains(content, removed) {
+			t.Fatalf("Profile history still preserves redundant state %q", removed)
+		}
+	}
+	for _, retained := range []string{"paneScrollTop", "matrixScrollTop"} {
+		if !strings.Contains(capture, retained) || !strings.Contains(restore, "snapshot."+retained) {
+			t.Fatalf("Profile history does not preserve live scroll state %q", retained)
+		}
 	}
 }

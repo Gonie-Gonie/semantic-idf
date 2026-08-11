@@ -127,7 +127,7 @@ try {
     ],
     boundaries: [], openings: [], airCouplings: [],
   }};
-  const options = { layout: "spatial", scope: "building", selectedEntityId: "zone:b", neighborDepth: 1, showAirCoupling: true };
+  const options = { layout: "spatial", scope: "building", selectedEntityId: "zone:b", showAirCoupling: true };
   const model = layout.createThermalTopologyLayoutModel(geometry, options);
   const first = layout.computeThermalTopologyLayout(model, { width: 900, height: 600 });
   const second = layout.computeThermalTopologyLayout(model, { width: 900, height: 600 });
@@ -210,8 +210,8 @@ try {
   const inspectorHeading = document.getElementById("thermalTopologyInspector").getAttribute("aria-labelledby") === "thermalTopologyInspectorHeading" && Boolean(document.getElementById("thermalTopologyInspectorHeading"));
   const patternLegend = document.querySelectorAll(".thermal-legend-line").length >= 4;
   document.querySelector(".thermal-edge-group").dispatchEvent(new KeyboardEvent("keydown", {key:"Enter",bubbles:true}));
-  const zoneOnly = state.thermalTopologySelectedEntityKind === "thermal_connection" && !document.querySelector(".thermal-node.thermal_boundary") && !document.querySelector("[data-topology-back]") && !document.getElementById("thermalTopologyGraphLevel") && stateModule.normalizeThermalTopologyGraphLevel("boundary") === "zone";
-  const grossOnly = !document.getElementById("thermalTopologyAreaComponent") && !document.getElementById("thermalTopologyAreaBasis") && stateModule.normalizeThermalTopologyAreaComponent("openings") === "gross";
+  const zoneOnly = state.thermalTopologySelectedEntityKind === "thermal_connection" && !document.querySelector(".thermal-node.thermal_boundary") && !document.querySelector("[data-topology-back]") && !document.getElementById("thermalTopologyGraphLevel");
+  const grossOnly = !document.getElementById("thermalTopologyAreaComponent") && !document.getElementById("thermalTopologyAreaBasis") && tableRows.get("Gross area")?.value === "10" && tableRows.get("Multiplier")?.value === "2";
   state.thermalTopologyMetric = "ua"; view.renderThermalTopology(geometry, helpers);
 
   assert(svg && metricWidth && inspector && accessibleTargets && deterministicTabOrder && keyboardNode && inspectorHeading && patternLegend && zoneOnly && grossOnly, "renderer contract failed");
