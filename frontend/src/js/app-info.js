@@ -1,8 +1,8 @@
 export const bundledAppInfo = {
   name: "SemanticIDF",
-  version: "0.4.3",
-  title: "SemanticIDF v0.4.3",
-  outputFilename: "semantic-idf-v0.4.3",
+  version: "0.4.4",
+  title: "SemanticIDF v0.4.4",
+  outputFilename: "semantic-idf-v0.4.4",
 };
 
 let cachedAppInfo = null;
