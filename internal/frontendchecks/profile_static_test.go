@@ -28,6 +28,7 @@ func TestFrontendProfileGraphDeckContracts(t *testing.T) {
 			"slice(0, 80)",
 			"selectedScheduleHashes",
 			"selectedDimensions",
+			">◎</button>",
 		},
 		"state": {
 			"profileGraphDeck: null",
@@ -48,6 +49,9 @@ func TestFrontendProfileGraphDeckContracts(t *testing.T) {
 				t.Fatalf("%s missing Profile Graph Deck contract %q", label, term)
 			}
 		}
+	}
+	if strings.Contains(files["profile views"], "??/button>") {
+		t.Fatal("profile pin button contains a malformed closing tag")
 	}
 }
 

@@ -626,7 +626,7 @@ function renderProfileSeriesCard(series, deck, sharedMax = 0) {
           <strong>${escapeHTML(series.dimensionLabel || profileDimensionLabel(series.dimension))}</strong>
           <span>${escapeHTML(series.label || series.zoneName || series.groupName || "")}</span>
         </div>
-        <button class="profile-pin-button ${pinned ? "active" : ""}" type="button" title="${escapeHTML(t("profile.pinSeries", {}, "Pin series"))}" aria-label="${escapeHTML(t("profile.pinSeries", {}, "Pin series"))}" data-profile-pin-series="${escapeHTML(series.id)}">??/button>
+        <button class="profile-pin-button ${pinned ? "active" : ""}" type="button" title="${escapeHTML(t("profile.pinSeries", {}, "Pin series"))}" aria-label="${escapeHTML(t("profile.pinSeries", {}, "Pin series"))}" data-profile-pin-series="${escapeHTML(series.id)}">◎</button>
       </div>
       <div class="profile-graph-meta">
         <span>${escapeHTML(schedule)}</span>

@@ -13,6 +13,16 @@ import (
 )
 
 func TestNavigationLinkBarConciseLabelAndFocusContracts(t *testing.T) {
+	markup := readTestFile(t, "frontend/src/index.html")
+	for _, required := range []string{`id="workspaceBackButton"`, `>←</button>`, `id="workspaceForwardButton"`, `>→</button>`} {
+		if !strings.Contains(markup, required) {
+			t.Fatalf("navigation history button markup missing %q", required)
+		}
+	}
+	if strings.Contains(markup, "??/button>") {
+		t.Fatal("navigation history buttons contain malformed closing tags")
+	}
+
 	content := readTestFile(t, "frontend/src/js/navigation-link-bar.js")
 	for _, required := range []string{
 		"export function formatNavigationSelectionLabel",
