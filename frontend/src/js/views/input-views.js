@@ -22,6 +22,10 @@ let renderReportCallback = () => renderInputViews();
 let jumpIndexCache = { report: null, definitions: new Map(), references: new Map() };
 let semanticClickHistoryKey = "";
 let semanticTargetViewCache = new Map();
+let semanticControlsBound = false;
+let jsonEditorControlsBound = false;
+let formattedTextControlsBound = false;
+let fieldTableControlsBound = false;
 
 window.addEventListener("idfAnalyzer:semanticSelectionChanged", (event) => {
   if (state.activeInputView === "semantic") {
@@ -855,125 +859,172 @@ function refreshSemanticSelectionContext() {
     return;
   }
   host.innerHTML = renderSemanticSelectionContext(currentSemanticSelection());
-  bindSemanticSelectionContext();
 }
 
 function bindSemanticControls() {
-  elements.semanticEditor.querySelectorAll("[data-semantic-mode]").forEach((button) => {
-    button.addEventListener("click", () => {
-      state.semanticProjectionMode = button.dataset.semanticMode || "basic";
-      renderSemanticView();
-    });
-  });
-  elements.semanticEditor.querySelectorAll("[data-semantic-facet]").forEach((button) => {
-    button.addEventListener("click", () => {
-      state.semanticProjectionFacet = button.dataset.semanticFacet || "all";
-      renderSemanticView();
-    });
-  });
-  elements.semanticEditor.querySelectorAll("[data-semantic-section-text]").forEach((button) => {
-    button.addEventListener("click", () => {
-      if (semanticProjectionMode() === "basic") {
-        if (!(state.semanticExpandedSectionIds instanceof Set)) {
-          state.semanticExpandedSectionIds = new Set(["project"]);
-        }
-        const sectionId = button.dataset.semanticSectionId || "";
-        if (state.semanticExpandedSectionIds.has(sectionId)) {
-          state.semanticExpandedSectionIds.delete(sectionId);
-        } else if (sectionId) {
-          state.semanticExpandedSectionIds.add(sectionId);
-        }
-        renderSemanticView();
-        return;
-      }
-      scrollSemanticSectionIntoView(button.dataset.semanticSectionText || "");
-    });
-  });
-  elements.semanticEditor.querySelector("#semanticFocusObjectButton")?.addEventListener("click", () => focusSelectedSemanticObject());
-  elements.semanticEditor.querySelector("#semanticFixDuplicatesButton")?.addEventListener("click", () => applySemanticDuplicateFixes());
-  elements.semanticEditor.querySelectorAll(".semantic-line[data-entity-id]:not([data-entity-id=''])").forEach((line) => {
-    line.addEventListener("pointerenter", () => {
-      line.classList.add("hovered");
-      hoverSemanticEntity(semanticSelectionForLine(line), { originView: "input-semantic", action: "hover" });
-    });
-    line.addEventListener("pointerleave", () => {
-      line.classList.remove("hovered");
-      clearSemanticHover();
-    });
-    line.addEventListener("click", (event) => {
-      if (event.target.closest("button, input, [data-semantic-target-view]")) {
-        return;
-      }
-      if (event.detail > 1) {
-        return;
-      }
-      const selection = semanticSelectionForLine(line);
-      semanticClickHistoryKey = semanticSelectionIdentityKey(currentSemanticSelection()) === semanticSelectionIdentityKey(selection)
-        ? ""
-        : semanticSelectionIdentityKey(selection);
-      selectSemanticLine(line);
-    });
-    line.addEventListener("dblclick", (event) => {
-      event.preventDefault();
-      const historyAlreadyRecorded = semanticClickHistoryKey === semanticSelectionIdentityKey(semanticSelectionForLine(line));
-      semanticClickHistoryKey = "";
-      openSemanticLine(line, "", "", { historyAlreadyRecorded });
-    });
-    line.addEventListener("keydown", (event) => {
-      if (event.key === "Enter" && !event.altKey) {
-        event.preventDefault();
-        openSemanticLine(line);
-      }
-    });
-  });
-  elements.semanticEditor.querySelectorAll("[data-semantic-target-view]").forEach((button) => {
-    button.addEventListener("click", (event) => {
-      event.stopPropagation();
-      const line = button.closest(".semantic-line");
-      if (line) {
-        openSemanticLine(line, button.dataset.semanticTargetView, button.dataset.semanticTargetId);
-      }
-    });
-  });
-  elements.semanticEditor.querySelectorAll(".semantic-value-token").forEach((button) => {
-    button.addEventListener("click", (event) => {
-      event.stopPropagation();
-      editSemanticValue(button);
-    });
-  });
-  bindSemanticSelectionContext();
-  elements.semanticEditor.querySelector("[data-semantic-clear-temporary]")?.addEventListener("click", clearSemanticTemporaryReveal);
+  if (!semanticControlsBound) {
+    elements.semanticEditor.addEventListener("click", handleSemanticEditorClick);
+    elements.semanticEditor.addEventListener("dblclick", handleSemanticEditorDoubleClick);
+    elements.semanticEditor.addEventListener("keydown", handleSemanticEditorKeydown);
+    elements.semanticEditor.addEventListener("pointerover", handleSemanticEditorPointerOver);
+    elements.semanticEditor.addEventListener("pointerout", handleSemanticEditorPointerOut);
+    semanticControlsBound = true;
+  }
   bindSemanticStickyPath();
 }
 
-function bindSemanticSelectionContext() {
-  elements.semanticEditor?.querySelectorAll("[data-semantic-context-view]").forEach((button) => {
-    button.addEventListener("click", (event) => {
-      event.stopPropagation();
-      openSelectionInView(button.dataset.semanticContextView, {
-        originView: "input-semantic",
-        action: "open",
-        recordHistory: true,
-      });
+function handleSemanticEditorClick(event) {
+  const target = event.target instanceof Element ? event.target : null;
+  if (!target) {
+    return;
+  }
+  const modeButton = target.closest("[data-semantic-mode]");
+  if (modeButton) {
+    state.semanticProjectionMode = modeButton.dataset.semanticMode || "basic";
+    renderSemanticView();
+    return;
+  }
+  const facetButton = target.closest("[data-semantic-facet]");
+  if (facetButton) {
+    state.semanticProjectionFacet = facetButton.dataset.semanticFacet || "all";
+    renderSemanticView();
+    return;
+  }
+  const sectionButton = target.closest("[data-semantic-section-text]");
+  if (sectionButton) {
+    if (semanticProjectionMode() === "basic") {
+      if (!(state.semanticExpandedSectionIds instanceof Set)) {
+        state.semanticExpandedSectionIds = new Set(["project"]);
+      }
+      const sectionId = sectionButton.dataset.semanticSectionId || "";
+      if (state.semanticExpandedSectionIds.has(sectionId)) {
+        state.semanticExpandedSectionIds.delete(sectionId);
+      } else if (sectionId) {
+        state.semanticExpandedSectionIds.add(sectionId);
+      }
+      renderSemanticView();
+    } else {
+      scrollSemanticSectionIntoView(sectionButton.dataset.semanticSectionText || "");
+    }
+    return;
+  }
+  if (target.closest("#semanticFocusObjectButton")) {
+    focusSelectedSemanticObject();
+    return;
+  }
+  if (target.closest("#semanticFixDuplicatesButton")) {
+    applySemanticDuplicateFixes();
+    return;
+  }
+  const targetButton = target.closest("[data-semantic-target-view]");
+  if (targetButton) {
+    event.stopPropagation();
+    const line = targetButton.closest(".semantic-line");
+    if (line) {
+      openSemanticLine(line, targetButton.dataset.semanticTargetView, targetButton.dataset.semanticTargetId);
+    }
+    return;
+  }
+  const valueButton = target.closest(".semantic-value-token");
+  if (valueButton) {
+    event.stopPropagation();
+    editSemanticValue(valueButton);
+    return;
+  }
+  const contextView = target.closest("[data-semantic-context-view]");
+  if (contextView) {
+    event.stopPropagation();
+    openSelectionInView(contextView.dataset.semanticContextView, {
+      originView: "input-semantic",
+      action: "open",
+      recordHistory: true,
     });
-  });
-  const context = elements.semanticEditor?.querySelector("#semanticSelectionContext");
-  context?.querySelector("[data-semantic-context-action='source']")?.addEventListener("click", () => {
+    return;
+  }
+  const contextAction = target.closest("[data-semantic-context-action]")?.dataset.semanticContextAction || "";
+  if (contextAction === "source") {
     revealSelectionSource({ originView: "input-semantic", action: "reveal_source", recordHistory: true });
-  });
-  context?.querySelector("[data-semantic-context-action='clear']")?.addEventListener("click", () => {
+    return;
+  }
+  if (contextAction === "clear") {
     clearSemanticSelection();
-  });
-  context?.querySelector("[data-semantic-context-action='occurrences']")?.addEventListener("click", () => {
-    const chooser = context.querySelector("[data-semantic-occurrence-chooser]");
+    return;
+  }
+  if (contextAction === "occurrences") {
+    const chooser = elements.semanticEditor.querySelector("[data-semantic-occurrence-chooser]");
     if (chooser) {
       chooser.hidden = !chooser.hidden;
-      if (!chooser.hidden) chooser.querySelector("[role='option']")?.focus();
+      if (!chooser.hidden) {
+        chooser.querySelector("[role='option']")?.focus();
+      }
     }
-  });
-  context?.querySelectorAll("[data-semantic-occurrence-id]").forEach((button) => {
-    button.addEventListener("click", () => chooseSemanticOccurrence(button.dataset.semanticOccurrenceId));
-  });
+    return;
+  }
+  const occurrenceButton = target.closest("[data-semantic-occurrence-id]");
+  if (occurrenceButton) {
+    chooseSemanticOccurrence(occurrenceButton.dataset.semanticOccurrenceId);
+    return;
+  }
+  if (target.closest("[data-semantic-clear-temporary]")) {
+    clearSemanticTemporaryReveal();
+    return;
+  }
+  const line = target.closest(".semantic-line[data-entity-id]:not([data-entity-id=''])");
+  if (!line || target.closest("button, input, [data-semantic-target-view]") || event.detail > 1) {
+    return;
+  }
+  const selection = semanticSelectionForLine(line);
+  semanticClickHistoryKey = semanticSelectionIdentityKey(currentSemanticSelection()) === semanticSelectionIdentityKey(selection)
+    ? ""
+    : semanticSelectionIdentityKey(selection);
+  selectSemanticLine(line);
+}
+
+function handleSemanticEditorDoubleClick(event) {
+  const target = event.target instanceof Element ? event.target : null;
+  const line = target?.closest(".semantic-line[data-entity-id]:not([data-entity-id=''])");
+  if (!line || target.closest("button, input")) {
+    return;
+  }
+  event.preventDefault();
+  const historyAlreadyRecorded = semanticClickHistoryKey === semanticSelectionIdentityKey(semanticSelectionForLine(line));
+  semanticClickHistoryKey = "";
+  openSemanticLine(line, "", "", { historyAlreadyRecorded });
+}
+
+function handleSemanticEditorKeydown(event) {
+  if (event.key !== "Enter" || event.altKey) {
+    return;
+  }
+  const target = event.target instanceof Element ? event.target : null;
+  const line = target?.closest(".semantic-line[data-entity-id]:not([data-entity-id=''])");
+  if (!line || (target !== line && target?.closest("button, input"))) {
+    return;
+  }
+  event.preventDefault();
+  openSemanticLine(line);
+}
+
+function handleSemanticEditorPointerOver(event) {
+  const target = event.target instanceof Element ? event.target : null;
+  const line = target?.closest(".semantic-line[data-entity-id]:not([data-entity-id=''])");
+  const related = event.relatedTarget instanceof Node ? event.relatedTarget : null;
+  if (!line || (related && line.contains(related))) {
+    return;
+  }
+  line.classList.add("hovered");
+  hoverSemanticEntity(semanticSelectionForLine(line), { originView: "input-semantic", action: "hover" });
+}
+
+function handleSemanticEditorPointerOut(event) {
+  const target = event.target instanceof Element ? event.target : null;
+  const line = target?.closest(".semantic-line[data-entity-id]:not([data-entity-id=''])");
+  const related = event.relatedTarget instanceof Node ? event.relatedTarget : null;
+  if (!line || (related && line.contains(related))) {
+    return;
+  }
+  line.classList.remove("hovered");
+  clearSemanticHover();
 }
 
 function scrollSemanticSectionIntoView(sectionText) {
@@ -1515,24 +1566,42 @@ function renderJSONFieldRow(field, objectIndex, fieldIndex, isLastField) {
 }
 
 function bindJSONEditorControls() {
-  const depthSelect = elements.jsonStructuredView.querySelector("#jsonCollapseDepth");
-  const focusButton = elements.jsonStructuredView.querySelector("#jsonFocusObjectButton");
+  if (jsonEditorControlsBound) {
+    return;
+  }
+  elements.jsonStructuredView.addEventListener("change", handleJSONEditorChange);
+  elements.jsonStructuredView.addEventListener("click", handleJSONEditorClick);
+  jsonEditorControlsBound = true;
+}
 
-  depthSelect?.addEventListener("change", () => {
-    state.jsonCollapseDepth = Number(depthSelect.value);
-    renderJSONView();
-  });
-  focusButton?.addEventListener("click", () => focusSelectedJSONObject());
+function handleJSONEditorChange(event) {
+  const select = event.target instanceof Element ? event.target.closest("#jsonCollapseDepth") : null;
+  if (!select) {
+    return;
+  }
+  state.jsonCollapseDepth = Number(select.value);
+  renderJSONView();
+}
 
-  elements.jsonStructuredView.querySelectorAll(".json-object-summary").forEach((summary) => {
-    summary.addEventListener("click", () => {
-      state.jsonSelectedObjectIndex = summary.dataset.jsonObjectIndex || "";
-      syncRawTextToFormattedTarget(summary);
-    });
-  });
-  elements.jsonStructuredView.querySelectorAll(".json-value-token").forEach((button) => {
-    button.addEventListener("click", () => editJSONValueToken(button));
-  });
+function handleJSONEditorClick(event) {
+  const target = event.target instanceof Element ? event.target : null;
+  if (!target) {
+    return;
+  }
+  if (target.closest("#jsonFocusObjectButton")) {
+    focusSelectedJSONObject();
+    return;
+  }
+  const valueButton = target.closest(".json-value-token");
+  if (valueButton) {
+    editJSONValueToken(valueButton);
+    return;
+  }
+  const summary = target.closest(".json-object-summary");
+  if (summary) {
+    state.jsonSelectedObjectIndex = summary.dataset.jsonObjectIndex || "";
+    syncRawTextToFormattedTarget(summary);
+  }
 }
 
 function focusSelectedJSONObject() {
@@ -1710,28 +1779,61 @@ function renderFormattedTextField(field, objectIndex, fieldIndex) {
 
 function bindFormattedTextControls() {
   elements.syncRawTextToggle.checked = state.syncTextRawPosition;
-  elements.textObjectView.querySelectorAll(".text-object-head").forEach((head) => {
-    head.addEventListener("click", () => syncRawTextToFormattedTarget(head));
+  if (formattedTextControlsBound) {
+    return;
+  }
+  elements.textObjectView.addEventListener("click", handleFormattedTextClick);
+  bindDelegatedFieldEditor(elements.textObjectView, ".text-field-input", applyTextValue);
+  formattedTextControlsBound = true;
+}
+
+function handleFormattedTextClick(event) {
+  const target = event.target instanceof Element ? event.target : null;
+  if (!target) {
+    return;
+  }
+  const input = target.closest(".text-field-input");
+  if (input) {
+    syncRawTextToFormattedTarget(input);
+    return;
+  }
+  const head = target.closest(".text-object-head");
+  if (head) {
+    syncRawTextToFormattedTarget(head);
+  }
+}
+
+function bindDelegatedFieldEditor(host, selector, applyValue) {
+  host.addEventListener("focusin", (event) => {
+    const input = delegatedFieldInput(event, selector);
+    if (!input) {
+      return;
+    }
+    syncRawTextToFormattedTarget(input);
+    loadFieldSuggestions(input);
   });
-  elements.textObjectView.querySelectorAll(".text-field-input").forEach((input) => {
-    input.addEventListener("focus", () => {
-      syncRawTextToFormattedTarget(input);
-      loadFieldSuggestions(input);
-    });
-    input.addEventListener("click", () => syncRawTextToFormattedTarget(input));
-    input.addEventListener("blur", () => applyTextValue(input));
-    input.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        input.blur();
-      }
-      if (event.key === "Escape") {
-        event.preventDefault();
-        input.value = input.dataset.original || "";
-        input.blur();
-      }
-    });
+  host.addEventListener("focusout", (event) => {
+    const input = delegatedFieldInput(event, selector);
+    if (input) {
+      applyValue(input);
+    }
   });
+  host.addEventListener("keydown", (event) => {
+    const input = delegatedFieldInput(event, selector);
+    if (!input || (event.key !== "Enter" && event.key !== "Escape")) {
+      return;
+    }
+    event.preventDefault();
+    if (event.key === "Escape") {
+      input.value = input.dataset.original || "";
+    }
+    input.blur();
+  });
+}
+
+function delegatedFieldInput(event, selector) {
+  const target = event.target instanceof Element ? event.target : null;
+  return target?.matches(selector) ? target : null;
 }
 
 function fieldSuggestionListID(objectIndex, fieldIndex) {
@@ -2508,6 +2610,7 @@ function renderJSONEditorValue(value, context, depth = 0, trailingComma = false)
 }
 
 export function renderFieldTable() {
+  bindFieldTableControls();
   const report = state.report;
   if (!report || !Array.isArray(report.objects) || !hasCurrentAnalysis()) {
     elements.fieldTable.innerHTML = `<div class="empty">${escapeHTML(pendingViewMessage("table"))}</div>`;
@@ -2533,35 +2636,39 @@ export function renderFieldTable() {
     ${limitedGroups.map((group, index) => renderObjectTypeTable(group, index)).join("")}
   `;
 
-  elements.fieldTable.querySelectorAll(".field-value-input").forEach((input) => {
-    input.addEventListener("focus", () => {
-      syncRawTextToFormattedTarget(input);
-      loadFieldSuggestions(input);
-    });
-    input.addEventListener("click", () => syncRawTextToFormattedTarget(input));
-    input.addEventListener("blur", () => applyTableValue(input));
-    input.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        input.blur();
-      }
-      if (event.key === "Escape") {
-        input.value = input.dataset.original || "";
-        input.blur();
-      }
-    });
-  });
-  elements.fieldTable.querySelectorAll("[data-table-object-index]").forEach((element) => {
-    element.addEventListener("click", () => syncRawTextToFormattedTarget(element));
-  });
-  elements.fieldTable.querySelectorAll(".object-orientation-button").forEach((button) => {
-    button.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      state.tableGroupOrientations.set(button.dataset.objectType, button.dataset.nextOrientation);
-      renderFieldTable();
-    });
-  });
+}
+
+function bindFieldTableControls() {
+  if (fieldTableControlsBound) {
+    return;
+  }
+  elements.fieldTable.addEventListener("click", handleFieldTableClick);
+  bindDelegatedFieldEditor(elements.fieldTable, ".field-value-input", applyTableValue);
+  fieldTableControlsBound = true;
+}
+
+function handleFieldTableClick(event) {
+  const target = event.target instanceof Element ? event.target : null;
+  if (!target) {
+    return;
+  }
+  const orientationButton = target.closest(".object-orientation-button");
+  if (orientationButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    state.tableGroupOrientations.set(orientationButton.dataset.objectType, orientationButton.dataset.nextOrientation);
+    renderFieldTable();
+    return;
+  }
+  const input = target.closest(".field-value-input");
+  if (input) {
+    syncRawTextToFormattedTarget(input);
+    return;
+  }
+  const objectElement = target.closest("[data-table-object-index]");
+  if (objectElement) {
+    syncRawTextToFormattedTarget(objectElement);
+  }
 }
 
 function limitObjectGroups(groups, limit) {

@@ -326,16 +326,6 @@ func isScheduleType(objectType string) bool {
 	return strings.HasPrefix(strings.ToLower(objectType), "schedule:")
 }
 
-func findFieldByComment(obj Object, commentNeedle string) string {
-	commentNeedle = strings.ToLower(commentNeedle)
-	for _, field := range obj.Fields {
-		if strings.Contains(strings.ToLower(field.Comment), commentNeedle) {
-			return strings.TrimSpace(field.Value)
-		}
-	}
-	return ""
-}
-
 func findFieldByCommentWords(obj Object, words ...string) string {
 	for _, field := range obj.Fields {
 		comment := strings.ToLower(field.Comment)

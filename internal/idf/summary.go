@@ -612,10 +612,6 @@ type surfaceInfo struct {
 	ground        bool
 }
 
-func collectSummaryFacts(doc Document) summaryFacts {
-	return collectSummaryFactsWithOptions(doc, SummaryAnalysisOptions{IncludeHeavyReadiness: true})
-}
-
 func collectSummaryFactsWithOptions(doc Document, options SummaryAnalysisOptions) summaryFacts {
 	facts := summaryFacts{
 		objectCount:             len(doc.Objects),
@@ -1534,11 +1530,6 @@ func (facts *summaryFacts) surfaceInfo(obj Object) (surfaceInfo, bool) {
 		exterior:      isExteriorSurface(obj.Type, outside),
 		ground:        isGroundSurface(outside),
 	}, true
-}
-
-func (facts summaryFacts) objectAzimuth(obj Object, zoneName string) (float64, bool) {
-	azimuth, _, ok := facts.objectAzimuthSource(obj, zoneName)
-	return azimuth, ok
 }
 
 func (facts summaryFacts) objectAzimuthSource(obj Object, zoneName string) (float64, string, bool) {

@@ -10,7 +10,11 @@ func TestProfilePanelSemanticNavigationContract(t *testing.T) {
 	for _, term := range []string{
 		`configureResultPanelNavigationHooks("profile"`,
 		"profileNavigationIndex",
-		"navigation.byViewTarget",
+		"getSemanticNavigationCache",
+		"profileSemanticNavigationCache",
+		`cache.occurrenceIDs("view-target"`,
+		"cache.occurrencesForIDs",
+		"cache.entity(",
 		"data-entity-id",
 		"data-entity-kind",
 		"data-panel-target-id",

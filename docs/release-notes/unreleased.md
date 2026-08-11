@@ -86,3 +86,15 @@ The release script infers bump size from these sections:
 ## Fixed
 
 - _None._
+
+## Performance
+
+- Replaced per-render listeners in the large Input, Profile, HVAC, Geometry,
+  Topology, and Simulation surfaces with fixed delegated handlers, and reused
+  indexed lookups for semantic, geometry, HVAC, profile, and simulation data.
+- Changed the Batch parse cache to an O(1) LRU that coalesces concurrent reads
+  of the same input. Diagnose and Cleanup now honor the bounded worker setting,
+  while Batch Simulation reports completion from one serialized collector.
+- Removed unused private analysis helpers and reduced repeated allocations and
+  scans in Summary, simulation output lookup, and workbook generation without
+  changing the public JSON or automation APIs.

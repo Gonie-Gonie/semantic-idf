@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 type HVACServiceModel struct {
@@ -584,9 +587,7 @@ func buildHVACSystemSummaries(loops []HVACLoop, paths []ZoneServicePath, couplin
 			RelatedCouplingIDs: relatedCouplings,
 		})
 	}
-	for _, summary := range refrigerantSystemSummaries(paths) {
-		systems = append(systems, summary)
-	}
+	systems = append(systems, refrigerantSystemSummaries(paths)...)
 	sort.SliceStable(systems, func(i, j int) bool {
 		if systems[i].Type != systems[j].Type {
 			return systems[i].Type < systems[j].Type
@@ -1975,7 +1976,7 @@ func componentRefFromLabel(kind string, label string) ComponentRef {
 		ID:            "component:" + normalizeName(kind) + ":" + normalizeName(label),
 		ObjectName:    label,
 		DisplayName:   label,
-		DisplayFamily: strings.Title(strings.ReplaceAll(kind, "_", " ")),
+		DisplayFamily: cases.Title(language.Und, cases.NoLower).String(strings.ReplaceAll(kind, "_", " ")),
 	}
 }
 

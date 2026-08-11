@@ -2,11 +2,20 @@ import { loadAndApplyAppSettings } from "./settings-client.js";
 import { renderAppInfo } from "./app-info.js";
 import { t } from "./i18n.js";
 import { initializeMultiSimulationTool } from "./batch/batch-simulation.js";
+import { parseSummaryNumber, summaryUnit } from "./batch/batch-summary-utils.js";
 
 loadAndApplyAppSettings();
 renderAppInfo();
 
 const BATCH_TABLE_RENDER_LIMIT = 500;
+const SUMMARY_METRIC_GROUP_TOKENS = {
+  inventory: ["inventory", "model"],
+  geometry: ["geometry", "area", "zone", "surface", "wwr", "fenestration"],
+  envelope: ["envelope", "construction", "material", "window"],
+  loads: ["load", "lighting", "equipment", "people", "internal"],
+  schedules: ["schedule"],
+  hvac: ["hvac", "air loop", "plant loop", "node", "coil"],
+};
 
 const state = {
   activeBatchTool: "batch-summary",
@@ -412,15 +421,8 @@ function summaryMetricMatchesGroup(metric, files) {
   const id = String(metric.id || "").toLowerCase();
   const name = String(metric.name || metric.csvName || "").toLowerCase();
   const haystack = `${category} ${id} ${name}`;
-  const groups = {
-    inventory: ["inventory", "model"],
-    geometry: ["geometry", "area", "zone", "surface", "wwr", "fenestration"],
-    envelope: ["envelope", "construction", "material", "window"],
-    loads: ["load", "lighting", "equipment", "people", "internal"],
-    schedules: ["schedule"],
-    hvac: ["hvac", "air loop", "plant loop", "node", "coil"],
-  };
-  return (groups[group] || [group]).some((token) => haystack.includes(token));
+  const tokens = SUMMARY_METRIC_GROUP_TOKENS[group];
+  return tokens ? tokens.some((token) => haystack.includes(token)) : haystack.includes(group);
 }
 
 function summaryValueStatus(file, metricID) {
@@ -548,7 +550,8 @@ function summaryDeltaRow(metric, baseline, compare) {
       status,
     };
   }
-  const changed = String(a?.displayValue ?? "") === String(b?.displayValue ?? "") ? t("batch.unchanged", {}, "unchanged") : t("batch.changed", {}, "changed");
+  const unchangedLabel = t("batch.unchanged", {}, "unchanged");
+  const changed = String(a?.displayValue ?? "") === String(b?.displayValue ?? "") ? unchangedLabel : t("batch.changed", {}, "changed");
   return {
     metric,
     a: a?.displayValue ?? t("common.notAvailable"),
@@ -558,7 +561,7 @@ function summaryDeltaRow(metric, baseline, compare) {
     deltaValue: null,
     percentValue: null,
     missing: aStatus === "missing" || bStatus === "missing",
-    statusChanged: aStatus !== bStatus || changed !== t("batch.unchanged", {}, "unchanged"),
+    statusChanged: aStatus !== bStatus || changed !== unchangedLabel,
     status,
   };
 }
@@ -613,25 +616,6 @@ function renderSummaryDeltaRow(row) {
     </tr>`;
 }
 
-function parseSummaryNumber(value) {
-  const match = String(value ?? "").trim().match(/^[-+]?(\d+(\.\d*)?|\.\d+)([eE][-+]?\d+)?/);
-  if (!match) {
-    return { ok: false, value: 0 };
-  }
-  const number = Number(match[0]);
-  return Number.isFinite(number) ? { ok: true, value: number } : { ok: false, value: 0 };
-}
-
-function summaryUnit(metric, displayValue) {
-  const unit = String(metric.unit || "").trim();
-  if (unit) {
-    return unit;
-  }
-  const text = String(displayValue || "").trim();
-  const number = parseSummaryNumber(text);
-  return number.ok ? text.slice(String(number.value).length).trim() : "";
-}
-
 function formatDelta(value, unit) {
   const suffix = unit && unit !== "-" ? ` ${unit}` : "";
   const sign = value > 0 ? "+" : "";
@@ -680,13 +664,7 @@ async function exportCSV() {
     }
   }
   const csvText = `${rows.map((row) => row.map(csvCell).join(",")).join("\r\n")}\r\n`;
-  const blob = new Blob([csvText], { type: "text/csv" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `multi-idf-summary-${state.orientation}.csv`;
-  link.click();
-  URL.revokeObjectURL(url);
+  downloadText(csvText, `multi-idf-summary-${state.orientation}.csv`, "text/csv");
 }
 
 function exportJSON() {
@@ -839,12 +817,23 @@ function renderBatchDiagnoseSummary(files, codes) {
     return;
   }
   const fileLabels = files.map((file) => file.label || file.filename);
-  const common = codes.filter((item) => fileLabels.every((label) => (item.fileCounts?.[label] || 0) > 0));
-  const specific = codes.filter((item) => fileLabels.some((label) => (item.fileCounts?.[label] || 0) > 0) && !fileLabels.every((label) => (item.fileCounts?.[label] || 0) > 0));
+  let commonCount = 0;
+  let specificCount = 0;
+  for (const item of codes) {
+    let matchingFiles = 0;
+    for (const label of fileLabels) {
+      matchingFiles += Number((item.fileCounts?.[label] || 0) > 0);
+    }
+    if (matchingFiles === fileLabels.length) {
+      commonCount += 1;
+    } else if (matchingFiles > 0) {
+      specificCount += 1;
+    }
+  }
   const top = codes.slice(0, 5).map((item) => `${item.code} (${item.count || 0})`).join(", ") || t("common.notAvailable");
   elements.batchDiagnoseSummary.innerHTML = `
-    <div><span>${escapeHTML(t("batch.commonIssues", {}, "Common issues"))}</span><strong>${escapeHTML(common.length)}</strong></div>
-    <div><span>${escapeHTML(t("batch.fileSpecificIssues", {}, "File-specific issues"))}</span><strong>${escapeHTML(specific.length)}</strong></div>
+    <div><span>${escapeHTML(t("batch.commonIssues", {}, "Common issues"))}</span><strong>${escapeHTML(commonCount)}</strong></div>
+    <div><span>${escapeHTML(t("batch.fileSpecificIssues", {}, "File-specific issues"))}</span><strong>${escapeHTML(specificCount)}</strong></div>
     <div class="batch-summary-wide"><span>Top</span><strong>${escapeHTML(top)}</strong></div>`;
 }
 

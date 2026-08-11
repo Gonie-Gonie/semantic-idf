@@ -492,7 +492,7 @@ func parseSimulationHeatFlowSQL(path string) (HeatFlowDataset, error) {
 	}
 	zoneBuilders := map[string]*heatFlowZoneBuilder{}
 	zoneOrder := []string{}
-	timeFrame := map[int64]int{}
+	seenFrames := map[int64]struct{}{}
 	keptFrame := map[int64]int{}
 	frameIndex := -1
 
@@ -507,12 +507,11 @@ func parseSimulationHeatFlowSQL(path string) (HeatFlowDataset, error) {
 		if !value.Valid || math.IsNaN(value.Float64) || math.IsInf(value.Float64, 0) {
 			return nil
 		}
-		currentFrame, known := timeFrame[timeIndex]
+		_, known := seenFrames[timeIndex]
 		if !known {
 			frameIndex++
-			currentFrame = frameIndex
-			timeFrame[timeIndex] = currentFrame
-			if stride <= 1 || currentFrame%stride == 0 || currentFrame == rowCount-1 {
+			seenFrames[timeIndex] = struct{}{}
+			if stride <= 1 || frameIndex%stride == 0 || frameIndex == rowCount-1 {
 				keptFrame[timeIndex] = dataset.FrameCount
 				dataset.Labels = append(dataset.Labels, sqlFrameLabel(month, day, hour, minute))
 				dataset.FrameCount++

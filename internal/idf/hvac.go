@@ -568,9 +568,7 @@ func buildHVACLoopSide(ctx *hvacContext, sideName string, owner Object, inletNod
 		ConnectorListName: strings.TrimSpace(connectorListName),
 	}
 	branchNames := branchNamesFromList(ctx, side.BranchListName, owner)
-	for _, warning := range duplicateBranchNameWarnings(owner, side.BranchListName, branchNames) {
-		side.Warnings = append(side.Warnings, warning)
-	}
+	side.Warnings = append(side.Warnings, duplicateBranchNameWarnings(owner, side.BranchListName, branchNames)...)
 	knownBranches := map[string]bool{}
 	for _, branchName := range branchNames {
 		key := normalizeName(branchName)
@@ -789,9 +787,7 @@ func connectorsFromList(ctx *hvacContext, connectorListName string, owner Object
 		}
 		connectors = append(connectors, parseHVACConnector(connectorObj, knownBranches))
 	}
-	for _, warning := range validateConnectorListComposition(obj, connectors) {
-		ctx.warnings = append(ctx.warnings, warning)
-	}
+	ctx.warnings = append(ctx.warnings, validateConnectorListComposition(obj, connectors)...)
 	return connectors
 }
 
@@ -1421,10 +1417,6 @@ func buildHVACSpaceRelation(ctx *hvacContext, loops []HVACLoop, connectionObj Ob
 	relation.RuleIDs = appendUniqueStrings(relation.RuleIDs, hvacLoopRelationRuleIDs(relation.AirLoopRelations)...)
 	relation.RuleIDs = appendUniqueStrings(relation.RuleIDs, hvacLoopRelationRuleIDs(relation.PlantLoopRelations)...)
 	return relation
-}
-
-func equipmentFromZoneEquipmentList(ctx *hvacContext, equipmentList Object, relation *HVACZoneChain) []HVACComponent {
-	return equipmentFromHVACEquipmentList(ctx, equipmentList, relation, "ZoneHVAC:EquipmentList", "missing_zone_equipment", "zone_equipment")
 }
 
 func equipmentFromHVACEquipmentList(ctx *hvacContext, equipmentList Object, relation *HVACZoneChain, evidence string, missingCode string, defaultRole string) []HVACComponent {
@@ -3441,10 +3433,6 @@ func objectNameSuggestionsByPredicate(doc Document, match func(string) bool) []F
 		}
 	}
 	return uniqueFieldSuggestions(suggestions)
-}
-
-func hvacConnectionDiagnostics(doc Document) []Diagnostic {
-	return hvacConnectionDiagnosticsForReport(AnalyzeHVAC(doc))
 }
 
 func hvacConnectionDiagnosticsForReport(report HVACReport) []Diagnostic {

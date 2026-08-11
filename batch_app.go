@@ -8,7 +8,9 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/Gonie-Gonie/semantic-idf/internal/epinput"
 	"github.com/Gonie-Gonie/semantic-idf/internal/idf"
@@ -283,12 +285,10 @@ func (a *App) selectBatchOutputDirectory() (string, error) {
 
 func AnalyzeBatchDiagnosePaths(request BatchJobRequest) *BatchDiagnoseResult {
 	paths := normalizeBatchPaths(request.InputPaths)
-	result := &BatchDiagnoseResult{RunID: request.RunID, Total: len(paths)}
+	files := runBatchAnalysis(paths, request.WorkerCount, analyzeBatchDiagnoseFile)
+	result := &BatchDiagnoseResult{RunID: request.RunID, Total: len(paths), Files: files, Completed: len(files)}
 	codeCounts := map[string]*BatchIssueCodeSummary{}
-	for index, path := range paths {
-		file := analyzeBatchDiagnoseFile(index, path)
-		result.Files = append(result.Files, file)
-		result.Completed++
+	for _, file := range files {
 		if file.Status == "ok" {
 			result.Succeeded++
 		} else {
@@ -352,11 +352,9 @@ func analyzeBatchDiagnoseFile(index int, path string) BatchDiagnoseFile {
 
 func AnalyzeBatchCleanupReportPaths(request BatchJobRequest) *BatchCleanupReportResult {
 	paths := normalizeBatchPaths(request.InputPaths)
-	result := &BatchCleanupReportResult{RunID: request.RunID, Total: len(paths)}
-	for index, path := range paths {
-		file := analyzeBatchCleanupReportFile(index, path)
-		result.Files = append(result.Files, file)
-		result.Completed++
+	files := runBatchAnalysis(paths, request.WorkerCount, analyzeBatchCleanupReportFile)
+	result := &BatchCleanupReportResult{RunID: request.RunID, Total: len(paths), Files: files, Completed: len(files)}
+	for _, file := range files {
 		if file.Status == "ok" {
 			result.Succeeded++
 		} else {
@@ -367,6 +365,54 @@ func AnalyzeBatchCleanupReportPaths(request BatchJobRequest) *BatchCleanupReport
 		}
 	}
 	return result
+}
+
+func runBatchAnalysis[T any](paths []string, requestedWorkers int, analyze func(int, string) T) []T {
+	if len(paths) == 0 {
+		return nil
+	}
+	files := make([]T, len(paths))
+	workers := batchAnalysisWorkerCount(requestedWorkers, len(paths))
+	if workers == 1 {
+		for index, path := range paths {
+			files[index] = analyze(index, path)
+		}
+		return files
+	}
+
+	jobs := make(chan int, len(paths))
+	for index := range paths {
+		jobs <- index
+	}
+	close(jobs)
+	var workersDone sync.WaitGroup
+	workersDone.Add(workers)
+	for range workers {
+		go func() {
+			defer workersDone.Done()
+			for index := range jobs {
+				files[index] = analyze(index, paths[index])
+			}
+		}()
+	}
+	workersDone.Wait()
+	return files
+}
+
+func batchAnalysisWorkerCount(requested int, total int) int {
+	if total <= 0 {
+		return 0
+	}
+	if requested <= 0 {
+		return multiSummaryConcurrency(total)
+	}
+	if requested > 8 {
+		requested = 8
+	}
+	if requested > total {
+		requested = total
+	}
+	return requested
 }
 
 func analyzeBatchCleanupReportFile(index int, path string) BatchCleanupReportFile {
@@ -1062,6 +1108,8 @@ func batchSimulationEnergyDeltaSection(left, right simulation.SimulationRunResul
 	rightSummary := right.PurposeResults.EnergyExplanationSummary
 	leftExplanation := left.PurposeResults.EnergyExplanation
 	rightExplanation := right.PurposeResults.EnergyExplanation
+	leftSources := newBatchSimulationSourceIndex(leftExplanation)
+	rightSources := newBatchSimulationSourceIndex(rightExplanation)
 	rows := []batchSimulationDeltaRow{}
 	for _, group := range []struct {
 		name  string
@@ -1078,6 +1126,8 @@ func batchSimulationEnergyDeltaSection(left, right simulation.SimulationRunResul
 	}
 	sortBatchSimulationDeltaRows(rows)
 	for _, row := range rows {
+		leftSourceFields := leftSources.fields(row.LeftSourceIDs)
+		rightSourceFields := rightSources.fields(row.RightSourceIDs)
 		values := []string{
 			row.Group,
 			row.ID,
@@ -1107,10 +1157,16 @@ func batchSimulationEnergyDeltaSection(left, right simulation.SimulationRunResul
 			row.DenominatorUnit,
 			strings.Join(row.LeftSourceIDs, "; "),
 			strings.Join(row.RightSourceIDs, "; "),
-			batchSimulationSourceObjectIndexes(leftExplanation, row.LeftSourceIDs),
-			batchSimulationSourceObjectIndexes(rightExplanation, row.RightSourceIDs),
+			leftSourceFields[0],
+			rightSourceFields[0],
 		}
-		values = append(values, batchSimulationSourceMetadataDeltaFields(leftExplanation, rightExplanation, row.LeftSourceIDs, row.RightSourceIDs)...)
+		values = append(values,
+			leftSourceFields[1], rightSourceFields[1],
+			leftSourceFields[2], rightSourceFields[2],
+			leftSourceFields[3], rightSourceFields[3],
+			leftSourceFields[4], rightSourceFields[4],
+			leftSourceFields[5], rightSourceFields[5],
+		)
 		section.Rows = append(section.Rows, values)
 	}
 	return section
@@ -1202,9 +1258,13 @@ func batchSimulationEnergyEdgeDeltaSection(left, right simulation.SimulationRunR
 	}
 	leftExplanation := left.PurposeResults.EnergyExplanation
 	rightExplanation := right.PurposeResults.EnergyExplanation
+	leftSources := newBatchSimulationSourceIndex(leftExplanation)
+	rightSources := newBatchSimulationSourceIndex(rightExplanation)
 	rows := batchSimulationEdgeDeltaRows(leftExplanation, rightExplanation)
 	sortBatchSimulationDeltaRows(rows)
 	for _, row := range rows {
+		leftSourceFields := leftSources.fields(row.LeftSourceIDs)
+		rightSourceFields := rightSources.fields(row.RightSourceIDs)
 		values := []string{
 			row.Relation,
 			row.Label,
@@ -1222,12 +1282,18 @@ func batchSimulationEnergyEdgeDeltaSection(left, right simulation.SimulationRunR
 			row.ToID,
 			strings.Join(row.LeftSourceIDs, "; "),
 			strings.Join(row.RightSourceIDs, "; "),
-			batchSimulationSourceObjectIndexes(leftExplanation, row.LeftSourceIDs),
-			batchSimulationSourceObjectIndexes(rightExplanation, row.RightSourceIDs),
+			leftSourceFields[0],
+			rightSourceFields[0],
 			strings.Join(row.LeftRelatedPathIDs, "; "),
 			strings.Join(row.RightRelatedPathIDs, "; "),
 		}
-		values = append(values, batchSimulationSourceMetadataDeltaFields(leftExplanation, rightExplanation, row.LeftSourceIDs, row.RightSourceIDs)...)
+		values = append(values,
+			leftSourceFields[1], rightSourceFields[1],
+			leftSourceFields[2], rightSourceFields[2],
+			leftSourceFields[3], rightSourceFields[3],
+			leftSourceFields[4], rightSourceFields[4],
+			leftSourceFields[5], rightSourceFields[5],
+		)
 		section.Rows = append(section.Rows, values)
 	}
 	return section
@@ -1411,9 +1477,11 @@ func batchSimulationEnergySummarySection(result simulation.MultiSimulationResult
 			summary = item.PurposeResults.EnergyExplanationSummary
 			explanation = item.PurposeResults.EnergyExplanation
 		}
+		sources := newBatchSimulationSourceIndex(explanation)
 		file := batchSimulationFileLabel(item)
 		for _, group := range batchSimulationSummaryGroups(summary) {
 			for _, metric := range group.items {
+				sourceFields := sources.fields(metric.SourceIDs)
 				values := []string{
 					file,
 					item.Status,
@@ -1439,9 +1507,9 @@ func batchSimulationEnergySummarySection(result simulation.MultiSimulationResult
 					formatBatchSimulationOptionalFloat(metric.DenominatorValue, metric.DenominatorLabel, metric.DenominatorUnit),
 					metric.DenominatorUnit,
 					strings.Join(metric.SourceIDs, "; "),
-					batchSimulationSourceObjectIndexes(explanation, metric.SourceIDs),
+					sourceFields[0],
 				}
-				values = append(values, batchSimulationSourceMetadataFields(explanation, metric.SourceIDs)...)
+				values = append(values, sourceFields[1:]...)
 				section.Rows = append(section.Rows, values)
 			}
 		}
@@ -1462,7 +1530,7 @@ func batchSimulationEnergySourceSection(result simulation.MultiSimulationResult)
 		for _, source := range item.PurposeResults.EnergyExplanation.Sources {
 			objectIndex := ""
 			if source.ObjectIndex != nil {
-				objectIndex = fmt.Sprintf("%d", *source.ObjectIndex)
+				objectIndex = strconv.Itoa(*source.ObjectIndex)
 			}
 			basis := "variable"
 			if source.IsMeter {
@@ -1503,7 +1571,9 @@ func batchSimulationEnergySourceAvailabilitySection(result simulation.MultiSimul
 		}
 		file := batchSimulationFileLabel(item)
 		explanation := item.PurposeResults.EnergyExplanation
+		sources := newBatchSimulationSourceIndex(explanation)
 		for _, availability := range explanation.Completeness.SourceAvailability {
+			sourceFields := sources.fields(availability.SourceIDs)
 			values := []string{
 				file,
 				item.Status,
@@ -1512,9 +1582,9 @@ func batchSimulationEnergySourceAvailabilitySection(result simulation.MultiSimul
 				availability.Name,
 				availability.Status,
 				strings.Join(availability.SourceIDs, "; "),
-				batchSimulationSourceObjectIndexes(explanation, availability.SourceIDs),
+				sourceFields[0],
 			}
-			values = append(values, batchSimulationSourceMetadataFields(explanation, availability.SourceIDs)...)
+			values = append(values, sourceFields[1:]...)
 			section.Rows = append(section.Rows, values)
 		}
 	}
@@ -1532,8 +1602,10 @@ func batchSimulationEnergyNodeSection(result simulation.MultiSimulationResult) t
 		}
 		file := batchSimulationFileLabel(item)
 		explanation := item.PurposeResults.EnergyExplanation
+		sources := newBatchSimulationSourceIndex(explanation)
 		for _, period := range batchSimulationExportPeriods(explanation) {
 			for _, node := range period.Nodes {
+				sourceFields := sources.fields(node.SourceIDs)
 				values := []string{
 					file,
 					item.Status,
@@ -1555,10 +1627,10 @@ func batchSimulationEnergyNodeSection(result simulation.MultiSimulationResult) t
 					node.Sign,
 					node.Basis,
 					strings.Join(node.SourceIDs, "; "),
-					batchSimulationSourceObjectIndexes(explanation, node.SourceIDs),
+					sourceFields[0],
 					strings.Join(node.RelatedPathIDs, "; "),
 				}
-				values = append(values, batchSimulationSourceMetadataFields(explanation, node.SourceIDs)...)
+				values = append(values, sourceFields[1:]...)
 				section.Rows = append(section.Rows, values)
 			}
 		}
@@ -1566,63 +1638,57 @@ func batchSimulationEnergyNodeSection(result simulation.MultiSimulationResult) t
 	return section
 }
 
-func batchSimulationSourceObjectIndexes(explanation simulation.EnergyExplanationResult, sourceIDs []string) string {
-	return batchSimulationSourceValueSummary(explanation, sourceIDs, func(source simulation.EnergyDataSource) string {
-		if source.ObjectIndex == nil {
-			return ""
-		}
-		return fmt.Sprintf("%d", *source.ObjectIndex)
-	})
-}
+type batchSimulationSourceIndex map[string]simulation.EnergyDataSource
 
-func batchSimulationSourceMetadataFields(explanation simulation.EnergyExplanationResult, sourceIDs []string) []string {
-	return []string{
-		batchSimulationSourceValueSummary(explanation, sourceIDs, func(source simulation.EnergyDataSource) string { return source.TableName }),
-		batchSimulationSourceValueSummary(explanation, sourceIDs, func(source simulation.EnergyDataSource) string { return source.RowName }),
-		batchSimulationSourceValueSummary(explanation, sourceIDs, func(source simulation.EnergyDataSource) string { return source.ColumnName }),
-		batchSimulationSourceValueSummary(explanation, sourceIDs, func(source simulation.EnergyDataSource) string {
-			return firstNonEmpty(source.SourceUnit, source.Units)
-		}),
-		batchSimulationSourceValueSummary(explanation, sourceIDs, func(source simulation.EnergyDataSource) string { return source.NormalizedUnit }),
-	}
-}
-
-func batchSimulationSourceMetadataDeltaFields(leftExplanation, rightExplanation simulation.EnergyExplanationResult, leftSourceIDs, rightSourceIDs []string) []string {
-	return []string{
-		batchSimulationSourceValueSummary(leftExplanation, leftSourceIDs, func(source simulation.EnergyDataSource) string { return source.TableName }),
-		batchSimulationSourceValueSummary(rightExplanation, rightSourceIDs, func(source simulation.EnergyDataSource) string { return source.TableName }),
-		batchSimulationSourceValueSummary(leftExplanation, leftSourceIDs, func(source simulation.EnergyDataSource) string { return source.RowName }),
-		batchSimulationSourceValueSummary(rightExplanation, rightSourceIDs, func(source simulation.EnergyDataSource) string { return source.RowName }),
-		batchSimulationSourceValueSummary(leftExplanation, leftSourceIDs, func(source simulation.EnergyDataSource) string { return source.ColumnName }),
-		batchSimulationSourceValueSummary(rightExplanation, rightSourceIDs, func(source simulation.EnergyDataSource) string { return source.ColumnName }),
-		batchSimulationSourceValueSummary(leftExplanation, leftSourceIDs, func(source simulation.EnergyDataSource) string {
-			return firstNonEmpty(source.SourceUnit, source.Units)
-		}),
-		batchSimulationSourceValueSummary(rightExplanation, rightSourceIDs, func(source simulation.EnergyDataSource) string {
-			return firstNonEmpty(source.SourceUnit, source.Units)
-		}),
-		batchSimulationSourceValueSummary(leftExplanation, leftSourceIDs, func(source simulation.EnergyDataSource) string { return source.NormalizedUnit }),
-		batchSimulationSourceValueSummary(rightExplanation, rightSourceIDs, func(source simulation.EnergyDataSource) string { return source.NormalizedUnit }),
-	}
-}
-
-func batchSimulationSourceValueSummary(explanation simulation.EnergyExplanationResult, sourceIDs []string, value func(simulation.EnergyDataSource) string) string {
-	sourceByID := map[string]simulation.EnergyDataSource{}
+func newBatchSimulationSourceIndex(explanation simulation.EnergyExplanationResult) batchSimulationSourceIndex {
+	sources := make(batchSimulationSourceIndex, len(explanation.Sources))
 	for _, source := range explanation.Sources {
-		sourceByID[source.ID] = source
+		sources[source.ID] = source
 	}
-	seen := map[string]bool{}
-	values := []string{}
+	return sources
+}
+
+func (sources batchSimulationSourceIndex) fields(sourceIDs []string) [6]string {
+	var values [6][]string
 	for _, sourceID := range sourceIDs {
-		source := sourceByID[sourceID]
-		field := strings.TrimSpace(value(source))
-		if field == "" || seen[field] {
+		source, ok := sources[sourceID]
+		if !ok {
 			continue
 		}
-		seen[field] = true
-		values = append(values, field)
+		objectIndex := ""
+		if source.ObjectIndex != nil {
+			objectIndex = strconv.Itoa(*source.ObjectIndex)
+		}
+		fields := [...]string{
+			objectIndex,
+			source.TableName,
+			source.RowName,
+			source.ColumnName,
+			firstNonEmpty(source.SourceUnit, source.Units),
+			source.NormalizedUnit,
+		}
+		for index, field := range fields {
+			values[index] = appendBatchSimulationUnique(values[index], field)
+		}
 	}
-	return strings.Join(values, "; ")
+	var out [6]string
+	for index := range values {
+		out[index] = strings.Join(values[index], "; ")
+	}
+	return out
+}
+
+func appendBatchSimulationUnique(values []string, value string) []string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return values
+	}
+	for _, existing := range values {
+		if existing == value {
+			return values
+		}
+	}
+	return append(values, value)
 }
 
 func batchSimulationEnergyEdgeSection(result simulation.MultiSimulationResult) tabular.Section {
@@ -1636,8 +1702,10 @@ func batchSimulationEnergyEdgeSection(result simulation.MultiSimulationResult) t
 		}
 		file := batchSimulationFileLabel(item)
 		explanation := item.PurposeResults.EnergyExplanation
+		sources := newBatchSimulationSourceIndex(explanation)
 		for _, period := range batchSimulationExportPeriods(explanation) {
 			for _, edge := range period.Edges {
+				sourceFields := sources.fields(edge.SourceIDs)
 				values := []string{
 					file,
 					item.Status,
@@ -1655,10 +1723,10 @@ func batchSimulationEnergyEdgeSection(result simulation.MultiSimulationResult) t
 					edge.ZoneName,
 					edge.ServiceKind,
 					strings.Join(edge.SourceIDs, "; "),
-					batchSimulationSourceObjectIndexes(explanation, edge.SourceIDs),
+					sourceFields[0],
 					strings.Join(edge.RelatedPathIDs, "; "),
 				}
-				values = append(values, batchSimulationSourceMetadataFields(explanation, edge.SourceIDs)...)
+				values = append(values, sourceFields[1:]...)
 				section.Rows = append(section.Rows, values)
 			}
 		}
@@ -1677,8 +1745,10 @@ func batchSimulationEnergyReconciliationSection(result simulation.MultiSimulatio
 		}
 		file := batchSimulationFileLabel(item)
 		explanation := item.PurposeResults.EnergyExplanation
+		sources := newBatchSimulationSourceIndex(explanation)
 		for _, period := range batchSimulationExportPeriods(explanation) {
 			for _, row := range period.Reconciliation {
+				sourceFields := sources.fields(row.SourceIDs)
 				values := []string{
 					file,
 					item.Status,
@@ -1697,9 +1767,9 @@ func batchSimulationEnergyReconciliationSection(result simulation.MultiSimulatio
 					row.ZoneName,
 					row.ServiceKind,
 					strings.Join(row.SourceIDs, "; "),
-					batchSimulationSourceObjectIndexes(explanation, row.SourceIDs),
+					sourceFields[0],
 				}
-				values = append(values, batchSimulationSourceMetadataFields(explanation, row.SourceIDs)...)
+				values = append(values, sourceFields[1:]...)
 				section.Rows = append(section.Rows, values)
 			}
 		}
@@ -1948,36 +2018,70 @@ func batchSummaryValue(file MultiSummaryFile, metricID string) string {
 
 func parseBatchSummaryNumber(value string) (float64, bool) {
 	text := strings.TrimSpace(value)
-	if text == "" {
+	token := batchSummaryNumberPrefix(text)
+	if token == "" {
 		return 0, false
 	}
-	end := 0
-	for index, r := range text {
-		if (r >= '0' && r <= '9') || r == '-' || r == '+' || r == '.' || r == 'e' || r == 'E' {
-			end = index + len(string(r))
-			continue
-		}
-		break
-	}
-	if end == 0 {
-		return 0, false
-	}
-	var valueNumber float64
-	if _, err := fmt.Sscanf(text[:end], "%f", &valueNumber); err != nil {
+	valueNumber, err := strconv.ParseFloat(token, 64)
+	if err != nil {
 		return 0, false
 	}
 	return valueNumber, true
+}
+
+func batchSummaryNumberPrefix(text string) string {
+	if text == "" {
+		return ""
+	}
+	index := 0
+	if text[index] == '+' || text[index] == '-' {
+		index++
+		if index == len(text) {
+			return ""
+		}
+	}
+	digits := 0
+	for index < len(text) && text[index] >= '0' && text[index] <= '9' {
+		index++
+		digits++
+	}
+	if index < len(text) && text[index] == '.' {
+		index++
+		for index < len(text) && text[index] >= '0' && text[index] <= '9' {
+			index++
+			digits++
+		}
+	}
+	if digits == 0 {
+		return ""
+	}
+	if index < len(text) && (text[index] == 'e' || text[index] == 'E') {
+		exponentStart := index
+		index++
+		if index < len(text) && (text[index] == '+' || text[index] == '-') {
+			index++
+		}
+		exponentDigits := index
+		for index < len(text) && text[index] >= '0' && text[index] <= '9' {
+			index++
+		}
+		if index == exponentDigits {
+			index = exponentStart
+		}
+	}
+	return text[:index]
 }
 
 func batchSummaryUnit(metric MultiSummaryMetric, displayValue string) string {
 	if strings.TrimSpace(metric.Unit) != "" {
 		return strings.TrimSpace(metric.Unit)
 	}
-	_, ok := parseBatchSummaryNumber(displayValue)
-	if !ok {
+	text := strings.TrimSpace(displayValue)
+	token := batchSummaryNumberPrefix(text)
+	if token == "" {
 		return ""
 	}
-	return strings.TrimLeft(strings.TrimSpace(displayValue), "+-0123456789.eE ")
+	return strings.TrimSpace(text[len(token):])
 }
 
 func formatBatchSummaryDelta(value float64, unit string) string {

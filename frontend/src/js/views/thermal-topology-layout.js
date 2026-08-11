@@ -64,18 +64,19 @@ export function computeThermalTopologyLayout(model, viewport = {}) {
     : computeSpatialLayout(model, { width, height });
   resolveNodeCollisions(positions, model.nodes, { width, height });
   const parallelCounts = new Map();
+  const nodeByID = new Map(model.nodes.map((node) => [node.id, node]));
   const edges = model.connections.map((connection) => {
     const pairKey = sortedPairKey(connection.fromNodeId, connection.toNodeId);
     const lane = parallelCounts.get(pairKey) || 0;
     parallelCounts.set(pairKey, lane + 1);
     return {
       ...connection,
-      route: routeThermalEdge(
+      route: routeThermalEdgeWithNodeIndex(
         connection,
         positions[connection.fromNodeId],
         positions[connection.toNodeId],
         lane,
-        model.nodes,
+        nodeByID,
       ),
     };
   }).filter((edge) => edge.route);
@@ -88,6 +89,7 @@ export function computeSpatialLayout(model, viewport = {}) {
   const internal = model.nodes.filter((node) => !isExternalNode(node));
   const external = model.nodes.filter(isExternalNode);
   const stories = [...new Set(internal.map((node) => Number(node.storyIndex) || 0))].sort((a, b) => a - b);
+  const storyLaneByIndex = new Map(stories.map((story, index) => [story, index]));
   const centroids = internal.map((node) => node.centroid || {}).filter((point) => Number.isFinite(Number(point.x)) && Number.isFinite(Number(point.y)));
   const xValues = centroids.map((point) => Number(point.x));
   const yValues = centroids.map((point) => Number(point.y));
@@ -102,7 +104,7 @@ export function computeSpatialLayout(model, viewport = {}) {
   internal
     .sort(compareNodes)
     .forEach((node, index) => {
-      const storyLane = Math.max(0, stories.indexOf(Number(node.storyIndex) || 0));
+      const storyLane = storyLaneByIndex.get(Number(node.storyIndex) || 0) || 0;
       const centroid = node.centroid || {};
       const normalizedX = normalizeRange(Number(centroid.x), minX, maxX, (index + 1) / (internal.length + 1));
       const normalizedY = normalizeRange(Number(centroid.y), minY, maxY, ((index * 7) % Math.max(1, internal.length)) / Math.max(1, internal.length));
@@ -120,6 +122,7 @@ export function computeNetworkLayout(model, viewport = {}) {
   const width = Math.max(360, Number(viewport.width) || 900);
   const height = Math.max(280, Number(viewport.height) || 600);
   const degree = nodeDegrees(model.connections);
+  const neighborsByNode = connectionNeighbors(model.connections);
   const internal = model.nodes.filter((node) => !isExternalNode(node));
   const external = model.nodes.filter(isExternalNode);
   const storyGroups = new Map();
@@ -137,7 +140,7 @@ export function computeNetworkLayout(model, viewport = {}) {
     const x = stories.length <= 1
       ? width / 2
       : LAYOUT_PADDING + columnIndex * ((width - LAYOUT_PADDING * 2) / Math.max(1, stories.length - 1));
-    const ordered = barycentricOrder(nodes, model.connections, positions);
+    const ordered = barycentricOrder(nodes, neighborsByNode, positions);
     ordered.forEach((node, rowIndex) => {
       positions[node.id] = {
         x,
@@ -150,6 +153,11 @@ export function computeNetworkLayout(model, viewport = {}) {
 }
 
 export function routeThermalEdge(connection, source, target, parallelIndex = 0, nodes = []) {
+  const nodeByID = nodes instanceof Map ? nodes : new Map(nodes.map((node) => [node.id, node]));
+  return routeThermalEdgeWithNodeIndex(connection, source, target, parallelIndex, nodeByID);
+}
+
+function routeThermalEdgeWithNodeIndex(connection, source, target, parallelIndex, nodeByID) {
   if (!source || !target) {
     return null;
   }
@@ -165,9 +173,8 @@ export function routeThermalEdge(connection, source, target, parallelIndex = 0, 
       selfLoop: true,
     };
   }
-  const byID = new Map(nodes.map((node) => [node.id, node]));
-  const sourceNode = byID.get(connection.fromNodeId);
-  const targetNode = byID.get(connection.toNodeId);
+  const sourceNode = nodeByID.get(connection.fromNodeId);
+  const targetNode = nodeByID.get(connection.toNodeId);
   const ports = chooseThermalPorts(source, target, sourceNode, targetNode);
   const start = portPoint(source, ports.sourcePort);
   const end = portPoint(target, ports.targetPort);
@@ -309,8 +316,9 @@ function expandExternalTargets(model) {
 
 function placeExternalNodes(external, positions, connections, viewport) {
   const buckets = new Map();
+  const connectionsByNode = indexConnectionsByNode(connections);
   for (const node of external.sort(compareNodes)) {
-    const side = externalSide(node, connections);
+    const side = externalSide(node, connectionsByNode.get(node.id) || []);
     if (!buckets.has(side)) buckets.set(side, []);
     buckets.get(side).push(node);
   }
@@ -333,7 +341,6 @@ function externalSide(node, connections) {
   if (/east/.test(value)) return "right";
   if (/south/.test(value)) return "bottom";
   const relatedOrientations = connections
-    .filter((connection) => connection.fromNodeId === node.id || connection.toNodeId === node.id)
     .flatMap((connection) => connection.orientations || [])
     .join(" ")
     .toLowerCase();
@@ -398,21 +405,48 @@ function rectanglesOverlap(left, right) {
   return Math.abs(left.x - right.x) < THERMAL_NODE_WIDTH + 12 && Math.abs(left.y - right.y) < THERMAL_NODE_HEIGHT + 12;
 }
 
-function barycentricOrder(nodes, connections, positions) {
+function barycentricOrder(nodes, neighborsByNode, positions) {
   return [...nodes].sort((left, right) => {
-    const leftValue = neighborBarycenter(left.id, connections, positions);
-    const rightValue = neighborBarycenter(right.id, connections, positions);
+    const leftValue = neighborBarycenter(left.id, neighborsByNode, positions);
+    const rightValue = neighborBarycenter(right.id, neighborsByNode, positions);
     return leftValue - rightValue || compareNodes(left, right);
   });
 }
 
-function neighborBarycenter(nodeID, connections, positions) {
-  const neighbors = connections
-    .filter((connection) => connection.fromNodeId === nodeID || connection.toNodeId === nodeID)
-    .map((connection) => connection.fromNodeId === nodeID ? connection.toNodeId : connection.fromNodeId)
+function neighborBarycenter(nodeID, neighborsByNode, positions) {
+  const neighbors = (neighborsByNode.get(nodeID) || [])
     .map((id) => positions[id]?.y)
     .filter(Number.isFinite);
   return neighbors.length ? neighbors.reduce((sum, value) => sum + value, 0) / neighbors.length : Number.MAX_SAFE_INTEGER;
+}
+
+function connectionNeighbors(connections) {
+  const neighborsByNode = new Map();
+  for (const connection of connections) {
+    appendIndexedValue(neighborsByNode, connection.fromNodeId, connection.toNodeId);
+    if (connection.toNodeId !== connection.fromNodeId) {
+      appendIndexedValue(neighborsByNode, connection.toNodeId, connection.fromNodeId);
+    }
+  }
+  return neighborsByNode;
+}
+
+function indexConnectionsByNode(connections) {
+  const connectionsByNode = new Map();
+  for (const connection of connections) {
+    appendIndexedValue(connectionsByNode, connection.fromNodeId, connection);
+    if (connection.toNodeId !== connection.fromNodeId) {
+      appendIndexedValue(connectionsByNode, connection.toNodeId, connection);
+    }
+  }
+  return connectionsByNode;
+}
+
+function appendIndexedValue(index, key, value) {
+  if (!key) return;
+  const values = index.get(key) || [];
+  values.push(value);
+  index.set(key, values);
 }
 
 function nodeDegrees(connections) {

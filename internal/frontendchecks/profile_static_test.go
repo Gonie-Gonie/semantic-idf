@@ -52,6 +52,32 @@ func TestFrontendProfileGraphStateContracts(t *testing.T) {
 	}
 }
 
+func TestFrontendProfileRenderReusesIndexesAndDelegatesDynamicControls(t *testing.T) {
+	views := readTestFile(t, "frontend/src/js/views/profile-views.js")
+	render := sliceBetween(views, "export function renderProfile", "function renderEmptyProfile")
+	if strings.Contains(render, "bindProfileControls") {
+		t.Fatal("Profile render must not recreate dynamic control listeners")
+	}
+	for _, required := range []string{
+		"profileItemMapCache = new WeakMap()",
+		"profileSemanticNavigationCache",
+		`cache.occurrenceIDs("view-target"`,
+		"renderProfileMatrix(lastProfileView.matrix, profile, itemMap)",
+		"renderProfileDetail(graphGroup, profile, selectedZone, itemMap)",
+		"const activeZoneNames = profileActiveMatrixZoneNames()",
+		"const dimensionByID = new Map(",
+		"const selectedGroupIDs = new Set(",
+		"const selectedZoneNames = new Set(",
+		"bindProfileControls();",
+		`elements.profileOverview?.addEventListener("click", handleProfileOverviewActivation)`,
+		`elements.profileMatrix?.addEventListener("click", handleProfileMatrixActivation)`,
+	} {
+		if !strings.Contains(views, required) {
+			t.Fatalf("Profile render optimization contract is missing %q", required)
+		}
+	}
+}
+
 func TestFrontendProfileRowsDriveSingleToggleAndRangeSelection(t *testing.T) {
 	content := readTestFile(t, "frontend/src/js/views/profile-views.js")
 	state := readTestFile(t, "frontend/src/js/state.js")
@@ -127,7 +153,7 @@ func TestFrontendProfileGraphControlsUseFixedTimeProfileAndDirectViewButtons(t *
 	responsive := readTestFile(t, "frontend/src/styles/responsive.css")
 	i18n := readTestFile(t, "frontend/src/js/i18n.js")
 	graphBody := sliceBetween(views, "function renderProfileGraph", "function renderProfileGraphBody")
-	bindings := sliceBetween(views, "function bindProfileControls", "function bindSettingControl")
+	bindings := sliceBetween(views, "function bindProfileControls", "export function initializeProfileControls")
 	for label, content := range map[string]string{
 		"markup":   markup,
 		"state":    state,
@@ -251,7 +277,7 @@ func TestFrontendProfileGraphControlsUseFixedTimeProfileAndDirectViewButtons(t *
 	}
 	for _, required := range []string{
 		"function renderProfileCandidateRow",
-		`elements.profileDetail.querySelectorAll("[data-profile-candidate-id]")`,
+		`event.target.closest("[data-profile-candidate-id]")`,
 		"zones · ",
 	} {
 		if !strings.Contains(views, required) {
@@ -264,9 +290,9 @@ func TestFrontendProfileGraphControlsUseFixedTimeProfileAndDirectViewButtons(t *
 		}
 	}
 	for _, required := range []string{
-		`querySelectorAll("[data-profile-time-view]")`,
-		`button.addEventListener("click"`,
-		`button.dataset.profileTimeView`,
+		`elements.profileGraph?.addEventListener("click", handleProfileGraphActivation)`,
+		`event.target.closest("[data-profile-time-view]")`,
+		`timeViewButton.dataset.profileTimeView`,
 		`focus({ preventScroll: true })`,
 	} {
 		if !strings.Contains(bindings, required) {

@@ -2992,11 +2992,6 @@ func semanticOutputObjectExists(report OutputReport, objectType string) bool {
 	return false
 }
 
-func semanticOutputControlFilesEnabled(doc Document, fileKind string) bool {
-	enabled, _ := semanticOutputControlFilesState(doc, fileKind)
-	return enabled
-}
-
 func semanticOutputControlFilesState(doc Document, fileKind string) (bool, string) {
 	for _, obj := range doc.Objects {
 		if !strings.EqualFold(obj.Type, "OutputControl:Files") {

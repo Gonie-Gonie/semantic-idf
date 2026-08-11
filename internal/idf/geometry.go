@@ -187,11 +187,6 @@ func AnalyzeGeometry(doc Document) GeometryReport {
 	return AnalyzeGeometryFromIndex(NewDocumentIndex(doc))
 }
 
-func analyzeGeometryWithIndex(doc Document, documentIndex *DocumentIndex) GeometryReport {
-	report, _, _ := analyzeGeometryWithIndexMeasured(doc, documentIndex)
-	return report
-}
-
 func analyzeGeometryWithIndexMeasured(doc Document, documentIndex *DocumentIndex) (GeometryReport, time.Duration, time.Duration) {
 	transformStart := time.Now()
 	ctx := geometryContext{
@@ -542,10 +537,6 @@ func geometryNumericFieldOrDefault(obj Object, fallback float64, fieldName strin
 		return value
 	}
 	return fallback
-}
-
-func geometryWorldVertices(rawVertices []point3, zoneName string, ctx geometryContext) []point3 {
-	return geometryWorldVerticesForCoordinateSystem(rawVertices, zoneName, ctx.coordinateSystem, ctx)
 }
 
 func geometryWorldVerticesForCoordinateSystem(rawVertices []point3, zoneName string, coordinateSystem string, ctx geometryContext) []point3 {

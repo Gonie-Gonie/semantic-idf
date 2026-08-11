@@ -8,6 +8,9 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 const energyExplanationSchema = "semantic-idf.energy-explanation/v1"
@@ -3307,7 +3310,7 @@ func energyCarrierLabel(carrier string) string {
 	case "other_fuel_2":
 		return "Other fuel 2"
 	default:
-		return strings.Title(strings.ReplaceAll(carrier, "_", " "))
+		return cases.Title(language.Und, cases.NoLower).String(strings.ReplaceAll(carrier, "_", " "))
 	}
 }
 
@@ -3320,7 +3323,7 @@ func energyServiceLabel(serviceKind string) string {
 	case "unmet_or_residual":
 		return "Unmet / residual"
 	default:
-		return strings.Title(strings.ReplaceAll(serviceKind, "_", " "))
+		return cases.Title(language.Und, cases.NoLower).String(strings.ReplaceAll(serviceKind, "_", " "))
 	}
 }
 

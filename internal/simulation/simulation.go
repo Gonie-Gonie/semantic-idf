@@ -650,7 +650,7 @@ func collectWeatherFolders(installations []EnergyPlusInstallSetting, extraPaths 
 		out = append(out, *folder)
 	}
 	sort.Slice(out, func(i, j int) bool {
-		if strings.ToLower(out[i].Source) != strings.ToLower(out[j].Source) {
+		if !strings.EqualFold(out[i].Source, out[j].Source) {
 			return strings.ToLower(out[i].Source) < strings.ToLower(out[j].Source)
 		}
 		return strings.ToLower(out[i].Label) < strings.ToLower(out[j].Label)
@@ -832,94 +832,23 @@ func RunMultipleSimulations(request MultiSimulationRequest, progress func(Simula
 	result := &MultiSimulationResult{RunID: request.RunID, Total: len(paths), Workers: workers}
 	emitSimulationProgress(progress, request.RunID, "prepare", "running", "Preparing batch simulation", 0, len(paths), "")
 
-	jobs := make(chan string)
+	jobs := make(chan string, len(paths))
+	for _, path := range paths {
+		jobs <- path
+	}
+	close(jobs)
 	results := make(chan SimulationRunResult)
 	var wg sync.WaitGroup
-	var completedMu sync.Mutex
-	completed := 0
 	for worker := 0; worker < workers; worker++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for path := range jobs {
-				weatherPath := resolveBatchWeather(path, request)
-				energyPlus := resolveBatchEnergyPlusExecutable(path, request.EnergyPlusExecutablePath, batchEnergyPlusInstallations)
-				if energyPlus.Error != "" {
-					status := energyPlus.FailureStatus
-					if status == "" {
-						status = "failed"
-					}
-					results <- SimulationRunResult{
-						RunID:     request.RunID + "-" + shortPathHash(path),
-						Status:    status,
-						InputPath: path,
-						Filename:  filepath.Base(path),
-						Error:     energyPlus.Error,
-						ExitCode:  -1,
-					}
-					completedMu.Lock()
-					completed++
-					currentCompleted := completed
-					completedMu.Unlock()
-					emitSimulationProgress(progress, request.RunID, "execute", status, filepath.Base(path), currentCompleted, len(paths), path)
-					continue
-				}
-				runRequest := SimulationRunRequest{
-					RunID:                    request.RunID + "-" + shortPathHash(path),
-					InputPath:                path,
-					Filename:                 filepath.Base(path),
-					EnergyPlusExecutablePath: energyPlus.ExecutablePath,
-					WeatherPath:              weatherPath,
-					Silent:                   true,
-				}
-				if request.PurposeRequest != nil {
-					prepared, prepareErr := prepareBatchPurposeSimulationRequest(runRequest, *request.PurposeRequest)
-					if prepareErr != nil {
-						results <- SimulationRunResult{
-							RunID:     runRequest.RunID,
-							Status:    "failed",
-							InputPath: path,
-							Filename:  filepath.Base(path),
-							Error:     prepareErr.Error(),
-							ExitCode:  -1,
-						}
-						completedMu.Lock()
-						completed++
-						currentCompleted := completed
-						completedMu.Unlock()
-						emitSimulationProgress(progress, request.RunID, "execute", "failed", filepath.Base(path), currentCompleted, len(paths), path)
-						continue
-					}
-					runRequest = prepared
-				}
-				runResult, err := RunSimulation(runRequest, nil, settings)
-				if err != nil {
-					runResult = &SimulationRunResult{
-						RunID:     request.RunID + "-" + shortPathHash(path),
-						Status:    "failed",
-						InputPath: path,
-						Filename:  filepath.Base(path),
-						Error:     err.Error(),
-						ExitCode:  -1,
-					}
-				}
-				if runResult != nil && runResult.PurposeResults != nil {
-					runResult.PurposeMetrics = SummarizePurposeMetrics(runResult.PurposeResults)
-				}
-				completedMu.Lock()
-				completed++
-				currentCompleted := completed
-				completedMu.Unlock()
-				emitSimulationProgress(progress, request.RunID, "execute", runResult.Status, filepath.Base(path), currentCompleted, len(paths), path)
-				results <- *runResult
+				results <- runBatchSimulationPath(path, request, batchEnergyPlusInstallations, settings)
 			}
 		}()
 	}
 	go func() {
-		for _, path := range paths {
-			jobs <- path
-		}
-		close(jobs)
 		wg.Wait()
 		close(results)
 	}()
@@ -932,12 +861,62 @@ func RunMultipleSimulations(request MultiSimulationRequest, progress func(Simula
 		} else {
 			result.Failed++
 		}
+		emitSimulationProgress(progress, request.RunID, "execute", item.Status, item.Filename, result.Completed, result.Total, item.InputPath)
 	}
 	sort.Slice(result.Results, func(i, j int) bool {
 		return strings.ToLower(result.Results[i].Filename) < strings.ToLower(result.Results[j].Filename)
 	})
 	emitSimulationProgress(progress, request.RunID, "complete", "complete", "Batch simulation complete", result.Completed, result.Total, "")
 	return result, nil
+}
+
+func runBatchSimulationPath(path string, request MultiSimulationRequest, installations []EnergyPlusInstallSetting, settings SimulationSettings) SimulationRunResult {
+	weatherPath := resolveBatchWeather(path, request)
+	energyPlus := resolveBatchEnergyPlusExecutable(path, request.EnergyPlusExecutablePath, installations)
+	if energyPlus.Error != "" {
+		return failedBatchSimulationResult(request.RunID, path, energyPlus.FailureStatus, energyPlus.Error)
+	}
+
+	runRequest := SimulationRunRequest{
+		RunID:                    request.RunID + "-" + shortPathHash(path),
+		InputPath:                path,
+		Filename:                 filepath.Base(path),
+		EnergyPlusExecutablePath: energyPlus.ExecutablePath,
+		WeatherPath:              weatherPath,
+		Silent:                   true,
+	}
+	if request.PurposeRequest != nil {
+		prepared, err := prepareBatchPurposeSimulationRequest(runRequest, *request.PurposeRequest)
+		if err != nil {
+			return failedBatchSimulationResult(request.RunID, path, "failed", err.Error())
+		}
+		runRequest = prepared
+	}
+	runResult, err := RunSimulation(runRequest, nil, settings)
+	if err != nil {
+		return failedBatchSimulationResult(request.RunID, path, "failed", err.Error())
+	}
+	if runResult == nil {
+		return failedBatchSimulationResult(request.RunID, path, "failed", "Simulation returned no result.")
+	}
+	if runResult.PurposeResults != nil {
+		runResult.PurposeMetrics = SummarizePurposeMetrics(runResult.PurposeResults)
+	}
+	return *runResult
+}
+
+func failedBatchSimulationResult(runID string, path string, status string, message string) SimulationRunResult {
+	if strings.TrimSpace(status) == "" {
+		status = "failed"
+	}
+	return SimulationRunResult{
+		RunID:     runID + "-" + shortPathHash(path),
+		Status:    status,
+		InputPath: path,
+		Filename:  filepath.Base(path),
+		Error:     message,
+		ExitCode:  -1,
+	}
 }
 
 func emitSimulationProgress(progress func(SimulationProgress), runID string, phase string, status string, message string, completed int, total int, path string) {

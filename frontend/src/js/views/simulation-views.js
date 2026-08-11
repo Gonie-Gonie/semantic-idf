@@ -11,9 +11,41 @@ let progressListenerRegistered = false;
 let heatFlowPlayTimer = 0;
 let simulationNavigationCleanup = null;
 let simulationNavigationRevealTarget = null;
+let heatFlowBrushStartFrame = null;
 
 const simulationSemanticBindings = new Map();
 const simulationEnergySourceByIDCache = new WeakMap();
+const simulationHVACServicePathCache = new WeakMap();
+const simulationSeriesLookupCache = new WeakMap();
+const simulationPurposeOutputLookupCache = new WeakMap();
+const simulationHeatFlowZoneMapCache = new WeakMap();
+const simulationHeatFlowFloorSurfacesCache = new WeakMap();
+const simulationWeatherOptionsCache = new WeakMap();
+const simulationEnergyPeriodIndexCache = new WeakMap();
+const simulationChartInteractionHosts = new WeakSet();
+const simulationHeatFlowInteractionHosts = new WeakSet();
+const EMPTY_SIMULATION_ITEMS = Object.freeze([]);
+const EMPTY_SIMULATION_SERIES_LOOKUP = Object.freeze({
+  series: EMPTY_SIMULATION_ITEMS,
+  byID: new Map(),
+  byMetric: new Map(),
+  byVariable: new Map(),
+  byMeter: new Map(),
+});
+const EMPTY_SIMULATION_OUTPUT_LOOKUP = Object.freeze({
+  byIndex: new Map(),
+  byType: new Map(),
+});
+const EMPTY_SIMULATION_HVAC_PATH_LOOKUP = Object.freeze({
+  paths: EMPTY_SIMULATION_ITEMS,
+  byID: new Map(),
+  couplingByID: new Map(),
+});
+let simulationInputMetadataCache = {
+  text: null,
+  version: undefined,
+  requiresWeatherFile: undefined,
+};
 
 const simulationPurposeDefaults = Object.freeze({
   allocationPolicy: "direct_only",
@@ -128,7 +160,7 @@ function simulationSeriesSemanticAttributes(series = null, object = null, series
 
 function simulationHVACPathSemanticCandidate(path = {}) {
   const resolved = typeof path === "string"
-    ? simulationHVACServicePaths().find((candidate) => candidate.id === path) || { id: path }
+    ? simulationHVACServicePathIndex().byID.get(path) || { id: path }
     : path;
   return {
     group: "HVAC service paths",
@@ -521,6 +553,8 @@ export function initializeSimulationControls() {
   elements.simulationHVACLoopResults?.addEventListener("change", handleSimulationHVACResultsInput);
   elements.simulationComfortResults?.addEventListener("click", handleSimulationSeriesInspectClick);
   elements.simulationComfortResults?.addEventListener("change", handleSimulationComfortResultsChange);
+  bindSimulationChartInteractions();
+  bindHeatFlowInteractions();
   elements.simulationExportPurposeJSON?.addEventListener("click", () => exportPurposeResultJSON());
   elements.simulationExportPurposeHTML?.addEventListener("click", () => exportPurposeResultHTML());
   elements.simulationRunButton?.addEventListener("click", () => runCurrentSimulation({ silent: false }));
@@ -1055,13 +1089,14 @@ function restoreSimulationElementScroll(element, value) {
   }
 }
 
-export async function loadSimulationEnvironment() {
+export async function loadSimulationEnvironment({ render = true } = {}) {
   try {
     const env = await callSimulationAPI("GetSimulationEnvironment", "/api/simulation-environment");
     state.simulationEnvironment = env;
     state.simulationAutoRunOnOpen = env?.settings?.autoRunOnOpen ?? state.simulationAutoRunOnOpen;
-    renderSimulationEnvironment();
-    renderSimulation();
+    if (render) {
+      renderSimulation();
+    }
     return env;
   } catch (error) {
     if (elements.simulationStatus) {
@@ -1077,14 +1112,16 @@ export function renderSimulation() {
   renderSimulationEnvironment();
   syncSimulationPurposeInputsFromState();
   renderSimulationProgress();
-  updateSimulationControls();
+  const blockingIssue = simulationBlockingIssue();
+  updateSimulationControls(blockingIssue);
   if (!state.simulationResult) {
-    renderSimulationEmpty();
+    renderSimulationEmpty({ controlsReady: true, blockingIssue });
     return;
   }
   const result = state.simulationResult;
-  ensureActiveSimulationResultView(result);
-  renderSimulationResultTabs(result);
+  const availability = simulationResultViewAvailability(result);
+  ensureActiveSimulationResultView(result, availability);
+  renderSimulationResultTabs(result, availability);
   renderSimulationEnergyDashboard(result);
   renderSimulationHVACLoops(result);
   renderSimulationComfort(result);
@@ -1095,17 +1132,19 @@ export function renderSimulation() {
   toggleSimulationResultSections();
 }
 
-function renderSimulationEmpty() {
+function renderSimulationEmpty({ controlsReady = false, blockingIssue: preparedBlockingIssue } = {}) {
   if (!elements.simulationStatus) {
     return;
   }
-  syncSimulationPurposeInputsFromState();
-  updateSimulationControls();
+  const blockingIssue = preparedBlockingIssue === undefined ? simulationBlockingIssue() : preparedBlockingIssue;
+  if (!controlsReady) {
+    syncSimulationPurposeInputsFromState();
+    updateSimulationControls(blockingIssue);
+  }
   setSimulationPreviewMode(!state.simulationRunning);
   renderSimulationSeriesRangeControls(null);
   const installCount = state.simulationEnvironment?.installations?.length || 0;
   const hasText = Boolean((elements.idfInput?.value || "").trim());
-  const blockingIssue = simulationBlockingIssue();
   if (state.simulationRunning) {
     setSimulationPreviewMode(false);
     renderSimulationResultTabs(null);
@@ -1160,11 +1199,10 @@ function renderSimulationEmpty() {
   updateSimulationOutputAvailability(null, false);
 }
 
-function renderSimulationResultTabs(result) {
+function renderSimulationResultTabs(result, availability = simulationResultViewAvailability(result)) {
   if (!elements.simulationResultTabs) {
     return;
   }
-  const availability = simulationResultViewAvailability(result);
   elements.simulationResultTabs.querySelectorAll("[data-simulation-result-view-button]").forEach((button) => {
     const view = button.dataset.simulationResultViewButton || "";
     button.classList.toggle("active", view === state.simulationActiveResultView);
@@ -1172,8 +1210,7 @@ function renderSimulationResultTabs(result) {
   });
 }
 
-function ensureActiveSimulationResultView(result) {
-  const availability = simulationResultViewAvailability(result);
+function ensureActiveSimulationResultView(result, availability = simulationResultViewAvailability(result)) {
   if (availability[state.simulationActiveResultView]) {
     return;
   }
@@ -1346,7 +1383,20 @@ function renderEnergyPeriodControls(view, explanation = {}) {
 }
 
 function energyExplanationPeriodForID(periods = [], periodID = "") {
-  return periods.find((period) => period.id === periodID) || null;
+  if (!Array.isArray(periods)) {
+    return null;
+  }
+  let byID = simulationEnergyPeriodIndexCache.get(periods);
+  if (!byID) {
+    byID = new Map();
+    for (const period of periods) {
+      if (period?.id && !byID.has(period.id)) {
+        byID.set(period.id, period);
+      }
+    }
+    simulationEnergyPeriodIndexCache.set(periods, byID);
+  }
+  return byID.get(periodID) || null;
 }
 
 function energyExplanationPeriodKind(period = {}) {
@@ -3045,7 +3095,7 @@ function energyReconciliationStatusLabel(status = "") {
 }
 
 function renderEnergyReconciliationSources(explanation = {}, sourceIDs = []) {
-  const sourceByID = new Map((explanation.sources || []).map((source) => [source.id, source]));
+  const sourceByID = simulationEnergySourceByID(explanation);
   const uniqueSourceIDs = appendUniqueEnergyStrings([], ...(sourceIDs || []));
   const rows = uniqueSourceIDs
     .slice(0, 8)
@@ -3069,7 +3119,7 @@ function renderEnergyReconciliationSources(explanation = {}, sourceIDs = []) {
 
 function energyExplanationGraphForPeriod(explanation = {}, periodID = "annual") {
   const id = periodID || "annual";
-  const period = (explanation.periods || []).find((item) => item.id === id);
+  const period = energyExplanationPeriodForID(explanation.periods || [], id);
   if (period) {
     return {
       id: period.id || id,
@@ -3107,7 +3157,7 @@ function focusedEnergyExplanationGraph(graph = {}) {
     }
     includeNode = (node) => !node.zoneName || simulationZoneKey(node.zoneName) === zoneKey;
   } else if (mode === "service_path") {
-    const path = simulationHVACServicePaths().find((item) => item.id === state.simulationEnergyServicePathFocus);
+    const path = simulationHVACServicePathIndex().byID.get(state.simulationEnergyServicePathFocus);
     if (!path) {
       return graph;
     }
@@ -3228,7 +3278,7 @@ function energyExplanationLevelLabel(level = "") {
 }
 
 function energyExplanationSourcesForIDs(explanation = {}, sourceIDs = []) {
-  const byID = new Map((explanation.sources || []).map((source) => [source.id, source]));
+  const byID = simulationEnergySourceByID(explanation);
   const seen = new Set();
   return (sourceIDs || [])
     .filter((id) => {
@@ -3583,12 +3633,36 @@ function simulationSortedEnergyServicePaths(paths = []) {
   });
 }
 
-function simulationHVACServiceModel() {
-  return state.report?.hvac?.serviceModel || { zoneServices: [], systems: [], couplings: [], networks: [] };
+function simulationHVACServicePathIndex() {
+  const model = state.report?.hvac?.serviceModel;
+  if (!model || typeof model !== "object") {
+    return EMPTY_SIMULATION_HVAC_PATH_LOOKUP;
+  }
+  let cached = simulationHVACServicePathCache.get(model);
+  if (cached) {
+    return cached;
+  }
+  const paths = [];
+  const byID = new Map();
+  for (const summary of model.zoneServices || []) {
+    for (const path of summary.paths || []) {
+      paths.push(path);
+      if (path?.id && !byID.has(path.id)) {
+        byID.set(path.id, path);
+      }
+    }
+  }
+  cached = {
+    paths,
+    byID,
+    couplingByID: new Map((model.couplings || []).map((coupling) => [coupling.id, coupling])),
+  };
+  simulationHVACServicePathCache.set(model, cached);
+  return cached;
 }
 
 function simulationHVACServicePaths() {
-  return (simulationHVACServiceModel().zoneServices || []).flatMap((summary) => summary.paths || []);
+  return simulationHVACServicePathIndex().paths;
 }
 
 function simulationEnergyLoopFocusOptions() {
@@ -3740,7 +3814,7 @@ function simulationServicePathOtherSystems(path = {}) {
 }
 
 function simulationServicePathSupportingAssetRefs(path = {}) {
-  const couplingByID = new Map((simulationHVACServiceModel().couplings || []).map((coupling) => [coupling.id, coupling]));
+  const couplingByID = simulationHVACServicePathIndex().couplingByID;
   return (path.supportingCouplingIds || [])
     .map((id) => {
       const coupling = couplingByID.get(id) || {};
@@ -5043,6 +5117,43 @@ function safeSimulationSeriesList(series) {
   return Array.isArray(series) ? series.filter((item) => item && typeof item === "object") : [];
 }
 
+function simulationSeriesLookup() {
+  const rawSeries = state.simulationResult?.series;
+  if (!Array.isArray(rawSeries)) {
+    return EMPTY_SIMULATION_SERIES_LOOKUP;
+  }
+  let cached = simulationSeriesLookupCache.get(rawSeries);
+  if (cached) {
+    return cached;
+  }
+  const series = safeSimulationSeriesList(rawSeries);
+  const byID = new Map();
+  const byMetric = new Map();
+  const byVariable = new Map();
+  const byMeter = new Map();
+  for (const item of series) {
+    const id = seriesID(item);
+    const key = normalizeOutputMatchToken(seriesNodeKey(item.column));
+    const variable = normalizeOutputMatchToken(seriesVariableName(item.column));
+    const meter = normalizeOutputMatchToken(seriesColumnMainName(item.column));
+    if (id && !byID.has(id)) {
+      byID.set(id, item);
+    }
+    if (variable && !byVariable.has(variable)) {
+      byVariable.set(variable, item);
+    }
+    if (key && variable && !byMetric.has(`${key}\u0000${variable}`)) {
+      byMetric.set(`${key}\u0000${variable}`, item);
+    }
+    if (meter && !byMeter.has(meter)) {
+      byMeter.set(meter, item);
+    }
+  }
+  cached = { series, byID, byMetric, byVariable, byMeter };
+  simulationSeriesLookupCache.set(rawSeries, cached);
+  return cached;
+}
+
 function simulationSeriesDisplayColumn(series = {}) {
   series = safeSimulationSeries(series);
   return series.displayColumn || series.column || "";
@@ -5104,30 +5215,72 @@ function findPurposeOutputObjectByIndex(objectIndex) {
   if (!Number.isFinite(index)) {
     return null;
   }
-  return activePurposeOutputObjects().find((object) => Number(object.objectIndex) === index) || null;
+  return simulationPurposeOutputLookup().byIndex.get(index) || null;
 }
 
 function findPurposeOutputObject(objectType, keyValue, variableName) {
   const objectTypeKey = normalizeOutputMatchToken(objectType);
   const key = normalizeOutputMatchToken(keyValue);
   const variable = normalizeOutputMatchToken(variableName);
-  const candidates = activePurposeOutputObjects().filter((object) => {
+  const candidates = simulationPurposeOutputLookup().byType.get(objectTypeKey) || EMPTY_SIMULATION_ITEMS;
+  let best = null;
+  let bestRank = Number.NEGATIVE_INFINITY;
+  for (const object of candidates) {
     if (normalizeOutputMatchToken(object.objectType) !== objectTypeKey) {
-      return false;
+      continue;
     }
+    let matches = false;
     if (objectTypeKey === "output:variable") {
-      return normalizeOutputMatchToken(object.variableName) === variable && purposeOutputKeyMatches(object.keyValue, key);
+      matches = normalizeOutputMatchToken(object.variableName) === variable && purposeOutputKeyMatches(object.keyValue, key);
+    } else if (objectTypeKey === "output:meter" && energyMeterOutputKeysMatch(object.keyValue, keyValue)) {
+      matches = true;
+    } else {
+      matches = purposeOutputKeyMatches(object.keyValue, key);
     }
-    if (objectTypeKey === "output:meter" && energyMeterOutputKeysMatch(object.keyValue, keyValue)) {
-      return true;
+    if (!matches) {
+      continue;
     }
-    return purposeOutputKeyMatches(object.keyValue, key);
-  });
-  return candidates.sort((a, b) => purposeSourceOutputRank(b, key) - purposeSourceOutputRank(a, key))[0] || null;
+    const rank = purposeSourceOutputRank(object, key);
+    if (!best || rank > bestRank) {
+      best = object;
+      bestRank = rank;
+    }
+  }
+  return best;
 }
 
 function activePurposeOutputObjects() {
-  return state.simulationResult?.purposeRunPlan?.outputObjects || [];
+  const objects = state.simulationResult?.purposeRunPlan?.outputObjects;
+  return Array.isArray(objects) ? objects : EMPTY_SIMULATION_ITEMS;
+}
+
+function simulationPurposeOutputLookup() {
+  const objects = activePurposeOutputObjects();
+  if (objects === EMPTY_SIMULATION_ITEMS) {
+    return EMPTY_SIMULATION_OUTPUT_LOOKUP;
+  }
+  let cached = simulationPurposeOutputLookupCache.get(objects);
+  if (cached) {
+    return cached;
+  }
+  const byIndex = new Map();
+  const byType = new Map();
+  for (const object of objects) {
+    const index = Number(object?.objectIndex);
+    if (Number.isFinite(index) && !byIndex.has(index)) {
+      byIndex.set(index, object);
+    }
+    const type = normalizeOutputMatchToken(object?.objectType);
+    if (!type) {
+      continue;
+    }
+    const typeObjects = byType.get(type) || [];
+    typeObjects.push(object);
+    byType.set(type, typeObjects);
+  }
+  cached = { byIndex, byType };
+  simulationPurposeOutputLookupCache.set(objects, cached);
+  return cached;
 }
 
 function purposeOutputKeyMatches(objectKeyValue, resultKey) {
@@ -5416,7 +5569,7 @@ function handleSimulationSeriesInspectClick(event) {
 }
 
 function openSimulationHVACServicePath(pathID) {
-  const path = simulationHVACServicePaths().find((item) => item.id === pathID);
+  const path = simulationHVACServicePathIndex().byID.get(pathID);
   if (!path) {
     setStatus(t("hvac.noServicePaths", {}, "No service paths"), "warn");
     return;
@@ -5678,7 +5831,7 @@ function findSimulationSeriesByID(id) {
   if (!id) {
     return null;
   }
-  return safeSimulationSeriesList(state.simulationResult?.series).find((series) => seriesID(series) === id) || null;
+  return simulationSeriesLookup().byID.get(id) || null;
 }
 
 function findSimulationSeriesForMetric(keyValue, variableName) {
@@ -5687,10 +5840,8 @@ function findSimulationSeriesForMetric(keyValue, variableName) {
   if (!key || !variable) {
     return null;
   }
-  return safeSimulationSeriesList(state.simulationResult?.series).find((series) => {
-    return (key === "*" || normalizeOutputMatchToken(seriesNodeKey(series.column)) === key)
-      && normalizeOutputMatchToken(seriesVariableName(series.column)) === variable;
-  }) || null;
+  const lookup = simulationSeriesLookup();
+  return (key === "*" ? lookup.byVariable.get(variable) : lookup.byMetric.get(`${key}\u0000${variable}`)) || null;
 }
 
 function findSimulationSeriesForMeter(meterName) {
@@ -5698,7 +5849,7 @@ function findSimulationSeriesForMeter(meterName) {
   if (!meter) {
     return null;
   }
-  return safeSimulationSeriesList(state.simulationResult?.series).find((series) => normalizeOutputMatchToken(seriesColumnMainName(series.column)) === meter) || null;
+  return simulationSeriesLookup().byMeter.get(meter) || null;
 }
 
 function findComponentMetricSeries(component = {}, metric = {}) {
@@ -5899,7 +6050,11 @@ function renderSimulationEnvironment() {
     }
     weatherHTML.push("</optgroup>");
   }
-  elements.simulationWeatherSelect.innerHTML = weatherHTML.join("");
+  const optionsHTML = weatherHTML.join("");
+  if (simulationWeatherOptionsCache.get(elements.simulationWeatherSelect) !== optionsHTML) {
+    elements.simulationWeatherSelect.innerHTML = optionsHTML;
+    simulationWeatherOptionsCache.set(elements.simulationWeatherSelect, optionsHTML);
+  }
   if (currentWeather && [...elements.simulationWeatherSelect.options].some((option) => option.value === currentWeather)) {
     elements.simulationWeatherSelect.value = currentWeather;
   }
@@ -5936,10 +6091,9 @@ function renderSimulationProgress() {
   updateSimulationProgressClasses(state.simulationRunning || progress.status === "running");
 }
 
-function updateSimulationControls() {
+function updateSimulationControls(blockingIssue = simulationBlockingIssue()) {
   const hasText = Boolean((elements.idfInput?.value || "").trim());
   const hasInstall = Boolean(selectedEnergyPlusInstall()?.executablePath);
-  const blockingIssue = simulationBlockingIssue();
   if (elements.simulationRunButton) {
     const disabledReason = blockingIssue
       ? blockingIssue.message
@@ -6029,11 +6183,17 @@ function simulationBlockingIssue() {
 
 function currentInputRequiresWeatherFile(text) {
   const value = String(text || "");
+  const metadata = simulationInputMetadata(value);
+  if (metadata.requiresWeatherFile !== undefined) {
+    return metadata.requiresWeatherFile;
+  }
   if (/(?:^|\n)\s*SizingPeriod:WeatherFile(?:Days|ConditionType|DesignDay)\s*,/i.test(value)) {
-    return true;
+    metadata.requiresWeatherFile = true;
+    return metadata.requiresWeatherFile;
   }
   if (!/(?:^|\n)\s*RunPeriod\s*,/i.test(value)) {
-    return false;
+    metadata.requiresWeatherFile = false;
+    return metadata.requiresWeatherFile;
   }
   const simulationControl = value.match(/(?:^|\n)\s*SimulationControl\s*,([\s\S]*?);/i)?.[1] || "";
   const fields = simulationControl
@@ -6041,7 +6201,8 @@ function currentInputRequiresWeatherFile(text) {
     .map((item) => item.split("!")[0].trim())
     .filter((item) => item !== "");
   const weatherRunValue = fields[4] || "";
-  return !/^no$/i.test(weatherRunValue);
+  metadata.requiresWeatherFile = !/^no$/i.test(weatherRunValue);
+  return metadata.requiresWeatherFile;
 }
 
 function selectedEnergyPlusInstall() {
@@ -6051,7 +6212,24 @@ function selectedEnergyPlusInstall() {
 }
 
 function currentInputEnergyPlusVersion() {
-  return extractInputEnergyPlusVersion(elements.idfInput?.value || "");
+  const text = elements.idfInput?.value || "";
+  const metadata = simulationInputMetadata(text);
+  if (metadata.version === undefined) {
+    metadata.version = extractInputEnergyPlusVersion(text);
+  }
+  return metadata.version;
+}
+
+function simulationInputMetadata(text = "") {
+  const value = String(text || "");
+  if (simulationInputMetadataCache.text !== value) {
+    simulationInputMetadataCache = {
+      text: value,
+      version: undefined,
+      requiresWeatherFile: undefined,
+    };
+  }
+  return simulationInputMetadataCache;
 }
 
 function extractInputEnergyPlusVersion(text) {
@@ -6334,12 +6512,10 @@ function renderSimulationChart() {
       <text x="${width - pad.right}" y="${height - 12}" text-anchor="end" class="simulation-axis">${escapeHTML(lastLabel)}</text>
       <text x="${pad.left}" y="16" class="simulation-title">${escapeHTML(title)}</text>
     </svg>`;
-  bindSimulationChartInteractions(series);
 }
 
 function currentSimulationSeries() {
-  const result = state.simulationResult;
-  return safeSimulationSeriesList(result?.series).find((item) => seriesID(item) === state.simulationSelectedSeries) || null;
+  return simulationSeriesLookup().byID.get(state.simulationSelectedSeries) || null;
 }
 
 function renderSimulationSeriesRangeControls(series, visibleRange = null) {
@@ -6410,27 +6586,36 @@ function normalizeSimulationSeriesRange(pointCount = 0, changed = "") {
   return { start, end };
 }
 
-function bindSimulationChartInteractions(series) {
-  const hitTarget = elements.simulationChart?.querySelector("[data-simulation-chart-hit]");
-  if (!hitTarget) {
+function bindSimulationChartInteractions() {
+  const host = elements.simulationChart;
+  if (!host || simulationChartInteractionHosts.has(host)) {
     return;
   }
-  hitTarget.addEventListener(
+  simulationChartInteractionHosts.add(host);
+  host.addEventListener(
     "wheel",
     (event) => {
+      const hitTarget = event.target instanceof Element ? event.target.closest("[data-simulation-chart-hit]") : null;
+      const series = currentSimulationSeries();
+      if (!hitTarget || !series) {
+        return;
+      }
       event.preventDefault();
-      zoomSimulationSeriesRange(event, series);
+      zoomSimulationSeriesRange(event, series, hitTarget);
     },
     { passive: false },
   );
-  hitTarget.addEventListener("dblclick", () => {
+  host.addEventListener("dblclick", (event) => {
+    if (!(event.target instanceof Element) || !event.target.closest("[data-simulation-chart-hit]")) {
+      return;
+    }
     state.simulationSeriesRangeStart = 0;
     state.simulationSeriesRangeEnd = -1;
     renderSimulationChart();
   });
 }
 
-function zoomSimulationSeriesRange(event, series) {
+function zoomSimulationSeriesRange(event, series, hitTarget = event.currentTarget) {
   const pointCount = simulationSeriesPointCount(series);
   if (pointCount <= 2) {
     return;
@@ -6446,7 +6631,7 @@ function zoomSimulationSeriesRange(event, series) {
     renderSimulationChart();
     return;
   }
-  const rect = event.currentTarget.getBoundingClientRect();
+  const rect = hitTarget.getBoundingClientRect();
   const ratio = clampNumber((event.clientX - rect.left) / Math.max(rect.width, 1), 0, 1);
   const center = Math.round(start + ratio * Math.max(currentSize - 1, 0));
   let nextStart = Math.round(center - nextSize * ratio);
@@ -6486,6 +6671,7 @@ function renderSimulationHeatFlow() {
   state.simulationHeatFlowOverlay = elements.simulationHeatFlowOverlay?.value || state.simulationHeatFlowOverlay || "net";
   const frameIndex = state.simulationHeatFlowFrameIndex;
   const zoneMap = heatFlowZoneMap(dataset);
+  const floorSurfacesByStory = heatFlowFloorSurfacesByStory(geometry);
   const selectedZone = ensureHeatFlowSelectedZone(dataset, geometry, zoneMap);
   const stats = [
     t("count.zones", { count: dataset.zones.length }, `${dataset.zones.length} zones`),
@@ -6524,14 +6710,13 @@ function renderSimulationHeatFlow() {
     ${renderHeatFlowSpatialToolbar()}
     <div class="heatflow-layout ${state.simulationHeatFlowInspectorCollapsed ? "inspector-collapsed" : ""}">
       <div class="heatflow-floor-grid">
-        ${visibleHeatFlowStories(geometry).map((story) => renderHeatFlowStoryCard(geometry, story, dataset, zoneMap, frameIndex)).join("")}
+        ${visibleHeatFlowStories(geometry).map((story) => renderHeatFlowStoryCard(geometry, story, dataset, zoneMap, frameIndex, floorSurfacesByStory.get(story.index) || EMPTY_SIMULATION_ITEMS)).join("")}
       </div>
       <aside class="heatflow-inspector">
         ${renderHeatFlowInspector(dataset, zoneMap.get(normalizeHeatFlowName(selectedZone)), selectedZone, frameIndex)}
       </aside>
     </div>
     <div class="heatflow-tooltip hidden" role="tooltip"></div>`;
-  bindHeatFlowInteractions(dataset, geometry, zoneMap);
   pruneSimulationSemanticBindings();
 }
 
@@ -6771,8 +6956,28 @@ function heatFlowVisibleRange(dataset) {
   return normalizeHeatFlowFrameRange(frameCount);
 }
 
-function renderHeatFlowStoryCard(geometry, story, dataset, zoneMap, frameIndex) {
-  const surfaces = (geometry.surfaces || []).filter((surface) => surface.storyIndex === story.index && surface.surfaceType?.toLowerCase() === "floor");
+function heatFlowFloorSurfacesByStory(geometry = {}) {
+  if (!geometry || typeof geometry !== "object") {
+    return new Map();
+  }
+  const cached = simulationHeatFlowFloorSurfacesCache.get(geometry);
+  if (cached) {
+    return cached;
+  }
+  const byStory = new Map();
+  for (const surface of geometry.surfaces || []) {
+    if (surface.surfaceType?.toLowerCase() !== "floor") {
+      continue;
+    }
+    const surfaces = byStory.get(surface.storyIndex) || [];
+    surfaces.push(surface);
+    byStory.set(surface.storyIndex, surfaces);
+  }
+  simulationHeatFlowFloorSurfacesCache.set(geometry, byStory);
+  return byStory;
+}
+
+function renderHeatFlowStoryCard(geometry, story, dataset, zoneMap, frameIndex, surfaces = EMPTY_SIMULATION_ITEMS) {
   const bounds = heatFlowStoryBounds(surfaces);
   if (!bounds.ok || !surfaces.length) {
     return `
@@ -6949,35 +7154,61 @@ function renderHeatFlowStackChart(dataset, zoneSeries, frameIndex) {
     </svg>`;
 }
 
-function bindHeatFlowInteractions(dataset, geometry, zoneMap) {
+function bindHeatFlowInteractions() {
   const host = elements.simulationHeatFlow;
-  const tooltip = host.querySelector(".heatflow-tooltip");
-  host.querySelectorAll("[data-heatflow-range-preset]").forEach((button) => {
-    button.addEventListener("click", () => applyHeatFlowRangePreset(dataset, button.dataset.heatflowRangePreset || "fit"));
-  });
-  host.querySelectorAll("[data-heatflow-plan-zoom]").forEach((button) => {
-    button.addEventListener("click", () => applyHeatFlowPlanZoomButton(host, button.dataset.heatflowPlanZoom || "reset"));
-  });
-  host.querySelector("[data-heatflow-inspector-toggle]")?.addEventListener("click", () => {
-    state.simulationHeatFlowInspectorCollapsed = !state.simulationHeatFlowInspectorCollapsed;
-    writeHeatFlowInspectorCollapsed(state.simulationHeatFlowInspectorCollapsed);
-    renderSimulationHeatFlow();
-  });
-  bindHeatFlowTimelineBrush(host, dataset);
-  bindHeatFlowPlanInteractions(host);
-  host.querySelectorAll("[data-heat-zone]").forEach((shape) => {
-    shape.addEventListener("pointerenter", (event) => showHeatFlowTooltip(event, shape.dataset.heatZone, dataset, zoneMap, tooltip));
-    shape.addEventListener("pointermove", (event) => showHeatFlowTooltip(event, shape.dataset.heatZone, dataset, zoneMap, tooltip));
-    shape.addEventListener("pointerleave", () => hideHeatFlowTooltip(tooltip));
-    shape.addEventListener("click", () => {
+  if (!host || simulationHeatFlowInteractionHosts.has(host)) {
+    return;
+  }
+  simulationHeatFlowInteractionHosts.add(host);
+  host.addEventListener("click", (event) => {
+    if (!(event.target instanceof Element)) {
+      return;
+    }
+    const dataset = activeHeatFlowDataset();
+    const rangeButton = event.target.closest("[data-heatflow-range-preset]");
+    if (rangeButton) {
+      applyHeatFlowRangePreset(dataset, rangeButton.dataset.heatflowRangePreset || "fit");
+      return;
+    }
+    const zoomButton = event.target.closest("[data-heatflow-plan-zoom]");
+    if (zoomButton) {
+      applyHeatFlowPlanZoomButton(host, zoomButton.dataset.heatflowPlanZoom || "reset");
+      return;
+    }
+    if (event.target.closest("[data-heatflow-inspector-toggle]")) {
+      state.simulationHeatFlowInspectorCollapsed = !state.simulationHeatFlowInspectorCollapsed;
+      writeHeatFlowInspectorCollapsed(state.simulationHeatFlowInspectorCollapsed);
+      renderSimulationHeatFlow();
+      return;
+    }
+    const shape = event.target.closest("[data-heat-zone]");
+    if (shape) {
       state.simulationHeatFlowSelectedZone = shape.dataset.heatZone || "";
       void requestSimulationModelSelection(shape);
       renderSimulationHeatFlow();
-    });
+    }
   });
-  const chartTarget = host.querySelector("[data-heatflow-chart]");
-  chartTarget?.addEventListener("pointermove", (event) => {
-    const rect = event.currentTarget.getBoundingClientRect();
+  host.addEventListener("pointermove", (event) => {
+    if (!(event.target instanceof Element)) {
+      return;
+    }
+    const dataset = activeHeatFlowDataset();
+    const shape = event.target.closest("[data-heat-zone]");
+    if (shape) {
+      showHeatFlowTooltip(
+        event,
+        shape.dataset.heatZone,
+        dataset,
+        heatFlowZoneMap(dataset),
+        host.querySelector(".heatflow-tooltip"),
+      );
+      return;
+    }
+    const chartTarget = event.target.closest("[data-heatflow-chart]");
+    if (!chartTarget) {
+      return;
+    }
+    const rect = chartTarget.getBoundingClientRect();
     const { start, end } = heatFlowVisibleRange(dataset);
     const frameCount = Math.max(1, end - start + 1);
     const ratio = clampNumber((event.clientX - rect.left) / rect.width, 0, 1);
@@ -6988,22 +7219,73 @@ function bindHeatFlowInteractions(dataset, geometry, zoneMap) {
     state.simulationHeatFlowFrameIndex = nextFrame;
     renderSimulationHeatFlow();
   });
-  chartTarget?.addEventListener("pointerleave", () => hideHeatFlowTooltip(tooltip));
-  chartTarget?.addEventListener(
+  host.addEventListener("pointerout", (event) => {
+    if (!(event.target instanceof Element)) {
+      return;
+    }
+    const interactive = event.target.closest("[data-heat-zone], [data-heatflow-chart]");
+    if (interactive && !(event.relatedTarget instanceof Node && interactive.contains(event.relatedTarget))) {
+      hideHeatFlowTooltip(host.querySelector(".heatflow-tooltip"));
+    }
+  });
+  host.addEventListener(
     "wheel",
     (event) => {
+      if (!(event.target instanceof Element)) {
+        return;
+      }
+      const chartTarget = event.target.closest("[data-heatflow-chart]");
+      const plan = event.target.closest("[data-heatflow-plan]");
+      if (!chartTarget && !plan) {
+        return;
+      }
       event.preventDefault();
-      zoomHeatFlowRange(event, dataset);
+      if (chartTarget) {
+        zoomHeatFlowRange(event, activeHeatFlowDataset(), chartTarget);
+      } else {
+        applyHeatFlowPlanZoom(host, event.deltaY < 0 ? 1.18 : 1 / 1.18, heatFlowSVGPoint(plan, event));
+      }
     },
     { passive: false },
   );
-  chartTarget?.addEventListener("dblclick", () => {
-    state.simulationHeatFlowRangeStart = 0;
-    state.simulationHeatFlowRangeEnd = -1;
-    normalizeHeatFlowFrameRange(Number(dataset.frameCount) || 0);
-    renderSimulationHeatFlow();
+  host.addEventListener("dblclick", (event) => {
+    if (!(event.target instanceof Element)) {
+      return;
+    }
+    const chartTarget = event.target.closest("[data-heatflow-chart]");
+    if (chartTarget) {
+      const dataset = activeHeatFlowDataset();
+      state.simulationHeatFlowRangeStart = 0;
+      state.simulationHeatFlowRangeEnd = -1;
+      normalizeHeatFlowFrameRange(Number(dataset?.frameCount) || 0);
+      renderSimulationHeatFlow();
+      return;
+    }
+    if (event.target.closest("[data-heatflow-plan]")) {
+      event.preventDefault();
+      resetHeatFlowPlanTransform(host);
+    }
   });
-  void geometry;
+  host.addEventListener("pointerdown", (event) => {
+    if (!(event.target instanceof Element)) {
+      return;
+    }
+    const dataset = activeHeatFlowDataset();
+    const brush = event.target.closest("[data-heatflow-brush]");
+    if (brush) {
+      heatFlowBrushStartFrame = heatFlowFrameFromBrushEvent(event, dataset, brush);
+      brush.setPointerCapture?.(event.pointerId);
+      return;
+    }
+    const plan = event.target.closest("[data-heatflow-plan]");
+    if (plan && event.button === 0 && !event.target.closest("[data-heat-zone]")) {
+      startHeatFlowPlanPan(host, plan, event);
+    }
+  });
+  host.addEventListener("pointerup", finishHeatFlowBrushSelection);
+  host.addEventListener("pointercancel", () => {
+    heatFlowBrushStartFrame = null;
+  });
 }
 
 function heatFlowPlanTransform() {
@@ -7014,52 +7296,33 @@ function heatFlowPlanTransform() {
   return `translate(${roundSVG(panX)} ${roundSVG(panY)}) scale(${roundSVG(scale)})`;
 }
 
-function bindHeatFlowPlanInteractions(host) {
-  host.querySelectorAll("[data-heatflow-plan]").forEach((svg) => {
-    svg.addEventListener(
-      "wheel",
-      (event) => {
-        event.preventDefault();
-        applyHeatFlowPlanZoom(host, event.deltaY < 0 ? 1.18 : 1 / 1.18, heatFlowSVGPoint(svg, event));
-      },
-      { passive: false },
-    );
-    svg.addEventListener("dblclick", (event) => {
-      event.preventDefault();
-      resetHeatFlowPlanTransform(host);
-    });
-    svg.addEventListener("pointerdown", (event) => {
-      if (event.button !== 0 || event.target.closest("[data-heat-zone]")) {
-        return;
-      }
-      event.preventDefault();
-      const rect = svg.getBoundingClientRect();
-      const viewBox = svg.viewBox.baseVal;
-      const unitsPerPixelX = viewBox.width / Math.max(rect.width, 1);
-      const unitsPerPixelY = viewBox.height / Math.max(rect.height, 1);
-      const start = {
-        x: event.clientX,
-        y: event.clientY,
-        panX: Number(state.simulationHeatFlowPlanPanX) || 0,
-        panY: Number(state.simulationHeatFlowPlanPanY) || 0,
-      };
-      const move = (moveEvent) => {
-        state.simulationHeatFlowPlanPanX = start.panX + (moveEvent.clientX - start.x) * unitsPerPixelX;
-        state.simulationHeatFlowPlanPanY = start.panY + (moveEvent.clientY - start.y) * unitsPerPixelY;
-        updateHeatFlowPlanTransformNodes(host);
-      };
-      const end = (endEvent) => {
-        svg.classList.remove("panning");
-        svg.releasePointerCapture?.(endEvent.pointerId);
-        svg.removeEventListener("pointermove", move);
-      };
-      svg.classList.add("panning");
-      svg.setPointerCapture?.(event.pointerId);
-      svg.addEventListener("pointermove", move);
-      svg.addEventListener("pointerup", end, { once: true });
-      svg.addEventListener("pointercancel", end, { once: true });
-    });
-  });
+function startHeatFlowPlanPan(host, svg, event) {
+  event.preventDefault();
+  const rect = svg.getBoundingClientRect();
+  const viewBox = svg.viewBox.baseVal;
+  const unitsPerPixelX = viewBox.width / Math.max(rect.width, 1);
+  const unitsPerPixelY = viewBox.height / Math.max(rect.height, 1);
+  const start = {
+    x: event.clientX,
+    y: event.clientY,
+    panX: Number(state.simulationHeatFlowPlanPanX) || 0,
+    panY: Number(state.simulationHeatFlowPlanPanY) || 0,
+  };
+  const move = (moveEvent) => {
+    state.simulationHeatFlowPlanPanX = start.panX + (moveEvent.clientX - start.x) * unitsPerPixelX;
+    state.simulationHeatFlowPlanPanY = start.panY + (moveEvent.clientY - start.y) * unitsPerPixelY;
+    updateHeatFlowPlanTransformNodes(host);
+  };
+  const end = (endEvent) => {
+    svg.classList.remove("panning");
+    svg.releasePointerCapture?.(endEvent.pointerId);
+    svg.removeEventListener("pointermove", move);
+  };
+  svg.classList.add("panning");
+  svg.setPointerCapture?.(event.pointerId);
+  svg.addEventListener("pointermove", move);
+  svg.addEventListener("pointerup", end, { once: true });
+  svg.addEventListener("pointercancel", end, { once: true });
 }
 
 function applyHeatFlowPlanZoomButton(host, action) {
@@ -7108,7 +7371,7 @@ function heatFlowSVGPoint(svg, event) {
   };
 }
 
-function zoomHeatFlowRange(event, dataset) {
+function zoomHeatFlowRange(event, dataset, chartTarget = event.currentTarget) {
   const frameCount = Math.max(0, Number(dataset?.frameCount) || dataset?.labels?.length || 0);
   if (frameCount <= 2) {
     return;
@@ -7129,7 +7392,7 @@ function zoomHeatFlowRange(event, dataset) {
     renderSimulationHeatFlow();
     return;
   }
-  const rect = event.currentTarget.getBoundingClientRect();
+  const rect = chartTarget.getBoundingClientRect();
   const ratio = clampNumber((event.clientX - rect.left) / Math.max(rect.width, 1), 0, 1);
   const center = Math.round(start + ratio * Math.max(currentSize - 1, 0));
   let nextStart = Math.round(center - nextSize * ratio);
@@ -7210,40 +7473,28 @@ function setHeatFlowRangeAroundFrame(frameCount, size, frame) {
   state.simulationHeatFlowFrameIndex = clampNumber(state.simulationHeatFlowFrameIndex, start, end);
 }
 
-function bindHeatFlowTimelineBrush(host, dataset) {
-  const brush = host.querySelector("[data-heatflow-brush]");
-  if (!brush) {
+function finishHeatFlowBrushSelection(event) {
+  const brush = event.target instanceof Element ? event.target.closest("[data-heatflow-brush]") : null;
+  if (!brush || heatFlowBrushStartFrame === null) {
     return;
   }
-  let startFrame = null;
-  brush.addEventListener("pointerdown", (event) => {
-    startFrame = heatFlowFrameFromBrushEvent(event, dataset);
-    brush.setPointerCapture?.(event.pointerId);
-  });
-  brush.addEventListener("pointerup", (event) => {
-    if (startFrame === null) {
-      return;
-    }
-    const endFrame = heatFlowFrameFromBrushEvent(event, dataset);
-    if (Math.abs(endFrame - startFrame) <= 1) {
-      state.simulationHeatFlowFrameIndex = endFrame;
-    } else {
-      state.simulationHeatFlowRangeStart = Math.min(startFrame, endFrame);
-      state.simulationHeatFlowRangeEnd = Math.max(startFrame, endFrame);
-      state.simulationHeatFlowFrameIndex = clampNumber(state.simulationHeatFlowFrameIndex, state.simulationHeatFlowRangeStart, state.simulationHeatFlowRangeEnd);
-    }
-    startFrame = null;
-    normalizeHeatFlowFrameRange(Math.max(0, Number(dataset?.frameCount) || dataset?.labels?.length || 0));
-    renderSimulationHeatFlow();
-  });
-  brush.addEventListener("pointercancel", () => {
-    startFrame = null;
-  });
+  const dataset = activeHeatFlowDataset();
+  const endFrame = heatFlowFrameFromBrushEvent(event, dataset, brush);
+  if (Math.abs(endFrame - heatFlowBrushStartFrame) <= 1) {
+    state.simulationHeatFlowFrameIndex = endFrame;
+  } else {
+    state.simulationHeatFlowRangeStart = Math.min(heatFlowBrushStartFrame, endFrame);
+    state.simulationHeatFlowRangeEnd = Math.max(heatFlowBrushStartFrame, endFrame);
+    state.simulationHeatFlowFrameIndex = clampNumber(state.simulationHeatFlowFrameIndex, state.simulationHeatFlowRangeStart, state.simulationHeatFlowRangeEnd);
+  }
+  heatFlowBrushStartFrame = null;
+  normalizeHeatFlowFrameRange(Math.max(0, Number(dataset?.frameCount) || dataset?.labels?.length || 0));
+  renderSimulationHeatFlow();
 }
 
-function heatFlowFrameFromBrushEvent(event, dataset) {
+function heatFlowFrameFromBrushEvent(event, dataset, brush = event.currentTarget) {
   const frameCount = Math.max(1, Number(dataset?.frameCount) || dataset?.labels?.length || 1);
-  const rect = event.currentTarget.getBoundingClientRect();
+  const rect = brush.getBoundingClientRect();
   const ratio = clampNumber((event.clientX - rect.left) / Math.max(rect.width, 1), 0, 1);
   return clampNumber(Math.round(ratio * (frameCount - 1)), 0, frameCount - 1);
 }
@@ -7327,10 +7578,18 @@ function stopHeatFlowPlayback(render = true) {
 }
 
 function heatFlowZoneMap(dataset) {
+  if (!dataset || typeof dataset !== "object") {
+    return new Map();
+  }
+  const cached = simulationHeatFlowZoneMapCache.get(dataset);
+  if (cached) {
+    return cached;
+  }
   const map = new Map();
   (dataset?.zones || []).forEach((zone) => {
     map.set(normalizeHeatFlowName(zone.name), zone);
   });
+  simulationHeatFlowZoneMapCache.set(dataset, map);
   return map;
 }
 
@@ -8187,7 +8446,7 @@ async function runCurrentSimulation({ silent = false, auto = false } = {}) {
   if (!text.trim() || state.simulationRunning) {
     return null;
   }
-  state.simulationEnvironment ||= await loadSimulationEnvironment();
+  state.simulationEnvironment ||= await loadSimulationEnvironment({ render: false });
   renderSimulationEnvironment();
   const installPath = selectedEnergyPlusInstall()?.executablePath || "";
   if (!installPath) {
@@ -8274,7 +8533,7 @@ async function maybeAutoRunSimulation() {
   if (!text.trim()) {
     return;
   }
-  state.simulationEnvironment ||= await loadSimulationEnvironment();
+  state.simulationEnvironment ||= await loadSimulationEnvironment({ render: false });
   if (!selectedEnergyPlusInstall()?.executablePath) {
     return;
   }

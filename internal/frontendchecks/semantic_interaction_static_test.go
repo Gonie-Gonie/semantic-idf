@@ -40,14 +40,40 @@ func TestSemanticLineNavigationMetadataAndControllerGestures(t *testing.T) {
 	}
 	for _, gesture := range []string{
 		`addEventListener("click"`,
-		`addEventListener("pointerenter"`,
-		`addEventListener("pointerleave"`,
+		`addEventListener("pointerover"`,
+		`addEventListener("pointerout"`,
 		`addEventListener("dblclick"`,
 		`addEventListener("keydown"`,
-		`event.key === "Enter"`,
+		`event.key !== "Enter"`,
 	} {
 		if !strings.Contains(views, gesture) {
 			t.Fatalf("Semantic Text navigation is missing gesture contract %q", gesture)
+		}
+	}
+	delegation := sliceBetween(views, "function bindSemanticControls", "function scrollSemanticSectionIntoView")
+	for _, required := range []string{
+		"semanticControlsBound",
+		"handleSemanticEditorClick",
+		"handleSemanticEditorDoubleClick",
+		"handleSemanticEditorKeydown",
+		"handleSemanticEditorPointerOver",
+		"handleSemanticEditorPointerOut",
+		`target.closest(".semantic-line`,
+		"event.relatedTarget instanceof Node",
+		"line.contains(related)",
+	} {
+		if !strings.Contains(delegation, required) {
+			t.Fatalf("Semantic Text must use fixed root-level event delegation, missing %q", required)
+		}
+	}
+	for _, forbidden := range []string{
+		`querySelectorAll(".semantic-line`,
+		`addEventListener("pointerenter"`,
+		`addEventListener("pointerleave"`,
+		"function bindSemanticSelectionContext",
+	} {
+		if strings.Contains(delegation, forbidden) {
+			t.Fatalf("Semantic Text must not allocate per-render interaction listeners, found %q", forbidden)
 		}
 	}
 

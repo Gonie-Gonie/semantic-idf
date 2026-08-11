@@ -364,10 +364,6 @@ func profileMetricOptions() []ProfileMetricOption {
 	}
 }
 
-func newProfileContext(doc Document) profileContext {
-	return newProfileContextWithGeometry(doc, AnalyzeGeometry(doc))
-}
-
 func newProfileContextWithGeometry(doc Document, geometry GeometryReport) profileContext {
 	ctx := profileContext{
 		doc:           doc,

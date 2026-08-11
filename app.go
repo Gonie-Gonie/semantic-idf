@@ -1122,7 +1122,11 @@ func analyzeMultiSummaryPathsWithOptions(paths []string, request MultiSummaryReq
 		path  string
 	}
 
-	jobs := make(chan job)
+	jobs := make(chan job, len(paths))
+	for index, path := range paths {
+		jobs <- job{index: index, path: path}
+	}
+	close(jobs)
 	results := make(chan MultiSummaryFile)
 	var wg sync.WaitGroup
 	for worker := 0; worker < result.Concurrency; worker++ {
@@ -1136,10 +1140,6 @@ func analyzeMultiSummaryPathsWithOptions(paths []string, request MultiSummaryReq
 	}
 
 	go func() {
-		for index, path := range paths {
-			jobs <- job{index: index, path: path}
-		}
-		close(jobs)
 		wg.Wait()
 		close(results)
 	}()
@@ -1171,10 +1171,6 @@ func analyzeMultiSummaryPathsWithOptions(paths []string, request MultiSummaryReq
 	return result
 }
 
-func analyzeMultiSummaryFile(index int, path string) MultiSummaryFile {
-	return analyzeMultiSummaryFileWithOptions(index, path, "effective", false)
-}
-
 func analyzeMultiSummaryFileWithOptions(index int, path string, areaBasis string, includeFullTopology bool) MultiSummaryFile {
 	file := MultiSummaryFile{
 		Index:    index,
@@ -1197,7 +1193,7 @@ func analyzeMultiSummaryFileWithOptions(index int, path string, areaBasis string
 	file.Format = string(model.Format)
 	file.Version = model.Version.Raw
 	file.ObjectCount = len(doc.Objects)
-	file.MetricValues = map[string]MultiSummaryValue{}
+	file.MetricValues = make(map[string]MultiSummaryValue, summary.MetricCount+len(topologySummary.Metrics))
 	for _, category := range summary.Categories {
 		for _, metric := range category.Metrics {
 			file.MetricValues[metric.ID] = MultiSummaryValue{
@@ -1214,15 +1210,19 @@ func analyzeMultiSummaryFileWithOptions(index int, path string, areaBasis string
 	}
 	file.TopologyData = &MultiSummaryTopologyData{
 		Summary:     topologySummary,
-		Nodes:       append([]idf.ThermalTopologyNode(nil), topology.Nodes...),
-		Signatures:  append([]idf.ZoneThermalSignature(nil), topology.ZoneSignatures...),
-		Connections: append([]idf.ThermalConnectionAggregate(nil), topology.Connections...),
-		Issues:      append([]idf.ThermalTopologyIssueLink(nil), topology.IssueLinks...),
+		Nodes:       topology.Nodes,
+		Signatures:  topology.ZoneSignatures,
+		Connections: topology.Connections,
+		Issues:      topology.IssueLinks,
 	}
 	if includeFullTopology {
 		copy := topology
 		copy.AreaBasis = areaBasis
 		file.Topology = &copy
+		file.TopologyData.Nodes = append([]idf.ThermalTopologyNode(nil), topology.Nodes...)
+		file.TopologyData.Signatures = append([]idf.ZoneThermalSignature(nil), topology.ZoneSignatures...)
+		file.TopologyData.Connections = append([]idf.ThermalConnectionAggregate(nil), topology.Connections...)
+		file.TopologyData.Issues = append([]idf.ThermalTopologyIssueLink(nil), topology.IssueLinks...)
 	}
 	if buildingName := strings.TrimSpace(file.MetricValues["building_name"].DisplayValue); buildingName != "" && !strings.EqualFold(buildingName, "N/A") {
 		file.Label = buildingName

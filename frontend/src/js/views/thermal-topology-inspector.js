@@ -3,6 +3,7 @@ import { t } from "../i18n.js";
 import { resolveThermalTopologyTarget } from "../thermal-topology-targets.js";
 
 let activeHelpers = null;
+let inspectorInteractionsBound = false;
 
 export function renderThermalTopologyInspector(geometry, helpers = {}) {
   if (!elements.thermalTopologyInspector) return;
@@ -264,8 +265,13 @@ function sameThermalTopologyName(left, right) {
 }
 
 function bindInspectorInteractions() {
-  elements.thermalTopologyInspector.querySelectorAll("[data-thermal-inspector-kind]").forEach((button) => {
-    button.addEventListener("click", () => activeHelpers.selectGeometry?.(button.dataset.thermalInspectorKind, button.dataset.thermalInspectorId));
+  const inspector = elements.thermalTopologyInspector;
+  if (inspectorInteractionsBound || !inspector) return;
+  inspectorInteractionsBound = true;
+  inspector.addEventListener("click", (event) => {
+    const button = event.target.closest?.("[data-thermal-inspector-kind]");
+    if (!button || !inspector.contains(button)) return;
+    activeHelpers.selectGeometry?.(button.dataset.thermalInspectorKind, button.dataset.thermalInspectorId);
   });
 }
 

@@ -1049,17 +1049,6 @@ func semanticNavigationEntityByKindLabel(t *testing.T, index SemanticNavigationI
 	return SemanticNavigationEntity{}
 }
 
-func semanticNavigationEntityByID(t *testing.T, index SemanticNavigationIndex, entityID string) SemanticNavigationEntity {
-	t.Helper()
-	for _, entity := range index.Entities {
-		if entity.ID == entityID {
-			return entity
-		}
-	}
-	t.Fatalf("navigation entity %q not found", entityID)
-	return SemanticNavigationEntity{}
-}
-
 func semanticNavigationEntityForViewTarget(t *testing.T, index SemanticNavigationIndex, entityKind string, view string, targetKind string, targetID string) SemanticNavigationEntity {
 	t.Helper()
 	for _, entity := range index.Entities {

@@ -19,6 +19,12 @@ let geometrySelectionRequest = 0;
 let thermalTopologyModule = null;
 let thermalTopologyModulePromise = null;
 let thermalTopologyRenderRequest = 0;
+let geometryPlanInteractionsBound = false;
+let geometryDetailInteractionsBound = false;
+let geometryLookupCache = null;
+let geometryNavigationLookupCache = null;
+
+const EMPTY_GEOMETRY_ITEMS = Object.freeze([]);
 
 window.addEventListener("idfAnalyzer:semanticSelectionChanged", (event) => {
   if (!temporaryGeometryReveal) {
@@ -36,6 +42,8 @@ window.addEventListener("idfAnalyzer:documentChanged", () => {
   temporaryGeometryReveal = null;
   temporaryGeometryHover = null;
   geometryHoverTargetKey = "";
+  geometryLookupCache = null;
+  geometryNavigationLookupCache = null;
   geometrySelectionRequest += 1;
 });
 window.addEventListener("idfAnalyzer:semanticHoverChanged", (event) => {
@@ -239,17 +247,17 @@ export function revealThermalTargetInGeometry(kind, id, mode = "3d") {
   const geometry = state.report?.geometry;
   const thermalTarget = resolveThermalTopologyTarget({ targetKind: kind, targetId: id }, geometry);
   if (!thermalTarget) return false;
-  const representativeSurface = (thermalTarget.surfaceIds || []).map((surfaceID) => surfaceByID(geometry, surfaceID)).find(Boolean);
-  const representativeWindow = (thermalTarget.windowIds || []).map((windowID) => windowByID(geometry, windowID)).find(Boolean);
-  const representativeNode = (thermalTarget.nodeIds || []).map((nodeID) => (
-    (geometry.zones || []).find((zone) => zone.id === nodeID) || (geometry.spaces || []).find((space) => space.id === nodeID)
-  )).find(Boolean);
+  const lookup = geometryLookupIndex(geometry);
+  const representativeSurface = lookup.surfaceByID.get((thermalTarget.surfaceIds || []).find((surfaceID) => lookup.surfaceByID.has(surfaceID)));
+  const representativeWindow = lookup.windowByID.get((thermalTarget.windowIds || []).find((windowID) => lookup.windowByID.has(windowID)));
+  const representativeNodeID = (thermalTarget.nodeIds || []).find((nodeID) => lookup.zoneByID.has(nodeID) || lookup.spaceByID.has(nodeID));
+  const representativeNode = lookup.zoneByID.get(representativeNodeID) || lookup.spaceByID.get(representativeNodeID);
   const storyIndex = representativeSurface?.storyIndex ?? representativeWindow?.storyIndex ?? representativeNode?.storyIndex;
   if (Number.isInteger(storyIndex)) state.selectedGeometryStory = storyIndex;
   temporaryGeometryReveal = {
     kind,
     id,
-    ownerZoneId: thermalTarget.nodeIds?.find((nodeID) => (geometry.zones || []).some((zone) => zone.id === nodeID)) || "",
+    ownerZoneId: thermalTarget.nodeIds?.find((nodeID) => lookup.zoneByID.has(nodeID)) || "",
     baseSurfaceId: representativeWindow ? baseSurfaceForWindow(geometry, representativeWindow)?.id || "" : "",
     surfaceIds: [...(thermalTarget.surfaceIds || [])],
     primarySurfaceId: thermalTarget.surfaceIds?.[0] || "",
@@ -661,6 +669,7 @@ function addAxes(group, bounds, center) {
 
 function renderPlan(geometry) {
   disposeRendererCanvas();
+  bindGeometryPlanInteractions();
   const storyIndex = state.selectedGeometryStory === "all" ? firstStoryIndex(geometry) : state.selectedGeometryStory;
   const layout = cachedGeometryPlanLayout(geometry, storyIndex);
   if (!layout.ok) {
@@ -693,26 +702,43 @@ function renderPlan(geometry) {
 
   elements.geometryPlan.setAttribute("viewBox", `0 0 ${layout.viewWidth} ${layout.viewHeight}`);
   elements.geometryPlan.innerHTML = `${zoneFloorPolygons}${wallLines}${windowLines}`;
-  elements.geometryPlan.querySelectorAll("[data-geometry-id]").forEach((shape) => {
-    shape.addEventListener("click", (event) => {
-      event.stopPropagation();
-      void selectGeometry(shape.dataset.geometryKind, shape.dataset.geometryId);
-    });
-    shape.addEventListener("keydown", (event) => {
-      if (event.key !== "Enter" && event.key !== " ") {
-        return;
-      }
-      event.preventDefault();
-      event.stopPropagation();
-      void selectGeometry(shape.dataset.geometryKind, shape.dataset.geometryId);
-    });
-    shape.addEventListener("pointerenter", () => {
-      const selection = geometrySelectionForTarget(shape.dataset.geometryKind, shape.dataset.geometryId);
-      if (selection) hoverSemanticEntity(selection, { originView: "geometry", action: "hover", recordHistory: false, follow: false });
-    });
-    shape.addEventListener("pointerleave", () => clearSemanticHover({ originView: "geometry", action: "hover" }));
-  });
   highlightSelectedPlan();
+}
+
+function bindGeometryPlanInteractions() {
+  const plan = elements.geometryPlan;
+  if (geometryPlanInteractionsBound || !plan) return;
+  geometryPlanInteractionsBound = true;
+  plan.addEventListener("click", (event) => {
+    const shape = geometryPlanTarget(event.target, plan);
+    if (!shape) return;
+    event.stopPropagation();
+    void selectGeometry(shape.dataset.geometryKind, shape.dataset.geometryId);
+  });
+  plan.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const shape = geometryPlanTarget(event.target, plan);
+    if (!shape) return;
+    event.preventDefault();
+    event.stopPropagation();
+    void selectGeometry(shape.dataset.geometryKind, shape.dataset.geometryId);
+  });
+  plan.addEventListener("pointerover", (event) => {
+    const shape = geometryPlanTarget(event.target, plan);
+    if (!shape || shape === geometryPlanTarget(event.relatedTarget, plan)) return;
+    const selection = geometrySelectionForTarget(shape.dataset.geometryKind, shape.dataset.geometryId);
+    if (selection) hoverSemanticEntity(selection, { originView: "geometry", action: "hover", recordHistory: false, follow: false });
+  });
+  plan.addEventListener("pointerout", (event) => {
+    const shape = geometryPlanTarget(event.target, plan);
+    if (!shape || shape === geometryPlanTarget(event.relatedTarget, plan)) return;
+    clearSemanticHover({ originView: "geometry", action: "hover" });
+  });
+}
+
+function geometryPlanTarget(target, plan) {
+  const shape = target?.closest?.("[data-geometry-id]") || null;
+  return shape && plan.contains(shape) ? shape : null;
 }
 
 function cachedGeometryPlanLayout(geometry, storyIndex) {
@@ -871,8 +897,9 @@ function selectedGeometryEntity(geometry) {
   if (!geometry || !state.selectedGeometryId) {
     return null;
   }
+  const lookup = geometryLookupIndex(geometry);
   if (state.selectedGeometryKind === "zone") {
-    const zone = (geometry.zones || []).find((item) => item.id === state.selectedGeometryId);
+    const zone = lookup.zoneByID.get(state.selectedGeometryId);
     return zone && {
       kind: "zone",
       id: zone.id,
@@ -885,7 +912,7 @@ function selectedGeometryEntity(geometry) {
     };
   }
   if (state.selectedGeometryKind === "space") {
-    const space = (geometry.spaces || []).find((item) => item.id === state.selectedGeometryId);
+    const space = lookup.spaceByID.get(state.selectedGeometryId);
     const zone = space ? zoneByName(geometry, space.zoneName) : null;
     return space && {
       kind: "space",
@@ -900,7 +927,7 @@ function selectedGeometryEntity(geometry) {
     };
   }
   if (state.selectedGeometryKind === "window") {
-    const windowItem = (geometry.windows || []).find((item) => item.id === state.selectedGeometryId);
+    const windowItem = lookup.windowByID.get(state.selectedGeometryId);
     return windowItem && {
       kind: "window",
       id: windowItem.id,
@@ -912,7 +939,7 @@ function selectedGeometryEntity(geometry) {
       metrics: windowItem.metrics,
     };
   }
-  const surface = (geometry.surfaces || []).find((item) => item.id === state.selectedGeometryId);
+  const surface = lookup.surfaceByID.get(state.selectedGeometryId);
   return surface && {
     kind: "surface",
     id: surface.id,
@@ -1063,7 +1090,7 @@ function constructionForEntity(geometry, entity) {
 
 function constructionForName(geometry, constructionName) {
   const key = normalizeGeometryName(constructionName);
-  return key ? (geometry?.constructions || []).find((construction) => normalizeGeometryName(construction.name) === key) || null : null;
+  return key ? geometryLookupIndex(geometry).constructionByName.get(key) || null : null;
 }
 
 function constructionPerformance(construction) {
@@ -1260,26 +1287,25 @@ function renderRelatedItem(item) {
 }
 
 function bindGeometryDetailControls() {
-  elements.geometryDetails.querySelectorAll(".geometry-related-row[data-geometry-id]").forEach((button) => {
-    button.addEventListener("click", (event) => {
+  const details = elements.geometryDetails;
+  if (geometryDetailInteractionsBound || !details) return;
+  geometryDetailInteractionsBound = true;
+  details.addEventListener("click", (event) => {
+    const related = event.target.closest?.(".geometry-related-row[data-geometry-id]");
+    if (related && details.contains(related)) {
       event.stopPropagation();
-      void selectGeometry(button.dataset.geometryKind, button.dataset.geometryId);
-    });
-  });
-  elements.geometryDetails.querySelectorAll(".construction-layer[data-object-index]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const objectIndex = Number(button.dataset.objectIndex);
-      if (!Number.isFinite(objectIndex) || objectIndex < 0) {
-        return;
-      }
-      window.dispatchEvent(
-        new CustomEvent("idfAnalyzer:geometryLocate", {
-          detail: {
-            objectIndex,
-          },
-        }),
-      );
-    });
+      void selectGeometry(related.dataset.geometryKind, related.dataset.geometryId);
+      return;
+    }
+    const layer = event.target.closest?.(".construction-layer[data-object-index]");
+    if (!layer || !details.contains(layer)) return;
+    const objectIndex = Number(layer.dataset.objectIndex);
+    if (!Number.isFinite(objectIndex) || objectIndex < 0) return;
+    window.dispatchEvent(
+      new CustomEvent("idfAnalyzer:geometryLocate", {
+        detail: { objectIndex },
+      }),
+    );
   });
 }
 
@@ -1368,13 +1394,39 @@ function uniqueRelatedItems(items) {
   });
 }
 
+function geometrySemanticNavigationLookup(navigation = {}) {
+  const occurrences = navigation.occurrences || EMPTY_GEOMETRY_ITEMS;
+  const entities = navigation.entities || EMPTY_GEOMETRY_ITEMS;
+  if (
+    geometryNavigationLookupCache?.navigation === navigation &&
+    geometryNavigationLookupCache.occurrences === occurrences &&
+    geometryNavigationLookupCache.entities === entities &&
+    geometryNavigationLookupCache.occurrenceCount === occurrences.length &&
+    geometryNavigationLookupCache.entityCount === entities.length
+  ) {
+    return geometryNavigationLookupCache;
+  }
+  geometryNavigationLookupCache = {
+    navigation,
+    occurrences,
+    entities,
+    occurrenceCount: occurrences.length,
+    entityCount: entities.length,
+    occurrenceByID: indexFirstBy(occurrences, (occurrence) => occurrence.occurrenceId),
+    occurrenceOrderByID: new Map(occurrences.map((occurrence, index) => [occurrence.occurrenceId, index])),
+    entityByID: indexFirstBy(entities, (entity) => entity.id),
+  };
+  return geometryNavigationLookupCache;
+}
+
 function geometryViewTargetForSelection(selection = {}, navigation = state.semanticProjection?.navigation || {}) {
   const direct = selection.viewTarget;
   if (String(direct?.view || "").toLowerCase() === "geometry" && direct.targetId) {
     return direct;
   }
-  const occurrence = (navigation.occurrences || []).find((candidate) => candidate.occurrenceId === selection.occurrenceId);
-  const entity = (navigation.entities || []).find((candidate) => candidate.id === selection.entityId);
+  const lookup = geometrySemanticNavigationLookup(navigation);
+  const occurrence = lookup.occurrenceByID.get(selection.occurrenceId);
+  const entity = lookup.entityByID.get(selection.entityId);
   const targets = [...(occurrence?.viewTargets || []), ...(entity?.viewTargets || [])]
     .filter((target) => String(target?.view || "").toLowerCase() === "geometry" && target.targetId)
     .sort((left, right) => Number(right.priority || 0) - Number(left.priority || 0));
@@ -1403,20 +1455,21 @@ function geometryTargetEntity(target, geometry = state.report?.geometry) {
       thermalTarget,
     };
   }
+  const lookup = geometryLookupIndex(geometry);
   const candidates = requestedKind ? [requestedKind] : ["zone", "space", "surface", "window", "story"];
   for (const kind of candidates) {
     if (kind === "zone") {
-      const item = (geometry.zones || []).find((candidate) => candidate.id === targetId);
+      const item = lookup.zoneByID.get(targetId);
       if (item) return { kind, id: item.id, item, objectIndex: item.objectIndex, objectType: "Zone", storyIndex: item.storyIndex };
     } else if (kind === "space") {
-      const item = (geometry.spaces || []).find((candidate) => candidate.id === targetId);
+      const item = lookup.spaceByID.get(targetId);
       const zone = item ? zoneByName(geometry, item.zoneName) : null;
       if (item) return { kind, id: item.id, item, objectIndex: item.objectIndex, objectType: "Space", storyIndex: zone?.storyIndex };
     } else if (kind === "surface") {
-      const item = (geometry.surfaces || []).find((candidate) => candidate.id === targetId);
+      const item = lookup.surfaceByID.get(targetId);
       if (item) return { kind, id: item.id, item, objectIndex: item.objectIndex, objectType: item.type, storyIndex: item.storyIndex };
     } else if (kind === "window") {
-      const item = (geometry.windows || []).find((candidate) => candidate.id === targetId);
+      const item = lookup.windowByID.get(targetId);
       if (item) return { kind, id: item.id, item, objectIndex: item.objectIndex, objectType: item.type, storyIndex: item.storyIndex };
     } else if (kind === "story") {
       const item = (geometry.stories || []).find((story) => geometryStoryMatchesTarget(story, targetId));
@@ -1434,7 +1487,7 @@ export function geometrySelectionForTarget(kind, targetId, navigation = state.se
     return null;
   }
   const occurrence = preferredOccurrenceForGeometryTarget(targetId, state.globalSelection, navigation);
-  const entity = (navigation.entities || []).find((candidate) => candidate.id === occurrence?.entityId) || null;
+  const entity = geometrySemanticNavigationLookup(navigation).entityByID.get(occurrence?.entityId) || null;
   if (!occurrence || !entity) {
     return null;
   }
@@ -1453,8 +1506,11 @@ export function geometrySelectionForTarget(kind, targetId, navigation = state.se
 function preferredOccurrenceForGeometryTarget(targetId, selection = {}, navigation = state.semanticProjection?.navigation || {}) {
   const occurrenceIds = navigation.byViewTarget?.[`geometry|${targetId}`] || [];
   const currentPath = String(selection.semanticPathHint || state.semanticCurrentPath || "");
-  return (navigation.occurrences || [])
-    .filter((occurrence) => occurrenceIds.includes(occurrence.occurrenceId))
+  const lookup = geometrySemanticNavigationLookup(navigation);
+  return [...new Set(occurrenceIds)]
+    .map((occurrenceID) => lookup.occurrenceByID.get(occurrenceID))
+    .filter(Boolean)
+    .sort((left, right) => (lookup.occurrenceOrderByID.get(left.occurrenceId) || 0) - (lookup.occurrenceOrderByID.get(right.occurrenceId) || 0))
     .map((occurrence, order) => ({
       occurrence,
       order,
@@ -1489,7 +1545,7 @@ function thermalOccurrenceContextPriority(occurrence) {
 export function geometryNavigationAttributes(kind, targetId, explicitAnchor = {}, options = {}) {
   const navigation = state.semanticProjection?.navigation || {};
   const occurrence = preferredOccurrenceForGeometryTarget(targetId, state.globalSelection, navigation);
-  const entity = (navigation.entities || []).find((candidate) => candidate.id === occurrence?.entityId) || null;
+  const entity = geometrySemanticNavigationLookup(navigation).entityByID.get(occurrence?.entityId) || null;
   const sourceAnchor = { ...(occurrence?.sourceAnchor || entity?.sourceAnchors?.[0] || {}), ...explicitAnchor };
   const selected = Boolean(
     (entity?.id && entity.id === state.globalSelection?.entityId) ||
@@ -1553,7 +1609,7 @@ function owningZoneForGeometryEntity(entity, geometry) {
       if (zone) return zone;
     }
     for (const nodeId of entity.thermalTarget.nodeIds || []) {
-      const zone = (geometry?.zones || []).find((candidate) => candidate.id === nodeId);
+      const zone = geometryLookupIndex(geometry).zoneByID.get(nodeId);
       if (zone) return zone;
       const space = spaceByID(geometry, nodeId);
       const owner = space ? zoneByName(geometry, space.zoneName) : null;
@@ -1783,40 +1839,101 @@ function isThermalSelectionKind(kind) {
   return ["thermal_boundary", "thermal_interface", "thermal_connection", "thermal_environment", "thermal_air_coupling", "thermal_issue", "thermal_observation"].includes(kind);
 }
 
+function geometryLookupIndex(geometry) {
+  const collections = {
+    zones: geometry?.zones || EMPTY_GEOMETRY_ITEMS,
+    spaces: geometry?.spaces || EMPTY_GEOMETRY_ITEMS,
+    surfaces: geometry?.surfaces || EMPTY_GEOMETRY_ITEMS,
+    windows: geometry?.windows || EMPTY_GEOMETRY_ITEMS,
+    stories: geometry?.stories || EMPTY_GEOMETRY_ITEMS,
+    constructions: geometry?.constructions || EMPTY_GEOMETRY_ITEMS,
+  };
+  if (
+    geometryLookupCache?.geometry === geometry &&
+    Object.entries(collections).every(([key, values]) => geometryLookupCache.collections[key] === values && geometryLookupCache.lengths[key] === values.length)
+  ) {
+    return geometryLookupCache;
+  }
+  const windowsBySurfaceID = new Map();
+  const windowsBySurfaceName = new Map();
+  const windowOrder = new Map();
+  collections.windows.forEach((windowItem, index) => {
+    windowOrder.set(windowItem, index);
+    appendLookupGroup(windowsBySurfaceID, windowItem.baseSurfaceId, windowItem);
+    appendLookupGroup(windowsBySurfaceName, normalizeGeometryName(windowItem.baseSurfaceName), windowItem);
+  });
+  geometryLookupCache = {
+    geometry,
+    collections,
+    lengths: Object.fromEntries(Object.entries(collections).map(([key, values]) => [key, values.length])),
+    zoneByID: indexFirstBy(collections.zones, (zone) => zone.id),
+    zoneByName: indexFirstBy(collections.zones, (zone) => normalizeGeometryName(zone.name)),
+    zoneByExactName: indexFirstBy(collections.zones, (zone) => zone.name),
+    spaceByID: indexFirstBy(collections.spaces, (space) => space.id),
+    spaceByName: indexFirstBy(collections.spaces, (space) => normalizeGeometryName(space.name)),
+    surfaceByID: indexFirstBy(collections.surfaces, (surface) => surface.id),
+    surfaceByName: indexFirstBy(collections.surfaces, (surface) => normalizeGeometryName(surface.name)),
+    windowByID: indexFirstBy(collections.windows, (windowItem) => windowItem.id),
+    constructionByName: indexFirstBy(collections.constructions, (construction) => normalizeGeometryName(construction.name)),
+    storyByIndex: indexFirstBy(collections.stories, (story) => story.index),
+    windowsBySurfaceID,
+    windowsBySurfaceName,
+    windowOrder,
+  };
+  return geometryLookupCache;
+}
+
+function indexFirstBy(values, keyForValue) {
+  const index = new Map();
+  for (const value of values) {
+    const key = keyForValue(value);
+    if (key !== undefined && key !== null && key !== "" && !index.has(key)) index.set(key, value);
+  }
+  return index;
+}
+
+function appendLookupGroup(index, key, value) {
+  if (key === undefined || key === null || key === "") return;
+  const values = index.get(key) || [];
+  values.push(value);
+  index.set(key, values);
+}
+
 function zoneByName(geometry, zoneName) {
   const key = normalizeGeometryName(zoneName);
-  return key ? (geometry?.zones || []).find((zone) => normalizeGeometryName(zone.name) === key) || null : null;
+  return key ? geometryLookupIndex(geometry).zoneByName.get(key) || null : null;
 }
 
 function spaceByID(geometry, id) {
-  return (geometry?.spaces || []).find((space) => space.id === id) || null;
+  return geometryLookupIndex(geometry).spaceByID.get(id) || null;
 }
 
 function spaceByName(geometry, name) {
   const key = normalizeGeometryName(name);
-  return key ? (geometry?.spaces || []).find((space) => normalizeGeometryName(space.name) === key) || null : null;
+  return key ? geometryLookupIndex(geometry).spaceByName.get(key) || null : null;
 }
 
 function surfaceByID(geometry, id) {
-  return (geometry?.surfaces || []).find((surface) => surface.id === id) || null;
+  return geometryLookupIndex(geometry).surfaceByID.get(id) || null;
 }
 
 function surfaceByName(geometry, name) {
   const key = normalizeGeometryName(name);
-  return key ? (geometry?.surfaces || []).find((surface) => normalizeGeometryName(surface.name) === key) || null : null;
+  return key ? geometryLookupIndex(geometry).surfaceByName.get(key) || null : null;
 }
 
 function windowByID(geometry, id) {
-  return (geometry?.windows || []).find((windowItem) => windowItem.id === id) || null;
+  return geometryLookupIndex(geometry).windowByID.get(id) || null;
 }
 
 function windowsForSurface(geometry, surface) {
+  const lookup = geometryLookupIndex(geometry);
   const surfaceName = normalizeGeometryName(surface?.name);
-  return (geometry?.windows || []).filter(
-    (windowItem) =>
-      (surface?.id && windowItem.baseSurfaceId === surface.id) ||
-      (surfaceName && normalizeGeometryName(windowItem.baseSurfaceName) === surfaceName),
-  );
+  const byID = surface?.id ? lookup.windowsBySurfaceID.get(surface.id) || [] : [];
+  const byName = surfaceName ? lookup.windowsBySurfaceName.get(surfaceName) || [] : [];
+  if (!byID.length) return [...byName];
+  if (!byName.length) return [...byID];
+  return [...new Set([...byID, ...byName])].sort((left, right) => lookup.windowOrder.get(left) - lookup.windowOrder.get(right));
 }
 
 function adjacentSurfaceForSurface(geometry, surface) {
@@ -1838,7 +1955,7 @@ function fieldValueByCommentWords(fields = [], words = []) {
 }
 
 function storyLabelForIndex(geometry, storyIndex) {
-  const story = (geometry?.stories || []).find((item) => item.index === storyIndex);
+  const story = geometryLookupIndex(geometry).storyByIndex.get(storyIndex);
   return story ? `${story.name} (${formatNumber(story.elevation)} m)` : "Story unknown";
 }
 
@@ -1847,7 +1964,7 @@ function normalizeGeometryName(value) {
 }
 
 function zoneIdForName(geometry, zoneName) {
-  const zone = (geometry.zones || []).find((item) => item.name === zoneName);
+  const zone = geometryLookupIndex(geometry).zoneByExactName.get(zoneName);
   return zone?.id || "";
 }
 

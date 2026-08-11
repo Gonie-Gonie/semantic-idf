@@ -171,10 +171,6 @@ func columnName(index int) string {
 	return string(chars)
 }
 
-func contentTypesXML() string {
-	return contentTypesXMLForSheetCount(1)
-}
-
 func contentTypesXMLForSheetCount(sheetCount int) string {
 	var worksheets strings.Builder
 	for index := 1; index <= max(1, sheetCount); index++ {
@@ -201,10 +197,6 @@ func packageRelsXML() string {
 		`</Relationships>`
 }
 
-func workbookXML(sheetName string) string {
-	return workbookXMLForSheets([]WorkbookSheet{{Name: sheetName}})
-}
-
 func workbookXMLForSheets(sheets []WorkbookSheet) string {
 	var sheetXML strings.Builder
 	used := map[string]int{}
@@ -216,10 +208,6 @@ func workbookXMLForSheets(sheets []WorkbookSheet) string {
 		`<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">` +
 		`<sheets>` + sheetXML.String() + `</sheets>` +
 		`</workbook>`
-}
-
-func workbookRelsXML() string {
-	return workbookRelsXMLForSheets([]WorkbookSheet{{Name: "Sheet1"}})
 }
 
 func workbookRelsXMLForSheets(sheets []WorkbookSheet) string {
@@ -245,10 +233,6 @@ func stylesXML() string {
 		`<cellXfs count="4"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"/><xf numFmtId="0" fontId="2" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"/><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1"/></cellXfs>` +
 		`<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>` +
 		`</styleSheet>`
-}
-
-func appPropsXML(sheetName string) string {
-	return appPropsXMLForSheets([]WorkbookSheet{{Name: sheetName}})
 }
 
 func appPropsXMLForSheets(sheets []WorkbookSheet) string {

@@ -253,14 +253,6 @@ func cleanupRiskForRule(ruleID string) string {
 	}
 }
 
-func outputVariableSignature(obj Object) string {
-	parts := []string{strings.ToLower(obj.Type)}
-	for _, field := range obj.Fields {
-		parts = append(parts, normalizeName(field.Value))
-	}
-	return strings.Join(parts, "\x00")
-}
-
 func selectedCleanupRules(ruleIDs []string) map[string]bool {
 	out := map[string]bool{}
 	for _, ruleID := range ruleIDs {

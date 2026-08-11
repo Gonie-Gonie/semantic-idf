@@ -9,8 +9,15 @@ let hvacDebugRuleGraphRequestKey = "";
 let hvacDebugRuleGraphEmptyKey = "";
 let hvacNavigationCleanup = null;
 let hvacNavigationRevealTarget = null;
+let hvacControlsInitialized = false;
+let hvacServiceLookupCache = null;
+let hvacSemanticNavigationLookupCache = null;
+
+const EMPTY_HVAC_ITEMS = Object.freeze([]);
 
 export function initializeHVACControls() {
+  if (hvacControlsInitialized) return;
+  hvacControlsInitialized = true;
   configureHVACPanelNavigation();
   window.addEventListener("idfAnalyzer:documentChanged", resetHVACNavigationState);
   elements.hvacViewportActions?.addEventListener("click", (event) => {
@@ -312,6 +319,9 @@ function handleHVACNavigationAction(action) {
 }
 
 function resetHVACNavigationState() {
+  hvacServiceLookupCache = null;
+  hvacSemanticNavigationLookupCache = null;
+  hvacComponentBaseCountCache = { serviceModel: null, counts: new Map() };
   state.activeHVACLoopId = "";
   state.activeHVACView = "services";
   state.activeHVACNodeName = "";
@@ -522,16 +532,16 @@ async function restoreHVACNavigationContext(snapshot = {}, context) {
 
 function preferredHVACSemanticOccurrence(selection, context) {
   const navigation = context.navigation;
-  const requested = (navigation.occurrences || []).find((occurrence) => occurrence.occurrenceId === selection?.occurrenceId);
+  const lookup = semanticHVACNavigationLookup(navigation);
+  const requested = lookup.occurrenceByID.get(selection?.occurrenceId);
   if (requested && (!selection.entityId || requested.entityId === selection.entityId)) {
     return requested.occurrenceId;
   }
   const target = hvacViewTargetForSelection(selection, navigation);
   const targetID = String(target?.targetId || selection?.originTargetId || "");
   const entityID = String(selection?.entityId || "");
-  const occurrenceByID = new Map((navigation.occurrences || []).map((occurrence) => [occurrence.occurrenceId, occurrence]));
   const occurrences = (navigation.byViewTarget?.[`hvac|${targetID}`] || [])
-    .map((occurrenceID) => occurrenceByID.get(occurrenceID))
+    .map((occurrenceID) => lookup.occurrenceByID.get(occurrenceID))
     .filter((occurrence) => occurrence && (!entityID || occurrence.entityId === entityID));
   if (!occurrences.length) {
     return context.genericPreferredSemanticOccurrence(selection);
@@ -563,8 +573,9 @@ function hvacViewTargetForSelection(selection = {}, navigation = semanticHVACNav
     return normalizeHVACViewTarget(selection.viewTarget);
   }
   const requestedTargetID = String(selection.originTargetId || "");
-  const occurrence = (navigation.occurrences || []).find((candidate) => candidate.occurrenceId === selection.occurrenceId);
-  const entity = (navigation.entities || []).find((candidate) => candidate.id === selection.entityId);
+  const lookup = semanticHVACNavigationLookup(navigation);
+  const occurrence = lookup.occurrenceByID.get(selection.occurrenceId);
+  const entity = lookup.entityByID.get(selection.entityId);
   const targets = [...(occurrence?.viewTargets || []), ...(entity?.viewTargets || [])]
     .filter((target) => String(target?.view || "").toLowerCase() === "hvac" && target?.targetId);
   if (requestedTargetID) {
@@ -600,7 +611,7 @@ function hvacNavigationTargetForSemanticSelection(target, selection = {}) {
     return { kind: "", id: "", view: state.activeHVACView || "services", graphKey: "", context: emptyHVACContext() };
   }
   if (targetKind === "service-path" || targetKind === "hvac-path") {
-    const path = servicePathsForHVAC().find((item) => item.id === targetID);
+    const path = servicePathByID(targetID);
     if (!path) {
       return null;
     }
@@ -659,7 +670,7 @@ function hvacNavigationTargetForSemanticComponent(targetID, selection) {
     (!loopOccurrence && state.activeHVACView === "services")
   ));
   if (useServicePath) {
-    const path = servicePathsForHVAC().find((item) => item.id === pathID);
+    const path = servicePathByID(pathID);
     const spec = servicePathNodeSpecs(path || {}).find((item) => navigationComponentEntityID(item.ref || {}) === targetID);
     return {
       kind: "component",
@@ -682,7 +693,7 @@ function hvacNavigationTargetForSemanticComponent(targetID, selection) {
 }
 
 function hvacNavigationTargetForSemanticCoupling(targetID, selection) {
-  const coupling = (hvacServiceModel().couplings || []).find((item) => navigationCouplingEntityID(item.id) === targetID);
+  const coupling = hvacServiceLookup().couplingByEntityID.get(targetID);
   if (!coupling) {
     return null;
   }
@@ -712,11 +723,12 @@ function compatibleHVACPathID(selection, targetID) {
     candidateIDs.add(pathIDFromNavigationEntityID(indexed.id));
   }
   const navigation = semanticHVACNavigationIndex();
+  const navigationLookup = semanticHVACNavigationLookup(navigation);
   const occurrence = semanticHVACOccurrenceForSelection(selection);
-  const entity = (navigation.entities || []).find((candidate) => candidate.id === selection?.entityId);
+  const entity = navigationLookup.entityByID.get(selection?.entityId);
   const relatedIDs = [...(selection?.relatedEntityIds || []), ...(occurrence?.relatedEntityIds || []), ...(entity?.relatedEntityIds || [])];
   for (const relatedID of relatedIDs) {
-    const related = (navigation.entities || []).find((candidate) => candidate.id === relatedID);
+    const related = navigationLookup.entityByID.get(relatedID);
     for (const viewTarget of related?.viewTargets || []) {
       if (viewTarget.view === "hvac" && ["service-path", "hvac-path"].includes(viewTarget.targetKind)) {
         candidateIDs.add(viewTarget.targetId);
@@ -753,7 +765,8 @@ function compatibleHVACLoopForComponent(targetID, semanticPath = "") {
 }
 
 function semanticHVACOccurrenceForSelection(selection = {}) {
-  return (semanticHVACNavigationIndex().occurrences || []).find((occurrence) => occurrence.occurrenceId === selection.occurrenceId) || null;
+  const navigation = semanticHVACNavigationIndex();
+  return semanticHVACNavigationLookup(navigation).occurrenceByID.get(selection.occurrenceId) || null;
 }
 
 function focusHVACNavigationElement(element, options = {}) {
@@ -905,7 +918,8 @@ function hvacTargetForGraphKey(key = "") {
     }
   }
   if (key.startsWith("service-link:") || key.startsWith("support-link:")) {
-    const path = servicePathsForHVAC().find((item) => servicePathLinkKeys(item, new Map((hvacServiceModel().couplings || []).map((coupling) => [coupling.id, coupling]))).has(key));
+    const lookup = hvacServiceLookup();
+    const path = lookup.paths.find((item) => servicePathLinkKeys(item, lookup.couplingByID).has(key));
     if (path) {
       return { kind: "service_path", id: navigationPathEntityID(path.id), context: { pathId: path.id }, graphKey: key, view: "services" };
     }
@@ -946,7 +960,7 @@ function hvacTargetForServiceNodeGraphKey(key = "") {
 }
 
 function findHVACNavigationEntity(id) {
-  return (hvacNavigationIndex().entities || []).find((entity) => entity.id === id) || null;
+  return hvacServiceLookup().navigationEntityByID.get(id) || null;
 }
 
 function hvacNavigationIndex(hvac = state.report?.hvac) {
@@ -955,6 +969,30 @@ function hvacNavigationIndex(hvac = state.report?.hvac) {
 
 function semanticHVACNavigationIndex() {
   return state.semanticProjection?.navigation || {};
+}
+
+function semanticHVACNavigationLookup(navigation = semanticHVACNavigationIndex()) {
+  const occurrences = navigation.occurrences || EMPTY_HVAC_ITEMS;
+  const entities = navigation.entities || EMPTY_HVAC_ITEMS;
+  if (
+    hvacSemanticNavigationLookupCache?.navigation === navigation &&
+    hvacSemanticNavigationLookupCache.occurrences === occurrences &&
+    hvacSemanticNavigationLookupCache.entities === entities &&
+    hvacSemanticNavigationLookupCache.occurrenceCount === occurrences.length &&
+    hvacSemanticNavigationLookupCache.entityCount === entities.length
+  ) {
+    return hvacSemanticNavigationLookupCache;
+  }
+  hvacSemanticNavigationLookupCache = {
+    navigation,
+    occurrences,
+    entities,
+    occurrenceCount: occurrences.length,
+    entityCount: entities.length,
+    occurrenceByID: indexHVACItems(occurrences, (occurrence) => occurrence.occurrenceId),
+    entityByID: indexHVACItems(entities, (entity) => entity.id),
+  };
+  return hvacSemanticNavigationLookupCache;
 }
 
 function hvacSemanticAttributes(targetID, options = {}) {
@@ -985,18 +1023,17 @@ function hvacSemanticRecordForTarget(targetID, options = {}) {
     return null;
   }
   const navigation = semanticHVACNavigationIndex();
-  const occurrenceByID = new Map((navigation.occurrences || []).map((occurrence) => [occurrence.occurrenceId, occurrence]));
-  const entityByID = new Map((navigation.entities || []).map((entity) => [entity.id, entity]));
+  const lookup = semanticHVACNavigationLookup(navigation);
   const expectedEntityKinds = new Set((options.entityKinds || []).filter(Boolean));
   const expectedContextKinds = new Set((options.contextKinds || []).filter(Boolean));
   const candidates = (navigation.byViewTarget?.[`hvac|${target}`] || [])
-    .map((occurrenceID) => occurrenceByID.get(occurrenceID))
+    .map((occurrenceID) => lookup.occurrenceByID.get(occurrenceID))
     .filter((occurrence) => occurrence && (occurrence.viewTargets || []).some((viewTarget) => (
       String(viewTarget.view || "").toLowerCase() === "hvac" &&
       viewTarget.targetId === target &&
       (!options.targetKind || viewTarget.targetKind === options.targetKind)
     )))
-    .map((occurrence, order) => ({ occurrence, entity: entityByID.get(occurrence.entityId), order }))
+    .map((occurrence, order) => ({ occurrence, entity: lookup.entityByID.get(occurrence.entityId), order }))
     .filter((item) => item.entity && (!expectedEntityKinds.size || expectedEntityKinds.has(item.entity.kind)));
   if (!candidates.length) {
     return null;
@@ -2463,24 +2500,82 @@ function hvacServiceModel(hvac = state.report?.hvac) {
   return hvac?.serviceModel || { zoneServices: [], systems: [], couplings: [], networks: [] };
 }
 
+function hvacServiceLookup(hvac = state.report?.hvac) {
+  const serviceModel = hvacServiceModel(hvac);
+  const zoneServices = serviceModel.zoneServices || EMPTY_HVAC_ITEMS;
+  const couplings = serviceModel.couplings || EMPTY_HVAC_ITEMS;
+  const components = serviceModel.components || EMPTY_HVAC_ITEMS;
+  const navigationEntities = serviceModel.navigation?.entities || EMPTY_HVAC_ITEMS;
+  const pathCollections = zoneServices.map((summary) => summary.paths || EMPTY_HVAC_ITEMS);
+  if (
+    hvacServiceLookupCache?.serviceModel === serviceModel &&
+    hvacServiceLookupCache.zoneServices === zoneServices &&
+    hvacServiceLookupCache.couplings === couplings &&
+    hvacServiceLookupCache.components === components &&
+    hvacServiceLookupCache.navigationEntities === navigationEntities &&
+    hvacServiceLookupCache.zoneServiceCount === zoneServices.length &&
+    hvacServiceLookupCache.couplingCount === couplings.length &&
+    hvacServiceLookupCache.componentCount === components.length &&
+    hvacServiceLookupCache.navigationEntityCount === navigationEntities.length &&
+    pathCollections.length === hvacServiceLookupCache.pathCollections.length &&
+    pathCollections.every((paths, index) => paths === hvacServiceLookupCache.pathCollections[index] && paths.length === hvacServiceLookupCache.pathCounts[index])
+  ) {
+    return hvacServiceLookupCache;
+  }
+  const paths = pathCollections.flatMap((items) => items);
+  hvacServiceLookupCache = {
+    serviceModel,
+    zoneServices,
+    couplings,
+    components,
+    navigationEntities,
+    zoneServiceCount: zoneServices.length,
+    couplingCount: couplings.length,
+    componentCount: components.length,
+    navigationEntityCount: navigationEntities.length,
+    pathCollections,
+    pathCounts: pathCollections.map((items) => items.length),
+    paths,
+    pathByID: indexHVACItems(paths, (path) => path.id),
+    couplingByID: indexHVACItems(couplings, (coupling) => coupling.id),
+    couplingByEntityID: indexHVACItems(couplings, (coupling) => navigationCouplingEntityID(coupling.id)),
+    navigationEntityByID: indexHVACItems(navigationEntities, (entity) => entity.id),
+    componentByEntityID: null,
+  };
+  return hvacServiceLookupCache;
+}
+
+function indexHVACItems(values, keyForValue) {
+  const index = new Map();
+  for (const value of values) {
+    const key = keyForValue(value);
+    if (key !== undefined && key !== null && key !== "" && !index.has(key)) index.set(key, value);
+  }
+  return index;
+}
+
 function servicePathsForHVAC(hvac = state.report?.hvac) {
-  return (hvacServiceModel(hvac).zoneServices || []).flatMap((summary) => summary.paths || []);
+  return hvacServiceLookup(hvac).paths;
+}
+
+function servicePathByID(id, hvac = state.report?.hvac) {
+  return hvacServiceLookup(hvac).pathByID.get(id) || null;
 }
 
 function selectedHVACPath(hvac = state.report?.hvac) {
-  const paths = servicePathsForHVAC(hvac);
+  const lookup = hvacServiceLookup(hvac);
   const pathId = state.activeHVACContext?.pathId || (state.activeHVACEntity?.kind === "service_path" ? pathIDFromNavigationEntityID(state.activeHVACEntity.id) : "");
   if (pathId) {
-    return paths.find((path) => path.id === pathId) || null;
+    return lookup.pathByID.get(pathId) || null;
   }
   if (state.activeHVACGraphKey?.startsWith("service-path:")) {
     const graphPathID = state.activeHVACGraphKey.slice("service-path:".length);
-    return paths.find((path) => path.id === graphPathID) || null;
+    return lookup.pathByID.get(graphPathID) || null;
   }
   const entity = state.activeHVACEntity || {};
   const indexed = entity.id ? findHVACNavigationEntity(entity.id) : null;
   const relatedPathID = (indexed?.relatedPathIds || [])[0];
-  return relatedPathID ? paths.find((path) => path.id === relatedPathID) || null : null;
+  return relatedPathID ? lookup.pathByID.get(relatedPathID) || null : null;
 }
 
 function pathsForActiveHVACEntity(hvac = state.report?.hvac) {
@@ -3183,6 +3278,7 @@ function serviceGraphColumnForRole(role = "") {
 function layoutServiceGraphNodes(nodes = [], links = []) {
   const top = 116;
   const rowGap = 118;
+  const neighborsByNode = indexServiceGraphNeighbors(links);
   let maxRow = 0;
   for (const column of serviceGraphColumns) {
     const columnNodes = serviceGraphColumnNodes(nodes, column);
@@ -3194,7 +3290,7 @@ function layoutServiceGraphNodes(nodes = [], links = []) {
     });
   }
   for (const column of serviceGraphColumns.slice(1)) {
-    maxRow = Math.max(maxRow, alignServiceGraphColumnRows(nodes, links, column, top, rowGap));
+    maxRow = Math.max(maxRow, alignServiceGraphColumnRows(nodes, neighborsByNode, column, top, rowGap));
   }
   return Math.max(300, top + maxRow * rowGap + 108);
 }
@@ -3207,14 +3303,14 @@ function compareServiceGraphNodes(left, right) {
   return String(left.sortKey || left.label || "").localeCompare(String(right.sortKey || right.label || ""), undefined, { numeric: true });
 }
 
-function alignServiceGraphColumnRows(nodes = [], links = [], column = {}, top = 0, rowGap = 96) {
+function alignServiceGraphColumnRows(nodes = [], neighborsByNode = new Map(), column = {}, top = 0, rowGap = 96) {
   const columnNodes = serviceGraphColumnNodes(nodes, column);
   const usedRows = new Set();
   columnNodes
     .map((node, index) => ({
       node,
       naturalRow: index,
-      desiredRow: serviceGraphDesiredRow(node, links, top, rowGap, index),
+      desiredRow: serviceGraphDesiredRow(node, neighborsByNode, top, rowGap, index),
     }))
     .sort((left, right) => left.desiredRow - right.desiredRow || compareServiceGraphNodes(left.node, right.node))
     .forEach(({ node, desiredRow, naturalRow }) => {
@@ -3225,21 +3321,29 @@ function alignServiceGraphColumnRows(nodes = [], links = [], column = {}, top = 
   return usedRows.size ? Math.max(...usedRows) : 0;
 }
 
-function serviceGraphDesiredRow(node, links = [], top = 0, rowGap = 96, fallbackRow = 0) {
-  const relatedY = links.flatMap((link) => {
-    if (link.from === node && link.to) {
-      return [link.to.y];
-    }
-    if (link.to === node && link.from) {
-      return [link.from.y];
-    }
-    return [];
-  });
+function serviceGraphDesiredRow(node, neighborsByNode = new Map(), top = 0, rowGap = 96, fallbackRow = 0) {
+  const relatedY = (neighborsByNode.get(node) || []).map((neighbor) => neighbor.y);
   if (!relatedY.length) {
     return fallbackRow;
   }
   const averageY = relatedY.reduce((sum, value) => sum + value, 0) / relatedY.length;
   return Math.max(0, Math.round((averageY - top) / rowGap));
+}
+
+function indexServiceGraphNeighbors(links) {
+  const neighborsByNode = new Map();
+  for (const link of links) {
+    if (!link.from || !link.to) continue;
+    appendServiceGraphNeighbor(neighborsByNode, link.from, link.to);
+    if (link.to !== link.from) appendServiceGraphNeighbor(neighborsByNode, link.to, link.from);
+  }
+  return neighborsByNode;
+}
+
+function appendServiceGraphNeighbor(index, node, neighbor) {
+  const neighbors = index.get(node) || [];
+  neighbors.push(neighbor);
+  index.set(node, neighbors);
 }
 
 function nearestFreeServiceGraphRow(preferredRow, usedRows = new Set()) {
@@ -3820,8 +3924,9 @@ function servicePathLinkKeys(path = {}, couplingById = new Map()) {
 }
 
 function renderSelectedServicePathDetail(path, couplings) {
+  const couplingByID = indexHVACItems(couplings || [], (coupling) => coupling.id);
   const pathCouplings = (path.supportingCouplingIds || [])
-    .map((id) => (couplings || []).find((coupling) => coupling.id === id))
+    .map((id) => couplingByID.get(id))
     .filter((coupling) => isPhysicalServiceCoupling(coupling));
   return `
     <section class="hvac-graph-detail">
@@ -4110,6 +4215,7 @@ function renderHVACInspectorServiceSelection(selected, couplings) {
   if (!path) {
     return;
   }
+  const couplingByID = indexHVACItems(couplings || [], (coupling) => coupling.id);
   const nodeRef = selected.node?.ref || path.delivery || {};
   const title = selected.node?.label || nodeRef.displayName || nodeRef.objectName || servedSubjectLabel(path.servedSubject || path);
   elements.hvacInspectorStats.textContent = selected.kind === "node" ? selected.node?.kind || "node" : path.serviceKind || "service";
@@ -4132,7 +4238,7 @@ function renderHVACInspectorServiceSelection(selected, couplings) {
     <div class="hvac-inspector-kv"><span>${escapeHTML(t("common.outlet"))}</span><strong>${escapeHTML(nodeRef.outletNode || "N/A")}</strong></div>
     <div class="hvac-inspector-kv"><span>${escapeHTML(t("common.water"))}</span><strong>${escapeHTML([nodeRef.waterInletNode, nodeRef.waterOutletNode].filter(Boolean).join(" -> ") || "N/A")}</strong></div>
     ${renderHVACTraceDrawer(path.traceIds || [])}
-    ${(path.supportingCouplingIds || []).length ? `<div class="hvac-detail-list">${(path.supportingCouplingIds || []).map((id) => (couplings || []).find((coupling) => coupling.id === id)).filter(Boolean).map((coupling) => `<div><strong>${escapeHTML(coupling.object?.displayName || coupling.role || "")}</strong><span>${escapeHTML(couplingRoleLabel(coupling))}</span></div>`).join("")}</div>` : ""}
+    ${(path.supportingCouplingIds || []).length ? `<div class="hvac-detail-list">${(path.supportingCouplingIds || []).map((id) => couplingByID.get(id)).filter(Boolean).map((coupling) => `<div><strong>${escapeHTML(coupling.object?.displayName || coupling.role || "")}</strong><span>${escapeHTML(couplingRoleLabel(coupling))}</span></div>`).join("")}</div>` : ""}
   `;
 }
 
@@ -4150,7 +4256,7 @@ function selectedHVACNavigationEntity(hvac) {
     return { kind: "zone", entity: indexed, paths };
   }
   if (entity.kind === "coupling") {
-    const coupling = (hvacServiceModel(hvac).couplings || []).find((item) => navigationCouplingEntityID(item.id) === entity.id);
+    const coupling = hvacServiceLookup(hvac).couplingByEntityID.get(entity.id);
     return { kind: "coupling", entity: indexed, coupling, paths };
   }
   if (entity.kind === "service_path") {
@@ -4305,7 +4411,11 @@ function servicePathSummaryText(path = {}) {
 }
 
 function findServiceModelComponentByEntityID(entityID = "") {
-  return (hvacServiceModel().components || []).find((item) => navigationComponentEntityID(item.component || {}) === entityID) || null;
+  const lookup = hvacServiceLookup();
+  if (!lookup.componentByEntityID) {
+    lookup.componentByEntityID = indexHVACItems(lookup.components, (item) => navigationComponentEntityID(item.component || {}));
+  }
+  return lookup.componentByEntityID.get(entityID) || null;
 }
 
 function groupBy(values = [], keyFn) {

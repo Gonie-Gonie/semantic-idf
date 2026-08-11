@@ -9,6 +9,8 @@ export const THERMAL_TOPOLOGY_TARGET_KINDS = Object.freeze([
 ]);
 
 const thermalTopologyTargetKindSet = new Set(THERMAL_TOPOLOGY_TARGET_KINDS);
+const thermalTopologyLookupCache = new WeakMap();
+const EMPTY_TOPOLOGY_ITEMS = Object.freeze([]);
 
 export function normalizeThermalTopologyTargetKind(kind) {
   return String(kind || "").trim().toLowerCase().replaceAll("-", "_");
@@ -35,11 +37,7 @@ export function resolveThermalTopologyTarget(target, geometry) {
     return null;
   }
 
-  const boundaries = topology.boundaries || [];
-  const openings = topology.openings || [];
-  const airCouplings = topology.airCouplings || [];
-  const nodes = topology.nodes || [];
-  const issueLinks = topology.issueLinks || [];
+  const lookup = createThermalTopologyLookup(topology);
   const result = {
     kind,
     id,
@@ -53,40 +51,40 @@ export function resolveThermalTopologyTarget(target, geometry) {
   };
 
   if (kind === "thermal_boundary") {
-    result.item = boundaries.find((boundary) => boundary.id === id) || null;
-    addBoundary(result, result.item, openings);
+    result.item = lookup.boundaryByID.get(id) || null;
+    addBoundary(result, result.item, lookup);
   } else if (kind === "thermal_interface") {
-    const pairedBoundaries = boundaries.filter((boundary) => boundary.pairId === id);
+    const pairedBoundaries = [...(lookup.boundariesByPairID.get(id) || [])];
     result.item = pairedBoundaries.length ? { id, boundaries: pairedBoundaries } : null;
-    pairedBoundaries.forEach((boundary) => addBoundary(result, boundary, openings));
+    pairedBoundaries.forEach((boundary) => addBoundary(result, boundary, lookup));
   } else if (kind === "thermal_connection") {
-    result.item = (topology.connections || []).find((connection) => connection.id === id) || null;
+    result.item = lookup.connectionByID.get(id) || null;
     if (result.item) {
       result.nodeIds.push(result.item.fromNodeId, result.item.toNodeId);
       for (const boundaryId of result.item.boundaryIds || []) {
-        addBoundary(result, boundaries.find((boundary) => boundary.id === boundaryId), openings);
+        addBoundary(result, lookup.boundaryByID.get(boundaryId), lookup);
       }
       for (const openingId of result.item.openingIds || []) {
-        addOpening(result, openings.find((opening) => opening.id === openingId));
+        addOpening(result, lookup.openingByID.get(openingId));
       }
       for (const couplingId of result.item.airCouplingIds || []) {
-        addAirCoupling(result, airCouplings.find((coupling) => coupling.id === couplingId));
+        addAirCoupling(result, lookup.airCouplingByID.get(couplingId));
       }
     }
   } else if (kind === "thermal_environment") {
-    result.item = nodes.find((node) => node.id === id) || null;
+    result.item = lookup.nodeByID.get(id) || null;
     if (result.item) result.nodeIds.push(result.item.id);
   } else if (kind === "thermal_air_coupling") {
-    result.item = airCouplings.find((coupling) => coupling.id === id) || null;
+    result.item = lookup.airCouplingByID.get(id) || null;
     addAirCoupling(result, result.item);
   } else if (kind === "thermal_issue") {
-    result.item = issueLinks.find((issue) => issue.id === id) || null;
-    addIssueRelations(result, result.item, { boundaries, openings, airCouplings, nodes });
+    result.item = lookup.issueByID.get(id) || null;
+    addIssueRelations(result, result.item, lookup);
   } else if (kind === "thermal_observation") {
-    const observation = (topology.adjacencyObservations || []).find((candidate) => thermalTopologyObservationID(candidate) === id) || null;
+    const observation = lookup.observationByID.get(id) || null;
     if (observation) {
       const relatedBoundaries = [observation.surfaceAId, observation.surfaceBId]
-        .map((surfaceID) => boundaries.find((boundary) => boundary.surfaceId === surfaceID))
+        .map((surfaceID) => lookup.boundaryBySurfaceID.get(surfaceID))
         .filter(Boolean);
       result.item = {
         ...observation,
@@ -94,7 +92,7 @@ export function resolveThermalTopologyTarget(target, geometry) {
         boundaryIds: relatedBoundaries.map((boundary) => boundary.id),
         sourceAnchors: relatedBoundaries.flatMap((boundary) => boundary.sourceAnchors || []),
       };
-      relatedBoundaries.forEach((boundary) => addBoundary(result, boundary, openings));
+      relatedBoundaries.forEach((boundary) => addBoundary(result, boundary, lookup));
     }
   }
 
@@ -107,13 +105,67 @@ export function resolveThermalTopologyTarget(target, geometry) {
   return result;
 }
 
-function addBoundary(result, boundary, openings) {
+function createThermalTopologyLookup(topology) {
+  const collections = {
+    boundaries: topology.boundaries || EMPTY_TOPOLOGY_ITEMS,
+    openings: topology.openings || EMPTY_TOPOLOGY_ITEMS,
+    airCouplings: topology.airCouplings || EMPTY_TOPOLOGY_ITEMS,
+    connections: topology.connections || EMPTY_TOPOLOGY_ITEMS,
+    nodes: topology.nodes || EMPTY_TOPOLOGY_ITEMS,
+    issueLinks: topology.issueLinks || EMPTY_TOPOLOGY_ITEMS,
+    adjacencyObservations: topology.adjacencyObservations || EMPTY_TOPOLOGY_ITEMS,
+  };
+  const cached = thermalTopologyLookupCache.get(topology);
+  if (
+    cached &&
+    cached.sourceModelHash === topology.sourceModelHash &&
+    Object.entries(collections).every(([key, values]) => cached.collections[key] === values && cached.lengths[key] === values.length)
+  ) {
+    return cached.lookup;
+  }
+  const boundariesByPairID = new Map();
+  for (const boundary of collections.boundaries) {
+    if (!boundary.pairId) continue;
+    const paired = boundariesByPairID.get(boundary.pairId) || [];
+    paired.push(boundary);
+    boundariesByPairID.set(boundary.pairId, paired);
+  }
+  const lookup = {
+    boundaryByID: indexFirst(collections.boundaries, (boundary) => boundary.id),
+    boundaryBySurfaceID: indexFirst(collections.boundaries, (boundary) => boundary.surfaceId),
+    boundariesByPairID,
+    openingByID: indexFirst(collections.openings, (opening) => opening.id),
+    airCouplingByID: indexFirst(collections.airCouplings, (coupling) => coupling.id),
+    connectionByID: indexFirst(collections.connections, (connection) => connection.id),
+    nodeByID: indexFirst(collections.nodes, (node) => node.id),
+    issueByID: indexFirst(collections.issueLinks, (issue) => issue.id),
+    observationByID: indexFirst(collections.adjacencyObservations, thermalTopologyObservationID),
+  };
+  thermalTopologyLookupCache.set(topology, {
+    sourceModelHash: topology.sourceModelHash,
+    collections,
+    lengths: Object.fromEntries(Object.entries(collections).map(([key, values]) => [key, values.length])),
+    lookup,
+  });
+  return lookup;
+}
+
+function indexFirst(values, keyForValue) {
+  const index = new Map();
+  for (const value of values) {
+    const key = keyForValue(value);
+    if (key && !index.has(key)) index.set(key, value);
+  }
+  return index;
+}
+
+function addBoundary(result, boundary, lookup) {
   if (!boundary) return;
   result.boundaryIds.push(boundary.id);
   result.surfaceIds.push(boundary.surfaceId);
   result.nodeIds.push(boundary.ownerSpaceId, boundary.ownerZoneId, boundary.targetId);
   for (const openingId of boundary.openingIds || []) {
-    addOpening(result, openings.find((opening) => opening.id === openingId));
+    addOpening(result, lookup.openingByID.get(openingId));
   }
 }
 
@@ -135,16 +187,16 @@ function addAirCoupling(result, coupling) {
   }
 }
 
-function addIssueRelations(result, issue, topology) {
+function addIssueRelations(result, issue, lookup) {
   if (!issue) return;
-  addBoundary(result, topology.boundaries.find((boundary) => boundary.id === issue.boundaryId), topology.openings);
-  addOpening(result, topology.openings.find((opening) => opening.id === issue.openingId));
-  addAirCoupling(result, topology.airCouplings.find((coupling) => coupling.id === issue.airCouplingId));
+  addBoundary(result, lookup.boundaryByID.get(issue.boundaryId), lookup);
+  addOpening(result, lookup.openingByID.get(issue.openingId));
+  addAirCoupling(result, lookup.airCouplingByID.get(issue.airCouplingId));
   for (const relatedId of issue.relatedEntityIds || []) {
-    addBoundary(result, topology.boundaries.find((boundary) => boundary.id === relatedId), topology.openings);
-    addOpening(result, topology.openings.find((opening) => opening.id === relatedId));
-    addAirCoupling(result, topology.airCouplings.find((coupling) => coupling.id === relatedId));
-    if (topology.nodes.some((node) => node.id === relatedId)) {
+    addBoundary(result, lookup.boundaryByID.get(relatedId), lookup);
+    addOpening(result, lookup.openingByID.get(relatedId));
+    addAirCoupling(result, lookup.airCouplingByID.get(relatedId));
+    if (lookup.nodeByID.has(relatedId)) {
       result.nodeIds.push(relatedId);
     }
   }

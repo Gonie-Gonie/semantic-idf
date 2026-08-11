@@ -114,6 +114,88 @@ func TestFrontendThermalTopologyPerformanceContracts(t *testing.T) {
 	}
 }
 
+func TestFrontendTopologyLookupAndDelegationPerformanceContracts(t *testing.T) {
+	targets := readTestFile(t, "frontend/src/js/thermal-topology-targets.js")
+	for _, term := range []string{
+		"thermalTopologyLookupCache = new WeakMap()",
+		"function createThermalTopologyLookup",
+		"boundaryByID: indexFirst",
+		"observationByID: indexFirst",
+	} {
+		if !strings.Contains(targets, term) {
+			t.Fatalf("thermal target lookup cache contract missing %q", term)
+		}
+	}
+	resolveBody := sliceBetween(targets, "export function resolveThermalTopologyTarget", "function createThermalTopologyLookup")
+	for _, repeatedScan := range []string{"boundaries.find(", "openings.find(", "airCouplings.find(", "nodes.some("} {
+		if strings.Contains(resolveBody, repeatedScan) {
+			t.Fatalf("thermal target resolution retains repeated collection scan %q", repeatedScan)
+		}
+	}
+
+	layout := readTestFile(t, "frontend/src/js/views/thermal-topology-layout.js")
+	for _, term := range []string{
+		"const nodeByID = new Map(model.nodes.map",
+		"function routeThermalEdgeWithNodeIndex",
+		"function connectionNeighbors",
+		"function indexConnectionsByNode",
+	} {
+		if !strings.Contains(layout, term) {
+			t.Fatalf("thermal layout indexing contract missing %q", term)
+		}
+	}
+
+	view := readTestFile(t, "frontend/src/js/views/thermal-topology-view.js")
+	for _, term := range []string{
+		"graphTargetInteractionsBound",
+		`graph.addEventListener("pointerover"`,
+		"function indexAirCouplingsByConnection",
+		"airCouplingsByConnection.get(connection.id)",
+		"airCouplingsByConnection?.has(connectionID)",
+		"function createThermalSelectionContext",
+	} {
+		if !strings.Contains(view, term) {
+			t.Fatalf("thermal renderer delegation/index contract missing %q", term)
+		}
+	}
+	metricIndex := sliceBetween(view, "function createMetricContext", "function edgeMetricPresentation")
+	lookup := sliceBetween(view, "function airCouplingsForConnection", "function connectionTooltip")
+	for _, body := range []string{metricIndex, lookup} {
+		if strings.Contains(body, "airCouplingsByConnection.get(connection)") {
+			t.Fatal("air-coupling indexes must use the stable connection ID because layout edges are cloned")
+		}
+	}
+	inspector := readTestFile(t, "frontend/src/js/views/thermal-topology-inspector.js")
+	if !strings.Contains(inspector, "inspectorInteractionsBound") || !strings.Contains(inspector, `inspector.addEventListener("click"`) {
+		t.Fatal("thermal inspector should use one delegated interaction listener")
+	}
+
+	geometry := readTestFile(t, "frontend/src/js/views/geometry-view.js")
+	for _, term := range []string{
+		"function geometryLookupIndex",
+		"function geometrySemanticNavigationLookup",
+		"geometryPlanInteractionsBound",
+		`plan.addEventListener("pointerover"`,
+		"geometryDetailInteractionsBound",
+	} {
+		if !strings.Contains(geometry, term) {
+			t.Fatalf("geometry lookup/delegation contract missing %q", term)
+		}
+	}
+
+	hvac := readTestFile(t, "frontend/src/js/views/hvac-views.js")
+	for _, term := range []string{
+		"hvacControlsInitialized",
+		"function hvacServiceLookup",
+		"function semanticHVACNavigationLookup",
+		"function indexServiceGraphNeighbors",
+	} {
+		if !strings.Contains(hvac, term) {
+			t.Fatalf("HVAC lookup/listener contract missing %q", term)
+		}
+	}
+}
+
 func TestFrontendNavigationCacheRestoreContract(t *testing.T) {
 	actions := readTestFile(t, "frontend/src/js/actions.js")
 	for _, term := range []string{

@@ -517,7 +517,8 @@ func TestFrontendSimulationAutomaticEnergyPlusVersionEdges(t *testing.T) {
 
 	versionReader := sliceBetween(simulation, "function currentInputEnergyPlusVersion", "function normalizedVersionKey")
 	for _, required := range []string{
-		`extractInputEnergyPlusVersion(elements.idfInput?.value || "")`,
+		`const metadata = simulationInputMetadata(text)`,
+		`metadata.version = extractInputEnergyPlusVersion(text)`,
 		`JSON.parse(trimmed)`,
 		`key.toLowerCase() === "version"`,
 		`key.toLowerCase() === "version_identifier"`,
@@ -562,6 +563,48 @@ func TestFrontendSimulationAutomaticEnergyPlusVersionEdges(t *testing.T) {
 	}
 	if strings.Count(versionIssue, "return null;") != 2 {
 		t.Fatal("simulationVersionIssue may return no blocker only for an unversioned input or an exact version match")
+	}
+}
+
+func TestFrontendSimulationRenderReusesIndexesAndDelegatesDynamicInteractions(t *testing.T) {
+	simulation := readTestFile(t, "frontend/src/js/views/simulation-views.js")
+	chartRender := sliceBetween(simulation, "function renderSimulationChart", "function currentSimulationSeries")
+	heatFlowRender := sliceBetween(simulation, "function renderSimulationHeatFlow", "function activeHeatFlowDataset")
+	if strings.Contains(chartRender, "bindSimulationChartInteractions") {
+		t.Fatal("Simulation chart render must not recreate chart listeners")
+	}
+	if strings.Contains(heatFlowRender, "bindHeatFlowInteractions") {
+		t.Fatal("Simulation heat-flow render must not recreate shape listeners")
+	}
+	if strings.Contains(simulation, `querySelectorAll("[data-heat-zone]")`) {
+		t.Fatal("Simulation heat-flow zones must use host event delegation")
+	}
+	if strings.Contains(simulation, "function simulationHVACServiceModel") {
+		t.Fatal("unused Simulation HVAC service-model wrapper must remain removed")
+	}
+	for _, required := range []string{
+		"simulationHVACServicePathCache = new WeakMap()",
+		"simulationSeriesLookupCache = new WeakMap()",
+		"simulationPurposeOutputLookupCache = new WeakMap()",
+		"simulationHeatFlowZoneMapCache = new WeakMap()",
+		"simulationHeatFlowFloorSurfacesCache = new WeakMap()",
+		"simulationEnergyPeriodIndexCache = new WeakMap()",
+		"simulationWeatherOptionsCache = new WeakMap()",
+		"simulationInputMetadataCache",
+		"simulationHVACServicePathIndex().byID",
+		"simulationSeriesLookup().byID",
+		"simulationPurposeOutputLookup().byIndex",
+		"bindSimulationChartInteractions();",
+		"bindHeatFlowInteractions();",
+		`host.addEventListener("pointermove"`,
+		`"wheel",`,
+		"const availability = simulationResultViewAvailability(result)",
+		"renderSimulationResultTabs(result, availability)",
+		"loadSimulationEnvironment({ render: false })",
+	} {
+		if !strings.Contains(simulation, required) {
+			t.Fatalf("Simulation render optimization contract is missing %q", required)
+		}
 	}
 }
 
