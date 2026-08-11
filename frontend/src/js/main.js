@@ -235,7 +235,6 @@ elements.syncRawTextToggle.addEventListener("change", () => {
   state.syncTextRawPosition = elements.syncRawTextToggle.checked;
 });
 elements.inputFilter.addEventListener("input", () => setInputFilter(elements.inputFilter.value));
-elements.diagnosticFilter.addEventListener("input", () => renderDiagnostics());
 elements.resultTabButtons.forEach((button) => {
   button.addEventListener("click", () => {
     state.resultTabManuallySelected = true;

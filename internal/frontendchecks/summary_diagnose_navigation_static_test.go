@@ -88,7 +88,7 @@ func TestSummaryMetricsUseSemanticGroupsAndSeparateContributingSources(t *testin
 
 func TestDiagnosticItemsCarryStableTargetExactSourceAndContextOccurrence(t *testing.T) {
 	content := readTestFile(t, "frontend/src/js/views/analysis-views.js")
-	renderer := sliceBetween(content, "function renderDiagnosticItem", "function diagnosticMatchesQuery")
+	renderer := sliceBetween(content, "function renderDiagnosticItem", "function bindDiagnosticControls")
 	for _, required := range []string{
 		"diagnosticStableID(item)",
 		"diagnosticSemanticNavigation(item, stableID)",
@@ -131,6 +131,99 @@ func TestDiagnosticItemsCarryStableTargetExactSourceAndContextOccurrence(t *test
 	}
 }
 
+func TestDiagnoseOmitsFilterSurfacesAndPreservesFixActions(t *testing.T) {
+	index := readTestFile(t, "frontend/src/index.html")
+	state := readTestFile(t, "frontend/src/js/state.js")
+	main := readTestFile(t, "frontend/src/js/main.js")
+	analysis := readTestFile(t, "frontend/src/js/views/analysis-views.js")
+	fixes := readTestFile(t, "frontend/src/js/views/diagnose-fixes.js")
+	styles := readTestFile(t, "frontend/src/styles/base.css")
+
+	diagnosePane := sliceBetween(index, `<div class="result-pane" id="diagnosePane">`, `<div class="result-pane" id="geometryPane">`)
+	for _, removed := range []string{
+		`class="summary-head"`,
+		`id="diagnosticCount"`,
+		`id="diagnosticFilter"`,
+	} {
+		if strings.Contains(diagnosePane, removed) {
+			t.Fatalf("Diagnose must not retain its top summary/filter row control %q", removed)
+		}
+	}
+
+	fixHead := sliceBetween(diagnosePane, `<div class="diagnose-fix-head">`, `<div class="cleanup-grid diagnose-fix-grid">`)
+	for _, required := range []string{
+		`id="diagnoseFixRefresh"`,
+		`id="diagnoseFixPreview"`,
+		`id="diagnoseFixApply"`,
+		`id="diagnoseFixSaveAs"`,
+		`id="diagnoseFixCandidateFilter"`,
+	} {
+		if !strings.Contains(fixHead, required) {
+			t.Fatalf("Diagnose Fixes header must retain %q", required)
+		}
+	}
+	if !strings.Contains(fixes, `elements.diagnoseFixCandidateFilter?.addEventListener("input"`) {
+		t.Fatal("the separate Diagnose Fixes candidate filter must remain functional")
+	}
+
+	for label, content := range map[string]string{
+		"index":    index,
+		"state":    state,
+		"main":     main,
+		"analysis": analysis,
+	} {
+		for _, removed := range []string{"diagnosticCount", "diagnosticFilter"} {
+			if strings.Contains(content, removed) {
+				t.Fatalf("%s must not retain removed Diagnose top-row control %q", label, removed)
+			}
+		}
+	}
+	for _, removed := range []string{
+		"diagnosticSeverityFilter",
+		"diagnosticSourceFilter",
+		"hiddenDiagnosticCodes",
+		"renderDiagnosticToolbar",
+		"renderDiagnosticFilterButton",
+		"diagnosticMatchesQuery",
+		"diagnosticMatchesControls",
+		"diagnosticSourceOptions",
+		"data-diagnostic-filter-kind",
+		"data-diagnostic-hide-code",
+		"data-diagnostic-clear-hidden",
+		"Hide code",
+		"Show hidden",
+	} {
+		if strings.Contains(state, removed) || strings.Contains(analysis, removed) {
+			t.Fatalf("Diagnose must not retain filter/hide implementation %q", removed)
+		}
+	}
+	for _, removed := range []string{
+		".diagnostic-toolbar",
+		".diagnostic-filter-row",
+		".diagnostic-filter-button",
+		".diagnostic-toolbar-status",
+		".diagnostic-clear-hidden",
+		".diagnostic-code-action",
+	} {
+		if strings.Contains(styles, removed) {
+			t.Fatalf("Diagnose must not retain filter/hide style %q", removed)
+		}
+	}
+
+	for _, required := range []string{
+		"const DIAGNOSTIC_RENDER_LIMIT = 500",
+		"items.slice(0, DIAGNOSTIC_RENDER_LIMIT)",
+		"diagnoseTemporaryRevealID",
+		"temporarilyMaterialized",
+		"data-diagnostic-clear-temporary",
+		"index >= DIAGNOSTIC_RENDER_LIMIT ? targetID : \"\"",
+	} {
+		if !strings.Contains(analysis, required) {
+			t.Fatalf("Diagnose must retain bounded rendering and semantic temporary reveal, missing %q", required)
+		}
+	}
+}
+
 func TestDiagnoseContextRestoresOnlySameIssueOrSameSource(t *testing.T) {
 	content := readTestFile(t, "frontend/src/js/views/analysis-views.js")
 	capture := sliceBetween(content, "export function captureDiagnoseNavigationContext", "export async function restoreDiagnoseNavigationContext")
@@ -140,14 +233,19 @@ func TestDiagnoseContextRestoresOnlySameIssueOrSameSource(t *testing.T) {
 		"selectedSemanticEntityID",
 		"selectedSemanticOccurrenceID",
 		"sourceAnchor",
-		"severityFilter",
-		"sourceFilter",
-		"hiddenDiagnosticCodes",
+		"temporaryRevealID",
 		"expandedGroupIDs",
+		"expandedDiagnosticIDs",
 		"scrollTop",
+		"scrollLeft",
 	} {
 		if !strings.Contains(capture, required) {
 			t.Fatalf("diagnose context snapshot is missing %q", required)
+		}
+	}
+	for _, removed := range []string{"filter:", "severityFilter", "sourceFilter", "hiddenDiagnosticCodes"} {
+		if strings.Contains(capture, removed) {
+			t.Fatalf("diagnose context snapshot must not retain removed filter field %q", removed)
 		}
 	}
 	restore := sliceBetween(content, "export async function restoreDiagnoseNavigationContext", "function sourceAnchorFromPanelElement")
@@ -156,12 +254,19 @@ func TestDiagnoseContextRestoresOnlySameIssueOrSameSource(t *testing.T) {
 		"snapshot.selectedDiagnosticCode",
 		"sourceAnchorsMatch",
 		"const resolved = Boolean(requestedID && !matched)",
-		"preservingDiagnoseContext = true",
+		`diagnoseTemporaryRevealID = snapshot.temporaryRevealID || ""`,
+		"renderDiagnostics()",
+		"await nextNavigationFrame()",
 		"diagnostic-resolved-status",
-		"Resolved ·",
+		"status.textContent = `Resolved",
 	} {
 		if !strings.Contains(restore, required) {
 			t.Fatalf("diagnose post-apply restore is missing %q", required)
+		}
+	}
+	for _, removed := range []string{"snapshot.filter", "snapshot.severityFilter", "snapshot.sourceFilter", "snapshot.hiddenDiagnosticCodes"} {
+		if strings.Contains(restore, removed) {
+			t.Fatalf("diagnose restore must not retain removed filter field %q", removed)
 		}
 	}
 	if strings.Contains(restore, "diagnostics[0]") {

@@ -166,13 +166,6 @@ func TestFrontendSimulationEnergySystemsCrossJumpContracts(t *testing.T) {
 		"data-simulation-energy-profile-zone-jump",
 		"openSimulationProfileZone",
 		"simulationProfileZoneName",
-		"basicEnergyDetail",
-		"basicEnergyDetailLabel",
-		"currentBasicEnergyDetail",
-		"hasDetailTierGap",
-		"simulation.energyDetailTier",
-		"simulation.basicEnergyDetail",
-		"simulation.energyDetailTierHint",
 		"simulation.energyOutputShortageHint",
 		"simulation.energyAccountingCoverageHint",
 		"renderEnergySourceAvailabilitySummary",
@@ -266,12 +259,63 @@ func TestFrontendSimulationUsesSimplifiedDefaultsAndAutomaticEnergyPlus(t *testi
 			t.Fatalf("simplified Simulation markup still exposes %q", removed)
 		}
 	}
+	purposePanel := sliceBetween(markup, `<section class="simulation-purpose-panel"`, `</section>`)
+	if purposePanel == "" {
+		t.Fatal("main Simulation must retain its purpose selector")
+	}
+	if !strings.Contains(purposePanel, `aria-label="Simulation purposes"`) {
+		t.Fatal("main Simulation purpose selector must use the purpose-only accessible label")
+	}
+	for _, removed := range []string{
+		`aria-label="Purpose setup"`,
+		`data-i18n="simulation.setup"`,
+		`id="simulationPurposeStats"`,
+		`<h3`,
+		`<em>`,
+		`detail tier`,
+		`>Detail<`,
+		`>Heavy<`,
+		`>Medium<`,
+	} {
+		if strings.Contains(purposePanel, removed) {
+			t.Fatalf("simplified Simulation purpose selector still exposes setup/selection/tier copy %q", removed)
+		}
+	}
 
 	simulation := readTestFile(t, "frontend/src/js/views/simulation-views.js")
-	definitions := sliceBetween(simulation, "const simulationPurposeDefinitions", "function simulationSemanticNavigationIndex")
-	for _, removed := range []string{`id: "integrity_check"`, `id: "custom_outputs"`} {
-		if strings.Contains(definitions, removed) {
-			t.Fatalf("removed Simulation purpose remains in the UI definition: %q", removed)
+	for _, removed := range []string{
+		`id: "integrity_check"`,
+		`id: "custom_outputs"`,
+		"const simulationPurposeDefinitions",
+		"simulationPurposeStats",
+		"simulationStats",
+		`join(" + ")`,
+		"simulationHVACScopeSummary",
+		"function purposeLabel",
+		"function basicEnergyDetailLabel",
+		"function currentBasicEnergyDetail",
+		"hasDetailTierGap",
+		"simulation.energyDetailTier",
+		"simulation.energyDetailTierHint",
+	} {
+		if strings.Contains(simulation, removed) {
+			t.Fatalf("removed Simulation setup/selection/tier behavior remains in the renderer: %q", removed)
+		}
+	}
+
+	i18n := readTestFile(t, "frontend/src/js/i18n.js")
+	for _, removed := range []string{
+		`"simulation.setup"`,
+		`"simulation.noPurposeSelected"`,
+		`"simulation.basicEnergyDetail"`,
+		`"simulation.basicEnergyDetailLight"`,
+		`"simulation.energyDetailTier"`,
+		`"simulation.energyDetailTierHint"`,
+		`"simulation.blockedStats"`,
+		`"simulation.idle"`,
+	} {
+		if strings.Contains(i18n, removed) {
+			t.Fatalf("removed Simulation setup/status/tier copy remains in translations: %q", removed)
 		}
 	}
 
@@ -387,29 +431,59 @@ func TestFrontendSimulationUsesSimplifiedDefaultsAndAutomaticEnergyPlus(t *testi
 	}
 }
 
-func TestFrontendSimulationRefreshRemovalAndWeatherControlStyle(t *testing.T) {
+func TestFrontendSimulationRefreshRemovalAndWeatherRunControlLayout(t *testing.T) {
 	markup := readTestFile(t, "frontend/src/index.html")
 	if strings.Contains(markup, `id="simulationRefreshEnv"`) {
 		t.Fatal("main Simulation must not expose the environment Refresh button")
 	}
-	if !strings.Contains(markup, `id="simulationWeatherSelect"`) {
-		t.Fatal("main Simulation must retain the Weather selector")
+	for _, removed := range []string{`class="summary-head simulation-head"`, `id="simulationStats"`} {
+		if strings.Contains(markup, removed) {
+			t.Fatalf("main Simulation still exposes the removed top status header %q", removed)
+		}
+	}
+	controlsMarkup := sliceBetween(markup, `<section class="simulation-controls"`, `</section>`)
+	if controlsMarkup == "" {
+		t.Fatal("main Simulation controls section is missing")
+	}
+	weatherIndex := strings.Index(controlsMarkup, `id="simulationWeatherSelect"`)
+	runIndex := strings.Index(controlsMarkup, `id="simulationRunButton"`)
+	if weatherIndex < 0 || runIndex < 0 {
+		t.Fatal("main Simulation must keep Weather and Run & Inspect in the same controls section")
+	}
+	if weatherIndex >= runIndex {
+		t.Fatal("main Simulation Run & Inspect must follow the Weather selector in the shared control row")
 	}
 
 	stateSource := readTestFile(t, "frontend/src/js/state.js")
-	if strings.Contains(stateSource, "simulationRefreshEnv") {
-		t.Fatal("state element registry still retains the removed Simulation Refresh button")
+	for _, removed := range []string{"simulationRefreshEnv", "simulationStats", "simulationPurposeStats"} {
+		if strings.Contains(stateSource, removed) {
+			t.Fatalf("state element registry still retains removed Simulation element %q", removed)
+		}
 	}
 
 	simulation := readTestFile(t, "frontend/src/js/views/simulation-views.js")
-	if strings.Contains(simulation, "simulationRefreshEnv") {
-		t.Fatal("Simulation event wiring still retains the removed environment Refresh listener")
+	for _, removed := range []string{"simulationRefreshEnv", "simulationStats", "simulationPurposeStats"} {
+		if strings.Contains(simulation, removed) {
+			t.Fatalf("Simulation renderer still retains removed element reference %q", removed)
+		}
+	}
+
+	analysisViews := readTestFile(t, "frontend/src/js/views/analysis-views.js")
+	renderEmpty := sliceBetween(analysisViews, "export function renderEmpty()", "export function renderDeferredGeometry")
+	for _, required := range []string{"if (elements.simulationRunButton)", "renderSimulation();"} {
+		if !strings.Contains(renderEmpty, required) {
+			t.Fatalf("empty-state rendering must retain Simulation through the Run button guard: missing %q", required)
+		}
+	}
+	if strings.Contains(renderEmpty, "simulationStats") {
+		t.Fatal("empty-state rendering still depends on the removed Simulation stats element")
 	}
 
 	styles := readTestFile(t, "frontend/src/styles/simulation.css")
 	controls := sliceBetween(styles, ".simulation-controls {", ".simulation-purpose-panel {")
 	for _, required := range []string{
-		"grid-template-columns: minmax(260px, 520px)",
+		"grid-template-columns: minmax(260px, 520px) auto",
+		"align-items: end",
 		".simulation-controls select",
 		"width: 100%",
 		"min-width: 0",
@@ -419,10 +493,22 @@ func TestFrontendSimulationRefreshRemovalAndWeatherControlStyle(t *testing.T) {
 		"background: var(--control)",
 		"color: var(--ink)",
 		"padding: 0 9px",
+		".simulation-controls > button",
 	} {
 		if !strings.Contains(controls, required) {
-			t.Fatalf("Simulation Weather selector must use the common control style and bounded width: missing %q", required)
+			t.Fatalf("Simulation Weather/Run row must use the shared aligned control layout: missing %q", required)
 		}
+	}
+	buttonRules := sliceBetween(controls, ".simulation-controls > button {", "}")
+	if !strings.Contains(buttonRules, "min-height: var(--control-height)") {
+		t.Fatal("Simulation Run & Inspect must match the Weather selector control height")
+	}
+	purposeCardRules := sliceBetween(styles, ".simulation-purpose-card {", ".simulation-purpose-card.selected {")
+	if !strings.Contains(purposeCardRules, "grid-template-columns: auto minmax(0, 1fr)") {
+		t.Fatal("Simulation purpose cards must use the two-column layout after removing tier badges")
+	}
+	if strings.Contains(styles, ".simulation-purpose-card em") {
+		t.Fatal("Simulation purpose-card tier badge styling must remain removed")
 	}
 }
 

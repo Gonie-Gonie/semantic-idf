@@ -122,14 +122,6 @@
     grid-template-columns: 1fr;
   }
 
-  .hvac-view-tabs {
-    width: 100%;
-  }
-
-  .hvac-view-tab {
-    flex: 1 1 110px;
-  }
-
   .hvac-coupling-grid,
   .hvac-network-list,
   .hvac-support-grid {
@@ -162,6 +154,10 @@
   }
 
   .cleanup-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .diagnose-fix-head {
     grid-template-columns: 1fr;
   }
 
@@ -217,7 +213,6 @@
   }
 
   .hvac-component-main,
-  .hvac-warning,
   .hvac-node-usage,
   .hvac-relation-row {
     grid-template-columns: 1fr;

@@ -15,13 +15,6 @@ let simulationNavigationRevealTarget = null;
 const simulationSemanticBindings = new Map();
 const simulationEnergySourceByIDCache = new WeakMap();
 
-const simulationPurposeDefinitions = [
-  { id: "basic_energy", label: "Basic Energy" },
-  { id: "zone_heat_flow", label: "Zone Heat Flow" },
-  { id: "hvac_loop_check", label: "HVAC Loop Check" },
-  { id: "comfort_check", label: "Comfort" },
-];
-
 const simulationPurposeDefaults = Object.freeze({
   allocationPolicy: "direct_only",
   basicEnergyDetail: "heat_drivers",
@@ -590,9 +583,6 @@ export function initializeSimulationControls() {
     updateSimulationControls();
     renderSimulation();
   });
-  window.addEventListener("idfAnalyzer:hvacSelectionChanged", () => {
-    renderSimulationPurposeSetup();
-  });
   window.addEventListener("idfAnalyzer:analysisComplete", () => maybeAutoRunSimulation());
   window.addEventListener("idfAnalyzer:settingsChanged", (event) => {
     state.simulationAutoRunOnOpen = event.detail?.settings?.simulation?.autoRunOnOpen ?? state.simulationAutoRunOnOpen;
@@ -1088,7 +1078,7 @@ export function renderSimulation() {
   simulationSemanticBindings.clear();
   setSimulationPreviewMode(false);
   renderSimulationEnvironment();
-  renderSimulationPurposeSetup();
+  syncSimulationPurposeInputsFromState();
   renderSimulationProgress();
   updateSimulationControls();
   if (!state.simulationResult) {
@@ -1096,17 +1086,8 @@ export function renderSimulation() {
     return;
   }
   const result = state.simulationResult;
-  const stale = state.simulationStale;
-  const err = result.err || {};
-  const statusLabel = statusText(result.status);
   ensureActiveSimulationResultView(result);
   renderSimulationResultTabs(result);
-  elements.simulationStats.textContent = stale
-    ? t("simulation.staleStats", { status: statusLabel }, `${statusLabel}, stale`)
-    : t("simulation.stats", { status: statusLabel, warnings: err.warnings || 0, severe: err.severe || 0 }, `${statusLabel}, ${err.warnings || 0} warnings`);
-  if (state.simulationRunning) {
-    elements.simulationStats.textContent = t("simulation.runningStats", {}, "Simulation running in background");
-  }
   renderSimulationEnergyDashboard(result);
   renderSimulationHVACLoops(result);
   renderSimulationComfort(result);
@@ -1118,10 +1099,10 @@ export function renderSimulation() {
 }
 
 function renderSimulationEmpty() {
-  if (!elements.simulationStats) {
+  if (!elements.simulationStatus) {
     return;
   }
-  renderSimulationPurposeSetup();
+  syncSimulationPurposeInputsFromState();
   updateSimulationControls();
   setSimulationPreviewMode(!state.simulationRunning);
   renderSimulationSeriesRangeControls(null);
@@ -1131,7 +1112,6 @@ function renderSimulationEmpty() {
   if (state.simulationRunning) {
     setSimulationPreviewMode(false);
     renderSimulationResultTabs(null);
-    elements.simulationStats.textContent = t("simulation.runningStats", {}, "Simulation running in background");
     renderSimulationHeatFlowEmpty(t("simulation.heatFlowAfterRun", {}, "The heat-flow ledger will appear when Zone Heat Flow SQL/CSV output is available."));
     setSimulationSeriesGroupUnavailable();
     elements.simulationSeriesSelect.innerHTML = `<option value="">${escapeHTML(t("simulation.waitingForCSV", {}, "Waiting for SQL/CSV output"))}</option>`;
@@ -1146,7 +1126,6 @@ function renderSimulationEmpty() {
   }
   if (blockingIssue) {
     renderSimulationResultTabs(null);
-    elements.simulationStats.textContent = t("simulation.blockedStats", {}, "Cannot run");
     elements.simulationStatus.textContent = blockingIssue.title;
     elements.simulationStatus.classList.remove("status-loading");
     elements.simulationPercent.textContent = "0%";
@@ -1163,14 +1142,10 @@ function renderSimulationEmpty() {
     updateSimulationOutputAvailability(blockingIssue, false);
     return;
   }
-  const idleMessage = hasText
-    ? t("simulation.idle", {}, "Ready")
-    : t("simulation.noInputText", {}, "Open or paste an IDF before running simulation");
-  elements.simulationStats.textContent = installCount
-    ? idleMessage
-    : t("simulation.noEnergyPlus", {}, "No EnergyPlus installation");
   elements.simulationStatus.textContent = installCount
-    ? idleMessage
+    ? hasText
+      ? ""
+      : t("simulation.noInputText", {}, "Open or paste an IDF before running simulation")
     : t("simulation.registerEnergyPlus", {}, "Register EnergyPlus in Settings");
   elements.simulationStatus.classList.remove("status-loading");
   elements.simulationPercent.textContent = "0%";
@@ -1186,17 +1161,6 @@ function renderSimulationEmpty() {
   elements.simulationFiles.innerHTML = `<div class="empty">${t("simulation.noFiles", {}, "No output files yet")}</div>`;
   toggleSimulationResultSections();
   updateSimulationOutputAvailability(null, false);
-}
-
-function renderSimulationPurposeSetup() {
-  syncSimulationPurposeInputsFromState();
-  const selected = selectedSimulationPurposes();
-  if (elements.simulationPurposeStats) {
-    const hvacScope = simulationHVACScopeSummary(selected);
-    elements.simulationPurposeStats.textContent = selected.length
-      ? [selected.map(purposeLabel).join(" + "), hvacScope].filter(Boolean).join(" | ")
-      : t("simulation.noPurposeSelected", {}, "No purposes selected");
-  }
 }
 
 function renderSimulationResultTabs(result) {
@@ -2169,19 +2133,12 @@ function renderEnergyExplanationCompleteness(explanation = {}) {
   const missingCategories = completeness.missingCategories || [];
   const missingAvailability = (completeness.sourceAvailability || []).filter((item) => item.status && item.status !== "found" && item.status !== "not_applicable");
   const hasIncompleteItems = items.some((item) => item.status && item.status !== "complete" && item.status !== "not_applicable");
-  const basicEnergyDetail = currentBasicEnergyDetail();
-  const hasDetailTierGap =
-    basicEnergyDetail === "light" &&
-    items.some((item) => String(item.status || "").toLowerCase() === "not_applicable" && ["load", "heat"].includes(String(item.level || "").toLowerCase()));
   const hasOutputShortage = missingCategories.length > 0 || missingAvailability.length > 0;
   let coverageNote = "";
   let coverageTitle = "";
   if (hasOutputShortage) {
     coverageTitle = t("simulation.outputShortage", {}, "Output shortage");
     coverageNote = t("simulation.energyOutputShortageHint", {}, "The default detailed output set was requested; missing rows reflect unavailable or unsupported sources.");
-  } else if (hasDetailTierGap) {
-    coverageTitle = t("simulation.energyDetailTier", {}, "Detail tier");
-    coverageNote = t("simulation.energyDetailTierHint", {}, "This result used the legacy Light tier. Rerun Basic Energy to use the default detailed output set.");
   } else if (hasIncompleteItems) {
     coverageTitle = t("simulation.accountingCoverage", {}, "Accounting coverage");
     coverageNote = t("simulation.energyAccountingCoverageHint", {}, "No source output shortage is reported; remaining gaps are accounting coverage or model applicability.");
@@ -2297,27 +2254,6 @@ function energyAllocationPolicyLabel(policy = "") {
     default:
       return titleCaseEnergyToken(policy || "direct_only");
   }
-}
-
-function basicEnergyDetailLabel(detail = "") {
-  switch (String(detail || "").toLowerCase()) {
-    case "light":
-      return t("simulation.basicEnergyDetailLight", {}, "Light");
-    case "explain":
-      return t("simulation.basicEnergyDetailExplain", {}, "Explain");
-    case "heat_drivers":
-      return t("simulation.basicEnergyDetailHeatDrivers", {}, "Heat drivers");
-    default:
-      return titleCaseEnergyToken(detail || "heat_drivers");
-  }
-}
-
-function currentBasicEnergyDetail() {
-  return String(
-    state.simulationResult?.purposeRunPlan?.basicEnergyDetail ||
-      state.simulationPurposePlan?.basicEnergyDetail ||
-      simulationPurposeDefaults.basicEnergyDetail,
-  ).toLowerCase();
 }
 
 function renderEnergyExplanationSankey(explanation = {}) {
@@ -5568,9 +5504,6 @@ function openSimulationProfileZone(zoneName = "") {
   }
   state.activeProfileView = "zone";
   state.activeProfileZoneName = profileZoneName;
-  if (elements.profileFilter) {
-    elements.profileFilter.value = "";
-  }
   const profileTab = [...(elements.resultTabButtons || [])].find((button) => button.dataset.resultTab === "profile");
   if (profileTab) {
     profileTab.click();
@@ -5847,18 +5780,6 @@ function simulationHVACPurposeScope(purposes = selectedSimulationPurposes()) {
   return scope;
 }
 
-function simulationHVACScopeSummary(purposes = selectedSimulationPurposes()) {
-  if (!purposes.includes("hvac_loop_check")) {
-    return "";
-  }
-  const loop = activeSimulationHVACLoop();
-  const component = activeSimulationHVACComponent(loop);
-  if (loop?.name && component) {
-    return `HVAC: ${loop.name} / ${component.objectName || component.objectType || t("common.component", {}, "Component")}`;
-  }
-  return loop?.name ? `HVAC: ${loop.name}` : t("simulation.allHVACLoops", {}, "HVAC: all loops");
-}
-
 function activeSimulationHVACLoop() {
   const loops = state.report?.hvac?.loops || [];
   return loops.find((loop) => loop.id === state.activeHVACLoopId) || null;
@@ -5927,12 +5848,6 @@ function syncSimulationPurposeInputsFromState() {
     input.checked = state.simulationSelectedPurposes.includes(input.dataset.simulationPurpose);
     input.closest(".simulation-purpose-card")?.classList.toggle("selected", input.checked);
   });
-}
-
-function purposeLabel(value) {
-  const id = String(value || "");
-  const found = simulationPurposeDefinitions.find((item) => item.id === id);
-  return found ? found.label : id;
 }
 
 function outputStateLabel(value) {
@@ -8536,7 +8451,7 @@ function statusText(status) {
     case "missing_energyplus":
       return t("simulation.missingEnergyPlus", {}, "EnergyPlus missing");
     case "blocked":
-      return t("simulation.blockedStats", {}, "Cannot run");
+      return t("simulation.blockedMeta", {}, "Run requirements need attention");
     case "running":
       return t("simulation.runningShort", {}, "Running");
     default:

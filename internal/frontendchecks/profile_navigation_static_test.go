@@ -38,7 +38,7 @@ func TestProfileSemanticRevealAndHistoryContextContract(t *testing.T) {
 		"profileSelectedCell",
 		"profilePinnedSeriesIds",
 		"profileGraphDeck",
-		"profileFilter",
+		"profileNavigationRevealTarget",
 		"captureProfileNavigationContext",
 		"restoreProfileNavigationContext",
 		"preferredProfileSemanticOccurrence",
@@ -61,5 +61,9 @@ func TestProfileSemanticRevealAndHistoryContextContract(t *testing.T) {
 		if !strings.Contains(content, guard) {
 			t.Fatalf("Profile aggregate navigation guard is missing %q", guard)
 		}
+	}
+
+	if strings.Contains(content, "profileFilter") {
+		t.Fatal("Profile navigation history still preserves the removed Profile filter")
 	}
 }

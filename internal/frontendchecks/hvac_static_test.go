@@ -95,7 +95,8 @@ func TestFrontendHVACServiceDOMContracts(t *testing.T) {
 		"function pathsForActiveHVACEntity",
 		"function renderHVACGraphScopeControls",
 		"function renderHVACBreadcrumbBar",
-		"function renderHVACEntitySearchResults",
+		"function renderHVACServicePicker",
+		"function renderHVACLoopPicker",
 		"function renderHVACComponentPicker",
 		"function renderHVACCouplingPicker",
 		"function renderHVACQuickFilters",
@@ -118,12 +119,211 @@ func TestFrontendHVACServiceDOMContracts(t *testing.T) {
 		"hvac-edge-bundle-badge",
 		"hvac-trace-drawer",
 		"evaporative_cooler",
-		"renderHVACViewTab(\"services\"",
-		"renderHVACViewTab(\"couplings\"",
+		`data-hvac-service-subject-key="${escapeHTML(key)}"`,
+		`data-hvac-loop-id="${escapeHTML(loop.id)}"`,
+		`data-hvac-entity-view="services"`,
+		`data-hvac-entity-view="couplings"`,
 	} {
 		if !strings.Contains(text, required) {
 			t.Fatalf("hvac service renderer is missing DOM contract %q", required)
 		}
+	}
+}
+
+func TestFrontendHVACUsesHeaderlessCardNavigationWithoutWarnings(t *testing.T) {
+	index := readTestFile(t, "frontend/src/index.html")
+	state := readTestFile(t, "frontend/src/js/state.js")
+	view := readTestFile(t, "frontend/src/js/views/hvac-views.js")
+	analysis := readTestFile(t, "frontend/src/js/views/analysis-views.js")
+	styles := readTestFile(t, "frontend/src/styles/hvac.css")
+	i18n := readTestFile(t, "frontend/src/js/i18n.js")
+
+	for sourceName, source := range map[string]string{
+		"index.html": index,
+		"state.js":   state,
+		"i18n.js":    i18n,
+	} {
+		for _, removed := range []string{"hvacStats", "hvacFilter", "hvac.filter"} {
+			if strings.Contains(source, removed) {
+				t.Fatalf("%s retains removed HVAC header/search contract %q", sourceName, removed)
+			}
+		}
+	}
+	for _, removed := range []string{
+		`class="summary-head hvac-head"`,
+		`class="summary-tools hvac-tools"`,
+	} {
+		if strings.Contains(index, removed) {
+			t.Fatalf("HVAC pane retains removed top header markup %q", removed)
+		}
+	}
+	for _, removed := range []string{
+		"elements.hvacStats",
+		"elements.hvacFilter",
+		"function hvacQuery()",
+		"function renderHVACEntitySearchResults",
+		"function groupNavigationEntitiesForSearch",
+		"function zoneServiceMatchesQuery",
+		"function servicePathMatchesQuery",
+		"function couplingMatchesQuery",
+		"function loopMatchesQuery",
+		"function warningMatchesQuery",
+		"function renderHVACViewTab",
+		"function renderHVACWarnings",
+		"function renderHVACDiagnostics",
+		"function renderHVACWarning",
+		"function renderHVACCurrentFocusCard",
+		`data-hvac-open-view="diagnostics"`,
+		"hvac.warningCount",
+		"<span>Issues</span>",
+		"path.issues",
+		"branch.warnings",
+		"hvac.currentFocus",
+	} {
+		if strings.Contains(view, removed) {
+			t.Fatalf("HVAC renderer retains removed header, warning, or focus code %q", removed)
+		}
+	}
+	for _, removed := range []string{
+		".hvac-tools input",
+		".hvac-view-tabs",
+		".hvac-view-tab",
+		".hvac-warning",
+		".hvac-warning-list",
+		".hvac-diagnostic-list",
+		".hvac-inline-warning",
+		".hvac-current-focus",
+		".hvac-nav-static",
+		".hvac-nav-action",
+		".hvac-nav-card summary em",
+	} {
+		if strings.Contains(styles, removed) {
+			t.Fatalf("HVAC stylesheet retains removed top navigation, warning, or focus selector %q", removed)
+		}
+	}
+	for _, removed := range []string{
+		`id="hvacWarningStats"`,
+		`id="hvacWarnings"`,
+		`data-i18n="hvac.warnings"`,
+	} {
+		if strings.Contains(index, removed) {
+			t.Fatalf("HVAC pane retains removed warning DOM %q", removed)
+		}
+	}
+	for sourceName, source := range map[string]string{
+		"state.js":          state,
+		"analysis-views.js": analysis,
+	} {
+		for _, removed := range []string{"hvacStats", "hvacWarningStats", "hvacWarnings"} {
+			if strings.Contains(source, removed) {
+				t.Fatalf("%s retains removed HVAC header/warning element reference %q", sourceName, removed)
+			}
+		}
+	}
+	for _, removed := range []string{
+		`"hvac.warnings"`,
+		`"hvac.noWarnings"`,
+		`"hvac.diagnosticsHelp"`,
+		`"hvac.zoneServiceHelp"`,
+		`"hvac.airLoopHelp"`,
+		`"hvac.plantLoopHelp"`,
+		`"hvac.otherLoopHelp"`,
+	} {
+		if strings.Contains(i18n, removed) {
+			t.Fatalf("i18n retains removed HVAC warning or card-help key %q", removed)
+		}
+	}
+
+	renderer := sliceBetween(view, "export function renderHVAC", "function renderEmptyHVAC")
+	if !strings.Contains(renderer, `if (!elements.hvacSummary)`) {
+		t.Fatal("HVAC renderer must use the surviving summary container as its render gate")
+	}
+	emptyRenderer := sliceBetween(analysis, "export function renderEmpty()", "export function renderDeferredGeometry")
+	if !strings.Contains(emptyRenderer, `if (elements.hvacSummary)`) {
+		t.Fatal("empty analysis renderer must use the surviving HVAC summary container as its render gate")
+	}
+
+	for _, required := range []string{
+		"${renderHVACServicePicker(",
+		"${renderHVACLoopPicker({",
+		"${renderHVACComponentPicker(",
+		"${renderHVACCouplingPicker(",
+		"function renderHVACServicePicker",
+		"function renderHVACLoopPicker({ kind, label, count, loops, active })",
+		"function renderHVACComponentPicker",
+		"function renderHVACCouplingPicker",
+		"function renderHVACBreadcrumbBar",
+		`data-hvac-nav-action="back"`,
+		`data-hvac-nav-action="forward"`,
+		`data-hvac-nav-action="clear"`,
+		"function renderHVACQuickFilters",
+		"function servicePathMatchesQuickFilters",
+		"data-hvac-filter-kind",
+		"state.hvacServiceKindFilter",
+		"state.hvacPathTypeFilter",
+		"state.hvacMediumFilter",
+	} {
+		if !strings.Contains(view, required) {
+			t.Fatalf("HVAC lower-card navigation contract is missing %q", required)
+		}
+	}
+
+	pickers := sliceBetween(view, "function renderHVACSummary", "function handleHVACNavigationClick")
+	for _, removed := range []string{"<em>", "help: t(\"hvac.", "kind, label, help"} {
+		if strings.Contains(pickers, removed) {
+			t.Fatalf("HVAC picker card retains removed secondary help contract %q", removed)
+		}
+	}
+}
+
+func TestFrontendHVACNavigationCardsAreCompactAndViewsAreCanonicalized(t *testing.T) {
+	view := readTestFile(t, "frontend/src/js/views/hvac-views.js")
+	styles := readTestFile(t, "frontend/src/styles/hvac.css")
+
+	summaryStyle := sliceBetween(styles, ".hvac-nav-card summary {", ".hvac-nav-card summary::-webkit-details-marker")
+	for _, required := range []string{
+		"min-height: 38px",
+		"padding: 5px 8px",
+		"gap: 8px",
+	} {
+		if !strings.Contains(summaryStyle, required) {
+			t.Fatalf("compact HVAC card summary style is missing %q", required)
+		}
+	}
+	countStyle := sliceBetween(styles, ".hvac-nav-card summary b {", ".hvac-nav-card.active summary b")
+	for _, required := range []string{
+		"min-width: 28px",
+		"min-height: 24px",
+		"font-size: 12px",
+	} {
+		if !strings.Contains(countStyle, required) {
+			t.Fatalf("compact HVAC card count style is missing %q", required)
+		}
+	}
+
+	viewMode := sliceBetween(view, "function hvacViewMode", "function graphKeyForHVACEntity")
+	for _, required := range []string{
+		`["services", "loop", "couplings"].includes(view)`,
+		`view === "debug" && hvacDebugEnabled()`,
+		`return "services"`,
+	} {
+		if !strings.Contains(viewMode, required) {
+			t.Fatalf("HVAC view canonicalizer is missing %q", required)
+		}
+	}
+	for _, required := range []string{
+		`const nextView = hvacViewMode(target.view || viewForHVACEntity(entity) || state.activeHVACView || "services")`,
+		`state.activeHVACView = hvacViewMode(snapshot.view || "services")`,
+	} {
+		if !strings.Contains(view, required) {
+			t.Fatalf("HVAC navigation must canonicalize restored or requested views: missing %q", required)
+		}
+	}
+	renderer := sliceBetween(view, "export function renderHVAC", "function renderEmptyHVAC")
+	canonicalizeAt := strings.Index(renderer, "state.activeHVACView = hvacViewMode(state.activeHVACView)")
+	summaryAt := strings.Index(renderer, "renderHVACSummary(hvac, selectedLoop)")
+	if canonicalizeAt < 0 || summaryAt < 0 || canonicalizeAt > summaryAt {
+		t.Fatal("HVAC render must canonicalize deprecated views before rendering lower-card navigation")
 	}
 }
 

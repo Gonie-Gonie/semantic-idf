@@ -103,6 +103,93 @@ func TestFrontendProfileGraphOmitsRedundantDeckStats(t *testing.T) {
 	}
 }
 
+func TestFrontendProfileUsesGraphHeaderWithoutTopFilter(t *testing.T) {
+	markup := readTestFile(t, "frontend/src/index.html")
+	state := readTestFile(t, "frontend/src/js/state.js")
+	views := readTestFile(t, "frontend/src/js/views/profile-views.js")
+	analysis := readTestFile(t, "frontend/src/js/views/analysis-views.js")
+	simulation := readTestFile(t, "frontend/src/js/views/simulation-views.js")
+	i18n := readTestFile(t, "frontend/src/js/i18n.js")
+
+	for label, content := range map[string]string{
+		"markup":     markup,
+		"state":      state,
+		"views":      views,
+		"analysis":   analysis,
+		"simulation": simulation,
+		"i18n":       i18n,
+	} {
+		for _, removed := range []string{"profileStats", "profileFilter"} {
+			if strings.Contains(content, removed) {
+				t.Fatalf("%s still contains removed Profile header/filter state %q", label, removed)
+			}
+		}
+	}
+	for _, removed := range []string{
+		`class="summary-head profile-head"`,
+		`data-i18n-placeholder="profile.filter"`,
+	} {
+		if strings.Contains(markup, removed) {
+			t.Fatalf("Profile markup still contains removed top-header UI %q", removed)
+		}
+	}
+	for _, removed := range []string{
+		"function profileQuery",
+		"function profileGroupMatchesQuery",
+		"function profileMatrixRowMatchesQuery",
+		"function profileRevealMatchesGroup",
+		"function profileRevealMatchesRow",
+	} {
+		if strings.Contains(views, removed) {
+			t.Fatalf("Profile views still contain removed filter behavior %q", removed)
+		}
+	}
+
+	profileVisualStart := strings.Index(markup, `<section class="profile-visual"`)
+	if profileVisualStart < 0 {
+		t.Fatal("Profile visual section is missing")
+	}
+	profileVisualTail := markup[profileVisualStart:]
+	profileVisualEnd := strings.Index(profileVisualTail, "</section>")
+	if profileVisualEnd < 0 {
+		t.Fatal("Profile visual section is not closed")
+	}
+	profileVisual := profileVisualTail[:profileVisualEnd]
+	headerStart := strings.Index(profileVisual, `<div class="profile-section-head">`)
+	if headerStart < 0 {
+		t.Fatal("Profile Graph header is missing")
+	}
+	headerTail := profileVisual[headerStart:]
+	headerEnd := strings.Index(headerTail, "</div>")
+	if headerEnd < 0 {
+		t.Fatal("Profile Graph header is not closed")
+	}
+	header := headerTail[:headerEnd]
+	headingIndex := strings.Index(header, `data-i18n="profile.graph">Profile Graph</h3>`)
+	applyIndex := strings.Index(header, `id="profileApplyButton"`)
+	if headingIndex < 0 || applyIndex < 0 || applyIndex <= headingIndex {
+		t.Fatal("Apply Profile must follow the Profile Graph heading inside its header")
+	}
+	if strings.Count(markup, `id="profileApplyButton"`) != 1 {
+		t.Fatal("Profile markup must contain exactly one Apply Profile button")
+	}
+
+	for _, retained := range []string{
+		"if (!elements.profileGraph)",
+		"renderProfileGraph(graphGroup, profile, selectedZone)",
+		"elements.profileApplyButton.disabled = !graphGroup",
+		`elements.profileApplyButton?.addEventListener("click", openProfileApplyDialog)`,
+		"profileNavigationRevealTarget",
+		"navigationRevealTarget: profileNavigationRevealTarget",
+		"captureProfileNavigationContext",
+		"restoreProfileNavigationContext",
+	} {
+		if !strings.Contains(views, retained) {
+			t.Fatalf("Profile graph/navigation behavior was removed with the header: %q", retained)
+		}
+	}
+}
+
 func readTestFile(t *testing.T, path string) string {
 	t.Helper()
 	content, err := os.ReadFile(repoPath(path))

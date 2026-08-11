@@ -69,7 +69,6 @@ func TestPhaseHLargeModelFilterHiddenRevealContracts(t *testing.T) {
 		},
 		"frontend/src/js/views/profile-views.js": {
 			"profileNavigationRevealTarget",
-			"profileFilter",
 		},
 		"frontend/src/js/views/hvac-views.js": {
 			"hvacNavigationRevealTarget",

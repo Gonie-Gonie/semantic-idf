@@ -9,7 +9,7 @@ let profileNavigationRevealTarget = null;
 const PROFILE_MATRIX_RENDER_LIMIT = 500;
 
 export function renderProfile(profile = state.report?.profile) {
-  if (!elements.profileStats) {
+  if (!elements.profileGraph) {
     return;
   }
   if (!profile) {
@@ -25,42 +25,25 @@ export function renderProfile(profile = state.report?.profile) {
     state.activeProfileGroupId = lastProfileView.groups[0]?.id || "";
   }
 
-  const query = profileQuery();
-  const visibleGroups = lastProfileView.groups.filter(
-    (group) => profileGroupMatchesQuery(group, query) || profileRevealMatchesGroup(group),
-  );
-  const visibleRows = lastProfileView.matrix.filter(
-    (row) => profileMatrixRowMatchesQuery(row, query) || profileRevealMatchesRow(row),
-  );
-  if (query && !visibleGroups.some((group) => group.id === state.activeProfileGroupId)) {
-    state.activeProfileGroupId = visibleGroups[0]?.id || "";
-  }
+  const visibleGroups = lastProfileView.groups;
+  const visibleRows = lastProfileView.matrix;
   if (!state.activeProfileZoneName || !lastProfileView.matrix.some((row) => row.zoneName === state.activeProfileZoneName)) {
     state.activeProfileZoneName = visibleRows[0]?.zoneName || lastProfileView.matrix[0]?.zoneName || "";
   }
-  if (state.activeProfileView === "zone" && query && !visibleRows.some((row) => row.zoneName === state.activeProfileZoneName)) {
-    state.activeProfileZoneName = visibleRows[0]?.zoneName || "";
-  }
-  const selectedGroup = query
-    ? visibleGroups.find((group) => group.id === state.activeProfileGroupId) || null
-    : selectedProfileGroup();
+  const selectedGroup = selectedProfileGroup();
   const selectedZone = state.activeProfileView === "zone" ? selectedProfileZoneRow() : null;
   const graphGroup = selectedZone ? groupForZoneName(selectedZone.zoneName) : selectedGroup;
 
-  elements.profileStats.textContent = query
-    ? t("count.profilesOf", { shown: visibleGroups.length, total: lastProfileView.groups.length, items: profile.itemCount || 0 })
-    : t("count.profiles", { profiles: lastProfileView.groups.length, items: profile.itemCount || 0 });
   elements.profileApplyButton.disabled = !graphGroup;
   renderProfileSettings(profile);
   renderProfileOverview(visibleGroups, visibleRows);
   renderProfileGraph(graphGroup, profile, selectedZone);
-  renderProfileMatrix(lastProfileView.matrix, query, profile);
+  renderProfileMatrix(lastProfileView.matrix, profile);
   renderProfileDetail(graphGroup, profile, selectedZone);
   bindProfileControls(profile);
 }
 
 function renderEmptyProfile() {
-  elements.profileStats.textContent = t("count.profiles", { profiles: 0, items: 0 });
   elements.profileSettings.innerHTML = "";
   elements.profileOverview.innerHTML = `<div class="empty">${t("profile.noAnalysis")}</div>`;
   elements.profileDetail.innerHTML = `<div class="empty">${t("profile.noProfile")}</div>`;
@@ -427,8 +410,8 @@ function renderProfileSourceAccordion(item) {
     </details>`;
 }
 
-function renderProfileMatrix(rows, query, profile) {
-  const visibleRows = rows.filter((row) => profileMatrixRowMatchesQuery(row, query));
+function renderProfileMatrix(rows, profile) {
+  const visibleRows = rows;
   const renderedRows = visibleRows.slice(0, PROFILE_MATRIX_RENDER_LIMIT);
   const hiddenRows = Math.max(0, visibleRows.length - renderedRows.length);
   const dimensions = (lastProfileView?.dimensions || []).filter((dimension) => (
@@ -439,7 +422,7 @@ function renderProfileMatrix(rows, query, profile) {
   elements.profileMatrixStats.textContent = t("count.zones", { count: visibleRows.length });
   elements.profileMatrix.innerHTML = visibleRows.length
     ? `
-      ${hiddenRows ? `<div class="empty compact">${escapeHTML(`${hiddenRows} additional zones hidden. Narrow the filter to render them.`)}</div>` : ""}
+      ${hiddenRows ? `<div class="empty compact">${escapeHTML(`${hiddenRows} additional zones hidden by the render limit.`)}</div>` : ""}
       <table>
         <thead>
           <tr><th>Zone</th>${dimensions.map((dimension) => `<th>${escapeHTML(profileDimensionLabel(dimension.id))}</th>`).join("")}</tr>
@@ -1794,7 +1777,6 @@ function captureProfileNavigationContext(context) {
     profileSelectedCell: cloneProfileSelectedCell(state.profileSelectedCell),
     profilePinnedSeriesIds: [...(state.profilePinnedSeriesIds || [])],
     profileGraphDeck: cloneProfileGraphDeck(state.profileGraphDeck),
-    profileFilter: String(elements.profileFilter?.value || ""),
     navigationRevealTarget: profileNavigationRevealTarget ? { ...profileNavigationRevealTarget } : null,
     overviewScrollTop: Number(elements.profileOverview?.scrollTop) || 0,
     graphScrollTop: Number(elements.profileGraph?.scrollTop) || 0,
@@ -1825,9 +1807,6 @@ async function restoreProfileNavigationContext(snapshot = {}, context) {
   if (snapshot.profileGraphDeck) {
     state.profileGraphDeck = cloneProfileGraphDeck(snapshot.profileGraphDeck);
     state.profileGraphDeck.pinnedSeriesIds = [...state.profilePinnedSeriesIds];
-  }
-  if (elements.profileFilter && Object.prototype.hasOwnProperty.call(snapshot, "profileFilter")) {
-    elements.profileFilter.value = String(snapshot.profileFilter || "");
   }
   profileNavigationRevealTarget = snapshot.navigationRevealTarget ? { ...snapshot.navigationRevealTarget } : null;
   renderProfile(state.report.profile);
@@ -2332,10 +2311,6 @@ export function initializeProfileControls() {
       profileNavigationRevealTarget = null;
     }
   }, { capture: true });
-  elements.profileFilter?.addEventListener("input", () => {
-    profileNavigationRevealTarget = null;
-    renderProfile();
-  });
   elements.profileApplyButton?.addEventListener("click", openProfileApplyDialog);
   elements.profileApplyClose?.addEventListener("click", closeProfileApplyDialog);
   elements.profilePreviewApply?.addEventListener("click", previewProfileApply);
@@ -2731,47 +2706,6 @@ function profileItemMap(profile) {
     (zone.items || []).forEach((item) => map.set(item.id, item));
   });
   return map;
-}
-
-function profileQuery() {
-  return String(elements.profileFilter?.value || "").trim().toLowerCase();
-}
-
-function profileRevealMatchesGroup(group) {
-  if (!profileNavigationRevealTarget) {
-    return false;
-  }
-  return Boolean(
-    (profileNavigationRevealTarget.groupId && group.id === profileNavigationRevealTarget.groupId) ||
-    (profileNavigationRevealTarget.zoneName && group.zoneNames.includes(profileNavigationRevealTarget.zoneName)),
-  );
-}
-
-function profileRevealMatchesRow(row) {
-  return Boolean(
-    profileNavigationRevealTarget?.zoneName &&
-    sameProfileName(row.zoneName, profileNavigationRevealTarget.zoneName),
-  );
-}
-
-function profileGroupMatchesQuery(group, query) {
-  if (!query) {
-    return true;
-  }
-  return [group.name, group.zoneNames.join(" "), ...group.dimensions.flatMap((dimension) => [dimension.label, dimension.displayValue, dimension.scheduleName, dimension.schedulePattern])]
-    .join(" ")
-    .toLowerCase()
-    .includes(query);
-}
-
-function profileMatrixRowMatchesQuery(row, query) {
-  if (!query) {
-    return true;
-  }
-  return [row.zoneName, ...row.dimensions.flatMap((dimension) => [dimension.label, dimension.displayValue, dimension.scheduleName, dimension.schedulePattern])]
-    .join(" ")
-    .toLowerCase()
-    .includes(query);
 }
 
 function profileDimensionLabel(dimension) {

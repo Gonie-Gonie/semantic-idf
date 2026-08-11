@@ -94,14 +94,8 @@ func TestHVACPanelAdapterPreservesContextAndCompatibleOccurrence(t *testing.T) {
 			t.Fatalf("HVAC history context is missing %q", field)
 		}
 	}
-	for _, revealGuard := range []string{
-		"hvacNavigationRevealMatchesPath",
-		"hvacNavigationRevealMatchesLoop",
-		"hvacNavigationRevealMatchesCoupling",
-	} {
-		if !strings.Contains(content, revealGuard) {
-			t.Fatalf("HVAC filter-preserving reveal is missing %q", revealGuard)
-		}
+	if !strings.Contains(content, "hvacNavigationRevealMatchesPath") {
+		t.Fatal("HVAC service-path reveal must remain compatible with graph-specific quick filters")
 	}
 
 	preference := sliceBetween(content, "function preferredHVACSemanticOccurrence", "function hvacViewTargetForSelection")

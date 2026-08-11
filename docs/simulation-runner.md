@@ -61,13 +61,17 @@ main and Batch Simulation views both use fixed `direct_only` allocation and
 
 ### Main Simulation Defaults
 
-The main single-file Simulation view deliberately uses a compact setup. It
-does not expose Advanced run options, an EnergyPlus version selector, a Run
-Plan display, or selectors for allocation, output application, frequency,
+The main single-file Simulation view deliberately uses a compact purpose
+selection. It does not expose Advanced run options, an EnergyPlus version
+selector, a Run Plan display, or selectors for allocation, output application, frequency,
 detail, period, or zone scope. It also omits Integrity and Custom Outputs from
-the purpose setup. The backend purpose model continues to support those
+the purpose list. The backend purpose model continues to support those
 purposes and options. Batch Simulation follows the separate fixed contract
 below.
+
+The view places **Run & Inspect** beside the Weather selector. It does not show
+a separate header status, a concatenated selected-purpose summary, or
+detail/weight tier badges on the purpose cards.
 
 The main view sends these fixed values:
 
@@ -519,8 +523,9 @@ Basic Energy completeness panels distinguish source output shortage from
 accounting/model coverage gaps. When missing source requests are reported, the
 backend plan identifies the missing purpose outputs and the permanent output
 application flow can add them before a rerun. Light-tier results produced by
-direct backend callers can still report detail-tier guidance; the main and
-Batch Simulation views always request Heat Drivers. If the active
+direct backend callers remain distinguishable in exported plan and
+completeness metadata, while the main view does not present a tier label. The
+main and Batch Simulation views always request Heat Drivers. If the active
 model-aware purpose plan did not request any Basic Energy meter outputs, Energy
 Use source availability is reported as `not_applicable` instead of falling back
 to a broad missing-meter catalog. Delivered-load source availability also
@@ -547,7 +552,7 @@ Catalog reads are cached per SQL/RDD/MDD path and invalidated when file size or
 modification time changes. Each catalog item reports its object type, key,
 variable or meter name, units, source, status, alias target when applicable, and
 purpose tags. Backend clients can use catalog entries to construct Custom
-Outputs requests; the main Simulation setup no longer provides manual Custom
+Outputs requests; the main Simulation view no longer provides manual Custom
 Outputs entry or discovery controls.
 
 ## Run Artifacts and Export

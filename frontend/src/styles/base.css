@@ -2053,6 +2053,15 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
   font-size: 14px;
 }
 
+.diagnose-fix-tools {
+  display: grid;
+  gap: 8px;
+}
+
+.diagnose-fix-tools .summary-tools {
+  justify-content: flex-end;
+}
+
 .diagnose-fix-grid {
   grid-template-columns: minmax(220px, 0.8fr) minmax(0, 1.2fr);
 }
@@ -2075,68 +2084,6 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
 .diagnose-fix-preview ul {
   margin: 0;
   padding-left: 20px;
-}
-
-.diagnostic-toolbar {
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface);
-  padding: 10px;
-  display: grid;
-  gap: 8px;
-}
-
-.diagnostic-filter-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.diagnostic-filter-button {
-  min-height: 28px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--surface-2);
-  color: var(--ink);
-  padding: 0 9px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.diagnostic-filter-button small {
-  color: var(--muted);
-  font-size: 11px;
-}
-
-.diagnostic-filter-button.active {
-  border-color: var(--teal);
-  background: var(--teal-soft);
-  color: var(--teal-dark);
-}
-
-.diagnostic-toolbar-status {
-  min-height: 24px;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.diagnostic-clear-hidden,
-.diagnostic-code-action {
-  min-height: 26px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface-2);
-  color: var(--ink);
-  padding: 0 8px;
-  font-size: 12px;
-  font-weight: 700;
 }
 
 .diagnostic-group {

@@ -178,15 +178,6 @@
           </div>
 
           <div class="result-pane" id="profilePane">
-            <div class="summary-head profile-head">
-              <div>
-                <span id="profileStats">0 profiles</span>
-              </div>
-              <div class="summary-tools">
-                <input id="profileFilter" type="search" placeholder="Filter profiles, zones, schedules" data-i18n-placeholder="profile.filter" />
-                <button id="profileApplyButton" type="button" disabled data-i18n="action.applyProfile">Apply Profile</button>
-              </div>
-            </div>
             <div class="profile-pane">
               <div id="profileSettings" class="profile-settings"></div>
               <div class="profile-layout">
@@ -196,6 +187,7 @@
                 <section class="profile-visual" aria-label="Profile graph">
                   <div class="profile-section-head">
                     <h3 data-i18n="profile.graph">Profile Graph</h3>
+                    <button id="profileApplyButton" type="button" disabled data-i18n="action.applyProfile">Apply Profile</button>
                   </div>
                   <div id="profileGraph" class="profile-graph"></div>
                 </section>
@@ -231,14 +223,6 @@
           </div>
 
           <div class="result-pane" id="hvacPane">
-            <div class="summary-head hvac-head">
-              <div>
-                <span id="hvacStats">0 loops, 0 zones</span>
-              </div>
-              <div class="summary-tools hvac-tools">
-                <input id="hvacFilter" type="search" placeholder="Filter loops, zones, nodes" data-i18n-placeholder="hvac.filter" data-i18n-aria-label="hvac.filter" />
-              </div>
-            </div>
             <div class="hvac-pane">
               <div id="hvacSummary" class="hvac-summary"></div>
               <div id="hvacLayout" class="hvac-layout">
@@ -264,13 +248,6 @@
                     </div>
                     <div id="hvacInspector" class="hvac-inspector"></div>
                   </section>
-                  <section class="hvac-inspector-section">
-                    <div class="hvac-section-head">
-                      <h3 data-i18n="hvac.warnings">Warnings</h3>
-                      <span id="hvacWarningStats">0 warnings</span>
-                    </div>
-                    <div id="hvacWarnings" class="hvac-warning-list"></div>
-                  </section>
                 </aside>
               </div>
             </div>
@@ -291,34 +268,22 @@
           </div>
 
           <div class="result-pane" id="simulationPane">
-            <div class="summary-head simulation-head">
-              <div>
-                <span id="simulationStats">No run yet</span>
-              </div>
-              <div class="summary-tools">
-                <button id="simulationRunButton" type="button" data-i18n="action.runSimulation">Run & Inspect</button>
-              </div>
-            </div>
             <div class="simulation-pane">
               <section class="simulation-controls" aria-label="Simulation controls">
                 <label>
                   <span data-i18n="simulation.weather">Weather</span>
                   <select id="simulationWeatherSelect"></select>
                 </label>
+                <button id="simulationRunButton" type="button" data-i18n="action.runSimulation">Run & Inspect</button>
               </section>
-              <section class="simulation-purpose-panel" aria-label="Purpose setup">
-                <div class="profile-section-head">
-                  <h3 data-i18n="simulation.setup">Setup</h3>
-                  <span id="simulationPurposeStats" class="tool-muted">Basic Energy + Zone Heat Flow</span>
-                </div>
+              <section class="simulation-purpose-panel" aria-label="Simulation purposes">
                 <div id="simulationPurposeGrid" class="simulation-purpose-grid">
                   <label class="simulation-purpose-card">
                     <input type="checkbox" data-simulation-purpose="basic_energy" checked />
                     <span>
                       <strong data-i18n="simulation.purposeBasicEnergy">Basic Energy</strong>
-                      <small data-i18n="simulation.purposeBasicEnergyDesc">Monthly meters and end-use energy; detail tier adds explanations.</small>
+                      <small data-i18n="simulation.purposeBasicEnergyDesc">Monthly meters, end-use energy, and heat-driver explanations.</small>
                     </span>
-                    <em>Detail</em>
                   </label>
                   <label class="simulation-purpose-card">
                     <input type="checkbox" data-simulation-purpose="zone_heat_flow" checked />
@@ -326,7 +291,6 @@
                       <strong data-i18n="simulation.purposeZoneHeatFlow">Zone Heat Flow</strong>
                       <small data-i18n="simulation.purposeZoneHeatFlowDesc">Hourly zone heat-balance ledger and temperature overlay.</small>
                     </span>
-                    <em>Detail</em>
                   </label>
                   <label class="simulation-purpose-card">
                     <input type="checkbox" data-simulation-purpose="hvac_loop_check" />
@@ -334,7 +298,6 @@
                       <strong data-i18n="simulation.purposeHVACLoop">HVAC Loop Check</strong>
                       <small data-i18n="simulation.purposeHVACLoopDesc">System node trends for loop operation review.</small>
                     </span>
-                    <em>Heavy</em>
                   </label>
                   <label class="simulation-purpose-card">
                     <input type="checkbox" data-simulation-purpose="comfort_check" />
@@ -342,13 +305,12 @@
                       <strong data-i18n="simulation.purposeComfort">Comfort</strong>
                       <small data-i18n="simulation.purposeComfortDesc">Zone temperature, setpoint, PMV, and PPD trends.</small>
                     </span>
-                    <em>Medium</em>
                   </label>
                 </div>
               </section>
               <section class="simulation-progress-card" aria-label="Simulation progress">
                 <div class="simulation-progress-meta">
-                  <span id="simulationStatus" data-i18n="simulation.idle">Ready</span>
+                  <span id="simulationStatus"></span>
                   <span id="simulationPercent">0%</span>
                 </div>
                 <div class="tool-progress-track">
@@ -471,18 +433,6 @@
           </div>
 
           <div class="result-pane" id="diagnosePane">
-            <div class="summary-head">
-              <div>
-                <span id="diagnosticCount">0 issues</span>
-              </div>
-              <div class="summary-tools">
-                <button id="diagnoseFixRefresh" type="button" data-i18n="diagnoseFix.suggested">Suggested fixes</button>
-                <button id="diagnoseFixPreview" type="button" disabled data-i18n="diagnoseFix.preview">Preview fixes</button>
-                <button id="diagnoseFixApply" type="button" disabled data-i18n="diagnoseFix.apply">Apply selected</button>
-                <button id="diagnoseFixSaveAs" type="button" disabled data-i18n="diagnoseFix.saveCopy">Save cleaned copy</button>
-                <input id="diagnosticFilter" type="search" placeholder="Filter issues" data-i18n-placeholder="diagnose.filter" />
-              </div>
-            </div>
             <div class="diagnostic-pane">
               <section class="diagnose-fix-shell" aria-label="Suggested fixes">
                 <div class="diagnose-fix-head">
@@ -490,9 +440,17 @@
                     <h3 data-i18n="diagnoseFix.title">Fixes</h3>
                     <span id="diagnoseFixStatus" class="tool-muted" data-i18n="diagnoseFix.pending">Scan current input for suggested fixes.</span>
                   </div>
-                  <div class="cleanup-candidate-head">
-                    <input id="diagnoseFixCandidateFilter" type="search" placeholder="Filter candidates" aria-label="Filter fix candidates" data-i18n-placeholder="tools.filterCandidates" data-i18n-aria-label="tools.filterCandidates" />
-                    <span id="diagnoseFixCandidateStats" class="tool-muted" data-i18n="tools.selectedOf" data-i18n-params='{"selected":0,"total":0}'>0 selected of 0</span>
+                  <div class="diagnose-fix-tools">
+                    <div class="summary-tools">
+                      <button id="diagnoseFixRefresh" type="button" data-i18n="diagnoseFix.suggested">Suggested fixes</button>
+                      <button id="diagnoseFixPreview" type="button" disabled data-i18n="diagnoseFix.preview">Preview fixes</button>
+                      <button id="diagnoseFixApply" type="button" disabled data-i18n="diagnoseFix.apply">Apply selected</button>
+                      <button id="diagnoseFixSaveAs" type="button" disabled data-i18n="diagnoseFix.saveCopy">Save cleaned copy</button>
+                    </div>
+                    <div class="cleanup-candidate-head">
+                      <input id="diagnoseFixCandidateFilter" type="search" placeholder="Filter candidates" aria-label="Filter fix candidates" data-i18n-placeholder="tools.filterCandidates" data-i18n-aria-label="tools.filterCandidates" />
+                      <span id="diagnoseFixCandidateStats" class="tool-muted" data-i18n="tools.selectedOf" data-i18n-params='{"selected":0,"total":0}'>0 selected of 0</span>
+                    </div>
                   </div>
                 </div>
                 <div class="cleanup-grid diagnose-fix-grid">
