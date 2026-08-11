@@ -118,11 +118,13 @@ func TestTopologyToolbarSeparatesModeSpecificControls(t *testing.T) {
 		`id="thermalTopologyControls"`,
 		`id="thermalTopologyLayout"`,
 		`id="thermalTopologyShowAirCoupling"`,
-		`id="thermalTopologyExpandExternalTargets"`,
 	} {
 		if !strings.Contains(index, required) {
 			t.Fatalf("topology toolbar is missing %q", required)
 		}
+	}
+	if strings.Contains(index, `id="thermalTopologyExpandExternalTargets"`) {
+		t.Fatal("automatic directional Outdoor projection still exposes a manual external-target toggle")
 	}
 
 	view := readTestFile(t, "frontend/src/js/views/geometry-view.js")
@@ -260,6 +262,8 @@ func TestTopologySVGRendererUsesPortsPanZoomAndLayoutCache(t *testing.T) {
 		`svg.addEventListener("wheel"`,
 		`svg.addEventListener("pointerdown"`,
 		`state.thermalTopologyLayoutCache.get(cacheKey)`,
+		`data-thermal-node-id=`,
+		`rerouteThermalTopologyEdges(currentModel, currentLayout)`,
 	} {
 		if !strings.Contains(view, required) {
 			t.Fatalf("thermal SVG renderer is missing %q", required)
@@ -275,8 +279,10 @@ func TestTopologySVGRendererUsesPortsPanZoomAndLayoutCache(t *testing.T) {
 		`export function computeSpatialLayout`,
 		`export function computeNetworkLayout`,
 		`export function routeThermalEdge`,
+		`export function rerouteThermalTopologyEdges`,
 		`resolveNodeCollisions`,
 		`barycentricOrder`,
+		`adiabaticStub: true`,
 	} {
 		if !strings.Contains(layout, required) {
 			t.Fatalf("thermal layout/routing module is missing %q", required)

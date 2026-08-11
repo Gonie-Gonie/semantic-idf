@@ -53,7 +53,7 @@ func TestThermalTopologyLayoutBrowserHarness(t *testing.T) {
 	if !strings.Contains(document, `data-thermal-layout-status="passed"`) {
 		t.Fatalf("thermal topology layout harness did not pass:\n%s", document)
 	}
-	for _, signal := range []string{`"deterministic":true`, `"noOverlap":true`, `"portsAvoidCenters":true`, `"externalPlacement":true`, `"parallelOffset":true`, `"selectionCacheStable":true`, `"scopeCacheChanges":true`, `"neighborNodes":3`, `"selfLoop":true`} {
+	for _, signal := range []string{`"deterministic":true`, `"noOverlap":true`, `"portsAvoidCenters":true`, `"directionalPlacement":true`, `"parallelOffset":true`, `"selectionCacheStable":true`, `"scopeCacheChanges":true`, `"neighborZones":2`, `"adiabaticStub":true`, `"noCommonAdiabaticNode":true`, `"adiabaticBoundaryScope":true`, `"adiabaticConnectionScope":true`} {
 		if !strings.Contains(document, signal) {
 			t.Fatalf("thermal topology layout result is missing %s:\n%s", signal, document)
 		}
@@ -100,6 +100,47 @@ func TestThermalTopologyRendererBrowserHarness(t *testing.T) {
 	}
 }
 
+func TestThermalTopologyNodeDragBrowserHarness(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping headless-browser thermal topology node-drag harness in short mode")
+	}
+	chrome := phaseHChromeExecutable()
+	if chrome == "" {
+		t.Skip("Chrome/Chromium/Edge is not installed")
+	}
+	mux := http.NewServeMux()
+	mux.Handle("/src/", http.StripPrefix("/src/", http.FileServer(http.Dir(repoPath("frontend/src")))))
+	mux.HandleFunc("/thermal-topology-node-drag", func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = fmt.Fprint(writer, thermalTopologyNodeDragHarnessHTML)
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	command := exec.CommandContext(ctx, chrome,
+		"--headless=new", "--disable-gpu", "--disable-dev-shm-usage", "--no-sandbox", "--no-first-run", "--no-default-browser-check",
+		"--virtual-time-budget=30000", "--user-data-dir="+t.TempDir(), "--dump-dom", server.URL+"/thermal-topology-node-drag",
+	)
+	output, err := command.CombinedOutput()
+	if ctx.Err() == context.DeadlineExceeded {
+		t.Fatalf("thermal topology node-drag harness timed out:\n%s", output)
+	}
+	if err != nil {
+		t.Fatalf("thermal topology node-drag harness failed: %v\n%s", err, output)
+	}
+	document := string(output)
+	if !strings.Contains(document, `data-thermal-node-drag-status="passed"`) {
+		t.Fatalf("thermal topology node-drag harness did not pass:\n%s", document)
+	}
+	for _, signal := range []string{`"scaledNodeMove":true`, `"edgeRerouted":true`, `"nodePanIsolated":true`, `"clickSuppressed":true`, `"cachePersists":true`, `"backgroundPans":true`, `"directionalPoints":true`, `"adiabaticDetached":true`, `"adiabaticCapRerouted":true`, `"pointDraggable":true`, `"resetClears":true`, `"normalClick":true`} {
+		if !strings.Contains(document, signal) {
+			t.Fatalf("thermal topology node-drag result is missing %s:\n%s", signal, document)
+		}
+	}
+}
+
 const thermalTopologyLayoutHarnessHTML = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Thermal topology layout harness</title></head>
 <body data-thermal-layout-status="pending"><pre id="result">pending</pre>
@@ -114,18 +155,29 @@ try {
       { id: "zone:a", kind: "zone", label: "A", storyIndex: 0, centroid: { x: 0, y: 0, z: 0 } },
       { id: "zone:b", kind: "zone", label: "B", storyIndex: 0, centroid: { x: 10, y: 0, z: 0 } },
       { id: "zone:c", kind: "zone", label: "C", storyIndex: 1, centroid: { x: 5, y: 8, z: 3 } },
-      { id: "thermal-environment:outdoors", kind: "outdoors", label: "Outdoors" },
+      { id: "thermal-environment:outdoors_north", kind: "outdoors_north", label: "Outdoor N" },
+      { id: "thermal-environment:outdoors_east", kind: "outdoors_east", label: "Outdoor E" },
+      { id: "thermal-environment:outdoors_south", kind: "outdoors_south", label: "Outdoor S" },
+      { id: "thermal-environment:outdoors_west", kind: "outdoors_west", label: "Outdoor W" },
       { id: "thermal-environment:ground", kind: "ground", label: "Ground" },
+      { id: "thermal-environment:adiabatic", kind: "adiabatic", label: "Adiabatic" },
     ],
     connections: [
       { id: "edge:ab", fromNodeId: "zone:a", toNodeId: "zone:b", relationKind: "interzone", surfaceCount: 2, physicalGrossArea: 20 },
       { id: "edge:ab:air", fromNodeId: "zone:a", toNodeId: "zone:b", relationKind: "air_coupling", airCouplingIds: ["air:ab"] },
       { id: "edge:bc", fromNodeId: "zone:b", toNodeId: "zone:c", relationKind: "interzone", surfaceCount: 2, physicalGrossArea: 18 },
-      { id: "edge:out", fromNodeId: "zone:a", toNodeId: "thermal-environment:outdoors", relationKind: "outdoors", orientations: ["North"], surfaceCount: 1 },
+      { id: "edge:out:north", fromNodeId: "zone:a", toNodeId: "thermal-environment:outdoors_north", relationKind: "exterior", orientations: ["North"], surfaceCount: 1 },
+      { id: "edge:out:east", fromNodeId: "zone:a", toNodeId: "thermal-environment:outdoors_east", relationKind: "exterior", orientations: ["East"], surfaceCount: 1 },
+      { id: "edge:out:south", fromNodeId: "zone:a", toNodeId: "thermal-environment:outdoors_south", relationKind: "exterior", orientations: ["South"], surfaceCount: 1 },
+      { id: "edge:out:west", fromNodeId: "zone:a", toNodeId: "thermal-environment:outdoors_west", relationKind: "exterior", orientations: ["West"], surfaceCount: 1 },
       { id: "edge:ground", fromNodeId: "zone:c", toNodeId: "thermal-environment:ground", relationKind: "ground", surfaceCount: 1 },
-      { id: "edge:loop", fromNodeId: "zone:b", toNodeId: "zone:b", relationKind: "adiabatic", surfaceCount: 1 },
+      { id: "edge:adiabatic", fromNodeId: "zone:b", toNodeId: "thermal-environment:adiabatic", relationKind: "adiabatic_explicit", boundaryIds: ["boundary:adiabatic"], surfaceCount: 1 },
+      { id: "edge:adiabatic:c", fromNodeId: "zone:c", toNodeId: "thermal-environment:adiabatic", relationKind: "adiabatic_explicit", boundaryIds: ["boundary:adiabatic:c"], surfaceCount: 1 },
     ],
-    boundaries: [], openings: [], airCouplings: [],
+    boundaries: [
+      { id: "boundary:adiabatic", ownerZoneId: "zone:b", targetId: "thermal-environment:adiabatic", relationKind: "adiabatic_explicit", orientation: "East", surfaceType: "Wall", physicalGrossArea: 5, effectiveGrossArea: 5 },
+      { id: "boundary:adiabatic:c", ownerZoneId: "zone:c", targetId: "thermal-environment:adiabatic", relationKind: "adiabatic_explicit", orientation: "West", surfaceType: "Wall", physicalGrossArea: 7, effectiveGrossArea: 7 },
+    ], openings: [], airCouplings: [],
   }};
   const options = { layout: "spatial", scope: "building", selectedEntityId: "zone:b", showAirCoupling: true };
   const model = layout.createThermalTopologyLayoutModel(geometry, options);
@@ -139,19 +191,36 @@ try {
   const ab = first.edges.find((edge) => edge.id === "edge:ab");
   const portsAvoidCenters = ab.route.sourcePort !== "center" && ab.route.targetPort !== "center" && /C/.test(ab.route.path);
   assert(portsAvoidCenters, "edge routing used node centers");
-  const externalPlacement = first.positions["thermal-environment:ground"].y > first.positions["zone:c"].y && first.positions["thermal-environment:outdoors"].x > first.positions["zone:a"].x;
-  assert(externalPlacement, "external nodes are not outside the zone field");
+  const directionalPlacement = first.positions["thermal-environment:outdoors_north"].y < first.positions["zone:a"].y
+    && first.positions["thermal-environment:outdoors_east"].x > first.positions["zone:a"].x
+    && first.positions["thermal-environment:outdoors_south"].y > first.positions["zone:a"].y
+    && first.positions["thermal-environment:outdoors_west"].x < first.positions["zone:a"].x
+    && first.positions["thermal-environment:ground"].y > first.positions["zone:c"].y;
+  assert(directionalPlacement, "directional Outdoor nodes are not projected to distinct sides");
   const parallelOffset = ab.route.path !== first.edges.find((edge) => edge.id === "edge:ab:air").route.path;
   assert(parallelOffset, "conductive and air paths overlap");
   const selectionCacheStable = layout.thermalTopologyLayoutCacheKey(geometry, options, {width:900,height:600}) === layout.thermalTopologyLayoutCacheKey(geometry, {...options,selectedEntityId:"zone:a"}, {width:900,height:600});
   const scopeCacheChanges = layout.thermalTopologyLayoutCacheKey(geometry, {...options,scope:"neighbors",selectedEntityId:"zone:a"}, {width:900,height:600}) !== layout.thermalTopologyLayoutCacheKey(geometry, {...options,scope:"neighbors",selectedEntityId:"zone:b"}, {width:900,height:600});
   assert(selectionCacheStable && scopeCacheChanges, "selection/layout cache boundary is incorrect");
   const neighborModel = layout.createThermalTopologyLayoutModel(geometry, { ...options, scope: "neighbors", selectedEntityId: "zone:a" });
-  const neighborNodes = neighborModel.nodes.filter((node) => node.kind === "zone").length;
-  assert(neighborNodes === 2, "one-hop scope did not isolate selected neighbors");
-  const selfLoop = first.edges.find((edge) => edge.id === "edge:loop").route.selfLoop;
-  assert(selfLoop, "adiabatic self-loop route missing");
-  document.getElementById("result").textContent = JSON.stringify({ deterministic, noOverlap, portsAvoidCenters, externalPlacement, parallelOffset, selectionCacheStable, scopeCacheChanges, neighborNodes: neighborModel.nodes.length, selfLoop });
+  const neighborZones = neighborModel.nodes.filter((node) => node.kind === "zone").length;
+  assert(neighborZones === 2, "one-hop scope did not isolate selected neighbors");
+  const adiabaticEdge = first.edges.find((edge) => edge.sourceConnectionId === "edge:adiabatic");
+  const adiabaticStub = adiabaticEdge?.route?.adiabaticStub === true && adiabaticEdge.route.selfLoop !== true;
+  const noCommonAdiabaticNode = !model.nodes.some((node) => node.kind === "adiabatic") && !first.positions["thermal-environment:adiabatic"];
+  assert(adiabaticStub, "detached adiabatic stub route missing");
+  assert(noCommonAdiabaticNode, "common Adiabatic environment node must not be laid out");
+  const hasOnlySelectedAdiabaticStub = (scoped, boundaryID, ownerNodeID) => {
+    const stubs = scoped.connections.filter((connection) => connection.presentationKind === "adiabatic_stub");
+    return stubs.length === 1 && stubs[0].targetId === boundaryID && stubs[0].fromNodeId === ownerNodeID;
+  };
+  const boundaryScope = layout.createThermalTopologyLayoutModel(geometry, { ...options, scope: "selection", selectedEntityId: "boundary:adiabatic", selectedEntityKind: "thermal_boundary" });
+  const connectionScope = layout.createThermalTopologyLayoutModel(geometry, { ...options, scope: "neighbors", selectedEntityId: "edge:adiabatic", selectedEntityKind: "thermal_connection" });
+  const adiabaticBoundaryScope = hasOnlySelectedAdiabaticStub(boundaryScope, "boundary:adiabatic", "zone:b");
+  const adiabaticConnectionScope = hasOnlySelectedAdiabaticStub(connectionScope, "boundary:adiabatic", "zone:b");
+  assert(adiabaticBoundaryScope, "boundary scope leaked another zone's Adiabatic stub through the shared environment");
+  assert(adiabaticConnectionScope, "connection scope leaked another zone's Adiabatic stub through the shared environment");
+  document.getElementById("result").textContent = JSON.stringify({ deterministic, noOverlap, portsAvoidCenters, directionalPlacement, parallelOffset, selectionCacheStable, scopeCacheChanges, neighborZones, adiabaticStub, noCommonAdiabaticNode, adiabaticBoundaryScope, adiabaticConnectionScope });
   document.body.dataset.thermalLayoutStatus = "passed";
 } catch (error) {
   document.getElementById("result").textContent = error.stack || String(error);
@@ -166,7 +235,7 @@ const thermalTopologyRendererHarnessHTML = `<!doctype html>
 <select id="thermalTopologyMetric"><option value="topology">topology</option><option value="area">area</option><option value="ua">ua</option><option value="qa">qa</option><option value="air">air</option></select>
 <select id="thermalTopologyScope"><option value="building">building</option><option value="selection">selection</option></select>
 <select id="thermalTopologyLayout"><option value="spatial">spatial</option><option value="network">network</option></select>
-<input id="thermalTopologyShowAirCoupling" type="checkbox"><input id="thermalTopologyExpandExternalTargets" type="checkbox">
+<input id="thermalTopologyShowAirCoupling" type="checkbox">
 <pre id="result">pending</pre>
 <script type="module">
 const assert = (condition, message) => { if (!condition) throw new Error(message); };
@@ -220,5 +289,124 @@ try {
 } catch (error) {
   document.getElementById("result").textContent = error.stack || String(error);
   document.body.dataset.thermalRendererStatus = "failed";
+}
+</script></body></html>`
+
+const thermalTopologyNodeDragHarnessHTML = `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Thermal topology node drag harness</title></head>
+<body data-thermal-node-drag-status="pending">
+<div id="thermalTopologyGraph" style="width:900px;height:600px"></div><aside id="thermalTopologyInspector"></aside>
+<select id="thermalTopologyMetric"><option value="topology">topology</option></select>
+<select id="thermalTopologyScope"><option value="building">building</option></select>
+<select id="thermalTopologyLayout"><option value="network">network</option></select>
+<input id="thermalTopologyShowAirCoupling" type="checkbox">
+<pre id="result">pending</pre>
+<script type="module">
+const assert = (condition, message) => { if (!condition) throw new Error(message); };
+const position = (element) => {
+  const match = /translate\(\s*([\d.+-]+)[ ,]+([\d.+-]+)\s*\)/.exec(element?.getAttribute("transform") || "");
+  return match ? {x:Number(match[1]),y:Number(match[2])} : null;
+};
+const close = (left, right, epsilon = 0.05) => Math.abs(left - right) <= epsilon;
+const pointer = (target, type, x, y, pointerId) => target.dispatchEvent(new PointerEvent(type, {
+  bubbles:true, cancelable:true, pointerId, pointerType:"mouse", isPrimary:true,
+  button:0, buttons:type === "pointerup" ? 0 : 1, clientX:x, clientY:y,
+}));
+const drag = (handle, svg, dx, dy, pointerId) => {
+  const bounds = handle.getBoundingClientRect();
+  const x = bounds.left + bounds.width / 2;
+  const y = bounds.top + bounds.height / 2;
+  pointer(handle, "pointerdown", x, y, pointerId);
+  pointer(svg, "pointermove", x + dx, y + dy, pointerId);
+  pointer(svg, "pointerup", x + dx, y + dy, pointerId);
+};
+try {
+  const stateModule = await import("/src/js/state.js");
+  const view = await import("/src/js/views/thermal-topology-view.js");
+  const geometry = { topology: {
+    schema:"semantic-idf.thermal-topology/v1", sourceModelHash:"node-drag-fixture",
+    nodes:[
+      {id:"zone:a",entityId:"zone:a",kind:"zone",label:"Zone A",storyIndex:0,centroid:{x:0,y:0,z:0}},
+      {id:"zone:b",entityId:"zone:b",kind:"zone",label:"Zone B",storyIndex:0,centroid:{x:8,y:0,z:0}},
+      {id:"thermal-environment:outdoors_north",kind:"outdoors_north",label:"Outdoor N"},
+      {id:"thermal-environment:outdoors_east",kind:"outdoors_east",label:"Outdoor E"},
+      {id:"thermal-environment:outdoors_south",kind:"outdoors_south",label:"Outdoor S"},
+      {id:"thermal-environment:outdoors_west",kind:"outdoors_west",label:"Outdoor W"},
+      {id:"thermal-environment:adiabatic",kind:"adiabatic",label:"Adiabatic"},
+    ],
+    boundaries:[{id:"boundary:adiabatic",ownerZoneId:"zone:b",relationKind:"adiabatic_explicit",orientation:"East",surfaceType:"Wall",physicalGrossArea:5,effectiveGrossArea:5}], openings:[], airCouplings:[], issueLinks:[], zoneSignatures:[], adjacencyObservations:[],
+    connections:[
+      {id:"connection:ab",fromNodeId:"zone:a",toNodeId:"zone:b",relationKind:"interzone_explicit_surface",boundaryIds:[],surfaceCount:1},
+      {id:"connection:out:north",fromNodeId:"zone:a",toNodeId:"thermal-environment:outdoors_north",relationKind:"exterior",orientations:["North"],boundaryIds:[],surfaceCount:1},
+      {id:"connection:out:east",fromNodeId:"zone:a",toNodeId:"thermal-environment:outdoors_east",relationKind:"exterior",orientations:["East"],boundaryIds:[],surfaceCount:1},
+      {id:"connection:out:south",fromNodeId:"zone:a",toNodeId:"thermal-environment:outdoors_south",relationKind:"exterior",orientations:["South"],boundaryIds:[],surfaceCount:1},
+      {id:"connection:out:west",fromNodeId:"zone:a",toNodeId:"thermal-environment:outdoors_west",relationKind:"exterior",orientations:["West"],boundaryIds:[],surfaceCount:1},
+      {id:"connection:adiabatic",fromNodeId:"zone:b",toNodeId:"thermal-environment:adiabatic",relationKind:"adiabatic_explicit",orientations:["East"],boundaryIds:["boundary:adiabatic"],surfaceCount:1},
+    ],
+  }};
+  const state = stateModule.state;
+  state.report={geometry}; state.geometryMode="thermal"; state.thermalTopologyMetric="topology"; state.thermalTopologyScope="building"; state.thermalTopologyLayout="network";
+  state.thermalTopologyShowAirCoupling=false; state.thermalTopologyPanX=30; state.thermalTopologyPanY=-20; state.thermalTopologyScale=2; state.thermalTopologyLayoutCache.clear();
+  state.thermalTopologySelectedEntityKind=""; state.thermalTopologySelectedEntityId=""; state.selectedGeometryKind=""; state.selectedGeometryId="";
+  const selections=[];
+  const helpers={navigationAttributes:()=>"",selectGeometry:async(kind,id)=>{selections.push({kind,id});return true;},setGeometryMode:()=>{}};
+  view.renderThermalTopology(geometry,helpers);
+  let svg=document.querySelector(".thermal-topology-svg");
+  let zone=document.querySelector('[data-thermal-node-id="zone:a"]');
+  const original=position(zone);
+  const edge=document.querySelector('[data-thermal-edge-id="connection:ab"] .thermal-edge');
+  const originalPath=edge?.getAttribute("d") || "";
+  const originalPan={x:state.thermalTopologyPanX,y:state.thermalTopologyPanY};
+  drag(zone,svg,40,20,11);
+  const moved=position(zone);
+  const scaledNodeMove=Boolean(original&&moved)&&close(moved.x-original.x,20)&&close(moved.y-original.y,10);
+  const edgeRerouted=Boolean(originalPath)&&edge?.getAttribute("d")!==originalPath;
+  const nodePanIsolated=state.thermalTopologyPanX===originalPan.x&&state.thermalTopologyPanY===originalPan.y;
+  const outdoorPoints=[...document.querySelectorAll('.thermal-node.environment-point[data-thermal-orientation]')];
+  const pointOrientations=outdoorPoints.map((item)=>item.dataset.thermalOrientation).sort().join();
+  const directionalPoints=pointOrientations==="east,north,south,west"&&outdoorPoints.every((item)=>Boolean(item.querySelector("circle.thermal-node-endpoint"))&&!item.querySelector("rect"));
+  const stub=document.querySelector('.thermal-edge-group.adiabatic-stub[data-thermal-target-kind="thermal_boundary"][data-thermal-target-id="boundary:adiabatic"]');
+  const stubEdge=stub?.querySelector(".thermal-edge.adiabatic-stub");
+  const adiabaticDetached=Boolean(stubEdge)&&Boolean(stub.querySelector(".thermal-edge-cap"))&&!stubEdge.hasAttribute("marker-end")&&!document.querySelector('[data-thermal-node-id="thermal-environment:adiabatic"]');
+  zone.dispatchEvent(new MouseEvent("click",{bubbles:true,cancelable:true}));
+  const clickSuppressed=selections.length===0&&state.thermalTopologySelectedEntityId==="";
+  view.renderThermalTopology(geometry,helpers);
+  zone=document.querySelector('[data-thermal-node-id="zone:a"]');
+  const restored=position(zone);
+  const cachePersists=Boolean(restored&&moved)&&close(restored.x,moved.x)&&close(restored.y,moved.y);
+
+  svg=document.querySelector(".thermal-topology-svg");
+  pointer(svg,"pointerdown",450,300,21); pointer(svg,"pointermove",480,315,21); pointer(svg,"pointerup",480,315,21);
+  const backgroundPans=state.thermalTopologyPanX===originalPan.x+30&&state.thermalTopologyPanY===originalPan.y+15;
+
+  const currentStub=document.querySelector('.thermal-edge-group.adiabatic-stub');
+  const currentStubEdge=currentStub?.querySelector(".thermal-edge.adiabatic-stub");
+  const currentCap=currentStub?.querySelector(".thermal-edge-cap");
+  const stubPathBefore=currentStubEdge?.getAttribute("d")||"";
+  const capPathBefore=currentCap?.getAttribute("d")||"";
+  drag(document.querySelector('[data-thermal-node-id="zone:b"]'),svg,20,16,26);
+  const adiabaticCapRerouted=Boolean(stubPathBefore&&capPathBefore)&&currentStubEdge?.getAttribute("d")!==stubPathBefore&&currentCap?.getAttribute("d")!==capPathBefore;
+
+  const point=document.querySelector('[data-thermal-node-id="thermal-environment:outdoors_north"]');
+  const pointBefore=position(point);
+  drag(point,svg,24,0,31);
+  const pointAfter=position(point);
+  const pointDraggable=Boolean(pointBefore&&pointAfter)&&close(pointAfter.x-pointBefore.x,12)&&close(pointAfter.y,pointBefore.y);
+
+  stateModule.resetThermalTopologyDocumentState(state);
+  view.renderThermalTopology(geometry,helpers);
+  const resetPosition=position(document.querySelector('[data-thermal-node-id="zone:a"]'));
+  const resetClears=Boolean(resetPosition&&original)&&close(resetPosition.x,original.x)&&close(resetPosition.y,original.y);
+  await new Promise((resolve)=>setTimeout(resolve,0));
+  document.querySelector('[data-thermal-node-id="zone:a"]').dispatchEvent(new MouseEvent("click",{bubbles:true,cancelable:true}));
+  const normalClick=selections.some((item)=>item.kind==="zone"&&item.id==="zone:a")&&state.thermalTopologySelectedEntityId==="zone:a";
+
+  const results={scaledNodeMove,edgeRerouted,nodePanIsolated,clickSuppressed,cachePersists,backgroundPans,directionalPoints,adiabaticDetached,adiabaticCapRerouted,pointDraggable,resetClears,normalClick};
+  assert(Object.values(results).every(Boolean),"node drag contract failed: "+JSON.stringify(results));
+  document.getElementById("result").textContent=JSON.stringify(results);
+  document.body.dataset.thermalNodeDragStatus="passed";
+} catch(error) {
+  document.getElementById("result").textContent=error.stack||String(error);
+  document.body.dataset.thermalNodeDragStatus="failed";
 }
 </script></body></html>`

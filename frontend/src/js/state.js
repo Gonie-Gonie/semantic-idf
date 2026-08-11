@@ -31,7 +31,6 @@ export function normalizeThermalTopologyState(target = state) {
   target.thermalTopologyScope = normalizeThermalTopologyScope(target.thermalTopologyScope);
   target.thermalTopologyLayout = normalizeThermalTopologyLayout(target.thermalTopologyLayout);
   target.thermalTopologyShowAirCoupling = normalizeBoolean(target.thermalTopologyShowAirCoupling, false);
-  target.thermalTopologyExpandExternalTargets = normalizeBoolean(target.thermalTopologyExpandExternalTargets, false);
   target.thermalTopologySelectedEntityId = String(target.thermalTopologySelectedEntityId || "");
   target.thermalTopologySelectedEntityKind = String(target.thermalTopologySelectedEntityKind || "");
   target.thermalTopologyPanX = finiteNumber(target.thermalTopologyPanX, 0);
@@ -48,7 +47,6 @@ export function captureThermalTopologyState(source = state) {
     thermalTopologyScope: source.thermalTopologyScope,
     thermalTopologyLayout: source.thermalTopologyLayout,
     thermalTopologyShowAirCoupling: source.thermalTopologyShowAirCoupling,
-    thermalTopologyExpandExternalTargets: source.thermalTopologyExpandExternalTargets,
     thermalTopologySelectedEntityId: source.thermalTopologySelectedEntityId,
     thermalTopologySelectedEntityKind: source.thermalTopologySelectedEntityKind,
     thermalTopologyPanX: source.thermalTopologyPanX,
@@ -152,6 +150,10 @@ export const state = {
   hvacPathTypeFilter: "all",
   hvacMediumFilter: "all",
   hvacGraphScale: "actual",
+  hvacDiagramViewportKey: "",
+  hvacDiagramScale: 1,
+  hvacDiagramPanX: 0,
+  hvacDiagramPanY: 0,
   hvacServiceGraphLayoutCache: new Map(),
   hvacApplyField: null,
   hvacOutputRequest: null,
@@ -226,7 +228,6 @@ export const state = {
   thermalTopologyScope: "building",
   thermalTopologyLayout: "spatial",
   thermalTopologyShowAirCoupling: false,
-  thermalTopologyExpandExternalTargets: false,
   thermalTopologySelectedEntityId: "",
   thermalTopologySelectedEntityKind: "",
   thermalTopologyPanX: 0,
@@ -444,7 +445,6 @@ export const elements = {
   thermalTopologyExportJSON: document.querySelector("#thermalTopologyExportJSON"),
   thermalTopologyLayout: document.querySelector("#thermalTopologyLayout"),
   thermalTopologyShowAirCoupling: document.querySelector("#thermalTopologyShowAirCoupling"),
-  thermalTopologyExpandExternalTargets: document.querySelector("#thermalTopologyExpandExternalTargets"),
   geometryFitButton: document.querySelector("#geometryFitButton"),
   geometryExpandButton: document.querySelector("#geometryExpandButton"),
   geometrySyncLocate: document.querySelector("#geometrySyncLocate"),

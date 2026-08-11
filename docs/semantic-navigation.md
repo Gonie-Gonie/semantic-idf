@@ -145,7 +145,7 @@ it must not duplicate this table as a large object-type switch.
 | HVAC service path | HVAC | Path ID |
 | HVAC loop | HVAC | Loop ID |
 | HVAC component | HVAC | Component ID |
-| Supporting coupling | HVAC | Coupling ID |
+| Supporting coupling | HVAC | Coupling ID revealed in Zone Services or its connected loop |
 | Output request | Input source | Source object or field anchor |
 | Simulation-purpose output source | Simulation or Input source | Result/source ID or source anchor |
 | Diagnostic occurrence | Diagnose | Diagnostic ID |
@@ -157,6 +157,14 @@ Geometry, Profile, HVAC, and Diagnose target. Occurrences beneath
 `zones/<zone>/geometry` prefer Profile, HVAC, and Geometry respectively. When
 multiple valid targets or occurrences remain, the UI offers a chooser rather
 than inventing a relationship or silently choosing an unrelated context.
+
+HVAC Components and Couplings are not standalone result views. Component and
+supporting-coupling targets retain their stable semantic identities, but reveal
+inside a Zone Services path when one exists. A coupling without a compatible
+service path reveals its first connected loop; if neither context exists, it
+falls back to the Zone Services root. This keeps source navigation intact while
+the visible HVAC navigator remains organized around zone relationships and
+AirLoopHVAC, PlantLoop, and Other loop diagrams.
 
 Profile and Geometry/Topology do not advertise each other as direct related
 destinations in result-panel menus or the workspace link bar. Both remain

@@ -46,13 +46,46 @@ func TestTOPO261LayoutRoutingAcceptance(t *testing.T) {
 		"chooseThermalPorts",
 		"parallelCounts",
 		"laneOffset",
-		"selfLoop: true",
+		"adiabaticStub: true",
+		"rerouteThermalTopologyEdges",
 	} {
 		if !strings.Contains(layout, required) {
 			t.Fatalf("layout/routing acceptance missing %q", required)
 		}
 	}
+	for _, removed := range []string{"expandExternalTargets", "expandExternalTargets:"} {
+		if strings.Contains(layout, removed) {
+			t.Fatalf("automatic Outdoor projection retains manual expansion path %q", removed)
+		}
+	}
 	view := readTestFile(t, "frontend/src/js/views/thermal-topology-view.js")
+	for _, required := range []string{
+		"isThermalPointNode",
+		`environment-point`,
+		`data-thermal-orientation=`,
+		`thermal-node-endpoint`,
+		`thermal-edge-group navigable-row${stub ? " adiabatic-stub" : ""}`,
+		`thermal-edge-cap`,
+		`const markerEnd = stub ? ""`,
+	} {
+		if !strings.Contains(view, required) {
+			t.Fatalf("directional Outdoor/Adiabatic renderer contract missing %q", required)
+		}
+	}
+	styles := readTestFile(t, "frontend/src/styles/geometry.css")
+	for _, required := range []string{
+		`.thermal-node.environment-point .thermal-node-endpoint`,
+		`.thermal-node.environment-point[data-thermal-orientation="east"]`,
+		`.thermal-node.environment-point[data-thermal-orientation="south"]`,
+		`.thermal-node.environment-point[data-thermal-orientation="west"]`,
+		`.thermal-node.environment-point[data-thermal-orientation="roof"]`,
+		`.thermal-node.environment-point[data-thermal-orientation="floor"]`,
+		`.thermal-edge-cap`,
+	} {
+		if !strings.Contains(styles, required) {
+			t.Fatalf("directional Outdoor/Adiabatic styling contract missing %q", required)
+		}
+	}
 	for _, removed := range []string{"expandConnection", "collapseBoundaryGraph", "data-topology-back"} {
 		if strings.Contains(view, removed) {
 			t.Fatalf("Zone-only Network still exposes boundary drill-down %q", removed)

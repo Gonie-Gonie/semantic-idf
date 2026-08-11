@@ -301,6 +301,19 @@
   stroke-dasharray: 3 3;
 }
 
+.thermal-edge.adiabatic-stub,
+.thermal-edge-cap {
+  stroke: #8b75a8;
+  stroke-dasharray: 3 3;
+  vector-effect: non-scaling-stroke;
+}
+
+.thermal-edge-cap {
+  fill: none;
+  stroke-width: 2;
+  pointer-events: none;
+}
+
 .thermal-edge.relation-interzone_explicit_surface,
 .thermal-edge.relation-interzone_implicit_zone,
 .thermal-edge.relation-interspace_implicit {
@@ -317,6 +330,7 @@
   stroke-width: 4;
 }
 
+.thermal-edge.metric-connectivity.relation-exterior,
 .thermal-edge.metric-connectivity.relation-outdoors,
 .thermal-edge.metric-connectivity.relation-zone,
 .thermal-edge.metric-connectivity.relation-space {
@@ -388,8 +402,16 @@
   stroke-width: 3;
 }
 
+.thermal-edge-group:hover .thermal-edge-cap,
+.thermal-edge-group:focus-visible .thermal-edge-cap,
+.thermal-edge-group.selected .thermal-edge-cap {
+  stroke: var(--geometry-selected);
+  stroke-width: 3;
+}
+
 .thermal-edge-group:focus-visible .thermal-edge,
-.thermal-node:focus-visible rect {
+.thermal-node:focus-visible rect,
+.thermal-node:focus-visible .thermal-node-endpoint {
   stroke: var(--geometry-selected);
   stroke-width: 4;
   outline: none;
@@ -402,8 +424,12 @@
 }
 
 .thermal-node {
-  cursor: pointer;
+  cursor: grab;
   outline: none;
+}
+
+.thermal-node.dragging {
+  cursor: grabbing;
 }
 
 .thermal-node rect {
@@ -428,6 +454,57 @@
 
 .thermal-node.selected rect {
   fill: color-mix(in srgb, var(--geometry-selected), var(--surface) 88%);
+}
+
+.thermal-node.environment-point .thermal-node-endpoint {
+  fill: #3b82a0;
+  stroke: var(--surface);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.thermal-node.environment-point[data-thermal-orientation="east"] .thermal-node-endpoint {
+  fill: #c97820;
+}
+
+.thermal-node.environment-point[data-thermal-orientation="south"] .thermal-node-endpoint {
+  fill: #b95353;
+}
+
+.thermal-node.environment-point[data-thermal-orientation="west"] .thermal-node-endpoint {
+  fill: #8a6fb5;
+}
+
+.thermal-node.environment-point[data-thermal-orientation="roof"] .thermal-node-endpoint {
+  fill: var(--teal);
+}
+
+.thermal-node.environment-point[data-thermal-orientation="floor"] .thermal-node-endpoint,
+.thermal-node.environment-point[data-thermal-orientation="ground"] .thermal-node-endpoint {
+  fill: #8b6b45;
+}
+
+.thermal-node.environment-point:hover .thermal-node-endpoint,
+.thermal-node.environment-point:focus .thermal-node-endpoint,
+.thermal-node.environment-point.semantic-hovered .thermal-node-endpoint,
+.thermal-node.environment-point.selected .thermal-node-endpoint {
+  stroke: var(--geometry-selected);
+  stroke-width: 4;
+}
+
+.thermal-node-endpoint-hit {
+  fill: transparent;
+  stroke: none;
+}
+
+.thermal-environment-label {
+  fill: var(--ink);
+  font-size: 9px;
+  font-weight: 700;
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 3px;
+  pointer-events: none;
 }
 
 .thermal-node-label,

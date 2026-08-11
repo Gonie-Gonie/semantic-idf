@@ -175,7 +175,6 @@
 
 .hvac-graph > .hvac-loop-title,
 .hvac-graph > .hvac-graphic-shell > .hvac-graph-toolbar,
-.hvac-graph > .hvac-coupling-overview:first-child > .hvac-section-head:first-child,
 .hvac-graph > .hvac-graph-detail:first-child > .hvac-section-head:first-child,
 .hvac-graph > .empty:first-child {
   padding-inline-end: 220px;
@@ -184,7 +183,6 @@
 @container hvac-main (max-width: 480px) {
   .hvac-graph > .hvac-loop-title,
   .hvac-graph > .hvac-graphic-shell > .hvac-graph-toolbar,
-  .hvac-graph > .hvac-coupling-overview:first-child > .hvac-section-head:first-child,
   .hvac-graph > .hvac-graph-detail:first-child > .hvac-section-head:first-child,
   .hvac-graph > .empty:first-child {
     padding-block-start: 52px;
@@ -1368,24 +1366,6 @@
   white-space: nowrap;
 }
 
-.hvac-physical-loop-detail > summary {
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  list-style: none;
-}
-
-.hvac-physical-loop-detail > summary::-webkit-details-marker {
-  display: none;
-}
-
-.hvac-physical-loop-detail .hvac-graphic-shell {
-  padding-left: 0;
-  padding-right: 0;
-}
-
 .hvac-tag-list {
   display: flex;
   flex-wrap: wrap;
@@ -1650,24 +1630,12 @@
   text-transform: uppercase;
 }
 
-.hvac-coupling-overview {
-  display: grid;
-  gap: 10px;
-  border-bottom: 1px solid var(--line);
-  background: var(--surface);
-  padding: 10px;
-}
-
-.hvac-coupling-grid,
-.hvac-network-list,
 .hvac-support-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 8px;
 }
 
-.hvac-coupling-card,
-.hvac-network-card,
 .hvac-support-card {
   min-width: 0;
   border: 1px solid var(--surface-2);
@@ -1680,44 +1648,16 @@
   text-align: left;
 }
 
-.hvac-coupling-card,
 .hvac-support-card {
   cursor: pointer;
 }
 
-.hvac-coupling-card:hover,
-.hvac-coupling-card.selected,
-.hvac-coupling-card:focus-visible,
 .hvac-support-card:hover,
 .hvac-support-card.selected,
 .hvac-support-card:focus-visible {
   border-color: var(--teal);
   background: var(--teal-soft);
   outline: none;
-}
-
-.hvac-coupling-card strong,
-.hvac-coupling-card span,
-.hvac-coupling-card small,
-.hvac-network-card strong,
-.hvac-network-card span,
-.hvac-network-card small {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.hvac-coupling-card span,
-.hvac-network-card span {
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.hvac-coupling-card small,
-.hvac-network-card small {
-  color: var(--muted);
-  font-size: 11px;
 }
 
 .hvac-supporting-assets {

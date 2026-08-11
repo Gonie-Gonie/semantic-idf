@@ -258,9 +258,6 @@ elements.thermalTopologyLayout.addEventListener("change", () => {
 elements.thermalTopologyShowAirCoupling.addEventListener("change", () => {
   updateThermalTopologySetting("thermalTopologyShowAirCoupling", elements.thermalTopologyShowAirCoupling.checked);
 });
-elements.thermalTopologyExpandExternalTargets.addEventListener("change", () => {
-  updateThermalTopologySetting("thermalTopologyExpandExternalTargets", elements.thermalTopologyExpandExternalTargets.checked);
-});
 elements.thermalTopologyExportJSON.addEventListener("click", () => {
   window.dispatchEvent(new CustomEvent("idfAnalyzer:thermalTopologyExport"));
 });

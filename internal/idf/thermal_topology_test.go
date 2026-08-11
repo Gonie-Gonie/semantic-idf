@@ -37,9 +37,39 @@ func TestThermalTopologyNodesUseSemanticEntityIDs(t *testing.T) {
 	if space.EntityID != space.ID || space.Kind != "space" || space.ZoneName != "Zone A" {
 		t.Fatalf("space topology node does not use semantic entity identity: %#v", space)
 	}
-	outdoors := findThermalNode(t, topology, "thermal-environment:outdoors")
+	outdoorBoundary := findThermalBoundary(t, topology, "Outdoors")
+	outdoors := findThermalNode(t, topology, outdoorBoundary.TargetID)
 	if outdoors.EntityID != "" || len(outdoors.SourceAnchors) == 0 {
 		t.Fatalf("virtual outdoors node must expose source anchors without a fake entity: %#v", outdoors)
+	}
+	if outdoorBoundary.TargetName != outdoors.Label || !strings.HasPrefix(outdoors.Kind, "outdoors_") {
+		t.Fatalf("surface outdoors target must preserve its exposure: boundary %#v node %#v", outdoorBoundary, outdoors)
+	}
+}
+
+func TestThermalOutdoorsExposureTargetClassifiesDirectionAndSurfaceFamily(t *testing.T) {
+	tests := []struct {
+		name      string
+		boundary  ThermalBoundaryRecord
+		wantKind  string
+		wantLabel string
+	}{
+		{name: "north", boundary: ThermalBoundaryRecord{SurfaceType: "Wall", Orientation: " North "}, wantKind: "outdoors_north", wantLabel: "Outdoor N"},
+		{name: "east", boundary: ThermalBoundaryRecord{SurfaceType: "Wall", Orientation: "East"}, wantKind: "outdoors_east", wantLabel: "Outdoor E"},
+		{name: "south", boundary: ThermalBoundaryRecord{SurfaceType: "Wall", Orientation: "South"}, wantKind: "outdoors_south", wantLabel: "Outdoor S"},
+		{name: "west", boundary: ThermalBoundaryRecord{SurfaceType: "Wall", Orientation: "West"}, wantKind: "outdoors_west", wantLabel: "Outdoor W"},
+		{name: "roof", boundary: ThermalBoundaryRecord{SurfaceType: "RoofCeiling", Orientation: "North"}, wantKind: "outdoors_roof", wantLabel: "Outdoor Roof"},
+		{name: "ceiling", boundary: ThermalBoundaryRecord{SurfaceType: "Ceiling", Orientation: "South"}, wantKind: "outdoors_roof", wantLabel: "Outdoor Roof"},
+		{name: "floor", boundary: ThermalBoundaryRecord{SurfaceType: "Floor", Orientation: "North"}, wantKind: "outdoors_floor", wantLabel: "Outdoor Floor"},
+		{name: "unknown", boundary: ThermalBoundaryRecord{SurfaceType: "Wall"}, wantKind: "outdoors", wantLabel: "Outdoors"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			kind, label := thermalOutdoorsExposureTarget(test.boundary)
+			if kind != test.wantKind || label != test.wantLabel {
+				t.Fatalf("thermalOutdoorsExposureTarget(%#v) = %q/%q, want %q/%q", test.boundary, kind, label, test.wantKind, test.wantLabel)
+			}
+		})
 	}
 }
 
@@ -487,6 +517,9 @@ func TestThermalTopologyBuildsExplicitAndAirflowNetworkCouplings(t *testing.T) {
 	ventilation := findThermalAirCoupling(t, topology, "outdoor_ventilation")
 	if ventilation.FromNodeID != "thermal-environment:outdoors" || ventilation.DesignFlowRate != 0.3 {
 		t.Fatalf("outdoor ventilation coupling = %#v", ventilation)
+	}
+	if outdoors := findThermalNode(t, topology, ventilation.FromNodeID); outdoors.Kind != "outdoors" || outdoors.Label != "Outdoors" {
+		t.Fatalf("non-surface outdoor-air target must remain generic: %#v", outdoors)
 	}
 	afn := findThermalAirCoupling(t, topology, "airflow_network")
 	if afn.SurfaceID == "" || afn.ComponentName != "Pair Crack" || afn.ToNodeID != "space:zone%20b:space%20b" || len(afn.SourceAnchors) < 3 {

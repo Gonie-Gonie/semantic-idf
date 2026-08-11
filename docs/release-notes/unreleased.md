@@ -50,12 +50,22 @@ The release script infers bump size from these sections:
   remains a shared default, 3D and Plan retain independent visibility layers,
   Network story selection appears only for Story scope, and the obsolete
   Select aid and Network Openings options were removed.
+- Topology Network nodes can now be repositioned by dragging, with connected
+  routes updating in place. Outdoor boundaries use compact directional points
+  with separate N/E/S/W/Roof/Floor area and UA totals, while Adiabatic surfaces
+  appear as selectable detached wall stubs instead of a shared environment node.
 - Moved Geometry Fit/Expand, HVAC Expand, and Heat-Flow plan zoom actions into
   their drawing areas as compact icon controls. HVAC now keeps its inspector
   visible and no longer shows a separate inspector toggle button.
 - Removed the redundant HVAC and Profile top headers and text search fields.
-  HVAC now uses only its compact lower picker cards: the top view switcher,
-  Warnings surface, Current focus card, and picker helper text were removed.
+  HVAC now uses exactly four compact picker cards: Zone Services,
+  AirLoopHVAC, PlantLoop, and Other. The standalone Components and Couplings
+  pickers/views, top view switcher, Warnings surface, Current focus card, and
+  picker helper text were removed. Loop schematics are again shown directly
+  when a loop is selected instead of being hidden in a collapsed detail.
+  Ctrl/Meta + mouse wheel now zooms the Loop and Zone Services diagrams around
+  the pointer without changing the WebView/application zoom; an unmodified
+  wheel continues to scroll the HVAC panel.
   Back, Forward, Clear focus, Zone Services, and Expand now share a horizontal
   icon toolbar at the upper-right of the HVAC drawing instead of a text
   breadcrumb row.

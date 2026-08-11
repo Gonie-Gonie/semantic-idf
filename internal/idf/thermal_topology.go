@@ -403,13 +403,14 @@ func (builder *thermalTopologyBuilder) addBoundaryRecords() {
 		boundaryObjectRaw := geometryStringField(object, "Outside Boundary Condition Object")
 		construction := builder.constructionByName[normalizeName(surface.Construction)]
 		surfaceEntityID := thermalSemanticEntityID(object, builder.registry)
+		surfaceType := firstNonEmpty(geometryStringField(object, "Surface Type"), surface.SurfaceType)
 		boundary := ThermalBoundaryRecord{
 			ID:                   "thermal-boundary:" + surfaceEntityID,
 			SurfaceID:            surface.ID,
 			SurfaceEntityID:      surfaceEntityID,
 			SurfaceObjectIndex:   surface.ObjectIndex,
 			SurfaceName:          surface.Name,
-			SurfaceType:          surface.SurfaceType,
+			SurfaceType:          surfaceType,
 			OwnerZoneID:          builder.zoneNodeIDByName[normalizeName(surface.ZoneName)],
 			OwnerSpaceID:         builder.spaceNodeIDByName[normalizeName(surface.SpaceName)],
 			BoundaryConditionRaw: boundaryRaw,
@@ -719,10 +720,11 @@ func (builder *thermalTopologyBuilder) resolveBoundaryRecord(boundaryIndex int) 
 	}
 	switch boundary.BoundaryCondition {
 	case "Outdoors":
+		targetKind, targetLabel := thermalOutdoorsExposureTarget(*boundary)
 		boundary.RelationKind = "exterior"
 		boundary.TargetKind = "outdoors"
-		boundary.TargetID = builder.addEnvironmentNode("outdoors", "Outdoors", boundary.SourceAnchors)
-		builder.addOutdoorsExposureNode(*boundary)
+		boundary.TargetID = builder.addEnvironmentNode(targetKind, targetLabel, boundary.SourceAnchors)
+		boundary.TargetName = targetLabel
 	case "Ground":
 		boundary.RelationKind = "ground"
 		boundary.TargetKind = "ground"
@@ -898,19 +900,24 @@ func (builder *thermalTopologyBuilder) addOpeningIssue(opening *ThermalOpeningRe
 	})
 }
 
-func (builder *thermalTopologyBuilder) addOutdoorsExposureNode(boundary ThermalBoundaryRecord) {
-	kind, label := "outdoors", "Outdoors"
-	if strings.EqualFold(boundary.SurfaceType, "Roof") || strings.EqualFold(boundary.SurfaceType, "RoofCeiling") || strings.EqualFold(boundary.SurfaceType, "Ceiling") {
-		kind, label = "outdoors_roof", "Outdoors / Roof & Sky"
-	} else {
-		switch strings.ToLower(boundary.Orientation) {
-		case "north", "east", "south", "west":
-			kind = "outdoors_" + strings.ToLower(boundary.Orientation)
-			label = "Outdoors / " + strings.ToUpper(boundary.Orientation[:1]) + strings.ToLower(boundary.Orientation[1:])
-		}
+func thermalOutdoorsExposureTarget(boundary ThermalBoundaryRecord) (string, string) {
+	switch strings.ToLower(strings.TrimSpace(boundary.SurfaceType)) {
+	case "roof", "roofceiling", "ceiling":
+		return "outdoors_roof", "Outdoor Roof"
+	case "floor":
+		return "outdoors_floor", "Outdoor Floor"
 	}
-	if kind != "outdoors" {
-		builder.addEnvironmentNode(kind, label, boundary.SourceAnchors)
+	switch strings.ToLower(strings.TrimSpace(boundary.Orientation)) {
+	case "north":
+		return "outdoors_north", "Outdoor N"
+	case "east":
+		return "outdoors_east", "Outdoor E"
+	case "south":
+		return "outdoors_south", "Outdoor S"
+	case "west":
+		return "outdoors_west", "Outdoor W"
+	default:
+		return "outdoors", "Outdoors"
 	}
 }
 

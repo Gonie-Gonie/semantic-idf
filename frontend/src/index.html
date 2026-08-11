@@ -557,7 +557,6 @@
                         </select>
                       </label>
                       <label class="geometry-toggle"><input id="thermalTopologyShowAirCoupling" type="checkbox" /> <span data-i18n="topology.showAirCoupling">Air coupling</span></label>
-                      <label class="geometry-toggle"><input id="thermalTopologyExpandExternalTargets" type="checkbox" /> <span data-i18n="topology.expandExternalTargets">Expand external targets</span></label>
                       <button id="thermalTopologyExportJSON" type="button" data-i18n="topology.exportJSON">Export topology JSON</button>
                     </div>
                   </details>
@@ -569,7 +568,7 @@
                 <div id="geometryCanvasHost" class="geometry-canvas-host"></div>
                 <svg id="geometryPlan" class="geometry-plan" role="img" aria-label="Topology floor plan"></svg>
                 <div id="thermalTopologyView" class="thermal-topology-view">
-                  <div id="thermalTopologyGraph" class="thermal-topology-graph" role="img" aria-label="Network topology and boundary connections" data-i18n-aria-label="topology.thermalTooltip"></div>
+                  <div id="thermalTopologyGraph" class="thermal-topology-graph" role="region" aria-label="Network topology and boundary connections" data-i18n-aria-label="topology.thermalTooltip"></div>
                   <aside id="thermalTopologyInspector" class="thermal-topology-inspector" aria-label="Thermal topology inspector" data-i18n-aria-label="topology.inspector"></aside>
                 </div>
                 <div class="viewport-action-tools geometry-viewport-actions">

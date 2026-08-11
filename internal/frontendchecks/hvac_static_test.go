@@ -97,8 +97,6 @@ func TestFrontendHVACServiceDOMContracts(t *testing.T) {
 		"function renderHVACGraphScopeControls",
 		"function renderHVACServicePicker",
 		"function renderHVACLoopPicker",
-		"function renderHVACComponentPicker",
-		"function renderHVACCouplingPicker",
 		"function renderHVACQuickFilters",
 		"function servicePathMatchesQuickFilters",
 		"function grasshopperWirePath",
@@ -121,7 +119,6 @@ func TestFrontendHVACServiceDOMContracts(t *testing.T) {
 		`data-hvac-service-subject-key="${escapeHTML(key)}"`,
 		`data-hvac-loop-id="${escapeHTML(loop.id)}"`,
 		`data-hvac-entity-view="services"`,
-		`data-hvac-entity-view="couplings"`,
 	} {
 		if !strings.Contains(text, required) {
 			t.Fatalf("hvac service renderer is missing DOM contract %q", required)
@@ -252,12 +249,8 @@ func TestFrontendHVACUsesHeaderlessCardNavigationWithoutWarnings(t *testing.T) {
 	for _, required := range []string{
 		"${renderHVACServicePicker(",
 		"${renderHVACLoopPicker({",
-		"${renderHVACComponentPicker(",
-		"${renderHVACCouplingPicker(",
 		"function renderHVACServicePicker",
 		"function renderHVACLoopPicker({ kind, label, count, loops, active })",
-		"function renderHVACComponentPicker",
-		"function renderHVACCouplingPicker",
 		"function renderHVACQuickFilters",
 		"function servicePathMatchesQuickFilters",
 		"data-hvac-filter-kind",
@@ -267,6 +260,19 @@ func TestFrontendHVACUsesHeaderlessCardNavigationWithoutWarnings(t *testing.T) {
 	} {
 		if !strings.Contains(view, required) {
 			t.Fatalf("HVAC lower-card navigation contract is missing %q", required)
+		}
+	}
+	for _, removed := range []string{
+		"${renderHVACComponentPicker(",
+		"${renderHVACCouplingPicker(",
+		"function renderHVACComponentPicker",
+		"function renderHVACComponentChoice",
+		"function renderHVACCouplingPicker",
+		"function renderHVACCouplingChoice",
+		`data-hvac-entity-view="couplings"`,
+	} {
+		if strings.Contains(view, removed) {
+			t.Fatalf("HVAC retains removed Components/Couplings navigator contract %q", removed)
 		}
 	}
 
@@ -405,7 +411,6 @@ func TestFrontendHVACViewportActionsAreIconOnlyAndSynchronized(t *testing.T) {
 	}
 	for _, required := range []string{
 		"padding-inline-end: 220px",
-		".hvac-coupling-overview:first-child > .hvac-section-head:first-child",
 		".hvac-graph-detail:first-child > .hvac-section-head:first-child",
 		".hvac-graph > .empty:first-child",
 		"@container hvac-main (max-width: 480px)",
@@ -466,13 +471,16 @@ func TestFrontendHVACNavigationCardsAreCompactAndViewsAreCanonicalized(t *testin
 
 	viewMode := sliceBetween(view, "function hvacViewMode", "function graphKeyForHVACEntity")
 	for _, required := range []string{
-		`["services", "loop", "couplings"].includes(view)`,
+		`["services", "loop"].includes(view)`,
 		`view === "debug" && hvacDebugEnabled()`,
 		`return "services"`,
 	} {
 		if !strings.Contains(viewMode, required) {
 			t.Fatalf("HVAC view canonicalizer is missing %q", required)
 		}
+	}
+	if strings.Contains(viewMode, `"couplings"`) {
+		t.Fatal("removed Couplings view must canonicalize to Zone Services")
 	}
 	for _, required := range []string{
 		`const nextView = hvacViewMode(target.view || viewForHVACEntity(entity) || state.activeHVACView || "services")`,
@@ -487,6 +495,79 @@ func TestFrontendHVACNavigationCardsAreCompactAndViewsAreCanonicalized(t *testin
 	summaryAt := strings.Index(renderer, "renderHVACSummary(hvac, selectedLoop)")
 	if canonicalizeAt < 0 || summaryAt < 0 || canonicalizeAt > summaryAt {
 		t.Fatal("HVAC render must canonicalize deprecated views before rendering lower-card navigation")
+	}
+}
+
+func TestFrontendHVACNavigatorContainsOnlyZoneAndLoopGroups(t *testing.T) {
+	view := readTestFile(t, "frontend/src/js/views/hvac-views.js")
+	summary := sliceBetween(view, "function renderHVACSummary", "function hasHVACFocus")
+
+	if count := strings.Count(summary, "${renderHVACServicePicker("); count != 1 {
+		t.Fatalf("HVAC navigator must render one Zone Services card, got %d", count)
+	}
+	if count := strings.Count(summary, "${renderHVACLoopPicker({"); count != 3 {
+		t.Fatalf("HVAC navigator must render AirLoopHVAC, PlantLoop, and Other cards, got %d loop cards", count)
+	}
+	for _, kind := range []string{`kind: "air"`, `kind: "plant"`, `kind: "other"`} {
+		if !strings.Contains(summary, kind) {
+			t.Fatalf("HVAC navigator is missing canonical loop group %q", kind)
+		}
+	}
+	for _, removed := range []string{
+		"renderHVACComponentPicker",
+		"renderHVACCouplingPicker",
+		"serviceModel.components",
+		"serviceModel.couplings",
+		"groups.other.length ? renderHVACLoopPicker",
+	} {
+		if strings.Contains(summary, removed) {
+			t.Fatalf("HVAC navigator retains removed or conditional group contract %q", removed)
+		}
+	}
+}
+
+func TestFrontendHVACLoopDiagramIsPrimaryVisibleContent(t *testing.T) {
+	view := readTestFile(t, "frontend/src/js/views/hvac-views.js")
+	styles := readTestFile(t, "frontend/src/styles/hvac.css")
+	loopView := sliceBetween(view, "function renderHVACLoopView", "function renderHVACLoopServiceOverview")
+
+	if !strings.Contains(loopView, "${renderHVACLoopDiagram(loop, { interactive: true })}") {
+		t.Fatal("HVAC loop view must render the interactive loop diagram")
+	}
+	for _, hiddenContract := range []string{"<details", "hvac-physical-loop-detail", "physicalLoopDetail"} {
+		if strings.Contains(loopView, hiddenContract) {
+			t.Fatalf("HVAC loop diagram remains hidden behind %q", hiddenContract)
+		}
+	}
+	if strings.Contains(styles, ".hvac-physical-loop-detail") {
+		t.Fatal("HVAC stylesheet retains the removed collapsed loop-detail surface")
+	}
+}
+
+func TestFrontendHVACHasNoStandaloneComponentsOrCouplingsRoute(t *testing.T) {
+	view := readTestFile(t, "frontend/src/js/views/hvac-views.js")
+	renderer := sliceBetween(view, "export function renderHVAC", "function renderEmptyHVAC")
+	viewMode := sliceBetween(view, "function hvacViewMode", "function graphKeyForHVACEntity")
+
+	for _, removed := range []string{
+		`state.activeHVACView === "couplings"`,
+		"renderHVACCouplings(hvac)",
+	} {
+		if strings.Contains(renderer, removed) {
+			t.Fatalf("HVAC render dispatcher retains standalone route %q", removed)
+		}
+	}
+	if strings.Contains(viewMode, "couplings") {
+		t.Fatal("HVAC view canonicalizer retains standalone Couplings route")
+	}
+	for _, removed := range []string{
+		"function renderHVACCouplings",
+		"function renderHVACCouplingCard",
+		"function renderHVACNetworkCard",
+	} {
+		if strings.Contains(view, removed) {
+			t.Fatalf("HVAC renderer retains dead standalone Components/Couplings code %q", removed)
+		}
 	}
 }
 
@@ -560,6 +641,57 @@ func TestFrontendHVACGraphAreaOwnsScroll(t *testing.T) {
 		if !strings.Contains(text, required) {
 			t.Fatalf("HVAC graph scroll contract missing %q", required)
 		}
+	}
+}
+
+func TestFrontendHVACDiagramCtrlWheelZoomIsLocalBoundedAndResettable(t *testing.T) {
+	stateSource := readTestFile(t, "frontend/src/js/state.js")
+	view := readTestFile(t, "frontend/src/js/views/hvac-views.js")
+
+	for _, required := range []string{
+		`hvacDiagramViewportKey: ""`,
+		`hvacDiagramScale: 1`,
+		`hvacDiagramPanX: 0`,
+		`hvacDiagramPanY: 0`,
+	} {
+		if !strings.Contains(stateSource, required) {
+			t.Fatalf("HVAC diagram viewport state is missing %q", required)
+		}
+	}
+
+	for _, required := range []string{
+		"handleHVACDiagramWheel",
+		`elements.hvacGraph?.addEventListener(`,
+		`"wheel"`,
+		`{ passive: false }`,
+		`event.ctrlKey`,
+		`event.metaKey`,
+		`[data-hvac-diagram-key]`,
+		`event.preventDefault()`,
+		`event.stopPropagation()`,
+		"function resetHVACDiagramViewport",
+		"function updateHVACDiagramTransform",
+		`class="hvac-diagram-panzoom"`,
+		`data-hvac-diagram-content`,
+	} {
+		if !strings.Contains(view, required) {
+			t.Fatalf("HVAC local Ctrl+wheel viewport contract is missing %q", required)
+		}
+	}
+	if !strings.Contains(view, "0.1") || !strings.Contains(view, "8") {
+		t.Fatal("HVAC diagram zoom must retain the 0.1..8 clamp")
+	}
+	if count := strings.Count(view, `data-hvac-diagram-key=`); count != 2 {
+		t.Fatalf("HVAC loop and Zone Services SVGs must both expose the delegated diagram key, got %d occurrences", count)
+	}
+	if count := strings.Count(view, `class="hvac-diagram-panzoom"`); count != 2 {
+		t.Fatalf("HVAC loop and Zone Services SVGs must both render a pan/zoom content group, got %d occurrences", count)
+	}
+	if count := strings.Count(view, "resetHVACDiagramViewport("); count < 3 {
+		t.Fatalf("HVAC viewport must reset from the scale preset and document reset paths, got %d reset references", count)
+	}
+	if !strings.Contains(view, "renderHVACLoopDiagram(loop, { interactive: true })") {
+		t.Fatal("the primary HVAC loop view must opt into interaction without changing Simulation's reused loop diagram")
 	}
 }
 

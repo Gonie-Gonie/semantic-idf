@@ -26,6 +26,14 @@ func TestThermalTopologyShortcutsAreConfigurableAndContextGuarded(t *testing.T) 
 }
 
 func TestThermalTopologyGraphAccessibilityContract(t *testing.T) {
+	index := readTestFile(t, "frontend/src/index.html")
+	graph := sliceBetween(index, `<div id="thermalTopologyGraph"`, `></div>`)
+	if !strings.Contains(graph, `role="region"`) {
+		t.Fatal("interactive thermal topology graph must expose its focusable descendants from a region")
+	}
+	if strings.Contains(graph, `role="img"`) {
+		t.Fatal("interactive thermal topology graph must not flatten focusable nodes and edges into an image role")
+	}
 	view := readTestFile(t, "frontend/src/js/views/thermal-topology-view.js")
 	inspector := readTestFile(t, "frontend/src/js/views/thermal-topology-inspector.js")
 	styles := readTestFile(t, "frontend/src/styles/geometry.css")

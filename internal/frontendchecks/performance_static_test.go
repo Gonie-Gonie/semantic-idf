@@ -135,7 +135,7 @@ func TestFrontendTopologyLookupAndDelegationPerformanceContracts(t *testing.T) {
 
 	layout := readTestFile(t, "frontend/src/js/views/thermal-topology-layout.js")
 	for _, term := range []string{
-		"const nodeByID = new Map(model.nodes.map",
+		"const nodeByID = new Map(",
 		"function routeThermalEdgeWithNodeIndex",
 		"function connectionNeighbors",
 		"function indexConnectionsByNode",

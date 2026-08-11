@@ -3,6 +3,7 @@ import { thermalTopologyObservationID } from "../thermal-topology-targets.js";
 
 export const THERMAL_NODE_WIDTH = 148;
 export const THERMAL_NODE_HEIGHT = 56;
+export const THERMAL_ENDPOINT_RADIUS = 7;
 const LAYOUT_PADDING = 92;
 const STORY_LANE_GAP = 150;
 
@@ -24,7 +25,6 @@ export function thermalTopologyLayoutCacheKey(geometry, options = {}, viewport =
     selectionAffectsScope ? options.selectedEntityId || "" : "",
     selectionAffectsScope ? options.selectedEntityKind || "" : "",
     Boolean(options.showAirCoupling),
-    Boolean(options.expandExternalTargets),
     Math.round((Number(viewport.width) || 900) / 50) * 50,
     Math.round((Number(viewport.height) || 600) / 50) * 50,
   ].join("|");
@@ -49,9 +49,9 @@ export function createThermalTopologyLayoutModel(geometry, options = {}) {
     base.connections.push(...qaObservationConnections(topology, base.boundaries));
   }
   const scoped = applyThermalTopologyScope(base, options);
-  const expanded = options.expandExternalTargets ? expandExternalTargets(scoped) : scoped;
+  const projected = projectAdiabaticBoundaries(scoped);
   return {
-    ...expanded,
+    ...projected,
     cacheKey: thermalTopologyLayoutCacheKey(geometry, options),
   };
 }
@@ -63,24 +63,32 @@ export function computeThermalTopologyLayout(model, viewport = {}) {
     ? computeNetworkLayout(model, { width, height })
     : computeSpatialLayout(model, { width, height });
   resolveNodeCollisions(positions, model.nodes, { width, height });
+  const layout = { width, height, positions, edges: [] };
+  rerouteThermalTopologyEdges(model, layout);
+  return layout;
+}
+
+export function rerouteThermalTopologyEdges(model, layout) {
   const parallelCounts = new Map();
   const nodeByID = new Map(model.nodes.map((node) => [node.id, node]));
-  const edges = model.connections.map((connection) => {
-    const pairKey = sortedPairKey(connection.fromNodeId, connection.toNodeId);
+  layout.edges = (model.connections || []).map((connection) => {
+    const pairKey = connection.presentationKind === "adiabatic_stub"
+      ? `${connection.fromNodeId}|adiabatic|${thermalConnectionSide(connection)}`
+      : sortedPairKey(connection.fromNodeId, connection.toNodeId);
     const lane = parallelCounts.get(pairKey) || 0;
     parallelCounts.set(pairKey, lane + 1);
     return {
       ...connection,
       route: routeThermalEdgeWithNodeIndex(
         connection,
-        positions[connection.fromNodeId],
-        positions[connection.toNodeId],
+        layout.positions[connection.fromNodeId],
+        layout.positions[connection.toNodeId],
         lane,
         nodeByID,
       ),
     };
   }).filter((edge) => edge.route);
-  return { width, height, positions, edges };
+  return layout.edges;
 }
 
 export function computeSpatialLayout(model, viewport = {}) {
@@ -158,6 +166,9 @@ export function routeThermalEdge(connection, source, target, parallelIndex = 0, 
 }
 
 function routeThermalEdgeWithNodeIndex(connection, source, target, parallelIndex, nodeByID) {
+  if (connection.presentationKind === "adiabatic_stub") {
+    return routeAdiabaticStub(connection, source, parallelIndex, nodeByID.get(connection.fromNodeId));
+  }
   if (!source || !target) {
     return null;
   }
@@ -176,8 +187,8 @@ function routeThermalEdgeWithNodeIndex(connection, source, target, parallelIndex
   const sourceNode = nodeByID.get(connection.fromNodeId);
   const targetNode = nodeByID.get(connection.toNodeId);
   const ports = chooseThermalPorts(source, target, sourceNode, targetNode);
-  const start = portPoint(source, ports.sourcePort);
-  const end = portPoint(target, ports.targetPort);
+  const start = portPoint(source, ports.sourcePort, sourceNode);
+  const end = portPoint(target, ports.targetPort, targetNode);
   const dx = end.x - start.x;
   const dy = end.y - start.y;
   const length = Math.max(1, Math.hypot(dx, dy));
@@ -202,6 +213,34 @@ function routeThermalEdgeWithNodeIndex(connection, source, target, parallelIndex
   };
 }
 
+function routeAdiabaticStub(connection, source, parallelIndex, sourceNode) {
+  if (!source) return null;
+  const side = thermalConnectionSide(connection);
+  const direction = sideVector(side);
+  const perpendicular = { x: -direction.y, y: direction.x };
+  const sourceSize = thermalNodeSize(sourceNode);
+  const halfExtent = side === "left" || side === "right" ? sourceSize.width / 2 : sourceSize.height / 2;
+  const laneOffset = alternatingLaneOffset(parallelIndex) * 11;
+  const gap = 9;
+  const length = 30;
+  const start = {
+    x: source.x + direction.x * (halfExtent + gap) + perpendicular.x * laneOffset,
+    y: source.y + direction.y * (halfExtent + gap) + perpendicular.y * laneOffset,
+  };
+  const end = { x: start.x + direction.x * length, y: start.y + direction.y * length };
+  const capHalf = 5;
+  return {
+    path: `M ${start.x} ${start.y} L ${end.x} ${end.y}`,
+    capPath: `M ${end.x - perpendicular.x * capHalf} ${end.y - perpendicular.y * capHalf} L ${end.x + perpendicular.x * capHalf} ${end.y + perpendicular.y * capHalf}`,
+    labelX: end.x + direction.x * 8,
+    labelY: end.y + direction.y * 8,
+    sourcePort: side,
+    targetPort: side,
+    selfLoop: false,
+    adiabaticStub: true,
+  };
+}
+
 export function applyThermalTopologyScope(model, options = {}) {
   const scope = normalizeThermalTopologyScope(options.scope);
   if (scope === "building") {
@@ -209,6 +248,7 @@ export function applyThermalTopologyScope(model, options = {}) {
   }
   const connections = model.connections || [];
   const selectedIDs = selectedNodeIDs(model, options.selectedEntityId);
+  const includedConnections = new Set();
   let included = new Set();
   if (scope === "story") {
     const story = options.storyIndex;
@@ -220,6 +260,7 @@ export function applyThermalTopologyScope(model, options = {}) {
     const storyNodes = new Set(included);
     for (const connection of connections) {
       if (storyNodes.has(connection.fromNodeId) || storyNodes.has(connection.toNodeId)) {
+        includedConnections.add(connection);
         included.add(connection.fromNodeId);
         included.add(connection.toNodeId);
       }
@@ -229,13 +270,14 @@ export function applyThermalTopologyScope(model, options = {}) {
     const frontier = new Set(included);
     for (const connection of connections) {
       if (frontier.has(connection.fromNodeId) || frontier.has(connection.toNodeId)) {
+        includedConnections.add(connection);
         included.add(connection.fromNodeId);
         included.add(connection.toNodeId);
       }
     }
   }
   selectedIDs.forEach((id) => included.add(id));
-  const scopedConnections = connections.filter((connection) => included.has(connection.fromNodeId) && included.has(connection.toNodeId));
+  const scopedConnections = connections.filter((connection) => includedConnections.has(connection));
   return {
     ...model,
     nodes: model.nodes.filter((node) => included.has(node.id)),
@@ -248,15 +290,28 @@ function selectedNodeIDs(model, selectedEntityId) {
   if (!selected) return [];
   if (model.nodes.some((node) => node.id === selected)) return [selected];
   const connection = model.connections.find((item) => item.id === selected);
-  if (connection) return [connection.fromNodeId, connection.toNodeId];
+  if (connection) return scopedConnectionNodeIDs(connection, model.nodes);
   const boundary = model.boundaries.find((item) => item.id === selected || item.surfaceId === selected || item.surfaceEntityId === selected);
-  if (boundary) return [boundary.ownerSpaceId || boundary.ownerZoneId, boundary.targetId].filter(Boolean);
+  if (boundary) {
+    const related = model.connections.find((item) => (item.boundaryIds || []).includes(boundary.id));
+    if (related) return scopedConnectionNodeIDs(related, model.nodes);
+    return [boundary.ownerZoneId || boundary.ownerSpaceId, boundary.targetId].filter(Boolean);
+  }
   const opening = (model.allOpenings || []).find((item) => item.id === selected || item.windowId === selected || item.entityId === selected);
   if (opening) {
+    const related = model.connections.find((item) => (item.openingIds || []).includes(opening.id));
+    if (related) return [related.fromNodeId, related.toNodeId].filter(Boolean);
     const base = model.boundaries.find((item) => item.surfaceId === opening.baseSurfaceId || item.id === opening.baseSurfaceId);
-    if (base) return [base.ownerSpaceId || base.ownerZoneId, base.targetId].filter(Boolean);
+    if (base) return [base.ownerZoneId || base.ownerSpaceId, base.targetId].filter(Boolean);
   }
   return [];
+}
+
+function scopedConnectionNodeIDs(connection, nodes) {
+  const ids = [connection.fromNodeId, connection.toNodeId].filter(Boolean);
+  if (!isAdiabaticConnection(connection)) return ids;
+  const nodeByID = new Map((nodes || []).map((node) => [node.id, node]));
+  return ids.filter((id) => !isSharedAdiabaticNode(nodeByID.get(id)));
 }
 
 function qaObservationConnections(topology, boundaries) {
@@ -281,37 +336,63 @@ function qaObservationConnections(topology, boundaries) {
   }).filter(Boolean);
 }
 
-function expandExternalTargets(model) {
-  const nodeByID = new Map(model.nodes.map((node) => [node.id, node]));
-  const nodes = [...model.nodes];
+function projectAdiabaticBoundaries(model) {
+  const nodeByID = new Map((model.nodes || []).map((node) => [node.id, node]));
+  const nodeIDs = new Set(nodeByID.keys());
+  const boundaryByID = new Map((model.boundaries || []).map((boundary) => [boundary.id, boundary]));
   const connections = [];
-  for (const connection of model.connections) {
-    const externalAtFrom = isExternalNode(nodeByID.get(connection.fromNodeId));
-    const externalAtTo = isExternalNode(nodeByID.get(connection.toNodeId));
-    const orientations = [...new Set(connection.orientations || [])].filter(Boolean).sort();
-    if ((!externalAtFrom && !externalAtTo) || orientations.length <= 1) {
+  for (const connection of model.connections || []) {
+    if (!isAdiabaticConnection(connection)) {
       connections.push(connection);
       continue;
     }
-    const externalID = externalAtFrom ? connection.fromNodeId : connection.toNodeId;
-    const externalNode = nodeByID.get(externalID);
-    for (const orientation of orientations) {
-      const cloneID = `${externalID}:${String(orientation).toLowerCase()}`;
-      if (!nodeByID.has(cloneID)) {
-        const clone = { ...externalNode, id: cloneID, sourceId: externalID, label: `${externalNode.label} · ${orientation}`, orientation };
-        nodes.push(clone);
-        nodeByID.set(cloneID, clone);
-      }
+    const boundaries = (connection.boundaryIds || []).map((id) => boundaryByID.get(id)).filter(Boolean);
+    for (const boundary of boundaries) {
+      const ownerNodeID = [connection.fromNodeId, connection.toNodeId]
+        .find((id) => nodeIDs.has(id) && !isSharedAdiabaticNode(nodeByID.get(id)))
+        || boundary.ownerZoneId;
+      if (!ownerNodeID || !nodeIDs.has(ownerNodeID)) continue;
       connections.push({
         ...connection,
-        id: `${connection.id}:${String(orientation).toLowerCase()}`,
-        fromNodeId: externalAtFrom ? cloneID : connection.fromNodeId,
-        toNodeId: externalAtTo ? cloneID : connection.toNodeId,
-        orientations: [orientation],
+        id: `${connection.id}:stub:${boundary.id}`,
+        sourceConnectionId: connection.id,
+        fromNodeId: ownerNodeID,
+        toNodeId: "",
+        targetKind: "thermal_boundary",
+        targetId: boundary.id,
+        presentationKind: "adiabatic_stub",
+        boundaryIds: [boundary.id],
+        openingIds: [...(boundary.openingIds || [])],
+        surfaceCount: 1,
+        openingCount: (boundary.openingIds || []).length,
+        physicalGrossArea: Number(boundary.physicalGrossArea) || 0,
+        physicalOpaqueArea: Number(boundary.physicalOpaqueArea) || 0,
+        physicalOpeningArea: Number(boundary.physicalOpeningArea) || 0,
+        effectiveGrossArea: Number(boundary.effectiveGrossArea) || 0,
+        effectiveOpaqueArea: Number(boundary.effectiveOpaqueArea) || 0,
+        effectiveOpeningArea: Number(boundary.effectiveOpeningArea) || 0,
+        opaqueUa: 0,
+        openingUa: 0,
+        totalUa: 0,
+        hasUa: true,
+        physicalOpaqueUa: 0,
+        physicalOpeningUa: 0,
+        physicalTotalUa: 0,
+        hasPhysicalUa: true,
+        orientations: boundary.orientation ? [boundary.orientation] : [],
+        orientation: boundary.orientation || "",
+        surfaceType: boundary.surfaceType || "",
+        diagnosticIds: [...(boundary.diagnosticIds || [])],
+        sourceAnchors: [...(boundary.sourceAnchors || [])],
       });
     }
   }
-  return { ...model, nodes, connections };
+  const referencedNodeIDs = new Set(connections.flatMap((connection) => [connection.fromNodeId, connection.toNodeId]).filter(Boolean));
+  return {
+    ...model,
+    nodes: (model.nodes || []).filter((node) => !isSharedAdiabaticNode(node) || referencedNodeIDs.has(node.id)),
+    connections,
+  };
 }
 
 function placeExternalNodes(external, positions, connections, viewport) {
@@ -371,11 +452,12 @@ function chooseThermalPorts(source, target, sourceNode, targetNode) {
     : { sourcePort: "top", targetPort: "bottom" };
 }
 
-function portPoint(position, port) {
-  if (port === "left") return { x: position.x - THERMAL_NODE_WIDTH / 2, y: position.y };
-  if (port === "right") return { x: position.x + THERMAL_NODE_WIDTH / 2, y: position.y };
-  if (port === "top") return { x: position.x, y: position.y - THERMAL_NODE_HEIGHT / 2 };
-  return { x: position.x, y: position.y + THERMAL_NODE_HEIGHT / 2 };
+function portPoint(position, port, node) {
+  const size = thermalNodeSize(node);
+  if (port === "left") return { x: position.x - size.width / 2, y: position.y };
+  if (port === "right") return { x: position.x + size.width / 2, y: position.y };
+  if (port === "top") return { x: position.x, y: position.y - size.height / 2 };
+  return { x: position.x, y: position.y + size.height / 2 };
 }
 
 function oppositePort(port) {
@@ -387,22 +469,24 @@ function resolveNodeCollisions(positions, nodes, viewport) {
   for (const node of [...nodes].sort(compareNodes)) {
     const position = positions[node.id];
     if (!position) continue;
+    const size = thermalNodeSize(node);
     let attempt = 0;
-    while (placed.some((other) => rectanglesOverlap(position, other)) && attempt < 80) {
+    while (placed.some((other) => rectanglesOverlap(position, size, other.position, other.size)) && attempt < 80) {
       const ring = Math.floor(attempt / 8) + 1;
       const angle = (attempt % 8) * Math.PI / 4;
       position.x += Math.cos(angle) * ring * 16;
       position.y += Math.sin(angle) * ring * 12;
-      position.x = Math.min(viewport.width - THERMAL_NODE_WIDTH / 2 - 8, Math.max(THERMAL_NODE_WIDTH / 2 + 8, position.x));
-      position.y = Math.min(viewport.height - THERMAL_NODE_HEIGHT / 2 - 8, Math.max(THERMAL_NODE_HEIGHT / 2 + 8, position.y));
+      position.x = Math.min(viewport.width - size.width / 2 - 8, Math.max(size.width / 2 + 8, position.x));
+      position.y = Math.min(viewport.height - size.height / 2 - 8, Math.max(size.height / 2 + 8, position.y));
       attempt += 1;
     }
-    placed.push(position);
+    placed.push({ position, size });
   }
 }
 
-function rectanglesOverlap(left, right) {
-  return Math.abs(left.x - right.x) < THERMAL_NODE_WIDTH + 12 && Math.abs(left.y - right.y) < THERMAL_NODE_HEIGHT + 12;
+function rectanglesOverlap(left, leftSize, right, rightSize) {
+  return Math.abs(left.x - right.x) < (leftSize.width + rightSize.width) / 2 + 12
+    && Math.abs(left.y - right.y) < (leftSize.height + rightSize.height) / 2 + 12;
 }
 
 function barycentricOrder(nodes, neighborsByNode, positions) {
@@ -461,6 +545,47 @@ function nodeDegrees(connections) {
 function isExternalNode(node) {
   if (!node) return false;
   return !["zone", "space"].includes(node.kind);
+}
+
+export function isThermalPointNode(node) {
+  const value = `${node?.kind || ""} ${node?.id || ""}`.toLowerCase();
+  return /(^|[\s:])outdoors?(?:_|\b)/.test(value) || node?.kind === "ground";
+}
+
+export function thermalNodeSize(node) {
+  const diameter = THERMAL_ENDPOINT_RADIUS * 2;
+  return isThermalPointNode(node)
+    ? { width: diameter, height: diameter }
+    : { width: THERMAL_NODE_WIDTH, height: THERMAL_NODE_HEIGHT };
+}
+
+function isAdiabaticConnection(connection) {
+  return connection?.relationKind === "adiabatic_explicit" || connection?.relationKind === "adiabatic_self_reference";
+}
+
+function isSharedAdiabaticNode(node) {
+  return node?.kind === "adiabatic" || node?.id === "thermal-environment:adiabatic";
+}
+
+function thermalConnectionSide(connection) {
+  const value = `${connection?.orientation || ""} ${(connection?.orientations || []).join(" ")} ${connection?.surfaceType || ""}`.toLowerCase();
+  if (/roof|ceiling|\bnorth\b|\bn\b/.test(value)) return "top";
+  if (/floor|\bsouth\b|\bs\b/.test(value)) return "bottom";
+  if (/\bwest\b|\bw\b/.test(value)) return "left";
+  return "right";
+}
+
+function sideVector(side) {
+  if (side === "left") return { x: -1, y: 0 };
+  if (side === "top") return { x: 0, y: -1 };
+  if (side === "bottom") return { x: 0, y: 1 };
+  return { x: 1, y: 0 };
+}
+
+function alternatingLaneOffset(index) {
+  if (!index) return 0;
+  const magnitude = Math.ceil(index / 2);
+  return index % 2 ? magnitude : -magnitude;
 }
 
 function normalizeRange(value, minimum, maximum, fallback) {

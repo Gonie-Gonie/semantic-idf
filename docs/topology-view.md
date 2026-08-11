@@ -47,7 +47,11 @@ layers and do not change the 3D visibility settings.
 Use Network to inspect the authoritative zone-level thermal network. It
 aggregates connections between zone/space owners and their targets. Source
 boundaries remain available from the inspector. Spatial and network layouts
-are deterministic projections of the same connection records.
+are deterministic projections of the same connection records. Drag a zone or
+environment endpoint to adjust the current layout; connected routes update in
+place. Outdoor endpoints are compact directional points, while each Adiabatic
+surface is a selectable detached wall stub rather than a shared environment
+node.
 
 ## Authoritative boundary versus geometric adjacency
 

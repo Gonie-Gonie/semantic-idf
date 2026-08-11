@@ -11,8 +11,12 @@ import { clearSemanticHover, hoverSemanticEntity } from "../selection-controller
 import {
   computeThermalTopologyLayout,
   createThermalTopologyLayoutModel,
+  isThermalPointNode,
+  rerouteThermalTopologyEdges,
+  THERMAL_ENDPOINT_RADIUS,
   THERMAL_NODE_HEIGHT,
   THERMAL_NODE_WIDTH,
+  thermalNodeSize,
   thermalTopologyLayoutCacheKey,
 } from "./thermal-topology-layout.js";
 import { renderThermalTopologyInspector } from "./thermal-topology-inspector.js";
@@ -26,6 +30,8 @@ let resizeFrame = 0;
 let observedWidth = 0;
 let observedHeight = 0;
 let graphTargetInteractionsBound = false;
+let suppressNextGraphClick = false;
+let graphClickSuppressionTimer = 0;
 
 const THERMAL_LAYOUT_CACHE_LIMIT = 24;
 
@@ -79,15 +85,15 @@ export function fitThermalTopology() {
     state.thermalTopologyScale = 1;
     return;
   }
-  const values = Object.values(currentLayout.positions || {});
-  if (!values.length) {
+  const positionedNodes = (currentModel?.nodes || []).filter((node) => currentLayout.positions?.[node.id]);
+  if (!positionedNodes.length) {
     return;
   }
   const viewport = graphViewport();
-  const minX = Math.min(...values.map((position) => position.x)) - THERMAL_NODE_WIDTH / 2;
-  const maxX = Math.max(...values.map((position) => position.x)) + THERMAL_NODE_WIDTH / 2;
-  const minY = Math.min(...values.map((position) => position.y)) - THERMAL_NODE_HEIGHT / 2;
-  const maxY = Math.max(...values.map((position) => position.y)) + THERMAL_NODE_HEIGHT / 2;
+  const minX = Math.min(...positionedNodes.map((node) => currentLayout.positions[node.id].x - thermalNodeSize(node).width / 2)) - 36;
+  const maxX = Math.max(...positionedNodes.map((node) => currentLayout.positions[node.id].x + thermalNodeSize(node).width / 2)) + 36;
+  const minY = Math.min(...positionedNodes.map((node) => currentLayout.positions[node.id].y - thermalNodeSize(node).height / 2)) - 36;
+  const maxY = Math.max(...positionedNodes.map((node) => currentLayout.positions[node.id].y + thermalNodeSize(node).height / 2)) + 36;
   const scale = clamp(Math.min((viewport.width - 36) / Math.max(1, maxX - minX), (viewport.height - 36) / Math.max(1, maxY - minY)), 0.1, 3.5);
   state.thermalTopologyScale = scale;
   state.thermalTopologyPanX = viewport.width / 2 - ((minX + maxX) / 2) * scale;
@@ -123,18 +129,20 @@ function renderEdge(edge, model, selectionContext, metricContext) {
   const selected = edgeMatchesThermalSelection(edge, selectionContext);
   const air = edge.relationKind === "air_coupling" || (edge.airCouplingIds || []).length > 0;
   const invalid = edge.qaOnly || edge.relationKind === "invalid";
+  const stub = Boolean(edge.route.adiabaticStub);
   const presentation = edgeMetricPresentation(edge, model, metricContext);
-  const classes = ["thermal-edge", `relation-${cssToken(edge.relationKind)}`, air ? "air" : "conductive", invalid ? "invalid" : "", ...presentation.classes, selected ? "selected" : ""].filter(Boolean).join(" ");
+  const classes = ["thermal-edge", `relation-${cssToken(edge.relationKind)}`, air ? "air" : "conductive", stub ? "adiabatic-stub" : "", invalid ? "invalid" : "", ...presentation.classes, selected ? "selected" : ""].filter(Boolean).join(" ");
   const label = connectionLabel(edge, model, metricContext);
   const targetKind = edge.targetKind || "thermal_connection";
   const targetID = edge.targetId || baseExpandedID(edge.id);
   const attributes = currentHelpers?.navigationAttributes?.(targetKind, targetID, {}, { tabindex: false }) || "";
   const tooltip = connectionTooltip(edge, model);
-  const ariaLabel = connectionAriaLabel(edge, model, targetID, label);
-  const markerEnd = `marker-end="url(#${air ? "thermalTopologyAirArrow" : "thermalTopologyArrow"})"`;
-  return `<g class="thermal-edge-group navigable-row" tabindex="0" role="button" data-thermal-target-kind="${targetKind}" data-thermal-target-id="${escapeHTML(targetID)}" aria-label="${escapeHTML(ariaLabel)}" ${attributes}>
+  const ariaLabel = connectionAriaLabel(edge, targetKind, targetID, label);
+  const markerEnd = stub ? "" : `marker-end="url(#${air ? "thermalTopologyAirArrow" : "thermalTopologyArrow"})"`;
+  return `<g class="thermal-edge-group navigable-row${stub ? " adiabatic-stub" : ""}${selected ? " selected" : ""}" tabindex="0" role="button" data-thermal-edge-id="${escapeHTML(edge.id)}" data-thermal-target-kind="${targetKind}" data-thermal-target-id="${escapeHTML(targetID)}" aria-label="${escapeHTML(ariaLabel)}" ${attributes}>
     <title>${escapeHTML(tooltip)}</title>
     <path class="${classes}" style="--thermal-edge-width:${presentation.width}" d="${edge.route.path}" ${markerEnd}></path>
+    ${edge.route.capPath ? `<path class="thermal-edge-cap" d="${edge.route.capPath}" aria-hidden="true"></path>` : ""}
     <path class="thermal-edge-hit" d="${edge.route.path}" aria-hidden="true"></path>
   </g>`;
 }
@@ -150,8 +158,18 @@ function renderNode(node, position, selectedID, model, metricContext) {
   const subtitle = nodeMetricSubtitle(node, model, metricContext);
   const nodeIssues = (node.diagnosticIds || []).length;
   const ariaLabel = `${label}; entity ${targetKind} ${targetID}; relation node; metric ${subtitle || "not available"}; issues ${nodeIssues}`;
-  const classes = ["thermal-node", external ? "external" : cssToken(node.kind), selected ? "selected" : "", model.metric === "qa" && !nodeIssues ? "qa-muted" : ""].filter(Boolean).join(" ");
-  return `<g class="${classes} navigable-row" tabindex="0" role="button" transform="translate(${position.x} ${position.y})" data-thermal-target-kind="${escapeHTML(targetKind)}" data-thermal-target-id="${escapeHTML(targetID)}" aria-label="${escapeHTML(ariaLabel)}" ${attributes}>
+  const point = isThermalPointNode(node);
+  const orientation = thermalPointOrientation(node);
+  const classes = ["thermal-node", external ? "external" : "", cssToken(node.kind), point ? "environment-point" : "", selected ? "selected" : "", model.metric === "qa" && !nodeIssues ? "qa-muted" : ""].filter(Boolean).join(" ");
+  if (point) {
+    return `<g class="${classes} navigable-row" tabindex="0" role="button" transform="translate(${position.x} ${position.y})" data-thermal-node-id="${escapeHTML(node.id)}" data-thermal-orientation="${escapeHTML(orientation)}" data-thermal-target-kind="${escapeHTML(targetKind)}" data-thermal-target-id="${escapeHTML(targetID)}" aria-label="${escapeHTML(ariaLabel)}" ${attributes}>
+      <circle class="thermal-node-endpoint-hit" r="16" aria-hidden="true"></circle>
+      <circle class="thermal-node-endpoint" r="${THERMAL_ENDPOINT_RADIUS}"></circle>
+      <text class="thermal-environment-label" text-anchor="middle" y="${thermalPointLabelY(orientation)}">${escapeHTML(label)}</text>
+      ${nodeIssues ? `<text class="thermal-node-issue-badge" x="9" y="-9" text-anchor="middle">${nodeIssues}</text>` : ""}
+    </g>`;
+  }
+  return `<g class="${classes} navigable-row" tabindex="0" role="button" transform="translate(${position.x} ${position.y})" data-thermal-node-id="${escapeHTML(node.id)}" data-thermal-target-kind="${escapeHTML(targetKind)}" data-thermal-target-id="${escapeHTML(targetID)}" aria-label="${escapeHTML(ariaLabel)}" ${attributes}>
     <rect x="${-THERMAL_NODE_WIDTH / 2}" y="${-THERMAL_NODE_HEIGHT / 2}" width="${THERMAL_NODE_WIDTH}" height="${THERMAL_NODE_HEIGHT}" rx="9"></rect>
     <circle class="thermal-node-port left" cx="${-THERMAL_NODE_WIDTH / 2}" cy="0" r="3"></circle>
     <circle class="thermal-node-port right" cx="${THERMAL_NODE_WIDTH / 2}" cy="0" r="3"></circle>
@@ -163,14 +181,50 @@ function renderNode(node, position, selectedID, model, metricContext) {
   </g>`;
 }
 
+function thermalPointOrientation(node) {
+  const value = `${node?.orientation || ""} ${node?.kind || ""} ${node?.id || ""}`.toLowerCase();
+  for (const orientation of ["north", "east", "south", "west", "roof", "floor"]) {
+    if (value.includes(orientation)) return orientation;
+  }
+  return node?.kind === "ground" ? "ground" : "outdoor";
+}
+
+function thermalPointLabelY(orientation) {
+  return orientation === "north" || orientation === "roof" ? 22 : -13;
+}
+
 function bindGraphInteractions() {
   const svg = elements.thermalTopologyGraph.querySelector(".thermal-topology-svg");
   if (!svg) return;
   let drag = null;
   svg.addEventListener("pointerdown", (event) => {
-    if (event.button !== 0 || event.target.closest(".thermal-node, .thermal-edge-group")) return;
-    drag = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, panX: state.thermalTopologyPanX, panY: state.thermalTopologyPanY, moved: false };
-    svg.setPointerCapture?.(event.pointerId);
+    if (event.button !== 0) return;
+    const nodeElement = event.target.closest(".thermal-node[data-thermal-node-id]");
+    const nodeID = nodeElement?.dataset.thermalNodeId || "";
+    const position = currentLayout?.positions?.[nodeID];
+    if (nodeElement && position) {
+      const point = thermalGraphPoint(event, svg);
+      drag = {
+        kind: "node",
+        pointerId: event.pointerId,
+        x: event.clientX,
+        y: event.clientY,
+        graphX: point.x,
+        graphY: point.y,
+        nodeID,
+        nodeElement,
+        nodeX: position.x,
+        nodeY: position.y,
+        moved: false,
+      };
+      captureGraphPointer(svg, event.pointerId);
+      nodeElement.classList.add("dragging");
+      svg.classList.add("dragging-node");
+      return;
+    }
+    if (event.target.closest(".thermal-edge-group")) return;
+    drag = { kind: "pan", pointerId: event.pointerId, x: event.clientX, y: event.clientY, panX: state.thermalTopologyPanX, panY: state.thermalTopologyPanY, moved: false };
+    captureGraphPointer(svg, event.pointerId);
     svg.classList.add("panning");
   });
   svg.addEventListener("pointermove", (event) => {
@@ -178,13 +232,30 @@ function bindGraphInteractions() {
     const dx = event.clientX - drag.x;
     const dy = event.clientY - drag.y;
     drag.moved ||= Math.hypot(dx, dy) > 4;
+    if (drag.kind === "node") {
+      if (!drag.moved) return;
+      const point = thermalGraphPoint(event, svg);
+      const position = currentLayout?.positions?.[drag.nodeID];
+      if (!position) return;
+      position.x = drag.nodeX + point.x - drag.graphX;
+      position.y = drag.nodeY + point.y - drag.graphY;
+      drag.nodeElement.setAttribute("transform", `translate(${position.x} ${position.y})`);
+      rerouteThermalTopologyGraph();
+      event.preventDefault();
+      return;
+    }
     state.thermalTopologyPanX = drag.panX + dx;
     state.thermalTopologyPanY = drag.panY + dy;
     applyGraphTransform();
   });
   const finishDrag = (event) => {
     if (!drag || drag.pointerId !== event.pointerId) return;
-    svg.releasePointerCapture?.(event.pointerId);
+    releaseGraphPointer(svg, event.pointerId);
+    if (drag.kind === "node") {
+      drag.nodeElement.classList.remove("dragging");
+      svg.classList.remove("dragging-node");
+      if (drag.moved) suppressGraphClickOnce();
+    }
     drag = null;
     svg.classList.remove("panning");
   };
@@ -192,9 +263,7 @@ function bindGraphInteractions() {
   svg.addEventListener("pointercancel", finishDrag);
   svg.addEventListener("wheel", (event) => {
     event.preventDefault();
-    const bounds = svg.getBoundingClientRect();
-    const x = (event.clientX - bounds.left) * (currentLayout.width / Math.max(1, bounds.width));
-    const y = (event.clientY - bounds.top) * (currentLayout.height / Math.max(1, bounds.height));
+    const { x, y } = thermalViewportPoint(event, svg);
     const previous = state.thermalTopologyScale;
     const next = clamp(previous * Math.exp(-event.deltaY * 0.0015), 0.1, 8);
     const worldX = (x - state.thermalTopologyPanX) / previous;
@@ -206,6 +275,74 @@ function bindGraphInteractions() {
   }, { passive: false });
 
   ensureGraphTargetInteractions();
+}
+
+function thermalGraphPoint(event, svg) {
+  const viewport = thermalViewportPoint(event, svg);
+  const scale = Math.max(0.000001, Number(state.thermalTopologyScale) || 1);
+  return {
+    x: (viewport.x - state.thermalTopologyPanX) / scale,
+    y: (viewport.y - state.thermalTopologyPanY) / scale,
+  };
+}
+
+function thermalViewportPoint(event, svg) {
+  const matrix = svg.getScreenCTM?.();
+  if (matrix && typeof svg.createSVGPoint === "function") {
+    const point = svg.createSVGPoint();
+    point.x = event.clientX;
+    point.y = event.clientY;
+    const transformed = point.matrixTransform(matrix.inverse());
+    return { x: transformed.x, y: transformed.y };
+  }
+  const bounds = svg.getBoundingClientRect();
+  return {
+    x: (event.clientX - bounds.left) * (currentLayout.width / Math.max(1, bounds.width)),
+    y: (event.clientY - bounds.top) * (currentLayout.height / Math.max(1, bounds.height)),
+  };
+}
+
+function rerouteThermalTopologyGraph() {
+  if (!currentModel || !currentLayout) return;
+  const rerouted = rerouteThermalTopologyEdges(currentModel, currentLayout);
+  if (Array.isArray(rerouted)) {
+    currentLayout.edges = rerouted;
+  } else if (Array.isArray(rerouted?.edges)) {
+    currentLayout.edges = rerouted.edges;
+  }
+  const edgeByID = new Map((currentLayout.edges || []).map((edge) => [String(edge.id || ""), edge]));
+  elements.thermalTopologyGraph.querySelectorAll(".thermal-edge-group[data-thermal-edge-id]").forEach((element) => {
+    const edge = edgeByID.get(element.dataset.thermalEdgeId || "");
+    if (!edge?.route?.path) return;
+    element.querySelectorAll(".thermal-edge, .thermal-edge-hit").forEach((path) => path.setAttribute("d", edge.route.path));
+    const cap = element.querySelector(".thermal-edge-cap");
+    if (cap && edge.route.capPath) cap.setAttribute("d", edge.route.capPath);
+  });
+}
+
+function captureGraphPointer(svg, pointerID) {
+  try {
+    svg.setPointerCapture?.(pointerID);
+  } catch {
+    // Synthetic pointer events and interrupted touch sequences may not own capture.
+  }
+}
+
+function releaseGraphPointer(svg, pointerID) {
+  try {
+    svg.releasePointerCapture?.(pointerID);
+  } catch {
+    // The browser may already have released capture after leaving the WebView.
+  }
+}
+
+function suppressGraphClickOnce() {
+  suppressNextGraphClick = true;
+  window.clearTimeout(graphClickSuppressionTimer);
+  graphClickSuppressionTimer = window.setTimeout(() => {
+    suppressNextGraphClick = false;
+    graphClickSuppressionTimer = 0;
+  }, 0);
 }
 
 function rememberThermalTopologyLayout(cacheKey, layout) {
@@ -221,6 +358,14 @@ function ensureGraphTargetInteractions() {
   if (graphTargetInteractionsBound || !graph) return;
   graphTargetInteractionsBound = true;
   graph.addEventListener("click", (event) => {
+    if (suppressNextGraphClick) {
+      suppressNextGraphClick = false;
+      window.clearTimeout(graphClickSuppressionTimer);
+      graphClickSuppressionTimer = 0;
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     const element = thermalTargetElement(event.target, graph);
     if (!element) return;
     event.stopPropagation();
@@ -305,7 +450,6 @@ function thermalTopologyOptions() {
     selectedEntityId: state.thermalTopologySelectedEntityId || state.selectedGeometryId,
     selectedEntityKind: state.thermalTopologySelectedEntityKind || state.selectedGeometryKind,
     showAirCoupling: state.thermalTopologyShowAirCoupling || state.thermalTopologyMetric === "air",
-    expandExternalTargets: state.thermalTopologyExpandExternalTargets,
   };
 }
 
@@ -321,7 +465,6 @@ function syncThermalTopologyControls() {
   elements.thermalTopologyScope.value = normalizeThermalTopologyScope(state.thermalTopologyScope);
   elements.thermalTopologyLayout.value = normalizeThermalTopologyLayout(state.thermalTopologyLayout);
   elements.thermalTopologyShowAirCoupling.checked = Boolean(state.thermalTopologyShowAirCoupling);
-  elements.thermalTopologyExpandExternalTargets.checked = Boolean(state.thermalTopologyExpandExternalTargets);
 }
 
 function connectionLabel(connection, model, metricContext) {
@@ -346,10 +489,10 @@ function connectionLabel(connection, model, metricContext) {
   return parts.join(" · ");
 }
 
-function connectionAriaLabel(connection, model, targetID, metricLabel) {
+function connectionAriaLabel(connection, targetKind, targetID, metricLabel) {
   const relation = String(connection.relationKind || "connection").replaceAll("_", " ");
   const issues = (connection.diagnosticIds || []).length;
-  return `${targetID}; entity thermal connection; relation ${relation}; metric ${metricLabel || "not available"}; issues ${issues}`;
+  return `${targetID}; entity ${String(targetKind || "thermal_connection").replaceAll("_", " ")}; relation ${relation}; metric ${metricLabel || "not available"}; issues ${issues}`;
 }
 
 function nodeMetricSubtitle(node, model) {
@@ -495,7 +638,7 @@ function createThermalSelectionContext(selectedID) {
 
 function edgeMatchesThermalSelection(edge, selection) {
   const { selectedID, selectedKind, openingID } = selection;
-  if (edge.id === selectedID || edge.targetId === selectedID) return true;
+  if (edge.id === selectedID || edge.targetId === selectedID || edge.sourceConnectionId === selectedID) return true;
   if (selectedKind === "thermal_boundary" && (edge.boundaryIds || []).includes(selectedID)) return true;
   if (selectedKind === "window") return Boolean(openingID && (edge.openingIds || []).includes(openingID));
   return false;

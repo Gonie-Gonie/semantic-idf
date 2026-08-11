@@ -14,8 +14,12 @@ func TestTOPO280ExteriorZoneIntegratedFlow(t *testing.T) {
 	topology := geometry.Topology
 	boundary := findThermalBoundary(t, topology, "South Wall")
 	connection := thermalConnectionContainingBoundary(t, topology, boundary.ID)
-	if connection.RelationKind != "exterior" || (connection.FromNodeID != "thermal-environment:outdoors" && connection.ToNodeID != "thermal-environment:outdoors") {
+	if connection.RelationKind != "exterior" || (connection.FromNodeID != boundary.TargetID && connection.ToNodeID != boundary.TargetID) {
 		t.Fatalf("South Wall connection = %#v", connection)
+	}
+	outdoorTarget := findThermalNode(t, topology, boundary.TargetID)
+	if outdoorTarget.Kind != "outdoors_south" || outdoorTarget.Label != "Outdoor S" || boundary.TargetName != outdoorTarget.Label {
+		t.Fatalf("South Wall outdoor target = boundary %#v node %#v", boundary, outdoorTarget)
 	}
 	if boundary.PhysicalGrossArea <= 0 || boundary.EffectiveGrossArea <= 0 || !boundary.HasUA || connection.TotalUA <= 0 {
 		t.Fatalf("exterior Area/UA is incomplete: boundary %#v connection %#v", boundary, connection)
@@ -34,6 +38,61 @@ func TestTOPO280ExteriorZoneIntegratedFlow(t *testing.T) {
 	projection := BuildSemanticYAMLProjection(document, SemanticYAMLMetadata{})
 	if len(projection.Navigation.ByViewTarget["geometry|"+boundary.ID]) == 0 || len(projection.Navigation.ByViewTarget["geometry|"+connection.ID]) == 0 {
 		t.Fatalf("Semantic navigation cannot restore boundary/connection selection: %#v", projection.Navigation.ByViewTarget)
+	}
+}
+
+func TestThermalTopologyExteriorConnectionsSplitByOrientation(t *testing.T) {
+	topology := AnalyzeGeometry(readThermalTopologyFlowFixture(t, "small_office.idf")).Topology
+	wantTargets := map[string]struct {
+		kind  string
+		label string
+	}{
+		"Roof":       {kind: "outdoors_roof", label: "Outdoor Roof"},
+		"North Wall": {kind: "outdoors_north", label: "Outdoor N"},
+		"East Wall":  {kind: "outdoors_east", label: "Outdoor E"},
+		"South Wall": {kind: "outdoors_south", label: "Outdoor S"},
+		"West Wall":  {kind: "outdoors_west", label: "Outdoor W"},
+	}
+	exteriorConnectionCount := 0
+	exteriorArea := 0.0
+	for _, connection := range topology.Connections {
+		if connection.RelationKind == "exterior" {
+			exteriorConnectionCount++
+			exteriorArea += connection.PhysicalGrossArea
+		}
+	}
+	if exteriorConnectionCount != len(wantTargets) {
+		t.Fatalf("exterior connection count = %d, want %d: %#v", exteriorConnectionCount, len(wantTargets), topology.Connections)
+	}
+	for surfaceName, want := range wantTargets {
+		boundary := findThermalBoundary(t, topology, surfaceName)
+		target := findThermalNode(t, topology, boundary.TargetID)
+		if target.Kind != want.kind || target.Label != want.label || boundary.TargetName != want.label {
+			t.Errorf("%s outdoor target = boundary %#v node %#v, want %s/%s", surfaceName, boundary, target, want.kind, want.label)
+		}
+		connection := thermalConnectionContainingBoundary(t, topology, boundary.ID)
+		if len(connection.BoundaryIDs) != 1 || connection.PhysicalGrossArea != boundary.PhysicalGrossArea || connection.PhysicalTotalUA != boundary.TotalUA {
+			t.Errorf("%s directional connection did not preserve exact boundary metrics: boundary %#v connection %#v", surfaceName, boundary, connection)
+		}
+	}
+	signature := findZoneThermalSignature(t, topology, "Small Office")
+	if math.Abs(exteriorArea-signature.ExteriorArea) > 1e-6 {
+		t.Fatalf("directional exterior area = %v, zone signature exterior area = %v", exteriorArea, signature.ExteriorArea)
+	}
+	for _, node := range topology.Nodes {
+		if !strings.HasPrefix(node.Kind, "outdoors_") {
+			continue
+		}
+		used := false
+		for _, boundary := range topology.Boundaries {
+			if boundary.TargetID == node.ID {
+				used = true
+				break
+			}
+		}
+		if !used {
+			t.Errorf("orphan directional outdoor node remains: %#v", node)
+		}
 	}
 }
 

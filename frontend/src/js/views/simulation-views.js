@@ -5620,7 +5620,7 @@ function openSimulationHVACCoupling(couplingID = "") {
       kind: "coupling",
       id: `coupling:${simulationHVACGraphName(id)}`,
       label: id,
-      view: "couplings",
+      view: "services",
       context: { couplingId: `coupling:${simulationHVACGraphName(id)}` },
       graphKey: `coupling-node:any:${id}`,
     },

@@ -100,7 +100,6 @@ func TestHVACPanelAdapterPreservesContextAndCompatibleOccurrence(t *testing.T) {
 	for _, signal := range []string{
 		`occurrence.contextKind === "zone_service"`,
 		`["loop_occurrence", "component_occurrence"]`,
-		`/^hvac\/couplings\//i`,
 		`/^hvac\/service-paths\//i`,
 		"state.activeHVACContext?.pathId",
 		"state.activeHVACLoopId",
@@ -108,6 +107,46 @@ func TestHVACPanelAdapterPreservesContextAndCompatibleOccurrence(t *testing.T) {
 		if !strings.Contains(preference, signal) {
 			t.Fatalf("HVAC occurrence preference is missing %q", signal)
 		}
+	}
+}
+
+func TestHVACRemovedCouplingViewRedirectsSemanticTargets(t *testing.T) {
+	content := readTestFile(t, "frontend/src/js/views/hvac-views.js")
+	viewMode := sliceBetween(content, "function hvacViewMode", "function graphKeyForHVACEntity")
+	if strings.Contains(viewMode, "couplings") {
+		t.Fatal("legacy Couplings view must not remain a canonical HVAC route")
+	}
+	for _, required := range []string{`["services", "loop"].includes(view)`, `return "services"`} {
+		if !strings.Contains(viewMode, required) {
+			t.Fatalf("legacy HVAC view canonicalization is missing %q", required)
+		}
+	}
+
+	restore := sliceBetween(content, "function restoreHVACNavigationSnapshot", "function notifyHVACSelectionChanged")
+	if !strings.Contains(restore, `state.activeHVACView = hvacViewMode(snapshot.view || "services")`) {
+		t.Fatal("restoring saved HVAC history must canonicalize the removed Couplings view to Zone Services")
+	}
+
+	couplingTarget := sliceBetween(content, "function hvacNavigationTargetForSemanticCoupling", "function compatibleHVACPathID")
+	for _, required := range []string{
+		"compatibleHVACPathID",
+		"firstConnectedHVACLoop(coupling)",
+		`view: "services"`,
+		`view: "loop"`,
+		"loopID:",
+		"coupling-node:any:",
+	} {
+		if !strings.Contains(couplingTarget, required) {
+			t.Fatalf("semantic coupling redirect is missing %q", required)
+		}
+	}
+	if strings.Contains(couplingTarget, `view: "couplings"`) {
+		t.Fatal("semantic coupling reveal still targets the removed Couplings view")
+	}
+
+	semanticTarget := sliceBetween(content, "function hvacNavigationTargetForSemanticSelection", "function hvacNavigationTargetForSemanticComponent")
+	if strings.Contains(semanticTarget, `view: "couplings"`) {
+		t.Fatal("semantic HVAC network/coupling fallback still targets the removed Couplings view")
 	}
 }
 

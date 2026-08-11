@@ -85,7 +85,6 @@ func TestThermalTopologyStateNormalizesAndInvalidatesDocumentContext(t *testing.
 		`thermalTopologyScope: "building"`,
 		`thermalTopologyLayout: "spatial"`,
 		"thermalTopologyShowAirCoupling: false",
-		"thermalTopologyExpandExternalTargets: false",
 		`thermalTopologySelectedEntityId: ""`,
 		`thermalTopologySelectedEntityKind: ""`,
 		"thermalTopologyPanX: 0",
@@ -103,7 +102,7 @@ func TestThermalTopologyStateNormalizesAndInvalidatesDocumentContext(t *testing.
 			t.Fatalf("thermal topology state contract is missing %q", required)
 		}
 	}
-	for _, removed := range []string{"thermalTopologyAreaBasis", "normalizeThermalTopologyAreaBasis", "thermalTopologyShowOpenings", "thermalTopologyNeighborDepth"} {
+	for _, removed := range []string{"thermalTopologyAreaBasis", "normalizeThermalTopologyAreaBasis", "thermalTopologyShowOpenings", "thermalTopologyNeighborDepth", "thermalTopologyExpandExternalTargets"} {
 		if strings.Contains(content, removed) {
 			t.Fatalf("removed area-basis state contract remains %q", removed)
 		}
@@ -123,7 +122,6 @@ func TestThermalTopologyHistoryCapturesContextWithoutGraphOrLayoutCache(t *testi
 		"thermalTopologyScope",
 		"thermalTopologyLayout",
 		"thermalTopologyShowAirCoupling",
-		"thermalTopologyExpandExternalTargets",
 		"thermalTopologySelectedEntityId",
 		"thermalTopologySelectedEntityKind",
 		"thermalTopologyPanX",
@@ -134,7 +132,7 @@ func TestThermalTopologyHistoryCapturesContextWithoutGraphOrLayoutCache(t *testi
 			t.Fatalf("thermal history snapshot is missing %q", required)
 		}
 	}
-	for _, forbidden := range []string{"thermalTopologyAreaBasis", "thermalTopologyShowOpenings", "thermalTopologyNeighborDepth", "thermalTopologyLayoutCache", "connections", "boundaries", "nodes", "matrix"} {
+	for _, forbidden := range []string{"thermalTopologyAreaBasis", "thermalTopologyShowOpenings", "thermalTopologyNeighborDepth", "thermalTopologyExpandExternalTargets", "thermalTopologyLayoutCache", "connections", "boundaries", "nodes", "matrix"} {
 		if strings.Contains(capture, forbidden) {
 			t.Fatalf("thermal history snapshot must not retain graph/cache data %q", forbidden)
 		}

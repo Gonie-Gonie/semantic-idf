@@ -257,9 +257,10 @@ func TestThermalFixture257AirCouplingFamilies(t *testing.T) {
 	)
 	reindexThermalFixture(&broken)
 	brokenTopology := AnalyzeGeometry(broken).Topology
+	outdoorBoundary := findThermalBoundary(t, brokenTopology, "AFN Outdoors")
 	hasAFNOutdoors := false
 	for _, coupling := range brokenTopology.AirCouplings {
-		if coupling.CouplingKind == "airflow_network" && coupling.ToNodeID == "thermal-environment:outdoors" {
+		if coupling.CouplingKind == "airflow_network" && coupling.ToNodeID == outdoorBoundary.TargetID {
 			hasAFNOutdoors = true
 		}
 	}
