@@ -16,7 +16,6 @@ func TestFrontendProfileGraphStateContracts(t *testing.T) {
 		"profile views": {
 			"profileGraphSeries",
 			"currentProfileGraphOptions",
-			"data-profile-cell",
 			"tabindex=\"0\"",
 			"keydown",
 			"profile-graph-view-switch",
@@ -24,9 +23,10 @@ func TestFrontendProfileGraphStateContracts(t *testing.T) {
 			"aria-pressed",
 			"downsampleValues",
 			"profileSelectedDimensions",
+			`class="profile-view-switch" role="group"`,
+			`aria-pressed="${state.activeProfileView === "profile" ? "true" : "false"}"`,
 		},
 		"state": {
-			"profileSelectedCell: null",
 			"profileSelectedGroupIds: []",
 			"profileSelectedZoneNames: []",
 			"profileSelectedDimensions: []",
@@ -37,10 +37,11 @@ func TestFrontendProfileGraphStateContracts(t *testing.T) {
 			"align-items: start",
 			".profile-live-group",
 			"grid-template-rows: auto minmax(32px, auto)",
+			".profile-view-switch",
+			"width: max-content",
+			"justify-self: start",
 			".profile-graph-view-switch",
 			".profile-overlay-graph",
-			".profile-matrix td.same-schedule-different-value",
-			".profile-source-accordion",
 		},
 	}
 	for label, terms := range required {
@@ -62,15 +63,15 @@ func TestFrontendProfileRenderReusesIndexesAndDelegatesDynamicControls(t *testin
 		"profileItemMapCache = new WeakMap()",
 		"profileSemanticNavigationCache",
 		`cache.occurrenceIDs("view-target"`,
-		"renderProfileMatrix(lastProfileView.matrix, profile, itemMap)",
-		"renderProfileDetail(graphGroup, profile, selectedZone, itemMap)",
-		"const activeZoneNames = profileActiveMatrixZoneNames()",
-		"const dimensionByID = new Map(",
+		"const viewSettings = profileNavigationRevealDimension",
+		"renderProfileSettings(profile)",
+		"renderProfileOverview(visibleGroups, visibleRows)",
+		"renderProfileGraph(graphGroup, profile)",
 		"const selectedGroupIDs = new Set(",
 		"const selectedZoneNames = new Set(",
 		"bindProfileControls();",
 		`elements.profileOverview?.addEventListener("click", handleProfileOverviewActivation)`,
-		`elements.profileMatrix?.addEventListener("click", handleProfileMatrixActivation)`,
+		`elements.profileGraph?.addEventListener("click", handleProfileGraphActivation)`,
 	} {
 		if !strings.Contains(views, required) {
 			t.Fatalf("Profile render optimization contract is missing %q", required)
@@ -112,6 +113,224 @@ func TestFrontendProfileRowsDriveSingleToggleAndRangeSelection(t *testing.T) {
 	}
 }
 
+func TestFrontendProfileOverviewUsesStructuredMetricsAndCountAssignments(t *testing.T) {
+	views := readTestFile(t, "frontend/src/js/views/profile-views.js")
+	styles := readTestFile(t, "frontend/src/styles/profile.css")
+	overview := sliceBetween(views, "function renderProfileOverview", "function renderProfileAssignment")
+	assignment := sliceBetween(views, "function renderProfileAssignment", "function renderProfileMetrics")
+	metrics := sliceBetween(views, "function renderProfileMetrics", "function renderProfileGroupCard")
+	groupCard := sliceBetween(views, "function renderProfileGroupCard", "function renderProfileZoneCard")
+	zoneCard := sliceBetween(views, "function renderProfileZoneCard", "function renderProfileGraph")
+
+	for _, required := range []string{
+		"lastProfileView?.dimensions",
+		"state.profileSettings.enabledDimensions.includes(dimension.id)",
+		"profileDimensionLabel(dimension.id)",
+		"renderProfileGroupCard(group, selectedGroupIDs, metricDimensions)",
+		"renderProfileZoneCard(row, selectedZoneNames, metricDimensions)",
+	} {
+		if !strings.Contains(overview, required) {
+			t.Fatalf("Profile overview fixed metric-order contract is missing %q", required)
+		}
+	}
+	for _, required := range []string{
+		`const summary = t("count.zones", { count: zoneCount })`,
+		"const accessibleDetail = detail ? `${summary}: ${detail}` : summary",
+		`class="profile-card-assignment"`,
+		`title="${escapeHTML(detail || summary)}"`,
+		`aria-label="${escapeHTML(accessibleDetail)}"`,
+		`>${escapeHTML(summary)}</span>`,
+	} {
+		if !strings.Contains(assignment, required) {
+			t.Fatalf("Profile assignment count/detail contract is missing %q", required)
+		}
+	}
+	for _, required := range []string{
+		"const summaryByDimension = new Map(",
+		"const visibleDimensions = dimensions.length",
+		`const displayValue = summary?.displayValue || t("common.notAvailable")`,
+		`class="profile-card-metrics"`,
+		`class="profile-card-metric ${summary ? "" : "is-missing"}"`,
+		`data-profile-dimension="${escapeHTML(dimension.id)}"`,
+		`class="profile-card-metric-label"`,
+		`class="profile-card-metric-value"`,
+		`.join("")`,
+	} {
+		if !strings.Contains(metrics, required) {
+			t.Fatalf("Profile metric cell contract is missing %q", required)
+		}
+	}
+	if strings.Contains(metrics, `.join(" / ")`) {
+		t.Fatal("Profile overview metrics must not flatten dimension cells with slash separators")
+	}
+
+	for label, renderer := range map[string]string{"group": groupCard, "zone": zoneCard} {
+		for _, required := range []string{`role="option"`, `aria-selected="${selected ? "true" : "false"}"`, "renderProfileMetrics("} {
+			if !strings.Contains(renderer, required) {
+				t.Fatalf("Profile %s row is missing %q", label, required)
+			}
+		}
+		for _, forbiddenRole := range []string{`role="table"`, `role="row"`, `role="cell"`} {
+			if strings.Contains(renderer, forbiddenRole) {
+				t.Fatalf("Profile %s row must preserve listbox/option semantics, found %q", label, forbiddenRole)
+			}
+		}
+	}
+	for _, required := range []string{
+		"renderProfileAssignment(group.zoneCount, assignmentDetail)",
+		"renderProfileMetrics(group.dimensions, metricDimensions)",
+	} {
+		if !strings.Contains(groupCard, required) {
+			t.Fatalf("Profile group row assignment/metric contract is missing %q", required)
+		}
+	}
+	for _, required := range []string{
+		`class="profile-card-assignment profile-card-profile-name"`,
+		`title="${escapeHTML(row.groupName || t("profile.noProfileGroup"))}"`,
+		`>${escapeHTML(row.groupName || t("profile.noProfileGroup"))}</span>`,
+		"renderProfileMetrics(row.dimensions, metricDimensions)",
+	} {
+		if !strings.Contains(zoneCard, required) {
+			t.Fatalf("Profile zone row assignment/metric contract is missing %q", required)
+		}
+	}
+	if strings.Contains(zoneCard, "renderProfileAssignment(") {
+		t.Fatal("Profile Zone row must not render a redundant one-zone count assignment")
+	}
+	if strings.Contains(zoneCard, `t("profile.receivesProfile"`) {
+		t.Fatal("Profile Zone row must show only the assigned Profile name, without a receives-Profile sentence")
+	}
+
+	for _, required := range []string{
+		".profile-card-assignment",
+		"cursor: help",
+		".profile-card-profile-name",
+		".profile-card-metrics",
+		"grid-template-columns: repeat(var(--profile-metric-columns, 1), minmax(0, 1fr))",
+		".profile-card-metric",
+		".profile-card-metric-label",
+		".profile-card-metric-value",
+	} {
+		if !strings.Contains(styles, required) {
+			t.Fatalf("Profile structured overview styling is missing %q", required)
+		}
+	}
+}
+
+func TestFrontendProfileRemovesMatrixDetailSourceAndCandidateUI(t *testing.T) {
+	files := map[string]string{
+		"markup":     readTestFile(t, "frontend/src/index.html"),
+		"state":      readTestFile(t, "frontend/src/js/state.js"),
+		"analysis":   readTestFile(t, "frontend/src/js/views/analysis-views.js"),
+		"views":      readTestFile(t, "frontend/src/js/views/profile-views.js"),
+		"styles":     readTestFile(t, "frontend/src/styles/profile.css"),
+		"responsive": readTestFile(t, "frontend/src/styles/responsive.css"),
+		"i18n":       readTestFile(t, "frontend/src/js/i18n.js"),
+	}
+	removed := map[string][]string{
+		"markup": {
+			`id="profileMatrixStats"`,
+			`id="profileMatrix"`,
+			`id="profileDetail"`,
+			`class="profile-matrix"`,
+			`class="profile-detail-panel"`,
+			`data-i18n="profile.matrix"`,
+			`data-i18n="profile.sourceObjects"`,
+		},
+		"state": {
+			"profileSelectedCell",
+			"profileMatrixStats:",
+			"profileMatrix:",
+			"profileDetail:",
+		},
+		"analysis": {
+			"elements.profileMatrixStats",
+			"elements.profileMatrix",
+			"elements.profileDetail",
+		},
+		"views": {
+			"PROFILE_MATRIX_RENDER_LIMIT",
+			"profileMatrixSemanticTargets",
+			"function renderProfileDetail",
+			"function renderProfileItemRow",
+			"function renderProfileCandidatePanel",
+			"function renderProfileSourceAccordion",
+			"function renderProfileMatrix",
+			"function renderProfileMatrixCell",
+			"function temporaryProfileDimensionSummary",
+			"function renderProfileCandidateRow",
+			"function profileMatrixCellClasses",
+			"function selectProfileMatrixCell",
+			"function selectProfileCellData",
+			"function cloneProfileSelectedCell",
+			"function handleProfileDetailActivation",
+			"function handleProfileMatrixActivation",
+			"function profileActiveMatrixZoneNames",
+			"function profileCandidatesForDimensions",
+			"data-profile-cell",
+			"data-profile-candidate-id",
+			"profile-source-accordion",
+			"parameterCandidates",
+		},
+		"styles": {
+			".profile-matrix",
+			".profile-detail-panel",
+			".profile-detail-head",
+			".profile-detail-actions",
+			".profile-item-table",
+			".profile-item-row",
+			".profile-candidate-panel",
+			".profile-qa-row",
+			".profile-source-accordion",
+			".profile-source-accordion-list",
+			".profile-source-metrics",
+		},
+		"responsive": {
+			".profile-matrix",
+			".profile-detail-panel",
+			".profile-detail-head",
+			".profile-detail-actions",
+			".profile-item-table",
+			".profile-source-accordion",
+		},
+		"i18n": {
+			`"profile.matrix"`,
+			`"profile.noMatrix"`,
+			`"profile.sourceObjects"`,
+		},
+	}
+	for label, terms := range removed {
+		for _, term := range terms {
+			if strings.Contains(files[label], term) {
+				t.Fatalf("%s still contains removed Profile secondary UI contract %q", label, term)
+			}
+		}
+	}
+
+	for _, required := range []string{
+		`id="profileOverview"`,
+		`id="profileGraph"`,
+		`id="profileApplyButton"`,
+	} {
+		if !strings.Contains(files["markup"], required) {
+			t.Fatalf("Profile core markup was removed with the secondary UI: %q", required)
+		}
+	}
+	for _, required := range []string{
+		"renderProfileSettings(profile)",
+		"renderProfileOverview(visibleGroups, visibleRows)",
+		"renderProfileGraph(graphGroup, profile)",
+		"function profileApplyRequest",
+		"const itemMap = profileItemMap(profile)",
+		"sourceObjectIndexes",
+		"profileNavigationRevealDimension",
+	} {
+		if !strings.Contains(files["views"], required) {
+			t.Fatalf("Profile Graph/Apply/navigation contract was removed with the secondary UI: %q", required)
+		}
+	}
+}
+
 func TestFrontendProfileLineViewsAlwaysUseLegendAndAnnualViewsUseParallelHeatmaps(t *testing.T) {
 	views := readTestFile(t, "frontend/src/js/views/profile-views.js")
 	styles := readTestFile(t, "frontend/src/styles/profile.css")
@@ -139,6 +358,278 @@ func TestFrontendProfileLineViewsAlwaysUseLegendAndAnnualViewsUseParallelHeatmap
 	}
 	if !strings.Contains(styles, ".profile-overlay-legend") {
 		t.Fatal("Profile line overlay legend styling is missing")
+	}
+}
+
+func TestFrontendProfileIdenticalRenderedCurvesUseInterleavedColorsAndLineLegend(t *testing.T) {
+	views := readTestFile(t, "frontend/src/js/views/profile-views.js")
+	styles := readTestFile(t, "frontend/src/styles/profile.css")
+	i18n := readTestFile(t, "frontend/src/js/i18n.js")
+	legend := sliceBetween(views, "function renderProfileSeriesLegend", "function profileYAxisScale")
+	overlay := sliceBetween(views, "function renderOverlayGraph", "function renderProfileGraphSummary")
+	pathRendering := sliceBetween(overlay, "const paths = renderedPaths", "const horizontalGrid")
+
+	for _, required := range []string{
+		"const renderedPaths = items",
+		"const renderedByPath = new Map()",
+		"renderedByPath.get(entry.path)",
+		"renderedByPath.set(entry.path, matching)",
+		"entry.item.visualOverlapCount = matching.length",
+		"entry.item.visualOverlapIndex = overlapIndex",
+		`class="profile-overlap-path"`,
+		`stroke-dasharray="8 ${8 * (overlapCount - 1)}"`,
+		`stroke-dashoffset="${-8 * overlapIndex}"`,
+		`data-profile-overlap-count="${overlapCount}"`,
+		`data-profile-overlap-index="${overlapIndex}"`,
+		`d="${path}"`,
+	} {
+		if !strings.Contains(overlay, required) {
+			t.Fatalf("Profile displayed-curve overlap rendering is missing %q", required)
+		}
+	}
+	pathBuilt := strings.Index(overlay, "const renderedPaths = items")
+	pathGrouped := strings.Index(overlay, "const renderedByPath = new Map()")
+	if pathBuilt < 0 || pathGrouped < 0 || pathBuilt >= pathGrouped {
+		t.Fatal("Profile overlap detection must group final rendered SVG paths after downsampling and coordinate rounding")
+	}
+	for _, forbidden := range []string{`transform=`, `translate(`, `translateY(`} {
+		if strings.Contains(pathRendering, forbidden) {
+			t.Fatalf("Profile overlap rendering must not distort values with path jitter or translation: %q", forbidden)
+		}
+	}
+
+	for _, required := range []string{
+		"const accessibleLabel = overlapDescription",
+		`data-profile-overlap-count="${visualOverlapCount}"`,
+		`data-profile-overlap-index="${visualOverlapIndex}"`,
+		`aria-label="${escapeHTML(accessibleLabel)}"`,
+		`title="${escapeHTML(accessibleLabel)}"`,
+		`class="profile-line-swatch ${visualOverlapCount > 1 ? "is-overlap" : ""}"`,
+		`aria-hidden="true"`,
+		`--profile-overlap-period:${6 * visualOverlapCount}px`,
+		`--profile-overlap-offset:${-6 * visualOverlapIndex}px`,
+		`class="profile-line-label"`,
+	} {
+		if !strings.Contains(legend, required) {
+			t.Fatalf("Profile shared-curve legend metadata/accessibility contract is missing %q", required)
+		}
+	}
+	if !strings.Contains(i18n, `"profile.sharedCurve": "{count} profiles overlap at the current scale"`) {
+		t.Fatal("Profile shared-curve description must explain that overlap is based on the displayed scale")
+	}
+
+	for _, required := range []string{
+		".profile-overlay-paths path.profile-overlap-path",
+		"stroke-linecap: butt",
+		".profile-overlay-legend .profile-line-swatch",
+		"width: 18px",
+		"height: 3px",
+		"flex: 0 0 auto",
+		".profile-overlay-legend .profile-line-swatch.is-overlap",
+		"repeating-linear-gradient",
+		"var(--profile-overlap-period, 6px)",
+		"background-position-x: var(--profile-overlap-offset, 0)",
+		".profile-overlay-legend .profile-line-label",
+		"text-overflow: ellipsis",
+		"white-space: nowrap",
+		".analysis-panel .profile-overlay-legend .semantic-related",
+		"box-shadow: none",
+		"outline: 1px dashed",
+	} {
+		if !strings.Contains(styles, required) {
+			t.Fatalf("Profile shared-curve line/legend styling is missing %q", required)
+		}
+	}
+}
+
+func TestFrontendProfileAxesUseSemanticHTMLResponsiveDensityAndSeparateHeatmapScale(t *testing.T) {
+	views := readTestFile(t, "frontend/src/js/views/profile-views.js")
+	styles := readTestFile(t, "frontend/src/styles/profile.css")
+	responsive := readTestFile(t, "frontend/src/styles/responsive.css")
+
+	graphBody := sliceBetween(views, "function renderProfileGraphBody", "function renderProfileOverlay")
+	overlayPanels := sliceBetween(views, "function renderProfileOverlay", "function profileMetricSeriesGroups")
+	xAxisSpec := sliceBetween(views, "function profileXAxisSpec", "function profileMonthLabels")
+	heatmapAxisSpecs := sliceBetween(views, "function profileMonthLabels", "function renderProfileYAxisTicks")
+	overlay := sliceBetween(views, "function renderOverlayGraph", "function renderProfileGraphSummary")
+	heatmap := sliceBetween(views, "function renderHeatmap", "function paintProfileHeatmaps")
+	profileSettingsAndGraph := sliceBetween(views, "function renderProfileSettings", "function paintProfileHeatmaps")
+
+	for _, required := range []string{
+		"function profileYAxisScale",
+		"function profileXAxisSpec",
+		"function renderProfileYAxisTicks",
+		"function renderProfileXAxisTicks",
+		"function renderProfileAxisTick",
+		"function profileAxisDensityClass",
+		`class="profile-line-chart"`,
+		`class="profile-y-axis-title"`,
+		`class="profile-y-axis-ticks"`,
+		`class="profile-line-plot"`,
+		`class="profile-x-axis-ticks"`,
+		`class="profile-x-axis-title"`,
+	} {
+		if !strings.Contains(views, required) {
+			t.Fatalf("Profile graph semantic HTML axis contract is missing %q", required)
+		}
+	}
+	for _, required := range []string{
+		".profile-line-chart",
+		".profile-y-axis-title",
+		".profile-y-axis-ticks",
+		".profile-line-plot",
+		".profile-x-axis-ticks",
+		".profile-x-axis-title",
+		".profile-axis-tick",
+		"font-variant-numeric: tabular-nums",
+		"vector-effect: non-scaling-stroke",
+	} {
+		if !strings.Contains(styles, required) {
+			t.Fatalf("Profile graph HTML/CSS axis styling is missing %q", required)
+		}
+	}
+	if !strings.Contains(overlay, `preserveAspectRatio="none"`) {
+		t.Fatal("Profile overlay SVG must stretch its plot coordinates with preserveAspectRatio=none")
+	}
+	if strings.Contains(overlay, "<text") {
+		t.Fatal("Profile overlay axis text must remain HTML/CSS text outside the stretchable SVG")
+	}
+
+	for view, required := range map[string][]string{
+		"day": {
+			`case "day"`,
+			`t("profile.axisDayTypeHour"`,
+			`atIndex(0, "WD 00")`,
+			`atIndex(24, "Sat 00")`,
+			`atIndex(48, "Sun 00")`,
+			`atIndex(count - 1, "Sun 24")`,
+		},
+		"week": {
+			`case "week"`,
+			`t("profile.axisDayOfWeek"`,
+			`["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]`,
+			`index * 24`,
+		},
+		"month": {
+			`case "month"`,
+			`t("profile.axisMonth"`,
+			`profileMonthLabels().map((label, index) => atIndex(index, label))`,
+		},
+		"duration": {
+			`case "duration"`,
+			`t("profile.axisAnnualHoursExceeded"`,
+			`[0, 25, 50, 75, 100]`,
+			"`${percent}%`",
+		},
+		"rules": {
+			`case "rules"`,
+			`t("profile.axisRuleInterval"`,
+			`const tickCount = Math.min(7, count)`,
+			`String(valueIndex + 1)`,
+		},
+	} {
+		for _, term := range required {
+			if !strings.Contains(xAxisSpec, term) {
+				t.Fatalf("Profile %s View X-axis specification is missing %q", view, term)
+			}
+		}
+	}
+	for _, required := range []string{
+		`options.timeView === "year"`,
+		"renderProfileAnnualHeatmaps(series, options)",
+	} {
+		if !strings.Contains(graphBody, required) {
+			t.Fatalf("Profile year View X-axis routing is missing %q", required)
+		}
+	}
+	for _, required := range []string{
+		"function profileMonthLabels",
+		`["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]`,
+		"function profileHeatmapMonthTicks",
+		"const monthStartDays = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334]",
+		"function profileHeatmapHourTicks",
+		"[0, 6, 12, 18, 24]",
+	} {
+		if !strings.Contains(heatmapAxisSpecs, required) {
+			t.Fatalf("Profile year View heatmap axis specification is missing %q", required)
+		}
+	}
+
+	for _, required := range []string{
+		`density: index === 0 || index === ticks.length - 1 ? "base"`,
+		`index === midpointIndex ? "medium" : "full"`,
+		`profile-axis-density-${density === "base" || density === "medium" ? density : "full"}`,
+	} {
+		if !strings.Contains(views, required) {
+			t.Fatalf("Profile graph responsive tick-density assignment is missing %q", required)
+		}
+	}
+	for _, required := range []string{
+		"@container profile-pane",
+		".profile-axis-density-full",
+		".profile-axis-density-medium",
+		"display: none",
+	} {
+		if !strings.Contains(responsive, required) {
+			t.Fatalf("Profile graph responsive tick-density CSS is missing %q", required)
+		}
+	}
+	fullDensity := sliceBetween(responsive, ".profile-axis-density-full", "}")
+	mediumDensity := sliceBetween(responsive, ".profile-axis-density-medium", "}")
+	if !strings.Contains(fullDensity, "display: none") || !strings.Contains(mediumDensity, "display: none") {
+		t.Fatal("Profile graph container queries must progressively hide full and medium density ticks")
+	}
+	if strings.Index(responsive, ".profile-axis-density-full") >= strings.Index(responsive, ".profile-axis-density-medium") {
+		t.Fatal("Profile graph must hide full-density ticks before medium-density ticks as the pane narrows")
+	}
+
+	for _, required := range []string{
+		`class="profile-heatmap-y-title"`,
+		`class="profile-heatmap-y-ticks"`,
+		"profileHeatmapHourTicks().map(renderProfileAxisTick)",
+		`class="profile-heatmap-x-ticks"`,
+		"profileHeatmapMonthTicks().map(renderProfileAxisTick)",
+		`class="profile-heatmap-x-title"`,
+		`class="profile-heatmap-scale"`,
+		`class="profile-heatmap-scale-title"`,
+		`class="profile-heatmap-scale-bar"`,
+		`class="profile-heatmap-scale-ticks"`,
+		"formatAxisTick(max / 2)",
+		"formatAxisTick(max)",
+	} {
+		if !strings.Contains(heatmap, required) {
+			t.Fatalf("Profile year heatmap month/hour/value-scale separation is missing %q", required)
+		}
+	}
+	xTicks := sliceBetween(heatmap, `class="profile-heatmap-x-ticks"`, `class="profile-heatmap-x-title"`)
+	if strings.Contains(xTicks, "formatAxisTick(max") || strings.Contains(xTicks, "profileValueAxisTitle") {
+		t.Fatal("Profile year heatmap X axis must contain only month ticks, not value-scale labels")
+	}
+	for _, required := range []string{
+		".profile-heatmap-y-title",
+		".profile-heatmap-y-ticks",
+		".profile-heatmap-x-ticks",
+		".profile-heatmap-x-title",
+		".profile-heatmap-scale",
+		".profile-heatmap-scale-title",
+		".profile-heatmap-scale-bar",
+		".profile-heatmap-scale-ticks",
+	} {
+		if !strings.Contains(styles, required) {
+			t.Fatalf("Profile year heatmap separated-axis styling is missing %q", required)
+		}
+	}
+
+	for _, forbidden := range []string{`t("graph.multiplier"`, `"Multiplier"`} {
+		if strings.Contains(profileSettingsAndGraph, forbidden) {
+			t.Fatalf("Profile graph still exposes the legacy visible Multiplier fallback %q", forbidden)
+		}
+	}
+	if !strings.Contains(profileSettingsAndGraph, `t("profile.scheduleFraction", {}, "Schedule fraction")`) {
+		t.Fatal("Profile graph metric selector must name the dimensionless metric Schedule fraction")
+	}
+	if strings.Contains(overlayPanels, `group.unit ||`) || strings.Contains(overlayPanels, `t("graph.multiplier"`) {
+		t.Fatal("Profile graph panel headings must not use Multiplier as a fallback unit")
 	}
 }
 
@@ -273,20 +764,6 @@ func TestFrontendProfileGraphControlsUseFixedTimeProfileAndDirectViewButtons(t *
 			if strings.Contains(deadSources[label], term) {
 				t.Fatalf("%s still contains unreachable Profile Graph contract %q", label, term)
 			}
-		}
-	}
-	for _, required := range []string{
-		"function renderProfileCandidateRow",
-		`event.target.closest("[data-profile-candidate-id]")`,
-		"zones · ",
-	} {
-		if !strings.Contains(views, required) {
-			t.Fatalf("live Profile candidate detail contract is missing %q", required)
-		}
-	}
-	for _, required := range []string{".profile-qa-row", ".profile-qa-row.warning", ".profile-qa-row.error"} {
-		if !strings.Contains(styles, required) {
-			t.Fatalf("live Profile QA styling is missing %q", required)
 		}
 	}
 	for _, required := range []string{
@@ -426,7 +903,6 @@ func TestFrontendProfileUsesTableAboveGraphWithoutTopFilter(t *testing.T) {
 	for _, removed := range []string{
 		"overflow-x: auto",
 		"min-width: 760px",
-		"width: max-content",
 		"grid-template-columns: minmax(250px, min(32%, 360px)) minmax(0, 1fr)",
 	} {
 		if strings.Contains(styles, removed) {
@@ -439,8 +915,8 @@ func TestFrontendProfileUsesTableAboveGraphWithoutTopFilter(t *testing.T) {
 		"renderProfileGraph(graphGroup, profile)",
 		"elements.profileApplyButton.disabled = !graphGroup",
 		`elements.profileApplyButton?.addEventListener("click", openProfileApplyDialog)`,
-		"profileNavigationRevealTarget",
-		"navigationRevealTarget: profileNavigationRevealTarget",
+		"profileNavigationRevealDimension",
+		"navigationRevealDimension: profileNavigationRevealDimension",
 		"captureProfileNavigationContext",
 		"restoreProfileNavigationContext",
 	} {

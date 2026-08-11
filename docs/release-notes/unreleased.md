@@ -66,15 +66,24 @@ The release script infers bump size from these sections:
 - Removed the redundant Profile Graph deck-status line such as
   `5 series · actual · year · single`.
 - Reworked the Profile overview into a compact, table-aligned selector without
-  horizontal scrolling. A click sets the primary profile or zone, Ctrl/Cmd
-  toggles additional rows, and Shift selects a range. Line views overlay the
-  selected rows with an always-visible legend, while annual heatmaps show each
-  selection in parallel panels for direct comparison.
+  horizontal scrolling. Profile assignments now show only the zone count with
+  full zone details available on hover; Zone rows show the assigned Profile
+  name once without a redundant sentence. Each metric label/value is rendered
+  in its own aligned cell instead of a slash-separated summary. A click sets
+  the primary profile or zone, Ctrl/Cmd toggles additional rows, and Shift
+  selects a range. Line views overlay the selected rows with an always-visible
+  legend, while annual heatmaps show each selection in parallel panels for
+  direct comparison. Removed the separate Profile Matrix, Source Objects, and
+  Parameter Candidates sections; graph, Apply, semantic navigation, and
+  backend Profile QA data remain available.
 - Simplified Profile Graph to a fixed Time Profile over selected Profile
   assignments. Removed Graph Type, Scope, and Compare selectors, replaced the
   View dropdown with six direct view buttons, and moved graph Scale to the
   Profile Analysis section in Settings while preserving legacy view preferences
-  during migration.
+  during migration. Added engineering-style, view-specific X/Y axes with
+  responsive ticks and explicit units; annual heatmaps now separate calendar
+  axes from their value color scale, and the dimensionless metric is labelled
+  Schedule fraction instead of Multiplier.
 - Removed direct Profile-to-Topology and Topology-to-Profile links, including
   the Profile detail action, Topology Inspector profile summary, and shared
   related-view/link-bar destinations between those two panels.
@@ -85,7 +94,10 @@ The release script infers bump size from these sections:
 
 ## Fixed
 
-- _None._
+- Profile curves that resolve to the same visible path now use interleaved
+  color phases instead of hiding behind the last-drawn series. Matching legend
+  entries use fixed-width line swatches and identify overlap at the current
+  scale without shifting or otherwise altering the plotted values.
 
 ## Performance
 

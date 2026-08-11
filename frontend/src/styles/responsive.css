@@ -135,27 +135,14 @@
     display: none;
   }
 
-  .profile-card-zones,
+  .profile-card-assignment,
   .profile-card-metrics {
     white-space: normal;
     overflow-wrap: anywhere;
   }
 
-  .profile-item-table {
-    display: none;
-  }
-
-  .profile-matrix table {
-    font-size: 11px;
-  }
-
-  .profile-matrix th,
-  .profile-matrix td {
-    padding: 6px;
-  }
-
-  .profile-matrix thead th:first-child {
-    width: clamp(100px, 32%, 160px);
+  .profile-card-metrics {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 96px), 1fr));
   }
 
   .geometry-detail-grid {
@@ -194,14 +181,9 @@
   }
 
   .profile-heatmap-frame {
-    grid-template-columns: 22px minmax(0, 1fr);
-    gap: 4px;
+    grid-template-columns: 12px 24px minmax(0, 1fr);
+    gap: 3px;
     padding-inline: 6px;
-  }
-
-  .profile-heatmap-x span:nth-child(2),
-  .profile-heatmap-x span:nth-child(3) {
-    display: none;
   }
 
   .workspace-link-bar {
@@ -279,10 +261,6 @@
     width: 100%;
   }
 
-  .profile-source-accordion summary {
-    grid-template-columns: 1fr;
-  }
-
   .semantic-toolbar,
   .semantic-context-bar {
     align-items: stretch;
@@ -327,13 +305,8 @@
     display: none;
   }
 
-  .profile-table-row,
-  .profile-source-accordion summary {
+  .profile-table-row {
     grid-template-columns: minmax(0, 1fr);
-  }
-
-  .profile-item-table {
-    display: none;
   }
 
   .profile-table-row {
@@ -345,69 +318,20 @@
     display: none;
   }
 
-  .profile-card-zones,
+  .profile-card-assignment,
   .profile-card-metrics {
     white-space: normal;
     overflow-wrap: anywhere;
   }
 
-  .profile-detail-head {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .profile-detail-actions {
-    align-self: flex-start;
-  }
-
-  .profile-matrix thead th:first-child {
-    width: auto;
-  }
-
-  .profile-matrix table,
-  .profile-matrix tbody,
-  .profile-matrix tr,
-  .profile-matrix th,
-  .profile-matrix td {
-    width: 100%;
-    max-width: 100%;
-    display: block;
-  }
-
-  .profile-matrix thead {
-    display: none;
-  }
-
-  .profile-matrix tr {
-    border-bottom: 1px solid var(--surface-2);
-  }
-
-  .profile-matrix tr:last-child {
-    border-bottom: 0;
-  }
-
-  .profile-matrix th,
-  .profile-matrix td {
-    border-right: 0;
-  }
-
-  .profile-matrix-dimension-label {
-    min-width: 0;
-    margin-bottom: 4px;
-    display: block;
-    overflow: hidden;
-    color: var(--muted);
-    font-size: 10px;
-    font-weight: 700;
-    line-height: 1.25;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+  .profile-card-metrics {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 96px), 1fr));
   }
 
   .profile-view-switch {
-    width: 100%;
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: max-content;
+    max-width: 100%;
+    display: inline-flex;
   }
 
   .profile-segment-button {
@@ -417,6 +341,12 @@
 }
 
 @container profile-pane (max-width: 240px) {
+  .profile-view-switch {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .profile-overview-table-head {
     grid-template-columns: minmax(0, 1fr);
     padding-inline: 8px;
@@ -431,43 +361,66 @@
   }
 
   .profile-group-card,
-  .profile-source-accordion summary,
   .profile-annual-panel,
   .profile-annual-heatmap-card,
   .profile-overlay-panel {
     padding-inline: 8px;
   }
 
-  .profile-graph-panel-head {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    justify-content: stretch;
-    gap: 2px;
-  }
-
-  .profile-graph-panel-head strong,
-  .profile-graph-panel-head span {
+  .profile-graph-panel-head strong {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  .profile-source-accordion > div {
-    padding-inline: 8px;
-  }
-
-  .profile-source-accordion .profile-object-link {
-    width: fit-content;
-    max-width: 100%;
-    margin-right: 0;
-    white-space: normal;
-  }
-
   .profile-heatmap-frame {
-    grid-template-columns: 18px minmax(0, 1fr);
+    grid-template-columns: 10px 22px minmax(0, 1fr);
     gap: 3px;
     padding-inline: 4px;
+  }
+}
+
+@container profile-pane (max-width: 299px) {
+  .profile-axis-density-full {
+    display: none;
+  }
+
+  .profile-line-chart {
+    grid-template-columns: 12px 40px minmax(0, 1fr);
+    grid-template-rows: 176px 20px 18px;
+    column-gap: 3px;
+  }
+}
+
+@container profile-pane (max-width: 179px) {
+  .profile-axis-density-medium {
+    display: none;
+  }
+
+  .profile-line-chart {
+    grid-template-columns: 10px 34px minmax(0, 1fr);
+    grid-template-rows: 140px 20px 18px;
+    column-gap: 2px;
+  }
+
+  .profile-axis-tick,
+  .profile-x-axis-title,
+  .profile-y-axis-title,
+  .profile-heatmap-x-title,
+  .profile-heatmap-y-title,
+  .profile-heatmap-scale-title,
+  .profile-heatmap-scale-ticks {
+    font-size: 8px;
+  }
+
+  .profile-heatmap-scale {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto 8px 14px;
+  }
+
+  .profile-heatmap-scale-title {
+    grid-row: 1;
   }
 }
 

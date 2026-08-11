@@ -22,7 +22,7 @@ func TestPhaseHEndToEndScenarioContracts(t *testing.T) {
 			{path: "frontend/src/js/navigation.js", terms: []string{"snapshot.globalSelection", "restoreRegisteredPanelContext"}},
 		},
 		"B profile schedule and source": {
-			{path: "frontend/src/js/views/profile-views.js", terms: []string{"function selectProfileMatrixCell", "data-profile-row-key", "profileSelectionAnchorKey", "data-choose-semantic-occurrence", "captureProfileNavigationContext", "restoreProfileNavigationContext"}},
+			{path: "frontend/src/js/views/profile-views.js", terms: []string{"function handleProfileOverviewActivation", "data-profile-row-key", "profileSelectionAnchorKey", "function profileSeriesSemanticTargets", "function applyProfileNavigationTarget", "function selectProfileItemForNavigation", "function selectProfileZoneDimensionForNavigation", "captureProfileNavigationContext", "restoreProfileNavigationContext"}},
 			{path: "frontend/src/js/selection-controller.js", terms: []string{"chooseSemanticOccurrence", "semanticOccurrenceChoices"}},
 			{path: "frontend/src/js/views/input-views.js", terms: []string{"revealSelectionSource", "sourceAnchor"}},
 		},
@@ -68,7 +68,7 @@ func TestPhaseHLargeModelFilterHiddenRevealContracts(t *testing.T) {
 			"semanticTemporaryReveal",
 		},
 		"frontend/src/js/views/profile-views.js": {
-			"profileNavigationRevealTarget",
+			"profileNavigationRevealDimension",
 		},
 		"frontend/src/js/views/hvac-views.js": {
 			"hvacNavigationRevealTarget",

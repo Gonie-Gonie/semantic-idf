@@ -46,7 +46,7 @@ func TestFrontendPerformanceTimingContracts(t *testing.T) {
 	for _, term := range []string{
 		"recordRenderTiming(tab",
 		"function renderPendingResultTab",
-		"Profile pending",
+		"Building profile graphs",
 		"HVAC pending",
 		"performance.now",
 		"refreshStatusTitle()",

@@ -10,14 +10,13 @@ import { captureViewSnapshot, recordViewHistory } from "../view-history.js";
 let lastProfileView = null;
 let lastProfileReport = null;
 let profileNavigationCleanup = null;
-let profileNavigationRevealTarget = null;
+let profileNavigationRevealDimension = "";
 let lastProfileSeriesByID = new Map();
 let profileSelectionAnalysisKey = "";
 let previousProfileGroupMembership = new Map();
 let profileHeatmapSequence = 0;
 const profileHeatmapPaintQueue = new Map();
 const profileItemMapCache = new WeakMap();
-const PROFILE_MATRIX_RENDER_LIMIT = 500;
 
 export function renderProfile(profile = state.report?.profile) {
   if (!elements.profileGraph) {
@@ -30,14 +29,17 @@ export function renderProfile(profile = state.report?.profile) {
 
   resetProfileRowSelectionForDocument(profile);
   state.profileSettings = mergeProfileSettings(profile.defaultSettings, state.profileSettings || getCurrentAppSettings().profile);
+  const viewSettings = profileNavigationRevealDimension && !state.profileSettings.enabledDimensions.includes(profileNavigationRevealDimension)
+    ? { ...state.profileSettings, enabledDimensions: [...state.profileSettings.enabledDimensions, profileNavigationRevealDimension] }
+    : state.profileSettings;
   state.profileSelectedDimensions = normalizeProfileSelection(
     state.profileSelectedDimensions,
     (profile.dimensions || [])
       .map((dimension) => dimension.id)
-      .filter((dimension) => state.profileSettings.enabledDimensions.includes(dimension)),
+      .filter((dimension) => viewSettings.enabledDimensions.includes(dimension)),
   );
   state.activeProfileView = state.activeProfileView === "zone" ? "zone" : "profile";
-  lastProfileView = cachedProfileView(profile, state.profileSettings);
+  lastProfileView = cachedProfileView(profile, viewSettings);
 
   const visibleGroups = lastProfileView.groups;
   const visibleRows = lastProfileView.matrix;
@@ -50,20 +52,14 @@ export function renderProfile(profile = state.report?.profile) {
   const graphGroup = selectedZone ? groupForZoneName(selectedZone.zoneName) : selectedGroup;
 
   elements.profileApplyButton.disabled = !graphGroup;
-  const itemMap = profileItemMap(profile);
   renderProfileSettings(profile);
   renderProfileOverview(visibleGroups, visibleRows);
   renderProfileGraph(graphGroup, profile);
-  renderProfileMatrix(lastProfileView.matrix, profile, itemMap);
-  renderProfileDetail(graphGroup, profile, selectedZone, itemMap);
 }
 
 function renderEmptyProfile() {
   elements.profileSettings.innerHTML = "";
   elements.profileOverview.innerHTML = `<div class="empty">${t("profile.noAnalysis")}</div>`;
-  elements.profileDetail.innerHTML = `<div class="empty">${t("profile.noProfile")}</div>`;
-  elements.profileMatrix.innerHTML = `<div class="empty">${t("profile.noMatrix")}</div>`;
-  elements.profileMatrixStats.textContent = t("count.zones", { count: 0 });
   elements.profileGraph.innerHTML = `<div class="empty">${t("profile.noGraph")}</div>`;
   elements.profileApplyButton.disabled = true;
   state.profileSelectedGroupIds = [];
@@ -71,6 +67,7 @@ function renderEmptyProfile() {
   state.profileSelectionAnchorKey = "";
   lastProfileReport = null;
   profileSelectionAnalysisKey = "";
+  profileNavigationRevealDimension = "";
   previousProfileGroupMembership = new Map();
 }
 
@@ -80,12 +77,12 @@ function resetProfileRowSelectionForDocument(profile) {
     ? profileSelectionAnalysisKey !== analysisKey
     : Boolean(lastProfileReport && lastProfileReport !== profile);
   if (changed) {
+    profileNavigationRevealDimension = "";
     state.activeProfileGroupId = "";
     state.activeProfileZoneName = "";
     state.profileSelectedGroupIds = [];
     state.profileSelectedZoneNames = [];
     state.profileSelectionAnchorKey = "";
-    state.profileSelectedCell = null;
     previousProfileGroupMembership = new Map();
   }
   profileSelectionAnalysisKey = analysisKey;
@@ -99,11 +96,11 @@ function renderProfileSettings(profile) {
     <div class="profile-live-controls">
       <div class="profile-live-group">
         <span class="profile-live-label">${t("profile.inspectBy")}</span>
-        <div class="profile-view-switch" role="tablist" aria-label="${escapeHTML(t("profile.inspectBy"))}">
-          <button class="profile-segment-button ${state.activeProfileView === "profile" ? "active" : ""}" type="button" data-profile-view="profile">
+        <div class="profile-view-switch" role="group" aria-label="${escapeHTML(t("profile.inspectBy"))}">
+          <button class="profile-segment-button ${state.activeProfileView === "profile" ? "active" : ""}" type="button" data-profile-view="profile" aria-pressed="${state.activeProfileView === "profile" ? "true" : "false"}">
             ${escapeHTML(t("profile.viewProfiles"))}
           </button>
-          <button class="profile-segment-button ${state.activeProfileView === "zone" ? "active" : ""}" type="button" data-profile-view="zone">
+          <button class="profile-segment-button ${state.activeProfileView === "zone" ? "active" : ""}" type="button" data-profile-view="zone" aria-pressed="${state.activeProfileView === "zone" ? "true" : "false"}">
             ${escapeHTML(t("profile.viewZones"))}
           </button>
         </div>
@@ -115,7 +112,7 @@ function renderProfileSettings(profile) {
             .map(
               (dimension) => `
                 <label class="profile-check compact">
-                  <input data-profile-dimension="${escapeHTML(dimension.id)}" type="checkbox" ${settings.enabledDimensions.includes(dimension.id) ? "checked" : ""} />
+                  <input data-profile-dimension="${escapeHTML(dimension.id)}" type="checkbox" ${settings.enabledDimensions.includes(dimension.id) || dimension.id === profileNavigationRevealDimension ? "checked" : ""} />
                   <span>${escapeHTML(profileDimensionLabel(dimension.id))}</span>
                 </label>`,
             )
@@ -126,7 +123,7 @@ function renderProfileSettings(profile) {
         <span>${t("profile.metricMode", {}, "Metric")}</span>
         <select id="profileMetricMode">
           ${optionHTML("design", t("graph.designValue", {}, "Design"), currentProfileMetricMode())}
-          ${optionHTML("multiplier", t("graph.multiplier"), currentProfileMetricMode())}
+          ${optionHTML("multiplier", t("profile.scheduleFraction", {}, "Schedule fraction"), currentProfileMetricMode())}
           ${optionHTML("actual", t("graph.actualValue"), currentProfileMetricMode())}
           ${optionHTML("annual", t("graph.annualContribution", {}, "Annual"), currentProfileMetricMode())}
         </select>
@@ -232,14 +229,6 @@ function profileSourceAnchorKey(anchor = {}) {
   return [anchor.objectId || "", anchor.objectIndex ?? "", anchor.fieldIndex ?? "", anchor.objectType || "", anchor.objectName || ""].join("|");
 }
 
-function profileMatrixSemanticTargets(zoneName, dimension, itemIDs = []) {
-  const targets = [profileZoneDimensionTargetID(zoneName, dimension)];
-  if (itemIDs.length === 1) {
-    targets.push(itemIDs[0]);
-  }
-  return targets;
-}
-
 function profileGroupSemanticTargets(group = {}) {
   const reportGroup = (state.report?.profile?.groups || []).find((candidate) => (
     sameStringSet(candidate.zoneNames, group.zoneNames) && sameStringSet(candidate.itemIds, group.itemIds)
@@ -262,20 +251,6 @@ function profileSeriesSemanticTargets(series = {}) {
     targets.push(profileZoneDimensionTargetID(series.zoneName, series.dimension));
   }
   targets.push(...profileScheduleTargetNames(series.scheduleName));
-  return targets;
-}
-
-function profileAggregateSemanticTargets(item = {}) {
-  const targets = [];
-  if ((item.sourceItemIds || []).length === 1) {
-    targets.push(item.sourceItemIds[0]);
-  }
-  if (item.zoneName && item.dimension) {
-    targets.push(profileZoneDimensionTargetID(item.zoneName, item.dimension));
-  }
-  if (item.groupId) {
-    targets.push(item.groupId);
-  }
   return targets;
 }
 
@@ -465,7 +440,6 @@ function applyProfileRowSelection(rowKeys, primaryKey, anchorKey) {
     }
   }
   state.profileSelectionAnchorKey = anchorKey;
-  state.profileSelectedCell = null;
   return true;
 }
 
@@ -517,36 +491,69 @@ function handleProfileRowSelection(event, rowKey) {
 }
 
 function renderProfileOverview(groups, rows) {
+  const metricDimensions = (lastProfileView?.dimensions || [])
+    .filter((dimension) => state.profileSettings.enabledDimensions.includes(dimension.id) || dimension.id === profileNavigationRevealDimension)
+    .map((dimension) => ({ id: dimension.id, label: profileDimensionLabel(dimension.id) }));
   if (state.activeProfileView === "zone") {
     const selectedZoneNames = new Set(state.profileSelectedZoneNames || []);
     elements.profileOverview.innerHTML = rows.length
-      ? rows.map((row) => renderProfileZoneCard(row, selectedZoneNames)).join("")
+      ? rows.map((row) => renderProfileZoneCard(row, selectedZoneNames, metricDimensions)).join("")
       : `<div class="empty">${t("profile.noMatchingZones")}</div>`;
     return;
   }
   const selectedGroupIDs = new Set(state.profileSelectedGroupIds || []);
   elements.profileOverview.innerHTML = groups.length
-    ? groups.map((group) => renderProfileGroupCard(group, selectedGroupIDs)).join("")
+    ? groups.map((group) => renderProfileGroupCard(group, selectedGroupIDs, metricDimensions)).join("")
     : `<div class="empty">${t("profile.noMatchingGroups")}</div>`;
 }
 
-function renderProfileGroupCard(group, selectedGroupIDs = new Set(state.profileSelectedGroupIds || [])) {
+function renderProfileAssignment(zoneCount, detail) {
+  const summary = t("count.zones", { count: zoneCount });
+  const accessibleDetail = detail ? `${summary}: ${detail}` : summary;
+  return `<span class="profile-card-assignment" title="${escapeHTML(detail || summary)}" aria-label="${escapeHTML(accessibleDetail)}">${escapeHTML(summary)}</span>`;
+}
+
+function renderProfileMetrics(summaries = [], dimensions = []) {
+  const summaryByDimension = new Map(summaries.map((summary) => [summary.dimension, summary]));
+  const visibleDimensions = dimensions.length
+    ? dimensions
+    : summaries.map((summary) => ({ id: summary.dimension, label: summary.label }));
+  const columnCount = Math.max(1, visibleDimensions.length);
+  return `
+    <span class="profile-card-metrics" style="--profile-metric-columns: ${columnCount}" aria-label="${escapeHTML(t("common.metrics"))}">
+      ${visibleDimensions
+        .map(
+          (dimension) => {
+            const summary = summaryByDimension.get(dimension.id);
+            const displayValue = summary?.displayValue || t("common.notAvailable");
+            return `
+              <span class="profile-card-metric ${summary ? "" : "is-missing"}" data-profile-dimension="${escapeHTML(dimension.id)}" title="${escapeHTML(`${dimension.label}: ${displayValue}`)}">
+                <span class="profile-card-metric-label">${escapeHTML(dimension.label)}</span>
+                <span class="profile-card-metric-value">${escapeHTML(displayValue)}</span>
+              </span>`;
+          },
+        )
+        .join("")}
+    </span>`;
+}
+
+function renderProfileGroupCard(group, selectedGroupIDs = new Set(state.profileSelectedGroupIds || []), metricDimensions = []) {
   const active = group.id === state.activeProfileGroupId ? "active" : "";
   const selected = selectedGroupIDs.has(group.id);
+  const assignmentDetail = group.zoneNames.join(", ");
   return `
     <button class="profile-group-card profile-table-row navigable-row ${selected ? "selected" : ""} ${active}" data-profile-group-id="${escapeHTML(group.id)}" data-profile-row-key="${escapeHTML(profileGroupRowKey(group.id))}" type="button" role="option" aria-selected="${selected ? "true" : "false"}"
       ${profileSemanticAttributes(profileGroupSemanticTargets(group), { occurrenceContext: "zone_profile" })}>
       <span>
         <strong>${escapeHTML(group.name)}</strong>
-        <small>${escapeHTML(t("count.zones", { count: group.zoneCount }))}</small>
       </span>
-      <span class="profile-card-zones">${escapeHTML(group.zoneNames.slice(0, 4).join(", "))}${group.zoneNames.length > 4 ? "..." : ""}</span>
-      <span class="profile-card-metrics">${group.dimensions.map((dimension) => `${escapeHTML(dimension.label)} ${escapeHTML(dimension.displayValue)}`).join(" / ")}</span>
+      ${renderProfileAssignment(group.zoneCount, assignmentDetail)}
+      ${renderProfileMetrics(group.dimensions, metricDimensions)}
       <span class="profile-row-apply-slot" aria-hidden="true"></span>
     </button>`;
 }
 
-function renderProfileZoneCard(row, selectedZoneNames = new Set(state.profileSelectedZoneNames || [])) {
+function renderProfileZoneCard(row, selectedZoneNames = new Set(state.profileSelectedZoneNames || []), metricDimensions = []) {
   const active = row.zoneName === state.activeProfileZoneName ? "active" : "";
   const selected = selectedZoneNames.has(row.zoneName);
   return `
@@ -554,48 +561,11 @@ function renderProfileZoneCard(row, selectedZoneNames = new Set(state.profileSel
       ${profileSemanticAttributes([row.zoneName], { occurrenceContext: "zone_profile" })}>
       <span>
         <strong>${escapeHTML(row.zoneName)}</strong>
-        <small>${escapeHTML(row.groupName || t("profile.noProfileGroup"))}</small>
       </span>
-      <span class="profile-card-zones">${escapeHTML(t("profile.receivesProfile", { profile: row.groupName || t("profile.noProfileGroup") }))}</span>
-      <span class="profile-card-metrics">${row.dimensions.map((dimension) => `${escapeHTML(dimension.label)} ${escapeHTML(dimension.displayValue)}`).join(" / ")}</span>
+      <span class="profile-card-assignment profile-card-profile-name" title="${escapeHTML(row.groupName || t("profile.noProfileGroup"))}">${escapeHTML(row.groupName || t("profile.noProfileGroup"))}</span>
+      ${renderProfileMetrics(row.dimensions, metricDimensions)}
       <span class="profile-row-apply-slot" aria-hidden="true"></span>
     </button>`;
-}
-
-function renderProfileDetail(group, profile, zoneRow = null, itemMap = profileItemMap(profile)) {
-  if (!group) {
-    elements.profileDetail.innerHTML = `<div class="empty">${t("profile.noProfileGroup")}</div>`;
-    return;
-  }
-  const dimensions = zoneRow?.dimensions || group.dimensions;
-  const itemIds = zoneRow?.dimensions?.flatMap((dimension) => dimension.itemIds || []) || group.itemIds;
-  const items = uniqueProfileItems(itemIds.map((id) => itemMap.get(id)).filter(Boolean));
-  const warnings = [...(zoneRow?.warnings || []), ...group.warnings, ...items.flatMap((item) => item.warnings || [])];
-  const candidates = profileCandidatesForDimensions(profile, dimensions.map((dimension) => dimension.dimension));
-  elements.profileDetail.innerHTML = `
-    <div class="profile-detail-head">
-      <div>
-        <h3>${escapeHTML(zoneRow ? zoneRow.zoneName : group.name)}</h3>
-        <p>${escapeHTML(zoneRow ? t("profile.receivesProfile", { profile: group.name }) : group.zoneNames.join(", "))}</p>
-      </div>
-      <div class="profile-detail-actions">
-        <span class="badge">${escapeHTML(t("count.zones", { count: group.zoneCount }))}</span>
-      </div>
-    </div>
-    <div class="profile-dimension-grid">
-      ${dimensions.map(renderProfileDimensionSummary).join("")}
-    </div>
-    ${warnings.length ? `<div class="profile-warning-list">${warnings.map(renderProfileWarning).join("")}</div>` : ""}
-    ${candidates.length ? renderProfileCandidatePanel(candidates) : ""}
-    <div class="profile-item-table" role="table" aria-label="${escapeHTML(t("profile.sourceObjects"))}">
-      <div class="profile-item-row head" role="row">
-        <span>${t("common.dimension")}</span><span>${t("common.source")}</span><span>${t("common.schedule")}</span><span>${t("common.method")}</span><span>${t("common.normalized")}</span>
-      </div>
-      ${items.map(renderProfileItemRow).join("")}
-    </div>
-    <div class="profile-source-accordion-list">
-      ${items.map(renderProfileSourceAccordion).join("")}
-    </div>`;
 }
 
 function renderProfileDimensionSummary(dimension) {
@@ -605,151 +575,6 @@ function renderProfileDimensionSummary(dimension) {
       <span>${escapeHTML(dimension.displayValue)}</span>
       <small>${escapeHTML(dimension.scheduleName || dimension.schedulePattern || t("profile.noSchedule"))}</small>
     </article>`;
-}
-
-function renderProfileItemRow(item) {
-  const metrics = (item.normalized || [])
-    .filter((metric) => metric.status !== "missing")
-    .map((metric) => `${profileMetricLabel(item.dimension, metric.id, metric.label)}: ${metric.displayValue}`)
-    .join("; ");
-  return `
-    <div class="profile-item-row navigable-row" role="row" tabindex="0"
-      ${profileSemanticAttributes([item.id], { occurrenceContext: "zone_profile" })}>
-      <span>${escapeHTML(profileDimensionLabel(item.dimension))}</span>
-      <span>
-        <button class="profile-object-link navigable-row" data-jump-object-index="${escapeHTML(item.objectIndex)}" data-jump-object-type="${escapeHTML(item.objectType)}" type="button">
-          #${escapeHTML(Number(item.objectIndex) + 1)}
-        </button>
-        ${escapeHTML(item.objectName || item.objectType)}
-      </span>
-      <span class="navigable-row" tabindex="0" data-choose-semantic-occurrence="true"
-        ${profileSemanticAttributes(profileScheduleTargetNames(item.scheduleName), { occurrenceContext: "zone_profile" })}>${escapeHTML(item.scheduleName || "N/A")}<small>${escapeHTML(item.schedulePattern || "")}</small></span>
-      <span>${escapeHTML(item.rawMethod || "N/A")}<small>${escapeHTML(item.rawValue || "")}</small></span>
-      <span>${escapeHTML(metrics || "N/A")}</span>
-    </div>`;
-}
-
-function renderProfileCandidatePanel(candidates) {
-  return `
-    <div class="profile-candidate-panel">
-      <h4>${escapeHTML(t("profile.parameterCandidates", {}, "Parameter candidates"))}</h4>
-      ${candidates.map(renderProfileCandidateRow).join("")}
-    </div>`;
-}
-
-function renderProfileSourceAccordion(item) {
-  const metrics = (item.normalized || [])
-    .map((metric) => `<span>${escapeHTML(profileMetricLabel(item.dimension, metric.id, metric.label))}: ${escapeHTML(metric.displayValue || "N/A")}</span>`)
-    .join("");
-  return `
-    <details class="profile-source-accordion" ${profileSemanticAttributes([item.id], { occurrenceContext: "zone_profile" })}>
-      <summary class="navigable-row" tabindex="0">
-        <span>${escapeHTML(profileDimensionLabel(item.dimension))}</span>
-        <strong>${escapeHTML(item.objectName || item.objectType)}</strong>
-        <small class="navigable-row" tabindex="0" data-choose-semantic-occurrence="true"
-          ${profileSemanticAttributes(profileScheduleTargetNames(item.scheduleName), { occurrenceContext: "zone_profile" })}>${escapeHTML(item.scheduleName || item.schedulePattern || t("profile.noSchedule"))}</small>
-      </summary>
-      <div>
-        <button class="profile-object-link navigable-row" data-jump-object-index="${escapeHTML(item.objectIndex)}" data-jump-object-type="${escapeHTML(item.objectType)}" type="button"
-          ${profileSemanticAttributes([item.id], { occurrenceContext: "zone_profile" })}>
-          #${escapeHTML(Number(item.objectIndex) + 1)} ${escapeHTML(item.objectType)}
-        </button>
-        <span>${escapeHTML(item.rawMethod || "N/A")} ${escapeHTML(item.rawValue || "")}</span>
-        <div class="profile-source-metrics">${metrics || "N/A"}</div>
-      </div>
-    </details>`;
-}
-
-function renderProfileMatrix(rows, profile, itemMap = profileItemMap(profile)) {
-  const visibleRows = rows;
-  const renderedRows = visibleRows.slice(0, PROFILE_MATRIX_RENDER_LIMIT);
-  const hiddenRows = Math.max(0, visibleRows.length - renderedRows.length);
-  const dimensions = (lastProfileView?.dimensions || []).filter((dimension) => (
-    state.profileSettings.enabledDimensions.includes(dimension.id) ||
-    dimension.id === profileNavigationRevealTarget?.dimension
-  ));
-  const activeZoneNames = profileActiveMatrixZoneNames();
-  elements.profileMatrixStats.textContent = t("count.zones", { count: visibleRows.length });
-  elements.profileMatrix.innerHTML = visibleRows.length
-    ? `
-      ${hiddenRows ? `<div class="empty compact">${escapeHTML(`${hiddenRows} additional zones hidden by the render limit.`)}</div>` : ""}
-      <table>
-        <thead>
-          <tr><th>Zone</th>${dimensions.map((dimension) => `<th>${escapeHTML(profileDimensionLabel(dimension.id))}</th>`).join("")}</tr>
-        </thead>
-        <tbody>
-          ${renderedRows
-            .map((row) => {
-              const dimensionByID = new Map((row.dimensions || []).map((item) => [item.dimension, item]));
-              return `
-                <tr class="${activeZoneNames.has(row.zoneName) ? "active" : ""}" data-profile-zone="${escapeHTML(row.zoneName)}"
-                  ${profileSemanticAttributes([row.zoneName], { occurrenceContext: "zone_profile" })}>
-                  <th>
-                    <button class="profile-object-link navigable-row" data-jump-object-index="${escapeHTML(row.zoneObjectIndex)}" data-jump-object-type="Zone" type="button">
-                      #${escapeHTML(Number(row.zoneObjectIndex) + 1)}
-                    </button>
-                    ${escapeHTML(row.zoneName)}
-                    <small>${escapeHTML(row.groupName || "")}</small>
-                  </th>
-                  ${dimensions
-                    .map((dimension) => {
-                      const summary = dimensionByID.get(dimension.id) ||
-                        temporaryProfileDimensionSummary(profile, row.zoneName, dimension.id);
-                      return renderProfileMatrixCell(summary, itemMap, row, dimension);
-                    })
-                    .join("")}
-                </tr>`;
-            })
-            .join("")}
-        </tbody>
-      </table>`
-    : `<div class="empty">${t("profile.noMatchingZones")}</div>`;
-}
-
-function renderProfileMatrixCell(summary, itemMap, row, dimension = {}) {
-  const dimensionLabel = profileDimensionLabel(dimension.id || summary?.dimension || "");
-  if (!summary) {
-    return `<td class="profile-matrix-empty" data-profile-dimension="${escapeHTML(dimension.id || "")}" data-profile-dimension-label="${escapeHTML(dimensionLabel)}" aria-label="${escapeHTML(`${dimensionLabel} N/A`)}"><span class="profile-matrix-dimension-label">${escapeHTML(dimensionLabel)}</span>N/A</td>`;
-  }
-  const cellClasses = profileMatrixCellClasses(summary, row);
-  const itemIds = (summary.itemIds || []).join(",");
-  const semanticTargets = profileMatrixSemanticTargets(row.zoneName, summary.dimension, summary.itemIds || []);
-  const objects = (summary.itemIds || [])
-    .map((id) => itemMap.get(id))
-    .filter(Boolean)
-    .map(
-      (item) => `
-        <button class="profile-object-link navigable-row" data-jump-object-index="${escapeHTML(item.objectIndex)}" data-jump-object-type="${escapeHTML(item.objectType)}" type="button"
-          ${profileSemanticAttributes([item.id], { occurrenceContext: "zone_profile" })}>
-          #${escapeHTML(Number(item.objectIndex) + 1)} ${escapeHTML(shortObjectType(item.objectType))}
-        </button>`,
-    )
-    .join("");
-  return `
-    <td class="${escapeHTML(cellClasses)}" tabindex="0" role="button"
-      data-profile-cell="1"
-      data-profile-zone="${escapeHTML(row.zoneName)}"
-      data-profile-group-id="${escapeHTML(row.groupId || "")}"
-      data-profile-dimension="${escapeHTML(summary.dimension)}"
-      data-profile-dimension-label="${escapeHTML(dimensionLabel)}"
-      data-profile-schedule-hash="${escapeHTML(summary.scheduleHash || "")}"
-      data-profile-schedule-name="${escapeHTML(summary.scheduleName || "")}"
-      data-profile-value="${escapeHTML(String(summary.value ?? ""))}"
-      data-profile-item-ids="${escapeHTML(itemIds)}"
-      ${profileSemanticAttributes(semanticTargets, { occurrenceContext: "zone_profile" })}
-      aria-label="${escapeHTML(`${row.zoneName} ${summary.label} ${summary.displayValue}`)}">
-      <span class="profile-matrix-dimension-label">${escapeHTML(dimensionLabel)}</span>
-      <strong>${escapeHTML(summary.displayValue)}</strong>
-      <small>${escapeHTML(summary.schedulePattern || summary.scheduleName || "")}</small>
-      ${objects ? `<div class="profile-matrix-objects">${objects}</div>` : ""}
-    </td>`;
-}
-
-function temporaryProfileDimensionSummary(profile, zoneName, dimensionID) {
-  if (dimensionID !== profileNavigationRevealTarget?.dimension) {
-    return null;
-  }
-  return profileDimensionSummary(profile, zoneName, dimensionID);
 }
 
 function renderProfileGraph(group, profile) {
@@ -803,9 +628,8 @@ function renderProfileOverlay(series, options) {
         <section class="profile-overlay-panel" data-profile-dimension="${escapeHTML(group.dimension)}">
           <div class="profile-graph-panel-head">
             <strong>${escapeHTML(group.label)}</strong>
-            <span>${escapeHTML(group.unit || t("graph.multiplier"))}</span>
           </div>
-          ${renderOverlayGraph(metrics, max, group.unit)}
+          ${renderOverlayGraph(metrics, max, group.unit, options.timeView)}
           ${renderProfileSeriesLegend(metrics)}
         </section>`;
     })
@@ -820,7 +644,6 @@ function renderProfileAnnualHeatmaps(series, options) {
         <section class="profile-annual-panel" data-profile-dimension="${escapeHTML(group.dimension)}">
           <div class="profile-graph-panel-head">
             <strong>${escapeHTML(group.label)}</strong>
-            <span>${escapeHTML(group.unit || t("graph.multiplier"))}</span>
           </div>
           <div class="profile-annual-heatmap-grid">
             ${group.items.map(({ series: item, metric, color }) => `
@@ -880,18 +703,163 @@ function profileSeriesSelectionColor(series, fallbackIndex = 0, selection = prof
 
 function renderProfileSeriesLegend(items) {
   return `<div class="profile-overlay-legend" aria-label="${escapeHTML(t("common.legend", {}, "Legend"))}">${items
-    .map(({ series: item, color }) => `<span class="navigable-row" role="button" tabindex="0" data-profile-series-id="${escapeHTML(item.id)}"
-      ${profileSemanticAttributes(profileSeriesSemanticTargets(item), { occurrenceContext: "zone_profile" })}><i style="background:${color}"></i>${escapeHTML(profileSeriesScopeLabel(item))}</span>`)
+    .map(({ series: item, color, visualOverlapCount = 1, visualOverlapIndex = 0 }) => {
+      const label = profileSeriesScopeLabel(item);
+      const overlapDescription = visualOverlapCount > 1
+        ? t("profile.sharedCurve", { count: visualOverlapCount }, `${visualOverlapCount} profiles overlap at the current scale`)
+        : "";
+      const accessibleLabel = overlapDescription ? `${label}; ${overlapDescription}` : label;
+      return `<span class="navigable-row" role="button" tabindex="0" data-profile-series-id="${escapeHTML(item.id)}"
+        data-profile-overlap-count="${visualOverlapCount}" data-profile-overlap-index="${visualOverlapIndex}"
+        aria-label="${escapeHTML(accessibleLabel)}" title="${escapeHTML(accessibleLabel)}"
+        ${profileSemanticAttributes(profileSeriesSemanticTargets(item), { occurrenceContext: "zone_profile" })}>
+        <i class="profile-line-swatch ${visualOverlapCount > 1 ? "is-overlap" : ""}"
+          aria-hidden="true" style="--profile-series-color:${color};--profile-overlap-period:${6 * visualOverlapCount}px;--profile-overlap-offset:${-6 * visualOverlapIndex}px"></i>
+        <span class="profile-line-label">${escapeHTML(label)}</span></span>`;
+    })
     .join("")}</div>`;
 }
 
-function renderOverlayGraph(items, max, unit = "") {
-  const plot = { left: 30, right: 592, top: 12, bottom: 180 };
+function profileYAxisScale(maximum) {
+  const finiteMax = Math.max(Number(maximum) || 0, 1e-9);
+  const rawStep = finiteMax / 5;
+  const magnitude = 10 ** Math.floor(Math.log10(rawStep));
+  const normalized = rawStep / magnitude;
+  const stepFactor = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 2.5 ? 2.5 : normalized <= 7.5 ? 5 : 10;
+  const step = stepFactor * magnitude;
+  const axisMax = Math.ceil(finiteMax / step) * step;
+  const count = Math.max(1, Math.round(axisMax / step));
+  const midpointIndex = Math.round(count / 2);
+  return {
+    max: axisMax,
+    ticks: Array.from({ length: count + 1 }, (_, index) => ({
+      value: index * step,
+      density: index === 0 || index === count ? "base" : index === midpointIndex ? "medium" : "full",
+    })),
+  };
+}
+
+function profileXAxisSpec(timeView, valueCount) {
+  const count = Math.max(1, Number(valueCount) || 1);
+  const atIndex = (index, label) => ({
+    ratio: count <= 1 ? 0.5 : Math.min(1, Math.max(0, index / (count - 1))),
+    label,
+  });
+  let title = t("profile.axisSample", {}, "Sample index");
+  let ticks = [atIndex(0, "1"), atIndex(count - 1, String(count))];
+  switch (timeView) {
+    case "day":
+      title = t("profile.axisDayTypeHour", {}, "Day type / hour [h]");
+      ticks = [
+        atIndex(0, "WD 00"),
+        atIndex(12, "WD 12"),
+        atIndex(24, "Sat 00"),
+        atIndex(36, "Sat 12"),
+        atIndex(48, "Sun 00"),
+        atIndex(60, "Sun 12"),
+        atIndex(count - 1, "Sun 24"),
+      ];
+      break;
+    case "week":
+      title = t("profile.axisDayOfWeek", {}, "Day of week");
+      ticks = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+        .map((label, index, days) => atIndex(index === days.length - 1 ? count - 1 : index * 24, label));
+      break;
+    case "month":
+      title = t("profile.axisMonth", {}, "Month");
+      ticks = profileMonthLabels().map((label, index) => atIndex(index, label));
+      break;
+    case "duration":
+      title = t("profile.axisAnnualHoursExceeded", {}, "Annual hours exceeded [%]");
+      ticks = [0, 25, 50, 75, 100].map((percent) => ({ ratio: percent / 100, label: `${percent}%` }));
+      break;
+    case "rules": {
+      title = t("profile.axisRuleInterval", {}, "Rule interval index");
+      const tickCount = Math.min(7, count);
+      ticks = Array.from({ length: tickCount }, (_, index) => {
+        const valueIndex = tickCount <= 1 ? 0 : Math.round((index / (tickCount - 1)) * (count - 1));
+        return atIndex(valueIndex, String(valueIndex + 1));
+      });
+      break;
+    }
+    default:
+      break;
+  }
+  const midpointIndex = Math.floor(ticks.length / 2);
+  return {
+    title,
+    ticks: ticks.map((tick, index) => ({
+      ...tick,
+      density: index === 0 || index === ticks.length - 1 ? "base" : index === midpointIndex ? "medium" : "full",
+    })),
+  };
+}
+
+function profileMonthLabels() {
+  return ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+}
+
+function profileHeatmapMonthTicks() {
+  const monthStartDays = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
+  return profileMonthLabels().map((label, index, labels) => ({
+    label,
+    position: (monthStartDays[index] / 364) * 100,
+    density: index === 0 || index === labels.length - 1 ? "base" : index === Math.floor(labels.length / 2) ? "medium" : "full",
+  }));
+}
+
+function profileHeatmapHourTicks() {
+  return [0, 6, 12, 18, 24].map((hour, index, hours) => ({
+    label: String(hour).padStart(2, "0"),
+    position: (hour / 24) * 100,
+    density: index === 0 || index === hours.length - 1 ? "base" : hour === 12 ? "medium" : "full",
+  }));
+}
+
+function renderProfileYAxisTicks(axis) {
+  return axis.ticks
+    .map((tick) => renderProfileAxisTick({
+      label: formatAxisTick(tick.value),
+      position: 100 - (tick.value / axis.max) * 100,
+      density: tick.density,
+    }))
+    .join("");
+}
+
+function renderProfileXAxisTicks(axis) {
+  return axis.ticks
+    .map((tick) => renderProfileAxisTick({
+      label: tick.label,
+      position: tick.ratio * 100,
+      density: tick.density,
+    }))
+    .join("");
+}
+
+function renderProfileAxisTick(tick) {
+  const position = Math.min(100, Math.max(0, Number(tick.position) || 0));
+  const edge = position <= 0.01 ? " is-start" : position >= 99.99 ? " is-end" : "";
+  return `<span class="profile-axis-tick ${profileAxisDensityClass(tick.density)}${edge}" style="--profile-axis-position:${position.toFixed(3)}%">${escapeHTML(tick.label)}</span>`;
+}
+
+function profileAxisDensityClass(density) {
+  return `profile-axis-density-${density === "base" || density === "medium" ? density : "full"}`;
+}
+
+function profileValueAxisTitle(unit = "") {
+  return t("profile.axisValue", { unit: unit || "–" }, "Value [{unit}]");
+}
+
+function renderOverlayGraph(items, max, unit = "", timeView = "year") {
+  const plot = { left: 0, right: 600, top: 0, bottom: 200 };
   const width = plot.right - plot.left;
   const height = plot.bottom - plot.top;
-  const y = (value) => plot.bottom - (clampGraphValue(value, max) / max) * height;
-  const paths = items
-    .map(({ series, metric, color }, index) => {
+  const yAxis = profileYAxisScale(max);
+  const xAxis = profileXAxisSpec(timeView, Math.max(...items.map(({ metric }) => metric.values.length), 1));
+  const y = (value) => plot.bottom - (clampGraphValue(value, yAxis.max) / yAxis.max) * height;
+  const renderedPaths = items
+    .map((item, index) => {
+      const { series, metric, color } = item;
       const data = metric.values.length > 420 ? downsampleValues(metric.values, 420) : metric.values;
       const path = data
         .map((value, valueIndex) => {
@@ -899,30 +867,64 @@ function renderOverlayGraph(items, max, unit = "") {
           return `${valueIndex === 0 ? "M" : "L"}${x.toFixed(2)},${y(value).toFixed(2)}`;
         })
         .join(" ");
-      return `<path d="${path}" stroke="${color || profileSeriesColor(index)}" data-profile-series-id="${escapeHTML(series.id)}"
+      return { item, index, path, series, color: color || profileSeriesColor(index) };
+    });
+  const renderedByPath = new Map();
+  renderedPaths.forEach((entry) => {
+    if (!entry.path) return;
+    const matching = renderedByPath.get(entry.path) || [];
+    matching.push(entry);
+    renderedByPath.set(entry.path, matching);
+  });
+  renderedByPath.forEach((matching) => {
+    matching.forEach((entry, overlapIndex) => {
+      entry.item.visualOverlapCount = matching.length;
+      entry.item.visualOverlapIndex = overlapIndex;
+    });
+  });
+  const paths = renderedPaths
+    .map(({ item, path, series, color }) => {
+      const overlapCount = item.visualOverlapCount || 1;
+      const overlapIndex = item.visualOverlapIndex || 0;
+      const overlapAttributes = overlapCount > 1
+        ? `class="profile-overlap-path" stroke-dasharray="8 ${8 * (overlapCount - 1)}" stroke-dashoffset="${-8 * overlapIndex}" data-profile-overlap-count="${overlapCount}" data-profile-overlap-index="${overlapIndex}"`
+        : "";
+      return `<path ${overlapAttributes} d="${path}" stroke="${color}" data-profile-series-id="${escapeHTML(series.id)}"
         ${profileSemanticAttributes(profileSeriesSemanticTargets(series), { occurrenceContext: "zone_profile" })}></path>`;
     })
     .join("");
+  const horizontalGrid = yAxis.ticks
+    .map((tick) => {
+      const position = plot.bottom - (tick.value / yAxis.max) * height;
+      return `<line class="profile-grid-line ${profileAxisDensityClass(tick.density)}" x1="${plot.left}" y1="${position.toFixed(2)}" x2="${plot.right}" y2="${position.toFixed(2)}"></line>`;
+    })
+    .join("");
+  const verticalGrid = xAxis.ticks
+    .map((tick) => {
+      const position = plot.left + tick.ratio * width;
+      return `<line class="profile-grid-line profile-grid-line-vertical ${profileAxisDensityClass(tick.density)}" x1="${position.toFixed(2)}" y1="${plot.top}" x2="${position.toFixed(2)}" y2="${plot.bottom}"></line>`;
+    })
+    .join("");
+  const yTitle = profileValueAxisTitle(unit);
   return `
-    <svg class="profile-overlay-graph" viewBox="0 0 620 210" role="img" aria-label="${escapeHTML(t("profile.compareOverlay", {}, "Overlay"))}">
-      <line class="profile-grid-line" x1="${plot.left}" y1="${plot.top}" x2="${plot.right}" y2="${plot.top}"></line>
-      <line class="profile-grid-line" x1="${plot.left}" y1="${plot.top + height / 2}" x2="${plot.right}" y2="${plot.top + height / 2}"></line>
-      <line class="profile-axis-line" x1="${plot.left}" y1="${plot.top}" x2="${plot.left}" y2="${plot.bottom}"></line>
-      <line class="profile-axis-line" x1="${plot.left}" y1="${plot.bottom}" x2="${plot.right}" y2="${plot.bottom}"></line>
-      <text class="profile-axis-label" x="4" y="${plot.top + 5}">${escapeHTML(formatAxisTick(max, unit))}</text>
-      <text class="profile-axis-label" x="4" y="${plot.bottom + 4}">0</text>
-      <g class="profile-overlay-paths">${paths}</g>
-    </svg>`;
-}
-
-function renderProfileCandidateRow(candidate) {
-  return `
-    <button class="profile-qa-row candidate navigable-row ${escapeHTML(candidate.severity || "info")}" type="button" data-profile-candidate-id="${escapeHTML(candidate.id)}" data-profile-dimension="${escapeHTML(candidate.dimension || "")}"
-      ${profileSemanticAttributes(profileAggregateSemanticTargets(candidate), { occurrenceContext: "zone_profile" })}>
-      <strong>${escapeHTML(candidate.label || candidate.id)}</strong>
-      <span>${escapeHTML(candidate.reason || "")}</span>
-      <small>${escapeHTML(`${(candidate.zoneNames || []).length} zones · ${formatGraphNumber(candidate.currentMin, "")}..${formatGraphNumber(candidate.currentMax, "")}`)}</small>
-    </button>`;
+    <div class="profile-line-chart" role="group" aria-label="${escapeHTML(`${t("profile.compareOverlay", {}, "Overlay")}; ${yTitle}; ${xAxis.title}`)}">
+      <div class="profile-y-axis-title">${escapeHTML(yTitle)}</div>
+      <div class="profile-y-axis-ticks" aria-hidden="true">
+        ${renderProfileYAxisTicks(yAxis)}
+      </div>
+      <div class="profile-line-plot">
+        <svg class="profile-overlay-graph" viewBox="0 0 600 200" preserveAspectRatio="none" role="img" aria-label="${escapeHTML(t("profile.compareOverlay", {}, "Overlay"))}">
+          <g aria-hidden="true">${horizontalGrid}${verticalGrid}</g>
+          <line class="profile-axis-line" x1="${plot.left}" y1="${plot.top}" x2="${plot.left}" y2="${plot.bottom}"></line>
+          <line class="profile-axis-line" x1="${plot.left}" y1="${plot.bottom}" x2="${plot.right}" y2="${plot.bottom}"></line>
+          <g class="profile-overlay-paths">${paths}</g>
+        </svg>
+      </div>
+      <div class="profile-x-axis-ticks" aria-hidden="true">
+        ${renderProfileXAxisTicks(xAxis)}
+      </div>
+      <div class="profile-x-axis-title">${escapeHTML(xAxis.title)}</div>
+    </div>`;
 }
 
 function renderProfileGraphSummary(group, dimensions) {
@@ -955,23 +957,32 @@ function renderProfileGraphSummary(group, dimensions) {
 function renderHeatmap(values, max, label, unit = "") {
   profileHeatmapSequence += 1;
   const key = `profile-heatmap-${profileHeatmapSequence}`;
+  const hourAxisTitle = t("profile.axisHourOfDay", {}, "Hour of day [h]");
+  const monthAxisTitle = t("profile.axisMonth", {}, "Month");
+  const valueAxisTitle = profileValueAxisTitle(unit);
   profileHeatmapPaintQueue.set(key, {
     values: [...values],
     max: Math.max(Number(max) || 0, 1e-9),
   });
   return `
-    <div class="profile-heatmap-frame" role="img" aria-label="${escapeHTML(`${label} ${t("graph.annualHeatmap")}`)}">
-      <div class="profile-heatmap-y">
-        <span>00</span>
-        <span>12</span>
-        <span>24</span>
+    <div class="profile-heatmap-frame" role="img" aria-label="${escapeHTML(`${label} ${t("graph.annualHeatmap")}; ${hourAxisTitle}; ${monthAxisTitle}; ${valueAxisTitle}`)}">
+      <div class="profile-heatmap-y-title">${escapeHTML(hourAxisTitle)}</div>
+      <div class="profile-heatmap-y-ticks" aria-hidden="true">
+        ${profileHeatmapHourTicks().map(renderProfileAxisTick).join("")}
       </div>
       <canvas class="profile-heatmap" width="365" height="24" data-profile-heatmap-key="${escapeHTML(key)}" aria-hidden="true"></canvas>
-      <div class="profile-heatmap-x">
-        <span>Jan</span>
-        <span>${escapeHTML(formatAxisTick(max / 2, unit))}</span>
-        <span>${escapeHTML(formatAxisTick(max, unit))}</span>
-        <span>Dec</span>
+      <div class="profile-heatmap-x-ticks" aria-hidden="true">
+        ${profileHeatmapMonthTicks().map(renderProfileAxisTick).join("")}
+      </div>
+      <div class="profile-heatmap-x-title">${escapeHTML(monthAxisTitle)}</div>
+      <div class="profile-heatmap-scale" aria-label="${escapeHTML(valueAxisTitle)}">
+        <span class="profile-heatmap-scale-title">${escapeHTML(valueAxisTitle)}</span>
+        <span class="profile-heatmap-scale-bar" aria-hidden="true"></span>
+        <span class="profile-heatmap-scale-ticks" aria-hidden="true">
+          <span>0</span>
+          <span class="profile-axis-density-medium">${escapeHTML(formatAxisTick(max / 2))}</span>
+          <span>${escapeHTML(formatAxisTick(max))}</span>
+        </span>
       </div>
     </div>`;
 }
@@ -1154,25 +1165,6 @@ function graphScaleMaxForSeries(values, series, options) {
   return Math.max(...values, 1e-9);
 }
 
-function profileMatrixCellClasses(summary, row) {
-  const cell = state.profileSelectedCell;
-  const classes = ["profile-matrix-cell"];
-  if (!cell) {
-    return classes.join(" ");
-  }
-  const sameZone = cell.zoneName === row.zoneName;
-  const sameDimension = cell.dimension === summary.dimension;
-  const sameSchedule = cell.scheduleHash && cell.scheduleHash === summary.scheduleHash;
-  const sameGroup = cell.groupId && cell.groupId === row.groupId;
-  const sameValue = Math.abs((Number(cell.value) || 0) - (Number(summary.value) || 0)) <= 0.0001;
-  if (sameZone && sameDimension) classes.push("active");
-  if (sameGroup) classes.push("same-group");
-  if (sameSchedule) classes.push("same-schedule");
-  if (sameSchedule && !sameValue && sameDimension) classes.push("same-schedule-different-value");
-  if (!sameSchedule && sameValue && sameDimension) classes.push("same-value-different-schedule");
-  return classes.join(" ");
-}
-
 function numberArray(values, fallbackLength, fallbackValue = 0) {
   if (Array.isArray(values) && values.length) {
     return values.map((value) => Number(value) || 0);
@@ -1245,32 +1237,6 @@ function selectProfileDimension(dimension) {
   state.profileSelectedDimensions = [dimension];
 }
 
-function selectProfileMatrixCell(cell) {
-  const itemIds = String(cell.dataset.profileItemIds || "")
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-  selectProfileCellData({
-    zoneName: cell.dataset.profileZone || "",
-    groupId: cell.dataset.profileGroupId || "",
-    dimension: cell.dataset.profileDimension || "",
-    scheduleHash: cell.dataset.profileScheduleHash || "",
-    scheduleName: cell.dataset.profileScheduleName || "",
-    value: Number(cell.dataset.profileValue) || 0,
-    itemIds,
-  });
-}
-
-function selectProfileCellData(selected) {
-  state.profileSelectedCell = selected;
-  if (selected.zoneName) {
-    selectProfileZone(selected.zoneName);
-  }
-  if (selected.dimension) {
-    state.profileSelectedDimensions = [selected.dimension];
-  }
-}
-
 function configureProfilePanelNavigation() {
   if (profileNavigationCleanup) {
     return;
@@ -1310,13 +1276,6 @@ async function revealProfileSelection(selection, options, context) {
   if (!target || !targetData || !applyProfileNavigationTarget(targetData)) {
     return context.genericReveal(selection, options);
   }
-  profileNavigationRevealTarget = {
-    targetId: target.targetId,
-    targetKind: target.targetKind,
-    zoneName: targetData.zoneName || "",
-    groupId: targetData.currentGroup?.id || "",
-    dimension: targetData.dimension || "",
-  };
   renderProfile(profile);
   context.refreshSelectionStyles(selection, state.globalHover);
   const targetElement = findProfileNavigationTarget({ ...selection, viewTarget: target }, context);
@@ -1328,20 +1287,7 @@ async function revealProfileSelection(selection, options, context) {
 }
 
 function selectProfileSemanticFromElement(element, context) {
-  const selection = context.extractSelection(element);
-  if (!selection) {
-    return null;
-  }
-  const target = element?.closest?.("[data-choose-semantic-occurrence]");
-  if (target?.dataset.chooseSemanticOccurrence === "true") {
-    return {
-      ...selection,
-      occurrenceId: "",
-      semanticPathHint: "",
-      chooseOccurrence: true,
-    };
-  }
-  return selection;
+  return context.extractSelection(element);
 }
 
 function findProfileNavigationTarget(selection, context) {
@@ -1353,22 +1299,37 @@ function findProfileNavigationTarget(selection, context) {
   if (!root) {
     return null;
   }
-  if (target.targetKind === "profile-item") {
-    const matrixCell = [...(elements.profileMatrix?.querySelectorAll("[data-profile-item-ids]") || [])]
-      .find((cell) => String(cell.dataset.profileItemIds || "").split(",").includes(target.targetId));
-    if (matrixCell) {
-      return matrixCell;
-    }
-  }
   const containers = target.targetKind === "schedule"
-    ? [elements.profileGraph, elements.profileDetail, elements.profileMatrix, elements.profileOverview]
+    ? [elements.profileGraph, elements.profileOverview]
     : target.targetKind === "profile-group" || target.targetKind === "zone"
-      ? [elements.profileOverview, elements.profileMatrix, elements.profileGraph, elements.profileDetail]
-      : [elements.profileMatrix, elements.profileGraph, elements.profileDetail, elements.profileOverview];
+      ? [elements.profileOverview, elements.profileGraph]
+      : [elements.profileGraph, elements.profileOverview];
   for (const container of containers) {
     const match = panelTargetElement(container, target.targetId);
     if (match) {
       return match;
+    }
+  }
+  const targetData = profileNavigationTargetData(target);
+  if (targetData?.dimension) {
+    const dimensionPanel = [...(elements.profileGraph?.querySelectorAll("[data-profile-dimension]") || [])]
+      .find((element) => element.dataset.profileDimension === targetData.dimension);
+    if (dimensionPanel) {
+      return dimensionPanel;
+    }
+  }
+  if (targetData?.zoneName) {
+    const zoneRow = [...(elements.profileOverview?.querySelectorAll("[data-profile-zone]") || [])]
+      .find((element) => sameProfileName(element.dataset.profileZone, targetData.zoneName));
+    if (zoneRow) {
+      return zoneRow;
+    }
+  }
+  if (targetData?.currentGroup?.id) {
+    const groupRow = [...(elements.profileOverview?.querySelectorAll("[data-profile-group-id]") || [])]
+      .find((element) => element.dataset.profileGroupId === targetData.currentGroup.id);
+    if (groupRow) {
+      return groupRow;
     }
   }
   return context.genericFindTarget({ ...selection, viewTarget: target });
@@ -1380,14 +1341,12 @@ function captureProfileNavigationContext(context) {
     activeProfileView: state.activeProfileView,
     activeProfileZoneName: state.activeProfileZoneName,
     activeProfileGroupId: state.activeProfileGroupId,
-    profileSelectedCell: cloneProfileSelectedCell(state.profileSelectedCell),
     profileSelectedGroupIds: [...(state.profileSelectedGroupIds || [])],
     profileSelectedZoneNames: [...(state.profileSelectedZoneNames || [])],
     profileSelectedDimensions: [...(state.profileSelectedDimensions || [])],
     profileSelectionAnchorKey: state.profileSelectionAnchorKey || "",
-    navigationRevealTarget: profileNavigationRevealTarget ? { ...profileNavigationRevealTarget } : null,
+    navigationRevealDimension: profileNavigationRevealDimension,
     paneScrollTop: Number(elements.profileOverview?.closest(".profile-pane")?.scrollTop) || 0,
-    matrixScrollTop: Number(elements.profileMatrix?.scrollTop) || 0,
   };
 }
 
@@ -1404,9 +1363,6 @@ async function restoreProfileNavigationContext(snapshot = {}, context) {
   if (Object.prototype.hasOwnProperty.call(snapshot, "activeProfileGroupId")) {
     state.activeProfileGroupId = String(snapshot.activeProfileGroupId || "");
   }
-  if (Object.prototype.hasOwnProperty.call(snapshot, "profileSelectedCell")) {
-    state.profileSelectedCell = cloneProfileSelectedCell(snapshot.profileSelectedCell);
-  }
   if (Object.prototype.hasOwnProperty.call(snapshot, "profileSelectedGroupIds")) {
     state.profileSelectedGroupIds = [...(snapshot.profileSelectedGroupIds || [])];
   }
@@ -1419,12 +1375,11 @@ async function restoreProfileNavigationContext(snapshot = {}, context) {
   if (Object.prototype.hasOwnProperty.call(snapshot, "profileSelectionAnchorKey")) {
     state.profileSelectionAnchorKey = String(snapshot.profileSelectionAnchorKey || "");
   }
-  profileNavigationRevealTarget = snapshot.navigationRevealTarget ? { ...snapshot.navigationRevealTarget } : null;
+  profileNavigationRevealDimension = String(snapshot.navigationRevealDimension || "");
   renderProfile(state.report.profile);
   context.refreshSelectionStyles(state.globalSelection, state.globalHover);
   await context.genericRestoreContext(snapshot);
   restoreElementScroll(elements.profileOverview?.closest(".profile-pane"), snapshot.paneScrollTop);
-  restoreElementScroll(elements.profileMatrix, snapshot.matrixScrollTop);
   return true;
 }
 
@@ -1449,7 +1404,7 @@ function preferredProfileSemanticOccurrence(selection, context) {
   if (occurrences.length === 1) {
     return occurrences[0].occurrenceId;
   }
-  const dimension = state.profileSelectedCell?.dimension || profileNavigationRevealTarget?.dimension || "";
+  const dimension = state.profileSelectedDimensions?.[0] || "";
   const contextual = occurrences.filter((occurrence) => (
     occurrence.contextKind === "zone_profile" &&
     semanticProfilePathMatches(occurrence.path, state.activeProfileZoneName, dimension)
@@ -1541,6 +1496,7 @@ function applyProfileNavigationTarget(targetData) {
     return true;
   }
   if (targetData.reportGroup) {
+    profileNavigationRevealDimension = "";
     const currentGroup = targetData.currentGroup || currentProfileGroupForReportGroup(targetData.reportGroup);
     if (!currentGroup) {
       return false;
@@ -1550,13 +1506,12 @@ function applyProfileNavigationTarget(targetData) {
     if (!currentGroup.zoneNames.includes(state.activeProfileZoneName)) {
       state.activeProfileZoneName = currentGroup.zoneNames[0] || "";
     }
-    state.profileSelectedCell = null;
     state.profileSelectedGroupIds = [currentGroup.id];
     state.profileSelectionAnchorKey = profileGroupRowKey(currentGroup.id);
     return true;
   }
   if (targetData.schedules) {
-    state.profileSelectedCell = null;
+    profileNavigationRevealDimension = "";
     if (targetData.currentGroup) {
       state.activeProfileView = "profile";
       state.activeProfileGroupId = targetData.currentGroup.id;
@@ -1569,41 +1524,21 @@ function applyProfileNavigationTarget(targetData) {
     return true;
   }
   if (targetData.zoneName) {
+    profileNavigationRevealDimension = "";
     selectProfileZone(targetData.zoneName);
-    state.profileSelectedCell = null;
     return true;
   }
   return false;
 }
 
 function selectProfileItemForNavigation(item) {
-  const row = lastProfileView?.matrix.find((candidate) => sameProfileName(candidate.zoneName, item.zoneName));
-  const summary = row?.dimensions.find((candidate) => candidate.dimension === item.dimension);
-  selectProfileCellData({
-    zoneName: item.zoneName,
-    groupId: row?.groupId || groupForZoneName(item.zoneName)?.id || "",
-    dimension: item.dimension,
-    scheduleHash: item.scheduleHash || summary?.scheduleHash || "",
-    scheduleName: item.scheduleName || summary?.scheduleName || "",
-    value: Number(summary?.value) || 0,
-    itemIds: summary?.itemIds || [item.id],
-  });
+  selectProfileZoneDimensionForNavigation(item.zoneName, item.dimension);
 }
 
 function selectProfileZoneDimensionForNavigation(zoneName, dimension) {
-  const row = lastProfileView?.matrix.find((candidate) => sameProfileName(candidate.zoneName, zoneName));
-  const profile = state.report?.profile;
-  const summary = row?.dimensions.find((candidate) => candidate.dimension === dimension) ||
-    profileDimensionSummary(profile, zoneName, dimension);
-  selectProfileCellData({
-    zoneName: row?.zoneName || zoneName,
-    groupId: row?.groupId || groupForZoneName(zoneName)?.id || "",
-    dimension,
-    scheduleHash: summary?.scheduleHash || "",
-    scheduleName: summary?.scheduleName || "",
-    value: Number(summary?.value) || 0,
-    itemIds: summary?.itemIds || [],
-  });
+  profileNavigationRevealDimension = dimension && !state.profileSettings.enabledDimensions.includes(dimension) ? dimension : "";
+  selectProfileZone(zoneName);
+  selectProfileDimension(dimension);
 }
 
 function profileZoneDimensionForTarget(targetID) {
@@ -1619,13 +1554,6 @@ function profileZoneDimensionForTarget(targetID) {
   ));
   const dimension = row?.dimensions.find((candidate) => profileSemanticToken(candidate.dimension) === dimensionToken)?.dimension;
   return row && dimension ? { zoneName: row.zoneName, dimension } : null;
-}
-
-function profileDimensionSummary(profile, zoneName, dimensionID) {
-  const zone = (profile?.zoneProfiles || []).find((candidate) => sameProfileName(candidate.zoneName, zoneName));
-  const dimension = (profile?.dimensions || []).find((candidate) => candidate.id === dimensionID);
-  const metricID = state.profileSettings?.displayMetrics?.[dimensionID];
-  return zone && dimension ? summarizeDimension(zone, dimension, metricID) : null;
 }
 
 function profileItemByID(itemID, profile = state.report?.profile) {
@@ -1661,11 +1589,6 @@ function panelTargetElement(container, targetID) {
 }
 
 function focusProfileNavigationElement(element, options = {}) {
-  let details = element.closest?.("details") || null;
-  while (details) {
-    details.open = true;
-    details = details.parentElement?.closest?.("details") || null;
-  }
   if (options.scroll !== false) {
     element.scrollIntoView?.({ block: "nearest", inline: "nearest", behavior: options.behavior || "auto" });
   }
@@ -1675,10 +1598,6 @@ function focusProfileNavigationElement(element, options = {}) {
     }
     element.focus?.({ preventScroll: true });
   }
-}
-
-function cloneProfileSelectedCell(cell) {
-  return cell ? { ...cell, itemIds: [...(cell.itemIds || [])] } : null;
 }
 
 function restoreElementScroll(element, value) {
@@ -1698,9 +1617,6 @@ function bindProfileControls() {
   elements.profileOverview?.addEventListener("keydown", handleProfileOverviewActivation);
   elements.profileGraph?.addEventListener("click", handleProfileGraphActivation);
   elements.profileGraph?.addEventListener("keydown", handleProfileGraphActivation);
-  elements.profileDetail?.addEventListener("click", handleProfileDetailActivation);
-  elements.profileMatrix?.addEventListener("click", handleProfileMatrixActivation);
-  elements.profileMatrix?.addEventListener("keydown", handleProfileMatrixActivation);
 }
 
 function handleProfileSettingsClick(event) {
@@ -1708,6 +1624,7 @@ function handleProfileSettingsClick(event) {
   if (!button) {
     return;
   }
+  profileNavigationRevealDimension = "";
   state.activeProfileView = button.dataset.profileView === "zone" ? "zone" : "profile";
   renderCurrentProfile();
 }
@@ -1715,6 +1632,7 @@ function handleProfileSettingsClick(event) {
 function handleProfileSettingsChange(event) {
   const input = event.target instanceof Element ? event.target : null;
   if (input?.matches("[data-profile-dimension]")) {
+    profileNavigationRevealDimension = "";
     const dimension = input.dataset.profileDimension;
     const enabled = new Set(state.profileSettings.enabledDimensions);
     if (input.checked) {
@@ -1744,6 +1662,7 @@ function handleProfileOverviewActivation(event) {
     event.preventDefault();
   }
   event.stopPropagation();
+  profileNavigationRevealDimension = "";
   const rowKey = button.dataset.profileRowKey || "";
   const historySnapshot = captureViewSnapshot();
   if (!handleProfileRowSelection(event, rowKey)) {
@@ -1807,44 +1726,6 @@ function handleProfileGraphActivation(event) {
   }
 }
 
-function handleProfileDetailActivation(event) {
-  const button = event.target instanceof Element ? event.target.closest("[data-profile-candidate-id]") : null;
-  if (!button) {
-    return;
-  }
-  selectProfileDimension(button.dataset.profileDimension || "");
-  renderCurrentProfile();
-}
-
-function handleProfileMatrixActivation(event) {
-  if (!(event.target instanceof Element)) {
-    return;
-  }
-  const cell = event.target.closest("[data-profile-cell]");
-  if (event.type === "keydown") {
-    if (!cell || (event.key !== "Enter" && event.key !== " ")) {
-      return;
-    }
-    event.preventDefault();
-    selectProfileMatrixCell(cell);
-    renderCurrentProfile();
-    return;
-  }
-  if (event.target.closest(".profile-object-link")) {
-    return;
-  }
-  if (cell) {
-    selectProfileMatrixCell(cell);
-    renderCurrentProfile();
-    return;
-  }
-  const row = event.target.closest("tr[data-profile-zone]");
-  if (row) {
-    selectProfileZone(row.dataset.profileZone || "");
-    renderCurrentProfile();
-  }
-}
-
 function renderCurrentProfile() {
   renderProfile(lastProfileReport || state.report?.profile);
 }
@@ -1854,15 +1735,9 @@ export function initializeProfileControls() {
   bindProfileControls();
   window.addEventListener("idfAnalyzer:semanticSelectionChanged", (event) => {
     if (!event.detail?.selection?.entityId) {
-      profileNavigationRevealTarget = null;
+      profileNavigationRevealDimension = "";
     }
   });
-  elements.profileOverview?.closest("#profilePane")?.addEventListener("click", (event) => {
-    const targetID = event.target.closest?.("[data-panel-target-id]")?.dataset.panelTargetId || "";
-    if (!profileNavigationRevealTarget || targetID !== profileNavigationRevealTarget.targetId) {
-      profileNavigationRevealTarget = null;
-    }
-  }, { capture: true });
   elements.profileApplyButton?.addEventListener("click", openProfileApplyDialog);
   elements.profileApplyClose?.addEventListener("click", closeProfileApplyDialog);
   elements.profilePreviewApply?.addEventListener("click", previewProfileApply);
@@ -2225,40 +2100,6 @@ function selectProfileZone(zoneName) {
   state.profileSelectionAnchorKey = profileZoneRowKey(row.zoneName);
 }
 
-function profileActiveMatrixZoneNames() {
-  if (state.activeProfileView === "zone") {
-    return new Set(state.profileSelectedZoneNames || []);
-  }
-  const selectedGroups = new Set(state.profileSelectedGroupIds || []);
-  const zoneNames = new Set();
-  for (const group of lastProfileView?.groups || []) {
-    if (!selectedGroups.has(group.id)) {
-      continue;
-    }
-    for (const zoneName of group.zoneNames || []) {
-      zoneNames.add(zoneName);
-    }
-  }
-  return zoneNames;
-}
-
-function uniqueProfileItems(items) {
-  const byID = new Map();
-  items.forEach((item) => {
-    if (item?.id && !byID.has(item.id)) {
-      byID.set(item.id, item);
-    }
-  });
-  return [...byID.values()];
-}
-
-function profileCandidatesForDimensions(profile, dimensions) {
-  const wanted = new Set(dimensions || []);
-  return (profile?.parameterCandidates || profile?.graphDataset?.parameterCandidates || [])
-    .filter((candidate) => wanted.has(candidate.dimension))
-    .slice(0, 6);
-}
-
 function profileItemMap(profile) {
   if (!profile || typeof profile !== "object") {
     return new Map();
@@ -2281,17 +2122,6 @@ function profileDimensionLabel(dimension) {
   return i18nProfileDimensionLabel(dimension, fallback);
 }
 
-function shortObjectType(value) {
-  return String(value || "")
-    .replace(/^Zone/i, "Z")
-    .replace(/^DesignSpecification:/i, "DS:")
-    .replace(/^ElectricEquipment$/i, "Elec")
-    .replace(/^GasEquipment$/i, "Gas")
-    .replace(/^OtherEquipment$/i, "Other")
-    .replace(/^ZoneInfiltration:/i, "Inf:")
-    .replace(/^ZoneVentilation:/i, "Vent:");
-}
-
 function formatNumber(value) {
   const number = Number(value);
   if (!Number.isFinite(number)) {
@@ -2300,21 +2130,18 @@ function formatNumber(value) {
   return number.toLocaleString(undefined, { maximumFractionDigits: Math.abs(number) < 1 ? 4 : 2 });
 }
 
-function formatGraphNumber(value, unit) {
-  return `${formatNumber(value)}${unit ? ` ${unit}` : ""}`;
-}
-
-function formatAxisTick(value, unit = "") {
+function formatAxisTick(value) {
   const number = Number(value);
   if (!Number.isFinite(number)) {
     return "0";
   }
   const abs = Math.abs(number);
-  const compact = abs >= 1000
+  if (abs > 0 && (abs < 0.001 || abs >= 1_000_000)) {
+    return number.toExponential(2).replace(/\.00e/, "e").replace(/(\.\d)0e/, "$1e");
+  }
+  return abs >= 1000
     ? number.toLocaleString(undefined, { maximumFractionDigits: 0 })
     : abs >= 10
       ? number.toLocaleString(undefined, { maximumFractionDigits: 1 })
       : number.toLocaleString(undefined, { maximumFractionDigits: 3 });
-  const shortUnit = String(unit || "").replace("people/", "p/").replace("person", "p");
-  return shortUnit ? `${compact} ${shortUnit}` : compact;
 }

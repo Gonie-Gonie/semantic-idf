@@ -109,9 +109,6 @@ function renderPendingResultTab(tab) {
     case "profile":
       elements.profileApplyButton.disabled = true;
       elements.profileOverview.innerHTML = `<div class="empty status-loading">${t("profile.running", {}, "Building profile graphs")}</div>`;
-      elements.profileDetail.innerHTML = `<div class="empty">${t("profile.readySoon", {}, "Profile details will appear when this stage is ready.")}</div>`;
-      elements.profileMatrixStats.textContent = t("profile.pending", {}, "Profile pending");
-      elements.profileMatrix.innerHTML = `<div class="empty">${t("profile.readySoon", {}, "Profile details will appear when this stage is ready.")}</div>`;
       elements.profileGraph.innerHTML = `<div class="empty status-loading">${t("profile.running", {}, "Building profile graphs")}</div>`;
       return true;
     case "hvac":
@@ -197,9 +194,6 @@ export function renderEmpty() {
   if (elements.profileOverview) {
     elements.profileSettings.innerHTML = "";
     elements.profileOverview.innerHTML = `<div class="empty">${t("profile.noAnalysis")}</div>`;
-    elements.profileDetail.innerHTML = `<div class="empty">${t("profile.noProfile")}</div>`;
-    elements.profileMatrixStats.textContent = t("count.zones", { count: 0 });
-    elements.profileMatrix.innerHTML = `<div class="empty">${t("profile.noMatrix")}</div>`;
     elements.profileGraph.innerHTML = `<div class="empty">${t("profile.noGraph")}</div>`;
     elements.profileApplyButton.disabled = true;
   }

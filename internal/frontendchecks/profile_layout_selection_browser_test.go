@@ -69,6 +69,13 @@ func TestProfileLayoutAndSelectionBrowserHarness(t *testing.T) {
 		`"noHorizontalOverflow":true`,
 		`"applyRight":true`,
 		`"domSemantics":true`,
+		`"inspectByCompact":true`,
+		`"profileControlsAligned":true`,
+		`"secondaryProfileUIAbsent":true`,
+		`"semanticRevealGraphAndOverviewFallback":true`,
+		`"overviewMetricCells":true`,
+		`"assignmentCountWithHoverDetail":true`,
+		`"zoneProfileNameOnly":true`,
 		`"singleSelection":true`,
 		`"singleSelectionLegend":true`,
 		`"ctrlToggle":true`,
@@ -82,6 +89,9 @@ func TestProfileLayoutAndSelectionBrowserHarness(t *testing.T) {
 		`"profileZoneSelectionIsolation":true`,
 		`"zoneProfileOverlaySelection":true`,
 		`"overlayLegendAlways":true`,
+		`"identicalCurveOverlay":true`,
+		`"identicalCurveLegend":true`,
+		`"semanticLegendOutline":true`,
 		`"annualHeatmapsParallel":true`,
 		`"annualCanvasPainted":true`,
 		`"annualNoHorizontalOverflow":true`,
@@ -93,10 +103,12 @@ func TestProfileLayoutAndSelectionBrowserHarness(t *testing.T) {
 		`"fixedTimeProfileControls":true`,
 		`"viewToggleImmediate":true`,
 		`"viewFocusRestored":true`,
+		`"sixViewAxes":true`,
+		`"noVisibleGraphMultiplier":true`,
 		`"scaleRemovedFromProfileTab":true`,
 		`"legacyViewMigration":true`,
 	}
-	runHarness("wide", 1440, append(append([]string{}, commonSignals...), `"narrowViewport":false`, `"containerQueryWidths":true`, `"stackedMatrixDimensionMapping":true`))
+	runHarness("wide", 1440, append(append([]string{}, commonSignals...), `"narrowViewport":false`, `"containerQueryWidths":true`, `"overviewRowsNoOverflowAtContainerWidths":true`, `"responsiveOverlayAxes":true`, `"responsiveAnnualAxes":true`, `"longLegendLabelAt160":true`))
 	runHarness("narrow", 520, append(append([]string{}, commonSignals...), `"narrowViewport":true`))
 }
 
@@ -136,14 +148,6 @@ const profileLayoutSelectionHarnessHTML = `<!doctype html>
           <div id="profileGraph" class="profile-graph"></div>
         </section>
       </div>
-      <section class="profile-section">
-        <div class="profile-section-head"><h3>Profile Matrix</h3><span id="profileMatrixStats"></span></div>
-        <div id="profileMatrix" class="profile-matrix"></div>
-      </section>
-      <section class="profile-section">
-        <div class="profile-section-head"><h3>Profile source objects</h3></div>
-        <div id="profileDetail" class="profile-detail-panel"></div>
-      </section>
     </div>
   </div>
   <div id="profileApplyDialog" class="profile-dialog hidden" role="dialog" aria-modal="true" aria-labelledby="profileApplyTitle">
@@ -228,8 +232,12 @@ const profileLayoutSelectionHarnessHTML = `<!doctype html>
           scheduleName: "Schedule " + number,
           scheduleHash: "hash-" + number,
           schedulePattern: "Week " + number,
+          dayMultiplierProfile: constantValues(72, 0.1 * number, 0.2 * number),
           weekMultiplierProfile: constantValues(168, 0.1 * number, 0.2 * number),
+          monthMultiplierProfile: constantValues(12, 0.1 * number, 0.2 * number),
           annualMultiplierProfile: constantValues(8760, 0.1 * number, 0.2 * number),
+          durationMultiplierProfile: constantValues(8760, 0.2 * number, 0.1 * number),
+          ruleMultiplierProfile: Array.from({ length: 7 }, (_, ruleIndex) => (ruleIndex % 2 ? 0.2 : 0.1) * number),
           sourceItemIds: ["item-" + number],
           warnings: [],
         };
@@ -252,8 +260,12 @@ const profileLayoutSelectionHarnessHTML = `<!doctype html>
           scheduleName: "Schedule " + number,
           scheduleHash: "hash-" + number,
           schedulePattern: "Week " + number,
+          dayMultiplierProfile: constantValues(72, zoneLows[index], zoneHighs[index]),
           weekMultiplierProfile: constantValues(168, zoneLows[index], zoneHighs[index]),
+          monthMultiplierProfile: constantValues(12, zoneLows[index], zoneHighs[index]),
           annualMultiplierProfile: constantValues(8760, zoneLows[index], zoneHighs[index]),
+          durationMultiplierProfile: constantValues(8760, zoneHighs[index], zoneLows[index]),
+          ruleMultiplierProfile: Array.from({ length: 7 }, (_, ruleIndex) => ruleIndex % 2 ? zoneHighs[index] : zoneLows[index]),
           sourceItemIds: ["item-" + number],
           warnings: [],
         };
@@ -324,10 +336,11 @@ const profileLayoutSelectionHarnessHTML = `<!doctype html>
 
     try {
       localStorage.clear();
-      const [{ state }, profileViews, navigationAdapters, selectionController, i18n, settingsClient] = await Promise.all([
+	  const [{ state }, profileViews, navigationAdapters, panelRegistry, selectionController, i18n, settingsClient] = await Promise.all([
         import("/src/js/state.js"),
         import("/src/js/views/profile-views.js"),
         import("/src/js/panel-navigation-adapters.js"),
+		import("/src/js/panel-navigation-registry.js"),
         import("/src/js/selection-controller.js"),
         import("/src/js/i18n.js"),
         import("/src/js/settings-client.js"),
@@ -346,7 +359,6 @@ const profileLayoutSelectionHarnessHTML = `<!doctype html>
       state.activeProfileView = "profile";
       state.activeProfileGroupId = "";
       state.activeProfileZoneName = "";
-      state.profileSelectedCell = null;
       state.profileSelectedGroupIds = [];
       state.profileSelectedZoneNames = [];
       state.profileSelectedDimensions = ["occupancy"];
@@ -372,9 +384,133 @@ const profileLayoutSelectionHarnessHTML = `<!doctype html>
         document.getElementById("profilePane").style.width = "360px";
         await nextPaint();
       }
+	  const secondaryProfileUIAbsent = !document.querySelector([
+		"#profilePane .profile-section",
+		"#profileMatrixStats",
+		"#profileMatrix",
+		"#profileDetail",
+		".profile-matrix",
+		".profile-detail-panel",
+		".profile-item-table",
+		".profile-source-accordion",
+		".profile-candidate-panel",
+		"[data-profile-candidate-id]",
+	  ].join(", "));
+	  assert(secondaryProfileUIAbsent, "removed Profile Matrix/Detail/Source/Candidate UI was rendered");
 
       const rows = () => [...document.querySelectorAll("#profileOverview [data-profile-row-key]")];
       const selectedRows = () => rows().filter((row) => row.getAttribute("aria-selected") === "true");
+      const overviewDimensionIDs = [...profile.defaultSettings.enabledDimensions];
+      const overviewDimensionLabels = overviewDimensionIDs.map((dimension) => i18n.profileDimensionLabel(dimension));
+      const localizedZoneCounts = new Set(Array.from({ length: profile.zoneCount }, (_, index) => (
+        i18n.t("count.zones", { count: index + 1 })
+      )));
+      let expectedProfileNameByZone = {};
+      const inspectOverviewRows = (expectedView) => {
+        const metricIssues = [];
+        const assignmentIssues = [];
+        rows().forEach((row) => {
+          const metrics = row.querySelector(":scope > .profile-card-metrics");
+          const metricCells = metrics ? [...metrics.querySelectorAll(":scope > .profile-card-metric")] : [];
+          const actualDimensionIDs = metricCells.map((cell) => cell.dataset.profileDimension || "");
+          const actualLabels = metricCells.map((cell) => (
+            cell.querySelector(":scope > .profile-card-metric-label")?.textContent?.trim() || ""
+          ));
+          const values = metricCells.map((cell) => (
+            cell.querySelector(":scope > .profile-card-metric-value")?.textContent?.trim() || ""
+          ));
+          const directMetricText = metrics
+            ? [...metrics.childNodes].filter((node) => node.nodeType === Node.TEXT_NODE && node.textContent.trim())
+            : [];
+          const metricChecks = {
+            metrics: Boolean(metrics),
+            cellCount: metricCells.length === overviewDimensionIDs.length,
+            dimensionOrder: JSON.stringify(actualDimensionIDs) === JSON.stringify(overviewDimensionIDs),
+            labelOrder: JSON.stringify(actualLabels) === JSON.stringify(overviewDimensionLabels),
+            values: values.every(Boolean),
+            separateCells: metricCells.every((cell) => (
+              cell.querySelectorAll(":scope > .profile-card-metric-label").length === 1
+              && cell.querySelectorAll(":scope > .profile-card-metric-value").length === 1
+            )),
+            noJoinedText: directMetricText.length === 0,
+          };
+          if (!Object.values(metricChecks).every(Boolean)) {
+            metricIssues.push({
+              rowKey: row.dataset.profileRowKey || "",
+              actualDimensionIDs,
+              actualLabels,
+              values,
+              directMetricText: directMetricText.map((node) => node.textContent.trim()),
+              checks: metricChecks,
+            });
+          }
+
+          const assignment = row.querySelector(":scope > .profile-card-assignment");
+          if (expectedView === "zone") {
+            const visibleProfileName = assignment?.textContent?.trim() || "";
+            const expectedProfileName = expectedProfileNameByZone[row.dataset.profileZone] || "";
+            const rowCells = [...row.children];
+            const zoneAssignmentChecks = {
+              assignment: Boolean(assignment?.matches(".profile-card-profile-name")),
+              profileNameOnly: Boolean(expectedProfileName) && visibleProfileName === expectedProfileName,
+              columnOrder: rowCells.length === 4
+                && rowCells[1] === assignment
+                && rowCells[2] === metrics
+                && rowCells[3].matches(".profile-row-apply-slot"),
+              profileNameTooltip: !assignment?.hasAttribute("title")
+                || assignment.getAttribute("title")?.trim() === visibleProfileName,
+              noReceivesProfileSentence: visibleProfileName
+                !== i18n.t("profile.receivesProfile", { profile: expectedProfileName }),
+              visibleTextOnly: assignment?.children.length === 0,
+            };
+            if (!Object.values(zoneAssignmentChecks).every(Boolean)) {
+              assignmentIssues.push({
+                rowKey: row.dataset.profileRowKey || "",
+                visibleProfileName,
+                expectedProfileName,
+                checks: zoneAssignmentChecks,
+              });
+            }
+            return;
+          }
+          const visible = assignment?.textContent?.trim() || "";
+          const detail = assignment?.getAttribute("title")?.trim() || "";
+          const accessibleLabel = assignment?.getAttribute("aria-label")?.trim() || "";
+          const assignmentChecks = {
+            assignment: Boolean(assignment?.matches("[title]")),
+            localizedCountOnly: localizedZoneCounts.has(visible),
+            fullHoverDetail: Boolean(detail) && detail !== visible,
+            accessibleDetail: Boolean(accessibleLabel)
+              && accessibleLabel.startsWith(visible)
+              && accessibleLabel.includes(detail),
+            visibleTextOnly: assignment?.children.length === 0,
+          };
+          if (!Object.values(assignmentChecks).every(Boolean)) {
+            assignmentIssues.push({
+              rowKey: row.dataset.profileRowKey || "",
+              visible,
+              detail,
+              accessibleLabel,
+              checks: assignmentChecks,
+            });
+          }
+        });
+        return {
+          metricCells: rows().length > 0 && metricIssues.length === 0,
+          assignments: rows().length > 0 && assignmentIssues.length === 0,
+          metricIssues,
+          assignmentIssues,
+        };
+      };
+      const profileOverviewPresentation = inspectOverviewRows("profile");
+      expectedProfileNameByZone = Object.fromEntries(rows().flatMap((row) => {
+        const profileName = row.querySelector(":scope > span:first-child strong")?.textContent?.trim() || "";
+        const zoneNames = (row.querySelector(":scope > .profile-card-assignment[title]")?.getAttribute("title") || "")
+          .split(",")
+          .map((zoneName) => zoneName.trim())
+          .filter(Boolean);
+        return zoneNames.map((zoneName) => [zoneName, profileName]);
+      }));
       const graphViewButtons = () => [...document.querySelectorAll("#profileGraph [data-profile-time-view]")];
       const graphViewButton = (view) => document.querySelector('#profileGraph [data-profile-time-view="' + view + '"]');
       const clickGraphView = async (view) => {
@@ -383,6 +519,88 @@ const profileLayoutSelectionHarnessHTML = `<!doctype html>
         button.click();
         await nextPaint();
         return document.activeElement === graphViewButton(view);
+      };
+      const visibleElements = (root, selector) => [...(root?.querySelectorAll(selector) || [])]
+        .filter((element) => getComputedStyle(element).display !== "none"
+          && getComputedStyle(element).visibility !== "hidden"
+          && element.getClientRects().length > 0);
+      const elementTexts = (elements) => elements.map((element) => element.textContent.trim());
+      const expectedOverlayAxes = {
+        day: {
+          title: i18n.t("profile.axisDayTypeHour", {}, "Day type / hour [h]"),
+          ticks: ["WD 00", "WD 12", "Sat 00", "Sat 12", "Sun 00", "Sun 12", "Sun 24"],
+        },
+        week: {
+          title: i18n.t("profile.axisDayOfWeek", {}, "Day of week"),
+          ticks: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+        },
+        month: {
+          title: i18n.t("profile.axisMonth", {}, "Month"),
+          ticks: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
+        },
+        duration: {
+          title: i18n.t("profile.axisAnnualHoursExceeded", {}, "Annual hours exceeded [%]"),
+          ticks: ["0%", "25%", "50%", "75%", "100%"],
+        },
+        rules: {
+          title: i18n.t("profile.axisRuleInterval", {}, "Rule interval index"),
+          ticks: ["1", "2", "3", "4", "5", "6", "7"],
+        },
+      };
+      const inspectGraphAxisView = (view) => {
+        const graph = document.getElementById("profileGraph");
+        const graphHasMultiplierFallback = /\bMultiplier\b/.test(graph.textContent || "");
+        if (view === "year") {
+          const frame = graph.querySelector(".profile-heatmap-frame");
+          const monthTicks = [...(frame?.querySelectorAll(".profile-heatmap-x-ticks .profile-axis-tick") || [])];
+          const hourTicks = [...(frame?.querySelectorAll(".profile-heatmap-y-ticks .profile-axis-tick") || [])];
+          const scale = frame?.querySelector(".profile-heatmap-scale");
+          const scaleTicks = [...(scale?.querySelectorAll(".profile-heatmap-scale-ticks > span") || [])];
+          const expectedMonths = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+          const expectedHours = ["00", "06", "12", "18", "24"];
+          const checks = {
+            frame: Boolean(frame),
+            noOverlay: !graph.querySelector(".profile-line-chart, .profile-overlay-graph"),
+            monthTitle: frame?.querySelector(".profile-heatmap-x-title")?.textContent.trim()
+              === i18n.t("profile.axisMonth", {}, "Month"),
+            hourTitle: frame?.querySelector(".profile-heatmap-y-title")?.textContent.trim()
+              === i18n.t("profile.axisHourOfDay", {}, "Hour of day [h]"),
+            monthTicks: JSON.stringify(elementTexts(monthTicks)) === JSON.stringify(expectedMonths),
+            hourTicks: JSON.stringify(elementTexts(hourTicks)) === JSON.stringify(expectedHours),
+            allMonthTicksVisible: visibleElements(frame, ".profile-heatmap-x-ticks .profile-axis-tick").length === expectedMonths.length,
+            allHourTicksVisible: visibleElements(frame, ".profile-heatmap-y-ticks .profile-axis-tick").length === expectedHours.length,
+            valueScaleSeparated: Boolean(scale)
+              && scale !== frame?.querySelector(".profile-heatmap-x-ticks")
+              && scale !== frame?.querySelector(".profile-heatmap-y-ticks")
+              && scaleTicks.length === 3
+              && scale.querySelector(".profile-heatmap-scale-bar")
+              && scale.querySelector(".profile-heatmap-scale-title")?.textContent.includes("person/m2")
+              && elementTexts(monthTicks).every((label) => !elementTexts(scaleTicks).includes(label))
+              && elementTexts(hourTicks).every((label) => !elementTexts(scaleTicks).includes(label)),
+            noMultiplierFallback: !graphHasMultiplierFallback,
+          };
+          return { view, passed: Object.values(checks).every(Boolean), checks };
+        }
+        const expected = expectedOverlayAxes[view];
+        const chart = graph.querySelector(".profile-line-chart");
+        const svg = chart?.querySelector("svg.profile-overlay-graph");
+        const xTicks = [...(chart?.querySelectorAll(".profile-x-axis-ticks .profile-axis-tick") || [])];
+        const yTicks = [...(chart?.querySelectorAll(".profile-y-axis-ticks .profile-axis-tick") || [])];
+        const checks = {
+          chart: Boolean(chart),
+          noHeatmap: !graph.querySelector(".profile-heatmap-frame"),
+          xTitle: chart?.querySelector(".profile-x-axis-title")?.textContent.trim() === expected.title,
+          xTicks: JSON.stringify(elementTexts(xTicks)) === JSON.stringify(expected.ticks),
+          allXTicksVisible: visibleElements(chart, ".profile-x-axis-ticks .profile-axis-tick").length === expected.ticks.length,
+          yTitle: chart?.querySelector(".profile-y-axis-title")?.textContent.includes("person/m2"),
+          yTicks: yTicks.length >= 3 && visibleElements(chart, ".profile-y-axis-ticks .profile-axis-tick").length === yTicks.length,
+          preserveAspectRatioNone: svg?.getAttribute("preserveAspectRatio") === "none",
+          htmlAxes: !svg?.querySelector("text")
+            && Boolean(chart?.querySelector(".profile-x-axis-ticks"))
+            && Boolean(chart?.querySelector(".profile-y-axis-ticks")),
+          noMultiplierFallback: !graphHasMultiplierFallback,
+        };
+        return { view, passed: Object.values(checks).every(Boolean), checks };
       };
       const clickRow = async (index, modifiers = {}) => {
         const row = rows()[index];
@@ -499,21 +717,48 @@ const profileLayoutSelectionHarnessHTML = `<!doctype html>
       assert(shiftRange, "Shift click did not select the contiguous anchor range");
       const profileModeRows = rows().length === 4 && rows().every((row) => row.dataset.profileRowKey.startsWith("group:"));
       const profileSelectedIDs = [...state.profileSelectedGroupIds];
+	  const multiplierProfileFields = [
+		"dayMultiplierProfile",
+		"weekMultiplierProfile",
+		"monthMultiplierProfile",
+		"annualMultiplierProfile",
+		"durationMultiplierProfile",
+		"ruleMultiplierProfile",
+	  ];
+	  const identicalCurveSeries = profile.graphDataset.series
+		.filter((series) => series.scopeType === "zone" && ["Zone 1", "Zone 2", "Zone 3"].includes(series.zoneName));
+	  const originalCurveSeries = identicalCurveSeries.map((series) => ({
+		series,
+		designValue: series.designValue,
+		profiles: Object.fromEntries(multiplierProfileFields.map((field) => [field, [...series[field]]])),
+	  }));
+	  const identicalCurveSource = identicalCurveSeries[0];
+	  identicalCurveSeries.forEach((series) => {
+		series.designValue = identicalCurveSource.designValue;
+		multiplierProfileFields.forEach((field) => {
+		  series[field] = [...identicalCurveSource[field]];
+		});
+	  });
+	  profileViews.renderProfile(profile);
+	  await nextPaint();
 
       let everyViewApplied = true;
-      for (const view of ["month", "duration", "rules"]) {
+      const graphAxisResults = [];
+      for (const view of expectedGraphViews) {
         viewFocusRestored = (await clickGraphView(view)) && viewFocusRestored;
         everyViewApplied = everyViewApplied
           && state.profileSettings.timeView === view
           && graphViewButton(view)?.getAttribute("aria-pressed") === "true";
+        graphAxisResults.push(inspectGraphAxisView(view));
       }
-      viewFocusRestored = (await clickGraphView("day")) && viewFocusRestored;
-      const dayViewApplied = state.profileSettings.timeView === "day"
-        && graphViewButton("day")?.getAttribute("aria-pressed") === "true"
-        && Boolean(document.querySelector(".profile-overlay-graph"));
+      const sixViewAxes = graphAxisResults.length === expectedGraphViews.length
+        && graphAxisResults.every((result) => result.passed);
+      const noVisibleGraphMultiplier = graphAxisResults.every((result) => result.checks.noMultiplierFallback);
+      assert(sixViewAxes, "Profile Graph axes are incomplete or semantically mixed across six Views: "
+        + JSON.stringify(graphAxisResults));
+      assert(noVisibleGraphMultiplier, "Profile Graph exposed a Multiplier unit/header fallback");
       viewFocusRestored = (await clickGraphView("week")) && viewFocusRestored;
       const viewToggleImmediate = everyViewApplied
-        && dayViewApplied
         && state.profileSettings.timeView === "week"
         && graphViewButton("week")?.getAttribute("aria-pressed") === "true"
         && graphViewButtons().filter((button) => button.getAttribute("aria-pressed") === "true").length === 1;
@@ -523,6 +768,60 @@ const profileLayoutSelectionHarnessHTML = `<!doctype html>
       const overlayLabels = [...document.querySelectorAll(".profile-overlay-legend [data-profile-series-id]")];
       const overlayLegendAlways = overlayPaths.length === 3 && overlayLabels.length === overlayPaths.length;
       assert(overlayLegendAlways, "line overlay/legend did not track every selected row");
+	  const overlapPathBySeriesID = new Map(overlayPaths.map((path) => [path.dataset.profileSeriesId, path]));
+	  const overlapPathIndices = overlayPaths
+		.map((path) => Number(path.dataset.profileOverlapIndex))
+		.sort((left, right) => left - right);
+	  const identicalCurveOverlay = overlayPaths.length === 3
+		&& new Set(overlayPaths.map((path) => path.getAttribute("d"))).size === 1
+		&& overlayPaths.every((path) => path.dataset.profileOverlapCount === "3")
+		&& JSON.stringify(overlapPathIndices) === JSON.stringify([0, 1, 2])
+		&& new Set(overlayPaths.map((path) => getComputedStyle(path).stroke)).size === 3
+		&& new Set(overlayPaths.map((path) => path.getAttribute("stroke-dasharray"))).size === 1
+		&& overlayPaths.every((path) => Boolean(path.getAttribute("stroke-dasharray")))
+		&& new Set(overlayPaths.map((path) => path.getAttribute("stroke-dashoffset"))).size === 3
+		&& overlayPaths.every((path) => !path.hasAttribute("transform")
+		  && getComputedStyle(path).transform === "none"
+		  && !path.closest(".profile-overlay-paths")?.hasAttribute("transform"));
+	  assert(identicalCurveOverlay, "identical Profile curves were offset, jittered, or painted without interleaved colors");
+
+	  const identicalCurveLegend = overlayLabels.length === 3 && overlayLabels.every((label) => {
+		const matchingPath = overlapPathBySeriesID.get(label.dataset.profileSeriesId);
+		const swatch = label.querySelector(".profile-line-swatch");
+		const swatchRect = swatch?.getBoundingClientRect();
+		const swatchStyle = swatch ? getComputedStyle(swatch) : null;
+		const title = label.getAttribute("title") || "";
+		const ariaLabel = label.getAttribute("aria-label") || "";
+		return Boolean(matchingPath && swatch && swatchRect && swatchStyle)
+		  && label.dataset.profileOverlapCount === matchingPath.dataset.profileOverlapCount
+		  && label.dataset.profileOverlapIndex === matchingPath.dataset.profileOverlapIndex
+		  && swatch.style.getPropertyValue("--profile-overlap-period").trim()
+			=== (6 * Number(matchingPath.dataset.profileOverlapCount)) + "px"
+		  && swatch.style.getPropertyValue("--profile-overlap-offset").trim()
+			=== (-6 * Number(matchingPath.dataset.profileOverlapIndex)) + "px"
+		  && title.includes("3")
+		  && ariaLabel === title
+		  && ariaLabel.includes(label.querySelector(".profile-line-label")?.textContent.trim() || "")
+		  && swatch.classList.contains("is-overlap")
+		  && swatchRect.width >= 14
+		  && swatchRect.height > 0
+		  && swatchRect.height <= 4
+		  && swatchStyle.flexShrink === "0";
+	  });
+	  assert(identicalCurveLegend, "shared-curve legend metadata, accessibility text, or line swatches do not match the paths");
+
+	  const semanticLegend = overlayLabels[0];
+	  const analysisSurface = document.getElementById("profilePane");
+	  const retainedSemanticRelated = semanticLegend.classList.contains("semantic-related");
+	  analysisSurface.classList.add("analysis-panel");
+	  semanticLegend.classList.add("semantic-related");
+	  const semanticLegendStyle = getComputedStyle(semanticLegend);
+	  const semanticLegendOutline = semanticLegendStyle.boxShadow === "none"
+		&& semanticLegendStyle.outlineStyle !== "none"
+		&& parseFloat(semanticLegendStyle.outlineWidth) >= 1;
+	  if (!retainedSemanticRelated) semanticLegend.classList.remove("semantic-related");
+	  analysisSurface.classList.remove("analysis-panel");
+	  assert(semanticLegendOutline, "semantic-related Profile legend still uses an inset bar instead of an outline");
 
       viewFocusRestored = (await clickGraphView("year")) && viewFocusRestored;
       const heatmaps = [...document.querySelectorAll(".profile-annual-heatmap-grid .profile-heatmap-frame")];
@@ -552,12 +851,38 @@ const profileLayoutSelectionHarnessHTML = `<!doctype html>
       const annualNoHorizontalOverflow = annualOverflowSurfaces
         .every((element) => element.scrollWidth <= element.clientWidth + 1);
       assert(annualNoHorizontalOverflow, "annual heatmaps create horizontal overflow");
+	  originalCurveSeries.forEach(({ series, designValue, profiles }) => {
+		series.designValue = designValue;
+		multiplierProfileFields.forEach((field) => {
+		  series[field] = profiles[field];
+		});
+	  });
+	  profileViews.renderProfile(profile);
+	  await nextPaint();
 
       document.querySelector('[data-profile-view="zone"]').click();
       await nextPaint();
       const zoneModeRows = state.activeProfileView === "zone"
         && rows().length === 4
         && rows().every((row) => row.dataset.profileRowKey.startsWith("zone:"));
+      const zoneOverviewPresentation = inspectOverviewRows("zone");
+      const missingLightingCell = document.querySelector(
+        '#profileOverview [data-profile-zone="Zone 4"] .profile-card-metric[data-profile-dimension="lighting"]',
+      );
+      const missingMetricPlaceholder = missingLightingCell?.classList.contains("is-missing")
+        && missingLightingCell.querySelector(":scope > .profile-card-metric-value")?.textContent?.trim()
+          === i18n.t("common.notAvailable");
+      const overviewMetricCells = profileOverviewPresentation.metricCells
+        && zoneOverviewPresentation.metricCells
+        && missingMetricPlaceholder;
+      const assignmentCountWithHoverDetail = profileOverviewPresentation.assignments;
+      const zoneProfileNameOnly = zoneOverviewPresentation.assignments;
+      assert(overviewMetricCells, "Profile overview metric cells lost fixed order/labels/placeholders: "
+        + JSON.stringify({ profileOverviewPresentation, zoneOverviewPresentation, missingMetricPlaceholder }));
+      assert(assignmentCountWithHoverDetail, "Profile assignment is not a localized count with hover/accessibility detail: "
+        + JSON.stringify(profileOverviewPresentation.assignmentIssues));
+      assert(zoneProfileNameOnly, "Zone assignment must show only its Profile name: "
+        + JSON.stringify(zoneOverviewPresentation.assignmentIssues));
       const profileZoneModes = profileModeRows && zoneModeRows;
       assert(profileZoneModes, "Profile and Zone views did not expose their distinct row-key scopes");
       await clickRow(0);
@@ -586,14 +911,37 @@ const profileLayoutSelectionHarnessHTML = `<!doctype html>
       await nextPaint();
       const pane = document.querySelector(".profile-pane");
       const settings = document.getElementById("profileSettings");
+      const inspectBySwitch = settings.querySelector(".profile-view-switch");
+      const inspectByGroup = inspectBySwitch.closest(".profile-live-group");
+      const inspectByButtons = [...inspectBySwitch.querySelectorAll(".profile-segment-button")];
+      const inspectByRect = inspectBySwitch.getBoundingClientRect();
+      const inspectByGroupRect = inspectByGroup.getBoundingClientRect();
+      const inspectByButtonWidth = inspectByButtons.reduce((total, button) => total + button.getBoundingClientRect().width, 0);
+      const liveLabels = [...settings.querySelectorAll(".profile-live-label, .profile-live-select > span")];
+      const liveControlRows = [
+        inspectBySwitch,
+        settings.querySelector(".profile-toggle-row"),
+        settings.querySelector(".profile-live-select > select"),
+      ];
+      const topRange = (elements) => {
+        const tops = elements.map((element) => element.getBoundingClientRect().top);
+        return Math.max(...tops) - Math.min(...tops);
+      };
+      const inspectByCompact = inspectByButtons.length === 2
+        && inspectBySwitch.getAttribute("role") === "group"
+        && inspectByButtons.filter((button) => button.getAttribute("aria-pressed") === "true").length === 1
+        && inspectByRect.width <= inspectByButtonWidth + 20
+        && inspectByRect.width < inspectByGroupRect.width - 20
+        && getComputedStyle(inspectBySwitch).justifySelf === "start";
+      const profileControlsAligned = liveLabels.length === 3
+        && liveControlRows.every(Boolean)
+        && (narrowViewport || (topRange(liveLabels) <= 1 && topRange(liveControlRows) <= 1));
       const table = document.querySelector(".profile-overview-table");
       const overview = document.getElementById("profileOverview");
       const graphSection = document.querySelector(".profile-visual");
       const graph = document.getElementById("profileGraph");
-      const matrix = document.getElementById("profileMatrix");
-      const detail = document.getElementById("profileDetail");
       const tableAboveGraph = table.getBoundingClientRect().top < graphSection.getBoundingClientRect().top;
-      const noHorizontalOverflow = [pane, settings, table, overview, graphSection, graph, matrix, detail]
+	  const noHorizontalOverflow = [pane, settings, table, overview, graphSection, graph]
         .every((element) => element.scrollWidth <= element.clientWidth + 1);
       const apply = document.getElementById("profileApplyButton");
       const applyHead = apply.closest(".profile-overview-table-head");
@@ -619,6 +967,8 @@ const profileLayoutSelectionHarnessHTML = `<!doctype html>
       assert(noHorizontalOverflow, "Profile surface still has horizontal overflow");
       assert(applyRight, "Apply Profile is not a right-aligned badge");
       assert(domSemantics, "Profile visual table/listbox semantics are invalid");
+      assert(inspectByCompact, "Inspect by toggle still stretches across its grid column");
+      assert(profileControlsAligned, "Inspect by, Dimensions, and Metric controls are not top-aligned");
 
       const regroupProfile = structuredClone(profile);
       regroupProfile.graphDataset.series = regroupProfile.graphDataset.series
@@ -643,7 +993,7 @@ const profileLayoutSelectionHarnessHTML = `<!doctype html>
       profileViews.renderProfile(regroupProfile);
       await nextPaint();
       const rowIndexForZone = (zoneName) => rows().findIndex((row) => (
-        row.querySelector(".profile-card-zones")?.textContent || ""
+        row.querySelector(":scope > .profile-card-assignment[title]")?.getAttribute("title") || ""
       ).includes(zoneName));
       await clickRow(rowIndexForZone("Zone 2"));
       await clickRow(rowIndexForZone("Zone 3"), { ctrlKey: true });
@@ -653,53 +1003,33 @@ const profileLayoutSelectionHarnessHTML = `<!doctype html>
       profileViews.renderProfile(regroupProfile);
       await nextPaint();
       const mergedSelectedRows = selectedRows();
-      const mergedZonesText = mergedSelectedRows[0]?.querySelector(".profile-card-zones")?.textContent || "";
+      const mergedAssignment = mergedSelectedRows[0]?.querySelector(":scope > .profile-card-assignment[title]");
+      const mergedZonesDetail = mergedAssignment?.getAttribute("title") || "";
+      const mergedVisibleAssignment = mergedAssignment?.textContent?.trim() || "";
+      const mergedAccessibleAssignment = mergedAssignment?.getAttribute("aria-label") || "";
       const regroupSelectionByMembership = state.profileSelectedGroupIds.length === 1
         && mergedSelectedRows.length === 1
-        && mergedZonesText.includes("Zone 2")
-        && mergedZonesText.includes("Zone 3")
+        && mergedVisibleAssignment === i18n.t("count.zones", { count: 2 })
+        && mergedZonesDetail.includes("Zone 2")
+        && mergedZonesDetail.includes("Zone 3")
+        && !mergedVisibleAssignment.includes("Zone 2")
+        && !mergedVisibleAssignment.includes("Zone 3")
+        && mergedAccessibleAssignment.includes(mergedZonesDetail)
         && !preMergeIDs.includes(state.profileSelectedGroupIds[0]);
       assert(regroupSelectionByMembership, "group ordinal reassignment/merge did not preserve selection by zone membership");
       const aggregatePath = document.querySelector(".profile-overlay-paths path");
       const aggregatePaths = [...document.querySelectorAll(".profile-overlay-paths path")];
       const aggregateY = [...(aggregatePath?.getAttribute("d") || "").matchAll(/[ML][^,]+,([0-9.]+)/g)]
         .map((match) => Number(match[1]));
-      const expectedLowY = 180 - (0.3 / 0.7) * 168;
+      const expectedNiceAxisMax = 0.8;
+      const expectedLowY = 200 - (0.3 / expectedNiceAxisMax) * 200;
+      const expectedHighY = 200 - (0.7 / expectedNiceAxisMax) * 200;
       const regroupAggregateAverage = aggregatePaths.length === 1
         && aggregatePath?.dataset.profileSeriesId.startsWith("profile-series-current-")
         && Math.abs(aggregateY[0] - expectedLowY) < 0.02
-        && Math.abs(aggregateY[8] - 12) < 0.02;
+        && Math.abs(aggregateY[8] - expectedHighY) < 0.02;
       assert(regroupAggregateAverage, "merged group line is not the pointwise average of its Zone series");
 
-      const matrixDimensions = [
-        { id: "occupancy", label: i18n.profileDimensionLabel("occupancy") },
-        { id: "lighting", label: i18n.profileDimensionLabel("lighting") },
-      ];
-      assert(matrixDimensions[0].label !== "Occupancy" && matrixDimensions[1].label !== "Lighting", "matrix fixture language is not localized");
-      const localizedNumber = (value) => Number(value).toLocaleString(undefined, {
-        maximumFractionDigits: Math.abs(Number(value)) < 1 ? 4 : 2,
-      });
-      const matrixExpectedValues = Object.fromEntries(Array.from({ length: 4 }, (_, index) => {
-        const number = index + 1;
-        return ["Zone " + number, {
-          occupancy: localizedNumber(number * 0.1) + " person/m2",
-          lighting: number < 4 ? localizedNumber(number === 1 ? 1 : 10) + " W/m2" : "N/A",
-        }];
-      }));
-      const hasVisibleExactText = (root, expected) => {
-        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-          if (node.nodeValue.trim() !== expected) {
-            continue;
-          }
-          const parent = node.parentElement;
-          const style = getComputedStyle(parent);
-          if (style.display !== "none" && style.visibility !== "hidden" && parent.getClientRects().length > 0) {
-            return true;
-          }
-        }
-        return false;
-      };
       const withinHorizontalBounds = (child, parent, tolerance = 1) => {
         const childRect = child.getBoundingClientRect();
         const parentRect = parent.getBoundingClientRect();
@@ -707,38 +1037,232 @@ const profileLayoutSelectionHarnessHTML = `<!doctype html>
           && childRect.left >= parentRect.left - tolerance
           && childRect.right <= parentRect.right + tolerance;
       };
+      const withinBounds = (child, parent, tolerance = 1) => {
+        const childRect = child.getBoundingClientRect();
+        const parentRect = parent.getBoundingClientRect();
+        return childRect.width > 0
+          && childRect.height > 0
+          && childRect.left >= parentRect.left - tolerance
+          && childRect.right <= parentRect.right + tolerance
+          && childRect.top >= parentRect.top - tolerance
+          && childRect.bottom <= parentRect.bottom + tolerance;
+      };
       const noXScroll = (element) => element.scrollWidth <= element.clientWidth + 1;
+      const responsiveAxisExpectations = {
+        160: {
+          overlayX: ["WD 00", "Sun 24"],
+          overlayYCount: 2,
+          months: ["Jan", "Dec"],
+          hours: ["00", "24"],
+          scaleCount: 2,
+        },
+        240: {
+          overlayX: ["WD 00", "Sat 12", "Sun 24"],
+          overlayYCount: 3,
+          months: ["Jan", "Jul", "Dec"],
+          hours: ["00", "12", "24"],
+          scaleCount: 3,
+        },
+        360: {
+          overlayX: expectedOverlayAxes.day.ticks,
+          overlayYCount: 5,
+          months: expectedOverlayAxes.month.ticks,
+          hours: ["00", "06", "12", "18", "24"],
+          scaleCount: 3,
+        },
+      };
       const inspectContainerWidth = async (width) => {
         document.getElementById("profilePane").style.width = width + "px";
         Object.assign(state.profileSettings, {
           metricMode: "multiplier",
-          timeView: "year",
+          timeView: "day",
         });
         state.profileSelectedDimensions = ["occupancy"];
         profileViews.renderProfile(regroupProfile);
         await nextPaint();
+        const responsiveExpectation = responsiveAxisExpectations[width];
+        const overlayGraph = document.getElementById("profileGraph");
+        const overlayChart = overlayGraph.querySelector(".profile-line-chart");
+        const overlaySVG = overlayChart?.querySelector("svg.profile-overlay-graph");
+        const overlayXContainer = overlayChart?.querySelector(".profile-x-axis-ticks");
+        const overlayYContainer = overlayChart?.querySelector(".profile-y-axis-ticks");
+        const overlayVisibleX = visibleElements(overlayChart, ".profile-x-axis-ticks .profile-axis-tick");
+        const overlayVisibleY = visibleElements(overlayChart, ".profile-y-axis-ticks .profile-axis-tick");
+        const overlaySurfaces = [
+          overlayGraph,
+          ...document.querySelectorAll(
+            ".profile-overlay-stack, .profile-overlay-panel, .profile-line-chart, .profile-line-plot, .profile-x-axis-ticks, .profile-y-axis-ticks, svg.profile-overlay-graph",
+          ),
+        ];
+        const overlayOverflowingSurfaces = overlaySurfaces
+          .filter((element) => !noXScroll(element))
+          .map((element) => (element.className?.baseVal || element.className || element.tagName)
+            + ":" + element.scrollWidth + "/" + element.clientWidth);
+        const overlayAxes = {
+          xLabels: elementTexts(overlayVisibleX),
+          yLabels: elementTexts(overlayVisibleY),
+          expectedXLabels: responsiveExpectation.overlayX,
+          expectedYCount: responsiveExpectation.overlayYCount,
+          xDensity: JSON.stringify(elementTexts(overlayVisibleX)) === JSON.stringify(responsiveExpectation.overlayX),
+          yDensity: overlayVisibleY.length === responsiveExpectation.overlayYCount,
+          xBounds: Boolean(overlayXContainer)
+            && overlayVisibleX.every((tick) => withinBounds(tick, overlayXContainer)),
+          yBounds: Boolean(overlayYContainer)
+            && overlayVisibleY.every((tick) => withinBounds(tick, overlayYContainer)),
+          noOverflow: overlayOverflowingSurfaces.length === 0,
+          preserveAspectRatioNone: overlaySVG?.getAttribute("preserveAspectRatio") === "none",
+          htmlTicksOutsideSVG: !overlaySVG?.querySelector("text")
+            && !overlaySVG?.contains(overlayXContainer)
+            && !overlaySVG?.contains(overlayYContainer),
+          overflowingSurfaces: overlayOverflowingSurfaces,
+        };
+        overlayAxes.responsive = overlayAxes.xDensity
+          && overlayAxes.yDensity
+          && overlayAxes.xBounds
+          && overlayAxes.yBounds
+          && overlayAxes.noOverflow
+          && overlayAxes.preserveAspectRatioNone
+          && overlayAxes.htmlTicksOutsideSVG;
+		const overlayLegend = overlayGraph.querySelector(".profile-overlay-legend");
+		const longLegendItem = overlayLegend?.querySelector("[data-profile-series-id]");
+		const longLegendLabel = longLegendItem?.querySelector(".profile-line-label");
+		const longLegendSwatch = longLegendItem?.querySelector(".profile-line-swatch");
+		let longLegendLabelAtWidth = width !== 160;
+		let longLegendDiagnostics = {};
+		if (width === 160 && overlayLegend && longLegendItem && longLegendLabel && longLegendSwatch) {
+		  overlayLegend.style.width = "160px";
+		  overlayLegend.style.maxWidth = "160px";
+		  longLegendLabel.textContent = "A very long engineering profile name that must remain inside the 160 pixel graph";
+		  const longLegendLabelStyle = getComputedStyle(longLegendLabel);
+		  const longLegendSwatchRect = longLegendSwatch.getBoundingClientRect();
+		  const longLegendRect = overlayLegend.getBoundingClientRect();
+		  longLegendDiagnostics = {
+			overflowHidden: longLegendLabelStyle.overflowX === "hidden",
+			ellipsis: longLegendLabelStyle.textOverflow === "ellipsis",
+			noWrap: longLegendLabelStyle.whiteSpace === "nowrap",
+			clipped: longLegendLabel.scrollWidth > longLegendLabel.clientWidth,
+			swatchWide: longLegendSwatchRect.width >= 14,
+			swatchThin: longLegendSwatchRect.height <= 4,
+			swatchFixed: getComputedStyle(longLegendSwatch).flexShrink === "0",
+			itemWithinLegend: withinHorizontalBounds(longLegendItem, overlayLegend),
+			legendNoScroll: noXScroll(overlayLegend),
+			legendIs160: Math.abs(longLegendRect.width - 160) <= 1,
+			labelWidth: longLegendLabel.clientWidth + "/" + longLegendLabel.scrollWidth,
+			legendWidth: overlayLegend.clientWidth + "/" + overlayLegend.scrollWidth,
+		  };
+		  longLegendLabelAtWidth = Object.values(longLegendDiagnostics)
+			.slice(0, 10)
+			.every(Boolean);
+		}
+
+        state.profileSettings.timeView = "year";
+        profileViews.renderProfile(regroupProfile);
+        await nextPaint();
         const currentPane = document.querySelector(".profile-pane");
         const currentSettings = document.getElementById("profileSettings");
+        const currentInspectSwitch = currentSettings.querySelector(".profile-view-switch");
+        const currentInspectGroup = currentInspectSwitch.closest(".profile-live-group");
+        const currentInspectButtons = [...currentInspectSwitch.querySelectorAll(".profile-segment-button")];
         const currentTable = document.querySelector(".profile-overview-table");
         const currentGraph = document.getElementById("profileGraph");
-        const currentMatrix = document.getElementById("profileMatrix");
-        const currentDetail = document.getElementById("profileDetail");
+        const heatmapFrame = currentGraph.querySelector(".profile-heatmap-frame");
+        const heatmapMonthContainer = heatmapFrame?.querySelector(".profile-heatmap-x-ticks");
+        const heatmapHourContainer = heatmapFrame?.querySelector(".profile-heatmap-y-ticks");
+        const heatmapScale = heatmapFrame?.querySelector(".profile-heatmap-scale");
+        const heatmapScaleTickContainer = heatmapScale?.querySelector(".profile-heatmap-scale-ticks");
+        const visibleMonths = visibleElements(heatmapFrame, ".profile-heatmap-x-ticks .profile-axis-tick");
+        const visibleHours = visibleElements(heatmapFrame, ".profile-heatmap-y-ticks .profile-axis-tick");
+        const visibleScaleTicks = visibleElements(heatmapScale, ".profile-heatmap-scale-ticks > span");
+        const allMonthLabels = elementTexts([...(heatmapMonthContainer?.querySelectorAll(".profile-axis-tick") || [])]);
+        const allHourLabels = elementTexts([...(heatmapHourContainer?.querySelectorAll(".profile-axis-tick") || [])]);
+        const allScaleLabels = elementTexts([...(heatmapScaleTickContainer?.querySelectorAll(":scope > span") || [])]);
         const annualSurfaces = [...document.querySelectorAll(
-          ".profile-annual-stack, .profile-annual-panel, .profile-annual-heatmap-grid, .profile-annual-heatmap-card, .profile-heatmap-frame, canvas.profile-heatmap",
+          ".profile-annual-stack, .profile-annual-panel, .profile-annual-heatmap-grid, .profile-annual-heatmap-card, .profile-heatmap-frame, .profile-heatmap-scale, canvas.profile-heatmap",
         )];
         const namedSurfaces = [
           ["pane", currentPane],
           ["settings", currentSettings],
           ["table", currentTable],
           ["graph", currentGraph],
-          ["matrix", currentMatrix],
-          ["detail", currentDetail],
           ...annualSurfaces.map((surface, index) => ["annual-" + index + "-" + surface.className, surface]),
         ];
         const overflowingSurfaces = namedSurfaces
           .filter(([, element]) => !noXScroll(element))
           .map(([name, element]) => name + ":" + element.scrollWidth + "/" + element.clientWidth);
         const surfaceNoOverflow = overflowingSurfaces.length === 0;
+        const expectedValueTitle = i18n.t("profile.axisValue", { unit: "–" }, "Value [{unit}]");
+        const annualAxes = {
+          monthLabels: elementTexts(visibleMonths),
+          hourLabels: elementTexts(visibleHours),
+          scaleLabels: elementTexts(visibleScaleTicks),
+          expectedMonthLabels: responsiveExpectation.months,
+          expectedHourLabels: responsiveExpectation.hours,
+          expectedScaleCount: responsiveExpectation.scaleCount,
+          monthDensity: JSON.stringify(elementTexts(visibleMonths)) === JSON.stringify(responsiveExpectation.months),
+          hourDensity: JSON.stringify(elementTexts(visibleHours)) === JSON.stringify(responsiveExpectation.hours),
+          scaleDensity: visibleScaleTicks.length === responsiveExpectation.scaleCount,
+          monthBounds: Boolean(heatmapFrame && heatmapMonthContainer)
+            && visibleMonths.every((tick) => withinBounds(tick, heatmapFrame)),
+          hourBounds: Boolean(heatmapFrame && heatmapHourContainer)
+            && visibleHours.every((tick) => withinBounds(tick, heatmapFrame)),
+          scaleBounds: Boolean(heatmapScaleTickContainer)
+            && visibleScaleTicks.every((tick) => withinBounds(tick, heatmapScaleTickContainer)),
+          axesSeparated: Boolean(heatmapFrame && heatmapMonthContainer && heatmapHourContainer && heatmapScale)
+            && heatmapMonthContainer !== heatmapHourContainer
+            && heatmapMonthContainer !== heatmapScale
+            && heatmapHourContainer !== heatmapScale
+            && JSON.stringify(allMonthLabels) === JSON.stringify(expectedOverlayAxes.month.ticks)
+            && JSON.stringify(allHourLabels) === JSON.stringify(["00", "06", "12", "18", "24"])
+            && allScaleLabels.length === 3
+            && heatmapFrame.querySelector(".profile-heatmap-x-title")?.textContent.trim()
+              === i18n.t("profile.axisMonth", {}, "Month")
+            && heatmapFrame.querySelector(".profile-heatmap-y-title")?.textContent.trim()
+              === i18n.t("profile.axisHourOfDay", {}, "Hour of day [h]")
+            && heatmapScale.querySelector(".profile-heatmap-scale-title")?.textContent.trim() === expectedValueTitle
+            && Boolean(heatmapScale.querySelector(".profile-heatmap-scale-bar")),
+          noOverflow: surfaceNoOverflow,
+        };
+        annualAxes.responsive = annualAxes.monthDensity
+          && annualAxes.hourDensity
+          && annualAxes.scaleDensity
+          && annualAxes.monthBounds
+          && annualAxes.hourBounds
+          && annualAxes.scaleBounds
+          && annualAxes.axesSeparated
+          && annualAxes.noOverflow;
+        const currentOverview = document.getElementById("profileOverview");
+        const currentOverviewRows = rows();
+        const currentOverviewPresentation = inspectOverviewRows("profile");
+        const overviewBoundaryIssues = [];
+        currentOverviewRows.forEach((row) => {
+          const assignment = row.querySelector(":scope > .profile-card-assignment");
+          const metrics = row.querySelector(":scope > .profile-card-metrics");
+          const metricCells = metrics ? [...metrics.querySelectorAll(":scope > .profile-card-metric")] : [];
+          const boundaryPairs = [
+            ["row>overview", row, currentOverview],
+            ["assignment>row", assignment, row],
+            ["metrics>row", metrics, row],
+            ...metricCells.map((cell, index) => ["metric-" + index + ">metrics", cell, metrics]),
+          ];
+          boundaryPairs.forEach(([label, child, parent]) => {
+            if (!child || !parent || !noXScroll(child) || !withinHorizontalBounds(child, parent)) {
+              overviewBoundaryIssues.push({
+                rowKey: row.dataset.profileRowKey || "",
+                label,
+                childScroll: child ? child.scrollWidth + "/" + child.clientWidth : "missing",
+              });
+            }
+          });
+        });
+        const overviewListboxSemantics = currentOverview.getAttribute("role") === "listbox"
+          && currentOverview.getAttribute("aria-multiselectable") === "true"
+          && currentOverviewRows.length > 0
+          && currentOverviewRows.every((row) => row.getAttribute("role") === "option"
+            && ["true", "false"].includes(row.getAttribute("aria-selected")));
+        const overviewRowsWithinBounds = currentOverviewPresentation.metricCells
+          && currentOverviewPresentation.assignments
+          && overviewListboxSemantics
+          && overviewBoundaryIssues.length === 0;
 
         const currentApply = document.getElementById("profileApplyButton");
         const currentHead = currentApply.closest(".profile-overview-table-head");
@@ -755,101 +1279,37 @@ const profileLayoutSelectionHarnessHTML = `<!doctype html>
         const toolbarUnclipped = noXScroll(viewControl)
           && viewControlItems.length === 7
           && viewControlItems.every((item) => noXScroll(item) && withinHorizontalBounds(item, viewControl));
-
-        const accordions = [...document.querySelectorAll("#profileDetail .profile-source-accordion")];
-        accordions.forEach((accordion) => { accordion.open = true; });
-        await nextPaint();
-        const clippedSourceItems = [];
-        const sourceAccordionUnclipped = accordions.length > 0 && accordions.every((accordion, accordionIndex) => {
-          const summary = accordion.querySelector("summary");
-          const body = summary.nextElementSibling;
-          const structuralItems = [accordion, summary, body];
-          const boundaryPairs = [
-            ["accordion>detail", accordion, currentDetail],
-            ["summary>accordion", summary, accordion],
-            ["body>accordion", body, accordion],
-            ...[...summary.children].map((item, index) => ["summary-child-" + index, item, summary]),
-            ...[...body.children].map((item, index) => ["body-child-" + index, item, body]),
-          ];
-          const invalidScrollItems = structuralItems.filter((item) => !noXScroll(item));
-          const invalidBoundaryPairs = boundaryPairs.filter(([, child, parent]) => !withinHorizontalBounds(child, parent));
-          const valid = invalidScrollItems.length === 0 && invalidBoundaryPairs.length === 0;
-          if (!valid) {
-            clippedSourceItems.push({
-              accordionIndex,
-              scroll: invalidScrollItems.map((item) => (
-                item.tagName + "." + item.className + "=" + item.scrollWidth + "/" + item.clientWidth
-              )),
-              bounds: invalidBoundaryPairs.map(([label, child, parent]) => {
-                const childRect = child.getBoundingClientRect();
-                const parentRect = parent.getBoundingClientRect();
-                return {
-                  label,
-                  child: child.tagName + "." + child.className,
-                  parent: parent.tagName + "." + parent.className,
-                  childLeft: Math.round(childRect.left * 10) / 10,
-                  childRight: Math.round(childRect.right * 10) / 10,
-                  childWidth: Math.round(childRect.width * 10) / 10,
-                  parentLeft: Math.round(parentRect.left * 10) / 10,
-                  parentRight: Math.round(parentRect.right * 10) / 10,
-                  parentWidth: Math.round(parentRect.width * 10) / 10,
-                };
-              }),
-            });
-          }
-          return valid;
-        });
-        const matrixTable = currentMatrix.querySelector("table");
-        const matrixRows = [...matrixTable.querySelectorAll("tbody > tr")];
-        const matrixMappingIssues = [];
-        matrixRows.forEach((row) => {
-          const zoneName = row.dataset.profileZone || "";
-          const cells = [...row.querySelectorAll(":scope > td")];
-          if (getComputedStyle(row).display !== "block" || cells.length !== matrixDimensions.length) {
-            matrixMappingIssues.push({ zoneName, rowDisplay: getComputedStyle(row).display, cellCount: cells.length });
-            return;
-          }
-          cells.forEach((cell, index) => {
-            const dimension = matrixDimensions[index];
-            const expectedValue = matrixExpectedValues[zoneName]?.[dimension.id] || "";
-            const checks = {
-              cellDisplay: getComputedStyle(cell).display === "block",
-              dimensionID: cell.dataset.profileDimension === dimension.id,
-              visibleLabel: hasVisibleExactText(cell, dimension.label),
-              visibleValue: hasVisibleExactText(cell, expectedValue),
-            };
-            if (!Object.values(checks).every(Boolean)) {
-              matrixMappingIssues.push({
-                zoneName,
-                expectedDimension: dimension.id,
-                expectedLabel: dimension.label,
-                expectedValue,
-                actualDimension: cell.dataset.profileDimension || "",
-                actualText: cell.innerText.trim().replace(/\s+/g, " "),
-                checks,
-              });
-            }
-          });
-        });
-        const missingCells = matrixRows.flatMap((row) => [...row.querySelectorAll(":scope > td.profile-matrix-empty")]);
-        const stackedMatrixMapping = getComputedStyle(matrixTable.querySelector("thead")).display === "none"
-          && matrixRows.length === 4
-          && missingCells.length === 1
-          && matrixMappingIssues.length === 0;
+        const inspectRect = currentInspectSwitch.getBoundingClientRect();
+        const inspectGroupRect = currentInspectGroup.getBoundingClientRect();
+        const inspectToggleUnclipped = noXScroll(currentInspectSwitch)
+          && withinHorizontalBounds(currentInspectSwitch, currentInspectGroup)
+          && currentInspectButtons.length === 2
+          && currentInspectButtons.every((button) => noXScroll(button) && withinHorizontalBounds(button, currentInspectSwitch))
+          && (width <= 240
+            ? Math.abs(inspectRect.width - inspectGroupRect.width) <= 1
+            : inspectRect.width < inspectGroupRect.width - 1);
         return {
           width,
           surfaceNoOverflow,
+          overlayAxes,
+          annualAxes,
+		  longLegendLabelAtWidth,
+		  longLegendDiagnostics,
           applyVisibleWithinHeader,
           toolbarUnclipped,
-          sourceAccordionUnclipped,
-          stackedMatrixMapping,
-          matrixMappingIssues,
+          inspectToggleUnclipped,
+          overviewRowsWithinBounds,
+          overviewListboxSemantics,
+          overviewBoundaryIssues,
+          currentOverviewPresentation,
           overflowingSurfaces,
-          clippedSourceItems,
         };
       };
       let containerQueryWidths = false;
-      let stackedMatrixDimensionMapping = false;
+      let overviewRowsNoOverflowAtContainerWidths = false;
+      let responsiveOverlayAxes = false;
+      let responsiveAnnualAxes = false;
+	  let longLegendLabelAt160 = false;
       if (!narrowViewport) {
         const widthResults = [];
         for (const width of [160, 240, 360]) {
@@ -859,12 +1319,91 @@ const profileLayoutSelectionHarnessHTML = `<!doctype html>
           result.surfaceNoOverflow
           && result.applyVisibleWithinHeader
           && result.toolbarUnclipped
-          && result.sourceAccordionUnclipped
+          && result.inspectToggleUnclipped
         ));
-        stackedMatrixDimensionMapping = widthResults.every((result) => result.stackedMatrixMapping);
+        overviewRowsNoOverflowAtContainerWidths = widthResults.every((result) => result.overviewRowsWithinBounds);
+        responsiveOverlayAxes = widthResults.every((result) => result.overlayAxes.responsive);
+        responsiveAnnualAxes = widthResults.every((result) => result.annualAxes.responsive);
+		longLegendLabelAt160 = widthResults.find((result) => result.width === 160)?.longLegendLabelAtWidth === true;
         assert(containerQueryWidths, "Profile container query clipping: " + JSON.stringify(widthResults));
-        assert(stackedMatrixDimensionMapping, "stacked Profile matrix lost dimension/value mapping: " + JSON.stringify(widthResults));
+        assert(overviewRowsNoOverflowAtContainerWidths, "Profile overview rows overflow or lose semantics at container widths: "
+          + JSON.stringify(widthResults));
+        assert(responsiveOverlayAxes, "Profile overlay axis density/bounds failed at container widths: "
+          + JSON.stringify(widthResults));
+        assert(responsiveAnnualAxes, "Profile annual axis density/separation/bounds failed at container widths: "
+          + JSON.stringify(widthResults));
+		assert(longLegendLabelAt160, "long Profile legend label escaped or displaced its swatch at 160px: "
+		  + JSON.stringify(widthResults));
       }
+
+	  const profileNavigationAdapter = panelRegistry.getPanelNavigationAdapter("profile");
+	  assert(profileNavigationAdapter, "Profile navigation adapter was not registered");
+	  Object.assign(state.profileSettings, {
+		enabledDimensions: ["occupancy"],
+		timeView: "week",
+	  });
+	  state.profileSelectedDimensions = ["occupancy"];
+	  state.activeProfileView = "profile";
+	  state.report = { profile: regroupProfile };
+	  profileViews.renderProfile(regroupProfile);
+	  await nextPaint();
+	  const graphRevealHandled = await profileNavigationAdapter.reveal({
+		viewTarget: { view: "profile", targetKind: "profile-item", targetId: "item-1" },
+	  }, { scroll: false });
+	  await nextPaint();
+	  const graphRevealTarget = document.activeElement;
+	  const semanticGraphReveal = graphRevealHandled
+		&& document.getElementById("profileGraph").contains(graphRevealTarget)
+		&& state.activeProfileView === "zone"
+		&& state.activeProfileZoneName === "Zone 1"
+		&& JSON.stringify(state.profileSelectedDimensions) === JSON.stringify(["occupancy"]);
+
+	  const overviewFallbackHandled = await profileNavigationAdapter.reveal({
+		viewTarget: { view: "profile", targetKind: "profile-item", targetId: "lighting-item-1" },
+	  }, { scroll: false });
+	  await nextPaint();
+	  const revealedZoneRow = document.querySelector('#profileOverview [data-profile-zone="Zone 1"]');
+	  const revealedLightingCell = revealedZoneRow?.querySelector(
+		'.profile-card-metric[data-profile-dimension="lighting"]:not(.is-missing)',
+	  );
+	  const revealedLightingToggle = document.querySelector(
+		'#profileSettings input[data-profile-dimension="lighting"]',
+	  );
+	  const semanticOverviewFallback = overviewFallbackHandled
+		&& document.activeElement === revealedZoneRow
+		&& state.activeProfileView === "zone"
+		&& state.activeProfileZoneName === "Zone 1"
+		&& JSON.stringify(state.profileSelectedDimensions) === JSON.stringify(["lighting"])
+		&& JSON.stringify(state.profileSettings.enabledDimensions) === JSON.stringify(["occupancy"])
+		&& Boolean(revealedLightingCell)
+		&& revealedLightingToggle?.checked === true;
+	  const removedSecondaryUIStillAbsent = !document.querySelector([
+		"#profileMatrixStats",
+		"#profileMatrix",
+		"#profileDetail",
+		".profile-matrix",
+		".profile-detail-panel",
+		".profile-source-accordion",
+		".profile-candidate-panel",
+		"[data-profile-candidate-id]",
+	  ].join(", "));
+	  const semanticRevealGraphAndOverviewFallback = semanticGraphReveal
+		&& semanticOverviewFallback
+		&& removedSecondaryUIStillAbsent;
+	  assert(semanticRevealGraphAndOverviewFallback, "Profile semantic reveal did not use Graph then Overview fallback: "
+		+ JSON.stringify({
+		  graphRevealHandled,
+		  graphRevealTarget: graphRevealTarget?.className || graphRevealTarget?.tagName || "",
+		  overviewFallbackHandled,
+		  activeElement: document.activeElement?.dataset?.profileRowKey || document.activeElement?.tagName || "",
+		  activeProfileView: state.activeProfileView,
+		  activeProfileZoneName: state.activeProfileZoneName,
+		  selectedDimensions: state.profileSelectedDimensions,
+		  enabledDimensions: state.profileSettings.enabledDimensions,
+		  revealedLightingCell: Boolean(revealedLightingCell),
+		  revealedLightingToggle: revealedLightingToggle?.checked,
+		  removedSecondaryUIStillAbsent,
+		}));
 
       const result = {
         narrowViewport,
@@ -872,6 +1411,13 @@ const profileLayoutSelectionHarnessHTML = `<!doctype html>
         noHorizontalOverflow,
         applyRight,
         domSemantics,
+        inspectByCompact,
+        profileControlsAligned,
+		secondaryProfileUIAbsent,
+		semanticRevealGraphAndOverviewFallback,
+        overviewMetricCells,
+        assignmentCountWithHoverDetail,
+        zoneProfileNameOnly,
         singleSelection,
         singleSelectionLegend,
         ctrlToggle,
@@ -885,6 +1431,9 @@ const profileLayoutSelectionHarnessHTML = `<!doctype html>
         profileZoneSelectionIsolation,
         zoneProfileOverlaySelection,
         overlayLegendAlways,
+		identicalCurveOverlay,
+		identicalCurveLegend,
+		semanticLegendOutline,
         annualHeatmapsParallel,
         annualCanvasPainted,
         annualNoHorizontalOverflow,
@@ -896,10 +1445,15 @@ const profileLayoutSelectionHarnessHTML = `<!doctype html>
         fixedTimeProfileControls,
         viewToggleImmediate,
         viewFocusRestored,
+        sixViewAxes,
+        noVisibleGraphMultiplier,
         scaleRemovedFromProfileTab,
         legacyViewMigration,
         containerQueryWidths,
-        stackedMatrixDimensionMapping,
+        overviewRowsNoOverflowAtContainerWidths,
+        responsiveOverlayAxes,
+        responsiveAnnualAxes,
+		longLegendLabelAt160,
       };
       document.getElementById("result").textContent = JSON.stringify(result);
       document.body.dataset.profileLayoutSelectionStatus = "passed";
