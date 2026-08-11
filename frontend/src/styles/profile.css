@@ -19,22 +19,23 @@
   padding: 9px 10px;
   display: grid;
   grid-template-columns: auto minmax(220px, 1fr) minmax(150px, auto);
-  align-items: center;
+  align-items: start;
   gap: 12px;
 }
 
 .profile-live-group {
   min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-rows: auto minmax(32px, auto);
+  align-content: start;
+  gap: 4px;
 }
 
 .profile-live-label {
   color: var(--muted);
   font-size: 12px;
   font-weight: 700;
+  line-height: 18px;
 }
 
 .profile-toggle-row {
@@ -75,6 +76,11 @@
 
 .profile-live-select {
   width: 170px;
+  align-self: start;
+}
+
+.profile-live-select > span {
+  line-height: 18px;
 }
 
 .profile-settings-panel {

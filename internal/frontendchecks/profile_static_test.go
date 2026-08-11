@@ -36,6 +36,10 @@ func TestFrontendProfileGraphDeckContracts(t *testing.T) {
 			"profilePinnedSeriesIds: []",
 		},
 		"styles": {
+			".profile-live-controls",
+			"align-items: start",
+			".profile-live-group",
+			"grid-template-rows: auto minmax(32px, auto)",
 			".profile-similarity-grid",
 			".profile-qa-grid",
 			".profile-overlay-graph",
