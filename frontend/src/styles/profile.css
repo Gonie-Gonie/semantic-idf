@@ -603,8 +603,8 @@
   background: var(--surface-3);
   padding: 8px 9px 7px;
   display: grid;
-  grid-template-columns: 14px 28px minmax(0, 1fr);
-  grid-template-rows: minmax(124px, 1fr) 18px 16px auto;
+  grid-template-columns: calc(var(--graph-label-font-size, 11px) * 1.55) calc(var(--graph-label-font-size, 11px) * 3.5) minmax(0, 1fr);
+  grid-template-rows: minmax(124px, 1fr) calc(var(--graph-label-font-size, 11px) + 9px) calc(var(--graph-label-font-size, 11px) + 7px) auto;
   gap: 3px 5px;
   overflow: hidden;
 }
@@ -612,7 +612,7 @@
 .profile-heatmap-y-title,
 .profile-y-axis-title {
   color: var(--muted);
-  font-size: 9px;
+  font-size: var(--graph-label-font-size, 11px);
   font-weight: 600;
   letter-spacing: 0.01em;
   line-height: 1;
@@ -644,7 +644,7 @@
 .profile-heatmap-x-title,
 .profile-x-axis-title {
   color: var(--muted);
-  font-size: 9px;
+  font-size: var(--graph-label-font-size, 11px);
   font-weight: 600;
   line-height: 1;
   text-align: center;
@@ -662,7 +662,7 @@
   grid-row: 4;
   display: grid;
   grid-template-columns: max-content minmax(54px, 1fr);
-  grid-template-rows: 8px 14px;
+  grid-template-rows: 8px calc(var(--graph-label-font-size, 11px) + 5px);
   align-items: center;
   gap: 2px 7px;
 }
@@ -671,7 +671,7 @@
   min-width: 0;
   grid-row: 1 / span 2;
   color: var(--muted);
-  font-size: 9px;
+  font-size: var(--graph-label-font-size, 11px);
   white-space: nowrap;
 }
 
@@ -688,7 +688,7 @@
   display: flex;
   justify-content: space-between;
   color: var(--muted);
-  font-size: 9px;
+  font-size: var(--graph-label-font-size, 11px);
   font-variant-numeric: tabular-nums;
 }
 
@@ -728,7 +728,7 @@
 .profile-axis-tick {
   position: absolute;
   color: var(--muted);
-  font-size: 9px;
+  font-size: var(--graph-label-font-size, 11px);
   font-variant-numeric: tabular-nums;
   line-height: 1;
   white-space: nowrap;
@@ -818,8 +818,8 @@
 .profile-line-chart {
   min-width: 0;
   display: grid;
-  grid-template-columns: 14px 46px minmax(0, 1fr);
-  grid-template-rows: 220px 20px 18px;
+  grid-template-columns: calc(var(--graph-label-font-size, 11px) * 1.55) calc(var(--graph-label-font-size, 11px) * 5.1) minmax(0, 1fr);
+  grid-template-rows: 220px calc(var(--graph-label-font-size, 11px) + 11px) calc(var(--graph-label-font-size, 11px) + 9px);
   gap: 2px 5px;
 }
 

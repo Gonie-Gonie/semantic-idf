@@ -133,6 +133,7 @@ type AppSettings struct {
 type AppearanceSettings struct {
 	Theme            string                     `json:"theme"`
 	Language         string                     `json:"language"`
+	GraphFontSize    int                        `json:"graphFontSize"`
 	AnalysisTabOrder []string                   `json:"analysisTabOrder"`
 	Geometry         GeometryAppearanceSettings `json:"geometry"`
 }
@@ -1492,6 +1493,7 @@ func defaultAppSettings() AppSettings {
 		Appearance: AppearanceSettings{
 			Theme:            "system",
 			Language:         "en",
+			GraphFontSize:    11,
 			AnalysisTabOrder: []string{"summary", "geometry", "profile", "hvac", "diagnose", "simulation"},
 			Geometry: GeometryAppearanceSettings{
 				Background: "#f7fafc",
@@ -1562,6 +1564,10 @@ func normalizeAppSettings(settings AppSettings) AppSettings {
 		settings.Appearance.Theme = defaults.Appearance.Theme
 	}
 	settings.Appearance.Language = normalizeAppLanguage(settings.Appearance.Language, defaults.Appearance.Language)
+	if settings.Appearance.GraphFontSize == 0 {
+		settings.Appearance.GraphFontSize = defaults.Appearance.GraphFontSize
+	}
+	settings.Appearance.GraphFontSize = max(9, min(18, settings.Appearance.GraphFontSize))
 	settings.Appearance.AnalysisTabOrder = normalizeAnalysisTabOrder(settings.Appearance.AnalysisTabOrder, defaults.Appearance.AnalysisTabOrder)
 	settings.Appearance.Geometry.Background = normalizeHexColor(settings.Appearance.Geometry.Background, defaults.Appearance.Geometry.Background)
 	settings.Appearance.Geometry.Zone = normalizeHexColor(settings.Appearance.Geometry.Zone, defaults.Appearance.Geometry.Zone)

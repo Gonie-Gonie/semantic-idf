@@ -1319,6 +1319,20 @@ func TestDefaultSettingsRetainThermalTopologyShortcuts(t *testing.T) {
 	}
 }
 
+func TestGraphFontSizeSettingsDefaultAndClamp(t *testing.T) {
+	if got := normalizeAppSettings(AppSettings{}).Appearance.GraphFontSize; got != 11 {
+		t.Fatalf("default graph font size = %d, want 11", got)
+	}
+	settings := AppSettings{Appearance: AppearanceSettings{GraphFontSize: 99}}
+	if got := normalizeAppSettings(settings).Appearance.GraphFontSize; got != 18 {
+		t.Fatalf("maximum graph font size = %d, want 18", got)
+	}
+	settings.Appearance.GraphFontSize = 1
+	if got := normalizeAppSettings(settings).Appearance.GraphFontSize; got != 9 {
+		t.Fatalf("minimum graph font size = %d, want 9", got)
+	}
+}
+
 func TestAnalyzeMultiSummaryPaths(t *testing.T) {
 	tempDir := t.TempDir()
 	first := filepath.Join(tempDir, "first.idf")

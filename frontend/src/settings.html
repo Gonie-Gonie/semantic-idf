@@ -332,6 +332,13 @@
                   ${supportedLanguages.map(([code, label]) => optionHTML(code, label, activeSettings.appearance.language)).join("")}
                 </select>
               </label>
+              <label class="settings-field" for="graphFontSize">
+                <span>${escapeHTML(t("appearance.graphFontSize", {}, "Graph label font size"))}</span>
+                <span class="settings-inline-control">
+                  <input id="graphFontSize" type="number" min="9" max="18" step="1" value="${escapeHTML(activeSettings.appearance.graphFontSize)}" />
+                  <em>px</em>
+                </span>
+              </label>
               <div class="settings-subsection">
                 <h3>${escapeHTML(t("appearance.analysisTabOrder"))}</h3>
                 <p>${escapeHTML(t("appearance.analysisTabOrderHelp"))}</p>
@@ -787,6 +794,7 @@
           appearance: {
             theme: document.querySelector("#themeSelect").value,
             language: document.querySelector("#languageSelect").value,
+            graphFontSize: document.querySelector("#graphFontSize").value,
             analysisTabOrder: readAnalysisTabOrder(),
             geometry,
           },

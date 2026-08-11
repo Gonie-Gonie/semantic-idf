@@ -221,6 +221,27 @@ func TestFrontendProfileOverviewUsesStructuredMetricsAndCountAssignments(t *test
 	}
 }
 
+func TestProfileGraphLabelFontSizeIsConfigurable(t *testing.T) {
+	settings := readTestFile(t, "frontend/src/js/settings-client.js")
+	markup := readTestFile(t, "frontend/src/settings.html")
+	styles := readTestFile(t, "frontend/src/styles/profile.css")
+	for _, required := range []string{`graphFontSize: 11`, `--graph-label-font-size`, `clampNumber(appearance.graphFontSize, 9, 18`} {
+		if !strings.Contains(settings, required) {
+			t.Fatalf("graph font setting contract is missing %q", required)
+		}
+	}
+	for _, required := range []string{`id="graphFontSize"`, `min="9" max="18"`, `graphFontSize: document.querySelector("#graphFontSize").value`} {
+		if !strings.Contains(markup, required) {
+			t.Fatalf("graph font settings UI is missing %q", required)
+		}
+	}
+	for _, required := range []string{`font-size: var(--graph-label-font-size, 11px)`, `calc(var(--graph-label-font-size, 11px) * 5.1)`} {
+		if !strings.Contains(styles, required) {
+			t.Fatalf("Profile graph font styling is missing %q", required)
+		}
+	}
+}
+
 func TestFrontendProfileRemovesMatrixDetailSourceAndCandidateUI(t *testing.T) {
 	files := map[string]string{
 		"markup":     readTestFile(t, "frontend/src/index.html"),

@@ -15,6 +15,7 @@ export const defaultAppSettings = {
   appearance: {
     theme: "system",
     language: "en",
+    graphFontSize: 11,
     analysisTabOrder: [...defaultAnalyzeTabOrder],
     geometry: {
       background: "#f7fafc",
@@ -188,6 +189,7 @@ export function applyAppSettings(settingsInput) {
   const resolvedTheme = resolvedThemeName(currentSettings.appearance.theme);
   document.documentElement.dataset.theme = resolvedTheme;
   document.documentElement.dataset.themePreference = currentSettings.appearance.theme;
+  document.documentElement.style.setProperty("--graph-label-font-size", `${currentSettings.appearance.graphFontSize}px`);
   setLanguage(currentSettings.appearance.language);
   const analysisTabOrder = storeAnalyzeTabOrder(currentSettings.appearance.analysisTabOrder);
   applyAnalyzeTabOrder(analysisTabOrder);
@@ -217,6 +219,7 @@ export function mergeSettings(settingsInput = {}) {
     appearance: {
       theme: normalizeTheme(appearance.theme),
       language: normalizeLanguage(appearance.language),
+      graphFontSize: clampNumber(appearance.graphFontSize, 9, 18, defaultAppSettings.appearance.graphFontSize),
       analysisTabOrder: normalizeAnalyzeTabOrder(appearance.analysisTabOrder),
       geometry: {
         background: normalizeHexColor(geometry.background, defaultAppSettings.appearance.geometry.background),
