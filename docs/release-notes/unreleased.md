@@ -63,6 +63,10 @@ The release script infers bump size from these sections:
   only Metric and Layout instead of Scope or Advanced controls. Selecting a
   zone, boundary, or other topology object emphasizes its one-hop connections
   and strongly fades unrelated objects.
+- Unified selected-object details across Topology 3D, Plan, and Network in the
+  resizable lower panel. Network no longer reserves a separate right-side
+  inspector, leaving the full viewport width available to its diagram while
+  retaining connection, boundary, area, UA, exposure, QA, and source details.
 - Topology Network nodes can now be repositioned by dragging, with connected
   routes updating in place. Outdoor boundaries use compact directional points
   with separate N/E/S/W/Roof/Floor area and UA totals, while Adiabatic surfaces

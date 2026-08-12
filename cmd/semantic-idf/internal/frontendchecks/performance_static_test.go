@@ -166,9 +166,9 @@ func TestFrontendTopologyLookupAndDelegationPerformanceContracts(t *testing.T) {
 			t.Fatal("air-coupling indexes must use the stable connection ID because layout edges are cloned")
 		}
 	}
-	inspector := readTestFile(t, "frontend/src/js/views/thermal-topology-inspector.js")
-	if !strings.Contains(inspector, "inspectorInteractionsBound") || !strings.Contains(inspector, `inspector.addEventListener("click"`) {
-		t.Fatal("thermal inspector should use one delegated interaction listener")
+	details := readTestFile(t, "frontend/src/js/views/thermal-topology-details.js")
+	if !strings.Contains(details, "thermalDetailsInteractionsBound") || !strings.Contains(details, `details.addEventListener("click"`) {
+		t.Fatal("thermal details should use one delegated interaction listener")
 	}
 
 	geometry := readTestFile(t, "frontend/src/js/views/topology-view.js")

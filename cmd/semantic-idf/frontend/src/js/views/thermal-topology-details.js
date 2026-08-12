@@ -3,34 +3,36 @@ import { t } from "../i18n.js";
 import { resolveThermalTopologyTarget } from "../thermal-topology-targets.js";
 
 let activeHelpers = null;
-let inspectorInteractionsBound = false;
+let thermalDetailsInteractionsBound = false;
 
-export function renderThermalTopologyInspector(geometry, helpers = {}) {
-  if (!elements.thermalTopologyInspector) return;
+export function renderThermalTopologyDetails(geometry, helpers = {}) {
+  const details = elements.topologyDetails;
+  if (!details) return;
   activeHelpers = helpers;
-  const activeSelection = resolveInspectorSelection(geometry);
+  const activeSelection = resolveThermalDetailSelection(geometry);
   if (!activeSelection?.item) {
-    elements.thermalTopologyInspector.removeAttribute("aria-labelledby");
-    elements.thermalTopologyInspector.innerHTML = `<div class="empty">${escapeHTML(t("topology.inspectorEmpty", {}, "Select a thermal node or connection"))}</div>`;
+    details.removeAttribute("aria-labelledby");
+    details.innerHTML = `<div class="empty">${escapeHTML(t("topology.networkDetailsEmpty", {}, "Select a network node or connection"))}</div>`;
     return;
   }
-  elements.thermalTopologyInspector.setAttribute("aria-labelledby", "thermalTopologyInspectorHeading");
-  elements.thermalTopologyInspector.innerHTML = `
-    <div class="thermal-inspector-head">
+  details.setAttribute("aria-labelledby", "topologyDetailsHeading");
+  details.innerHTML = `
+    <div class="topology-detail-head">
       <div>
-        <h3 id="thermalTopologyInspectorHeading">${escapeHTML(selectionTitle(activeSelection))}</h3>
+        <h3 id="topologyDetailsHeading">${escapeHTML(selectionTitle(activeSelection))}</h3>
         <span>${escapeHTML(selectionSubtitle(activeSelection))}</span>
       </div>
+      <span class="topology-sync-note">${state.topologySyncLocate ? t("topology.syncOn") : t("topology.syncOff")}</span>
     </div>
-    <div class="thermal-inspector-content">
+    <div class="topology-detail-grid thermal-topology-detail-grid">
       ${renderSelectionDetails(activeSelection, geometry)}
     </div>`;
-  bindInspectorInteractions();
+  bindThermalDetailsInteractions();
 }
 
-function resolveInspectorSelection(geometry) {
-  const id = state.thermalTopologySelectedEntityId || state.selectedTopologyEntityId;
-  const kind = state.thermalTopologySelectedEntityKind || state.selectedTopologyEntityKind;
+function resolveThermalDetailSelection(geometry) {
+  const id = state.selectedTopologyEntityId || state.thermalTopologySelectedEntityId;
+  const kind = state.selectedTopologyEntityKind || state.thermalTopologySelectedEntityKind;
   if (!id) return null;
   const thermal = resolveThermalTopologyTarget({ targetKind: kind, targetId: id }, geometry);
   if (thermal?.item) return { ...thermal, item: thermal.item };
@@ -71,13 +73,13 @@ function renderZoneDetails(node, geometry) {
   const exposure = zonePhysicalExposure(node, topology);
   const adjacent = [...new Set([...(signature.adjacentZoneIds || []), ...(signature.airCoupledZoneIds || [])])];
   return [
-    inspectorSection("Geometry", renderRows([
+    detailSection("Geometry", renderRows([
       ["Floor area", area(node.floorArea)],
       ["Volume", volume(node.volume)],
       ["Story", Number(node.storyIndex) + 1],
       ["Shell", signature.closedShell ? "Closed" : `Open · ${signature.openEdgeCount || 0} edges`],
     ])),
-    inspectorSection("Thermal exposure", renderRows([
+    detailSection("Thermal exposure", renderRows([
       ["Outdoors", area(exposure.exteriorArea)],
       ["Ground", area(exposure.groundArea)],
       ["Adjacent-zone", area(exposure.interzoneArea)],
@@ -87,7 +89,7 @@ function renderZoneDetails(node, geometry) {
       ["Ground UA", wattsPerKelvin(exposure.groundUa, exposure.hasGroundUA)],
       ["Total UA", wattsPerKelvin(exposure.totalUa, exposure.hasTotalUA)],
     ])),
-    inspectorSection("Adjacent zones", adjacent.length ? `<div class="thermal-inspector-chips">${adjacent.map(chip).join("")}</div>` : emptyValue()),
+    detailSection("Adjacent zones", adjacent.length ? `<div class="thermal-detail-chips">${adjacent.map(chip).join("")}</div>` : emptyValue()),
     renderZoneHVACSummary(node),
   ].join("");
 }
@@ -99,7 +101,7 @@ function renderConnectionDetails(connection, geometry) {
   const constructions = dominantValues(boundaries.map((boundary) => boundary.constructionName));
   const multiplier = areaMultiplier(connection, "physicalGrossArea", "effectiveGrossArea");
   return [
-    inspectorSection("Connection", renderRows([
+    detailSection("Connection", renderRows([
       ["From", nodeByID.get(connection.fromNodeId)?.label || connection.fromNodeId],
       ["To", nodeByID.get(connection.toNodeId)?.label || connection.toNodeId],
       ["Relation", humanize(connection.relationKind)],
@@ -107,7 +109,7 @@ function renderConnectionDetails(connection, geometry) {
       ["Opening count", connection.openingCount || 0],
       ["Dominant constructions", constructions.join(", ") || "—"],
     ])),
-    inspectorSection("Area & UA", renderVariableTable([
+    detailSection("Area & UA", renderVariableTable([
       ["Multiplier", number(multiplier), "×"],
       ["Gross area", number(connection.physicalGrossArea), "m²"],
       ["Opaque area", number(connection.physicalOpaqueArea), "m²"],
@@ -116,7 +118,7 @@ function renderConnectionDetails(connection, geometry) {
       ["Opening UA", metricNumber(connection.physicalOpeningUa, connection.hasPhysicalUa), "W/K"],
       ["Total UA", metricNumber(connection.physicalTotalUa, connection.hasPhysicalUa), "W/K"],
     ])),
-    inspectorSection("Source boundaries", boundaries.length ? `<div class="thermal-inspector-source-list">${boundaries.map((boundary) => sourceButton("thermal_boundary", boundary.id, boundary.surfaceName)).join("")}</div>` : emptyValue()),
+    detailSection("Source boundaries", boundaries.length ? `<div class="thermal-detail-source-list">${boundaries.map((boundary) => sourceButton("thermal_boundary", boundary.id, boundary.surfaceName)).join("")}</div>` : emptyValue()),
   ].join("");
 }
 
@@ -126,7 +128,7 @@ function renderBoundaryDetails(boundary, geometry) {
   const check = boundary.geometryCheck || {};
   const multiplier = areaMultiplier(boundary, "physicalGrossArea", "effectiveGrossArea");
   return [
-    inspectorSection("Source boundary", renderRows([
+    detailSection("Source boundary", renderRows([
       ["Object", boundary.surfaceName],
       ["Owner zone", boundary.ownerZoneId],
       ["Owner space", boundary.ownerSpaceId],
@@ -136,7 +138,7 @@ function renderBoundaryDetails(boundary, geometry) {
       ["Construction", `${boundary.constructionName || "—"} · ${boundary.hasUValue ? `${number(boundary.uValue)} W/m²K` : "U —"}`],
       ["Construction validation", humanize(boundary.constructionStatus || "not checked")],
     ])),
-    inspectorSection("Area & UA", renderVariableTable([
+    detailSection("Area & UA", renderVariableTable([
       ["Multiplier", number(multiplier), "×"],
       ["Gross area", number(boundary.physicalGrossArea), "m²"],
       ["Opaque area", number(boundary.physicalOpaqueArea), "m²"],
@@ -145,7 +147,7 @@ function renderBoundaryDetails(boundary, geometry) {
       ["Opening UA", metricNumber(unscaledMetric(boundary.openingUa, multiplier), boundary.hasUa), "W/K"],
       ["Total UA", metricNumber(unscaledMetric(boundary.totalUa, multiplier), boundary.hasUa), "W/K"],
     ])),
-    inspectorSection("Exposure & geometry", renderRows([
+    detailSection("Exposure & geometry", renderRows([
       ["Orientation", boundary.orientation || "—"],
       ["Azimuth", `${number(boundary.azimuth)}°`],
       ["Sun exposure", boundary.sunExposure || "—"],
@@ -154,7 +156,7 @@ function renderBoundaryDetails(boundary, geometry) {
       ["Overlap", percent(check.overlapRatio)],
       ["Plane distance", `${number(check.planeDistance)} m`],
     ])),
-    inspectorSection("Openings", openings.length ? `<div class="thermal-inspector-source-list">${openings.map((opening) => sourceButton("window", opening.entityId || opening.windowId, `${opening.name} · ${area(opening.physicalArea)}`)).join("")}</div>` : emptyValue()),
+    detailSection("Openings", openings.length ? `<div class="thermal-detail-source-list">${openings.map((opening) => sourceButton("window", opening.entityId || opening.windowId, `${opening.name} · ${area(opening.physicalArea)}`)).join("")}</div>` : emptyValue()),
   ].join("");
 }
 
@@ -162,12 +164,12 @@ function renderOpeningDetails(opening, geometry) {
   const multiplier = areaMultiplier(opening, "physicalArea", "effectiveArea");
   const physicalUA = Number(opening.physicalArea) * Number(opening.uValue);
   return [
-    inspectorSection("Opening", renderRows([
+    detailSection("Opening", renderRows([
       ["Base surface", opening.baseSurfaceId],
       ["Counterpart", opening.counterpartOpeningId || "—"],
       ["Construction", opening.constructionName || "—"],
     ])),
-    inspectorSection("Area & UA", renderVariableTable([
+    detailSection("Area & UA", renderVariableTable([
       ["Multiplier", number(multiplier), "×"],
       ["Area", number(opening.physicalArea), "m²"],
       ["U-value", metricNumber(opening.uValue, opening.hasUValue), "W/m²K"],
@@ -179,7 +181,7 @@ function renderOpeningDetails(opening, geometry) {
 function renderAirCouplingDetails(coupling, geometry) {
   const nodes = new Map((geometry?.topology?.nodes || []).map((node) => [node.id, node]));
   return [
-    inspectorSection("Air coupling", renderRows([
+    detailSection("Air coupling", renderRows([
       ["From", nodes.get(coupling.fromNodeId)?.label || coupling.fromNodeId],
       ["To", nodes.get(coupling.toNodeId)?.label || coupling.toNodeId],
       ["Object type", coupling.objectType],
@@ -198,14 +200,14 @@ function renderObservationDetails(observation, geometry) {
   const topology = geometry?.topology || {};
   const boundaries = (topology.boundaries || []).filter((boundary) => (observation.boundaryIds || []).includes(boundary.id));
   return [
-    inspectorSection("Geometric adjacency QA", renderRows([
+    detailSection("Geometric adjacency QA", renderRows([
       ["Observation", humanize(observation.observationKind)],
       ["Overlap", percent(observation.overlapRatio)],
       ["Declared connection", observation.declaredConnection ? "Yes" : "No"],
       ["Thermal relation", "Not created · QA evidence only"],
     ])),
-    inspectorSection("Adjacent source surfaces", boundaries.length
-      ? `<div class="thermal-inspector-source-list">${boundaries.map((boundary) => sourceButton("thermal_boundary", boundary.id, boundary.surfaceName)).join("")}</div>`
+    detailSection("Adjacent source surfaces", boundaries.length
+      ? `<div class="thermal-detail-source-list">${boundaries.map((boundary) => sourceButton("thermal_boundary", boundary.id, boundary.surfaceName)).join("")}</div>`
       : emptyValue()),
   ].join("");
 }
@@ -217,7 +219,7 @@ function renderEnvironmentDetails(node, geometry) {
   const physicalGrossArea = connections.reduce((sum, connection) => sum + (Number(connection.physicalGrossArea) || 0), 0);
   const effectiveGrossArea = connections.reduce((sum, connection) => sum + (Number(connection.effectiveGrossArea) || 0), 0);
   const totalUA = connections.reduce((sum, connection) => sum + (Number(connection.physicalTotalUa) || 0), 0);
-  return inspectorSection("External target", [
+  return detailSection("External target", [
     renderRows([
       ["Connected zones", new Set(connections.flatMap((connection) => [connection.fromNodeId, connection.toNodeId]).filter((id) => id !== node.id)).size],
       ["Boundary families", families.join(", ") || "—"],
@@ -231,14 +233,14 @@ function renderEnvironmentDetails(node, geometry) {
 }
 
 function renderInterfaceDetails(item) {
-  return inspectorSection("Reciprocal interface", renderRows([
+  return detailSection("Reciprocal interface", renderRows([
     ["ID", item.id],
     ["Boundaries", (item.boundaries || []).map((boundary) => boundary.surfaceName).join(" ↔ ")],
   ]));
 }
 
 function renderIssueDetails(issue) {
-  return inspectorSection("Topology issue", renderRows([
+  return detailSection("Topology issue", renderRows([
     ["Severity", issue.severity],
     ["Code", issue.code],
     ["Message", issue.message],
@@ -251,7 +253,7 @@ function renderZoneHVACSummary(node) {
   const paths = summaries.flatMap((item) => item.paths || []);
   const services = dominantValues(paths.map((path) => humanize(path.serviceKind)));
   const systems = dominantValues(paths.flatMap((path) => [path.airLoop?.name, path.plantLoop?.name, path.sourceSystem?.name]).filter(Boolean));
-  return inspectorSection("HVAC service", paths.length
+  return detailSection("HVAC service", paths.length
     ? renderRows([
       ["Service paths", paths.length],
       ["Services", services.join(", ") || "—"],
@@ -264,14 +266,14 @@ function sameThermalTopologyName(left, right) {
   return String(left || "").trim().toLowerCase() === String(right || "").trim().toLowerCase();
 }
 
-function bindInspectorInteractions() {
-  const inspector = elements.thermalTopologyInspector;
-  if (inspectorInteractionsBound || !inspector) return;
-  inspectorInteractionsBound = true;
-  inspector.addEventListener("click", (event) => {
-    const button = event.target.closest?.("[data-thermal-inspector-kind]");
-    if (!button || !inspector.contains(button)) return;
-    activeHelpers.selectTopologyEntity?.(button.dataset.thermalInspectorKind, button.dataset.thermalInspectorId);
+function bindThermalDetailsInteractions() {
+  const details = elements.topologyDetails;
+  if (thermalDetailsInteractionsBound || !details) return;
+  thermalDetailsInteractionsBound = true;
+  details.addEventListener("click", (event) => {
+    const button = event.target.closest?.("[data-thermal-detail-kind]");
+    if (!button || !details.contains(button)) return;
+    activeHelpers.selectTopologyEntity?.(button.dataset.thermalDetailKind, button.dataset.thermalDetailId);
   });
 }
 
@@ -355,12 +357,12 @@ function zonePhysicalExposure(node, topology) {
   return result;
 }
 
-function inspectorSection(title, content) {
-  return `<section class="thermal-inspector-section"><h4>${escapeHTML(title)}</h4>${content}</section>`;
+function detailSection(title, content) {
+  return `<section class="thermal-detail-section"><h4>${escapeHTML(title)}</h4>${content}</section>`;
 }
 
 function renderRows(rows) {
-  return `<dl class="thermal-inspector-rows">${rows.filter(([, value]) => value !== "" && value !== undefined && value !== null).map(([label, value]) => `<div><dt>${escapeHTML(label)}</dt><dd>${escapeHTML(value)}</dd></div>`).join("")}</dl>`;
+  return `<dl class="thermal-detail-rows">${rows.filter(([, value]) => value !== "" && value !== undefined && value !== null).map(([label, value]) => `<div><dt>${escapeHTML(label)}</dt><dd>${escapeHTML(value)}</dd></div>`).join("")}</dl>`;
 }
 
 function renderVariableTable(rows) {
@@ -368,11 +370,11 @@ function renderVariableTable(rows) {
     .filter(([, value]) => value !== "" && value !== undefined && value !== null)
     .map(([variable, value, unit]) => `<tr><th scope="row">${escapeHTML(variable)}</th><td>${escapeHTML(value)}</td><td>${escapeHTML(unit || "—")}</td></tr>`)
     .join("");
-  return `<div class="thermal-inspector-table-wrap"><table class="thermal-inspector-table"><thead><tr><th scope="col">Variable</th><th scope="col">Value</th><th scope="col">Unit</th></tr></thead><tbody>${body}</tbody></table></div>`;
+  return `<div class="thermal-detail-table-wrap"><table class="thermal-detail-table"><thead><tr><th scope="col">Variable</th><th scope="col">Value</th><th scope="col">Unit</th></tr></thead><tbody>${body}</tbody></table></div>`;
 }
 
 function sourceButton(kind, id, label) {
-  return `<button type="button" data-thermal-inspector-kind="${escapeHTML(kind)}" data-thermal-inspector-id="${escapeHTML(id)}">${escapeHTML(label)}</button>`;
+  return `<button type="button" data-thermal-detail-kind="${escapeHTML(kind)}" data-thermal-detail-id="${escapeHTML(id)}">${escapeHTML(label)}</button>`;
 }
 
 function chip(value) {

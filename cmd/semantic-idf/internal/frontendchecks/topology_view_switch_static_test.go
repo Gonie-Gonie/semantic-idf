@@ -15,7 +15,7 @@ func TestTopologyViewSwitchSupportsThermalAndNormalizesInvalidModes(t *testing.T
 		`>Network</button>`,
 		`id="thermalTopologyGraph"`,
 		`id="thermalTopologyView"`,
-		`id="thermalTopologyInspector"`,
+		`id="topologyDetails"`,
 		`id="thermalTopologyMetric"`,
 		`id="thermalTopologyLayout"`,
 	} {
@@ -36,6 +36,7 @@ func TestTopologyViewSwitchSupportsThermalAndNormalizesInvalidModes(t *testing.T
 		`id="thermalTopologyScope"`,
 		`id="thermalTopologyShowAirCoupling"`,
 		`id="thermalTopologyExportJSON"`,
+		`id="thermalTopologyInspector"`,
 		`class="thermal-topology-advanced"`,
 	} {
 		if strings.Contains(index, removed) {
@@ -50,6 +51,79 @@ func TestTopologyViewSwitchSupportsThermalAndNormalizesInvalidModes(t *testing.T
 	} {
 		if !strings.Contains(state, required) {
 			t.Fatalf("topology mode normalization is missing %q", required)
+		}
+	}
+}
+
+func TestTopologyAllModesUseSingleLowerDetailsRenderer(t *testing.T) {
+	index := readTestFile(t, "frontend/src/index.html")
+	if count := strings.Count(index, `id="topologyDetails"`); count != 1 {
+		t.Fatalf("Topology must expose exactly one shared lower details host, got %d", count)
+	}
+	viewport := sliceBetween(index, `id="topologyViewport"`, `id="topologyDetailsSplitter"`)
+	if strings.Contains(viewport, `id="topologyDetails"`) {
+		t.Fatal("shared Topology details must remain below the viewport splitter")
+	}
+	for _, removed := range []string{`id="thermalTopologyInspector"`, `class="thermal-topology-inspector"`} {
+		if strings.Contains(index, removed) {
+			t.Fatalf("Network still exposes its removed side inspector %q", removed)
+		}
+	}
+
+	state := readTestFile(t, "frontend/src/js/state.js")
+	if strings.Contains(state, "thermalTopologyInspector") {
+		t.Fatal("removed Network side-inspector element remains in shared state")
+	}
+
+	view := readTestFile(t, "frontend/src/js/views/topology-view.js")
+	for _, required := range []string{
+		"function renderTopologyDetails(",
+		"renderGeometryTopologyDetails(geometry, entity)",
+		"module.renderThermalTopologyDetails(geometry, thermalTopologyHelpers())",
+		`elements.topologyDetails.setAttribute("aria-labelledby", "topologyDetailsHeading")`,
+		`id="topologyDetailsHeading"`,
+	} {
+		if !strings.Contains(view, required) {
+			t.Fatalf("shared lower details renderer is missing %q", required)
+		}
+	}
+
+	network := readTestFile(t, "frontend/src/js/views/thermal-topology-view.js")
+	for _, required := range []string{
+		`export { renderThermalTopologyDetails } from "./thermal-topology-details.js"`,
+		`currentHelpers?.renderTopologyDetails?.()`,
+	} {
+		if !strings.Contains(network, required) {
+			t.Fatalf("Network does not route selection into the shared lower details renderer: missing %q", required)
+		}
+	}
+	for _, removed := range []string{"renderThermalTopologyInspector", "thermalTopologyInspector"} {
+		if strings.Contains(network, removed) {
+			t.Fatalf("Network renderer retains private inspector path %q", removed)
+		}
+	}
+
+	details := readTestFile(t, "frontend/src/js/views/thermal-topology-details.js")
+	for _, required := range []string{
+		"export function renderThermalTopologyDetails",
+		"const details = elements.topologyDetails",
+		`details.setAttribute("aria-labelledby", "topologyDetailsHeading")`,
+		`id="topologyDetailsHeading"`,
+	} {
+		if !strings.Contains(details, required) {
+			t.Fatalf("Network detail presenter is not hosted by the shared lower panel: missing %q", required)
+		}
+	}
+	for _, removed := range []string{"elements.thermalTopologyInspector", "thermalTopologyInspectorHeading"} {
+		if strings.Contains(details, removed) {
+			t.Fatalf("Network detail presenter retains private inspector contract %q", removed)
+		}
+	}
+
+	styles := readTestFile(t, "frontend/src/styles/topology.css")
+	for _, removed := range []string{".thermal-topology-inspector", ".topology-viewport.network-active .topology-viewport-actions", "minmax(220px, 27%)"} {
+		if strings.Contains(styles, removed) {
+			t.Fatalf("single-host Network layout retains side-inspector styling %q", removed)
 		}
 	}
 }
@@ -75,9 +149,9 @@ func TestTopologyUsesCanonicalPhysicalGrossAreaWithSeparateMultiplier(t *testing
 	if !strings.Contains(thermalView, `Number(connection?.physicalGrossArea)`) || strings.Contains(thermalView, `connection?.effectiveGrossArea`) {
 		t.Fatal("thermal graph must render physical gross area as its single canonical basis")
 	}
-	inspector := readTestFile(t, "frontend/src/js/views/thermal-topology-inspector.js")
-	for _, required := range []string{`renderVariableTable`, `thermal-inspector-table`, `"Multiplier"`, `"Gross area"`, `areaMultiplier`} {
-		if !strings.Contains(inspector, required) {
+	details := readTestFile(t, "frontend/src/js/views/thermal-topology-details.js")
+	for _, required := range []string{`renderVariableTable`, `thermal-detail-table`, `"Multiplier"`, `"Gross area"`, `areaMultiplier`} {
+		if !strings.Contains(details, required) {
 			t.Fatalf("separate multiplier table contract is missing %q", required)
 		}
 	}
@@ -98,7 +172,7 @@ func TestTopologyThermalRendererIsSplitAndLazyLoaded(t *testing.T) {
 	for _, file := range []string{
 		"frontend/src/js/views/thermal-topology-view.js",
 		"frontend/src/js/views/thermal-topology-layout.js",
-		"frontend/src/js/views/thermal-topology-inspector.js",
+		"frontend/src/js/views/thermal-topology-details.js",
 	} {
 		if body := readTestFile(t, file); body == "" {
 			t.Fatalf("thermal topology module %s is empty", file)
@@ -423,7 +497,7 @@ func TestTopologyMetricModesAndInspectorExposeRequiredContracts(t *testing.T) {
 			t.Fatalf("fixed Zone/Gross topology renderer retains dead option path %q", removed)
 		}
 	}
-	inspector := readTestFile(t, "frontend/src/js/views/thermal-topology-inspector.js")
+	details := readTestFile(t, "frontend/src/js/views/thermal-topology-details.js")
 	for _, required := range []string{
 		`renderZoneDetails`,
 		`renderConnectionDetails`,
@@ -432,12 +506,12 @@ func TestTopologyMetricModesAndInspectorExposeRequiredContracts(t *testing.T) {
 		`renderAirCouplingDetails`,
 		`renderEnvironmentDetails`,
 		`renderVariableTable`,
-		`thermal-inspector-table`,
-		`data-thermal-inspector-kind`,
+		`thermal-detail-table`,
+		`data-thermal-detail-kind`,
 		`"Multiplier"`,
 	} {
-		if !strings.Contains(inspector, required) {
-			t.Fatalf("thermal inspector is missing %q", required)
+		if !strings.Contains(details, required) {
+			t.Fatalf("thermal details are missing %q", required)
 		}
 	}
 	for _, removed := range []string{
@@ -447,15 +521,15 @@ func TestTopologyMetricModesAndInspectorExposeRequiredContracts(t *testing.T) {
 		`renderZoneOutputSummary`,
 		`Output requests`,
 		`Diagnostics`,
-		`inspectorSection("Actions"`,
-		`thermal-inspector-actions`,
+		`detailSection("Actions"`,
+		`thermal-detail-actions`,
 		`Model total`,
 		`Physical / model`,
 		`Gross /`,
 		`Opaque /`,
 	} {
-		if strings.Contains(inspector, removed) {
-			t.Fatalf("removed inspector concept remains %q", removed)
+		if strings.Contains(details, removed) {
+			t.Fatalf("removed details concept remains %q", removed)
 		}
 	}
 }
@@ -468,7 +542,11 @@ func TestTopologyModeHistoryPreservesSharedSelection(t *testing.T) {
 			t.Fatalf("geometry mode setter is missing %q", required)
 		}
 	}
-	for _, forbidden := range []string{"selectedGeometryId =", "selectedGeometryKind =", "globalSelection =", "analyze(", "backend."} {
+	for _, forbidden := range []string{
+		"selectedGeometryId =", "selectedGeometryKind =", "globalSelection =", "analyze(", "backend.",
+		"selectedTopologyEntityId =", "selectedTopologyEntityKind =",
+		"thermalTopologySelectedEntityId =", "thermalTopologySelectedEntityKind =",
+	} {
 		if strings.Contains(setter, forbidden) {
 			t.Fatalf("mode switching must preserve the shared selection; found %q", forbidden)
 		}
@@ -480,6 +558,8 @@ func TestTopologyModeHistoryPreservesSharedSelection(t *testing.T) {
 		`state.topologyMode = normalizeTopologyMode(snapshot.mode)`,
 		`state.selectedTopologyEntityKind = normalizeGeometryKind(snapshot.selectedKind)`,
 		`state.selectedTopologyEntityId = String(snapshot.selectedId || "")`,
+		`restoreThermalTopologyState(snapshot, state)`,
+		`renderTopologyView()`,
 	} {
 		if !strings.Contains(restore, required) {
 			t.Fatalf("topology history restore is missing %q", required)

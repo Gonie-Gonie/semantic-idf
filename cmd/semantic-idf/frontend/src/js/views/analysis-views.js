@@ -192,6 +192,7 @@ export function renderEmpty() {
   elements.topologyStats.textContent = t("topology.stats", { zones: 0, surfaces: 0, windows: 0 });
   elements.topology3DCanvasHost.innerHTML = `<div class="empty">${t("topology.noGeometry")}</div>`;
   elements.topologyPlan.innerHTML = "";
+  elements.topologyDetails.removeAttribute("aria-labelledby");
   elements.topologyDetails.innerHTML = `<div class="empty">${t("topology.selectObject")}</div>`;
   elements.textObjectView.innerHTML = `<div class="empty">${t("input.formattedEmpty")}</div>`;
   elements.jsonStructuredView.innerHTML = `<div class="empty">${t("input.jsonEmpty")}</div>`;
@@ -204,6 +205,7 @@ export function renderDeferredTopology(geometry) {
     elements.topologyStats.textContent = t("topology.pending");
     elements.topology3DCanvasHost.innerHTML = `<div class="empty status-loading">${t("topology.running")}</div>`;
     elements.topologyPlan.innerHTML = "";
+    elements.topologyDetails.removeAttribute("aria-labelledby");
     elements.topologyDetails.innerHTML = `<div class="empty">${t("topology.detailsReadySoon")}</div>`;
     return;
   }
@@ -218,6 +220,7 @@ export function renderDeferredTopology(geometry) {
   });
   elements.topology3DCanvasHost.innerHTML = `<div class="empty">${t("topology.openToRender")}</div>`;
   elements.topologyPlan.innerHTML = "";
+  elements.topologyDetails.removeAttribute("aria-labelledby");
   elements.topologyDetails.innerHTML = `<div class="empty">${t("topology.openToInspect")}</div>`;
 }
 

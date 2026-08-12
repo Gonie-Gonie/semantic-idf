@@ -20,7 +20,7 @@ import {
   thermalTopologyFocusContext,
   thermalTopologyLayoutCacheKey,
 } from "./thermal-topology-layout.js";
-import { renderThermalTopologyInspector } from "./thermal-topology-inspector.js";
+export { renderThermalTopologyDetails } from "./thermal-topology-details.js";
 
 let currentGeometry = null;
 let currentHelpers = null;
@@ -54,7 +54,6 @@ export function renderThermalTopology(geometry, helpers = {}) {
     rememberThermalTopologyLayout(cacheKey, currentLayout);
   }
   renderThermalTopologySVG(currentModel, currentLayout);
-  renderThermalTopologyInspector(geometry, helpers);
 }
 
 export function fitThermalTopology() {
@@ -387,7 +386,7 @@ function activateGraphTarget(kind, id) {
   state.selectedTopologyEntityId = id;
   renderThermalTopologySVG(currentModel, currentLayout);
   currentHelpers?.selectTopologyEntity?.(kind, id, { syncLocate: true, syncSemantic: true });
-  renderThermalTopologyInspector(currentGeometry, currentHelpers);
+  currentHelpers?.renderTopologyDetails?.();
 }
 
 function applyGraphTransform() {

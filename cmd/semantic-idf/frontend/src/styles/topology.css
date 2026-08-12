@@ -131,10 +131,6 @@
   right: 10px;
 }
 
-.topology-viewport.network-active .topology-viewport-actions {
-  right: calc(27% + 22px);
-}
-
 #topologyDetailsSplitter {
   min-height: 8px;
 }
@@ -179,14 +175,12 @@
 }
 
 .thermal-topology-view.active {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(220px, 27%);
-  grid-template-rows: minmax(0, 1fr);
+  display: block;
 }
 
 .thermal-topology-graph {
-  grid-column: 1;
-  grid-row: 1;
+  width: 100%;
+  height: 100%;
   min-width: 0;
   min-height: 0;
   position: relative;
@@ -545,66 +539,31 @@
 .thermal-legend-line.adiabatic { border-top-style: dotted; }
 .thermal-legend-line.air { border-top: 3px double var(--teal); }
 
-.thermal-topology-inspector {
-  grid-column: 2;
-  grid-row: 1;
-  min-width: 0;
-  min-height: 0;
-  border-left: 1px solid var(--line);
-  overflow: auto;
-  background: var(--surface);
-}
-
-.thermal-inspector-head {
-  min-height: 54px;
-  border-bottom: 1px solid var(--line);
-  padding: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.thermal-inspector-head h3,
-.thermal-inspector-section h4 {
+.thermal-detail-section h4 {
   margin: 0;
 }
 
-.thermal-inspector-head h3 {
-  font-size: 13px;
+.thermal-detail-section {
+  min-width: 0;
+  border: 1px solid var(--surface-2);
+  border-radius: var(--radius-sm);
+  padding: 12px;
 }
 
-.thermal-inspector-head span {
-  display: block;
-  margin-top: 3px;
-  color: var(--muted);
-  font-size: 10px;
-  text-transform: capitalize;
-}
-
-.thermal-inspector-content {
-  display: grid;
-}
-
-.thermal-inspector-section {
-  border-bottom: 1px solid var(--line);
-  padding: 10px;
-}
-
-.thermal-inspector-section h4 {
+.thermal-detail-section h4 {
   margin-bottom: 7px;
   color: var(--ink-soft);
   font-size: 11px;
   letter-spacing: 0.025em;
 }
 
-.thermal-inspector-rows {
+.thermal-detail-rows {
   margin: 0;
   display: grid;
   gap: 5px;
 }
 
-.thermal-inspector-rows > div {
+.thermal-detail-rows > div {
   min-width: 0;
   display: grid;
   grid-template-columns: minmax(84px, 38%) minmax(0, 1fr);
@@ -613,11 +572,11 @@
   font-size: 10px;
 }
 
-.thermal-inspector-rows dt {
+.thermal-detail-rows dt {
   color: var(--muted);
 }
 
-.thermal-inspector-rows dd {
+.thermal-detail-rows dd {
   min-width: 0;
   margin: 0;
   overflow-wrap: anywhere;
@@ -626,13 +585,13 @@
   text-align: right;
 }
 
-.thermal-inspector-chips {
+.thermal-detail-chips {
   display: flex;
   flex-wrap: wrap;
   gap: 5px;
 }
 
-.thermal-inspector-chips span {
+.thermal-detail-chips span {
   border: 1px solid var(--line);
   border-radius: 999px;
   padding: 3px 6px;
@@ -641,12 +600,12 @@
   font-size: 9px;
 }
 
-.thermal-inspector-source-list {
+.thermal-detail-source-list {
   display: grid;
   gap: 5px;
 }
 
-.thermal-inspector-source-list button {
+.thermal-detail-source-list button {
   min-width: 0;
   min-height: 27px;
   border-color: var(--line);
@@ -657,67 +616,67 @@
   text-align: left;
 }
 
-.thermal-inspector-source-list button {
+.thermal-detail-source-list button {
   display: grid;
   gap: 2px;
 }
 
-.thermal-inspector-source-list button span {
+.thermal-detail-source-list button span {
   color: var(--muted);
   font-weight: 400;
 }
 
-.thermal-inspector-table-wrap {
+.thermal-detail-table-wrap {
   min-width: 0;
   overflow-x: auto;
 }
 
-.thermal-inspector-table {
+.thermal-detail-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 10px;
   font-variant-numeric: tabular-nums;
 }
 
-.thermal-inspector-table th,
-.thermal-inspector-table td {
+.thermal-detail-table th,
+.thermal-detail-table td {
   border-bottom: 1px solid var(--surface-3);
   padding: 5px 6px;
   white-space: nowrap;
 }
 
-.thermal-inspector-table thead th {
+.thermal-detail-table thead th {
   background: var(--surface-2);
   color: var(--muted);
   font-size: 9px;
   font-weight: 600;
 }
 
-.thermal-inspector-table th:first-child {
+.thermal-detail-table th:first-child {
   text-align: left;
 }
 
-.thermal-inspector-table th:nth-child(2),
-.thermal-inspector-table td:nth-child(2) {
+.thermal-detail-table th:nth-child(2),
+.thermal-detail-table td:nth-child(2) {
   text-align: right;
 }
 
-.thermal-inspector-table th:nth-child(3),
-.thermal-inspector-table td:nth-child(3) {
+.thermal-detail-table th:nth-child(3),
+.thermal-detail-table td:nth-child(3) {
   text-align: left;
 }
 
-.thermal-inspector-table tbody th {
+.thermal-detail-table tbody th {
   color: var(--ink-soft);
   font-weight: 500;
 }
 
-.thermal-inspector-table tbody td {
+.thermal-detail-table tbody td {
   color: var(--ink);
   font-weight: 700;
 }
 
-.thermal-inspector-table tbody tr:last-child > * {
+.thermal-detail-table tbody tr:last-child > * {
   border-bottom: 0;
 }
 
@@ -733,24 +692,6 @@
 @media (max-width: 1280px) {
   .thermal-topology-controls {
     flex: 1 1 auto;
-  }
-}
-
-@media (max-width: 780px) {
-  .thermal-topology-view.active {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(260px, 1fr) minmax(150px, auto);
-  }
-
-  .thermal-topology-inspector {
-    grid-column: 1;
-    grid-row: 2;
-    border-top: 1px solid var(--line);
-    border-left: 0;
-  }
-
-  .topology-viewport.network-active .topology-viewport-actions {
-    right: 10px;
   }
 }
 

@@ -24,14 +24,14 @@ func TestThermalTopologySimulationOverlayContract(t *testing.T) {
 	}
 }
 
-func TestThermalTopologyInspectorPanelIsolationContract(t *testing.T) {
-	inspector := readTestFile(t, "frontend/src/js/views/thermal-topology-inspector.js")
+func TestThermalTopologyDetailsPanelIsolationContract(t *testing.T) {
+	details := readTestFile(t, "frontend/src/js/views/thermal-topology-details.js")
 	for _, required := range []string{
 		`renderZoneHVACSummary(node)`,
 		`HVAC service`,
 	} {
-		if !strings.Contains(inspector, required) {
-			t.Fatalf("thermal topology inspector is missing %q", required)
+		if !strings.Contains(details, required) {
+			t.Fatalf("thermal topology details are missing %q", required)
 		}
 	}
 	for _, removed := range []string{
@@ -42,15 +42,15 @@ func TestThermalTopologyInspectorPanelIsolationContract(t *testing.T) {
 		`renderInspectorActions`,
 		`data-inspector-`,
 		`Diagnostics`,
-		`inspectorSection("Actions"`,
-		`thermal-inspector-actions`,
+		`detailSection("Actions"`,
+		`thermal-detail-actions`,
 		`renderZoneProfileSummary`,
 		`Profile summary`,
 		`state.report?.profile`,
 		`No linked occupancy`,
 	} {
-		if strings.Contains(inspector, removed) {
-			t.Fatalf("removed topology inspector section, action, or Profile coupling remains %q", removed)
+		if strings.Contains(details, removed) {
+			t.Fatalf("removed topology details section, action, or Profile coupling remains %q", removed)
 		}
 	}
 

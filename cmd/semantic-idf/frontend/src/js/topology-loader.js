@@ -29,6 +29,7 @@ function renderTopologyPlaceholder(geometry) {
     elements.topology3DCanvasHost.innerHTML = `<div class="empty status-loading">${t("topology.running")}</div>`;
     elements.topologyPlan.innerHTML = "";
     elements.thermalTopologyGraph.innerHTML = "";
+    elements.topologyDetails.removeAttribute("aria-labelledby");
     elements.topologyDetails.innerHTML = `<div class="empty">${t("topology.detailsReadySoon")}</div>`;
     return;
   }
@@ -37,6 +38,7 @@ function renderTopologyPlaceholder(geometry) {
     elements.topology3DCanvasHost.innerHTML = `<div class="empty">${t("topology.noGeometry")}</div>`;
     elements.topologyPlan.innerHTML = "";
     elements.thermalTopologyGraph.innerHTML = "";
+    elements.topologyDetails.removeAttribute("aria-labelledby");
     elements.topologyDetails.innerHTML = `<div class="empty">${t("topology.selectObject")}</div>`;
     return;
   }

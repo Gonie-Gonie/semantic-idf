@@ -21,14 +21,15 @@ flowchart LR
   N --> M[Connectivity · Area · UA · Exposure · QA · Air]
   N --> A[Spatial or Network layout]
   N --> F[One-hop emphasis · Unrelated objects faded]
-  N --> I[Inspector]
+  V --> I[Shared lower object details]
 ```
 
 Level is shared by all three views. **All** shows the complete model, while a
 specific level applies the former story filter. 3D and Plan also share the same
 Zones, Surfaces, and Openings visibility settings. Network exposes only Metric
-and Layout; it has no separate Scope or Advanced menu. Fit and Expand are icon
-controls inside the drawing area.
+and Layout; it has no separate Scope or Advanced menu. All three views use the
+same resizable lower panel for selected-object information. Fit and Expand are
+icon controls inside the drawing area.
 
 ## View roles
 
@@ -50,7 +51,7 @@ view changes it in the other.
 
 Use Network to inspect the authoritative zone-level thermal network. It
 aggregates connections between zone/space owners and their targets. Source
-boundaries remain available from the inspector. Spatial and network layouts
+boundaries remain available from the shared lower details panel. Spatial and network layouts
 are deterministic projections of the same connection records. Drag a zone or
 environment endpoint to adjust the current layout; connected routes update in
 place. Outdoor endpoints are compact directional points, while each Adiabatic
@@ -82,7 +83,7 @@ authoritative thermal relation.
 - **Gross area** is the canonical polygon area and includes openings.
 - **Multiplier** is reported separately so repeated model instances are not
   hidden inside the displayed area.
-- Opaque and opening contributions remain available as separate inspector
+- Opaque and opening contributions remain available as separate detail-panel
   variables when they are relevant to a selected source boundary.
 
 For a boundary, `opaque UA = opaque area × construction U-value` and each

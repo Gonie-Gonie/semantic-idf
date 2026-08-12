@@ -20,6 +20,7 @@ let topologySelectionRequest = 0;
 let thermalTopologyModule = null;
 let thermalTopologyModulePromise = null;
 let thermalTopologyRenderRequest = 0;
+let topologyDetailsRenderRequest = 0;
 let topologyPlanInteractionsBound = false;
 let topologyDetailInteractionsBound = false;
 let geometryLookupCache = null;
@@ -57,6 +58,7 @@ window.addEventListener("idfAnalyzer:documentChanged", () => {
   geometryLookupCache = null;
   topologyNavigationLookupCache = null;
   topologySelectionRequest += 1;
+  topologyDetailsRenderRequest += 1;
 });
 window.addEventListener("idfAnalyzer:semanticHoverChanged", (event) => {
   temporaryTopologyHover = topologyProjectionForSemanticSelection(event.detail?.hover, state.report?.geometry);
@@ -281,7 +283,7 @@ function renderEmptyTopology() {
   elements.topology3DCanvasHost.innerHTML = `<div class="empty">${t("topology.noGeometry")}</div>`;
   elements.topologyPlan.innerHTML = "";
   elements.thermalTopologyGraph.innerHTML = `<div class="empty">${t("topology.noConnections")}</div>`;
-  elements.thermalTopologyInspector.innerHTML = "";
+  elements.topologyDetails.removeAttribute("aria-labelledby");
   elements.topologyDetails.innerHTML = `<div class="empty">${t("topology.selectObject")}</div>`;
 }
 
@@ -322,7 +324,6 @@ function updateModeVisibility() {
   elements.topologySpatialControls.hidden = isNetwork;
   elements.thermalTopologyControls.hidden = !isNetwork;
   elements.topologyStoryControl.hidden = false;
-  elements.topologyViewport.classList.toggle("network-active", isNetwork);
   elements.topologyModeButtons.forEach((button) => {
     button.classList.toggle("active", button.dataset.topologyMode === state.topologyMode);
   });
@@ -338,19 +339,24 @@ function renderThermalTopologyLazy(geometry) {
       if (request !== thermalTopologyRenderRequest || state.topologyMode !== "thermal" || geometry !== state.report?.geometry) {
         return;
       }
-      module.renderThermalTopology(geometry, {
-        navigationAttributes: topologyNavigationAttributes,
-        selectTopologyEntity,
-        setTopologyMode,
-        revealThermalTargetInTopology,
-        selectionForTarget: topologySelectionForTarget,
-      });
+      module.renderThermalTopology(geometry, thermalTopologyHelpers());
     })
     .catch((error) => {
       if (request === thermalTopologyRenderRequest && state.topologyMode === "thermal") {
         elements.thermalTopologyGraph.innerHTML = `<div class="thermal-topology-shell-status">${escapeHTML(error?.message || String(error))}</div>`;
       }
     });
+}
+
+function thermalTopologyHelpers() {
+  return {
+    navigationAttributes: topologyNavigationAttributes,
+    selectTopologyEntity,
+    setTopologyMode,
+    revealThermalTargetInTopology,
+    selectionForTarget: topologySelectionForTarget,
+    renderTopologyDetails,
+  };
 }
 
 function loadThermalTopologyModule() {
@@ -838,12 +844,38 @@ function isHorizontalSurface(surface) {
 }
 
 function renderTopologyDetails(geometry = state.report?.geometry) {
+  const request = ++topologyDetailsRenderRequest;
   const entity = selectedGeometryEntity(geometry);
+  if (entity) {
+    renderGeometryTopologyDetails(geometry, entity);
+    return;
+  }
+  const selectedID = state.selectedTopologyEntityId || state.thermalTopologySelectedEntityId;
+  if (!geometry || !selectedID) {
+    elements.topologyDetails.removeAttribute("aria-labelledby");
+    elements.topologyDetails.innerHTML = `<div class="empty">${t("topology.selectObject")}</div>`;
+    return;
+  }
+  loadThermalTopologyModule()
+    .then((module) => {
+      if (request !== topologyDetailsRenderRequest || geometry !== state.report?.geometry) return;
+      module.renderThermalTopologyDetails(geometry, thermalTopologyHelpers());
+    })
+    .catch((error) => {
+      if (request !== topologyDetailsRenderRequest) return;
+      elements.topologyDetails.removeAttribute("aria-labelledby");
+      elements.topologyDetails.innerHTML = `<div class="empty">${escapeHTML(error?.message || String(error))}</div>`;
+    });
+}
+
+function renderGeometryTopologyDetails(geometry, entity) {
   if (!entity) {
+    elements.topologyDetails.removeAttribute("aria-labelledby");
     elements.topologyDetails.innerHTML = `<div class="empty">${t("topology.selectObject")}</div>`;
     return;
   }
   const relatedGroups = geometryRelatedGroups(geometry, entity);
+  elements.topologyDetails.setAttribute("aria-labelledby", "topologyDetailsHeading");
   elements.topologyDetails.innerHTML = `
     <div class="topology-detail-head navigable-row" ${topologyNavigationAttributes(entity.kind, entity.id, {
       objectIndex: entity.objectIndex,
@@ -851,7 +883,7 @@ function renderTopologyDetails(geometry = state.report?.geometry) {
       objectName: entity.title,
     })}>
       <div>
-        <h3>${escapeHTML(entity.title)}</h3>
+        <h3 id="topologyDetailsHeading">${escapeHTML(entity.title)}</h3>
         <span>${escapeHTML(entity.subtitle)}</span>
       </div>
       <span class="topology-sync-note">${state.topologySyncLocate ? t("topology.syncOn") : t("topology.syncOff")}</span>

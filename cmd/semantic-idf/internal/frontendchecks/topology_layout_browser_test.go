@@ -256,7 +256,7 @@ try {
 const thermalTopologyRendererHarnessHTML = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Thermal topology renderer harness</title></head>
 <body data-thermal-renderer-status="pending">
-<div id="thermalTopologyGraph" style="width:900px;height:600px"></div><aside id="thermalTopologyInspector"></aside>
+<div id="thermalTopologyGraph" style="width:900px;height:600px"></div><section id="topologyDetails"></section>
 <select id="thermalTopologyMetric"><option value="topology">topology</option><option value="area">area</option><option value="ua">ua</option><option value="qa">qa</option><option value="air">air</option></select>
 <select id="thermalTopologyLayout"><option value="spatial">spatial</option><option value="network">network</option></select>
 <pre id="result">pending</pre>
@@ -284,17 +284,23 @@ try {
   }};
   const state = stateModule.state;
   state.topologyMode = "thermal"; state.report = {geometry}; state.selectedTopologyStory = "all"; state.thermalTopologyMetric = "area"; state.thermalTopologySelectedEntityId = "thermal-connection:a:outdoors"; state.selectedTopologyEntityKind = "thermal_connection"; state.selectedTopologyEntityId = "thermal-connection:a:outdoors";
-  const helpers = { navigationAttributes: () => 'data-entity-id="test"', selectTopologyEntity: async () => true, setTopologyMode: () => {} };
+  const helpers = {
+    navigationAttributes: () => 'data-entity-id="test"',
+    selectTopologyEntity: async () => true,
+    setTopologyMode: () => {},
+    renderTopologyDetails: () => view.renderThermalTopologyDetails(geometry, helpers),
+  };
   view.renderThermalTopology(geometry, helpers);
+  helpers.renderTopologyDetails();
   const svg = Boolean(document.querySelector(".thermal-topology-svg"));
   const metricWidth = /--thermal-edge-width:(?!2\.00)/.test(document.querySelector('[data-thermal-target-id="thermal-connection:a:outdoors"] .thermal-edge').getAttribute("style"));
-  const tableHeaders = [...document.querySelectorAll("#thermalTopologyInspector .thermal-inspector-table thead th")].map((cell) => cell.textContent.trim());
-  const tableRows = new Map([...document.querySelectorAll("#thermalTopologyInspector .thermal-inspector-table tbody tr")].map((row) => {
+  const tableHeaders = [...document.querySelectorAll("#topologyDetails .thermal-detail-table thead th")].map((cell) => cell.textContent.trim());
+  const tableRows = new Map([...document.querySelectorAll("#topologyDetails .thermal-detail-table tbody tr")].map((row) => {
     const cells = [...row.querySelectorAll("th,td")].map((cell) => cell.textContent.trim());
     return [cells[0], {value:cells[1],unit:cells[2]}];
   }));
-  const sourceBoundary = document.querySelector('[data-thermal-inspector-kind="thermal_boundary"][data-thermal-inspector-id="thermal-boundary:surface:a"]');
-  const removedInspectorUI = !document.querySelector('[data-inspector-semantic],[data-inspector-source],[data-inspector-diagnostic],[data-inspector-mode],.thermal-inspector-actions');
+  const sourceBoundary = document.querySelector('[data-thermal-detail-kind="thermal_boundary"][data-thermal-detail-id="thermal-boundary:surface:a"]');
+  const removedInspectorUI = !document.querySelector('[data-inspector-semantic],[data-inspector-source],[data-inspector-diagnostic],[data-inspector-mode],.thermal-detail-actions');
   const inspector = tableHeaders.join() === "Variable,Value,Unit" && tableRows.get("Multiplier")?.value === "2" && tableRows.get("Gross area")?.value === "10" && tableRows.get("Total UA")?.value === "5.2" && Boolean(sourceBoundary) && removedInspectorUI;
   const targets = [...document.querySelectorAll(".thermal-edge-group[tabindex='0'], .thermal-node[tabindex='0']")];
   const accessibleTargets = targets.length === 6 && targets.every((target) => ["entity", "relation", "metric", "issues"].every((term) => target.getAttribute("aria-label").includes(term)));
@@ -305,7 +311,7 @@ try {
   zoneTarget.focus(); zoneTarget.dispatchEvent(new KeyboardEvent("keydown", {key:"Enter",bubbles:true}));
   const keyboardNode = state.thermalTopologySelectedEntityId === "zone:a";
   const oneHopFocus = document.querySelector('[data-thermal-node-id="zone:b"]')?.classList.contains("connected") && !document.querySelector('[data-thermal-node-id="zone:b"]')?.classList.contains("dimmed") && document.querySelector('[data-thermal-node-id="zone:c"]')?.classList.contains("dimmed") && document.querySelector('[data-thermal-edge-id="thermal-connection:a:b"]')?.classList.contains("connected");
-  const inspectorHeading = document.getElementById("thermalTopologyInspector").getAttribute("aria-labelledby") === "thermalTopologyInspectorHeading" && Boolean(document.getElementById("thermalTopologyInspectorHeading"));
+  const inspectorHeading = document.getElementById("topologyDetails").getAttribute("aria-labelledby") === "topologyDetailsHeading" && Boolean(document.getElementById("topologyDetailsHeading"));
   const patternLegend = document.querySelectorAll(".thermal-legend-line").length >= 4;
   document.querySelector(".thermal-edge-group").dispatchEvent(new KeyboardEvent("keydown", {key:"Enter",bubbles:true}));
   const zoneOnly = state.thermalTopologySelectedEntityKind === "thermal_connection" && !document.querySelector(".thermal-node.thermal_boundary") && !document.querySelector("[data-topology-back]") && !document.getElementById("thermalTopologyGraphLevel");
@@ -324,7 +330,7 @@ try {
 const thermalTopologyNodeDragHarnessHTML = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Thermal topology node drag harness</title></head>
 <body data-thermal-node-drag-status="pending">
-<div id="thermalTopologyGraph" style="width:900px;height:600px"></div><aside id="thermalTopologyInspector"></aside>
+<div id="thermalTopologyGraph" style="width:900px;height:600px"></div><section id="topologyDetails"></section>
 <select id="thermalTopologyMetric"><option value="topology">topology</option></select>
 <select id="thermalTopologyLayout"><option value="network">network</option></select>
 <pre id="result">pending</pre>

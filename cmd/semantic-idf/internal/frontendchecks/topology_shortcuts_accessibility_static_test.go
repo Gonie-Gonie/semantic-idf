@@ -40,14 +40,14 @@ func TestThermalTopologyGraphAccessibilityContract(t *testing.T) {
 		t.Fatal("interactive thermal topology graph must not flatten focusable nodes and edges into an image role")
 	}
 	view := readTestFile(t, "frontend/src/js/views/thermal-topology-view.js")
-	inspector := readTestFile(t, "frontend/src/js/views/thermal-topology-inspector.js")
+	details := readTestFile(t, "frontend/src/js/views/thermal-topology-details.js")
 	styles := readTestFile(t, "frontend/src/styles/topology.css")
 	for _, required := range []string{
 		`tabindex="0" role="button"`, "connectionAriaLabel", "relation node", "issues ${nodeIssues}",
-		"localeCompare", "thermalTopologyInspectorHeading", "aria-labelledby", "thermal-legend-line",
+		"localeCompare", "topologyDetailsHeading", "aria-labelledby", "thermal-legend-line",
 		"stroke-dasharray", ":focus-visible",
 	} {
-		if !strings.Contains(view+inspector+styles, required) {
+		if !strings.Contains(view+details+styles, required) {
 			t.Fatalf("thermal topology accessibility contract is missing %q", required)
 		}
 	}

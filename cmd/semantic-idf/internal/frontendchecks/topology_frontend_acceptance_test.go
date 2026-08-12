@@ -13,7 +13,11 @@ func TestTOPO260ViewSwitchingAcceptance(t *testing.T) {
 			t.Fatalf("view switching contract missing %q", required)
 		}
 	}
-	for _, forbidden := range []string{"selectedGeometryId =", "selectedGeometryKind =", "AnalyzeInput", "api."} {
+	for _, forbidden := range []string{
+		"selectedGeometryId =", "selectedGeometryKind =", "AnalyzeInput", "api.",
+		"selectedTopologyEntityId =", "selectedTopologyEntityKind =",
+		"thermalTopologySelectedEntityId =", "thermalTopologySelectedEntityKind =",
+	} {
 		if strings.Contains(modeSetter, forbidden) {
 			t.Fatalf("3D/Plan/Thermal switch must preserve selection and avoid analysis; found %q", forbidden)
 		}
@@ -110,16 +114,16 @@ func TestTOPO262NavigationAcceptance(t *testing.T) {
 			t.Fatalf("cross-view navigation acceptance missing %q", required)
 		}
 	}
-	inspector := readTestFile(t, "frontend/src/js/views/thermal-topology-inspector.js")
+	details := readTestFile(t, "frontend/src/js/views/thermal-topology-details.js")
 	for _, required := range []string{
 		`renderVariableTable`,
-		`thermal-inspector-table`,
-		`data-thermal-inspector-kind`,
+		`thermal-detail-table`,
+		`data-thermal-detail-kind`,
 		`activeHelpers.selectTopologyEntity?.`,
 		`"Multiplier"`,
 	} {
-		if !strings.Contains(inspector, required) {
-			t.Fatalf("inspector navigation acceptance missing %q", required)
+		if !strings.Contains(details, required) {
+			t.Fatalf("details navigation acceptance missing %q", required)
 		}
 	}
 	for _, removed := range []string{
@@ -133,11 +137,11 @@ func TestTOPO262NavigationAcceptance(t *testing.T) {
 		`renderZoneOutputSummary`,
 		`Output requests`,
 		`Diagnostics`,
-		`inspectorSection("Actions"`,
-		`thermal-inspector-actions`,
+		`detailSection("Actions"`,
+		`thermal-detail-actions`,
 	} {
-		if strings.Contains(inspector, removed) {
-			t.Fatalf("removed inspector action remains %q", removed)
+		if strings.Contains(details, removed) {
+			t.Fatalf("removed detail action remains %q", removed)
 		}
 	}
 	selection := readTestFile(t, "frontend/src/js/selection-controller.js")
@@ -175,9 +179,9 @@ func TestTOPO263NetworkAcceptance(t *testing.T) {
 
 func TestTOPO264SimulationUIRemoved(t *testing.T) {
 	view := readTestFile(t, "frontend/src/js/views/thermal-topology-view.js")
-	inspector := readTestFile(t, "frontend/src/js/views/thermal-topology-inspector.js")
+	details := readTestFile(t, "frontend/src/js/views/thermal-topology-details.js")
 	for _, removed := range []string{"simulated_heat", "thermalTopologySimulationPeriod", "metric-gain", "metric-loss", "Heat-flow ledger", "data-inspector-output-source"} {
-		if strings.Contains(view, removed) || strings.Contains(inspector, removed) {
+		if strings.Contains(view, removed) || strings.Contains(details, removed) {
 			t.Fatalf("removed simulation topology UI remains: %q", removed)
 		}
 	}

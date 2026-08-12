@@ -388,7 +388,6 @@ export const elements = {
   topologyPlan: document.querySelector("#topologyPlan"),
   thermalTopologyView: document.querySelector("#thermalTopologyView"),
   thermalTopologyGraph: document.querySelector("#thermalTopologyGraph"),
-  thermalTopologyInspector: document.querySelector("#thermalTopologyInspector"),
   topologyDetails: document.querySelector("#topologyDetails"),
   topologyModeButtons: document.querySelectorAll("[data-topology-mode]"),
   topologyStoryControl: document.querySelector("#topologyStoryControl"),
