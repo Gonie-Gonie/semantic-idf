@@ -13,9 +13,9 @@
         <h1 data-i18n="action.tools">Tools</h1>
       </div>
       <div class="guide-header-actions">
-        <a class="toolbar-link" href="./index.html" data-i18n="action.backToApp">Back to App</a>
-        <a class="toolbar-link" href="./guide.html" data-i18n="action.guide">Guide</a>
-        <a class="toolbar-link" href="./settings.html" data-i18n="action.settings">Settings</a>
+        <a class="toolbar-link" href="./index.html" data-app-return data-i18n="action.backToApp">Back to App</a>
+        <a class="toolbar-link" href="./guide.html" data-app-auxiliary data-i18n="action.guide">Guide</a>
+        <a class="toolbar-link" href="./settings.html" data-app-auxiliary data-i18n="action.settings">Settings</a>
       </div>
     </header>
 
@@ -242,6 +242,7 @@
       </section>
     </main>
 
+    <script type="module" src="./js/auxiliary-navigation.js"></script>
     <script type="module" src="./js/tools.js"></script>
   </body>
 </html>

@@ -14,6 +14,7 @@ import { captureViewSnapshot } from "./view-history.js";
 import { captureWorkspaceLayout } from "./layout.js";
 
 export const currentDocumentStorageKey = "idfAnalyzer.currentDocument";
+const auxiliaryNavigationStorageKey = "idfAnalyzer.auxiliaryNavigation";
 
 const workspaceSnapshotVersion = 3;
 
@@ -579,25 +580,32 @@ export async function exportMetrics(format) {
   }
 }
 
-export function openGuide() {
-  window.location.assign("./guide.html");
+export async function openGuide() {
+  await saveWorkspaceSnapshot();
+  openAuxiliaryPage("./guide.html");
 }
 
 export async function openTools() {
   await saveWorkspaceSnapshot();
-  window.location.assign("./tools.html");
+  openAuxiliaryPage("./tools.html");
 }
 
 export async function openSettings() {
   await saveWorkspaceSnapshot();
-  window.location.assign("./settings.html");
+  openAuxiliaryPage("./settings.html");
+}
+
+function openAuxiliaryPage(path) {
+  try {
+    window.sessionStorage.setItem(auxiliaryNavigationStorageKey, "main");
+  } catch {
+    // Navigation still works when browser storage is unavailable.
+  }
+  window.location.assign(path);
 }
 
 export async function saveWorkspaceSnapshot() {
   const text = elements.idfInput.value || "";
-  if (!text.trim()) {
-    return;
-  }
   const analysisKey = state.analysisKey || state.lastAnalyzedKey || (await computeAnalysisKey(text));
   const viewSnapshot = captureViewSnapshot();
   const snapshot = {

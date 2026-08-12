@@ -13,9 +13,9 @@
         <h1 data-i18n="guide.title">User Guide</h1>
       </div>
       <div class="guide-header-actions">
-        <a class="toolbar-link" href="./index.html" data-i18n="action.backToApp">Back to App</a>
-        <a class="toolbar-link" href="./tools.html" data-i18n="action.tools">Tools</a>
-        <a class="toolbar-link" href="./settings.html" data-i18n="action.settings">Settings</a>
+        <a class="toolbar-link" href="./index.html" data-app-return data-i18n="action.backToApp">Back to App</a>
+        <a class="toolbar-link" href="./tools.html" data-app-auxiliary data-i18n="action.tools">Tools</a>
+        <a class="toolbar-link" href="./settings.html" data-app-auxiliary data-i18n="action.settings">Settings</a>
       </div>
     </header>
 
@@ -214,6 +214,7 @@ type model.idf | semantic-idf cli convert -to json -o - -</code></pre>
         </section>
       </section>
     </main>
+    <script type="module" src="./js/auxiliary-navigation.js"></script>
     <script type="module">
       import { renderAppInfo } from "./js/app-info.js";
       import { loadAndApplyAppSettings } from "./js/settings-client.js";

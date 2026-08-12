@@ -37,6 +37,7 @@ if (-not (Test-Path $entry)) {
 $modules = @(
     "actions.js",
     "app-info.js",
+    "auxiliary-navigation.js",
     "command-palette.js",
     "topology-loader.js",
     "layout.js",

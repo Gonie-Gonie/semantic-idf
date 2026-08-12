@@ -199,9 +199,9 @@ func TestFrontendTopologyLookupAndDelegationPerformanceContracts(t *testing.T) {
 func TestFrontendNavigationCacheRestoreContract(t *testing.T) {
 	actions := readTestFile(t, "frontend/src/js/actions.js")
 	for _, term := range []string{
+		"export async function openGuide()",
 		"export async function openTools()",
 		"export async function openSettings()",
-		"await saveWorkspaceSnapshot()",
 		"analysisKey,",
 		"window.sessionStorage.setItem(currentDocumentStorageKey, JSON.stringify(snapshot))",
 		"export function applyCachedAnalysisResult",
@@ -210,9 +210,36 @@ func TestFrontendNavigationCacheRestoreContract(t *testing.T) {
 			t.Fatalf("workspace snapshot contract missing %q", term)
 		}
 	}
+	auxiliaryNavigations := []struct {
+		name        string
+		start       string
+		end         string
+		destination string
+	}{
+		{name: "Guide", start: "export async function openGuide()", end: "export async function openTools()", destination: `openAuxiliaryPage("./guide.html")`},
+		{name: "Tools", start: "export async function openTools()", end: "export async function openSettings()", destination: `openAuxiliaryPage("./tools.html")`},
+		{name: "Settings", start: "export async function openSettings()", end: "function openAuxiliaryPage", destination: `openAuxiliaryPage("./settings.html")`},
+	}
+	for _, navigation := range auxiliaryNavigations {
+		body := sliceBetween(actions, navigation.start, navigation.end)
+		saveIndex := strings.Index(body, "await saveWorkspaceSnapshot()")
+		assignIndex := strings.Index(body, navigation.destination)
+		if saveIndex < 0 || assignIndex < 0 || saveIndex > assignIndex {
+			t.Errorf("%s navigation must await the workspace snapshot before leaving main", navigation.name)
+		}
+	}
 	snapshotBody := sliceBetween(actions, "export async function saveWorkspaceSnapshot()", "export function applyCachedAnalysisResult")
 	if strings.Contains(snapshotBody, "report") {
 		t.Fatalf("workspace snapshot should not store full report payload")
+	}
+	if strings.Contains(snapshotBody, "if (!text.trim())") {
+		t.Fatal("workspace snapshot must preserve an intentionally empty main document")
+	}
+	auxiliaryBody := sliceBetween(actions, "function openAuxiliaryPage", "export async function saveWorkspaceSnapshot")
+	for _, required := range []string{`window.sessionStorage.setItem(auxiliaryNavigationStorageKey, "main")`, "window.location.assign(path)"} {
+		if !strings.Contains(auxiliaryBody, required) {
+			t.Errorf("auxiliary navigation history fallback is missing %q", required)
+		}
 	}
 
 	main := readTestFile(t, "frontend/src/js/main.js")
@@ -229,6 +256,25 @@ func TestFrontendNavigationCacheRestoreContract(t *testing.T) {
 	}
 	if strings.Index(restoreBody, "api.GetCachedAnalysis(restoredDocument.analysisKey)") > strings.Index(restoreBody, "scheduleAnalyzeAfterPaint({") {
 		t.Fatalf("restore should check backend cache before scheduling analysis")
+	}
+	restoreDocumentBody := sliceBetween(main, "function restoreCurrentDocument()", "function applyRuntimeSettings")
+	if !strings.Contains(restoreDocumentBody, "hasCurrentSnapshot") || strings.Contains(restoreDocumentBody, "documentState.text.trim() ?") {
+		t.Fatal("current-schema snapshots must restore even when the main editor is intentionally empty")
+	}
+
+	auxiliary := readTestFile(t, "frontend/src/js/auxiliary-navigation.js")
+	for _, required := range []string{"a[data-app-return]", "a[data-app-auxiliary]", "window.history.back()", "window.location.replace(link.href)"} {
+		if !strings.Contains(auxiliary, required) {
+			t.Errorf("live Main history preservation is missing %q", required)
+		}
+	}
+	for _, page := range []string{"frontend/src/tools.html", "frontend/src/guide.html", "frontend/src/settings.html"} {
+		markup := readTestFile(t, page)
+		for _, required := range []string{"data-app-return", "data-app-auxiliary", `src="./js/auxiliary-navigation.js"`} {
+			if !strings.Contains(markup, required) {
+				t.Errorf("%s is missing auxiliary navigation contract %q", page, required)
+			}
+		}
 	}
 }
 

@@ -112,4 +112,31 @@ func TestDiagnoseLivesInToolsAndUsesCurrentDocumentSnapshot(t *testing.T) {
 			t.Fatalf("Tools Diagnose behavior is missing %q", required)
 		}
 	}
+	restoreBody := sliceBetween(toolsJS, "function restoreDiagnoseDocument()", "function setDiagnoseDocument")
+	if !strings.Contains(restoreBody, "setDiagnoseDocument(saved, { persist: false })") {
+		t.Fatal("Tools Diagnose hydration must preserve the main workspace snapshot and analysis cache key")
+	}
+	setDocumentBody := sliceBetween(toolsJS, "function setDiagnoseDocument", "async function selectDiagnoseInput")
+	for _, required := range []string{"persist = true", "replaceWorkspace = false", "if (persist)", "persistDiagnoseDocument({ replaceWorkspace })"} {
+		if !strings.Contains(setDocumentBody, required) {
+			t.Errorf("Tools Diagnose document changes are missing persistence contract %q", required)
+		}
+	}
+	selectBody := sliceBetween(toolsJS, "async function selectDiagnoseInput", "async function refreshDiagnose")
+	for _, required := range []string{`typeof result?.text === "string"`, `setDiagnoseDocument(result, { replaceWorkspace: true })`, `setDiagnoseDocument({ text: await file.text(), filename: file.name, path: "" }, { replaceWorkspace: true })`} {
+		if !strings.Contains(selectBody, required) {
+			t.Errorf("Tools Diagnose input replacement is missing %q", required)
+		}
+	}
+	persistBody := sliceBetween(toolsJS, "function persistDiagnoseDocument", "function initializeDiagnoseSelection")
+	for _, required := range []string{`analysisKey: ""`, `textHash: ""`, `analysisStage: "idle"`, "geometryReady: false"} {
+		if !strings.Contains(persistBody, required) {
+			t.Errorf("Tools Diagnose edits must invalidate stale analysis state via %q", required)
+		}
+	}
+	for _, required := range []string{"if (replaceWorkspace)", "next.loadedText = state.diagnose.text", "next.savedText = state.diagnose.text", "next.globalSelection = null", "next.viewSnapshot = null", "next.panelContexts = {}"} {
+		if !strings.Contains(persistBody, required) {
+			t.Errorf("Tools Diagnose replacement must clear stale main document context via %q", required)
+		}
+	}
 }

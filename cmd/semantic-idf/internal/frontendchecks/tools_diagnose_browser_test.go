@@ -52,7 +52,16 @@ func TestToolsDiagnoseBrowserHarness(t *testing.T) {
 	if !strings.Contains(document, `data-tools-diagnose-status="passed"`) {
 		t.Fatalf("Tools Diagnose browser harness did not pass:\n%s", document)
 	}
-	for _, signal := range []string{`"diagnostic":true`, `"candidate":true`, `"preview":true`, `"snapshotApplied":true`} {
+	for _, signal := range []string{
+		`"diagnostic":true`,
+		`"candidate":true`,
+		`"preview":true`,
+		`"hydrationPreserved":true`,
+		`"snapshotApplied":true`,
+		`"analysisInvalidated":true`,
+		`"workspaceContextRetained":true`,
+		`"replacementReset":true`,
+	} {
 		if !strings.Contains(document, signal) {
 			t.Fatalf("Tools Diagnose result is missing %s:\n%s", signal, document)
 		}
@@ -61,12 +70,42 @@ func TestToolsDiagnoseBrowserHarness(t *testing.T) {
 
 const toolsDiagnoseHarnessSetup = `<script>
 document.body.dataset.toolsDiagnoseStatus = "pending";
-sessionStorage.setItem("idfAnalyzer.currentDocument", JSON.stringify({ text: "Version, 23.1;\n", filename: "current.idf", path: "C:/models/current.idf" }));
+const mainWorkspaceSnapshot = {
+  schemaVersion: 3,
+  text: "Version, 23.1;\n",
+  textHash: "analysis-key-23",
+  path: "C:/models/current.idf",
+  filename: "current.idf",
+  loadedText: "Version, 22.2;\n",
+  savedText: "Version, 22.2;\n",
+  analysisKey: "analysis-key-23",
+  activeResultTab: "profile",
+  activeInputView: "json",
+  analysisStage: "complete",
+  geometryReady: true,
+  globalSelection: { entityId: "zone-a", occurrenceId: "zone-a-use", originView: "profile" },
+  viewSnapshot: {
+    inputView: "json",
+    resultTab: "profile",
+    rawSelectionStart: 4,
+    rawSelectionEnd: 9,
+    rawScrollTop: 72,
+    semantic: { filter: "Zone A", scrollTop: 35 },
+    panelContexts: { profile: { selectedProfileKey: "profile-a" } }
+  },
+  panelContexts: { profile: { selectedProfileKey: "profile-a" } },
+  layout: { editorWidth: "37%", rawHeight: "42%" },
+  semanticLinkMode: false,
+  semanticFollowSelection: true,
+  capturedAt: "2026-08-12T00:00:00.000Z"
+};
+sessionStorage.setItem("idfAnalyzer.currentDocument", JSON.stringify(mainWorkspaceSnapshot));
 const candidate = { key: "unused-1", ruleId: "unused_schedules", objectType: "Schedule:Compact", objectName: "Unused Schedule", reason: "Unused", risk: "safe" };
 window.go = { main: { App: {
   GetSettings: async () => ({ settings: { appearance: { language: "en", theme: "system" } } }),
   GetAppInfo: async () => ({ name: "SemanticIDF", version: "test", title: "SemanticIDF test" }),
   GetSimulationEnvironment: async () => ({ weatherFolders: [], defaultWorkerCount: 1 }),
+  OpenInputFile: async () => ({ canceled: false, text: "Version, 25.1;\n", filename: "replacement.idf", path: "C:/models/replacement.idf" }),
   AnalyzeInputDiagnosticsText: async () => ([{ severity: "error", category: "Reference", message: "Broken reference", code: "E_TEST", objectType: "Zone", objectName: "Zone A" }]),
   ScanCleanupText: async () => ({ scan: { rules: [{ id: "unused_schedules", name: "Unused schedules", description: "Remove unused schedules", group: "Schedules", default: true, available: true }], candidates: [candidate] } }),
   PreviewCleanupText: async () => ({ text: "Version, 24.2;\n", removedCandidates: [candidate], removedCount: 1, objectCount: 1 }),
@@ -88,6 +127,8 @@ const toolsDiagnoseHarnessAssertions = `<script>
   });
   (async () => {
     await waitFor(() => document.querySelector("#diagnoseList")?.textContent.includes("Broken reference"));
+    const hydratedSnapshot = JSON.parse(sessionStorage.getItem("idfAnalyzer.currentDocument"));
+    const hydrationPreserved = JSON.stringify(hydratedSnapshot) === JSON.stringify(mainWorkspaceSnapshot);
     const diagnostic = document.querySelector("#diagnoseList").textContent.includes("E_TEST");
     const candidateVisible = document.querySelector("#diagnoseCandidates").textContent.includes("Unused Schedule");
     document.querySelector("#diagnosePreview").click();
@@ -95,9 +136,39 @@ const toolsDiagnoseHarnessAssertions = `<script>
     const preview = document.querySelector("#diagnosePreviewPanel").textContent.includes("1 removals");
     document.querySelector("#diagnoseApply").click();
     await waitFor(() => JSON.parse(sessionStorage.getItem("idfAnalyzer.currentDocument")).text.includes("24.2"));
-    const snapshotApplied = JSON.parse(sessionStorage.getItem("idfAnalyzer.currentDocument")).text === "Version, 24.2;\n";
-    result.textContent = JSON.stringify({ diagnostic, candidate: candidateVisible, preview, snapshotApplied });
-    document.body.dataset.toolsDiagnoseStatus = diagnostic && candidateVisible && preview && snapshotApplied ? "passed" : "failed";
+    const appliedSnapshot = JSON.parse(sessionStorage.getItem("idfAnalyzer.currentDocument"));
+    const snapshotApplied = appliedSnapshot.text === "Version, 24.2;\n";
+    const analysisInvalidated = appliedSnapshot.analysisKey === ""
+      && appliedSnapshot.textHash === ""
+      && appliedSnapshot.analysisStage === "idle"
+      && appliedSnapshot.geometryReady === false;
+    const workspaceContextRetained = appliedSnapshot.activeResultTab === "profile"
+      && appliedSnapshot.activeInputView === "json"
+      && appliedSnapshot.viewSnapshot?.rawSelectionStart === 4
+      && appliedSnapshot.viewSnapshot?.panelContexts?.profile?.selectedProfileKey === "profile-a"
+      && appliedSnapshot.layout?.editorWidth === "37%"
+      && appliedSnapshot.semanticLinkMode === false;
+    document.querySelector("#diagnoseSelectInput").click();
+    await waitFor(() => JSON.parse(sessionStorage.getItem("idfAnalyzer.currentDocument")).filename === "replacement.idf");
+    const replacementSnapshot = JSON.parse(sessionStorage.getItem("idfAnalyzer.currentDocument"));
+    const replacementReset = replacementSnapshot.text === "Version, 25.1;\n"
+      && replacementSnapshot.loadedText === replacementSnapshot.text
+      && replacementSnapshot.savedText === replacementSnapshot.text
+      && replacementSnapshot.globalSelection === null
+      && replacementSnapshot.viewSnapshot === null
+      && Object.keys(replacementSnapshot.panelContexts || {}).length === 0;
+    result.textContent = JSON.stringify({
+      diagnostic,
+      candidate: candidateVisible,
+      preview,
+      hydrationPreserved,
+      snapshotApplied,
+      analysisInvalidated,
+      workspaceContextRetained,
+      replacementReset
+    });
+    document.body.dataset.toolsDiagnoseStatus = diagnostic && candidateVisible && preview
+      && hydrationPreserved && snapshotApplied && analysisInvalidated && workspaceContextRetained && replacementReset ? "passed" : "failed";
   })().catch((error) => {
     result.textContent = error.stack || String(error);
     document.body.dataset.toolsDiagnoseStatus = "failed";

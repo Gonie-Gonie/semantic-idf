@@ -727,7 +727,7 @@ function restoreDiagnoseDocument() {
   try {
     const saved = JSON.parse(window.sessionStorage.getItem(CURRENT_DOCUMENT_STORAGE_KEY) || "null");
     if (typeof saved?.text === "string" && saved.text.trim()) {
-      setDiagnoseDocument(saved);
+      setDiagnoseDocument(saved, { persist: false });
       return true;
     }
   } catch {
@@ -737,7 +737,7 @@ function restoreDiagnoseDocument() {
   return false;
 }
 
-function setDiagnoseDocument(documentState = {}) {
+function setDiagnoseDocument(documentState = {}, { persist = true, replaceWorkspace = false } = {}) {
   state.diagnose.text = String(documentState.text || "");
   state.diagnose.path = String(documentState.path || "");
   state.diagnose.filename = String(documentState.filename || "model.idf");
@@ -750,7 +750,9 @@ function setDiagnoseDocument(documentState = {}) {
   elements.diagnoseCandidateFilter.value = "";
   elements.diagnoseFilename.textContent = state.diagnose.filename || t("common.inputFile", {}, "Input file");
   elements.diagnoseFilename.title = state.diagnose.path;
-  persistDiagnoseDocument();
+  if (persist) {
+    persistDiagnoseDocument({ replaceWorkspace });
+  }
   refreshDiagnose();
 }
 
@@ -758,8 +760,8 @@ async function selectDiagnoseInput() {
   const api = await waitForAppAPI("OpenInputFile");
   if (api) {
     const result = await api.OpenInputFile();
-    if (!result?.canceled && result?.text) {
-      setDiagnoseDocument(result);
+    if (!result?.canceled && typeof result?.text === "string") {
+      setDiagnoseDocument(result, { replaceWorkspace: true });
     }
     return;
   }
@@ -771,7 +773,7 @@ async function loadDiagnoseBrowserFile(event) {
   if (!file) {
     return;
   }
-  setDiagnoseDocument({ text: await file.text(), filename: file.name, path: "" });
+  setDiagnoseDocument({ text: await file.text(), filename: file.name, path: "" }, { replaceWorkspace: true });
   event.target.value = "";
 }
 
@@ -890,11 +892,12 @@ async function saveDiagnoseCopy() {
   }
 }
 
-function persistDiagnoseDocument() {
+function persistDiagnoseDocument({ replaceWorkspace = false } = {}) {
   try {
     const previous = JSON.parse(window.sessionStorage.getItem(CURRENT_DOCUMENT_STORAGE_KEY) || "{}") || {};
-    window.sessionStorage.setItem(CURRENT_DOCUMENT_STORAGE_KEY, JSON.stringify({
+    const next = {
       ...previous,
+      schemaVersion: Number(previous.schemaVersion) || 3,
       text: state.diagnose.text,
       path: state.diagnose.path,
       filename: state.diagnose.filename,
@@ -903,7 +906,16 @@ function persistDiagnoseDocument() {
       analysisStage: "idle",
       geometryReady: false,
       capturedAt: new Date().toISOString(),
-    }));
+    };
+    if (replaceWorkspace) {
+      next.loadedText = state.diagnose.text;
+      next.savedText = state.diagnose.text;
+      next.globalSelection = null;
+      next.semanticOccurrenceId = "";
+      next.viewSnapshot = null;
+      next.panelContexts = {};
+    }
+    window.sessionStorage.setItem(CURRENT_DOCUMENT_STORAGE_KEY, JSON.stringify(next));
   } catch {
     // Continue to support analysis even when browser storage is unavailable.
   }

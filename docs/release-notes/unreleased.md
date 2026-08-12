@@ -123,6 +123,10 @@ The release script infers bump size from these sections:
 
 ## Fixed
 
+- Preserved the live Main workspace while moving through Tools, Guide, and
+  Settings. Auxiliary-page hydration no longer invalidates the analysis cache,
+  empty editor snapshots remain restorable, and selecting a different Diagnose
+  input resets only document-specific context.
 - Corrected Metrics floor-area totals to honor each Zone's Part of Total Floor
   Area flag, and transformed relative surface vertices through the Building and
   Zone coordinate systems before calculating footprint bounds and long/short

@@ -85,6 +85,21 @@ import { initializeKeyboardShortcuts } from "./shortcuts.js";
 
 loadAndApplyAppSettings().then((result) => applyRuntimeSettings(result.settings));
 
+function clearAuxiliaryNavigationMarker() {
+  try {
+    window.sessionStorage.removeItem("idfAnalyzer.auxiliaryNavigation");
+  } catch {
+    // Main remains usable when browser storage is unavailable.
+  }
+}
+
+clearAuxiliaryNavigationMarker();
+window.addEventListener("pageshow", (event) => {
+  if (event.persisted) {
+    clearAuxiliaryNavigationMarker();
+  }
+});
+
 function updateSemanticRevealIndicator(selection = state.globalSelection) {
   if (!elements.semanticRevealIndicator) {
     return;
@@ -873,7 +888,9 @@ function restoreCurrentDocument() {
       return null;
     }
     const documentState = JSON.parse(raw);
-    return typeof documentState?.text === "string" && documentState.text.trim() ? documentState : null;
+    const hasCurrentSnapshot = Number(documentState?.schemaVersion) >= 3;
+    const hasLegacyDocument = typeof documentState?.text === "string" && Boolean(documentState.text.trim());
+    return typeof documentState?.text === "string" && (hasCurrentSnapshot || hasLegacyDocument) ? documentState : null;
   } catch {
     return null;
   }
