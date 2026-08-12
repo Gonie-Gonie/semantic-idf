@@ -5,7 +5,6 @@ import {
   elements,
   normalizeThermalTopologyLayout,
   normalizeThermalTopologyMetric,
-  normalizeThermalTopologyScope,
   resetThermalTopologyDocumentState,
   setStatus,
   state,
@@ -261,36 +260,24 @@ elements.topologyStorySelect.addEventListener("change", () => setTopologyStory(e
 elements.thermalTopologyMetric.addEventListener("change", () => {
   updateThermalTopologySetting("thermalTopologyMetric", normalizeThermalTopologyMetric(elements.thermalTopologyMetric.value));
 });
-elements.thermalTopologyScope.addEventListener("change", () => {
-  updateThermalTopologySetting("thermalTopologyScope", normalizeThermalTopologyScope(elements.thermalTopologyScope.value));
-});
 elements.thermalTopologyLayout.addEventListener("change", () => {
   updateThermalTopologySetting("thermalTopologyLayout", normalizeThermalTopologyLayout(elements.thermalTopologyLayout.value));
-});
-elements.thermalTopologyShowAirCoupling.addEventListener("change", () => {
-  updateThermalTopologySetting("thermalTopologyShowAirCoupling", elements.thermalTopologyShowAirCoupling.checked);
-});
-elements.thermalTopologyExportJSON.addEventListener("click", () => {
-  window.dispatchEvent(new CustomEvent("idfAnalyzer:thermalTopologyExport"));
 });
 elements.topologyFitButton.addEventListener("click", () => void fitTopologyView());
 elements.topologySyncLocate.addEventListener("change", () => {
   state.topologySyncLocate = elements.topologySyncLocate.checked;
   renderTopology();
 });
-bindTopologyVisibilityControl(elements.topology3DShowZones, "topology3DVisibility", "zones");
-bindTopologyVisibilityControl(elements.topology3DShowSurfaces, "topology3DVisibility", "surfaces");
-bindTopologyVisibilityControl(elements.topology3DShowOpenings, "topology3DVisibility", "openings");
-bindTopologyVisibilityControl(elements.topologyPlanShowZones, "topologyPlanVisibility", "zones");
-bindTopologyVisibilityControl(elements.topologyPlanShowBoundaries, "topologyPlanVisibility", "boundaries");
-bindTopologyVisibilityControl(elements.topologyPlanShowOpenings, "topologyPlanVisibility", "openings");
+bindTopologyVisibilityControl(elements.topologyShowZones, "zones");
+bindTopologyVisibilityControl(elements.topologyShowSurfaces, "surfaces");
+bindTopologyVisibilityControl(elements.topologyShowOpenings, "openings");
 elements.hvacExpandButton.addEventListener("click", () => toggleExpandedPane("hvac"));
 elements.topologyExpandButton.addEventListener("click", () => toggleExpandedPane("topology"));
 
-function bindTopologyVisibilityControl(control, stateKey, optionKey) {
+function bindTopologyVisibilityControl(control, optionKey) {
   control.addEventListener("change", () => {
-    state[stateKey] = {
-      ...(state[stateKey] || {}),
+    state.topologyVisibility = {
+      ...(state.topologyVisibility || {}),
       [optionKey]: control.checked,
     };
     renderTopology();
@@ -772,7 +759,6 @@ initializeKeyboardShortcuts({
   setTopologyMode: activateTopologyModeShortcut,
   fitTopology: activateTopologyFitShortcut,
   setTopologyMetric: (metric) => activateThermalTopologySettingShortcut("thermalTopologyMetric", normalizeThermalTopologyMetric(metric)),
-  setTopologyNeighbors: () => activateThermalTopologySettingShortcut("thermalTopologyScope", "neighbors"),
 });
 renderEmpty();
 updateDocumentActions();

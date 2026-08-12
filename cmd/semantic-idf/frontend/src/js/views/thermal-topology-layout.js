@@ -1,4 +1,4 @@
-import { normalizeThermalTopologyLayout, normalizeThermalTopologyScope } from "../state.js";
+import { normalizeThermalTopologyLayout } from "../state.js";
 import { thermalTopologyObservationID } from "../thermal-topology-targets.js";
 
 export const THERMAL_NODE_WIDTH = 148;
@@ -9,8 +9,6 @@ const STORY_LANE_GAP = 150;
 
 export function thermalTopologyLayoutCacheKey(geometry, options = {}, viewport = {}) {
   const topology = geometry?.topology || {};
-  const scope = normalizeThermalTopologyScope(options.scope);
-  const selectionAffectsScope = scope === "selection" || scope === "neighbors";
   const topologyHash = topology.sourceModelHash || [
     topology.schema || "thermal-topology",
     ...(topology.nodes || []).map((node) => node.id),
@@ -19,11 +17,8 @@ export function thermalTopologyLayoutCacheKey(geometry, options = {}, viewport =
   return [
     topologyHash,
     normalizeThermalTopologyLayout(options.layout),
-    scope,
     options.metric || "topology",
     options.storyIndex ?? "all",
-    selectionAffectsScope ? options.selectedEntityId || "" : "",
-    selectionAffectsScope ? options.selectedEntityKind || "" : "",
     Boolean(options.showAirCoupling),
     Math.round((Number(viewport.width) || 900) / 50) * 50,
     Math.round((Number(viewport.height) || 600) / 50) * 50,
@@ -35,7 +30,7 @@ export function createThermalTopologyLayoutModel(geometry, options = {}) {
   const base = {
     schema: topology.schema || "",
     layout: normalizeThermalTopologyLayout(options.layout),
-    scope: normalizeThermalTopologyScope(options.scope),
+    storyIndex: options.storyIndex ?? "all",
     metric: String(options.metric || "topology"),
     nodes: [...(topology.nodes || [])],
     connections: (topology.connections || []).filter((connection) => options.showAirCoupling || connection.relationKind !== "air_coupling"),
@@ -48,7 +43,7 @@ export function createThermalTopologyLayoutModel(geometry, options = {}) {
   if (base.metric === "qa") {
     base.connections.push(...qaObservationConnections(topology, base.boundaries));
   }
-  const scoped = applyThermalTopologyScope(base, options);
+  const scoped = applyThermalTopologyLevel(base, options.storyIndex);
   const projected = projectAdiabaticBoundaries(scoped);
   return {
     ...projected,
@@ -105,7 +100,7 @@ export function computeSpatialLayout(model, viewport = {}) {
   const maxX = Math.max(...xValues, 1);
   const minY = Math.min(...yValues, 0);
   const maxY = Math.max(...yValues, 1);
-  const laneHeight = model.scope === "story" || stories.length <= 1
+  const laneHeight = model.storyIndex !== "all" || stories.length <= 1
     ? height - LAYOUT_PADDING * 2
     : Math.max(STORY_LANE_GAP, (height - LAYOUT_PADDING * 2) / Math.max(stories.length, 1));
   const positions = {};
@@ -116,7 +111,7 @@ export function computeSpatialLayout(model, viewport = {}) {
       const centroid = node.centroid || {};
       const normalizedX = normalizeRange(Number(centroid.x), minX, maxX, (index + 1) / (internal.length + 1));
       const normalizedY = normalizeRange(Number(centroid.y), minY, maxY, ((index * 7) % Math.max(1, internal.length)) / Math.max(1, internal.length));
-      const yStart = model.scope === "story" || stories.length <= 1 ? LAYOUT_PADDING : LAYOUT_PADDING + storyLane * laneHeight;
+      const yStart = model.storyIndex !== "all" || stories.length <= 1 ? LAYOUT_PADDING : LAYOUT_PADDING + storyLane * laneHeight;
       positions[node.id] = {
         x: LAYOUT_PADDING + normalizedX * Math.max(1, width - LAYOUT_PADDING * 2),
         y: yStart + (1 - normalizedY) * Math.max(1, laneHeight - THERMAL_NODE_HEIGHT),
@@ -241,42 +236,31 @@ function routeAdiabaticStub(connection, source, parallelIndex, sourceNode) {
   };
 }
 
-export function applyThermalTopologyScope(model, options = {}) {
-  const scope = normalizeThermalTopologyScope(options.scope);
-  if (scope === "building") {
+export function applyThermalTopologyLevel(model, storyIndex = "all") {
+  if (storyIndex === "all") {
     return model;
   }
   const connections = model.connections || [];
-  const selectedIDs = selectedNodeIDs(model, options.selectedEntityId);
   const includedConnections = new Set();
-  let included = new Set();
-  if (scope === "story") {
-    const story = options.storyIndex;
-    for (const node of model.nodes) {
-      if (!isExternalNode(node) && (story === "all" || Number(node.storyIndex) === Number(story))) {
-        included.add(node.id);
-      }
-    }
-    const storyNodes = new Set(included);
-    for (const connection of connections) {
-      if (storyNodes.has(connection.fromNodeId) || storyNodes.has(connection.toNodeId)) {
-        includedConnections.add(connection);
-        included.add(connection.fromNodeId);
-        included.add(connection.toNodeId);
-      }
-    }
-  } else {
-    included = new Set(selectedIDs);
-    const frontier = new Set(included);
-    for (const connection of connections) {
-      if (frontier.has(connection.fromNodeId) || frontier.has(connection.toNodeId)) {
-        includedConnections.add(connection);
-        included.add(connection.fromNodeId);
-        included.add(connection.toNodeId);
-      }
+  const included = new Set();
+  for (const node of model.nodes) {
+    if (!isExternalNode(node) && Number(node.storyIndex) === Number(storyIndex)) {
+      included.add(node.id);
     }
   }
-  selectedIDs.forEach((id) => included.add(id));
+  const levelNodes = new Set(included);
+  const nodeByID = new Map((model.nodes || []).map((node) => [node.id, node]));
+  for (const connection of connections) {
+    const fromOnLevel = levelNodes.has(connection.fromNodeId);
+    const toOnLevel = levelNodes.has(connection.toNodeId);
+    const fromExternal = isExternalNode(nodeByID.get(connection.fromNodeId));
+    const toExternal = isExternalNode(nodeByID.get(connection.toNodeId));
+    if ((fromOnLevel && (toOnLevel || toExternal)) || (toOnLevel && (fromOnLevel || fromExternal))) {
+      includedConnections.add(connection);
+      included.add(connection.fromNodeId);
+      included.add(connection.toNodeId);
+    }
+  }
   const scopedConnections = connections.filter((connection) => includedConnections.has(connection));
   return {
     ...model,
@@ -285,33 +269,39 @@ export function applyThermalTopologyScope(model, options = {}) {
   };
 }
 
-function selectedNodeIDs(model, selectedEntityId) {
+export function thermalTopologyFocusContext(model, selectedEntityId = "") {
   const selected = String(selectedEntityId || "");
-  if (!selected) return [];
-  if (model.nodes.some((node) => node.id === selected)) return [selected];
-  const connection = model.connections.find((item) => item.id === selected);
-  if (connection) return scopedConnectionNodeIDs(connection, model.nodes);
-  const boundary = model.boundaries.find((item) => item.id === selected || item.surfaceId === selected || item.surfaceEntityId === selected);
-  if (boundary) {
-    const related = model.connections.find((item) => (item.boundaryIds || []).includes(boundary.id));
-    if (related) return scopedConnectionNodeIDs(related, model.nodes);
-    return [boundary.ownerZoneId || boundary.ownerSpaceId, boundary.targetId].filter(Boolean);
-  }
-  const opening = (model.allOpenings || []).find((item) => item.id === selected || item.windowId === selected || item.entityId === selected);
-  if (opening) {
-    const related = model.connections.find((item) => (item.openingIds || []).includes(opening.id));
-    if (related) return [related.fromNodeId, related.toNodeId].filter(Boolean);
-    const base = model.boundaries.find((item) => item.surfaceId === opening.baseSurfaceId || item.id === opening.baseSurfaceId);
-    if (base) return [base.ownerZoneId || base.ownerSpaceId, base.targetId].filter(Boolean);
-  }
-  return [];
+  const nodeIDs = new Set();
+  const edgeIDs = new Set();
+  if (!selected) return { active: false, nodeIDs, edgeIDs };
+
+  const selectedNodes = (model.nodes || []).filter((node) => (
+    node.id === selected || node.entityId === selected || node.sourceId === selected
+  ));
+  const exactEdges = (model.connections || []).filter((connection) => thermalConnectionMatchesTarget(connection, selected));
+  const relatedEdges = exactEdges.length
+    ? exactEdges
+    : selectedNodes.length
+      ? (model.connections || []).filter((connection) => selectedNodes.some((node) => connection.fromNodeId === node.id || connection.toNodeId === node.id))
+      : [];
+
+  selectedNodes.forEach((node) => nodeIDs.add(node.id));
+  relatedEdges.forEach((connection) => {
+    edgeIDs.add(connection.id);
+    if (connection.fromNodeId) nodeIDs.add(connection.fromNodeId);
+    if (connection.toNodeId) nodeIDs.add(connection.toNodeId);
+  });
+  return { active: selectedNodes.length > 0 || exactEdges.length > 0, nodeIDs, edgeIDs };
 }
 
-function scopedConnectionNodeIDs(connection, nodes) {
-  const ids = [connection.fromNodeId, connection.toNodeId].filter(Boolean);
-  if (!isAdiabaticConnection(connection)) return ids;
-  const nodeByID = new Map((nodes || []).map((node) => [node.id, node]));
-  return ids.filter((id) => !isSharedAdiabaticNode(nodeByID.get(id)));
+function thermalConnectionMatchesTarget(connection, targetID) {
+  return connection.id === targetID
+    || connection.targetId === targetID
+    || connection.sourceConnectionId === targetID
+    || (connection.boundaryIds || []).includes(targetID)
+    || (connection.openingIds || []).includes(targetID)
+    || (connection.airCouplingIds || []).includes(targetID)
+    || (connection.diagnosticIds || []).includes(targetID);
 }
 
 function qaObservationConnections(topology, boundaries) {

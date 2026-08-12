@@ -40,6 +40,7 @@ $modules = @(
     "auxiliary-navigation.js",
     "command-palette.js",
     "topology-loader.js",
+    "topology-focus.js",
     "layout.js",
     "main.js",
     "navigation.js",

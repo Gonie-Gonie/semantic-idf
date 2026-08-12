@@ -83,7 +83,6 @@ function shortcutAction(id, actions) {
     topologyArea: () => actions.setTopologyMetric?.("area"),
     topologyUA: () => actions.setTopologyMetric?.("ua"),
     topologyQA: () => actions.setTopologyMetric?.("qa"),
-    topologyNeighbors: actions.setTopologyNeighbors,
   };
   return map[id] || null;
 }

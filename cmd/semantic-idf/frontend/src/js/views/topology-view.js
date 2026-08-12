@@ -10,6 +10,7 @@ import { t } from "../i18n.js";
 import { refreshResultPanelSelectionStyles } from "../panel-navigation-adapters.js";
 import { clearSemanticHover, hoverSemanticEntity, selectSemanticEntity } from "../selection-controller.js";
 import { resolveThermalTopologyTarget } from "../thermal-topology-targets.js";
+import { createTopologyFocusContext } from "../topology-focus.js";
 
 let rendererState = null;
 let temporaryTopologyReveal = null;
@@ -27,6 +28,17 @@ let topologyNavigationLookupCache = null;
 const EMPTY_GEOMETRY_ITEMS = Object.freeze([]);
 
 window.addEventListener("idfAnalyzer:semanticSelectionChanged", (event) => {
+  if (!event.detail?.selection?.entityId && (state.selectedTopologyEntityId || state.thermalTopologySelectedEntityId)) {
+    temporaryTopologyReveal = null;
+    state.selectedTopologyEntityKind = "";
+    state.selectedTopologyEntityId = "";
+    state.thermalTopologySelectedEntityKind = "";
+    state.thermalTopologySelectedEntityId = "";
+    if (state.activeResultTab === "topology" && state.report?.geometry) {
+      renderTopologyView();
+    }
+    return;
+  }
   if (!temporaryTopologyReveal) {
     return;
   }
@@ -85,9 +97,6 @@ export function renderTopologyView(geometry = state.report?.geometry) {
 
 export function setTopologyMode(mode) {
   state.topologyMode = normalizeTopologyMode(mode);
-  if (state.topologyMode === "plan" && state.selectedTopologyStory === "all") {
-    state.selectedTopologyStory = firstStoryIndex(state.report?.geometry);
-  }
   elements.topologyModeButtons.forEach((button) => {
     button.classList.toggle("active", button.dataset.topologyMode === state.topologyMode);
   });
@@ -211,18 +220,15 @@ export async function restoreTopologyNavigationContext(snapshot = {}, context) {
   state.selectedTopologyEntityKind = normalizeGeometryKind(snapshot.selectedKind);
   state.selectedTopologyEntityId = String(snapshot.selectedId || "");
   state.topologySyncLocate = snapshot.syncLocate !== false;
-  const legacyVisibility = snapshot.visibility || {};
-  const visibility3D = snapshot.visibility3D || legacyVisibility;
-  const visibilityPlan = snapshot.visibilityPlan || legacyVisibility;
-  state.topology3DVisibility = {
-    zones: visibility3D.zones !== false,
-    surfaces: (visibility3D.surfaces ?? visibility3D.walls) !== false,
-    openings: (visibility3D.openings ?? visibility3D.windows) !== false,
-  };
-  state.topologyPlanVisibility = {
-    zones: visibilityPlan.zones !== false,
-    boundaries: (visibilityPlan.boundaries ?? visibilityPlan.walls) !== false,
-    openings: (visibilityPlan.openings ?? visibilityPlan.windows) !== false,
+  const legacyVisibility = snapshot.visibility
+    || (state.topologyMode === "plan" ? snapshot.visibilityPlan : snapshot.visibility3D)
+    || snapshot.visibility3D
+    || snapshot.visibilityPlan
+    || {};
+  state.topologyVisibility = {
+    zones: legacyVisibility.zones !== false,
+    surfaces: (legacyVisibility.surfaces ?? legacyVisibility.boundaries ?? legacyVisibility.walls) !== false,
+    openings: (legacyVisibility.openings ?? legacyVisibility.windows) !== false,
   };
   temporaryTopologyReveal = null;
   renderTopologyView();
@@ -281,13 +287,11 @@ function renderEmptyTopology() {
 
 function ensureSelectedStory(geometry) {
   const stories = geometry.stories || [];
-  const requiresSpecificStory = state.topologyMode === "plan"
-    || (state.topologyMode === "thermal" && state.thermalTopologyScope === "story");
   if (!stories.length) {
-    state.selectedTopologyStory = requiresSpecificStory ? 0 : "all";
+    state.selectedTopologyStory = "all";
     return;
   }
-  if (!requiresSpecificStory && state.selectedTopologyStory === "all") {
+  if (state.selectedTopologyStory === "all") {
     return;
   }
   const exists = stories.some((story) => story.index === state.selectedTopologyStory);
@@ -298,10 +302,7 @@ function ensureSelectedStory(geometry) {
 
 function renderStoryOptions(geometry) {
   const stories = geometry.stories || [];
-  const allOption =
-    state.topologyMode === "3d"
-      ? `<option value="all" ${state.selectedTopologyStory === "all" ? "selected" : ""}>${t("topology.allLevels")}</option>`
-      : "";
+  const allOption = `<option value="all" ${state.selectedTopologyStory === "all" ? "selected" : ""}>${t("topology.allLevels")}</option>`;
   const storyOptions = stories
     .map(
       (story) =>
@@ -318,10 +319,9 @@ function updateModeVisibility() {
   elements.topology3DCanvasHost.classList.toggle("active", is3D);
   elements.topologyPlan.classList.toggle("active", isPlan);
   elements.thermalTopologyView?.classList.toggle("active", isNetwork);
-  elements.topology3DControls.hidden = !is3D;
-  elements.topologyPlanControls.hidden = !isPlan;
+  elements.topologySpatialControls.hidden = isNetwork;
   elements.thermalTopologyControls.hidden = !isNetwork;
-  elements.topologyStoryControl.hidden = isNetwork && state.thermalTopologyScope !== "story";
+  elements.topologyStoryControl.hidden = false;
   elements.topologyViewport.classList.toggle("network-active", isNetwork);
   elements.topologyModeButtons.forEach((button) => {
     button.classList.toggle("active", button.dataset.topologyMode === state.topologyMode);
@@ -367,14 +367,10 @@ function loadThermalTopologyModule() {
 }
 
 function syncTopologyVisibilityControls() {
-  const visibility3D = state.topology3DVisibility || {};
-  const visibilityPlan = state.topologyPlanVisibility || {};
-  elements.topology3DShowZones.checked = visibility3D.zones !== false;
-  elements.topology3DShowSurfaces.checked = visibility3D.surfaces !== false;
-  elements.topology3DShowOpenings.checked = visibility3D.openings !== false;
-  elements.topologyPlanShowZones.checked = visibilityPlan.zones !== false;
-  elements.topologyPlanShowBoundaries.checked = visibilityPlan.boundaries !== false;
-  elements.topologyPlanShowOpenings.checked = visibilityPlan.openings !== false;
+  const visibility = state.topologyVisibility || {};
+  elements.topologyShowZones.checked = visibility.zones !== false;
+  elements.topologyShowSurfaces.checked = visibility.surfaces !== false;
+  elements.topologyShowOpenings.checked = visibility.openings !== false;
 }
 
 function renderScene(geometry) {
@@ -392,7 +388,7 @@ function renderScene(geometry) {
   const modelSize = bounds.ok
     ? Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY, bounds.maxZ - bounds.minZ, 1)
     : 18;
-  const visibility = state.topology3DVisibility || {};
+  const visibility = state.topologyVisibility || {};
 
   (geometry.surfaces || [])
     .filter((surface) => (
@@ -599,6 +595,7 @@ function addSurfaceMesh(group, surface, kind, id, center) {
     semanticSelection: topologySelectionForTarget(kind, id),
     baseColor: material.color.getHex(),
     baseOpacity: material.opacity,
+    baseDepthWrite: material.depthWrite,
   };
   group.add(mesh);
 }
@@ -625,6 +622,7 @@ function addWindowMesh(group, windowItem, center) {
     semanticSelection: topologySelectionForTarget("window", windowItem.id),
     baseColor: material.color.getHex(),
     baseOpacity: material.opacity,
+    baseDepthWrite: material.depthWrite,
   };
   group.add(mesh);
 }
@@ -670,7 +668,7 @@ function addAxes(group, bounds, center) {
 function renderPlan(geometry) {
   disposeRendererCanvas();
   bindGeometryPlanInteractions();
-  const storyIndex = state.selectedTopologyStory === "all" ? firstStoryIndex(geometry) : state.selectedTopologyStory;
+  const storyIndex = state.selectedTopologyStory;
   const layout = cachedGeometryPlanLayout(geometry, storyIndex);
   if (!layout.ok) {
     elements.topologyPlan.innerHTML = `<text x="24" y="42" fill="#60707c" font-size="14">${t("topology.noFloorPlan")}</text>`;
@@ -678,7 +676,7 @@ function renderPlan(geometry) {
     return;
   }
 
-  const visibility = state.topologyPlanVisibility || {};
+  const visibility = state.topologyVisibility || {};
   const zoneFloorPolygons = visibility.zones !== false
     ? layout.surfaces
         .filter((surface) => surface.isFloor)
@@ -691,7 +689,7 @@ function renderPlan(geometry) {
   const wallLines = layout.surfaces
     .filter((surface) => (
       !surface.isFloor &&
-      (visibility.boundaries !== false || projectedSurfaceIsTemporarilyVisible(surface))
+      (visibility.surfaces !== false || projectedSurfaceIsTemporarilyVisible(surface))
     ))
     .map(renderPlanSurfaceShape)
     .join("");
@@ -771,8 +769,9 @@ function geometryPlanLayoutCacheKey(geometry, storyIndex) {
 }
 
 function buildGeometryPlanLayout(geometry, storyIndex) {
-  const surfaces = (geometry.surfaces || []).filter((surface) => surface.storyIndex === storyIndex && hasPlanVertices(surface));
-  const windows = (geometry.windows || []).filter((windowItem) => windowItem.storyIndex === storyIndex && hasPlanVertices(windowItem));
+  const matchesStory = (item) => storyIndex === "all" || item.storyIndex === storyIndex;
+  const surfaces = (geometry.surfaces || []).filter((surface) => matchesStory(surface) && hasPlanVertices(surface));
+  const windows = (geometry.windows || []).filter((windowItem) => matchesStory(windowItem) && hasPlanVertices(windowItem));
   const bounds = geometry.bounds || {};
   if (!bounds.ok || (!surfaces.length && !windows.length)) {
     return { ok: false, viewWidth: 640, viewHeight: 420, surfaces: [], windows: [] };
@@ -887,10 +886,6 @@ function syncLocatedInputEntity(entity) {
 
 function matchesSelectedStory(item) {
   return state.selectedTopologyStory === "all" || item.storyIndex === state.selectedTopologyStory;
-}
-
-function firstStoryIndex(geometry) {
-  return geometry?.stories?.[0]?.index ?? 0;
 }
 
 function selectedGeometryEntity(geometry) {
@@ -1737,8 +1732,15 @@ function geometryWindowIsTemporarilyVisible(windowItem) {
     temporaryTopologyReveal?.kind === "window" && temporaryTopologyReveal.id === windowItem.id;
 }
 
-function geometryRenderableMatchesSelection(kind, id) {
+function geometryRenderableMatchesSelection(kind, id, focus = null) {
   const normalizedKind = normalizeGeometryKind(kind);
+  const targetID = String(id || "");
+  if (focus?.active) {
+    if (normalizedKind === "zone" && focus.primaryZoneIds.has(targetID)) return true;
+    if (normalizedKind === "space" && focus.primaryNodeIds.has(targetID)) return true;
+    if (normalizedKind === "surface" && focus.primarySurfaceIds.has(targetID)) return true;
+    if (normalizedKind === "window" && focus.primaryWindowIds.has(targetID)) return true;
+  }
   if (normalizedKind === "surface" && temporaryTopologyReveal?.surfaceIds?.includes(String(id || ""))) {
     return true;
   }
@@ -1770,8 +1772,8 @@ function geometryRenderableMatchesSelection(kind, id) {
   return Boolean(space && surface && normalizeGeometryName(surface.spaceName) === normalizeGeometryName(space.name));
 }
 
-function geometryRenderableSelectionRole(kind, id) {
-  if (!geometryRenderableMatchesSelection(kind, id)) return "";
+function geometryRenderableSelectionRole(kind, id, focus = null) {
+  if (!geometryRenderableMatchesSelection(kind, id, focus)) return "";
   const normalizedKind = normalizeGeometryKind(kind);
   if (normalizedKind === "surface" && temporaryTopologyReveal?.surfaceIds?.length > 1) {
     return String(id || "") === temporaryTopologyReveal.primarySurfaceId ? "primary" : "counterpart";
@@ -1975,28 +1977,53 @@ function highlightSelectedMeshes() {
   const selectedColor = geometryColor("selected", 0xf0a202);
   const hoverColor = geometryColor("hover", 0x31a7a0);
   const counterpartColor = geometryColor("counterpart", 0x6c7fd8);
+  const focus = currentTopologyFocusContext();
   rendererState.group.traverse((object) => {
     if (!object.material || !object.userData?.geometryId) {
       return;
     }
-    const selectionRole = geometryRenderableSelectionRole(object.userData.geometryKind, object.userData.geometryId);
+    const selectionRole = geometryRenderableSelectionRole(object.userData.geometryKind, object.userData.geometryId, focus);
     const selected = Boolean(selectionRole);
     const hovered = !selected && geometryRenderableMatchesHover(object.userData.geometryKind, object.userData.geometryId);
+    const connected = geometryRenderableInFocus(object.userData.geometryKind, object.userData.geometryId, focus);
+    const dimmed = focus.active && !selected && !hovered && !connected;
     object.material.color.setHex(selectionRole === "counterpart" ? counterpartColor : selected ? selectedColor : hovered ? hoverColor : object.userData.baseColor);
-    object.material.opacity = selected ? 0.95 : hovered ? Math.max(0.72, object.userData.baseOpacity) : object.userData.baseOpacity;
+    object.material.opacity = selected ? 0.95 : hovered ? Math.max(0.72, object.userData.baseOpacity) : dimmed ? object.userData.baseOpacity * 0.12 : object.userData.baseOpacity;
+    object.material.depthWrite = dimmed ? false : object.userData.baseDepthWrite;
   });
   rendererState.renderer.render(rendererState.scene, rendererState.camera);
 }
 
 function highlightSelectedPlan() {
+  const focus = currentTopologyFocusContext();
   elements.topologyPlan.querySelectorAll("[data-geometry-id]").forEach((shape) => {
-    shape.classList.toggle(
-      "selected",
-      geometryRenderableMatchesSelection(shape.dataset.geometryKind, shape.dataset.geometryId),
-    );
-    shape.classList.toggle("hovered", geometryRenderableMatchesHover(shape.dataset.geometryKind, shape.dataset.geometryId));
-    shape.classList.toggle("counterpart", geometryRenderableSelectionRole(shape.dataset.geometryKind, shape.dataset.geometryId) === "counterpart");
+    const selected = geometryRenderableMatchesSelection(shape.dataset.geometryKind, shape.dataset.geometryId, focus);
+    const hovered = geometryRenderableMatchesHover(shape.dataset.geometryKind, shape.dataset.geometryId);
+    const connected = geometryRenderableInFocus(shape.dataset.geometryKind, shape.dataset.geometryId, focus);
+    shape.classList.toggle("selected", selected);
+    shape.classList.toggle("hovered", hovered);
+    shape.classList.toggle("counterpart", geometryRenderableSelectionRole(shape.dataset.geometryKind, shape.dataset.geometryId, focus) === "counterpart");
+    shape.classList.toggle("connected", focus.active && connected && !selected);
+    shape.classList.toggle("dimmed", focus.active && !selected && !hovered && !connected);
   });
+}
+
+function currentTopologyFocusContext(geometry = state.report?.geometry) {
+  return createTopologyFocusContext(geometry, {
+    kind: state.selectedTopologyEntityKind,
+    id: state.selectedTopologyEntityId,
+  });
+}
+
+function geometryRenderableInFocus(kind, id, focus) {
+  if (!focus?.active) return false;
+  const normalizedKind = normalizeGeometryKind(kind);
+  const targetID = String(id || "");
+  if (normalizedKind === "zone") return focus.zoneIds.has(targetID) || focus.nodeIds.has(targetID);
+  if (normalizedKind === "space") return focus.nodeIds.has(targetID);
+  if (normalizedKind === "surface") return focus.surfaceIds.has(targetID);
+  if (normalizedKind === "window") return focus.windowIds.has(targetID) || focus.openingIds.has(targetID);
+  return false;
 }
 
 function resizeRenderer() {

@@ -106,7 +106,12 @@ export function setTopologyMode(mode) {
 }
 
 export function setTopologyStory(storyIndex) {
-  state.selectedTopologyStory = storyIndex === "all" ? "all" : Number(storyIndex) || 0;
+  const nextStory = storyIndex === "all" ? "all" : Number(storyIndex) || 0;
+  if (nextStory === state.selectedTopologyStory) {
+    return;
+  }
+  recordViewHistory();
+  state.selectedTopologyStory = nextStory;
   loadTopologyModule().then((module) => module.setTopologyStory(state.selectedTopologyStory));
 }
 
@@ -129,8 +134,7 @@ configureResultPanelNavigationHooks("topology", {
       selectedId: state.selectedTopologyEntityId || "",
       ...captureThermalTopologyState(state),
       syncLocate: Boolean(state.topologySyncLocate),
-      visibility3D: { ...(state.topology3DVisibility || {}) },
-      visibilityPlan: { ...(state.topologyPlanVisibility || {}) },
+      visibility: { ...(state.topologyVisibility || {}) },
     };
   },
   async restoreContext(snapshot, context) {

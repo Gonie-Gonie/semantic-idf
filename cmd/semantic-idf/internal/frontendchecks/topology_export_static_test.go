@@ -5,24 +5,19 @@ import (
 	"testing"
 )
 
-func TestThermalTopologyExportUsesCanonicalReportWithoutViewState(t *testing.T) {
+func TestThermalTopologyViewDoesNotExposeJSONExport(t *testing.T) {
 	markup := readTestFile(t, "frontend/src/index.html")
 	view := readTestFile(t, "frontend/src/js/views/thermal-topology-view.js")
 	main := readTestFile(t, "frontend/src/js/main.js")
-	for _, required := range []string{`id="thermalTopologyExportJSON"`, "idfAnalyzer:thermalTopologyExport", "thermalTopologyExportPayload", "...topology"} {
-		if !strings.Contains(markup+view+main, required) {
-			t.Fatalf("thermal topology export contract is missing %q", required)
-		}
-	}
-	functionStart := strings.Index(view, "export function thermalTopologyExportPayload")
-	functionEnd := strings.Index(view[functionStart:], "export function exportThermalTopologyJSON")
-	if functionStart < 0 || functionEnd < 0 {
-		t.Fatal("thermalTopologyExportPayload function not found")
-	}
-	payloadFunction := view[functionStart : functionStart+functionEnd]
-	for _, forbidden := range []string{"areaBasis", "thermalTopologyPanX", "thermalTopologyPanY", "thermalTopologyScale", "thermalTopologyLayoutCache"} {
-		if strings.Contains(payloadFunction, forbidden) {
-			t.Fatalf("topology export payload contains UI-only state %q", forbidden)
+	content := markup + view + main
+	for _, removed := range []string{
+		`id="thermalTopologyExportJSON"`,
+		"idfAnalyzer:thermalTopologyExport",
+		"thermalTopologyExportPayload",
+		"exportThermalTopologyJSON",
+	} {
+		if strings.Contains(content, removed) {
+			t.Fatalf("removed Network JSON export remains %q", removed)
 		}
 	}
 }

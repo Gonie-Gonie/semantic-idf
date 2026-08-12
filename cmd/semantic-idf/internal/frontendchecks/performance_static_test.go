@@ -85,8 +85,8 @@ func TestFrontendThermalTopologyPerformanceContracts(t *testing.T) {
 	layout := readTestFile(t, "frontend/src/js/views/thermal-topology-layout.js")
 	for _, term := range []string{
 		"topology.sourceModelHash",
-		"selectionAffectsScope",
-		`scope === "neighbors"`,
+		`options.storyIndex ?? "all"`,
+		"applyThermalTopologyLevel",
 	} {
 		if !strings.Contains(layout, term) {
 			t.Fatalf("thermal layout cache key contract missing %q", term)
@@ -102,13 +102,14 @@ func TestFrontendThermalTopologyPerformanceContracts(t *testing.T) {
 	for _, term := range []string{
 		"THERMAL_LAYOUT_CACHE_LIMIT = 24",
 		"rememberThermalTopologyLayout",
-		"markGraphTargetSelected(kind, id)",
+		"renderThermalTopologySVG(currentModel, currentLayout)",
+		"createThermalRenderFocusContext",
 	} {
 		if !strings.Contains(view, term) {
 			t.Fatalf("thermal rendering performance contract missing %q", term)
 		}
 	}
-	selectionBody := sliceBetween(view, "function activateGraphTarget", "function markGraphTargetSelected")
+	selectionBody := sliceBetween(view, "function activateGraphTarget", "function applyGraphTransform")
 	if strings.Contains(selectionBody, "computeThermalTopologyLayout") || strings.Contains(selectionBody, "renderThermalTopology(") {
 		t.Fatal("selection-only updates should not recompute thermal layout")
 	}

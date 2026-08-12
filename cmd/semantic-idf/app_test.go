@@ -1190,12 +1190,17 @@ func TestDefaultSettingsRetainThermalTopologyShortcuts(t *testing.T) {
 	settings := normalizeAppSettings(AppSettings{})
 	want := map[string]string{
 		"topology3D": "1", "topologyPlan": "2", "topologyNetwork": "3", "topologyFit": "F",
-		"topologyDisplay": "G", "topologyConnectivity": "T", "topologyArea": "A", "topologyUA": "U", "topologyQA": "Q", "topologyNeighbors": "N",
+		"topologyConnectivity": "T", "topologyArea": "A", "topologyUA": "U", "topologyQA": "Q",
 		"primaryOpen": "Enter", "availableViews": "Alt+Enter", "clearSelection": "Escape",
 	}
 	for id, accelerator := range want {
 		if settings.Interaction.Shortcuts[id] != accelerator {
 			t.Fatalf("shortcut %s = %q, want %q", id, settings.Interaction.Shortcuts[id], accelerator)
+		}
+	}
+	for _, removed := range []string{"topologyDisplay", "topologyNeighbors"} {
+		if _, exists := settings.Interaction.Shortcuts[removed]; exists {
+			t.Fatalf("removed topology shortcut %s is still configured", removed)
 		}
 	}
 }

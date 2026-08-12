@@ -17,7 +17,7 @@ func TestTopologyViewSwitchSupportsThermalAndNormalizesInvalidModes(t *testing.T
 		`id="thermalTopologyView"`,
 		`id="thermalTopologyInspector"`,
 		`id="thermalTopologyMetric"`,
-		`id="thermalTopologyScope"`,
+		`id="thermalTopologyLayout"`,
 	} {
 		if !strings.Contains(index, required) {
 			t.Fatalf("topology view switch is missing %q", required)
@@ -33,6 +33,10 @@ func TestTopologyViewSwitchSupportsThermalAndNormalizesInvalidModes(t *testing.T
 		`id="thermalTopologyShowOpenings"`,
 		`id="thermalTopologyFit"`,
 		`id="geometrySelectionAid"`,
+		`id="thermalTopologyScope"`,
+		`id="thermalTopologyShowAirCoupling"`,
+		`id="thermalTopologyExportJSON"`,
+		`class="thermal-topology-advanced"`,
 	} {
 		if strings.Contains(index, removed) {
 			t.Fatalf("fixed Zone/Gross topology controls still expose %q", removed)
@@ -106,25 +110,30 @@ func TestTopologyToolbarSeparatesModeSpecificControls(t *testing.T) {
 	index := readTestFile(t, "frontend/src/index.html")
 	for _, required := range []string{
 		`id="topologyStoryControl"`,
+		`id="topologyStorySelect"`,
 		`id="topologySyncLocate" type="checkbox" checked`,
-		`id="topology3DControls"`,
-		`id="topology3DShowZones"`,
-		`id="topology3DShowSurfaces"`,
-		`id="topology3DShowOpenings"`,
-		`id="topologyPlanControls"`,
-		`id="topologyPlanShowZones"`,
-		`id="topologyPlanShowBoundaries"`,
-		`id="topologyPlanShowOpenings"`,
+		`id="topologySpatialControls"`,
+		`id="topologyShowZones"`,
+		`id="topologyShowSurfaces"`,
+		`id="topologyShowOpenings"`,
 		`id="thermalTopologyControls"`,
+		`id="thermalTopologyMetric"`,
 		`id="thermalTopologyLayout"`,
-		`id="thermalTopologyShowAirCoupling"`,
 	} {
 		if !strings.Contains(index, required) {
 			t.Fatalf("topology toolbar is missing %q", required)
 		}
 	}
-	if strings.Contains(index, `id="thermalTopologyExpandExternalTargets"`) {
-		t.Fatal("automatic directional Outdoor projection still exposes a manual external-target toggle")
+	for _, removed := range []string{
+		`id="topology3DControls"`, `id="topologyPlanControls"`,
+		`id="topology3DShowZones"`, `id="topologyPlanShowZones"`,
+		`id="topologyPlanShowBoundaries"`, `id="thermalTopologyScope"`,
+		`id="thermalTopologyShowAirCoupling"`, `id="thermalTopologyExportJSON"`,
+		`id="thermalTopologyExpandExternalTargets"`, `class="thermal-topology-advanced"`,
+	} {
+		if strings.Contains(index, removed) {
+			t.Fatalf("simplified topology toolbar still exposes %q", removed)
+		}
 	}
 
 	view := readTestFile(t, "frontend/src/js/views/topology-view.js")
@@ -132,10 +141,9 @@ func TestTopologyToolbarSeparatesModeSpecificControls(t *testing.T) {
 		`const is3D = state.topologyMode === "3d"`,
 		`const isPlan = state.topologyMode === "plan"`,
 		`const isNetwork = state.topologyMode === "thermal"`,
-		`elements.topology3DControls.hidden = !is3D`,
-		`elements.topologyPlanControls.hidden = !isPlan`,
+		`elements.topologySpatialControls.hidden = isNetwork`,
 		`elements.thermalTopologyControls.hidden = !isNetwork`,
-		`elements.topologyStoryControl.hidden = isNetwork && state.thermalTopologyScope !== "story"`,
+		`elements.topologyStoryControl.hidden = false`,
 		`state.topologyMode === "3d"`,
 	} {
 		if !strings.Contains(view, required) {
@@ -143,27 +151,119 @@ func TestTopologyToolbarSeparatesModeSpecificControls(t *testing.T) {
 		}
 	}
 
-	styles := readTestFile(t, "frontend/src/styles/topology.css")
-	if !strings.Contains(styles, `@media (max-width: 1280px)`) || !strings.Contains(styles, `.thermal-topology-advanced-menu`) {
-		t.Fatal("thermal toolbar must collapse its advanced controls at narrow widths")
+}
+
+func TestTopologyLevelAllAndSpecificStoryApplyToEveryMode(t *testing.T) {
+	view := readTestFile(t, "frontend/src/js/views/topology-view.js")
+	for _, required := range []string{
+		"const allOption = `<option",
+		`t("topology.allLevels")`,
+		`if (state.selectedTopologyStory === "all")`,
+		`const storyIndex = state.selectedTopologyStory`,
+		`const matchesStory = (item) => storyIndex === "all" || item.storyIndex === storyIndex`,
+		`return state.selectedTopologyStory === "all" || item.storyIndex === state.selectedTopologyStory`,
+	} {
+		if !strings.Contains(view, required) {
+			t.Fatalf("shared Level filtering contract is missing %q", required)
+		}
+	}
+	for _, removed := range []string{
+		`state.topologyMode === "plan" && state.selectedTopologyStory === "all"`,
+		`state.selectedTopologyStory === "all" ? firstStoryIndex`,
+		`state.thermalTopologyScope`,
+	} {
+		if strings.Contains(view, removed) {
+			t.Fatalf("Level All still has a mode-specific override %q", removed)
+		}
+	}
+
+	thermalView := readTestFile(t, "frontend/src/js/views/thermal-topology-view.js")
+	for _, required := range []string{
+		`const level = state.selectedTopologyStory`,
+		`storyIndex: level`,
+	} {
+		if !strings.Contains(thermalView, required) {
+			t.Fatalf("Network Level filtering contract is missing %q", required)
+		}
+	}
+	layout := readTestFile(t, "frontend/src/js/views/thermal-topology-layout.js")
+	for _, required := range []string{
+		`export function applyThermalTopologyLevel`,
+		`if (storyIndex === "all")`,
+		`Number(node.storyIndex) === Number(storyIndex)`,
+	} {
+		if !strings.Contains(layout, required) {
+			t.Fatalf("Network Level model filtering is missing %q", required)
+		}
 	}
 }
 
-func TestTopologyVisibilityStateAndRenderingAreIndependentByMode(t *testing.T) {
+func TestTopologySelectionFocusKeepsOneHopAndDimsEverythingElse(t *testing.T) {
+	focus := readTestFile(t, "frontend/src/js/topology-focus.js")
+	for _, required := range []string{
+		"export function createTopologyFocusContext",
+		"seedNodeIDs",
+		"relatedConnections",
+		"addConnectionToFocus",
+		"addParentZones",
+		"counterpartSurfaceId",
+	} {
+		if !strings.Contains(focus, required) {
+			t.Fatalf("shared one-hop focus resolver is missing %q", required)
+		}
+	}
+
+	spatial := readTestFile(t, "frontend/src/js/views/topology-view.js")
+	for _, required := range []string{
+		`import { createTopologyFocusContext } from "../topology-focus.js"`,
+		"currentTopologyFocusContext",
+		"geometryRenderableInFocus",
+		`shape.classList.toggle("connected"`,
+		`shape.classList.toggle("dimmed"`,
+		`object.userData.baseOpacity * 0.12`,
+	} {
+		if !strings.Contains(spatial, required) {
+			t.Fatalf("3D/Plan focus rendering is missing %q", required)
+		}
+	}
+
+	network := readTestFile(t, "frontend/src/js/views/thermal-topology-view.js")
+	for _, required := range []string{
+		"createThermalRenderFocusContext",
+		"thermalTopologyFocusContext",
+		`dimmed ? "dimmed"`,
+		`connected && !selected ? " connected"`,
+	} {
+		if !strings.Contains(network, required) {
+			t.Fatalf("Network focus rendering is missing %q", required)
+		}
+	}
+	styles := readTestFile(t, "frontend/src/styles/topology.css")
+	for _, required := range []string{
+		`.thermal-edge-group.dimmed`,
+		`.thermal-node.dimmed`,
+		`.topology-plan :is(.plan-zone, .plan-surface, .plan-wall, .plan-window).dimmed`,
+		`opacity: 0.12`,
+	} {
+		if !strings.Contains(styles, required) {
+			t.Fatalf("focus dimming style is missing %q", required)
+		}
+	}
+}
+
+func TestTopologyVisibilityStateAndRenderingAreSharedBySpatialModes(t *testing.T) {
 	state := readTestFile(t, "frontend/src/js/state.js")
 	for _, required := range []string{
-		"topology3DVisibility:",
+		"topologyVisibility:",
 		"zones: true",
 		"surfaces: true",
 		"openings: true",
-		"topologyPlanVisibility:",
-		"boundaries: true",
 	} {
 		if !strings.Contains(state, required) {
-			t.Fatalf("mode-specific topology visibility state is missing %q", required)
+			t.Fatalf("shared topology visibility state is missing %q", required)
 		}
 	}
-	for _, removed := range []string{"geometrySelectionAid", "geometryShowZones", "geometryShowWalls", "geometryShowWindows"} {
+	for _, removed := range []string{"topology3DVisibility", "topologyPlanVisibility", "geometrySelectionAid", "geometryShowZones", "geometryShowWalls", "geometryShowWindows"} {
 		if strings.Contains(state, removed) {
 			t.Fatalf("legacy shared geometry state remains %q", removed)
 		}
@@ -171,22 +271,20 @@ func TestTopologyVisibilityStateAndRenderingAreIndependentByMode(t *testing.T) {
 
 	main := readTestFile(t, "frontend/src/js/main.js")
 	for _, required := range []string{
-		`bindTopologyVisibilityControl(elements.topology3DShowZones, "topology3DVisibility", "zones")`,
-		`bindTopologyVisibilityControl(elements.topology3DShowSurfaces, "topology3DVisibility", "surfaces")`,
-		`bindTopologyVisibilityControl(elements.topology3DShowOpenings, "topology3DVisibility", "openings")`,
-		`bindTopologyVisibilityControl(elements.topologyPlanShowZones, "topologyPlanVisibility", "zones")`,
-		`bindTopologyVisibilityControl(elements.topologyPlanShowBoundaries, "topologyPlanVisibility", "boundaries")`,
-		`bindTopologyVisibilityControl(elements.topologyPlanShowOpenings, "topologyPlanVisibility", "openings")`,
+		`bindTopologyVisibilityControl(elements.topologyShowZones, "zones")`,
+		`bindTopologyVisibilityControl(elements.topologyShowSurfaces, "surfaces")`,
+		`bindTopologyVisibilityControl(elements.topologyShowOpenings, "openings")`,
+		`state.topologyVisibility = {`,
 	} {
 		if !strings.Contains(main, required) {
-			t.Fatalf("mode-specific topology visibility binding is missing %q", required)
+			t.Fatalf("shared topology visibility binding is missing %q", required)
 		}
 	}
 
 	view := readTestFile(t, "frontend/src/js/views/topology-view.js")
 	scene := sliceBetween(view, "function renderScene", "function ensureRenderer")
 	for _, required := range []string{
-		`const visibility = state.topology3DVisibility || {}`,
+		`const visibility = state.topologyVisibility || {}`,
 		`visibility.zones !== false`,
 		`visibility.surfaces !== false`,
 		`visibility.openings !== false`,
@@ -197,9 +295,9 @@ func TestTopologyVisibilityStateAndRenderingAreIndependentByMode(t *testing.T) {
 	}
 	plan := sliceBetween(view, "function renderPlan", "function cachedGeometryPlanLayout")
 	for _, required := range []string{
-		`const visibility = state.topologyPlanVisibility || {}`,
+		`const visibility = state.topologyVisibility || {}`,
 		`visibility.zones !== false`,
-		`visibility.boundaries !== false`,
+		`visibility.surfaces !== false`,
 		`visibility.openings !== false`,
 	} {
 		if !strings.Contains(plan, required) {

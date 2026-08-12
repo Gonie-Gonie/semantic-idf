@@ -57,10 +57,12 @@ The release script infers bump size from these sections:
   Weather selector with the application control styling, and placed Run &
   Inspect on the same control row without the redundant idle/blocked status
   header.
-- Split Topology controls by 3D, Plan, and Network behavior. Sync locate now
-  remains a shared default, 3D and Plan retain independent visibility layers,
-  Network story selection appears only for Story scope, and the obsolete
-  Select aid and Network Openings options were removed.
+- Unified the Topology Level selector across 3D, Plan, and Network: All shows
+  the full model and a specific level applies the former story filter. 3D and
+  Plan now share Zones, Surfaces, and Openings visibility, while Network shows
+  only Metric and Layout instead of Scope or Advanced controls. Selecting a
+  zone, boundary, or other topology object emphasizes its one-hop connections
+  and strongly fades unrelated objects.
 - Topology Network nodes can now be repositioned by dragging, with connected
   routes updating in place. Outdoor boundaries use compact directional points
   with separate N/E/S/W/Roof/Floor area and UA totals, while Adiabatic surfaces

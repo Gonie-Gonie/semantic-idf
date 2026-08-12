@@ -469,15 +469,10 @@
                   <select id="topologyStorySelect" aria-label="Topology story"></select>
                 </label>
                 <label class="topology-toggle topology-sync-toggle"><input id="topologySyncLocate" type="checkbox" checked /> <span data-i18n="topology.syncLocate">Sync locate</span></label>
-                <div id="topology3DControls" class="topology-control-group topology-visibility-controls" aria-label="3D visibility">
-                  <label class="topology-toggle"><input id="topology3DShowZones" type="checkbox" checked /> <span data-i18n="topology.showZones">Zones</span></label>
-                  <label class="topology-toggle"><input id="topology3DShowSurfaces" type="checkbox" checked /> <span data-i18n="topology.showSurfaces">Surfaces</span></label>
-                  <label class="topology-toggle"><input id="topology3DShowOpenings" type="checkbox" checked /> <span data-i18n="topology.showOpenings">Openings</span></label>
-                </div>
-                <div id="topologyPlanControls" class="topology-control-group topology-visibility-controls" aria-label="Plan layers" hidden>
-                  <label class="topology-toggle"><input id="topologyPlanShowZones" type="checkbox" checked /> <span data-i18n="topology.planZoneFill">Zone fill</span></label>
-                  <label class="topology-toggle"><input id="topologyPlanShowBoundaries" type="checkbox" checked /> <span data-i18n="topology.planBoundaries">Boundaries</span></label>
-                  <label class="topology-toggle"><input id="topologyPlanShowOpenings" type="checkbox" checked /> <span data-i18n="topology.showOpenings">Openings</span></label>
+                <div id="topologySpatialControls" class="topology-control-group topology-visibility-controls" aria-label="Spatial visibility">
+                  <label class="topology-toggle"><input id="topologyShowZones" type="checkbox" checked /> <span data-i18n="topology.showZones">Zones</span></label>
+                  <label class="topology-toggle"><input id="topologyShowSurfaces" type="checkbox" checked /> <span data-i18n="topology.showSurfaces">Surfaces</span></label>
+                  <label class="topology-toggle"><input id="topologyShowOpenings" type="checkbox" checked /> <span data-i18n="topology.showOpenings">Openings</span></label>
                 </div>
                 <div id="thermalTopologyControls" class="thermal-topology-controls" hidden>
                   <label class="topology-select-control">
@@ -492,28 +487,12 @@
                     </select>
                   </label>
                   <label class="topology-select-control">
-                    <span data-i18n="topology.scope">Scope</span>
-                    <select id="thermalTopologyScope" aria-label="Thermal graph scope">
-                      <option value="building" data-i18n="topology.scopeBuilding">Building</option>
-                      <option value="story" data-i18n="topology.scopeStory">Story</option>
-                      <option value="selection" data-i18n="topology.scopeSelection">Selection</option>
-                      <option value="neighbors" data-i18n="topology.scopeNeighbors">Neighbors</option>
+                    <span data-i18n="topology.layout">Layout</span>
+                    <select id="thermalTopologyLayout">
+                      <option value="spatial" data-i18n="topology.layoutSpatial">Spatial</option>
+                      <option value="network" data-i18n="topology.layoutNetwork">Network</option>
                     </select>
                   </label>
-                  <details class="thermal-topology-advanced">
-                    <summary data-i18n="topology.advanced">Advanced</summary>
-                    <div class="thermal-topology-advanced-menu">
-                      <label class="topology-select-control">
-                        <span data-i18n="topology.layout">Layout</span>
-                        <select id="thermalTopologyLayout">
-                          <option value="spatial" data-i18n="topology.layoutSpatial">Spatial</option>
-                          <option value="network" data-i18n="topology.layoutNetwork">Network</option>
-                        </select>
-                      </label>
-                      <label class="topology-toggle"><input id="thermalTopologyShowAirCoupling" type="checkbox" /> <span data-i18n="topology.showAirCoupling">Air coupling</span></label>
-                      <button id="thermalTopologyExportJSON" type="button" data-i18n="topology.exportJSON">Export topology JSON</button>
-                    </div>
-                  </details>
                 </div>
               </div>
             </div>

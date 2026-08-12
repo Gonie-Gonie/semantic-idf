@@ -2,7 +2,6 @@ import { t } from "./i18n.js";
 
 export const topologyModes = Object.freeze(["3d", "plan", "thermal"]);
 export const thermalTopologyMetrics = Object.freeze(["topology", "area", "ua", "exposure", "qa", "air"]);
-export const thermalTopologyScopes = Object.freeze(["building", "story", "selection", "neighbors"]);
 export const thermalTopologyLayouts = Object.freeze(["spatial", "network"]);
 
 export function normalizeTopologyMode(value) {
@@ -15,11 +14,6 @@ export function normalizeThermalTopologyMetric(value) {
   return thermalTopologyMetrics.includes(metric) ? metric : "topology";
 }
 
-export function normalizeThermalTopologyScope(value) {
-  const scope = String(value || "").toLowerCase();
-  return thermalTopologyScopes.includes(scope) ? scope : "building";
-}
-
 export function normalizeThermalTopologyLayout(value) {
   const layout = String(value || "").toLowerCase();
   return thermalTopologyLayouts.includes(layout) ? layout : "spatial";
@@ -28,9 +22,7 @@ export function normalizeThermalTopologyLayout(value) {
 export function normalizeThermalTopologyState(target = state) {
   target.topologyMode = normalizeTopologyMode(target.topologyMode);
   target.thermalTopologyMetric = normalizeThermalTopologyMetric(target.thermalTopologyMetric);
-  target.thermalTopologyScope = normalizeThermalTopologyScope(target.thermalTopologyScope);
   target.thermalTopologyLayout = normalizeThermalTopologyLayout(target.thermalTopologyLayout);
-  target.thermalTopologyShowAirCoupling = normalizeBoolean(target.thermalTopologyShowAirCoupling, false);
   target.thermalTopologySelectedEntityId = String(target.thermalTopologySelectedEntityId || "");
   target.thermalTopologySelectedEntityKind = String(target.thermalTopologySelectedEntityKind || "");
   target.thermalTopologyPanX = finiteNumber(target.thermalTopologyPanX, 0);
@@ -44,9 +36,7 @@ export function captureThermalTopologyState(source = state) {
   normalizeThermalTopologyState(source);
   return {
     thermalTopologyMetric: source.thermalTopologyMetric,
-    thermalTopologyScope: source.thermalTopologyScope,
     thermalTopologyLayout: source.thermalTopologyLayout,
-    thermalTopologyShowAirCoupling: source.thermalTopologyShowAirCoupling,
     thermalTopologySelectedEntityId: source.thermalTopologySelectedEntityId,
     thermalTopologySelectedEntityKind: source.thermalTopologySelectedEntityKind,
     thermalTopologyPanX: source.thermalTopologyPanX,
@@ -74,10 +64,6 @@ export function resetThermalTopologyDocumentState(target = state) {
   if (!(target.thermalTopologyLayoutCache instanceof Map)) {
     target.thermalTopologyLayoutCache = new Map();
   }
-}
-
-function normalizeBoolean(value, fallback) {
-  return typeof value === "boolean" ? value : fallback;
 }
 
 function finiteNumber(value, fallback) {
@@ -216,9 +202,7 @@ export const state = {
   profileApplyPreview: null,
   topologyMode: "3d",
   thermalTopologyMetric: "topology",
-  thermalTopologyScope: "building",
   thermalTopologyLayout: "spatial",
-  thermalTopologyShowAirCoupling: false,
   thermalTopologySelectedEntityId: "",
   thermalTopologySelectedEntityKind: "",
   thermalTopologyPanX: 0,
@@ -230,14 +214,9 @@ export const state = {
   selectedTopologyEntityKind: "",
   selectedTopologyStory: "all",
   topologySyncLocate: true,
-  topology3DVisibility: {
+  topologyVisibility: {
     zones: true,
     surfaces: true,
-    openings: true,
-  },
-  topologyPlanVisibility: {
-    zones: true,
-    boundaries: true,
     openings: true,
   },
   expandedPane: "",
@@ -414,23 +393,16 @@ export const elements = {
   topologyModeButtons: document.querySelectorAll("[data-topology-mode]"),
   topologyStoryControl: document.querySelector("#topologyStoryControl"),
   topologyStorySelect: document.querySelector("#topologyStorySelect"),
-  topology3DControls: document.querySelector("#topology3DControls"),
-  topologyPlanControls: document.querySelector("#topologyPlanControls"),
+  topologySpatialControls: document.querySelector("#topologySpatialControls"),
   thermalTopologyControls: document.querySelector("#thermalTopologyControls"),
   thermalTopologyMetric: document.querySelector("#thermalTopologyMetric"),
-  thermalTopologyScope: document.querySelector("#thermalTopologyScope"),
-  thermalTopologyExportJSON: document.querySelector("#thermalTopologyExportJSON"),
   thermalTopologyLayout: document.querySelector("#thermalTopologyLayout"),
-  thermalTopologyShowAirCoupling: document.querySelector("#thermalTopologyShowAirCoupling"),
   topologyFitButton: document.querySelector("#topologyFitButton"),
   topologyExpandButton: document.querySelector("#topologyExpandButton"),
   topologySyncLocate: document.querySelector("#topologySyncLocate"),
-  topology3DShowZones: document.querySelector("#topology3DShowZones"),
-  topology3DShowSurfaces: document.querySelector("#topology3DShowSurfaces"),
-  topology3DShowOpenings: document.querySelector("#topology3DShowOpenings"),
-  topologyPlanShowZones: document.querySelector("#topologyPlanShowZones"),
-  topologyPlanShowBoundaries: document.querySelector("#topologyPlanShowBoundaries"),
-  topologyPlanShowOpenings: document.querySelector("#topologyPlanShowOpenings"),
+  topologyShowZones: document.querySelector("#topologyShowZones"),
+  topologyShowSurfaces: document.querySelector("#topologyShowSurfaces"),
+  topologyShowOpenings: document.querySelector("#topologyShowOpenings"),
 };
 
 export function backend() {

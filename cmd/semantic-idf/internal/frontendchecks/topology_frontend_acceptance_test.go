@@ -24,12 +24,12 @@ func TestTOPO260ViewSwitchingAcceptance(t *testing.T) {
 	}
 	view := readTestFile(t, "frontend/src/js/views/topology-view.js")
 	for _, required := range []string{
-		`elements.topology3DControls.hidden = !is3D`,
-		`elements.topologyPlanControls.hidden = !isPlan`,
+		`elements.topologySpatialControls.hidden = isNetwork`,
 		`elements.thermalTopologyControls.hidden = !isNetwork`,
-		`elements.topologyStoryControl.hidden = isNetwork && state.thermalTopologyScope !== "story"`,
+		`elements.topologyStoryControl.hidden = false`,
 		`state.topologyMode === "3d"`,
 		`return state.selectedTopologyStory === "all" || item.storyIndex === state.selectedTopologyStory`,
+		`storyIndex === "all" || item.storyIndex === storyIndex`,
 		"restoreThermalTopologyState(snapshot, state)",
 	} {
 		if !strings.Contains(view, required) {
@@ -145,7 +145,7 @@ func TestTOPO262NavigationAcceptance(t *testing.T) {
 		t.Fatal("Follow ON/OFF selection behavior is not centralized")
 	}
 	thermalView := readTestFile(t, "frontend/src/js/views/thermal-topology-view.js")
-	activation := sliceBetween(thermalView, "function activateGraphTarget", "function markGraphTargetSelected")
+	activation := sliceBetween(thermalView, "function activateGraphTarget", "function applyGraphTransform")
 	for _, forbidden := range []string{"AnalyzeInput", "waitForAppAPI", "api.", "fetch("} {
 		if strings.Contains(activation, forbidden) {
 			t.Fatalf("topology navigation must not call backend analysis; found %q", forbidden)

@@ -14,18 +14,21 @@ flowchart LR
   V --> D[3D]
   V --> P[Plan]
   V --> N[Network]
+  V --> L[Level · All or specific]
   V --> C[Sync locate by default]
-  D --> DL[All or one level · Zones · Surfaces · Openings]
-  P --> PL[One level · Zone fill · Boundaries · Openings]
+  D --> S[Shared Zones · Surfaces · Openings]
+  P --> S
   N --> M[Connectivity · Area · UA · Exposure · QA · Air]
-  N --> S[Building · Story · Selection · Neighbors]
-  N --> A[Layout · Air coupling · External targets · JSON]
+  N --> A[Spatial or Network layout]
+  N --> F[One-hop emphasis · Unrelated objects faded]
   N --> I[Inspector]
 ```
 
-The toolbar shows only options that affect the active view. 3D and Plan keep
-independent visibility settings. Network shows its story selector only when
-the scope is Story. Fit and Expand are icon controls inside the drawing area.
+Level is shared by all three views. **All** shows the complete model, while a
+specific level applies the former story filter. 3D and Plan also share the same
+Zones, Surfaces, and Openings visibility settings. Network exposes only Metric
+and Layout; it has no separate Scope or Advanced menu. Fit and Expand are icon
+controls inside the drawing area.
 
 ## View roles
 
@@ -37,10 +40,11 @@ objects are polygon areas. Its level selector can show all levels or one level.
 
 ### Plan
 
-Use Plan to inspect one story at a time: floor-plan composition, zone
-boundaries, and surface/window positions. Selecting a zone projects to the same
-zone node in Network. Zone fill, boundaries, and openings are independent Plan
-layers and do not change the 3D visibility settings.
+Use Plan to inspect floor-plan composition, zone boundaries, and
+surface/window positions across all levels or on one selected level. Selecting
+a zone projects to the same zone node in Network. Zones, surfaces, and openings
+use the same visibility settings as 3D, so changing a layer in either spatial
+view changes it in the other.
 
 ### Network
 
@@ -51,7 +55,15 @@ are deterministic projections of the same connection records. Drag a zone or
 environment endpoint to adjust the current layout; connected routes update in
 place. Outdoor endpoints are compact directional points, while each Adiabatic
 surface is a selectable detached wall stub rather than a shared environment
-node.
+node. Level **All** shows the complete network; selecting a specific level uses
+the former Story-scope projection. Metric and Layout are the only
+Network-specific controls.
+
+Selecting an object keeps the complete level projection in context but changes
+its emphasis. A selected zone emphasizes its incident connections and their
+one-hop endpoint zones or environments. A selected boundary, opening, or
+connection emphasizes that relation and its two endpoints. All unrelated nodes
+and connections remain available but are rendered at very low opacity.
 
 ## Authoritative boundary versus geometric adjacency
 
@@ -101,7 +113,9 @@ relation is not counted as a second quantity.
 `Construction:AirBoundary`, and AirflowNetwork surface paths form air-coupling
 records. They retain direction, design flow, schedule, AFN surface/component,
 and source anchors. Air edges are displayed separately from conductive
-boundaries; ordinary zone-local infiltration does not become a zone-pair edge.
+boundaries when the Air metric is active; there is no separate Air coupling
+visibility toggle. Ordinary zone-local infiltration does not become a
+zone-pair edge.
 
 ## QA observations and EnergyPlus rule issues
 
@@ -117,11 +131,13 @@ snapshot.
 
 ## Shared selection and navigation
 
-3D, Plan, Network, and Semantic Text share one semantic selection.
-Sync locate is enabled by default, so selecting a visual object also locates
-its input source. Back and Forward restore view mode, scope, metric, each
-spatial view's visibility, pan/zoom, and stable selection. Navigation changes
-view state only and does not request backend analysis.
+3D, Plan, Network, and Semantic Text share one semantic selection. Selecting a
+Topology object emphasizes its one-hop related objects and strongly fades the
+rest without removing them from the active Level. Sync locate is enabled by
+default, so selecting a visual object also locates its input source. Navigation
+history restores view mode, Level, metric, layout, shared spatial visibility,
+pan/zoom, and stable selection. Navigation changes view state only and does not
+request backend analysis.
 
 Settings and Tools preserve the same document snapshot key. Returning to the
 app restores Network context from the cached topology; Batch Metrics exposes
@@ -131,9 +147,8 @@ normalized topology metrics, delta, percent, and CSV/JSON/XLSX export.
 
 When Topology is active, `1`, `2`, and `3` switch 3D, Plan, and Network; `F`
 fits the active view; `T`, `A`, `U`, and `Q` choose Connectivity, Area, UA, and
-QA; and `N` selects neighbor scope. Network targets follow deterministic tab
-order and activate with Enter or Space. These shortcuts are configurable and
-do not consume keys in editors.
+QA. Network targets follow deterministic tab order and activate with Enter or
+Space. These shortcuts are configurable and do not consume keys in editors.
 
 ## Canonical terms
 
@@ -171,11 +186,12 @@ area. Static UA is not energy flow, a load, or a simulation result.
 A signed EnergyPlus result aggregated for a specific period or frame and
 linked to its output sources.
 
-## Advanced/debug information
+## Schema and CLI information
 
-JSON export exposes stable IDs, `sourceAnchors`, geometry checks, issue links,
-construction coverage, and schema/model hashes. The CLI uses the same canonical
-report:
+The Network toolbar intentionally has no Advanced menu or topology JSON export
+action. Stable IDs, `sourceAnchors`, geometry checks, issue links, construction
+coverage, and schema/model hashes remain part of the canonical backend report
+and are available to CLI workflows:
 
 ```text
 semantic-idf topology --level zone --metric ua --area-basis effective model.idf

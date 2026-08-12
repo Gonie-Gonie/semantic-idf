@@ -83,65 +83,6 @@
   max-width: 150px;
 }
 
-.thermal-topology-advanced {
-  position: relative;
-  flex: 0 0 auto;
-}
-
-.thermal-topology-advanced > summary {
-  min-height: 30px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  padding: 6px 9px;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  background: var(--control);
-  color: var(--muted);
-  cursor: pointer;
-  font-size: 12px;
-  list-style: none;
-}
-
-.thermal-topology-advanced > summary::-webkit-details-marker {
-  display: none;
-}
-
-.thermal-topology-advanced > summary::after {
-  content: "▾";
-  font-size: 10px;
-}
-
-.thermal-topology-advanced[open] > summary {
-  border-color: var(--teal);
-  color: var(--ink);
-}
-
-.thermal-topology-advanced-menu {
-  position: absolute;
-  z-index: 12;
-  top: calc(100% + 6px);
-  right: 0;
-  width: max-content;
-  min-width: 230px;
-  max-width: min(320px, calc(100vw - 24px));
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  padding: 10px;
-  display: grid;
-  gap: 8px;
-  background: var(--surface);
-  box-shadow: 0 10px 28px color-mix(in srgb, var(--ink), transparent 82%);
-}
-
-.thermal-topology-advanced-menu .topology-select-control {
-  justify-content: space-between;
-}
-
-.thermal-topology-advanced-menu .topology-toggle {
-  margin: 0;
-}
-
 .topology-toggle {
   min-height: 30px;
   display: inline-flex;
@@ -389,6 +330,28 @@
   stroke-width: max(var(--thermal-edge-width, 2), 4);
 }
 
+.thermal-edge.connected {
+  stroke: var(--selection-related);
+}
+
+.thermal-edge-group.dimmed,
+.thermal-node.dimmed {
+  opacity: 0.12;
+}
+
+.thermal-edge-group.connected,
+.thermal-node.connected,
+.thermal-edge-group.selected,
+.thermal-node.selected,
+.thermal-edge-group.semantic-hovered,
+.thermal-node.semantic-hovered,
+.thermal-edge-group:hover,
+.thermal-node:hover,
+.thermal-edge-group:focus-visible,
+.thermal-node:focus-visible {
+  opacity: 1;
+}
+
 .thermal-edge-hit {
   fill: none;
   stroke: transparent;
@@ -454,6 +417,12 @@
 
 .thermal-node.selected rect {
   fill: color-mix(in srgb, var(--geometry-selected), var(--surface) 88%);
+}
+
+.thermal-node.connected rect,
+.thermal-node.connected .thermal-node-endpoint {
+  stroke: var(--selection-related);
+  stroke-width: 3;
 }
 
 .thermal-node.environment-point .thermal-node-endpoint {
@@ -831,10 +800,20 @@
   cursor: pointer;
 }
 
+.topology-plan :is(.plan-zone, .plan-surface, .plan-wall, .plan-window).dimmed {
+  opacity: 0.12;
+}
+
+.topology-plan :is(.plan-zone, .plan-surface, .plan-wall, .plan-window).connected {
+  opacity: 1;
+  stroke: var(--selection-related);
+}
+
 .plan-zone.selected,
 .plan-surface.selected,
 .plan-wall.selected,
 .plan-window.selected {
+  opacity: 1;
   stroke: var(--geometry-selected);
   stroke-width: 6;
 }
@@ -843,6 +822,7 @@
 .plan-surface.hovered,
 .plan-wall.hovered,
 .plan-window.hovered {
+  opacity: 1;
   stroke: var(--teal);
   stroke-width: 5;
 }
@@ -850,6 +830,7 @@
 .plan-surface.counterpart,
 .plan-wall.counterpart,
 .plan-window.counterpart {
+  opacity: 1;
   stroke: #6c7fd8;
   stroke-dasharray: 4 3;
 }

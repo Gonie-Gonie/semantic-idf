@@ -13,7 +13,7 @@ func TestThermalTopologyShortcutsAreConfigurableAndContextGuarded(t *testing.T) 
 	for _, required := range []string{
 		`topology3D: "1"`, `topologyPlan: "2"`, `topologyNetwork: "3"`, `topologyFit: "F"`,
 		`topologyConnectivity: "T"`, `topologyArea: "A"`,
-		`topologyUA: "U"`, `topologyQA: "Q"`, `topologyNeighbors: "N"`,
+		`topologyUA: "U"`, `topologyQA: "Q"`,
 		"validateShortcutConflicts", "allowsBareKey", `state.activeResultTab !== "topology"`, `state.topologyMode !== "thermal"`,
 	} {
 		if !strings.Contains(settings+settingsPage+shortcuts+main, required) {
@@ -22,6 +22,11 @@ func TestThermalTopologyShortcutsAreConfigurableAndContextGuarded(t *testing.T) 
 	}
 	if !strings.Contains(shortcuts, "isEditableTarget(event.target)") || !strings.Contains(shortcuts, "handled === false") {
 		t.Fatal("bare topology shortcuts must not run in editors or consume keys outside Topology")
+	}
+	for _, removed := range []string{"topologyNeighbors", "setTopologyNeighbors", "topologyDisplay"} {
+		if strings.Contains(settings+settingsPage+shortcuts+main, removed) {
+			t.Fatalf("removed topology shortcut remains %q", removed)
+		}
 	}
 }
 

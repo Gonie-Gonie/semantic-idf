@@ -19,8 +19,7 @@ func TestTopologyAdapterRegistersBeforeLazyRenderer(t *testing.T) {
 		"selectedKind",
 		"selectedId",
 		"syncLocate",
-		"visibility3D",
-		"visibilityPlan",
+		"visibility",
 	} {
 		if !strings.Contains(loader, required) {
 			t.Fatalf("topology loader navigation adapter is missing %q", required)

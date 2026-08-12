@@ -3,11 +3,11 @@ import {
   escapeHTML,
   normalizeThermalTopologyLayout,
   normalizeThermalTopologyMetric,
-  normalizeThermalTopologyScope,
   state,
 } from "../state.js";
 import { t } from "../i18n.js";
 import { clearSemanticHover, hoverSemanticEntity } from "../selection-controller.js";
+import { createTopologyFocusContext } from "../topology-focus.js";
 import {
   computeThermalTopologyLayout,
   createThermalTopologyLayoutModel,
@@ -17,6 +17,7 @@ import {
   THERMAL_NODE_HEIGHT,
   THERMAL_NODE_WIDTH,
   thermalNodeSize,
+  thermalTopologyFocusContext,
   thermalTopologyLayoutCacheKey,
 } from "./thermal-topology-layout.js";
 import { renderThermalTopologyInspector } from "./thermal-topology-inspector.js";
@@ -34,28 +35,6 @@ let suppressNextGraphClick = false;
 let graphClickSuppressionTimer = 0;
 
 const THERMAL_LAYOUT_CACHE_LIMIT = 24;
-
-window.addEventListener("idfAnalyzer:thermalTopologyExport", () => exportThermalTopologyJSON());
-
-export function thermalTopologyExportPayload(geometry) {
-  const topology = geometry?.topology;
-  if (!topology) return null;
-  return { ...topology };
-}
-
-export function exportThermalTopologyJSON() {
-  const payload = thermalTopologyExportPayload(currentGeometry);
-  if (!payload) return false;
-  const blob = new Blob([`${JSON.stringify(payload, null, 2)}\n`], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  const sourceName = String(state.currentFilename || "model.idf").replace(/\.(idf|json|epjson)$/i, "");
-  link.href = url;
-  link.download = `${sourceName}.thermal-topology.json`;
-  link.click();
-  URL.revokeObjectURL(url);
-  return true;
-}
 
 export function renderThermalTopology(geometry, helpers = {}) {
   if (!elements.thermalTopologyGraph) {
@@ -104,6 +83,7 @@ export function fitThermalTopology() {
 function renderThermalTopologySVG(model, layout) {
   const selectedID = state.thermalTopologySelectedEntityId || state.selectedTopologyEntityId;
   const selectionContext = createThermalSelectionContext(selectedID);
+  const focusContext = createThermalRenderFocusContext(model, selectedID);
   const edges = [...layout.edges].sort((left, right) => String(left.targetId || left.id).localeCompare(String(right.targetId || right.id)));
   const nodes = [...model.nodes].sort((left, right) => String(left.id).localeCompare(String(right.id)));
   const metricContext = createMetricContext(model);
@@ -118,20 +98,22 @@ function renderThermalTopologySVG(model, layout) {
         </marker>
       </defs>
       <g class="thermal-topology-panzoom" transform="${graphTransform()}">
-        <g class="thermal-topology-edges">${edges.map((edge) => renderEdge(edge, model, selectionContext, metricContext)).join("")}</g>
-        <g class="thermal-topology-nodes">${nodes.map((node) => renderNode(node, layout.positions[node.id], selectedID, model, metricContext)).join("")}</g>
+        <g class="thermal-topology-edges">${edges.map((edge) => renderEdge(edge, model, selectionContext, focusContext, metricContext)).join("")}</g>
+        <g class="thermal-topology-nodes">${nodes.map((node) => renderNode(node, layout.positions[node.id], selectedID, focusContext, model, metricContext)).join("")}</g>
       </g>
     </svg>`;
   bindGraphInteractions();
 }
 
-function renderEdge(edge, model, selectionContext, metricContext) {
+function renderEdge(edge, model, selectionContext, focusContext, metricContext) {
   const selected = edgeMatchesThermalSelection(edge, selectionContext);
+  const connected = focusContext.edgeIDs.has(edge.id) || focusContext.edgeIDs.has(edge.sourceConnectionId);
+  const dimmed = focusContext.active && !selected && !connected;
   const air = edge.relationKind === "air_coupling" || (edge.airCouplingIds || []).length > 0;
   const invalid = edge.qaOnly || edge.relationKind === "invalid";
   const stub = Boolean(edge.route.adiabaticStub);
   const presentation = edgeMetricPresentation(edge, model, metricContext);
-  const classes = ["thermal-edge", `relation-${cssToken(edge.relationKind)}`, air ? "air" : "conductive", stub ? "adiabatic-stub" : "", invalid ? "invalid" : "", ...presentation.classes, selected ? "selected" : ""].filter(Boolean).join(" ");
+  const classes = ["thermal-edge", `relation-${cssToken(edge.relationKind)}`, air ? "air" : "conductive", stub ? "adiabatic-stub" : "", invalid ? "invalid" : "", ...presentation.classes, selected ? "selected" : "", connected && !selected ? "connected" : ""].filter(Boolean).join(" ");
   const label = connectionLabel(edge, model, metricContext);
   const targetKind = edge.targetKind || "thermal_connection";
   const targetID = edge.targetId || baseExpandedID(edge.id);
@@ -139,7 +121,7 @@ function renderEdge(edge, model, selectionContext, metricContext) {
   const tooltip = connectionTooltip(edge, model);
   const ariaLabel = connectionAriaLabel(edge, targetKind, targetID, label);
   const markerEnd = stub ? "" : `marker-end="url(#${air ? "thermalTopologyAirArrow" : "thermalTopologyArrow"})"`;
-  return `<g class="thermal-edge-group navigable-row${stub ? " adiabatic-stub" : ""}${selected ? " selected" : ""}" tabindex="0" role="button" data-thermal-edge-id="${escapeHTML(edge.id)}" data-thermal-target-kind="${targetKind}" data-thermal-target-id="${escapeHTML(targetID)}" aria-label="${escapeHTML(ariaLabel)}" ${attributes}>
+  return `<g class="thermal-edge-group navigable-row${stub ? " adiabatic-stub" : ""}${selected ? " selected" : ""}${connected && !selected ? " connected" : ""}${dimmed ? " dimmed" : ""}" tabindex="0" role="button" data-thermal-edge-id="${escapeHTML(edge.id)}" data-thermal-target-kind="${targetKind}" data-thermal-target-id="${escapeHTML(targetID)}" aria-label="${escapeHTML(ariaLabel)}" ${attributes}>
     <title>${escapeHTML(tooltip)}</title>
     <path class="${classes}" style="--thermal-edge-width:${presentation.width}" d="${edge.route.path}" ${markerEnd}></path>
     ${edge.route.capPath ? `<path class="thermal-edge-cap" d="${edge.route.capPath}" aria-hidden="true"></path>` : ""}
@@ -147,10 +129,12 @@ function renderEdge(edge, model, selectionContext, metricContext) {
   </g>`;
 }
 
-function renderNode(node, position, selectedID, model, metricContext) {
+function renderNode(node, position, selectedID, focusContext, model, metricContext) {
   if (!position) return "";
   const external = !["zone", "space"].includes(node.kind);
   const selected = node.id === selectedID || node.entityId === selectedID || node.sourceId === selectedID;
+  const connected = focusContext.nodeIDs.has(node.id) || focusContext.nodeIDs.has(node.entityId) || focusContext.nodeIDs.has(node.sourceId);
+  const dimmed = focusContext.active && !selected && !connected;
   const targetKind = external ? "thermal_environment" : node.kind;
   const targetID = node.sourceId || node.entityId || node.id;
   const attributes = currentHelpers?.navigationAttributes?.(targetKind, targetID, {}, { tabindex: false }) || "";
@@ -160,7 +144,7 @@ function renderNode(node, position, selectedID, model, metricContext) {
   const ariaLabel = `${label}; entity ${targetKind} ${targetID}; relation node; metric ${subtitle || "not available"}; issues ${nodeIssues}`;
   const point = isThermalPointNode(node);
   const orientation = thermalPointOrientation(node);
-  const classes = ["thermal-node", external ? "external" : "", cssToken(node.kind), point ? "environment-point" : "", selected ? "selected" : "", model.metric === "qa" && !nodeIssues ? "qa-muted" : ""].filter(Boolean).join(" ");
+  const classes = ["thermal-node", external ? "external" : "", cssToken(node.kind), point ? "environment-point" : "", selected ? "selected" : "", connected && !selected ? "connected" : "", dimmed ? "dimmed" : "", model.metric === "qa" && !nodeIssues ? "qa-muted" : ""].filter(Boolean).join(" ");
   if (point) {
     return `<g class="${classes} navigable-row" tabindex="0" role="button" transform="translate(${position.x} ${position.y})" data-thermal-node-id="${escapeHTML(node.id)}" data-thermal-orientation="${escapeHTML(orientation)}" data-thermal-target-kind="${escapeHTML(targetKind)}" data-thermal-target-id="${escapeHTML(targetID)}" aria-label="${escapeHTML(ariaLabel)}" ${attributes}>
       <circle class="thermal-node-endpoint-hit" r="16" aria-hidden="true"></circle>
@@ -401,19 +385,9 @@ function activateGraphTarget(kind, id) {
   state.thermalTopologySelectedEntityKind = kind;
   state.selectedTopologyEntityKind = kind;
   state.selectedTopologyEntityId = id;
-  markGraphTargetSelected(kind, id);
+  renderThermalTopologySVG(currentModel, currentLayout);
   currentHelpers?.selectTopologyEntity?.(kind, id, { syncLocate: true, syncSemantic: true });
   renderThermalTopologyInspector(currentGeometry, currentHelpers);
-}
-
-function markGraphTargetSelected(kind, id) {
-  elements.thermalTopologyGraph.querySelectorAll(".thermal-node.selected, .thermal-edge.selected").forEach((element) => element.classList.remove("selected"));
-  elements.thermalTopologyGraph.querySelectorAll("[data-thermal-target-id]").forEach((element) => element.setAttribute("aria-selected", "false"));
-  const target = [...elements.thermalTopologyGraph.querySelectorAll("[data-thermal-target-id]")]
-    .find((element) => element.dataset.thermalTargetKind === kind && element.dataset.thermalTargetId === id);
-  target?.classList.add("selected");
-  target?.setAttribute("aria-selected", "true");
-  target?.querySelector(".thermal-edge")?.classList.add("selected");
 }
 
 function applyGraphTransform() {
@@ -442,14 +416,14 @@ function ensureResizeObserver() {
 }
 
 function thermalTopologyOptions() {
+  const level = state.selectedTopologyStory;
   return {
     metric: state.thermalTopologyMetric,
     layout: state.thermalTopologyLayout,
-    scope: state.thermalTopologyScope,
-    storyIndex: state.selectedTopologyStory,
+    storyIndex: level,
     selectedEntityId: state.thermalTopologySelectedEntityId || state.selectedTopologyEntityId,
     selectedEntityKind: state.thermalTopologySelectedEntityKind || state.selectedTopologyEntityKind,
-    showAirCoupling: state.thermalTopologyShowAirCoupling || state.thermalTopologyMetric === "air",
+    showAirCoupling: state.thermalTopologyMetric === "air",
   };
 }
 
@@ -462,9 +436,7 @@ function graphViewport() {
 
 function syncThermalTopologyControls() {
   elements.thermalTopologyMetric.value = normalizeThermalTopologyMetric(state.thermalTopologyMetric);
-  elements.thermalTopologyScope.value = normalizeThermalTopologyScope(state.thermalTopologyScope);
   elements.thermalTopologyLayout.value = normalizeThermalTopologyLayout(state.thermalTopologyLayout);
-  elements.thermalTopologyShowAirCoupling.checked = Boolean(state.thermalTopologyShowAirCoupling);
 }
 
 function connectionLabel(connection, model, metricContext) {
@@ -634,6 +606,26 @@ function createThermalSelectionContext(selectedID) {
     ? (currentGeometry?.topology?.openings || []).find((item) => item.entityId === selectedID || item.windowId === selectedID || item.id === selectedID)
     : null;
   return { selectedID, selectedKind, openingID: opening?.id || "" };
+}
+
+function createThermalRenderFocusContext(model, selectedID) {
+  const projected = thermalTopologyFocusContext(model, selectedID);
+  const geometry = createTopologyFocusContext(currentGeometry, {
+    kind: state.thermalTopologySelectedEntityKind || state.selectedTopologyEntityKind,
+    id: selectedID,
+  });
+  const nodeIDs = new Set([...projected.nodeIDs, ...geometry.nodeIds, ...geometry.zoneIds]);
+  const edgeIDs = new Set([...projected.edgeIDs, ...geometry.connectionIds]);
+  for (const edge of model.connections || []) {
+    if (geometry.connectionIds.has(edge.id)
+      || geometry.connectionIds.has(edge.sourceConnectionId)
+      || (edge.boundaryIds || []).some((id) => geometry.boundaryIds.has(id))
+      || (edge.openingIds || []).some((id) => geometry.openingIds.has(id))) {
+      edgeIDs.add(edge.id);
+      if (edge.sourceConnectionId) edgeIDs.add(edge.sourceConnectionId);
+    }
+  }
+  return { active: projected.active || geometry.active, nodeIDs, edgeIDs };
 }
 
 function edgeMatchesThermalSelection(edge, selection) {

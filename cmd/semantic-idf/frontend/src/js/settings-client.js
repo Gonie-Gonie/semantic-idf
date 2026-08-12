@@ -64,7 +64,6 @@ export const defaultAppSettings = {
       topologyArea: "A",
       topologyUA: "U",
       topologyQA: "Q",
-      topologyNeighbors: "N",
     },
   },
   profile: {

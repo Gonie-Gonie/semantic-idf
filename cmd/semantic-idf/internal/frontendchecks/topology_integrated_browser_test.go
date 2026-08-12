@@ -60,9 +60,7 @@ const thermalTopologyIntegratedHarnessHTML = `<!doctype html>
 <div id="topologyStats"></div><div id="topology3DCanvasHost"></div><svg id="topologyPlan"></svg><div id="topologyDetails"></div>
 <div id="thermalTopologyGraph" style="width:900px;height:600px"></div><aside id="thermalTopologyInspector"></aside>
 <select id="thermalTopologyMetric"><option value="topology">topology</option><option value="area">area</option><option value="ua">ua</option><option value="exposure">exposure</option><option value="qa">qa</option><option value="air">air</option></select>
-<select id="thermalTopologyScope"><option value="building">building</option><option value="story">story</option><option value="selection">selection</option><option value="neighbors">neighbors</option></select>
 <select id="thermalTopologyLayout"><option value="spatial">spatial</option><option value="network">network</option></select>
-<input id="thermalTopologyShowAirCoupling" type="checkbox">
 <pre id="result">pending</pre>
 <script type="module">
 const assert = (condition, message) => { if (!condition) throw new Error(message); };
@@ -121,7 +119,7 @@ try {
     topology:{schema:"semantic-idf.thermal-topology/v1",sourceModelHash:"integrated-fixture",nodes,boundaries,openings,connections,airCouplings,zoneSignatures:[{zoneId:"zone:a",zoneName:"Zone A",interzoneArea:8,exteriorArea:20,totalUa:22.9716,hasTotalUa:true},{zoneId:"zone:b",zoneName:"Zone B",interzoneArea:8,totalUa:12.5716,hasTotalUa:true}],issueLinks:[{id:"issue:missing",code:"surface_counterpart_missing",severity:"error",message:"Missing reciprocal surface",entityId:"surface:bad",boundaryId:"boundary:bad",relatedEntityIds:["surface:bad"],sourceAnchors:anchor(6,"Broken Pair")}],adjacencyObservations:[{surfaceAId:"surface:adi-a",surfaceBId:"surface:adi-b",overlapRatio:1,declaredConnection:false,observationKind:"geometrically_adjacent_but_thermally_disconnected"}]}
   };
   const state = stateModule.state;
-  state.report={geometry,output:{existing:[]}}; state.topologyMode="thermal"; state.thermalTopologyScope="building"; state.thermalTopologyLayout="spatial"; state.thermalTopologyShowAirCoupling=false;
+  state.report={geometry,output:{existing:[]}}; state.topologyMode="thermal"; state.selectedTopologyStory="all"; state.thermalTopologyLayout="spatial";
   let backendCalls=0; const selections=[];
   const helpers={
     navigationAttributes:()=>'',
@@ -161,7 +159,7 @@ try {
   const grossOnly=pairBoundaryRows.get('Gross area')?.value==='4'&&pairBoundaryRows.get('Multiplier')?.value==='2';
   const topo281=pairSourceSelection&&grossOnly&&!document.querySelector('.thermal-node.thermal_boundary')&&reciprocalValidated&&connections[1].sourceAnchors.filter((item)=>item.fieldName==='Outside Boundary Condition').length===2;
 
-  state.thermalTopologyScope="building";state.thermalTopologyMetric="qa";state.thermalTopologySelectedEntityKind="";state.thermalTopologySelectedEntityId="";renderer.renderThermalTopology(geometry,helpers);
+  state.thermalTopologyMetric="qa";state.thermalTopologySelectedEntityKind="";state.thermalTopologySelectedEntityId="";renderer.renderThermalTopology(geometry,helpers);
   const observationEdge=document.querySelector('.thermal-edge.qa-observation')?.closest('.thermal-edge-group');
   observationEdge?.dispatchEvent(new MouseEvent('click',{bubbles:true}));
   const observationInspector=document.getElementById('thermalTopologyInspector').textContent;
@@ -175,7 +173,7 @@ try {
   const stableAfterFix=state.thermalTopologySelectedEntityId==='boundary:bad'&&targets.thermalTopologyTargetExists({targetKind:'thermal_boundary',targetId:'boundary:bad'},geometry);
   const topo282=Boolean(observationEdge)&&observationInspector.includes('QA evidence only')&&observationBothSurfaces&&noGeneratedRelation&&noDiagnosticActions&&stableAfterFix;
 
-  state.thermalTopologyMetric="air";state.thermalTopologyShowAirCoupling=true;state.thermalTopologySelectedEntityKind="thermal_air_coupling";state.thermalTopologySelectedEntityId="air:mix";renderer.renderThermalTopology(geometry,helpers);
+  state.thermalTopologyMetric="air";state.thermalTopologySelectedEntityKind="thermal_air_coupling";state.thermalTopologySelectedEntityId="air:mix";renderer.renderThermalTopology(geometry,helpers);
   const airInspector=document.getElementById('thermalTopologyInspector').textContent;
   const airEdge=document.querySelector('[data-thermal-target-id="connection:air"]');
   const airMetricLabel=airEdge?.getAttribute('aria-label')?.includes('0.15 m3/s');
