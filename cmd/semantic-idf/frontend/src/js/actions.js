@@ -1,4 +1,4 @@
-import { backend, elements, refreshStatusTitle, setStatus, state, updateTextStats } from "./state.js";
+import { backend, elements, getDocumentText, refreshStatusTitle, setDocumentText, setStatus, state, updateTextStats } from "./state.js";
 import {
   markAllAnalysisDirty,
   markAnalysisDirty,
@@ -18,7 +18,6 @@ const auxiliaryNavigationStorageKey = "idfAnalyzer.auxiliaryNavigation";
 
 const workspaceSnapshotVersion = 3;
 
-let autoAnalyzeTimer = 0;
 let afterPaintAnalyzeTimer = 0;
 let analysisRunID = 0;
 let activeAnalysisPromise = null;
@@ -37,7 +36,7 @@ export async function analyze(options = {}) {
     return;
   }
 
-  const text = elements.idfInput.value;
+  const text = getDocumentText();
   if (activeAnalysisPromise && activeAnalysisText === text) {
     return activeAnalysisPromise;
   }
@@ -365,12 +364,12 @@ function hasStagedAnalysisAPI(api) {
 }
 
 function isCurrentAnalysis(runID, text, analysisKey = "") {
-  return runID === analysisRunID && text === elements.idfInput.value && (!analysisKey || !state.analysisKey || analysisKey === state.analysisKey);
+  return runID === analysisRunID && text === getDocumentText() && (!analysisKey || !state.analysisKey || analysisKey === state.analysisKey);
 }
 
 export function scheduleAnalyzeAfterPaint(options = {}) {
   clearScheduledAnalyze();
-  const textSnapshot = normalizeLineEndings(options.textSnapshot ?? elements.idfInput.value);
+  const textSnapshot = normalizeLineEndings(options.textSnapshot ?? getDocumentText());
   state.lastAnalyzedText = "";
   state.lastAnalyzedKey = "";
   state.analysisStage = "queued";
@@ -383,40 +382,21 @@ export function scheduleAnalyzeAfterPaint(options = {}) {
   const delay = Number.isFinite(Number(options.delay)) ? Math.max(0, Number(options.delay)) : 40;
   afterPaintAnalyzeTimer = window.setTimeout(() => {
     afterPaintAnalyzeTimer = 0;
-    if (normalizeLineEndings(elements.idfInput.value) !== textSnapshot) {
+    if (normalizeLineEndings(getDocumentText()) !== textSnapshot) {
       return;
     }
     analyze(options);
   }, delay);
 }
 
-export function scheduleAutoAnalyze(delay = state.autoAnalyzeDelayMs) {
-  clearScheduledAnalyze();
-  if (restoreInstalledReportIfCurrent()) {
-    updateDocumentActions();
-    setStatus(t("status.analysisComplete"), "ok");
-    return;
-  }
-  state.lastAnalyzedText = "";
-  state.lastAnalyzedKey = "";
-  updateDocumentActions();
-  setStatus(t("status.editingPending"), "muted");
-  autoAnalyzeTimer = window.setTimeout(() => {
-    autoAnalyzeTimer = 0;
-    scheduleAnalyzeAfterPaint({
-      queuedMessage: t("status.editingPausedQueued"),
-      statusMessage: t("status.autoComplete"),
-    });
-  }, delay);
-}
-
 export function registerLoadedDocument(text, { path = "", filename = "" } = {}) {
+  const documentText = setDocumentText(text);
   clearSemanticHover();
   clearSemanticSelection({ resetMemory: true });
   state.currentFilePath = path;
   state.currentFilename = filename;
-  state.loadedText = text;
-  state.savedText = text;
+  state.loadedText = documentText;
+  state.savedText = documentText;
   state.lastAnalyzedText = "";
   state.lastAnalyzedKey = "";
   state.reportAnalyzedText = "";
@@ -469,7 +449,7 @@ export function markDocumentChanged() {
 }
 
 export function updateDocumentActions() {
-  const text = elements.idfInput?.value || "";
+  const text = getDocumentText();
   const hasLoadedText = state.loadedText !== "";
   const changedFromLoad = hasLoadedText && text !== state.loadedText;
   if (elements.revertButton) {
@@ -492,9 +472,9 @@ export async function openInputFile() {
     if (!result || result.canceled) {
       return;
     }
-    elements.idfInput.value = result.text || "";
+    setDocumentText(result.text || "");
     updateTextStats();
-    registerLoadedDocument(elements.idfInput.value, {
+    registerLoadedDocument(getDocumentText(), {
       path: result.path || "",
       filename: result.filename || "",
     });
@@ -509,9 +489,9 @@ export async function openInputFile() {
 }
 
 export async function loadBrowserFile(file) {
-  elements.idfInput.value = await file.text();
+  setDocumentText(await file.text());
   updateTextStats();
-  registerLoadedDocument(elements.idfInput.value, { filename: file.name || "" });
+  registerLoadedDocument(getDocumentText(), { filename: file.name || "" });
   scheduleAnalyzeAfterPaint({
     loadingMessage: t("status.analyzingNamed", { name: file.name || t("common.inputFile") }),
     queuedMessage: t("status.openedQueued", { name: file.name || t("common.inputFile") }),
@@ -527,7 +507,7 @@ export async function saveInputFile() {
   }
 
   try {
-    const text = elements.idfInput.value;
+    const text = getDocumentText();
     const suggestedFilename = suggestedSaveFilename();
     const result = state.currentFilePath
       ? await api.SaveInputFile(state.currentFilePath, text)
@@ -546,10 +526,10 @@ export async function saveInputFile() {
 }
 
 export async function revertToLoadedDocument() {
-  if (state.loadedText === "" || elements.idfInput.value === state.loadedText) {
+  if (state.loadedText === "" || getDocumentText() === state.loadedText) {
     return;
   }
-  elements.idfInput.value = state.loadedText;
+  setDocumentText(state.loadedText);
   updateTextStats();
   markDocumentChanged();
   scheduleAnalyzeAfterPaint({
@@ -566,7 +546,7 @@ export async function exportMetrics(format) {
   }
 
   try {
-    const result = await api.ExportMetricsText(elements.idfInput.value, format);
+    const result = await api.ExportMetricsText(getDocumentText(), format);
     const blob = new Blob([result.text], { type: result.mime || "text/plain" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -605,7 +585,7 @@ function openAuxiliaryPage(path) {
 }
 
 export async function saveWorkspaceSnapshot() {
-  const text = elements.idfInput.value || "";
+  const text = getDocumentText();
   const analysisKey = state.analysisKey || state.lastAnalyzedKey || (await computeAnalysisKey(text));
   const viewSnapshot = captureViewSnapshot();
   const snapshot = {
@@ -641,7 +621,7 @@ export function applyCachedAnalysisResult(result, snapshot = {}) {
   if (!result?.report) {
     return false;
   }
-  const text = elements.idfInput.value || "";
+  const text = getDocumentText();
   if (result.text && normalizeLineEndings(result.text) !== normalizeLineEndings(text)) {
     return false;
   }
@@ -690,7 +670,7 @@ function captureInstalledReportReadiness() {
 }
 
 function restoreInstalledReportIfCurrent() {
-  const currentText = elements.idfInput?.value || "";
+  const currentText = getDocumentText();
   if (!state.reportAnalyzedText || currentText !== state.reportAnalyzedText || !state.report) {
     return false;
   }
@@ -724,8 +704,6 @@ function recordAnalysisTiming(timing, stage = "") {
 }
 
 function clearScheduledAnalyze() {
-  window.clearTimeout(autoAnalyzeTimer);
-  autoAnalyzeTimer = 0;
   window.clearTimeout(afterPaintAnalyzeTimer);
   afterPaintAnalyzeTimer = 0;
   cancelIdlePreRender();

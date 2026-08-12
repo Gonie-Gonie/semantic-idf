@@ -124,7 +124,6 @@ type OutputApplyTextResult struct {
 type AppSettings struct {
 	Version     int                         `json:"version"`
 	Appearance  AppearanceSettings          `json:"appearance"`
-	Behavior    BehaviorSettings            `json:"behavior"`
 	Interaction InteractionSettings         `json:"interaction"`
 	Profile     idf.ProfileAnalysisSettings `json:"profile"`
 	Simulation  SimulationSettings          `json:"simulation"`
@@ -147,17 +146,12 @@ type GeometryAppearanceSettings struct {
 	Selected   string `json:"selected"`
 }
 
-type BehaviorSettings struct {
-	AutoAnalyzeDelayMS int `json:"autoAnalyzeDelayMs"`
-}
-
 type SimulationSettings = simulation.SimulationSettings
 type EnergyPlusInstallSetting = simulation.EnergyPlusInstallSetting
 
 type InteractionSettings struct {
-	SyncRawTextPosition bool              `json:"syncRawTextPosition"`
-	TopologySyncLocate  bool              `json:"topologySyncLocate"`
-	Shortcuts           map[string]string `json:"shortcuts"`
+	TopologySyncLocate bool              `json:"topologySyncLocate"`
+	Shortcuts          map[string]string `json:"shortcuts"`
 }
 
 func (settings *InteractionSettings) UnmarshalJSON(data []byte) error {
@@ -1544,12 +1538,8 @@ func defaultAppSettings() AppSettings {
 				Selected:   "#f0a202",
 			},
 		},
-		Behavior: BehaviorSettings{
-			AutoAnalyzeDelayMS: 900,
-		},
 		Interaction: InteractionSettings{
-			SyncRawTextPosition: true,
-			TopologySyncLocate:  true,
+			TopologySyncLocate: true,
 			Shortcuts: map[string]string{
 				"save":                 "Ctrl+S",
 				"open":                 "Ctrl+O",
@@ -1612,15 +1602,6 @@ func normalizeAppSettings(settings AppSettings) AppSettings {
 	settings.Appearance.Geometry.Roof = normalizeHexColor(settings.Appearance.Geometry.Roof, defaults.Appearance.Geometry.Roof)
 	settings.Appearance.Geometry.Window = normalizeHexColor(settings.Appearance.Geometry.Window, defaults.Appearance.Geometry.Window)
 	settings.Appearance.Geometry.Selected = normalizeHexColor(settings.Appearance.Geometry.Selected, defaults.Appearance.Geometry.Selected)
-	if settings.Behavior.AutoAnalyzeDelayMS == 0 {
-		settings.Behavior.AutoAnalyzeDelayMS = defaults.Behavior.AutoAnalyzeDelayMS
-	}
-	if settings.Behavior.AutoAnalyzeDelayMS < 150 {
-		settings.Behavior.AutoAnalyzeDelayMS = 150
-	}
-	if settings.Behavior.AutoAnalyzeDelayMS > 5000 {
-		settings.Behavior.AutoAnalyzeDelayMS = 5000
-	}
 	settings.Interaction.Shortcuts = normalizeShortcutSettings(settings.Interaction.Shortcuts, defaults.Interaction.Shortcuts)
 	settings.Profile = normalizeProfileSettings(settings.Profile, defaults.Profile)
 	settings.Simulation = simulation.NormalizeSettings(settings.Simulation, defaults.Simulation)

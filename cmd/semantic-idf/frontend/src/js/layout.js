@@ -11,7 +11,6 @@ const defaultWorkspacePreset = "balanced";
 export function captureWorkspaceLayout() {
   return {
     editorWidth: cssCustomProperty(elements.workspace, "--editor-width") || localStorage.getItem("idfAnalyzer.editorWidth") || "",
-    rawHeight: cssCustomProperty(elements.editorPanel, "--raw-height") || localStorage.getItem("idfAnalyzer.rawHeight") || "",
     topologyDetailsHeight:
       cssCustomProperty(elements.topologyBody, "--topology-details-height")
       || localStorage.getItem("idfAnalyzer.topologyDetailsHeight")
@@ -22,7 +21,6 @@ export function captureWorkspaceLayout() {
 
 export function restoreWorkspaceLayout(snapshot = {}) {
   restoreLayoutValue(elements.workspace, "--editor-width", "idfAnalyzer.editorWidth", snapshot.editorWidth);
-  restoreLayoutValue(elements.editorPanel, "--raw-height", "idfAnalyzer.rawHeight", snapshot.rawHeight);
   restoreLayoutValue(
     elements.topologyBody,
     "--topology-details-height",
@@ -149,17 +147,6 @@ function restoreLayoutValue(element, property, storageKey, value) {
 }
 
 export function initializeVerticalSplitters() {
-  initializeHeightSplitter({
-    container: elements.editorPanel,
-    splitter: elements.inputRawSplitter,
-    property: "--raw-height",
-    storageKey: "idfAnalyzer.rawHeight",
-    minTop: 170,
-    minBottom: 160,
-    resizingClass: "resizing-input-raw",
-    onResize: null,
-  });
-
   initializeHeightSplitter({
     container: elements.topologyBody,
     splitter: elements.topologyDetailsSplitter,

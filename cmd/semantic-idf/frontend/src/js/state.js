@@ -76,6 +76,7 @@ function clampNumber(value, minimum, maximum, fallback) {
 }
 
 export const state = {
+  documentText: "",
   report: null,
   model: null,
   epjsonText: "",
@@ -273,9 +274,16 @@ export const state = {
   semanticEditSelectionRestore: null,
   jsonCollapseDepth: 2,
   jsonSelectedObjectIndex: "",
-  syncTextRawPosition: true,
-  autoAnalyzeDelayMs: 900,
 };
+
+export function getDocumentText() {
+  return state.documentText;
+}
+
+export function setDocumentText(text) {
+  state.documentText = String(text ?? "");
+  return state.documentText;
+}
 
 export const elements = {
   runtimeStatus: document.querySelector("#runtimeStatus"),
@@ -292,8 +300,6 @@ export const elements = {
   workspaceSelectionLabel: document.querySelector("#workspaceSelectionLabel"),
   workspaceLinkTargets: document.querySelector("#workspaceLinkTargets"),
   workspaceLinkMenuTargets: document.querySelector("#workspaceLinkMenuTargets"),
-  idfInput: document.querySelector("#idfInput"),
-  syncRawTextToggle: document.querySelector("#syncRawTextToggle"),
   textStats: document.querySelector("#textStats"),
   inputFilter: document.querySelector("#inputFilter"),
   inputFilterStats: document.querySelector("#inputFilterStats"),
@@ -307,7 +313,6 @@ export const elements = {
   workspaceSplitter: document.querySelector("#workspaceSplitter"),
   layoutPresetButtons: document.querySelectorAll("[data-layout-preset]"),
   editorPanel: document.querySelector(".editor-panel"),
-  inputRawSplitter: document.querySelector("#inputRawSplitter"),
   inputViewButtons: document.querySelectorAll(".view-tab"),
   semanticRevealIndicator: document.querySelector("#semanticRevealIndicator"),
   inputViews: document.querySelectorAll(".input-view"),
@@ -489,7 +494,7 @@ export function escapeHTML(value) {
 }
 
 export function updateTextStats() {
-  const text = elements.idfInput.value;
+  const text = getDocumentText();
   const lines = text.length === 0 ? 0 : text.split(/\r\n|\r|\n/).length;
   elements.textStats.textContent = t("count.lines", { count: lines });
 }

@@ -58,7 +58,7 @@ func TestInputViewsKeepConstantEventListenerCountsAcrossRenders(t *testing.T) {
 	for _, signal := range []string{
 		`"semanticListeners":5`,
 		`"jsonListeners":2`,
-		`"textListeners":4`,
+		`"textListeners":3`,
 		`"tableListeners":4`,
 		`"rerenderStable":true`,
 		`"dynamicControlsWork":true`,
@@ -73,8 +73,6 @@ const inputEventDelegationHarnessHTML = `<!doctype html>
 <html lang="en">
 <head><meta charset="utf-8"><title>Input event delegation harness</title></head>
 <body data-input-event-delegation-status="pending">
-  <textarea id="idfInput">Version,24.2;</textarea>
-  <input id="syncRawTextToggle" type="checkbox">
   <span id="inputFilterStats"></span>
   <div id="semanticEditor"></div>
   <div id="textObjectView"></div>
@@ -98,7 +96,7 @@ const inputEventDelegationHarnessHTML = `<!doctype html>
     const countListeners = (element, types) => types.reduce((total, type) => total + (listenerCounts.get(element)?.get(type) || 0), 0);
 
     try {
-      const [{ state, elements }, inputViews] = await Promise.all([
+      const [{ state, elements, setDocumentText }, inputViews] = await Promise.all([
         import("/src/js/state.js"),
         import("/src/js/views/input-views.js"),
       ]);
@@ -109,9 +107,10 @@ const inputEventDelegationHarnessHTML = `<!doctype html>
         name: "24.2",
         fields: [{ key: "version_identifier", comment: "Version Identifier", value: "24.2" }],
       };
+      setDocumentText("Version,24.2;");
       state.report = { objects: [sourceObject] };
       state.model = { format: "idf", version: { raw: "24.2" }, objects: [sourceObject] };
-      state.reportAnalyzedText = elements.idfInput.value;
+      state.reportAnalyzedText = state.documentText;
       state.semanticProjection = {
         schema: "eplus-semantic/0.1",
         energyplusVersion: "24.2",
@@ -162,7 +161,7 @@ const inputEventDelegationHarnessHTML = `<!doctype html>
       };
       assert(semanticListeners === 5, "unexpected Semantic listener count");
       assert(jsonListeners === 2, "unexpected JSON listener count");
-      assert(textListeners === 4, "unexpected Text listener count");
+      assert(textListeners === 3, "unexpected Text listener count");
       assert(tableListeners === 4, "unexpected Table listener count");
       document.querySelector("#result").textContent = JSON.stringify(result);
       document.body.dataset.inputEventDelegationStatus = "passed";

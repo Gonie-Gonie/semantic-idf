@@ -563,7 +563,6 @@ button:disabled:hover {
 }
 
 .resizing-workspace,
-.resizing-input-raw,
 .resizing-topology-details {
   user-select: none;
 }
@@ -572,15 +571,12 @@ button:disabled:hover {
   cursor: col-resize;
 }
 
-.resizing-input-raw,
 .resizing-topology-details {
   cursor: row-resize;
 }
 
 .resizing-workspace .editor-panel,
 .resizing-workspace .analysis-panel,
-.resizing-input-raw .input-view,
-.resizing-input-raw .raw-editor-block,
 .resizing-topology-details .topology-viewport,
 .resizing-topology-details .topology-details {
   pointer-events: none;
@@ -594,7 +590,6 @@ button:disabled:hover {
 }
 
 .vertical-splitter:hover,
-.resizing-input-raw #inputRawSplitter,
 .resizing-topology-details #topologyDetailsSplitter {
   background: linear-gradient(to bottom, transparent 0 2px, var(--teal) 2px 6px, transparent 6px 8px);
 }
@@ -1323,70 +1318,6 @@ button:disabled:hover {
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
   padding: 12px;
-  background: var(--surface-3);
-}
-
-.raw-editor-block {
-  flex: 0 0 var(--raw-height, 38%);
-  min-height: 190px;
-  display: flex;
-  flex-direction: column;
-}
-
-.raw-editor-block.raw-text-jump-highlight {
-  outline: 2px solid var(--amber);
-  outline-offset: -2px;
-}
-
-.subhead {
-  min-height: 36px;
-  border-bottom: 1px solid var(--line);
-  background: var(--surface);
-  padding: 6px 10px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.subhead h3 {
-  margin: 0;
-  font-size: 13px;
-  line-height: 1.2;
-  letter-spacing: 0;
-}
-
-.subhead button {
-  min-height: 28px;
-  padding: 0 10px;
-}
-
-.sync-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--muted);
-  font-size: 12px;
-  white-space: nowrap;
-}
-
-.sync-toggle input {
-  width: 15px;
-  height: 15px;
-  margin: 0;
-}
-
-textarea {
-  flex: 1;
-  width: 100%;
-  min-height: 0;
-  resize: none;
-  border: 0;
-  padding: 14px;
-  font-family: "Cascadia Mono", Consolas, "Liberation Mono", monospace;
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--ink-strong);
   background: var(--surface-3);
 }
 

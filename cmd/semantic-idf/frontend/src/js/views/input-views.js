@@ -1,4 +1,4 @@
-import { backend, elements, escapeHTML, setStatus, state, updateTextStats } from "../state.js";
+import { backend, elements, escapeHTML, getDocumentText, setDocumentText, setStatus, state, updateTextStats } from "../state.js";
 import { t } from "../i18n.js";
 import { recordViewHistory } from "../view-history.js";
 import {
@@ -143,11 +143,11 @@ function groupedReportObjects() {
 }
 
 function hasCurrentAnalysis() {
-  return state.reportAnalyzedText !== "" && state.reportAnalyzedText === elements.idfInput.value;
+  return state.reportAnalyzedText !== "" && state.reportAnalyzedText === getDocumentText();
 }
 
 function pendingViewMessage(viewName) {
-  if (!elements.idfInput.value.trim()) {
+  if (!getDocumentText().trim()) {
     return t("input.noLoaded");
   }
   return t("input.pendingView", { view: viewName });
@@ -1139,7 +1139,6 @@ async function selectSemanticLine(line) {
     follow: true,
     preserveFilters: true,
   });
-  syncRawTextToFormattedTarget(line);
   renderSemanticSelectionOnly();
   refreshSemanticSelectionContext();
   return true;
@@ -1161,7 +1160,6 @@ async function openSemanticLine(line, requestedView = "", requestedTargetId = ""
   });
   state.semanticCurrentOccurrenceId = selection.occurrenceId || "";
   state.semanticCurrentPath = selection.semanticPathHint || "";
-  syncRawTextToFormattedTarget(line);
   const view = requestedView || line.dataset.preferredView || semanticAvailableViews(selection)[0]?.view || "";
   if (!view) {
     setStatus(t("semantic.noAvailableView", {}, "No available view can reveal this selection"), "warn");
@@ -1323,7 +1321,6 @@ function focusSelectedSemanticObject() {
   const line = elements.semanticEditor.querySelector(`.semantic-line[data-object-index="${cssAttrEscape(selected)}"]`);
   if (line) {
     line.scrollIntoView({ block: "center", inline: "nearest" });
-    syncRawTextToFormattedTarget(line);
     renderSemanticSelectionOnly();
   }
 }
@@ -1382,8 +1379,8 @@ async function applySemanticDuplicateFixes() {
   }
   try {
     captureSemanticEditSelection();
-    const result = await api.ApplySemanticDuplicateNameFixText(elements.idfInput.value);
-    elements.idfInput.value = result.text;
+    const result = await api.ApplySemanticDuplicateNameFixText(getDocumentText());
+    setDocumentText(result.text);
     updateTextStats();
     state.semanticProjection = result.semantic || null;
     await analyzeCallback();
@@ -1600,7 +1597,6 @@ function handleJSONEditorClick(event) {
   const summary = target.closest(".json-object-summary");
   if (summary) {
     state.jsonSelectedObjectIndex = summary.dataset.jsonObjectIndex || "";
-    syncRawTextToFormattedTarget(summary);
   }
 }
 
@@ -1632,7 +1628,6 @@ function focusSelectedJSONObject() {
 }
 
 async function editJSONValueToken(button) {
-  syncRawTextToFormattedTarget(button);
   const currentRaw = button.dataset.rawValue || "null";
   const editor = document.createElement("input");
   editor.type = "text";
@@ -1700,13 +1695,13 @@ async function commitJSONValueEdit(editor, nextRaw, restore) {
   try {
     captureSemanticEditSelection();
     const result = await api.PatchModelValueText(
-      elements.idfInput.value,
+      getDocumentText(),
       Number(editor.dataset.objectIndex),
       Number(editor.dataset.fieldIndex),
       JSON.parse(editor.dataset.jsonPath || "[]"),
       nextRaw,
     );
-    elements.idfInput.value = result.text;
+    setDocumentText(result.text);
     updateTextStats();
     state.report = result.report;
     state.model = result.model || null;
@@ -1776,29 +1771,11 @@ function renderFormattedTextField(field, objectIndex, fieldIndex) {
 }
 
 function bindFormattedTextControls() {
-  elements.syncRawTextToggle.checked = state.syncTextRawPosition;
   if (formattedTextControlsBound) {
     return;
   }
-  elements.textObjectView.addEventListener("click", handleFormattedTextClick);
   bindDelegatedFieldEditor(elements.textObjectView, ".text-field-input", applyTextValue);
   formattedTextControlsBound = true;
-}
-
-function handleFormattedTextClick(event) {
-  const target = event.target instanceof Element ? event.target : null;
-  if (!target) {
-    return;
-  }
-  const input = target.closest(".text-field-input");
-  if (input) {
-    syncRawTextToFormattedTarget(input);
-    return;
-  }
-  const head = target.closest(".text-object-head");
-  if (head) {
-    syncRawTextToFormattedTarget(head);
-  }
 }
 
 function bindDelegatedFieldEditor(host, selector, applyValue) {
@@ -1807,7 +1784,6 @@ function bindDelegatedFieldEditor(host, selector, applyValue) {
     if (!input) {
       return;
     }
-    syncRawTextToFormattedTarget(input);
     loadFieldSuggestions(input);
   });
   host.addEventListener("focusout", (event) => {
@@ -1860,21 +1836,6 @@ function renderInputJumpControls(context) {
 }
 
 export function currentInputJumpSource() {
-  if (document.activeElement === elements.idfInput) {
-    const text = elements.idfInput.value;
-    const token = isLikelyJSONText(text)
-      ? findJSONTokenAtOffset(text, elements.idfInput.selectionStart || 0)
-      : findIDFTokenAtOffset(text, elements.idfInput.selectionStart || 0);
-    if (!token) {
-      return null;
-    }
-    return jumpSourceForContext({
-      objectIndex: token.objectIndex,
-      fieldIndex: token.type === "field" ? token.fieldIndex : null,
-      fieldIndexKind: token.fieldIndexKind || "idf",
-    });
-  }
-
   const element = document.activeElement?.closest?.("[data-object-index]");
   if (!element) {
     return null;
@@ -2037,13 +1998,13 @@ async function loadFieldSuggestions(input) {
 async function requestFieldSuggestions(objectIndex, fieldIndex) {
   const api = backend();
   if (api && typeof api.SuggestFieldValuesText === "function") {
-    return api.SuggestFieldValuesText(elements.idfInput.value, objectIndex, fieldIndex);
+    return api.SuggestFieldValuesText(getDocumentText(), objectIndex, fieldIndex);
   }
 
   const response = await fetch("/api/field-suggestions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text: elements.idfInput.value, objectIndex, fieldIndex }),
+    body: JSON.stringify({ text: getDocumentText(), objectIndex, fieldIndex }),
   });
   if (!response.ok) {
     throw new Error(await response.text());
@@ -2095,13 +2056,10 @@ async function applyFieldValue(input, successMessage = t("input.fieldUpdated")) 
 
   try {
     captureSemanticEditSelection();
-    const result = await api.UpdateFieldText(elements.idfInput.value, objectIndex, fieldIndex, nextValue);
-    elements.idfInput.value = result.text;
+    const result = await api.UpdateFieldText(getDocumentText(), objectIndex, fieldIndex, nextValue);
+    setDocumentText(result.text);
     updateTextStats();
     await analyzeCallback();
-    if (state.syncTextRawPosition) {
-      syncRawTextToObjectField(objectIndex, fieldIndex, input.dataset.fieldIndexKind || "idf");
-    }
     setStatus(successMessage, "ok");
   } catch (error) {
     input.value = input.dataset.original || "";
@@ -2111,336 +2069,11 @@ async function applyFieldValue(input, successMessage = t("input.fieldUpdated")) 
   }
 }
 
-function syncRawTextToFormattedTarget(element) {
-  if (!state.syncTextRawPosition || element?.dataset?.objectIndex === "") {
-    return;
-  }
-  const objectIndex = Number(element.dataset.objectIndex);
-  const fieldIndex = element.dataset.fieldIndex === undefined ? null : Number(element.dataset.fieldIndex);
-  syncRawTextToObjectField(objectIndex, fieldIndex, element.dataset.fieldIndexKind || "idf");
-}
-
-export function syncRawTextToObjectField(objectIndex, fieldIndex = null, fieldIndexKind = "idf") {
-  const range = findRawTextRangeForTextTarget(objectIndex, fieldIndex, fieldIndexKind);
-  if (!range) {
-    return false;
-  }
-  moveRawTextToRange(range);
-  return true;
-}
-
-function findRawTextRangeForTextTarget(objectIndex, fieldIndex = null, fieldIndexKind = "idf") {
-  const text = elements.idfInput.value;
-  if (!isLikelyJSONText(text)) {
-    const idfFieldIndex = fieldIndexKind === "model" ? modelFieldIndexToIDFFieldIndex(objectIndex, fieldIndex) : fieldIndex;
-    return findIDFTokenRange(text, objectIndex, idfFieldIndex);
-  }
-  return findJSONTextRange(text, objectIndex, fieldIndex, fieldIndexKind);
-}
-
-function moveRawTextToRange(range) {
-  const start = Math.max(0, Math.min(range.start, elements.idfInput.value.length));
-  const end = Math.max(start, Math.min(range.end, elements.idfInput.value.length));
-  const lineIndex = elements.idfInput.value.slice(0, start).split(/\n/).length - 1;
-  const style = window.getComputedStyle(elements.idfInput);
-  const fontSize = Number.parseFloat(style.fontSize) || 13;
-  const lineHeight = Number.parseFloat(style.lineHeight) || fontSize * 1.5;
-  elements.idfInput.setSelectionRange(start, end);
-  elements.idfInput.scrollTop = Math.max(0, lineIndex * lineHeight - elements.idfInput.clientHeight * 0.25);
-  highlightRawTextTarget();
-}
-
-function isLikelyJSONText(text) {
-  return /^\s*[\[{]/.test(text);
-}
-
-function findIDFTokenRange(text, targetObjectIndex, targetFieldIndex = null) {
-  return scanIDFTokens(text, (token) => {
-    if (token.objectIndex !== targetObjectIndex) {
-      return false;
-    }
-    if (targetFieldIndex === null) {
-      return token.type === "object";
-    }
-    return token.type === "field" && token.fieldIndex === targetFieldIndex;
-  });
-}
-
-function findIDFTokenAtOffset(text, offset) {
-  let nearest = null;
-  const exact = scanIDFTokens(text, (token) => {
-    if (offset >= token.rawStart && offset <= token.rawEnd) {
-      return true;
-    }
-    if (token.rawStart <= offset) {
-      nearest = token;
-    }
-    return token.rawStart > offset;
-  });
-  if (exact && offset >= exact.rawStart && offset <= exact.rawEnd) {
-    return exact;
-  }
-  return nearest;
-}
-
-function scanIDFTokens(text, visitor) {
-  let objectIndex = -1;
-  let fieldIndex = -1;
-  let inObject = false;
-  let inComment = false;
-  let tokenStart = 0;
-
-  for (let index = 0; index < text.length; index += 1) {
-    const char = text[index];
-    if (inComment) {
-      if (char === "\n") {
-        inComment = false;
-      }
-      continue;
-    }
-    if (char === "!") {
-      inComment = true;
-      continue;
-    }
-    if (char !== "," && char !== ";") {
-      continue;
-    }
-
-    const range = trimmedRange(text, tokenStart, index);
-    const hasContent = range.end > range.start;
-    if (!inObject) {
-      if (hasContent) {
-        objectIndex += 1;
-        fieldIndex = -1;
-        inObject = true;
-        const token = {
-          ...range,
-          rawStart: tokenStart,
-          rawEnd: index,
-          type: "object",
-          objectIndex,
-          fieldIndex: null,
-          fieldIndexKind: "idf",
-        };
-        if (visitor(token)) {
-          return token;
-        }
-      }
-    } else {
-      fieldIndex += 1;
-      const token = { ...range, rawStart: tokenStart, rawEnd: index, type: "field", objectIndex, fieldIndex, fieldIndexKind: "idf" };
-      if (visitor(token)) {
-        return token;
-      }
-    }
-
-    if (char === ";") {
-      inObject = false;
-    }
-    tokenStart = index + 1;
-  }
-  return null;
-}
-
-function trimmedRange(text, start, end) {
-  let rangeStart = start;
-  let rangeEnd = end;
-  while (rangeStart < rangeEnd && /\s/.test(text[rangeStart])) {
-    rangeStart += 1;
-  }
-  while (rangeEnd > rangeStart && /\s/.test(text[rangeEnd - 1])) {
-    rangeEnd -= 1;
-  }
-  return { start: rangeStart, end: rangeEnd };
-}
-
-function findJSONTextRange(text, objectIndex, fieldIndex = null, fieldIndexKind = "idf") {
-  const reportObject = reportObjectByIndex(objectIndex);
-  const modelObject = modelObjectByIndex(objectIndex);
-  if (!reportObject && !modelObject) {
-    return null;
-  }
-
-  const typeNeedle = JSON.stringify(modelObject?.type || reportObject?.type || "");
-  const typeOffset = typeNeedle === "\"\"" ? -1 : text.indexOf(typeNeedle);
-  const searchStart = typeOffset >= 0 ? typeOffset : 0;
-  if (fieldIndex === null) {
-    return typeOffset >= 0 ? { start: typeOffset, end: typeOffset + typeNeedle.length } : null;
-  }
-
-  const candidates = jsonFieldNeedles(reportObject, modelObject, fieldIndex, fieldIndexKind);
-  for (const candidate of candidates) {
-    const offset = text.indexOf(candidate, searchStart);
-    if (offset >= 0) {
-      return { start: offset, end: offset + candidate.length };
-    }
-  }
-  return typeOffset >= 0 ? { start: typeOffset, end: typeOffset + typeNeedle.length } : null;
-}
-
-function jsonFieldNeedles(reportObject, modelObject, fieldIndex, fieldIndexKind = "idf") {
-  const candidates = [];
-  const idfFieldIndex = fieldIndexKind === "model" ? modelFieldIndexToIDFFieldIndex(reportObject?.index, fieldIndex) : fieldIndex;
-  const modelFieldIndex = fieldIndexKind === "model" ? fieldIndex : idfFieldIndexToModelFieldIndex(reportObject?.index, fieldIndex);
-  const reportField = idfFieldIndex === null ? null : reportObject?.fields?.[idfFieldIndex];
-  if (idfFieldIndex === 0 && reportField?.comment === "Name" && reportField.value) {
-    candidates.push(JSON.stringify(String(reportField.value)));
-  }
-
-  const modelField = modelFieldIndex >= 0 ? modelObject?.fields?.[modelFieldIndex] : null;
-  if (modelField?.key) {
-    candidates.push(JSON.stringify(modelField.key));
-  }
-  if (modelField?.value !== undefined && modelField?.value !== null && typeof modelField.value !== "object") {
-    candidates.push(JSON.stringify(String(modelField.value)));
-  }
-  if (reportField?.value) {
-    candidates.push(JSON.stringify(String(reportField.value)));
-  }
-  return [...new Set(candidates)];
-}
-
-export function syncTextViewFromRawCaret(event) {
-  const rawNavigationKeys = new Set(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End", "PageUp", "PageDown"]);
-  if (event?.type === "keyup" && !rawNavigationKeys.has(event.key)) {
-    return;
-  }
-  if (!state.syncTextRawPosition) {
-    return;
-  }
-  const text = elements.idfInput.value;
-  const token = isLikelyJSONText(text)
-    ? findJSONTokenAtOffset(text, elements.idfInput.selectionStart || 0)
-    : findIDFTokenAtOffset(text, elements.idfInput.selectionStart || 0);
-  if (!token) {
-    return;
-  }
-
-  const target = findActiveViewTargetForRawToken(token);
-  if (!target) {
-    return;
-  }
-  expandDetailsForViewTarget(target);
-  const highlightTarget = target.closest("td, th, .text-field-cell, .json-instance, .text-object") || target;
-  scrollActiveInputTargetIntoView(highlightTarget);
-  highlightFormattedTextTarget(highlightTarget);
-}
-
-function findJSONTokenAtOffset(text, offset) {
-  const key = nearestJSONStringBeforeOffset(text, offset);
-  if (!key) {
-    return null;
-  }
-  for (const object of state.model?.objects || []) {
-    const objectIndex = object.sourceIndex ?? object.index;
-    if (key === object.name || key === object.type) {
-      return { type: "object", objectIndex, fieldIndex: null, fieldIndexKind: "model" };
-    }
-    const fieldIndex = (object.fields || []).findIndex((field) => field.key === key);
-    if (fieldIndex >= 0) {
-      return { type: "field", objectIndex, fieldIndex, fieldIndexKind: "model" };
-    }
-  }
-  return null;
-}
-
-function nearestJSONStringBeforeOffset(text, offset) {
-  const pattern = /"((?:\\.|[^"\\])*)"/g;
-  let match = null;
-  let current = null;
-  while ((match = pattern.exec(text)) && match.index <= offset) {
-    current = match[0];
-  }
-  if (!current) {
-    return "";
-  }
-  try {
-    return JSON.parse(current);
-  } catch (_) {
-    return "";
-  }
-}
-
-function findActiveViewTargetForRawToken(token) {
-  if (state.activeInputView === "semantic") {
-    if (token.type === "field") {
-      const idfFieldIndex =
-        token.fieldIndexKind === "model" ? modelFieldIndexToIDFFieldIndex(token.objectIndex, token.fieldIndex) : token.fieldIndex;
-      return elements.semanticEditor.querySelector(
-        `.semantic-line[data-object-index="${token.objectIndex}"][data-field-index="${idfFieldIndex}"]`,
-      );
-    }
-    return elements.semanticEditor.querySelector(`.semantic-line[data-object-index="${token.objectIndex}"]`);
-  }
-  if (state.activeInputView === "json") {
-    const modelFieldIndex =
-      token.fieldIndexKind === "model" ? token.fieldIndex : idfFieldIndexToModelFieldIndex(token.objectIndex, token.fieldIndex);
-    if (token.type === "field" && modelFieldIndex !== null && modelFieldIndex >= 0) {
-      return elements.jsonStructuredView.querySelector(
-        `.json-value-token[data-object-index="${token.objectIndex}"][data-field-index="${modelFieldIndex}"]`,
-      );
-    }
-    return elements.jsonStructuredView.querySelector(`.json-instance[data-object-index="${token.objectIndex}"]`);
-  }
-  if (state.activeInputView === "table") {
-    const idfFieldIndex =
-      token.fieldIndexKind === "model" ? modelFieldIndexToIDFFieldIndex(token.objectIndex, token.fieldIndex) : token.fieldIndex;
-    if (token.type === "field" && idfFieldIndex !== null) {
-      return elements.fieldTable.querySelector(
-        `.field-value-input[data-object-index="${token.objectIndex}"][data-field-index="${idfFieldIndex}"]`,
-      );
-    }
-    return elements.fieldTable.querySelector(`[data-object-index="${token.objectIndex}"]`);
-  }
-  if (token.type === "field") {
-    const idfFieldIndex =
-      token.fieldIndexKind === "model" ? modelFieldIndexToIDFFieldIndex(token.objectIndex, token.fieldIndex) : token.fieldIndex;
-    return elements.textObjectView.querySelector(
-      `.text-field-input[data-object-index="${token.objectIndex}"][data-field-index="${idfFieldIndex}"]`,
-    );
-  }
-  return elements.textObjectView.querySelector(`.text-object[data-object-index="${token.objectIndex}"]`);
-}
-
-function expandDetailsForViewTarget(element) {
-  let current = element;
-  while (current) {
-    if (current.tagName && current.tagName.toLowerCase() === "details") {
-      current.open = true;
-    }
-    current = current.parentElement;
-  }
-}
-
-function scrollActiveInputTargetIntoView(element) {
-  const container = element.closest(".semantic-editor, .formatted-object-view, .json-view, .field-table");
-  if (!container) {
-    return;
-  }
-  const containerRect = container.getBoundingClientRect();
-  const elementRect = element.getBoundingClientRect();
-  container.scrollTo({
-    top: Math.max(0, container.scrollTop + elementRect.top - containerRect.top - container.clientHeight * 0.25),
-    left: Math.max(0, container.scrollLeft + elementRect.left - containerRect.left - 24),
-  });
-}
-
 function highlightFormattedTextTarget(element) {
   element.classList.remove("input-jump-highlight");
   void element.offsetWidth;
   element.classList.add("input-jump-highlight");
   window.setTimeout(() => element.classList.remove("input-jump-highlight"), 1200);
-}
-
-function highlightRawTextTarget() {
-  const rawBlock = elements.idfInput.closest(".raw-editor-block");
-  if (!rawBlock) {
-    return;
-  }
-  rawBlock.classList.remove("raw-text-jump-highlight");
-  void rawBlock.offsetWidth;
-  rawBlock.classList.add("raw-text-jump-highlight");
-  window.setTimeout(() => rawBlock.classList.remove("raw-text-jump-highlight"), 900);
 }
 
 function reportObjectByIndex(objectIndex) {
@@ -2656,16 +2289,6 @@ function handleFieldTableClick(event) {
     event.stopPropagation();
     state.tableGroupOrientations.set(orientationButton.dataset.objectType, orientationButton.dataset.nextOrientation);
     renderFieldTable();
-    return;
-  }
-  const input = target.closest(".field-value-input");
-  if (input) {
-    syncRawTextToFormattedTarget(input);
-    return;
-  }
-  const objectElement = target.closest("[data-table-object-index]");
-  if (objectElement) {
-    syncRawTextToFormattedTarget(objectElement);
   }
 }
 

@@ -19,7 +19,6 @@ import {
   renderInputViews,
   resolveInputJumpTargets,
   switchInputView,
-  syncRawTextToObjectField,
 } from "./views/input-views.js";
 import {
   captureViewSnapshot,
@@ -220,19 +219,12 @@ function revealInputSourceTarget(target, options = {}) {
   const fieldIndex = target.fieldIndex === undefined || target.fieldIndex === null || String(target.fieldIndex) === ""
     ? null
     : Number(target.fieldIndex);
-  const rawLocated = hasObjectIndex
-    ? syncRawTextToObjectField(Number(target.objectIndex), fieldIndex, target.fieldIndexKind || "idf")
-    : false;
   let element = findInputTarget(target);
   if (!element && state.inputFilterQuery && options.preserveFilters === false) {
     clearInputFilter();
     element = findInputTarget(target);
   }
   if (!element) {
-    if (rawLocated) {
-      setStatus(t("input.objectLocated"), "ok");
-      return true;
-    }
     setStatus(t("input.objectTargetMissing"), "warn");
     return false;
   }
@@ -639,7 +631,6 @@ export async function restoreViewSnapshot(snapshot, options = {}) {
       }, { recordHistory: false });
     }
     await revealRestoredSelection(scope);
-    restoreRawEditorPosition(snapshot);
     restoreViewScrolls(snapshot);
   });
   if (!options.quiet) {
@@ -711,17 +702,6 @@ async function revealRestoredSelection(scope = "all") {
     }
   }
   return revealed;
-}
-
-function restoreRawEditorPosition(snapshot) {
-  if (!elements.idfInput) {
-    return;
-  }
-  const start = Math.max(0, Math.min(Number(snapshot.rawSelectionStart) || 0, elements.idfInput.value.length));
-  const end = Math.max(start, Math.min(Number(snapshot.rawSelectionEnd) || start, elements.idfInput.value.length));
-  elements.idfInput.setSelectionRange(start, end);
-  elements.idfInput.scrollTop = Number(snapshot.rawScrollTop) || 0;
-  elements.idfInput.scrollLeft = Number(snapshot.rawScrollLeft) || 0;
 }
 
 function restoreViewScrolls(snapshot) {

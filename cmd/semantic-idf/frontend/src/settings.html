@@ -370,18 +370,6 @@
                   <p>${escapeHTML(t("behavior.description"))}</p>
                 </div>
               </div>
-              <label class="settings-field" for="autoAnalyzeDelay">
-                <span>${escapeHTML(t("behavior.autoDelay"))}</span>
-                <span class="settings-inline-control">
-                  <input id="autoAnalyzeDelayRange" type="range" min="150" max="5000" step="50" value="${escapeHTML(activeSettings.behavior.autoAnalyzeDelayMs)}" />
-                  <input id="autoAnalyzeDelay" type="number" min="150" max="5000" step="50" value="${escapeHTML(activeSettings.behavior.autoAnalyzeDelayMs)}" />
-                  <em>ms</em>
-                </span>
-              </label>
-              <label class="settings-check">
-                <input id="syncRawTextPosition" type="checkbox" ${activeSettings.interaction.syncRawTextPosition ? "checked" : ""} />
-                <span>${escapeHTML(t("behavior.rawSync"))}</span>
-              </label>
               <label class="settings-check">
                 <input id="topologySyncLocateDefault" type="checkbox" ${activeSettings.interaction.topologySyncLocate ? "checked" : ""} />
                 <span>${escapeHTML(t("behavior.topologySync"))}</span>
@@ -565,8 +553,6 @@
       function bindSettingsForm() {
         const form = document.querySelector("#settingsForm");
         const saveStatus = document.querySelector("#settingsSaveStatus");
-        const rangeInput = document.querySelector("#autoAnalyzeDelayRange");
-        const numberInput = document.querySelector("#autoAnalyzeDelay");
         const workerFractionRange = document.querySelector("#simulationWorkerFractionRange");
         const workerFractionInput = document.querySelector("#simulationWorkerFraction");
         const updatePreview = (event) => {
@@ -581,12 +567,6 @@
         bindShortcutCapture();
         validateShortcutConflicts();
         form.addEventListener("input", (event) => {
-          if (event.target === rangeInput) {
-            numberInput.value = rangeInput.value;
-          }
-          if (event.target === numberInput) {
-            rangeInput.value = numberInput.value;
-          }
           if (event.target === workerFractionRange) {
             workerFractionInput.value = workerFractionRange.value;
           }
@@ -797,11 +777,7 @@
             analysisTabOrder: readAnalysisTabOrder(),
             geometry,
           },
-          behavior: {
-            autoAnalyzeDelayMs: document.querySelector("#autoAnalyzeDelay").value,
-          },
           interaction: {
-            syncRawTextPosition: document.querySelector("#syncRawTextPosition").checked,
             topologySyncLocate: document.querySelector("#topologySyncLocateDefault").checked,
             shortcuts: readShortcutSettings(),
           },

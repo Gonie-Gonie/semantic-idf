@@ -87,14 +87,11 @@ const mainWorkspaceSnapshot = {
   viewSnapshot: {
     inputView: "json",
     resultTab: "profile",
-    rawSelectionStart: 4,
-    rawSelectionEnd: 9,
-    rawScrollTop: 72,
     semantic: { filter: "Zone A", scrollTop: 35 },
     panelContexts: { profile: { selectedProfileKey: "profile-a" } }
   },
   panelContexts: { profile: { selectedProfileKey: "profile-a" } },
-  layout: { editorWidth: "37%", rawHeight: "42%" },
+  layout: { editorWidth: "37%", topologyDetailsHeight: "42%" },
   semanticLinkMode: false,
   semanticFollowSelection: true,
   capturedAt: "2026-08-12T00:00:00.000Z"
@@ -144,9 +141,11 @@ const toolsDiagnoseHarnessAssertions = `<script>
       && appliedSnapshot.geometryReady === false;
     const workspaceContextRetained = appliedSnapshot.activeResultTab === "profile"
       && appliedSnapshot.activeInputView === "json"
-      && appliedSnapshot.viewSnapshot?.rawSelectionStart === 4
+      && appliedSnapshot.viewSnapshot?.semantic?.filter === "Zone A"
+      && appliedSnapshot.viewSnapshot?.semantic?.scrollTop === 35
       && appliedSnapshot.viewSnapshot?.panelContexts?.profile?.selectedProfileKey === "profile-a"
       && appliedSnapshot.layout?.editorWidth === "37%"
+      && appliedSnapshot.layout?.topologyDetailsHeight === "42%"
       && appliedSnapshot.semanticLinkMode === false;
     document.querySelector("#diagnoseSelectInput").click();
     await waitFor(() => JSON.parse(sessionStorage.getItem("idfAnalyzer.currentDocument")).filename === "replacement.idf");

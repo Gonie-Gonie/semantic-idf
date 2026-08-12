@@ -40,7 +40,6 @@ func TestDynamicInputViewsUseFixedDelegatedEventBindings(t *testing.T) {
 
 	textBinding := sliceBetween(views, "function bindFormattedTextControls", "function fieldSuggestionListID")
 	for _, required := range []string{
-		`elements.textObjectView.addEventListener("click"`,
 		`bindDelegatedFieldEditor(elements.textObjectView, ".text-field-input", applyTextValue)`,
 		`host.addEventListener("focusin"`,
 		`host.addEventListener("focusout"`,
@@ -50,8 +49,13 @@ func TestDynamicInputViewsUseFixedDelegatedEventBindings(t *testing.T) {
 			t.Fatalf("formatted text delegated controls are missing %q", required)
 		}
 	}
-	if strings.Contains(textBinding, `querySelectorAll(".text-field-input")`) {
-		t.Fatal("formatted text must not allocate a listener per rendered field")
+	for _, forbidden := range []string{
+		`querySelectorAll(".text-field-input")`,
+		`elements.textObjectView.addEventListener("click"`,
+	} {
+		if strings.Contains(textBinding, forbidden) {
+			t.Fatalf("formatted text retains obsolete or per-field listener %q", forbidden)
+		}
 	}
 
 	tableRender := sliceBetween(views, "export function renderFieldTable", "function limitObjectGroups")
@@ -60,7 +64,6 @@ func TestDynamicInputViewsUseFixedDelegatedEventBindings(t *testing.T) {
 		`elements.fieldTable.addEventListener("click"`,
 		`bindDelegatedFieldEditor(elements.fieldTable, ".field-value-input", applyTableValue)`,
 		`target.closest(".object-orientation-button")`,
-		`target.closest("[data-table-object-index]")`,
 	} {
 		if !strings.Contains(tableRender, required) {
 			t.Fatalf("field table delegated controls are missing %q", required)

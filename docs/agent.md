@@ -16,14 +16,14 @@
 - Input viewing should keep Text, JSON, and Table modes in sync from one parsed/cached EnergyPlus model; Table mode should be organized by IDF object type and support row/column orientation changes.
 - Keep the startup sample tied to the vendored official EnergyPlus large office reference IDF unless a better real-world evaluation file is intentionally chosen.
 - JSON structured view should stay epJSON-shaped with quoted keys, braces, colons, literal values, semantic grouping, and compact indentation.
-- JSON view is a structured editor, not a raw textarea: syntax tokens are read-only UI, value tokens edit inline and call backend model patch APIs, and raw source text lives in the shared Raw Text pane.
-- Text view formatted summaries should remain editable and can sync position with raw text through a user-controlled toggle; right-panel object jumps should also move Raw Text when that toggle is enabled.
+- JSON view is a structured editor: syntax tokens are read-only UI, while value tokens edit inline and call backend model patch APIs for the shared source document.
+- Text view object and field summaries should remain fully editable and act as the complete text-oriented replacement for a raw source editor.
 - Keep the left-panel input filter shared across Text, JSON, and Table views; it should filter by object type, name/index, field label, and value text.
 - Do not synthesize Name-oriented UI when an object has no real name. Use real names when present; otherwise identify objects by type and index.
 - epJSON conversion should follow the official schema shape where known. Detailed surface and shading coordinate extensibles should appear as a `vertices` array, not as flat `vertex_1_*` keys.
 - Keep Text and Table groups open by default, and maintain stable table row headers.
 - Keep the app window itself from scrolling; use explicit scroll containers inside the input and analysis panels.
-- Keep vertical splitter behavior for Raw Text and Topology details persistent via localStorage.
+- Keep the Topology details splitter persistent via localStorage.
 - Splitter dragging should update layout through requestAnimationFrame and persist localStorage only when dragging ends.
 - Keep the five right-panel result tabs purposeful: Metrics, Topology, Profile, HVAC, and Simulation. Single-file diagnostics and fixes live in Tools / Diagnose.
 - Metric definitions, calculated values, exports, and guide entries should stay tied to the same backend catalog.
@@ -32,6 +32,6 @@
 - Run analysis in visible-first stages: build Metrics/Text/JSON/Table data first, then preload Topology data and its renderer before the user opens the Topology tab when practical. Avoid building the full Three.js scene while the tab is hidden.
 - Keep toolbar semantics split: top-level file actions for Open/Save/Revert and top-level Tools/Guide/Settings page navigation. Multi-file workflows and single-file repair utilities belong in Tools.
 - Tools workflows are full-page task surfaces selected from the left selector, with only the active panel shown. Batch Metrics selects multiple inputs through the desktop dialog, analyzes them with a bounded worker pool, emits progress events, shows a transposable comparison table, supports two-column delta comparison, and exports CSV plus raw/delta XLSX workbooks. Batch Simulation uses the fixed purpose defaults documented in `simulation-runner.md`. Single-file diagnostics and cleanup/fix review belong in Tools / Diagnose.
-- Raw text edits should trigger debounced automatic analysis rather than requiring a manual Analyze button; structured edits can analyze immediately after backend patches.
+- Structured input edits should analyze immediately after backend patches rather than requiring a manual Analyze button.
 - App settings should persist through the backend settings API under the local app data/config directory, with `cmd/semantic-idf/frontend/src/settings.html` as the settings page frame.
 - Frontend code organization: keep `cmd/semantic-idf/frontend/src/app.js` as a tiny entrypoint and place feature modules under `cmd/semantic-idf/frontend/src/js/`; reserve `cmd/semantic-idf/frontend/dist` for future generated build output.

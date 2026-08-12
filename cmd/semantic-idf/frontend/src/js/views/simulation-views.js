@@ -1,4 +1,4 @@
-import { backend, elements, escapeHTML, setStatus, state } from "../state.js";
+import { backend, elements, escapeHTML, getDocumentText, setStatus, state } from "../state.js";
 import { t } from "../i18n.js";
 import { chooseViewTarget } from "../navigation-chooser.js";
 import { configureResultPanelNavigationHooks } from "../panel-navigation-adapters.js";
@@ -1144,7 +1144,7 @@ function renderSimulationEmpty({ controlsReady = false, blockingIssue: preparedB
   setSimulationPreviewMode(!state.simulationRunning);
   renderSimulationSeriesRangeControls(null);
   const installCount = state.simulationEnvironment?.installations?.length || 0;
-  const hasText = Boolean((elements.idfInput?.value || "").trim());
+  const hasText = Boolean(getDocumentText().trim());
   if (state.simulationRunning) {
     setSimulationPreviewMode(false);
     renderSimulationResultTabs(null);
@@ -6092,7 +6092,7 @@ function renderSimulationProgress() {
 }
 
 function updateSimulationControls(blockingIssue = simulationBlockingIssue()) {
-  const hasText = Boolean((elements.idfInput?.value || "").trim());
+  const hasText = Boolean(getDocumentText().trim());
   const hasInstall = Boolean(selectedEnergyPlusInstall()?.executablePath);
   if (elements.simulationRunButton) {
     const disabledReason = blockingIssue
@@ -6157,7 +6157,7 @@ function simulationVersionIssue() {
 }
 
 function simulationBlockingIssue() {
-  const text = elements.idfInput?.value || "";
+  const text = getDocumentText();
   if (!text.trim()) {
     return null;
   }
@@ -6212,7 +6212,7 @@ function selectedEnergyPlusInstall() {
 }
 
 function currentInputEnergyPlusVersion() {
-  const text = elements.idfInput?.value || "";
+  const text = getDocumentText();
   const metadata = simulationInputMetadata(text);
   if (metadata.version === undefined) {
     metadata.version = extractInputEnergyPlusVersion(text);
@@ -8442,7 +8442,7 @@ function renderPurposeHTMLTable(headers, rows) {
 }
 
 async function runCurrentSimulation({ silent = false, auto = false } = {}) {
-  const text = elements.idfInput?.value || "";
+  const text = getDocumentText();
   if (!text.trim() || state.simulationRunning) {
     return null;
   }
@@ -8529,7 +8529,7 @@ async function maybeAutoRunSimulation() {
   if (!state.simulationAutoRunOnOpen || state.simulationRunning) {
     return;
   }
-  const text = elements.idfInput?.value || "";
+  const text = getDocumentText();
   if (!text.trim()) {
     return;
   }

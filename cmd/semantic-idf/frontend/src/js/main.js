@@ -3,10 +3,12 @@ import { loadAndApplyAppSettings } from "./settings-client.js";
 import {
   backend,
   elements,
+  getDocumentText,
   normalizeThermalTopologyLayout,
   normalizeThermalTopologyMetric,
   resetThermalTopologyDocumentState,
   setStatus,
+  setDocumentText,
   state,
   updateTextStats,
 } from "./state.js";
@@ -15,7 +17,6 @@ import {
   applyCachedAnalysisResult,
   exportMetrics,
   loadBrowserFile,
-  markDocumentChanged,
   openGuide,
   openInputFile,
   openSettings,
@@ -26,7 +27,6 @@ import {
   revertToLoadedDocument,
   saveInputFile,
   scheduleAnalyzeAfterPaint,
-  scheduleAutoAnalyze,
   updateDocumentActions,
 } from "./actions.js";
 import { markAnalysisDirty, renderEmpty, renderReport } from "./views/analysis-views.js";
@@ -37,7 +37,6 @@ import {
   setInputFilter,
   setTableOrientation,
   switchInputView,
-  syncTextViewFromRawCaret,
 } from "./views/input-views.js";
 import { initializeVerticalSplitters, initializeWorkspaceSplitter, restoreWorkspaceLayout } from "./layout.js";
 import {
@@ -118,10 +117,10 @@ initializePanelNavigationActions({
 configureSelectionController({
   state,
   getNavigationIndex: () => state.semanticProjection?.navigation || {},
-  getCurrentText: () => elements.idfInput?.value || "",
+  getCurrentText: getDocumentText,
   getReportAnalysisKey: () => state.reportAnalysisKey || "",
   isAnalysisCurrent: () => (
-    state.reportAnalyzedText !== "" && state.reportAnalyzedText === (elements.idfInput?.value || "")
+    state.reportAnalyzedText !== "" && state.reportAnalyzedText === getDocumentText()
   ),
   getActiveInputView: () => `input-${state.activeInputView || "semantic"}`,
   getActivePanelView: () => state.activeResultTab || "metrics",
@@ -192,12 +191,12 @@ const resumePendingNavigationAfterRender = (event) => {
   }
   const eventText = event.detail?.text;
   const eventAnalysisKey = event.detail?.analysisKey || "";
-  const currentText = elements.idfInput?.value || "";
+  const currentText = getDocumentText();
   if (eventText && eventText !== currentText) {
     return;
   }
   window.requestAnimationFrame(async () => {
-    const latestText = elements.idfInput?.value || "";
+    const latestText = getDocumentText();
     if (
       (eventText && eventText !== latestText) ||
       (eventText && state.reportAnalyzedText !== eventText) ||
@@ -235,16 +234,6 @@ elements.exportMetricsCSVButton.addEventListener("click", () => exportMetrics("c
 elements.toolsButton.addEventListener("click", openTools);
 elements.guideButton.addEventListener("click", openGuide);
 elements.settingsButton.addEventListener("click", openSettings);
-elements.idfInput.addEventListener("input", () => {
-  updateTextStats();
-  markDocumentChanged();
-  scheduleAutoAnalyze();
-});
-elements.idfInput.addEventListener("click", syncTextViewFromRawCaret);
-elements.idfInput.addEventListener("keyup", syncTextViewFromRawCaret);
-elements.syncRawTextToggle.addEventListener("change", () => {
-  state.syncTextRawPosition = elements.syncRawTextToggle.checked;
-});
 elements.inputFilter.addEventListener("input", () => setInputFilter(elements.inputFilter.value));
 elements.resultTabButtons.forEach((button) => {
   button.addEventListener("click", () => {
@@ -394,7 +383,7 @@ window.addEventListener("idfAnalyzer:profileApplied", (event) => {
   if (!result.text || !result.report) {
     return;
   }
-  elements.idfInput.value = result.text;
+  setDocumentText(result.text);
   updateTextStats();
   state.report = result.report;
   state.model = result.model || null;
@@ -419,7 +408,7 @@ window.addEventListener("idfAnalyzer:hvacApplied", (event) => {
   if (!result.text || !result.report) {
     return;
   }
-  elements.idfInput.value = result.text;
+  setDocumentText(result.text);
   updateTextStats();
   state.report = result.report;
   state.model = result.model || null;
@@ -764,9 +753,9 @@ renderEmpty();
 updateDocumentActions();
 const restoredDocument = restoreCurrentDocument();
 if (restoredDocument) {
-  elements.idfInput.value = restoredDocument.text || "";
+  setDocumentText(restoredDocument.text || "");
   updateTextStats();
-  registerLoadedDocument(elements.idfInput.value, {
+  registerLoadedDocument(getDocumentText(), {
     path: restoredDocument.path || "",
     filename: restoredDocument.filename || "",
   });
@@ -785,9 +774,9 @@ if (restoredDocument) {
 } else {
   setStatus(t("status.analysisWillStart"), "loading");
   loadDefaultSampleIDF().then(async (sampleText) => {
-    elements.idfInput.value = sampleText;
+    setDocumentText(sampleText);
     updateTextStats();
-    const loadedText = elements.idfInput.value;
+    const loadedText = getDocumentText();
     const sourceLabel = sampleText.includes("RefBldgLargeOfficeNew2004_Chicago") ? defaultSample.name : "Fallback sample";
     const sourceFilename = sourceLabel === "Fallback sample" ? "fallback-sample.idf" : "RefBldgLargeOfficeNew2004_Chicago.idf";
     registerLoadedDocument(loadedText, { filename: sourceFilename });
@@ -823,7 +812,7 @@ async function restoreCachedDocumentAnalysis(restoredDocument) {
     loadingMessage: t("status.analyzingNamed", { name: label }),
     queuedMessage: t("status.loadedQueued", { name: label }),
     statusMessage: t("status.loadedNamed", { name: label }),
-    textSnapshot: elements.idfInput.value,
+    textSnapshot: getDocumentText(),
     analysisKey: restoredDocument.analysisKey || "",
     preferCache: Boolean(restoredDocument.analysisKey),
   });
@@ -834,7 +823,7 @@ async function restorePendingWorkspaceContext(analysisKey = "") {
   if (!pending) {
     return false;
   }
-  if (pending.text && pending.text !== (elements.idfInput?.value || "")) {
+  if (pending.text && pending.text !== getDocumentText()) {
     return false;
   }
   if (analysisKey && pending.analysisKey && analysisKey !== pending.analysisKey) {
@@ -884,15 +873,8 @@ function applyRuntimeSettings(settings) {
   if (!settings) {
     return;
   }
-  state.autoAnalyzeDelayMs = settings.behavior?.autoAnalyzeDelayMs || state.autoAnalyzeDelayMs;
   state.simulationAutoRunOnOpen = settings.simulation?.autoRunOnOpen ?? state.simulationAutoRunOnOpen;
   loadSimulationEnvironment();
-  if (typeof settings.interaction?.syncRawTextPosition === "boolean") {
-    state.syncTextRawPosition = settings.interaction.syncRawTextPosition;
-    if (elements.syncRawTextToggle) {
-      elements.syncRawTextToggle.checked = state.syncTextRawPosition;
-    }
-  }
   if (typeof settings.interaction?.topologySyncLocate === "boolean") {
     state.topologySyncLocate = settings.interaction.topologySyncLocate;
     if (elements.topologySyncLocate) {

@@ -1208,6 +1208,38 @@ func TestDefaultSettingsRetainThermalTopologyShortcuts(t *testing.T) {
 			t.Fatalf("removed topology shortcut %s is still configured", removed)
 		}
 	}
+	payload, err := json.Marshal(settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, removed := range []string{"syncRawTextPosition", "autoAnalyzeDelayMs"} {
+		if strings.Contains(string(payload), `"`+removed+`"`) {
+			t.Fatalf("default settings still emit removed Raw Text setting %q: %s", removed, payload)
+		}
+	}
+}
+
+func TestLegacyRawEditorSettingsAreIgnoredAndNotReemitted(t *testing.T) {
+	var settings AppSettings
+	if err := json.Unmarshal([]byte(`{
+		"behavior": {"autoAnalyzeDelayMs": 2500},
+		"interaction": {"syncRawTextPosition": false, "topologySyncLocate": true}
+	}`), &settings); err != nil {
+		t.Fatal(err)
+	}
+	settings = normalizeAppSettings(settings)
+	if !settings.Interaction.TopologySyncLocate {
+		t.Fatal("valid interaction settings were lost while ignoring legacy Raw Text settings")
+	}
+	payload, err := json.Marshal(settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, removed := range []string{"syncRawTextPosition", "autoAnalyzeDelayMs"} {
+		if strings.Contains(string(payload), `"`+removed+`"`) {
+			t.Fatalf("normalized settings re-emitted removed Raw Text setting %q: %s", removed, payload)
+		}
+	}
 }
 
 func TestLegacyGeometryInteractionSettingsMigrateToTopologyNames(t *testing.T) {

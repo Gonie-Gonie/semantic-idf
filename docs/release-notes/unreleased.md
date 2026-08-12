@@ -18,6 +18,10 @@ The release script infers bump size from these sections:
 
 ## Changed
 
+- Removed the separate Raw Text pane, its splitter, position synchronization,
+  editor history state, and delayed-analysis settings. Semantic, Text, JSON,
+  and Table now edit one in-memory source document used directly by analysis,
+  saving, exports, Profile, HVAC, and Simulation.
 - Removed the global Main workspace Back and Forward buttons while retaining
   keyboard/browser history navigation and panel-specific controls such as the
   HVAC Back and Forward actions.

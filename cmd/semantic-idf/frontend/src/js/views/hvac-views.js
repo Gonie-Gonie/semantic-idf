@@ -1,4 +1,4 @@
-import { backend, elements, escapeHTML, setStatus, state } from "../state.js";
+import { backend, elements, escapeHTML, getDocumentText, setStatus, state } from "../state.js";
 import { t } from "../i18n.js";
 import { configureResultPanelNavigationHooks } from "../panel-navigation-adapters.js";
 import { recordViewHistory } from "../view-history.js";
@@ -4106,7 +4106,7 @@ function requestHVACDebugRuleGraph() {
   }
   hvacDebugRuleGraphRequestKey = key;
   api
-    .AnalyzeInputStageText(elements.idfInput.value || "", "hvac-debug")
+    .AnalyzeInputStageText(getDocumentText(), "hvac-debug")
     .then((result) => {
       if ((state.analysisKey || state.lastAnalyzedKey || "") !== key) {
         return;
@@ -5515,12 +5515,12 @@ function hvacApplyRequest() {
 async function callHVACApplyAPI(methodName, endpoint, request) {
   const api = backend();
   if (api && typeof api[methodName] === "function") {
-    return api[methodName](elements.idfInput.value, request);
+    return api[methodName](getDocumentText(), request);
   }
   const response = await fetch(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text: elements.idfInput.value, apply: request }),
+    body: JSON.stringify({ text: getDocumentText(), apply: request }),
   });
   if (!response.ok) {
     throw new Error(await response.text());

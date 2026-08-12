@@ -179,12 +179,11 @@ temporarily materializes the containing section and exempts only the target.
 Clearing the temporary reveal restores the user's unchanged filters.
 
 If the current text hash matches the report analysis key, navigation uses the
-existing report and navigation index and makes zero analyzer calls. If text is
-stale, raw source reveal may still locate the source immediately. Semantic or
-panel open records a pending target and reports that analysis is pending; the
-navigation action itself does not start a full analysis. After the normal
-analysis lifecycle produces a current projection, the pending target is
-applied once without adding history.
+existing report and navigation index and makes zero analyzer calls. If the
+document analysis is stale, Semantic or panel open records a pending target
+and reports that analysis is pending; the navigation action itself does not
+start a full analysis. After the normal analysis lifecycle produces a current
+projection, the pending target is applied once without adding history.
 
 ## History contract
 
@@ -206,8 +205,8 @@ of these baseline problems from returning:
 
 1. `SemanticYAMLLine` previously exposed object/field indexes and edit metadata
    but no stable semantic entity ID or panel target.
-2. Semantic line selection previously updated `semanticSelectedObjectIndex`
-   and raw-text synchronization but not right-panel selection.
+2. Semantic line selection previously updated only its input-view object index
+   but not right-panel selection.
 3. Generic right-panel input jumps previously relied on
    `data-jump-object-index` and could not choose a contextual semantic
    occurrence.

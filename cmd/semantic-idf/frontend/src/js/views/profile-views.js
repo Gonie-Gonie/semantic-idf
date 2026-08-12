@@ -1,4 +1,4 @@
-import { backend, elements, escapeHTML, setStatus, state } from "../state.js";
+import { backend, elements, escapeHTML, getDocumentText, setStatus, state } from "../state.js";
 import { getCurrentAppSettings, saveAppSettings } from "../settings-client.js";
 import { profileDimensionLabel as i18nProfileDimensionLabel, profileMetricLabel, t } from "../i18n.js";
 import { configureResultPanelNavigationHooks } from "../panel-navigation-adapters.js";
@@ -2001,12 +2001,12 @@ function profileApplyRequest() {
 async function callProfileApplyAPI(methodName, endpoint, request) {
   const api = backend();
   if (api && typeof api[methodName] === "function") {
-    return api[methodName](elements.idfInput.value, request);
+    return api[methodName](getDocumentText(), request);
   }
   const response = await fetch(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text: elements.idfInput.value, apply: request }),
+    body: JSON.stringify({ text: getDocumentText(), apply: request }),
   });
   if (!response.ok) {
     throw new Error(`Profile apply request failed: ${response.status}`);

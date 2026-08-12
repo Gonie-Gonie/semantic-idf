@@ -140,7 +140,7 @@ func TestHistoryRestoreRevealsSelectionWithoutRenderOrAnalysis(t *testing.T) {
 	if !strings.Contains(restore, "await revealRestoredSelection(scope)") {
 		t.Fatal("history/workspace restore must resynchronize the selected entity after panel contexts")
 	}
-	reveal := sliceBetween(navigation, "async function revealRestoredSelection", "function restoreRawEditorPosition")
+	reveal := sliceBetween(navigation, "async function revealRestoredSelection", "function restoreViewScrolls")
 	for _, required := range []string{
 		"getPanelNavigationAdapter(viewID)",
 		"await adapter.canReveal(selection)",
@@ -158,6 +158,9 @@ func TestHistoryRestoreRevealsSelectionWithoutRenderOrAnalysis(t *testing.T) {
 	if strings.Contains(reveal, "renderReport(") ||
 		regexp.MustCompile(`(?i)\b(?:analyze|analyzeinput|analyzeinputstagetext|fetch)\s*\(`).MatchString(reveal) {
 		t.Fatal("restored selection reveal must not render the full report or call a backend")
+	}
+	if strings.Contains(navigation, "restoreRawEditorPosition") {
+		t.Fatal("history restore must not retain the removed Raw Text caret/scroll restoration")
 	}
 }
 

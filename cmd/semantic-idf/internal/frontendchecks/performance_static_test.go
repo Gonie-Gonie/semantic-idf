@@ -332,15 +332,23 @@ func TestFrontendHVACDebugRuleGraphLoadsExplicitly(t *testing.T) {
 		t.Fatalf("stage normalization should expose explicit hvac-debug mode")
 	}
 	hvac := readTestFile(t, "frontend/src/js/views/hvac-views.js")
+	debugLoad := sliceBetween(hvac, "function requestHVACDebugRuleGraph", "function exportHVACDebugGraph")
 	for _, term := range []string{
 		"function requestHVACDebugRuleGraph",
-		`AnalyzeInputStageText(elements.idfInput.value || "", "hvac-debug")`,
 		"Loading debug rule graph",
 		"hvacDebugRuleGraphEmptyKey",
 	} {
 		if !strings.Contains(hvac, term) {
 			t.Fatalf("HVAC debug lazy-load contract missing %q", term)
 		}
+	}
+	for _, term := range []string{`AnalyzeInputStageText(`, `getDocumentText()`, `"hvac-debug"`} {
+		if !strings.Contains(debugLoad, term) {
+			t.Fatalf("HVAC debug lazy-load must use the canonical document text, missing %q", term)
+		}
+	}
+	if strings.Contains(debugLoad, "elements.idfInput") {
+		t.Fatal("HVAC debug lazy-load still reads the removed Raw Text textarea")
 	}
 }
 

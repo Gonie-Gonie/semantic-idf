@@ -135,10 +135,10 @@ The app toolbar includes top-level Tools, Guide, and Settings navigation buttons
 ## Input Views
 
 - A shared input filter applies across Text, JSON, and Table views by matching object type, name/index, field label, and value text.
-- Text: fully expanded editable object summary first, shared editable raw source below, and optional position sync from editable fields and analysis selections.
-- JSON: structured epJSON-like editor first, with read-only syntax tokens and inline-editable value tokens that patch the backend model; raw source uses the shared Raw Text pane.
-- Table: fully expanded IDF object type tables with fixed row headers, no synthetic Name column, global and per-table row/column orientation controls, and shared raw source sync.
-- Workspace: resizable input and analysis panes with separate scroll areas, no window-level app scrolling, and vertical splitters for Raw Text and Topology details.
+- Text: fully expanded editable object and field summaries that update the saved source document directly.
+- JSON: a structured epJSON-like editor with read-only syntax tokens and inline-editable value tokens that patch the shared document model.
+- Table: fully expanded IDF object type tables with fixed row headers, no synthetic Name column, and global and per-table row/column orientation controls.
+- Workspace: resizable input and analysis panes with separate scroll areas, no window-level app scrolling, and a vertical splitter for Topology details.
 
 ## Analysis Navigation
 
@@ -152,7 +152,7 @@ The app toolbar includes top-level Tools, Guide, and Settings navigation buttons
 - The startup sample is the official EnergyPlus `RefBldgLargeOfficeNew2004_Chicago.idf` example vendored under `cmd/semantic-idf/frontend/src/samples/`.
 - The startup sample text is shown first; analysis then runs in visible-first stages so Metrics/Text render before Topology is prepared in the background.
 - Open uses the desktop file dialog, Save writes the current text back to the opened file or asks for a path, and Revert restores the text from the last opened input snapshot.
-- Analysis runs automatically after file open and after debounced editor changes; larger workflows belong under Tools.
+- Analysis runs automatically after file open, and structured field edits refresh the shared analysis directly; larger workflows belong under Tools.
 - Tools includes Batch Metrics, which opens several EnergyPlus inputs, analyzes them concurrently, displays progress, compares model metrics in a transposable table, and exports CSV or XLSX results.
 - Batch Simulation uses fixed purpose defaults for output application, frequency, detail, allocation, period, and scope. It automatically resolves a compatible registered or detected EnergyPlus installation for each input file, while retaining purpose, weather, recursion, and worker controls.
 - Tools contains Batch Metrics, Batch Simulation, and Diagnose. Diagnose lets users choose cleanup rules, filter and include/exclude individual candidates, apply fixes back to the app snapshot, or save a cleaned copy.

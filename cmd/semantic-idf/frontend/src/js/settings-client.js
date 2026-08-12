@@ -26,11 +26,7 @@ export const defaultAppSettings = {
       selected: "#f0a202",
     },
   },
-  behavior: {
-    autoAnalyzeDelayMs: 900,
-  },
   interaction: {
-    syncRawTextPosition: true,
     topologySyncLocate: true,
     shortcuts: {
       save: "Ctrl+S",
@@ -203,7 +199,6 @@ export function mergeSettings(settingsInput = {}) {
   const settings = settingsInput || {};
   const appearance = settings.appearance || {};
   const geometry = appearance.geometry || {};
-  const behavior = settings.behavior || {};
   const interaction = settings.interaction || {};
   const defaultShortcuts = defaultAppSettings.interaction.shortcuts;
   const profile = settings.profile || {};
@@ -227,19 +222,7 @@ export function mergeSettings(settingsInput = {}) {
         selected: normalizeHexColor(geometry.selected, defaultAppSettings.appearance.geometry.selected),
       },
     },
-    behavior: {
-      autoAnalyzeDelayMs: clampNumber(
-        behavior.autoAnalyzeDelayMs,
-        150,
-        5000,
-        defaultAppSettings.behavior.autoAnalyzeDelayMs,
-      ),
-    },
     interaction: {
-      syncRawTextPosition:
-        typeof interaction.syncRawTextPosition === "boolean"
-          ? interaction.syncRawTextPosition
-          : defaultAppSettings.interaction.syncRawTextPosition,
       topologySyncLocate:
         typeof interaction.topologySyncLocate === "boolean"
           ? interaction.topologySyncLocate

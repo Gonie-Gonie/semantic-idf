@@ -97,7 +97,6 @@ func TestSemanticLineClickAndPrimaryOpenHaveSingleHistoryBoundary(t *testing.T) 
 	for _, required := range []string{
 		"selectSemanticEntity(",
 		`originView: "input-semantic"`,
-		"syncRawTextToFormattedTarget(",
 		"openSelectionInView(",
 		"preferredView",
 		"preferredTargetId",
@@ -112,17 +111,10 @@ func TestSemanticLineClickAndPrimaryOpenHaveSingleHistoryBoundary(t *testing.T) 
 	if !strings.Contains(interaction, "recordHistory: false") {
 		t.Fatal("primary open must suppress its nested selection/reveal history operation")
 	}
-	withoutRawHistory := regexp.MustCompile(`syncRawTextToFormattedTarget\([^,\n]+,\s*\{\s*recordHistory:\s*false`)
-	rawSync := sliceBetween(views, "function syncRawTextToFormattedTarget", "export function syncRawTextToObjectField")
-	if strings.Contains(rawSync, "recordViewHistory(") && !withoutRawHistory.MatchString(interaction) {
-		t.Fatal("semantic line selection must suppress the raw-caret helper's otherwise independent history item")
-	}
-
-	if strings.Contains(rawSync, "recordViewHistory(") && !strings.Contains(rawSync, "options.recordHistory !== false") {
-		t.Fatal("raw caret synchronization needs an explicit recordHistory guard so semantic selection cannot duplicate history")
-	}
-	if !strings.Contains(rawSync, "state.syncTextRawPosition") {
-		t.Fatal("semantic single-click must continue to respect the raw-text sync toggle")
+	for _, removed := range []string{"syncRawTextToFormattedTarget", "syncRawTextToObjectField", "syncTextRawPosition"} {
+		if strings.Contains(interaction, removed) || strings.Contains(views, removed) {
+			t.Fatalf("semantic interaction still contains removed Raw Text integration %q", removed)
+		}
 	}
 }
 
