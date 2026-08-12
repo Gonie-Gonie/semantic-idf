@@ -63,7 +63,6 @@ func profileGraphSeriesForDimension(scopeType string, group ProfileGroup, zoneNa
 	monthMultiplier := monthlyAverages(annualMultiplier)
 	durationMultiplier := append([]float64(nil), annualMultiplier...)
 	sort.Sort(sort.Reverse(sort.Float64Slice(durationMultiplier)))
-	ruleMultiplier := profileRuleMultiplier(schedule)
 	actualAnnual := multiplyProfile(annualMultiplier, dimension.Value)
 	if values, ok := profileDimensionActualValues(dimension, itemMap, schedules, 8760); ok {
 		actualAnnual = values
@@ -73,7 +72,6 @@ func profileGraphSeriesForDimension(scopeType string, group ProfileGroup, zoneNa
 		monthMultiplier = monthlyAverages(annualMultiplier)
 		durationMultiplier = append([]float64(nil), annualMultiplier...)
 		sort.Sort(sort.Reverse(sort.Float64Slice(durationMultiplier)))
-		ruleMultiplier = profileRuleMultiplierFromAnnual(annualMultiplier)
 	}
 	peak := maxFloat64(actualAnnual)
 	sourceIndexes := make([]int, 0, len(dimension.ItemIDs))
@@ -131,7 +129,6 @@ func profileGraphSeriesForDimension(scopeType string, group ProfileGroup, zoneNa
 		MonthMultiplierProfile:    append([]float64(nil), monthMultiplier...),
 		AnnualMultiplierProfile:   append([]float64(nil), annualMultiplier...),
 		DurationMultiplierProfile: append([]float64(nil), durationMultiplier...),
-		RuleMultiplierProfile:     append([]float64(nil), ruleMultiplier...),
 		SourceItemIDs:             append([]string(nil), dimension.ItemIDs...),
 		SourceObjectIndexes:       uniqueInts(sourceIndexes),
 		OperatingHours:            profileOperatingHours(annualMultiplier),
@@ -277,19 +274,6 @@ func representativeWeekFromAnnual(values []float64) []float64 {
 		return values
 	}
 	return append([]float64(nil), values[:168]...)
-}
-
-func profileRuleMultiplierFromAnnual(values []float64) []float64 {
-	if len(values) == 0 {
-		return nil
-	}
-	out := []float64{values[0]}
-	for _, value := range values[1:] {
-		if math.Abs(value-out[len(out)-1]) > 1e-12 {
-			out = append(out, value)
-		}
-	}
-	return out
 }
 
 func buildProfileScheduleClusters(report ProfileReport, series []ProfileGraphSeries) []ProfileScheduleCluster {
@@ -813,19 +797,6 @@ func profileGraphWeekMultiplier(schedule ScheduleSummary) []float64 {
 		return schedule.WeeklyProfile
 	}
 	return weeklyProfileFromDayProfiles(normalizeDayProfile(schedule.WeekdayProfile, 1), normalizeDayProfile(schedule.SaturdayProfile, 1), normalizeDayProfile(schedule.SundayProfile, 1))
-}
-
-func profileRuleMultiplier(schedule ScheduleSummary) []float64 {
-	if len(schedule.Rules) == 0 {
-		return []float64{1}
-	}
-	var out []float64
-	for _, rule := range schedule.Rules {
-		for _, interval := range rule.Intervals {
-			out = append(out, interval.Value)
-		}
-	}
-	return out
 }
 
 func normalizeDayProfile(values []float64, fallback float64) []float64 {

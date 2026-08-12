@@ -666,7 +666,6 @@ function renderProfileGraph(group, profile) {
           ["month", t("graph.monthlyAverage")],
           ["year", t("graph.annualHeatmap")],
           ["duration", t("graph.loadDuration")],
-          ["rules", t("graph.periodRules")],
         ].map(([value, label]) => `
           <button class="profile-time-view-button ${options.timeView === value ? "active" : ""}" type="button"
             data-profile-time-view="${escapeHTML(value)}" aria-pressed="${options.timeView === value ? "true" : "false"}">${escapeHTML(label)}</button>`).join("")}
@@ -919,15 +918,6 @@ function profileXAxisSpec(timeView, valueCount) {
       title = t("profile.axisAnnualHoursExceeded", {}, "Annual hours exceeded [%]");
       ticks = [0, 25, 50, 75, 100].map((percent) => ({ ratio: percent / 100, label: `${percent}%` }));
       break;
-    case "rules": {
-      title = t("profile.axisRuleInterval", {}, "Rule interval index");
-      const tickCount = Math.min(7, count);
-      ticks = Array.from({ length: tickCount }, (_, index) => {
-        const valueIndex = tickCount <= 1 ? 0 : Math.round((index / (tickCount - 1)) * (count - 1));
-        return atIndex(valueIndex, String(valueIndex + 1));
-      });
-      break;
-    }
     default:
       break;
   }
@@ -1275,8 +1265,6 @@ function profileSeriesMultiplier(series, timeView) {
       return numberArray(series.monthMultiplierProfile, 12, 1);
     case "duration":
       return numberArray(series.durationMultiplierProfile, 8760, 1);
-    case "rules":
-      return numberArray(series.ruleMultiplierProfile, Math.max(1, series.ruleMultiplierProfile?.length || 1), 1);
     default:
       return numberArray(series.annualMultiplierProfile || series.values, 8760, 1);
   }
@@ -1829,7 +1817,7 @@ function handleProfileGraphActivation(event) {
   const timeViewButton = event.type === "click" ? event.target.closest("[data-profile-time-view]") : null;
   if (timeViewButton) {
     const timeView = timeViewButton.dataset.profileTimeView || "";
-    if (!["day", "week", "month", "year", "duration", "rules"].includes(timeView)) {
+    if (!["day", "week", "month", "year", "duration"].includes(timeView)) {
       return;
     }
     state.profileSettings.timeView = timeView;
@@ -2378,13 +2366,18 @@ function profileGroupKey(dimensions, settings) {
 
 function mergeProfileSettings(defaults = {}, saved = {}) {
   const source = saved || {};
+  const timeView = ["day", "week", "month", "year", "duration"].includes(source.timeView)
+    ? source.timeView
+    : ["day", "week", "month", "year", "duration"].includes(defaults.timeView)
+      ? defaults.timeView
+      : "year";
   return {
     enabledDimensions: Array.isArray(source.enabledDimensions) ? source.enabledDimensions : defaults.enabledDimensions || [],
     displayMetrics: { ...(defaults.displayMetrics || {}), ...(source.displayMetrics || {}) },
     groupingMetrics: { ...(defaults.groupingMetrics || {}), ...(source.groupingMetrics || {}) },
     numericTolerance: Number(source.numericTolerance) > 0 ? Number(source.numericTolerance) : defaults.numericTolerance || 0.001,
     scheduleCompareMode: source.scheduleCompareMode || defaults.scheduleCompareMode || "name",
-    timeView: source.timeView || defaults.timeView || "year",
+    timeView,
     scaleMode: source.scaleMode || defaults.scaleMode || "auto",
     applyBehavior: { ...(defaults.applyBehavior || {}), ...(source.applyBehavior || {}) },
   };

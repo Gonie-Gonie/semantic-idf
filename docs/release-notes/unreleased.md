@@ -116,12 +116,13 @@ The release script infers bump size from these sections:
   tooltip, and accessibility metadata instead of sharing an ambiguous label.
 - Simplified Profile Graph to a fixed Time Profile over selected Profile
   assignments. Removed Graph Type, Scope, and Compare selectors, replaced the
-  View dropdown with six direct view buttons, and moved graph Scale to the
-  Profile Analysis section in Settings while preserving legacy view preferences
-  during migration. Added engineering-style, view-specific X/Y axes with
+  View dropdown with five direct view buttons, removed the Through / For rules
+  view, and moved graph Scale to the Profile Analysis section in Settings while
+  preserving legacy view preferences during migration. Added engineering-style,
+  view-specific X/Y axes with
   responsive ticks and explicit units; annual heatmaps now separate calendar
-  axes from their value color scale, and the dimensionless metric is labelled
-  Schedule fraction instead of Multiplier.
+  axes from their value color scale. Profile time series are fixed to Actual
+  value in their engineering units.
 - Removed direct Profile-to-Topology and Topology-to-Profile links, including
   the Profile detail action, Topology Inspector profile summary, and shared
   related-view/link-bar destinations between those two panels.

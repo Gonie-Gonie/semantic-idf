@@ -254,11 +254,13 @@ export function mergeSettings(settingsInput = {}) {
       groupingMetrics: normalizeMetricMap(profile.groupingMetrics, defaultProfile.groupingMetrics),
       numericTolerance: clampFloat(profile.numericTolerance, 0.000001, 1000, defaultProfile.numericTolerance),
       scheduleCompareMode: normalizeChoice(profile.scheduleCompareMode, ["none", "name", "resolved"], defaultProfile.scheduleCompareMode),
-      timeView: normalizeChoice(
-        profile.timeView,
-        ["day", "week", "month", "year", "duration", "rules"],
-        profileTimeViewFromLegacy(profile.scheduleSummaryMode, defaultProfile.timeView),
-      ),
+      timeView: String(profile.timeView || "").trim()
+        ? normalizeChoice(
+          profile.timeView,
+          ["day", "week", "month", "year", "duration"],
+          defaultProfile.timeView,
+        )
+        : profileTimeViewFromLegacy(profile.scheduleSummaryMode, defaultProfile.timeView),
       scaleMode: normalizeChoice(
         profile.scaleMode,
         ["auto", "shared", "design_peak", "multiplier_0_1", "percentile"],
@@ -457,8 +459,6 @@ function profileTimeViewFromLegacy(value, fallback = "year") {
       return "month";
     case "load_duration":
       return "duration";
-    case "period_rules":
-      return "rules";
     case "annual_heatmap":
       return "year";
     default:

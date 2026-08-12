@@ -693,12 +693,6 @@ func TestFrontendProfileAxesUseSemanticHTMLResponsiveDensityAndSeparateHeatmapSc
 			`[0, 25, 50, 75, 100]`,
 			"`${percent}%`",
 		},
-		"rules": {
-			`case "rules"`,
-			`t("profile.axisRuleInterval"`,
-			`const tickCount = Math.min(7, count)`,
-			`String(valueIndex + 1)`,
-		},
 	} {
 		for _, term := range required {
 			if !strings.Contains(xAxisSpec, term) {
@@ -802,6 +796,11 @@ func TestFrontendProfileAxesUseSemanticHTMLResponsiveDensityAndSeparateHeatmapSc
 			t.Fatalf("Profile fixed Time Profile UI still exposes legacy Metric mode %q", forbidden)
 		}
 	}
+	for _, forbidden := range []string{`case "rules"`, `profile.axisRuleInterval`, `ruleMultiplierProfile`} {
+		if strings.Contains(views, forbidden) {
+			t.Fatalf("Profile graph still contains removed Through / For View rendering %q", forbidden)
+		}
+	}
 	if strings.Contains(overlayPanels, `group.unit ||`) || strings.Contains(overlayPanels, `t("graph.multiplier"`) {
 		t.Fatal("Profile graph panel headings must not use Multiplier as a fallback unit")
 	}
@@ -817,8 +816,11 @@ func TestFrontendProfileGraphControlsUseFixedTimeProfileAndDirectViewButtons(t *
 	styles := readTestFile(t, "frontend/src/styles/profile.css")
 	responsive := readTestFile(t, "frontend/src/styles/responsive.css")
 	i18n := readTestFile(t, "frontend/src/js/i18n.js")
+	graphTypes := readTestFile(t, "internal/idf/profile_graph_types.go")
+	graphBuilder := readTestFile(t, "internal/idf/profile_graph.go")
 	graphBody := sliceBetween(views, "function renderProfileGraph", "function renderProfileGraphBody")
 	bindings := sliceBetween(views, "function bindProfileControls", "export function initializeProfileControls")
+	seriesMetric := sliceBetween(views, "function profileSeriesMetric", "function averageProfileMetricValues")
 	for label, content := range map[string]string{
 		"markup":   markup,
 		"state":    state,
@@ -850,7 +852,6 @@ func TestFrontendProfileGraphControlsUseFixedTimeProfileAndDirectViewButtons(t *
 		`"month"`,
 		`"year"`,
 		`"duration"`,
-		`"rules"`,
 	} {
 		if !strings.Contains(graphBody, required) {
 			t.Fatalf("Profile Graph direct View buttons are missing %q", required)
@@ -929,9 +930,18 @@ func TestFrontendProfileGraphControlsUseFixedTimeProfileAndDirectViewButtons(t *
 			".profile-scatter",
 		},
 		"i18n": {`"profile.graphType"`, `"profile.scheduleSummary"`},
+		"graph-types": {
+			"RuleMultiplierProfile",
+			`json:"ruleMultiplierProfile,omitempty"`,
+		},
+		"graph-builder": {
+			"RuleMultiplierProfile",
+			"profileRuleMultiplier",
+		},
 	}
 	deadSources := map[string]string{
 		"views": views, "state": state, "styles": styles, "responsive": responsive, "i18n": i18n,
+		"graph-types": graphTypes, "graph-builder": graphBuilder,
 	}
 	for label, terms := range deadContracts {
 		for _, term := range terms {
@@ -973,6 +983,13 @@ func TestFrontendProfileGraphControlsUseFixedTimeProfileAndDirectViewButtons(t *
 			t.Fatalf("Profile Scale default/normalization contract is missing %q", required)
 		}
 	}
+	for _, required := range []string{
+		`["day", "week", "month", "year", "duration"]`,
+	} {
+		if !strings.Contains(settingsClient, required) {
+			t.Fatalf("Profile Settings five-View normalization contract is missing %q", required)
+		}
+	}
 	for _, removed := range []string{`metricMode: "actual"`, `metricMode: normalizeChoice(`, `profile.metricMode`, `profileMetricModeFromLegacy`} {
 		if strings.Contains(settingsClient, removed) {
 			t.Fatalf("Profile Settings still persists removed Metric mode %q", removed)
@@ -981,6 +998,35 @@ func TestFrontendProfileGraphControlsUseFixedTimeProfileAndDirectViewButtons(t *
 	for _, legacyOutput := range []string{`graphMode: normalizeChoice(`, `scheduleSummaryMode: normalizeChoice(`} {
 		if strings.Contains(settingsClient, legacyOutput) {
 			t.Fatalf("Profile settings still emits legacy graph state %q", legacyOutput)
+		}
+	}
+	for _, removed := range []string{`"rules"`, `period_rules`} {
+		if strings.Contains(settingsClient, removed) {
+			t.Fatalf("Profile Settings still accepts the removed Through / For View %q", removed)
+		}
+	}
+	for _, removed := range []string{
+		`graph.periodRules`,
+		`profile.axisRuleInterval`,
+		`profile.scheduleFraction`,
+		`graph.actualValue`,
+	} {
+		if strings.Contains(i18n, removed) {
+			t.Fatalf("Profile translations still expose removed Metric/Through-For copy %q", removed)
+		}
+	}
+	for _, required := range []string{
+		`const multiplier = profileSeriesMultiplier(series, timeView)`,
+		`multiplier.map((value) => value * (Number(series.designValue) || 0))`,
+		`const unit = series.unit || ""`,
+	} {
+		if !strings.Contains(seriesMetric, required) {
+			t.Fatalf("Profile fixed Actual engineering-value rendering is missing %q", required)
+		}
+	}
+	for _, removed := range []string{"metricMode", "scheduleFraction"} {
+		if strings.Contains(seriesMetric, removed) {
+			t.Fatalf("Profile series rendering still branches on removed Metric mode %q", removed)
 		}
 	}
 }

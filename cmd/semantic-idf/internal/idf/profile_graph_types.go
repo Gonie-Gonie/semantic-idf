@@ -30,7 +30,6 @@ type ProfileGraphSeries struct {
 	MonthMultiplierProfile    []float64        `json:"monthMultiplierProfile,omitempty"`
 	AnnualMultiplierProfile   []float64        `json:"annualMultiplierProfile,omitempty"`
 	DurationMultiplierProfile []float64        `json:"durationMultiplierProfile,omitempty"`
-	RuleMultiplierProfile     []float64        `json:"ruleMultiplierProfile,omitempty"`
 	SourceItemIDs             []string         `json:"sourceItemIds,omitempty"`
 	SourceObjectIndexes       []int            `json:"sourceObjectIndexes,omitempty"`
 	OperatingHours            float64          `json:"operatingHours"`

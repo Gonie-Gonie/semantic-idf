@@ -162,7 +162,6 @@ const profileSelectionGroupingHarnessHTML = `<!doctype html>
       monthMultiplierProfile: Array.from({ length: 12 }, () => 0.5),
       annualMultiplierProfile: Array.from({ length: 8760 }, (_, hour) => weekProfiles[zoneIndex][hour % 168]),
       durationMultiplierProfile: [...weekProfiles[zoneIndex]].sort((left, right) => right - left),
-      ruleMultiplierProfile: [0.2, 0.8],
       sourceItemIds: zone.items.map((item) => item.id),
       warnings: [],
     }));

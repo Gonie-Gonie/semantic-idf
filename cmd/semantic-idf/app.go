@@ -1768,7 +1768,7 @@ func normalizeProfileSettings(settings idf.ProfileAnalysisSettings, defaults idf
 		settings.NumericTolerance = defaults.NumericTolerance
 	}
 	settings.ScheduleCompareMode = normalizeProfileChoice(settings.ScheduleCompareMode, []string{"none", "name", "resolved"}, defaults.ScheduleCompareMode)
-	settings.TimeView = normalizeProfileChoice(settings.TimeView, []string{"day", "week", "month", "year", "duration", "rules"}, defaults.TimeView)
+	settings.TimeView = normalizeProfileChoice(settings.TimeView, []string{"day", "week", "month", "year", "duration"}, defaults.TimeView)
 	settings.ScaleMode = normalizeProfileChoice(settings.ScaleMode, []string{"auto", "shared", "design_peak", "multiplier_0_1", "percentile"}, defaults.ScaleMode)
 	settings.ApplyBehavior.DefaultMode = normalizeProfileChoice(settings.ApplyBehavior.DefaultMode, []string{"clone", "shared"}, defaults.ApplyBehavior.DefaultMode)
 	if strings.TrimSpace(settings.ApplyBehavior.NameSuffix) == "" {

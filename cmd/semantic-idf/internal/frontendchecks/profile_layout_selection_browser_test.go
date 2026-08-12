@@ -105,9 +105,10 @@ func TestProfileLayoutAndSelectionBrowserHarness(t *testing.T) {
 		`"regroupSelectionByMembership":true`,
 		`"regroupAggregateAverage":true`,
 		`"fixedTimeProfileControls":true`,
+		`"actualEngineeringValue":true`,
 		`"viewToggleImmediate":true`,
 		`"viewFocusRestored":true`,
-		`"sixViewAxes":true`,
+		`"fiveViewAxes":true`,
 		`"noVisibleGraphMultiplier":true`,
 		`"scaleRemovedFromProfileTab":true`,
 		`"legacyViewMigration":true`,
@@ -241,7 +242,6 @@ const profileLayoutSelectionHarnessHTML = `<!doctype html>
           monthMultiplierProfile: constantValues(12, 0.1 * number, 0.2 * number),
           annualMultiplierProfile: constantValues(8760, 0.1 * number, 0.2 * number),
           durationMultiplierProfile: constantValues(8760, 0.2 * number, 0.1 * number),
-          ruleMultiplierProfile: Array.from({ length: 7 }, (_, ruleIndex) => (ruleIndex % 2 ? 0.2 : 0.1) * number),
           sourceItemIds: ["item-" + number],
           warnings: [],
         };
@@ -269,7 +269,6 @@ const profileLayoutSelectionHarnessHTML = `<!doctype html>
           monthMultiplierProfile: constantValues(12, zoneLows[index], zoneHighs[index]),
           annualMultiplierProfile: constantValues(8760, zoneLows[index], zoneHighs[index]),
           durationMultiplierProfile: constantValues(8760, zoneHighs[index], zoneLows[index]),
-          ruleMultiplierProfile: Array.from({ length: 7 }, (_, ruleIndex) => ruleIndex % 2 ? zoneHighs[index] : zoneLows[index]),
           sourceItemIds: ["item-" + number],
           status: number === 1 ? "partial" : "ok",
           warnings: number === 1 ? [{
@@ -570,10 +569,6 @@ const profileLayoutSelectionHarnessHTML = `<!doctype html>
           title: i18n.t("profile.axisAnnualHoursExceeded", {}, "Annual hours exceeded [%]"),
           ticks: ["0%", "25%", "50%", "75%", "100%"],
         },
-        rules: {
-          title: i18n.t("profile.axisRuleInterval", {}, "Rule interval index"),
-          ticks: ["1", "2", "3", "4", "5", "6", "7"],
-        },
       };
       const inspectGraphAxisView = (view) => {
         const graph = document.getElementById("profileGraph");
@@ -645,7 +640,7 @@ const profileLayoutSelectionHarnessHTML = `<!doctype html>
         document.getElementById("profileApplyClose").click();
         return source;
       };
-      const expectedGraphViews = ["day", "week", "month", "year", "duration", "rules"];
+      const expectedGraphViews = ["day", "week", "month", "year", "duration"];
       const graphViewGroup = document.querySelector("#profileGraph .profile-graph-view-switch");
       const fixedTimeProfileControls = Boolean(graphViewGroup)
         && graphViewGroup.getAttribute("role") === "group"
@@ -665,11 +660,11 @@ const profileLayoutSelectionHarnessHTML = `<!doctype html>
         ["annual_heatmap", "year"],
       ].every(([legacy, expected]) => (
         settingsClient.mergeSettings({ profile: { scheduleSummaryMode: legacy } }).profile.timeView === expected
-      )) && settingsClient.mergeSettings({
-        profile: { timeView: "rules", scheduleSummaryMode: "representative_day" },
-      }).profile.timeView === "rules"
+      ))
+        && settingsClient.mergeSettings({ profile: { timeView: "rules" } }).profile.timeView === "year"
+        && settingsClient.mergeSettings({ profile: { scheduleSummaryMode: "period_rules" } }).profile.timeView === "year"
         && !("metricMode" in settingsClient.mergeSettings({ profile: { metricMode: "design", graphMode: "multiplier" } }).profile);
-      assert(fixedTimeProfileControls, "Profile Graph still exposes Graph Type/Scope/Compare/select View controls or lacks six direct View buttons");
+      assert(fixedTimeProfileControls, "Profile Graph still exposes removed controls or lacks the five direct View buttons");
       assert(scaleRemovedFromProfileTab, "Profile tab still exposes the Scale selector that belongs in app Settings");
       assert(legacyViewMigration, "legacy Profile schedule-summary settings did not migrate to View without overriding an explicit View");
       let viewFocusRestored = await clickGraphView("week");
@@ -724,6 +719,16 @@ const profileLayoutSelectionHarnessHTML = `<!doctype html>
         && getComputedStyle(singlePath).stroke === getComputedStyle(singleLegend.querySelector("i")).backgroundColor;
       assert(singleSelectionLegend, "single Profile selection did not keep one matching line and legend entry");
 
+      const actualYAxisTicks = [...document.querySelectorAll("#profileGraph .profile-y-axis-ticks .profile-axis-tick")]
+        .map((tick) => Number((tick.textContent || "").replaceAll(",", "")))
+        .filter(Number.isFinite);
+      const actualEngineeringValue = document.querySelector("#profileGraph .profile-y-axis-title")?.textContent.trim()
+          === i18n.t("profile.axisValue", { unit: "person/m2" }, "Value [{unit}]")
+        && Math.abs(Math.max(...actualYAxisTicks) - 2) < 1e-9
+        && !document.querySelector("#profileMetricMode, [data-profile-metric-mode]")
+        && !(document.getElementById("profileGraph")?.textContent || "").includes("Schedule fraction");
+      assert(actualEngineeringValue, "Profile Graph did not stay fixed to design-value-scaled engineering values");
+
       await clickRow(3, { ctrlKey: true });
       const ctrlToggle = state.profileSelectedGroupIds.length === 2 && selectedRows().length === 2;
       assert(ctrlToggle, "Ctrl click did not toggle a non-contiguous Profile row");
@@ -749,7 +754,6 @@ const profileLayoutSelectionHarnessHTML = `<!doctype html>
 		"monthMultiplierProfile",
 		"annualMultiplierProfile",
 		"durationMultiplierProfile",
-		"ruleMultiplierProfile",
 	  ];
 	  const identicalCurveSeries = profile.graphDataset.series
 		.filter((series) => series.scopeType === "zone" && ["Zone 1", "Zone 2", "Zone 3"].includes(series.zoneName));
@@ -777,10 +781,10 @@ const profileLayoutSelectionHarnessHTML = `<!doctype html>
           && graphViewButton(view)?.getAttribute("aria-pressed") === "true";
         graphAxisResults.push(inspectGraphAxisView(view));
       }
-      const sixViewAxes = graphAxisResults.length === expectedGraphViews.length
+      const fiveViewAxes = graphAxisResults.length === expectedGraphViews.length
         && graphAxisResults.every((result) => result.passed);
       const noVisibleGraphMultiplier = graphAxisResults.every((result) => result.checks.noMultiplierFallback);
-      assert(sixViewAxes, "Profile Graph axes are incomplete or semantically mixed across six Views: "
+      assert(fiveViewAxes, "Profile Graph axes are incomplete or semantically mixed across five Views: "
         + JSON.stringify(graphAxisResults));
       assert(noVisibleGraphMultiplier, "Profile Graph exposed a Multiplier unit/header fallback");
       viewFocusRestored = (await clickGraphView("week")) && viewFocusRestored;
@@ -1308,7 +1312,7 @@ const profileLayoutSelectionHarnessHTML = `<!doctype html>
         const viewControl = document.querySelector(".profile-time-view-control");
         const viewControlItems = [...viewControl.querySelectorAll(".profile-graph-view-switch, [data-profile-time-view]")];
         const toolbarUnclipped = noXScroll(viewControl)
-          && viewControlItems.length === 7
+          && viewControlItems.length === 6
           && viewControlItems.every((item) => noXScroll(item) && withinHorizontalBounds(item, viewControl));
         const inspectRect = currentInspectSwitch.getBoundingClientRect();
         const inspectGroupRect = currentInspectGroup.getBoundingClientRect();
@@ -1706,9 +1710,10 @@ const profileLayoutSelectionHarnessHTML = `<!doctype html>
         regroupSelectionByMembership,
         regroupAggregateAverage,
         fixedTimeProfileControls,
+        actualEngineeringValue,
         viewToggleImmediate,
         viewFocusRestored,
-        sixViewAxes,
+        fiveViewAxes,
         noVisibleGraphMultiplier,
         scaleRemovedFromProfileTab,
         legacyViewMigration,

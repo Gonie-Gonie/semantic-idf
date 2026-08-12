@@ -1165,9 +1165,14 @@ func outputApplyPreviewHasAction(changes []idf.OutputApplyChange, action string,
 
 func TestNormalizeProfileSettingsUsesCanonicalTimeViewAndScale(t *testing.T) {
 	defaults := idf.DefaultProfileAnalysisSettings()
-	settings := normalizeProfileSettings(idf.ProfileAnalysisSettings{TimeView: "rules", ScaleMode: "shared"}, defaults)
-	if settings.TimeView != "rules" || settings.ScaleMode != "shared" {
+	settings := normalizeProfileSettings(idf.ProfileAnalysisSettings{TimeView: "duration", ScaleMode: "shared"}, defaults)
+	if settings.TimeView != "duration" || settings.ScaleMode != "shared" {
 		t.Fatalf("canonical profile settings = %#v", settings)
+	}
+
+	settings = normalizeProfileSettings(idf.ProfileAnalysisSettings{TimeView: "rules", ScaleMode: "shared"}, defaults)
+	if settings.TimeView != defaults.TimeView || settings.ScaleMode != "shared" {
+		t.Fatalf("removed Profile rules view settings = %#v, want time view %q and shared scale", settings, defaults.TimeView)
 	}
 
 	settings = normalizeProfileSettings(idf.ProfileAnalysisSettings{TimeView: "legacy", ScaleMode: "legacy"}, defaults)
