@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-func enrichProfileGraphDeck(report *ProfileReport) {
+func enrichProfileGraphDataset(report *ProfileReport) {
 	report.GraphDataset = buildProfileGraphDataset(*report)
 	report.ScheduleClusters = buildProfileScheduleClusters(*report, report.GraphDataset.Series)
 	report.Outliers = buildProfileOutlierHints(*report, report.GraphDataset.Series, report.ScheduleClusters)
@@ -47,39 +47,8 @@ func buildProfileGraphDataset(report ProfileReport) ProfileGraphDataset {
 		return series[i].Dimension < series[j].Dimension
 	})
 
-	defaultDeck := report.DefaultSettings.GraphDeck
-	if defaultDeck.ScopeType == "" {
-		defaultDeck.ScopeType = "group"
-	}
-	if defaultDeck.MetricMode == "" {
-		defaultDeck.MetricMode = profileMetricModeFromLegacy(report.DefaultSettings.GraphMode)
-	}
-	if defaultDeck.TimeView == "" {
-		defaultDeck.TimeView = profileTimeViewFromLegacy(report.DefaultSettings.ScheduleSummaryMode)
-	}
-	if defaultDeck.CompareMode == "" {
-		defaultDeck.CompareMode = "single"
-	}
-	if defaultDeck.ScaleMode == "" {
-		defaultDeck.ScaleMode = "auto"
-	}
-	if len(defaultDeck.SelectedGroupIDs) == 0 && len(report.Groups) > 0 {
-		defaultDeck.SelectedGroupIDs = []string{report.Groups[0].ID}
-	}
-	if len(defaultDeck.SelectedZoneNames) == 0 && len(report.ZoneProfiles) > 0 {
-		defaultDeck.SelectedZoneNames = []string{report.ZoneProfiles[0].ZoneName}
-	}
-	if len(defaultDeck.SelectedDimensions) == 0 {
-		defaultDeck.SelectedDimensions = append([]string(nil), report.DefaultSettings.EnabledDimensions...)
-	}
-
 	return ProfileGraphDataset{
-		DefaultDeck:  defaultDeck,
-		MetricModes:  []string{"design", "multiplier", "actual", "annual"},
-		TimeViews:    []string{"day", "week", "month", "year", "duration", "rules"},
-		CompareModes: []string{"single", "overlay", "small_multiples", "ranking", "similarity", "outliers"},
-		ScaleModes:   []string{"auto", "shared", "design_peak", "multiplier_0_1", "percentile"},
-		Series:       series,
+		Series: series,
 	}
 }
 
@@ -96,15 +65,31 @@ func profileGraphSeriesForDimension(scopeType string, group ProfileGroup, zoneNa
 	sort.Sort(sort.Reverse(sort.Float64Slice(durationMultiplier)))
 	ruleMultiplier := profileRuleMultiplier(schedule)
 	actualAnnual := multiplyProfile(annualMultiplier, dimension.Value)
+	if values, ok := profileDimensionActualValues(dimension, itemMap, schedules, 8760); ok {
+		actualAnnual = values
+		annualMultiplier = divideProfile(actualAnnual, dimension.Value)
+		dayMultiplier = representativeDaysFromAnnual(annualMultiplier)
+		weekMultiplier = representativeWeekFromAnnual(annualMultiplier)
+		monthMultiplier = monthlyAverages(annualMultiplier)
+		durationMultiplier = append([]float64(nil), annualMultiplier...)
+		sort.Sort(sort.Reverse(sort.Float64Slice(durationMultiplier)))
+		ruleMultiplier = profileRuleMultiplierFromAnnual(annualMultiplier)
+	}
 	peak := maxFloat64(actualAnnual)
 	sourceIndexes := make([]int, 0, len(dimension.ItemIDs))
 	var warnings []ProfileWarning
+	graphStatus := dimension.Status
 	for _, id := range dimension.ItemIDs {
 		item := itemMap[id]
 		if item.ID != "" && item.ObjectIndex >= 0 {
 			sourceIndexes = append(sourceIndexes, item.ObjectIndex)
 		}
 		warnings = append(warnings, item.Warnings...)
+		for _, warning := range item.Warnings {
+			if (warning.Code == "schedule_profile_fallback" || warning.Code == "missing_schedule_summary" || warning.Code == "nominal_outdoor_air_profile") && graphStatus == metricStatusOK {
+				graphStatus = metricStatusPartial
+			}
+		}
 	}
 	scopeID := safeID(zoneName)
 	label := zoneName
@@ -118,7 +103,7 @@ func profileGraphSeriesForDimension(scopeType string, group ProfileGroup, zoneNa
 	scheduleName := dimension.ScheduleName
 	scheduleHash := dimension.ScheduleHash
 	schedulePattern := dimension.SchedulePattern
-	if schedule.ScheduleName != "" {
+	if schedule.ScheduleName != "" && !profileDimensionHasMultipleSchedules(dimension) {
 		scheduleName = schedule.ScheduleName
 		scheduleHash = schedule.ContentHash
 		schedulePattern = schedule.DetectedPattern
@@ -140,22 +125,171 @@ func profileGraphSeriesForDimension(scopeType string, group ProfileGroup, zoneNa
 		ScheduleName:              scheduleName,
 		ScheduleHash:              scheduleHash,
 		SchedulePattern:           schedulePattern,
-		Values:                    roundedProfile(actualAnnual),
-		DayMultiplierProfile:      roundedProfile(dayMultiplier),
-		WeekMultiplierProfile:     roundedProfile(weekMultiplier),
-		MonthMultiplierProfile:    roundedProfile(monthMultiplier),
-		AnnualMultiplierProfile:   roundedProfile(annualMultiplier),
-		DurationMultiplierProfile: roundedProfile(durationMultiplier),
-		RuleMultiplierProfile:     roundedProfile(ruleMultiplier),
+		Values:                    append([]float64(nil), actualAnnual...),
+		DayMultiplierProfile:      append([]float64(nil), dayMultiplier...),
+		WeekMultiplierProfile:     append([]float64(nil), weekMultiplier...),
+		MonthMultiplierProfile:    append([]float64(nil), monthMultiplier...),
+		AnnualMultiplierProfile:   append([]float64(nil), annualMultiplier...),
+		DurationMultiplierProfile: append([]float64(nil), durationMultiplier...),
+		RuleMultiplierProfile:     append([]float64(nil), ruleMultiplier...),
 		SourceItemIDs:             append([]string(nil), dimension.ItemIDs...),
 		SourceObjectIndexes:       uniqueInts(sourceIndexes),
 		OperatingHours:            profileOperatingHours(annualMultiplier),
 		EquivalentFullHours:       roundedNumber(sumFloat64(annualMultiplier), 1),
-		AnnualContribution:        roundedNumber(sumFloat64(actualAnnual), profileMetricPrecision(dimension.MetricID)),
-		Peak:                      roundedNumber(peak, profileMetricPrecision(dimension.MetricID)),
-		Status:                    dimension.Status,
+		AnnualContribution:        sumFloat64(actualAnnual),
+		Peak:                      peak,
+		Status:                    graphStatus,
 		Warnings:                  warnings,
 	}
+}
+
+func profileDimensionHasMultipleSchedules(dimension ProfileDimensionSummary) bool {
+	return strings.Contains(dimension.ScheduleName, " + ") || strings.Contains(dimension.ScheduleHash, "+")
+}
+
+func profileDimensionActualValues(dimension ProfileDimensionSummary, itemMap map[string]ProfileItem, schedules profileScheduleIndex, length int) ([]float64, bool) {
+	if length <= 0 || len(dimension.ItemIDs) == 0 {
+		return nil, false
+	}
+
+	// Ratio metrics must be scheduled through an additive engineering quantity.
+	// Summing per-Space ratios (for example W/m2) gives the wrong Zone result
+	// whenever the Spaces have different areas. Count, total power, and volume
+	// flow remain additive across targets, so apply every object's own schedule to
+	// that quantity first and normalize the combined result afterwards.
+	numeratorID, inverse := profileGraphNumeratorMetric(dimension.MetricID)
+	contributions, designTotal := profileGraphContributions(dimension, numeratorID, itemMap, schedules, length)
+	if len(contributions) < maxInt(1, dimension.ResolvedItemCount) && numeratorID != dimension.MetricID {
+		// Source/fallback metrics do not always have a derivable extensive
+		// counterpart. Preserve them using their own contributions while still
+		// combining each item's schedule rather than borrowing the first schedule.
+		inverse = false
+		contributions, designTotal = profileGraphContributions(dimension, dimension.MetricID, itemMap, schedules, length)
+	}
+	if len(contributions) == 0 {
+		return nil, false
+	}
+	if designTotal == 0 {
+		if dimension.Value != 0 {
+			return nil, false
+		}
+		return make([]float64, length), true
+	}
+
+	values := make([]float64, length)
+	if inverse {
+		basis := dimension.Value * designTotal
+		for index := range values {
+			actualDenominator := 0.0
+			for _, contribution := range contributions {
+				actualDenominator += contribution.value * contribution.multiplier[index]
+			}
+			if actualDenominator > 0 {
+				values[index] = basis / actualDenominator
+			}
+		}
+		return values, true
+	}
+
+	// Scaling by the authoritative aggregated design value also makes fallback
+	// source metrics stable: with all schedules at 1, the graph peak is exactly
+	// the value displayed in the Profile table.
+	scale := dimension.Value / designTotal
+	for index := range values {
+		for _, contribution := range contributions {
+			values[index] += contribution.value * contribution.multiplier[index] * scale
+		}
+	}
+	return values, true
+}
+
+type profileGraphContribution struct {
+	value      float64
+	multiplier []float64
+}
+
+func profileGraphContributions(dimension ProfileDimensionSummary, metricID string, itemMap map[string]ProfileItem, schedules profileScheduleIndex, length int) ([]profileGraphContribution, float64) {
+	if metricID == "" {
+		return nil, 0
+	}
+	contributions := make([]profileGraphContribution, 0, len(dimension.ItemIDs))
+	designTotal := 0.0
+	for _, itemID := range dimension.ItemIDs {
+		item := itemMap[itemID]
+		if item.ID == "" {
+			continue
+		}
+		metric := selectProfileMetric(item.Normalized, metricID)
+		if metric.Status == metricStatusMissing || math.IsNaN(metric.Value) || math.IsInf(metric.Value, 0) {
+			continue
+		}
+		multiplier := annualMultiplierProfile(schedules.forItem(item))
+		if len(multiplier) != length {
+			continue
+		}
+		contributions = append(contributions, profileGraphContribution{value: metric.Value, multiplier: multiplier})
+		designTotal += metric.Value
+	}
+	return contributions, designTotal
+}
+
+func profileGraphNumeratorMetric(metricID string) (string, bool) {
+	switch metricID {
+	case "people_per_area":
+		return "count", false
+	case "area_per_person":
+		return "count", true
+	case "power_per_area", "power_per_person":
+		return "total_power", false
+	case "flow_per_area", "flow_per_exterior_area", "flow_per_exterior_wall_area", "flow_per_person", "ach":
+		return "flow", false
+	default:
+		return metricID, false
+	}
+}
+
+func divideProfile(values []float64, denominator float64) []float64 {
+	if denominator == 0 {
+		return make([]float64, len(values))
+	}
+	out := make([]float64, len(values))
+	for index, value := range values {
+		out[index] = value / denominator
+	}
+	return out
+}
+
+func representativeDaysFromAnnual(values []float64) []float64 {
+	if len(values) < 24 {
+		return values
+	}
+	weekday := append([]float64(nil), values[:24]...)
+	saturdayStart := 5 * 24
+	sundayStart := 6 * 24
+	if len(values) < sundayStart+24 {
+		return weekday
+	}
+	return append(append(weekday, values[saturdayStart:saturdayStart+24]...), values[sundayStart:sundayStart+24]...)
+}
+
+func representativeWeekFromAnnual(values []float64) []float64 {
+	if len(values) < 168 {
+		return values
+	}
+	return append([]float64(nil), values[:168]...)
+}
+
+func profileRuleMultiplierFromAnnual(values []float64) []float64 {
+	if len(values) == 0 {
+		return nil
+	}
+	out := []float64{values[0]}
+	for _, value := range values[1:] {
+		if math.Abs(value-out[len(out)-1]) > 1e-12 {
+			out = append(out, value)
+		}
+	}
+	return out
 }
 
 func buildProfileScheduleClusters(report ProfileReport, series []ProfileGraphSeries) []ProfileScheduleCluster {
@@ -294,7 +428,7 @@ func robustProfileValueOutliers(report ProfileReport) []ProfileOutlierHint {
 	byDimension := map[string][]valueRow{}
 	for _, zone := range report.ZoneProfiles {
 		for _, dimension := range zone.Dimensions {
-			if dimension.Status == summaryStatusMissing {
+			if dimension.Status == metricStatusMissing {
 				continue
 			}
 			byDimension[dimension.Dimension] = append(byDimension[dimension.Dimension], valueRow{zone: zone, dimension: dimension})
@@ -324,7 +458,7 @@ func robustProfileValueOutliers(report ProfileReport) []ProfileOutlierHint {
 			hints = append(hints, ProfileOutlierHint{
 				Severity:      "warning",
 				RuleID:        "robust_value_outlier",
-				Message:       fmt.Sprintf("%s %s differs from the model median %s.", row.zone.ZoneName, profileDimensionLabel(dimension), profileMetricDisplay(median, row.dimension.Unit, summaryStatusOK, profileMetricPrecision(row.dimension.MetricID))),
+				Message:       fmt.Sprintf("%s %s differs from the model median %s.", row.zone.ZoneName, profileDimensionLabel(dimension), profileMetricDisplay(median, row.dimension.Unit, metricStatusOK, profileMetricPrecision(row.dimension.MetricID))),
 				ZoneName:      row.zone.ZoneName,
 				Dimension:     dimension,
 				ScheduleName:  row.dimension.ScheduleName,
@@ -712,7 +846,7 @@ func monthlyAverages(values []float64) []float64 {
 	for _, days := range monthDays {
 		hours := days * 24
 		chunk := values[offset:minInt(offset+hours, len(values))]
-		out = append(out, roundedNumber(averageFloat64(chunk), 4))
+		out = append(out, averageFloat64(chunk))
 		offset += hours
 		if offset >= len(values) {
 			for len(out) < 12 {
@@ -767,6 +901,16 @@ func (index profileScheduleIndex) forDimension(dimension ProfileDimensionSummary
 	return ScheduleSummary{}
 }
 
+func (index profileScheduleIndex) forItem(item ProfileItem) ScheduleSummary {
+	if schedule, ok := index.byName[normalizeName(item.ScheduleName)]; ok {
+		return schedule
+	}
+	if schedule, ok := index.byHash[strings.TrimSpace(item.ScheduleHash)]; ok {
+		return schedule
+	}
+	return ScheduleSummary{}
+}
+
 func profileReportItemMap(report ProfileReport) map[string]ProfileItem {
 	items := map[string]ProfileItem{}
 	for _, zone := range report.ZoneProfiles {
@@ -787,36 +931,6 @@ func profileGroupByZone(groups []ProfileGroup) map[string]ProfileGroup {
 	return out
 }
 
-func profileMetricModeFromLegacy(value string) string {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "multiplier":
-		return "multiplier"
-	case "design":
-		return "design"
-	case "annual":
-		return "annual"
-	default:
-		return "actual"
-	}
-}
-
-func profileTimeViewFromLegacy(value string) string {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "representative_day":
-		return "day"
-	case "representative_week", "hourly_average_by_daytype":
-		return "week"
-	case "monthly_average":
-		return "month"
-	case "load_duration":
-		return "duration"
-	case "period_rules":
-		return "rules"
-	default:
-		return "year"
-	}
-}
-
 func profileSeverityRank(value string) int {
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case "error":
@@ -833,7 +947,7 @@ func profileSeverityRank(value string) int {
 func multiplyProfile(values []float64, factor float64) []float64 {
 	out := make([]float64, len(values))
 	for index, value := range values {
-		out[index] = roundedNumber(value*factor, 6)
+		out[index] = value * factor
 	}
 	return out
 }

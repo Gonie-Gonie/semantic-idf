@@ -350,8 +350,8 @@ function prepareHVACCrossTabContext(tab) {
     state.activeProfileZoneName = zoneName;
     return;
   }
-  if (tab === "geometry" && zoneName) {
-    focusGeometryZoneFromHVAC(zoneName);
+  if (tab === "topology" && zoneName) {
+    focusTopologyZoneFromHVAC(zoneName);
     return;
   }
   if (tab === "simulation") {
@@ -371,15 +371,15 @@ function currentHVACZoneName(hvac = state.report?.hvac) {
   return path?.zoneName || "";
 }
 
-function focusGeometryZoneFromHVAC(zoneName) {
+function focusTopologyZoneFromHVAC(zoneName) {
   const zone = (state.report?.geometry?.zones || []).find((item) => normalizeGraphName(item.name) === normalizeGraphName(zoneName));
   if (!zone) {
     return;
   }
-  state.selectedGeometryKind = "zone";
-  state.selectedGeometryId = zone.id || "";
+  state.selectedTopologyEntityKind = "zone";
+  state.selectedTopologyEntityId = zone.id || "";
   if (zone.storyIndex !== undefined && zone.storyIndex !== null) {
-    state.selectedGeometryStory = zone.storyIndex;
+    state.selectedTopologyStory = zone.storyIndex;
   }
 }
 
@@ -1598,7 +1598,7 @@ function renderHVACLoopServiceOverview(loop, relatedPaths, loopCouplings) {
     <section class="hvac-graph-detail hvac-loop-service-overview">
       <div class="hvac-detail-grid">
         <div><span>${escapeHTML(t("common.type"))}</span><strong>${escapeHTML(loop.type || "Loop")}</strong></div>
-        <div><span>Medium</span><strong>${escapeHTML(media.map(serviceEdgeLabel).join(", ") || (loop.type || "N/A"))}</strong></div>
+        <div><span>Medium</span><strong>${escapeHTML(media.map(serviceEdgeLabel).join(", ") || (loop.type || "—"))}</strong></div>
         <div><span>${escapeHTML(t("hvac.servicePath", {}, "Service paths"))}</span><strong>${escapeHTML(relatedPaths.length)}</strong></div>
         <div><span>${escapeHTML(t("hvac.relatedZones"))}</span><strong>${escapeHTML(relatedZoneNamesForServicePaths(relatedPaths).length || (loop.relatedZones || []).length)}</strong></div>
         <div><span>${escapeHTML(t("hvac.supportingAssets", {}, "Supporting assets"))}</span><strong>${escapeHTML(loopCouplings.length)}</strong></div>
@@ -1650,8 +1650,8 @@ function renderHVACLoopServicePathRow(path) {
       <span>${escapeHTML(servedSubjectLabel(path.servedSubject || path))}</span>
       <span>${escapeHTML(serviceKindLabel(path.serviceKind))}</span>
       <span>${escapeHTML(deliveryLabel(path))}</span>
-      <span>${escapeHTML(conditioning || "N/A")}</span>
-      <span>${escapeHTML(source || "N/A")}</span>
+      <span>${escapeHTML(conditioning || "—")}</span>
+      <span>${escapeHTML(source || "—")}</span>
       <span>${escapeHTML(pathTypeLabel(path.pathType))}</span>
     </button>`;
 }
@@ -4009,9 +4009,9 @@ function renderSelectedServicePathDetail(path, couplings) {
       </div>
       <div class="hvac-detail-grid">
         <div><span>${escapeHTML(t("hvac.delivery", {}, "Delivery"))}</span><strong>${escapeHTML(deliveryLabel(path))}</strong></div>
-        <div><span>${escapeHTML(t("hvac.connectedSystems", {}, "Connected systems"))}</span><strong>${escapeHTML(servicePathConnectedSystems(path).join(", ") || "N/A")}</strong></div>
-        <div><span>${escapeHTML(t("common.inlet"))}</span><strong>${escapeHTML(path.delivery?.inletNode || "N/A")}</strong></div>
-        <div><span>${escapeHTML(t("common.outlet"))}</span><strong>${escapeHTML(path.delivery?.outletNode || "N/A")}</strong></div>
+        <div><span>${escapeHTML(t("hvac.connectedSystems", {}, "Connected systems"))}</span><strong>${escapeHTML(servicePathConnectedSystems(path).join(", ") || "—")}</strong></div>
+        <div><span>${escapeHTML(t("common.inlet"))}</span><strong>${escapeHTML(path.delivery?.inletNode || "—")}</strong></div>
+        <div><span>${escapeHTML(t("common.outlet"))}</span><strong>${escapeHTML(path.delivery?.outletNode || "—")}</strong></div>
       </div>
       ${pathCouplings.length ? `<div class="hvac-detail-list">${pathCouplings.map((coupling) => `<div><strong>${escapeHTML(coupling.object?.displayName || coupling.role || "")}</strong><span>${escapeHTML(couplingRoleLabel(coupling))}</span></div>`).join("")}</div>` : ""}
       ${renderHVACTraceDrawer(path.traceIds || [])}
@@ -4031,12 +4031,12 @@ function renderSelectedServiceNodeDetail(node, path, couplings) {
       </div>
       ${connected.length ? `<section class="hvac-connected-systems"><strong>${escapeHTML(t("hvac.connectedSystems", {}, "Connected systems"))}</strong><div class="hvac-connected-system-list">${connected.map((item) => `<span>${escapeHTML(item)}</span>`).join("")}</div></section>` : ""}
       <div class="hvac-detail-grid">
-        <div><span>${escapeHTML(t("common.type"))}</span><strong>${escapeHTML(ref.objectType || ref.type || node.kind || "N/A")}</strong></div>
-        <div><span>Role</span><strong>${escapeHTML(ref.role || node.role || "N/A")}</strong></div>
-        <div><span>${escapeHTML(t("hvac.deliveryType", {}, "Delivery type"))}</span><strong>${escapeHTML(ref.deliveryType || path.deliveryEquipment?.deliveryType || "N/A")}</strong></div>
-        <div><span>${escapeHTML(t("common.inlet"))}</span><strong>${escapeHTML(ref.inletNode || "N/A")}</strong></div>
-        <div><span>${escapeHTML(t("common.outlet"))}</span><strong>${escapeHTML(ref.outletNode || "N/A")}</strong></div>
-        <div><span>${escapeHTML(t("common.water"))}</span><strong>${escapeHTML([ref.waterInletNode, ref.waterOutletNode].filter(Boolean).join(" -> ") || "N/A")}</strong></div>
+        <div><span>${escapeHTML(t("common.type"))}</span><strong>${escapeHTML(ref.objectType || ref.type || node.kind || "—")}</strong></div>
+        <div><span>Role</span><strong>${escapeHTML(ref.role || node.role || "—")}</strong></div>
+        <div><span>${escapeHTML(t("hvac.deliveryType", {}, "Delivery type"))}</span><strong>${escapeHTML(ref.deliveryType || path.deliveryEquipment?.deliveryType || "—")}</strong></div>
+        <div><span>${escapeHTML(t("common.inlet"))}</span><strong>${escapeHTML(ref.inletNode || "—")}</strong></div>
+        <div><span>${escapeHTML(t("common.outlet"))}</span><strong>${escapeHTML(ref.outletNode || "—")}</strong></div>
+        <div><span>${escapeHTML(t("common.water"))}</span><strong>${escapeHTML([ref.waterInletNode, ref.waterOutletNode].filter(Boolean).join(" -> ") || "—")}</strong></div>
       </div>
       ${renderHVACTraceDrawer(traceIds)}
     </section>`;
@@ -4051,10 +4051,10 @@ function renderSelectedCouplingDetail(coupling, path) {
         <span>${escapeHTML(couplingRoleLabel(coupling))}</span>
       </div>
       <div class="hvac-detail-grid">
-        <div><span>Role</span><strong>${escapeHTML(coupling.role || "N/A")}</strong></div>
-        <div><span>${escapeHTML(t("hvac.couplingType", {}, "Coupling type"))}</span><strong>${escapeHTML(coupling.couplingType || "N/A")}</strong></div>
-        <div><span>${escapeHTML(t("hvac.connectedSystems", {}, "Connected systems"))}</span><strong>${escapeHTML((coupling.connectedLoops || []).map((loop) => loop.name).join(", ") || "N/A")}</strong></div>
-        <div><span>Medium</span><strong>${escapeHTML((coupling.mediums || []).join(", ") || "N/A")}</strong></div>
+        <div><span>Role</span><strong>${escapeHTML(coupling.role || "—")}</strong></div>
+        <div><span>${escapeHTML(t("hvac.couplingType", {}, "Coupling type"))}</span><strong>${escapeHTML(coupling.couplingType || "—")}</strong></div>
+        <div><span>${escapeHTML(t("hvac.connectedSystems", {}, "Connected systems"))}</span><strong>${escapeHTML((coupling.connectedLoops || []).map((loop) => loop.name).join(", ") || "—")}</strong></div>
+        <div><span>Medium</span><strong>${escapeHTML((coupling.mediums || []).join(", ") || "—")}</strong></div>
       </div>
       ${(coupling.connectedLoops || []).length ? `<section class="hvac-connected-systems"><strong>${escapeHTML(t("hvac.connectedSystems", {}, "Connected systems"))}</strong><div class="hvac-connected-system-list">${(coupling.connectedLoops || []).map((loop) => `<button class="${escapeHTML(hvacLoopChipClass(loop.type))}" type="button" data-hvac-entity-kind="loop" data-hvac-entity-id="${escapeHTML(navigationLoopEntityID(loop.type, loop.name))}" data-hvac-entity-label="${escapeHTML(loop.name)}">${escapeHTML(loop.name)}</button>`).join("")}</div></section>` : ""}
       ${renderRelatedServicePathList(affectedPaths)}
@@ -4235,7 +4235,7 @@ function renderHVACInspector(hvac, selectedLoop) {
     <div class="hvac-inspector-kv"><span>${t("hvac.supplyBranches")}</span><strong>${escapeHTML((selectedLoop.supplySide?.branches || []).length)}</strong></div>
     <div class="hvac-inspector-kv"><span>${t("hvac.demandBranches")}</span><strong>${escapeHTML((selectedLoop.demandSide?.branches || []).length)}</strong></div>
     <div class="hvac-inspector-kv"><span>${t("hvac.relatedZones")}</span><strong>${escapeHTML((selectedLoop.relatedZones || []).length)}</strong></div>
-    <div class="hvac-tag-list">${(selectedLoop.relatedZones || []).map((zone) => `<span>${escapeHTML(zone)}</span>`).join("") || `<span>N/A</span>`}</div>`;
+    <div class="hvac-tag-list">${(selectedLoop.relatedZones || []).map((zone) => `<span>${escapeHTML(zone)}</span>`).join("") || `<span>—</span>`}</div>`;
 }
 
 function renderHVACInspectorServiceSelection(selected, couplings) {
@@ -4260,16 +4260,16 @@ function renderHVACInspectorServiceSelection(selected, couplings) {
     <section class="hvac-connected-systems">
       <strong>${escapeHTML(t("hvac.connectedSystems", {}, "Connected systems"))}</strong>
       <div class="hvac-connected-system-list">
-        ${servicePathConnectedSystems(path).map((item) => `<span>${escapeHTML(item)}</span>`).join("") || `<span>N/A</span>`}
+        ${servicePathConnectedSystems(path).map((item) => `<span>${escapeHTML(item)}</span>`).join("") || `<span>—</span>`}
       </div>
     </section>
-    <div class="hvac-inspector-kv"><span>Name</span><strong>${escapeHTML(nodeRef.displayName || nodeRef.objectName || title || "N/A")}</strong></div>
-    <div class="hvac-inspector-kv"><span>${escapeHTML(t("common.type"))}</span><strong>${escapeHTML(nodeRef.objectType || nodeRef.type || selected.node?.kind || "N/A")}</strong></div>
-    <div class="hvac-inspector-kv"><span>Role</span><strong>${escapeHTML(nodeRef.role || selected.node?.role || path.pathType || "N/A")}</strong></div>
-    <div class="hvac-inspector-kv"><span>${escapeHTML(t("hvac.deliveryType", {}, "Delivery type"))}</span><strong>${escapeHTML(path.deliveryEquipment?.deliveryType || nodeRef.deliveryType || "N/A")}</strong></div>
-    <div class="hvac-inspector-kv"><span>${escapeHTML(t("common.inlet"))}</span><strong>${escapeHTML(nodeRef.inletNode || "N/A")}</strong></div>
-    <div class="hvac-inspector-kv"><span>${escapeHTML(t("common.outlet"))}</span><strong>${escapeHTML(nodeRef.outletNode || "N/A")}</strong></div>
-    <div class="hvac-inspector-kv"><span>${escapeHTML(t("common.water"))}</span><strong>${escapeHTML([nodeRef.waterInletNode, nodeRef.waterOutletNode].filter(Boolean).join(" -> ") || "N/A")}</strong></div>
+    <div class="hvac-inspector-kv"><span>Name</span><strong>${escapeHTML(nodeRef.displayName || nodeRef.objectName || title || "—")}</strong></div>
+    <div class="hvac-inspector-kv"><span>${escapeHTML(t("common.type"))}</span><strong>${escapeHTML(nodeRef.objectType || nodeRef.type || selected.node?.kind || "—")}</strong></div>
+    <div class="hvac-inspector-kv"><span>Role</span><strong>${escapeHTML(nodeRef.role || selected.node?.role || path.pathType || "—")}</strong></div>
+    <div class="hvac-inspector-kv"><span>${escapeHTML(t("hvac.deliveryType", {}, "Delivery type"))}</span><strong>${escapeHTML(path.deliveryEquipment?.deliveryType || nodeRef.deliveryType || "—")}</strong></div>
+    <div class="hvac-inspector-kv"><span>${escapeHTML(t("common.inlet"))}</span><strong>${escapeHTML(nodeRef.inletNode || "—")}</strong></div>
+    <div class="hvac-inspector-kv"><span>${escapeHTML(t("common.outlet"))}</span><strong>${escapeHTML(nodeRef.outletNode || "—")}</strong></div>
+    <div class="hvac-inspector-kv"><span>${escapeHTML(t("common.water"))}</span><strong>${escapeHTML([nodeRef.waterInletNode, nodeRef.waterOutletNode].filter(Boolean).join(" -> ") || "—")}</strong></div>
     ${renderHVACTraceDrawer(path.traceIds || [])}
     ${(path.supportingCouplingIds || []).length ? `<div class="hvac-detail-list">${(path.supportingCouplingIds || []).map((id) => couplingByID.get(id)).filter(Boolean).map((coupling) => `<div><strong>${escapeHTML(coupling.object?.displayName || coupling.role || "")}</strong><span>${escapeHTML(couplingRoleLabel(coupling))}</span></div>`).join("")}</div>` : ""}
   `;
@@ -4336,9 +4336,9 @@ function renderHVACInspectorComponentFocus(componentItem, paths = []) {
       <span>${escapeHTML([component.objectType, componentItem.displayFamily || componentItem.family].filter(Boolean).join(" / "))}</span>
     </div>
     ${systems.length ? `<section class="hvac-connected-systems"><strong>${escapeHTML(t("hvac.connectedSystems", {}, "Connected systems"))}</strong><div class="hvac-connected-system-list">${systems.map((system) => `<button class="${escapeHTML(hvacLoopChipClass(system.type))}" type="button" data-hvac-entity-kind="loop" data-hvac-entity-id="${escapeHTML(system.id)}" data-hvac-entity-label="${escapeHTML(system.name)}">${escapeHTML(system.name)}</button>`).join("")}</div></section>` : ""}
-    <div class="hvac-inspector-kv"><span>${escapeHTML(t("common.type"))}</span><strong>${escapeHTML(component.objectType || "N/A")}</strong></div>
-    <div class="hvac-inspector-kv"><span>Role</span><strong>${escapeHTML(component.role || componentItem.deliveryType || componentItem.couplingType || "N/A")}</strong></div>
-    <div class="hvac-inspector-kv"><span>Medium</span><strong>${escapeHTML((componentItem.mediums || component.mediums || []).map(serviceEdgeLabel).join(", ") || "N/A")}</strong></div>
+    <div class="hvac-inspector-kv"><span>${escapeHTML(t("common.type"))}</span><strong>${escapeHTML(component.objectType || "—")}</strong></div>
+    <div class="hvac-inspector-kv"><span>Role</span><strong>${escapeHTML(component.role || componentItem.deliveryType || componentItem.couplingType || "—")}</strong></div>
+    <div class="hvac-inspector-kv"><span>Medium</span><strong>${escapeHTML((componentItem.mediums || component.mediums || []).map(serviceEdgeLabel).join(", ") || "—")}</strong></div>
     ${renderComponentOccurrenceList(componentItem)}
     ${renderRelatedServicePathList(paths)}
     ${renderComponentOutputActions(component)}`;
@@ -4354,7 +4354,7 @@ function renderHVACInspectorZoneFocus(entity, paths = []) {
     ${renderZoneServiceDashboard(paths)}
     <div class="hvac-loop-actions">
       <button type="button" data-result-tab="profile">${escapeHTML(t("tab.profile", {}, "Profile"))}</button>
-      <button type="button" data-result-tab="geometry">${escapeHTML(t("tab.geometry", {}, "Topology"))}</button>
+      <button type="button" data-result-tab="topology">${escapeHTML(t("tab.topology", {}, "Topology"))}</button>
       <button type="button" data-result-tab="simulation">${escapeHTML(t("tab.simulation", {}, "Simulation"))}</button>
       ${renderObjectLink(entity.objectIndex, entity.kind === "space" ? "Space" : "Zone")}
     </div>`;
@@ -4371,7 +4371,7 @@ function renderComponentOccurrenceList(componentItem = {}) {
         .map((occurrence) => {
           const label = [occurrence.contextType, occurrence.loopType, occurrence.loopName, occurrence.zoneName].filter(Boolean).join(" / ");
           const detail = [occurrence.loopSide, occurrence.branchName, occurrence.spaceName, occurrence.roleHere].filter(Boolean).join(" / ");
-          return `<div><strong>${escapeHTML(label || "Occurrence")}</strong><span>${escapeHTML(detail || "N/A")}</span></div>`;
+          return `<div><strong>${escapeHTML(label || "Occurrence")}</strong><span>${escapeHTML(detail || "—")}</span></div>`;
         })
         .join("")}
     </section>`;
@@ -4479,10 +4479,10 @@ function renderHVACInspectorSelection(selected) {
     ${
       selected.component
         ? `
-          <div class="hvac-inspector-kv"><span>${t("common.type")}</span><strong>${escapeHTML(selected.component.objectType || "N/A")}</strong></div>
+          <div class="hvac-inspector-kv"><span>${t("common.type")}</span><strong>${escapeHTML(selected.component.objectType || "—")}</strong></div>
           <div class="hvac-inspector-kv"><span>Family</span><strong>${escapeHTML(componentMetaLabel(selected.component))}</strong></div>
-          <div class="hvac-inspector-kv"><span>${t("common.inlet")}</span><strong>${escapeHTML(selected.component.inletNode || "N/A")}</strong></div>
-          <div class="hvac-inspector-kv"><span>${t("common.outlet")}</span><strong>${escapeHTML(selected.component.outletNode || "N/A")}</strong></div>`
+          <div class="hvac-inspector-kv"><span>${t("common.inlet")}</span><strong>${escapeHTML(selected.component.inletNode || "—")}</strong></div>
+          <div class="hvac-inspector-kv"><span>${t("common.outlet")}</span><strong>${escapeHTML(selected.component.outletNode || "—")}</strong></div>`
         : ""
     }
     }`;
@@ -4737,11 +4737,11 @@ function renderSelectedHVACDetail(selected) {
           <span>${escapeHTML(component.objectType || t("common.component"))}</span>
         </div>
         <div class="hvac-detail-grid">
-          <div><span>${t("common.object")}</span><strong>${renderObjectLink(component.objectIndex, component.objectType) || "N/A"}</strong></div>
+          <div><span>${t("common.object")}</span><strong>${renderObjectLink(component.objectIndex, component.objectType) || "—"}</strong></div>
           <div><span>Family</span><strong>${escapeHTML(componentMetaLabel(component))}</strong></div>
-          <div><span>${t("common.inlet")}</span><strong>${escapeHTML(component.inletNode || "N/A")}</strong></div>
-          <div><span>${t("common.outlet")}</span><strong>${escapeHTML(component.outletNode || "N/A")}</strong></div>
-          <div><span>${t("common.water")}</span><strong>${escapeHTML([component.waterInletNode, component.waterOutletNode].filter(Boolean).join(" -> ") || "N/A")}</strong></div>
+          <div><span>${t("common.inlet")}</span><strong>${escapeHTML(component.inletNode || "—")}</strong></div>
+          <div><span>${t("common.outlet")}</span><strong>${escapeHTML(component.outletNode || "—")}</strong></div>
+          <div><span>${t("common.water")}</span><strong>${escapeHTML([component.waterInletNode, component.waterOutletNode].filter(Boolean).join(" -> ") || "—")}</strong></div>
           ${component.sourceOwner ? `<div><span>Source owner</span><strong>${escapeHTML(component.sourceOwner)}</strong></div>` : ""}
           ${component.expectedObjectType ? `<div><span>Expected type</span><strong>${escapeHTML(component.expectedObjectType)}</strong></div>` : ""}
           ${component.loopName ? `<div><span>${t("hvac.viewLoop")}</span><strong>${escapeHTML(component.loopName)}</strong></div>` : ""}
@@ -4782,7 +4782,7 @@ function renderSelectedHVACDetail(selected) {
           <span>Zone</span>
         </div>
         <div class="hvac-detail-grid">
-          <div><span>${t("hvac.connectedSystems", {}, "Connected systems")}</span><strong>${escapeHTML(loop.name ? `${loop.type || "Loop"} ${loop.name}` : "N/A")}</strong></div>
+          <div><span>${t("hvac.connectedSystems", {}, "Connected systems")}</span><strong>${escapeHTML(loop.name ? `${loop.type || "Loop"} ${loop.name}` : "—")}</strong></div>
           <div><span>${t("hvac.relatedZones")}</span><strong>${escapeHTML((loop.relatedZones || []).length)}</strong></div>
         </div>
       </section>`;
@@ -4888,7 +4888,7 @@ function hvacSourceFieldLabel(component = {}) {
     component.nameFieldIndex !== undefined ? `name ${component.nameFieldIndex}` : "",
   ]
     .filter(Boolean)
-    .join(" / ") || "N/A";
+    .join(" / ") || "—";
 }
 
 function componentDisplayName(component = {}) {

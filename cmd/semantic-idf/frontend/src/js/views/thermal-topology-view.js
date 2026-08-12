@@ -102,7 +102,7 @@ export function fitThermalTopology() {
 }
 
 function renderThermalTopologySVG(model, layout) {
-  const selectedID = state.thermalTopologySelectedEntityId || state.selectedGeometryId;
+  const selectedID = state.thermalTopologySelectedEntityId || state.selectedTopologyEntityId;
   const selectionContext = createThermalSelectionContext(selectedID);
   const edges = [...layout.edges].sort((left, right) => String(left.targetId || left.id).localeCompare(String(right.targetId || right.id)));
   const nodes = [...model.nodes].sort((left, right) => String(left.id).localeCompare(String(right.id)));
@@ -382,12 +382,12 @@ function ensureGraphTargetInteractions() {
     const element = thermalTargetElement(event.target, graph);
     if (!element || element === thermalTargetElement(event.relatedTarget, graph)) return;
     const selection = currentHelpers?.selectionForTarget?.(element.dataset.thermalTargetKind, element.dataset.thermalTargetId);
-    if (selection) hoverSemanticEntity(selection, { originView: "geometry", action: "hover", recordHistory: false, follow: false });
+    if (selection) hoverSemanticEntity(selection, { originView: "topology", action: "hover", recordHistory: false, follow: false });
   });
   graph.addEventListener("pointerout", (event) => {
     const element = thermalTargetElement(event.target, graph);
     if (!element || element === thermalTargetElement(event.relatedTarget, graph)) return;
-    clearSemanticHover({ originView: "geometry", action: "hover" });
+    clearSemanticHover({ originView: "topology", action: "hover" });
   });
 }
 
@@ -399,10 +399,10 @@ function thermalTargetElement(target, graph) {
 function activateGraphTarget(kind, id) {
   state.thermalTopologySelectedEntityId = id;
   state.thermalTopologySelectedEntityKind = kind;
-  state.selectedGeometryKind = kind;
-  state.selectedGeometryId = id;
+  state.selectedTopologyEntityKind = kind;
+  state.selectedTopologyEntityId = id;
   markGraphTargetSelected(kind, id);
-  currentHelpers?.selectGeometry?.(kind, id, { syncLocate: true, syncSemantic: true });
+  currentHelpers?.selectTopologyEntity?.(kind, id, { syncLocate: true, syncSemantic: true });
   renderThermalTopologyInspector(currentGeometry, currentHelpers);
 }
 
@@ -429,13 +429,13 @@ function ensureResizeObserver() {
   if (resizeObserver || typeof ResizeObserver === "undefined") return;
   resizeObserver = new ResizeObserver((entries) => {
     const bounds = entries[0]?.contentRect;
-    if (!bounds || state.geometryMode !== "thermal") return;
+    if (!bounds || state.topologyMode !== "thermal") return;
     if (Math.abs(bounds.width - observedWidth) < 2 && Math.abs(bounds.height - observedHeight) < 2) return;
     observedWidth = bounds.width;
     observedHeight = bounds.height;
     window.cancelAnimationFrame(resizeFrame);
     resizeFrame = window.requestAnimationFrame(() => {
-      if (currentGeometry && state.geometryMode === "thermal") renderThermalTopology(currentGeometry, currentHelpers);
+      if (currentGeometry && state.topologyMode === "thermal") renderThermalTopology(currentGeometry, currentHelpers);
     });
   });
   resizeObserver.observe(elements.thermalTopologyGraph);
@@ -446,9 +446,9 @@ function thermalTopologyOptions() {
     metric: state.thermalTopologyMetric,
     layout: state.thermalTopologyLayout,
     scope: state.thermalTopologyScope,
-    storyIndex: state.selectedGeometryStory,
-    selectedEntityId: state.thermalTopologySelectedEntityId || state.selectedGeometryId,
-    selectedEntityKind: state.thermalTopologySelectedEntityKind || state.selectedGeometryKind,
+    storyIndex: state.selectedTopologyStory,
+    selectedEntityId: state.thermalTopologySelectedEntityId || state.selectedTopologyEntityId,
+    selectedEntityKind: state.thermalTopologySelectedEntityKind || state.selectedTopologyEntityKind,
     showAirCoupling: state.thermalTopologyShowAirCoupling || state.thermalTopologyMetric === "air",
   };
 }
@@ -475,7 +475,7 @@ function connectionLabel(connection, model, metricContext) {
   if (model.metric === "area") parts.push(formatArea(area));
   else if (model.metric === "ua") {
     const ua = connectionUAValue(connection);
-    parts.push(ua.available ? `${formatNumber(ua.value)} W/K` : "N/A");
+    parts.push(ua.available ? `${formatNumber(ua.value)} W/K` : "—");
   }
   else if (model.metric === "qa") parts.push((connection.diagnosticIds || []).length ? `${connection.diagnosticIds.length} issues` : connection.observationKind || "OK");
   else if (model.metric === "air") {
@@ -608,7 +608,7 @@ function connectionTooltip(connection, model) {
   const values = [
     String(connection.relationKind || "connection").replaceAll("_", " "),
     `${formatArea(area)}`,
-    ua.available ? `${formatNumber(ua.value)} W/K` : "UA N/A",
+    ua.available ? `${formatNumber(ua.value)} W/K` : "UA —",
   ];
   return values.join(" · ");
 }
@@ -629,7 +629,7 @@ function baseExpandedID(id) {
 }
 
 function createThermalSelectionContext(selectedID) {
-  const selectedKind = state.thermalTopologySelectedEntityKind || state.selectedGeometryKind;
+  const selectedKind = state.thermalTopologySelectedEntityKind || state.selectedTopologyEntityKind;
   const opening = selectedKind === "window"
     ? (currentGeometry?.topology?.openings || []).find((item) => item.entityId === selectedID || item.windowId === selectedID || item.id === selectedID)
     : null;

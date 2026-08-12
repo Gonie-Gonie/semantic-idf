@@ -3,120 +3,27 @@ package main
 import (
 	"bytes"
 	"encoding/csv"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 
-	"github.com/Gonie-Gonie/semantic-idf/cmd/semantic-idf/internal/epinput"
 	"github.com/Gonie-Gonie/semantic-idf/cmd/semantic-idf/internal/idf"
 	"github.com/Gonie-Gonie/semantic-idf/cmd/semantic-idf/internal/simulation"
 	"github.com/Gonie-Gonie/semantic-idf/cmd/semantic-idf/internal/tabular"
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-type BatchJobRequest struct {
-	RunID         string   `json:"runId"`
-	InputPaths    []string `json:"inputPaths"`
-	RootDirectory string   `json:"rootDirectory,omitempty"`
-	Recursive     bool     `json:"recursive,omitempty"`
-	WorkerCount   int      `json:"workerCount,omitempty"`
-}
-
-type BatchFileResult struct {
-	Index    int    `json:"index"`
-	Path     string `json:"path"`
-	Filename string `json:"filename"`
-	Label    string `json:"label"`
-	Status   string `json:"status"`
-	Error    string `json:"error,omitempty"`
-	Format   string `json:"format,omitempty"`
-	Version  string `json:"version,omitempty"`
-}
-
-type BatchDiagnoseResult struct {
-	Canceled   bool                    `json:"canceled,omitempty"`
-	RunID      string                  `json:"runId,omitempty"`
-	Total      int                     `json:"total"`
-	Completed  int                     `json:"completed"`
-	Succeeded  int                     `json:"succeeded"`
-	Failed     int                     `json:"failed"`
-	Files      []BatchDiagnoseFile     `json:"files"`
-	IssueCodes []BatchIssueCodeSummary `json:"issueCodes"`
-}
-
-type BatchDiagnoseFile struct {
-	BatchFileResult
-	ErrorCount   int              `json:"errorCount"`
-	WarningCount int              `json:"warningCount"`
-	NoticeCount  int              `json:"noticeCount"`
-	Issues       []idf.Diagnostic `json:"issues,omitempty"`
-}
-
-type BatchIssueCodeSummary struct {
-	Code       string         `json:"code"`
-	Severity   string         `json:"severity,omitempty"`
-	Category   string         `json:"category,omitempty"`
-	Source     string         `json:"source,omitempty"`
-	Confidence string         `json:"confidence,omitempty"`
-	Count      int            `json:"count"`
-	FileCounts map[string]int `json:"fileCounts,omitempty"`
-}
-
-type BatchCleanupReportResult struct {
-	Canceled  bool                     `json:"canceled,omitempty"`
-	RunID     string                   `json:"runId,omitempty"`
-	Total     int                      `json:"total"`
-	Completed int                      `json:"completed"`
-	Succeeded int                      `json:"succeeded"`
-	Failed    int                      `json:"failed"`
-	Files     []BatchCleanupReportFile `json:"files"`
-	Rules     []idf.CleanupRule        `json:"rules,omitempty"`
-}
-
-type BatchCleanupReportFile struct {
-	BatchFileResult
-	RuleCounts  map[string]int         `json:"ruleCounts,omitempty"`
-	Candidates  []idf.CleanupCandidate `json:"candidates,omitempty"`
-	Scan        *idf.CleanupScan       `json:"scan,omitempty"`
-	SafeCount   int                    `json:"safeCount"`
-	ReviewCount int                    `json:"reviewCount"`
-	OutputCount int                    `json:"outputCount"`
-}
-
-type BatchConvertExportRequest struct {
-	BatchJobRequest
-	TargetFormat    string `json:"targetFormat"`
-	OutputDirectory string `json:"outputDirectory,omitempty"`
-	OverwritePolicy string `json:"overwritePolicy,omitempty"`
-}
-
-type BatchConvertExportResult struct {
-	Canceled  bool                     `json:"canceled,omitempty"`
-	RunID     string                   `json:"runId,omitempty"`
-	Total     int                      `json:"total"`
-	Completed int                      `json:"completed"`
-	Succeeded int                      `json:"succeeded"`
-	Failed    int                      `json:"failed"`
-	Files     []BatchConvertExportFile `json:"files"`
-}
-
-type BatchConvertExportFile struct {
-	BatchFileResult
-	OutputPath string `json:"outputPath,omitempty"`
-	MIME       string `json:"mime,omitempty"`
-}
-
-type BatchSummaryXLSXExportRequest struct {
-	Result        MultiSummaryResult `json:"result"`
+type BatchMetricsXLSXExportRequest struct {
+	Result        BatchMetricsResult `json:"result"`
 	Orientation   string             `json:"orientation"`
 	BaselineIndex int                `json:"baselineIndex"`
 	CompareIndex  int                `json:"compareIndex"`
 }
+
+type BatchSummaryXLSXExportRequest = BatchMetricsXLSXExportRequest
 
 type BatchSimulationXLSXExportRequest struct {
 	Result     simulation.MultiSimulationResult     `json:"result"`
@@ -143,53 +50,17 @@ type BatchSimulationComparisonXLSXContext struct {
 	TargetRowID   string `json:"targetRowId,omitempty"`
 }
 
-func (a *App) RunBatchDiagnose(runID string) (*BatchDiagnoseResult, error) {
-	paths, canceled, err := a.selectBatchInputFiles("Open EnergyPlus inputs for Batch Diagnose")
-	if err != nil || canceled {
-		return &BatchDiagnoseResult{Canceled: canceled, RunID: runID}, err
-	}
-	return AnalyzeBatchDiagnosePaths(BatchJobRequest{RunID: runID, InputPaths: paths}), nil
-}
-
-func (a *App) RunBatchCleanupReport(runID string) (*BatchCleanupReportResult, error) {
-	paths, canceled, err := a.selectBatchInputFiles("Open EnergyPlus inputs for Cleanup Report")
-	if err != nil || canceled {
-		return &BatchCleanupReportResult{Canceled: canceled, RunID: runID}, err
-	}
-	return AnalyzeBatchCleanupReportPaths(BatchJobRequest{RunID: runID, InputPaths: paths}), nil
-}
-
-func (a *App) RunBatchConvertExport(targetFormat string, overwritePolicy string) (*BatchConvertExportResult, error) {
-	paths, canceled, err := a.selectBatchInputFiles("Open EnergyPlus inputs for Batch Convert / Export")
-	if err != nil || canceled {
-		return &BatchConvertExportResult{Canceled: canceled}, err
-	}
-	outputDirectory, err := a.selectBatchOutputDirectory()
-	if err != nil {
-		return nil, err
-	}
-	if outputDirectory == "" {
-		return &BatchConvertExportResult{Canceled: true}, nil
-	}
-	return ConvertExportBatch(BatchConvertExportRequest{
-		BatchJobRequest: BatchJobRequest{InputPaths: paths},
-		TargetFormat:    targetFormat,
-		OutputDirectory: outputDirectory,
-		OverwritePolicy: overwritePolicy,
-	}), nil
-}
-
-func (a *App) SaveBatchSummaryXLSX(request BatchSummaryXLSXExportRequest) (*SaveFileResult, error) {
+func (a *App) SaveBatchMetricsXLSX(request BatchMetricsXLSXExportRequest) (*SaveFileResult, error) {
 	if a.ctx == nil {
 		return nil, fmt.Errorf("desktop runtime is not ready")
 	}
 	var b bytes.Buffer
-	if err := tabular.WriteWorkbookXLSX(&b, batchSummaryWorkbookSheets(request)); err != nil {
+	if err := tabular.WriteWorkbookXLSX(&b, batchMetricsWorkbookSheets(request)); err != nil {
 		return nil, err
 	}
 	path, err := wailsruntime.SaveFileDialog(a.ctx, wailsruntime.SaveDialogOptions{
-		Title:           "Save Batch Summary workbook",
-		DefaultFilename: "batch-summary.xlsx",
+		Title:           "Save Batch Metrics workbook",
+		DefaultFilename: "batch-metrics.xlsx",
 		Filters: []wailsruntime.FileFilter{
 			{DisplayName: "Excel workbook (*.xlsx)", Pattern: "*.xlsx"},
 		},
@@ -206,7 +77,11 @@ func (a *App) SaveBatchSummaryXLSX(request BatchSummaryXLSXExportRequest) (*Save
 	return &SaveFileResult{Path: path, Filename: filepath.Base(path)}, nil
 }
 
-func (a *App) ExportBatchTopologyCSV(result MultiSummaryResult) (string, error) {
+func (a *App) SaveBatchSummaryXLSX(request BatchMetricsXLSXExportRequest) (*SaveFileResult, error) {
+	return a.SaveBatchMetricsXLSX(request)
+}
+
+func (a *App) ExportBatchTopologyCSV(result BatchMetricsResult) (string, error) {
 	return batchTopologyNormalizedCSV(result), nil
 }
 
@@ -237,386 +112,14 @@ func (a *App) SaveBatchSimulationXLSX(request BatchSimulationXLSXExportRequest) 
 	return &SaveFileResult{Path: path, Filename: filepath.Base(path)}, nil
 }
 
-func (a *App) CreateBatchSafeCleanedCopies(paths []string) (*BatchConvertExportResult, error) {
-	paths = normalizeBatchPaths(paths)
-	if len(paths) == 0 {
-		selected, canceled, err := a.selectBatchInputFiles("Open EnergyPlus inputs for safe cleanup copies")
-		if err != nil || canceled {
-			return &BatchConvertExportResult{Canceled: canceled}, err
-		}
-		paths = selected
-	}
-	outputDirectory, err := a.selectBatchOutputDirectory()
-	if err != nil {
-		return nil, err
-	}
-	if outputDirectory == "" {
-		return &BatchConvertExportResult{Canceled: true}, nil
-	}
-	return CreateBatchSafeCleanupCopies(BatchConvertExportRequest{
-		BatchJobRequest: BatchJobRequest{InputPaths: paths},
-		OutputDirectory: outputDirectory,
-		OverwritePolicy: "rename",
-	}), nil
-}
-
-func (a *App) selectBatchInputFiles(title string) ([]string, bool, error) {
-	if a.ctx == nil {
-		return nil, false, fmt.Errorf("desktop runtime is not ready")
-	}
-	paths, err := wailsruntime.OpenMultipleFilesDialog(a.ctx, wailsruntime.OpenDialogOptions{
-		Title:   title,
-		Filters: inputFileFilters(),
-	})
-	if err != nil {
-		return nil, false, err
-	}
-	return paths, len(paths) == 0, nil
-}
-
-func (a *App) selectBatchOutputDirectory() (string, error) {
-	if a.ctx == nil {
-		return "", fmt.Errorf("desktop runtime is not ready")
-	}
-	return wailsruntime.OpenDirectoryDialog(a.ctx, wailsruntime.OpenDialogOptions{
-		Title: "Select batch output folder",
-	})
-}
-
-func AnalyzeBatchDiagnosePaths(request BatchJobRequest) *BatchDiagnoseResult {
-	paths := normalizeBatchPaths(request.InputPaths)
-	files := runBatchAnalysis(paths, request.WorkerCount, analyzeBatchDiagnoseFile)
-	result := &BatchDiagnoseResult{RunID: request.RunID, Total: len(paths), Files: files, Completed: len(files)}
-	codeCounts := map[string]*BatchIssueCodeSummary{}
-	for _, file := range files {
-		if file.Status == "ok" {
-			result.Succeeded++
-		} else {
-			result.Failed++
-		}
-		for _, issue := range file.Issues {
-			key := strings.Join([]string{issue.Code, issue.Severity, issue.Category, issue.Source, issue.Confidence}, "\x00")
-			summary := codeCounts[key]
-			if summary == nil {
-				summary = &BatchIssueCodeSummary{
-					Code:       issue.Code,
-					Severity:   issue.Severity,
-					Category:   issue.Category,
-					Source:     issue.Source,
-					Confidence: issue.Confidence,
-					FileCounts: map[string]int{},
-				}
-				codeCounts[key] = summary
-			}
-			summary.Count++
-			summary.FileCounts[file.Label]++
-		}
-	}
-	for _, summary := range codeCounts {
-		result.IssueCodes = append(result.IssueCodes, *summary)
-	}
-	sort.Slice(result.IssueCodes, func(i, j int) bool {
-		if result.IssueCodes[i].Count != result.IssueCodes[j].Count {
-			return result.IssueCodes[i].Count > result.IssueCodes[j].Count
-		}
-		return result.IssueCodes[i].Code < result.IssueCodes[j].Code
-	})
-	return result
-}
-
-func analyzeBatchDiagnoseFile(index int, path string) BatchDiagnoseFile {
-	base := newBatchFileResult(index, path)
-	model, doc, err := parseBatchInput(path)
-	if err != nil {
-		base.Status = "error"
-		base.Error = err.Error()
-		return BatchDiagnoseFile{BatchFileResult: base}
-	}
-	base.Status = "ok"
-	base.Format = string(model.Format)
-	base.Version = model.Version.Raw
-	issues := idf.AnalyzeDiagnostics(doc)
-	file := BatchDiagnoseFile{BatchFileResult: base, Issues: issues}
-	for _, issue := range issues {
-		switch issue.Severity {
-		case idf.DiagnosticError:
-			file.ErrorCount++
-		case idf.DiagnosticWarning:
-			file.WarningCount++
-		default:
-			file.NoticeCount++
-		}
-	}
-	return file
-}
-
-func AnalyzeBatchCleanupReportPaths(request BatchJobRequest) *BatchCleanupReportResult {
-	paths := normalizeBatchPaths(request.InputPaths)
-	files := runBatchAnalysis(paths, request.WorkerCount, analyzeBatchCleanupReportFile)
-	result := &BatchCleanupReportResult{RunID: request.RunID, Total: len(paths), Files: files, Completed: len(files)}
-	for _, file := range files {
-		if file.Status == "ok" {
-			result.Succeeded++
-		} else {
-			result.Failed++
-		}
-		if len(result.Rules) == 0 && file.Scan != nil {
-			result.Rules = file.Scan.Rules
-		}
-	}
-	return result
-}
-
-func runBatchAnalysis[T any](paths []string, requestedWorkers int, analyze func(int, string) T) []T {
-	if len(paths) == 0 {
-		return nil
-	}
-	files := make([]T, len(paths))
-	workers := batchAnalysisWorkerCount(requestedWorkers, len(paths))
-	if workers == 1 {
-		for index, path := range paths {
-			files[index] = analyze(index, path)
-		}
-		return files
-	}
-
-	jobs := make(chan int, len(paths))
-	for index := range paths {
-		jobs <- index
-	}
-	close(jobs)
-	var workersDone sync.WaitGroup
-	workersDone.Add(workers)
-	for range workers {
-		go func() {
-			defer workersDone.Done()
-			for index := range jobs {
-				files[index] = analyze(index, paths[index])
-			}
-		}()
-	}
-	workersDone.Wait()
-	return files
-}
-
-func batchAnalysisWorkerCount(requested int, total int) int {
-	if total <= 0 {
-		return 0
-	}
-	if requested <= 0 {
-		return multiSummaryConcurrency(total)
-	}
-	if requested > 8 {
-		requested = 8
-	}
-	if requested > total {
-		requested = total
-	}
-	return requested
-}
-
-func analyzeBatchCleanupReportFile(index int, path string) BatchCleanupReportFile {
-	base := newBatchFileResult(index, path)
-	model, doc, err := parseBatchInput(path)
-	if err != nil {
-		base.Status = "error"
-		base.Error = err.Error()
-		return BatchCleanupReportFile{BatchFileResult: base}
-	}
-	base.Status = "ok"
-	base.Format = string(model.Format)
-	base.Version = model.Version.Raw
-	scan := idf.ScanCleanup(doc)
-	file := BatchCleanupReportFile{
-		BatchFileResult: base,
-		RuleCounts:      map[string]int{},
-		Candidates:      scan.Candidates,
-		Scan:            &scan,
-	}
-	for _, candidate := range scan.Candidates {
-		file.RuleCounts[candidate.RuleID]++
-		switch candidate.Source {
-		case "output":
-			file.OutputCount++
-		default:
-			if candidate.Risk == "safe" {
-				file.SafeCount++
-			} else {
-				file.ReviewCount++
-			}
-		}
-	}
-	return file
-}
-
-func ConvertExportBatch(request BatchConvertExportRequest) *BatchConvertExportResult {
-	paths := normalizeBatchPaths(request.InputPaths)
-	result := &BatchConvertExportResult{RunID: request.RunID, Total: len(paths)}
-	for index, path := range paths {
-		file := convertExportBatchFile(index, path, request)
-		result.Files = append(result.Files, file)
-		result.Completed++
-		if file.Status == "ok" {
-			result.Succeeded++
-		} else {
-			result.Failed++
-		}
-	}
-	return result
-}
-
-func CreateBatchSafeCleanupCopies(request BatchConvertExportRequest) *BatchConvertExportResult {
-	paths := normalizeBatchPaths(request.InputPaths)
-	result := &BatchConvertExportResult{RunID: request.RunID, Total: len(paths)}
-	for index, path := range paths {
-		file := createBatchSafeCleanupCopy(index, path, request)
-		result.Files = append(result.Files, file)
-		result.Completed++
-		if file.Status == "ok" || file.Status == "skipped" {
-			result.Succeeded++
-		} else {
-			result.Failed++
-		}
-	}
-	return result
-}
-
-func createBatchSafeCleanupCopy(index int, path string, request BatchConvertExportRequest) BatchConvertExportFile {
-	base := newBatchFileResult(index, path)
-	content, err := os.ReadFile(path)
-	if err != nil {
-		base.Status = "error"
-		base.Error = err.Error()
-		return BatchConvertExportFile{BatchFileResult: base}
-	}
-	model, doc, err := parseBatchInput(path)
-	if err != nil {
-		base.Status = "error"
-		base.Error = err.Error()
-		return BatchConvertExportFile{BatchFileResult: base}
-	}
-	scan := idf.ScanCleanup(doc)
-	ruleIDs := safeCleanupRuleIDs(scan)
-	if len(ruleIDs) == 0 {
-		base.Status = "skipped"
-		base.Format = string(model.Format)
-		base.Version = model.Version.Raw
-		return BatchConvertExportFile{BatchFileResult: base}
-	}
-	preview, err := previewCleanupText(string(content), ruleIDs, nil)
-	if err != nil {
-		base.Status = "error"
-		base.Error = err.Error()
-		return BatchConvertExportFile{BatchFileResult: base}
-	}
-	extension := filepath.Ext(path)
-	if extension == "" {
-		extension = ".idf"
-	}
-	outputDirectory := strings.TrimSpace(request.OutputDirectory)
-	if outputDirectory == "" {
-		outputDirectory = filepath.Dir(path)
-	}
-	stem := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)) + "-cleaned" + extension
-	outputPath := filepath.Join(outputDirectory, stem)
-	outputPath = uniqueBatchOutputPath(outputPath)
-	if err := os.MkdirAll(filepath.Dir(outputPath), 0o755); err != nil {
-		base.Status = "error"
-		base.Error = err.Error()
-		return BatchConvertExportFile{BatchFileResult: base}
-	}
-	if err := os.WriteFile(outputPath, []byte(preview.Text), 0o644); err != nil {
-		base.Status = "error"
-		base.Error = err.Error()
-		return BatchConvertExportFile{BatchFileResult: base}
-	}
-	base.Status = "ok"
-	base.Format = string(model.Format)
-	base.Version = model.Version.Raw
-	return BatchConvertExportFile{BatchFileResult: base, OutputPath: outputPath, MIME: "text/plain"}
-}
-
-func convertExportBatchFile(index int, path string, request BatchConvertExportRequest) BatchConvertExportFile {
-	base := newBatchFileResult(index, path)
-	model, doc, err := parseBatchInput(path)
-	if err != nil {
-		base.Status = "error"
-		base.Error = err.Error()
-		return BatchConvertExportFile{BatchFileResult: base}
-	}
-	outputContent, extension, mime, err := batchExportContent(model, doc, request.TargetFormat)
-	if err != nil {
-		base.Status = "error"
-		base.Error = err.Error()
-		return BatchConvertExportFile{BatchFileResult: base}
-	}
-	outputDirectory := strings.TrimSpace(request.OutputDirectory)
-	if outputDirectory == "" {
-		outputDirectory = filepath.Dir(path)
-	}
-	outputPath, err := resolveBatchOutputPath(outputDirectory, path, extension, request.OverwritePolicy)
-	if err != nil {
-		base.Status = "error"
-		base.Error = err.Error()
-		return BatchConvertExportFile{BatchFileResult: base}
-	}
-	if outputPath == "" {
-		base.Status = "skipped"
-		return BatchConvertExportFile{BatchFileResult: base}
-	}
-	if err := os.MkdirAll(filepath.Dir(outputPath), 0o755); err != nil {
-		base.Status = "error"
-		base.Error = err.Error()
-		return BatchConvertExportFile{BatchFileResult: base}
-	}
-	if err := os.WriteFile(outputPath, outputContent, 0o644); err != nil {
-		base.Status = "error"
-		base.Error = err.Error()
-		return BatchConvertExportFile{BatchFileResult: base}
-	}
-	base.Status = "ok"
-	base.Format = string(model.Format)
-	base.Version = model.Version.Raw
-	return BatchConvertExportFile{BatchFileResult: base, OutputPath: outputPath, MIME: mime}
-}
-
-func batchExportContent(model *epinput.Model, doc idf.Document, targetFormat string) ([]byte, string, string, error) {
-	switch strings.ToLower(strings.TrimSpace(targetFormat)) {
-	case "", "idf":
-		output, err := epinput.Write(model, epinput.FormatIDF)
-		return []byte(output), ".idf", "text/plain", err
-	case "epjson", "json":
-		output, err := epinput.Write(model, epinput.FormatEPJSON)
-		return []byte(output), ".epjson", "application/json", err
-	case "semantic-yaml", "semantic_yaml", "yaml", "yml":
-		projection := semanticProjectionForModelDoc(model, doc)
-		if projection == nil {
-			return nil, ".semantic.yaml", "application/x-yaml", fmt.Errorf("semantic projection unavailable")
-		}
-		return []byte(projection.Text), ".semantic.yaml", "application/x-yaml", nil
-	case "xlsx", "table", "tables":
-		var b bytes.Buffer
-		if err := tabular.WriteOneSheetXLSX(&b, "IDF Tables", idf.ObjectTableSections(doc)); err != nil {
-			return nil, ".tables.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", err
-		}
-		return b.Bytes(), ".tables.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", nil
-	case "analysis-json", "analysis_json", "report-json":
-		report := idf.Analyze(doc)
-		payload, err := json.MarshalIndent(report, "", "  ")
-		return append(payload, '\n'), ".analysis.json", "application/json", err
-	default:
-		return nil, "", "", fmt.Errorf("unsupported batch export format %q", targetFormat)
-	}
-}
-
-func batchSummaryWorkbookSheets(request BatchSummaryXLSXExportRequest) []tabular.WorkbookSheet {
-	raw := batchSummaryRawSection(request.Result, request.Orientation)
+func batchMetricsWorkbookSheets(request BatchMetricsXLSXExportRequest) []tabular.WorkbookSheet {
+	raw := batchMetricsRawSection(request.Result, request.Orientation)
 	sheets := []tabular.WorkbookSheet{{Name: "Raw", Sections: []tabular.Section{raw}}}
-	delta := batchSummaryDeltaSection(request.Result, request.BaselineIndex, request.CompareIndex)
+	delta := batchMetricsDeltaSection(request.Result, request.BaselineIndex, request.CompareIndex)
 	if len(delta.Rows) > 0 {
 		sheets = append(sheets, tabular.WorkbookSheet{Name: "Delta", Sections: []tabular.Section{delta}})
 	}
-	if batchSummaryHasTopologyData(request.Result) {
+	if batchMetricsHasTopologyData(request.Result) {
 		sheets = append(sheets,
 			tabular.WorkbookSheet{Name: "Topology Summary", Sections: []tabular.Section{batchTopologySummarySection(request.Result)}},
 			tabular.WorkbookSheet{Name: "Zone Signatures", Sections: []tabular.Section{batchTopologyZoneSignatureSection(request.Result)}},
@@ -627,7 +130,7 @@ func batchSummaryWorkbookSheets(request BatchSummaryXLSXExportRequest) []tabular
 	return sheets
 }
 
-func batchSummaryHasTopologyData(result MultiSummaryResult) bool {
+func batchMetricsHasTopologyData(result BatchMetricsResult) bool {
 	for _, file := range result.Files {
 		if file.TopologyData != nil {
 			return true
@@ -636,7 +139,7 @@ func batchSummaryHasTopologyData(result MultiSummaryResult) bool {
 	return false
 }
 
-func batchTopologySummarySection(result MultiSummaryResult) tabular.Section {
+func batchTopologySummarySection(result BatchMetricsResult) tabular.Section {
 	definitions := idf.ThermalTopologyBatchMetricDefinitions()
 	headers := []string{"file", "path", "area_basis", "ua_coverage", "status"}
 	for _, definition := range definitions {
@@ -647,17 +150,17 @@ func batchTopologySummarySection(result MultiSummaryResult) tabular.Section {
 		row := []string{firstNonEmpty(file.Label, file.Filename), file.Path, result.AreaBasis, "", file.Status}
 		if file.TopologyData != nil {
 			row[2] = file.TopologyData.Summary.AreaBasis
-			row[3] = formatBatchSummaryNumber(file.TopologyData.Summary.UACoverage * 100)
+			row[3] = formatBatchMetricNumber(file.TopologyData.Summary.UACoverage * 100)
 		}
 		for _, definition := range definitions {
-			row = append(row, batchSummaryValue(file, definition.ID))
+			row = append(row, batchMetricsValue(file, definition.ID))
 		}
 		rows = append(rows, row)
 	}
 	return tabular.Section{Title: "topology_summary", Headers: headers, Rows: rows}
 }
 
-func batchTopologyZoneSignatureSection(result MultiSummaryResult) tabular.Section {
+func batchTopologyZoneSignatureSection(result BatchMetricsResult) tabular.Section {
 	section := tabular.Section{Title: "zone_signatures", Headers: []string{
 		"file", "area_basis", "zone_id", "zone_name", "exterior_area", "ground_area", "interzone_area", "adiabatic_area", "window_area", "exterior_wwr", "total_ua", "ua_coverage", "closed_shell", "diagnostic_ids", "source_entity_ids", "source_object_indices",
 	}}
@@ -674,8 +177,8 @@ func batchTopologyZoneSignatureSection(result MultiSummaryResult) tabular.Sectio
 			entityIDs, objectIndices := batchTopologyAnchorColumns(node.SourceAnchors)
 			section.Rows = append(section.Rows, []string{
 				firstNonEmpty(file.Label, file.Filename), signature.AreaBasis, signature.ZoneID, signature.ZoneName,
-				formatBatchSummaryNumber(signature.ExteriorArea), formatBatchSummaryNumber(signature.GroundArea), formatBatchSummaryNumber(signature.InterzoneArea), formatBatchSummaryNumber(signature.AdiabaticArea),
-				formatBatchSummaryNumber(signature.WindowArea), formatBatchSummaryNumber(signature.ExteriorWWR), formatBatchSummaryNumber(signature.TotalUA), formatBatchSummaryNumber(signature.UACoverage * 100),
+				formatBatchMetricNumber(signature.ExteriorArea), formatBatchMetricNumber(signature.GroundArea), formatBatchMetricNumber(signature.InterzoneArea), formatBatchMetricNumber(signature.AdiabaticArea),
+				formatBatchMetricNumber(signature.WindowArea), formatBatchMetricNumber(signature.ExteriorWWR), formatBatchMetricNumber(signature.TotalUA), formatBatchMetricNumber(signature.UACoverage * 100),
 				fmt.Sprintf("%t", signature.ClosedShell), strings.Join(signature.DiagnosticIDs, "|"), entityIDs, objectIndices,
 			})
 		}
@@ -683,7 +186,7 @@ func batchTopologyZoneSignatureSection(result MultiSummaryResult) tabular.Sectio
 	return section
 }
 
-func batchTopologyConnectionSection(result MultiSummaryResult) tabular.Section {
+func batchTopologyConnectionSection(result BatchMetricsResult) tabular.Section {
 	section := tabular.Section{Title: "thermal_connections", Headers: []string{
 		"file", "area_basis", "connection_id", "from_node_id", "to_node_id", "relation_kind", "surface_count", "opening_count", "gross_area", "opening_area", "total_ua", "ua_status", "boundary_ids", "diagnostic_ids", "source_entity_ids", "source_object_indices",
 	}}
@@ -700,7 +203,7 @@ func batchTopologyConnectionSection(result MultiSummaryResult) tabular.Section {
 			entityIDs, objectIndices := batchTopologyAnchorColumns(connection.SourceAnchors)
 			section.Rows = append(section.Rows, []string{
 				firstNonEmpty(file.Label, file.Filename), file.TopologyData.Summary.AreaBasis, connection.ID, connection.FromNodeID, connection.ToNodeID, connection.RelationKind,
-				fmt.Sprintf("%d", connection.SurfaceCount), fmt.Sprintf("%d", connection.OpeningCount), formatBatchSummaryNumber(grossArea), formatBatchSummaryNumber(openingArea), formatBatchSummaryNumber(totalUA), thermalTopologyAvailabilityLabel(hasUA),
+				fmt.Sprintf("%d", connection.SurfaceCount), fmt.Sprintf("%d", connection.OpeningCount), formatBatchMetricNumber(grossArea), formatBatchMetricNumber(openingArea), formatBatchMetricNumber(totalUA), thermalTopologyAvailabilityLabel(hasUA),
 				strings.Join(connection.BoundaryIDs, "|"), strings.Join(connection.DiagnosticIDs, "|"), entityIDs, objectIndices,
 			})
 		}
@@ -708,7 +211,7 @@ func batchTopologyConnectionSection(result MultiSummaryResult) tabular.Section {
 	return section
 }
 
-func batchTopologyIssueSection(result MultiSummaryResult) tabular.Section {
+func batchTopologyIssueSection(result BatchMetricsResult) tabular.Section {
 	section := tabular.Section{Title: "boundary_issues", Headers: []string{
 		"file", "issue_id", "code", "severity", "message", "entity_id", "boundary_id", "opening_id", "air_coupling_id", "related_entity_ids", "source_entity_ids", "source_object_indices",
 	}}
@@ -727,7 +230,7 @@ func batchTopologyIssueSection(result MultiSummaryResult) tabular.Section {
 	return section
 }
 
-func batchTopologyNormalizedCSV(result MultiSummaryResult) string {
+func batchTopologyNormalizedCSV(result BatchMetricsResult) string {
 	var buffer bytes.Buffer
 	writer := csv.NewWriter(&buffer)
 	_ = writer.Write([]string{"row_kind", "file", "area_basis", "id", "name", "value", "unit", "status", "coverage_percent", "from_id", "to_id", "relation", "source_entity_ids", "source_object_indices"})
@@ -738,7 +241,7 @@ func batchTopologyNormalizedCSV(result MultiSummaryResult) string {
 			value := file.MetricValues[definition.ID]
 			coverage := ""
 			if value.HasCoverage {
-				coverage = formatBatchSummaryNumber(value.Coverage * 100)
+				coverage = formatBatchMetricNumber(value.Coverage * 100)
 			}
 			_ = writer.Write([]string{"metric", label, value.AreaBasis, definition.ID, definition.Name, value.DisplayValue, definition.Unit, value.Status, coverage, "", "", "", "", ""})
 		}
@@ -751,7 +254,7 @@ func batchTopologyNormalizedCSV(result MultiSummaryResult) string {
 		}
 		for _, signature := range file.TopologyData.Signatures {
 			entityIDs, objectIndices := batchTopologyAnchorColumns(nodes[signature.ZoneID].SourceAnchors)
-			_ = writer.Write([]string{"zone_signature", label, signature.AreaBasis, signature.ZoneID, signature.ZoneName, formatBatchSummaryNumber(signature.TotalUA), "W/K", thermalTopologyAvailabilityLabel(signature.HasTotalUA), formatBatchSummaryNumber(signature.UACoverage * 100), "", "", "", entityIDs, objectIndices})
+			_ = writer.Write([]string{"zone_signature", label, signature.AreaBasis, signature.ZoneID, signature.ZoneName, formatBatchMetricNumber(signature.TotalUA), "W/K", thermalTopologyAvailabilityLabel(signature.HasTotalUA), formatBatchMetricNumber(signature.UACoverage * 100), "", "", "", entityIDs, objectIndices})
 		}
 		for _, connection := range file.TopologyData.Connections {
 			entityIDs, objectIndices := batchTopologyAnchorColumns(connection.SourceAnchors)
@@ -1428,7 +931,7 @@ func batchSimulationDeltaStatus(leftOK, rightOK bool, leftValue float64, rightVa
 
 func batchSimulationPercentDelta(leftValue, delta float64) string {
 	if leftValue == 0 {
-		return "N/A"
+		return "—"
 	}
 	return formatBatchSimulationFloat((delta/leftValue)*100) + "%"
 }
@@ -1897,7 +1400,7 @@ func formatBatchSimulationOptionalFloatPresent(value float64, present bool) stri
 	return formatBatchSimulationFloat(value)
 }
 
-func batchSummaryRawSection(result MultiSummaryResult, orientation string) tabular.Section {
+func batchMetricsRawSection(result BatchMetricsResult, orientation string) tabular.Section {
 	orientation = strings.ToLower(strings.TrimSpace(orientation))
 	if orientation == "files" {
 		headers := []string{"file", "status"}
@@ -1908,7 +1411,7 @@ func batchSummaryRawSection(result MultiSummaryResult, orientation string) tabul
 		for _, file := range result.Files {
 			row := []string{firstNonEmpty(file.Label, file.Filename), file.Status}
 			for _, metric := range result.Metrics {
-				row = append(row, batchSummaryValue(file, metric.ID))
+				row = append(row, batchMetricsValue(file, metric.ID))
 			}
 			rows = append(rows, row)
 		}
@@ -1922,20 +1425,20 @@ func batchSummaryRawSection(result MultiSummaryResult, orientation string) tabul
 	for _, metric := range result.Metrics {
 		row := []string{firstNonEmpty(metric.CSVName, metric.ID), metric.Category, metric.Unit}
 		for _, file := range result.Files {
-			row = append(row, batchSummaryValue(file, metric.ID))
+			row = append(row, batchMetricsValue(file, metric.ID))
 		}
 		rows = append(rows, row)
 	}
 	return tabular.Section{Title: "raw_metrics", Headers: headers, Rows: rows}
 }
 
-func batchSummaryDeltaSection(result MultiSummaryResult, baselineIndex int, compareIndex int) tabular.Section {
+func batchMetricsDeltaSection(result BatchMetricsResult, baselineIndex int, compareIndex int) tabular.Section {
 	section := tabular.Section{
 		Title:   "selected_delta",
 		Headers: []string{"metric", "category", "unit", "A", "B", "delta", "percent", "status"},
 	}
-	baseline, baselineOK := batchSummaryFileByIndex(result.Files, baselineIndex)
-	compare, compareOK := batchSummaryFileByIndex(result.Files, compareIndex)
+	baseline, baselineOK := batchMetricsFileByIndex(result.Files, baselineIndex)
+	compare, compareOK := batchMetricsFileByIndex(result.Files, compareIndex)
 	if !baselineOK || !compareOK {
 		return section
 	}
@@ -1944,46 +1447,48 @@ func batchSummaryDeltaSection(result MultiSummaryResult, baselineIndex int, comp
 		[]string{"compare", firstNonEmpty(compare.Label, compare.Filename), "", "", "", "", "", ""},
 	)
 	for _, metric := range result.Metrics {
-		row := batchSummaryDeltaRow(metric, baseline, compare)
+		row := batchMetricsDeltaRow(metric, baseline, compare)
 		section.Rows = append(section.Rows, row)
 	}
 	return section
 }
 
-func batchSummaryDeltaRow(metric MultiSummaryMetric, baseline MultiSummaryFile, compare MultiSummaryFile) []string {
+func batchMetricsDeltaRow(metric BatchMetricsMetric, baseline BatchMetricsFile, compare BatchMetricsFile) []string {
 	a := baseline.MetricValues[metric.ID]
 	b := compare.MetricValues[metric.ID]
-	aNumber, aOK := parseBatchSummaryNumber(a.DisplayValue)
-	bNumber, bOK := parseBatchSummaryNumber(b.DisplayValue)
+	aDisplay := batchMetricDisplayValue(a)
+	bDisplay := batchMetricDisplayValue(b)
+	aNumber, aOK := parseBatchMetricNumber(a.DisplayValue)
+	bNumber, bOK := parseBatchMetricNumber(b.DisplayValue)
 	status := firstNonEmpty(a.Status, "missing") + " -> " + firstNonEmpty(b.Status, "missing")
-	if reason := batchSummaryNotComparableReason(a, b); reason != "" {
-		return []string{firstNonEmpty(metric.CSVName, metric.ID), metric.Category, metric.Unit, a.DisplayValue, b.DisplayValue, "not comparable", "N/A", reason}
+	if reason := batchMetricsNotComparableReason(a, b); reason != "" {
+		return []string{firstNonEmpty(metric.CSVName, metric.ID), metric.Category, metric.Unit, aDisplay, bDisplay, "not comparable", "—", reason}
 	}
-	if aOK && bOK && batchSummaryUnit(metric, a.DisplayValue) == batchSummaryUnit(metric, b.DisplayValue) {
+	if aOK && bOK && batchMetricUnit(metric, a.DisplayValue) == batchMetricUnit(metric, b.DisplayValue) {
 		delta := bNumber - aNumber
-		percent := "N/A"
+		percent := "—"
 		if aNumber != 0 {
-			percent = formatBatchSummaryNumber((delta/aNumber)*100) + "%"
+			percent = formatBatchMetricNumber((delta/aNumber)*100) + "%"
 		}
 		return []string{
 			firstNonEmpty(metric.CSVName, metric.ID),
 			metric.Category,
 			metric.Unit,
-			a.DisplayValue,
-			b.DisplayValue,
-			formatBatchSummaryDelta(delta, metric.Unit),
+			aDisplay,
+			bDisplay,
+			formatBatchMetricDelta(delta, metric.Unit),
 			percent,
 			status,
 		}
 	}
 	change := "unchanged"
-	if a.DisplayValue != b.DisplayValue {
+	if aDisplay != bDisplay {
 		change = "changed"
 	}
-	return []string{firstNonEmpty(metric.CSVName, metric.ID), metric.Category, metric.Unit, a.DisplayValue, b.DisplayValue, change, "N/A", status}
+	return []string{firstNonEmpty(metric.CSVName, metric.ID), metric.Category, metric.Unit, aDisplay, bDisplay, change, "—", status}
 }
 
-func batchSummaryNotComparableReason(a MultiSummaryValue, b MultiSummaryValue) string {
+func batchMetricsNotComparableReason(a BatchMetricsValue, b BatchMetricsValue) string {
 	if a.BasisSensitive || b.BasisSensitive {
 		if firstNonEmpty(a.AreaBasis, "effective") != firstNonEmpty(b.AreaBasis, "effective") {
 			return "not comparable: area basis differs"
@@ -1997,28 +1502,35 @@ func batchSummaryNotComparableReason(a MultiSummaryValue, b MultiSummaryValue) s
 	return ""
 }
 
-func batchSummaryFileByIndex(files []MultiSummaryFile, index int) (MultiSummaryFile, bool) {
+func batchMetricsFileByIndex(files []BatchMetricsFile, index int) (BatchMetricsFile, bool) {
 	for _, file := range files {
 		if file.Index == index {
 			return file, true
 		}
 	}
-	return MultiSummaryFile{}, false
+	return BatchMetricsFile{}, false
 }
 
-func batchSummaryValue(file MultiSummaryFile, metricID string) string {
+func batchMetricsValue(file BatchMetricsFile, metricID string) string {
 	if file.Status != "ok" {
-		return ""
+		return "\u2014"
 	}
 	if value, ok := file.MetricValues[metricID]; ok {
-		return value.DisplayValue
+		return batchMetricDisplayValue(value)
 	}
-	return "N/A"
+	return "\u2014"
 }
 
-func parseBatchSummaryNumber(value string) (float64, bool) {
+func batchMetricDisplayValue(value BatchMetricsValue) string {
+	if strings.TrimSpace(value.DisplayValue) == "" {
+		return "\u2014"
+	}
+	return value.DisplayValue
+}
+
+func parseBatchMetricNumber(value string) (float64, bool) {
 	text := strings.TrimSpace(value)
-	token := batchSummaryNumberPrefix(text)
+	token := batchMetricNumberPrefix(text)
 	if token == "" {
 		return 0, false
 	}
@@ -2029,7 +1541,7 @@ func parseBatchSummaryNumber(value string) (float64, bool) {
 	return valueNumber, true
 }
 
-func batchSummaryNumberPrefix(text string) string {
+func batchMetricNumberPrefix(text string) string {
 	if text == "" {
 		return ""
 	}
@@ -2072,19 +1584,19 @@ func batchSummaryNumberPrefix(text string) string {
 	return text[:index]
 }
 
-func batchSummaryUnit(metric MultiSummaryMetric, displayValue string) string {
+func batchMetricUnit(metric BatchMetricsMetric, displayValue string) string {
 	if strings.TrimSpace(metric.Unit) != "" {
 		return strings.TrimSpace(metric.Unit)
 	}
 	text := strings.TrimSpace(displayValue)
-	token := batchSummaryNumberPrefix(text)
+	token := batchMetricNumberPrefix(text)
 	if token == "" {
 		return ""
 	}
 	return strings.TrimSpace(text[len(token):])
 }
 
-func formatBatchSummaryDelta(value float64, unit string) string {
+func formatBatchMetricDelta(value float64, unit string) string {
 	sign := ""
 	if value > 0 {
 		sign = "+"
@@ -2095,10 +1607,10 @@ func formatBatchSummaryDelta(value float64, unit string) string {
 	} else if strings.TrimSpace(unit) != "" && unit != "-" {
 		suffix = " " + unit
 	}
-	return sign + formatBatchSummaryNumber(value) + suffix
+	return sign + formatBatchMetricNumber(value) + suffix
 }
 
-func formatBatchSummaryNumber(value float64) string {
+func formatBatchMetricNumber(value float64) string {
 	return strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.3f", value), "0"), ".")
 }
 
@@ -2109,88 +1621,4 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
-}
-
-func parseBatchInput(path string) (*epinput.Model, idf.Document, error) {
-	return parseCachedBatchInput(path)
-}
-
-func safeCleanupRuleIDs(scan idf.CleanupScan) []string {
-	seen := map[string]bool{}
-	var out []string
-	for _, candidate := range scan.Candidates {
-		if candidate.Risk != "safe" {
-			continue
-		}
-		if !seen[candidate.RuleID] {
-			seen[candidate.RuleID] = true
-			out = append(out, candidate.RuleID)
-		}
-	}
-	sort.Strings(out)
-	return out
-}
-
-func newBatchFileResult(index int, path string) BatchFileResult {
-	filename := filepath.Base(path)
-	return BatchFileResult{
-		Index:    index,
-		Path:     path,
-		Filename: filename,
-		Label:    filename,
-		Status:   "pending",
-	}
-}
-
-func normalizeBatchPaths(paths []string) []string {
-	seen := map[string]bool{}
-	var out []string
-	for _, path := range paths {
-		path = strings.TrimSpace(path)
-		if path == "" || seen[path] {
-			continue
-		}
-		seen[path] = true
-		out = append(out, path)
-	}
-	sort.Strings(out)
-	return out
-}
-
-func resolveBatchOutputPath(outputDirectory string, sourcePath string, extension string, policy string) (string, error) {
-	base := strings.TrimSuffix(filepath.Base(sourcePath), filepath.Ext(sourcePath)) + extension
-	target := filepath.Join(outputDirectory, base)
-	switch strings.ToLower(strings.TrimSpace(policy)) {
-	case "", "rename":
-		return uniqueBatchOutputPath(target), nil
-	case "overwrite":
-		return target, nil
-	case "skip":
-		if _, err := os.Stat(target); err == nil {
-			return "", nil
-		}
-		return target, nil
-	case "fail":
-		if _, err := os.Stat(target); err == nil {
-			return "", fmt.Errorf("%s already exists", target)
-		}
-		return target, nil
-	default:
-		return "", fmt.Errorf("unsupported overwrite policy %q", policy)
-	}
-}
-
-func uniqueBatchOutputPath(path string) string {
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return path
-	}
-	ext := filepath.Ext(path)
-	stem := strings.TrimSuffix(path, ext)
-	for index := 2; index < 10000; index++ {
-		candidate := fmt.Sprintf("%s-%d%s", stem, index, ext)
-		if _, err := os.Stat(candidate); os.IsNotExist(err) {
-			return candidate
-		}
-	}
-	return path
 }

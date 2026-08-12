@@ -3,12 +3,13 @@ package idf
 import (
 	"encoding/csv"
 	"encoding/json"
+	"fmt"
 	"math"
 	"strings"
 	"testing"
 )
 
-const summaryFixtureIDF = `
+const metricsFixtureIDF = `
 Version,
   24.1;                    !- Version Identifier
 
@@ -18,7 +19,7 @@ GlobalGeometryRules,
   World;                   !- Coordinate System
 
 Building,
-  Summary Test Building,   !- Name
+  Metrics Test Building,   !- Name
   0;                       !- North Axis
 
 Schedule:Constant,
@@ -282,7 +283,7 @@ Fan:ConstantVolume,
   Outlet Node;             !- Air Outlet Node Name
 `
 
-const summarySkylightMissingBaseFixtureIDF = `
+const metricsSkylightMissingBaseFixtureIDF = `
 Version,
   24.1;
 
@@ -342,9 +343,9 @@ FenestrationSurface:Detailed,
   3;                        !- Vertex 4 Z-coordinate
 `
 
-func TestSummaryRegistryAndGuideCoverage(t *testing.T) {
-	definitions := SummaryDefinitions()
-	guides := SummaryGuides()
+func TestMetricRegistryAndGuideCoverage(t *testing.T) {
+	definitions := MetricDefinitions()
+	guides := MetricGuides()
 	if len(definitions) != 59 {
 		t.Fatalf("definition count = %d, want 59", len(definitions))
 	}
@@ -370,88 +371,88 @@ func TestSummaryRegistryAndGuideCoverage(t *testing.T) {
 	}
 }
 
-func TestAnalyzeSummaryCoreMetricsAndExports(t *testing.T) {
-	doc, err := Parse(summaryFixtureIDF)
+func TestAnalyzeMetricsCoreMetricsAndExports(t *testing.T) {
+	doc, err := Parse(metricsFixtureIDF)
 	if err != nil {
 		t.Fatalf("Parse() error = %v", err)
 	}
-	summary := AnalyzeSummary(doc)
-	if summary.MetricCount != 59 {
-		t.Fatalf("summary metric count = %d, want 59", summary.MetricCount)
+	metrics := AnalyzeMetrics(doc)
+	if metrics.MetricCount != 59 {
+		t.Fatalf("metrics metric count = %d, want 59", metrics.MetricCount)
 	}
-	if got := countMetrics(summary); got != 59 {
+	if got := countMetrics(metrics); got != 59 {
 		t.Fatalf("rendered metric count = %d, want 59", got)
 	}
-	if got := metricByID(t, summary, "building_name").DisplayValue; got != "Summary Test Building" {
-		t.Fatalf("building name = %q, want Summary Test Building", got)
+	if got := metricByID(t, metrics, "building_name").DisplayValue; got != "Metrics Test Building" {
+		t.Fatalf("building name = %q, want Metrics Test Building", got)
 	}
 
-	assertMetricClose(t, summary, "gross_floor_area_m2", 200, 0.001)
-	assertMetricClose(t, summary, "conditioned_floor_area_m2", 200, 0.001)
-	assertMetricClose(t, summary, "unconditioned_floor_area_m2", 0, 0.001)
-	assertMetricClose(t, summary, "total_zone_volume_m3", 600, 0.001)
-	assertMetricClose(t, summary, "average_floor_height_m", 3, 0.001)
-	assertMetricClose(t, summary, "building_long_side_m", 20, 0.001)
-	assertMetricClose(t, summary, "building_short_side_m", 10, 0.001)
-	assertMetricClose(t, summary, "footprint_aspect_ratio", 2, 0.001)
-	assertMetricClose(t, summary, "bounding_box_area_m2", 200, 0.001)
-	assertMetricClose(t, summary, "exterior_wall_area_m2", 180, 0.001)
-	assertMetricClose(t, summary, "window_area_m2", 6, 0.001)
-	assertMetricClose(t, summary, "total_wwr_percent", 3.3, 0.05)
-	assertMetricClose(t, summary, "east_wwr_percent", 6.7, 0.05)
-	assertMetricClose(t, summary, "south_wwr_percent", 6.7, 0.05)
-	assertMetricClose(t, summary, "north_wwr_percent", 0, 0.001)
-	assertMetricClose(t, summary, "west_wwr_percent", 0, 0.001)
-	eastWWR := metricByID(t, summary, "east_wwr_percent")
+	assertMetricClose(t, metrics, "gross_floor_area_m2", 200, 0.001)
+	assertMetricClose(t, metrics, "conditioned_floor_area_m2", 200, 0.001)
+	assertMetricClose(t, metrics, "unconditioned_floor_area_m2", 0, 0.001)
+	assertMetricClose(t, metrics, "total_zone_volume_m3", 600, 0.001)
+	assertMetricClose(t, metrics, "average_floor_height_m", 3, 0.001)
+	assertMetricClose(t, metrics, "building_long_side_m", 20, 0.001)
+	assertMetricClose(t, metrics, "building_short_side_m", 10, 0.001)
+	assertMetricClose(t, metrics, "footprint_aspect_ratio", 2, 0.001)
+	assertMetricClose(t, metrics, "bounding_box_area_m2", 200, 0.001)
+	assertMetricClose(t, metrics, "exterior_wall_area_m2", 180, 0.001)
+	assertMetricClose(t, metrics, "window_area_m2", 6, 0.001)
+	assertMetricClose(t, metrics, "total_wwr_percent", 3.3, 0.05)
+	assertMetricClose(t, metrics, "east_wwr_percent", 6.7, 0.05)
+	assertMetricClose(t, metrics, "south_wwr_percent", 6.7, 0.05)
+	assertMetricClose(t, metrics, "north_wwr_percent", 0, 0.001)
+	assertMetricClose(t, metrics, "west_wwr_percent", 0, 0.001)
+	eastWWR := metricByID(t, metrics, "east_wwr_percent")
 	if eastWWR.Source != "surface_azimuth" || eastWWR.Confidence != "computed" || !stringSliceContainsFold(eastWWR.Badges, "orientation") {
 		t.Fatalf("east WWR metadata = source %q confidence %q badges %#v, want orientation metadata", eastWWR.Source, eastWWR.Confidence, eastWWR.Badges)
 	}
 	if !strings.Contains(eastWWR.Evidence, "computed_normal") || !strings.Contains(eastWWR.Evidence, "base_surface") {
-		t.Fatalf("east WWR evidence = %q, want azimuth source summary", eastWWR.Evidence)
+		t.Fatalf("east WWR evidence = %q, want azimuth source metrics", eastWWR.Evidence)
 	}
-	assertMetricClose(t, summary, "total_lighting_power_w", 1000, 0.001)
-	assertMetricClose(t, summary, "average_lighting_power_density_w_per_m2", 5, 0.001)
-	assertMetricClose(t, summary, "total_equipment_power_w", 2000, 0.001)
-	assertMetricClose(t, summary, "average_equipment_power_density_w_per_m2", 10, 0.001)
-	assertMetricClose(t, summary, "total_people", 10, 0.001)
-	assertMetricClose(t, summary, "people_density_per_100m2", 5, 0.001)
-	if got := metricByID(t, summary, "internal_load_method_coverage").DisplayValue; got != "resolved:3/3, unresolved_method_count:0" {
+	assertMetricClose(t, metrics, "total_lighting_power_w", 1000, 0.001)
+	assertMetricClose(t, metrics, "average_lighting_power_density_w_per_m2", 5, 0.001)
+	assertMetricClose(t, metrics, "total_equipment_power_w", 2000, 0.001)
+	assertMetricClose(t, metrics, "average_equipment_power_density_w_per_m2", 10, 0.001)
+	assertMetricClose(t, metrics, "total_people", 10, 0.001)
+	assertMetricClose(t, metrics, "people_density_per_100m2", 5, 0.001)
+	if got := metricByID(t, metrics, "internal_load_method_coverage").DisplayValue; got != "resolved:3/3, unresolved_method_count:0" {
 		t.Fatalf("internal load coverage = %q, want all core loads resolved", got)
 	}
-	assertMetricClose(t, summary, "model_operating_hours_h", 8760, 0.001)
-	assertMetricClose(t, summary, "average_schedule_operating_hours_h", 6570, 0.001)
+	assertMetricClose(t, metrics, "model_operating_hours_h", 8760, 0.001)
+	assertMetricClose(t, metrics, "average_schedule_operating_hours_h", 6570, 0.001)
 
-	if got := metricByID(t, summary, "supported_schedule_count").Value; got != 2 {
+	if got := metricByID(t, metrics, "supported_schedule_count").Value; got != 2 {
 		t.Fatalf("supported schedule count = %#v, want 2", got)
 	}
-	if got := metricByID(t, summary, "conditioned_zone_count").Value; got != 1 {
+	if got := metricByID(t, metrics, "conditioned_zone_count").Value; got != 1 {
 		t.Fatalf("conditioned zone count = %#v, want 1", got)
 	}
-	if got := metricByID(t, summary, "conditioned_zone_evidence_breakdown").DisplayValue; !strings.Contains(got, "by_thermostat:1") {
+	if got := metricByID(t, metrics, "conditioned_zone_evidence_breakdown").DisplayValue; !strings.Contains(got, "by_thermostat:1") {
 		t.Fatalf("conditioned zone evidence = %q, want thermostat count", got)
 	}
-	if got := metricByID(t, summary, "conditioned_floor_area_m2").Confidence; got != "inferred" {
+	if got := metricByID(t, metrics, "conditioned_floor_area_m2").Confidence; got != "inferred" {
 		t.Fatalf("conditioned floor confidence = %q, want inferred", got)
 	}
-	if got := metricByID(t, summary, "unconditioned_floor_area_m2").Visibility; got != "advanced" {
+	if got := metricByID(t, metrics, "unconditioned_floor_area_m2").Visibility; got != "advanced" {
 		t.Fatalf("unconditioned floor visibility = %q, want advanced", got)
 	}
-	if got := metricByID(t, summary, "hvac_node_connection_count").Value; got != 0 {
+	if got := metricByID(t, metrics, "hvac_node_connection_count").Value; got != 0 {
 		t.Fatalf("hvac node connection count = %#v, want 0 typed loop edges", got)
 	}
-	if got := metricByID(t, summary, "model_operating_hours_h").Name; got != "Representative operating hours" {
+	if got := metricByID(t, metrics, "model_operating_hours_h").Name; got != "Representative operating hours" {
 		t.Fatalf("model operating hours label = %q", got)
 	}
-	if got := metricByID(t, summary, "average_schedule_operating_hours_h").Visibility; got != "advanced" {
+	if got := metricByID(t, metrics, "average_schedule_operating_hours_h").Visibility; got != "advanced" {
 		t.Fatalf("average schedule visibility = %q, want advanced", got)
 	}
-	if got := metricByID(t, summary, "geometry_coverage_percent").Confidence; got == "" {
+	if got := metricByID(t, metrics, "geometry_coverage_percent").Confidence; got == "" {
 		t.Fatalf("geometry coverage confidence is empty")
 	}
 
-	jsonText, err := ExportSummaryJSON(summary)
+	jsonText, err := ExportMetricsJSON(metrics)
 	if err != nil {
-		t.Fatalf("ExportSummaryJSON() error = %v", err)
+		t.Fatalf("ExportMetricsJSON() error = %v", err)
 	}
 	var exported map[string]map[string]struct {
 		ID     string `json:"id"`
@@ -461,19 +462,19 @@ func TestAnalyzeSummaryCoreMetricsAndExports(t *testing.T) {
 		Status string `json:"status"`
 	}
 	if err := json.Unmarshal([]byte(jsonText), &exported); err != nil {
-		t.Fatalf("summary JSON did not parse: %v\n%s", err, jsonText)
+		t.Fatalf("metrics JSON did not parse: %v\n%s", err, jsonText)
 	}
 	if exported["Geometry & Areas"]["gross_floor_area_m2"].Name != "Gross floor area" {
-		t.Fatalf("summary JSON missing categorized gross floor area metric: %#v", exported["Geometry & Areas"]["gross_floor_area_m2"])
+		t.Fatalf("metrics JSON missing categorized gross floor area metric: %#v", exported["Geometry & Areas"]["gross_floor_area_m2"])
 	}
 
-	csvText, err := ExportSummaryCSV(summary)
+	csvText, err := ExportMetricsCSV(metrics)
 	if err != nil {
-		t.Fatalf("ExportSummaryCSV() error = %v", err)
+		t.Fatalf("ExportMetricsCSV() error = %v", err)
 	}
 	records, err := csv.NewReader(strings.NewReader(csvText)).ReadAll()
 	if err != nil {
-		t.Fatalf("summary CSV did not parse: %v\n%s", err, csvText)
+		t.Fatalf("metrics CSV did not parse: %v\n%s", err, csvText)
 	}
 	if len(records) != 60 {
 		t.Fatalf("CSV rows = %d, want 60", len(records))
@@ -523,63 +524,562 @@ func TestAnalyzeSummaryCoreMetricsAndExports(t *testing.T) {
 	}
 }
 
-func TestFormatSummaryNumberUsesCompactDecimalPrecision(t *testing.T) {
+func TestAnalyzeMetricsPreservesNegativeBuildingNorthAxis(t *testing.T) {
+	doc, err := Parse(`
+Building,
+  Signed Rotation,
+  -22.5;
+`)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	metric := metricByID(t, AnalyzeMetrics(doc), "building_north_axis_deg")
+	if metric.Status != metricStatusOK || metric.Value != -22.5 || metric.DisplayValue != "-22.5" {
+		t.Fatalf("negative building north axis = %#v, want available -22.5 deg", metric)
+	}
+}
+
+func TestAnalyzeMetricsMarksInterpolatedCompactScheduleHoursPartial(t *testing.T) {
+	for _, interpolation := range []string{"Linear", "Average"} {
+		t.Run(interpolation, func(t *testing.T) {
+			doc, err := Parse(fmt.Sprintf(`
+Schedule:Compact,
+  Interpolated Schedule,
+  Fraction,
+  Through: 12/31,
+  For: AllDays,
+  Interpolate: %s,
+  Until: 12:00, 1,
+  Until: 24:00, 0;
+Zone, Schedule Zone, 0, 0, 0, 0, 1, 1, 3, 300, 100;
+Lights,
+  Scheduled Lights,
+  Schedule Zone,
+  Interpolated Schedule, !- Schedule Name
+  Watts/Area,
+  ,
+  10;
+`, interpolation))
+			if err != nil {
+				t.Fatalf("Parse() error = %v", err)
+			}
+
+			report := AnalyzeMetrics(doc)
+			for _, id := range []string{
+				"supported_schedule_count",
+				"unsupported_schedule_count",
+				"model_operating_hours_h",
+				"average_schedule_operating_hours_h",
+				"profile_coverage_percent",
+			} {
+				metric := metricByID(t, report, id)
+				if metric.Status != metricStatusPartial {
+					t.Fatalf("%s status = %q, want partial for Interpolate: %s", id, metric.Status, interpolation)
+				}
+				if !strings.Contains(metric.Evidence, "step approximations:1") {
+					t.Fatalf("%s evidence = %q, want explicit interpolation step-approximation count", id, metric.Evidence)
+				}
+			}
+			if got := metricByID(t, report, "supported_schedule_count").Value; got != 1 {
+				t.Fatalf("supported schedule count = %#v, want one usable approximated schedule", got)
+			}
+			if got := metricByID(t, report, "unsupported_schedule_count").Value; got != 0 {
+				t.Fatalf("unsupported schedule count = %#v, want zero wholly unsupported schedules", got)
+			}
+			assertMetricClose(t, report, "model_operating_hours_h", 4380, 0.001)
+			assertMetricClose(t, report, "average_schedule_operating_hours_h", 4380, 0.001)
+			assertMetricClose(t, report, "profile_coverage_percent", 100, 0.001)
+			if got := metricByID(t, report, "schedule_count").Status; got != metricStatusOK {
+				t.Fatalf("direct schedule object count status = %q, want ok", got)
+			}
+		})
+	}
+}
+
+func TestAnalyzeMetricsUsesExplicitSpaceVolumesWhenZoneVolumeIsAutocalculate(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		multiplier float64
+		want       float64
+	}{
+		{name: "single zone instance", multiplier: 1, want: 300},
+		{name: "multiplied zone", multiplier: 2, want: 600},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			doc, err := Parse(fmt.Sprintf(`
+Zone,
+  Volume Zone,
+  0,
+  0, 0, 0,
+  1,
+  %g,
+  Autocalculate,
+  Autocalculate;
+Space,
+  West Space,
+  Volume Zone,
+  Autocalculate,
+  120,
+  Autocalculate;
+Space,
+  East Space,
+  Volume Zone,
+  Autocalculate,
+  180,
+  Autocalculate;
+	`, test.multiplier))
+			if err != nil {
+				t.Fatalf("Parse() error = %v", err)
+			}
+			metric := metricByID(t, AnalyzeMetrics(doc), "total_zone_volume_m3")
+			value, ok := metric.Value.(float64)
+			if metric.Status != metricStatusOK || !ok || value != test.want {
+				t.Fatalf("space-derived zone volume = %#v, want available %.0f m3", metric, test.want)
+			}
+		})
+	}
+}
+
+func TestAnalyzeMetricsResolvesAreaPerPersonFromCanonicalField(t *testing.T) {
+	doc, err := Parse(`
+Zone,
+  Office,                  !- Name
+  0,                       !- Direction of Relative North
+  0,                       !- X Origin
+  0,                       !- Y Origin
+  0,                       !- Z Origin
+  1,                       !- Type
+  2,                       !- Multiplier
+  3,                       !- Ceiling Height
+  557.4,                   !- Volume
+  185.8;                   !- Floor Area
+
+BuildingSurface:Detailed,
+  Office Floor,            !- Name
+  Floor,                   !- Surface Type
+  Floor Construction,      !- Construction Name
+  Office,                  !- Zone Name
+  Ground,                  !- Outside Boundary Condition
+  ,                        !- Outside Boundary Condition Object
+  NoSun,                   !- Sun Exposure
+  NoWind,                  !- Wind Exposure
+  0.5,                     !- View Factor to Ground
+  4,                       !- Number of Vertices
+  0, 0, 0,
+  18.58, 0, 0,
+  18.58, 10, 0,
+  0, 10, 0;
+
+People,
+  Office People,           !- Name
+  Office,
+  ,
+  Area/Person,
+  ,
+  ,
+  18.58;
+
+GasEquipment,
+  Office Gas,              !- Name
+  Office,                  !- Zone or ZoneList or Space or SpaceList Name
+  ,                        !- Schedule Name
+  Power/Area,              !- Design Level Calculation Method
+  ,                        !- Design Level
+  2;                       !- Power per Floor Area
+`)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+
+	metrics := AnalyzeMetrics(doc)
+	assertMetricClose(t, metrics, "gross_floor_area_m2", 371.6, 0.001)
+	people := metricByID(t, metrics, "total_people")
+	if people.Status != metricStatusOK {
+		t.Fatalf("total_people status = %q, want %q (metric %#v)", people.Status, metricStatusOK, people)
+	}
+	if value, ok := people.Value.(float64); !ok || math.Abs(value-20) > 0.001 {
+		t.Fatalf("total_people = %#v, want 20 from the 2x zone multiplier", people.Value)
+	}
+	assertMetricClose(t, metrics, "total_equipment_power_w", 743.2, 0.001)
+	coverage := metricByID(t, metrics, "internal_load_method_coverage")
+	if coverage.DisplayValue != "resolved:2/2, unresolved_method_count:0" {
+		t.Fatalf("internal load coverage = %q, want canonical Area/Person resolution", coverage.DisplayValue)
+	}
+}
+
+func TestAnalyzeMetricsUsesActualPeopleForWattsPerPersonByZone(t *testing.T) {
+	doc, err := Parse(`
+Zone, Zone A, 0, 0, 0, 0, 1, 1, 3, 300, 100;
+Zone, Zone B, 0, 0, 0, 0, 1, 1, 3, 300, 100;
+People, A People, Zone A, , People, 10;
+People, B People, Zone B, , People, 30;
+Lights, A Lights, Zone A, , Watts/Person, , , 5;
+Lights, B Lights, Zone B, , Watts/Person, , , 20;
+`)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	metrics := AnalyzeMetrics(doc)
+	assertMetricClose(t, metrics, "total_people", 40, 0.001)
+	assertMetricClose(t, metrics, "total_lighting_power_w", 650, 0.001)
+}
+
+func TestAnalyzeMetricsSpaceListLoadSemanticsAndPeopleAllocation(t *testing.T) {
+	doc, err := Parse(`
+Zone, Office, 0, 0, 0, 0, 1, 2, 3, 0, 0;
+Space, Small, Office, 3, 150, 50;
+Space, Large, Office, 3, 450, 150;
+SpaceList, Offices, Small, Large;
+People, Space People, Offices, , People, 5;
+Lights, Per Person Lights, Offices, , Watts/Person, , , 10;
+GasEquipment, Absolute Gas, Offices, , EquipmentLevel, 100;
+ElectricEquipment, Area Equipment, Offices, , Watts/Area, , 2;
+`)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	metrics := AnalyzeMetrics(doc)
+	assertMetricClose(t, metrics, "gross_floor_area_m2", 400, 0.001)
+	// People and direct absolute loads are repeated once per Space and then
+	// multiplied by the Zone multiplier: (5 + 5) * 2 = 20 people.
+	assertMetricClose(t, metrics, "total_people", 20, 0.001)
+	assertMetricClose(t, metrics, "total_lighting_power_w", 200, 0.001)
+	// Gas: (100 + 100) * 2. Electric: 2 W/m2 * 400 model-total m2.
+	assertMetricClose(t, metrics, "total_equipment_power_w", 1200, 0.001)
+	assertMetricClose(t, metrics, "total_zone_volume_m3", 1200, 0.001)
+}
+
+func TestAnalyzeMetricsMarksMixedZoneListTargetPartial(t *testing.T) {
+	doc, err := Parse(`
+Zone, Valid Zone, 0, 0, 0, 0, 1, 1, 3, 300, 100;
+ZoneList, Mixed Zones, Valid Zone, Missing Zone;
+People, Mixed People, Mixed Zones, , People, 5;
+`)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	metrics := AnalyzeMetrics(doc)
+	people := metricByID(t, metrics, "total_people")
+	if people.Status != metricStatusPartial {
+		t.Fatalf("total_people status = %q, want partial for an unresolved ZoneList member", people.Status)
+	}
+	if value, ok := people.Value.(float64); !ok || math.Abs(value-5) > 1e-9 {
+		t.Fatalf("total_people = %#v, want the known valid-zone contribution", people.Value)
+	}
+}
+
+func TestAnalyzeMetricsKeepsAllMissingSpaceListTargetUnavailable(t *testing.T) {
+	doc, err := Parse(`
+Zone, Valid Zone, 0, 0, 0, 0, 1, 1, 3, 300, 100;
+SpaceList, Broken Spaces, Missing Space A, Missing Space B;
+Lights, Orphan Lights, Broken Spaces, , LightingLevel, 100;
+`)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	metrics := AnalyzeMetrics(doc)
+	if got := metricByID(t, metrics, "total_lighting_power_w"); got.Status != metricStatusMissing {
+		t.Fatalf("total_lighting_power_w = %#v, want unavailable for an all-unresolved SpaceList", got)
+	}
+	if got := metricByID(t, metrics, "internal_load_method_coverage").DisplayValue; got != "resolved:0/1, unresolved_method_count:1" {
+		t.Fatalf("internal load coverage = %q, want unresolved SpaceList load", got)
+	}
+}
+
+func TestAnalyzeMetricsAppliesZoneGroupAndCommentlessFields(t *testing.T) {
+	doc, err := Parse(`
+Building, Commentless Building, 25;
+Zone, Repeated Zone, 15, 0, 0, 0, 1, 2, 3, 0, 100;
+ZoneList, Repeated Zones, Repeated Zone;
+ZoneGroup, Floors, Repeated Zones, 3;
+People, People, Repeated Zone, , People, 4;
+Lights, Lights, Repeated Zone, , LightingLevel, 100;
+`)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	metrics := AnalyzeMetrics(doc)
+	if got := metricByID(t, metrics, "building_name").DisplayValue; got != "Commentless Building" {
+		t.Fatalf("building_name = %q", got)
+	}
+	assertMetricClose(t, metrics, "building_north_axis_deg", 25, 0.001)
+	assertMetricClose(t, metrics, "gross_floor_area_m2", 600, 0.001)
+	assertMetricClose(t, metrics, "total_people", 24, 0.001)
+	assertMetricClose(t, metrics, "total_lighting_power_w", 600, 0.001)
+	// Zone Volume is zero/autocalculated, so model-total area x height is used.
+	assertMetricClose(t, metrics, "total_zone_volume_m3", 1800, 0.001)
+}
+
+func TestAnalyzeMetricsCommentlessSpaceAttachedFloor(t *testing.T) {
+	doc, err := Parse(`
+Zone, Space Zone, 0, 0, 0, 0, 1, 2, 3, 0, 0;
+Space, Main Space, Space Zone, 3, 0, 0;
+BuildingSurface:Detailed,
+  Space Floor, Floor, Floor Construction, , Main Space, Ground, , NoSun, NoWind, 0.5, 4,
+  0, 0, 0,
+  10, 0, 0,
+  10, 5, 0,
+  0, 5, 0;
+People, Space People, Main Space, , People/Area, , 0.1;
+`)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	metrics := AnalyzeMetrics(doc)
+	assertMetricClose(t, metrics, "gross_floor_area_m2", 100, 0.001)
+	assertMetricClose(t, metrics, "total_people", 10, 0.001)
+}
+
+func TestAnalyzeMetricsResolvedZeroPeopleMakesZeroWattsPerPerson(t *testing.T) {
+	doc, err := Parse(`
+Zone, Empty Zone, 0, 0, 0, 0, 1, 1, 3, 300, 100;
+People, Empty People, Empty Zone, , People, 0;
+Lights, Empty Lights, Empty Zone, , Watts/Person, , , 12;
+`)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	metrics := AnalyzeMetrics(doc)
+	assertMetricClose(t, metrics, "total_people", 0, 0.001)
+	lighting := metricByID(t, metrics, "total_lighting_power_w")
+	if lighting.Status != metricStatusOK {
+		t.Fatalf("lighting status = %q, want ok for resolved zero people", lighting.Status)
+	}
+	assertMetricClose(t, metrics, "total_lighting_power_w", 0, 0.001)
+}
+
+func TestAnalyzeMetricsReconcilesExplicitSpaceAndZoneRemainderArea(t *testing.T) {
+	doc, err := Parse(`
+Zone, Zone With Remainder, 0, 0, 0, 0, 1, 1, 3, 0, 200;
+Space, Explicit Space, Zone With Remainder, 3, 75, 25;
+BuildingSurface:Detailed,
+  Explicit Floor, Floor, Floor Construction, Zone With Remainder, Explicit Space, Ground, , NoSun, NoWind, 0.5, 4,
+  0, 0, 0, 5, 0, 0, 5, 5, 0, 0, 5, 0;
+BuildingSurface:Detailed,
+  Remainder Floor, Floor, Floor Construction, Zone With Remainder, , Ground, , NoSun, NoWind, 0.5, 4,
+  5, 0, 0, 20, 0, 0, 20, 5, 0, 5, 5, 0;
+People, Explicit People, Explicit Space, , People/Area, , 0.1;
+`)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	metrics := AnalyzeMetrics(doc)
+	assertMetricClose(t, metrics, "gross_floor_area_m2", 200, 0.001)
+	// 25 m2 explicit + 75 m2 remainder is scaled to the declared 200 m2 Zone:
+	// the explicit Space becomes 50 m2 and therefore holds five people.
+	assertMetricClose(t, metrics, "total_people", 5, 0.001)
+}
+
+func TestAnalyzeMetricsAllocatesZonePeopleAcrossImplicitRemainder(t *testing.T) {
+	doc, err := Parse(`
+Zone, Zone With Remainder, 0, 0, 0, 0, 1, 1, 3, 300, 100;
+Space, Explicit Space, Zone With Remainder, 3, 75, 25;
+BuildingSurface:Detailed,
+  Explicit Floor, Floor, Floor Construction, Zone With Remainder, Explicit Space, Ground, , NoSun, NoWind, 0.5, 4,
+  0, 0, 0, 5, 0, 0, 5, 5, 0, 0, 5, 0;
+BuildingSurface:Detailed,
+  Remainder Floor, Floor, Floor Construction, Zone With Remainder, , Ground, , NoSun, NoWind, 0.5, 4,
+  5, 0, 0, 20, 0, 0, 20, 5, 0, 5, 5, 0;
+People, Zone People, Zone With Remainder, , People, 20;
+Lights, Space Lights, Explicit Space, , Watts/Person, , , 10;
+`)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	metrics := AnalyzeMetrics(doc)
+	assertMetricClose(t, metrics, "total_people", 20, 0.001)
+	assertMetricClose(t, metrics, "total_lighting_power_w", 50, 0.001)
+}
+
+func TestAnalyzeMetricsKeepsZoneVolumeIndependentFromSpaceOverride(t *testing.T) {
+	doc, err := Parse(`
+Zone, Volume Zone, 0, 0, 0, 0, 1, 1, 3, 0, 100;
+Space, Explicit Space, Volume Zone, 3, 150, 25;
+`)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	metrics := AnalyzeMetrics(doc)
+	assertMetricClose(t, metrics, "total_zone_volume_m3", 300, 0.001)
+}
+
+func TestAnalyzeMetricsMarksWattsPerPersonPartialWhenPeopleCoverageIsPartial(t *testing.T) {
+	doc, err := Parse(`
+Zone, Mixed Zone, 0, 0, 0, 0, 1, 1, 3, 300, 100;
+People, Valid People, Mixed Zone, , People, 10;
+People, Broken People, Mixed Zone, , People/Area, , ;
+Lights, Mixed Lights, Mixed Zone, , Watts/Person, , , 5;
+`)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	metrics := AnalyzeMetrics(doc)
+	assertMetricClose(t, metrics, "total_lighting_power_w", 50, 0.001)
+	if got := metricByID(t, metrics, "total_lighting_power_w").Status; got != metricStatusPartial {
+		t.Fatalf("lighting status = %q, want partial when People coverage is incomplete", got)
+	}
+}
+
+func TestFormatMetricNumberPreservesEngineeringPrecision(t *testing.T) {
 	tests := []struct {
 		name      string
 		value     float64
 		precision int
 		want      string
 	}{
-		{name: "large area", value: 4978.588, precision: 2, want: "4978.6"},
-		{name: "four displayed digits", value: 12.345, precision: 3, want: "12.3"},
+		{name: "large area", value: 4978.588, precision: 2, want: "4978.59"},
+		{name: "four displayed digits", value: 12.345, precision: 3, want: "12.345"},
 		{name: "small ratio keeps precision", value: 0.123, precision: 3, want: "0.123"},
+		{name: "outdoor air per person remains nonzero", value: 0.0125, precision: 6, want: "0.0125"},
+		{name: "power density keeps meaningful decimals", value: 10.76, precision: 3, want: "10.76"},
 		{name: "integer numeric keeps one decimal", value: 5, precision: 2, want: "5.0"},
 		{name: "count precision stays integer", value: 42.2, precision: 0, want: "42"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := formatSummaryNumber(tt.value, tt.precision); got != tt.want {
-				t.Fatalf("formatSummaryNumber(%v, %d) = %q, want %q", tt.value, tt.precision, got, tt.want)
+			if got := formatMetricNumber(tt.value, tt.precision); got != tt.want {
+				t.Fatalf("formatMetricNumber(%v, %d) = %q, want %q", tt.value, tt.precision, got, tt.want)
 			}
 		})
 	}
 }
 
-func TestAnalyzeSummaryQuickDefersHeavyReadinessMetrics(t *testing.T) {
-	doc, err := Parse(summaryFixtureIDF)
+func TestAnalyzeMetricsExcludesZonesNotPartOfTotalFloorArea(t *testing.T) {
+	doc, err := Parse(`
+Zone,
+  Included Zone, 0, 0, 0, 0, 1, 1, 3, 300, 100, , , Yes;
+Zone,
+  Excluded Zone, 0, 0, 0, 0, 1, 1, 3, 150, 50, , , No;
+ZoneControl:Thermostat,
+  Included Thermostat,       !- Name
+  Included Zone;             !- Zone or ZoneList Name
+ZoneControl:Thermostat,
+  Excluded Thermostat,       !- Name
+  Excluded Zone;             !- Zone or ZoneList Name
+`)
 	if err != nil {
 		t.Fatalf("Parse() error = %v", err)
 	}
-	quick := AnalyzeSummaryQuick(doc)
-	if quick.MetricCount != 59 {
-		t.Fatalf("quick summary metric count = %d, want 59", quick.MetricCount)
+
+	report := AnalyzeMetrics(doc)
+	assertMetricClose(t, report, "gross_floor_area_m2", 100, 0.001)
+	assertMetricClose(t, report, "conditioned_floor_area_m2", 100, 0.001)
+	assertMetricClose(t, report, "unconditioned_floor_area_m2", 0, 0.001)
+	assertMetricClose(t, report, "total_zone_volume_m3", 450, 0.001)
+}
+
+func TestAnalyzeMetricsBoundsUseWorldGeometryCoordinates(t *testing.T) {
+	doc, err := Parse(`
+GlobalGeometryRules,
+  UpperLeftCorner,          !- Starting Vertex Position
+  CounterClockWise,        !- Vertex Entry Direction
+  Relative;                !- Coordinate System
+Zone, Z1, 0, 0, 0, 0, 1;
+Zone, Z2, 0, 100, 0, 0, 1;
+BuildingSurface:Detailed,
+  Z1 Floor,                !- Name
+  Floor,                   !- Surface Type
+  ,                        !- Construction Name
+  Z1,                      !- Zone Name
+  ,                        !- Space Name
+  Ground,                  !- Outside Boundary Condition
+  ,                        !- Outside Boundary Condition Object
+  NoSun,                   !- Sun Exposure
+  NoWind,                  !- Wind Exposure
+  ,                        !- View Factor to Ground
+  4,                       !- Number of Vertices
+  0,0,0, 10,0,0, 10,10,0, 0,10,0;
+BuildingSurface:Detailed,
+  Z2 Floor,                !- Name
+  Floor,                   !- Surface Type
+  ,                        !- Construction Name
+  Z2,                      !- Zone Name
+  ,                        !- Space Name
+  Ground,                  !- Outside Boundary Condition
+  ,                        !- Outside Boundary Condition Object
+  NoSun,                   !- Sun Exposure
+  NoWind,                  !- Wind Exposure
+  ,                        !- View Factor to Ground
+  4,                       !- Number of Vertices
+  0,0,0, 10,0,0, 10,10,0, 0,10,0;
+`)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
 	}
-	if got := metricByID(t, quick, "building_name").DisplayValue; got != "Summary Test Building" {
-		t.Fatalf("quick building name = %q, want Summary Test Building", got)
+
+	report := AnalyzeMetrics(doc)
+	assertMetricClose(t, report, "bounding_box_area_m2", 1100, 0.001)
+	assertMetricClose(t, report, "building_long_side_m", 110, 0.001)
+	assertMetricClose(t, report, "building_short_side_m", 10, 0.001)
+}
+
+func TestAnalyzeMetricsWorldVertexAzimuthIgnoresRelativeNorthRotations(t *testing.T) {
+	doc, err := Parse(`
+Building,
+  Rotated Metadata,
+  90;                      !- North Axis
+GlobalGeometryRules,
+  UpperLeftCorner,         !- Starting Vertex Position
+  CounterClockWise,        !- Vertex Entry Direction
+  World;                   !- Coordinate System
+Zone,
+  World Zone,
+  90,                      !- Direction of Relative North
+  100, 100, 0,
+  1, 1, 3, 300, 100;
+BuildingSurface:Detailed,
+  World South Wall, Wall, , World Zone, , Outdoors, , SunExposed, WindExposed, , 4,
+  0,0,0, 10,0,0, 10,0,3, 0,0,3;
+FenestrationSurface:Detailed,
+  World South Window, Window, , World South Wall, , , , 1, 4,
+  2,0,1, 4,0,1, 4,0,2, 2,0,2;
+`)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+
+	report := AnalyzeMetrics(doc)
+	assertMetricClose(t, report, "south_wwr_percent", 6.7, 0.05)
+	if got := metricByID(t, report, "north_wwr_percent").Status; got != metricStatusMissing {
+		t.Fatalf("north WWR status = %q, want missing because world-coordinate vertices must ignore relative-north rotations", got)
+	}
+}
+
+func TestAnalyzeMetricsQuickDefersHeavyReadinessMetrics(t *testing.T) {
+	doc, err := Parse(metricsFixtureIDF)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	quick := AnalyzeMetricsQuick(doc)
+	if quick.MetricCount != 59 {
+		t.Fatalf("quick metrics metric count = %d, want 59", quick.MetricCount)
+	}
+	if got := metricByID(t, quick, "building_name").DisplayValue; got != "Metrics Test Building" {
+		t.Fatalf("quick building name = %q, want Metrics Test Building", got)
 	}
 	for _, id := range []string{"hvac_node_connection_count", "hvac_rule_edge_count", "diagnostics_by_source", "output_readiness_percent"} {
-		if got := metricByID(t, quick, id).Status; got != summaryStatusMissing {
+		if got := metricByID(t, quick, id).Status; got != metricStatusMissing {
 			t.Fatalf("quick %s status = %q, want missing until heavy stages run", id, got)
 		}
 	}
 
-	full := AnalyzeSummary(doc)
-	if got := metricByID(t, full, "hvac_node_connection_count").Status; got == summaryStatusMissing {
+	full := AnalyzeMetrics(doc)
+	if got := metricByID(t, full, "hvac_node_connection_count").Status; got == metricStatusMissing {
 		t.Fatalf("full hvac_node_connection_count should be computed")
 	}
-	if got := metricByID(t, full, "diagnostics_by_source").Status; got == summaryStatusMissing {
+	if got := metricByID(t, full, "diagnostics_by_source").Status; got == metricStatusMissing {
 		t.Fatalf("full diagnostics_by_source should be computed")
 	}
 }
 
-func TestAnalyzeSummarySkylightBaseSurfaceResolution(t *testing.T) {
-	doc, err := Parse(summarySkylightMissingBaseFixtureIDF)
+func TestAnalyzeMetricsSkylightBaseSurfaceResolution(t *testing.T) {
+	doc, err := Parse(metricsSkylightMissingBaseFixtureIDF)
 	if err != nil {
 		t.Fatalf("Parse() error = %v", err)
 	}
-	summary := AnalyzeSummary(doc)
-	skylight := metricByID(t, summary, "skylight_roof_ratio_percent")
-	if skylight.Status != summaryStatusPartial || skylight.Confidence != "partial" || skylight.Source != "base_surface_resolution" {
+	metrics := AnalyzeMetrics(doc)
+	skylight := metricByID(t, metrics, "skylight_roof_ratio_percent")
+	if skylight.Status != metricStatusPartial || skylight.Confidence != "partial" || skylight.Source != "base_surface_resolution" {
 		t.Fatalf("skylight metadata = status %q confidence %q source %q, want partial base surface resolution", skylight.Status, skylight.Confidence, skylight.Source)
 	}
 	if !strings.Contains(skylight.Evidence, "unresolved:1") || !stringSliceContainsFold(skylight.Badges, "base-surface") {
@@ -587,7 +1087,7 @@ func TestAnalyzeSummarySkylightBaseSurfaceResolution(t *testing.T) {
 	}
 }
 
-func TestAnalyzeSummaryConditionedZoneEvidenceBreakdown(t *testing.T) {
+func TestAnalyzeMetricsConditionedZoneEvidenceBreakdown(t *testing.T) {
 	doc := Document{Objects: []Object{
 		{Index: 0, Type: "Zone", Fields: []Field{{Value: "Equipment Zone"}}},
 		{Index: 1, Type: "Zone", Fields: []Field{{Value: "Thermostat Zone"}}},
@@ -611,11 +1111,11 @@ func TestAnalyzeSummaryConditionedZoneEvidenceBreakdown(t *testing.T) {
 		}},
 	}}
 
-	summary := AnalyzeSummary(doc)
-	if got := metricByID(t, summary, "conditioned_zone_count").Value; got != 4 {
+	metrics := AnalyzeMetrics(doc)
+	if got := metricByID(t, metrics, "conditioned_zone_count").Value; got != 4 {
 		t.Fatalf("conditioned zone count = %#v, want 4", got)
 	}
-	breakdown := metricByID(t, summary, "conditioned_zone_evidence_breakdown")
+	breakdown := metricByID(t, metrics, "conditioned_zone_evidence_breakdown")
 	for _, expected := range []string{
 		"by_equipment_connections:1",
 		"by_zone_hvac:1",
@@ -631,7 +1131,7 @@ func TestAnalyzeSummaryConditionedZoneEvidenceBreakdown(t *testing.T) {
 	}
 }
 
-func TestAnalyzeSummaryInternalLoadMethodCoverageReportsUnresolved(t *testing.T) {
+func TestAnalyzeMetricsInternalLoadMethodCoverageReportsUnresolved(t *testing.T) {
 	doc := Document{Objects: []Object{
 		{Index: 0, Type: "Zone", Fields: []Field{{Value: "Office", Comment: "Name"}}},
 		{Index: 1, Type: "Lights", Fields: []Field{
@@ -644,17 +1144,17 @@ func TestAnalyzeSummaryInternalLoadMethodCoverageReportsUnresolved(t *testing.T)
 		}},
 	}}
 
-	summary := AnalyzeSummary(doc)
-	coverage := metricByID(t, summary, "internal_load_method_coverage")
+	metrics := AnalyzeMetrics(doc)
+	coverage := metricByID(t, metrics, "internal_load_method_coverage")
 	if coverage.DisplayValue != "resolved:0/1, unresolved_method_count:1" {
 		t.Fatalf("internal load coverage = %q, want unresolved Watts/Area object", coverage.DisplayValue)
 	}
-	if coverage.Status != summaryStatusPartial {
+	if coverage.Status != metricStatusPartial {
 		t.Fatalf("internal load coverage status = %q, want partial", coverage.Status)
 	}
 }
 
-func TestAnalyzeSummarySeparatesBoundingBoxAreaFromFootprint(t *testing.T) {
+func TestAnalyzeMetricsSeparatesBoundingBoxAreaFromFootprint(t *testing.T) {
 	doc, err := Parse(`
 Zone,
   Box Zone;
@@ -687,19 +1187,19 @@ BuildingSurface:Detailed,
 		t.Fatalf("Parse() error = %v", err)
 	}
 
-	summary := AnalyzeSummary(doc)
-	footprint := metricByID(t, summary, "footprint_area_m2")
-	if footprint.Status != summaryStatusMissing {
+	metrics := AnalyzeMetrics(doc)
+	footprint := metricByID(t, metrics, "footprint_area_m2")
+	if footprint.Status != metricStatusMissing {
 		t.Fatalf("footprint status = %q, want missing when only bounding box is available", footprint.Status)
 	}
-	assertMetricClose(t, summary, "bounding_box_area_m2", 80, 0.001)
-	boundingBox := metricByID(t, summary, "bounding_box_area_m2")
+	assertMetricClose(t, metrics, "bounding_box_area_m2", 80, 0.001)
+	boundingBox := metricByID(t, metrics, "bounding_box_area_m2")
 	if boundingBox.Visibility != "advanced" || boundingBox.Confidence != "inferred" {
 		t.Fatalf("bounding box metadata = visibility %q confidence %q, want advanced/inferred", boundingBox.Visibility, boundingBox.Confidence)
 	}
 }
 
-func TestAnalyzeSummarySeparatesGrossAndNetEnvelopeArea(t *testing.T) {
+func TestAnalyzeMetricsSeparatesGrossAndNetEnvelopeArea(t *testing.T) {
 	doc, err := Parse(`
 Zone,
   Perimeter;
@@ -755,37 +1255,37 @@ FenestrationSurface:Detailed,
 		t.Fatalf("Parse() error = %v", err)
 	}
 
-	summary := AnalyzeSummary(doc)
-	if got := metricByID(t, summary, "envelope_area_m2").Name; got != "Gross envelope area" {
+	metrics := AnalyzeMetrics(doc)
+	if got := metricByID(t, metrics, "envelope_area_m2").Name; got != "Gross envelope area" {
 		t.Fatalf("envelope metric name = %q, want Gross envelope area", got)
 	}
-	assertMetricClose(t, summary, "envelope_area_m2", 30, 0.001)
-	assertMetricClose(t, summary, "net_opaque_envelope_area_m2", 28, 0.001)
+	assertMetricClose(t, metrics, "envelope_area_m2", 30, 0.001)
+	assertMetricClose(t, metrics, "net_opaque_envelope_area_m2", 28, 0.001)
 }
 
-func countMetrics(summary SummaryReport) int {
+func countMetrics(metrics MetricsReport) int {
 	count := 0
-	for _, category := range summary.Categories {
+	for _, category := range metrics.Categories {
 		count += len(category.Metrics)
 	}
 	return count
 }
 
-func TestSummaryCSVMetricNameNormalizesUnits(t *testing.T) {
-	unitless := SummaryMetric{ID: "object_count"}
-	if got := summaryCSVMetricName(summaryCSVVariableName(unitless), summaryCSVUnitLabel(unitless.Unit)); got != "object_count [-]" {
+func TestMetricsCSVNameNormalizesUnits(t *testing.T) {
+	unitless := Metric{ID: "object_count"}
+	if got := metricsCSVName(metricsCSVVariableName(unitless), metricsCSVUnitLabel(unitless.Unit)); got != "object_count [-]" {
 		t.Fatalf("unitless CSV metric name = %q, want object_count [-]", got)
 	}
 
-	bracketed := SummaryMetric{ID: "total_wwr_percent", Unit: "[%]"}
-	if got := summaryCSVMetricName(summaryCSVVariableName(bracketed), summaryCSVUnitLabel(bracketed.Unit)); got != "total_wwr [%]" {
+	bracketed := Metric{ID: "total_wwr_percent", Unit: "[%]"}
+	if got := metricsCSVName(metricsCSVVariableName(bracketed), metricsCSVUnitLabel(bracketed.Unit)); got != "total_wwr [%]" {
 		t.Fatalf("bracketed-unit CSV metric name = %q, want total_wwr [%%]", got)
 	}
 }
 
-func metricByID(t *testing.T, summary SummaryReport, id string) SummaryMetric {
+func metricByID(t *testing.T, metrics MetricsReport, id string) Metric {
 	t.Helper()
-	for _, category := range summary.Categories {
+	for _, category := range metrics.Categories {
 		for _, metric := range category.Metrics {
 			if metric.ID == id {
 				return metric
@@ -793,12 +1293,12 @@ func metricByID(t *testing.T, summary SummaryReport, id string) SummaryMetric {
 		}
 	}
 	t.Fatalf("metric %q not found", id)
-	return SummaryMetric{}
+	return Metric{}
 }
 
-func assertMetricClose(t *testing.T, summary SummaryReport, id string, want float64, tolerance float64) {
+func assertMetricClose(t *testing.T, metrics MetricsReport, id string, want float64, tolerance float64) {
 	t.Helper()
-	metric := metricByID(t, summary, id)
+	metric := metricByID(t, metrics, id)
 	got, ok := metric.Value.(float64)
 	if !ok {
 		t.Fatalf("metric %s value = %#v (%T), want float64", id, metric.Value, metric.Value)

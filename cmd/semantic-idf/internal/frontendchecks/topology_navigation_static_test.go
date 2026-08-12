@@ -28,17 +28,17 @@ func TestThermalTopologyTargetResolverCoversSemanticTargetKinds(t *testing.T) {
 		}
 	}
 
-	loader := readTestFile(t, "frontend/src/js/geometry-loader.js")
+	loader := readTestFile(t, "frontend/src/js/topology-loader.js")
 	for _, required := range []string{"isThermalTopologyTargetKind", "thermalTopologyTargetExists"} {
 		if !strings.Contains(loader, required) {
 			t.Fatalf("lazy geometry adapter is missing topology target support %q", required)
 		}
 	}
 
-	view := readTestFile(t, "frontend/src/js/views/geometry-view.js")
+	view := readTestFile(t, "frontend/src/js/views/topology-view.js")
 	for _, required := range []string{
 		"resolveThermalTopologyTarget",
-		`state.geometryMode = "thermal"`,
+		`state.topologyMode = "thermal"`,
 		"surfaceIds",
 		"windowIds",
 		"nodeIds",
@@ -52,10 +52,10 @@ func TestThermalTopologyTargetResolverCoversSemanticTargetKinds(t *testing.T) {
 
 func TestThermalSemanticOccurrencePriorityIsContextAware(t *testing.T) {
 	for _, path := range []string{
-		"frontend/src/js/geometry-loader.js",
+		"frontend/src/js/topology-loader.js",
 		"frontend/src/js/panel-navigation-adapters.js",
 		"frontend/src/js/selection-controller.js",
-		"frontend/src/js/views/geometry-view.js",
+		"frontend/src/js/views/topology-view.js",
 	} {
 		content := readTestFile(t, path)
 		for _, required := range []string{
@@ -138,12 +138,12 @@ func TestThermalTopologyHistoryCapturesContextWithoutGraphOrLayoutCache(t *testi
 		}
 	}
 
-	loader := readTestFile(t, "frontend/src/js/geometry-loader.js")
+	loader := readTestFile(t, "frontend/src/js/topology-loader.js")
 	if !strings.Contains(loader, "...captureThermalTopologyState(state)") {
 		t.Fatal("geometry panel history does not capture thermal topology context")
 	}
-	view := readTestFile(t, "frontend/src/js/views/geometry-view.js")
-	restore := sliceBetween(view, "export async function restoreGeometryNavigationContext", "export function preferredGeometrySemanticOccurrence")
+	view := readTestFile(t, "frontend/src/js/views/topology-view.js")
+	restore := sliceBetween(view, "export async function restoreTopologyNavigationContext", "export function preferredTopologySemanticOccurrence")
 	if !strings.Contains(restore, "restoreThermalTopologyState(snapshot, state)") {
 		t.Fatal("geometry history restore does not restore thermal topology context")
 	}
@@ -164,8 +164,8 @@ func TestThermalTopologyHistoryCapturesContextWithoutGraphOrLayoutCache(t *testi
 func TestThermalTopologySharesSelectionAndHoverNavigation(t *testing.T) {
 	view := readTestFile(t, "frontend/src/js/views/thermal-topology-view.js")
 	for _, required := range []string{
-		`currentHelpers?.selectGeometry?.(kind, id`,
-		`originView: "geometry"`,
+		`currentHelpers?.selectTopologyEntity?.(kind, id`,
+		`originView: "topology"`,
 		`recordHistory: false`,
 		`follow: false`,
 		`data-thermal-target-kind="${targetKind}"`,
@@ -174,10 +174,10 @@ func TestThermalTopologySharesSelectionAndHoverNavigation(t *testing.T) {
 			t.Fatalf("thermal selection/hover contract is missing %q", required)
 		}
 	}
-	geometry := readTestFile(t, "frontend/src/js/views/geometry-view.js")
+	geometry := readTestFile(t, "frontend/src/js/views/topology-view.js")
 	for _, required := range []string{
 		`projectGeometrySelectionToThermal`,
-		`revealThermalTargetInGeometry`,
+		`revealThermalTargetInTopology`,
 		`idfAnalyzer:semanticHoverChanged`,
 		`geometryRenderableMatchesHover`,
 		`hoverSemanticEntity(selection`,
@@ -187,7 +187,7 @@ func TestThermalTopologySharesSelectionAndHoverNavigation(t *testing.T) {
 			t.Fatalf("3D/Plan thermal projection contract is missing %q", required)
 		}
 	}
-	styles := readTestFile(t, "frontend/src/styles/geometry.css")
+	styles := readTestFile(t, "frontend/src/styles/topology.css")
 	for _, required := range []string{`.semantic-hovered`, `.thermal-edge-group`} {
 		if !strings.Contains(styles, required) {
 			t.Fatalf("thermal graph/hover styling is missing %q", required)

@@ -4,12 +4,12 @@
 // File groups in this package are intentionally organized by feature prefix:
 //
 //   - document, parser, edit: core IDF representation and low-level editing.
-//   - analyze, summary, diagnostics, cleanup: cross-domain analysis and fixes.
+//   - analyze, metrics, diagnostics, cleanup: cross-domain analysis and fixes.
 //   - field_catalog: EnergyPlus field metadata used by diagnostics and graphing.
 //   - geometry: zone, surface, construction, and plan/3D geometry extraction.
 //   - hvac*: HVAC loop, service-coupling, resolver coverage, and output logic.
 //   - output*: requested output objects and standard recommendation helpers.
-//   - profile*: schedule profile analysis, graph deck data, and apply helpers.
+//   - profile*: schedule profile analysis, time-series graph data, and apply helpers.
 //   - semantic_yaml*: semantic YAML rendering and golden-file support.
 //   - simulation_requirements: small simulation input requirement checks.
 //

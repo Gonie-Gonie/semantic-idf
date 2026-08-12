@@ -43,7 +43,7 @@ type InputAnalysisResult struct {
 	Timing      *AnalysisTiming             `json:"timing,omitempty"`
 }
 
-type SummaryExportResult struct {
+type MetricsExportResult struct {
 	Text     string `json:"text"`
 	Format   string `json:"format"`
 	Filename string `json:"filename"`
@@ -156,8 +156,29 @@ type EnergyPlusInstallSetting = simulation.EnergyPlusInstallSetting
 
 type InteractionSettings struct {
 	SyncRawTextPosition bool              `json:"syncRawTextPosition"`
-	GeometrySyncLocate  bool              `json:"geometrySyncLocate"`
+	TopologySyncLocate  bool              `json:"topologySyncLocate"`
 	Shortcuts           map[string]string `json:"shortcuts"`
+}
+
+func (settings *InteractionSettings) UnmarshalJSON(data []byte) error {
+	type interactionSettingsAlias InteractionSettings
+	decoded := interactionSettingsAlias(*settings)
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	if _, hasCanonical := raw["topologySyncLocate"]; !hasCanonical {
+		if legacy, ok := raw["geometrySyncLocate"]; ok {
+			if err := json.Unmarshal(legacy, &decoded.TopologySyncLocate); err != nil {
+				return err
+			}
+		}
+	}
+	*settings = InteractionSettings(decoded)
+	return nil
 }
 
 type SettingsResult struct {
@@ -165,7 +186,7 @@ type SettingsResult struct {
 	Settings AppSettings `json:"settings"`
 }
 
-type MultiSummaryResult struct {
+type BatchMetricsResult struct {
 	Canceled             bool                 `json:"canceled,omitempty"`
 	RunID                string               `json:"runId,omitempty"`
 	Total                int                  `json:"total"`
@@ -175,11 +196,11 @@ type MultiSummaryResult struct {
 	Concurrency          int                  `json:"concurrency"`
 	AreaBasis            string               `json:"areaBasis"`
 	IncludesFullTopology bool                 `json:"includesFullTopology,omitempty"`
-	Metrics              []MultiSummaryMetric `json:"metrics"`
-	Files                []MultiSummaryFile   `json:"files"`
+	Metrics              []BatchMetricsMetric `json:"metrics"`
+	Files                []BatchMetricsFile   `json:"files"`
 }
 
-type MultiSummaryMetric struct {
+type BatchMetricsMetric struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
 	Category string `json:"category"`
@@ -187,7 +208,7 @@ type MultiSummaryMetric struct {
 	CSVName  string `json:"csvName"`
 }
 
-type MultiSummaryFile struct {
+type BatchMetricsFile struct {
 	Index        int                          `json:"index"`
 	Path         string                       `json:"path"`
 	Filename     string                       `json:"filename"`
@@ -197,12 +218,12 @@ type MultiSummaryFile struct {
 	Status       string                       `json:"status"`
 	Error        string                       `json:"error,omitempty"`
 	ObjectCount  int                          `json:"objectCount,omitempty"`
-	MetricValues map[string]MultiSummaryValue `json:"metricValues,omitempty"`
-	TopologyData *MultiSummaryTopologyData    `json:"topologyData,omitempty"`
+	MetricValues map[string]BatchMetricsValue `json:"metricValues,omitempty"`
+	TopologyData *BatchMetricsTopologyData    `json:"topologyData,omitempty"`
 	Topology     *idf.ThermalTopologyReport   `json:"topology,omitempty"`
 }
 
-type MultiSummaryValue struct {
+type BatchMetricsValue struct {
 	DisplayValue   string  `json:"displayValue"`
 	Status         string  `json:"status"`
 	AreaBasis      string  `json:"areaBasis,omitempty"`
@@ -211,7 +232,7 @@ type MultiSummaryValue struct {
 	BasisSensitive bool    `json:"basisSensitive,omitempty"`
 }
 
-type MultiSummaryTopologyData struct {
+type BatchMetricsTopologyData struct {
 	Summary     idf.ThermalTopologyBatchSummary  `json:"summary"`
 	Nodes       []idf.ThermalTopologyNode        `json:"nodes,omitempty"`
 	Signatures  []idf.ZoneThermalSignature       `json:"zoneSignatures,omitempty"`
@@ -219,20 +240,30 @@ type MultiSummaryTopologyData struct {
 	Issues      []idf.ThermalTopologyIssueLink   `json:"boundaryIssues,omitempty"`
 }
 
-type MultiSummaryRequest struct {
+type BatchMetricsRequest struct {
 	RunID               string `json:"runId"`
 	AreaBasis           string `json:"areaBasis"`
 	IncludeFullTopology bool   `json:"includeFullTopology,omitempty"`
 }
 
-type MultiSummaryProgress struct {
+type BatchMetricsProgress struct {
 	RunID     string           `json:"runId"`
 	Total     int              `json:"total"`
 	Completed int              `json:"completed"`
 	Succeeded int              `json:"succeeded"`
 	Failed    int              `json:"failed"`
-	File      MultiSummaryFile `json:"file"`
+	File      BatchMetricsFile `json:"file"`
 }
+
+// Legacy aliases keep older API clients source-compatible while Batch Metrics is
+// the canonical workspace terminology.
+type MultiSummaryResult = BatchMetricsResult
+type MultiSummaryMetric = BatchMetricsMetric
+type MultiSummaryFile = BatchMetricsFile
+type MultiSummaryValue = BatchMetricsValue
+type MultiSummaryTopologyData = BatchMetricsTopologyData
+type MultiSummaryRequest = BatchMetricsRequest
+type MultiSummaryProgress = BatchMetricsProgress
 
 type ModelPatchResult = InputAnalysisResult
 
@@ -315,7 +346,7 @@ func (a *App) AnalyzeInputGeometryText(text string) (*idf.GeometryReport, error)
 	return &geometry, nil
 }
 
-// AnalyzeInputTopologyText returns the same cached topology report used by the Geometry view.
+// AnalyzeInputTopologyText returns the same cached topology report used by the Topology view.
 func (a *App) AnalyzeInputTopologyText(text string) (*idf.ThermalTopologyReport, error) {
 	geometry, err := a.AnalyzeInputGeometryText(text)
 	if err != nil {
@@ -524,7 +555,7 @@ func (a *App) cachedCompletedStageAnalysis(textHash string) *InputAnalysisResult
 
 	assembled := cloneInputAnalysisResult(quick)
 	report := *quick.Report
-	requiredStages := []string{"profile", "hvac", "diagnostics", "geometry"}
+	requiredStages := []string{"profile", "hvac", "geometry"}
 	for _, stage := range requiredStages {
 		stageResult, ok := a.analysisCache.LookupTextMode(textHash, stage)
 		if !ok || stageResult == nil || stageResult.Report == nil {
@@ -549,8 +580,6 @@ func mergeStageReport(target *idf.Report, stage string, source *idf.Report) {
 		target.Profile = source.Profile
 	case "hvac":
 		target.HVAC = source.HVAC
-	case "diagnostics":
-		target.Diagnostics = source.Diagnostics
 	case "geometry":
 		target.Geometry = source.Geometry
 	}
@@ -727,37 +756,42 @@ func (a *App) OpenInputFile() (*InputFileResult, error) {
 	}, nil
 }
 
-func (a *App) AnalyzeMultiIDFSummary(runID string) (*MultiSummaryResult, error) {
-	return a.AnalyzeMultiIDFSummaryWithOptions(MultiSummaryRequest{RunID: runID, AreaBasis: "effective"})
+func (a *App) AnalyzeMultiIDFSummary(runID string) (*BatchMetricsResult, error) {
+	return a.AnalyzeBatchMetrics(BatchMetricsRequest{RunID: runID, AreaBasis: "effective"})
 }
 
-func (a *App) AnalyzeMultiIDFSummaryWithOptions(request MultiSummaryRequest) (*MultiSummaryResult, error) {
+func (a *App) AnalyzeMultiIDFSummaryWithOptions(request BatchMetricsRequest) (*BatchMetricsResult, error) {
+	return a.AnalyzeBatchMetrics(request)
+}
+
+func (a *App) AnalyzeBatchMetrics(request BatchMetricsRequest) (*BatchMetricsResult, error) {
 	if a.ctx == nil {
 		return nil, fmt.Errorf("desktop runtime is not ready")
 	}
 	paths, err := wailsruntime.OpenMultipleFilesDialog(a.ctx, wailsruntime.OpenDialogOptions{
-		Title:   "Open EnergyPlus inputs for Batch Summary",
+		Title:   "Open EnergyPlus inputs for Batch Metrics",
 		Filters: inputFileFilters(),
 	})
 	if err != nil {
 		return nil, err
 	}
 	if len(paths) == 0 {
-		return &MultiSummaryResult{Canceled: true, RunID: request.RunID, AreaBasis: normalizeMultiSummaryAreaBasis(request.AreaBasis)}, nil
+		return &BatchMetricsResult{Canceled: true, RunID: request.RunID, AreaBasis: normalizeBatchMetricsAreaBasis(request.AreaBasis)}, nil
 	}
 
-	return analyzeMultiSummaryPathsWithOptions(paths, request, throttleMultiSummaryProgress(func(progress MultiSummaryProgress) {
+	return analyzeBatchMetricsPaths(paths, request, throttleBatchMetricsProgress(func(progress BatchMetricsProgress) {
 		if a.ctx != nil {
+			wailsruntime.EventsEmit(a.ctx, "idfAnalyzer:batchMetricsProgress", progress)
 			wailsruntime.EventsEmit(a.ctx, "idfAnalyzer:multiSummaryProgress", progress)
 			wailsruntime.EventsEmit(a.ctx, "idfAnalyzer:batchProgress", progress)
 		}
 	})), nil
 }
 
-func throttleMultiSummaryProgress(emit func(MultiSummaryProgress)) func(MultiSummaryProgress) {
+func throttleBatchMetricsProgress(emit func(BatchMetricsProgress)) func(BatchMetricsProgress) {
 	var mu sync.Mutex
 	lastEmit := time.Time{}
-	return func(progress MultiSummaryProgress) {
+	return func(progress BatchMetricsProgress) {
 		if emit == nil {
 			return
 		}
@@ -881,39 +915,44 @@ func (a *App) RemoveUnusedObjectsText(text string) (*TextEditResult, error) {
 	}, nil
 }
 
-func (a *App) ExportSummaryText(text string, format string) (*SummaryExportResult, error) {
+func (a *App) ExportMetricsText(text string, format string) (*MetricsExportResult, error) {
 	_, doc, err := parseInputDocument(text)
 	if err != nil {
 		return nil, err
 	}
-	summary := idf.AnalyzeSummary(doc)
+	metrics := idf.AnalyzeMetrics(doc)
 
 	switch strings.ToLower(strings.TrimSpace(format)) {
 	case "json":
-		output, err := idf.ExportSummaryJSON(summary)
+		output, err := idf.ExportMetricsJSON(metrics)
 		if err != nil {
 			return nil, err
 		}
-		return &SummaryExportResult{
+		return &MetricsExportResult{
 			Text:     output,
 			Format:   "json",
-			Filename: "summary.json",
+			Filename: "metrics.json",
 			MIME:     "application/json",
 		}, nil
 	case "csv":
-		output, err := idf.ExportSummaryCSV(summary)
+		output, err := idf.ExportMetricsCSV(metrics)
 		if err != nil {
 			return nil, err
 		}
-		return &SummaryExportResult{
+		return &MetricsExportResult{
 			Text:     output,
 			Format:   "csv",
-			Filename: "summary.csv",
+			Filename: "metrics.csv",
 			MIME:     "text/csv",
 		}, nil
 	default:
-		return nil, fmt.Errorf("unsupported summary export format %q; use json or csv", format)
+		return nil, fmt.Errorf("unsupported metrics export format %q; use json or csv", format)
 	}
+}
+
+// ExportSummaryText is retained for older Wails clients. New clients use ExportMetricsText.
+func (a *App) ExportSummaryText(text string, format string) (*MetricsExportResult, error) {
+	return a.ExportMetricsText(text, format)
 }
 
 func (a *App) ScanCleanupText(text string, path string, filename string) (*CleanupFileResult, error) {
@@ -1093,27 +1132,28 @@ func (a *App) ApplyOutputText(text string, request idf.OutputApplyRequest) (*Out
 	}, nil
 }
 
-func (a *App) GetSummaryMetricGuides() []idf.SummaryGuide {
-	return idf.SummaryGuides()
+func (a *App) GetMetricGuides() []idf.MetricGuide {
+	return idf.MetricGuides()
 }
 
-func analyzeMultiSummaryPaths(paths []string, runID string, emit func(MultiSummaryProgress)) *MultiSummaryResult {
-	return analyzeMultiSummaryPathsWithOptions(paths, MultiSummaryRequest{RunID: runID, AreaBasis: "effective"}, emit)
+// GetSummaryMetricGuides is retained for older Wails clients. New clients use GetMetricGuides.
+func (a *App) GetSummaryMetricGuides() []idf.MetricGuide {
+	return a.GetMetricGuides()
 }
 
-func analyzeMultiSummaryPathsWithOptions(paths []string, request MultiSummaryRequest, emit func(MultiSummaryProgress)) *MultiSummaryResult {
-	areaBasis := normalizeMultiSummaryAreaBasis(request.AreaBasis)
-	result := &MultiSummaryResult{
+func analyzeBatchMetricsPaths(paths []string, request BatchMetricsRequest, emit func(BatchMetricsProgress)) *BatchMetricsResult {
+	areaBasis := normalizeBatchMetricsAreaBasis(request.AreaBasis)
+	result := &BatchMetricsResult{
 		RunID:                request.RunID,
 		Total:                len(paths),
 		Completed:            0,
-		Concurrency:          multiSummaryConcurrency(len(paths)),
+		Concurrency:          batchMetricsConcurrency(len(paths)),
 		AreaBasis:            areaBasis,
 		IncludesFullTopology: request.IncludeFullTopology,
-		Metrics:              multiSummaryMetrics(idf.AnalyzeSummary(idf.Document{})),
-		Files:                make([]MultiSummaryFile, len(paths)),
+		Metrics:              batchMetricDefinitions(idf.AnalyzeMetrics(idf.Document{})),
+		Files:                make([]BatchMetricsFile, len(paths)),
 	}
-	result.Metrics = append(result.Metrics, multiSummaryTopologyMetrics()...)
+	result.Metrics = append(result.Metrics, batchTopologyMetricDefinitions()...)
 	if len(paths) == 0 {
 		return result
 	}
@@ -1128,14 +1168,14 @@ func analyzeMultiSummaryPathsWithOptions(paths []string, request MultiSummaryReq
 		jobs <- job{index: index, path: path}
 	}
 	close(jobs)
-	results := make(chan MultiSummaryFile)
+	results := make(chan BatchMetricsFile)
 	var wg sync.WaitGroup
 	for worker := 0; worker < result.Concurrency; worker++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for item := range jobs {
-				results <- analyzeMultiSummaryFileWithOptions(item.index, item.path, areaBasis, request.IncludeFullTopology)
+				results <- analyzeBatchMetricsFile(item.index, item.path, areaBasis, request.IncludeFullTopology)
 			}
 		}()
 	}
@@ -1157,7 +1197,7 @@ func analyzeMultiSummaryPathsWithOptions(paths []string, request MultiSummaryReq
 			progressFile := file
 			progressFile.TopologyData = nil
 			progressFile.Topology = nil
-			emit(MultiSummaryProgress{
+			emit(BatchMetricsProgress{
 				RunID:     request.RunID,
 				Total:     result.Total,
 				Completed: result.Completed,
@@ -1168,12 +1208,12 @@ func analyzeMultiSummaryPathsWithOptions(paths []string, request MultiSummaryReq
 		}
 	}
 
-	ensureUniqueMultiSummaryLabels(result.Files)
+	ensureUniqueBatchMetricsLabels(result.Files)
 	return result
 }
 
-func analyzeMultiSummaryFileWithOptions(index int, path string, areaBasis string, includeFullTopology bool) MultiSummaryFile {
-	file := MultiSummaryFile{
+func analyzeBatchMetricsFile(index int, path string, areaBasis string, includeFullTopology bool) BatchMetricsFile {
+	file := BatchMetricsFile{
 		Index:    index,
 		Path:     path,
 		Filename: filepath.Base(path),
@@ -1188,28 +1228,28 @@ func analyzeMultiSummaryFileWithOptions(index int, path string, areaBasis string
 		return file
 	}
 
-	summary := idf.AnalyzeSummary(doc)
+	metricsReport := idf.AnalyzeMetrics(doc)
 	topology := idf.AnalyzeGeometryFromIndex(idf.NewDocumentIndex(doc)).Topology
 	topologySummary := idf.SummarizeThermalTopologyForBatch(topology, areaBasis)
 	file.Format = string(model.Format)
 	file.Version = model.Version.Raw
 	file.ObjectCount = len(doc.Objects)
-	file.MetricValues = make(map[string]MultiSummaryValue, summary.MetricCount+len(topologySummary.Metrics))
-	for _, category := range summary.Categories {
+	file.MetricValues = make(map[string]BatchMetricsValue, metricsReport.MetricCount+len(topologySummary.Metrics))
+	for _, category := range metricsReport.Categories {
 		for _, metric := range category.Metrics {
-			file.MetricValues[metric.ID] = MultiSummaryValue{
+			file.MetricValues[metric.ID] = BatchMetricsValue{
 				DisplayValue: metric.DisplayValue,
 				Status:       metric.Status,
 			}
 		}
 	}
 	for metricID, value := range topologySummary.Metrics {
-		file.MetricValues[metricID] = MultiSummaryValue{
+		file.MetricValues[metricID] = BatchMetricsValue{
 			DisplayValue: value.DisplayValue, Status: value.Status, AreaBasis: value.AreaBasis,
 			Coverage: value.Coverage, HasCoverage: value.HasCoverage, BasisSensitive: value.BasisSensitive,
 		}
 	}
-	file.TopologyData = &MultiSummaryTopologyData{
+	file.TopologyData = &BatchMetricsTopologyData{
 		Summary:     topologySummary,
 		Nodes:       topology.Nodes,
 		Signatures:  topology.ZoneSignatures,
@@ -1225,18 +1265,18 @@ func analyzeMultiSummaryFileWithOptions(index int, path string, areaBasis string
 		file.TopologyData.Connections = append([]idf.ThermalConnectionAggregate(nil), topology.Connections...)
 		file.TopologyData.Issues = append([]idf.ThermalTopologyIssueLink(nil), topology.IssueLinks...)
 	}
-	if buildingName := strings.TrimSpace(file.MetricValues["building_name"].DisplayValue); buildingName != "" && !strings.EqualFold(buildingName, "N/A") {
+	if buildingName := strings.TrimSpace(file.MetricValues["building_name"].DisplayValue); buildingName != "" && buildingName != "—" && !strings.EqualFold(buildingName, "N/A") {
 		file.Label = buildingName
 	}
 	return file
 }
 
-func multiSummaryMetrics(summary idf.SummaryReport) []MultiSummaryMetric {
-	names := idf.SummaryCSVMetricNames(summary)
-	metrics := make([]MultiSummaryMetric, 0, summary.MetricCount)
-	for _, category := range summary.Categories {
+func batchMetricDefinitions(report idf.MetricsReport) []BatchMetricsMetric {
+	names := idf.MetricsCSVNames(report)
+	metrics := make([]BatchMetricsMetric, 0, report.MetricCount)
+	for _, category := range report.Categories {
 		for _, metric := range category.Metrics {
-			metrics = append(metrics, MultiSummaryMetric{
+			metrics = append(metrics, BatchMetricsMetric{
 				ID:       metric.ID,
 				Name:     metric.Name,
 				Category: metric.Category,
@@ -1248,25 +1288,25 @@ func multiSummaryMetrics(summary idf.SummaryReport) []MultiSummaryMetric {
 	return metrics
 }
 
-func multiSummaryTopologyMetrics() []MultiSummaryMetric {
+func batchTopologyMetricDefinitions() []BatchMetricsMetric {
 	definitions := idf.ThermalTopologyBatchMetricDefinitions()
-	metrics := make([]MultiSummaryMetric, 0, len(definitions))
+	metrics := make([]BatchMetricsMetric, 0, len(definitions))
 	for _, definition := range definitions {
-		metrics = append(metrics, MultiSummaryMetric{
+		metrics = append(metrics, BatchMetricsMetric{
 			ID: definition.ID, Name: definition.Name, Category: "Topology", Unit: definition.Unit, CSVName: definition.ID,
 		})
 	}
 	return metrics
 }
 
-func normalizeMultiSummaryAreaBasis(value string) string {
+func normalizeBatchMetricsAreaBasis(value string) string {
 	if strings.EqualFold(strings.TrimSpace(value), "physical") {
 		return "physical"
 	}
 	return "effective"
 }
 
-func multiSummaryConcurrency(count int) int {
+func batchMetricsConcurrency(count int) int {
 	if count <= 0 {
 		return 0
 	}
@@ -1283,7 +1323,7 @@ func multiSummaryConcurrency(count int) int {
 	return limit
 }
 
-func ensureUniqueMultiSummaryLabels(files []MultiSummaryFile) {
+func ensureUniqueBatchMetricsLabels(files []BatchMetricsFile) {
 	seen := map[string]int{}
 	for index := range files {
 		label := strings.TrimSpace(files[index].Label)
@@ -1494,7 +1534,7 @@ func defaultAppSettings() AppSettings {
 			Theme:            "system",
 			Language:         "en",
 			GraphFontSize:    11,
-			AnalysisTabOrder: []string{"summary", "geometry", "profile", "hvac", "diagnose", "simulation"},
+			AnalysisTabOrder: []string{"metrics", "topology", "profile", "hvac", "simulation"},
 			Geometry: GeometryAppearanceSettings{
 				Background: "#f7fafc",
 				Zone:       "#b8d7b0",
@@ -1509,7 +1549,7 @@ func defaultAppSettings() AppSettings {
 		},
 		Interaction: InteractionSettings{
 			SyncRawTextPosition: true,
-			GeometrySyncLocate:  true,
+			TopologySyncLocate:  true,
 			Shortcuts: map[string]string{
 				"save":                 "Ctrl+S",
 				"open":                 "Ctrl+O",
@@ -1529,16 +1569,15 @@ func defaultAppSettings() AppSettings {
 				"inputText":            "Ctrl+2",
 				"inputJson":            "Ctrl+3",
 				"inputTable":           "Ctrl+4",
-				"tabSummary":           "Ctrl+Alt+1",
+				"tabMetrics":           "Ctrl+Alt+1",
 				"tabProfile":           "Ctrl+Alt+2",
 				"tabHVAC":              "Ctrl+Alt+3",
 				"tabSimulation":        "Ctrl+Alt+4",
-				"tabDiagnose":          "Ctrl+Alt+5",
-				"tabGeometry":          "Ctrl+Alt+6",
-				"geometry3D":           "1",
-				"geometryPlan":         "2",
-				"geometryThermal":      "3",
-				"geometryFit":          "F",
+				"tabTopology":          "Ctrl+Alt+6",
+				"topology3D":           "1",
+				"topologyPlan":         "2",
+				"topologyNetwork":      "3",
+				"topologyFit":          "F",
 				"topologyDisplay":      "G",
 				"topologyConnectivity": "T",
 				"topologyArea":         "A",
@@ -1595,6 +1634,7 @@ func normalizeShortcutSettings(values map[string]string, defaults map[string]str
 	if _, hasSemantic := values["inputSemantic"]; !hasSemantic {
 		values = migrateInputViewShortcutDefaults(values)
 	}
+	values = migrateTopologyShortcutNames(values)
 	for key, fallback := range defaults {
 		value := strings.TrimSpace(values[key])
 		if value == "" {
@@ -1603,6 +1643,25 @@ func normalizeShortcutSettings(values map[string]string, defaults map[string]str
 		out[key] = value
 	}
 	return out
+}
+
+func migrateTopologyShortcutNames(values map[string]string) map[string]string {
+	migrated := make(map[string]string, len(values)+4)
+	for key, value := range values {
+		migrated[key] = value
+	}
+	for canonical, legacy := range map[string]string{
+		"topology3D":      "geometry3D",
+		"topologyPlan":    "geometryPlan",
+		"topologyNetwork": "geometryThermal",
+		"topologyFit":     "geometryFit",
+	} {
+		if _, exists := migrated[canonical]; !exists {
+			migrated[canonical] = migrated[legacy]
+		}
+		delete(migrated, legacy)
+	}
+	return migrated
 }
 
 func migrateInputViewShortcutDefaults(values map[string]string) map[string]string {
@@ -1646,17 +1705,21 @@ func normalizeAppLanguage(value string, fallback string) string {
 
 func normalizeAnalysisTabOrder(values []string, fallback []string) []string {
 	allowed := map[string]bool{
-		"summary":    true,
+		"metrics":    true,
 		"profile":    true,
 		"hvac":       true,
 		"simulation": true,
-		"diagnose":   true,
-		"geometry":   true,
+		"topology":   true,
 	}
 	seen := map[string]bool{}
 	out := make([]string, 0, len(allowed))
 	for _, value := range values {
 		normalized := strings.ToLower(strings.TrimSpace(value))
+		if normalized == "summary" {
+			normalized = "metrics"
+		} else if normalized == "geometry" {
+			normalized = "topology"
+		}
 		if !allowed[normalized] || seen[normalized] {
 			continue
 		}
@@ -1665,7 +1728,7 @@ func normalizeAnalysisTabOrder(values []string, fallback []string) []string {
 	}
 	source := fallback
 	if len(source) == 0 {
-		source = []string{"summary", "geometry", "profile", "hvac", "diagnose", "simulation"}
+		source = []string{"metrics", "topology", "profile", "hvac", "simulation"}
 	}
 	for _, value := range source {
 		normalized := strings.ToLower(strings.TrimSpace(value))
@@ -1707,28 +1770,8 @@ func normalizeProfileSettings(settings idf.ProfileAnalysisSettings, defaults idf
 		settings.NumericTolerance = defaults.NumericTolerance
 	}
 	settings.ScheduleCompareMode = normalizeProfileChoice(settings.ScheduleCompareMode, []string{"none", "name", "resolved"}, defaults.ScheduleCompareMode)
-	settings.GraphMode = normalizeProfileChoice(settings.GraphMode, []string{"multiplier", "actual_value", "actual", "design", "annual"}, defaults.GraphMode)
-	settings.MetricMode = normalizeProfileChoice(settings.MetricMode, []string{"design", "multiplier", "actual", "annual"}, profileMetricModeSetting(settings.GraphMode, defaults.MetricMode))
-	settings.ScheduleSummaryMode = normalizeProfileChoice(settings.ScheduleSummaryMode, []string{
-		"representative_day",
-		"representative_week",
-		"monthly_average",
-		"hourly_average_by_daytype",
-		"load_duration",
-		"annual_heatmap",
-	}, defaults.ScheduleSummaryMode)
-	settings.TimeView = normalizeProfileChoice(
-		settings.TimeView,
-		[]string{"day", "week", "month", "year", "duration", "rules"},
-		profileTimeViewSetting(settings.ScheduleSummaryMode, defaults.TimeView),
-	)
-	settings.CompareMode = normalizeProfileChoice(settings.CompareMode, []string{"single", "overlay", "small_multiples", "ranking", "similarity", "outliers"}, defaults.CompareMode)
+	settings.TimeView = normalizeProfileChoice(settings.TimeView, []string{"day", "week", "month", "year", "duration", "rules"}, defaults.TimeView)
 	settings.ScaleMode = normalizeProfileChoice(settings.ScaleMode, []string{"auto", "shared", "design_peak", "multiplier_0_1", "percentile"}, defaults.ScaleMode)
-	settings.GraphDeck.ScopeType = normalizeProfileChoice(settings.GraphDeck.ScopeType, []string{"group", "zone", "schedule", "dimension", "selection"}, defaults.GraphDeck.ScopeType)
-	settings.GraphDeck.MetricMode = normalizeProfileChoice(settings.GraphDeck.MetricMode, []string{"design", "multiplier", "actual", "annual"}, settings.MetricMode)
-	settings.GraphDeck.TimeView = normalizeProfileChoice(settings.GraphDeck.TimeView, []string{"day", "week", "month", "year", "duration", "rules"}, settings.TimeView)
-	settings.GraphDeck.CompareMode = normalizeProfileChoice(settings.GraphDeck.CompareMode, []string{"single", "overlay", "small_multiples", "ranking", "similarity", "outliers"}, settings.CompareMode)
-	settings.GraphDeck.ScaleMode = normalizeProfileChoice(settings.GraphDeck.ScaleMode, []string{"auto", "shared", "design_peak", "multiplier_0_1", "percentile"}, settings.ScaleMode)
 	settings.ApplyBehavior.DefaultMode = normalizeProfileChoice(settings.ApplyBehavior.DefaultMode, []string{"clone", "shared"}, defaults.ApplyBehavior.DefaultMode)
 	if strings.TrimSpace(settings.ApplyBehavior.NameSuffix) == "" {
 		settings.ApplyBehavior.NameSuffix = defaults.ApplyBehavior.NameSuffix
@@ -1736,37 +1779,6 @@ func normalizeProfileSettings(settings idf.ProfileAnalysisSettings, defaults idf
 	settings.ApplyBehavior.ReplaceExistingPolicy = normalizeProfileChoice(settings.ApplyBehavior.ReplaceExistingPolicy, []string{"replace", "keep", "duplicate"}, defaults.ApplyBehavior.ReplaceExistingPolicy)
 	return settings
 }
-
-func profileMetricModeSetting(graphMode string, fallback string) string {
-	switch strings.ToLower(strings.TrimSpace(graphMode)) {
-	case "multiplier":
-		return "multiplier"
-	case "design":
-		return "design"
-	case "annual":
-		return "annual"
-	default:
-		return fallback
-	}
-}
-
-func profileTimeViewSetting(scheduleSummaryMode string, fallback string) string {
-	switch strings.ToLower(strings.TrimSpace(scheduleSummaryMode)) {
-	case "representative_day":
-		return "day"
-	case "representative_week", "hourly_average_by_daytype":
-		return "week"
-	case "monthly_average":
-		return "month"
-	case "load_duration":
-		return "duration"
-	case "annual_heatmap":
-		return "year"
-	default:
-		return fallback
-	}
-}
-
 func normalizeProfileChoice(value string, allowed []string, fallback string) string {
 	normalized := strings.ToLower(strings.TrimSpace(value))
 	for _, choice := range allowed {

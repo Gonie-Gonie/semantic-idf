@@ -255,8 +255,8 @@ try {
     issueLinks:[{id:"topology-issue:a",code:"surface_pair_area_mismatch",severity:"warning",message:"Area mismatch",boundaryId:"thermal-boundary:surface:a"}], adjacencyObservations:[],
   }};
   const state = stateModule.state;
-  state.geometryMode = "thermal"; state.report = {geometry}; state.thermalTopologyMetric = "area"; state.thermalTopologyScope = "building"; state.thermalTopologySelectedEntityId = "thermal-connection:a:outdoors"; state.selectedGeometryKind = "thermal_connection"; state.selectedGeometryId = "thermal-connection:a:outdoors";
-  const helpers = { navigationAttributes: () => 'data-entity-id="test"', selectGeometry: async () => true, setGeometryMode: () => {} };
+  state.topologyMode = "thermal"; state.report = {geometry}; state.thermalTopologyMetric = "area"; state.thermalTopologyScope = "building"; state.thermalTopologySelectedEntityId = "thermal-connection:a:outdoors"; state.selectedTopologyEntityKind = "thermal_connection"; state.selectedTopologyEntityId = "thermal-connection:a:outdoors";
+  const helpers = { navigationAttributes: () => 'data-entity-id="test"', selectTopologyEntity: async () => true, setTopologyMode: () => {} };
   view.renderThermalTopology(geometry, helpers);
   const svg = Boolean(document.querySelector(".thermal-topology-svg"));
   const metricWidth = /--thermal-edge-width:(?!2\.00)/.test(document.querySelector(".thermal-edge").getAttribute("style"));
@@ -345,11 +345,11 @@ try {
     ],
   }};
   const state = stateModule.state;
-  state.report={geometry}; state.geometryMode="thermal"; state.thermalTopologyMetric="topology"; state.thermalTopologyScope="building"; state.thermalTopologyLayout="network";
+  state.report={geometry}; state.topologyMode="thermal"; state.thermalTopologyMetric="topology"; state.thermalTopologyScope="building"; state.thermalTopologyLayout="network";
   state.thermalTopologyShowAirCoupling=false; state.thermalTopologyPanX=30; state.thermalTopologyPanY=-20; state.thermalTopologyScale=2; state.thermalTopologyLayoutCache.clear();
-  state.thermalTopologySelectedEntityKind=""; state.thermalTopologySelectedEntityId=""; state.selectedGeometryKind=""; state.selectedGeometryId="";
+  state.thermalTopologySelectedEntityKind=""; state.thermalTopologySelectedEntityId=""; state.selectedTopologyEntityKind=""; state.selectedTopologyEntityId="";
   const selections=[];
-  const helpers={navigationAttributes:()=>"",selectGeometry:async(kind,id)=>{selections.push({kind,id});return true;},setGeometryMode:()=>{}};
+  const helpers={navigationAttributes:()=>"",selectTopologyEntity:async(kind,id)=>{selections.push({kind,id});return true;},setTopologyMode:()=>{}};
   view.renderThermalTopology(geometry,helpers);
   let svg=document.querySelector(".thermal-topology-svg");
   let zone=document.querySelector('[data-thermal-node-id="zone:a"]');

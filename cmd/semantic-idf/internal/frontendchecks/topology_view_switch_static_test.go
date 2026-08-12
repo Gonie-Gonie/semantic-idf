@@ -8,9 +8,9 @@ import (
 func TestTopologyViewSwitchSupportsThermalAndNormalizesInvalidModes(t *testing.T) {
 	index := readTestFile(t, "frontend/src/index.html")
 	for _, required := range []string{
-		`data-geometry-mode="3d"`,
-		`data-geometry-mode="plan"`,
-		`data-geometry-mode="thermal"`,
+		`data-topology-mode="3d"`,
+		`data-topology-mode="plan"`,
+		`data-topology-mode="thermal"`,
 		`data-i18n-title="topology.thermalTooltip"`,
 		`>Network</button>`,
 		`id="thermalTopologyGraph"`,
@@ -42,10 +42,10 @@ func TestTopologyViewSwitchSupportsThermalAndNormalizesInvalidModes(t *testing.T
 	state := readTestFile(t, "frontend/src/js/state.js")
 	for _, required := range []string{
 		`Object.freeze(["3d", "plan", "thermal"])`,
-		`return geometryModes.includes(mode) ? mode : "3d"`,
+		`return topologyModes.includes(mode) ? mode : "3d"`,
 	} {
 		if !strings.Contains(state, required) {
-			t.Fatalf("geometry mode normalization is missing %q", required)
+			t.Fatalf("topology mode normalization is missing %q", required)
 		}
 	}
 }
@@ -58,7 +58,7 @@ func TestTopologyUsesCanonicalPhysicalGrossAreaWithSeparateMultiplier(t *testing
 		}
 	}
 
-	view := readTestFile(t, "frontend/src/js/views/geometry-view.js")
+	view := readTestFile(t, "frontend/src/js/views/topology-view.js")
 	for _, required := range []string{
 		`surface.physicalArea ?? surface.area`,
 		`windowItem.physicalArea ?? windowItem.area`,
@@ -80,12 +80,12 @@ func TestTopologyUsesCanonicalPhysicalGrossAreaWithSeparateMultiplier(t *testing
 }
 
 func TestTopologyThermalRendererIsSplitAndLazyLoaded(t *testing.T) {
-	view := readTestFile(t, "frontend/src/js/views/geometry-view.js")
+	view := readTestFile(t, "frontend/src/js/views/topology-view.js")
 	for _, required := range []string{
 		`import("./thermal-topology-view.js")`,
 		`renderThermalTopologyLazy(geometry)`,
-		`export function geometrySelectionForTarget`,
-		`export function geometryNavigationAttributes`,
+		`export function topologySelectionForTarget`,
+		`export function topologyNavigationAttributes`,
 	} {
 		if !strings.Contains(view, required) {
 			t.Fatalf("geometry renderer split is missing %q", required)
@@ -105,16 +105,16 @@ func TestTopologyThermalRendererIsSplitAndLazyLoaded(t *testing.T) {
 func TestTopologyToolbarSeparatesModeSpecificControls(t *testing.T) {
 	index := readTestFile(t, "frontend/src/index.html")
 	for _, required := range []string{
-		`id="geometryStoryControl"`,
-		`id="geometrySyncLocate" type="checkbox" checked`,
-		`id="geometry3DControls"`,
-		`id="geometry3DShowZones"`,
-		`id="geometry3DShowSurfaces"`,
-		`id="geometry3DShowOpenings"`,
-		`id="geometryPlanControls"`,
-		`id="geometryPlanShowZones"`,
-		`id="geometryPlanShowBoundaries"`,
-		`id="geometryPlanShowOpenings"`,
+		`id="topologyStoryControl"`,
+		`id="topologySyncLocate" type="checkbox" checked`,
+		`id="topology3DControls"`,
+		`id="topology3DShowZones"`,
+		`id="topology3DShowSurfaces"`,
+		`id="topology3DShowOpenings"`,
+		`id="topologyPlanControls"`,
+		`id="topologyPlanShowZones"`,
+		`id="topologyPlanShowBoundaries"`,
+		`id="topologyPlanShowOpenings"`,
 		`id="thermalTopologyControls"`,
 		`id="thermalTopologyLayout"`,
 		`id="thermalTopologyShowAirCoupling"`,
@@ -127,23 +127,23 @@ func TestTopologyToolbarSeparatesModeSpecificControls(t *testing.T) {
 		t.Fatal("automatic directional Outdoor projection still exposes a manual external-target toggle")
 	}
 
-	view := readTestFile(t, "frontend/src/js/views/geometry-view.js")
+	view := readTestFile(t, "frontend/src/js/views/topology-view.js")
 	for _, required := range []string{
-		`const is3D = state.geometryMode === "3d"`,
-		`const isPlan = state.geometryMode === "plan"`,
-		`const isNetwork = state.geometryMode === "thermal"`,
-		`elements.geometry3DControls.hidden = !is3D`,
-		`elements.geometryPlanControls.hidden = !isPlan`,
+		`const is3D = state.topologyMode === "3d"`,
+		`const isPlan = state.topologyMode === "plan"`,
+		`const isNetwork = state.topologyMode === "thermal"`,
+		`elements.topology3DControls.hidden = !is3D`,
+		`elements.topologyPlanControls.hidden = !isPlan`,
 		`elements.thermalTopologyControls.hidden = !isNetwork`,
-		`elements.geometryStoryControl.hidden = isNetwork && state.thermalTopologyScope !== "story"`,
-		`state.geometryMode === "3d"`,
+		`elements.topologyStoryControl.hidden = isNetwork && state.thermalTopologyScope !== "story"`,
+		`state.topologyMode === "3d"`,
 	} {
 		if !strings.Contains(view, required) {
 			t.Fatalf("topology mode control visibility is missing %q", required)
 		}
 	}
 
-	styles := readTestFile(t, "frontend/src/styles/geometry.css")
+	styles := readTestFile(t, "frontend/src/styles/topology.css")
 	if !strings.Contains(styles, `@media (max-width: 1280px)`) || !strings.Contains(styles, `.thermal-topology-advanced-menu`) {
 		t.Fatal("thermal toolbar must collapse its advanced controls at narrow widths")
 	}
@@ -152,11 +152,11 @@ func TestTopologyToolbarSeparatesModeSpecificControls(t *testing.T) {
 func TestTopologyVisibilityStateAndRenderingAreIndependentByMode(t *testing.T) {
 	state := readTestFile(t, "frontend/src/js/state.js")
 	for _, required := range []string{
-		"geometry3DVisibility:",
+		"topology3DVisibility:",
 		"zones: true",
 		"surfaces: true",
 		"openings: true",
-		"geometryPlanVisibility:",
+		"topologyPlanVisibility:",
 		"boundaries: true",
 	} {
 		if !strings.Contains(state, required) {
@@ -171,22 +171,22 @@ func TestTopologyVisibilityStateAndRenderingAreIndependentByMode(t *testing.T) {
 
 	main := readTestFile(t, "frontend/src/js/main.js")
 	for _, required := range []string{
-		`bindGeometryVisibilityControl(elements.geometry3DShowZones, "geometry3DVisibility", "zones")`,
-		`bindGeometryVisibilityControl(elements.geometry3DShowSurfaces, "geometry3DVisibility", "surfaces")`,
-		`bindGeometryVisibilityControl(elements.geometry3DShowOpenings, "geometry3DVisibility", "openings")`,
-		`bindGeometryVisibilityControl(elements.geometryPlanShowZones, "geometryPlanVisibility", "zones")`,
-		`bindGeometryVisibilityControl(elements.geometryPlanShowBoundaries, "geometryPlanVisibility", "boundaries")`,
-		`bindGeometryVisibilityControl(elements.geometryPlanShowOpenings, "geometryPlanVisibility", "openings")`,
+		`bindTopologyVisibilityControl(elements.topology3DShowZones, "topology3DVisibility", "zones")`,
+		`bindTopologyVisibilityControl(elements.topology3DShowSurfaces, "topology3DVisibility", "surfaces")`,
+		`bindTopologyVisibilityControl(elements.topology3DShowOpenings, "topology3DVisibility", "openings")`,
+		`bindTopologyVisibilityControl(elements.topologyPlanShowZones, "topologyPlanVisibility", "zones")`,
+		`bindTopologyVisibilityControl(elements.topologyPlanShowBoundaries, "topologyPlanVisibility", "boundaries")`,
+		`bindTopologyVisibilityControl(elements.topologyPlanShowOpenings, "topologyPlanVisibility", "openings")`,
 	} {
 		if !strings.Contains(main, required) {
 			t.Fatalf("mode-specific topology visibility binding is missing %q", required)
 		}
 	}
 
-	view := readTestFile(t, "frontend/src/js/views/geometry-view.js")
+	view := readTestFile(t, "frontend/src/js/views/topology-view.js")
 	scene := sliceBetween(view, "function renderScene", "function ensureRenderer")
 	for _, required := range []string{
-		`const visibility = state.geometry3DVisibility || {}`,
+		`const visibility = state.topology3DVisibility || {}`,
 		`visibility.zones !== false`,
 		`visibility.surfaces !== false`,
 		`visibility.openings !== false`,
@@ -197,7 +197,7 @@ func TestTopologyVisibilityStateAndRenderingAreIndependentByMode(t *testing.T) {
 	}
 	plan := sliceBetween(view, "function renderPlan", "function cachedGeometryPlanLayout")
 	for _, required := range []string{
-		`const visibility = state.geometryPlanVisibility || {}`,
+		`const visibility = state.topologyPlanVisibility || {}`,
 		`visibility.zones !== false`,
 		`visibility.boundaries !== false`,
 		`visibility.openings !== false`,
@@ -210,30 +210,30 @@ func TestTopologyVisibilityStateAndRenderingAreIndependentByMode(t *testing.T) {
 
 func TestTopologyViewportOwnsFitAndExpandIconActions(t *testing.T) {
 	index := readTestFile(t, "frontend/src/index.html")
-	viewport := sliceBetween(index, `id="geometryViewport"`, `id="geometryDetailsSplitter"`)
+	viewport := sliceBetween(index, `id="topologyViewport"`, `id="topologyDetailsSplitter"`)
 	for _, required := range []string{
-		`class="viewport-action-tools geometry-viewport-actions"`,
-		`id="geometryFitButton"`,
-		`id="geometryExpandButton"`,
-		`data-expand-pane="geometry"`,
+		`class="viewport-action-tools topology-viewport-actions"`,
+		`id="topologyFitButton"`,
+		`id="topologyExpandButton"`,
+		`data-expand-pane="topology"`,
 		`class="viewport-icon`,
 		`aria-hidden="true"`,
 		`class="sr-only"`,
 	} {
 		if !strings.Contains(viewport, required) {
-			t.Fatalf("geometry viewport action icons are missing %q", required)
+			t.Fatalf("topology viewport action icons are missing %q", required)
 		}
 	}
 
 	main := readTestFile(t, "frontend/src/js/main.js")
 	for _, required := range []string{
-		`elements.geometryFitButton.addEventListener("click", () => void fitGeometryView())`,
-		`updateExpandButton(elements.geometryExpandButton, "geometry")`,
+		`elements.topologyFitButton.addEventListener("click", () => void fitTopologyView())`,
+		`updateExpandButton(elements.topologyExpandButton, "topology")`,
 		`button.setAttribute("aria-pressed", String(active))`,
 		`button.setAttribute("aria-label", label)`,
 	} {
 		if !strings.Contains(main, required) {
-			t.Fatalf("geometry viewport action behavior is missing %q", required)
+			t.Fatalf("topology viewport action behavior is missing %q", required)
 		}
 	}
 	thermal := readTestFile(t, "frontend/src/js/views/thermal-topology-view.js")
@@ -245,7 +245,7 @@ func TestTopologyViewportOwnsFitAndExpandIconActions(t *testing.T) {
 }
 
 func TestTopologyNetworkHasNoMatrixOrEdgeLabels(t *testing.T) {
-	content := readTestFile(t, "frontend/src/index.html") + readTestFile(t, "frontend/src/js/views/thermal-topology-view.js") + readTestFile(t, "frontend/src/styles/geometry.css")
+	content := readTestFile(t, "frontend/src/index.html") + readTestFile(t, "frontend/src/js/views/thermal-topology-view.js") + readTestFile(t, "frontend/src/styles/topology.css")
 	for _, removed := range []string{"thermalTopologyMatrix", "thermal-matrix", "data-thermal-topology-display", "thermal-edge-label", `} surfaces`} {
 		if strings.Contains(content, removed) {
 			t.Fatalf("Network view still contains removed matrix or edge-label feature %q", removed)
@@ -363,9 +363,9 @@ func TestTopologyMetricModesAndInspectorExposeRequiredContracts(t *testing.T) {
 }
 
 func TestTopologyModeHistoryPreservesSharedSelection(t *testing.T) {
-	loader := readTestFile(t, "frontend/src/js/geometry-loader.js")
-	setter := sliceBetween(loader, "export function setGeometryMode", "export function setGeometryStory")
-	for _, required := range []string{"normalizeGeometryMode(mode)", "recordViewHistory()", "state.geometryMode = nextMode"} {
+	loader := readTestFile(t, "frontend/src/js/topology-loader.js")
+	setter := sliceBetween(loader, "export function setTopologyMode", "export function setTopologyStory")
+	for _, required := range []string{"normalizeTopologyMode(mode)", "recordViewHistory()", "state.topologyMode = nextMode"} {
 		if !strings.Contains(setter, required) {
 			t.Fatalf("geometry mode setter is missing %q", required)
 		}
@@ -376,12 +376,12 @@ func TestTopologyModeHistoryPreservesSharedSelection(t *testing.T) {
 		}
 	}
 
-	view := readTestFile(t, "frontend/src/js/views/geometry-view.js")
-	restore := sliceBetween(view, "export async function restoreGeometryNavigationContext", "export function preferredGeometrySemanticOccurrence")
+	view := readTestFile(t, "frontend/src/js/views/topology-view.js")
+	restore := sliceBetween(view, "export async function restoreTopologyNavigationContext", "export function preferredTopologySemanticOccurrence")
 	for _, required := range []string{
-		`state.geometryMode = normalizeGeometryMode(snapshot.mode)`,
-		`state.selectedGeometryKind = normalizeGeometryKind(snapshot.selectedKind)`,
-		`state.selectedGeometryId = String(snapshot.selectedId || "")`,
+		`state.topologyMode = normalizeTopologyMode(snapshot.mode)`,
+		`state.selectedTopologyEntityKind = normalizeGeometryKind(snapshot.selectedKind)`,
+		`state.selectedTopologyEntityId = String(snapshot.selectedId || "")`,
 	} {
 		if !strings.Contains(restore, required) {
 			t.Fatalf("topology history restore is missing %q", required)

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"archive/zip"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -17,7 +16,7 @@ import (
 	"github.com/Gonie-Gonie/semantic-idf/cmd/semantic-idf/internal/simulation"
 )
 
-const appSummaryIDF = `
+const appMetricsIDF = `
 Version,
   24.1;                    !- Version Identifier
 
@@ -25,20 +24,20 @@ Zone,
   Office;                  !- Name
 `
 
-func TestAnalyzeInputTextIncludesSummary(t *testing.T) {
+func TestAnalyzeInputTextIncludesMetrics(t *testing.T) {
 	app := NewApp()
-	result, err := app.AnalyzeInputText(appSummaryIDF)
+	result, err := app.AnalyzeInputText(appMetricsIDF)
 	if err != nil {
 		t.Fatalf("AnalyzeInputText() error = %v", err)
 	}
 	if result.Report == nil {
 		t.Fatalf("AnalyzeInputText() report = nil")
 	}
-	if result.Report.Summary.MetricCount != 59 {
-		t.Fatalf("summary metric count = %d, want 59", result.Report.Summary.MetricCount)
+	if result.Report.Metrics.MetricCount != 59 {
+		t.Fatalf("metrics metric count = %d, want 59", result.Report.Metrics.MetricCount)
 	}
-	if len(result.Report.Summary.Categories) != 6 {
-		t.Fatalf("summary category count = %d, want 6", len(result.Report.Summary.Categories))
+	if len(result.Report.Metrics.Categories) != 6 {
+		t.Fatalf("metrics category count = %d, want 6", len(result.Report.Metrics.Categories))
 	}
 	if result.Report.Geometry.ZoneCount != 1 {
 		t.Fatalf("geometry zone count = %d, want 1", result.Report.Geometry.ZoneCount)
@@ -47,7 +46,7 @@ func TestAnalyzeInputTextIncludesSummary(t *testing.T) {
 
 func TestAnalyzeInputTextUsesCacheForSameInput(t *testing.T) {
 	app := NewApp()
-	first, err := app.AnalyzeInputText(appSummaryIDF)
+	first, err := app.AnalyzeInputText(appMetricsIDF)
 	if err != nil {
 		t.Fatalf("first AnalyzeInputText() error = %v", err)
 	}
@@ -60,13 +59,13 @@ func TestAnalyzeInputTextUsesCacheForSameInput(t *testing.T) {
 	if first.Timing.CacheHit {
 		t.Fatalf("first analysis unexpectedly reported cache hit")
 	}
-	_, hasSummaryTiming := first.Timing.Stages["summary"]
+	_, hasMetricsTiming := first.Timing.Stages["metrics"]
 	_, hasCoreTiming := first.Timing.Stages["core"]
-	if !hasSummaryTiming || !hasCoreTiming {
+	if !hasMetricsTiming || !hasCoreTiming {
 		t.Fatalf("first analysis did not report stage timings: %+v", first.Timing)
 	}
 
-	second, err := app.AnalyzeInputText(appSummaryIDF)
+	second, err := app.AnalyzeInputText(appMetricsIDF)
 	if err != nil {
 		t.Fatalf("second AnalyzeInputText() error = %v", err)
 	}
@@ -76,14 +75,14 @@ func TestAnalyzeInputTextUsesCacheForSameInput(t *testing.T) {
 	if second.Timing == nil || !second.Timing.CacheHit {
 		t.Fatalf("second analysis timing = %+v, want cache hit", second.Timing)
 	}
-	if second.Report == nil || second.Report.Summary.MetricCount != first.Report.Summary.MetricCount {
-		t.Fatalf("cached report summary = %+v, want metric count %d", second.Report, first.Report.Summary.MetricCount)
+	if second.Report == nil || second.Report.Metrics.MetricCount != first.Report.Metrics.MetricCount {
+		t.Fatalf("cached report metrics = %+v, want metric count %d", second.Report, first.Report.Metrics.MetricCount)
 	}
 }
 
 func TestGetCachedAnalysisAssemblesCompletedStageResults(t *testing.T) {
 	app := NewApp()
-	quick, err := app.AnalyzeInputQuickText(appSummaryIDF)
+	quick, err := app.AnalyzeInputQuickText(appMetricsIDF)
 	if err != nil {
 		t.Fatalf("AnalyzeInputQuickText() error = %v", err)
 	}
@@ -95,7 +94,7 @@ func TestGetCachedAnalysisAssemblesCompletedStageResults(t *testing.T) {
 	}
 
 	for _, stage := range []string{"profile", "hvac", "output", "diagnostics", "geometry"} {
-		if _, err := app.AnalyzeInputStageText(appSummaryIDF, stage); err != nil {
+		if _, err := app.AnalyzeInputStageText(appMetricsIDF, stage); err != nil {
 			t.Fatalf("AnalyzeInputStageText(%q) error = %v", stage, err)
 		}
 	}
@@ -112,8 +111,8 @@ func TestGetCachedAnalysisAssemblesCompletedStageResults(t *testing.T) {
 	if cached.Report == nil || cached.Report.Geometry.ZoneCount != 1 {
 		t.Fatalf("cached geometry zone count = %+v, want 1", cached.Report)
 	}
-	if cached.Report.Summary.MetricCount != quick.Report.Summary.MetricCount {
-		t.Fatalf("cached summary metric count = %d, want %d", cached.Report.Summary.MetricCount, quick.Report.Summary.MetricCount)
+	if cached.Report.Metrics.MetricCount != quick.Report.Metrics.MetricCount {
+		t.Fatalf("cached metrics metric count = %d, want %d", cached.Report.Metrics.MetricCount, quick.Report.Metrics.MetricCount)
 	}
 }
 
@@ -162,36 +161,36 @@ func TestAnalysisCacheSharesInFlightComputation(t *testing.T) {
 	}
 }
 
-func TestParseBatchInputReusesContentHashCache(t *testing.T) {
+func TestParseCachedBatchInputReusesContentHashCache(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "model.idf")
-	if err := os.WriteFile(path, []byte(appSummaryIDF), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(appMetricsIDF), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	firstModel, firstDoc, err := parseBatchInput(path)
+	firstModel, firstDoc, err := parseCachedBatchInput(path)
 	if err != nil {
-		t.Fatalf("first parseBatchInput() error = %v", err)
+		t.Fatalf("first parseCachedBatchInput() error = %v", err)
 	}
-	secondModel, secondDoc, err := parseBatchInput(path)
+	secondModel, secondDoc, err := parseCachedBatchInput(path)
 	if err != nil {
-		t.Fatalf("second parseBatchInput() error = %v", err)
+		t.Fatalf("second parseCachedBatchInput() error = %v", err)
 	}
 	if firstModel != secondModel {
-		t.Fatalf("parseBatchInput() did not reuse cached model")
+		t.Fatalf("parseCachedBatchInput() did not reuse cached model")
 	}
 	if len(firstDoc.Objects) != len(secondDoc.Objects) {
 		t.Fatalf("cached doc object count = %d, want %d", len(secondDoc.Objects), len(firstDoc.Objects))
 	}
 }
 
-func TestThrottleMultiSummaryProgressKeepsFinalEvent(t *testing.T) {
-	var emitted []MultiSummaryProgress
-	throttled := throttleMultiSummaryProgress(func(progress MultiSummaryProgress) {
+func TestThrottleBatchMetricsProgressKeepsFinalEvent(t *testing.T) {
+	var emitted []BatchMetricsProgress
+	throttled := throttleBatchMetricsProgress(func(progress BatchMetricsProgress) {
 		emitted = append(emitted, progress)
 	})
-	throttled(MultiSummaryProgress{RunID: "batch", Total: 3, Completed: 1})
-	throttled(MultiSummaryProgress{RunID: "batch", Total: 3, Completed: 2})
-	throttled(MultiSummaryProgress{RunID: "batch", Total: 3, Completed: 3})
+	throttled(BatchMetricsProgress{RunID: "batch", Total: 3, Completed: 1})
+	throttled(BatchMetricsProgress{RunID: "batch", Total: 3, Completed: 2})
+	throttled(BatchMetricsProgress{RunID: "batch", Total: 3, Completed: 3})
 	if len(emitted) != 2 {
 		t.Fatalf("emitted progress count = %d, want first and final events", len(emitted))
 	}
@@ -228,91 +227,15 @@ func TestSlimReportForModeDefersHVACRuleGraphExceptDebug(t *testing.T) {
 	}
 }
 
-func TestAnalyzeBatchDiagnosePathsKeepsParseFailuresInResult(t *testing.T) {
-	dir := t.TempDir()
-	okPath := filepath.Join(dir, "ok.idf")
-	badPath := filepath.Join(dir, "bad.epjson")
-	if err := os.WriteFile(okPath, []byte(appSummaryIDF), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(badPath, []byte("{"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	result := AnalyzeBatchDiagnosePaths(BatchJobRequest{RunID: "diagnose-test", InputPaths: []string{okPath, badPath}})
-	if result.Total != 2 || result.Completed != 2 || result.Succeeded != 1 || result.Failed != 1 {
-		t.Fatalf("batch diagnose counts = %+v", result)
-	}
-	if len(result.Files) != 2 {
-		t.Fatalf("files = %d, want 2", len(result.Files))
-	}
-}
-
-func TestConvertExportBatchRenamePolicyPreservesExistingOutput(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "model.idf")
-	if err := os.WriteFile(path, []byte(appSummaryIDF), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	request := BatchConvertExportRequest{
-		BatchJobRequest: BatchJobRequest{RunID: "convert-test", InputPaths: []string{path}},
-		TargetFormat:    "epjson",
-		OutputDirectory: dir,
-		OverwritePolicy: "rename",
-	}
-	first := ConvertExportBatch(request)
-	second := ConvertExportBatch(request)
-	if first.Succeeded != 1 || second.Succeeded != 1 {
-		t.Fatalf("convert results = %+v / %+v", first, second)
-	}
-	if first.Files[0].OutputPath == second.Files[0].OutputPath {
-		t.Fatalf("rename policy reused output path %q", first.Files[0].OutputPath)
-	}
-}
-
-func TestConvertExportBatchWritesXLSXTables(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "model.idf")
-	if err := os.WriteFile(path, []byte(appSummaryIDF), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	result := ConvertExportBatch(BatchConvertExportRequest{
-		BatchJobRequest: BatchJobRequest{RunID: "convert-xlsx-test", InputPaths: []string{path}},
-		TargetFormat:    "xlsx",
-		OutputDirectory: dir,
-		OverwritePolicy: "fail",
-	})
-	if result.Succeeded != 1 || len(result.Files) != 1 {
-		t.Fatalf("xlsx convert result = %+v", result)
-	}
-	if filepath.Ext(result.Files[0].OutputPath) != ".xlsx" {
-		t.Fatalf("xlsx output path = %q", result.Files[0].OutputPath)
-	}
-	archive, err := zip.OpenReader(result.Files[0].OutputPath)
-	if err != nil {
-		t.Fatalf("open xlsx archive: %v", err)
-	}
-	defer archive.Close()
-	foundSheet := false
-	for _, file := range archive.File {
-		if file.Name == "xl/worksheets/sheet1.xml" {
-			foundSheet = true
-			break
-		}
-	}
-	if !foundSheet {
-		t.Fatalf("xlsx archive missing sheet1.xml")
-	}
-}
-
-func TestBatchSummaryWorkbookSheetsIncludeDelta(t *testing.T) {
-	result := MultiSummaryResult{
-		Metrics: []MultiSummaryMetric{{ID: "total_wwr", CSVName: "total_wwr [%]", Category: "Envelope", Unit: "%"}},
-		Files: []MultiSummaryFile{
-			{Index: 0, Filename: "a.idf", Label: "a.idf", Status: "ok", MetricValues: map[string]MultiSummaryValue{"total_wwr": {DisplayValue: "10", Status: "ok"}}},
-			{Index: 1, Filename: "b.idf", Label: "b.idf", Status: "ok", MetricValues: map[string]MultiSummaryValue{"total_wwr": {DisplayValue: "15", Status: "ok"}}},
+func TestBatchMetricsWorkbookSheetsIncludeDelta(t *testing.T) {
+	result := BatchMetricsResult{
+		Metrics: []BatchMetricsMetric{{ID: "total_wwr", CSVName: "total_wwr [%]", Category: "Envelope", Unit: "%"}},
+		Files: []BatchMetricsFile{
+			{Index: 0, Filename: "a.idf", Label: "a.idf", Status: "ok", MetricValues: map[string]BatchMetricsValue{"total_wwr": {DisplayValue: "10", Status: "ok"}}},
+			{Index: 1, Filename: "b.idf", Label: "b.idf", Status: "ok", MetricValues: map[string]BatchMetricsValue{"total_wwr": {DisplayValue: "15", Status: "ok"}}},
 		},
 	}
-	sheets := batchSummaryWorkbookSheets(BatchSummaryXLSXExportRequest{
+	sheets := batchMetricsWorkbookSheets(BatchMetricsXLSXExportRequest{
 		Result:        result,
 		Orientation:   "metrics",
 		BaselineIndex: 0,
@@ -1003,55 +926,19 @@ func TestBatchSimulationEnergyDeltasDistinguishMissingAndZero(t *testing.T) {
 		}
 		return nil
 	}
-	if row := rowByID(energyRows, "lighting.electricity"); row == nil || row[5] != "0" || row[6] != "5" || row[8] != "N/A" || row[10] != "zero baseline" {
+	if row := rowByID(energyRows, "lighting.electricity"); row == nil || row[5] != "0" || row[6] != "5" || row[8] != "—" || row[10] != "zero baseline" {
 		t.Fatalf("zero baseline energy row = %#v; all rows = %#v", row, energyRows)
 	}
-	if row := rowByID(energyRows, "pumps.electricity"); row == nil || row[5] != "0" || row[6] != "2" || row[8] != "N/A" || row[10] != "missing in baseline" {
+	if row := rowByID(energyRows, "pumps.electricity"); row == nil || row[5] != "0" || row[6] != "2" || row[8] != "—" || row[10] != "missing in baseline" {
 		t.Fatalf("missing baseline energy row = %#v; all rows = %#v", row, energyRows)
 	}
 
 	edgeRows := batchSimulationEnergyEdgeDeltaSection(left, right).Rows
-	if row := rowByID(edgeRows, "Electricity -> Lighting electricity"); row == nil || row[5] != "0" || row[6] != "5" || row[8] != "N/A" || row[10] != "zero baseline" {
+	if row := rowByID(edgeRows, "Electricity -> Lighting electricity"); row == nil || row[5] != "0" || row[6] != "5" || row[8] != "—" || row[10] != "zero baseline" {
 		t.Fatalf("zero baseline edge row = %#v; all rows = %#v", row, edgeRows)
 	}
-	if row := rowByID(edgeRows, "Electricity -> Pumps electricity"); row == nil || row[5] != "0" || row[6] != "2" || row[8] != "N/A" || row[10] != "missing in baseline" {
+	if row := rowByID(edgeRows, "Electricity -> Pumps electricity"); row == nil || row[5] != "0" || row[6] != "2" || row[8] != "—" || row[10] != "missing in baseline" {
 		t.Fatalf("missing baseline edge row = %#v; all rows = %#v", row, edgeRows)
-	}
-}
-
-func TestCreateBatchSafeCleanupCopiesWritesCleanedCopyOnly(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "cleanup.idf")
-	text := appSummaryIDF + `
-Schedule:Constant,
-  Unused,
-  ,
-  1;
-`
-	if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	result := CreateBatchSafeCleanupCopies(BatchConvertExportRequest{
-		BatchJobRequest: BatchJobRequest{RunID: "cleanup-copy-test", InputPaths: []string{path}},
-		OutputDirectory: dir,
-		OverwritePolicy: "rename",
-	})
-	if result.Succeeded != 1 || len(result.Files) != 1 || result.Files[0].OutputPath == "" {
-		t.Fatalf("cleanup copy result = %+v", result)
-	}
-	original, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	cleaned, err := os.ReadFile(result.Files[0].OutputPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(original), "Unused") {
-		t.Fatalf("original was unexpectedly changed:\n%s", string(original))
-	}
-	if strings.Contains(string(cleaned), "Unused") {
-		t.Fatalf("cleaned copy still contains unused schedule:\n%s", string(cleaned))
 	}
 }
 
@@ -1128,7 +1015,7 @@ Output:Variable,
 }
 
 func TestPreparePurposeSimulationRequestUsesRunCopy(t *testing.T) {
-	original := appSummaryIDF + `
+	original := appMetricsIDF + `
 Lights,
   Office Lights,
   Office,
@@ -1191,7 +1078,7 @@ OutputControl:Table:Style,
 }
 
 func TestApplyPurposeOutputsTextUsesOutputPipeline(t *testing.T) {
-	result, err := NewApp().ApplyPurposeOutputsText(appSummaryIDF, simulation.SimulationPurposeRequest{
+	result, err := NewApp().ApplyPurposeOutputsText(appMetricsIDF, simulation.SimulationPurposeRequest{
 		Purposes: []simulation.SimulationPurposeID{simulation.SimulationPurposeZoneHeatFlow},
 	})
 	if err != nil {
@@ -1211,33 +1098,37 @@ func TestApplyPurposeOutputsTextUsesOutputPipeline(t *testing.T) {
 	}
 }
 
-func TestAppAssetHandlerServesSummaryMetricGuides(t *testing.T) {
-	request := httptest.NewRequest(http.MethodGet, "/api/summary-metric-guides", nil)
-	response := httptest.NewRecorder()
+func TestAppAssetHandlerServesMetricGuides(t *testing.T) {
+	for _, path := range []string{"/api/metric-guides", "/api/summary-metric-guides"} {
+		t.Run(path, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, path, nil)
+			response := httptest.NewRecorder()
 
-	appAssetHandler(NewApp()).ServeHTTP(response, request)
+			appAssetHandler(NewApp()).ServeHTTP(response, request)
 
-	if response.Code != http.StatusOK {
-		t.Fatalf("summary metric guide API status = %d, want %d", response.Code, http.StatusOK)
-	}
-	var guides []struct {
-		ID string `json:"id"`
-	}
-	if err := json.NewDecoder(response.Body).Decode(&guides); err != nil {
-		t.Fatalf("summary metric guide API did not return JSON: %v", err)
-	}
-	if len(guides) != 59 {
-		t.Fatalf("summary metric guide API returned %d guides, want 59", len(guides))
+			if response.Code != http.StatusOK {
+				t.Fatalf("metric guide API status = %d, want %d", response.Code, http.StatusOK)
+			}
+			var guides []struct {
+				ID string `json:"id"`
+			}
+			if err := json.NewDecoder(response.Body).Decode(&guides); err != nil {
+				t.Fatalf("metric guide API did not return JSON: %v", err)
+			}
+			if len(guides) != 59 {
+				t.Fatalf("metric guide API returned %d guides, want 59", len(guides))
+			}
+		})
 	}
 }
 
 func TestAnalyzeInputTopologyTextUsesGeometryStageReport(t *testing.T) {
 	app := NewApp()
-	first, err := app.AnalyzeInputTopologyText(appSummaryIDF)
+	first, err := app.AnalyzeInputTopologyText(appMetricsIDF)
 	if err != nil {
 		t.Fatalf("AnalyzeInputTopologyText() error = %v", err)
 	}
-	second, err := app.AnalyzeInputTopologyText(appSummaryIDF)
+	second, err := app.AnalyzeInputTopologyText(appMetricsIDF)
 	if err != nil {
 		t.Fatalf("second AnalyzeInputTopologyText() error = %v", err)
 	}
@@ -1272,49 +1163,76 @@ func outputApplyPreviewHasAction(changes []idf.OutputApplyChange, action string,
 	return false
 }
 
-func TestNormalizeProfileSettingsMigratesLegacyScheduleSummaryTimeView(t *testing.T) {
-	tests := []struct {
-		name            string
-		scheduleSummary string
-		timeView        string
-		want            string
-	}{
-		{name: "representative day", scheduleSummary: "representative_day", want: "day"},
-		{name: "representative week", scheduleSummary: "representative_week", want: "week"},
-		{name: "hourly average by day type", scheduleSummary: "hourly_average_by_daytype", want: "week"},
-		{name: "monthly average", scheduleSummary: "monthly_average", want: "month"},
-		{name: "load duration", scheduleSummary: "load_duration", want: "duration"},
-		{name: "annual heatmap", scheduleSummary: "annual_heatmap", want: "year"},
-		{name: "invalid new value uses legacy", scheduleSummary: "monthly_average", timeView: "unknown", want: "month"},
-		{name: "explicit new value wins", scheduleSummary: "representative_day", timeView: "rules", want: "rules"},
+func TestNormalizeProfileSettingsUsesCanonicalTimeViewAndScale(t *testing.T) {
+	defaults := idf.DefaultProfileAnalysisSettings()
+	settings := normalizeProfileSettings(idf.ProfileAnalysisSettings{TimeView: "rules", ScaleMode: "shared"}, defaults)
+	if settings.TimeView != "rules" || settings.ScaleMode != "shared" {
+		t.Fatalf("canonical profile settings = %#v", settings)
 	}
 
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			settings := normalizeProfileSettings(idf.ProfileAnalysisSettings{
-				ScheduleSummaryMode: test.scheduleSummary,
-				TimeView:            test.timeView,
-			}, idf.DefaultProfileAnalysisSettings())
-			if settings.TimeView != test.want {
-				t.Fatalf("TimeView = %q, want %q", settings.TimeView, test.want)
-			}
-			if settings.GraphDeck.TimeView != test.want {
-				t.Fatalf("GraphDeck.TimeView = %q, want %q", settings.GraphDeck.TimeView, test.want)
-			}
-		})
+	settings = normalizeProfileSettings(idf.ProfileAnalysisSettings{TimeView: "legacy", ScaleMode: "legacy"}, defaults)
+	if settings.TimeView != defaults.TimeView || settings.ScaleMode != defaults.ScaleMode {
+		t.Fatalf("invalid profile settings = %#v, want defaults %#v", settings, defaults)
+	}
+
+	payload, err := json.Marshal(settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, removed := range []string{"graphDeck", "scheduleSummaryMode", "compareMode"} {
+		if strings.Contains(string(payload), `"`+removed+`"`) {
+			t.Fatalf("profile settings still emit removed field %q: %s", removed, payload)
+		}
 	}
 }
 
 func TestDefaultSettingsRetainThermalTopologyShortcuts(t *testing.T) {
 	settings := normalizeAppSettings(AppSettings{})
 	want := map[string]string{
-		"geometry3D": "1", "geometryPlan": "2", "geometryThermal": "3", "geometryFit": "F",
+		"topology3D": "1", "topologyPlan": "2", "topologyNetwork": "3", "topologyFit": "F",
 		"topologyDisplay": "G", "topologyConnectivity": "T", "topologyArea": "A", "topologyUA": "U", "topologyQA": "Q", "topologyNeighbors": "N",
 		"primaryOpen": "Enter", "availableViews": "Alt+Enter", "clearSelection": "Escape",
 	}
 	for id, accelerator := range want {
 		if settings.Interaction.Shortcuts[id] != accelerator {
 			t.Fatalf("shortcut %s = %q, want %q", id, settings.Interaction.Shortcuts[id], accelerator)
+		}
+	}
+}
+
+func TestLegacyGeometryInteractionSettingsMigrateToTopologyNames(t *testing.T) {
+	var settings AppSettings
+	if err := json.Unmarshal([]byte(`{
+		"interaction": {
+			"geometrySyncLocate": true,
+			"shortcuts": {
+				"geometry3D": "4",
+				"geometryPlan": "5",
+				"geometryThermal": "6",
+				"geometryFit": "Shift+F"
+			}
+		}
+	}`), &settings); err != nil {
+		t.Fatal(err)
+	}
+	settings = normalizeAppSettings(settings)
+	if !settings.Interaction.TopologySyncLocate {
+		t.Fatal("legacy geometrySyncLocate did not migrate to topologySyncLocate")
+	}
+	for id, want := range map[string]string{
+		"topology3D": "4", "topologyPlan": "5", "topologyNetwork": "6", "topologyFit": "Shift+F",
+	} {
+		if got := settings.Interaction.Shortcuts[id]; got != want {
+			t.Fatalf("migrated shortcut %s = %q, want %q", id, got, want)
+		}
+	}
+	payload, err := json.Marshal(settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, legacy := range []string{"geometrySyncLocate", "geometry3D", "geometryPlan", "geometryThermal", "geometryFit"} {
+		if strings.Contains(string(payload), `"`+legacy+`"`) {
+			t.Fatalf("normalized settings still emit legacy key %q: %s", legacy, payload)
 		}
 	}
 }
@@ -1333,7 +1251,7 @@ func TestGraphFontSizeSettingsDefaultAndClamp(t *testing.T) {
 	}
 }
 
-func TestAnalyzeMultiSummaryPaths(t *testing.T) {
+func TestAnalyzeBatchMetricsPaths(t *testing.T) {
 	tempDir := t.TempDir()
 	first := filepath.Join(tempDir, "first.idf")
 	second := filepath.Join(tempDir, "second.idf")
@@ -1351,22 +1269,22 @@ Zone, Perimeter;
 		t.Fatalf("write second fixture: %v", err)
 	}
 
-	var progress []MultiSummaryProgress
-	result := analyzeMultiSummaryPaths([]string{first, second}, "test-run", func(item MultiSummaryProgress) {
+	var progress []BatchMetricsProgress
+	result := analyzeBatchMetricsPaths([]string{first, second}, BatchMetricsRequest{RunID: "test-run", AreaBasis: "effective"}, func(item BatchMetricsProgress) {
 		progress = append(progress, item)
 	})
 
 	if result.Total != 2 || result.Completed != 2 || result.Succeeded != 2 || result.Failed != 0 {
-		t.Fatalf("multi summary counts = total:%d completed:%d succeeded:%d failed:%d", result.Total, result.Completed, result.Succeeded, result.Failed)
+		t.Fatalf("batch metrics counts = total:%d completed:%d succeeded:%d failed:%d", result.Total, result.Completed, result.Succeeded, result.Failed)
 	}
 	if len(progress) != 2 {
 		t.Fatalf("progress events = %d, want 2", len(progress))
 	}
 	if len(result.Metrics) != 76 {
-		t.Fatalf("multi summary metrics = %d, want 76", len(result.Metrics))
+		t.Fatalf("batch metrics count = %d, want 76", len(result.Metrics))
 	}
 	if result.Files[0].Label != "Alpha" || result.Files[1].Label != "Beta" {
-		t.Fatalf("multi summary labels = %q, %q; want Alpha, Beta", result.Files[0].Label, result.Files[1].Label)
+		t.Fatalf("batch metrics labels = %q, %q; want Alpha, Beta", result.Files[0].Label, result.Files[1].Label)
 	}
 	if got := result.Files[1].MetricValues["zone_count"].DisplayValue; got != "2" {
 		t.Fatalf("second zone_count = %q, want 2", got)
@@ -1393,14 +1311,14 @@ BuildingSurface:Detailed,
 	if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
 		t.Fatalf("write topology fixture: %v", err)
 	}
-	result := analyzeMultiSummaryPathsWithOptions([]string{path}, MultiSummaryRequest{RunID: "topology", AreaBasis: "physical", IncludeFullTopology: true}, nil)
+	result := analyzeBatchMetricsPaths([]string{path}, BatchMetricsRequest{RunID: "topology", AreaBasis: "physical", IncludeFullTopology: true}, nil)
 	if result.AreaBasis != "physical" || !result.IncludesFullTopology || result.Files[0].Topology == nil {
 		t.Fatalf("topology batch options were not retained: %#v", result)
 	}
 	if result.Files[0].Topology.AreaBasis != "physical" || len(result.Files[0].TopologyData.Connections) == 0 {
 		t.Fatalf("full topology/details missing: %#v", result.Files[0])
 	}
-	sheets := batchSummaryWorkbookSheets(BatchSummaryXLSXExportRequest{Result: *result, BaselineIndex: -1, CompareIndex: -1})
+	sheets := batchMetricsWorkbookSheets(BatchMetricsXLSXExportRequest{Result: *result, BaselineIndex: -1, CompareIndex: -1})
 	wantSheets := []string{"Raw", "Topology Summary", "Zone Signatures", "Thermal Connections", "Boundary Issues"}
 	if len(sheets) != len(wantSheets) {
 		t.Fatalf("topology workbook sheets = %#v", sheets)
@@ -1419,17 +1337,17 @@ BuildingSurface:Detailed,
 }
 
 func TestBatchTopologyDeltaRejectsDifferentBasisOrCoverage(t *testing.T) {
-	metric := MultiSummaryMetric{ID: "topology_exterior_ua", Category: "Topology", Unit: "W/K"}
-	value := func(basis string, coverage float64) MultiSummaryValue {
-		return MultiSummaryValue{DisplayValue: "10", Status: "partial", AreaBasis: basis, Coverage: coverage, HasCoverage: true, BasisSensitive: true}
+	metric := BatchMetricsMetric{ID: "topology_exterior_ua", Category: "Topology", Unit: "W/K"}
+	value := func(basis string, coverage float64) BatchMetricsValue {
+		return BatchMetricsValue{DisplayValue: "10", Status: "partial", AreaBasis: basis, Coverage: coverage, HasCoverage: true, BasisSensitive: true}
 	}
-	baseline := MultiSummaryFile{MetricValues: map[string]MultiSummaryValue{metric.ID: value("effective", 0.8)}}
-	compare := MultiSummaryFile{MetricValues: map[string]MultiSummaryValue{metric.ID: value("physical", 0.8)}}
-	if row := batchSummaryDeltaRow(metric, baseline, compare); row[5] != "not comparable" || !strings.Contains(row[7], "basis") {
+	baseline := BatchMetricsFile{MetricValues: map[string]BatchMetricsValue{metric.ID: value("effective", 0.8)}}
+	compare := BatchMetricsFile{MetricValues: map[string]BatchMetricsValue{metric.ID: value("physical", 0.8)}}
+	if row := batchMetricsDeltaRow(metric, baseline, compare); row[5] != "not comparable" || !strings.Contains(row[7], "basis") {
 		t.Fatalf("different-basis delta row = %#v", row)
 	}
 	compare.MetricValues[metric.ID] = value("effective", 0.9)
-	if row := batchSummaryDeltaRow(metric, baseline, compare); row[5] != "not comparable" || !strings.Contains(row[7], "coverage") {
+	if row := batchMetricsDeltaRow(metric, baseline, compare); row[5] != "not comparable" || !strings.Contains(row[7], "coverage") {
 		t.Fatalf("different-coverage delta row = %#v", row)
 	}
 }

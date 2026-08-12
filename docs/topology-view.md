@@ -1,10 +1,10 @@
 # Topology guide
 
-The former Geometry tab is now named **Topology** because the panel answers two
-different questions with one shared selection: _where is this object?_ and
-_what does it connect to?_ The internal result-tab/API identifier remains
-`geometry`, so existing workspaces, shortcuts, automation, and API clients keep
-working.
+The **Topology** tab answers two different questions with one shared selection:
+_where is this object?_ and _what does it connect to?_ Frontend result-tab,
+route, workspace, and shortcut identifiers use `topology`. Legacy saved
+`geometry` view identifiers are normalized during settings migration, while the
+backend payload remains available under `report.geometry` for API compatibility.
 
 ## Current panel map
 
@@ -111,20 +111,20 @@ boundaries; ordinary zone-local infiltration does not become a zone-pair edge.
   counterparts, mismatched construction or geometry, unresolved external
   targets, open/non-manifold enclosures, and missing air/AFN targets.
 
-QA metric patterns distinguish observations from rule failures. A rule issue
-shares its stable issue ID with Diagnose; selecting it can open the exact
-Diagnose row and source field.
+QA metric patterns distinguish observations from rule failures. Rule issue IDs
+are also reported by Tools / Diagnose when it analyzes the same document
+snapshot.
 
 ## Shared selection and navigation
 
-3D, Plan, Network, Semantic Text, and Diagnose share one semantic selection.
+3D, Plan, Network, and Semantic Text share one semantic selection.
 Sync locate is enabled by default, so selecting a visual object also locates
 its input source. Back and Forward restore view mode, scope, metric, each
 spatial view's visibility, pan/zoom, and stable selection. Navigation changes
 view state only and does not request backend analysis.
 
-Settings and Batch preserve the same document analysis key. Returning to the
-app restores Network context from the cached topology; Batch Summary exposes
+Settings and Tools preserve the same document snapshot key. Returning to the
+app restores Network context from the cached topology; Batch Metrics exposes
 normalized topology metrics, delta, percent, and CSV/JSON/XLSX export.
 
 ## Keyboard workflow

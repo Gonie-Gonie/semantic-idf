@@ -14,7 +14,7 @@
       </div>
       <div class="guide-header-actions">
         <a class="toolbar-link" href="./index.html" data-i18n="action.backToApp">Back to App</a>
-        <a class="toolbar-link" href="./batch.html" data-i18n="action.batch">Batch</a>
+        <a class="toolbar-link" href="./tools.html" data-i18n="action.tools">Tools</a>
         <a class="toolbar-link" href="./guide.html" data-i18n="action.guide">Guide</a>
       </div>
     </header>
@@ -85,16 +85,15 @@
         ["inputText", "shortcut.inputText"],
         ["inputJson", "shortcut.inputJson"],
         ["inputTable", "shortcut.inputTable"],
-        ["tabSummary", "shortcut.tabSummary"],
+        ["tabMetrics", "shortcut.tabMetrics"],
         ["tabProfile", "shortcut.tabProfile"],
         ["tabHVAC", "shortcut.tabHVAC"],
         ["tabSimulation", "shortcut.tabSimulation"],
-        ["tabDiagnose", "shortcut.tabDiagnose"],
-        ["tabGeometry", "shortcut.tabGeometry"],
-        ["geometry3D", "shortcut.geometry3D"],
-        ["geometryPlan", "shortcut.geometryPlan"],
-        ["geometryThermal", "shortcut.geometryThermal"],
-        ["geometryFit", "shortcut.geometryFit"],
+        ["tabTopology", "shortcut.tabTopology"],
+        ["topology3D", "shortcut.topology3D"],
+        ["topologyPlan", "shortcut.topologyPlan"],
+        ["topologyNetwork", "shortcut.topologyNetwork"],
+        ["topologyFit", "shortcut.topologyFit"],
         ["topologyConnectivity", "shortcut.topologyConnectivity"],
         ["topologyArea", "shortcut.topologyArea"],
         ["topologyUA", "shortcut.topologyUA"],
@@ -384,8 +383,8 @@
                 <span>${escapeHTML(t("behavior.rawSync"))}</span>
               </label>
               <label class="settings-check">
-                <input id="geometrySyncLocateDefault" type="checkbox" ${activeSettings.interaction.geometrySyncLocate ? "checked" : ""} />
-                <span>${escapeHTML(t("behavior.geometrySync"))}</span>
+                <input id="topologySyncLocateDefault" type="checkbox" ${activeSettings.interaction.topologySyncLocate ? "checked" : ""} />
+                <span>${escapeHTML(t("behavior.topologySync"))}</span>
               </label>
             </section>
 
@@ -697,7 +696,7 @@
             }
             const isFunctionKey = /^f\d{1,2}$/i.test(event.key || "");
             const isModified = event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || isFunctionKey;
-            const allowsBareKey = /^(geometry|topology)/.test(input.dataset.shortcutId || "");
+            const allowsBareKey = /^topology/.test(input.dataset.shortcutId || "");
             if (!isModified && !allowsBareKey) {
               return;
             }
@@ -803,7 +802,7 @@
           },
           interaction: {
             syncRawTextPosition: document.querySelector("#syncRawTextPosition").checked,
-            geometrySyncLocate: document.querySelector("#geometrySyncLocateDefault").checked,
+            topologySyncLocate: document.querySelector("#topologySyncLocateDefault").checked,
             shortcuts: readShortcutSettings(),
           },
         });

@@ -38,7 +38,7 @@ func MaybeRun(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer
 
 func isCLICommand(value string) bool {
 	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "summary", "multi-summary", "diagnostics", "diagnose", "analyze", "topology", "hvac-graph", "profile-graph", "profile-qa", "profile-schedules", "clean", "convert":
+	case "metrics", "summary", "batch-metrics", "multi-metrics", "multi-summary", "diagnostics", "diagnose", "analyze", "topology", "hvac-graph", "profile-graph", "profile-qa", "profile-schedules", "clean", "convert":
 		return true
 	default:
 		return false
@@ -60,10 +60,10 @@ func runCLI(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer, 
 
 	var err error
 	switch strings.ToLower(args[0]) {
-	case "summary":
-		err = cliSummary(args[1:], stdin, stdout, stderr)
-	case "multi-summary":
-		err = cliMultiSummary(args[1:], stdin, stdout, stderr)
+	case "metrics", "summary":
+		err = cliMetrics(args[1:], stdin, stdout, stderr)
+	case "batch-metrics", "multi-metrics", "multi-summary":
+		err = cliBatchMetrics(args[1:], stdin, stdout, stderr)
 	case "diagnostics", "diagnose":
 		err = cliDiagnostics(args[1:], stdin, stdout, stderr)
 	case "analyze":
@@ -103,13 +103,13 @@ Usage:
   semantic-idf <command> [options] <input>
 
 Commands:
-  summary        Export Summary metrics as text, JSON, CSV, or XLSX.
-  multi-summary  Compare Summary metrics across multiple input files.
+  metrics        Export model metrics as text, JSON, CSV, or XLSX.
+  batch-metrics Compare model metrics across multiple input files (legacy: multi-summary).
   diagnostics    Export Diagnose issues as text, JSON, or CSV.
   analyze        Export the full analysis report as JSON or compact text.
   topology       Export thermal topology as canonical JSON, GraphML, or DOT.
   hvac-graph     Export HVAC rule, service, or coupling navigation graph JSON.
-  profile-graph  Export Profile Graph Deck series as JSON or text.
+  profile-graph  Export Profile time-series graph data as JSON or text.
   profile-qa     Export Profile QA outliers and candidates as text, JSON, or CSV.
   profile-schedules Export resolved Profile schedules and similarity clusters.
   clean          Apply cleanup rules and optional semantic duplicate-name fixes.
@@ -120,8 +120,8 @@ Run "semantic-idf cli <command> --help" for command-specific options.
 `)
 }
 
-func cliSummary(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) error {
-	fs := cliFlagSet("summary", stderr)
+func cliMetrics(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) error {
+	fs := cliFlagSet("metrics", stderr)
 	format := fs.String("format", "text", "Output format: text, json, csv, xlsx.")
 	output := fs.String("o", "", "Output path. Required for xlsx unless -o - is used.")
 	if err := fs.Parse(args); err != nil {
@@ -135,32 +135,32 @@ func cliSummary(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writ
 	if err != nil {
 		return err
 	}
-	summary := idf.AnalyzeSummary(input.Doc)
+	metrics := idf.AnalyzeMetrics(input.Doc)
 	switch normalizeCLIFormat(*format) {
 	case "text":
-		return writeCLITextOutput(*output, []byte(formatSummaryText(summary)), stdout)
+		return writeCLITextOutput(*output, []byte(formatMetricsText(metrics)), stdout)
 	case "json":
-		text, err := idf.ExportSummaryJSON(summary)
+		text, err := idf.ExportMetricsJSON(metrics)
 		if err != nil {
 			return err
 		}
 		return writeCLITextOutput(*output, []byte(text), stdout)
 	case "csv":
-		text, err := idf.ExportSummaryCSV(summary)
+		text, err := idf.ExportMetricsCSV(metrics)
 		if err != nil {
 			return err
 		}
 		return writeCLITextOutput(*output, []byte(text), stdout)
 	case "xlsx":
-		sections := summarySections(summary)
-		return writeCLIXLSXOutput(*output, "Summary", sections, stdout)
+		sections := metricsSections(metrics)
+		return writeCLIXLSXOutput(*output, "Metrics", sections, stdout)
 	default:
-		return fmt.Errorf("unsupported summary format %q", *format)
+		return fmt.Errorf("unsupported metrics format %q", *format)
 	}
 }
 
-func cliMultiSummary(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) error {
-	fs := cliFlagSet("multi-summary", stderr)
+func cliBatchMetrics(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) error {
+	fs := cliFlagSet("batch-metrics", stderr)
 	format := fs.String("format", "csv", "Output format: csv, json, xlsx, text.")
 	output := fs.String("o", "", "Output path. Required for xlsx unless -o - is used.")
 	orientation := fs.String("orientation", "metrics", "Table orientation: metrics or files.")
@@ -168,19 +168,19 @@ func cliMultiSummary(args []string, stdin io.Reader, stdout io.Writer, stderr io
 		return err
 	}
 	if fs.NArg() == 0 {
-		return fmt.Errorf("multi-summary requires at least one input file")
+		return fmt.Errorf("batch-metrics requires at least one input file")
 	}
-	files := make([]multiSummaryCLIFile, 0, fs.NArg())
+	files := make([]batchMetricsCLIFile, 0, fs.NArg())
 	for _, path := range fs.Args() {
 		input, err := readCLIInput(path, stdin)
 		if err != nil {
 			return err
 		}
-		files = append(files, multiSummaryFileFromInput(input))
+		files = append(files, batchMetricsFileFromInput(input))
 	}
 	switch normalizeCLIFormat(*format) {
 	case "text":
-		return writeCLITextOutput(*output, []byte(formatMultiSummaryText(files)), stdout)
+		return writeCLITextOutput(*output, []byte(formatBatchMetricsText(files)), stdout)
 	case "json":
 		payload, err := json.MarshalIndent(files, "", "  ")
 		if err != nil {
@@ -188,19 +188,19 @@ func cliMultiSummary(args []string, stdin io.Reader, stdout io.Writer, stderr io
 		}
 		return writeCLITextOutput(*output, append(payload, '\n'), stdout)
 	case "csv":
-		text, err := multiSummaryCSV(files, *orientation)
+		text, err := batchMetricsCSV(files, *orientation)
 		if err != nil {
 			return err
 		}
 		return writeCLITextOutput(*output, []byte(text), stdout)
 	case "xlsx":
-		sections, err := multiSummarySections(files, *orientation)
+		sections, err := batchMetricsSections(files, *orientation)
 		if err != nil {
 			return err
 		}
-		return writeCLIXLSXOutput(*output, "Multi Summary", sections, stdout)
+		return writeCLIXLSXOutput(*output, "Batch Metrics", sections, stdout)
 	default:
-		return fmt.Errorf("unsupported multi-summary format %q", *format)
+		return fmt.Errorf("unsupported batch-metrics format %q", *format)
 	}
 }
 
@@ -453,9 +453,9 @@ func normalizeCLIFormat(value string) string {
 	}
 }
 
-func formatSummaryText(summary idf.SummaryReport) string {
+func formatMetricsText(metrics idf.MetricsReport) string {
 	var b strings.Builder
-	for categoryIndex, category := range summary.Categories {
+	for categoryIndex, category := range metrics.Categories {
 		if categoryIndex > 0 {
 			b.WriteByte('\n')
 		}
@@ -471,9 +471,9 @@ func formatSummaryText(summary idf.SummaryReport) string {
 	return b.String()
 }
 
-func summarySections(summary idf.SummaryReport) []tabular.Section {
-	sections := make([]tabular.Section, 0, len(summary.Categories))
-	for _, category := range summary.Categories {
+func metricsSections(metrics idf.MetricsReport) []tabular.Section {
+	sections := make([]tabular.Section, 0, len(metrics.Categories))
+	for _, category := range metrics.Categories {
 		section := tabular.Section{Title: category.Name, Headers: []string{"id", "name", "value", "unit", "status"}}
 		for _, metric := range category.Metrics {
 			section.Rows = append(section.Rows, []string{
@@ -648,7 +648,7 @@ func sortedKeys(values map[string]bool) []string {
 	return keys
 }
 
-type multiSummaryCLIFile struct {
+type batchMetricsCLIFile struct {
 	Path         string            `json:"path"`
 	Label        string            `json:"label"`
 	Format       string            `json:"format"`
@@ -657,22 +657,22 @@ type multiSummaryCLIFile struct {
 	MetricValues map[string]string `json:"metricValues"`
 }
 
-func multiSummaryFileFromInput(input cliInput) multiSummaryCLIFile {
-	summary := idf.AnalyzeSummary(input.Doc)
+func batchMetricsFileFromInput(input cliInput) batchMetricsCLIFile {
+	metricsReport := idf.AnalyzeMetrics(input.Doc)
 	values := map[string]string{}
 	label := filepath.Base(input.Path)
 	if input.Path == "-" {
 		label = "stdin"
 	}
-	for _, category := range summary.Categories {
+	for _, category := range metricsReport.Categories {
 		for _, metric := range category.Metrics {
 			values[metric.ID] = metric.DisplayValue
-			if metric.ID == "building_name" && metric.DisplayValue != "" && !strings.EqualFold(metric.DisplayValue, "N/A") {
+			if metric.ID == "building_name" && metric.Status != "missing" && metric.DisplayValue != "" {
 				label = metric.DisplayValue
 			}
 		}
 	}
-	return multiSummaryCLIFile{
+	return batchMetricsCLIFile{
 		Path:         input.Path,
 		Label:        label,
 		Format:       string(input.Model.Format),
@@ -682,7 +682,7 @@ func multiSummaryFileFromInput(input cliInput) multiSummaryCLIFile {
 	}
 }
 
-func formatMultiSummaryText(files []multiSummaryCLIFile) string {
+func formatBatchMetricsText(files []batchMetricsCLIFile) string {
 	var b strings.Builder
 	for _, file := range files {
 		fmt.Fprintf(&b, "[%s]\npath: %s\nformat: %s\nversion: %s\nobjects: %d\n\n", file.Label, file.Path, file.Format, file.Version, file.ObjectCount)
@@ -690,8 +690,8 @@ func formatMultiSummaryText(files []multiSummaryCLIFile) string {
 	return b.String()
 }
 
-func multiSummaryCSV(files []multiSummaryCLIFile, orientation string) (string, error) {
-	section, err := multiSummarySection(files, orientation)
+func batchMetricsCSV(files []batchMetricsCLIFile, orientation string) (string, error) {
+	section, err := batchMetricsSection(files, orientation)
 	if err != nil {
 		return "", err
 	}
@@ -709,16 +709,16 @@ func multiSummaryCSV(files []multiSummaryCLIFile, orientation string) (string, e
 	return b.String(), writer.Error()
 }
 
-func multiSummarySections(files []multiSummaryCLIFile, orientation string) ([]tabular.Section, error) {
-	section, err := multiSummarySection(files, orientation)
+func batchMetricsSections(files []batchMetricsCLIFile, orientation string) ([]tabular.Section, error) {
+	section, err := batchMetricsSection(files, orientation)
 	if err != nil {
 		return nil, err
 	}
 	return []tabular.Section{section}, nil
 }
 
-func multiSummarySection(files []multiSummaryCLIFile, orientation string) (tabular.Section, error) {
-	definitions := idf.SummaryDefinitions()
+func batchMetricsSection(files []batchMetricsCLIFile, orientation string) (tabular.Section, error) {
+	definitions := idf.MetricDefinitions()
 	orientation = strings.ToLower(strings.TrimSpace(orientation))
 	if orientation == "" || orientation == "metrics" {
 		headers := []string{"metric_id", "metric_name", "unit"}
@@ -733,7 +733,7 @@ func multiSummarySection(files []multiSummaryCLIFile, orientation string) (tabul
 			}
 			rows = append(rows, row)
 		}
-		return tabular.Section{Title: "multi_summary_metrics", Headers: headers, Rows: rows}, nil
+		return tabular.Section{Title: "batch_metrics", Headers: headers, Rows: rows}, nil
 	}
 	if orientation == "files" {
 		headers := []string{"label", "path", "format", "version", "object_count"}
@@ -748,7 +748,7 @@ func multiSummarySection(files []multiSummaryCLIFile, orientation string) (tabul
 			}
 			rows = append(rows, row)
 		}
-		return tabular.Section{Title: "multi_summary_files", Headers: headers, Rows: rows}, nil
+		return tabular.Section{Title: "batch_metrics_files", Headers: headers, Rows: rows}, nil
 	}
 	return tabular.Section{}, fmt.Errorf("orientation must be metrics or files")
 }

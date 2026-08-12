@@ -5,12 +5,12 @@ import (
 	"testing"
 )
 
-func TestBatchSummaryUsesFixedTopologyBasisAndExports(t *testing.T) {
-	markup := readTestFile(t, "frontend/src/batch.html")
-	script := readTestFile(t, "frontend/src/js/batch.js")
+func TestBatchMetricsUsesFixedTopologyBasisAndExports(t *testing.T) {
+	markup := readTestFile(t, "frontend/src/tools.html")
+	script := readTestFile(t, "frontend/src/js/tools.js")
 	for _, required := range []string{
-		`value="topology"`, `id="batchSummaryIncludeTopology"`, `areaBasis: "effective"`,
-		`id="multiSummaryExportJSON"`, "AnalyzeMultiIDFSummaryWithOptions", "includeFullTopology",
+		`value="topology"`, `id="batchMetricsIncludeTopology"`, `areaBasis: "effective"`,
+		`id="batchMetricsExportJSON"`, "AnalyzeBatchMetrics", "includeFullTopology",
 		"ExportBatchTopologyCSV", "batch-topology-normalized.csv", "not comparable: U-value coverage differs",
 	} {
 		if !strings.Contains(markup+script, required) {
@@ -21,7 +21,7 @@ func TestBatchSummaryUsesFixedTopologyBasisAndExports(t *testing.T) {
 		t.Fatal("batch topology unexpectedly exposes full graph visual comparison")
 	}
 	for _, removed := range []string{
-		`id="batchSummaryAreaBasis"`, `value="physical"`, "state.areaBasis", "elements.areaBasis",
+		`id="batchMetricsAreaBasis"`, `value="physical"`, "state.areaBasis", "elements.areaBasis",
 		"basisSensitive", "not comparable: area basis differs", "topology basis:",
 	} {
 		if strings.Contains(markup+script, removed) {

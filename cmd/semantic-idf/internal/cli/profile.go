@@ -111,12 +111,9 @@ func cliProfileSchedules(args []string, stdin io.Reader, stdout io.Writer, stder
 func formatProfileGraphText(profile idf.ProfileReport) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Profile graph series: %d\n", len(profile.GraphDataset.Series))
-	fmt.Fprintf(&b, "Default deck: scope=%s metric=%s time=%s compare=%s scale=%s\n",
-		profile.GraphDataset.DefaultDeck.ScopeType,
-		profile.GraphDataset.DefaultDeck.MetricMode,
-		profile.GraphDataset.DefaultDeck.TimeView,
-		profile.GraphDataset.DefaultDeck.CompareMode,
-		profile.GraphDataset.DefaultDeck.ScaleMode,
+	fmt.Fprintf(&b, "Time profile: view=%s scale=%s\n",
+		profile.DefaultSettings.TimeView,
+		profile.DefaultSettings.ScaleMode,
 	)
 	limit := len(profile.GraphDataset.Series)
 	if limit > 20 {
@@ -128,8 +125,8 @@ func formatProfileGraphText(profile idf.ProfileReport) string {
 			series.ScopeType,
 			series.Dimension,
 			series.DisplayValue,
-			formatSummaryFloat(series.Peak),
-			formatSummaryFloat(series.AnnualContribution),
+			formatProfileFloat(series.Peak),
+			formatProfileFloat(series.AnnualContribution),
 		)
 	}
 	return b.String()
@@ -151,9 +148,9 @@ func formatProfileQAText(profile idf.ProfileReport) string {
 			candidate.Severity,
 			candidate.Label,
 			len(candidate.ZoneNames),
-			formatSummaryFloat(candidate.CurrentMin),
-			formatSummaryFloat(candidate.CurrentMax),
-			formatSummaryFloat(candidate.ImpactScore),
+			formatProfileFloat(candidate.CurrentMin),
+			formatProfileFloat(candidate.CurrentMax),
+			formatProfileFloat(candidate.ImpactScore),
 		)
 	}
 	return b.String()
@@ -168,7 +165,7 @@ func formatProfileSchedulesText(profile idf.ProfileReport) string {
 			schedule.ScheduleType,
 			schedule.DetectedPattern,
 			schedule.ContentHash,
-			formatSummaryFloat(schedule.AnnualStats.OperatingHours),
+			formatProfileFloat(schedule.AnnualStats.OperatingHours),
 		)
 	}
 	fmt.Fprintf(&b, "\nSchedule clusters: %d\n", len(profile.ScheduleClusters))
@@ -193,10 +190,10 @@ func profileSchedulesCSV(profile idf.ProfileReport) string {
 			schedule.ScheduleType,
 			schedule.DetectedPattern,
 			schedule.ContentHash,
-			formatSummaryFloat(schedule.AnnualStats.Average),
-			formatSummaryFloat(schedule.AnnualStats.Max),
-			formatSummaryFloat(schedule.AnnualStats.OperatingHours),
-			formatSummaryFloat(schedule.AnnualStats.EquivalentFullHours),
+			formatProfileFloat(schedule.AnnualStats.Average),
+			formatProfileFloat(schedule.AnnualStats.Max),
+			formatProfileFloat(schedule.AnnualStats.OperatingHours),
+			formatProfileFloat(schedule.AnnualStats.EquivalentFullHours),
 		})
 	}
 	writer.Flush()
@@ -214,6 +211,6 @@ func nonEmptyCLIStrings(values ...string) []string {
 	return out
 }
 
-func formatSummaryFloat(value float64) string {
+func formatProfileFloat(value float64) string {
 	return strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.4f", value), "0"), ".")
 }

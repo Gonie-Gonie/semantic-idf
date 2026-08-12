@@ -844,7 +844,7 @@ func geometryMetric(name string, value any, unit string, precision int) Geometry
 	display := ""
 	switch v := value.(type) {
 	case float64:
-		display = formatSummaryNumber(v, precision)
+		display = formatMetricNumber(v, precision)
 	case int:
 		display = strconv.Itoa(v)
 	case string:
@@ -853,7 +853,7 @@ func geometryMetric(name string, value any, unit string, precision int) Geometry
 		display = strings.TrimSpace(strings.TrimSuffix(strings.TrimSuffix(strconv.FormatFloat(toFloat(value), 'f', precision, 64), "0"), "."))
 	}
 	if display == "" {
-		display = "N/A"
+		display = "—"
 	}
 	return GeometryMetric{Name: name, Value: value, DisplayValue: display, Unit: unit}
 }

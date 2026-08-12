@@ -1,7 +1,7 @@
 # Thermal topology schema
 
 `geometry.topology` is the canonical static thermal-network report used by the
-desktop UI, JSON/GraphML/DOT exporters, CLI, local API, and Batch summaries.
+desktop UI, JSON/GraphML/DOT exporters, CLI, local API, and Batch Metrics.
 
 ## Versions and identity
 
@@ -11,8 +11,10 @@ desktop UI, JSON/GraphML/DOT exporters, CLI, local API, and Batch summaries.
 - IDs are deterministic from semantic entity identity, not array position.
 - `sourceAnchors` identify source object/field occurrences for navigation.
 
-The topology payload is additive under the existing `geometry` report. The
-internal result-tab, route, API, workspace, and shortcut ID remains `geometry`.
+The topology payload remains additive under the existing `report.geometry`
+backend field, and `AnalyzeInputGeometryText` remains as an API compatibility
+entrypoint. Frontend result-tab, route, workspace, and shortcut identifiers use
+`topology`; legacy saved `geometry` view identifiers are normalized on load.
 
 ## Static report
 
@@ -165,9 +167,9 @@ single-instance physical fields and multiplier-adjusted effective fields for
 API and export consumers.
 
 The main Network UI has no area-basis selector. It shows physical Gross area
-and UA with Multiplier as a separate inspector variable. Batch Summary requests
+and UA with Multiplier as a separate inspector variable. Batch Metrics requests
 the fixed multiplier-adjusted basis, while backend and CLI callers can still
-request physical Batch values for compatibility. `hasUa` is false when any
+request physical batch values for compatibility. `hasUa` is false when any
 required U-value is unavailable. `uaCoverage` is the covered aggregate area
 divided by total applicable area; no partial value is presented as a complete
 total.

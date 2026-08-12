@@ -14,13 +14,13 @@ import {
 import {
   analyze,
   applyCachedAnalysisResult,
-  exportSummary,
+  exportMetrics,
   loadBrowserFile,
   markDocumentChanged,
   openGuide,
   openInputFile,
   openSettings,
-  openBatch,
+  openTools,
   prioritizeAnalysisStageForTab,
   currentDocumentStorageKey,
   registerLoadedDocument,
@@ -31,8 +31,7 @@ import {
   updateDocumentActions,
 } from "./actions.js";
 import { markAnalysisDirty, renderEmpty, renderReport } from "./views/analysis-views.js";
-import { fitGeometryView, renderGeometry, resizeGeometry, setGeometryMode, setGeometryStory } from "./geometry-loader.js";
-import { initializeDiagnoseFixes } from "./views/diagnose-fixes.js";
+import { fitTopologyView, renderTopology, resizeTopology, setTopologyMode, setTopologyStory } from "./topology-loader.js";
 import { initializeHVACControls } from "./views/hvac-views.js";
 import {
   configureInputViews,
@@ -111,7 +110,7 @@ configureSelectionController({
     state.reportAnalyzedText !== "" && state.reportAnalyzedText === (elements.idfInput?.value || "")
   ),
   getActiveInputView: () => `input-${state.activeInputView || "semantic"}`,
-  getActivePanelView: () => state.activeResultTab || "summary",
+  getActivePanelView: () => state.activeResultTab || "metrics",
   getCurrentSemanticContext: () => ({
     occurrenceId: state.semanticCurrentOccurrenceId || "",
     path: state.semanticCurrentPath || "",
@@ -219,9 +218,9 @@ elements.fileInput.addEventListener("change", async (event) => {
 
 elements.saveButton.addEventListener("click", saveInputFile);
 elements.revertButton.addEventListener("click", revertToLoadedDocument);
-elements.exportSummaryJSONButton.addEventListener("click", () => exportSummary("json"));
-elements.exportSummaryCSVButton.addEventListener("click", () => exportSummary("csv"));
-elements.toolsButton.addEventListener("click", openBatch);
+elements.exportMetricsJSONButton.addEventListener("click", () => exportMetrics("json"));
+elements.exportMetricsCSVButton.addEventListener("click", () => exportMetrics("csv"));
+elements.toolsButton.addEventListener("click", openTools);
 elements.guideButton.addEventListener("click", openGuide);
 elements.settingsButton.addEventListener("click", openSettings);
 elements.idfInput.addEventListener("input", () => {
@@ -242,10 +241,10 @@ elements.resultTabButtons.forEach((button) => {
     renderNavigationLinkBar();
   });
 });
-elements.geometryModeButtons.forEach((button) => {
-  button.addEventListener("click", () => setGeometryMode(button.dataset.geometryMode));
+elements.topologyModeButtons.forEach((button) => {
+  button.addEventListener("click", () => setTopologyMode(button.dataset.topologyMode));
 });
-elements.geometryStorySelect.addEventListener("change", () => setGeometryStory(elements.geometryStorySelect.value));
+elements.topologyStorySelect.addEventListener("change", () => setTopologyStory(elements.topologyStorySelect.value));
 elements.thermalTopologyMetric.addEventListener("change", () => {
   updateThermalTopologySetting("thermalTopologyMetric", normalizeThermalTopologyMetric(elements.thermalTopologyMetric.value));
 });
@@ -261,27 +260,27 @@ elements.thermalTopologyShowAirCoupling.addEventListener("change", () => {
 elements.thermalTopologyExportJSON.addEventListener("click", () => {
   window.dispatchEvent(new CustomEvent("idfAnalyzer:thermalTopologyExport"));
 });
-elements.geometryFitButton.addEventListener("click", () => void fitGeometryView());
-elements.geometrySyncLocate.addEventListener("change", () => {
-  state.geometrySyncLocate = elements.geometrySyncLocate.checked;
-  renderGeometry();
+elements.topologyFitButton.addEventListener("click", () => void fitTopologyView());
+elements.topologySyncLocate.addEventListener("change", () => {
+  state.topologySyncLocate = elements.topologySyncLocate.checked;
+  renderTopology();
 });
-bindGeometryVisibilityControl(elements.geometry3DShowZones, "geometry3DVisibility", "zones");
-bindGeometryVisibilityControl(elements.geometry3DShowSurfaces, "geometry3DVisibility", "surfaces");
-bindGeometryVisibilityControl(elements.geometry3DShowOpenings, "geometry3DVisibility", "openings");
-bindGeometryVisibilityControl(elements.geometryPlanShowZones, "geometryPlanVisibility", "zones");
-bindGeometryVisibilityControl(elements.geometryPlanShowBoundaries, "geometryPlanVisibility", "boundaries");
-bindGeometryVisibilityControl(elements.geometryPlanShowOpenings, "geometryPlanVisibility", "openings");
+bindTopologyVisibilityControl(elements.topology3DShowZones, "topology3DVisibility", "zones");
+bindTopologyVisibilityControl(elements.topology3DShowSurfaces, "topology3DVisibility", "surfaces");
+bindTopologyVisibilityControl(elements.topology3DShowOpenings, "topology3DVisibility", "openings");
+bindTopologyVisibilityControl(elements.topologyPlanShowZones, "topologyPlanVisibility", "zones");
+bindTopologyVisibilityControl(elements.topologyPlanShowBoundaries, "topologyPlanVisibility", "boundaries");
+bindTopologyVisibilityControl(elements.topologyPlanShowOpenings, "topologyPlanVisibility", "openings");
 elements.hvacExpandButton.addEventListener("click", () => toggleExpandedPane("hvac"));
-elements.geometryExpandButton.addEventListener("click", () => toggleExpandedPane("geometry"));
+elements.topologyExpandButton.addEventListener("click", () => toggleExpandedPane("topology"));
 
-function bindGeometryVisibilityControl(control, stateKey, optionKey) {
+function bindTopologyVisibilityControl(control, stateKey, optionKey) {
   control.addEventListener("change", () => {
     state[stateKey] = {
       ...(state[stateKey] || {}),
       [optionKey]: control.checked,
     };
-    renderGeometry();
+    renderTopology();
   });
 }
 
@@ -291,23 +290,23 @@ function updateThermalTopologySetting(key, value) {
   }
   recordViewHistory();
   state[key] = value;
-  renderGeometry();
+  renderTopology();
 }
 
-function activateGeometryModeShortcut(mode) {
-  if (state.activeResultTab !== "geometry") return false;
-  setGeometryMode(mode);
+function activateTopologyModeShortcut(mode) {
+  if (state.activeResultTab !== "topology") return false;
+  setTopologyMode(mode);
   return true;
 }
 
-function activateGeometryFitShortcut() {
-  if (state.activeResultTab !== "geometry") return false;
-  void fitGeometryView();
+function activateTopologyFitShortcut() {
+  if (state.activeResultTab !== "topology") return false;
+  void fitTopologyView();
   return true;
 }
 
 function activateThermalTopologySettingShortcut(key, value) {
-  if (state.activeResultTab !== "geometry" || state.geometryMode !== "thermal") return false;
+  if (state.activeResultTab !== "topology" || state.topologyMode !== "thermal") return false;
   updateThermalTopologySetting(key, value);
   return true;
 }
@@ -342,8 +341,8 @@ elements.editorPanel.addEventListener("click", (event) => {
   handleInputSelectionActivation(event.target);
 });
 window.addEventListener("resize", () => {
-  if (state.activeResultTab === "geometry" || state.expandedPane === "geometry") {
-    resizeGeometry();
+  if (state.activeResultTab === "topology" || state.expandedPane === "topology") {
+    resizeTopology();
   }
 });
 window.addEventListener("keydown", (event) => {
@@ -361,7 +360,7 @@ window.addEventListener("idfAnalyzer:documentChanged", () => {
   resetThermalTopologyDocumentState(state);
   updateDocumentActions();
 });
-window.addEventListener("idfAnalyzer:geometryLocate", (event) => {
+window.addEventListener("semanticIDF:topologyLocate", (event) => {
   const { objectIndex, objectType } = event.detail || {};
   if (objectIndex === undefined || objectIndex === null || String(objectIndex) === "") {
     return;
@@ -407,7 +406,6 @@ window.addEventListener("idfAnalyzer:profileApplied", (event) => {
   state.reportAnalyzedText = result.text;
   state.reportAnalysisKey = state.analysisKey;
   state.analysisStage = "complete";
-  state.diagnosticsReady = true;
   state.geometryReady = true;
   markInstalledAnalysisReady();
   renderReport();
@@ -433,7 +431,6 @@ window.addEventListener("idfAnalyzer:hvacApplied", (event) => {
   state.reportAnalyzedText = result.text;
   state.reportAnalysisKey = state.analysisKey;
   state.analysisStage = "complete";
-  state.diagnosticsReady = true;
   state.geometryReady = true;
   markInstalledAnalysisReady();
   renderReport();
@@ -458,7 +455,6 @@ function markInstalledAnalysisReady() {
   });
   state.reportAnalysisStage = state.analysisStage || "complete";
   state.reportAnalysisReady = { ...(state.analysisReady || {}) };
-  state.reportDiagnosticsReady = Boolean(state.diagnosticsReady);
   state.reportGeometryReady = Boolean(state.geometryReady);
 }
 
@@ -473,14 +469,14 @@ function toggleExpandedPane(pane) {
     item.classList.toggle("analysis-expanded-pane", id === state.expandedPane);
   });
   updateExpandButtons();
-  if (state.expandedPane === "geometry" || pane === "geometry") {
-    window.requestAnimationFrame(resizeGeometry);
+  if (state.expandedPane === "topology" || pane === "topology") {
+    window.requestAnimationFrame(resizeTopology);
   }
 }
 
 function updateExpandButtons() {
   updateExpandButton(elements.hvacExpandButton, "hvac");
-  updateExpandButton(elements.geometryExpandButton, "geometry");
+  updateExpandButton(elements.topologyExpandButton, "topology");
 }
 
 function updateExpandButton(button, pane) {
@@ -742,7 +738,6 @@ initializeVerticalSplitters();
 initializeProfileControls();
 initializeHVACControls();
 initializeSimulationControls();
-initializeDiagnoseFixes();
 initializeCommandPalette(commandPaletteItems);
 initializeKeyboardShortcuts({
   save: saveInputFile,
@@ -761,8 +756,8 @@ initializeKeyboardShortcuts({
   clearSelection: clearSelectionOrTransientUI,
   switchInputView,
   switchResultTab,
-  setGeometryMode: activateGeometryModeShortcut,
-  fitGeometry: activateGeometryFitShortcut,
+  setTopologyMode: activateTopologyModeShortcut,
+  fitTopology: activateTopologyFitShortcut,
   setTopologyMetric: (metric) => activateThermalTopologySettingShortcut("thermalTopologyMetric", normalizeThermalTopologyMetric(metric)),
   setTopologyNeighbors: () => activateThermalTopologySettingShortcut("thermalTopologyScope", "neighbors"),
 });
@@ -897,10 +892,10 @@ function applyRuntimeSettings(settings) {
       elements.syncRawTextToggle.checked = state.syncTextRawPosition;
     }
   }
-  if (typeof settings.interaction?.geometrySyncLocate === "boolean") {
-    state.geometrySyncLocate = settings.interaction.geometrySyncLocate;
-    if (elements.geometrySyncLocate) {
-      elements.geometrySyncLocate.checked = state.geometrySyncLocate;
+  if (typeof settings.interaction?.topologySyncLocate === "boolean") {
+    state.topologySyncLocate = settings.interaction.topologySyncLocate;
+    if (elements.topologySyncLocate) {
+      elements.topologySyncLocate.checked = state.topologySyncLocate;
     }
   }
   if (settings.interaction?.shortcuts) {
@@ -926,8 +921,8 @@ function applyRuntimeSettings(settings) {
       renderEmpty();
     }
   }
-  if (state.report?.geometry && state.activeResultTab === "geometry") {
-    renderGeometry();
+  if (state.report?.geometry && state.activeResultTab === "topology") {
+    renderTopology();
   }
 }
 

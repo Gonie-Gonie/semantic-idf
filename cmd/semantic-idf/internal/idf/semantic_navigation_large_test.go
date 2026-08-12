@@ -64,8 +64,8 @@ func TestSemanticNavigationLargeIndexIntegrity(t *testing.T) {
 
 	lastSurfaceIndex := phaseHLargeZoneCount + phaseHLargeSurfaceCount - 1
 	lastSurfaceTarget := fmt.Sprintf("surface-%d", lastSurfaceIndex)
-	if got := first.ByViewTarget[semanticViewTargetIndexKey("geometry", lastSurfaceTarget)]; len(got) == 0 {
-		t.Fatalf("last of 1,000 surfaces has no Geometry reverse target %q", lastSurfaceTarget)
+	if got := first.ByViewTarget[semanticViewTargetIndexKey("topology", lastSurfaceTarget)]; len(got) == 0 {
+		t.Fatalf("last of 1,000 surfaces has no Topology reverse target %q", lastSurfaceTarget)
 	}
 
 	for _, summary := range context.hvac.ServiceModel.ZoneServices {
@@ -89,12 +89,23 @@ func TestSemanticNavigationLargeIndexIntegrity(t *testing.T) {
 
 	for _, diagnostic := range context.diagnostics {
 		diagnosticID := semanticDiagnosticEntityID(diagnostic)
-		occurrenceIDs := first.ByViewTarget[semanticViewTargetIndexKey("diagnose", diagnosticID)]
+		occurrenceIDs := first.ByEntityID[diagnosticID]
 		if len(occurrenceIDs) == 0 {
-			t.Fatalf("diagnostic %q has no Diagnose reverse target", diagnosticID)
+			t.Fatalf("diagnostic %q has no semantic occurrence", diagnosticID)
 		}
-		if got := phaseHOccurrenceByID(t, first, occurrenceIDs[0]).EntityID; got != diagnosticID {
-			t.Fatalf("diagnostic reverse target %q resolves entity %q", diagnosticID, got)
+		for _, occurrenceID := range occurrenceIDs {
+			occurrence := phaseHOccurrenceByID(t, first, occurrenceID)
+			if occurrence.EntityID != diagnosticID {
+				t.Fatalf("diagnostic occurrence %q resolves entity %q", diagnosticID, occurrence.EntityID)
+			}
+			if occurrence.PreferredView == "diagnose" {
+				t.Fatalf("diagnostic %q still prefers the removed main Diagnose view", diagnosticID)
+			}
+			for _, target := range occurrence.ViewTargets {
+				if target.View == "diagnose" {
+					t.Fatalf("diagnostic %q still exposes the removed main Diagnose target", diagnosticID)
+				}
+			}
 		}
 	}
 

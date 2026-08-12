@@ -29,8 +29,8 @@ export function renderThermalTopologyInspector(geometry, helpers = {}) {
 }
 
 function resolveInspectorSelection(geometry) {
-  const id = state.thermalTopologySelectedEntityId || state.selectedGeometryId;
-  const kind = state.thermalTopologySelectedEntityKind || state.selectedGeometryKind;
+  const id = state.thermalTopologySelectedEntityId || state.selectedTopologyEntityId;
+  const kind = state.thermalTopologySelectedEntityKind || state.selectedTopologyEntityKind;
   if (!id) return null;
   const thermal = resolveThermalTopologyTarget({ targetKind: kind, targetId: id }, geometry);
   if (thermal?.item) return { ...thermal, item: thermal.item };
@@ -105,7 +105,7 @@ function renderConnectionDetails(connection, geometry) {
       ["Relation", humanize(connection.relationKind)],
       ["Surface count", connection.surfaceCount || 0],
       ["Opening count", connection.openingCount || 0],
-      ["Dominant constructions", constructions.join(", ") || "N/A"],
+      ["Dominant constructions", constructions.join(", ") || "—"],
     ])),
     inspectorSection("Area & UA", renderVariableTable([
       ["Multiplier", number(multiplier), "×"],
@@ -131,9 +131,9 @@ function renderBoundaryDetails(boundary, geometry) {
       ["Owner zone", boundary.ownerZoneId],
       ["Owner space", boundary.ownerSpaceId],
       ["OBC", `${boundary.boundaryConditionRaw || boundary.boundaryCondition} → ${boundary.targetName || boundary.targetId}`],
-      ["Counterpart", boundary.counterpartSurfaceEntityId || (boundary.virtualCounterpart ? "Virtual" : "N/A")],
+      ["Counterpart", boundary.counterpartSurfaceEntityId || (boundary.virtualCounterpart ? "Virtual" : "—")],
       ["Relation", humanize(boundary.relationKind)],
-      ["Construction", `${boundary.constructionName || "N/A"} · ${boundary.hasUValue ? `${number(boundary.uValue)} W/m²K` : "U N/A"}`],
+      ["Construction", `${boundary.constructionName || "—"} · ${boundary.hasUValue ? `${number(boundary.uValue)} W/m²K` : "U —"}`],
       ["Construction validation", humanize(boundary.constructionStatus || "not checked")],
     ])),
     inspectorSection("Area & UA", renderVariableTable([
@@ -146,10 +146,10 @@ function renderBoundaryDetails(boundary, geometry) {
       ["Total UA", metricNumber(unscaledMetric(boundary.totalUa, multiplier), boundary.hasUa), "W/K"],
     ])),
     inspectorSection("Exposure & geometry", renderRows([
-      ["Orientation", boundary.orientation || "N/A"],
+      ["Orientation", boundary.orientation || "—"],
       ["Azimuth", `${number(boundary.azimuth)}°`],
-      ["Sun exposure", boundary.sunExposure || "N/A"],
-      ["Wind exposure", boundary.windExposure || "N/A"],
+      ["Sun exposure", boundary.sunExposure || "—"],
+      ["Wind exposure", boundary.windExposure || "—"],
       ["Validation", `${check.status || "not checked"}${check.message ? ` · ${check.message}` : ""}`],
       ["Overlap", percent(check.overlapRatio)],
       ["Plane distance", `${number(check.planeDistance)} m`],
@@ -164,8 +164,8 @@ function renderOpeningDetails(opening, geometry) {
   return [
     inspectorSection("Opening", renderRows([
       ["Base surface", opening.baseSurfaceId],
-      ["Counterpart", opening.counterpartOpeningId || "N/A"],
-      ["Construction", opening.constructionName || "N/A"],
+      ["Counterpart", opening.counterpartOpeningId || "—"],
+      ["Construction", opening.constructionName || "—"],
     ])),
     inspectorSection("Area & UA", renderVariableTable([
       ["Multiplier", number(multiplier), "×"],
@@ -185,11 +185,11 @@ function renderAirCouplingDetails(coupling, geometry) {
       ["Object type", coupling.objectType],
       ["Object name", coupling.objectName],
       ["Kind", humanize(coupling.couplingKind)],
-      ["Direction", coupling.direction || "N/A"],
-      ["Design flow", coupling.designFlowRate ? `${number(coupling.designFlowRate)} ${coupling.unit || "m³/s"}` : "N/A"],
-      ["Schedule", coupling.scheduleName || "N/A"],
-      ["AFN surface", coupling.surfaceId || "N/A"],
-      ["Component", coupling.componentName || "N/A"],
+      ["Direction", coupling.direction || "—"],
+      ["Design flow", coupling.designFlowRate ? `${number(coupling.designFlowRate)} ${coupling.unit || "m³/s"}` : "—"],
+      ["Schedule", coupling.scheduleName || "—"],
+      ["AFN surface", coupling.surfaceId || "—"],
+      ["Component", coupling.componentName || "—"],
     ])),
   ].join("");
 }
@@ -220,7 +220,7 @@ function renderEnvironmentDetails(node, geometry) {
   return inspectorSection("External target", [
     renderRows([
       ["Connected zones", new Set(connections.flatMap((connection) => [connection.fromNodeId, connection.toNodeId]).filter((id) => id !== node.id)).size],
-      ["Boundary families", families.join(", ") || "N/A"],
+      ["Boundary families", families.join(", ") || "—"],
     ]),
     renderVariableTable([
       ["Multiplier", number(areaRatio(physicalGrossArea, effectiveGrossArea)), "×"],
@@ -254,8 +254,8 @@ function renderZoneHVACSummary(node) {
   return inspectorSection("HVAC service", paths.length
     ? renderRows([
       ["Service paths", paths.length],
-      ["Services", services.join(", ") || "N/A"],
-      ["Systems and loops", systems.join(", ") || "N/A"],
+      ["Services", services.join(", ") || "—"],
+      ["Systems and loops", systems.join(", ") || "—"],
     ])
     : emptyValue("No HVAC service path targets this zone"));
 }
@@ -271,7 +271,7 @@ function bindInspectorInteractions() {
   inspector.addEventListener("click", (event) => {
     const button = event.target.closest?.("[data-thermal-inspector-kind]");
     if (!button || !inspector.contains(button)) return;
-    activeHelpers.selectGeometry?.(button.dataset.thermalInspectorKind, button.dataset.thermalInspectorId);
+    activeHelpers.selectTopologyEntity?.(button.dataset.thermalInspectorKind, button.dataset.thermalInspectorId);
   });
 }
 
@@ -401,13 +401,13 @@ function unscaledMetric(value, multiplier) {
 }
 
 function metricNumber(value, available) {
-  return available ? number(value) : "N/A";
+  return available ? number(value) : "—";
 }
 
 function area(value) { return `${number(value)} m²`; }
 function volume(value) { return `${number(value)} m³`; }
 function percent(value) { return `${number((Number(value) || 0) * 100)}%`; }
-function wattsPerKelvin(value, available) { return available ? `${number(value)} W/K` : "N/A"; }
+function wattsPerKelvin(value, available) { return available ? `${number(value)} W/K` : "—"; }
 function number(value) { return Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 2 }); }
-function humanize(value) { return String(value || "N/A").replaceAll("_", " "); }
+function humanize(value) { return String(value || "—").replaceAll("_", " "); }
 function emptyValue(text = "None") { return `<div class="empty compact">${escapeHTML(text)}</div>`; }

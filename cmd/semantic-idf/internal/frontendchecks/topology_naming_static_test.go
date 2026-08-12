@@ -5,23 +5,23 @@ import (
 	"testing"
 )
 
-func TestTopologyNamingKeepsGeometryCompatibilityContracts(t *testing.T) {
+func TestTopologyNamingUsesTopologyPanelContracts(t *testing.T) {
 	index := readTestFile(t, "frontend/src/index.html")
 	for _, required := range []string{
-		`data-result-tab="geometry"`,
-		`id="geometryPane"`,
-		`data-i18n="tab.geometry">Topology`,
+		`data-result-tab="topology"`,
+		`id="topologyPane"`,
+		`data-i18n="tab.topology">Topology`,
 	} {
 		if !strings.Contains(index, required) {
-			t.Fatalf("topology panel compatibility or naming contract is missing %q", required)
+			t.Fatalf("topology panel naming contract is missing %q", required)
 		}
 	}
 
 	translations := readTestFile(t, "frontend/src/js/i18n.js")
 	for _, required := range []string{
-		`"tab.geometry": "Topology"`,
-		`"tab.geometry": "공간·열 연결"`,
-		`"shortcut.tabGeometry": "Analyze tab: Topology"`,
+		`"tab.topology": "Topology"`,
+		`"tab.topology": "공간·열 연결"`,
+		`"shortcut.tabTopology": "Analyze tab: Topology"`,
 	} {
 		if !strings.Contains(translations, required) {
 			t.Fatalf("topology translation contract is missing %q", required)
@@ -29,8 +29,8 @@ func TestTopologyNamingKeepsGeometryCompatibilityContracts(t *testing.T) {
 	}
 
 	shortcuts := readTestFile(t, "frontend/src/js/shortcuts.js")
-	if !strings.Contains(shortcuts, `tabGeometry: () => actions.switchResultTab?.("geometry")`) {
-		t.Fatal("legacy tabGeometry shortcut must continue to activate the geometry result-tab ID")
+	if !strings.Contains(shortcuts, `tabTopology: () => actions.switchResultTab?.("topology")`) {
+		t.Fatal("tabTopology shortcut must activate the topology result-tab ID")
 	}
 
 	state := readTestFile(t, "frontend/src/js/state.js")
@@ -42,7 +42,7 @@ func TestTopologyNamingKeepsGeometryCompatibilityContracts(t *testing.T) {
 func TestResultTabsAreTheOnlyTopLevelPanelNames(t *testing.T) {
 	index := readTestFile(t, "frontend/src/index.html")
 	for _, duplicate := range []string{
-		`<h2 data-i18n="tab.summary"`,
+		`<h2 data-i18n="tab.metrics"`,
 		`<h2 data-i18n="tab.profile"`,
 		`<h2 data-i18n="tab.hvac"`,
 		`<h2 data-i18n="tab.diagnose"`,
@@ -56,7 +56,7 @@ func TestResultTabsAreTheOnlyTopLevelPanelNames(t *testing.T) {
 }
 
 func TestTopologyHeaderWrapsWithinTheAnalysisPanel(t *testing.T) {
-	styles := readTestFile(t, "frontend/src/styles/geometry.css")
+	styles := readTestFile(t, "frontend/src/styles/topology.css")
 	for _, required := range []string{
 		"grid-template-columns: minmax(0, 1fr)",
 		"width: 100%",

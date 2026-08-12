@@ -17,8 +17,8 @@ func TestPhaseHEndToEndScenarioContracts(t *testing.T) {
 	scenarios := map[string][]phaseHScenarioProbe{
 		"A zone geometry and Back": {
 			{path: "frontend/src/js/views/input-views.js", terms: []string{"async function openSemanticLine", "openSelectionInView("}},
-			{path: "frontend/src/js/geometry-loader.js", terms: []string{`configureResultPanelNavigationHooks("geometry"`, "restoreGeometryNavigationContext"}},
-			{path: "frontend/src/js/views/geometry-view.js", terms: []string{"geometrySelectionForTarget", "preferredGeometrySemanticOccurrence", "export async function restoreGeometryNavigationContext"}},
+			{path: "frontend/src/js/topology-loader.js", terms: []string{`configureResultPanelNavigationHooks("topology"`, "restoreTopologyNavigationContext"}},
+			{path: "frontend/src/js/views/topology-view.js", terms: []string{"topologySelectionForTarget", "preferredTopologySemanticOccurrence", "export async function restoreTopologyNavigationContext"}},
 			{path: "frontend/src/js/navigation.js", terms: []string{"snapshot.globalSelection", "restoreRegisteredPanelContext"}},
 		},
 		"B profile schedule and source": {
@@ -35,9 +35,8 @@ func TestPhaseHEndToEndScenarioContracts(t *testing.T) {
 			{path: "frontend/src/js/views/input-views.js", terms: []string{"revealSelectionInSemantic", "revealSelectionSource"}},
 		},
 		"E diagnose edit remap": {
-			{path: "frontend/src/js/views/analysis-views.js", terms: []string{"diagnosticSemanticNavigation", "data-diagnostic-reveal-source", "captureDiagnoseNavigationContext", "restoreDiagnoseNavigationContext"}},
-			{path: "frontend/src/js/views/diagnose-fixes.js", terms: []string{"pendingFixNavigationContext", `idfAnalyzer:analysisComplete`, "restoreDiagnoseNavigationContext"}},
-			{path: "frontend/src/js/main.js", terms: []string{"semanticEditSelectionRestore", "remapSemanticSelection"}},
+			{path: "frontend/src/js/tools.js", terms: []string{"restoreDiagnoseDocument", "AnalyzeInputDiagnosticsText", "PreviewCleanupText", "persistDiagnoseDocument"}},
+			{path: "frontend/src/tools.html", terms: []string{`data-tools-panel="diagnose"`, `id="diagnoseApply"`, `id="diagnoseSaveAs"`}},
 		},
 		"F Settings cache round trip": {
 			{path: "frontend/src/js/actions.js", terms: []string{"await saveWorkspaceSnapshot()", "panelContexts: viewSnapshot.panelContexts", "applyCachedAnalysisResult"}},
@@ -79,13 +78,9 @@ func TestPhaseHLargeModelFilterHiddenRevealContracts(t *testing.T) {
 			"simulationNavigationRevealTarget",
 			"captureSimulationNavigationContext",
 		},
-		"frontend/src/js/views/analysis-views.js": {
-			"diagnoseTemporaryRevealID",
-			"temporaryRevealID",
-		},
-		"frontend/src/js/views/geometry-view.js": {
-			"temporaryGeometryReveal",
-			"restoreGeometryNavigationContext",
+		"frontend/src/js/views/topology-view.js": {
+			"temporaryTopologyReveal",
+			"restoreTopologyNavigationContext",
 		},
 	}
 	for path, terms := range files {

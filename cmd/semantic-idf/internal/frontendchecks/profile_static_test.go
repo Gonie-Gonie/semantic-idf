@@ -148,10 +148,12 @@ func TestFrontendProfileOverviewUsesStructuredMetricsAndCountAssignments(t *test
 	for _, required := range []string{
 		"const summaryByDimension = new Map(",
 		"const visibleDimensions = dimensions.length",
-		`const displayValue = summary?.displayValue || "-"`,
+		"const presentation = profileMetricPresentation(summary, dimension)",
 		`class="profile-card-metrics"`,
-		`class="profile-card-metric ${summary ? "" : "is-missing"}"`,
+		`class="profile-card-metric ${presentation.className}"`,
 		`data-profile-dimension="${escapeHTML(dimension.id)}"`,
+		`data-profile-metric-status="${escapeHTML(presentation.status)}"`,
+		`aria-label="${escapeHTML(presentation.description)}"`,
 		`class="profile-card-metric-label"`,
 		`class="profile-card-metric-value"`,
 		`.join("")`,
@@ -162,6 +164,21 @@ func TestFrontendProfileOverviewUsesStructuredMetricsAndCountAssignments(t *test
 	}
 	if strings.Contains(metrics, `.join(" / ")`) {
 		t.Fatal("Profile overview metrics must not flatten dimension cells with slash separators")
+	}
+	if strings.Contains(metrics, `N/A`) {
+		t.Fatal("Profile overview must use an em dash plus an accessible reason instead of N/A")
+	}
+	for _, required := range []string{
+		"function profileMetricPresentation",
+		`displayValue: "—"`,
+		`status: "not-configured"`,
+		`status === "unavailable"`,
+		`status === "partial"`,
+		`"profile.metricWarnings"`,
+	} {
+		if !strings.Contains(metrics, required) {
+			t.Fatalf("Profile metric availability presentation is missing %q", required)
+		}
 	}
 
 	for label, renderer := range map[string]string{"group": groupCard, "zone": zoneCard} {
@@ -217,6 +234,85 @@ func TestFrontendProfileOverviewUsesStructuredMetricsAndCountAssignments(t *test
 	} {
 		if !strings.Contains(styles, required) {
 			t.Fatalf("Profile structured overview styling is missing %q", required)
+		}
+	}
+}
+
+func TestFrontendProfileAvailabilityAndAirflowMetricsHaveEnglishAndKoreanLabels(t *testing.T) {
+	i18n := readTestFile(t, "frontend/src/js/i18n.js")
+	for _, key := range []string{
+		"profile.metricFallback",
+		"profile.metricNotConfigured",
+		"profile.metricPartial",
+		"profile.metricUnavailable",
+		"profile.metricWarnings",
+		"profile.metric.infiltration.flow_per_exterior_wall_area",
+		"profile.metric.infiltration.effective_leakage_area",
+		"profile.metric.infiltration.flow_coefficient",
+		"profile.metric.ventilation.opening_area",
+	} {
+		if count := strings.Count(i18n, `"`+key+`":`); count != 2 {
+			t.Fatalf("Profile translation key %q appears %d times, want English and Korean entries", key, count)
+		}
+	}
+}
+
+func TestFrontendProfileMetricAggregationMatchesBackendEngineeringBasis(t *testing.T) {
+	views := readTestFile(t, "frontend/src/js/views/profile-views.js")
+	for _, required := range []string{
+		`const metricKey = [series.dimension, series.metricId, series.unit].join("\u0000")`,
+		`${item.dimension || "unknown"}\u0000${item.metricId || ""}\u0000${metric.unit || ""}`,
+		`const itemsShareTarget = () =>`,
+		`item.sourceTargetKind || ""`,
+		`item.aggregationSignature || ""`,
+		`if (items.length <= 1) return true`,
+		`current.includes("missing") || current.includes("invalid:")`,
+		`["flow_coefficient", "effective_leakage_area", "opening_area"].includes(metricID)`,
+		`{ ...direct, value: 0, resolvedCount: 0, completeCount: 0 }`,
+		`ach: 3,`,
+	} {
+		if !strings.Contains(views, required) {
+			t.Fatalf("Profile frontend/backend metric parity is missing %q", required)
+		}
+	}
+}
+
+func TestFrontendProfileZoneSeriesAndScheduleContributionGroupingContracts(t *testing.T) {
+	views := readTestFile(t, "frontend/src/js/views/profile-views.js")
+	zoneSeries := sliceBetween(views, "function profileGraphSeries", "function profileCurrentGroupSeries")
+	for _, required := range []string{
+		`state.activeProfileView === "zone"`,
+		`series.scopeType === "zone" && selectedZones.has(series.zoneName)`,
+		"label: `${series.zoneName} / ${series.dimensionLabel || profileDimensionLabel(series.dimension)}`",
+	} {
+		if !strings.Contains(zoneSeries, required) {
+			t.Fatalf("Inspect by Zones must retain each selected Zone series and label, missing %q", required)
+		}
+	}
+
+	grouping := sliceBetween(views, "function summarizeDimension", "function profileMetricCandidates")
+	for _, required := range []string{
+		"profileScheduleContributionSignature(items, selectedMetricID, settings)",
+		"function profileScheduleContributionSignature",
+		`const contributions = new Map()`,
+		`contributions.set(schedule, (contributions.get(schedule) || 0) + value)`,
+		`const total = [...contributions.values()].reduce((sum, value) => sum + value, 0)`,
+		`const fraction = Math.abs(total) > 1e-12 ? value / total : 0`,
+		`.sort(([left], [right]) => left.localeCompare(right))`,
+		"contributionSignature,",
+	} {
+		if !strings.Contains(grouping, required) {
+			t.Fatalf("Profile grouping must include schedule-specific engineering contributions, missing %q", required)
+		}
+	}
+	groupKey := sliceBetween(views, "function profileGroupKey", "function mergeProfileSettings")
+	for _, required := range []string{
+		`const schedule = dimension.contributionSignature || ""`,
+		`const metricRole = dimension.fallbackMetric ? "fallback" : "preferred"`,
+		`${dimension.dimension}:${dimension.metricId}:${metricRole}:`,
+	} {
+		if !strings.Contains(groupKey, required) {
+			t.Fatalf("Profile group identity is missing schedule/selected-metric/fallback identity %q", required)
 		}
 	}
 }
@@ -386,6 +482,54 @@ func TestFrontendProfileLineViewsAlwaysUseLegendAndAnnualViewsUseParallelHeatmap
 	}
 }
 
+func TestFrontendProfileGraphsExposeEngineeringFidelityStatusAndReasons(t *testing.T) {
+	views := readTestFile(t, "frontend/src/js/views/profile-views.js")
+	styles := readTestFile(t, "frontend/src/styles/profile.css")
+	i18n := readTestFile(t, "frontend/src/js/i18n.js")
+
+	for _, required := range []string{
+		"profileNominalWarningCodes",
+		`"nominal_outdoor_air_profile"`,
+		`"weather_modified_design_flow_basis"`,
+		`"weather_dependent_opening_profile"`,
+		`"schedule_profile_fallback"`,
+		"function profileSeriesFidelity",
+		"function profilePanelFidelity",
+		"function renderProfileFidelityBadge",
+		`data-profile-fidelity="${fidelity.kind}"`,
+		`role="status"`,
+		`title="${escapeHTML(fidelity.description)}"`,
+		`aria-label="${escapeHTML(fidelity.description)}"`,
+	} {
+		if !strings.Contains(views, required) {
+			t.Fatalf("Profile graph fidelity presentation is missing %q", required)
+		}
+	}
+	if strings.Count(views, "${renderProfileFidelityBadge(") < 2 {
+		t.Fatal("both overlay and annual Profile metric panels must expose fidelity badges")
+	}
+	for _, required := range []string{
+		`.profile-fidelity-badge`,
+		`.profile-fidelity-badge.is-partial`,
+		`flex-wrap: wrap`,
+		`white-space: nowrap`,
+	} {
+		if !strings.Contains(styles, required) {
+			t.Fatalf("responsive Profile fidelity badge styling is missing %q", required)
+		}
+	}
+	for _, required := range []string{
+		`"profile.fidelityNominal": "Nominal"`,
+		`"profile.fidelityPartial": "Partial"`,
+		`"profile.fidelityNominal": "명목"`,
+		`"profile.fidelityPartial": "부분"`,
+	} {
+		if !strings.Contains(i18n, required) {
+			t.Fatalf("Profile fidelity EN/KO localization is missing %q", required)
+		}
+	}
+}
+
 func TestFrontendProfileIdenticalRenderedCurvesUseInterleavedColorsAndLineLegend(t *testing.T) {
 	views := readTestFile(t, "frontend/src/js/views/profile-views.js")
 	styles := readTestFile(t, "frontend/src/styles/profile.css")
@@ -424,7 +568,10 @@ func TestFrontendProfileIdenticalRenderedCurvesUseInterleavedColorsAndLineLegend
 	}
 
 	for _, required := range []string{
-		"const accessibleLabel = overlapDescription",
+		"let accessibleLabel = overlapDescription",
+		"const fidelity = profileSeriesFidelity(item)",
+		"if (fidelity?.description)",
+		"accessibleLabel = `${accessibleLabel}; ${fidelity.description}`",
 		`data-profile-overlap-count="${visualOverlapCount}"`,
 		`data-profile-overlap-index="${visualOverlapIndex}"`,
 		`aria-label="${escapeHTML(accessibleLabel)}"`,
@@ -650,8 +797,10 @@ func TestFrontendProfileAxesUseSemanticHTMLResponsiveDensityAndSeparateHeatmapSc
 			t.Fatalf("Profile graph still exposes the legacy visible Multiplier fallback %q", forbidden)
 		}
 	}
-	if !strings.Contains(profileSettingsAndGraph, `t("profile.scheduleFraction", {}, "Schedule fraction")`) {
-		t.Fatal("Profile graph metric selector must name the dimensionless metric Schedule fraction")
+	for _, forbidden := range []string{`id="profileMetricMode"`, `currentProfileMetricMode`, `profile.scheduleFraction`} {
+		if strings.Contains(profileSettingsAndGraph, forbidden) {
+			t.Fatalf("Profile fixed Time Profile UI still exposes legacy Metric mode %q", forbidden)
+		}
 	}
 	if strings.Contains(overlayPanels, `group.unit ||`) || strings.Contains(overlayPanels, `t("graph.multiplier"`) {
 		t.Fatal("Profile graph panel headings must not use Multiplier as a fallback unit")
@@ -824,14 +973,9 @@ func TestFrontendProfileGraphControlsUseFixedTimeProfileAndDirectViewButtons(t *
 			t.Fatalf("Profile Scale default/normalization contract is missing %q", required)
 		}
 	}
-	for _, required := range []string{
-		`metricMode: "actual"`,
-		`metricMode: normalizeChoice(`,
-		`profile.metricMode`,
-		`profileMetricModeFromLegacy(profile.graphMode`,
-	} {
-		if !strings.Contains(settingsClient, required) {
-			t.Fatalf("Profile Metric default/normalization contract is missing %q", required)
+	for _, removed := range []string{`metricMode: "actual"`, `metricMode: normalizeChoice(`, `profile.metricMode`, `profileMetricModeFromLegacy`} {
+		if strings.Contains(settingsClient, removed) {
+			t.Fatalf("Profile Settings still persists removed Metric mode %q", removed)
 		}
 	}
 	for _, legacyOutput := range []string{`graphMode: normalizeChoice(`, `scheduleSummaryMode: normalizeChoice(`} {

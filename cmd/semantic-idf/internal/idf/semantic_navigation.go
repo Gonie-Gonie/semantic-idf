@@ -648,15 +648,12 @@ func (state *semanticNavigationBuildState) viewTargetsFor(descriptor semanticEnt
 	switch descriptor.Kind {
 	case "project", "building", "semantic-section":
 		section := firstNonEmpty(semanticTopLevelSection(path), "project")
-		add(SemanticViewTarget{View: "summary", TargetKind: "category", TargetID: semanticSummaryCategory(section), Label: descriptor.Label, Priority: 80})
+		add(SemanticViewTarget{View: "metrics", TargetKind: "category", TargetID: semanticMetricCategory(section), Label: descriptor.Label, Priority: 80})
 		if section == "hvac" {
 			add(SemanticViewTarget{View: "hvac", TargetKind: "section", TargetID: "hvac", Label: "HVAC", Priority: 70})
 		}
-		if section == "source_name_conflicts" {
-			add(SemanticViewTarget{View: "diagnose", TargetKind: "group", TargetID: "source-name-conflicts", Label: "Diagnostics", Priority: 70})
-		}
 	case "zone":
-		add(SemanticViewTarget{View: "geometry", TargetKind: "zone", TargetID: state.geometryPanelTarget("zone", node, descriptor), Label: descriptor.Label, Priority: 80})
+		add(SemanticViewTarget{View: "topology", TargetKind: "zone", TargetID: state.topologyPanelTarget("zone", node, descriptor), Label: descriptor.Label, Priority: 80})
 		add(SemanticViewTarget{View: "profile", TargetKind: "zone", TargetID: descriptor.Label, Label: descriptor.Label, Priority: 75})
 		if semanticContextKind(path, descriptor.Kind) == "zone_profile" {
 			if dimension := semanticProfileDimension(path); dimension != "" {
@@ -667,9 +664,9 @@ func (state *semanticNavigationBuildState) viewTargetsFor(descriptor semanticEnt
 			add(SemanticViewTarget{View: "hvac", TargetKind: "service-path", TargetID: servicePath.ID, Label: firstNonEmpty(servicePath.ServiceKind, descriptor.Label), Priority: 90})
 		}
 	case "space":
-		add(SemanticViewTarget{View: "geometry", TargetKind: "space", TargetID: state.geometryPanelTarget("space", node, descriptor), Label: descriptor.Label, Priority: 80})
+		add(SemanticViewTarget{View: "topology", TargetKind: "space", TargetID: state.topologyPanelTarget("space", node, descriptor), Label: descriptor.Label, Priority: 80})
 	case "surface", "fenestration":
-		add(SemanticViewTarget{View: "geometry", TargetKind: descriptor.Kind, TargetID: state.geometryPanelTarget(descriptor.Kind, node, descriptor), Label: descriptor.Label, Priority: 100})
+		add(SemanticViewTarget{View: "topology", TargetKind: descriptor.Kind, TargetID: state.topologyPanelTarget(descriptor.Kind, node, descriptor), Label: descriptor.Label, Priority: 100})
 	case "schedule":
 		add(SemanticViewTarget{View: "profile", TargetKind: descriptor.Kind, TargetID: descriptor.Label, Label: descriptor.Label, Priority: 100})
 	case "profile-item":
@@ -679,15 +676,13 @@ func (state *semanticNavigationBuildState) viewTargetsFor(descriptor semanticEnt
 	case "hvac-path", "hvac-loop", "hvac-component", "hvac-coupling", "hvac-network":
 		targetID := state.hvacPanelTarget(node, descriptor)
 		add(SemanticViewTarget{View: "hvac", TargetKind: descriptor.Kind, TargetID: targetID, Label: descriptor.Label, Priority: 100})
-	case "diagnostic":
-		add(SemanticViewTarget{View: "diagnose", TargetKind: "diagnostic", TargetID: descriptor.ID, Label: descriptor.Label, Priority: 100})
 	case "thermal_boundary", "thermal_interface", "thermal_connection", "thermal_environment", "thermal_air_coupling", "thermal_issue":
-		add(SemanticViewTarget{View: "geometry", TargetKind: descriptor.Kind, TargetID: descriptor.ID, Label: descriptor.Label, Priority: 120})
+		add(SemanticViewTarget{View: "topology", TargetKind: descriptor.Kind, TargetID: descriptor.ID, Label: descriptor.Label, Priority: 120})
 	case "construction", "material":
-		add(SemanticViewTarget{View: "geometry", TargetKind: descriptor.Kind, TargetID: descriptor.Label, Label: descriptor.Label, Priority: 70})
+		add(SemanticViewTarget{View: "topology", TargetKind: descriptor.Kind, TargetID: descriptor.Label, Label: descriptor.Label, Priority: 70})
 	case "source-object":
 		if section := semanticTopLevelSection(path); section == "site" {
-			add(SemanticViewTarget{View: "summary", TargetKind: "category", TargetID: semanticSummaryCategory(section), Label: descriptor.Label, Priority: 70})
+			add(SemanticViewTarget{View: "metrics", TargetKind: "category", TargetID: semanticMetricCategory(section), Label: descriptor.Label, Priority: 70})
 		}
 	}
 	if node.SourceAnchor != nil {
@@ -712,7 +707,7 @@ func (state *semanticNavigationBuildState) hvacPanelTarget(node SemanticYAMLNode
 	return ""
 }
 
-func (state *semanticNavigationBuildState) geometryPanelTarget(kind string, node SemanticYAMLNode, descriptor semanticEntityDescriptor) string {
+func (state *semanticNavigationBuildState) topologyPanelTarget(kind string, node SemanticYAMLNode, descriptor semanticEntityDescriptor) string {
 	if state.ctx == nil {
 		return descriptor.ID
 	}
@@ -761,7 +756,7 @@ func semanticPreferredTarget(path string, descriptor semanticEntityDescriptor, t
 	preferredView := ""
 	switch context {
 	case "zone_geometry":
-		preferredView = "geometry"
+		preferredView = "topology"
 	case "zone_profile":
 		preferredView = "profile"
 	case "zone_service", "system_definition", "loop_occurrence", "component_occurrence", "coupling_occurrence":
@@ -769,21 +764,21 @@ func semanticPreferredTarget(path string, descriptor semanticEntityDescriptor, t
 	case "zone_output", "output_request":
 		preferredView = "input-text"
 	case "zone_diagnostic", "diagnostic_occurrence":
-		preferredView = "diagnose"
+		preferredView = "input-text"
 	case "source_only":
 		preferredView = "input-text"
 	}
 	if preferredView == "" {
 		if descriptor.Kind == "source-object" && semanticTopLevelSection(path) == "site" {
-			preferredView = "summary"
+			preferredView = "metrics"
 		}
 	}
 	if preferredView == "" {
 		switch descriptor.Kind {
 		case "surface", "fenestration", "space":
-			preferredView = "geometry"
+			preferredView = "topology"
 		case "thermal_boundary", "thermal_interface", "thermal_connection", "thermal_environment", "thermal_air_coupling", "thermal_issue":
-			preferredView = "geometry"
+			preferredView = "topology"
 		case "schedule", "profile-item", "profile-group":
 			preferredView = "profile"
 		case "hvac-path", "hvac-loop", "hvac-component", "hvac-coupling", "hvac-network":
@@ -791,9 +786,9 @@ func semanticPreferredTarget(path string, descriptor semanticEntityDescriptor, t
 		case "output":
 			preferredView = "input-text"
 		case "diagnostic":
-			preferredView = "diagnose"
+			preferredView = "input-text"
 		case "project", "building", "semantic-section":
-			preferredView = "summary"
+			preferredView = "metrics"
 		}
 	}
 	// A zone definition intentionally advertises several lenses without
@@ -1233,11 +1228,17 @@ func (state *semanticNavigationBuildState) addDiagnosticEntities() {
 			lineIndexes = append(lineIndexes, base.LineIndexes...)
 			related = append(related, base.EntityID)
 		}
-		targets := []SemanticViewTarget{{View: "diagnose", TargetKind: "diagnostic", TargetID: diagnosticID, Label: descriptor.Label, Priority: 100}}
-		if strings.HasPrefix(diagnosticID, "topology-issue:") || strings.EqualFold(diagnostic.Category, "Topology") {
-			targets = append(targets, SemanticViewTarget{View: "geometry", TargetKind: "thermal_issue", TargetID: diagnosticID, Label: descriptor.Label, Priority: 120})
+		targets := []SemanticViewTarget{}
+		preferredView := ""
+		if anchor != nil && anchor.ObjectID != "" {
+			targets = append(targets, SemanticViewTarget{View: "input-text", TargetKind: "source", TargetID: anchor.ObjectID, Label: "Source", Priority: 20})
+			preferredView = "input-text"
 		}
-		state.addSyntheticOccurrence(descriptor, path, "diagnostic_occurrence", anchor, targets, lineIndexes, related, "diagnose")
+		if strings.HasPrefix(diagnosticID, "topology-issue:") || strings.EqualFold(diagnostic.Category, "Topology") {
+			targets = append(targets, SemanticViewTarget{View: "topology", TargetKind: "thermal_issue", TargetID: diagnosticID, Label: descriptor.Label, Priority: 120})
+			preferredView = "topology"
+		}
+		state.addSyntheticOccurrence(descriptor, path, "diagnostic_occurrence", anchor, targets, lineIndexes, related, preferredView)
 	}
 }
 
@@ -1687,7 +1688,7 @@ func semanticTopLevelSection(path string) string {
 	return segments[0]
 }
 
-func semanticSummaryCategory(section string) string {
+func semanticMetricCategory(section string) string {
 	switch semanticIDToken(section) {
 	case "geometry", "zones", "spaces", "site_geometry":
 		return "geometry_areas"

@@ -18,6 +18,9 @@ The release script infers bump size from these sections:
 
 ## Changed
 
+- Renamed the main Summary analysis to Metrics throughout the UI, CLI, API,
+  source symbols, tests, and current documentation, and normalized the former
+  Geometry panel namespace to Topology while retaining true geometry models.
 - Consolidated the desktop/CLI command, Wails application modules, internal Go
   packages, frontend, command tests, and Wails project configuration under
   `cmd/semantic-idf`. Frontend assets are exposed through a dedicated embedded
@@ -38,7 +41,7 @@ The release script infers bump size from these sections:
   run-plan preview. Each input now automatically uses a registered or detected
   EnergyPlus installation with a compatible major/minor version; an
   incompatible input fails independently without stopping compatible files.
-- Fixed Batch Summary topology metrics to the multiplier-aware effective area
+- Fixed Batch Metrics topology values to the multiplier-aware effective area
   basis and removed the Physical/Model-total selector from that workflow.
 - Removed Batch Output QA and the main Output result tab. The core Output
   analysis, preview, apply, purpose-output apply, and discovery APIs remain
@@ -59,7 +62,7 @@ The release script infers bump size from these sections:
   routes updating in place. Outdoor boundaries use compact directional points
   with separate N/E/S/W/Roof/Floor area and UA totals, while Adiabatic surfaces
   appear as selectable detached wall stubs instead of a shared environment node.
-- Moved Geometry Fit/Expand, HVAC Expand, and Heat-Flow plan zoom actions into
+- Moved Topology Fit/Expand, HVAC Expand, and Heat-Flow plan zoom actions into
   their drawing areas as compact icon controls. HVAC now keeps its inspector
   visible and no longer shows a separate inspector toggle button.
 - Removed the redundant HVAC and Profile top headers and text search fields.
@@ -75,9 +78,8 @@ The release script infers bump size from these sections:
   icon toolbar at the upper-right of the HVAC drawing instead of a text
   breadcrumb row.
   Apply Profile now sits at the right edge of the compact Profile selector.
-- Removed the Diagnose result header and its issue-search, severity, source,
-  and hide-code filters. Fix actions now sit in the Fixes card; the independent
-  fix-candidate search remains available for cleanup review.
+- Moved diagnostics and cleanup review out of the main result tabs into
+  Tools / Diagnose, where one input snapshot owns both the issue list and fixes.
 - Removed the redundant Profile Graph deck-status line such as
   `5 series · actual · year · single`.
 - Reworked the Profile overview into a compact, table-aligned selector without
@@ -91,6 +93,18 @@ The release script infers bump size from these sections:
   direct comparison. Removed the separate Profile Matrix, Source Objects, and
   Parameter Candidates sections; graph, Apply, semantic navigation, and
   backend Profile QA data remain available.
+- Expanded Profile engineering calculations across People, Lights, all
+  standard equipment families, infiltration, ventilation, and design outdoor
+  air. Zone, ZoneList, Space, and SpaceList targets now use their resolved
+  physical floor-area, volume, exterior-area, and occupant bases; Zone and
+  ZoneGroup multipliers are applied once without changing representative
+  densities. Schedule curves combine each object's own design contribution and
+  schedule instead of applying the first schedule to an aggregate. Unsupported
+  weather- or occupancy-dependent operating models are identified as nominal
+  or partial rather than presented as exact actual profiles.
+- Replaced visible `N/A` sentinels with an em dash. Missing configuration and
+  configured-but-incomplete calculations retain distinct status, warning,
+  tooltip, and accessibility metadata instead of sharing an ambiguous label.
 - Simplified Profile Graph to a fixed Time Profile over selected Profile
   assignments. Removed Graph Type, Scope, and Compare selectors, replaced the
   View dropdown with six direct view buttons, and moved graph Scale to the
@@ -109,6 +123,13 @@ The release script infers bump size from these sections:
 
 ## Fixed
 
+- Corrected Metrics floor-area totals to honor each Zone's Part of Total Floor
+  Area flag, and transformed relative surface vertices through the Building and
+  Zone coordinate systems before calculating footprint bounds and long/short
+  dimensions.
+- Preserved engineering precision for small Profile design rates and marked
+  missing, interpolated, weather-dependent, or otherwise approximated schedule
+  curves as partial instead of presenting step fallbacks as exact results.
 - Profile curves that resolve to the same visible path now use interleaved
   color phases instead of hiding behind the last-drawn series. Matching legend
   entries use fixed-width line swatches and identify overlap at the current
@@ -116,12 +137,14 @@ The release script infers bump size from these sections:
 
 ## Performance
 
-- Replaced per-render listeners in the large Input, Profile, HVAC, Geometry,
-  Topology, and Simulation surfaces with fixed delegated handlers, and reused
+- Replaced per-render listeners in the large Input, Profile, HVAC, Topology,
+  and Simulation surfaces with fixed delegated handlers, and reused
   indexed lookups for semantic, geometry, HVAC, profile, and simulation data.
-- Changed the Batch parse cache to an O(1) LRU that coalesces concurrent reads
-  of the same input. Diagnose and Cleanup now honor the bounded worker setting,
+- Changed the Batch Metrics parse cache to an O(1) LRU that coalesces concurrent reads
+  of the same input. Diagnose cleanup scans now honor the bounded worker setting,
   while Batch Simulation reports completion from one serialized collector.
 - Removed unused private analysis helpers and reduced repeated allocations and
-  scans in Summary, simulation output lookup, and workbook generation without
+  scans in Metrics, simulation output lookup, and workbook generation without
   changing the public JSON or automation APIs.
+- Reorganized the Batch workspace into Tools with three focused surfaces: Batch Metrics, Batch Simulation, and single-file Diagnose. Diagnose now restores the current app snapshot, supports selecting another input, applies reviewed fixes back to the snapshot, and saves cleaned copies.
+- Removed the superseded multi-file Batch Diagnose, Cleanup Report, and Convert / Export runtime endpoints and helpers; single-file diagnostics and reviewed cleanup remain available in Tools / Diagnose.

@@ -1225,8 +1225,8 @@ export function initializeMultiSimulationTool(context) {
                 (row) => `
                   <tr>
                     <td>${escapeHTML(row.label)}</td>
-                    <td>${escapeHTML(row.left || t("common.notAvailable", {}, "N/A"))}</td>
-                    <td>${escapeHTML(row.right || t("common.notAvailable", {}, "N/A"))}</td>
+                    <td>${escapeHTML(row.left || t("common.notAvailable", {}, "—"))}</td>
+                    <td>${escapeHTML(row.right || t("common.notAvailable", {}, "—"))}</td>
                   </tr>`,
               )
               .join("")}</tbody>
@@ -1610,7 +1610,7 @@ export function initializeMultiSimulationTool(context) {
 
   function energyExplanationDeltaPercent(row = {}) {
     if (row.leftMissing || row.percent === null) {
-      return t("common.notAvailable", {}, "N/A");
+      return t("common.notAvailable", {}, "—");
     }
     return `${formatNumber(row.percent)}%`;
   }
@@ -1646,7 +1646,7 @@ export function initializeMultiSimulationTool(context) {
   function formatSignedValue(value, unit = "") {
     const number = Number(value);
     if (!Number.isFinite(number)) {
-      return t("common.notAvailable", {}, "N/A");
+      return t("common.notAvailable", {}, "—");
     }
     const sign = number > 0 ? "+" : "";
     return `${sign}${formatValue(number, unit)}`;
@@ -1729,7 +1729,7 @@ export function initializeMultiSimulationTool(context) {
   function formatNumber(value) {
     const number = Number(value);
     if (!Number.isFinite(number)) {
-      return "N/A";
+      return "—";
     }
     if (Math.abs(number) >= 10000 || (Math.abs(number) > 0 && Math.abs(number) < 0.001)) {
       return number.toExponential(2);

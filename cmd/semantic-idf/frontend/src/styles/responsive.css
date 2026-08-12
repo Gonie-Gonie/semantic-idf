@@ -1,12 +1,12 @@
 @media (max-width: 1260px) {
-  .summary-head,
-  .geometry-head {
+  .metrics-head,
+  .topology-head {
     align-items: flex-start;
     flex-wrap: wrap;
   }
 
-  .summary-tools,
-  .geometry-tools {
+  .metrics-tools,
+  .topology-tools {
     flex: 1 1 100%;
   }
 
@@ -56,43 +56,43 @@
     border-bottom: 1px solid var(--line);
   }
 
-  .summary-head {
+  .metrics-head {
     align-items: stretch;
     flex-direction: column;
   }
 
-  .geometry-head {
+  .topology-head {
     align-items: stretch;
     flex-direction: column;
   }
 
-  .summary-tools {
+  .metrics-tools {
     justify-content: stretch;
   }
 
-  .geometry-tools {
+  .topology-tools {
     justify-content: stretch;
   }
 
-  .geometry-control-group,
-  .geometry-sync-toggle,
-  .geometry-visibility-controls {
+  .topology-control-group,
+  .topology-sync-toggle,
+  .topology-visibility-controls {
     flex: 1 1 100%;
   }
 
-  .geometry-sync-toggle,
-  .geometry-visibility-controls {
+  .topology-sync-toggle,
+  .topology-visibility-controls {
     padding-left: 0;
     padding-top: 8px;
     border-left: 0;
     border-top: 1px solid var(--line);
   }
 
-  .summary-tools input,
-  .summary-tools button,
-  .summary-tools select,
-  .geometry-tools button,
-  .geometry-tools select {
+  .metrics-tools input,
+  .metrics-tools button,
+  .metrics-tools select,
+  .topology-tools button,
+  .topology-tools select {
     flex: 1 1 160px;
     width: auto;
   }
@@ -156,7 +156,7 @@
     display: block;
   }
 
-  .geometry-detail-grid {
+  .topology-detail-grid {
     grid-template-columns: 1fr;
   }
 
@@ -227,17 +227,17 @@
     grid-template-columns: 1fr;
   }
 
-  .summary-status {
+  .metrics-status {
     grid-area: status;
     justify-self: end;
   }
 
-  .geometry-body {
-    grid-template-rows: minmax(220px, 1fr) 8px minmax(180px, var(--geometry-details-height, 44%));
+  .topology-body {
+    grid-template-rows: minmax(220px, 1fr) 8px minmax(180px, var(--topology-details-height, 44%));
   }
 
-  .geometry-property-list div,
-  .geometry-related-row {
+  .topology-property-list div,
+  .topology-related-row {
     grid-template-columns: 1fr;
   }
 

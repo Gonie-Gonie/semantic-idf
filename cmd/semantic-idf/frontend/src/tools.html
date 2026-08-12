@@ -3,14 +3,245 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta http-equiv="refresh" content="0; url=./batch.html" />
-    <title>SemanticIDF Batch</title>
-    <script>
-      window.location.replace("./batch.html" + window.location.hash);
-    </script>
+    <title data-i18n="tools.pageTitle">SemanticIDF Tools</title>
+    <link rel="stylesheet" href="./styles.css" />
   </head>
-  <body>
-    <p hidden data-app-brand-version>SEMANTICIDF V0.4.4</p>
-    <p><a href="./batch.html">Open Batch</a></p>
+  <body class="guide-page">
+    <header class="guide-header">
+      <div>
+        <p class="guide-kicker" data-app-brand-version>SEMANTICIDF V0.4.4</p>
+        <h1 data-i18n="action.tools">Tools</h1>
+      </div>
+      <div class="guide-header-actions">
+        <a class="toolbar-link" href="./index.html" data-i18n="action.backToApp">Back to App</a>
+        <a class="toolbar-link" href="./guide.html" data-i18n="action.guide">Guide</a>
+        <a class="toolbar-link" href="./settings.html" data-i18n="action.settings">Settings</a>
+      </div>
+    </header>
+
+    <main class="guide-layout tools-layout tool-tab-layout">
+      <nav class="tool-nav" aria-label="Tools" data-i18n-aria-label="tools.navLabel">
+        <button class="tool-nav-button active" data-tools-tab="batch-metrics" type="button">
+          <strong data-i18n="tools.batchMetrics">Batch Metrics</strong>
+          <span data-i18n="tools.batchMetricsDescription">Compare model metrics across files</span>
+        </button>
+        <button class="tool-nav-button" data-tools-tab="diagnose" type="button">
+          <strong data-i18n="tab.diagnose">Diagnose</strong>
+          <span data-i18n="tools.diagnoseDescription">Inspect and repair one input</span>
+        </button>
+        <button class="tool-nav-button" data-tools-tab="batch-simulation" type="button">
+          <strong data-i18n="batch.simulation">Batch Simulation</strong>
+          <span data-i18n="batch.simulationDescription">Run purpose-oriented EnergyPlus cases</span>
+        </button>
+      </nav>
+
+      <section class="tool-tab-content">
+        <section id="batch-metrics" class="guide-section tool-section active" data-tools-panel="batch-metrics">
+          <div class="tool-title-row">
+            <div>
+              <h2 data-i18n="tools.batchMetrics">Batch Metrics</h2>
+              <p data-i18n="tools.batchMetricsLongDescription">Analyze several EnergyPlus inputs and compare their model metrics in one table.</p>
+            </div>
+            <div class="tool-actions">
+              <button id="batchMetricsSelect" type="button" data-i18n="action.selectFiles">Select Files</button>
+              <button id="batchMetricsExport" type="button" disabled data-i18n="action.exportCsv">Export CSV</button>
+              <button id="batchMetricsExportJSON" type="button" disabled>Export JSON</button>
+              <button id="batchMetricsExportXLSX" type="button" disabled data-i18n="action.exportXlsx">Export XLSX</button>
+            </div>
+          </div>
+
+          <div class="tool-control-row">
+            <div class="orientation-controls" role="group" aria-label="Batch metrics orientation" data-i18n-aria-label="tools.orientationLabel">
+              <button class="orientation-button active" data-metrics-orientation="metrics" type="button" data-i18n="tools.metricsRows">Metrics as rows</button>
+              <button class="orientation-button" data-metrics-orientation="files" type="button" data-i18n="tools.buildingsRows">Buildings as rows</button>
+            </div>
+            <label class="tool-inline-control">
+              <span data-i18n="batch.metricGroup">Metric group</span>
+              <select id="batchMetricsMetricGroup">
+                <option value="all" data-i18n="common.all">All</option>
+                <option value="inventory">Inventory</option>
+                <option value="geometry">Geometry</option>
+                <option value="topology">Topology</option>
+                <option value="envelope">Envelope</option>
+                <option value="loads">Internal Loads</option>
+                <option value="schedules">Schedules</option>
+                <option value="hvac">HVAC</option>
+                <option value="reliable">Reliable-only</option>
+              </select>
+            </label>
+            <label class="tool-inline-control"><input id="batchMetricsIncludeTopology" type="checkbox" /> Include full topology in JSON</label>
+            <label class="tool-inline-control">
+              <span data-i18n="common.status">Status</span>
+              <select id="batchMetricsStatusFilter">
+                <option value="all" data-i18n="common.all">All</option>
+                <option value="ok">ok</option>
+                <option value="partial">partial</option>
+                <option value="missing">missing</option>
+                <option value="not_applicable">not applicable</option>
+                <option value="inferred">inferred</option>
+                <option value="analyzer-limited">analyzer-limited</option>
+              </select>
+            </label>
+            <label class="tool-inline-control">
+              <span data-i18n="batch.deltaSort">Delta sort</span>
+              <select id="batchMetricsDeltaSort">
+                <option value="table" data-i18n="batch.deltaSortTable">Table order</option>
+                <option value="absolute" data-i18n="batch.deltaSortAbsolute">Absolute delta</option>
+                <option value="percent" data-i18n="batch.deltaSortPercent">Percent delta</option>
+                <option value="status" data-i18n="batch.deltaSortStatus">Status changes</option>
+                <option value="missing" data-i18n="batch.deltaSortMissing">Missing first</option>
+              </select>
+            </label>
+            <span id="batchMetricsStats" class="tool-muted" data-i18n="tools.noFilesSelected">No files selected</span>
+          </div>
+
+          <div class="tool-progress" aria-live="polite">
+            <div class="tool-progress-header">
+              <span id="batchMetricsStatus" data-i18n="tools.waitingFiles">Waiting for files</span>
+              <span id="batchMetricsPercent">0%</span>
+            </div>
+            <div class="tool-progress-track">
+              <div id="batchMetricsProgressBar" class="tool-progress-bar"></div>
+            </div>
+          </div>
+
+          <div id="batchMetricsFiles" class="tool-file-list"></div>
+          <div id="batchMetricsTable" class="tool-table-wrap">
+            <div class="empty" data-i18n="tools.selectFilesHelp">Select one or more IDF or epJSON files to build a comparison table.</div>
+          </div>
+          <div id="batchMetricsDelta" class="batch-delta-drawer">
+            <div class="empty" data-i18n="batch.deltaHelp">Click two file columns to compare baseline and target deltas.</div>
+          </div>
+        </section>
+
+        <section id="diagnose" class="guide-section tool-section" data-tools-panel="diagnose">
+          <div class="tool-title-row">
+            <div>
+              <h2 data-i18n="tab.diagnose">Diagnose</h2>
+              <p data-i18n="tools.diagnoseLongDescription">Inspect diagnostics and review safe cleanup fixes for one EnergyPlus input.</p>
+            </div>
+            <div class="tool-actions">
+              <button id="diagnoseSelectInput" type="button" data-i18n="action.selectFile">Select File</button>
+              <button id="diagnoseRefresh" type="button" data-i18n="action.refresh">Refresh</button>
+              <button id="diagnosePreview" type="button" disabled data-i18n="diagnoseFix.preview">Preview fixes</button>
+              <button id="diagnoseApply" type="button" disabled data-i18n="diagnoseFix.apply">Apply selected</button>
+              <button id="diagnoseSaveAs" type="button" disabled data-i18n="diagnoseFix.saveCopy">Save cleaned copy</button>
+              <input id="diagnoseBrowserFile" class="hidden-file-input" type="file" accept=".idf,.imf,.epjson,.json,.txt" />
+            </div>
+          </div>
+          <div class="tool-control-row">
+            <strong id="diagnoseFilename" data-i18n="tools.noCurrentInputShort">No current input.</strong>
+            <span id="diagnoseStatus" class="tool-muted" data-i18n="diagnoseFix.pending">Open an input or return from the app, then refresh.</span>
+            <input id="diagnoseCandidateFilter" type="search" placeholder="Filter fix candidates" aria-label="Filter fix candidates" data-i18n-placeholder="tools.filterCandidates" data-i18n-aria-label="tools.filterCandidates" />
+            <span id="diagnoseCandidateStats" class="tool-muted">0 selected of 0</span>
+          </div>
+          <div id="diagnosePreviewPanel" class="diagnose-fix-preview" hidden></div>
+          <div class="cleanup-grid diagnose-fix-grid">
+            <section>
+              <h3 data-i18n="tools.rules">Rules</h3>
+              <div id="diagnoseRules" class="cleanup-rules"><div class="empty" data-i18n="diagnoseFix.pending">Scan current input for suggested fixes.</div></div>
+            </section>
+            <section>
+              <h3 data-i18n="tools.candidates">Candidates</h3>
+              <div id="diagnoseCandidates" class="tool-table-wrap cleanup-candidates"><div class="empty" data-i18n="diagnoseFix.pending">Scan current input for suggested fixes.</div></div>
+            </section>
+          </div>
+          <section class="simulation-section">
+            <div class="profile-section-head"><h3 data-i18n="tab.diagnose">Diagnostics</h3></div>
+            <div id="diagnoseList" class="diagnostic-list"><div class="empty" data-i18n="tools.noCurrentInput">Open an input first.</div></div>
+          </section>
+        </section>
+
+        <section id="batch-simulation" class="guide-section tool-section" data-tools-panel="batch-simulation">
+          <div class="tool-title-row">
+            <div>
+              <h2 data-i18n="batch.simulation">Batch Simulation</h2>
+              <p data-i18n="batch.simulationLongDescription">Select IDF/epJSON files, run EnergyPlus with controlled workers, then compare purpose metrics.</p>
+            </div>
+            <div class="tool-actions">
+              <button id="multiSimulationSelectFiles" type="button" data-i18n="action.selectFiles">Select Files</button>
+              <button id="multiSimulationSelectFolder" type="button" data-i18n="tools.selectFolder">Select Folder</button>
+              <button id="multiSimulationRun" type="button" disabled data-i18n="tools.runSelectedSimulations">Run Selected</button>
+              <button id="multiSimulationExport" type="button" disabled data-i18n="action.exportCsv">Export CSV</button>
+              <button id="multiSimulationExportXLSX" type="button" disabled data-i18n="action.exportXlsx">Export XLSX</button>
+              <button id="multiSimulationExportJSON" type="button" disabled data-i18n="action.exportJson">Export JSON</button>
+            </div>
+          </div>
+
+          <div class="tool-simulation-controls">
+            <fieldset class="batch-purpose-fieldset">
+              <legend data-i18n="batch.purposes">Purposes</legend>
+              <label><input data-batch-purpose="basic_energy" type="checkbox" checked /> <span>Basic Energy</span></label>
+              <label><input data-batch-purpose="zone_heat_flow" type="checkbox" checked /> <span>Zone Heat Flow</span></label>
+              <label><input data-batch-purpose="hvac_loop_check" type="checkbox" /> <span>HVAC Loop Check</span></label>
+            </fieldset>
+            <label>
+              <span data-i18n="simulation.weather">Weather</span>
+              <select id="multiSimulationWeather"></select>
+            </label>
+            <label>
+              <span data-i18n="tools.weatherMode">Weather mode</span>
+              <select id="multiSimulationWeatherMode">
+                <option value="same" data-i18n="tools.weatherSame">Same weather for all</option>
+                <option value="subfolder" data-i18n="tools.weatherSubfolder">Nearest EPW by folder</option>
+              </select>
+            </label>
+            <label>
+              <span data-i18n="tools.workers">Workers</span>
+              <input id="multiSimulationWorkers" type="number" min="0" max="512" step="1" value="0" />
+            </label>
+            <label class="settings-check">
+              <input id="multiSimulationRecursive" type="checkbox" checked />
+              <span data-i18n="tools.recursiveFolders">Search folders recursively</span>
+            </label>
+          </div>
+
+          <div class="tool-control-row">
+            <span id="multiSimulationStats" class="tool-muted" data-i18n="tools.noSimulationFiles">No simulation files selected</span>
+            <select id="multiSimulationSort">
+              <option value="filename" data-i18n="common.name">name</option>
+              <option value="status" data-i18n="common.status">Status</option>
+              <option value="warnings" data-i18n="simulation.errWarnings">ERR warnings</option>
+              <option value="severe" data-i18n="simulation.errSevere">Severe/Fatal</option>
+              <option value="duration" data-i18n="tools.duration">Duration</option>
+            </select>
+          </div>
+          <div class="tool-progress" aria-live="polite">
+            <div class="tool-progress-header">
+              <span id="multiSimulationStatus" data-i18n="tools.waitingFiles">Waiting for files</span>
+              <span id="multiSimulationPercent">0%</span>
+            </div>
+            <div class="tool-progress-track">
+              <div id="multiSimulationProgressBar" class="tool-progress-bar"></div>
+            </div>
+          </div>
+
+          <div id="multiSimulationFiles" class="tool-file-list"></div>
+          <section class="simulation-section">
+            <div class="profile-section-head">
+              <h3 data-i18n="tools.simulationComparison">Simulation comparison</h3>
+              <div class="batch-simulation-compare-controls">
+                <select id="multiSimulationMetric"></select>
+                <label>
+                  <span data-i18n="batch.baselineCase">Baseline</span>
+                  <select id="multiSimulationCompareBaseline" disabled></select>
+                </label>
+                <label>
+                  <span data-i18n="batch.targetCase">Target</span>
+                  <select id="multiSimulationCompareTarget" disabled></select>
+                </label>
+              </div>
+            </div>
+            <div id="multiSimulationChart" class="simulation-chart"></div>
+          </section>
+          <div id="multiSimulationTable" class="tool-table-wrap">
+            <div class="empty" data-i18n="tools.selectSimulationFilesHelp">Select files or a folder to prepare batch simulation.</div>
+          </div>
+        </section>
+
+      </section>
+    </main>
+
+    <script type="module" src="./js/tools.js"></script>
   </body>
 </html>

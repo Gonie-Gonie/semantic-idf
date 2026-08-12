@@ -38,7 +38,7 @@ $modules = @(
     "actions.js",
     "app-info.js",
     "command-palette.js",
-    "geometry-loader.js",
+    "topology-loader.js",
     "layout.js",
     "main.js",
     "navigation.js",
@@ -67,8 +67,7 @@ foreach ($module in $modules) {
 
 $nestedModules = @(
     "views/analysis-views.js",
-    "views/diagnose-fixes.js",
-    "views/geometry-view.js",
+    "views/topology-view.js",
     "views/thermal-topology-view.js",
     "views/thermal-topology-layout.js",
     "views/thermal-topology-inspector.js",
@@ -89,7 +88,7 @@ foreach ($module in $nestedModules) {
 $styles = @(
     "styles.css",
     "styles/base.css",
-    "styles/geometry.css",
+    "styles/topology.css",
     "styles/hvac.css",
     "styles/output.css",
     "styles/profile.css",

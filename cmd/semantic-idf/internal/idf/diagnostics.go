@@ -621,7 +621,7 @@ func diagnosticFieldReferenceKind(obj Object, fieldIndex int, field Field) strin
 		return "missing_schedule_reference"
 	case fieldRoleConstructionRef:
 		return "missing_construction_reference"
-	case fieldRoleZoneRef, fieldRoleSpaceRef:
+	case fieldRoleZoneRef, fieldRoleSpaceRef, fieldRoleZoneSpaceRef, fieldRoleZoneSpaceTarget, fieldRoleZoneListRef:
 		return "missing_zone_reference"
 	}
 	if role != "" {

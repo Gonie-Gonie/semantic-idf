@@ -71,7 +71,7 @@ func TestNavigationSelectionUXBrowserHarness(t *testing.T) {
 	}
 	for _, signal := range []string{
 		`"profilePrimary":1`,
-		`"summaryPrimary":1`,
+		`"metricsPrimary":1`,
 		`"sourcePrimary":1`,
 		`"maxCurrentLocations":1`,
 		`"altEnterPalette":true`,
@@ -133,7 +133,7 @@ async function runNavigationSelectionUXHarness() {
 
   const scheduleDefinitionTarget = { view: "profile", targetKind: "profile-item", targetId: "profile-definition", priority: 100 };
   const scheduleUseTarget = { view: "profile", targetKind: "profile-item", targetId: "profile-use", priority: 90 };
-  const summaryCategoryTarget = { view: "summary", targetKind: "summary-category", targetId: "schedules_operation", priority: 100 };
+  const metricsCategoryTarget = { view: "metrics", targetKind: "metric-category", targetId: "schedules_operation", priority: 100 };
   const navigation = {
     entities: [
       {
@@ -148,7 +148,7 @@ async function runNavigationSelectionUXHarness() {
         kind: "semantic-section",
         label: "Schedules and operation",
         occurrenceIds: ["schedule-section-occurrence"],
-        viewTargets: [summaryCategoryTarget],
+        viewTargets: [metricsCategoryTarget],
       },
     ],
     occurrences: [
@@ -175,9 +175,9 @@ async function runNavigationSelectionUXHarness() {
         entityId: "schedule-section",
         path: "schedules",
         contextKind: "section",
-        preferredView: "summary",
+        preferredView: "metrics",
         preferredTargetId: "schedules_operation",
-        viewTargets: [summaryCategoryTarget],
+        viewTargets: [metricsCategoryTarget],
       },
     ],
     byEntityId: {
@@ -189,7 +189,7 @@ async function runNavigationSelectionUXHarness() {
     byViewTarget: {
       "profile|profile-definition": ["schedule-definition"],
       "profile|profile-use": ["schedule-use"],
-      "summary|schedules_operation": ["schedule-section-occurrence"],
+      "metrics|schedules_operation": ["schedule-section-occurrence"],
     },
   };
   state.semanticProjection = { schema: "eplus-semantic/0.2", navigation };
@@ -223,49 +223,49 @@ async function runNavigationSelectionUXHarness() {
   assert(profilePrimary === 1, "profile refresh returned more than one primary");
   assertExclusivePrimary(profilePane, profileDefinition, [profileUse], "profile duplicate occurrence");
 
-  const summaryCategories = document.getElementById("summaryCategories");
-  const summaryCategory = item("summaryScheduleCategory", {
+  const metricsCategories = document.getElementById("metricCategories");
+  const metricsCategory = item("metricsScheduleCategory", {
     entityId: "schedule-section",
     occurrenceId: "schedule-section-occurrence",
     panelTargetId: "schedules_operation",
-    summaryCategoryId: "schedules_operation",
+    metricCategoryId: "schedules_operation",
   }, "details");
-  const summaryLabel = document.createElement("summary");
-  summaryLabel.textContent = "Schedules and operation";
-  const scheduleCount = item("summaryScheduleCount", {
+  const metricsLabel = document.createElement("summary");
+  metricsLabel.textContent = "Schedules and operation";
+  const scheduleCount = item("metricsScheduleCount", {
     entityId: "schedule-section",
     occurrenceId: "schedule-section-occurrence",
     panelTargetId: "schedule_count",
-    summaryMetricId: "schedule_count",
+    metricId: "schedule_count",
   }, "div");
-  const scheduleRules = item("summaryScheduleRules", {
+  const scheduleRules = item("metricsScheduleRules", {
     entityId: "schedule-section",
     occurrenceId: "schedule-section-occurrence",
     panelTargetId: "schedule_rules",
-    summaryMetricId: "schedule_rules",
+    metricId: "schedule_rules",
   }, "div");
-  const sourceDefinition = item("summarySourceDefinition", {
+  const sourceDefinition = item("metricsSourceDefinition", {
     entityId: "schedule-entity",
     occurrenceId: "schedule-definition",
   });
-  const sourceUse = item("summarySourceUse", {
+  const sourceUse = item("metricsSourceUse", {
     entityId: "schedule-entity",
     occurrenceId: "schedule-use",
   });
-  summaryCategory.append(summaryLabel, scheduleCount, scheduleRules, sourceDefinition, sourceUse);
-  summaryCategories.append(summaryCategory);
+  metricsCategory.append(metricsLabel, scheduleCount, scheduleRules, sourceDefinition, sourceUse);
+  metricsCategories.append(metricsCategory);
 
-  const summarySelection = {
+  const metricsSelection = {
     entityId: "schedule-section",
     occurrenceId: "schedule-section-occurrence",
-    viewTarget: summaryCategoryTarget,
+    viewTarget: metricsCategoryTarget,
     originView: "profile",
     semanticPathHint: "schedules",
     relatedEntityIds: [],
   };
-  const summaryPrimary = adapters.refreshResultPanelSelectionStyles("summary", summarySelection, null);
-  assert(summaryPrimary === 1, "Summary category refresh returned more than one primary");
-  assertExclusivePrimary(summaryCategories, summaryCategory, [scheduleCount, scheduleRules], "Summary category rows");
+  const metricsPrimary = adapters.refreshResultPanelSelectionStyles("metrics", metricsSelection, null);
+  assert(metricsPrimary === 1, "Metrics category refresh returned more than one primary");
+  assertExclusivePrimary(metricsCategories, metricsCategory, [scheduleCount, scheduleRules], "Metrics category rows");
 
   const sourceSelection = {
     entityId: "schedule-entity",
@@ -274,12 +274,12 @@ async function runNavigationSelectionUXHarness() {
     semanticPathHint: "schedules/definitions/Office Schedule",
     relatedEntityIds: [],
   };
-  const sourcePrimary = adapters.refreshResultPanelSelectionStyles("summary", sourceSelection, null);
-  assert(sourcePrimary === 1, "Summary source refresh returned more than one primary");
-  assertExclusivePrimary(summaryCategories, sourceDefinition, [sourceUse], "Summary source duplicate occurrences");
+  const sourcePrimary = adapters.refreshResultPanelSelectionStyles("metrics", sourceSelection, null);
+  assert(sourcePrimary === 1, "Metrics source refresh returned more than one primary");
+  assertExclusivePrimary(metricsCategories, sourceDefinition, [sourceUse], "Metrics source duplicate occurrences");
   const maxCurrentLocations = Math.max(
     currentLocations(profilePane).length,
-    currentLocations(summaryCategories).length,
+    currentLocations(metricsCategories).length,
   );
 
   state.globalSelection = sourceSelection;
@@ -299,7 +299,7 @@ async function runNavigationSelectionUXHarness() {
 
   return {
     profilePrimary,
-    summaryPrimary,
+    metricsPrimary,
     sourcePrimary,
     maxCurrentLocations,
     altEnterPalette,

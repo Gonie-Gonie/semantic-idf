@@ -19,13 +19,15 @@ func TestResultPanelNavigationAdaptersContract(t *testing.T) {
 	}
 
 	viewIDs := sliceBetween(content, "export const RESULT_PANEL_NAVIGATION_VIEW_IDS", "const SELECTABLE_PANEL_ITEM")
-	for _, viewID := range []string{"summary", "profile", "hvac", "simulation", "diagnose", "geometry"} {
+	for _, viewID := range []string{"metrics", "profile", "hvac", "simulation", "topology"} {
 		if !strings.Contains(viewIDs, `"`+viewID+`"`) {
 			t.Fatalf("common result adapter is missing view %q", viewID)
 		}
 	}
-	if strings.Contains(viewIDs, `"output"`) {
-		t.Fatal("removed Output tab must not retain a result-panel adapter")
+	for _, removedView := range []string{"diagnose", "output"} {
+		if strings.Contains(viewIDs, `"`+removedView+`"`) {
+			t.Fatalf("removed %s tab must not retain a result-panel adapter", removedView)
+		}
 	}
 	if !strings.Contains(content, "registerPanelNavigationAdapter(viewId, adapter)") {
 		t.Fatal("common result adapters must register through the panel navigation registry")

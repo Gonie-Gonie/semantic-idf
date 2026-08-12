@@ -16,7 +16,7 @@ type Report struct {
 	Zones           []ZoneInfo       `json:"zones"`
 	HVACConnections []HVACConnection `json:"hvacConnections"`
 	UnusedObjects   []NamedObject    `json:"unusedObjects"`
-	Summary         SummaryReport    `json:"summary"`
+	Metrics         MetricsReport    `json:"metrics"`
 	Output          OutputReport     `json:"output"`
 	Profile         ProfileReport    `json:"profile"`
 	HVAC            HVACReport       `json:"hvac"`
@@ -96,8 +96,8 @@ func AnalyzeQuickFromIndex(index *DocumentIndex, timer StageTimer) Report {
 	timeAnalysisStage(timer, "core", func() {
 		report = analyzeCore(doc)
 	})
-	timeAnalysisStage(timer, "summary", func() {
-		report.Summary = AnalyzeSummaryQuick(doc)
+	timeAnalysisStage(timer, "metrics", func() {
+		report.Metrics = AnalyzeMetricsQuick(doc)
 	})
 	timeAnalysisStage(timer, "output", func() {
 		report.Output = AnalyzeOutputFromIndex(index)
@@ -112,8 +112,8 @@ func AnalyzeOverviewTimed(doc Document, timer StageTimer) Report {
 	timeAnalysisStage(timer, "core", func() {
 		report = analyzeCore(doc)
 	})
-	timeAnalysisStage(timer, "summary", func() {
-		report.Summary = AnalyzeSummary(doc)
+	timeAnalysisStage(timer, "metrics", func() {
+		report.Metrics = AnalyzeMetrics(doc)
 	})
 	timeAnalysisStage(timer, "output", func() {
 		report.Output = AnalyzeOutputFromIndex(index)
@@ -139,7 +139,7 @@ func AnalyzeTimed(doc Document, timer StageTimer) Report {
 		report = analyzeCore(doc)
 	})
 	var unusedObjects []NamedObject
-	var summary SummaryReport
+	var metrics MetricsReport
 	var output OutputReport
 	var profile ProfileReport
 	var hvac HVACReport
@@ -168,8 +168,8 @@ func AnalyzeTimed(doc Document, timer StageTimer) Report {
 		})
 	})
 	run(func() {
-		timeAnalysisStage(timer, "summary", func() {
-			summary = AnalyzeSummary(doc)
+		timeAnalysisStage(timer, "metrics", func() {
+			metrics = AnalyzeMetrics(doc)
 		})
 	})
 	run(func() {
@@ -195,7 +195,7 @@ func AnalyzeTimed(doc Document, timer StageTimer) Report {
 	wg.Wait()
 
 	report.UnusedObjects = unusedObjects
-	report.Summary = summary
+	report.Metrics = metrics
 	report.Output = output
 	report.Profile = profile
 	report.HVAC = hvac

@@ -84,8 +84,8 @@ func TestProfileTopologyCrossPanelIsolationContract(t *testing.T) {
 	controller := readTestFile(t, "frontend/src/js/selection-controller.js")
 	linkGuard := sliceBetween(controller, "export function isProfileTopologyLink", "/**")
 	for _, required := range []string{
-		`origin === "profile" && target === "geometry"`,
-		`origin === "geometry" && target === "profile"`,
+		`origin === "profile" && target === "topology"`,
+		`origin === "topology" && target === "profile"`,
 	} {
 		if !strings.Contains(linkGuard, required) {
 			t.Fatalf("central Profile/Topology link guard is missing %q", required)
@@ -123,12 +123,11 @@ func TestPanelNavigationRegistryContract(t *testing.T) {
 	}
 	viewIDs := sliceBetween(content, "export const PANEL_NAVIGATION_VIEW_IDS", "const requiredAdapterMethods")
 	for _, viewID := range []string{
-		"summary",
+		"metrics",
 		"profile",
 		"hvac",
 		"simulation",
-		"diagnose",
-		"geometry",
+		"topology",
 		"input-semantic",
 		"input-text",
 		"input-json",
@@ -138,8 +137,10 @@ func TestPanelNavigationRegistryContract(t *testing.T) {
 			t.Fatalf("panel navigation registry is missing view %q", viewID)
 		}
 	}
-	if strings.Contains(viewIDs, `"output"`) {
-		t.Fatal("removed Output tab must not remain in the panel navigation registry")
+	for _, removedView := range []string{"diagnose", "output"} {
+		if strings.Contains(viewIDs, `"`+removedView+`"`) {
+			t.Fatalf("removed %s tab must not remain in the panel navigation registry", removedView)
+		}
 	}
 	for _, method := range []string{
 		"canReveal",

@@ -11,7 +11,7 @@ import {
   selectSemanticEntity,
 } from "./selection-controller.js";
 import { renderReport } from "./views/analysis-views.js";
-import { renderGeometry, resizeGeometry } from "./geometry-loader.js";
+import { renderTopology, resizeTopology } from "./topology-loader.js";
 import {
   clearInputFilter,
   currentInputJumpSource,
@@ -543,7 +543,7 @@ export function switchResultTab(tabName, options = {}) {
   if (options.recordHistory !== false && state.activeResultTab !== tabName) {
     recordViewHistory();
   }
-  state.activeResultTab = knownResultTabIDs().includes(tabName) ? tabName : "summary";
+  state.activeResultTab = knownResultTabIDs().includes(tabName) ? tabName : "metrics";
   elements.resultTabButtons.forEach((button) => {
     button.classList.toggle("active", button.dataset.resultTab === state.activeResultTab);
   });
@@ -554,21 +554,21 @@ export function switchResultTab(tabName, options = {}) {
   if (state.report && (state.analysisDirty?.[state.activeResultTab] ?? true)) {
     renderReport({ scope: "active" });
   }
-  if (state.activeResultTab === "geometry") {
+  if (state.activeResultTab === "topology") {
     window.setTimeout(() => {
       if (state.geometryReady) {
-        renderGeometry();
+        renderTopology();
       } else {
         renderReport({ scope: "active" });
       }
-      resizeGeometry();
+      resizeTopology();
     }, 0);
   }
 }
 
 function knownResultTabIDs() {
   const ids = [...elements.resultTabButtons].map((button) => button.dataset.resultTab).filter(Boolean);
-  return ids.length ? ids : ["summary", "profile", "hvac", "simulation", "diagnose", "geometry"];
+  return ids.length ? ids : ["metrics", "topology", "profile", "hvac", "simulation"];
 }
 
 export async function undoViewNavigation(options = {}) {

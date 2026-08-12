@@ -11,17 +11,17 @@ func TestThermalTopologyShortcutsAreConfigurableAndContextGuarded(t *testing.T) 
 	shortcuts := readTestFile(t, "frontend/src/js/shortcuts.js")
 	main := readTestFile(t, "frontend/src/js/main.js")
 	for _, required := range []string{
-		`geometry3D: "1"`, `geometryPlan: "2"`, `geometryThermal: "3"`, `geometryFit: "F"`,
+		`topology3D: "1"`, `topologyPlan: "2"`, `topologyNetwork: "3"`, `topologyFit: "F"`,
 		`topologyConnectivity: "T"`, `topologyArea: "A"`,
 		`topologyUA: "U"`, `topologyQA: "Q"`, `topologyNeighbors: "N"`,
-		"validateShortcutConflicts", "allowsBareKey", `state.activeResultTab !== "geometry"`, `state.geometryMode !== "thermal"`,
+		"validateShortcutConflicts", "allowsBareKey", `state.activeResultTab !== "topology"`, `state.topologyMode !== "thermal"`,
 	} {
 		if !strings.Contains(settings+settingsPage+shortcuts+main, required) {
 			t.Fatalf("thermal topology shortcut contract is missing %q", required)
 		}
 	}
 	if !strings.Contains(shortcuts, "isEditableTarget(event.target)") || !strings.Contains(shortcuts, "handled === false") {
-		t.Fatal("bare topology shortcuts must not run in editors or consume keys outside Geometry")
+		t.Fatal("bare topology shortcuts must not run in editors or consume keys outside Topology")
 	}
 }
 
@@ -36,7 +36,7 @@ func TestThermalTopologyGraphAccessibilityContract(t *testing.T) {
 	}
 	view := readTestFile(t, "frontend/src/js/views/thermal-topology-view.js")
 	inspector := readTestFile(t, "frontend/src/js/views/thermal-topology-inspector.js")
-	styles := readTestFile(t, "frontend/src/styles/geometry.css")
+	styles := readTestFile(t, "frontend/src/styles/topology.css")
 	for _, required := range []string{
 		`tabindex="0" role="button"`, "connectionAriaLabel", "relation node", "issues ${nodeIssues}",
 		"localeCompare", "thermalTopologyInspectorHeading", "aria-labelledby", "thermal-legend-line",
@@ -88,18 +88,18 @@ func TestGraphicViewportActionsUseAccessibleIconsInsideTheirFigures(t *testing.T
 	}
 
 	baseStyles := readTestFile(t, "frontend/src/styles/base.css")
-	geometryStyles := readTestFile(t, "frontend/src/styles/geometry.css")
+	topologyStyles := readTestFile(t, "frontend/src/styles/topology.css")
 	hvacStyles := readTestFile(t, "frontend/src/styles/hvac.css")
 	simulationStyles := readTestFile(t, "frontend/src/styles/simulation.css")
 	for _, required := range []string{
 		".viewport-action-tools",
 		".viewport-icon-button",
 		"button:focus-visible",
-		".geometry-viewport-actions",
+		".topology-viewport-actions",
 		".hvac-viewport-actions",
 		".heatflow-viewport-actions",
 	} {
-		if !strings.Contains(baseStyles+geometryStyles+hvacStyles+simulationStyles, required) {
+		if !strings.Contains(baseStyles+topologyStyles+hvacStyles+simulationStyles, required) {
 			t.Fatalf("shared viewport action styling is missing %q", required)
 		}
 	}

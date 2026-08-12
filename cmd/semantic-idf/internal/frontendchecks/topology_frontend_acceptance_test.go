@@ -6,9 +6,9 @@ import (
 )
 
 func TestTOPO260ViewSwitchingAcceptance(t *testing.T) {
-	loader := readTestFile(t, "frontend/src/js/geometry-loader.js")
-	modeSetter := sliceBetween(loader, "export function setGeometryMode", "export function setGeometryStory")
-	for _, required := range []string{"normalizeGeometryMode(mode)", "recordViewHistory()", "state.geometryMode = nextMode"} {
+	loader := readTestFile(t, "frontend/src/js/topology-loader.js")
+	modeSetter := sliceBetween(loader, "export function setTopologyMode", "export function setTopologyStory")
+	for _, required := range []string{"normalizeTopologyMode(mode)", "recordViewHistory()", "state.topologyMode = nextMode"} {
 		if !strings.Contains(modeSetter, required) {
 			t.Fatalf("view switching contract missing %q", required)
 		}
@@ -19,17 +19,17 @@ func TestTOPO260ViewSwitchingAcceptance(t *testing.T) {
 		}
 	}
 	state := readTestFile(t, "frontend/src/js/state.js")
-	if !strings.Contains(state, `return geometryModes.includes(mode) ? mode : "3d"`) {
+	if !strings.Contains(state, `return topologyModes.includes(mode) ? mode : "3d"`) {
 		t.Fatal("invalid geometry modes must normalize to 3D")
 	}
-	view := readTestFile(t, "frontend/src/js/views/geometry-view.js")
+	view := readTestFile(t, "frontend/src/js/views/topology-view.js")
 	for _, required := range []string{
-		`elements.geometry3DControls.hidden = !is3D`,
-		`elements.geometryPlanControls.hidden = !isPlan`,
+		`elements.topology3DControls.hidden = !is3D`,
+		`elements.topologyPlanControls.hidden = !isPlan`,
 		`elements.thermalTopologyControls.hidden = !isNetwork`,
-		`elements.geometryStoryControl.hidden = isNetwork && state.thermalTopologyScope !== "story"`,
-		`state.geometryMode === "3d"`,
-		`return state.selectedGeometryStory === "all" || item.storyIndex === state.selectedGeometryStory`,
+		`elements.topologyStoryControl.hidden = isNetwork && state.thermalTopologyScope !== "story"`,
+		`state.topologyMode === "3d"`,
+		`return state.selectedTopologyStory === "all" || item.storyIndex === state.selectedTopologyStory`,
 		"restoreThermalTopologyState(snapshot, state)",
 	} {
 		if !strings.Contains(view, required) {
@@ -72,7 +72,7 @@ func TestTOPO261LayoutRoutingAcceptance(t *testing.T) {
 			t.Fatalf("directional Outdoor/Adiabatic renderer contract missing %q", required)
 		}
 	}
-	styles := readTestFile(t, "frontend/src/styles/geometry.css")
+	styles := readTestFile(t, "frontend/src/styles/topology.css")
 	for _, required := range []string{
 		`.thermal-node.environment-point .thermal-node-endpoint`,
 		`.thermal-node.environment-point[data-thermal-orientation="east"]`,
@@ -99,12 +99,12 @@ func TestTOPO261LayoutRoutingAcceptance(t *testing.T) {
 }
 
 func TestTOPO262NavigationAcceptance(t *testing.T) {
-	geometry := readTestFile(t, "frontend/src/js/views/geometry-view.js")
+	geometry := readTestFile(t, "frontend/src/js/views/topology-view.js")
 	for _, required := range []string{
 		"projectGeometrySelectionToThermal",
-		"revealThermalTargetInGeometry",
-		"geometrySelectionForTarget",
-		"preferredGeometrySemanticOccurrence",
+		"revealThermalTargetInTopology",
+		"topologySelectionForTarget",
+		"preferredTopologySemanticOccurrence",
 	} {
 		if !strings.Contains(geometry, required) {
 			t.Fatalf("cross-view navigation acceptance missing %q", required)
@@ -115,7 +115,7 @@ func TestTOPO262NavigationAcceptance(t *testing.T) {
 		`renderVariableTable`,
 		`thermal-inspector-table`,
 		`data-thermal-inspector-kind`,
-		`activeHelpers.selectGeometry?.`,
+		`activeHelpers.selectTopologyEntity?.`,
 		`"Multiplier"`,
 	} {
 		if !strings.Contains(inspector, required) {
@@ -165,8 +165,8 @@ func TestTOPO263NetworkAcceptance(t *testing.T) {
 			t.Fatalf("Network acceptance missing %q", required)
 		}
 	}
-	batch := readTestFile(t, "frontend/src/js/batch.js")
-	for _, required := range []string{`state.metricGroup === "topology"`, "summaryDeltaRow", "deltaValue", "percentValue", "ExportBatchTopologyCSV"} {
+	batch := readTestFile(t, "frontend/src/js/tools.js")
+	for _, required := range []string{`state.metricGroup === "topology"`, "metricsDeltaRow", "deltaValue", "percentValue", "ExportBatchTopologyCSV"} {
 		if !strings.Contains(batch, required) {
 			t.Fatalf("topology batch delta-export acceptance missing %q", required)
 		}

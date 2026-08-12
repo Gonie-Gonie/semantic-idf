@@ -228,12 +228,12 @@ function simulationEnergyGroupSemanticCandidates(item = {}) {
   return [
     {
       group: "Model entities",
-      view: "summary",
+      view: "metrics",
       targetKind: "category",
       targetId: "model_inventory",
       entityKinds: ["semantic-section", "project", "building"],
       contextKinds: ["definition"],
-      label: label || "Model summary",
+      label: label || "Model metrics",
     },
   ];
 }
@@ -1289,7 +1289,7 @@ function renderSimulationEnergyDashboard(result) {
   }
   const viewBody = renderEnergySubview(view, energy, explanation, explanationSummary, facility, endUse, zones);
   elements.simulationEnergyDashboard.innerHTML = `
-    <div class="simulation-energy-kpis">${kpis || `<div><span>${escapeHTML(t("common.notAvailable", {}, "N/A"))}</span><strong>0</strong></div>`}</div>
+    <div class="simulation-energy-kpis">${kpis || `<div><span>${escapeHTML(t("common.notAvailable", {}, "—"))}</span><strong>0</strong></div>`}</div>
     ${renderEnergySubviewControls(view, explanation)}
     ${viewBody}`;
   pruneSimulationSemanticBindings();
@@ -1930,7 +1930,7 @@ function renderEnergyMonthlySubview(explanation = {}, facility = [], endUse = []
       <div class="output-table-wrap">
         <table class="output-table">
           <thead><tr><th>${escapeHTML(t("common.period", {}, "Period"))}</th><th>Energy Use</th><th>Delivered Load</th><th>Heat Drivers</th><th>Residual</th></tr></thead>
-          <tbody>${rows || `<tr><td colspan="5">${escapeHTML(t("common.notAvailable", {}, "N/A"))}</td></tr>`}</tbody>
+          <tbody>${rows || `<tr><td colspan="5">${escapeHTML(t("common.notAvailable", {}, "—"))}</td></tr>`}</tbody>
         </table>
       </div>
     </section>`;
@@ -2033,7 +2033,7 @@ function renderEnergyZonesSubview(zones = [], explanation = {}) {
       <div class="output-table-wrap">
         <table class="output-table">
           <thead><tr><th>${escapeHTML(t("common.zone", {}, "Zone"))}</th><th>Driver</th><th>Category</th><th>Service</th><th>Display</th><th>Signed</th><th>${escapeHTML(t("common.source", {}, "Source"))}</th></tr></thead>
-          <tbody>${heatRows || `<tr><td colspan="7">${escapeHTML(t("common.notAvailable", {}, "N/A"))}</td></tr>`}</tbody>
+          <tbody>${heatRows || `<tr><td colspan="7">${escapeHTML(t("common.notAvailable", {}, "—"))}</td></tr>`}</tbody>
         </table>
       </div>
     </section>`;
@@ -2063,7 +2063,7 @@ function renderEnergyZoneBreakdownSection(explanation = {}) {
           <td>${escapeHTML(formatValueWithUnit(row.heatingPressure, row.unit))}</td>
           <td>${escapeHTML(formatValueWithUnit(row.signedHeat, row.unit))}</td>
           <td>${escapeHTML(formatValueWithUnit(row.residual, row.unit))}</td>
-          <td>${pathButtons ? `<div class="simulation-energy-zone-paths">${pathButtons}</div>` : `<span class="simulation-source-output missing">${escapeHTML(t("common.notAvailable", {}, "N/A"))}</span>`}</td>
+          <td>${pathButtons ? `<div class="simulation-energy-zone-paths">${pathButtons}</div>` : `<span class="simulation-source-output missing">${escapeHTML(t("common.notAvailable", {}, "—"))}</span>`}</td>
           <td>
             <div class="simulation-energy-zone-actions">
               <button class="simulation-series-inspect" type="button" data-simulation-energy-zone-jump="${escapeHTML(row.zoneName || "")}">${escapeHTML(t("simulation.openZoneInSankey", {}, "Sankey"))}</button>
@@ -2938,7 +2938,7 @@ function renderEnergyExplanationInspector(selection, explanation = {}) {
       <div class="output-table-wrap">
         <table class="output-table">
           <thead><tr><th>ID</th><th>${escapeHTML(t("common.type", {}, "Type"))}</th><th>Key</th><th>Name</th><th>Frequency</th><th>Aggregation</th><th>Table</th><th>Row</th><th>Column</th><th>Source Unit</th><th>Normalized Unit</th><th>${escapeHTML(t("simulation.sourceOutput", {}, "Source output"))}</th><th>${escapeHTML(t("simulation.inspectSeriesAction", {}, "Chart"))}</th></tr></thead>
-          <tbody>${sourceRows || `<tr><td colspan="13">${escapeHTML(t("common.notAvailable", {}, "N/A"))}</td></tr>`}</tbody>
+          <tbody>${sourceRows || `<tr><td colspan="13">${escapeHTML(t("common.notAvailable", {}, "—"))}</td></tr>`}</tbody>
         </table>
       </div>
     </section>`;
@@ -3024,7 +3024,7 @@ function renderEnergyExplanationReconciliation(explanation = {}) {
       <div class="output-table-wrap">
         <table class="output-table">
           <thead><tr><th>${escapeHTML(t("common.metric", {}, "Metric"))}</th><th>${escapeHTML(t("common.period", {}, "Period"))}</th><th>${escapeHTML(t("common.zone", {}, "Zone"))}</th><th>${escapeHTML(t("simulation.service", {}, "Service"))}</th><th>${escapeHTML(t("common.status", {}, "Status"))}</th><th>Expected</th><th>Mapped</th><th>Residual</th><th>${escapeHTML(t("simulation.basis", {}, "Basis"))}</th><th>Formula</th><th>${escapeHTML(t("common.source", {}, "Source"))}</th></tr></thead>
-          <tbody>${rows || `<tr><td colspan="11">${escapeHTML(t("common.notAvailable", {}, "N/A"))}</td></tr>`}</tbody>
+          <tbody>${rows || `<tr><td colspan="11">${escapeHTML(t("common.notAvailable", {}, "—"))}</td></tr>`}</tbody>
         </table>
       </div>
     </section>
@@ -3090,7 +3090,7 @@ function energyReconciliationStatusLabel(status = "") {
     case "residual":
       return t("simulation.reconciliationResidual", {}, "Residual");
     default:
-      return status || t("common.notAvailable", {}, "N/A");
+      return status || t("common.notAvailable", {}, "—");
   }
 }
 
@@ -3112,7 +3112,7 @@ function renderEnergyReconciliationSources(explanation = {}, sourceIDs = []) {
     .join("");
   const hiddenCount = Math.max(0, uniqueSourceIDs.length - 8);
   if (!rows) {
-    return `<span class="simulation-source-output missing">${escapeHTML(t("common.notAvailable", {}, "N/A"))}</span>`;
+    return `<span class="simulation-source-output missing">${escapeHTML(t("common.notAvailable", {}, "—"))}</span>`;
   }
   return `<div class="energy-reconciliation-sources">${rows}${hiddenCount ? `<span class="energy-reconciliation-source more">+${escapeHTML(hiddenCount)}</span>` : ""}</div>`;
 }
@@ -3273,7 +3273,7 @@ function energyExplanationLevelLabel(level = "") {
     case "residual":
       return t("simulation.residual", {}, "Residual");
     default:
-      return level || t("common.notAvailable", {}, "N/A");
+      return level || t("common.notAvailable", {}, "—");
   }
 }
 
@@ -3508,13 +3508,13 @@ function renderSimulationEnergyConnectedSystems(path = {}) {
     .join("");
   return (loopButtons || otherSystems)
     ? `<div class="simulation-energy-system-links">${loopButtons}${otherSystems}</div>`
-    : escapeHTML("N/A");
+    : escapeHTML("—");
 }
 
 function renderSimulationEnergySupportingAssets(path = {}) {
   const assets = simulationServicePathSupportingAssetRefs(path);
   if (!assets.length) {
-    return escapeHTML("N/A");
+    return escapeHTML("—");
   }
   return `
     <div class="simulation-energy-system-links">
@@ -5394,7 +5394,7 @@ function purposeSourceOutputRank(object, resultKey) {
 
 function renderSourceOutputCell(object, options = {}) {
   if (!object) {
-    return `<span class="simulation-source-output missing">${escapeHTML(t("common.notAvailable", {}, "N/A"))}</span>`;
+    return `<span class="simulation-source-output missing">${escapeHTML(t("common.notAvailable", {}, "—"))}</span>`;
   }
   const signature = object.signature || [object.objectType, object.keyValue, object.variableName, object.reportingFrequency].filter(Boolean).join(" / ");
   const stateLabel = outputStateLabel(object.state || "");
@@ -6983,7 +6983,7 @@ function renderHeatFlowStoryCard(geometry, story, dataset, zoneMap, frameIndex, 
     return `
       <article class="heatflow-floor-card">
         <h4>${escapeHTML(story.name || `Level ${story.index + 1}`)}</h4>
-        <div class="heatflow-floor-empty">${escapeHTML(t("geometry.noFloorPlan", {}, "No floor plan geometry"))}</div>
+        <div class="heatflow-floor-empty">${escapeHTML(t("topology.noFloorPlan", {}, "No floor plan geometry"))}</div>
       </article>`;
   }
 
@@ -7751,7 +7751,7 @@ function normalizeHeatFlowName(value) {
 function formatWatts(value) {
   const number = Number(value);
   if (!Number.isFinite(number)) {
-    return "N/A";
+    return "—";
   }
   const sign = number > 0 ? "+" : "";
   if (Math.abs(number) >= 1000000) {
@@ -7766,7 +7766,7 @@ function formatWatts(value) {
 function formatTemperature(value) {
   const number = Number(value);
   if (!Number.isFinite(number)) {
-    return "N/A";
+    return "—";
   }
   return `${number.toLocaleString(undefined, { maximumFractionDigits: 1 })} degC`;
 }
@@ -8663,7 +8663,7 @@ function statusText(status) {
     case "running":
       return t("simulation.runningShort", {}, "Running");
     default:
-      return t("common.notAvailable", {}, "N/A");
+      return t("common.notAvailable", {}, "—");
   }
 }
 
@@ -8677,7 +8677,7 @@ function simulationDoneMessage(result) {
 function formatNumber(value) {
   const number = Number(value);
   if (!Number.isFinite(number)) {
-    return "N/A";
+    return "—";
   }
   if (Math.abs(number) >= 10000 || (Math.abs(number) > 0 && Math.abs(number) < 0.001)) {
     return number.toExponential(2);

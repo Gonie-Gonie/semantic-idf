@@ -12,7 +12,7 @@ renderer logic in the test.
 | TOPO-282 Modeling decision/QA | Select a geometrically adjacent but adiabatic observation as a two-surface QA target, prove no thermal relation is generated, and preserve stable boundary identity after the source fix. Confirm the Topology inspector has no Diagnostics or Actions section. | `TestTOPO282ModelingDecisionAndQAIntegratedFlow`; browser signal `topo282` |
 | TOPO-283 Air coupling | Keep ZoneMixing and AFN paths separate from conductive edges and expose direction, schedule, design flow, base surface, component, and source evidence. | `TestTOPO283AirCouplingIntegratedFlow`; browser signal `topo283` |
 | TOPO-284 Simulation separation | Build and validate the signed simulation-overlay result as a separate backend contract, while confirming the Topology tab exposes no simulated-heat metric, period selector, or heat-flow ledger and continues to show static UA. | `TestTOPO284SimulationOverlayIntegratedFlow`; browser signal `topo284` |
-| TOPO-285 Context/Batch | Capture and restore Network metric, selection, and pan/zoom without backend calls; compare the fixed multiplier-adjusted Batch interzone area 8→12 m² as Δ4 m² / 50%. | `TestTOPO285SettingsAndBatchRoundTripContract`; browser signal `topo285` |
+| TOPO-285 Context/Tools | Capture and restore Network metric, selection, and pan/zoom without backend calls; compare the fixed multiplier-adjusted Batch Metrics interzone area 8→12 m² as Δ4 m² / 50%. | `TestTOPO285SettingsAndBatchRoundTripContract`; browser signal `topo285` |
 
 Run the integrated flows with:
 

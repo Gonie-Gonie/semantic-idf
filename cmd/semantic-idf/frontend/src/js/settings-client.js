@@ -31,7 +31,7 @@ export const defaultAppSettings = {
   },
   interaction: {
     syncRawTextPosition: true,
-    geometrySyncLocate: true,
+    topologySyncLocate: true,
     shortcuts: {
       save: "Ctrl+S",
       open: "Ctrl+O",
@@ -51,16 +51,15 @@ export const defaultAppSettings = {
       inputText: "Ctrl+2",
       inputJson: "Ctrl+3",
       inputTable: "Ctrl+4",
-      tabSummary: "Ctrl+Alt+1",
+      tabMetrics: "Ctrl+Alt+1",
       tabProfile: "Ctrl+Alt+2",
       tabHVAC: "Ctrl+Alt+3",
       tabSimulation: "Ctrl+Alt+4",
-      tabDiagnose: "Ctrl+Alt+5",
-      tabGeometry: "Ctrl+Alt+6",
-      geometry3D: "1",
-      geometryPlan: "2",
-      geometryThermal: "3",
-      geometryFit: "F",
+      tabTopology: "Ctrl+Alt+6",
+      topology3D: "1",
+      topologyPlan: "2",
+      topologyNetwork: "3",
+      topologyFit: "F",
       topologyConnectivity: "T",
       topologyArea: "A",
       topologyUA: "U",
@@ -88,7 +87,6 @@ export const defaultAppSettings = {
     },
     numericTolerance: 0.001,
     scheduleCompareMode: "name",
-    metricMode: "actual",
     timeView: "year",
     scaleMode: "auto",
     applyBehavior: {
@@ -243,11 +241,13 @@ export function mergeSettings(settingsInput = {}) {
         typeof interaction.syncRawTextPosition === "boolean"
           ? interaction.syncRawTextPosition
           : defaultAppSettings.interaction.syncRawTextPosition,
-      geometrySyncLocate:
-        typeof interaction.geometrySyncLocate === "boolean"
-          ? interaction.geometrySyncLocate
-          : defaultAppSettings.interaction.geometrySyncLocate,
-      shortcuts: migrateLegacyNavigationShortcuts(normalizeShortcuts(interaction.shortcuts, defaultShortcuts)),
+      topologySyncLocate:
+        typeof interaction.topologySyncLocate === "boolean"
+          ? interaction.topologySyncLocate
+          : typeof interaction.geometrySyncLocate === "boolean"
+            ? interaction.geometrySyncLocate
+            : defaultAppSettings.interaction.topologySyncLocate,
+      shortcuts: normalizeShortcuts(migrateLegacyNavigationShortcuts(interaction.shortcuts), defaultShortcuts),
     },
     profile: {
       enabledDimensions: normalizeEnabledDimensions(profile.enabledDimensions, defaultProfile.enabledDimensions),
@@ -255,11 +255,6 @@ export function mergeSettings(settingsInput = {}) {
       groupingMetrics: normalizeMetricMap(profile.groupingMetrics, defaultProfile.groupingMetrics),
       numericTolerance: clampFloat(profile.numericTolerance, 0.000001, 1000, defaultProfile.numericTolerance),
       scheduleCompareMode: normalizeChoice(profile.scheduleCompareMode, ["none", "name", "resolved"], defaultProfile.scheduleCompareMode),
-      metricMode: normalizeChoice(
-        profile.metricMode,
-        ["design", "multiplier", "actual", "annual"],
-        profileMetricModeFromLegacy(profile.graphMode, defaultProfile.metricMode),
-      ),
       timeView: normalizeChoice(
         profile.timeView,
         ["day", "week", "month", "year", "duration", "rules"],
@@ -304,6 +299,25 @@ export function mergeSettings(settingsInput = {}) {
 
 function migrateLegacyNavigationShortcuts(shortcuts) {
   const migrated = { ...shortcuts };
+  if (!migrated.tabMetrics && migrated.tabSummary) {
+    migrated.tabMetrics = migrated.tabSummary;
+  }
+  if (!migrated.tabTopology && migrated.tabGeometry) {
+    migrated.tabTopology = migrated.tabGeometry;
+  }
+  for (const [canonical, legacy] of Object.entries({
+    topology3D: "geometry3D",
+    topologyPlan: "geometryPlan",
+    topologyNetwork: "geometryThermal",
+    topologyFit: "geometryFit",
+  })) {
+    if (!migrated[canonical] && migrated[legacy]) {
+      migrated[canonical] = migrated[legacy];
+    }
+    delete migrated[legacy];
+  }
+  delete migrated.tabSummary;
+  delete migrated.tabGeometry;
   if (normalizedShortcutList(migrated.undoView) === "Ctrl+Z") {
     migrated.undoView = "Alt+Left";
   }
@@ -431,22 +445,6 @@ function clampFloat(value, min, max, fallback) {
 function normalizeChoice(value, allowed, fallback) {
   const normalized = String(value || "").trim().toLowerCase();
   return allowed.includes(normalized) ? normalized : fallback;
-}
-
-function profileMetricModeFromLegacy(value, fallback = "actual") {
-  switch (String(value || "").trim().toLowerCase()) {
-    case "design":
-      return "design";
-    case "multiplier":
-      return "multiplier";
-    case "annual":
-      return "annual";
-    case "actual":
-    case "actual_value":
-      return "actual";
-    default:
-      return fallback;
-  }
 }
 
 function profileTimeViewFromLegacy(value, fallback = "year") {

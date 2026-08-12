@@ -114,8 +114,8 @@ const navigationLinkBarRuntimePage = `<!doctype html>
     <button id="workspaceBackButton" type="button"></button>
     <button id="workspaceForwardButton" type="button"></button>
   </section>
-  <section id="summaryPane">
-    <div data-panel-target-id="zone-count"><span class="summary-name"><strong>Zone count</strong></span></div>
+  <section id="metricsPane">
+    <div data-panel-target-id="zone-count"><span class="metrics-name"><strong>Zone count</strong></span></div>
   </section>
   <pre id="result"></pre>
   <script type="module">
@@ -143,9 +143,9 @@ const navigationLinkBarRuntimePage = `<!doctype html>
           entityId: "section:zones",
           path: "zones/definitions",
           viewTargets: [
-            { view: "summary", targetId: "zones", label: "Zones" },
+            { view: "metrics", targetId: "zones", label: "Zones" },
             { view: "profile", targetId: "profile-zone", label: "Zones" },
-            { view: "geometry", targetId: "geometry-zone", label: "Zones" },
+            { view: "topology", targetId: "topology-zone", label: "Zones" },
           ],
         },
       ],
@@ -157,15 +157,15 @@ const navigationLinkBarRuntimePage = `<!doctype html>
       byObjectId: {},
       byObjectIndex: {},
       byViewTarget: {
-        "summary|zones": ["occ:zones"],
+        "metrics|zones": ["occ:zones"],
         "profile|profile-zone": ["occ:zones"],
-        "geometry|geometry-zone": ["occ:zones"],
+        "topology|topology-zone": ["occ:zones"],
       },
     };
     state.semanticProjection = { schema: "eplus-semantic/0.2", navigation };
     state.reportAnalysisKey = "link-bar-labels";
     state.activeInputView = "semantic";
-    state.activeResultTab = "summary";
+    state.activeResultTab = "metrics";
 
     const isolatedController = createSelectionController({
       state: {},
@@ -176,21 +176,21 @@ const navigationLinkBarRuntimePage = `<!doctype html>
       occurrenceId: "occ:zones",
       semanticPathHint: "zones/definitions",
     };
-    const controllerBlocksProfileToGeometry = isolatedController.selectionTargetsForView("geometry", {
+    const controllerBlocksProfileToTopology = isolatedController.selectionTargetsForView("topology", {
       ...linkedZoneSelection,
       originView: "profile",
     }).length === 0;
-    const controllerBlocksGeometryToProfile = isolatedController.selectionTargetsForView("profile", {
+    const controllerBlocksTopologyToProfile = isolatedController.selectionTargetsForView("profile", {
       ...linkedZoneSelection,
-      originView: "geometry",
+      originView: "topology",
     }).length === 0;
     const controllerKeepsSamePanelTargets =
       isolatedController.selectionTargetsForView("profile", { ...linkedZoneSelection, originView: "profile" }).length === 1 &&
-      isolatedController.selectionTargetsForView("geometry", { ...linkedZoneSelection, originView: "geometry" }).length === 1;
+      isolatedController.selectionTargetsForView("topology", { ...linkedZoneSelection, originView: "topology" }).length === 1;
     const bilateralGuard =
-      isProfileTopologyLink("profile", "geometry") &&
-      isProfileTopologyLink("geometry", "profile") &&
-      !isProfileTopologyLink("profile", "summary");
+      isProfileTopologyLink("profile", "topology") &&
+      isProfileTopologyLink("topology", "profile") &&
+      !isProfileTopologyLink("profile", "metrics");
 
     const schedules = formatNavigationSelectionLabel({
       entityId: "section:schedules",
@@ -210,7 +210,7 @@ const navigationLinkBarRuntimePage = `<!doctype html>
       entityId: "section:zones",
       entityKind: "semantic-section",
       occurrenceId: "occ:zones",
-      originView: "summary",
+      originView: "metrics",
       originTargetId: "zone-count",
       semanticPathHint: "zones/definitions",
       sourceAnchor: null,
@@ -218,54 +218,54 @@ const navigationLinkBarRuntimePage = `<!doctype html>
     };
     const metric = formatNavigationSelectionLabel(state.globalSelection);
     renderNavigationLinkBar();
-    const summaryButton = document.querySelector('#workspaceLinkTargets [data-navigation-view="summary"]');
-    summaryButton.focus();
+    const metricsButton = document.querySelector('#workspaceLinkTargets [data-navigation-view="metrics"]');
+    metricsButton.focus();
     renderNavigationLinkBar();
-    const summaryButtonAfter = document.querySelector('#workspaceLinkTargets [data-navigation-view="summary"]');
+    const metricsButtonAfter = document.querySelector('#workspaceLinkTargets [data-navigation-view="metrics"]');
     const labelElement = document.getElementById("workspaceSelectionLabel");
 
     state.globalSelection = { ...state.globalSelection, originView: "profile" };
     renderNavigationLinkBar();
     const profileKeepsProfile = Boolean(document.querySelector('#workspaceLinkTargets [data-navigation-view="profile"]'));
-    const profileHidesGeometry = !document.querySelector('#workspaceLinkTargets [data-navigation-view="geometry"]');
+    const profileHidesTopology = !document.querySelector('#workspaceLinkTargets [data-navigation-view="topology"]');
 
-    state.globalSelection = { ...state.globalSelection, originView: "geometry" };
+    state.globalSelection = { ...state.globalSelection, originView: "topology" };
     renderNavigationLinkBar();
-    const geometryKeepsGeometry = Boolean(document.querySelector('#workspaceLinkTargets [data-navigation-view="geometry"]'));
-    const geometryHidesProfile = !document.querySelector('#workspaceLinkTargets [data-navigation-view="profile"]');
+    const topologyKeepsTopology = Boolean(document.querySelector('#workspaceLinkTargets [data-navigation-view="topology"]'));
+    const topologyHidesProfile = !document.querySelector('#workspaceLinkTargets [data-navigation-view="profile"]');
 
     state.globalSelection = { ...state.globalSelection, originView: "input-semantic" };
     state.activeResultTab = "profile";
     renderNavigationLinkBar();
-    const activeProfileHidesGeometry = !document.querySelector('#workspaceLinkTargets [data-navigation-view="geometry"]');
-    state.activeResultTab = "geometry";
+    const activeProfileHidesTopology = !document.querySelector('#workspaceLinkTargets [data-navigation-view="topology"]');
+    state.activeResultTab = "topology";
     renderNavigationLinkBar();
-    const activeGeometryHidesProfile = !document.querySelector('#workspaceLinkTargets [data-navigation-view="profile"]');
+    const activeTopologyHidesProfile = !document.querySelector('#workspaceLinkTargets [data-navigation-view="profile"]');
 
-    state.activeResultTab = "summary";
-    state.globalSelection = { ...state.globalSelection, originView: "summary" };
+    state.activeResultTab = "metrics";
+    state.globalSelection = { ...state.globalSelection, originView: "metrics" };
     renderNavigationLinkBar();
-    const summaryButtonFinal = document.querySelector('#workspaceLinkTargets [data-navigation-view="summary"]');
+    const metricsButtonFinal = document.querySelector('#workspaceLinkTargets [data-navigation-view="metrics"]');
 
     const passed = Boolean(
       schedules === "Schedules / definitions" &&
       activity === "ACTIVITY_SCH / definitions" &&
       metric === "Zones / Zone count" &&
-      summaryButton === summaryButtonAfter &&
-      summaryButtonAfter === summaryButtonFinal &&
-      document.activeElement === summaryButtonFinal &&
+      metricsButton === metricsButtonAfter &&
+      metricsButtonAfter === metricsButtonFinal &&
+      document.activeElement === metricsButtonFinal &&
       labelElement.textContent === metric &&
       labelElement.getAttribute("role") === "status" &&
       labelElement.getAttribute("aria-live") === "polite" &&
       labelElement.getAttribute("aria-atomic") === "true" &&
       profileKeepsProfile &&
-      profileHidesGeometry &&
-      geometryKeepsGeometry &&
-      geometryHidesProfile &&
-      activeProfileHidesGeometry &&
-      activeGeometryHidesProfile &&
-      controllerBlocksProfileToGeometry &&
-      controllerBlocksGeometryToProfile &&
+      profileHidesTopology &&
+      topologyKeepsTopology &&
+      topologyHidesProfile &&
+      activeProfileHidesTopology &&
+      activeTopologyHidesProfile &&
+      controllerBlocksProfileToTopology &&
+      controllerBlocksTopologyToProfile &&
       controllerKeepsSamePanelTargets &&
       bilateralGuard
     );
@@ -275,16 +275,16 @@ const navigationLinkBarRuntimePage = `<!doctype html>
       schedules,
       activity,
       metric,
-      sameButton: summaryButton === summaryButtonAfter && summaryButtonAfter === summaryButtonFinal,
-      focusPreserved: document.activeElement === summaryButtonFinal,
+      sameButton: metricsButton === metricsButtonAfter && metricsButtonAfter === metricsButtonFinal,
+      focusPreserved: document.activeElement === metricsButtonFinal,
       profileKeepsProfile,
-      profileHidesGeometry,
-      geometryKeepsGeometry,
-      geometryHidesProfile,
-      activeProfileHidesGeometry,
-      activeGeometryHidesProfile,
-      controllerBlocksProfileToGeometry,
-      controllerBlocksGeometryToProfile,
+      profileHidesTopology,
+      topologyKeepsTopology,
+      topologyHidesProfile,
+      activeProfileHidesTopology,
+      activeTopologyHidesProfile,
+      controllerBlocksProfileToTopology,
+      controllerBlocksTopologyToProfile,
       controllerKeepsSamePanelTargets,
       bilateralGuard,
     });

@@ -62,7 +62,7 @@ func TestFrontendGeometryPlanLayoutCacheContract(t *testing.T) {
 	if !strings.Contains(stateContent, "geometryPlanLayoutCache: new Map()") {
 		t.Fatalf("state should include geometry plan layout cache")
 	}
-	geometry := readTestFile(t, "frontend/src/js/views/geometry-view.js")
+	geometry := readTestFile(t, "frontend/src/js/views/topology-view.js")
 	for _, term := range []string{
 		"function cachedGeometryPlanLayout",
 		"function geometryPlanLayoutCacheKey",
@@ -77,8 +77,8 @@ func TestFrontendGeometryPlanLayoutCacheContract(t *testing.T) {
 }
 
 func TestFrontendThermalTopologyPerformanceContracts(t *testing.T) {
-	geometryView := readTestFile(t, "frontend/src/js/views/geometry-view.js")
-	if !strings.Contains(geometryView, `import("./thermal-topology-view.js")`) {
+	topologyView := readTestFile(t, "frontend/src/js/views/topology-view.js")
+	if !strings.Contains(topologyView, `import("./thermal-topology-view.js")`) {
 		t.Fatal("thermal topology module should load lazily on first use")
 	}
 
@@ -170,13 +170,13 @@ func TestFrontendTopologyLookupAndDelegationPerformanceContracts(t *testing.T) {
 		t.Fatal("thermal inspector should use one delegated interaction listener")
 	}
 
-	geometry := readTestFile(t, "frontend/src/js/views/geometry-view.js")
+	geometry := readTestFile(t, "frontend/src/js/views/topology-view.js")
 	for _, term := range []string{
 		"function geometryLookupIndex",
-		"function geometrySemanticNavigationLookup",
-		"geometryPlanInteractionsBound",
+		"function topologySemanticNavigationLookup",
+		"topologyPlanInteractionsBound",
 		`plan.addEventListener("pointerover"`,
-		"geometryDetailInteractionsBound",
+		"topologyDetailInteractionsBound",
 	} {
 		if !strings.Contains(geometry, term) {
 			t.Fatalf("geometry lookup/delegation contract missing %q", term)
@@ -199,7 +199,7 @@ func TestFrontendTopologyLookupAndDelegationPerformanceContracts(t *testing.T) {
 func TestFrontendNavigationCacheRestoreContract(t *testing.T) {
 	actions := readTestFile(t, "frontend/src/js/actions.js")
 	for _, term := range []string{
-		"export async function openBatch()",
+		"export async function openTools()",
 		"export async function openSettings()",
 		"await saveWorkspaceSnapshot()",
 		"analysisKey,",

@@ -1,5 +1,5 @@
 import { elements, escapeHTML, refreshStatusTitle, state } from "../state.js";
-import { renderGeometry } from "../geometry-loader.js";
+import { renderTopology } from "../topology-loader.js";
 import { renderHVAC } from "./hvac-views.js";
 import { renderInputViews } from "./input-views.js";
 import { renderProfile } from "./profile-views.js";
@@ -7,18 +7,12 @@ import { renderSimulation } from "./simulation-views.js";
 import { t } from "../i18n.js";
 import {
   configureResultPanelNavigationHooks,
-  extractResultPanelSelection,
   refreshResultPanelSelectionStyles,
 } from "../panel-navigation-adapters.js";
-import { currentSemanticSelection, revealSelectionSource, selectSemanticEntity } from "../selection-controller.js";
 
-const DIAGNOSTIC_RENDER_LIMIT = 500;
-
-let summarySourceIndexCache = { navigation: null, records: [] };
-let summaryTableResizeObserver = null;
-let summaryTableLayoutFrame = 0;
-let diagnoseSelectedDiagnosticID = "";
-let diagnoseTemporaryRevealID = "";
+let metricsSourceIndexCache = { navigation: null, records: [] };
+let metricsTableResizeObserver = null;
+let metricsTableLayoutFrame = 0;
 
 export function renderReport(options = {}) {
   const report = state.report;
@@ -30,23 +24,22 @@ export function renderReport(options = {}) {
   updateResultTabReadiness();
 
   if (options.scope === "all") {
-    renderSummary(report.summary);
+    renderMetrics(report.metrics);
     renderProfile(report.profile);
     renderHVAC(report.hvac);
     renderSimulation();
-    renderDiagnostics(report.diagnostics);
-    if (state.activeResultTab === "geometry") {
-      renderGeometry(report.geometry);
+    if (state.activeResultTab === "topology") {
+      renderTopology(report.geometry);
     } else {
-      renderDeferredGeometry(report.geometry);
+      renderDeferredTopology(report.geometry);
     }
     renderInputViews();
     Object.keys(state.analysisDirty || {}).forEach(markAnalysisRendered);
     return;
   }
 
-  renderSummary(report.summary);
-  markAnalysisRendered("summary");
+  renderMetrics(report.metrics);
+  markAnalysisRendered("metrics");
   renderActiveResultTab(report);
   renderInputViews();
   markAnalysisRendered("input");
@@ -78,22 +71,18 @@ export function renderResultTab(tab, report = state.report) {
         renderSimulation();
         markAnalysisRendered("simulation");
         break;
-      case "diagnose":
-        renderDiagnostics(report.diagnostics);
-        markAnalysisRendered("diagnose");
-        break;
-      case "geometry":
+      case "topology":
         if (state.geometryReady) {
-          renderGeometry(report.geometry);
+          renderTopology(report.geometry);
         } else {
-          renderDeferredGeometry(report.geometry);
+          renderDeferredTopology(report.geometry);
         }
-        markAnalysisRendered("geometry");
+        markAnalysisRendered("topology");
         break;
-      case "summary":
+      case "metrics":
       default:
-        renderSummary(report.summary);
-        markAnalysisRendered("summary");
+        renderMetrics(report.metrics);
+        markAnalysisRendered("metrics");
         break;
     }
   } finally {
@@ -143,7 +132,7 @@ export function markAllAnalysisDirty() {
 
 export function updateResultTabReadiness() {
   elements.resultTabButtons?.forEach((button) => {
-    const tab = button.dataset.resultTab || "summary";
+    const tab = button.dataset.resultTab || "metrics";
     const readiness = resultTabReadiness(tab);
     button.dataset.readiness = readiness;
     const baseLabel = button.textContent.replace(/\s+/g, " ").trim();
@@ -161,10 +150,7 @@ function resultTabReadiness(tab) {
     return "ready";
   }
   if (state.analysisStage === "queued" || state.analysisStage === "pending" || state.analysisStage === "overview") {
-    return tab === "summary" ? "ready" : "pending";
-  }
-  if (state.analysisStage === "diagnostics" && ["diagnose", "geometry"].includes(tab)) {
-    return tab === "diagnose" ? "ready" : "running";
+    return tab === "metrics" ? "ready" : "pending";
   }
   return "deferred";
 }
@@ -190,7 +176,7 @@ function nowMS() {
 }
 
 export function renderEmpty() {
-  elements.summaryCategories.innerHTML = `<div class="empty">${t("summary.empty")}</div>`;
+  elements.metricCategories.innerHTML = `<div class="empty">${t("metrics.empty")}</div>`;
   if (elements.profileOverview) {
     elements.profileSettings.innerHTML = "";
     elements.profileOverview.innerHTML = `<div class="empty">${t("profile.noAnalysis")}</div>`;
@@ -203,41 +189,40 @@ export function renderEmpty() {
   if (elements.simulationRunButton) {
     renderSimulation();
   }
-  elements.geometryStats.textContent = t("geometry.stats", { zones: 0, surfaces: 0, windows: 0 });
-  elements.geometryCanvasHost.innerHTML = `<div class="empty">${t("geometry.noGeometry")}</div>`;
-  elements.geometryPlan.innerHTML = "";
-  elements.geometryDetails.innerHTML = `<div class="empty">${t("geometry.selectObject")}</div>`;
-  elements.diagnosticList.innerHTML = `<div class="empty">${t("diagnose.noDiagnosticsYet")}</div>`;
+  elements.topologyStats.textContent = t("topology.stats", { zones: 0, surfaces: 0, windows: 0 });
+  elements.topology3DCanvasHost.innerHTML = `<div class="empty">${t("topology.noGeometry")}</div>`;
+  elements.topologyPlan.innerHTML = "";
+  elements.topologyDetails.innerHTML = `<div class="empty">${t("topology.selectObject")}</div>`;
   elements.textObjectView.innerHTML = `<div class="empty">${t("input.formattedEmpty")}</div>`;
   elements.jsonStructuredView.innerHTML = `<div class="empty">${t("input.jsonEmpty")}</div>`;
   elements.fieldTable.innerHTML = `<div class="empty">${t("input.tableEmpty")}</div>`;
   elements.fieldStats.textContent = "0 tables";
 }
 
-export function renderDeferredGeometry(geometry) {
+export function renderDeferredTopology(geometry) {
   if (!state.geometryReady && state.report) {
-    elements.geometryStats.textContent = t("geometry.pending");
-    elements.geometryCanvasHost.innerHTML = `<div class="empty status-loading">${t("geometry.running")}</div>`;
-    elements.geometryPlan.innerHTML = "";
-    elements.geometryDetails.innerHTML = `<div class="empty">${t("geometry.detailsReadySoon")}</div>`;
+    elements.topologyStats.textContent = t("topology.pending");
+    elements.topology3DCanvasHost.innerHTML = `<div class="empty status-loading">${t("topology.running")}</div>`;
+    elements.topologyPlan.innerHTML = "";
+    elements.topologyDetails.innerHTML = `<div class="empty">${t("topology.detailsReadySoon")}</div>`;
     return;
   }
   if (!geometry) {
-    elements.geometryStats.textContent = t("geometry.stats", { zones: 0, surfaces: 0, windows: 0 });
+    elements.topologyStats.textContent = t("topology.stats", { zones: 0, surfaces: 0, windows: 0 });
     return;
   }
-  elements.geometryStats.textContent = t("geometry.stats", {
+  elements.topologyStats.textContent = t("topology.stats", {
     zones: geometry.zoneCount || 0,
     surfaces: geometry.surfaceCount || 0,
     windows: geometry.windowCount || 0,
   });
-  elements.geometryCanvasHost.innerHTML = `<div class="empty">${t("geometry.openToRender")}</div>`;
-  elements.geometryPlan.innerHTML = "";
-  elements.geometryDetails.innerHTML = `<div class="empty">${t("geometry.openToInspect")}</div>`;
+  elements.topology3DCanvasHost.innerHTML = `<div class="empty">${t("topology.openToRender")}</div>`;
+  elements.topologyPlan.innerHTML = "";
+  elements.topologyDetails.innerHTML = `<div class="empty">${t("topology.openToInspect")}</div>`;
 }
 
-export function renderSummary(summary = state.report?.summary) {
-  const categories = summary?.categories || [];
+export function renderMetrics(metrics = state.report?.metrics) {
+  const categories = metrics?.categories || [];
 
   const categoryHTML = categories
     .map((category) => {
@@ -245,17 +230,17 @@ export function renderSummary(summary = state.report?.summary) {
       if (!metrics.length) {
         return "";
       }
-      const categoryNavigation = summaryNavigationForCategory(category);
+      const categoryNavigation = metricsNavigationForCategory(category);
       return `
-        <details class="summary-category" data-summary-category-id="${escapeHTML(category.id)}" ${panelNavigationAttributes({
+        <details class="metrics-category" data-metric-category-id="${escapeHTML(category.id)}" ${panelNavigationAttributes({
           ...categoryNavigation,
           panelTargetId: category.id,
           })} open>
           <summary>
             <span>${escapeHTML(category.name)}</span>
           </summary>
-          <div class="summary-table" role="table" aria-label="${escapeHTML(category.name)} summary metrics">
-            <div class="summary-table-body">
+          <div class="metrics-table" role="table" aria-label="${escapeHTML(category.name)} metrics">
+            <div class="metrics-table-body">
               ${metrics.map((metric) => renderMetricRow(metric, category)).join("")}
             </div>
           </div>
@@ -263,36 +248,36 @@ export function renderSummary(summary = state.report?.summary) {
     })
     .join("");
 
-  elements.summaryCategories.innerHTML = categoryHTML || `<div class="empty">${t("summary.empty")}</div>`;
-  bindSummaryTableLayout();
-  refreshSummaryNavigationStyles();
+  elements.metricCategories.innerHTML = categoryHTML || `<div class="empty">${t("metrics.empty")}</div>`;
+  bindMetricsTableLayout();
+  refreshMetricsNavigationStyles();
 }
 
-function bindSummaryTableLayout() {
-  summaryTableResizeObserver?.disconnect();
-  if (summaryTableLayoutFrame && typeof cancelAnimationFrame === "function") {
-    cancelAnimationFrame(summaryTableLayoutFrame);
+function bindMetricsTableLayout() {
+  metricsTableResizeObserver?.disconnect();
+  if (metricsTableLayoutFrame && typeof cancelAnimationFrame === "function") {
+    cancelAnimationFrame(metricsTableLayoutFrame);
   }
-  summaryTableLayoutFrame = 0;
-  const tables = [...(elements.summaryCategories?.querySelectorAll?.(".summary-table") || [])];
+  metricsTableLayoutFrame = 0;
+  const tables = [...(elements.metricCategories?.querySelectorAll?.(".metrics-table") || [])];
   const layout = (table) => {
-    const body = table.querySelector(".summary-table-body");
+    const body = table.querySelector(".metrics-table-body");
     if (!body) {
       return;
     }
-    const metrics = [...body.querySelectorAll(".summary-metric")];
+    const metrics = [...body.querySelectorAll(".metrics-metric")];
     const width = table.getBoundingClientRect().width || table.clientWidth || 0;
-    table.dataset.summaryWidth = String(Math.round(width));
+    table.dataset.metricWidth = String(Math.round(width));
     const columnCount = Math.max(1, Math.min(4, metrics.length, Math.floor(width / 420) || 1));
-    if (Number(table.dataset.summaryColumns) === columnCount) {
+    if (Number(table.dataset.metricColumns) === columnCount) {
       return;
     }
-    table.dataset.summaryColumns = String(columnCount);
-    table.style.setProperty("--summary-column-count", String(columnCount));
+    table.dataset.metricColumns = String(columnCount);
+    table.style.setProperty("--metrics-column-count", String(columnCount));
     const rowsPerColumn = Math.ceil(metrics.length / columnCount);
     const columns = Array.from({ length: columnCount }, () => {
       const column = document.createElement("div");
-      column.className = "summary-table-column";
+      column.className = "metrics-table-column";
       return column;
     });
     metrics.forEach((metric, index) => {
@@ -302,192 +287,20 @@ function bindSummaryTableLayout() {
   };
   tables.forEach(layout);
   if (typeof ResizeObserver === "function") {
-    summaryTableResizeObserver = new ResizeObserver((entries) => {
-      const changed = entries.some((entry) => Math.round(entry.contentRect.width) !== Number(entry.target.dataset.summaryWidth));
-      if (!changed || summaryTableLayoutFrame) {
+    metricsTableResizeObserver = new ResizeObserver((entries) => {
+      const changed = entries.some((entry) => Math.round(entry.contentRect.width) !== Number(entry.target.dataset.metricWidth));
+      if (!changed || metricsTableLayoutFrame) {
         return;
       }
-      summaryTableLayoutFrame = requestAnimationFrame(() => {
-        summaryTableLayoutFrame = 0;
+      metricsTableLayoutFrame = requestAnimationFrame(() => {
+        metricsTableLayoutFrame = 0;
         entries.forEach((entry) => layout(entry.target));
       });
     });
-    tables.forEach((table) => summaryTableResizeObserver.observe(table));
+    tables.forEach((table) => metricsTableResizeObserver.observe(table));
   } else {
-    summaryTableResizeObserver = null;
+    metricsTableResizeObserver = null;
   }
-}
-
-export function renderDiagnostics(diagnostics = state.report?.diagnostics) {
-  if (!state.diagnosticsReady && state.report) {
-    elements.diagnosticList.innerHTML = `<div class="empty status-loading">${t("diagnose.running")}</div>`;
-    return;
-  }
-  const items = diagnostics || [];
-  const temporaryItem = diagnoseTemporaryRevealID
-    ? items.find((item) => diagnosticStableID(item) === diagnoseTemporaryRevealID) || null
-    : null;
-  let renderedItems = items.slice(0, DIAGNOSTIC_RENDER_LIMIT);
-  const temporarilyMaterialized = Boolean(temporaryItem && !renderedItems.includes(temporaryItem));
-  if (temporarilyMaterialized) {
-    renderedItems = [...renderedItems.slice(0, Math.max(0, DIAGNOSTIC_RENDER_LIMIT - 1)), temporaryItem];
-  }
-  const hiddenItemCount = Math.max(0, items.length - renderedItems.length);
-  elements.diagnosticList.innerHTML = items.length
-    ? `${
-        temporarilyMaterialized
-          ? `<div class="diagnostic-temporary-reveal">${escapeHTML(t("semantic.temporaryReveal", {}, "Temporarily revealing selected item"))}<button type="button" data-diagnostic-clear-temporary>${escapeHTML(t("semantic.clearTemporaryReveal", {}, "Clear temporary reveal"))}</button></div>`
-          : ""
-      }${
-        hiddenItemCount ? `<div class="empty compact">${hiddenItemCount} additional diagnostics hidden by the render limit.</div>` : ""
-      }${
-        renderDiagnosticGroups(renderedItems)
-      }`
-    : `<div class="empty">${t("diagnose.noDiagnostics")}</div>`;
-  bindDiagnosticControls();
-  refreshDiagnoseNavigationStyles();
-}
-
-function renderDiagnosticGroups(items) {
-  const groups = groupBy(items, diagnosticGroupKey);
-  return diagnosticGroupDefinitions()
-    .filter((group) => groups.has(group.id))
-    .map(
-      (group) => {
-        const diagnostics = groups.get(group.id) || [];
-        const groupNavigation = navigationSelectionForViewTarget("diagnose", group.id);
-        return `
-        <details class="diagnostic-group diagnostic-group-${escapeHTML(group.id)}" data-diagnostic-group-id="${escapeHTML(group.id)}" ${panelNavigationAttributes({
-          ...groupNavigation,
-          panelTargetId: group.id,
-        })} open>
-          <summary class="diagnostic-group-head">
-            <strong>${escapeHTML(group.label)}</strong>
-            <span class="badge">${escapeHTML(diagnostics.length)}</span>
-          </summary>
-          <div class="diagnostic-group-list">${diagnostics.map(renderDiagnosticItem).join("")}</div>
-        </details>`;
-      },
-    )
-    .join("");
-}
-
-function renderDiagnosticItem(item) {
-  const stableID = diagnosticStableID(item);
-  const navigation = diagnosticSemanticNavigation(item, stableID);
-  const sourceAnchor = navigation.sourceAnchor || diagnosticSourceAnchor(item);
-  const target = sourceAnchor
-    ? `<button class="diagnostic-link" data-diagnostic-reveal-source type="button">Reveal source</button>`
-    : "";
-  const context = [item.objectType, item.objectName, item.field, item.value]
-    .filter((value) => String(value ?? "").trim() !== "")
-    .map((value) => `<span>${escapeHTML(value)}</span>`)
-    .join("");
-  const severity = item.severity || "warning";
-  const code = String(item.code || "").trim();
-  const source = item.source ? `<span class="diagnostic-source">${escapeHTML(sourceLabel(item.source))}</span>` : "";
-  const confidence = item.confidence ? `<span class="diagnostic-confidence">${escapeHTML(item.confidence)}</span>` : "";
-  const codeBadge = code ? `<span class="diagnostic-code">${escapeHTML(code)}</span>` : "";
-  const selected = diagnoseSelectedDiagnosticID === stableID || (
-    state.globalSelection?.originView === "diagnose" && state.globalSelection?.originTargetId === stableID
-  );
-  return `
-    <details class="diagnostic-item ${escapeHTML(severity)} ${selected ? "semantic-selected" : ""}" data-diagnostic-id="${escapeHTML(stableID)}" data-diagnostic-stable-id="${escapeHTML(stableID)}" data-diagnostic-code="${escapeHTML(code)}" ${panelNavigationAttributes({
-      ...navigation,
-      sourceAnchor,
-      panelTargetId: stableID,
-    })} ${selected ? "data-semantic-selected" : ""}>
-      <summary class="diagnostic-summary">
-        <span class="diagnostic-row-main">
-          <span class="diagnostic-severity">${escapeHTML(severity)}</span>
-          <span class="diagnostic-category">${escapeHTML(item.category || "Diagnostic")}</span>
-          <strong>${escapeHTML(item.message || "")}</strong>
-        </span>
-        <span class="diagnostic-row-actions">${codeBadge}</span>
-      </summary>
-      <div class="diagnostic-main">
-        ${source || confidence ? `<div class="diagnostic-meta">${source}${confidence}</div>` : ""}
-        ${context ? `<div class="diagnostic-context">${context}</div>` : ""}
-        ${item.evidence ? `<p class="diagnostic-evidence">${escapeHTML(item.evidence)}</p>` : ""}
-        ${target ? `<div>${target}</div>` : ""}
-      </div>
-    </details>`;
-}
-
-function bindDiagnosticControls() {
-  elements.diagnosticList.querySelectorAll("[data-diagnostic-id]").forEach((item) => {
-    item.addEventListener("click", (event) => {
-      if (event.target.closest("[data-diagnostic-reveal-source]")) {
-        return;
-      }
-      diagnoseSelectedDiagnosticID = item.dataset.diagnosticId || "";
-      if (diagnoseTemporaryRevealID && diagnoseTemporaryRevealID !== diagnoseSelectedDiagnosticID) {
-        diagnoseTemporaryRevealID = "";
-        renderDiagnostics();
-        return;
-      }
-      refreshDiagnoseNavigationStyles();
-    });
-  });
-  elements.diagnosticList.querySelectorAll("[data-diagnostic-reveal-source]").forEach((button) => {
-    button.addEventListener("click", async (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      const selection = extractResultPanelSelection(button, "diagnose", { root: elements.diagnosticList });
-      if (!selection?.entityId || !selection.sourceAnchor) {
-        return;
-      }
-      diagnoseSelectedDiagnosticID = selection.originTargetId || diagnoseSelectedDiagnosticID;
-      const previous = currentSemanticSelection();
-      const selectionChanged = diagnosticSelectionKey(previous) !== diagnosticSelectionKey(selection);
-      await selectSemanticEntity(selection, {
-        originView: "diagnose",
-        follow: false,
-        recordHistory: selectionChanged,
-      });
-      await revealSelectionSource({
-        originView: "diagnose",
-        recordHistory: !selectionChanged,
-      });
-    });
-  });
-  elements.diagnosticList.querySelector("[data-diagnostic-clear-temporary]")?.addEventListener("click", () => {
-    diagnoseTemporaryRevealID = "";
-    renderDiagnostics();
-  });
-}
-
-function diagnosticGroupDefinitions() {
-  return [
-    { id: "errors", label: "Errors" },
-    { id: "warnings", label: "Warnings" },
-    { id: "analyzer-limitations", label: "Analyzer limitations" },
-    { id: "cleanup-candidates", label: "Cleanup candidates" },
-    { id: "notices", label: "Notices" },
-  ];
-}
-
-function diagnosticSelectionKey(selection = {}) {
-  const anchor = selection.sourceAnchor || {};
-  return [selection.entityId, selection.occurrenceId, anchor.objectId, anchor.objectIndex, anchor.fieldIndex]
-    .map((value) => String(value ?? ""))
-    .join("\u0000");
-}
-
-function diagnosticGroupKey(item) {
-  if ((item.severity || "warning") === "error") {
-    return "errors";
-  }
-  if (item.source === "analyzer_limitation") {
-    return "analyzer-limitations";
-  }
-  if (item.source === "user_quality_check" || String(item.category || "").toLowerCase().includes("cleanup")) {
-    return "cleanup-candidates";
-  }
-  if ((item.severity || "warning") === "warning") {
-    return "warnings";
-  }
-  return "notices";
 }
 
 function semanticNavigationIndex() {
@@ -556,20 +369,20 @@ function navigationMetadata(entity, occurrence, sourceAnchor = occurrence?.sourc
   };
 }
 
-function summaryNavigationForCategory(category = {}) {
-  return navigationSelectionForViewTarget("summary", category.id || "", {
-    sections: summaryCategorySections(category.id),
+function metricsNavigationForCategory(category = {}) {
+  return navigationSelectionForViewTarget("metrics", category.id || "", {
+    sections: metricsCategorySections(category.id),
   });
 }
 
-function summaryMetricNavigation(metric = {}, category = {}) {
+function metricNavigation(metric = {}, category = {}) {
   const categoryID = category.id || metric.categoryId || "model_inventory";
-  return navigationSelectionForViewTarget("summary", categoryID, {
-    sections: summaryMetricSections(metric, categoryID),
+  return navigationSelectionForViewTarget("metrics", categoryID, {
+    sections: metricSections(metric, categoryID),
   });
 }
 
-function summaryCategorySections(categoryID) {
+function metricsCategorySections(categoryID) {
   switch (categoryID) {
     case "geometry_areas":
       return ["geometry", "zones", "spaces", "site_geometry"];
@@ -586,7 +399,7 @@ function summaryCategorySections(categoryID) {
   }
 }
 
-function summaryMetricSections(metric = {}, categoryID = metric.categoryId || "") {
+function metricSections(metric = {}, categoryID = metric.categoryId || "") {
   const id = String(metric.id || "").toLowerCase();
   if (id.includes("diagnostic")) {
     return ["source_name_conflicts", "diagnostics", "project"];
@@ -606,13 +419,13 @@ function summaryMetricSections(metric = {}, categoryID = metric.categoryId || ""
   if (id.includes("hvac") || id.includes("thermostat") || id.includes("conditioned")) {
     return ["hvac", "services", "zones"];
   }
-  return summaryCategorySections(categoryID);
+  return metricsCategorySections(categoryID);
 }
 
-function summarySourceRecords() {
+function metricsSourceRecords() {
   const navigation = semanticNavigationIndex();
-  if (summarySourceIndexCache.navigation === navigation) {
-    return summarySourceIndexCache.records;
+  if (metricsSourceIndexCache.navigation === navigation) {
+    return metricsSourceIndexCache.records;
   }
   const recordsByKey = new Map();
   for (const occurrence of navigation.occurrences || []) {
@@ -626,24 +439,24 @@ function summarySourceRecords() {
     }
     recordsByKey.get(key).occurrences.push(occurrence);
   }
-  summarySourceIndexCache = {
+  metricsSourceIndexCache = {
     navigation,
     records: [...recordsByKey.values()].sort((left, right) => sourceAnchorLabel(left.anchor).localeCompare(sourceAnchorLabel(right.anchor))),
   };
-  return summarySourceIndexCache.records;
+  return metricsSourceIndexCache.records;
 }
 
-function summaryMetricContributingSources(metric = {}) {
-  const sections = summaryMetricSections(metric, metric.categoryId || "");
-  return summarySourceRecords()
-    .filter((record) => summarySourceContributes(metric, record))
+function metricContributingSources(metric = {}) {
+  const sections = metricSections(metric, metric.categoryId || "");
+  return metricsSourceRecords()
+    .filter((record) => metricSourceContributes(metric, record))
     .map((record) => ({
       ...record,
       navigation: sourceRecordNavigation(record, sections),
     }));
 }
 
-function summarySourceContributes(metric, record) {
+function metricSourceContributes(metric, record) {
   const id = String(metric.id || "").toLowerCase();
   const type = String(record.anchor?.objectType || "").toLowerCase();
   const isGeometry = type.includes("surface") || type === "zone" || type === "space" || type.includes("window") || type.includes("door");
@@ -713,18 +526,18 @@ function sourceRecordNavigation(record, sections = []) {
     : { entity: null, occurrence: null, sourceAnchor: { ...record.anchor } };
 }
 
-function renderSummarySourceChooser(sources, metric = {}) {
+function renderMetricsSourceChooser(sources, metric = {}) {
   if (!sources.length) {
-    return `<div class="summary-source-empty">No source object information</div>`;
+    return `<div class="metrics-source-empty">No source object information</div>`;
   }
   return `
-    <div class="summary-source-objects">
-      <strong class="summary-source-title">Source objects</strong>
-      <div class="summary-source-object-list" role="listbox" aria-label="Contributing source objects">
+    <div class="metrics-source-objects">
+      <strong class="metrics-source-title">Source objects</strong>
+      <div class="metrics-source-object-list" role="listbox" aria-label="Contributing source objects">
         ${sources.map((source, index) => `
-          <button class="summary-source-object navigable-row" type="button" role="option" ${panelNavigationAttributes({
+          <button class="metrics-source-object navigable-row" type="button" role="option" ${panelNavigationAttributes({
             ...source.navigation,
-            panelTargetId: summarySourcePanelTargetID(metric, source, index),
+            panelTargetId: metricSourcePanelTargetID(metric, source, index),
           })}>
             <strong title="${escapeHTML(sourceAnchorLabel(source.anchor))}">${escapeHTML(sourceAnchorLabel(source.anchor))}</strong>
             <small>${escapeHTML(source.anchor.objectType || "Source object")}</small>
@@ -733,11 +546,11 @@ function renderSummarySourceChooser(sources, metric = {}) {
     </div>`;
 }
 
-function summarySourcePanelTargetID(metric = {}, source = {}, index = 0) {
+function metricSourcePanelTargetID(metric = {}, source = {}, index = 0) {
   const metricID = String(metric.id || metric.categoryId || "metric");
   const anchor = source.anchor || {};
   const sourceID = String(anchor.objectId || (hasNavigationIndex(anchor.objectIndex) ? `index:${anchor.objectIndex}` : index));
-  return `summary-source:${metricID}:${sourceID}`;
+  return `metrics-source:${metricID}:${sourceID}`;
 }
 
 function sourceAnchorLabel(anchor = {}) {
@@ -748,54 +561,6 @@ function sourceAnchorLabel(anchor = {}) {
     return String(anchor.objectType);
   }
   return hasNavigationIndex(anchor.objectIndex) ? `Object #${Number(anchor.objectIndex) + 1}` : "Source object";
-}
-
-function diagnosticStableID(item = {}) {
-  if (String(item.id || "").trim()) {
-    return String(item.id);
-  }
-  const identity = [item.code, item.objectIndex, item.fieldIndex, item.message].map((value) => String(value ?? "")).join("\u0000");
-  let hash = 2166136261;
-  for (let index = 0; index < identity.length; index += 1) {
-    hash ^= identity.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return `diagnostic:${String(item.code || "issue").toLowerCase().replace(/[^a-z0-9]+/g, "-")}:${(hash >>> 0).toString(16)}`;
-}
-
-function diagnosticSemanticNavigation(item, stableID) {
-  const navigation = semanticNavigationIndex();
-  const diagnostic = navigationSelectionForViewTarget("diagnose", stableID);
-  const diagnosticOccurrence = diagnostic.occurrence;
-  const diagnosticEntity = diagnostic.entity;
-  const exactAnchor = diagnosticOccurrence?.sourceAnchor || diagnosticSourceAnchor(item);
-  if (!diagnosticOccurrence || !diagnosticEntity) {
-    return sourceNavigationForAnchor(exactAnchor);
-  }
-
-  const contextPath = String(diagnosticOccurrence.path || "").replace(/\/diagnostics\/[^/]+$/, "");
-  const relatedEntityIDs = diagnosticEntity.relatedEntityIds || [];
-  const candidates = relatedEntityIDs
-    .flatMap((entityID) => (navigation.byEntityId?.[entityID] || []).map((occurrenceID) => navigationOccurrence(occurrenceID, navigation)))
-    .filter((occurrence) => occurrence && String(occurrence.contextKind || "") !== "diagnostic_occurrence")
-    .map((occurrence, order) => ({
-      occurrence,
-      entity: navigationEntity(occurrence.entityId, navigation),
-      order,
-      score:
-        Number(occurrence.path === contextPath) * 10_000_000 +
-        Number(sourceAnchorsMatch(occurrence.sourceAnchor, exactAnchor)) * 1_000_000 +
-        Number(sharedLineIndex(occurrence.lineIndexes, diagnosticOccurrence.lineIndexes)) * 100_000 +
-        diagnosticContextPriority(occurrence.contextKind) * 10_000 +
-        Number((occurrence.lineIndexes || []).length > 0) * 1_000,
-    }))
-    .filter((candidate) => candidate.entity)
-    .sort((left, right) => right.score - left.score || left.order - right.order);
-  const selected = candidates[0];
-  if (selected) {
-    return navigationMetadata(selected.entity, selected.occurrence, exactAnchor);
-  }
-  return sourceNavigationForAnchor(exactAnchor);
 }
 
 function sourceNavigationForAnchor(anchor) {
@@ -811,50 +576,6 @@ function sourceNavigationForAnchor(anchor) {
     occurrences: occurrenceIDs.map((occurrenceID) => navigationOccurrence(occurrenceID, navigation)).filter(Boolean),
   };
   return sourceRecordNavigation(record);
-}
-
-function diagnosticSourceAnchor(item = {}) {
-  const hasSourceIdentity = String(item.objectType || item.objectName || item.field || "").trim() !== "";
-  if (!hasSourceIdentity) {
-    return null;
-  }
-  return {
-    objectIndex: Number(item.objectIndex),
-    objectType: String(item.objectType || ""),
-    objectName: String(item.objectName || ""),
-    fieldIndex: String(item.field || "").trim() || Number(item.fieldIndex) > 0 ? Number(item.fieldIndex) : undefined,
-    fieldName: String(item.field || ""),
-  };
-}
-
-function sourceAnchorsMatch(left, right) {
-  if (!left || !right) {
-    return false;
-  }
-  if (left.objectId && right.objectId) {
-    return left.objectId === right.objectId && (
-      !hasNavigationIndex(right.fieldIndex) || Number(left.fieldIndex) === Number(right.fieldIndex)
-    );
-  }
-  return Number(left.objectIndex) === Number(right.objectIndex) && (
-    !hasNavigationIndex(right.fieldIndex) || Number(left.fieldIndex) === Number(right.fieldIndex)
-  );
-}
-
-function sharedLineIndex(left = [], right = []) {
-  const rightIndexes = new Set(right || []);
-  return (left || []).some((index) => rightIndexes.has(index));
-}
-
-function diagnosticContextPriority(contextKind) {
-  return {
-    zone_service: 7,
-    zone_profile: 6,
-    zone_geometry: 5,
-    zone_output: 4,
-    definition: 3,
-    source_only: 1,
-  }[String(contextKind || "")] || 2;
 }
 
 function panelNavigationAttributes({ entity, occurrence, sourceAnchor, panelTargetId = "" } = {}) {
@@ -887,49 +608,49 @@ function hasNavigationIndex(value) {
 function renderMetricRow(metric, category = {}) {
   const unit = metric.unit ? escapeHTML(metric.unit) : "";
   const meta = renderMetricMeta(metric);
-  const valueClass = isNumericSummaryMetric(metric) ? " summary-value-numeric" : "";
-  const navigation = summaryMetricNavigation(metric, category);
-  const contributingSources = summaryMetricContributingSources(metric);
+  const valueClass = isNumericMetric(metric) ? " metrics-value-numeric" : "";
+  const navigation = metricNavigation(metric, category);
+  const contributingSources = metricContributingSources(metric);
   return `
-    <details class="summary-metric" role="row">
-      <summary class="summary-row navigable-row" data-summary-metric-id="${escapeHTML(metric.id)}" ${panelNavigationAttributes({
+    <details class="metrics-metric" role="row">
+      <summary class="metrics-row navigable-row" data-metric-id="${escapeHTML(metric.id)}" ${panelNavigationAttributes({
         ...navigation,
         panelTargetId: metric.id,
       })}>
-        <div class="summary-row-grid">
-          <div class="summary-name" role="cell">
+        <div class="metrics-row-grid">
+          <div class="metrics-name" role="cell">
             <strong title="${escapeHTML(metric.name)}">${escapeHTML(metric.name)}</strong>
           </div>
-          <div class="summary-value${valueClass}" role="cell" title="${escapeHTML(String(metric.displayValue ?? "N/A"))}">
+          <div class="metrics-value${valueClass}" role="cell" title="${escapeHTML(String(metric.displayValue ?? "—"))}">
             ${renderMetricDisplayValue(metric)}
           </div>
-          <span class="summary-unit" role="cell" title="${unit}">${unit}</span>
+          <span class="metrics-unit" role="cell" title="${unit}">${unit}</span>
           ${meta}
           ${renderMetricStatus(metric)}
         </div>
       </summary>
-      <div class="summary-source-drawer">
-        ${renderSummarySourceChooser(contributingSources, metric)}
+      <div class="metrics-source-drawer">
+        ${renderMetricsSourceChooser(contributingSources, metric)}
       </div>
     </details>`;
 }
 
-function isNumericSummaryMetric(metric) {
+function isNumericMetric(metric) {
   return (typeof metric.value === "number" && Number.isFinite(metric.value)) || Boolean(metric.unit);
 }
 
 function renderMetricDisplayValue(metric) {
-  const displayValue = String(metric.displayValue ?? "N/A");
-  if (!isNumericSummaryMetric(metric)) {
+  const displayValue = String(metric.displayValue ?? "—");
+  if (!isNumericMetric(metric)) {
     return `<strong>${escapeHTML(displayValue)}</strong>`;
   }
-  return `<strong class="summary-number">${escapeHTML(displayValue)}</strong>`;
+  return `<strong class="metrics-number">${escapeHTML(displayValue)}</strong>`;
 }
 
 function renderMetricMeta(metric) {
-  const badges = summaryNoteBadges(metric);
+  const badges = metricNoteBadges(metric);
   if (!badges.length) {
-    return `<div class="summary-meta" role="cell"></div>`;
+    return `<div class="metrics-meta" role="cell"></div>`;
   }
   const seen = new Set();
   const tags = badges
@@ -943,10 +664,10 @@ function renderMetricMeta(metric) {
     })
     .map((badge) => `<small title="${escapeHTML(badge.title)}" aria-label="${escapeHTML(badge.title)}">${escapeHTML(badge.abbr)}</small>`)
     .join("");
-  return `<div class="summary-meta" role="cell">${tags}</div>`;
+  return `<div class="metrics-meta" role="cell">${tags}</div>`;
 }
 
-function summaryNoteBadges(metric) {
+function metricNoteBadges(metric) {
   const evidence = String(metric.evidence || "").trim();
   const rawBadges = new Set((metric.badges || []).map((badge) => String(badge || "").toLowerCase()));
   const source = String(metric.source || "").toLowerCase();
@@ -954,24 +675,24 @@ function summaryNoteBadges(metric) {
   const badges = [];
 
   if (rawBadges.has("inferred") || confidence === "inferred" || source.includes("inference") || source.includes("semantic_evidence")) {
-    badges.push(summaryNoteBadge("Inferred", "I", evidence ? `Inferred value. ${evidence}` : "Inferred value."));
+    badges.push(metricNoteBadge("Inferred", "I", evidence ? `Inferred value. ${evidence}` : "Inferred value."));
   }
   if (rawBadges.has("orientation")) {
-    badges.push(summaryNoteBadge("Orientation", "O", evidence ? `Orientation-dependent value. ${evidence}` : "Orientation-dependent value."));
+    badges.push(metricNoteBadge("Orientation", "O", evidence ? `Orientation-dependent value. ${evidence}` : "Orientation-dependent value."));
   }
   if (rawBadges.has("base-surface")) {
-    badges.push(summaryNoteBadge("Base surface", "B", evidence ? `Depends on base-surface resolution. ${evidence}` : "Depends on base-surface resolution."));
+    badges.push(metricNoteBadge("Base surface", "B", evidence ? `Depends on base-surface resolution. ${evidence}` : "Depends on base-surface resolution."));
   }
   if (rawBadges.has("readiness")) {
-    badges.push(summaryNoteBadge("Readiness", "R", evidence ? `Readiness check. ${evidence}` : "Readiness check."));
+    badges.push(metricNoteBadge("Readiness", "R", evidence ? `Readiness check. ${evidence}` : "Readiness check."));
   }
   if (rawBadges.has("diagnostic")) {
-    badges.push(summaryNoteBadge("Diagnostic", "D", evidence ? `Diagnostic summary. ${evidence}` : "Diagnostic summary."));
+    badges.push(metricNoteBadge("Diagnostic", "D", evidence ? `Diagnostic summary. ${evidence}` : "Diagnostic summary."));
   }
   return badges;
 }
 
-function summaryNoteBadge(label, abbr, title) {
+function metricNoteBadge(label, abbr, title) {
   return { label, abbr, title };
 }
 
@@ -980,10 +701,10 @@ function renderMetricStatus(metric) {
   const title = metricStatusTitle(metric);
   switch (status) {
     case "ok":
-      return `<span class="summary-status summary-status-ok" role="cell" aria-label="OK"></span>`;
+      return `<span class="metrics-status metrics-status-ok" role="cell" aria-label="OK"></span>`;
     case "partial":
       return `
-        <span class="summary-status summary-status-partial" role="cell" title="${escapeHTML(title)}" aria-label="${escapeHTML(title)}">
+        <span class="metrics-status metrics-status-partial" role="cell" title="${escapeHTML(title)}" aria-label="${escapeHTML(title)}">
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M12 3 22 20H2z"></path>
             <path d="M12 9v5"></path>
@@ -992,7 +713,7 @@ function renderMetricStatus(metric) {
         </span>`;
     default:
       return `
-        <span class="summary-status summary-status-missing" role="cell" title="${escapeHTML(title)}" aria-label="${escapeHTML(title)}">
+        <span class="metrics-status metrics-status-missing" role="cell" title="${escapeHTML(title)}" aria-label="${escapeHTML(title)}">
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <circle cx="12" cy="12" r="9"></circle>
             <path d="m15 9-6 6"></path>
@@ -1011,152 +732,43 @@ function metricStatusTitle(metric) {
   return status;
 }
 
-function refreshSummaryNavigationStyles() {
-  if (elements.summaryCategories) {
-    refreshResultPanelSelectionStyles("summary", state.globalSelection, state.globalHover);
+function refreshMetricsNavigationStyles() {
+  if (elements.metricCategories) {
+    refreshResultPanelSelectionStyles("metrics", state.globalSelection, state.globalHover);
   }
 }
 
-function refreshDiagnoseNavigationStyles() {
-  let selectedCount = 0;
-  if (elements.diagnosticList) {
-    selectedCount = refreshResultPanelSelectionStyles("diagnose", state.globalSelection, state.globalHover);
-  }
-  if (selectedCount === 0 && diagnoseSelectedDiagnosticID) {
-    for (const item of elements.diagnosticList?.querySelectorAll?.("[data-diagnostic-id]") || []) {
-      const selected = item.dataset.diagnosticId === diagnoseSelectedDiagnosticID;
-      item.classList.toggle("semantic-selected", selected);
-      item.toggleAttribute("data-semantic-selected", selected);
-      if (selected) {
-        item.classList.remove("semantic-related");
-        item.removeAttribute("data-semantic-related");
-        item.setAttribute("aria-current", "location");
-      } else {
-        item.removeAttribute("aria-current");
-      }
-    }
-  }
-}
-
-function summaryNavigationContext(context = {}) {
-  const scrollHost = elements.summaryCategories?.closest?.(".summary-pane");
-  const selectedRow = elements.summaryCategories?.querySelector?.("[data-summary-metric-id][data-semantic-selected]");
+function metricsNavigationContext(context = {}) {
+  const scrollHost = elements.metricCategories?.closest?.(".metrics-pane");
+  const selectedRow = elements.metricCategories?.querySelector?.("[data-metric-id][data-semantic-selected]");
   return {
     ...context.genericCaptureContext?.(),
     scrollTop: Number(scrollHost?.scrollTop) || 0,
     scrollLeft: Number(scrollHost?.scrollLeft) || 0,
-    expandedCategoryIDs: [...(elements.summaryCategories?.querySelectorAll?.("[data-summary-category-id][open]") || [])]
-      .map((category) => category.dataset.summaryCategoryId)
+    expandedCategoryIDs: [...(elements.metricCategories?.querySelectorAll?.("[data-metric-category-id][open]") || [])]
+      .map((category) => category.dataset.metricCategoryId)
       .filter(Boolean),
-    selectedMetricID: selectedRow?.dataset.summaryMetricId || (
-      state.globalSelection?.originView === "summary" ? state.globalSelection.originTargetId || "" : ""
+    selectedMetricID: selectedRow?.dataset.metricId || (
+      state.globalSelection?.originView === "metrics" ? state.globalSelection.originTargetId || "" : ""
     ),
   };
 }
 
-async function restoreSummaryNavigationContext(snapshot = {}, context = {}) {
-  renderSummary();
+async function restoreMetricsNavigationContext(snapshot = {}, context = {}) {
+  renderMetrics();
   const expanded = new Set(snapshot.expandedCategoryIDs || []);
   if (Array.isArray(snapshot.expandedCategoryIDs)) {
-    for (const category of elements.summaryCategories?.querySelectorAll?.("[data-summary-category-id]") || []) {
-      category.open = expanded.has(category.dataset.summaryCategoryId);
+    for (const category of elements.metricCategories?.querySelectorAll?.("[data-metric-category-id]") || []) {
+      category.open = expanded.has(category.dataset.metricCategoryId);
     }
   }
-  const scrollHost = elements.summaryCategories?.closest?.(".summary-pane");
+  const scrollHost = elements.metricCategories?.closest?.(".metrics-pane");
   if (scrollHost) {
     scrollHost.scrollTop = Number(snapshot.scrollTop) || 0;
     scrollHost.scrollLeft = Number(snapshot.scrollLeft) || 0;
   }
-  refreshSummaryNavigationStyles();
+  refreshMetricsNavigationStyles();
   return true;
-}
-
-export function captureDiagnoseNavigationContext(context = {}) {
-  const scrollHost = elements.diagnosticList?.closest?.(".diagnostic-pane");
-  const selectedItem = diagnoseSelectedDiagnosticID
-    ? [...(elements.diagnosticList?.querySelectorAll?.("[data-diagnostic-id]") || [])]
-      .find((item) => item.dataset.diagnosticId === diagnoseSelectedDiagnosticID)
-    : elements.diagnosticList?.querySelector?.("[data-diagnostic-id][data-semantic-selected]");
-  const selectedDiagnosticID = selectedItem?.dataset.diagnosticId || diagnoseSelectedDiagnosticID || (
-    state.globalSelection?.originView === "diagnose" ? state.globalSelection.originTargetId || "" : ""
-  );
-  const selectedDiagnostic = (state.report?.diagnostics || [])
-    .find((item) => diagnosticStableID(item) === selectedDiagnosticID);
-  const sourceAnchor = selectedItem ? sourceAnchorFromPanelElement(selectedItem) : state.globalSelection?.sourceAnchor || null;
-  return {
-    ...context.genericCaptureContext?.(),
-    selectedDiagnosticID,
-    selectedDiagnosticCode: selectedItem?.dataset.diagnosticCode || selectedDiagnostic?.code || "",
-    selectedSemanticEntityID: state.globalSelection?.entityId || "",
-    selectedSemanticOccurrenceID: state.globalSelection?.occurrenceId || "",
-    sourceAnchor: sourceAnchor ? { ...sourceAnchor } : null,
-    temporaryRevealID: diagnoseTemporaryRevealID,
-    expandedGroupIDs: [...(elements.diagnosticList?.querySelectorAll?.("[data-diagnostic-group-id][open]") || [])]
-      .map((group) => group.dataset.diagnosticGroupId)
-      .filter(Boolean),
-    expandedDiagnosticIDs: [...(elements.diagnosticList?.querySelectorAll?.("[data-diagnostic-id][open]") || [])]
-      .map((item) => item.dataset.diagnosticId)
-      .filter(Boolean),
-    scrollTop: Number(scrollHost?.scrollTop) || 0,
-    scrollLeft: Number(scrollHost?.scrollLeft) || 0,
-  };
-}
-
-export async function restoreDiagnoseNavigationContext(snapshot = {}, context = {}) {
-  const diagnostics = state.report?.diagnostics || [];
-  const requestedID = String(snapshot.selectedDiagnosticID || "");
-  let matched = requestedID
-    ? diagnostics.find((item) => diagnosticStableID(item) === requestedID) || null
-    : null;
-  if (!matched && snapshot.sourceAnchor) {
-    matched = diagnostics.find((item) => {
-      if (snapshot.selectedDiagnosticCode && String(item.code || "") !== String(snapshot.selectedDiagnosticCode)) {
-        return false;
-      }
-      const stableID = diagnosticStableID(item);
-      const navigation = diagnosticSemanticNavigation(item, stableID);
-      return sourceAnchorsMatch(navigation.sourceAnchor || diagnosticSourceAnchor(item), snapshot.sourceAnchor);
-    }) || null;
-  }
-  const resolved = Boolean(requestedID && !matched);
-  diagnoseSelectedDiagnosticID = matched ? diagnosticStableID(matched) : "";
-  diagnoseTemporaryRevealID = snapshot.temporaryRevealID || "";
-  renderDiagnostics();
-
-  const expandedGroups = new Set(snapshot.expandedGroupIDs || []);
-  if (Array.isArray(snapshot.expandedGroupIDs)) {
-    for (const group of elements.diagnosticList?.querySelectorAll?.("[data-diagnostic-group-id]") || []) {
-      group.open = expandedGroups.has(group.dataset.diagnosticGroupId);
-    }
-  }
-  const expandedDiagnostics = new Set(snapshot.expandedDiagnosticIDs || []);
-  for (const item of elements.diagnosticList?.querySelectorAll?.("[data-diagnostic-id]") || []) {
-    item.open = expandedDiagnostics.has(item.dataset.diagnosticId) || item.dataset.diagnosticId === diagnoseSelectedDiagnosticID;
-  }
-  const target = diagnoseSelectedDiagnosticID
-    ? [...(elements.diagnosticList?.querySelectorAll?.("[data-diagnostic-id]") || [])]
-      .find((item) => item.dataset.diagnosticId === diagnoseSelectedDiagnosticID)
-    : null;
-  if (resolved && elements.diagnosticList) {
-    const status = document.createElement("div");
-    status.className = "diagnostic-resolved-status";
-    status.dataset.resolvedDiagnosticId = requestedID;
-    status.textContent = `Resolved · ${requestedID}`;
-    elements.diagnosticList.prepend(status);
-  }
-  await nextNavigationFrame();
-  const scrollHost = elements.diagnosticList?.closest?.(".diagnostic-pane");
-  if (scrollHost) {
-    scrollHost.scrollTop = Number(snapshot.scrollTop) || 0;
-    scrollHost.scrollLeft = Number(snapshot.scrollLeft) || 0;
-  }
-  refreshDiagnoseNavigationStyles();
-  return {
-    restored: Boolean(target),
-    resolved,
-    selectedDiagnosticID: diagnoseSelectedDiagnosticID,
-    selectedSemanticEntityID: snapshot.selectedSemanticEntityID || "",
-  };
 }
 
 function sourceAnchorFromPanelElement(element) {
@@ -1192,30 +804,13 @@ function panelSelectionTargetID(selection = {}) {
   return String(selection.originTargetId || "");
 }
 
-function findSummaryNavigationTarget(selection = {}) {
+function findMetricsNavigationTarget(selection = {}) {
   const targetID = panelSelectionTargetID(selection);
   if (targetID) {
-    const category = [...(elements.summaryCategories?.querySelectorAll?.("[data-summary-category-id]") || [])]
-      .find((item) => item.dataset.summaryCategoryId === targetID);
+    const category = [...(elements.metricCategories?.querySelectorAll?.("[data-metric-category-id]") || [])]
+      .find((item) => item.dataset.metricCategoryId === targetID);
     if (category) {
       return category;
-    }
-  }
-  return undefined;
-}
-
-function findDiagnoseNavigationTarget(selection = {}) {
-  const targetID = panelSelectionTargetID(selection);
-  if (targetID) {
-    const exact = [...(elements.diagnosticList?.querySelectorAll?.("[data-panel-target-id]") || [])]
-      .find((item) => item.dataset.panelTargetId === targetID);
-    if (exact) {
-      return exact;
-    }
-    if (targetID === "source-name-conflicts") {
-      const duplicate = [...(elements.diagnosticList?.querySelectorAll?.("[data-diagnostic-code]") || [])]
-        .find((item) => String(item.dataset.diagnosticCode || "").includes("duplicate"));
-      return duplicate || elements.diagnosticList?.querySelector?.("[data-diagnostic-group-id='warnings']") || null;
     }
   }
   return undefined;
@@ -1242,19 +837,6 @@ function revealNavigationTarget(target, options = {}) {
   return true;
 }
 
-function prepareDiagnosticForReveal(targetID) {
-  const diagnostics = state.report?.diagnostics || [];
-  const index = diagnostics.findIndex((diagnostic) => diagnosticStableID(diagnostic) === targetID);
-  const item = index >= 0 ? diagnostics[index] : null;
-  if (!item) {
-    return false;
-  }
-  diagnoseTemporaryRevealID = index >= DIAGNOSTIC_RENDER_LIMIT ? targetID : "";
-  diagnoseSelectedDiagnosticID = targetID;
-  renderDiagnostics();
-  return true;
-}
-
 function nextNavigationFrame() {
   if (typeof window === "undefined" || typeof window.requestAnimationFrame !== "function") {
     return Promise.resolve();
@@ -1262,87 +844,29 @@ function nextNavigationFrame() {
   return new Promise((resolve) => window.requestAnimationFrame(resolve));
 }
 
-configureResultPanelNavigationHooks("summary", {
-  getRoot: () => elements.summaryCategories,
-  findTarget: (selection) => findSummaryNavigationTarget(selection),
+configureResultPanelNavigationHooks("metrics", {
+  getRoot: () => elements.metricCategories,
+  findTarget: (selection) => findMetricsNavigationTarget(selection),
   selectFromElement(element) {
-    if (element?.closest?.(".summary-source-objects > summary")) {
+    if (element?.closest?.(".metrics-source-objects > .metrics-source-object")) {
       return null;
     }
     return undefined;
   },
   reveal(selection, options, context) {
-    const target = findSummaryNavigationTarget(selection) || context.genericFindTarget(selection);
+    const target = findMetricsNavigationTarget(selection) || context.genericFindTarget(selection);
     const revealed = revealNavigationTarget(target, options);
-    refreshSummaryNavigationStyles();
+    refreshMetricsNavigationStyles();
     return revealed;
   },
-  captureContext: (context) => summaryNavigationContext(context),
-  restoreContext: (snapshot, context) => restoreSummaryNavigationContext(snapshot, context),
+  captureContext: (context) => metricsNavigationContext(context),
+  restoreContext: (snapshot, context) => restoreMetricsNavigationContext(snapshot, context),
   preferredSemanticOccurrence(selection, context) {
     const targetID = panelSelectionTargetID(selection);
     const target = targetID
-      ? [...(elements.summaryCategories?.querySelectorAll?.("[data-panel-target-id]") || [])]
+      ? [...(elements.metricCategories?.querySelectorAll?.("[data-panel-target-id]") || [])]
         .find((item) => item.dataset.panelTargetId === targetID && item.dataset.occurrenceId)
       : null;
     return target?.dataset.occurrenceId || context.genericPreferredSemanticOccurrence(selection);
   },
 });
-
-configureResultPanelNavigationHooks("diagnose", {
-  getRoot: () => elements.diagnosticList?.closest?.("#diagnosePane") || elements.diagnosticList,
-  findTarget: (selection) => findDiagnoseNavigationTarget(selection),
-  selectFromElement(element) {
-    if (element?.closest?.("[data-diagnostic-reveal-source]")) {
-      return null;
-    }
-    return undefined;
-  },
-  reveal(selection, options, context) {
-    const targetID = panelSelectionTargetID(selection);
-    if (targetID) {
-      prepareDiagnosticForReveal(targetID);
-    }
-    const target = findDiagnoseNavigationTarget(selection) || context.genericFindTarget(selection);
-    if (target?.dataset?.diagnosticId) {
-      diagnoseSelectedDiagnosticID = target.dataset.diagnosticId;
-    }
-    const revealed = revealNavigationTarget(target, options);
-    refreshDiagnoseNavigationStyles();
-    return revealed;
-  },
-  captureContext: (context) => captureDiagnoseNavigationContext(context),
-  async restoreContext(snapshot, context) {
-    await restoreDiagnoseNavigationContext(snapshot, context);
-    return true;
-  },
-  preferredSemanticOccurrence(selection, context) {
-    const targetID = panelSelectionTargetID(selection);
-    const target = targetID
-      ? [...(elements.diagnosticList?.querySelectorAll?.("[data-diagnostic-id]") || [])]
-        .find((item) => item.dataset.diagnosticId === targetID)
-      : null;
-    return target?.dataset.occurrenceId || context.genericPreferredSemanticOccurrence(selection);
-  },
-});
-
-function groupBy(values, keyFn) {
-  const groups = new Map();
-  for (const value of values) {
-    const key = keyFn(value);
-    if (!groups.has(key)) {
-      groups.set(key, []);
-    }
-    groups.get(key).push(value);
-  }
-  return groups;
-}
-
-function sourceLabel(source) {
-  return String(source || "")
-    .replaceAll("_", " ")
-    .replace(/\b\w/g, (match) => match.toUpperCase())
-    .replace(/\bIdd\b/g, "IDD")
-    .replace(/\bHvac\b/g, "HVAC")
-    .replace(/\bIdf\b/g, "IDF");
-}

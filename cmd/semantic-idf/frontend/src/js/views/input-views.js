@@ -766,7 +766,7 @@ function semanticAvailableViews(selection) {
   if (semanticTargetViewCache.has(cacheKey)) {
     return semanticTargetViewCache.get(cacheKey);
   }
-  const views = ["summary", "profile", "hvac", "simulation", "diagnose", "geometry"]
+  const views = ["metrics", "topology", "profile", "hvac", "simulation"]
     .map((view) => ({ view, targets: selectionTargetsForView(view, selection) }))
     .filter((item) => item.targets.length);
   semanticTargetViewCache.set(cacheKey, views);
@@ -1291,7 +1291,7 @@ function captureSemanticEditSelection() {
     state.semanticEditSelectionRestore = null;
     return null;
   }
-  const panelView = state.activeResultTab || "summary";
+  const panelView = state.activeResultTab || "metrics";
   const adapter = getPanelNavigationAdapter(panelView);
   state.semanticEditSelectionRestore = {
     selection,
@@ -1718,14 +1718,12 @@ async function commitJSONValueEdit(editor, nextRaw, restore) {
     state.reportAnalyzedText = result.text;
     state.reportAnalysisKey = state.analysisKey;
     state.analysisStage = "complete";
-    state.diagnosticsReady = true;
     state.geometryReady = true;
     Object.keys(state.analysisReady || {}).forEach((view) => {
       state.analysisReady[view] = true;
     });
     state.reportAnalysisStage = state.analysisStage;
     state.reportAnalysisReady = { ...(state.analysisReady || {}) };
-    state.reportDiagnosticsReady = true;
     state.reportGeometryReady = true;
     window.dispatchEvent(new Event("idfAnalyzer:documentChanged"));
     renderReportCallback();

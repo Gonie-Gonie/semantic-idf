@@ -69,6 +69,9 @@ const (
 	fieldRoleBranchListRef   = "branch_list_ref"
 	fieldRoleConnectorRef    = "connector_ref"
 	fieldRoleZoneRef         = "zone_ref"
+	fieldRoleZoneSpaceRef    = "zone_or_space_ref"
+	fieldRoleZoneSpaceTarget = "zone_space_target_ref"
+	fieldRoleZoneListRef     = "zone_or_zonelist_ref"
 	fieldRoleSpaceRef        = "space_ref"
 	fieldRoleScheduleRef     = "schedule_ref"
 	fieldRoleConstructionRef = "construction_ref"
@@ -93,9 +96,10 @@ var objectFieldCatalog = map[string]ObjectSpec{
 	"space": catalogObject("Space",
 		field("Name", fieldRoleName),
 		targetField("Zone Name", fieldRoleZoneRef, "zone", "zones", "contains"),
-		targetField("Space Type", fieldRoleObjectRef, "space_type", "space_types", "uses"),
-		numericUnitField("Floor Area", "m2", true),
+		numericUnitField("Ceiling Height", "m", true),
 		numericUnitField("Volume", "m3", true),
+		numericUnitField("Floor Area", "m2", true),
+		field("Space Type", ""),
 	),
 	"spacelist": catalogObject("SpaceList",
 		field("Name", fieldRoleName),
@@ -109,6 +113,98 @@ var objectFieldCatalog = map[string]ObjectSpec{
 		field("Name", fieldRoleName),
 		targetField("Zone List Name", fieldRoleObjectRef, "zone_list", "zone_lists", "expands"),
 		numericField("Zone List Multiplier", false),
+	),
+	"people": catalogObject("People",
+		field("Name", fieldRoleName),
+		field("Zone or ZoneList or Space or SpaceList Name", fieldRoleZoneSpaceTarget),
+		targetField("Number of People Schedule Name", fieldRoleScheduleRef, "schedule", "schedules", "uses"),
+		choiceField("Number of People Calculation Method", "", "People", "People/Area", "Area/Person"),
+		numericField("Number of People", false),
+		numericUnitField("People per Floor Area", "person/m2", false),
+		numericUnitField("Floor Area per Person", "m2/person", false),
+	),
+	"lights": catalogObject("Lights",
+		field("Name", fieldRoleName),
+		field("Zone or ZoneList or Space or SpaceList Name", fieldRoleZoneSpaceTarget),
+		targetField("Schedule Name", fieldRoleScheduleRef, "schedule", "schedules", "uses"),
+		choiceField("Design Level Calculation Method", "", "LightingLevel", "Watts/Area", "Watts/Person"),
+		numericUnitField("Lighting Level", "W", false),
+		numericUnitField("Watts per Floor Area", "W/m2", false),
+		numericUnitField("Watts per Person", "W/person", false),
+	),
+	"electricequipment": equipmentGainCatalog("ElectricEquipment", false, true),
+	"gasequipment":      equipmentGainCatalog("GasEquipment", false, false),
+	"hotwaterequipment": equipmentGainCatalog("HotWaterEquipment", false, false),
+	"steamequipment":    equipmentGainCatalog("SteamEquipment", false, false),
+	"otherequipment":    equipmentGainCatalog("OtherEquipment", true, false),
+	"zoneinfiltration:designflowrate": catalogObject("ZoneInfiltration:DesignFlowRate",
+		field("Name", fieldRoleName),
+		field("Zone or ZoneList or Space or SpaceList Name", fieldRoleZoneSpaceTarget),
+		targetField("Schedule Name", fieldRoleScheduleRef, "schedule", "schedules", "uses"),
+		choiceField("Design Flow Rate Calculation Method", "", "Flow/Zone", "Flow/Area", "Flow/ExteriorArea", "Flow/ExteriorWallArea", "AirChanges/Hour"),
+		numericUnitField("Design Flow Rate", "m3/s", false),
+		numericUnitField("Flow Rate per Floor Area", "m3/s-m2", false),
+		numericUnitField("Flow Rate per Exterior Surface Area", "m3/s-m2", false),
+		numericUnitField("Air Changes per Hour", "1/hr", false),
+		numericField("Constant Term Coefficient", false),
+		numericUnitField("Temperature Term Coefficient", "1/C", false),
+		numericUnitField("Velocity Term Coefficient", "s/m", false),
+		numericUnitField("Velocity Squared Term Coefficient", "s2/m2", false),
+		choiceField("Density Basis", "", "Outdoor", "Standard", "Indoor"),
+	),
+	"zoneinfiltration:effectiveleakagearea": catalogObject("ZoneInfiltration:EffectiveLeakageArea",
+		field("Name", fieldRoleName),
+		field("Zone or Space Name", fieldRoleZoneSpaceRef),
+		targetField("Schedule Name", fieldRoleScheduleRef, "schedule", "schedules", "uses"),
+		numericUnitField("Effective Air Leakage Area", "cm2", false),
+		numericField("Stack Coefficient", false),
+		numericField("Wind Coefficient", false),
+	),
+	"zoneinfiltration:flowcoefficient": catalogObject("ZoneInfiltration:FlowCoefficient",
+		field("Name", fieldRoleName),
+		field("Zone or Space Name", fieldRoleZoneSpaceRef),
+		targetField("Schedule Name", fieldRoleScheduleRef, "schedule", "schedules", "uses"),
+		numericUnitField("Flow Coefficient", "m3/s-Pa^n", false),
+		numericField("Stack Coefficient", false),
+		numericField("Pressure Exponent", false),
+		numericField("Wind Coefficient", false),
+		numericField("Shelter Factor", false),
+	),
+	"designspecification:outdoorair": catalogObject("DesignSpecification:OutdoorAir",
+		field("Name", fieldRoleName),
+		choiceField("Outdoor Air Method", "", "Flow/Person", "Flow/Area", "Flow/Zone", "AirChanges/Hour", "Sum", "Maximum", "IndoorAirQualityProcedure", "ProportionalControlBasedOnDesignOccupancy", "ProportionalControlBasedOnOccupancySchedule"),
+		numericUnitField("Outdoor Air Flow per Person", "m3/s-person", false),
+		numericUnitField("Outdoor Air Flow per Zone Floor Area", "m3/s-m2", false),
+		numericUnitField("Outdoor Air Flow per Zone", "m3/s", false),
+		numericUnitField("Outdoor Air Flow Air Changes per Hour", "1/hr", false),
+		targetField("Outdoor Air Flow Rate Fraction Schedule Name", fieldRoleScheduleRef, "schedule", "schedules", "uses"),
+	),
+	"designspecification:outdoorair:spacelist": catalogObject("DesignSpecification:OutdoorAir:SpaceList",
+		field("Name", fieldRoleName),
+		extensibleField("Space Name", fieldRoleSpaceRef, "space_specs", 2),
+		extensibleField("Space Design Specification Outdoor Air Object Name", fieldRoleObjectRef, "space_specs", 2),
+	),
+	"controller:mechanicalventilation": catalogObject("Controller:MechanicalVentilation",
+		field("Name", fieldRoleName),
+		targetField("Availability Schedule Name", fieldRoleScheduleRef, "schedule", "schedules", "uses"),
+		choiceField("Demand Controlled Ventilation", "", "Yes", "No"),
+		choiceField("System Outdoor Air Method", "", "ZoneSum", "Standard62.1VentilationRateProcedure", "Standard62.1VentilationRateProcedureWithLimit", "IndoorAirQualityProcedure", "ProportionalControlBasedOnOccupancySchedule", "ProportionalControlBasedOnDesignOccupancy", "ProportionalControlBasedOnDesignOARate", "IndoorAirQualityProcedureGenericContaminant"),
+		numericField("Zone Maximum Outdoor Air Fraction", false),
+		extensibleField("Zone or ZoneList Name", fieldRoleZoneListRef, "zone_ventilation", 3),
+		extensibleField("Design Specification Outdoor Air Object Name", fieldRoleObjectRef, "zone_ventilation", 3),
+		extensibleField("Design Specification Zone Air Distribution Object Name", fieldRoleObjectRef, "zone_ventilation", 3),
+	),
+	"sizing:zone": catalogObject("Sizing:Zone",
+		field("Zone or ZoneList Name", fieldRoleZoneListRef),
+		choiceField("Zone Cooling Design Supply Air Temperature Input Method", "", "SupplyAirTemperature", "TemperatureDifference"),
+		numericUnitField("Zone Cooling Design Supply Air Temperature", "C", true),
+		numericUnitField("Zone Cooling Design Supply Air Temperature Difference", "deltaC", true),
+		choiceField("Zone Heating Design Supply Air Temperature Input Method", "", "SupplyAirTemperature", "TemperatureDifference"),
+		numericUnitField("Zone Heating Design Supply Air Temperature", "C", true),
+		numericUnitField("Zone Heating Design Supply Air Temperature Difference", "deltaC", true),
+		numericUnitField("Zone Cooling Design Supply Air Humidity Ratio", "kgWater/kgDryAir", false),
+		numericUnitField("Zone Heating Design Supply Air Humidity Ratio", "kgWater/kgDryAir", false),
+		targetField("Design Specification Outdoor Air Object Name", fieldRoleObjectRef, "design_specification_outdoor_air", "outdoor_air_specs", "uses"),
 	),
 	"building": catalogObject("Building",
 		field("Name", fieldRoleName),
@@ -233,19 +329,53 @@ var objectFieldCatalog = map[string]ObjectSpec{
 	),
 	"zoneventilation:designflowrate": catalogObject("ZoneVentilation:DesignFlowRate",
 		field("Name", fieldRoleName),
-		field("Zone or ZoneList or Space or SpaceList Name", fieldRoleZoneRef),
-		field("Schedule Name", fieldRoleScheduleRef),
-		field("Design Flow Rate Calculation Method", ""),
+		field("Zone or ZoneList or Space or SpaceList Name", fieldRoleZoneSpaceTarget),
+		targetField("Schedule Name", fieldRoleScheduleRef, "schedule", "schedules", "uses"),
+		choiceField("Design Flow Rate Calculation Method", "", "Flow/Zone", "Flow/Area", "Flow/Person", "AirChanges/Hour"),
 		numericUnitField("Design Flow Rate", "m3/s", false),
 		numericUnitField("Flow Rate per Floor Area", "m3/s-m2", false),
 		numericUnitField("Flow Rate per Person", "m3/s-person", false),
 		numericUnitField("Air Changes per Hour", "1/hr", false),
+		choiceField("Ventilation Type", "", "Natural", "Exhaust", "Intake", "Balanced"),
+		numericUnitField("Fan Pressure Rise", "Pa", false),
+		numericField("Fan Total Efficiency", false),
+		numericField("Constant Term Coefficient", false),
+		numericUnitField("Temperature Term Coefficient", "1/C", false),
+		numericUnitField("Velocity Term Coefficient", "s/m", false),
+		numericUnitField("Velocity Squared Term Coefficient", "s2/m2", false),
+		numericUnitField("Minimum Indoor Temperature", "C", false),
+		targetField("Minimum Indoor Temperature Schedule Name", fieldRoleScheduleRef, "schedule", "schedules", "uses"),
+		numericUnitField("Maximum Indoor Temperature", "C", false),
+		targetField("Maximum Indoor Temperature Schedule Name", fieldRoleScheduleRef, "schedule", "schedules", "uses"),
+		numericUnitField("Delta Temperature", "deltaC", false),
+		targetField("Delta Temperature Schedule Name", fieldRoleScheduleRef, "schedule", "schedules", "uses"),
+		numericUnitField("Minimum Outdoor Temperature", "C", false),
+		targetField("Minimum Outdoor Temperature Schedule Name", fieldRoleScheduleRef, "schedule", "schedules", "uses"),
+		numericUnitField("Maximum Outdoor Temperature", "C", false),
+		targetField("Maximum Outdoor Temperature Schedule Name", fieldRoleScheduleRef, "schedule", "schedules", "uses"),
+		numericUnitField("Maximum Wind Speed", "m/s", false),
+		choiceField("Density Basis", "", "Outdoor", "Standard", "Indoor"),
 	),
 	"zoneventilation:windandstackopenarea": catalogObject("ZoneVentilation:WindandStackOpenArea",
 		field("Name", fieldRoleName),
-		field("Zone or Space Name", fieldRoleZoneRef),
+		field("Zone or Space Name", fieldRoleZoneSpaceRef),
 		numericUnitField("Opening Area", "m2", false),
 		targetField("Opening Area Fraction Schedule Name", fieldRoleScheduleRef, "schedule", "schedules", "uses"),
+		numericField("Opening Effectiveness", true),
+		numericUnitField("Effective Angle", "deg", false),
+		numericUnitField("Height Difference", "m", false),
+		numericField("Discharge Coefficient for Opening", true),
+		numericUnitField("Minimum Indoor Temperature", "C", false),
+		targetField("Minimum Indoor Temperature Schedule Name", fieldRoleScheduleRef, "schedule", "schedules", "uses"),
+		numericUnitField("Maximum Indoor Temperature", "C", false),
+		targetField("Maximum Indoor Temperature Schedule Name", fieldRoleScheduleRef, "schedule", "schedules", "uses"),
+		numericUnitField("Delta Temperature", "deltaC", false),
+		targetField("Delta Temperature Schedule Name", fieldRoleScheduleRef, "schedule", "schedules", "uses"),
+		numericUnitField("Minimum Outdoor Temperature", "C", false),
+		targetField("Minimum Outdoor Temperature Schedule Name", fieldRoleScheduleRef, "schedule", "schedules", "uses"),
+		numericUnitField("Maximum Outdoor Temperature", "C", false),
+		targetField("Maximum Outdoor Temperature Schedule Name", fieldRoleScheduleRef, "schedule", "schedules", "uses"),
+		numericUnitField("Maximum Wind Speed", "m/s", false),
 	),
 	"airflownetwork:multizone:zone": catalogObject("AirflowNetwork:MultiZone:Zone",
 		field("Zone Name", fieldRoleZoneRef),
@@ -999,6 +1129,14 @@ var objectFieldCatalog = map[string]ObjectSpec{
 		field("Cooling Availability Schedule Name", fieldRoleScheduleRef),
 		choiceField("Dehumidification Control Type", "", "None", "ConstantSensibleHeatRatio", "Humidistat", "ConstantSupplyHumidityRatio"),
 		numericField("Cooling Sensible Heat Ratio", false),
+		choiceField("Humidification Control Type", "", "None", "Humidistat", "ConstantSupplyHumidityRatio"),
+		field("Design Specification Outdoor Air Object Name", fieldRoleObjectRef),
+		field("Outdoor Air Inlet Node Name", fieldRoleNodeRef),
+		choiceField("Demand Controlled Ventilation Type", "", "None", "OccupancySchedule", "CO2Setpoint"),
+		choiceField("Outdoor Air Economizer Type", "", "NoEconomizer", "DifferentialDryBulb", "DifferentialEnthalpy"),
+		choiceField("Heat Recovery Type", "", "None", "Sensible", "Enthalpy"),
+		numericField("Sensible Heat Recovery Effectiveness", false),
+		numericField("Latent Heat Recovery Effectiveness", false),
 	),
 	"zonehvac:fourpipefancoil": catalogObject("ZoneHVAC:FourPipeFanCoil",
 		field("Name", fieldRoleName),
@@ -1803,6 +1941,32 @@ func catalogObject(objectType string, fields ...FieldSpec) ObjectSpec {
 	return ObjectSpec{Type: objectType, Fields: fields}
 }
 
+func equipmentGainCatalog(objectType string, hasFuelType bool, usesWattsFieldNames bool) ObjectSpec {
+	fields := []FieldSpec{field("Name", fieldRoleName)}
+	if hasFuelType {
+		fields = append(fields, field("Fuel Type", ""))
+	}
+	fields = append(fields, field("Zone or ZoneList or Space or SpaceList Name", fieldRoleZoneSpaceTarget))
+	perAreaName := "Power per Floor Area"
+	perPersonName := "Power per Person"
+	if usesWattsFieldNames {
+		perAreaName = "Watts per Floor Area"
+		perPersonName = "Watts per Person"
+	}
+	methodChoices := []string{"EquipmentLevel", "Watts/Area", "Watts/Person"}
+	if !usesWattsFieldNames {
+		methodChoices = append(methodChoices, "Power/Area", "Power/Person")
+	}
+	fields = append(fields,
+		targetField("Schedule Name", fieldRoleScheduleRef, "schedule", "schedules", "uses"),
+		choiceField("Design Level Calculation Method", "", methodChoices...),
+		numericUnitField("Design Level", "W", false),
+		numericUnitField(perAreaName, "W/m2", false),
+		numericUnitField(perPersonName, "W/person", false),
+	)
+	return catalogObject(objectType, fields...)
+}
+
 func field(name string, role string) FieldSpec {
 	spec := FieldSpec{Name: name, Role: role}
 	return enrichFieldTarget(spec)
@@ -1849,6 +2013,15 @@ func enrichFieldTarget(spec FieldSpec) FieldSpec {
 	switch spec.Role {
 	case fieldRoleZoneRef:
 		spec.TargetClass = "zone"
+		spec.TargetCollection = "zones"
+	case fieldRoleZoneSpaceRef:
+		spec.TargetClass = "zone_or_space"
+		spec.TargetCollection = "zones"
+	case fieldRoleZoneSpaceTarget:
+		spec.TargetClass = "zone_or_zonelist_or_space_or_spacelist"
+		spec.TargetCollection = "zones"
+	case fieldRoleZoneListRef:
+		spec.TargetClass = "zone_or_zonelist"
 		spec.TargetCollection = "zones"
 	case fieldRoleSpaceRef:
 		spec.TargetClass = "space"
@@ -2226,11 +2399,17 @@ func suggestionsForFieldSpec(doc Document, spec FieldSpec) []FieldValueSuggestio
 		suggestions = append(suggestions, FieldValueSuggestion{Value: choice, Source: "catalog"})
 	}
 	if spec.Numeric && spec.AllowAutosize {
-		suggestions = append(suggestions, FieldValueSuggestion{Value: "Autosize", Source: "catalog"})
+		suggestions = append(suggestions, FieldValueSuggestion{Value: flexibleSizingSuggestion(spec), Source: "catalog"})
 	}
 	switch spec.Role {
 	case fieldRoleZoneRef:
 		suggestions = append(suggestions, objectNameSuggestions(doc, "Zone")...)
+	case fieldRoleZoneSpaceRef:
+		suggestions = append(suggestions, objectNameSuggestions(doc, "Zone", "Space")...)
+	case fieldRoleZoneSpaceTarget:
+		suggestions = append(suggestions, objectNameSuggestions(doc, "Zone", "ZoneList", "Space", "SpaceList")...)
+	case fieldRoleZoneListRef:
+		suggestions = append(suggestions, objectNameSuggestions(doc, "Zone", "ZoneList")...)
 	case fieldRoleSpaceRef:
 		suggestions = append(suggestions, objectNameSuggestions(doc, "Space")...)
 	case fieldRoleScheduleRef:
@@ -2257,6 +2436,20 @@ func suggestionsForFieldSpec(doc Document, spec FieldSpec) []FieldValueSuggestio
 		suggestions = append(suggestions, namedObjectSuggestions(doc)...)
 	}
 	return suggestions
+}
+
+func flexibleSizingSuggestion(spec FieldSpec) string {
+	switch normalizeFieldName(spec.Name) {
+	case normalizeFieldName("Ceiling Height"),
+		normalizeFieldName("Volume"),
+		normalizeFieldName("Floor Area"),
+		normalizeFieldName("View Factor to Ground"),
+		normalizeFieldName("Opening Effectiveness"),
+		normalizeFieldName("Discharge Coefficient for Opening"):
+		return "Autocalculate"
+	default:
+		return "Autosize"
+	}
 }
 
 func suggestionsForComment(doc Document, comment string) []FieldValueSuggestion {
@@ -2359,6 +2552,12 @@ func referenceExistsForRole(doc Document, role string, value string) bool {
 	switch role {
 	case fieldRoleZoneRef:
 		return namedObjectExists(doc, value, "Zone")
+	case fieldRoleZoneSpaceRef:
+		return namedObjectExists(doc, value, "Zone", "Space")
+	case fieldRoleZoneSpaceTarget:
+		return namedObjectExists(doc, value, "Zone", "ZoneList", "Space", "SpaceList")
+	case fieldRoleZoneListRef:
+		return namedObjectExists(doc, value, "Zone", "ZoneList")
 	case fieldRoleSpaceRef:
 		return namedObjectExists(doc, value, "Space")
 	case fieldRoleBranchRef:

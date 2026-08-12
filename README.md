@@ -10,7 +10,7 @@ Lightweight desktop tooling for EnergyPlus IDF files, built with Go and Wails us
 - Parse and write both IDF and epJSON input text.
 - View input as editable text, structured JSON, or a spreadsheet-style field table.
 - Summarize object types, schedules, zones, unused named objects, and simple HVAC node connections.
-- Jump from summary, schedule, unused, zone, and system analysis items to the matching object in the active input view.
+- Jump from metrics, schedule, unused, zone, and system analysis items to the matching object in the active input view.
 - Edit field values, diagnose common modeling issues, and run cleanup workflows through the Go API.
 - Run the frontend without a Node/npm build chain.
 
@@ -63,19 +63,19 @@ Build artifacts and downloaded runtimes stay ignored by git.
 ## CLI
 
 The packaged executable opens the desktop app when run without arguments. It also supports scriptable commands through
-`semantic-idf cli ...`; recognized commands can also be used directly as `semantic-idf summary ...`.
+`semantic-idf cli ...`; recognized commands can also be used directly as `semantic-idf metrics ...`.
 
 ```powershell
-# Summary / Diagnose / full analysis
-.\build\bin\semantic-idf-v0.4.4.exe cli summary -format text .\model.idf
-.\build\bin\semantic-idf-v0.4.4.exe cli summary -format json -o .\summary.json .\model.idf
-.\build\bin\semantic-idf-v0.4.4.exe cli summary -format xlsx -o .\summary.xlsx .\model.idf
+# Metrics / diagnostics / full analysis
+.\build\bin\semantic-idf-v0.4.4.exe cli metrics -format text .\model.idf
+.\build\bin\semantic-idf-v0.4.4.exe cli metrics -format json -o .\metrics.json .\model.idf
+.\build\bin\semantic-idf-v0.4.4.exe cli metrics -format xlsx -o .\metrics.xlsx .\model.idf
 .\build\bin\semantic-idf-v0.4.4.exe cli diagnostics -format csv -o .\diagnostics.csv .\model.idf
 .\build\bin\semantic-idf-v0.4.4.exe cli analyze -format json -o .\report.json .\model.idf
 
-# Multi-file summary
-.\build\bin\semantic-idf-v0.4.4.exe cli multi-summary -format csv -o .\compare.csv .\a.idf .\b.epjson
-.\build\bin\semantic-idf-v0.4.4.exe cli multi-summary -format xlsx -orientation files -o .\compare.xlsx .\a.idf .\b.idf
+# Batch metrics
+.\build\bin\semantic-idf-v0.4.4.exe cli batch-metrics -format csv -o .\compare.csv .\a.idf .\b.epjson
+.\build\bin\semantic-idf-v0.4.4.exe cli batch-metrics -format xlsx -orientation files -o .\compare.xlsx .\a.idf .\b.idf
 
 # Cleanup
 .\build\bin\semantic-idf-v0.4.4.exe cli clean --dry-run .\model.idf
@@ -142,20 +142,20 @@ The app toolbar includes top-level Tools, Guide, and Settings navigation buttons
 
 ## Analysis Navigation
 
-- The right panel has Summary, Topology, Profile, HVAC, Diagnose, and Simulation result tabs.
-- Summary shows a metric catalog grouped by model, geometry, envelope, loads, schedules, and HVAC categories.
-- Summary can be exported as categorized JSON or a two-column `name,value` CSV whose names are variable IDs with units in brackets, including `[-]` for unitless values.
-- Diagnose reports error/warning issues such as missing references, duplicate names, orphan resources, required-object gaps, geometry problems, schedule-hour limits, and HVAC node graph hints.
+- The right panel has Metrics, Topology, Profile, HVAC, and Simulation result tabs.
+- Metrics shows a catalog grouped by model, topology, envelope, loads, schedules, and HVAC categories.
+- Metrics can be exported as categorized JSON or a two-column `name,value` CSV whose names are variable IDs with units in brackets, including `[-]` for unitless values.
+- Tools / Diagnose reports error and warning issues and reviews safe cleanup fixes for the current input snapshot or a separately selected input.
 - The former main Output tab and Batch Output QA tool are no longer exposed. Output-request analysis and edits remain available to backend and automation callers through `AnalyzeInputOutputText`, `PreviewOutputApplyText`, `ApplyOutputText`, and `ApplyPurposeOutputsText`.
 - Topology parses detailed zones, walls, roofs, floors, and fenestration into mode-specific 3D, Plan, and Network views. 3D defaults to all levels, Plan shows one story at a time, and Network shows the zone-level thermal graph with selectable metrics; Sync locate jumps to the matching input object.
-- Summary metric guide entries are loaded from the same backend catalog as the calculated metrics.
+- Metric guide entries are loaded from the same backend catalog as the calculated metrics.
 - The startup sample is the official EnergyPlus `RefBldgLargeOfficeNew2004_Chicago.idf` example vendored under `cmd/semantic-idf/frontend/src/samples/`.
-- The startup sample text is shown first; analysis then runs in visible-first stages so Summary/Text render before Diagnose and Topology finish in the background.
+- The startup sample text is shown first; analysis then runs in visible-first stages so Metrics/Text render before Topology is prepared in the background.
 - Open uses the desktop file dialog, Save writes the current text back to the opened file or asks for a path, and Revert restores the text from the last opened input snapshot.
 - Analysis runs automatically after file open and after debounced editor changes; larger workflows belong under Tools.
-- Tools includes Multi-IDF Summary, which opens several EnergyPlus inputs, analyzes them concurrently, displays progress, compares Summary metrics in a transposable table, and exports CSV in the selected table direction.
+- Tools includes Batch Metrics, which opens several EnergyPlus inputs, analyzes them concurrently, displays progress, compares model metrics in a transposable table, and exports CSV or XLSX results.
 - Batch Simulation uses fixed purpose defaults for output application, frequency, detail, allocation, period, and scope. It automatically resolves a compatible registered or detected EnergyPlus installation for each input file, while retaining purpose, weather, recursion, and worker controls.
-- Tools includes Cleanup Wizard, which works on the current app input, lets users choose cleanup rules, filter and include/exclude individual candidates, then Save or Save As the cleaned result.
+- Tools contains Batch Metrics, Batch Simulation, and Diagnose. Diagnose lets users choose cleanup rules, filter and include/exclude individual candidates, apply fixes back to the app snapshot, or save a cleaned copy.
 - Settings are stored under the local app data/config directory and currently expose only the page frame for future options.
 
 ## Project Layout

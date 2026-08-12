@@ -73,7 +73,7 @@ func TestThermalTopologyAcceptanceRecordMapsFinalFlows(t *testing.T) {
 		"TOPO-282 Modeling decision/QA",
 		"TOPO-283 Air coupling",
 		"TOPO-284 Simulation separation",
-		"TOPO-285 Context/Batch",
+		"TOPO-285 Context/Tools",
 		"backend calls",
 		"Wails build",
 	} {

@@ -575,7 +575,7 @@ button:disabled:hover {
 
 .resizing-workspace,
 .resizing-input-raw,
-.resizing-geometry-details {
+.resizing-topology-details {
   user-select: none;
 }
 
@@ -584,7 +584,7 @@ button:disabled:hover {
 }
 
 .resizing-input-raw,
-.resizing-geometry-details {
+.resizing-topology-details {
   cursor: row-resize;
 }
 
@@ -592,8 +592,8 @@ button:disabled:hover {
 .resizing-workspace .analysis-panel,
 .resizing-input-raw .input-view,
 .resizing-input-raw .raw-editor-block,
-.resizing-geometry-details .geometry-viewport,
-.resizing-geometry-details .geometry-details {
+.resizing-topology-details .topology-viewport,
+.resizing-topology-details .topology-details {
   pointer-events: none;
 }
 
@@ -606,7 +606,7 @@ button:disabled:hover {
 
 .vertical-splitter:hover,
 .resizing-input-raw #inputRawSplitter,
-.resizing-geometry-details #geometryDetailsSplitter {
+.resizing-topology-details #topologyDetailsSplitter {
   background: linear-gradient(to bottom, transparent 0 2px, var(--teal) 2px 6px, transparent 6px 8px);
 }
 
@@ -1917,22 +1917,22 @@ body.analysis-expanded-active .result-pane:not(.analysis-expanded-pane) {
   visibility: hidden;
 }
 
-body.analysis-expanded-active .analysis-expanded-pane .summary-head,
-body.analysis-expanded-active .analysis-expanded-pane .geometry-head {
+body.analysis-expanded-active .analysis-expanded-pane .metrics-head,
+body.analysis-expanded-active .analysis-expanded-pane .topology-head {
   flex: 0 0 auto;
 }
 
 body.analysis-expanded-active .analysis-expanded-pane .hvac-pane,
-body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
+body.analysis-expanded-active .analysis-expanded-pane .topology-body {
   flex: 1 1 auto;
   min-height: 0;
 }
 
-body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
+body.analysis-expanded-active .analysis-expanded-pane .topology-body {
   grid-template-rows: minmax(0, 1fr) 8px minmax(190px, 28%);
 }
 
-.summary-head {
+.metrics-head {
   min-height: 50px;
   padding: 8px 12px;
   border-bottom: 1px solid var(--line);
@@ -1943,14 +1943,14 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
   gap: 12px;
 }
 
-.summary-head span {
+.metrics-head span {
   display: block;
   margin-top: 0;
   color: var(--muted);
   font-size: 12px;
 }
 
-.summary-tools {
+.metrics-tools {
   min-width: 0;
   display: flex;
   align-items: center;
@@ -1959,12 +1959,12 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
   flex-wrap: wrap;
 }
 
-.summary-head > .summary-tools:only-child {
+.metrics-head > .metrics-tools:only-child {
   margin-left: auto;
 }
 
-.summary-tools input,
-.summary-tools select {
+.metrics-tools input,
+.metrics-tools select {
   width: min(260px, 38vw);
   min-height: 34px;
   border: 1px solid var(--line);
@@ -1974,7 +1974,7 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
   color: var(--text);
 }
 
-.summary-pane {
+.metrics-pane {
   flex: 1;
   min-height: 0;
   overflow: auto;
@@ -1984,7 +1984,7 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
   background: var(--bg);
 }
 
-.summary-categories {
+.metrics-categories {
   display: grid;
   gap: 10px;
 }
@@ -2031,7 +2031,7 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
   gap: 8px;
 }
 
-.diagnose-fix-tools .summary-tools {
+.diagnose-fix-tools .metrics-tools {
   justify-content: flex-end;
 }
 
@@ -2204,12 +2204,12 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
   min-height: 30px;
 }
 
-.summary-category {
+.metrics-category {
   min-width: 0;
   background: transparent;
 }
 
-.summary-category summary {
+.metrics-category summary {
   min-height: 32px;
   cursor: pointer;
   padding: 2px 4px 7px;
@@ -2221,8 +2221,8 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
   font-weight: 700;
 }
 
-.summary-table {
-  --summary-column-count: 1;
+.metrics-table {
+  --metrics-column-count: 1;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   overflow: hidden;
@@ -2230,30 +2230,30 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
   font-weight: 400;
 }
 
-.summary-table-body {
+.metrics-table-body {
   display: grid;
-  grid-template-columns: repeat(var(--summary-column-count), minmax(0, 1fr));
+  grid-template-columns: repeat(var(--metrics-column-count), minmax(0, 1fr));
 }
 
-.summary-table-column {
+.metrics-table-column {
   min-width: 0;
 }
 
-.summary-table-column:not(:last-child) {
+.metrics-table-column:not(:last-child) {
   border-right: 1px solid var(--line);
 }
 
-.summary-row-grid > :not(:first-child) {
+.metrics-row-grid > :not(:first-child) {
   padding-left: 8px;
   border-left: 1px solid var(--surface-3);
 }
 
-.summary-metric {
+.metrics-metric {
   min-width: 0;
   border-bottom: 1px solid var(--surface-2);
 }
 
-.summary-row {
+.metrics-row {
   width: 100%;
   min-height: 36px;
   display: block;
@@ -2263,7 +2263,7 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
   list-style: none;
 }
 
-.summary-row-grid {
+.metrics-row-grid {
   width: 100%;
   min-height: 36px;
   display: grid;
@@ -2273,37 +2273,37 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
   padding: 5px 10px;
 }
 
-.summary-row::-webkit-details-marker {
+.metrics-row::-webkit-details-marker {
   display: none;
 }
 
-.summary-metric[open] {
+.metrics-metric[open] {
   background: var(--surface-2);
 }
 
-.summary-metric[open] .summary-row {
+.metrics-metric[open] .metrics-row {
   color: var(--accent);
 }
 
-.summary-source-drawer {
+.metrics-source-drawer {
   padding: 8px 10px 10px;
   border-top: 1px solid var(--line);
   background: var(--surface);
 }
 
-.summary-source-objects,
-.summary-source-object-list {
+.metrics-source-objects,
+.metrics-source-object-list {
   display: grid;
   gap: 6px;
 }
 
-.summary-source-title {
+.metrics-source-title {
   font-size: 11px;
   font-weight: 400;
   color: var(--muted);
 }
 
-.summary-source-object {
+.metrics-source-object {
   width: 100%;
   min-width: 0;
   min-height: 34px;
@@ -2319,27 +2319,27 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
   text-align: left;
 }
 
-.summary-source-object strong {
+.metrics-source-object strong {
   font-weight: 400;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.summary-source-object small,
-.summary-source-empty {
+.metrics-source-object small,
+.metrics-source-empty {
   color: var(--muted);
   font-size: 11px;
 }
 
-.summary-name,
-.summary-value,
-.summary-unit {
+.metrics-name,
+.metrics-value,
+.metrics-unit {
   min-width: 0;
 }
 
-.summary-name strong,
-.summary-value strong {
+.metrics-name strong,
+.metrics-value strong {
   display: block;
   min-width: 0;
   overflow: hidden;
@@ -2349,22 +2349,22 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
   font-weight: 400;
 }
 
-.summary-value {
+.metrics-value {
   display: flex;
   align-items: baseline;
   justify-content: flex-end;
 }
 
-.summary-value-numeric {
+.metrics-value-numeric {
   justify-content: flex-end;
   font-variant-numeric: tabular-nums;
 }
 
-.summary-value-numeric strong {
+.metrics-value-numeric strong {
   text-align: right;
 }
 
-.summary-value .summary-number {
+.metrics-value .metrics-number {
   width: 100%;
   display: block;
   font-variant-numeric: tabular-nums;
@@ -2374,11 +2374,11 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
   white-space: nowrap;
 }
 
-.summary-value strong {
+.metrics-value strong {
   flex: 0 1 auto;
 }
 
-.summary-unit {
+.metrics-unit {
   justify-self: start;
   display: block;
   margin-top: 0;
@@ -2389,7 +2389,7 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
   white-space: nowrap;
 }
 
-.summary-meta {
+.metrics-meta {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -2399,7 +2399,7 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
   min-height: 20px;
 }
 
-.summary-meta small {
+.metrics-meta small {
   min-width: 18px;
   min-height: 18px;
   display: inline-flex;
@@ -2418,7 +2418,7 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
   white-space: nowrap;
 }
 
-.summary-status {
+.metrics-status {
   justify-self: end;
   width: 20px;
   height: 20px;
@@ -2427,7 +2427,7 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
   justify-content: center;
 }
 
-.summary-status svg {
+.metrics-status svg {
   width: 18px;
   height: 18px;
   display: block;
@@ -2438,15 +2438,15 @@ body.analysis-expanded-active .analysis-expanded-pane .geometry-body {
   stroke-linejoin: round;
 }
 
-.summary-status-ok {
+.metrics-status-ok {
   display: none;
 }
 
-.summary-status-partial {
+.metrics-status-partial {
   color: var(--amber);
 }
 
-.summary-status-missing {
+.metrics-status-missing {
   color: var(--red);
 }
 .semantic-reveal-indicator {

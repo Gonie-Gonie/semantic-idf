@@ -1,5 +1,5 @@
 import { elements } from "./state.js";
-import { resizeGeometry } from "./geometry-loader.js";
+import { resizeTopology } from "./topology-loader.js";
 
 const workspacePresetWidths = {
   analysis: "10%",
@@ -12,8 +12,11 @@ export function captureWorkspaceLayout() {
   return {
     editorWidth: cssCustomProperty(elements.workspace, "--editor-width") || localStorage.getItem("idfAnalyzer.editorWidth") || "",
     rawHeight: cssCustomProperty(elements.editorPanel, "--raw-height") || localStorage.getItem("idfAnalyzer.rawHeight") || "",
-    geometryDetailsHeight:
-      cssCustomProperty(elements.geometryBody, "--geometry-details-height") || localStorage.getItem("idfAnalyzer.geometryDetailsHeight") || "",
+    topologyDetailsHeight:
+      cssCustomProperty(elements.topologyBody, "--topology-details-height")
+      || localStorage.getItem("idfAnalyzer.topologyDetailsHeight")
+      || localStorage.getItem("idfAnalyzer.geometryDetailsHeight")
+      || "",
   };
 }
 
@@ -21,13 +24,13 @@ export function restoreWorkspaceLayout(snapshot = {}) {
   restoreLayoutValue(elements.workspace, "--editor-width", "idfAnalyzer.editorWidth", snapshot.editorWidth);
   restoreLayoutValue(elements.editorPanel, "--raw-height", "idfAnalyzer.rawHeight", snapshot.rawHeight);
   restoreLayoutValue(
-    elements.geometryBody,
-    "--geometry-details-height",
-    "idfAnalyzer.geometryDetailsHeight",
-    snapshot.geometryDetailsHeight,
+    elements.topologyBody,
+    "--topology-details-height",
+    "idfAnalyzer.topologyDetailsHeight",
+    snapshot.topologyDetailsHeight,
   );
   updateWorkspacePresetButtons(workspacePresetForWidth(snapshot.editorWidth || ""));
-  resizeGeometry();
+  resizeTopology();
 }
 
 export function initializeWorkspaceSplitter() {
@@ -99,7 +102,7 @@ export function initializeWorkspaceSplitter() {
     if (lastValue) {
       localStorage.setItem("idfAnalyzer.editorWidth", lastValue);
     }
-    resizeGeometry();
+    resizeTopology();
     if (event.pointerId !== undefined) {
       try {
         elements.workspaceSplitter.releasePointerCapture(event.pointerId);
@@ -119,7 +122,7 @@ export function applyWorkspacePreset(preset) {
   elements.workspace?.style.setProperty("--editor-width", nextWidth);
   localStorage.setItem("idfAnalyzer.editorWidth", nextWidth);
   updateWorkspacePresetButtons(workspacePresetForWidth(nextWidth));
-  resizeGeometry();
+  resizeTopology();
 }
 
 function workspacePresetForWidth(width) {
@@ -158,15 +161,16 @@ export function initializeVerticalSplitters() {
   });
 
   initializeHeightSplitter({
-    container: elements.geometryBody,
-    splitter: elements.geometryDetailsSplitter,
-    property: "--geometry-details-height",
-    storageKey: "idfAnalyzer.geometryDetailsHeight",
+    container: elements.topologyBody,
+    splitter: elements.topologyDetailsSplitter,
+    property: "--topology-details-height",
+    storageKey: "idfAnalyzer.topologyDetailsHeight",
+    legacyStorageKey: "idfAnalyzer.geometryDetailsHeight",
     minTop: 220,
     minBottom: 150,
-    resizingClass: "resizing-geometry-details",
-    onResize: resizeGeometry,
-    onResizeEnd: resizeGeometry,
+    resizingClass: "resizing-topology-details",
+    onResize: resizeTopology,
+    onResizeEnd: resizeTopology,
   });
 }
 
@@ -175,6 +179,7 @@ function initializeHeightSplitter({
   splitter,
   property,
   storageKey,
+  legacyStorageKey = "",
   minTop,
   minBottom,
   resizingClass,
@@ -185,9 +190,10 @@ function initializeHeightSplitter({
     return;
   }
 
-  const savedHeight = localStorage.getItem(storageKey);
+  const savedHeight = localStorage.getItem(storageKey) || (legacyStorageKey ? localStorage.getItem(legacyStorageKey) : "");
   if (savedHeight) {
     container.style.setProperty(property, savedHeight);
+    localStorage.setItem(storageKey, savedHeight);
   }
 
   let dragging = false;

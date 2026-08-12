@@ -2,7 +2,7 @@ import * as THREE from "../../vendor/three.module.js";
 import {
   elements,
   escapeHTML,
-  normalizeGeometryMode,
+  normalizeTopologyMode,
   restoreThermalTopologyState,
   state,
 } from "../state.js";
@@ -12,109 +12,109 @@ import { clearSemanticHover, hoverSemanticEntity, selectSemanticEntity } from ".
 import { resolveThermalTopologyTarget } from "../thermal-topology-targets.js";
 
 let rendererState = null;
-let temporaryGeometryReveal = null;
-let temporaryGeometryHover = null;
-let geometryHoverTargetKey = "";
-let geometrySelectionRequest = 0;
+let temporaryTopologyReveal = null;
+let temporaryTopologyHover = null;
+let topologyHoverTargetKey = "";
+let topologySelectionRequest = 0;
 let thermalTopologyModule = null;
 let thermalTopologyModulePromise = null;
 let thermalTopologyRenderRequest = 0;
-let geometryPlanInteractionsBound = false;
-let geometryDetailInteractionsBound = false;
+let topologyPlanInteractionsBound = false;
+let topologyDetailInteractionsBound = false;
 let geometryLookupCache = null;
-let geometryNavigationLookupCache = null;
+let topologyNavigationLookupCache = null;
 
 const EMPTY_GEOMETRY_ITEMS = Object.freeze([]);
 
 window.addEventListener("idfAnalyzer:semanticSelectionChanged", (event) => {
-  if (!temporaryGeometryReveal) {
+  if (!temporaryTopologyReveal) {
     return;
   }
-  const selection = geometrySelectionForTarget(temporaryGeometryReveal.kind, temporaryGeometryReveal.id);
+  const selection = topologySelectionForTarget(temporaryTopologyReveal.kind, temporaryTopologyReveal.id);
   if (!selection?.entityId || selection.entityId !== event.detail?.selection?.entityId) {
-    temporaryGeometryReveal = null;
-    if (state.activeResultTab === "geometry" && state.report?.geometry) {
-      renderGeometry();
+    temporaryTopologyReveal = null;
+    if (state.activeResultTab === "topology" && state.report?.geometry) {
+      renderTopologyView();
     }
   }
 });
 window.addEventListener("idfAnalyzer:documentChanged", () => {
-  temporaryGeometryReveal = null;
-  temporaryGeometryHover = null;
-  geometryHoverTargetKey = "";
+  temporaryTopologyReveal = null;
+  temporaryTopologyHover = null;
+  topologyHoverTargetKey = "";
   geometryLookupCache = null;
-  geometryNavigationLookupCache = null;
-  geometrySelectionRequest += 1;
+  topologyNavigationLookupCache = null;
+  topologySelectionRequest += 1;
 });
 window.addEventListener("idfAnalyzer:semanticHoverChanged", (event) => {
-  temporaryGeometryHover = geometryProjectionForSemanticSelection(event.detail?.hover, state.report?.geometry);
+  temporaryTopologyHover = topologyProjectionForSemanticSelection(event.detail?.hover, state.report?.geometry);
   highlightSelectedMeshes();
   highlightSelectedPlan();
 });
 
-export function renderGeometry(geometry = state.report?.geometry) {
-  if (!elements.geometryStats || !elements.geometryCanvasHost) {
+export function renderTopologyView(geometry = state.report?.geometry) {
+  if (!elements.topologyStats || !elements.topology3DCanvasHost) {
     return;
   }
   if (!geometry) {
-    renderEmptyGeometry();
+    renderEmptyTopology();
     return;
   }
 
   ensureSelectedStory(geometry);
-  if (elements.geometrySyncLocate) {
-    elements.geometrySyncLocate.checked = state.geometrySyncLocate;
+  if (elements.topologySyncLocate) {
+    elements.topologySyncLocate.checked = state.topologySyncLocate;
   }
-  syncGeometryVisibilityControls();
-  elements.geometryStats.textContent = t("geometry.stats", {
+  syncTopologyVisibilityControls();
+  elements.topologyStats.textContent = t("topology.stats", {
     zones: geometry.zoneCount || 0,
     surfaces: geometry.surfaceCount || 0,
     windows: geometry.windowCount || 0,
   });
   renderStoryOptions(geometry);
   updateModeVisibility();
-  if (state.geometryMode === "plan") {
+  if (state.topologyMode === "plan") {
     renderPlan(geometry);
-  } else if (state.geometryMode === "3d") {
+  } else if (state.topologyMode === "3d") {
     renderScene(geometry);
   } else {
     renderThermalTopologyLazy(geometry);
   }
-  renderGeometryDetails(geometry);
+  renderTopologyDetails(geometry);
 }
 
-export function setGeometryMode(mode) {
-  state.geometryMode = normalizeGeometryMode(mode);
-  if (state.geometryMode === "plan" && state.selectedGeometryStory === "all") {
-    state.selectedGeometryStory = firstStoryIndex(state.report?.geometry);
+export function setTopologyMode(mode) {
+  state.topologyMode = normalizeTopologyMode(mode);
+  if (state.topologyMode === "plan" && state.selectedTopologyStory === "all") {
+    state.selectedTopologyStory = firstStoryIndex(state.report?.geometry);
   }
-  elements.geometryModeButtons.forEach((button) => {
-    button.classList.toggle("active", button.dataset.geometryMode === state.geometryMode);
+  elements.topologyModeButtons.forEach((button) => {
+    button.classList.toggle("active", button.dataset.topologyMode === state.topologyMode);
   });
-  renderGeometry();
+  renderTopologyView();
 }
 
-export function fitGeometryView() {
-  if (state.geometryMode === "thermal") {
+export function fitTopologyView() {
+  if (state.topologyMode === "thermal") {
     return loadThermalTopologyModule().then((module) => module.fitThermalTopology());
   }
-  renderGeometry();
+  renderTopologyView();
   return Promise.resolve(true);
 }
 
-export function setGeometryStory(storyIndex) {
-  state.selectedGeometryStory = storyIndex === "all" ? "all" : Number(storyIndex) || 0;
-  renderGeometry();
+export function setTopologyStory(storyIndex) {
+  state.selectedTopologyStory = storyIndex === "all" ? "all" : Number(storyIndex) || 0;
+  renderTopologyView();
 }
 
-export async function selectGeometry(kind, id, options = {}) {
-  const request = ++geometrySelectionRequest;
+export async function selectTopologyEntity(kind, id, options = {}) {
+  const request = ++topologySelectionRequest;
   const geometry = state.report?.geometry;
   const normalizedKind = normalizeGeometryKind(kind);
   const targetId = String(id || "");
-  const entity = geometryTargetEntity({ targetKind: normalizedKind, targetId }, geometry);
-  const selection = geometrySelectionForTarget(normalizedKind, targetId);
-  const syncLocate = options.syncLocate !== false && state.geometrySyncLocate && Boolean(entity);
+  const entity = topologyTargetEntity({ targetKind: normalizedKind, targetId }, geometry);
+  const selection = topologySelectionForTarget(normalizedKind, targetId);
+  const syncLocate = options.syncLocate !== false && state.topologySyncLocate && Boolean(entity);
 
   // The legacy source locator already records a history entry. Run it before
   // changing either selection so a geometry click remains one atomic action.
@@ -123,41 +123,41 @@ export async function selectGeometry(kind, id, options = {}) {
   }
   if (options.syncSemantic !== false && selection) {
     await selectSemanticEntity(selection, {
-      originView: "geometry",
+      originView: "topology",
       action: "select",
       recordHistory: syncLocate ? false : options.recordHistory !== false,
       follow: options.follow,
-      rememberForOriginView: "geometry",
+      rememberForOriginView: "topology",
     });
   }
-  if (request !== geometrySelectionRequest) {
+  if (request !== topologySelectionRequest) {
     return;
   }
 
-  temporaryGeometryReveal = null;
-  state.selectedGeometryKind = normalizedKind;
-  state.selectedGeometryId = targetId;
+  temporaryTopologyReveal = null;
+  state.selectedTopologyEntityKind = normalizedKind;
+  state.selectedTopologyEntityId = targetId;
   projectGeometrySelectionToThermal(normalizedKind, targetId, geometry);
-  renderGeometryDetails();
+  renderTopologyDetails();
   highlightSelectedMeshes();
   highlightSelectedPlan();
-  refreshResultPanelSelectionStyles("geometry", state.globalSelection, state.globalHover);
+  refreshResultPanelSelectionStyles("topology", state.globalSelection, state.globalHover);
 }
 
-export async function revealGeometrySelection(selection, options = {}, context) {
-  geometrySelectionRequest += 1;
+export async function revealTopologySelection(selection, options = {}, context) {
+  topologySelectionRequest += 1;
   const geometry = state.report?.geometry;
-  const target = geometryViewTargetForSelection(selection, context?.navigation);
-  const entity = geometryTargetEntity(target, geometry);
+  const target = topologyViewTargetForSelection(selection, context?.navigation);
+  const entity = topologyTargetEntity(target, geometry);
   if (!target || !entity) {
     return context?.genericReveal(selection, options) || false;
   }
 
   if (entity.kind === "story") {
-    state.selectedGeometryStory = entity.item.index;
-    temporaryGeometryReveal = null;
-    renderGeometry(geometry);
-    const storySelect = elements.geometryStorySelect;
+    state.selectedTopologyStory = entity.item.index;
+    temporaryTopologyReveal = null;
+    renderTopologyView(geometry);
+    const storySelect = elements.topologyStorySelect;
     if (options.focus !== false) {
       storySelect?.focus?.({ preventScroll: true });
     }
@@ -168,16 +168,16 @@ export async function revealGeometrySelection(selection, options = {}, context) 
   const ownerZone = owningZoneForGeometryEntity(entity, geometry);
   const storyIndex = geometryStoryIndexForEntity(entity, geometry);
   if (Number.isInteger(storyIndex)) {
-    state.selectedGeometryStory = storyIndex;
+    state.selectedTopologyStory = storyIndex;
   }
   if (entity.thermalTarget) {
-    state.geometryMode = "thermal";
+    state.topologyMode = "thermal";
     state.thermalTopologySelectedEntityId = entity.id;
     state.thermalTopologySelectedEntityKind = entity.kind;
-  } else if (state.geometryMode === "plan" && !geometryEntityHasPlanShape(entity, geometry)) {
-    state.geometryMode = "3d";
+  } else if (state.topologyMode === "plan" && !geometryEntityHasPlanShape(entity, geometry)) {
+    state.topologyMode = "3d";
   }
-  temporaryGeometryReveal = {
+  temporaryTopologyReveal = {
     kind: entity.kind,
     id: entity.id,
     ownerZoneId: ownerZone?.id || "",
@@ -187,13 +187,13 @@ export async function revealGeometrySelection(selection, options = {}, context) 
     windowIds: [...(entity.thermalTarget?.windowIds || [])],
     nodeIds: [...(entity.thermalTarget?.nodeIds || [])],
   };
-  state.selectedGeometryKind = entity.kind;
-  state.selectedGeometryId = entity.id;
+  state.selectedTopologyEntityKind = entity.kind;
+  state.selectedTopologyEntityId = entity.id;
   projectGeometrySelectionToThermal(entity.kind, entity.id, geometry);
-  renderGeometry(geometry);
+  renderTopologyView(geometry);
   context?.refreshSelectionStyles(selection, state.globalHover);
-  await nextGeometryFrame();
-  const targetElement = findGeometryNavigationTarget(selection, target, context) || elements.geometryDetails;
+  await nextTopologyFrame();
+  const targetElement = findTopologyNavigationTarget(selection, target, context) || elements.topologyDetails;
   if (options.scroll !== false) {
     targetElement?.scrollIntoView?.({ block: options.block || "nearest", inline: "nearest", behavior: options.behavior || "auto" });
   }
@@ -203,47 +203,47 @@ export async function revealGeometrySelection(selection, options = {}, context) 
   return Boolean(targetElement);
 }
 
-export async function restoreGeometryNavigationContext(snapshot = {}, context) {
-  geometrySelectionRequest += 1;
-  state.geometryMode = normalizeGeometryMode(snapshot.mode);
+export async function restoreTopologyNavigationContext(snapshot = {}, context) {
+  topologySelectionRequest += 1;
+  state.topologyMode = normalizeTopologyMode(snapshot.mode);
   restoreThermalTopologyState(snapshot, state);
-  state.selectedGeometryStory = snapshot.story === "all" ? "all" : Number(snapshot.story) || 0;
-  state.selectedGeometryKind = normalizeGeometryKind(snapshot.selectedKind);
-  state.selectedGeometryId = String(snapshot.selectedId || "");
-  state.geometrySyncLocate = snapshot.syncLocate !== false;
+  state.selectedTopologyStory = snapshot.story === "all" ? "all" : Number(snapshot.story) || 0;
+  state.selectedTopologyEntityKind = normalizeGeometryKind(snapshot.selectedKind);
+  state.selectedTopologyEntityId = String(snapshot.selectedId || "");
+  state.topologySyncLocate = snapshot.syncLocate !== false;
   const legacyVisibility = snapshot.visibility || {};
   const visibility3D = snapshot.visibility3D || legacyVisibility;
   const visibilityPlan = snapshot.visibilityPlan || legacyVisibility;
-  state.geometry3DVisibility = {
+  state.topology3DVisibility = {
     zones: visibility3D.zones !== false,
     surfaces: (visibility3D.surfaces ?? visibility3D.walls) !== false,
     openings: (visibility3D.openings ?? visibility3D.windows) !== false,
   };
-  state.geometryPlanVisibility = {
+  state.topologyPlanVisibility = {
     zones: visibilityPlan.zones !== false,
     boundaries: (visibilityPlan.boundaries ?? visibilityPlan.walls) !== false,
     openings: (visibilityPlan.openings ?? visibilityPlan.windows) !== false,
   };
-  temporaryGeometryReveal = null;
-  renderGeometry();
+  temporaryTopologyReveal = null;
+  renderTopologyView();
   return context?.genericRestoreContext(snapshot) ?? true;
 }
 
-export function preferredGeometrySemanticOccurrence(selection, context) {
-  const target = geometryViewTargetForSelection(selection, context?.navigation);
-  const preferred = preferredOccurrenceForGeometryTarget(target?.targetId, selection, context?.navigation);
+export function preferredTopologySemanticOccurrence(selection, context) {
+  const target = topologyViewTargetForSelection(selection, context?.navigation);
+  const preferred = preferredOccurrenceForTopologyTarget(target?.targetId, selection, context?.navigation);
   return preferred?.occurrenceId || context?.genericPreferredSemanticOccurrence(selection) || "";
 }
 
-export function resizeGeometry() {
-  if (!rendererState || state.geometryMode !== "3d") {
+export function resizeTopologyView() {
+  if (!rendererState || state.topologyMode !== "3d") {
     return;
   }
   resizeRenderer();
   rendererState.renderer.render(rendererState.scene, rendererState.camera);
 }
 
-export function revealThermalTargetInGeometry(kind, id, mode = "3d") {
+export function revealThermalTargetInTopology(kind, id, mode = "3d") {
   const geometry = state.report?.geometry;
   const thermalTarget = resolveThermalTopologyTarget({ targetKind: kind, targetId: id }, geometry);
   if (!thermalTarget) return false;
@@ -253,8 +253,8 @@ export function revealThermalTargetInGeometry(kind, id, mode = "3d") {
   const representativeNodeID = (thermalTarget.nodeIds || []).find((nodeID) => lookup.zoneByID.has(nodeID) || lookup.spaceByID.has(nodeID));
   const representativeNode = lookup.zoneByID.get(representativeNodeID) || lookup.spaceByID.get(representativeNodeID);
   const storyIndex = representativeSurface?.storyIndex ?? representativeWindow?.storyIndex ?? representativeNode?.storyIndex;
-  if (Number.isInteger(storyIndex)) state.selectedGeometryStory = storyIndex;
-  temporaryGeometryReveal = {
+  if (Number.isInteger(storyIndex)) state.selectedTopologyStory = storyIndex;
+  temporaryTopologyReveal = {
     kind,
     id,
     ownerZoneId: thermalTarget.nodeIds?.find((nodeID) => lookup.zoneByID.has(nodeID)) || "",
@@ -264,67 +264,67 @@ export function revealThermalTargetInGeometry(kind, id, mode = "3d") {
     windowIds: [...(thermalTarget.windowIds || [])],
     nodeIds: [...(thermalTarget.nodeIds || [])],
   };
-  state.geometryMode = normalizeGeometryMode(mode);
-  renderGeometry(geometry);
+  state.topologyMode = normalizeTopologyMode(mode);
+  renderTopologyView(geometry);
   return true;
 }
 
-function renderEmptyGeometry() {
-  elements.geometryStats.textContent = t("geometry.stats", { zones: 0, surfaces: 0, windows: 0 });
-  elements.geometryStorySelect.innerHTML = "";
-  elements.geometryCanvasHost.innerHTML = `<div class="empty">${t("geometry.noGeometry")}</div>`;
-  elements.geometryPlan.innerHTML = "";
+function renderEmptyTopology() {
+  elements.topologyStats.textContent = t("topology.stats", { zones: 0, surfaces: 0, windows: 0 });
+  elements.topologyStorySelect.innerHTML = "";
+  elements.topology3DCanvasHost.innerHTML = `<div class="empty">${t("topology.noGeometry")}</div>`;
+  elements.topologyPlan.innerHTML = "";
   elements.thermalTopologyGraph.innerHTML = `<div class="empty">${t("topology.noConnections")}</div>`;
   elements.thermalTopologyInspector.innerHTML = "";
-  elements.geometryDetails.innerHTML = `<div class="empty">${t("geometry.selectObject")}</div>`;
+  elements.topologyDetails.innerHTML = `<div class="empty">${t("topology.selectObject")}</div>`;
 }
 
 function ensureSelectedStory(geometry) {
   const stories = geometry.stories || [];
-  const requiresSpecificStory = state.geometryMode === "plan"
-    || (state.geometryMode === "thermal" && state.thermalTopologyScope === "story");
+  const requiresSpecificStory = state.topologyMode === "plan"
+    || (state.topologyMode === "thermal" && state.thermalTopologyScope === "story");
   if (!stories.length) {
-    state.selectedGeometryStory = requiresSpecificStory ? 0 : "all";
+    state.selectedTopologyStory = requiresSpecificStory ? 0 : "all";
     return;
   }
-  if (!requiresSpecificStory && state.selectedGeometryStory === "all") {
+  if (!requiresSpecificStory && state.selectedTopologyStory === "all") {
     return;
   }
-  const exists = stories.some((story) => story.index === state.selectedGeometryStory);
+  const exists = stories.some((story) => story.index === state.selectedTopologyStory);
   if (!exists) {
-    state.selectedGeometryStory = stories[0].index;
+    state.selectedTopologyStory = stories[0].index;
   }
 }
 
 function renderStoryOptions(geometry) {
   const stories = geometry.stories || [];
   const allOption =
-    state.geometryMode === "3d"
-      ? `<option value="all" ${state.selectedGeometryStory === "all" ? "selected" : ""}>${t("geometry.allLevels")}</option>`
+    state.topologyMode === "3d"
+      ? `<option value="all" ${state.selectedTopologyStory === "all" ? "selected" : ""}>${t("topology.allLevels")}</option>`
       : "";
   const storyOptions = stories
     .map(
       (story) =>
-        `<option value="${escapeHTML(story.index)}" ${geometryNavigationAttributes("story", geometryStoryTargetID(story), { objectName: story.name }, { tabindex: false })} ${story.index === state.selectedGeometryStory ? "selected" : ""}>${escapeHTML(story.name)} (${formatNumber(story.elevation)} m)</option>`,
+        `<option value="${escapeHTML(story.index)}" ${topologyNavigationAttributes("story", geometryStoryTargetID(story), { objectName: story.name }, { tabindex: false })} ${story.index === state.selectedTopologyStory ? "selected" : ""}>${escapeHTML(story.name)} (${formatNumber(story.elevation)} m)</option>`,
     )
     .join("");
-  elements.geometryStorySelect.innerHTML = `${allOption}${storyOptions}`;
+  elements.topologyStorySelect.innerHTML = `${allOption}${storyOptions}`;
 }
 
 function updateModeVisibility() {
-  const is3D = state.geometryMode === "3d";
-  const isPlan = state.geometryMode === "plan";
-  const isNetwork = state.geometryMode === "thermal";
-  elements.geometryCanvasHost.classList.toggle("active", is3D);
-  elements.geometryPlan.classList.toggle("active", isPlan);
+  const is3D = state.topologyMode === "3d";
+  const isPlan = state.topologyMode === "plan";
+  const isNetwork = state.topologyMode === "thermal";
+  elements.topology3DCanvasHost.classList.toggle("active", is3D);
+  elements.topologyPlan.classList.toggle("active", isPlan);
   elements.thermalTopologyView?.classList.toggle("active", isNetwork);
-  elements.geometry3DControls.hidden = !is3D;
-  elements.geometryPlanControls.hidden = !isPlan;
+  elements.topology3DControls.hidden = !is3D;
+  elements.topologyPlanControls.hidden = !isPlan;
   elements.thermalTopologyControls.hidden = !isNetwork;
-  elements.geometryStoryControl.hidden = isNetwork && state.thermalTopologyScope !== "story";
-  elements.geometryViewport.classList.toggle("network-active", isNetwork);
-  elements.geometryModeButtons.forEach((button) => {
-    button.classList.toggle("active", button.dataset.geometryMode === state.geometryMode);
+  elements.topologyStoryControl.hidden = isNetwork && state.thermalTopologyScope !== "story";
+  elements.topologyViewport.classList.toggle("network-active", isNetwork);
+  elements.topologyModeButtons.forEach((button) => {
+    button.classList.toggle("active", button.dataset.topologyMode === state.topologyMode);
   });
 }
 
@@ -335,19 +335,19 @@ function renderThermalTopologyLazy(geometry) {
   }
   loadThermalTopologyModule()
     .then((module) => {
-      if (request !== thermalTopologyRenderRequest || state.geometryMode !== "thermal" || geometry !== state.report?.geometry) {
+      if (request !== thermalTopologyRenderRequest || state.topologyMode !== "thermal" || geometry !== state.report?.geometry) {
         return;
       }
       module.renderThermalTopology(geometry, {
-        navigationAttributes: geometryNavigationAttributes,
-        selectGeometry,
-        setGeometryMode,
-        revealThermalTargetInGeometry,
-        selectionForTarget: geometrySelectionForTarget,
+        navigationAttributes: topologyNavigationAttributes,
+        selectTopologyEntity,
+        setTopologyMode,
+        revealThermalTargetInTopology,
+        selectionForTarget: topologySelectionForTarget,
       });
     })
     .catch((error) => {
-      if (request === thermalTopologyRenderRequest && state.geometryMode === "thermal") {
+      if (request === thermalTopologyRenderRequest && state.topologyMode === "thermal") {
         elements.thermalTopologyGraph.innerHTML = `<div class="thermal-topology-shell-status">${escapeHTML(error?.message || String(error))}</div>`;
       }
     });
@@ -366,19 +366,19 @@ function loadThermalTopologyModule() {
   return thermalTopologyModulePromise;
 }
 
-function syncGeometryVisibilityControls() {
-  const visibility3D = state.geometry3DVisibility || {};
-  const visibilityPlan = state.geometryPlanVisibility || {};
-  elements.geometry3DShowZones.checked = visibility3D.zones !== false;
-  elements.geometry3DShowSurfaces.checked = visibility3D.surfaces !== false;
-  elements.geometry3DShowOpenings.checked = visibility3D.openings !== false;
-  elements.geometryPlanShowZones.checked = visibilityPlan.zones !== false;
-  elements.geometryPlanShowBoundaries.checked = visibilityPlan.boundaries !== false;
-  elements.geometryPlanShowOpenings.checked = visibilityPlan.openings !== false;
+function syncTopologyVisibilityControls() {
+  const visibility3D = state.topology3DVisibility || {};
+  const visibilityPlan = state.topologyPlanVisibility || {};
+  elements.topology3DShowZones.checked = visibility3D.zones !== false;
+  elements.topology3DShowSurfaces.checked = visibility3D.surfaces !== false;
+  elements.topology3DShowOpenings.checked = visibility3D.openings !== false;
+  elements.topologyPlanShowZones.checked = visibilityPlan.zones !== false;
+  elements.topologyPlanShowBoundaries.checked = visibilityPlan.boundaries !== false;
+  elements.topologyPlanShowOpenings.checked = visibilityPlan.openings !== false;
 }
 
 function renderScene(geometry) {
-  elements.geometryPlan.innerHTML = "";
+  elements.topologyPlan.innerHTML = "";
   ensureRenderer();
   const { scene, group, camera, renderer } = rendererState;
   scene.background = new THREE.Color(geometryColor("background", 0xf7fafc));
@@ -392,7 +392,7 @@ function renderScene(geometry) {
   const modelSize = bounds.ok
     ? Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY, bounds.maxZ - bounds.minZ, 1)
     : 18;
-  const visibility = state.geometry3DVisibility || {};
+  const visibility = state.topology3DVisibility || {};
 
   (geometry.surfaces || [])
     .filter((surface) => (
@@ -422,7 +422,7 @@ function renderScene(geometry) {
   highlightSelectedMeshes();
   renderer.render(scene, camera);
   window.requestAnimationFrame(() => {
-    if (rendererState?.renderer !== renderer || state.geometryMode !== "3d") {
+    if (rendererState?.renderer !== renderer || state.topologyMode !== "3d") {
       return;
     }
     resizeRenderer();
@@ -432,9 +432,9 @@ function renderScene(geometry) {
 
 function ensureRenderer() {
   if (rendererState) {
-    if (!elements.geometryCanvasHost.contains(rendererState.renderer.domElement)) {
-      elements.geometryCanvasHost.innerHTML = "";
-      elements.geometryCanvasHost.appendChild(rendererState.renderer.domElement);
+    if (!elements.topology3DCanvasHost.contains(rendererState.renderer.domElement)) {
+      elements.topology3DCanvasHost.innerHTML = "";
+      elements.topology3DCanvasHost.appendChild(rendererState.renderer.domElement);
     }
     return;
   }
@@ -444,9 +444,9 @@ function ensureRenderer() {
   const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 1000);
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, preserveDrawingBuffer: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-  renderer.domElement.className = "geometry-canvas";
-  elements.geometryCanvasHost.innerHTML = "";
-  elements.geometryCanvasHost.appendChild(renderer.domElement);
+  renderer.domElement.className = "topology-3d-canvas";
+  elements.topology3DCanvasHost.innerHTML = "";
+  elements.topology3DCanvasHost.appendChild(renderer.domElement);
 
   const group = new THREE.Group();
   scene.add(group);
@@ -480,14 +480,14 @@ function installCanvasResizeObserver() {
     }
     rendererState.resizeFrame = window.requestAnimationFrame(() => {
       rendererState.resizeFrame = 0;
-      if (!rendererState || state.geometryMode !== "3d" || !elements.geometryCanvasHost.contains(rendererState.renderer.domElement)) {
+      if (!rendererState || state.topologyMode !== "3d" || !elements.topology3DCanvasHost.contains(rendererState.renderer.domElement)) {
         return;
       }
       resizeRenderer();
       rendererState.renderer.render(rendererState.scene, rendererState.camera);
     });
   });
-  rendererState.resizeObserver.observe(elements.geometryCanvasHost);
+  rendererState.resizeObserver.observe(elements.topology3DCanvasHost);
 }
 
 function installCanvasInteractions() {
@@ -534,20 +534,20 @@ function hoverMesh(event) {
   const kind = hit?.object.userData?.geometryKind || "";
   const id = hit?.object.userData?.geometryId || "";
   const key = `${kind}|${id}`;
-  if (key === geometryHoverTargetKey) return;
-  geometryHoverTargetKey = key;
+  if (key === topologyHoverTargetKey) return;
+  topologyHoverTargetKey = key;
   if (!id) {
-    clearSemanticHover({ originView: "geometry", action: "hover" });
+    clearSemanticHover({ originView: "topology", action: "hover" });
     return;
   }
-  const selection = geometrySelectionForTarget(kind, id);
-  if (selection) hoverSemanticEntity(selection, { originView: "geometry", action: "hover", recordHistory: false, follow: false });
+  const selection = topologySelectionForTarget(kind, id);
+  if (selection) hoverSemanticEntity(selection, { originView: "topology", action: "hover", recordHistory: false, follow: false });
 }
 
 function clearGeometryHover() {
-  if (!geometryHoverTargetKey) return;
-  geometryHoverTargetKey = "";
-  clearSemanticHover({ originView: "geometry", action: "hover" });
+  if (!topologyHoverTargetKey) return;
+  topologyHoverTargetKey = "";
+  clearSemanticHover({ originView: "topology", action: "hover" });
 }
 
 function meshAtPointer(event) {
@@ -561,7 +561,7 @@ function meshAtPointer(event) {
 function pickMesh(event) {
   const hit = meshAtPointer(event);
   if (hit) {
-    void selectGeometry(hit.object.userData.geometryKind, hit.object.userData.geometryId);
+    void selectTopologyEntity(hit.object.userData.geometryKind, hit.object.userData.geometryId);
   }
 }
 
@@ -596,7 +596,7 @@ function addSurfaceMesh(group, surface, kind, id, center) {
   mesh.userData = {
     geometryKind: kind,
     geometryId: id,
-    semanticSelection: geometrySelectionForTarget(kind, id),
+    semanticSelection: topologySelectionForTarget(kind, id),
     baseColor: material.color.getHex(),
     baseOpacity: material.opacity,
   };
@@ -622,7 +622,7 @@ function addWindowMesh(group, windowItem, center) {
   mesh.userData = {
     geometryKind: "window",
     geometryId: windowItem.id,
-    semanticSelection: geometrySelectionForTarget("window", windowItem.id),
+    semanticSelection: topologySelectionForTarget("window", windowItem.id),
     baseColor: material.color.getHex(),
     baseOpacity: material.opacity,
   };
@@ -670,23 +670,23 @@ function addAxes(group, bounds, center) {
 function renderPlan(geometry) {
   disposeRendererCanvas();
   bindGeometryPlanInteractions();
-  const storyIndex = state.selectedGeometryStory === "all" ? firstStoryIndex(geometry) : state.selectedGeometryStory;
+  const storyIndex = state.selectedTopologyStory === "all" ? firstStoryIndex(geometry) : state.selectedTopologyStory;
   const layout = cachedGeometryPlanLayout(geometry, storyIndex);
   if (!layout.ok) {
-    elements.geometryPlan.innerHTML = `<text x="24" y="42" fill="#60707c" font-size="14">${t("geometry.noFloorPlan")}</text>`;
-    elements.geometryPlan.setAttribute("viewBox", "0 0 640 420");
+    elements.topologyPlan.innerHTML = `<text x="24" y="42" fill="#60707c" font-size="14">${t("topology.noFloorPlan")}</text>`;
+    elements.topologyPlan.setAttribute("viewBox", "0 0 640 420");
     return;
   }
 
-  const visibility = state.geometryPlanVisibility || {};
+  const visibility = state.topologyPlanVisibility || {};
   const zoneFloorPolygons = visibility.zones !== false
     ? layout.surfaces
         .filter((surface) => surface.isFloor)
-        .map((surface) => `<polygon class="plan-zone navigable-row" data-geometry-kind="zone" data-geometry-id="${escapeHTML(surface.zoneID)}" ${geometryNavigationAttributes("zone", surface.zoneID)} points="${surface.openPoints}"></polygon>`)
+        .map((surface) => `<polygon class="plan-zone navigable-row" data-geometry-kind="zone" data-geometry-id="${escapeHTML(surface.zoneID)}" ${topologyNavigationAttributes("zone", surface.zoneID)} points="${surface.openPoints}"></polygon>`)
         .join("")
     : layout.surfaces
-        .filter((surface) => surface.isFloor && temporaryGeometryReveal?.ownerZoneId === surface.zoneID)
-        .map((surface) => `<polygon class="plan-zone navigable-row" data-geometry-kind="zone" data-geometry-id="${escapeHTML(surface.zoneID)}" ${geometryNavigationAttributes("zone", surface.zoneID)} points="${surface.openPoints}"></polygon>`)
+        .filter((surface) => surface.isFloor && temporaryTopologyReveal?.ownerZoneId === surface.zoneID)
+        .map((surface) => `<polygon class="plan-zone navigable-row" data-geometry-kind="zone" data-geometry-id="${escapeHTML(surface.zoneID)}" ${topologyNavigationAttributes("zone", surface.zoneID)} points="${surface.openPoints}"></polygon>`)
         .join("");
   const wallLines = layout.surfaces
     .filter((surface) => (
@@ -696,24 +696,24 @@ function renderPlan(geometry) {
     .map(renderPlanSurfaceShape)
     .join("");
   const windowLines = layout.windows
-    .filter((windowItem) => visibility.openings !== false || temporaryGeometryReveal?.id === windowItem.id)
-    .map((windowItem) => `<polyline class="plan-window navigable-row" data-geometry-kind="window" data-geometry-id="${escapeHTML(windowItem.id)}" ${geometryNavigationAttributes("fenestration", windowItem.id)} points="${windowItem.closedPoints}"></polyline>`)
+    .filter((windowItem) => visibility.openings !== false || temporaryTopologyReveal?.id === windowItem.id)
+    .map((windowItem) => `<polyline class="plan-window navigable-row" data-geometry-kind="window" data-geometry-id="${escapeHTML(windowItem.id)}" ${topologyNavigationAttributes("fenestration", windowItem.id)} points="${windowItem.closedPoints}"></polyline>`)
     .join("");
 
-  elements.geometryPlan.setAttribute("viewBox", `0 0 ${layout.viewWidth} ${layout.viewHeight}`);
-  elements.geometryPlan.innerHTML = `${zoneFloorPolygons}${wallLines}${windowLines}`;
+  elements.topologyPlan.setAttribute("viewBox", `0 0 ${layout.viewWidth} ${layout.viewHeight}`);
+  elements.topologyPlan.innerHTML = `${zoneFloorPolygons}${wallLines}${windowLines}`;
   highlightSelectedPlan();
 }
 
 function bindGeometryPlanInteractions() {
-  const plan = elements.geometryPlan;
-  if (geometryPlanInteractionsBound || !plan) return;
-  geometryPlanInteractionsBound = true;
+  const plan = elements.topologyPlan;
+  if (topologyPlanInteractionsBound || !plan) return;
+  topologyPlanInteractionsBound = true;
   plan.addEventListener("click", (event) => {
     const shape = geometryPlanTarget(event.target, plan);
     if (!shape) return;
     event.stopPropagation();
-    void selectGeometry(shape.dataset.geometryKind, shape.dataset.geometryId);
+    void selectTopologyEntity(shape.dataset.geometryKind, shape.dataset.geometryId);
   });
   plan.addEventListener("keydown", (event) => {
     if (event.key !== "Enter" && event.key !== " ") return;
@@ -721,18 +721,18 @@ function bindGeometryPlanInteractions() {
     if (!shape) return;
     event.preventDefault();
     event.stopPropagation();
-    void selectGeometry(shape.dataset.geometryKind, shape.dataset.geometryId);
+    void selectTopologyEntity(shape.dataset.geometryKind, shape.dataset.geometryId);
   });
   plan.addEventListener("pointerover", (event) => {
     const shape = geometryPlanTarget(event.target, plan);
     if (!shape || shape === geometryPlanTarget(event.relatedTarget, plan)) return;
-    const selection = geometrySelectionForTarget(shape.dataset.geometryKind, shape.dataset.geometryId);
-    if (selection) hoverSemanticEntity(selection, { originView: "geometry", action: "hover", recordHistory: false, follow: false });
+    const selection = topologySelectionForTarget(shape.dataset.geometryKind, shape.dataset.geometryId);
+    if (selection) hoverSemanticEntity(selection, { originView: "topology", action: "hover", recordHistory: false, follow: false });
   });
   plan.addEventListener("pointerout", (event) => {
     const shape = geometryPlanTarget(event.target, plan);
     if (!shape || shape === geometryPlanTarget(event.relatedTarget, plan)) return;
-    clearSemanticHover({ originView: "geometry", action: "hover" });
+    clearSemanticHover({ originView: "topology", action: "hover" });
   });
 }
 
@@ -811,7 +811,7 @@ function buildGeometryPlanLayout(geometry, storyIndex) {
 
 function renderPlanSurfaceShape(surface) {
   const title = escapeHTML(surface.title);
-  const attributes = geometryNavigationAttributes("surface", surface.id);
+  const attributes = topologyNavigationAttributes("surface", surface.id);
   if (surface.isHorizontal) {
     return `<polygon class="${surface.className} navigable-row" data-geometry-kind="surface" data-geometry-id="${escapeHTML(surface.id)}" ${attributes} points="${surface.closedPoints}"><title>${title}</title></polygon>`;
   }
@@ -838,15 +838,15 @@ function isHorizontalSurface(surface) {
   return /floor|roof|ceiling/i.test(surface.surfaceType || "");
 }
 
-function renderGeometryDetails(geometry = state.report?.geometry) {
+function renderTopologyDetails(geometry = state.report?.geometry) {
   const entity = selectedGeometryEntity(geometry);
   if (!entity) {
-    elements.geometryDetails.innerHTML = `<div class="empty">${t("geometry.selectObject")}</div>`;
+    elements.topologyDetails.innerHTML = `<div class="empty">${t("topology.selectObject")}</div>`;
     return;
   }
   const relatedGroups = geometryRelatedGroups(geometry, entity);
-  elements.geometryDetails.innerHTML = `
-    <div class="geometry-detail-head navigable-row" ${geometryNavigationAttributes(entity.kind, entity.id, {
+  elements.topologyDetails.innerHTML = `
+    <div class="topology-detail-head navigable-row" ${topologyNavigationAttributes(entity.kind, entity.id, {
       objectIndex: entity.objectIndex,
       objectType: entity.objectType,
       objectName: entity.title,
@@ -855,20 +855,20 @@ function renderGeometryDetails(geometry = state.report?.geometry) {
         <h3>${escapeHTML(entity.title)}</h3>
         <span>${escapeHTML(entity.subtitle)}</span>
       </div>
-      <span class="geometry-sync-note">${state.geometrySyncLocate ? t("geometry.syncOn") : t("geometry.syncOff")}</span>
+      <span class="topology-sync-note">${state.topologySyncLocate ? t("topology.syncOn") : t("topology.syncOff")}</span>
     </div>
-    <div class="geometry-detail-grid">
+    <div class="topology-detail-grid">
       <section>
         <h4>Metrics</h4>
         ${renderMetricList(entity.metrics)}
       </section>
       <section>
-        <h4>${t("geometry.relatedObjects")}</h4>
+        <h4>${t("topology.relatedObjects")}</h4>
         ${renderRelatedGroups(relatedGroups)}
       </section>
       ${renderConstructionSection(geometry, entity)}
     </div>`;
-  bindGeometryDetailControls();
+  bindTopologyDetailControls();
 }
 
 function syncLocatedInputEntity(entity) {
@@ -886,7 +886,7 @@ function syncLocatedInputEntity(entity) {
 }
 
 function matchesSelectedStory(item) {
-  return state.selectedGeometryStory === "all" || item.storyIndex === state.selectedGeometryStory;
+  return state.selectedTopologyStory === "all" || item.storyIndex === state.selectedTopologyStory;
 }
 
 function firstStoryIndex(geometry) {
@@ -894,12 +894,12 @@ function firstStoryIndex(geometry) {
 }
 
 function selectedGeometryEntity(geometry) {
-  if (!geometry || !state.selectedGeometryId) {
+  if (!geometry || !state.selectedTopologyEntityId) {
     return null;
   }
   const lookup = geometryLookupIndex(geometry);
-  if (state.selectedGeometryKind === "zone") {
-    const zone = lookup.zoneByID.get(state.selectedGeometryId);
+  if (state.selectedTopologyEntityKind === "zone") {
+    const zone = lookup.zoneByID.get(state.selectedTopologyEntityId);
     return zone && {
       kind: "zone",
       id: zone.id,
@@ -911,8 +911,8 @@ function selectedGeometryEntity(geometry) {
       metrics: zone.metrics,
     };
   }
-  if (state.selectedGeometryKind === "space") {
-    const space = lookup.spaceByID.get(state.selectedGeometryId);
+  if (state.selectedTopologyEntityKind === "space") {
+    const space = lookup.spaceByID.get(state.selectedTopologyEntityId);
     const zone = space ? zoneByName(geometry, space.zoneName) : null;
     return space && {
       kind: "space",
@@ -926,8 +926,8 @@ function selectedGeometryEntity(geometry) {
       metrics: [],
     };
   }
-  if (state.selectedGeometryKind === "window") {
-    const windowItem = lookup.windowByID.get(state.selectedGeometryId);
+  if (state.selectedTopologyEntityKind === "window") {
+    const windowItem = lookup.windowByID.get(state.selectedTopologyEntityId);
     return windowItem && {
       kind: "window",
       id: windowItem.id,
@@ -939,7 +939,7 @@ function selectedGeometryEntity(geometry) {
       metrics: windowItem.metrics,
     };
   }
-  const surface = lookup.surfaceByID.get(state.selectedGeometryId);
+  const surface = lookup.surfaceByID.get(state.selectedTopologyEntityId);
   return surface && {
     kind: "surface",
     id: surface.id,
@@ -954,7 +954,7 @@ function selectedGeometryEntity(geometry) {
 
 function renderMetricList(metrics = []) {
   return metrics.length
-    ? `<div class="geometry-property-list">${metrics
+    ? `<div class="topology-property-list">${metrics
         .map((metric) => `<div><span>${escapeHTML(metric.name)}</span><strong>${escapeHTML(metric.displayValue)}${metric.unit ? ` ${escapeHTML(metric.unit)}` : ""}</strong></div>`)
         .join("")}</div>`
     : `<div class="empty">No metrics</div>`;
@@ -1048,16 +1048,16 @@ function renderRelatedGroups(groups = []) {
     return `<div class="empty">No related objects</div>`;
   }
   return `
-    <div class="geometry-related-groups">
+    <div class="topology-related-groups">
       ${visibleGroups
         .map(
           (group) => `
-            <details class="geometry-related-group" open>
+            <details class="topology-related-group" open>
               <summary>
                 <span>${escapeHTML(group.title)}</span>
                 <span class="badge">${escapeHTML(group.items.length)}</span>
               </summary>
-              <div class="geometry-related-list">
+              <div class="topology-related-list">
                 ${group.items.map(renderRelatedItem).join("")}
               </div>
             </details>`,
@@ -1073,9 +1073,9 @@ function renderConstructionSection(geometry, entity) {
     return "";
   }
   return `
-    <section class="geometry-construction-section">
-      <h4>${t("geometry.construction", {}, "Construction")}</h4>
-      ${construction ? renderConstructionGraphic(construction, constructionSidesForEntity(geometry, entity)) : `<div class="empty">${t("geometry.noConstruction", {}, "No construction layers parsed")}: ${escapeHTML(constructionName)}</div>`}
+    <section class="topology-construction-section">
+      <h4>${t("topology.construction", {}, "Construction")}</h4>
+      ${construction ? renderConstructionGraphic(construction, constructionSidesForEntity(geometry, entity)) : `<div class="empty">${t("topology.noConstruction", {}, "No construction layers parsed")}: ${escapeHTML(constructionName)}</div>`}
     </section>`;
 }
 
@@ -1134,7 +1134,7 @@ function constructionSidesForEntity(geometry, entity) {
     const surface = entity.item;
     return {
       outside: surfaceOutsideLabel(geometry, surface),
-      inside: `${t("geometry.thisSurface", {}, "This surface")}${surface.zoneName ? ` / ${surface.zoneName}` : ""}`,
+      inside: `${t("topology.thisSurface", {}, "This surface")}${surface.zoneName ? ` / ${surface.zoneName}` : ""}`,
     };
   }
   if (entity?.kind === "window") {
@@ -1143,13 +1143,13 @@ function constructionSidesForEntity(geometry, entity) {
       ? surfaceByID(geometry, windowItem.baseSurfaceId)
       : surfaceByName(geometry, windowItem.baseSurfaceName);
     return {
-      outside: baseSurface ? surfaceOutsideLabel(geometry, baseSurface) : windowItem.baseSurfaceName || t("common.notAvailable", {}, "N/A"),
-      inside: `${t("geometry.thisOpening", {}, "This opening")}${windowItem.zoneName ? ` / ${windowItem.zoneName}` : ""}`,
+      outside: baseSurface ? surfaceOutsideLabel(geometry, baseSurface) : windowItem.baseSurfaceName || t("common.notAvailable", {}, "—"),
+      inside: `${t("topology.thisOpening", {}, "This opening")}${windowItem.zoneName ? ` / ${windowItem.zoneName}` : ""}`,
     };
   }
   return {
-    outside: t("common.notAvailable", {}, "N/A"),
-    inside: t("common.notAvailable", {}, "N/A"),
+    outside: t("common.notAvailable", {}, "—"),
+    inside: t("common.notAvailable", {}, "—"),
   };
 }
 
@@ -1164,7 +1164,7 @@ function surfaceOutsideLabel(geometry, surface) {
   if (boundaryName) {
     return `${boundary || "Boundary"}: ${boundaryName}`;
   }
-  return boundary || t("common.notAvailable", {}, "N/A");
+  return boundary || t("common.notAvailable", {}, "—");
 }
 
 function renderConstructionGraphic(construction, sides) {
@@ -1175,18 +1175,18 @@ function renderConstructionGraphic(construction, sides) {
     <div class="construction-card">
       <div class="construction-card-head">
         <strong>${escapeHTML(construction.name)}</strong>
-        <span>${construction.hasThickness ? `${t("geometry.totalThickness", {}, "Total thickness")} ${formatThickness(construction.totalThickness || totalThickness)}` : t("geometry.thicknessUnknown", {}, "Thickness unknown")} / ${t("geometry.outsideToInside", {}, "Outside to inside")}</span>
+        <span>${construction.hasThickness ? `${t("topology.totalThickness", {}, "Total thickness")} ${formatThickness(construction.totalThickness || totalThickness)}` : t("topology.thicknessUnknown", {}, "Thickness unknown")} / ${t("topology.outsideToInside", {}, "Outside to inside")}</span>
       </div>
       <div class="construction-performance">
-        <span><strong>${t("geometry.uValue", {}, "U-value")}</strong><em>${formatUValue(performance.uValue)}</em></span>
-        <span><strong>${t("geometry.heatCapacity", {}, "Heat capacity")}</strong><em>${formatArealHeatCapacity(performance.arealHeatCapacity)}</em></span>
+        <span><strong>${t("topology.uValue", {}, "U-value")}</strong><em>${formatUValue(performance.uValue)}</em></span>
+        <span><strong>${t("topology.heatCapacity", {}, "Heat capacity")}</strong><em>${formatArealHeatCapacity(performance.arealHeatCapacity)}</em></span>
       </div>
       <div class="construction-stack-frame">
-        <span class="construction-side-label">${t("geometry.outside", {}, "Outside")} <em>${escapeHTML(sides.outside)}</em></span>
+        <span class="construction-side-label">${t("topology.outside", {}, "Outside")} <em>${escapeHTML(sides.outside)}</em></span>
         <div class="construction-stack" role="img" aria-label="${escapeHTML(construction.name)} construction layers">
-          ${layers.length ? layers.map((layer, index) => renderConstructionLayer(layer, index, totalThickness)).join("") : `<div class="empty">${t("geometry.noConstruction", {}, "No construction layers parsed")}</div>`}
+          ${layers.length ? layers.map((layer, index) => renderConstructionLayer(layer, index, totalThickness)).join("") : `<div class="empty">${t("topology.noConstruction", {}, "No construction layers parsed")}</div>`}
         </div>
-        <span class="construction-side-label">${t("geometry.inside", {}, "Inside")} <em>${escapeHTML(sides.inside)}</em></span>
+        <span class="construction-side-label">${t("topology.inside", {}, "Inside")} <em>${escapeHTML(sides.inside)}</em></span>
       </div>
     </div>`;
 }
@@ -1207,9 +1207,9 @@ function renderConstructionLayer(layer, index, totalThickness) {
       <span class="construction-layer-bar"></span>
       <span class="construction-layer-text">
         <strong>${escapeHTML(layer.name)}</strong>
-        <span>${escapeHTML(details.join(" / ") || t("common.notAvailable", {}, "N/A"))}</span>
+        <span>${escapeHTML(details.join(" / ") || t("common.notAvailable", {}, "—"))}</span>
       </span>
-      <span class="construction-layer-thickness">${escapeHTML(layer.hasThickness ? formatThickness(layer.thickness) : t("geometry.thicknessUnknown", {}, "Thickness unknown"))}</span>
+      <span class="construction-layer-thickness">${escapeHTML(layer.hasThickness ? formatThickness(layer.thickness) : t("topology.thicknessUnknown", {}, "Thickness unknown"))}</span>
     </button>`;
 }
 
@@ -1240,7 +1240,7 @@ function constructionLayerColor(layer, index) {
 function formatThickness(value) {
   const number = Number(value);
   if (!Number.isFinite(number) || number <= 0) {
-    return t("common.notAvailable", {}, "N/A");
+    return t("common.notAvailable", {}, "—");
   }
   if (number < 1) {
     return `${(number * 1000).toLocaleString(undefined, { maximumFractionDigits: 1 })} mm`;
@@ -1251,7 +1251,7 @@ function formatThickness(value) {
 function formatUValue(value) {
   const number = Number(value);
   if (!Number.isFinite(number) || number <= 0) {
-    return t("common.notAvailable", {}, "N/A");
+    return t("common.notAvailable", {}, "—");
   }
   return `${number.toLocaleString(undefined, { maximumFractionDigits: 3 })} W/m2-K`;
 }
@@ -1259,7 +1259,7 @@ function formatUValue(value) {
 function formatArealHeatCapacity(value) {
   const number = Number(value);
   if (!Number.isFinite(number) || number <= 0) {
-    return t("common.notAvailable", {}, "N/A");
+    return t("common.notAvailable", {}, "—");
   }
   return `${(number / 1000).toLocaleString(undefined, { maximumFractionDigits: 1 })} kJ/m2-K`;
 }
@@ -1267,34 +1267,34 @@ function formatArealHeatCapacity(value) {
 function formatArea(value) {
   const number = Number(value);
   if (!Number.isFinite(number) || number <= 0) {
-    return t("common.notAvailable", {}, "N/A");
+    return t("common.notAvailable", {}, "—");
   }
   return `${number.toLocaleString(undefined, { maximumFractionDigits: 2 })} m2`;
 }
 
 function renderRelatedItem(item) {
   const content = `
-    <span class="geometry-related-main">
+    <span class="topology-related-main">
       <strong>${escapeHTML(item.title)}</strong>
       <span>${escapeHTML(item.subtitle)}</span>
       ${item.detail ? `<em>${escapeHTML(item.detail)}</em>` : ""}
     </span>
-    <span class="geometry-related-role">${escapeHTML(item.role)}</span>`;
+    <span class="topology-related-role">${escapeHTML(item.role)}</span>`;
   if (item.kind && item.id) {
-    return `<button class="geometry-related-row navigable-row" type="button" data-geometry-kind="${escapeHTML(item.kind)}" data-geometry-id="${escapeHTML(item.id)}" ${geometryNavigationAttributes(item.kind, item.id, item.sourceAnchor)}>${content}</button>`;
+    return `<button class="topology-related-row navigable-row" type="button" data-geometry-kind="${escapeHTML(item.kind)}" data-geometry-id="${escapeHTML(item.id)}" ${topologyNavigationAttributes(item.kind, item.id, item.sourceAnchor)}>${content}</button>`;
   }
-  return `<div class="geometry-related-row geometry-related-static">${content}</div>`;
+  return `<div class="topology-related-row topology-related-static">${content}</div>`;
 }
 
-function bindGeometryDetailControls() {
-  const details = elements.geometryDetails;
-  if (geometryDetailInteractionsBound || !details) return;
-  geometryDetailInteractionsBound = true;
+function bindTopologyDetailControls() {
+  const details = elements.topologyDetails;
+  if (topologyDetailInteractionsBound || !details) return;
+  topologyDetailInteractionsBound = true;
   details.addEventListener("click", (event) => {
-    const related = event.target.closest?.(".geometry-related-row[data-geometry-id]");
+    const related = event.target.closest?.(".topology-related-row[data-geometry-id]");
     if (related && details.contains(related)) {
       event.stopPropagation();
-      void selectGeometry(related.dataset.geometryKind, related.dataset.geometryId);
+      void selectTopologyEntity(related.dataset.geometryKind, related.dataset.geometryId);
       return;
     }
     const layer = event.target.closest?.(".construction-layer[data-object-index]");
@@ -1336,9 +1336,9 @@ function relatedItemForSurface(surface, role, geometry = state.report?.geometry)
   const construction = constructionForName(geometry, surface.construction);
   const performance = constructionPerformance(construction);
   const details = [
-    `${t("geometry.area", {}, "Area")} ${formatArea(surface.physicalArea ?? surface.area)}`,
-    `${t("geometry.uValue", {}, "U-value")} ${formatUValue(performance.uValue)}`,
-    `${t("geometry.boundary", {}, "Boundary")} ${surfaceOutsideLabel(geometry, surface)}`,
+    `${t("topology.area", {}, "Area")} ${formatArea(surface.physicalArea ?? surface.area)}`,
+    `${t("topology.uValue", {}, "U-value")} ${formatUValue(performance.uValue)}`,
+    `${t("topology.boundary", {}, "Boundary")} ${surfaceOutsideLabel(geometry, surface)}`,
   ];
   return {
     kind: "surface",
@@ -1355,9 +1355,9 @@ function relatedItemForWindow(windowItem, role, geometry = state.report?.geometr
   const construction = constructionForName(geometry, windowItem.construction);
   const performance = constructionPerformance(construction);
   const details = [
-    `${t("geometry.area", {}, "Area")} ${formatArea(windowItem.physicalArea ?? windowItem.area)}`,
-    `${t("geometry.uValue", {}, "U-value")} ${formatUValue(performance.uValue)}`,
-    windowItem.baseSurfaceName ? `${t("geometry.baseSurface", {}, "Base surface")} ${windowItem.baseSurfaceName}` : "",
+    `${t("topology.area", {}, "Area")} ${formatArea(windowItem.physicalArea ?? windowItem.area)}`,
+    `${t("topology.uValue", {}, "U-value")} ${formatUValue(performance.uValue)}`,
+    windowItem.baseSurfaceName ? `${t("topology.baseSurface", {}, "Base surface")} ${windowItem.baseSurfaceName}` : "",
   ].filter(Boolean);
   return {
     kind: "window",
@@ -1394,19 +1394,19 @@ function uniqueRelatedItems(items) {
   });
 }
 
-function geometrySemanticNavigationLookup(navigation = {}) {
+function topologySemanticNavigationLookup(navigation = {}) {
   const occurrences = navigation.occurrences || EMPTY_GEOMETRY_ITEMS;
   const entities = navigation.entities || EMPTY_GEOMETRY_ITEMS;
   if (
-    geometryNavigationLookupCache?.navigation === navigation &&
-    geometryNavigationLookupCache.occurrences === occurrences &&
-    geometryNavigationLookupCache.entities === entities &&
-    geometryNavigationLookupCache.occurrenceCount === occurrences.length &&
-    geometryNavigationLookupCache.entityCount === entities.length
+    topologyNavigationLookupCache?.navigation === navigation &&
+    topologyNavigationLookupCache.occurrences === occurrences &&
+    topologyNavigationLookupCache.entities === entities &&
+    topologyNavigationLookupCache.occurrenceCount === occurrences.length &&
+    topologyNavigationLookupCache.entityCount === entities.length
   ) {
-    return geometryNavigationLookupCache;
+    return topologyNavigationLookupCache;
   }
-  geometryNavigationLookupCache = {
+  topologyNavigationLookupCache = {
     navigation,
     occurrences,
     entities,
@@ -1416,23 +1416,23 @@ function geometrySemanticNavigationLookup(navigation = {}) {
     occurrenceOrderByID: new Map(occurrences.map((occurrence, index) => [occurrence.occurrenceId, index])),
     entityByID: indexFirstBy(entities, (entity) => entity.id),
   };
-  return geometryNavigationLookupCache;
+  return topologyNavigationLookupCache;
 }
 
-function geometryViewTargetForSelection(selection = {}, navigation = state.semanticProjection?.navigation || {}) {
+function topologyViewTargetForSelection(selection = {}, navigation = state.semanticProjection?.navigation || {}) {
   const direct = selection.viewTarget;
-  if (String(direct?.view || "").toLowerCase() === "geometry" && direct.targetId) {
+  if (String(direct?.view || "").toLowerCase() === "topology" && direct.targetId) {
     return direct;
   }
-  const lookup = geometrySemanticNavigationLookup(navigation);
+  const lookup = topologySemanticNavigationLookup(navigation);
   const occurrence = lookup.occurrenceByID.get(selection.occurrenceId);
   const entity = lookup.entityByID.get(selection.entityId);
   const targets = [...(occurrence?.viewTargets || []), ...(entity?.viewTargets || [])]
-    .filter((target) => String(target?.view || "").toLowerCase() === "geometry" && target.targetId)
+    .filter((target) => String(target?.view || "").toLowerCase() === "topology" && target.targetId)
     .sort((left, right) => Number(right.priority || 0) - Number(left.priority || 0));
-  if (selection.originView === "geometry" && selection.originTargetId) {
+  if (selection.originView === "topology" && selection.originTargetId) {
     return targets.find((target) => target.targetId === selection.originTargetId) || {
-      view: "geometry",
+      view: "topology",
       targetKind: selection.entityKind || "",
       targetId: selection.originTargetId,
     };
@@ -1440,7 +1440,7 @@ function geometryViewTargetForSelection(selection = {}, navigation = state.seman
   return targets[0] || null;
 }
 
-function geometryTargetEntity(target, geometry = state.report?.geometry) {
+function topologyTargetEntity(target, geometry = state.report?.geometry) {
   if (!target || !geometry) {
     return null;
   }
@@ -1477,17 +1477,17 @@ function geometryTargetEntity(target, geometry = state.report?.geometry) {
     }
   }
   if (requestedKind) {
-    return geometryTargetEntity({ ...target, targetKind: "" }, geometry);
+    return topologyTargetEntity({ ...target, targetKind: "" }, geometry);
   }
   return null;
 }
 
-export function geometrySelectionForTarget(kind, targetId, navigation = state.semanticProjection?.navigation || {}) {
+export function topologySelectionForTarget(kind, targetId, navigation = state.semanticProjection?.navigation || {}) {
   if (!targetId) {
     return null;
   }
-  const occurrence = preferredOccurrenceForGeometryTarget(targetId, state.globalSelection, navigation);
-  const entity = geometrySemanticNavigationLookup(navigation).entityByID.get(occurrence?.entityId) || null;
+  const occurrence = preferredOccurrenceForTopologyTarget(targetId, state.globalSelection, navigation);
+  const entity = topologySemanticNavigationLookup(navigation).entityByID.get(occurrence?.entityId) || null;
   if (!occurrence || !entity) {
     return null;
   }
@@ -1496,17 +1496,17 @@ export function geometrySelectionForTarget(kind, targetId, navigation = state.se
     entityKind: entity.kind || normalizeGeometryEntityKind(kind),
     occurrenceId: occurrence.occurrenceId,
     sourceAnchor: { ...(occurrence.sourceAnchor || entity.sourceAnchors?.[0] || {}) },
-    originView: "geometry",
+    originView: "topology",
     originTargetId: String(targetId),
     semanticPathHint: occurrence.path || "",
     relatedEntityIds: [...(entity.relatedEntityIds || [])],
   };
 }
 
-function preferredOccurrenceForGeometryTarget(targetId, selection = {}, navigation = state.semanticProjection?.navigation || {}) {
-  const occurrenceIds = navigation.byViewTarget?.[`geometry|${targetId}`] || [];
+function preferredOccurrenceForTopologyTarget(targetId, selection = {}, navigation = state.semanticProjection?.navigation || {}) {
+  const occurrenceIds = navigation.byViewTarget?.[`topology|${targetId}`] || [];
   const currentPath = String(selection.semanticPathHint || state.semanticCurrentPath || "");
-  const lookup = geometrySemanticNavigationLookup(navigation);
+  const lookup = topologySemanticNavigationLookup(navigation);
   return [...new Set(occurrenceIds)]
     .map((occurrenceID) => lookup.occurrenceByID.get(occurrenceID))
     .filter(Boolean)
@@ -1519,7 +1519,7 @@ function preferredOccurrenceForGeometryTarget(targetId, selection = {}, navigati
       current: Number(occurrence.occurrenceId === state.semanticCurrentOccurrenceId),
       geometryContext: Number(occurrence.contextKind === "zone_geometry" || /(^|\/)geometry(\/|$)/.test(occurrence.path || "")),
       path: commonPathPrefixLength(occurrence.path, currentPath),
-      preferred: Number(occurrence.preferredView === "geometry"),
+      preferred: Number(occurrence.preferredView === "topology"),
     }))
     .sort((left, right) => (
       right.contextPriority - left.contextPriority ||
@@ -1542,14 +1542,14 @@ function thermalOccurrenceContextPriority(occurrence) {
   return context === "definition" ? 1 : 0;
 }
 
-export function geometryNavigationAttributes(kind, targetId, explicitAnchor = {}, options = {}) {
+export function topologyNavigationAttributes(kind, targetId, explicitAnchor = {}, options = {}) {
   const navigation = state.semanticProjection?.navigation || {};
-  const occurrence = preferredOccurrenceForGeometryTarget(targetId, state.globalSelection, navigation);
-  const entity = geometrySemanticNavigationLookup(navigation).entityByID.get(occurrence?.entityId) || null;
+  const occurrence = preferredOccurrenceForTopologyTarget(targetId, state.globalSelection, navigation);
+  const entity = topologySemanticNavigationLookup(navigation).entityByID.get(occurrence?.entityId) || null;
   const sourceAnchor = { ...(occurrence?.sourceAnchor || entity?.sourceAnchors?.[0] || {}), ...explicitAnchor };
   const selected = Boolean(
     (entity?.id && entity.id === state.globalSelection?.entityId) ||
-    (String(targetId || "") === state.selectedGeometryId && normalizeGeometryKind(kind) === state.selectedGeometryKind),
+    (String(targetId || "") === state.selectedTopologyEntityId && normalizeGeometryKind(kind) === state.selectedTopologyEntityKind),
   );
   const attributes = [
     `data-entity-id="${escapeHTML(entity?.id || "")}"`,
@@ -1583,7 +1583,7 @@ function normalizeGeometryEntityKind(kind) {
 function geometryStoryTargetID(story, navigation = state.semanticProjection?.navigation || {}) {
   for (const occurrence of navigation.occurrences || []) {
     const target = (occurrence.viewTargets || []).find((candidate) => (
-      String(candidate?.view || "").toLowerCase() === "geometry" &&
+      String(candidate?.view || "").toLowerCase() === "topology" &&
       normalizeGeometryKind(candidate.targetKind) === "story" &&
       geometryStoryMatchesTarget(story, candidate.targetId)
     ));
@@ -1664,15 +1664,15 @@ function baseSurfaceForWindow(geometry, windowItem) {
     : surfaceByName(geometry, windowItem?.baseSurfaceName);
 }
 
-function findGeometryNavigationTarget(selection, target, context) {
-  const root = context?.root || document.getElementById("geometryPane");
+function findTopologyNavigationTarget(selection, target, context) {
+  const root = context?.root || document.getElementById("topologyPane");
   const items = [...(root?.querySelectorAll?.("[data-panel-target-id], [data-entity-id]") || [])];
   return items.find((item) => item.dataset.panelTargetId === String(target?.targetId || "")) ||
     items.find((item) => item.dataset.entityId === String(selection?.entityId || "")) ||
     context?.genericFindTarget(selection) || null;
 }
 
-function nextGeometryFrame() {
+function nextTopologyFrame() {
   if (typeof window === "undefined" || typeof window.requestAnimationFrame !== "function") {
     return Promise.resolve();
   }
@@ -1692,74 +1692,74 @@ function commonPathPrefixLength(left, right) {
 function geometryZoneSurfaceIsTemporarilyVisible(surface, geometry) {
   const zoneID = zoneIdForName(geometry, surface.zoneName);
   return Boolean(
-    (temporaryGeometryReveal?.ownerZoneId && temporaryGeometryReveal.ownerZoneId === zoneID) ||
-    temporaryGeometryReveal?.nodeIds?.includes(zoneID),
+    (temporaryTopologyReveal?.ownerZoneId && temporaryTopologyReveal.ownerZoneId === zoneID) ||
+    temporaryTopologyReveal?.nodeIds?.includes(zoneID),
   );
 }
 
 function geometrySurfaceIsTemporarilyVisible(surface) {
-  if (temporaryGeometryReveal?.surfaceIds?.includes(surface.id)) {
+  if (temporaryTopologyReveal?.surfaceIds?.includes(surface.id)) {
     return true;
   }
-  if (temporaryGeometryReveal?.kind === "surface" && temporaryGeometryReveal.id === surface.id) {
+  if (temporaryTopologyReveal?.kind === "surface" && temporaryTopologyReveal.id === surface.id) {
     return true;
   }
-  if (temporaryGeometryReveal?.kind === "space") {
-    const space = spaceByID(state.report?.geometry, temporaryGeometryReveal.id);
+  if (temporaryTopologyReveal?.kind === "space") {
+    const space = spaceByID(state.report?.geometry, temporaryTopologyReveal.id);
     return Boolean(space && normalizeGeometryName(surface.spaceName) === normalizeGeometryName(space.name));
   }
-  if (temporaryGeometryReveal?.kind === "zone") {
+  if (temporaryTopologyReveal?.kind === "zone") {
     const zone = zoneByName(state.report?.geometry, surface.zoneName);
-    return zone?.id === temporaryGeometryReveal.id;
+    return zone?.id === temporaryTopologyReveal.id;
   }
-  return temporaryGeometryReveal?.baseSurfaceId === surface.id;
+  return temporaryTopologyReveal?.baseSurfaceId === surface.id;
 }
 
 function projectedSurfaceIsTemporarilyVisible(surface) {
-  if (temporaryGeometryReveal?.surfaceIds?.includes(surface.id)) {
+  if (temporaryTopologyReveal?.surfaceIds?.includes(surface.id)) {
     return true;
   }
-  if (temporaryGeometryReveal?.kind === "surface" && temporaryGeometryReveal.id === surface.id) {
+  if (temporaryTopologyReveal?.kind === "surface" && temporaryTopologyReveal.id === surface.id) {
     return true;
   }
-  if (temporaryGeometryReveal?.kind === "space") {
-    const space = spaceByID(state.report?.geometry, temporaryGeometryReveal.id);
+  if (temporaryTopologyReveal?.kind === "space") {
+    const space = spaceByID(state.report?.geometry, temporaryTopologyReveal.id);
     return Boolean(space && normalizeGeometryName(surface.spaceName) === normalizeGeometryName(space.name));
   }
-  if (temporaryGeometryReveal?.kind === "zone") {
-    return surface.zoneID === temporaryGeometryReveal.id;
+  if (temporaryTopologyReveal?.kind === "zone") {
+    return surface.zoneID === temporaryTopologyReveal.id;
   }
-  return temporaryGeometryReveal?.baseSurfaceId === surface.id;
+  return temporaryTopologyReveal?.baseSurfaceId === surface.id;
 }
 
 function geometryWindowIsTemporarilyVisible(windowItem) {
-  return temporaryGeometryReveal?.windowIds?.includes(windowItem.id) ||
-    temporaryGeometryReveal?.kind === "window" && temporaryGeometryReveal.id === windowItem.id;
+  return temporaryTopologyReveal?.windowIds?.includes(windowItem.id) ||
+    temporaryTopologyReveal?.kind === "window" && temporaryTopologyReveal.id === windowItem.id;
 }
 
 function geometryRenderableMatchesSelection(kind, id) {
   const normalizedKind = normalizeGeometryKind(kind);
-  if (normalizedKind === "surface" && temporaryGeometryReveal?.surfaceIds?.includes(String(id || ""))) {
+  if (normalizedKind === "surface" && temporaryTopologyReveal?.surfaceIds?.includes(String(id || ""))) {
     return true;
   }
-  if (normalizedKind === "window" && temporaryGeometryReveal?.windowIds?.includes(String(id || ""))) {
+  if (normalizedKind === "window" && temporaryTopologyReveal?.windowIds?.includes(String(id || ""))) {
     return true;
   }
-  if ((normalizedKind === "zone" || normalizedKind === "space") && temporaryGeometryReveal?.nodeIds?.includes(String(id || ""))) {
+  if ((normalizedKind === "zone" || normalizedKind === "space") && temporaryTopologyReveal?.nodeIds?.includes(String(id || ""))) {
     return true;
   }
-  if (normalizedKind === state.selectedGeometryKind && String(id || "") === state.selectedGeometryId) {
+  if (normalizedKind === state.selectedTopologyEntityKind && String(id || "") === state.selectedTopologyEntityId) {
     return true;
   }
-  if (state.selectedGeometryKind === "zone" && normalizedKind === "surface") {
-    const zone = (state.report?.geometry?.zones || []).find((item) => item.id === state.selectedGeometryId);
+  if (state.selectedTopologyEntityKind === "zone" && normalizedKind === "surface") {
+    const zone = (state.report?.geometry?.zones || []).find((item) => item.id === state.selectedTopologyEntityId);
     const surface = surfaceByID(state.report?.geometry, id);
     return Boolean(zone && surface && normalizeGeometryName(surface.zoneName) === normalizeGeometryName(zone.name));
   }
-  if (state.selectedGeometryKind !== "space") {
+  if (state.selectedTopologyEntityKind !== "space") {
     return false;
   }
-  const space = spaceByID(state.report?.geometry, state.selectedGeometryId);
+  const space = spaceByID(state.report?.geometry, state.selectedTopologyEntityId);
   if (normalizedKind === "zone") {
     return Boolean(space && zoneByName(state.report?.geometry, space.zoneName)?.id === id);
   }
@@ -1773,8 +1773,8 @@ function geometryRenderableMatchesSelection(kind, id) {
 function geometryRenderableSelectionRole(kind, id) {
   if (!geometryRenderableMatchesSelection(kind, id)) return "";
   const normalizedKind = normalizeGeometryKind(kind);
-  if (normalizedKind === "surface" && temporaryGeometryReveal?.surfaceIds?.length > 1) {
-    return String(id || "") === temporaryGeometryReveal.primarySurfaceId ? "primary" : "counterpart";
+  if (normalizedKind === "surface" && temporaryTopologyReveal?.surfaceIds?.length > 1) {
+    return String(id || "") === temporaryTopologyReveal.primarySurfaceId ? "primary" : "counterpart";
   }
   return "primary";
 }
@@ -1782,17 +1782,17 @@ function geometryRenderableSelectionRole(kind, id) {
 function geometryRenderableMatchesHover(kind, id) {
   const normalizedKind = normalizeGeometryKind(kind);
   const targetID = String(id || "");
-  if (normalizedKind === temporaryGeometryHover?.kind && targetID === temporaryGeometryHover?.id) return true;
-  if (normalizedKind === "surface" && temporaryGeometryHover?.surfaceIds?.includes(targetID)) return true;
-  if (normalizedKind === "window" && temporaryGeometryHover?.windowIds?.includes(targetID)) return true;
-  if ((normalizedKind === "zone" || normalizedKind === "space") && temporaryGeometryHover?.nodeIds?.includes(targetID)) return true;
+  if (normalizedKind === temporaryTopologyHover?.kind && targetID === temporaryTopologyHover?.id) return true;
+  if (normalizedKind === "surface" && temporaryTopologyHover?.surfaceIds?.includes(targetID)) return true;
+  if (normalizedKind === "window" && temporaryTopologyHover?.windowIds?.includes(targetID)) return true;
+  if ((normalizedKind === "zone" || normalizedKind === "space") && temporaryTopologyHover?.nodeIds?.includes(targetID)) return true;
   return false;
 }
 
-function geometryProjectionForSemanticSelection(selection, geometry) {
+function topologyProjectionForSemanticSelection(selection, geometry) {
   if (!selection?.entityId || !geometry) return null;
-  const target = geometryViewTargetForSelection(selection, state.semanticProjection?.navigation || {});
-  const entity = geometryTargetEntity(target, geometry);
+  const target = topologyViewTargetForSelection(selection, state.semanticProjection?.navigation || {});
+  const entity = topologyTargetEntity(target, geometry);
   if (!entity) return null;
   const ownerZone = owningZoneForGeometryEntity(entity, geometry);
   return {
@@ -1989,7 +1989,7 @@ function highlightSelectedMeshes() {
 }
 
 function highlightSelectedPlan() {
-  elements.geometryPlan.querySelectorAll("[data-geometry-id]").forEach((shape) => {
+  elements.topologyPlan.querySelectorAll("[data-geometry-id]").forEach((shape) => {
     shape.classList.toggle(
       "selected",
       geometryRenderableMatchesSelection(shape.dataset.geometryKind, shape.dataset.geometryId),
@@ -2000,7 +2000,7 @@ function highlightSelectedPlan() {
 }
 
 function resizeRenderer() {
-  const rect = elements.geometryCanvasHost.getBoundingClientRect();
+  const rect = elements.topology3DCanvasHost.getBoundingClientRect();
   const width = Math.max(1, Math.floor(rect.width));
   const height = Math.max(1, Math.floor(rect.height));
   rendererState.renderer.setSize(width, height, false);

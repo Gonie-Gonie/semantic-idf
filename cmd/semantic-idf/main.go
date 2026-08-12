@@ -141,12 +141,12 @@ func appAssetHandler(app *App) http.Handler {
 				return
 			}
 			_, _ = w.Write(payload)
-		case "/api/summary-metric-guides":
+		case "/api/metric-guides", "/api/summary-metric-guides":
 			if r.Method != http.MethodGet {
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 				return
 			}
-			if err := json.NewEncoder(w).Encode(idf.SummaryGuides()); err != nil {
+			if err := json.NewEncoder(w).Encode(idf.MetricGuides()); err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 			}
 		case "/api/settings":
@@ -178,7 +178,7 @@ func appAssetHandler(app *App) http.Handler {
 			if err := json.NewEncoder(w).Encode(SettingsResult{Path: path, Settings: settings}); err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 			}
-		case "/api/batch-summary", "/api/multi-idf-summary":
+		case "/api/batch-metrics", "/api/batch-summary", "/api/multi-idf-summary":
 			if r.Method != http.MethodPost {
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 				return
@@ -192,7 +192,7 @@ func appAssetHandler(app *App) http.Handler {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
-			result, err := app.AnalyzeMultiIDFSummaryWithOptions(MultiSummaryRequest{
+			result, err := app.AnalyzeBatchMetrics(BatchMetricsRequest{
 				RunID: request.RunID, AreaBasis: request.AreaBasis, IncludeFullTopology: request.IncludeFullTopology,
 			})
 			if err != nil {
@@ -526,58 +526,6 @@ func appAssetHandler(app *App) http.Handler {
 				return
 			}
 			if err := json.NewEncoder(w).Encode(result); err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-			}
-		case "/api/batch-diagnose":
-			if r.Method != http.MethodPost {
-				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-				return
-			}
-			var request BatchJobRequest
-			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
-				return
-			}
-			if err := json.NewEncoder(w).Encode(AnalyzeBatchDiagnosePaths(request)); err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-			}
-		case "/api/batch-cleanup-report":
-			if r.Method != http.MethodPost {
-				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-				return
-			}
-			var request BatchJobRequest
-			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
-				return
-			}
-			if err := json.NewEncoder(w).Encode(AnalyzeBatchCleanupReportPaths(request)); err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-			}
-		case "/api/batch-convert-export":
-			if r.Method != http.MethodPost {
-				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-				return
-			}
-			var request BatchConvertExportRequest
-			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
-				return
-			}
-			if err := json.NewEncoder(w).Encode(ConvertExportBatch(request)); err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-			}
-		case "/api/batch-cleanup-copy":
-			if r.Method != http.MethodPost {
-				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-				return
-			}
-			var request BatchConvertExportRequest
-			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
-				return
-			}
-			if err := json.NewEncoder(w).Encode(CreateBatchSafeCleanupCopies(request)); err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 			}
 		case "/api/batch-simulation-run", "/api/multi-simulation-run":

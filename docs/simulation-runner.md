@@ -103,7 +103,7 @@ controls. It no longer exposes an EnergyPlus selector, Integrity purpose,
 run-plan preview, advanced-series view selector, or allocation, frequency, and
 detail selectors.
 
-The Batch view sends these fixed purpose values:
+The Batch Simulation tool sends these fixed purpose values:
 
 - `allocationPolicy`: `direct_only`
 - `outputApplyMode`: `add_missing_only`
@@ -370,7 +370,7 @@ Missing summary and edge rows are labeled separately from matched rows, real
 zero values are labeled as `zero baseline` or `zero comparison` when only one
 side is zero, and the comparison value cell renders `Missing` instead of
 numeric `0` so an absent output is not silently treated as a normal zero.
-Percent deltas remain `N/A` when the baseline value is zero in the app, CSV,
+Percent deltas render as an em dash (`—`) when the baseline value is zero in the app, CSV,
 and XLSX exports. Batch Simulation can export purpose metrics, compact
 `energyExplanationSummary` rows, `energyExplanation` source metadata rows,
 source availability rows, node metadata rows, reconciliation rows, and Sankey

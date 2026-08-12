@@ -7,8 +7,15 @@ import (
 	"testing"
 )
 
+func TestGeometryMetricUsesEmDashForMissingDisplayValue(t *testing.T) {
+	metric := geometryMetric("Missing", "", "", 2)
+	if metric.DisplayValue != "—" {
+		t.Fatalf("missing geometry metric display = %q, want em dash", metric.DisplayValue)
+	}
+}
+
 func TestAnalyzeGeometryBuildsZonesSurfacesWindowsAndStories(t *testing.T) {
-	doc, err := Parse(summaryFixtureIDF)
+	doc, err := Parse(metricsFixtureIDF)
 	if err != nil {
 		t.Fatalf("Parse() error = %v", err)
 	}
@@ -58,7 +65,7 @@ func TestAnalyzeGeometryBuildsZonesSurfacesWindowsAndStories(t *testing.T) {
 
 func TestAnalyzeGeometrySeparatesPhysicalAndEffectiveArea(t *testing.T) {
 	multipliedIDF := strings.Replace(
-		summaryFixtureIDF,
+		metricsFixtureIDF,
 		"  1,                       !- Multiplier\n  3,                       !- Ceiling Height",
 		"  10,                      !- Multiplier\n  3,                       !- Ceiling Height",
 		1,

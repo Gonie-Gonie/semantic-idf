@@ -74,6 +74,9 @@ func TestProfileLayoutAndSelectionBrowserHarness(t *testing.T) {
 		`"secondaryProfileUIAbsent":true`,
 		`"semanticRevealGraphAndOverviewFallback":true`,
 		`"overviewMetricCells":true`,
+		`"profileMetricAvailability":true`,
+		`"spaceRatioAggregation":true`,
+		`"sourceMetricCompatibility":true`,
 		`"assignmentCountWithHoverDetail":true`,
 		`"zoneProfileNameOnly":true`,
 		`"singleSelection":true`,
@@ -88,6 +91,7 @@ func TestProfileLayoutAndSelectionBrowserHarness(t *testing.T) {
 		`"profileZoneModes":true`,
 		`"profileZoneSelectionIsolation":true`,
 		`"zoneProfileOverlaySelection":true`,
+		`"graphFidelityStatusVisible":true`,
 		`"overlayLegendAlways":true`,
 		`"identicalCurveOverlay":true`,
 		`"identicalCurveLegend":true`,
@@ -267,7 +271,12 @@ const profileLayoutSelectionHarnessHTML = `<!doctype html>
           durationMultiplierProfile: constantValues(8760, zoneHighs[index], zoneLows[index]),
           ruleMultiplierProfile: Array.from({ length: 7 }, (_, ruleIndex) => ruleIndex % 2 ? zoneHighs[index] : zoneLows[index]),
           sourceItemIds: ["item-" + number],
-          warnings: [],
+          status: number === 1 ? "partial" : "ok",
+          warnings: number === 1 ? [{
+            severity: "warning",
+            code: "nominal_outdoor_air_profile",
+            message: "Outdoor air curve uses nominal design occupancy, not simulated operation.",
+          }] : [],
         };
       });
       const reportGroups = zones.map((zone, index) => ({
@@ -290,12 +299,11 @@ const profileLayoutSelectionHarnessHTML = `<!doctype html>
           groupingMetrics: { occupancy: "people_per_area", lighting: "power_per_area" },
           numericTolerance: 0.001,
           scheduleCompareMode: "name",
-          metricMode: "actual",
           timeView: "week",
           scaleMode: "shared",
           applyBehavior: { defaultMode: "clone", replaceExistingPolicy: "replace" },
         },
-        graphDataset: { defaultDeck: {}, series: [...groupSeries, ...zoneSeries] },
+        graphDataset: { series: [...groupSeries, ...zoneSeries] },
         parameterCandidates: [{
           id: "candidate-1",
           label: "Occupancy candidate",
@@ -520,6 +528,26 @@ const profileLayoutSelectionHarnessHTML = `<!doctype html>
         await nextPaint();
         return document.activeElement === graphViewButton(view);
       };
+      const fidelityReason = "Outdoor air curve uses nominal design occupancy, not simulated operation.";
+      const inspectFidelityStatus = () => {
+        const badge = document.querySelector("#profileGraph .profile-graph-panel-head .profile-fidelity-badge");
+        const legend = document.querySelector('#profileGraph .profile-overlay-legend [data-profile-fidelity="nominal"]');
+        return Boolean(badge)
+          && badge.dataset.profileFidelity === "nominal"
+          && badge.textContent.trim() === i18n.t("profile.fidelityNominal", {}, "Nominal")
+          && badge.getAttribute("role") === "status"
+          && badge.getAttribute("title")?.includes(fidelityReason)
+          && badge.getAttribute("aria-label")?.includes(fidelityReason)
+          && legend?.getAttribute("title")?.includes(fidelityReason)
+          && legend?.getAttribute("aria-label")?.includes(fidelityReason);
+      };
+      const overlayFidelityStatus = inspectFidelityStatus();
+      await clickGraphView("year");
+      const annualFidelityStatus = inspectFidelityStatus()
+        && Boolean(document.querySelector("#profileGraph .profile-annual-panel .profile-fidelity-badge"));
+      await clickGraphView("week");
+      const graphFidelityStatusVisible = overlayFidelityStatus && annualFidelityStatus;
+      assert(graphFidelityStatusVisible, "nominal/partial Profile graph fidelity was hidden or lacked an accessible reason");
       const visibleElements = (root, selector) => [...(root?.querySelectorAll(selector) || [])]
         .filter((element) => getComputedStyle(element).display !== "none"
           && getComputedStyle(element).visibility !== "hidden"
@@ -640,9 +668,7 @@ const profileLayoutSelectionHarnessHTML = `<!doctype html>
       )) && settingsClient.mergeSettings({
         profile: { timeView: "rules", scheduleSummaryMode: "representative_day" },
       }).profile.timeView === "rules"
-        && settingsClient.mergeSettings({ profile: { graphMode: "multiplier" } }).profile.metricMode === "multiplier"
-        && settingsClient.mergeSettings({ profile: { graphMode: "annual" } }).profile.metricMode === "annual"
-        && settingsClient.mergeSettings({ profile: { metricMode: "design", graphMode: "multiplier" } }).profile.metricMode === "design";
+        && !("metricMode" in settingsClient.mergeSettings({ profile: { metricMode: "design", graphMode: "multiplier" } }).profile);
       assert(fixedTimeProfileControls, "Profile Graph still exposes Graph Type/Scope/Compare/select View controls or lacks six direct View buttons");
       assert(scaleRemovedFromProfileTab, "Profile tab still exposes the Scale selector that belongs in app Settings");
       assert(legacyViewMigration, "legacy Profile schedule-summary settings did not migrate to View without overriding an explicit View");
@@ -870,8 +896,15 @@ const profileLayoutSelectionHarnessHTML = `<!doctype html>
         '#profileOverview [data-profile-zone="Zone 4"] .profile-card-metric[data-profile-dimension="lighting"]',
       );
       const missingMetricPlaceholder = missingLightingCell?.classList.contains("is-missing")
+        && missingLightingCell?.classList.contains("is-not-configured")
+        && missingLightingCell?.dataset.profileMetricStatus === "not-configured"
         && missingLightingCell.querySelector(":scope > .profile-card-metric-value")?.textContent?.trim()
-          === "-";
+          === "—"
+        && missingLightingCell.getAttribute("aria-label")?.includes(i18n.profileDimensionLabel("lighting"))
+        && missingLightingCell.getAttribute("aria-label")?.includes("objects are configured");
+      let profileMetricAvailability = false;
+      let spaceRatioAggregation = false;
+      let sourceMetricCompatibility = false;
       const overviewMetricCells = profileOverviewPresentation.metricCells
         && zoneOverviewPresentation.metricCells
         && missingMetricPlaceholder;
@@ -904,8 +937,9 @@ const profileLayoutSelectionHarnessHTML = `<!doctype html>
       const zoneProfileOverlaySelection = state.profileSelectedZoneNames.length === 3
         && zoneOverlayPaths.length === 3
         && zoneOverlayLabels.length === 3
-        && zoneOverlayPaths.every((path) => path.dataset.profileSeriesId.startsWith("profile-series-current-"));
-      assert(zoneProfileOverlaySelection, "Zone row selection did not drive its assigned Profile overlays under fixed Profile scope");
+        && zoneOverlayPaths.every((path) => path.dataset.profileSeriesId.startsWith("zone-series-"))
+        && zoneOverlayLabels.map((label) => label.textContent.trim()).every((label) => /^Zone [123]\b/.test(label));
+      assert(zoneProfileOverlaySelection, "Zone row selection did not render one distinct zone-scope overlay per selected Zone");
 
       document.getElementById("profilePane").style.width = narrowViewport ? "360px" : "720px";
       await nextPaint();
@@ -917,11 +951,10 @@ const profileLayoutSelectionHarnessHTML = `<!doctype html>
       const inspectByRect = inspectBySwitch.getBoundingClientRect();
       const inspectByGroupRect = inspectByGroup.getBoundingClientRect();
       const inspectByButtonWidth = inspectByButtons.reduce((total, button) => total + button.getBoundingClientRect().width, 0);
-      const liveLabels = [...settings.querySelectorAll(".profile-live-label, .profile-live-select > span")];
+      const liveLabels = [...settings.querySelectorAll(".profile-live-label")];
       const liveControlRows = [
         inspectBySwitch,
         settings.querySelector(".profile-toggle-row"),
-        settings.querySelector(".profile-live-select > select"),
       ];
       const topRange = (elements) => {
         const tops = elements.map((element) => element.getBoundingClientRect().top);
@@ -933,7 +966,7 @@ const profileLayoutSelectionHarnessHTML = `<!doctype html>
         && inspectByRect.width <= inspectByButtonWidth + 20
         && inspectByRect.width < inspectByGroupRect.width - 20
         && getComputedStyle(inspectBySwitch).justifySelf === "start";
-      const profileControlsAligned = liveLabels.length === 3
+      const profileControlsAligned = liveLabels.length === 2
         && liveControlRows.every(Boolean)
         && (narrowViewport || (topRange(liveLabels) <= 1 && topRange(liveControlRows) <= 1));
       const table = document.querySelector(".profile-overview-table");
@@ -979,7 +1012,6 @@ const profileLayoutSelectionHarnessHTML = `<!doctype html>
         ...state.profileSettings,
         numericTolerance: 0.001,
         scheduleCompareMode: "none",
-        metricMode: "multiplier",
         timeView: "week",
         scaleMode: "shared",
       };
@@ -1021,9 +1053,9 @@ const profileLayoutSelectionHarnessHTML = `<!doctype html>
       const aggregatePaths = [...document.querySelectorAll(".profile-overlay-paths path")];
       const aggregateY = [...(aggregatePath?.getAttribute("d") || "").matchAll(/[ML][^,]+,([0-9.]+)/g)]
         .map((match) => Number(match[1]));
-      const expectedNiceAxisMax = 0.8;
-      const expectedLowY = 200 - (0.3 / expectedNiceAxisMax) * 200;
-      const expectedHighY = 200 - (0.7 / expectedNiceAxisMax) * 200;
+      const expectedNiceAxisMax = 2.5;
+      const expectedLowY = 200 - (((0.2 * 2.5) + (0.4 * 3.5)) / 2 / expectedNiceAxisMax) * 200;
+      const expectedHighY = 200 - (((0.8 * 2.5) + (0.6 * 3.5)) / 2 / expectedNiceAxisMax) * 200;
       const regroupAggregateAverage = aggregatePaths.length === 1
         && aggregatePath?.dataset.profileSeriesId.startsWith("profile-series-current-")
         && Math.abs(aggregateY[0] - expectedLowY) < 0.02
@@ -1065,7 +1097,7 @@ const profileLayoutSelectionHarnessHTML = `<!doctype html>
         },
         360: {
           overlayX: expectedOverlayAxes.day.ticks,
-          overlayYCount: 5,
+          overlayYCount: 6,
           months: expectedOverlayAxes.month.ticks,
           hours: ["00", "06", "12", "18", "24"],
           scaleCount: 3,
@@ -1074,7 +1106,6 @@ const profileLayoutSelectionHarnessHTML = `<!doctype html>
       const inspectContainerWidth = async (width) => {
         document.getElementById("profilePane").style.width = width + "px";
         Object.assign(state.profileSettings, {
-          metricMode: "multiplier",
           timeView: "day",
         });
         state.profileSelectedDimensions = ["occupancy"];
@@ -1190,7 +1221,7 @@ const profileLayoutSelectionHarnessHTML = `<!doctype html>
           .filter(([, element]) => !noXScroll(element))
           .map(([name, element]) => name + ":" + element.scrollWidth + "/" + element.clientWidth);
         const surfaceNoOverflow = overflowingSurfaces.length === 0;
-        const expectedValueTitle = i18n.t("profile.axisValue", { unit: "–" }, "Value [{unit}]");
+        const expectedValueTitle = i18n.t("profile.axisValue", { unit: "person/m2" }, "Value [{unit}]");
         const annualAxes = {
           monthLabels: elementTexts(visibleMonths),
           hourLabels: elementTexts(visibleHours),
@@ -1405,6 +1436,234 @@ const profileLayoutSelectionHarnessHTML = `<!doctype html>
 		  removedSecondaryUIStillAbsent,
 		}));
 
+      const ratioProfile = structuredClone(profile);
+      const ratioZone = ratioProfile.zoneProfiles.find((zone) => zone.zoneName === "Zone 1");
+      ratioZone.floorArea = 100;
+      const firstSpaceLights = ratioZone.items.find((item) => item.dimension === "lighting");
+      firstSpaceLights.sourceTarget = "Space A";
+      firstSpaceLights.sourceTargetKind = "space";
+      firstSpaceLights.normalized = [
+        { id: "power_per_area", label: "Lighting power per area", unit: "W/m2", value: 4, displayValue: "4 W/m2", status: "ok" },
+        { id: "total_power", label: "Total lighting power", unit: "W", value: 100, displayValue: "100 W", status: "ok" },
+      ];
+      ratioZone.items.push({
+        ...structuredClone(firstSpaceLights),
+        id: "lighting-item-space-b",
+        objectIndex: 31,
+        objectName: "Space B Lights",
+        sourceTarget: "Space B",
+        normalized: [
+          { id: "power_per_area", label: "Lighting power per area", unit: "W/m2", value: 4, displayValue: "4 W/m2", status: "ok" },
+          { id: "total_power", label: "Total lighting power", unit: "W", value: 300, displayValue: "300 W", status: "ok" },
+        ],
+      });
+      state.report = { profile: ratioProfile };
+      state.profileViewCache = new Map();
+      state.profileSettings = {
+        ...state.profileSettings,
+        enabledDimensions: ["lighting"],
+        displayMetrics: { ...state.profileSettings.displayMetrics, lighting: "power_per_area" },
+        groupingMetrics: { ...state.profileSettings.groupingMetrics, lighting: "power_per_area" },
+      };
+      state.activeProfileView = "zone";
+      state.activeProfileZoneName = "Zone 1";
+      state.profileSelectedZoneNames = ["Zone 1"];
+      profileViews.renderProfile(ratioProfile);
+      await nextPaint();
+      const spaceRatioCell = document.querySelector(
+        '#profileOverview [data-profile-zone="Zone 1"] .profile-card-metric[data-profile-dimension="lighting"]',
+      );
+      spaceRatioAggregation = spaceRatioCell?.dataset.profileMetricStatus === "ok"
+        && spaceRatioCell.querySelector(":scope > .profile-card-metric-value")?.textContent?.trim() === "4 W/m2"
+        && !spaceRatioCell.textContent.includes("8 W/m2");
+      assert(spaceRatioAggregation, "Space-level power densities were summed instead of aggregating 400 W / 100 m2");
+      ratioZone.floorArea = 0;
+      state.profileViewCache = new Map();
+      profileViews.renderProfile(ratioProfile);
+      await nextPaint();
+      const noDenominatorRatioCell = document.querySelector(
+        '#profileOverview [data-profile-zone="Zone 1"] .profile-card-metric[data-profile-dimension="lighting"]',
+      );
+      spaceRatioAggregation = spaceRatioAggregation
+        && noDenominatorRatioCell?.dataset.profileMetricStatus === "ok"
+        && noDenominatorRatioCell.querySelector(":scope > .profile-card-metric-value")?.textContent?.trim() === "400 W"
+        && noDenominatorRatioCell.getAttribute("aria-label")?.includes("Preferred metric unavailable")
+        && !noDenominatorRatioCell.textContent.includes("8 W/m2");
+      assert(spaceRatioAggregation, "Distinct Space ratios were summed when the Zone denominator was unavailable");
+
+      const weatherProfile = structuredClone(profile);
+      weatherProfile.dimensions.push({ id: "infiltration", label: "Infiltration" });
+      const weatherZone = weatherProfile.zoneProfiles.find((zone) => zone.zoneName === "Zone 1");
+      weatherZone.items.push(
+        {
+          id: "flow-coefficient-a",
+          zoneName: "Zone 1",
+          dimension: "infiltration",
+          objectIndex: 41,
+          objectType: "ZoneInfiltration:FlowCoefficient",
+          objectName: "Crack A",
+          sourceTarget: "Zone 1",
+          sourceTargetKind: "zone",
+          aggregationSignature: "flow_coefficient|pressure_exponent=0.67",
+          normalized: [{ id: "flow_coefficient", label: "Flow coefficient", unit: "m3/s-Pa^n", value: 0.05, status: "ok" }],
+          warnings: [],
+        },
+        {
+          id: "flow-coefficient-b",
+          zoneName: "Zone 1",
+          dimension: "infiltration",
+          objectIndex: 42,
+          objectType: "ZoneInfiltration:FlowCoefficient",
+          objectName: "Crack B",
+          sourceTarget: "Zone 1",
+          sourceTargetKind: "zone",
+          aggregationSignature: "flow_coefficient|pressure_exponent=0.50",
+          normalized: [{ id: "flow_coefficient", label: "Flow coefficient", unit: "m3/s-Pa^n", value: 0.03, status: "ok" }],
+          warnings: [],
+        },
+      );
+      state.report = { profile: weatherProfile };
+      state.profileViewCache = new Map();
+      state.profileSettings = {
+        ...state.profileSettings,
+        enabledDimensions: ["infiltration"],
+        displayMetrics: { ...state.profileSettings.displayMetrics, infiltration: "flow_coefficient" },
+        groupingMetrics: { ...state.profileSettings.groupingMetrics, infiltration: "flow_coefficient" },
+      };
+      profileViews.renderProfile(weatherProfile);
+      await nextPaint();
+      const incompatibleWeatherCell = document.querySelector(
+        '#profileOverview [data-profile-zone="Zone 1"] .profile-card-metric[data-profile-dimension="infiltration"]',
+      );
+      sourceMetricCompatibility = incompatibleWeatherCell?.dataset.profileMetricStatus === "unavailable"
+        && incompatibleWeatherCell.querySelector(":scope > .profile-card-metric-value")?.textContent?.trim() === "—"
+        && !incompatibleWeatherCell.textContent.includes("0.08");
+      assert(sourceMetricCompatibility, "Incompatible weather-model parameters were summed in the frontend");
+
+      const incompleteWeatherProfile = structuredClone(profile);
+      incompleteWeatherProfile.dimensions.push({ id: "infiltration", label: "Infiltration" });
+      const incompleteWeatherZone = incompleteWeatherProfile.zoneProfiles.find((zone) => zone.zoneName === "Zone 1");
+      incompleteWeatherZone.items.push(...[1, 2].map((itemIndex) => ({
+        id: "incomplete-ela-" + itemIndex,
+        zoneName: "Zone 1",
+        dimension: "infiltration",
+        objectIndex: 50 + itemIndex,
+        objectType: "ZoneInfiltration:EffectiveLeakageArea",
+        objectName: "Incomplete ELA " + itemIndex,
+        sourceTarget: "Zone 1",
+        sourceTargetKind: "zone",
+        aggregationSignature: "zoneinfiltration:effectiveleakagearea|stack=missing|wind=missing",
+        normalized: [{
+          id: "effective_leakage_area",
+          label: "Effective leakage area",
+          unit: "cm2",
+          value: 500,
+          status: "partial",
+        }],
+        warnings: [{ code: "incomplete_weather_airflow_model", message: "Required coefficients are missing." }],
+      })));
+      state.report = { profile: incompleteWeatherProfile };
+      state.profileViewCache = new Map();
+      state.profileSettings = {
+        ...state.profileSettings,
+        enabledDimensions: ["infiltration"],
+        displayMetrics: { ...state.profileSettings.displayMetrics, infiltration: "effective_leakage_area" },
+        groupingMetrics: { ...state.profileSettings.groupingMetrics, infiltration: "effective_leakage_area" },
+      };
+      profileViews.renderProfile(incompleteWeatherProfile);
+      await nextPaint();
+      const incompleteWeatherCell = document.querySelector(
+        '#profileOverview [data-profile-zone="Zone 1"] .profile-card-metric[data-profile-dimension="infiltration"]',
+      );
+      sourceMetricCompatibility = sourceMetricCompatibility
+        && incompleteWeatherCell?.dataset.profileMetricStatus === "unavailable"
+        && incompleteWeatherCell.querySelector(":scope > .profile-card-metric-value")?.textContent?.trim() === "—"
+        && !incompleteWeatherCell.textContent.includes("1000");
+      assert(sourceMetricCompatibility, "Incomplete weather-model source inputs were aggregated in the frontend");
+
+      incompleteWeatherZone.items = incompleteWeatherZone.items.filter((item) => item.id !== "incomplete-ela-2");
+      state.profileViewCache = new Map();
+      profileViews.renderProfile(incompleteWeatherProfile);
+      await nextPaint();
+      const singleIncompleteWeatherCell = document.querySelector(
+        '#profileOverview [data-profile-zone="Zone 1"] .profile-card-metric[data-profile-dimension="infiltration"]',
+      );
+      sourceMetricCompatibility = sourceMetricCompatibility
+        && singleIncompleteWeatherCell?.dataset.profileMetricStatus === "partial"
+        && singleIncompleteWeatherCell.querySelector(":scope > .profile-card-metric-value")?.textContent?.includes("500");
+      assert(sourceMetricCompatibility, "A single incomplete weather-model source input did not retain the backend partial-value contract");
+
+      const availabilityProfile = structuredClone(profile);
+      const availabilityZone1 = availabilityProfile.zoneProfiles.find((zone) => zone.zoneName === "Zone 1");
+      const availabilityZone4 = availabilityProfile.zoneProfiles.find((zone) => zone.zoneName === "Zone 4");
+      const zone1Occupancy = availabilityZone1.items.find((item) => item.dimension === "occupancy");
+      const zone1Lighting = availabilityZone1.items.find((item) => item.dimension === "lighting");
+      const zone4Occupancy = availabilityZone4.items.find((item) => item.dimension === "occupancy");
+      zone1Occupancy.normalized = [
+        { id: "people_per_area", label: "People per Area", unit: "person/m2", value: 0, displayValue: "N/A", status: "missing" },
+        { id: "count", label: "People", unit: "people", value: 10, displayValue: "10 people", status: "ok" },
+      ];
+      availabilityZone1.items.push({
+        ...structuredClone(zone1Occupancy),
+        id: "item-1-unresolved",
+        objectIndex: 30,
+        objectName: "Unresolved People 1",
+        normalized: [
+          { id: "people_per_area", label: "People per Area", unit: "person/m2", value: 0, displayValue: "N/A", status: "missing" },
+          { id: "count", label: "People", unit: "people", value: 0, displayValue: "N/A", status: "missing" },
+        ],
+        warnings: [{ code: "missing_zone_area", message: "Zone area is required to calculate occupancy." }],
+      });
+      zone1Lighting.normalized = [
+        { id: "power_per_area", label: "Lighting power per area", unit: "W/m2", value: 0, displayValue: "N/A", status: "missing" },
+        { id: "total_power", label: "Total lighting power", unit: "W", value: 1, displayValue: "1 W", status: "ok" },
+      ];
+      zone4Occupancy.normalized = [
+        { id: "people_per_area", label: "People per Area", unit: "person/m2", value: 0, displayValue: "N/A", status: "missing" },
+      ];
+      zone4Occupancy.warnings = [{ code: "missing_zone_area", message: "Zone area is required to calculate occupancy." }];
+      state.report = { profile: availabilityProfile };
+      state.profileViewCache = new Map();
+      state.profileSettings = {
+        ...state.profileSettings,
+        enabledDimensions: ["occupancy", "lighting"],
+        displayMetrics: { occupancy: "people_per_area", lighting: "power_per_area" },
+        groupingMetrics: { occupancy: "people_per_area", lighting: "power_per_area" },
+      };
+      state.activeProfileView = "zone";
+      state.activeProfileZoneName = "Zone 1";
+      state.profileSelectedZoneNames = ["Zone 1"];
+      profileViews.renderProfile(availabilityProfile);
+      await nextPaint();
+      const fallbackMetricCell = document.querySelector(
+        '#profileOverview [data-profile-zone="Zone 1"] .profile-card-metric[data-profile-dimension="lighting"]',
+      );
+      const partialMetricCell = document.querySelector(
+        '#profileOverview [data-profile-zone="Zone 1"] .profile-card-metric[data-profile-dimension="occupancy"]',
+      );
+      const unavailableMetricCell = document.querySelector(
+        '#profileOverview [data-profile-zone="Zone 4"] .profile-card-metric[data-profile-dimension="occupancy"]',
+      );
+      const notConfiguredMetricCell = document.querySelector(
+        '#profileOverview [data-profile-zone="Zone 4"] .profile-card-metric[data-profile-dimension="lighting"]',
+      );
+      profileMetricAvailability = fallbackMetricCell?.dataset.profileMetricStatus === "ok"
+        && fallbackMetricCell.querySelector(":scope > .profile-card-metric-value")?.textContent?.trim() === "1 W"
+        && fallbackMetricCell.getAttribute("aria-label")?.includes("Preferred metric unavailable")
+        && partialMetricCell?.dataset.profileMetricStatus === "partial"
+        && partialMetricCell.querySelector(":scope > .profile-card-metric-value")?.textContent?.trim() === "10 people"
+        && partialMetricCell.getAttribute("aria-label")?.includes("1 of 2 configured objects")
+        && partialMetricCell.getAttribute("aria-label")?.includes("Zone area is required")
+        && unavailableMetricCell?.dataset.profileMetricStatus === "unavailable"
+        && unavailableMetricCell.querySelector(":scope > .profile-card-metric-value")?.textContent?.trim() === "—"
+        && unavailableMetricCell.getAttribute("aria-label")?.includes("no engineering metric can be calculated")
+        && unavailableMetricCell.getAttribute("aria-label")?.includes("Zone area is required")
+        && notConfiguredMetricCell?.dataset.profileMetricStatus === "not-configured"
+        && notConfiguredMetricCell.querySelector(":scope > .profile-card-metric-value")?.textContent?.trim() === "—"
+        && !document.getElementById("profileOverview").textContent.includes("N/A")
+        && !document.getElementById("profileOverview").innerHTML.includes("N/A");
+      assert(profileMetricAvailability, "Profile overview did not distinguish fallback, partial, unavailable, and not-configured metrics without N/A");
+
       const result = {
         narrowViewport,
         tableAboveGraph,
@@ -1416,6 +1675,9 @@ const profileLayoutSelectionHarnessHTML = `<!doctype html>
 		secondaryProfileUIAbsent,
 		semanticRevealGraphAndOverviewFallback,
         overviewMetricCells,
+        profileMetricAvailability,
+        spaceRatioAggregation,
+        sourceMetricCompatibility,
         assignmentCountWithHoverDetail,
         zoneProfileNameOnly,
         singleSelection,
@@ -1430,6 +1692,7 @@ const profileLayoutSelectionHarnessHTML = `<!doctype html>
         profileZoneModes,
         profileZoneSelectionIsolation,
         zoneProfileOverlaySelection,
+        graphFidelityStatusVisible,
         overlayLegendAlways,
 		identicalCurveOverlay,
 		identicalCurveLegend,

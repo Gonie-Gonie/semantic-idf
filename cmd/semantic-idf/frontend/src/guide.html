@@ -14,7 +14,7 @@
       </div>
       <div class="guide-header-actions">
         <a class="toolbar-link" href="./index.html" data-i18n="action.backToApp">Back to App</a>
-        <a class="toolbar-link" href="./batch.html" data-i18n="action.batch">Batch</a>
+        <a class="toolbar-link" href="./tools.html" data-i18n="action.tools">Tools</a>
         <a class="toolbar-link" href="./settings.html" data-i18n="action.settings">Settings</a>
       </div>
     </header>
@@ -25,12 +25,11 @@
         <a href="#files" data-i18n="guide.nav.files">Files</a>
         <a href="#cli" data-i18n="guide.nav.cli">CLI</a>
         <a href="#input-views" data-i18n="guide.nav.inputViews">Input Views</a>
-        <a href="#summary" data-i18n="guide.nav.summary">Summary</a>
-        <a href="#diagnose" data-i18n="guide.nav.diagnose">Diagnose</a>
-        <a href="#geometry" data-i18n="guide.nav.geometry">Topology</a>
-        <a href="#summary-metrics" data-i18n="guide.nav.metricCatalog">Metric Catalog</a>
-        <a href="#multi-idf-summary" data-i18n="guide.nav.multiSummary">Batch Summary</a>
-        <a href="#diagnose-fixes" data-i18n="guide.nav.cleanup">Diagnose / Fixes</a>
+        <a href="#metrics" data-i18n="guide.nav.metrics">Metrics</a>
+        <a href="#topology" data-i18n="guide.nav.topology">Topology</a>
+        <a href="#metric-catalog" data-i18n="guide.nav.metricCatalog">Metric Catalog</a>
+        <a href="#batch-metrics" data-i18n="guide.nav.batchMetrics">Batch Metrics</a>
+        <a href="#tools-diagnose" data-i18n="guide.nav.cleanup">Tools / Diagnose</a>
         <a href="#settings" data-i18n="guide.nav.settings">Settings</a>
         <a href="#updates" data-i18n="guide.nav.updates">Recent Changes</a>
       </nav>
@@ -40,9 +39,9 @@
           <h2 data-i18n="guide.start.title">Start</h2>
           <p data-i18n="guide.start.body">
             SemanticIDF opens EnergyPlus IDF, IMF, and epJSON-style files, shows the input in synchronized Text,
-            JSON, and Table views, and calculates Summary, Diagnose, and Topology results in the right panel. A
+            JSON, and Table views, and calculates Metrics, Topology, Profile, HVAC, and Simulation results in the right panel. A
             reference office model loads at startup so the interface is usable before you open a project file; analysis
-            starts after the first screen is visible and fills in the visible Summary first.
+            starts after the first screen is visible and fills in the visible Metrics first.
           </p>
         </section>
 
@@ -77,22 +76,22 @@
           </p>
           <div class="guide-grid">
             <article>
-              <h3 data-i18n="guide.cli.summaryTitle">Summary and diagnostics</h3>
-              <p data-i18n="guide.cli.summaryBody">Export text, JSON, CSV, or styled XLSX summaries, and export Diagnose issues for scripts or CI checks.</p>
-              <pre><code>semantic-idf cli summary model.idf
-semantic-idf cli summary -format json -o summary.json model.idf
-semantic-idf cli summary -format csv -o summary.csv model.idf
-semantic-idf cli summary -format xlsx -o summary.xlsx model.idf
+              <h3 data-i18n="guide.cli.metricsTitle">Metrics and diagnostics</h3>
+              <p data-i18n="guide.cli.metricsBody">Export text, JSON, CSV, or styled XLSX metrics, and export diagnostic issues for scripts or CI checks.</p>
+              <pre><code>semantic-idf cli metrics model.idf
+semantic-idf cli metrics -format json -o metrics.json model.idf
+semantic-idf cli metrics -format csv -o metrics.csv model.idf
+semantic-idf cli metrics -format xlsx -o metrics.xlsx model.idf
 semantic-idf cli diagnostics -format text model.idf
 semantic-idf cli diagnostics -format csv -o diagnostics.csv model.idf
 semantic-idf cli analyze -format json -o report.json model.idf</code></pre>
             </article>
             <article>
-              <h3 data-i18n="guide.cli.multiTitle">Multi-file summary</h3>
-              <p data-i18n="guide.cli.multiBody">Compare Summary metrics across several models as CSV, JSON, text, or a styled single-sheet XLSX workbook.</p>
-              <pre><code>semantic-idf cli multi-summary -format csv -o compare.csv a.idf b.idf c.epjson
-semantic-idf cli multi-summary -format xlsx -orientation metrics -o compare.xlsx a.idf b.idf
-semantic-idf cli multi-summary -format xlsx -orientation files -o compare-by-file.xlsx a.idf b.idf</code></pre>
+              <h3 data-i18n="guide.cli.batchMetricsTitle">Batch metrics</h3>
+              <p data-i18n="guide.cli.batchMetricsBody">Compare metrics across several models as CSV, JSON, text, or a styled XLSX workbook.</p>
+              <pre><code>semantic-idf cli batch-metrics -format csv -o compare.csv a.idf b.idf c.epjson
+semantic-idf cli batch-metrics -format xlsx -orientation metrics -o compare.xlsx a.idf b.idf
+semantic-idf cli batch-metrics -format xlsx -orientation files -o compare-by-file.xlsx a.idf b.idf</code></pre>
             </article>
             <article>
               <h3 data-i18n="guide.cli.cleanTitle">Clean</h3>
@@ -138,58 +137,49 @@ type model.idf | semantic-idf cli convert -to json -o - -</code></pre>
           </div>
         </section>
 
-        <section id="summary" class="guide-section">
-          <h2 data-i18n="guide.summary.title">Summary</h2>
-          <p data-i18n="guide.summary.body">
-            Summary groups model inventory, area, envelope, load, schedule, and HVAC metrics. Export JSON keeps the
+        <section id="metrics" class="guide-section">
+          <h2 data-i18n="guide.metrics.title">Metrics</h2>
+          <p data-i18n="guide.metrics.body">
+            Metrics groups model inventory, area, envelope, load, schedule, and HVAC values. Export JSON keeps the
             grouped structure, while Export CSV creates `name,value` rows.
             CSV names use variable-style names with units in brackets, including `[-]` for values without a physical unit.
           </p>
         </section>
 
-        <section id="diagnose" class="guide-section">
-          <h2 data-i18n="guide.diagnose.title">Diagnose</h2>
-          <p data-i18n="guide.diagnose.body">
-            Diagnose lists likely run-blocking errors and warning-level modeling risks, including missing references,
-            duplicate names, orphan resources, missing required objects, geometry issues, unsupported schedule-hour
-            calculations, and disconnected HVAC node graph hints.
-          </p>
-        </section>
-
-        <section id="geometry" class="guide-section">
-          <h2 data-i18n="guide.geometry.title">Spatial &amp; Thermal Topology</h2>
-          <p data-i18n="guide.geometry.body">
+        <section id="topology" class="guide-section">
+          <h2 data-i18n="guide.topology.title">Spatial &amp; Thermal Topology</h2>
+          <p data-i18n="guide.topology.body">
             Topology shows parsed zones, surfaces, and fenestration in 3D and plan views. Selecting an item shows key
             metrics and related objects such as parent zones, base surfaces, child windows, adjacent zones, and matching
             surfaces. Sync locate can move the input view to the selected model object.
           </p>
         </section>
 
-        <section id="summary-metrics" class="guide-section">
+        <section id="metric-catalog" class="guide-section">
           <h2 data-i18n="guide.metricCatalog.title">Metric Catalog</h2>
           <p data-i18n="guide.metricCatalog.body">
-            The catalog below lists how Summary metrics are interpreted, including source fields, calculation method,
+            The catalog below lists how metrics are interpreted, including source fields, calculation method,
             assumptions, and missing-data behavior.
           </p>
-          <div id="summaryMetricGuide" class="guide-metric-list">
+          <div id="metricGuide" class="guide-metric-list">
             <div class="empty" data-i18n="guide.metricCatalog.loading">Loading metric catalog</div>
           </div>
         </section>
 
-        <section id="multi-idf-summary" class="guide-section">
-          <h2 data-i18n="guide.multiSummary.title">Batch Summary</h2>
-          <p data-i18n="guide.multiSummary.body">
-            Batch Summary is available from Batch. Choose it from the left selector, select several input files,
-            wait for the progress bar to finish, then review the combined Summary table. Metrics can be shown as rows
+        <section id="batch-metrics" class="guide-section">
+          <h2 data-i18n="guide.batchMetrics.title">Batch Metrics</h2>
+          <p data-i18n="guide.batchMetrics.body">
+            Batch Metrics is available from Tools. Select it from the left selector, then choose several input files,
+            wait for the progress bar to finish, then review the combined metrics table. Metrics can be shown as rows
             with buildings as columns, or transposed with buildings as rows. Export CSV uses the currently selected table
             direction.
           </p>
         </section>
 
-        <section id="diagnose-fixes" class="guide-section">
-          <h2 data-i18n="guide.cleanup.title">Diagnose / Fixes</h2>
+        <section id="tools-diagnose" class="guide-section">
+          <h2 data-i18n="guide.cleanup.title">Tools / Diagnose</h2>
           <p data-i18n="guide.cleanup.body">
-            Cleanup suggestions are available from Diagnose and work on the input currently open in the main app. Choose rules on
+            Cleanup suggestions are available from Tools / Diagnose and use the current app input snapshot or a separately selected input. Choose rules on
             the left, then review filterable candidate checkboxes on the right to include or exclude individual removals.
             Apply selected updates the editor and re-runs analysis, while Save cleaned copy writes a new file. Current rules cover
             unused schedules, unused envelope resources, unused curves/tables, duplicate Output objects, and compact formatting.
@@ -209,16 +199,16 @@ type model.idf | semantic-idf cli convert -to json -o - -</code></pre>
         <section id="updates" class="guide-section">
           <h2 data-i18n="guide.updates.title">Recent Changes</h2>
           <ul class="guide-log">
-            <li data-i18n="guide.updates.cleanupCurrent">2026-05-31 Diagnose / Fixes now operates on the current input with rule and candidate checkboxes plus Apply / Save cleaned copy.</li>
+            <li data-i18n="guide.updates.cleanupCurrent">2026-05-31 Tools / Diagnose now operates on the current input with rule and candidate checkboxes plus Apply / Save cleaned copy.</li>
             <li data-i18n="guide.updates.appearance">2026-05-31 Added persistent Appearance settings for app theme and Topology object colors.</li>
-            <li data-i18n="guide.updates.toolsLayout">2026-05-31 Reorganized Tools into Batch with a left-selector tab layout.</li>
-            <li data-i18n="guide.updates.diagnoseCleanup">2026-05-31 Added Diagnose results and moved remove-unused cleanup into the Diagnose / Fixes review flow.</li>
-            <li data-i18n="guide.updates.startupStages">2026-05-31 Startup analysis now runs in visible-first stages, then prepares Diagnose and Topology in the background.</li>
-            <li data-i18n="guide.updates.summaryCsv">2026-05-31 Summary CSV now writes every metric as `variable [unit],value`, using `[-]` when no unit applies.</li>
+            <li data-i18n="guide.updates.toolsLayout">2026-05-31 Reorganized the multi-file workspace as Tools with a left-selector layout.</li>
+            <li data-i18n="guide.updates.diagnoseCleanup">2026-05-31 Added Diagnose results and moved remove-unused cleanup into the Tools / Diagnose review flow.</li>
+            <li data-i18n="guide.updates.startupStages">2026-05-31 Startup analysis now runs in visible-first stages, then prepares Topology in the background.</li>
+            <li data-i18n="guide.updates.metricsCsv">2026-05-31 Metrics CSV now writes every metric as `variable [unit],value`, using `[-]` when no unit applies.</li>
             <li data-i18n="guide.updates.performance">2026-05-31 Improved startup and splitter responsiveness by deferring startup sample analysis and Topology rendering work.</li>
-            <li data-i18n="guide.updates.multiSummary">2026-05-31 Added Batch Summary with multi-file selection, progress, table transpose, delta comparison, and CSV export.</li>
-            <li data-i18n="guide.updates.topNavigation">2026-05-31 Batch, Guide, and Settings are separate top-level navigation buttons.</li>
-            <li data-i18n="guide.updates.geometryDetails">2026-05-30 Topology details show related zones, surfaces, and openings for the selected object.</li>
+            <li data-i18n="guide.updates.batchMetrics">2026-05-31 Added Batch Metrics with multi-file selection, progress, table transpose, delta comparison, and CSV export.</li>
+            <li data-i18n="guide.updates.topNavigation">2026-05-31 Tools, Guide, and Settings are separate top-level navigation buttons.</li>
+            <li data-i18n="guide.updates.topologyDetails">2026-05-30 Topology details show related zones, surfaces, and openings for the selected object.</li>
             <li data-i18n="guide.updates.inputFilter">2026-05-30 The left-panel filter now works consistently across Text, JSON, and Table views.</li>
           </ul>
         </section>
@@ -232,7 +222,7 @@ type model.idf | semantic-idf cli convert -to json -o - -</code></pre>
       renderAppInfo();
       loadAndApplyAppSettings().then(() => translatePage());
 
-      const guideContainer = document.querySelector("#summaryMetricGuide");
+      const guideContainer = document.querySelector("#metricGuide");
 
       function escapeHTML(value) {
         return String(value ?? "")
@@ -298,14 +288,14 @@ type model.idf | semantic-idf cli convert -to json -o - -</code></pre>
         return null;
       }
 
-      async function loadSummaryMetricGuide() {
-        const api = await waitForAppAPI("GetSummaryMetricGuides");
+      async function loadMetricGuide() {
+        const api = await waitForAppAPI("GetMetricGuides");
         try {
           if (api) {
-            renderGuides(await api.GetSummaryMetricGuides());
+            renderGuides(await api.GetMetricGuides());
             return;
           }
-          const response = await fetch("/api/summary-metric-guides");
+          const response = await fetch("/api/metric-guides");
           if (!response.ok) {
             throw new Error(t("guide.metricCatalog.requestFailed", { status: response.status }));
           }
@@ -315,7 +305,7 @@ type model.idf | semantic-idf cli convert -to json -o - -</code></pre>
         }
       }
 
-      loadSummaryMetricGuide();
+      loadMetricGuide();
     </script>
   </body>
 </html>

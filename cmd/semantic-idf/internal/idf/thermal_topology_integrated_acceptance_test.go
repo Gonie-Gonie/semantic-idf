@@ -36,7 +36,7 @@ func TestTOPO280ExteriorZoneIntegratedFlow(t *testing.T) {
 	}
 
 	projection := BuildSemanticYAMLProjection(document, SemanticYAMLMetadata{})
-	if len(projection.Navigation.ByViewTarget["geometry|"+boundary.ID]) == 0 || len(projection.Navigation.ByViewTarget["geometry|"+connection.ID]) == 0 {
+	if len(projection.Navigation.ByViewTarget["topology|"+boundary.ID]) == 0 || len(projection.Navigation.ByViewTarget["topology|"+connection.ID]) == 0 {
 		t.Fatalf("Semantic navigation cannot restore boundary/connection selection: %#v", projection.Navigation.ByViewTarget)
 	}
 }
@@ -117,7 +117,7 @@ func TestTOPO281InterzonePairIntegratedFlow(t *testing.T) {
 
 	projection := BuildSemanticYAMLProjection(document, SemanticYAMLMetadata{})
 	sourceObjects := map[int]bool{}
-	for _, occurrenceID := range projection.Navigation.ByViewTarget["geometry|"+connection.ID] {
+	for _, occurrenceID := range projection.Navigation.ByViewTarget["topology|"+connection.ID] {
 		for _, occurrence := range projection.Navigation.Occurrences {
 			if occurrence.OccurrenceID == occurrenceID && occurrence.ContextKind == "surface_boundary_context" && occurrence.SourceAnchor.ObjectIndex != nil {
 				sourceObjects[*occurrence.SourceAnchor.ObjectIndex] = true

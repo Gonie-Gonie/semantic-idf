@@ -2473,7 +2473,7 @@ func writeSemanticSurfaceThermalBoundary(builder *semanticYAMLBuilder, ctx *sema
 	}
 	targets := append([]SemanticViewTarget(nil), boundaryTargets...)
 	if boundary.ConstructionName != "" {
-		targets = append(targets, SemanticViewTarget{View: "geometry", TargetKind: "construction", TargetID: boundary.ConstructionName, Label: boundary.ConstructionName, Priority: 80})
+		targets = append(targets, SemanticViewTarget{View: "topology", TargetKind: "construction", TargetID: boundary.ConstructionName, Label: boundary.ConstructionName, Priority: 80})
 	}
 	builder.topologyValue(indent, "ua", ua, boundary.ID, "thermal_boundary", label, semanticTopologyAnchor(boundary.SourceAnchors, "Construction Name"), targets...)
 }
@@ -2556,7 +2556,7 @@ func semanticTopologyAnchor(anchors []SemanticSourceAnchor, preferredField strin
 }
 
 func semanticThermalViewTarget(kind string, id string, label string, priority int) SemanticViewTarget {
-	return SemanticViewTarget{View: "geometry", TargetKind: kind, TargetID: id, Label: label, Priority: priority}
+	return SemanticViewTarget{View: "topology", TargetKind: kind, TargetID: id, Label: label, Priority: priority}
 }
 
 func writeSemanticBoundaryExposureValidation(builder *semanticYAMLBuilder, ctx *semanticContext, indent int, surface GeometrySurface) {

@@ -90,17 +90,17 @@ ZoneHVAC:PackagedTerminalHeatPump,
   Office Zone Air Node;
 `
 
-func TestCLISummaryWritesText(t *testing.T) {
+func TestCLIMetricsWritesText(t *testing.T) {
 	input := writeCLITestInput(t, cliFixtureIDF)
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	code := runCLI([]string{"summary", "-format", "text", input}, strings.NewReader(""), &stdout, &stderr, "0.4.1")
+	code := runCLI([]string{"metrics", "-format", "text", input}, strings.NewReader(""), &stdout, &stderr, "0.4.1")
 	if code != 0 {
-		t.Fatalf("runCLI summary exit = %d, stderr = %s", code, stderr.String())
+		t.Fatalf("runCLI metrics exit = %d, stderr = %s", code, stderr.String())
 	}
 	if !strings.Contains(stdout.String(), "Building name: CLI Building") {
-		t.Fatalf("summary output missing building name:\n%s", stdout.String())
+		t.Fatalf("metrics output missing building name:\n%s", stdout.String())
 	}
 }
 
@@ -146,8 +146,13 @@ func TestCLIProfileExports(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("runCLI profile-graph exit = %d, stderr = %s", code, graphErr.String())
 	}
-	if !strings.Contains(graphOut.String(), `"series"`) || !strings.Contains(graphOut.String(), `"metricModes"`) {
-		t.Fatalf("profile-graph output missing graph fields:\n%s", graphOut.String())
+	if !strings.Contains(graphOut.String(), `"series"`) {
+		t.Fatalf("profile-graph output missing series:\n%s", graphOut.String())
+	}
+	for _, removed := range []string{`"defaultDeck"`, `"timeViews"`, `"compareModes"`, `"scaleModes"`} {
+		if strings.Contains(graphOut.String(), removed) {
+			t.Fatalf("profile-graph output still contains removed deck field %s:\n%s", removed, graphOut.String())
+		}
 	}
 
 	var qaOut bytes.Buffer

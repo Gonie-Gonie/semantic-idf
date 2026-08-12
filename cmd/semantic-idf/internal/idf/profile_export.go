@@ -59,9 +59,9 @@ func ExportProfileQACSV(report ProfileReport) (string, error) {
 			hint.GroupID,
 			hint.Dimension,
 			hint.ScheduleName,
-			formatSummaryNumber(hint.Value, 4),
-			formatSummaryNumber(hint.Median, 4),
-			formatSummaryNumber(hint.Score, 2),
+			formatMetricNumber(hint.Value, 4),
+			formatMetricNumber(hint.Median, 4),
+			formatMetricNumber(hint.Score, 2),
 		})
 	}
 	writer.Flush()

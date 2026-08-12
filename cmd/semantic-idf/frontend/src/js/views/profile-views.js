@@ -17,6 +17,12 @@ let previousProfileGroupMembership = new Map();
 let profileHeatmapSequence = 0;
 const profileHeatmapPaintQueue = new Map();
 const profileItemMapCache = new WeakMap();
+const profileNominalWarningCodes = new Set([
+  "nominal_outdoor_air_profile",
+  "weather_modified_design_flow_basis",
+  "weather_dependent_opening_profile",
+]);
+const profilePartialWarningCodes = new Set(["schedule_profile_fallback"]);
 
 export function renderProfile(profile = state.report?.profile) {
   if (!elements.profileGraph) {
@@ -119,15 +125,6 @@ function renderProfileSettings(profile) {
             .join("")}
         </div>
       </div>
-      <label class="profile-field profile-live-select">
-        <span>${t("profile.metricMode", {}, "Metric")}</span>
-        <select id="profileMetricMode">
-          ${optionHTML("design", t("graph.designValue", {}, "Design"), currentProfileMetricMode())}
-          ${optionHTML("multiplier", t("profile.scheduleFraction", {}, "Schedule fraction"), currentProfileMetricMode())}
-          ${optionHTML("actual", t("graph.actualValue"), currentProfileMetricMode())}
-          ${optionHTML("annual", t("graph.annualContribution", {}, "Annual"), currentProfileMetricMode())}
-        </select>
-      </label>
     </div>`;
 }
 
@@ -534,16 +531,77 @@ function renderProfileMetrics(summaries = [], dimensions = []) {
         .map(
           (dimension) => {
             const summary = summaryByDimension.get(dimension.id);
-            const displayValue = summary?.displayValue || "-";
+            const presentation = profileMetricPresentation(summary, dimension);
             return `
-              <span class="profile-card-metric ${summary ? "" : "is-missing"}" data-profile-dimension="${escapeHTML(dimension.id)}" title="${escapeHTML(`${dimension.label}: ${displayValue}`)}">
-                <span class="profile-card-metric-label">${escapeHTML(dimension.label)}</span>
-                <span class="profile-card-metric-value">${escapeHTML(displayValue)}</span>
+              <span class="profile-card-metric ${presentation.className}" data-profile-dimension="${escapeHTML(dimension.id)}" data-profile-metric-status="${escapeHTML(presentation.status)}"
+                role="group" title="${escapeHTML(presentation.description)}" aria-label="${escapeHTML(presentation.description)}">
+                <span class="profile-card-metric-label" aria-hidden="true">${escapeHTML(dimension.label)}</span>
+                <span class="profile-card-metric-value" aria-hidden="true">${escapeHTML(presentation.displayValue)}</span>
+                <span class="sr-only">${escapeHTML(presentation.description)}</span>
               </span>`;
           },
         )
         .join("")}
     </span>`;
+}
+
+function profileMetricPresentation(summary, dimension) {
+  const dimensionLabel = dimension.label || profileDimensionLabel(dimension.id);
+  if (!summary) {
+    const reason = t(
+      "profile.metricNotConfigured",
+      { dimension: dimensionLabel },
+      `No ${dimensionLabel} objects are configured for this selection.`,
+    );
+    return {
+      displayValue: "—",
+      status: "not-configured",
+      className: "is-missing is-not-configured",
+      description: `${dimensionLabel}: —. ${reason}`,
+    };
+  }
+
+  const status = summary.status === "partial" ? "partial" : summary.status === "missing" ? "unavailable" : "ok";
+  const warnings = [...new Set((summary.warnings || []).map((warning) => String(warning?.message || warning?.code || "").trim()).filter(Boolean))];
+  const details = [];
+  if (status === "unavailable") {
+    details.push(t(
+      "profile.metricUnavailable",
+      { dimension: dimensionLabel },
+      `${dimensionLabel} objects are configured, but no engineering metric can be calculated.`,
+    ));
+  } else if (status === "partial") {
+    details.push(t(
+      "profile.metricPartial",
+      {
+        metric: summary.metricLabel || dimensionLabel,
+        resolved: summary.resolvedItemCount || 0,
+        total: summary.itemCount || 0,
+      },
+      `${summary.metricLabel || dimensionLabel} is calculated from ${summary.resolvedItemCount || 0} of ${summary.itemCount || 0} configured objects.`,
+    ));
+  }
+  if (summary.fallbackMetric) {
+    details.push(t(
+      "profile.metricFallback",
+      { metric: summary.metricLabel || dimensionLabel },
+      `Preferred metric unavailable; showing ${summary.metricLabel || dimensionLabel}.`,
+    ));
+  }
+  if (warnings.length) {
+    details.push(t("profile.metricWarnings", { warnings: warnings.join("; ") }, `Reason: ${warnings.join("; ")}`));
+  }
+  const displayValue = status === "unavailable" ? "—" : summary.displayValue || "—";
+  const description = `${[`${dimensionLabel}: ${displayValue}`, ...details]
+    .map((part) => String(part).trim().replace(/[.\s]+$/, ""))
+    .filter(Boolean)
+    .join(". ")}.`;
+  return {
+    displayValue,
+    status,
+    className: [status === "ok" ? "" : `is-${status}`, warnings.length ? "has-warning" : ""].filter(Boolean).join(" "),
+    description,
+  };
 }
 
 function renderProfileGroupCard(group, selectedGroupIDs = new Set(state.profileSelectedGroupIds || []), metricDimensions = []) {
@@ -637,6 +695,7 @@ function renderProfileOverlay(series, options) {
         <section class="profile-overlay-panel" data-profile-dimension="${escapeHTML(group.dimension)}">
           <div class="profile-graph-panel-head">
             <strong>${escapeHTML(group.label)}</strong>
+            ${renderProfileFidelityBadge(metrics)}
           </div>
           ${renderOverlayGraph(metrics, max, group.unit, options.timeView)}
           ${renderProfileSeriesLegend(metrics)}
@@ -653,6 +712,7 @@ function renderProfileAnnualHeatmaps(series, options) {
         <section class="profile-annual-panel" data-profile-dimension="${escapeHTML(group.dimension)}">
           <div class="profile-graph-panel-head">
             <strong>${escapeHTML(group.label)}</strong>
+            ${renderProfileFidelityBadge(group.items)}
           </div>
           <div class="profile-annual-heatmap-grid">
             ${group.items.map(({ series: item, metric, color }) => `
@@ -670,14 +730,19 @@ function renderProfileAnnualHeatmaps(series, options) {
 
 function profileMetricSeriesGroups(series, options) {
   const groups = new Map();
-  const selectedGroupIDs = profileGroupIDsForGraphSelection();
+  const selectedSeriesIDs = state.activeProfileView === "zone"
+    ? [...(state.profileSelectedZoneNames || [])]
+    : profileGroupIDsForGraphSelection();
   series.forEach((item, index) => {
     const metric = profileSeriesMetric(item, options);
-    const key = `${item.dimension || "unknown"}\u0000${metric.unit || ""}`;
+    const key = `${item.dimension || "unknown"}\u0000${item.metricId || ""}\u0000${metric.unit || ""}`;
     if (!groups.has(key)) {
+      const dimensionLabel = item.dimensionLabel || profileDimensionLabel(item.dimension);
+      const metricLabel = item.metricLabel || "";
       groups.set(key, {
         dimension: item.dimension || "unknown",
-        label: item.dimensionLabel || profileDimensionLabel(item.dimension),
+        metricId: item.metricId || "",
+        label: metricLabel || dimensionLabel,
         unit: metric.unit || "",
         items: [],
       });
@@ -685,7 +750,7 @@ function profileMetricSeriesGroups(series, options) {
     groups.get(key).items.push({
       series: item,
       metric,
-      color: profileSeriesSelectionColor(item, index, selectedGroupIDs),
+      color: profileSeriesSelectionColor(item, index, selectedSeriesIDs),
     });
   });
   return [...groups.values()];
@@ -701,13 +766,80 @@ function sharedProfileMetricMax(items, options) {
 }
 
 function profileSeriesScopeLabel(series) {
+  if (state.activeProfileView === "zone") {
+    return series.zoneName || series.label || t("common.selection", {}, "Selection");
+  }
   return series.groupName || series.label || t("common.selection", {}, "Selection");
 }
 
 function profileSeriesSelectionColor(series, fallbackIndex = 0, selection = profileGroupIDsForGraphSelection()) {
-  const selectionKey = currentProfileGroupIDForSeries(series);
+  const selectionKey = state.activeProfileView === "zone"
+    ? series.zoneName
+    : currentProfileGroupIDForSeries(series);
   const selectionIndex = selection.indexOf(selectionKey);
   return profileSeriesColor(selectionIndex >= 0 ? selectionIndex : fallbackIndex);
+}
+
+function profileFidelityPresentation(kind, reasons = []) {
+  const nominal = kind === "nominal";
+  const label = nominal
+    ? t("profile.fidelityNominal", {}, "Nominal")
+    : t("profile.fidelityPartial", {}, "Partial");
+  const uniqueReasons = [...new Set(reasons.map((reason) => String(reason || "").trim()).filter(Boolean))];
+  const reason = uniqueReasons.join("; ") || (nominal
+    ? t(
+      "profile.fidelityNominalReason",
+      {},
+      "Operational drivers are not simulated, so this curve is a nominal engineering profile.",
+    )
+    : t(
+      "profile.fidelityPartialReason",
+      {},
+      "This curve uses incomplete or fallback schedule information.",
+    ));
+  return {
+    kind,
+    label,
+    reasons: uniqueReasons,
+    description: t("profile.fidelityDescription", { status: label, reason }, `${label}: ${reason}`),
+  };
+}
+
+function profileSeriesFidelity(series) {
+  const members = Array.isArray(series?.aggregateSeries) && series.aggregateSeries.length
+    ? series.aggregateSeries
+    : [];
+  const sources = [series, ...members].filter(Boolean);
+  const warnings = sources.flatMap((source) => Array.isArray(source.warnings) ? source.warnings : []);
+  const hasNominalReason = warnings.some((warning) => profileNominalWarningCodes.has(String(warning?.code || "")));
+  const hasPartialReason = warnings.some((warning) => profilePartialWarningCodes.has(String(warning?.code || "")));
+  const hasPartialStatus = sources.some((source) => String(source.status || "").toLowerCase() === "partial");
+  if (!hasPartialStatus && !hasNominalReason && !hasPartialReason) {
+    return null;
+  }
+  const reasons = warnings.map((warning) => warning?.message || warning?.code || "");
+  return profileFidelityPresentation(hasPartialReason || !hasNominalReason ? "partial" : "nominal", reasons);
+}
+
+function profilePanelFidelity(items) {
+  const presentations = items
+    .map(({ series }) => profileSeriesFidelity(series))
+    .filter(Boolean);
+  if (!presentations.length) {
+    return null;
+  }
+  const kind = presentations.some((presentation) => presentation.kind === "partial") ? "partial" : "nominal";
+  return profileFidelityPresentation(kind, presentations.flatMap((presentation) => presentation.reasons));
+}
+
+function renderProfileFidelityBadge(items) {
+  const fidelity = profilePanelFidelity(items);
+  if (!fidelity) {
+    return "";
+  }
+  return `<span class="profile-fidelity-badge is-${fidelity.kind}" role="status"
+    data-profile-fidelity="${fidelity.kind}" title="${escapeHTML(fidelity.description)}"
+    aria-label="${escapeHTML(fidelity.description)}">${escapeHTML(fidelity.label)}</span>`;
 }
 
 function renderProfileSeriesLegend(items) {
@@ -717,9 +849,14 @@ function renderProfileSeriesLegend(items) {
       const overlapDescription = visualOverlapCount > 1
         ? t("profile.sharedCurve", { count: visualOverlapCount }, `${visualOverlapCount} profiles overlap at the current scale`)
         : "";
-      const accessibleLabel = overlapDescription ? `${label}; ${overlapDescription}` : label;
+      const fidelity = profileSeriesFidelity(item);
+      let accessibleLabel = overlapDescription ? `${label}; ${overlapDescription}` : label;
+      if (fidelity?.description) {
+        accessibleLabel = `${accessibleLabel}; ${fidelity.description}`;
+      }
       return `<span class="navigable-row" role="button" tabindex="0" data-profile-series-id="${escapeHTML(item.id)}"
         data-profile-overlap-count="${visualOverlapCount}" data-profile-overlap-index="${visualOverlapIndex}"
+        ${fidelity ? `data-profile-fidelity="${fidelity.kind}"` : ""}
         aria-label="${escapeHTML(accessibleLabel)}" title="${escapeHTML(accessibleLabel)}"
         ${profileSemanticAttributes(profileSeriesSemanticTargets(item), { occurrenceContext: "zone_profile" })}>
         <i class="profile-line-swatch ${visualOverlapCount > 1 ? "is-overlap" : ""}"
@@ -1014,14 +1151,9 @@ function paintProfileHeatmaps() {
 
 function currentProfileGraphOptions() {
   return {
-    metricMode: state.profileSettings?.metricMode || "actual",
     timeView: state.profileSettings?.timeView || "year",
     scaleMode: state.profileSettings?.scaleMode || "auto",
   };
-}
-
-function currentProfileMetricMode() {
-  return state.profileSettings?.metricMode || "actual";
 }
 
 function profileGraphSeries(profile, group) {
@@ -1031,10 +1163,22 @@ function profileGraphSeries(profile, group) {
     : state.profileSettings?.enabledDimensions || []);
   const allSeries = Array.isArray(profile?.graphDataset?.series) ? profile.graphDataset.series : [];
   const base = allSeries.filter((series) => {
+    if (series.status === "missing") return false;
     if (enabledDimensions.size && !enabledDimensions.has(series.dimension)) return false;
     if (selectedDimensions.size && !selectedDimensions.has(series.dimension)) return false;
     return true;
   });
+	if (state.activeProfileView === "zone") {
+		const selectedZones = new Set(state.profileSelectedZoneNames?.length
+			? state.profileSelectedZoneNames
+			: [state.activeProfileZoneName].filter(Boolean));
+		return base
+			.filter((series) => series.scopeType === "zone" && selectedZones.has(series.zoneName))
+			.map((series) => ({
+				...series,
+				label: `${series.zoneName} / ${series.dimensionLabel || profileDimensionLabel(series.dimension)}`,
+			}));
+	}
   const selectedGroupIDs = profileGroupIDsForGraphSelection();
   return profileCurrentGroupSeries(base, selectedGroupIDs.length
     ? selectedGroupIDs
@@ -1054,16 +1198,17 @@ function profileCurrentGroupSeries(allSeries, selectedGroupIDs) {
       if (series.scopeType !== "zone" || !zoneNames.has(series.zoneName)) {
         return;
       }
-      const members = byDimension.get(series.dimension) || [];
+      const metricKey = [series.dimension, series.metricId, series.unit].join("\u0000");
+      const members = byDimension.get(metricKey) || [];
       members.push(series);
-      byDimension.set(series.dimension, members);
+      byDimension.set(metricKey, members);
     });
-    byDimension.forEach((members, dimensionKey) => {
+    byDimension.forEach((members) => {
       const series = members[0];
-      const dimension = series.dimension || dimensionKey;
+      const dimension = series.dimension || "unknown";
       aggregates.push({
         ...series,
-        id: `profile-series-current-${profileSemanticToken(groupID)}-${profileSemanticToken(dimension)}-${profileSemanticToken(series.unit)}`,
+        id: `profile-series-current-${profileSemanticToken(groupID)}-${profileSemanticToken(dimension)}-${profileSemanticToken(series.metricId)}-${profileSemanticToken(series.unit)}`,
         label: `${currentGroup.name} / ${series.dimensionLabel || profileDimensionLabel(dimension)}`,
         scopeType: "group",
         groupId: groupID,
@@ -1094,20 +1239,9 @@ function profileSeriesMetric(series, options) {
     };
   }
   const timeView = options.timeView || "year";
-  const metricMode = options.metricMode || currentProfileMetricMode();
   const multiplier = profileSeriesMultiplier(series, timeView);
-  let values = multiplier;
-  let unit = "";
-  if (metricMode === "design") {
-    values = multiplier.map(() => Number(series.designValue) || 0);
-    unit = series.unit || "";
-  } else if (metricMode === "actual") {
-    values = multiplier.map((value) => value * (Number(series.designValue) || 0));
-    unit = series.unit || "";
-  } else if (metricMode === "annual") {
-    values = annualizedProfileValues(series, multiplier, timeView);
-    unit = series.unit ? `${series.unit}h` : "h";
-  }
+  let values = multiplier.map((value) => value * (Number(series.designValue) || 0));
+  const unit = series.unit || "";
   values = values.map((value) => (Number.isFinite(Number(value)) ? Number(value) : 0));
   return {
     unit,
@@ -1148,22 +1282,9 @@ function profileSeriesMultiplier(series, timeView) {
   }
 }
 
-function annualizedProfileValues(series, multiplier, timeView) {
-  const design = Number(series.designValue) || 0;
-  if (timeView === "month") {
-    const hours = [744, 672, 744, 720, 744, 720, 744, 744, 720, 744, 720, 744];
-    return multiplier.map((value, index) => value * design * (hours[index] || 730));
-  }
-  if (timeView === "rules") {
-    return multiplier.map((value) => value * design * 24);
-  }
-  return multiplier.map((value) => value * design);
-}
-
 function graphScaleMaxForSeries(values, series, options) {
-  const metricMode = options.metricMode || currentProfileMetricMode();
   if (options.scaleMode === "multiplier_0_1") {
-    return metricMode === "multiplier" ? 1 : Math.max(Number(series.designValue) || 0, 1e-9);
+		return Math.max(Number(series.designValue) || 0, 1e-9);
   }
   if (options.scaleMode === "design_peak") {
     return Math.max(Number(series.designValue) || 0, Math.max(...values, 0), 1e-9);
@@ -1650,8 +1771,6 @@ function handleProfileSettingsChange(event) {
       enabled.delete(dimension);
     }
     state.profileSettings.enabledDimensions = [...enabled];
-  } else if (input?.matches("#profileMetricMode")) {
-    state.profileSettings.metricMode = input.value;
   } else {
     return;
   }
@@ -1941,7 +2060,6 @@ function profileViewCacheKey(profile, settings) {
     (profile.zoneProfiles || []).length,
     (settings?.enabledDimensions || []).join(","),
     settings?.groupBy || "",
-    settings?.metricMode || "",
     settings?.scheduleCompareMode || "",
     settings?.numericTolerance || "",
   ].join("|");
@@ -1995,55 +2113,254 @@ function buildProfileGroups(zones, settings) {
 function summarizeZoneDimensions(zone, settings, metricMap) {
   return (state.report?.profile?.dimensions || [])
     .filter((dimension) => settings.enabledDimensions.includes(dimension.id))
-    .map((dimension) => summarizeDimension(zone, dimension, metricMap[dimension.id]))
+    .map((dimension) => summarizeDimension(zone, dimension, metricMap[dimension.id], settings))
     .filter(Boolean);
 }
 
-function summarizeDimension(zone, dimension, metricId) {
+function summarizeDimension(zone, dimension, metricId, settings) {
   const items = (zone.items || []).filter((item) => item.dimension === dimension.id);
   if (!items.length) {
     return null;
   }
-  let value = 0;
-  let okCount = 0;
   const itemIds = [];
   const scheduleNames = new Set();
   const schedulePatterns = new Set();
   const scheduleHashes = new Set();
   const warnings = [];
-  let label = metricId;
-  let unit = "";
   items.forEach((item) => {
-    const metric = (item.normalized || []).find((candidate) => candidate.id === metricId);
-    if (metric && metric.status !== "missing") {
-      value += Number(metric.value) || 0;
-      okCount += 1;
-      label = profileMetricLabel(dimension.id, metric.id, metric.label || label);
-      unit = metric.unit || unit;
-    }
     itemIds.push(item.id);
     if (item.scheduleName) scheduleNames.add(item.scheduleName);
     if (item.schedulePattern) schedulePatterns.add(item.schedulePattern);
     if (item.scheduleHash) scheduleHashes.add(item.scheduleHash);
     warnings.push(...(item.warnings || []));
   });
-  const status = okCount === 0 ? "missing" : okCount < items.length ? "partial" : "ok";
+  const candidates = profileMetricCandidates(zone, items, dimension.id, metricId);
+  const preferred = candidates.find((candidate) => candidate.id === metricId);
+  const selected = (preferred?.completeCount === items.length ? preferred : null)
+    || candidates.find((candidate) => candidate.completeCount === items.length)
+    || candidates.sort((left, right) => (
+      right.resolvedCount - left.resolvedCount
+      || right.completeCount - left.completeCount
+      || left.order - right.order
+    ))[0]
+    || null;
+  const status = !selected ? "missing" : selected.completeCount < items.length ? "partial" : "ok";
+  const selectedMetricID = selected?.id || metricId;
+  const label = selected?.label || profileMetricLabel(dimension.id, selectedMetricID);
+  const unit = selected?.unit || "";
+  const value = selected?.value || 0;
+  const contributionSignature = profileScheduleContributionSignature(items, selectedMetricID, settings);
   return {
     dimension: dimension.id,
     label: profileDimensionLabel(dimension.id),
-    metricId,
+    metricId: selectedMetricID,
     metricLabel: label,
     unit,
     value,
-    displayValue: status === "missing" ? "N/A" : `${formatNumber(value)}${unit ? ` ${unit}` : ""}`,
+    displayValue: status === "missing" ? "—" : `${formatProfileMetricValue(value, selectedMetricID)}${unit ? ` ${unit}` : ""}`,
     status,
+    resolvedItemCount: selected?.resolvedCount || 0,
+    fallbackMetric: Boolean(selected && selected.id !== metricId),
     scheduleName: [...scheduleNames].join(" + "),
     schedulePattern: [...schedulePatterns].join(" + "),
     scheduleHash: [...scheduleHashes].join("+"),
+    contributionSignature,
     itemIds,
     itemCount: items.length,
     warnings,
   };
+}
+
+function profileScheduleContributionSignature(items, metricID, settings) {
+  const compareMode = settings?.scheduleCompareMode || "name";
+  if (compareMode === "none") return "";
+  const numeratorID = {
+    people_per_area: "count",
+    area_per_person: "count",
+    power_per_area: "total_power",
+    power_per_person: "total_power",
+    flow_per_area: "flow",
+    flow_per_exterior_area: "flow",
+    flow_per_exterior_wall_area: "flow",
+    flow_per_person: "flow",
+    ach: "flow",
+  }[metricID] || metricID;
+  const contributions = new Map();
+  items.forEach((item) => {
+    const metric = (item.normalized || []).find((candidate) => candidate.id === numeratorID);
+    const value = Number(metric?.value);
+    if (!metric || metric.status === "missing" || !Number.isFinite(value)) return;
+    const schedule = compareMode === "resolved"
+      ? (item.scheduleHash || item.scheduleName || "always")
+      : (item.scheduleName || item.scheduleHash || "always");
+    contributions.set(schedule, (contributions.get(schedule) || 0) + value);
+  });
+  const tolerance = Number(settings?.numericTolerance) || 0.001;
+  const total = [...contributions.values()].reduce((sum, value) => sum + value, 0);
+  return [...contributions.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([schedule, value]) => {
+      const fraction = Math.abs(total) > 1e-12 ? value / total : 0;
+      const bucket = Math.abs(fraction) < tolerance / 2
+        ? 0
+        : Math.round(fraction / tolerance) * tolerance;
+      return `${schedule}:${bucket.toFixed(6)}`;
+    })
+    .join("+");
+}
+
+function profileMetricCandidates(zone, items, dimension, preferredMetricID) {
+  const metricIDs = [...new Set([
+    preferredMetricID,
+    ...items.flatMap((item) => (item.normalized || []).map((metric) => metric.id)),
+  ].filter(Boolean))];
+  return metricIDs.map((id, order) => {
+    let value = 0;
+    let resolvedCount = 0;
+    let completeCount = 0;
+    let label = profileMetricLabel(dimension, id);
+    let unit = "";
+    items.forEach((item) => {
+      const metric = (item.normalized || []).find((candidate) => candidate.id === id);
+      const numericValue = Number(metric?.value);
+      if (!metric || metric.status === "missing" || !Number.isFinite(numericValue)) {
+        return;
+      }
+      value += numericValue;
+      resolvedCount += 1;
+      if (metric.status !== "partial") {
+        completeCount += 1;
+      }
+      label = profileMetricLabel(dimension, metric.id, metric.label || label);
+      unit = metric.unit || unit;
+    });
+    const aggregated = aggregateProfileMetricCandidate(zone, items, dimension, id, {
+      value, resolvedCount, completeCount, label, unit,
+    });
+    return { id, order, ...aggregated };
+  }).filter((candidate) => candidate.resolvedCount > 0);
+}
+
+function aggregateProfileMetricCandidate(zone, items, dimension, metricID, direct) {
+  const sumMetric = (sourceItems, id) => {
+    let value = 0;
+    let resolvedCount = 0;
+    let completeCount = 0;
+    sourceItems.forEach((item) => {
+      const metric = (item.normalized || []).find((candidate) => candidate.id === id);
+      const numericValue = Number(metric?.value);
+      if (!metric || metric.status === "missing" || !Number.isFinite(numericValue)) return;
+      value += numericValue;
+      resolvedCount += 1;
+      if (metric.status !== "partial") completeCount += 1;
+    });
+    return { value, resolvedCount, completeCount };
+  };
+  const itemsShareTarget = () => {
+    let target = null;
+    return items.every((item) => {
+      const key = `${item.sourceTargetKind || ""}:${item.sourceTarget || ""}`.trim().toLowerCase();
+      if (target === null) {
+        target = key;
+        return true;
+      }
+      return key === target;
+    });
+  };
+  const sourceMetricsCompatible = () => {
+    if (items.length <= 1) return true;
+    let signature = null;
+    return items.every((item) => {
+      const metric = (item.normalized || []).find((candidate) => candidate.id === metricID);
+      if (!metric || metric.status === "missing") return true;
+      const current = `${item.aggregationSignature || ""}|${item.sourceTargetKind || ""}|${item.sourceTarget || ""}`.trim().toLowerCase();
+      if (current.includes("missing") || current.includes("invalid:")) return false;
+      if (signature === null) {
+        signature = current;
+        return true;
+      }
+      return current === signature;
+    });
+  };
+  if (["flow_coefficient", "effective_leakage_area", "opening_area"].includes(metricID) && !sourceMetricsCompatible()) {
+    return { ...direct, value: 0, resolvedCount: 0, completeCount: 0 };
+  }
+  const resolvedRatio = (numeratorID, denominator, denominatorOK = true) => {
+    const numerator = sumMetric(items, numeratorID);
+    if (denominatorOK && denominator > 0 && numerator.resolvedCount === items.length) {
+      return {
+        ...direct,
+        value: numerator.value / denominator,
+        resolvedCount: items.length,
+        completeCount: numerator.completeCount,
+      };
+    }
+    return itemsShareTarget()
+      ? direct
+      : { ...direct, value: 0, resolvedCount: 0, completeCount: 0 };
+  };
+  const floorArea = Number(zone.floorArea) || 0;
+  const volume = Number(zone.volume) || 0;
+  const exteriorArea = Number(zone.exteriorArea) || 0;
+  const exteriorWallArea = Number(zone.exteriorWallArea) || 0;
+  const peopleItems = (zone.items || []).filter((item) => item.dimension === "occupancy");
+  const people = sumMetric(peopleItems, "count");
+  switch (metricID) {
+    case "people_per_area":
+      return resolvedRatio("count", floorArea);
+    case "area_per_person": {
+      const count = sumMetric(items, "count");
+      return count.resolvedCount === items.length && count.value > 0 && floorArea > 0
+        ? { ...direct, value: floorArea / count.value, resolvedCount: items.length, completeCount: count.completeCount }
+        : items.length > 1
+          ? { ...direct, value: 0, resolvedCount: 0, completeCount: 0 }
+          : direct;
+    }
+    case "power_per_area":
+      return resolvedRatio("total_power", floorArea);
+    case "power_per_person":
+      return resolvedRatio("total_power", people.value, peopleItems.length > 0 && people.resolvedCount === peopleItems.length);
+    case "flow_per_area":
+      return resolvedRatio("flow", floorArea);
+    case "flow_per_exterior_area":
+      return resolvedRatio("flow", exteriorArea);
+    case "flow_per_exterior_wall_area":
+      return resolvedRatio("flow", exteriorWallArea);
+    case "flow_per_person":
+      return resolvedRatio("flow", people.value, peopleItems.length > 0 && people.resolvedCount === peopleItems.length);
+    case "ach":
+      return resolvedRatio("flow", volume / 3600);
+    default:
+      return direct;
+  }
+}
+
+function formatProfileMetricValue(value, metricID) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return "—";
+  }
+  const maximumFractionDigits = {
+    count: 2,
+    total_power: 2,
+    area_per_person: 2,
+    power_per_area: 3,
+    power_per_person: 2,
+    people_per_area: 5,
+    flow: 6,
+    flow_per_person: 6,
+    flow_per_area: 6,
+    flow_per_exterior_area: 6,
+    flow_per_exterior_wall_area: 6,
+    flow_coefficient: 6,
+    ach: 3,
+    opening_area: 3,
+    effective_leakage_area: 2,
+  }[metricID] ?? (Math.abs(number) < 1 ? 4 : 2);
+  if (number !== 0 && Math.abs(number) < 10 ** -maximumFractionDigits) {
+    return number.toExponential(3).replace(/\.0+e/, "e").replace(/(\.\d*?)0+e/, "$1e");
+  }
+  return number.toLocaleString(undefined, { maximumFractionDigits });
 }
 
 function profileGroupKey(dimensions, settings) {
@@ -2051,13 +2368,9 @@ function profileGroupKey(dimensions, settings) {
   return dimensions
     .map((dimension) => {
       const bucket = Math.round((Number(dimension.value) || 0) / tolerance) * tolerance;
-      const schedule =
-        settings.scheduleCompareMode === "none"
-          ? ""
-          : settings.scheduleCompareMode === "resolved"
-            ? dimension.scheduleHash
-            : dimension.scheduleName;
-      return `${dimension.dimension}:${dimension.metricId}:${bucket.toFixed(6)}:${schedule}`;
+      const schedule = dimension.contributionSignature || "";
+      const metricRole = dimension.fallbackMetric ? "fallback" : "preferred";
+      return `${dimension.dimension}:${dimension.metricId}:${metricRole}:${bucket.toFixed(6)}:${dimension.status}:${dimension.resolvedItemCount || 0}/${dimension.itemCount || 0}:${schedule}`;
     })
     .sort()
     .join("|");
@@ -2071,7 +2384,6 @@ function mergeProfileSettings(defaults = {}, saved = {}) {
     groupingMetrics: { ...(defaults.groupingMetrics || {}), ...(source.groupingMetrics || {}) },
     numericTolerance: Number(source.numericTolerance) > 0 ? Number(source.numericTolerance) : defaults.numericTolerance || 0.001,
     scheduleCompareMode: source.scheduleCompareMode || defaults.scheduleCompareMode || "name",
-    metricMode: source.metricMode || defaults.metricMode || "actual",
     timeView: source.timeView || defaults.timeView || "year",
     scaleMode: source.scaleMode || defaults.scaleMode || "auto",
     applyBehavior: { ...(defaults.applyBehavior || {}), ...(source.applyBehavior || {}) },
@@ -2134,7 +2446,7 @@ function profileDimensionLabel(dimension) {
 function formatNumber(value) {
   const number = Number(value);
   if (!Number.isFinite(number)) {
-    return "N/A";
+    return "—";
   }
   return number.toLocaleString(undefined, { maximumFractionDigits: Math.abs(number) < 1 ? 4 : 2 });
 }

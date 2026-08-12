@@ -1,13 +1,13 @@
 import { t } from "./i18n.js";
 
-export const geometryModes = Object.freeze(["3d", "plan", "thermal"]);
+export const topologyModes = Object.freeze(["3d", "plan", "thermal"]);
 export const thermalTopologyMetrics = Object.freeze(["topology", "area", "ua", "exposure", "qa", "air"]);
 export const thermalTopologyScopes = Object.freeze(["building", "story", "selection", "neighbors"]);
 export const thermalTopologyLayouts = Object.freeze(["spatial", "network"]);
 
-export function normalizeGeometryMode(value) {
+export function normalizeTopologyMode(value) {
   const mode = String(value || "").toLowerCase();
-  return geometryModes.includes(mode) ? mode : "3d";
+  return topologyModes.includes(mode) ? mode : "3d";
 }
 
 export function normalizeThermalTopologyMetric(value) {
@@ -26,7 +26,7 @@ export function normalizeThermalTopologyLayout(value) {
 }
 
 export function normalizeThermalTopologyState(target = state) {
-  target.geometryMode = normalizeGeometryMode(target.geometryMode);
+  target.topologyMode = normalizeTopologyMode(target.topologyMode);
   target.thermalTopologyMetric = normalizeThermalTopologyMetric(target.thermalTopologyMetric);
   target.thermalTopologyScope = normalizeThermalTopologyScope(target.thermalTopologyScope);
   target.thermalTopologyLayout = normalizeThermalTopologyLayout(target.thermalTopologyLayout);
@@ -96,21 +96,19 @@ export const state = {
   semanticProjection: null,
   analysisStage: "idle",
   analysisDirty: {
-    summary: true,
+    metrics: true,
     profile: true,
     hvac: true,
     simulation: true,
-    diagnose: true,
-    geometry: true,
+    topology: true,
     input: true,
   },
   analysisReady: {
-    summary: false,
+    metrics: false,
     profile: false,
     hvac: false,
     simulation: true,
-    diagnose: false,
-    geometry: false,
+    topology: false,
   },
   analysisTiming: null,
   analysisStageTimings: {},
@@ -118,9 +116,8 @@ export const state = {
     tabs: {},
     last: null,
   },
-  diagnosticsReady: false,
   geometryReady: false,
-  activeResultTab: "summary",
+  activeResultTab: "metrics",
   resultTabManuallySelected: false,
   activeInputView: "semantic",
   activeProfileView: "profile",
@@ -158,12 +155,6 @@ export const state = {
   hvacApplyField: null,
   hvacOutputRequest: null,
   hvacApplyPreview: null,
-  diagnoseFixScan: null,
-  diagnoseFixSelectedRuleIDs: new Set(),
-  diagnoseFixExcludedCandidateKeys: new Set(),
-  diagnoseFixCandidateFilter: "",
-  diagnoseFixBusy: false,
-  diagnoseFixPreview: null,
   simulationEnvironment: null,
   simulationResult: null,
   simulationProgress: null,
@@ -223,7 +214,7 @@ export const state = {
   profileSelectionAnchorKey: "",
   profileSettings: null,
   profileApplyPreview: null,
-  geometryMode: "3d",
+  topologyMode: "3d",
   thermalTopologyMetric: "topology",
   thermalTopologyScope: "building",
   thermalTopologyLayout: "spatial",
@@ -235,16 +226,16 @@ export const state = {
   thermalTopologyScale: 1,
   thermalTopologyLayoutCache: new Map(),
   geometryPlanLayoutCache: new Map(),
-  selectedGeometryId: "",
-  selectedGeometryKind: "",
-  selectedGeometryStory: "all",
-  geometrySyncLocate: true,
-  geometry3DVisibility: {
+  selectedTopologyEntityId: "",
+  selectedTopologyEntityKind: "",
+  selectedTopologyStory: "all",
+  topologySyncLocate: true,
+  topology3DVisibility: {
     zones: true,
     surfaces: true,
     openings: true,
   },
-  geometryPlanVisibility: {
+  topologyPlanVisibility: {
     zones: true,
     boundaries: true,
     openings: true,
@@ -254,7 +245,6 @@ export const state = {
   reportAnalysisKey: "",
   reportAnalysisStage: "idle",
   reportAnalysisReady: null,
-  reportDiagnosticsReady: false,
   reportGeometryReady: false,
   lastAnalyzedText: "",
   lastAnalyzedKey: "",
@@ -410,50 +400,39 @@ export const elements = {
   simulationExportPurposeJSON: document.querySelector("#simulationExportPurposeJSON"),
   simulationExportPurposeHTML: document.querySelector("#simulationExportPurposeHTML"),
   simulationFiles: document.querySelector("#simulationFiles"),
-  summaryCategories: document.querySelector("#summaryCategories"),
-  diagnosticList: document.querySelector("#diagnosticList"),
-  diagnoseFixRefresh: document.querySelector("#diagnoseFixRefresh"),
-  diagnoseFixPreview: document.querySelector("#diagnoseFixPreview"),
-  diagnoseFixApply: document.querySelector("#diagnoseFixApply"),
-  diagnoseFixSaveAs: document.querySelector("#diagnoseFixSaveAs"),
-  diagnoseFixStatus: document.querySelector("#diagnoseFixStatus"),
-  diagnoseFixRules: document.querySelector("#diagnoseFixRules"),
-  diagnoseFixCandidateFilter: document.querySelector("#diagnoseFixCandidateFilter"),
-  diagnoseFixCandidateStats: document.querySelector("#diagnoseFixCandidateStats"),
-  diagnoseFixCandidates: document.querySelector("#diagnoseFixCandidates"),
-  diagnoseFixPreviewPanel: document.querySelector("#diagnoseFixPreviewPanel"),
-  exportSummaryJSONButton: document.querySelector("#exportSummaryJSONButton"),
-  exportSummaryCSVButton: document.querySelector("#exportSummaryCSVButton"),
-  geometryStats: document.querySelector("#geometryStats"),
-  geometryViewport: document.querySelector("#geometryViewport"),
-  geometryBody: document.querySelector(".geometry-body"),
-  geometryDetailsSplitter: document.querySelector("#geometryDetailsSplitter"),
-  geometryCanvasHost: document.querySelector("#geometryCanvasHost"),
-  geometryPlan: document.querySelector("#geometryPlan"),
+  metricCategories: document.querySelector("#metricCategories"),
+  exportMetricsJSONButton: document.querySelector("#exportMetricsJSONButton"),
+  exportMetricsCSVButton: document.querySelector("#exportMetricsCSVButton"),
+  topologyStats: document.querySelector("#topologyStats"),
+  topologyViewport: document.querySelector("#topologyViewport"),
+  topologyBody: document.querySelector(".topology-body"),
+  topologyDetailsSplitter: document.querySelector("#topologyDetailsSplitter"),
+  topology3DCanvasHost: document.querySelector("#topology3DCanvasHost"),
+  topologyPlan: document.querySelector("#topologyPlan"),
   thermalTopologyView: document.querySelector("#thermalTopologyView"),
   thermalTopologyGraph: document.querySelector("#thermalTopologyGraph"),
   thermalTopologyInspector: document.querySelector("#thermalTopologyInspector"),
-  geometryDetails: document.querySelector("#geometryDetails"),
-  geometryModeButtons: document.querySelectorAll("[data-geometry-mode]"),
-  geometryStoryControl: document.querySelector("#geometryStoryControl"),
-  geometryStorySelect: document.querySelector("#geometryStorySelect"),
-  geometry3DControls: document.querySelector("#geometry3DControls"),
-  geometryPlanControls: document.querySelector("#geometryPlanControls"),
+  topologyDetails: document.querySelector("#topologyDetails"),
+  topologyModeButtons: document.querySelectorAll("[data-topology-mode]"),
+  topologyStoryControl: document.querySelector("#topologyStoryControl"),
+  topologyStorySelect: document.querySelector("#topologyStorySelect"),
+  topology3DControls: document.querySelector("#topology3DControls"),
+  topologyPlanControls: document.querySelector("#topologyPlanControls"),
   thermalTopologyControls: document.querySelector("#thermalTopologyControls"),
   thermalTopologyMetric: document.querySelector("#thermalTopologyMetric"),
   thermalTopologyScope: document.querySelector("#thermalTopologyScope"),
   thermalTopologyExportJSON: document.querySelector("#thermalTopologyExportJSON"),
   thermalTopologyLayout: document.querySelector("#thermalTopologyLayout"),
   thermalTopologyShowAirCoupling: document.querySelector("#thermalTopologyShowAirCoupling"),
-  geometryFitButton: document.querySelector("#geometryFitButton"),
-  geometryExpandButton: document.querySelector("#geometryExpandButton"),
-  geometrySyncLocate: document.querySelector("#geometrySyncLocate"),
-  geometry3DShowZones: document.querySelector("#geometry3DShowZones"),
-  geometry3DShowSurfaces: document.querySelector("#geometry3DShowSurfaces"),
-  geometry3DShowOpenings: document.querySelector("#geometry3DShowOpenings"),
-  geometryPlanShowZones: document.querySelector("#geometryPlanShowZones"),
-  geometryPlanShowBoundaries: document.querySelector("#geometryPlanShowBoundaries"),
-  geometryPlanShowOpenings: document.querySelector("#geometryPlanShowOpenings"),
+  topologyFitButton: document.querySelector("#topologyFitButton"),
+  topologyExpandButton: document.querySelector("#topologyExpandButton"),
+  topologySyncLocate: document.querySelector("#topologySyncLocate"),
+  topology3DShowZones: document.querySelector("#topology3DShowZones"),
+  topology3DShowSurfaces: document.querySelector("#topology3DShowSurfaces"),
+  topology3DShowOpenings: document.querySelector("#topology3DShowOpenings"),
+  topologyPlanShowZones: document.querySelector("#topologyPlanShowZones"),
+  topologyPlanShowBoundaries: document.querySelector("#topologyPlanShowBoundaries"),
+  topologyPlanShowOpenings: document.querySelector("#topologyPlanShowOpenings"),
 };
 
 export function backend() {

@@ -59,7 +59,7 @@ func TestThermalTopologyInspectorPanelIsolationContract(t *testing.T) {
 		`Open Topology`,
 		`data-profile-open-topology`,
 		`dataset.profileOpenTopology`,
-		`state.geometryMode = "thermal"`,
+		`state.topologyMode = "thermal"`,
 		`thermalTopologySelectedEntityId`,
 		`state.report?.geometry?.topology`,
 	} {

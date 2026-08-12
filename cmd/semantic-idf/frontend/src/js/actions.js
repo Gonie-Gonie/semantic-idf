@@ -2,13 +2,12 @@ import { backend, elements, refreshStatusTitle, setStatus, state, updateTextStat
 import {
   markAllAnalysisDirty,
   markAnalysisDirty,
-  renderDiagnostics,
   renderEmpty,
   renderReport,
   renderResultTab,
   updateResultTabReadiness,
 } from "./views/analysis-views.js";
-import { preloadGeometryRenderer, renderGeometry } from "./geometry-loader.js";
+import { preloadTopologyRenderer, renderTopology } from "./topology-loader.js";
 import { t } from "./i18n.js";
 import { clearSemanticHover, clearSemanticSelection } from "./selection-controller.js";
 import { captureViewSnapshot } from "./view-history.js";
@@ -83,7 +82,7 @@ async function runQueuedStageAnalysis(api, text, analysisKey, runID, options) {
     return null;
   }
   applyOverviewResult(quick, text, { analysisKey, stage: "quick" });
-  setStatus(t("status.summaryReadyStages", {}, "Summary ready; preparing analysis stages"), "loading");
+  setStatus(t("status.metricsReadyAnalysis", {}, "Metrics ready; preparing analysis stages"), "loading");
   await nextPaint();
 
   const stages = orderedAnalysisStages(state.activeResultTab);
@@ -172,29 +171,11 @@ async function runStagedAnalysis(api, text, analysisKey, runID, options) {
     return null;
   }
   applyOverviewResult(overview, text, { analysisKey });
-  setStatus(t("status.summaryReadyDiagnostics"), "loading");
-  await nextPaint();
-
-  const diagnostics = await api.AnalyzeInputDiagnosticsText(text);
-  if (!isCurrentAnalysis(runID, text)) {
-    return null;
-  }
-  state.report = state.report || {};
-  state.report.diagnostics = diagnostics || [];
-  state.diagnosticsReady = true;
-  state.analysisReady.diagnose = true;
-  state.analysisStage = "diagnostics";
-  markAnalysisDirty("diagnose");
-  if (state.activeResultTab === "diagnose") {
-    renderDiagnostics();
-  }
-  captureInstalledReportReadiness();
-  dispatchAnalysisLifecycleEvent("idfAnalyzer:analysisStageReady", { stage: "diagnostics" });
-  setStatus(t("status.diagnosticsReadyGeometry"), "loading");
+  setStatus(t("status.preparingTopology", {}, "Preparing topology"), "loading");
   await nextPaint();
 
   const geometryPromise = api.AnalyzeInputGeometryText(text);
-  const rendererPromise = preloadGeometryRenderer();
+  const rendererPromise = preloadTopologyRenderer();
   const geometry = await geometryPromise;
   await rendererPromise;
   if (!isCurrentAnalysis(runID, text)) {
@@ -203,11 +184,11 @@ async function runStagedAnalysis(api, text, analysisKey, runID, options) {
   state.report = state.report || {};
   state.report.geometry = geometry || {};
   state.geometryReady = true;
-  state.analysisReady.geometry = true;
+  state.analysisReady.topology = true;
   state.analysisStage = "complete";
-  markAnalysisDirty("geometry");
-  if (state.activeResultTab === "geometry") {
-    renderGeometry(state.report.geometry);
+  markAnalysisDirty("topology");
+  if (state.activeResultTab === "topology") {
+    renderTopology(state.report.geometry);
   }
   captureInstalledReportReadiness();
   scheduleIdlePreRender();
@@ -231,17 +212,11 @@ function applyStageResult(stage, result) {
       state.analysisReady.hvac = true;
       markAnalysisDirty("hvac");
       break;
-    case "diagnostics":
-      state.report.diagnostics = report.diagnostics || [];
-      state.diagnosticsReady = true;
-      state.analysisReady.diagnose = true;
-      markAnalysisDirty("diagnose");
-      break;
     case "geometry":
       state.report.geometry = report.geometry || {};
       state.geometryReady = true;
-      state.analysisReady.geometry = true;
-      markAnalysisDirty("geometry");
+      state.analysisReady.topology = true;
+      markAnalysisDirty("topology");
       break;
     default:
       return;
@@ -275,7 +250,7 @@ export function prioritizeAnalysisStageForTab(tab = state.activeResultTab) {
 }
 
 function orderedAnalysisStages(activeTab) {
-  const stages = ["profile", "hvac", "diagnostics", "geometry"];
+  const stages = ["profile", "hvac", "geometry"];
   const pendingPriorityTab = state.pendingAnalysisPriorityTab || "";
   state.pendingAnalysisPriorityTab = "";
   const priority = resultTabStage(pendingPriorityTab) || resultTabStage(activeTab);
@@ -293,8 +268,7 @@ function resultTabStage(tab) {
   const stagesByTab = {
     profile: "profile",
     hvac: "hvac",
-    diagnose: "diagnostics",
-    geometry: "geometry",
+    topology: "geometry",
   };
   return stagesByTab[tab] || "";
 }
@@ -305,10 +279,8 @@ function stageStatusMessage(stage) {
       return t("status.buildingProfile", {}, "Building profile graphs");
     case "hvac":
       return t("status.resolvingHVAC", {}, "Resolving HVAC service paths");
-    case "diagnostics":
-      return t("status.checkingDiagnostics", {}, "Checking diagnostics");
     case "geometry":
-      return t("status.preparingGeometry", {}, "Preparing geometry");
+      return t("status.preparingTopology", {}, "Preparing topology");
     default:
       return t("status.analyzingInput");
   }
@@ -334,7 +306,7 @@ function isCompleteAnalysisResult(result) {
     return true;
   }
   const report = result?.report;
-  return Array.isArray(report?.diagnostics) && Boolean(report?.geometry);
+  return Boolean(report?.geometry);
 }
 
 function applyOverviewResult(result, text, { complete = false, analysisKey = "" } = {}) {
@@ -354,7 +326,6 @@ function applyOverviewResult(result, text, { complete = false, analysisKey = "" 
   state.analysisStageTimings = {};
   recordAnalysisTiming(result.timing);
   state.analysisStage = complete ? "complete" : "overview";
-  state.diagnosticsReady = complete;
   state.geometryReady = complete;
   setAnalysisReadiness(complete);
   captureInstalledReportReadiness();
@@ -368,21 +339,19 @@ function hasQueuedStageAnalysisAPI(api) {
 }
 
 function setAnalysisReadiness(complete) {
-  state.analysisReady.summary = Boolean(state.report?.summary);
+  state.analysisReady.metrics = Boolean(state.report?.metrics);
   state.analysisReady.profile = complete;
   state.analysisReady.hvac = complete;
-  state.analysisReady.diagnose = complete;
-  state.analysisReady.geometry = complete;
+  state.analysisReady.topology = complete;
   state.analysisReady.simulation = true;
   updateResultTabReadiness();
 }
 
 function resetAnalysisReadiness() {
-  state.analysisReady.summary = false;
+  state.analysisReady.metrics = false;
   state.analysisReady.profile = false;
   state.analysisReady.hvac = false;
-  state.analysisReady.diagnose = false;
-  state.analysisReady.geometry = false;
+  state.analysisReady.topology = false;
   state.analysisReady.simulation = true;
   updateResultTabReadiness();
 }
@@ -390,7 +359,6 @@ function resetAnalysisReadiness() {
 function hasStagedAnalysisAPI(api) {
   return (
     typeof api.AnalyzeInputOverviewText === "function" &&
-    typeof api.AnalyzeInputDiagnosticsText === "function" &&
     typeof api.AnalyzeInputGeometryText === "function"
   );
 }
@@ -408,7 +376,6 @@ export function scheduleAnalyzeAfterPaint(options = {}) {
   state.analysisTiming = null;
   state.analysisStageTimings = {};
   resetAnalysisReadiness();
-  state.diagnosticsReady = false;
   state.geometryReady = false;
   updateDocumentActions();
   setStatus(options.queuedMessage || t("status.analysisQueued"), "muted");
@@ -455,7 +422,6 @@ export function registerLoadedDocument(text, { path = "", filename = "" } = {}) 
   state.reportAnalysisKey = "";
   state.reportAnalysisStage = "idle";
   state.reportAnalysisReady = null;
-  state.reportDiagnosticsReady = false;
   state.reportGeometryReady = false;
   state.analysisKey = "";
   resetAnalysisReadiness();
@@ -475,7 +441,6 @@ export function registerLoadedDocument(text, { path = "", filename = "" } = {}) 
   state.pendingAnalysisPriorityTab = "";
   state.semanticExpandedSectionIds = new Set(["project"]);
   state.analysisStage = "idle";
-  state.diagnosticsReady = false;
   state.geometryReady = false;
   renderEmpty();
   updateDocumentActions();
@@ -496,7 +461,6 @@ export function markDocumentChanged() {
   state.analysisStageTimings = {};
   state.renderTiming = { tabs: {}, last: null };
   resetAnalysisReadiness();
-  state.diagnosticsReady = false;
   state.geometryReady = false;
   updateDocumentActions();
   window.dispatchEvent(new Event("idfAnalyzer:documentChanged"));
@@ -593,23 +557,23 @@ export async function revertToLoadedDocument() {
   });
 }
 
-export async function exportSummary(format) {
+export async function exportMetrics(format) {
   const api = backend();
-  if (!api || typeof api.ExportSummaryText !== "function") {
+  if (!api || typeof api.ExportMetricsText !== "function") {
     setStatus(t("status.backendUnavailable"), "warn");
     return;
   }
 
   try {
-    const result = await api.ExportSummaryText(elements.idfInput.value, format);
+    const result = await api.ExportMetricsText(elements.idfInput.value, format);
     const blob = new Blob([result.text], { type: result.mime || "text/plain" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = result.filename || `summary.${format}`;
+    link.download = result.filename || `metrics.${format}`;
     link.click();
     URL.revokeObjectURL(url);
-    setStatus(t("status.summaryExported", { format: String(format).toUpperCase() }), "ok");
+    setStatus(t("status.metricsExported", { format: String(format).toUpperCase() }), "ok");
   } catch (error) {
     setStatus(error.message || String(error), "error");
   }
@@ -619,9 +583,9 @@ export function openGuide() {
   window.location.assign("./guide.html");
 }
 
-export async function openBatch() {
+export async function openTools() {
   await saveWorkspaceSnapshot();
-  window.location.assign("./batch.html");
+  window.location.assign("./tools.html");
 }
 
 export async function openSettings() {
@@ -645,10 +609,9 @@ export async function saveWorkspaceSnapshot() {
     loadedText: state.loadedText || "",
     savedText: state.savedText || "",
     analysisKey,
-    activeResultTab: state.activeResultTab || "summary",
+    activeResultTab: state.activeResultTab || "metrics",
     activeInputView: state.activeInputView || "semantic",
     analysisStage: state.analysisStage || "idle",
-    diagnosticsReady: Boolean(state.diagnosticsReady),
     geometryReady: Boolean(state.geometryReady),
     globalSelection: viewSnapshot.globalSelection,
     semanticOccurrenceId: viewSnapshot.semanticCurrentOccurrenceId || viewSnapshot.globalSelection?.occurrenceId || "",
@@ -692,7 +655,6 @@ export function applyCachedAnalysisResult(result, snapshot = {}) {
   recordAnalysisTiming(result.timing);
   const complete = isCompleteAnalysisResult(result);
   state.analysisStage = complete ? "complete" : "overview";
-  state.diagnosticsReady = complete;
   state.geometryReady = complete;
   setAnalysisReadiness(complete);
   captureInstalledReportReadiness();
@@ -716,7 +678,6 @@ function dispatchAnalysisLifecycleEvent(name, detail = {}) {
 function captureInstalledReportReadiness() {
   state.reportAnalysisStage = state.analysisStage || "idle";
   state.reportAnalysisReady = { ...(state.analysisReady || {}) };
-  state.reportDiagnosticsReady = Boolean(state.diagnosticsReady);
   state.reportGeometryReady = Boolean(state.geometryReady);
 }
 
@@ -733,7 +694,6 @@ function restoreInstalledReportIfCurrent() {
     ...(state.analysisReady || {}),
     ...(state.reportAnalysisReady || {}),
   };
-  state.diagnosticsReady = Boolean(state.reportDiagnosticsReady);
   state.geometryReady = Boolean(state.reportGeometryReady);
   updateResultTabReadiness();
   return true;
@@ -813,7 +773,7 @@ function cancelIdlePreRender() {
 }
 
 function nextDirtyInactiveTab() {
-  const tabs = ["summary", "profile", "hvac", "diagnose"];
+  const tabs = ["metrics", "profile", "hvac"];
   return tabs.find((tab) => tab !== state.activeResultTab && state.analysisDirty?.[tab]);
 }
 

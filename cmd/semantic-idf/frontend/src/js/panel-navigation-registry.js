@@ -1,10 +1,9 @@
 export const PANEL_NAVIGATION_VIEW_IDS = Object.freeze([
-  "summary",
+  "metrics",
   "profile",
   "hvac",
   "simulation",
-  "diagnose",
-  "geometry",
+  "topology",
   "input-semantic",
   "input-text",
   "input-json",

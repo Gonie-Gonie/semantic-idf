@@ -6,7 +6,7 @@ import (
 )
 
 func TestThermalFixture250ExteriorEnclosure(t *testing.T) {
-	document, err := Parse(summaryFixtureIDF)
+	document, err := Parse(metricsFixtureIDF)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -270,7 +270,7 @@ func TestThermalFixture257AirCouplingFamilies(t *testing.T) {
 }
 
 func TestThermalFixture258EnclosureIntegrityVariants(t *testing.T) {
-	document, err := Parse(summaryFixtureIDF)
+	document, err := Parse(metricsFixtureIDF)
 	if err != nil {
 		t.Fatal(err)
 	}

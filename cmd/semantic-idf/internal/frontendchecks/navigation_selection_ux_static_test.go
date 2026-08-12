@@ -26,7 +26,7 @@ func TestResultPanelPrimarySelectionUsesExactOccurrenceOrTarget(t *testing.T) {
 	}
 
 	// Entity equality alone denotes semantic context, not an exact visual
-	// primary. This was the branch that outlined a Summary category and every
+	// primary. This was the branch that outlined a Metrics category and every
 	// one of its rows at the same time.
 	if strings.Contains(refresh, "(selectedEntityId && itemEntityId === selectedEntityId) ||") {
 		t.Fatal("same-entity result items must not all become primary selections")

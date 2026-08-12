@@ -18,7 +18,7 @@ panel-specific click or jump model.
 
 ### Right Analysis Panels
 
-- Summary, Profile, HVAC, Simulation, Diagnose, and Geometry are
+- Metrics, Profile, HVAC, Simulation, and Topology are
   specialized lenses over the same semantic entities.
 - A target selected in a panel must be able to return to the most appropriate
   occurrence in Semantic Text.
@@ -136,9 +136,9 @@ it must not duplicate this table as a large object-type switch.
 
 | Semantic context | Preferred view | Canonical target |
 |---|---|---|
-| Building or site summary | Summary | Summary section |
-| Zone or space geometry | Geometry | Zone or space ID |
-| Surface or fenestration | Geometry | Geometry object ID |
+| Building or site metrics | Metrics | Metric section |
+| Zone or space geometry | Topology | Zone or space ID |
+| Surface or fenestration | Topology | Geometry object ID |
 | Zone profile dimension | Profile | Zone plus dimension |
 | Profile group | Profile | Group ID |
 | Schedule definition or use | Profile | Schedule identity |
@@ -148,13 +148,14 @@ it must not duplicate this table as a large object-type switch.
 | Supporting coupling | HVAC | Coupling ID revealed in Zone Services or its connected loop |
 | Output request | Input source | Source object or field anchor |
 | Simulation-purpose output source | Simulation or Input source | Result/source ID or source anchor |
-| Diagnostic occurrence | Diagnose | Diagnostic ID |
+| Diagnostic occurrence | Tools / Diagnose | Diagnostic ID |
 | Raw or source-only occurrence | Input source | Source anchor |
 
-A zone name is not forced to one panel: it advertises every supported
-Geometry, Profile, HVAC, and Diagnose target. Occurrences beneath
+A zone name is not forced to one main result panel: it advertises every
+supported Topology, Profile, and HVAC target. Tools / Diagnose resolves
+diagnostics independently from its current document snapshot. Occurrences beneath
 `zones/<zone>/profiles`, `zones/<zone>/services`, and
-`zones/<zone>/geometry` prefer Profile, HVAC, and Geometry respectively. When
+`zones/<zone>/geometry` prefer Profile, HVAC, and Topology respectively. When
 multiple valid targets or occurrences remain, the UI offers a chooser rather
 than inventing a relationship or silently choosing an unrelated context.
 
@@ -166,7 +167,7 @@ falls back to the Zone Services root. This keeps source navigation intact while
 the visible HVAC navigator remains organized around zone relationships and
 AirLoopHVAC, PlantLoop, and Other loop diagrams.
 
-Profile and Geometry/Topology do not advertise each other as direct related
+Profile and Topology do not advertise each other as direct related
 destinations in result-panel menus or the workspace link bar. Both remain
 independently reachable from Semantic Text and their own top-level tabs.
 
@@ -211,9 +212,9 @@ of these baseline problems from returning:
    `data-jump-object-index` and could not choose a contextual semantic
    occurrence.
 4. View history previously stored input/result tabs and source object/scroll
-   but not Profile, HVAC, Geometry, the former Output panel, or Simulation
+   but not Profile, HVAC, Topology, the former Output panel, or Simulation
    context.
-5. HVAC, Profile, Geometry, and Simulation previously held rich independent
+5. HVAC, Profile, Topology, and Simulation previously held rich independent
    selection state without a common global entity selection.
 6. Basic Semantic Text previously hard-truncated at 250 lines, so later
    occurrences could be absent from the DOM and unreachable.

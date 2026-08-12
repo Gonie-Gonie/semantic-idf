@@ -4,7 +4,7 @@ import { bundledAppInfo } from "./app-info.js";
 import { getSemanticNavigationCache } from "./semantic-navigation-cache.js";
 import { isProfileTopologyLink } from "./selection-controller.js";
 
-const targetOrder = ["input-semantic", "hvac", "profile", "geometry", "simulation", "diagnose", "summary", "source"];
+const targetOrder = ["input-semantic", "hvac", "profile", "topology", "simulation", "metrics", "source"];
 let callbacks = {};
 let initialized = false;
 
@@ -156,7 +156,7 @@ function labelForOriginTargetElement(originView, targetID) {
   }
   const explicit = readableLabel(
     target.dataset.navigationLabel || target.getAttribute("aria-label") ||
-    target.querySelector(".summary-name strong")?.textContent ||
+    target.querySelector(".metrics-name strong")?.textContent ||
     target.querySelector("[data-navigation-label]")?.dataset.navigationLabel ||
     target.querySelector("[data-navigation-label]")?.textContent ||
     target.querySelector(".diagnostic-title, .diagnostic-code, .output-request-name")?.textContent ||
@@ -192,6 +192,7 @@ function availableTargets(selection) {
     for (const target of occurrence?.viewTargets || []) {
       if (
         target?.view &&
+        target.view !== "diagnose" &&
         !isProfileTopologyLink(state.activeResultTab, target.view) &&
         !isProfileTopologyLink(selection.originView, target.view)
       ) {

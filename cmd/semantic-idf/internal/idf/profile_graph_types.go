@@ -1,25 +1,6 @@
 package idf
 
-type ProfileGraphDeckState struct {
-	ScopeType              string   `json:"scopeType"`
-	SelectedGroupIDs       []string `json:"selectedGroupIds,omitempty"`
-	SelectedZoneNames      []string `json:"selectedZoneNames,omitempty"`
-	SelectedScheduleHashes []string `json:"selectedScheduleHashes,omitempty"`
-	SelectedDimensions     []string `json:"selectedDimensions,omitempty"`
-	MetricMode             string   `json:"metricMode"`
-	TimeView               string   `json:"timeView"`
-	CompareMode            string   `json:"compareMode"`
-	ScaleMode              string   `json:"scaleMode"`
-	TimeRange              []int    `json:"timeRange,omitempty"`
-	PinnedSeriesIDs        []string `json:"pinnedSeriesIds,omitempty"`
-}
-
 type ProfileGraphDataset struct {
-	DefaultDeck         ProfileGraphDeckState       `json:"defaultDeck"`
-	MetricModes         []string                    `json:"metricModes"`
-	TimeViews           []string                    `json:"timeViews"`
-	CompareModes        []string                    `json:"compareModes"`
-	ScaleModes          []string                    `json:"scaleModes"`
 	Series              []ProfileGraphSeries        `json:"series"`
 	ScheduleClusters    []ProfileScheduleCluster    `json:"scheduleClusters,omitempty"`
 	Outliers            []ProfileOutlierHint        `json:"outliers,omitempty"`

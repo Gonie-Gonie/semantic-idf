@@ -13,23 +13,23 @@ import (
 )
 
 const (
-	summaryStatusOK      = "ok"
-	summaryStatusPartial = "partial"
-	summaryStatusMissing = "missing"
+	metricStatusOK      = "ok"
+	metricStatusPartial = "partial"
+	metricStatusMissing = "missing"
 )
 
-type SummaryReport struct {
-	Categories  []SummaryCategory `json:"categories"`
-	MetricCount int               `json:"metricCount"`
+type MetricsReport struct {
+	Categories  []MetricCategory `json:"categories"`
+	MetricCount int              `json:"metricCount"`
 }
 
-type SummaryCategory struct {
-	ID      string          `json:"id"`
-	Name    string          `json:"name"`
-	Metrics []SummaryMetric `json:"metrics"`
+type MetricCategory struct {
+	ID      string   `json:"id"`
+	Name    string   `json:"name"`
+	Metrics []Metric `json:"metrics"`
 }
 
-type SummaryMetric struct {
+type Metric struct {
 	ID           string   `json:"id"`
 	CategoryID   string   `json:"categoryId"`
 	Category     string   `json:"category"`
@@ -45,7 +45,7 @@ type SummaryMetric struct {
 	Evidence     string   `json:"evidence,omitempty"`
 }
 
-type SummaryDefinition struct {
+type MetricDefinition struct {
 	ID          string `json:"id"`
 	CategoryID  string `json:"categoryId"`
 	Category    string `json:"category"`
@@ -58,7 +58,7 @@ type SummaryDefinition struct {
 	MissingData string `json:"missingData"`
 }
 
-type SummaryGuide struct {
+type MetricGuide struct {
 	ID          string `json:"id"`
 	Category    string `json:"category"`
 	Name        string `json:"name"`
@@ -69,16 +69,16 @@ type SummaryGuide struct {
 	MissingData string `json:"missingData"`
 }
 
-type SummaryAnalysisOptions struct {
+type MetricsAnalysisOptions struct {
 	IncludeHeavyReadiness bool
 }
 
-type summaryCategoryDef struct {
+type metricCategoryDef struct {
 	id   string
 	name string
 }
 
-var summaryCategories = []summaryCategoryDef{
+var metricCategories = []metricCategoryDef{
 	{id: "model_inventory", name: "Model & Inventory"},
 	{id: "geometry_areas", name: "Geometry & Areas"},
 	{id: "envelope_fenestration", name: "Envelope & Fenestration"},
@@ -87,10 +87,10 @@ var summaryCategories = []summaryCategoryDef{
 	{id: "hvac_conditioning", name: "HVAC & Conditioning"},
 }
 
-var summaryDefinitions = []SummaryDefinition{
-	def("energyplus_version", "model_inventory", "EnergyPlus version", "", 0, "Version / Version Identifier.", "Reads the version identifier directly from the Version object.", "Accepted versions are checked elsewhere; this metric only reports the value found in the model.", "N/A when no Version object or version identifier is present."),
-	def("building_name", "model_inventory", "Building name", "", 0, "Building / Name.", "Reads the Building object name field.", "The first Building object is used when more than one is present.", "N/A when no Building name is present."),
-	def("building_north_axis_deg", "model_inventory", "Building north axis", "deg", 1, "Building / North Axis.", "Reads the numeric north-axis rotation.", "This rotation is added to calculated surface azimuths for orientation bins.", "N/A when the field is blank or nonnumeric."),
+var metricDefinitions = []MetricDefinition{
+	def("energyplus_version", "model_inventory", "EnergyPlus version", "", 0, "Version / Version Identifier.", "Reads the version identifier directly from the Version object.", "Accepted versions are checked elsewhere; this metric only reports the value found in the model.", "Shown as — when no Version object or version identifier is present."),
+	def("building_name", "model_inventory", "Building name", "", 0, "Building / Name.", "Reads the Building object name field.", "The first Building object is used when more than one is present.", "Shown as — when no Building name is present."),
+	def("building_north_axis_deg", "model_inventory", "Building north axis", "deg", 1, "Building / North Axis.", "Reads the numeric north-axis rotation.", "This rotation is added to calculated surface azimuths for orientation bins.", "Shown as — when the field is blank or nonnumeric."),
 	def("object_count", "model_inventory", "Object count", "", 0, "Parsed IDF or epJSON object list.", "Counts all parsed objects.", "No filtering is applied.", "Always available; zero means the input contains no parsed objects."),
 	def("object_type_count", "model_inventory", "Object type count", "", 0, "Parsed IDF or epJSON object list.", "Counts distinct object type names.", "Type names are compared exactly after parsing.", "Always available; zero means the input contains no parsed object types."),
 	def("zone_count", "model_inventory", "Zone count", "", 0, "Zone objects.", "Counts Zone objects with or without names.", "Spaces are not counted as zones.", "Always available; zero means no Zone objects were found."),
@@ -99,47 +99,47 @@ var summaryDefinitions = []SummaryDefinition{
 	def("construction_count", "model_inventory", "Construction count", "", 0, "Objects whose type starts with Construction.", "Counts construction objects.", "All Construction:* variants are included.", "Always available; zero means no construction objects were found."),
 	def("material_count", "model_inventory", "Material count", "", 0, "Material* and WindowMaterial* objects.", "Counts opaque and window material objects.", "Construction objects are excluded.", "Always available; zero means no material objects were found."),
 
-	def("gross_floor_area_m2", "geometry_areas", "Gross floor area", "m2", 2, "Zone floor fields and floor surfaces.", "Sums zone floor area fields when present; otherwise sums Floor surface polygon or rectangle areas.", "Zone multipliers are applied. Surface-derived floor area includes all floor surfaces assigned to zones.", "N/A when no numeric zone floor area or floor surface area can be computed."),
-	def("conditioned_floor_area_m2", "geometry_areas", "Conditioned floor area", "m2", 2, "Gross floor area and conditioned-zone detection.", "Sums floor area for zones referenced by ZoneHVAC, ZoneHVAC:EquipmentConnections, or ZoneControl:Thermostat objects.", "Zone multipliers are applied. Only zones with known floor area can contribute.", "N/A when conditioned zones or floor areas cannot be identified."),
-	def("unconditioned_floor_area_m2", "geometry_areas", "Unconditioned floor area", "m2", 2, "Gross and conditioned floor area.", "Subtracts conditioned floor area from gross floor area.", "The value is clamped at zero to avoid negative results from partial data.", "N/A when gross or conditioned floor area is unavailable."),
-	def("footprint_area_m2", "geometry_areas", "Footprint area", "m2", 2, "Lowest floor surfaces.", "Sums ground-contact floor surfaces, or the lowest horizontal floor surfaces when ground boundary data is absent.", "Zone multipliers are applied to surface areas. Bounding-box dimensions are reported separately and are not used as footprint area.", "N/A when no floor surface area can be computed."),
-	def("bounding_box_area_m2", "geometry_areas", "Bounding box area", "m2", 2, "Detailed surface vertices.", "Calculates the XY bounding-box area from all detailed vertices.", "This is a coarse geometric extent, not a true footprint polygon.", "N/A when detailed vertex extents are unavailable."),
-	def("total_zone_volume_m3", "geometry_areas", "Total zone volume", "m3", 2, "Zone / Volume and surface-derived zone heights.", "Sums numeric Zone Volume fields; when missing, estimates volume from zone floor area times zone height.", "Zone multipliers are applied. Estimated values are marked partial.", "N/A when neither declared nor estimated zone volume is available."),
-	def("average_floor_height_m", "geometry_areas", "Average floor height", "m", 2, "Zone / Ceiling Height and detailed surface extents.", "Averages numeric zone ceiling heights; falls back to max-min vertex Z height by zone.", "Each zone contributes once; autocalculate fields require geometry fallback.", "N/A when no zone height can be read or inferred."),
-	def("building_long_side_m", "geometry_areas", "Building long side", "m", 2, "Detailed surface vertices.", "Uses the larger of the model XY bounding-box width and depth.", "Only detailed vertices are considered.", "N/A when detailed vertex coordinates are unavailable."),
-	def("building_short_side_m", "geometry_areas", "Building short side", "m", 2, "Detailed surface vertices.", "Uses the smaller nonzero side of the model XY bounding box.", "Only detailed vertices are considered.", "N/A when detailed vertex coordinates are unavailable or one side is zero."),
-	def("footprint_aspect_ratio", "geometry_areas", "Footprint aspect ratio", "", 3, "Detailed surface vertices.", "Divides building long side by building short side.", "A value of 1.0 indicates a square bounding footprint.", "N/A when either side length is unavailable."),
-	def("envelope_area_m2", "geometry_areas", "Gross envelope area", "m2", 2, "Exterior walls, roofs, and ground floors.", "Sums exterior opaque wall area, roof area, and ground-contact floor area.", "Fenestration is not subtracted from opaque base surfaces; see net opaque envelope area for the subtracted value.", "N/A when no envelope surface area can be computed."),
-	def("net_opaque_envelope_area_m2", "geometry_areas", "Net opaque envelope area", "m2", 2, "Gross envelope area and fenestration area.", "Subtracts recognized window and opaque door area from gross envelope area.", "This is an analyzer area balance and depends on resolved fenestration geometry.", "N/A when gross envelope area cannot be computed."),
-	def("envelope_area_to_volume_ratio", "geometry_areas", "Envelope area to volume ratio", "1/m", 3, "Envelope area and total zone volume.", "Divides envelope area by total zone volume.", "Uses partial volume estimates when declared volumes are incomplete.", "N/A when envelope area or volume is unavailable."),
-	def("floor_area_to_volume_ratio", "geometry_areas", "Floor area to volume ratio", "1/m", 3, "Gross floor area and total zone volume.", "Divides gross floor area by total zone volume.", "Uses partial volume estimates when declared volumes are incomplete.", "N/A when floor area or volume is unavailable."),
+	def("gross_floor_area_m2", "geometry_areas", "Gross floor area", "m2", 2, "Zone floor fields and floor surfaces.", "Sums zone floor area fields when present; otherwise sums Floor surface polygon or rectangle areas.", "Zone multipliers are applied. Surface-derived floor area includes all floor surfaces assigned to zones.", "Shown as — when no numeric zone floor area or floor surface area can be computed."),
+	def("conditioned_floor_area_m2", "geometry_areas", "Conditioned floor area", "m2", 2, "Gross floor area and conditioned-zone detection.", "Sums floor area for zones referenced by ZoneHVAC, ZoneHVAC:EquipmentConnections, or ZoneControl:Thermostat objects.", "Zone multipliers are applied. Only zones with known floor area can contribute.", "Shown as — when conditioned zones or floor areas cannot be identified."),
+	def("unconditioned_floor_area_m2", "geometry_areas", "Unconditioned floor area", "m2", 2, "Gross and conditioned floor area.", "Subtracts conditioned floor area from gross floor area.", "The value is clamped at zero to avoid negative results from partial data.", "Shown as — when gross or conditioned floor area is unavailable."),
+	def("footprint_area_m2", "geometry_areas", "Footprint area", "m2", 2, "Lowest floor surfaces.", "Sums ground-contact floor surfaces, or the lowest horizontal floor surfaces when ground boundary data is absent.", "Zone multipliers are applied to surface areas. Bounding-box dimensions are reported separately and are not used as footprint area.", "Shown as — when no floor surface area can be computed."),
+	def("bounding_box_area_m2", "geometry_areas", "Bounding box area", "m2", 2, "Detailed surface vertices.", "Calculates the XY bounding-box area from all detailed vertices.", "This is a coarse geometric extent, not a true footprint polygon.", "Shown as — when detailed vertex extents are unavailable."),
+	def("total_zone_volume_m3", "geometry_areas", "Total zone volume", "m3", 2, "Zone and Space volume fields, floor areas, and resolved heights.", "Uses numeric Zone Volume first, otherwise resolves the independent Zone volume from zone floor area and height; resolved Space volumes are a fallback only when Zone dimensions are unavailable.", "Zone multipliers are applied exactly once. A declared Space Volume does not override its parent Zone volume. Estimated or incompletely resolved values are marked partial.", "Shown as — when neither declared nor estimated zone volume is available."),
+	def("average_floor_height_m", "geometry_areas", "Average floor height", "m", 2, "Zone / Ceiling Height and detailed surface extents.", "Averages numeric zone ceiling heights; falls back to max-min vertex Z height by zone.", "Each zone contributes once; autocalculate fields require geometry fallback.", "Shown as — when no zone height can be read or inferred."),
+	def("building_long_side_m", "geometry_areas", "Building long side", "m", 2, "Detailed surface vertices.", "Uses the larger of the model XY bounding-box width and depth.", "Only detailed vertices are considered.", "Shown as — when detailed vertex coordinates are unavailable."),
+	def("building_short_side_m", "geometry_areas", "Building short side", "m", 2, "Detailed surface vertices.", "Uses the smaller nonzero side of the model XY bounding box.", "Only detailed vertices are considered.", "Shown as — when detailed vertex coordinates are unavailable or one side is zero."),
+	def("footprint_aspect_ratio", "geometry_areas", "Footprint aspect ratio", "", 3, "Detailed surface vertices.", "Divides building long side by building short side.", "A value of 1.0 indicates a square bounding footprint.", "Shown as — when either side length is unavailable."),
+	def("envelope_area_m2", "geometry_areas", "Gross envelope area", "m2", 2, "Exterior walls, roofs, and ground floors.", "Sums exterior opaque wall area, roof area, and ground-contact floor area.", "Fenestration is not subtracted from opaque base surfaces; see net opaque envelope area for the subtracted value.", "Shown as — when no envelope surface area can be computed."),
+	def("net_opaque_envelope_area_m2", "geometry_areas", "Net opaque envelope area", "m2", 2, "Gross envelope area and fenestration area.", "Subtracts recognized window and opaque door area from gross envelope area.", "This is an analyzer area balance and depends on resolved fenestration geometry.", "Shown as — when gross envelope area cannot be computed."),
+	def("envelope_area_to_volume_ratio", "geometry_areas", "Envelope area to volume ratio", "1/m", 3, "Envelope area and total zone volume.", "Divides envelope area by total zone volume.", "Uses partial volume estimates when declared volumes are incomplete.", "Shown as — when envelope area or volume is unavailable."),
+	def("floor_area_to_volume_ratio", "geometry_areas", "Floor area to volume ratio", "1/m", 3, "Gross floor area and total zone volume.", "Divides gross floor area by total zone volume.", "Uses partial volume estimates when declared volumes are incomplete.", "Shown as — when floor area or volume is unavailable."),
 
-	def("exterior_wall_area_m2", "envelope_fenestration", "Exterior wall area", "m2", 2, "Building wall surfaces with exterior boundary conditions.", "Sums Wall surfaces exposed to Outdoors or exterior wall object types.", "Zone multipliers are applied. Wall area is gross wall area.", "N/A when no exterior wall area can be computed."),
-	def("roof_area_m2", "envelope_fenestration", "Roof area", "m2", 2, "Roof and RoofCeiling surfaces.", "Sums exterior roof or roof/ceiling surface area.", "Zone multipliers are applied.", "N/A when no roof surface area can be computed."),
-	def("ground_floor_area_m2", "envelope_fenestration", "Ground floor area", "m2", 2, "Floor surfaces with Ground boundary or lowest floor fallback.", "Sums floor surfaces adjacent to ground; uses lowest floor surfaces when boundary data is absent.", "Zone multipliers are applied.", "N/A when no ground or lowest floor area can be computed."),
-	def("window_area_m2", "envelope_fenestration", "Window area", "m2", 2, "FenestrationSurface:Detailed and simple Window objects.", "Sums fenestration objects whose surface type indicates window or glass door.", "Fenestration multipliers and base-zone multipliers are applied.", "N/A when no window area can be computed."),
-	def("door_area_m2", "envelope_fenestration", "Door area", "m2", 2, "Fenestration and Door objects.", "Sums non-glazed door area from detailed or rectangular geometry.", "Fenestration multipliers and base-zone multipliers are applied.", "N/A when no door area can be computed."),
-	def("total_wwr_percent", "envelope_fenestration", "Total WWR", "%", 1, "Exterior wall area and window area.", "Divides total window area by gross exterior wall area.", "Glass doors count as window area. Wall area is gross and not net of windows.", "N/A when wall area is zero or unavailable."),
-	def("north_wwr_percent", "envelope_fenestration", "North WWR", "%", 1, "Surface azimuth and WWR inputs.", "Divides north-facing window area by north-facing exterior wall area.", "North is [315,360) plus [0,45) degrees after building and zone rotations.", "N/A when no north-facing exterior wall area is available."),
-	def("east_wwr_percent", "envelope_fenestration", "East WWR", "%", 1, "Surface azimuth and WWR inputs.", "Divides east-facing window area by east-facing exterior wall area.", "East is [45,135) degrees after building and zone rotations.", "N/A when no east-facing exterior wall area is available."),
-	def("south_wwr_percent", "envelope_fenestration", "South WWR", "%", 1, "Surface azimuth and WWR inputs.", "Divides south-facing window area by south-facing exterior wall area.", "South is [135,225) degrees after building and zone rotations.", "N/A when no south-facing exterior wall area is available."),
-	def("west_wwr_percent", "envelope_fenestration", "West WWR", "%", 1, "Surface azimuth and WWR inputs.", "Divides west-facing window area by west-facing exterior wall area.", "West is [225,315) degrees after building and zone rotations.", "N/A when no west-facing exterior wall area is available."),
-	def("skylight_roof_ratio_percent", "envelope_fenestration", "Skylight roof ratio", "%", 1, "Window area on roof base surfaces and roof area.", "Divides skylight window area by roof area.", "A fenestration object is treated as skylight when its base surface is a roof.", "N/A when roof area is zero or no skylight area can be identified."),
+	def("exterior_wall_area_m2", "envelope_fenestration", "Exterior wall area", "m2", 2, "Building wall surfaces with exterior boundary conditions.", "Sums Wall surfaces exposed to Outdoors or exterior wall object types.", "Zone multipliers are applied. Wall area is gross wall area.", "Shown as — when no exterior wall area can be computed."),
+	def("roof_area_m2", "envelope_fenestration", "Roof area", "m2", 2, "Roof and RoofCeiling surfaces.", "Sums exterior roof or roof/ceiling surface area.", "Zone multipliers are applied.", "Shown as — when no roof surface area can be computed."),
+	def("ground_floor_area_m2", "envelope_fenestration", "Ground floor area", "m2", 2, "Floor surfaces with Ground boundary or lowest floor fallback.", "Sums floor surfaces adjacent to ground; uses lowest floor surfaces when boundary data is absent.", "Zone multipliers are applied.", "Shown as — when no ground or lowest floor area can be computed."),
+	def("window_area_m2", "envelope_fenestration", "Window area", "m2", 2, "FenestrationSurface:Detailed and simple Window objects.", "Sums fenestration objects whose surface type indicates window or glass door.", "Fenestration multipliers and base-zone multipliers are applied.", "Shown as — when no window area can be computed."),
+	def("door_area_m2", "envelope_fenestration", "Door area", "m2", 2, "Fenestration and Door objects.", "Sums non-glazed door area from detailed or rectangular geometry.", "Fenestration multipliers and base-zone multipliers are applied.", "Shown as — when no door area can be computed."),
+	def("total_wwr_percent", "envelope_fenestration", "Total WWR", "%", 1, "Exterior wall area and window area.", "Divides total window area by gross exterior wall area.", "Glass doors count as window area. Wall area is gross and not net of windows.", "Shown as — when wall area is zero or unavailable."),
+	def("north_wwr_percent", "envelope_fenestration", "North WWR", "%", 1, "Surface azimuth and WWR inputs.", "Divides north-facing window area by north-facing exterior wall area.", "North is [315,360) plus [0,45) degrees after building and zone rotations.", "Shown as — when no north-facing exterior wall area is available."),
+	def("east_wwr_percent", "envelope_fenestration", "East WWR", "%", 1, "Surface azimuth and WWR inputs.", "Divides east-facing window area by east-facing exterior wall area.", "East is [45,135) degrees after building and zone rotations.", "Shown as — when no east-facing exterior wall area is available."),
+	def("south_wwr_percent", "envelope_fenestration", "South WWR", "%", 1, "Surface azimuth and WWR inputs.", "Divides south-facing window area by south-facing exterior wall area.", "South is [135,225) degrees after building and zone rotations.", "Shown as — when no south-facing exterior wall area is available."),
+	def("west_wwr_percent", "envelope_fenestration", "West WWR", "%", 1, "Surface azimuth and WWR inputs.", "Divides west-facing window area by west-facing exterior wall area.", "West is [225,315) degrees after building and zone rotations.", "Shown as — when no west-facing exterior wall area is available."),
+	def("skylight_roof_ratio_percent", "envelope_fenestration", "Skylight roof ratio", "%", 1, "Window area on roof base surfaces and roof area.", "Divides skylight window area by roof area.", "A fenestration object is treated as skylight when its base surface is a roof.", "Shown as — when roof area is zero or no skylight area can be identified."),
 
-	def("total_lighting_power_w", "internal_loads", "Total lighting power", "W", 2, "Lights objects.", "Sums LightingLevel directly and resolves Watts/Area or Watts/Person methods where supporting area or people data is available.", "Zone and ZoneList references are expanded where possible; zone multipliers are applied.", "N/A when no lighting design level can be computed."),
-	def("average_lighting_power_density_w_per_m2", "internal_loads", "Average lighting power density", "W/m2", 3, "Lighting power and floor area.", "Divides total lighting power by conditioned floor area, falling back to gross floor area.", "Partial lighting or floor-area inputs produce a partial status.", "N/A when lighting power or floor area is unavailable."),
-	def("total_equipment_power_w", "internal_loads", "Total equipment power", "W", 2, "ElectricEquipment objects.", "Sums EquipmentLevel directly and resolves Watts/Area or Watts/Person methods where supporting area or people data is available.", "Zone and ZoneList references are expanded where possible; zone multipliers are applied.", "N/A when no equipment design level can be computed."),
-	def("average_equipment_power_density_w_per_m2", "internal_loads", "Average equipment power density", "W/m2", 3, "Equipment power and floor area.", "Divides total equipment power by conditioned floor area, falling back to gross floor area.", "Partial equipment or floor-area inputs produce a partial status.", "N/A when equipment power or floor area is unavailable."),
-	def("total_people", "internal_loads", "Total people", "people", 2, "People objects.", "Sums People, People/Area, or Area/Person methods where supporting floor area is available.", "Zone and ZoneList references are expanded where possible; zone multipliers are applied.", "N/A when no people count can be computed."),
-	def("people_density_per_100m2", "internal_loads", "People density", "people/100m2", 3, "People count and floor area.", "Divides total people by floor area and scales to 100 m2.", "Conditioned floor area is preferred; gross floor area is used as fallback.", "N/A when people count or floor area is unavailable."),
-	def("internal_load_object_count", "internal_loads", "Internal load object count", "", 0, "People, Lights, and ElectricEquipment objects.", "Counts the main internal load objects represented in this summary.", "Other load types can be added as new catalog metrics.", "Always available; zero means no supported internal load objects were found."),
-	def("internal_load_method_coverage", "internal_loads", "Internal load method coverage", "", 0, "People, Lights, and ElectricEquipment calculation methods.", "Reports resolved_objects / total_objects and unresolved_method_count for supported internal load summary objects.", "A method is unresolved when the required people, floor-area, or design-level fields cannot be resolved.", "Always available; zero totals mean no supported internal load objects were found."),
+	def("total_lighting_power_w", "internal_loads", "Total lighting power", "W", 2, "Lights objects.", "Sums LightingLevel directly and resolves Watts/Area or Watts/Person methods where supporting area or people data is available.", "Zone and ZoneList references are expanded where possible; zone multipliers are applied.", "Shown as — when no lighting design level can be computed."),
+	def("average_lighting_power_density_w_per_m2", "internal_loads", "Average lighting power density", "W/m2", 3, "Lighting power and floor area.", "Divides total lighting power by conditioned floor area, falling back to gross floor area.", "Partial lighting or floor-area inputs produce a partial status.", "Shown as — when lighting power or floor area is unavailable."),
+	def("total_equipment_power_w", "internal_loads", "Total equipment power", "W", 2, "ElectricEquipment, GasEquipment, HotWaterEquipment, SteamEquipment, and OtherEquipment objects.", "Sums direct design levels and resolves Watts/Area, Power/Area, Watts/Person, or Power/Person methods where supporting area or people data is available.", "Zone and ZoneList references are expanded where possible; zone multipliers are applied.", "Shown as — when no equipment design level can be computed."),
+	def("average_equipment_power_density_w_per_m2", "internal_loads", "Average equipment power density", "W/m2", 3, "Equipment power and floor area.", "Divides total equipment power by conditioned floor area, falling back to gross floor area.", "Partial equipment or floor-area inputs produce a partial status.", "Shown as — when equipment power or floor area is unavailable."),
+	def("total_people", "internal_loads", "Total people", "people", 2, "People objects.", "Sums People, People/Area, or Area/Person methods where supporting floor area is available.", "Zone and ZoneList references are expanded where possible; zone multipliers are applied.", "Shown as — when no people count can be computed."),
+	def("people_density_per_100m2", "internal_loads", "People density", "people/100m2", 3, "People count and floor area.", "Divides total people by floor area and scales to 100 m2.", "Conditioned floor area is preferred; gross floor area is used as fallback.", "Shown as — when people count or floor area is unavailable."),
+	def("internal_load_object_count", "internal_loads", "Internal load object count", "", 0, "People, Lights, ElectricEquipment, GasEquipment, HotWaterEquipment, SteamEquipment, and OtherEquipment objects.", "Counts the supported internal load objects represented in these metrics.", "Specialized internal gains with different sizing models are excluded.", "Always available; zero means no supported internal load objects were found."),
+	def("internal_load_method_coverage", "internal_loads", "Internal load method coverage", "", 0, "People, Lights, ElectricEquipment, GasEquipment, HotWaterEquipment, SteamEquipment, and OtherEquipment calculation methods.", "Reports resolved_objects / total_objects and unresolved_method_count for supported internal load metric objects.", "A method is unresolved when the required people, floor-area, or design-level fields cannot be resolved.", "Always available; zero totals mean no supported internal load objects were found."),
 
 	def("referenced_schedule_count", "schedules_operation", "Referenced schedule count", "", 0, "Fields whose comments include Schedule Name.", "Counts distinct schedule names referenced by non-schedule objects.", "Schedule names are matched case-insensitively after trimming.", "Always available; zero means no schedule references were found."),
 	def("supported_schedule_count", "schedules_operation", "Supported annual schedule count", "", 0, "Schedule:Constant and Schedule:Compact objects.", "Counts schedules whose annual active hours can be evaluated by the v1 parser.", "Schedule value greater than zero is treated as active.", "Always available; zero means no supported annual schedules were found."),
 	def("unsupported_schedule_count", "schedules_operation", "Unsupported schedule count", "", 0, "Schedule objects.", "Subtracts supported schedules from total schedule objects.", "Unsupported schedules remain visible so operating-hour results can be interpreted.", "Always available; zero means every schedule was supported or no schedules exist."),
-	def("model_operating_hours_h", "schedules_operation", "Representative operating hours", "h", 1, "Referenced supported schedules.", "Uses the maximum active annual hours among referenced supported schedules; falls back to all supported schedules.", "A non-leap 8760-hour year is used. Compact weekday/weekend rules use a fixed Monday-start annual calendar.", "N/A when no supported schedule hours are available."),
-	def("average_schedule_operating_hours_h", "schedules_operation", "Average schedule operating hours", "h", 1, "Supported schedules.", "Averages annual active hours across supported schedules.", "A non-leap 8760-hour year is used. Schedule value greater than zero is active.", "N/A when no supported schedule hours are available."),
+	def("model_operating_hours_h", "schedules_operation", "Representative operating hours", "h", 1, "Referenced supported schedules.", "Uses the maximum active annual hours among referenced supported schedules; falls back to all supported schedules.", "A non-leap 8760-hour year is used. Compact weekday/weekend rules use a fixed Monday-start annual calendar.", "Shown as — when no supported schedule hours are available."),
+	def("average_schedule_operating_hours_h", "schedules_operation", "Average schedule operating hours", "h", 1, "Supported schedules.", "Averages annual active hours across supported schedules.", "A non-leap 8760-hour year is used. Schedule value greater than zero is active.", "Shown as — when no supported schedule hours are available."),
 
 	def("hvac_object_count", "hvac_conditioning", "HVAC object count", "", 0, "HVAC-related object types.", "Counts objects whose types indicate HVAC, air loops, plant loops, coils, fans, pumps, boilers, chillers, or setpoint managers.", "This is a broad inventory count, not a system simulation result.", "Always available; zero means no recognized HVAC objects were found."),
 	def("zone_hvac_object_count", "hvac_conditioning", "Zone HVAC object count", "", 0, "ZoneHVAC:* objects.", "Counts objects whose type starts with ZoneHVAC:.", "ZoneHVAC:EquipmentConnections is included.", "Always available; zero means no ZoneHVAC objects were found."),
@@ -148,17 +148,17 @@ var summaryDefinitions = []SummaryDefinition{
 	def("conditioned_zone_evidence_breakdown", "hvac_conditioning", "Conditioned zone evidence", "", 0, "Conditioned-zone source buckets.", "Counts conditioned zones separately by equipment connections, ZoneHVAC objects, thermostat controls, and SpaceHVAC objects.", "A zone may appear in more than one evidence bucket; the total conditioned zone count is deduplicated.", "Always available; zero buckets mean no conditioned-zone references were found."),
 	def("hvac_node_connection_count", "hvac_conditioning", "HVAC node connection count", "", 0, "Typed HVAC loop branch components.", "Counts typed inlet-to-outlet edges produced by AnalyzeHVAC for parsed loop branch components.", "The result is an analyzer topology count, not a full EnergyPlus simulation solve.", "Always available; zero means no typed loop component edges were parsed."),
 	def("geometry_coverage_percent", "model_inventory", "Geometry coverage", "%", 1, "Detailed geometry inputs.", "Compares surfaces/fenestration with usable detailed vertices against geometry-bearing objects.", "Simple geometry objects are counted as uncovered because detailed polygon checks cannot verify them.", "Always available; zero means no detailed geometry was available."),
-	def("profile_coverage_percent", "model_inventory", "Profile coverage", "%", 1, "Schedule references and supported annual-hour parser.", "Divides referenced schedules that can be evaluated for annual hours by all referenced schedules.", "Unreferenced schedules are excluded from this readiness metric.", "N/A when no schedule references are present."),
+	def("profile_coverage_percent", "model_inventory", "Profile coverage", "%", 1, "Schedule references and supported annual-hour parser.", "Divides referenced schedules that can be evaluated for annual hours by all referenced schedules.", "Unreferenced schedules are excluded from this readiness metric.", "Shown as — when no schedule references are present."),
 	def("hvac_rule_edge_count", "hvac_conditioning", "HVAC rule edge count", "", 0, "HVAC RuleGraph edges.", "Counts HVAC graph edges that were created from EnergyPlus object and field rules.", "Only rule-resolved edges are counted; invalid relations remain diagnostics.", "Always available; zero means no HVAC rule edges were resolved."),
 	def("diagnostics_by_source", "model_inventory", "Diagnostics by source", "", 0, "Analyzer diagnostics.", "Counts diagnostics grouped by source such as energyplus_rule, analyzer_limitation, user_quality_check, or heuristic_inference.", "Counts depend on the analyzer diagnostic rules enabled in this build.", "Always available; empty means no diagnostics were emitted."),
 	def("output_readiness_percent", "model_inventory", "Output readiness", "%", 1, "Output:* requests.", "Compares requested simulation outputs against the standard output groups recognized by the analyzer.", "This is a reporting-readiness metric and does not guarantee a successful simulation.", "Always available; zero means no recognized output requests were present."),
 }
 
-func def(id, categoryID, name, unit string, precision int, source, method, assumptions, missing string) SummaryDefinition {
-	return SummaryDefinition{
+func def(id, categoryID, name, unit string, precision int, source, method, assumptions, missing string) MetricDefinition {
+	return MetricDefinition{
 		ID:          id,
 		CategoryID:  categoryID,
-		Category:    summaryCategoryName(categoryID),
+		Category:    metricCategoryName(categoryID),
 		Name:        name,
 		Unit:        unit,
 		Precision:   precision,
@@ -169,8 +169,8 @@ func def(id, categoryID, name, unit string, precision int, source, method, assum
 	}
 }
 
-func summaryCategoryName(categoryID string) string {
-	for _, category := range summaryCategories {
+func metricCategoryName(categoryID string) string {
+	for _, category := range metricCategories {
 		if category.id == categoryID {
 			return category.name
 		}
@@ -178,17 +178,17 @@ func summaryCategoryName(categoryID string) string {
 	return categoryID
 }
 
-func SummaryDefinitions() []SummaryDefinition {
-	out := make([]SummaryDefinition, len(summaryDefinitions))
-	copy(out, summaryDefinitions)
+func MetricDefinitions() []MetricDefinition {
+	out := make([]MetricDefinition, len(metricDefinitions))
+	copy(out, metricDefinitions)
 	return out
 }
 
-func SummaryGuides() []SummaryGuide {
-	definitions := SummaryDefinitions()
-	guides := make([]SummaryGuide, 0, len(definitions))
+func MetricGuides() []MetricGuide {
+	definitions := MetricDefinitions()
+	guides := make([]MetricGuide, 0, len(definitions))
 	for _, definition := range definitions {
-		guides = append(guides, SummaryGuide{
+		guides = append(guides, MetricGuide{
 			ID:          definition.ID,
 			Category:    definition.Category,
 			Name:        definition.Name,
@@ -202,31 +202,31 @@ func SummaryGuides() []SummaryGuide {
 	return guides
 }
 
-func AnalyzeSummary(doc Document) SummaryReport {
-	return AnalyzeSummaryWithOptions(doc, SummaryAnalysisOptions{IncludeHeavyReadiness: true})
+func AnalyzeMetrics(doc Document) MetricsReport {
+	return AnalyzeMetricsWithOptions(doc, MetricsAnalysisOptions{IncludeHeavyReadiness: true})
 }
 
-func AnalyzeSummaryQuick(doc Document) SummaryReport {
-	return AnalyzeSummaryWithOptions(doc, SummaryAnalysisOptions{})
+func AnalyzeMetricsQuick(doc Document) MetricsReport {
+	return AnalyzeMetricsWithOptions(doc, MetricsAnalysisOptions{})
 }
 
-func AnalyzeSummaryWithOptions(doc Document, options SummaryAnalysisOptions) SummaryReport {
-	facts := collectSummaryFactsWithOptions(doc, options)
+func AnalyzeMetricsWithOptions(doc Document, options MetricsAnalysisOptions) MetricsReport {
+	facts := collectMetricFactsWithOptions(doc, options)
 	values := facts.metricValues()
-	categories := make([]SummaryCategory, 0, len(summaryCategories))
+	categories := make([]MetricCategory, 0, len(metricCategories))
 	categoryIndexes := map[string]int{}
 
-	for _, category := range summaryCategories {
+	for _, category := range metricCategories {
 		categoryIndexes[category.id] = len(categories)
-		categories = append(categories, SummaryCategory{ID: category.id, Name: category.name})
+		categories = append(categories, MetricCategory{ID: category.id, Name: category.name})
 	}
 
-	for _, definition := range summaryDefinitions {
+	for _, definition := range metricDefinitions {
 		value, ok := values[definition.ID]
 		if !ok {
-			value = missingSummaryValue()
+			value = missingMetricValue()
 		}
-		metric := SummaryMetric{
+		metric := Metric{
 			ID:           definition.ID,
 			CategoryID:   definition.CategoryID,
 			Category:     definition.Category,
@@ -235,21 +235,21 @@ func AnalyzeSummaryWithOptions(doc Document, options SummaryAnalysisOptions) Sum
 			DisplayValue: value.DisplayValue,
 			Unit:         definition.Unit,
 			Status:       value.Status,
-			Source:       summaryMetricSource(definition.ID, definition.Source),
-			Confidence:   summaryMetricConfidence(definition.ID, value.Status),
-			Visibility:   summaryMetricVisibility(definition.ID),
-			Badges:       summaryMetricBadges(definition.ID, value.Status),
-			Evidence:     summaryMetricEvidence(definition.ID, definition.Method, facts),
+			Source:       metricSource(definition.ID, definition.Source),
+			Confidence:   metricConfidence(definition.ID, value.Status),
+			Visibility:   metricVisibility(definition.ID),
+			Badges:       metricBadges(definition.ID, value.Status),
+			Evidence:     metricEvidence(definition.ID, definition.Method, facts),
 		}
 		if index, ok := categoryIndexes[definition.CategoryID]; ok {
 			categories[index].Metrics = append(categories[index].Metrics, metric)
 		}
 	}
 
-	return SummaryReport{Categories: categories, MetricCount: len(summaryDefinitions)}
+	return MetricsReport{Categories: categories, MetricCount: len(metricDefinitions)}
 }
 
-type summaryExportMetric struct {
+type metricsExportMetric struct {
 	ID         string   `json:"id"`
 	Name       string   `json:"name"`
 	Value      any      `json:"value"`
@@ -261,12 +261,12 @@ type summaryExportMetric struct {
 	Badges     []string `json:"badges,omitempty"`
 }
 
-func ExportSummaryJSON(summary SummaryReport) (string, error) {
-	out := map[string]map[string]summaryExportMetric{}
-	for _, category := range summary.Categories {
-		metrics := map[string]summaryExportMetric{}
+func ExportMetricsJSON(metrics MetricsReport) (string, error) {
+	out := map[string]map[string]metricsExportMetric{}
+	for _, category := range metrics.Categories {
+		metrics := map[string]metricsExportMetric{}
 		for _, metric := range category.Metrics {
-			metrics[metric.ID] = summaryExportMetric{
+			metrics[metric.ID] = metricsExportMetric{
 				ID:         metric.ID,
 				Name:       metric.Name,
 				Value:      metric.Value,
@@ -287,14 +287,14 @@ func ExportSummaryJSON(summary SummaryReport) (string, error) {
 	return string(content) + "\n", nil
 }
 
-func ExportSummaryCSV(summary SummaryReport) (string, error) {
+func ExportMetricsCSV(metrics MetricsReport) (string, error) {
 	var b bytes.Buffer
 	writer := csv.NewWriter(&b)
 	if err := writer.Write([]string{"name", "value"}); err != nil {
 		return "", err
 	}
-	names := SummaryCSVMetricNames(summary)
-	for _, category := range summary.Categories {
+	names := MetricsCSVNames(metrics)
+	for _, category := range metrics.Categories {
 		for _, metric := range category.Metrics {
 			if err := writer.Write([]string{names[metric.ID], metric.DisplayValue}); err != nil {
 				return "", err
@@ -308,35 +308,35 @@ func ExportSummaryCSV(summary SummaryReport) (string, error) {
 	return b.String(), nil
 }
 
-func SummaryCSVMetricNames(summary SummaryReport) map[string]string {
-	return summaryCSVNames(summary)
+func MetricsCSVNames(metrics MetricsReport) map[string]string {
+	return metricsCSVNames(metrics)
 }
 
-func summaryCSVNames(summary SummaryReport) map[string]string {
+func metricsCSVNames(metrics MetricsReport) map[string]string {
 	out := map[string]string{}
 	seen := map[string]int{}
-	for _, category := range summary.Categories {
+	for _, category := range metrics.Categories {
 		for _, metric := range category.Metrics {
-			name := summaryCSVVariableName(metric)
+			name := metricsCSVVariableName(metric)
 			seen[name]++
 			if seen[name] > 1 {
 				name = fmt.Sprintf("%s_%d", name, seen[name])
 			}
-			out[metric.ID] = summaryCSVMetricName(name, summaryCSVUnitLabel(metric.Unit))
+			out[metric.ID] = metricsCSVName(name, metricsCSVUnitLabel(metric.Unit))
 		}
 	}
 	return out
 }
 
-func summaryCSVVariableName(metric SummaryMetric) string {
-	return trimSummaryCSVUnitSuffix(metric.ID, metric.Unit)
+func metricsCSVVariableName(metric Metric) string {
+	return trimMetricsCSVUnitSuffix(metric.ID, metric.Unit)
 }
 
-func summaryCSVMetricName(name string, unit string) string {
+func metricsCSVName(name string, unit string) string {
 	return name + " [" + unit + "]"
 }
 
-func summaryCSVUnitLabel(unit string) string {
+func metricsCSVUnitLabel(unit string) string {
 	unit = strings.TrimSpace(unit)
 	if strings.HasPrefix(unit, "[") && strings.HasSuffix(unit, "]") {
 		unit = strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(unit, "["), "]"))
@@ -347,8 +347,8 @@ func summaryCSVUnitLabel(unit string) string {
 	return unit
 }
 
-func trimSummaryCSVUnitSuffix(id string, unit string) string {
-	suffixes := summaryCSVUnitSuffixes(summaryCSVUnitLabel(unit))
+func trimMetricsCSVUnitSuffix(id string, unit string) string {
+	suffixes := metricsCSVUnitSuffixes(metricsCSVUnitLabel(unit))
 	for _, suffix := range suffixes {
 		if strings.HasSuffix(id, suffix) {
 			return strings.TrimSuffix(id, suffix)
@@ -357,7 +357,7 @@ func trimSummaryCSVUnitSuffix(id string, unit string) string {
 	return id
 }
 
-func summaryCSVUnitSuffixes(unit string) []string {
+func metricsCSVUnitSuffixes(unit string) []string {
 	switch strings.ToLower(strings.TrimSpace(unit)) {
 	case "-":
 		return nil
@@ -384,50 +384,64 @@ func summaryCSVUnitSuffixes(unit string) []string {
 	}
 }
 
-type summaryMetricValue struct {
+type metricValue struct {
 	Value        any
 	DisplayValue string
 	Status       string
 }
 
-func countSummaryValue(value int) summaryMetricValue {
-	return summaryMetricValue{Value: value, DisplayValue: strconv.Itoa(value), Status: summaryStatusOK}
+func countMetricValue(value int) metricValue {
+	return metricValue{Value: value, DisplayValue: strconv.Itoa(value), Status: metricStatusOK}
 }
 
-func stringSummaryValue(value string) summaryMetricValue {
+func countMetricValueWithStatus(value int, status string) metricValue {
+	if status == "" {
+		status = metricStatusOK
+	}
+	return metricValue{Value: value, DisplayValue: strconv.Itoa(value), Status: status}
+}
+
+func stringMetricValue(value string) metricValue {
 	value = strings.TrimSpace(value)
 	if value == "" {
-		return missingSummaryValue()
+		return missingMetricValue()
 	}
-	return summaryMetricValue{Value: value, DisplayValue: value, Status: summaryStatusOK}
+	return metricValue{Value: value, DisplayValue: value, Status: metricStatusOK}
 }
 
-func numberSummaryValue(value float64, precision int, status string) summaryMetricValue {
+func numberMetricValue(value float64, precision int, status string) metricValue {
 	if !isFinitePositiveOrZero(value) {
-		return missingSummaryValue()
+		return missingMetricValue()
+	}
+	return signedNumberMetricValue(value, precision, status)
+}
+
+func signedNumberMetricValue(value float64, precision int, status string) metricValue {
+	if math.IsNaN(value) || math.IsInf(value, 0) {
+		return missingMetricValue()
 	}
 	if status == "" {
-		status = summaryStatusOK
+		status = metricStatusOK
 	}
-	return summaryMetricValue{Value: roundedNumber(value, precision), DisplayValue: formatSummaryNumber(value, precision), Status: status}
+	return metricValue{Value: roundedNumber(value, precision), DisplayValue: formatMetricNumber(value, precision), Status: status}
 }
 
-func ratioSummaryValue(numerator, denominator float64, precision int, status string) summaryMetricValue {
+func ratioMetricValue(numerator, denominator float64, precision int, status string) metricValue {
 	if denominator <= 0 || !isFinitePositiveOrZero(numerator) {
-		return missingSummaryValue()
+		return missingMetricValue()
 	}
-	return numberSummaryValue(numerator/denominator, precision, status)
+	return numberMetricValue(numerator/denominator, precision, status)
 }
 
-func percentSummaryValue(numerator, denominator float64, precision int, status string) summaryMetricValue {
+func percentMetricValue(numerator, denominator float64, precision int, status string) metricValue {
 	if denominator <= 0 || !isFinitePositiveOrZero(numerator) {
-		return missingSummaryValue()
+		return missingMetricValue()
 	}
-	return numberSummaryValue(numerator/denominator*100, precision, status)
+	return numberMetricValue(numerator/denominator*100, precision, status)
 }
 
-func missingSummaryValue() summaryMetricValue {
-	return summaryMetricValue{DisplayValue: "N/A", Status: summaryStatusMissing}
+func missingMetricValue() metricValue {
+	return metricValue{DisplayValue: "—", Status: metricStatusMissing}
 }
 
 func roundedNumber(value float64, precision int) float64 {
@@ -438,58 +452,32 @@ func roundedNumber(value float64, precision int) float64 {
 	return math.Round(value*scale) / scale
 }
 
-func formatSummaryNumber(value float64, precision int) string {
+func formatMetricNumber(value float64, precision int) string {
 	if precision <= 0 {
 		return strconv.FormatInt(int64(math.Round(value)), 10)
 	}
-	displayPrecision := summaryDisplayPrecision(value, precision)
-	rounded := roundedNumber(value, displayPrecision)
+	rounded := roundedNumber(value, precision)
 	if rounded == 0 {
 		rounded = 0
 	}
-	return strconv.FormatFloat(rounded, 'f', displayPrecision, 64)
-}
-
-func summaryDisplayPrecision(value float64, precision int) int {
-	if precision <= 0 {
-		return 0
+	text := strings.TrimRight(strconv.FormatFloat(rounded, 'f', precision, 64), "0")
+	text = strings.TrimRight(text, ".")
+	if !strings.Contains(text, ".") {
+		text += ".0"
 	}
-	rounded := roundedNumber(value, precision)
-	if rounded == math.Round(rounded) {
-		return min(precision, 1)
-	}
-	if summaryDisplayedDigitCount(value, precision) >= 4 {
-		return min(precision, 1)
-	}
-	return precision
-}
-
-func summaryDisplayedDigitCount(value float64, precision int) int {
-	text := strconv.FormatFloat(math.Abs(roundedNumber(value, precision)), 'f', precision, 64)
-	count := 0
-	seenSignificant := false
-	for _, char := range text {
-		if char == '.' {
-			continue
-		}
-		if char == '0' && !seenSignificant {
-			continue
-		}
-		seenSignificant = true
-		count++
-	}
-	return count
+	return text
 }
 
 func isFinitePositiveOrZero(value float64) bool {
 	return !math.IsNaN(value) && !math.IsInf(value, 0) && value >= 0
 }
 
-type summaryFacts struct {
+type metricFacts struct {
 	version                     string
 	buildingName                string
 	buildingNorthAxis           float64
 	hasBuildingNorthAxis        bool
+	geometryCoordinateSystem    string
 	objectCount                 int
 	objectTypeCount             int
 	zoneCount                   int
@@ -498,22 +486,42 @@ type summaryFacts struct {
 	constructionCount           int
 	materialCount               int
 	zoneMultipliers             map[string]float64
+	zoneGroupMultipliers        map[string]float64
 	zoneDirections              map[string]float64
+	zoneOrigins                 map[string]point3
 	zoneFloorAreas              map[string]float64
+	zonesInTotalFloorArea       map[string]bool
+	declaredZoneFloorAreas      map[string]float64
+	surfaceZoneFloorAreas       map[string]float64
+	spaceFloorAreas             map[string]float64
+	declaredSpaceFloorAreas     map[string]float64
+	surfaceSpaceFloorAreas      map[string]float64
 	zoneHeights                 map[string]float64
 	declaredZoneVolumes         map[string]float64
+	spaceCeilingHeights         map[string]float64
+	declaredSpaceVolumes        map[string]float64
+	spaceVolumes                map[string]float64
 	zoneLists                   map[string][]string
+	spaceLists                  map[string][]string
 	conditionedZones            map[string]bool
 	conditionedZoneEvidence     map[string]map[string]bool
 	spaceZones                  map[string]string
 	referencedSchedules         map[string]bool
 	scheduleHours               map[string]float64
+	scheduleStepApproximations  map[string]bool
 	supportedScheduleCount      int
 	unsupportedScheduleCount    int
+	approximatedProfileRefs     int
 	internalLoadObjectCount     int
 	totalPeople                 float64
 	hasPeople                   bool
 	peoplePartial               bool
+	peopleByZone                map[string]float64
+	peopleBySpace               map[string]float64
+	peopleKnownByZone           map[string]bool
+	peopleKnownBySpace          map[string]bool
+	peopleUnresolvedByZone      map[string]bool
+	peopleUnresolvedBySpace     map[string]bool
 	totalLightingPower          float64
 	hasLightingPower            bool
 	lightingPartial             bool
@@ -600,6 +608,7 @@ type surfaceInfo struct {
 	name          string
 	surfaceType   string
 	zoneName      string
+	spaceName     string
 	outside       string
 	area          float64
 	azimuth       float64
@@ -612,24 +621,44 @@ type surfaceInfo struct {
 	ground        bool
 }
 
-func collectSummaryFactsWithOptions(doc Document, options SummaryAnalysisOptions) summaryFacts {
-	facts := summaryFacts{
-		objectCount:             len(doc.Objects),
-		zoneMultipliers:         map[string]float64{},
-		zoneDirections:          map[string]float64{},
-		zoneFloorAreas:          map[string]float64{},
-		zoneHeights:             map[string]float64{},
-		declaredZoneVolumes:     map[string]float64{},
-		zoneLists:               map[string][]string{},
-		conditionedZones:        map[string]bool{},
-		conditionedZoneEvidence: map[string]map[string]bool{},
-		spaceZones:              map[string]string{},
-		referencedSchedules:     map[string]bool{},
-		scheduleHours:           map[string]float64{},
-		diagnosticSourceCounts:  map[string]int{},
-		wallAreaByOrientation:   map[string]float64{"north": 0, "east": 0, "south": 0, "west": 0},
-		windowAreaByOrientation: map[string]float64{"north": 0, "east": 0, "south": 0, "west": 0},
-		vertexEntryDirection:    "counterclockwise",
+func collectMetricFactsWithOptions(doc Document, options MetricsAnalysisOptions) metricFacts {
+	facts := metricFacts{
+		objectCount:                len(doc.Objects),
+		geometryCoordinateSystem:   "relative",
+		zoneMultipliers:            map[string]float64{},
+		zoneGroupMultipliers:       map[string]float64{},
+		zoneDirections:             map[string]float64{},
+		zoneOrigins:                map[string]point3{},
+		zoneFloorAreas:             map[string]float64{},
+		zonesInTotalFloorArea:      map[string]bool{},
+		declaredZoneFloorAreas:     map[string]float64{},
+		surfaceZoneFloorAreas:      map[string]float64{},
+		spaceFloorAreas:            map[string]float64{},
+		declaredSpaceFloorAreas:    map[string]float64{},
+		surfaceSpaceFloorAreas:     map[string]float64{},
+		zoneHeights:                map[string]float64{},
+		declaredZoneVolumes:        map[string]float64{},
+		spaceCeilingHeights:        map[string]float64{},
+		declaredSpaceVolumes:       map[string]float64{},
+		spaceVolumes:               map[string]float64{},
+		zoneLists:                  map[string][]string{},
+		spaceLists:                 map[string][]string{},
+		conditionedZones:           map[string]bool{},
+		conditionedZoneEvidence:    map[string]map[string]bool{},
+		spaceZones:                 map[string]string{},
+		peopleByZone:               map[string]float64{},
+		peopleBySpace:              map[string]float64{},
+		peopleKnownByZone:          map[string]bool{},
+		peopleKnownBySpace:         map[string]bool{},
+		peopleUnresolvedByZone:     map[string]bool{},
+		peopleUnresolvedBySpace:    map[string]bool{},
+		referencedSchedules:        map[string]bool{},
+		scheduleHours:              map[string]float64{},
+		scheduleStepApproximations: map[string]bool{},
+		diagnosticSourceCounts:     map[string]int{},
+		wallAreaByOrientation:      map[string]float64{"north": 0, "east": 0, "south": 0, "west": 0},
+		windowAreaByOrientation:    map[string]float64{"north": 0, "east": 0, "south": 0, "west": 0},
+		vertexEntryDirection:       "counterclockwise",
 	}
 
 	typeCounts := map[string]int{}
@@ -637,6 +666,7 @@ func collectSummaryFactsWithOptions(doc Document, options SummaryAnalysisOptions
 		typeCounts[obj.Type]++
 		facts.captureInventoryObject(obj)
 	}
+	facts.applyZoneGroupMultipliers()
 	facts.objectTypeCount = len(typeCounts)
 
 	for _, obj := range doc.Objects {
@@ -649,6 +679,7 @@ func collectSummaryFactsWithOptions(doc Document, options SummaryAnalysisOptions
 		}
 		facts.captureSurface(surface)
 	}
+	facts.resolveZoneFloorAreas()
 	facts.finalizeGeometry()
 
 	for _, obj := range doc.Objects {
@@ -671,7 +702,7 @@ func collectSummaryFactsWithOptions(doc Document, options SummaryAnalysisOptions
 		switch {
 		case strings.EqualFold(obj.Type, "Lights"):
 			facts.captureLighting(obj)
-		case strings.EqualFold(obj.Type, "ElectricEquipment"):
+		case isInternalGainEquipmentType(obj.Type):
 			facts.captureEquipment(obj)
 		}
 	}
@@ -689,7 +720,16 @@ func collectSummaryFactsWithOptions(doc Document, options SummaryAnalysisOptions
 	return facts
 }
 
-func (facts *summaryFacts) captureReadiness(doc Document, includeHeavy bool) {
+func isInternalGainEquipmentType(objectType string) bool {
+	switch strings.ToLower(strings.TrimSpace(objectType)) {
+	case "electricequipment", "gasequipment", "otherequipment", "hotwaterequipment", "steamequipment":
+		return true
+	default:
+		return false
+	}
+}
+
+func (facts *metricFacts) captureReadiness(doc Document, includeHeavy bool) {
 	for _, obj := range doc.Objects {
 		if isBuildingSurfaceType(obj.Type) || isFenestrationType(obj.Type) {
 			facts.geometryObjectCount++
@@ -703,6 +743,9 @@ func (facts *summaryFacts) captureReadiness(doc Document, includeHeavy bool) {
 	for schedule := range facts.referencedSchedules {
 		if _, ok := facts.scheduleHours[schedule]; ok {
 			facts.supportedProfileReferences++
+			if facts.scheduleStepApproximations[schedule] {
+				facts.approximatedProfileRefs++
+			}
 		}
 	}
 
@@ -712,7 +755,7 @@ func (facts *summaryFacts) captureReadiness(doc Document, includeHeavy bool) {
 	facts.heavyReadinessCaptured = true
 	hvacReport := AnalyzeHVAC(doc)
 	facts.hvacRuleEdgeCount = len(hvacReport.RuleGraph.Edges)
-	facts.hvacNodeConnectionCount = summaryHVACTypedNodeConnectionCount(hvacReport)
+	facts.hvacNodeConnectionCount = metricHVACTypedNodeConnectionCount(hvacReport)
 
 	for _, diagnostic := range AnalyzeDiagnostics(doc) {
 		source := strings.TrimSpace(diagnostic.Source)
@@ -731,7 +774,7 @@ func (facts *summaryFacts) captureReadiness(doc Document, includeHeavy bool) {
 	}
 }
 
-func summaryHVACTypedNodeConnectionCount(report HVACReport) int {
+func metricHVACTypedNodeConnectionCount(report HVACReport) int {
 	count := 0
 	for _, loop := range report.Loops {
 		for _, side := range []HVACLoopSide{loop.SupplySide, loop.DemandSide} {
@@ -750,7 +793,7 @@ func summaryHVACTypedNodeConnectionCount(report HVACReport) int {
 	return count
 }
 
-func (facts *summaryFacts) captureInventoryObject(obj Object) {
+func (facts *metricFacts) captureInventoryObject(obj Object) {
 	lowerType := strings.ToLower(obj.Type)
 	name := objectName(obj)
 
@@ -771,15 +814,27 @@ func (facts *summaryFacts) captureInventoryObject(obj Object) {
 				facts.buildingName = strings.TrimSpace(obj.Fields[0].Value)
 			}
 		}
-		if value, ok := parseFloatField(findFieldByCommentWords(obj, "north", "axis")); ok {
+		if value, ok := parseFloatField(firstNonEmpty(
+			fieldValueByCatalogName(obj, "North Axis"),
+			findFieldByCommentWords(obj, "north", "axis"),
+		)); ok {
 			facts.buildingNorthAxis = value
 			facts.hasBuildingNorthAxis = true
 		}
 	}
 
 	if strings.EqualFold(obj.Type, "GlobalGeometryRules") {
-		if value := findFieldByCommentWords(obj, "vertex", "entry", "direction"); value != "" {
+		if value := firstNonEmpty(
+			fieldValueByCatalogName(obj, "Vertex Entry Direction"),
+			findFieldByCommentWords(obj, "vertex", "entry", "direction"),
+		); value != "" {
 			facts.vertexEntryDirection = strings.ToLower(strings.TrimSpace(value))
+		}
+		if value := firstNonEmpty(
+			fieldValueByCatalogName(obj, "Coordinate System"),
+			findFieldByCommentWords(obj, "coordinate", "system"),
+		); value != "" {
+			facts.geometryCoordinateSystem = strings.ToLower(strings.TrimSpace(value))
 		}
 	}
 
@@ -787,16 +842,23 @@ func (facts *summaryFacts) captureInventoryObject(obj Object) {
 		facts.zoneCount++
 		zoneKey := normalizeName(name)
 		if zoneKey != "" {
-			facts.zoneMultipliers[zoneKey] = numericFieldOrDefault(obj, 1, "multiplier")
-			facts.zoneDirections[zoneKey] = numericFieldOrDefault(obj, 0, "direction", "relative", "north")
-			if value, ok := parseFloatField(findFieldByCommentWords(obj, "floor", "area")); ok {
-				facts.zoneFloorAreas[zoneKey] = value * facts.zoneMultipliers[zoneKey]
+			partOfTotal := strings.TrimSpace(fieldValueByCatalogName(obj, "Part of Total Floor Area"))
+			facts.zonesInTotalFloorArea[zoneKey] = partOfTotal == "" || !strings.EqualFold(partOfTotal, "No")
+			facts.zoneMultipliers[zoneKey] = positiveOrDefault(geometryNumericFieldOrDefault(obj, 1, "Multiplier"), 1)
+			facts.zoneDirections[zoneKey] = geometryNumericFieldOrDefault(obj, 0, "Direction of Relative North")
+			facts.zoneOrigins[zoneKey] = point3{
+				x: geometryNumericFieldOrDefault(obj, 0, "X Origin"),
+				y: geometryNumericFieldOrDefault(obj, 0, "Y Origin"),
+				z: geometryNumericFieldOrDefault(obj, 0, "Z Origin"),
 			}
-			if value, ok := parseFloatField(findFieldByCommentWords(obj, "ceiling", "height")); ok {
+			if value, ok := metricPositiveNumericField(obj, "Floor Area", []string{"floor", "area"}); ok {
+				facts.declaredZoneFloorAreas[zoneKey] = value
+			}
+			if value, ok := metricPositiveNumericField(obj, "Ceiling Height", []string{"ceiling", "height"}); ok {
 				facts.zoneHeights[zoneKey] = value
 			}
-			if value, ok := parseFloatField(findFieldByCommentWords(obj, "volume")); ok {
-				facts.declaredZoneVolumes[zoneKey] = value * facts.zoneMultipliers[zoneKey]
+			if value, ok := metricPositiveNumericField(obj, "Volume", []string{"volume"}); ok {
+				facts.declaredZoneVolumes[zoneKey] = value
 			}
 		}
 	}
@@ -815,6 +877,15 @@ func (facts *summaryFacts) captureInventoryObject(obj Object) {
 			if zoneName != "" {
 				facts.spaceZones[spaceKey] = zoneName
 			}
+			if value, ok := metricPositiveNumericField(obj, "Floor Area", []string{"floor", "area"}); ok {
+				facts.declaredSpaceFloorAreas[spaceKey] = value
+			}
+			if value, ok := metricPositiveNumericField(obj, "Ceiling Height", []string{"ceiling", "height"}); ok {
+				facts.spaceCeilingHeights[spaceKey] = value
+			}
+			if value, ok := metricPositiveNumericField(obj, "Volume", []string{"volume"}); ok {
+				facts.declaredSpaceVolumes[spaceKey] = value
+			}
 		}
 	}
 	if isScheduleType(obj.Type) {
@@ -829,9 +900,52 @@ func (facts *summaryFacts) captureInventoryObject(obj Object) {
 	if strings.EqualFold(obj.Type, "ZoneList") && name != "" {
 		facts.zoneLists[normalizeName(name)] = zoneListMembers(obj)
 	}
+	if strings.EqualFold(obj.Type, "SpaceList") && name != "" {
+		facts.spaceLists[normalizeName(name)] = zoneListMembers(obj)
+	}
+	if strings.EqualFold(obj.Type, "ZoneGroup") {
+		listName := firstNonEmpty(
+			fieldValueByCatalogName(obj, "Zone List Name"),
+			findFieldByCommentWords(obj, "zone", "list", "name"),
+		)
+		multiplier := positiveOrDefault(geometryNumericFieldOrDefault(obj, 1, "Zone List Multiplier"), 1)
+		if listName != "" {
+			facts.zoneGroupMultipliers[normalizeName(listName)] *= multiplier
+			if facts.zoneGroupMultipliers[normalizeName(listName)] == 0 {
+				facts.zoneGroupMultipliers[normalizeName(listName)] = multiplier
+			}
+		}
+	}
 }
 
-func (facts *summaryFacts) captureSurface(surface surfaceInfo) {
+func positiveOrDefault(value float64, fallback float64) float64 {
+	if value > 0 {
+		return value
+	}
+	return fallback
+}
+
+func metricPositiveNumericField(obj Object, catalogName string, commentWords []string) (float64, bool) {
+	value, ok := metricNumericField(obj, []string{catalogName}, commentWords)
+	return value, ok && value > 0
+}
+
+func (facts *metricFacts) applyZoneGroupMultipliers() {
+	for listKey, multiplier := range facts.zoneGroupMultipliers {
+		if multiplier <= 0 {
+			continue
+		}
+		for _, zoneName := range facts.zoneLists[listKey] {
+			zoneKey := normalizeName(zoneName)
+			if _, exists := facts.zoneMultipliers[zoneKey]; !exists {
+				continue
+			}
+			facts.zoneMultipliers[zoneKey] *= multiplier
+		}
+	}
+}
+
+func (facts *metricFacts) captureSurface(surface surfaceInfo) {
 	if surface.area <= 0 {
 		return
 	}
@@ -847,9 +961,10 @@ func (facts *summaryFacts) captureSurface(surface surfaceInfo) {
 	case "floor":
 		facts.floorSurfaces = append(facts.floorSurfaces, surface)
 		if surface.zoneName != "" {
-			facts.grossFloorArea += surface.area
-			facts.hasGrossFloorArea = true
-			facts.zoneFloorAreas[normalizeName(surface.zoneName)] += surface.area
+			facts.surfaceZoneFloorAreas[normalizeName(surface.zoneName)] += surface.area
+		}
+		if surface.spaceName != "" {
+			facts.surfaceSpaceFloorAreas[normalizeName(surface.spaceName)] += surface.area
 		}
 		if surface.ground {
 			facts.groundFloorArea += surface.area
@@ -883,7 +998,93 @@ func (facts *summaryFacts) captureSurface(surface surfaceInfo) {
 	}
 }
 
-func (facts *summaryFacts) finalizeGeometry() {
+func (facts *metricFacts) resolveZoneFloorAreas() {
+	zones := map[string]bool{}
+	for zone := range facts.zoneMultipliers {
+		zones[zone] = true
+	}
+	for zone := range facts.declaredZoneFloorAreas {
+		zones[zone] = true
+	}
+	for zone := range facts.surfaceZoneFloorAreas {
+		zones[zone] = true
+	}
+	facts.zoneFloorAreas = make(map[string]float64, len(zones))
+	facts.spaceFloorAreas = make(map[string]float64, len(facts.spaceZones))
+	spacesByZone := facts.metricSpacesByZone()
+	for spaceKey, zoneName := range facts.spaceZones {
+		zoneKey := normalizeName(zoneName)
+		multiplier := zoneMultiplierFor(facts.zoneMultipliers, zoneName)
+		area := facts.declaredSpaceFloorAreas[spaceKey] * multiplier
+		if area <= 0 {
+			area = facts.surfaceSpaceFloorAreas[spaceKey]
+		}
+		if area > 0 {
+			facts.spaceFloorAreas[spaceKey] = area
+			zones[zoneKey] = true
+		}
+	}
+	facts.grossFloorArea = 0
+	facts.hasGrossFloorArea = false
+	for zone := range zones {
+		multiplier := zoneMultiplierFor(facts.zoneMultipliers, zone)
+		declaredArea := facts.declaredZoneFloorAreas[zone] * multiplier
+		explicitSpaceArea := 0.0
+		for _, spaceKey := range spacesByZone[zone] {
+			explicitSpaceArea += facts.spaceFloorAreas[spaceKey]
+		}
+		surfaceArea := facts.surfaceZoneFloorAreas[zone]
+		remainderArea := math.Max(0, surfaceArea-facts.metricSurfaceSpaceAreaForZone(zone, spacesByZone))
+		calculatedArea := explicitSpaceArea + remainderArea
+		area := declaredArea
+		if area > 0 && calculatedArea > 0 && explicitSpaceArea > 0 {
+			// EnergyPlus reconciles declared Zone area by proportionally scaling
+			// all calculated Space areas, including the implicit Zone remainder.
+			ratio := area / calculatedArea
+			for _, spaceKey := range spacesByZone[zone] {
+				facts.spaceFloorAreas[spaceKey] *= ratio
+			}
+		}
+		if area <= 0 && calculatedArea > 0 {
+			area = calculatedArea
+		}
+		if area <= 0 {
+			area = surfaceArea
+		}
+		if area <= 0 {
+			continue
+		}
+		facts.zoneFloorAreas[zone] = area
+		if included, known := facts.zonesInTotalFloorArea[zone]; !known || included {
+			facts.grossFloorArea += area
+			facts.hasGrossFloorArea = true
+		}
+	}
+}
+
+func (facts metricFacts) metricSurfaceSpaceAreaForZone(zoneKey string, spacesByZone map[string][]string) float64 {
+	total := 0.0
+	for _, spaceKey := range spacesByZone[zoneKey] {
+		total += facts.surfaceSpaceFloorAreas[spaceKey]
+	}
+	return total
+}
+
+func (facts metricFacts) metricSpacesByZone() map[string][]string {
+	out := map[string][]string{}
+	for spaceKey, zoneName := range facts.spaceZones {
+		zoneKey := normalizeName(zoneName)
+		if zoneKey != "" {
+			out[zoneKey] = append(out[zoneKey], spaceKey)
+		}
+	}
+	for zoneKey := range out {
+		sort.Strings(out[zoneKey])
+	}
+	return out
+}
+
+func (facts *metricFacts) finalizeGeometry() {
 	if !facts.hasGroundFloorArea {
 		facts.lowestFloorSurfaces = lowestFloorSurfaces(facts.floorSurfaces)
 		for _, surface := range facts.lowestFloorSurfaces {
@@ -914,9 +1115,9 @@ func (facts *summaryFacts) finalizeGeometry() {
 	}
 }
 
-func (facts *summaryFacts) captureConditioningAndSchedules(obj Object) {
+func (facts *metricFacts) captureConditioningAndSchedules(obj Object) {
 	lowerType := strings.ToLower(obj.Type)
-	if isHVACSummaryType(lowerType) {
+	if isHVACMetricType(lowerType) {
 		facts.hvacObjectCount++
 	}
 	if strings.HasPrefix(lowerType, "zonehvac:") {
@@ -940,7 +1141,7 @@ func (facts *summaryFacts) captureConditioningAndSchedules(obj Object) {
 	}
 }
 
-func (facts *summaryFacts) markConditionedZones(zones []string, evidence string) {
+func (facts *metricFacts) markConditionedZones(zones []string, evidence string) {
 	evidence = strings.TrimSpace(evidence)
 	if evidence == "" {
 		evidence = "by_unspecified"
@@ -958,7 +1159,7 @@ func (facts *summaryFacts) markConditionedZones(zones []string, evidence string)
 	}
 }
 
-func (facts *summaryFacts) captureScheduleHours(obj Object) {
+func (facts *metricFacts) captureScheduleHours(obj Object) {
 	if !isScheduleType(obj.Type) {
 		return
 	}
@@ -970,13 +1171,17 @@ func (facts *summaryFacts) captureScheduleHours(obj Object) {
 	if name == "" {
 		return
 	}
-	facts.scheduleHours[normalizeName(name)] = hours
+	scheduleKey := normalizeName(name)
+	facts.scheduleHours[scheduleKey] = hours
+	if compactScheduleUsesStepApproximation(obj) {
+		facts.scheduleStepApproximations[scheduleKey] = true
+	}
 	facts.supportedScheduleCount++
 }
 
-func (facts *summaryFacts) capturePeople(obj Object) {
+func (facts *metricFacts) capturePeople(obj Object) {
 	facts.internalLoadObjectCount++
-	value, ok, partial := facts.peopleObjectValue(obj)
+	value, ok, partial := facts.capturePeopleObject(obj)
 	if !ok {
 		facts.peoplePartial = true
 		facts.internalLoadUnresolvedCount++
@@ -990,7 +1195,7 @@ func (facts *summaryFacts) capturePeople(obj Object) {
 	}
 }
 
-func (facts *summaryFacts) captureLighting(obj Object) {
+func (facts *metricFacts) captureLighting(obj Object) {
 	facts.internalLoadObjectCount++
 	value, ok, partial := facts.designPowerValue(obj, "lighting")
 	if !ok {
@@ -1006,7 +1211,7 @@ func (facts *summaryFacts) captureLighting(obj Object) {
 	}
 }
 
-func (facts *summaryFacts) captureEquipment(obj Object) {
+func (facts *metricFacts) captureEquipment(obj Object) {
 	facts.internalLoadObjectCount++
 	value, ok, partial := facts.designPowerValue(obj, "equipment")
 	if !ok {
@@ -1022,19 +1227,18 @@ func (facts *summaryFacts) captureEquipment(obj Object) {
 	}
 }
 
-func (facts *summaryFacts) captureFenestration(obj Object, surfaceByName map[string]surfaceInfo) {
+func (facts *metricFacts) captureFenestration(obj Object, surfaceByName map[string]surfaceInfo) {
 	area, ok := objectArea(obj)
 	if !ok || area <= 0 {
 		return
 	}
-	baseSurfaceName := findFieldByCommentWords(obj, "surface", "name")
+	baseSurfaceName := firstNonEmpty(
+		fieldValueByCatalogName(obj, "Building Surface Name"),
+		findFieldByCommentWords(obj, "surface", "name"),
+	)
 	baseSurface, hasBaseSurface := surfaceByName[normalizeName(baseSurfaceName)]
-	multiplier := numericFieldOrDefault(obj, 1, "multiplier")
-	if hasBaseSurface {
-		area *= multiplier
-	} else {
-		area *= multiplier
-	}
+	multiplier := geometryNumericFieldOrDefault(obj, 1, "Multiplier")
+	area *= multiplier
 	if hasBaseSurface {
 		area *= zoneMultiplierFor(facts.zoneMultipliers, baseSurface.zoneName)
 	}
@@ -1077,12 +1281,17 @@ func (facts *summaryFacts) captureFenestration(obj Object, surfaceByName map[str
 	}
 }
 
-func (facts *summaryFacts) finalizeVolumeAndHeights() {
+func (facts *metricFacts) finalizeVolumeAndHeights() {
+	facts.resolveSpaceVolumes()
+	spacesByZone := facts.metricSpacesByZone()
 	zoneNames := map[string]bool{}
 	for zone := range facts.zoneMultipliers {
 		zoneNames[zone] = true
 	}
 	for zone := range facts.zoneFloorAreas {
+		zoneNames[zone] = true
+	}
+	for zone := range spacesByZone {
 		zoneNames[zone] = true
 	}
 
@@ -1107,168 +1316,211 @@ func (facts *summaryFacts) finalizeVolumeAndHeights() {
 	}
 
 	for zone := range zoneNames {
-		if volume, ok := facts.declaredZoneVolumes[zone]; ok {
-			facts.totalZoneVolume += volume
+		multiplier := zoneMultiplierFor(facts.zoneMultipliers, zone)
+		if volume := facts.declaredZoneVolumes[zone]; volume > 0 {
+			facts.totalZoneVolume += volume * multiplier
 			facts.hasZoneVolume = true
 			continue
 		}
 		area, hasArea := facts.zoneFloorAreas[zone]
 		height, hasHeight := facts.zoneHeights[zone]
+		spaceKeys := spacesByZone[zone]
 		if hasArea && hasHeight && area > 0 && height > 0 {
+			// Zone volume is independent of any Space Volume override. The
+			// reconciled floor area already includes Zone/ZoneGroup multipliers.
 			facts.totalZoneVolume += area * height
 			facts.hasZoneVolume = true
 			facts.zoneVolumePartial = true
-		} else if len(zoneNames) > 0 {
-			facts.zoneVolumePartial = true
+			continue
+		}
+		spaceVolume := 0.0
+		allSpacesResolved := len(spaceKeys) > 0
+		spaceEstimateUsed := false
+		for _, spaceKey := range spaceKeys {
+			volume, ok := facts.spaceVolumes[spaceKey]
+			if !ok || volume <= 0 {
+				allSpacesResolved = false
+				continue
+			}
+			spaceVolume += volume
+			spaceEstimateUsed = spaceEstimateUsed || facts.declaredSpaceVolumes[spaceKey] <= 0
+		}
+		if spaceVolume > 0 {
+			facts.totalZoneVolume += spaceVolume
+			facts.hasZoneVolume = true
+			if !allSpacesResolved || spaceEstimateUsed {
+				facts.zoneVolumePartial = true
+			}
+			continue
+		}
+		facts.zoneVolumePartial = true
+	}
+}
+
+func (facts *metricFacts) resolveSpaceVolumes() {
+	facts.spaceVolumes = make(map[string]float64, len(facts.spaceZones))
+	for spaceKey, zoneName := range facts.spaceZones {
+		multiplier := zoneMultiplierFor(facts.zoneMultipliers, zoneName)
+		volume := facts.declaredSpaceVolumes[spaceKey] * multiplier
+		height := facts.spaceCeilingHeights[spaceKey]
+		if height <= 0 {
+			height = facts.zoneHeights[normalizeName(zoneName)]
+		}
+		if volume <= 0 && facts.spaceFloorAreas[spaceKey] > 0 && height > 0 {
+			// Space floor areas already include the Zone/ZoneGroup multiplier.
+			volume = facts.spaceFloorAreas[spaceKey] * height
+		}
+		if volume > 0 {
+			facts.spaceVolumes[spaceKey] = volume
 		}
 	}
 }
 
-func (facts summaryFacts) metricValues() map[string]summaryMetricValue {
-	values := map[string]summaryMetricValue{
-		"energyplus_version":                  stringSummaryValue(facts.version),
-		"building_name":                       stringSummaryValue(facts.buildingName),
-		"object_count":                        countSummaryValue(facts.objectCount),
-		"object_type_count":                   countSummaryValue(facts.objectTypeCount),
-		"zone_count":                          countSummaryValue(facts.zoneCount),
-		"space_count":                         countSummaryValue(facts.spaceCount),
-		"schedule_count":                      countSummaryValue(facts.scheduleCount),
-		"construction_count":                  countSummaryValue(facts.constructionCount),
-		"material_count":                      countSummaryValue(facts.materialCount),
-		"internal_load_object_count":          countSummaryValue(facts.internalLoadObjectCount),
-		"internal_load_method_coverage":       summaryInternalLoadCoverageValue(facts.internalLoadResolvedCount, facts.internalLoadObjectCount, facts.internalLoadUnresolvedCount),
-		"referenced_schedule_count":           countSummaryValue(len(facts.referencedSchedules)),
-		"supported_schedule_count":            countSummaryValue(facts.supportedScheduleCount),
-		"unsupported_schedule_count":          countSummaryValue(facts.unsupportedScheduleCount),
-		"hvac_object_count":                   countSummaryValue(facts.hvacObjectCount),
-		"zone_hvac_object_count":              countSummaryValue(facts.zoneHVACObjectCount),
-		"thermostat_count":                    countSummaryValue(facts.thermostatCount),
-		"conditioned_zone_count":              countSummaryValue(len(facts.conditionedZones)),
-		"conditioned_zone_evidence_breakdown": stringSummaryValue(summaryConditionedEvidenceDisplay(facts.conditionedZoneEvidence)),
+func (facts metricFacts) metricValues() map[string]metricValue {
+	values := map[string]metricValue{
+		"energyplus_version":                  stringMetricValue(facts.version),
+		"building_name":                       stringMetricValue(facts.buildingName),
+		"object_count":                        countMetricValue(facts.objectCount),
+		"object_type_count":                   countMetricValue(facts.objectTypeCount),
+		"zone_count":                          countMetricValue(facts.zoneCount),
+		"space_count":                         countMetricValue(facts.spaceCount),
+		"schedule_count":                      countMetricValue(facts.scheduleCount),
+		"construction_count":                  countMetricValue(facts.constructionCount),
+		"material_count":                      countMetricValue(facts.materialCount),
+		"internal_load_object_count":          countMetricValue(facts.internalLoadObjectCount),
+		"internal_load_method_coverage":       metricInternalLoadCoverageValue(facts.internalLoadResolvedCount, facts.internalLoadObjectCount, facts.internalLoadUnresolvedCount),
+		"referenced_schedule_count":           countMetricValue(len(facts.referencedSchedules)),
+		"supported_schedule_count":            countMetricValueWithStatus(facts.supportedScheduleCount, partialIf(len(facts.scheduleStepApproximations) > 0)),
+		"unsupported_schedule_count":          countMetricValueWithStatus(facts.unsupportedScheduleCount, partialIf(len(facts.scheduleStepApproximations) > 0)),
+		"hvac_object_count":                   countMetricValue(facts.hvacObjectCount),
+		"zone_hvac_object_count":              countMetricValue(facts.zoneHVACObjectCount),
+		"thermostat_count":                    countMetricValue(facts.thermostatCount),
+		"conditioned_zone_count":              countMetricValue(len(facts.conditionedZones)),
+		"conditioned_zone_evidence_breakdown": stringMetricValue(metricConditionedEvidenceDisplay(facts.conditionedZoneEvidence)),
 	}
 	if facts.heavyReadinessCaptured {
-		values["hvac_node_connection_count"] = countSummaryValue(facts.hvacNodeConnectionCount)
-		values["diagnostics_by_source"] = stringSummaryValue(summarySourceCountsDisplay(facts.diagnosticSourceCounts))
+		values["hvac_node_connection_count"] = countMetricValue(facts.hvacNodeConnectionCount)
+		values["diagnostics_by_source"] = stringMetricValue(metricSourceCountsDisplay(facts.diagnosticSourceCounts))
 	}
 
 	if facts.hasBuildingNorthAxis {
-		values["building_north_axis_deg"] = numberSummaryValue(facts.buildingNorthAxis, precisionFor("building_north_axis_deg"), summaryStatusOK)
+		values["building_north_axis_deg"] = signedNumberMetricValue(facts.buildingNorthAxis, precisionFor("building_north_axis_deg"), metricStatusOK)
 	} else {
-		values["building_north_axis_deg"] = missingSummaryValue()
+		values["building_north_axis_deg"] = missingMetricValue()
 	}
 	if facts.hasGrossFloorArea {
-		values["gross_floor_area_m2"] = numberSummaryValue(facts.grossFloorArea, precisionFor("gross_floor_area_m2"), summaryStatusOK)
+		values["gross_floor_area_m2"] = numberMetricValue(facts.grossFloorArea, precisionFor("gross_floor_area_m2"), metricStatusOK)
 	}
 	conditionedArea, hasConditionedArea := facts.conditionedFloorArea()
 	if hasConditionedArea {
-		values["conditioned_floor_area_m2"] = numberSummaryValue(conditionedArea, precisionFor("conditioned_floor_area_m2"), floorAreaStatus(conditionedArea, facts.grossFloorArea, facts.hasGrossFloorArea))
+		values["conditioned_floor_area_m2"] = numberMetricValue(conditionedArea, precisionFor("conditioned_floor_area_m2"), floorAreaStatus(conditionedArea, facts.grossFloorArea, facts.hasGrossFloorArea))
 	}
 	if hasConditionedArea && facts.hasGrossFloorArea {
 		unconditioned := math.Max(0, facts.grossFloorArea-conditionedArea)
-		values["unconditioned_floor_area_m2"] = numberSummaryValue(unconditioned, precisionFor("unconditioned_floor_area_m2"), floorAreaStatus(conditionedArea, facts.grossFloorArea, true))
+		values["unconditioned_floor_area_m2"] = numberMetricValue(unconditioned, precisionFor("unconditioned_floor_area_m2"), floorAreaStatus(conditionedArea, facts.grossFloorArea, true))
 	}
 	if facts.hasFootprintArea {
-		values["footprint_area_m2"] = numberSummaryValue(facts.footprintArea, precisionFor("footprint_area_m2"), summaryStatusOK)
+		values["footprint_area_m2"] = numberMetricValue(facts.footprintArea, precisionFor("footprint_area_m2"), metricStatusOK)
 	}
 	if facts.hasBoundingBoxArea {
-		values["bounding_box_area_m2"] = numberSummaryValue(facts.boundingBoxArea, precisionFor("bounding_box_area_m2"), summaryStatusOK)
+		values["bounding_box_area_m2"] = numberMetricValue(facts.boundingBoxArea, precisionFor("bounding_box_area_m2"), metricStatusOK)
 	}
 	if facts.hasZoneVolume {
-		values["total_zone_volume_m3"] = numberSummaryValue(facts.totalZoneVolume, precisionFor("total_zone_volume_m3"), partialIf(facts.zoneVolumePartial))
+		values["total_zone_volume_m3"] = numberMetricValue(facts.totalZoneVolume, precisionFor("total_zone_volume_m3"), partialIf(facts.zoneVolumePartial))
 	}
 	if facts.hasAverageFloorHeight {
-		values["average_floor_height_m"] = numberSummaryValue(facts.averageFloorHeight, precisionFor("average_floor_height_m"), partialIf(facts.averageFloorHeightPartial))
+		values["average_floor_height_m"] = numberMetricValue(facts.averageFloorHeight, precisionFor("average_floor_height_m"), partialIf(facts.averageFloorHeightPartial))
 	}
 	if facts.hasBuildingSides {
-		values["building_long_side_m"] = numberSummaryValue(facts.buildingLongSide, precisionFor("building_long_side_m"), summaryStatusOK)
-		values["building_short_side_m"] = numberSummaryValue(facts.buildingShortSide, precisionFor("building_short_side_m"), summaryStatusOK)
-		values["footprint_aspect_ratio"] = ratioSummaryValue(facts.buildingLongSide, facts.buildingShortSide, precisionFor("footprint_aspect_ratio"), summaryStatusOK)
+		values["building_long_side_m"] = numberMetricValue(facts.buildingLongSide, precisionFor("building_long_side_m"), metricStatusOK)
+		values["building_short_side_m"] = numberMetricValue(facts.buildingShortSide, precisionFor("building_short_side_m"), metricStatusOK)
+		values["footprint_aspect_ratio"] = ratioMetricValue(facts.buildingLongSide, facts.buildingShortSide, precisionFor("footprint_aspect_ratio"), metricStatusOK)
 	}
 	if facts.hasEnvelopeArea {
-		values["envelope_area_m2"] = numberSummaryValue(facts.envelopeArea, precisionFor("envelope_area_m2"), summaryStatusOK)
+		values["envelope_area_m2"] = numberMetricValue(facts.envelopeArea, precisionFor("envelope_area_m2"), metricStatusOK)
 		netOpaque := math.Max(0, facts.envelopeArea-facts.windowArea-facts.doorArea)
-		values["net_opaque_envelope_area_m2"] = numberSummaryValue(netOpaque, precisionFor("net_opaque_envelope_area_m2"), summaryStatusOK)
+		values["net_opaque_envelope_area_m2"] = numberMetricValue(netOpaque, precisionFor("net_opaque_envelope_area_m2"), metricStatusOK)
 	}
 	if facts.hasEnvelopeArea && facts.hasZoneVolume {
-		values["envelope_area_to_volume_ratio"] = ratioSummaryValue(facts.envelopeArea, facts.totalZoneVolume, precisionFor("envelope_area_to_volume_ratio"), partialIf(facts.zoneVolumePartial))
+		values["envelope_area_to_volume_ratio"] = ratioMetricValue(facts.envelopeArea, facts.totalZoneVolume, precisionFor("envelope_area_to_volume_ratio"), partialIf(facts.zoneVolumePartial))
 	}
 	if facts.hasGrossFloorArea && facts.hasZoneVolume {
-		values["floor_area_to_volume_ratio"] = ratioSummaryValue(facts.grossFloorArea, facts.totalZoneVolume, precisionFor("floor_area_to_volume_ratio"), partialIf(facts.zoneVolumePartial))
+		values["floor_area_to_volume_ratio"] = ratioMetricValue(facts.grossFloorArea, facts.totalZoneVolume, precisionFor("floor_area_to_volume_ratio"), partialIf(facts.zoneVolumePartial))
 	}
 	if facts.hasExteriorWallArea {
-		values["exterior_wall_area_m2"] = numberSummaryValue(facts.exteriorWallArea, precisionFor("exterior_wall_area_m2"), summaryStatusOK)
-		values["total_wwr_percent"] = percentSummaryValue(facts.windowArea, facts.exteriorWallArea, precisionFor("total_wwr_percent"), partialIf(!facts.hasWindowArea))
+		values["exterior_wall_area_m2"] = numberMetricValue(facts.exteriorWallArea, precisionFor("exterior_wall_area_m2"), metricStatusOK)
+		values["total_wwr_percent"] = percentMetricValue(facts.windowArea, facts.exteriorWallArea, precisionFor("total_wwr_percent"), partialIf(!facts.hasWindowArea))
 	}
 	if facts.hasRoofArea {
-		values["roof_area_m2"] = numberSummaryValue(facts.roofArea, precisionFor("roof_area_m2"), summaryStatusOK)
-		values["skylight_roof_ratio_percent"] = percentSummaryValue(facts.skylightArea, facts.roofArea, precisionFor("skylight_roof_ratio_percent"), partialIf(facts.fenestrationMissingBase > 0))
+		values["roof_area_m2"] = numberMetricValue(facts.roofArea, precisionFor("roof_area_m2"), metricStatusOK)
+		values["skylight_roof_ratio_percent"] = percentMetricValue(facts.skylightArea, facts.roofArea, precisionFor("skylight_roof_ratio_percent"), partialIf(facts.fenestrationMissingBase > 0))
 	}
 	if facts.hasGroundFloorArea {
-		values["ground_floor_area_m2"] = numberSummaryValue(facts.groundFloorArea, precisionFor("ground_floor_area_m2"), summaryStatusOK)
+		values["ground_floor_area_m2"] = numberMetricValue(facts.groundFloorArea, precisionFor("ground_floor_area_m2"), metricStatusOK)
 	}
 	if facts.hasWindowArea {
-		values["window_area_m2"] = numberSummaryValue(facts.windowArea, precisionFor("window_area_m2"), summaryStatusOK)
+		values["window_area_m2"] = numberMetricValue(facts.windowArea, precisionFor("window_area_m2"), metricStatusOK)
 	}
 	if facts.hasDoorArea {
-		values["door_area_m2"] = numberSummaryValue(facts.doorArea, precisionFor("door_area_m2"), summaryStatusOK)
+		values["door_area_m2"] = numberMetricValue(facts.doorArea, precisionFor("door_area_m2"), metricStatusOK)
 	}
 	for _, orientation := range []string{"north", "east", "south", "west"} {
 		id := orientation + "_wwr_percent"
 		if facts.wallAreaByOrientation[orientation] > 0 {
-			values[id] = percentSummaryValue(facts.windowAreaByOrientation[orientation], facts.wallAreaByOrientation[orientation], precisionFor(id), partialIf(facts.orientationMissingCount > 0))
+			values[id] = percentMetricValue(facts.windowAreaByOrientation[orientation], facts.wallAreaByOrientation[orientation], precisionFor(id), partialIf(facts.orientationMissingCount > 0))
 		}
 	}
 	if facts.hasLightingPower {
-		values["total_lighting_power_w"] = numberSummaryValue(facts.totalLightingPower, precisionFor("total_lighting_power_w"), partialIf(facts.lightingPartial))
+		values["total_lighting_power_w"] = numberMetricValue(facts.totalLightingPower, precisionFor("total_lighting_power_w"), partialIf(facts.lightingPartial))
 		if area, ok := facts.loadDensityArea(); ok {
-			values["average_lighting_power_density_w_per_m2"] = ratioSummaryValue(facts.totalLightingPower, area, precisionFor("average_lighting_power_density_w_per_m2"), partialIf(facts.lightingPartial))
+			values["average_lighting_power_density_w_per_m2"] = ratioMetricValue(facts.totalLightingPower, area, precisionFor("average_lighting_power_density_w_per_m2"), partialIf(facts.lightingPartial))
 		}
 	}
 	if facts.hasEquipmentPower {
-		values["total_equipment_power_w"] = numberSummaryValue(facts.totalEquipmentPower, precisionFor("total_equipment_power_w"), partialIf(facts.equipmentPartial))
+		values["total_equipment_power_w"] = numberMetricValue(facts.totalEquipmentPower, precisionFor("total_equipment_power_w"), partialIf(facts.equipmentPartial))
 		if area, ok := facts.loadDensityArea(); ok {
-			values["average_equipment_power_density_w_per_m2"] = ratioSummaryValue(facts.totalEquipmentPower, area, precisionFor("average_equipment_power_density_w_per_m2"), partialIf(facts.equipmentPartial))
+			values["average_equipment_power_density_w_per_m2"] = ratioMetricValue(facts.totalEquipmentPower, area, precisionFor("average_equipment_power_density_w_per_m2"), partialIf(facts.equipmentPartial))
 		}
 	}
 	if facts.hasPeople {
-		values["total_people"] = numberSummaryValue(facts.totalPeople, precisionFor("total_people"), partialIf(facts.peoplePartial))
+		values["total_people"] = numberMetricValue(facts.totalPeople, precisionFor("total_people"), partialIf(facts.peoplePartial))
 		if area, ok := facts.loadDensityArea(); ok {
-			values["people_density_per_100m2"] = numberSummaryValue(facts.totalPeople/area*100, precisionFor("people_density_per_100m2"), partialIf(facts.peoplePartial))
+			values["people_density_per_100m2"] = numberMetricValue(facts.totalPeople/area*100, precisionFor("people_density_per_100m2"), partialIf(facts.peoplePartial))
 		}
 	}
 	if hours, ok := facts.modelOperatingHours(); ok {
-		values["model_operating_hours_h"] = numberSummaryValue(hours, precisionFor("model_operating_hours_h"), partialIf(facts.unsupportedScheduleCount > 0))
+		values["model_operating_hours_h"] = numberMetricValue(hours, precisionFor("model_operating_hours_h"), partialIf(facts.unsupportedScheduleCount > 0 || facts.modelOperatingHoursUseStepApproximation()))
 	}
 	if hours, ok := facts.averageScheduleHours(); ok {
-		values["average_schedule_operating_hours_h"] = numberSummaryValue(hours, precisionFor("average_schedule_operating_hours_h"), partialIf(facts.unsupportedScheduleCount > 0))
+		values["average_schedule_operating_hours_h"] = numberMetricValue(hours, precisionFor("average_schedule_operating_hours_h"), partialIf(facts.unsupportedScheduleCount > 0 || len(facts.scheduleStepApproximations) > 0))
 	}
 	if facts.geometryObjectCount > 0 {
-		values["geometry_coverage_percent"] = percentSummaryValue(float64(facts.detailedGeometryCount), float64(facts.geometryObjectCount), precisionFor("geometry_coverage_percent"), partialIf(facts.detailedGeometryCount < facts.geometryObjectCount))
+		values["geometry_coverage_percent"] = percentMetricValue(float64(facts.detailedGeometryCount), float64(facts.geometryObjectCount), precisionFor("geometry_coverage_percent"), partialIf(facts.detailedGeometryCount < facts.geometryObjectCount))
 	} else {
-		values["geometry_coverage_percent"] = missingSummaryValue()
+		values["geometry_coverage_percent"] = missingMetricValue()
 	}
 	if facts.profileReferenceCount > 0 {
-		values["profile_coverage_percent"] = percentSummaryValue(float64(facts.supportedProfileReferences), float64(facts.profileReferenceCount), precisionFor("profile_coverage_percent"), partialIf(facts.supportedProfileReferences < facts.profileReferenceCount))
+		values["profile_coverage_percent"] = percentMetricValue(float64(facts.supportedProfileReferences), float64(facts.profileReferenceCount), precisionFor("profile_coverage_percent"), partialIf(facts.supportedProfileReferences < facts.profileReferenceCount || facts.approximatedProfileRefs > 0))
 	}
 	if facts.heavyReadinessCaptured {
-		values["hvac_rule_edge_count"] = countSummaryValue(facts.hvacRuleEdgeCount)
+		values["hvac_rule_edge_count"] = countMetricValue(facts.hvacRuleEdgeCount)
 		if facts.outputRequestCount > 0 {
-			values["output_readiness_percent"] = percentSummaryValue(float64(facts.recognizedOutputCount), float64(facts.outputRequestCount), precisionFor("output_readiness_percent"), partialIf(facts.recognizedOutputCount < facts.outputRequestCount))
+			values["output_readiness_percent"] = percentMetricValue(float64(facts.recognizedOutputCount), float64(facts.outputRequestCount), precisionFor("output_readiness_percent"), partialIf(facts.recognizedOutputCount < facts.outputRequestCount))
 		} else {
-			values["output_readiness_percent"] = missingSummaryValue()
+			values["output_readiness_percent"] = missingMetricValue()
 		}
 	}
 
-	for _, definition := range summaryDefinitions {
+	for _, definition := range metricDefinitions {
 		if _, ok := values[definition.ID]; !ok {
-			values[definition.ID] = missingSummaryValue()
+			values[definition.ID] = missingMetricValue()
 		}
 	}
 	return values
 }
 
 func precisionFor(metricID string) int {
-	for _, definition := range summaryDefinitions {
+	for _, definition := range metricDefinitions {
 		if definition.ID == metricID {
 			return definition.Precision
 		}
@@ -1278,12 +1530,12 @@ func precisionFor(metricID string) int {
 
 func partialIf(condition bool) string {
 	if condition {
-		return summaryStatusPartial
+		return metricStatusPartial
 	}
-	return summaryStatusOK
+	return metricStatusOK
 }
 
-func summaryMetricSource(metricID string, definitionSource string) string {
+func metricSource(metricID string, definitionSource string) string {
 	switch metricID {
 	case "geometry_coverage_percent", "profile_coverage_percent", "output_readiness_percent":
 		return "analyzer_readiness"
@@ -1308,37 +1560,37 @@ func summaryMetricSource(metricID string, definitionSource string) string {
 	return "idf_fields"
 }
 
-func summaryMetricConfidence(metricID string, status string) string {
-	if status == summaryStatusMissing {
+func metricConfidence(metricID string, status string) string {
+	if status == metricStatusMissing {
 		return "missing"
 	}
 	switch metricID {
 	case "conditioned_floor_area_m2", "unconditioned_floor_area_m2", "conditioned_zone_count", "conditioned_zone_evidence_breakdown":
-		if status == summaryStatusPartial {
+		if status == metricStatusPartial {
 			return "partial"
 		}
 		return "inferred"
 	case "north_wwr_percent", "east_wwr_percent", "south_wwr_percent", "west_wwr_percent", "skylight_roof_ratio_percent":
-		if status == summaryStatusPartial {
+		if status == metricStatusPartial {
 			return "partial"
 		}
 		return "computed"
 	case "bounding_box_area_m2", "building_long_side_m", "building_short_side_m", "footprint_aspect_ratio", "model_operating_hours_h", "average_schedule_operating_hours_h":
-		if status == summaryStatusPartial {
+		if status == metricStatusPartial {
 			return "partial"
 		}
 		return "inferred"
 	case "diagnostics_by_source", "geometry_coverage_percent", "profile_coverage_percent", "internal_load_method_coverage", "output_readiness_percent", "hvac_rule_edge_count":
 		return "computed"
 	default:
-		if status == summaryStatusPartial {
+		if status == metricStatusPartial {
 			return "partial"
 		}
 		return "direct_or_computed"
 	}
 }
 
-func summaryMetricVisibility(metricID string) string {
+func metricVisibility(metricID string) string {
 	switch metricID {
 	case "average_schedule_operating_hours_h", "unconditioned_floor_area_m2", "bounding_box_area_m2", "building_long_side_m", "building_short_side_m", "footprint_aspect_ratio", "envelope_area_to_volume_ratio", "floor_area_to_volume_ratio", "hvac_node_connection_count", "hvac_rule_edge_count", "diagnostics_by_source":
 		return "advanced"
@@ -1347,12 +1599,12 @@ func summaryMetricVisibility(metricID string) string {
 	}
 }
 
-func summaryMetricBadges(metricID string, status string) []string {
+func metricBadges(metricID string, status string) []string {
 	var badges []string
-	if status == summaryStatusPartial {
+	if status == metricStatusPartial {
 		badges = append(badges, "partial")
 	}
-	if status == summaryStatusMissing {
+	if status == metricStatusMissing {
 		badges = append(badges, "missing")
 	}
 	switch metricID {
@@ -1370,8 +1622,18 @@ func summaryMetricBadges(metricID string, status string) []string {
 	return badges
 }
 
-func summaryMetricEvidence(metricID string, defaultMethod string, facts summaryFacts) string {
+func metricEvidence(metricID string, defaultMethod string, facts metricFacts) string {
 	switch metricID {
+	case "supported_schedule_count", "unsupported_schedule_count", "model_operating_hours_h", "average_schedule_operating_hours_h":
+		if count := len(facts.scheduleStepApproximations); count > 0 {
+			return fmt.Sprintf("%s Schedule:Compact Linear/Average step approximations:%d.", defaultMethod, count)
+		}
+		return defaultMethod
+	case "profile_coverage_percent":
+		if facts.approximatedProfileRefs > 0 {
+			return fmt.Sprintf("%s Referenced Schedule:Compact Linear/Average step approximations:%d.", defaultMethod, facts.approximatedProfileRefs)
+		}
+		return defaultMethod
 	case "north_wwr_percent", "east_wwr_percent", "south_wwr_percent", "west_wwr_percent":
 		return fmt.Sprintf("%s Orientation sources: field_azimuth:%d, computed_normal:%d, base_surface:%d, missing:%d.",
 			defaultMethod,
@@ -1387,7 +1649,7 @@ func summaryMetricEvidence(metricID string, defaultMethod string, facts summaryF
 	}
 }
 
-func summarySourceCountsDisplay(counts map[string]int) string {
+func metricSourceCountsDisplay(counts map[string]int) string {
 	if len(counts) == 0 {
 		return "none"
 	}
@@ -1403,7 +1665,7 @@ func summarySourceCountsDisplay(counts map[string]int) string {
 	return strings.Join(parts, ", ")
 }
 
-func summaryConditionedEvidenceDisplay(evidence map[string]map[string]bool) string {
+func metricConditionedEvidenceDisplay(evidence map[string]map[string]bool) string {
 	order := []string{"by_equipment_connections", "by_zone_hvac", "by_thermostat", "by_space_hvac"}
 	parts := make([]string, 0, len(order))
 	for _, key := range order {
@@ -1412,9 +1674,9 @@ func summaryConditionedEvidenceDisplay(evidence map[string]map[string]bool) stri
 	return strings.Join(parts, ", ")
 }
 
-func summaryInternalLoadCoverageValue(resolved int, total int, unresolved int) summaryMetricValue {
+func metricInternalLoadCoverageValue(resolved int, total int, unresolved int) metricValue {
 	display := fmt.Sprintf("resolved:%d/%d, unresolved_method_count:%d", resolved, total, unresolved)
-	return summaryMetricValue{
+	return metricValue{
 		Value:        display,
 		DisplayValue: display,
 		Status:       partialIf(unresolved > 0),
@@ -1423,14 +1685,17 @@ func summaryInternalLoadCoverageValue(resolved int, total int, unresolved int) s
 
 func floorAreaStatus(conditionedArea, grossArea float64, hasGross bool) string {
 	if !hasGross || conditionedArea > grossArea {
-		return summaryStatusPartial
+		return metricStatusPartial
 	}
-	return summaryStatusOK
+	return metricStatusOK
 }
 
-func (facts summaryFacts) conditionedFloorArea() (float64, bool) {
+func (facts metricFacts) conditionedFloorArea() (float64, bool) {
 	var total float64
 	for zone := range facts.conditionedZones {
+		if included, known := facts.zonesInTotalFloorArea[zone]; known && !included {
+			continue
+		}
 		area, ok := facts.zoneFloorAreas[zone]
 		if !ok {
 			continue
@@ -1440,7 +1705,7 @@ func (facts summaryFacts) conditionedFloorArea() (float64, bool) {
 	return total, total > 0
 }
 
-func (facts summaryFacts) loadDensityArea() (float64, bool) {
+func (facts metricFacts) loadDensityArea() (float64, bool) {
 	if area, ok := facts.conditionedFloorArea(); ok {
 		return area, true
 	}
@@ -1450,7 +1715,7 @@ func (facts summaryFacts) loadDensityArea() (float64, bool) {
 	return 0, false
 }
 
-func (facts summaryFacts) modelOperatingHours() (float64, bool) {
+func (facts metricFacts) modelOperatingHours() (float64, bool) {
 	var maxHours float64
 	found := false
 	for schedule := range facts.referencedSchedules {
@@ -1471,7 +1736,21 @@ func (facts summaryFacts) modelOperatingHours() (float64, bool) {
 	return maxHours, found
 }
 
-func (facts summaryFacts) averageScheduleHours() (float64, bool) {
+func (facts metricFacts) modelOperatingHoursUseStepApproximation() bool {
+	foundReference := false
+	for schedule := range facts.referencedSchedules {
+		if _, ok := facts.scheduleHours[schedule]; !ok {
+			continue
+		}
+		foundReference = true
+		if facts.scheduleStepApproximations[schedule] {
+			return true
+		}
+	}
+	return !foundReference && len(facts.scheduleStepApproximations) > 0
+}
+
+func (facts metricFacts) averageScheduleHours() (float64, bool) {
 	if len(facts.scheduleHours) == 0 {
 		return 0, false
 	}
@@ -1482,7 +1761,7 @@ func (facts summaryFacts) averageScheduleHours() (float64, bool) {
 	return total / float64(len(facts.scheduleHours)), true
 }
 
-func (facts summaryFacts) surfaceMap() map[string]surfaceInfo {
+func (facts metricFacts) surfaceMap() map[string]surfaceInfo {
 	out := map[string]surfaceInfo{}
 	for _, surface := range facts.surfaces {
 		if surface.name != "" {
@@ -1492,19 +1771,28 @@ func (facts summaryFacts) surfaceMap() map[string]surfaceInfo {
 	return out
 }
 
-func (facts *summaryFacts) surfaceInfo(obj Object) (surfaceInfo, bool) {
+func (facts *metricFacts) surfaceInfo(obj Object) (surfaceInfo, bool) {
 	area, ok := objectArea(obj)
 	if !ok || area <= 0 {
 		return surfaceInfo{}, false
 	}
+	zoneName := semanticGeometryFieldValue(obj, 3, "Zone Name")
+	spaceName := semanticGeometrySpaceName(obj)
+	if zoneName == "" && spaceName != "" {
+		zoneName = facts.spaceZones[normalizeName(spaceName)]
+	}
 	vertices, hasVertices := detailedVertices(obj)
 	if hasVertices {
+		vertices = geometryWorldVerticesForCoordinateSystem(vertices, zoneName, facts.geometryCoordinateSystem, geometryContext{
+			buildingNorthAxis:    facts.buildingNorthAxis,
+			hasBuildingNorthAxis: facts.hasBuildingNorthAxis,
+			zoneDirections:       facts.zoneDirections,
+			zoneOrigins:          facts.zoneOrigins,
+		})
 		for _, vertex := range vertices {
 			facts.bounds.add(vertex)
 		}
 	}
-
-	zoneName := findFieldByCommentWords(obj, "zone", "name")
 	multiplier := zoneMultiplierFor(facts.zoneMultipliers, zoneName)
 	area *= multiplier
 	minZ, maxZ, avgZ := verticesZStats(vertices)
@@ -1513,12 +1801,13 @@ func (facts *summaryFacts) surfaceInfo(obj Object) (surfaceInfo, bool) {
 	if hasAzimuth {
 		orientation = orientationFromAzimuth(azimuth)
 	}
-	outside := findFieldByCommentWords(obj, "outside", "boundary", "condition")
+	outside := semanticGeometryOutsideBoundary(obj)
 	surfaceType := buildingSurfaceType(obj)
 	return surfaceInfo{
 		name:          objectName(obj),
 		surfaceType:   surfaceType,
 		zoneName:      zoneName,
+		spaceName:     spaceName,
 		outside:       outside,
 		area:          area,
 		azimuth:       azimuth,
@@ -1532,8 +1821,11 @@ func (facts *summaryFacts) surfaceInfo(obj Object) (surfaceInfo, bool) {
 	}, true
 }
 
-func (facts summaryFacts) objectAzimuthSource(obj Object, zoneName string) (float64, string, bool) {
-	if value, ok := parseFloatField(findFieldByCommentWords(obj, "azimuth")); ok {
+func (facts metricFacts) objectAzimuthSource(obj Object, zoneName string) (float64, string, bool) {
+	if value, ok := parseFloatField(firstNonEmpty(
+		fieldValueByCatalogName(obj, "Azimuth"),
+		findFieldByCommentWords(obj, "azimuth"),
+	)); ok {
 		return normalizeDegrees(value + facts.azimuthRotation(zoneName)), "field_azimuth", true
 	}
 	vertices, ok := detailedVertices(obj)
@@ -1554,10 +1846,14 @@ func (facts summaryFacts) objectAzimuthSource(obj Object, zoneName string) (floa
 		return 0, "", false
 	}
 	azimuth := math.Atan2(normal.x, normal.y) * 180 / math.Pi
-	return normalizeDegrees(azimuth + facts.azimuthRotation(zoneName)), "computed_normal", true
+	rotation := facts.azimuthRotation(zoneName)
+	if isWorldGeometryCoordinateSystem(facts.geometryCoordinateSystem) {
+		rotation = 0
+	}
+	return normalizeDegrees(azimuth + rotation), "computed_normal", true
 }
 
-func (facts *summaryFacts) recordOrientationSource(source string) {
+func (facts *metricFacts) recordOrientationSource(source string) {
 	switch source {
 	case "field_azimuth":
 		facts.orientationFieldCount++
@@ -1568,7 +1864,7 @@ func (facts *summaryFacts) recordOrientationSource(source string) {
 	}
 }
 
-func (facts summaryFacts) azimuthRotation(zoneName string) float64 {
+func (facts metricFacts) azimuthRotation(zoneName string) float64 {
 	rotation := 0.0
 	if facts.hasBuildingNorthAxis {
 		rotation += facts.buildingNorthAxis
@@ -1579,7 +1875,7 @@ func (facts summaryFacts) azimuthRotation(zoneName string) float64 {
 	return rotation
 }
 
-func (facts summaryFacts) geometryHeightForZone(zone string) (float64, bool) {
+func (facts metricFacts) geometryHeightForZone(zone string) (float64, bool) {
 	minZ := math.Inf(1)
 	maxZ := math.Inf(-1)
 	for _, surface := range facts.floorSurfaces {
@@ -1602,21 +1898,31 @@ func (facts summaryFacts) geometryHeightForZone(zone string) (float64, bool) {
 	return maxZ - minZ, true
 }
 
-func (facts summaryFacts) objectTargetZones(obj Object) []string {
-	target := findFieldByCommentWords(obj, "zone", "name")
-	if target == "" {
-		target = findFieldByCommentWords(obj, "zone", "zonelist", "name")
+func (facts metricFacts) objectTargetZones(obj Object) []string {
+	target := facts.metricTargetName(obj)
+	key := normalizeName(target)
+	if zones, ok := facts.zoneLists[key]; ok {
+		return cleanMetricNames(zones)
+	}
+	if spaces, ok := facts.spaceLists[key]; ok {
+		zones := make([]string, 0, len(spaces))
+		for _, spaceName := range spaces {
+			if zoneName := facts.spaceZones[normalizeName(spaceName)]; zoneName != "" {
+				zones = append(zones, zoneName)
+			}
+		}
+		return cleanMetricNames(zones)
+	}
+	if zoneName := facts.spaceZones[key]; zoneName != "" {
+		return []string{zoneName}
 	}
 	if target == "" {
 		return nil
 	}
-	if zones, ok := facts.zoneLists[normalizeName(target)]; ok {
-		return zones
-	}
 	return []string{target}
 }
 
-func (facts summaryFacts) objectTargetSpaceZones(obj Object) []string {
+func (facts metricFacts) objectTargetSpaceZones(obj Object) []string {
 	spaceName := findFieldByCommentWords(obj, "space", "name")
 	if spaceName == "" {
 		spaceName = fieldValueByCatalogName(obj, "Space Name")
@@ -1634,83 +1940,290 @@ func (facts summaryFacts) objectTargetSpaceZones(obj Object) []string {
 	return []string{zoneName}
 }
 
-func (facts summaryFacts) targetArea(obj Object) (float64, bool) {
-	var total float64
-	for _, zone := range facts.objectTargetZones(obj) {
-		total += facts.zoneFloorAreas[normalizeName(zone)]
-	}
-	return total, total > 0
+type metricLoadTarget struct {
+	zoneKey    string
+	spaceKey   string
+	area       float64
+	hasArea    bool
+	multiplier float64
 }
 
-func (facts summaryFacts) targetPeople(obj Object) (float64, bool) {
-	var total float64
-	for _, zone := range facts.objectTargetZones(obj) {
-		total += facts.peopleForZone(zone)
+func cleanMetricNames(values []string) []string {
+	seen := map[string]bool{}
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		key := normalizeName(value)
+		if key == "" || seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, strings.TrimSpace(value))
 	}
-	return total, total > 0
+	return out
 }
 
-func (facts summaryFacts) targetMultiplier(obj Object) float64 {
-	total := 0.0
-	for _, zone := range facts.objectTargetZones(obj) {
-		total += zoneMultiplierFor(facts.zoneMultipliers, zone)
-	}
-	if total == 0 {
-		return 1
-	}
-	return total
+func (facts metricFacts) metricTargetName(obj Object) string {
+	return firstNonEmpty(
+		fieldValueByCatalogName(obj,
+			"Zone or ZoneList or Space or SpaceList Name",
+			"Zone or ZoneList Name",
+			"Zone or Space Name",
+			"Zone Name",
+			"Space Name",
+		),
+		findFieldByCommentWords(obj, "zone", "zonelist", "name"),
+		findFieldByCommentWords(obj, "space", "spacelist", "name"),
+		findFieldByCommentWords(obj, "zone", "name"),
+		findFieldByCommentWords(obj, "space", "name"),
+	)
 }
 
-func (facts summaryFacts) peopleForZone(zoneName string) float64 {
-	zoneKey := normalizeName(zoneName)
-	area := facts.zoneFloorAreas[zoneKey]
-	if area <= 0 || facts.totalPeople <= 0 || !facts.hasGrossFloorArea || facts.grossFloorArea <= 0 {
-		return 0
+func (facts metricFacts) loadTargets(obj Object) ([]metricLoadTarget, bool, bool) {
+	targetName := facts.metricTargetName(obj)
+	key := normalizeName(targetName)
+	if key == "" {
+		return nil, false, false
 	}
-	return facts.totalPeople * area / facts.grossFloorArea
+	zoneTarget := func(zoneName string) metricLoadTarget {
+		zoneKey := normalizeName(zoneName)
+		area, hasArea := facts.zoneFloorAreas[zoneKey]
+		return metricLoadTarget{
+			zoneKey:    zoneKey,
+			area:       area,
+			hasArea:    hasArea && area > 0,
+			multiplier: zoneMultiplierFor(facts.zoneMultipliers, zoneName),
+		}
+	}
+	spaceTarget := func(spaceName string) (metricLoadTarget, bool) {
+		spaceKey := normalizeName(spaceName)
+		zoneName, exists := facts.spaceZones[spaceKey]
+		zoneKey := normalizeName(zoneName)
+		if !exists || zoneKey == "" {
+			return metricLoadTarget{}, false
+		}
+		if _, zoneExists := facts.zoneMultipliers[zoneKey]; !zoneExists {
+			return metricLoadTarget{}, false
+		}
+		area, hasArea := facts.spaceFloorAreas[spaceKey]
+		return metricLoadTarget{
+			zoneKey:    zoneKey,
+			spaceKey:   spaceKey,
+			area:       area,
+			hasArea:    hasArea && area > 0,
+			multiplier: zoneMultiplierFor(facts.zoneMultipliers, zoneName),
+		}, true
+	}
+
+	if zones, ok := facts.zoneLists[key]; ok {
+		members := cleanMetricNames(zones)
+		out := make([]metricLoadTarget, 0, len(members))
+		for _, zoneName := range members {
+			zoneKey := normalizeName(zoneName)
+			if _, exists := facts.zoneMultipliers[zoneKey]; exists {
+				out = append(out, zoneTarget(zoneName))
+			}
+		}
+		return out, len(out) > 0, len(members) > 0 && len(out) == len(members)
+	}
+	if spaces, ok := facts.spaceLists[key]; ok {
+		members := cleanMetricNames(spaces)
+		out := make([]metricLoadTarget, 0, len(members))
+		for _, spaceName := range members {
+			if target, exists := spaceTarget(spaceName); exists {
+				out = append(out, target)
+			}
+		}
+		return out, len(out) > 0, len(members) > 0 && len(out) == len(members)
+	}
+	if target, ok := spaceTarget(targetName); ok {
+		return []metricLoadTarget{target}, true, true
+	}
+	if _, ok := facts.zoneMultipliers[key]; ok {
+		return []metricLoadTarget{zoneTarget(targetName)}, true, true
+	}
+	return nil, false, false
 }
 
-func (facts summaryFacts) peopleObjectValue(obj Object) (float64, bool, bool) {
-	method := strings.ToLower(findFieldByCommentWords(obj, "calculation", "method"))
-	multiplier := facts.targetMultiplier(obj)
+func (facts *metricFacts) capturePeopleObject(obj Object) (float64, bool, bool) {
+	targets, targetsOK, targetsComplete := facts.loadTargets(obj)
+	method := strings.ToLower(firstNonEmpty(
+		fieldValueByCatalogName(obj, "Number of People Calculation Method"),
+		findFieldByCommentWords(obj, "calculation", "method"),
+	))
+	var value float64
+	var valueOK bool
 	switch {
 	case strings.Contains(method, "people/area"):
-		value, ok := findNumericFieldByCommentWords(obj, "people", "zone", "floor", "area")
-		area, hasArea := facts.targetArea(obj)
-		return value * area, ok && hasArea, !hasArea
+		value, valueOK = metricNumericField(obj,
+			[]string{"People per Floor Area", "People per Zone Floor Area"},
+			[]string{"people", "floor", "area"},
+		)
 	case strings.Contains(method, "area/person"):
-		value, ok := findNumericFieldByCommentWords(obj, "zone", "floor", "area", "person")
-		area, hasArea := facts.targetArea(obj)
-		if !ok || !hasArea || value <= 0 {
-			return 0, false, true
-		}
-		return area / value, true, false
+		value, valueOK = metricNumericField(obj,
+			[]string{"Floor Area per Person", "Zone Floor Area per Person"},
+			[]string{"floor", "area", "person"},
+		)
+		valueOK = valueOK && value > 0
 	default:
-		value, ok := findNumericFieldByCommentWords(obj, "number", "people")
-		return value * multiplier, ok, false
+		value, valueOK = metricNumericField(obj, []string{"Number of People"}, []string{"number", "people"})
+	}
+
+	if !targetsOK || !valueOK {
+		facts.markPeopleTargetsUnresolved(targets)
+		return 0, false, true
+	}
+	var total float64
+	resolved := 0
+	partial := !targetsComplete
+	for _, target := range targets {
+		count := 0.0
+		ok := true
+		switch {
+		case strings.Contains(method, "people/area"):
+			ok = target.hasArea
+			count = value * target.area
+		case strings.Contains(method, "area/person"):
+			ok = target.hasArea
+			count = target.area / value
+		default:
+			count = value * target.multiplier
+		}
+		if !ok {
+			facts.markPeopleTargetUnresolved(target)
+			partial = true
+			continue
+		}
+		facts.recordPeopleTarget(target, count)
+		total += count
+		resolved++
+	}
+	return total, resolved > 0, partial || resolved != len(targets)
+}
+
+func (facts *metricFacts) markPeopleTargetsUnresolved(targets []metricLoadTarget) {
+	for _, target := range targets {
+		facts.markPeopleTargetUnresolved(target)
 	}
 }
 
-func (facts summaryFacts) designPowerValue(obj Object, kind string) (float64, bool, bool) {
-	method := strings.ToLower(findFieldByCommentWords(obj, "calculation", "method"))
-	multiplier := facts.targetMultiplier(obj)
+func (facts *metricFacts) markPeopleTargetUnresolved(target metricLoadTarget) {
+	if target.zoneKey != "" {
+		facts.peopleUnresolvedByZone[target.zoneKey] = true
+	}
+	if target.spaceKey != "" {
+		facts.peopleUnresolvedBySpace[target.spaceKey] = true
+		return
+	}
+	for _, spaceKey := range facts.metricSpacesByZone()[target.zoneKey] {
+		facts.peopleUnresolvedBySpace[spaceKey] = true
+	}
+}
+
+func (facts *metricFacts) recordPeopleTarget(target metricLoadTarget, count float64) {
+	facts.peopleByZone[target.zoneKey] += count
+	facts.peopleKnownByZone[target.zoneKey] = true
+	if target.spaceKey != "" {
+		facts.peopleBySpace[target.spaceKey] += count
+		facts.peopleKnownBySpace[target.spaceKey] = true
+		return
+	}
+	spaces := facts.metricSpacesByZone()[target.zoneKey]
+	if len(spaces) == 0 {
+		return
+	}
+	// A Zone-target People object is expanded over every Space, including the
+	// implicit <Zone>-Remainder Space. Allocate only the explicit Space share
+	// against the authoritative Zone area; normalizing by explicit Spaces alone
+	// would assign the remainder's occupants to them a second time.
+	zoneArea := facts.zoneFloorAreas[target.zoneKey]
+	if zoneArea <= 0 {
+		for _, spaceKey := range spaces {
+			facts.peopleUnresolvedBySpace[spaceKey] = true
+		}
+		return
+	}
+	for _, spaceKey := range spaces {
+		facts.peopleBySpace[spaceKey] += count * facts.spaceFloorAreas[spaceKey] / zoneArea
+		facts.peopleKnownBySpace[spaceKey] = true
+	}
+}
+
+func (facts metricFacts) peopleForTarget(target metricLoadTarget) (float64, bool, bool) {
+	if target.spaceKey != "" {
+		return facts.peopleBySpace[target.spaceKey], facts.peopleKnownBySpace[target.spaceKey], facts.peopleUnresolvedBySpace[target.spaceKey]
+	}
+	return facts.peopleByZone[target.zoneKey], facts.peopleKnownByZone[target.zoneKey], facts.peopleUnresolvedByZone[target.zoneKey]
+}
+
+func (facts metricFacts) designPowerValue(obj Object, kind string) (float64, bool, bool) {
+	method := strings.ToLower(firstNonEmpty(
+		fieldValueByCatalogName(obj, "Design Level Calculation Method"),
+		findFieldByCommentWords(obj, "calculation", "method"),
+	))
+	targets, targetsOK, targetsComplete := facts.loadTargets(obj)
+	if !targetsOK {
+		return 0, false, true
+	}
+	var value float64
+	var valueOK bool
 	switch {
-	case strings.Contains(method, "watts/area"):
-		value, ok := findNumericFieldByCommentWords(obj, "watts", "zone", "floor", "area")
-		area, hasArea := facts.targetArea(obj)
-		return value * area, ok && hasArea, !hasArea
-	case strings.Contains(method, "watts/person"):
-		value, ok := findNumericFieldByCommentWords(obj, "watts", "person")
-		people, hasPeople := facts.targetPeople(obj)
-		return value * people, ok && hasPeople, !hasPeople
+	case strings.Contains(method, "/area"):
+		value, valueOK = metricNumericField(obj,
+			[]string{"Watts per Floor Area", "Watts per Zone Floor Area", "Power per Floor Area", "Power per Zone Floor Area"},
+			[]string{"per", "floor", "area"},
+		)
+	case strings.Contains(method, "/person"):
+		value, valueOK = metricNumericField(obj,
+			[]string{"Watts per Person", "Power per Person"},
+			[]string{"per", "person"},
+		)
 	default:
 		fieldWords := []string{"design", "level"}
 		if kind == "lighting" {
 			fieldWords = []string{"lighting", "level"}
 		}
-		value, ok := findNumericFieldByCommentWords(obj, fieldWords...)
-		return value * multiplier, ok, false
+		catalogNames := []string{"Design Level"}
+		if kind == "lighting" {
+			catalogNames = []string{"Lighting Level"}
+		}
+		value, valueOK = metricNumericField(obj, catalogNames, fieldWords)
 	}
+	if !valueOK {
+		return 0, false, true
+	}
+	var total float64
+	resolved := 0
+	partial := !targetsComplete
+	for _, target := range targets {
+		power := 0.0
+		ok := true
+		switch {
+		case strings.Contains(method, "/area"):
+			ok = target.hasArea
+			power = value * target.area
+		case strings.Contains(method, "/person"):
+			people, peopleOK, peoplePartial := facts.peopleForTarget(target)
+			ok = peopleOK
+			partial = partial || peoplePartial
+			power = value * people
+		default:
+			power = value * target.multiplier
+		}
+		if !ok {
+			partial = true
+			continue
+		}
+		total += power
+		resolved++
+	}
+	return total, resolved > 0, partial || resolved != len(targets)
+}
+
+func metricNumericField(obj Object, catalogNames []string, commentWords []string) (float64, bool) {
+	if value, ok := parseFloatField(fieldValueByCatalogName(obj, catalogNames...)); ok {
+		return value, true
+	}
+	return findNumericFieldByCommentWords(obj, commentWords...)
 }
 
 func zoneMultiplierFor(multipliers map[string]float64, zoneName string) float64 {
@@ -1785,13 +2298,6 @@ func findNumericFieldByCommentWords(obj Object, words ...string) (float64, bool)
 		}
 	}
 	return 0, false
-}
-
-func numericFieldOrDefault(obj Object, fallback float64, words ...string) float64 {
-	if value, ok := parseFloatField(findFieldByCommentWords(obj, words...)); ok {
-		return value
-	}
-	return fallback
 }
 
 func objectArea(obj Object) (float64, bool) {
@@ -1991,6 +2497,9 @@ func orientationFromAzimuth(azimuth float64) string {
 }
 
 func buildingSurfaceType(obj Object) string {
+	if value := fieldValueByCatalogName(obj, "Surface Type"); value != "" {
+		return value
+	}
 	if value := findFieldByCommentWords(obj, "surface", "type"); value != "" {
 		return value
 	}
@@ -2010,6 +2519,9 @@ func buildingSurfaceType(obj Object) string {
 }
 
 func fenestrationSurfaceType(obj Object) string {
+	if value := fieldValueByCatalogName(obj, "Surface Type"); value != "" {
+		return value
+	}
 	if value := findFieldByCommentWords(obj, "surface", "type"); value != "" {
 		return value
 	}
@@ -2050,7 +2562,7 @@ func isGroundSurface(outside string) bool {
 	return lower == "ground" || strings.Contains(lower, "ground")
 }
 
-func isHVACSummaryType(lowerType string) bool {
+func isHVACMetricType(lowerType string) bool {
 	return strings.Contains(lowerType, "hvac") ||
 		strings.HasPrefix(lowerType, "airloop") ||
 		strings.HasPrefix(lowerType, "plantloop") ||
@@ -2155,6 +2667,23 @@ func compactScheduleHours(obj Object) (float64, bool) {
 		}
 	}
 	return total, true
+}
+
+func compactScheduleUsesStepApproximation(obj Object) bool {
+	if !strings.EqualFold(obj.Type, "Schedule:Compact") {
+		return false
+	}
+	for _, field := range obj.Fields[2:] {
+		value := strings.TrimSpace(field.Value)
+		if !strings.HasPrefix(strings.ToLower(value), "interpolate:") {
+			continue
+		}
+		mode := strings.TrimSpace(value[len("interpolate:"):])
+		if strings.EqualFold(mode, "Linear") || strings.EqualFold(mode, "Average") {
+			return true
+		}
+	}
+	return false
 }
 
 func parseCompactIntervals(fields []Field, start int) ([]scheduleInterval, int, bool) {
@@ -2310,7 +2839,7 @@ func scheduleSelectorTokens(value string) []string {
 }
 
 func init() {
-	if len(summaryDefinitions) != 59 {
-		panic(fmt.Sprintf("summary metric registry has %d metrics, want 59", len(summaryDefinitions)))
+	if len(metricDefinitions) != 59 {
+		panic(fmt.Sprintf("metrics metric registry has %d metrics, want 59", len(metricDefinitions)))
 	}
 }

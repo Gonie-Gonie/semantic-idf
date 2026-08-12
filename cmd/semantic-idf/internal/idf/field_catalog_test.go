@@ -28,6 +28,117 @@ func TestFieldCatalogFindsFieldsWithoutComments(t *testing.T) {
 	}
 }
 
+func TestFieldCatalogCoversProfileCalculationInputsWithoutComments(t *testing.T) {
+	space := Object{Type: "Space", Fields: []Field{
+		{Value: "Office Space"}, {Value: "Office"}, {Value: "3.2"},
+		{Value: "320"}, {Value: "100"}, {Value: "Office Type"},
+	}}
+	if got := fieldValueByCatalogName(space, "Volume"); got != "320" {
+		t.Fatalf("Space Volume = %q, want 320", got)
+	}
+	if got := fieldValueByCatalogName(space, "Floor Area"); got != "100" {
+		t.Fatalf("Space Floor Area = %q, want 100", got)
+	}
+	if got := fieldValueByCatalogName(space, "Space Type"); got != "Office Type" {
+		t.Fatalf("Space Type = %q, want Office Type", got)
+	}
+	if diagnostics := fieldCatalogDiagnostics(Document{Objects: []Object{
+		{Type: "Zone", Fields: []Field{{Value: "Office"}}},
+		space,
+	}}); len(diagnostics) != 0 {
+		t.Fatalf("arbitrary Space Type emitted diagnostics: %#v", diagnostics)
+	}
+
+	people := Object{Type: "People", Fields: []Field{
+		{Value: "Office People"}, {Value: "Office"}, {Value: "Always On"},
+		{Value: "Area/Person"}, {Value: ""}, {Value: ""}, {Value: "18.58"},
+	}}
+	if got := fieldValueByCatalogName(people, "Floor Area per Person"); got != "18.58" {
+		t.Fatalf("People Floor Area per Person = %q, want 18.58", got)
+	}
+
+	other := Object{Type: "OtherEquipment", Fields: []Field{
+		{Value: "Process"}, {Value: "Propane"}, {Value: "Office"}, {Value: "Always On"},
+		{Value: "Watts/Area"}, {Value: ""}, {Value: "12.5"},
+	}}
+	if got := fieldValueByCatalogName(other, "Zone or ZoneList or Space or SpaceList Name"); got != "Office" {
+		t.Fatalf("OtherEquipment target = %q, want Office", got)
+	}
+	if got := fieldValueByCatalogName(other, "Power per Floor Area"); got != "12.5" {
+		t.Fatalf("OtherEquipment Power per Floor Area = %q, want 12.5", got)
+	}
+	for _, target := range []Object{
+		{Type: "Zone", Fields: []Field{{Value: "Office"}}},
+		{Type: "ZoneList", Fields: []Field{{Value: "All Zones"}, {Value: "Office"}}},
+		{Type: "Space", Fields: []Field{{Value: "Office Space"}, {Value: "Office"}}},
+		{Type: "SpaceList", Fields: []Field{{Value: "All Spaces"}, {Value: "Office Space"}}},
+	} {
+		doc := Document{Objects: []Object{target}}
+		if !referenceExistsForRole(doc, fieldRoleZoneSpaceTarget, objectName(target)) {
+			t.Fatalf("Profile target role rejected valid %s %q", target.Type, objectName(target))
+		}
+	}
+	for _, target := range []Object{
+		{Type: "Zone", Fields: []Field{{Value: "Office"}}},
+		{Type: "Space", Fields: []Field{{Value: "Office Space"}, {Value: "Office"}}},
+	} {
+		doc := Document{Objects: []Object{target}}
+		if !referenceExistsForRole(doc, fieldRoleZoneSpaceRef, objectName(target)) {
+			t.Fatalf("Zone-or-Space role rejected valid %s %q", target.Type, objectName(target))
+		}
+	}
+	for _, objectType := range []string{
+		"ZoneInfiltration:EffectiveLeakageArea",
+		"ZoneInfiltration:FlowCoefficient",
+		"ZoneVentilation:WindandStackOpenArea",
+	} {
+		spec, ok := fieldSpecAt(objectType, 1)
+		if !ok || spec.Role != fieldRoleZoneSpaceRef {
+			t.Fatalf("%s target spec = %#v, want Zone-or-Space reference", objectType, spec)
+		}
+	}
+
+	outdoorAir := Object{Type: "DesignSpecification:OutdoorAir", Fields: []Field{
+		{Value: "Office OA"}, {Value: "Sum"}, {Value: "0.01"}, {Value: "0.001"},
+		{Value: "0.05"}, {Value: "0.6"},
+	}}
+	if got := fieldValueByCatalogName(outdoorAir, "Outdoor Air Flow Air Changes per Hour"); got != "0.6" {
+		t.Fatalf("DSOA Air Changes per Hour = %q, want 0.6", got)
+	}
+
+	sizing := Object{Type: "Sizing:Zone", Fields: []Field{
+		{Value: "Office"}, {}, {}, {}, {}, {}, {}, {}, {}, {Value: "Office OA"},
+	}}
+	if got := fieldValueByCatalogName(sizing, "Design Specification Outdoor Air Object Name"); got != "Office OA" {
+		t.Fatalf("Sizing:Zone DSOA reference = %q, want Office OA", got)
+	}
+}
+
+func TestFieldCatalogSuggestsAutocalculateForGeometryFields(t *testing.T) {
+	for _, objectField := range []struct {
+		objectType string
+		fieldIndex int
+	}{
+		{objectType: "Zone", fieldIndex: 7},
+		{objectType: "Zone", fieldIndex: 8},
+		{objectType: "Zone", fieldIndex: 9},
+		{objectType: "Space", fieldIndex: 2},
+		{objectType: "Space", fieldIndex: 3},
+		{objectType: "Space", fieldIndex: 4},
+		{objectType: "ZoneVentilation:WindandStackOpenArea", fieldIndex: 4},
+		{objectType: "ZoneVentilation:WindandStackOpenArea", fieldIndex: 7},
+	} {
+		spec, ok := fieldSpecAt(objectField.objectType, objectField.fieldIndex)
+		if !ok {
+			t.Fatalf("%s field %d spec missing", objectField.objectType, objectField.fieldIndex)
+		}
+		suggestions := suggestionsForFieldSpec(Document{}, spec)
+		if len(suggestions) == 0 || suggestions[0].Value != "Autocalculate" {
+			t.Fatalf("%s field %q suggestions = %#v, want Autocalculate", objectField.objectType, spec.Name, suggestions)
+		}
+	}
+}
+
 func TestFieldCatalogCarriesReferenceTargetMetadata(t *testing.T) {
 	spec, ok := fieldSpecAt("BuildingSurface:Detailed", 2)
 	if !ok {
@@ -754,6 +865,54 @@ func TestFieldCatalogDiagnosticsValidatesChoicesAndNumbers(t *testing.T) {
 		if diagnostic.Source != "energyplus_rule" || diagnostic.Confidence == "" {
 			t.Fatalf("diagnostic metadata = %#v, want energyplus_rule with confidence", diagnostic)
 		}
+	}
+}
+
+func TestProfileAirflowCatalogMatchesEnergyPlus251FieldOrder(t *testing.T) {
+	cases := []struct {
+		objectType string
+		fields     map[int]string
+	}{
+		{
+			objectType: "ZoneInfiltration:DesignFlowRate",
+			fields: map[int]string{
+				8: "Constant Term Coefficient", 9: "Temperature Term Coefficient",
+				10: "Velocity Term Coefficient", 11: "Velocity Squared Term Coefficient",
+				12: "Density Basis",
+			},
+		},
+		{
+			objectType: "ZoneVentilation:DesignFlowRate",
+			fields: map[int]string{
+				8: "Ventilation Type", 9: "Fan Pressure Rise", 10: "Fan Total Efficiency",
+				11: "Constant Term Coefficient", 12: "Temperature Term Coefficient",
+				13: "Velocity Term Coefficient", 14: "Velocity Squared Term Coefficient",
+				25: "Maximum Wind Speed", 26: "Density Basis",
+			},
+		},
+		{
+			objectType: "ZoneVentilation:WindandStackOpenArea",
+			fields: map[int]string{
+				4: "Opening Effectiveness", 5: "Effective Angle", 6: "Height Difference",
+				7: "Discharge Coefficient for Opening", 8: "Minimum Indoor Temperature",
+				9: "Minimum Indoor Temperature Schedule Name", 10: "Maximum Indoor Temperature",
+				11: "Maximum Indoor Temperature Schedule Name", 12: "Delta Temperature",
+				13: "Delta Temperature Schedule Name", 14: "Minimum Outdoor Temperature",
+				15: "Minimum Outdoor Temperature Schedule Name", 16: "Maximum Outdoor Temperature",
+				17: "Maximum Outdoor Temperature Schedule Name", 18: "Maximum Wind Speed",
+			},
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.objectType, func(t *testing.T) {
+			for index, want := range testCase.fields {
+				spec, ok := fieldSpecAt(testCase.objectType, index)
+				if !ok || spec.Name != want {
+					t.Fatalf("field %d = %#v, want %q", index, spec, want)
+				}
+			}
+		})
 	}
 }
 

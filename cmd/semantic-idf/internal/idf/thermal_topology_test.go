@@ -466,7 +466,7 @@ func thermalTopologyStableIDs(topology ThermalTopologyReport) []string {
 }
 
 func TestZoneEnclosureIntegrityFindsClosedAndOpenShells(t *testing.T) {
-	document, err := Parse(summaryFixtureIDF)
+	document, err := Parse(metricsFixtureIDF)
 	if err != nil {
 		t.Fatalf("Parse() error = %v", err)
 	}
@@ -602,7 +602,7 @@ func TestZoneSignatureAndMatrixReconcileWithConnections(t *testing.T) {
 }
 
 func TestConnectionTotalsReconcileWithoutDoubleCounting(t *testing.T) {
-	document, err := Parse(summaryFixtureIDF)
+	document, err := Parse(metricsFixtureIDF)
 	if err != nil {
 		t.Fatalf("Parse() error = %v", err)
 	}

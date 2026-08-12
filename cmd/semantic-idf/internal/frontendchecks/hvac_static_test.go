@@ -241,7 +241,7 @@ func TestFrontendHVACUsesHeaderlessCardNavigationWithoutWarnings(t *testing.T) {
 	if !strings.Contains(renderer, `if (!elements.hvacSummary)`) {
 		t.Fatal("HVAC renderer must use the surviving summary container as its render gate")
 	}
-	emptyRenderer := sliceBetween(analysis, "export function renderEmpty()", "export function renderDeferredGeometry")
+	emptyRenderer := sliceBetween(analysis, "export function renderEmpty()", "export function renderDeferredTopology")
 	if !strings.Contains(emptyRenderer, `if (elements.hvacSummary)`) {
 		t.Fatal("empty analysis renderer must use the surviving HVAC summary container as its render gate")
 	}

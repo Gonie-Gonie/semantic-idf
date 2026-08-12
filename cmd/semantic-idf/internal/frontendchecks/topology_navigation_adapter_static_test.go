@@ -5,16 +5,16 @@ import (
 	"testing"
 )
 
-func TestGeometryAdapterRegistersBeforeLazyRenderer(t *testing.T) {
-	loader := readTestFile(t, "frontend/src/js/geometry-loader.js")
+func TestTopologyAdapterRegistersBeforeLazyRenderer(t *testing.T) {
+	loader := readTestFile(t, "frontend/src/js/topology-loader.js")
 	for _, required := range []string{
-		`configureResultPanelNavigationHooks("geometry"`,
-		"geometryViewTargetForSelection",
-		"geometryTargetExists",
-		"loadGeometryModule",
-		"module.revealGeometrySelection",
-		"module.restoreGeometryNavigationContext",
-		"preferredGeometryOccurrenceFromTarget",
+		`configureResultPanelNavigationHooks("topology"`,
+		"topologyViewTargetForSelection",
+		"topologyTargetExists",
+		"loadTopologyModule",
+		"module.revealTopologySelection",
+		"module.restoreTopologyNavigationContext",
+		"preferredTopologyOccurrenceFromTarget",
 		"context.genericPreferredSemanticOccurrence",
 		"selectedKind",
 		"selectedId",
@@ -23,24 +23,24 @@ func TestGeometryAdapterRegistersBeforeLazyRenderer(t *testing.T) {
 		"visibilityPlan",
 	} {
 		if !strings.Contains(loader, required) {
-			t.Fatalf("geometry loader navigation adapter is missing %q", required)
+			t.Fatalf("topology loader navigation adapter is missing %q", required)
 		}
 	}
 }
 
-func TestGeometrySyncLocateIsCommonAndSelectAidIsRemoved(t *testing.T) {
+func TestTopologySyncLocateIsCommonAndSelectAidIsRemoved(t *testing.T) {
 	index := readTestFile(t, "frontend/src/index.html")
 	state := readTestFile(t, "frontend/src/js/state.js")
 	settings := readTestFile(t, "frontend/src/js/settings-client.js")
 	main := readTestFile(t, "frontend/src/js/main.js")
-	loader := readTestFile(t, "frontend/src/js/geometry-loader.js")
-	view := readTestFile(t, "frontend/src/js/views/geometry-view.js")
+	loader := readTestFile(t, "frontend/src/js/topology-loader.js")
+	view := readTestFile(t, "frontend/src/js/views/topology-view.js")
 
 	for _, required := range []string{
-		`id="geometrySyncLocate" type="checkbox" checked`,
-		`geometrySyncLocate: true`,
-		`syncLocate: Boolean(state.geometrySyncLocate)`,
-		`state.geometrySyncLocate = snapshot.syncLocate !== false`,
+		`id="topologySyncLocate" type="checkbox" checked`,
+		`topologySyncLocate: true`,
+		`syncLocate: Boolean(state.topologySyncLocate)`,
+		`state.topologySyncLocate = snapshot.syncLocate !== false`,
 	} {
 		if !strings.Contains(index+state+settings+loader+view, required) {
 			t.Fatalf("common Sync locate contract is missing %q", required)
@@ -66,8 +66,8 @@ func TestGeometrySyncLocateIsCommonAndSelectAidIsRemoved(t *testing.T) {
 }
 
 func TestGeometryItemsUseReverseMappedNavigationMarkup(t *testing.T) {
-	content := readTestFile(t, "frontend/src/js/views/geometry-view.js")
-	attributes := sliceBetween(content, "function preferredOccurrenceForGeometryTarget", "function normalizeGeometryKind")
+	content := readTestFile(t, "frontend/src/js/views/topology-view.js")
+	attributes := sliceBetween(content, "function preferredOccurrenceForTopologyTarget", "function normalizeGeometryKind")
 	for _, required := range []string{
 		"navigation.byViewTarget",
 		"data-entity-id",
@@ -87,11 +87,11 @@ func TestGeometryItemsUseReverseMappedNavigationMarkup(t *testing.T) {
 		}
 	}
 	for _, required := range []string{
-		`geometryNavigationAttributes("zone"`,
-		`geometryNavigationAttributes("surface"`,
-		`geometryNavigationAttributes("fenestration"`,
-		`geometryNavigationAttributes("story"`,
-		"geometryNavigationAttributes(item.kind, item.id",
+		`topologyNavigationAttributes("zone"`,
+		`topologyNavigationAttributes("surface"`,
+		`topologyNavigationAttributes("fenestration"`,
+		`topologyNavigationAttributes("story"`,
+		"topologyNavigationAttributes(item.kind, item.id",
 		`kind: "space"`,
 		"relatedItemForSpace",
 	} {
@@ -101,14 +101,14 @@ func TestGeometryItemsUseReverseMappedNavigationMarkup(t *testing.T) {
 	}
 }
 
-func TestGeometryBidirectionalRevealAndAtomicSelection(t *testing.T) {
-	content := readTestFile(t, "frontend/src/js/views/geometry-view.js")
-	selection := sliceBetween(content, "export async function selectGeometry", "export async function revealGeometrySelection")
+func TestTopologyBidirectionalRevealAndAtomicSelection(t *testing.T) {
+	content := readTestFile(t, "frontend/src/js/views/topology-view.js")
+	selection := sliceBetween(content, "export async function selectTopologyEntity", "export async function revealTopologySelection")
 	for _, required := range []string{
-		"geometrySelectionForTarget",
+		"topologySelectionForTarget",
 		"syncLocatedInputEntity(entity)",
 		"selectSemanticEntity(selection",
-		`originView: "geometry"`,
+		`originView: "topology"`,
 		"recordHistory: syncLocate ? false",
 		"rememberForOriginView",
 	} {
@@ -117,28 +117,28 @@ func TestGeometryBidirectionalRevealAndAtomicSelection(t *testing.T) {
 		}
 	}
 
-	reveal := sliceBetween(content, "export async function revealGeometrySelection", "export async function restoreGeometryNavigationContext")
+	reveal := sliceBetween(content, "export async function revealTopologySelection", "export async function restoreTopologyNavigationContext")
 	for _, required := range []string{
-		"geometryViewTargetForSelection",
-		"geometryTargetEntity",
+		"topologyViewTargetForSelection",
+		"topologyTargetEntity",
 		"owningZoneForGeometryEntity",
 		"geometryStoryIndexForEntity",
 		"geometryEntityHasPlanShape",
-		"temporaryGeometryReveal",
+		"temporaryTopologyReveal",
 		"baseSurfaceId",
-		"state.selectedGeometryKind",
-		"state.selectedGeometryId",
-		"findGeometryNavigationTarget",
+		"state.selectedTopologyEntityKind",
+		"state.selectedTopologyEntityId",
+		"findTopologyNavigationTarget",
 	} {
 		if !strings.Contains(reveal, required) {
 			t.Fatalf("semantic-to-geometry reveal is missing %q", required)
 		}
 	}
 	for _, forbidden := range []string{
-		"geometry3DVisibility =",
-		"geometryPlanVisibility =",
-		"geometry3DShowZones.checked =",
-		"geometryPlanShowZones.checked =",
+		"topology3DVisibility =",
+		"topologyPlanVisibility =",
+		"topology3DShowZones.checked =",
+		"topologyPlanShowZones.checked =",
 	} {
 		if strings.Contains(reveal, forbidden) {
 			t.Fatalf("semantic geometry reveal must materialize a target without changing visibility filters: found %q", forbidden)

@@ -28,7 +28,7 @@ func TestSemanticThermalProjectionLinksCompactConnectionsAndSurfaceBoundaries(t 
 			if line.Editable || line.EditKind != "readonly" || line.EntityKind != "thermal_connection" {
 				t.Fatalf("thermal connection summary must be readonly topology metadata: %#v", line)
 			}
-			if got, ok := semanticViewTargetID(line.ViewTargets, "geometry", "thermal_connection"); !ok || got != connectionID {
+			if got, ok := semanticViewTargetID(line.ViewTargets, "topology", "thermal_connection"); !ok || got != connectionID {
 				t.Fatalf("thermal connection line target = %q/%v, want %q", got, ok, connectionID)
 			}
 		case line.Key == "relation" && line.DisplayValue == "interzone_explicit_surface" && line.EntityKind == "thermal_boundary":
@@ -43,7 +43,7 @@ func TestSemanticThermalProjectionLinksCompactConnectionsAndSurfaceBoundaries(t 
 		case line.Key == "object" && isBuildingSurfaceType(line.ObjectType):
 			foundEditableTarget = foundEditableTarget || line.Editable && line.EditKind == "raw_field" && line.FieldIndex != nil
 		case line.Key == "ua" && line.EntityKind == "thermal_boundary":
-			_, hasConstructionTarget := semanticViewTargetID(line.ViewTargets, "geometry", "construction")
+			_, hasConstructionTarget := semanticViewTargetID(line.ViewTargets, "topology", "construction")
 			foundUAConstructionTarget = foundUAConstructionTarget || hasConstructionTarget
 		}
 	}
@@ -57,7 +57,7 @@ func TestSemanticThermalProjectionLinksCompactConnectionsAndSurfaceBoundaries(t 
 		t.Fatal("UA line does not expose its construction definition target")
 	}
 
-	occurrenceIDs := projection.Navigation.ByViewTarget["geometry|"+connectionID]
+	occurrenceIDs := projection.Navigation.ByViewTarget["topology|"+connectionID]
 	contexts := map[string]bool{}
 	for _, occurrence := range projection.Navigation.Occurrences {
 		if stringSliceContains(occurrenceIDs, occurrence.OccurrenceID) {
@@ -75,7 +75,7 @@ func TestTopologyDiagnosticNavigationTargetsExactThermalIssue(t *testing.T) {
 		if !strings.HasPrefix(entity.ID, "topology-issue:") {
 			continue
 		}
-		if targetID, ok := semanticViewTargetID(entity.ViewTargets, "geometry", "thermal_issue"); ok && targetID == entity.ID && len(entity.RelatedEntityIDs) > 0 {
+		if targetID, ok := semanticViewTargetID(entity.ViewTargets, "topology", "thermal_issue"); ok && targetID == entity.ID && len(entity.RelatedEntityIDs) > 0 {
 			return
 		}
 	}
@@ -247,8 +247,8 @@ Zone,
 				continue
 			}
 			definitionFound = true
-			if gotTarget, ok := semanticViewTargetID(line.ViewTargets, "geometry", "zone"); !ok || gotTarget != wantTarget {
-				t.Fatalf("object %d definition Geometry target = %q (present=%v), want %q", objectIndex, gotTarget, ok, wantTarget)
+			if gotTarget, ok := semanticViewTargetID(line.ViewTargets, "topology", "zone"); !ok || gotTarget != wantTarget {
+				t.Fatalf("object %d definition Topology target = %q (present=%v), want %q", objectIndex, gotTarget, ok, wantTarget)
 			}
 			break
 		}
@@ -261,7 +261,7 @@ Zone,
 			if line.EntityID != entityID || line.SourceAnchor != nil || semanticContextKind(line.SemanticPath, line.EntityKind) != "zone_geometry" {
 				continue
 			}
-			gotTarget, ok := semanticViewTargetID(line.ViewTargets, "geometry", "zone")
+			gotTarget, ok := semanticViewTargetID(line.ViewTargets, "topology", "zone")
 			if !ok {
 				continue
 			}
@@ -309,8 +309,8 @@ Space,
 				t.Fatalf("duplicate cross-zone Space entity collided at %q", line.EntityID)
 			}
 			seen[line.EntityID] = true
-			if targetID, ok := semanticViewTargetID(line.ViewTargets, "geometry", "space"); !ok || targetID != fmt.Sprintf("space-%d", objectIndex) {
-				t.Fatalf("Space object %d Geometry target = %q (present=%v), want space-%d", objectIndex, targetID, ok, objectIndex)
+			if targetID, ok := semanticViewTargetID(line.ViewTargets, "topology", "space"); !ok || targetID != fmt.Sprintf("space-%d", objectIndex) {
+				t.Fatalf("Space object %d Topology target = %q (present=%v), want space-%d", objectIndex, targetID, ok, objectIndex)
 			}
 			break
 		}
@@ -363,7 +363,7 @@ func TestSemanticNavigationSourceAnchorsAndPanelTargets(t *testing.T) {
 		}
 	}
 
-	assertSemanticPreferredContext(t, projection, "zone_geometry", "geometry")
+	assertSemanticPreferredContext(t, projection, "zone_geometry", "topology")
 	assertSemanticPreferredContext(t, projection, "zone_profile", "profile")
 	assertSemanticPreferredKind(t, projection, "schedule", "profile")
 	assertSemanticPreferredKind(t, projection, "output", "input-text")
@@ -380,12 +380,12 @@ func TestSemanticNavigationSourceAnchorsAndPanelTargets(t *testing.T) {
 	for _, target := range zone.ViewTargets {
 		views[target.View] = true
 	}
-	if !views["geometry"] || !views["profile"] {
-		t.Fatalf("zone view targets = %#v, want Geometry and Profile", zone.ViewTargets)
+	if !views["topology"] || !views["profile"] {
+		t.Fatalf("zone view targets = %#v, want Topology and Profile", zone.ViewTargets)
 	}
 }
 
-func TestSemanticNavigationSiteDefinitionPrefersSummary(t *testing.T) {
+func TestSemanticNavigationSiteDefinitionPrefersMetrics(t *testing.T) {
 	doc, err := Parse(`Site:Location, Seoul, 37.5, 127.0, 9.0, 38.0;`)
 	if err != nil {
 		t.Fatal(err)
@@ -395,11 +395,11 @@ func TestSemanticNavigationSiteDefinitionPrefersSummary(t *testing.T) {
 		if line.ObjectIndex == nil || *line.ObjectIndex != 0 || line.FieldIndex == nil || *line.FieldIndex != 0 {
 			continue
 		}
-		if line.PreferredView != "summary" || line.PreferredTargetID != "model_inventory" {
-			t.Fatalf("site definition preference = %q/%q, want summary/model_inventory", line.PreferredView, line.PreferredTargetID)
+		if line.PreferredView != "metrics" || line.PreferredTargetID != "model_inventory" {
+			t.Fatalf("site definition preference = %q/%q, want metrics/model_inventory", line.PreferredView, line.PreferredTargetID)
 		}
-		if targetID, ok := semanticViewTargetID(line.ViewTargets, "summary", "category"); !ok || targetID != "model_inventory" {
-			t.Fatalf("site Summary target = %q (present=%v), want model_inventory", targetID, ok)
+		if targetID, ok := semanticViewTargetID(line.ViewTargets, "metrics", "category"); !ok || targetID != "model_inventory" {
+			t.Fatalf("site Metrics target = %q (present=%v), want model_inventory", targetID, ok)
 		}
 		return
 	}
@@ -441,11 +441,11 @@ Space,
 			if line.SemanticPath != wantPath || semanticContextKind(line.SemanticPath, line.EntityKind) != "definition" {
 				t.Fatalf("Space %q path/context = %q/%q, want %q/definition", name, line.SemanticPath, semanticContextKind(line.SemanticPath, line.EntityKind), wantPath)
 			}
-			if line.PreferredView != "geometry" {
-				t.Fatalf("Space %q preferred view = %q, want geometry", name, line.PreferredView)
+			if line.PreferredView != "topology" {
+				t.Fatalf("Space %q preferred view = %q, want topology", name, line.PreferredView)
 			}
-			if targetID, ok := semanticViewTargetID(line.ViewTargets, "geometry", "space"); !ok || targetID != fmt.Sprintf("space-%d", objectIndex) {
-				t.Fatalf("Space %q Geometry target = %q (present=%v), want space-%d", name, targetID, ok, objectIndex)
+			if targetID, ok := semanticViewTargetID(line.ViewTargets, "topology", "space"); !ok || targetID != fmt.Sprintf("space-%d", objectIndex) {
+				t.Fatalf("Space %q Topology target = %q (present=%v), want space-%d", name, targetID, ok, objectIndex)
 			}
 			break
 		}
@@ -796,7 +796,7 @@ func TestSemanticNavigationProjectionMetadataGolden(t *testing.T) {
     "path": "zones/Office",
     "sourceObjectId": "obj-1fa10db56c3fbabc5392",
     "targets": [
-      "geometry|zone|zone-0|80",
+      "topology|zone|zone-0|80",
       "profile|zone|Office|75",
       "input-text|source|obj-1fa10db56c3fbabc5392|20"
     ]
@@ -806,7 +806,7 @@ func TestSemanticNavigationProjectionMetadataGolden(t *testing.T) {
     "kind": "zone",
     "targets": [
       "profile|zone-dimension|profile-zone-dimension:office:occupancy|95",
-      "geometry|zone|zone-0|80",
+      "topology|zone|zone-0|80",
       "profile|zone|Office|75",
       "input-text|source|obj-1da6b4d2796ca95b0025|20",
       "input-text|source|obj-1fa10db56c3fbabc5392|20"
@@ -817,7 +817,7 @@ func TestSemanticNavigationProjectionMetadataGolden(t *testing.T) {
       "context": "definition",
       "path": "zones/Office",
       "targets": [
-        "geometry|zone|zone-0|80",
+        "topology|zone|zone-0|80",
         "profile|zone|Office|75",
         "input-text|source|obj-1fa10db56c3fbabc5392|20"
       ]
@@ -827,17 +827,17 @@ func TestSemanticNavigationProjectionMetadataGolden(t *testing.T) {
       "path": "zones/Office/outputs",
       "preferredView": "input-text",
       "targets": [
-        "geometry|zone|zone-0|80",
+        "topology|zone|zone-0|80",
         "profile|zone|Office|75"
       ]
     },
     {
       "context": "zone_geometry",
       "path": "zones/Office/geometry",
-      "preferredView": "geometry",
+      "preferredView": "topology",
       "preferredTargetId": "zone-0",
       "targets": [
-        "geometry|zone|zone-0|80",
+        "topology|zone|zone-0|80",
         "profile|zone|Office|75"
       ]
     },
@@ -847,7 +847,7 @@ func TestSemanticNavigationProjectionMetadataGolden(t *testing.T) {
       "preferredView": "profile",
       "preferredTargetId": "profile-zone-dimension:office:occupancy",
       "targets": [
-        "geometry|zone|zone-0|80",
+        "topology|zone|zone-0|80",
         "profile|zone|Office|75",
         "profile|zone-dimension|profile-zone-dimension:office:occupancy|95",
         "input-text|source|obj-1da6b4d2796ca95b0025|20"
@@ -857,7 +857,7 @@ func TestSemanticNavigationProjectionMetadataGolden(t *testing.T) {
       "context": "definition",
       "path": "zones/Office/spaces/Office",
       "targets": [
-        "geometry|zone|zone-0|80",
+        "topology|zone|zone-0|80",
         "profile|zone|Office|75",
         "input-text|source|obj-1fa10db56c3fbabc5392|20"
       ]
@@ -868,7 +868,7 @@ func TestSemanticNavigationProjectionMetadataGolden(t *testing.T) {
       "preferredView": "profile",
       "preferredTargetId": "Office",
       "targets": [
-        "geometry|zone|zone-0|80",
+        "topology|zone|zone-0|80",
         "profile|zone|Office|75",
         "profile|zone-dimension|profile-zone-dimension:office:occupancy|95"
       ]
@@ -876,10 +876,10 @@ func TestSemanticNavigationProjectionMetadataGolden(t *testing.T) {
     {
       "context": "zone_geometry",
       "path": "zones/Office/geometry",
-      "preferredView": "geometry",
+      "preferredView": "topology",
       "preferredTargetId": "zone-0",
       "targets": [
-        "geometry|zone|zone-0|80",
+        "topology|zone|zone-0|80",
         "profile|zone|Office|75",
         "input-text|source|obj-1fa10db56c3fbabc5392|20"
       ]
@@ -888,7 +888,7 @@ func TestSemanticNavigationProjectionMetadataGolden(t *testing.T) {
       "context": "definition",
       "path": "zones/Office/spaces",
       "targets": [
-        "geometry|zone|zone-0|80",
+        "topology|zone|zone-0|80",
         "profile|zone|Office|75"
       ]
     }

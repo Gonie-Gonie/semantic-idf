@@ -55,7 +55,7 @@
             </div>
             <span class="toolbar-label">Layout</span>
           </div>
-          <button id="toolsButton" class="toolbar-button" type="button" title="Batch" aria-label="Batch" data-i18n-title="action.batch" data-i18n-aria-label="action.batch">
+          <button id="toolsButton" class="toolbar-button" type="button" title="Tools" aria-label="Tools" data-i18n-title="action.tools" data-i18n-aria-label="action.tools">
             <svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true">
               <rect x="3" y="5" width="10" height="8" rx="1.5"></rect>
               <rect x="8" y="3" width="10" height="8" rx="1.5"></rect>
@@ -64,7 +64,7 @@
               <path d="M11 7h4"></path>
               <path d="m16 14 2 1.5-2 1.5"></path>
             </svg>
-            <span class="toolbar-label" data-i18n="action.batch">Batch</span>
+            <span class="toolbar-label" data-i18n="action.tools">Tools</span>
           </button>
           <button id="guideButton" class="toolbar-button" type="button" title="Guide" aria-label="Guide" data-i18n-title="action.guide" data-i18n-aria-label="action.guide">
             <svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -157,23 +157,22 @@
 
         <section class="analysis-panel" aria-label="Analysis results">
           <nav class="tabs" aria-label="Result tabs">
-            <button class="tab active" data-result-tab="summary" type="button" data-i18n="tab.summary">Summary</button>
-            <button class="tab" data-result-tab="geometry" type="button" data-i18n="tab.geometry">Topology</button>
+            <button class="tab active" data-result-tab="metrics" type="button" data-i18n="tab.metrics">Metrics</button>
+            <button class="tab" data-result-tab="topology" type="button" data-i18n="tab.topology">Topology</button>
             <button class="tab" data-result-tab="profile" type="button" data-i18n="tab.profile">Profile</button>
             <button class="tab" data-result-tab="hvac" type="button" data-i18n="tab.hvac">HVAC</button>
-            <button class="tab" data-result-tab="diagnose" type="button" data-i18n="tab.diagnose">Diagnose</button>
             <button class="tab" data-result-tab="simulation" type="button" data-i18n="tab.simulation">Simulation</button>
           </nav>
 
-          <div class="result-pane active" id="summaryPane">
-            <div class="summary-head">
-              <div class="summary-tools">
-                <button id="exportSummaryJSONButton" type="button" data-i18n="action.exportJson">Export JSON</button>
-                <button id="exportSummaryCSVButton" type="button" data-i18n="action.exportCsv">Export CSV</button>
+          <div class="result-pane active" id="metricsPane">
+            <div class="metrics-head">
+              <div class="metrics-tools">
+                <button id="exportMetricsJSONButton" type="button" data-i18n="action.exportJson">Export JSON</button>
+                <button id="exportMetricsCSVButton" type="button" data-i18n="action.exportCsv">Export CSV</button>
               </div>
             </div>
-            <div class="summary-pane">
-              <div id="summaryCategories" class="summary-categories"></div>
+            <div class="metrics-pane">
+              <div id="metricCategories" class="metric-categories"></div>
             </div>
           </div>
 
@@ -458,72 +457,31 @@
             </div>
           </div>
 
-          <div class="result-pane" id="diagnosePane">
-            <div class="diagnostic-pane">
-              <section class="diagnose-fix-shell" aria-label="Suggested fixes">
-                <div class="diagnose-fix-head">
-                  <div>
-                    <h3 data-i18n="diagnoseFix.title">Fixes</h3>
-                    <span id="diagnoseFixStatus" class="tool-muted" data-i18n="diagnoseFix.pending">Scan current input for suggested fixes.</span>
-                  </div>
-                  <div class="diagnose-fix-tools">
-                    <div class="summary-tools">
-                      <button id="diagnoseFixRefresh" type="button" data-i18n="diagnoseFix.suggested">Suggested fixes</button>
-                      <button id="diagnoseFixPreview" type="button" disabled data-i18n="diagnoseFix.preview">Preview fixes</button>
-                      <button id="diagnoseFixApply" type="button" disabled data-i18n="diagnoseFix.apply">Apply selected</button>
-                      <button id="diagnoseFixSaveAs" type="button" disabled data-i18n="diagnoseFix.saveCopy">Save cleaned copy</button>
-                    </div>
-                    <div class="cleanup-candidate-head">
-                      <input id="diagnoseFixCandidateFilter" type="search" placeholder="Filter candidates" aria-label="Filter fix candidates" data-i18n-placeholder="tools.filterCandidates" data-i18n-aria-label="tools.filterCandidates" />
-                      <span id="diagnoseFixCandidateStats" class="tool-muted" data-i18n="tools.selectedOf" data-i18n-params='{"selected":0,"total":0}'>0 selected of 0</span>
-                    </div>
-                  </div>
-                </div>
-                <div class="cleanup-grid diagnose-fix-grid">
-                  <section>
-                    <h3 data-i18n="tools.rules">Rules</h3>
-                    <div id="diagnoseFixRules" class="cleanup-rules">
-                      <div class="empty" data-i18n="diagnoseFix.pending">Scan current input for suggested fixes.</div>
-                    </div>
-                  </section>
-                  <section>
-                    <h3 data-i18n="tools.candidates">Candidates</h3>
-                    <div id="diagnoseFixCandidates" class="tool-table-wrap cleanup-candidates">
-                      <div class="empty" data-i18n="diagnoseFix.pending">Scan current input for suggested fixes.</div>
-                    </div>
-                  </section>
-                </div>
-                <div id="diagnoseFixPreviewPanel" class="diagnose-fix-preview" hidden></div>
-              </section>
-              <div id="diagnosticList" class="diagnostic-list"></div>
-            </div>
-          </div>
-
-          <div class="result-pane" id="geometryPane">
-            <div class="geometry-head">
+          <div class="result-pane" id="topologyPane">
+            <div class="topology-head">
               <div>
-                <span id="geometryStats">0 zones, 0 surfaces, 0 windows</span>
+                <span id="topologyStats">0 zones, 0 surfaces, 0 windows</span>
               </div>
-              <div class="geometry-tools">
-                <div class="geometry-control-group geometry-mode-controls" role="group" aria-label="Topology view">
-                  <button class="geometry-mode-button active" data-geometry-mode="3d" type="button">3D</button>
-                  <button class="geometry-mode-button" data-geometry-mode="plan" type="button">Plan</button>
-                  <button class="geometry-mode-button" data-geometry-mode="thermal" type="button" title="Network topology and boundary connections" data-i18n-title="topology.thermalTooltip">Network</button>
+              <div class="topology-tools">
+                <div class="topology-control-group topology-mode-controls" role="group" aria-label="Topology view">
+                  <button class="topology-mode-button active" data-topology-mode="3d" type="button">3D</button>
+                  <button class="topology-mode-button" data-topology-mode="plan" type="button">Plan</button>
+                  <button class="topology-mode-button" data-topology-mode="thermal" type="button" title="Network topology and boundary connections" data-i18n-title="topology.thermalTooltip">Network</button>
                 </div>
-                <label id="geometryStoryControl" class="topology-select-control geometry-story-control">
-                  <span data-i18n="geometry.level">Level</span>
-                  <select id="geometryStorySelect" aria-label="Topology story"></select>
+                <label id="topologyStoryControl" class="topology-select-control topology-story-control">
+                  <span data-i18n="topology.level">Level</span>
+                  <select id="topologyStorySelect" aria-label="Topology story"></select>
                 </label>
-                <label class="geometry-toggle geometry-sync-toggle"><input id="geometrySyncLocate" type="checkbox" checked /> <span data-i18n="geometry.syncLocate">Sync locate</span></label>
-                <div id="geometry3DControls" class="geometry-control-group geometry-visibility-controls" aria-label="3D visibility">
-                  <label class="geometry-toggle"><input id="geometry3DShowZones" type="checkbox" checked /> <span data-i18n="geometry.showZones">Zones</span></label>
-                  <label class="geometry-toggle"><input id="geometry3DShowSurfaces" type="checkbox" checked /> <span data-i18n="geometry.showSurfaces">Surfaces</span></label>
-                  <label class="geometry-toggle"><input id="geometry3DShowOpenings" type="checkbox" checked /> <span data-i18n="topology.showOpenings">Openings</span></label>
+                <label class="topology-toggle topology-sync-toggle"><input id="topologySyncLocate" type="checkbox" checked /> <span data-i18n="topology.syncLocate">Sync locate</span></label>
+                <div id="topology3DControls" class="topology-control-group topology-visibility-controls" aria-label="3D visibility">
+                  <label class="topology-toggle"><input id="topology3DShowZones" type="checkbox" checked /> <span data-i18n="topology.showZones">Zones</span></label>
+                  <label class="topology-toggle"><input id="topology3DShowSurfaces" type="checkbox" checked /> <span data-i18n="topology.showSurfaces">Surfaces</span></label>
+                  <label class="topology-toggle"><input id="topology3DShowOpenings" type="checkbox" checked /> <span data-i18n="topology.showOpenings">Openings</span></label>
                 </div>
-                <div id="geometryPlanControls" class="geometry-control-group geometry-visibility-controls" aria-label="Plan layers" hidden>
-                  <label class="geometry-toggle"><input id="geometryPlanShowZones" type="checkbox" checked /> <span data-i18n="geometry.planZoneFill">Zone fill</span></label>
-                  <label class="geometry-toggle"><input id="geometryPlanShowBoundaries" type="checkbox" checked /> <span data-i18n="geometry.planBoundaries">Boundaries</span></label>
-                  <label class="geometry-toggle"><input id="geometryPlanShowOpenings" type="checkbox" checked /> <span data-i18n="topology.showOpenings">Openings</span></label>
+                <div id="topologyPlanControls" class="topology-control-group topology-visibility-controls" aria-label="Plan layers" hidden>
+                  <label class="topology-toggle"><input id="topologyPlanShowZones" type="checkbox" checked /> <span data-i18n="topology.planZoneFill">Zone fill</span></label>
+                  <label class="topology-toggle"><input id="topologyPlanShowBoundaries" type="checkbox" checked /> <span data-i18n="topology.planBoundaries">Boundaries</span></label>
+                  <label class="topology-toggle"><input id="topologyPlanShowOpenings" type="checkbox" checked /> <span data-i18n="topology.showOpenings">Openings</span></label>
                 </div>
                 <div id="thermalTopologyControls" class="thermal-topology-controls" hidden>
                   <label class="topology-select-control">
@@ -556,30 +514,30 @@
                           <option value="network" data-i18n="topology.layoutNetwork">Network</option>
                         </select>
                       </label>
-                      <label class="geometry-toggle"><input id="thermalTopologyShowAirCoupling" type="checkbox" /> <span data-i18n="topology.showAirCoupling">Air coupling</span></label>
+                      <label class="topology-toggle"><input id="thermalTopologyShowAirCoupling" type="checkbox" /> <span data-i18n="topology.showAirCoupling">Air coupling</span></label>
                       <button id="thermalTopologyExportJSON" type="button" data-i18n="topology.exportJSON">Export topology JSON</button>
                     </div>
                   </details>
                 </div>
               </div>
             </div>
-            <div class="geometry-body">
-              <div id="geometryViewport" class="geometry-viewport">
-                <div id="geometryCanvasHost" class="geometry-canvas-host"></div>
-                <svg id="geometryPlan" class="geometry-plan" role="img" aria-label="Topology floor plan"></svg>
+            <div class="topology-body">
+              <div id="topologyViewport" class="topology-viewport">
+                <div id="topology3DCanvasHost" class="topology-3d-canvas-host"></div>
+                <svg id="topologyPlan" class="topology-plan" role="img" aria-label="Topology floor plan"></svg>
                 <div id="thermalTopologyView" class="thermal-topology-view">
                   <div id="thermalTopologyGraph" class="thermal-topology-graph" role="region" aria-label="Network topology and boundary connections" data-i18n-aria-label="topology.thermalTooltip"></div>
                   <aside id="thermalTopologyInspector" class="thermal-topology-inspector" aria-label="Thermal topology inspector" data-i18n-aria-label="topology.inspector"></aside>
                 </div>
-                <div class="viewport-action-tools geometry-viewport-actions">
-                  <button id="geometryFitButton" class="viewport-icon-button" type="button" aria-label="Fit" title="Fit" data-i18n-aria-label="topology.fit" data-i18n-title="topology.fit">
+                <div class="viewport-action-tools topology-viewport-actions">
+                  <button id="topologyFitButton" class="viewport-icon-button" type="button" aria-label="Fit" title="Fit" data-i18n-aria-label="topology.fit" data-i18n-title="topology.fit">
                     <svg class="viewport-icon" viewBox="0 0 24 24" aria-hidden="true">
                       <path d="M8 4H4v4M16 4h4v4M20 16v4h-4M8 20H4v-4"></path>
                       <rect x="8" y="8" width="8" height="8" rx="1"></rect>
                     </svg>
                     <span class="sr-only" data-i18n="topology.fit">Fit</span>
                   </button>
-                  <button id="geometryExpandButton" class="viewport-icon-button" type="button" data-expand-pane="geometry" aria-label="Expand" title="Expand" data-i18n-aria-label="action.expand" data-i18n-title="action.expand" aria-pressed="false">
+                  <button id="topologyExpandButton" class="viewport-icon-button" type="button" data-expand-pane="topology" aria-label="Expand" title="Expand" data-i18n-aria-label="action.expand" data-i18n-title="action.expand" aria-pressed="false">
                     <svg class="viewport-icon viewport-icon-expand" viewBox="0 0 24 24" aria-hidden="true">
                       <path d="M8 3H3v5M16 3h5v5M21 16v5h-5M8 21H3v-5"></path>
                     </svg>
@@ -590,9 +548,9 @@
                   </button>
                 </div>
               </div>
-              <div id="geometryDetailsSplitter" class="vertical-splitter" role="separator" aria-orientation="horizontal" aria-label="Resize geometry view and properties"></div>
-              <section id="geometryDetails" class="geometry-details" aria-label="Selected geometry properties">
-                <div class="empty" data-i18n="geometry.selectObject">Select a zone, wall, or window</div>
+              <div id="topologyDetailsSplitter" class="vertical-splitter" role="separator" aria-orientation="horizontal" aria-label="Resize topology view and properties"></div>
+              <section id="topologyDetails" class="topology-details" aria-label="Selected topology properties">
+                <div class="empty" data-i18n="topology.selectObject">Select a zone, wall, or window</div>
               </section>
             </div>
           </div>

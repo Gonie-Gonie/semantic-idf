@@ -4,12 +4,11 @@ import { getSemanticNavigationCache } from "./semantic-navigation-cache.js";
 import { state } from "./state.js";
 
 export const RESULT_PANEL_NAVIGATION_VIEW_IDS = Object.freeze([
-  "summary",
+  "metrics",
   "profile",
   "hvac",
   "simulation",
-  "diagnose",
-  "geometry",
+  "topology",
 ]);
 
 const SELECTABLE_PANEL_ITEM = [
@@ -50,7 +49,7 @@ export function configureResultPanelNavigationHooks(viewId, hooks = {}) {
   };
 }
 
-/** Registers the seven result-panel adapters. Safe to call after hot reloads. */
+/** Registers the five result-panel adapters. Safe to call after hot reloads. */
 export function initializeResultPanelNavigationAdapters() {
   for (const viewId of RESULT_PANEL_NAVIGATION_VIEW_IDS) {
     let adapter = adaptersByView.get(viewId);
@@ -499,7 +498,7 @@ function preferredOccurrence(occurrences, context = {}) {
         Number(String(occurrence.contextKind || "") === occurrenceContext) * 800_000_000 +
         Number(viewTargetMatches(occurrence, context.viewId, context.targetId)) * 100_000_000 +
         Number(occurrence.occurrenceId === state.semanticCurrentOccurrenceId) * 10_000_000 +
-        Number(context.viewId === "geometry") * thermalOccurrenceContextPriority(occurrence) * 1_000_000 +
+        Number(context.viewId === "topology") * thermalOccurrenceContextPriority(occurrence) * 1_000_000 +
         commonPathPrefixLength(occurrence.path, currentPath) * 100_000 +
         Number(String(occurrence.preferredView || "") === context.viewId) * 10_000 +
         Number(/(^|\/)definitions?(\/|$)/i.test(occurrence.path || "")),

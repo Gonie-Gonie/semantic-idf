@@ -469,7 +469,7 @@ func TestFrontendSimulationRefreshRemovalAndWeatherRunControlLayout(t *testing.T
 	}
 
 	analysisViews := readTestFile(t, "frontend/src/js/views/analysis-views.js")
-	renderEmpty := sliceBetween(analysisViews, "export function renderEmpty()", "export function renderDeferredGeometry")
+	renderEmpty := sliceBetween(analysisViews, "export function renderEmpty()", "export function renderDeferredTopology")
 	for _, required := range []string{"if (elements.simulationRunButton)", "renderSimulation();"} {
 		if !strings.Contains(renderEmpty, required) {
 			t.Fatalf("empty-state rendering must retain Simulation through the Run button guard: missing %q", required)
@@ -715,7 +715,7 @@ func TestFrontendBatchEnergyExplanationDeltaContracts(t *testing.T) {
 			t.Fatalf("batch energy explanation delta contract missing %q", term)
 		}
 	}
-	html := readTestFile(t, "frontend/src/batch.html")
+	html := readTestFile(t, "frontend/src/tools.html")
 	if !strings.Contains(html, "multiSimulationExport") || !strings.Contains(html, "multiSimulationExportXLSX") || !strings.Contains(html, "multiSimulationExportJSON") {
 		t.Fatalf("batch simulation export button is missing")
 	}
@@ -736,7 +736,7 @@ func TestFrontendBatchEnergyExplanationDeltaContracts(t *testing.T) {
 		}
 	}
 
-	batchShell := readTestFile(t, "frontend/src/js/batch.js")
+	batchShell := readTestFile(t, "frontend/src/js/tools.js")
 	for _, removed := range []string{
 		"multiSimulationEnergyPlus",
 		"multiSimulationViewMode",

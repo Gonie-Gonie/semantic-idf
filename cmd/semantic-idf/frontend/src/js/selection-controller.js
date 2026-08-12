@@ -26,8 +26,8 @@ let fallbackTransactionSequence = 0;
 export function isProfileTopologyLink(originView, targetView) {
   const origin = String(originView || "").trim().toLowerCase();
   const target = String(targetView || "").trim().toLowerCase();
-  return (origin === "profile" && target === "geometry") ||
-    (origin === "geometry" && target === "profile");
+  return (origin === "profile" && target === "topology") ||
+    (origin === "topology" && target === "profile");
 }
 
 /**
@@ -879,7 +879,7 @@ function occurrenceChoiceScore(occurrence, context = {}) {
   if (occurrenceMatchesOrigin(occurrence, context.originView)) {
     score += 1_000_000_000;
   }
-  if (String(context.originView || "").toLowerCase().replace(/^input-/, "") === "geometry") {
+  if (String(context.originView || "").toLowerCase().replace(/^input-/, "") === "topology") {
     score += thermalOccurrenceContextPriority(occurrence) * 10_000_000;
   }
   if (context.currentOccurrenceId && occurrence.occurrenceId === context.currentOccurrenceId) {
@@ -919,12 +919,11 @@ function occurrenceMatchesOrigin(occurrence, originView = "") {
   }
   const context = `${occurrence?.contextKind || ""} ${occurrence?.path || ""}`.toLowerCase();
   const aliases = {
-    summary: ["summary", "project"],
+    metrics: ["metrics", "summary", "project"],
     profile: ["profile", "schedule", "load"],
     hvac: ["hvac", "service", "air_loop", "plant_loop", "condenser_loop", "system", "coupling"],
     simulation: ["simulation", "result", "service", "output"],
-    diagnose: ["diagnostic", "diagnose", "issue"],
-    geometry: ["geometry", "surface", "fenestration", "space", "story"],
+    topology: ["topology", "geometry", "surface", "fenestration", "space", "story"],
     text: ["source", "definition"],
     json: ["source", "definition"],
     table: ["source", "definition"],
