@@ -280,6 +280,12 @@ func TestFrontendNavigationCacheRestoreContract(t *testing.T) {
 
 func TestFrontendContextualNavigationShortcutContracts(t *testing.T) {
 	main := readTestFile(t, "frontend/src/js/main.js")
+	linkBarInitialization := sliceBetween(main, "initializeNavigationLinkBar({", "});")
+	for _, removed := range []string{"back:", "forward:", "workspaceBackButton", "workspaceForwardButton"} {
+		if strings.Contains(linkBarInitialization, removed) {
+			t.Fatalf("main link bar retains removed global history button callback %q", removed)
+		}
+	}
 	for _, term := range []string{
 		"initializeHVACControls",
 		"function handleUndoShortcut(event)",

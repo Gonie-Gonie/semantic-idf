@@ -14,13 +14,15 @@ import (
 
 func TestNavigationLinkBarConciseLabelAndFocusContracts(t *testing.T) {
 	markup := readTestFile(t, "frontend/src/index.html")
-	for _, required := range []string{`id="workspaceBackButton"`, `>←</button>`, `id="workspaceForwardButton"`, `>→</button>`} {
-		if !strings.Contains(markup, required) {
-			t.Fatalf("navigation history button markup missing %q", required)
+	for _, removed := range []string{`id="workspaceBackButton"`, `id="workspaceForwardButton"`} {
+		if strings.Contains(markup, removed) {
+			t.Fatalf("main workspace must not expose global navigation button %q", removed)
 		}
 	}
-	if strings.Contains(markup, "??/button>") {
-		t.Fatal("navigation history buttons contain malformed closing tags")
+	for _, retained := range []string{`id="hvacBackButton"`, `id="hvacForwardButton"`} {
+		if !strings.Contains(markup, retained) {
+			t.Fatalf("panel-specific HVAC navigation must remain available: missing %q", retained)
+		}
 	}
 
 	content := readTestFile(t, "frontend/src/js/navigation-link-bar.js")
@@ -48,6 +50,17 @@ func TestNavigationLinkBarConciseLabelAndFocusContracts(t *testing.T) {
 	}
 	if strings.Contains(content, "container.replaceChildren()") {
 		t.Fatal("link-bar rerenders must reconcile target buttons instead of discarding keyboard focus")
+	}
+	for _, removed := range []string{"workspaceBackButton", "workspaceForwardButton", "callbacks.back", "callbacks.forward"} {
+		if strings.Contains(content, removed) {
+			t.Fatalf("navigation link bar retains removed global button wiring %q", removed)
+		}
+	}
+	stateContent := readTestFile(t, "frontend/src/js/state.js")
+	for _, removed := range []string{"workspaceBackButton", "workspaceForwardButton"} {
+		if strings.Contains(stateContent, removed) {
+			t.Fatalf("frontend state retains removed global button reference %q", removed)
+		}
 	}
 	legacy := regexp.MustCompile(`context\s*&&\s*context\s*!==\s*label`)
 	if legacy.MatchString(content) {
@@ -111,8 +124,6 @@ const navigationLinkBarRuntimePage = `<!doctype html>
     <span id="workspaceSelectionLabel"></span>
     <nav id="workspaceLinkTargets"></nav>
     <nav id="workspaceLinkMenuTargets"></nav>
-    <button id="workspaceBackButton" type="button"></button>
-    <button id="workspaceForwardButton" type="button"></button>
   </section>
   <section id="metricsPane">
     <div data-panel-target-id="zone-count"><span class="metrics-name"><strong>Zone count</strong></span></div>

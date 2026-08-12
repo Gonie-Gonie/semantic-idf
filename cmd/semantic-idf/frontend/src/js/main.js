@@ -185,8 +185,6 @@ configureSelectionController({
 initializeNavigationLinkBar({
   openView: openSelectionInView,
   revealSource: revealSelectionSource,
-  back: undoViewNavigation,
-  forward: redoViewNavigation,
 });
 
 const resumePendingNavigationAfterRender = (event) => {

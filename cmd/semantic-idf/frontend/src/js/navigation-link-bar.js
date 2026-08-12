@@ -29,8 +29,6 @@ export function initializeNavigationLinkBar(options = {}) {
     state.semanticFollowSelection = !state.semanticFollowSelection;
     dispatchModeChange();
   });
-  elements.workspaceBackButton?.addEventListener("click", () => callbacks.back?.());
-  elements.workspaceForwardButton?.addEventListener("click", () => callbacks.forward?.());
   window.addEventListener("idfAnalyzer:semanticSelectionChanged", renderNavigationLinkBar);
   window.addEventListener("idfAnalyzer:semanticSelectionRemapped", renderNavigationLinkBar);
   window.addEventListener("idfAnalyzer:analysisComplete", renderNavigationLinkBar);
@@ -56,12 +54,6 @@ export function renderNavigationLinkBar() {
   const targets = availableTargets(selection);
   renderTargets(elements.workspaceLinkTargets, targets);
   renderTargets(elements.workspaceLinkMenuTargets, targets);
-  if (elements.workspaceBackButton) {
-    elements.workspaceBackButton.disabled = !(state.navigationUndoStack?.length);
-  }
-  if (elements.workspaceForwardButton) {
-    elements.workspaceForwardButton.disabled = !(state.navigationRedoStack?.length);
-  }
 }
 
 function dispatchModeChange() {

@@ -459,8 +459,7 @@ button:disabled:hover {
 }
 
 .workspace-link-bar__modes,
-.workspace-link-bar__targets,
-.workspace-link-bar__history {
+.workspace-link-bar__targets {
   display: flex;
   align-items: center;
   gap: 0.3rem;
@@ -508,16 +507,6 @@ button:disabled:hover {
   border-color: var(--selection-primary);
   color: var(--teal-dark);
   background: var(--teal-soft);
-}
-
-.workspace-link-bar__history {
-  margin-inline-start: auto;
-}
-
-.workspace-link-bar__history button {
-  min-width: 30px;
-  padding-inline: 0.45rem;
-  font-size: 1rem;
 }
 
 .workspace-link-bar__menu {

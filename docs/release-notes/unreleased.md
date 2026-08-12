@@ -18,6 +18,9 @@ The release script infers bump size from these sections:
 
 ## Changed
 
+- Removed the global Main workspace Back and Forward buttons while retaining
+  keyboard/browser history navigation and panel-specific controls such as the
+  HVAC Back and Forward actions.
 - Renamed the main Summary analysis to Metrics throughout the UI, CLI, API,
   source symbols, tests, and current documentation, and normalized the former
   Geometry panel namespace to Topology while retaining true geometry models.

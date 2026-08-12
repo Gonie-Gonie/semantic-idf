@@ -313,8 +313,6 @@ export const elements = {
   workspaceSelectionLabel: document.querySelector("#workspaceSelectionLabel"),
   workspaceLinkTargets: document.querySelector("#workspaceLinkTargets"),
   workspaceLinkMenuTargets: document.querySelector("#workspaceLinkMenuTargets"),
-  workspaceBackButton: document.querySelector("#workspaceBackButton"),
-  workspaceForwardButton: document.querySelector("#workspaceForwardButton"),
   idfInput: document.querySelector("#idfInput"),
   syncRawTextToggle: document.querySelector("#syncRawTextToggle"),
   textStats: document.querySelector("#textStats"),
