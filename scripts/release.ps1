@@ -646,14 +646,14 @@ function Invoke-GitHubRelease {
 $repoRoot = Get-RepoRoot
 $releaseNotesDir = Join-Path $repoRoot "docs\release-notes"
 $unreleasedPath = Join-Path $releaseNotesDir "unreleased.md"
-$wailsPath = Join-Path $repoRoot "wails.json"
-$appInfoPath = Join-Path $repoRoot "frontend\src\js\app-info.js"
+$wailsPath = Join-Path $repoRoot "cmd\semantic-idf\wails.json"
+$appInfoPath = Join-Path $repoRoot "cmd\semantic-idf\frontend\src\js\app-info.js"
 $staticHTMLPaths = @(
-    (Join-Path $repoRoot "frontend\src\index.html"),
-    (Join-Path $repoRoot "frontend\src\guide.html"),
-    (Join-Path $repoRoot "frontend\src\batch.html"),
-    (Join-Path $repoRoot "frontend\src\tools.html"),
-    (Join-Path $repoRoot "frontend\src\settings.html")
+    (Join-Path $repoRoot "cmd\semantic-idf\frontend\src\index.html"),
+    (Join-Path $repoRoot "cmd\semantic-idf\frontend\src\guide.html"),
+    (Join-Path $repoRoot "cmd\semantic-idf\frontend\src\batch.html"),
+    (Join-Path $repoRoot "cmd\semantic-idf\frontend\src\tools.html"),
+    (Join-Path $repoRoot "cmd\semantic-idf\frontend\src\settings.html")
 )
 $readmePath = Join-Path $repoRoot "README.md"
 $changelogPath = Join-Path $repoRoot "CHANGELOG.md"

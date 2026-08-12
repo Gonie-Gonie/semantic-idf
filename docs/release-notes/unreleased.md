@@ -18,6 +18,11 @@ The release script infers bump size from these sections:
 
 ## Changed
 
+- Consolidated the desktop/CLI command, Wails application modules, internal Go
+  packages, frontend, command tests, and Wails project configuration under
+  `cmd/semantic-idf`. Frontend assets are exposed through a dedicated embedded
+  filesystem package, while existing commands and `build/bin` artifacts keep
+  their paths.
 - Simplified the main Simulation view by removing Integrity and Custom Outputs
   purpose controls, the Run Plan display, Advanced run options, and the manual
   EnergyPlus version selector. Allocation, output application, frequency,

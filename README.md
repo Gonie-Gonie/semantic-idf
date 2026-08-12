@@ -100,7 +100,7 @@ read stdin and `-o -` to write command output to stdout.
 
 Release timing is manual. Update `docs/release-notes/unreleased.md`, then create and push a `vX.Y.Z` tag when you want to publish. The tag push runs the GitHub Actions `Release` workflow, which builds a versioned executable from that tag and publishes the GitHub Release.
 
-Use `scripts/release.ps1` to keep the release metadata and tag together. It updates `wails.json`, writes `CHANGELOG.md`, snapshots the release notes under `docs/release-notes/vX.Y.Z.md`, builds a versioned executable, creates the release commit, creates the `vX.Y.Z` tag, and pushes both. The pushed tag then publishes the GitHub Release.
+Use `scripts/release.ps1` to keep the release metadata and tag together. It updates `cmd/semantic-idf/wails.json`, writes `CHANGELOG.md`, snapshots the release notes under `docs/release-notes/vX.Y.Z.md`, builds a versioned executable, creates the release commit, creates the `vX.Y.Z` tag, and pushes both. The pushed tag then publishes the GitHub Release.
 
 The GitHub Actions `Release` workflow can still be run manually from GitHub when you want the workflow to do the prepare, tag, push, and publish steps in one run.
 
@@ -110,7 +110,7 @@ The script chooses the semver bump from release-note sections when no explicit v
 - `Added` or `Features`: minor.
 - `Fixed`, `Changed`, `Performance`, `Security`, documentation-only, or internal-only notes: patch.
 
-For the first release, if no `v*` tag exists and `wails.json` already has a product version, `auto` releases that current version. The current test baseline is `0.1.0`, so the first workflow run can leave `version` empty or explicitly set `0.1.0`.
+For the first release, if no `v*` tag exists and `cmd/semantic-idf/wails.json` already has a product version, `auto` releases that current version. The current test baseline is `0.1.0`, so the first workflow run can leave `version` empty or explicitly set `0.1.0`.
 
 Useful local release commands:
 
@@ -130,7 +130,7 @@ The app version is shown in the window title, page headers, Settings storage det
 
 ## User Guide
 
-The app toolbar includes top-level Tools, Guide, and Settings navigation buttons that open bundled full-page views inside the Wails WebView. Keep `frontend/src/guide.html` focused on end-user workflows; developer commands and repository maintenance notes belong in this README or `docs/agent.md`.
+The app toolbar includes top-level Tools, Guide, and Settings navigation buttons that open bundled full-page views inside the Wails WebView. Keep `cmd/semantic-idf/frontend/src/guide.html` focused on end-user workflows; developer commands and repository maintenance notes belong in this README or `docs/agent.md`.
 
 ## Input Views
 
@@ -149,7 +149,7 @@ The app toolbar includes top-level Tools, Guide, and Settings navigation buttons
 - The former main Output tab and Batch Output QA tool are no longer exposed. Output-request analysis and edits remain available to backend and automation callers through `AnalyzeInputOutputText`, `PreviewOutputApplyText`, `ApplyOutputText`, and `ApplyPurposeOutputsText`.
 - Topology parses detailed zones, walls, roofs, floors, and fenestration into mode-specific 3D, Plan, and Network views. 3D defaults to all levels, Plan shows one story at a time, and Network shows the zone-level thermal graph with selectable metrics; Sync locate jumps to the matching input object.
 - Summary metric guide entries are loaded from the same backend catalog as the calculated metrics.
-- The startup sample is the official EnergyPlus `RefBldgLargeOfficeNew2004_Chicago.idf` example vendored under `frontend/src/samples/`.
+- The startup sample is the official EnergyPlus `RefBldgLargeOfficeNew2004_Chicago.idf` example vendored under `cmd/semantic-idf/frontend/src/samples/`.
 - The startup sample text is shown first; analysis then runs in visible-first stages so Summary/Text render before Diagnose and Topology finish in the background.
 - Open uses the desktop file dialog, Save writes the current text back to the opened file or asks for a path, and Revert restores the text from the last opened input snapshot.
 - Analysis runs automatically after file open and after debounced editor changes; larger workflows belong under Tools.
@@ -160,18 +160,17 @@ The app toolbar includes top-level Tools, Guide, and Settings navigation buttons
 
 ## Project Layout
 
-- `internal/idf`: IDF parsing, analysis, and editing core.
-- `internal/epinput`: EnergyPlus input format detection, version detection, common model, and IDF/epJSON conversion.
-- `frontend/src`: tracked static frontend source served by Wails.
-- `frontend/src/app.js`: tiny ES module entrypoint.
-- `frontend/src/js`: frontend modules split by state, actions, input views, analysis views, navigation, layout, and sample data.
-- `frontend/src/vendor`: vendored browser-only libraries that should remain replaceable by a future package/bundler step.
-- `frontend/src/samples`: bundled sample inputs used by the app and tests.
-- `frontend/src/guide.html`: user-facing tool guide maintained cumulatively.
-- `frontend/src/settings.html`: settings page frame backed by the local settings JSON API.
-- `frontend/dist`: ignored future build output location; do not place canonical source there.
+- `cmd/semantic-idf`: complete desktop/CLI application subtree, including its frontend and internal packages.
+- `cmd/semantic-idf/wails.json`: Wails project and release metadata.
+- `cmd/semantic-idf/internal/idf`: IDF parsing, analysis, and editing core.
+- `cmd/semantic-idf/internal/epinput`: EnergyPlus input format detection, version detection, common model, and IDF/epJSON conversion.
+- `cmd/semantic-idf/frontend/assets.go`: embedded frontend filesystem exposed to the desktop entrypoint.
+- `cmd/semantic-idf/frontend/src`: tracked static frontend source served by Wails.
+- `cmd/semantic-idf/frontend/src/js`: frontend modules split by state, actions, input views, analysis views, navigation, layout, and sample data.
+- `cmd/semantic-idf/frontend/src/vendor`: vendored browser-only libraries.
+- `cmd/semantic-idf/frontend/src/samples`: bundled sample inputs used by the app and tests.
+- `cmd/semantic-idf/frontend/dist`: ignored future build output location.
 - `docs/agent.md`: consolidated working notes and implementation principles.
-- `app.go`: Wails-bound application API.
 - `scripts`: repo-local runtime setup, checks, and repeatable commands.
 - `.runtime`: ignored local Go/Wails runtime and caches created by setup.
 

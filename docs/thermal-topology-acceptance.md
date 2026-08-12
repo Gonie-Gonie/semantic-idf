@@ -17,7 +17,7 @@ renderer logic in the test.
 Run the integrated flows with:
 
 ```powershell
-go test ./internal/idf ./internal/simulation ./internal/frontendchecks -run 'TestTOPO28|TestTOPO285' -count=1
+go test ./cmd/semantic-idf/internal/idf ./cmd/semantic-idf/internal/simulation ./cmd/semantic-idf/internal/frontendchecks -run 'TestTOPO28|TestTOPO285' -count=1
 ```
 
 The repository-wide gate remains `scripts/verify.ps1`; it includes static

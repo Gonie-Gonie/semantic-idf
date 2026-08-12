@@ -7,11 +7,11 @@
 - Prefer static frontend assets until a build chain becomes clearly valuable.
 - Every implementation pass should end with `scripts/verify.ps1`, then commit and push when the work is complete.
 - Every commit should use the repo-local runtime and include a successful Wails build; setup installs a local pre-commit hook for this.
-- Keep `frontend/src/guide.html` focused on end-user workflows. Developer commands and repo maintenance notes belong in README/docs, not in the in-app guide.
+- Keep `cmd/semantic-idf/frontend/src/guide.html` focused on end-user workflows. Developer commands and repo maintenance notes belong in README/docs, not in the in-app guide.
 - Protect user work in the git tree. Do not revert unrelated changes.
 - Favor small IDF-domain functions that can be tested without launching the desktop shell.
 - Keep Go tests next to the package they exercise; do not centralize `_test.go` files just to reduce directory spread.
-- Keep EnergyPlus input parsing/conversion in `internal/epinput`; reserve `internal/idf` for low-level IDF parsing and analysis helpers.
+- Keep EnergyPlus input parsing/conversion in `cmd/semantic-idf/internal/epinput`; reserve `cmd/semantic-idf/internal/idf` for low-level IDF parsing and analysis helpers.
 - Support EnergyPlus 22+ as the default compatibility range and keep version-specific IDD/schema integration pluggable.
 - Input viewing should keep Text, JSON, and Table modes in sync from one parsed/cached EnergyPlus model; Table mode should be organized by IDF object type and support row/column orientation changes.
 - Keep the startup sample tied to the vendored official EnergyPlus large office reference IDF unless a better real-world evaluation file is intentionally chosen.
@@ -33,5 +33,5 @@
 - Keep toolbar semantics split: top-level file actions for Open/Save/Revert and top-level Batch/Guide/Settings page navigation. Larger multi-file workflows and future repeated operations belong in Batch.
 - Batch workflows should be full-page task surfaces selected from the left selector, with only the active panel shown. Batch Summary selects multiple inputs through the desktop dialog, analyzes them with a bounded worker pool, emits progress events, shows a transposable comparison table, supports two-column delta comparison, and exports CSV plus raw/delta XLSX workbooks. Batch Simulation uses the fixed purpose defaults documented in `simulation-runner.md` and resolves a compatible EnergyPlus installation per input without exposing a run-plan preview. Current-file cleanup/fix workflows belong in Diagnose / Fixes, not Batch.
 - Raw text edits should trigger debounced automatic analysis rather than requiring a manual Analyze button; structured edits can analyze immediately after backend patches.
-- App settings should persist through the backend settings API under the local app data/config directory, with `frontend/src/settings.html` as the settings page frame.
-- Frontend code organization: keep `frontend/src/app.js` as a tiny entrypoint and place feature modules under `frontend/src/js/`; reserve `frontend/dist` for future generated build output.
+- App settings should persist through the backend settings API under the local app data/config directory, with `cmd/semantic-idf/frontend/src/settings.html` as the settings page frame.
+- Frontend code organization: keep `cmd/semantic-idf/frontend/src/app.js` as a tiny entrypoint and place feature modules under `cmd/semantic-idf/frontend/src/js/`; reserve `cmd/semantic-idf/frontend/dist` for future generated build output.

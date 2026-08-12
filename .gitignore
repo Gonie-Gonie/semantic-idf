@@ -11,10 +11,10 @@
 coverage.out
 
 # Wails generated frontend bindings
-/frontend/wailsjs/
+/cmd/semantic-idf/frontend/wailsjs/
 
-# Future frontend build outputs; committed static source lives in frontend/src.
-/frontend/dist/
+# Future frontend build outputs; committed static source lives in cmd/semantic-idf/frontend/src.
+/cmd/semantic-idf/frontend/dist/
 
 # Optional web tooling, kept out of this base project
 node_modules/
@@ -24,7 +24,7 @@ node_modules/
 .env.*
 .tools/
 .runtime/
-/internal/idf/testdata/hvac_external/
+/cmd/semantic-idf/internal/idf/testdata/hvac_external/
 
 # Editors and OS files
 .idea/

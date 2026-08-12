@@ -1,6 +1,6 @@
 $ErrorActionPreference = "Stop"
 
-$frontendRoot = Join-Path $PSScriptRoot "..\frontend"
+$frontendRoot = Join-Path $PSScriptRoot "..\cmd\semantic-idf\frontend"
 $assetRoot = Join-Path $frontendRoot "src"
 $index = Join-Path $assetRoot "index.html"
 $tools = Join-Path $assetRoot "tools.html"
@@ -105,7 +105,7 @@ foreach ($style in $styles) {
     }
 }
 
-$wailsPath = Join-Path $PSScriptRoot "..\wails.json"
+$wailsPath = Join-Path $PSScriptRoot "..\cmd\semantic-idf\wails.json"
 $appInfo = Join-Path $moduleDir "app-info.js"
 $wailsConfig = Get-Content -LiteralPath $wailsPath -Raw | ConvertFrom-Json
 $productVersion = [string]$wailsConfig.info.productVersion

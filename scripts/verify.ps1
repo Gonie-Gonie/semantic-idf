@@ -18,7 +18,21 @@ if (Get-Command git -ErrorAction SilentlyContinue) {
 }
 
 & "$PSScriptRoot\frontend-build.ps1"
-& $paths.GoExe test ./...
-Assert-LastExitCode -Operation "go test ./..."
-& $paths.WailsExe build
-Assert-LastExitCode -Operation "wails build"
+Push-Location $paths.RepoRoot
+try {
+    & $paths.GoExe test ./...
+    Assert-LastExitCode -Operation "go test ./..."
+}
+finally {
+    Pop-Location
+}
+
+$projectDir = Join-Path $paths.RepoRoot "cmd\semantic-idf"
+Push-Location $projectDir
+try {
+    & $paths.WailsExe build
+    Assert-LastExitCode -Operation "wails build"
+}
+finally {
+    Pop-Location
+}

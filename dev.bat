@@ -66,7 +66,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%scripts\frontend-buil
 exit /b %ERRORLEVEL%
 
 :guide
-start "" "%ROOT%frontend\src\guide.html"
+start "" "%ROOT%cmd\semantic-idf\frontend\src\guide.html"
 exit /b 0
 
 :unknown
