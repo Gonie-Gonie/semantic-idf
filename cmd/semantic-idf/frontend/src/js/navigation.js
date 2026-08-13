@@ -333,7 +333,6 @@ export function handleInputSelectionActivation(element) {
     originView: viewId,
     action: "select",
     recordHistory: true,
-    follow: false,
   });
   return true;
 }

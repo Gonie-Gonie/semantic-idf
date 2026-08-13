@@ -915,6 +915,8 @@ function persistDiagnoseDocument({ replaceWorkspace = false } = {}) {
       next.viewSnapshot = null;
       next.panelContexts = {};
     }
+    delete next.semanticLinkMode;
+    delete next.semanticFollowSelection;
     window.sessionStorage.setItem(CURRENT_DOCUMENT_STORAGE_KEY, JSON.stringify(next));
   } catch {
     // Continue to support analysis even when browser storage is unavailable.

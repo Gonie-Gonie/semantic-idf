@@ -38,19 +38,6 @@
     display: none;
   }
 
-  .workspace-link-bar__targets {
-    display: none;
-  }
-
-  .workspace-link-bar__menu {
-    display: block;
-    margin-inline-start: auto;
-  }
-
-  .workspace-link-bar__selection {
-    max-width: 32vw;
-  }
-
   .editor-panel {
     min-height: 0;
     border-bottom: 1px solid var(--line);
@@ -195,20 +182,6 @@
     grid-template-columns: 12px 24px minmax(0, 1fr);
     gap: 3px;
     padding-inline: 6px;
-  }
-
-  .workspace-link-bar {
-    gap: 0.3rem;
-    padding-inline: 0.35rem;
-  }
-
-  .workspace-link-bar__modes button {
-    padding-inline: 0.45rem;
-  }
-
-  .workspace-link-bar__selection {
-    min-width: 0;
-    max-width: 24vw;
   }
 
   .toolbar {

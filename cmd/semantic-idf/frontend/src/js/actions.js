@@ -606,8 +606,6 @@ export async function saveWorkspaceSnapshot() {
     viewSnapshot,
     panelContexts: viewSnapshot.panelContexts || {},
     layout: captureWorkspaceLayout(),
-    semanticLinkMode: Boolean(state.semanticLinkMode),
-    semanticFollowSelection: Boolean(state.semanticFollowSelection),
     capturedAt: new Date().toISOString(),
   };
   try {

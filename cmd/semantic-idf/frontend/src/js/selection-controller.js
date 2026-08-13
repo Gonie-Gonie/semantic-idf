@@ -41,12 +41,6 @@ export function initializeSelectionControllerState(targetState = {}) {
   }
   targetState.globalSelection = normalizeSelection(targetState.globalSelection);
   targetState.globalHover = normalizeHover(targetState.globalHover);
-  if (typeof targetState.semanticLinkMode !== "boolean") {
-    targetState.semanticLinkMode = true;
-  }
-  if (typeof targetState.semanticFollowSelection !== "boolean") {
-    targetState.semanticFollowSelection = true;
-  }
   if (!("semanticTemporaryReveal" in targetState)) {
     targetState.semanticTemporaryReveal = null;
   }
@@ -106,7 +100,7 @@ export function createSelectionController(dependencies = {}) {
       action: options.action || action,
       originView: String(options.originView || ""),
       recordHistory: options.recordHistory === undefined ? historyByDefault : options.recordHistory !== false,
-      follow: options.follow === undefined ? controllerState.semanticFollowSelection : options.follow !== false,
+      follow: options.follow !== false,
       preserveFilters: options.preserveFilters !== false,
       transactionId: String(options.transactionId || nextTransactionId()),
     };
@@ -312,7 +306,7 @@ export function createSelectionController(dependencies = {}) {
         options,
         temporaryRevealCleared: Boolean(temporaryReveal && !preserveTemporaryReveal),
       });
-      if (controllerState.semanticLinkMode && options.follow) {
+      if (options.follow) {
         await followSelection(selection, options);
       }
       return cloneSelection(selection);
@@ -327,9 +321,7 @@ export function createSelectionController(dependencies = {}) {
         originView: options.originView || candidate?.originView,
       });
       controllerState.globalHover = hover;
-      if (controllerState.semanticLinkMode) {
-        await invokeHook(dependencies.onHoverChange, { hover: { ...hover }, options });
-      }
+      await invokeHook(dependencies.onHoverChange, { hover: { ...hover }, options });
       return { ...hover };
     });
   }

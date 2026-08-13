@@ -1,4 +1,5 @@
 import { defaultSample, loadDefaultSampleIDF } from "./sample.js";
+import { bundledAppInfo } from "./app-info.js";
 import { loadAndApplyAppSettings } from "./settings-client.js";
 import {
   backend,
@@ -74,12 +75,12 @@ import {
   openAvailableViewsPalette,
   openCommandPalette,
 } from "./command-palette.js";
-import { initializeNavigationLinkBar, renderNavigationLinkBar } from "./navigation-link-bar.js";
 import { captureViewSnapshot, recordViewHistory } from "./view-history.js";
 import { initializeProfileControls, renderProfile } from "./views/profile-views.js";
 import { initializeSimulationControls, loadSimulationEnvironment } from "./views/simulation-views.js";
 import { normalizeAnalyzeTabOrder, t, translatePage } from "./i18n.js";
 import { initializeKeyboardShortcuts } from "./shortcuts.js";
+import { getSemanticNavigationCache } from "./semantic-navigation-cache.js";
 
 loadAndApplyAppSettings().then((result) => applyRuntimeSettings(result.settings));
 
@@ -143,7 +144,6 @@ configureSelectionController({
       return;
     }
     switchResultTab(view, { ...options, recordHistory: false });
-    renderNavigationLinkBar();
   },
   queueAnalysisTarget: ({ view }) => {
     if (view && !String(view).startsWith("input-")) {
@@ -180,15 +180,11 @@ configureSelectionController({
     }
   },
 });
-initializeNavigationLinkBar({
-  openView: openSelectionInView,
-  revealSource: revealSelectionSource,
-});
-
 const resumePendingNavigationAfterRender = (event) => {
   if (event.type !== "idfAnalyzer:analysisComplete") {
     return;
   }
+  prewarmSemanticNavigationCache();
   const eventText = event.detail?.text;
   const eventAnalysisKey = event.detail?.analysisKey || "";
   const currentText = getDocumentText();
@@ -215,6 +211,17 @@ const resumePendingNavigationAfterRender = (event) => {
     await restorePendingWorkspaceContext(eventAnalysisKey);
   });
 };
+
+function prewarmSemanticNavigationCache() {
+  if (!state.semanticProjection?.navigation) {
+    return;
+  }
+  getSemanticNavigationCache(state.semanticProjection, {
+    textHash: state.reportAnalysisKey || state.lastAnalyzedKey || state.analysisKey || "",
+    analyzerVersion: bundledAppInfo.version,
+    schemaVersion: state.semanticProjection.schema || "",
+  });
+}
 window.addEventListener("idfAnalyzer:analysisComplete", resumePendingNavigationAfterRender);
 
 elements.openButton.addEventListener("click", openInputFile);
@@ -239,7 +246,6 @@ elements.resultTabButtons.forEach((button) => {
   button.addEventListener("click", () => {
     state.resultTabManuallySelected = true;
     switchResultTab(button.dataset.resultTab);
-    renderNavigationLinkBar();
   });
 });
 elements.topologyModeButtons.forEach((button) => {
@@ -526,7 +532,6 @@ function switchResultTabByOffset(offset) {
   const nextTab = tabButtons[nextIndex].dataset.resultTab;
   state.resultTabManuallySelected = true;
   switchResultTab(nextTab);
-  renderNavigationLinkBar();
   tabButtons[nextIndex].focus?.({ preventScroll: true });
 }
 
@@ -591,7 +596,6 @@ async function revealCurrentSelectionSource() {
 
 function focusNextWorkspacePane() {
   const panes = [
-    document.querySelector(".workspace-link-bar"),
     elements.editorPanel,
     elements.analysisPanel,
   ].filter(Boolean);
@@ -689,11 +693,6 @@ async function clearSelectionOrTransientUI() {
     occurrenceChooser.hidden = true;
     return true;
   }
-  const linkMenu = document.querySelector(".workspace-link-bar__menu[open]");
-  if (linkMenu) {
-    linkMenu.removeAttribute("open");
-    return true;
-  }
   if (!state.globalSelection?.entityId) {
     return false;
   }
@@ -761,8 +760,6 @@ if (restoredDocument) {
   });
   state.loadedText = typeof restoredDocument.loadedText === "string" ? restoredDocument.loadedText : state.loadedText;
   state.savedText = typeof restoredDocument.savedText === "string" ? restoredDocument.savedText : state.savedText;
-  state.semanticLinkMode = restoredDocument.semanticLinkMode !== false;
-  state.semanticFollowSelection = restoredDocument.semanticFollowSelection !== false;
   restoreWorkspaceLayout(restoredDocument.layout || {});
   if (restoredDocument.activeInputView) {
     switchInputView(restoredDocument.activeInputView, { recordHistory: false });
@@ -842,16 +839,8 @@ async function restoreSavedWorkspaceContext(restoredDocument = {}) {
     semanticCurrentOccurrenceId: restoredDocument.semanticOccurrenceId || "",
     panelContexts: restoredDocument.panelContexts || {},
   };
-  state.semanticLinkMode = restoredDocument.semanticLinkMode !== false;
-  state.semanticFollowSelection = restoredDocument.semanticFollowSelection !== false;
   restoreWorkspaceLayout(restoredDocument.layout || {});
   await restoreViewSnapshot(snapshot, { recordHistory: false, quiet: true });
-  window.dispatchEvent(new CustomEvent("idfAnalyzer:navigationModeChanged", {
-    detail: {
-      linked: state.semanticLinkMode,
-      follow: state.semanticFollowSelection,
-    },
-  }));
 }
 
 function restoreCurrentDocument() {

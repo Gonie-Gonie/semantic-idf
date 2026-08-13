@@ -234,9 +234,11 @@ async function runPhaseHHarness() {
     restoreContext: () => true,
     preferredSemanticOccurrence: (selection) => selection.occurrenceId || "",
   };
+  // Legacy persisted mode values are accepted as inert data and cannot disable
+  // the controller's now-unconditional linked/follow defaults.
   const controllerState = {
-    semanticLinkMode: true,
-    semanticFollowSelection: true,
+    semanticLinkMode: false,
+    semanticFollowSelection: false,
     reportAnalysisKey: "phase-h-large-index",
   };
   const controller = controllerModule.createSelectionController({
@@ -269,12 +271,11 @@ async function runPhaseHHarness() {
   assert(queueAnalysisCalls === 0, "current-report navigation queued analysis");
   assert(backendCalls === 0, "current-report navigation called a backend binding");
 
-  controllerState.semanticFollowSelection = false;
   await controller.selectSemanticEntity({ entityId: "entity-101", occurrenceId: "occurrence-101" }, {
     originView: "profile",
-    transactionId: "follow-off",
+    transactionId: "always-follow",
   });
-  assert(semanticReveals === 100, "Follow OFF still revealed another pane");
+  assert(semanticReveals === 101, "default selection did not always reveal the linked pane");
 
   const historyBeforeHover = recordHistoryCalls;
   await controller.hoverSemanticEntity({ entityId: "entity-102", occurrenceId: "occurrence-102" }, {
@@ -297,7 +298,6 @@ async function runPhaseHHarness() {
   assert(repeated === null, "replayed transaction was not suppressed");
   assert(selectionChanges === changesBeforeRepeatedTransaction + 1, "replayed transaction changed global state twice");
 
-  controllerState.semanticFollowSelection = true;
   await controller.selectSemanticEntity({ entityId: "entity-105", occurrenceId: "occurrence-105" }, {
     originView: "input-semantic",
     transactionId: "compatible-panel-reveal",
@@ -314,7 +314,7 @@ async function runPhaseHHarness() {
   let pendingHistoryCalls = 0;
   let pendingReveals = 0;
   const pendingAdapter = { ...semanticAdapter, reveal: () => { pendingReveals += 1; return true; } };
-  const pendingState = { semanticLinkMode: true, semanticFollowSelection: true, reportAnalysisKey: "phase-h-large-index" };
+  const pendingState = { reportAnalysisKey: "phase-h-large-index" };
   const pendingController = controllerModule.createSelectionController({
     state: pendingState,
     getNavigationIndex: () => navigation,

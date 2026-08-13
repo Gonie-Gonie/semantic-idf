@@ -675,11 +675,13 @@ const profileLayoutSelectionHarnessHTML = `<!doctype html>
       const firstSemanticEntity = rows()[1].dataset.entityId || "";
       assert(firstSemanticEntity, "semantic-capable Profile fixture did not annotate its rows");
       await clickRow(1);
+      await nextPaint();
       const rowGestureHistoryOnce = state.navigationUndoStack.length === 1;
       assert(rowGestureHistoryOnce, "one Profile row gesture did not record exactly one undo snapshot");
       const firstSemanticSync = state.globalSelection.entityId === firstSemanticEntity
         && semanticEvents.at(-1)?.selection?.entityId === firstSemanticEntity
-        && semanticEvents.at(-1)?.options?.follow === false;
+        && semanticEvents.at(-1)?.options?.follow === true
+        && semanticFollowAttempts.length === 1;
 
       await clickRow(3, { ctrlKey: true });
       const retainedPrimaryID = state.activeProfileGroupId;
@@ -704,9 +706,9 @@ const profileLayoutSelectionHarnessHTML = `<!doctype html>
       const rowGestureSemanticPrimary = firstSemanticSync
         && nonPrimarySemanticSync
         && primaryRemovalSemanticSync
-        && semanticFollowAttempts.length === 0;
+        && semanticFollowAttempts.length >= 1;
       assert(primaryApplySourceBoundary, "Ctrl removal changed Apply source before the primary row was removed");
-      assert(rowGestureSemanticPrimary, "row gesture did not synchronize the global primary without semantic follow");
+      assert(rowGestureSemanticPrimary, "row gesture did not synchronize and follow the global semantic primary");
 
       await clickRow(1);
       const singleSelection = state.profileSelectedGroupIds.length === 1 && selectedRows().length === 1;

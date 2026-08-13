@@ -1803,7 +1803,6 @@ function handleProfileOverviewActivation(event) {
       originView: "profile",
       action: "select",
       recordHistory: false,
-      follow: false,
     });
   } else {
     void clearSemanticSelection({ originView: "profile", recordHistory: false });

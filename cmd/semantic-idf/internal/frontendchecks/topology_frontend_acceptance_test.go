@@ -145,8 +145,13 @@ func TestTOPO262NavigationAcceptance(t *testing.T) {
 		}
 	}
 	selection := readTestFile(t, "frontend/src/js/selection-controller.js")
-	if !strings.Contains(selection, "options.follow === undefined ? controllerState.semanticFollowSelection") || !strings.Contains(selection, "if (controllerState.semanticLinkMode && options.follow)") {
-		t.Fatal("Follow ON/OFF selection behavior is not centralized")
+	if !strings.Contains(selection, "follow: options.follow !== false") || !strings.Contains(selection, "if (options.follow)") {
+		t.Fatal("always-on linked-follow selection behavior is not centralized")
+	}
+	for _, removed := range []string{"semanticLinkMode", "semanticFollowSelection"} {
+		if strings.Contains(selection, removed) {
+			t.Fatalf("topology selection controller retains removed link/follow mode %q", removed)
+		}
 	}
 	thermalView := readTestFile(t, "frontend/src/js/views/thermal-topology-view.js")
 	activation := sliceBetween(thermalView, "function activateGraphTarget", "function applyGraphTransform")

@@ -111,22 +111,14 @@ Mouse and keyboard paths must expose equivalent operations. Panel-specific
 exceptions are not permitted unless they are documented here together with an
 equivalent accessible operation.
 
-## Linked selection and follow selection
+## Linked and followed selection
 
-`Linked selection` defaults to **on**. `Follow selection` is a separate setting
-that also defaults to **on**. Both are visible in the workspace link bar and
-persist in workspace snapshots.
-
-When Linked selection is on, selection and highlights are shared between
-Semantic Text and panels. When Follow selection is also on, a committed panel
-selection scrolls Semantic Text to a compatible occurrence, and a Semantic
-Text selection scrolls or focuses a compatible target in the active panel. It
-still does not automatically switch result tabs.
-
-When Follow selection is off, the counterpart receives the shared highlight
-and exposes a **Reveal** action without changing the user's scroll position.
-Turning Linked selection off suppresses cross-view propagation while preserving
-the committed selection so it can be relinked without losing context.
+Selection and highlights are always shared between Semantic Text and result
+panels. A committed panel selection scrolls Semantic Text to a compatible
+occurrence, and a Semantic Text selection scrolls or focuses a compatible
+target in the active panel. Following a selection never switches result tabs
+automatically. Internal restore and remap transactions may suppress a redundant
+follow operation, but there is no user-facing mode or persisted toggle.
 
 ## Canonical panel targets
 
@@ -168,8 +160,8 @@ the visible HVAC navigator remains organized around zone relationships and
 AirLoopHVAC, PlantLoop, and Other loop diagrams.
 
 Profile and Topology do not advertise each other as direct related
-destinations in result-panel menus or the workspace link bar. Both remain
-independently reachable from Semantic Text and their own top-level tabs.
+destinations in result-panel menus. Both remain independently reachable from
+Semantic Text and their own top-level tabs.
 
 ## Reveal, filtering, and analysis lifecycle
 

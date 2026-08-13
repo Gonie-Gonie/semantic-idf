@@ -28,20 +28,23 @@ func TestSemanticSelectionStateContract(t *testing.T) {
 		}
 	}
 
-	hover := sliceBetween(content, "globalHover: {", "semanticLinkMode:")
+	hover := sliceBetween(content, "globalHover: {", "semanticTemporaryReveal:")
 	for _, field := range []string{"entityId", "occurrenceId", "originView"} {
 		if !regexp.MustCompile(`(?m)^\s*` + regexp.QuoteMeta(field) + `\s*:`).MatchString(hover) {
 			t.Fatalf("globalHover is missing %s", field)
 		}
 	}
 	for _, required := range []string{
-		"semanticLinkMode: true",
-		"semanticFollowSelection: true",
 		"semanticTemporaryReveal: null",
 		"semanticSelectedObjectIndex:",
 	} {
 		if !strings.Contains(content, required) {
 			t.Fatalf("selection state contract missing %q", required)
+		}
+	}
+	for _, removed := range []string{"semanticLinkMode", "semanticFollowSelection"} {
+		if strings.Contains(content, removed) {
+			t.Fatalf("selection state retains removed user mode %q", removed)
 		}
 	}
 }
@@ -197,7 +200,8 @@ func TestSelectionControllerTransactionsAndFollowContract(t *testing.T) {
 		"selectionChanged",
 		"options.recordHistory && selectionChanged",
 		"controllerState.globalSelection = selection",
-		"controllerState.semanticLinkMode && options.follow",
+		"if (options.follow)",
+		"await followSelection(selection, options)",
 	} {
 		if !strings.Contains(selection, required) {
 			t.Fatalf("selection/follow contract missing %q", required)
@@ -235,8 +239,10 @@ func TestSelectionControllerTransactionsAndFollowContract(t *testing.T) {
 			t.Fatalf("stale pending-navigation contract missing %q", required)
 		}
 	}
-	if !strings.Contains(content, "semanticFollowSelection") || !strings.Contains(content, "semanticLinkMode") {
-		t.Fatal("controller must keep linked selection and follow selection as separate controls")
+	for _, removed := range []string{"semanticFollowSelection", "semanticLinkMode"} {
+		if strings.Contains(content, removed) {
+			t.Fatalf("controller must not retain a user-disableable link/follow mode %q", removed)
+		}
 	}
 }
 

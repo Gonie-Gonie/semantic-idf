@@ -45,7 +45,6 @@ $modules = @(
     "main.js",
     "navigation.js",
     "navigation-chooser.js",
-    "navigation-link-bar.js",
     "panel-navigation-actions.js",
     "panel-navigation-adapters.js",
     "panel-navigation-registry.js",

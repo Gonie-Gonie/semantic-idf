@@ -415,11 +415,13 @@ func TestTextJSONAndTableClicksCommitTheSameSemanticSelection(t *testing.T) {
 		"adapter?.selectFromElement?.(element)",
 		"selectSemanticEntity(selection",
 		"recordHistory: true",
-		"follow: false",
 	} {
 		if !strings.Contains(activation, required) {
 			t.Fatalf("source input views must commit through the global semantic controller, missing %q", required)
 		}
+	}
+	if strings.Contains(activation, "follow: false") {
+		t.Fatal("source input view selections must use the always-on follow default")
 	}
 	styles := sliceBetween(navigation, "export function refreshInputSelectionStyles", "let legacyInputAdaptersInitialized")
 	for _, required := range []string{"selection?.sourceAnchor", "data-object-index", "semantic-selected", "data-semantic-selected"} {

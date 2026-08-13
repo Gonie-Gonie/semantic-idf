@@ -93,7 +93,7 @@ const mainWorkspaceSnapshot = {
   panelContexts: { profile: { selectedProfileKey: "profile-a" } },
   layout: { editorWidth: "37%", topologyDetailsHeight: "42%" },
   semanticLinkMode: false,
-  semanticFollowSelection: true,
+  semanticFollowSelection: false,
   capturedAt: "2026-08-12T00:00:00.000Z"
 };
 sessionStorage.setItem("idfAnalyzer.currentDocument", JSON.stringify(mainWorkspaceSnapshot));
@@ -145,8 +145,9 @@ const toolsDiagnoseHarnessAssertions = `<script>
       && appliedSnapshot.viewSnapshot?.semantic?.scrollTop === 35
       && appliedSnapshot.viewSnapshot?.panelContexts?.profile?.selectedProfileKey === "profile-a"
       && appliedSnapshot.layout?.editorWidth === "37%"
-      && appliedSnapshot.layout?.topologyDetailsHeight === "42%"
-      && appliedSnapshot.semanticLinkMode === false;
+      && appliedSnapshot.layout?.topologyDetailsHeight === "42%";
+    const legacyModesDropped = !("semanticLinkMode" in appliedSnapshot)
+      && !("semanticFollowSelection" in appliedSnapshot);
     document.querySelector("#diagnoseSelectInput").click();
     await waitFor(() => JSON.parse(sessionStorage.getItem("idfAnalyzer.currentDocument")).filename === "replacement.idf");
     const replacementSnapshot = JSON.parse(sessionStorage.getItem("idfAnalyzer.currentDocument"));
@@ -164,10 +165,12 @@ const toolsDiagnoseHarnessAssertions = `<script>
       snapshotApplied,
       analysisInvalidated,
       workspaceContextRetained,
+      legacyModesDropped,
       replacementReset
     });
     document.body.dataset.toolsDiagnoseStatus = diagnostic && candidateVisible && preview
-      && hydrationPreserved && snapshotApplied && analysisInvalidated && workspaceContextRetained && replacementReset ? "passed" : "failed";
+      && hydrationPreserved && snapshotApplied && analysisInvalidated && workspaceContextRetained
+      && legacyModesDropped && replacementReset ? "passed" : "failed";
   })().catch((error) => {
     result.textContent = error.stack || String(error);
     document.body.dataset.toolsDiagnoseStatus = "failed";

@@ -1,303 +1,117 @@
 package frontendchecks
 
 import (
-	"context"
-	"fmt"
-	"net/http"
-	"net/http/httptest"
-	"os/exec"
-	"regexp"
+	"os"
 	"strings"
 	"testing"
-	"time"
 )
 
-func TestNavigationLinkBarConciseLabelAndFocusContracts(t *testing.T) {
+func TestWorkspaceLinkBarAndModeControlsAreRemoved(t *testing.T) {
 	markup := readTestFile(t, "frontend/src/index.html")
-	for _, removed := range []string{`id="workspaceBackButton"`, `id="workspaceForwardButton"`} {
-		if strings.Contains(markup, removed) {
-			t.Fatalf("main workspace must not expose global navigation button %q", removed)
-		}
-	}
-	for _, retained := range []string{`id="hvacBackButton"`, `id="hvacForwardButton"`} {
-		if !strings.Contains(markup, retained) {
-			t.Fatalf("panel-specific HVAC navigation must remain available: missing %q", retained)
-		}
-	}
-
-	content := readTestFile(t, "frontend/src/js/navigation-link-bar.js")
-	for _, required := range []string{
-		"export function formatNavigationSelectionLabel",
-		"originTargetLabel(selection, entity, occurrence)",
-		`!originView.startsWith("input-")`,
-		"labelForOriginTargetElement",
-		"semanticContextParts",
-		"uniqueLabelParts(parts)",
-		"normalizeLabelKey",
-		`element.setAttribute("aria-live", "polite")`,
-		`element.setAttribute("aria-atomic", "true")`,
-		"if (element.textContent !== label)",
-		"const existing = new Map(",
-		"existing.get(view) || createTargetButton(view)",
-		"focusedButton.focus({ preventScroll: true })",
-		`import { isProfileTopologyLink } from "./selection-controller.js"`,
-		`!isProfileTopologyLink(state.activeResultTab, target.view)`,
-		`!isProfileTopologyLink(selection.originView, target.view)`,
+	for _, removed := range []string{
+		`id="workspaceLinkBar"`,
+		`id="semanticLinkedToggle"`,
+		`id="semanticFollowToggle"`,
+		`id="workspaceSelectionLabel"`,
+		`id="workspaceLinkTargets"`,
+		`id="workspaceLinkMenuTargets"`,
+		`class="workspace-link-bar`,
+		`data-i18n="navigation.linked"`,
+		`data-i18n="navigation.follow"`,
+		`data-i18n="navigation.noSelection"`,
 	} {
-		if !strings.Contains(content, required) {
-			t.Fatalf("navigation link-bar UX contract missing %q", required)
+		if strings.Contains(markup, removed) {
+			t.Fatalf("main workspace retains removed link-bar UI %q", removed)
 		}
 	}
-	if strings.Contains(content, "container.replaceChildren()") {
-		t.Fatal("link-bar rerenders must reconcile target buttons instead of discarding keyboard focus")
+
+	if _, err := os.Stat(repoPath("frontend/src/js/navigation-link-bar.js")); !os.IsNotExist(err) {
+		if err == nil {
+			t.Fatal("removed workspace navigation-link-bar module still exists")
+		}
+		t.Fatalf("stat removed workspace navigation-link-bar module: %v", err)
 	}
-	for _, removed := range []string{"workspaceBackButton", "workspaceForwardButton", "callbacks.back", "callbacks.forward"} {
-		if strings.Contains(content, removed) {
-			t.Fatalf("navigation link bar retains removed global button wiring %q", removed)
+
+	build := readTestFile(t, "../../scripts/frontend-build.ps1")
+	if strings.Contains(build, `"navigation-link-bar.js"`) {
+		t.Fatal("frontend readiness manifest retains the removed navigation-link-bar module")
+	}
+
+	stateSource := readTestFile(t, "frontend/src/js/state.js")
+	for _, removed := range []string{
+		"semanticLinkMode",
+		"semanticFollowSelection",
+		"workspaceLinkBar",
+		"semanticLinkedToggle",
+		"semanticFollowToggle",
+		"workspaceSelectionLabel",
+		"workspaceLinkTargets",
+		"workspaceLinkMenuTargets",
+	} {
+		if strings.Contains(stateSource, removed) {
+			t.Fatalf("frontend state retains removed link/follow mode state %q", removed)
 		}
 	}
-	stateContent := readTestFile(t, "frontend/src/js/state.js")
-	for _, removed := range []string{"workspaceBackButton", "workspaceForwardButton"} {
-		if strings.Contains(stateContent, removed) {
-			t.Fatalf("frontend state retains removed global button reference %q", removed)
+
+	for _, path := range []string{
+		"frontend/src/js/actions.js",
+		"frontend/src/js/main.js",
+		"frontend/src/js/selection-controller.js",
+	} {
+		content := readTestFile(t, path)
+		for _, removed := range []string{"semanticLinkMode", "semanticFollowSelection"} {
+			if strings.Contains(content, removed) {
+				t.Fatalf("%s still reads, writes, or persists removed mode %q", path, removed)
+			}
 		}
 	}
-	legacy := regexp.MustCompile(`context\s*&&\s*context\s*!==\s*label`)
-	if legacy.MatchString(content) {
-		t.Fatal("link-bar labels must use normalized segment de-duplication")
+
+	translations := readTestFile(t, "frontend/src/js/i18n.js")
+	for _, removed := range []string{
+		`"navigation.linkBar"`,
+		`"navigation.linked"`,
+		`"navigation.follow"`,
+		`"navigation.noSelection"`,
+		`"navigation.availableTargets"`,
+	} {
+		if strings.Contains(translations, removed) {
+			t.Fatalf("translations retain removed link-bar string %q", removed)
+		}
+	}
+
+	for _, path := range []string{"frontend/src/styles/base.css", "frontend/src/styles/responsive.css"} {
+		styles := readTestFile(t, path)
+		if strings.Contains(styles, ".workspace-link-bar") {
+			t.Fatalf("%s retains removed workspace link-bar styles", path)
+		}
 	}
 }
 
-func TestNavigationLinkBarRuntimeLabelsAndFocus(t *testing.T) {
-	chrome := findHeadlessChrome()
-	if chrome == "" {
-		t.Skip("Chrome/Chromium is unavailable for the link-bar runtime test")
+func TestSemanticLinkAndFollowAreAlwaysEnabled(t *testing.T) {
+	controller := readTestFile(t, "frontend/src/js/selection-controller.js")
+	options := sliceBetween(controller, "function optionsFor", "async function inTransaction")
+	if !strings.Contains(options, "follow: options.follow !== false") {
+		t.Fatal("selection options must default follow to true without consulting persistent state")
 	}
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/navigation-link-bar-test", func(writer http.ResponseWriter, request *http.Request) {
-		writer.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = fmt.Fprint(writer, navigationLinkBarRuntimePage)
-	})
-	mux.Handle("/", http.FileServer(http.Dir(repoPath("."))))
-	server := httptest.NewServer(mux)
-	defer server.Close()
+	selection := sliceBetween(controller, "async function selectSemanticEntity", "async function hoverSemanticEntity")
+	if !strings.Contains(selection, "if (options.follow)") || !strings.Contains(selection, "await followSelection(selection, options)") {
+		t.Fatal("committed selections must follow whenever the transaction does not explicitly suppress it")
+	}
+	for _, removed := range []string{"semanticLinkMode", "semanticFollowSelection"} {
+		if strings.Contains(selection, removed) {
+			t.Fatalf("committed selection propagation must not be gated by persistent mode %q", removed)
+		}
+	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-	command := exec.CommandContext(ctx, chrome,
-		"--headless=new",
-		"--disable-background-networking",
-		"--disable-default-apps",
-		"--disable-extensions",
-		"--disable-gpu",
-		"--disable-sync",
-		"--no-first-run",
-		"--no-default-browser-check",
-		"--no-sandbox",
-		"--user-data-dir="+t.TempDir(),
-		"--dump-dom",
-		server.URL+"/navigation-link-bar-test",
-	)
-	output, err := command.CombinedOutput()
-	if ctx.Err() != nil {
-		t.Fatalf("headless link-bar test timed out: %v", ctx.Err())
+	hover := sliceBetween(controller, "async function hoverSemanticEntity", "async function clearSemanticHover")
+	if !strings.Contains(hover, "await invokeHook(dependencies.onHoverChange") {
+		t.Fatal("semantic hover changes must always propagate")
 	}
-	if err != nil {
-		t.Fatalf("headless link-bar test failed: %v\n%s", err, output)
+	if strings.Contains(hover, "semanticLinkMode") || strings.Contains(hover, "semanticFollowSelection") || strings.Contains(hover, "followSelection(") {
+		t.Fatal("hover propagation must be unconditional without navigating another pane")
 	}
-	dom := string(output)
-	if !strings.Contains(dom, `data-test-status="pass"`) {
-		t.Fatalf("navigation link-bar runtime contract failed:\n%s", dom)
-	}
-	if result := regexp.MustCompile(`(?s)<pre id="result">(.*?)</pre>`).FindStringSubmatch(dom); len(result) > 1 {
-		t.Logf("navigation link-bar result: %s", result[1])
+	if !strings.Contains(hover, "recordHistory: false") || !strings.Contains(hover, "follow: false") {
+		t.Fatal("hover must remain history-free and non-navigating")
 	}
 }
-
-const navigationLinkBarRuntimePage = `<!doctype html>
-<html><head><meta charset="utf-8"><title>navigation link-bar test</title></head>
-<body data-test-status="running">
-  <section id="workspaceLinkBar">
-    <button id="semanticLinkedToggle" type="button"></button>
-    <button id="semanticFollowToggle" type="button"></button>
-    <span id="workspaceSelectionLabel"></span>
-    <nav id="workspaceLinkTargets"></nav>
-    <nav id="workspaceLinkMenuTargets"></nav>
-  </section>
-  <section id="metricsPane">
-    <div data-panel-target-id="zone-count"><span class="metrics-name"><strong>Zone count</strong></span></div>
-  </section>
-  <pre id="result"></pre>
-  <script type="module">
-    import { state } from "/frontend/src/js/state.js";
-    import {
-      formatNavigationSelectionLabel,
-      renderNavigationLinkBar,
-    } from "/frontend/src/js/navigation-link-bar.js";
-    import {
-      createSelectionController,
-      isProfileTopologyLink,
-    } from "/frontend/src/js/selection-controller.js";
-
-    const navigation = {
-      entities: [
-        { id: "section:schedules", kind: "semantic-section", label: "Schedules" },
-        { id: "schedule:activity", kind: "schedule", label: "ACTIVITY_SCH" },
-        { id: "section:zones", kind: "semantic-section", label: "Zones" },
-      ],
-      occurrences: [
-        { occurrenceId: "occ:schedules", entityId: "section:schedules", path: "schedules/definitions" },
-        { occurrenceId: "occ:activity", entityId: "schedule:activity", path: "schedules/definitions/ACTIVITY_SCH" },
-        {
-          occurrenceId: "occ:zones",
-          entityId: "section:zones",
-          path: "zones/definitions",
-          viewTargets: [
-            { view: "metrics", targetId: "zones", label: "Zones" },
-            { view: "profile", targetId: "profile-zone", label: "Zones" },
-            { view: "topology", targetId: "topology-zone", label: "Zones" },
-          ],
-        },
-      ],
-      byEntityId: {
-        "section:schedules": ["occ:schedules"],
-        "schedule:activity": ["occ:activity"],
-        "section:zones": ["occ:zones"],
-      },
-      byObjectId: {},
-      byObjectIndex: {},
-      byViewTarget: {
-        "metrics|zones": ["occ:zones"],
-        "profile|profile-zone": ["occ:zones"],
-        "topology|topology-zone": ["occ:zones"],
-      },
-    };
-    state.semanticProjection = { schema: "eplus-semantic/0.2", navigation };
-    state.reportAnalysisKey = "link-bar-labels";
-    state.activeInputView = "semantic";
-    state.activeResultTab = "metrics";
-
-    const isolatedController = createSelectionController({
-      state: {},
-      getNavigationIndex: () => navigation,
-    });
-    const linkedZoneSelection = {
-      entityId: "section:zones",
-      occurrenceId: "occ:zones",
-      semanticPathHint: "zones/definitions",
-    };
-    const controllerBlocksProfileToTopology = isolatedController.selectionTargetsForView("topology", {
-      ...linkedZoneSelection,
-      originView: "profile",
-    }).length === 0;
-    const controllerBlocksTopologyToProfile = isolatedController.selectionTargetsForView("profile", {
-      ...linkedZoneSelection,
-      originView: "topology",
-    }).length === 0;
-    const controllerKeepsSamePanelTargets =
-      isolatedController.selectionTargetsForView("profile", { ...linkedZoneSelection, originView: "profile" }).length === 1 &&
-      isolatedController.selectionTargetsForView("topology", { ...linkedZoneSelection, originView: "topology" }).length === 1;
-    const bilateralGuard =
-      isProfileTopologyLink("profile", "topology") &&
-      isProfileTopologyLink("topology", "profile") &&
-      !isProfileTopologyLink("profile", "metrics");
-
-    const schedules = formatNavigationSelectionLabel({
-      entityId: "section:schedules",
-      occurrenceId: "occ:schedules",
-      originView: "input-semantic",
-      originTargetId: "schedules_operation",
-      semanticPathHint: "schedules/definitions",
-    });
-    const activity = formatNavigationSelectionLabel({
-      entityId: "schedule:activity",
-      occurrenceId: "occ:activity",
-      originView: "input-semantic",
-      originTargetId: "profile:schedule:ACTIVITY_SCH",
-      semanticPathHint: "schedules/definitions/ACTIVITY_SCH",
-    });
-    state.globalSelection = {
-      entityId: "section:zones",
-      entityKind: "semantic-section",
-      occurrenceId: "occ:zones",
-      originView: "metrics",
-      originTargetId: "zone-count",
-      semanticPathHint: "zones/definitions",
-      sourceAnchor: null,
-      relatedEntityIds: [],
-    };
-    const metric = formatNavigationSelectionLabel(state.globalSelection);
-    renderNavigationLinkBar();
-    const metricsButton = document.querySelector('#workspaceLinkTargets [data-navigation-view="metrics"]');
-    metricsButton.focus();
-    renderNavigationLinkBar();
-    const metricsButtonAfter = document.querySelector('#workspaceLinkTargets [data-navigation-view="metrics"]');
-    const labelElement = document.getElementById("workspaceSelectionLabel");
-
-    state.globalSelection = { ...state.globalSelection, originView: "profile" };
-    renderNavigationLinkBar();
-    const profileKeepsProfile = Boolean(document.querySelector('#workspaceLinkTargets [data-navigation-view="profile"]'));
-    const profileHidesTopology = !document.querySelector('#workspaceLinkTargets [data-navigation-view="topology"]');
-
-    state.globalSelection = { ...state.globalSelection, originView: "topology" };
-    renderNavigationLinkBar();
-    const topologyKeepsTopology = Boolean(document.querySelector('#workspaceLinkTargets [data-navigation-view="topology"]'));
-    const topologyHidesProfile = !document.querySelector('#workspaceLinkTargets [data-navigation-view="profile"]');
-
-    state.globalSelection = { ...state.globalSelection, originView: "input-semantic" };
-    state.activeResultTab = "profile";
-    renderNavigationLinkBar();
-    const activeProfileHidesTopology = !document.querySelector('#workspaceLinkTargets [data-navigation-view="topology"]');
-    state.activeResultTab = "topology";
-    renderNavigationLinkBar();
-    const activeTopologyHidesProfile = !document.querySelector('#workspaceLinkTargets [data-navigation-view="profile"]');
-
-    state.activeResultTab = "metrics";
-    state.globalSelection = { ...state.globalSelection, originView: "metrics" };
-    renderNavigationLinkBar();
-    const metricsButtonFinal = document.querySelector('#workspaceLinkTargets [data-navigation-view="metrics"]');
-
-    const passed = Boolean(
-      schedules === "Schedules / definitions" &&
-      activity === "ACTIVITY_SCH / definitions" &&
-      metric === "Zones / Zone count" &&
-      metricsButton === metricsButtonAfter &&
-      metricsButtonAfter === metricsButtonFinal &&
-      document.activeElement === metricsButtonFinal &&
-      labelElement.textContent === metric &&
-      labelElement.getAttribute("role") === "status" &&
-      labelElement.getAttribute("aria-live") === "polite" &&
-      labelElement.getAttribute("aria-atomic") === "true" &&
-      profileKeepsProfile &&
-      profileHidesTopology &&
-      topologyKeepsTopology &&
-      topologyHidesProfile &&
-      activeProfileHidesTopology &&
-      activeTopologyHidesProfile &&
-      controllerBlocksProfileToTopology &&
-      controllerBlocksTopologyToProfile &&
-      controllerKeepsSamePanelTargets &&
-      bilateralGuard
-    );
-    document.body.dataset.testStatus = passed ? "pass" : "fail";
-    document.getElementById("result").textContent = JSON.stringify({
-      passed,
-      schedules,
-      activity,
-      metric,
-      sameButton: metricsButton === metricsButtonAfter && metricsButtonAfter === metricsButtonFinal,
-      focusPreserved: document.activeElement === metricsButtonFinal,
-      profileKeepsProfile,
-      profileHidesTopology,
-      topologyKeepsTopology,
-      topologyHidesProfile,
-      activeProfileHidesTopology,
-      activeTopologyHidesProfile,
-      controllerBlocksProfileToTopology,
-      controllerBlocksTopologyToProfile,
-      controllerKeepsSamePanelTargets,
-      bilateralGuard,
-    });
-  </script>
-</body></html>`

@@ -43,7 +43,7 @@ func TestSemanticNavigationMapCacheContract(t *testing.T) {
 	}
 
 	build := readTestFile(t, "../../scripts/frontend-build.ps1")
-	for _, module := range []string{"command-palette.js", "navigation-link-bar.js", "semantic-navigation-cache.js"} {
+	for _, module := range []string{"command-palette.js", "semantic-navigation-cache.js"} {
 		if !strings.Contains(build, `"`+module+`"`) {
 			t.Fatalf("frontend readiness manifest is missing %s", module)
 		}
@@ -90,17 +90,23 @@ func TestSemanticNavigationHotPathsUseCachedMaps(t *testing.T) {
 		t.Fatal("input occurrence lookup must reuse the semantic navigation cache")
 	}
 
-	linkBar := readTestFile(t, "frontend/src/js/navigation-link-bar.js")
-	linkRender := sliceBetween(linkBar, "export function renderNavigationLinkBar", "function dispatchModeChange")
-	if !strings.Contains(linkRender, "state.semanticProjection?.navigation") ||
-		!strings.Contains(linkRender, "semanticNavigationCache()") {
-		t.Fatal("analysis lifecycle rendering should prewarm the navigation Map cache before first selection")
+	main := readTestFile(t, "frontend/src/js/main.js")
+	analysisComplete := sliceBetween(main, "const resumePendingNavigationAfterRender", `window.addEventListener("idfAnalyzer:analysisComplete"`)
+	if !strings.Contains(analysisComplete, `event.type !== "idfAnalyzer:analysisComplete"`) ||
+		!strings.Contains(analysisComplete, "prewarmSemanticNavigationCache()") {
+		t.Fatal("analysis completion must prewarm the semantic navigation Map cache")
 	}
-	availableTargets := sliceBetween(linkBar, "function availableTargets", "function semanticNavigationCache")
-	if !strings.Contains(availableTargets, "cache.occurrenceIdsByEntityId.get") ||
-		!strings.Contains(availableTargets, "cache.occurrence(occurrenceID)") ||
-		strings.Contains(availableTargets, "new Map") {
-		t.Fatal("link-bar selection rendering must use cached entity/occurrence indexes")
+	prewarm := sliceBetween(main, "function prewarmSemanticNavigationCache", `window.addEventListener("idfAnalyzer:analysisComplete"`)
+	for _, required := range []string{
+		"state.semanticProjection?.navigation",
+		"getSemanticNavigationCache(state.semanticProjection",
+		"textHash:",
+		"analyzerVersion:",
+		"schemaVersion:",
+	} {
+		if !strings.Contains(prewarm, required) {
+			t.Fatalf("analysis-complete cache prewarm is missing %q", required)
+		}
 	}
 }
 
@@ -125,7 +131,6 @@ func TestSelectionSyncAvoidsFullRenderAndBackendCalls(t *testing.T) {
 	for _, path := range []string{
 		"frontend/src/js/selection-controller.js",
 		"frontend/src/js/panel-navigation-adapters.js",
-		"frontend/src/js/navigation-link-bar.js",
 	} {
 		content := readTestFile(t, path)
 		if strings.Contains(content, "renderReport(") || strings.Contains(content, "AnalyzeInput") {
