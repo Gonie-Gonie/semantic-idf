@@ -281,6 +281,10 @@
 }
 
 @container profile-pane (max-width: 520px) {
+  .profile-live-controls {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .profile-overview-table-head {
     grid-template-columns: minmax(0, 1fr) auto;
   }

@@ -6,6 +6,22 @@ import (
 	"testing"
 )
 
+func TestFrontendProfileLiveControlsDoNotUseEqualWidthColumns(t *testing.T) {
+	styles := readTestFile(t, "frontend/src/styles/profile.css")
+	responsive := readTestFile(t, "frontend/src/styles/responsive.css")
+	controls := sliceBetween(styles, ".profile-live-controls {", ".profile-live-group {")
+	if strings.Contains(controls, "repeat(auto-fit, minmax(min(190px, 100%), 1fr))") {
+		t.Fatal("Profile Inspect by and Dimensions must be content-width adjacent, not equal-width auto-fit columns")
+	}
+	if !strings.Contains(controls, "grid-template-columns: max-content minmax(0, 1fr)") {
+		t.Fatal("Profile live controls must size Inspect by to its content and leave the remaining width to Dimensions")
+	}
+	narrowControls := sliceBetween(responsive, "@container profile-pane (max-width: 520px) {", ".profile-overview-table-head {")
+	if !strings.Contains(narrowControls, ".profile-live-controls {") || !strings.Contains(narrowControls, "grid-template-columns: minmax(0, 1fr)") {
+		t.Fatal("Profile live controls must collapse to one overflow-safe column in a narrow Profile container")
+	}
+}
+
 func TestFrontendProfileGraphStateContracts(t *testing.T) {
 	files := map[string]string{
 		"profile views": readTestFile(t, "frontend/src/js/views/profile-views.js"),

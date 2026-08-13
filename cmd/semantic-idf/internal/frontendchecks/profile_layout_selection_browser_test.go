@@ -70,6 +70,8 @@ func TestProfileLayoutAndSelectionBrowserHarness(t *testing.T) {
 		`"applyRight":true`,
 		`"domSemantics":true`,
 		`"inspectByCompact":true`,
+		`"profileControlGroupsAdjacent":true`,
+		`"profileControlGroupsWrapNarrow":true`,
 		`"profileControlsAligned":true`,
 		`"secondaryProfileUIAbsent":true`,
 		`"semanticRevealGraphAndOverviewFallback":true`,
@@ -947,6 +949,36 @@ const profileLayoutSelectionHarnessHTML = `<!doctype html>
         && zoneOverlayLabels.map((label) => label.textContent.trim()).every((label) => /^Zone [123]\b/.test(label));
       assert(zoneProfileOverlaySelection, "Zone row selection did not render one distinct zone-scope overlay per selected Zone");
 
+      const initialSettings = document.getElementById("profileSettings");
+      const initialLiveControls = initialSettings.querySelector(".profile-live-controls");
+      const initialLiveGroups = [...initialLiveControls.querySelectorAll(":scope > .profile-live-group")];
+      const initialInspectSwitch = initialLiveGroups[0]?.querySelector(".profile-view-switch");
+      const initialDimensionsRow = initialLiveGroups[1]?.querySelector(".profile-toggle-row");
+      const initialControlsRect = initialLiveControls.getBoundingClientRect();
+      const initialInspectGroupRect = initialLiveGroups[0]?.getBoundingClientRect();
+      const initialDimensionsGroupRect = initialLiveGroups[1]?.getBoundingClientRect();
+      const initialInspectSwitchRect = initialInspectSwitch?.getBoundingClientRect();
+      const initialDimensionsRowRect = initialDimensionsRow?.getBoundingClientRect();
+      const profileControlGroupsAdjacent = narrowViewport || (
+        initialLiveGroups.length === 2
+        && Math.abs(initialInspectGroupRect.top - initialDimensionsGroupRect.top) <= 1
+        && initialInspectGroupRect.width <= initialInspectSwitchRect.width + 2
+        && initialDimensionsGroupRect.left >= initialInspectSwitchRect.right
+        && initialDimensionsGroupRect.left - initialInspectSwitchRect.right <= 24
+        && initialDimensionsGroupRect.left < initialControlsRect.left + initialControlsRect.width * 0.35
+      );
+      const profileControlGroupsWrapNarrow = !narrowViewport || (
+        initialLiveGroups.length === 2
+        && initialDimensionsGroupRect.top >= initialInspectGroupRect.bottom + 6
+        && initialInspectGroupRect.left >= initialControlsRect.left
+        && initialDimensionsGroupRect.left >= initialControlsRect.left
+        && initialInspectGroupRect.right <= initialControlsRect.right + 1
+        && initialDimensionsGroupRect.right <= initialControlsRect.right + 1
+        && initialDimensionsRowRect.right <= initialControlsRect.right + 1
+      );
+      assert(profileControlGroupsAdjacent, "Profile Dimensions still starts in an equal-width second column");
+      assert(profileControlGroupsWrapNarrow, "Profile live-control groups do not wrap safely at narrow widths");
+
       document.getElementById("profilePane").style.width = narrowViewport ? "360px" : "720px";
       await nextPaint();
       const pane = document.querySelector(".profile-pane");
@@ -970,7 +1002,7 @@ const profileLayoutSelectionHarnessHTML = `<!doctype html>
         && inspectBySwitch.getAttribute("role") === "group"
         && inspectByButtons.filter((button) => button.getAttribute("aria-pressed") === "true").length === 1
         && inspectByRect.width <= inspectByButtonWidth + 20
-        && inspectByRect.width < inspectByGroupRect.width - 20
+        && (narrowViewport || inspectByGroupRect.width <= inspectByRect.width + 2)
         && getComputedStyle(inspectBySwitch).justifySelf === "start";
       const profileControlsAligned = liveLabels.length === 2
         && liveControlRows.every(Boolean)
@@ -1677,6 +1709,8 @@ const profileLayoutSelectionHarnessHTML = `<!doctype html>
         applyRight,
         domSemantics,
         inspectByCompact,
+        profileControlGroupsAdjacent,
+        profileControlGroupsWrapNarrow,
         profileControlsAligned,
 		secondaryProfileUIAbsent,
 		semanticRevealGraphAndOverviewFallback,

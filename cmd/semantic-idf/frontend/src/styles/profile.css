@@ -21,7 +21,7 @@
   background: var(--surface);
   padding: 9px 10px;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(190px, 100%), 1fr));
+  grid-template-columns: max-content minmax(0, 1fr);
   align-items: start;
   gap: 12px;
 }
