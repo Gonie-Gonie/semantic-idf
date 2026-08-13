@@ -177,7 +177,7 @@
 .hvac-graph > .hvac-graphic-shell > .hvac-graph-toolbar,
 .hvac-graph > .hvac-graph-detail:first-child > .hvac-section-head:first-child,
 .hvac-graph > .empty:first-child {
-  padding-inline-end: 220px;
+  padding-inline-end: 258px;
 }
 
 @container hvac-main (max-width: 480px) {
@@ -187,6 +187,11 @@
   .hvac-graph > .empty:first-child {
     padding-block-start: 52px;
     padding-inline-end: 0;
+  }
+
+  .hvac-graph > .hvac-graphic-shell > .hvac-graph-toolbar {
+    margin-block-start: 52px;
+    padding-block-start: 0;
   }
 }
 
@@ -256,22 +261,8 @@
 
 .hvac-graphic-shell {
   width: 100%;
-  min-width: min(820px, 100%);
-  padding: 10px;
-}
-
-.hvac-graphic-shell.scale-fit,
-.hvac-graphic-shell.scale-compact {
   min-width: 0;
-}
-
-.hvac-graphic-shell.scale-actual {
-  width: var(--hvac-graph-width, 1120px);
-  min-width: var(--hvac-graph-width, 1120px);
-}
-
-.hvac-graphic-shell.scale-compact {
-  max-width: 760px;
+  padding: 10px;
 }
 
 .hvac-loop-svg,
@@ -282,16 +273,6 @@
   border: 1px solid var(--surface-2);
   border-radius: var(--radius);
   background: var(--surface-3);
-}
-
-.hvac-graphic-shell.scale-compact .hvac-loop-svg,
-.hvac-graphic-shell.scale-compact .hvac-service-svg {
-  min-height: 320px;
-}
-
-.hvac-graphic-shell.scale-actual .hvac-loop-svg,
-.hvac-graphic-shell.scale-actual .hvac-service-svg {
-  width: var(--hvac-graph-width, 1120px);
 }
 
 .hvac-loop-svg {
@@ -1222,64 +1203,46 @@
 .hvac-graph-toolbar {
   display: flex;
   flex-wrap: wrap;
-  justify-content: space-between;
+  align-items: flex-end;
+  justify-content: flex-start;
   gap: 8px;
   margin-bottom: 8px;
-}
-
-.hvac-graph-scale,
-.hvac-graph-scope {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  border: 1px solid var(--surface-2);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  padding: 2px;
 }
 
 .hvac-quick-filters {
   min-width: 0;
   display: flex;
+  flex: 1 1 auto;
   flex-wrap: wrap;
-  gap: 6px;
+  align-items: flex-end;
+  gap: 8px;
 }
 
-.hvac-filter-group {
-  display: inline-flex;
+.hvac-filter-field {
+  min-width: min(150px, 100%);
+  display: inline-grid;
+  grid-template-columns: max-content minmax(0, 1fr);
   align-items: center;
-  gap: 2px;
-  border: 1px solid var(--surface-2);
+  flex: 0 1 190px;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.hvac-filter-field > span {
+  flex: 0 0 auto;
+}
+
+.hvac-filter-field select {
+  width: 100%;
+  min-width: 0;
+  min-height: 34px;
+  border: 1px solid var(--line);
   border-radius: var(--radius-sm);
-  background: var(--surface);
-  padding: 2px;
-}
-
-.hvac-graph-scale button,
-.hvac-graph-scope button,
-.hvac-filter-group button {
-  min-height: 26px;
-  border: 0;
-  border-radius: calc(var(--radius-sm) - 2px);
-  background: transparent;
-  color: var(--muted);
-  font-size: 12px;
-  padding: 3px 8px;
-}
-
-.hvac-graph-scale button:hover,
-.hvac-graph-scale button.active,
-.hvac-graph-scope button:hover,
-.hvac-graph-scope button.active,
-.hvac-filter-group button:hover,
-.hvac-filter-group button.active {
-  background: var(--accent-soft);
-  color: var(--accent-strong);
-}
-
-.hvac-graph-scope button:disabled {
-  color: var(--muted);
-  opacity: 0.45;
+  background: var(--control);
+  color: var(--ink);
+  padding: 0 9px;
 }
 
 .hvac-loop-meta span,

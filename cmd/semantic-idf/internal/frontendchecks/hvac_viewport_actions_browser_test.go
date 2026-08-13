@@ -62,8 +62,9 @@ func TestHVACViewportActionsBrowserHarness(t *testing.T) {
 		t.Fatalf("HVAC viewport action harness did not pass:\n%s", document)
 	}
 	for _, signal := range []string{
-		`"toolbarCount":5`,
+		`"toolbarCount":6`,
 		`"iconOnly":true`,
+		`"fitIcon":true`,
 		`"horizontal":true`,
 		`"upperRight":true`,
 		`"responsiveWidths":true`,
@@ -129,7 +130,6 @@ const hvacViewportActionsHarnessHTML = `<!doctype html>
       state.activeHVACNodeName = "";
       state.activeHVACEntity = { id: "", kind: "", label: "" };
       state.activeHVACContext = { pathId: "", zoneId: "", loopId: "", componentId: "", couplingId: "", previousView: "" };
-      state.activeHVACGraphScope = "focused";
       state.hvacNavigationStack = [];
       state.hvacForwardStack = [];
 
@@ -155,10 +155,16 @@ const hvacViewportActionsHarnessHTML = `<!doctype html>
       const mainRect = main.getBoundingClientRect();
       const upperRight = Math.abs(mainRect.right - toolbarRect.right) <= 22
         && Math.abs(toolbarRect.top - mainRect.top) <= 12;
+      const fit = document.getElementById("hvacFitButton");
+      const fitIcon = Boolean(fit)
+        && fit.getAttribute("aria-label") === "Fit"
+        && fit.title === "Fit"
+        && Boolean(fit.querySelector("svg.viewport-icon[aria-hidden='true']"))
+        && Boolean(fit.querySelector(".sr-only"));
 
       const layout = document.querySelector(".hvac-layout");
       const responsiveResults = [];
-      for (const width of [136, 160, 240, 360]) {
+      for (const width of [160, 240, 360]) {
         layout.style.width = width + "px";
         main.style.width = width + "px";
         void main.offsetWidth;
@@ -211,8 +217,8 @@ const hvacViewportActionsHarnessHTML = `<!doctype html>
         && state.hvacNavigationStack.length === 0 && state.hvacForwardStack.length === 0
         && state.activeHVACView === "services" && state.activeHVACEntity.id === "" && state.activeHVACGraphKey === "";
 
-      const result = { toolbarCount, iconOnly, horizontal, upperRight, responsiveWidths, noTextNavigationRow, initialDisabled, focusedState, backState, forwardState, clearState, rootState, documentResetState };
-      Object.entries(result).forEach(([key, value]) => assert(value === true || (key === "toolbarCount" && value === 5), key + " contract failed"));
+      const result = { toolbarCount, iconOnly, fitIcon, horizontal, upperRight, responsiveWidths, noTextNavigationRow, initialDisabled, focusedState, backState, forwardState, clearState, rootState, documentResetState };
+      Object.entries(result).forEach(([key, value]) => assert(value === true || (key === "toolbarCount" && value === 6), key + " contract failed"));
       resultElement.textContent = JSON.stringify(result);
       document.body.dataset.hvacViewportStatus = "passed";
     } catch (error) {

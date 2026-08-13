@@ -83,7 +83,6 @@ func TestHVACPanelAdapterPreservesContextAndCompatibleOccurrence(t *testing.T) {
 		"serviceKindFilter",
 		"pathTypeFilter",
 		"mediumFilter",
-		"graphScale",
 		"graphScrollTop",
 		"graphScrollLeft",
 		"navigationRevealTarget",
@@ -91,6 +90,9 @@ func TestHVACPanelAdapterPreservesContextAndCompatibleOccurrence(t *testing.T) {
 		if !strings.Contains(capture, field) {
 			t.Fatalf("HVAC history context is missing %q", field)
 		}
+	}
+	if strings.Contains(capture, "graphScale") {
+		t.Fatal("HVAC history context retains the removed Fit/100%/Compact preset")
 	}
 	if !strings.Contains(content, "hvacNavigationRevealMatchesPath") {
 		t.Fatal("HVAC service-path reveal must remain compatible with graph-specific quick filters")
@@ -165,8 +167,7 @@ func TestHVACCommittedNavigationDelegatesGlobalHistoryOnce(t *testing.T) {
 	if strings.Contains(delegation, "recordViewHistory(") {
 		t.Fatal("HVAC committed selection must let the global controller own history")
 	}
-	scopeAction := sliceBetween(content, `const scopeButton = event.target.closest("[data-hvac-graph-scope]")`, `const quickFilter = event.target.closest`)
-	if !strings.Contains(scopeAction, "recordViewHistory()") {
-		t.Fatal("explicit HVAC graph scope changes must record global view history")
+	if strings.Contains(content, `[data-hvac-graph-scope]`) {
+		t.Fatal("HVAC graph scope is fixed to Focused and must not expose a history-producing scope selector")
 	}
 }

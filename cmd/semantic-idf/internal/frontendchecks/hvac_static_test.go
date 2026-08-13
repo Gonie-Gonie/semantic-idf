@@ -59,7 +59,6 @@ func TestFrontendHVACStartsOnZoneServices(t *testing.T) {
 		"activeHVACContext",
 		"hvacNavigationStack",
 		"hvacForwardStack",
-		`activeHVACGraphScope: "focused"`,
 		`hvacServiceKindFilter: "all"`,
 		`hvacPathTypeFilter: "all"`,
 		`hvacMediumFilter: "all"`,
@@ -68,8 +67,11 @@ func TestFrontendHVACStartsOnZoneServices(t *testing.T) {
 			t.Fatalf("state.js should include HVAC navigation state %q", required)
 		}
 	}
-	if !strings.Contains(string(content), `hvacGraphScale: "actual"`) {
-		t.Fatalf("state.js should default HVAC graph to actual scale")
+	if strings.Contains(string(content), `hvacGraphScale:`) {
+		t.Fatal("state.js should not retain the removed HVAC Fit/100%/Compact preset state")
+	}
+	if strings.Contains(string(content), `activeHVACGraphScope:`) {
+		t.Fatal("state.js should not retain selectable HVAC graph scope now that View is fixed to Focused")
 	}
 }
 
@@ -94,7 +96,6 @@ func TestFrontendHVACServiceDOMContracts(t *testing.T) {
 		"function clearHVACFocus()",
 		"function syncHVACViewportActions(available)",
 		"function pathsForActiveHVACEntity",
-		"function renderHVACGraphScopeControls",
 		"function renderHVACServicePicker",
 		"function renderHVACLoopPicker",
 		"function renderHVACQuickFilters",
@@ -139,11 +140,14 @@ func TestFrontendHVACUsesHeaderlessCardNavigationWithoutWarnings(t *testing.T) {
 		"state.js":   state,
 		"i18n.js":    i18n,
 	} {
-		for _, removed := range []string{"hvacStats", "hvacFilter", "hvac.filter"} {
+		for _, removed := range []string{"hvacStats", "hvacFilter"} {
 			if strings.Contains(source, removed) {
 				t.Fatalf("%s retains removed HVAC header/search contract %q", sourceName, removed)
 			}
 		}
+	}
+	if strings.Contains(i18n, `"hvac.filter":`) {
+		t.Fatal("i18n.js retains the removed free-text HVAC header filter key")
 	}
 	for _, removed := range []string{
 		`class="summary-head hvac-head"`,
@@ -302,8 +306,8 @@ func TestFrontendHVACViewportActionsAreIconOnlyAndSynchronized(t *testing.T) {
 			t.Fatalf("HVAC viewport toolbar is missing %q", required)
 		}
 	}
-	if count := strings.Count(toolbar, `class="viewport-icon-button"`); count != 5 {
-		t.Fatalf("HVAC viewport toolbar must contain exactly five shared icon buttons, got %d", count)
+	if count := strings.Count(toolbar, `class="viewport-icon-button"`); count != 6 {
+		t.Fatalf("HVAC viewport toolbar must contain navigation, Fit, and Expand as exactly six shared icon buttons, got %d", count)
 	}
 
 	buttons := []struct {
@@ -332,6 +336,19 @@ func TestFrontendHVACViewportActionsAreIconOnlyAndSynchronized(t *testing.T) {
 			}
 		}
 	}
+	fit := htmlButtonByID(toolbar, "hvacFitButton")
+	for _, required := range []string{
+		`class="viewport-icon-button"`,
+		`aria-label="Fit"`,
+		`title="Fit"`,
+		`<svg class="viewport-icon`,
+		`aria-hidden="true"`,
+		`class="sr-only"`,
+	} {
+		if !strings.Contains(fit, required) {
+			t.Fatalf("HVAC Fit icon button is missing %q", required)
+		}
+	}
 	expand := htmlButtonByID(toolbar, "hvacExpandButton")
 	for _, required := range []string{
 		`class="viewport-icon-button"`,
@@ -353,6 +370,7 @@ func TestFrontendHVACViewportActionsAreIconOnlyAndSynchronized(t *testing.T) {
 		`hvacForwardButton: document.querySelector("#hvacForwardButton")`,
 		`hvacClearFocusButton: document.querySelector("#hvacClearFocusButton")`,
 		`hvacZoneServicesButton: document.querySelector("#hvacZoneServicesButton")`,
+		`hvacFitButton: document.querySelector("#hvacFitButton")`,
 	} {
 		if !strings.Contains(state, required) {
 			t.Fatalf("HVAC viewport element map is missing %q", required)
@@ -410,7 +428,7 @@ func TestFrontendHVACViewportActionsAreIconOnlyAndSynchronized(t *testing.T) {
 		}
 	}
 	for _, required := range []string{
-		"padding-inline-end: 220px",
+		"padding-inline-end:",
 		".hvac-graph-detail:first-child > .hvac-section-head:first-child",
 		".hvac-graph > .empty:first-child",
 		"@container hvac-main (max-width: 480px)",
@@ -423,6 +441,82 @@ func TestFrontendHVACViewportActionsAreIconOnlyAndSynchronized(t *testing.T) {
 	} {
 		if !strings.Contains(styles, required) {
 			t.Fatalf("HVAC viewport toolbar collision/compact layout contract is missing %q", required)
+		}
+	}
+}
+
+func TestFrontendHVACGraphControlsUseRecoverableDropdownsAndFixedFocusedFit(t *testing.T) {
+	view := readTestFile(t, "frontend/src/js/views/hvac-views.js")
+	styles := readTestFile(t, "frontend/src/styles/hvac.css")
+	quickFilters := sliceBetween(view, "function renderHVACQuickFilters", "function servicePathMatchesQuickFilters")
+
+	for _, required := range []string{
+		`<select`,
+		`<option`,
+		`data-hvac-filter-kind=`,
+		`["all", "All"]`,
+	} {
+		if !strings.Contains(quickFilters, required) {
+			t.Fatalf("HVAC quick filters must render accessible dropdowns with a recoverable All option: missing %q", required)
+		}
+	}
+	if count := strings.Count(quickFilters, `kind: "`); count != 3 {
+		t.Fatalf("HVAC quick filters must retain exactly the service, path, and medium dropdowns, got %d groups", count)
+	}
+	for _, removed := range []string{
+		`<button`,
+		`data-hvac-filter-value`,
+		`aria-pressed=`,
+	} {
+		if strings.Contains(quickFilters, removed) {
+			t.Fatalf("HVAC quick filters retain the removed long button-row contract %q", removed)
+		}
+	}
+
+	for _, required := range []string{
+		`elements.hvacGraph?.addEventListener("change"`,
+		`event.target.closest("select[data-hvac-filter-kind]")`,
+		`setHVACQuickFilter(quickFilter.dataset.hvacFilterKind || "", quickFilter.value || "all")`,
+	} {
+		if !strings.Contains(view, required) {
+			t.Fatalf("HVAC dropdown change behavior is missing %q", required)
+		}
+	}
+
+	serviceToolbar := sliceBetween(view, "function renderHVACServiceToolbar", "function renderHVACEmptyServiceGraph")
+	emptyServiceGraph := sliceBetween(view, "function renderHVACEmptyServiceGraph", "function renderHVACServiceGraph")
+	serviceGraph := sliceBetween(view, "function renderHVACServiceGraph", "function cachedServiceGraph")
+	if !strings.Contains(serviceToolbar, "renderHVACQuickFilters()") {
+		t.Fatal("HVAC service toolbar must own the three filter dropdowns")
+	}
+	for name, renderer := range map[string]string{
+		"empty result": emptyServiceGraph,
+		"graph result": serviceGraph,
+	} {
+		if !strings.Contains(renderer, "renderHVACServiceToolbar()") {
+			t.Fatalf("HVAC %s must retain the filter toolbar so users can reset a no-match selection to All", name)
+		}
+	}
+
+	for _, removed := range []string{
+		"function renderHVACGraphScopeControls",
+		`data-hvac-graph-scope`,
+		"function renderHVACGraphScaleControls",
+		`data-hvac-graph-scale`,
+		`graphScaleActual`,
+		`graphScaleCompact`,
+	} {
+		if strings.Contains(view, removed) {
+			t.Fatalf("HVAC renderer retains a removed scope or size choice %q", removed)
+		}
+	}
+	for _, removed := range []string{
+		".hvac-graph-scope",
+		".hvac-graph-scale",
+		".hvac-filter-group button",
+	} {
+		if strings.Contains(styles, removed) {
+			t.Fatalf("HVAC stylesheet retains a removed scope, preset, or long filter-row selector %q", removed)
 		}
 	}
 }
@@ -618,7 +712,6 @@ func TestFrontendHVACServiceStylesCoverRoutingAndBundling(t *testing.T) {
 		".hvac-graph-link.medium-control",
 		"stroke-linecap: round",
 		"vector-effect: non-scaling-stroke",
-		".hvac-graphic-shell.scale-actual .hvac-service-svg",
 	} {
 		if !strings.Contains(text, required) {
 			t.Fatalf("hvac service styles are missing %q", required)
@@ -688,7 +781,7 @@ func TestFrontendHVACDiagramCtrlWheelZoomIsLocalBoundedAndResettable(t *testing.
 		t.Fatalf("HVAC loop and Zone Services SVGs must both render a pan/zoom content group, got %d occurrences", count)
 	}
 	if count := strings.Count(view, "resetHVACDiagramViewport("); count < 3 {
-		t.Fatalf("HVAC viewport must reset from the scale preset and document reset paths, got %d reset references", count)
+		t.Fatalf("HVAC viewport must reset from the Fit icon and document reset paths, got %d reset references", count)
 	}
 	if !strings.Contains(view, "renderHVACLoopDiagram(loop, { interactive: true })") {
 		t.Fatal("the primary HVAC loop view must opt into interaction without changing Simulation's reused loop diagram")

@@ -85,9 +85,12 @@ The release script infers bump size from these sections:
   routes updating in place. Outdoor boundaries use compact directional points
   with separate N/E/S/W/Roof/Floor area and UA totals, while Adiabatic surfaces
   appear as selectable detached wall stubs instead of a shared environment node.
-- Moved Topology Fit/Expand, HVAC Expand, and Heat-Flow plan zoom actions into
-  their drawing areas as compact icon controls. HVAC now keeps its inspector
-  visible and no longer shows a separate inspector toggle button.
+- Moved Topology Fit/Expand, HVAC Fit/Expand, and Heat-Flow plan zoom actions
+  into their drawing areas as compact icon controls. HVAC now keeps its
+  inspector visible, uses a fixed Focused/Fit graph, and replaces its long
+  service/path/medium filter button rows with recoverable dropdowns that remain
+  available when no paths match. The separate inspector toggle and graph
+  scope/scale presets were removed.
 - Removed the redundant HVAC and Profile top headers and text search fields.
   HVAC now uses exactly four compact picker cards: Zone Services,
   AirLoopHVAC, PlantLoop, and Other. The standalone Components and Couplings

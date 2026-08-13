@@ -82,9 +82,14 @@ func TestHVACLoopNavigationBrowserHarness(t *testing.T) {
 		`"backRestoresPlant":true`,
 		`"forwardRestoresOther":true`,
 		`"zoneServicesReturn":true`,
+		`"dropdownFilters":true`,
+		`"wrongFilterRecoverable":true`,
+		`"fixedFocusedView":true`,
+		`"legacyGraphChoicesAbsent":true`,
+		`"narrowToolbarNotClipped":true`,
 		`"serviceViewportMarkup":true`,
 		`"serviceCtrlWheelLocal":true`,
-		`"scalePresetResetsViewport":true`,
+		`"fitButtonResetsViewport":true`,
 		`"legacyCouplingsCanonicalized":true`,
 		`"documentResetResetsViewport":true`,
 	} {
@@ -125,6 +130,12 @@ const hvacLoopNavigationHarnessHTML = `<!doctype html>
       if (!condition) throw new Error(message);
     };
     const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+    const changeSelect = async (select, value) => {
+      assert(select, "filter select missing");
+      select.value = value;
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+      await settle();
+    };
     const closeEnough = (left, right, epsilon = 0.000001) => Math.abs(Number(left) - Number(right)) <= epsilon;
     const diagramState = (state) => ({
       key: state.hvacDiagramViewportKey || "",
@@ -252,7 +263,6 @@ const hvacLoopNavigationHarnessHTML = `<!doctype html>
       state.activeHVACNodeName = "";
       state.activeHVACEntity = { id: "", kind: "", label: "" };
       state.activeHVACContext = { pathId: "", zoneId: "", loopId: "", componentId: "", couplingId: "", previousView: "" };
-      state.activeHVACGraphScope = "focused";
       state.hvacNavigationStack = [];
       state.hvacForwardStack = [];
       state.hvacDiagramViewportKey = "";
@@ -404,6 +414,56 @@ const hvacLoopNavigationHarnessHTML = `<!doctype html>
         && document.querySelector("#hvacSummary .hvac-nav-card")?.classList.contains("active")
         && !document.querySelector("#hvacGraph .hvac-loop-svg");
 
+      view.renderHVAC(hvac);
+      await settle();
+      const fixedFocusedView = !("activeHVACGraphScope" in state)
+        && !document.querySelector("#hvacGraph [data-hvac-graph-scope], #hvacGraph .hvac-graph-scope");
+      const initialFilters = [...document.querySelectorAll("#hvacGraph select[data-hvac-filter-kind]")];
+      const dropdownFilters = initialFilters.length === 3
+        && initialFilters.map((select) => select.dataset.hvacFilterKind).join("|") === "service|path|medium"
+        && initialFilters.every((select) => Boolean(select.querySelector('option[value="all"]')))
+        && initialFilters.every((select) => Boolean(select.getAttribute("aria-label") || select.labels.length));
+      const legacyGraphChoicesAbsent = !document.querySelector("#hvacGraph [data-hvac-graph-scale], #hvacGraph .hvac-graph-scale, #hvacGraph [data-hvac-graph-scope], #hvacGraph .hvac-graph-scope");
+
+      await changeSelect(document.querySelector('#hvacGraph select[data-hvac-filter-kind="service"]'), "heating");
+      const noMatchSelect = document.querySelector('#hvacGraph select[data-hvac-filter-kind="service"]');
+      const noMatchFilters = document.querySelectorAll("#hvacGraph select[data-hvac-filter-kind]");
+      const noMatchRecoverable = Boolean(noMatchSelect)
+        && noMatchFilters.length === 3
+        && noMatchSelect.value === "heating"
+        && !document.querySelector("#hvacGraph .hvac-service-svg")
+        && Boolean(document.querySelector("#hvacGraph .empty"));
+      await changeSelect(noMatchSelect, "all");
+      const wrongFilterRecoverable = noMatchRecoverable
+        && document.querySelector('#hvacGraph select[data-hvac-filter-kind="service"]')?.value === "all"
+        && diagramMarkupReady(document.querySelector("#hvacGraph .hvac-service-svg"));
+
+      const layoutElement = document.querySelector(".hvac-layout");
+      const mainElement = document.querySelector(".hvac-main");
+      const summaryElement = document.getElementById("hvacSummary");
+      layoutElement.style.width = "360px";
+      mainElement.style.width = "360px";
+      summaryElement.style.width = "360px";
+      void mainElement.offsetWidth;
+      const filterToolbar = document.querySelector("#hvacGraph .hvac-graph-toolbar");
+      const filterToolbarRect = filterToolbar?.getBoundingClientRect();
+      const graphElement = document.getElementById("hvacGraph");
+      const graphRect = graphElement.getBoundingClientRect();
+      const actionRect = document.getElementById("hvacViewportActions").getBoundingClientRect();
+      const narrowSelects = [...document.querySelectorAll("#hvacGraph select[data-hvac-filter-kind]")];
+      const filterToolbarContained = Boolean(filterToolbar && filterToolbarRect)
+        && filterToolbar.scrollWidth <= filterToolbar.clientWidth + 1;
+      const graphContentContained = graphElement.scrollWidth <= graphElement.clientWidth + 1;
+      const selectRects = narrowSelects.map((select) => select.getBoundingClientRect());
+      const controlsBelowActions = selectRects.length > 0 && Math.min(...selectRects.map((rect) => rect.top)) >= actionRect.bottom - 1;
+      const selectsContained = narrowSelects.length === 3
+        && selectRects.every((rect) => rect.width > 0 && rect.left >= graphRect.left - 1 && rect.right <= graphRect.right + 1);
+      const narrowToolbarNotClipped = filterToolbarContained && graphContentContained && controlsBelowActions && selectsContained;
+      layoutElement.style.width = "1120px";
+      mainElement.style.width = "1120px";
+      summaryElement.style.width = "1120px";
+      void mainElement.offsetWidth;
+
       const serviceSVG = document.querySelector("#hvacGraph .hvac-service-svg");
       const serviceViewportMarkup = diagramMarkupReady(serviceSVG);
       const serviceTransformBefore = serviceSVG?.querySelector("[data-hvac-diagram-content]")?.getAttribute("transform") || "";
@@ -415,11 +475,11 @@ const hvacLoopNavigationHarnessHTML = `<!doctype html>
         && serviceTransformAfter !== serviceTransformBefore
         && bubbledWheelCount === serviceBubblesBefore;
 
-      const actualScale = document.querySelector('#hvacGraph [data-hvac-graph-scale="actual"]');
-      actualScale?.click();
+      const fitButton = document.getElementById("hvacFitButton");
+      fitButton?.click();
       await settle();
       const resetServiceSVG = document.querySelector("#hvacGraph .hvac-service-svg");
-      const scalePresetResetsViewport = Boolean(actualScale)
+      const fitButtonResetsViewport = Boolean(fitButton)
         && isDefaultDiagramState(state)
         && diagramMarkupReady(resetServiceSVG);
 
@@ -457,9 +517,14 @@ const hvacLoopNavigationHarnessHTML = `<!doctype html>
         backRestoresPlant,
         forwardRestoresOther,
         zoneServicesReturn,
+        dropdownFilters,
+        wrongFilterRecoverable,
+        fixedFocusedView,
+        legacyGraphChoicesAbsent,
+        narrowToolbarNotClipped,
         serviceViewportMarkup,
         serviceCtrlWheelLocal,
-        scalePresetResetsViewport,
+        fitButtonResetsViewport,
         legacyCouplingsCanonicalized,
         documentResetResetsViewport,
       };

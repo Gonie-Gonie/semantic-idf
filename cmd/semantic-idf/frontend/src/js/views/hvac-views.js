@@ -1,7 +1,6 @@
 import { backend, elements, escapeHTML, getDocumentText, setStatus, state } from "../state.js";
 import { t } from "../i18n.js";
 import { configureResultPanelNavigationHooks } from "../panel-navigation-adapters.js";
-import { recordViewHistory } from "../view-history.js";
 
 const HVAC_GRAPH_EXPORT_SCHEMA = "semantic-idf.hvac.graph.v1";
 let hvacComponentBaseCountCache = { serviceModel: null, counts: new Map() };
@@ -45,30 +44,6 @@ export function initializeHVACControls() {
       exportHVACDebugGraph(debugExport.dataset.hvacDebugExport || "rule");
       return;
     }
-    const scaleButton = event.target.closest("[data-hvac-graph-scale]");
-    if (scaleButton) {
-      state.hvacGraphScale = hvacGraphScaleMode(scaleButton.dataset.hvacGraphScale || "fit");
-      resetHVACDiagramViewport();
-      renderHVAC();
-      return;
-    }
-    const scopeButton = event.target.closest("[data-hvac-graph-scope]");
-    if (scopeButton) {
-      const nextScope = hvacGraphScopeMode(scopeButton.dataset.hvacGraphScope || "focused");
-      if (nextScope !== state.activeHVACGraphScope) {
-        recordViewHistory();
-      }
-      state.activeHVACGraphScope = nextScope;
-      renderHVAC();
-      return;
-    }
-    const quickFilter = event.target.closest("[data-hvac-filter-kind][data-hvac-filter-value]");
-    if (quickFilter) {
-      hvacNavigationRevealTarget = null;
-      setHVACQuickFilter(quickFilter.dataset.hvacFilterKind || "", quickFilter.dataset.hvacFilterValue || "all");
-      renderHVAC();
-      return;
-    }
     const loopJump = event.target.closest("[data-hvac-jump-loop-name]");
     if (loopJump) {
       jumpToHVACLoopByName(loopJump.dataset.hvacJumpLoopName || "", loopJump.dataset.hvacJumpGraphKey || "");
@@ -110,6 +85,15 @@ export function initializeHVACControls() {
       return;
     }
     navigateHVACFromPanelElement(nodeButton, hvacTargetForNode(nodeButton.dataset.hvacNode || ""));
+  });
+  elements.hvacGraph?.addEventListener("change", (event) => {
+    const quickFilter = event.target.closest("select[data-hvac-filter-kind]");
+    if (!quickFilter) {
+      return;
+    }
+    hvacNavigationRevealTarget = null;
+    setHVACQuickFilter(quickFilter.dataset.hvacFilterKind || "", quickFilter.value || "all");
+    renderHVAC();
   });
   elements.hvacGraph?.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
@@ -254,7 +238,6 @@ export function navigateHVAC(target = {}, options = {}) {
   state.activeHVACNodeName = entity.kind === "node" ? nodeNameFromNavigationID(entity.id, target.nodeName || "") : state.activeHVACGraphKey.startsWith("node:") ? state.activeHVACGraphKey.slice(5) : "";
   state.activeHVACEntity = entity;
   state.activeHVACContext = nextContext;
-  state.activeHVACGraphScope = hvacGraphScopeMode(target.scope || state.activeHVACGraphScope || "focused");
 
   const next = hvacNavigationSnapshot();
   if (options.pushHistory !== false && !options.replace && !sameHVACNavigationSnapshot(previous, next)) {
@@ -297,7 +280,6 @@ function clearHVACFocus() {
   state.activeHVACContext = emptyHVACContext();
   state.activeHVACGraphKey = "";
   state.activeHVACNodeName = "";
-  state.activeHVACGraphScope = "focused";
   hvacNavigationRevealTarget = null;
   const next = hvacNavigationSnapshot();
   if (!sameHVACNavigationSnapshot(previous, next)) {
@@ -317,6 +299,9 @@ function handleHVACNavigationAction(action) {
     clearHVACFocus();
   } else if (action === "services") {
     navigateHVAC({ kind: "", id: "", view: "services", graphKey: "", context: emptyHVACContext() }, { pushHistory: true });
+  } else if (action === "fit") {
+    resetHVACDiagramViewport(state.hvacDiagramViewportKey);
+    renderHVAC();
   }
 }
 
@@ -330,7 +315,9 @@ function resetHVACNavigationState() {
   state.activeHVACGraphKey = "";
   state.activeHVACEntity = emptyHVACEntity();
   state.activeHVACContext = emptyHVACContext();
-  state.activeHVACGraphScope = "focused";
+  state.hvacServiceKindFilter = "all";
+  state.hvacPathTypeFilter = "all";
+  state.hvacMediumFilter = "all";
   state.hvacNavigationStack = [];
   state.hvacForwardStack = [];
   resetHVACDiagramViewport();
@@ -416,7 +403,6 @@ function hvacNavigationSnapshot() {
     nodeName: state.activeHVACNodeName || "",
     entity: { ...(state.activeHVACEntity || emptyHVACEntity()) },
     context: { ...(state.activeHVACContext || emptyHVACContext()) },
-    scope: state.activeHVACGraphScope || "focused",
   };
 }
 
@@ -427,7 +413,6 @@ function restoreHVACNavigationSnapshot(snapshot = {}) {
   state.activeHVACNodeName = snapshot.nodeName || "";
   state.activeHVACEntity = { ...emptyHVACEntity(), ...(snapshot.entity || {}) };
   state.activeHVACContext = { ...emptyHVACContext(), ...(snapshot.context || {}) };
-  state.activeHVACGraphScope = hvacGraphScopeMode(snapshot.scope || "focused");
 }
 
 function sameHVACNavigationSnapshot(left = {}, right = {}) {
@@ -506,7 +491,6 @@ function captureHVACNavigationContext(context) {
     serviceKindFilter: state.hvacServiceKindFilter || "all",
     pathTypeFilter: state.hvacPathTypeFilter || "all",
     mediumFilter: state.hvacMediumFilter || "all",
-    graphScale: state.hvacGraphScale || "actual",
     diagramViewport: hvacDiagramViewportSnapshot(),
     navigationRevealTarget: hvacNavigationRevealTarget ? { ...hvacNavigationRevealTarget } : null,
     summaryScrollTop: Number(elements.hvacSummary?.scrollTop) || 0,
@@ -523,7 +507,6 @@ async function restoreHVACNavigationContext(snapshot = {}, context) {
   state.hvacServiceKindFilter = snapshot.serviceKindFilter || "all";
   state.hvacPathTypeFilter = snapshot.pathTypeFilter || "all";
   state.hvacMediumFilter = snapshot.mediumFilter || "all";
-  state.hvacGraphScale = snapshot.graphScale || state.hvacGraphScale || "actual";
   restoreHVACDiagramViewport(snapshot.diagramViewport);
   hvacNavigationRevealTarget = snapshot.navigationRevealTarget ? { ...snapshot.navigationRevealTarget } : null;
   restoreHVACNavigationSnapshot(snapshot.navigation || {});
@@ -1338,6 +1321,9 @@ function syncHVACViewportActions(available) {
     const atZoneServicesRoot = state.activeHVACView === "services" && !hasHVACFocus();
     elements.hvacZoneServicesButton.disabled = !available || atZoneServicesRoot;
   }
+  if (elements.hvacFitButton) {
+    elements.hvacFitButton.disabled = !available;
+  }
 }
 
 function renderHVACServicePicker(zoneServices, active) {
@@ -1438,13 +1424,6 @@ function handleHVACNavigationClick(event) {
         graphKey: subjectID ? `subject:${subjectID}` : "",
       },
     );
-    return;
-  }
-  const quickFilter = event.target.closest("[data-hvac-filter-kind][data-hvac-filter-value]");
-  if (quickFilter) {
-    hvacNavigationRevealTarget = null;
-    setHVACQuickFilter(quickFilter.dataset.hvacFilterKind || "", quickFilter.dataset.hvacFilterValue || "all");
-    renderHVAC();
     return;
   }
   const entityTarget = event.target.closest("[data-hvac-entity-kind][data-hvac-entity-id]");
@@ -1566,8 +1545,7 @@ function renderHVACLoopView(loop) {
     elements.hvacGraph.innerHTML = `<div class="empty">${t("hvac.noLoopsFound")}</div>`;
     return;
   }
-  const relatedPaths = servicePathsForLoop(state.report?.hvac, loop)
-    .filter(servicePathMatchesQuickFilters);
+  const relatedPaths = servicePathsForLoop(state.report?.hvac, loop);
   const couplings = hvacServiceModel().couplings || [];
   const loopCouplings = supportingCouplingsForLoop(loop, couplings);
   elements.hvacGraph.innerHTML = `
@@ -1581,7 +1559,6 @@ function renderHVACLoopView(loop) {
         <span>${escapeHTML(t("count.zones", { count: relatedZoneNamesForServicePaths(relatedPaths).length || (loop.relatedZones || []).length }))}</span>
         <span>${escapeHTML(t("hvac.servicePath", {}, "Service paths"))}: ${escapeHTML(relatedPaths.length)}</span>
         <span>${escapeHTML(t("hvac.supportingAssets", {}, "Supporting assets"))}: ${escapeHTML(loopCouplings.length)}</span>
-        ${renderHVACGraphScaleControls()}
       </div>
     </div>
     ${renderHVACLoopDiagram(loop, { interactive: true })}
@@ -1878,38 +1855,6 @@ function hvacDiagramNumber(value) {
   return Number(number.toFixed(4));
 }
 
-function hvacGraphScaleMode(value = state.hvacGraphScale) {
-  return ["fit", "actual", "compact"].includes(value) ? value : "fit";
-}
-
-function hvacGraphScopeMode(value = state.activeHVACGraphScope) {
-  return ["focused", "all", "path_only", "neighbors"].includes(value) ? value : "focused";
-}
-
-function hvacGraphScaleClass() {
-  return `scale-${hvacGraphScaleMode()}`;
-}
-
-function renderHVACGraphScaleControls() {
-  const options = [
-    ["fit", t("hvac.graphScaleFit", {}, "Fit")],
-    ["actual", t("hvac.graphScaleActual", {}, "100%")],
-    ["compact", t("hvac.graphScaleCompact", {}, "Compact")],
-  ];
-  return `
-    <div class="hvac-graph-scale" role="group" aria-label="${escapeHTML(t("hvac.graphScale", {}, "HVAC graph scale"))}">
-      ${options
-        .map(([value, label]) => {
-          const active = hvacGraphScaleMode() === value;
-          return `
-            <button class="${active ? "active" : ""}" type="button" data-hvac-graph-scale="${escapeHTML(value)}" aria-pressed="${active ? "true" : "false"}">
-              ${escapeHTML(label)}
-            </button>`;
-        })
-        .join("")}
-    </div>`;
-}
-
 function setHVACQuickFilter(kind, value) {
   if (kind === "service") {
     state.hvacServiceKindFilter = value || "all";
@@ -1924,6 +1869,7 @@ function renderHVACQuickFilters() {
   const groups = [
     {
       kind: "service",
+      label: t("hvac.filterService", {}, "Service"),
       value: state.hvacServiceKindFilter || "all",
       options: [
         ["all", "All"],
@@ -1936,6 +1882,7 @@ function renderHVACQuickFilters() {
     },
     {
       kind: "path",
+      label: t("hvac.filterPath", {}, "Path"),
       value: state.hvacPathTypeFilter || "all",
       options: [
         ["all", "All"],
@@ -1949,6 +1896,7 @@ function renderHVACQuickFilters() {
     },
     {
       kind: "medium",
+      label: t("hvac.filterMedium", {}, "Medium"),
       value: state.hvacMediumFilter || "all",
       options: [
         ["all", "All"],
@@ -1968,11 +1916,14 @@ function renderHVACQuickFilters() {
       ${groups
         .map(
           (group) => `
-            <div class="hvac-filter-group" role="group" aria-label="${escapeHTML(group.kind)}">
+            <label class="hvac-filter-field">
+              <span>${escapeHTML(group.label)}</span>
+              <select data-hvac-filter-kind="${escapeHTML(group.kind)}" aria-label="${escapeHTML(group.label)}">
               ${group.options
-                .map(([value, label]) => `<button class="${group.value === value ? "active" : ""}" type="button" data-hvac-filter-kind="${escapeHTML(group.kind)}" data-hvac-filter-value="${escapeHTML(value)}" aria-pressed="${group.value === value ? "true" : "false"}">${escapeHTML(label)}</button>`)
+                .map(([value, label]) => `<option value="${escapeHTML(value)}" ${group.value === value ? "selected" : ""}>${escapeHTML(label)}</option>`)
                 .join("")}
-            </div>`,
+              </select>
+            </label>`,
         )
         .join("")}
     </div>`;
@@ -2049,29 +2000,6 @@ function pathMatchesPathTypeFilter(path = {}, filter = "all") {
   return path.pathType === filter;
 }
 
-function renderHVACGraphScopeControls() {
-  const selectedPath = selectedHVACPath();
-  const hasEntity = Boolean(state.activeHVACEntity?.id);
-  const options = [
-    ["focused", "Focused", false],
-    ["all", "All", false],
-    ["path_only", "Path only", !selectedPath],
-    ["neighbors", "Neighbors", !hasEntity],
-  ];
-  return `
-    <div class="hvac-graph-scope" role="group" aria-label="${escapeHTML(t("hvac.graphScope", {}, "Graph scope"))}">
-      ${options
-        .map(([value, label, disabled]) => {
-          const active = hvacGraphScopeMode() === value;
-          return `
-            <button class="${active ? "active" : ""}" type="button" data-hvac-graph-scope="${escapeHTML(value)}" aria-pressed="${active ? "true" : "false"}" ${disabled ? "disabled" : ""}>
-              ${escapeHTML(label)}
-            </button>`;
-        })
-        .join("")}
-    </div>`;
-}
-
 export function renderHVACLoopDiagram(loop, options = {}) {
   const width = 1120;
   const leftX = 98;
@@ -2125,7 +2053,7 @@ export function renderHVACLoopDiagram(loop, options = {}) {
     : "";
 
   return `
-    <div class="hvac-graphic-shell ${hvacGraphScaleClass()}" style="--hvac-graph-width: ${width}px">
+    <div class="hvac-graphic-shell" style="--hvac-graph-width: ${width}px">
       <svg class="hvac-loop-svg" viewBox="0 0 ${width} ${height}"${viewportAttributes} role="img" aria-label="${escapeHTML(loop.name || "HVAC loop")} loop diagram">
         <defs>
           <marker id="hvacLoopArrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
@@ -2649,14 +2577,10 @@ function selectedHVACPath(hvac = state.report?.hvac) {
 
 function pathsForActiveHVACEntity(hvac = state.report?.hvac) {
   const paths = servicePathsForHVAC(hvac);
-  const scope = hvacGraphScopeMode();
-  if (scope === "all" || !state.activeHVACEntity?.id) {
+  if (!state.activeHVACEntity?.id) {
     return paths;
   }
   const selectedPath = selectedHVACPath(hvac);
-  if (scope === "path_only") {
-    return selectedPath ? [selectedPath] : paths;
-  }
   const ids = relatedPathIDsForActiveHVACEntity(hvac);
   if (!ids.length) {
     return selectedPath ? [selectedPath] : paths;
@@ -3087,13 +3011,25 @@ function renderHVACServices(hvac) {
   const scopedIDs = new Set(pathsForActiveHVACEntity(hvac).map((path) => path.id));
   const paths = summaries
     .flatMap((summary) => summary.paths || [])
-    .filter((path) => hvacNavigationRevealMatchesPath(path) || hvacGraphScopeMode() === "all" || !state.activeHVACEntity?.id || scopedIDs.has(path.id))
+    .filter((path) => hvacNavigationRevealMatchesPath(path) || !state.activeHVACEntity?.id || scopedIDs.has(path.id))
     .filter((path) => hvacNavigationRevealMatchesPath(path) || servicePathMatchesQuickFilters(path));
   elements.hvacGraph.innerHTML = paths.length
     ? `
       ${renderHVACServiceGraph(paths, hvacServiceModel(hvac).couplings || [])}
       ${renderHVACServiceGraphDetail(paths, hvacServiceModel(hvac).couplings || [])}`
-    : `<div class="empty">${t("hvac.noMatchingServices", {}, "No matching zone services")}</div>`;
+    : renderHVACEmptyServiceGraph();
+}
+
+function renderHVACServiceToolbar() {
+  return `<div class="hvac-graph-toolbar">${renderHVACQuickFilters()}</div>`;
+}
+
+function renderHVACEmptyServiceGraph() {
+  return `
+    <div class="hvac-graphic-shell hvac-service-shell">
+      ${renderHVACServiceToolbar()}
+      <div class="empty">${escapeHTML(t("hvac.noMatchingServices", {}, "No matching zone services"))}</div>
+    </div>`;
 }
 
 function renderHVACServiceGraph(paths, couplings) {
@@ -3103,12 +3039,8 @@ function renderHVACServiceGraph(paths, couplings) {
   const diagramKey = `services:${stableGraphHash(serviceGraphLayoutCacheKey(paths, couplings))}`;
   const viewport = ensureHVACDiagramViewport(diagramKey);
   return `
-    <div class="hvac-graphic-shell hvac-service-shell ${hvacGraphScaleClass()}" style="--hvac-graph-width: ${width}px">
-      <div class="hvac-graph-toolbar">
-        ${renderHVACQuickFilters()}
-        ${renderHVACGraphScopeControls()}
-        ${renderHVACGraphScaleControls()}
-      </div>
+    <div class="hvac-graphic-shell hvac-service-shell" style="--hvac-graph-width: ${width}px">
+      ${renderHVACServiceToolbar()}
       <svg class="hvac-service-svg" viewBox="0 0 ${width} ${height}" data-hvac-diagram-key="${escapeHTML(diagramKey)}" data-hvac-diagram-scale="${escapeHTML(hvacDiagramNumber(viewport.scale))}" data-hvac-content-width="${width}" data-hvac-content-height="${height}" role="img" aria-label="${escapeHTML(t("hvac.zoneServices", {}, "Zone Services"))}">
         <defs>
           <marker id="hvacServiceArrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
@@ -3159,7 +3091,6 @@ function serviceGraphLayoutCacheKey(paths = [], couplings = []) {
     .join(",");
   return [
     state.analysisKey || state.lastAnalyzedKey || "",
-    state.activeHVACGraphScope || "",
     state.hvacServiceKindFilter || "",
     state.hvacPathTypeFilter || "",
     state.hvacMediumFilter || "",
