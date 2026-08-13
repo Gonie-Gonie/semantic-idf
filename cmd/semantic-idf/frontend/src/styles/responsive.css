@@ -59,16 +59,17 @@
 
   .topology-tools {
     justify-content: stretch;
+    flex-wrap: wrap;
   }
 
   .topology-control-group,
-  .topology-sync-toggle,
-  .topology-visibility-controls {
+  .topology-visibility-controls,
+  .thermal-topology-controls {
     flex: 1 1 100%;
   }
 
-  .topology-sync-toggle,
-  .topology-visibility-controls {
+  .topology-visibility-controls,
+  .thermal-topology-controls {
     padding-left: 0;
     padding-top: 8px;
     border-left: 0;

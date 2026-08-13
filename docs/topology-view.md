@@ -15,7 +15,7 @@ flowchart LR
   V --> P[Plan]
   V --> N[Network]
   V --> L[Level · All or specific]
-  V --> C[Sync locate by default]
+  V --> C[Automatic input linking]
   D --> S[Shared Zones · Surfaces · Openings]
   P --> S
   N --> M[Connectivity · Area · UA · Exposure · QA · Air]
@@ -133,10 +133,10 @@ snapshot.
 ## Shared selection and navigation
 
 3D, Plan, Network, and Semantic Text share one semantic selection. Selecting a
-Topology object emphasizes its one-hop related objects and strongly fades the
-rest without removing them from the active Level. Sync locate is enabled by
-default, so selecting a visual object also locates its input source. Navigation
-history restores view mode, Level, metric, layout, shared spatial visibility,
+Topology object automatically locates its input source, emphasizes its one-hop
+related objects, and strongly fades the rest without removing them from the
+active Level. Navigation history restores view mode, Level, metric, layout,
+shared spatial visibility,
 pan/zoom, and stable selection. Navigation changes view state only and does not
 request backend analysis.
 

@@ -18,7 +18,6 @@ func TestTopologyAdapterRegistersBeforeLazyRenderer(t *testing.T) {
 		"context.genericPreferredSemanticOccurrence",
 		"selectedKind",
 		"selectedId",
-		"syncLocate",
 		"visibility",
 	} {
 		if !strings.Contains(loader, required) {
@@ -27,30 +26,31 @@ func TestTopologyAdapterRegistersBeforeLazyRenderer(t *testing.T) {
 	}
 }
 
-func TestTopologySyncLocateIsCommonAndSelectAidIsRemoved(t *testing.T) {
+func TestTopologySyncLocateIsAlwaysOnWithoutUserStateOrUI(t *testing.T) {
 	index := readTestFile(t, "frontend/src/index.html")
 	state := readTestFile(t, "frontend/src/js/state.js")
 	settings := readTestFile(t, "frontend/src/js/settings-client.js")
+	settingsPage := readTestFile(t, "frontend/src/settings.html")
 	main := readTestFile(t, "frontend/src/js/main.js")
 	loader := readTestFile(t, "frontend/src/js/topology-loader.js")
 	view := readTestFile(t, "frontend/src/js/views/topology-view.js")
+	thermalView := readTestFile(t, "frontend/src/js/views/thermal-topology-view.js")
+	details := readTestFile(t, "frontend/src/js/views/thermal-topology-details.js")
+	i18n := readTestFile(t, "frontend/src/js/i18n.js")
 
-	for _, required := range []string{
-		`id="topologySyncLocate" type="checkbox" checked`,
-		`topologySyncLocate: true`,
-		`syncLocate: Boolean(state.topologySyncLocate)`,
-		`state.topologySyncLocate = snapshot.syncLocate !== false`,
-	} {
-		if !strings.Contains(index+state+settings+loader+view, required) {
-			t.Fatalf("common Sync locate contract is missing %q", required)
+	selection := sliceBetween(view, "export async function selectTopologyEntity", "export async function revealTopologySelection")
+	for _, required := range []string{"selectSemanticEntity(selection", `originView: "topology"`, `recordHistory: options.recordHistory !== false`} {
+		if !strings.Contains(selection, required) {
+			t.Fatalf("always-on topology/input synchronization is missing %q", required)
 		}
 	}
-	modeVisibility := sliceBetween(view, "function updateModeVisibility", "function renderThermalTopologyLazy")
-	if strings.Contains(modeVisibility, "geometrySyncControl") || strings.Contains(modeVisibility, "geometrySyncLocate") {
-		t.Fatal("Sync locate must remain visible in 3D, Plan, and Network modes")
+	for _, forbidden := range []string{"options.syncLocate", "state.topologySyncLocate", "topologySyncLocate", "geometrySyncLocate", "topology.syncLocate", "topology.syncOn", "topology.syncOff", "behavior.topologySync"} {
+		if strings.Contains(index+state+settings+settingsPage+main+loader+view+thermalView+details+i18n, forbidden) {
+			t.Fatalf("always-on Sync locate still exposes user state or UI %q", forbidden)
+		}
 	}
 
-	allGeometryUI := index + state + main + loader + view
+	allGeometryUI := index + state + settingsPage + main + loader + view
 	for _, removed := range []string{
 		"geometrySelectionAid",
 		"setGeometrySelectionAid",
@@ -105,10 +105,9 @@ func TestTopologyBidirectionalRevealAndAtomicSelection(t *testing.T) {
 	selection := sliceBetween(content, "export async function selectTopologyEntity", "export async function revealTopologySelection")
 	for _, required := range []string{
 		"topologySelectionForTarget",
-		"syncLocatedInputEntity(entity)",
 		"selectSemanticEntity(selection",
 		`originView: "topology"`,
-		"recordHistory: syncLocate ? false",
+		"recordHistory: options.recordHistory !== false",
 		"rememberForOriginView",
 	} {
 		if !strings.Contains(selection, required) {

@@ -150,29 +150,7 @@ type SimulationSettings = simulation.SimulationSettings
 type EnergyPlusInstallSetting = simulation.EnergyPlusInstallSetting
 
 type InteractionSettings struct {
-	TopologySyncLocate bool              `json:"topologySyncLocate"`
-	Shortcuts          map[string]string `json:"shortcuts"`
-}
-
-func (settings *InteractionSettings) UnmarshalJSON(data []byte) error {
-	type interactionSettingsAlias InteractionSettings
-	decoded := interactionSettingsAlias(*settings)
-	if err := json.Unmarshal(data, &decoded); err != nil {
-		return err
-	}
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return err
-	}
-	if _, hasCanonical := raw["topologySyncLocate"]; !hasCanonical {
-		if legacy, ok := raw["geometrySyncLocate"]; ok {
-			if err := json.Unmarshal(legacy, &decoded.TopologySyncLocate); err != nil {
-				return err
-			}
-		}
-	}
-	*settings = InteractionSettings(decoded)
-	return nil
+	Shortcuts map[string]string `json:"shortcuts"`
 }
 
 type SettingsResult struct {
@@ -1539,7 +1517,6 @@ func defaultAppSettings() AppSettings {
 			},
 		},
 		Interaction: InteractionSettings{
-			TopologySyncLocate: true,
 			Shortcuts: map[string]string{
 				"save":                 "Ctrl+S",
 				"open":                 "Ctrl+O",

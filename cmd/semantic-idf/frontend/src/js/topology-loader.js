@@ -135,7 +135,6 @@ configureResultPanelNavigationHooks("topology", {
       selectedKind: state.selectedTopologyEntityKind || "",
       selectedId: state.selectedTopologyEntityId || "",
       ...captureThermalTopologyState(state),
-      syncLocate: Boolean(state.topologySyncLocate),
       visibility: { ...(state.topologyVisibility || {}) },
     };
   },

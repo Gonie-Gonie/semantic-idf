@@ -107,7 +107,7 @@ func TestThermalTopologyStateNormalizesAndInvalidatesDocumentContext(t *testing.
 		}
 	}
 	main := readTestFile(t, "frontend/src/js/main.js")
-	documentChange := sliceBetween(main, `window.addEventListener("idfAnalyzer:documentChanged"`, `window.addEventListener("idfAnalyzer:geometryLocate"`)
+	documentChange := sliceBetween(main, `window.addEventListener("idfAnalyzer:documentChanged"`, `window.addEventListener("idfAnalyzer:topologyLocate"`)
 	if !strings.Contains(documentChange, "resetThermalTopologyDocumentState(state)") {
 		t.Fatal("document change does not invalidate topology selection/layout state")
 	}

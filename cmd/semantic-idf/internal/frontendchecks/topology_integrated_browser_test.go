@@ -59,7 +59,7 @@ const thermalTopologyIntegratedHarnessHTML = `<!doctype html>
 <body data-topology-integrated-status="pending">
 <div id="topologyStats"></div>
 <button data-topology-mode="3d"></button><button data-topology-mode="plan"></button><button data-topology-mode="thermal"></button>
-<label id="topologyStoryControl"><select id="topologyStorySelect"></select></label><input id="topologySyncLocate" type="checkbox" checked>
+<label id="topologyStoryControl"><select id="topologyStorySelect"></select></label>
 <div id="topologySpatialControls"><input id="topologyShowZones" type="checkbox" checked><input id="topologyShowSurfaces" type="checkbox" checked><input id="topologyShowOpenings" type="checkbox" checked></div>
 <div id="thermalTopologyControls"></div>
 <div id="topologyViewport"><div id="topology3DCanvasHost"></div><svg id="topologyPlan"></svg><div id="thermalTopologyView"><div id="thermalTopologyGraph" style="width:900px;height:600px"></div></div></div>
@@ -135,7 +135,7 @@ try {
   };
   const render=()=>{renderer.renderThermalTopology(geometry,helpers);helpers.renderTopologyDetails();};
 
-  await topologyView.selectTopologyEntity("surface","surface:ext",{syncSemantic:false,syncLocate:false});
+  await topologyView.selectTopologyEntity("surface","surface:ext",{syncSemantic:false});
   state.thermalTopologyMetric="area"; render();
   const exteriorEdge=document.querySelector('[data-thermal-target-id="connection:ext"]');
   const exteriorProjected=state.thermalTopologySelectedEntityId==="boundary:ext"&&exteriorEdge?.querySelector('.thermal-edge')?.classList.contains('selected');
@@ -175,10 +175,12 @@ try {
   const sharedConnectionDetails=detailsHost.innerHTML;
   topologyView.setTopologyMode("plan");
   await new Promise((resolve)=>setTimeout(resolve,0));
-  const planDetailsPersist=detailsHost.innerHTML===sharedConnectionDetails;
+  const planControlsVisible=!document.getElementById('topologySpatialControls').hidden&&document.getElementById('thermalTopologyControls').hidden;
+  const planDetailsPersist=detailsHost.innerHTML===sharedConnectionDetails&&planControlsVisible;
   topologyView.setTopologyMode("thermal");
   await new Promise((resolve)=>setTimeout(resolve,0));
-  const selectionPersists=planDetailsPersist&&detailsHost.innerHTML===sharedConnectionDetails&&state.selectedTopologyEntityKind==="thermal_connection"&&state.selectedTopologyEntityId==="connection:pair"&&state.thermalTopologySelectedEntityKind==="thermal_connection"&&state.thermalTopologySelectedEntityId==="connection:pair";
+  const networkControlsVisible=document.getElementById('topologySpatialControls').hidden&&!document.getElementById('thermalTopologyControls').hidden;
+  const selectionPersists=planDetailsPersist&&networkControlsVisible&&detailsHost.innerHTML===sharedConnectionDetails&&state.selectedTopologyEntityKind==="thermal_connection"&&state.selectedTopologyEntityId==="connection:pair"&&state.thermalTopologySelectedEntityKind==="thermal_connection"&&state.thermalTopologySelectedEntityId==="connection:pair";
   select("zone","zone:a");
   topologyView.setTopologyMode("plan");
   const zonePlanDetails=detailsHost.innerHTML;

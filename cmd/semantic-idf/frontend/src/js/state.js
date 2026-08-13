@@ -214,7 +214,6 @@ export const state = {
   selectedTopologyEntityId: "",
   selectedTopologyEntityKind: "",
   selectedTopologyStory: "all",
-  topologySyncLocate: true,
   topologyVisibility: {
     zones: true,
     surfaces: true,
@@ -393,7 +392,6 @@ export const elements = {
   thermalTopologyLayout: document.querySelector("#thermalTopologyLayout"),
   topologyFitButton: document.querySelector("#topologyFitButton"),
   topologyExpandButton: document.querySelector("#topologyExpandButton"),
-  topologySyncLocate: document.querySelector("#topologySyncLocate"),
   topologyShowZones: document.querySelector("#topologyShowZones"),
   topologyShowSurfaces: document.querySelector("#topologyShowSurfaces"),
   topologyShowOpenings: document.querySelector("#topologyShowOpenings"),

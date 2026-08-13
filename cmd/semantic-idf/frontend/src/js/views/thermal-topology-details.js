@@ -22,7 +22,6 @@ export function renderThermalTopologyDetails(geometry, helpers = {}) {
         <h3 id="topologyDetailsHeading">${escapeHTML(selectionTitle(activeSelection))}</h3>
         <span>${escapeHTML(selectionSubtitle(activeSelection))}</span>
       </div>
-      <span class="topology-sync-note">${state.topologySyncLocate ? t("topology.syncOn") : t("topology.syncOff")}</span>
     </div>
     <div class="topology-detail-grid thermal-topology-detail-grid">
       ${renderSelectionDetails(activeSelection, geometry)}

@@ -385,7 +385,7 @@ function activateGraphTarget(kind, id) {
   state.selectedTopologyEntityKind = kind;
   state.selectedTopologyEntityId = id;
   renderThermalTopologySVG(currentModel, currentLayout);
-  currentHelpers?.selectTopologyEntity?.(kind, id, { syncLocate: true, syncSemantic: true });
+  currentHelpers?.selectTopologyEntity?.(kind, id, { syncSemantic: true });
   currentHelpers?.renderTopologyDetails?.();
 }
 

@@ -55,17 +55,18 @@ func TestResultTabsAreTheOnlyTopLevelPanelNames(t *testing.T) {
 	}
 }
 
-func TestTopologyHeaderWrapsWithinTheAnalysisPanel(t *testing.T) {
+func TestTopologyHeaderUsesSingleDesktopToolbarRow(t *testing.T) {
 	styles := readTestFile(t, "frontend/src/styles/topology.css")
-	for _, required := range []string{
-		"grid-template-columns: minmax(0, 1fr)",
-		"width: 100%",
-		"justify-content: flex-start",
-		"flex-wrap: wrap",
-		"flex: 1 1 680px",
-	} {
-		if !strings.Contains(styles, required) {
-			t.Fatalf("Topology header is missing panel-responsive layout rule %q", required)
+	head := sliceBetween(styles, ".topology-head {", ".topology-head > #topologyStats")
+	for _, required := range []string{"display: flex", "align-items: center"} {
+		if !strings.Contains(head, required) {
+			t.Fatalf("Topology header is missing single-row layout rule %q", required)
+		}
+	}
+	tools := sliceBetween(styles, ".topology-tools {", ".topology-control-group")
+	for _, required := range []string{"flex: 1 1 auto", "flex-wrap: nowrap"} {
+		if !strings.Contains(tools, required) {
+			t.Fatalf("Topology tools are missing single-row layout rule %q", required)
 		}
 	}
 }

@@ -23,7 +23,6 @@
       <nav class="guide-nav" aria-label="Settings sections" data-i18n-aria-label="settings.sections">
         <a href="#appearance" data-i18n="settings.appearance">Appearance</a>
         <a href="#geometry-colors" data-i18n="settings.geometryColors">Topology Colors</a>
-        <a href="#behavior" data-i18n="settings.behavior">Behavior</a>
         <a href="#simulation-settings" data-i18n="settings.simulation">Simulation</a>
         <a href="#keyboard-shortcuts" data-i18n="settings.keyboardShortcuts">Keyboard Shortcuts</a>
         <a href="#profile-analysis" data-i18n="settings.profileAnalysis">Profile Analysis</a>
@@ -360,19 +359,6 @@
                     </label>`)
                   .join("")}
               </div>
-            </section>
-
-            <section id="behavior" class="guide-section">
-              <div class="settings-section-head">
-                <div>
-                  <h2>${escapeHTML(t("settings.behavior"))}</h2>
-                  <p>${escapeHTML(t("behavior.description"))}</p>
-                </div>
-              </div>
-              <label class="settings-check">
-                <input id="topologySyncLocateDefault" type="checkbox" ${activeSettings.interaction.topologySyncLocate ? "checked" : ""} />
-                <span>${escapeHTML(t("behavior.topologySync"))}</span>
-              </label>
             </section>
 
             <section id="simulation-settings" class="guide-section">
@@ -777,7 +763,6 @@
             geometry,
           },
           interaction: {
-            topologySyncLocate: document.querySelector("#topologySyncLocateDefault").checked,
             shortcuts: readShortcutSettings(),
           },
         });

@@ -185,7 +185,6 @@ func TestTopologyToolbarSeparatesModeSpecificControls(t *testing.T) {
 	for _, required := range []string{
 		`id="topologyStoryControl"`,
 		`id="topologyStorySelect"`,
-		`id="topologySyncLocate" type="checkbox" checked`,
 		`id="topologySpatialControls"`,
 		`id="topologyShowZones"`,
 		`id="topologyShowSurfaces"`,
@@ -204,9 +203,32 @@ func TestTopologyToolbarSeparatesModeSpecificControls(t *testing.T) {
 		`id="topologyPlanShowBoundaries"`, `id="thermalTopologyScope"`,
 		`id="thermalTopologyShowAirCoupling"`, `id="thermalTopologyExportJSON"`,
 		`id="thermalTopologyExpandExternalTargets"`, `class="thermal-topology-advanced"`,
+		`id="topologySyncLocate"`, `topology.syncLocate`,
 	} {
 		if strings.Contains(index, removed) {
 			t.Fatalf("simplified topology toolbar still exposes %q", removed)
+		}
+	}
+	spatialControls := sliceBetween(index, `id="topologySpatialControls"`, `id="thermalTopologyControls"`)
+	for _, required := range []string{`id="topologyShowZones"`, `id="topologyShowSurfaces"`, `id="topologyShowOpenings"`} {
+		if !strings.Contains(spatialControls, required) {
+			t.Fatalf("3D/Plan controls are missing %q", required)
+		}
+	}
+	for _, forbidden := range []string{`id="thermalTopologyMetric"`, `id="thermalTopologyLayout"`} {
+		if strings.Contains(spatialControls, forbidden) {
+			t.Fatalf("3D/Plan controls contain Network option %q", forbidden)
+		}
+	}
+	networkControls := sliceBetween(index, `id="thermalTopologyControls"`, `</div>`)
+	for _, required := range []string{`id="thermalTopologyMetric"`, `id="thermalTopologyLayout"`} {
+		if !strings.Contains(networkControls, required) {
+			t.Fatalf("Network controls are missing %q", required)
+		}
+	}
+	for _, forbidden := range []string{`id="topologyShowZones"`, `id="topologyShowSurfaces"`, `id="topologyShowOpenings"`} {
+		if strings.Contains(networkControls, forbidden) {
+			t.Fatalf("Network controls contain spatial option %q", forbidden)
 		}
 	}
 
@@ -223,6 +245,20 @@ func TestTopologyToolbarSeparatesModeSpecificControls(t *testing.T) {
 		if !strings.Contains(view, required) {
 			t.Fatalf("topology mode control visibility is missing %q", required)
 		}
+	}
+
+	styles := readTestFile(t, "frontend/src/styles/topology.css")
+	head := sliceBetween(styles, ".topology-head {", ".topology-head > #topologyStats")
+	if !strings.Contains(head, "display: flex") {
+		t.Fatal("Topology stats and controls must share one toolbar row")
+	}
+	tools := sliceBetween(styles, ".topology-tools {", ".topology-control-group")
+	if !strings.Contains(tools, "flex-wrap: nowrap") {
+		t.Fatal("Topology controls must remain on one toolbar row")
+	}
+	networkStyles := sliceBetween(styles, ".thermal-topology-controls {", ".topology-select-control")
+	if !strings.Contains(networkStyles, "flex-wrap: nowrap") {
+		t.Fatal("Network Metric/Layout controls must remain on one toolbar row")
 	}
 
 }

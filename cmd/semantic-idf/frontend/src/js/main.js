@@ -247,10 +247,6 @@ elements.thermalTopologyLayout.addEventListener("change", () => {
   updateThermalTopologySetting("thermalTopologyLayout", normalizeThermalTopologyLayout(elements.thermalTopologyLayout.value));
 });
 elements.topologyFitButton.addEventListener("click", () => void fitTopologyView());
-elements.topologySyncLocate.addEventListener("change", () => {
-  state.topologySyncLocate = elements.topologySyncLocate.checked;
-  renderTopology();
-});
 bindTopologyVisibilityControl(elements.topologyShowZones, "zones");
 bindTopologyVisibilityControl(elements.topologyShowSurfaces, "surfaces");
 bindTopologyVisibilityControl(elements.topologyShowOpenings, "openings");
@@ -344,7 +340,7 @@ window.addEventListener("idfAnalyzer:documentChanged", () => {
   resetThermalTopologyDocumentState(state);
   updateDocumentActions();
 });
-window.addEventListener("semanticIDF:topologyLocate", (event) => {
+window.addEventListener("idfAnalyzer:topologyLocate", (event) => {
   const { objectIndex, objectType } = event.detail || {};
   if (objectIndex === undefined || objectIndex === null || String(objectIndex) === "") {
     return;
@@ -835,12 +831,6 @@ function applyRuntimeSettings(settings) {
   }
   state.simulationAutoRunOnOpen = settings.simulation?.autoRunOnOpen ?? state.simulationAutoRunOnOpen;
   loadSimulationEnvironment();
-  if (typeof settings.interaction?.topologySyncLocate === "boolean") {
-    state.topologySyncLocate = settings.interaction.topologySyncLocate;
-    if (elements.topologySyncLocate) {
-      elements.topologySyncLocate.checked = state.topologySyncLocate;
-    }
-  }
   if (settings.interaction?.shortcuts) {
     state.keyboardShortcuts = settings.interaction.shortcuts;
   }

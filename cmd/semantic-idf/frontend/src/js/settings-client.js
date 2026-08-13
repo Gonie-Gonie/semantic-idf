@@ -27,7 +27,6 @@ export const defaultAppSettings = {
     },
   },
   interaction: {
-    topologySyncLocate: true,
     shortcuts: {
       save: "Ctrl+S",
       open: "Ctrl+O",
@@ -222,12 +221,6 @@ export function mergeSettings(settingsInput = {}) {
       },
     },
     interaction: {
-      topologySyncLocate:
-        typeof interaction.topologySyncLocate === "boolean"
-          ? interaction.topologySyncLocate
-          : typeof interaction.geometrySyncLocate === "boolean"
-            ? interaction.geometrySyncLocate
-            : defaultAppSettings.interaction.topologySyncLocate,
       shortcuts: normalizeShortcuts(migrateLegacyNavigationShortcuts(interaction.shortcuts), defaultShortcuts),
     },
     profile: {

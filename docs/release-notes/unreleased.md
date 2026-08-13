@@ -18,6 +18,9 @@ The release script infers bump size from these sections:
 
 ## Changed
 
+- Made Topology-to-input location synchronization permanent, removed its UI
+  and saved setting, and condensed the Topology toolbar to one row. 3D and Plan
+  show only Zones, Surfaces, and Openings; Network shows only Metric and Layout.
 - Made cross-view semantic selection linking and following permanent, and
   removed the redundant top workspace link/status/navigation bar and its saved
   mode state. Removed the separate Reveal in Semantic command while retaining

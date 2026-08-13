@@ -1212,37 +1212,34 @@ func TestDefaultSettingsRetainThermalTopologyShortcuts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, removed := range []string{"syncRawTextPosition", "autoAnalyzeDelayMs"} {
+	for _, removed := range []string{"syncRawTextPosition", "autoAnalyzeDelayMs", "topologySyncLocate", "geometrySyncLocate"} {
 		if strings.Contains(string(payload), `"`+removed+`"`) {
-			t.Fatalf("default settings still emit removed Raw Text setting %q: %s", removed, payload)
+			t.Fatalf("default settings still emit removed interaction setting %q: %s", removed, payload)
 		}
 	}
 }
 
-func TestLegacyRawEditorSettingsAreIgnoredAndNotReemitted(t *testing.T) {
+func TestLegacyRemovedInteractionSettingsAreIgnoredAndNotReemitted(t *testing.T) {
 	var settings AppSettings
 	if err := json.Unmarshal([]byte(`{
 		"behavior": {"autoAnalyzeDelayMs": 2500},
-		"interaction": {"syncRawTextPosition": false, "topologySyncLocate": true}
+		"interaction": {"syncRawTextPosition": false, "topologySyncLocate": false}
 	}`), &settings); err != nil {
 		t.Fatal(err)
 	}
 	settings = normalizeAppSettings(settings)
-	if !settings.Interaction.TopologySyncLocate {
-		t.Fatal("valid interaction settings were lost while ignoring legacy Raw Text settings")
-	}
 	payload, err := json.Marshal(settings)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, removed := range []string{"syncRawTextPosition", "autoAnalyzeDelayMs"} {
+	for _, removed := range []string{"syncRawTextPosition", "autoAnalyzeDelayMs", "topologySyncLocate"} {
 		if strings.Contains(string(payload), `"`+removed+`"`) {
-			t.Fatalf("normalized settings re-emitted removed Raw Text setting %q: %s", removed, payload)
+			t.Fatalf("normalized settings re-emitted removed interaction setting %q: %s", removed, payload)
 		}
 	}
 }
 
-func TestLegacyGeometryInteractionSettingsMigrateToTopologyNames(t *testing.T) {
+func TestLegacyGeometrySyncSettingIsIgnoredWhileShortcutsMigrate(t *testing.T) {
 	var settings AppSettings
 	if err := json.Unmarshal([]byte(`{
 		"interaction": {
@@ -1258,9 +1255,6 @@ func TestLegacyGeometryInteractionSettingsMigrateToTopologyNames(t *testing.T) {
 		t.Fatal(err)
 	}
 	settings = normalizeAppSettings(settings)
-	if !settings.Interaction.TopologySyncLocate {
-		t.Fatal("legacy geometrySyncLocate did not migrate to topologySyncLocate")
-	}
 	for id, want := range map[string]string{
 		"topology3D": "4", "topologyPlan": "5", "topologyNetwork": "6", "topologyFit": "Shift+F",
 	} {
@@ -1272,7 +1266,7 @@ func TestLegacyGeometryInteractionSettingsMigrateToTopologyNames(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, legacy := range []string{"geometrySyncLocate", "geometry3D", "geometryPlan", "geometryThermal", "geometryFit"} {
+	for _, legacy := range []string{"geometrySyncLocate", "topologySyncLocate", "geometry3D", "geometryPlan", "geometryThermal", "geometryFit"} {
 		if strings.Contains(string(payload), `"`+legacy+`"`) {
 			t.Fatalf("normalized settings still emit legacy key %q: %s", legacy, payload)
 		}

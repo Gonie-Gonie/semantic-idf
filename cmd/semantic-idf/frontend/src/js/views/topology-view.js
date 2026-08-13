@@ -76,9 +76,6 @@ export function renderTopologyView(geometry = state.report?.geometry) {
   }
 
   ensureSelectedStory(geometry);
-  if (elements.topologySyncLocate) {
-    elements.topologySyncLocate.checked = state.topologySyncLocate;
-  }
   syncTopologyVisibilityControls();
   elements.topologyStats.textContent = t("topology.stats", {
     zones: geometry.zoneCount || 0,
@@ -125,21 +122,17 @@ export async function selectTopologyEntity(kind, id, options = {}) {
   const targetId = String(id || "");
   const entity = topologyTargetEntity({ targetKind: normalizedKind, targetId }, geometry);
   const selection = topologySelectionForTarget(normalizedKind, targetId);
-  const syncLocate = options.syncLocate !== false && state.topologySyncLocate && Boolean(entity);
-
-  // The legacy source locator already records a history entry. Run it before
-  // changing either selection so a geometry click remains one atomic action.
-  if (syncLocate) {
-    syncLocatedInputEntity(entity);
-  }
-  if (options.syncSemantic !== false && selection) {
-    await selectSemanticEntity(selection, {
-      originView: "topology",
-      action: "select",
-      recordHistory: syncLocate ? false : options.recordHistory !== false,
-      follow: options.follow,
-      rememberForOriginView: "topology",
-    });
+  if (options.syncSemantic !== false) {
+    if (selection) {
+      await selectSemanticEntity(selection, {
+        originView: "topology",
+        action: "select",
+        recordHistory: options.recordHistory !== false,
+        rememberForOriginView: "topology",
+      });
+    } else {
+      locateTopologyInput(entity);
+    }
   }
   if (request !== topologySelectionRequest) {
     return;
@@ -221,7 +214,6 @@ export async function restoreTopologyNavigationContext(snapshot = {}, context) {
   state.selectedTopologyStory = snapshot.story === "all" ? "all" : Number(snapshot.story) || 0;
   state.selectedTopologyEntityKind = normalizeGeometryKind(snapshot.selectedKind);
   state.selectedTopologyEntityId = String(snapshot.selectedId || "");
-  state.topologySyncLocate = snapshot.syncLocate !== false;
   const legacyVisibility = snapshot.visibility
     || (state.topologyMode === "plan" ? snapshot.visibilityPlan : snapshot.visibility3D)
     || snapshot.visibility3D
@@ -886,7 +878,6 @@ function renderGeometryTopologyDetails(geometry, entity) {
         <h3 id="topologyDetailsHeading">${escapeHTML(entity.title)}</h3>
         <span>${escapeHTML(entity.subtitle)}</span>
       </div>
-      <span class="topology-sync-note">${state.topologySyncLocate ? t("topology.syncOn") : t("topology.syncOff")}</span>
     </div>
     <div class="topology-detail-grid">
       <section>
@@ -902,22 +893,23 @@ function renderGeometryTopologyDetails(geometry, entity) {
   bindTopologyDetailControls();
 }
 
-function syncLocatedInputEntity(entity) {
-  if (!entity) {
-    return;
-  }
-  window.dispatchEvent(
-    new CustomEvent("idfAnalyzer:geometryLocate", {
-      detail: {
-        objectIndex: entity.objectIndex,
-        objectType: entity.objectType,
-      },
-    }),
-  );
-}
-
 function matchesSelectedStory(item) {
   return state.selectedTopologyStory === "all" || item.storyIndex === state.selectedTopologyStory;
+}
+
+function locateTopologyInput(entity) {
+  const sourceAnchor = entity?.item?.sourceAnchors?.[0] || entity?.thermalTarget?.sourceAnchors?.[0] || {};
+  const objectIndex = entity?.objectIndex ?? entity?.item?.objectIndex ?? sourceAnchor.objectIndex;
+  if (objectIndex === undefined || objectIndex === null || String(objectIndex) === "") {
+    return false;
+  }
+  window.dispatchEvent(new CustomEvent("idfAnalyzer:topologyLocate", {
+    detail: {
+      objectIndex,
+      objectType: entity?.objectType || sourceAnchor.objectType || "",
+    },
+  }));
+  return true;
 }
 
 function selectedGeometryEntity(geometry) {
@@ -1329,7 +1321,7 @@ function bindTopologyDetailControls() {
     const objectIndex = Number(layer.dataset.objectIndex);
     if (!Number.isFinite(objectIndex) || objectIndex < 0) return;
     window.dispatchEvent(
-      new CustomEvent("idfAnalyzer:geometryLocate", {
+      new CustomEvent("idfAnalyzer:topologyLocate", {
         detail: { objectIndex },
       }),
     );

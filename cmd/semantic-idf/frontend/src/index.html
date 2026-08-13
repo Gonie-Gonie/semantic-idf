@@ -425,9 +425,7 @@
 
           <div class="result-pane" id="topologyPane">
             <div class="topology-head">
-              <div>
-                <span id="topologyStats">0 zones, 0 surfaces, 0 windows</span>
-              </div>
+              <span id="topologyStats">0 zones, 0 surfaces, 0 windows</span>
               <div class="topology-tools">
                 <div class="topology-control-group topology-mode-controls" role="group" aria-label="Topology view">
                   <button class="topology-mode-button active" data-topology-mode="3d" type="button">3D</button>
@@ -438,13 +436,12 @@
                   <span data-i18n="topology.level">Level</span>
                   <select id="topologyStorySelect" aria-label="Topology story"></select>
                 </label>
-                <label class="topology-toggle topology-sync-toggle"><input id="topologySyncLocate" type="checkbox" checked /> <span data-i18n="topology.syncLocate">Sync locate</span></label>
                 <div id="topologySpatialControls" class="topology-control-group topology-visibility-controls" aria-label="Spatial visibility">
                   <label class="topology-toggle"><input id="topologyShowZones" type="checkbox" checked /> <span data-i18n="topology.showZones">Zones</span></label>
                   <label class="topology-toggle"><input id="topologyShowSurfaces" type="checkbox" checked /> <span data-i18n="topology.showSurfaces">Surfaces</span></label>
                   <label class="topology-toggle"><input id="topologyShowOpenings" type="checkbox" checked /> <span data-i18n="topology.showOpenings">Openings</span></label>
                 </div>
-                <div id="thermalTopologyControls" class="thermal-topology-controls" hidden>
+                <div id="thermalTopologyControls" class="thermal-topology-controls" aria-label="Network controls" hidden>
                   <label class="topology-select-control">
                     <span data-i18n="topology.metric">Metric</span>
                     <select id="thermalTopologyMetric" aria-label="Thermal graph metric">
