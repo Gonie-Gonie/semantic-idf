@@ -1,4 +1,4 @@
-import { backend, elements, escapeHTML, getDocumentText, setDocumentText, setStatus, state, updateTextStats } from "../state.js";
+import { backend, elements, escapeHTML, getDocumentText, setDocumentText, setStatus, state } from "../state.js";
 import { t } from "../i18n.js";
 import { recordViewHistory } from "../view-history.js";
 import {
@@ -7,7 +7,6 @@ import {
   currentSemanticSelection,
   hoverSemanticEntity,
   openSelectionInView,
-  revealSelectionInSemantic,
   revealSelectionSource,
   selectSemanticEntity,
   selectionTargetsForView,
@@ -1225,7 +1224,6 @@ async function chooseSemanticOccurrence(occurrenceId) {
     rememberForOriginView: current.originView || "input-semantic",
   });
   ensureSemanticOccurrenceVisible(selection);
-  await revealSelectionInSemantic({ originView: "input-semantic", action: "reveal", recordHistory: false, preserveFilters: true });
   return true;
 }
 
@@ -1381,7 +1379,6 @@ async function applySemanticDuplicateFixes() {
     captureSemanticEditSelection();
     const result = await api.ApplySemanticDuplicateNameFixText(getDocumentText());
     setDocumentText(result.text);
-    updateTextStats();
     state.semanticProjection = result.semantic || null;
     await analyzeCallback();
     const count = result.warnings?.length || 0;
@@ -1702,7 +1699,6 @@ async function commitJSONValueEdit(editor, nextRaw, restore) {
       nextRaw,
     );
     setDocumentText(result.text);
-    updateTextStats();
     state.report = result.report;
     state.model = result.model || null;
     state.epjsonText = result.epjson || "";
@@ -2058,7 +2054,6 @@ async function applyFieldValue(input, successMessage = t("input.fieldUpdated")) 
     captureSemanticEditSelection();
     const result = await api.UpdateFieldText(getDocumentText(), objectIndex, fieldIndex, nextValue);
     setDocumentText(result.text);
-    updateTextStats();
     await analyzeCallback();
     setStatus(successMessage, "ok");
   } catch (error) {
@@ -2435,10 +2430,15 @@ export async function switchInputView(viewName, options = {}) {
   }
   state.activeInputView = viewName;
   elements.inputViewButtons.forEach((button) => {
-    button.classList.toggle("active", button.dataset.inputView === viewName);
+    const active = button.dataset.inputView === viewName;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", active ? "true" : "false");
+    button.tabIndex = active ? 0 : -1;
   });
   elements.inputViews.forEach((view) => {
-    view.classList.toggle("active", view.id === `${viewName}InputView`);
+    const active = view.id === `${viewName}InputView`;
+    view.classList.toggle("active", active);
+    view.hidden = !active;
   });
   renderInputViews();
   window.requestAnimationFrame(() => {

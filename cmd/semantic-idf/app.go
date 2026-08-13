@@ -1548,7 +1548,6 @@ func defaultAppSettings() AppSettings {
 				"jumpDefinition":       "F12",
 				"jumpReferences":       "Shift+F12",
 				"commandPalette":       "Ctrl+K",
-				"revealSemantic":       "Ctrl+Shift+L",
 				"revealSource":         "Ctrl+Shift+S",
 				"paneFocus":            "F6",
 				"currentSearch":        "/",

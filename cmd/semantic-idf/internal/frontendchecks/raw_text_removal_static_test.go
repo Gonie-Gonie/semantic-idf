@@ -127,11 +127,6 @@ func TestCanonicalDocumentTextDrivesEditingAnalysisAndPersistence(t *testing.T) 
 			t.Fatalf("canonical document text accessor contract is missing %q", helper)
 		}
 	}
-	textStats := sliceBetween(stateSource, "export function updateTextStats", "}")
-	if !strings.Contains(textStats, "getDocumentText()") {
-		t.Fatal("line statistics must read the canonical documentText source")
-	}
-
 	actions := readTestFile(t, "frontend/src/js/actions.js")
 	for _, contract := range []struct {
 		name  string

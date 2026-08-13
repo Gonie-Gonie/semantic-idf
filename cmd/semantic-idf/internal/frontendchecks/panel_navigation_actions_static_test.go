@@ -11,7 +11,7 @@ func TestPanelNavigationActionMenuOrderAndControllerRouting(t *testing.T) {
 	for _, name := range []string{"initializePanelNavigationActions", "openPanelNavigationMenu", "closePanelNavigationMenu"} {
 		assertJSExport(t, content, name)
 	}
-	order := []string{`["focus"`, `["semantic"`, `["source"`, `["related"`, `["definition"`, `["references"`, `["pin"`}
+	order := []string{`["focus"`, `["source"`, `["related"`, `["definition"`, `["references"`, `["pin"`}
 	last := -1
 	for _, token := range order {
 		index := strings.Index(content, token)
@@ -19,6 +19,9 @@ func TestPanelNavigationActionMenuOrderAndControllerRouting(t *testing.T) {
 			t.Fatalf("panel action order is missing or unstable at %q", token)
 		}
 		last = index
+	}
+	if strings.Contains(content, `["semantic"`) || strings.Contains(content, `action === "semantic"`) {
+		t.Fatal("panel navigation menu still exposes the removed Reveal in Semantic action")
 	}
 	for _, required := range []string{
 		`addEventListener("contextmenu"`,

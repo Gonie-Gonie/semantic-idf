@@ -108,8 +108,8 @@ func TestSemanticLineClickAndPrimaryOpenHaveSingleHistoryBoundary(t *testing.T) 
 	if strings.Contains(interaction, "recordViewHistory(") {
 		t.Fatal("semantic line handlers must let the selection controller own the single history item")
 	}
-	if !strings.Contains(interaction, "recordHistory: false") {
-		t.Fatal("primary open must suppress its nested selection/reveal history operation")
+	if !strings.Contains(interaction, "recordHistory: options.historyAlreadyRecorded ? false : !selectionChanged") {
+		t.Fatal("primary open must suppress nested history after an existing selection/history boundary")
 	}
 	for _, removed := range []string{"syncRawTextToFormattedTarget", "syncRawTextToObjectField", "syncTextRawPosition"} {
 		if strings.Contains(interaction, removed) || strings.Contains(views, removed) {
@@ -362,7 +362,7 @@ func TestSemanticInteractionDoesNotMutateSelectionOrRunAnalyzerDirectly(t *testi
 	}
 }
 
-func TestResultSelectionPreservesTheCurrentInputViewAndOffersSemanticReveal(t *testing.T) {
+func TestResultSelectionPreservesTheCurrentInputViewWithoutASeparateSemanticRevealAction(t *testing.T) {
 	controller := readTestFile(t, "frontend/src/js/selection-controller.js")
 	main := readTestFile(t, "frontend/src/js/main.js")
 	index := readTestFile(t, "frontend/src/index.html")
@@ -378,18 +378,23 @@ func TestResultSelectionPreservesTheCurrentInputViewAndOffersSemanticReveal(t *t
 			t.Fatalf("linked result selection must highlight the current source view without forcing Semantic, missing %q", required)
 		}
 	}
-	for _, required := range []string{
-		"semanticRevealIndicator",
-		"idfAnalyzer:semanticRevealAvailable",
-		"revealSelectionInSemantic(",
-		"updateSemanticRevealIndicator",
+	for name, content := range map[string]string{
+		"main":   main,
+		"markup": index,
+		"styles": styles,
 	} {
-		if !strings.Contains(main+index, required) {
-			t.Fatalf("non-Semantic input views need an explicit reveal indicator, missing %q", required)
+		for _, removed := range []string{
+			"semanticRevealIndicator",
+			"semantic-reveal-indicator",
+			"idfAnalyzer:semanticRevealAvailable",
+			"updateSemanticRevealIndicator",
+			"semantic.revealInSemantic",
+			"Reveal in Semantic",
+		} {
+			if strings.Contains(content, removed) {
+				t.Fatalf("%s still exposes removed standalone Semantic reveal action %q", name, removed)
+			}
 		}
-	}
-	if !strings.Contains(styles, ".semantic-reveal-indicator") {
-		t.Fatal("Semantic reveal indicator needs visible keyboard-accessible styling")
 	}
 	inputViews := readTestFile(t, "frontend/src/js/views/input-views.js")
 	switchView := sliceBetween(inputViews, "export async function switchInputView", "export function setTableOrientation")

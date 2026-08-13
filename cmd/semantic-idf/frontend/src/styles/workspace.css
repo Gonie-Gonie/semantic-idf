@@ -21,7 +21,7 @@
   gap: 6px;
 }
 
-.tab::after {
+.tab[data-readiness]::after {
   content: "";
   width: 6px;
   height: 6px;

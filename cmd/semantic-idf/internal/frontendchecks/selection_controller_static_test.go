@@ -57,13 +57,15 @@ func TestSelectionControllerPublicAPIAndBuildContract(t *testing.T) {
 		"hoverSemanticEntity",
 		"clearSemanticHover",
 		"clearSemanticSelection",
-		"revealSelectionInSemantic",
 		"openSelectionInView",
 		"revealSelectionSource",
 		"currentSemanticSelection",
 		"selectionTargetsForView",
 	} {
 		assertJSExport(t, content, name)
+	}
+	if strings.Contains(content, "revealSelectionInSemantic") {
+		t.Fatal("selection controller still exposes the removed explicit Reveal in Semantic API")
 	}
 	for _, name := range []string{
 		"initializeSelectionControllerState",

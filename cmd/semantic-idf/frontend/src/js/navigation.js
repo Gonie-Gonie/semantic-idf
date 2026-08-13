@@ -388,7 +388,6 @@ function createLegacyInputNavigationAdapter(viewName) {
     },
     async reveal(selection, options = {}) {
       if (viewName === "semantic" && state.activeInputView !== "semantic" && options.action === "select") {
-        window.dispatchEvent(new CustomEvent("idfAnalyzer:semanticRevealAvailable", { detail: { selection, options } }));
         return false;
       }
       if (state.activeInputView !== viewName) {

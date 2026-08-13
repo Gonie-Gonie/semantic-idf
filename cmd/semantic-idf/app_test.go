@@ -1203,9 +1203,9 @@ func TestDefaultSettingsRetainThermalTopologyShortcuts(t *testing.T) {
 			t.Fatalf("shortcut %s = %q, want %q", id, settings.Interaction.Shortcuts[id], accelerator)
 		}
 	}
-	for _, removed := range []string{"topologyDisplay", "topologyNeighbors"} {
+	for _, removed := range []string{"topologyDisplay", "topologyNeighbors", "revealSemantic"} {
 		if _, exists := settings.Interaction.Shortcuts[removed]; exists {
-			t.Fatalf("removed topology shortcut %s is still configured", removed)
+			t.Fatalf("removed shortcut %s is still configured", removed)
 		}
 	}
 	payload, err := json.Marshal(settings)

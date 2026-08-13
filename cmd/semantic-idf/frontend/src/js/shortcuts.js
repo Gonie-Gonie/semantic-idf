@@ -59,7 +59,6 @@ function shortcutAction(id, actions) {
     jumpDefinition: actions.jumpDefinition,
     jumpReferences: actions.jumpReferences,
     commandPalette: actions.commandPalette,
-    revealSemantic: actions.revealSemantic,
     revealSource: actions.revealSource,
     paneFocus: actions.paneFocus,
     currentSearch: actions.currentSearch,

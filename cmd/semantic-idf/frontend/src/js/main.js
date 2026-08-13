@@ -11,7 +11,6 @@ import {
   setStatus,
   setDocumentText,
   state,
-  updateTextStats,
 } from "./state.js";
 import {
   analyze,
@@ -60,7 +59,6 @@ import {
   openSelectionInView,
   remapSemanticSelection,
   revealSelectionSource,
-  revealSelectionInSemantic,
   resumePendingSemanticNavigation,
   isProfileTopologyLink,
   selectionTargetsForView,
@@ -98,15 +96,6 @@ window.addEventListener("pageshow", (event) => {
     clearAuxiliaryNavigationMarker();
   }
 });
-
-function updateSemanticRevealIndicator(selection = state.globalSelection) {
-  if (!elements.semanticRevealIndicator) {
-    return;
-  }
-  const available = Boolean(selection?.entityId && state.activeInputView !== "semantic");
-  elements.semanticRevealIndicator.hidden = !available;
-  elements.semanticRevealIndicator.setAttribute("aria-hidden", available ? "false" : "true");
-}
 
 configureInputViews({ analyze, renderReport });
 initializeLegacyInputNavigationAdapters();
@@ -157,7 +146,6 @@ configureSelectionController({
     const objectIndex = selection.sourceAnchor?.objectIndex;
     state.semanticSelectedObjectIndex = objectIndex === undefined || objectIndex === null ? "" : String(objectIndex);
     window.dispatchEvent(new CustomEvent("idfAnalyzer:semanticSelectionChanged", { detail: { selection, options, temporaryRevealCleared } }));
-    updateSemanticRevealIndicator(selection);
     refreshInputSelectionStyles(selection);
   },
   onHoverChange: ({ hover, options }) => {
@@ -306,26 +294,27 @@ function activateThermalTopologySettingShortcut(key, value) {
   return true;
 }
 
-elements.inputViewButtons.forEach((button) => {
+elements.inputViewButtons.forEach((button, index, buttons) => {
   button.addEventListener("click", async () => {
     await switchInputView(button.dataset.inputView);
-    updateSemanticRevealIndicator(state.globalSelection);
   });
-});
-elements.semanticRevealIndicator?.addEventListener("click", async () => {
-  await revealSelectionInSemantic({
-    originView: state.activeResultTab,
-    action: "reveal",
-    recordHistory: true,
-    preserveFilters: true,
+  button.addEventListener("keydown", async (event) => {
+    const key = event.key;
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(key)) {
+      return;
+    }
+    event.preventDefault();
+    const targetIndex = key === "Home"
+      ? 0
+      : key === "End"
+        ? buttons.length - 1
+        : (index + (key === "ArrowRight" ? 1 : -1) + buttons.length) % buttons.length;
+    const target = buttons[targetIndex];
+    await switchInputView(target.dataset.inputView);
+    target.focus();
   });
-  updateSemanticRevealIndicator(state.globalSelection);
-});
-window.addEventListener("idfAnalyzer:semanticRevealAvailable", (event) => {
-  updateSemanticRevealIndicator(event.detail?.selection || state.globalSelection);
 });
 window.addEventListener("idfAnalyzer:inputViewChanged", () => {
-  updateSemanticRevealIndicator(state.globalSelection);
   refreshInputSelectionStyles(state.globalSelection);
 });
 elements.editorPanel.addEventListener("click", (event) => {
@@ -390,7 +379,6 @@ window.addEventListener("idfAnalyzer:profileApplied", (event) => {
     return;
   }
   setDocumentText(result.text);
-  updateTextStats();
   state.report = result.report;
   state.model = result.model || null;
   state.epjsonText = result.epjson || "";
@@ -415,7 +403,6 @@ window.addEventListener("idfAnalyzer:hvacApplied", (event) => {
     return;
   }
   setDocumentText(result.text);
-  updateTextStats();
   state.report = result.report;
   state.model = result.model || null;
   state.epjsonText = result.epjson || "";
@@ -570,18 +557,6 @@ function handleHardwareHistoryMouseButton(event) {
   return true;
 }
 
-async function revealCurrentSelectionInSemantic() {
-  if (!state.globalSelection?.entityId) {
-    setStatus(t("semantic.noAvailableView", {}, "No selection to reveal"), "warn");
-    return false;
-  }
-  return openSelectionInView("input-semantic", {
-    originView: state.activeResultTab || `input-${state.activeInputView}`,
-    action: "reveal_semantic",
-    preserveFilters: true,
-  });
-}
-
 async function revealCurrentSelectionSource() {
   if (!state.globalSelection?.entityId) {
     setStatus(t("semantic.noAvailableView", {}, "No selection to reveal"), "warn");
@@ -710,7 +685,6 @@ function navigationViewLabel(viewID) {
 function commandPaletteItems() {
   const shortcuts = state.keyboardShortcuts || {};
   return [
-    ["revealSemantic", t("shortcut.revealSemantic", {}, "Reveal in Semantic"), revealCurrentSelectionInSemantic],
     ["revealSource", t("shortcut.revealSource", {}, "Reveal source"), revealCurrentSelectionSource],
     ["availableViews", t("shortcut.availableViews", {}, "Available views"), openAvailableViewsForSelection],
     ["undoView", t("shortcut.undoView", {}, "Back"), () => undoViewNavigation()],
@@ -735,7 +709,6 @@ initializeKeyboardShortcuts({
   jumpDefinition: jumpInputDefinition,
   jumpReferences: jumpInputReferences,
   commandPalette: openCommandPalette,
-  revealSemantic: revealCurrentSelectionInSemantic,
   revealSource: revealCurrentSelectionSource,
   paneFocus: focusNextWorkspacePane,
   currentSearch: focusCurrentViewSearch,
@@ -753,7 +726,6 @@ updateDocumentActions();
 const restoredDocument = restoreCurrentDocument();
 if (restoredDocument) {
   setDocumentText(restoredDocument.text || "");
-  updateTextStats();
   registerLoadedDocument(getDocumentText(), {
     path: restoredDocument.path || "",
     filename: restoredDocument.filename || "",
@@ -772,7 +744,6 @@ if (restoredDocument) {
   setStatus(t("status.analysisWillStart"), "loading");
   loadDefaultSampleIDF().then(async (sampleText) => {
     setDocumentText(sampleText);
-    updateTextStats();
     const loadedText = getDocumentText();
     const sourceLabel = sampleText.includes("RefBldgLargeOfficeNew2004_Chicago") ? defaultSample.name : "Fallback sample";
     const sourceFilename = sourceLabel === "Fallback sample" ? "fallback-sample.idf" : "RefBldgLargeOfficeNew2004_Chicago.idf";
@@ -886,7 +857,6 @@ function applyRuntimeSettings(settings) {
   if (settings.appearance) {
     applyDefaultResultTab(settings.appearance.analysisTabOrder);
     translatePage();
-    updateTextStats();
     if (state.report) {
       renderReport();
     } else {

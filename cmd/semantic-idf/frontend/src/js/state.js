@@ -292,7 +292,6 @@ export const elements = {
   toolsButton: document.querySelector("#toolsButton"),
   guideButton: document.querySelector("#guideButton"),
   settingsButton: document.querySelector("#settingsButton"),
-  textStats: document.querySelector("#textStats"),
   inputFilter: document.querySelector("#inputFilter"),
   inputFilterStats: document.querySelector("#inputFilterStats"),
   fieldStats: document.querySelector("#fieldStats"),
@@ -305,8 +304,7 @@ export const elements = {
   workspaceSplitter: document.querySelector("#workspaceSplitter"),
   layoutPresetButtons: document.querySelectorAll("[data-layout-preset]"),
   editorPanel: document.querySelector(".editor-panel"),
-  inputViewButtons: document.querySelectorAll(".view-tab"),
-  semanticRevealIndicator: document.querySelector("#semanticRevealIndicator"),
+  inputViewButtons: document.querySelectorAll(".tab[data-input-view]"),
   inputViews: document.querySelectorAll(".input-view"),
   analysisPanel: document.querySelector(".analysis-panel"),
   resultTabButtons: document.querySelectorAll("[data-result-tab]"),
@@ -483,10 +481,4 @@ export function escapeHTML(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
-}
-
-export function updateTextStats() {
-  const text = getDocumentText();
-  const lines = text.length === 0 ? 0 : text.split(/\r\n|\r|\n/).length;
-  elements.textStats.textContent = t("count.lines", { count: lines });
 }

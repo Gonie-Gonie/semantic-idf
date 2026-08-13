@@ -15,7 +15,6 @@ import { recordViewHistory } from "./view-history.js";
 
 const actionOrder = Object.freeze([
   ["focus", "panelNavigation.openFocus", "Open / Focus"],
-  ["semantic", "panelNavigation.revealSemantic", "Reveal in Semantic"],
   ["source", "panelNavigation.revealSource", "Reveal source"],
   ["related", "panelNavigation.relatedViews", "Related views"],
   ["definition", "panelNavigation.definition", "Definition"],
@@ -192,7 +191,7 @@ function renderActionMenu(context) {
 }
 
 function actionAvailable(action, context, related) {
-  if (action === "focus" || action === "semantic" || action === "pin") {
+  if (action === "focus" || action === "pin") {
     return true;
   }
   if (action === "source" || action === "definition" || action === "references") {
@@ -245,8 +244,6 @@ async function executePanelAction(action, context) {
   await runAtomicPanelAction(context, async () => {
     if (action === "focus") {
       await openSelectionInView(context.view, panelOpenOptions(context));
-    } else if (action === "semantic") {
-      await openSelectionInView("input-semantic", panelOpenOptions(context));
     } else if (action === "source") {
       await revealSelectionSource(panelRevealOptions(context));
     } else if (action === "definition" || action === "references") {

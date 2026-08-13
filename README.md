@@ -134,6 +134,8 @@ The app toolbar includes top-level Tools, Guide, and Settings navigation buttons
 
 ## Input Views
 
+- Semantic, Text, JSON, and Table are peer tabs styled consistently with the analysis tabs; the former Input View heading and line counter are not shown.
+- Semantic presents the parsed object hierarchy and evidence without requiring a separate reveal command; cross-view selection stays synchronized automatically.
 - A shared input filter applies across Text, JSON, and Table views by matching object type, name/index, field label, and value text.
 - Text: fully expanded editable object and field summaries that update the saved source document directly.
 - JSON: a structured epJSON-like editor with read-only syntax tokens and inline-editable value tokens that patch the shared document model.

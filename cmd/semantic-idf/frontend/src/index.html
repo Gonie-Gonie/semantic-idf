@@ -88,33 +88,26 @@
 
       <section class="workspace">
         <aside class="editor-panel" aria-label="IDF editor">
-          <div class="panel-head editor-head">
-            <div>
-              <h2 data-i18n="input.view">Input View</h2>
-              <span id="textStats">0 lines</span>
-            </div>
-            <div class="view-tabs" role="tablist" aria-label="Input views">
-              <button class="view-tab active" data-input-view="semantic" type="button">Semantic</button>
-              <button class="view-tab" data-input-view="text" type="button">Text</button>
-              <button class="view-tab" data-input-view="json" type="button">JSON</button>
-              <button class="view-tab" data-input-view="table" type="button">Table</button>
-            </div>
-            <button id="semanticRevealIndicator" class="semantic-reveal-indicator" type="button" hidden data-i18n="semantic.revealInSemantic">Reveal in Semantic</button>
-          </div>
+          <nav class="tabs input-tabs" role="tablist" aria-label="Input views">
+            <button id="inputSemanticTab" class="tab active" role="tab" aria-selected="true" aria-controls="semanticInputView" data-input-view="semantic" type="button">Semantic</button>
+            <button id="inputTextTab" class="tab" role="tab" aria-selected="false" aria-controls="textInputView" data-input-view="text" type="button" tabindex="-1">Text</button>
+            <button id="inputJSONTab" class="tab" role="tab" aria-selected="false" aria-controls="jsonInputView" data-input-view="json" type="button" tabindex="-1">JSON</button>
+            <button id="inputTableTab" class="tab" role="tab" aria-selected="false" aria-controls="tableInputView" data-input-view="table" type="button" tabindex="-1">Table</button>
+          </nav>
           <div class="input-filter-bar" role="search">
             <input id="inputFilter" type="search" placeholder="Filter objects, fields, values" aria-label="Filter input objects" data-i18n-placeholder="input.filter" />
             <span id="inputFilterStats">0 objects</span>
           </div>
-          <div class="input-view active" id="semanticInputView">
+          <div class="input-view active" id="semanticInputView" role="tabpanel" aria-labelledby="inputSemanticTab">
             <div id="semanticEditor" class="semantic-editor"></div>
           </div>
-          <div class="input-view" id="textInputView">
+          <div class="input-view" id="textInputView" role="tabpanel" aria-labelledby="inputTextTab" hidden>
             <div id="textObjectView" class="formatted-object-view"></div>
           </div>
-          <div class="input-view" id="jsonInputView">
+          <div class="input-view" id="jsonInputView" role="tabpanel" aria-labelledby="inputJSONTab" hidden>
             <div id="jsonStructuredView" class="json-view"></div>
           </div>
-          <div class="input-view" id="tableInputView">
+          <div class="input-view" id="tableInputView" role="tabpanel" aria-labelledby="inputTableTab" hidden>
             <div class="table-tools">
               <div class="orientation-controls" role="group" aria-label="Table orientation">
                 <button class="orientation-button active" data-table-orientation="objects" type="button" data-i18n="input.objectsRows">Objects as rows</button>

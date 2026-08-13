@@ -32,7 +32,7 @@ func TestPhaseHEndToEndScenarioContracts(t *testing.T) {
 		},
 		"D simulation output source to input": {
 			{path: "frontend/src/js/views/simulation-views.js", terms: []string{"simulationEnergySemanticAttributes", "simulationHVACPathSemanticCandidate", "simulationOutputSourceSemanticCandidate", `view: "input-text"`, `targetKind: "source"`, "requestSimulationModelSelection"}},
-			{path: "frontend/src/js/views/input-views.js", terms: []string{"revealSelectionInSemantic", "revealSelectionSource"}},
+			{path: "frontend/src/js/views/input-views.js", terms: []string{"revealSelectionSource"}},
 		},
 		"E diagnose edit remap": {
 			{path: "frontend/src/js/tools.js", terms: []string{"restoreDiagnoseDocument", "AnalyzeInputDiagnosticsText", "PreviewCleanupText", "persistDiagnoseDocument"}},

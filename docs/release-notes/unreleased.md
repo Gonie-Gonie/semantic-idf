@@ -20,7 +20,11 @@ The release script infers bump size from these sections:
 
 - Made cross-view semantic selection linking and following permanent, and
   removed the redundant top workspace link/status/navigation bar and its saved
-  mode state. Keyboard and panel-local reveal actions remain available.
+  mode state. Removed the separate Reveal in Semantic command while retaining
+  automatic cross-view selection synchronization.
+- Replaced the Input View heading, line counter, and auxiliary reveal control
+  with Semantic, Text, JSON, and Table tabs that use the same visual and
+  accessibility pattern as the analysis tabs.
 - Removed the separate Raw Text pane, its splitter, position synchronization,
   editor history state, and delayed-analysis settings. Semantic, Text, JSON,
   and Table now edit one in-memory source document used directly by analysis,

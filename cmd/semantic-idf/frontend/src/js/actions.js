@@ -1,4 +1,4 @@
-import { backend, elements, getDocumentText, refreshStatusTitle, setDocumentText, setStatus, state, updateTextStats } from "./state.js";
+import { backend, elements, getDocumentText, refreshStatusTitle, setDocumentText, setStatus, state } from "./state.js";
 import {
   markAllAnalysisDirty,
   markAnalysisDirty,
@@ -28,7 +28,6 @@ let activeStageQueue = null;
 
 export async function analyze(options = {}) {
   const api = backend();
-  updateTextStats();
   updateDocumentActions();
   if (!api) {
     setStatus(t("status.backendUnavailable"), "warn");
@@ -473,7 +472,6 @@ export async function openInputFile() {
       return;
     }
     setDocumentText(result.text || "");
-    updateTextStats();
     registerLoadedDocument(getDocumentText(), {
       path: result.path || "",
       filename: result.filename || "",
@@ -490,7 +488,6 @@ export async function openInputFile() {
 
 export async function loadBrowserFile(file) {
   setDocumentText(await file.text());
-  updateTextStats();
   registerLoadedDocument(getDocumentText(), { filename: file.name || "" });
   scheduleAnalyzeAfterPaint({
     loadingMessage: t("status.analyzingNamed", { name: file.name || t("common.inputFile") }),
@@ -530,7 +527,6 @@ export async function revertToLoadedDocument() {
     return;
   }
   setDocumentText(state.loadedText);
-  updateTextStats();
   markDocumentChanged();
   scheduleAnalyzeAfterPaint({
     queuedMessage: t("status.revertedQueued"),

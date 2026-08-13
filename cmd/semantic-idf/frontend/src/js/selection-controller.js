@@ -356,11 +356,6 @@ export function createSelectionController(dependencies = {}) {
     });
   }
 
-  async function revealSelectionInSemantic(rawOptions = {}) {
-    const options = optionsFor("reveal", { ...rawOptions, recordHistory: false });
-    return inTransaction(options, () => revealSemanticWithinTransaction(currentSemanticSelection(), options));
-  }
-
   async function openSelectionInView(view, rawOptions = {}) {
     const normalizedView = String(view || "").trim().toLowerCase();
     if (!normalizedView) {
@@ -745,7 +740,6 @@ export function createSelectionController(dependencies = {}) {
     hoverSemanticEntity,
     clearSemanticHover,
     clearSemanticSelection,
-    revealSelectionInSemantic,
     openSelectionInView,
     revealSelectionSource,
     currentSemanticSelection,
@@ -768,7 +762,6 @@ export const selectSemanticEntity = (...args) => configuredController.selectSema
 export const hoverSemanticEntity = (...args) => configuredController.hoverSemanticEntity(...args);
 export const clearSemanticHover = (...args) => configuredController.clearSemanticHover(...args);
 export const clearSemanticSelection = (...args) => configuredController.clearSemanticSelection(...args);
-export const revealSelectionInSemantic = (...args) => configuredController.revealSelectionInSemantic(...args);
 export const openSelectionInView = (...args) => configuredController.openSelectionInView(...args);
 export const revealSelectionSource = (...args) => configuredController.revealSelectionSource(...args);
 export const currentSemanticSelection = (...args) => configuredController.currentSemanticSelection(...args);
