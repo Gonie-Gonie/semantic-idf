@@ -189,7 +189,6 @@ export function renderEmpty() {
   if (elements.simulationRunButton) {
     renderSimulation();
   }
-  elements.topologyStats.textContent = t("topology.stats", { zones: 0, surfaces: 0, windows: 0 });
   elements.topology3DCanvasHost.innerHTML = `<div class="empty">${t("topology.noGeometry")}</div>`;
   elements.topologyPlan.innerHTML = "";
   elements.topologyDetails.removeAttribute("aria-labelledby");
@@ -202,7 +201,6 @@ export function renderEmpty() {
 
 export function renderDeferredTopology(geometry) {
   if (!state.geometryReady && state.report) {
-    elements.topologyStats.textContent = t("topology.pending");
     elements.topology3DCanvasHost.innerHTML = `<div class="empty status-loading">${t("topology.running")}</div>`;
     elements.topologyPlan.innerHTML = "";
     elements.topologyDetails.removeAttribute("aria-labelledby");
@@ -210,14 +208,8 @@ export function renderDeferredTopology(geometry) {
     return;
   }
   if (!geometry) {
-    elements.topologyStats.textContent = t("topology.stats", { zones: 0, surfaces: 0, windows: 0 });
     return;
   }
-  elements.topologyStats.textContent = t("topology.stats", {
-    zones: geometry.zoneCount || 0,
-    surfaces: geometry.surfaceCount || 0,
-    windows: geometry.windowCount || 0,
-  });
   elements.topology3DCanvasHost.innerHTML = `<div class="empty">${t("topology.openToRender")}</div>`;
   elements.topologyPlan.innerHTML = "";
   elements.topologyDetails.removeAttribute("aria-labelledby");

@@ -8,20 +8,12 @@
   gap: 8px;
 }
 
-.topology-head > #topologyStats {
-  flex: 0 0 auto;
-  display: block;
-  margin-top: 0;
-  color: var(--muted);
-  font-size: 12px;
-}
-
 .topology-tools {
   width: auto;
   min-width: 0;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: flex-start;
   gap: 8px;
   flex: 1 1 auto;
   flex-wrap: nowrap;
@@ -57,6 +49,11 @@
   flex: 0 0 auto;
   flex-wrap: nowrap;
   white-space: nowrap;
+}
+
+.topology-control-group[hidden],
+.thermal-topology-controls[hidden] {
+  display: none !important;
 }
 
 .topology-select-control {

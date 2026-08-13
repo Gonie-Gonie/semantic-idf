@@ -47,7 +47,7 @@ func TestTOPO280To285IntegratedBrowserFlows(t *testing.T) {
 	if !strings.Contains(document, `data-topology-integrated-status="passed"`) {
 		t.Fatalf("integrated thermal topology browser flows did not pass:\n%s", document)
 	}
-	for _, signal := range []string{`"topo280":true`, `"topo281":true`, `"topo282":true`, `"topo283":true`, `"topo284":true`, `"topo285":true`, `"singleDetailsHost":true`, `"networkDetailsBelow":true`, `"sameZoneDetails":true`, `"selectionPersists":true`, `"backendCalls":0`} {
+	for _, signal := range []string{`"topo280":true`, `"topo281":true`, `"topo282":true`, `"topo283":true`, `"topo284":true`, `"topo285":true`, `"singleDetailsHost":true`, `"networkDetailsBelow":true`, `"sameZoneDetails":true`, `"modeSpecificControls":true`, `"selectionPersists":true`, `"backendCalls":0`} {
 		if !strings.Contains(document, signal) {
 			t.Fatalf("integrated thermal topology result is missing %s:\n%s", signal, document)
 		}
@@ -55,20 +55,34 @@ func TestTOPO280To285IntegratedBrowserFlows(t *testing.T) {
 }
 
 const thermalTopologyIntegratedHarnessHTML = `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><title>Thermal topology integrated acceptance</title></head>
+<html lang="en"><head><meta charset="utf-8"><title>Thermal topology integrated acceptance</title><link rel="stylesheet" href="/src/styles/topology.css"></head>
 <body data-topology-integrated-status="pending">
-<div id="topologyStats"></div>
 <button data-topology-mode="3d"></button><button data-topology-mode="plan"></button><button data-topology-mode="thermal"></button>
 <label id="topologyStoryControl"><select id="topologyStorySelect"></select></label>
-<div id="topologySpatialControls"><input id="topologyShowZones" type="checkbox" checked><input id="topologyShowSurfaces" type="checkbox" checked><input id="topologyShowOpenings" type="checkbox" checked></div>
-<div id="thermalTopologyControls"></div>
-<div id="topologyViewport"><div id="topology3DCanvasHost"></div><svg id="topologyPlan"></svg><div id="thermalTopologyView"><div id="thermalTopologyGraph" style="width:900px;height:600px"></div></div></div>
-<div id="topologyDetailsSplitter"></div><section id="topologyDetails"></section>
+<div id="topologySpatialControls" class="topology-control-group topology-visibility-controls"><input id="topologyShowZones" type="checkbox" checked><input id="topologyShowSurfaces" type="checkbox" checked><input id="topologyShowOpenings" type="checkbox" checked></div>
+<div id="thermalTopologyControls" class="thermal-topology-controls" hidden>
 <select id="thermalTopologyMetric"><option value="topology">topology</option><option value="area">area</option><option value="ua">ua</option><option value="exposure">exposure</option><option value="qa">qa</option><option value="air">air</option></select>
 <select id="thermalTopologyLayout"><option value="spatial">spatial</option><option value="network">network</option></select>
+</div>
+<div id="topologyViewport"><div id="topology3DCanvasHost"></div><svg id="topologyPlan"></svg><div id="thermalTopologyView"><div id="thermalTopologyGraph" style="width:900px;height:600px"></div></div></div>
+<div id="topologyDetailsSplitter"></div><section id="topologyDetails"></section>
 <pre id="result">pending</pre>
 <script type="module">
 const assert = (condition, message) => { if (!condition) throw new Error(message); };
+const isRendered = (element) => Boolean(element)
+  && !element.hidden
+  && getComputedStyle(element).display !== "none"
+  && element.getClientRects().length > 0;
+const modeControlsAreExclusive = (spatialExpected) => {
+  const spatialGroup = document.getElementById("topologySpatialControls");
+  const networkGroup = document.getElementById("thermalTopologyControls");
+  const spatialInputs = [...spatialGroup.querySelectorAll("input")];
+  const networkSelects = [...networkGroup.querySelectorAll("select")];
+  return isRendered(spatialGroup) === spatialExpected
+    && isRendered(networkGroup) === !spatialExpected
+    && spatialInputs.every((input) => isRendered(input) === spatialExpected)
+    && networkSelects.every((select) => isRendered(select) === !spatialExpected);
+};
 const detailTableRows = () => new Map([...document.querySelectorAll("#topologyDetails .thermal-detail-table tbody tr")].map((row) => {
   const cells = [...row.querySelectorAll("th,td")].map((cell) => cell.textContent.trim());
   return [cells[0], {value:cells[1],unit:cells[2]}];
@@ -173,14 +187,18 @@ try {
   const networkDetailsBelow=Boolean(document.getElementById('topologyViewport').compareDocumentPosition(detailsHost)&Node.DOCUMENT_POSITION_FOLLOWING)&&richConnectionDetails&&reciprocalValidated;
   select("thermal_connection","connection:pair");render();
   const sharedConnectionDetails=detailsHost.innerHTML;
+  topologyView.setTopologyMode("3d");
+  await new Promise((resolve)=>setTimeout(resolve,0));
+  const threeDControlsVisible=modeControlsAreExclusive(true);
   topologyView.setTopologyMode("plan");
   await new Promise((resolve)=>setTimeout(resolve,0));
-  const planControlsVisible=!document.getElementById('topologySpatialControls').hidden&&document.getElementById('thermalTopologyControls').hidden;
+  const planControlsVisible=modeControlsAreExclusive(true);
   const planDetailsPersist=detailsHost.innerHTML===sharedConnectionDetails&&planControlsVisible;
   topologyView.setTopologyMode("thermal");
   await new Promise((resolve)=>setTimeout(resolve,0));
-  const networkControlsVisible=document.getElementById('topologySpatialControls').hidden&&!document.getElementById('thermalTopologyControls').hidden;
-  const selectionPersists=planDetailsPersist&&networkControlsVisible&&detailsHost.innerHTML===sharedConnectionDetails&&state.selectedTopologyEntityKind==="thermal_connection"&&state.selectedTopologyEntityId==="connection:pair"&&state.thermalTopologySelectedEntityKind==="thermal_connection"&&state.thermalTopologySelectedEntityId==="connection:pair";
+  const networkControlsVisible=modeControlsAreExclusive(false);
+  const modeSpecificControls=threeDControlsVisible&&planControlsVisible&&networkControlsVisible;
+  const selectionPersists=planDetailsPersist&&modeSpecificControls&&detailsHost.innerHTML===sharedConnectionDetails&&state.selectedTopologyEntityKind==="thermal_connection"&&state.selectedTopologyEntityId==="connection:pair"&&state.thermalTopologySelectedEntityKind==="thermal_connection"&&state.thermalTopologySelectedEntityId==="connection:pair";
   select("zone","zone:a");
   topologyView.setTopologyMode("plan");
   const zonePlanDetails=detailsHost.innerHTML;
@@ -224,8 +242,8 @@ try {
   const baselineArea=4,compareArea=6,delta=compareArea-baselineArea,percent=delta/baselineArea*100;
   const topo285=state.thermalTopologyMetric==='area'&&state.thermalTopologySelectedEntityId==='connection:pair'&&state.thermalTopologyPanX===17&&state.thermalTopologyScale===1.4&&delta===2&&percent===50&&backendCalls===0;
 
-  assert(topo280&&topo281&&topo282&&topo283&&topo284&&topo285&&singleDetailsHost&&networkDetailsBelow&&sameZoneDetails&&selectionPersists,JSON.stringify({topo280,topo281,topo282,topo283,topo284,topo285,singleDetailsHost,networkDetailsBelow,sameZoneDetails,selectionPersists}));
-  document.getElementById('result').textContent=JSON.stringify({topo280,topo281,topo282,topo283,topo284,topo285,singleDetailsHost,networkDetailsBelow,sameZoneDetails,selectionPersists,backendCalls});
+  assert(topo280&&topo281&&topo282&&topo283&&topo284&&topo285&&singleDetailsHost&&networkDetailsBelow&&sameZoneDetails&&modeSpecificControls&&selectionPersists,JSON.stringify({topo280,topo281,topo282,topo283,topo284,topo285,singleDetailsHost,networkDetailsBelow,sameZoneDetails,modeSpecificControls,selectionPersists}));
+  document.getElementById('result').textContent=JSON.stringify({topo280,topo281,topo282,topo283,topo284,topo285,singleDetailsHost,networkDetailsBelow,sameZoneDetails,modeSpecificControls,selectionPersists,backendCalls});
   document.body.dataset.topologyIntegratedStatus='passed';
 } catch(error) {
   document.getElementById('result').textContent=error.stack||String(error);

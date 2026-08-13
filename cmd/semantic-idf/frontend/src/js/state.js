@@ -374,7 +374,6 @@ export const elements = {
   metricCategories: document.querySelector("#metricCategories"),
   exportMetricsJSONButton: document.querySelector("#exportMetricsJSONButton"),
   exportMetricsCSVButton: document.querySelector("#exportMetricsCSVButton"),
-  topologyStats: document.querySelector("#topologyStats"),
   topologyViewport: document.querySelector("#topologyViewport"),
   topologyBody: document.querySelector(".topology-body"),
   topologyDetailsSplitter: document.querySelector("#topologyDetailsSplitter"),

@@ -182,6 +182,23 @@ func TestTopologyThermalRendererIsSplitAndLazyLoaded(t *testing.T) {
 
 func TestTopologyToolbarSeparatesModeSpecificControls(t *testing.T) {
 	index := readTestFile(t, "frontend/src/index.html")
+	if strings.Contains(index, `id="topologyStats"`) {
+		t.Fatal("Topology toolbar must not display zone, surface, or window counts")
+	}
+	for _, file := range []string{
+		"frontend/src/js/state.js",
+		"frontend/src/js/topology-loader.js",
+		"frontend/src/js/views/analysis-views.js",
+		"frontend/src/js/views/topology-view.js",
+		"frontend/src/styles/topology.css",
+	} {
+		if body := readTestFile(t, file); strings.Contains(body, "topologyStats") {
+			t.Fatalf("removed Topology count UI is still referenced by %s", file)
+		}
+	}
+	if translations := readTestFile(t, "frontend/src/js/i18n.js"); strings.Contains(translations, `"topology.stats"`) {
+		t.Fatal("removed Topology count UI retains its translation key")
+	}
 	for _, required := range []string{
 		`id="topologyStoryControl"`,
 		`id="topologyStorySelect"`,
@@ -248,9 +265,9 @@ func TestTopologyToolbarSeparatesModeSpecificControls(t *testing.T) {
 	}
 
 	styles := readTestFile(t, "frontend/src/styles/topology.css")
-	head := sliceBetween(styles, ".topology-head {", ".topology-head > #topologyStats")
+	head := sliceBetween(styles, ".topology-head {", ".topology-tools {")
 	if !strings.Contains(head, "display: flex") {
-		t.Fatal("Topology stats and controls must share one toolbar row")
+		t.Fatal("Topology controls must use one toolbar row")
 	}
 	tools := sliceBetween(styles, ".topology-tools {", ".topology-control-group")
 	if !strings.Contains(tools, "flex-wrap: nowrap") {
@@ -259,6 +276,12 @@ func TestTopologyToolbarSeparatesModeSpecificControls(t *testing.T) {
 	networkStyles := sliceBetween(styles, ".thermal-topology-controls {", ".topology-select-control")
 	if !strings.Contains(networkStyles, "flex-wrap: nowrap") {
 		t.Fatal("Network Metric/Layout controls must remain on one toolbar row")
+	}
+	hiddenStyles := sliceBetween(styles, ".topology-control-group[hidden]", ".topology-select-control")
+	for _, required := range []string{".thermal-topology-controls[hidden]", "display: none"} {
+		if !strings.Contains(hiddenStyles, required) {
+			t.Fatalf("mode-specific Topology controls can override the hidden state; missing %q", required)
+		}
 	}
 
 }

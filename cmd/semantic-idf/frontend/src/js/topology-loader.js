@@ -12,20 +12,11 @@ import { isThermalTopologyTargetKind, thermalTopologyTargetExists } from "./ther
 let topologyModule = null;
 let topologyModulePromise = null;
 
-function topologyStatsLabel(geometry) {
-  return t("topology.stats", {
-    zones: geometry?.zoneCount || 0,
-    surfaces: geometry?.surfaceCount || 0,
-    windows: geometry?.windowCount || 0,
-  });
-}
-
 function renderTopologyPlaceholder(geometry) {
-  if (!elements.topologyStats || !elements.topology3DCanvasHost) {
+  if (!elements.topology3DCanvasHost) {
     return;
   }
   if (!state.geometryReady && state.report) {
-    elements.topologyStats.textContent = t("topology.pending");
     elements.topology3DCanvasHost.innerHTML = `<div class="empty status-loading">${t("topology.running")}</div>`;
     elements.topologyPlan.innerHTML = "";
     elements.thermalTopologyGraph.innerHTML = "";
@@ -33,7 +24,6 @@ function renderTopologyPlaceholder(geometry) {
     elements.topologyDetails.innerHTML = `<div class="empty">${t("topology.detailsReadySoon")}</div>`;
     return;
   }
-  elements.topologyStats.textContent = topologyStatsLabel(geometry);
   if (!geometry) {
     elements.topology3DCanvasHost.innerHTML = `<div class="empty">${t("topology.noGeometry")}</div>`;
     elements.topologyPlan.innerHTML = "";

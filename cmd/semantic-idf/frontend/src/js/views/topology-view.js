@@ -67,7 +67,7 @@ window.addEventListener("idfAnalyzer:semanticHoverChanged", (event) => {
 });
 
 export function renderTopologyView(geometry = state.report?.geometry) {
-  if (!elements.topologyStats || !elements.topology3DCanvasHost) {
+  if (!elements.topology3DCanvasHost) {
     return;
   }
   if (!geometry) {
@@ -77,11 +77,6 @@ export function renderTopologyView(geometry = state.report?.geometry) {
 
   ensureSelectedStory(geometry);
   syncTopologyVisibilityControls();
-  elements.topologyStats.textContent = t("topology.stats", {
-    zones: geometry.zoneCount || 0,
-    surfaces: geometry.surfaceCount || 0,
-    windows: geometry.windowCount || 0,
-  });
   renderStoryOptions(geometry);
   updateModeVisibility();
   if (state.topologyMode === "plan") {
@@ -270,7 +265,6 @@ export function revealThermalTargetInTopology(kind, id, mode = "3d") {
 }
 
 function renderEmptyTopology() {
-  elements.topologyStats.textContent = t("topology.stats", { zones: 0, surfaces: 0, windows: 0 });
   elements.topologyStorySelect.innerHTML = "";
   elements.topology3DCanvasHost.innerHTML = `<div class="empty">${t("topology.noGeometry")}</div>`;
   elements.topologyPlan.innerHTML = "";

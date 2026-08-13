@@ -57,7 +57,7 @@ func TestResultTabsAreTheOnlyTopLevelPanelNames(t *testing.T) {
 
 func TestTopologyHeaderUsesSingleDesktopToolbarRow(t *testing.T) {
 	styles := readTestFile(t, "frontend/src/styles/topology.css")
-	head := sliceBetween(styles, ".topology-head {", ".topology-head > #topologyStats")
+	head := sliceBetween(styles, ".topology-head {", ".topology-tools {")
 	for _, required := range []string{"display: flex", "align-items: center"} {
 		if !strings.Contains(head, required) {
 			t.Fatalf("Topology header is missing single-row layout rule %q", required)
