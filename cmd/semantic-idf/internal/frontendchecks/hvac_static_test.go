@@ -449,6 +449,7 @@ func TestFrontendHVACGraphControlsUseRecoverableDropdownsAndFixedFocusedFit(t *t
 	view := readTestFile(t, "frontend/src/js/views/hvac-views.js")
 	styles := readTestFile(t, "frontend/src/styles/hvac.css")
 	quickFilters := sliceBetween(view, "function renderHVACQuickFilters", "function servicePathMatchesQuickFilters")
+	filterStyles := sliceBetween(styles, ".hvac-filter-field {", ".hvac-loop-meta span")
 
 	for _, required := range []string{
 		`<select`,
@@ -517,6 +518,16 @@ func TestFrontendHVACGraphControlsUseRecoverableDropdownsAndFixedFocusedFit(t *t
 	} {
 		if strings.Contains(styles, removed) {
 			t.Fatalf("HVAC stylesheet retains a removed scope, preset, or long filter-row selector %q", removed)
+		}
+	}
+	for _, required := range []string{
+		"width: 136px",
+		`select[data-hvac-filter-kind="service"]`,
+		"width: 128px",
+		"@container hvac-main (max-width: 260px)",
+	} {
+		if !strings.Contains(filterStyles, required) {
+			t.Fatalf("HVAC dropdown sizing must stay compact while retaining a narrow-container fallback: missing %q", required)
 		}
 	}
 }

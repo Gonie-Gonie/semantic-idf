@@ -1219,11 +1219,11 @@
 }
 
 .hvac-filter-field {
-  min-width: min(150px, 100%);
+  min-width: 0;
   display: inline-grid;
-  grid-template-columns: max-content minmax(0, 1fr);
+  grid-template-columns: max-content auto;
   align-items: center;
-  flex: 0 1 190px;
+  flex: 0 1 auto;
   gap: 5px;
   color: var(--muted);
   font-size: 11px;
@@ -1235,7 +1235,7 @@
 }
 
 .hvac-filter-field select {
-  width: 100%;
+  width: 136px;
   min-width: 0;
   min-height: 34px;
   border: 1px solid var(--line);
@@ -1243,6 +1243,22 @@
   background: var(--control);
   color: var(--ink);
   padding: 0 9px;
+}
+
+.hvac-filter-field select[data-hvac-filter-kind="service"] {
+  width: 128px;
+}
+
+@container hvac-main (max-width: 260px) {
+  .hvac-filter-field {
+    width: 100%;
+    grid-template-columns: 1fr;
+  }
+
+  .hvac-filter-field select,
+  .hvac-filter-field select[data-hvac-filter-kind="service"] {
+    width: 100%;
+  }
 }
 
 .hvac-loop-meta span,

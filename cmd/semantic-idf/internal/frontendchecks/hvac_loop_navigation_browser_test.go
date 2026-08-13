@@ -83,6 +83,7 @@ func TestHVACLoopNavigationBrowserHarness(t *testing.T) {
 		`"forwardRestoresOther":true`,
 		`"zoneServicesReturn":true`,
 		`"dropdownFilters":true`,
+		`"compactDropdownWidths":true`,
 		`"wrongFilterRecoverable":true`,
 		`"fixedFocusedView":true`,
 		`"legacyGraphChoicesAbsent":true`,
@@ -423,6 +424,11 @@ const hvacLoopNavigationHarnessHTML = `<!doctype html>
         && initialFilters.map((select) => select.dataset.hvacFilterKind).join("|") === "service|path|medium"
         && initialFilters.every((select) => Boolean(select.querySelector('option[value="all"]')))
         && initialFilters.every((select) => Boolean(select.getAttribute("aria-label") || select.labels.length));
+      const initialFilterWidths = initialFilters.map((select) => select.getBoundingClientRect().width);
+      const compactDropdownWidths = initialFilterWidths.length === 3
+        && initialFilterWidths[0] <= 130
+        && initialFilterWidths.slice(1).every((width) => width <= 138)
+        && initialFilterWidths.every((width) => width >= 110);
       const legacyGraphChoicesAbsent = !document.querySelector("#hvacGraph [data-hvac-graph-scale], #hvacGraph .hvac-graph-scale, #hvacGraph [data-hvac-graph-scope], #hvacGraph .hvac-graph-scope");
 
       await changeSelect(document.querySelector('#hvacGraph select[data-hvac-filter-kind="service"]'), "heating");
@@ -518,6 +524,7 @@ const hvacLoopNavigationHarnessHTML = `<!doctype html>
         forwardRestoresOther,
         zoneServicesReturn,
         dropdownFilters,
+        compactDropdownWidths,
         wrongFilterRecoverable,
         fixedFocusedView,
         legacyGraphChoicesAbsent,
