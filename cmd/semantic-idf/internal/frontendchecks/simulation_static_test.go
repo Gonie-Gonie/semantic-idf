@@ -297,6 +297,28 @@ func TestFrontendSimulationSeriesUsesGroupedVariablePickerAndDualRange(t *testin
 	}
 }
 
+func TestFrontendSimulationRendersOnlyTheActiveResultView(t *testing.T) {
+	view := readTestFile(t, "frontend/src/js/views/simulation-views.js")
+	render := sliceBetween(view, "export function renderSimulation()", "function renderSimulationEmpty")
+	for _, required := range []string{
+		"renderActiveSimulationResultView(result)",
+		`case "zone_heat_flow":`,
+		`case "hvac_loops":`,
+		`case "comfort":`,
+		`case "series":`,
+	} {
+		if !strings.Contains(render, required) {
+			t.Fatalf("Simulation completion must lazily render only the active result view: missing %q", required)
+		}
+	}
+	completion := sliceBetween(render, "const result = state.simulationResult", "function renderActiveSimulationResultView")
+	for _, forbidden := range []string{"renderSimulationHVACLoops(result)", "renderSimulationComfort(result)", "renderSimulationHeatFlow()", "renderSimulationChart()"} {
+		if strings.Contains(completion, forbidden) {
+			t.Fatalf("Simulation completion eagerly renders hidden result content %q", forbidden)
+		}
+	}
+}
+
 func TestFrontendSimulationUsesSimplifiedDefaultsAndAutomaticEnergyPlus(t *testing.T) {
 	markup := readTestFile(t, "frontend/src/index.html")
 	for _, removed := range []string{

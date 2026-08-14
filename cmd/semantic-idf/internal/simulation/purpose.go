@@ -134,7 +134,6 @@ type PurposeResultBundle struct {
 	HVACLoops                []HVACLoopRunResult             `json:"hvacLoops,omitempty"`
 	Comfort                  ComfortResult                   `json:"comfort,omitempty"`
 	Integrity                IntegrityResult                 `json:"integrity,omitempty"`
-	Series                   []SimulationSeries              `json:"series,omitempty"`
 	Completeness             []PurposeCompletenessItem       `json:"completeness,omitempty"`
 }
 
@@ -573,9 +572,7 @@ func PurposeOutputSignature(objectType string, fields []idf.OutputFieldValue) st
 
 func BuildPurposeResultBundle(result *SimulationRunResult, request SimulationPurposeRequest) PurposeResultBundle {
 	request = NormalizeSimulationPurposeRequest(&request)
-	bundle := PurposeResultBundle{
-		Series: append([]SimulationSeries(nil), result.Series...),
-	}
+	bundle := PurposeResultBundle{}
 	for _, purposeID := range request.Purposes {
 		switch purposeID {
 		case SimulationPurposeBasicEnergy:

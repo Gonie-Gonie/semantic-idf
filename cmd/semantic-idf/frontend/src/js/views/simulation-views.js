@@ -546,6 +546,7 @@ export function initializeSimulationControls() {
       state.simulationActiveResultView = button.dataset.simulationResultViewButton || "energy";
       renderSimulationResultTabs(state.simulationResult);
       toggleSimulationResultSections();
+      renderActiveSimulationResultView(state.simulationResult);
     });
   });
   elements.simulationEnergyDashboard?.addEventListener("click", handleSimulationSeriesInspectClick);
@@ -1104,13 +1105,28 @@ export function renderSimulation() {
   const availability = simulationResultViewAvailability(result);
   ensureActiveSimulationResultView(result, availability);
   renderSimulationResultTabs(result, availability);
-  renderSimulationEnergyDashboard(result);
-  renderSimulationHVACLoops(result);
-  renderSimulationComfort(result);
-  renderSimulationHeatFlow();
-  renderSimulationSeriesSelect(result);
-  renderSimulationChart();
   toggleSimulationResultSections();
+  renderActiveSimulationResultView(result);
+}
+
+function renderActiveSimulationResultView(result) {
+  switch (state.simulationActiveResultView) {
+    case "zone_heat_flow":
+      renderSimulationHeatFlow();
+      break;
+    case "hvac_loops":
+      renderSimulationHVACLoops(result);
+      break;
+    case "comfort":
+      renderSimulationComfort(result);
+      break;
+    case "series":
+      renderSimulationSeriesSelect(result);
+      renderSimulationChart();
+      break;
+    default:
+      renderSimulationEnergyDashboard(result);
+  }
 }
 
 function renderSimulationEmpty({ controlsReady = false, blockingIssue: preparedBlockingIssue } = {}) {
