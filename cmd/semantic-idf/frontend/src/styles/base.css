@@ -610,14 +610,6 @@ button:disabled:hover {
   background: var(--surface-3);
 }
 
-.semantic-toolbar {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 8px;
-}
-
 .semantic-context-bar {
   display: grid;
   grid-template-columns: minmax(180px, 1.25fr) minmax(160px, 1fr) minmax(140px, 0.9fr) auto;
@@ -1168,13 +1160,6 @@ button:disabled:hover {
 .json-view {
   flex: 1 1 auto;
   padding: 12px;
-}
-
-.json-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 10px;
 }
 
 .json-groups {

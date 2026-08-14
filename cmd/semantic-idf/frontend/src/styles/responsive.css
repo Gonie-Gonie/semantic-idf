@@ -246,14 +246,9 @@
     width: 100%;
   }
 
-  .semantic-toolbar,
   .semantic-context-bar {
     align-items: stretch;
     grid-template-columns: minmax(0, 1fr);
-  }
-
-  .semantic-toolbar {
-    flex-direction: column;
   }
 
   .semantic-context-bar button,

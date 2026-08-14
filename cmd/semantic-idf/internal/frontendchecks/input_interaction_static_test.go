@@ -91,7 +91,7 @@ func TestSemanticViewUsesFixedDetailedAllPresentation(t *testing.T) {
 			t.Fatalf("fixed Semantic presentation is missing %q", required)
 		}
 	}
-	for _, removed := range []string{"semantic-mode-tabs", "semantic-filter-tabs", "semanticFocusObjectButton", "semanticFixDuplicatesButton"} {
+	for _, removed := range []string{"semantic-mode-tabs", "semantic-filter-tabs", "semanticFocusObjectButton", "semanticFixDuplicatesButton", "semantic-toolbar", "json-meta", "Editable fields"} {
 		if strings.Contains(views, removed) {
 			t.Fatalf("removed Semantic control remains: %q", removed)
 		}

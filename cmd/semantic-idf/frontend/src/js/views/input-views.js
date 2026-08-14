@@ -157,16 +157,8 @@ function renderSemanticView() {
   const keyWidths = semanticKeyWidths(visibleLines);
 
   const mode = semanticProjectionMode();
-  const facet = semanticProjectionFacet();
   elements.semanticEditor.dataset.semanticMode = mode;
   elements.semanticEditor.innerHTML = `
-    <div class="semantic-toolbar">
-      <div class="json-meta">
-        <span class="badge">${escapeHTML(projection.schema || "eplus-semantic/0.1")}</span>
-        <span class="badge">${escapeHTML(semanticModeLabel(mode))}</span>
-        ${facet === "all" ? "" : `<span class="badge">${escapeHTML(semanticFacetLabel(facet))}</span>`}
-      </div>
-    </div>
     <div id="semanticSelectionContext">${renderSemanticSelectionContext(currentSemanticSelection())}</div>
     ${renderSemanticTemporaryReveal()}
     ${renderSemanticWarnings(projection)}
@@ -252,32 +244,6 @@ function semanticProjectionMode() {
 
 function semanticProjectionFacet() {
   return "all";
-}
-
-function semanticModeLabel(mode) {
-  switch (mode) {
-    case "source":
-      return "Source/debug";
-    case "detailed":
-      return "Detailed";
-    default:
-      return "Basic";
-  }
-}
-
-function semanticFacetLabel(facet) {
-  switch (facet) {
-    case "field":
-      return "Source fields";
-    case "editable":
-      return "Editable";
-    case "derived":
-      return "Derived";
-    case "evidence":
-      return "Evidence";
-    default:
-      return "All";
-  }
 }
 
 function semanticLinesForFacet(lines, facet) {
@@ -1348,13 +1314,8 @@ function renderFormattedTextView() {
     return;
   }
 
-  const formatLabel = state.model?.format || "unknown";
   const groups = groupedReportObjects();
   elements.textObjectView.innerHTML = `
-    <div class="json-meta">
-      <span class="badge">${escapeHTML(formatLabel)}</span>
-      <span class="badge">${escapeHTML(t("input.editableFields"))}</span>
-    </div>
     ${
       groups.length
         ? `<div class="json-groups">
@@ -1386,9 +1347,6 @@ function renderJSONView() {
   const visibleObjects = filterInputObjects(model.objects);
 
   elements.jsonStructuredView.innerHTML = `
-    <div class="json-meta">
-      <span class="badge">${escapeHTML(model.format || "unknown")}</span>
-    </div>
     <div class="json-tree primary-tree json-object-tree">${renderJSONObjectsTree(visibleObjects)}</div>
   `;
   bindJSONEditorControls();
