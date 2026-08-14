@@ -356,7 +356,7 @@ export const elements = {
   simulationHeatFlow: document.querySelector("#simulationHeatFlow"),
   simulationSeriesStats: document.querySelector("#simulationSeriesStats"),
   simulationSeriesSelect: document.querySelector("#simulationSeriesSelect"),
-  simulationSeriesGroup: document.querySelector("#simulationSeriesGroup"),
+  simulationSeriesRange: document.querySelector("#simulationSeriesRange"),
   simulationSeriesRangeAll: document.querySelector("#simulationSeriesRangeAll"),
   simulationSeriesRangeStart: document.querySelector("#simulationSeriesRangeStart"),
   simulationSeriesRangeEnd: document.querySelector("#simulationSeriesRangeEnd"),

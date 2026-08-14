@@ -262,6 +262,37 @@ func TestFrontendSimulationOmitsOutputFilesView(t *testing.T) {
 	}
 }
 
+func TestFrontendSimulationSeriesUsesGroupedVariablePickerAndDualRange(t *testing.T) {
+	index := readTestFile(t, "frontend/src/index.html")
+	state := readTestFile(t, "frontend/src/js/state.js")
+	view := readTestFile(t, "frontend/src/js/views/simulation-views.js")
+	styles := readTestFile(t, "frontend/src/styles/simulation.css")
+	series := sliceBetween(index, `data-simulation-result-view="series"`, `</section>`)
+	for _, forbidden := range []string{`id="simulationSeriesGroup"`, `<span>Start</span>`, `<span>End</span>`} {
+		if strings.Contains(series, forbidden) {
+			t.Fatalf("Simulation Series still exposes the old split control %q", forbidden)
+		}
+	}
+	for _, required := range []string{
+		`id="simulationSeriesRange"`,
+		`id="simulationSeriesRangeStart"`,
+		`id="simulationSeriesRangeEnd"`,
+		`simulationSeriesRange: document.querySelector("#simulationSeriesRange")`,
+		`<optgroup label="${escapeHTML(group.label)}">`,
+		`${escapeHTML(item.column)}</option>`,
+		`--series-range-start`,
+		`--series-range-end`,
+		`.simulation-series-range input[type="range"]`,
+	} {
+		if !strings.Contains(index+state+view+styles, required) {
+			t.Fatalf("Simulation Series grouped picker or dual range is missing %q", required)
+		}
+	}
+	if strings.Contains(view, `${escapeHTML(item.file)} - ${escapeHTML(item.column)}`) {
+		t.Fatal("Simulation Series picker must group by category and label options by variable name, not source file")
+	}
+}
+
 func TestFrontendSimulationUsesSimplifiedDefaultsAndAutomaticEnergyPlus(t *testing.T) {
 	markup := readTestFile(t, "frontend/src/index.html")
 	for _, removed := range []string{

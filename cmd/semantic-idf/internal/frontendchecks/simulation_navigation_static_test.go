@@ -155,7 +155,6 @@ func TestSimulationPanelAdapterRevealsWithoutAnalysisAndRestoresFilters(t *testi
 	for _, materializationTerm := range []string{
 		"materializeSimulationEnergyNavigationTarget",
 		"revealNodeIDs",
-		"seriesID(item) === revealSeriesID",
 		"revealStoryIDs",
 	} {
 		if !strings.Contains(content, materializationTerm) {

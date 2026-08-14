@@ -557,14 +557,6 @@ export function initializeSimulationControls() {
   bindHeatFlowInteractions();
   elements.simulationRunButton?.addEventListener("click", () => runCurrentSimulation({ silent: false }));
   elements.simulationWeatherSelect?.addEventListener("change", () => renderSimulation());
-  elements.simulationSeriesGroup?.addEventListener("change", () => {
-    state.simulationSeriesGroup = elements.simulationSeriesGroup.value || "all";
-    state.simulationSelectedSeries = "";
-    state.simulationSeriesRangeStart = 0;
-    state.simulationSeriesRangeEnd = -1;
-    renderSimulationSeriesSelect(state.simulationResult || {});
-    renderSimulationChart();
-  });
   elements.simulationSeriesSelect?.addEventListener("change", () => {
     state.simulationSelectedSeries = elements.simulationSeriesSelect.value || "";
     state.simulationSeriesRangeStart = 0;
@@ -6316,15 +6308,7 @@ function outputObjectIsMeter(objectType) {
 
 function renderSimulationSeriesSelect(result) {
   const series = safeSimulationSeriesList(result?.series);
-  const groupOptions = simulationSeriesGroupOptions(series);
-  const selectedGroup = groupOptions.some((option) => option.value === state.simulationSeriesGroup) ? state.simulationSeriesGroup : "all";
-  state.simulationSeriesGroup = selectedGroup;
-  if (elements.simulationSeriesGroup) {
-    elements.simulationSeriesGroup.disabled = !series.length;
-    elements.simulationSeriesGroup.innerHTML = groupOptions
-      .map((option) => `<option value="${escapeHTML(option.value)}" ${option.value === selectedGroup ? "selected" : ""}>${escapeHTML(option.label)}</option>`)
-      .join("");
-  }
+  state.simulationSeriesGroup = "all";
   if (!series.length) {
     state.simulationSelectedSeries = "";
     elements.simulationSeriesSelect.innerHTML = `<option value="">${escapeHTML(t("simulation.noSeries", {}, "No SQL/CSV series"))}</option>`;
@@ -6334,46 +6318,30 @@ function renderSimulationSeriesSelect(result) {
     }
     return;
   }
-  const revealSeriesID = simulationNavigationRevealTarget?.resultView === "series"
-    ? String(simulationNavigationRevealTarget.selectedSeries || "")
-    : "";
-  const visibleSeries = selectedGroup === "all"
-    ? series
-    : series.filter((item) => simulationSeriesGroupID(item) === selectedGroup || seriesID(item) === revealSeriesID);
-  if (!visibleSeries.length) {
-    state.simulationSelectedSeries = "";
-    elements.simulationSeriesSelect.innerHTML = `<option value="">${escapeHTML(t("simulation.noSeriesInGroup", {}, "No series in this group"))}</option>`;
-    renderSimulationSeriesRangeControls(null);
-    if (elements.simulationSeriesStats) {
-      elements.simulationSeriesStats.textContent = t("simulation.seriesGroupStats", { shown: 0, total: series.length }, `0 of ${series.length} SQL/CSV series`);
-    }
-    return;
-  }
+  const visibleSeries = series;
   if (!state.simulationSelectedSeries || !visibleSeries.some((item) => seriesID(item) === state.simulationSelectedSeries)) {
     state.simulationSelectedSeries = seriesID(preferredSimulationSeries(visibleSeries) || visibleSeries[0]);
     state.simulationSeriesRangeStart = 0;
     state.simulationSeriesRangeEnd = -1;
   }
-  elements.simulationSeriesSelect.innerHTML = visibleSeries
-    .map((item) => {
-      const id = seriesID(item);
-      return `<option value="${escapeHTML(id)}" ${id === state.simulationSelectedSeries ? "selected" : ""}>${escapeHTML(item.file)} - ${escapeHTML(item.column)}</option>`;
+  elements.simulationSeriesSelect.innerHTML = simulationSeriesGroupOptions(series)
+    .filter((group) => group.value !== "all")
+    .map((group) => {
+      const items = visibleSeries.filter((item) => simulationSeriesGroupID(item) === group.value);
+      if (!items.length) return "";
+      return `<optgroup label="${escapeHTML(group.label)}">${items.map((item) => {
+        const id = seriesID(item);
+        return `<option value="${escapeHTML(id)}" ${id === state.simulationSelectedSeries ? "selected" : ""}>${escapeHTML(item.column)}</option>`;
+      }).join("")}</optgroup>`;
     })
     .join("");
   if (elements.simulationSeriesStats) {
-    elements.simulationSeriesStats.textContent = selectedGroup === "all"
-      ? t("simulation.seriesStats", { count: series.length }, `${series.length} SQL/CSV series`)
-      : t("simulation.seriesGroupStats", { shown: visibleSeries.length, total: series.length }, `${visibleSeries.length} of ${series.length} SQL/CSV series`);
+    elements.simulationSeriesStats.textContent = t("simulation.seriesStats", { count: series.length }, `${series.length} SQL/CSV series`);
   }
 }
 
 function setSimulationSeriesGroupUnavailable() {
-  if (!elements.simulationSeriesGroup) {
-    return;
-  }
   state.simulationSeriesGroup = "all";
-  elements.simulationSeriesGroup.disabled = true;
-  elements.simulationSeriesGroup.innerHTML = `<option value="all">${escapeHTML(t("simulation.seriesAllGroups", {}, "All groups"))}</option>`;
 }
 
 function simulationSeriesGroupOptions(series) {
@@ -6501,6 +6469,11 @@ function renderSimulationSeriesRangeControls(series, visibleRange = null) {
   }
   elements.simulationSeriesRangeStart.value = String(range.start);
   elements.simulationSeriesRangeEnd.value = String(range.end);
+  if (elements.simulationSeriesRange) {
+    const denominator = Math.max(1, maxIndex);
+    elements.simulationSeriesRange.style.setProperty("--series-range-start", `${(range.start / denominator) * 100}%`);
+    elements.simulationSeriesRange.style.setProperty("--series-range-end", `${(range.end / denominator) * 100}%`);
+  }
   if (elements.simulationSeriesRangeAll) {
     elements.simulationSeriesRangeAll.disabled = pointCount <= 0 || (range.start === 0 && range.end === maxIndex);
   }
