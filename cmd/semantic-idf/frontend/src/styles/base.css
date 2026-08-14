@@ -618,47 +618,6 @@ button:disabled:hover {
   margin-bottom: 8px;
 }
 
-.semantic-actions {
-  display: inline-flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 6px;
-}
-
-.semantic-mode-tabs,
-.semantic-filter-tabs {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--surface-3);
-  padding: 2px;
-}
-
-.semantic-mode-tabs button,
-.semantic-filter-tabs button {
-  min-height: 26px;
-  border-color: transparent;
-  background: transparent;
-  padding: 0 8px;
-  font-size: 11px;
-}
-
-.semantic-mode-tabs button:hover,
-.semantic-mode-tabs button.active,
-.semantic-filter-tabs button:hover,
-.semantic-filter-tabs button.active {
-  border-color: var(--teal);
-  background: var(--teal-soft);
-  color: var(--teal-dark);
-}
-
-.semantic-actions button {
-  min-height: 30px;
-  padding: 0 9px;
-}
-
 .semantic-context-bar {
   display: grid;
   grid-template-columns: minmax(180px, 1.25fr) minmax(160px, 1fr) minmax(140px, 0.9fr) auto;
@@ -1216,28 +1175,6 @@ button:disabled:hover {
   flex-wrap: wrap;
   gap: 6px;
   margin-bottom: 10px;
-}
-
-.json-editor-tools {
-  display: flex;
-  justify-content: flex-end;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 8px;
-}
-
-.json-editor-tools input,
-.json-editor-tools select {
-  min-height: 30px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  padding: 0 9px;
-  background: var(--control);
-}
-
-.json-editor-tools button {
-  min-height: 30px;
-  padding: 0 9px;
 }
 
 .json-groups {

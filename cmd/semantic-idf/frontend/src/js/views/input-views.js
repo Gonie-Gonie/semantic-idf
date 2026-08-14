@@ -156,7 +156,6 @@ function renderSemanticView() {
   const visibleLines = semanticVisibleLines(projection.lines, terms);
   const keyWidths = semanticKeyWidths(visibleLines);
 
-  const sourceNameConflicts = projection.sourceNameConflicts || [];
   const mode = semanticProjectionMode();
   const facet = semanticProjectionFacet();
   elements.semanticEditor.dataset.semanticMode = mode;
@@ -166,18 +165,6 @@ function renderSemanticView() {
         <span class="badge">${escapeHTML(projection.schema || "eplus-semantic/0.1")}</span>
         <span class="badge">${escapeHTML(semanticModeLabel(mode))}</span>
         ${facet === "all" ? "" : `<span class="badge">${escapeHTML(semanticFacetLabel(facet))}</span>`}
-      </div>
-      <div class="semantic-actions">
-        <div class="semantic-mode-tabs" role="group" aria-label="Semantic detail level">
-          ${["basic", "detailed", "source"].map((item) => `<button class="${item === mode ? "active" : ""}" data-semantic-mode="${item}" type="button">${escapeHTML(semanticModeLabel(item))}</button>`).join("")}
-        </div>
-        <div class="semantic-filter-tabs" role="group" aria-label="Semantic search facet">
-          ${["all", "field", "editable", "derived", "evidence"].map((item) => `<button class="${item === facet ? "active" : ""}" data-semantic-facet="${item}" type="button">${escapeHTML(semanticFacetLabel(item))}</button>`).join("")}
-        </div>
-        <button id="semanticFocusObjectButton" type="button">${escapeHTML(t("input.focusObject"))}</button>
-        <button id="semanticFixDuplicatesButton" type="button" ${sourceNameConflicts.length ? "" : "disabled"}>
-          ${escapeHTML(t("semantic.fixSourceNameConflicts", { count: sourceNameConflicts.length }, `Fix source name conflicts (${sourceNameConflicts.length})`))}
-        </button>
       </div>
     </div>
     <div id="semanticSelectionContext">${renderSemanticSelectionContext(currentSemanticSelection())}</div>
@@ -260,11 +247,11 @@ function semanticLinesWithTemporaryReveal(allLines, visibleLines) {
 }
 
 function semanticProjectionMode() {
-  return ["basic", "detailed", "source"].includes(state.semanticProjectionMode) ? state.semanticProjectionMode : "basic";
+  return "detailed";
 }
 
 function semanticProjectionFacet() {
-  return ["all", "field", "editable", "derived", "evidence"].includes(state.semanticProjectionFacet) ? state.semanticProjectionFacet : "all";
+  return "all";
 }
 
 function semanticModeLabel(mode) {
@@ -861,42 +848,9 @@ function handleSemanticEditorClick(event) {
   if (!target) {
     return;
   }
-  const modeButton = target.closest("[data-semantic-mode]");
-  if (modeButton) {
-    state.semanticProjectionMode = modeButton.dataset.semanticMode || "basic";
-    renderSemanticView();
-    return;
-  }
-  const facetButton = target.closest("[data-semantic-facet]");
-  if (facetButton) {
-    state.semanticProjectionFacet = facetButton.dataset.semanticFacet || "all";
-    renderSemanticView();
-    return;
-  }
   const sectionButton = target.closest("[data-semantic-section-text]");
   if (sectionButton) {
-    if (semanticProjectionMode() === "basic") {
-      if (!(state.semanticExpandedSectionIds instanceof Set)) {
-        state.semanticExpandedSectionIds = new Set(["project"]);
-      }
-      const sectionId = sectionButton.dataset.semanticSectionId || "";
-      if (state.semanticExpandedSectionIds.has(sectionId)) {
-        state.semanticExpandedSectionIds.delete(sectionId);
-      } else if (sectionId) {
-        state.semanticExpandedSectionIds.add(sectionId);
-      }
-      renderSemanticView();
-    } else {
-      scrollSemanticSectionIntoView(sectionButton.dataset.semanticSectionText || "");
-    }
-    return;
-  }
-  if (target.closest("#semanticFocusObjectButton")) {
-    focusSelectedSemanticObject();
-    return;
-  }
-  if (target.closest("#semanticFixDuplicatesButton")) {
-    applySemanticDuplicateFixes();
+    scrollSemanticSectionIntoView(sectionButton.dataset.semanticSectionText || "");
     return;
   }
   const targetButton = target.closest("[data-semantic-target-view]");
@@ -1435,22 +1389,6 @@ function renderJSONView() {
     <div class="json-meta">
       <span class="badge">${escapeHTML(model.format || "unknown")}</span>
     </div>
-    <div class="json-editor-tools">
-      <select id="jsonCollapseDepth" aria-label="JSON collapse depth">
-        ${[
-          ["1", t("input.typeOnly")],
-          ["2", t("common.object")],
-          ["3", t("common.field")],
-          ["99", t("input.expandAll")],
-        ]
-          .map(
-            ([value, label]) =>
-              `<option value="${value}" ${String(state.jsonCollapseDepth) === value ? "selected" : ""}>${label}</option>`,
-          )
-          .join("")}
-      </select>
-      <button id="jsonFocusObjectButton" type="button">${t("input.focusObject")}</button>
-    </div>
     <div class="json-tree primary-tree json-object-tree">${renderJSONObjectsTree(visibleObjects)}</div>
   `;
   bindJSONEditorControls();
@@ -1473,9 +1411,8 @@ function renderJSONObjectsTree(objects) {
 }
 
 function renderJSONTypeGroup(group, isLastGroup) {
-  const openAttr = state.jsonCollapseDepth >= 1 ? "open" : "";
   return `
-    <details class="json-node json-type-group" data-object-type="${escapeHTML(group.type)}" ${openAttr}>
+    <details class="json-node json-type-group" data-object-type="${escapeHTML(group.type)}" open>
       <summary>
         <span class="json-line"><span class="json-key">${formatJSONKey(group.type)}</span><span class="json-colon">: </span><span class="json-brace">{</span></span>
       </summary>
@@ -1495,9 +1432,8 @@ function renderJSONInstance(object, isLastObject) {
   const objectName = object.name || `${objectType} ${fallbackOrdinal}`;
   const sourceLabel = sourceIndex === "" ? "" : `<span class="row-sub">#${escapeHTML(sourceIndex)}</span>`;
   const selected = String(sourceIndex) === String(state.jsonSelectedObjectIndex);
-  const openAttr = state.jsonCollapseDepth >= 2 || selected ? "open" : "";
   return `
-    <details class="json-node json-instance ${selected ? "selected" : ""}" data-object-index="${escapeHTML(sourceIndex)}" data-object-type="${escapeHTML(objectType)}" ${openAttr}>
+    <details class="json-node json-instance ${selected ? "selected" : ""}" data-object-index="${escapeHTML(sourceIndex)}" data-object-type="${escapeHTML(objectType)}" open>
       <summary class="json-object-summary" data-json-object-index="${escapeHTML(sourceIndex)}" data-object-index="${escapeHTML(sourceIndex)}" data-object-type="${escapeHTML(objectType)}">
         <span class="json-line" title="${escapeHTML(objectName)}"><span class="json-key">${formatJSONKey(objectName)}</span><span class="json-colon">: </span><span class="json-brace">{</span></span>
         <span class="json-summary-meta">
@@ -1534,27 +1470,13 @@ function bindJSONEditorControls() {
   if (jsonEditorControlsBound) {
     return;
   }
-  elements.jsonStructuredView.addEventListener("change", handleJSONEditorChange);
   elements.jsonStructuredView.addEventListener("click", handleJSONEditorClick);
   jsonEditorControlsBound = true;
-}
-
-function handleJSONEditorChange(event) {
-  const select = event.target instanceof Element ? event.target.closest("#jsonCollapseDepth") : null;
-  if (!select) {
-    return;
-  }
-  state.jsonCollapseDepth = Number(select.value);
-  renderJSONView();
 }
 
 function handleJSONEditorClick(event) {
   const target = event.target instanceof Element ? event.target : null;
   if (!target) {
-    return;
-  }
-  if (target.closest("#jsonFocusObjectButton")) {
-    focusSelectedJSONObject();
     return;
   }
   const valueButton = target.closest(".json-value-token");
@@ -1566,33 +1488,6 @@ function handleJSONEditorClick(event) {
   if (summary) {
     state.jsonSelectedObjectIndex = summary.dataset.jsonObjectIndex || "";
   }
-}
-
-function focusSelectedJSONObject() {
-  let target = null;
-  if (state.jsonSelectedObjectIndex !== "") {
-    target = [...elements.jsonStructuredView.querySelectorAll("[data-object-index]")].find(
-      (element) => element.dataset.objectIndex === String(state.jsonSelectedObjectIndex),
-    );
-  }
-  if (!target) {
-    target = elements.jsonStructuredView.querySelector(".json-instance");
-  }
-  if (!target) {
-    return;
-  }
-  target.open = true;
-  const container = elements.jsonStructuredView.querySelector(".json-tree");
-  if (!container) {
-    return;
-  }
-  const containerRect = container.getBoundingClientRect();
-  const targetRect = target.getBoundingClientRect();
-  container.scrollTo({
-    top: Math.max(0, container.scrollTop + targetRect.top - containerRect.top - container.clientHeight * 0.25),
-    left: Math.max(0, container.scrollLeft + targetRect.left - containerRect.left - 24),
-  });
-  highlightFormattedTextTarget(target);
 }
 
 async function editJSONValueToken(button) {
@@ -2102,13 +1997,12 @@ function formatJSONLiteral(value) {
 
 function renderJSONReadonlyValue(value, depth = 0, trailingComma = false) {
   const comma = trailingComma ? "," : "";
-  const openAttr = depth < 2 ? "open" : "";
   if (Array.isArray(value)) {
     if (!value.length) {
       return `<span class="json-primitive">[]${comma}</span>`;
     }
     return `
-      <details class="json-node json-value-node" ${openAttr}>
+      <details class="json-node json-value-node" open>
         <summary><span class="json-brace">[</span> <span class="badge">${escapeHTML(value.length)}</span></summary>
         <div class="json-children">
           ${value
@@ -2128,7 +2022,7 @@ function renderJSONReadonlyValue(value, depth = 0, trailingComma = false) {
       return `<span class="json-primitive">{}${comma}</span>`;
     }
     return `
-      <details class="json-node json-value-node" ${openAttr}>
+      <details class="json-node json-value-node" open>
         <summary><span class="json-brace">{</span> <span class="badge">${escapeHTML(entries.length)}</span></summary>
         <div class="json-children">
           ${entries
@@ -2151,13 +2045,12 @@ function renderJSONReadonlyValue(value, depth = 0, trailingComma = false) {
 
 function renderJSONEditorValue(value, context, depth = 0, trailingComma = false) {
   const comma = trailingComma ? "," : "";
-  const openAttr = state.jsonCollapseDepth >= depth + 3 ? "open" : "";
   if (Array.isArray(value)) {
     if (!value.length) {
       return `<span class="json-primitive">[]</span><span class="json-comma">${comma}</span>`;
     }
     return `
-      <details class="json-node json-value-node" ${openAttr}>
+      <details class="json-node json-value-node" open>
         <summary><span class="json-brace">[</span> <span class="badge">${escapeHTML(value.length)}</span></summary>
         <div class="json-children">
           ${value
@@ -2177,7 +2070,7 @@ function renderJSONEditorValue(value, context, depth = 0, trailingComma = false)
       return `<span class="json-primitive">{}</span><span class="json-comma">${comma}</span>`;
     }
     return `
-      <details class="json-node json-value-node" ${openAttr}>
+      <details class="json-node json-value-node" open>
         <summary><span class="json-brace">{</span> <span class="badge">${escapeHTML(entries.length)}</span></summary>
         <div class="json-children">
           ${entries

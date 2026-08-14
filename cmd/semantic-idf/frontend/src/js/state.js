@@ -260,14 +260,13 @@ export const state = {
   inputFilterQuery: "",
   // Source-location fallback for legacy views; semantic identity lives in globalSelection.
   semanticSelectedObjectIndex: "",
-  semanticProjectionMode: "basic",
+  semanticProjectionMode: "detailed",
   semanticProjectionFacet: "all",
   semanticExpandedSectionIds: new Set(["project"]),
   semanticCurrentOccurrenceId: "",
   semanticCurrentPath: "",
   semanticPinnedEntityIds: new Set(),
   semanticEditSelectionRestore: null,
-  jsonCollapseDepth: 2,
   jsonSelectedObjectIndex: "",
 };
 

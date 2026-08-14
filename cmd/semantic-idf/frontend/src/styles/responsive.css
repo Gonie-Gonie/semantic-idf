@@ -256,10 +256,6 @@
     flex-direction: column;
   }
 
-  .semantic-actions {
-    justify-content: flex-start;
-  }
-
   .semantic-context-bar button,
   .semantic-context-bar [role="button"],
   .semantic-target-chips button,

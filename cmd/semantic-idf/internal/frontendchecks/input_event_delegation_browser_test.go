@@ -57,7 +57,7 @@ func TestInputViewsKeepConstantEventListenerCountsAcrossRenders(t *testing.T) {
 	}
 	for _, signal := range []string{
 		`"semanticListeners":5`,
-		`"jsonListeners":2`,
+		`"jsonListeners":1`,
 		`"textListeners":3`,
 		`"tableListeners":4`,
 		`"rerenderStable":true`,
@@ -128,15 +128,10 @@ const inputEventDelegationHarnessHTML = `<!doctype html>
       };
 
       const semanticListeners = countsAfterTwoRenders("semantic", elements.semanticEditor, ["click", "dblclick", "keydown", "pointerover", "pointerout"]);
-      const basicButton = elements.semanticEditor.querySelector('[data-semantic-mode="detailed"]');
-      basicButton.click();
-      assert(state.semanticProjectionMode === "detailed", "delegated Semantic mode button did not update state");
+      assert(elements.semanticEditor.dataset.semanticMode === "detailed", "Semantic view is not fixed to Detailed mode");
 
-      const jsonListeners = countsAfterTwoRenders("json", elements.jsonStructuredView, ["click", "change"]);
-      const depth = elements.jsonStructuredView.querySelector("#jsonCollapseDepth");
-      depth.value = "3";
-      depth.dispatchEvent(new Event("change", { bubbles: true }));
-      assert(state.jsonCollapseDepth === 3, "delegated JSON depth control did not update state");
+      const jsonListeners = countsAfterTwoRenders("json", elements.jsonStructuredView, ["click"]);
+      assert([...elements.jsonStructuredView.querySelectorAll("details")].every((detail) => detail.open), "JSON tree is not fully expanded");
       elements.jsonStructuredView.querySelector(".json-object-summary").click();
       assert(String(state.jsonSelectedObjectIndex) === "0", "delegated JSON object selection did not update state");
 
@@ -158,7 +153,7 @@ const inputEventDelegationHarnessHTML = `<!doctype html>
         dynamicControlsWork: true,
       };
       assert(semanticListeners === 5, "unexpected Semantic listener count");
-      assert(jsonListeners === 2, "unexpected JSON listener count");
+      assert(jsonListeners === 1, "unexpected JSON listener count");
       assert(textListeners === 3, "unexpected Text listener count");
       assert(tableListeners === 4, "unexpected Table listener count");
       document.querySelector("#result").textContent = JSON.stringify(result);
