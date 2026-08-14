@@ -228,6 +228,40 @@ func TestFrontendSimulationEnergySystemsCrossJumpContracts(t *testing.T) {
 	}
 }
 
+func TestFrontendSimulationEnergyOmitsSourcesAndReconciliationViews(t *testing.T) {
+	simulation := readTestFile(t, "frontend/src/js/views/simulation-views.js")
+	controls := sliceBetween(simulation, "function renderEnergySubviewControls", "function renderEnergyPeriodControls")
+	dispatch := sliceBetween(simulation, "function renderEnergySubview(view", "function renderEnergyExplanationOverview")
+	for _, forbidden := range []string{
+		`["sources", t("simulation.energySources"`,
+		`["reconciliation", t("simulation.energyReconciliation"`,
+	} {
+		if strings.Contains(controls, forbidden) {
+			t.Fatalf("Simulation Energy subnavigation still exposes removed view %q", forbidden)
+		}
+	}
+	for _, forbidden := range []string{`case "sources":`, `case "reconciliation":`} {
+		if strings.Contains(dispatch, forbidden) {
+			t.Fatalf("Simulation Energy dispatcher still exposes removed view %q", forbidden)
+		}
+	}
+}
+
+func TestFrontendSimulationOmitsOutputFilesView(t *testing.T) {
+	index := readTestFile(t, "frontend/src/index.html")
+	state := readTestFile(t, "frontend/src/js/state.js")
+	for _, forbidden := range []string{
+		`data-simulation-result-view-button="files"`,
+		`data-simulation-result-view="files"`,
+		`id="simulationFiles"`,
+		`id="simulationFilesStats"`,
+	} {
+		if strings.Contains(index+state, forbidden) {
+			t.Fatalf("Simulation still exposes removed Output files view %q", forbidden)
+		}
+	}
+}
+
 func TestFrontendSimulationUsesSimplifiedDefaultsAndAutomaticEnergyPlus(t *testing.T) {
 	markup := readTestFile(t, "frontend/src/index.html")
 	for _, removed := range []string{

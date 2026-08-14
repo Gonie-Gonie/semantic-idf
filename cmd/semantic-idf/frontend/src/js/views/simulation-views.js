@@ -555,8 +555,6 @@ export function initializeSimulationControls() {
   elements.simulationComfortResults?.addEventListener("change", handleSimulationComfortResultsChange);
   bindSimulationChartInteractions();
   bindHeatFlowInteractions();
-  elements.simulationExportPurposeJSON?.addEventListener("click", () => exportPurposeResultJSON());
-  elements.simulationExportPurposeHTML?.addEventListener("click", () => exportPurposeResultHTML());
   elements.simulationRunButton?.addEventListener("click", () => runCurrentSimulation({ silent: false }));
   elements.simulationWeatherSelect?.addEventListener("change", () => renderSimulation());
   elements.simulationSeriesGroup?.addEventListener("change", () => {
@@ -1128,7 +1126,6 @@ export function renderSimulation() {
   renderSimulationHeatFlow();
   renderSimulationSeriesSelect(result);
   renderSimulationChart();
-  renderSimulationFiles(result);
   toggleSimulationResultSections();
 }
 
@@ -1152,7 +1149,6 @@ function renderSimulationEmpty({ controlsReady = false, blockingIssue: preparedB
     setSimulationSeriesGroupUnavailable();
     elements.simulationSeriesSelect.innerHTML = `<option value="">${escapeHTML(t("simulation.waitingForCSV", {}, "Waiting for SQL/CSV output"))}</option>`;
     elements.simulationChart.innerHTML = `<div class="simulation-running-empty">${renderMiniProgressSVG()}<span>${escapeHTML(t("simulation.graphAfterRun", {}, "The SQL/CSV graph will appear when the run finishes."))}</span></div>`;
-    elements.simulationFiles.innerHTML = `<div class="empty status-loading">${escapeHTML(t("simulation.writingOutputs", {}, "EnergyPlus is writing output files"))}</div>`;
     renderSimulationEnergyEmpty(t("simulation.outputPending", {}, "Outputs are pending while EnergyPlus runs."));
     renderSimulationHVACLoopEmpty(t("simulation.outputPending", {}, "Outputs are pending while EnergyPlus runs."));
     renderSimulationComfortEmpty(t("simulation.outputPending", {}, "Outputs are pending while EnergyPlus runs."));
@@ -1170,7 +1166,6 @@ function renderSimulationEmpty({ controlsReady = false, blockingIssue: preparedB
     setSimulationSeriesGroupUnavailable();
     elements.simulationSeriesSelect.innerHTML = `<option value="">${escapeHTML(t("simulation.noSeries", {}, "No SQL/CSV series"))}</option>`;
     elements.simulationChart.innerHTML = `<div class="simulation-blocked-empty">${escapeHTML(t("simulation.blockedGraph", {}, "Graph output is unavailable until the run can start."))}</div>`;
-    elements.simulationFiles.innerHTML = `<div class="simulation-blocked-empty">${escapeHTML(t("simulation.blockedFiles", {}, "No output files will be created while simulation is blocked."))}</div>`;
     renderSimulationEnergyEmpty(t("simulation.outputBlocked", {}, "Run requirements must be fixed before outputs are available."));
     renderSimulationHVACLoopEmpty(t("simulation.outputBlocked", {}, "Run requirements must be fixed before outputs are available."));
     renderSimulationComfortEmpty(t("simulation.outputBlocked", {}, "Run requirements must be fixed before outputs are available."));
@@ -1194,7 +1189,6 @@ function renderSimulationEmpty({ controlsReady = false, blockingIssue: preparedB
   setSimulationSeriesGroupUnavailable();
   elements.simulationSeriesSelect.innerHTML = `<option value="">${escapeHTML(t("simulation.noSeries", {}, "No SQL/CSV series"))}</option>`;
   elements.simulationChart.innerHTML = `<div class="empty">${t("simulation.noGraph", {}, "SQL/CSV graph will appear after a run with numeric output.")}</div>`;
-  elements.simulationFiles.innerHTML = `<div class="empty">${t("simulation.noFiles", {}, "No output files yet")}</div>`;
   toggleSimulationResultSections();
   updateSimulationOutputAvailability(null, false);
 }
@@ -1214,12 +1208,12 @@ function ensureActiveSimulationResultView(result, availability = simulationResul
   if (availability[state.simulationActiveResultView]) {
     return;
   }
-  state.simulationActiveResultView = ["energy", "zone_heat_flow", "hvac_loops", "comfort", "series", "files"].find((view) => availability[view]) || "energy";
+  state.simulationActiveResultView = ["energy", "zone_heat_flow", "hvac_loops", "comfort", "series"].find((view) => availability[view]) || "energy";
 }
 
 function simulationResultViewAvailability(result) {
   if (!result) {
-    return { energy: true, zone_heat_flow: true, hvac_loops: true, comfort: true, series: true, files: true };
+    return { energy: true, zone_heat_flow: true, hvac_loops: true, comfort: true, series: true };
   }
   const energy = result.purposeResults?.energy || {};
   const heatFlow = result.purposeResults?.zoneHeatFlow?.zones?.length ? result.purposeResults.zoneHeatFlow : result.heatFlow || {};
@@ -1231,7 +1225,6 @@ function simulationResultViewAvailability(result) {
     hvac_loops: Boolean(hvacLoops.some((loop) => (loop.series || []).length || hvacComponentSeriesCount(loop.components || []))),
     comfort: Boolean((comfort.zones || []).length || (comfort.series || []).length),
     series: Boolean((result.series || []).length),
-    files: Boolean((result.files || []).length),
   };
 }
 
@@ -1296,12 +1289,12 @@ function renderSimulationEnergyDashboard(result) {
 }
 
 function energySubview(explanation = {}) {
-  const allowed = ["overview", "sankey", "monthly", "zones", "systems", "sources", "reconciliation"];
+  const allowed = ["overview", "sankey", "monthly", "zones", "systems"];
   let view = state.simulationEnergyView || "overview";
   if (!allowed.includes(view)) {
     view = "overview";
   }
-  if (["sankey", "sources", "reconciliation"].includes(view) && !energyExplanationHasPayload(explanation)) {
+  if (view === "sankey" && !energyExplanationHasPayload(explanation)) {
     view = "overview";
   }
   state.simulationEnergyView = view;
@@ -1319,8 +1312,6 @@ function renderEnergySubviewControls(view, explanation = {}) {
     ["monthly", t("simulation.monthly", {}, "Monthly")],
     ["zones", t("simulation.zones", {}, "Zones")],
     ["systems", t("simulation.systems", {}, "Systems")],
-    ["sources", t("simulation.energySources", {}, "Sources")],
-    ["reconciliation", t("simulation.energyReconciliation", {}, "Reconciliation")],
   ];
   const periodControls = renderEnergyPeriodControls(view, explanation);
   return `
@@ -1328,7 +1319,7 @@ function renderEnergySubviewControls(view, explanation = {}) {
       <div class="view-tabs" role="tablist" aria-label="${escapeHTML(t("simulation.energyViews", {}, "Energy views"))}">
         ${tabs
           .map(([id, label]) => {
-            const disabled = ["sankey", "sources", "reconciliation"].includes(id) && !energyExplanationHasPayload(explanation);
+            const disabled = id === "sankey" && !energyExplanationHasPayload(explanation);
             return `<button class="view-tab ${view === id ? "active" : ""}" type="button" data-simulation-energy-view="${id}" ${disabled ? "disabled" : ""}>${escapeHTML(label)}</button>`;
           })
           .join("")}
@@ -1342,7 +1333,7 @@ function renderEnergySubviewControls(view, explanation = {}) {
 }
 
 function renderEnergyPeriodControls(view, explanation = {}) {
-  if (!["sankey", "zones", "systems", "reconciliation"].includes(view)) {
+  if (!["sankey", "zones", "systems"].includes(view)) {
     return "";
   }
   const periods = explanation.periods || [];
@@ -1555,10 +1546,6 @@ function renderEnergySubview(view, energy, explanation, explanationSummary, faci
       return renderEnergyZonesSubview(zones, explanation);
     case "systems":
       return renderEnergySystemsSubview(explanation);
-    case "sources":
-      return renderEnergyExplanationSources(explanation);
-    case "reconciliation":
-      return renderEnergyExplanationReconciliation(explanation);
     default:
       return `
         ${renderPurposeCompletenessRow(energy.completeness || [])}
@@ -6028,11 +6015,6 @@ function updateSimulationOutputAvailability(blockingIssue, running) {
         ? t("simulation.seriesAvailable", {}, "Purpose outputs selected: SQL/CSV time-series graph will be available after this run.")
         : t("simulation.seriesMaybeUnavailableStandardOff", {}, "No purpose outputs are selected; graph depends on existing output requests.");
   }
-  if (elements.simulationFilesStats) {
-    elements.simulationFilesStats.textContent = blocked
-      ? t("simulation.outputBlockedShort", {}, "Unavailable until run is possible")
-      : t("simulation.filesAvailable", {}, "Output files will be listed after the run.");
-  }
 }
 
 function renderSimulationEnvironment() {
@@ -6112,24 +6094,10 @@ function updateSimulationControls(blockingIssue = simulationBlockingIssue()) {
   if (elements.simulationWeatherSelect) {
     elements.simulationWeatherSelect.disabled = state.simulationRunning;
   }
-  updatePurposeExportButton();
   if (elements.simulationPurposeInputs?.length) {
     elements.simulationPurposeInputs.forEach((input) => {
       input.disabled = state.simulationRunning;
     });
-  }
-}
-
-function updatePurposeExportButton() {
-  const canExport = Boolean(state.simulationResult?.purposeResults);
-  for (const button of [elements.simulationExportPurposeJSON, elements.simulationExportPurposeHTML]) {
-    if (!button) {
-      continue;
-    }
-    button.disabled = state.simulationRunning || !canExport;
-    button.title = canExport
-      ? button.textContent || t("action.exportPurposeJson", {}, "Export Purpose JSON")
-      : t("simulation.noPurposeResultExport", {}, "No purpose results to export yet.");
   }
 }
 
@@ -7769,29 +7737,6 @@ function formatTemperature(value) {
     return "—";
   }
   return `${number.toLocaleString(undefined, { maximumFractionDigits: 1 })} degC`;
-}
-
-function renderSimulationFiles(result) {
-  if (elements.simulationFilesStats) {
-    elements.simulationFilesStats.textContent = t("simulation.fileStats", { count: result.files?.length || 0 }, `${result.files?.length || 0} files`);
-  }
-  const rows = (result.files || [])
-    .map(
-      (file) => `
-        <tr>
-          <td title="${escapeHTML(file.path)}">${escapeHTML(file.name)}</td>
-          <td>${escapeHTML(file.kind)}</td>
-          <td>${escapeHTML(formatBytes(file.size || 0))}</td>
-        </tr>`,
-    )
-    .join("");
-  elements.simulationFiles.innerHTML = `
-    <div class="output-table-wrap">
-      <table class="output-table">
-        <thead><tr><th>${escapeHTML(t("common.file", {}, "File"))}</th><th>${escapeHTML(t("common.type", {}, "Type"))}</th><th>${escapeHTML(t("common.size", {}, "Size"))}</th></tr></thead>
-        <tbody>${rows || `<tr><td colspan="3">${escapeHTML(t("simulation.noFiles", {}, "No output files yet"))}</td></tr>`}</tbody>
-      </table>
-    </div>`;
 }
 
 function exportPurposeResultJSON() {
