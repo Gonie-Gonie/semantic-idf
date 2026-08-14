@@ -289,6 +289,7 @@ export const elements = {
   guideButton: document.querySelector("#guideButton"),
   settingsButton: document.querySelector("#settingsButton"),
   inputFilter: document.querySelector("#inputFilter"),
+  inputToolbarScroll: document.querySelector("#inputToolbarScroll"),
   semanticEditor: document.querySelector("#semanticEditor"),
   textObjectView: document.querySelector("#textObjectView"),
   jsonStructuredView: document.querySelector("#jsonStructuredView"),

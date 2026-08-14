@@ -230,6 +230,7 @@ elements.toolsButton.addEventListener("click", openTools);
 elements.guideButton.addEventListener("click", openGuide);
 elements.settingsButton.addEventListener("click", openSettings);
 elements.inputFilter.addEventListener("input", () => setInputFilter(elements.inputFilter.value));
+bindHorizontalDragScroll(elements.inputToolbarScroll);
 elements.resultTabButtons.forEach((button) => {
   button.addEventListener("click", () => {
     state.resultTabManuallySelected = true;
@@ -866,4 +867,54 @@ function applyDefaultResultTab(orderInput) {
   if (!state.resultTabManuallySelected && state.activeResultTab !== firstTab) {
     switchResultTab(firstTab, { recordHistory: false });
   }
+}
+
+function bindHorizontalDragScroll(element) {
+  if (!element) return;
+  let pointerID = null;
+  let startX = 0;
+  let startScrollLeft = 0;
+  let dragged = false;
+  let suppressClick = false;
+
+  element.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0 || event.target instanceof HTMLInputElement) return;
+    pointerID = event.pointerId;
+    startX = event.clientX;
+    startScrollLeft = element.scrollLeft;
+    dragged = false;
+    element.setPointerCapture(pointerID);
+  });
+  element.addEventListener("pointermove", (event) => {
+    if (event.pointerId !== pointerID) return;
+    const delta = event.clientX - startX;
+    if (Math.abs(delta) > 4) {
+      dragged = true;
+      element.classList.add("is-dragging");
+    }
+    if (dragged) {
+      element.scrollLeft = startScrollLeft - delta;
+      event.preventDefault();
+    }
+  });
+  const finishDrag = (event) => {
+    if (event.pointerId !== pointerID) return;
+    suppressClick = dragged;
+    pointerID = null;
+    dragged = false;
+    element.classList.remove("is-dragging");
+  };
+  element.addEventListener("pointerup", finishDrag);
+  element.addEventListener("pointercancel", finishDrag);
+  element.addEventListener("click", (event) => {
+    if (!suppressClick) return;
+    event.preventDefault();
+    event.stopPropagation();
+    suppressClick = false;
+  }, true);
+  element.addEventListener("wheel", (event) => {
+    if (element.scrollWidth <= element.clientWidth || Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+    element.scrollLeft += event.deltaY;
+    event.preventDefault();
+  }, { passive: false });
 }

@@ -100,6 +100,31 @@ func TestInputWorkspaceOmitsVersionAndCountChrome(t *testing.T) {
 	}
 }
 
+func TestInputToolbarKeepsTabsAndSearchHorizontallyReachable(t *testing.T) {
+	index := readTestFile(t, "frontend/src/index.html")
+	styles := readTestFile(t, "frontend/src/styles/base.css")
+	main := readTestFile(t, "frontend/src/js/main.js")
+	toolbar := sliceBetween(index, `<div id="inputToolbarScroll"`, `<div class="input-view active"`)
+	for _, required := range []string{`class="tabs input-tabs"`, `id="inputFilter"`} {
+		if !strings.Contains(toolbar, required) {
+			t.Fatalf("horizontal Input toolbar markup is missing %q", required)
+		}
+	}
+	if strings.Index(toolbar, `class="tabs input-tabs"`) > strings.Index(toolbar, `id="inputFilter"`) {
+		t.Fatal("Input search must follow the view tabs in the horizontal toolbar")
+	}
+	for _, required := range []string{".input-toolbar-scroll", "overflow-x: auto", "cursor: grab", "touch-action: pan-x", "flex: 0 0 280px"} {
+		if !strings.Contains(styles, required) {
+			t.Fatalf("horizontal Input toolbar styling is missing %q", required)
+		}
+	}
+	for _, required := range []string{"bindHorizontalDragScroll(elements.inputToolbarScroll)", `element.scrollLeft = startScrollLeft - delta`, `element.addEventListener("wheel"`} {
+		if !strings.Contains(main, required) {
+			t.Fatalf("horizontal Input toolbar interaction is missing %q", required)
+		}
+	}
+}
+
 func TestInputWorkspaceHeadingLineCountAndExplicitSemanticRevealAreRemoved(t *testing.T) {
 	files := map[string]string{
 		"app settings":      readTestFile(t, "app.go"),

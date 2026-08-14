@@ -88,14 +88,16 @@
 
       <section class="workspace">
         <aside class="editor-panel" aria-label="IDF editor">
-          <nav class="tabs input-tabs" role="tablist" aria-label="Input views">
-            <button id="inputSemanticTab" class="tab active" role="tab" aria-selected="true" aria-controls="semanticInputView" data-input-view="semantic" type="button">Semantic</button>
-            <button id="inputTextTab" class="tab" role="tab" aria-selected="false" aria-controls="textInputView" data-input-view="text" type="button" tabindex="-1">Text</button>
-            <button id="inputJSONTab" class="tab" role="tab" aria-selected="false" aria-controls="jsonInputView" data-input-view="json" type="button" tabindex="-1">JSON</button>
-            <button id="inputTableTab" class="tab" role="tab" aria-selected="false" aria-controls="tableInputView" data-input-view="table" type="button" tabindex="-1">Table</button>
-          </nav>
-          <div class="input-filter-bar" role="search">
-            <input id="inputFilter" type="search" placeholder="Filter objects, fields, values" aria-label="Filter input objects" data-i18n-placeholder="input.filter" />
+          <div id="inputToolbarScroll" class="input-toolbar-scroll">
+            <nav class="tabs input-tabs" role="tablist" aria-label="Input views">
+              <button id="inputSemanticTab" class="tab active" role="tab" aria-selected="true" aria-controls="semanticInputView" data-input-view="semantic" type="button">Semantic</button>
+              <button id="inputTextTab" class="tab" role="tab" aria-selected="false" aria-controls="textInputView" data-input-view="text" type="button" tabindex="-1">Text</button>
+              <button id="inputJSONTab" class="tab" role="tab" aria-selected="false" aria-controls="jsonInputView" data-input-view="json" type="button" tabindex="-1">JSON</button>
+              <button id="inputTableTab" class="tab" role="tab" aria-selected="false" aria-controls="tableInputView" data-input-view="table" type="button" tabindex="-1">Table</button>
+            </nav>
+            <div class="input-filter-bar" role="search">
+              <input id="inputFilter" type="search" placeholder="Filter objects, fields, values" aria-label="Filter input objects" data-i18n-placeholder="input.filter" />
+            </div>
           </div>
           <div class="input-view active" id="semanticInputView" role="tabpanel" aria-labelledby="inputSemanticTab">
             <div id="semanticEditor" class="semantic-editor"></div>

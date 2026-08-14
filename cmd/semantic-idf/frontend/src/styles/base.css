@@ -524,32 +524,49 @@ button:disabled:hover {
   display: flex;
 }
 
-.input-filter-bar {
-  min-height: 44px;
+.input-toolbar-scroll {
+  flex: 0 0 auto;
+  min-width: 0;
+  display: flex;
+  align-items: stretch;
+  overflow-x: auto;
+  overflow-y: hidden;
   border-bottom: 1px solid var(--line);
-  padding: 7px 10px;
+  background: var(--surface);
+  cursor: grab;
+  scrollbar-width: thin;
+  touch-action: pan-x;
+}
+
+.input-toolbar-scroll.is-dragging {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.input-toolbar-scroll .input-tabs {
+  flex: 0 0 auto;
+  border-bottom: 0;
+  white-space: nowrap;
+}
+
+.input-filter-bar {
+  flex: 0 0 280px;
+  min-width: 280px;
+  min-height: 38px;
+  padding: 5px 10px 5px 4px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
   background: var(--surface);
 }
 
 .input-filter-bar input {
-  flex: 1 1 220px;
-  min-width: 0;
+  width: 100%;
+  min-width: 240px;
   min-height: 30px;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   padding: 0 10px;
   background: var(--control);
-}
-
-.input-filter-bar span {
-  flex: 0 0 auto;
-  color: var(--muted);
-  font-size: 12px;
-  white-space: nowrap;
 }
 
 .field-input-wrap {
