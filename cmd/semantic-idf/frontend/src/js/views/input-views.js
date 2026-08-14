@@ -87,15 +87,6 @@ function currentInputFilterTerms() {
   return state.inputFilterQuery.trim().toLowerCase().split(/\s+/).filter(Boolean);
 }
 
-function setInputFilterStats(matchingObjects, totalObjects) {
-  if (!elements.inputFilterStats) {
-    return;
-  }
-  elements.inputFilterStats.textContent = state.inputFilterQuery.trim()
-    ? t("count.objectsOf", { shown: matchingObjects, total: totalObjects })
-    : t("count.objects", { count: totalObjects });
-}
-
 function filterInputObjects(objects) {
   const terms = currentInputFilterTerms();
   return objects.filter((object) => matchesInputFilter(object, terms));
@@ -158,17 +149,12 @@ function renderSemanticView() {
   const projection = state.semanticProjection;
   if (!projection || !Array.isArray(projection.lines) || !hasCurrentAnalysis()) {
     elements.semanticEditor.innerHTML = `<div class="empty">${escapeHTML(pendingViewMessage("semantic YAML"))}</div>`;
-    setInputFilterStats(0, 0);
     return;
   }
 
   const terms = currentInputFilterTerms();
   const visibleLines = semanticVisibleLines(projection.lines, terms);
-  const visibleObjectIndexes = new Set(
-    visibleLines.filter((line) => line.objectIndex !== undefined && line.objectIndex !== null).map((line) => String(line.objectIndex)),
-  );
   const keyWidths = semanticKeyWidths(visibleLines);
-  setInputFilterStats(visibleObjectIndexes.size || (state.report?.objects?.length || 0), state.report?.objects?.length || 0);
 
   const sourceNameConflicts = projection.sourceNameConflicts || [];
   const mode = semanticProjectionMode();
@@ -178,8 +164,6 @@ function renderSemanticView() {
     <div class="semantic-toolbar">
       <div class="json-meta">
         <span class="badge">${escapeHTML(projection.schema || "eplus-semantic/0.1")}</span>
-        <span class="badge">Version ${escapeHTML(projection.energyplusVersion || "unknown")}</span>
-        <span class="badge">${escapeHTML(t("count.objects", { count: projection.objectCount || 0 }))}</span>
         <span class="badge">${escapeHTML(semanticModeLabel(mode))}</span>
         ${facet === "all" ? "" : `<span class="badge">${escapeHTML(semanticFacetLabel(facet))}</span>`}
       </div>
@@ -1407,20 +1391,14 @@ function renderFormattedTextView() {
   const report = state.report;
   if (!report || !Array.isArray(report.objects) || !hasCurrentAnalysis()) {
     elements.textObjectView.innerHTML = `<div class="empty">${escapeHTML(pendingViewMessage("formatted text"))}</div>`;
-    setInputFilterStats(0, 0);
     return;
   }
 
-  const versionLabel = state.model?.version?.raw || "unknown";
   const formatLabel = state.model?.format || "unknown";
   const groups = groupedReportObjects();
-  const matchingObjects = groups.reduce((sum, group) => sum + group.objects.length, 0);
-  setInputFilterStats(matchingObjects, report.objects.length);
   elements.textObjectView.innerHTML = `
     <div class="json-meta">
       <span class="badge">${escapeHTML(formatLabel)}</span>
-      <span class="badge">Version ${escapeHTML(versionLabel)}</span>
-      <span class="badge">${escapeHTML(t("count.objects", { count: matchingObjects }))}</span>
       <span class="badge">${escapeHTML(t("input.editableFields"))}</span>
     </div>
     ${
@@ -1432,7 +1410,6 @@ function renderFormattedTextView() {
                   <details class="json-group" data-object-type="${escapeHTML(group.type)}" open>
                     <summary>
                       <span>${escapeHTML(group.type)}</span>
-                      <span class="badge">${escapeHTML(group.objects.length)}</span>
                     </summary>
                     ${group.objects.map(renderFormattedObject).join("")}
                   </details>`,
@@ -1449,19 +1426,14 @@ function renderJSONView() {
   const model = state.model;
   if (!model || !Array.isArray(model.objects) || !hasCurrentAnalysis()) {
     elements.jsonStructuredView.innerHTML = `<div class="empty">${escapeHTML(pendingViewMessage("JSON"))}</div>`;
-    setInputFilterStats(0, 0);
     return;
   }
 
-  const versionLabel = model.version?.raw || "unknown";
   const visibleObjects = filterInputObjects(model.objects);
-  setInputFilterStats(visibleObjects.length, model.objects.length);
 
   elements.jsonStructuredView.innerHTML = `
     <div class="json-meta">
       <span class="badge">${escapeHTML(model.format || "unknown")}</span>
-      <span class="badge">Version ${escapeHTML(versionLabel)}</span>
-      <span class="badge">${escapeHTML(t("count.objects", { count: visibleObjects.length }))}</span>
     </div>
     <div class="json-editor-tools">
       <select id="jsonCollapseDepth" aria-label="JSON collapse depth">
@@ -1506,7 +1478,6 @@ function renderJSONTypeGroup(group, isLastGroup) {
     <details class="json-node json-type-group" data-object-type="${escapeHTML(group.type)}" ${openAttr}>
       <summary>
         <span class="json-line"><span class="json-key">${formatJSONKey(group.type)}</span><span class="json-colon">: </span><span class="json-brace">{</span></span>
-        <span class="badge">${escapeHTML(t("count.objects", { count: group.objects.length }))}</span>
       </summary>
       <div class="json-children">
         ${group.objects.map((object, index) => renderJSONInstance(object, index === group.objects.length - 1)).join("")}
@@ -2240,16 +2211,11 @@ export function renderFieldTable() {
   const report = state.report;
   if (!report || !Array.isArray(report.objects) || !hasCurrentAnalysis()) {
     elements.fieldTable.innerHTML = `<div class="empty">${escapeHTML(pendingViewMessage("table"))}</div>`;
-    elements.fieldStats.textContent = t("input.tableStats", { tables: 0, objects: 0, orientation: "" });
-    setInputFilterStats(0, 0);
     return;
   }
 
   const groups = groupObjectsByType(filterInputObjects(report.objects));
   const objectCount = groups.reduce((sum, group) => sum + group.objects.length, 0);
-  const orientationLabel = state.tableOrientation === "fields" ? t("input.fieldsRows").toLowerCase() : t("input.objectsRows").toLowerCase();
-  elements.fieldStats.textContent = t("input.tableStats", { tables: groups.length, objects: objectCount, orientation: orientationLabel });
-  setInputFilterStats(objectCount, report.objects.length);
   if (!groups.length) {
     elements.fieldTable.innerHTML = `<div class="empty">${t("input.noMatchingTables")}</div>`;
     return;
@@ -2315,7 +2281,6 @@ function renderObjectTypeTable(group, groupIndex) {
           <button class="object-orientation-button" data-object-type="${escapeHTML(group.type)}" data-next-orientation="${escapeHTML(nextOrientation)}" type="button">
             ${orientation === "objects" ? t("input.fieldsRows") : t("input.objectsRows")}
           </button>
-          <span class="badge">${escapeHTML(t("count.objects", { count: group.objects.length }))}</span>
         </span>
       </summary>
       <div class="object-type-table-scroll">

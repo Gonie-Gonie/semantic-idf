@@ -84,6 +84,22 @@ func TestInputWorkspaceUsesTheResultTabVisualAndAccessibilityContract(t *testing
 	}
 }
 
+func TestInputWorkspaceOmitsVersionAndCountChrome(t *testing.T) {
+	index := readTestFile(t, "frontend/src/index.html")
+	views := readTestFile(t, "frontend/src/js/views/input-views.js")
+	state := readTestFile(t, "frontend/src/js/state.js")
+	for _, removed := range []string{"inputFilterStats", "fieldStats"} {
+		if strings.Contains(index, removed) || strings.Contains(state, removed) {
+			t.Fatalf("left input panel count element remains: %q", removed)
+		}
+	}
+	for _, removed := range []string{`Version ${escapeHTML`, `t("count.objects"`, `t("input.tableStats"`} {
+		if strings.Contains(views, removed) {
+			t.Fatalf("left input view count/version chrome remains: %q", removed)
+		}
+	}
+}
+
 func TestInputWorkspaceHeadingLineCountAndExplicitSemanticRevealAreRemoved(t *testing.T) {
 	files := map[string]string{
 		"app settings":      readTestFile(t, "app.go"),

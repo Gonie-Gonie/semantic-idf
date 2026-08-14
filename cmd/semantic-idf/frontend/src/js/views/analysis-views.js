@@ -196,7 +196,6 @@ export function renderEmpty() {
   elements.textObjectView.innerHTML = `<div class="empty">${t("input.formattedEmpty")}</div>`;
   elements.jsonStructuredView.innerHTML = `<div class="empty">${t("input.jsonEmpty")}</div>`;
   elements.fieldTable.innerHTML = `<div class="empty">${t("input.tableEmpty")}</div>`;
-  elements.fieldStats.textContent = "0 tables";
 }
 
 export function renderDeferredTopology(geometry) {
