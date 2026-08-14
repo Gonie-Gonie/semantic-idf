@@ -379,19 +379,14 @@
               </section>
               <section class="simulation-section" data-simulation-result-view="series">
                 <div class="profile-section-head">
-                  <h3 data-i18n="simulation.graph">SQL/CSV Graph</h3>
-                  <span id="simulationSeriesStats" class="tool-muted">No SQL/CSV series</span>
-                  <select id="simulationSeriesSelect" aria-label="Series variable by category"></select>
-                </div>
-                <div class="simulation-series-controls" aria-label="Series time range controls">
-                  <button id="simulationSeriesRangeAll" type="button" data-i18n="simulation.seriesRangeAll">All</button>
-                  <div id="simulationSeriesRange" class="simulation-series-range">
-                    <input id="simulationSeriesRangeStart" type="range" min="0" max="0" value="0" aria-label="Series visible range start" />
-                    <input id="simulationSeriesRangeEnd" type="range" min="0" max="0" value="0" aria-label="Series visible range end" />
+                  <h3>Graph</h3>
+                  <span id="simulationSeriesStats" class="tool-muted">No variables</span>
+                  <div class="simulation-series-panel-actions" role="group" aria-label="Graph panels">
+                    <button type="button" class="viewport-icon-button" data-series-panel-action="add" aria-label="Add graph panel" title="Add graph panel">+</button>
+                    <button type="button" class="viewport-icon-button" data-series-panel-action="remove" aria-label="Remove graph panel" title="Remove graph panel">−</button>
                   </div>
-                  <output id="simulationSeriesRangeLabel">No range</output>
                 </div>
-                <div id="simulationChart" class="simulation-chart"></div>
+                <div id="simulationChart" class="simulation-chart simulation-series-workspace"></div>
               </section>
             </div>
           </div>

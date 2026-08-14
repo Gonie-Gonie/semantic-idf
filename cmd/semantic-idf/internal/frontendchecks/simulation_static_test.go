@@ -274,15 +274,20 @@ func TestFrontendSimulationSeriesUsesGroupedVariablePickerAndDualRange(t *testin
 		}
 	}
 	for _, required := range []string{
-		`id="simulationSeriesRange"`,
-		`id="simulationSeriesRangeStart"`,
-		`id="simulationSeriesRangeEnd"`,
-		`simulationSeriesRange: document.querySelector("#simulationSeriesRange")`,
+		`data-series-panel-action="add"`,
+		`data-series-panel-action="remove"`,
+		`data-series-variable-action=`,
+		`data-series-range="start"`,
+		`data-series-range="end"`,
 		`<optgroup label="${escapeHTML(group.label)}">`,
 		`${escapeHTML(item.column)}</option>`,
 		`--series-range-start`,
 		`--series-range-end`,
 		`.simulation-series-range input[type="range"]`,
+		`renderSimulationMultiSeriesSVG`,
+		`const units = [...new Set(`,
+		`index % 2 === 0`,
+		`simulation-series-legend`,
 	} {
 		if !strings.Contains(index+state+view+styles, required) {
 			t.Fatalf("Simulation Series grouped picker or dual range is missing %q", required)

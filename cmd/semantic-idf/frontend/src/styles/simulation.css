@@ -1934,6 +1934,59 @@
   overflow-x: auto;
 }
 
+.simulation-series-workspace {
+  display: grid;
+  gap: 12px;
+  overflow: visible;
+}
+
+.simulation-series-panel {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.simulation-series-panel-actions,
+.simulation-series-variable-list,
+.simulation-series-variable-row,
+.simulation-series-legend {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.simulation-series-variable-list {
+  align-items: stretch;
+  flex-direction: column;
+  margin-bottom: 8px;
+}
+
+.simulation-series-variable-row select {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.simulation-series-legend {
+  flex-wrap: wrap;
+  min-height: 26px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.simulation-series-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.simulation-series-legend i {
+  width: 16px;
+  height: 3px;
+  border-radius: 999px;
+}
+
 #simulationSeriesSelect {
   max-width: min(520px, 48vw);
 }

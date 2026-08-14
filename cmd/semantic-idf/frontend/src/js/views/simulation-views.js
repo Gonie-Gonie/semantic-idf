@@ -11,6 +11,8 @@ let progressListenerRegistered = false;
 let heatFlowPlayTimer = 0;
 let simulationNavigationCleanup = null;
 let simulationNavigationRevealTarget = null;
+let simulationSeriesPanels = [];
+let simulationSeriesPanelSequence = 1;
 let heatFlowBrushStartFrame = null;
 
 const simulationSemanticBindings = new Map();
@@ -557,19 +559,9 @@ export function initializeSimulationControls() {
   bindHeatFlowInteractions();
   elements.simulationRunButton?.addEventListener("click", () => runCurrentSimulation({ silent: false }));
   elements.simulationWeatherSelect?.addEventListener("change", () => renderSimulation());
-  elements.simulationSeriesSelect?.addEventListener("change", () => {
-    state.simulationSelectedSeries = elements.simulationSeriesSelect.value || "";
-    state.simulationSeriesRangeStart = 0;
-    state.simulationSeriesRangeEnd = -1;
-    renderSimulationChart();
-  });
-  elements.simulationSeriesRangeAll?.addEventListener("click", () => {
-    state.simulationSeriesRangeStart = 0;
-    state.simulationSeriesRangeEnd = -1;
-    renderSimulationChart();
-  });
-  elements.simulationSeriesRangeStart?.addEventListener("input", () => updateSimulationSeriesRangeFromControls("start"));
-  elements.simulationSeriesRangeEnd?.addEventListener("input", () => updateSimulationSeriesRangeFromControls("end"));
+  elements.simulationChart?.closest("[data-simulation-result-view='series']")?.addEventListener("click", handleSimulationSeriesWorkspaceClick);
+  elements.simulationChart?.addEventListener("change", handleSimulationSeriesWorkspaceChange);
+  elements.simulationChart?.addEventListener("input", handleSimulationSeriesWorkspaceInput);
   elements.simulationHeatFlowSlider?.addEventListener("input", () => {
     state.simulationHeatFlowFrameIndex = Number(elements.simulationHeatFlowSlider.value) || 0;
     normalizeHeatFlowFrameRange();
@@ -1139,8 +1131,7 @@ function renderSimulationEmpty({ controlsReady = false, blockingIssue: preparedB
     renderSimulationResultTabs(null);
     renderSimulationHeatFlowEmpty(t("simulation.heatFlowAfterRun", {}, "The heat-flow ledger will appear when Zone Heat Flow SQL/CSV output is available."));
     setSimulationSeriesGroupUnavailable();
-    elements.simulationSeriesSelect.innerHTML = `<option value="">${escapeHTML(t("simulation.waitingForCSV", {}, "Waiting for SQL/CSV output"))}</option>`;
-    elements.simulationChart.innerHTML = `<div class="simulation-running-empty">${renderMiniProgressSVG()}<span>${escapeHTML(t("simulation.graphAfterRun", {}, "The SQL/CSV graph will appear when the run finishes."))}</span></div>`;
+    elements.simulationChart.innerHTML = `<div class="simulation-running-empty">${renderMiniProgressSVG()}<span>${escapeHTML(t("simulation.graphAfterRun", {}, "The graph will appear when the run finishes."))}</span></div>`;
     renderSimulationEnergyEmpty(t("simulation.outputPending", {}, "Outputs are pending while EnergyPlus runs."));
     renderSimulationHVACLoopEmpty(t("simulation.outputPending", {}, "Outputs are pending while EnergyPlus runs."));
     renderSimulationComfortEmpty(t("simulation.outputPending", {}, "Outputs are pending while EnergyPlus runs."));
@@ -1156,7 +1147,6 @@ function renderSimulationEmpty({ controlsReady = false, blockingIssue: preparedB
     elements.simulationProgressBar.style.width = "0%";
     renderSimulationHeatFlowEmpty(t("simulation.blockedGraph", {}, "Graph output is unavailable until the run can start."));
     setSimulationSeriesGroupUnavailable();
-    elements.simulationSeriesSelect.innerHTML = `<option value="">${escapeHTML(t("simulation.noSeries", {}, "No SQL/CSV series"))}</option>`;
     elements.simulationChart.innerHTML = `<div class="simulation-blocked-empty">${escapeHTML(t("simulation.blockedGraph", {}, "Graph output is unavailable until the run can start."))}</div>`;
     renderSimulationEnergyEmpty(t("simulation.outputBlocked", {}, "Run requirements must be fixed before outputs are available."));
     renderSimulationHVACLoopEmpty(t("simulation.outputBlocked", {}, "Run requirements must be fixed before outputs are available."));
@@ -1179,8 +1169,7 @@ function renderSimulationEmpty({ controlsReady = false, blockingIssue: preparedB
   renderSimulationComfortEmpty(t("simulation.noComfortResult", {}, "Run Comfort Check to inspect zone temperature and setpoint series."));
   renderSimulationHeatFlowEmpty(t("simulation.noHeatFlow", {}, "Select Zone Heat Flow to inspect the zone heat-flow ledger."));
   setSimulationSeriesGroupUnavailable();
-  elements.simulationSeriesSelect.innerHTML = `<option value="">${escapeHTML(t("simulation.noSeries", {}, "No SQL/CSV series"))}</option>`;
-  elements.simulationChart.innerHTML = `<div class="empty">${t("simulation.noGraph", {}, "SQL/CSV graph will appear after a run with numeric output.")}</div>`;
+  elements.simulationChart.innerHTML = `<div class="empty">${t("simulation.noGraph", {}, "Graph will appear after a run with numeric output.")}</div>`;
   toggleSimulationResultSections();
   updateSimulationOutputAvailability(null, false);
 }
@@ -3958,7 +3947,7 @@ function renderSimulationHVACLoopResult(loop) {
       <div class="output-table-wrap">
         <table class="output-table">
           <thead><tr><th>${escapeHTML(t("common.key", {}, "Key"))}</th><th>${escapeHTML(t("common.metric", {}, "Metric"))}</th><th>${escapeHTML(t("common.source", {}, "Source"))}</th><th>${escapeHTML(t("simulation.sourceOutput", {}, "Source output"))}</th><th>Min</th><th>Max</th><th>Avg</th><th>${escapeHTML(t("common.points", {}, "Points"))}</th></tr></thead>
-          <tbody>${rows || `<tr><td colspan="8">${escapeHTML(t("simulation.noSeries", {}, "No SQL/CSV series"))}</td></tr>`}</tbody>
+          <tbody>${rows || `<tr><td colspan="8">${escapeHTML(t("simulation.noSeries", {}, "No variables"))}</td></tr>`}</tbody>
         </table>
       </div>
     </section>`;
@@ -5397,7 +5386,7 @@ function renderSeriesInspectButton(seriesRef = {}) {
   const label = t("simulation.inspectSeriesAction", {}, "Chart");
   const title = series
     ? t("simulation.inspectSeries", {}, "Inspect this output in the common Series chart")
-    : t("simulation.inspectSeriesUnavailable", {}, "No matching SQL/CSV series is available for this row");
+    : t("simulation.inspectSeriesUnavailable", {}, "No matching variable is available for this row");
   const sourceObject = seriesRef.sourceObject
     || (seriesRef.meterName ? findPurposeOutputObject("Output:Meter", seriesRef.meterName, "") : null)
     || sourceOutputForVariable(seriesRef.keyValue || "", seriesRef.variableName || "");
@@ -5541,7 +5530,7 @@ function handleSimulationSeriesInspectClick(event) {
     || findSimulationSeriesForMetric(button.dataset.simulationSeriesKey || "", button.dataset.simulationSeriesMetric || "")
     || findSimulationSeriesForMeter(button.dataset.simulationSeriesMeter || "");
   if (!series) {
-    setStatus(t("simulation.inspectSeriesUnavailable", {}, "No matching SQL/CSV series is available for this row"), "warn");
+    setStatus(t("simulation.inspectSeriesUnavailable", {}, "No matching variable is available for this row"), "warn");
     return;
   }
   selectSimulationSeries(series);
@@ -5795,6 +5784,9 @@ function handleSimulationComfortResultsChange(event) {
 
 function selectSimulationSeries(series) {
   state.simulationSelectedSeries = seriesID(series);
+  if (simulationSeriesPanels[0]) {
+    simulationSeriesPanels[0].seriesIDs[0] = state.simulationSelectedSeries;
+  }
   state.simulationSeriesRangeStart = 0;
   state.simulationSeriesRangeEnd = -1;
   state.simulationActiveResultView = "series";
@@ -6004,7 +5996,7 @@ function updateSimulationOutputAvailability(blockingIssue, running) {
     elements.simulationSeriesStats.textContent = blocked
       ? t("simulation.outputBlockedShort", {}, "Unavailable until run is possible")
       : seriesOn
-        ? t("simulation.seriesAvailable", {}, "Purpose outputs selected: SQL/CSV time-series graph will be available after this run.")
+        ? t("simulation.seriesAvailable", {}, "Purpose outputs selected: the variable graph will be available after this run.")
         : t("simulation.seriesMaybeUnavailableStandardOff", {}, "No purpose outputs are selected; graph depends on existing output requests.");
   }
 }
@@ -6311,32 +6303,25 @@ function renderSimulationSeriesSelect(result) {
   state.simulationSeriesGroup = "all";
   if (!series.length) {
     state.simulationSelectedSeries = "";
-    elements.simulationSeriesSelect.innerHTML = `<option value="">${escapeHTML(t("simulation.noSeries", {}, "No SQL/CSV series"))}</option>`;
-    renderSimulationSeriesRangeControls(null);
+    simulationSeriesPanels = [];
     if (elements.simulationSeriesStats) {
-      elements.simulationSeriesStats.textContent = t("simulation.noSeries", {}, "No SQL/CSV series");
+      elements.simulationSeriesStats.textContent = t("simulation.noSeries", {}, "No variables");
     }
     return;
   }
-  const visibleSeries = series;
-  if (!state.simulationSelectedSeries || !visibleSeries.some((item) => seriesID(item) === state.simulationSelectedSeries)) {
-    state.simulationSelectedSeries = seriesID(preferredSimulationSeries(visibleSeries) || visibleSeries[0]);
-    state.simulationSeriesRangeStart = 0;
-    state.simulationSeriesRangeEnd = -1;
+  if (!state.simulationSelectedSeries || !series.some((item) => seriesID(item) === state.simulationSelectedSeries)) {
+    state.simulationSelectedSeries = seriesID(preferredSimulationSeries(series) || series[0]);
   }
-  elements.simulationSeriesSelect.innerHTML = simulationSeriesGroupOptions(series)
-    .filter((group) => group.value !== "all")
-    .map((group) => {
-      const items = visibleSeries.filter((item) => simulationSeriesGroupID(item) === group.value);
-      if (!items.length) return "";
-      return `<optgroup label="${escapeHTML(group.label)}">${items.map((item) => {
-        const id = seriesID(item);
-        return `<option value="${escapeHTML(id)}" ${id === state.simulationSelectedSeries ? "selected" : ""}>${escapeHTML(item.column)}</option>`;
-      }).join("")}</optgroup>`;
-    })
-    .join("");
+  if (!simulationSeriesPanels.length) {
+    simulationSeriesPanels = [{ id: simulationSeriesPanelSequence++, seriesIDs: [state.simulationSelectedSeries], start: 0, end: -1 }];
+  }
+  const validIDs = new Set(series.map(seriesID));
+  simulationSeriesPanels.forEach((panel) => {
+    panel.seriesIDs = panel.seriesIDs.filter((id) => validIDs.has(id));
+    if (!panel.seriesIDs.length) panel.seriesIDs = [state.simulationSelectedSeries];
+  });
   if (elements.simulationSeriesStats) {
-    elements.simulationSeriesStats.textContent = t("simulation.seriesStats", { count: series.length }, `${series.length} SQL/CSV series`);
+    elements.simulationSeriesStats.textContent = `${series.length} variables`;
   }
 }
 
@@ -6395,63 +6380,114 @@ function simulationSeriesGroupLabel(groupID) {
 }
 
 function renderSimulationChart() {
-  const result = state.simulationResult;
-  const series = currentSimulationSeries();
-  const seriesPoints = simulationSeriesPoints(series);
-  if (!series || !seriesPoints.length) {
-    renderSimulationSeriesRangeControls(null);
-    elements.simulationChart.innerHTML = `<div class="empty">${t("simulation.noGraph", {}, "SQL/CSV graph will appear after a run with numeric output.")}</div>`;
+  if (!elements.simulationChart) return;
+  const series = safeSimulationSeriesList(state.simulationResult?.series);
+  if (!series.length || !simulationSeriesPanels.length) {
+    elements.simulationChart.innerHTML = `<div class="empty">${t("simulation.noGraph", {}, "Graph will appear after a run with numeric output.")}</div>`;
     return;
   }
-  const visibleRange = normalizeSimulationSeriesRange(seriesPoints.length);
-  renderSimulationSeriesRangeControls(series, visibleRange);
-  const visiblePoints = seriesPoints.slice(visibleRange.start, visibleRange.end + 1);
-  const width = 900;
-  const height = 260;
-  const pad = { left: 76, right: 18, top: 24, bottom: 42 };
-  const values = visiblePoints.map((point) => Number(point.value)).filter(Number.isFinite);
-  if (!values.length) {
-    elements.simulationChart.innerHTML = `<div class="empty">${t("simulation.noGraph", {}, "SQL/CSV graph will appear after a run with numeric output.")}</div>`;
-    return;
-  }
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const range = max - min || 1;
-  const plotWidth = width - pad.left - pad.right;
-  const plotHeight = height - pad.top - pad.bottom;
-  const xStep = visiblePoints.length > 1 ? plotWidth / (visiblePoints.length - 1) : plotWidth;
-  const yFor = (value) => pad.top + (height - pad.top - pad.bottom) * (1 - (value - min) / range);
-  const points = visiblePoints
-    .map((point, index) => `${pad.left + index * xStep},${yFor(Number(point.value))}`)
-    .join(" ");
-  const yTicks = [max, min + range / 2, min];
-  const tickHTML = yTicks
-    .map((value) => {
-      const y = yFor(value);
-      return `<g><line x1="${pad.left}" x2="${width - pad.right}" y1="${y}" y2="${y}" class="simulation-grid" /><text x="8" y="${y + 4}" class="simulation-axis">${escapeHTML(formatValueWithUnit(value, simulationSeriesDisplayUnit(series)))}</text></g>`;
-    })
-    .join("");
-  const firstLabel = visiblePoints[0]?.label || "start";
-  const lastLabel = visiblePoints[visiblePoints.length - 1]?.label || "end";
-  const displayColumn = simulationSeriesDisplayColumn(series);
-  const title = visiblePoints.length === seriesPoints.length
-    ? displayColumn
-    : `${displayColumn} (${visibleRange.start + 1}-${visibleRange.end + 1} / ${seriesPoints.length})`;
-  elements.simulationChart.innerHTML = `
-    <svg class="simulation-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHTML(displayColumn)}">
-      ${tickHTML}
-      <line x1="${pad.left}" x2="${pad.left}" y1="${pad.top}" y2="${height - pad.bottom}" class="simulation-axis-line" />
-      <line x1="${pad.left}" x2="${width - pad.right}" y1="${height - pad.bottom}" y2="${height - pad.bottom}" class="simulation-axis-line" />
-      <polyline points="${points}" class="simulation-line" />
-      <rect class="simulation-chart-hit" x="${pad.left}" y="${pad.top}" width="${plotWidth}" height="${plotHeight}" data-simulation-chart-hit="1"></rect>
-      <text x="${pad.left}" y="${height - 12}" class="simulation-axis">${escapeHTML(firstLabel)}</text>
-      <text x="${width - pad.right}" y="${height - 12}" text-anchor="end" class="simulation-axis">${escapeHTML(lastLabel)}</text>
-      <text x="${pad.left}" y="16" class="simulation-title">${escapeHTML(title)}</text>
-    </svg>`;
+  elements.simulationChart.innerHTML = simulationSeriesPanels.map((panel) => renderSimulationSeriesPanel(panel, series)).join("");
+}
+
+function renderSimulationSeriesPanel(panel, allSeries) {
+  const selected = panel.seriesIDs.map((id) => allSeries.find((item) => seriesID(item) === id)).filter(Boolean);
+  const maxPoints = Math.max(0, ...selected.map(simulationSeriesPointCount));
+  const maxIndex = Math.max(0, maxPoints - 1);
+  if (panel.end < 0 || panel.end > maxIndex) panel.end = maxIndex;
+  panel.start = Math.min(Math.max(0, panel.start || 0), panel.end);
+  const options = simulationSeriesPickerOptions(allSeries);
+  const rows = panel.seriesIDs.map((id, index) => `<div class="simulation-series-variable-row"><button type="button" class="viewport-icon-button" data-series-variable-action="${index ? "remove" : "add"}" data-series-panel-id="${panel.id}" data-series-variable-index="${index}" aria-label="${index ? "Remove variable" : "Add variable"}" title="${index ? "Remove variable" : "Add variable"}">${index ? "−" : "+"}</button><select data-series-panel-id="${panel.id}" data-series-variable-index="${index}" aria-label="Variable by category">${options(id)}</select></div>`).join("");
+  const startPct = maxIndex ? (panel.start / maxIndex) * 100 : 0;
+  const endPct = maxIndex ? (panel.end / maxIndex) * 100 : 100;
+  return `<section class="simulation-series-panel" data-series-panel-id="${panel.id}"><div class="simulation-series-variable-list">${rows}</div><div class="simulation-series-controls"><button type="button" data-series-range-all="${panel.id}">All</button><div class="simulation-series-range" style="--series-range-start:${startPct}%;--series-range-end:${endPct}%"><input type="range" min="0" max="${maxIndex}" value="${panel.start}" data-series-range="start" data-series-panel-id="${panel.id}" aria-label="Visible range start"><input type="range" min="0" max="${maxIndex}" value="${panel.end}" data-series-range="end" data-series-panel-id="${panel.id}" aria-label="Visible range end"></div><output>${maxPoints ? `${panel.start + 1}-${panel.end + 1} / ${maxPoints}` : "No range"}</output></div>${renderSimulationMultiSeriesSVG(selected, panel)}</section>`;
+}
+
+function simulationSeriesPickerOptions(allSeries) {
+  return (selectedID) => simulationSeriesGroupOptions(allSeries).filter((group) => group.value !== "all").map((group) => {
+    const items = allSeries.filter((item) => simulationSeriesGroupID(item) === group.value);
+    return items.length ? `<optgroup label="${escapeHTML(group.label)}">${items.map((item) => `<option value="${escapeHTML(seriesID(item))}" ${seriesID(item) === selectedID ? "selected" : ""}>${escapeHTML(item.column)}</option>`).join("")}</optgroup>` : "";
+  }).join("");
+}
+
+function renderSimulationMultiSeriesSVG(seriesList, panel) {
+  const width = 900, height = 280, pad = { left: 76, right: 76, top: 24, bottom: 44 };
+  const units = [...new Set(seriesList.map(simulationSeriesDisplayUnit))];
+  const colors = ["#62c7d5", "#f0b44d", "#85d17a", "#c394f5", "#ef7f8d", "#72a7ff"];
+  const plotWidth = width - pad.left - pad.right, plotHeight = height - pad.top - pad.bottom;
+  const unitRanges = new Map(units.map((unit) => {
+    const values = seriesList.filter((s) => simulationSeriesDisplayUnit(s) === unit).flatMap((s) => simulationSeriesPoints(s).slice(panel.start, panel.end + 1).map((p) => Number(p.value))).filter(Number.isFinite);
+    const min = values.length ? Math.min(...values) : 0, max = values.length ? Math.max(...values) : 1;
+    return [unit, { min, max, span: max - min || 1 }];
+  }));
+  const lines = seriesList.map((series, index) => {
+    const points = simulationSeriesPoints(series).slice(panel.start, panel.end + 1), scale = unitRanges.get(simulationSeriesDisplayUnit(series));
+    const xStep = points.length > 1 ? plotWidth / (points.length - 1) : plotWidth;
+    const coords = points.map((point, i) => `${pad.left + i * xStep},${pad.top + plotHeight * (1 - (Number(point.value) - scale.min) / scale.span)}`).join(" ");
+    return `<polyline points="${coords}" fill="none" stroke="${colors[index % colors.length]}" stroke-width="2.2" />`;
+  }).join("");
+  const axes = units.map((unit, index) => {
+    const scale = unitRanges.get(unit), left = index % 2 === 0, offset = Math.floor(index / 2) * 34, x = left ? pad.left - offset : width - pad.right + offset;
+    return `<g><line x1="${x}" x2="${x}" y1="${pad.top}" y2="${height - pad.bottom}" class="simulation-axis-line"/><text x="${x + (left ? -6 : 6)}" y="${pad.top + 4}" text-anchor="${left ? "end" : "start"}" class="simulation-axis">${escapeHTML(formatValueWithUnit(scale.max, unit))}</text><text x="${x + (left ? -6 : 6)}" y="${height - pad.bottom}" text-anchor="${left ? "end" : "start"}" class="simulation-axis">${escapeHTML(formatValueWithUnit(scale.min, unit))}</text></g>`;
+  }).join("");
+  const legend = seriesList.map((series, index) => `<span><i style="background:${colors[index % colors.length]}"></i>${escapeHTML(simulationSeriesDisplayColumn(series))} [${escapeHTML(simulationSeriesDisplayUnit(series) || "-")}]</span>`).join("");
+  return `<div class="simulation-series-legend">${legend}</div><svg class="simulation-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Variable graph">${axes}<line x1="${pad.left}" x2="${width - pad.right}" y1="${height - pad.bottom}" y2="${height - pad.bottom}" class="simulation-axis-line"/>${lines}</svg>`;
 }
 
 function currentSimulationSeries() {
   return simulationSeriesLookup().byID.get(state.simulationSelectedSeries) || null;
+}
+
+function handleSimulationSeriesWorkspaceClick(event) {
+  const panelAction = event.target.closest("[data-series-panel-action]");
+  if (panelAction) {
+    if (panelAction.dataset.seriesPanelAction === "add") {
+      simulationSeriesPanels.push({ id: simulationSeriesPanelSequence++, seriesIDs: [state.simulationSelectedSeries], start: 0, end: -1 });
+    } else if (simulationSeriesPanels.length > 1) {
+      simulationSeriesPanels.pop();
+    }
+    renderSimulationChart();
+    return;
+  }
+  const variableAction = event.target.closest("[data-series-variable-action]");
+  if (variableAction) {
+    const panel = simulationSeriesPanels.find((item) => String(item.id) === variableAction.dataset.seriesPanelId);
+    if (!panel) return;
+    const index = Number(variableAction.dataset.seriesVariableIndex) || 0;
+    if (variableAction.dataset.seriesVariableAction === "add") {
+      const fallback = safeSimulationSeriesList(state.simulationResult?.series).find((item) => !panel.seriesIDs.includes(seriesID(item)));
+      if (fallback) panel.seriesIDs.splice(index + 1, 0, seriesID(fallback));
+    } else if (panel.seriesIDs.length > 1) {
+      panel.seriesIDs.splice(index, 1);
+    }
+    renderSimulationChart();
+    return;
+  }
+  const all = event.target.closest("[data-series-range-all]");
+  if (all) {
+    const panel = simulationSeriesPanels.find((item) => String(item.id) === all.dataset.seriesRangeAll);
+    if (panel) { panel.start = 0; panel.end = -1; renderSimulationChart(); }
+  }
+}
+
+function handleSimulationSeriesWorkspaceChange(event) {
+  const select = event.target.closest("select[data-series-panel-id]");
+  if (!select) return;
+  const panel = simulationSeriesPanels.find((item) => String(item.id) === select.dataset.seriesPanelId);
+  if (!panel) return;
+  panel.seriesIDs[Number(select.dataset.seriesVariableIndex) || 0] = select.value;
+  state.simulationSelectedSeries = select.value;
+  renderSimulationChart();
+}
+
+function handleSimulationSeriesWorkspaceInput(event) {
+  const input = event.target.closest("input[data-series-range]");
+  if (!input) return;
+  const panel = simulationSeriesPanels.find((item) => String(item.id) === input.dataset.seriesPanelId);
+  if (!panel) return;
+  const value = Number(input.value) || 0;
+  if (input.dataset.seriesRange === "start") panel.start = Math.min(value, panel.end < 0 ? value : panel.end);
+  else panel.end = Math.max(value, panel.start);
+  renderSimulationChart();
 }
 
 function renderSimulationSeriesRangeControls(series, visibleRange = null) {
