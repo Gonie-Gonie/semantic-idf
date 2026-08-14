@@ -21,7 +21,7 @@ func TestHVACLoopNavigationBrowserHarness(t *testing.T) {
 	}
 
 	index := readTestFile(t, "frontend/src/index.html")
-	hvacMain := sliceBetween(index, `<section class="hvac-main"`, `<aside class="hvac-side"`)
+	hvacMain := sliceBetween(index, `<section class="hvac-main"`, `<div id="hvacApplyDialog"`)
 	if !strings.Contains(hvacMain, `id="hvacViewportActions"`) || !strings.Contains(hvacMain, `id="hvacGraph"`) {
 		t.Fatal("HVAC main viewport fragment is missing its fixed actions or graph")
 	}
@@ -120,8 +120,6 @@ const hvacLoopNavigationHarnessHTML = `<!doctype html>
   <div class="hvac-layout">
     {{HVAC_MAIN}}
     <aside id="hvacSide">
-      <span id="hvacInspectorStats"></span>
-      <div id="hvacInspector"></div>
     </aside>
   </div>
   <pre id="result">pending</pre>

@@ -114,52 +114,6 @@ export function initializeHVACControls() {
     event.preventDefault();
     selectHVACGraphKey(graphTarget.dataset.hvacGraphKey || "", graphTarget);
   });
-  elements.hvacInspector?.addEventListener("click", (event) => {
-    const resultTab = event.target.closest("[data-result-tab]");
-    if (resultTab) {
-      openHVACResultTab(resultTab.dataset.resultTab || state.activeResultTab);
-      return;
-    }
-    const loopJump = event.target.closest("[data-hvac-jump-loop-name]");
-    if (loopJump) {
-      jumpToHVACLoopByName(loopJump.dataset.hvacJumpLoopName || "", loopJump.dataset.hvacJumpGraphKey || "");
-      return;
-    }
-    const entityTarget = event.target.closest("[data-hvac-entity-kind][data-hvac-entity-id]");
-    if (entityTarget) {
-      navigateHVACFromPanelElement(
-        entityTarget,
-        {
-          kind: entityTarget.dataset.hvacEntityKind || "",
-          id: entityTarget.dataset.hvacEntityId || "",
-          label: entityTarget.dataset.hvacEntityLabel || "",
-          view: entityTarget.dataset.hvacEntityView || "",
-          context: {
-            pathId: entityTarget.dataset.hvacPathId || "",
-            zoneId: entityTarget.dataset.hvacZoneId || "",
-            loopId: entityTarget.dataset.hvacLoopEntityId || "",
-            componentId: entityTarget.dataset.hvacComponentId || "",
-            couplingId: entityTarget.dataset.hvacCouplingId || "",
-          },
-          graphKey: entityTarget.dataset.hvacGraphKey || "",
-        },
-      );
-      return;
-    }
-    const outputButton = event.target.closest("[data-hvac-output-variable]");
-    if (outputButton) {
-      openHVACOutputDialog({
-        keyValue: outputButton.dataset.hvacOutputKey || state.activeHVACNodeName || "",
-        variableName: outputButton.dataset.hvacOutputVariable || "",
-      });
-      return;
-    }
-    const nodeButton = event.target.closest("[data-hvac-node]");
-    if (!nodeButton) {
-      return;
-    }
-    navigateHVACFromPanelElement(nodeButton, hvacTargetForNode(nodeButton.dataset.hvacNode || ""));
-  });
   elements.hvacApplyClose?.addEventListener("click", closeHVACApplyDialog);
   elements.hvacPreviewApply?.addEventListener("click", previewHVACApply);
   elements.hvacApplyForm?.addEventListener("submit", applyHVACEdit);
@@ -470,7 +424,7 @@ function findHVACNavigationTarget(selection, context) {
   const target = hvacViewTargetForSelection(selection, context.navigation);
   const targetID = String(target?.targetId || selection?.originTargetId || "");
   const entityID = String(selection?.entityId || "");
-  for (const container of [elements.hvacGraph, elements.hvacInspector, elements.hvacSummary]) {
+  for (const container of [elements.hvacGraph, elements.hvacSummary]) {
     const items = [...(container?.querySelectorAll?.("[data-panel-target-id], [data-entity-id]") || [])];
     const exact = items.find((item) => targetID && item.dataset.panelTargetId === targetID && (!entityID || item.dataset.entityId === entityID));
     if (exact) {
@@ -496,7 +450,6 @@ function captureHVACNavigationContext(context) {
     summaryScrollTop: Number(elements.hvacSummary?.scrollTop) || 0,
     graphScrollTop: Number(elements.hvacGraph?.scrollTop) || 0,
     graphScrollLeft: Number(elements.hvacGraph?.scrollLeft) || 0,
-    inspectorScrollTop: Number(elements.hvacInspector?.scrollTop) || 0,
   };
 }
 
@@ -514,7 +467,6 @@ async function restoreHVACNavigationContext(snapshot = {}, context) {
   await context.genericRestoreContext(snapshot);
   restoreHVACScroll(elements.hvacSummary, snapshot.summaryScrollTop);
   restoreHVACScroll(elements.hvacGraph, snapshot.graphScrollTop, snapshot.graphScrollLeft);
-  restoreHVACScroll(elements.hvacInspector, snapshot.inspectorScrollTop);
   return true;
 }
 
@@ -1252,7 +1204,6 @@ export function renderHVAC(hvac = state.report?.hvac) {
   }
   const selectedLoop = loops.find((loop) => loop.id === state.activeHVACLoopId) || null;
   renderHVACSummary(hvac, selectedLoop);
-  renderHVACInspector(hvac, selectedLoop);
 
   if (state.activeHVACView === "services") {
     renderHVACServices(hvac);
@@ -1266,8 +1217,6 @@ export function renderHVAC(hvac = state.report?.hvac) {
 function renderEmptyHVAC() {
   elements.hvacSummary.innerHTML = `<div class="empty">${t("hvac.noHVACAnalysis")}</div>`;
   elements.hvacGraph.innerHTML = `<div class="empty">${t("hvac.noLoopGraph")}</div>`;
-  elements.hvacInspectorStats.textContent = t("hvac.selectNode");
-  elements.hvacInspector.innerHTML = `<div class="empty">${t("hvac.noData")}</div>`;
 }
 
 function renderHVACSummary(hvac, selectedLoop) {

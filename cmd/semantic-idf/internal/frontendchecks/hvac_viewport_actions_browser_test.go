@@ -102,8 +102,6 @@ const hvacViewportActionsHarnessHTML = `<!doctype html>
   <div class="hvac-layout">
     {{HVAC_MAIN}}
     <aside id="hvacSide">
-      <span id="hvacInspectorStats"></span>
-      <div id="hvacInspector"></div>
     </aside>
   </div>
   <pre id="result">pending</pre>

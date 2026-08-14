@@ -799,7 +799,7 @@ func TestFrontendHVACDiagramCtrlWheelZoomIsLocalBoundedAndResettable(t *testing.
 	}
 }
 
-func TestFrontendHVACInspectorIsAlwaysVisibleAndExpandUsesViewportIcon(t *testing.T) {
+func TestFrontendHVACInspectorIsRemovedAndExpandUsesViewportIcon(t *testing.T) {
 	index := readTestFile(t, "frontend/src/index.html")
 	state := readTestFile(t, "frontend/src/js/state.js")
 	view := readTestFile(t, "frontend/src/js/views/hvac-views.js")
@@ -816,6 +816,9 @@ func TestFrontendHVACInspectorIsAlwaysVisibleAndExpandUsesViewportIcon(t *testin
 		}
 	}
 	for _, forbidden := range []string{
+		`id="hvacInspector"`,
+		`id="hvacInspectorStats"`,
+		`aria-label="HVAC inspector"`,
 		"hvacInspectorToggle",
 		"hvacInspectorCollapsed",
 		"idfAnalyzer.hvacInspectorCollapsed",

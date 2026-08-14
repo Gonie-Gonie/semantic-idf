@@ -324,8 +324,6 @@ export const elements = {
   hvacExpandButton: document.querySelector("#hvacExpandButton"),
   hvacSummary: document.querySelector("#hvacSummary"),
   hvacGraph: document.querySelector("#hvacGraph"),
-  hvacInspectorStats: document.querySelector("#hvacInspectorStats"),
-  hvacInspector: document.querySelector("#hvacInspector"),
   hvacApplyDialog: document.querySelector("#hvacApplyDialog"),
   hvacApplyForm: document.querySelector("#hvacApplyForm"),
   hvacApplyClose: document.querySelector("#hvacApplyClose"),

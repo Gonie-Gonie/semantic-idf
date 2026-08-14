@@ -14,10 +14,6 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .hvac-side {
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  }
-
 }
 
 @media (max-width: 920px) {
