@@ -118,10 +118,13 @@ func TestInputToolbarKeepsTabsAndSearchHorizontallyReachable(t *testing.T) {
 			t.Fatalf("horizontal Input toolbar styling is missing %q", required)
 		}
 	}
-	for _, required := range []string{"bindHorizontalDragScroll(elements.inputToolbarScroll)", `element.scrollLeft = startScrollLeft - delta`, `element.addEventListener("wheel"`} {
+	for _, required := range []string{"bindHorizontalDragScroll(elements.inputToolbarScroll)", `element.scrollLeft = startScrollLeft - delta`, `element.addEventListener("wheel"`, `if (!element.hasPointerCapture(pointerID))`} {
 		if !strings.Contains(main, required) {
 			t.Fatalf("horizontal Input toolbar interaction is missing %q", required)
 		}
+	}
+	if strings.Contains(sliceBetween(main, `element.addEventListener("pointerdown"`, `element.addEventListener("pointermove"`), "setPointerCapture") {
+		t.Fatal("Input toolbar must not capture a simple pointer press before drag starts because that retargets tab clicks")
 	}
 }
 

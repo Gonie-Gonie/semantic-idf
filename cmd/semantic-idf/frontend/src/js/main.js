@@ -883,7 +883,6 @@ function bindHorizontalDragScroll(element) {
     startX = event.clientX;
     startScrollLeft = element.scrollLeft;
     dragged = false;
-    element.setPointerCapture(pointerID);
   });
   element.addEventListener("pointermove", (event) => {
     if (event.pointerId !== pointerID) return;
@@ -891,6 +890,9 @@ function bindHorizontalDragScroll(element) {
     if (Math.abs(delta) > 4) {
       dragged = true;
       element.classList.add("is-dragging");
+      if (!element.hasPointerCapture(pointerID)) {
+        element.setPointerCapture(pointerID);
+      }
     }
     if (dragged) {
       element.scrollLeft = startScrollLeft - delta;
