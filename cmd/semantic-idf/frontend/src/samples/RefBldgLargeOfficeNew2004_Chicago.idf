@@ -80,7 +80,7 @@
     YES,                     !- Do System Sizing Calculation
     YES,                     !- Do Plant Sizing Calculation
     YES,                     !- Run Simulation for Sizing Periods
-    NO,                      !- Run Simulation for Weather File Run Periods
+    YES,                     !- Run Simulation for Weather File Run Periods
     YES,                     !- Do HVAC Sizing Simulation for Sizing Periods
     2;                       !- Maximum Number of HVAC Sizing Simulation Passes
 

@@ -957,6 +957,9 @@ func TestDefaultEnergyPlusSampleAnalyzes(t *testing.T) {
 	if result.Version != "24.2" {
 		t.Fatalf("default sample version = %q, want 24.2", result.Version)
 	}
+	if !strings.Contains(string(content), "YES,                     !- Run Simulation for Weather File Run Periods") {
+		t.Fatal("default sample must run the annual weather-file RunPeriod")
+	}
 	if result.Report.Geometry.ZoneCount < 10 || result.Report.Geometry.SurfaceCount < 50 || result.Report.Geometry.WindowCount < 10 {
 		t.Fatalf("default sample geometry too small: zones=%d surfaces=%d windows=%d", result.Report.Geometry.ZoneCount, result.Report.Geometry.SurfaceCount, result.Report.Geometry.WindowCount)
 	}
