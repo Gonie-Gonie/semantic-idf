@@ -846,6 +846,18 @@ func TestFrontendHVACRendererAvoidsResolverConfidenceVocabulary(t *testing.T) {
 	}
 }
 
+func TestFrontendHVACLoopRootDoesNotDimDiagramItems(t *testing.T) {
+	view := readTestFile(t, "frontend/src/js/views/hvac-views.js")
+	for _, required := range []string{
+		`const activeKey = state.activeHVACGraphKey || ""`,
+		`if (!activeKey || activeKey.startsWith("loop:"))`,
+	} {
+		if !strings.Contains(view, required) {
+			t.Fatalf("opening an HVAC loop must preserve normal diagram contrast until an inner item is selected: missing %q", required)
+		}
+	}
+}
+
 func TestFrontendHVACRendererAvoidsLegacyRelationGraphImplementation(t *testing.T) {
 	content, err := os.ReadFile(repoPath("frontend/src/js/views/hvac-views.js"))
 	if err != nil {

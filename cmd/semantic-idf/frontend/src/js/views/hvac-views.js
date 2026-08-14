@@ -4567,13 +4567,17 @@ function componentGraphRelatedKeys(component) {
 }
 
 function graphSelectionClass(key, relatedKeys = []) {
-  if (!state.activeHVACGraphKey) {
+  const activeKey = state.activeHVACGraphKey || "";
+  // Opening a loop establishes the current diagram; it is not a selection
+  // within that diagram. Keep every item at its normal contrast until the
+  // user focuses a branch, component, or node.
+  if (!activeKey || activeKey.startsWith("loop:")) {
     return "";
   }
-  if (state.activeHVACGraphKey === key) {
+  if (activeKey === key) {
     return "selected";
   }
-  if (relatedKeys.includes(state.activeHVACGraphKey)) {
+  if (relatedKeys.includes(activeKey)) {
     return "related";
   }
   return "dimmed";
