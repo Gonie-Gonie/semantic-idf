@@ -1957,6 +1957,27 @@
   gap: 7px;
 }
 
+.simulation-series-panel-actions .viewport-icon-button,
+.simulation-series-variable-row .viewport-icon-button {
+  flex: 0 0 26px;
+  width: 26px;
+  min-width: 26px;
+  height: 26px;
+  min-height: 26px;
+  padding: 0;
+  border-radius: 5px;
+  background: var(--control);
+  background-image: none;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.simulation-series-variable-row select {
+  min-height: 28px;
+  padding-block: 2px;
+  background-image: none;
+}
+
 .simulation-series-variable-list {
   align-items: stretch;
   flex-direction: column;
@@ -1985,6 +2006,12 @@
   width: 16px;
   height: 3px;
   border-radius: 999px;
+}
+
+.simulation-axis-title {
+  fill: var(--muted);
+  font-size: var(--graph-font-size, 12px);
+  font-weight: 600;
 }
 
 #simulationSeriesSelect {

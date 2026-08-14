@@ -13,6 +13,7 @@ let simulationNavigationCleanup = null;
 let simulationNavigationRevealTarget = null;
 let simulationSeriesPanels = [];
 let simulationSeriesPanelSequence = 1;
+let simulationSeriesPan = null;
 let heatFlowBrushStartFrame = null;
 
 const simulationSemanticBindings = new Map();
@@ -561,7 +562,6 @@ export function initializeSimulationControls() {
   elements.simulationWeatherSelect?.addEventListener("change", () => renderSimulation());
   elements.simulationChart?.closest("[data-simulation-result-view='series']")?.addEventListener("click", handleSimulationSeriesWorkspaceClick);
   elements.simulationChart?.addEventListener("change", handleSimulationSeriesWorkspaceChange);
-  elements.simulationChart?.addEventListener("input", handleSimulationSeriesWorkspaceInput);
   elements.simulationHeatFlowSlider?.addEventListener("input", () => {
     state.simulationHeatFlowFrameIndex = Number(elements.simulationHeatFlowSlider.value) || 0;
     normalizeHeatFlowFrameRange();
@@ -1131,7 +1131,7 @@ function renderSimulationEmpty({ controlsReady = false, blockingIssue: preparedB
     renderSimulationResultTabs(null);
     renderSimulationHeatFlowEmpty(t("simulation.heatFlowAfterRun", {}, "The heat-flow ledger will appear when Zone Heat Flow SQL/CSV output is available."));
     setSimulationSeriesGroupUnavailable();
-    elements.simulationChart.innerHTML = `<div class="simulation-running-empty">${renderMiniProgressSVG()}<span>${escapeHTML(t("simulation.graphAfterRun", {}, "The graph will appear when the run finishes."))}</span></div>`;
+    elements.simulationChart.innerHTML = `<div class="simulation-running-empty">${renderMiniProgressSVG()}<span>${escapeHTML(t("simulation.graphAfterRun", {}, "Variables will appear when the run finishes."))}</span></div>`;
     renderSimulationEnergyEmpty(t("simulation.outputPending", {}, "Outputs are pending while EnergyPlus runs."));
     renderSimulationHVACLoopEmpty(t("simulation.outputPending", {}, "Outputs are pending while EnergyPlus runs."));
     renderSimulationComfortEmpty(t("simulation.outputPending", {}, "Outputs are pending while EnergyPlus runs."));
@@ -1169,7 +1169,7 @@ function renderSimulationEmpty({ controlsReady = false, blockingIssue: preparedB
   renderSimulationComfortEmpty(t("simulation.noComfortResult", {}, "Run Comfort Check to inspect zone temperature and setpoint series."));
   renderSimulationHeatFlowEmpty(t("simulation.noHeatFlow", {}, "Select Zone Heat Flow to inspect the zone heat-flow ledger."));
   setSimulationSeriesGroupUnavailable();
-  elements.simulationChart.innerHTML = `<div class="empty">${t("simulation.noGraph", {}, "Graph will appear after a run with numeric output.")}</div>`;
+  elements.simulationChart.innerHTML = `<div class="empty">${t("simulation.noGraph", {}, "Variables will appear after a run with numeric output.")}</div>`;
   toggleSimulationResultSections();
   updateSimulationOutputAvailability(null, false);
 }
@@ -6383,7 +6383,7 @@ function renderSimulationChart() {
   if (!elements.simulationChart) return;
   const series = safeSimulationSeriesList(state.simulationResult?.series);
   if (!series.length || !simulationSeriesPanels.length) {
-    elements.simulationChart.innerHTML = `<div class="empty">${t("simulation.noGraph", {}, "Graph will appear after a run with numeric output.")}</div>`;
+    elements.simulationChart.innerHTML = `<div class="empty">${t("simulation.noGraph", {}, "Variables will appear after a run with numeric output.")}</div>`;
     return;
   }
   elements.simulationChart.innerHTML = simulationSeriesPanels.map((panel) => renderSimulationSeriesPanel(panel, series)).join("");
@@ -6397,9 +6397,7 @@ function renderSimulationSeriesPanel(panel, allSeries) {
   panel.start = Math.min(Math.max(0, panel.start || 0), panel.end);
   const options = simulationSeriesPickerOptions(allSeries);
   const rows = panel.seriesIDs.map((id, index) => `<div class="simulation-series-variable-row"><button type="button" class="viewport-icon-button" data-series-variable-action="${index ? "remove" : "add"}" data-series-panel-id="${panel.id}" data-series-variable-index="${index}" aria-label="${index ? "Remove variable" : "Add variable"}" title="${index ? "Remove variable" : "Add variable"}">${index ? "−" : "+"}</button><select data-series-panel-id="${panel.id}" data-series-variable-index="${index}" aria-label="Variable by category">${options(id)}</select></div>`).join("");
-  const startPct = maxIndex ? (panel.start / maxIndex) * 100 : 0;
-  const endPct = maxIndex ? (panel.end / maxIndex) * 100 : 100;
-  return `<section class="simulation-series-panel" data-series-panel-id="${panel.id}"><div class="simulation-series-variable-list">${rows}</div><div class="simulation-series-controls"><button type="button" data-series-range-all="${panel.id}">All</button><div class="simulation-series-range" style="--series-range-start:${startPct}%;--series-range-end:${endPct}%"><input type="range" min="0" max="${maxIndex}" value="${panel.start}" data-series-range="start" data-series-panel-id="${panel.id}" aria-label="Visible range start"><input type="range" min="0" max="${maxIndex}" value="${panel.end}" data-series-range="end" data-series-panel-id="${panel.id}" aria-label="Visible range end"></div><output>${maxPoints ? `${panel.start + 1}-${panel.end + 1} / ${maxPoints}` : "No range"}</output></div>${renderSimulationMultiSeriesSVG(selected, panel)}</section>`;
+  return `<section class="simulation-series-panel" data-series-panel-id="${panel.id}"><div class="simulation-series-variable-list">${rows}</div><div class="simulation-series-viewport-meta"><button type="button" class="viewport-icon-button" data-series-range-all="${panel.id}" aria-label="Fit full range" title="Fit full range">↔</button><span>${maxPoints ? `${panel.start + 1}-${panel.end + 1} / ${maxPoints}` : ""}</span></div>${renderSimulationMultiSeriesSVG(selected, panel)}</section>`;
 }
 
 function simulationSeriesPickerOptions(allSeries) {
@@ -6410,27 +6408,42 @@ function simulationSeriesPickerOptions(allSeries) {
 }
 
 function renderSimulationMultiSeriesSVG(seriesList, panel) {
-  const width = 900, height = 280, pad = { left: 76, right: 76, top: 24, bottom: 44 };
-  const units = [...new Set(seriesList.map(simulationSeriesDisplayUnit))];
+  const width = 900, height = 300;
+  const unitKey = (series) => String(simulationSeriesDisplayUnit(series) || "value").trim().toLowerCase();
+  const units = [...new Set(seriesList.map(unitKey))];
+  const leftAxisCount = Math.ceil(units.length / 2), rightAxisCount = Math.floor(units.length / 2);
+  const pad = { left: 62 + Math.max(0, leftAxisCount - 1) * 54, right: 62 + Math.max(0, rightAxisCount - 1) * 54, top: 18, bottom: 54 };
   const colors = ["#62c7d5", "#f0b44d", "#85d17a", "#c394f5", "#ef7f8d", "#72a7ff"];
   const plotWidth = width - pad.left - pad.right, plotHeight = height - pad.top - pad.bottom;
   const unitRanges = new Map(units.map((unit) => {
-    const values = seriesList.filter((s) => simulationSeriesDisplayUnit(s) === unit).flatMap((s) => simulationSeriesPoints(s).slice(panel.start, panel.end + 1).map((p) => Number(p.value))).filter(Number.isFinite);
+    const values = seriesList.filter((s) => unitKey(s) === unit).flatMap((s) => simulationSeriesPoints(s).slice(panel.start, panel.end + 1).map((p) => Number(p.value))).filter(Number.isFinite);
     const min = values.length ? Math.min(...values) : 0, max = values.length ? Math.max(...values) : 1;
     return [unit, { min, max, span: max - min || 1 }];
   }));
   const lines = seriesList.map((series, index) => {
-    const points = simulationSeriesPoints(series).slice(panel.start, panel.end + 1), scale = unitRanges.get(simulationSeriesDisplayUnit(series));
+    const points = simulationSeriesPoints(series).slice(panel.start, panel.end + 1), scale = unitRanges.get(unitKey(series));
     const xStep = points.length > 1 ? plotWidth / (points.length - 1) : plotWidth;
     const coords = points.map((point, i) => `${pad.left + i * xStep},${pad.top + plotHeight * (1 - (Number(point.value) - scale.min) / scale.span)}`).join(" ");
-    return `<polyline points="${coords}" fill="none" stroke="${colors[index % colors.length]}" stroke-width="2.2" />`;
+    const dash = ["", "8 4", "3 3", "10 3 2 3"][index % 4];
+    return `<polyline points="${coords}" fill="none" stroke="${colors[index % colors.length]}" stroke-width="2.2" ${dash ? `stroke-dasharray="${dash}"` : ""} />`;
   }).join("");
   const axes = units.map((unit, index) => {
-    const scale = unitRanges.get(unit), left = index % 2 === 0, offset = Math.floor(index / 2) * 34, x = left ? pad.left - offset : width - pad.right + offset;
-    return `<g><line x1="${x}" x2="${x}" y1="${pad.top}" y2="${height - pad.bottom}" class="simulation-axis-line"/><text x="${x + (left ? -6 : 6)}" y="${pad.top + 4}" text-anchor="${left ? "end" : "start"}" class="simulation-axis">${escapeHTML(formatValueWithUnit(scale.max, unit))}</text><text x="${x + (left ? -6 : 6)}" y="${height - pad.bottom}" text-anchor="${left ? "end" : "start"}" class="simulation-axis">${escapeHTML(formatValueWithUnit(scale.min, unit))}</text></g>`;
+    const scale = unitRanges.get(unit), left = index % 2 === 0, offset = Math.floor(index / 2) * 54, x = left ? pad.left - offset : width - pad.right + offset;
+    const ticks = Array.from({ length: 5 }, (_, tick) => {
+      const ratio = tick / 4, value = scale.max - scale.span * ratio, y = pad.top + plotHeight * ratio;
+      const grid = index === 0 ? `<line x1="${pad.left}" x2="${width - pad.right}" y1="${y}" y2="${y}" class="simulation-grid"/>` : "";
+      return `${grid}<line x1="${x - 3}" x2="${x + 3}" y1="${y}" y2="${y}" class="simulation-axis-line"/><text x="${x + (left ? -7 : 7)}" y="${y + 4}" text-anchor="${left ? "end" : "start"}" class="simulation-axis">${escapeHTML(Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 }))}</text>`;
+    }).join("");
+    return `<g><line x1="${x}" x2="${x}" y1="${pad.top}" y2="${height - pad.bottom}" class="simulation-axis-line"/>${ticks}<text x="${x}" y="${pad.top - 6}" text-anchor="middle" class="simulation-axis-title">${escapeHTML(unit)}</text></g>`;
   }).join("");
-  const legend = seriesList.map((series, index) => `<span><i style="background:${colors[index % colors.length]}"></i>${escapeHTML(simulationSeriesDisplayColumn(series))} [${escapeHTML(simulationSeriesDisplayUnit(series) || "-")}]</span>`).join("");
-  return `<div class="simulation-series-legend">${legend}</div><svg class="simulation-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Variable graph">${axes}<line x1="${pad.left}" x2="${width - pad.right}" y1="${height - pad.bottom}" y2="${height - pad.bottom}" class="simulation-axis-line"/>${lines}</svg>`;
+  const referencePoints = simulationSeriesPoints(seriesList[0]).slice(panel.start, panel.end + 1);
+  const xTickIndexes = [...new Set(Array.from({ length: Math.min(6, referencePoints.length) }, (_, index) => Math.round(index * Math.max(0, referencePoints.length - 1) / Math.max(1, Math.min(6, referencePoints.length) - 1))))];
+  const xTicks = xTickIndexes.map((pointIndex) => {
+    const x = pad.left + (referencePoints.length > 1 ? pointIndex * plotWidth / (referencePoints.length - 1) : 0);
+    return `<line x1="${x}" x2="${x}" y1="${pad.top}" y2="${height - pad.bottom}" class="simulation-grid"/><line x1="${x}" x2="${x}" y1="${height - pad.bottom}" y2="${height - pad.bottom + 4}" class="simulation-axis-line"/><text x="${x}" y="${height - pad.bottom + 18}" text-anchor="middle" class="simulation-axis">${escapeHTML(referencePoints[pointIndex]?.label || String(panel.start + pointIndex + 1))}</text>`;
+  }).join("");
+  const legend = seriesList.map((series, index) => `<span><i style="background:${colors[index % colors.length]}"></i>${escapeHTML(simulationSeriesDisplayColumn(series))}</span>`).join("");
+  return `<div class="simulation-series-legend">${legend}</div><svg class="simulation-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Variables">${axes}${xTicks}<line x1="${pad.left}" x2="${width - pad.right}" y1="${height - pad.bottom}" y2="${height - pad.bottom}" class="simulation-axis-line"/>${lines}<rect class="simulation-chart-hit" x="${pad.left}" y="${pad.top}" width="${plotWidth}" height="${plotHeight}" data-simulation-chart-hit="1" data-series-panel-id="${panel.id}"></rect><text x="${pad.left + plotWidth / 2}" y="${height - 8}" text-anchor="middle" class="simulation-axis-title">Time</text></svg>`;
 }
 
 function currentSimulationSeries() {
@@ -6476,17 +6489,6 @@ function handleSimulationSeriesWorkspaceChange(event) {
   if (!panel) return;
   panel.seriesIDs[Number(select.dataset.seriesVariableIndex) || 0] = select.value;
   state.simulationSelectedSeries = select.value;
-  renderSimulationChart();
-}
-
-function handleSimulationSeriesWorkspaceInput(event) {
-  const input = event.target.closest("input[data-series-range]");
-  if (!input) return;
-  const panel = simulationSeriesPanels.find((item) => String(item.id) === input.dataset.seriesPanelId);
-  if (!panel) return;
-  const value = Number(input.value) || 0;
-  if (input.dataset.seriesRange === "start") panel.start = Math.min(value, panel.end < 0 ? value : panel.end);
-  else panel.end = Math.max(value, panel.start);
   renderSimulationChart();
 }
 
@@ -6573,38 +6575,58 @@ function bindSimulationChartInteractions() {
     "wheel",
     (event) => {
       const hitTarget = event.target instanceof Element ? event.target.closest("[data-simulation-chart-hit]") : null;
-      const series = currentSimulationSeries();
-      if (!hitTarget || !series) {
-        return;
-      }
+      if (!hitTarget) return;
+      const panel = simulationSeriesPanels.find((item) => String(item.id) === hitTarget.dataset.seriesPanelId);
+      const series = panel?.seriesIDs.map((id) => simulationSeriesLookup().byID.get(id)).find(Boolean);
+      if (!panel || !series) return;
       event.preventDefault();
-      zoomSimulationSeriesRange(event, series, hitTarget);
+      zoomSimulationSeriesPanel(event, panel, series, hitTarget);
     },
     { passive: false },
   );
   host.addEventListener("dblclick", (event) => {
-    if (!(event.target instanceof Element) || !event.target.closest("[data-simulation-chart-hit]")) {
-      return;
-    }
-    state.simulationSeriesRangeStart = 0;
-    state.simulationSeriesRangeEnd = -1;
+    const hit = event.target instanceof Element ? event.target.closest("[data-simulation-chart-hit]") : null;
+    const panel = hit && simulationSeriesPanels.find((item) => String(item.id) === hit.dataset.seriesPanelId);
+    if (!panel) return;
+    panel.start = 0; panel.end = -1;
     renderSimulationChart();
   });
+  host.addEventListener("pointerdown", (event) => {
+    const hit = event.target instanceof Element ? event.target.closest("[data-simulation-chart-hit]") : null;
+    const panel = hit && simulationSeriesPanels.find((item) => String(item.id) === hit.dataset.seriesPanelId);
+    if (!panel || event.button !== 0) return;
+    simulationSeriesPan = { pointerId: event.pointerId, panel, startX: event.clientX, start: panel.start, end: panel.end, width: hit.getBoundingClientRect().width };
+    hit.setPointerCapture(event.pointerId);
+  });
+  host.addEventListener("pointermove", (event) => {
+    if (!simulationSeriesPan || simulationSeriesPan.pointerId !== event.pointerId) return;
+    const { panel, startX, start, end, width } = simulationSeriesPan;
+    const size = end - start + 1;
+    const shift = Math.round((startX - event.clientX) / Math.max(width, 1) * size);
+    const first = simulationSeriesLookup().byID.get(panel.seriesIDs[0]);
+    const max = Math.max(0, simulationSeriesPointCount(first) - 1);
+    panel.start = Math.max(0, Math.min(max - size + 1, start + shift));
+    panel.end = Math.min(max, panel.start + size - 1);
+  });
+  const stopPan = (event) => {
+    if (simulationSeriesPan?.pointerId !== event.pointerId) return;
+    simulationSeriesPan = null;
+    renderSimulationChart();
+  };
+  host.addEventListener("pointerup", stopPan);
+  host.addEventListener("pointercancel", stopPan);
 }
 
-function zoomSimulationSeriesRange(event, series, hitTarget = event.currentTarget) {
+function zoomSimulationSeriesPanel(event, panel, series, hitTarget = event.currentTarget) {
   const pointCount = simulationSeriesPointCount(series);
-  if (pointCount <= 2) {
-    return;
-  }
-  const { start, end } = normalizeSimulationSeriesRange(pointCount);
+  if (pointCount <= 2) return;
+  const start = panel.start || 0, end = panel.end < 0 ? pointCount - 1 : panel.end;
   const currentSize = end - start + 1;
   const nextSize = event.deltaY < 0
     ? Math.max(6, Math.ceil(currentSize * 0.72))
     : Math.min(pointCount, Math.ceil(currentSize / 0.72));
   if (nextSize >= pointCount) {
-    state.simulationSeriesRangeStart = 0;
-    state.simulationSeriesRangeEnd = -1;
+    panel.start = 0; panel.end = pointCount - 1;
     renderSimulationChart();
     return;
   }
@@ -6622,8 +6644,8 @@ function zoomSimulationSeriesRange(event, series, hitTarget = event.currentTarge
     nextStart = Math.max(0, nextStart - overflow);
     nextEnd = pointCount - 1;
   }
-  state.simulationSeriesRangeStart = nextStart;
-  state.simulationSeriesRangeEnd = nextEnd;
+  panel.start = nextStart;
+  panel.end = nextEnd;
   renderSimulationChart();
 }
 
