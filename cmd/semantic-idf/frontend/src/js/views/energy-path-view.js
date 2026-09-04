@@ -137,6 +137,7 @@ const ENERGY_PATH_CONVERSION_RATIOS = Object.freeze({
 });
 
 const ENERGY_PATH_AUXILIARY_END_USES = Object.freeze(new Set(["fans_pumps", "hvac_auxiliaries"]));
+const ENERGY_PATH_UNASSIGNED_BUILDING_HVAC = "unassigned_building_hvac_energy";
 
 export function isEnergyPathV2(explanation = {}) {
   return String(explanation?.schema || "").toLowerCase() === ENERGY_PATH_SCHEMA_V2;
@@ -482,12 +483,15 @@ export function renderEnergyPathNodeInspector(explanation = {}, nodes = [], sele
   ];
   const basis = String(node.basis || "").trim();
   if (basis) {
+    const basisToken = energyPathToken(basis);
     values.push([
       "basis",
       t("simulation.energyPathBasis", {}, "Basis"),
-      energyPathToken(basis) === "direct_zone_energy"
+      basisToken === "direct_zone_energy"
         ? `${t("simulation.energyPathDirectZoneEnergy", {}, "Direct zone energy")} · direct_zone_energy`
-        : basis,
+        : basisToken === "service_path_allocation"
+          ? `${t("simulation.energyPathServicePathAllocation", {}, "Allocated by HVAC service-path load share")} · service_path_allocation`
+          : basis,
     ]);
   }
   const loadBreakdown = renderEnergyPathLoadBreakdown(node, unit);
@@ -910,18 +914,34 @@ export function renderEnergyPathWarnings(warnings = []) {
     const key = `${severity}\u0000${code}\u0000${message}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    unique.push({ severity, code, message });
+    const unassignedBuildingHVAC = isEnergyPathUnassignedBuildingHVACItem(warning);
+    unique.push({
+      severity,
+      code,
+      message: unassignedBuildingHVAC
+        ? message.replace(/^unassigned building hvac energy\s*(?::|·|—|-)?\s*/i, "")
+        : message,
+      unassignedBuildingHVAC,
+    });
   }
   if (!unique.length) return "";
   return `
     <section class="energy-path-warnings" data-energy-path-warnings role="status">
       <h4>${escapeHTML(t("simulation.energyPathQualityWarnings", {}, "Energy Path quality warnings"))}</h4>
       <ul>${unique.map((warning) => `
-        <li data-energy-path-warning-severity="${warning.severity}">
+        <li data-energy-path-warning-severity="${warning.severity}"${warning.unassignedBuildingHVAC ? ` data-energy-path-quality-detail="${ENERGY_PATH_UNASSIGNED_BUILDING_HVAC}"` : ""}>
           ${warning.code ? `<code>${escapeHTML(warning.code)}</code>` : ""}
-          <span>${escapeHTML(warning.message)}</span>
+          ${warning.unassignedBuildingHVAC ? `<strong>${escapeHTML(t("simulation.energyPathUnassignedBuildingHVACEnergy", {}, "Unassigned building HVAC energy"))}</strong>` : ""}
+          ${warning.message ? `<span>${escapeHTML(warning.message)}</span>` : ""}
         </li>`).join("")}</ul>
     </section>`;
+}
+
+export function isEnergyPathUnassignedBuildingHVACItem(item = {}) {
+  return [item.code, item.id, item.kind, item.label, item.fromId, item.toId]
+    .filter(Boolean)
+    .map((value) => energyPathToken(value).replace(/[^a-z0-9]+/g, "_"))
+    .some((value) => value.includes(ENERGY_PATH_UNASSIGNED_BUILDING_HVAC));
 }
 
 function energyPathSourceInspectorSection(source = {}) {
@@ -1192,13 +1212,19 @@ export function energyPathGraphForState(explanation = {}, viewState = {}) {
     const nodeIDs = new Set(nodes.map((node) => node.id));
     links = links.filter((link) => nodeIDs.has(link.fromId) && nodeIDs.has(link.toId));
   } else {
-    nodes = nodes.filter((node) => energyPathZoneDirectUseNodeIsTrusted(
-      node,
-      explanation.sources || [],
-      viewState.simulationEnergyZoneName,
+    nodes = nodes.filter((node) => (
+      !isEnergyPathUnassignedBuildingHVACItem(node) &&
+      energyPathZoneDirectUseNodeIsTrusted(
+        node,
+        explanation.sources || [],
+        viewState.simulationEnergyZoneName,
+      )
     ));
     const nodeIDs = new Set(nodes.map((node) => node.id));
-    links = links.filter((link) => nodeIDs.has(link.fromId) && nodeIDs.has(link.toId));
+    links = links.filter((link) => (
+      !isEnergyPathUnassignedBuildingHVACItem(link) &&
+      nodeIDs.has(link.fromId) && nodeIDs.has(link.toId)
+    ));
   }
 
   const service = viewState.simulationEnergyService || "all";
@@ -1671,15 +1697,27 @@ export function energyPathSummaryForState(explanation = {}, fallbackSummary = {}
     ? candidate.completeness
     : period?.completeness || scopedResult.completeness || {};
   const endUses = wantedScopeKind === "zone"
-    ? (candidate.endUses || []).filter((item) => energyPathZoneDirectUseNodeIsTrusted(
-      { ...item, level: item.level || "end_use" },
-      explanation.sources || [],
-      viewState.simulationEnergyZoneName,
+    ? (candidate.endUses || []).filter((item) => (
+      !isEnergyPathUnassignedBuildingHVACItem(item) &&
+      energyPathZoneDirectUseNodeIsTrusted(
+        { ...item, level: item.level || "end_use" },
+        explanation.sources || [],
+        viewState.simulationEnergyZoneName,
+      )
     ))
     : candidate.endUses;
+  const zoneSafeItems = (items) => wantedScopeKind === "zone"
+    ? (items || []).filter((item) => !isEnergyPathUnassignedBuildingHVACItem(item))
+    : items;
   return {
     ...candidate,
+    drivers: zoneSafeItems(candidate.drivers),
+    loads: zoneSafeItems(candidate.loads),
     endUses,
+    carriers: zoneSafeItems(candidate.carriers),
+    ratios: zoneSafeItems(candidate.ratios),
+    residuals: zoneSafeItems(candidate.residuals),
+    topZones: zoneSafeItems(candidate.topZones),
     period: candidatePeriod,
     scope: candidateScope || { kind: wantedScopeKind },
     completeness,

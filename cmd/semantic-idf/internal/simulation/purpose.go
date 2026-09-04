@@ -364,6 +364,7 @@ func NormalizeSimulationPurposeRequest(request *SimulationPurposeRequest) Simula
 	if request != nil {
 		normalized = *request
 	}
+	allocationPolicyWasBlank := strings.TrimSpace(normalized.AllocationPolicy) == ""
 	normalized.Purposes = normalizePurposeIDs(normalized.Purposes)
 	if len(normalized.Purposes) == 0 {
 		normalized.Purposes = []SimulationPurposeID{SimulationPurposeBasicEnergy, SimulationPurposeZoneHeatFlow}
@@ -378,6 +379,12 @@ func NormalizeSimulationPurposeRequest(request *SimulationPurposeRequest) Simula
 	}
 	normalized.AllocationPolicy = normalizePurposeAllocationPolicy(normalized.AllocationPolicy)
 	normalized.BasicEnergyDetail = normalizePurposeBasicEnergyDetail(normalized.BasicEnergyDetail)
+	// Energy Path uses service-path allocation as its automatic projection
+	// policy. Keep an explicitly requested direct-only policy available for
+	// stored/API compatibility, and leave every non-Energy-Path default alone.
+	if allocationPolicyWasBlank && purposeIDsContain(normalized.Purposes, SimulationPurposeBasicEnergy) && normalized.BasicEnergyDetail == PurposeBasicEnergyDetailEnergyPath {
+		normalized.AllocationPolicy = PurposeAllocationPolicyByServicePathLoadShare
+	}
 	// The Energy Path contract depends on EnergyPlus' post-run RDD/MDD dictionaries
 	// to resolve version-specific output aliases. This is a lightweight output and
 	// is part of the preset rather than an optional preflight discovery run.

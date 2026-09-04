@@ -431,7 +431,7 @@ func TestFrontendSimulationUsesSimplifiedDefaultsAndAutomaticEnergyPlus(t *testi
 		`basicEnergyDetail: "energy_path"`,
 		`zoneHeatFlowDetail: "surface"`,
 		`frequencyPolicy: "purpose_default"`,
-		`allocationPolicy: "direct_only"`,
+		`allocationPolicy: "by_service_path_load_share"`,
 		`outputApplyMode: "add_missing_only"`,
 	} {
 		if !strings.Contains(defaults, required) {
@@ -859,7 +859,7 @@ func TestFrontendBatchEnergyExplanationDeltaContracts(t *testing.T) {
 		`basicEnergyDetail: "energy_path"`,
 		`zoneHeatFlowDetail: "surface"`,
 		`frequencyPolicy: "purpose_default"`,
-		`allocationPolicy: "direct_only"`,
+		`allocationPolicy: "by_service_path_load_share"`,
 		`outputApplyMode: "add_missing_only"`,
 		`zoneMode: "all"`,
 		`zoneNames: []`,

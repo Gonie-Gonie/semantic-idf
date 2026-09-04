@@ -48,16 +48,20 @@ automation. The main single-file Simulation view no longer renders that plan.
 `RunPurposeSimulationText` is a convenience wrapper that defaults to Basic
 Energy + Zone Heat Flow.
 
-`SimulationPurposeRequest.allocationPolicy` defaults to `direct_only`. Basic
-Energy also accepts `by_zone_load_share`, which replaces direct Energy Use ->
+An omitted `SimulationPurposeRequest.allocationPolicy` defaults to
+`by_service_path_load_share` for Basic Energy Energy Path requests. Other
+request modes, explicit policies, and stored v1 payloads retain the
+`direct_only` compatibility behavior. Basic Energy also accepts
+`by_zone_load_share`, which replaces direct Energy Use ->
 Delivered Load links with `basis=allocated` zone-load-share edges when
 zone-scoped delivered-load variables are available. It also accepts
-`by_service_path_load_share`, which applies the same load-share allocation only
-after load nodes are matched to HVAC service paths; if a load group cannot be
-fully matched to service paths, the measured direct edges are preserved. Direct
+`by_service_path_load_share`, which keeps exact zone/component HVAC energy
+first, allocates the remaining central Cooling and Heating energy over matching
+HVAC service paths, falls back to the matching zone-service load share, and
+reports any remainder as unassigned Building HVAC energy. Direct
 backend callers can select any supported allocation or frequency policy. The
-main and Batch Simulation views both use fixed `direct_only` allocation and
-`purpose_default` frequency.
+main and Batch Simulation views both use fixed `by_service_path_load_share`
+allocation and `purpose_default` frequency.
 
 ### Main Simulation Defaults
 
@@ -75,10 +79,10 @@ detail/weight tier badges on the purpose cards.
 
 The main view sends these fixed values:
 
-- `allocationPolicy`: `direct_only`
+- `allocationPolicy`: `by_service_path_load_share`
 - `outputApplyMode`: `add_missing_only`
 - `frequencyPolicy`: `purpose_default`
-- `basicEnergyDetail`: `heat_drivers`
+- `basicEnergyDetail`: `energy_path`
 - `zoneHeatFlowDetail`: `surface`
 - `scope.periodMode`: `full`
 - `scope.zoneMode`: `all`
@@ -105,10 +109,10 @@ detail selectors.
 
 The Batch Simulation tool sends these fixed purpose values:
 
-- `allocationPolicy`: `direct_only`
+- `allocationPolicy`: `by_service_path_load_share`
 - `outputApplyMode`: `add_missing_only`
 - `frequencyPolicy`: `purpose_default`
-- `basicEnergyDetail`: `heat_drivers`
+- `basicEnergyDetail`: `energy_path`
 - `zoneHeatFlowDetail`: `surface`
 - `sqlMode`: `sql_first`
 - `persistOutputs`: `false`

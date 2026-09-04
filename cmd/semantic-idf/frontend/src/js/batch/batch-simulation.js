@@ -1775,7 +1775,7 @@ export function initializeMultiSimulationTool(context) {
       basicEnergyDetail: "energy_path",
       zoneHeatFlowDetail: "surface",
       frequencyPolicy: "purpose_default",
-      allocationPolicy: "direct_only",
+      allocationPolicy: "by_service_path_load_share",
       sqlMode: "sql_first",
       persistOutputs: false,
       discoveryAllowed: false,

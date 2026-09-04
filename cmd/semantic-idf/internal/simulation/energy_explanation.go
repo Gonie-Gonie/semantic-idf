@@ -35,9 +35,11 @@ type EnergyExplanationV1 struct {
 	Completeness      EnergyCompleteness       `json:"completeness"`
 	Warnings          []EnergyWarning          `json:"warnings,omitempty"`
 
-	scope                 EnergyExplanationScope
-	canonicalMonthlyBasis bool
-	zoneDirectUseSeries   []energyExplanationSeries
+	scope                             EnergyExplanationScope
+	canonicalMonthlyBasis             bool
+	zoneDirectUseSeries               []energyExplanationSeries
+	buildingHVACAllocationEdges       []EnergyExplanationEdge
+	buildingHVACAllocationPeriodEdges map[string][]EnergyExplanationEdge
 }
 
 type EnergyExplanationScope struct {
@@ -3023,16 +3025,45 @@ func applyEnergyExplanationV1ServicePathLoadShareAllocation(explanation EnergyEx
 	if explanation.AllocationPolicy != PurposeAllocationPolicyByServicePathLoadShare {
 		return explanation
 	}
-	rule := energyRelationshipRuleByID(energyRelationshipRuleAllocatedServicePathLoad)
-	explanation.Edges = servicePathLoadShareAllocatedEdges(explanation.Nodes, explanation.Edges, rule)
+	annualOriginalEdges := append([]EnergyExplanationEdge(nil), explanation.Edges...)
+	// Preserve the historical full-meter Building conversion privately. The
+	// public v1-compatible edge collection now carries the direct-first Zone
+	// allocation ledger, while UpgradeEnergyExplanationV1 uses this sidecar only
+	// for the Building graph so direct zone observations are not counted twice.
+	annualBuildingPlan := buildEnergyPathZoneHVACAllocationPlan(explanation.Nodes, annualOriginalEdges, nil, "annual", "annual", explanation.canonicalMonthlyBasis)
+	explanation.buildingHVACAllocationEdges = applyEnergyPathZoneHVACAllocationPlan(annualOriginalEdges, explanation.Nodes, annualBuildingPlan)
+	explanation.buildingHVACAllocationPeriodEdges = map[string][]EnergyExplanationEdge{}
+	annualPlan := buildEnergyPathZoneHVACAllocationPlan(explanation.Nodes, annualOriginalEdges, explanation.zoneDirectUseSeries, "annual", "annual", explanation.canonicalMonthlyBasis)
+	explanation.Edges = applyEnergyPathZoneHVACAllocationPlan(annualOriginalEdges, explanation.Nodes, annualPlan)
+	monthlyPlans := []energyPathZoneHVACAllocationPlan{}
+	monthlyBuildingPlans := []energyPathZoneHVACAllocationPlan{}
 	for periodIndex := range explanation.Periods {
-		explanation.Periods[periodIndex].Edges = servicePathLoadShareAllocatedEdges(explanation.Periods[periodIndex].Nodes, explanation.Periods[periodIndex].Edges, rule)
+		period := &explanation.Periods[periodIndex]
+		originalEdges := append([]EnergyExplanationEdge(nil), period.Edges...)
+		buildingPlan := buildEnergyPathZoneHVACAllocationPlan(period.Nodes, originalEdges, nil, period.ID, period.Kind, explanation.canonicalMonthlyBasis)
+		explanation.buildingHVACAllocationPeriodEdges[strings.ToLower(strings.TrimSpace(period.ID))] = applyEnergyPathZoneHVACAllocationPlan(originalEdges, period.Nodes, buildingPlan)
+		plan := buildEnergyPathZoneHVACAllocationPlan(period.Nodes, originalEdges, explanation.zoneDirectUseSeries, period.ID, period.Kind, explanation.canonicalMonthlyBasis)
+		period.Edges = applyEnergyPathZoneHVACAllocationPlan(originalEdges, period.Nodes, plan)
+		if strings.EqualFold(strings.TrimSpace(period.Kind), "monthly") {
+			monthlyPlans = append(monthlyPlans, plan)
+			monthlyBuildingPlans = append(monthlyBuildingPlans, buildingPlan)
+		}
 	}
 	if explanation.canonicalMonthlyBasis {
-		explanation.Edges = annualServicePathAllocationEdgesFromMonthly(explanation.Edges, explanation.Periods, rule.ID)
+		if len(monthlyPlans) > 0 {
+			monthlyPlan := aggregateEnergyPathZoneHVACAllocationPlans(monthlyPlans)
+			annualPlan = energyPathZoneHVACAllocationPlanWithAnnualFallback(monthlyPlan, annualPlan, explanation.Nodes)
+			explanation.Edges = applyEnergyPathZoneHVACAllocationPlan(annualOriginalEdges, explanation.Nodes, annualPlan)
+		}
+		if len(monthlyBuildingPlans) > 0 {
+			monthlyBuildingPlan := aggregateEnergyPathZoneHVACAllocationPlans(monthlyBuildingPlans)
+			annualBuildingPlan = energyPathZoneHVACAllocationPlanWithAnnualFallback(monthlyBuildingPlan, annualBuildingPlan, explanation.Nodes)
+			explanation.buildingHVACAllocationEdges = applyEnergyPathZoneHVACAllocationPlan(annualOriginalEdges, explanation.Nodes, annualBuildingPlan)
+		}
 		for periodIndex := range explanation.Periods {
 			if strings.EqualFold(explanation.Periods[periodIndex].Kind, "annual") || strings.EqualFold(explanation.Periods[periodIndex].ID, "annual") {
 				explanation.Periods[periodIndex].Edges = append([]EnergyExplanationEdge(nil), explanation.Edges...)
+				explanation.buildingHVACAllocationPeriodEdges[strings.ToLower(strings.TrimSpace(explanation.Periods[periodIndex].ID))] = append([]EnergyExplanationEdge(nil), explanation.buildingHVACAllocationEdges...)
 			}
 		}
 	}

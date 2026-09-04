@@ -63,7 +63,7 @@ let simulationInputMetadataCache = {
 };
 
 const simulationPurposeDefaults = Object.freeze({
-  allocationPolicy: "direct_only",
+  allocationPolicy: "by_service_path_load_share",
   basicEnergyDetail: "energy_path",
   frequencyPolicy: "purpose_default",
   outputApplyMode: "add_missing_only",
