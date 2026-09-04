@@ -2743,7 +2743,11 @@ func basicEnergyDeliveredLoadVariableNames() []string {
 		if def.EnergyPathOnly {
 			continue
 		}
-		for _, alias := range def.Aliases {
+		aliases := def.LegacyAliases
+		if aliases == nil {
+			aliases = def.Aliases
+		}
+		for _, alias := range aliases {
 			out = appendUniquePurposeString(out, alias)
 		}
 	}

@@ -570,7 +570,7 @@ func TestEPATH040And042SQLBuildsFourStagesAndStreamsSurfaceCategories(t *testing
 			categoryCount++
 		}
 	}
-	if categoryCount != 1 || categoryNode == nil || categoryNode.Value != 3 {
+	if categoryCount != 1 || categoryNode == nil || categoryNode.RawValue != 3 || categoryNode.EffectiveValue != 3 || categoryNode.SignedValue != -3 || categoryNode.Value != 0 || categoryNode.AllocatedValue != 0 || !categoryNode.AllocationApplied {
 		t.Fatalf("streamed exterior-wall category = count %d / node %#v", categoryCount, categoryNode)
 	}
 	if !stringSliceContains(categoryNode.SourceIDs, "sql-rdd-1") || !stringSliceContains(categoryNode.SourceIDs, "sql-rdd-2") || stringSliceContains(categoryNode.SourceIDs, "sql-rdd-3") {
@@ -600,11 +600,19 @@ func TestEPATH040And042SQLBuildsFourStagesAndStreamsSurfaceCategories(t *testing
 	}
 	annualStorage := energyPathTestDriverCategoryNode(legacy.Nodes, energyDriverCategoryStorageOther)
 	monthlyStorage := energyPathTestDriverCategoryNode(month.Nodes, energyDriverCategoryStorageOther)
-	if annualStorage == nil || annualStorage.Value != 3720 || monthlyStorage == nil || monthlyStorage.Value != 3720 {
+	if annualStorage == nil || annualStorage.Value != 1488 || annualStorage.AllocatedValue != 1488 || !annualStorage.AllocationApplied ||
+		monthlyStorage == nil || monthlyStorage.Value != 1488 || monthlyStorage.AllocatedValue != 1488 || !monthlyStorage.AllocationApplied {
 		t.Fatalf("surface period selection = annual %#v / M1 %#v", annualStorage, monthlyStorage)
 	}
-	if stringSliceContains(annualStorage.SourceIDs, "sql-rdd-8") || !stringSliceContains(annualStorage.SourceIDs, "sql-rdd-9") {
-		t.Fatalf("cross-frequency surface provenance = %#v", annualStorage.SourceIDs)
+	var rawStorage *EnergyExplanationNode
+	for index := range legacy.Nodes {
+		if stringSliceContains(legacy.Nodes[index].SourceIDs, "sql-rdd-9") {
+			rawStorage = &legacy.Nodes[index]
+			break
+		}
+	}
+	if rawStorage == nil || rawStorage.RawValue != 3720 || stringSliceContains(rawStorage.SourceIDs, "sql-rdd-8") {
+		t.Fatalf("cross-frequency raw surface provenance = %#v", rawStorage)
 	}
 	if source := energyExplanationSourceByID(legacy.Sources, "sql-rdd-10"); source == nil || source.ZoneName != "Office" || source.Name != "Zone Gas Equipment NaturalGas Energy" {
 		t.Fatalf("current zone direct-use source metadata = %#v", source)

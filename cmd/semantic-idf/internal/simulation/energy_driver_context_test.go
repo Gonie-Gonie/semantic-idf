@@ -372,7 +372,9 @@ func TestEnergyDriverContextualBuilderCreatesCanonicalMainFlowAndContextSources(
 		t.Fatalf("roof driver = %#v; nodes = %#v", roof, result.Nodes)
 	}
 	people := energyPathV2NodeByID(result.Nodes, "driver.internal.people.cooling.building")
-	if people == nil || people.Value != 15 || stringSliceContains(people.SourceIDs, "people-context") {
+	if people == nil || people.RawValue != 15 || people.EffectiveValue != 15 || people.SignedValue != 15 ||
+		people.Value != 32.609 || people.AllocatedValue != 32.609 || !people.AllocationApplied ||
+		!stringSliceContains(people.SourceIDs, "people-main") || stringSliceContains(people.SourceIDs, "people-context") {
 		t.Fatalf("people driver = %#v", people)
 	}
 	sourceByID := make(map[string]EnergyDataSource, len(result.Sources))
@@ -410,7 +412,7 @@ func TestEnergyDriverContextualBuilderCreatesCanonicalMainFlowAndContextSources(
 		}
 	}
 	wallSource := energyExplanationSourceByID(result.Sources, "wall-main")
-	if wallSource == nil || wallSource.DriverRole != energyDriverSourceRoleMainFlow || wallSource.Explanation != energyDriverSurfaceExplanation || wallSource.RawValue != 20 || wallSource.EffectiveValue != 20 || wallSource.AllocatedValue != 20 || wallSource.EffectiveMultiplier != 1 || wallSource.MultiplierApplication != energyMultiplierUnknown || !stringSliceContains(wallSource.RelatedEntityIDs, "connection.exterior") {
+	if wallSource == nil || wallSource.DriverRole != energyDriverSourceRoleMainFlow || wallSource.Explanation != energyDriverSurfaceExplanation || wallSource.RawValue != 20 || wallSource.EffectiveValue != 20 || wallSource.AllocatedValue != 43.478 || !wallSource.AllocationApplied || wallSource.EffectiveMultiplier != 1 || wallSource.MultiplierApplication != energyMultiplierUnknown || !stringSliceContains(wallSource.RelatedEntityIDs, "connection.exterior") {
 		t.Fatalf("wall source = %#v", wallSource)
 	}
 	for _, id := range []string{"solar-context", "conduction-context", "aggregate-context", "people-context"} {
@@ -429,7 +431,8 @@ func TestEnergyDriverContextualBuilderRetainsUnresolvedSurfaceAsStorageWarningAn
 	legacy := buildEnergyExplanationResultWithDriverContext(energyDriverMonthlyFixtureSeries(series), []EnergyDataSource{{ID: "load"}, {ID: "unknown-surface"}}, &PurposeRunPlan{}, newEnergyDriverBuildContext(idf.GeometryReport{}))
 	result := UpgradeEnergyExplanationV1(legacy)
 	node := energyPathV2NodeByID(result.Nodes, "driver.balance.storage_other.cooling.building")
-	if node == nil || node.Value != 25 || !stringSliceContains(node.SourceIDs, "unknown-surface") || !stringSliceContains(node.RelatedEntityIDs, "Missing Wall") {
+	if node == nil || node.Value != 25 || node.AllocatedValue != 25 || !node.AllocationApplied || node.RawValue != 0 || node.EffectiveValue != 0 ||
+		!stringSliceContains(node.SourceIDs, "load") || stringSliceContains(node.SourceIDs, "unknown-surface") {
 		t.Fatalf("unresolved node = %#v", node)
 	}
 	foundWarning := false
@@ -442,7 +445,8 @@ func TestEnergyDriverContextualBuilderRetainsUnresolvedSurfaceAsStorageWarningAn
 		t.Fatalf("warnings = %#v", result.Warnings)
 	}
 	source := energyExplanationSourceByID(result.Sources, "unknown-surface")
-	if source == nil || source.DriverCategory != energyDriverCategoryStorageOther || source.RawValue != 25 {
+	if source == nil || source.DriverCategory != energyDriverCategoryStorageOther || source.RawValue != 25 || source.EffectiveValue != 25 ||
+		source.AllocatedValue != 0 || !source.AllocationApplied {
 		t.Fatalf("unresolved source = %#v", source)
 	}
 }
@@ -478,16 +482,16 @@ func TestEnergyDriverSurfaceConvectionUsesZoneAirSignAndSplitsHeatingCooling(t *
 	result := UpgradeEnergyExplanationV1(legacy)
 	heating := energyPathV2NodeByID(result.Nodes, "driver.surface.exterior_walls.heating.building")
 	cooling := energyPathV2NodeByID(result.Nodes, "driver.surface.exterior_walls.cooling.building")
-	if heating == nil || heating.Value != 10 || heating.SignedValue != -10 || !stringSliceContains(heating.SourceIDs, "wall-a") || stringSliceContains(heating.SourceIDs, "wall-b") {
+	if heating == nil || heating.RawValue != 10 || heating.EffectiveValue != 10 || heating.SignedValue != -10 || heating.Value != 100 || heating.AllocatedValue != 100 || !heating.AllocationApplied || !stringSliceContains(heating.SourceIDs, "wall-a") || stringSliceContains(heating.SourceIDs, "wall-b") {
 		t.Fatalf("surface heating driver = %#v", heating)
 	}
-	if cooling == nil || cooling.Value != 7 || cooling.SignedValue != 7 || !stringSliceContains(cooling.SourceIDs, "wall-b") || stringSliceContains(cooling.SourceIDs, "wall-a") {
+	if cooling == nil || cooling.RawValue != 7 || cooling.EffectiveValue != 7 || cooling.SignedValue != 7 || cooling.Value != 100 || cooling.AllocatedValue != 100 || !cooling.AllocationApplied || !stringSliceContains(cooling.SourceIDs, "wall-b") || stringSliceContains(cooling.SourceIDs, "wall-a") {
 		t.Fatalf("surface cooling driver = %#v", cooling)
 	}
 	heatingLink := energyPathV2LinkByIDs(result.Links, heating.ID, "load.heating.building")
 	coolingLink := energyPathV2LinkByIDs(result.Links, cooling.ID, "load.cooling.building")
-	if heatingLink == nil || heatingLink.FromValue != 10 || !stringSliceContains(heatingLink.SourceIDs, "wall-a") ||
-		coolingLink == nil || coolingLink.FromValue != 7 || !stringSliceContains(coolingLink.SourceIDs, "wall-b") {
+	if heatingLink == nil || heatingLink.FromValue != 100 || heatingLink.ToValue != 100 || heatingLink.Basis != "heat_balance_share" || !stringSliceContains(heatingLink.SourceIDs, "wall-a") ||
+		coolingLink == nil || coolingLink.FromValue != 100 || coolingLink.ToValue != 100 || coolingLink.Basis != "heat_balance_share" || !stringSliceContains(coolingLink.SourceIDs, "wall-b") {
 		t.Fatalf("surface driver links = %#v", result.Links)
 	}
 	wallA := energyExplanationSourceByID(result.Sources, "wall-a")

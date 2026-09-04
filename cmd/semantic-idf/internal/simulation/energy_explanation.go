@@ -154,31 +154,38 @@ type EnergyExplanationSummaryItem struct {
 }
 
 type EnergyExplanationNode struct {
-	ID               string   `json:"id"`
-	Level            string   `json:"level"`
-	Kind             string   `json:"kind"`
-	Label            string   `json:"label"`
-	Value            float64  `json:"value"`
-	SignedValue      float64  `json:"signedValue,omitempty"`
-	RawValue         float64  `json:"rawValue,omitempty"`
-	EffectiveValue   float64  `json:"effectiveValue,omitempty"`
-	AllocatedValue   float64  `json:"allocatedValue,omitempty"`
-	DisplayValue     float64  `json:"displayValue,omitempty"`
-	Unit             string   `json:"unit"`
-	ScaleDomain      string   `json:"scaleDomain,omitempty"`
-	Period           string   `json:"period,omitempty"`
-	ZoneName         string   `json:"zoneName,omitempty"`
-	ServiceKind      string   `json:"serviceKind,omitempty"`
-	Carrier          string   `json:"carrier,omitempty"`
-	EndUse           string   `json:"endUse,omitempty"`
-	DriverCategory   string   `json:"driverCategory,omitempty"`
-	ThermalComponent string   `json:"thermalComponent,omitempty"`
-	Basis            string   `json:"basis,omitempty"`
-	AggregationBasis string   `json:"aggregationBasis,omitempty"`
-	Multiplier       float64  `json:"multiplier,omitempty"`
-	RelatedPathIDs   []string `json:"relatedPathIds,omitempty"`
-	RelatedEntityIDs []string `json:"relatedEntityIds,omitempty"`
-	SourceIDs        []string `json:"sourceIds,omitempty"`
+	ID                    string                             `json:"id"`
+	Level                 string                             `json:"level"`
+	Kind                  string                             `json:"kind"`
+	Label                 string                             `json:"label"`
+	Value                 float64                            `json:"value"`
+	SignedValue           float64                            `json:"signedValue,omitempty"`
+	RawValue              float64                            `json:"rawValue,omitempty"`
+	EffectiveValue        float64                            `json:"effectiveValue,omitempty"`
+	AllocatedValue        float64                            `json:"allocatedValue,omitempty"`
+	AllocationApplied     bool                               `json:"allocationApplied,omitempty"`
+	AllocationExplanation string                             `json:"allocationExplanation,omitempty"`
+	DisplayValue          float64                            `json:"displayValue,omitempty"`
+	Unit                  string                             `json:"unit"`
+	ScaleDomain           string                             `json:"scaleDomain,omitempty"`
+	Period                string                             `json:"period,omitempty"`
+	ZoneName              string                             `json:"zoneName,omitempty"`
+	ServiceKind           string                             `json:"serviceKind,omitempty"`
+	Carrier               string                             `json:"carrier,omitempty"`
+	EndUse                string                             `json:"endUse,omitempty"`
+	DriverCategory        string                             `json:"driverCategory,omitempty"`
+	ThermalComponent      string                             `json:"thermalComponent,omitempty"`
+	LoadBreakdown         []EnergyExplanationLoadComponent   `json:"loadBreakdown,omitempty"`
+	OffsetEffects         []EnergyExplanationOffsetEffect    `json:"offsetEffects,omitempty"`
+	SimultaneousLoad      *EnergyExplanationSimultaneousLoad `json:"simultaneousLoad,omitempty"`
+	LatentShare           float64                            `json:"latentShare,omitempty"`
+	Badges                []string                           `json:"badges,omitempty"`
+	Basis                 string                             `json:"basis,omitempty"`
+	AggregationBasis      string                             `json:"aggregationBasis,omitempty"`
+	Multiplier            float64                            `json:"multiplier,omitempty"`
+	RelatedPathIDs        []string                           `json:"relatedPathIds,omitempty"`
+	RelatedEntityIDs      []string                           `json:"relatedEntityIds,omitempty"`
+	SourceIDs             []string                           `json:"sourceIds,omitempty"`
 
 	// Legacy metadata remains readable while v1 payloads are upgraded.
 	LoopName            string `json:"loopName,omitempty"`
@@ -190,8 +197,59 @@ type EnergyExplanationNode struct {
 	// driverZoneOnly is an internal projection guard. Zone aggregate air
 	// transfer variables are useful in a Zone inspector, but must not be
 	// promoted to a Building main-flow ribbon without pairwise provenance.
-	driverZoneOnly     bool
-	driverBuildingOnly bool
+	driverZoneOnly                bool
+	driverBuildingOnly            bool
+	allocationSourceIDs           []string
+	simultaneousLoadContributions []energyExplanationSimultaneousLoadContribution
+}
+
+// EnergyExplanationLoadComponent keeps sensible and latent delivery inside a
+// single primary Cooling or Heating node. Values are period-local effective
+// contributions, so a monthly badge never depends on annual source metadata.
+type EnergyExplanationLoadComponent struct {
+	Component string   `json:"component"`
+	Value     float64  `json:"value"`
+	Share     float64  `json:"share,omitempty"`
+	Unit      string   `json:"unit,omitempty"`
+	SourceIDs []string `json:"sourceIds,omitempty"`
+}
+
+// EnergyExplanationOffsetEffect is diagnostic heat-balance context. It
+// describes pressure that offsets the opposite service and is never promoted
+// to a reverse main-flow ribbon.
+type EnergyExplanationOffsetEffect struct {
+	EffectKind     string   `json:"effectKind"`
+	TargetService  string   `json:"targetService"`
+	DriverCategory string   `json:"driverCategory,omitempty"`
+	Label          string   `json:"label,omitempty"`
+	HeatDirection  string   `json:"heatDirection"`
+	RawValue       float64  `json:"rawValue"`
+	EffectiveValue float64  `json:"effectiveValue"`
+	Unit           string   `json:"unit,omitempty"`
+	Basis          string   `json:"basis"`
+	Explanation    string   `json:"explanation"`
+	SourceIDs      []string `json:"sourceIds,omitempty"`
+}
+
+// EnergyExplanationSimultaneousLoad is a bounded scope-period diagnostic.
+// Numerator and denominator are sums of already completed zone-month pairs,
+// so annual and Building views cannot manufacture overlap by netting zones.
+type EnergyExplanationSimultaneousLoad struct {
+	Available   bool     `json:"available"`
+	Numerator   float64  `json:"numerator"`
+	Denominator float64  `json:"denominator"`
+	Ratio       float64  `json:"ratio"`
+	Unit        string   `json:"unit,omitempty"`
+	Basis       string   `json:"basis"`
+	SourceIDs   []string `json:"sourceIds,omitempty"`
+}
+
+type energyExplanationSimultaneousLoadContribution struct {
+	Key         string
+	Numerator   float64
+	Denominator float64
+	Unit        string
+	SourceIDs   []string
 }
 
 type EnergyPathLink struct {
@@ -201,6 +259,7 @@ type EnergyPathLink struct {
 	Relation       string   `json:"relation"`
 	Basis          string   `json:"basis"`
 	RuleID         string   `json:"ruleId,omitempty"`
+	Explanation    string   `json:"explanation,omitempty"`
 	FromValue      float64  `json:"fromValue"`
 	FromUnit       string   `json:"fromUnit"`
 	ToValue        float64  `json:"toValue"`
@@ -257,6 +316,9 @@ type EnergyDataSource struct {
 	MultiplierApplication string                        `json:"multiplierApplication,omitempty"`
 	AllocationFactor      float64                       `json:"allocationFactor,omitempty"`
 	AllocatedValue        float64                       `json:"allocatedValue,omitempty"`
+	AllocationApplied     bool                          `json:"allocationApplied,omitempty"`
+	AllocationExplanation string                        `json:"allocationExplanation,omitempty"`
+	AllocationFormula     string                        `json:"allocationFormula,omitempty"`
 	AggregationBasis      string                        `json:"aggregationBasis,omitempty"`
 	DriverRole            string                        `json:"driverRole,omitempty"`
 	DriverCategory        string                        `json:"driverCategory,omitempty"`
@@ -278,6 +340,7 @@ type EnergyDataSourceScopeDetail struct {
 	MultiplierApplication string                 `json:"multiplierApplication,omitempty"`
 	AllocationFactor      float64                `json:"allocationFactor,omitempty"`
 	AllocatedValue        float64                `json:"allocatedValue,omitempty"`
+	AllocationApplied     bool                   `json:"allocationApplied,omitempty"`
 	AggregationBasis      string                 `json:"aggregationBasis,omitempty"`
 }
 
@@ -375,6 +438,7 @@ type energyLoadAliasDefinition struct {
 	Scope          string
 	EnergyPathOnly bool
 	Aliases        []string
+	LegacyAliases  []string
 }
 
 type energyHeatAliasDefinition struct {
@@ -498,6 +562,8 @@ type energyExplanationSeries struct {
 	driverZoneOnly         bool
 	driverBuildingOnly     bool
 	interzonePairID        string
+	canonicalLoadMetadata  bool
+	loadBreakdown          []energyLoadBreakdownSeries
 }
 
 // energyExplanationParseResult is deliberately graph-free. SQL and tabular
@@ -1406,8 +1472,18 @@ func buildEnergyExplanationResultWithDriverContext(series []energyExplanationSer
 		series, sources, multiplierWarnings = applyEnergyExplanationMultipliers(series, sources, driverContext.Multipliers)
 	}
 	driverWarnings = append(driverWarnings, multiplierWarnings...)
+	loadCandidates := append([]energyExplanationSeries(nil), series...)
+	if driverContext.Enabled {
+		series = selectCanonicalEnergyExplanationLoads(series)
+	}
 	series = preferredEnergyExplanationSeries(series)
 	if driverContext.Enabled {
+		for index := range series {
+			if _, ok := energyLoadCanonicalSelectionService(series[index].ServiceKind); series[index].Stage == "load" && ok {
+				series[index].canonicalLoadMetadata = true
+			}
+		}
+		sources = annotateEnergyExplanationLoadSources(loadCandidates, series, sources)
 		series, sources, multiplierWarnings = finalizeEnergyDriverMappings(series, sources, driverContext)
 		driverWarnings = append(driverWarnings, multiplierWarnings...)
 	}
@@ -1700,6 +1776,11 @@ func aggregateEnergyExplanationMonthlyGraphs(monthly map[int]energyExplanationGr
 			index, exists := nodeIndex[node.ID]
 			if !exists {
 				node.Period = "annual"
+				node.LoadBreakdown = cloneEnergyExplanationLoadComponents(node.LoadBreakdown)
+				node.OffsetEffects = cloneEnergyExplanationOffsetEffects(node.OffsetEffects)
+				node.SimultaneousLoad = cloneEnergyExplanationSimultaneousLoad(node.SimultaneousLoad)
+				node.allocationSourceIDs = appendUniqueStrings(nil, node.allocationSourceIDs...)
+				node.simultaneousLoadContributions = cloneEnergyExplanationSimultaneousLoadContributions(node.simultaneousLoadContributions)
 				nodeIndex[node.ID] = len(annual.Nodes)
 				annual.Nodes = append(annual.Nodes, node)
 				continue
@@ -1710,13 +1791,21 @@ func aggregateEnergyExplanationMonthlyGraphs(monthly map[int]energyExplanationGr
 			current.RawValue = roundedEnergyNumber(current.RawValue + node.RawValue)
 			current.EffectiveValue = roundedEnergyNumber(current.EffectiveValue + node.EffectiveValue)
 			current.AllocatedValue = roundedEnergyNumber(current.AllocatedValue + node.AllocatedValue)
+			current.AllocationApplied = current.AllocationApplied || node.AllocationApplied
+			current.AllocationExplanation = firstNonEmpty(current.AllocationExplanation, node.AllocationExplanation)
 			current.DisplayValue = roundedEnergyNumber(current.DisplayValue + node.DisplayValue)
 			if current.RawValue != 0 && current.EffectiveValue != 0 {
 				current.Multiplier = roundedEnergyNumber(current.EffectiveValue / current.RawValue)
 			}
 			current.SourceIDs = appendUniqueStrings(current.SourceIDs, node.SourceIDs...)
+			current.allocationSourceIDs = appendUniqueStrings(current.allocationSourceIDs, node.allocationSourceIDs...)
 			current.RelatedEntityIDs = appendUniqueStrings(current.RelatedEntityIDs, node.RelatedEntityIDs...)
 			current.RelatedPathIDs = appendUniqueStrings(current.RelatedPathIDs, node.RelatedPathIDs...)
+			current.LoadBreakdown = mergeEnergyExplanationLoadComponents(current.LoadBreakdown, node.LoadBreakdown)
+			current.OffsetEffects = mergeEnergyExplanationOffsetEffects(current.OffsetEffects, node.OffsetEffects)
+			current.simultaneousLoadContributions = mergeEnergyExplanationSimultaneousLoadContributions(current.simultaneousLoadContributions, node.simultaneousLoadContributions)
+			finalizeEnergyExplanationLoadNode(current)
+			finalizeEnergyExplanationSimultaneousLoad(current)
 		}
 		for _, edge := range graph.Edges {
 			key := energyExplanationEdgeAggregationKey(edge)
@@ -2202,6 +2291,16 @@ func energyExplanationAllocationPolicy(plan *PurposeRunPlan) string {
 }
 
 func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanationSeries, allocationPolicy string, valueFor func(energyExplanationSeries) float64) energyExplanationGraph {
+	canonicalDriverAllocationEnabled := false
+	for _, original := range series {
+		item := canonicalEnergyExplanationSeries(original)
+		if item.Stage == "load" && item.canonicalLoadMetadata && strings.TrimSpace(item.ZoneName) != "" {
+			if service := energyCanonicalServiceKind(item.ServiceKind); service == "cooling" || service == "heating" {
+				canonicalDriverAllocationEnabled = true
+				break
+			}
+		}
+	}
 	nodes := map[string]*energyExplanationNodeAccumulator{}
 	facilityByCarrier := map[string]string{}
 	facilityValueByCarrier := map[string]float64{}
@@ -2224,8 +2323,15 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 			return
 		}
 		node.Value = roundedEnergyNumber(node.Value)
+		finalizeEnergyExplanationLoadNode(&node)
+		finalizeEnergyExplanationSimultaneousLoad(&node)
 		existing := nodes[node.ID]
 		if existing == nil {
+			node.LoadBreakdown = cloneEnergyExplanationLoadComponents(node.LoadBreakdown)
+			node.OffsetEffects = cloneEnergyExplanationOffsetEffects(node.OffsetEffects)
+			node.SimultaneousLoad = cloneEnergyExplanationSimultaneousLoad(node.SimultaneousLoad)
+			node.allocationSourceIDs = appendUniqueStrings(nil, node.allocationSourceIDs...)
+			node.simultaneousLoadContributions = cloneEnergyExplanationSimultaneousLoadContributions(node.simultaneousLoadContributions)
 			nodes[node.ID] = &energyExplanationNodeAccumulator{node: node}
 			return
 		}
@@ -2238,14 +2344,20 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 		}
 		existing.node.DisplayValue = roundedEnergyNumber(existing.node.DisplayValue + node.DisplayValue)
 		existing.node.SourceIDs = appendUniqueStrings(existing.node.SourceIDs, node.SourceIDs...)
+		existing.node.allocationSourceIDs = appendUniqueStrings(existing.node.allocationSourceIDs, node.allocationSourceIDs...)
 		existing.node.RelatedEntityIDs = appendUniqueStrings(existing.node.RelatedEntityIDs, node.RelatedEntityIDs...)
 		existing.node.RelatedPathIDs = appendUniqueStrings(existing.node.RelatedPathIDs, node.RelatedPathIDs...)
+		existing.node.LoadBreakdown = mergeEnergyExplanationLoadComponents(existing.node.LoadBreakdown, node.LoadBreakdown)
+		existing.node.OffsetEffects = mergeEnergyExplanationOffsetEffects(existing.node.OffsetEffects, node.OffsetEffects)
+		existing.node.simultaneousLoadContributions = mergeEnergyExplanationSimultaneousLoadContributions(existing.node.simultaneousLoadContributions, node.simultaneousLoadContributions)
 		if existing.node.ThermalComponent != node.ThermalComponent {
 			existing.node.ThermalComponent = "combined"
 		}
 		if existing.node.PathType == "" {
 			existing.node.PathType = node.PathType
 		}
+		finalizeEnergyExplanationLoadNode(&existing.node)
+		finalizeEnergyExplanationSimultaneousLoad(&existing.node)
 	}
 	for _, item := range series {
 		item = canonicalEnergyExplanationSeries(item)
@@ -2288,23 +2400,34 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 			}
 		case "load":
 			nodeID := energyExplanationLoadNodeID(item)
+			thermalComponent := ""
+			if item.canonicalLoadMetadata || strings.EqualFold(strings.TrimSpace(item.ThermalComponent), "combined") {
+				// Frozen v1 nodes did not expose a component for their historical
+				// sensible-only load. Canonical Energy Path builds opt in through
+				// the private marker; an explicit combined total is safe in either
+				// path because it did not exist in the frozen alias catalog.
+				thermalComponent = strings.ToLower(strings.TrimSpace(item.ThermalComponent))
+			}
 			addNode(EnergyExplanationNode{
-				ID:             nodeID,
-				Level:          "load",
-				Kind:           item.Kind,
-				Label:          item.Label,
-				Value:          value,
-				RawValue:       rawValue,
-				EffectiveValue: effectiveValue,
-				Multiplier:     effectiveMultiplier,
-				Unit:           item.Unit,
-				Period:         period,
-				ZoneName:       item.ZoneName,
-				LoopName:       item.LoopName,
-				ServiceKind:    item.ServiceKind,
-				PathType:       item.PathType,
-				Basis:          item.Basis,
-				SourceIDs:      item.SourceIDs,
+				ID:               nodeID,
+				Level:            "load",
+				Kind:             item.Kind,
+				Label:            item.Label,
+				Value:            value,
+				RawValue:         rawValue,
+				EffectiveValue:   effectiveValue,
+				Multiplier:       effectiveMultiplier,
+				Unit:             item.Unit,
+				Period:           period,
+				ZoneName:         item.ZoneName,
+				LoopName:         item.LoopName,
+				ServiceKind:      item.ServiceKind,
+				PathType:         item.PathType,
+				DriverCategory:   item.DriverCategory,
+				ThermalComponent: thermalComponent,
+				LoadBreakdown:    energyExplanationLoadComponentsForPeriod(item, period, value),
+				Basis:            item.Basis,
+				SourceIDs:        item.SourceIDs,
 			})
 			loadNodesByService[item.ServiceKind] = appendUniqueStrings(loadNodesByService[item.ServiceKind], nodeID)
 			if item.ZoneName != "" && item.ServiceKind != "" {
@@ -2332,39 +2455,48 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 				serviceKind = "heating"
 			}
 			nodeID := energyExplanationHeatNodeID(item)
+			if energyDriverIsSyntheticPreAllocationClosure(EnergyExplanationNode{Kind: item.Kind}) {
+				// Keep the tautological pre-allocation closure separate from other
+				// balance.storage_other components. Otherwise addNode could merge it
+				// into a physical/reconciliation pressure and make allocation depend
+				// on input order and whichever Kind happened to be retained.
+				nodeID += ".preallocation_closure"
+			}
 			if item.DriverCategory != "" && item.HeatSign == "" {
 				nodeID += "." + sign
 			}
 			addNode(EnergyExplanationNode{
-				ID:                 nodeID,
-				Level:              "heat",
-				Kind:               item.Kind,
-				Label:              item.Label,
-				Value:              displayValue,
-				SignedValue:        signedValue,
-				RawValue:           math.Abs(rawValue),
-				EffectiveValue:     displayValue,
-				Multiplier:         effectiveMultiplier,
-				DisplayValue:       displayValue,
-				Unit:               item.Unit,
-				Period:             period,
-				ZoneName:           item.ZoneName,
-				ServiceKind:        serviceKind,
-				DriverCategory:     item.DriverCategory,
-				ThermalComponent:   item.ThermalComponent,
-				HeatCategory:       item.HeatCategory,
-				Sign:               sign,
-				Basis:              "derived_balance",
-				RelatedEntityIDs:   appendUniqueStrings(nil, item.RelatedEntityIDs...),
-				SourceIDs:          appendUniqueStrings(item.SourceIDs, item.DriverInputSourceIDs...),
-				driverZoneOnly:     item.driverZoneOnly,
-				driverBuildingOnly: item.driverBuildingOnly,
+				ID:                  nodeID,
+				Level:               "heat",
+				Kind:                item.Kind,
+				Label:               item.Label,
+				Value:               displayValue,
+				SignedValue:         signedValue,
+				RawValue:            math.Abs(rawValue),
+				EffectiveValue:      displayValue,
+				Multiplier:          effectiveMultiplier,
+				DisplayValue:        displayValue,
+				Unit:                item.Unit,
+				Period:              period,
+				ZoneName:            item.ZoneName,
+				ServiceKind:         serviceKind,
+				DriverCategory:      item.DriverCategory,
+				ThermalComponent:    item.ThermalComponent,
+				HeatCategory:        item.HeatCategory,
+				Sign:                sign,
+				Basis:               "derived_balance",
+				RelatedEntityIDs:    appendUniqueStrings(nil, item.RelatedEntityIDs...),
+				SourceIDs:           appendUniqueStrings(item.SourceIDs, item.DriverInputSourceIDs...),
+				allocationSourceIDs: appendUniqueStrings(nil, item.SourceIDs...),
+				driverZoneOnly:      item.driverZoneOnly,
+				driverBuildingOnly:  item.driverBuildingOnly,
 			})
 			if target, ok := energyExplanationInternalGainEnergyTarget(item); ok {
 				internalGainTargetByHeatNode[nodeID] = target
 			}
 		}
 	}
+	canonicalDriverAllocation := allocateCanonicalEnergyDriverNodes(nodes, loadNodesByZoneService, canonicalDriverAllocationEnabled)
 
 	edges := []EnergyExplanationEdge{}
 	reconciliation := []EnergyReconciliation{}
@@ -2528,6 +2660,9 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 		if node.node.Level != "heat" {
 			continue
 		}
+		if node.node.AllocationApplied && node.node.Value == 0 {
+			continue
+		}
 		fromID := ""
 		switch node.node.ServiceKind {
 		case "cooling":
@@ -2548,6 +2683,12 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 				heatDeviationByZoneService[key] += node.node.DisplayValue
 			}
 		}
+		edgeBasis := heatDriverRule.Basis
+		edgeFormula := heatDriverRule.Formula
+		if node.node.AllocationApplied {
+			edgeBasis = "heat_balance_share"
+			edgeFormula = energyDriverAllocationExplanation
+		}
 		edges = append(edges, EnergyExplanationEdge{
 			ID:           edgeID("heat", period, fromID, node.node.ID),
 			FromID:       fromID,
@@ -2558,8 +2699,8 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 			Unit:         node.node.Unit,
 			Period:       period,
 			Relation:     "heat_driver",
-			Basis:        heatDriverRule.Basis,
-			Formula:      heatDriverRule.Formula,
+			Basis:        edgeBasis,
+			Formula:      edgeFormula,
 			RuleID:       heatDriverRule.ID,
 			SourceIDs:    node.node.SourceIDs,
 			ZoneName:     node.node.ZoneName,
@@ -2568,7 +2709,7 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 	}
 	for heatID, target := range internalGainTargetByHeatNode {
 		heatNode := nodes[heatID]
-		if heatNode == nil {
+		if heatNode == nil || canonicalDriverAllocation && heatNode.node.Value == 0 {
 			continue
 		}
 		fromID := endUseNodeByTarget[energyExplanationEndUseCarrierKey(target.endUse, target.carrier)]
@@ -3207,6 +3348,7 @@ func energyExplanationSeriesForBuilder(builder *energyExplanationSeriesBuilder, 
 			PathType:         def.Scope,
 			ZoneName:         zoneName,
 			LoopName:         loopName,
+			ThermalComponent: energyExplanationLoadThermalComponent(dictionary.row.name, def.Kind),
 			Basis:            energyExplanationLoadSourceBasis(dictionary),
 			SourceIDs:        []string{sourceID},
 			Total:            roundedEnergyNumber(builder.total),
@@ -4062,17 +4204,20 @@ func energyMeterAliasCatalog() []energyMeterAliasDefinition {
 
 func energyLoadAliasCatalog() []energyLoadAliasDefinition {
 	return []energyLoadAliasDefinition{
-		{Kind: "load.zone_cooling", Label: "Zone cooling load", ServiceKind: "cooling", Scope: "zone", Aliases: []string{"Zone Air System Sensible Cooling Energy", "Zone Air System Sensible Cooling Rate", "Zone Ideal Loads Zone Sensible Cooling Energy", "Zone Ideal Loads Supply Air Total Cooling Energy"}},
-		{Kind: "load.zone_heating", Label: "Zone heating load", ServiceKind: "heating", Scope: "zone", Aliases: []string{"Zone Air System Sensible Heating Energy", "Zone Air System Sensible Heating Rate", "Zone Ideal Loads Zone Sensible Heating Energy", "Zone Ideal Loads Supply Air Total Heating Energy"}},
-		{Kind: "load.zone_latent_cooling", Label: "Zone latent cooling load", ServiceKind: "cooling", Scope: "zone", EnergyPathOnly: true, Aliases: []string{"Zone Air System Latent Cooling Energy", "Zone Air System Latent Cooling Rate"}},
-		{Kind: "load.zone_latent_heating", Label: "Zone latent heating load", ServiceKind: "heating", Scope: "zone", EnergyPathOnly: true, Aliases: []string{"Zone Air System Latent Heating Energy", "Zone Air System Latent Heating Rate"}},
+		{Kind: "load.zone_cooling", Label: "Zone cooling load", ServiceKind: "cooling", Scope: "zone", Aliases: []string{"Zone Air System Sensible Cooling Energy", "Zone Air System Sensible Cooling Rate", "Zone Ideal Loads Zone Total Cooling Energy", "Zone Ideal Loads Zone Total Cooling Rate", "Zone Ideal Loads Zone Sensible Cooling Energy", "Zone Ideal Loads Zone Sensible Cooling Rate", "Zone Ideal Loads Supply Air Total Cooling Energy", "Zone Ideal Loads Supply Air Total Cooling Rate"}, LegacyAliases: []string{"Zone Air System Sensible Cooling Energy", "Zone Air System Sensible Cooling Rate", "Zone Ideal Loads Zone Sensible Cooling Energy", "Zone Ideal Loads Supply Air Total Cooling Energy"}},
+		{Kind: "load.zone_heating", Label: "Zone heating load", ServiceKind: "heating", Scope: "zone", Aliases: []string{"Zone Air System Sensible Heating Energy", "Zone Air System Sensible Heating Rate", "Zone Ideal Loads Zone Total Heating Energy", "Zone Ideal Loads Zone Total Heating Rate", "Zone Ideal Loads Zone Sensible Heating Energy", "Zone Ideal Loads Zone Sensible Heating Rate", "Zone Ideal Loads Supply Air Total Heating Energy", "Zone Ideal Loads Supply Air Total Heating Rate"}, LegacyAliases: []string{"Zone Air System Sensible Heating Energy", "Zone Air System Sensible Heating Rate", "Zone Ideal Loads Zone Sensible Heating Energy", "Zone Ideal Loads Supply Air Total Heating Energy"}},
+		{Kind: "load.zone_latent_cooling", Label: "Zone latent cooling load", ServiceKind: "cooling", Scope: "zone", EnergyPathOnly: true, Aliases: []string{"Zone Air System Latent Cooling Energy", "Zone Air System Latent Cooling Rate", "Zone Ideal Loads Zone Latent Cooling Energy", "Zone Ideal Loads Zone Latent Cooling Rate"}},
+		{Kind: "load.zone_latent_heating", Label: "Zone latent heating load", ServiceKind: "heating", Scope: "zone", EnergyPathOnly: true, Aliases: []string{"Zone Air System Latent Heating Energy", "Zone Air System Latent Heating Rate", "Zone Ideal Loads Zone Latent Heating Energy", "Zone Ideal Loads Zone Latent Heating Rate"}},
 		{Kind: "load.zone_radiant_cooling", Label: "Radiant cooling load", ServiceKind: "cooling", Scope: "zone", Aliases: []string{"Zone Radiant HVAC Cooling Energy", "Zone Radiant HVAC Cooling Rate"}},
 		{Kind: "load.zone_radiant_heating", Label: "Radiant heating load", ServiceKind: "heating", Scope: "zone", Aliases: []string{"Zone Radiant HVAC Heating Energy", "Zone Radiant HVAC Heating Rate"}},
+		{Kind: "load.zone_equipment_heating", Label: "Zone equipment heating load", ServiceKind: "heating", Scope: "zone", EnergyPathOnly: true, Aliases: []string{"Zone Baseboard Total Heating Energy", "Zone Baseboard Total Heating Rate"}},
 		{Kind: "load.system_cooling", Label: "System cooling delivered", ServiceKind: "cooling", Scope: "system", Aliases: []string{"Cooling Coil Total Cooling Energy", "Cooling Coil Sensible Cooling Energy", "Cooling Coil Total Cooling Rate"}},
 		{Kind: "load.system_heating", Label: "System heating delivered", ServiceKind: "heating", Scope: "system", Aliases: []string{"Heating Coil Heating Energy", "Heating Coil Heating Rate"}},
 		{Kind: "load.plant_cooling", Label: "Plant cooling demand", ServiceKind: "cooling", Scope: "plant", Aliases: []string{"Plant Supply Side Cooling Demand Rate", "Plant Loop Cooling Demand Energy"}},
 		{Kind: "load.plant_heating", Label: "Plant heating demand", ServiceKind: "heating", Scope: "plant", Aliases: []string{"Plant Supply Side Heating Demand Rate", "Plant Loop Heating Demand Energy"}},
 		{Kind: "load.plant_unmet_or_residual", Label: "Plant unmet/residual demand", ServiceKind: "unmet_or_residual", Scope: "plant", Aliases: []string{"Plant Supply Side Unmet Demand Rate", "Plant Supply Side Not Distributed Demand Rate", "Cond Loop Demand Not Distributed"}},
+		{Kind: "load.zone_predicted_cooling", Label: "Predicted cooling control load", ServiceKind: "cooling", Scope: "zone", EnergyPathOnly: true, Aliases: []string{"Zone Predicted Sensible Load to Cooling Setpoint Heat Transfer Rate", "Zone System Predicted Sensible Load to Cooling Setpoint Heat Transfer Rate"}},
+		{Kind: "load.zone_predicted_heating", Label: "Predicted heating control load", ServiceKind: "heating", Scope: "zone", EnergyPathOnly: true, Aliases: []string{"Zone Predicted Sensible Load to Heating Setpoint Heat Transfer Rate", "Zone System Predicted Sensible Load to Heating Setpoint Heat Transfer Rate"}},
 		{Kind: "load.zone_humidification", Label: "Zone humidification load", ServiceKind: "humidification", Scope: "zone", Aliases: []string{"Zone Ideal Loads Supply Air Latent Heating Energy", "Zone Ideal Loads Supply Air Latent Heating Rate", "Zone Ideal Loads Zone Latent Heating Energy", "Zone Ideal Loads Zone Latent Heating Rate"}},
 		{Kind: "load.zone_dehumidification", Label: "Zone dehumidification load", ServiceKind: "dehumidification", Scope: "zone", Aliases: []string{"Zone Ideal Loads Supply Air Latent Cooling Energy", "Zone Ideal Loads Supply Air Latent Cooling Rate", "Zone Ideal Loads Zone Latent Cooling Energy", "Zone Ideal Loads Zone Latent Cooling Rate"}},
 	}

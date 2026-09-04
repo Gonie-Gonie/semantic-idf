@@ -145,8 +145,9 @@ func TestEPATH061ReviewPeopleConvectiveBeatsSensibleContext(t *testing.T) {
 	if people == nil {
 		t.Fatalf("missing people driver: nodes=%#v sources=%#v", result.Nodes, result.Sources)
 	}
-	if people.Value != 13 || !stringSliceContains(people.SourceIDs, "people-convective") || !stringSliceContains(people.SourceIDs, "people-latent") || stringSliceContains(people.SourceIDs, "people-sensible") {
-		t.Fatalf("people driver = %#v; want convective 10 + latent 3 only", people)
+	if people.RawValue != 13 || people.EffectiveValue != 13 || people.SignedValue != 13 || people.Value != 100 || people.AllocatedValue != 100 || !people.AllocationApplied ||
+		!stringSliceContains(people.SourceIDs, "people-convective") || !stringSliceContains(people.SourceIDs, "people-latent") || stringSliceContains(people.SourceIDs, "people-sensible") {
+		t.Fatalf("people driver = %#v; want raw pressure from convective 10 + latent 3 only and allocated load share 100", people)
 	}
 	sensible := energyExplanationSourceByID(result.Sources, "people-sensible")
 	if sensible == nil || sensible.DriverRole != energyDriverSourceRoleContext || sensible.InspectorSection != energyDriverInspectorSectionContext {
@@ -174,18 +175,19 @@ func TestEPATH061ReviewInternalFamiliesExcludeTotalsAndExposeAggregateGap(t *tes
 	result := UpgradeEnergyExplanationV1(legacy)
 
 	checks := []struct {
-		id      string
-		value   float64
-		sources []string
+		id        string
+		raw       float64
+		allocated float64
+		sources   []string
 	}{
-		{id: "driver.internal.people.cooling.building", value: 12, sources: []string{"people-convective", "people-latent"}},
-		{id: "driver.internal.lighting.cooling.building", value: 5, sources: []string{"lights-convective"}},
-		{id: "driver.internal.equipment.cooling.building", value: 4, sources: []string{"equipment-convective", "equipment-latent"}},
+		{id: "driver.internal.people.cooling.building", raw: 12, allocated: 15, sources: []string{"people-convective", "people-latent"}},
+		{id: "driver.internal.lighting.cooling.building", raw: 5, allocated: 6.25, sources: []string{"lights-convective"}},
+		{id: "driver.internal.equipment.cooling.building", raw: 4, allocated: 5, sources: []string{"equipment-convective", "equipment-latent"}},
 	}
 	for _, check := range checks {
 		node := energyPathV2NodeByID(result.Nodes, check.id)
-		if node == nil || node.Value != check.value {
-			t.Fatalf("%s = %#v; want %g", check.id, node, check.value)
+		if node == nil || node.RawValue != check.raw || node.EffectiveValue != check.raw || node.SignedValue != check.raw || node.Value != check.allocated || node.AllocatedValue != check.allocated || !node.AllocationApplied {
+			t.Fatalf("%s = %#v; want raw/effective pressure %g and allocated contribution %g", check.id, node, check.raw, check.allocated)
 		}
 		for _, sourceID := range check.sources {
 			if !stringSliceContains(node.SourceIDs, sourceID) {
@@ -204,8 +206,15 @@ func TestEPATH061ReviewInternalFamiliesExcludeTotalsAndExposeAggregateGap(t *tes
 		t.Fatalf("equipment lost-heat context leaked into main flow: %#v", equipment)
 	}
 	other := energyPathV2NodeByID(result.Nodes, "driver.balance.storage_other.cooling.building")
-	if other == nil || other.Value < 3 {
+	if other == nil || other.RawValue < 3 || other.Value != 3.75 || other.AllocatedValue != 3.75 {
 		t.Fatalf("internal reconciliation gap did not reach Other / storage: %#v", other)
+	}
+	people := energyPathV2NodeByID(result.Nodes, "driver.internal.people.cooling.building")
+	if people == nil || lighting == nil || equipment == nil {
+		t.Fatalf("allocated internal-driver family is missing: people=%#v lighting=%#v equipment=%#v", people, lighting, equipment)
+	}
+	if got := roundedEnergyNumber(people.Value + lighting.Value + equipment.Value + other.Value); got != 30 {
+		t.Fatalf("allocated internal-driver contributions = %g, want actual cooling load 30", got)
 	}
 	for _, component := range []string{"internal.other.reconciliation_gap.sensible", "internal.other.reconciliation_gap.latent"} {
 		found := false
@@ -345,8 +354,16 @@ func TestEPATH060ReviewSurfaceAggregateMismatchIsSeparateBalanceTerm(t *testing.
 	result := UpgradeEnergyExplanationV1(legacy)
 
 	wall := energyPathV2NodeByID(result.Nodes, "driver.surface.exterior_walls.cooling.building")
-	if wall == nil || wall.Value != 10 || !stringSliceContains(wall.SourceIDs, "surface-detail") || stringSliceContains(wall.SourceIDs, "surface-aggregate") {
-		t.Fatalf("source-level surface driver must remain 10 kWh without aggregate duplication: %#v", wall)
+	if wall == nil || wall.RawValue != 10 || wall.EffectiveValue != 10 || wall.SignedValue != 10 ||
+		wall.Value != 83.333 || wall.AllocatedValue != 83.333 || !wall.AllocationApplied ||
+		!stringSliceContains(wall.SourceIDs, "surface-detail") || stringSliceContains(wall.SourceIDs, "surface-aggregate") {
+		t.Fatalf("source-level surface driver must preserve 10 kWh pressure and receive its load share once: %#v", wall)
+	}
+	storage := energyPathV2NodeByID(result.Nodes, "driver.balance.storage_other.cooling.building")
+	if storage == nil || storage.RawValue != 2 || storage.EffectiveValue != 2 || storage.SignedValue != 2 ||
+		storage.Value != 16.667 || storage.AllocatedValue != 16.667 || !storage.AllocationApplied ||
+		wall.Value+storage.Value != 100 {
+		t.Fatalf("surface mismatch must remain independent signed pressure with exact load closure: wall=%#v storage=%#v", wall, storage)
 	}
 	var check *EnergyReconciliation
 	for index := range result.Reconciliation {
@@ -360,7 +377,8 @@ func TestEPATH060ReviewSurfaceAggregateMismatchIsSeparateBalanceTerm(t *testing.
 		t.Fatalf("surface reconciliation = %#v; all=%#v", check, result.Reconciliation)
 	}
 	derived := reviewEnergySourceWithFormula(result.Sources, "signed zone surface-convection aggregate - signed selected surface-source sum")
-	if derived == nil || derived.DriverCategory != energyDriverCategoryStorageOther || derived.RawValue != 2 ||
+	if derived == nil || derived.DriverCategory != energyDriverCategoryStorageOther || derived.RawValue != 2 || derived.EffectiveValue != 2 ||
+		derived.AllocatedValue != 16.667 || !derived.AllocationApplied ||
 		!stringSliceContains(derived.InputSourceIDs, "surface-detail") || !stringSliceContains(derived.InputSourceIDs, "surface-aggregate") {
 		t.Fatalf("surface mismatch balance source = %#v; sources=%#v", derived, result.Sources)
 	}
@@ -478,8 +496,8 @@ func TestEPATH063ReviewOutdoorAirAggregatePreferenceIsPerComponent(t *testing.T)
 	legacy := buildEnergyExplanationResultWithDriverContext(series, reviewEnergySources(series), &PurposeRunPlan{}, newEnergyDriverBuildContext(idf.GeometryReport{}))
 	result := UpgradeEnergyExplanationV1(legacy)
 	ventilation := energyPathV2NodeByID(result.Nodes, "driver.air.mechanical_ventilation.cooling.building")
-	if ventilation == nil || ventilation.Value != 7 {
-		t.Fatalf("component-local outdoor-air fallback = %#v; want sensible (10-4) + latent (2-1)", ventilation)
+	if ventilation == nil || ventilation.RawValue != 7 || ventilation.EffectiveValue != 7 || ventilation.SignedValue != 7 || ventilation.Value != 6.417 || ventilation.AllocatedValue != 6.417 {
+		t.Fatalf("component-local outdoor-air fallback = %#v; want raw sensible (10-4) + latent (2-1) pressure 7 and allocated contribution 6.417", ventilation)
 	}
 	for _, sourceID := range []string{"outdoor-sensible", "outdoor-latent", "infiltration-sensible", "infiltration-latent"} {
 		if !stringSliceContains(ventilation.SourceIDs, sourceID) {
@@ -504,8 +522,9 @@ func TestEPATH063ReviewCombinedOutdoorAirFallbackPreservesGainAndLoss(t *testing
 	result := UpgradeEnergyExplanationV1(legacy)
 	cooling := energyPathV2NodeByID(result.Nodes, "driver.air.mechanical_ventilation.cooling.building")
 	heating := energyPathV2NodeByID(result.Nodes, "driver.air.mechanical_ventilation.heating.building")
-	if cooling == nil || cooling.Value != 6 || heating == nil || heating.Value != 5 {
-		t.Fatalf("directional outdoor-air fallback = cooling %#v / heating %#v; want gain 10-4 and loss 8-3", cooling, heating)
+	if cooling == nil || cooling.RawValue != 6 || cooling.EffectiveValue != 6 || cooling.SignedValue != 6 || cooling.Value != 3.6 || cooling.AllocatedValue != 3.6 ||
+		heating == nil || heating.RawValue != 5 || heating.EffectiveValue != 5 || heating.SignedValue != -5 || heating.Value != 3.125 || heating.AllocatedValue != 3.125 {
+		t.Fatalf("directional outdoor-air fallback = cooling %#v / heating %#v; want raw gain 10-4 and loss 8-3 with allocated contributions 3.6/3.125", cooling, heating)
 	}
 }
 
@@ -756,7 +775,7 @@ func TestEPATH065ReviewAirStorageSignAndWarningThreshold(t *testing.T) {
 	}
 }
 
-func TestEPATH065ReviewRemainingHeatClosesAsNamedStorageWithoutScalingDrivers(t *testing.T) {
+func TestEPATH065ReviewRemainingHeatStaysInspectorBalanceWhileAllocationClosesLoad(t *testing.T) {
 	series := []energyExplanationSeries{
 		reviewEnergyLoadSeries("Office", "cooling", 100, "load"),
 		reviewEnergyHeatSeries(t, "Office", "Zone Infiltration Sensible Heat Gain Energy", 30, "infiltration"),
@@ -765,14 +784,17 @@ func TestEPATH065ReviewRemainingHeatClosesAsNamedStorageWithoutScalingDrivers(t 
 	result := UpgradeEnergyExplanationV1(legacy)
 	infiltration := energyPathV2NodeByID(result.Nodes, "driver.air.infiltration.cooling.building")
 	storage := energyPathV2NodeByID(result.Nodes, "driver.balance.storage_other.cooling.building")
-	if infiltration == nil || infiltration.Value != 30 || storage == nil || storage.Value != 70 {
-		t.Fatalf("closure drivers = infiltration %#v / storage %#v", infiltration, storage)
+	if infiltration == nil || infiltration.RawValue != 30 || infiltration.EffectiveValue != 30 || infiltration.SignedValue != 30 || infiltration.Value != 100 || infiltration.AllocatedValue != 100 || !infiltration.AllocationApplied {
+		t.Fatalf("allocated infiltration driver = %#v; want raw pressure 30 and actual-load contribution 100", infiltration)
 	}
-	if link := energyPathV2LinkByIDs(result.Links, infiltration.ID, "load.cooling.building"); link == nil || link.FromValue != 30 || link.ToValue != 30 {
-		t.Fatalf("measured infiltration was prematurely scaled: %#v", link)
+	if storage != nil {
+		t.Fatalf("pre-allocation synthetic closure must remain inspector provenance, not a main ribbon: %#v", storage)
+	}
+	if link := energyPathV2LinkByIDs(result.Links, infiltration.ID, "load.cooling.building"); link == nil || link.FromValue != 100 || link.ToValue != 100 || link.Basis != "heat_balance_share" {
+		t.Fatalf("allocated infiltration ribbon did not close actual load: %#v", link)
 	}
 	derived := reviewEnergySourceWithFormula(result.Sources, "signed zone cooling load - signed zone heating load - signed mapped driver contributions")
-	if derived == nil || derived.RawValue != 70 || !stringSliceContains(derived.InputSourceIDs, "load") || !stringSliceContains(derived.InputSourceIDs, "infiltration") {
+	if derived == nil || derived.RawValue != 70 || derived.AllocatedValue != 0 || !derived.AllocationApplied || !stringSliceContains(derived.InputSourceIDs, "load") || !stringSliceContains(derived.InputSourceIDs, "infiltration") {
 		t.Fatalf("unmapped heat-balance source = %#v", derived)
 	}
 	for _, node := range result.Nodes {

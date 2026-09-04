@@ -15,12 +15,17 @@ func UpgradeEnergyExplanationV1(input EnergyExplanationV1) EnergyExplanationResu
 	scope := normalizeEnergyExplanationScope(input.scope)
 	allocationPolicy := normalizePurposeAllocationPolicy(input.AllocationPolicy)
 	annotatedSources := annotateLegacyEnergyDriverSources(input.Sources, input.Nodes)
-	legacyNodes := inferLegacyEnergyDriverProjectionGuards(input.Nodes, annotatedSources)
+	allLegacyNodes := append([]EnergyExplanationNode(nil), input.Nodes...)
+	for _, period := range input.Periods {
+		allLegacyNodes = append(allLegacyNodes, period.Nodes...)
+	}
+	annotatedSources = annotateLegacyEnergyLoadDetailSources(annotatedSources, allLegacyNodes)
+	legacyNodes := foldLegacyEnergyLoadDetailNodes(inferLegacyEnergyDriverProjectionGuards(input.Nodes, annotatedSources))
 	nodes, links := upgradeEnergyExplanationGraph(legacyNodes, input.Edges, annotatedSources, scope, allocationPolicy, input.canonicalMonthlyBasis)
 	reconciliation, warnings := upgradeEnergyExplanationAccounting(input.Reconciliation, input.Warnings, legacyNodes, input.Edges, scope, allocationPolicy)
 	periods := make([]EnergyPeriod, 0, len(input.Periods))
 	for _, period := range input.Periods {
-		legacyPeriodNodes := inferLegacyEnergyDriverProjectionGuards(period.Nodes, annotatedSources)
+		legacyPeriodNodes := foldLegacyEnergyLoadDetailNodes(inferLegacyEnergyDriverProjectionGuards(period.Nodes, annotatedSources))
 		periodNodes, periodLinks := upgradeEnergyExplanationGraph(legacyPeriodNodes, period.Edges, annotatedSources, scope, allocationPolicy, input.canonicalMonthlyBasis)
 		periodReconciliation, periodWarnings := upgradeEnergyExplanationAccounting(period.Reconciliation, period.Warnings, legacyPeriodNodes, period.Edges, scope, allocationPolicy)
 		periodZoneContributions := buildEnergyExplanationZoneContributions(legacyPeriodNodes, period.Edges, scope, allocationPolicy)
@@ -197,7 +202,7 @@ func applyCanonicalMonthlyBasisToEnergyPathResult(result *EnergyExplanationResul
 		if !strings.EqualFold(result.Periods[index].Kind, "annual") && !strings.EqualFold(result.Periods[index].ID, "annual") {
 			continue
 		}
-		result.Periods[index].Nodes = append([]EnergyExplanationNode(nil), nodes...)
+		result.Periods[index].Nodes = cloneEnergyExplanationNodes(nodes)
 		result.Periods[index].Links = append([]EnergyPathLink(nil), links...)
 		result.Periods[index].Reconciliation = append([]EnergyReconciliation(nil), reconciliation...)
 		result.Periods[index].Warnings = append([]EnergyWarning(nil), warnings...)
@@ -232,6 +237,11 @@ func aggregateEnergyPathV2MonthlyPeriods(periods []EnergyPeriod) ([]EnergyExplan
 			index, exists := nodeIndex[node.ID]
 			if !exists {
 				node.Period = "annual"
+				node.LoadBreakdown = cloneEnergyExplanationLoadComponents(node.LoadBreakdown)
+				node.OffsetEffects = cloneEnergyExplanationOffsetEffects(node.OffsetEffects)
+				node.SimultaneousLoad = cloneEnergyExplanationSimultaneousLoad(node.SimultaneousLoad)
+				node.allocationSourceIDs = appendUniqueStrings(nil, node.allocationSourceIDs...)
+				node.simultaneousLoadContributions = cloneEnergyExplanationSimultaneousLoadContributions(node.simultaneousLoadContributions)
 				nodeIndex[node.ID] = len(nodes)
 				nodes = append(nodes, node)
 				continue
@@ -278,7 +288,32 @@ func aggregateEnergyPathV2MonthlyPeriods(periods []EnergyPeriod) ([]EnergyExplan
 			warnings = appendEnergyDriverWarning(warnings, warning)
 		}
 	}
+	canonicalNodes := make(map[string]*EnergyExplanationNode, len(nodes))
+	for index := range nodes {
+		canonicalNodes[nodes[index].ID] = &nodes[index]
+	}
+	synchronizeEnergyExplanationSimultaneousLoads(canonicalNodes)
 	return nodes, links, reconciliation, warnings
+}
+
+func cloneEnergyExplanationNodes(input []EnergyExplanationNode) []EnergyExplanationNode {
+	if len(input) == 0 {
+		return nil
+	}
+	out := make([]EnergyExplanationNode, len(input))
+	for index, node := range input {
+		out[index] = node
+		out[index].LoadBreakdown = cloneEnergyExplanationLoadComponents(node.LoadBreakdown)
+		out[index].OffsetEffects = cloneEnergyExplanationOffsetEffects(node.OffsetEffects)
+		out[index].SimultaneousLoad = cloneEnergyExplanationSimultaneousLoad(node.SimultaneousLoad)
+		out[index].Badges = appendUniqueStrings(nil, node.Badges...)
+		out[index].RelatedPathIDs = appendUniqueStrings(nil, node.RelatedPathIDs...)
+		out[index].RelatedEntityIDs = appendUniqueStrings(nil, node.RelatedEntityIDs...)
+		out[index].SourceIDs = appendUniqueStrings(nil, node.SourceIDs...)
+		out[index].allocationSourceIDs = appendUniqueStrings(nil, node.allocationSourceIDs...)
+		out[index].simultaneousLoadContributions = cloneEnergyExplanationSimultaneousLoadContributions(node.simultaneousLoadContributions)
+	}
+	return out
 }
 
 func energyPathV2LinkAggregationKey(link EnergyPathLink) string {
@@ -360,6 +395,66 @@ func normalizeEnergyExplanationScope(scope EnergyExplanationScope) EnergyExplana
 	}
 }
 
+// Stored v1 payloads may contain humidification/dehumidification as historical
+// load nodes. V2 keeps those reports as inspector detail without adding their
+// values to the authoritative Cooling/Heating load a second time.
+func foldLegacyEnergyLoadDetailNodes(input []EnergyExplanationNode) []EnergyExplanationNode {
+	detailSources := map[string][]string{}
+	for _, node := range input {
+		service, ok := energyLoadHumidityDetailService(node.ServiceKind)
+		if !ok || !strings.EqualFold(node.Level, "load") {
+			continue
+		}
+		key := normalizeEnergySurfaceKey(node.ZoneName) + "|" + service
+		detailSources[key] = appendUniqueStrings(detailSources[key], node.SourceIDs...)
+	}
+	out := make([]EnergyExplanationNode, 0, len(input))
+	for _, node := range input {
+		if _, detail := energyLoadHumidityDetailService(node.ServiceKind); detail && strings.EqualFold(node.Level, "load") {
+			continue
+		}
+		service, primary := energyLoadCanonicalSelectionService(node.ServiceKind)
+		if primary && strings.EqualFold(node.Level, "load") {
+			key := normalizeEnergySurfaceKey(node.ZoneName) + "|" + service
+			node.SourceIDs = appendUniqueStrings(node.SourceIDs, detailSources[key]...)
+		}
+		out = append(out, node)
+	}
+	return out
+}
+
+func annotateLegacyEnergyLoadDetailSources(input []EnergyDataSource, nodes []EnergyExplanationNode) []EnergyDataSource {
+	type detailMetadata struct {
+		service   string
+		component string
+	}
+	metadata := map[string]detailMetadata{}
+	for _, node := range nodes {
+		service, ok := energyLoadHumidityDetailService(node.ServiceKind)
+		if !ok || !strings.EqualFold(node.Level, "load") {
+			continue
+		}
+		component := "load." + strings.ToLower(strings.TrimSpace(node.ServiceKind))
+		for _, sourceID := range node.SourceIDs {
+			metadata[sourceID] = detailMetadata{service: service, component: component}
+		}
+	}
+	out := append([]EnergyDataSource(nil), input...)
+	for index := range out {
+		detail, ok := metadata[out[index].ID]
+		if !ok {
+			continue
+		}
+		out[index].DriverRole = energyDriverSourceRoleContext
+		out[index].DriverCategory = "load." + detail.service
+		out[index].DriverComponent = detail.component
+		out[index].HeatDirection = detail.service
+		out[index].InspectorSection = energyDriverInspectorSectionBreakdown
+		out[index].Explanation = "Humidity delivery is retained as latent load breakdown and is not a separate primary load."
+	}
+	return out
+}
+
 func energyExplanationScopeForPlan(plan *PurposeRunPlan) EnergyExplanationScope {
 	if plan != nil && len(plan.ZoneNames) == 1 && strings.EqualFold(strings.TrimSpace(plan.ZoneMode), "selected") {
 		return normalizeEnergyExplanationScope(EnergyExplanationScope{
@@ -397,6 +492,12 @@ func upgradeEnergyExplanationGraph(legacyNodes []EnergyExplanationNode, legacyEd
 	driverPresentation := buildEnergyDriverPresentationPlan(scopedLegacyNodes, scope)
 	for _, legacy := range scopedLegacyNodes {
 		legacy = driverPresentation.apply(legacy)
+		if energyDriverNodeUsesCanonicalTaxonomy(legacy) && legacy.AllocationApplied && legacy.AllocatedValue == 0 {
+			// Explicitly allocated-zero drivers remain in Sources for inspection,
+			// but must not merge their raw/effective values or provenance into a
+			// visible canonical driver that shares the same presentation category.
+			continue
+		}
 		nodeByLegacyID[legacy.ID] = legacy
 		canonical := upgradeEnergyExplanationNode(legacy, scope)
 		if canonical.ID == "" {
@@ -432,6 +533,7 @@ func upgradeEnergyExplanationGraph(legacyNodes []EnergyExplanationNode, legacyEd
 	if len(suppressedInterzone) > 0 {
 		closeBuildingLoadsAfterInterzoneProjection(canonicalNodes, links, suppressedInterzone, scope)
 	}
+	synchronizeEnergyExplanationSimultaneousLoads(canonicalNodes)
 
 	outNodes := make([]EnergyExplanationNode, 0, len(canonicalNodes))
 	visibleNodeIDs := make(map[string]bool, len(canonicalNodes))
@@ -531,25 +633,29 @@ func closeBuildingLoadsAfterInterzoneProjection(nodes map[string]*EnergyExplanat
 		storage := nodes[storageID]
 		if storage == nil {
 			storage = &EnergyExplanationNode{
-				ID:               storageID,
-				Level:            "driver",
-				Kind:             "driver." + energyDriverCategoryStorageOther,
-				Label:            energyDriverCategoryLabel(energyDriverCategoryStorageOther),
-				Unit:             firstNonEmpty(load.Unit, "kWh"),
-				ScaleDomain:      "thermal",
-				Period:           load.Period,
-				ServiceKind:      service,
-				DriverCategory:   energyDriverCategoryStorageOther,
-				ThermalComponent: "combined",
-				Basis:            "heat_balance_share",
-				AggregationBasis: "model_total",
-				Multiplier:       1,
-				RelatedEntityIDs: appendUniqueStrings(nil, trace.relatedEntityIDs...),
-				SourceIDs:        appendUniqueStrings(trace.sourceIDs, load.SourceIDs...),
+				ID:                    storageID,
+				Level:                 "driver",
+				Kind:                  "driver." + energyDriverCategoryStorageOther,
+				Label:                 energyDriverCategoryLabel(energyDriverCategoryStorageOther),
+				Unit:                  firstNonEmpty(load.Unit, "kWh"),
+				ScaleDomain:           "thermal",
+				Period:                load.Period,
+				ServiceKind:           service,
+				DriverCategory:        energyDriverCategoryStorageOther,
+				ThermalComponent:      "combined",
+				Basis:                 "heat_balance_share",
+				AllocationApplied:     true,
+				AllocationExplanation: energyDriverAllocationExplanation,
+				AggregationBasis:      "model_total",
+				Multiplier:            1,
+				RelatedEntityIDs:      appendUniqueStrings(nil, trace.relatedEntityIDs...),
+				SourceIDs:             appendUniqueStrings(trace.sourceIDs, load.SourceIDs...),
 			}
 			nodes[storageID] = storage
 		}
 		storage.Value = roundedEnergyNumber(storage.Value + foldedValue)
+		storage.AllocationApplied = true
+		storage.AllocationExplanation = energyDriverAllocationExplanation
 		storage.RawValue = roundedEnergyNumber(storage.RawValue + foldedValue)
 		storage.EffectiveValue = roundedEnergyNumber(storage.EffectiveValue + foldedValue)
 		storage.AllocatedValue = roundedEnergyNumber(storage.AllocatedValue + foldedValue)
@@ -567,6 +673,7 @@ func closeBuildingLoadsAfterInterzoneProjection(nodes map[string]*EnergyExplanat
 			ToID:        loadID,
 			Relation:    "driver_to_load",
 			Basis:       "heat_balance_share",
+			Explanation: energyDriverAllocationExplanation,
 			RuleID:      energyRelationshipRuleHeatDriverBalance,
 			FromValue:   foldedValue,
 			FromUnit:    storage.Unit,
@@ -740,6 +847,14 @@ func energyExplanationNodeForScope(node EnergyExplanationNode, scope EnergyExpla
 }
 
 func energyExplanationLegacyNodeWithEffectiveValues(node EnergyExplanationNode) EnergyExplanationNode {
+	if node.AllocationApplied {
+		node.Value = node.AllocatedValue
+		node.DisplayValue = math.Abs(node.AllocatedValue)
+		if node.Multiplier == 0 {
+			node.Multiplier = 1
+		}
+		return node
+	}
 	raw := firstNonZero(node.RawValue, node.Value)
 	hadExplicitEffective := node.EffectiveValue != 0
 	multiplier := node.Multiplier
@@ -916,9 +1031,14 @@ func filterEnergyDataSourcesForV2(input []EnergyDataSource, legacyNodes []Energy
 		effectiveMultiplier float64
 		allocationFactor    float64
 		allocated           float64
+		allocationApplied   bool
 	}
 	used := map[string]bool{}
 	values := map[string]sourceValues{}
+	sourceByID := make(map[string]EnergyDataSource, len(input))
+	for _, source := range input {
+		sourceByID[source.ID] = source
+	}
 	factors := energyExplanationZoneAllocationFactors(legacyNodes, legacyEdges, scope, allocationPolicy)
 	for _, original := range legacyNodes {
 		node := energyExplanationLegacyNodeWithEffectiveValues(original)
@@ -943,18 +1063,52 @@ func filterEnergyDataSourcesForV2(input []EnergyDataSource, legacyNodes []Energy
 			multiplier = 1
 		}
 		allocated := roundedEnergyNumber(effective * allocationFactor)
-		for _, sourceID := range original.SourceIDs {
+		if original.AllocationApplied {
+			allocated = math.Abs(original.AllocatedValue)
+			if effective > 0 {
+				allocationFactor *= allocated / effective
+			} else {
+				allocationFactor = 0
+			}
+			for _, sourceID := range original.SourceIDs {
+				used[sourceID] = true
+			}
+		}
+		allocationSourceIDs := original.SourceIDs
+		if original.AllocationApplied {
+			allocationSourceIDs = append([]string(nil), original.allocationSourceIDs...)
+			candidateSourceIDs := original.SourceIDs
+			if len(allocationSourceIDs) > 0 {
+				candidateSourceIDs = allocationSourceIDs
+			}
+			allocationSourceIDs = make([]string, 0, len(candidateSourceIDs))
+			for _, sourceID := range candidateSourceIDs {
+				source, exists := sourceByID[sourceID]
+				if !exists || !strings.EqualFold(strings.TrimSpace(source.DriverCategory), strings.TrimSpace(original.DriverCategory)) {
+					continue
+				}
+				if nodeZone := strings.TrimSpace(original.ZoneName); nodeZone != "" && !strings.EqualFold(strings.TrimSpace(source.ZoneName), nodeZone) {
+					continue
+				}
+				if source.DriverRole != "" && source.DriverRole != energyDriverSourceRoleMainFlow {
+					continue
+				}
+				allocationSourceIDs = append(allocationSourceIDs, sourceID)
+			}
+		}
+		for _, sourceID := range allocationSourceIDs {
 			value := values[sourceID]
 			// A SQL dictionary source may be propagated to residual and link
 			// nodes. Keep its largest direct contribution instead of counting
 			// those graph aliases more than once.
-			if effective > value.effective {
+			if effective > value.effective || (original.AllocationApplied && !value.allocationApplied) {
 				value = sourceValues{
 					raw:                 raw,
 					effective:           effective,
 					effectiveMultiplier: multiplier,
 					allocationFactor:    allocationFactor,
 					allocated:           allocated,
+					allocationApplied:   original.AllocationApplied,
 				}
 			}
 			values[sourceID] = value
@@ -1002,10 +1156,23 @@ func filterEnergyDataSourcesForV2(input []EnergyDataSource, legacyNodes []Energy
 		if source.EffectiveMultiplier == 0 {
 			source.EffectiveMultiplier = roundedEnergyNumber(value.effectiveMultiplier)
 		}
-		if value.allocationFactor != 0 || source.AllocationFactor == 0 {
+		if value.allocationApplied {
+			source.AllocationApplied = true
+			source.AllocationFactor = roundedEnergyNumber(value.allocationFactor)
+		} else if value.allocationFactor != 0 || source.AllocationFactor == 0 {
 			source.AllocationFactor = roundedEnergyNumber(value.allocationFactor)
 		}
-		if source.EffectiveValue != 0 {
+		if source.AllocationApplied {
+			source.AllocatedValue = roundedEnergyNumber(math.Abs(source.EffectiveValue) * value.allocationFactor)
+			source.AllocationExplanation = energyDriverAllocationExplanation
+			source.AllocationFormula = energyDriverAllocationFormula
+			if source.Explanation == "" {
+				source.Explanation = energyDriverAllocationExplanation
+			}
+			if source.Formula == "" {
+				source.Formula = energyDriverAllocationFormula
+			}
+		} else if source.EffectiveValue != 0 {
 			allocationFactor := source.AllocationFactor
 			if allocationFactor == 0 {
 				allocationFactor = 1
@@ -1038,6 +1205,7 @@ func appendEnergyDataSourceScopeDetails(parent []EnergyDataSource, scoped []Ener
 			MultiplierApplication: source.MultiplierApplication,
 			AllocationFactor:      source.AllocationFactor,
 			AllocatedValue:        source.AllocatedValue,
+			AllocationApplied:     source.AllocationApplied,
 			AggregationBasis:      firstNonEmpty(source.AggregationBasis, scope.AggregationBasis),
 		}
 		parent[index].ScopeDetails = append(parent[index].ScopeDetails, detail)
@@ -1076,25 +1244,40 @@ func buildEnergyExplanationZoneContributions(nodes []EnergyExplanationNode, edge
 
 func upgradeEnergyExplanationNode(input EnergyExplanationNode, scope EnergyExplanationScope) EnergyExplanationNode {
 	out := input
+	out.LoadBreakdown = cloneEnergyExplanationLoadComponents(input.LoadBreakdown)
+	out.OffsetEffects = cloneEnergyExplanationOffsetEffects(input.OffsetEffects)
+	out.SimultaneousLoad = cloneEnergyExplanationSimultaneousLoad(input.SimultaneousLoad)
+	out.allocationSourceIDs = appendUniqueStrings(nil, input.allocationSourceIDs...)
+	out.simultaneousLoadContributions = cloneEnergyExplanationSimultaneousLoadContributions(input.simultaneousLoadContributions)
 	scopeToken := energyExplanationScopeToken(scope)
 	out.AggregationBasis = firstNonEmpty(input.AggregationBasis, scope.AggregationBasis)
 	out.Multiplier = input.Multiplier
 	if out.Multiplier == 0 {
 		out.Multiplier = 1
 	}
-	out.RawValue = firstNonZero(input.RawValue, input.Value)
-	out.EffectiveValue = input.EffectiveValue
-	if out.EffectiveValue == 0 {
-		out.EffectiveValue = roundedEnergyNumber(out.RawValue * out.Multiplier)
-	}
-	out.AllocatedValue = input.AllocatedValue
-	if out.AllocatedValue == 0 {
-		out.AllocatedValue = out.EffectiveValue
+	if input.AllocationApplied {
+		out.RawValue = input.RawValue
+		out.EffectiveValue = input.EffectiveValue
+		out.AllocatedValue = input.AllocatedValue
+	} else {
+		out.RawValue = firstNonZero(input.RawValue, input.Value)
+		out.EffectiveValue = input.EffectiveValue
+		if out.EffectiveValue == 0 {
+			out.EffectiveValue = roundedEnergyNumber(out.RawValue * out.Multiplier)
+		}
+		out.AllocatedValue = input.AllocatedValue
+		if out.AllocatedValue == 0 {
+			out.AllocatedValue = out.EffectiveValue
+		}
 	}
 	out.Value = out.AllocatedValue
 	if input.SignedValue != 0 {
 		out.SignedValue = roundedEnergyNumber(input.SignedValue)
-		out.DisplayValue = math.Abs(out.SignedValue)
+		if input.AllocationApplied {
+			out.DisplayValue = math.Abs(out.AllocatedValue)
+		} else {
+			out.DisplayValue = math.Abs(out.SignedValue)
+		}
 	}
 	out.Basis = canonicalEnergyPathBasis(input.Basis, "")
 	if scope.Kind == "zone" {
@@ -1114,7 +1297,16 @@ func upgradeEnergyExplanationNode(input EnergyExplanationNode, scope EnergyExpla
 		out.Level = "load"
 		out.ScaleDomain = "thermal"
 		out.ThermalComponent = energyExplanationThermalComponent(input)
-		out.ID = strings.Join([]string{"load", canonicalEnergyPathPart(firstNonEmpty(input.ServiceKind, energyExplanationKindSuffix(input.Kind), "other")), scopeToken}, ".")
+		service := strings.ToLower(strings.TrimSpace(firstNonEmpty(input.ServiceKind, energyExplanationKindSuffix(input.Kind), "other")))
+		out.ID = strings.Join([]string{"load", canonicalEnergyPathPart(service), scopeToken}, ".")
+		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(input.DriverCategory)), "load.") {
+			switch service {
+			case "cooling":
+				out.Label = "Cooling load"
+			case "heating":
+				out.Label = "Heating load"
+			}
+		}
 	case "support":
 		out.Level = "support"
 		out.ScaleDomain = "site"
@@ -1167,6 +1359,7 @@ func upgradeEnergyExplanationNode(input EnergyExplanationNode, scope EnergyExpla
 			out.ID = strings.Join([]string{"end_use", canonicalEnergyPathPart(firstNonEmpty(input.EndUse, energyExplanationKindSuffix(input.Kind), "other")), scopeToken}, ".")
 		}
 	}
+	finalizeEnergyExplanationLoadNode(&out)
 	return out
 }
 
@@ -1174,6 +1367,11 @@ func mergeEnergyExplanationV2Node(nodes map[string]*EnergyExplanationNode, next 
 	current := nodes[next.ID]
 	if current == nil {
 		copy := next
+		copy.LoadBreakdown = cloneEnergyExplanationLoadComponents(next.LoadBreakdown)
+		copy.OffsetEffects = cloneEnergyExplanationOffsetEffects(next.OffsetEffects)
+		copy.SimultaneousLoad = cloneEnergyExplanationSimultaneousLoad(next.SimultaneousLoad)
+		copy.allocationSourceIDs = appendUniqueStrings(nil, next.allocationSourceIDs...)
+		copy.simultaneousLoadContributions = cloneEnergyExplanationSimultaneousLoadContributions(next.simultaneousLoadContributions)
 		nodes[next.ID] = &copy
 		return
 	}
@@ -1182,6 +1380,8 @@ func mergeEnergyExplanationV2Node(nodes map[string]*EnergyExplanationNode, next 
 	current.RawValue = roundedEnergyNumber(current.RawValue + next.RawValue)
 	current.EffectiveValue = roundedEnergyNumber(current.EffectiveValue + next.EffectiveValue)
 	current.AllocatedValue = roundedEnergyNumber(current.AllocatedValue + next.AllocatedValue)
+	current.AllocationApplied = current.AllocationApplied || next.AllocationApplied
+	current.AllocationExplanation = firstNonEmpty(current.AllocationExplanation, next.AllocationExplanation)
 	if current.RawValue != 0 {
 		current.Multiplier = roundedEnergyNumber(current.EffectiveValue / current.RawValue)
 	}
@@ -1189,6 +1389,10 @@ func mergeEnergyExplanationV2Node(nodes map[string]*EnergyExplanationNode, next 
 	current.RelatedPathIDs = appendUniqueStrings(current.RelatedPathIDs, next.RelatedPathIDs...)
 	current.RelatedEntityIDs = appendUniqueStrings(current.RelatedEntityIDs, next.RelatedEntityIDs...)
 	current.SourceIDs = appendUniqueStrings(current.SourceIDs, next.SourceIDs...)
+	current.LoadBreakdown = mergeEnergyExplanationLoadComponents(current.LoadBreakdown, next.LoadBreakdown)
+	current.OffsetEffects = mergeEnergyExplanationOffsetEffects(current.OffsetEffects, next.OffsetEffects)
+	current.simultaneousLoadContributions = mergeEnergyExplanationSimultaneousLoadContributions(current.simultaneousLoadContributions, next.simultaneousLoadContributions)
+	current.Badges = appendUniqueStrings(current.Badges, next.Badges...)
 	if current.ThermalComponent == "" {
 		current.ThermalComponent = next.ThermalComponent
 	} else if next.ThermalComponent != "" && current.ThermalComponent != next.ThermalComponent {
@@ -1203,6 +1407,8 @@ func mergeEnergyExplanationV2Node(nodes map[string]*EnergyExplanationNode, next 
 	if current.Basis != next.Basis {
 		current.Basis = "derived_ratio"
 	}
+	finalizeEnergyExplanationLoadNode(current)
+	finalizeEnergyExplanationSimultaneousLoad(current)
 }
 
 func upgradeEnergyExplanationLink(edge EnergyExplanationEdge, nodes map[string]EnergyExplanationNode, idMap map[string]string, canonicalNodes map[string]*EnergyExplanationNode, loadTotals map[string]float64, endUsesWithLoads map[string]bool, canonicalMonthlyBasis bool) (EnergyPathLink, bool) {
@@ -1216,6 +1422,7 @@ func upgradeEnergyExplanationLink(edge EnergyExplanationEdge, nodes map[string]E
 
 	link := EnergyPathLink{
 		RuleID:         edge.RuleID,
+		Explanation:    edge.Formula,
 		Period:         edge.Period,
 		ZoneName:       firstNonEmpty(edge.ZoneName, legacyFrom.ZoneName, legacyTo.ZoneName),
 		ServiceKind:    firstNonEmpty(edge.ServiceKind, legacyFrom.ServiceKind, legacyTo.ServiceKind),
@@ -1369,6 +1576,7 @@ func mergeEnergyPathLink(links map[string]*EnergyPathLink, next EnergyPathLink) 
 	current.ToValue = roundedEnergyNumber(current.ToValue + next.ToValue)
 	current.SourceIDs = appendUniqueStrings(current.SourceIDs, next.SourceIDs...)
 	current.RelatedPathIDs = appendUniqueStrings(current.RelatedPathIDs, next.RelatedPathIDs...)
+	current.Explanation = firstNonEmpty(current.Explanation, next.Explanation)
 	if current.ZoneName != next.ZoneName {
 		current.ZoneName = ""
 	}
@@ -1436,6 +1644,8 @@ func upgradeEnergyRelationshipRules(input []EnergyRelationshipRule) []EnergyRela
 		case energyRelationshipRuleHeatDriverBalance:
 			upgraded.FromLevel, upgraded.ToLevel = "driver", "load"
 			upgraded.FromKind, upgraded.ToKind = rule.ToKind, rule.FromKind
+			upgraded.Basis = "heat_balance_share"
+			upgraded.Formula = energyDriverAllocationFormula + "; " + energyDriverAllocationExplanation
 		case energyRelationshipRuleInternalGainHeat:
 			upgraded.FromLevel, upgraded.ToLevel = "driver", "end_use"
 			upgraded.FromKind, upgraded.ToKind = rule.ToKind, rule.FromKind
@@ -1558,6 +1768,9 @@ func firstNonZero(values ...float64) float64 {
 }
 
 func energyExplanationEffectiveNodeValue(node EnergyExplanationNode) float64 {
+	if node.AllocationApplied {
+		return node.AllocatedValue
+	}
 	if node.AllocatedValue != 0 {
 		return node.AllocatedValue
 	}

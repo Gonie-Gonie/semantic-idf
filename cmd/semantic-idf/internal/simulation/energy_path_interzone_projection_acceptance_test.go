@@ -38,8 +38,9 @@ func TestEPATH064AcceptanceMaterialPairNetHasBuildingFlowAndClosesLoad(t *testin
 	result := UpgradeEnergyExplanationV1(legacy)
 
 	pair := energyPathV2NodeByID(result.Nodes, "driver.interzone.transfer.cooling.building")
-	if pair == nil || pair.Value != 10 {
-		t.Fatalf("material Building interzone pair node = %#v, want 10 kWh cooling remainder", pair)
+	if pair == nil || pair.RawValue != 10 || pair.EffectiveValue != 10 || pair.SignedValue != 10 ||
+		pair.Value != 10 || pair.AllocatedValue != 10 || !pair.AllocationApplied {
+		t.Fatalf("material Building interzone pair node = %#v, want raw imbalance 10 capped to allocated contribution 10", pair)
 	}
 	pairLink := energyPathV2LinkByIDs(result.Links, pair.ID, "load.cooling.building")
 	if pairLink == nil {
@@ -48,17 +49,33 @@ func TestEPATH064AcceptanceMaterialPairNetHasBuildingFlowAndClosesLoad(t *testin
 		t.Errorf("material Building interzone pair link = %#v, want a 10 kWh driver_to_load contribution", pairLink)
 	}
 
-	load := energyPathV2NodeByID(result.Nodes, "load.cooling.building")
-	if load == nil {
-		t.Fatalf("missing Building cooling load: %#v", result.Nodes)
+	coolingStorage := energyPathV2NodeByID(result.Nodes, "driver.balance.storage_other.cooling.building")
+	if coolingStorage == nil || coolingStorage.Value != 55 || coolingStorage.AllocatedValue != 55 || !coolingStorage.AllocationApplied {
+		t.Fatalf("Building cooling pair remainder = %#v, want 65 allocated pair contribution - 10 retained net = 55 storage", coolingStorage)
 	}
-	incoming := 0.0
-	for _, link := range result.Links {
-		if link.Relation == "driver_to_load" && link.ToID == load.ID {
-			incoming += link.ToValue
+	heatingStorage := energyPathV2NodeByID(result.Nodes, "driver.balance.storage_other.heating.building")
+	if heatingStorage == nil || heatingStorage.Value != 50 || heatingStorage.AllocatedValue != 50 || !heatingStorage.AllocationApplied {
+		t.Fatalf("Building opposite-direction pair contribution = %#v, want 50 storage", heatingStorage)
+	}
+	for _, want := range []struct {
+		service string
+		value   float64
+	}{
+		{service: "cooling", value: 65},
+		{service: "heating", value: 50},
+	} {
+		load := energyPathV2NodeByID(result.Nodes, "load."+want.service+".building")
+		if load == nil || load.Value != want.value {
+			t.Fatalf("missing Building %s load %g: %#v", want.service, want.value, result.Nodes)
 		}
-	}
-	if incoming != load.Value {
-		t.Errorf("Building cooling closure = %g kWh incoming vs %g kWh load; retained material pair net must participate in the flow", incoming, load.Value)
+		incoming := 0.0
+		for _, link := range result.Links {
+			if link.Relation == "driver_to_load" && link.ToID == load.ID {
+				incoming = roundedEnergyNumber(incoming + link.ToValue)
+			}
+		}
+		if incoming != load.Value {
+			t.Errorf("Building %s closure = %g kWh incoming vs %g kWh load; retained pair plus storage must equal completed zone-month allocation", want.service, incoming, load.Value)
+		}
 	}
 }

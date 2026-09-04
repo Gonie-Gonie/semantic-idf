@@ -151,13 +151,26 @@ export function renderEnergyPathNodeInspector(explanation = {}, nodes = [], sele
   const multiplier = energyPathInspectorMultiplier(node, sourceDetails, raw, effective);
   const applications = energyPathUniqueValues(sourceDetails.map((source) => source.multiplierApplication));
   const unit = node.unit || (node.scaleDomain === "site" ? "kWh site" : "kWh thermal");
+  const allocatedDriver = node.level === "driver" && node.allocationApplied === true;
+  const rawInspectorValue = allocatedDriver ? energyPathSignedDriverValue(node, raw) : raw;
+  const effectiveInspectorValue = allocatedDriver ? energyPathSignedDriverValue(node, effective) : effective;
   const values = [
-    ["raw", t("simulation.energyPathRawReported", {}, "Raw reported value"), energyPathSummaryValueLabel(raw, unit)],
+    ["raw", allocatedDriver
+      ? t("simulation.energyPathRawHeatGainLoss", {}, "Raw heat gain / loss")
+      : t("simulation.energyPathRawReported", {}, "Raw reported value"), energyPathSummaryValueLabel(rawInspectorValue, unit)],
     ["multiplier", t("simulation.energyPathEffectiveMultiplier", {}, "Effective multiplier"), multiplier.toLocaleString(undefined, { maximumFractionDigits: 4 })],
-    ["effective", t("simulation.energyPathEffectiveContribution", {}, "Effective contribution"), energyPathSummaryValueLabel(effective, unit)],
-    ["allocated", t("simulation.energyPathAllocated", {}, "Allocated"), energyPathSummaryValueLabel(allocated, unit)],
+    ["effective", allocatedDriver
+      ? t("simulation.energyPathSignedPressure", {}, "Signed pressure after multiplier")
+      : t("simulation.energyPathEffectiveContribution", {}, "Effective contribution"), energyPathSummaryValueLabel(effectiveInspectorValue, unit)],
+    ["allocated", allocatedDriver
+      ? t("simulation.energyPathAllocatedContribution", {}, "Allocated contribution")
+      : t("simulation.energyPathAllocated", {}, "Allocated"), energyPathSummaryValueLabel(allocated, unit)],
     ["application", t("simulation.energyPathMultiplierApplication", {}, "Multiplier application"), applications.join(", ") || "unknown"],
   ];
+  const loadBreakdown = renderEnergyPathLoadBreakdown(node, unit);
+  const allocationExplanation = renderEnergyPathAllocationExplanation(node);
+  const offsetEffects = renderEnergyPathOffsetEffects(node, unit);
+  const simultaneousLoad = renderEnergyPathSimultaneousLoad(node, unit);
   const sourceInspector = renderEnergyPathSourceDetails(sourceDetails, viewState);
   return `
     <aside class="energy-path-node-inspector" data-energy-path-inspector="${escapeHTML(node.id)}">
@@ -172,13 +185,189 @@ export function renderEnergyPathNodeInspector(explanation = {}, nodes = [], sele
             <dd>${escapeHTML(value)}</dd>
           </div>`).join("")}
       </dl>
+      ${allocationExplanation}
+      ${loadBreakdown}
+      ${offsetEffects}
+      ${simultaneousLoad}
       ${sourceInspector}
     </aside>`;
 }
 
+function energyPathSignedDriverValue(node = {}, magnitude = 0) {
+  const sign = Number(node.signedValue) < 0 || energyPathToken(node.sign) === "negative" || energyPathToken(node.serviceKind) === "heating"
+    ? -1
+    : 1;
+  return sign * Math.abs(Number(magnitude) || 0);
+}
+
+function renderEnergyPathAllocationExplanation(node = {}) {
+  if (node.level !== "driver" || node.allocationApplied !== true) return "";
+  const explanation = t(
+    "simulation.energyPathAllocationExplanation",
+    {},
+    "Deterministic signed heat-balance share allocation (non-causal; not a direct causal decomposition).",
+  );
+  return `<p class="energy-path-allocation-explanation" data-energy-path-allocation-explanation="heat_balance_share">
+    <strong>${escapeHTML(t("simulation.energyPathAllocationBasis", {}, "Allocation basis"))}</strong>
+    <code>heat_balance_share</code>
+    <span>${escapeHTML(explanation)}</span>
+  </p>`;
+}
+
+function renderEnergyPathOffsetEffects(node = {}, unit = "kWh thermal") {
+  const effects = (node.offsetEffects || [])
+    .map((effect) => ({
+      effectKind: energyPathToken(effect?.effectKind),
+      targetService: energyPathToken(effect?.targetService),
+      driverCategory: String(effect?.driverCategory || "").trim(),
+      label: String(effect?.label || "").trim(),
+      heatDirection: energyPathToken(effect?.heatDirection),
+      rawValue: Math.abs(Number(effect?.rawValue) || 0),
+      effectiveValue: Math.abs(Number(effect?.effectiveValue) || 0),
+      unit: String(effect?.unit || unit),
+      basis: String(effect?.basis || "signed_heat_balance_offset"),
+      explanation: String(effect?.explanation || "").trim(),
+    }))
+    .filter((effect) => effect.effectKind && effect.targetService && (effect.rawValue > 0 || effect.effectiveValue > 0));
+  if (!effects.length) return "";
+  return `
+    <section class="energy-path-offset-effects" data-energy-path-offset-effects>
+      <header>
+        <strong>${escapeHTML(t("simulation.energyPathOffsetEffects", {}, "Offset effects"))}</strong>
+      </header>
+      <p>${escapeHTML(t(
+        "simulation.energyPathOffsetEffectsExplanation",
+        {},
+        "Opposite-sign heat-balance effects are context only and never create reverse main ribbons.",
+      ))}</p>
+      <dl>
+        ${effects.map((effect) => {
+          const targetLabel = effect.targetService === "heating"
+            ? t("simulation.energyPathReducesHeating", {}, "Reduces heating")
+            : t("simulation.energyPathReducesCooling", {}, "Reduces cooling");
+          const category = effect.label || effect.driverCategory || effect.heatDirection || effect.effectKind;
+          return `<div data-energy-path-offset-effect="${escapeHTML(effect.effectKind)}" data-energy-path-offset-target="${escapeHTML(effect.targetService)}" data-energy-path-offset-category="${escapeHTML(effect.driverCategory)}">
+            <dt>${escapeHTML(`${category} · ${targetLabel}`)}</dt>
+            <dd>
+              ${escapeHTML(t("simulation.energyPathOffsetRaw", {}, "Raw"))}: ${escapeHTML(energyPathSummaryValueLabel(effect.rawValue, effect.unit))}
+              · ${escapeHTML(t("simulation.energyPathOffsetEffective", {}, "After multiplier"))}: ${escapeHTML(energyPathSummaryValueLabel(effect.effectiveValue, effect.unit))}
+            </dd>
+            <small>${escapeHTML(effect.explanation)} <code>${escapeHTML(effect.basis)}</code></small>
+          </div>`;
+        }).join("")}
+      </dl>
+    </section>`;
+}
+
+function renderEnergyPathSimultaneousLoad(node = {}, unit = "kWh thermal") {
+  const metric = node?.simultaneousLoad;
+  if (node.level !== "load" || metric?.available !== true) return "";
+  const numerator = Math.max(0, Number(metric.numerator) || 0);
+  const denominator = Math.max(0, Number(metric.denominator) || 0);
+  const ratio = denominator > 0
+    ? Math.max(0, Math.min(1, Number.isFinite(Number(metric.ratio)) ? Number(metric.ratio) : numerator / denominator))
+    : 0;
+  const metricUnit = String(metric.unit || unit);
+  const basis = String(metric.basis || "simultaneous_min_over_max");
+  return `
+    <section
+      class="energy-path-simultaneous-load"
+      data-energy-path-simultaneous-load-ratio="${escapeHTML(basis)}"
+      data-energy-path-simultaneous-load-numerator="${escapeHTML(String(numerator))}"
+      data-energy-path-simultaneous-load-denominator="${escapeHTML(String(denominator))}"
+      data-energy-path-simultaneous-load-value="${escapeHTML(String(ratio))}"
+    >
+      <header>
+        <strong>${escapeHTML(t("simulation.energyPathSimultaneousLoadRatio", {}, "Simultaneous heating / cooling ratio"))}</strong>
+        <span>${escapeHTML(energyPathPercentLabel(ratio))}</span>
+      </header>
+      <p>${escapeHTML(t(
+        "simulation.energyPathSimultaneousLoadDefinition",
+        {},
+        "Sum of zone-month minimum cooling/heating loads divided by the sum of their maximum loads.",
+      ))}</p>
+      <dl>
+        <div data-energy-path-simultaneous-load-term="numerator">
+          <dt>${escapeHTML(t("simulation.energyPathSimultaneousLoadNumerator", {}, "Simultaneous load"))}</dt>
+          <dd>${escapeHTML(energyPathSummaryValueLabel(numerator, metricUnit))}</dd>
+        </div>
+        <div data-energy-path-simultaneous-load-term="denominator">
+          <dt>${escapeHTML(t("simulation.energyPathSimultaneousLoadDenominator", {}, "Larger service load"))}</dt>
+          <dd>${escapeHTML(energyPathSummaryValueLabel(denominator, metricUnit))}</dd>
+        </div>
+      </dl>
+      <code>${escapeHTML(basis)}</code>
+    </section>`;
+}
+
+function renderEnergyPathLoadBreakdown(node = {}, unit = "kWh thermal") {
+  if (node.level !== "load") return "";
+  const components = (node.loadBreakdown || [])
+    .map((component) => ({
+      component: energyPathToken(component?.component),
+      value: Number(component?.value),
+      share: Number(component?.share),
+    }))
+    .filter((component) => component.component && Number.isFinite(component.value));
+  const latentShare = energyPathLoadLatentShare(node, components);
+  if (!components.length && latentShare <= 0) return "";
+  const significant = latentShare + 1e-9 >= 0.1;
+  const badge = significant ? renderEnergyPathLatentBadge(latentShare, "inspector") : "";
+  return `
+    <section class="energy-path-load-breakdown" data-energy-path-load-breakdown>
+      <header>
+        <strong>${escapeHTML(t("simulation.energyPathLoadBreakdown", {}, "Sensible / latent breakdown"))}</strong>
+        ${badge}
+      </header>
+      <dl>
+        ${components.map((component) => {
+          const share = Number.isFinite(component.share) && component.share >= 0
+            ? component.share
+            : Math.abs(component.value) / Math.max(Math.abs(Number(node.value) || 0), 1e-9);
+          const emphasized = component.component === "latent" && significant;
+          const label = component.component === "latent"
+            ? t("simulation.energyPathLatentLoad", {}, "Latent")
+            : component.component === "sensible"
+              ? t("simulation.energyPathSensibleLoad", {}, "Sensible")
+              : component.component;
+          return `<div data-energy-path-load-breakdown-component="${escapeHTML(component.component)}" data-energy-path-load-breakdown-emphasized="${emphasized ? "true" : "false"}">
+            <dt>${escapeHTML(label)}</dt>
+            <dd>${escapeHTML(energyPathSummaryValueLabel(component.value, unit))} · ${escapeHTML(energyPathPercentLabel(share))}</dd>
+          </div>`;
+        }).join("")}
+      </dl>
+    </section>`;
+}
+
+function energyPathLoadLatentShare(node = {}, components = node.loadBreakdown || []) {
+  const explicit = Number(node.latentShare);
+  if (Number.isFinite(explicit) && explicit > 0) return explicit;
+  const latent = (components || []).find((component) => energyPathToken(component?.component) === "latent");
+  const total = Math.abs(Number(node.value) || 0);
+  return latent && total > 0 && Number.isFinite(Number(latent.value))
+    ? Math.abs(Number(latent.value)) / total
+    : 0;
+}
+
+function energyPathPercentLabel(value) {
+  const percent = Math.max(0, Number(value) || 0) * 100;
+  return `${percent.toLocaleString(undefined, { maximumFractionDigits: 1 })}%`;
+}
+
+function renderEnergyPathLatentBadge(latentShare, location = "node") {
+  const label = t(
+    "simulation.energyPathLatentShareSignificant",
+    { share: energyPathPercentLabel(latentShare) },
+    `Latent ${energyPathPercentLabel(latentShare)}`,
+  );
+  return `<small class="energy-path-load-latent-badge" data-energy-path-load-latent-badge="${escapeHTML(location)}" data-energy-path-load-latent-share="${escapeHTML(String(latentShare))}">${escapeHTML(label)}</small>`;
+}
+
 export function energyPathInspectorSources(explanation = {}, node = {}, viewState = {}) {
   const directIDs = new Set(node.sourceIds || []);
-  const category = energyPathToken(node.driverCategory);
+  const category = energyPathToken(node.driverCategory || (
+    node.level === "load" && node.serviceKind ? `load.${node.serviceKind}` : ""
+  ));
   const zoneScope = (viewState.simulationEnergyScopeKind || "building") === "zone";
   const wantedZone = energyPathToken(viewState.simulationEnergyZoneName);
   const selected = [];
@@ -187,10 +376,15 @@ export function energyPathInspectorSources(explanation = {}, node = {}, viewStat
     if (!source?.id || seen.has(source.id)) {
       continue;
     }
-    const contextMatch = node.level === "driver" &&
-      energyPathSourceInspectorSection(source) === "context" &&
+    const section = energyPathSourceInspectorSection(source);
+    const attachableSection = node.level === "driver"
+      ? section === "context"
+      : node.level === "load" && (section === "context" || section === "balance");
+    const sourceZone = energyPathToken(source.zoneName);
+    const zoneMatches = !zoneScope || sourceZone === wantedZone || (node.level === "driver" && !sourceZone);
+    const contextMatch = attachableSection &&
       category && energyPathToken(source.driverCategory) === category &&
-      (!zoneScope || !source.zoneName || energyPathToken(source.zoneName) === wantedZone);
+      zoneMatches;
     if (!directIDs.has(source.id) && !contextMatch) {
       continue;
     }
@@ -237,6 +431,8 @@ function renderEnergyPathInspectorSource(source = {}, viewState = {}) {
   const component = String(source.driverComponent || "").trim();
   const direction = String(source.heatDirection || "").trim();
   const formula = String(source.formula || "").trim();
+  const allocationFormula = source.allocationApplied ? String(source.allocationFormula || "").trim() : "";
+  const allocationExplanation = source.allocationApplied ? String(source.allocationExplanation || "").trim() : "";
   const inputSourceIDs = energyPathUniqueValues(source.inputSourceIds).join(", ");
   const relatedEntityIDs = energyPathUniqueValues(source.relatedEntityIds);
   const status = energyPathSourceDerivationStatus(source);
@@ -244,6 +440,8 @@ function renderEnergyPathInspectorSource(source = {}, viewState = {}) {
     ["driverComponent", t("simulation.energyPathSourceComponent", {}, "Component"), component],
     ["heatDirection", t("simulation.energyPathSourceHeatDirection", {}, "Heat direction"), direction],
     ["formula", t("simulation.energyPathSourceFormula", {}, "Formula"), formula],
+    ["allocationFormula", t("simulation.energyPathSourceAllocationFormula", {}, "Allocation formula"), allocationFormula],
+    ["allocationExplanation", t("simulation.energyPathSourceAllocationExplanation", {}, "Allocation note"), allocationExplanation],
     ["inputSourceIds", t("simulation.energyPathSourceInputs", {}, "Input sources"), inputSourceIDs],
     ["relatedEntityIds", t("simulation.energyPathSourceEntities", {}, "Related entities"), relatedEntityIDs],
   ].filter(([, , value]) => Array.isArray(value) ? value.length > 0 : Boolean(value));
@@ -332,7 +530,7 @@ function energyPathSourceDerivationStatus(source = {}) {
   if (text.includes("fallback") || text.includes("unsplit") || text.includes("outdoor_air_minus_infiltration")) {
     return "fallback";
   }
-  return source.formula || (source.inputSourceIds || []).length ? "derived" : "reported";
+  return source.sourceType === "derived_formula" || (!source.allocationApplied && source.formula) || (source.inputSourceIds || []).length ? "derived" : "reported";
 }
 
 function energyPathSourceForScope(source = {}, viewState = {}) {
@@ -837,9 +1035,11 @@ function compareEnergyPathStageNodes(stage, left, right) {
 
 function renderEnergyPathNode(node, stage, selectedID) {
   const selected = node.id && node.id === selectedID;
+  const latentShare = stage.level === "load" ? energyPathLoadLatentShare(node) : 0;
+  const latentBadge = latentShare + 1e-9 >= 0.1 ? renderEnergyPathLatentBadge(latentShare) : "";
   return `
     <button class="energy-path-node${selected ? " selected" : ""}" type="button" data-energy-explanation-node="${escapeHTML(node.id || "")}" aria-pressed="${selected ? "true" : "false"}">
-      <span>${escapeHTML(node.label || node.kind || node.id || "")}</span>
+      <span>${escapeHTML(node.label || node.kind || node.id || "")}${latentBadge}</span>
       <strong>${escapeHTML(energyPathValueLabel(node.value, stage.unitLabel))}</strong>
     </button>`;
 }

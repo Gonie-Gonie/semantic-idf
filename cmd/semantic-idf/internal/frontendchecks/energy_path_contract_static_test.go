@@ -57,6 +57,14 @@ func TestFrontendEnergyPathV2HeaderAndControlContract(t *testing.T) {
 		`data-energy-path-warning-severity=`,
 		`data-energy-path-topology-air-coupling-id=`,
 		`data-entity-kind="thermal_air_coupling"`,
+		`data-energy-path-offset-effects`,
+		`data-energy-path-offset-effect=`,
+		`data-energy-path-simultaneous-load-ratio=`,
+		`data-energy-path-simultaneous-load-numerator=`,
+		`data-energy-path-simultaneous-load-denominator=`,
+		`simultaneous_min_over_max`,
+		`signed_heat_balance_offset`,
+		`never create reverse main ribbons`,
 	} {
 		if !strings.Contains(view, required) {
 			t.Fatalf("Energy Path v2 contract missing %q", required)
