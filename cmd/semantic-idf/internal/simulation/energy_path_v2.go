@@ -299,6 +299,16 @@ func aggregateEnergyPathV2MonthlyPeriods(periods []EnergyPeriod) ([]EnergyExplan
 		canonicalNodes[nodes[index].ID] = &nodes[index]
 	}
 	synchronizeEnergyExplanationSimultaneousLoads(canonicalNodes)
+	for index := range links {
+		link := &links[index]
+		if link.Relation == "load_to_end_use" {
+			// Monthly carrier evidence can change across the year. Reclassify
+			// after node aggregation so an electricity-only month plus a district
+			// month becomes an order-independent mixed-carrier annual ratio.
+			setEnergyPathConversionRatioKind(link, canonicalNodes[link.FromID], canonicalNodes[link.ToID])
+		}
+		finalizeEnergyPathLinkRatio(link)
+	}
 	return nodes, links, reconciliation, warnings
 }
 
@@ -526,10 +536,18 @@ func upgradeEnergyExplanationGraph(legacyNodes []EnergyExplanationNode, legacyEd
 		if !legacyEnergyLinkIsLoadToEndUse(edge) {
 			continue
 		}
-		if _, ok := canonicalIDByLegacyID[edge.ToID]; !ok {
+		endUseNode, endUseOK := nodeByLegacyID[edge.FromID]
+		loadNode, loadOK := nodeByLegacyID[edge.ToID]
+		if !endUseOK || !loadOK {
 			continue
 		}
-		loadNode := nodeByLegacyID[edge.ToID]
+		if _, ok := energyPathThermalConversionService(edge, endUseNode, loadNode); !ok {
+			// Only the measured Cooling/Heating end uses form the main thermal
+			// conversion. Fans, pumps, heat rejection, and other auxiliaries
+			// remain direct site-energy branches even if a malformed stored-v1
+			// payload happens to point a delivered-load edge at one of them.
+			continue
+		}
 		endUseID := canonicalIDByLegacyID[edge.FromID]
 		loadTotalsByEndUse[endUseID] += math.Abs(firstNonZero(energyExplanationEffectiveNodeValue(loadNode), edge.Value))
 		endUsesWithLoads[endUseID] = true
@@ -568,6 +586,13 @@ func upgradeEnergyExplanationGraph(legacyNodes []EnergyExplanationNode, legacyEd
 	for _, link := range links {
 		if !visibleNodeIDs[link.FromID] || !visibleNodeIDs[link.ToID] {
 			continue
+		}
+		if link.Relation == "load_to_end_use" {
+			// A canonical end use can merge several carrier-qualified meters and
+			// a Building load can merge several zone links. Classify the ratio
+			// from those final endpoints, never from whichever legacy edge was
+			// encountered first.
+			setEnergyPathConversionRatioKind(link, canonicalNodes[link.FromID], canonicalNodes[link.ToID])
 		}
 		if link.Relation == "end_use_to_carrier" || link.Relation == "direct_end_use_to_carrier" {
 			sort.Strings(link.SourceIDs)
@@ -1601,6 +1626,14 @@ func upgradeEnergyExplanationLink(edge EnergyExplanationEdge, nodes map[string]E
 		return EnergyPathLink{}, false
 	}
 
+	conversionService := ""
+	if legacyEnergyLinkIsLoadToEndUse(edge) {
+		var valid bool
+		conversionService, valid = energyPathThermalConversionService(edge, legacyFrom, legacyTo)
+		if !valid {
+			return EnergyPathLink{}, false
+		}
+	}
 	carrierSplit := legacyEnergyLinkIsEndUseToCarrier(edge)
 	sourceIDs := appendUniqueStrings(appendUniqueStrings(appendUniqueStrings(nil, edge.SourceIDs...), legacyFrom.SourceIDs...), legacyTo.SourceIDs...)
 	if carrierSplit {
@@ -1650,6 +1683,7 @@ func upgradeEnergyExplanationLink(edge EnergyExplanationEdge, nodes map[string]E
 		link.FromID = toID
 		link.ToID = fromID
 		link.Relation = "load_to_end_use"
+		link.ServiceKind = conversionService
 		link.FromValue = math.Abs(firstNonZero(energyExplanationEffectiveNodeValue(legacyTo), value))
 		link.FromUnit = firstNonEmpty(legacyTo.Unit, edge.Unit)
 		link.ToUnit = firstNonEmpty(legacyFrom.Unit, edge.Unit)
@@ -1664,9 +1698,7 @@ func upgradeEnergyExplanationLink(edge EnergyExplanationEdge, nodes map[string]E
 		} else {
 			link.ToValue = math.Abs(firstNonZero(energyExplanationEffectiveNodeValue(legacyFrom), value))
 		}
-		link.RatioKind = "load_to_site_energy"
-		link.RatioLabel = "Load / site energy"
-		setEnergyPathConversionRatioKind(&link, legacyFrom, canonicalNodes[fromID])
+		setEnergyPathConversionRatioKind(&link, canonicalNodes[toID], canonicalNodes[fromID])
 	case legacyEnergyLinkIsDriverToLoad(edge):
 		link.FromID = toID
 		link.ToID = fromID
@@ -1743,27 +1775,81 @@ func upgradeEnergyExplanationLink(edge EnergyExplanationEdge, nodes map[string]E
 	return link, link.FromID != "" && link.ToID != "" && link.Relation != ""
 }
 
-func setEnergyPathConversionRatioKind(link *EnergyPathLink, legacyEndUse EnergyExplanationNode, canonicalEndUse *EnergyExplanationNode) {
-	service := energyCanonicalServiceKind(link.ServiceKind)
-	carrier := strings.ToLower(strings.TrimSpace(legacyEndUse.Carrier))
-	if canonicalEndUse != nil {
-		// End-use nodes are always publicly carrier-neutral. The private ledger
-		// retains just enough information to label a single-carrier conversion;
-		// multiple branches deliberately use the generic load/site ratio.
-		if len(canonicalEndUse.endUseCarriers) == 1 {
-			carrier = strings.ToLower(strings.TrimSpace(canonicalEndUse.endUseCarriers[0]))
-		} else {
-			carrier = ""
-		}
+func setEnergyPathConversionRatioKind(link *EnergyPathLink, canonicalLoad *EnergyExplanationNode, canonicalEndUse *EnergyExplanationNode) {
+	if link == nil {
+		return
 	}
-	if carrier == "electricity" && (service == "cooling" || service == "heating") {
+	link.Ratio = 0
+	link.RatioKind = ""
+	link.RatioLabel = ""
+	if canonicalLoad == nil || canonicalEndUse == nil ||
+		!strings.EqualFold(canonicalLoad.Level, "load") || !strings.EqualFold(canonicalEndUse.Level, "end_use") {
+		return
+	}
+	service := energyCanonicalServiceKind(firstNonEmpty(canonicalLoad.ServiceKind, link.ServiceKind))
+	endUse := canonicalEnergyPathEndUse(canonicalEndUse.EndUse)
+	if (service != "cooling" && service != "heating") || endUse != service {
+		return
+	}
+	// Signed or non-finite canonical endpoints cannot support a physically
+	// interpretable conversion label. The ribbon may retain its magnitude for
+	// traceability, but no ratio is advertised.
+	if !energyPathPositiveFinite(energyExplanationEffectiveNodeValue(*canonicalLoad)) ||
+		!energyPathPositiveFinite(energyExplanationEffectiveNodeValue(*canonicalEndUse)) ||
+		!energyPathConversionValuesValid(*link) {
+		return
+	}
+
+	carriers := appendUniqueStrings(nil, canonicalEndUse.endUseCarriers...)
+	for index := range carriers {
+		carriers[index] = canonicalEnergyPathPart(carriers[index])
+	}
+	if len(carriers) != 1 {
+		if len(carriers) > 1 {
+			link.RatioKind = "load_to_site_energy"
+			link.RatioLabel = "Load / site energy"
+		}
+		return
+	}
+	carrier := carriers[0]
+	if energyPathCarrierIsPurchasedDistrictEnergy(carrier) {
+		link.RatioKind = "load_to_purchased_energy"
+		link.RatioLabel = "Load / purchased energy"
+		return
+	}
+	if service == "cooling" && carrier == "electricity" {
 		link.RatioKind = "coefficient_of_performance"
 		link.RatioLabel = "COP"
 		return
 	}
 	if service == "heating" && energyPathCarrierUsesCombustionEfficiency(carrier) {
-		link.RatioKind = "efficiency"
-		link.RatioLabel = "Efficiency"
+		ratio := link.FromValue / link.ToValue
+		if ratio <= 1+1e-9 {
+			link.RatioKind = "efficiency"
+			link.RatioLabel = "Efficiency"
+		} else {
+			// A delivered-load/fuel ratio remains useful above one, but calling
+			// it an efficiency would assert a physical interpretation that the
+			// meter-only evidence cannot support.
+			link.RatioKind = "load_to_fuel"
+			link.RatioLabel = "Load / fuel"
+		}
+		return
+	}
+	if service == "heating" && carrier == "electricity" {
+		// Electricity alone does not distinguish resistance heat from a heat
+		// pump, so do not infer a heating COP.
+		link.RatioKind = "load_to_site_energy"
+		link.RatioLabel = "Load / site energy"
+	}
+}
+
+func energyPathCarrierIsPurchasedDistrictEnergy(carrier string) bool {
+	switch canonicalEnergyPathPart(carrier) {
+	case "district_cooling", "district_heating", "steam":
+		return true
+	default:
+		return false
 	}
 }
 
@@ -1791,16 +1877,107 @@ func mergeEnergyPathLink(links map[string]*EnergyPathLink, next EnergyPathLink) 
 	if current.ZoneName != next.ZoneName {
 		current.ZoneName = ""
 	}
+	finalizeEnergyPathLinkRatio(current)
 }
 
 func finalizeEnergyPathLinkRatio(link *EnergyPathLink) {
-	link.FromValue = roundedEnergyNumber(link.FromValue)
-	link.ToValue = roundedEnergyNumber(link.ToValue)
-	if link.RatioKind == "" || link.ToValue == 0 {
-		link.Ratio = 0
+	if link == nil {
 		return
 	}
-	link.Ratio = roundedEnergyNumber(link.FromValue / link.ToValue)
+	if !energyPathFinite(link.FromValue) {
+		link.FromValue = 0
+	}
+	if !energyPathFinite(link.ToValue) {
+		link.ToValue = 0
+	}
+	link.FromValue = roundedEnergyNumber(link.FromValue)
+	link.ToValue = roundedEnergyNumber(link.ToValue)
+	if link.RatioKind == "" {
+		link.Ratio = 0
+		link.RatioLabel = ""
+		return
+	}
+	if !energyPathConversionValuesValid(*link) {
+		link.Ratio = 0
+		link.RatioKind = ""
+		link.RatioLabel = ""
+		return
+	}
+	ratio := link.FromValue / link.ToValue
+	if !energyPathPositiveFinite(ratio) {
+		link.Ratio = 0
+		link.RatioKind = ""
+		link.RatioLabel = ""
+		return
+	}
+	link.Ratio = roundedEnergyNumber(ratio)
+	if link.Ratio <= 0 {
+		link.Ratio = 0
+		link.RatioKind = ""
+		link.RatioLabel = ""
+	}
+}
+
+func energyPathConversionValuesValid(link EnergyPathLink) bool {
+	if !energyPathPositiveFinite(link.FromValue) || !energyPathPositiveFinite(link.ToValue) {
+		return false
+	}
+	if strings.EqualFold(link.Relation, "load_to_end_use") {
+		fromUnit := energyPathConversionUnitBase(link.FromUnit)
+		toUnit := energyPathConversionUnitBase(link.ToUnit)
+		if fromUnit == "" || toUnit == "" || fromUnit != toUnit {
+			return false
+		}
+	}
+	return true
+}
+
+func energyPathPositiveFinite(value float64) bool {
+	return value > 0 && energyPathFinite(value)
+}
+
+func energyPathFinite(value float64) bool {
+	return !math.IsNaN(value) && !math.IsInf(value, 0)
+}
+
+func energyPathConversionUnitBase(unit string) string {
+	normalized := normalizeEnergyOutputName(strings.NewReplacer(
+		"(", " ", ")", " ", "[", " ", "]", " ", "_", " ",
+	).Replace(unit))
+	if normalized == "" {
+		return ""
+	}
+	parts := strings.Fields(normalized)
+	base := make([]string, 0, len(parts))
+	for _, part := range parts {
+		switch part {
+		case "thermal", "site", "purchased", "fuel", "delivered", "load", "energy":
+			continue
+		default:
+			base = append(base, part)
+		}
+	}
+	value := strings.Join(base, " ")
+	if !energyPathSupportedConversionEnergyUnit(value) {
+		return ""
+	}
+	return value
+}
+
+func energyPathSupportedConversionEnergyUnit(unit string) bool {
+	// Values reaching the v2 graph are normally normalized to kWh, while
+	// stored-v1 payloads may retain another explicit energy unit. Matching
+	// arbitrary labels is not enough: a dimensionless ratio is defensible only
+	// when both endpoints identify a recognized energy quantity.
+	switch normalizeUnitToken(unit) {
+	case "j", "kj", "mj", "gj", "tj",
+		"wh", "kwh", "mwh", "gwh",
+		"btu", "kbtu", "mbtu", "mmbtu",
+		"therm", "therms", "tonhour", "tonhours":
+		return true
+	default:
+		return false
+	}
 }
 
 func energyPathLinkID(link EnergyPathLink) string {
@@ -1877,6 +2054,25 @@ func upgradeEnergyRelationshipRules(input []EnergyRelationshipRule) []EnergyRela
 
 func legacyEnergyLinkIsLoadToEndUse(edge EnergyExplanationEdge) bool {
 	return strings.EqualFold(edge.Relation, "delivered_load") || strings.EqualFold(edge.Relation, "allocation")
+}
+
+func energyPathThermalConversionService(edge EnergyExplanationEdge, legacyEndUse EnergyExplanationNode, legacyLoad EnergyExplanationNode) (string, bool) {
+	if !legacyEnergyLinkIsLoadToEndUse(edge) || !strings.EqualFold(legacyLoad.Level, "load") ||
+		legacyEnergyNodeIsCarrier(legacyEndUse) || legacyEnergyNodeIsSupport(legacyEndUse) {
+		return "", false
+	}
+	endUse := canonicalEnergyPathEndUse(firstNonEmpty(legacyEndUse.EndUse, energyExplanationKindSuffix(legacyEndUse.Kind)))
+	if endUse != "cooling" && endUse != "heating" {
+		return "", false
+	}
+	// The load node is the authoritative service endpoint. Edge metadata is a
+	// compatibility fallback only; trusting a stale edge service can otherwise
+	// create Cooling load -> Heating energy (or an auxiliary conversion).
+	service := energyCanonicalServiceKind(firstNonEmpty(legacyLoad.ServiceKind, energyExplanationKindSuffix(legacyLoad.Kind), edge.ServiceKind))
+	if service != endUse {
+		return "", false
+	}
+	return service, true
 }
 
 func legacyEnergyLinkIsDriverToLoad(edge EnergyExplanationEdge) bool {

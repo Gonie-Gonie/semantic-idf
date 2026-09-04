@@ -108,6 +108,36 @@ const ENERGY_PATH_END_USE_PRESENTATION = Object.freeze({
   other: Object.freeze({ key: "other", labelKey: "simulation.energyPathEndUseOther", label: "Other" }),
 });
 
+const ENERGY_PATH_CONVERSION_RATIOS = Object.freeze({
+  coefficient_of_performance: Object.freeze({
+    labelKey: "simulation.energyPathRatioCOP",
+    label: "COP",
+    services: Object.freeze(["cooling"]),
+  }),
+  efficiency: Object.freeze({
+    labelKey: "simulation.energyPathRatioEfficiency",
+    label: "Efficiency",
+    services: Object.freeze(["heating"]),
+  }),
+  load_to_fuel: Object.freeze({
+    labelKey: "simulation.energyPathRatioLoadFuel",
+    label: "Load / fuel",
+    services: Object.freeze(["heating"]),
+  }),
+  load_to_site_energy: Object.freeze({
+    labelKey: "simulation.energyPathRatioLoadSiteEnergy",
+    label: "Load / site energy",
+    services: Object.freeze(["cooling", "heating"]),
+  }),
+  load_to_purchased_energy: Object.freeze({
+    labelKey: "simulation.energyPathRatioLoadPurchasedEnergy",
+    label: "Load / purchased energy",
+    services: Object.freeze(["cooling", "heating"]),
+  }),
+});
+
+const ENERGY_PATH_AUXILIARY_END_USES = Object.freeze(new Set(["fans_pumps", "hvac_auxiliaries"]));
+
 export function isEnergyPathV2(explanation = {}) {
   return String(explanation?.schema || "").toLowerCase() === ENERGY_PATH_SCHEMA_V2;
 }
@@ -148,6 +178,8 @@ export function normalizeEnergyPathViewState(viewState = {}, explanation = {}) {
 export function renderEnergyPathView(explanation = {}, viewState = {}) {
   normalizeEnergyPathViewState(viewState, explanation);
   const graph = energyPathGraphForState(explanation, viewState);
+  const allGraphNodes = graph.nodes;
+  graph.nodes = energyPathMainStageNodes(allGraphNodes, graph.links);
   const selectedID = String(viewState.simulationEnergySelection || "");
   const stages = ENERGY_PATH_STAGES.map((stage, index) => renderEnergyPathStage(stage, graph.nodes, selectedID, index)).join("");
   return `
@@ -157,13 +189,201 @@ export function renderEnergyPathView(explanation = {}, viewState = {}) {
       <div class="energy-path-stage-grid" role="group" aria-label="${escapeHTML(t("simulation.energyPathDirection", {}, "Load drivers → Thermal loads → End-use energy → Energy sources"))}">
         ${stages}
       </div>
-      ${renderEnergyPathNodeInspector(explanation, graph.nodes, selectedID, viewState)}
+      ${renderEnergyPathFlowLanes(allGraphNodes, graph.links, selectedID)}
+      ${renderEnergyPathNodeInspector(explanation, allGraphNodes, selectedID, viewState)}
       <div class="energy-path-domain-legend" aria-label="${escapeHTML(t("simulation.energyPathScaleDomains", {}, "Thermal and site-energy scale domains"))}">
         <span>${escapeHTML(t("simulation.energyPathThermalDomain", {}, "Thermal domain"))} · ${escapeHTML(t("simulation.energyPathThermalUnit", {}, "kWh thermal"))}</span>
         <strong>${escapeHTML(t("simulation.energyPathConversion", {}, "Equipment conversion"))}</strong>
         <span>${escapeHTML(t("simulation.energyPathSiteDomain", {}, "Site energy domain"))} · ${escapeHTML(t("simulation.energyPathSiteUnit", {}, "kWh site"))}</span>
       </div>
     </section>`;
+}
+
+export function energyPathConversionRatio(link = {}) {
+  if (energyPathToken(link.relation) !== "load_to_end_use") return null;
+  const kind = energyPathToken(link.ratioKind);
+  const presentation = ENERGY_PATH_CONVERSION_RATIOS[kind];
+  const service = energyPathItemService(link);
+  const fromValue = Number(link.fromValue);
+  const toValue = Number(link.toValue);
+  const ratio = Number(link.ratio);
+  if (
+    !presentation ||
+    !presentation.services.includes(service) ||
+    !Number.isFinite(fromValue) || fromValue <= 0 ||
+    !Number.isFinite(toValue) || toValue <= 0 ||
+    !Number.isFinite(ratio) || ratio <= 0 ||
+    !energyPathRatioUnitsCompatible(link.fromUnit, link.toUnit) ||
+    (kind === "efficiency" && ratio > 1)
+  ) {
+    return null;
+  }
+  const derivedRatio = fromValue / toValue;
+  const tolerance = 0.0005 + Number.EPSILON * Math.max(1, Math.abs(derivedRatio));
+  if (Math.abs(ratio - derivedRatio) > tolerance) return null;
+  return {
+    kind,
+    label: t(presentation.labelKey, {}, presentation.label),
+    value: ratio,
+  };
+}
+
+export function energyPathConversionFlows(nodes = [], links = []) {
+  const nodeByID = new Map((nodes || []).filter((node) => node?.id).map((node) => [node.id, node]));
+  return (links || []).flatMap((link) => {
+    if (energyPathToken(link?.relation) !== "load_to_end_use") return [];
+    const fromNode = nodeByID.get(link.fromId);
+    const toNode = nodeByID.get(link.toId);
+    if (fromNode?.level !== "load" || toNode?.level !== "end_use") return [];
+    const service = energyPathToken(toNode.endUse);
+    if (!(["cooling", "heating"].includes(service)) || energyPathItemService(fromNode) !== service) return [];
+    const fromValue = Number(link.fromValue);
+    const toValue = Number(link.toValue);
+    if (!Number.isFinite(fromValue) || fromValue <= 0 || !Number.isFinite(toValue) || toValue <= 0) return [];
+    return [{
+      id: link.id || energyPathPresentationLinkID(link),
+      service,
+      fromNode,
+      toNode,
+      fromValue,
+      toValue,
+      fromUnit: energyPathFlowUnit(link.fromUnit, "thermal"),
+      toUnit: energyPathFlowUnit(link.toUnit, "site"),
+      ratio: energyPathConversionRatio(link),
+    }];
+  }).sort((left, right) => {
+    const serviceOrder = { cooling: 0, heating: 1 };
+    return serviceOrder[left.service] - serviceOrder[right.service] || String(left.id).localeCompare(String(right.id));
+  });
+}
+
+export function energyPathAuxiliaryFlows(nodes = [], links = []) {
+  const nodeByID = new Map((nodes || []).filter((node) => node?.id).map((node) => [node.id, node]));
+  return (links || []).flatMap((link) => {
+    if (energyPathToken(link?.relation) !== "direct_end_use_to_carrier") return [];
+    const fromNode = nodeByID.get(link.fromId);
+    const toNode = nodeByID.get(link.toId);
+    const endUse = energyPathToken(fromNode?.endUse);
+    if (fromNode?.level !== "end_use" || toNode?.level !== "carrier" || !ENERGY_PATH_AUXILIARY_END_USES.has(endUse)) return [];
+    const value = Number(link.fromValue);
+    if (!Number.isFinite(value) || value <= 0 || Number(link.toValue) !== value) return [];
+    return [{
+      id: link.id || energyPathPresentationLinkID(link),
+      endUse,
+      fromNode,
+      toNode,
+      value,
+      unit: energyPathFlowUnit(link.fromUnit || link.toUnit, "site"),
+    }];
+  }).sort((left, right) => {
+    const endUseOrder = ENERGY_PATH_END_USE_ORDER[left.endUse] ?? Number.MAX_SAFE_INTEGER;
+    const rightEndUseOrder = ENERGY_PATH_END_USE_ORDER[right.endUse] ?? Number.MAX_SAFE_INTEGER;
+    return endUseOrder - rightEndUseOrder || String(left.toNode.id).localeCompare(String(right.toNode.id));
+  });
+}
+
+function energyPathMainStageNodes(nodes = [], links = []) {
+  const lowerAuxiliaryNodeIDs = new Set(energyPathAuxiliaryFlows(nodes, links).map((flow) => flow.fromNode.id));
+  return (nodes || []).filter((node) => node.level !== "end_use" || !lowerAuxiliaryNodeIDs.has(node.id));
+}
+
+export function renderEnergyPathFlowLanes(nodes = [], links = [], selectedID = "") {
+  const conversions = energyPathConversionFlows(nodes, links);
+  const auxiliaries = energyPathAuxiliaryFlows(nodes, links);
+  if (!conversions.length && !auxiliaries.length) return "";
+  return `
+    <section class="energy-path-flow-lanes" data-energy-path-flow-lanes>
+      ${conversions.length ? `
+        <section class="energy-path-conversion-lane" data-energy-path-conversion-lane>
+          <header>
+            <strong>${escapeHTML(t("simulation.energyPathMainConversions", {}, "Cooling and heating conversion"))}</strong>
+            <span>${escapeHTML(t("simulation.energyPathMainConversionsDescription", {}, "Thermal load is converted to equipment site energy."))}</span>
+          </header>
+          <div class="energy-path-flow-lane-items">
+            ${conversions.map(renderEnergyPathConversionFlow).join("")}
+          </div>
+        </section>` : ""}
+      ${auxiliaries.length ? `
+        <section class="energy-path-auxiliary-lane" data-energy-path-auxiliary-lane>
+          <header>
+            <strong>${escapeHTML(t("simulation.energyPathAuxiliaryLane", {}, "Auxiliary energy"))}</strong>
+            <span>${escapeHTML(t("simulation.energyPathAuxiliaryLaneDescription", {}, "Fans, pumps, and heat rejection connect directly to energy sources and are excluded from conversion ratios."))}</span>
+          </header>
+          <div class="energy-path-flow-lane-items">
+            ${auxiliaries.map((flow) => renderEnergyPathAuxiliaryFlow(flow, selectedID)).join("")}
+          </div>
+        </section>` : ""}
+    </section>`;
+}
+
+function renderEnergyPathConversionFlow(flow = {}) {
+  const title = flow.service === "cooling"
+    ? t("simulation.energyPathCoolingConversion", {}, "Cooling load → Cooling equipment energy")
+    : t("simulation.energyPathHeatingConversion", {}, "Heating load → Heating equipment energy");
+  const ratio = flow.ratio
+    ? `<span class="energy-path-conversion-ratio" data-energy-path-ratio-kind="${escapeHTML(flow.ratio.kind)}" data-energy-path-ratio-label="${escapeHTML(flow.ratio.label)}" data-energy-path-ratio-value="${escapeHTML(String(flow.ratio.value))}">
+        <strong>${escapeHTML(flow.ratio.label)}</strong>
+        <span>${escapeHTML(energyPathRatioValueLabel(flow.ratio.value))}</span>
+      </span>`
+    : "";
+  return `
+    <article class="energy-path-conversion-flow" data-energy-path-conversion-link="${escapeHTML(flow.id)}" data-energy-path-service="${escapeHTML(flow.service)}">
+      <header><strong>${escapeHTML(title)}</strong>${ratio}</header>
+      <div class="energy-path-conversion-values">
+        <span>${escapeHTML(energyPathSummaryValueLabel(flow.fromValue, flow.fromUnit))}</span>
+        <b aria-hidden="true">→</b>
+        <span>${escapeHTML(energyPathSummaryValueLabel(flow.toValue, flow.toUnit))}</span>
+      </div>
+    </article>`;
+}
+
+function renderEnergyPathAuxiliaryFlow(flow = {}, selectedID = "") {
+  const selected = Boolean(flow.fromNode.id && flow.fromNode.id === selectedID);
+  return `
+    <button class="energy-path-auxiliary-flow${selected ? " selected" : ""}" type="button" data-energy-explanation-node="${escapeHTML(flow.fromNode.id || "")}" data-energy-path-auxiliary-link="${escapeHTML(flow.id)}" data-energy-path-auxiliary-end-use="${escapeHTML(flow.endUse)}" aria-pressed="${selected ? "true" : "false"}">
+      <span>${escapeHTML(flow.fromNode.label || flow.fromNode.id || "")}</span>
+      <b aria-hidden="true">→</b>
+      <span>${escapeHTML(flow.toNode.label || flow.toNode.id || "")}</span>
+      <strong>${escapeHTML(energyPathSummaryValueLabel(flow.value, flow.unit))}</strong>
+    </button>`;
+}
+
+function energyPathRatioUnitsCompatible(fromUnit = "", toUnit = "") {
+  const fromBase = energyPathRatioUnitBase(fromUnit);
+  const toBase = energyPathRatioUnitBase(toUnit);
+  return Boolean(fromBase && toBase && fromBase === toBase);
+}
+
+function energyPathRatioUnitBase(unit = "") {
+  const normalized = energyPathToken(String(unit || "").replace(/[()\[\]_]/g, " "))
+    .split(/\s+/)
+    .filter(Boolean)
+    .filter((part) => !["thermal", "site", "purchased", "fuel", "delivered", "load", "energy"].includes(part))
+    .join("")
+    .replace(/[_-]/g, "");
+  const supported = new Set([
+    "j", "kj", "mj", "gj", "tj",
+    "wh", "kwh", "mwh", "gwh",
+    "btu", "kbtu", "mbtu", "mmbtu",
+    "therm", "therms", "tonhour", "tonhours",
+  ]);
+  return supported.has(normalized) ? normalized : "";
+}
+
+function energyPathFlowUnit(unit = "", scaleDomain = "") {
+  const value = String(unit || "").trim();
+  if (energyPathToken(value) === "kwh") {
+    return t(
+      scaleDomain === "thermal" ? "simulation.energyPathThermalUnit" : "simulation.energyPathSiteUnit",
+      {},
+      scaleDomain === "thermal" ? "kWh thermal" : "kWh site",
+    );
+  }
+  return value;
+}
+
+function energyPathRatioValueLabel(value) {
+  return Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
 
 export function renderEnergyPathNodeInspector(explanation = {}, nodes = [], selectedID = "", viewState = {}) {
@@ -456,6 +676,8 @@ export function renderEnergyPathSourceDetails(sources = [], viewState = {}) {
 
 function renderEnergyPathInspectorSource(source = {}, viewState = {}) {
   const component = String(source.driverComponent || "").trim();
+  const componentLabel = energyPathSourceComponentLabel(component);
+  const humidityDetail = energyPathHumidityDetailKind(component);
   const direction = String(source.heatDirection || "").trim();
   const formula = String(source.formula || "").trim();
   const allocationFormula = source.allocationApplied ? String(source.allocationFormula || "").trim() : "";
@@ -464,7 +686,7 @@ function renderEnergyPathInspectorSource(source = {}, viewState = {}) {
   const relatedEntityIDs = energyPathUniqueValues(source.relatedEntityIds);
   const status = energyPathSourceDerivationStatus(source);
   const fields = [
-    ["driverComponent", t("simulation.energyPathSourceComponent", {}, "Component"), component],
+    ["driverComponent", t("simulation.energyPathSourceComponent", {}, "Component"), componentLabel],
     ["heatDirection", t("simulation.energyPathSourceHeatDirection", {}, "Heat direction"), direction],
     ["formula", t("simulation.energyPathSourceFormula", {}, "Formula"), formula],
     ["allocationFormula", t("simulation.energyPathSourceAllocationFormula", {}, "Allocation formula"), allocationFormula],
@@ -473,7 +695,7 @@ function renderEnergyPathInspectorSource(source = {}, viewState = {}) {
     ["relatedEntityIds", t("simulation.energyPathSourceEntities", {}, "Related entities"), relatedEntityIDs],
   ].filter(([, , value]) => Array.isArray(value) ? value.length > 0 : Boolean(value));
   return `
-    <article class="energy-path-inspector-source" data-energy-path-source="${escapeHTML(source.id || "")}" data-energy-path-source-status="${status}">
+    <article class="energy-path-inspector-source" data-energy-path-source="${escapeHTML(source.id || "")}" data-energy-path-source-status="${status}"${humidityDetail ? ` data-energy-path-humidity-detail="${humidityDetail}"` : ""}>
       <header>
         <strong>${escapeHTML(source.name || source.keyValue || source.id || t("simulation.energyPathSource", {}, "Source"))}</strong>
         ${status === "reported" ? "" : `<span>${escapeHTML(t(
@@ -490,6 +712,24 @@ function renderEnergyPathInspectorSource(source = {}, viewState = {}) {
             : escapeHTML(value)}</dd>
         </div>`).join("")}</dl>` : ""}
     </article>`;
+}
+
+function energyPathHumidityDetailKind(component = "") {
+  const token = energyPathToken(component).replace(/[\s:/-]+/g, ".");
+  if (token === "load.humidification" || token.endsWith(".humidification")) return "humidification";
+  if (token === "load.dehumidification" || token.endsWith(".dehumidification")) return "dehumidification";
+  return "";
+}
+
+function energyPathSourceComponentLabel(component = "") {
+  switch (energyPathHumidityDetailKind(component)) {
+    case "humidification":
+      return t("simulation.energyPathHumidificationDetail", {}, "Humidification detail");
+    case "dehumidification":
+      return t("simulation.energyPathDehumidificationDetail", {}, "Dehumidification detail");
+    default:
+      return component;
+  }
 }
 
 function renderEnergyPathRelatedEntities(entityIDs = [], viewState = {}) {
