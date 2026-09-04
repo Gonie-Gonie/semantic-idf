@@ -319,6 +319,46 @@ func TestUpgradeEnergyExplanationV1SeparatesEndUseAndCarrierBranches(t *testing.
 	}
 }
 
+func TestEPATH090UpgradeBuildsCarrierReconciliationFromCanonicalSplits(t *testing.T) {
+	legacy := EnergyExplanationV1{
+		Schema: energyExplanationV1Schema,
+		Nodes: []EnergyExplanationNode{
+			{ID: "energy.carrier.electricity", Level: "energy", Kind: "energy.electricity.total", Label: "Electricity", Value: 100, Unit: "kWh", Carrier: "electricity", EndUse: "total", SourceIDs: []string{"facility-electricity"}},
+			{ID: "energy.carrier.natural_gas", Level: "energy", Kind: "energy.natural_gas.total", Label: "Natural gas", Value: 50, Unit: "kWh", Carrier: "natural_gas", EndUse: "total", SourceIDs: []string{"facility-gas"}},
+			{ID: "energy.end_use.heating.electricity", Level: "energy", Kind: "energy.heating", Label: "Electricity heating", Value: 70, Unit: "kWh", Carrier: "electricity", EndUse: "heating", SourceIDs: []string{"node-electricity-heating"}},
+			{ID: "energy.end_use.heating.natural_gas", Level: "energy", Kind: "energy.heating", Label: "Natural gas heating", Value: 60, Unit: "kWh", Carrier: "natural_gas", EndUse: "heating", SourceIDs: []string{"node-gas-heating"}},
+			{ID: "load.heating.office", Level: "load", Kind: "load.zone_heating", Label: "Heating load", Value: 120, Unit: "kWh", ZoneName: "Office", ServiceKind: "heating"},
+		},
+		Edges: []EnergyExplanationEdge{
+			{FromID: "energy.carrier.electricity", ToID: "energy.end_use.heating.electricity", Value: 70, Unit: "kWh", Relation: "meter_enduse", Basis: "measured_meter", SourceIDs: []string{"edge-electricity-heating"}},
+			{FromID: "energy.carrier.natural_gas", ToID: "energy.end_use.heating.natural_gas", Value: 60, Unit: "kWh", Relation: "meter_enduse", Basis: "measured_meter"},
+			{FromID: "energy.end_use.heating.electricity", ToID: "load.heating.office", Value: 120, Unit: "kWh", Relation: "delivered_load", Basis: "measured_variable", ServiceKind: "heating"},
+		},
+	}
+
+	result := UpgradeEnergyExplanationV1(legacy)
+	heating := energyPathV2NodeByID(result.Nodes, "end_use.heating.building")
+	if heating == nil || heating.Value != 130 || heating.Label != "Heating" || heating.Kind != "energy.heating" || heating.Carrier != "" {
+		t.Fatalf("carrier-neutral Heating = %#v", heating)
+	}
+	electricity := energyPathV2LinkByIDs(result.Links, heating.ID, "carrier.electricity.building")
+	if electricity == nil || electricity.Relation != "end_use_to_carrier" || electricity.FromValue != 70 || electricity.ToValue != 70 || len(electricity.SourceIDs) != 1 || electricity.SourceIDs[0] != "edge-electricity-heating" {
+		t.Fatalf("electricity split provenance = %#v", electricity)
+	}
+	gas := energyPathV2LinkByIDs(result.Links, heating.ID, "carrier.natural_gas.building")
+	if gas == nil || gas.Relation != "end_use_to_carrier" || gas.FromValue != 60 || gas.ToValue != 60 || len(gas.SourceIDs) != 1 || gas.SourceIDs[0] != "node-gas-heating" {
+		t.Fatalf("natural-gas split provenance = %#v", gas)
+	}
+	electricityReconciliation := energyExplanationReconciliationByID(result.Reconciliation, "reconcile.energy.electricity.annual")
+	if electricityReconciliation == nil || electricityReconciliation.ExpectedValue != 100 || electricityReconciliation.ExplainedValue != 70 || electricityReconciliation.ResidualValue != 30 || electricityReconciliation.Status != "residual" {
+		t.Fatalf("electricity reconciliation = %#v", electricityReconciliation)
+	}
+	gasReconciliation := energyExplanationReconciliationByID(result.Reconciliation, "reconcile.energy.natural_gas.annual")
+	if gasReconciliation == nil || gasReconciliation.ExpectedValue != 50 || gasReconciliation.ExplainedValue != 60 || gasReconciliation.ResidualValue != -10 || gasReconciliation.Status != "overmapped" {
+		t.Fatalf("natural-gas reconciliation = %#v", gasReconciliation)
+	}
+}
+
 func TestUpgradeEnergyExplanationV1UsesMergedMultiCarrierEndUseForRatio(t *testing.T) {
 	legacy := EnergyExplanationV1{
 		Schema: energyExplanationV1Schema,
@@ -460,7 +500,7 @@ func TestUpgradeEnergyExplanationV1UnionsLinkTraceAndZoneMetadata(t *testing.T) 
 		t.Fatalf("load-link trace metadata = %#v", loadLink)
 	}
 	carrierLink := energyPathV2LinkByRelation(result.Links, "end_use_to_carrier")
-	if carrierLink == nil || !stringSliceContains(carrierLink.SourceIDs, "facility") || !stringSliceContains(carrierLink.SourceIDs, "cooling") {
+	if carrierLink == nil || stringSliceContains(carrierLink.SourceIDs, "facility") || !stringSliceContains(carrierLink.SourceIDs, "cooling") {
 		t.Fatalf("carrier-link trace metadata = %#v", carrierLink)
 	}
 }
