@@ -1,0 +1,510 @@
+{
+  "schema": "semantic-idf.energy-explanation/v1",
+  "purpose": "basic_energy",
+  "frequency": "monthly",
+  "allocationPolicy": "direct_only",
+  "periods": [
+    {
+      "id": "annual",
+      "label": "Annual",
+      "kind": "annual",
+      "nodes": [
+        {
+          "id": "energy.carrier.electricity",
+          "level": "energy",
+          "kind": "energy.electricity.total",
+          "label": "Electricity total",
+          "value": 3,
+          "unit": "kWh",
+          "period": "annual",
+          "carrier": "electricity",
+          "endUse": "total",
+          "meterHierarchyLevel": "facility_total",
+          "basis": "measured_meter",
+          "sourceIds": ["sql-rdd-20"]
+        },
+        {
+          "id": "energy.end_use.cooling.electricity",
+          "level": "energy",
+          "kind": "energy.cooling",
+          "label": "Cooling energy",
+          "value": 1,
+          "unit": "kWh",
+          "period": "annual",
+          "carrier": "electricity",
+          "endUse": "cooling",
+          "meterHierarchyLevel": "broad_end_use",
+          "basis": "measured_meter",
+          "sourceIds": ["sql-rdd-21"]
+        },
+        {
+          "id": "load.cooling.zone_one",
+          "level": "load",
+          "kind": "load.zone_cooling",
+          "label": "Zone cooling load",
+          "value": 0.5,
+          "unit": "kWh",
+          "period": "annual",
+          "zoneName": "ZONE ONE",
+          "serviceKind": "cooling",
+          "pathType": "zone",
+          "basis": "measured_energy_variable",
+          "relatedPathIds": [
+            "service-path:zone:zone one:mixed:ideal_loads:component:4",
+            "service-path:zone:zone one:ventilation:ideal_loads:component:4"
+          ],
+          "sourceIds": ["sql-rdd-23"]
+        },
+        {
+          "id": "heat.internal_convective.zone_one",
+          "level": "heat",
+          "kind": "heat.internal_convective",
+          "label": "Internal convective gains",
+          "value": 0.5,
+          "signedValue": 0.5,
+          "displayValue": 0.5,
+          "unit": "kWh",
+          "period": "annual",
+          "zoneName": "ZONE ONE",
+          "serviceKind": "cooling",
+          "heatCategory": "internal_gains",
+          "sign": "positive",
+          "basis": "derived_balance",
+          "relatedPathIds": [
+            "service-path:zone:zone one:mixed:ideal_loads:component:4",
+            "service-path:zone:zone one:ventilation:ideal_loads:component:4"
+          ],
+          "sourceIds": ["sql-rdd-24"]
+        },
+        {
+          "id": "heat.surface_convection.zone_one",
+          "level": "heat",
+          "kind": "heat.surface_convection",
+          "label": "Surface convection",
+          "value": 0.2,
+          "signedValue": -0.2,
+          "displayValue": 0.2,
+          "unit": "kWh",
+          "period": "annual",
+          "zoneName": "ZONE ONE",
+          "serviceKind": "heating",
+          "heatCategory": "surface_envelope",
+          "sign": "negative",
+          "basis": "derived_balance",
+          "relatedPathIds": [
+            "service-path:zone:zone one:mixed:ideal_loads:component:4",
+            "service-path:zone:zone one:ventilation:ideal_loads:component:4"
+          ],
+          "sourceIds": ["sql-rdd-25"]
+        },
+        {
+          "id": "residual.energy.electricity",
+          "level": "residual",
+          "kind": "energy.residual",
+          "label": "Electricity residual / other",
+          "value": 2,
+          "unit": "kWh",
+          "period": "annual",
+          "carrier": "electricity",
+          "basis": "residual",
+          "sourceIds": ["sql-rdd-20", "sql-rdd-21"]
+        }
+      ],
+      "edges": [
+        {
+          "id": "edge.energy_carrier_electricity.energy_end_use_cooling_electricity",
+          "fromId": "energy.carrier.electricity",
+          "toId": "energy.end_use.cooling.electricity",
+          "value": 1,
+          "unit": "kWh",
+          "period": "annual",
+          "relation": "meter_enduse",
+          "basis": "measured_meter",
+          "ruleId": "meter.end_use",
+          "sourceIds": ["sql-rdd-21"]
+        },
+        {
+          "id": "load.energy_end_use_cooling_electricity.load_cooling_zone_one",
+          "fromId": "energy.end_use.cooling.electricity",
+          "toId": "load.cooling.zone_one",
+          "value": 0.5,
+          "unit": "kWh",
+          "period": "annual",
+          "relation": "delivered_load",
+          "basis": "measured_variable",
+          "ruleId": "load.measured_variable",
+          "sourceIds": ["sql-rdd-23"],
+          "serviceKind": "cooling",
+          "relatedPathIds": [
+            "service-path:zone:zone one:mixed:ideal_loads:component:4",
+            "service-path:zone:zone one:ventilation:ideal_loads:component:4"
+          ]
+        },
+        {
+          "id": "heat.load_cooling_zone_one.heat_internal_convective_zone_one",
+          "fromId": "load.cooling.zone_one",
+          "toId": "heat.internal_convective.zone_one",
+          "value": 0.5,
+          "signedValue": 0.5,
+          "displayValue": 0.5,
+          "unit": "kWh",
+          "period": "annual",
+          "relation": "heat_driver",
+          "basis": "derived_balance",
+          "ruleId": "heat.driver_balance",
+          "sourceIds": ["sql-rdd-24"],
+          "zoneName": "ZONE ONE",
+          "serviceKind": "cooling",
+          "relatedPathIds": [
+            "service-path:zone:zone one:mixed:ideal_loads:component:4",
+            "service-path:zone:zone one:ventilation:ideal_loads:component:4"
+          ]
+        },
+        {
+          "id": "residual.energy_carrier_electricity.residual_energy_electricity",
+          "fromId": "energy.carrier.electricity",
+          "toId": "residual.energy.electricity",
+          "value": 2,
+          "unit": "kWh",
+          "period": "annual",
+          "relation": "residual",
+          "basis": "residual",
+          "ruleId": "residual.energy_total",
+          "sourceIds": ["sql-rdd-20", "sql-rdd-21"]
+        }
+      ],
+      "reconciliation": [
+        {
+          "id": "reconcile.energy.electricity.annual",
+          "level": "energy",
+          "period": "annual",
+          "label": "Electricity total basis",
+          "status": "residual",
+          "expectedValue": 3,
+          "explainedValue": 1,
+          "residualValue": 2,
+          "unit": "kWh",
+          "basis": "residual",
+          "sourceIds": ["sql-rdd-20", "sql-rdd-21"]
+        },
+        {
+          "id": "reconcile.heat.cooling.annual",
+          "level": "heat",
+          "period": "annual",
+          "label": "Cooling heat-driver basis",
+          "status": "balanced",
+          "serviceKind": "cooling",
+          "expectedValue": 0.5,
+          "explainedValue": 0.5,
+          "residualValue": 0,
+          "unit": "kWh",
+          "basis": "residual",
+          "sourceIds": ["sql-rdd-23", "sql-rdd-24"]
+        },
+        {
+          "id": "reconcile.heat.cooling.zone_one.annual",
+          "level": "heat",
+          "period": "annual",
+          "label": "Cooling heat-driver basis - ZONE ONE",
+          "status": "balanced",
+          "zoneName": "ZONE ONE",
+          "serviceKind": "cooling",
+          "expectedValue": 0.5,
+          "explainedValue": 0.5,
+          "residualValue": 0,
+          "unit": "kWh",
+          "basis": "residual",
+          "sourceIds": ["sql-rdd-23", "sql-rdd-24"]
+        }
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "id": "energy.carrier.electricity",
+      "level": "energy",
+      "kind": "energy.electricity.total",
+      "label": "Electricity total",
+      "value": 3,
+      "unit": "kWh",
+      "period": "annual",
+      "carrier": "electricity",
+      "endUse": "total",
+      "meterHierarchyLevel": "facility_total",
+      "basis": "measured_meter",
+      "sourceIds": ["sql-rdd-20"]
+    },
+    {
+      "id": "energy.end_use.cooling.electricity",
+      "level": "energy",
+      "kind": "energy.cooling",
+      "label": "Cooling energy",
+      "value": 1,
+      "unit": "kWh",
+      "period": "annual",
+      "carrier": "electricity",
+      "endUse": "cooling",
+      "meterHierarchyLevel": "broad_end_use",
+      "basis": "measured_meter",
+      "sourceIds": ["sql-rdd-21"]
+    },
+    {
+      "id": "load.cooling.zone_one",
+      "level": "load",
+      "kind": "load.zone_cooling",
+      "label": "Zone cooling load",
+      "value": 0.5,
+      "unit": "kWh",
+      "period": "annual",
+      "zoneName": "ZONE ONE",
+      "serviceKind": "cooling",
+      "pathType": "zone",
+      "basis": "measured_energy_variable",
+      "relatedPathIds": [
+        "service-path:zone:zone one:mixed:ideal_loads:component:4",
+        "service-path:zone:zone one:ventilation:ideal_loads:component:4"
+      ],
+      "sourceIds": ["sql-rdd-23"]
+    },
+    {
+      "id": "heat.internal_convective.zone_one",
+      "level": "heat",
+      "kind": "heat.internal_convective",
+      "label": "Internal convective gains",
+      "value": 0.5,
+      "signedValue": 0.5,
+      "displayValue": 0.5,
+      "unit": "kWh",
+      "period": "annual",
+      "zoneName": "ZONE ONE",
+      "serviceKind": "cooling",
+      "heatCategory": "internal_gains",
+      "sign": "positive",
+      "basis": "derived_balance",
+      "relatedPathIds": [
+        "service-path:zone:zone one:mixed:ideal_loads:component:4",
+        "service-path:zone:zone one:ventilation:ideal_loads:component:4"
+      ],
+      "sourceIds": ["sql-rdd-24"]
+    },
+    {
+      "id": "heat.surface_convection.zone_one",
+      "level": "heat",
+      "kind": "heat.surface_convection",
+      "label": "Surface convection",
+      "value": 0.2,
+      "signedValue": -0.2,
+      "displayValue": 0.2,
+      "unit": "kWh",
+      "period": "annual",
+      "zoneName": "ZONE ONE",
+      "serviceKind": "heating",
+      "heatCategory": "surface_envelope",
+      "sign": "negative",
+      "basis": "derived_balance",
+      "relatedPathIds": [
+        "service-path:zone:zone one:mixed:ideal_loads:component:4",
+        "service-path:zone:zone one:ventilation:ideal_loads:component:4"
+      ],
+      "sourceIds": ["sql-rdd-25"]
+    },
+    {
+      "id": "residual.energy.electricity",
+      "level": "residual",
+      "kind": "energy.residual",
+      "label": "Electricity residual / other",
+      "value": 2,
+      "unit": "kWh",
+      "period": "annual",
+      "carrier": "electricity",
+      "basis": "residual",
+      "sourceIds": ["sql-rdd-20", "sql-rdd-21"]
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge.energy_carrier_electricity.energy_end_use_cooling_electricity",
+      "fromId": "energy.carrier.electricity",
+      "toId": "energy.end_use.cooling.electricity",
+      "value": 1,
+      "unit": "kWh",
+      "period": "annual",
+      "relation": "meter_enduse",
+      "basis": "measured_meter",
+      "ruleId": "meter.end_use",
+      "sourceIds": ["sql-rdd-21"]
+    },
+    {
+      "id": "load.energy_end_use_cooling_electricity.load_cooling_zone_one",
+      "fromId": "energy.end_use.cooling.electricity",
+      "toId": "load.cooling.zone_one",
+      "value": 0.5,
+      "unit": "kWh",
+      "period": "annual",
+      "relation": "delivered_load",
+      "basis": "measured_variable",
+      "ruleId": "load.measured_variable",
+      "sourceIds": ["sql-rdd-23"],
+      "serviceKind": "cooling",
+      "relatedPathIds": [
+        "service-path:zone:zone one:mixed:ideal_loads:component:4",
+        "service-path:zone:zone one:ventilation:ideal_loads:component:4"
+      ]
+    },
+    {
+      "id": "heat.load_cooling_zone_one.heat_internal_convective_zone_one",
+      "fromId": "load.cooling.zone_one",
+      "toId": "heat.internal_convective.zone_one",
+      "value": 0.5,
+      "signedValue": 0.5,
+      "displayValue": 0.5,
+      "unit": "kWh",
+      "period": "annual",
+      "relation": "heat_driver",
+      "basis": "derived_balance",
+      "ruleId": "heat.driver_balance",
+      "sourceIds": ["sql-rdd-24"],
+      "zoneName": "ZONE ONE",
+      "serviceKind": "cooling",
+      "relatedPathIds": [
+        "service-path:zone:zone one:mixed:ideal_loads:component:4",
+        "service-path:zone:zone one:ventilation:ideal_loads:component:4"
+      ]
+    },
+    {
+      "id": "residual.energy_carrier_electricity.residual_energy_electricity",
+      "fromId": "energy.carrier.electricity",
+      "toId": "residual.energy.electricity",
+      "value": 2,
+      "unit": "kWh",
+      "period": "annual",
+      "relation": "residual",
+      "basis": "residual",
+      "ruleId": "residual.energy_total",
+      "sourceIds": ["sql-rdd-20", "sql-rdd-21"]
+    }
+  ],
+  "reconciliation": [
+    {
+      "id": "reconcile.energy.electricity.annual",
+      "level": "energy",
+      "period": "annual",
+      "label": "Electricity total basis",
+      "status": "residual",
+      "expectedValue": 3,
+      "explainedValue": 1,
+      "residualValue": 2,
+      "unit": "kWh",
+      "basis": "residual",
+      "sourceIds": ["sql-rdd-20", "sql-rdd-21"]
+    },
+    {
+      "id": "reconcile.heat.cooling.annual",
+      "level": "heat",
+      "period": "annual",
+      "label": "Cooling heat-driver basis",
+      "status": "balanced",
+      "serviceKind": "cooling",
+      "expectedValue": 0.5,
+      "explainedValue": 0.5,
+      "residualValue": 0,
+      "unit": "kWh",
+      "basis": "residual",
+      "sourceIds": ["sql-rdd-23", "sql-rdd-24"]
+    },
+    {
+      "id": "reconcile.heat.cooling.zone_one.annual",
+      "level": "heat",
+      "period": "annual",
+      "label": "Cooling heat-driver basis - ZONE ONE",
+      "status": "balanced",
+      "zoneName": "ZONE ONE",
+      "serviceKind": "cooling",
+      "expectedValue": 0.5,
+      "explainedValue": 0.5,
+      "residualValue": 0,
+      "unit": "kWh",
+      "basis": "residual",
+      "sourceIds": ["sql-rdd-23", "sql-rdd-24"]
+    }
+  ],
+  "sources": [
+    {
+      "id": "sql-rdd-20",
+      "sourceType": "sql_report_data",
+      "isMeter": true,
+      "name": "Electricity:Facility",
+      "units": "J",
+      "sourceUnit": "J",
+      "normalizedUnit": "kWh",
+      "aggregationMethod": "sum_report_data",
+      "tableName": "ReportData",
+      "rowName": "Electricity:Facility",
+      "columnName": "Value [J]",
+      "objectIndex": 0
+    },
+    {
+      "id": "sql-rdd-21",
+      "sourceType": "sql_report_data",
+      "isMeter": true,
+      "name": "Electricity:Cooling",
+      "units": "J",
+      "sourceUnit": "J",
+      "normalizedUnit": "kWh",
+      "aggregationMethod": "sum_report_data",
+      "tableName": "ReportData",
+      "rowName": "Electricity:Cooling",
+      "columnName": "Value [J]",
+      "objectIndex": 1
+    },
+    {
+      "id": "sql-rdd-23",
+      "sourceType": "sql_report_data",
+      "keyValue": "ZONE ONE",
+      "name": "Zone Air System Sensible Cooling Energy",
+      "units": "J",
+      "sourceUnit": "J",
+      "normalizedUnit": "kWh",
+      "aggregationMethod": "sum_report_data",
+      "tableName": "ReportData",
+      "rowName": "ZONE ONE / Zone Air System Sensible Cooling Energy",
+      "columnName": "Value [J]",
+      "objectIndex": 2
+    },
+    {
+      "id": "sql-rdd-24",
+      "sourceType": "sql_report_data",
+      "keyValue": "ZONE ONE",
+      "name": "Zone Air Heat Balance Internal Convective Heat Gain Rate",
+      "units": "W",
+      "sourceUnit": "W",
+      "normalizedUnit": "kWh",
+      "aggregationMethod": "integrate_rate_by_time_interval",
+      "tableName": "ReportData",
+      "rowName": "ZONE ONE / Zone Air Heat Balance Internal Convective Heat Gain Rate",
+      "columnName": "Value [W]",
+      "objectIndex": 3
+    },
+    {
+      "id": "sql-rdd-25",
+      "sourceType": "sql_report_data",
+      "keyValue": "ZONE ONE",
+      "name": "Zone Air Heat Balance Surface Convection Rate",
+      "units": "W",
+      "sourceUnit": "W",
+      "normalizedUnit": "kWh",
+      "aggregationMethod": "integrate_rate_by_time_interval",
+      "tableName": "ReportData",
+      "rowName": "ZONE ONE / Zone Air Heat Balance Surface Convection Rate",
+      "columnName": "Value [W]",
+      "objectIndex": 4
+    }
+  ],
+  "completeness": {
+    "status": "complete",
+    "mappedPercent": 33.333,
+    "energyUse": {"level": "energy", "status": "complete", "found": 2, "total": 2},
+    "deliveredLoad": {"level": "load", "status": "complete", "found": 1, "total": 1},
+    "heatDrivers": {"level": "heat", "status": "complete", "found": 2, "total": 2}
+  }
+}

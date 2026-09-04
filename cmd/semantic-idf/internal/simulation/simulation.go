@@ -901,6 +901,7 @@ func runBatchSimulationPath(path string, request MultiSimulationRequest, install
 	}
 	if runResult.PurposeResults != nil {
 		runResult.PurposeMetrics = SummarizePurposeMetrics(runResult.PurposeResults)
+		compactPurposeResultBundleForBatch(runResult.PurposeResults)
 	}
 	return *runResult
 }

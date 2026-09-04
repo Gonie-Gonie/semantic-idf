@@ -1,3 +1,5 @@
+import { energyPathSummaryGroups, isEnergyPathSummaryV2 } from "../energy-path-summary.js";
+
 export function initializeMultiSimulationTool(context) {
   const { state, elements, waitForAppAPI, waitForProgressRuntime, escapeHTML, postJSON, t, downloadCSV } = context;
 
@@ -473,14 +475,14 @@ export function initializeMultiSimulationTool(context) {
           metric.label || "",
           metric.value ?? "",
           metric.unit || "",
-          "",
+          energyExplanationSummaryAllocationDisplay(metric),
           metric.level || "",
           metric.status || "",
           "",
           "",
           "",
           "",
-          "",
+          metric.aggregationBasis || "",
           "",
           energyExplanationSourceObjectIndexes(explanation, metric.sourceIds || []),
           ...energyExplanationSourceTableExportFieldsForIDs(explanation, metric.sourceIds || []),
@@ -793,23 +795,20 @@ export function initializeMultiSimulationTool(context) {
   }
 
   function energyExplanationSummaryExportItems(summary = {}) {
-    const groups = [
-      ["energy_explanation.energy_by_carrier", summary.energyByCarrier || []],
-      ["energy_explanation.energy_by_end_use", summary.energyByEndUse || []],
-      ["energy_explanation.delivered_load_by_service", summary.deliveredLoadByService || []],
-      ["energy_explanation.derived_kpi", summary.derivedKpis || []],
-      ["energy_explanation.heat_drivers", summary.heatDrivers || []],
-      ["energy_explanation.residuals", summary.residuals || []],
-      ["energy_explanation.top_heat_drivers", summary.topHeatDrivers || []],
-      ["energy_explanation.top_zones", summary.topZones || []],
-    ];
+    const v2 = isEnergyPathSummaryV2(summary);
+    const groups = energyPathSummaryGroups(summary).map((group) => [group.type, group.items]);
     return groups.flatMap(([type, items]) =>
       (items || []).map((item) => ({
         type,
+        summarySchema: v2 ? "v2" : "v1",
         id: item.id || "",
         label: energyExplanationSummaryLabel(item),
         value: item.value,
+        rawValue: item.rawValue,
+        allocatedValue: item.allocatedValue,
         unit: item.unit || "",
+        scaleDomain: item.scaleDomain || "",
+        aggregationBasis: item.aggregationBasis || "",
         level: item.level || item.kind || "",
         pathType: item.pathType || "",
         heatCategory: item.heatCategory || "",
@@ -827,6 +826,22 @@ export function initializeMultiSimulationTool(context) {
         sourceIds: item.sourceIds || [],
       })),
     );
+  }
+
+  function energyExplanationSummaryAllocationDisplay(metric = {}) {
+    if (metric.summarySchema !== "v2") {
+      return "";
+    }
+    const raw = Number(metric.rawValue);
+    const allocated = Number(metric.allocatedValue);
+    const parts = [];
+    if (Number.isFinite(raw)) {
+      parts.push(`raw=${formatValue(raw, metric.numeratorUnit || metric.unit || "")}`);
+    }
+    if (Number.isFinite(allocated)) {
+      parts.push(`allocated=${formatValue(allocated, metric.denominatorUnit || metric.unit || "")}`);
+    }
+    return parts.join("; ");
   }
 
   function energyExplanationSummaryEdgeExportFields(metric = {}) {
@@ -1053,13 +1068,7 @@ export function initializeMultiSimulationTool(context) {
     if (selected.length < 2) {
       return "";
     }
-    const sections = [
-      ["Energy Use", "energyByEndUse"],
-      ["Delivered Load", "deliveredLoadByService"],
-      ["Derived KPI", "derivedKpis"],
-      ["Heat Drivers", "heatDrivers"],
-      ["Residual", "residuals"],
-    ]
+    const sections = energyExplanationSummaryComparisonGroups(selected[0], selected[1])
       .map(([label, key]) => renderEnergyExplanationDeltaSection(label, selected[0], selected[1], key))
       .filter(Boolean)
       .join("");
@@ -1210,6 +1219,11 @@ export function initializeMultiSimulationTool(context) {
         left: energyExplanationSourceAvailabilitySummary(left.sourceAvailability || [], ["not_applicable"]),
         right: energyExplanationSourceAvailabilitySummary(right.sourceAvailability || [], ["not_applicable"]),
       },
+      {
+        label: "Not-requested source outputs",
+        left: energyExplanationSourceAvailabilitySummary(left.sourceAvailability || [], ["not_requested"]),
+        right: energyExplanationSourceAvailabilitySummary(right.sourceAvailability || [], ["not_requested"]),
+      },
     ].filter((row) => row.left !== row.right);
     if (!rows.length) {
       return "";
@@ -1259,13 +1273,7 @@ export function initializeMultiSimulationTool(context) {
   }
 
   function renderEnergyExplanationDeltaRanking(leftResult, rightResult) {
-    const groups = [
-      ["Energy Use", "energyByEndUse"],
-      ["Delivered Load", "deliveredLoadByService"],
-      ["Derived KPI", "derivedKpis"],
-      ["Heat Drivers", "heatDrivers"],
-      ["Residual", "residuals"],
-    ];
+    const groups = energyExplanationSummaryComparisonGroups(leftResult, rightResult);
     const rows = groups
       .flatMap(([group, key]) => energyExplanationDeltaRows(group, leftResult, rightResult, key))
       .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta) || a.group.localeCompare(b.group) || a.label.localeCompare(b.label))
@@ -1297,6 +1305,18 @@ export function initializeMultiSimulationTool(context) {
           </table>
         </div>
       </section>`;
+  }
+
+  function energyExplanationSummaryComparisonGroups(leftResult = {}, rightResult = {}) {
+    const leftSummary = leftResult.purposeResults?.energyExplanationSummary || {};
+    const rightSummary = rightResult.purposeResults?.energyExplanationSummary || {};
+    const v2Summary = isEnergyPathSummaryV2(leftSummary)
+      ? leftSummary
+      : isEnergyPathSummaryV2(rightSummary)
+        ? rightSummary
+        : null;
+    return energyPathSummaryGroups(v2Summary || leftSummary, { comparison: true })
+      .map((group) => [group.label, group.key]);
   }
 
   function renderEnergyExplanationEdgeDeltaRanking(leftResult, rightResult) {
@@ -1752,7 +1772,7 @@ export function initializeMultiSimulationTool(context) {
       .filter(Boolean);
     return {
       purposes: purposes.length ? purposes : ["basic_energy"],
-      basicEnergyDetail: "heat_drivers",
+      basicEnergyDetail: "energy_path",
       zoneHeatFlowDetail: "surface",
       frequencyPolicy: "purpose_default",
       allocationPolicy: "direct_only",

@@ -27,6 +27,7 @@
         <a href="#input-views" data-i18n="guide.nav.inputViews">Input Views</a>
         <a href="#metrics" data-i18n="guide.nav.metrics">Metrics</a>
         <a href="#topology" data-i18n="guide.nav.topology">Topology</a>
+        <a href="#energy-path" data-i18n="guide.nav.energyPath">Energy Path</a>
         <a href="#metric-catalog" data-i18n="guide.nav.metricCatalog">Metric Catalog</a>
         <a href="#batch-metrics" data-i18n="guide.nav.batchMetrics">Batch Metrics</a>
         <a href="#tools-diagnose" data-i18n="guide.nav.cleanup">Tools / Diagnose</a>
@@ -155,6 +156,17 @@ type model.idf | semantic-idf cli convert -to json -o - -</code></pre>
           </p>
         </section>
 
+        <section id="energy-path" class="guide-section">
+          <h2 data-i18n="guide.energyPath.title">Energy Path</h2>
+          <p data-i18n="guide.energyPath.body">
+            Energy Path reads left to right: Load drivers → Thermal loads → End-use energy → Energy sources.
+            Drivers and loads use kWh thermal; the central equipment-conversion divider separates them from end uses
+            and sources in kWh site. Its only primary controls are Scope, Period, and Service, defaulting to Building,
+            Annual, and All. Zone scope adds one searchable zone selector, Period offers Annual and Jan–Dec, and
+            Cooling or Heating hides unrelated path elements.
+          </p>
+        </section>
+
         <section id="metric-catalog" class="guide-section">
           <h2 data-i18n="guide.metricCatalog.title">Metric Catalog</h2>
           <p data-i18n="guide.metricCatalog.body">
@@ -198,6 +210,7 @@ type model.idf | semantic-idf cli convert -to json -o - -</code></pre>
         <section id="updates" class="guide-section">
           <h2 data-i18n="guide.updates.title">Recent Changes</h2>
           <ul class="guide-log">
+            <li data-i18n="guide.updates.energyPath">2026-09-04 Renamed the Simulation flow to Energy Path and established its four-stage thermal-to-site direction with Building / Annual / All defaults.</li>
             <li data-i18n="guide.updates.cleanupCurrent">2026-05-31 Tools / Diagnose now operates on the current input with rule and candidate checkboxes plus Apply / Save cleaned copy.</li>
             <li data-i18n="guide.updates.appearance">2026-05-31 Added persistent Appearance settings for app theme and Topology object colors.</li>
             <li data-i18n="guide.updates.toolsLayout">2026-05-31 Reorganized the multi-file workspace as Tools with a left-selector layout.</li>

@@ -18,6 +18,15 @@ The release script infers bump size from these sections:
 
 ## Changed
 
+- Renamed the Simulation Sankey result to Energy Path and established its
+  left-to-right `Load Drivers → Thermal Loads → End-use Energy → Energy
+  Sources` contract. The v2 view separates thermal kWh from site kWh at a
+  central equipment-conversion divider and uses only Scope, Period, and Service
+  as primary controls, defaulting to Building / Annual / All. Existing v1
+  results continue to use the compatibility renderer. V2 KPI, overview, and
+  Batch summary consumers now use the canonical Drivers, Loads, End Uses,
+  Carriers, Ratios, Residuals, and Top Zones collections while retaining raw,
+  allocated, and calculation-basis details.
 - Made Topology-to-input location synchronization permanent, removed its UI
   and saved setting, and condensed the Topology toolbar to one row. 3D and Plan
   show only Zones, Surfaces, and Openings; Network shows only Metric and Layout.

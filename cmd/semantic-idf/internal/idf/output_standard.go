@@ -14,8 +14,13 @@ const (
 type standardOutputFeatures struct {
 	hasElectricity       bool
 	hasNaturalGas        bool
+	hasGasoline          bool
+	hasDiesel            bool
+	hasCoal              bool
 	hasDistrictCooling   bool
 	hasDistrictHeating   bool
+	hasDistrictHeatWater bool
+	hasDistrictHeatSteam bool
 	hasFuelOilNo1        bool
 	hasFuelOilNo2        bool
 	hasPropane           bool
@@ -160,11 +165,20 @@ func detectOutputFeatures(doc Document) standardOutputFeatures {
 		case strings.Contains(objectType, "districtcooling"):
 			features.hasDistrictCooling = true
 		case strings.Contains(objectType, "districtheating"):
-			features.hasDistrictHeating = true
+			features.hasHeating = true
+			if strings.Contains(objectType, "steam") {
+				features.hasDistrictHeatSteam = true
+				features.hasSteam = true
+			} else {
+				features.hasDistrictHeating = true
+				features.hasDistrictHeatWater = true
+			}
 		case strings.Contains(objectType, "cooling"):
 			features.hasCooling = true
 			features.hasElectricity = true
 		case strings.Contains(objectType, "heating"):
+			features.hasHeating = true
+		case strings.Contains(objectType, "boiler"):
 			features.hasHeating = true
 		case strings.Contains(objectType, "heatrejection") || strings.Contains(objectType, "coolingtower"):
 			features.hasHeatRejection = true
@@ -188,10 +202,23 @@ func detectOutputFeatures(doc Document) standardOutputFeatures {
 				features.hasElectricity = true
 			case "naturalgas":
 				features.hasNaturalGas = true
+			case "gasoline":
+				features.hasGasoline = true
+			case "diesel":
+				features.hasDiesel = true
+			case "coal":
+				features.hasCoal = true
 			case "districtcooling":
 				features.hasDistrictCooling = true
 			case "districtheating":
 				features.hasDistrictHeating = true
+				features.hasDistrictHeatWater = true
+			case "districtheatingwater":
+				features.hasDistrictHeating = true
+				features.hasDistrictHeatWater = true
+			case "districtheatingsteam":
+				features.hasDistrictHeatSteam = true
+				features.hasSteam = true
 			case "fueloilno1":
 				features.hasFuelOilNo1 = true
 			case "fueloilno2":
@@ -204,6 +231,7 @@ func detectOutputFeatures(doc Document) standardOutputFeatures {
 				features.hasOtherFuel2 = true
 			case "steam":
 				features.hasSteam = true
+				features.hasDistrictHeatSteam = true
 			}
 		}
 	}
@@ -218,8 +246,18 @@ func standardOutputRecommendationApplies(item OutputRecommendation, features sta
 		return features.hasElectricity
 	case strings.Contains(key, "naturalgas:facility"):
 		return features.hasNaturalGas
+	case strings.Contains(key, "gasoline:facility"):
+		return features.hasGasoline
+	case strings.Contains(key, "diesel:facility"):
+		return features.hasDiesel
+	case strings.Contains(key, "coal:facility"):
+		return features.hasCoal
 	case strings.Contains(key, "districtcooling:facility"):
 		return features.hasDistrictCooling
+	case strings.Contains(key, "districtheatingwater:facility"):
+		return features.hasDistrictHeatWater
+	case strings.Contains(key, "districtheatingsteam:facility"):
+		return features.hasDistrictHeatSteam
 	case strings.Contains(key, "districtheating:facility"):
 		return features.hasDistrictHeating
 	case strings.Contains(key, "fueloilno1:facility"):
@@ -264,8 +302,28 @@ func standardOutputRecommendationApplies(item OutputRecommendation, features sta
 		return features.hasDistrictCooling
 	case strings.Contains(key, "districtheating:heating"):
 		return features.hasDistrictHeating
+	case strings.Contains(key, "districtheatingwater:heating") || strings.Contains(key, "heating:districtheatingwater"):
+		return features.hasHeating && features.hasDistrictHeatWater
+	case strings.Contains(key, "districtheatingsteam:heating") || strings.Contains(key, "heating:districtheatingsteam"):
+		return features.hasHeating && features.hasDistrictHeatSteam
 	case strings.Contains(key, "naturalgas:heating"):
 		return features.hasHeating && features.hasNaturalGas
+	case strings.Contains(key, "gasoline:heating") || strings.Contains(key, "heating:gasoline"):
+		return features.hasHeating && features.hasGasoline
+	case strings.Contains(key, "diesel:heating") || strings.Contains(key, "heating:diesel"):
+		return features.hasHeating && features.hasDiesel
+	case strings.Contains(key, "coal:heating") || strings.Contains(key, "heating:coal"):
+		return features.hasHeating && features.hasCoal
+	case strings.Contains(key, "fueloilno1:heating") || strings.Contains(key, "heating:fueloilno1"):
+		return features.hasHeating && features.hasFuelOilNo1
+	case strings.Contains(key, "fueloilno2:heating") || strings.Contains(key, "heating:fueloilno2"):
+		return features.hasHeating && features.hasFuelOilNo2
+	case strings.Contains(key, "propane:heating") || strings.Contains(key, "heating:propane"):
+		return features.hasHeating && features.hasPropane
+	case strings.Contains(key, "otherfuel1:heating") || strings.Contains(key, "heating:otherfuel1"):
+		return features.hasHeating && features.hasOtherFuel1
+	case strings.Contains(key, "otherfuel2:heating") || strings.Contains(key, "heating:otherfuel2"):
+		return features.hasHeating && features.hasOtherFuel2
 	case strings.Contains(key, "naturalgas:watersystems"):
 		return features.hasWaterSystems && features.hasNaturalGas
 	case strings.Contains(key, "naturalgas:interiorequipment"):

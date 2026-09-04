@@ -3,6 +3,7 @@ package simulation
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -47,7 +48,7 @@ func TestDiscoverAvailableOutputsFromSQLRDDMDDAndPurposeFallback(t *testing.T) {
 func TestDiscoverOutputsFromMDDParsesMeterMetadata(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "eplusout.mdd")
-	if err := os.WriteFile(path, []byte("Electricity:Facility [J]\nNaturalGas:Heating:Plant [J]\n"), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte("Electricity:Facility [J]\nNaturalGas:Heating:Plant [J]\nHeating:DistrictHeatingSteam [J]\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -68,6 +69,10 @@ func TestDiscoverOutputsFromMDDParsesMeterMetadata(t *testing.T) {
 	}
 	if plant.ResourceType != "NaturalGas" || plant.EndUseCategory != "Heating" || plant.MeterGroup != "Plant" {
 		t.Fatalf("grouped metadata = %#v", plant)
+	}
+	current, ok := discoveryFind(items, "Output:Meter", "", "Heating:DistrictHeatingSteam", "available")
+	if !ok || current.ResourceType != "DistrictHeatingSteam" || current.EndUseCategory != "Heating" || current.MeterGroup != "" {
+		t.Fatalf("current EndUse:Resource metadata = %#v", current)
 	}
 }
 
@@ -224,6 +229,94 @@ GasEquipment,
 	}
 }
 
+func TestEPATH040DiscoverySelectsCanonicalEnergyRateAndVersionAliases(t *testing.T) {
+	dir := t.TempDir()
+	rddPath := filepath.Join(dir, "eplusout.rdd")
+	if err := os.WriteFile(rddPath, []byte(strings.Join([]string{
+		"Office,Sum,Zone Air System Sensible Cooling Energy [J]",
+		"Office,Average,Zone Air System Sensible Cooling Rate [W]",
+		"Office Wall,Sum,Surface Inside Face Convection Heat Gain Energy [J]",
+		"Office,Sum,Zone Gas Equipment Gas Energy [J]",
+	}, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mddPath := filepath.Join(dir, "eplusout.mdd")
+	if err := os.WriteFile(mddPath, []byte(strings.Join([]string{
+		"Gas:Facility [J]",
+		"Heating:Gas [J]",
+		"DistrictHeating:Facility [J]",
+		"Steam:Facility [J]",
+		"Heating:DistrictHeating [J]",
+		"Heating:Steam [J]",
+		"Gasoline:Facility [J]",
+		"Heating:Gasoline [J]",
+	}, "\n")+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := DiscoverAvailableOutputs(OutputDiscoveryRequest{
+		Text:    energyPathScopeFixtureIDF + energyPathCurrentFuelFixtureSuffix,
+		RDDPath: rddPath,
+		MDDPath: mddPath,
+		PurposeRequest: &SimulationPurposeRequest{
+			Purposes: []SimulationPurposeID{SimulationPurposeBasicEnergy},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolution, ok := purposeResolutionFind(result.PurposeOutputResolutions, "Output:Variable", "Office", "Zone Air System Sensible Cooling Energy"); !ok || resolution.ResolvedName != "Zone Air System Sensible Cooling Energy" || resolution.ResolutionBasis != "exact" {
+		t.Fatalf("energy-preferred load resolution = %#v", resolution)
+	}
+	if resolution, ok := purposeResolutionFind(result.PurposeOutputResolutions, "Output:Variable", "Office Wall", "Surface Inside Face Convection Heat Transfer Energy"); !ok || resolution.ResolvedName != "Surface Inside Face Convection Heat Gain Energy" || resolution.ResolutionBasis != "version_alias" {
+		t.Fatalf("surface version-alias resolution = %#v", resolution)
+	}
+	if resolution, ok := purposeResolutionFind(result.PurposeOutputResolutions, "Output:Variable", "Office", "Zone Gas Equipment NaturalGas Energy"); !ok || resolution.ResolvedName != "Zone Gas Equipment Gas Energy" || resolution.ResolutionBasis != "version_alias" {
+		t.Fatalf("zone direct-use version-alias resolution = %#v", resolution)
+	}
+	for _, meter := range []struct {
+		canonical string
+		resolved  string
+	}{
+		{canonical: "NaturalGas:Facility", resolved: "Gas:Facility"},
+		{canonical: "Heating:NaturalGas", resolved: "Heating:Gas"},
+		{canonical: "DistrictHeatingWater:Facility", resolved: "DistrictHeating:Facility"},
+		{canonical: "DistrictHeatingSteam:Facility", resolved: "Steam:Facility"},
+		{canonical: "Heating:DistrictHeatingWater", resolved: "Heating:DistrictHeating"},
+		{canonical: "Heating:DistrictHeatingSteam", resolved: "Heating:Steam"},
+	} {
+		resolution, ok := purposeResolutionFind(result.PurposeOutputResolutions, "Output:Meter", meter.canonical, meter.canonical)
+		if !ok || resolution.ResolvedName != meter.resolved || resolution.ResolutionBasis != "version_alias" {
+			t.Fatalf("meter alias resolution for %q = %#v", meter.canonical, resolution)
+		}
+	}
+	for _, canonical := range []string{"Gasoline:Facility", "Heating:Gasoline"} {
+		resolution, ok := purposeResolutionFind(result.PurposeOutputResolutions, "Output:Meter", canonical, canonical)
+		if !ok || resolution.ResolvedName != canonical || resolution.ResolutionBasis != "exact" {
+			t.Fatalf("current fuel exact resolution for %q = %#v", canonical, resolution)
+		}
+	}
+
+	rateOnlyPath := filepath.Join(t.TempDir(), "eplusout.rdd")
+	if err := os.WriteFile(rateOnlyPath, []byte("Office,Average,Zone Air System Sensible Cooling Rate [W]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rateOnly, err := DiscoverAvailableOutputs(OutputDiscoveryRequest{
+		Text:    energyPathScopeFixtureIDF,
+		RDDPath: rateOnlyPath,
+		PurposeRequest: &SimulationPurposeRequest{
+			Purposes: []SimulationPurposeID{SimulationPurposeBasicEnergy},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolution, ok := purposeResolutionFind(rateOnly.PurposeOutputResolutions, "Output:Variable", "Office", "Zone Air System Sensible Cooling Energy")
+	if !ok || resolution.ResolvedName != "Zone Air System Sensible Cooling Rate" || resolution.ResolutionBasis != "rate_fallback" {
+		t.Fatalf("rate fallback resolution = %#v", resolution)
+	}
+}
+
 func TestDiscoverAvailableOutputsMarksUndiscoveredCustomOutputMissing(t *testing.T) {
 	result, err := DiscoverAvailableOutputs(OutputDiscoveryRequest{
 		Text: purposePlanFixtureIDF,
@@ -260,4 +353,13 @@ func discoveryFind(items []OutputDiscoveryItem, objectType string, keyValue stri
 		}
 	}
 	return OutputDiscoveryItem{}, false
+}
+
+func purposeResolutionFind(items []PurposeOutputResolution, objectType string, keyValue string, canonicalName string) (PurposeOutputResolution, bool) {
+	for _, item := range items {
+		if item.ObjectType == objectType && item.KeyValue == keyValue && item.CanonicalName == canonicalName {
+			return item, true
+		}
+	}
+	return PurposeOutputResolution{}, false
 }

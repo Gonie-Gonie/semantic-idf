@@ -13,11 +13,15 @@ import (
 	"golang.org/x/text/language"
 )
 
-const energyExplanationSchema = "semantic-idf.energy-explanation/v1"
-const energyExplanationSummarySchema = "semantic-idf.energy-explanation-summary/v1"
+const energyExplanationV1Schema = "semantic-idf.energy-explanation/v1"
+const energyExplanationSchema = "semantic-idf.energy-explanation/v2"
+const energyExplanationSummarySchema = "semantic-idf.energy-explanation-summary/v2"
 const maxEnergyExplanationTabularRows = 1200
 
-type EnergyExplanationResult struct {
+// EnergyExplanationV1 is the read-only compatibility shape used by stored
+// manifests and by the legacy SQL graph assembler. Runtime responses are
+// upgraded to EnergyExplanationResult before they leave this package.
+type EnergyExplanationV1 struct {
 	Schema            string                   `json:"schema"`
 	Purpose           string                   `json:"purpose"`
 	Frequency         string                   `json:"frequency"`
@@ -30,31 +34,93 @@ type EnergyExplanationResult struct {
 	Sources           []EnergyDataSource       `json:"sources,omitempty"`
 	Completeness      EnergyCompleteness       `json:"completeness"`
 	Warnings          []EnergyWarning          `json:"warnings,omitempty"`
+
+	scope                 EnergyExplanationScope
+	canonicalMonthlyBasis bool
+}
+
+type EnergyExplanationScope struct {
+	Kind             string `json:"kind"`
+	ZoneName         string `json:"zoneName,omitempty"`
+	AggregationBasis string `json:"aggregationBasis"`
+}
+
+type EnergyExplanationResult struct {
+	Schema            string                         `json:"schema"`
+	Purpose           string                         `json:"purpose"`
+	Scope             EnergyExplanationScope         `json:"scope"`
+	Frequency         string                         `json:"frequency"`
+	AllocationPolicy  string                         `json:"allocationPolicy,omitempty"`
+	RelationshipRules []EnergyRelationshipRule       `json:"relationshipRules,omitempty"`
+	Periods           []EnergyPeriod                 `json:"periods,omitempty"`
+	Nodes             []EnergyExplanationNode        `json:"nodes"`
+	Links             []EnergyPathLink               `json:"links"`
+	Reconciliation    []EnergyReconciliation         `json:"reconciliation,omitempty"`
+	Sources           []EnergyDataSource             `json:"sources,omitempty"`
+	Completeness      EnergyCompleteness             `json:"completeness"`
+	Warnings          []EnergyWarning                `json:"warnings,omitempty"`
+	ZoneContributions []EnergyExplanationSummaryItem `json:"zoneContributions,omitempty"`
+	AvailableZones    []string                       `json:"availableZones,omitempty"`
+	ZoneResults       []EnergyExplanationZoneResult  `json:"zoneResults,omitempty"`
+
+	// Edges is retained for one Go-level compatibility window. It is accepted
+	// on read through UnmarshalJSON, but it is never emitted in v2 JSON.
+	Edges []EnergyExplanationEdge `json:"-"`
+
+	legacyNodes    []EnergyExplanationNode
+	upgradedFromV1 bool
+}
+
+type EnergyExplanationZoneResult struct {
+	Scope             EnergyExplanationScope         `json:"scope"`
+	Summary           EnergyExplanationSummary       `json:"summary"`
+	Completeness      EnergyCompleteness             `json:"completeness"`
+	Periods           []EnergyPeriod                 `json:"periods,omitempty"`
+	Nodes             []EnergyExplanationNode        `json:"nodes"`
+	Links             []EnergyPathLink               `json:"links"`
+	Reconciliation    []EnergyReconciliation         `json:"reconciliation,omitempty"`
+	Warnings          []EnergyWarning                `json:"warnings,omitempty"`
+	ZoneContributions []EnergyExplanationSummaryItem `json:"zoneContributions,omitempty"`
 }
 
 type EnergyPeriod struct {
-	ID             string                  `json:"id"`
-	Label          string                  `json:"label"`
-	Kind           string                  `json:"kind"`
-	Nodes          []EnergyExplanationNode `json:"nodes,omitempty"`
-	Edges          []EnergyExplanationEdge `json:"edges,omitempty"`
-	Reconciliation []EnergyReconciliation  `json:"reconciliation,omitempty"`
-	Warnings       []EnergyWarning         `json:"warnings,omitempty"`
+	ID                string                         `json:"id"`
+	Label             string                         `json:"label"`
+	Kind              string                         `json:"kind"`
+	Summary           *EnergyExplanationSummary      `json:"summary,omitempty"`
+	Nodes             []EnergyExplanationNode        `json:"nodes,omitempty"`
+	Links             []EnergyPathLink               `json:"links,omitempty"`
+	Reconciliation    []EnergyReconciliation         `json:"reconciliation,omitempty"`
+	Warnings          []EnergyWarning                `json:"warnings,omitempty"`
+	ZoneContributions []EnergyExplanationSummaryItem `json:"zoneContributions,omitempty"`
+
+	// Deprecated read-only compatibility collection. MarshalJSON deliberately
+	// omits it so new manifests cannot regress to the v1 edge contract.
+	Edges []EnergyExplanationEdge `json:"-"`
 }
 
 type EnergyExplanationSummary struct {
-	Schema                 string                         `json:"schema,omitempty"`
-	Period                 string                         `json:"period,omitempty"`
-	AllocationPolicy       string                         `json:"allocationPolicy,omitempty"`
-	EnergyByCarrier        []EnergyExplanationSummaryItem `json:"energyByCarrier,omitempty"`
-	EnergyByEndUse         []EnergyExplanationSummaryItem `json:"energyByEndUse,omitempty"`
-	DeliveredLoadByService []EnergyExplanationSummaryItem `json:"deliveredLoadByService,omitempty"`
-	DerivedKPIs            []EnergyExplanationSummaryItem `json:"derivedKpis,omitempty"`
-	HeatDrivers            []EnergyExplanationSummaryItem `json:"heatDrivers,omitempty"`
-	Residuals              []EnergyExplanationSummaryItem `json:"residuals,omitempty"`
-	TopHeatDrivers         []EnergyExplanationSummaryItem `json:"topHeatDrivers,omitempty"`
-	TopZones               []EnergyExplanationSummaryItem `json:"topZones,omitempty"`
-	Completeness           EnergyCompleteness             `json:"completeness,omitempty"`
+	Schema       string                         `json:"schema,omitempty"`
+	Period       string                         `json:"period,omitempty"`
+	Scope        EnergyExplanationScope         `json:"scope"`
+	Drivers      []EnergyExplanationSummaryItem `json:"drivers,omitempty"`
+	Loads        []EnergyExplanationSummaryItem `json:"loads,omitempty"`
+	EndUses      []EnergyExplanationSummaryItem `json:"endUses,omitempty"`
+	Carriers     []EnergyExplanationSummaryItem `json:"carriers,omitempty"`
+	Ratios       []EnergyExplanationSummaryItem `json:"ratios,omitempty"`
+	Residuals    []EnergyExplanationSummaryItem `json:"residuals,omitempty"`
+	TopZones     []EnergyExplanationSummaryItem `json:"topZones,omitempty"`
+	Completeness EnergyCompleteness             `json:"completeness,omitempty"`
+
+	// Deprecated Go aliases keep older callers source-compatible without
+	// serializing the removed v1 summary keys.
+	AllocationPolicy       string                         `json:"-"`
+	EnergyByCarrier        []EnergyExplanationSummaryItem `json:"-"`
+	EnergyByEndUse         []EnergyExplanationSummaryItem `json:"-"`
+	DeliveredLoadByService []EnergyExplanationSummaryItem `json:"-"`
+	DerivedKPIs            []EnergyExplanationSummaryItem `json:"-"`
+	HeatDrivers            []EnergyExplanationSummaryItem `json:"-"`
+	TopHeatDrivers         []EnergyExplanationSummaryItem `json:"-"`
 }
 
 type EnergyExplanationSummaryItem struct {
@@ -63,7 +129,11 @@ type EnergyExplanationSummaryItem struct {
 	Kind                string   `json:"kind,omitempty"`
 	Label               string   `json:"label"`
 	Value               float64  `json:"value"`
+	RawValue            float64  `json:"rawValue,omitempty"`
+	AllocatedValue      float64  `json:"allocatedValue,omitempty"`
 	Unit                string   `json:"unit,omitempty"`
+	ScaleDomain         string   `json:"scaleDomain,omitempty"`
+	AggregationBasis    string   `json:"aggregationBasis,omitempty"`
 	ZoneName            string   `json:"zoneName,omitempty"`
 	ServiceKind         string   `json:"serviceKind,omitempty"`
 	PathType            string   `json:"pathType,omitempty"`
@@ -84,27 +154,65 @@ type EnergyExplanationSummaryItem struct {
 }
 
 type EnergyExplanationNode struct {
-	ID                  string   `json:"id"`
-	Level               string   `json:"level"`
-	Kind                string   `json:"kind"`
-	Label               string   `json:"label"`
-	Value               float64  `json:"value"`
-	SignedValue         float64  `json:"signedValue,omitempty"`
-	DisplayValue        float64  `json:"displayValue,omitempty"`
-	Unit                string   `json:"unit"`
-	Period              string   `json:"period,omitempty"`
-	ZoneName            string   `json:"zoneName,omitempty"`
-	LoopName            string   `json:"loopName,omitempty"`
-	ServiceKind         string   `json:"serviceKind,omitempty"`
-	PathType            string   `json:"pathType,omitempty"`
-	Carrier             string   `json:"carrier,omitempty"`
-	EndUse              string   `json:"endUse,omitempty"`
-	MeterHierarchyLevel string   `json:"meterHierarchyLevel,omitempty"`
-	HeatCategory        string   `json:"heatCategory,omitempty"`
-	Sign                string   `json:"sign,omitempty"`
-	Basis               string   `json:"basis,omitempty"`
-	RelatedPathIDs      []string `json:"relatedPathIds,omitempty"`
-	SourceIDs           []string `json:"sourceIds,omitempty"`
+	ID               string   `json:"id"`
+	Level            string   `json:"level"`
+	Kind             string   `json:"kind"`
+	Label            string   `json:"label"`
+	Value            float64  `json:"value"`
+	SignedValue      float64  `json:"signedValue,omitempty"`
+	RawValue         float64  `json:"rawValue,omitempty"`
+	EffectiveValue   float64  `json:"effectiveValue,omitempty"`
+	AllocatedValue   float64  `json:"allocatedValue,omitempty"`
+	DisplayValue     float64  `json:"displayValue,omitempty"`
+	Unit             string   `json:"unit"`
+	ScaleDomain      string   `json:"scaleDomain,omitempty"`
+	Period           string   `json:"period,omitempty"`
+	ZoneName         string   `json:"zoneName,omitempty"`
+	ServiceKind      string   `json:"serviceKind,omitempty"`
+	Carrier          string   `json:"carrier,omitempty"`
+	EndUse           string   `json:"endUse,omitempty"`
+	DriverCategory   string   `json:"driverCategory,omitempty"`
+	ThermalComponent string   `json:"thermalComponent,omitempty"`
+	Basis            string   `json:"basis,omitempty"`
+	AggregationBasis string   `json:"aggregationBasis,omitempty"`
+	Multiplier       float64  `json:"multiplier,omitempty"`
+	RelatedPathIDs   []string `json:"relatedPathIds,omitempty"`
+	RelatedEntityIDs []string `json:"relatedEntityIds,omitempty"`
+	SourceIDs        []string `json:"sourceIds,omitempty"`
+
+	// Legacy metadata remains readable while v1 payloads are upgraded.
+	LoopName            string `json:"loopName,omitempty"`
+	PathType            string `json:"pathType,omitempty"`
+	MeterHierarchyLevel string `json:"meterHierarchyLevel,omitempty"`
+	HeatCategory        string `json:"heatCategory,omitempty"`
+	Sign                string `json:"sign,omitempty"`
+
+	// driverZoneOnly is an internal projection guard. Zone aggregate air
+	// transfer variables are useful in a Zone inspector, but must not be
+	// promoted to a Building main-flow ribbon without pairwise provenance.
+	driverZoneOnly     bool
+	driverBuildingOnly bool
+}
+
+type EnergyPathLink struct {
+	ID             string   `json:"id"`
+	FromID         string   `json:"fromId"`
+	ToID           string   `json:"toId"`
+	Relation       string   `json:"relation"`
+	Basis          string   `json:"basis"`
+	RuleID         string   `json:"ruleId,omitempty"`
+	FromValue      float64  `json:"fromValue"`
+	FromUnit       string   `json:"fromUnit"`
+	ToValue        float64  `json:"toValue"`
+	ToUnit         string   `json:"toUnit"`
+	Ratio          float64  `json:"ratio,omitempty"`
+	RatioKind      string   `json:"ratioKind,omitempty"`
+	RatioLabel     string   `json:"ratioLabel,omitempty"`
+	Period         string   `json:"period,omitempty"`
+	ZoneName       string   `json:"zoneName,omitempty"`
+	ServiceKind    string   `json:"serviceKind,omitempty"`
+	RelatedPathIDs []string `json:"relatedPathIds,omitempty"`
+	SourceIDs      []string `json:"sourceIds,omitempty"`
 }
 
 type EnergyExplanationEdge struct {
@@ -127,21 +235,50 @@ type EnergyExplanationEdge struct {
 }
 
 type EnergyDataSource struct {
-	ID                 string `json:"id"`
-	SourceType         string `json:"sourceType"`
-	IsMeter            bool   `json:"isMeter,omitempty"`
-	KeyValue           string `json:"keyValue,omitempty"`
-	Name               string `json:"name,omitempty"`
-	Units              string `json:"units,omitempty"`
-	SourceUnit         string `json:"sourceUnit,omitempty"`
-	NormalizedUnit     string `json:"normalizedUnit,omitempty"`
-	ReportingFrequency string `json:"reportingFrequency,omitempty"`
-	AggregationMethod  string `json:"aggregationMethod,omitempty"`
-	IndexGroup         string `json:"indexGroup,omitempty"`
-	TableName          string `json:"tableName,omitempty"`
-	RowName            string `json:"rowName,omitempty"`
-	ColumnName         string `json:"columnName,omitempty"`
-	ObjectIndex        *int   `json:"objectIndex,omitempty"`
+	ID                    string                        `json:"id"`
+	SourceType            string                        `json:"sourceType"`
+	IsMeter               bool                          `json:"isMeter,omitempty"`
+	KeyValue              string                        `json:"keyValue,omitempty"`
+	Name                  string                        `json:"name,omitempty"`
+	Units                 string                        `json:"units,omitempty"`
+	SourceUnit            string                        `json:"sourceUnit,omitempty"`
+	NormalizedUnit        string                        `json:"normalizedUnit,omitempty"`
+	ReportingFrequency    string                        `json:"reportingFrequency,omitempty"`
+	AggregationMethod     string                        `json:"aggregationMethod,omitempty"`
+	IndexGroup            string                        `json:"indexGroup,omitempty"`
+	TableName             string                        `json:"tableName,omitempty"`
+	RowName               string                        `json:"rowName,omitempty"`
+	ColumnName            string                        `json:"columnName,omitempty"`
+	ZoneName              string                        `json:"zoneName,omitempty"`
+	ObjectIndex           *int                          `json:"objectIndex,omitempty"`
+	RawValue              float64                       `json:"rawValue,omitempty"`
+	EffectiveValue        float64                       `json:"effectiveValue,omitempty"`
+	EffectiveMultiplier   float64                       `json:"effectiveMultiplier,omitempty"`
+	MultiplierApplication string                        `json:"multiplierApplication,omitempty"`
+	AllocationFactor      float64                       `json:"allocationFactor,omitempty"`
+	AllocatedValue        float64                       `json:"allocatedValue,omitempty"`
+	AggregationBasis      string                        `json:"aggregationBasis,omitempty"`
+	DriverRole            string                        `json:"driverRole,omitempty"`
+	DriverCategory        string                        `json:"driverCategory,omitempty"`
+	DriverComponent       string                        `json:"driverComponent,omitempty"`
+	HeatDirection         string                        `json:"heatDirection,omitempty"`
+	InspectorSection      string                        `json:"inspectorSection,omitempty"`
+	Explanation           string                        `json:"explanation,omitempty"`
+	Formula               string                        `json:"formula,omitempty"`
+	InputSourceIDs        []string                      `json:"inputSourceIds,omitempty"`
+	RelatedEntityIDs      []string                      `json:"relatedEntityIds,omitempty"`
+	ScopeDetails          []EnergyDataSourceScopeDetail `json:"scopeDetails,omitempty"`
+}
+
+type EnergyDataSourceScopeDetail struct {
+	Scope                 EnergyExplanationScope `json:"scope"`
+	RawValue              float64                `json:"rawValue,omitempty"`
+	EffectiveValue        float64                `json:"effectiveValue,omitempty"`
+	EffectiveMultiplier   float64                `json:"effectiveMultiplier,omitempty"`
+	MultiplierApplication string                 `json:"multiplierApplication,omitempty"`
+	AllocationFactor      float64                `json:"allocationFactor,omitempty"`
+	AllocatedValue        float64                `json:"allocatedValue,omitempty"`
+	AggregationBasis      string                 `json:"aggregationBasis,omitempty"`
 }
 
 type EnergyReconciliation struct {
@@ -232,19 +369,22 @@ type energyMeterAliasDefinition struct {
 }
 
 type energyLoadAliasDefinition struct {
-	Kind        string
-	Label       string
-	ServiceKind string
-	Scope       string
-	Aliases     []string
+	Kind           string
+	Label          string
+	ServiceKind    string
+	Scope          string
+	EnergyPathOnly bool
+	Aliases        []string
 }
 
 type energyHeatAliasDefinition struct {
-	Kind         string
-	Label        string
-	HeatCategory string
-	ObjectScoped bool
-	Aliases      []string
+	Kind                 string
+	Label                string
+	HeatCategory         string
+	ObjectScoped         bool
+	SurfaceScoped        bool
+	Aliases              []string
+	OutputRequestAliases []string
 }
 
 type energyExplanationDictionary struct {
@@ -270,35 +410,102 @@ type energyExplanationSeriesBuilder struct {
 	hasSelectedRange bool
 }
 
-type energyExplanationSeries struct {
-	Level               string
-	Kind                string
-	Label               string
-	Unit                string
-	Carrier             string
-	EndUse              string
-	MeterHierarchyLevel string
-	ServiceKind         string
-	PathType            string
-	ZoneName            string
-	LoopName            string
-	HeatCategory        string
-	HeatSign            string
-	Basis               string
-	SourceIDs           []string
-	Total               float64
-	Monthly             map[int]float64
-	Daily               map[int]float64
-	Hourly              map[int]float64
-	SelectedRange       float64
-	HasSelectedRange    bool
+type energyExplanationCategorySeriesBuilder struct {
+	seriesBuilder          energyExplanationSeriesBuilder
+	category               energySurfaceCategory
+	sourceIDs              []string
+	annualSourceIDs        []string
+	monthlySourceIDs       []string
+	dailySourceIDs         []string
+	hourlySourceIDs        []string
+	selectedRangeSourceIDs []string
+}
 
-	sourceKeyValue     string
-	sourceName         string
-	sourceFrequency    string
-	sourceIsRate       bool
-	sourcePriority     int
-	heatSignMultiplier float64
+type energySurfacePeriodSelection struct {
+	category      energySurfaceCategory
+	annual        bool
+	monthly       bool
+	daily         bool
+	hourly        bool
+	selectedRange bool
+}
+
+type energyExplanationSeries struct {
+	// Canonical identity is populated at the SQL/Tabular boundary. The legacy
+	// fields below remain while the v1 assembler is kept as an adapter.
+	Stage                  string
+	CanonicalKind          string
+	Level                  string
+	Kind                   string
+	Label                  string
+	Unit                   string
+	Carrier                string
+	EndUse                 string
+	MeterHierarchyLevel    string
+	ServiceKind            string
+	PathType               string
+	ZoneName               string
+	SurfaceName            string
+	LoopName               string
+	HeatCategory           string
+	ThermalComponent       string
+	DriverCategory         string
+	DriverSourceRole       string
+	DriverExplanation      string
+	DriverComponent        string
+	DriverFormula          string
+	DriverInputSourceIDs   []string
+	SurfaceScoped          bool
+	Sign                   string
+	HeatSign               string
+	Basis                  string
+	SourceKey              string
+	SourceName             string
+	SourceClass            string
+	CanonicalFamily        string
+	SourceFamily           string
+	PeriodBasis            string
+	SourceIDs              []string
+	AnnualSourceIDs        []string
+	MonthlySourceIDs       []string
+	DailySourceIDs         []string
+	HourlySourceIDs        []string
+	SelectedRangeSourceIDs []string
+	RelatedEntityIDs       []string
+	RawTotal               float64
+	RawMonthly             map[int]float64
+	RawDaily               map[int]float64
+	RawHourly              map[int]float64
+	RawSelectedRange       float64
+	Total                  float64
+	Monthly                map[int]float64
+	Daily                  map[int]float64
+	Hourly                 map[int]float64
+	SelectedRange          float64
+	HasSelectedRange       bool
+	EffectiveMultiplier    float64
+	MultiplierApplication  string
+	multiplierApplied      bool
+
+	sourceKeyValue         string
+	sourceName             string
+	sourceFrequency        string
+	sourceIsRate           bool
+	sourcePriority         int
+	heatSignMultiplier     float64
+	parseCategorySource    bool
+	parseCategoryAggregate bool
+	driverZoneOnly         bool
+	driverBuildingOnly     bool
+	interzonePairID        string
+}
+
+// energyExplanationParseResult is deliberately graph-free. SQL and tabular
+// readers stop at canonical series; node/link direction belongs to the graph
+// builder that consumes this value.
+type energyExplanationParseResult struct {
+	Series  []energyExplanationSeries
+	Sources []EnergyDataSource
 }
 
 type energyExplanationInternalGainTarget struct {
@@ -318,23 +525,42 @@ type energyExplanationNodeAccumulator struct {
 	node EnergyExplanationNode
 }
 
-func buildEnergyExplanationResultFromFiles(files []SimulationFileInfo, dashboard EnergyDashboardResult, plan *PurposeRunPlan) EnergyExplanationResult {
+func buildEnergyExplanationResultFromFiles(files []SimulationFileInfo, dashboard EnergyDashboardResult, plan *PurposeRunPlan) EnergyExplanationV1 {
+	return buildEnergyExplanationResultFromFilesWithDriverContext(files, dashboard, plan, energyDriverBuildContext{})
+}
+
+func buildEnergyExplanationResultFromFilesWithDriverContext(files []SimulationFileInfo, dashboard EnergyDashboardResult, plan *PurposeRunPlan, driverContext energyDriverBuildContext) EnergyExplanationV1 {
 	for _, file := range files {
 		if file.Kind != "sqlite" {
 			continue
 		}
-		result, err := parseSimulationEnergyExplanationSQL(file.Path, plan)
+		result, err := parseSimulationEnergyExplanationSQLWithDriverContext(file.Path, plan, driverContext)
 		if err == nil && (len(result.Nodes) > 0 || len(result.Periods) > 0 || len(result.Sources) > 0) {
 			return result
 		}
 	}
-	return buildEnergyExplanationFromDashboard(dashboard, plan)
+	return buildEnergyExplanationFromDashboardWithDriverContext(dashboard, plan, driverContext)
 }
 
-func parseSimulationEnergyExplanationSQL(path string, plan *PurposeRunPlan) (EnergyExplanationResult, error) {
+func parseSimulationEnergyExplanationSQL(path string, plan *PurposeRunPlan) (EnergyExplanationV1, error) {
+	return parseSimulationEnergyExplanationSQLWithDriverContext(path, plan, energyDriverBuildContext{})
+}
+
+func parseSimulationEnergyExplanationSQLWithDriverContext(path string, plan *PurposeRunPlan, driverContext energyDriverBuildContext) (EnergyExplanationV1, error) {
+	parsed, err := parseSimulationEnergyExplanationCanonicalSQL(path, plan, driverContext)
+	if err != nil {
+		return EnergyExplanationV1{}, err
+	}
+	if len(parsed.Series) == 0 && len(parsed.Sources) == 0 {
+		return emptyEnergyExplanationResult(plan), nil
+	}
+	return buildEnergyExplanationResultWithDriverContext(parsed.Series, parsed.Sources, plan, driverContext), nil
+}
+
+func parseSimulationEnergyExplanationCanonicalSQL(path string, plan *PurposeRunPlan, driverContext energyDriverBuildContext) (energyExplanationParseResult, error) {
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
-		return EnergyExplanationResult{}, err
+		return energyExplanationParseResult{}, err
 	}
 	defer db.Close()
 
@@ -342,17 +568,20 @@ func parseSimulationEnergyExplanationSQL(path string, plan *PurposeRunPlan) (Ene
 	sources := []EnergyDataSource{}
 	ready, err := sqlHasTables(db, "ReportDataDictionary", "ReportData", "Time")
 	if err != nil {
-		return EnergyExplanationResult{}, err
+		return energyExplanationParseResult{}, err
 	}
 	if ready {
-		dictionaries, err := sqlEnergyExplanationDictionaries(db, filepath.Base(path))
+		dictionaries, err := sqlEnergyExplanationDictionaries(db, filepath.Base(path), plan)
 		if err != nil {
-			return EnergyExplanationResult{}, err
+			return energyExplanationParseResult{}, err
 		}
 		if len(dictionaries) > 0 {
-			intervalHours, err := sqlTimeIntervalHours(db)
+			intervalDetails, err := sqlTimeIntervalDetailsForDatabase(db)
 			if err != nil {
-				intervalHours = map[int64]float64{}
+				intervalDetails = sqlTimeIntervalDetails{
+					hours:    map[int64]float64{},
+					explicit: map[int64]bool{},
+				}
 			}
 			selectedStartDay, selectedEndDay, hasSelectedRange := energyExplanationSelectedRangeDays(plan)
 
@@ -364,11 +593,10 @@ func parseSimulationEnergyExplanationSQL(path string, plan *PurposeRunPlan) (Ene
 			}
 
 			builders := map[int]*energyExplanationSeriesBuilder{}
+			surfaceCategories, surfaceCategoryEligible := energyExplanationSurfaceCategoriesForDictionaries(dictionaries, driverContext)
+			categoryBuilders := map[string]*energyExplanationCategorySeriesBuilder{}
 			if err := walkReportData(db, SQLSeriesQuery{DictionaryIndexes: ids}, func(row SQLSeriesRow) error {
 				timeIndex := row.TimeIndex
-				month := row.Month
-				day := row.Day
-				hour := row.Hour
 				dictionaryIndex := row.DictionaryIndex
 				value := row.Value
 				if !value.Valid || math.IsNaN(value.Float64) || math.IsInf(value.Float64, 0) {
@@ -383,40 +611,43 @@ func parseSimulationEnergyExplanationSQL(path string, plan *PurposeRunPlan) (Ene
 					builder = &energyExplanationSeriesBuilder{dictionary: dictionary}
 					builders[dictionaryIndex] = builder
 				}
-				number, unit := energyExplanationSQLValue(value.Float64, dictionary, intervalHours[timeIndex])
-				builder.unit = unit
-				builder.total += number
-				if month.Valid && month.Int64 >= 1 && month.Int64 <= 12 {
-					if builder.monthly == nil {
-						builder.monthly = map[int]float64{}
-					}
-					builder.monthly[int(month.Int64)] += number
-				}
-				if energyExplanationSupportsDailyPeriods(dictionary) {
-					if rowDay, ok := energyExplanationSQLDayOfYear(month, day); ok {
-						if builder.daily == nil {
-							builder.daily = map[int]float64{}
+				intervalHours := energyExplanationRateIntervalHours(dictionary, row, intervalDetails.hours[timeIndex], intervalDetails.explicit[timeIndex])
+				number, unit := energyExplanationSQLValue(value.Float64, dictionary, intervalHours)
+				accumulateEnergyExplanationSeriesBuilder(builder, row, number, unit, dictionary, selectedStartDay, selectedEndDay, hasSelectedRange)
+				if selection, ok := surfaceCategories[dictionaryIndex]; ok {
+					category := selection.category
+					categoryKey := energyExplanationCategoryBuilderKey(dictionary, category)
+					categoryBuilder := categoryBuilders[categoryKey]
+					if categoryBuilder == nil {
+						categoryBuilder = &energyExplanationCategorySeriesBuilder{
+							seriesBuilder: energyExplanationSeriesBuilder{dictionary: dictionary},
+							category:      category,
 						}
-						builder.daily[rowDay] += number
+						categoryBuilders[categoryKey] = categoryBuilder
 					}
-				}
-				if energyExplanationSupportsHourlyPeriods(dictionary) {
-					if rowHour, ok := energyExplanationSQLHourOfYear(month, day, hour); ok {
-						if builder.hourly == nil {
-							builder.hourly = map[int]float64{}
-						}
-						builder.hourly[rowHour] += number
+					sourceID := fmt.Sprintf("sql-rdd-%d", dictionaryIndex)
+					categoryBuilder.sourceIDs = appendUniqueStrings(categoryBuilder.sourceIDs, sourceID)
+					if selection.annual {
+						categoryBuilder.annualSourceIDs = appendUniqueStrings(categoryBuilder.annualSourceIDs, sourceID)
 					}
-				}
-				if hasSelectedRange {
-					if rowDay, ok := energyExplanationSQLDayOfYear(month, day); ok && comfortDayInScope(rowDay, selectedStartDay, selectedEndDay) {
-						builder.selectedRange += number
-						builder.hasSelectedRange = true
+					if selection.monthly {
+						categoryBuilder.monthlySourceIDs = appendUniqueStrings(categoryBuilder.monthlySourceIDs, sourceID)
 					}
+					if selection.daily {
+						categoryBuilder.dailySourceIDs = appendUniqueStrings(categoryBuilder.dailySourceIDs, sourceID)
+					}
+					if selection.hourly {
+						categoryBuilder.hourlySourceIDs = appendUniqueStrings(categoryBuilder.hourlySourceIDs, sourceID)
+					}
+					if selection.selectedRange {
+						categoryBuilder.selectedRangeSourceIDs = appendUniqueStrings(categoryBuilder.selectedRangeSourceIDs, sourceID)
+					}
+					categoryBuilder.category.RelatedEntityIDs = appendUniqueStrings(categoryBuilder.category.RelatedEntityIDs, category.RelatedEntityIDs...)
+					accumulateEnergyExplanationSurfaceCategoryBuilder(&categoryBuilder.seriesBuilder, row, number, unit, dictionary, selection, selectedStartDay, selectedEndDay, hasSelectedRange)
 				}
 				return nil
 			}); err != nil {
-				return EnergyExplanationResult{}, err
+				return energyExplanationParseResult{}, err
 			}
 
 			for _, dictionary := range dictionaries {
@@ -427,24 +658,239 @@ func parseSimulationEnergyExplanationSQL(path string, plan *PurposeRunPlan) (Ene
 				source := energyDataSourceForDictionary(dictionary)
 				source.ObjectIndex = energyExplanationObjectIndexForDictionary(dictionary, plan)
 				source.NormalizedUnit = builder.unit
+				if dictionary.energy != nil && dictionary.energy.HierarchyLevel == "zone_direct_use" {
+					source.ZoneName = strings.TrimSpace(dictionary.row.keyValue)
+				}
+				scopeZoneName := energyExplanationScopeZoneForDictionary(dictionary, plan)
+				if scopeZoneName != "" {
+					source.ZoneName = scopeZoneName
+				}
 				sources = append(sources, source)
-				series = append(series, energyExplanationSeriesForBuilder(builder, source.ID))
+				item := energyExplanationSeriesForBuilder(builder, source.ID)
+				item.parseCategorySource = surfaceCategoryEligible[dictionary.row.index]
+				if scopeZoneName != "" {
+					item.ZoneName = scopeZoneName
+				}
+				series = append(series, canonicalEnergyExplanationSeries(item))
 			}
+			series = append(series, energyExplanationCategorySeries(categoryBuilders)...)
 		}
 	}
 	tabularSeries, tabularSources, err := parseEnergyExplanationTabularAnnual(db, series)
 	if err != nil {
-		return EnergyExplanationResult{}, err
+		return energyExplanationParseResult{}, err
 	}
 	series = append(series, tabularSeries...)
 	sources = append(sources, tabularSources...)
-	if len(series) == 0 && len(sources) == 0 {
-		return emptyEnergyExplanationResult(plan), nil
-	}
-	return buildEnergyExplanationResult(series, sources, plan), nil
+	return energyExplanationParseResult{Series: series, Sources: sources}, nil
 }
 
-func buildEnergyExplanationFromDashboard(dashboard EnergyDashboardResult, plan *PurposeRunPlan) EnergyExplanationResult {
+func accumulateEnergyExplanationSeriesBuilder(builder *energyExplanationSeriesBuilder, row SQLSeriesRow, number float64, unit string, dictionary energyExplanationDictionary, selectedStartDay int, selectedEndDay int, hasSelectedRange bool) {
+	if builder == nil {
+		return
+	}
+	builder.unit = unit
+	builder.total += number
+	if energyExplanationSupportsMonthlyPeriods(dictionary) && row.Month.Valid && row.Month.Int64 >= 1 && row.Month.Int64 <= 12 {
+		if builder.monthly == nil {
+			builder.monthly = map[int]float64{}
+		}
+		builder.monthly[int(row.Month.Int64)] += number
+	}
+	if energyExplanationSupportsDailyPeriods(dictionary) {
+		if rowDay, ok := energyExplanationSQLDayOfYear(row.Month, row.Day); ok {
+			if builder.daily == nil {
+				builder.daily = map[int]float64{}
+			}
+			builder.daily[rowDay] += number
+		}
+	}
+	if energyExplanationSupportsHourlyPeriods(dictionary) {
+		if rowHour, ok := energyExplanationSQLHourOfYear(row.Month, row.Day, row.Hour); ok {
+			if builder.hourly == nil {
+				builder.hourly = map[int]float64{}
+			}
+			builder.hourly[rowHour] += number
+		}
+	}
+	if hasSelectedRange {
+		if rowDay, ok := energyExplanationSQLDayOfYear(row.Month, row.Day); ok && comfortDayInScope(rowDay, selectedStartDay, selectedEndDay) {
+			builder.selectedRange += number
+			builder.hasSelectedRange = true
+		}
+	}
+}
+
+func energyExplanationSurfaceCategoriesForDictionaries(dictionaries []energyExplanationDictionary, context energyDriverBuildContext) (map[int]energySurfacePeriodSelection, map[int]bool) {
+	selected := map[int]energySurfacePeriodSelection{}
+	eligible := map[int]bool{}
+	if !context.Enabled {
+		return selected, eligible
+	}
+	type selectedDictionary struct {
+		dictionary energyExplanationDictionary
+		category   energySurfaceCategory
+		series     energyExplanationSeries
+	}
+	bySource := map[string][]selectedDictionary{}
+	for _, dictionary := range dictionaries {
+		if dictionary.heat == nil || !dictionary.heat.SurfaceScoped {
+			continue
+		}
+		policy := energyDriverSourcePolicyFor(dictionary.row.name, dictionary.heat.Kind)
+		if policy.Role != energyDriverSourceRoleMainFlow {
+			continue
+		}
+		category, _ := context.SurfaceCategories.resolve(dictionary.row.keyValue)
+		eligible[dictionary.row.index] = true
+		candidate := energyExplanationSeriesForBuilder(&energyExplanationSeriesBuilder{dictionary: dictionary}, fmt.Sprintf("sql-rdd-%d", dictionary.row.index))
+		key := energyExplanationSeriesSelectionKey(candidate)
+		bySource[key] = append(bySource[key], selectedDictionary{dictionary: dictionary, category: category, series: candidate})
+	}
+	for _, candidates := range bySource {
+		selectCandidate := func(include func(energyExplanationDictionary) bool, mark func(*energySurfacePeriodSelection)) {
+			var best selectedDictionary
+			found := false
+			for _, candidate := range candidates {
+				if include != nil && !include(candidate.dictionary) {
+					continue
+				}
+				if !found || energyExplanationSeriesSourcePreferred(candidate.series, best.series) {
+					best = candidate
+					found = true
+				}
+			}
+			if found {
+				selection := selected[best.dictionary.row.index]
+				selection.category = best.category
+				mark(&selection)
+				selected[best.dictionary.row.index] = selection
+			}
+		}
+		selectCandidate(nil, func(selection *energySurfacePeriodSelection) { selection.annual = true })
+		selectCandidate(energyExplanationSupportsMonthlyPeriods, func(selection *energySurfacePeriodSelection) { selection.monthly = true })
+		selectCandidate(energyExplanationSupportsDailyPeriods, func(selection *energySurfacePeriodSelection) {
+			selection.daily = true
+			selection.selectedRange = true
+		})
+		selectCandidate(energyExplanationSupportsHourlyPeriods, func(selection *energySurfacePeriodSelection) { selection.hourly = true })
+	}
+	return selected, eligible
+}
+
+func accumulateEnergyExplanationSurfaceCategoryBuilder(builder *energyExplanationSeriesBuilder, row SQLSeriesRow, number float64, unit string, dictionary energyExplanationDictionary, selection energySurfacePeriodSelection, selectedStartDay int, selectedEndDay int, hasSelectedRange bool) {
+	if builder == nil {
+		return
+	}
+	builder.unit = unit
+	if selection.annual {
+		builder.total += number
+	}
+	if selection.monthly && row.Month.Valid && row.Month.Int64 >= 1 && row.Month.Int64 <= 12 {
+		if builder.monthly == nil {
+			builder.monthly = map[int]float64{}
+		}
+		builder.monthly[int(row.Month.Int64)] += number
+	}
+	rowDay, hasDay := energyExplanationSQLDayOfYear(row.Month, row.Day)
+	if selection.daily && hasDay {
+		if builder.daily == nil {
+			builder.daily = map[int]float64{}
+		}
+		builder.daily[rowDay] += number
+	}
+	if selection.hourly {
+		if rowHour, ok := energyExplanationSQLHourOfYear(row.Month, row.Day, row.Hour); ok {
+			if builder.hourly == nil {
+				builder.hourly = map[int]float64{}
+			}
+			builder.hourly[rowHour] += number
+		}
+	}
+	if selection.selectedRange && hasSelectedRange && hasDay && rowDay >= selectedStartDay && rowDay <= selectedEndDay {
+		builder.selectedRange += number
+		builder.hasSelectedRange = true
+	}
+}
+
+func energyExplanationCategoryBuilderKey(dictionary energyExplanationDictionary, category energySurfaceCategory) string {
+	item := energyExplanationSeriesForBuilder(&energyExplanationSeriesBuilder{dictionary: dictionary}, "")
+	return strings.Join([]string{
+		normalizeEnergyOutputName(category.ZoneName),
+		normalizeEnergyOutputName(category.Category),
+		normalizeEnergyOutputName(item.Kind),
+		normalizeEnergyOutputName(item.ThermalComponent),
+		normalizeEnergyOutputName(item.HeatSign),
+		fmt.Sprintf("%.6f", item.heatSignMultiplier),
+	}, "|")
+}
+
+func energyExplanationCategorySeries(builders map[string]*energyExplanationCategorySeriesBuilder) []energyExplanationSeries {
+	if len(builders) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(builders))
+	for key := range builders {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	out := make([]energyExplanationSeries, 0, len(keys))
+	for _, key := range keys {
+		aggregate := builders[key]
+		item := energyExplanationSeriesForBuilder(&aggregate.seriesBuilder, "")
+		item.ZoneName = aggregate.category.ZoneName
+		item.DriverCategory = aggregate.category.Category
+		item.DriverSourceRole = energyDriverSourceRoleMainFlow
+		item.DriverExplanation = energyDriverSurfaceExplanation
+		item.Label = energyDriverCategoryLabel(aggregate.category.Category)
+		item.SurfaceScoped = false
+		item.SourceIDs = append([]string(nil), aggregate.sourceIDs...)
+		item.AnnualSourceIDs = append([]string(nil), aggregate.annualSourceIDs...)
+		item.MonthlySourceIDs = append([]string(nil), aggregate.monthlySourceIDs...)
+		item.DailySourceIDs = append([]string(nil), aggregate.dailySourceIDs...)
+		item.HourlySourceIDs = append([]string(nil), aggregate.hourlySourceIDs...)
+		item.SelectedRangeSourceIDs = append([]string(nil), aggregate.selectedRangeSourceIDs...)
+		item.RelatedEntityIDs = append([]string(nil), aggregate.category.RelatedEntityIDs...)
+		// Energy-vs-Rate preference is resolved for every physical surface before
+		// rows enter this builder. The resulting category series may legitimately
+		// contain Energy rows for one surface and a Rate fallback for another, so
+		// it must not be selected again as one whole-source alias family.
+		item.sourceName = "Selected surface inside-face convection by surface"
+		item.SourceName = item.sourceName
+		item.sourceIsRate = false
+		item.sourceKeyValue = ""
+		item.parseCategoryAggregate = true
+		out = append(out, canonicalEnergyExplanationSeries(item))
+	}
+	return out
+}
+
+func energyExplanationScopeZoneForDictionary(dictionary energyExplanationDictionary, plan *PurposeRunPlan) string {
+	if plan == nil || dictionary.load == nil && dictionary.heat == nil {
+		return ""
+	}
+	for _, object := range plan.OutputObjects {
+		if object.ScopeZoneName == "" || !purposeIDsContain(object.PurposeIDs, SimulationPurposeBasicEnergy) || !strings.EqualFold(strings.TrimSpace(object.ObjectType), "Output:Variable") {
+			continue
+		}
+		if !strings.EqualFold(strings.TrimSpace(object.KeyValue), strings.TrimSpace(dictionary.row.keyValue)) {
+			continue
+		}
+		sameAliasFamily := dictionary.load != nil && energyNamesShareLoadAliasGroup(object.VariableName, dictionary.row.name) ||
+			dictionary.heat != nil && energyNamesShareHeatAliasGroup(object.VariableName, dictionary.row.name)
+		if !sameAliasFamily {
+			continue
+		}
+		return object.ScopeZoneName
+	}
+	return ""
+}
+
+func buildEnergyExplanationFromDashboard(dashboard EnergyDashboardResult, plan *PurposeRunPlan) EnergyExplanationV1 {
+	return buildEnergyExplanationFromDashboardWithDriverContext(dashboard, plan, energyDriverBuildContext{})
+}
+
+func buildEnergyExplanationFromDashboardWithDriverContext(dashboard EnergyDashboardResult, plan *PurposeRunPlan, driverContext energyDriverBuildContext) EnergyExplanationV1 {
 	var series []energyExplanationSeries
 	var sources []EnergyDataSource
 	addSeries := func(item EnergySeries) {
@@ -469,7 +915,7 @@ func buildEnergyExplanationFromDashboard(dashboard EnergyDashboardResult, plan *
 				monthly[month] += point.Value
 			}
 		}
-		series = append(series, energyExplanationSeries{
+		series = append(series, canonicalEnergyExplanationSeries(energyExplanationSeries{
 			Level:               "energy",
 			Kind:                def.Kind,
 			Label:               def.Label,
@@ -480,7 +926,7 @@ func buildEnergyExplanationFromDashboard(dashboard EnergyDashboardResult, plan *
 			SourceIDs:           []string{sourceID},
 			Total:               item.Total,
 			Monthly:             monthly,
-		})
+		}))
 	}
 	for _, item := range dashboard.FacilityMonthly {
 		addSeries(item)
@@ -488,53 +934,376 @@ func buildEnergyExplanationFromDashboard(dashboard EnergyDashboardResult, plan *
 	for _, item := range dashboard.EndUseMonthly {
 		addSeries(item)
 	}
-	return buildEnergyExplanationResult(series, sources, plan)
+	return buildEnergyExplanationResultWithDriverContext(series, sources, plan, driverContext)
 }
 
 func preferredEnergyExplanationSeries(series []energyExplanationSeries) []energyExplanationSeries {
 	out := make([]energyExplanationSeries, 0, len(series))
-	selected := map[string]int{}
+	grouped := map[string][]energyExplanationSeries{}
+	order := []string{}
 	for _, item := range series {
 		key := energyExplanationSeriesSelectionKey(item)
 		if key == "" {
 			out = append(out, item)
 			continue
 		}
-		index, ok := selected[key]
+		if _, ok := grouped[key]; !ok {
+			order = append(order, key)
+		}
+		grouped[key] = append(grouped[key], item)
+	}
+	for _, key := range order {
+		items := preferredEnergyExplanationSourceClass(grouped[key])
+		selected, ok := preferredEnergyExplanationSeriesCandidate(items, func(energyExplanationSeries) bool { return true })
 		if !ok {
-			selected[key] = len(out)
-			out = append(out, item)
 			continue
 		}
-		if energyExplanationSeriesSourcePreferred(item, out[index]) {
-			out[index] = item
+		if periodItem, ok := preferredEnergyExplanationPeriodSeries(items, func(item energyExplanationSeries) map[int]float64 { return item.Monthly }); ok {
+			selected.Monthly = cloneEnergyExplanationPeriodValues(periodItem.Monthly)
+			selected.RawMonthly = cloneEnergyExplanationPeriodValues(periodItem.RawMonthly)
+			selected.MonthlySourceIDs = energyExplanationPeriodSourceIDs(periodItem.MonthlySourceIDs, periodItem.SourceIDs)
+			selected.SourceIDs = appendUniqueStrings(selected.SourceIDs, periodItem.SourceIDs...)
+		} else {
+			selected.Monthly = nil
+			selected.RawMonthly = nil
 		}
+		if periodItem, ok := preferredEnergyExplanationPeriodSeries(items, func(item energyExplanationSeries) map[int]float64 { return item.Daily }); ok {
+			selected.Daily = cloneEnergyExplanationPeriodValues(periodItem.Daily)
+			selected.RawDaily = cloneEnergyExplanationPeriodValues(periodItem.RawDaily)
+			selected.DailySourceIDs = energyExplanationPeriodSourceIDs(periodItem.DailySourceIDs, periodItem.SourceIDs)
+			selected.SourceIDs = appendUniqueStrings(selected.SourceIDs, periodItem.SourceIDs...)
+		} else {
+			selected.Daily = nil
+			selected.RawDaily = nil
+		}
+		if periodItem, ok := preferredEnergyExplanationPeriodSeries(items, func(item energyExplanationSeries) map[int]float64 { return item.Hourly }); ok {
+			selected.Hourly = cloneEnergyExplanationPeriodValues(periodItem.Hourly)
+			selected.RawHourly = cloneEnergyExplanationPeriodValues(periodItem.RawHourly)
+			selected.HourlySourceIDs = energyExplanationPeriodSourceIDs(periodItem.HourlySourceIDs, periodItem.SourceIDs)
+			selected.SourceIDs = appendUniqueStrings(selected.SourceIDs, periodItem.SourceIDs...)
+		} else {
+			selected.Hourly = nil
+			selected.RawHourly = nil
+		}
+		if rangeItem, ok := preferredEnergyExplanationSeriesCandidate(items, func(item energyExplanationSeries) bool { return item.HasSelectedRange }); ok {
+			selected.SelectedRange = rangeItem.SelectedRange
+			selected.RawSelectedRange = rangeItem.RawSelectedRange
+			selected.SelectedRangeSourceIDs = energyExplanationPeriodSourceIDs(rangeItem.SelectedRangeSourceIDs, rangeItem.SourceIDs)
+			selected.HasSelectedRange = true
+			selected.SourceIDs = appendUniqueStrings(selected.SourceIDs, rangeItem.SourceIDs...)
+		}
+		out = append(out, selected)
+	}
+	return out
+}
+
+func canonicalEnergyExplanationSeries(item energyExplanationSeries) energyExplanationSeries {
+	if item.Stage == "" {
+		switch item.Level {
+		case "heat", "driver":
+			item.Stage = "driver"
+		case "load":
+			item.Stage = "load"
+		case "energy":
+			switch {
+			case energyExplanationIsSupportEndUse(item):
+				item.Stage = "support"
+			case item.MeterHierarchyLevel == "facility_total" || strings.HasSuffix(item.Kind, ".total"):
+				item.Stage = "carrier"
+			default:
+				item.Stage = "end_use"
+			}
+		default:
+			item.Stage = strings.TrimSpace(item.Level)
+		}
+	}
+	if item.CanonicalKind == "" {
+		item.CanonicalKind = strings.TrimSpace(item.Kind)
+	}
+	if item.SurfaceName == "" && item.SurfaceScoped {
+		item.SurfaceName = strings.TrimSpace(item.sourceKeyValue)
+	}
+	if item.Sign == "" {
+		item.Sign = strings.TrimSpace(item.HeatSign)
+		if item.Sign == "" && item.Stage == "driver" {
+			item.Sign = "signed"
+		}
+	}
+	if item.SourceName == "" {
+		item.SourceName = strings.TrimSpace(item.sourceName)
+	}
+	if item.SourceKey == "" {
+		item.SourceKey = strings.TrimSpace(item.sourceKeyValue)
+	}
+	if item.SourceClass == "" {
+		item.SourceClass = energyExplanationPhysicalSourceClass(item)
+	}
+	if item.PeriodBasis == "" {
+		item.PeriodBasis = energyExplanationPeriodBasis(item.sourceFrequency, item.Monthly)
+	}
+	if len(item.AnnualSourceIDs) == 0 {
+		item.AnnualSourceIDs = appendUniqueStrings(nil, item.SourceIDs...)
+	}
+	if len(item.Monthly) > 0 && len(item.MonthlySourceIDs) == 0 {
+		item.MonthlySourceIDs = appendUniqueStrings(nil, item.SourceIDs...)
+	}
+	if len(item.Daily) > 0 && len(item.DailySourceIDs) == 0 {
+		item.DailySourceIDs = appendUniqueStrings(nil, item.SourceIDs...)
+	}
+	if len(item.Hourly) > 0 && len(item.HourlySourceIDs) == 0 {
+		item.HourlySourceIDs = appendUniqueStrings(nil, item.SourceIDs...)
+	}
+	if item.HasSelectedRange && len(item.SelectedRangeSourceIDs) == 0 {
+		item.SelectedRangeSourceIDs = appendUniqueStrings(nil, item.SourceIDs...)
+	}
+	if !item.multiplierApplied {
+		item.RawTotal = item.Total
+		item.RawMonthly = cloneEnergyExplanationPeriodValues(item.Monthly)
+		item.RawDaily = cloneEnergyExplanationPeriodValues(item.Daily)
+		item.RawHourly = cloneEnergyExplanationPeriodValues(item.Hourly)
+		item.RawSelectedRange = item.SelectedRange
+	}
+	item.SourceFamily = energyExplanationCanonicalSourceFamily(item)
+	item.CanonicalFamily = energyExplanationCanonicalIdentity(item)
+	return item
+}
+
+func energyExplanationPeriodBasis(frequency string, monthly map[int]float64) string {
+	switch strings.ToLower(canonicalPurposeFrequency(frequency)) {
+	case "runperiod", "annual":
+		return "annual_only"
+	case "monthly":
+		return "monthly"
+	case "daily", "hourly", "timestep", "detailed":
+		return "streamed_monthly"
+	case "":
+		if len(monthly) > 0 {
+			return "monthly"
+		}
+		return "unknown"
+	default:
+		return "unknown"
+	}
+}
+
+func energyExplanationCanonicalSourceFamily(item energyExplanationSeries) string {
+	return energyExplanationCanonicalIdentityParts(item, true)
+}
+
+func energyExplanationCanonicalIdentity(item energyExplanationSeries) string {
+	return energyExplanationCanonicalIdentityParts(item, false)
+}
+
+func energyExplanationCanonicalIdentityParts(item energyExplanationSeries, includeSourceClass bool) string {
+	sourceKey := ""
+	if (item.Stage == "load" || item.Stage == "driver") && item.ZoneName == "" && item.SurfaceName == "" {
+		sourceKey = item.SourceKey
+	}
+	parts := []string{
+		normalizeEnergyOutputName(item.Stage),
+		normalizeEnergyOutputName(item.CanonicalKind),
+		normalizeEnergyOutputName(item.ZoneName),
+		normalizeEnergyOutputName(item.SurfaceName),
+		normalizeEnergyOutputName(item.ServiceKind),
+		normalizeEnergyOutputName(item.Carrier),
+		normalizeEnergyOutputName(item.EndUse),
+		normalizeEnergyOutputName(item.ThermalComponent),
+		normalizeEnergyOutputName(item.DriverCategory),
+		normalizeEnergyOutputName(item.HeatCategory),
+		normalizeEnergyOutputName(item.Sign),
+	}
+	if includeSourceClass {
+		parts = append(parts, normalizeEnergyOutputName(item.SourceClass))
+	}
+	parts = append(parts, normalizeEnergyOutputName(sourceKey))
+	return strings.Join(parts, "|")
+}
+
+func energyExplanationPhysicalSourceClass(item energyExplanationSeries) string {
+	if item.Stage == "carrier" || item.Stage == "end_use" || item.Stage == "support" {
+		return "meter"
+	}
+	name := normalizeEnergyOutputName(firstNonEmpty(item.SourceName, item.sourceName))
+	switch {
+	case strings.Contains(name, "zone ideal loads"):
+		return "zone_ideal_loads"
+	case strings.Contains(name, "zone system predicted sensible load"):
+		return "zone_system_predicted"
+	case strings.Contains(name, "zone predicted sensible load"):
+		return "zone_predicted"
+	case strings.Contains(name, "zone air system"):
+		return "zone_air_system"
+	case strings.Contains(name, "surface inside face convection"):
+		return "surface_inside_face_convection"
+	case strings.Contains(name, "zone total internal") || strings.Contains(name, "zone air heat balance internal convective"):
+		return "zone_internal_gain_aggregate"
+	case strings.Contains(name, "zone combined outdoor air"):
+		return "zone_combined_outdoor_air"
+	case strings.Contains(name, "zone air heat balance outdoor air"):
+		return "zone_outdoor_air_aggregate"
+	case strings.Contains(name, "zone air heat balance"):
+		return "zone_air_heat_balance"
+	}
+	name = strings.TrimSpace(strings.TrimSuffix(strings.TrimSuffix(name, " energy"), " rate"))
+	if name != "" {
+		return name
+	}
+	return normalizeEnergyOutputName(item.CanonicalKind)
+}
+
+func preferredEnergyExplanationSeriesCandidate(items []energyExplanationSeries, include func(energyExplanationSeries) bool) (energyExplanationSeries, bool) {
+	var selected energyExplanationSeries
+	found := false
+	for _, item := range items {
+		if include != nil && !include(item) {
+			continue
+		}
+		if !found || energyExplanationSeriesSourcePreferred(item, selected) {
+			selected = item
+			found = true
+		}
+	}
+	return selected, found
+}
+
+func preferredEnergyExplanationSourceClass(items []energyExplanationSeries) []energyExplanationSeries {
+	if len(items) < 2 {
+		return items
+	}
+	byClass := map[string][]energyExplanationSeries{}
+	order := []string{}
+	for _, item := range items {
+		key := normalizeEnergyOutputName(item.SourceClass)
+		if _, exists := byClass[key]; !exists {
+			order = append(order, key)
+		}
+		byClass[key] = append(byClass[key], item)
+	}
+	if len(byClass) < 2 {
+		return items
+	}
+	selectedClass := ""
+	selectedCoverage := -1
+	selectedRank := int(^uint(0) >> 1)
+	for _, class := range order {
+		coverage := 0
+		for _, item := range byClass[class] {
+			if len(item.Monthly) > coverage {
+				coverage = len(item.Monthly)
+			}
+		}
+		rank := energyExplanationPhysicalSourceClassRank(class)
+		if selectedClass == "" || coverage > selectedCoverage || coverage == selectedCoverage && rank < selectedRank {
+			selectedClass = class
+			selectedCoverage = coverage
+			selectedRank = rank
+		}
+	}
+	return byClass[selectedClass]
+}
+
+func energyExplanationPhysicalSourceClassRank(class string) int {
+	switch normalizeEnergyOutputName(class) {
+	case "zone_air_system":
+		return 0
+	case "zone_ideal_loads":
+		return 1
+	case "zone_predicted":
+		return 2
+	case "zone_system_predicted":
+		return 3
+	default:
+		return 10
+	}
+}
+
+func preferredEnergyExplanationPeriodSeries(items []energyExplanationSeries, values func(energyExplanationSeries) map[int]float64) (energyExplanationSeries, bool) {
+	var selected energyExplanationSeries
+	selectedCoverage := -1
+	found := false
+	for _, item := range items {
+		coverage := len(values(item))
+		if coverage == 0 {
+			continue
+		}
+		candidateRateRank := 0
+		if item.sourceIsRate {
+			candidateRateRank = 1
+		}
+		selectedRateRank := 0
+		if selected.sourceIsRate {
+			selectedRateRank = 1
+		}
+		if !found || candidateRateRank < selectedRateRank || candidateRateRank == selectedRateRank && (coverage > selectedCoverage || coverage == selectedCoverage && energyExplanationSeriesSourcePreferred(item, selected)) {
+			selected = item
+			selectedCoverage = coverage
+			found = true
+		}
+	}
+	return selected, found
+}
+
+func cloneEnergyExplanationPeriodValues(values map[int]float64) map[int]float64 {
+	if len(values) == 0 {
+		return nil
+	}
+	out := make(map[int]float64, len(values))
+	for key, value := range values {
+		out[key] = value
+	}
+	return out
+}
+
+func energyExplanationPeriodSourceIDs(periodIDs []string, fallback []string) []string {
+	if len(periodIDs) > 0 {
+		return appendUniqueStrings(nil, periodIDs...)
+	}
+	return appendUniqueStrings(nil, fallback...)
+}
+
+func energyExplanationSeriesForGraphPeriod(series []energyExplanationSeries, period string) []energyExplanationSeries {
+	out := make([]energyExplanationSeries, len(series))
+	for index, item := range series {
+		switch period {
+		case "monthly":
+			item.SourceIDs = energyExplanationPeriodSourceIDs(item.MonthlySourceIDs, item.SourceIDs)
+		case "daily":
+			item.SourceIDs = energyExplanationPeriodSourceIDs(item.DailySourceIDs, item.SourceIDs)
+		case "hourly":
+			item.SourceIDs = energyExplanationPeriodSourceIDs(item.HourlySourceIDs, item.SourceIDs)
+		case "selected_range":
+			item.SourceIDs = energyExplanationPeriodSourceIDs(item.SelectedRangeSourceIDs, item.SourceIDs)
+		default:
+			item.SourceIDs = energyExplanationPeriodSourceIDs(item.AnnualSourceIDs, item.SourceIDs)
+		}
+		out[index] = item
 	}
 	return out
 }
 
 func energyExplanationSeriesSelectionKey(item energyExplanationSeries) string {
+	item = canonicalEnergyExplanationSeries(item)
+	if item.CanonicalFamily != "" && (item.Stage == "carrier" || item.Stage == "end_use" || item.Stage == "support") {
+		return item.CanonicalFamily
+	}
 	switch item.Level {
 	case "load":
-		scope := firstNonEmpty(item.ZoneName, item.LoopName, item.sourceKeyValue)
-		return strings.Join([]string{
-			item.Level,
-			item.Kind,
-			normalizeEnergyOutputName(item.ServiceKind),
-			normalizeEnergyOutputName(scope),
-		}, "|")
+		return item.CanonicalFamily
 	case "heat":
-		scope := item.ZoneName
-		if strings.TrimSpace(scope) == "" {
-			scope = item.sourceKeyValue
+		// Driver preparation classifies additive, context, and reconciliation
+		// sources before preference selection. Keep those roles in separate
+		// preference families so a broader context quantity (for example People
+		// Sensible) cannot displace the narrower convective main-flow source.
+		if role := strings.TrimSpace(item.DriverSourceRole); role != "" {
+			if role == energyDriverSourceRoleMainFlow && strings.HasPrefix(canonicalEnergyDriverCategory(item.DriverCategory), "internal.") {
+				// Electric, gas, hot-water, steam, IT, and other internal-gain
+				// outputs are independent additive families. SourceFamily retains
+				// that physical subtype while collapsing only its Energy/Rate pair.
+				return item.SourceFamily + "|driver-role:" + normalizeEnergyOutputName(role)
+			}
+			return item.CanonicalFamily + "|driver-role:" + normalizeEnergyOutputName(role)
 		}
-		return strings.Join([]string{
-			item.Level,
-			item.Kind,
-			normalizeEnergyOutputName(item.HeatCategory),
-			normalizeEnergyOutputName(item.HeatSign),
-			normalizeEnergyOutputName(scope),
-		}, "|")
+		return item.CanonicalFamily
 	default:
 		return ""
 	}
@@ -600,22 +1369,48 @@ func energyLoadScopeNames(scope string, keyValue string) (string, string) {
 	}
 }
 
-func emptyEnergyExplanationResult(plan *PurposeRunPlan) EnergyExplanationResult {
+func emptyEnergyExplanationResult(plan *PurposeRunPlan) EnergyExplanationV1 {
 	allocationPolicy := energyExplanationAllocationPolicy(plan)
-	result := EnergyExplanationResult{
-		Schema:            energyExplanationSchema,
+	result := EnergyExplanationV1{
+		Schema:            energyExplanationV1Schema,
 		Purpose:           string(SimulationPurposeBasicEnergy),
 		Frequency:         "monthly",
 		AllocationPolicy:  allocationPolicy,
 		RelationshipRules: energyRelationshipRuleCatalog(),
+		scope:             energyExplanationScopeForPlan(plan),
 	}
 	result.Completeness = buildEnergyExplanationCompleteness(nil, nil, plan, 0)
 	return result
 }
 
-func buildEnergyExplanationResult(series []energyExplanationSeries, sources []EnergyDataSource, plan *PurposeRunPlan) EnergyExplanationResult {
+func buildEnergyExplanationResult(series []energyExplanationSeries, sources []EnergyDataSource, plan *PurposeRunPlan) EnergyExplanationV1 {
+	return buildEnergyExplanationResultWithDriverContext(series, sources, plan, energyDriverBuildContext{})
+}
+
+func buildEnergyExplanationResultWithDriverContext(series []energyExplanationSeries, sources []EnergyDataSource, plan *PurposeRunPlan, driverContext energyDriverBuildContext) EnergyExplanationV1 {
 	allocationPolicy := energyExplanationAllocationPolicy(plan)
+	for index := range series {
+		series[index] = canonicalEnergyExplanationSeries(series[index])
+	}
+	series = excludeEnergyExplanationDirectUseSeries(series)
+	series, sources = filterEnergyExplanationSeriesForBasicDetail(series, sources, plan)
+	driverWarnings := []EnergyWarning{}
+	if driverContext.Enabled {
+		series, sources, driverWarnings = prepareEnergyDriverSeries(series, sources, driverContext)
+	}
+	for index := range series {
+		series[index] = canonicalEnergyExplanationSeries(series[index])
+	}
+	var multiplierWarnings []EnergyWarning
+	if driverContext.Enabled {
+		series, sources, multiplierWarnings = applyEnergyExplanationMultipliers(series, sources, driverContext.Multipliers)
+	}
+	driverWarnings = append(driverWarnings, multiplierWarnings...)
 	series = preferredEnergyExplanationSeries(series)
+	if driverContext.Enabled {
+		series, sources, multiplierWarnings = finalizeEnergyDriverMappings(series, sources, driverContext)
+		driverWarnings = append(driverWarnings, multiplierWarnings...)
+	}
 	sort.SliceStable(series, func(i, j int) bool {
 		if series[i].Level != series[j].Level {
 			return series[i].Level < series[j].Level
@@ -625,10 +1420,33 @@ func buildEnergyExplanationResult(series []energyExplanationSeries, sources []En
 	sort.SliceStable(sources, func(i, j int) bool {
 		return sources[i].ID < sources[j].ID
 	})
-	annual := buildEnergyExplanationGraphForPeriod("annual", series, allocationPolicy, func(item energyExplanationSeries) float64 {
+	months := energyExplanationMonths(series)
+	monthlySeries := energyExplanationSeriesForGraphPeriod(series, "monthly")
+	monthlyGraphs := make(map[int]energyExplanationGraph, len(months))
+	for _, month := range months {
+		periodID := fmt.Sprintf("M%d", month)
+		graph := buildEnergyExplanationGraphForPeriod(periodID, monthlySeries, allocationPolicy, func(item energyExplanationSeries) float64 {
+			return item.Monthly[month]
+		})
+		graph.Warnings = appendEnergyDriverWarningsForPeriod(graph.Warnings, driverWarnings, periodID)
+		monthlyGraphs[month] = graph
+	}
+	annualSeries := series
+	// The legacy parser/builder remains the frozen v1 adapter. Runtime builds
+	// carry an IDF-derived driver context and use the canonical monthly
+	// contribution contract; direct v1 reads retain their historical totals and
+	// identifiers until they cross the v1->v2 upgrade boundary.
+	if driverContext.Enabled {
+		annualSeries = energyExplanationAnnualContributionSeries(series)
+	}
+	annualSeed := buildEnergyExplanationGraphForPeriod("annual", annualSeries, allocationPolicy, func(item energyExplanationSeries) float64 {
 		return item.Total
 	})
-	months := energyExplanationMonths(series)
+	annual := annualSeed
+	if driverContext.Enabled {
+		annual = buildEnergyExplanationAnnualGraphFromMonthly(annualSeed, monthlyGraphs, series)
+	}
+	annual.Warnings = appendEnergyDriverWarningsForPeriod(annual.Warnings, driverWarnings, "annual")
 	periods := []EnergyPeriod{
 		{
 			ID:             "annual",
@@ -645,9 +1463,7 @@ func buildEnergyExplanationResult(series []energyExplanationSeries, sources []En
 	}
 	for _, month := range months {
 		periodID := fmt.Sprintf("M%d", month)
-		graph := buildEnergyExplanationGraphForPeriod(periodID, series, allocationPolicy, func(item energyExplanationSeries) float64 {
-			return item.Monthly[month]
-		})
+		graph := monthlyGraphs[month]
 		periods = append(periods, EnergyPeriod{
 			ID:             periodID,
 			Label:          fmt.Sprintf("M%d", month),
@@ -660,9 +1476,10 @@ func buildEnergyExplanationResult(series []energyExplanationSeries, sources []En
 	}
 	for _, day := range energyExplanationDays(series) {
 		periodID := fmt.Sprintf("D%d", day)
-		graph := buildEnergyExplanationGraphForPeriod(periodID, series, allocationPolicy, func(item energyExplanationSeries) float64 {
+		graph := buildEnergyExplanationGraphForPeriod(periodID, energyExplanationSeriesForGraphPeriod(series, "daily"), allocationPolicy, func(item energyExplanationSeries) float64 {
 			return item.Daily[day]
 		})
+		graph.Warnings = appendEnergyDriverWarningsForPeriod(graph.Warnings, driverWarnings, periodID)
 		periods = append(periods, EnergyPeriod{
 			ID:             periodID,
 			Label:          fmt.Sprintf("Day %d", day),
@@ -675,9 +1492,10 @@ func buildEnergyExplanationResult(series []energyExplanationSeries, sources []En
 	}
 	for _, hour := range energyExplanationHours(series) {
 		periodID := fmt.Sprintf("H%d", hour)
-		graph := buildEnergyExplanationGraphForPeriod(periodID, series, allocationPolicy, func(item energyExplanationSeries) float64 {
+		graph := buildEnergyExplanationGraphForPeriod(periodID, energyExplanationSeriesForGraphPeriod(series, "hourly"), allocationPolicy, func(item energyExplanationSeries) float64 {
 			return item.Hourly[hour]
 		})
+		graph.Warnings = appendEnergyDriverWarningsForPeriod(graph.Warnings, driverWarnings, periodID)
 		periods = append(periods, EnergyPeriod{
 			ID:             periodID,
 			Label:          fmt.Sprintf("Hour %d", hour),
@@ -688,21 +1506,394 @@ func buildEnergyExplanationResult(series []energyExplanationSeries, sources []En
 			Warnings:       graph.Warnings,
 		})
 	}
-	result := EnergyExplanationResult{
-		Schema:            energyExplanationSchema,
-		Purpose:           string(SimulationPurposeBasicEnergy),
-		Frequency:         "monthly",
-		AllocationPolicy:  allocationPolicy,
-		RelationshipRules: energyRelationshipRuleCatalog(),
-		Periods:           periods,
-		Nodes:             annual.Nodes,
-		Edges:             annual.Edges,
-		Reconciliation:    annual.Reconciliation,
-		Sources:           sources,
-		Completeness:      buildEnergyExplanationCompleteness(series, sources, plan, annual.MappedPercent),
-		Warnings:          annual.Warnings,
+	result := EnergyExplanationV1{
+		Schema:                energyExplanationV1Schema,
+		Purpose:               string(SimulationPurposeBasicEnergy),
+		Frequency:             "monthly",
+		AllocationPolicy:      allocationPolicy,
+		RelationshipRules:     energyRelationshipRuleCatalog(),
+		Periods:               periods,
+		Nodes:                 annual.Nodes,
+		Edges:                 annual.Edges,
+		Reconciliation:        annual.Reconciliation,
+		Sources:               sources,
+		Completeness:          buildEnergyExplanationCompleteness(series, sources, plan, annual.MappedPercent),
+		Warnings:              annual.Warnings,
+		scope:                 energyExplanationScopeForPlan(plan),
+		canonicalMonthlyBasis: driverContext.Enabled,
 	}
 	return result
+}
+
+func energyExplanationAnnualContributionSeries(series []energyExplanationSeries) []energyExplanationSeries {
+	out := make([]energyExplanationSeries, 0, len(series)+2)
+	for _, original := range series {
+		item := canonicalEnergyExplanationSeries(original)
+		if len(item.Monthly) == 0 {
+			item.SourceIDs = energyExplanationPeriodSourceIDs(item.AnnualSourceIDs, item.SourceIDs)
+			// Annual-only fallback is a measured site-energy convenience. It must
+			// never fabricate driver or delivered-load contributions.
+			if item.Stage != "carrier" && item.Stage != "end_use" {
+				continue
+			}
+			out = append(out, item)
+			continue
+		}
+		if item.Stage != "driver" {
+			item.SourceIDs = energyExplanationPeriodSourceIDs(item.MonthlySourceIDs, item.SourceIDs)
+			item.Total = roundedEnergyNumber(sumEnergyExplanationPeriodValues(item.Monthly))
+			item.RawTotal = roundedEnergyNumber(sumEnergyExplanationPeriodValues(item.RawMonthly))
+			if len(item.RawMonthly) == 0 {
+				item.RawTotal = energyExplanationRawValue(item.Total, item.EffectiveMultiplier)
+			}
+			out = append(out, item)
+			continue
+		}
+		if strings.TrimSpace(item.HeatSign) != "" {
+			item.SourceIDs = energyExplanationPeriodSourceIDs(item.MonthlySourceIDs, item.SourceIDs)
+			item.Total = roundedEnergyNumber(sumEnergyExplanationPeriodValues(item.Monthly))
+			item.RawTotal = roundedEnergyNumber(sumEnergyExplanationPeriodValues(item.RawMonthly))
+			if len(item.RawMonthly) == 0 {
+				item.RawTotal = energyExplanationRawValue(item.Total, item.EffectiveMultiplier)
+			}
+			out = append(out, item)
+			continue
+		}
+
+		positive := item
+		negative := item
+		positive.SourceIDs = energyExplanationPeriodSourceIDs(item.MonthlySourceIDs, item.SourceIDs)
+		negative.SourceIDs = energyExplanationPeriodSourceIDs(item.MonthlySourceIDs, item.SourceIDs)
+		positive.Total, positive.RawTotal = 0, 0
+		negative.Total, negative.RawTotal = 0, 0
+		positive.HeatSign, positive.Sign, positive.heatSignMultiplier = "", "positive", 1
+		negative.HeatSign, negative.Sign, negative.heatSignMultiplier = "", "negative", -1
+		for month := 1; month <= 12; month++ {
+			effectiveSigned := item.Monthly[month] * energyExplanationHeatSeriesSignMultiplier(item)
+			rawSigned := item.RawMonthly[month] * energyExplanationHeatSeriesSignMultiplier(item)
+			if len(item.RawMonthly) == 0 {
+				rawSigned = energyExplanationRawValue(effectiveSigned, item.EffectiveMultiplier)
+			}
+			if effectiveSigned > 0 {
+				positive.Total += effectiveSigned
+				positive.RawTotal += math.Abs(rawSigned)
+			} else if effectiveSigned < 0 {
+				negative.Total += math.Abs(effectiveSigned)
+				negative.RawTotal += math.Abs(rawSigned)
+			}
+		}
+		if positive.Total != 0 {
+			positive.Total = roundedEnergyNumber(positive.Total)
+			positive.RawTotal = roundedEnergyNumber(positive.RawTotal)
+			positive.SourceFamily = energyExplanationCanonicalSourceFamily(positive)
+			out = append(out, positive)
+		}
+		if negative.Total != 0 {
+			negative.Total = roundedEnergyNumber(negative.Total)
+			negative.RawTotal = roundedEnergyNumber(negative.RawTotal)
+			negative.SourceFamily = energyExplanationCanonicalSourceFamily(negative)
+			out = append(out, negative)
+		}
+	}
+	return out
+}
+
+func buildEnergyExplanationAnnualGraphFromMonthly(seed energyExplanationGraph, monthly map[int]energyExplanationGraph, series []energyExplanationSeries) energyExplanationGraph {
+	if len(monthly) == 0 {
+		return seed
+	}
+	annual := aggregateEnergyExplanationMonthlyGraphs(monthly)
+	fallbackSources := map[string]bool{}
+	for _, original := range series {
+		item := canonicalEnergyExplanationSeries(original)
+		if len(item.Monthly) != 0 {
+			continue
+		}
+		allowAnnualOnly := item.Stage == "carrier" || item.Stage == "end_use"
+		if !allowAnnualOnly {
+			continue
+		}
+		for _, sourceID := range item.SourceIDs {
+			fallbackSources[sourceID] = true
+		}
+	}
+
+	nodeIndex := make(map[string]int, len(annual.Nodes)+len(seed.Nodes))
+	for index, node := range annual.Nodes {
+		nodeIndex[node.ID] = index
+	}
+	fallbackNode := map[string]bool{}
+	for _, node := range seed.Nodes {
+		if !energyExplanationSourcesIntersect(node.SourceIDs, fallbackSources) {
+			continue
+		}
+		fallbackNode[node.ID] = true
+		if _, exists := nodeIndex[node.ID]; exists {
+			continue
+		}
+		node.Period = "annual"
+		nodeIndex[node.ID] = len(annual.Nodes)
+		annual.Nodes = append(annual.Nodes, node)
+	}
+
+	edgeIndex := make(map[string]int, len(annual.Edges)+len(seed.Edges))
+	for index, edge := range annual.Edges {
+		edgeIndex[energyExplanationEdgeAggregationKey(edge)] = index
+	}
+	for _, edge := range seed.Edges {
+		key := energyExplanationEdgeAggregationKey(edge)
+		if _, exists := edgeIndex[key]; exists {
+			continue
+		}
+		if !fallbackNode[edge.FromID] && !fallbackNode[edge.ToID] && !energyExplanationSourcesIntersect(edge.SourceIDs, fallbackSources) {
+			continue
+		}
+		if _, ok := nodeIndex[edge.FromID]; !ok {
+			continue
+		}
+		if _, ok := nodeIndex[edge.ToID]; !ok {
+			continue
+		}
+		edge.Period = "annual"
+		edge.ID = energyExplanationAnnualEdgeID(edge)
+		edgeIndex[key] = len(annual.Edges)
+		annual.Edges = append(annual.Edges, edge)
+	}
+
+	reconciliationIndex := make(map[string]int, len(annual.Reconciliation)+len(seed.Reconciliation))
+	for index, item := range annual.Reconciliation {
+		reconciliationIndex[energyExplanationReconciliationAggregationKey(item)] = index
+	}
+	for _, item := range seed.Reconciliation {
+		key := energyExplanationReconciliationAggregationKey(item)
+		if _, exists := reconciliationIndex[key]; exists || !energyExplanationSourcesIntersect(item.SourceIDs, fallbackSources) {
+			continue
+		}
+		item.Period = "annual"
+		item.ID = energyExplanationAnnualReconciliationID(item.ID)
+		reconciliationIndex[key] = len(annual.Reconciliation)
+		annual.Reconciliation = append(annual.Reconciliation, item)
+	}
+	for _, warning := range seed.Warnings {
+		warning.Period = "annual"
+		annual.Warnings = appendEnergyDriverWarning(annual.Warnings, warning)
+	}
+	annual.MappedPercent = energyExplanationMappedPercentFromReconciliation(annual.Reconciliation)
+	sortEnergyExplanationNodes(annual.Nodes)
+	sortEnergyExplanationEdges(annual.Edges)
+	return annual
+}
+
+func aggregateEnergyExplanationMonthlyGraphs(monthly map[int]energyExplanationGraph) energyExplanationGraph {
+	annual := energyExplanationGraph{}
+	nodeIndex := map[string]int{}
+	edgeIndex := map[string]int{}
+	reconciliationIndex := map[string]int{}
+	months := make([]int, 0, len(monthly))
+	for month := range monthly {
+		months = append(months, month)
+	}
+	sort.Ints(months)
+	for _, month := range months {
+		graph := monthly[month]
+		for _, node := range graph.Nodes {
+			index, exists := nodeIndex[node.ID]
+			if !exists {
+				node.Period = "annual"
+				nodeIndex[node.ID] = len(annual.Nodes)
+				annual.Nodes = append(annual.Nodes, node)
+				continue
+			}
+			current := &annual.Nodes[index]
+			current.Value = roundedEnergyNumber(current.Value + node.Value)
+			current.SignedValue = roundedEnergyNumber(current.SignedValue + node.SignedValue)
+			current.RawValue = roundedEnergyNumber(current.RawValue + node.RawValue)
+			current.EffectiveValue = roundedEnergyNumber(current.EffectiveValue + node.EffectiveValue)
+			current.AllocatedValue = roundedEnergyNumber(current.AllocatedValue + node.AllocatedValue)
+			current.DisplayValue = roundedEnergyNumber(current.DisplayValue + node.DisplayValue)
+			if current.RawValue != 0 && current.EffectiveValue != 0 {
+				current.Multiplier = roundedEnergyNumber(current.EffectiveValue / current.RawValue)
+			}
+			current.SourceIDs = appendUniqueStrings(current.SourceIDs, node.SourceIDs...)
+			current.RelatedEntityIDs = appendUniqueStrings(current.RelatedEntityIDs, node.RelatedEntityIDs...)
+			current.RelatedPathIDs = appendUniqueStrings(current.RelatedPathIDs, node.RelatedPathIDs...)
+		}
+		for _, edge := range graph.Edges {
+			key := energyExplanationEdgeAggregationKey(edge)
+			index, exists := edgeIndex[key]
+			if !exists {
+				edge.Period = "annual"
+				edge.ID = energyExplanationAnnualEdgeID(edge)
+				edgeIndex[key] = len(annual.Edges)
+				annual.Edges = append(annual.Edges, edge)
+				continue
+			}
+			current := &annual.Edges[index]
+			current.Value = roundedEnergyNumber(current.Value + edge.Value)
+			current.SignedValue = roundedEnergyNumber(current.SignedValue + edge.SignedValue)
+			current.DisplayValue = roundedEnergyNumber(current.DisplayValue + edge.DisplayValue)
+			current.SourceIDs = appendUniqueStrings(current.SourceIDs, edge.SourceIDs...)
+			current.RelatedPathIDs = appendUniqueStrings(current.RelatedPathIDs, edge.RelatedPathIDs...)
+		}
+		for _, item := range graph.Reconciliation {
+			key := energyExplanationReconciliationAggregationKey(item)
+			index, exists := reconciliationIndex[key]
+			if !exists {
+				item.ID = energyExplanationAnnualReconciliationID(item.ID)
+				item.Period = "annual"
+				reconciliationIndex[key] = len(annual.Reconciliation)
+				annual.Reconciliation = append(annual.Reconciliation, item)
+				continue
+			}
+			current := &annual.Reconciliation[index]
+			current.ExpectedValue = roundedEnergyNumber(current.ExpectedValue + item.ExpectedValue)
+			current.ExplainedValue = roundedEnergyNumber(current.ExplainedValue + item.ExplainedValue)
+			current.ResidualValue = roundedEnergyNumber(current.ResidualValue + item.ResidualValue)
+			current.Status = energyReconciliationStatus(current.ExpectedValue, current.ResidualValue)
+			current.SourceIDs = appendUniqueStrings(current.SourceIDs, item.SourceIDs...)
+		}
+		for _, warning := range graph.Warnings {
+			warning.Period = "annual"
+			annual.Warnings = appendEnergyDriverWarning(annual.Warnings, warning)
+		}
+	}
+	annual.MappedPercent = energyExplanationMappedPercentFromReconciliation(annual.Reconciliation)
+	sortEnergyExplanationNodes(annual.Nodes)
+	sortEnergyExplanationEdges(annual.Edges)
+	return annual
+}
+
+func energyExplanationSourcesIntersect(sourceIDs []string, selected map[string]bool) bool {
+	for _, sourceID := range sourceIDs {
+		if selected[sourceID] {
+			return true
+		}
+	}
+	return false
+}
+
+func energyExplanationEdgeAggregationKey(edge EnergyExplanationEdge) string {
+	return strings.Join([]string{
+		edge.FromID,
+		edge.ToID,
+		normalizeEnergyOutputName(edge.Relation),
+		normalizeEnergyOutputName(edge.RuleID),
+		normalizeEnergyOutputName(edge.ServiceKind),
+		normalizeEnergyOutputName(edge.ZoneName),
+		normalizeEnergyOutputName(edge.Basis),
+	}, "|")
+}
+
+func energyExplanationAnnualEdgeID(edge EnergyExplanationEdge) string {
+	prefix := "edge"
+	if parts := strings.SplitN(strings.TrimSpace(edge.ID), ".", 2); len(parts) > 0 && parts[0] != "" {
+		prefix = parts[0]
+	}
+	return edgeID(prefix, "annual", edge.FromID, edge.ToID)
+}
+
+func energyExplanationReconciliationAggregationKey(item EnergyReconciliation) string {
+	return strings.Join([]string{
+		strings.ToLower(strings.TrimSpace(item.Level)),
+		normalizeEnergyOutputName(item.ZoneName),
+		normalizeEnergyOutputName(item.ServiceKind),
+		normalizeEnergyOutputName(energyExplanationAnnualReconciliationID(item.ID)),
+	}, "|")
+}
+
+func energyExplanationAnnualReconciliationID(id string) string {
+	parts := strings.Split(strings.TrimSpace(id), ".")
+	if len(parts) > 0 {
+		last := strings.ToLower(parts[len(parts)-1])
+		if last == "annual" || strings.HasPrefix(last, "m") {
+			parts[len(parts)-1] = "annual"
+			return strings.Join(parts, ".")
+		}
+	}
+	return strings.TrimSuffix(id, ".") + ".annual"
+}
+
+func energyExplanationMappedPercentFromReconciliation(items []EnergyReconciliation) float64 {
+	expected := 0.0
+	explained := 0.0
+	for _, item := range items {
+		if !strings.EqualFold(item.Level, "energy") {
+			continue
+		}
+		expected += item.ExpectedValue
+		explained += math.Min(item.ExpectedValue, item.ExplainedValue)
+	}
+	if expected <= 0 {
+		return 0
+	}
+	return roundedEnergyNumber(explained / expected * 100)
+}
+
+func energyExplanationHeatSeriesSignMultiplier(item energyExplanationSeries) float64 {
+	if item.heatSignMultiplier != 0 {
+		return item.heatSignMultiplier
+	}
+	if strings.EqualFold(item.HeatSign, "negative") || strings.EqualFold(item.Sign, "negative") {
+		return -1
+	}
+	return 1
+}
+
+func sumEnergyExplanationPeriodValues(values map[int]float64) float64 {
+	total := 0.0
+	for _, value := range values {
+		total += value
+	}
+	return total
+}
+
+func energyExplanationRawValue(effective float64, multiplier float64) float64 {
+	if multiplier == 0 {
+		multiplier = 1
+	}
+	return roundedEnergyNumber(effective / multiplier)
+}
+
+func filterEnergyExplanationSeriesForBasicDetail(series []energyExplanationSeries, sources []EnergyDataSource, plan *PurposeRunPlan) ([]energyExplanationSeries, []EnergyDataSource) {
+	if plan == nil || !strings.EqualFold(strings.TrimSpace(plan.BasicEnergyDetail), PurposeBasicEnergyDetailLight) {
+		return series, sources
+	}
+	filteredSeries := make([]energyExplanationSeries, 0, len(series))
+	referencedSources := map[string]bool{}
+	for _, item := range series {
+		if item.Level != "energy" {
+			continue
+		}
+		filteredSeries = append(filteredSeries, item)
+		for _, sourceID := range item.SourceIDs {
+			referencedSources[sourceID] = true
+		}
+	}
+	filteredSources := make([]EnergyDataSource, 0, len(sources))
+	for _, source := range sources {
+		if referencedSources[source.ID] {
+			filteredSources = append(filteredSources, source)
+		}
+	}
+	return filteredSeries, filteredSources
+}
+
+func energyExplanationPlanUsesEnergyPath(plan *PurposeRunPlan) bool {
+	return plan != nil && strings.EqualFold(strings.TrimSpace(plan.BasicEnergyDetail), PurposeBasicEnergyDetailEnergyPath)
+}
+
+// Zone direct-use variables are captured as source records for the scoped v2
+// work, but the frozen v1 graph must not add them on top of broad meters. The
+// zone-native accounting policy is introduced in the later allocation phase.
+func excludeEnergyExplanationDirectUseSeries(series []energyExplanationSeries) []energyExplanationSeries {
+	out := make([]energyExplanationSeries, 0, len(series))
+	for _, item := range series {
+		if item.Level == "energy" && item.MeterHierarchyLevel == "zone_direct_use" {
+			continue
+		}
+		out = append(out, item)
+	}
+	return out
 }
 
 func buildEnergyExplanationSelectedRangePeriod(series []energyExplanationSeries, allocationPolicy string, plan *PurposeRunPlan) (EnergyPeriod, bool) {
@@ -720,7 +1911,7 @@ func buildEnergyExplanationSelectedRangePeriod(series []energyExplanationSeries,
 	if !hasValue {
 		return EnergyPeriod{}, false
 	}
-	graph := buildEnergyExplanationGraphForPeriod("selected_range", series, allocationPolicy, func(item energyExplanationSeries) float64 {
+	graph := buildEnergyExplanationGraphForPeriod("selected_range", energyExplanationSeriesForGraphPeriod(series, "selected_range"), allocationPolicy, func(item energyExplanationSeries) float64 {
 		if !item.HasSelectedRange {
 			return 0
 		}
@@ -737,7 +1928,7 @@ func buildEnergyExplanationSelectedRangePeriod(series []energyExplanationSeries,
 	}, true
 }
 
-func buildEnergyExplanationSummary(explanation EnergyExplanationResult) EnergyExplanationSummary {
+func buildEnergyExplanationSummaryV1(explanation EnergyExplanationV1) EnergyExplanationSummary {
 	if explanation.Schema == "" || len(explanation.Nodes) == 0 {
 		return EnergyExplanationSummary{}
 	}
@@ -818,6 +2009,8 @@ func addEnergyExplanationSummaryNode(groups map[string]*EnergyExplanationSummary
 			Kind:                node.Kind,
 			Label:               firstNonEmpty(node.Label, node.Kind, node.ID, key),
 			Unit:                node.Unit,
+			ScaleDomain:         node.ScaleDomain,
+			AggregationBasis:    node.AggregationBasis,
 			ZoneName:            node.ZoneName,
 			ServiceKind:         node.ServiceKind,
 			PathType:            node.PathType,
@@ -832,6 +2025,8 @@ func addEnergyExplanationSummaryNode(groups map[string]*EnergyExplanationSummary
 		item = groups[key]
 	}
 	item.Value = roundedEnergyNumber(item.Value + value)
+	item.RawValue = roundedEnergyNumber(item.RawValue + node.RawValue)
+	item.AllocatedValue = roundedEnergyNumber(item.AllocatedValue + node.AllocatedValue)
 	item.Sign = mergeEnergyExplanationSummarySign(item.Sign, node.Sign)
 	item.SourceIDs = appendUniqueStrings(item.SourceIDs, node.SourceIDs...)
 }
@@ -1036,20 +2231,31 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 		}
 		existing.node.Value = roundedEnergyNumber(existing.node.Value + node.Value)
 		existing.node.SignedValue = roundedEnergyNumber(existing.node.SignedValue + node.SignedValue)
+		existing.node.RawValue = roundedEnergyNumber(existing.node.RawValue + node.RawValue)
+		existing.node.EffectiveValue = roundedEnergyNumber(existing.node.EffectiveValue + node.EffectiveValue)
+		if existing.node.RawValue != 0 && existing.node.EffectiveValue != 0 {
+			existing.node.Multiplier = roundedEnergyNumber(existing.node.EffectiveValue / existing.node.RawValue)
+		}
 		existing.node.DisplayValue = roundedEnergyNumber(existing.node.DisplayValue + node.DisplayValue)
 		existing.node.SourceIDs = appendUniqueStrings(existing.node.SourceIDs, node.SourceIDs...)
+		existing.node.RelatedEntityIDs = appendUniqueStrings(existing.node.RelatedEntityIDs, node.RelatedEntityIDs...)
 		existing.node.RelatedPathIDs = appendUniqueStrings(existing.node.RelatedPathIDs, node.RelatedPathIDs...)
+		if existing.node.ThermalComponent != node.ThermalComponent {
+			existing.node.ThermalComponent = "combined"
+		}
 		if existing.node.PathType == "" {
 			existing.node.PathType = node.PathType
 		}
 	}
 	for _, item := range series {
+		item = canonicalEnergyExplanationSeries(item)
 		value := valueFor(item)
 		if value == 0 {
 			continue
 		}
-		switch item.Level {
-		case "energy":
+		rawValue, effectiveValue, effectiveMultiplier := energyExplanationNodeAccounting(item, value)
+		switch item.Stage {
+		case "carrier", "end_use", "support":
 			nodeID := energyExplanationEnergyNodeID(item)
 			addNode(EnergyExplanationNode{
 				ID:                  nodeID,
@@ -1057,19 +2263,23 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 				Kind:                item.Kind,
 				Label:               item.Label,
 				Value:               value,
+				RawValue:            rawValue,
+				EffectiveValue:      effectiveValue,
+				Multiplier:          effectiveMultiplier,
 				Unit:                item.Unit,
 				Period:              period,
 				Carrier:             item.Carrier,
 				EndUse:              item.EndUse,
+				ZoneName:            item.ZoneName,
 				MeterHierarchyLevel: item.MeterHierarchyLevel,
 				Basis:               item.Basis,
-				SourceIDs:           item.SourceIDs,
+				SourceIDs:           appendUniqueStrings(item.SourceIDs, item.DriverInputSourceIDs...),
 			})
-			if strings.HasSuffix(item.Kind, ".total") {
+			if item.Stage == "carrier" {
 				facilityByCarrier[item.Carrier] = nodeID
 				facilityValueByCarrier[item.Carrier] += value
 				facilitySourcesByCarrier[item.Carrier] = appendUniqueStrings(facilitySourcesByCarrier[item.Carrier], item.SourceIDs...)
-			} else if energyExplanationIsSupportEndUse(item) {
+			} else if item.Stage == "support" {
 				supportNodesByCarrier[item.Carrier] = appendUniqueStrings(supportNodesByCarrier[item.Carrier], nodeID)
 			} else {
 				endUseValueByCarrier[item.Carrier] += value
@@ -1079,19 +2289,22 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 		case "load":
 			nodeID := energyExplanationLoadNodeID(item)
 			addNode(EnergyExplanationNode{
-				ID:          nodeID,
-				Level:       "load",
-				Kind:        item.Kind,
-				Label:       item.Label,
-				Value:       value,
-				Unit:        item.Unit,
-				Period:      period,
-				ZoneName:    item.ZoneName,
-				LoopName:    item.LoopName,
-				ServiceKind: item.ServiceKind,
-				PathType:    item.PathType,
-				Basis:       item.Basis,
-				SourceIDs:   item.SourceIDs,
+				ID:             nodeID,
+				Level:          "load",
+				Kind:           item.Kind,
+				Label:          item.Label,
+				Value:          value,
+				RawValue:       rawValue,
+				EffectiveValue: effectiveValue,
+				Multiplier:     effectiveMultiplier,
+				Unit:           item.Unit,
+				Period:         period,
+				ZoneName:       item.ZoneName,
+				LoopName:       item.LoopName,
+				ServiceKind:    item.ServiceKind,
+				PathType:       item.PathType,
+				Basis:          item.Basis,
+				SourceIDs:      item.SourceIDs,
 			})
 			loadNodesByService[item.ServiceKind] = appendUniqueStrings(loadNodesByService[item.ServiceKind], nodeID)
 			if item.ZoneName != "" && item.ServiceKind != "" {
@@ -1099,8 +2312,13 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 				loadNodesByZoneService[key] = appendUniqueStrings(loadNodesByZoneService[key], nodeID)
 				zoneLoadNodesByService[item.ServiceKind] = appendUniqueStrings(zoneLoadNodesByService[item.ServiceKind], nodeID)
 			}
-		case "heat":
-			nodeID := energyExplanationHeatNodeID(item)
+		case "driver":
+			if item.DriverSourceRole != "" && item.DriverSourceRole != energyDriverSourceRoleMainFlow {
+				// Reconciliation and context series remain available to the
+				// period accounting pass below, but never become additive graph
+				// nodes or driver-to-load links.
+				continue
+			}
 			signMultiplier := item.heatSignMultiplier
 			if signMultiplier == 0 {
 				signMultiplier = 1
@@ -1113,22 +2331,34 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 				sign = "negative"
 				serviceKind = "heating"
 			}
+			nodeID := energyExplanationHeatNodeID(item)
+			if item.DriverCategory != "" && item.HeatSign == "" {
+				nodeID += "." + sign
+			}
 			addNode(EnergyExplanationNode{
-				ID:           nodeID,
-				Level:        "heat",
-				Kind:         item.Kind,
-				Label:        item.Label,
-				Value:        displayValue,
-				SignedValue:  signedValue,
-				DisplayValue: displayValue,
-				Unit:         item.Unit,
-				Period:       period,
-				ZoneName:     item.ZoneName,
-				ServiceKind:  serviceKind,
-				HeatCategory: item.HeatCategory,
-				Sign:         sign,
-				Basis:        "derived_balance",
-				SourceIDs:    item.SourceIDs,
+				ID:                 nodeID,
+				Level:              "heat",
+				Kind:               item.Kind,
+				Label:              item.Label,
+				Value:              displayValue,
+				SignedValue:        signedValue,
+				RawValue:           math.Abs(rawValue),
+				EffectiveValue:     displayValue,
+				Multiplier:         effectiveMultiplier,
+				DisplayValue:       displayValue,
+				Unit:               item.Unit,
+				Period:             period,
+				ZoneName:           item.ZoneName,
+				ServiceKind:        serviceKind,
+				DriverCategory:     item.DriverCategory,
+				ThermalComponent:   item.ThermalComponent,
+				HeatCategory:       item.HeatCategory,
+				Sign:               sign,
+				Basis:              "derived_balance",
+				RelatedEntityIDs:   appendUniqueStrings(nil, item.RelatedEntityIDs...),
+				SourceIDs:          appendUniqueStrings(item.SourceIDs, item.DriverInputSourceIDs...),
+				driverZoneOnly:     item.driverZoneOnly,
+				driverBuildingOnly: item.driverBuildingOnly,
 			})
 			if target, ok := energyExplanationInternalGainEnergyTarget(item); ok {
 				internalGainTargetByHeatNode[nodeID] = target
@@ -1521,6 +2751,7 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 			})
 		}
 	}
+	reconciliation, warnings = appendEnergyDriverPeriodAccounting(period, series, valueFor, reconciliation, warnings)
 
 	outNodes := make([]EnergyExplanationNode, 0, len(nodes))
 	for _, node := range nodes {
@@ -1545,6 +2776,14 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 		Warnings:       warnings,
 		MappedPercent:  mappedPercent,
 	}
+}
+
+func energyExplanationNodeAccounting(item energyExplanationSeries, effectiveValue float64) (float64, float64, float64) {
+	if !item.multiplierApplied {
+		return 0, 0, 0
+	}
+	multiplier := positiveEnergyMultiplier(item.EffectiveMultiplier)
+	return energyExplanationRawValue(effectiveValue, multiplier), effectiveValue, multiplier
 }
 
 func addAllocatedZoneLoadShareEdges(edges *[]EnergyExplanationEdge, period string, nodes map[string]*energyExplanationNodeAccumulator, fromID string, loadIDs []string, rule EnergyRelationshipRule) bool {
@@ -1609,6 +2848,88 @@ func applyEnergyExplanationServicePathLoadShareAllocation(explanation EnergyExpl
 		explanation.Periods[periodIndex].Edges = servicePathLoadShareAllocatedEdges(explanation.Periods[periodIndex].Nodes, explanation.Periods[periodIndex].Edges, rule)
 	}
 	return explanation
+}
+
+func applyEnergyExplanationV1ServicePathLoadShareAllocation(explanation EnergyExplanationV1) EnergyExplanationV1 {
+	if explanation.AllocationPolicy != PurposeAllocationPolicyByServicePathLoadShare {
+		return explanation
+	}
+	rule := energyRelationshipRuleByID(energyRelationshipRuleAllocatedServicePathLoad)
+	explanation.Edges = servicePathLoadShareAllocatedEdges(explanation.Nodes, explanation.Edges, rule)
+	for periodIndex := range explanation.Periods {
+		explanation.Periods[periodIndex].Edges = servicePathLoadShareAllocatedEdges(explanation.Periods[periodIndex].Nodes, explanation.Periods[periodIndex].Edges, rule)
+	}
+	if explanation.canonicalMonthlyBasis {
+		explanation.Edges = annualServicePathAllocationEdgesFromMonthly(explanation.Edges, explanation.Periods, rule.ID)
+		for periodIndex := range explanation.Periods {
+			if strings.EqualFold(explanation.Periods[periodIndex].Kind, "annual") || strings.EqualFold(explanation.Periods[periodIndex].ID, "annual") {
+				explanation.Periods[periodIndex].Edges = append([]EnergyExplanationEdge(nil), explanation.Edges...)
+			}
+		}
+	}
+	return explanation
+}
+
+func annualServicePathAllocationEdgesFromMonthly(annual []EnergyExplanationEdge, periods []EnergyPeriod, ruleID string) []EnergyExplanationEdge {
+	rule := energyRelationshipRuleByID(ruleID)
+	annualFormula := strings.TrimSpace(rule.Formula + "; annual sum of monthly service path allocations")
+	monthlyByKey := map[string]EnergyExplanationEdge{}
+	monthlyOrder := []string{}
+	for _, period := range periods {
+		if !strings.EqualFold(period.Kind, "monthly") {
+			continue
+		}
+		for _, edge := range period.Edges {
+			if edge.RuleID != ruleID || !strings.EqualFold(edge.Relation, "allocation") {
+				continue
+			}
+			key := energyExplanationEdgeAggregationKey(edge)
+			current, exists := monthlyByKey[key]
+			if !exists {
+				edge.Period = "annual"
+				edge.ID = energyExplanationAnnualEdgeID(edge)
+				edge.Formula = annualFormula
+				monthlyByKey[key] = edge
+				monthlyOrder = append(monthlyOrder, key)
+				continue
+			}
+			current.Value = roundedEnergyNumber(current.Value + edge.Value)
+			current.SignedValue = roundedEnergyNumber(current.SignedValue + edge.SignedValue)
+			current.DisplayValue = roundedEnergyNumber(current.DisplayValue + edge.DisplayValue)
+			current.SourceIDs = appendUniqueStrings(current.SourceIDs, edge.SourceIDs...)
+			current.RelatedPathIDs = appendUniqueStrings(current.RelatedPathIDs, edge.RelatedPathIDs...)
+			current.Formula = annualFormula
+			monthlyByKey[key] = current
+		}
+	}
+	if len(monthlyByKey) == 0 {
+		return annual
+	}
+	out := make([]EnergyExplanationEdge, 0, len(annual)+len(monthlyByKey))
+	emitted := map[string]bool{}
+	for _, edge := range annual {
+		if edge.RuleID != ruleID || !strings.EqualFold(edge.Relation, "allocation") {
+			out = append(out, edge)
+			continue
+		}
+		key := energyExplanationEdgeAggregationKey(edge)
+		monthly, exists := monthlyByKey[key]
+		if !exists {
+			out = append(out, edge)
+			continue
+		}
+		if !emitted[key] {
+			out = append(out, monthly)
+			emitted[key] = true
+		}
+	}
+	for _, key := range monthlyOrder {
+		if !emitted[key] {
+			out = append(out, monthlyByKey[key])
+		}
+	}
+	sortEnergyExplanationEdges(out)
+	return out
 }
 
 func servicePathLoadShareAllocatedEdges(nodes []EnergyExplanationNode, edges []EnergyExplanationEdge, rule EnergyRelationshipRule) []EnergyExplanationEdge {
@@ -1742,7 +3063,7 @@ func servicePathLoadShareAllocatedGroup(group []EnergyExplanationEdge, nodeByID 
 	return allocated
 }
 
-func sqlEnergyExplanationDictionaries(db *sql.DB, sourceFile string) ([]energyExplanationDictionary, error) {
+func sqlEnergyExplanationDictionaries(db *sql.DB, sourceFile string, plan *PurposeRunPlan) ([]energyExplanationDictionary, error) {
 	columns, err := sqlTableColumns(db, "ReportDataDictionary")
 	if err != nil {
 		return nil, err
@@ -1794,6 +3115,12 @@ ORDER BY rdd.%s`, indexExpr, keyExpr, nameExpr, unitsExpr, isMeterExpr, frequenc
 			dictionary.meter = &copy
 			dictionary.isMeter = true
 		} else if def, ok := energyVariableAliasDefinitionForName(row.name); ok {
+			// Zone direct-use variables are part of the new Energy Path capture
+			// contract. Keep legacy parser results stable unless the run plan
+			// explicitly selected that contract.
+			if def.HierarchyLevel == "zone_direct_use" && !energyExplanationPlanUsesEnergyPath(plan) {
+				continue
+			}
 			copy := def
 			dictionary.energy = &copy
 		} else if def, ok := energyLoadAliasDefinitionForName(row.name); ok {
@@ -1841,6 +3168,10 @@ func energyExplanationSeriesForBuilder(builder *energyExplanationSeriesBuilder, 
 	}
 	if dictionary.energy != nil {
 		def := dictionary.energy
+		zoneName := ""
+		if def.HierarchyLevel == "zone_direct_use" {
+			zoneName = strings.TrimSpace(dictionary.row.keyValue)
+		}
 		return energyExplanationSeries{
 			Level:               "energy",
 			Kind:                def.Kind,
@@ -1849,6 +3180,7 @@ func energyExplanationSeriesForBuilder(builder *energyExplanationSeriesBuilder, 
 			Carrier:             def.Carrier,
 			EndUse:              def.EndUse,
 			MeterHierarchyLevel: def.HierarchyLevel,
+			ZoneName:            zoneName,
 			Basis:               "measured_energy_variable",
 			SourceIDs:           []string{sourceID},
 			Total:               roundedEnergyNumber(builder.total),
@@ -1892,11 +3224,23 @@ func energyExplanationSeriesForBuilder(builder *energyExplanationSeriesBuilder, 
 	}
 	def := dictionary.heat
 	zoneName := strings.TrimSpace(dictionary.row.keyValue)
-	if def.ObjectScoped {
+	if def.ObjectScoped || def.SurfaceScoped {
 		zoneName = ""
 	}
 	heatSign := energyHeatAliasExplicitSign(dictionary.row.name)
 	signMultiplier := energyHeatSignMultiplier(heatSign)
+	heatName := normalizeEnergyOutputName(dictionary.row.name)
+	if strings.Contains(heatName, "surface inside face convection") {
+		// EnergyPlus reports this from the surface-face perspective: positive
+		// means zone air gives heat to the surface. Main drivers use the
+		// opposite, surface-to-zone-air sign convention.
+		signMultiplier *= -1
+	}
+	if strings.Contains(heatName, "zone air heat balance air energy storage") {
+		// Zone heat balance reports storage on the equation's storage side.
+		// Driver pressure is the opposite remaining contribution: -storage.
+		signMultiplier *= -1
+	}
 	return energyExplanationSeries{
 		Level:              "heat",
 		Kind:               def.Kind,
@@ -1904,6 +3248,8 @@ func energyExplanationSeriesForBuilder(builder *energyExplanationSeriesBuilder, 
 		Unit:               builder.unit,
 		ZoneName:           zoneName,
 		HeatCategory:       def.HeatCategory,
+		ThermalComponent:   energyHeatThermalComponent(dictionary.row.name),
+		SurfaceScoped:      def.SurfaceScoped,
 		HeatSign:           heatSign,
 		Basis:              "derived_balance",
 		SourceIDs:          []string{sourceID},
@@ -2028,22 +3374,7 @@ ORDER BY %s`,
 			continue
 		}
 		sourceID := energyExplanationTabularSourceID(tableName, rowName, columnName)
-		sources = append(sources, EnergyDataSource{
-			ID:                 sourceID,
-			SourceType:         "sql_tabular",
-			IsMeter:            true,
-			KeyValue:           alias,
-			Name:               alias,
-			Units:              strings.TrimSpace(units),
-			SourceUnit:         strings.TrimSpace(units),
-			NormalizedUnit:     unit,
-			ReportingFrequency: "Annual",
-			AggregationMethod:  "tabular_annual_value",
-			TableName:          strings.TrimSpace(tableName),
-			RowName:            strings.TrimSpace(rowName),
-			ColumnName:         tabularColumnLabel(columnName, units),
-		})
-		series = append(series, energyExplanationSeries{
+		item := canonicalEnergyExplanationSeries(energyExplanationSeries{
 			Level:               "energy",
 			Kind:                def.Kind,
 			Label:               def.Label,
@@ -2059,6 +3390,29 @@ ORDER BY %s`,
 			sourceFrequency:     "Annual",
 			sourcePriority:      energyAliasPriority(alias, def.Aliases),
 		})
+		// The tabular fallback is deliberately narrower than meter parsing:
+		// annual tables can supply only carrier and end-use totals. Production,
+		// storage, driver, and load series need a time-series source so they are
+		// never synthesized at the canonical parser boundary.
+		if item.Stage != "carrier" && item.Stage != "end_use" {
+			continue
+		}
+		sources = append(sources, EnergyDataSource{
+			ID:                 sourceID,
+			SourceType:         "sql_tabular",
+			IsMeter:            true,
+			KeyValue:           alias,
+			Name:               alias,
+			Units:              strings.TrimSpace(units),
+			SourceUnit:         strings.TrimSpace(units),
+			NormalizedUnit:     unit,
+			ReportingFrequency: "Annual",
+			AggregationMethod:  "tabular_annual_value",
+			TableName:          strings.TrimSpace(tableName),
+			RowName:            strings.TrimSpace(rowName),
+			ColumnName:         tabularColumnLabel(columnName, units),
+		})
+		series = append(series, item)
 		seen[groupKey] = true
 	}
 	if err := rows.Err(); err != nil {
@@ -2197,6 +3551,19 @@ func energyExplanationSupportsDailyPeriods(dictionary energyExplanationDictionar
 	}
 }
 
+func energyExplanationSupportsMonthlyPeriods(dictionary energyExplanationDictionary) bool {
+	return energyExplanationReportingFrequencySupportsMonthly(dictionary.reportingFrequency)
+}
+
+func energyExplanationReportingFrequencySupportsMonthly(frequency string) bool {
+	switch strings.ToLower(canonicalPurposeFrequency(frequency)) {
+	case "runperiod", "annual":
+		return false
+	default:
+		return true
+	}
+}
+
 func energyExplanationSupportsHourlyPeriods(dictionary energyExplanationDictionary) bool {
 	frequency := strings.TrimSpace(dictionary.reportingFrequency)
 	if frequency == "" {
@@ -2312,25 +3679,41 @@ func energyExplanationIntegratesRate(dictionary energyExplanationDictionary) boo
 }
 
 type sqlTimeIntervalRow struct {
-	index   int64
-	minutes int
-	valid   bool
+	index         int64
+	minutes       int
+	month         int
+	intervalType  string
+	hours         float64
+	valid         bool
+	explicitHours bool
+}
+
+type sqlTimeIntervalDetails struct {
+	hours    map[int64]float64
+	explicit map[int64]bool
 }
 
 func sqlTimeIntervalHours(db *sql.DB) (map[int64]float64, error) {
+	details, err := sqlTimeIntervalDetailsForDatabase(db)
+	return details.hours, err
+}
+
+func sqlTimeIntervalDetailsForDatabase(db *sql.DB) (sqlTimeIntervalDetails, error) {
 	columns, err := sqlTableColumns(db, "Time")
 	if err != nil {
-		return nil, err
+		return sqlTimeIntervalDetails{}, err
 	}
 	if !sqlHasColumns(columns, "TimeIndex") {
-		return map[int64]float64{}, nil
+		return sqlTimeIntervalDetails{hours: map[int64]float64{}, explicit: map[int64]bool{}}, nil
 	}
 	query := fmt.Sprintf(`
 SELECT %s AS time_index,
        %s AS month,
        %s AS day,
        %s AS hour,
-       %s AS minute
+       %s AS minute,
+       %s AS interval_minutes,
+       %s AS interval_type
 FROM %s
 ORDER BY %s`,
 		quoteSQLiteIdentifier(columns[normalizeSQLColumnName("TimeIndex")]),
@@ -2338,31 +3721,49 @@ ORDER BY %s`,
 		sqlTextColumnExpr(columns, "Day", "''"),
 		sqlTextColumnExpr(columns, "Hour", "''"),
 		sqlTextColumnExpr(columns, "Minute", "''"),
+		sqlCastTextColumnExpr(columns, "Interval", "''"),
+		sqlCastTextColumnExpr(columns, "IntervalType", "''"),
 		quoteSQLiteIdentifier("Time"),
 		quoteSQLiteIdentifier(columns[normalizeSQLColumnName("TimeIndex")]),
 	)
 	rows, err := db.Query(query)
 	if err != nil {
-		return nil, err
+		return sqlTimeIntervalDetails{}, err
 	}
 	defer rows.Close()
 	var values []sqlTimeIntervalRow
 	for rows.Next() {
 		var index int64
-		var monthText, dayText, hourText, minuteText string
-		if err := rows.Scan(&index, &monthText, &dayText, &hourText, &minuteText); err != nil {
+		var monthText, dayText, hourText, minuteText, intervalText, intervalType string
+		if err := rows.Scan(&index, &monthText, &dayText, &hourText, &minuteText, &intervalText, &intervalType); err != nil {
 			continue
 		}
 		minutes, ok := sqlTimeOrdinalMinutes(monthText, dayText, hourText, minuteText)
-		values = append(values, sqlTimeIntervalRow{index: index, minutes: minutes, valid: ok})
+		month, _ := parseSQLTimeInt(monthText)
+		intervalMinutes, intervalErr := strconv.ParseFloat(strings.TrimSpace(intervalText), 64)
+		explicitHours := intervalErr == nil && intervalMinutes > 0 && !math.IsNaN(intervalMinutes) && !math.IsInf(intervalMinutes, 0)
+		values = append(values, sqlTimeIntervalRow{
+			index:         index,
+			minutes:       minutes,
+			month:         month,
+			intervalType:  strings.TrimSpace(intervalType),
+			hours:         intervalMinutes / 60,
+			valid:         ok,
+			explicitHours: explicitHours,
+		})
 	}
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return sqlTimeIntervalDetails{}, err
 	}
-	out := map[int64]float64{}
+	out := sqlTimeIntervalDetails{hours: map[int64]float64{}, explicit: map[int64]bool{}}
 	for index, row := range values {
 		hours := 1.0
-		if row.valid {
+		if row.explicitHours {
+			hours = row.hours
+			out.explicit[row.index] = true
+		} else if intervalTypeHours, ok := sqlTimeIntervalTypeHours(row.intervalType, row.month); ok {
+			hours = intervalTypeHours
+		} else if row.valid {
 			if index > 0 && values[index-1].valid {
 				hours = float64(row.minutes-values[index-1].minutes) / 60
 			} else if row.minutes > 0 {
@@ -2374,9 +3775,56 @@ ORDER BY %s`,
 		if hours <= 0 || math.IsNaN(hours) || math.IsInf(hours, 0) {
 			hours = 1
 		}
-		out[row.index] = hours
+		out.hours[row.index] = hours
 	}
 	return out, nil
+}
+
+func sqlTimeIntervalTypeHours(intervalType string, month int) (float64, bool) {
+	switch normalizeEnergyOutputName(intervalType) {
+	case "month", "monthly":
+		return energyExplanationMonthHours(month), true
+	case "day", "daily":
+		return 24, true
+	case "hour", "hourly":
+		return 1, true
+	default:
+		return 0, false
+	}
+}
+
+func energyExplanationRateIntervalHours(dictionary energyExplanationDictionary, row SQLSeriesRow, derivedHours float64, explicit bool) float64 {
+	if explicit && derivedHours > 0 && !math.IsNaN(derivedHours) && !math.IsInf(derivedHours, 0) {
+		return derivedHours
+	}
+	frequency := normalizeEnergyOutputName(dictionary.reportingFrequency)
+	if frequency == "" {
+		frequency = normalizeEnergyOutputName(row.IntervalType)
+	}
+	switch frequency {
+	case "month", "monthly":
+		month := 0
+		if row.Month.Valid {
+			month = int(row.Month.Int64)
+		}
+		return energyExplanationMonthHours(month)
+	case "day", "daily":
+		return 24
+	case "hour", "hourly":
+		return 1
+	case "annual", "runperiod", "run period":
+		return 8760
+	default:
+		return derivedHours
+	}
+}
+
+func energyExplanationMonthHours(month int) float64 {
+	monthDays := [...]int{0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31}
+	if month >= 1 && month < len(monthDays) {
+		return float64(monthDays[month] * 24)
+	}
+	return 730
 }
 
 func sqlTimeOrdinalMinutes(monthText string, dayText string, hourText string, minuteText string) (int, bool) {
@@ -2570,15 +4018,18 @@ func energyRelationshipRuleByID(id string) EnergyRelationshipRule {
 func energyMeterAliasCatalog() []energyMeterAliasDefinition {
 	return []energyMeterAliasDefinition{
 		{Kind: "energy.electricity.total", Label: "Electricity total", Carrier: "electricity", EndUse: "total", HierarchyLevel: "facility_total", FacilityTotal: true, Aliases: []string{"Electricity:Facility"}},
-		{Kind: "energy.gas.total", Label: "Natural gas total", Carrier: "natural_gas", EndUse: "total", HierarchyLevel: "facility_total", FacilityTotal: true, Aliases: []string{"NaturalGas:Facility", "Gas:Facility"}},
+		{Kind: "energy.gas.total", Label: "Natural gas total", Carrier: "natural_gas", EndUse: "total", HierarchyLevel: "facility_total", FacilityTotal: true, Aliases: []string{"NaturalGas:Facility", "Gas:Facility"}, OutputRequestAliases: []string{"NaturalGas:Facility", "Gas:Facility"}},
+		{Kind: "energy.gasoline.total", Label: "Gasoline total", Carrier: "gasoline", EndUse: "total", HierarchyLevel: "facility_total", FacilityTotal: true, Aliases: []string{"Gasoline:Facility"}},
+		{Kind: "energy.diesel.total", Label: "Diesel total", Carrier: "diesel", EndUse: "total", HierarchyLevel: "facility_total", FacilityTotal: true, Aliases: []string{"Diesel:Facility"}},
+		{Kind: "energy.coal.total", Label: "Coal total", Carrier: "coal", EndUse: "total", HierarchyLevel: "facility_total", FacilityTotal: true, Aliases: []string{"Coal:Facility"}},
 		{Kind: "energy.district_cooling.total", Label: "District cooling total", Carrier: "district_cooling", EndUse: "total", HierarchyLevel: "facility_total", FacilityTotal: true, Aliases: []string{"DistrictCooling:Facility"}},
-		{Kind: "energy.district_heating.total", Label: "District heating total", Carrier: "district_heating", EndUse: "total", HierarchyLevel: "facility_total", FacilityTotal: true, Aliases: []string{"DistrictHeating:Facility"}},
+		{Kind: "energy.district_heating.total", Label: "District heating total", Carrier: "district_heating", EndUse: "total", HierarchyLevel: "facility_total", FacilityTotal: true, Aliases: []string{"DistrictHeatingWater:Facility", "DistrictHeating:Facility"}, LegacyAliases: []string{"DistrictHeating:Facility"}, OutputRequestAliases: []string{"DistrictHeatingWater:Facility", "DistrictHeating:Facility"}},
 		{Kind: "energy.fuel_oil_1.total", Label: "Fuel oil #1 total", Carrier: "fuel_oil_1", EndUse: "total", HierarchyLevel: "facility_total", FacilityTotal: true, Aliases: []string{"FuelOilNo1:Facility"}},
 		{Kind: "energy.fuel_oil_2.total", Label: "Fuel oil #2 total", Carrier: "fuel_oil_2", EndUse: "total", HierarchyLevel: "facility_total", FacilityTotal: true, Aliases: []string{"FuelOilNo2:Facility"}},
 		{Kind: "energy.propane.total", Label: "Propane total", Carrier: "propane", EndUse: "total", HierarchyLevel: "facility_total", FacilityTotal: true, Aliases: []string{"Propane:Facility"}},
 		{Kind: "energy.other_fuel_1.total", Label: "Other fuel 1 total", Carrier: "other_fuel_1", EndUse: "total", HierarchyLevel: "facility_total", FacilityTotal: true, Aliases: []string{"OtherFuel1:Facility"}},
 		{Kind: "energy.other_fuel_2.total", Label: "Other fuel 2 total", Carrier: "other_fuel_2", EndUse: "total", HierarchyLevel: "facility_total", FacilityTotal: true, Aliases: []string{"OtherFuel2:Facility"}},
-		{Kind: "energy.steam.total", Label: "Steam total", Carrier: "steam", EndUse: "total", HierarchyLevel: "facility_total", FacilityTotal: true, Aliases: []string{"Steam:Facility"}},
+		{Kind: "energy.steam.total", Label: "Steam total", Carrier: "steam", EndUse: "total", HierarchyLevel: "facility_total", FacilityTotal: true, Aliases: []string{"DistrictHeatingSteam:Facility", "Steam:Facility"}, LegacyAliases: []string{"Steam:Facility"}, OutputRequestAliases: []string{"DistrictHeatingSteam:Facility", "Steam:Facility"}},
 		{Kind: "energy.water.total", Label: "Water total", Carrier: "water", EndUse: "water", HierarchyLevel: "facility_total", FacilityTotal: true, Aliases: []string{"Water:Facility"}},
 		{Kind: "energy.cooling", Label: "Cooling energy", Carrier: "electricity", EndUse: "cooling", HierarchyLevel: "broad_end_use", Aliases: []string{"Cooling:Electricity", "Electricity:Cooling"}},
 		{Kind: "energy.heating", Label: "Heating energy", Carrier: "electricity", EndUse: "heating", HierarchyLevel: "broad_end_use", Aliases: []string{"Heating:Electricity", "Electricity:Heating"}},
@@ -2593,10 +4044,19 @@ func energyMeterAliasCatalog() []energyMeterAliasDefinition {
 		{Kind: "energy.refrigeration", Label: "Refrigeration", Carrier: "electricity", EndUse: "refrigeration", HierarchyLevel: "broad_end_use", Aliases: []string{"Refrigeration:Electricity", "Electricity:Refrigeration"}},
 		{Kind: "energy.generators", Label: "Generators / onsite production", Carrier: "electricity", EndUse: "generators", HierarchyLevel: "broad_end_use", Aliases: []string{"Generators:ElectricityProduced", "ElectricityProduced:Facility"}},
 		{Kind: "energy.cooling", Label: "District cooling", Carrier: "district_cooling", EndUse: "cooling", HierarchyLevel: "broad_end_use", Aliases: []string{"Cooling:DistrictCooling", "DistrictCooling:Cooling"}},
-		{Kind: "energy.heating", Label: "Natural gas heating", Carrier: "natural_gas", EndUse: "heating", HierarchyLevel: "broad_end_use", Aliases: []string{"Heating:NaturalGas", "NaturalGas:Heating"}},
-		{Kind: "energy.water_systems", Label: "Natural gas water systems", Carrier: "natural_gas", EndUse: "water_systems", HierarchyLevel: "broad_end_use", Aliases: []string{"WaterSystems:NaturalGas", "NaturalGas:WaterSystems"}},
-		{Kind: "energy.interior_equipment", Label: "Natural gas interior equipment", Carrier: "natural_gas", EndUse: "interior_equipment", HierarchyLevel: "broad_end_use", Aliases: []string{"InteriorEquipment:NaturalGas", "NaturalGas:InteriorEquipment"}},
-		{Kind: "energy.heating", Label: "District heating", Carrier: "district_heating", EndUse: "heating", HierarchyLevel: "broad_end_use", Aliases: []string{"Heating:DistrictHeating", "DistrictHeating:Heating"}},
+		{Kind: "energy.heating", Label: "Natural gas heating", Carrier: "natural_gas", EndUse: "heating", HierarchyLevel: "broad_end_use", Aliases: []string{"Heating:NaturalGas", "Heating:Gas", "NaturalGas:Heating", "Gas:Heating"}, LegacyAliases: []string{"NaturalGas:Heating", "Gas:Heating"}, OutputRequestAliases: []string{"Heating:NaturalGas", "Heating:Gas"}},
+		{Kind: "energy.heating", Label: "Gasoline heating", Carrier: "gasoline", EndUse: "heating", HierarchyLevel: "broad_end_use", Aliases: []string{"Heating:Gasoline", "Gasoline:Heating"}, LegacyAliases: []string{"Gasoline:Heating"}, OutputRequestAliases: []string{"Heating:Gasoline"}},
+		{Kind: "energy.heating", Label: "Diesel heating", Carrier: "diesel", EndUse: "heating", HierarchyLevel: "broad_end_use", Aliases: []string{"Heating:Diesel", "Diesel:Heating"}, LegacyAliases: []string{"Diesel:Heating"}, OutputRequestAliases: []string{"Heating:Diesel"}},
+		{Kind: "energy.heating", Label: "Coal heating", Carrier: "coal", EndUse: "heating", HierarchyLevel: "broad_end_use", Aliases: []string{"Heating:Coal", "Coal:Heating"}, LegacyAliases: []string{"Coal:Heating"}, OutputRequestAliases: []string{"Heating:Coal"}},
+		{Kind: "energy.heating", Label: "Fuel oil #1 heating", Carrier: "fuel_oil_1", EndUse: "heating", HierarchyLevel: "broad_end_use", Aliases: []string{"Heating:FuelOilNo1", "FuelOilNo1:Heating"}, LegacyAliases: []string{"FuelOilNo1:Heating"}, OutputRequestAliases: []string{"Heating:FuelOilNo1"}},
+		{Kind: "energy.heating", Label: "Fuel oil #2 heating", Carrier: "fuel_oil_2", EndUse: "heating", HierarchyLevel: "broad_end_use", Aliases: []string{"Heating:FuelOilNo2", "FuelOilNo2:Heating"}, LegacyAliases: []string{"FuelOilNo2:Heating"}, OutputRequestAliases: []string{"Heating:FuelOilNo2"}},
+		{Kind: "energy.heating", Label: "Propane heating", Carrier: "propane", EndUse: "heating", HierarchyLevel: "broad_end_use", Aliases: []string{"Heating:Propane", "Propane:Heating"}, LegacyAliases: []string{"Propane:Heating"}, OutputRequestAliases: []string{"Heating:Propane"}},
+		{Kind: "energy.heating", Label: "Other fuel 1 heating", Carrier: "other_fuel_1", EndUse: "heating", HierarchyLevel: "broad_end_use", Aliases: []string{"Heating:OtherFuel1", "OtherFuel1:Heating"}, LegacyAliases: []string{"OtherFuel1:Heating"}, OutputRequestAliases: []string{"Heating:OtherFuel1"}},
+		{Kind: "energy.heating", Label: "Other fuel 2 heating", Carrier: "other_fuel_2", EndUse: "heating", HierarchyLevel: "broad_end_use", Aliases: []string{"Heating:OtherFuel2", "OtherFuel2:Heating"}, LegacyAliases: []string{"OtherFuel2:Heating"}, OutputRequestAliases: []string{"Heating:OtherFuel2"}},
+		{Kind: "energy.water_systems", Label: "Natural gas water systems", Carrier: "natural_gas", EndUse: "water_systems", HierarchyLevel: "broad_end_use", Aliases: []string{"WaterSystems:NaturalGas", "WaterSystems:Gas", "NaturalGas:WaterSystems", "Gas:WaterSystems"}, LegacyAliases: []string{"NaturalGas:WaterSystems", "Gas:WaterSystems"}, OutputRequestAliases: []string{"WaterSystems:NaturalGas", "WaterSystems:Gas"}},
+		{Kind: "energy.interior_equipment", Label: "Natural gas interior equipment", Carrier: "natural_gas", EndUse: "interior_equipment", HierarchyLevel: "broad_end_use", Aliases: []string{"InteriorEquipment:NaturalGas", "InteriorEquipment:Gas", "NaturalGas:InteriorEquipment", "Gas:InteriorEquipment"}, LegacyAliases: []string{"NaturalGas:InteriorEquipment", "Gas:InteriorEquipment"}, OutputRequestAliases: []string{"InteriorEquipment:NaturalGas", "InteriorEquipment:Gas"}},
+		{Kind: "energy.heating", Label: "District heating", Carrier: "district_heating", EndUse: "heating", HierarchyLevel: "broad_end_use", Aliases: []string{"Heating:DistrictHeatingWater", "Heating:DistrictHeating", "DistrictHeating:Heating"}, LegacyAliases: []string{"Heating:DistrictHeating", "DistrictHeating:Heating"}, OutputRequestAliases: []string{"Heating:DistrictHeatingWater", "Heating:DistrictHeating", "DistrictHeating:Heating"}},
+		{Kind: "energy.heating", Label: "District steam heating", Carrier: "steam", EndUse: "heating", HierarchyLevel: "broad_end_use", Aliases: []string{"Heating:DistrictHeatingSteam", "Heating:Steam", "Steam:Heating"}, LegacyAliases: []string{"Heating:Steam", "Steam:Heating"}, OutputRequestAliases: []string{"Heating:DistrictHeatingSteam", "Heating:Steam", "Steam:Heating"}},
 	}
 }
 
@@ -2604,6 +4064,8 @@ func energyLoadAliasCatalog() []energyLoadAliasDefinition {
 	return []energyLoadAliasDefinition{
 		{Kind: "load.zone_cooling", Label: "Zone cooling load", ServiceKind: "cooling", Scope: "zone", Aliases: []string{"Zone Air System Sensible Cooling Energy", "Zone Air System Sensible Cooling Rate", "Zone Ideal Loads Zone Sensible Cooling Energy", "Zone Ideal Loads Supply Air Total Cooling Energy"}},
 		{Kind: "load.zone_heating", Label: "Zone heating load", ServiceKind: "heating", Scope: "zone", Aliases: []string{"Zone Air System Sensible Heating Energy", "Zone Air System Sensible Heating Rate", "Zone Ideal Loads Zone Sensible Heating Energy", "Zone Ideal Loads Supply Air Total Heating Energy"}},
+		{Kind: "load.zone_latent_cooling", Label: "Zone latent cooling load", ServiceKind: "cooling", Scope: "zone", EnergyPathOnly: true, Aliases: []string{"Zone Air System Latent Cooling Energy", "Zone Air System Latent Cooling Rate"}},
+		{Kind: "load.zone_latent_heating", Label: "Zone latent heating load", ServiceKind: "heating", Scope: "zone", EnergyPathOnly: true, Aliases: []string{"Zone Air System Latent Heating Energy", "Zone Air System Latent Heating Rate"}},
 		{Kind: "load.zone_radiant_cooling", Label: "Radiant cooling load", ServiceKind: "cooling", Scope: "zone", Aliases: []string{"Zone Radiant HVAC Cooling Energy", "Zone Radiant HVAC Cooling Rate"}},
 		{Kind: "load.zone_radiant_heating", Label: "Radiant heating load", ServiceKind: "heating", Scope: "zone", Aliases: []string{"Zone Radiant HVAC Heating Energy", "Zone Radiant HVAC Heating Rate"}},
 		{Kind: "load.system_cooling", Label: "System cooling delivered", ServiceKind: "cooling", Scope: "system", Aliases: []string{"Cooling Coil Total Cooling Energy", "Cooling Coil Sensible Cooling Energy", "Cooling Coil Total Cooling Rate"}},
@@ -2611,15 +4073,18 @@ func energyLoadAliasCatalog() []energyLoadAliasDefinition {
 		{Kind: "load.plant_cooling", Label: "Plant cooling demand", ServiceKind: "cooling", Scope: "plant", Aliases: []string{"Plant Supply Side Cooling Demand Rate", "Plant Loop Cooling Demand Energy"}},
 		{Kind: "load.plant_heating", Label: "Plant heating demand", ServiceKind: "heating", Scope: "plant", Aliases: []string{"Plant Supply Side Heating Demand Rate", "Plant Loop Heating Demand Energy"}},
 		{Kind: "load.plant_unmet_or_residual", Label: "Plant unmet/residual demand", ServiceKind: "unmet_or_residual", Scope: "plant", Aliases: []string{"Plant Supply Side Unmet Demand Rate", "Plant Supply Side Not Distributed Demand Rate", "Cond Loop Demand Not Distributed"}},
-		{Kind: "load.zone_humidification", Label: "Zone humidification load", ServiceKind: "humidification", Scope: "zone", Aliases: []string{"Zone Ideal Loads Supply Air Latent Heating Energy", "Zone Ideal Loads Supply Air Latent Heating Rate", "Zone Ideal Loads Zone Latent Heating Energy", "Zone Ideal Loads Zone Latent Heating Rate", "Zone Ideal Loads Outdoor Air Latent Heating Energy", "Zone Ideal Loads Outdoor Air Latent Heating Rate"}},
-		{Kind: "load.zone_dehumidification", Label: "Zone dehumidification load", ServiceKind: "dehumidification", Scope: "zone", Aliases: []string{"Zone Ideal Loads Supply Air Latent Cooling Energy", "Zone Ideal Loads Supply Air Latent Cooling Rate", "Zone Ideal Loads Zone Latent Cooling Energy", "Zone Ideal Loads Zone Latent Cooling Rate", "Zone Ideal Loads Outdoor Air Latent Cooling Energy", "Zone Ideal Loads Outdoor Air Latent Cooling Rate"}},
-		{Kind: "load.ventilation_conditioning", Label: "Ventilation conditioning load", ServiceKind: "ventilation", Scope: "zone", Aliases: []string{"Zone Ideal Loads Outdoor Air Sensible Heating Energy", "Zone Ideal Loads Outdoor Air Sensible Heating Rate", "Zone Ideal Loads Outdoor Air Total Heating Energy", "Zone Ideal Loads Outdoor Air Total Heating Rate", "Zone Ideal Loads Outdoor Air Sensible Cooling Energy", "Zone Ideal Loads Outdoor Air Sensible Cooling Rate", "Zone Ideal Loads Outdoor Air Total Cooling Energy", "Zone Ideal Loads Outdoor Air Total Cooling Rate"}},
+		{Kind: "load.zone_humidification", Label: "Zone humidification load", ServiceKind: "humidification", Scope: "zone", Aliases: []string{"Zone Ideal Loads Supply Air Latent Heating Energy", "Zone Ideal Loads Supply Air Latent Heating Rate", "Zone Ideal Loads Zone Latent Heating Energy", "Zone Ideal Loads Zone Latent Heating Rate"}},
+		{Kind: "load.zone_dehumidification", Label: "Zone dehumidification load", ServiceKind: "dehumidification", Scope: "zone", Aliases: []string{"Zone Ideal Loads Supply Air Latent Cooling Energy", "Zone Ideal Loads Supply Air Latent Cooling Rate", "Zone Ideal Loads Zone Latent Cooling Energy", "Zone Ideal Loads Zone Latent Cooling Rate"}},
 	}
 }
 
 func energyHeatAliasCatalog() []energyHeatAliasDefinition {
-	return []energyHeatAliasDefinition{
-		{Kind: "heat.internal_convective", Label: "Internal convective gains", HeatCategory: "internal_gains", Aliases: []string{"Zone Air Heat Balance Internal Convective Heat Gain Rate"}},
+	catalog := []energyHeatAliasDefinition{
+		{Kind: "heat.surface_inside_face_convection", Label: "Surface-to-zone-air heat exchange", HeatCategory: "surface_envelope", SurfaceScoped: true, Aliases: []string{"Surface Inside Face Convection Heat Transfer Energy", "Surface Inside Face Convection Heat Gain Energy", "Surface Inside Face Convection Heat Transfer Rate", "Surface Inside Face Convection Heat Gain Rate"}, OutputRequestAliases: []string{}},
+		{Kind: "heat.surface_conduction", Label: "Surface conduction reference", HeatCategory: "surface_envelope", SurfaceScoped: true, Aliases: []string{"Surface Inside Face Conduction Heat Transfer Energy", "Surface Inside Face Conduction Heat Transfer Rate", "Surface Outside Face Conduction Heat Transfer Energy", "Surface Outside Face Conduction Heat Transfer Rate"}, OutputRequestAliases: []string{}},
+		{Kind: "heat.surface_absorbed_solar", Label: "Surface absorbed solar reference", HeatCategory: "surface_envelope", SurfaceScoped: true, Aliases: []string{"Surface Inside Face Solar Radiation Heat Gain Energy", "Surface Inside Face Solar Radiation Heat Gain Rate", "Surface Outside Face Incident Solar Radiation Heat Gain Energy", "Surface Outside Face Incident Solar Radiation Heat Gain Rate"}, OutputRequestAliases: []string{}},
+		{Kind: "heat.surface_radiant", Label: "Surface radiant reference", HeatCategory: "surface_envelope", SurfaceScoped: true, Aliases: []string{"Surface Inside Face Lights Radiation Heat Gain Energy", "Surface Inside Face Lights Radiation Heat Gain Rate", "Surface Inside Face Internal Gains Radiation Heat Gain Energy", "Surface Inside Face Internal Gains Radiation Heat Gain Rate"}, OutputRequestAliases: []string{}},
+		{Kind: "heat.internal_convective", Label: "Internal convective reconciliation", HeatCategory: "internal_gains", Aliases: []string{"Zone Air Heat Balance Internal Convective Heat Gain Rate", "Zone Total Internal Convective Heating Energy", "Zone Total Internal Convective Heating Rate", "Zone Total Internal Latent Gain Energy", "Zone Total Internal Latent Gain Rate"}},
 		{Kind: "heat.surface_convection", Label: "Surface convection", HeatCategory: "surface_envelope", Aliases: []string{"Zone Air Heat Balance Surface Convection Rate"}},
 		{Kind: "heat.interzone_air", Label: "Interzone air transfer", HeatCategory: "air_exchange", Aliases: []string{"Zone Air Heat Balance Interzone Air Transfer Rate"}},
 		{Kind: "heat.ventilation_outdoor_air", Label: "Outdoor air transfer", HeatCategory: "air_exchange", Aliases: []string{"Zone Air Heat Balance Outdoor Air Transfer Rate"}},
@@ -2630,13 +4095,35 @@ func energyHeatAliasCatalog() []energyHeatAliasDefinition {
 		{Kind: "heat.window_heat_transfer", Label: "Window heat transfer", HeatCategory: "surface_envelope", Aliases: []string{"Zone Windows Total Heat Gain Energy", "Zone Windows Total Heat Gain Rate", "Zone Windows Total Heat Loss Energy", "Zone Windows Total Heat Loss Rate"}},
 		{Kind: "heat.storage_air", Label: "Air energy storage", HeatCategory: "storage_residual", Aliases: []string{"Zone Air Heat Balance Air Energy Storage Rate"}},
 		{Kind: "heat.zone_balance_residual", Label: "Heat balance deviation", HeatCategory: "storage_residual", Aliases: []string{"Zone Air Heat Balance Deviation Rate"}},
-		{Kind: "heat.people", Label: "People heat", HeatCategory: "internal_gains", Aliases: []string{"Zone People Total Heating Energy", "Zone People Total Heating Rate"}},
-		{Kind: "heat.lighting", Label: "Lighting heat", HeatCategory: "internal_gains", Aliases: []string{"Zone Lights Total Heating Energy", "Zone Lights Total Heating Rate"}},
-		{Kind: "heat.equipment", Label: "Equipment heat", HeatCategory: "internal_gains", Aliases: []string{"Zone Electric Equipment Total Heating Energy", "Zone Electric Equipment Total Heating Rate", "Zone Gas Equipment Total Heating Energy", "Zone Gas Equipment Total Heating Rate"}},
-		{Kind: "heat.infiltration", Label: "Infiltration heat transfer", HeatCategory: "air_exchange", Aliases: []string{"Zone Infiltration Sensible Heat Loss Energy", "Zone Infiltration Sensible Heat Gain Energy", "Zone Infiltration Sensible Heat Loss Rate", "Zone Infiltration Sensible Heat Gain Rate"}},
-		{Kind: "heat.ventilation", Label: "Ventilation heat transfer", HeatCategory: "air_exchange", Aliases: []string{"Zone Ventilation Sensible Heat Loss Energy", "Zone Ventilation Sensible Heat Gain Energy", "Zone Ventilation Sensible Heat Loss Rate", "Zone Ventilation Sensible Heat Gain Rate"}},
-		{Kind: "heat.mixing", Label: "Mixing heat transfer", HeatCategory: "air_exchange", Aliases: []string{"Zone Mixing Sensible Heat Loss Energy", "Zone Mixing Sensible Heat Gain Energy", "Zone Mixing Sensible Heat Loss Rate", "Zone Mixing Sensible Heat Gain Rate"}},
+		{Kind: "heat.people", Label: "People heat", HeatCategory: "internal_gains", Aliases: []string{"Zone People Convective Heating Energy", "Zone People Convective Heating Rate", "Zone People Latent Gain Energy", "Zone People Latent Gain Rate", "Zone People Sensible Heating Energy", "Zone People Sensible Heating Rate", "Zone People Total Heating Energy", "Zone People Total Heating Rate", "Zone People Radiant Heating Energy", "Zone People Radiant Heating Rate"}},
+		{Kind: "heat.lighting", Label: "Lighting heat", HeatCategory: "internal_gains", Aliases: []string{"Zone Lights Convective Heating Energy", "Zone Lights Convective Heating Rate", "Zone Lights Total Heating Energy", "Zone Lights Total Heating Rate", "Zone Lights Radiant Heating Energy", "Zone Lights Radiant Heating Rate", "Zone Lights Visible Radiation Heating Energy", "Zone Lights Visible Radiation Heating Rate", "Zone Lights Return Air Heating Energy", "Zone Lights Return Air Heating Rate"}},
+		{Kind: "heat.equipment", Label: "Equipment heat", HeatCategory: "internal_gains", Aliases: []string{"Zone Electric Equipment Convective Heating Energy", "Zone Electric Equipment Convective Heating Rate", "Zone Electric Equipment Latent Gain Energy", "Zone Electric Equipment Latent Gain Rate", "Zone Gas Equipment Convective Heating Energy", "Zone Gas Equipment Convective Heating Rate", "Zone Gas Equipment Latent Gain Energy", "Zone Gas Equipment Latent Gain Rate", "Zone Other Equipment Convective Heating Energy", "Zone Other Equipment Convective Heating Rate", "Zone Other Equipment Latent Gain Energy", "Zone Other Equipment Latent Gain Rate", "Zone Hot Water Equipment Convective Heating Energy", "Zone Hot Water Equipment Convective Heating Rate", "Zone Hot Water Equipment Latent Gain Energy", "Zone Hot Water Equipment Latent Gain Rate", "Zone Steam Equipment Convective Heating Energy", "Zone Steam Equipment Convective Heating Rate", "Zone Steam Equipment Latent Gain Energy", "Zone Steam Equipment Latent Gain Rate", "Zone Electric Equipment Total Heating Energy", "Zone Electric Equipment Total Heating Rate", "Zone Gas Equipment Total Heating Energy", "Zone Gas Equipment Total Heating Rate", "Zone Other Equipment Total Heating Energy", "Zone Other Equipment Total Heating Rate", "Zone Electric Equipment Radiant Heating Energy", "Zone Electric Equipment Radiant Heating Rate", "Zone Gas Equipment Radiant Heating Energy", "Zone Gas Equipment Radiant Heating Rate", "Zone Other Equipment Radiant Heating Energy", "Zone Other Equipment Radiant Heating Rate", "Zone Electric Equipment Lost Heat Energy", "Zone Electric Equipment Lost Heat Rate", "Zone Gas Equipment Lost Heat Energy", "Zone Gas Equipment Lost Heat Rate"}},
+		{Kind: "heat.internal_other", Label: "Other internal heat", HeatCategory: "internal_gains", Aliases: []string{"Zone Other Internal Convective Heating Energy", "Zone Other Internal Convective Heating Rate", "Zone Other Internal Latent Gain Energy", "Zone Other Internal Latent Gain Rate", "Zone IT Equipment Convective Heating Energy", "Zone IT Equipment Convective Heating Rate", "Zone IT Equipment Latent Gain Energy", "Zone IT Equipment Latent Gain Rate"}},
+		{Kind: "heat.infiltration", Label: "Infiltration heat transfer", HeatCategory: "air_exchange", Aliases: []string{"Zone Infiltration Sensible Heat Loss Energy", "Zone Infiltration Sensible Heat Gain Energy", "Zone Infiltration Sensible Heat Loss Rate", "Zone Infiltration Sensible Heat Gain Rate", "AFN Zone Infiltration Sensible Heat Loss Energy", "AFN Zone Infiltration Sensible Heat Gain Energy", "AFN Zone Infiltration Sensible Heat Loss Rate", "AFN Zone Infiltration Sensible Heat Gain Rate", "Zone Infiltration Latent Heat Loss Energy", "Zone Infiltration Latent Heat Gain Energy", "Zone Infiltration Latent Heat Loss Rate", "Zone Infiltration Latent Heat Gain Rate", "AFN Zone Infiltration Latent Heat Loss Energy", "AFN Zone Infiltration Latent Heat Gain Energy", "AFN Zone Infiltration Latent Heat Loss Rate", "AFN Zone Infiltration Latent Heat Gain Rate"}},
+		{Kind: "heat.ventilation", Label: "Ventilation heat transfer", HeatCategory: "air_exchange", Aliases: []string{"Zone Ventilation Sensible Heat Loss Energy", "Zone Ventilation Sensible Heat Gain Energy", "Zone Ventilation Sensible Heat Loss Rate", "Zone Ventilation Sensible Heat Gain Rate", "AFN Zone Ventilation Sensible Heat Loss Energy", "AFN Zone Ventilation Sensible Heat Gain Energy", "AFN Zone Ventilation Sensible Heat Loss Rate", "AFN Zone Ventilation Sensible Heat Gain Rate", "Zone Ventilation Latent Heat Loss Energy", "Zone Ventilation Latent Heat Gain Energy", "Zone Ventilation Latent Heat Loss Rate", "Zone Ventilation Latent Heat Gain Rate", "AFN Zone Ventilation Latent Heat Loss Energy", "AFN Zone Ventilation Latent Heat Gain Energy", "AFN Zone Ventilation Latent Heat Loss Rate", "AFN Zone Ventilation Latent Heat Gain Rate"}},
+		{Kind: "heat.ventilation_ideal_oa", Label: "Ideal Loads outdoor-air conditioning context", HeatCategory: "air_exchange", ObjectScoped: true, Aliases: []string{"Zone Ideal Loads Outdoor Air Sensible Heating Energy", "Zone Ideal Loads Outdoor Air Sensible Heating Rate", "Zone Ideal Loads Outdoor Air Latent Heating Energy", "Zone Ideal Loads Outdoor Air Latent Heating Rate", "Zone Ideal Loads Outdoor Air Total Heating Energy", "Zone Ideal Loads Outdoor Air Total Heating Rate", "Zone Ideal Loads Outdoor Air Sensible Cooling Energy", "Zone Ideal Loads Outdoor Air Sensible Cooling Rate", "Zone Ideal Loads Outdoor Air Latent Cooling Energy", "Zone Ideal Loads Outdoor Air Latent Cooling Rate", "Zone Ideal Loads Outdoor Air Total Cooling Energy", "Zone Ideal Loads Outdoor Air Total Cooling Rate"}},
+		{Kind: "heat.ventilation_ideal_heat_recovery", Label: "Ideal Loads heat-recovery context", HeatCategory: "air_exchange", ObjectScoped: true, Aliases: []string{"Zone Ideal Loads Heat Recovery Sensible Heating Energy", "Zone Ideal Loads Heat Recovery Sensible Heating Rate", "Zone Ideal Loads Heat Recovery Latent Heating Energy", "Zone Ideal Loads Heat Recovery Latent Heating Rate", "Zone Ideal Loads Heat Recovery Total Heating Energy", "Zone Ideal Loads Heat Recovery Total Heating Rate", "Zone Ideal Loads Heat Recovery Sensible Cooling Energy", "Zone Ideal Loads Heat Recovery Sensible Cooling Rate", "Zone Ideal Loads Heat Recovery Latent Cooling Energy", "Zone Ideal Loads Heat Recovery Latent Cooling Rate", "Zone Ideal Loads Heat Recovery Total Cooling Energy", "Zone Ideal Loads Heat Recovery Total Cooling Rate"}},
+		{Kind: "heat.ventilation_system_oa", Label: "System outdoor-air conditioning context", HeatCategory: "air_exchange", ObjectScoped: true, Aliases: []string{"Air System Outdoor Air Sensible Heating Energy", "Air System Outdoor Air Sensible Heating Rate", "Air System Outdoor Air Latent Heating Energy", "Air System Outdoor Air Latent Heating Rate", "Air System Outdoor Air Total Heating Energy", "Air System Outdoor Air Total Heating Rate", "Air System Outdoor Air Sensible Cooling Energy", "Air System Outdoor Air Sensible Cooling Rate", "Air System Outdoor Air Latent Cooling Energy", "Air System Outdoor Air Latent Cooling Rate", "Air System Outdoor Air Total Cooling Energy", "Air System Outdoor Air Total Cooling Rate"}},
+		{Kind: "heat.ventilation_heat_recovery", Label: "Ventilation heat-recovery context", HeatCategory: "air_exchange", ObjectScoped: true, Aliases: []string{"Heat Exchanger Sensible Heating Energy", "Heat Exchanger Sensible Heating Rate", "Heat Exchanger Latent Heating Energy", "Heat Exchanger Latent Heating Rate", "Heat Exchanger Total Heating Energy", "Heat Exchanger Total Heating Rate", "Heat Exchanger Sensible Cooling Energy", "Heat Exchanger Sensible Cooling Rate", "Heat Exchanger Latent Cooling Energy", "Heat Exchanger Latent Cooling Rate", "Heat Exchanger Total Cooling Energy", "Heat Exchanger Total Cooling Rate"}},
+		{Kind: "heat.combined_outdoor_air", Label: "Combined outdoor-air transfer", HeatCategory: "air_exchange", Aliases: []string{"Zone Combined Outdoor Air Sensible Heat Loss Energy", "Zone Combined Outdoor Air Sensible Heat Gain Energy", "Zone Combined Outdoor Air Sensible Heat Loss Rate", "Zone Combined Outdoor Air Sensible Heat Gain Rate", "Zone Combined Outdoor Air Latent Heat Loss Energy", "Zone Combined Outdoor Air Latent Heat Gain Energy", "Zone Combined Outdoor Air Latent Heat Loss Rate", "Zone Combined Outdoor Air Latent Heat Gain Rate"}},
+		{Kind: "heat.mixing", Label: "Mixing heat transfer", HeatCategory: "air_exchange", Aliases: []string{"Zone Mixing Sensible Heat Loss Energy", "Zone Mixing Sensible Heat Gain Energy", "Zone Mixing Sensible Heat Loss Rate", "Zone Mixing Sensible Heat Gain Rate", "Zone Mixing Latent Heat Loss Energy", "Zone Mixing Latent Heat Gain Energy", "Zone Mixing Latent Heat Loss Rate", "Zone Mixing Latent Heat Gain Rate", "Zone Cross Mixing Sensible Heat Loss Energy", "Zone Cross Mixing Sensible Heat Gain Energy", "Zone Cross Mixing Sensible Heat Loss Rate", "Zone Cross Mixing Sensible Heat Gain Rate", "Zone Cross Mixing Latent Heat Loss Energy", "Zone Cross Mixing Latent Heat Gain Energy", "Zone Cross Mixing Latent Heat Loss Rate", "Zone Cross Mixing Latent Heat Gain Rate", "Zone CrossMixing Sensible Heat Loss Energy", "Zone CrossMixing Sensible Heat Gain Energy", "Zone CrossMixing Sensible Heat Loss Rate", "Zone CrossMixing Sensible Heat Gain Rate", "Zone CrossMixing Latent Heat Loss Energy", "Zone CrossMixing Latent Heat Gain Energy", "Zone CrossMixing Latent Heat Loss Rate", "Zone CrossMixing Latent Heat Gain Rate", "Zone Refrigeration Door Mixing Sensible Heat Loss Energy", "Zone Refrigeration Door Mixing Sensible Heat Gain Energy", "Zone Refrigeration Door Mixing Sensible Heat Loss Rate", "Zone Refrigeration Door Mixing Sensible Heat Gain Rate", "Zone Refrigeration Door Mixing Latent Heat Loss Energy", "Zone Refrigeration Door Mixing Latent Heat Gain Energy", "Zone Refrigeration Door Mixing Latent Heat Loss Rate", "Zone Refrigeration Door Mixing Latent Heat Gain Rate", "AFN Zone Mixing Sensible Heat Loss Energy", "AFN Zone Mixing Sensible Heat Gain Energy", "AFN Zone Mixing Sensible Heat Loss Rate", "AFN Zone Mixing Sensible Heat Gain Rate", "AFN Zone Mixing Latent Heat Loss Energy", "AFN Zone Mixing Latent Heat Gain Energy", "AFN Zone Mixing Latent Heat Loss Rate", "AFN Zone Mixing Latent Heat Gain Rate"}},
 	}
+	for index := range catalog {
+		if catalog[index].Kind != "heat.mixing" {
+			continue
+		}
+		catalog[index].OutputRequestAliases = []string{
+			"Zone Mixing Sensible Heat Loss Energy", "Zone Mixing Sensible Heat Gain Energy",
+			"Zone Mixing Sensible Heat Loss Rate", "Zone Mixing Sensible Heat Gain Rate",
+			"Zone Mixing Latent Heat Loss Energy", "Zone Mixing Latent Heat Gain Energy",
+			"Zone Mixing Latent Heat Loss Rate", "Zone Mixing Latent Heat Gain Rate",
+			"AFN Zone Mixing Sensible Heat Loss Energy", "AFN Zone Mixing Sensible Heat Gain Energy",
+			"AFN Zone Mixing Sensible Heat Loss Rate", "AFN Zone Mixing Sensible Heat Gain Rate",
+			"AFN Zone Mixing Latent Heat Loss Energy", "AFN Zone Mixing Latent Heat Gain Energy",
+			"AFN Zone Mixing Latent Heat Loss Rate", "AFN Zone Mixing Latent Heat Gain Rate",
+		}
+	}
+	return catalog
 }
 
 func energyVariableAliasCatalog() []energyMeterAliasDefinition {
@@ -2646,9 +4133,18 @@ func energyVariableAliasCatalog() []energyMeterAliasDefinition {
 	}
 }
 
+func energyPathDirectUseVariableAliasCatalog() []energyMeterAliasDefinition {
+	return []energyMeterAliasDefinition{
+		{Kind: "energy.interior_lighting", Label: "Zone interior lighting", Carrier: "electricity", EndUse: "interior_lighting", HierarchyLevel: "zone_direct_use", Aliases: []string{"Zone Lights Electricity Energy"}, OutputRequestAliases: []string{"Zone Lights Electricity Energy"}},
+		{Kind: "energy.interior_equipment", Label: "Zone electric equipment", Carrier: "electricity", EndUse: "interior_equipment", HierarchyLevel: "zone_direct_use", Aliases: []string{"Zone Electric Equipment Electricity Energy"}, OutputRequestAliases: []string{"Zone Electric Equipment Electricity Energy"}},
+		{Kind: "energy.interior_equipment", Label: "Zone gas equipment", Carrier: "natural_gas", EndUse: "interior_equipment", HierarchyLevel: "zone_direct_use", Aliases: []string{"Zone Gas Equipment NaturalGas Energy", "Zone Gas Equipment Gas Energy"}, LegacyAliases: []string{"Zone Gas Equipment Gas Energy"}, OutputRequestAliases: []string{"Zone Gas Equipment NaturalGas Energy", "Zone Gas Equipment Gas Energy"}},
+	}
+}
+
 func energyVariableAliasDefinitionForName(name string) (energyMeterAliasDefinition, bool) {
 	key := normalizeEnergyOutputName(name)
-	for _, def := range energyVariableAliasCatalog() {
+	definitions := append(energyVariableAliasCatalog(), energyPathDirectUseVariableAliasCatalog()...)
+	for _, def := range definitions {
 		for _, alias := range def.Aliases {
 			if normalizeEnergyOutputName(alias) == key {
 				return def, true
@@ -2824,10 +4320,18 @@ func energyCarrierToken(value string) (string, bool) {
 		return "electricity", true
 	case "naturalgas", "gas":
 		return "natural_gas", true
+	case "gasoline":
+		return "gasoline", true
+	case "diesel":
+		return "diesel", true
+	case "coal":
+		return "coal", true
 	case "districtcooling":
 		return "district_cooling", true
-	case "districtheating":
+	case "districtheating", "districtheatingwater":
 		return "district_heating", true
+	case "districtheatingsteam":
+		return "steam", true
 	case "fueloilno1":
 		return "fuel_oil_1", true
 	case "fueloilno2":
@@ -2871,15 +4375,85 @@ func energyHeatAliasDefinitionForName(name string) (energyHeatAliasDefinition, b
 	return energyHeatAliasDefinition{}, false
 }
 
+func energyExplanationVariableAliasCandidates(name string) []string {
+	if definition, ok := energyVariableAliasDefinitionForName(name); ok {
+		return preferredEnergyExplanationAliases(name, definition.Aliases, nil)
+	}
+	if definition, ok := energyLoadAliasDefinitionForName(name); ok {
+		return preferredEnergyExplanationAliases(name, definition.Aliases, nil)
+	}
+	if definition, ok := energyHeatAliasDefinitionForName(name); ok {
+		role := energyDriverSourcePolicyFor(name, definition.Kind).Role
+		component := energyHeatThermalComponent(name)
+		sign := energyHeatAliasExplicitSign(name)
+		return preferredEnergyExplanationAliases(name, definition.Aliases, func(alias string) bool {
+			return energyDriverSourcePolicyFor(alias, definition.Kind).Role == role &&
+				energyHeatThermalComponent(alias) == component &&
+				energyHeatAliasExplicitSign(alias) == sign
+		})
+	}
+	return nil
+}
+
+func preferredEnergyExplanationAliases(name string, aliases []string, include func(string) bool) []string {
+	wanted := normalizeEnergyOutputName(name)
+	out := []string{}
+	for _, rate := range []bool{false, true} {
+		for _, alias := range aliases {
+			if normalizeEnergyOutputName(alias) == wanted || energyExplanationOutputIsRate(alias) != rate || include != nil && !include(alias) {
+				continue
+			}
+			out = appendUniquePurposeString(out, alias)
+		}
+	}
+	return out
+}
+
+func energyExplanationOutputIsRate(name string) bool {
+	return strings.HasSuffix(normalizeEnergyOutputName(name), " rate")
+}
+
 func energyHeatAliasExplicitSign(name string) string {
 	key := normalizeEnergyOutputName(name)
-	if strings.Contains(key, " sensible heat loss ") || strings.Contains(key, "zone windows total heat loss") {
+	internalSource := strings.Contains(key, "zone people ") || strings.Contains(key, "zone lights ") ||
+		strings.Contains(key, "zone electric equipment ") || strings.Contains(key, "zone gas equipment ") ||
+		strings.Contains(key, "zone other equipment ") || strings.Contains(key, "zone hot water equipment ") ||
+		strings.Contains(key, "zone steam equipment ") || strings.Contains(key, "zone it equipment ") ||
+		strings.Contains(key, "zone other internal ") || strings.Contains(key, "zone total internal ") ||
+		strings.Contains(key, "zone air heat balance internal convective")
+	if internalSource && (strings.Contains(key, " convective heating ") || strings.Contains(key, " convective heat gain ") || strings.Contains(key, " latent gain ")) {
+		return "positive"
+	}
+	if strings.Contains(key, " sensible heat loss ") || strings.Contains(key, " latent heat loss ") || strings.Contains(key, "zone windows total heat loss") {
 		return "negative"
 	}
-	if strings.Contains(key, " sensible heat gain ") || strings.Contains(key, "zone windows total heat gain") {
+	if strings.Contains(key, " sensible heat gain ") || strings.Contains(key, " latent heat gain ") || strings.Contains(key, "zone windows total heat gain") {
+		return "positive"
+	}
+	if strings.Contains(key, "outdoor air") && strings.Contains(key, " heating ") {
+		return "negative"
+	}
+	if strings.Contains(key, "outdoor air") && strings.Contains(key, " cooling ") {
 		return "positive"
 	}
 	return ""
+}
+
+func energyHeatThermalComponent(name string) string {
+	key := normalizeEnergyOutputName(name)
+	if strings.Contains(key, "latent") {
+		return "latent"
+	}
+	if strings.Contains(key, "sensible") {
+		return "sensible"
+	}
+	if strings.Contains(key, "convective") || strings.Contains(key, "convection") {
+		return "sensible"
+	}
+	if strings.Contains(key, "zone air heat balance") {
+		return "sensible"
+	}
+	return "combined"
 }
 
 func energyHeatSignMultiplier(sign string) float64 {
@@ -2941,6 +4515,12 @@ func buildEnergyExplanationCompleteness(series []energyExplanationSeries, source
 	energyLevel := energyCompletenessLevel("energy", foundEnergy, maxInt(len(expectedEnergyGroups), foundEnergy), "Energy Use")
 	loadLevel := energyCompletenessLevel("load", foundLoad, maxInt(len(expectedLoadGroups), foundLoad), "Delivered Load")
 	heatLevel := energyCompletenessLevel("heat", foundHeat, maxInt(len(expectedHeatGroups), foundHeat), "Heat Drivers")
+	if energyExplanationLevelNotRequested(plan, "load") {
+		loadLevel = energyCompletenessNotRequestedLevel("load", "Delivered Load")
+	}
+	if energyExplanationLevelNotRequested(plan, "heat") {
+		heatLevel = energyCompletenessNotRequestedLevel("heat", "Heat Drivers")
+	}
 	status := "complete"
 	if energyLevel.Status != "complete" || loadLevel.Status == "missing" || heatLevel.Status == "missing" {
 		status = "partial"
@@ -2949,9 +4529,9 @@ func buildEnergyExplanationCompleteness(series []energyExplanationSeries, source
 		status = "missing"
 	}
 	availability := make([]EnergySourceAvailabilityEntry, 0, len(expectedEnergy)+len(expectedLoad)+len(expectedHeat))
-	availability = append(availability, sourceAvailabilityEntriesForLevel(expectedEnergy, "energy", sources)...)
-	availability = append(availability, sourceAvailabilityEntriesForLevel(expectedLoad, "load", sources)...)
-	availability = append(availability, sourceAvailabilityEntriesForLevel(expectedHeat, "heat", sources)...)
+	availability = append(availability, sourceAvailabilityEntriesForLevel(expectedEnergy, "energy", sources, false)...)
+	availability = append(availability, sourceAvailabilityEntriesForLevel(expectedLoad, "load", sources, energyExplanationLevelNotRequested(plan, "load"))...)
+	availability = append(availability, sourceAvailabilityEntriesForLevel(expectedHeat, "heat", sources, energyExplanationLevelNotRequested(plan, "heat"))...)
 	missingCategories := missingEnergySourceCategories(availability)
 	return EnergyCompleteness{
 		Status:             status,
@@ -2962,6 +4542,18 @@ func buildEnergyExplanationCompleteness(series []energyExplanationSeries, source
 		Items:              []EnergyCompletenessLevel{energyLevel, loadLevel, heatLevel},
 		MissingCategories:  missingCategories,
 		SourceAvailability: availability,
+	}
+}
+
+func energyExplanationLevelNotRequested(plan *PurposeRunPlan, level string) bool {
+	return plan != nil && strings.EqualFold(strings.TrimSpace(plan.BasicEnergyDetail), PurposeBasicEnergyDetailLight) && (level == "load" || level == "heat")
+}
+
+func energyCompletenessNotRequestedLevel(level string, label string) EnergyCompletenessLevel {
+	return EnergyCompletenessLevel{
+		Level:   level,
+		Status:  "not_requested",
+		Message: label + ": not requested by the current output plan",
 	}
 }
 
@@ -2979,7 +4571,7 @@ func expectedEnergyExplanationOutputs(plan *PurposeRunPlan, level string) []stri
 				if strings.EqualFold(object.ObjectType, "Output:Meter") {
 					out = appendUniquePurposeString(out, object.KeyValue)
 				} else if strings.EqualFold(object.ObjectType, "Output:Variable") {
-					if _, ok := energyVariableAliasDefinitionForName(object.VariableName); ok {
+					if definition, ok := energyVariableAliasDefinitionForName(object.VariableName); ok && definition.HierarchyLevel != "zone_direct_use" {
 						out = appendUniquePurposeString(out, object.VariableName)
 					}
 				}
@@ -3194,12 +4786,16 @@ func energyMeterDefinitionGroupKey(def energyMeterAliasDefinition) string {
 	}, "|")
 }
 
-func sourceAvailabilityEntriesForLevel(expected []string, level string, sources []EnergyDataSource) []EnergySourceAvailabilityEntry {
+func sourceAvailabilityEntriesForLevel(expected []string, level string, sources []EnergyDataSource, notRequested bool) []EnergySourceAvailabilityEntry {
 	if len(expected) == 0 {
+		status := "not_applicable"
+		if notRequested {
+			status = "not_requested"
+		}
 		return []EnergySourceAvailabilityEntry{{
 			Name:   "not requested by current output plan",
 			Level:  level,
-			Status: "not_applicable",
+			Status: status,
 		}}
 	}
 	return sourceAvailabilityEntries(expected, level, sources)
@@ -3217,14 +4813,18 @@ func missingEnergySourceCategories(availability []EnergySourceAvailabilityEntry)
 }
 
 func energyExplanationEnergyNodeID(item energyExplanationSeries) string {
-	if strings.HasSuffix(item.Kind, ".total") {
+	if item.Stage == "carrier" || strings.HasSuffix(item.Kind, ".total") {
 		return "energy.carrier." + item.Carrier
 	}
-	return "energy.end_use." + item.EndUse + "." + item.Carrier
+	nodeID := "energy.end_use." + item.EndUse + "." + item.Carrier
+	if item.MeterHierarchyLevel == "zone_direct_use" {
+		nodeID += "." + energyExplanationZoneSuffix(item.ZoneName)
+	}
+	return strings.TrimSuffix(nodeID, ".")
 }
 
 func energyExplanationIsSupportEndUse(item energyExplanationSeries) bool {
-	return item.Level == "energy" && (item.EndUse == "generators" || item.EndUse == "storage_discharge" || item.Kind == "energy.generators")
+	return (item.Stage == "support" || item.Level == "energy") && (item.EndUse == "generators" || item.EndUse == "storage_discharge" || item.Kind == "energy.generators")
 }
 
 func energyExplanationEndUseCarrierKey(endUse string, carrier string) string {
@@ -3262,13 +4862,28 @@ func energyExplanationLoadNodeID(item energyExplanationSeries) string {
 
 func energyExplanationHeatNodeID(item energyExplanationSeries) string {
 	nodeID := item.Kind
-	if sign := strings.TrimSpace(item.HeatSign); sign != "" {
+	if strings.TrimSpace(item.DriverCategory) != "" {
+		nodeID = "heat.driver." + canonicalEnergyPathCategory(item.DriverCategory)
+	}
+	if sign := strings.TrimSpace(item.HeatSign); sign != "" && energyExplanationHeatNodeUsesSignSuffix(item) {
 		nodeID += "." + metricID(sign)
 	}
 	if suffix := energyExplanationZoneSuffix(item.ZoneName); suffix != "" {
 		nodeID += "." + suffix
 	}
 	return nodeID
+}
+
+func energyExplanationHeatNodeUsesSignSuffix(item energyExplanationSeries) bool {
+	// The frozen v1 contract represented internal-gain families with one stable
+	// node ID. Canonical driver preparation assigns a category/role before v2
+	// construction, where an explicit sign suffix is required to keep gain and
+	// loss contributions distinct. Preserve the legacy ID only for unprepared
+	// internal-gain series read through the v1 compatibility boundary.
+	if strings.TrimSpace(item.DriverCategory) != "" || strings.TrimSpace(item.DriverSourceRole) != "" {
+		return true
+	}
+	return !strings.EqualFold(strings.TrimSpace(item.HeatCategory), "internal_gains")
 }
 
 func energyExplanationZoneSuffix(zoneName string) string {
@@ -3354,6 +4969,21 @@ func firstLoadNodeIDForHeat(nodes map[string]*energyExplanationNodeAccumulator, 
 	if zoneName != "" {
 		if id := firstExistingNodeID(nodes, loadNodesByZoneService[energyExplanationZoneServiceKey(zoneName, serviceKind)]...); id != "" {
 			return id
+		}
+	}
+	if zoneName == "" {
+		keys := make([]string, 0, len(loadNodesByZoneService))
+		for key := range loadNodesByZoneService {
+			_, candidateService := splitEnergyExplanationZoneServiceKey(key)
+			if candidateService == serviceKind {
+				keys = append(keys, key)
+			}
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			if id := firstExistingNodeID(nodes, loadNodesByZoneService[key]...); id != "" {
+				return id
+			}
 		}
 	}
 	return firstExistingNodeID(nodes, "load."+serviceKind)
@@ -3456,10 +5086,26 @@ func energyExplanationMonthFromPoint(point SimulationPoint) (int, bool) {
 }
 
 func sortEnergyExplanationNodes(nodes []EnergyExplanationNode) {
-	levelOrder := map[string]int{"energy": 0, "load": 1, "heat": 2, "residual": 3, "support": 4}
+	levelOrder := map[string]int{
+		"driver":   0,
+		"heat":     0,
+		"load":     1,
+		"end_use":  2,
+		"energy":   2,
+		"carrier":  3,
+		"support":  4,
+		"residual": 5,
+	}
 	sort.SliceStable(nodes, func(i, j int) bool {
 		if levelOrder[nodes[i].Level] != levelOrder[nodes[j].Level] {
 			return levelOrder[nodes[i].Level] < levelOrder[nodes[j].Level]
+		}
+		if levelOrder[nodes[i].Level] == 0 {
+			leftOrder := energyDriverCategoryOrder(firstNonEmpty(nodes[i].DriverCategory, nodes[i].Kind))
+			rightOrder := energyDriverCategoryOrder(firstNonEmpty(nodes[j].DriverCategory, nodes[j].Kind))
+			if leftOrder != rightOrder {
+				return leftOrder < rightOrder
+			}
 		}
 		return nodes[i].ID < nodes[j].ID
 	})

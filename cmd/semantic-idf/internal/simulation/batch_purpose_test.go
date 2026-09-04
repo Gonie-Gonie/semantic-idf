@@ -49,12 +49,13 @@ func TestSummarizePurposeMetricsIncludesEnergyExplanationLevels(t *testing.T) {
 	bundle := &PurposeResultBundle{
 		EnergyExplanation: EnergyExplanationResult{
 			Schema: energyExplanationSchema,
+			Scope:  EnergyExplanationScope{Kind: "building", AggregationBasis: "model_total"},
 			Nodes: []EnergyExplanationNode{
-				{ID: "energy.carrier.electricity", Level: "energy", Label: "Electricity", Value: 10, Unit: "kWh"},
-				{ID: "energy.end_use.cooling.electricity", Level: "energy", Label: "Cooling", Value: 4, Unit: "kWh", Carrier: "electricity", EndUse: "cooling"},
-				{ID: "load.cooling", Level: "load", Label: "Cooling load", Value: 8, Unit: "kWh", ServiceKind: "cooling", PathType: "zone"},
-				{ID: "heat.internal_convective", Level: "heat", Label: "Internal gains", Value: 3, DisplayValue: 3, Unit: "kWh"},
-				{ID: "residual.energy.electricity", Level: "residual", Label: "Residual", Value: 2, Unit: "kWh"},
+				{ID: "carrier.electricity.building", Level: "carrier", Kind: "carrier.electricity", Label: "Electricity", Value: 10, Unit: "kWh", Carrier: "electricity"},
+				{ID: "end_use.cooling.building", Level: "end_use", Kind: "end_use.cooling", Label: "Cooling", Value: 4, Unit: "kWh", Carrier: "electricity", EndUse: "cooling"},
+				{ID: "load.cooling.building", Level: "load", Kind: "load.cooling", Label: "Cooling load", Value: 8, Unit: "kWh", ServiceKind: "cooling", PathType: "zone"},
+				{ID: "driver.internal_convective.cooling.building", Level: "driver", Kind: "driver.internal_convective", Label: "Internal gains", Value: 3, DisplayValue: 3, Unit: "kWh"},
+				{ID: "residual.site_electricity.building", Level: "residual", Kind: "residual.site_energy", Label: "Residual", Value: 2, Unit: "kWh"},
 			},
 			Completeness: EnergyCompleteness{
 				Status:        "partial",
@@ -70,7 +71,7 @@ func TestSummarizePurposeMetricsIncludesEnergyExplanationLevels(t *testing.T) {
 	if metric := purposeMetricByID(metrics, "energy_explanation.delivered_load"); metric == nil || metric.Value != 8 || metric.DisplayValue != "8 kWh" {
 		t.Fatalf("delivered load metric = %#v", metric)
 	}
-	if metric := purposeMetricByID(metrics, "energy_explanation.heat.heat_internal_convective"); metric == nil || metric.Label != "Heat driver: Internal gains" {
+	if metric := purposeMetricByID(metrics, "energy_explanation.heat.driver_internal_convective"); metric == nil || metric.Label != "Heat driver: Internal gains" {
 		t.Fatalf("heat driver metric = %#v", metric)
 	}
 	if metric := purposeMetricByID(metrics, "energy_explanation.mapped_percent"); metric == nil || metric.Value != 40 || metric.Status != "partial" {
@@ -78,6 +79,37 @@ func TestSummarizePurposeMetricsIncludesEnergyExplanationLevels(t *testing.T) {
 	}
 	if metric := purposeMetricByID(metrics, "energy_explanation.kpi.cooling_cop"); metric == nil || metric.Value != 2 || metric.DisplayValue != "2" || metric.Label != "Derived KPI: Cooling COP" {
 		t.Fatalf("derived KPI metric = %#v", metric)
+	}
+}
+
+func TestCompactPurposeResultBundleForBatchOmitsMonthlyEnergyGraphs(t *testing.T) {
+	bundle := &PurposeResultBundle{
+		EnergyExplanation: EnergyExplanationResult{
+			Schema: energyExplanationSchema,
+			Scope:  EnergyExplanationScope{Kind: "building", AggregationBasis: "model_total"},
+			Nodes:  []EnergyExplanationNode{{ID: "carrier.electricity.building", Level: "carrier", Value: 12, Unit: "kWh"}},
+			Links:  []EnergyPathLink{{ID: "annual-link", FromID: "end_use.cooling.building", ToID: "carrier.electricity.building", Relation: "end_use_to_carrier", Basis: "reported_meter", FromValue: 12, ToValue: 12, FromUnit: "kWh", ToUnit: "kWh"}},
+			Periods: []EnergyPeriod{
+				{ID: "annual", Nodes: []EnergyExplanationNode{{ID: "annual-node"}}, Links: []EnergyPathLink{{ID: "annual-period-link"}}},
+				{ID: "M1", Nodes: []EnergyExplanationNode{{ID: "month-node"}}, Links: []EnergyPathLink{{ID: "month-link"}}},
+			},
+			AvailableZones: []string{"Office"},
+			ZoneResults:    []EnergyExplanationZoneResult{{Scope: EnergyExplanationScope{Kind: "zone", ZoneName: "Office", AggregationBasis: "model_total"}}},
+			Sources:        []EnergyDataSource{{ID: "facility", SourceType: "sql_meter"}},
+		},
+		EnergyExplanationSummary: EnergyExplanationSummary{
+			Schema:   energyExplanationSummarySchema,
+			Period:   "annual",
+			Scope:    EnergyExplanationScope{Kind: "building", AggregationBasis: "model_total"},
+			Carriers: []EnergyExplanationSummaryItem{{ID: "carrier.electricity.building", Value: 12}},
+		},
+	}
+	compactPurposeResultBundleForBatch(bundle)
+	if len(bundle.EnergyExplanation.Periods) != 0 || len(bundle.EnergyExplanation.ZoneResults) != 0 {
+		t.Fatalf("batch nested graphs = periods %#v zones %#v", bundle.EnergyExplanation.Periods, bundle.EnergyExplanation.ZoneResults)
+	}
+	if len(bundle.EnergyExplanation.Nodes) != 1 || len(bundle.EnergyExplanation.Links) != 1 || len(bundle.EnergyExplanation.Sources) != 1 || len(bundle.EnergyExplanation.AvailableZones) != 1 || len(bundle.EnergyExplanationSummary.Carriers) != 1 {
+		t.Fatalf("batch annual summary/trace was removed: %#v", bundle)
 	}
 }
 

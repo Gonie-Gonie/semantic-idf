@@ -112,27 +112,35 @@ Output:SQLite,
 	}
 }
 
-func TestBuildPurposeRunPlanBasicEnergyDefaultsToLight(t *testing.T) {
+func TestBuildPurposeRunPlanBasicEnergyDefaultsToEnergyPath(t *testing.T) {
 	doc := parsePurposePlanFixture(t, purposePlanFixtureIDF)
 
 	plan := BuildPurposeRunPlan(doc, SimulationPurposeRequest{
 		Purposes: []SimulationPurposeID{SimulationPurposeBasicEnergy},
 	})
 
-	if plan.BasicEnergyDetail != PurposeBasicEnergyDetailLight {
-		t.Fatalf("basic energy detail = %q, want %q", plan.BasicEnergyDetail, PurposeBasicEnergyDetailLight)
+	if plan.BasicEnergyDetail != PurposeBasicEnergyDetailEnergyPath {
+		t.Fatalf("basic energy detail = %q, want %q", plan.BasicEnergyDetail, PurposeBasicEnergyDetailEnergyPath)
 	}
 	if findPurposeOutput(plan, "Output:Meter", "Electricity:Facility", "") == nil {
-		t.Fatalf("light default should include top-level meters: %#v", plan.OutputObjects)
+		t.Fatalf("Energy Path default should include top-level meters: %#v", plan.OutputObjects)
 	}
-	if output := findPurposeOutput(plan, "Output:Variable", "*", "Zone Lights Electricity Energy"); output != nil {
-		t.Fatalf("light default should not include explain output: %+v", output)
+	if output := findPurposeOutput(plan, "Output:Variable", "Office", "Zone Lights Electricity Energy"); output == nil {
+		t.Fatalf("Energy Path default should include zone direct-use energy: %#v", plan.OutputObjects)
 	}
-	if output := findPurposeOutput(plan, "Output:Variable", "*", "Zone Air Heat Balance Surface Convection Rate"); output != nil {
-		t.Fatalf("light default should not include heat-driver output: %+v", output)
+	if output := findPurposeOutput(plan, "Output:Variable", "Lab", "Zone Air Heat Balance Surface Convection Rate"); output == nil {
+		t.Fatalf("Energy Path default should include every zone's heat-driver reconciliation output: %#v", plan.OutputObjects)
+	}
+	for _, object := range plan.OutputObjects {
+		if purposeIDsContain(object.PurposeIDs, SimulationPurposeBasicEnergy) && object.Reason != "Basic Energy Path" {
+			t.Fatalf("Energy Path output reason = %q for %+v", object.Reason, object)
+		}
+		if purposeIDsContain(object.PurposeIDs, SimulationPurposeBasicEnergy) && purposeObjectIsSeries(object.ObjectType) && object.ReportingFrequency != "Monthly" {
+			t.Fatalf("Energy Path output frequency = %q for %+v", object.ReportingFrequency, object)
+		}
 	}
 	if plan.EstimatedFrames != 12 {
-		t.Fatalf("estimated frames = %d, want monthly light Basic Energy frames", plan.EstimatedFrames)
+		t.Fatalf("estimated frames = %d, want monthly Energy Path frames", plan.EstimatedFrames)
 	}
 }
 
@@ -212,7 +220,7 @@ func TestBuildPurposeRunPlanBasicEnergyWithZoneHeatFlowKeepsEnergyMonthly(t *tes
 	})
 
 	for _, object := range plan.OutputObjects {
-		if object.ObjectType == "Output:SQLite" {
+		if !purposeObjectIsSeries(object.ObjectType) {
 			continue
 		}
 		if purposeIDsContain(object.PurposeIDs, SimulationPurposeBasicEnergy) && object.ReportingFrequency != "Monthly" {
@@ -223,12 +231,24 @@ func TestBuildPurposeRunPlanBasicEnergyWithZoneHeatFlowKeepsEnergyMonthly(t *tes
 		}
 	}
 
-	heatFlow := findPurposeOutput(plan, "Output:Variable", "Office", "Zone Air Heat Balance Surface Convection Rate")
-	if heatFlow == nil || heatFlow.ReportingFrequency != "Hourly" || !purposeIDsContain(heatFlow.PurposeIDs, SimulationPurposeZoneHeatFlow) || purposeIDsContain(heatFlow.PurposeIDs, SimulationPurposeBasicEnergy) {
-		t.Fatalf("hourly heat-flow output = %+v", heatFlow)
+	var monthlyEnergyPath, hourlyDrilldown *PurposeOutputObject
+	for index := range plan.OutputObjects {
+		output := &plan.OutputObjects[index]
+		if output.ObjectType != "Output:Variable" || output.KeyValue != "Office" || output.VariableName != "Zone Air Heat Balance Surface Convection Rate" {
+			continue
+		}
+		if output.ReportingFrequency == "Monthly" {
+			monthlyEnergyPath = output
+		}
+		if output.ReportingFrequency == "Hourly" {
+			hourlyDrilldown = output
+		}
 	}
-	if duplicate := findPurposeOutput(plan, "Output:Variable", "*", "Zone Air Heat Balance Surface Convection Rate"); duplicate != nil {
-		t.Fatalf("Basic Energy should reuse Zone Heat Flow heat-balance output instead of adding monthly duplicate: %+v", duplicate)
+	if monthlyEnergyPath == nil || !purposeIDsContain(monthlyEnergyPath.PurposeIDs, SimulationPurposeBasicEnergy) || purposeIDsContain(monthlyEnergyPath.PurposeIDs, SimulationPurposeZoneHeatFlow) {
+		t.Fatalf("monthly Energy Path output = %+v", monthlyEnergyPath)
+	}
+	if hourlyDrilldown == nil || !purposeIDsContain(hourlyDrilldown.PurposeIDs, SimulationPurposeZoneHeatFlow) || purposeIDsContain(hourlyDrilldown.PurposeIDs, SimulationPurposeBasicEnergy) {
+		t.Fatalf("hourly heat-flow drilldown output = %+v", hourlyDrilldown)
 	}
 	if plan.EstimatedFrames != 8760 {
 		t.Fatalf("estimated frames = %d, want hourly Zone Heat Flow frames", plan.EstimatedFrames)
@@ -298,18 +318,18 @@ OtherEquipment,
 		Purposes: []SimulationPurposeID{SimulationPurposeBasicEnergy},
 	})
 
-	if findPurposeOutput(plan, "Output:Meter", "Electricity:Refrigeration", "") == nil {
+	if findPurposeOutput(plan, "Output:Meter", "Refrigeration:Electricity", "") == nil {
 		t.Fatalf("missing refrigeration meter in %#v", plan.OutputObjects)
 	}
-	if findPurposeOutput(plan, "Output:Meter", "Electricity:HeatRecovery", "") == nil {
+	if findPurposeOutput(plan, "Output:Meter", "HeatRecovery:Electricity", "") == nil {
 		t.Fatalf("missing heat recovery meter in %#v", plan.OutputObjects)
 	}
 	for _, meter := range []string{
 		"FuelOilNo1:Facility",
 		"Steam:Facility",
 		"ElectricityProduced:Facility",
-		"DistrictCooling:Cooling",
-		"DistrictHeating:Heating",
+		"Cooling:DistrictCooling",
+		"Heating:DistrictHeating",
 	} {
 		if findPurposeOutput(plan, "Output:Meter", meter, "") == nil {
 			t.Fatalf("missing extended energy meter %q in %#v", meter, plan.OutputObjects)
@@ -320,7 +340,7 @@ OtherEquipment,
 		"Electric Storage Discharge Energy",
 	} {
 		output := findPurposeOutput(plan, "Output:Variable", "*", variable)
-		if output == nil || output.ReportingFrequency != "Monthly" || output.Reason != "Basic Energy Light output" {
+		if output == nil || output.ReportingFrequency != "Monthly" || output.Reason != "Basic Energy Path" {
 			t.Fatalf("missing storage energy output %q in %#v", variable, plan.OutputObjects)
 		}
 	}
@@ -592,17 +612,26 @@ func TestBuildPurposeRunPlanMergesDuplicateOutputsAcrossPurposes(t *testing.T) {
 	if sqlCount != 1 {
 		t.Fatalf("SQL output count = %d, want 1", sqlCount)
 	}
-	heatDriverCount := 0
+	monthlyEnergyPathCount := 0
+	hourlyDrilldownCount := 0
 	for _, object := range plan.OutputObjects {
 		if object.ObjectType == "Output:Variable" && object.VariableName == "Zone Air Heat Balance Surface Convection Rate" {
-			heatDriverCount++
-			if object.ReportingFrequency != "Hourly" {
-				t.Fatalf("shared heat-driver output frequency = %q, want Hourly", object.ReportingFrequency)
+			switch object.ReportingFrequency {
+			case "Monthly":
+				monthlyEnergyPathCount++
+				if !purposeIDsContain(object.PurposeIDs, SimulationPurposeBasicEnergy) || purposeIDsContain(object.PurposeIDs, SimulationPurposeZoneHeatFlow) {
+					t.Fatalf("monthly Energy Path ownership = %#v", object.PurposeIDs)
+				}
+			case "Hourly":
+				hourlyDrilldownCount++
+				if !purposeIDsContain(object.PurposeIDs, SimulationPurposeZoneHeatFlow) || purposeIDsContain(object.PurposeIDs, SimulationPurposeBasicEnergy) {
+					t.Fatalf("hourly drilldown ownership = %#v", object.PurposeIDs)
+				}
 			}
 		}
 	}
-	if heatDriverCount != 1 {
-		t.Fatalf("heat-driver output count = %d, want 1 in %#v", heatDriverCount, plan.OutputObjects)
+	if monthlyEnergyPathCount != 2 || hourlyDrilldownCount != 1 {
+		t.Fatalf("heat-driver counts = monthly %d / hourly %d, want one monthly per zone and one wildcard hourly in %#v", monthlyEnergyPathCount, hourlyDrilldownCount, plan.OutputObjects)
 	}
 	if findPurposeOutput(plan, "Output:VariableDictionary", "", "") == nil {
 		t.Fatalf("integrity plan should include variable dictionary output: %#v", plan.OutputObjects)
@@ -658,12 +687,60 @@ output|Output:SQLite||||temporary|basic_energy
 output|Output:Meter|Electricity:Facility||Monthly|temporary|basic_energy
 output|Output:Meter|Electricity:InteriorEquipment||Monthly|temporary|basic_energy
 output|Output:Meter|Electricity:InteriorLights||Monthly|temporary|basic_energy
+output|Output:Variable|*|AFN Zone Infiltration Latent Heat Gain Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|AFN Zone Infiltration Latent Heat Gain Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|AFN Zone Infiltration Latent Heat Loss Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|AFN Zone Infiltration Latent Heat Loss Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|AFN Zone Infiltration Sensible Heat Gain Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|AFN Zone Infiltration Sensible Heat Gain Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|AFN Zone Infiltration Sensible Heat Loss Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|AFN Zone Infiltration Sensible Heat Loss Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|AFN Zone Mixing Latent Heat Gain Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|AFN Zone Mixing Latent Heat Gain Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|AFN Zone Mixing Latent Heat Loss Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|AFN Zone Mixing Latent Heat Loss Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|AFN Zone Mixing Sensible Heat Gain Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|AFN Zone Mixing Sensible Heat Gain Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|AFN Zone Mixing Sensible Heat Loss Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|AFN Zone Mixing Sensible Heat Loss Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|AFN Zone Ventilation Latent Heat Gain Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|AFN Zone Ventilation Latent Heat Gain Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|AFN Zone Ventilation Latent Heat Loss Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|AFN Zone Ventilation Latent Heat Loss Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|AFN Zone Ventilation Sensible Heat Gain Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|AFN Zone Ventilation Sensible Heat Gain Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|AFN Zone Ventilation Sensible Heat Loss Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|AFN Zone Ventilation Sensible Heat Loss Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Air System Outdoor Air Latent Cooling Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Air System Outdoor Air Latent Cooling Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Air System Outdoor Air Latent Heating Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Air System Outdoor Air Latent Heating Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Air System Outdoor Air Sensible Cooling Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Air System Outdoor Air Sensible Cooling Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Air System Outdoor Air Sensible Heating Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Air System Outdoor Air Sensible Heating Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Air System Outdoor Air Total Cooling Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Air System Outdoor Air Total Cooling Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Air System Outdoor Air Total Heating Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Air System Outdoor Air Total Heating Rate|Monthly|temporary|basic_energy
 output|Output:Variable|*|Cond Loop Demand Not Distributed|Monthly|temporary|basic_energy
 output|Output:Variable|*|Cooling Coil Sensible Cooling Energy|Monthly|temporary|basic_energy
 output|Output:Variable|*|Cooling Coil Total Cooling Energy|Monthly|temporary|basic_energy
 output|Output:Variable|*|Cooling Coil Total Cooling Rate|Monthly|temporary|basic_energy
 output|Output:Variable|*|Fan Air Heat Gain Energy|Monthly|temporary|basic_energy
 output|Output:Variable|*|Fan Air Heat Gain Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Heat Exchanger Latent Cooling Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Heat Exchanger Latent Cooling Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Heat Exchanger Latent Heating Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Heat Exchanger Latent Heating Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Heat Exchanger Sensible Cooling Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Heat Exchanger Sensible Cooling Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Heat Exchanger Sensible Heating Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Heat Exchanger Sensible Heating Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Heat Exchanger Total Cooling Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Heat Exchanger Total Cooling Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Heat Exchanger Total Heating Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Heat Exchanger Total Heating Rate|Monthly|temporary|basic_energy
 output|Output:Variable|*|Heating Coil Heating Energy|Monthly|temporary|basic_energy
 output|Output:Variable|*|Heating Coil Heating Rate|Monthly|temporary|basic_energy
 output|Output:Variable|*|Plant Loop Cooling Demand Energy|Monthly|temporary|basic_energy
@@ -684,12 +761,52 @@ output|Output:Variable|*|Zone Air System Sensible Cooling Energy|Monthly|tempora
 output|Output:Variable|*|Zone Air System Sensible Cooling Rate|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Air System Sensible Heating Energy|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Air System Sensible Heating Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Combined Outdoor Air Latent Heat Gain Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Combined Outdoor Air Latent Heat Gain Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Combined Outdoor Air Latent Heat Loss Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Combined Outdoor Air Latent Heat Loss Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Combined Outdoor Air Sensible Heat Gain Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Combined Outdoor Air Sensible Heat Gain Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Combined Outdoor Air Sensible Heat Loss Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Combined Outdoor Air Sensible Heat Loss Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Electric Equipment Convective Heating Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Electric Equipment Convective Heating Rate|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Electric Equipment Electricity Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Electric Equipment Latent Gain Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Electric Equipment Latent Gain Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Electric Equipment Lost Heat Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Electric Equipment Lost Heat Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Electric Equipment Radiant Heating Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Electric Equipment Radiant Heating Rate|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Electric Equipment Total Heating Energy|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Electric Equipment Total Heating Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Gas Equipment Convective Heating Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Gas Equipment Convective Heating Rate|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Gas Equipment Gas Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Gas Equipment Latent Gain Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Gas Equipment Latent Gain Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Gas Equipment Lost Heat Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Gas Equipment Lost Heat Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Gas Equipment Radiant Heating Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Gas Equipment Radiant Heating Rate|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Gas Equipment Total Heating Energy|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Gas Equipment Total Heating Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Hot Water Equipment Convective Heating Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Hot Water Equipment Convective Heating Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Hot Water Equipment Latent Gain Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Hot Water Equipment Latent Gain Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Ideal Loads Heat Recovery Latent Cooling Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Ideal Loads Heat Recovery Latent Cooling Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Ideal Loads Heat Recovery Latent Heating Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Ideal Loads Heat Recovery Latent Heating Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Ideal Loads Heat Recovery Sensible Cooling Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Ideal Loads Heat Recovery Sensible Cooling Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Ideal Loads Heat Recovery Sensible Heating Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Ideal Loads Heat Recovery Sensible Heating Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Ideal Loads Heat Recovery Total Cooling Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Ideal Loads Heat Recovery Total Cooling Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Ideal Loads Heat Recovery Total Heating Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Ideal Loads Heat Recovery Total Heating Rate|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Ideal Loads Outdoor Air Latent Cooling Energy|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Ideal Loads Outdoor Air Latent Cooling Rate|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Ideal Loads Outdoor Air Latent Heating Energy|Monthly|temporary|basic_energy
@@ -714,24 +831,76 @@ output|Output:Variable|*|Zone Ideal Loads Zone Latent Heating Energy|Monthly|tem
 output|Output:Variable|*|Zone Ideal Loads Zone Latent Heating Rate|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Ideal Loads Zone Sensible Cooling Energy|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Ideal Loads Zone Sensible Heating Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Infiltration Latent Heat Gain Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Infiltration Latent Heat Gain Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Infiltration Latent Heat Loss Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Infiltration Latent Heat Loss Rate|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Infiltration Sensible Heat Gain Energy|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Infiltration Sensible Heat Gain Rate|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Infiltration Sensible Heat Loss Energy|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Infiltration Sensible Heat Loss Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone IT Equipment Convective Heating Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone IT Equipment Convective Heating Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone IT Equipment Latent Gain Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone IT Equipment Latent Gain Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Lights Convective Heating Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Lights Convective Heating Rate|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Lights Electricity Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Lights Radiant Heating Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Lights Radiant Heating Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Lights Return Air Heating Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Lights Return Air Heating Rate|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Lights Total Heating Energy|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Lights Total Heating Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Lights Visible Radiation Heating Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Lights Visible Radiation Heating Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Mixing Latent Heat Gain Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Mixing Latent Heat Gain Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Mixing Latent Heat Loss Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Mixing Latent Heat Loss Rate|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Mixing Sensible Heat Gain Energy|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Mixing Sensible Heat Gain Rate|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Mixing Sensible Heat Loss Energy|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Mixing Sensible Heat Loss Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Other Equipment Convective Heating Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Other Equipment Convective Heating Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Other Equipment Latent Gain Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Other Equipment Latent Gain Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Other Equipment Radiant Heating Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Other Equipment Radiant Heating Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Other Equipment Total Heating Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Other Equipment Total Heating Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Other Internal Convective Heating Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Other Internal Convective Heating Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Other Internal Latent Gain Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Other Internal Latent Gain Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone People Convective Heating Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone People Convective Heating Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone People Latent Gain Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone People Latent Gain Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone People Radiant Heating Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone People Radiant Heating Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone People Sensible Heating Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone People Sensible Heating Rate|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone People Total Heating Energy|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone People Total Heating Rate|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Radiant HVAC Cooling Energy|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Radiant HVAC Cooling Rate|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Radiant HVAC Heating Energy|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Radiant HVAC Heating Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Steam Equipment Convective Heating Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Steam Equipment Convective Heating Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Steam Equipment Latent Gain Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Steam Equipment Latent Gain Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Total Internal Convective Heating Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Total Internal Convective Heating Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Total Internal Latent Gain Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Total Internal Latent Gain Rate|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Transmitted Solar Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Ventilation Latent Heat Gain Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Ventilation Latent Heat Gain Rate|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Ventilation Latent Heat Loss Energy|Monthly|temporary|basic_energy
+output|Output:Variable|*|Zone Ventilation Latent Heat Loss Rate|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Ventilation Sensible Heat Gain Energy|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Ventilation Sensible Heat Gain Rate|Monthly|temporary|basic_energy
 output|Output:Variable|*|Zone Ventilation Sensible Heat Loss Energy|Monthly|temporary|basic_energy

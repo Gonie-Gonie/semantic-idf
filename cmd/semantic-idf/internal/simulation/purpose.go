@@ -33,6 +33,7 @@ const (
 	PurposeAllocationPolicyDirectOnly             = "direct_only"
 	PurposeAllocationPolicyByZoneLoadShare        = "by_zone_load_share"
 	PurposeAllocationPolicyByServicePathLoadShare = "by_service_path_load_share"
+	PurposeBasicEnergyDetailEnergyPath            = "energy_path"
 	PurposeBasicEnergyDetailLight                 = "light"
 	PurposeBasicEnergyDetailExplain               = "explain"
 	PurposeBasicEnergyDetailHeatDrivers           = "heat_drivers"
@@ -99,6 +100,8 @@ type PurposeRunPlan struct {
 	PeriodMode         string                `json:"periodMode,omitempty"`
 	PeriodStart        string                `json:"periodStart,omitempty"`
 	PeriodEnd          string                `json:"periodEnd,omitempty"`
+	ZoneMode           string                `json:"zoneMode,omitempty"`
+	ZoneNames          []string              `json:"zoneNames,omitempty"`
 	Warnings           []PurposeRunWarning   `json:"warnings,omitempty"`
 }
 
@@ -114,6 +117,7 @@ type PurposeOutputObject struct {
 	ReportingFrequency string                 `json:"reportingFrequency,omitempty"`
 	Description        string                 `json:"description,omitempty"`
 	Reason             string                 `json:"reason,omitempty"`
+	ScopeZoneName      string                 `json:"scopeZoneName,omitempty"`
 	ObjectIndex        *int                   `json:"objectIndex,omitempty"`
 }
 
@@ -343,6 +347,7 @@ type PurposeCompletenessItem struct {
 
 type purposePlanBuilder struct {
 	doc              idf.Document
+	geometry         idf.GeometryReport
 	request          SimulationPurposeRequest
 	existing         map[string]PurposeOutputObject
 	existingBase     map[string]PurposeOutputObject
@@ -373,6 +378,12 @@ func NormalizeSimulationPurposeRequest(request *SimulationPurposeRequest) Simula
 	}
 	normalized.AllocationPolicy = normalizePurposeAllocationPolicy(normalized.AllocationPolicy)
 	normalized.BasicEnergyDetail = normalizePurposeBasicEnergyDetail(normalized.BasicEnergyDetail)
+	// The Energy Path contract depends on EnergyPlus' post-run RDD/MDD dictionaries
+	// to resolve version-specific output aliases. This is a lightweight output and
+	// is part of the preset rather than an optional preflight discovery run.
+	if purposeIDsContain(normalized.Purposes, SimulationPurposeBasicEnergy) && normalized.BasicEnergyDetail == PurposeBasicEnergyDetailEnergyPath {
+		normalized.DiscoveryAllowed = true
+	}
 	normalized.ZoneHeatFlowDetail = normalizePurposeZoneHeatFlowDetail(normalized.ZoneHeatFlowDetail)
 	normalized.OutputApplyMode = normalizePurposeOutputApplyMode(normalized.OutputApplyMode)
 	normalized.Scope.ZoneMode = strings.TrimSpace(normalized.Scope.ZoneMode)
@@ -420,14 +431,16 @@ func normalizePurposeAllocationPolicy(policy string) string {
 
 func normalizePurposeBasicEnergyDetail(detail string) string {
 	switch strings.ToLower(strings.TrimSpace(detail)) {
-	case PurposeBasicEnergyDetailLight, "":
+	case PurposeBasicEnergyDetailEnergyPath, "energy-path", "energy path", "":
+		return PurposeBasicEnergyDetailEnergyPath
+	case PurposeBasicEnergyDetailLight:
 		return PurposeBasicEnergyDetailLight
 	case PurposeBasicEnergyDetailExplain, "energy_explain", "explanation":
 		return PurposeBasicEnergyDetailExplain
 	case PurposeBasicEnergyDetailHeatDrivers, "heat", "full":
 		return PurposeBasicEnergyDetailHeatDrivers
 	default:
-		return PurposeBasicEnergyDetailLight
+		return PurposeBasicEnergyDetailEnergyPath
 	}
 }
 
@@ -573,6 +586,20 @@ func PurposeOutputSignature(objectType string, fields []idf.OutputFieldValue) st
 func BuildPurposeResultBundle(result *SimulationRunResult, request SimulationPurposeRequest) PurposeResultBundle {
 	request = NormalizeSimulationPurposeRequest(&request)
 	bundle := PurposeResultBundle{}
+	var sharedGeometry *idf.GeometryReport
+	var sharedDocument *idf.Document
+	var sharedGeometryErr error
+	needsGeometry := purposeIDsContain(request.Purposes, SimulationPurposeBasicEnergy) ||
+		(purposeIDsContain(request.Purposes, SimulationPurposeZoneHeatFlow) && request.ZoneHeatFlowDetail == PurposeZoneHeatFlowDetailSurface)
+	if needsGeometry {
+		doc, err := simulationDocumentFromInput(result.InputPath)
+		sharedGeometryErr = err
+		if err == nil {
+			sharedDocument = &doc
+			report := idf.AnalyzeGeometry(doc)
+			sharedGeometry = &report
+		}
+	}
 	for _, purposeID := range request.Purposes {
 		switch purposeID {
 		case SimulationPurposeBasicEnergy:
@@ -582,16 +609,31 @@ func BuildPurposeResultBundle(result *SimulationRunResult, request SimulationPur
 				bundle.Energy = buildEnergyDashboardResult(result.Series)
 			}
 			bundle.Energy.Completeness = energyDashboardCompleteness(bundle.Energy, result.PurposeRunPlan, result.Series)
-			bundle.EnergyExplanation = buildEnergyExplanationResultFromFiles(result.Files, bundle.Energy, plan)
-			bundle.EnergyExplanation = enrichEnergyExplanationWithServicePaths(bundle.EnergyExplanation, result.InputPath)
-			bundle.EnergyExplanation = applyEnergyExplanationServicePathLoadShareAllocation(bundle.EnergyExplanation)
+			driverContext := energyDriverBuildContext{Enabled: true}
+			if sharedGeometry != nil {
+				if sharedDocument != nil {
+					driverContext = newEnergyDriverBuildContext(*sharedGeometry, *sharedDocument)
+				} else {
+					driverContext = newEnergyDriverBuildContext(*sharedGeometry)
+				}
+			} else if sharedGeometryErr != nil {
+				driverContext.GeometryWarning = &EnergyWarning{
+					Severity: "warning",
+					Code:     "energy_driver_geometry_unavailable",
+					Message:  "Energy driver surface context could not load GeometryReport: " + sharedGeometryErr.Error(),
+				}
+			}
+			legacyExplanation := buildEnergyExplanationResultFromFilesWithDriverContext(result.Files, bundle.Energy, plan, driverContext)
+			legacyExplanation = enrichEnergyExplanationWithServicePaths(legacyExplanation, result.InputPath)
+			legacyExplanation = applyEnergyExplanationV1ServicePathLoadShareAllocation(legacyExplanation)
+			bundle.EnergyExplanation = UpgradeEnergyExplanationV1(legacyExplanation)
 			bundle.EnergyExplanationSummary = buildEnergyExplanationSummary(bundle.EnergyExplanation)
 			bundle.Completeness = append(bundle.Completeness, bundle.Energy.Completeness...)
 		case SimulationPurposeZoneHeatFlow:
 			bundle.ZoneHeatFlow = result.HeatFlow
 			bundle.ZoneHeatFlow.Completeness = zoneHeatFlowCompleteness(result.HeatFlow)
 			bundle.Completeness = append(bundle.Completeness, bundle.ZoneHeatFlow.Completeness...)
-			bundle.ThermalTopology = buildThermalTopologySimulationResult(result, request)
+			bundle.ThermalTopology = buildThermalTopologySimulationResultWithGeometry(result, request, sharedGeometry, sharedGeometryErr)
 			if request.ZoneHeatFlowDetail == PurposeZoneHeatFlowDetailSurface {
 				bundle.Completeness = append(bundle.Completeness, bundle.ThermalTopology.Completeness...)
 			}
@@ -660,6 +702,8 @@ func purposeRunPlanWithRequestScope(plan *PurposeRunPlan, request SimulationPurp
 	copy.PeriodMode = request.Scope.PeriodMode
 	copy.PeriodStart = request.Scope.PeriodStart
 	copy.PeriodEnd = request.Scope.PeriodEnd
+	copy.ZoneMode = request.Scope.ZoneMode
+	copy.ZoneNames = append([]string(nil), request.Scope.ZoneNames...)
 	return &copy
 }
 
@@ -670,7 +714,7 @@ type energyServicePathIndex struct {
 	byLoopService map[string][]string
 }
 
-func enrichEnergyExplanationWithServicePaths(explanation EnergyExplanationResult, inputPath string) EnergyExplanationResult {
+func enrichEnergyExplanationWithServicePaths(explanation EnergyExplanationV1, inputPath string) EnergyExplanationV1 {
 	index := buildEnergyServicePathIndex(inputPath)
 	if len(index.byService) == 0 && len(index.byZone) == 0 && len(index.byLoopService) == 0 {
 		return explanation
@@ -2272,6 +2316,7 @@ func newPurposePlanBuilder(doc idf.Document, request SimulationPurposeRequest) *
 	}
 	return &purposePlanBuilder{
 		doc:              doc,
+		geometry:         idf.AnalyzeGeometry(doc),
 		request:          request,
 		existing:         existing,
 		existingBase:     existingBase,
@@ -2283,6 +2328,10 @@ func newPurposePlanBuilder(doc idf.Document, request SimulationPurposeRequest) *
 }
 
 func (builder *purposePlanBuilder) addSQLBase() {
+	reason := "Purpose run base SQL output"
+	if purposeIDsContain(builder.request.Purposes, SimulationPurposeBasicEnergy) && normalizePurposeBasicEnergyDetail(builder.request.BasicEnergyDetail) == PurposeBasicEnergyDetailEnergyPath {
+		reason = "Basic Energy Path"
+	}
 	builder.addObject(PurposeOutputObject{
 		ObjectType: "Output:SQLite",
 		Fields: []idf.OutputFieldValue{
@@ -2292,7 +2341,7 @@ func (builder *purposePlanBuilder) addSQLBase() {
 		PurposeIDs:  append([]SimulationPurposeID(nil), builder.request.Purposes...),
 		Weight:      "light",
 		Description: "Primary SQL result source with tabular data.",
-		Reason:      "Purpose run base SQL output",
+		Reason:      reason,
 	})
 }
 
@@ -2300,6 +2349,10 @@ func (builder *purposePlanBuilder) addDiscoveryDictionaryOutputs() {
 	purposeIDs := append([]SimulationPurposeID(nil), builder.request.Purposes...)
 	if len(purposeIDs) == 0 {
 		purposeIDs = []SimulationPurposeID{SimulationPurposeCustomOutputs}
+	}
+	reason := "Discovery catalog dictionary output"
+	if purposeIDsContain(purposeIDs, SimulationPurposeBasicEnergy) && normalizePurposeBasicEnergyDetail(builder.request.BasicEnergyDetail) == PurposeBasicEnergyDetailEnergyPath {
+		reason = "Basic Energy Path"
 	}
 	builder.addObject(PurposeOutputObject{
 		ObjectType: "Output:VariableDictionary",
@@ -2309,16 +2362,22 @@ func (builder *purposePlanBuilder) addDiscoveryDictionaryOutputs() {
 		PurposeIDs:  purposeIDs,
 		Weight:      "light",
 		Description: "Requests EnergyPlus report-variable and meter dictionaries for output discovery.",
-		Reason:      "Discovery catalog dictionary output",
+		Reason:      reason,
 	})
 	builder.warn("info", "discovery_dictionary_requested", "Discovery is enabled, so the run plan requests EnergyPlus output dictionaries for the catalog assistant.", firstPurposeID(purposeIDs), "")
 }
 
 func (builder *purposePlanBuilder) addBasicEnergy() {
+	detail := normalizePurposeBasicEnergyDetail(builder.request.BasicEnergyDetail)
 	for _, id := range []string{
 		"standard-meter-electricity-facility",
 		"standard-meter-naturalgas-facility",
+		"standard-meter-gasoline-facility",
+		"standard-meter-diesel-facility",
+		"standard-meter-coal-facility",
 		"standard-meter-district-cooling-facility",
+		"standard-meter-district-heating-water-facility",
+		"standard-meter-district-heating-steam-facility",
 		"standard-meter-district-heating-facility",
 		"standard-meter-fuel-oil-no1-facility",
 		"standard-meter-fuel-oil-no2-facility",
@@ -2342,21 +2401,44 @@ func (builder *purposePlanBuilder) addBasicEnergy() {
 		"standard-meter-district-cooling-cooling",
 		"standard-meter-district-heating-heating",
 		"standard-meter-naturalgas-heating",
+		"standard-meter-gasoline-heating",
+		"standard-meter-diesel-heating",
+		"standard-meter-coal-heating",
+		"standard-meter-fuel-oil-no1-heating",
+		"standard-meter-fuel-oil-no2-heating",
+		"standard-meter-propane-heating",
+		"standard-meter-other-fuel-1-heating",
+		"standard-meter-other-fuel-2-heating",
+		"standard-meter-district-heating-water-heating",
+		"standard-meter-district-heating-steam-heating",
 		"standard-meter-naturalgas-water-systems",
 		"standard-meter-naturalgas-interior-equipment",
 	} {
-		builder.addRecommendation(id, SimulationPurposeBasicEnergy)
+		if detail == PurposeBasicEnergyDetailEnergyPath {
+			builder.addRecommendationWithReason(id, SimulationPurposeBasicEnergy, "Basic Energy Path")
+		} else {
+			builder.addRecommendation(id, SimulationPurposeBasicEnergy)
+		}
 	}
 	if docHasObjectTypePrefix(builder.doc, "ElectricLoadCenter:Storage:") {
 		for _, variable := range basicEnergyStorageVariableNames() {
-			builder.addVariableWithReason(SimulationPurposeBasicEnergy, "*", variable, basicEnergyDetailFrequency(builder.request), "medium", "Basic Energy Light: electric storage charge/discharge energy.", "Basic Energy Light output")
+			description := "Basic Energy Light: electric storage charge/discharge energy."
+			reason := "Basic Energy Light output"
+			if detail == PurposeBasicEnergyDetailEnergyPath {
+				description = "Monthly Energy Path storage charge/discharge energy."
+				reason = "Basic Energy Path"
+			}
+			builder.addVariableWithReason(SimulationPurposeBasicEnergy, "*", variable, basicEnergyDetailFrequency(builder.request), "medium", description, reason)
 		}
 	}
 	if !docHasObject(builder.doc, "Zone") {
 		return
 	}
-	detail := normalizePurposeBasicEnergyDetail(builder.request.BasicEnergyDetail)
 	if detail == PurposeBasicEnergyDetailLight {
+		return
+	}
+	if detail == PurposeBasicEnergyDetailEnergyPath {
+		builder.addBasicEnergyPath()
 		return
 	}
 	detailFrequency := basicEnergyDetailFrequency(builder.request)
@@ -2383,7 +2465,223 @@ func (builder *purposePlanBuilder) addBasicEnergy() {
 	}
 }
 
+func (builder *purposePlanBuilder) addBasicEnergyPath() {
+	zoneKeys := builder.energyPathZoneKeys()
+	if len(zoneKeys) == 0 {
+		builder.warn("warning", "energy_path_zone_scope_empty", "Basic Energy Path needs zone keys for load and driver outputs, but the requested zone scope did not resolve any zones.", SimulationPurposeBasicEnergy, "")
+		return
+	}
+
+	for _, key := range zoneKeys {
+		for _, variable := range basicEnergyPathZoneReportedEnergyVariableNames(builder.doc) {
+			builder.addVariableWithReason(SimulationPurposeBasicEnergy, key, variable, "Monthly", "medium", "Monthly zone direct-use energy for the four-stage Energy Path.", "Basic Energy Path")
+		}
+	}
+
+	idealLoadsTargets := builder.energyPathIdealLoadsTargets(zoneKeys)
+	for _, definition := range energyLoadAliasCatalog() {
+		for _, variable := range definition.Aliases {
+			targets := []purposeOutputKeyTarget{{KeyValue: "*"}}
+			if strings.EqualFold(definition.Scope, "zone") {
+				targets = purposeZoneOutputKeyTargets(zoneKeys)
+			}
+			if energyPathIsIdealLoadsVariable(variable) {
+				targets = idealLoadsTargets
+			}
+			for _, target := range targets {
+				builder.addVariableWithReasonAndScopeZone(SimulationPurposeBasicEnergy, target.KeyValue, variable, "Monthly", "medium", "Monthly delivered-load energy with rate fallback for the four-stage Energy Path.", "Basic Energy Path", target.ZoneName)
+			}
+		}
+	}
+
+	surfaceTargets := builder.energyPathSurfaceTargets()
+	for _, definition := range energyHeatAliasCatalog() {
+		aliases := basicEnergyPathHeatVariableAliases(definition)
+		if len(aliases) == 0 {
+			continue
+		}
+		if definition.SurfaceScoped {
+			for _, target := range surfaceTargets {
+				for _, variable := range aliases {
+					builder.addVariableWithReason(SimulationPurposeBasicEnergy, target.Name, variable, "Monthly", "medium", "Monthly surface-to-zone-air convection for the four-stage Energy Path.", "Basic Energy Path")
+				}
+			}
+			continue
+		}
+		if definition.ObjectScoped {
+			for _, target := range builder.energyPathHeatContextTargets(definition, zoneKeys, idealLoadsTargets) {
+				for _, variable := range aliases {
+					builder.addVariableWithReasonAndScopeZone(SimulationPurposeBasicEnergy, target.KeyValue, variable, "Monthly", "medium", "Monthly ventilation conditioning and heat-recovery context for the four-stage Energy Path.", "Basic Energy Path", target.ZoneName)
+				}
+			}
+			continue
+		}
+		for _, key := range zoneKeys {
+			for _, variable := range aliases {
+				builder.addVariableWithReason(SimulationPurposeBasicEnergy, key, variable, "Monthly", "medium", "Monthly zone heat-driver and reconciliation output for the four-stage Energy Path.", "Basic Energy Path")
+			}
+		}
+	}
+}
+
+type purposeOutputKeyTarget struct {
+	KeyValue string
+	ZoneName string
+}
+
+func purposeZoneOutputKeyTargets(zoneNames []string) []purposeOutputKeyTarget {
+	out := make([]purposeOutputKeyTarget, 0, len(zoneNames))
+	for _, zoneName := range zoneNames {
+		out = append(out, purposeOutputKeyTarget{KeyValue: zoneName, ZoneName: zoneName})
+	}
+	return out
+}
+
+func energyPathIsIdealLoadsVariable(variable string) bool {
+	return strings.HasPrefix(normalizeEnergyOutputName(variable), "zone ideal loads ")
+}
+
+func (builder *purposePlanBuilder) energyPathIdealLoadsTargets(zoneNames []string) []purposeOutputKeyTarget {
+	selected := map[string]bool{}
+	for _, zoneName := range zoneNames {
+		selected[normalizePurposeToken(zoneName)] = true
+	}
+	out := []purposeOutputKeyTarget{}
+	seen := map[string]bool{}
+	add := func(keyValue string, zoneName string) {
+		key := normalizePurposeToken(keyValue)
+		if key == "" || seen[key] {
+			return
+		}
+		seen[key] = true
+		out = append(out, purposeOutputKeyTarget{KeyValue: keyValue, ZoneName: zoneName})
+	}
+	hvac := idf.AnalyzeHVAC(builder.doc)
+	for _, relation := range hvac.ZoneRelations {
+		if !selected[normalizePurposeToken(relation.ZoneName)] {
+			continue
+		}
+		for _, component := range relation.ZoneEquipment {
+			if strings.EqualFold(strings.TrimSpace(component.ObjectType), "ZoneHVAC:IdealLoadsAirSystem") {
+				add(component.ObjectName, relation.ZoneName)
+			}
+		}
+	}
+	if _, scoped := purposeSelectedZoneSet(builder.request.Scope); !scoped {
+		for _, object := range builder.doc.Objects {
+			if strings.EqualFold(strings.TrimSpace(object.Type), "ZoneHVAC:IdealLoadsAirSystem") {
+				add(purposeObjectName(object), "")
+			}
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return strings.ToLower(out[i].KeyValue) < strings.ToLower(out[j].KeyValue) })
+	return out
+}
+
+func basicEnergyPathHeatVariableAliases(definition energyHeatAliasDefinition) []string {
+	out := []string{}
+	aliases := definition.OutputRequestAliases
+	if len(aliases) == 0 {
+		aliases = definition.Aliases
+	}
+	for _, alias := range aliases {
+		if energyDriverSourcePolicyFor(alias, definition.Kind).Role == energyDriverSourceRoleContext && !energyPathRetainsHeatContext(definition.Kind) {
+			continue
+		}
+		out = appendUniquePurposeString(out, alias)
+	}
+	return out
+}
+
+func energyPathRetainsHeatContext(kind string) bool {
+	switch strings.ToLower(strings.TrimSpace(kind)) {
+	case "heat.ventilation_ideal_oa", "heat.ventilation_ideal_heat_recovery", "heat.ventilation_system_oa", "heat.ventilation_heat_recovery":
+		return true
+	default:
+		return false
+	}
+}
+
+func (builder *purposePlanBuilder) energyPathHeatContextTargets(definition energyHeatAliasDefinition, zoneNames []string, idealLoadsTargets []purposeOutputKeyTarget) []purposeOutputKeyTarget {
+	switch strings.ToLower(strings.TrimSpace(definition.Kind)) {
+	case "heat.ventilation_ideal_oa", "heat.ventilation_ideal_heat_recovery":
+		return append([]purposeOutputKeyTarget(nil), idealLoadsTargets...)
+	case "heat.ventilation_system_oa":
+		return builder.energyPathAirLoopTargets(zoneNames)
+	case "heat.ventilation_heat_recovery":
+		return builder.energyPathHeatExchangerTargets(zoneNames)
+	default:
+		return nil
+	}
+}
+
+func (builder *purposePlanBuilder) energyPathAirLoopTargets(zoneNames []string) []purposeOutputKeyTarget {
+	report := idf.AnalyzeHVAC(builder.doc)
+	selectedZones, scoped := purposeSelectedZoneSet(builder.request.Scope)
+	selectedLoops := map[string]bool{}
+	if scoped {
+		for _, relation := range report.ZoneRelations {
+			if !selectedZones[normalizePurposeToken(relation.ZoneName)] {
+				continue
+			}
+			for _, loopName := range relation.AirLoopNames {
+				selectedLoops[normalizePurposeToken(loopName)] = true
+			}
+		}
+	}
+	out := []purposeOutputKeyTarget{}
+	for _, loop := range report.Loops {
+		if !strings.EqualFold(strings.TrimSpace(loop.Type), "AirLoopHVAC") || scoped && !selectedLoops[normalizePurposeToken(loop.Name)] {
+			continue
+		}
+		out = append(out, purposeOutputKeyTarget{KeyValue: loop.Name})
+	}
+	sort.SliceStable(out, func(i, j int) bool { return strings.ToLower(out[i].KeyValue) < strings.ToLower(out[j].KeyValue) })
+	return out
+}
+
+func (builder *purposePlanBuilder) energyPathHeatExchangerTargets(zoneNames []string) []purposeOutputKeyTarget {
+	selectedLoops := map[string]bool{}
+	for _, target := range builder.energyPathAirLoopTargets(zoneNames) {
+		selectedLoops[normalizePurposeToken(target.KeyValue)] = true
+	}
+	_, scoped := purposeSelectedZoneSet(builder.request.Scope)
+	names := []string{}
+	if !scoped {
+		for _, object := range builder.doc.Objects {
+			if strings.HasPrefix(normalizePurposeToken(object.Type), normalizePurposeToken("HeatExchanger:")) {
+				names = appendUniquePurposeString(names, purposeObjectName(object))
+			}
+		}
+	} else {
+		report := idf.AnalyzeHVAC(builder.doc)
+		for _, loop := range report.Loops {
+			if !strings.EqualFold(strings.TrimSpace(loop.Type), "AirLoopHVAC") || !selectedLoops[normalizePurposeToken(loop.Name)] {
+				continue
+			}
+			for _, side := range []idf.HVACLoopSide{loop.SupplySide, loop.DemandSide} {
+				for _, branch := range side.Branches {
+					for _, component := range branch.Components {
+						if strings.HasPrefix(normalizePurposeToken(component.ObjectType), normalizePurposeToken("HeatExchanger:")) {
+							names = appendUniquePurposeString(names, component.ObjectName)
+						}
+					}
+				}
+			}
+		}
+	}
+	sort.SliceStable(names, func(i, j int) bool { return strings.ToLower(names[i]) < strings.ToLower(names[j]) })
+	out := make([]purposeOutputKeyTarget, 0, len(names))
+	for _, name := range names {
+		out = append(out, purposeOutputKeyTarget{KeyValue: name})
+	}
+	return out
+}
+
 func basicEnergyDetailFrequency(request SimulationPurposeRequest) string {
+	if normalizePurposeBasicEnergyDetail(request.BasicEnergyDetail) == PurposeBasicEnergyDetailEnergyPath {
+		return "Monthly"
+	}
 	if request.FrequencyPolicy == PurposeFrequencyPolicyHighestResolution {
 		return "Hourly"
 	}
@@ -2395,6 +2693,37 @@ func basicEnergyZoneReportedEnergyVariableNames() []string {
 		"Zone Lights Electricity Energy",
 		"Zone Electric Equipment Electricity Energy",
 		"Zone Gas Equipment Gas Energy",
+	}
+}
+
+func basicEnergyPathZoneReportedEnergyVariableNames(doc idf.Document) []string {
+	out := []string{}
+	for _, definition := range energyPathDirectUseVariableAliasCatalog() {
+		if !energyPathDirectUseDefinitionApplies(doc, definition) {
+			continue
+		}
+		aliases := definition.OutputRequestAliases
+		if len(aliases) == 0 {
+			aliases = definition.Aliases
+		}
+		for _, alias := range aliases {
+			out = appendUniquePurposeString(out, alias)
+		}
+	}
+	return out
+}
+
+func energyPathDirectUseDefinitionApplies(doc idf.Document, definition energyMeterAliasDefinition) bool {
+	switch definition.Kind {
+	case "energy.interior_lighting":
+		return docHasObject(doc, "Lights")
+	case "energy.interior_equipment":
+		if definition.Carrier == "natural_gas" {
+			return docHasObject(doc, "GasEquipment")
+		}
+		return docHasObject(doc, "ElectricEquipment")
+	default:
+		return true
 	}
 }
 
@@ -2411,6 +2740,9 @@ func basicEnergyStorageVariableNames() []string {
 func basicEnergyDeliveredLoadVariableNames() []string {
 	out := []string{}
 	for _, def := range energyLoadAliasCatalog() {
+		if def.EnergyPathOnly {
+			continue
+		}
 		for _, alias := range def.Aliases {
 			out = appendUniquePurposeString(out, alias)
 		}
@@ -2442,7 +2774,7 @@ func (builder *purposePlanBuilder) addZoneHeatFlow() {
 }
 
 func (builder *purposePlanBuilder) addSurfaceHeatFlow() {
-	targets := surfaceHeatFlowTargets(builder.doc)
+	targets := surfaceHeatFlowTargetsForScope(builder.doc, builder.geometry, builder.request.Scope)
 	if len(targets) == 0 {
 		builder.warn("warning", "surface_heat_flow_scope_empty", "Surface heat-flow detail needs heat-transfer surfaces, but none were found.", SimulationPurposeZoneHeatFlow, "")
 		return
@@ -2466,8 +2798,9 @@ func (builder *purposePlanBuilder) addSurfaceHeatFlow() {
 }
 
 type surfaceHeatFlowTarget struct {
-	Name    string
-	Opening bool
+	Name      string
+	ZoneNames []string
+	Opening   bool
 }
 
 type surfaceHeatFlowVariableDefinition struct {
@@ -2493,25 +2826,181 @@ func surfaceHeatFlowVariableDefinitions(opening bool) []surfaceHeatFlowVariableD
 }
 
 func surfaceHeatFlowTargets(doc idf.Document) []surfaceHeatFlowTarget {
+	return surfaceHeatFlowTargetsForScope(doc, idf.AnalyzeGeometry(doc), SimulationPurposeScope{})
+}
+
+func surfaceHeatFlowTargetsForScope(doc idf.Document, report idf.GeometryReport, scope SimulationPurposeScope) []surfaceHeatFlowTarget {
 	values := []surfaceHeatFlowTarget{}
 	seen := map[string]bool{}
+	selectedZones, scoped := purposeSelectedZoneSet(scope)
+	add := func(name string, zoneNames []string, opening bool) {
+		if scoped && !purposeZoneNamesIntersect(zoneNames, selectedZones) {
+			return
+		}
+		key := normalizePurposeToken(name)
+		if key == "" || seen[key] {
+			return
+		}
+		seen[key] = true
+		values = append(values, surfaceHeatFlowTarget{Name: name, ZoneNames: append([]string(nil), zoneNames...), Opening: opening})
+	}
+	for _, surface := range report.Surfaces {
+		if surface.IsShading {
+			continue
+		}
+		add(surface.Name, []string{surface.ZoneName}, false)
+	}
+	for _, window := range report.Windows {
+		add(window.Name, []string{window.ZoneName}, true)
+	}
 	for _, object := range doc.Objects {
-		typeName := strings.ToLower(strings.TrimSpace(object.Type))
-		opening := strings.Contains(typeName, "fenestration") || strings.HasPrefix(typeName, "window") || strings.HasPrefix(typeName, "door") || strings.Contains(typeName, "glazeddoor")
-		opaque := strings.Contains(typeName, "buildingsurface") || strings.HasPrefix(typeName, "wall") || strings.HasPrefix(typeName, "roof") || strings.HasPrefix(typeName, "floor") || strings.HasPrefix(typeName, "ceiling")
-		if !opening && !opaque {
+		if !strings.EqualFold(strings.TrimSpace(object.Type), "InternalMass") {
+			continue
+		}
+		for _, target := range purposeInternalMassSurfaceTargets(doc, report, object) {
+			add(target.Name, target.ZoneNames, false)
+		}
+	}
+	sort.SliceStable(values, func(i, j int) bool { return strings.ToLower(values[i].Name) < strings.ToLower(values[j].Name) })
+	return values
+}
+
+func purposeZoneNamesIntersect(zoneNames []string, selected map[string]bool) bool {
+	for _, zoneName := range zoneNames {
+		if selected[normalizePurposeToken(zoneName)] {
+			return true
+		}
+	}
+	return false
+}
+
+func purposeInternalMassTargetFields(object idf.Object) (string, string) {
+	zoneTarget := ""
+	spaceTarget := ""
+	for _, field := range object.Fields {
+		comment := normalizePurposeToken(field.Comment)
+		value := strings.TrimSpace(field.Value)
+		if value == "" {
+			continue
+		}
+		if strings.Contains(comment, "zone or zonelist") {
+			zoneTarget = value
+		}
+		if strings.Contains(comment, "space or spacelist") {
+			spaceTarget = value
+		}
+	}
+	if zoneTarget == "" && len(object.Fields) > 2 {
+		zoneTarget = strings.TrimSpace(object.Fields[2].Value)
+	}
+	if spaceTarget == "" && len(object.Fields) > 3 {
+		spaceTarget = strings.TrimSpace(object.Fields[3].Value)
+	}
+	return zoneTarget, spaceTarget
+}
+
+func purposeInternalMassSurfaceTargets(doc idf.Document, report idf.GeometryReport, object idf.Object) []surfaceHeatFlowTarget {
+	type spaceOwner struct {
+		name     string
+		zoneName string
+	}
+	zones := map[string]string{}
+	for _, zone := range report.Zones {
+		zones[normalizePurposeToken(zone.Name)] = zone.Name
+	}
+	spaces := map[string]spaceOwner{}
+	for _, space := range report.Spaces {
+		spaces[normalizePurposeToken(space.Name)] = spaceOwner{name: space.Name, zoneName: space.ZoneName}
+	}
+	zoneLists := map[string][]string{}
+	spaceLists := map[string][]spaceOwner{}
+	for _, object := range doc.Objects {
+		if len(object.Fields) < 2 {
 			continue
 		}
 		name := purposeObjectName(object)
 		key := normalizePurposeToken(name)
-		if key == "" || seen[key] {
+		switch {
+		case strings.EqualFold(strings.TrimSpace(object.Type), "ZoneList"):
+			for _, field := range object.Fields[1:] {
+				if zoneName := zones[normalizePurposeToken(field.Value)]; zoneName != "" {
+					zoneLists[key] = appendUniquePurposeString(zoneLists[key], zoneName)
+				}
+			}
+		case strings.EqualFold(strings.TrimSpace(object.Type), "SpaceList"):
+			for _, field := range object.Fields[1:] {
+				if owner, ok := spaces[normalizePurposeToken(field.Value)]; ok {
+					already := false
+					for _, current := range spaceLists[key] {
+						if strings.EqualFold(current.name, owner.name) {
+							already = true
+							break
+						}
+					}
+					if !already {
+						spaceLists[key] = append(spaceLists[key], owner)
+					}
+				}
+			}
+		}
+	}
+
+	objectName := purposeObjectName(object)
+	zoneTarget, spaceTarget := purposeInternalMassTargetFields(object)
+	zoneList, isZoneList := zoneLists[normalizePurposeToken(zoneTarget)]
+	if isZoneList {
+		out := make([]surfaceHeatFlowTarget, 0, len(zoneList))
+		for _, zoneName := range zoneList {
+			out = append(out, surfaceHeatFlowTarget{Name: strings.TrimSpace(zoneName + " " + objectName), ZoneNames: []string{zoneName}})
+		}
+		return out
+	}
+	if spaceTarget != "" {
+		if owner, ok := spaces[normalizePurposeToken(spaceTarget)]; ok {
+			return []surfaceHeatFlowTarget{{Name: objectName, ZoneNames: []string{owner.zoneName}}}
+		}
+		owners := spaceLists[normalizePurposeToken(spaceTarget)]
+		out := make([]surfaceHeatFlowTarget, 0, len(owners))
+		for _, owner := range owners {
+			out = append(out, surfaceHeatFlowTarget{Name: strings.TrimSpace(owner.name + " " + objectName), ZoneNames: []string{owner.zoneName}})
+		}
+		return out
+	}
+	if zoneName := zones[normalizePurposeToken(zoneTarget)]; zoneName != "" {
+		return []surfaceHeatFlowTarget{{Name: objectName, ZoneNames: []string{zoneName}}}
+	}
+	return []surfaceHeatFlowTarget{{Name: objectName}}
+}
+
+func purposeSelectedZoneSet(scope SimulationPurposeScope) (map[string]bool, bool) {
+	mode := strings.ToLower(strings.TrimSpace(scope.ZoneMode))
+	if mode != "selected" && mode != "visible" && mode != "filtered" {
+		return nil, false
+	}
+	selected := make(map[string]bool, len(scope.ZoneNames))
+	for _, zoneName := range scope.ZoneNames {
+		if key := normalizePurposeToken(zoneName); key != "" {
+			selected[key] = true
+		}
+	}
+	return selected, true
+}
+
+func (builder *purposePlanBuilder) energyPathZoneKeys() []string {
+	selectedZones, scoped := purposeSelectedZoneSet(builder.request.Scope)
+	keys := []string{}
+	for _, zone := range builder.geometry.Zones {
+		if scoped && !selectedZones[normalizePurposeToken(zone.Name)] {
 			continue
 		}
-		seen[key] = true
-		values = append(values, surfaceHeatFlowTarget{Name: name, Opening: opening})
+		keys = appendUniquePurposeString(keys, zone.Name)
 	}
-	sort.SliceStable(values, func(i, j int) bool { return strings.ToLower(values[i].Name) < strings.ToLower(values[j].Name) })
-	return values
+	sort.SliceStable(keys, func(i, j int) bool { return strings.ToLower(keys[i]) < strings.ToLower(keys[j]) })
+	return keys
+}
+
+func (builder *purposePlanBuilder) energyPathSurfaceTargets() []surfaceHeatFlowTarget {
+	return surfaceHeatFlowTargetsForScope(builder.doc, builder.geometry, builder.request.Scope)
 }
 
 func purposeZoneKeysForScope(scope SimulationPurposeScope) ([]string, bool, string) {
@@ -2925,18 +3414,86 @@ func (builder *purposePlanBuilder) addCustomOutputs() {
 }
 
 func (builder *purposePlanBuilder) addRecommendation(id string, purposeID SimulationPurposeID) {
+	builder.addRecommendationWithReason(id, purposeID, "")
+}
+
+func (builder *purposePlanBuilder) addRecommendationWithReason(id string, purposeID SimulationPurposeID, reason string) {
 	item, ok := builder.recommendations[id]
 	if !ok {
 		return
 	}
-	builder.addObject(PurposeOutputObject{
+	if strings.TrimSpace(reason) == "" {
+		reason = item.Label
+	}
+	fields := item.Fields
+	if reason == "Basic Energy Path" {
+		fields = canonicalEnergyPathRecommendationFields(item.ObjectType, fields)
+	}
+	object := PurposeOutputObject{
 		ObjectType:  item.ObjectType,
-		Fields:      item.Fields,
+		Fields:      fields,
 		PurposeIDs:  []SimulationPurposeID{purposeID},
-		Weight:      purposeWeight(item.ObjectType, item.Fields),
+		Weight:      purposeWeight(item.ObjectType, fields),
 		Description: item.Description,
-		Reason:      item.Label,
-	})
+		Reason:      reason,
+	}
+	builder.addObject(object)
+	if reason != "Basic Energy Path" || !energyExplanationIsMeterObjectType(item.ObjectType) {
+		return
+	}
+	definition, ok := energyMeterAliasDefinitionForName(purposeOutputKeyValue(fields))
+	if !ok {
+		return
+	}
+	for _, alias := range definition.OutputRequestAliases {
+		if strings.EqualFold(alias, purposeOutputKeyValue(fields)) {
+			continue
+		}
+		aliasObject := object
+		aliasObject.Fields = purposeOutputFieldsWithKey(fields, alias)
+		aliasObject.Description = item.Description + " Version-compatible EnergyPlus meter alias."
+		builder.addObject(aliasObject)
+	}
+}
+
+func purposeOutputFieldsWithKey(fields []idf.OutputFieldValue, keyValue string) []idf.OutputFieldValue {
+	out := append([]idf.OutputFieldValue(nil), fields...)
+	for index := range out {
+		if strings.EqualFold(strings.TrimSpace(out[index].Name), "Key Name") || strings.EqualFold(strings.TrimSpace(out[index].Name), "Key Value") {
+			out[index].Value = keyValue
+			break
+		}
+	}
+	return out
+}
+
+func canonicalEnergyPathRecommendationFields(objectType string, fields []idf.OutputFieldValue) []idf.OutputFieldValue {
+	if !energyExplanationIsMeterObjectType(objectType) {
+		return fields
+	}
+	name := purposeOutputKeyValue(fields)
+	definition, ok := energyMeterAliasDefinitionForName(name)
+	if !ok || definition.EndUse == "generators" || len(definition.Aliases) < 2 || strings.EqualFold(name, definition.Aliases[0]) {
+		return fields
+	}
+	knownAlias := false
+	for _, alias := range definition.Aliases[1:] {
+		if strings.EqualFold(name, alias) {
+			knownAlias = true
+			break
+		}
+	}
+	if !knownAlias {
+		return fields
+	}
+	out := append([]idf.OutputFieldValue(nil), fields...)
+	for index := range out {
+		if strings.EqualFold(strings.TrimSpace(out[index].Name), "Key Name") || strings.EqualFold(strings.TrimSpace(out[index].Name), "Key Value") {
+			out[index].Value = definition.Aliases[0]
+			break
+		}
+	}
+	return out
 }
 
 func (builder *purposePlanBuilder) addVariable(purposeID SimulationPurposeID, keyValue string, variableName string, frequency string, weight string, description string) {
@@ -2944,6 +3501,10 @@ func (builder *purposePlanBuilder) addVariable(purposeID SimulationPurposeID, ke
 }
 
 func (builder *purposePlanBuilder) addVariableWithReason(purposeID SimulationPurposeID, keyValue string, variableName string, frequency string, weight string, description string, reason string) {
+	builder.addVariableWithReasonAndScopeZone(purposeID, keyValue, variableName, frequency, weight, description, reason, "")
+}
+
+func (builder *purposePlanBuilder) addVariableWithReasonAndScopeZone(purposeID SimulationPurposeID, keyValue string, variableName string, frequency string, weight string, description string, reason string, scopeZoneName string) {
 	builder.addObject(PurposeOutputObject{
 		ObjectType: "Output:Variable",
 		Fields: []idf.OutputFieldValue{
@@ -2951,10 +3512,11 @@ func (builder *purposePlanBuilder) addVariableWithReason(purposeID SimulationPur
 			{Name: "Variable Name", Value: variableName},
 			{Name: "Reporting Frequency", Value: frequency},
 		},
-		PurposeIDs:  []SimulationPurposeID{purposeID},
-		Weight:      weight,
-		Description: description,
-		Reason:      reason,
+		PurposeIDs:    []SimulationPurposeID{purposeID},
+		Weight:        weight,
+		Description:   description,
+		Reason:        reason,
+		ScopeZoneName: scopeZoneName,
 	})
 }
 
@@ -2971,10 +3533,22 @@ func (builder *purposePlanBuilder) addObject(object PurposeOutputObject) {
 	}
 	if existing, ok := builder.existing[object.Signature]; ok {
 		object.State = PurposeOutputStateExisting
-		object.Reason = existing.Reason
+		if object.Reason != "Basic Energy Path" {
+			object.Reason = existing.Reason
+		}
 		object.ObjectIndex = existing.ObjectIndex
 	} else if conflict, ok := builder.existingBase[purposeOutputBaseSignature(object.ObjectType, object.Fields)]; ok {
-		object = builder.applyFrequencyConflictPolicy(object, conflict)
+		if object.Reason == "Basic Energy Path" && strings.EqualFold(object.ReportingFrequency, "Monthly") && purposeObjectIsSeries(object.ObjectType) {
+			object.State = purposeTemporaryState(builder.request)
+			object.ObjectIndex = nil
+			builder.warn("info", "energy_path_monthly_added", fmt.Sprintf("%s exists at %s frequency; adding the Monthly Energy Path series without changing it.", purposeOutputLabel(conflict), conflict.ReportingFrequency), firstPurposeID(object.PurposeIDs), object.Signature)
+		} else {
+			requestedReason := object.Reason
+			object = builder.applyFrequencyConflictPolicy(object, conflict)
+			if requestedReason == "Basic Energy Path" {
+				object.Reason = requestedReason
+			}
+		}
 	} else if builder.request.PersistOutputs {
 		object.State = PurposeOutputStateWillPersist
 	} else {
@@ -3051,15 +3625,18 @@ func (builder *purposePlanBuilder) plan() PurposeRunPlan {
 	})
 	seriesCount := 0
 	frameCount := 1
+	sampleCount := 0
 	for _, object := range builder.objects {
 		if !purposeObjectIsSeries(object.ObjectType) {
 			continue
 		}
 		seriesCount++
-		frameCount = maxInt(frameCount, purposeFrequencyFrames(object.ReportingFrequency, builder.runPeriodDays, builder.timestepsPerHour))
+		frames := purposeFrequencyFrames(object.ReportingFrequency, builder.runPeriodDays, builder.timestepsPerHour)
+		frameCount = maxInt(frameCount, frames)
+		sampleCount += maxInt(frames, 1)
 	}
-	weight := planWeight(seriesCount, frameCount)
-	if warning := builder.outputWeightWarning(weight, seriesCount, frameCount); warning.Code != "" {
+	weight := planWeightFromSamples(sampleCount)
+	if warning := builder.outputWeightWarning(weight, seriesCount, frameCount, sampleCount); warning.Code != "" {
 		builder.warnings = append(builder.warnings, warning)
 	}
 	return PurposeRunPlan{
@@ -3076,6 +3653,8 @@ func (builder *purposePlanBuilder) plan() PurposeRunPlan {
 		PeriodMode:         builder.request.Scope.PeriodMode,
 		PeriodStart:        builder.request.Scope.PeriodStart,
 		PeriodEnd:          builder.request.Scope.PeriodEnd,
+		ZoneMode:           builder.request.Scope.ZoneMode,
+		ZoneNames:          append([]string(nil), builder.request.Scope.ZoneNames...),
 		Warnings:           builder.warnings,
 	}
 }
@@ -3087,7 +3666,7 @@ func purposeRunPlanBasicEnergyDetail(request SimulationPurposeRequest) string {
 	return request.BasicEnergyDetail
 }
 
-func (builder *purposePlanBuilder) outputWeightWarning(weight string, seriesCount int, frameCount int) PurposeRunWarning {
+func (builder *purposePlanBuilder) outputWeightWarning(weight string, seriesCount int, frameCount int, sampleCount int) PurposeRunWarning {
 	normalized := strings.ToLower(strings.TrimSpace(weight))
 	if normalized != "heavy" && normalized != "very heavy" {
 		return PurposeRunWarning{}
@@ -3100,7 +3679,7 @@ func (builder *purposePlanBuilder) outputWeightWarning(weight string, seriesCoun
 		Severity:  "warning",
 		Code:      code,
 		PurposeID: firstPurposeID(builder.request.Purposes),
-		Message:   fmt.Sprintf("%s output estimate: %d series x %d frames. Consider selected scope or lower frequency if runtime becomes too high.", weight, seriesCount, frameCount),
+		Message:   fmt.Sprintf("%s output estimate: %d samples across %d series (maximum %d frames per series). Consider selected scope or lower frequency if runtime becomes too high.", weight, sampleCount, seriesCount, frameCount),
 	}
 }
 
@@ -3289,7 +3868,10 @@ func purposeObjectOrder(objectType string) int {
 }
 
 func planWeight(seriesCount int, frameCount int) string {
-	load := seriesCount * maxInt(frameCount, 1)
+	return planWeightFromSamples(seriesCount * maxInt(frameCount, 1))
+}
+
+func planWeightFromSamples(load int) string {
 	switch {
 	case load >= 600000:
 		return "Very Heavy"
@@ -3509,7 +4091,11 @@ func basicEnergyDetailedHeatDriverVariableNames() []string {
 	}
 	out := []string{}
 	for _, def := range energyHeatAliasCatalog() {
-		for _, alias := range def.Aliases {
+		aliases := def.OutputRequestAliases
+		if aliases == nil {
+			aliases = def.Aliases
+		}
+		for _, alias := range aliases {
 			if excluded[normalizeEnergyOutputName(alias)] {
 				continue
 			}

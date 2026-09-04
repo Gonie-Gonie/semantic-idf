@@ -143,7 +143,7 @@ func TestFrontendSimulationEnergySystemsCrossJumpContracts(t *testing.T) {
 		"renderEnergyDerivedKPISection",
 		"energyExplanationDerivedKPIItems",
 		"energyExplanationGraphDerivedKPIItems",
-		"explanationSummary.derivedKpis",
+		"energyPathLegacyDerivedKPIItems(explanationSummary)",
 		"formatOptionalValueWithUnit",
 		"firstPositiveNumber",
 		"item.numeratorValue",
@@ -356,6 +356,13 @@ func TestFrontendSimulationUsesSimplifiedDefaultsAndAutomaticEnergyPlus(t *testi
 	if !strings.Contains(purposePanel, `aria-label="Simulation purposes"`) {
 		t.Fatal("main Simulation purpose selector must use the purpose-only accessible label")
 	}
+	if !strings.Contains(markup, `id="simulationRunEstimate"`) {
+		t.Fatal("simplified Simulation must retain the compact run-plan weight/series/frame estimate")
+	}
+	stateSource := readTestFile(t, "frontend/src/js/state.js")
+	if !strings.Contains(stateSource, `simulationRunEstimate: document.querySelector("#simulationRunEstimate")`) {
+		t.Fatal("compact run-plan estimate is not registered in the frontend element state")
+	}
 	for _, removed := range []string{
 		`aria-label="Purpose setup"`,
 		`data-i18n="simulation.setup"`,
@@ -371,8 +378,12 @@ func TestFrontendSimulationUsesSimplifiedDefaultsAndAutomaticEnergyPlus(t *testi
 			t.Fatalf("simplified Simulation purpose selector still exposes setup/selection/tier copy %q", removed)
 		}
 	}
-
 	simulation := readTestFile(t, "frontend/src/js/views/simulation-views.js")
+	for _, required := range []string{"function renderSimulationRunEstimate", "plan.estimatedWeight", "plan.estimatedSeries", "plan.estimatedFrames", `"simulation.runEstimate"`} {
+		if !strings.Contains(simulation, required) {
+			t.Fatalf("compact run-plan estimate renderer missing %q", required)
+		}
+	}
 	for _, removed := range []string{
 		`id: "integrity_check"`,
 		`id: "custom_outputs"`,
@@ -395,6 +406,9 @@ func TestFrontendSimulationUsesSimplifiedDefaultsAndAutomaticEnergyPlus(t *testi
 	}
 
 	i18n := readTestFile(t, "frontend/src/js/i18n.js")
+	if !strings.Contains(i18n, `"simulation.runEstimate"`) {
+		t.Fatal("run-plan estimate translation is missing")
+	}
 	for _, removed := range []string{
 		`"simulation.setup"`,
 		`"simulation.noPurposeSelected"`,
@@ -414,7 +428,7 @@ func TestFrontendSimulationUsesSimplifiedDefaultsAndAutomaticEnergyPlus(t *testi
 	for _, required := range []string{
 		`zoneMode: "all"`,
 		`periodMode: "full"`,
-		`basicEnergyDetail: "heat_drivers"`,
+		`basicEnergyDetail: "energy_path"`,
 		`zoneHeatFlowDetail: "surface"`,
 		`frequencyPolicy: "purpose_default"`,
 		`allocationPolicy: "direct_only"`,
@@ -717,7 +731,6 @@ func TestFrontendBatchEnergyExplanationDeltaContracts(t *testing.T) {
 		"energyExplanationDeltaValue",
 		"energyExplanationDeltaPercent",
 		"energyExplanationComparisonValue",
-		"Residual\", \"residuals",
 		"zero baseline",
 		"zero comparison",
 		"leftMissing",
@@ -746,8 +759,8 @@ func TestFrontendBatchEnergyExplanationDeltaContracts(t *testing.T) {
 		"workerCount: Number(elements.multiSimulationWorkers?.value || 0)",
 		"weatherMode: elements.multiSimulationWeatherMode?.value",
 		"energyExplanationSummaryExportItems",
-		"derivedKpis",
-		"energy_explanation.derived_kpi",
+		"energyPathSummaryGroups",
+		"isEnergyPathSummaryV2",
 		"energyExplanationSourceExportItems",
 		"energyExplanationSourceAvailabilityExportItems",
 		"energyExplanationNodeExportItems",
@@ -843,7 +856,7 @@ func TestFrontendBatchEnergyExplanationDeltaContracts(t *testing.T) {
 
 	purposeRequest := sliceBetween(batch, "function batchPurposeRequest", "function bindEvents")
 	for _, required := range []string{
-		`basicEnergyDetail: "heat_drivers"`,
+		`basicEnergyDetail: "energy_path"`,
 		`zoneHeatFlowDetail: "surface"`,
 		`frequencyPolicy: "purpose_default"`,
 		`allocationPolicy: "direct_only"`,

@@ -21,9 +21,27 @@ type OutputDiscoveryRequest struct {
 }
 
 type OutputDiscoveryResult struct {
-	Items   []OutputDiscoveryItem `json:"items"`
-	Sources []string              `json:"sources,omitempty"`
-	Counts  map[string]int        `json:"counts,omitempty"`
+	Items                    []OutputDiscoveryItem     `json:"items"`
+	PurposeOutputResolutions []PurposeOutputResolution `json:"purposeOutputResolutions,omitempty"`
+	Sources                  []string                  `json:"sources,omitempty"`
+	Counts                   map[string]int            `json:"counts,omitempty"`
+}
+
+// PurposeOutputResolution is the post-run, dictionary-backed selection for one
+// canonical run-plan requirement. A run plan may request several EnergyPlus
+// version aliases so the first run remains portable; this record identifies the
+// single available output that should feed the canonical result series.
+type PurposeOutputResolution struct {
+	ObjectType         string                `json:"objectType"`
+	KeyValue           string                `json:"keyValue,omitempty"`
+	CanonicalName      string                `json:"canonicalName"`
+	ReportingFrequency string                `json:"reportingFrequency,omitempty"`
+	Status             string                `json:"status"`
+	ResolvedName       string                `json:"resolvedName,omitempty"`
+	ResolutionBasis    string                `json:"resolutionBasis,omitempty"`
+	Units              string                `json:"units,omitempty"`
+	Source             string                `json:"source,omitempty"`
+	PurposeIDs         []SimulationPurposeID `json:"purposeIds,omitempty"`
 }
 
 type OutputDiscoveryItem struct {
@@ -39,6 +57,8 @@ type OutputDiscoveryItem struct {
 	Status             string                `json:"status"`
 	AliasOf            string                `json:"aliasOf,omitempty"`
 	AliasReason        string                `json:"aliasReason,omitempty"`
+	ResolvedName       string                `json:"resolvedName,omitempty"`
+	ResolutionBasis    string                `json:"resolutionBasis,omitempty"`
 	PurposeIDs         []SimulationPurposeID `json:"purposeIds,omitempty"`
 }
 
@@ -96,6 +116,8 @@ func DiscoverAvailableOutputs(request OutputDiscoveryRequest) (OutputDiscoveryRe
 		doc, err := idf.Parse(request.Text)
 		if err == nil {
 			plan := BuildPurposeRunPlan(doc, NormalizeSimulationPurposeRequest(request.PurposeRequest))
+			discovered := collector.availableOnly()
+			result.PurposeOutputResolutions = resolvePurposeOutputRequirements(plan, discovered)
 			for _, object := range plan.OutputObjects {
 				if !purposeObjectIsSeries(object.ObjectType) {
 					continue
@@ -104,13 +126,19 @@ func DiscoverAvailableOutputs(request OutputDiscoveryRequest) (OutputDiscoveryRe
 				status := "fallback"
 				aliasOf := ""
 				aliasReason := ""
+				resolvedName := ""
+				resolutionBasis := ""
 				units := ""
 				source := "purpose_plan"
-				if collector.has(object.ObjectType, object.KeyValue, name) {
+				if discovered.has(object.ObjectType, object.KeyValue, name) {
 					status = "available"
-				} else if alias, ok := collector.aliasFor(object.ObjectType, object.KeyValue, name); ok {
+					resolvedName = name
+					resolutionBasis = "exact"
+				} else if alias, ok := discovered.aliasFor(object.ObjectType, object.KeyValue, name); ok {
 					status = "alias"
 					aliasOf = alias.Name
+					resolvedName = alias.Name
+					resolutionBasis = outputDiscoveryResolutionBasis(object.ObjectType, alias.Name)
 					aliasReason = "A discovered output can be used as an alias for this purpose output."
 					units = alias.Units
 					source = mergeDiscoveryToken(source, alias.Source)
@@ -127,6 +155,8 @@ func DiscoverAvailableOutputs(request OutputDiscoveryRequest) (OutputDiscoveryRe
 					Status:             status,
 					AliasOf:            aliasOf,
 					AliasReason:        aliasReason,
+					ResolvedName:       resolvedName,
+					ResolutionBasis:    resolutionBasis,
 					PurposeIDs:         object.PurposeIDs,
 				})
 			}
@@ -211,6 +241,8 @@ func (collector *outputDiscoveryCollector) add(item OutputDiscoveryItem) {
 	item.Status = strings.TrimSpace(item.Status)
 	item.AliasOf = strings.TrimSpace(item.AliasOf)
 	item.AliasReason = strings.TrimSpace(item.AliasReason)
+	item.ResolvedName = strings.TrimSpace(item.ResolvedName)
+	item.ResolutionBasis = strings.TrimSpace(item.ResolutionBasis)
 	enrichOutputDiscoveryMeterMetadata(&item)
 	if item.Status == "" {
 		item.Status = "available"
@@ -245,10 +277,23 @@ func (collector *outputDiscoveryCollector) add(item OutputDiscoveryItem) {
 		if existing.AliasReason == "" {
 			existing.AliasReason = item.AliasReason
 		}
+		if existing.ResolvedName == "" {
+			existing.ResolvedName = item.ResolvedName
+		}
+		if existing.ResolutionBasis == "" {
+			existing.ResolutionBasis = item.ResolutionBasis
+		}
 		collector.items[key] = existing
 		return
 	}
 	collector.items[key] = item
+}
+
+func outputDiscoveryResolutionBasis(objectType string, resolvedName string) string {
+	if strings.EqualFold(strings.TrimSpace(objectType), "Output:Variable") && energyExplanationOutputIsRate(resolvedName) {
+		return "rate_fallback"
+	}
+	return "version_alias"
 }
 
 func (collector outputDiscoveryCollector) has(objectType string, keyValue string, name string) bool {
@@ -283,6 +328,173 @@ func (collector outputDiscoveryCollector) aliasFor(objectType string, keyValue s
 		}
 	}
 	return OutputDiscoveryItem{}, false
+}
+
+func (collector outputDiscoveryCollector) availableOnly() outputDiscoveryCollector {
+	out := outputDiscoveryCollector{items: map[string]OutputDiscoveryItem{}}
+	for _, item := range collector.items {
+		if item.Status == "available" {
+			out.add(item)
+		}
+	}
+	return out
+}
+
+type purposeOutputRequirement struct {
+	canonicalName string
+	candidates    []string
+}
+
+func resolvePurposeOutputRequirements(plan PurposeRunPlan, discovered outputDiscoveryCollector) []PurposeOutputResolution {
+	byKey := map[string]PurposeOutputResolution{}
+	order := []string{}
+	for _, object := range plan.OutputObjects {
+		if !purposeObjectIsSeries(object.ObjectType) {
+			continue
+		}
+		name := purposeOutputDiscoveryName(object)
+		requirement := purposeOutputRequirementFor(object.ObjectType, name)
+		requirementKeyValue := object.KeyValue
+		if outputDiscoveryIsMeter(object.ObjectType) {
+			requirementKeyValue = requirement.canonicalName
+		}
+		key := outputDiscoveryKey(object.ObjectType, requirementKeyValue, requirement.canonicalName) + "|" + normalizePurposeToken(object.ReportingFrequency)
+		if existing, ok := byKey[key]; ok {
+			existing.PurposeIDs = normalizePurposeIDs(append(existing.PurposeIDs, object.PurposeIDs...))
+			byKey[key] = existing
+			continue
+		}
+		resolution := PurposeOutputResolution{
+			ObjectType:         object.ObjectType,
+			KeyValue:           requirementKeyValue,
+			CanonicalName:      requirement.canonicalName,
+			ReportingFrequency: object.ReportingFrequency,
+			Status:             "fallback",
+			PurposeIDs:         append([]SimulationPurposeID(nil), object.PurposeIDs...),
+		}
+		if purposeIDsContain(object.PurposeIDs, SimulationPurposeCustomOutputs) {
+			resolution.Status = "missing"
+		}
+		for _, candidate := range requirement.candidates {
+			item, ok := discovered.find(object.ObjectType, requirementKeyValue, candidate)
+			if !ok {
+				continue
+			}
+			resolution.Status = "available"
+			resolution.ResolvedName = item.Name
+			resolution.ResolutionBasis = "exact"
+			if !strings.EqualFold(item.Name, requirement.canonicalName) {
+				resolution.Status = "alias"
+				resolution.ResolutionBasis = outputDiscoveryResolutionBasis(object.ObjectType, item.Name)
+			}
+			resolution.Units = item.Units
+			resolution.Source = item.Source
+			break
+		}
+		byKey[key] = resolution
+		order = append(order, key)
+	}
+	out := make([]PurposeOutputResolution, 0, len(order))
+	for _, key := range order {
+		out = append(out, byKey[key])
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		left := normalizePurposeToken(out[i].ObjectType) + "|" + normalizePurposeToken(out[i].CanonicalName) + "|" + normalizePurposeToken(out[i].KeyValue)
+		right := normalizePurposeToken(out[j].ObjectType) + "|" + normalizePurposeToken(out[j].CanonicalName) + "|" + normalizePurposeToken(out[j].KeyValue)
+		return left < right
+	})
+	return out
+}
+
+func purposeOutputRequirementFor(objectType string, name string) purposeOutputRequirement {
+	if outputDiscoveryIsMeter(objectType) {
+		if definition, ok := energyMeterAliasDefinitionForName(name); ok {
+			candidates := append([]string(nil), definition.OutputRequestAliases...)
+			candidates = append(candidates, definition.Aliases...)
+			candidates = normalizePurposeStrings(candidates)
+			canonicalName := strings.TrimSpace(name)
+			if len(definition.OutputRequestAliases) > 0 {
+				canonicalName = definition.OutputRequestAliases[0]
+			} else if len(definition.Aliases) > 0 {
+				canonicalName = definition.Aliases[0]
+			}
+			return purposeOutputRequirement{canonicalName: canonicalName, candidates: candidates}
+		}
+	}
+	if strings.EqualFold(strings.TrimSpace(objectType), "Output:Variable") {
+		if requirement, ok := purposeSurfaceOutputRequirement(name); ok {
+			return requirement
+		}
+		if definition, ok := energyHeatAliasDefinitionForName(name); ok && definition.Kind == "heat.surface_inside_face_convection" {
+			return purposeOutputRequirementFromAliases(name, definition.Aliases)
+		}
+		if definition, ok := energyVariableAliasDefinitionForName(name); ok {
+			if len(definition.LegacyAliases) > 0 {
+				return purposeOutputRequirementFromAliases(name, definition.Aliases)
+			}
+			return purposeOutputRequirementFromAliases(name, purposeVariableStemAliases(name, definition.Aliases))
+		}
+		if definition, ok := energyLoadAliasDefinitionForName(name); ok {
+			return purposeOutputRequirementFromAliases(name, purposeVariableStemAliases(name, definition.Aliases))
+		}
+		if definition, ok := energyHeatAliasDefinitionForName(name); ok {
+			return purposeOutputRequirementFromAliases(name, purposeVariableStemAliases(name, definition.Aliases))
+		}
+	}
+	aliases := append([]string{name}, outputDiscoveryAliases(objectType, name)...)
+	return purposeOutputRequirementFromAliases(name, aliases)
+}
+
+func purposeSurfaceOutputRequirement(name string) (purposeOutputRequirement, bool) {
+	for _, opening := range []bool{false, true} {
+		for _, definition := range surfaceHeatFlowVariableDefinitions(opening) {
+			aliases := append([]string{definition.EnergyName}, definition.EnergyAliases...)
+			aliases = append(aliases, definition.RateNames...)
+			for _, alias := range aliases {
+				if strings.EqualFold(strings.TrimSpace(alias), strings.TrimSpace(name)) {
+					return purposeOutputRequirementFromAliases(definition.EnergyName, aliases), true
+				}
+			}
+		}
+	}
+	return purposeOutputRequirement{}, false
+}
+
+func purposeVariableStemAliases(name string, aliases []string) []string {
+	wanted := purposeVariableOutputStem(name)
+	out := []string{}
+	for _, alias := range aliases {
+		if purposeVariableOutputStem(alias) == wanted {
+			out = append(out, alias)
+		}
+	}
+	return out
+}
+
+func purposeVariableOutputStem(name string) string {
+	value := normalizeEnergyOutputName(name)
+	for _, suffix := range []string{" energy", " rate"} {
+		if strings.HasSuffix(value, suffix) {
+			return strings.TrimSpace(strings.TrimSuffix(value, suffix))
+		}
+	}
+	return value
+}
+
+func purposeOutputRequirementFromAliases(fallbackName string, aliases []string) purposeOutputRequirement {
+	ordered := []string{}
+	for _, rate := range []bool{false, true} {
+		for _, alias := range aliases {
+			if energyExplanationOutputIsRate(alias) != rate {
+				continue
+			}
+			ordered = appendUniquePurposeString(ordered, alias)
+		}
+	}
+	if len(ordered) == 0 {
+		ordered = []string{fallbackName}
+	}
+	return purposeOutputRequirement{canonicalName: ordered[0], candidates: ordered}
 }
 
 func (collector outputDiscoveryCollector) sorted() []OutputDiscoveryItem {
@@ -460,6 +672,15 @@ func parseMeterDiscoveryName(name string) (string, string, string) {
 	endUseCategory := ""
 	if len(parts) > 1 {
 		endUseCategory = parts[1]
+		// Current EnergyPlus end-use meters use EndUse:Resource, while
+		// legacy dictionaries and facility meters use Resource:EndUse.
+		// Normalize only the metadata orientation; retain the exact MDD name.
+		if _, firstIsEndUse := energyEndUseToken(parts[0]); firstIsEndUse {
+			if _, secondIsCarrier := energyCarrierToken(parts[1]); secondIsCarrier {
+				resourceType = parts[1]
+				endUseCategory = parts[0]
+			}
+		}
 	}
 	meterGroup := ""
 	if len(parts) > 2 {
@@ -525,6 +746,9 @@ func outputDiscoveryAliases(objectType string, name string) []string {
 				}
 			}
 		}
+		if aliases := energyExplanationVariableAliasCandidates(name); len(aliases) > 0 {
+			return aliases
+		}
 		switch normalizePurposeToken(name) {
 		case "zone mean air temperature":
 			return []string{"Zone Air Temperature", "Space Mean Air Temperature"}
@@ -532,22 +756,19 @@ func outputDiscoveryAliases(objectType string, name string) []string {
 			return nil
 		}
 	case "output:meter", "output:meter:meterfileonly", "output:meter:cumulative", "output:meter:cumulativemeterfileonly":
-		switch normalizePurposeToken(name) {
-		case "naturalgas:facility":
-			return []string{"Gas:Facility"}
-		case "naturalgas:heating":
-			return []string{"Gas:Heating"}
-		case "naturalgas:watersystems":
-			return []string{"Gas:WaterSystems"}
-		case "gas:facility":
-			return []string{"NaturalGas:Facility"}
-		case "gas:heating":
-			return []string{"NaturalGas:Heating"}
-		case "gas:watersystems":
-			return []string{"NaturalGas:WaterSystems"}
-		default:
-			return nil
+		if definition, ok := energyMeterAliasDefinitionForName(name); ok {
+			ordered := append([]string(nil), definition.OutputRequestAliases...)
+			ordered = append(ordered, definition.Aliases...)
+			out := []string{}
+			for _, alias := range ordered {
+				if strings.EqualFold(strings.TrimSpace(alias), strings.TrimSpace(name)) {
+					continue
+				}
+				out = appendUniquePurposeString(out, alias)
+			}
+			return out
 		}
+		return nil
 	}
 	return nil
 }

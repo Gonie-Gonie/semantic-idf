@@ -121,6 +121,17 @@ func SummarizePurposeMetrics(bundle *PurposeResultBundle) []PurposeMetric {
 	return metrics
 }
 
+func compactPurposeResultBundleForBatch(bundle *PurposeResultBundle) {
+	if bundle == nil || bundle.EnergyExplanation.Schema != energyExplanationSchema {
+		return
+	}
+	// Batch comparisons consume the annual four-stage summary. Keep the annual
+	// graph and trace metadata for detail export, but do not replicate every
+	// monthly node/link graph in the batch response payload.
+	bundle.EnergyExplanation.Periods = nil
+	bundle.EnergyExplanation.ZoneResults = nil
+}
+
 func energyExplanationPurposeMetrics(explanation EnergyExplanationResult) []PurposeMetric {
 	if explanation.Schema == "" || len(explanation.Nodes) == 0 {
 		return nil
@@ -130,9 +141,9 @@ func energyExplanationPurposeMetrics(explanation EnergyExplanationResult) []Purp
 		return nil
 	}
 	metrics := []PurposeMetric{}
-	metrics = appendEnergyExplanationSummaryTotalMetric(metrics, "energy_use", "Energy explanation use", summary.EnergyByCarrier)
-	metrics = appendEnergyExplanationSummaryTotalMetric(metrics, "delivered_load", "Delivered load total", summary.DeliveredLoadByService)
-	metrics = appendEnergyExplanationSummaryTotalMetric(metrics, "heat_drivers", "Heat driver total", summary.HeatDrivers)
+	metrics = appendEnergyExplanationSummaryTotalMetric(metrics, "energy_use", "Energy explanation use", summary.CarrierItems())
+	metrics = appendEnergyExplanationSummaryTotalMetric(metrics, "delivered_load", "Delivered load total", summary.LoadItems())
+	metrics = appendEnergyExplanationSummaryTotalMetric(metrics, "heat_drivers", "Heat driver total", summary.DriverItems())
 	metrics = appendEnergyExplanationSummaryTotalMetric(metrics, "residual", "Energy explanation residual", summary.Residuals)
 	if explanation.Completeness.MappedPercent > 0 {
 		metrics = append(metrics, PurposeMetric{
@@ -145,7 +156,7 @@ func energyExplanationPurposeMetrics(explanation EnergyExplanationResult) []Purp
 			Status:       explanation.Completeness.Status,
 		})
 	}
-	for _, item := range summary.DerivedKPIs {
+	for _, item := range summary.RatioItems() {
 		if item.Value == 0 {
 			continue
 		}
@@ -161,13 +172,13 @@ func energyExplanationPurposeMetrics(explanation EnergyExplanationResult) []Purp
 			Status:       "ok",
 		})
 	}
-	for _, item := range summary.TopHeatDrivers {
+	for _, item := range limitEnergyExplanationSummaryItems(summary.DriverItems(), 5) {
 		if item.Value == 0 {
 			continue
 		}
 		label := strings.TrimSpace("Heat driver: " + firstNonEmpty(item.Label, item.Kind, item.ID))
 		metrics = append(metrics, PurposeMetric{
-			ID:           "energy_explanation.heat." + metricID(item.ID),
+			ID:           "energy_explanation.heat." + metricID(firstNonEmpty(item.Kind, item.ID)),
 			Label:        label,
 			PurposeID:    SimulationPurposeBasicEnergy,
 			Value:        item.Value,

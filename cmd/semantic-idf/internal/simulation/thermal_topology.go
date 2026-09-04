@@ -128,6 +128,10 @@ type thermalTopologyPeriodDefinition struct {
 }
 
 func buildThermalTopologySimulationResult(result *SimulationRunResult, request SimulationPurposeRequest) ThermalTopologySimulationResult {
+	return buildThermalTopologySimulationResultWithGeometry(result, request, nil, nil)
+}
+
+func buildThermalTopologySimulationResultWithGeometry(result *SimulationRunResult, request SimulationPurposeRequest, geometry *idf.GeometryReport, geometryErr error) ThermalTopologySimulationResult {
 	out := ThermalTopologySimulationResult{
 		Schema:         thermalTopologySimulationSchema,
 		State:          "static_topology",
@@ -139,12 +143,17 @@ func buildThermalTopologySimulationResult(result *SimulationRunResult, request S
 		return out
 	}
 
-	topology, err := thermalTopologyFromSimulationInput(result.InputPath)
-	if err != nil {
-		out.UnavailableReason = "The simulation input could not be mapped to thermal topology: " + err.Error()
+	if geometry == nil && geometryErr == nil {
+		report, err := geometryReportFromSimulationInput(result.InputPath)
+		geometry = &report
+		geometryErr = err
+	}
+	if geometryErr != nil {
+		out.UnavailableReason = "The simulation input could not be mapped to thermal topology: " + geometryErr.Error()
 		out.Completeness = []PurposeCompletenessItem{thermalTopologyCompleteness(false, "simulation input", out.UnavailableReason)}
 		return out
 	}
+	topology := geometry.Topology
 	series := collectThermalTopologyRawSeries(result)
 	if len(series) == 0 {
 		out.UnavailableReason = "No compatible surface heat-flow outputs were found. Open the purpose plan and rerun with Surface detail."
@@ -188,27 +197,42 @@ func thermalTopologyCompleteness(found bool, source string, message string) Purp
 }
 
 func thermalTopologyFromSimulationInput(path string) (idf.ThermalTopologyReport, error) {
+	report, err := geometryReportFromSimulationInput(path)
+	if err != nil {
+		return idf.ThermalTopologyReport{}, err
+	}
+	return report.Topology, nil
+}
+
+func geometryReportFromSimulationInput(path string) (idf.GeometryReport, error) {
+	doc, err := simulationDocumentFromInput(path)
+	if err != nil {
+		return idf.GeometryReport{}, err
+	}
+	return idf.AnalyzeGeometry(doc), nil
+}
+
+func simulationDocumentFromInput(path string) (idf.Document, error) {
 	path = strings.TrimSpace(path)
 	if path == "" {
-		return idf.ThermalTopologyReport{}, fmt.Errorf("input path is missing")
+		return idf.Document{}, fmt.Errorf("input path is missing")
 	}
 	content, err := os.ReadFile(path)
 	if err != nil {
-		return idf.ThermalTopologyReport{}, err
+		return idf.Document{}, err
 	}
 	if epinput.DetectFormat(path, content) == epinput.FormatIDF {
 		doc, parseErr := idf.Parse(string(content))
 		if parseErr != nil {
-			return idf.ThermalTopologyReport{}, parseErr
+			return idf.Document{}, parseErr
 		}
-		return idf.AnalyzeGeometry(doc).Topology, nil
+		return doc, nil
 	}
 	model, err := epinput.Parse(path, content)
 	if err != nil {
-		return idf.ThermalTopologyReport{}, err
+		return idf.Document{}, err
 	}
-	doc := epinput.ToIDFDocument(model)
-	return idf.AnalyzeGeometry(doc).Topology, nil
+	return epinput.ToIDFDocument(model), nil
 }
 
 func collectThermalTopologyRawSeries(result *SimulationRunResult) []thermalTopologyRawSeries {

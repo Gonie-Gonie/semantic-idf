@@ -252,7 +252,12 @@ func outputRecommendations(doc Document, existing []OutputObjectSummary) []Outpu
 		standardOutputVariableRecommendationWithFrequency("standard-zone-air-hb-deviation", "Standard: heat-flow deviation", "*", "Zone Air Heat Balance Deviation Rate", standardHeatFlowFrequency, "zone_heat_flow", "Hourly off-balance residual for zone heat-flow ledger."),
 		standardOutputMeterRecommendation("standard-meter-electricity-facility", "Standard: facility electricity", "Electricity:Facility", "facility_energy", "Monthly whole-facility electricity use."),
 		standardOutputMeterRecommendation("standard-meter-naturalgas-facility", "Standard: facility natural gas", "NaturalGas:Facility", "facility_energy", "Monthly whole-facility natural gas use."),
+		standardOutputMeterRecommendation("standard-meter-gasoline-facility", "Standard: facility gasoline", "Gasoline:Facility", "facility_energy", "Monthly whole-facility gasoline use."),
+		standardOutputMeterRecommendation("standard-meter-diesel-facility", "Standard: facility diesel", "Diesel:Facility", "facility_energy", "Monthly whole-facility diesel use."),
+		standardOutputMeterRecommendation("standard-meter-coal-facility", "Standard: facility coal", "Coal:Facility", "facility_energy", "Monthly whole-facility coal use."),
 		standardOutputMeterRecommendation("standard-meter-district-cooling-facility", "Standard: facility district cooling", "DistrictCooling:Facility", "facility_energy", "Monthly whole-facility district cooling use."),
+		standardOutputMeterRecommendation("standard-meter-district-heating-water-facility", "Standard: facility district heating water", "DistrictHeatingWater:Facility", "facility_energy", "Monthly whole-facility district heating water use."),
+		standardOutputMeterRecommendation("standard-meter-district-heating-steam-facility", "Standard: facility district heating steam", "DistrictHeatingSteam:Facility", "facility_energy", "Monthly whole-facility district heating steam use."),
 		standardOutputMeterRecommendation("standard-meter-district-heating-facility", "Standard: facility district heating", "DistrictHeating:Facility", "facility_energy", "Monthly whole-facility district heating use."),
 		standardOutputMeterRecommendation("standard-meter-fuel-oil-no1-facility", "Standard: facility fuel oil #1", "FuelOilNo1:Facility", "facility_energy", "Monthly whole-facility fuel oil #1 use."),
 		standardOutputMeterRecommendation("standard-meter-fuel-oil-no2-facility", "Standard: facility fuel oil #2", "FuelOilNo2:Facility", "facility_energy", "Monthly whole-facility fuel oil #2 use."),
@@ -276,6 +281,16 @@ func outputRecommendations(doc Document, existing []OutputObjectSummary) []Outpu
 		standardOutputMeterRecommendation("standard-meter-district-cooling-cooling", "Standard: district cooling end use", "DistrictCooling:Cooling", "end_use_energy", "Monthly district cooling used for cooling."),
 		standardOutputMeterRecommendation("standard-meter-district-heating-heating", "Standard: district heating end use", "DistrictHeating:Heating", "end_use_energy", "Monthly district heating used for heating."),
 		standardOutputMeterRecommendation("standard-meter-naturalgas-heating", "Standard: natural gas heating", "NaturalGas:Heating", "end_use_energy", "Monthly natural gas used for heating."),
+		standardOutputMeterRecommendation("standard-meter-gasoline-heating", "Standard: gasoline heating", "Heating:Gasoline", "end_use_energy", "Monthly gasoline used for heating."),
+		standardOutputMeterRecommendation("standard-meter-diesel-heating", "Standard: diesel heating", "Heating:Diesel", "end_use_energy", "Monthly diesel used for heating."),
+		standardOutputMeterRecommendation("standard-meter-coal-heating", "Standard: coal heating", "Heating:Coal", "end_use_energy", "Monthly coal used for heating."),
+		standardOutputMeterRecommendation("standard-meter-fuel-oil-no1-heating", "Standard: fuel oil #1 heating", "Heating:FuelOilNo1", "end_use_energy", "Monthly fuel oil #1 used for heating."),
+		standardOutputMeterRecommendation("standard-meter-fuel-oil-no2-heating", "Standard: fuel oil #2 heating", "Heating:FuelOilNo2", "end_use_energy", "Monthly fuel oil #2 used for heating."),
+		standardOutputMeterRecommendation("standard-meter-propane-heating", "Standard: propane heating", "Heating:Propane", "end_use_energy", "Monthly propane used for heating."),
+		standardOutputMeterRecommendation("standard-meter-other-fuel-1-heating", "Standard: other fuel 1 heating", "Heating:OtherFuel1", "end_use_energy", "Monthly other fuel 1 used for heating."),
+		standardOutputMeterRecommendation("standard-meter-other-fuel-2-heating", "Standard: other fuel 2 heating", "Heating:OtherFuel2", "end_use_energy", "Monthly other fuel 2 used for heating."),
+		standardOutputMeterRecommendation("standard-meter-district-heating-water-heating", "Standard: district heating water end use", "Heating:DistrictHeatingWater", "end_use_energy", "Monthly district heating water used for heating."),
+		standardOutputMeterRecommendation("standard-meter-district-heating-steam-heating", "Standard: district heating steam end use", "Heating:DistrictHeatingSteam", "end_use_energy", "Monthly district heating steam used for heating."),
 		standardOutputMeterRecommendation("standard-meter-naturalgas-water-systems", "Standard: natural gas water systems", "NaturalGas:WaterSystems", "end_use_energy", "Monthly natural gas used by water systems."),
 		standardOutputMeterRecommendation("standard-meter-naturalgas-interior-equipment", "Standard: natural gas interior equipment", "NaturalGas:InteriorEquipment", "end_use_energy", "Monthly natural gas used by interior equipment."),
 		standardOutputVariableRecommendation("standard-zone-lights-electricity", "Standard: zone lights electricity", "*", "Zone Lights Electricity Energy", "zone_energy", "Monthly zone-level lighting electricity where available."),
@@ -453,13 +468,23 @@ func outputPurposeTags(objectType string, fields []OutputFieldValue) []string {
 
 func outputMeterSupportsBasicEnergy(name string) bool {
 	switch normalizeName(name) {
-	case "electricity:facility", "naturalgas:facility", "districtcooling:facility", "districtheating:facility", "water:facility",
+	case "electricity:facility", "naturalgas:facility", "gas:facility", "gasoline:facility", "diesel:facility", "coal:facility",
+		"districtcooling:facility", "districtheatingwater:facility", "districtheatingsteam:facility", "districtheating:facility", "water:facility",
 		"fueloilno1:facility", "fueloilno2:facility", "propane:facility", "otherfuel1:facility", "otherfuel2:facility", "steam:facility",
 		"electricity:cooling", "electricity:heating", "electricity:interiorlights", "electricity:interiorequipment",
 		"electricity:fans", "electricity:pumps", "electricity:heatrejection", "electricity:watersystems",
 		"electricity:heatrecovery", "electricity:exteriorlights", "electricity:refrigeration", "electricityproduced:facility",
 		"districtcooling:cooling", "districtheating:heating",
-		"naturalgas:heating", "naturalgas:watersystems", "naturalgas:interiorequipment":
+		"naturalgas:heating", "naturalgas:watersystems", "naturalgas:interiorequipment",
+		"cooling:electricity", "heating:electricity", "interiorlights:electricity", "interiorequipment:electricity",
+		"fans:electricity", "pumps:electricity", "heatrejection:electricity", "watersystems:electricity",
+		"heatrecovery:electricity", "exteriorlights:electricity", "refrigeration:electricity",
+		"cooling:districtcooling", "heating:districtheating", "heating:districtheatingwater", "heating:districtheatingsteam", "heating:steam",
+		"heating:naturalgas", "heating:gas", "heating:gasoline", "heating:diesel", "heating:coal",
+		"heating:fueloilno1", "heating:fueloilno2", "heating:propane", "heating:otherfuel1", "heating:otherfuel2",
+		"watersystems:naturalgas", "interiorequipment:naturalgas",
+		"gasoline:heating", "diesel:heating", "coal:heating", "fueloilno1:heating", "fueloilno2:heating", "propane:heating",
+		"otherfuel1:heating", "otherfuel2:heating", "districtheatingwater:heating", "districtheatingsteam:heating", "steam:heating":
 		return true
 	default:
 		return false
@@ -468,7 +493,7 @@ func outputMeterSupportsBasicEnergy(name string) bool {
 
 func outputVariablePurposeTags(variableName string, tags map[string]bool) {
 	switch normalizeName(variableName) {
-	case "zone lights electricity energy", "zone electric equipment electricity energy", "zone gas equipment gas energy",
+	case "zone lights electricity energy", "zone electric equipment electricity energy", "zone gas equipment naturalgas energy", "zone gas equipment gas energy",
 		"zone air system sensible heating energy", "zone air system sensible cooling energy",
 		"electric storage charge energy", "electric storage discharge energy":
 		addOutputPurposeTags(tags, "basic_energy")

@@ -1,0 +1,22 @@
+{
+  "primarySubviewOrder": [
+    "overview",
+    "sankey",
+    "monthly",
+    "zones",
+    "systems"
+  ],
+  "primaryControls": [
+    "period-kind",
+    "period",
+    "period-index",
+    "focus-mode",
+    "zone-focus",
+    "service-path-focus",
+    "loop-focus",
+    "sankey-mode",
+    "sign-mode",
+    "node-limit"
+  ],
+  "capturedFrom": "27b0c67 pre-Energy-Path refactor"
+}

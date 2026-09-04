@@ -619,10 +619,10 @@ func batchSimulationEnergyDeltaSection(left, right simulation.SimulationRunResul
 		left  []simulation.EnergyExplanationSummaryItem
 		right []simulation.EnergyExplanationSummaryItem
 	}{
-		{name: "energy_by_end_use", left: leftSummary.EnergyByEndUse, right: rightSummary.EnergyByEndUse},
-		{name: "delivered_load_by_service", left: leftSummary.DeliveredLoadByService, right: rightSummary.DeliveredLoadByService},
-		{name: "derived_kpi", left: leftSummary.DerivedKPIs, right: rightSummary.DerivedKPIs},
-		{name: "heat_drivers", left: leftSummary.HeatDrivers, right: rightSummary.HeatDrivers},
+		{name: "energy_by_end_use", left: leftSummary.EndUseItems(), right: rightSummary.EndUseItems()},
+		{name: "delivered_load_by_service", left: leftSummary.LoadItems(), right: rightSummary.LoadItems()},
+		{name: "derived_kpi", left: leftSummary.RatioItems(), right: rightSummary.RatioItems()},
+		{name: "heat_drivers", left: leftSummary.DriverItems(), right: rightSummary.DriverItems()},
 		{name: "residuals", left: leftSummary.Residuals, right: rightSummary.Residuals},
 	} {
 		rows = append(rows, batchSimulationSummaryDeltaRows(group.name, group.left, group.right)...)
@@ -850,6 +850,29 @@ func batchSimulationAnnualEdgeMap(explanation simulation.EnergyExplanationResult
 		nodeLabels[node.ID] = firstNonEmpty(node.Label, node.Kind, node.ID)
 	}
 	out := map[string]batchSimulationDeltaRow{}
+	for _, link := range period.Links {
+		id := firstNonEmpty(link.ID, batchSimulationLinkFallbackID(link))
+		if id == "" {
+			continue
+		}
+		out[id] = batchSimulationDeltaRow{
+			ID:             id,
+			Label:          fmt.Sprintf("%s -> %s", firstNonEmpty(nodeLabels[link.FromID], link.FromID), firstNonEmpty(nodeLabels[link.ToID], link.ToID)),
+			LeftValue:      link.ToValue,
+			RightValue:     link.ToValue,
+			Unit:           link.ToUnit,
+			Relation:       link.Relation,
+			RuleID:         link.RuleID,
+			Basis:          link.Basis,
+			FromID:         link.FromID,
+			ToID:           link.ToID,
+			SourceIDs:      link.SourceIDs,
+			RelatedPathIDs: link.RelatedPathIDs,
+		}
+	}
+	if len(period.Links) > 0 {
+		return out
+	}
 	for _, edge := range period.Edges {
 		id := firstNonEmpty(edge.ID, batchSimulationEdgeFallbackID(edge))
 		if id == "" {
@@ -873,6 +896,16 @@ func batchSimulationAnnualEdgeMap(explanation simulation.EnergyExplanationResult
 	return out
 }
 
+func batchSimulationLinkFallbackID(link simulation.EnergyPathLink) string {
+	parts := []string{}
+	for _, part := range []string{link.Relation, link.RuleID, link.FromID, link.ToID} {
+		if part != "" {
+			parts = append(parts, part)
+		}
+	}
+	return strings.Join(parts, "|")
+}
+
 func batchSimulationEdgeFallbackID(edge simulation.EnergyExplanationEdge) string {
 	parts := []string{}
 	for _, part := range []string{edge.Relation, edge.RuleID, edge.FromID, edge.ToID} {
@@ -893,6 +926,7 @@ func batchSimulationAnnualPeriod(explanation simulation.EnergyExplanationResult)
 		ID:             "annual",
 		Kind:           "annual",
 		Nodes:          explanation.Nodes,
+		Links:          explanation.Links,
 		Edges:          explanation.Edges,
 		Reconciliation: explanation.Reconciliation,
 		Warnings:       explanation.Warnings,
@@ -1197,7 +1231,7 @@ func appendBatchSimulationUnique(values []string, value string) []string {
 func batchSimulationEnergyEdgeSection(result simulation.MultiSimulationResult) tabular.Section {
 	section := tabular.Section{
 		Title:   "energy_edges",
-		Headers: []string{"file", "status", "run_id", "period", "id", "from_id", "to_id", "value", "unit", "relation", "basis", "rule_id", "formula", "zone", "service_kind", "source_ids", "source_object_index", "related_path_ids", "source_table", "source_row", "source_column", "source_unit", "normalized_unit"},
+		Headers: []string{"file", "status", "run_id", "period", "id", "from_id", "to_id", "value", "unit", "relation", "basis", "rule_id", "formula", "zone", "service_kind", "source_ids", "source_object_index", "related_path_ids", "source_table", "source_row", "source_column", "source_unit", "normalized_unit", "from_value", "from_unit", "to_value", "to_unit", "ratio", "ratio_kind", "ratio_label"},
 	}
 	for _, item := range result.Results {
 		if item.PurposeResults == nil {
@@ -1207,6 +1241,40 @@ func batchSimulationEnergyEdgeSection(result simulation.MultiSimulationResult) t
 		explanation := item.PurposeResults.EnergyExplanation
 		sources := newBatchSimulationSourceIndex(explanation)
 		for _, period := range batchSimulationExportPeriods(explanation) {
+			for _, link := range period.Links {
+				sourceFields := sources.fields(link.SourceIDs)
+				values := []string{
+					file,
+					item.Status,
+					item.RunID,
+					firstNonEmpty(link.Period, period.ID),
+					link.ID,
+					link.FromID,
+					link.ToID,
+					formatBatchSimulationFloat(link.ToValue),
+					link.ToUnit,
+					link.Relation,
+					link.Basis,
+					link.RuleID,
+					"",
+					link.ZoneName,
+					link.ServiceKind,
+					strings.Join(link.SourceIDs, "; "),
+					sourceFields[0],
+					strings.Join(link.RelatedPathIDs, "; "),
+				}
+				values = append(values, sourceFields[1:]...)
+				values = append(values,
+					formatBatchSimulationFloat(link.FromValue), link.FromUnit,
+					formatBatchSimulationFloat(link.ToValue), link.ToUnit,
+					formatBatchSimulationOptionalFloatPresent(link.Ratio, link.Ratio != 0),
+					link.RatioKind, link.RatioLabel,
+				)
+				section.Rows = append(section.Rows, values)
+			}
+			if len(period.Links) > 0 {
+				continue
+			}
 			for _, edge := range period.Edges {
 				sourceFields := sources.fields(edge.SourceIDs)
 				values := []string{
@@ -1230,6 +1298,11 @@ func batchSimulationEnergyEdgeSection(result simulation.MultiSimulationResult) t
 					strings.Join(edge.RelatedPathIDs, "; "),
 				}
 				values = append(values, sourceFields[1:]...)
+				values = append(values,
+					formatBatchSimulationFloat(edge.Value), edge.Unit,
+					formatBatchSimulationFloat(edge.Value), edge.Unit,
+					"", "", "",
+				)
 				section.Rows = append(section.Rows, values)
 			}
 		}
@@ -1340,24 +1413,24 @@ type batchSimulationSummaryGroup struct {
 
 func batchSimulationSummaryGroups(summary simulation.EnergyExplanationSummary) []batchSimulationSummaryGroup {
 	return []batchSimulationSummaryGroup{
-		{name: "energy_by_carrier", items: summary.EnergyByCarrier},
-		{name: "energy_by_end_use", items: summary.EnergyByEndUse},
-		{name: "delivered_load_by_service", items: summary.DeliveredLoadByService},
-		{name: "derived_kpi", items: summary.DerivedKPIs},
-		{name: "heat_drivers", items: summary.HeatDrivers},
+		{name: "energy_by_carrier", items: summary.CarrierItems()},
+		{name: "energy_by_end_use", items: summary.EndUseItems()},
+		{name: "delivered_load_by_service", items: summary.LoadItems()},
+		{name: "derived_kpi", items: summary.RatioItems()},
+		{name: "heat_drivers", items: summary.DriverItems()},
 		{name: "residuals", items: summary.Residuals},
-		{name: "top_heat_drivers", items: summary.TopHeatDrivers},
 		{name: "top_zones", items: summary.TopZones},
 	}
 }
 
 func batchSimulationExportPeriods(explanation simulation.EnergyExplanationResult) []simulation.EnergyPeriod {
 	periods := explanation.Periods
-	if len(periods) == 0 && (len(explanation.Nodes) > 0 || len(explanation.Edges) > 0 || len(explanation.Reconciliation) > 0 || len(explanation.Warnings) > 0) {
+	if len(periods) == 0 && (len(explanation.Nodes) > 0 || len(explanation.Links) > 0 || len(explanation.Edges) > 0 || len(explanation.Reconciliation) > 0 || len(explanation.Warnings) > 0) {
 		periods = []simulation.EnergyPeriod{{
 			ID:             "annual",
 			Kind:           "annual",
 			Nodes:          explanation.Nodes,
+			Links:          explanation.Links,
 			Edges:          explanation.Edges,
 			Reconciliation: explanation.Reconciliation,
 			Warnings:       explanation.Warnings,

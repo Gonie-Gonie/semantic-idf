@@ -1063,14 +1063,17 @@ OutputControl:Table:Style,
 	if !strings.Contains(prepared.Text, "Output:SQLite") || !strings.Contains(prepared.Text, "Electricity:Facility") {
 		t.Fatalf("prepared run copy is missing purpose outputs:\n%s", prepared.Text)
 	}
-	if strings.Contains(prepared.Text, "Zone Lights Electricity Energy") {
-		t.Fatalf("default Basic Energy run copy included explain outputs:\n%s", prepared.Text)
+	if !strings.Contains(prepared.Text, "Zone Lights Electricity Energy") || !strings.Contains(prepared.Text, "Zone Air System Sensible Cooling Energy") {
+		t.Fatalf("default Basic Energy run copy is missing Energy Path outputs:\n%s", prepared.Text)
 	}
 	if strings.Contains(prepared.Text, "OutputControl:Table:Style 1") {
 		t.Fatalf("prepared run copy inserted a synthetic OutputControl name:\n%s", prepared.Text)
 	}
 	if prepared.PurposeRunPlan == nil || len(prepared.PurposeRunPlan.OutputObjects) == 0 {
 		t.Fatalf("prepared run plan was not attached: %#v", prepared.PurposeRunPlan)
+	}
+	if prepared.PurposeRunPlan.BasicEnergyDetail != simulation.PurposeBasicEnergyDetailEnergyPath {
+		t.Fatalf("prepared Basic Energy detail = %q", prepared.PurposeRunPlan.BasicEnergyDetail)
 	}
 	if !strings.Contains(prepared.TemporaryOutputDiff, "purpose-run-copy.idf") {
 		t.Fatalf("temporary output diff missing run-copy marker:\n%s", prepared.TemporaryOutputDiff)

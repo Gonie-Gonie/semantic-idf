@@ -658,7 +658,7 @@ func TestParseSimulationEnergyExplanationSQLBuildsAccountingGraph(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Schema != energyExplanationSchema || result.Purpose != string(SimulationPurposeBasicEnergy) {
+	if result.Schema != energyExplanationV1Schema || result.Purpose != string(SimulationPurposeBasicEnergy) {
 		t.Fatalf("identity = %q/%q", result.Schema, result.Purpose)
 	}
 	if result.AllocationPolicy != PurposeAllocationPolicyDirectOnly {
@@ -983,10 +983,14 @@ func TestParseSimulationEnergyExplanationSQLMapsLatentAndVentilationLoads(t *tes
 		t.Fatalf("dehumidification load node = %#v", dehumidification)
 	}
 	ventilation := energyExplanationNodeByID(result.Nodes, "load.ventilation.zone_one")
-	if ventilation == nil || ventilation.Value != 1.5 || ventilation.ServiceKind != "ventilation" || ventilation.Kind != "load.ventilation_conditioning" || !stringSliceContains(ventilation.SourceIDs, "sql-rdd-25") {
-		t.Fatalf("ventilation conditioning load node = %#v", ventilation)
+	if ventilation != nil {
+		t.Fatalf("IdealLoads outdoor-air conditioning must not duplicate delivered load: %#v", ventilation)
 	}
-	if result.Completeness.DeliveredLoad.Found != 3 || result.Completeness.DeliveredLoad.Total != 3 {
+	definition, ok := energyHeatAliasDefinitionForName("Zone Ideal Loads Outdoor Air Total Heating Energy")
+	if !ok || energyDriverSourcePolicyFor("Zone Ideal Loads Outdoor Air Total Heating Energy", definition.Kind).Role != energyDriverSourceRoleContext {
+		t.Fatalf("IdealLoads outdoor-air conditioning is not classified as context: %#v, ok=%t", definition, ok)
+	}
+	if result.Completeness.DeliveredLoad.Found != 2 || result.Completeness.DeliveredLoad.Total != 2 {
 		t.Fatalf("latent/ventilation load completeness = %#v", result.Completeness.DeliveredLoad)
 	}
 	summary := buildEnergyExplanationSummary(result)
@@ -996,8 +1000,8 @@ func TestParseSimulationEnergyExplanationSQLMapsLatentAndVentilationLoads(t *tes
 	if item := energyExplanationSummaryItemByID(summary.DeliveredLoadByService, "load.zone_dehumidification"); item == nil || item.Value != 1 || item.ServiceKind != "dehumidification" {
 		t.Fatalf("summary dehumidification load = %#v", summary.DeliveredLoadByService)
 	}
-	if item := energyExplanationSummaryItemByID(summary.DeliveredLoadByService, "load.ventilation_conditioning"); item == nil || item.Value != 1.5 || item.ServiceKind != "ventilation" {
-		t.Fatalf("summary ventilation load = %#v", summary.DeliveredLoadByService)
+	if item := energyExplanationSummaryItemByID(summary.DeliveredLoadByService, "load.ventilation_conditioning"); item != nil {
+		t.Fatalf("IdealLoads outdoor-air context leaked into delivered-load summary: %#v", summary.DeliveredLoadByService)
 	}
 }
 
@@ -2051,7 +2055,7 @@ func TestPurposeResultBundleUsesSQLEnergyDashboard(t *testing.T) {
 	if bundle.EnergyExplanation.Schema != energyExplanationSchema || len(bundle.EnergyExplanation.Nodes) == 0 {
 		t.Fatalf("bundle energy explanation = %#v", bundle.EnergyExplanation)
 	}
-	if bundle.EnergyExplanationSummary.Schema != energyExplanationSummarySchema || bundle.EnergyExplanationSummary.AllocationPolicy != PurposeAllocationPolicyDirectOnly || len(bundle.EnergyExplanationSummary.EnergyByCarrier) == 0 {
+	if bundle.EnergyExplanationSummary.Schema != energyExplanationSummarySchema || bundle.EnergyExplanationSummary.Scope.Kind != "building" || len(bundle.EnergyExplanationSummary.Carriers) == 0 {
 		t.Fatalf("bundle energy explanation summary = %#v", bundle.EnergyExplanationSummary)
 	}
 	if availability := energyExplanationSourceAvailabilityByName(bundle.EnergyExplanation.Completeness.SourceAvailability, "NaturalGas:Facility"); availability == nil || availability.Status != "missing" || availability.Level != "energy" {
@@ -2068,7 +2072,7 @@ func TestPurposeResultBundleUsesSQLEnergyDashboard(t *testing.T) {
 	}
 }
 
-func TestEnergyExplanationCompletenessMarksUnrequestedLightDetailsNotApplicable(t *testing.T) {
+func TestEnergyExplanationCompletenessMarksExplicitLightDetailsNotRequested(t *testing.T) {
 	doc := parsePurposePlanFixture(t, purposePlanFixtureIDF)
 	plan := BuildPurposeRunPlan(doc, SimulationPurposeRequest{
 		Purposes:          []SimulationPurposeID{SimulationPurposeBasicEnergy},
@@ -2076,16 +2080,16 @@ func TestEnergyExplanationCompletenessMarksUnrequestedLightDetailsNotApplicable(
 	})
 
 	completeness := buildEnergyExplanationCompleteness(nil, nil, &plan, 0)
-	if completeness.DeliveredLoad.Status != "not_applicable" || !strings.Contains(completeness.DeliveredLoad.Message, "not requested") {
+	if completeness.DeliveredLoad.Status != "not_requested" || !strings.Contains(completeness.DeliveredLoad.Message, "not requested") {
 		t.Fatalf("light-tier delivered-load completeness = %#v", completeness.DeliveredLoad)
 	}
-	if completeness.HeatDrivers.Status != "not_applicable" || !strings.Contains(completeness.HeatDrivers.Message, "not requested") {
+	if completeness.HeatDrivers.Status != "not_requested" || !strings.Contains(completeness.HeatDrivers.Message, "not requested") {
 		t.Fatalf("light-tier heat-driver completeness = %#v", completeness.HeatDrivers)
 	}
-	if availability := energyExplanationSourceAvailabilityByLevelStatus(completeness.SourceAvailability, "load", "not_applicable"); availability == nil || availability.Name != "not requested by current output plan" {
+	if availability := energyExplanationSourceAvailabilityByLevelStatus(completeness.SourceAvailability, "load", "not_requested"); availability == nil || availability.Name != "not requested by current output plan" {
 		t.Fatalf("light-tier load source availability = %#v", completeness.SourceAvailability)
 	}
-	if availability := energyExplanationSourceAvailabilityByLevelStatus(completeness.SourceAvailability, "heat", "not_applicable"); availability == nil || availability.Name != "not requested by current output plan" {
+	if availability := energyExplanationSourceAvailabilityByLevelStatus(completeness.SourceAvailability, "heat", "not_requested"); availability == nil || availability.Name != "not requested by current output plan" {
 		t.Fatalf("light-tier heat source availability = %#v", completeness.SourceAvailability)
 	}
 	for _, category := range completeness.MissingCategories {
@@ -2210,11 +2214,11 @@ func TestPurposeResultBundleAppliesEnergyExplanationPeriodScope(t *testing.T) {
 	if period == nil || period.Label != "01-01 to 01-31" || period.Kind != "selected_range" {
 		t.Fatalf("selected period = %#v periods=%#v", period, bundle.EnergyExplanation.Periods)
 	}
-	facility := energyExplanationNodeByID(period.Nodes, "energy.carrier.electricity")
+	facility := energyExplanationNodeByID(period.Nodes, "carrier.electricity.building")
 	if facility == nil || facility.Value != 1 || facility.Unit != "kWh" {
 		t.Fatalf("selected facility node = %#v", facility)
 	}
-	cooling := energyExplanationNodeByID(period.Nodes, "energy.end_use.cooling.electricity")
+	cooling := energyExplanationNodeByID(period.Nodes, "end_use.cooling.building")
 	if cooling == nil || cooling.Value != 0.5 {
 		t.Fatalf("selected cooling node = %#v", cooling)
 	}
@@ -2306,7 +2310,7 @@ func TestParseSimulationEnergyExplanationSQLUsesTabularAnnualFallback(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Schema != energyExplanationSchema || len(result.Periods) != 1 || result.Periods[0].ID != "annual" {
+	if result.Schema != energyExplanationV1Schema || len(result.Periods) != 1 || result.Periods[0].ID != "annual" {
 		t.Fatalf("tabular explanation identity/periods = %q %#v", result.Schema, result.Periods)
 	}
 	facility := energyExplanationNodeByID(result.Nodes, "energy.carrier.electricity")
@@ -2420,25 +2424,25 @@ ZoneHVAC:IdealLoadsAirSystem,
 		Purposes: []SimulationPurposeID{SimulationPurposeBasicEnergy},
 	})
 
-	load := energyExplanationNodeByID(bundle.EnergyExplanation.Nodes, "load.cooling.office")
+	load := energyExplanationNodeByID(bundle.EnergyExplanation.Nodes, "load.cooling.building")
 	if load == nil || len(load.RelatedPathIDs) == 0 {
 		t.Fatalf("load node related paths = %#v", load)
 	}
-	edge := energyExplanationEdgeByIDs(bundle.EnergyExplanation.Edges, "energy.end_use.cooling.electricity", "load.cooling.office")
+	edge := energyPathV2LinkByIDs(bundle.EnergyExplanation.Links, "load.cooling.building", "end_use.cooling.building")
 	if edge == nil || len(edge.RelatedPathIDs) == 0 || !stringSlicesEqual(edge.RelatedPathIDs, load.RelatedPathIDs) {
 		t.Fatalf("delivered-load edge related paths = %#v load=%#v", edge, load)
 	}
-	residual := energyExplanationNodeByID(bundle.EnergyExplanation.Nodes, "residual.heat.cooling")
-	if residual == nil || len(residual.RelatedPathIDs) == 0 || !stringSlicesEqual(residual.RelatedPathIDs, load.RelatedPathIDs) {
-		t.Fatalf("heat residual related paths = %#v load=%#v", residual, load)
+	storage := energyExplanationNodeByID(bundle.EnergyExplanation.Nodes, "driver.balance.storage_other.cooling.building")
+	if storage == nil || len(storage.RelatedPathIDs) == 0 || !stringSlicesEqual(storage.RelatedPathIDs, load.RelatedPathIDs) {
+		t.Fatalf("named Other / storage related paths = %#v load=%#v", storage, load)
 	}
-	periodLoad := energyExplanationNodeByID(bundle.EnergyExplanation.Periods[1].Nodes, "load.cooling.office")
+	periodLoad := energyExplanationNodeByID(bundle.EnergyExplanation.Periods[1].Nodes, "load.cooling.building")
 	if periodLoad == nil || !stringSlicesEqual(periodLoad.RelatedPathIDs, load.RelatedPathIDs) {
 		t.Fatalf("period load related paths = %#v annual=%#v", periodLoad, load)
 	}
-	periodResidual := energyExplanationNodeByID(bundle.EnergyExplanation.Periods[1].Nodes, "residual.heat.cooling")
-	if periodResidual == nil || !stringSlicesEqual(periodResidual.RelatedPathIDs, load.RelatedPathIDs) {
-		t.Fatalf("period heat residual related paths = %#v annual=%#v", periodResidual, residual)
+	periodStorage := energyExplanationNodeByID(bundle.EnergyExplanation.Periods[1].Nodes, "driver.balance.storage_other.cooling.building")
+	if periodStorage == nil || !stringSlicesEqual(periodStorage.RelatedPathIDs, load.RelatedPathIDs) {
+		t.Fatalf("period Other / storage related paths = %#v annual=%#v", periodStorage, storage)
 	}
 }
 
@@ -3337,6 +3341,129 @@ func createTestEnergyPlusSQL(t *testing.T, path string) {
 	for _, statement := range statements {
 		if _, err := db.Exec(statement); err != nil {
 			t.Fatalf("sql fixture statement failed: %v\n%s", err, statement)
+		}
+	}
+}
+
+func TestEnergyExplanationV1GoldenFixture(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "eplusout.sql")
+	createTestEnergySQL(t, path)
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO ReportDataDictionary VALUES
+		(23, 'ZONE ONE', 'Zone Air System Sensible Cooling Energy', 'J'),
+		(24, 'ZONE ONE', 'Zone Air Heat Balance Internal Convective Heat Gain Rate', 'W'),
+		(25, 'ZONE ONE', 'Zone Air Heat Balance Surface Convection Rate', 'W')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO "Time" VALUES
+		(3, 1, 1, 1, 0),
+		(4, 1, 1, 2, 0)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO ReportData VALUES
+		(7, 1, 23, 900000.0),
+		(8, 2, 23, 900000.0),
+		(9, 3, 24, 250.0),
+		(10, 4, 24, 250.0),
+		(11, 3, 25, -100.0),
+		(12, 4, 25, -100.0)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	facilityObjectIndex, coolingObjectIndex, loadObjectIndex, internalHeatObjectIndex, surfaceHeatObjectIndex := 0, 1, 2, 3, 4
+	plan := &PurposeRunPlan{OutputObjects: []PurposeOutputObject{
+		{ObjectType: "Output:Meter", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, KeyValue: "Electricity:Facility", ObjectIndex: &facilityObjectIndex},
+		{ObjectType: "Output:Meter", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, KeyValue: "Cooling:Electricity", ObjectIndex: &coolingObjectIndex},
+		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, KeyValue: "*", VariableName: "Zone Air System Sensible Cooling Energy", ObjectIndex: &loadObjectIndex},
+		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, KeyValue: "*", VariableName: "Zone Air Heat Balance Internal Convective Heat Gain Rate", ObjectIndex: &internalHeatObjectIndex},
+		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, KeyValue: "*", VariableName: "Zone Air Heat Balance Surface Convection Rate", ObjectIndex: &surfaceHeatObjectIndex},
+	}}
+	result, err := parseSimulationEnergyExplanationSQL(path, plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inputPath := filepath.Join(dir, "service-path.idf")
+	writeEnergyPathV1ServiceFixture(t, inputPath)
+	result = enrichEnergyExplanationWithServicePaths(result, inputPath)
+	payload, err := os.ReadFile(filepath.Join("testdata", "energy_path", "v1_energy_explanation.golden.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var golden EnergyExplanationV1
+	if err := json.Unmarshal(payload, &golden); err != nil {
+		t.Fatal(err)
+	}
+	if golden.Schema != energyExplanationV1Schema || golden.Purpose != result.Purpose || golden.Frequency != result.Frequency || golden.AllocationPolicy != result.AllocationPolicy {
+		t.Fatalf("golden identity = %#v, runtime = %#v", golden, result)
+	}
+	for _, id := range []string{
+		"energy.carrier.electricity",
+		"energy.end_use.cooling.electricity",
+		"load.cooling.zone_one",
+		"heat.internal_convective.zone_one",
+		"heat.surface_convection.zone_one",
+		"residual.energy.electricity",
+	} {
+		want := energyExplanationNodeByID(golden.Nodes, id)
+		got := energyExplanationNodeByID(result.Nodes, id)
+		if want == nil || got == nil || want.Value != got.Value || want.SignedValue != got.SignedValue || want.Level != got.Level || want.Kind != got.Kind || want.Unit != got.Unit || want.ZoneName != got.ZoneName || want.ServiceKind != got.ServiceKind || want.Carrier != got.Carrier || want.EndUse != got.EndUse || want.Basis != got.Basis || strings.Join(want.SourceIDs, "|") != strings.Join(got.SourceIDs, "|") || strings.Join(want.RelatedPathIDs, "|") != strings.Join(got.RelatedPathIDs, "|") {
+			t.Fatalf("v1 golden node %q = %#v, runtime = %#v", id, want, got)
+		}
+	}
+	for _, pair := range [][2]string{
+		{"energy.carrier.electricity", "energy.end_use.cooling.electricity"},
+		{"energy.end_use.cooling.electricity", "load.cooling.zone_one"},
+		{"load.cooling.zone_one", "heat.internal_convective.zone_one"},
+		{"energy.carrier.electricity", "residual.energy.electricity"},
+	} {
+		want := energyExplanationEdgeByIDs(golden.Edges, pair[0], pair[1])
+		got := energyExplanationEdgeByIDs(result.Edges, pair[0], pair[1])
+		if want == nil || got == nil || want.Value != got.Value || want.Relation != got.Relation || want.Basis != got.Basis || want.RuleID != got.RuleID || strings.Join(want.SourceIDs, "|") != strings.Join(got.SourceIDs, "|") || strings.Join(want.RelatedPathIDs, "|") != strings.Join(got.RelatedPathIDs, "|") {
+			t.Fatalf("v1 golden edge %s -> %s = %#v, runtime = %#v", pair[0], pair[1], want, got)
+		}
+	}
+	wantAnnual := energyExplanationPeriodByID(golden.Periods, "annual")
+	gotAnnual := energyExplanationPeriodByID(result.Periods, "annual")
+	if wantAnnual == nil || gotAnnual == nil || len(wantAnnual.Nodes) != len(gotAnnual.Nodes) || len(wantAnnual.Edges) != len(gotAnnual.Edges) || len(wantAnnual.Reconciliation) != len(gotAnnual.Reconciliation) {
+		t.Fatalf("v1 golden annual period = %#v, runtime = %#v", wantAnnual, gotAnnual)
+	}
+	wantAnnualLoadEdge := energyExplanationEdgeByIDs(wantAnnual.Edges, "energy.end_use.cooling.electricity", "load.cooling.zone_one")
+	gotAnnualLoadEdge := energyExplanationEdgeByIDs(gotAnnual.Edges, "energy.end_use.cooling.electricity", "load.cooling.zone_one")
+	if wantAnnualLoadEdge == nil || gotAnnualLoadEdge == nil || strings.Join(wantAnnualLoadEdge.RelatedPathIDs, "|") != strings.Join(gotAnnualLoadEdge.RelatedPathIDs, "|") {
+		t.Fatalf("v1 golden annual related paths = %#v, runtime = %#v", wantAnnualLoadEdge, gotAnnualLoadEdge)
+	}
+	if load := energyExplanationNodeByID(golden.Nodes, "load.cooling.zone_one"); load == nil || len(load.RelatedPathIDs) != 2 {
+		t.Fatalf("v1 golden lost relatedPathIds: %#v", load)
+	}
+	if len(golden.Reconciliation) != len(result.Reconciliation) || len(golden.Sources) != len(result.Sources) || golden.Completeness.Status != result.Completeness.Status || golden.Completeness.MappedPercent != result.Completeness.MappedPercent {
+		t.Fatalf("v1 golden accounting contract = reconciliation %d, sources %d, completeness %#v", len(golden.Reconciliation), len(golden.Sources), golden.Completeness)
+	}
+	for _, want := range golden.Reconciliation {
+		got := energyExplanationReconciliationByID(result.Reconciliation, want.ID)
+		if got == nil || want.Level != got.Level || want.Period != got.Period || want.Status != got.Status || want.ExpectedValue != got.ExpectedValue || want.ExplainedValue != got.ExplainedValue || want.ResidualValue != got.ResidualValue || want.Unit != got.Unit || want.ZoneName != got.ZoneName || want.ServiceKind != got.ServiceKind || strings.Join(want.SourceIDs, "|") != strings.Join(got.SourceIDs, "|") {
+			t.Fatalf("v1 golden reconciliation %q = %#v, runtime = %#v", want.ID, want, got)
+		}
+	}
+}
+
+func TestEnergyExplanationV1AuxiliaryGoldenFixturesAreValidJSON(t *testing.T) {
+	for _, name := range []string{"v1_batch_export.golden.json", "v1_ui_contract.golden.json"} {
+		payload, err := os.ReadFile(filepath.Join("testdata", "energy_path", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var value map[string]any
+		if err := json.Unmarshal(payload, &value); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if len(value) == 0 {
+			t.Fatalf("%s is empty", name)
 		}
 	}
 }
