@@ -53,6 +53,12 @@ func normalizeSimulationDisplayUnit(unit string) simulationDisplayUnit {
 		return simulationDisplayUnit{Unit: "kW", Factor: 1.0 / 1000}
 	case "kw":
 		return simulationDisplayUnit{Unit: "kW", Factor: 1}
+	case "m3", "m^3", "m³", "cubicmeter", "cubicmeters", "cubicmetre", "cubicmetres":
+		return simulationDisplayUnit{Unit: "m3", Factor: 1}
+	case "ft3", "ft^3", "ft³", "cubicfoot", "cubicfeet":
+		return simulationDisplayUnit{Unit: "m3", Factor: 0.028316846592}
+	case "l", "liter", "liters", "litre", "litres":
+		return simulationDisplayUnit{Unit: "m3", Factor: 0.001}
 	case "c", "degc", "degreec", "degreesc":
 		return simulationDisplayUnit{Unit: "C", Factor: 1}
 	case "kg/s", "kgs", "kgpersec", "kgpers":

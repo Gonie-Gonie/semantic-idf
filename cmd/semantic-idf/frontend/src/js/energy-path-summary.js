@@ -22,6 +22,11 @@ const ENERGY_PATH_SUMMARY_V1_GROUPS = Object.freeze([
   Object.freeze({ key: "topZones", label: "Top zones", type: "energy_explanation.top_zones", compare: false }),
 ]);
 
+const ENERGY_PATH_SITE_CARRIERS = new Set([
+  "electricity", "natural_gas", "district_cooling", "district_heating", "steam", "propane",
+  "fuel_oil_1", "fuel_oil_2", "coal", "diesel", "gasoline", "other_fuel_1", "other_fuel_2", "water",
+]);
+
 export function isEnergyPathSummaryV2(summary = {}) {
   return String(summary?.schema || "").toLowerCase() === ENERGY_PATH_SUMMARY_SCHEMA_V2;
 }
@@ -52,7 +57,7 @@ export function energyPathSummaryKPIValues(summary = {}) {
   }
   const groups = new Map(energyPathSummaryGroups(summary).map((group) => [group.key, group.items]));
   const loads = groups.get("loads") || [];
-  const carriers = groups.get("carriers") || [];
+  const carriers = (groups.get("carriers") || []).filter(energyPathSummaryIsSiteEnergyCarrier);
   return [
     {
       id: "total_site_energy",
@@ -91,6 +96,23 @@ function energyPathSummaryTotal(items = []) {
 
 function energyPathSummaryUnit(items = [], fallback = "") {
   return (items || []).find((item) => item?.unit)?.unit || fallback;
+}
+
+function energyPathSummaryIsSiteEnergyCarrier(item = {}) {
+  const carrier = energyPathSummaryCarrier(item);
+  const unit = String(item.unit || "").trim().toLowerCase().replace(/[\s_-]+/g, "");
+  if (!ENERGY_PATH_SITE_CARRIERS.has(carrier) || (unit !== "kwh" && unit !== "kwhsite")) return false;
+  if (carrier !== "water") return true;
+  return String(item.basis || "").trim().toLowerCase() === "derived_ratio";
+}
+
+function energyPathSummaryCarrier(item = {}) {
+  if (item.carrier) return String(item.carrier).trim().toLowerCase();
+  const identity = String(item.id || item.kind || "").trim().toLowerCase();
+  const parts = identity.split(".");
+  const carrierIndex = parts.indexOf("carrier");
+  if (carrierIndex >= 0 && parts[carrierIndex + 1]) return parts[carrierIndex + 1];
+  return "";
 }
 
 function energyPathSummaryService(item = {}) {

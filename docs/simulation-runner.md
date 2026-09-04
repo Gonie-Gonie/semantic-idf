@@ -196,6 +196,15 @@ heat rejection, heat recovery, water systems, exterior lighting, refrigeration,
 onsite generation, district cooling/heating end uses, natural-gas
 heating/equipment/water-system use, and facility fuel oil/propane/steam/other
 fuel totals where the model exposes those meters.
+Energy Path carrier branches use the fixed canonical set `electricity`,
+`natural_gas`, `district_cooling`, `district_heating`, `steam`, `propane`,
+`fuel_oil_1`, `fuel_oil_2`, `coal`, `diesel`, `gasoline`, `other_fuel_1`, and
+`other_fuel_2`, all normalized to site-energy `kWh`. `water` remains a
+recognized utility carrier, but native volume is shown separately as `m3`
+context and is excluded from Sankey totals, reconciliation, mapped percent,
+and Energy Use completeness. It enters the energy flow only when a
+`derived_ratio` node cites a source with the original non-energy unit, a
+normalized site-energy unit, and an explicit conversion formula.
 When an `ElectricLoadCenter:Storage:*` object is present, Basic Energy also
 requests electric storage charge and discharge energy variables. Charge is
 treated as a measured energy-variable end use, while discharge is shown as a

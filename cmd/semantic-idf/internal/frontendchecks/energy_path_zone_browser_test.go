@@ -71,15 +71,24 @@ const pathGraph = (prefix, zoneName, period) => {
   const links = [];
   for (const service of ["cooling", "heating"]) {
     const ids = ["driver", "load", "end_use", "carrier"].map((level) => prefix + "." + service + "." + level);
-    ["driver", "load", "end_use", "carrier"].forEach((level, index) => nodes.push({
-      id: ids[index],
-      level,
-      label: prefix + " " + service + " " + level,
-      value: index + 1,
-      serviceKind: service,
-      zoneName,
-      period,
-    }));
+    ["driver", "load", "end_use", "carrier"].forEach((level, index) => {
+      const node = {
+        id: ids[index],
+        level,
+        label: prefix + " " + service + " " + level,
+        value: index + 1,
+        unit: level === "driver" || level === "load" ? "kWh thermal" : "kWh",
+        scaleDomain: level === "driver" || level === "load" ? "thermal" : "site",
+        serviceKind: service,
+        zoneName,
+        period,
+      };
+      if (level === "carrier") {
+        node.kind = "carrier.electricity";
+        node.carrier = "electricity";
+      }
+      nodes.push(node);
+    });
     for (let index = 0; index < ids.length - 1; index += 1) {
       links.push({
         id: prefix + "." + service + ".link." + index,

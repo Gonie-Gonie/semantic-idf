@@ -8,6 +8,51 @@ import {
 
 export const ENERGY_PATH_SCHEMA_V2 = "semantic-idf.energy-explanation/v2";
 
+export const ENERGY_PATH_CARRIER_PRESENTATION = Object.freeze({
+  electricity: Object.freeze({ label: "Electricity", unit: "kWh", scaleDomain: "site" }),
+  natural_gas: Object.freeze({ label: "Natural gas", unit: "kWh", scaleDomain: "site" }),
+  district_cooling: Object.freeze({ label: "District cooling", unit: "kWh", scaleDomain: "site" }),
+  district_heating: Object.freeze({ label: "District heating", unit: "kWh", scaleDomain: "site" }),
+  steam: Object.freeze({ label: "Steam", unit: "kWh", scaleDomain: "site" }),
+  propane: Object.freeze({ label: "Propane", unit: "kWh", scaleDomain: "site" }),
+  fuel_oil_1: Object.freeze({ label: "Fuel oil #1", unit: "kWh", scaleDomain: "site" }),
+  fuel_oil_2: Object.freeze({ label: "Fuel oil #2", unit: "kWh", scaleDomain: "site" }),
+  coal: Object.freeze({ label: "Coal", unit: "kWh", scaleDomain: "site" }),
+  diesel: Object.freeze({ label: "Diesel", unit: "kWh", scaleDomain: "site" }),
+  gasoline: Object.freeze({ label: "Gasoline", unit: "kWh", scaleDomain: "site" }),
+  other_fuel_1: Object.freeze({ label: "Other fuel 1", unit: "kWh", scaleDomain: "site" }),
+  other_fuel_2: Object.freeze({ label: "Other fuel 2", unit: "kWh", scaleDomain: "site" }),
+  water: Object.freeze({ label: "Water", unit: "m3", scaleDomain: "context" }),
+});
+
+const ENERGY_PATH_CARRIER_ALIASES = Object.freeze({
+  electricity: "electricity",
+  naturalgas: "natural_gas",
+  gas: "natural_gas",
+  districtcooling: "district_cooling",
+  districtheating: "district_heating",
+  districtheatingwater: "district_heating",
+  steam: "steam",
+  districtheatingsteam: "steam",
+  propane: "propane",
+  fueloil1: "fuel_oil_1",
+  fueloilno1: "fuel_oil_1",
+  fueloil2: "fuel_oil_2",
+  fueloilno2: "fuel_oil_2",
+  coal: "coal",
+  diesel: "diesel",
+  gasoline: "gasoline",
+  otherfuel1: "other_fuel_1",
+  otherfuel2: "other_fuel_2",
+  water: "water",
+});
+
+const ENERGY_PATH_COMBUSTION_CARRIERS = new Set([
+  "natural_gas", "propane", "fuel_oil_1", "fuel_oil_2", "coal", "diesel", "gasoline", "other_fuel_1", "other_fuel_2",
+]);
+
+const ENERGY_PATH_PURCHASED_DISTRICT_CARRIERS = new Set(["district_cooling", "district_heating", "steam"]);
+
 export const ENERGY_PATH_STAGES = Object.freeze([
   Object.freeze({
     level: "driver",
@@ -306,6 +351,7 @@ export function renderEnergyPathView(explanation = {}, viewState = {}) {
       ${renderEnergyPathWarnings(graph.warnings)}
       ${renderEnergyPathAuxiliaryAllocationQuality(auxiliaryAllocationQuality)}
       ${renderEnergyPathZoneCoverageNotice(zoneCoverage)}
+      ${renderEnergyPathContextMetrics(explanation, viewState)}
       <div class="energy-path-stage-grid" role="group" aria-label="${escapeHTML(t("simulation.energyPathDirection", {}, "Load drivers → Thermal loads → End-use energy → Energy sources"))}">
         ${stages}
       </div>
@@ -317,6 +363,37 @@ export function renderEnergyPathView(explanation = {}, viewState = {}) {
         <span>${escapeHTML(t("simulation.energyPathSiteDomain", {}, "Site energy domain"))} · ${escapeHTML(t("simulation.energyPathSiteUnit", {}, "kWh site"))}</span>
       </div>
     </section>`;
+}
+
+export function renderEnergyPathContextMetrics(explanation = {}, viewState = {}) {
+  if ((viewState.simulationEnergyScopeKind || "building") !== "building" ||
+    energyPathToken(viewState.simulationEnergyPeriod || "annual") !== "annual") return "";
+  const metrics = new Map();
+  for (const source of explanation.sources || []) {
+    const unit = String(source.normalizedUnit || source.units || source.sourceUnit || "").trim();
+    const identity = energyPathToken([source.name, source.keyValue, source.id].filter(Boolean).join(" "));
+    if (energyPathToken(source.inspectorSection) !== "context" || !identity.includes("water") || unit.toLowerCase() !== "m3") continue;
+    const value = [source.effectiveValue, source.rawValue, source.allocatedValue]
+      .map(Number)
+      .find((candidate) => Number.isFinite(candidate) && candidate !== 0);
+    if (!Number.isFinite(value)) continue;
+    const key = identity.includes("facility") ? "water_facility" : `water_${metrics.size + 1}`;
+    const current = metrics.get(key);
+    if (!current || Math.abs(value) > Math.abs(current.value)) {
+      metrics.set(key, { key, label: source.name || source.keyValue || "Water use", value, unit: "m3" });
+    }
+  }
+  if (!metrics.size) return "";
+  return `<section class="energy-path-context-metrics" data-energy-path-context-metrics>
+    <header>
+      <strong>${escapeHTML(t("simulation.energyPathContextMetrics", {}, "Utility context"))}</strong>
+      <span>${escapeHTML(t("simulation.energyPathWaterContextNote", {}, "Water volume is not included in the site-energy scale."))}</span>
+    </header>
+    <div>${[...metrics.values()].map((metric) => `<article data-energy-path-context-metric="water">
+      <span>${escapeHTML(metric.label)}</span>
+      <strong>${escapeHTML(`${Number(metric.value).toLocaleString(undefined, { maximumFractionDigits: 2 })} ${metric.unit}`)}</strong>
+    </article>`).join("")}</div>
+  </section>`;
 }
 
 function energyPathZoneDirectCoverageForState(explanation = {}, viewState = {}) {
@@ -350,7 +427,7 @@ function renderEnergyPathZoneCoverageNotice(coverage = {}) {
     </p>`;
 }
 
-export function energyPathConversionRatio(link = {}) {
+export function energyPathConversionRatio(link = {}, nodes = [], links = []) {
   if (energyPathToken(link.relation) !== "load_to_end_use") return null;
   const kind = energyPathToken(link.ratioKind);
   const presentation = ENERGY_PATH_CONVERSION_RATIOS[kind];
@@ -358,6 +435,14 @@ export function energyPathConversionRatio(link = {}) {
   const fromValue = Number(link.fromValue);
   const toValue = Number(link.toValue);
   const ratio = Number(link.ratio);
+  const downstreamCarriers = energyPathConversionDownstreamCarriers(link, nodes, links);
+  if (
+    (kind === "load_to_fuel" && downstreamCarriers.some((carrier) => !ENERGY_PATH_COMBUSTION_CARRIERS.has(carrier))) ||
+    (kind === "efficiency" && downstreamCarriers.some((carrier) => !ENERGY_PATH_COMBUSTION_CARRIERS.has(carrier))) ||
+    (kind === "load_to_purchased_energy" && downstreamCarriers.some((carrier) => !ENERGY_PATH_PURCHASED_DISTRICT_CARRIERS.has(carrier)))
+  ) {
+    return null;
+  }
   if (
     !presentation ||
     !presentation.services.includes(service) ||
@@ -377,6 +462,22 @@ export function energyPathConversionRatio(link = {}) {
     label: t(presentation.labelKey, {}, presentation.label),
     value: ratio,
   };
+}
+
+function energyPathConversionDownstreamCarriers(link = {}, nodes = [], links = []) {
+  const nodeByID = new Map((nodes || []).filter((node) => node?.id).map((node) => [node.id, node]));
+  const directCarrier = energyPathCanonicalCarrier(link.carrier);
+  const carriers = directCarrier ? [directCarrier] : [];
+  for (const branch of links || []) {
+    if (
+      branch?.fromId !== link.toId ||
+      !["end_use_to_carrier", "direct_end_use_to_carrier"].includes(energyPathToken(branch?.relation))
+    ) continue;
+    const carrierNode = nodeByID.get(branch.toId);
+    const carrier = energyPathCanonicalCarrier(carrierNode?.carrier || energyPathCarrierFromNodeID(branch.toId));
+    if (carrier && !carriers.includes(carrier)) carriers.push(carrier);
+  }
+  return carriers;
 }
 
 export function energyPathConversionFlows(nodes = [], links = []) {
@@ -400,7 +501,7 @@ export function energyPathConversionFlows(nodes = [], links = []) {
       toValue,
       fromUnit: energyPathFlowUnit(link.fromUnit, "thermal"),
       toUnit: energyPathFlowUnit(link.toUnit, "site"),
-      ratio: energyPathConversionRatio(link),
+      ratio: energyPathConversionRatio(link, nodes, links),
     }];
   }).sort((left, right) => {
     const serviceOrder = { cooling: 0, heating: 1 };
@@ -1310,6 +1411,8 @@ export function energyPathGraphForState(explanation = {}, viewState = {}) {
     warnings = [];
   }
 
+  ({ nodes, links } = energyPathApplyCarrierTaxonomy(nodes, links, explanation.sources || []));
+
   const scopeKind = viewState.simulationEnergyScopeKind || "building";
   if (scopeKind !== "zone") {
     nodes = nodes.filter((node) => !node.zoneName || node.aggregationBasis === "model_total");
@@ -1354,6 +1457,165 @@ export function energyPathGraphForState(explanation = {}, viewState = {}) {
     relations: connectedLinks.filter(isEnergyPathNonFlowRelation),
     warnings,
   };
+}
+
+function energyPathApplyCarrierTaxonomy(nodes = [], links = [], sources = []) {
+  const copiedNodes = (nodes || []).map((node) => ({ ...node }));
+  const copiedLinks = (links || []).map((link) => ({ ...link }));
+  const sourceByID = new Map((sources || []).filter((source) => source?.id).map((source) => [source.id, source]));
+  const disallowed = new Set();
+  const nodeByID = new Map(copiedNodes.filter((node) => node?.id).map((node) => [node.id, node]));
+
+  for (const node of copiedNodes) {
+    if (!["end_use", "carrier", "support"].includes(node.level)) continue;
+    const normalized = energyPathEnergyUnitNormalization(node.unit);
+    if (!normalized) {
+      if (String(node.unit || "").trim()) disallowed.add(node.id);
+      continue;
+    }
+    energyPathScaleNode(node, normalized.factor);
+    node.unit = "kWh";
+  }
+  for (const link of copiedLinks) {
+    const fromUnit = energyPathEnergyUnitNormalization(link.fromUnit);
+    const toUnit = energyPathEnergyUnitNormalization(link.toUnit);
+    if (fromUnit) {
+      link.fromValue = energyPathScaledNumber(link.fromValue, fromUnit.factor);
+      link.fromUnit = "kWh";
+    }
+    if (toUnit) {
+      link.toValue = energyPathScaledNumber(link.toValue, toUnit.factor);
+      link.toUnit = "kWh";
+    }
+  }
+
+  for (const node of copiedNodes) {
+    if (node.level !== "carrier") continue;
+    const carrierEvidence = node.carrier || energyPathCarrierFromNodeID(node.id);
+    if (!carrierEvidence) {
+      disallowed.add(node.id);
+      continue;
+    }
+    const carrier = energyPathCanonicalCarrier(carrierEvidence);
+    const presentation = ENERGY_PATH_CARRIER_PRESENTATION[carrier];
+    if (!presentation) {
+      disallowed.add(node.id);
+      continue;
+    }
+    if (carrier === "water" && !energyPathWaterHasExplicitSiteEnergyConversion(node, sourceByID)) {
+      disallowed.add(node.id);
+      continue;
+    }
+    if (presentation) {
+      node.carrier = carrier;
+      node.label = presentation.label;
+      node.scaleDomain = "site";
+      node.unit = "kWh";
+    }
+  }
+
+  const carrierLinks = copiedLinks.filter((link) => (
+    ["end_use_to_carrier", "direct_end_use_to_carrier"].includes(energyPathToken(link?.relation)) &&
+    nodeByID.get(link.fromId)?.level === "end_use" &&
+    nodeByID.get(link.toId)?.level === "carrier"
+  ));
+  const linksByEndUse = new Map();
+  for (const link of carrierLinks) {
+    const items = linksByEndUse.get(link.fromId) || [];
+    items.push(link);
+    linksByEndUse.set(link.fromId, items);
+  }
+  for (const [endUseID, endUseLinks] of linksByEndUse) {
+    if (endUseLinks.length && endUseLinks.every((link) => disallowed.has(link.toId))) {
+      disallowed.add(endUseID);
+    }
+  }
+
+  const filteredNodes = copiedNodes
+    .filter((node) => !disallowed.has(node.id))
+    .map((node) => {
+      if (["end_use", "support"].includes(node.level) && energyPathCanonicalUnit(node.unit) === "kWh") {
+        node.unit = "kWh";
+      }
+      return node;
+    });
+  const visibleNodeIDs = new Set(filteredNodes.map((node) => node.id));
+  const filteredLinks = copiedLinks
+    .filter((link) => visibleNodeIDs.has(link.fromId) && visibleNodeIDs.has(link.toId))
+    .map((link) => {
+      const fromNode = nodeByID.get(link.fromId);
+      const toNode = nodeByID.get(link.toId);
+      if (fromNode?.unit) link.fromUnit = energyPathCanonicalUnit(fromNode.unit);
+      if (toNode?.unit) link.toUnit = energyPathCanonicalUnit(toNode.unit);
+      return link;
+    });
+  return { nodes: filteredNodes, links: filteredLinks };
+}
+
+function energyPathCarrierFromNodeID(id = "") {
+  const parts = String(id || "").split(".");
+  return energyPathToken(parts[0]) === "carrier" ? parts[1] || "" : "";
+}
+
+function energyPathCanonicalCarrier(value = "") {
+  const compact = String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
+  return ENERGY_PATH_CARRIER_ALIASES[compact] || "";
+}
+
+function energyPathCanonicalUnit(value = "") {
+  const trimmed = String(value || "").trim();
+  const compact = trimmed.toLowerCase().replace(/[\s_-]+/g, "");
+  return compact === "kwh" || compact === "kwhsite" || compact === "kwhthermal" ? "kWh" : trimmed;
+}
+
+function energyPathEnergyUnitNormalization(value = "") {
+  const compact = String(value || "").trim().toLowerCase().replace(/[\s_-]+/g, "");
+  const factors = {
+    j: 1 / 3600000,
+    kj: 1 / 3600,
+    mj: 1 / 3.6,
+    gj: 277.7777777778,
+    wh: 1 / 1000,
+    kwh: 1,
+    kwhsite: 1,
+  };
+  return Object.prototype.hasOwnProperty.call(factors, compact) ? { factor: factors[compact], unit: "kWh" } : null;
+}
+
+function energyPathScaleNode(node = {}, factor = 1) {
+  for (const field of ["value", "signedValue", "rawValue", "effectiveValue", "allocatedValue", "displayValue"]) {
+    if (Object.prototype.hasOwnProperty.call(node, field)) {
+      node[field] = energyPathScaledNumber(node[field], factor);
+    }
+  }
+}
+
+function energyPathScaledNumber(value, factor) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return value;
+  return Math.round(number * factor * 1e9) / 1e9;
+}
+
+function energyPathWaterHasExplicitSiteEnergyConversion(node = {}, sourceByID = new Map()) {
+  if (energyPathToken(node.basis) !== "derived_ratio" || energyPathCanonicalUnit(node.unit) !== "kWh") return false;
+  const sourceIDs = node.sourceIds || [];
+  if (!sourceIDs.length) return false;
+  return sourceIDs.every((sourceID) => {
+    const source = sourceByID.get(sourceID) || {};
+    const normalizedUnit = energyPathCanonicalUnit(source.normalizedUnit);
+    return Boolean(
+      energyPathIsWaterVolumeUnit(source.sourceUnit) && normalizedUnit === "kWh" &&
+      String(source.formula || "").trim() && energyPathToken(source.inspectorSection) === "context"
+    );
+  });
+}
+
+function energyPathIsWaterVolumeUnit(value = "") {
+  const compact = String(value || "").trim().toLowerCase().replace(/[^a-z0-9³]+/g, "");
+  return [
+    "m3", "m³", "cubicmeter", "cubicmeters", "cubicmetre", "cubicmetres",
+    "ft3", "ft³", "cubicfoot", "cubicfeet", "l", "liter", "liters", "litre", "litres",
+  ].includes(compact);
 }
 
 export function isEnergyPathNonFlowRelation(link = {}) {

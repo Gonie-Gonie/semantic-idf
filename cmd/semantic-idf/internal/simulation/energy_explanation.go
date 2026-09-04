@@ -71,8 +71,9 @@ type EnergyExplanationResult struct {
 	// on read through UnmarshalJSON, but it is never emitted in v2 JSON.
 	Edges []EnergyExplanationEdge `json:"-"`
 
-	legacyNodes    []EnergyExplanationNode
-	upgradedFromV1 bool
+	legacyNodes     []EnergyExplanationNode
+	upgradedFromV1  bool
+	sanitizedOnRead bool
 }
 
 type EnergyExplanationZoneResult struct {
@@ -440,6 +441,79 @@ type energyMeterAliasDefinition struct {
 	Aliases              []string
 	LegacyAliases        []string
 	OutputRequestAliases []string
+}
+
+// energyCarrierTaxonomyDefinition is the single presentation and identity
+// contract for recognized Energy Path carriers. Water is intentionally part
+// of the resource taxonomy, but its native unit belongs to the context domain;
+// it is not site energy unless an explicit conversion proves otherwise.
+type energyCarrierTaxonomyDefinition struct {
+	Token       string
+	Label       string
+	Unit        string
+	ScaleDomain string
+}
+
+func energyCarrierTaxonomy() []energyCarrierTaxonomyDefinition {
+	return []energyCarrierTaxonomyDefinition{
+		{Token: "electricity", Label: "Electricity", Unit: "kWh", ScaleDomain: "site"},
+		{Token: "natural_gas", Label: "Natural gas", Unit: "kWh", ScaleDomain: "site"},
+		{Token: "district_cooling", Label: "District cooling", Unit: "kWh", ScaleDomain: "site"},
+		{Token: "district_heating", Label: "District heating", Unit: "kWh", ScaleDomain: "site"},
+		{Token: "steam", Label: "Steam", Unit: "kWh", ScaleDomain: "site"},
+		{Token: "propane", Label: "Propane", Unit: "kWh", ScaleDomain: "site"},
+		{Token: "fuel_oil_1", Label: "Fuel oil #1", Unit: "kWh", ScaleDomain: "site"},
+		{Token: "fuel_oil_2", Label: "Fuel oil #2", Unit: "kWh", ScaleDomain: "site"},
+		{Token: "coal", Label: "Coal", Unit: "kWh", ScaleDomain: "site"},
+		{Token: "diesel", Label: "Diesel", Unit: "kWh", ScaleDomain: "site"},
+		{Token: "gasoline", Label: "Gasoline", Unit: "kWh", ScaleDomain: "site"},
+		{Token: "other_fuel_1", Label: "Other fuel 1", Unit: "kWh", ScaleDomain: "site"},
+		{Token: "other_fuel_2", Label: "Other fuel 2", Unit: "kWh", ScaleDomain: "site"},
+		{Token: "water", Label: "Water", Unit: "m3", ScaleDomain: "context"},
+	}
+}
+
+func energyCarrierTaxonomyDefinitionFor(value string) (energyCarrierTaxonomyDefinition, bool) {
+	compact := strings.Map(func(r rune) rune {
+		if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' {
+			return r
+		}
+		if r >= 'A' && r <= 'Z' {
+			return r + ('a' - 'A')
+		}
+		return -1
+	}, strings.TrimSpace(value))
+	aliases := map[string]string{
+		"electricity":          "electricity",
+		"naturalgas":           "natural_gas",
+		"gas":                  "natural_gas",
+		"districtcooling":      "district_cooling",
+		"districtheating":      "district_heating",
+		"districtheatingwater": "district_heating",
+		"steam":                "steam",
+		"districtheatingsteam": "steam",
+		"propane":              "propane",
+		"fueloil1":             "fuel_oil_1",
+		"fueloilno1":           "fuel_oil_1",
+		"fueloil2":             "fuel_oil_2",
+		"fueloilno2":           "fuel_oil_2",
+		"coal":                 "coal",
+		"diesel":               "diesel",
+		"gasoline":             "gasoline",
+		"otherfuel1":           "other_fuel_1",
+		"otherfuel2":           "other_fuel_2",
+		"water":                "water",
+	}
+	token, ok := aliases[compact]
+	if !ok {
+		return energyCarrierTaxonomyDefinition{}, false
+	}
+	for _, definition := range energyCarrierTaxonomy() {
+		if definition.Token == token {
+			return definition, true
+		}
+	}
+	return energyCarrierTaxonomyDefinition{}, false
 }
 
 type energyLoadAliasDefinition struct {
@@ -1075,6 +1149,10 @@ func preferredEnergyExplanationSeries(series []energyExplanationSeries) []energy
 }
 
 func canonicalEnergyExplanationSeries(item energyExplanationSeries) energyExplanationSeries {
+	if strings.TrimSpace(item.Carrier) != "" {
+		item.Carrier = canonicalEnergyPathCarrier(item.Carrier)
+	}
+	item.Unit = canonicalEnergyPathEnergyUnit(item.Unit)
 	if item.Stage == "" {
 		switch item.Level {
 		case "heat", "driver":
@@ -1502,6 +1580,7 @@ func buildEnergyExplanationResultWithDriverContext(series []energyExplanationSer
 		zoneDirectUseSeries = energyExplanationDirectZoneSeries(series)
 	}
 	series = excludeEnergyExplanationDirectUseSeries(series)
+	series, sources = filterEnergyExplanationWaterContextSeries(series, sources)
 	sort.SliceStable(series, func(i, j int) bool {
 		if series[i].Level != series[j].Level {
 			return series[i].Level < series[j].Level
@@ -1518,7 +1597,7 @@ func buildEnergyExplanationResultWithDriverContext(series []energyExplanationSer
 		periodID := fmt.Sprintf("M%d", month)
 		graph := buildEnergyExplanationGraphForPeriod(periodID, monthlySeries, allocationPolicy, func(item energyExplanationSeries) float64 {
 			return item.Monthly[month]
-		})
+		}, sources)
 		graph.Warnings = appendEnergyDriverWarningsForPeriod(graph.Warnings, driverWarnings, periodID)
 		monthlyGraphs[month] = graph
 	}
@@ -1532,7 +1611,7 @@ func buildEnergyExplanationResultWithDriverContext(series []energyExplanationSer
 	}
 	annualSeed := buildEnergyExplanationGraphForPeriod("annual", annualSeries, allocationPolicy, func(item energyExplanationSeries) float64 {
 		return item.Total
-	})
+	}, sources)
 	annual := annualSeed
 	if driverContext.Enabled {
 		annual = buildEnergyExplanationAnnualGraphFromMonthly(annualSeed, monthlyGraphs, series)
@@ -1549,7 +1628,7 @@ func buildEnergyExplanationResultWithDriverContext(series []energyExplanationSer
 			Warnings:       append([]EnergyWarning(nil), annual.Warnings...),
 		},
 	}
-	if selectedRange, ok := buildEnergyExplanationSelectedRangePeriod(series, allocationPolicy, plan); ok {
+	if selectedRange, ok := buildEnergyExplanationSelectedRangePeriod(series, sources, allocationPolicy, plan); ok {
 		periods = append(periods, selectedRange)
 	}
 	for _, month := range months {
@@ -1569,7 +1648,7 @@ func buildEnergyExplanationResultWithDriverContext(series []energyExplanationSer
 		periodID := fmt.Sprintf("D%d", day)
 		graph := buildEnergyExplanationGraphForPeriod(periodID, energyExplanationSeriesForGraphPeriod(series, "daily"), allocationPolicy, func(item energyExplanationSeries) float64 {
 			return item.Daily[day]
-		})
+		}, sources)
 		graph.Warnings = appendEnergyDriverWarningsForPeriod(graph.Warnings, driverWarnings, periodID)
 		periods = append(periods, EnergyPeriod{
 			ID:             periodID,
@@ -1585,7 +1664,7 @@ func buildEnergyExplanationResultWithDriverContext(series []energyExplanationSer
 		periodID := fmt.Sprintf("H%d", hour)
 		graph := buildEnergyExplanationGraphForPeriod(periodID, energyExplanationSeriesForGraphPeriod(series, "hourly"), allocationPolicy, func(item energyExplanationSeries) float64 {
 			return item.Hourly[hour]
-		})
+		}, sources)
 		graph.Warnings = appendEnergyDriverWarningsForPeriod(graph.Warnings, driverWarnings, periodID)
 		periods = append(periods, EnergyPeriod{
 			ID:             periodID,
@@ -1922,7 +2001,7 @@ func energyExplanationMappedPercentFromReconciliation(items []EnergyReconciliati
 	expected := 0.0
 	explained := 0.0
 	for _, item := range items {
-		if !strings.EqualFold(item.Level, "energy") {
+		if !strings.EqualFold(item.Level, "energy") || !energyExplanationUnitIsSiteEnergy(item.Unit) {
 			continue
 		}
 		expected += item.ExpectedValue
@@ -1932,6 +2011,52 @@ func energyExplanationMappedPercentFromReconciliation(items []EnergyReconciliati
 		return 0
 	}
 	return roundedEnergyNumber(explained / expected * 100)
+}
+
+func filterEnergyExplanationWaterContextSeries(series []energyExplanationSeries, sources []EnergyDataSource) ([]energyExplanationSeries, []EnergyDataSource) {
+	sourceByID := make(map[string]EnergyDataSource, len(sources))
+	for _, source := range sources {
+		sourceByID[source.ID] = source
+	}
+	waterSourceIDs := map[string]bool{}
+	outSeries := make([]energyExplanationSeries, 0, len(series))
+	for _, item := range series {
+		if canonicalEnergyPathCarrier(item.Carrier) != "water" {
+			outSeries = append(outSeries, item)
+			continue
+		}
+		for _, sourceID := range item.SourceIDs {
+			waterSourceIDs[sourceID] = true
+		}
+		explicitConversion := strings.EqualFold(strings.TrimSpace(item.Basis), "derived_ratio") &&
+			energyExplanationUnitIsSiteEnergy(item.Unit) && len(item.SourceIDs) > 0
+		if explicitConversion {
+			for _, sourceID := range item.SourceIDs {
+				if source, ok := sourceByID[sourceID]; !ok || !energyPathSourceHasExplicitWaterConversion(source) {
+					explicitConversion = false
+					break
+				}
+			}
+		}
+		if explicitConversion {
+			outSeries = append(outSeries, item)
+		}
+	}
+
+	outSources := append([]EnergyDataSource(nil), sources...)
+	for index := range outSources {
+		source := &outSources[index]
+		if !waterSourceIDs[source.ID] && !energyExplanationNameIsWaterMeter(firstNonEmpty(source.Name, source.KeyValue)) {
+			continue
+		}
+		source.InspectorSection = "context"
+		if energyPathSourceHasExplicitWaterConversion(*source) {
+			source.Explanation = firstNonEmpty(source.Explanation, "Water utility source with an explicit site-energy conversion.")
+		} else {
+			source.Explanation = firstNonEmpty(source.Explanation, "Water utility use is context only and is excluded from the site-energy flow unless an explicit site-energy conversion is provided.")
+		}
+	}
+	return outSeries, outSources
 }
 
 func energyExplanationHeatSeriesSignMultiplier(item energyExplanationSeries) float64 {
@@ -2022,7 +2147,7 @@ func energyExplanationDirectZoneSeries(series []energyExplanationSeries) []energ
 	return out
 }
 
-func buildEnergyExplanationSelectedRangePeriod(series []energyExplanationSeries, allocationPolicy string, plan *PurposeRunPlan) (EnergyPeriod, bool) {
+func buildEnergyExplanationSelectedRangePeriod(series []energyExplanationSeries, sources []EnergyDataSource, allocationPolicy string, plan *PurposeRunPlan) (EnergyPeriod, bool) {
 	label := energyExplanationSelectedRangeLabel(plan)
 	if label == "" {
 		return EnergyPeriod{}, false
@@ -2042,7 +2167,7 @@ func buildEnergyExplanationSelectedRangePeriod(series []energyExplanationSeries,
 			return 0
 		}
 		return item.SelectedRange
-	})
+	}, sources)
 	return EnergyPeriod{
 		ID:             "selected_range",
 		Label:          label,
@@ -2327,7 +2452,10 @@ func energyExplanationAllocationPolicy(plan *PurposeRunPlan) string {
 	return normalizePurposeAllocationPolicy(plan.AllocationPolicy)
 }
 
-func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanationSeries, allocationPolicy string, valueFor func(energyExplanationSeries) float64) energyExplanationGraph {
+func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanationSeries, allocationPolicy string, valueFor func(energyExplanationSeries) float64, sourceSets ...[]EnergyDataSource) energyExplanationGraph {
+	if len(sourceSets) > 0 {
+		series, _ = filterEnergyExplanationWaterContextSeries(series, sourceSets[0])
+	}
 	canonicalDriverAllocationEnabled := false
 	for _, original := range series {
 		item := canonicalEnergyExplanationSeries(original)
@@ -2534,6 +2662,41 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 		}
 	}
 	canonicalDriverAllocation := allocateCanonicalEnergyDriverNodes(nodes, loadNodesByZoneService, canonicalDriverAllocationEnabled)
+	for carrier, endUseValue := range endUseValueByCarrier {
+		if facilityByCarrier[carrier] != "" || endUseValue == 0 {
+			continue
+		}
+		sourceIDs := []string{}
+		unit := ""
+		for _, endUseID := range endUseNodesByCarrier[carrier] {
+			if endUseNode := nodes[endUseID]; endUseNode != nil {
+				sourceIDs = appendUniqueStrings(sourceIDs, endUseNode.node.SourceIDs...)
+				unit = firstNonEmpty(unit, endUseNode.node.Unit)
+			}
+		}
+		nodeID := "energy.carrier." + carrier
+		addNode(EnergyExplanationNode{
+			ID:                  nodeID,
+			Level:               "energy",
+			Kind:                "energy." + carrier + ".observed_end_use_subtotal",
+			Label:               energyCarrierLabel(carrier) + " observed end-use subtotal",
+			Value:               endUseValue,
+			RawValue:            endUseValue,
+			EffectiveValue:      endUseValue,
+			Multiplier:          1,
+			Unit:                unit,
+			Period:              period,
+			Carrier:             carrier,
+			EndUse:              "total",
+			MeterHierarchyLevel: "observed_end_use_subtotal",
+			Badges:              []string{"partial", "observed_end_use_subtotal"},
+			Basis:               "reported_end_use_subtotal",
+			SourceIDs:           sourceIDs,
+		})
+		facilityByCarrier[carrier] = nodeID
+		facilityValueByCarrier[carrier] = endUseValue
+		facilitySourcesByCarrier[carrier] = appendUniqueStrings(facilitySourcesByCarrier[carrier], sourceIDs...)
+	}
 
 	edges := []EnergyExplanationEdge{}
 	reconciliation := []EnergyReconciliation{}
@@ -2559,9 +2722,19 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 			}
 			rule := meterEndUseRule
 			relation := "meter_enduse"
+			edgeBasis := rule.Basis
+			edgeFormula := rule.Formula
+			edgeRuleID := rule.ID
 			if endUseNode.node.Basis == measuredEnergyVariableRule.Basis {
 				rule = measuredEnergyVariableRule
 				relation = "energy_variable"
+				edgeBasis = rule.Basis
+				edgeFormula = rule.Formula
+				edgeRuleID = rule.ID
+			} else if strings.EqualFold(strings.TrimSpace(endUseNode.node.Basis), "derived_ratio") {
+				edgeBasis = "derived_ratio"
+				edgeFormula = "reported source quantity multiplied by an explicit site-energy conversion factor"
+				edgeRuleID = ""
 			}
 			energySourceIDs = appendUniqueStrings(energySourceIDs, endUseNode.node.SourceIDs...)
 			edges = append(edges, EnergyExplanationEdge{
@@ -2572,9 +2745,9 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 				Unit:      endUseNode.node.Unit,
 				Period:    period,
 				Relation:  relation,
-				Basis:     rule.Basis,
-				Formula:   rule.Formula,
-				RuleID:    rule.ID,
+				Basis:     edgeBasis,
+				Formula:   edgeFormula,
+				RuleID:    edgeRuleID,
 				SourceIDs: endUseNode.node.SourceIDs,
 			})
 		}
@@ -2940,6 +3113,10 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 	mapped := 0.0
 	totalFacility := 0.0
 	for carrier, value := range facilityValueByCarrier {
+		facilityNode := nodes[facilityByCarrier[carrier]]
+		if facilityNode == nil || !energyExplanationUnitIsSiteEnergy(facilityNode.node.Unit) {
+			continue
+		}
 		totalFacility += value
 		mapped += math.Min(value, endUseValueByCarrier[carrier])
 	}
@@ -3669,11 +3846,17 @@ func energyExplanationTabularCarrier(columnName string) (string, bool) {
 		return "Electricity", true
 	case "natural gas", "gas":
 		return "NaturalGas", true
+	case "gasoline":
+		return "Gasoline", true
+	case "diesel":
+		return "Diesel", true
+	case "coal":
+		return "Coal", true
 	case "district cooling":
 		return "DistrictCooling", true
-	case "district heating":
+	case "district heating", "district heating water":
 		return "DistrictHeating", true
-	case "steam":
+	case "steam", "district heating steam":
 		return "Steam", true
 	case "water":
 		return "Water", true
@@ -3683,6 +3866,10 @@ func energyExplanationTabularCarrier(columnName string) (string, bool) {
 		return "FuelOilNo2", true
 	case "propane":
 		return "Propane", true
+	case "other fuel 1":
+		return "OtherFuel1", true
+	case "other fuel 2":
+		return "OtherFuel2", true
 	default:
 		return "", false
 	}
@@ -4543,40 +4730,8 @@ func energyMeterCarrierFromUnknownMeter(name string) (string, bool) {
 }
 
 func energyCarrierToken(value string) (string, bool) {
-	switch normalizeEnergyOutputName(value) {
-	case "electricity":
-		return "electricity", true
-	case "naturalgas", "gas":
-		return "natural_gas", true
-	case "gasoline":
-		return "gasoline", true
-	case "diesel":
-		return "diesel", true
-	case "coal":
-		return "coal", true
-	case "districtcooling":
-		return "district_cooling", true
-	case "districtheating", "districtheatingwater":
-		return "district_heating", true
-	case "districtheatingsteam":
-		return "steam", true
-	case "fueloilno1":
-		return "fuel_oil_1", true
-	case "fueloilno2":
-		return "fuel_oil_2", true
-	case "propane":
-		return "propane", true
-	case "otherfuel1":
-		return "other_fuel_1", true
-	case "otherfuel2":
-		return "other_fuel_2", true
-	case "steam":
-		return "steam", true
-	case "water":
-		return "water", true
-	default:
-		return "", false
-	}
+	definition, ok := energyCarrierTaxonomyDefinitionFor(value)
+	return definition.Token, ok
 }
 
 func energyLoadAliasDefinitionForName(name string) (energyLoadAliasDefinition, bool) {
@@ -4714,7 +4869,7 @@ func energyHeatAliasSignedLabel(label string, suffix string) string {
 }
 
 func buildEnergyExplanationCompleteness(series []energyExplanationSeries, sources []EnergyDataSource, plan *PurposeRunPlan, mappedPercent float64) EnergyCompleteness {
-	expectedEnergy := expectedEnergyExplanationOutputs(plan, "energy")
+	expectedEnergy, expectedContext := partitionEnergyExplanationContextOutputs(expectedEnergyExplanationOutputs(plan, "energy"))
 	expectedLoad := expectedEnergyExplanationOutputs(plan, "load")
 	expectedHeat := expectedEnergyExplanationOutputs(plan, "heat")
 	expectedEnergyGroups := expectedEnergyExplanationOutputGroups(expectedEnergy, "energy")
@@ -4724,6 +4879,9 @@ func buildEnergyExplanationCompleteness(series []energyExplanationSeries, source
 	foundLoadGroups := map[string]bool{}
 	foundHeatGroups := map[string]bool{}
 	for _, item := range series {
+		if item.Level == "energy" && canonicalEnergyPathCarrier(item.Carrier) == "water" && !energyExplanationUnitIsSiteEnergy(item.Unit) {
+			continue
+		}
 		key := energyExplanationCompletenessGroupKey(item)
 		if key == "" {
 			continue
@@ -4760,6 +4918,7 @@ func buildEnergyExplanationCompleteness(series []energyExplanationSeries, source
 	availability = append(availability, sourceAvailabilityEntriesForLevel(expectedEnergy, "energy", sources, false)...)
 	availability = append(availability, sourceAvailabilityEntriesForLevel(expectedLoad, "load", sources, energyExplanationLevelNotRequested(plan, "load"))...)
 	availability = append(availability, sourceAvailabilityEntriesForLevel(expectedHeat, "heat", sources, energyExplanationLevelNotRequested(plan, "heat"))...)
+	availability = append(availability, sourceAvailabilityEntries(expectedContext, "context", sources)...)
 	missingCategories := missingEnergySourceCategories(availability)
 	return EnergyCompleteness{
 		Status:             status,
@@ -4771,6 +4930,35 @@ func buildEnergyExplanationCompleteness(series []energyExplanationSeries, source
 		MissingCategories:  missingCategories,
 		SourceAvailability: availability,
 	}
+}
+
+func partitionEnergyExplanationContextOutputs(input []string) ([]string, []string) {
+	energy := make([]string, 0, len(input))
+	context := make([]string, 0)
+	for _, name := range input {
+		if energyExplanationNameIsWaterMeter(name) {
+			context = appendUniquePurposeString(context, name)
+			continue
+		}
+		energy = appendUniquePurposeString(energy, name)
+	}
+	return energy, context
+}
+
+func energyExplanationNameIsWaterMeter(name string) bool {
+	definition, ok := energyMeterAliasDefinitionForName(name)
+	if !ok {
+		definition, ok = energyMeterEndUseCarrierDefinitionForName(name)
+	}
+	return ok && canonicalEnergyPathCarrier(definition.Carrier) == "water"
+}
+
+func energyExplanationUnitIsSiteEnergy(unit string) bool {
+	if energyPathUnitIsCanonicalSiteEnergy(unit) {
+		return true
+	}
+	_, ok := energyPathEnergyUnitNormalization(unit)
+	return ok
 }
 
 func energyExplanationLevelNotRequested(plan *PurposeRunPlan, level string) bool {
@@ -4954,7 +5142,7 @@ func energySourceMatchesAvailabilityName(source EnergyDataSource, name string, l
 	if strings.EqualFold(source.Name, name) || strings.EqualFold(source.KeyValue, name) {
 		return true
 	}
-	if level == "energy" {
+	if level == "energy" || level == "context" {
 		return energyNamesShareEnergyAliasGroup(source.Name, name) || energyNamesShareEnergyAliasGroup(source.KeyValue, name)
 	}
 	if level == "load" {
@@ -5032,7 +5220,7 @@ func sourceAvailabilityEntriesForLevel(expected []string, level string, sources 
 func missingEnergySourceCategories(availability []EnergySourceAvailabilityEntry) []string {
 	out := []string{}
 	for _, item := range availability {
-		if item.Status != "missing" {
+		if item.Status != "missing" || strings.EqualFold(item.Level, "context") {
 			continue
 		}
 		out = appendUniquePurposeString(out, strings.TrimSpace(item.Level+": "+item.Name))
@@ -5135,26 +5323,10 @@ func splitEnergyExplanationZoneServiceKey(key string) (string, string) {
 }
 
 func energyCarrierLabel(carrier string) string {
-	switch carrier {
-	case "electricity":
-		return "Electricity"
-	case "natural_gas":
-		return "Natural gas"
-	case "district_cooling":
-		return "District cooling"
-	case "district_heating":
-		return "District heating"
-	case "fuel_oil_1":
-		return "Fuel oil #1"
-	case "fuel_oil_2":
-		return "Fuel oil #2"
-	case "other_fuel_1":
-		return "Other fuel 1"
-	case "other_fuel_2":
-		return "Other fuel 2"
-	default:
-		return cases.Title(language.Und, cases.NoLower).String(strings.ReplaceAll(carrier, "_", " "))
+	if definition, ok := energyCarrierTaxonomyDefinitionFor(carrier); ok {
+		return definition.Label
 	}
+	return cases.Title(language.Und, cases.NoLower).String(strings.ReplaceAll(carrier, "_", " "))
 }
 
 func energyServiceLabel(serviceKind string) string {
