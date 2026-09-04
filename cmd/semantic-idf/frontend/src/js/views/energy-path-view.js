@@ -138,6 +138,8 @@ const ENERGY_PATH_CONVERSION_RATIOS = Object.freeze({
 
 const ENERGY_PATH_AUXILIARY_END_USES = Object.freeze(new Set(["fans_pumps", "hvac_auxiliaries"]));
 const ENERGY_PATH_UNASSIGNED_BUILDING_HVAC = "unassigned_building_hvac_energy";
+const ENERGY_PATH_UNASSIGNED_BUILDING_HVAC_AUXILIARY = "unassigned_building_hvac_auxiliary_energy";
+const ENERGY_PATH_AUXILIARY_ALLOCATION_RECONCILIATION_PREFIX = "reconcile.zone_auxiliary_allocation.";
 
 export function isEnergyPathV2(explanation = {}) {
   return String(explanation?.schema || "").toLowerCase() === ENERGY_PATH_SCHEMA_V2;
@@ -164,6 +166,86 @@ export function energyPathZoneDirectCoverage(payload = {}) {
     found: Math.max(0, Number(energyUse.found) || 0),
     total: Math.max(0, Number(energyUse.total) || 0),
   };
+}
+
+export function energyPathAuxiliaryAllocationQuality(explanation = {}, viewState = {}) {
+  const empty = {
+    available: false,
+    period: viewState.simulationEnergyPeriod || "annual",
+    expectedValue: 0,
+    directValue: 0,
+    allocatedValue: 0,
+    unassignedValue: 0,
+    directRatio: 0,
+    allocatedRatio: 0,
+    unassignedRatio: 0,
+    unit: "",
+  };
+  if ((viewState.simulationEnergyScopeKind || "building") !== "zone") {
+    return empty;
+  }
+  const periodID = viewState.simulationEnergyPeriod || "annual";
+  const period = (explanation.periods || [])
+    .find((item) => energyPathToken(item?.id) === energyPathToken(periodID));
+  const reconciliation = energyPathToken(periodID) === "annual"
+    ? (explanation.reconciliation || period?.reconciliation || [])
+    : (period?.reconciliation || []);
+  const rows = reconciliation.filter((row) => (
+    energyPathToken(row?.level) === "allocation" &&
+    energyPathToken(row?.id).startsWith(ENERGY_PATH_AUXILIARY_ALLOCATION_RECONCILIATION_PREFIX) &&
+    (!row?.period || energyPathToken(row.period) === energyPathToken(periodID))
+  ));
+  const componentFields = ["directValue", "allocatedValue", "unassignedValue"];
+  if (!rows.length || !rows.some((row) => componentFields.some((field) => Object.prototype.hasOwnProperty.call(row, field)))) {
+    return empty;
+  }
+  const total = rows.reduce((quality, row) => {
+    quality.expectedValue += Math.max(0, Number(row.expectedValue) || 0);
+    quality.directValue += Math.max(0, Number(row.directValue) || 0);
+    quality.allocatedValue += Math.max(0, Number(row.allocatedValue) || 0);
+    quality.unassignedValue += Math.max(0, Number(row.unassignedValue) || 0);
+    quality.unit ||= String(row.unit || "").trim();
+    return quality;
+  }, { ...empty, period: periodID });
+  if (!(total.expectedValue > 0)) {
+    return empty;
+  }
+  total.available = true;
+  total.directRatio = total.directValue / total.expectedValue;
+  total.allocatedRatio = total.allocatedValue / total.expectedValue;
+  total.unassignedRatio = total.unassignedValue / total.expectedValue;
+  return total;
+}
+
+export function renderEnergyPathAuxiliaryAllocationQuality(quality = {}) {
+  if (!quality.available || !(Number(quality.expectedValue) > 0)) return "";
+  const items = [
+    ["direct", t("simulation.energyPathAllocationDirect", {}, "Direct"), Number(quality.directValue) || 0, Number(quality.directRatio) || 0],
+    ["allocated", t("simulation.energyPathAllocationAllocated", {}, "Allocated"), Number(quality.allocatedValue) || 0, Number(quality.allocatedRatio) || 0],
+    ["unassigned", t("simulation.energyPathAllocationUnassigned", {}, "Unassigned"), Number(quality.unassignedValue) || 0, Number(quality.unassignedRatio) || 0],
+  ];
+  const expected = Number(quality.expectedValue) || 0;
+  const unit = String(quality.unit || "").trim();
+  return `
+    <section class="energy-path-auxiliary-allocation-quality" data-energy-path-auxiliary-allocation-quality data-energy-path-period="${escapeHTML(quality.period || "annual")}" data-energy-path-expected-value="${escapeHTML(String(expected))}" role="status">
+      <header>
+        <strong>${escapeHTML(t("simulation.energyPathAuxiliaryAllocationCoverage", {}, "HVAC auxiliary allocation coverage"))}</strong>
+        <span>${escapeHTML(t("simulation.energyPathAuxiliaryAllocationScope", {}, "Building allocation used by this Zone view"))}</span>
+      </header>
+      <div class="energy-path-auxiliary-allocation-ratios">
+        ${items.map(([kind, label, value, ratio]) => `
+          <div data-energy-path-auxiliary-allocation-ratio="${kind}" data-energy-path-ratio-value="${escapeHTML(String(ratio))}" data-energy-path-allocation-value="${escapeHTML(String(value))}">
+            <span>${escapeHTML(label)}</span>
+            <strong>${escapeHTML(`${(ratio * 100).toLocaleString(undefined, { maximumFractionDigits: 1 })}%`)}</strong>
+            <small>${escapeHTML(`${energyPathSummaryValueLabel(value, unit)} / ${energyPathSummaryValueLabel(expected, unit)}`)}</small>
+          </div>`).join("")}
+      </div>
+      <p>${escapeHTML(t(
+        "simulation.energyPathAuxiliaryAllocationContext",
+        {},
+        "These are Building-wide auxiliary allocation shares for the selected period. Unassigned energy remains quality context and is never added to the selected Zone.",
+      ))}</p>
+    </section>`;
 }
 
 export function energyPathHasPayload(explanation = {}) {
@@ -204,6 +286,7 @@ export function renderEnergyPathView(explanation = {}, viewState = {}) {
   const graph = energyPathGraphForState(explanation, viewState);
   const allGraphNodes = graph.nodes;
   const zoneCoverage = energyPathZoneDirectCoverageForState(explanation, viewState);
+  const auxiliaryAllocationQuality = energyPathAuxiliaryAllocationQuality(explanation, viewState);
   graph.nodes = energyPathMainStageNodes(allGraphNodes, graph.links).map((node) => (
     zoneCoverage.limited && node.level === "carrier"
       ? { ...node, presentationCoverage: "partial" }
@@ -221,6 +304,7 @@ export function renderEnergyPathView(explanation = {}, viewState = {}) {
     <section class="energy-path-view" data-energy-path-schema="${escapeHTML(ENERGY_PATH_SCHEMA_V2)}" data-energy-path-zone-coverage="${zoneCoverage.limited ? "partial" : "complete_or_unreported"}">
       ${renderEnergyPathHeader(explanation, viewState)}
       ${renderEnergyPathWarnings(graph.warnings)}
+      ${renderEnergyPathAuxiliaryAllocationQuality(auxiliaryAllocationQuality)}
       ${renderEnergyPathZoneCoverageNotice(zoneCoverage)}
       <div class="energy-path-stage-grid" role="group" aria-label="${escapeHTML(t("simulation.energyPathDirection", {}, "Load drivers → Thermal loads → End-use energy → Energy sources"))}">
         ${stages}
@@ -257,11 +341,11 @@ function renderEnergyPathZoneCoverageNotice(coverage = {}) {
   const count = coverage.total > 0 ? ` (${coverage.found}/${coverage.total})` : "";
   return `
     <p class="energy-path-zone-coverage-notice" data-energy-path-zone-coverage-notice="partial" role="status">
-      <strong>${escapeHTML(t("simulation.energyPathPartialDirectUseCoverage", {}, "Partial direct-use coverage"))}</strong>
+      <strong>${escapeHTML(t("simulation.energyPathPartialZoneEnergyCoverage", {}, "Partial Zone energy coverage"))}</strong>
       <span>${escapeHTML(t(
-        "simulation.energyPathObservedDirectUseSubtotalExplanation",
+        "simulation.energyPathObservedZoneEnergySubtotalExplanation",
         {},
-        "Only directly observed zone energy uses are included; energy-source values are subtotals, not complete zone totals.",
+        "Exact zone observations and explicitly allocated HVAC energy are included; energy-source values remain subtotals, not complete zone totals.",
       ))}${escapeHTML(count)}</span>
     </p>`;
 }
@@ -327,7 +411,10 @@ export function energyPathConversionFlows(nodes = [], links = []) {
 export function energyPathAuxiliaryFlows(nodes = [], links = []) {
   const nodeByID = new Map((nodes || []).filter((node) => node?.id).map((node) => [node.id, node]));
   return (links || []).flatMap((link) => {
-    if (energyPathToken(link?.relation) !== "direct_end_use_to_carrier") return [];
+    const relation = energyPathToken(link?.relation);
+    const auxiliaryRelations = ["direct_end_use_to_carrier", "end_use_to_carrier"];
+    if (energyPathToken(link?.relation) !== "direct_end_use_to_carrier" &&
+      !(auxiliaryRelations.includes(relation) && relation === "end_use_to_carrier" && energyPathToken(link?.basis) === "service_path_allocation")) return [];
     const fromNode = nodeByID.get(link.fromId);
     const toNode = nodeByID.get(link.toId);
     const endUse = energyPathToken(fromNode?.endUse);
@@ -484,13 +571,19 @@ export function renderEnergyPathNodeInspector(explanation = {}, nodes = [], sele
   const basis = String(node.basis || "").trim();
   if (basis) {
     const basisToken = energyPathToken(basis);
+    const allocationExplanation = energyPathToken(node.allocationExplanation);
+    const airflowAllocated = basisToken === "service_path_allocation" &&
+      allocationExplanation.includes("airloop") &&
+      (allocationExplanation.includes("supply_air") || allocationExplanation.includes("supply-air"));
     values.push([
       "basis",
       t("simulation.energyPathBasis", {}, "Basis"),
       basisToken === "direct_zone_energy"
         ? `${t("simulation.energyPathDirectZoneEnergy", {}, "Direct zone energy")} · direct_zone_energy`
         : basisToken === "service_path_allocation"
-          ? `${t("simulation.energyPathServicePathAllocation", {}, "Allocated by HVAC service-path load share")} · service_path_allocation`
+          ? `${airflowAllocated
+            ? t("simulation.energyPathAirflowAllocation", {}, "Allocated by related AirLoop supply-air volume share")
+            : t("simulation.energyPathServicePathAllocation", {}, "Allocated by HVAC service-path load share")} · service_path_allocation`
           : basis,
     ]);
   }
@@ -914,14 +1007,16 @@ export function renderEnergyPathWarnings(warnings = []) {
     const key = `${severity}\u0000${code}\u0000${message}`;
     if (seen.has(key)) continue;
     seen.add(key);
+    const unassignedBuildingHVACAuxiliary = isEnergyPathUnassignedBuildingHVACAuxiliaryItem(warning);
     const unassignedBuildingHVAC = isEnergyPathUnassignedBuildingHVACItem(warning);
     unique.push({
       severity,
       code,
       message: unassignedBuildingHVAC
-        ? message.replace(/^unassigned building hvac energy\s*(?::|·|—|-)?\s*/i, "")
+        ? message.replace(/^unassigned building hvac(?: auxiliary)? energy\s*(?::|·|—|-)?\s*/i, "")
         : message,
       unassignedBuildingHVAC,
+      unassignedBuildingHVACAuxiliary,
     });
   }
   if (!unique.length) return "";
@@ -929,9 +1024,11 @@ export function renderEnergyPathWarnings(warnings = []) {
     <section class="energy-path-warnings" data-energy-path-warnings role="status">
       <h4>${escapeHTML(t("simulation.energyPathQualityWarnings", {}, "Energy Path quality warnings"))}</h4>
       <ul>${unique.map((warning) => `
-        <li data-energy-path-warning-severity="${warning.severity}"${warning.unassignedBuildingHVAC ? ` data-energy-path-quality-detail="${ENERGY_PATH_UNASSIGNED_BUILDING_HVAC}"` : ""}>
+        <li data-energy-path-warning-severity="${warning.severity}"${warning.unassignedBuildingHVACAuxiliary ? ` data-energy-path-quality-detail="${ENERGY_PATH_UNASSIGNED_BUILDING_HVAC_AUXILIARY}"` : warning.unassignedBuildingHVAC ? ` data-energy-path-quality-detail="${ENERGY_PATH_UNASSIGNED_BUILDING_HVAC}"` : ""}>
           ${warning.code ? `<code>${escapeHTML(warning.code)}</code>` : ""}
-          ${warning.unassignedBuildingHVAC ? `<strong>${escapeHTML(t("simulation.energyPathUnassignedBuildingHVACEnergy", {}, "Unassigned building HVAC energy"))}</strong>` : ""}
+          ${warning.unassignedBuildingHVACAuxiliary
+            ? `<strong>${escapeHTML(t("simulation.energyPathUnassignedBuildingHVACAuxiliaryEnergy", {}, "Unassigned building HVAC auxiliary energy"))}</strong>`
+            : warning.unassignedBuildingHVAC ? `<strong>${escapeHTML(t("simulation.energyPathUnassignedBuildingHVACEnergy", {}, "Unassigned building HVAC energy"))}</strong>` : ""}
           ${warning.message ? `<span>${escapeHTML(warning.message)}</span>` : ""}
         </li>`).join("")}</ul>
     </section>`;
@@ -941,7 +1038,14 @@ export function isEnergyPathUnassignedBuildingHVACItem(item = {}) {
   return [item.code, item.id, item.kind, item.label, item.fromId, item.toId]
     .filter(Boolean)
     .map((value) => energyPathToken(value).replace(/[^a-z0-9]+/g, "_"))
-    .some((value) => value.includes(ENERGY_PATH_UNASSIGNED_BUILDING_HVAC));
+    .some((value) => value.includes(ENERGY_PATH_UNASSIGNED_BUILDING_HVAC) || value.includes(ENERGY_PATH_UNASSIGNED_BUILDING_HVAC_AUXILIARY));
+}
+
+export function isEnergyPathUnassignedBuildingHVACAuxiliaryItem(item = {}) {
+  return [item.code, item.id, item.kind, item.label, item.fromId, item.toId]
+    .filter(Boolean)
+    .map((value) => energyPathToken(value).replace(/[^a-z0-9]+/g, "_"))
+    .some((value) => value.includes(ENERGY_PATH_UNASSIGNED_BUILDING_HVAC_AUXILIARY));
 }
 
 function energyPathSourceInspectorSection(source = {}) {

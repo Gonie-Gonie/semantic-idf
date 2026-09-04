@@ -23,19 +23,30 @@ func UpgradeEnergyExplanationV1(input EnergyExplanationV1) EnergyExplanationResu
 	zoneHVACAllocationEnabled := allocationPolicy == PurposeAllocationPolicyByServicePathLoadShare
 	annualZoneHVACAllocation := energyPathZoneHVACAllocationPlan{}
 	periodZoneHVACAllocations := map[string]energyPathZoneHVACAllocationPlan{}
+	annualZoneAuxiliaryAllocation := energyPathZoneAuxiliaryAllocationPlan{}
+	periodZoneAuxiliaryAllocations := map[string]energyPathZoneAuxiliaryAllocationPlan{}
 	if zoneHVACAllocationEnabled {
 		annualZoneHVACAllocation = buildEnergyPathZoneHVACAllocationPlan(input.Nodes, input.Edges, input.zoneDirectUseSeries, "annual", "annual", input.canonicalMonthlyBasis)
+		annualZoneAuxiliaryAllocation = buildEnergyPathZoneAuxiliaryAllocationPlan(input.Nodes, input.zoneDirectUseSeries, input.servicePathIndex, "annual", "annual", input.canonicalMonthlyBasis)
 		monthlyZoneHVACAllocations := []energyPathZoneHVACAllocationPlan{}
+		monthlyZoneAuxiliaryAllocations := []energyPathZoneAuxiliaryAllocationPlan{}
 		for _, period := range input.Periods {
 			plan := buildEnergyPathZoneHVACAllocationPlan(period.Nodes, period.Edges, input.zoneDirectUseSeries, period.ID, period.Kind, input.canonicalMonthlyBasis)
 			periodZoneHVACAllocations[strings.ToLower(strings.TrimSpace(period.ID))] = plan
+			auxiliaryPlan := buildEnergyPathZoneAuxiliaryAllocationPlan(period.Nodes, input.zoneDirectUseSeries, input.servicePathIndex, period.ID, period.Kind, input.canonicalMonthlyBasis)
+			periodZoneAuxiliaryAllocations[strings.ToLower(strings.TrimSpace(period.ID))] = auxiliaryPlan
 			if strings.EqualFold(strings.TrimSpace(period.Kind), "monthly") {
 				monthlyZoneHVACAllocations = append(monthlyZoneHVACAllocations, plan)
+				monthlyZoneAuxiliaryAllocations = append(monthlyZoneAuxiliaryAllocations, auxiliaryPlan)
 			}
 		}
 		if input.canonicalMonthlyBasis && len(monthlyZoneHVACAllocations) > 0 {
 			monthlyPlan := aggregateEnergyPathZoneHVACAllocationPlans(monthlyZoneHVACAllocations)
 			annualZoneHVACAllocation = energyPathZoneHVACAllocationPlanWithAnnualFallback(monthlyPlan, annualZoneHVACAllocation, input.Nodes)
+		}
+		if input.canonicalMonthlyBasis && len(monthlyZoneAuxiliaryAllocations) > 0 {
+			monthlyPlan := aggregateEnergyPathZoneAuxiliaryAllocationPlans(monthlyZoneAuxiliaryAllocations)
+			annualZoneAuxiliaryAllocation = energyPathZoneAuxiliaryAllocationPlanWithAnnualFallback(monthlyPlan, annualZoneAuxiliaryAllocation, input.Nodes)
 		}
 	}
 	var directZoneSeries []energyExplanationSeries
@@ -54,6 +65,7 @@ func UpgradeEnergyExplanationV1(input EnergyExplanationV1) EnergyExplanationResu
 	}
 	if scope.Kind == "zone" && zoneHVACAllocationEnabled {
 		annualInputEdges = applyEnergyPathZoneHVACAllocationPlan(annualInputEdges, input.Nodes, annualZoneHVACAllocation)
+		annualInputEdges = applyEnergyPathZoneAuxiliaryAllocationPlan(annualInputEdges, annualZoneAuxiliaryAllocation)
 	}
 	annualLegacyEdges := append(annualInputEdges, directEdges...)
 	annualLegacyEdges = appendEnergyPathDirectZoneHVACEdges(annualLegacyEdges, annualLegacyNodes)
@@ -89,6 +101,7 @@ func UpgradeEnergyExplanationV1(input EnergyExplanationV1) EnergyExplanationResu
 		}
 		if scope.Kind == "zone" && zoneHVACAllocationEnabled {
 			periodInputEdges = applyEnergyPathZoneHVACAllocationPlan(periodInputEdges, period.Nodes, periodZoneHVACAllocations[strings.ToLower(strings.TrimSpace(period.ID))])
+			periodInputEdges = applyEnergyPathZoneAuxiliaryAllocationPlan(periodInputEdges, periodZoneAuxiliaryAllocations[strings.ToLower(strings.TrimSpace(period.ID))])
 		}
 		periodLegacyEdges := append(periodInputEdges, periodDirectEdges...)
 		periodLegacyEdges = appendEnergyPathDirectZoneHVACEdges(periodLegacyEdges, periodLegacyNodes)
@@ -150,6 +163,7 @@ func UpgradeEnergyExplanationV1(input EnergyExplanationV1) EnergyExplanationResu
 		applyCanonicalMonthlyBasisToEnergyPathResult(&result)
 		if scope.Kind == "zone" && zoneHVACAllocationEnabled {
 			applyEnergyPathAnnualZoneHVACOverrides(&result, nodes, links, annualZoneHVACAllocation)
+			applyEnergyPathAnnualZoneAuxiliaryOverrides(&result, nodes, links, annualZoneAuxiliaryAllocation)
 		}
 	}
 	applyEnergyPathDirectZoneCoverage(&result)
@@ -177,6 +191,7 @@ func UpgradeEnergyExplanationV1(input EnergyExplanationV1) EnergyExplanationResu
 	}
 	if zoneHVACAllocationEnabled {
 		appendEnergyPathZoneHVACAllocationAccounting(&result, annualZoneHVACAllocation, periodZoneHVACAllocations, input.canonicalMonthlyBasis)
+		appendEnergyPathZoneAuxiliaryAllocationAccounting(&result, annualZoneAuxiliaryAllocation, periodZoneAuxiliaryAllocations, input.canonicalMonthlyBasis)
 	}
 	return result
 }
@@ -1454,7 +1469,8 @@ func energyExplanationZoneAllocationProjections(nodes []EnergyExplanationNode, e
 	seenEndUseLoads := map[string]bool{}
 	seenServiceLoads := map[string]bool{}
 	for _, edge := range edges {
-		if !strings.EqualFold(edge.Relation, "allocation") {
+		auxiliaryAllocation := strings.EqualFold(strings.TrimSpace(edge.Relation), energyPathAuxiliaryAllocationRelation)
+		if !strings.EqualFold(edge.Relation, "allocation") && !auxiliaryAllocation {
 			continue
 		}
 		load := nodeByID[edge.ToID]
@@ -1468,7 +1484,11 @@ func energyExplanationZoneAllocationProjections(nodes []EnergyExplanationNode, e
 		value := math.Abs(firstNonZero(edge.Value, energyExplanationEffectiveNodeValue(energyExplanationLegacyNodeWithEffectiveValues(load))))
 		service := energyCanonicalServiceKind(firstNonEmpty(load.ServiceKind, edge.ServiceKind, endUse.EndUse))
 		endUseKind := canonicalEnergyPathEndUse(firstNonEmpty(endUse.EndUse, energyExplanationKindSuffix(endUse.Kind)))
-		if (endUseKind != "cooling" && endUseKind != "heating") || service != endUseKind {
+		if auxiliaryAllocation {
+			if !energyPathIsZoneAllocatableAuxiliary(endUseKind) || !strings.EqualFold(strings.TrimSpace(load.Level), "load") {
+				continue
+			}
+		} else if (endUseKind != "cooling" && endUseKind != "heating") || service != endUseKind {
 			// A zone load share is meaningful only for the matching HVAC service.
 			// Lighting/equipment/water/process meters are never projected through
 			// a malformed allocation edge when their direct source is absent.
@@ -1515,7 +1535,12 @@ func energyExplanationZoneAllocationProjections(nodes []EnergyExplanationNode, e
 		basis := firstNonEmpty(share.basis, "zone_load_allocation")
 		explanation := "Allocated by zone service load share"
 		if basis == "service_path_allocation" {
-			explanation = "Allocated by HVAC service-path load share"
+			formula := strings.ToLower(strings.TrimSpace(share.formula))
+			if strings.Contains(formula, "airloop") && (strings.Contains(formula, "supply-air volume") || strings.Contains(formula, "supply air volume")) {
+				explanation = "Allocated by related AirLoop supply-air volume share"
+			} else {
+				explanation = "Allocated by HVAC service-path load share"
+			}
 		}
 		paths := appendUniqueStrings(nil, share.paths...)
 		sources := appendUniqueStrings(nil, share.sources...)
@@ -1646,6 +1671,9 @@ func energyPathPreferredAllocationBasis(left string, right string) string {
 
 func energyExplanationHasExplicitAllocation(edges []EnergyExplanationEdge) bool {
 	for _, edge := range edges {
+		if strings.EqualFold(strings.TrimSpace(edge.Relation), energyPathAuxiliaryAllocationRelation) && edge.RuleID == energyRelationshipRuleAllocatedAuxiliaryServicePath {
+			return true
+		}
 		if strings.EqualFold(edge.Relation, "allocation") && (edge.RuleID == energyRelationshipRuleAllocatedZoneLoad || edge.RuleID == energyRelationshipRuleAllocatedServicePathLoad || canonicalEnergyPathBasis(edge.Basis, edge.RuleID) == "zone_load_allocation" || canonicalEnergyPathBasis(edge.Basis, edge.RuleID) == "service_path_allocation") {
 			return true
 		}
@@ -1655,6 +1683,12 @@ func energyExplanationHasExplicitAllocation(edges []EnergyExplanationEdge) bool 
 
 func energyExplanationNodeForScope(node EnergyExplanationNode, scope EnergyExplanationScope, projections map[string]energyExplanationZoneAllocationProjection) (EnergyExplanationNode, bool) {
 	node = energyExplanationLegacyNodeWithEffectiveValues(node)
+	if energyPathZoneAuxiliaryIsSupplyAirflow(node) {
+		// Supply-air volume is optional allocation evidence, not an Energy Path
+		// stage. It is consumed while projections are built and never rendered as
+		// a site-energy end use.
+		return EnergyExplanationNode{}, false
+	}
 	if scope.Kind != "zone" {
 		if node.driverZoneOnly {
 			return EnergyExplanationNode{}, false
@@ -2991,12 +3025,15 @@ func canonicalEnergyPathBasis(basis string, ruleID string) string {
 	case "measured_meter_plus_zone_gain_variable":
 		return "derived_ratio"
 	case "allocated":
-		if ruleID == energyRelationshipRuleAllocatedServicePathLoad {
+		if ruleID == energyRelationshipRuleAllocatedServicePathLoad || ruleID == energyRelationshipRuleAllocatedAuxiliaryServicePath {
 			return "service_path_allocation"
 		}
 		return "zone_load_allocation"
 	default:
 		if ruleID == energyRelationshipRuleAllocatedServicePathLoad {
+			return "service_path_allocation"
+		}
+		if ruleID == energyRelationshipRuleAllocatedAuxiliaryServicePath {
 			return "service_path_allocation"
 		}
 		if ruleID == energyRelationshipRuleAllocatedZoneLoad {
@@ -3021,6 +3058,9 @@ func upgradeEnergyRelationshipRules(input []EnergyRelationshipRule) []EnergyRela
 		case energyRelationshipRuleMeasuredLoad, energyRelationshipRuleAllocatedZoneLoad, energyRelationshipRuleAllocatedServicePathLoad:
 			upgraded.FromLevel, upgraded.ToLevel = "load", "end_use"
 			upgraded.FromKind, upgraded.ToKind = rule.ToKind, rule.FromKind
+		case energyRelationshipRuleAllocatedAuxiliaryServicePath:
+			upgraded.FromLevel, upgraded.ToLevel = "end_use", "service_path_evidence"
+			upgraded.Basis = "service_path_allocation"
 		case energyRelationshipRuleHeatDriverBalance:
 			upgraded.FromLevel, upgraded.ToLevel = "driver", "load"
 			upgraded.FromKind, upgraded.ToKind = rule.ToKind, rule.FromKind

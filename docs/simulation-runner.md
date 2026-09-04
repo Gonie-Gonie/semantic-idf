@@ -63,6 +63,16 @@ backend callers can select any supported allocation or frequency policy. The
 main and Batch Simulation views both use fixed `by_service_path_load_share`
 allocation and `purpose_default` frequency.
 
+The same automatic policy allocates fan energy over related AirLoop service
+paths, using an already available supply-air volume series only when one is
+present. Pumps and heat-rejection energy use related PlantLoop or CondenserLoop
+service paths; shared plant energy without a clear cooling/heating relationship
+remains unassigned. This allocation does not add new EnergyPlus output requests
+or a toolbar selector. In Zone scope, the quality detail shows the Building-wide
+direct, allocated, and unassigned auxiliary-energy shares for the selected
+period. Unassigned Building auxiliary energy remains quality context and is
+never inserted into the selected Zone graph or value.
+
 ### Main Simulation Defaults
 
 The main single-file Simulation view deliberately uses a compact purpose

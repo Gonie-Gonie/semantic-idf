@@ -40,6 +40,7 @@ type EnergyExplanationV1 struct {
 	zoneDirectUseSeries               []energyExplanationSeries
 	buildingHVACAllocationEdges       []EnergyExplanationEdge
 	buildingHVACAllocationPeriodEdges map[string][]EnergyExplanationEdge
+	servicePathIndex                  energyServicePathIndex
 }
 
 type EnergyExplanationScope struct {
@@ -349,20 +350,25 @@ type EnergyDataSourceScopeDetail struct {
 }
 
 type EnergyReconciliation struct {
-	ID             string   `json:"id"`
-	Level          string   `json:"level"`
-	Period         string   `json:"period"`
-	Label          string   `json:"label"`
-	Status         string   `json:"status,omitempty"`
-	ZoneName       string   `json:"zoneName,omitempty"`
-	ServiceKind    string   `json:"serviceKind,omitempty"`
-	ExpectedValue  float64  `json:"expectedValue"`
-	ExplainedValue float64  `json:"explainedValue"`
-	ResidualValue  float64  `json:"residualValue"`
-	Unit           string   `json:"unit"`
-	Basis          string   `json:"basis"`
-	Formula        string   `json:"formula,omitempty"`
-	SourceIDs      []string `json:"sourceIds,omitempty"`
+	ID               string   `json:"id"`
+	Level            string   `json:"level"`
+	Period           string   `json:"period"`
+	Label            string   `json:"label"`
+	Status           string   `json:"status,omitempty"`
+	ZoneName         string   `json:"zoneName,omitempty"`
+	ServiceKind      string   `json:"serviceKind,omitempty"`
+	ExpectedValue    float64  `json:"expectedValue"`
+	ExplainedValue   float64  `json:"explainedValue"`
+	ResidualValue    float64  `json:"residualValue"`
+	DirectValue      float64  `json:"directValue,omitempty"`
+	AllocatedValue   float64  `json:"allocatedValue,omitempty"`
+	UnassignedValue  float64  `json:"unassignedValue,omitempty"`
+	OvermappedValue  float64  `json:"overmappedValue,omitempty"`
+	AllocationMethod string   `json:"allocationMethod,omitempty"`
+	Unit             string   `json:"unit"`
+	Basis            string   `json:"basis"`
+	Formula          string   `json:"formula,omitempty"`
+	SourceIDs        []string `json:"sourceIds,omitempty"`
 }
 
 type EnergyCompleteness struct {
@@ -410,17 +416,18 @@ type EnergyRelationshipRule struct {
 }
 
 const (
-	energyRelationshipRuleMeterEndUse              = "meter.end_use"
-	energyRelationshipRuleMeasuredEnergyVariable   = "energy.measured_variable"
-	energyRelationshipRuleMeasuredLoad             = "load.measured_variable"
-	energyRelationshipRuleAllocatedZoneLoad        = "allocation.by_zone_load_share"
-	energyRelationshipRuleAllocatedServicePathLoad = "allocation.by_service_path_load_share"
-	energyRelationshipRuleHeatDriverBalance        = "heat.driver_balance"
-	energyRelationshipRuleInternalGainHeat         = "heat.internal_gain_energy"
-	energyRelationshipRuleOnsiteProduction         = "support.onsite_production"
-	energyRelationshipRuleStorageDischarge         = "support.storage_discharge"
-	energyRelationshipRuleEnergyResidual           = "residual.energy_total"
-	energyRelationshipRuleHeatResidual             = "residual.heat_driver_balance"
+	energyRelationshipRuleMeterEndUse                   = "meter.end_use"
+	energyRelationshipRuleMeasuredEnergyVariable        = "energy.measured_variable"
+	energyRelationshipRuleMeasuredLoad                  = "load.measured_variable"
+	energyRelationshipRuleAllocatedZoneLoad             = "allocation.by_zone_load_share"
+	energyRelationshipRuleAllocatedServicePathLoad      = "allocation.by_service_path_load_share"
+	energyRelationshipRuleAllocatedAuxiliaryServicePath = "allocation.by_auxiliary_service_path_share"
+	energyRelationshipRuleHeatDriverBalance             = "heat.driver_balance"
+	energyRelationshipRuleInternalGainHeat              = "heat.internal_gain_energy"
+	energyRelationshipRuleOnsiteProduction              = "support.onsite_production"
+	energyRelationshipRuleStorageDischarge              = "support.storage_discharge"
+	energyRelationshipRuleEnergyResidual                = "residual.energy_total"
+	energyRelationshipRuleHeatResidual                  = "residual.heat_driver_balance"
 )
 
 type energyMeterAliasDefinition struct {
@@ -4143,6 +4150,16 @@ func energyRelationshipRuleCatalog() []EnergyRelationshipRule {
 			RequiredSource: []string{"sql_report_data:meter", "sql_report_data:variable", "idf_hvac_service_model"},
 			Basis:          "allocated",
 			Formula:        "allocate end-use energy by measured delivered-load share for matched HVAC service paths",
+		},
+		{
+			ID:             energyRelationshipRuleAllocatedAuxiliaryServicePath,
+			FromLevel:      "energy",
+			ToLevel:        "load",
+			FromKind:       "hvac_auxiliary_end_use",
+			ToKind:         "related_service_path_evidence",
+			RequiredSource: []string{"sql_report_data:meter", "sql_report_data:variable", "idf_hvac_service_model"},
+			Basis:          "allocated",
+			Formula:        "allocate HVAC auxiliary end-use energy only across related AirLoop, PlantLoop, or CondenserLoop service paths",
 		},
 		{
 			ID:             energyRelationshipRuleHeatDriverBalance,

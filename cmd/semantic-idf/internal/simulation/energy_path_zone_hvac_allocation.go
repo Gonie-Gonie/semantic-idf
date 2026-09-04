@@ -838,19 +838,35 @@ func appendEnergyPathZoneHVACAllocationRecords(reconciliation []EnergyReconcilia
 		}
 		formula := "building HVAC end use - exact direct zone HVAC energy - allocated non-direct zone HVAC energy"
 		filteredRows = append(filteredRows, EnergyReconciliation{
-			ID:             strings.Join([]string{"reconcile", "zone_hvac_allocation", canonicalEnergyPathPart(record.ServiceKind), canonicalEnergyPathPart(record.Carrier), canonicalEnergyPathPart(record.Period)}, "."),
-			Level:          "allocation",
-			Period:         record.Period,
-			Label:          label,
-			Status:         status,
-			ServiceKind:    record.ServiceKind,
-			ExpectedValue:  roundedEnergyNumber(record.ExpectedValue),
-			ExplainedValue: explained,
-			ResidualValue:  residual,
-			Unit:           record.Unit,
-			Basis:          "service_path_allocation",
-			Formula:        formula,
-			SourceIDs:      appendUniqueStrings(nil, record.SourceIDs...),
+			ID:              strings.Join([]string{"reconcile", "zone_hvac_allocation", canonicalEnergyPathPart(record.ServiceKind), canonicalEnergyPathPart(record.Carrier), canonicalEnergyPathPart(record.Period)}, "."),
+			Level:           "allocation",
+			Period:          record.Period,
+			Label:           label,
+			Status:          status,
+			ServiceKind:     record.ServiceKind,
+			ExpectedValue:   roundedEnergyNumber(record.ExpectedValue),
+			ExplainedValue:  explained,
+			ResidualValue:   residual,
+			DirectValue:     roundedEnergyNumber(record.DirectValue),
+			AllocatedValue:  roundedEnergyNumber(record.AllocatedValue),
+			UnassignedValue: roundedEnergyNumber(record.UnassignedValue),
+			OvermappedValue: roundedEnergyNumber(record.OvermappedValue),
+			AllocationMethod: func() string {
+				if record.UsedServicePath {
+					return "service_path_load_share"
+				}
+				if record.UsedZoneLoad {
+					return "zone_load_share"
+				}
+				if record.DirectValue > energyPathZoneHVACAllocationEpsilon && record.UnassignedValue <= energyPathZoneHVACAllocationEpsilon {
+					return "direct_only"
+				}
+				return "unassigned"
+			}(),
+			Unit:      record.Unit,
+			Basis:     "service_path_allocation",
+			Formula:   formula,
+			SourceIDs: appendUniqueStrings(nil, record.SourceIDs...),
 		})
 	}
 	return filteredRows, filteredWarnings

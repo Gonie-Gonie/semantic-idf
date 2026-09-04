@@ -715,14 +715,17 @@ func purposeRunPlanWithRequestScope(plan *PurposeRunPlan, request SimulationPurp
 }
 
 type energyServicePathIndex struct {
-	byService     map[string][]string
-	byZone        map[string][]string
-	byZoneService map[string][]string
-	byLoopService map[string][]string
+	byService           map[string][]string
+	byZone              map[string][]string
+	byZoneService       map[string][]string
+	byLoopService       map[string][]string
+	auxiliaryPaths      []energyPathAuxiliaryServicePath
+	auxiliaryResolvable map[string]bool
 }
 
 func enrichEnergyExplanationWithServicePaths(explanation EnergyExplanationV1, inputPath string) EnergyExplanationV1 {
 	index := buildEnergyServicePathIndex(inputPath)
+	explanation.servicePathIndex = index
 	if len(index.byService) == 0 && len(index.byZone) == 0 && len(index.byLoopService) == 0 {
 		return explanation
 	}
@@ -741,10 +744,11 @@ func enrichEnergyExplanationWithServicePaths(explanation EnergyExplanationV1, in
 
 func buildEnergyServicePathIndex(inputPath string) energyServicePathIndex {
 	index := energyServicePathIndex{
-		byService:     map[string][]string{},
-		byZone:        map[string][]string{},
-		byZoneService: map[string][]string{},
-		byLoopService: map[string][]string{},
+		byService:           map[string][]string{},
+		byZone:              map[string][]string{},
+		byZoneService:       map[string][]string{},
+		byLoopService:       map[string][]string{},
+		auxiliaryResolvable: map[string]bool{},
 	}
 	inputPath = strings.TrimSpace(inputPath)
 	if inputPath == "" {
@@ -759,13 +763,31 @@ func buildEnergyServicePathIndex(inputPath string) energyServicePathIndex {
 		return index
 	}
 	report := idf.AnalyzeHVAC(epinput.ToIDFDocument(model))
+	condenserLoopsByPlant := energyPathCondenserLoopsByPlant(report.Loops)
 	for _, summary := range report.ServiceModel.ZoneServices {
 		for _, path := range summary.Paths {
 			pathID := strings.TrimSpace(path.ID)
 			service := energyCanonicalServiceKind(path.ServiceKind)
+			auxiliaryService := energyPathAuxiliaryCanonicalServiceKind(path.ServiceKind)
 			if pathID == "" {
 				continue
 			}
+			plantLoopName := energyPathAuxiliaryLoopName(path.PlantLoop)
+			condenserLoopName := energyPathAuxiliaryLoopName(path.CondenserLoop)
+			if condenserLoopName == "" && plantLoopName != "" {
+				related := condenserLoopsByPlant[normalizePurposeToken(plantLoopName)]
+				if len(related) == 1 {
+					condenserLoopName = related[0]
+				}
+			}
+			index.auxiliaryPaths = append(index.auxiliaryPaths, energyPathAuxiliaryServicePath{
+				ID:                pathID,
+				ZoneName:          firstNonEmpty(path.ZoneName, path.ServedSubject.ZoneName, summary.ZoneName),
+				ServiceKind:       auxiliaryService,
+				AirLoopName:       energyPathAuxiliaryLoopName(path.AirLoop),
+				PlantLoopName:     plantLoopName,
+				CondenserLoopName: condenserLoopName,
+			})
 			if service != "" {
 				index.byService[service] = appendUniqueStrings(index.byService[service], pathID)
 			}
@@ -784,7 +806,147 @@ func buildEnergyServicePathIndex(inputPath string) energyServicePathIndex {
 			}
 		}
 	}
+	sort.SliceStable(index.auxiliaryPaths, func(i, j int) bool {
+		return index.auxiliaryPaths[i].ID < index.auxiliaryPaths[j].ID
+	})
+	index.auxiliaryResolvable = energyPathAuxiliaryResolvableInventory(report.ServiceModel.Components, index.auxiliaryPaths)
 	return index
+}
+
+func energyPathAuxiliaryCanonicalServiceKind(raw string) string {
+	normalized := normalizePurposeToken(raw)
+	compact := strings.NewReplacer("_", "", "-", "", ":", "", " ", "").Replace(normalized)
+	if strings.Contains(compact, "servicewater") || strings.Contains(compact, "domestichotwater") || strings.Contains(compact, "dhw") {
+		return ""
+	}
+	service := energyCanonicalServiceKind(raw)
+	if service != "cooling" && service != "heating" && service != "ventilation" {
+		return ""
+	}
+	return service
+}
+
+func energyPathCondenserLoopsByPlant(loops []idf.HVACLoop) map[string][]string {
+	out := map[string][]string{}
+	for _, loop := range loops {
+		switch {
+		case strings.EqualFold(strings.TrimSpace(loop.Type), "PlantLoop"):
+			plantKey := normalizePurposeToken(loop.Name)
+			for _, relation := range loop.RelatedLoops {
+				if strings.EqualFold(strings.TrimSpace(relation.LoopType), "CondenserLoop") && strings.TrimSpace(relation.LoopName) != "" {
+					out[plantKey] = appendUniqueStrings(out[plantKey], strings.TrimSpace(relation.LoopName))
+				}
+			}
+		case strings.EqualFold(strings.TrimSpace(loop.Type), "CondenserLoop"):
+			for _, relation := range loop.RelatedLoops {
+				if strings.EqualFold(strings.TrimSpace(relation.LoopType), "PlantLoop") && strings.TrimSpace(relation.LoopName) != "" {
+					plantKey := normalizePurposeToken(relation.LoopName)
+					out[plantKey] = appendUniqueStrings(out[plantKey], strings.TrimSpace(loop.Name))
+				}
+			}
+		}
+	}
+	for plantKey := range out {
+		sort.Strings(out[plantKey])
+	}
+	return out
+}
+
+func energyPathAuxiliaryResolvableInventory(components []idf.ComponentIndexItem, paths []energyPathAuxiliaryServicePath) map[string]bool {
+	result := map[string]bool{}
+	seen := map[string]bool{}
+	allResolved := map[string]bool{"fans": true, "pumps": true, "heat_rejection": true}
+	eligible := map[string]map[string]energyPathAuxiliaryServicePath{}
+	for _, endUse := range []string{"fans", "pumps", "heat_rejection"} {
+		eligible[endUse] = energyPathZoneAuxiliaryEligiblePaths(endUse, nil, paths)
+	}
+	check := func(objectType string, item idf.ComponentIndexItem) {
+		endUse := energyPathAuxiliaryComponentEndUse(objectType)
+		if endUse == "" {
+			return
+		}
+		seen[endUse] = true
+		if !energyPathAuxiliaryComponentResolved(endUse, item, eligible[endUse]) {
+			allResolved[endUse] = false
+		}
+	}
+	for _, item := range components {
+		check(item.Component.ObjectType, item)
+		for _, ref := range item.InternalRefs {
+			check(ref.ObjectType, item)
+		}
+	}
+	for _, endUse := range []string{"fans", "pumps", "heat_rejection"} {
+		result[endUse] = seen[endUse] && allResolved[endUse] && len(eligible[endUse]) > 0
+	}
+	return result
+}
+
+func energyPathAuxiliaryComponentEndUse(objectType string) string {
+	lower := strings.ToLower(strings.TrimSpace(objectType))
+	switch {
+	case strings.HasPrefix(lower, "fan:"):
+		return "fans"
+	case strings.HasPrefix(lower, "pump:"):
+		return "pumps"
+	case strings.HasPrefix(lower, "coolingtower:"), strings.HasPrefix(lower, "fluidcooler:"), strings.HasPrefix(lower, "evaporativefluidcooler:"):
+		return "heat_rejection"
+	default:
+		return ""
+	}
+}
+
+func energyPathAuxiliaryComponentResolved(endUse string, item idf.ComponentIndexItem, eligible map[string]energyPathAuxiliaryServicePath) bool {
+	if len(eligible) == 0 {
+		return false
+	}
+	for _, pathID := range item.RelatedPathIDs {
+		if _, ok := eligible[strings.ToLower(strings.TrimSpace(pathID))]; ok {
+			return true
+		}
+	}
+	for _, occurrence := range item.Occurrences {
+		if energyPathAuxiliaryLoopMatchesEligible(endUse, occurrence.LoopName, occurrence.LoopType, eligible) {
+			return true
+		}
+	}
+	for _, loop := range item.RelatedLoopRefs {
+		if energyPathAuxiliaryLoopMatchesEligible(endUse, loop.Name, loop.Type, eligible) {
+			return true
+		}
+	}
+	return false
+}
+
+func energyPathAuxiliaryLoopMatchesEligible(endUse, loopName, loopType string, eligible map[string]energyPathAuxiliaryServicePath) bool {
+	loopName = strings.TrimSpace(loopName)
+	if loopName == "" {
+		return false
+	}
+	for _, path := range eligible {
+		switch endUse {
+		case "fans":
+			if strings.EqualFold(loopType, "AirLoopHVAC") && strings.EqualFold(loopName, path.AirLoopName) {
+				return true
+			}
+		case "pumps":
+			if strings.EqualFold(loopType, "PlantLoop") && strings.EqualFold(loopName, path.PlantLoopName) {
+				return true
+			}
+		case "heat_rejection":
+			if strings.EqualFold(loopType, "CondenserLoop") && strings.EqualFold(loopName, path.CondenserLoopName) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func energyPathAuxiliaryLoopName(loop *idf.LoopRef) string {
+	if loop == nil {
+		return ""
+	}
+	return strings.TrimSpace(loop.Name)
 }
 
 func energyServicePathLoopNames(path idf.ZoneServicePath) []string {
