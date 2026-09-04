@@ -142,6 +142,29 @@ export function isEnergyPathV2(explanation = {}) {
   return String(explanation?.schema || "").toLowerCase() === ENERGY_PATH_SCHEMA_V2;
 }
 
+export function energyPathZoneDirectCoverage(payload = {}) {
+  const scope = payload.scope || {};
+  if (energyPathToken(scope.kind) !== "zone") {
+    return { limited: false, status: "", message: "", found: 0, total: 0 };
+  }
+  const completeness = payload.completeness || {};
+  const energyUse = completeness.energyUse || (completeness.items || [])
+    .find((item) => ["energy", "energy_use", "end_use"].includes(energyPathToken(item?.level))) || {};
+  const status = energyPathToken(energyUse.status);
+  const warningLimited = (payload.warnings || [])
+    .some((warning) => energyPathToken(warning?.code) === "zone_direct_energy_partial_coverage");
+  const reconciliationLimited = (payload.reconciliation || []).some((item) => (
+    energyPathToken(item?.status) === "partial" && energyPathToken(item?.basis) === "direct_zone_energy"
+  ));
+  return {
+    limited: status === "partial" || warningLimited || reconciliationLimited,
+    status,
+    message: String(energyUse.message || "").trim(),
+    found: Math.max(0, Number(energyUse.found) || 0),
+    total: Math.max(0, Number(energyUse.total) || 0),
+  };
+}
+
 export function energyPathHasPayload(explanation = {}) {
   return energyPathAllNodes(explanation).length > 0 ||
     energyPathAllLinks(explanation).length > 0 ||
@@ -179,7 +202,12 @@ export function renderEnergyPathView(explanation = {}, viewState = {}) {
   normalizeEnergyPathViewState(viewState, explanation);
   const graph = energyPathGraphForState(explanation, viewState);
   const allGraphNodes = graph.nodes;
-  graph.nodes = energyPathMainStageNodes(allGraphNodes, graph.links);
+  const zoneCoverage = energyPathZoneDirectCoverageForState(explanation, viewState);
+  graph.nodes = energyPathMainStageNodes(allGraphNodes, graph.links).map((node) => (
+    zoneCoverage.limited && node.level === "carrier"
+      ? { ...node, presentationCoverage: "partial" }
+      : node
+  ));
   const selectedID = String(viewState.simulationEnergySelection || "");
   const relatedNodeIDs = new Set(
     energyPathCorrespondenceCounterparts(allGraphNodes, graph.relations, selectedID)
@@ -189,9 +217,10 @@ export function renderEnergyPathView(explanation = {}, viewState = {}) {
     .map((stage, index) => renderEnergyPathStage(stage, graph.nodes, selectedID, relatedNodeIDs, index))
     .join("");
   return `
-    <section class="energy-path-view" data-energy-path-schema="${escapeHTML(ENERGY_PATH_SCHEMA_V2)}">
+    <section class="energy-path-view" data-energy-path-schema="${escapeHTML(ENERGY_PATH_SCHEMA_V2)}" data-energy-path-zone-coverage="${zoneCoverage.limited ? "partial" : "complete_or_unreported"}">
       ${renderEnergyPathHeader(explanation, viewState)}
       ${renderEnergyPathWarnings(graph.warnings)}
+      ${renderEnergyPathZoneCoverageNotice(zoneCoverage)}
       <div class="energy-path-stage-grid" role="group" aria-label="${escapeHTML(t("simulation.energyPathDirection", {}, "Load drivers → Thermal loads → End-use energy → Energy sources"))}">
         ${stages}
       </div>
@@ -203,6 +232,37 @@ export function renderEnergyPathView(explanation = {}, viewState = {}) {
         <span>${escapeHTML(t("simulation.energyPathSiteDomain", {}, "Site energy domain"))} · ${escapeHTML(t("simulation.energyPathSiteUnit", {}, "kWh site"))}</span>
       </div>
     </section>`;
+}
+
+function energyPathZoneDirectCoverageForState(explanation = {}, viewState = {}) {
+  const scopedResult = energyPathResultForState(explanation, viewState);
+  if (!scopedResult) return energyPathZoneDirectCoverage();
+  const periodID = viewState.simulationEnergyPeriod || "annual";
+  const period = (scopedResult.periods || [])
+    .find((item) => energyPathToken(item?.id) === energyPathToken(periodID));
+  const monthly = energyPathToken(periodID) !== "annual";
+  return energyPathZoneDirectCoverage({
+    scope: period?.summary?.scope || scopedResult.scope,
+    completeness: monthly
+      ? period?.summary?.completeness || period?.completeness || {}
+      : scopedResult.summary?.completeness || scopedResult.completeness || {},
+    warnings: monthly ? period?.warnings || [] : scopedResult.warnings || [],
+    reconciliation: monthly ? period?.reconciliation || [] : scopedResult.reconciliation || [],
+  });
+}
+
+function renderEnergyPathZoneCoverageNotice(coverage = {}) {
+  if (!coverage.limited) return "";
+  const count = coverage.total > 0 ? ` (${coverage.found}/${coverage.total})` : "";
+  return `
+    <p class="energy-path-zone-coverage-notice" data-energy-path-zone-coverage-notice="partial" role="status">
+      <strong>${escapeHTML(t("simulation.energyPathPartialDirectUseCoverage", {}, "Partial direct-use coverage"))}</strong>
+      <span>${escapeHTML(t(
+        "simulation.energyPathObservedDirectUseSubtotalExplanation",
+        {},
+        "Only directly observed zone energy uses are included; energy-source values are subtotals, not complete zone totals.",
+      ))}${escapeHTML(count)}</span>
+    </p>`;
 }
 
 export function energyPathConversionRatio(link = {}) {
@@ -420,6 +480,16 @@ export function renderEnergyPathNodeInspector(explanation = {}, nodes = [], sele
       : t("simulation.energyPathAllocated", {}, "Allocated"), energyPathSummaryValueLabel(allocated, unit)],
     ["application", t("simulation.energyPathMultiplierApplication", {}, "Multiplier application"), applications.join(", ") || "unknown"],
   ];
+  const basis = String(node.basis || "").trim();
+  if (basis) {
+    values.push([
+      "basis",
+      t("simulation.energyPathBasis", {}, "Basis"),
+      energyPathToken(basis) === "direct_zone_energy"
+        ? `${t("simulation.energyPathDirectZoneEnergy", {}, "Direct zone energy")} · direct_zone_energy`
+        : basis,
+    ]);
+  }
   const loadBreakdown = renderEnergyPathLoadBreakdown(node, unit);
   const allocationExplanation = renderEnergyPathAllocationExplanation(node);
   const offsetEffects = renderEnergyPathOffsetEffects(node, unit);
@@ -917,19 +987,27 @@ export function renderEnergyPathKPI(summary = {}) {
   if (!isEnergyPathSummaryV2(summary)) {
     return "";
   }
+  const zoneCoverage = energyPathZoneDirectCoverage(summary);
   const labels = {
-    total_site_energy: t("simulation.energyPathTotalSiteEnergy", {}, "Total site energy"),
+    total_site_energy: zoneCoverage.limited
+      ? t("simulation.energyPathKnownZoneSiteEnergy", {}, "Known zone site energy")
+      : t("simulation.energyPathTotalSiteEnergy", {}, "Total site energy"),
     cooling_load: t("simulation.energyPathCoolingLoad", {}, "Cooling load"),
     heating_load: t("simulation.energyPathHeatingLoad", {}, "Heating load"),
     coverage: t("simulation.energyPathCoverage", {}, "Coverage"),
   };
   return `<div class="simulation-energy-kpis energy-path-kpis">
     ${energyPathSummaryKPIValues(summary)
-      .map((item) => `
-        <div data-energy-path-kpi="${escapeHTML(item.id)}">
+      .filter((item) => !(zoneCoverage.limited && item.id === "coverage"))
+      .map((item) => {
+        const partialSubtotal = item.id === "total_site_energy" && zoneCoverage.limited;
+        return `
+        <div data-energy-path-kpi="${escapeHTML(item.id)}"${partialSubtotal ? ' data-energy-path-value-scope="observed_direct_use_subtotal"' : ""}>
           <span>${escapeHTML(labels[item.id] || item.label)}</span>
           <strong>${escapeHTML(energyPathSummaryValueLabel(item.value, item.unit))}</strong>
-        </div>`)
+          ${partialSubtotal ? `<small class="energy-path-partial-coverage-badge">${escapeHTML(t("simulation.energyPathKnownOnly", {}, "Known only"))}</small>` : ""}
+        </div>`;
+      })
       .join("")}
   </div>`;
 }
@@ -939,6 +1017,7 @@ export function renderEnergyPathSummaryOverview(summary = {}) {
     return "";
   }
   const groups = energyPathSummaryGroups(summary);
+  const zoneCoverage = energyPathZoneDirectCoverage(summary);
   const groupLabels = {
     drivers: t("simulation.energyPathSummaryDrivers", {}, "Drivers"),
     loads: t("simulation.energyPathSummaryLoads", {}, "Loads"),
@@ -961,18 +1040,28 @@ export function renderEnergyPathSummaryOverview(summary = {}) {
         ].filter(Boolean).join(" · "))}</span>
       </div>
       <div class="energy-path-summary-grid">
-        ${groups.map((group) => `
-          <article data-energy-path-summary-group="${escapeHTML(group.key)}">
+        ${groups.map((group) => {
+          const partialCarriers = group.key === "carriers" && zoneCoverage.limited;
+          return `
+          <article data-energy-path-summary-group="${escapeHTML(group.key)}"${partialCarriers ? ' data-energy-path-value-scope="observed_direct_use_subtotal"' : ""}>
             <header>
-              <strong>${escapeHTML(groupLabels[group.key] || group.label)}</strong>
+              <strong>${escapeHTML(partialCarriers
+                ? t("simulation.energyPathKnownEnergySources", {}, "Known energy sources")
+                : groupLabels[group.key] || group.label)}</strong>
               <span>${escapeHTML(group.items.length)}</span>
             </header>
+            ${partialCarriers ? `<p class="energy-path-summary-coverage-note">${escapeHTML(t(
+              "simulation.energyPathObservedDirectUseSubtotal",
+              {},
+              "Observed direct-use subtotal",
+            ))}</p>` : ""}
             <div>
               ${group.items.length
                 ? group.items.slice(0, 8).map(renderEnergyPathSummaryItem).join("")
                 : `<span class="energy-path-summary-empty">${escapeHTML(t("common.notAvailable", {}, "—"))}</span>`}
             </div>
-          </article>`).join("")}
+          </article>`;
+        }).join("")}
       </div>
     </section>`;
 }
@@ -1102,6 +1191,14 @@ export function energyPathGraphForState(explanation = {}, viewState = {}) {
     nodes = nodes.filter((node) => !node.zoneName || node.aggregationBasis === "model_total");
     const nodeIDs = new Set(nodes.map((node) => node.id));
     links = links.filter((link) => nodeIDs.has(link.fromId) && nodeIDs.has(link.toId));
+  } else {
+    nodes = nodes.filter((node) => energyPathZoneDirectUseNodeIsTrusted(
+      node,
+      explanation.sources || [],
+      viewState.simulationEnergyZoneName,
+    ));
+    const nodeIDs = new Set(nodes.map((node) => node.id));
+    links = links.filter((link) => nodeIDs.has(link.fromId) && nodeIDs.has(link.toId));
   }
 
   const service = viewState.simulationEnergyService || "all";
@@ -1131,6 +1228,40 @@ export function energyPathGraphForState(explanation = {}, viewState = {}) {
 
 export function isEnergyPathNonFlowRelation(link = {}) {
   return energyPathToken(link.relation) === "source_correspondence";
+}
+
+export function energyPathZoneDirectUseNodeIsTrusted(node = {}, sources = [], zoneName = "") {
+  if (node?.level !== "end_use" || !["lighting", "equipment"].includes(energyPathCanonicalEndUse(node))) {
+    return true;
+  }
+  const basis = energyPathToken(node.basis);
+  const hierarchy = energyPathToken(node.meterHierarchyLevel);
+  const wantedZone = energyPathToken(zoneName || node.zoneName);
+  const nodeZone = energyPathToken(node.zoneName);
+  const sourceIDs = new Set(node.sourceIds || []);
+  const nodeSources = (sources || []).filter((source) => sourceIDs.has(source?.id));
+  const hasZoneVariable = nodeSources.some((source) => {
+    const sourceZone = energyPathToken(source.zoneName || source.keyValue);
+    const sourceType = energyPathToken(source.sourceType);
+    return Boolean(wantedZone && sourceZone === wantedZone && !source.isMeter && sourceType.includes("variable"));
+  });
+  const hasOnlyUnscopedMeters = nodeSources.length > 0 && nodeSources.every((source) => {
+    const sourceType = energyPathToken(source.sourceType);
+    return (source.isMeter || sourceType.includes("meter")) && !String(source.zoneName || "").trim();
+  });
+  const contradictoryHierarchy = Boolean(hierarchy && hierarchy !== "zone_direct_use");
+  if (basis === "direct_zone_energy" && !contradictoryHierarchy && !hasOnlyUnscopedMeters) {
+    return true;
+  }
+  if (hierarchy === "zone_direct_use" && (hasZoneVariable || nodeZone === wantedZone)) {
+    return true;
+  }
+  if (basis || hierarchy || hasOnlyUnscopedMeters) {
+    return false;
+  }
+  // Keep old precomputed v2 fixtures with no provenance tokens readable. New
+  // runtime payloads carry the exact direct_zone_energy/zone_direct_use pair.
+  return true;
 }
 
 export function energyPathProjectEndUsePresentation(nodes = [], links = []) {
@@ -1539,8 +1670,16 @@ export function energyPathSummaryForState(explanation = {}, fallbackSummary = {}
   const completeness = candidate.completeness && Object.keys(candidate.completeness).length
     ? candidate.completeness
     : period?.completeness || scopedResult.completeness || {};
+  const endUses = wantedScopeKind === "zone"
+    ? (candidate.endUses || []).filter((item) => energyPathZoneDirectUseNodeIsTrusted(
+      { ...item, level: item.level || "end_use" },
+      explanation.sources || [],
+      viewState.simulationEnergyZoneName,
+    ))
+    : candidate.endUses;
   return {
     ...candidate,
+    endUses,
     period: candidatePeriod,
     scope: candidateScope || { kind: wantedScopeKind },
     completeness,
@@ -1589,17 +1728,22 @@ function renderEnergyPathStage(stage, nodes, selectedID, relatedNodeIDs, index) 
   const stageNodes = (nodes || [])
     .filter((node) => node.level === stage.level && (stage.level !== "driver" || Math.abs(Number(node.value) || 0) > 0))
     .sort((left, right) => compareEnergyPathStageNodes(stage, left, right));
+  const partialCarrierSubtotal = stage.level === "carrier" && stageNodes.some((node) => node.presentationCoverage === "partial");
   const content = stageNodes.length
     ? stageNodes.map((node) => renderEnergyPathNode(node, stage, selectedID, relatedNodeIDs)).join("")
     : `<span class="energy-path-stage-empty">${escapeHTML(t("common.notAvailable", {}, "—"))}</span>`;
   return `
-    <article class="energy-path-stage ${stage.scaleDomain === "site" ? "site-domain" : "thermal-domain"}" data-energy-path-stage="${escapeHTML(stage.level)}">
+    <article class="energy-path-stage ${stage.scaleDomain === "site" ? "site-domain" : "thermal-domain"}" data-energy-path-stage="${escapeHTML(stage.level)}"${partialCarrierSubtotal ? ' data-energy-path-value-scope="observed_direct_use_subtotal"' : ""}>
       ${index === 2 ? `<span class="energy-path-conversion-divider">${escapeHTML(t("simulation.energyPathConversion", {}, "Equipment conversion"))}</span>` : ""}
       <header>
-        <strong>${escapeHTML(t(stage.labelKey, {}, stage.label))}</strong>
+        <strong>${escapeHTML(partialCarrierSubtotal
+          ? t("simulation.energyPathKnownEnergySources", {}, "Known energy sources")
+          : t(stage.labelKey, {}, stage.label))}</strong>
         <span>${escapeHTML(t(stage.scaleDomain === "thermal" ? "simulation.energyPathThermalUnit" : "simulation.energyPathSiteUnit", {}, stage.unitLabel))}</span>
       </header>
-      <p>${escapeHTML(t(stage.descriptionKey, {}, stage.description))}</p>
+      <p>${escapeHTML(partialCarrierSubtotal
+        ? t("simulation.energyPathObservedDirectUseSubtotalExplanation", {}, "Only directly observed zone energy uses are included; energy-source values are subtotals, not complete zone totals.")
+        : t(stage.descriptionKey, {}, stage.description))}</p>
       <div class="energy-path-stage-nodes">${content}</div>
     </article>`;
 }
@@ -1631,9 +1775,12 @@ function renderEnergyPathNode(node, stage, selectedID, relatedNodeIDs = new Set(
   const related = Boolean(node.id && relatedNodeIDs.has(node.id));
   const latentShare = stage.level === "load" ? energyPathLoadLatentShare(node) : 0;
   const latentBadge = latentShare + 1e-9 >= 0.1 ? renderEnergyPathLatentBadge(latentShare) : "";
+  const partialCoverageBadge = node.presentationCoverage === "partial"
+    ? `<small class="energy-path-partial-coverage-badge">${escapeHTML(t("simulation.energyPathKnownOnly", {}, "Known only"))}</small>`
+    : "";
   return `
     <button class="energy-path-node${selected ? " selected" : ""}${related ? " related" : ""}" type="button" data-energy-explanation-node="${escapeHTML(node.id || "")}"${related ? ' data-energy-path-related="true"' : ""} aria-pressed="${selected ? "true" : "false"}">
-      <span>${escapeHTML(node.label || node.kind || node.id || "")}${latentBadge}</span>
+      <span>${escapeHTML(node.label || node.kind || node.id || "")}${latentBadge}${partialCoverageBadge}</span>
       <strong>${escapeHTML(energyPathValueLabel(node.value, stage.unitLabel))}</strong>
     </button>`;
 }

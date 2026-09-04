@@ -37,6 +37,7 @@ type EnergyExplanationV1 struct {
 
 	scope                 EnergyExplanationScope
 	canonicalMonthlyBasis bool
+	zoneDirectUseSeries   []energyExplanationSeries
 }
 
 type EnergyExplanationScope struct {
@@ -1459,7 +1460,6 @@ func buildEnergyExplanationResultWithDriverContext(series []energyExplanationSer
 	for index := range series {
 		series[index] = canonicalEnergyExplanationSeries(series[index])
 	}
-	series = excludeEnergyExplanationDirectUseSeries(series)
 	series, sources = filterEnergyExplanationSeriesForBasicDetail(series, sources, plan)
 	driverWarnings := []EnergyWarning{}
 	if driverContext.Enabled {
@@ -1488,6 +1488,11 @@ func buildEnergyExplanationResultWithDriverContext(series []energyExplanationSer
 		series, sources, multiplierWarnings = finalizeEnergyDriverMappings(series, sources, driverContext)
 		driverWarnings = append(driverWarnings, multiplierWarnings...)
 	}
+	zoneDirectUseSeries := []energyExplanationSeries(nil)
+	if energyExplanationPlanUsesEnergyPath(plan) {
+		zoneDirectUseSeries = energyExplanationDirectZoneSeries(series)
+	}
+	series = excludeEnergyExplanationDirectUseSeries(series)
 	sort.SliceStable(series, func(i, j int) bool {
 		if series[i].Level != series[j].Level {
 			return series[i].Level < series[j].Level
@@ -1598,6 +1603,7 @@ func buildEnergyExplanationResultWithDriverContext(series []energyExplanationSer
 		Warnings:              annual.Warnings,
 		scope:                 energyExplanationScopeForPlan(plan),
 		canonicalMonthlyBasis: driverContext.Enabled,
+		zoneDirectUseSeries:   zoneDirectUseSeries,
 	}
 	return result
 }
@@ -1978,11 +1984,32 @@ func energyExplanationPlanUsesEnergyPath(plan *PurposeRunPlan) bool {
 func excludeEnergyExplanationDirectUseSeries(series []energyExplanationSeries) []energyExplanationSeries {
 	out := make([]energyExplanationSeries, 0, len(series))
 	for _, item := range series {
-		if item.Level == "energy" && item.MeterHierarchyLevel == "zone_direct_use" {
+		if strings.EqualFold(strings.TrimSpace(item.Level), "energy") && strings.EqualFold(strings.TrimSpace(item.MeterHierarchyLevel), "zone_direct_use") {
 			continue
 		}
 		out = append(out, item)
 	}
+	return out
+}
+
+func energyExplanationDirectZoneSeries(series []energyExplanationSeries) []energyExplanationSeries {
+	out := make([]energyExplanationSeries, 0)
+	for _, item := range series {
+		item = canonicalEnergyExplanationSeries(item)
+		if item.Stage != "end_use" || strings.TrimSpace(item.ZoneName) == "" {
+			continue
+		}
+		if !strings.EqualFold(strings.TrimSpace(item.MeterHierarchyLevel), "zone_direct_use") && canonicalEnergyPathBasis(item.Basis, "") != "direct_zone_energy" {
+			continue
+		}
+		item.Basis = "direct_zone_energy"
+		out = append(out, item)
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		left := strings.Join([]string{normalizeEnergyOutputName(out[i].ZoneName), normalizeEnergyOutputName(out[i].EndUse), normalizeEnergyOutputName(out[i].Carrier), normalizeEnergyOutputName(out[i].CanonicalKind)}, "|")
+		right := strings.Join([]string{normalizeEnergyOutputName(out[j].ZoneName), normalizeEnergyOutputName(out[j].EndUse), normalizeEnergyOutputName(out[j].Carrier), normalizeEnergyOutputName(out[j].CanonicalKind)}, "|")
+		return left < right
+	})
 	return out
 }
 
@@ -4281,9 +4308,16 @@ func energyVariableAliasCatalog() []energyMeterAliasDefinition {
 
 func energyPathDirectUseVariableAliasCatalog() []energyMeterAliasDefinition {
 	return []energyMeterAliasDefinition{
-		{Kind: "energy.interior_lighting", Label: "Zone interior lighting", Carrier: "electricity", EndUse: "interior_lighting", HierarchyLevel: "zone_direct_use", Aliases: []string{"Zone Lights Electricity Energy"}, OutputRequestAliases: []string{"Zone Lights Electricity Energy"}},
-		{Kind: "energy.interior_equipment", Label: "Zone electric equipment", Carrier: "electricity", EndUse: "interior_equipment", HierarchyLevel: "zone_direct_use", Aliases: []string{"Zone Electric Equipment Electricity Energy"}, OutputRequestAliases: []string{"Zone Electric Equipment Electricity Energy"}},
+		{Kind: "energy.interior_lighting", Label: "Zone interior lighting", Carrier: "electricity", EndUse: "interior_lighting", HierarchyLevel: "zone_direct_use", Aliases: []string{"Zone Lights Electricity Energy", "Zone Lights Electric Energy"}, LegacyAliases: []string{"Zone Lights Electric Energy"}, OutputRequestAliases: []string{"Zone Lights Electricity Energy"}},
+		{Kind: "energy.interior_equipment", Label: "Zone electric equipment", Carrier: "electricity", EndUse: "interior_equipment", HierarchyLevel: "zone_direct_use", Aliases: []string{"Zone Electric Equipment Electricity Energy", "Zone Electric Equipment Electric Energy"}, LegacyAliases: []string{"Zone Electric Equipment Electric Energy"}, OutputRequestAliases: []string{"Zone Electric Equipment Electricity Energy"}},
 		{Kind: "energy.interior_equipment", Label: "Zone gas equipment", Carrier: "natural_gas", EndUse: "interior_equipment", HierarchyLevel: "zone_direct_use", Aliases: []string{"Zone Gas Equipment NaturalGas Energy", "Zone Gas Equipment Gas Energy"}, LegacyAliases: []string{"Zone Gas Equipment Gas Energy"}, OutputRequestAliases: []string{"Zone Gas Equipment NaturalGas Energy", "Zone Gas Equipment Gas Energy"}},
+		// The OtherEquipment output deliberately does not encode its configured
+		// fuel type. Keep the carrier unknown-safe instead of guessing a resource
+		// from the object name; exact carrier evidence can still arrive through a
+		// canonical/custom zone-keyed source.
+		{Kind: "energy.interior_equipment", Label: "Zone other equipment", Carrier: "other", EndUse: "interior_equipment", HierarchyLevel: "zone_direct_use", Aliases: []string{"Zone Other Equipment Fuel Energy", "Other Equipment Fuel Energy"}, LegacyAliases: []string{"Other Equipment Fuel Energy"}, OutputRequestAliases: []string{"Zone Other Equipment Fuel Energy"}},
+		{Kind: "energy.interior_equipment", Label: "Zone hot water equipment", Carrier: "district_heating", EndUse: "interior_equipment", HierarchyLevel: "zone_direct_use", Aliases: []string{"Zone Hot Water Equipment District Heating Energy"}, OutputRequestAliases: []string{"Zone Hot Water Equipment District Heating Energy"}},
+		{Kind: "energy.interior_equipment", Label: "Zone steam equipment", Carrier: "district_heating", EndUse: "interior_equipment", HierarchyLevel: "zone_direct_use", Aliases: []string{"Zone Steam Equipment District Heating Energy"}, OutputRequestAliases: []string{"Zone Steam Equipment District Heating Energy"}},
 	}
 }
 

@@ -162,6 +162,15 @@ func positiveEnergyMultiplier(value float64) float64 {
 
 func energyExplanationMultiplierRequirement(item energyExplanationSeries) string {
 	name := normalizeEnergyOutputName(firstNonEmpty(item.SourceName, item.sourceName))
+	if strings.TrimSpace(item.ZoneName) != "" &&
+		(strings.EqualFold(strings.TrimSpace(item.MeterHierarchyLevel), "zone_direct_use") || canonicalEnergyPathBasis(item.Basis, "") == "direct_zone_energy") {
+		// Zone direct-use report variables are zone/object contributions, not
+		// facility meters. Apply the owning Zone and ZoneList multipliers before
+		// exposing their scoped site-energy subtotal. Canonical/custom inputs may
+		// carry only the direct-zone basis, so the hierarchy marker is not the
+		// sole discriminator.
+		return energyMultiplierRequiresZone
+	}
 	if item.Stage == "carrier" || item.Stage == "end_use" || item.Stage == "support" || item.Level == "energy" {
 		return energyMultiplierAlreadyModelTotal
 	}

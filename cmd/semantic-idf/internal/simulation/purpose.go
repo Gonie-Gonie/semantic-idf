@@ -2714,6 +2714,15 @@ func basicEnergyPathZoneReportedEnergyVariableNames(doc idf.Document) []string {
 }
 
 func energyPathDirectUseDefinitionApplies(doc idf.Document, definition energyMeterAliasDefinition) bool {
+	identity := normalizeEnergyOutputName(strings.Join(append([]string{definition.Label}, definition.Aliases...), " "))
+	switch {
+	case strings.Contains(identity, "other equipment fuel"):
+		return docHasObject(doc, "OtherEquipment")
+	case strings.Contains(identity, "hot water equipment district heating"):
+		return docHasObject(doc, "HotWaterEquipment")
+	case strings.Contains(identity, "steam equipment district heating"):
+		return docHasObject(doc, "SteamEquipment")
+	}
 	switch definition.Kind {
 	case "energy.interior_lighting":
 		return docHasObject(doc, "Lights")

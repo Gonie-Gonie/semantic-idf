@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strconv"
 	"strings"
 
 	"golang.org/x/text/cases"
@@ -19,23 +20,50 @@ const energyPathRelationSourceCorrespondence = "source_correspondence"
 func UpgradeEnergyExplanationV1(input EnergyExplanationV1) EnergyExplanationResult {
 	scope := normalizeEnergyExplanationScope(input.scope)
 	allocationPolicy := normalizePurposeAllocationPolicy(input.AllocationPolicy)
-	annotatedSources := annotateLegacyEnergyDriverSources(input.Sources, input.Nodes)
-	allLegacyNodes := append([]EnergyExplanationNode(nil), input.Nodes...)
+	var directZoneSeries []energyExplanationSeries
+	if scope.Kind == "zone" {
+		directZoneSeries = energyPathDirectZoneSeriesForScope(input.zoneDirectUseSeries, scope.ZoneName)
+	}
+	var directNodes []EnergyExplanationNode
+	var directEdges []EnergyExplanationEdge
+	if scope.Kind == "zone" {
+		directNodes, directEdges = buildEnergyPathDirectZoneLegacyGraph(directZoneSeries, "annual", "annual", input.canonicalMonthlyBasis)
+	}
+	annualLegacyNodes := append(append([]EnergyExplanationNode(nil), input.Nodes...), directNodes...)
+	annualLegacyEdges := append(append([]EnergyExplanationEdge(nil), input.Edges...), directEdges...)
+	annualLegacyEdges = appendEnergyPathDirectZoneHVACEdges(annualLegacyEdges, annualLegacyNodes)
+	annualLegacyEdges = appendEnergyPathDirectZoneCorrespondenceEdges(annualLegacyEdges, annualLegacyNodes)
+	annotatedSources := annotateLegacyEnergyDriverSources(input.Sources, annualLegacyNodes)
+	allLegacyNodes := append([]EnergyExplanationNode(nil), annualLegacyNodes...)
 	for _, period := range input.Periods {
+		var periodDirectNodes []EnergyExplanationNode
+		if scope.Kind == "zone" {
+			periodDirectNodes, _ = buildEnergyPathDirectZoneLegacyGraph(directZoneSeries, period.ID, period.Kind, input.canonicalMonthlyBasis)
+		}
 		allLegacyNodes = append(allLegacyNodes, period.Nodes...)
+		allLegacyNodes = append(allLegacyNodes, periodDirectNodes...)
 	}
 	annotatedSources = annotateLegacyEnergyLoadDetailSources(annotatedSources, allLegacyNodes)
-	legacyNodes := foldLegacyEnergyLoadDetailNodes(inferLegacyEnergyDriverProjectionGuards(input.Nodes, annotatedSources))
-	nodes, links := upgradeEnergyExplanationGraph(legacyNodes, input.Edges, annotatedSources, scope, allocationPolicy, input.canonicalMonthlyBasis)
-	reconciliation, warnings := upgradeEnergyExplanationAccounting(input.Reconciliation, input.Warnings, legacyNodes, input.Edges, scope, allocationPolicy)
+	legacyNodes := foldLegacyEnergyLoadDetailNodes(inferLegacyEnergyDriverProjectionGuards(annualLegacyNodes, annotatedSources))
+	nodes, links := upgradeEnergyExplanationGraph(legacyNodes, annualLegacyEdges, annotatedSources, scope, allocationPolicy, input.canonicalMonthlyBasis)
+	reconciliation, warnings := upgradeEnergyExplanationAccounting(input.Reconciliation, input.Warnings, legacyNodes, annualLegacyEdges, scope, allocationPolicy)
 	reconciliation = reconcileEnergyPathCarrierTotals(nodes, links, reconciliation, "annual")
 	periods := make([]EnergyPeriod, 0, len(input.Periods))
 	for _, period := range input.Periods {
-		legacyPeriodNodes := foldLegacyEnergyLoadDetailNodes(inferLegacyEnergyDriverProjectionGuards(period.Nodes, annotatedSources))
-		periodNodes, periodLinks := upgradeEnergyExplanationGraph(legacyPeriodNodes, period.Edges, annotatedSources, scope, allocationPolicy, input.canonicalMonthlyBasis)
-		periodReconciliation, periodWarnings := upgradeEnergyExplanationAccounting(period.Reconciliation, period.Warnings, legacyPeriodNodes, period.Edges, scope, allocationPolicy)
+		var periodDirectNodes []EnergyExplanationNode
+		var periodDirectEdges []EnergyExplanationEdge
+		if scope.Kind == "zone" {
+			periodDirectNodes, periodDirectEdges = buildEnergyPathDirectZoneLegacyGraph(directZoneSeries, period.ID, period.Kind, input.canonicalMonthlyBasis)
+		}
+		periodLegacyNodes := append(append([]EnergyExplanationNode(nil), period.Nodes...), periodDirectNodes...)
+		periodLegacyEdges := append(append([]EnergyExplanationEdge(nil), period.Edges...), periodDirectEdges...)
+		periodLegacyEdges = appendEnergyPathDirectZoneHVACEdges(periodLegacyEdges, periodLegacyNodes)
+		periodLegacyEdges = appendEnergyPathDirectZoneCorrespondenceEdges(periodLegacyEdges, periodLegacyNodes)
+		legacyPeriodNodes := foldLegacyEnergyLoadDetailNodes(inferLegacyEnergyDriverProjectionGuards(periodLegacyNodes, annotatedSources))
+		periodNodes, periodLinks := upgradeEnergyExplanationGraph(legacyPeriodNodes, periodLegacyEdges, annotatedSources, scope, allocationPolicy, input.canonicalMonthlyBasis)
+		periodReconciliation, periodWarnings := upgradeEnergyExplanationAccounting(period.Reconciliation, period.Warnings, legacyPeriodNodes, periodLegacyEdges, scope, allocationPolicy)
 		periodReconciliation = reconcileEnergyPathCarrierTotals(periodNodes, periodLinks, periodReconciliation, period.ID)
-		periodZoneContributions := buildEnergyExplanationZoneContributions(legacyPeriodNodes, period.Edges, scope, allocationPolicy)
+		periodZoneContributions := buildEnergyExplanationZoneContributions(legacyPeriodNodes, periodLegacyEdges, scope, allocationPolicy)
 		upgradedPeriod := EnergyPeriod{
 			ID:                period.ID,
 			Label:             period.Label,
@@ -64,7 +92,7 @@ func UpgradeEnergyExplanationV1(input EnergyExplanationV1) EnergyExplanationResu
 		upgradedPeriod.Summary = &periodSummary
 		periods = append(periods, upgradedPeriod)
 	}
-	sources := filterEnergyDataSourcesForV2(annotatedSources, legacyNodes, input.Edges, nodes, links, reconciliation, scope, allocationPolicy)
+	sources := filterEnergyDataSourcesForV2(annotatedSources, legacyNodes, annualLegacyEdges, nodes, links, reconciliation, scope, allocationPolicy)
 	availableZones := energyExplanationAvailableZones(input)
 	result := EnergyExplanationResult{
 		Schema:            energyExplanationSchema,
@@ -80,13 +108,15 @@ func UpgradeEnergyExplanationV1(input EnergyExplanationV1) EnergyExplanationResu
 		Sources:           sources,
 		Completeness:      input.Completeness,
 		Warnings:          warnings,
-		ZoneContributions: buildEnergyExplanationZoneContributions(legacyNodes, input.Edges, scope, allocationPolicy),
+		ZoneContributions: buildEnergyExplanationZoneContributions(legacyNodes, annualLegacyEdges, scope, allocationPolicy),
 		AvailableZones:    availableZones,
-		legacyNodes:       scopedEnergyExplanationLegacyNodes(legacyNodes, input.Edges, scope, allocationPolicy),
+		legacyNodes:       scopedEnergyExplanationLegacyNodes(legacyNodes, annualLegacyEdges, scope, allocationPolicy),
 	}
 	if input.canonicalMonthlyBasis {
 		applyCanonicalMonthlyBasisToEnergyPathResult(&result)
 	}
+	applyEnergyPathDirectZoneCoverage(&result)
+	sortEnergyPathPeriods(result.Periods)
 	if scope.Kind == "building" {
 		result.ZoneResults = make([]EnergyExplanationZoneResult, 0, len(availableZones))
 		for _, zoneName := range availableZones {
@@ -109,6 +139,432 @@ func UpgradeEnergyExplanationV1(input EnergyExplanationV1) EnergyExplanationResu
 		}
 	}
 	return result
+}
+
+func energyPathDirectZoneSeriesForScope(series []energyExplanationSeries, zoneName string) []energyExplanationSeries {
+	zoneName = strings.TrimSpace(zoneName)
+	if zoneName == "" || len(series) == 0 {
+		return nil
+	}
+	out := make([]energyExplanationSeries, 0, len(series))
+	for _, item := range series {
+		if strings.EqualFold(strings.TrimSpace(item.ZoneName), zoneName) {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+// buildEnergyPathDirectZoneLegacyGraph carries runtime-only zone-keyed energy
+// variables across the frozen v1 builder boundary. The generated carrier is an
+// observed subtotal of these direct branches, never a copy or allocation of a
+// facility meter.
+func buildEnergyPathDirectZoneLegacyGraph(series []energyExplanationSeries, periodID string, periodKind string, canonicalMonthlyBasis bool) ([]EnergyExplanationNode, []EnergyExplanationEdge) {
+	if len(series) == 0 {
+		return nil, nil
+	}
+	endUses := map[string]*EnergyExplanationNode{}
+	carriers := map[string]*EnergyExplanationNode{}
+	for _, original := range series {
+		item := canonicalEnergyExplanationSeries(original)
+		if item.Stage != "end_use" || strings.TrimSpace(item.ZoneName) == "" {
+			continue
+		}
+		value, rawValue, sourceIDs, ok := energyPathDirectZonePeriodValue(item, periodID, periodKind, canonicalMonthlyBasis)
+		value = math.Abs(value)
+		rawValue = math.Abs(rawValue)
+		if !ok || value == 0 {
+			continue
+		}
+		zoneName := strings.TrimSpace(item.ZoneName)
+		zoneToken := firstNonEmpty(energyExplanationZoneSuffix(zoneName), metricID(zoneName), "zone")
+		carrier := canonicalEnergyPathPart(firstNonEmpty(item.Carrier, "other"))
+		endUse := firstNonEmpty(item.EndUse, energyExplanationKindSuffix(item.Kind), "other")
+		endUseToken := canonicalEnergyPathPart(endUse)
+		endUseID := strings.Join([]string{"energy", "direct_zone", "end_use", endUseToken, carrier, zoneToken}, ".")
+		carrierID := strings.Join([]string{"energy", "direct_zone", "carrier", carrier, zoneToken}, ".")
+
+		node := endUses[endUseID]
+		if node == nil {
+			node = &EnergyExplanationNode{
+				ID:                  endUseID,
+				Level:               "energy",
+				Kind:                firstNonEmpty(item.Kind, "energy."+endUseToken),
+				Label:               firstNonEmpty(item.Label, canonicalEnergyPathEndUseLabel(endUseToken)),
+				Unit:                item.Unit,
+				Period:              periodID,
+				ZoneName:            zoneName,
+				ServiceKind:         item.ServiceKind,
+				Carrier:             carrier,
+				EndUse:              endUse,
+				MeterHierarchyLevel: "zone_direct_use",
+				Basis:               "direct_zone_energy",
+				RelatedEntityIDs:    appendUniqueStrings(nil, item.RelatedEntityIDs...),
+			}
+			endUses[endUseID] = node
+		}
+		node.Value = roundedEnergyNumber(node.Value + value)
+		node.RawValue = roundedEnergyNumber(node.RawValue + rawValue)
+		node.EffectiveValue = roundedEnergyNumber(node.EffectiveValue + value)
+		node.AllocatedValue = node.EffectiveValue
+		node.DisplayValue = node.Value
+		node.SourceIDs = appendUniqueStrings(node.SourceIDs, sourceIDs...)
+		node.RelatedEntityIDs = appendUniqueStrings(node.RelatedEntityIDs, item.RelatedEntityIDs...)
+		if node.RawValue != 0 {
+			node.Multiplier = roundedEnergyNumber(node.EffectiveValue / node.RawValue)
+		}
+		if node.Multiplier == 0 {
+			node.Multiplier = 1
+		}
+
+		carrierNode := carriers[carrierID]
+		if carrierNode == nil {
+			carrierNode = &EnergyExplanationNode{
+				ID:                  carrierID,
+				Level:               "carrier",
+				Kind:                "energy." + carrier + ".direct_zone_subtotal",
+				Label:               energyCarrierLabel(carrier) + " observed direct-use subtotal",
+				Unit:                item.Unit,
+				Period:              periodID,
+				ZoneName:            zoneName,
+				Carrier:             carrier,
+				EndUse:              "total",
+				MeterHierarchyLevel: "zone_direct_subtotal",
+				Basis:               "direct_zone_energy",
+				Multiplier:          1,
+			}
+			carriers[carrierID] = carrierNode
+		}
+		carrierNode.Value = roundedEnergyNumber(carrierNode.Value + value)
+		carrierNode.RawValue = roundedEnergyNumber(carrierNode.RawValue + rawValue)
+		carrierNode.EffectiveValue = roundedEnergyNumber(carrierNode.EffectiveValue + value)
+		carrierNode.AllocatedValue = carrierNode.EffectiveValue
+		carrierNode.DisplayValue = carrierNode.Value
+		carrierNode.SourceIDs = appendUniqueStrings(carrierNode.SourceIDs, sourceIDs...)
+		if carrierNode.RawValue != 0 {
+			carrierNode.Multiplier = roundedEnergyNumber(carrierNode.EffectiveValue / carrierNode.RawValue)
+		}
+	}
+
+	nodes := make([]EnergyExplanationNode, 0, len(endUses)+len(carriers))
+	endUseIDs := make([]string, 0, len(endUses))
+	for id := range endUses {
+		endUseIDs = append(endUseIDs, id)
+	}
+	carrierIDs := make([]string, 0, len(carriers))
+	for id := range carriers {
+		carrierIDs = append(carrierIDs, id)
+	}
+	sort.Strings(endUseIDs)
+	sort.Strings(carrierIDs)
+	for _, id := range carrierIDs {
+		sort.Strings(carriers[id].SourceIDs)
+		nodes = append(nodes, *carriers[id])
+	}
+	for _, id := range endUseIDs {
+		sort.Strings(endUses[id].SourceIDs)
+		sort.Strings(endUses[id].RelatedEntityIDs)
+		nodes = append(nodes, *endUses[id])
+	}
+	edges := make([]EnergyExplanationEdge, 0, len(endUseIDs))
+	for _, endUseID := range endUseIDs {
+		endUse := endUses[endUseID]
+		carrierID := strings.Join([]string{"energy", "direct_zone", "carrier", canonicalEnergyPathPart(endUse.Carrier), firstNonEmpty(energyExplanationZoneSuffix(endUse.ZoneName), metricID(endUse.ZoneName), "zone")}, ".")
+		edges = append(edges, EnergyExplanationEdge{
+			ID:          edgeID("direct_zone_energy", periodID, carrierID, endUseID),
+			FromID:      carrierID,
+			ToID:        endUseID,
+			Value:       endUse.Value,
+			Unit:        endUse.Unit,
+			Period:      periodID,
+			Relation:    "energy_variable",
+			Basis:       "direct_zone_energy",
+			Formula:     "sum of exact zone-keyed direct-use energy variables",
+			RuleID:      energyRelationshipRuleMeasuredEnergyVariable,
+			SourceIDs:   appendUniqueStrings(nil, endUse.SourceIDs...),
+			ZoneName:    endUse.ZoneName,
+			ServiceKind: energyCanonicalServiceKind(endUse.EndUse),
+		})
+	}
+	return nodes, edges
+}
+
+func energyPathDirectZonePeriodValue(item energyExplanationSeries, periodID string, periodKind string, canonicalMonthlyBasis bool) (float64, float64, []string, bool) {
+	periodKind = strings.ToLower(strings.TrimSpace(periodKind))
+	periodID = strings.TrimSpace(periodID)
+	value := 0.0
+	rawValue := 0.0
+	sourceIDs := item.SourceIDs
+	ok := true
+	switch periodKind {
+	case "monthly":
+		index, err := strconv.Atoi(strings.TrimPrefix(strings.ToUpper(periodID), "M"))
+		if err != nil {
+			return 0, 0, nil, false
+		}
+		value, ok = item.Monthly[index]
+		rawValue = item.RawMonthly[index]
+		sourceIDs = energyExplanationPeriodSourceIDs(item.MonthlySourceIDs, item.SourceIDs)
+	case "daily":
+		index, err := strconv.Atoi(strings.TrimPrefix(strings.ToUpper(periodID), "D"))
+		if err != nil {
+			return 0, 0, nil, false
+		}
+		value, ok = item.Daily[index]
+		rawValue = item.RawDaily[index]
+		sourceIDs = energyExplanationPeriodSourceIDs(item.DailySourceIDs, item.SourceIDs)
+	case "hourly":
+		index, err := strconv.Atoi(strings.TrimPrefix(strings.ToUpper(periodID), "H"))
+		if err != nil {
+			return 0, 0, nil, false
+		}
+		value, ok = item.Hourly[index]
+		rawValue = item.RawHourly[index]
+		sourceIDs = energyExplanationPeriodSourceIDs(item.HourlySourceIDs, item.SourceIDs)
+	case "selected_range":
+		value = item.SelectedRange
+		rawValue = item.RawSelectedRange
+		ok = item.HasSelectedRange
+		sourceIDs = energyExplanationPeriodSourceIDs(item.SelectedRangeSourceIDs, item.SourceIDs)
+	default:
+		if canonicalMonthlyBasis && len(item.Monthly) > 0 {
+			value = sumEnergyExplanationPeriodValues(item.Monthly)
+			rawValue = sumEnergyExplanationPeriodValues(item.RawMonthly)
+			sourceIDs = energyExplanationPeriodSourceIDs(item.MonthlySourceIDs, item.SourceIDs)
+		} else {
+			value = item.Total
+			rawValue = item.RawTotal
+			sourceIDs = energyExplanationPeriodSourceIDs(item.AnnualSourceIDs, item.SourceIDs)
+		}
+	}
+	if rawValue == 0 && value != 0 {
+		rawValue = energyExplanationRawValue(value, item.EffectiveMultiplier)
+	}
+	return roundedEnergyNumber(value), roundedEnergyNumber(rawValue), appendUniqueStrings(nil, sourceIDs...), ok
+}
+
+func appendEnergyPathDirectZoneHVACEdges(edges []EnergyExplanationEdge, nodes []EnergyExplanationNode) []EnergyExplanationEdge {
+	existing := map[string]bool{}
+	for _, edge := range edges {
+		if legacyEnergyLinkIsLoadToEndUse(edge) {
+			existing[edge.FromID+"|"+edge.ToID] = true
+		}
+	}
+	directEndUses := make([]EnergyExplanationNode, 0)
+	loads := make([]EnergyExplanationNode, 0)
+	for _, node := range nodes {
+		switch {
+		case energyPathLegacyNodeIsDirectZoneEnergy(node) && !legacyEnergyNodeIsCarrier(node):
+			service := energyCanonicalServiceKind(firstNonEmpty(node.ServiceKind, node.EndUse, energyExplanationKindSuffix(node.Kind)))
+			if service == "cooling" || service == "heating" {
+				directEndUses = append(directEndUses, node)
+			}
+		case strings.EqualFold(strings.TrimSpace(node.Level), "load"):
+			loads = append(loads, node)
+		}
+	}
+	sort.SliceStable(directEndUses, func(i, j int) bool { return directEndUses[i].ID < directEndUses[j].ID })
+	sort.SliceStable(loads, func(i, j int) bool { return loads[i].ID < loads[j].ID })
+	for _, endUse := range directEndUses {
+		service := energyCanonicalServiceKind(firstNonEmpty(endUse.ServiceKind, endUse.EndUse, energyExplanationKindSuffix(endUse.Kind)))
+		for _, load := range loads {
+			if !strings.EqualFold(strings.TrimSpace(load.ZoneName), strings.TrimSpace(endUse.ZoneName)) ||
+				energyCanonicalServiceKind(firstNonEmpty(load.ServiceKind, energyExplanationKindSuffix(load.Kind))) != service {
+				continue
+			}
+			key := endUse.ID + "|" + load.ID
+			if existing[key] {
+				continue
+			}
+			value := math.Abs(firstNonZero(energyExplanationEffectiveNodeValue(load), load.Value))
+			edges = append(edges, EnergyExplanationEdge{
+				ID:             edgeID("direct_zone_load", firstNonEmpty(load.Period, endUse.Period), endUse.ID, load.ID),
+				FromID:         endUse.ID,
+				ToID:           load.ID,
+				Value:          value,
+				Unit:           load.Unit,
+				Period:         firstNonEmpty(load.Period, endUse.Period),
+				Relation:       "delivered_load",
+				Basis:          "direct_zone_energy",
+				Formula:        "exact zone HVAC component energy related to the matching measured zone service load",
+				RuleID:         energyRelationshipRuleMeasuredLoad,
+				SourceIDs:      appendUniqueStrings(append([]string(nil), endUse.SourceIDs...), load.SourceIDs...),
+				ZoneName:       endUse.ZoneName,
+				ServiceKind:    service,
+				RelatedPathIDs: appendUniqueStrings(append([]string(nil), endUse.RelatedPathIDs...), load.RelatedPathIDs...),
+			})
+			existing[key] = true
+		}
+	}
+	return edges
+}
+
+func appendEnergyPathDirectZoneCorrespondenceEdges(edges []EnergyExplanationEdge, nodes []EnergyExplanationNode) []EnergyExplanationEdge {
+	if len(nodes) == 0 {
+		return edges
+	}
+	existing := map[string]bool{}
+	for _, edge := range edges {
+		if legacyEnergyLinkIsSourceCorrespondence(edge) {
+			existing[edge.FromID+"|"+edge.ToID] = true
+			existing[edge.ToID+"|"+edge.FromID] = true
+		}
+	}
+	for _, endUse := range nodes {
+		if !energyPathLegacyNodeIsDirectZoneEnergy(endUse) || legacyEnergyNodeIsCarrier(endUse) || strings.TrimSpace(endUse.ZoneName) == "" {
+			continue
+		}
+		endUseKind := canonicalEnergyPathEndUse(firstNonEmpty(endUse.EndUse, energyExplanationKindSuffix(endUse.Kind)))
+		if endUseKind != "lighting" && endUseKind != "equipment" {
+			continue
+		}
+		for _, driver := range nodes {
+			if !strings.EqualFold(strings.TrimSpace(driver.ZoneName), strings.TrimSpace(endUse.ZoneName)) || !energyPathDirectUseDriverMatchesEndUse(driver, endUseKind) {
+				continue
+			}
+			key := endUse.ID + "|" + driver.ID
+			if existing[key] {
+				continue
+			}
+			value := math.Abs(firstNonZero(driver.DisplayValue, energyExplanationEffectiveNodeValue(driver), driver.Value))
+			edges = append(edges, EnergyExplanationEdge{
+				ID:           edgeID("source_correspondence", firstNonEmpty(driver.Period, endUse.Period), endUse.ID, driver.ID),
+				FromID:       endUse.ID,
+				ToID:         driver.ID,
+				Value:        value,
+				DisplayValue: value,
+				Unit:         driver.Unit,
+				Period:       firstNonEmpty(driver.Period, endUse.Period),
+				Relation:     energyPathRelationSourceCorrespondence,
+				Basis:        "direct_zone_energy",
+				Formula:      "related zone-keyed energy use and thermal effect; non-flow correspondence",
+				RuleID:       energyRelationshipRuleInternalGainHeat,
+				SourceIDs:    appendUniqueStrings(append([]string(nil), endUse.SourceIDs...), driver.SourceIDs...),
+				ZoneName:     endUse.ZoneName,
+				ServiceKind:  driver.ServiceKind,
+			})
+			existing[key] = true
+		}
+	}
+	return edges
+}
+
+func energyPathDirectUseDriverMatchesEndUse(node EnergyExplanationNode, endUse string) bool {
+	level := strings.ToLower(strings.TrimSpace(node.Level))
+	if level != "heat" && level != "driver" {
+		return false
+	}
+	category := canonicalEnergyDriverCategory(firstNonEmpty(node.DriverCategory, node.Kind))
+	return endUse == "lighting" && category == energyDriverCategoryLighting || endUse == "equipment" && category == energyDriverCategoryEquipment
+}
+
+func applyEnergyPathDirectZoneCoverage(result *EnergyExplanationResult) {
+	if result == nil || result.Scope.Kind != "zone" {
+		return
+	}
+	// Exact-zone variables provide, at most, an observed subset of Stage 3
+	// energy. Even when every requested variable is absent or explicitly zero,
+	// a selected zone must not inherit Building-level "complete" coverage.
+	result.Completeness = energyPathDirectZonePartialCompleteness(result.Completeness)
+	result.Warnings = appendEnergyDriverWarning(result.Warnings, energyPathDirectZoneCoverageWarning(result.Scope.ZoneName, "annual"))
+	markEnergyPathDirectZoneReconciliationPartial(result.Reconciliation, result.Links, result.Scope.ZoneName)
+	for index := range result.Periods {
+		period := &result.Periods[index]
+		period.Warnings = appendEnergyDriverWarning(period.Warnings, energyPathDirectZoneCoverageWarning(result.Scope.ZoneName, period.ID))
+		markEnergyPathDirectZoneReconciliationPartial(period.Reconciliation, period.Links, result.Scope.ZoneName)
+		if period.Summary != nil {
+			period.Summary.Completeness = energyPathDirectZonePartialCompleteness(period.Summary.Completeness)
+		}
+	}
+}
+
+func energyPathDirectZonePartialCompleteness(input EnergyCompleteness) EnergyCompleteness {
+	// EnergyExplanationV1 is a value at the compatibility boundary, but its
+	// completeness slices still share backing arrays with the caller. Clone
+	// before annotating the scoped result so the frozen v1 payload stays intact.
+	originalItems := append([]EnergyCompletenessLevel(nil), input.Items...)
+	originalMissing := append([]string(nil), input.MissingCategories...)
+	originalAvailability := append([]EnergySourceAvailabilityEntry(nil), input.SourceAvailability...)
+	input.Status = "partial"
+	input.MappedPercent = 0
+	input.EnergyUse.Level = "energy"
+	input.EnergyUse.Status = "partial"
+	input.EnergyUse.Found = 0
+	input.EnergyUse.Total = 0
+	input.EnergyUse.Message = "Zone energy use is an observed direct-use subtotal; a complete zone carrier total is not available."
+	input.Items = make([]EnergyCompletenessLevel, 0, len(originalItems)+1)
+	foundEnergyItem := false
+	for _, item := range originalItems {
+		if strings.EqualFold(strings.TrimSpace(item.Level), "energy") {
+			if !foundEnergyItem {
+				input.Items = append(input.Items, input.EnergyUse)
+				foundEnergyItem = true
+			}
+			continue
+		}
+		input.Items = append(input.Items, item)
+	}
+	if !foundEnergyItem {
+		input.Items = append([]EnergyCompletenessLevel{input.EnergyUse}, input.Items...)
+	}
+	input.MissingCategories = make([]string, 0, len(originalMissing)+1)
+	for _, missing := range originalMissing {
+		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(missing)), "energy:") {
+			continue
+		}
+		input.MissingCategories = append(input.MissingCategories, missing)
+	}
+	missing := "energy: complete zone carrier total"
+	input.MissingCategories = appendUniqueStrings(input.MissingCategories, missing)
+	input.SourceAvailability = make([]EnergySourceAvailabilityEntry, 0, len(originalAvailability)+1)
+	for _, item := range originalAvailability {
+		if strings.EqualFold(strings.TrimSpace(item.Level), "energy") {
+			continue
+		}
+		input.SourceAvailability = append(input.SourceAvailability, item)
+	}
+	input.SourceAvailability = append(input.SourceAvailability, EnergySourceAvailabilityEntry{
+		Name:   "Complete zone carrier total",
+		Level:  "energy",
+		Status: "missing",
+	})
+	return input
+}
+
+func energyPathDirectZoneCoverageWarning(zoneName string, period string) EnergyWarning {
+	return EnergyWarning{
+		Severity: "warning",
+		Code:     "zone_direct_energy_partial_coverage",
+		Message:  fmt.Sprintf("%s energy uses only exact zone-keyed direct observations when available; no complete zone carrier total was inferred.", firstNonEmpty(strings.TrimSpace(zoneName), "Selected zone")),
+		Period:   period,
+	}
+}
+
+func markEnergyPathDirectZoneReconciliationPartial(reconciliation []EnergyReconciliation, links []EnergyPathLink, zoneName string) {
+	directCarrierIDs := map[string]bool{}
+	for _, link := range links {
+		if canonicalEnergyPathBasis(link.Basis, "") == "direct_zone_energy" && (link.Relation == "end_use_to_carrier" || link.Relation == "direct_end_use_to_carrier") {
+			directCarrierIDs[link.ToID] = true
+		}
+	}
+	if len(directCarrierIDs) == 0 {
+		return
+	}
+	for index := range reconciliation {
+		row := &reconciliation[index]
+		for carrierID := range directCarrierIDs {
+			carrier := strings.TrimPrefix(strings.Split(strings.TrimPrefix(carrierID, "carrier."), ".")[0], "carrier.")
+			if carrier == "" || !energyPathCarrierReconciliationMatches(*row, carrier, row.Period) {
+				continue
+			}
+			row.Status = "partial"
+			row.ZoneName = firstNonEmpty(row.ZoneName, zoneName)
+			row.Basis = "direct_zone_energy"
+			row.Label = energyCarrierLabel(carrier) + " observed direct-use subtotal"
+			row.Formula = "sum of exact zone-keyed direct-use and explicitly scoped energy only; no complete zone carrier total is inferred"
+			break
+		}
+	}
 }
 
 func applyCanonicalMonthlyBasisToEnergyPathResult(result *EnergyExplanationResult) {
@@ -307,7 +763,12 @@ func aggregateEnergyPathV2MonthlyPeriods(periods []EnergyPeriod) ([]EnergyExplan
 			current.ExpectedValue = roundedEnergyNumber(current.ExpectedValue + item.ExpectedValue)
 			current.ExplainedValue = roundedEnergyNumber(current.ExplainedValue + item.ExplainedValue)
 			current.ResidualValue = roundedEnergyNumber(current.ResidualValue + item.ResidualValue)
-			current.Status = energyReconciliationStatus(current.ExpectedValue, current.ResidualValue)
+			if current.Status == "partial" || item.Status == "partial" || canonicalEnergyPathBasis(current.Basis, "") == "direct_zone_energy" || canonicalEnergyPathBasis(item.Basis, "") == "direct_zone_energy" {
+				current.Status = "partial"
+				current.Basis = "direct_zone_energy"
+			} else {
+				current.Status = energyReconciliationStatus(current.ExpectedValue, current.ResidualValue)
+			}
 			current.SourceIDs = appendUniqueStrings(current.SourceIDs, item.SourceIDs...)
 		}
 		for _, warning := range period.Warnings {
@@ -326,6 +787,7 @@ func aggregateEnergyPathV2MonthlyPeriods(periods []EnergyPeriod) ([]EnergyExplan
 			synchronizeEnergyPathSourceCorrespondence(link, canonicalNodes)
 		}
 		if link.Relation == "load_to_end_use" {
+			annotateEnergyPathDirectZoneTemporalCoverage(link, canonicalNodes[link.FromID])
 			// Monthly carrier evidence can change across the year. Reclassify
 			// after node aggregation so an electricity-only month plus a district
 			// month becomes an order-independent mixed-carrier annual ratio.
@@ -334,6 +796,25 @@ func aggregateEnergyPathV2MonthlyPeriods(periods []EnergyPeriod) ([]EnergyExplan
 		finalizeEnergyPathLinkRatio(link)
 	}
 	return nodes, links, reconciliation, warnings
+}
+
+func annotateEnergyPathDirectZoneTemporalCoverage(link *EnergyPathLink, load *EnergyExplanationNode) {
+	if link == nil || load == nil || link.Relation != "load_to_end_use" || canonicalEnergyPathBasis(link.Basis, "") != "direct_zone_energy" {
+		return
+	}
+	loadValue := math.Abs(energyExplanationEffectiveNodeValue(*load))
+	if loadValue <= 0 || math.Abs(link.FromValue-loadValue) <= 1e-9 {
+		return
+	}
+	const note = "only periods with exact direct zone energy; partial temporal coverage"
+	if strings.Contains(strings.ToLower(link.Explanation), note) {
+		return
+	}
+	if strings.TrimSpace(link.Explanation) == "" {
+		link.Explanation = note
+	} else {
+		link.Explanation = strings.TrimSpace(link.Explanation) + "; " + note
+	}
 }
 
 func cloneEnergyExplanationNodes(input []EnergyExplanationNode) []EnergyExplanationNode {
@@ -390,6 +871,9 @@ func energyExplanationAvailableZones(input EnergyExplanationV1) []string {
 	for _, item := range input.Reconciliation {
 		add(item.ZoneName)
 	}
+	for _, item := range input.zoneDirectUseSeries {
+		add(item.ZoneName)
+	}
 	for _, period := range input.Periods {
 		for _, node := range period.Nodes {
 			add(node.ZoneName)
@@ -420,6 +904,42 @@ func energyPathInteractivePeriods(input []EnergyPeriod) []EnergyPeriod {
 		}
 	}
 	return out
+}
+
+func sortEnergyPathPeriods(periods []EnergyPeriod) {
+	periodOrder := func(period EnergyPeriod) (int, int, string) {
+		kind := strings.ToLower(strings.TrimSpace(period.Kind))
+		id := strings.ToUpper(strings.TrimSpace(period.ID))
+		rank := 6
+		index := 0
+		switch {
+		case kind == "annual" || id == "ANNUAL":
+			rank = 0
+		case kind == "selected_range" || id == "SELECTED_RANGE":
+			rank = 1
+		case kind == "monthly" || strings.HasPrefix(id, "M"):
+			rank = 2
+			index, _ = strconv.Atoi(strings.TrimPrefix(id, "M"))
+		case kind == "daily" || strings.HasPrefix(id, "D"):
+			rank = 3
+			index, _ = strconv.Atoi(strings.TrimPrefix(id, "D"))
+		case kind == "hourly" || strings.HasPrefix(id, "H"):
+			rank = 4
+			index, _ = strconv.Atoi(strings.TrimPrefix(id, "H"))
+		}
+		return rank, index, id
+	}
+	sort.SliceStable(periods, func(i, j int) bool {
+		leftRank, leftIndex, leftID := periodOrder(periods[i])
+		rightRank, rightIndex, rightID := periodOrder(periods[j])
+		if leftRank != rightRank {
+			return leftRank < rightRank
+		}
+		if leftIndex != rightIndex {
+			return leftIndex < rightIndex
+		}
+		return leftID < rightID
+	})
 }
 
 func normalizeEnergyExplanationScope(scope EnergyExplanationScope) EnergyExplanationScope {
@@ -608,6 +1128,7 @@ func upgradeEnergyExplanationGraph(legacyNodes []EnergyExplanationNode, legacyEd
 		}
 		if node.Level == "end_use" {
 			sort.Strings(node.SourceIDs)
+			sort.Strings(node.RelatedEntityIDs)
 		}
 		outNodes = append(outNodes, *node)
 		visibleNodeIDs[node.ID] = true
@@ -619,6 +1140,10 @@ func upgradeEnergyExplanationGraph(legacyNodes []EnergyExplanationNode, legacyEd
 			continue
 		}
 		if link.Relation == "load_to_end_use" {
+			if canonicalEnergyPathBasis(link.Basis, "") == "direct_zone_energy" {
+				synchronizeEnergyPathDirectZoneConversion(link, canonicalNodes)
+				annotateEnergyPathDirectZoneTemporalCoverage(link, canonicalNodes[link.FromID])
+			}
 			// A canonical end use can merge several carrier-qualified meters and
 			// a Building load can merge several zone links. Classify the ratio
 			// from those final endpoints, never from whichever legacy edge was
@@ -638,6 +1163,41 @@ func upgradeEnergyExplanationGraph(legacyNodes []EnergyExplanationNode, legacyEd
 	}
 	sort.SliceStable(outLinks, func(i, j int) bool { return outLinks[i].ID < outLinks[j].ID })
 	return outNodes, outLinks
+}
+
+// synchronizeEnergyPathDirectZoneConversion makes the merged canonical
+// endpoints authoritative for an exact-zone HVAC conversion. A zone service
+// can have several carrier-qualified component-energy observations; their
+// legacy edges collapse to one load -> end-use link and must not add the same
+// measured load once per carrier.
+func synchronizeEnergyPathDirectZoneConversion(link *EnergyPathLink, nodes map[string]*EnergyExplanationNode) {
+	if link == nil || link.Relation != "load_to_end_use" || canonicalEnergyPathBasis(link.Basis, "") != "direct_zone_energy" {
+		return
+	}
+	load := nodes[link.FromID]
+	endUse := nodes[link.ToID]
+	if load == nil || endUse == nil || !strings.EqualFold(load.Level, "load") || !strings.EqualFold(endUse.Level, "end_use") {
+		return
+	}
+	loadValue := math.Abs(energyExplanationEffectiveNodeValue(*load))
+	// Duplicate carrier-qualified legacy edges can add the same measured load
+	// more than once. Cap that duplicate at the canonical load, but retain a
+	// smaller value: an annual link aggregated from only the months that had
+	// exact direct energy intentionally represents that temporal overlap.
+	link.FromValue = math.Abs(link.FromValue)
+	if loadValue > 0 && link.FromValue > loadValue+1e-9 {
+		link.FromValue = loadValue
+	}
+	link.ToValue = math.Abs(energyExplanationEffectiveNodeValue(*endUse))
+	link.FromUnit = load.Unit
+	link.ToUnit = endUse.Unit
+	link.ZoneName = firstNonEmpty(endUse.ZoneName, load.ZoneName, link.ZoneName)
+	link.SourceIDs = appendUniqueStrings(link.SourceIDs, load.SourceIDs...)
+	link.SourceIDs = appendUniqueStrings(link.SourceIDs, endUse.SourceIDs...)
+	link.RelatedPathIDs = appendUniqueStrings(link.RelatedPathIDs, load.RelatedPathIDs...)
+	link.RelatedPathIDs = appendUniqueStrings(link.RelatedPathIDs, endUse.RelatedPathIDs...)
+	sort.Strings(link.SourceIDs)
+	sort.Strings(link.RelatedPathIDs)
 }
 
 type energyExplanationSuppressedTrace struct {
@@ -793,6 +1353,13 @@ func energyExplanationZoneAllocationFactors(nodes []EnergyExplanationNode, edges
 	}
 	sharesByEndUse := map[string]allocationShare{}
 	sharesByService := map[string]allocationShare{}
+	directTargets := map[string]bool{}
+	for _, node := range nodes {
+		if !energyPathLegacyNodeIsDirectZoneEnergy(node) || legacyEnergyNodeIsCarrier(node) || !strings.EqualFold(strings.TrimSpace(node.ZoneName), scope.ZoneName) {
+			continue
+		}
+		directTargets[energyPathDirectZoneTargetKey(node)] = true
+	}
 	seenEndUseLoads := map[string]bool{}
 	seenServiceLoads := map[string]bool{}
 	for _, edge := range edges {
@@ -809,6 +1376,13 @@ func energyExplanationZoneAllocationFactors(nodes []EnergyExplanationNode, edges
 		// an annual share and lose the sum of monthly allocations.
 		value := math.Abs(firstNonZero(edge.Value, energyExplanationEffectiveNodeValue(energyExplanationLegacyNodeWithEffectiveValues(load))))
 		service := energyCanonicalServiceKind(firstNonEmpty(load.ServiceKind, edge.ServiceKind, endUse.EndUse))
+		endUseKind := canonicalEnergyPathEndUse(firstNonEmpty(endUse.EndUse, energyExplanationKindSuffix(endUse.Kind)))
+		if (endUseKind != "cooling" && endUseKind != "heating") || service != endUseKind {
+			// A zone load share is meaningful only for the matching HVAC service.
+			// Lighting/equipment/water/process meters are never projected through
+			// a malformed allocation edge when their direct source is absent.
+			continue
+		}
 		endUseKey := energyExplanationAllocationEndUseKey(endUse, service)
 		selected := strings.EqualFold(strings.TrimSpace(load.ZoneName), scope.ZoneName)
 		if key := endUseKey + "|" + edge.ToID; endUseKey != "" && !seenEndUseLoads[key] {
@@ -833,6 +1407,9 @@ func energyExplanationZoneAllocationFactors(nodes []EnergyExplanationNode, edges
 	factors := map[string]float64{}
 	for _, node := range nodes {
 		if strings.TrimSpace(node.ZoneName) != "" || !strings.EqualFold(node.Level, "energy") || legacyEnergyNodeIsCarrier(node) || legacyEnergyNodeIsSupport(node) {
+			continue
+		}
+		if directTargets[energyPathDirectZoneTargetKey(node)] {
 			continue
 		}
 		key := energyExplanationAllocationEndUseKey(node, energyCanonicalServiceKind(node.EndUse))
@@ -865,6 +1442,9 @@ func energyExplanationZoneAllocationFactors(nodes []EnergyExplanationNode, edges
 			continue
 		}
 		if _, ok := factors[node.ID]; ok {
+			continue
+		}
+		if directTargets[energyPathDirectZoneTargetKey(node)] {
 			continue
 		}
 		if strings.EqualFold(node.Level, "residual") || legacyEnergyNodeIsSupport(node) {
@@ -913,6 +1493,9 @@ func energyExplanationNodeForScope(node EnergyExplanationNode, scope EnergyExpla
 		return EnergyExplanationNode{}, false
 	}
 	if zoneName := strings.TrimSpace(node.ZoneName); zoneName != "" {
+		if energyPathLegacyNodeIsDirectZoneEnergy(node) {
+			node.Basis = "direct_zone_energy"
+		}
 		return node, strings.EqualFold(zoneName, scope.ZoneName)
 	}
 	factor, ok := factors[node.ID]
@@ -927,6 +1510,33 @@ func energyExplanationNodeForScope(node EnergyExplanationNode, scope EnergyExpla
 		node.DisplayValue = math.Abs(node.SignedValue)
 	}
 	return node, node.Value != 0
+}
+
+func energyPathLegacyNodeIsDirectZoneEnergy(node EnergyExplanationNode) bool {
+	if strings.TrimSpace(node.ZoneName) == "" || legacyEnergyNodeIsSupport(node) {
+		return false
+	}
+	level := strings.ToLower(strings.TrimSpace(node.Level))
+	if level != "energy" && level != "end_use" && level != "carrier" {
+		return false
+	}
+	hierarchy := strings.ToLower(strings.TrimSpace(node.MeterHierarchyLevel))
+	if strings.HasPrefix(hierarchy, "zone_direct") || canonicalEnergyPathBasis(node.Basis, "") == "direct_zone_energy" {
+		return true
+	}
+	// Stored/custom canonical payloads may predate the hierarchy marker. An
+	// exact zone-qualified site-energy endpoint is still direct evidence; broad
+	// facility meters have an empty ZoneName and cannot enter this branch.
+	return true
+}
+
+func energyPathDirectZoneTargetKey(node EnergyExplanationNode) string {
+	if legacyEnergyNodeIsCarrier(node) || legacyEnergyNodeIsSupport(node) {
+		return ""
+	}
+	endUse := canonicalEnergyPathEndUse(firstNonEmpty(node.EndUse, energyExplanationKindSuffix(node.Kind), "other"))
+	carrier := canonicalEnergyPathPart(firstNonEmpty(node.Carrier, "other"))
+	return endUse + "|" + carrier
 }
 
 func energyExplanationLegacyNodeWithEffectiveValues(node EnergyExplanationNode) EnergyExplanationNode {
@@ -1048,6 +1658,8 @@ func reconcileEnergyPathCarrierTotals(nodes []EnergyExplanationNode, links []Ene
 		expected    float64
 		explained   float64
 		unit        string
+		zoneName    string
+		directZone  bool
 		sourceIDs   []string
 		existingRow int
 	}
@@ -1062,6 +1674,8 @@ func reconcileEnergyPathCarrierTotals(nodes []EnergyExplanationNode, links []Ene
 			carrier:     carrier,
 			expected:    math.Abs(node.Value),
 			unit:        node.Unit,
+			zoneName:    node.ZoneName,
+			directZone:  canonicalEnergyPathBasis(node.Basis, "") == "direct_zone_energy",
 			sourceIDs:   appendUniqueStrings(nil, node.SourceIDs...),
 			existingRow: -1,
 		}
@@ -1079,6 +1693,9 @@ func reconcileEnergyPathCarrierTotals(nodes []EnergyExplanationNode, links []Ene
 			continue
 		}
 		total.explained += math.Abs(link.ToValue)
+		if canonicalEnergyPathBasis(link.Basis, "") == "direct_zone_energy" {
+			total.directZone = true
+		}
 		total.unit = firstNonEmpty(total.unit, link.ToUnit)
 		total.sourceIDs = appendUniqueStrings(total.sourceIDs, link.SourceIDs...)
 	}
@@ -1113,11 +1730,18 @@ func reconcileEnergyPathCarrierTotals(nodes []EnergyExplanationNode, links []Ene
 			Formula:        "facility carrier total - mapped carrier-qualified end-use meters",
 			SourceIDs:      total.sourceIDs,
 		}
+		if total.directZone {
+			row.Label = energyCarrierLabel(total.carrier) + " observed direct-use subtotal"
+			row.Status = "partial"
+			row.ZoneName = total.zoneName
+			row.Basis = "direct_zone_energy"
+			row.Formula = "sum of exact zone-keyed direct-use and explicitly scoped energy only; no complete zone carrier total is inferred"
+		}
 		if total.existingRow >= 0 {
 			// Retain the scope-qualified compatibility ID produced by the v1
 			// adapter while replacing its accounting with the canonical v2 split.
 			row.ID = out[total.existingRow].ID
-			row.ZoneName = out[total.existingRow].ZoneName
+			row.ZoneName = firstNonEmpty(row.ZoneName, out[total.existingRow].ZoneName)
 			out[total.existingRow] = row
 			continue
 		}
@@ -1819,6 +2443,9 @@ func upgradeEnergyExplanationLink(edge EnergyExplanationEdge, nodes map[string]E
 		return EnergyPathLink{}, false
 	}
 	link.Basis = canonicalEnergyPathBasis(edge.Basis, edge.RuleID)
+	if energyPathLegacyNodeIsDirectZoneEnergy(legacyFrom) || energyPathLegacyNodeIsDirectZoneEnergy(legacyTo) {
+		link.Basis = "direct_zone_energy"
+	}
 	if carrierSplit || energyPathLinkIsSourceCorrespondence(link) {
 		sort.Strings(link.SourceIDs)
 		sort.Strings(link.RelatedPathIDs)
