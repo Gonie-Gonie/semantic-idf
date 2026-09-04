@@ -247,6 +247,7 @@ func aggregateEnergyPathV2MonthlyPeriods(periods []EnergyPeriod) ([]EnergyExplan
 				node.SimultaneousLoad = cloneEnergyExplanationSimultaneousLoad(node.SimultaneousLoad)
 				node.allocationSourceIDs = appendUniqueStrings(nil, node.allocationSourceIDs...)
 				node.simultaneousLoadContributions = cloneEnergyExplanationSimultaneousLoadContributions(node.simultaneousLoadContributions)
+				node.endUseCarriers = appendUniqueStrings(nil, node.endUseCarriers...)
 				nodeIndex[node.ID] = len(nodes)
 				nodes = append(nodes, node)
 				continue
@@ -317,6 +318,7 @@ func cloneEnergyExplanationNodes(input []EnergyExplanationNode) []EnergyExplanat
 		out[index].SourceIDs = appendUniqueStrings(nil, node.SourceIDs...)
 		out[index].allocationSourceIDs = appendUniqueStrings(nil, node.allocationSourceIDs...)
 		out[index].simultaneousLoadContributions = cloneEnergyExplanationSimultaneousLoadContributions(node.simultaneousLoadContributions)
+		out[index].endUseCarriers = appendUniqueStrings(nil, node.endUseCarriers...)
 	}
 	return out
 }
@@ -503,11 +505,17 @@ func upgradeEnergyExplanationGraph(legacyNodes []EnergyExplanationNode, legacyEd
 			// visible canonical driver that shares the same presentation category.
 			continue
 		}
-		nodeByLegacyID[legacy.ID] = legacy
 		canonical := upgradeEnergyExplanationNode(legacy, scope)
 		if canonical.ID == "" {
 			continue
 		}
+		if canonical.Level == "end_use" && energyExplanationEffectiveNodeValue(canonical) == 0 {
+			// A zero carrier-qualified end use is not a contributor. Excluding it
+			// before idMap/source merging prevents its meter from claiming a
+			// non-zero canonical Other (or any other shared taxonomy node).
+			continue
+		}
+		nodeByLegacyID[legacy.ID] = legacy
 		canonicalIDByLegacyID[legacy.ID] = canonical.ID
 		mergeEnergyExplanationV2Node(canonicalNodes, canonical)
 	}
@@ -544,6 +552,9 @@ func upgradeEnergyExplanationGraph(legacyNodes []EnergyExplanationNode, legacyEd
 	visibleNodeIDs := make(map[string]bool, len(canonicalNodes))
 	for _, node := range canonicalNodes {
 		if node.Level == "driver" && energyExplanationEffectiveNodeValue(*node) == 0 {
+			continue
+		}
+		if node.Level == "end_use" && energyExplanationEffectiveNodeValue(*node) == 0 {
 			continue
 		}
 		if node.Level == "end_use" {
@@ -1364,6 +1375,7 @@ func upgradeEnergyExplanationNode(input EnergyExplanationNode, scope EnergyExpla
 	out.SimultaneousLoad = cloneEnergyExplanationSimultaneousLoad(input.SimultaneousLoad)
 	out.allocationSourceIDs = appendUniqueStrings(nil, input.allocationSourceIDs...)
 	out.simultaneousLoadContributions = cloneEnergyExplanationSimultaneousLoadContributions(input.simultaneousLoadContributions)
+	out.endUseCarriers = appendUniqueStrings(nil, input.endUseCarriers...)
 	scopeToken := energyExplanationScopeToken(scope)
 	out.AggregationBasis = firstNonEmpty(input.AggregationBasis, scope.AggregationBasis)
 	out.Multiplier = input.Multiplier
@@ -1440,7 +1452,7 @@ func upgradeEnergyExplanationNode(input EnergyExplanationNode, scope EnergyExpla
 	case "end_use":
 		out.Level = "end_use"
 		out.ScaleDomain = "site"
-		out.ID = strings.Join([]string{"end_use", canonicalEnergyPathPart(firstNonEmpty(input.EndUse, energyExplanationKindSuffix(input.Kind), "other")), scopeToken}, ".")
+		out.ID = strings.Join([]string{"end_use", canonicalEnergyPathEndUse(firstNonEmpty(input.EndUse, energyExplanationKindSuffix(input.Kind), "other")), scopeToken}, ".")
 	default:
 		if legacyEnergyNodeIsSupport(input) {
 			out.Level = "support"
@@ -1453,7 +1465,7 @@ func upgradeEnergyExplanationNode(input EnergyExplanationNode, scope EnergyExpla
 		} else {
 			out.Level = "end_use"
 			out.ScaleDomain = "site"
-			out.ID = strings.Join([]string{"end_use", canonicalEnergyPathPart(firstNonEmpty(input.EndUse, energyExplanationKindSuffix(input.Kind), "other")), scopeToken}, ".")
+			out.ID = strings.Join([]string{"end_use", canonicalEnergyPathEndUse(firstNonEmpty(input.EndUse, energyExplanationKindSuffix(input.Kind), "other")), scopeToken}, ".")
 		}
 	}
 
@@ -1471,7 +1483,7 @@ func upgradeEnergyExplanationNode(input EnergyExplanationNode, scope EnergyExpla
 		default:
 			out.Level = "end_use"
 			out.ScaleDomain = "site"
-			out.ID = strings.Join([]string{"end_use", canonicalEnergyPathPart(firstNonEmpty(input.EndUse, energyExplanationKindSuffix(input.Kind), "other")), scopeToken}, ".")
+			out.ID = strings.Join([]string{"end_use", canonicalEnergyPathEndUse(firstNonEmpty(input.EndUse, energyExplanationKindSuffix(input.Kind), "other")), scopeToken}, ".")
 		}
 	}
 	if out.Level == "end_use" {
@@ -1479,13 +1491,48 @@ func upgradeEnergyExplanationNode(input EnergyExplanationNode, scope EnergyExpla
 		// Heating:Electricity and Heating:NaturalGas).  The v2 end-use stage is
 		// intentionally carrier-neutral, so its visible identity must not depend
 		// on which carrier-qualified meter happened to be encountered first.
-		endUse := canonicalEnergyPathPart(firstNonEmpty(input.EndUse, energyExplanationKindSuffix(input.Kind), "other"))
+		endUse := canonicalEnergyPathEndUse(firstNonEmpty(input.EndUse, energyExplanationKindSuffix(input.Kind), "other"))
 		out.EndUse = endUse
 		out.Kind = "energy." + endUse
 		out.Label = canonicalEnergyPathEndUseLabel(endUse)
+		if carrier := strings.TrimSpace(input.Carrier); carrier != "" {
+			out.endUseCarriers = appendUniqueStrings(out.endUseCarriers, canonicalEnergyPathPart(carrier))
+		}
+		out.Carrier = ""
 	}
 	finalizeEnergyExplanationLoadNode(&out)
 	return out
+}
+
+func canonicalEnergyPathEndUse(value string) string {
+	switch canonicalEnergyPathPart(value) {
+	case "cooling":
+		return "cooling"
+	case "heating":
+		return "heating"
+	case "fans":
+		return "fans"
+	case "pumps":
+		return "pumps"
+	case "heat_rejection", "heatrejection":
+		return "heat_rejection"
+	case "humidification", "humidifier":
+		return "humidification"
+	case "heat_recovery", "heatrecovery":
+		return "heat_recovery"
+	case "lighting", "lights", "interior_lighting", "interior_lights", "interiorlighting", "interiorlights", "exterior_lighting", "exterior_lights", "exteriorlighting", "exteriorlights":
+		return "lighting"
+	case "equipment", "interior_equipment", "interiorequipment", "exterior_equipment", "exteriorequipment":
+		return "equipment"
+	case "water_systems", "watersystems", "dhw":
+		return "water_systems"
+	case "refrigeration":
+		return "refrigeration"
+	case "other":
+		return "other"
+	default:
+		return "other"
+	}
 }
 
 func canonicalEnergyPathEndUseLabel(endUse string) string {
@@ -1502,6 +1549,7 @@ func mergeEnergyExplanationV2Node(nodes map[string]*EnergyExplanationNode, next 
 		copy.SimultaneousLoad = cloneEnergyExplanationSimultaneousLoad(next.SimultaneousLoad)
 		copy.allocationSourceIDs = appendUniqueStrings(nil, next.allocationSourceIDs...)
 		copy.simultaneousLoadContributions = cloneEnergyExplanationSimultaneousLoadContributions(next.simultaneousLoadContributions)
+		copy.endUseCarriers = appendUniqueStrings(nil, next.endUseCarriers...)
 		nodes[next.ID] = &copy
 		return
 	}
@@ -1522,13 +1570,16 @@ func mergeEnergyExplanationV2Node(nodes map[string]*EnergyExplanationNode, next 
 	current.LoadBreakdown = mergeEnergyExplanationLoadComponents(current.LoadBreakdown, next.LoadBreakdown)
 	current.OffsetEffects = mergeEnergyExplanationOffsetEffects(current.OffsetEffects, next.OffsetEffects)
 	current.simultaneousLoadContributions = mergeEnergyExplanationSimultaneousLoadContributions(current.simultaneousLoadContributions, next.simultaneousLoadContributions)
+	current.endUseCarriers = appendUniqueStrings(current.endUseCarriers, next.endUseCarriers...)
 	current.Badges = appendUniqueStrings(current.Badges, next.Badges...)
 	if current.ThermalComponent == "" {
 		current.ThermalComponent = next.ThermalComponent
 	} else if next.ThermalComponent != "" && current.ThermalComponent != next.ThermalComponent {
 		current.ThermalComponent = "combined"
 	}
-	if current.Carrier != next.Carrier {
+	if current.Level == "end_use" {
+		current.Carrier = ""
+	} else if current.Carrier != next.Carrier {
 		current.Carrier = ""
 	}
 	if current.ZoneName != next.ZoneName {
@@ -1696,9 +1747,14 @@ func setEnergyPathConversionRatioKind(link *EnergyPathLink, legacyEndUse EnergyE
 	service := energyCanonicalServiceKind(link.ServiceKind)
 	carrier := strings.ToLower(strings.TrimSpace(legacyEndUse.Carrier))
 	if canonicalEndUse != nil {
-		// A blank carrier on the canonical end use means multiple carrier
-		// branches were merged; a single COP/efficiency label would misstate it.
-		carrier = strings.ToLower(strings.TrimSpace(canonicalEndUse.Carrier))
+		// End-use nodes are always publicly carrier-neutral. The private ledger
+		// retains just enough information to label a single-carrier conversion;
+		// multiple branches deliberately use the generic load/site ratio.
+		if len(canonicalEndUse.endUseCarriers) == 1 {
+			carrier = strings.ToLower(strings.TrimSpace(canonicalEndUse.endUseCarriers[0]))
+		} else {
+			carrier = ""
+		}
 	}
 	if carrier == "electricity" && (service == "cooling" || service == "heating") {
 		link.RatioKind = "coefficient_of_performance"

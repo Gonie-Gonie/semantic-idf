@@ -201,6 +201,7 @@ type EnergyExplanationNode struct {
 	driverBuildingOnly            bool
 	allocationSourceIDs           []string
 	simultaneousLoadContributions []energyExplanationSimultaneousLoadContribution
+	endUseCarriers                []string
 }
 
 // EnergyExplanationLoadComponent keeps sensible and latent delivery inside a

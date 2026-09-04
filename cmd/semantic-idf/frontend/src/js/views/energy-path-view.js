@@ -81,6 +81,33 @@ const ENERGY_PATH_DRIVER_ORDER = Object.freeze({
   "balance.storage_other": 12,
 });
 
+const ENERGY_PATH_END_USE_ORDER = Object.freeze({
+  cooling: 0,
+  heating: 1,
+  fans_pumps: 2,
+  hvac_auxiliaries: 3,
+  lighting: 4,
+  equipment: 5,
+  water_systems: 6,
+  refrigeration: 7,
+  other: 8,
+});
+
+const ENERGY_PATH_END_USE_PRESENTATION = Object.freeze({
+  cooling: Object.freeze({ key: "cooling", labelKey: "simulation.energyPathEndUseCoolingEquipment", label: "Cooling equipment" }),
+  heating: Object.freeze({ key: "heating", labelKey: "simulation.energyPathEndUseHeatingEquipment", label: "Heating equipment" }),
+  fans: Object.freeze({ key: "fans_pumps", labelKey: "simulation.energyPathEndUseFansPumps", label: "Fans & pumps" }),
+  pumps: Object.freeze({ key: "fans_pumps", labelKey: "simulation.energyPathEndUseFansPumps", label: "Fans & pumps" }),
+  heat_rejection: Object.freeze({ key: "hvac_auxiliaries", labelKey: "simulation.energyPathEndUseHVACAuxiliaries", label: "HVAC auxiliaries" }),
+  humidification: Object.freeze({ key: "hvac_auxiliaries", labelKey: "simulation.energyPathEndUseHVACAuxiliaries", label: "HVAC auxiliaries" }),
+  heat_recovery: Object.freeze({ key: "hvac_auxiliaries", labelKey: "simulation.energyPathEndUseHVACAuxiliaries", label: "HVAC auxiliaries" }),
+  lighting: Object.freeze({ key: "lighting", labelKey: "simulation.energyPathEndUseLighting", label: "Lighting" }),
+  equipment: Object.freeze({ key: "equipment", labelKey: "simulation.energyPathEndUseEquipment", label: "Equipment" }),
+  water_systems: Object.freeze({ key: "water_systems", labelKey: "simulation.energyPathEndUseWaterSystems", label: "Water systems" }),
+  refrigeration: Object.freeze({ key: "refrigeration", labelKey: "simulation.energyPathEndUseRefrigeration", label: "Refrigeration" }),
+  other: Object.freeze({ key: "other", labelKey: "simulation.energyPathEndUseOther", label: "Other" }),
+});
+
 export function isEnergyPathV2(explanation = {}) {
   return String(explanation?.schema || "").toLowerCase() === ENERGY_PATH_SCHEMA_V2;
 }
@@ -783,12 +810,215 @@ export function energyPathGraphForState(explanation = {}, viewState = {}) {
 		({ nodes, links } = energyPathMergeAllServiceDrivers(nodes, links));
   }
 
+  ({ nodes, links } = energyPathProjectEndUsePresentation(nodes, links));
+
   const nodeIDs = new Set(nodes.map((node) => node.id));
   return {
     nodes,
     links: links.filter((link) => nodeIDs.has(link.fromId) && nodeIDs.has(link.toId)),
     warnings,
   };
+}
+
+export function energyPathProjectEndUsePresentation(nodes = [], links = []) {
+  const sourceNodes = nodes || [];
+  const sourceLinks = links || [];
+  const rawEndUseIDs = new Set(sourceNodes.filter(energyPathUsesCanonicalEndUsePresentation).map((node) => node.id));
+  if (!rawEndUseIDs.size) {
+    return { nodes: sourceNodes, links: sourceLinks };
+  }
+
+  const oldToNewID = new Map();
+  const groupedNodes = new Map();
+  for (const node of sourceNodes) {
+    if (!rawEndUseIDs.has(node?.id)) {
+      continue;
+    }
+    if (Math.abs(Number(node.value) || 0) <= 0) {
+      continue;
+    }
+    const taxonomy = energyPathCanonicalEndUse(node);
+    const presentation = ENERGY_PATH_END_USE_PRESENTATION[taxonomy] || ENERGY_PATH_END_USE_PRESENTATION.other;
+    const id = `end_use.${presentation.key}.${energyPathEndUseScopeToken(node)}`;
+    oldToNewID.set(node.id, id);
+    const current = groupedNodes.get(id);
+    if (!current) {
+      groupedNodes.set(id, {
+        ...node,
+        id,
+        kind: `energy.${presentation.key}`,
+        label: t(presentation.labelKey, {}, presentation.label),
+        endUse: presentation.key,
+        carrier: "",
+        sourceIds: energyPathUniqueValues(node.sourceIds).sort(),
+        relatedEntityIds: energyPathUniqueValues(node.relatedEntityIds).sort(),
+        relatedPathIds: energyPathUniqueValues(node.relatedPathIds).sort(),
+        presentationEndUses: [taxonomy],
+      });
+      continue;
+    }
+    mergeEnergyPathPresentationNode(current, node, taxonomy);
+  }
+
+  const projectedEndUses = [...groupedNodes.values()].sort((left, right) => {
+    const leftOrder = ENERGY_PATH_END_USE_ORDER[energyPathToken(left.endUse)] ?? Number.MAX_SAFE_INTEGER;
+    const rightOrder = ENERGY_PATH_END_USE_ORDER[energyPathToken(right.endUse)] ?? Number.MAX_SAFE_INTEGER;
+    return leftOrder - rightOrder || String(left.id || "").localeCompare(String(right.id || ""));
+  });
+  const projectedNodes = [
+    ...sourceNodes.filter((node) => !rawEndUseIDs.has(node?.id)),
+    ...projectedEndUses,
+  ];
+  const visibleNodeIDs = new Set(projectedNodes.map((node) => node.id));
+  const projectedLinks = new Map();
+  for (const link of sourceLinks) {
+    if (rawEndUseIDs.has(link.fromId) && !oldToNewID.has(link.fromId)) {
+      continue;
+    }
+    if (rawEndUseIDs.has(link.toId) && !oldToNewID.has(link.toId)) {
+      continue;
+    }
+    const projected = {
+      ...link,
+      fromId: oldToNewID.get(link.fromId) || link.fromId,
+      toId: oldToNewID.get(link.toId) || link.toId,
+      sourceIds: energyPathUniqueValues(link.sourceIds).sort(),
+      relatedPathIds: energyPathUniqueValues(link.relatedPathIds).sort(),
+    };
+    if (!visibleNodeIDs.has(projected.fromId) || !visibleNodeIDs.has(projected.toId)) {
+      continue;
+    }
+    const key = [projected.fromId, projected.toId, projected.relation || "flow"].join("|");
+    const current = projectedLinks.get(key);
+    if (!current) {
+      projected.id = energyPathPresentationLinkID(projected);
+      projectedLinks.set(key, projected);
+      continue;
+    }
+    mergeEnergyPathPresentationLink(current, projected);
+  }
+  return {
+    nodes: projectedNodes,
+    links: [...projectedLinks.values()].sort((left, right) => String(left.id || "").localeCompare(String(right.id || ""))),
+  };
+}
+
+function energyPathUsesCanonicalEndUsePresentation(node = {}) {
+  if (node?.level !== "end_use") {
+    return false;
+  }
+  const id = energyPathToken(node.id);
+  const kind = energyPathToken(node.kind);
+  return Boolean(energyPathToken(node.endUse)) || id.startsWith("end_use.") || kind.startsWith("energy.") || kind.startsWith("end_use.");
+}
+
+function energyPathCanonicalEndUse(node = {}) {
+  let token = energyPathToken(node.endUse || node.kind || "");
+  token = token.replace(/^energy[._-]/, "").replace(/^end_use[._-]/, "");
+  switch (token) {
+    case "cooling":
+    case "heating":
+    case "fans":
+    case "pumps":
+    case "heat_rejection":
+    case "humidification":
+    case "heat_recovery":
+    case "lighting":
+    case "equipment":
+    case "water_systems":
+    case "refrigeration":
+    case "other":
+      return token;
+    case "heatrejection":
+      return "heat_rejection";
+    case "humidifier":
+      return "humidification";
+    case "heatrecovery":
+      return "heat_recovery";
+    case "interior_lighting":
+    case "interior_lights":
+    case "interiorlighting":
+    case "interiorlights":
+    case "exterior_lighting":
+    case "exterior_lights":
+    case "exteriorlighting":
+    case "exteriorlights":
+    case "lights":
+      return "lighting";
+    case "interior_equipment":
+    case "interiorequipment":
+    case "exterior_equipment":
+    case "exteriorequipment":
+      return "equipment";
+    case "watersystems":
+    case "dhw":
+      return "water_systems";
+    default:
+      return "other";
+  }
+}
+
+function energyPathEndUseScopeToken(node = {}) {
+  const parts = String(node.id || "").split(".").filter(Boolean);
+  if (parts.length >= 3 && energyPathToken(parts[0]) === "end_use") {
+    return metricTokenForEnergyPath(parts.at(-1));
+  }
+  return metricTokenForEnergyPath(node.zoneName || "building");
+}
+
+function metricTokenForEnergyPath(value = "") {
+  return energyPathToken(value).replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "building";
+}
+
+function mergeEnergyPathPresentationNode(current, next, taxonomy) {
+  for (const field of ["value", "signedValue", "rawValue", "effectiveValue", "allocatedValue", "displayValue"]) {
+    if (Object.prototype.hasOwnProperty.call(current, field) || Object.prototype.hasOwnProperty.call(next, field)) {
+      current[field] = (Number(current[field]) || 0) + (Number(next[field]) || 0);
+    }
+  }
+  if (Number(current.rawValue)) {
+    current.multiplier = Number(current.effectiveValue) / Number(current.rawValue);
+  }
+  current.sourceIds = energyPathUniqueValues([...(current.sourceIds || []), ...(next.sourceIds || [])]).sort();
+  current.relatedEntityIds = energyPathUniqueValues([...(current.relatedEntityIds || []), ...(next.relatedEntityIds || [])]).sort();
+  current.relatedPathIds = energyPathUniqueValues([...(current.relatedPathIds || []), ...(next.relatedPathIds || [])]).sort();
+  current.presentationEndUses = energyPathUniqueValues([...(current.presentationEndUses || []), taxonomy]).sort();
+  if (current.serviceKind !== next.serviceKind) {
+    current.serviceKind = "";
+  }
+  if (current.basis !== next.basis) {
+    current.basis = "grouped_presentation";
+  }
+}
+
+function mergeEnergyPathPresentationLink(current, next) {
+  for (const field of ["fromValue", "toValue", "value", "signedValue", "displayValue"]) {
+    if (Object.prototype.hasOwnProperty.call(current, field) || Object.prototype.hasOwnProperty.call(next, field)) {
+      current[field] = (Number(current[field]) || 0) + (Number(next[field]) || 0);
+    }
+  }
+  current.sourceIds = energyPathUniqueValues([...(current.sourceIds || []), ...(next.sourceIds || [])]).sort();
+  current.relatedPathIds = energyPathUniqueValues([...(current.relatedPathIds || []), ...(next.relatedPathIds || [])]).sort();
+  if (current.serviceKind !== next.serviceKind) {
+    current.serviceKind = "";
+  }
+  if (current.basis !== next.basis) {
+    current.basis = "grouped_presentation";
+  }
+  if (current.ruleId !== next.ruleId) {
+    current.ruleId = "";
+  }
+  if (current.ratioKind && current.ratioKind === next.ratioKind && Number(current.toValue)) {
+    current.ratio = Number(current.fromValue) / Number(current.toValue);
+  } else if (current.ratioKind !== next.ratioKind) {
+    current.ratio = 0;
+    current.ratioKind = "";
+    current.ratioLabel = "";
+  }
+}
+
+function energyPathPresentationLinkID(link = {}) {
+  return `link.${metricTokenForEnergyPath(link.fromId)}.${metricTokenForEnergyPath(link.toId)}.${metricTokenForEnergyPath(link.relation || "flow")}`;
 }
 
 export function energyPathMergeAllServiceDrivers(nodes = [], links = []) {
@@ -1026,6 +1256,13 @@ function compareEnergyPathStageNodes(stage, left, right) {
       return leftOrder - rightOrder;
     }
   }
+  if (stage.level === "end_use") {
+    const leftOrder = ENERGY_PATH_END_USE_ORDER[energyPathToken(left.endUse)] ?? Number.MAX_SAFE_INTEGER;
+    const rightOrder = ENERGY_PATH_END_USE_ORDER[energyPathToken(right.endUse)] ?? Number.MAX_SAFE_INTEGER;
+    if (leftOrder !== rightOrder) {
+      return leftOrder - rightOrder;
+    }
+  }
   const valueOrder = Math.abs(Number(right.value) || 0) - Math.abs(Number(left.value) || 0);
   if (valueOrder !== 0) {
     return valueOrder;
@@ -1090,11 +1327,21 @@ function energyPathSummaryValueLabel(value, unit = "") {
 }
 
 function energyPathItemService(item = {}) {
-  const token = energyPathToken(item.serviceKind || item.service || item.endUse || item.id || "");
-  if (token.includes("cool")) {
+  const explicit = energyPathToken(item.serviceKind || item.service || "");
+  if (explicit === "cooling" || explicit === "heating") {
+    return explicit;
+  }
+  const endUse = energyPathToken(item.endUse || "");
+  if (endUse === "cooling" || endUse === "heating") {
+    return endUse;
+  }
+  const semanticSegments = energyPathToken([item.kind, item.id].filter(Boolean).join("."))
+    .split(/[.\s:/-]+/)
+    .filter(Boolean);
+  if (semanticSegments.includes("cooling")) {
     return "cooling";
   }
-  if (token.includes("heat")) {
+  if (semanticSegments.includes("heating")) {
     return "heating";
   }
   return "";
