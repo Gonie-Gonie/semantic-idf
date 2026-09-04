@@ -11,10 +11,11 @@ func TestEPATH090FrontendKeepsEndUseAndCarrierStagesDistinct(t *testing.T) {
 		`level: "end_use"`,
 		`level: "carrier"`,
 		`const graph = energyPathGraphForState(explanation, viewState)`,
-		`renderEnergyPathStage(stage, graph.nodes, selectedID, index)`,
+		`renderEnergyPathStage(stage, graph.nodes, selectedID, relatedNodeIDs, index)`,
 		`export function energyPathGraphForState`,
 		`links = [...(scopedResult.links || [])]`,
-		`links: links.filter((link) => nodeIDs.has(link.fromId) && nodeIDs.has(link.toId))`,
+		`const connectedLinks = links.filter((link) => nodeIDs.has(link.fromId) && nodeIDs.has(link.toId))`,
+		`links: connectedLinks.filter((link) => !isEnergyPathNonFlowRelation(link))`,
 		`node.level === stage.level`,
 	} {
 		if !strings.Contains(view, required) {

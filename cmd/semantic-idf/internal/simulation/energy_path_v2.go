@@ -11,6 +11,8 @@ import (
 	"golang.org/x/text/language"
 )
 
+const energyPathRelationSourceCorrespondence = "source_correspondence"
+
 // UpgradeEnergyExplanationV1 is the single compatibility boundary for stored
 // energy-explanation/v1 payloads. The returned graph always follows the v2
 // driver -> load -> end-use -> carrier direction and never needs a v1 renderer.
@@ -177,6 +179,22 @@ func applyCanonicalMonthlyBasisToEnergyPathResult(result *EnergyExplanationResul
 		linkIndex[key] = len(links)
 		links = append(links, link)
 	}
+	// Annual-only direct-use meters are allowed to fall back into an otherwise
+	// monthly-canonical graph. A source correspondence copied with that fallback
+	// still carries the initial annual driver value, which may differ from the
+	// authoritative sum of monthly driver nodes. Rebind both sides to the final
+	// annual endpoints after every fallback node/link has been materialized.
+	canonicalNodes := make(map[string]*EnergyExplanationNode, len(nodes))
+	for index := range nodes {
+		canonicalNodes[nodes[index].ID] = &nodes[index]
+	}
+	for index := range links {
+		if !energyPathLinkIsSourceCorrespondence(links[index]) {
+			continue
+		}
+		synchronizeEnergyPathSourceCorrespondence(&links[index], canonicalNodes)
+		finalizeEnergyPathLinkRatio(&links[index])
+	}
 
 	reconciliationIndex := make(map[string]int, len(reconciliation)+len(initialReconciliation))
 	for index, item := range reconciliation {
@@ -261,15 +279,18 @@ func aggregateEnergyPathV2MonthlyPeriods(periods []EnergyPeriod) ([]EnergyExplan
 			if !exists {
 				link.Period = "annual"
 				link.ID = energyPathLinkID(link)
+				finalizeEnergyPathLinkRatio(&link)
 				linkIndex[key] = len(links)
 				links = append(links, link)
 				continue
 			}
 			current := &links[index]
-			current.FromValue = roundedEnergyNumber(current.FromValue + link.FromValue)
-			current.ToValue = roundedEnergyNumber(current.ToValue + link.ToValue)
 			current.SourceIDs = appendUniqueStrings(current.SourceIDs, link.SourceIDs...)
 			current.RelatedPathIDs = appendUniqueStrings(current.RelatedPathIDs, link.RelatedPathIDs...)
+			if !energyPathLinkIsSourceCorrespondence(*current) {
+				current.FromValue = roundedEnergyNumber(current.FromValue + link.FromValue)
+				current.ToValue = roundedEnergyNumber(current.ToValue + link.ToValue)
+			}
 			finalizeEnergyPathLinkRatio(current)
 		}
 		for _, item := range period.Reconciliation {
@@ -301,6 +322,9 @@ func aggregateEnergyPathV2MonthlyPeriods(periods []EnergyPeriod) ([]EnergyExplan
 	synchronizeEnergyExplanationSimultaneousLoads(canonicalNodes)
 	for index := range links {
 		link := &links[index]
+		if energyPathLinkIsSourceCorrespondence(*link) {
+			synchronizeEnergyPathSourceCorrespondence(link, canonicalNodes)
+		}
 		if link.Relation == "load_to_end_use" {
 			// Monthly carrier evidence can change across the year. Reclassify
 			// after node aggregation so an electricity-only month plus a district
@@ -503,6 +527,13 @@ func upgradeEnergyExplanationGraph(legacyNodes []EnergyExplanationNode, legacyEd
 		if !include {
 			continue
 		}
+		if energyPathLegacyNodeIsPeopleDirectUse(legacy) {
+			// People is a thermal load driver, never a metered Stage 3 use. Some
+			// stored-v1/custom payloads nevertheless contain carrier-qualified
+			// People or Occupants nodes. Drop only those exact semantics here;
+			// unrelated unknown end uses still canonicalize to Other (EPATH-091).
+			continue
+		}
 		scopedLegacyNodes = append(scopedLegacyNodes, legacy)
 	}
 	scopedLegacyNodes = selectEnergyDriverMainFlowNodes(scopedLegacyNodes, sources)
@@ -593,6 +624,11 @@ func upgradeEnergyExplanationGraph(legacyNodes []EnergyExplanationNode, legacyEd
 			// from those final endpoints, never from whichever legacy edge was
 			// encountered first.
 			setEnergyPathConversionRatioKind(link, canonicalNodes[link.FromID], canonicalNodes[link.ToID])
+		}
+		if energyPathLinkIsSourceCorrespondence(*link) {
+			synchronizeEnergyPathSourceCorrespondence(link, canonicalNodes)
+			sort.Strings(link.SourceIDs)
+			sort.Strings(link.RelatedPathIDs)
 		}
 		if link.Relation == "end_use_to_carrier" || link.Relation == "direct_end_use_to_carrier" {
 			sort.Strings(link.SourceIDs)
@@ -1560,6 +1596,26 @@ func canonicalEnergyPathEndUse(value string) string {
 	}
 }
 
+func energyPathLegacyNodeIsPeopleDirectUse(node EnergyExplanationNode) bool {
+	if legacyEnergyNodeIsCarrier(node) || legacyEnergyNodeIsSupport(node) {
+		return false
+	}
+	level := strings.ToLower(strings.TrimSpace(node.Level))
+	if level != "energy" && level != "end_use" {
+		return false
+	}
+	semantic := strings.TrimSpace(node.EndUse)
+	if semantic == "" {
+		semantic = energyExplanationKindSuffix(node.Kind)
+	}
+	switch canonicalEnergyPathPart(semantic) {
+	case "people", "occupant", "occupants":
+		return true
+	default:
+		return false
+	}
+}
+
 func canonicalEnergyPathEndUseLabel(endUse string) string {
 	label := strings.ReplaceAll(canonicalEnergyPathPart(endUse), "_", " ")
 	return cases.Title(language.English, cases.NoLower).String(label)
@@ -1625,6 +1681,13 @@ func upgradeEnergyExplanationLink(edge EnergyExplanationEdge, nodes map[string]E
 	if !fromOK || !toOK || !mappedFrom || !mappedTo || fromID == "" || toID == "" {
 		return EnergyPathLink{}, false
 	}
+	correspondenceFromID, correspondenceToID, sourceCorrespondence := energyPathSourceCorrespondenceEndpoints(edge, fromID, toID, canonicalNodes)
+	if legacyEnergyLinkIsSourceCorrespondence(edge) && !sourceCorrespondence {
+		// Only Lighting/Equipment thermal effects have a measured site-energy
+		// counterpart. In particular, People heat is a driver only; accepting an
+		// arbitrary legacy edge here would manufacture a direct People end use.
+		return EnergyPathLink{}, false
+	}
 
 	conversionService := ""
 	if legacyEnergyLinkIsLoadToEndUse(edge) {
@@ -1679,6 +1742,11 @@ func upgradeEnergyExplanationLink(edge EnergyExplanationEdge, nodes map[string]E
 	}
 	value := math.Abs(firstNonZero(edge.DisplayValue, edge.Value))
 	switch {
+	case sourceCorrespondence:
+		link.FromID = correspondenceFromID
+		link.ToID = correspondenceToID
+		link.Relation = energyPathRelationSourceCorrespondence
+		synchronizeEnergyPathSourceCorrespondence(&link, canonicalNodes)
 	case legacyEnergyLinkIsLoadToEndUse(edge):
 		link.FromID = toID
 		link.ToID = fromID
@@ -1726,16 +1794,6 @@ func upgradeEnergyExplanationLink(edge EnergyExplanationEdge, nodes map[string]E
 		link.ToValue = link.FromValue
 		link.FromUnit = firstNonEmpty(legacyTo.Unit, edge.Unit)
 		link.ToUnit = firstNonEmpty(legacyFrom.Unit, edge.Unit)
-	case strings.EqualFold(edge.Relation, "internal_gain_heat"):
-		link.FromID = toID
-		link.ToID = fromID
-		link.Relation = "source_correspondence"
-		link.FromValue = math.Abs(firstNonZero(energyExplanationEffectiveNodeValue(legacyTo), legacyTo.DisplayValue, value))
-		link.ToValue = math.Abs(firstNonZero(energyExplanationEffectiveNodeValue(legacyFrom), value))
-		link.FromUnit = firstNonEmpty(legacyTo.Unit, edge.Unit)
-		link.ToUnit = firstNonEmpty(legacyFrom.Unit, edge.Unit)
-		link.RatioKind = "source_correspondence"
-		link.RatioLabel = "Thermal / site energy"
 	case strings.EqualFold(edge.Relation, "residual"):
 		link.Relation = "residual"
 		if strings.HasPrefix(toID, "residual.") {
@@ -1758,17 +1816,12 @@ func upgradeEnergyExplanationLink(edge EnergyExplanationEdge, nodes map[string]E
 		link.FromValue = residualValue
 		link.ToValue = residualValue
 	default:
-		link.FromID = fromID
-		link.ToID = toID
-		link.Relation = "source_correspondence"
-		link.FromValue = math.Abs(firstNonZero(energyExplanationEffectiveNodeValue(legacyFrom), value))
-		link.ToValue = math.Abs(firstNonZero(energyExplanationEffectiveNodeValue(legacyTo), value))
-		link.FromUnit = firstNonEmpty(legacyFrom.Unit, edge.Unit)
-		link.ToUnit = firstNonEmpty(legacyTo.Unit, edge.Unit)
+		return EnergyPathLink{}, false
 	}
 	link.Basis = canonicalEnergyPathBasis(edge.Basis, edge.RuleID)
-	if carrierSplit {
+	if carrierSplit || energyPathLinkIsSourceCorrespondence(link) {
 		sort.Strings(link.SourceIDs)
+		sort.Strings(link.RelatedPathIDs)
 	}
 	link.ID = energyPathLinkID(link)
 	finalizeEnergyPathLinkRatio(&link)
@@ -1862,6 +1915,45 @@ func energyPathCarrierUsesCombustionEfficiency(carrier string) bool {
 	}
 }
 
+func energyPathLinkIsSourceCorrespondence(link EnergyPathLink) bool {
+	return strings.EqualFold(strings.TrimSpace(link.Relation), energyPathRelationSourceCorrespondence)
+}
+
+func synchronizeEnergyPathSourceCorrespondence(link *EnergyPathLink, nodes map[string]*EnergyExplanationNode) {
+	if link == nil || !energyPathLinkIsSourceCorrespondence(*link) {
+		return
+	}
+	// A correspondence carries the independently measured values at its two
+	// endpoints. It is not a conserved quantity and must never be accumulated
+	// once per legacy edge like a flow ribbon.
+	if from := nodes[link.FromID]; from != nil {
+		link.FromValue = math.Abs(energyExplanationEffectiveNodeValue(*from))
+		link.FromUnit = from.Unit
+		link.ServiceKind = from.ServiceKind
+		link.ZoneName = from.ZoneName
+		link.SourceIDs = appendUniqueStrings(link.SourceIDs, from.SourceIDs...)
+		link.RelatedPathIDs = appendUniqueStrings(link.RelatedPathIDs, from.RelatedPathIDs...)
+	}
+	if to := nodes[link.ToID]; to != nil {
+		link.ToValue = math.Abs(energyExplanationEffectiveNodeValue(*to))
+		link.ToUnit = to.Unit
+		if link.ZoneName == "" {
+			link.ZoneName = to.ZoneName
+		} else if to.ZoneName != "" && !strings.EqualFold(link.ZoneName, to.ZoneName) {
+			link.ZoneName = ""
+		}
+		link.SourceIDs = appendUniqueStrings(link.SourceIDs, to.SourceIDs...)
+		link.RelatedPathIDs = appendUniqueStrings(link.RelatedPathIDs, to.RelatedPathIDs...)
+	}
+	link.Ratio = 0
+	link.RatioKind = ""
+	link.RatioLabel = ""
+	link.SourceIDs = appendUniqueStrings(nil, link.SourceIDs...)
+	link.RelatedPathIDs = appendUniqueStrings(nil, link.RelatedPathIDs...)
+	sort.Strings(link.SourceIDs)
+	sort.Strings(link.RelatedPathIDs)
+}
+
 func mergeEnergyPathLink(links map[string]*EnergyPathLink, next EnergyPathLink) {
 	current := links[next.ID]
 	if current == nil {
@@ -1869,11 +1961,27 @@ func mergeEnergyPathLink(links map[string]*EnergyPathLink, next EnergyPathLink) 
 		links[next.ID] = &copy
 		return
 	}
-	current.FromValue = roundedEnergyNumber(current.FromValue + next.FromValue)
-	current.ToValue = roundedEnergyNumber(current.ToValue + next.ToValue)
 	current.SourceIDs = appendUniqueStrings(current.SourceIDs, next.SourceIDs...)
 	current.RelatedPathIDs = appendUniqueStrings(current.RelatedPathIDs, next.RelatedPathIDs...)
 	current.Explanation = firstNonEmpty(current.Explanation, next.Explanation)
+	if energyPathLinkIsSourceCorrespondence(*current) && energyPathLinkIsSourceCorrespondence(next) {
+		// Both values describe endpoints, not contributions. Every duplicate
+		// canonical pair therefore merges provenance only.
+		if current.FromValue == 0 {
+			current.FromValue = next.FromValue
+		}
+		if current.ToValue == 0 {
+			current.ToValue = next.ToValue
+		}
+		current.SourceIDs = appendUniqueStrings(nil, current.SourceIDs...)
+		current.RelatedPathIDs = appendUniqueStrings(nil, current.RelatedPathIDs...)
+		sort.Strings(current.SourceIDs)
+		sort.Strings(current.RelatedPathIDs)
+		finalizeEnergyPathLinkRatio(current)
+		return
+	}
+	current.FromValue = roundedEnergyNumber(current.FromValue + next.FromValue)
+	current.ToValue = roundedEnergyNumber(current.ToValue + next.ToValue)
 	if current.ZoneName != next.ZoneName {
 		current.ZoneName = ""
 	}
@@ -1892,6 +2000,12 @@ func finalizeEnergyPathLinkRatio(link *EnergyPathLink) {
 	}
 	link.FromValue = roundedEnergyNumber(link.FromValue)
 	link.ToValue = roundedEnergyNumber(link.ToValue)
+	if energyPathLinkIsSourceCorrespondence(*link) {
+		link.Ratio = 0
+		link.RatioKind = ""
+		link.RatioLabel = ""
+		return
+	}
 	if link.RatioKind == "" {
 		link.Ratio = 0
 		link.RatioLabel = ""
@@ -2085,6 +2199,53 @@ func legacyEnergyLinkIsEndUseToCarrier(edge EnergyExplanationEdge) bool {
 
 func legacyEnergyLinkIsSupportSupply(edge EnergyExplanationEdge) bool {
 	return strings.EqualFold(edge.Relation, "onsite_production") || strings.EqualFold(edge.Relation, "storage_discharge")
+}
+
+func legacyEnergyLinkIsSourceCorrespondence(edge EnergyExplanationEdge) bool {
+	return strings.EqualFold(edge.Relation, "internal_gain_heat") ||
+		strings.EqualFold(edge.Relation, energyPathRelationSourceCorrespondence) ||
+		strings.EqualFold(edge.RuleID, energyRelationshipRuleInternalGainHeat)
+}
+
+// energyPathSourceCorrespondenceEndpoints validates and normalizes the only
+// cross-stage non-flow relationships supported by the Energy Path contract.
+// The direction is always Stage 1 driver -> Stage 3 end use so even consumers
+// that inspect every link cannot introduce a reverse edge or a cycle.
+func energyPathSourceCorrespondenceEndpoints(edge EnergyExplanationEdge, fromID string, toID string, nodes map[string]*EnergyExplanationNode) (string, string, bool) {
+	if !legacyEnergyLinkIsSourceCorrespondence(edge) {
+		return "", "", false
+	}
+	from := nodes[fromID]
+	to := nodes[toID]
+	if from == nil || to == nil {
+		return "", "", false
+	}
+	driver := from
+	endUse := to
+	driverID := fromID
+	endUseID := toID
+	if strings.EqualFold(from.Level, "end_use") && strings.EqualFold(to.Level, "driver") {
+		driver, endUse = to, from
+		driverID, endUseID = toID, fromID
+	}
+	if !strings.EqualFold(driver.Level, "driver") || !strings.EqualFold(endUse.Level, "end_use") {
+		return "", "", false
+	}
+	category := canonicalEnergyDriverCategory(firstNonEmpty(driver.DriverCategory, driver.Kind))
+	endUseKind := canonicalEnergyPathEndUse(firstNonEmpty(endUse.EndUse, energyExplanationKindSuffix(endUse.Kind)))
+	switch category {
+	case energyDriverCategoryLighting:
+		if endUseKind != "lighting" {
+			return "", "", false
+		}
+	case energyDriverCategoryEquipment:
+		if endUseKind != "equipment" {
+			return "", "", false
+		}
+	default:
+		return "", "", false
+	}
+	return driverID, endUseID, true
 }
 
 func legacyEnergyNodeIsCarrier(node EnergyExplanationNode) bool {
@@ -2381,7 +2542,7 @@ func buildEnergyExplanationSummaryV2(explanation EnergyExplanationResult) Energy
 	summary.Residuals = sortedEnergyExplanationSummaryItems(residuals)
 	summary.TopZones = limitEnergyExplanationSummaryItems(sortedEnergyExplanationSummaryItems(zones), 5)
 	for _, link := range explanation.Links {
-		if link.Ratio == 0 || link.RatioKind == "" {
+		if energyPathLinkIsSourceCorrespondence(link) || link.Ratio == 0 || link.RatioKind == "" {
 			continue
 		}
 		id := "ratio." + metricID(link.ID)

@@ -1023,6 +1023,13 @@
   outline: none;
 }
 
+.energy-path-node.related:not(.selected) {
+  border-color: var(--accent);
+  outline: 2px solid color-mix(in srgb, var(--accent) 58%, transparent);
+  outline-offset: 1px;
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface-2));
+}
+
 .energy-path-stage-empty {
   color: var(--muted);
   font-size: 12px;
@@ -1098,6 +1105,51 @@
 .energy-path-allocation-explanation code {
   color: var(--accent);
   font-size: 9px;
+}
+
+.energy-path-correspondence-actions {
+  display: grid;
+  gap: 6px;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+
+.energy-path-correspondence-actions > h5 {
+  margin: 0;
+  color: var(--text);
+  font-size: 10px;
+}
+
+.energy-path-correspondence-action {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  width: fit-content;
+  max-width: 100%;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  background: transparent;
+  padding: 4px 8px;
+  color: var(--accent);
+  cursor: pointer;
+  font: inherit;
+  font-size: 10px;
+  text-align: left;
+}
+
+.energy-path-correspondence-action strong {
+  overflow: hidden;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.energy-path-correspondence-action:hover,
+.energy-path-correspondence-action:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  outline-offset: 1px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
 .energy-path-load-breakdown {
