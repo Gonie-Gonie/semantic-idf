@@ -348,6 +348,40 @@ the checklist or its final acceptance scenarios.
   path/fallback/unassigned Zone plus AirLoop/PlantLoop auxiliary allocations.
   Each checklist bullet and its test evidence is mapped in
   `docs/energy-path-acceptance.md`; no duplicate aggregators were introduced.
+- EPATH-200: a new actual-app browser acceptance test captures fresh defaults
+  before fixture setup, exercises the conditional Zone search input/datalist,
+  Annual plus all twelve months, and Cooling/Heating/All in both scopes. It
+  checks absence of legacy controls, retained control focus, immutable results
+  and zero Analyze/Run calls. Independently passed in 3.855 s; no production
+  control change was needed.
+- EPATH-201: existing actual-app geometry/ribbon/taxonomy/Other/dimming
+  assertions pass. A new trusted-keyboard test traverses all 47 graph stops
+  forward and backward and activates node/ratio/SVG targets with Enter and
+  Space, clearing with Escape. It checks focus-only readability, complete
+  ratio tooltips, unchanged graph DOM/geometry/calculation counters, immutable
+  results and zero analysis/simulation calls. Independent and three-repeat
+  runs pass; no production layout change was required.
+- EPATH-202: exact actual-DOM carrier/end-use split tests now cover Building
+  and Zone, Annual and January, with independent expected quantities, friendly
+  names and site units. Facility reconciliation and supply/storage context
+  cannot enter consumption rows; Sources remains closed and selection retains
+  graph DOM. Existing common inspector and actual destination/chooser tests
+  also pass. The new discharge fixture uses an explicit canonical identity.
+- EPATH-203: quality acceptance now compares missing versus not-requested on
+  the same Drivers stage and checks all three direct/allocated/unassigned
+  visible percentages. Existing four-stage, filtered Data/Output, Zone-period
+  coverage, unknown-value and exact source-navigation assertions pass. No
+  production quality logic was changed.
+- EPATH-204: control changes now enter the existing Back/Forward history once,
+  before mutation. Invalid/disabled, same-value and typing events preserve
+  selection, drawer, redo and graph DOM; exact control/node/ratio/edge focus
+  reuses the existing snapshot target ID. Tests cover all six primary fields
+  and the complete drawer, including the exact Output source/request. A real
+  retained-semantic-Zone regression exposed final global reveal overwriting a
+  restored Building context; a narrow history-restore guard fixes that without
+  changing explicit destination navigation. Both actual-app tests, a parsed-IDF
+  semantic test and existing destination/Settings/Batch/cache regressions pass.
+  A response-only removal of the guard reproduced the exact old failure.
 
 ## Policy clarification
 
@@ -359,7 +393,7 @@ The normal Building interzone/category projection remains intact.
 
 ## Next in sequence
 
-EPATH-200–204 → section 22 actual-model fixtures → 210–211 → 220–222 → 230–235.
+Section 22 actual-model fixtures → 210–211 → 220–222 → 230–235.
 
 Checklist section 22's actual-model fixtures and expected manifests also remain
 required between EPATH-204 and EPATH-210; they have no individual EPATH numbers.

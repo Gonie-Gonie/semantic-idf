@@ -158,3 +158,188 @@ Evidence: `energy_zone_direct_use_audit_epath094_test.go`,
 `energy_auxiliary_zone_allocation_audit_epath101_test.go`.
 `^TestEPATH(094|100|101)` passed in 0.893 s. No new allocation implementation was
 needed for these already-asserted requirements.
+
+## Frontend checks (EPATH-200–204)
+
+Browser tests below live in `cmd/semantic-idf/internal/frontendchecks` and use
+isolated, fresh headless browser profiles. Their completed-run fixtures are
+synthetic; actual-model acceptance is recorded separately. In-app Browser was
+unavailable in this environment, so the repository's browser test harness is
+used without attaching to the user's browser or signed-in session.
+
+### EPATH-200 — primary controls
+
+`TestEPATH200ActualAppEnergyPathControlsBrowser` uses the actual application
+index, CSS, rendering modules and delegated change handlers. It captures the
+fresh module defaults before the fixture sets up a completed result, proving
+Building / Annual / All independently of fixture initialization. The Zone search
+input and its datalist must be absent in Building, present in Zone, and absent
+again on return. It selects Annual and all twelve months, verifies January's
+20 kWh cooling load rather than the annual 80, and checks that unreported months
+cannot reuse an annual graph. Cooling, Heating and All are exercised in both
+scopes. Every rerender must retain focus on its control. Old subviews, node-limit,
+sign-mode and allocation controls must be absent. The frozen completed result
+is unchanged, with zero Analyze/Run calls.
+
+Evidence: `energy_path_controls_epath200_browser_test.go`; focused test passed
+independently in 3.855 s. No production control change was required.
+
+### EPATH-201 — graph layout and interaction
+
+| Required presentation | Numerical or actual-DOM assertion |
+| --- | --- |
+| Four fixed columns | EPATH-142 uses the actual 1600 × 900 app, editor/splitter and balanced analysis pane. The four stage bounds must increase left-to-right; all 24 material nodes remain visible and hit-testable. |
+| Lower direct-use lane | EPATH-142 checks the band begins at End uses, direct nodes lie inside it, and HVAC conversion nodes remain above it. |
+| Thermal/site divider | EPATH-142 checks the equipment-conversion boundary lies between Load and End uses columns. |
+| Tapered conversion | EPATH-143 checks actual SVG fills at both endpoints against the independent thermal/site scales, cooling narrowing, heating widening and unchanged same-domain width. |
+| Fixed taxonomy | EPATH-145 asserts exact ordered driver, load, end-use and carrier lists, including cooling before heating and residual last, independent of magnitude. |
+| No overlapping center labels | EPATH-143 intersects actual ratio/node and ratio/ratio bounds, verifies tooltip containment, and retains full accessible labels. |
+| Automatic Other | EPATH-123 asserts strict <1% membership, exact-1% preservation, protected categories, scope/month/service isolation, exact carrier branches and immutable source/member identities. Expanding native details cannot increase graph nodes. |
+| Selection dimming | EPATH-145 checks directed path opacity 1 versus unrelated 0.25. Source-correspondence cards remain readable while their physical bars stay dimmed; focus alone cannot select a path. |
+
+Evidence: `energy_path_layout_epath142_browser_test.go`,
+`energy_path_ribbons_epath143_browser_test.go`,
+`energy_path_interaction_epath145_browser_test.go`,
+`energy_path_other_grouping_epath123_browser_test.go` and their pure-geometry
+regressions. The exact `^TestEPATH(123|142|143|145)` group passed in 16.258 s.
+Native keyboard traversal is verified separately from the existing DOM-order
+and synthetic-key assertions.
+
+`TestEPATH201ActualGraphTrustedKeyboardBrowser` drives a fresh test-owned browser
+with trusted native Tab/Shift+Tab, Enter, Space and Escape input. All 47 graph
+stops are traversed in exact forward and reverse order: four node columns,
+two native conversion controls, then same-domain SVG edge targets. Conversion
+SVG hits cannot introduce duplicate stops. Native activation selects the exact
+node/link and opens all seven inspector sections; Escape clears without losing
+the focused control. Focusing an unrelated dimmed card restores its readability
+but not its quantitative bars or selected path. Ratio focus exposes the complete
+tooltip without selecting. Event trust, retained graph DOM/geometry, immutable
+run/context and unchanged actual projection/layout/ribbon counters are checked.
+
+Evidence: `energy_path_keyboard_epath201_browser_test.go`; independent focused
+test passed in 3.102 s, plus three consecutive acceptance runs (7.100 s total).
+
+### EPATH-202 — inspector values and destinations
+
+The existing EPATH-150 actual-app test checks each primary node and link against
+the seven common inspector sections. Sources is a closed native disclosure;
+private source/rule IDs appear only after opening it. Driver raw/effective/
+allocated values stay independent (including signed heating pressure), cooling
+load retains sensible 32 / latent 8, and the cooling conversion shows thermal
+40 / site 10 / COP 4. Monthly missing accounting remains unknown, explicit zeroes
+remain zero, and annual source scalars cannot substitute for monthly values.
+
+The actual EPATH-151/152 tests activate verified destinations through real
+Topology, Profile, HVAC and Output adapters. They check exact selected entities,
+visible destination content, one history point and return to the original
+Energy context. Aggregate sources require a closed, Zone-grouped chooser, never
+an arbitrary first destination. Output selection binds the actual request type,
+key and frequency; ambiguous, derived or tabular evidence cannot fabricate an
+exact request. Real parsed-IDF destination tests provide separate identity
+evidence rather than relying exclusively on hand-built navigation metadata.
+
+Evidence: `energy_path_inspector_epath150_browser_test.go`,
+`energy_path_driver_navigation_epath151_browser_test.go`,
+`energy_path_service_navigation_epath152_browser_test.go` and their pure-model
+and parsed-IDF regressions. `^TestEPATH(150|151|152)` passed in 25.141 s.
+Exact rendered carrier/end-use split rows are verified separately below.
+
+`TestEPATH202ActualAppInspectorCarrierAndEndUseSplitsBrowser` checks exact
+rendered row keys, friendly labels and site-energy values in Building/Zone ×
+Annual/January. Water systems splits into electricity 5 / gas 5 annually;
+electricity has exactly seven end-use rows totalling 65, and gas two totalling
+105. The other three contexts use independently specified fixture factors
+0.25, 0.5 and 0.125, not production split helpers. Facility 68, classified 65
+and residual 3 remain separate from consumption rows. Purchased, produced,
+storage-discharge and charge context is checked separately in both periods.
+This test gives discharge an explicit canonical `storage_discharge` identity;
+the old fixture's generic `storage` label did not prove actual discharge.
+Sources stays closed, seven common sections remain, selected-node focus and
+graph DOM/paths are retained, inputs remain immutable and Analyze/Run calls are
+zero. Independent focused test passed in 4.107 s; no production change needed.
+
+### EPATH-203 — quality UI
+
+The actual EPATH-131 quality drawer test checks the four-stage line below the
+graph, partial Drivers versus complete Carriers, and a closed initial Data
+drawer. The EPATH-203 extension compares the same Drivers stage with
+requested-but-missing output and explicit not-requested output: their statuses
+and visible labels must differ, neither may fabricate a percentage, and only
+the former exposes its two exact missing-source rows. Missing quality remains
+unknown rather than inheriting a global mapped percentage.
+
+Clicking a quality stage opens the filtered Data drawer; source actions select
+the exact Output request, with frequency/key/index validation. Keyboard tab
+navigation and Escape retain the exact opener. Zone coverage uses the selected
+period (annual 82/18 versus January 60/40, absent month unknown), preserves
+Building-wide denominator labels, and cannot leak unrelated Zone sources.
+The auxiliary allocation test separately asserts direct / allocated /
+unassigned totals 50/80/20 over 150 and visible 33.3% / 53.3% / 13.3%, with
+unassigned energy kept outside the selected Zone. January's denominator and
+overmapped truth are independently checked.
+
+Evidence: `energy_path_quality_epath131_browser_test.go`,
+`energy_path_output_requests_epath131_browser_test.go`,
+`energy_path_auxiliary_allocation_browser_test.go` and its static contract.
+The focused quality/auxiliary group passed after EPATH-202 (4.499 s). Only test
+assertions were strengthened; production quality calculations were unchanged.
+
+### EPATH-204 — history and cached restoration
+
+Existing EPATH-151/152 actual destination tests verify Energy → Topology/Profile/
+HVAC → Back with the original scope, period, service, selection and drawer.
+EPATH-160 traverses actual cold main/Settings/Tools-Batch pages with browser
+back-forward caching disabled, restores the exact saved run and six-field
+Energy context, and counts forbidden analysis/simulation calls. Cache misses,
+stale selections and a changed input cannot invent a current result or rerun
+the model. EPATH-161 independently proves selected-node/inspector restoration
+in an unchanged cached context without recomputing layout/ribbons; ordinary
+node and drawer actions retain quantitative graph DOM.
+
+These existing tests did not prove that scope and period control changes create
+history entries. The missing behavior is now covered by
+`TestEPATH204ActualAppControlHistoryAndExactFocusBrowser`: actual controls drive
+Building → Zone → Back/Forward and Annual → January → Back/Forward, restoring
+all six primary fields, the selected inspector and all three drawer fields,
+including the exact nonempty Output source/request. The input-first select
+transaction records once; a following detached or live change event cannot
+erase a new selection, open Sources disclosure or Redo history. Invalid and
+disabled values are tested from Zone/January/Cooling, not just default values.
+Typing, case-normalized same-Zone commits and no-ops retain DOM, computation
+counters, focus and both history stacks. A valid branch after Undo clears Redo
+once. Selecting a heating-only month normalizes Cooling → All in that same
+transaction, and Back restores Cooling. Exact node/ratio/SVG focus is carried
+through the existing snapshot target ID; absent targets cannot select an
+arbitrary first node, and inspector actions do not become graph focus targets.
+
+The production handler now validates before applying the existing presentation
+helper, compares normalized controls using a temporary six-field state, and
+records the shared history snapshot before mutation. No new persistent Energy
+state, parallel history stack or aggregation logic was added.
+
+Independent review also found and reproduced a second defect: the final global
+semantic reveal could follow a retained Zone after the Simulation adapter had
+restored Building, replacing the saved node and focus. The narrowly scoped
+restore/preserve-filters guard now keeps the restored v2 Energy context and
+refreshes selection styles without navigating again. Explicit user destination
+navigation remains unchanged.
+`TestEPATH204HistoryPreservesEnergyWithRetainedAnalyzedZoneBrowser` constructs
+the real Office semantic entity from a parsed/analyzed IDF and exercises full
+Back/Redo for both scope and period with that retained selection. It checks
+exact Energy state/focus, unchanged semantic identity and cached result, and
+zero Analyze/Run, queued analysis or opened-view side effects.
+
+Both new focused tests passed independently (6.086 s); the exact Output-source
+extension also passed (4.611 s). Baseline `^TestEPATH(160|161)` passed in 17.859 s,
+and final `^TestEPATH(140|145|151|152|160|161|200|201|202|204)` integration
+regressions passed in 57.463 s. A response-only mutation check removed the narrow
+restore guard without editing production: the actual-IDF test failed because
+Building's selected exterior-wall driver became Office's electricity carrier.
+The temporary mutation was removed; the checked-in test uses production code.
+The full repository check identified two older static assertions that required
+the helper to mutate live state directly. They now require the same local
+adapter on temporary state, followed in order by history capture, live assignment
+and rendering, and explicitly reject the old pre-snapshot mutation. Both
+updated static tests pass; their backend-call prohibitions remain intact.
+Multi-context Annual ↔ month layout reuse remains the separate EPATH-211
+requirement; these tests do not claim that later cache work is complete.

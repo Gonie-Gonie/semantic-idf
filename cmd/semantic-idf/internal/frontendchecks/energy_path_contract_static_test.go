@@ -119,7 +119,7 @@ func TestFrontendEnergyPathV2DefaultsAndLegacyResultGuidance(t *testing.T) {
 		`renderEnergyPathView(explanation, state, simulationEnergySceneOptions(scene))`,
 		`outputObjects: scene.result?.purposeRunPlan?.outputObjects || []`,
 		`inspectorActionsForNode:`,
-		`updateEnergyPathControlState(event, state, explanation)`,
+		`updateEnergyPathControlState(event, next, explanation)`,
 		`"simulation.energyPathUpgradeUnavailable"`,
 		`available variables remain in Series`,
 		`openSimulationEnergyPathTopologyAirCoupling`,
@@ -348,8 +348,24 @@ func TestFrontendEnergyPathUsesPrecomputedZoneResults(t *testing.T) {
 		t.Fatal("single Energy view duplicates its graph with the old summary overview")
 	}
 	changeHandler := sliceBetween(simulation, "function handleSimulationEnergyDashboardChange", "function handleSimulationHVACResultsInput")
-	if !strings.Contains(changeHandler, "updateEnergyPathControlState(event, state, explanation)") {
-		t.Fatal("Simulation change handler does not route Energy Path controls to the local v2 state adapter")
+	// EPATH-204 uses the same local adapter on a temporary six-field state so
+	// history captures the original selection/context before any live mutation.
+	previous := -1
+	for _, required := range []string{
+		`Object.fromEntries(simulationEnergyPrimaryKeys.map((key) => [key, state[key]]))`,
+		`updateEnergyPathControlState(event, next, explanation)`,
+		`recordViewHistory();`,
+		`Object.assign(state, next);`,
+		`renderSimulationEnergyDashboard(state.simulationResult);`,
+	} {
+		index := strings.Index(changeHandler, required)
+		if index <= previous {
+			t.Fatalf("Energy Path control/history transaction is missing or out of order: %q", required)
+		}
+		previous = index
+	}
+	if strings.Contains(changeHandler, "updateEnergyPathControlState(event, state, explanation)") {
+		t.Fatal("Energy Path control adapter mutates live state before the history snapshot")
 	}
 	for _, backendCall := range []string{"postJSON(", "fetch(", "backend."} {
 		if strings.Contains(changeHandler, backendCall) {

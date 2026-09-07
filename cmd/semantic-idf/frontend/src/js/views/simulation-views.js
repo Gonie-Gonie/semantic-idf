@@ -6,6 +6,7 @@ import { getSemanticNavigationCache } from "../semantic-navigation-cache.js";
 import { openSelectionInView, selectSemanticEntity } from "../selection-controller.js";
 import { recordViewHistory } from "../view-history.js";
 import {
+  ENERGY_PATH_PERIODS,
   energyPathGraphForState,
   energyPathResultForState,
   energyPathInspectorSources,
@@ -49,6 +50,12 @@ let simulationEnergyDetailsReturnSelector = "";
 let simulationEnergyDrawer = { tab: "data", stage: "", outputSource: "" };
 const simulationEnergySceneSlot = createEnergyPathSceneSlot();
 const simulationEnergyPrimaryKeys = Object.keys(migrateEnergyPathState().primary);
+const simulationEnergyControls = Object.freeze({
+  scope: { attribute: "data-simulation-energy-scope", key: "simulationEnergyScopeKind", values: ["building", "zone"] },
+  zone: { attribute: "data-simulation-energy-zone-name", key: "simulationEnergyZoneName" },
+  period: { attribute: "data-simulation-energy-path-period", key: "simulationEnergyPeriod", values: ENERGY_PATH_PERIODS.map((period) => period.value) },
+  service: { attribute: "data-simulation-energy-service", key: "simulationEnergyService", values: ["all", "cooling", "heating"] },
+});
 const legacyEnergyPresentation = Object.freeze({ signMode: "display", sankeyMode: "detailed", nodeLimit: 0 });
 
 export function captureSimulationEnergyWorkspaceContext() {
@@ -683,6 +690,14 @@ function configureSimulationPanelNavigation() {
       return Boolean(simulationNavigationDestination(selection, context) || context.genericCanReveal(selection));
     },
     async reveal(selection, options, context) {
+      if (options.action === "restore" && options.preserveFilters && state.simulationActiveResultView === "energy" &&
+        isEnergyPathV2(state.simulationResult?.purposeResults?.energyExplanation)) {
+        // The Simulation adapter already restored the exact Energy context.
+        // A retained semantic Zone is not a fresh request to change its scope,
+        // select a different graph node, or replace the restored control focus.
+        context.refreshSelectionStyles(selection, state.globalHover);
+        return Boolean(context.genericFindTarget(selection));
+      }
       const destination = simulationNavigationDestination(selection, context);
       if (!destination) {
         return context.genericReveal(selection, options);
@@ -1015,9 +1030,47 @@ function focusSimulationNavigationTarget(target, options = {}) {
   }
 }
 
+function simulationEnergyHistoryFocusTarget() {
+  const target = document.activeElement;
+  if (state.simulationActiveResultView !== "energy" || !elements.simulationEnergyDashboard?.contains(target)) return "";
+  for (const [kind, control] of Object.entries(simulationEnergyControls)) {
+    if (target.matches(`[${control.attribute}]`)) return `energy-path:control:${kind}`;
+  }
+  // Only the actual focused graph control belongs to this namespace. Inspector
+  // actions and dormant selections retain the common adapter's existing rules.
+  if (target.matches("button[data-energy-path-layout-node]")) {
+    return `energy-path:node:${encodeURIComponent(target.dataset.energyPathLayoutNode)}`;
+  }
+  if (target.matches("button[data-energy-path-bridge-ratio]")) {
+    return `energy-path:ratio:${encodeURIComponent(target.dataset.energyPathBridgeRatio)}`;
+  }
+  if (target.matches("[data-energy-path-link-hit]") && target.tabIndex >= 0) {
+    return `energy-path:edge:${encodeURIComponent(target.dataset.energyPathLinkHit)}`;
+  }
+  return "";
+}
+
+function restoreSimulationEnergyHistoryFocus(targetID) {
+  if (state.simulationActiveResultView !== "energy" || typeof targetID !== "string") return;
+  const match = /^energy-path:(control|node|ratio|edge):(.+)$/.exec(targetID);
+  if (!match) return;
+  let id;
+  try { id = decodeURIComponent(match[2]); } catch { return; }
+  const attribute = match[1] === "control" ? simulationEnergyControls[id]?.attribute : {
+    node: "data-energy-path-layout-node", ratio: "data-energy-path-bridge-ratio", edge: "data-energy-path-link-hit",
+  }[match[1]];
+  if (!attribute) return;
+  const matches = [...(elements.simulationEnergyDashboard?.querySelectorAll(`[${attribute}]`) || [])]
+    .filter((element) => (match[1] === "control" || element.getAttribute(attribute) === id) && !element.disabled &&
+      element.tabIndex >= 0 && element.getClientRects().length && getComputedStyle(element).visibility !== "hidden");
+  if (matches.length === 1) matches[0].focus({ preventScroll: true });
+}
+
 export function captureSimulationNavigationContext(context) {
+  const focusedTarget = simulationEnergyHistoryFocusTarget();
   return {
     ...context.genericCaptureContext(),
+    ...(focusedTarget ? { targetId: focusedTarget, entityId: "" } : {}),
     navigationRevealTarget: simulationNavigationRevealTarget ? { ...simulationNavigationRevealTarget, direct: null } : null,
     activeResultView: state.simulationActiveResultView || "energy",
     energyScopeKind: state.simulationEnergyScopeKind || "building",
@@ -1097,6 +1150,7 @@ export async function restoreSimulationNavigationContext(snapshot = {}, context)
   simulationNavigationRevealTarget = snapshot.navigationRevealTarget ? { ...snapshot.navigationRevealTarget } : null;
   renderSimulation();
   await context.genericRestoreContext(snapshot);
+  restoreSimulationEnergyHistoryFocus(snapshot.targetId);
   restoreSimulationElementScroll(elements.simulationEnergyDashboard, snapshot.energyScrollTop);
   restoreSimulationElementScroll(elements.simulationHeatFlow, snapshot.heatFlowScrollTop);
   restoreSimulationElementScroll(elements.simulationHVACLoopResults, snapshot.hvacScrollTop);
@@ -6257,15 +6311,40 @@ function simulationHVACGraphName(value = "") {
 
 export function handleSimulationEnergyDashboardChange(event) {
   if (!(event.target instanceof Element)) return;
+  const target = event.target;
+  if (!elements.simulationEnergyDashboard?.contains(target)) return;
+  const entry = Object.entries(simulationEnergyControls).find(([, control]) => target.matches(`[${control.attribute}]`));
+  if (!entry) return;
+  const [kind, control] = entry;
   const explanation = state.simulationResult?.purposeResults?.energyExplanation || {};
   if (!isEnergyPathV2(explanation)) return;
-  const update = updateEnergyPathControlState(event, state, explanation);
-  if (update.handled && update.render) {
-    const attribute = ["data-simulation-energy-scope", "data-simulation-energy-zone-name", "data-simulation-energy-path-period", "data-simulation-energy-service"]
-      .find((name) => event.target.hasAttribute(name));
-    renderSimulationEnergyDashboard(state.simulationResult);
-    if (attribute) elements.simulationEnergyDashboard.querySelector(`[${attribute}]`)?.focus({ preventScroll: true });
+  // A search input is not a committed Zone choice until change. Keep its text,
+  // native focus, current graph, selection and Back/Forward stacks untouched.
+  if (kind === "zone" && event.type === "input") return;
+  let value = target.value;
+  const valid = !target.disabled && (kind === "zone"
+    ? Boolean(value = energyPathZoneNames(explanation).find((name) => name.toLowerCase() === String(value || "").trim().toLowerCase()))
+    : control.values.includes(value) && [...(target.options || [])].some((option) => option.value === value && !option.disabled && !option.closest("optgroup")?.disabled));
+  // Reject invalid / disabled values before the presentation helper's legacy
+  // fallback defaults can change a valid Zone, month or service context.
+  if (!valid || value === state[control.key]) {
+    target.value = state[control.key] || "";
+    return;
   }
+  target.value = value;
+  const next = Object.fromEntries(simulationEnergyPrimaryKeys.map((key) => [key, state[key]]));
+  const update = updateEnergyPathControlState(event, next, explanation);
+  if (!update.handled || !update.render) return;
+  if (Object.values(simulationEnergyControls).every(({ key }) => next[key] === state[key])) {
+    target.value = state[control.key] || "";
+    return;
+  }
+  // One shared history point before any primary mutation. A select's following
+  // change event becomes a no-op, including if a node was selected meanwhile.
+  recordViewHistory();
+  Object.assign(state, next);
+  renderSimulationEnergyDashboard(state.simulationResult);
+  elements.simulationEnergyDashboard.querySelector(`[${control.attribute}]`)?.focus({ preventScroll: true });
 }
 
 function handleSimulationHVACResultsInput(event) {

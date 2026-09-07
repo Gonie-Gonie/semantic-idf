@@ -126,6 +126,9 @@ try {
   const widget = mount.querySelector("[data-energy-path-auxiliary-allocation-quality]");
   assert(widget?.dataset.energyPathExpectedValue === "150", "Zone view omitted auxiliary allocation quality");
   assert(widget.querySelectorAll("[data-energy-path-auxiliary-allocation-ratio]").length === 3, "Zone quality must show direct, allocated, and unassigned ratios");
+  // EPATH-203: verify all three independently labelled visible percentages.
+  assert(widget.querySelector('[data-energy-path-auxiliary-allocation-ratio="direct"]')?.textContent.includes("33.3%"), "direct ratio is not readable or was merged with allocated");
+  assert(widget.querySelector('[data-energy-path-auxiliary-allocation-ratio="allocated"]')?.textContent.includes("53.3%"), "allocated ratio is not readable or was merged with direct");
   assert(widget.querySelector('[data-energy-path-auxiliary-allocation-ratio="unassigned"]')?.textContent.includes("13.3%"), "unassigned ratio is not readable");
   assert(widget.textContent.includes("Building allocation used by this Zone view"), "Building-wide quality scope is ambiguous");
   assert(widget.textContent.includes("never added to the selected Zone"), "unassigned Building-only behavior is unexplained");

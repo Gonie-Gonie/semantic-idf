@@ -220,11 +220,31 @@ try{
  mount(missingQuality);
  const unknownStages=[...host.querySelectorAll("[data-energy-path-quality-stage]")];
  check(unknownStages.length===4&&unknownStages.every(item=>!item.textContent.includes("100")&&!item.textContent.toLowerCase().includes("complete")),"missing quality payload invented stage completeness from global mapped100");
+ // EPATH-203: compare the SAME stage with requested-but-missing versus
+ // explicitly not-requested evidence, not unrelated partial/complete stages.
+ const missingDrivers=structuredClone(explanation);
+ missingDrivers.quality.drivers=level("missing",0,2);
+ missingDrivers.nodes=missingDrivers.nodes.filter(node=>node.level!=="driver");
+ missingDrivers.links=missingDrivers.links.filter(link=>link.relation!=="driver_to_load");
+ missingDrivers.completeness.sourceAvailability=[
+  {name:"Zone People Convective Heating Energy",level:"heat",status:"missing"},
+  {name:"Zone Lights Convective Heating Energy",level:"heat",status:"missing"},
+ ];
+ mount(missingDrivers,[...requestObjects,{objectType:"Output:Variable",keyValue:"Office",variableName:"Zone Lights Convective Heating Energy",reportingFrequency:"Monthly",objectIndex:12}]);
+ const missingDriverStage=host.querySelector('[data-energy-path-quality-line] [data-energy-path-quality-stage="drivers"]');
+ check(missingDriverStage?.dataset.energyPathQualityStatus==="missing"&&/missing/i.test(missingDriverStage.textContent)&&!missingDriverStage.textContent.includes("Not requested")&&!missingDriverStage.textContent.includes("%"),"requested-but-missing Drivers stage became not-requested or fabricated a completeness percentage");
+ missingDriverStage?.click();
+ check(state.simulationEnergyDetailsOpen&&drawer().stage==="drivers"&&drawer().tab==="data","missing Drivers quality action did not open its own filtered Data drawer");
+ const missingRows=[...host.querySelectorAll('[data-energy-path-source-availability]')];
+ check(missingRows.length===2&&missingRows.every(row=>row.dataset.energyPathAvailabilityStatus==="missing"),"missing Drivers drawer lost exact requested-but-missing source rows");
  const light={schema:explanation.schema,scope:explanation.scope,nodes:[],links:[],sources:[],quality:{...quality,drivers:level("not_requested"),loads:level("not_requested"),endUses:level("not_requested"),carriers:level("not_requested"),ratios:level("not_requested"),driverToLoadStatus:"not_requested",endUseToCarrierStatus:"not_requested"}};
  mount(light,[]);
  check(host.querySelectorAll("[data-energy-path-quality-stage]").length===4&&host.textContent.includes("Not requested"),"quality-only Light result disappeared or became missing");
+ const notRequestedDriverStage=host.querySelector('[data-energy-path-quality-line] [data-energy-path-quality-stage="drivers"]');
+ check(notRequestedDriverStage?.dataset.energyPathQualityStatus==="not_requested"&&notRequestedDriverStage.textContent.includes("Not requested")&&!/missing|%/i.test(notRequestedDriverStage.textContent),"not-requested Drivers stage was conflated with missing output or a zero percentage");
  const toggle=host.querySelector("[data-energy-path-details-toggle]");toggle?.click();
  check(state.simulationEnergyDetailsOpen&&host.querySelector("[data-energy-path-quality-line]"),"actual global rerender discarded quality-only result");
+ check(!host.querySelector('[data-energy-path-source-availability],[data-energy-path-output-request]'),"not-requested result fabricated missing source or Output request rows");
  mount(explanation);
  host.style.width="360px";
  const narrowLine=host.querySelector("[data-energy-path-quality-line]");
