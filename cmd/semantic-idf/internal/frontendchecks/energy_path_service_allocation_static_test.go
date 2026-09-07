@@ -11,7 +11,7 @@ func TestEPATH100FrontendServiceAllocationContract(t *testing.T) {
 	for _, required := range []string{
 		`const ENERGY_PATH_UNASSIGNED_BUILDING_HVAC = "unassigned_building_hvac_energy"`,
 		`export function isEnergyPathUnassignedBuildingHVACItem`,
-		`basisToken === "service_path_allocation"`,
+		`kind === "service_path_allocation"`,
 		`"Allocated by HVAC service-path load share"`,
 		`data-energy-path-quality-detail="${ENERGY_PATH_UNASSIGNED_BUILDING_HVAC}"`,
 		`"Unassigned building HVAC energy"`,

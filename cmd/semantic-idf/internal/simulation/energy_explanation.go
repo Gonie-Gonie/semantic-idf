@@ -229,6 +229,8 @@ type EnergyExplanationNode struct {
 	allocationSourceIDs           []string
 	simultaneousLoadContributions []energyExplanationSimultaneousLoadContribution
 	endUseCarriers                []string
+	inspectorDecodedFromJSON      bool
+	inspectorValuePresence        uint8
 }
 
 // EnergyExplanationLoadComponent keeps sensible and latent delivery inside a

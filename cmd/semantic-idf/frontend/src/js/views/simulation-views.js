@@ -1385,6 +1385,7 @@ export function renderSimulationEnergyDashboard(result) {
       ${renderEnergyPathView(explanation, state, {
         outputObjects: result?.purposeRunPlan?.outputObjects || [],
         inspectorActionsForNode: (node, sources, viewState) => simulationEnergyInspectorActions(node, sources, viewState, result),
+        relatedEntitiesForItem: simulationEnergyInspectorRelatedEntities,
       })}`;
     pruneSimulationSemanticBindings();
     return;
@@ -1454,11 +1455,101 @@ export function simulationEnergyInspectorActions(node = {}, sourceDetails = [], 
   };
 }
 
+export function simulationEnergyInspectorRelatedEntities(item = {}, sources = [], viewState = state) {
+  const report = viewState.report || {};
+  const geometry = report.geometry || {};
+  const topology = geometry.topology || {};
+  const serviceModel = report.hvac?.serviceModel || {};
+  const navigation = getSemanticNavigationCache(viewState.semanticProjection, {
+    textHash: viewState.reportAnalysisKey || viewState.lastAnalyzedKey || "",
+  });
+  const generic = t("simulation.energyPathRelatedEntity", {}, "Related model entity");
+  const airLabel = t("simulation.energyPathRelatedAirCoupling", {}, "Air coupling");
+  const connectionLabel = t("simulation.energyPathRelatedConnection", {}, "Thermal connection");
+  const evidenceIDs = new Set([
+    ...(item.sourceIds || []), item.ruleId,
+    ...sources.flatMap((source) => [source.id, source.ruleId, ...(source.inputSourceIds || [])]),
+  ].filter(Boolean));
+  const humanLabel = (label, id, fallback = generic) => {
+    const text = String(label || "").trim();
+    return text && text !== id && !evidenceIDs.has(text) ? text : fallback;
+  };
+  const records = new Map();
+  const addRecord = (record, kind, label = record?.label || record?.name || record?.objectName) => {
+    if (!record?.id || records.has(record.id)) return;
+    records.set(record.id, { id: record.id, kind: record.kind || kind, label: humanLabel(label, record.id) });
+  };
+  for (const [items, kind] of [
+    [geometry.zones, "zone"], [geometry.spaces, "space"],
+    [geometry.surfaces, "surface"], [geometry.windows, "window"],
+    [topology.nodes, "thermal_node"], [topology.openings, "thermal_opening"],
+    [serviceModel.navigation?.entities, "hvac_entity"],
+  ]) for (const record of items || []) addRecord(record, kind);
+  for (const record of topology.boundaries || []) addRecord(record, "thermal_boundary", record.surfaceName);
+  const endpointLabel = (id) => {
+    const entity = navigation.entity(id);
+    return entity ? humanLabel(entity.label, id, "") : records.get(id)?.label || "";
+  };
+  const airIDs = new Set((topology.airCouplings || []).map((record) => record.id));
+  for (const [items, kind, fallback] of [
+    [topology.airCouplings, "thermal_air_coupling", airLabel],
+    [topology.connections, "thermal_connection", connectionLabel],
+  ]) for (const record of items || []) {
+    const endpoints = [endpointLabel(record.fromNodeId), endpointLabel(record.toNodeId)].filter(Boolean);
+    addRecord(record, kind, record.objectName || (endpoints.length ? `${fallback} · ${endpoints.join(" / ")}` : fallback));
+  }
+  const ids = new Set([
+    ...(item.relatedEntityIds || []),
+    ...sources.flatMap((source) => source.relatedEntityIds || []),
+  ]);
+  const graph = energyPathGraphForState(viewState.simulationResult?.purposeResults?.energyExplanation || {}, viewState);
+  const nodeIDs = new Set([item.id, ...(item.originalNodeIds || [])]);
+  const pathIDs = new Set([
+    ...(item.relatedPathIds || []),
+    ...(graph.links || []).filter((link) => nodeIDs.has(link.fromId) || nodeIDs.has(link.toId))
+      .flatMap((link) => link.relatedPathIds || []),
+  ]);
+  const paths = (serviceModel.zoneServices || []).flatMap((zone) => zone.paths || []);
+  for (const path of paths) {
+    if (!pathIDs.has(path.id)) continue;
+    addRecord(path, "hvac_path", simulationEnergyServicePathFocusLabel(path));
+    ids.add(path.id);
+    // Only explicit path references identify related systems/components. Never
+    // infer a loop from service type or pick an arbitrary matching equipment.
+    for (const record of [path.airLoop, path.plantLoop, path.condenserLoop, path.sourceSystem,
+      path.refrigerantSystem, path.delivery, path.deliveryWrapper, ...(path.conditioning || [])]) {
+      if (!record?.id) continue;
+      addRecord(record, "hvac_component", record.displayName || record.name || record.objectName);
+      ids.add(record.id);
+    }
+  }
+  for (const id of pathIDs) ids.add(id);
+  return [...ids].filter((id) => typeof id === "string" && id.trim()).map((id) => {
+    const semantic = navigation.entity(id);
+    const record = records.get(id);
+    return {
+      id,
+      label: semantic ? humanLabel(semantic.label, id, record?.label || generic) : record?.label || generic,
+      kind: semantic?.kind || record?.kind || "model_entity",
+      existingAirCouplingAction: viewState.simulationEnergyScopeKind === "zone" && airIDs.has(id),
+    };
+  });
+}
+
 function simulationSelectedEnergyPathNode() {
   const explanation = state.simulationResult?.purposeResults?.energyExplanation || {};
   const graph = energyPathGraphForState(explanation, state);
   const id = state.simulationEnergySelection || "";
   return (graph.nodes || []).find((node) => node.id === id || (node.originalNodeIds || []).includes(id)) || null;
+}
+
+function simulationSelectedEnergyPathItem() {
+  const node = simulationSelectedEnergyPathNode();
+  if (node) return node;
+  const explanation = state.simulationResult?.purposeResults?.energyExplanation || {};
+  const graph = energyPathGraphForState(explanation, state);
+  const id = state.simulationEnergySelection || "";
+  return (graph.links || []).find((link) => link.id === id || (link.originalLinkIds || []).includes(id)) || null;
 }
 
 
@@ -5743,8 +5834,8 @@ export function handleSimulationSeriesInspectClick(event) {
     event.preventDefault();
     event.stopPropagation();
     if (pathSeriesButton.disabled) return;
-    const node = simulationSelectedEnergyPathNode();
-    const actions = node ? simulationEnergyInspectorActions(node) : { series: [] };
+    const item = simulationSelectedEnergyPathItem();
+    const actions = item ? simulationEnergyInspectorActions(item) : { series: [] };
     const requestedID = pathSeriesButton.dataset.energyPathSeriesId || "";
     const period = pathSeriesButton.dataset.energyPathSeriesPeriod || "annual";
     const exact = actions.series.find((candidate) => candidate.id === requestedID && candidate.period === period);

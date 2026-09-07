@@ -74,7 +74,7 @@ const load = (id, label, value, serviceKind, sensible, latent, badges = []) => (
   latentShare: latent / value, badges,
   sourceIds: [serviceKind + "-sensible", serviceKind + "-latent"],
 });
-const period = (id, cooling, heating) => ({ id, kind: "monthly", nodes: [cooling, heating], links: [], warnings: [] });
+const period = (id, cooling, heating) => ({ id, kind: "monthly", nodes: [cooling, heating].map((node) => ({ ...node, period: id })), links: [], warnings: [] });
 
 try {
   const module = await import("/src/js/views/energy-path-view.js");

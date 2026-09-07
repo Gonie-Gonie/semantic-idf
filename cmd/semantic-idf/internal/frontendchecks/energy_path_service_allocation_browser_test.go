@@ -71,7 +71,7 @@ const partialCompleteness = {
 };
 const nodes = [
   { id: "load.cooling.office", level: "load", kind: "load.cooling", label: "Office cooling load", value: 40, rawValue: 40, effectiveValue: 40, allocatedValue: 40, unit: "kWh", scaleDomain: "thermal", period: "annual", zoneName: "Office", serviceKind: "cooling" },
-  { id: "end_use.cooling.office", level: "end_use", kind: "end_use.cooling", label: "Allocated cooling energy", value: 10, rawValue: 10, effectiveValue: 10, allocatedValue: 10, unit: "kWh", scaleDomain: "site", period: "annual", zoneName: "Office", serviceKind: "cooling", endUse: "cooling", basis: "service_path_allocation", sourceIds: ["meter.cooling"] },
+  { id: "end_use.cooling.office", level: "end_use", kind: "end_use.cooling", label: "Allocated cooling energy", value: 10, rawValue: 10, effectiveValue: 10, allocatedValue: 10, unit: "kWh", scaleDomain: "site", period: "annual", zoneName: "Office", serviceKind: "cooling", endUse: "cooling", basis: "service_path_allocation", allocationExplanation: "Allocated by the related HVAC service-path load share", sourceIds: ["meter.cooling"] },
   { id: "carrier.electricity.office", level: "carrier", kind: "carrier.electricity", label: "Electricity", value: 10, unit: "kWh", scaleDomain: "site", period: "annual", zoneName: "Office", carrier: "electricity", basis: "service_path_allocation" },
   { id: "residual.unassigned_building_hvac_energy.office", level: "end_use", kind: "unassigned_building_hvac_energy", label: "Unassigned building HVAC energy", value: 12, unit: "kWh", scaleDomain: "site", period: "annual", zoneName: "Office", endUse: "cooling", basis: "residual", sourceIds: ["meter.cooling"] },
 ];
@@ -141,7 +141,9 @@ try {
 
   mount.innerHTML = module.renderEnergyPathView(explanation, { ...state, simulationEnergySelection: allocated.id });
   const basis = mount.querySelector('[data-energy-path-inspector-value="basis"] dd')?.textContent || "";
-  assert(basis.includes("Allocated by HVAC service-path load share") && basis.includes("service_path_allocation"), "inspector did not explain the service-path allocation basis");
+  assert(basis.includes("Allocated by HVAC service-path load share") && !basis.includes("service_path_allocation"), "inspector did not explain the service-path allocation basis in plain language");
+  const sourceDetails = mount.querySelector('[data-energy-path-detail-section="sources"]');
+  assert(sourceDetails?.tagName === "DETAILS" && !sourceDetails.open && sourceDetails.querySelector('[data-energy-path-source-metadata="basis"] dd')?.textContent === "service_path_allocation", "exact allocation basis was not preserved inside collapsed Source data");
   assert(mount.querySelector('[data-energy-path-zone-coverage-notice="partial"]'), "EPATH-094 partial Zone notice was lost");
   assert(mount.querySelectorAll(".energy-path-partial-coverage-badge").length === 1, "EPATH-094 Known-only carrier marker was lost");
   assert(!mount.textContent.includes("Unassigned building HVAC energy"), "selected Zone graph displayed unassigned Building energy");

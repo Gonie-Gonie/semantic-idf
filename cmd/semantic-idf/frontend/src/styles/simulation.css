@@ -1288,6 +1288,7 @@
   visibility: hidden;
   width: 280px;
   max-width: 70vw;
+  white-space: normal;
   border: 1px solid var(--line);
   border-radius: 6px;
   box-shadow: 0 4px 14px color-mix(in srgb, var(--ink) 15%, transparent);
@@ -1777,7 +1778,9 @@
 
 .energy-path-node-inspector {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
+  min-width: 0;
   border: 1px solid var(--line);
   border-radius: 7px;
   background: var(--surface-2);
@@ -1786,14 +1789,16 @@
 
 .energy-path-node-inspector > header {
   display: flex;
+  min-width: 0;
   gap: 8px;
   align-items: baseline;
   justify-content: space-between;
-  color: var(--text);
+  color: var(--ink);
   font-size: 11px;
 }
 
 .energy-path-node-inspector > header span {
+  min-width: 0;
   overflow: hidden;
   color: var(--muted);
   text-overflow: ellipsis;
@@ -1908,6 +1913,114 @@
   color: var(--text);
   font-size: 10px;
   font-weight: 650;
+}
+
+.energy-path-detail-section {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  border-top: 1px solid var(--line);
+  padding-top: 9px;
+  color: var(--ink);
+  font-size: 11px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.energy-path-detail-section:not([open])[data-energy-path-detail-section="sources"] > :not(summary) {
+  display: none;
+}
+
+.energy-path-detail-section > h5,
+.energy-path-detail-section > summary {
+  margin: 0;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.energy-path-detail-section > summary {
+  display: list-item;
+  list-style-position: inside;
+  cursor: pointer;
+}
+
+.energy-path-detail-section p,
+.energy-path-detail-section h6 {
+  margin: 0;
+}
+
+.energy-path-detail-section h6,
+.energy-path-detail-section dt,
+.energy-path-detail-section dd,
+.energy-path-detail-section small,
+.energy-path-detail-section .energy-path-inspector-action-group > h5,
+.energy-path-detail-section .energy-path-action-unavailable {
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.energy-path-detail-section dt,
+.energy-path-detail-section small,
+.energy-path-detail-section .energy-path-detail-empty {
+  color: var(--ink-soft);
+}
+
+.energy-path-detail-section dd,
+.energy-path-detail-section .energy-path-inspector-action,
+.energy-path-detail-section .energy-path-inspector-action-group details > summary {
+  color: var(--ink);
+}
+
+.energy-path-detail-section dl {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr));
+}
+
+.energy-path-detail-section .energy-path-inspector-source-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr));
+}
+
+.energy-path-detail-section .energy-path-inspector-source-group,
+.energy-path-detail-section .energy-path-inspector-sources {
+  min-width: 0;
+}
+
+.energy-path-detail-section .energy-path-inspector-source > header strong,
+.energy-path-detail-section .energy-path-inspector-source > header span,
+.energy-path-detail-section .energy-path-inspector-source-group > header,
+.energy-path-detail-section .energy-path-inspector-sources > h5 {
+  color: var(--ink);
+  font-size: 11px;
+}
+
+.energy-path-detail-section .energy-path-inspector-source {
+  background: var(--surface);
+}
+
+.energy-path-detail-breakdown {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.energy-path-detail-entities,
+.energy-path-member-source-evidence,
+.energy-path-technical-context {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding-left: 18px;
+  overflow-wrap: anywhere;
+}
+
+.energy-path-member-source-evidence code {
+  display: block;
+}
+
+.energy-path-detail-section > summary:focus-visible,
+.energy-path-detail-section button:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
 }
 
 .energy-path-link-source-ids {

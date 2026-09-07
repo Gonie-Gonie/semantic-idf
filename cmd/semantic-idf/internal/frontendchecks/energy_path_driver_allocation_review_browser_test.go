@@ -146,7 +146,9 @@ try {
   assert(valueText(inspector, "allocated").includes("12"), "inspector allocated value is not distinct");
   let basisNote = inspector.querySelector('[data-energy-path-allocation-explanation="heat_balance_share"]');
   assert(basisNote, "allocated driver inspector has no heat_balance_share explanation hook");
-  assert(basisNote.textContent.includes("heat_balance_share"), "allocation note does not name heat_balance_share");
+  assert(!basisNote.textContent.includes("heat_balance_share") && basisNote.textContent.toLowerCase().includes("heat-balance"), "allocation note must explain heat-balance allocation without exposing a technical basis token");
+  const sourceBasis = inspector.querySelector('[data-energy-path-detail-section="sources"] [data-energy-path-source-metadata="basis"] dd');
+  assert(sourceBasis?.textContent === "heat_balance_share" && !sourceBasis.closest("details").open, "exact heat_balance_share provenance is not retained inside collapsed Source data");
   assert(basisNote.textContent.toLowerCase().includes("not a direct causal"), "allocation note does not explain non-causal interpretation");
 
   root = render({ ...annualState, simulationEnergyPeriod: "M1", simulationEnergySelection: annualPeople.id });

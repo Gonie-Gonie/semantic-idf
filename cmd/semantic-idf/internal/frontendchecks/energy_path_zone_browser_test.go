@@ -278,7 +278,9 @@ try {
   assert(inspector.querySelector('[data-energy-path-inspector-value="multiplier"] dd').textContent === "10", "Inspector did not use the selected Zone multiplier detail");
   assert(inspector.querySelector('[data-energy-path-inspector-value="effective"] dd').textContent.includes("10"), "Inspector did not show the effective contribution");
   assert(inspector.querySelector('[data-energy-path-inspector-value="allocated"] dd').textContent.includes("2"), "Inspector did not keep allocation separate from effective contribution");
-  assert(inspector.querySelector('[data-energy-path-inspector-value="application"] dd').textContent === "requires_zone_multiplier", "Inspector did not expose the multiplier application token");
+  assert(inspector.querySelector('[data-energy-path-inspector-value="application"] dd').textContent === "Zone multiplier required", "Inspector did not explain the multiplier application in plain language");
+  const applicationSource = inspector.querySelector('[data-energy-path-detail-section="sources"] [data-energy-path-source-metadata="application"] dd');
+  assert(applicationSource?.textContent === "requires_zone_multiplier" && !applicationSource.closest("details").open, "exact multiplier application token is not preserved inside collapsed Source data");
   assert(inspector.querySelector('[data-energy-path-inspector-section="breakdown"]'), "Inspector did not group additive source details as Breakdown");
   assert(inspector.querySelector('[data-energy-path-inspector-section="context"]'), "Inspector did not keep context-only source details visible");
   assert(inspector.querySelector('[data-energy-path-inspector-section="balance"]'), "Inspector did not group reconciliation source details as Balance");

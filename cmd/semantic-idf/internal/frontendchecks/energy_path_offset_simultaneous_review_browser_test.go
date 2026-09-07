@@ -176,7 +176,9 @@ try {
   let section = offset(root, "load.cooling.building");
   assert(section?.querySelector('[data-energy-path-offset-target="cooling"][data-energy-path-offset-category="air.infiltration"]'), "Building annual cooling offset target/category missing");
   assert(section.textContent.includes("74") && section.textContent.includes("Building infiltration"), "Building annual cooling offset value missing");
-  assert(section.textContent.includes("signed_heat_balance_offset") && section.textContent.toLowerCase().includes("non-additive") && section.textContent.toLowerCase().includes("non-causal"), "offset basis/non-causal explanation missing");
+  assert(!section.textContent.includes("signed_heat_balance_offset") && section.textContent.toLowerCase().includes("non-additive") && section.textContent.toLowerCase().includes("non-causal"), "offset non-additive/non-causal explanation is missing or exposes a technical token");
+  const offsetSources = root.querySelector('[data-energy-path-inspector="load.cooling.building"] [data-energy-path-detail-section="sources"]');
+  assert(offsetSources?.textContent.includes("signed_heat_balance_offset") && !offsetSources.open, "technical offset basis is not preserved inside collapsed Source data");
 
   root = render({ ...state, simulationEnergyPeriod: "M1" });
   assertMetric(ratio(root, "load.cooling.building"), 20, 200, 0.1, "Building M1 cooling");

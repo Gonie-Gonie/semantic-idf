@@ -119,6 +119,22 @@ the checklist or its final acceptance scenarios.
   and original data. Verification: pure topology/port geometry, actual 1.37px
   ribbon hit-testing outside its fill, directed path/counterpart selection,
   monthly link details/history, fixed viewport and default/selected screenshots.
+- EPATH-150: every node/link inspector now shares seven ordered sections:
+  representation, value, breakdown, calculation basis, related model entities,
+  closed Source data and actions. Source/rule IDs and raw formulas stay in Source
+  data; grouped contribution values remain expandable. Friendly exact model
+  labels and existing Series/HVAC/counterpart actions are retained, including
+  source-backed monthly Series navigation from selected links.
+  Independent raw/effective/allocated values never borrow annual source scalars.
+  Original driver signs are combined individually; ambiguous directions remain
+  unavailable. Missing multipliers may be derived only from consistent, known
+  same-period original values. Explicit nulls remain unknown and real allocated
+  driver zeros survive new and stored JSON without inventing sparse values.
+  Breakdowns use typed period-local components, exact matching Zone graphs,
+  carrier splits, allocation evidence and supply/reconciliation context.
+  Verification: pure model/metadata, Go zero-presence round trips, actual
+  25-node/four-link-type seven-section acceptance, source visibility, monthly
+  Series return, unchanged raw data, native pane fit and screenshot review.
 
 ## Policy clarification
 
@@ -130,7 +146,7 @@ The normal Building interzone/category projection remains intact.
 
 ## Next in sequence
 
-EPATH-150–152 → 160–161 →
+EPATH-151–152 → 160–161 →
 170–171 → 180–182 → 190–198 → 200–204 → 210–211 → 220–222 → 230–235.
 
 Checklist section 22's actual-model fixtures and expected manifests also remain

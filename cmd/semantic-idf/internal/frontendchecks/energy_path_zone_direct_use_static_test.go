@@ -27,7 +27,8 @@ func TestEPATH094FrontendZoneDirectUseAndPartialCoverageContract(t *testing.T) {
 		`"Known energy sources"`,
 		`"Observed direct-use subtotal"`,
 		`"Direct zone energy"`,
-		`data-energy-path-inspector-value="${key}"`,
+		`function renderEnergyPathInspectorValues(values, attribute = "data-energy-path-inspector-value")`,
+		`${attribute}="${escapeHTML(key)}"`,
 	} {
 		if !strings.Contains(view, required) {
 			t.Fatalf("EPATH-094 frontend contract missing %q", required)
