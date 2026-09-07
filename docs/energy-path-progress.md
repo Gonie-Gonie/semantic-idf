@@ -38,6 +38,13 @@ the checklist or its final acceptance scenarios.
   inspector-only Expand. Verification includes threshold/context/closure browser
   tests and the real Tools CSV export path (identical bytes before/after grouping).
   Full repository verification is required at the commit checkpoint.
+- EPATH-130: v2 quality now separates run-level Drivers, Loads, End uses and
+  Carriers availability from selected-period closure and conversion-ratio
+  availability. Endpoint-weighted absolute discrepancies cannot cancel, and
+  building-wide zone coverage retains direct/allocated and explicit unassigned
+  shares. Stored quality and sibling summaries are rebuilt, including empty
+  not-requested results; v1 serialization is unchanged. Verification includes
+  `TestEPATH130*` stage/sentinel, period, allocation and round-trip regressions.
 
 ## Policy clarification
 
@@ -49,7 +56,7 @@ The normal Building interzone/category projection remains intact.
 
 ## Next in sequence
 
-EPATH-130 → 131 → 140–145 → 150–152 → 160–161 →
+EPATH-131 → 140–145 → 150–152 → 160–161 →
 170–171 → 180–182 → 190–198 → 200–204 → 210–211 → 220–222 → 230–235.
 
 Existing code may already satisfy portions of later items. They remain pending

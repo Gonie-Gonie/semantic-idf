@@ -253,6 +253,19 @@ list reveals the original contributions without increasing graph node count.
 Canonical nodes, carrier-local sources and actual CSV export rows stay unchanged
 by rendering. Count-driven backend compaction is not used to erase a contributor
 before that projection.
+Energy Path quality separates Drivers, Loads, End uses and Carriers instead of
+using legacy `mappedPercent` as an overall score. Stage availability describes
+the run's requested output groups; it does not imply that each selected month
+contains every observation. Selected-period driver/load and end-use/carrier
+closure use endpoint-weighted absolute discrepancies, so overmapping and missing
+energy cannot cancel. Load-to-end-use quality is valid source-traced ratio
+availability, not conservation between thermal and site energy. Direct and
+allocated zone coverage uses building-wide allocation rows (also when viewing
+one Zone), with explicit unassigned quantities preserved. Missing denominators,
+unknown stored coverage, not-requested outputs and non-applicable outputs have
+distinct statuses. Quality is rebuilt after allocation accounting and on stored
+result reload, and is included in v2 results, periods, zones and summaries without
+adding fields to the frozen v1 compatibility payload.
 When both energy and rate outputs are present for the same delivered-load or
 heat-driver target, the explanation parser uses the reported energy series and
 keeps the rate series only as traceable fallback source metadata. Completeness

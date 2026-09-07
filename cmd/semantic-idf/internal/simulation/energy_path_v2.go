@@ -206,6 +206,7 @@ func UpgradeEnergyExplanationV1(input EnergyExplanationV1) EnergyExplanationResu
 		appendEnergyPathZoneHVACAllocationAccounting(&result, annualZoneHVACAllocation, periodZoneHVACAllocations, input.canonicalMonthlyBasis)
 		appendEnergyPathZoneAuxiliaryAllocationAccounting(&result, annualZoneAuxiliaryAllocation, periodZoneAuxiliaryAllocations, input.canonicalMonthlyBasis)
 	}
+	refreshEnergyPathQuality(&result)
 	return result
 }
 
@@ -4124,7 +4125,7 @@ func buildEnergyExplanationSummary(input any) EnergyExplanationSummary {
 	default:
 		return EnergyExplanationSummary{}
 	}
-	if explanation.Schema == "" || len(explanation.Nodes) == 0 {
+	if explanation.Schema == "" {
 		return EnergyExplanationSummary{}
 	}
 
@@ -4206,6 +4207,7 @@ func buildEnergyExplanationSummaryV2(explanation EnergyExplanationResult) Energy
 		Period:       "annual",
 		Scope:        normalizeEnergyExplanationScope(explanation.Scope),
 		Completeness: explanation.Completeness,
+		Quality:      BuildEnergyPathQuality(explanation, ""),
 	}
 	drivers := map[string]*EnergyExplanationSummaryItem{}
 	loads := map[string]*EnergyExplanationSummaryItem{}
@@ -4408,6 +4410,7 @@ func (result EnergyExplanationResult) MarshalJSON() ([]byte, error) {
 		Reconciliation    []EnergyReconciliation         `json:"reconciliation,omitempty"`
 		Sources           []EnergyDataSource             `json:"sources,omitempty"`
 		Completeness      EnergyCompleteness             `json:"completeness"`
+		Quality           *EnergyPathQuality             `json:"quality,omitempty"`
 		Warnings          []EnergyWarning                `json:"warnings,omitempty"`
 		ZoneContributions []EnergyExplanationSummaryItem `json:"zoneContributions,omitempty"`
 		AvailableZones    []string                       `json:"availableZones,omitempty"`
@@ -4426,6 +4429,7 @@ func (result EnergyExplanationResult) MarshalJSON() ([]byte, error) {
 		Reconciliation:    result.Reconciliation,
 		Sources:           result.Sources,
 		Completeness:      result.Completeness,
+		Quality:           result.Quality,
 		Warnings:          result.Warnings,
 		ZoneContributions: result.ZoneContributions,
 		AvailableZones:    result.AvailableZones,
@@ -4492,6 +4496,7 @@ func (period EnergyPeriod) MarshalJSON() ([]byte, error) {
 		Label             string                         `json:"label"`
 		Kind              string                         `json:"kind"`
 		Summary           *EnergyExplanationSummary      `json:"summary,omitempty"`
+		Quality           *EnergyPathQuality             `json:"quality,omitempty"`
 		Nodes             []EnergyExplanationNode        `json:"nodes,omitempty"`
 		Links             []EnergyPathLink               `json:"links,omitempty"`
 		Reconciliation    []EnergyReconciliation         `json:"reconciliation,omitempty"`
@@ -4503,6 +4508,7 @@ func (period EnergyPeriod) MarshalJSON() ([]byte, error) {
 		Label:             period.Label,
 		Kind:              period.Kind,
 		Summary:           period.Summary,
+		Quality:           period.Quality,
 		Nodes:             period.Nodes,
 		Links:             period.Links,
 		Reconciliation:    period.Reconciliation,
@@ -4532,7 +4538,7 @@ func (summary *EnergyExplanationSummary) UnmarshalJSON(data []byte) error {
 	if decoded.Schema == "" && decoded.Period == "" && decoded.Scope.Kind == "" && decoded.Scope.ZoneName == "" && decoded.Scope.AggregationBasis == "" &&
 		len(decoded.Drivers)+len(decoded.Loads)+len(decoded.EndUses)+len(decoded.Carriers)+len(decoded.Ratios)+len(decoded.Residuals)+len(decoded.TopZones) == 0 &&
 		len(decoded.EnergyByCarrier)+len(decoded.EnergyByEndUse)+len(decoded.DeliveredLoadByService)+len(decoded.DerivedKPIs)+len(decoded.HeatDrivers)+len(decoded.TopHeatDrivers) == 0 &&
-		decoded.AllocationPolicy == "" && !energyCompletenessHasContent(decoded.Completeness) {
+		decoded.AllocationPolicy == "" && decoded.Quality == nil && !energyCompletenessHasContent(decoded.Completeness) {
 		*summary = EnergyExplanationSummary{}
 		return nil
 	}
@@ -4699,6 +4705,8 @@ func sanitizeEnergyExplanationV2Result(result *EnergyExplanationResult) bool {
 		changed = changed || !reflect.DeepEqual(zone.Summary, zoneSummary)
 		zone.Summary = zoneSummary
 	}
+	qualityChanged := refreshEnergyPathQuality(result)
+	changed = changed || qualityChanged
 	return changed
 }
 
@@ -4909,8 +4917,8 @@ func (bundle *PurposeResultBundle) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	*bundle = PurposeResultBundle(decoded)
-	if bundle.EnergyExplanation.Schema == energyExplanationSchema && len(bundle.EnergyExplanation.Nodes) > 0 {
-		if bundle.EnergyExplanation.upgradedFromV1 || bundle.EnergyExplanation.sanitizedOnRead || bundle.EnergyExplanationSummary.Schema == "" || len(bundle.EnergyExplanationSummary.Drivers)+len(bundle.EnergyExplanationSummary.Loads)+len(bundle.EnergyExplanationSummary.EndUses)+len(bundle.EnergyExplanationSummary.Carriers) == 0 {
+	if bundle.EnergyExplanation.Schema == energyExplanationSchema {
+		if bundle.EnergyExplanation.upgradedFromV1 || bundle.EnergyExplanation.sanitizedOnRead || bundle.EnergyExplanationSummary.Schema == "" || !reflect.DeepEqual(bundle.EnergyExplanationSummary.Quality, bundle.EnergyExplanation.Quality) || len(bundle.EnergyExplanationSummary.Drivers)+len(bundle.EnergyExplanationSummary.Loads)+len(bundle.EnergyExplanationSummary.EndUses)+len(bundle.EnergyExplanationSummary.Carriers) == 0 {
 			bundle.EnergyExplanationSummary = buildEnergyExplanationSummary(bundle.EnergyExplanation)
 		}
 	}

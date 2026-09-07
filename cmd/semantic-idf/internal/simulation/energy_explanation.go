@@ -62,6 +62,7 @@ type EnergyExplanationResult struct {
 	Reconciliation    []EnergyReconciliation         `json:"reconciliation,omitempty"`
 	Sources           []EnergyDataSource             `json:"sources,omitempty"`
 	Completeness      EnergyCompleteness             `json:"completeness"`
+	Quality           *EnergyPathQuality             `json:"quality,omitempty"`
 	Warnings          []EnergyWarning                `json:"warnings,omitempty"`
 	ZoneContributions []EnergyExplanationSummaryItem `json:"zoneContributions,omitempty"`
 	AvailableZones    []string                       `json:"availableZones,omitempty"`
@@ -80,6 +81,7 @@ type EnergyExplanationZoneResult struct {
 	Scope             EnergyExplanationScope         `json:"scope"`
 	Summary           EnergyExplanationSummary       `json:"summary"`
 	Completeness      EnergyCompleteness             `json:"completeness"`
+	Quality           *EnergyPathQuality             `json:"quality,omitempty"`
 	Periods           []EnergyPeriod                 `json:"periods,omitempty"`
 	Nodes             []EnergyExplanationNode        `json:"nodes"`
 	Links             []EnergyPathLink               `json:"links"`
@@ -93,6 +95,7 @@ type EnergyPeriod struct {
 	Label             string                         `json:"label"`
 	Kind              string                         `json:"kind"`
 	Summary           *EnergyExplanationSummary      `json:"summary,omitempty"`
+	Quality           *EnergyPathQuality             `json:"quality,omitempty"`
 	Nodes             []EnergyExplanationNode        `json:"nodes,omitempty"`
 	Links             []EnergyPathLink               `json:"links,omitempty"`
 	Reconciliation    []EnergyReconciliation         `json:"reconciliation,omitempty"`
@@ -116,6 +119,7 @@ type EnergyExplanationSummary struct {
 	Residuals    []EnergyExplanationSummaryItem `json:"residuals,omitempty"`
 	TopZones     []EnergyExplanationSummaryItem `json:"topZones,omitempty"`
 	Completeness EnergyCompleteness             `json:"completeness,omitempty"`
+	Quality      *EnergyPathQuality             `json:"quality,omitempty"`
 
 	// Deprecated Go aliases keep older callers source-compatible without
 	// serializing the removed v1 summary keys.
@@ -126,6 +130,24 @@ type EnergyExplanationSummary struct {
 	DerivedKPIs            []EnergyExplanationSummaryItem `json:"-"`
 	HeatDrivers            []EnergyExplanationSummaryItem `json:"-"`
 	TopHeatDrivers         []EnergyExplanationSummaryItem `json:"-"`
+}
+
+// EnergyPathQuality separates run-level output availability from period-local
+// accounting. Conversion ratios describe availability, never thermal/site
+// conservation. Status fields distinguish a zero result from no denominator.
+type EnergyPathQuality struct {
+	Drivers                  EnergyCompletenessLevel `json:"drivers"`
+	Loads                    EnergyCompletenessLevel `json:"loads"`
+	EndUses                  EnergyCompletenessLevel `json:"endUses"`
+	Carriers                 EnergyCompletenessLevel `json:"carriers"`
+	Ratios                   EnergyCompletenessLevel `json:"ratios"`
+	DriverToLoadClosedPct    float64                 `json:"driverToLoadClosedPct"`
+	EndUseToCarrierClosedPct float64                 `json:"endUseToCarrierClosedPct"`
+	ZoneAllocatedPct         float64                 `json:"zoneAllocatedPct"`
+	UnassignedPct            float64                 `json:"unassignedPct"`
+	DriverToLoadStatus       string                  `json:"driverToLoadStatus"`
+	EndUseToCarrierStatus    string                  `json:"endUseToCarrierStatus"`
+	ZoneAllocationStatus     string                  `json:"zoneAllocationStatus"`
 }
 
 type EnergyExplanationSummaryItem struct {
