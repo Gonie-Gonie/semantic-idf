@@ -173,6 +173,7 @@ The app toolbar includes top-level Tools, Guide, and Settings navigation buttons
 - `cmd/semantic-idf/frontend/src/samples`: bundled sample inputs used by the app and tests.
 - `cmd/semantic-idf/frontend/dist`: ignored future build output location.
 - `docs/agent.md`: consolidated working notes and implementation principles.
+- [Energy Path schema](docs/energy-path-schema.md): simulation graph domains, allocation, quality, migration and executable Python reconstruction.
 - `scripts`: repo-local runtime setup, checks, and repeatable commands.
 - `.runtime`: ignored local Go/Wails runtime and caches created by setup.
 

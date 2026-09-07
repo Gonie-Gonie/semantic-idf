@@ -253,6 +253,22 @@ the checklist or its final acceptance scenarios.
   checkbox-to-Save JSON-to-Go-to-XLSX round trips, default/trace sheet isolation,
   raw JSON reconstruction, nullable values and comparison warnings, explicit
   unit mismatch and backend invalid-request/legacy-read regression tests.
+- EPATH-180: `docs/energy-path-schema.md` documents the actual v2 Go wire
+  contract, four stages/two scales, independent link quantities and ratio
+  direction, monthly-first signed driver allocation, multiplier handling,
+  policy-specific Zone allocation, source correspondence and static-factor
+  limitations. Requested-source availability, period-local ratio availability
+  and accounting closure have separate definitions. Legacy thermal residuals,
+  additional retained periods, sparse values and source-period limitations are
+  explicit rather than silently simplified away.
+  A complete JSON example and standard-library Python reconstruction preserve
+  canonical graph identity, quantities, units and provenance without claiming
+  identical browser pixel layout or implementing another v1 migration.
+  Verification: JSON keys checked against real Go wire tags; the exact Python
+  fence executed on the example, actual 100/25 cooling and 85/100 heating
+  conversions, source correspondence, thermal residual compatibility and the
+  frozen v1 golden after the real Go reader. Wrapper, monthly, missing-month,
+  Zone/source ownership and forbidden cross-scope fallback cases pass.
 
 ## Policy clarification
 
@@ -264,7 +280,7 @@ The normal Building interzone/category projection remains intact.
 
 ## Next in sequence
 
-EPATH-180–182 → 190–198 → 200–204 → 210–211 → 220–222 → 230–235.
+EPATH-181–182 → 190–198 → 200–204 → 210–211 → 220–222 → 230–235.
 
 Checklist section 22's actual-model fixtures and expected manifests also remain
 required between EPATH-204 and EPATH-210; they have no individual EPATH numbers.
