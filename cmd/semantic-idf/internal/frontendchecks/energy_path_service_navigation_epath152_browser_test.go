@@ -185,7 +185,8 @@ try{
  const energyContext=()=>JSON.stringify([state.simulationEnergyScopeKind,state.simulationEnergyZoneName,state.simulationEnergyPeriod,state.simulationEnergyService,state.simulationEnergySelection]);
  const revealButton=button=>{for(let ancestor=button?.parentElement;ancestor;ancestor=ancestor.parentElement)if(ancestor.tagName==="DETAILS")ancestor.open=true;button?.focus();};
  const selectNode=async(predicate,{scope="building",period="M2",service="all",details=false}={})=>{
-  navigation.switchResultTab("simulation",{recordHistory:false});Object.assign(state,{simulationActiveResultView:"energy",simulationEnergyScopeKind:scope,simulationEnergyZoneName:scope==="zone"?"Office":"",simulationEnergyPeriod:period,simulationEnergyService:service,simulationEnergySelection:"",simulationEnergyDetailsOpen:details,simulationEnergyDetailsTab:"data",simulationEnergyDetailsStage:details?"loads":"",simulationEnergyOutputSource:""});
+  navigation.switchResultTab("simulation",{recordHistory:false});state.simulationActiveResultView="energy";
+  simulation.restoreSimulationEnergyWorkspaceContext({simulationEnergyScopeKind:scope,simulationEnergyZoneName:scope==="zone"?"Office":"",simulationEnergyPeriod:period,simulationEnergyService:service,simulationEnergySelection:"",simulationEnergyDetailsOpen:details,energyDrawer:{tab:"data",stage:details?"loads":"",outputSource:""}});
   const node=graph().nodes.find(predicate);if(!node)throw new Error("Missing actual selected node");state.simulationEnergySelection=node.id;simulation.renderSimulation();await sleep(25);
   check(Boolean(document.querySelector("[data-energy-path-inspector]")),"Actual selected-node inspector missing");return node;
  };
@@ -230,7 +231,8 @@ try{
   const candidate=candidates("output").find(item=>item.sourceId===sourceID),before=energyContext(),depth=state.navigationUndoStack.length;
   if(!candidate){check(false,"Missing Output source "+sourceID+" for "+selected()?.id+" available="+JSON.stringify(candidates("output")));return;}
   if(!await activate(candidate))return;
-  check(state.simulationActiveResultView==="energy"&&state.simulationEnergyDetailsOpen&&state.simulationEnergyDetailsTab==="output"&&state.simulationEnergyOutputSource===sourceID,"Output must open actual Energy data drawer at exact source");
+  const drawer=simulation.captureSimulationEnergyWorkspaceContext().energyDrawer;
+  check(state.simulationActiveResultView==="energy"&&state.simulationEnergyDetailsOpen&&drawer.tab==="output"&&drawer.outputSource===sourceID,"Output must open actual Energy data drawer at exact source");
   const selectedRow=document.querySelector('[data-energy-path-output-request-selected="true"]');
   check(selectedRow?.dataset.energyPathOutputRequest===outputResolver.energyPathOutputRequestKey(requests[requestIndex],requestIndex),"Output picked wrong meter/frequency/objectIndex "+sourceID);
   check(selectedRow&&selectedRow.getBoundingClientRect().width>0,"Exact Output request is not visible");

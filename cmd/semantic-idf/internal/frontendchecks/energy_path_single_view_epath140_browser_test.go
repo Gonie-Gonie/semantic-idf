@@ -103,7 +103,8 @@ try{
  simulation.initializeSimulationControls();
  await new Promise(resolve=>setTimeout(resolve,0));
  const host=document.getElementById("simulationEnergyDashboard");
- Object.assign(state,{report,simulationResult:result,simulationActiveResultView:"energy",activeResultTab:"simulation",simulationEnergyScopeKind:"building",simulationEnergyPeriod:"annual",simulationEnergyService:"all",simulationEnergySelection:"",simulationEnergyDetailsOpen:false,simulationEnergyDetailsTab:"data",simulationEnergyDetailsStage:"",simulationEnergyOutputSource:""});
+ Object.assign(state,{report,simulationResult:result,simulationActiveResultView:"energy",activeResultTab:"simulation"});
+ simulation.restoreSimulationEnergyWorkspaceContext({simulationEnergyScopeKind:"building",simulationEnergyZoneName:"",simulationEnergyPeriod:"annual",simulationEnergyService:"all",simulationEnergySelection:"",simulationEnergyDetailsOpen:false,energyDrawer:{tab:"data",stage:"",outputSource:""}});
  const pathEntity=id=>({id:"entity."+id,kind:"hvac-path",label:"Office cooling service",viewTargets:[{view:"hvac",targetKind:"service-path",targetId:id,label:"Office cooling service"}]});
  state.semanticProjection={navigation:{entities:[pathEntity("path.office.cooling")]}};
  state.analysisDirty={hvac:false,simulation:false};state.analysisReady={hvac:true,simulation:true};
@@ -114,7 +115,8 @@ try{
   onSelectionChange:detail=>window.dispatchEvent(new CustomEvent("idfAnalyzer:semanticSelectionChanged",{detail}))});
  hvacViews.renderHVAC(report.hvac);
  simulation.renderSimulationEnergyDashboard(result);
- const context=()=>JSON.stringify([state.simulationEnergyScopeKind,state.simulationEnergyZoneName,state.simulationEnergyPeriod,state.simulationEnergyService,state.simulationEnergySelection,state.simulationEnergyDetailsOpen,state.simulationEnergyDetailsTab,state.simulationEnergyDetailsStage,state.simulationEnergyOutputSource]);
+ const drawer=()=>simulation.captureSimulationEnergyWorkspaceContext().energyDrawer;
+ const context=()=>JSON.stringify([state.simulationEnergyScopeKind,state.simulationEnergyZoneName,state.simulationEnergyPeriod,state.simulationEnergyService,state.simulationEnergySelection,state.simulationEnergyDetailsOpen,drawer().tab,drawer().stage,drawer().outputSource]);
  const change=(selector,value)=>{const control=host.querySelector(selector);check(Boolean(control),"missing real Energy control "+selector);if(control){control.value=value;control.dispatchEvent(new Event("change",{bubbles:true}));}};
  const select=id=>{const node=host.querySelector('[data-energy-explanation-node="'+id+'"]');check(Boolean(node),"missing selected graph node "+id);node?.focus();node?.click();check(document.activeElement?.dataset.energyExplanationNode===id,"node activation discarded keyboard focus: "+id);};
  const returnEnergy=()=>document.querySelector('[data-simulation-result-view-button="energy"]')?.click();
@@ -154,13 +156,13 @@ try{
  check(restored&&genericRestored&&context()===januaryContext&&host.querySelector('[data-energy-path-inspector="load.cooling.office"]'),"real navigation-context restore lost scope/month/service/selection/drawer or generic history state");
  host.querySelector('[data-energy-path-output-source="sql-rdd-11"]')?.click();
  const outputContext=context(),outputSnapshot=simulation.captureSimulationNavigationContext(historyAdapter);
- check(state.simulationEnergyDetailsTab==="output"&&state.simulationEnergyOutputSource==="sql-rdd-11","history fixture failed to select exact Output source");
+ check(drawer().tab==="output"&&drawer().outputSource==="sql-rdd-11","history fixture failed to select exact Output source");
  host.querySelector('[data-energy-path-details-tab="data"]')?.click();
  await simulation.restoreSimulationNavigationContext(outputSnapshot,historyAdapter);
  check(context()===outputContext&&host.querySelector('[data-energy-path-output-request-selected="true"]'),"navigation history did not restore exact Output source and internal tab");
  for(const oldView of["sources","reconciliation"]){
   await simulation.restoreSimulationNavigationContext({...navigationSnapshot,energyScopeKind:undefined,energyZoneName:undefined,energyFocusMode:"zone",energyZoneFocus:"Office",energyDetailsOpen:undefined,energyView:oldView},historyAdapter);
-  check(state.simulationEnergyScopeKind==="zone"&&state.simulationEnergyZoneName==="Office"&&state.simulationEnergyDetailsOpen&&state.simulationEnergyDetailsTab==="data"&&!host.querySelector(".simulation-energy-subnav"),"legacy Zone/"+oldView+" history did not migrate to current scope and Data drawer");
+  check(state.simulationEnergyScopeKind==="zone"&&state.simulationEnergyZoneName==="Office"&&state.simulationEnergyDetailsOpen&&drawer().tab==="data"&&!host.querySelector(".simulation-energy-subnav"),"legacy Zone/"+oldView+" history did not migrate to current scope and Data drawer");
  }
  await simulation.restoreSimulationNavigationContext(navigationSnapshot,historyAdapter);
  host.querySelector("[data-energy-path-series-id]")?.click();

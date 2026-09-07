@@ -94,7 +94,8 @@ try{
  const[{state},simulation,view]=await Promise.all([import("/src/js/state.js"),import("/src/js/views/simulation-views.js"),import("/src/js/views/energy-path-view.js")]);
  simulation.initializeSimulationControls();await new Promise(resolve=>setTimeout(resolve,0));
  const host=document.getElementById("simulationEnergyDashboard"),pane=document.getElementById("simulationPane");
- const mount=(payload=result,extra={})=>{Object.assign(state,{simulationResult:payload,simulationActiveResultView:"energy",simulationEnergyScopeKind:"building",simulationEnergyZoneName:"",simulationEnergyPeriod:"M1",simulationEnergyService:"all",simulationEnergySelection:"",simulationEnergyDetailsOpen:false,simulationEnergyDetailsTab:"data",simulationEnergyDetailsStage:"",simulationEnergyOutputSource:""},extra);simulation.renderSimulationEnergyDashboard(payload);};
+ const drawer=()=>simulation.captureSimulationEnergyWorkspaceContext().energyDrawer;
+ const mount=(payload=result,extra={})=>{Object.assign(state,{simulationResult:payload,simulationActiveResultView:"energy"});simulation.restoreSimulationEnergyWorkspaceContext({simulationEnergyScopeKind:"building",simulationEnergyZoneName:"",simulationEnergyPeriod:"M1",simulationEnergyService:"all",simulationEnergySelection:"",simulationEnergyDetailsOpen:false,...extra,energyDrawer:{tab:"data",stage:"",outputSource:"",...extra.energyDrawer}});simulation.renderSimulationEnergyDashboard(payload);};
  const card=id=>host.querySelector('[data-energy-path-kpi="'+id+'"]');
  const change=(selector,value)=>{const control=host.querySelector(selector);check(Boolean(control),"missing control "+selector);if(control){control.focus();control.value=value;control.dispatchEvent(new Event("change",{bubbles:true}));}};
  const activate=button=>{check(button?.tagName==="BUTTON"&&!button.disabled,"KPI target is not a native enabled button");button?.focus();button?.click();};
@@ -142,9 +143,9 @@ try{
  check(state.simulationEnergyService==="heating"&&state.simulationEnergySelection==="load.heating.building","opposite-service Heating KPI did not reveal its actual load");
  change("[data-simulation-energy-service]","all");activate(card("cooling_load")?.querySelector('[data-energy-path-kpi-node="load.cooling.building"]'));
  check(state.simulationEnergyService==="all","All-service load KPI unnecessarily narrowed the user's service context");
- state.simulationEnergyDetailsStage="drivers";
+ simulation.restoreSimulationEnergyWorkspaceContext({...simulation.captureSimulationEnergyWorkspaceContext(),energyDrawer:{...drawer(),stage:"drivers"}});
  activate(card("coverage")?.querySelector("[data-energy-path-kpi-details]"));
- check(state.simulationEnergyDetailsOpen&&state.simulationEnergyDetailsTab==="data"&&state.simulationEnergyDetailsStage===""&&state.simulationEnergySelection==="load.cooling.building","coverage KPI did not open all-stage Data details without inventing an energy-node selection");
+ check(state.simulationEnergyDetailsOpen&&drawer().tab==="data"&&drawer().stage===""&&state.simulationEnergySelection==="load.cooling.building","coverage KPI did not open all-stage Data details without inventing an energy-node selection");
  document.activeElement?.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}));
  check(!state.simulationEnergyDetailsOpen&&document.activeElement?.hasAttribute("data-energy-path-kpi-details"),"Escape did not restore the actual Coverage KPI opener");
  change("[data-simulation-energy-path-period]","M2");change("[data-simulation-energy-service]","cooling");

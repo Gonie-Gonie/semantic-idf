@@ -113,8 +113,8 @@ func TestDiagnoseLivesInToolsAndUsesCurrentDocumentSnapshot(t *testing.T) {
 		}
 	}
 	restoreBody := sliceBetween(toolsJS, "function restoreDiagnoseDocument()", "function setDiagnoseDocument")
-	if !strings.Contains(restoreBody, "setDiagnoseDocument(saved, { persist: false })") {
-		t.Fatal("Tools Diagnose hydration must preserve the main workspace snapshot and analysis cache key")
+	if !strings.Contains(restoreBody, "setDiagnoseDocument(saved, { persist: false, analyze: false })") {
+		t.Fatal("Tools Diagnose hydration must preserve the workspace snapshot/cache key without starting hidden analysis")
 	}
 	setDocumentBody := sliceBetween(toolsJS, "function setDiagnoseDocument", "async function selectDiagnoseInput")
 	for _, required := range []string{"persist = true", "replaceWorkspace = false", "if (persist)", "persistDiagnoseDocument({ replaceWorkspace })"} {

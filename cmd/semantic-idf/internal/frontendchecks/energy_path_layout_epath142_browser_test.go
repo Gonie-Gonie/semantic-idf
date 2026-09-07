@@ -140,7 +140,8 @@ try{
  store.setDocumentText("Version, 25.1;\nBuilding, EPATH142;");
  layout.initializeWorkspaceSplitter();simulation.initializeSimulationControls();
  await new Promise(resolve=>setTimeout(resolve,0));
- Object.assign(state,{report:null,simulationRunning:false,simulationResult:result,simulationProgress:{status:"succeeded",percent:100,message:"Completed"},simulationActiveResultView:"energy",simulationEnergyScopeKind:"building",simulationEnergyZoneName:"",simulationEnergyPeriod:"annual",simulationEnergyService:"all",simulationEnergySelection:"",simulationEnergyDetailsOpen:false,simulationEnergyDetailsTab:"data",simulationEnergyDetailsStage:"",simulationEnergyOutputSource:""});
+ Object.assign(state,{report:null,simulationRunning:false,simulationResult:result,simulationProgress:{status:"succeeded",percent:100,message:"Completed"},simulationActiveResultView:"energy"});
+ simulation.restoreSimulationEnergyWorkspaceContext({simulationEnergyScopeKind:"building",simulationEnergyZoneName:"",simulationEnergyPeriod:"annual",simulationEnergyService:"all",simulationEnergySelection:"",simulationEnergyDetailsOpen:false,energyDrawer:{tab:"data",stage:"",outputSource:""}});
  navigation.switchResultTab("simulation",{recordHistory:false});simulation.renderSimulation();
  const host=document.getElementById("simulationEnergyDashboard"),setup=document.getElementById("simulationRunSetup");
  const change=(selector,value)=>{const control=host.querySelector(selector);check(Boolean(control),"missing control "+selector);if(control){control.focus();control.value=value;control.dispatchEvent(new Event("change",{bubbles:true}));}};

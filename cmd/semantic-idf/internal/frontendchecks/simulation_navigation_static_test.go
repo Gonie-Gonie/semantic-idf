@@ -126,8 +126,15 @@ func TestSimulationPanelAdapterRevealsWithoutAnalysisAndRestoresFilters(t *testi
 		}
 	}
 	for _, stateTerm := range []string{
-		"simulationEnergyFocusMode",
-		"simulationEnergyServicePathFocus",
+		"simulationEnergyScopeKind",
+		"simulationEnergyZoneName",
+		"simulationEnergyPeriod",
+		"simulationEnergyService",
+		"simulationEnergySelection",
+		"simulationEnergyDetailsOpen",
+		"energyDrawer",
+		"captureSimulationEnergyWorkspaceContext",
+		"restoreSimulationEnergyWorkspaceContext",
 		"simulationHVACVisibleGroups",
 		"simulationComfortZone",
 		"simulationHeatFlowSelectedZone",

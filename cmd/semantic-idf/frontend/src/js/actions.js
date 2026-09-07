@@ -12,11 +12,12 @@ import { t } from "./i18n.js";
 import { clearSemanticHover, clearSemanticSelection } from "./selection-controller.js";
 import { captureViewSnapshot } from "./view-history.js";
 import { captureWorkspaceLayout } from "./layout.js";
+import { restoreSimulationEnergyWorkspaceContext } from "./views/simulation-views.js";
 
 export const currentDocumentStorageKey = "idfAnalyzer.currentDocument";
 const auxiliaryNavigationStorageKey = "idfAnalyzer.auxiliaryNavigation";
 
-const workspaceSnapshotVersion = 3;
+const workspaceSnapshotVersion = 4;
 
 let afterPaintAnalyzeTimer = 0;
 let analysisRunID = 0;
@@ -390,6 +391,15 @@ export function scheduleAnalyzeAfterPaint(options = {}) {
 
 export function registerLoadedDocument(text, { path = "", filename = "" } = {}) {
   const documentText = setDocumentText(text);
+  // A newly opened document is not the previous run, even if its text matches.
+  // Ignore any old in-flight response and require an exact workspace restore
+  // or a new explicit run before showing simulation data for this document.
+  state.simulationResult = null;
+  state.simulationActiveRunID = "";
+  state.simulationRunning = false;
+  state.simulationProgress = null;
+  state.simulationAutoStartedKey = "";
+  restoreSimulationEnergyWorkspaceContext();
   clearSemanticHover();
   clearSemanticSelection({ resetMemory: true });
   state.currentFilePath = path;
@@ -557,17 +567,17 @@ export async function exportMetrics(format) {
 }
 
 export async function openGuide() {
-  await saveWorkspaceSnapshot();
+  if (await saveWorkspaceSnapshot() === false) return;
   openAuxiliaryPage("./guide.html");
 }
 
 export async function openTools() {
-  await saveWorkspaceSnapshot();
+  if (await saveWorkspaceSnapshot() === false) return;
   openAuxiliaryPage("./tools.html");
 }
 
 export async function openSettings() {
-  await saveWorkspaceSnapshot();
+  if (await saveWorkspaceSnapshot() === false) return;
   openAuxiliaryPage("./settings.html");
 }
 
@@ -582,14 +592,21 @@ function openAuxiliaryPage(path) {
 
 export async function saveWorkspaceSnapshot() {
   const text = getDocumentText();
-  const analysisKey = state.analysisKey || state.lastAnalyzedKey || (await computeAnalysisKey(text));
+  const path = state.currentFilePath || "";
+  const filename = state.currentFilename || "";
+  // An edited document must never reuse the previous analysis/result hash.
+  const analysisKey = await computeAnalysisKey(text);
+  if (text !== getDocumentText() || path !== (state.currentFilePath || "") || filename !== (state.currentFilename || "")) {
+    setStatus(t("status.workspaceChangedBeforeNavigation", {}, "The input changed while preparing navigation. Please try opening the page again."), "warn");
+    return false;
+  }
   const viewSnapshot = captureViewSnapshot();
   const snapshot = {
     schemaVersion: workspaceSnapshotVersion,
     text,
     textHash: analysisKey,
-    path: state.currentFilePath || "",
-    filename: state.currentFilename || "",
+    path,
+    filename,
     loadedText: state.loadedText || "",
     savedText: state.savedText || "",
     analysisKey,
@@ -601,6 +618,9 @@ export async function saveWorkspaceSnapshot() {
     semanticOccurrenceId: viewSnapshot.semanticCurrentOccurrenceId || viewSnapshot.globalSelection?.occurrenceId || "",
     viewSnapshot,
     panelContexts: viewSnapshot.panelContexts || {},
+    simulationResultRef: analysisKey && state.simulationResult?.runId
+      ? { textHash: analysisKey, runId: String(state.simulationResult.runId) }
+      : null,
     layout: captureWorkspaceLayout(),
     capturedAt: new Date().toISOString(),
   };
@@ -609,6 +629,7 @@ export async function saveWorkspaceSnapshot() {
   } catch {
     // Navigation should still proceed if the browser refuses session storage.
   }
+  return true;
 }
 
 export function applyCachedAnalysisResult(result, snapshot = {}) {
@@ -757,7 +778,7 @@ function nextDirtyInactiveTab() {
   return tabs.find((tab) => tab !== state.activeResultTab && state.analysisDirty?.[tab]);
 }
 
-async function computeAnalysisKey(text) {
+export async function computeAnalysisKey(text) {
   try {
     const normalized = normalizeLineEndings(text);
     if (!window.crypto?.subtle || typeof TextEncoder !== "function") {

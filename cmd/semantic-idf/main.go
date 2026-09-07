@@ -453,6 +453,27 @@ func appAssetHandler(app *App) http.Handler {
 			if err := json.NewEncoder(w).Encode(result); err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 			}
+		case "/api/simulation-result-cache":
+			if r.Method != http.MethodPost {
+				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			var request struct {
+				TextHash string `json:"textHash"`
+				RunID    string `json:"runId"`
+			}
+			if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&request); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			result, err := app.GetCachedSimulationResult(request.TextHash, request.RunID)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			if err := json.NewEncoder(w).Encode(result); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
 		case "/api/simulation-run-plan":
 			if r.Method != http.MethodPost {
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

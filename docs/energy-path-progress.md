@@ -168,6 +168,26 @@ the checklist or its final acceptance scenarios.
   and hourly request disambiguation, stale-target rejection, no Analyze/Run calls,
   exact history restoration, actual pane overflow checks and three screenshots.
   Existing 140/150/151 navigation and inspector regressions also passed.
+- EPATH-160: Energy now has exactly six primary state fields. Drawer tab,
+  stage and source belong to local panel context; related model focus uses
+  global navigation rather than parallel Energy focus settings. Strict pure
+  migration reads old workspace aliases, preserves pending selections without
+  a result, and writes only the new primary fields and nested drawer context.
+  Unused legacy controls and their state writes are removed; old renderers remain
+  isolated with fixed defaults until EPATH-220. Loaded results validate stale or
+  ambiguous selections/sources, including dormant Energy restored behind HVAC.
+  Schema-4 workspace snapshots hold an exact input-hash/run-ID reference, not
+  the result payload. A bounded desktop-process cache returns original wire JSON
+  without SQL reads, migration or reaggregation. Cold Settings/Batch returns
+  restore both result and context; misses remain empty without automatic runs.
+  Input/save/cache-response races, older run completions and same-text new files
+  cannot attach or evict the wrong result. Diagnose starts work only when opened,
+  and edits/file replacement invalidate its saved simulation reference.
+  Verification: pure typed/legacy migration, exact-wire and concurrent Go cache
+  tests, HTTP and real run-entry integration, eight actual cold main documents
+  through Settings/Tools, dormant HVAC/Energy and Output Escape focus restoration,
+  auto-run suppression with a positive control, edited/newer-run response guards,
+  compact snapshots, new-file reset, lazy Diagnose and existing Energy regressions.
 
 ## Policy clarification
 
@@ -179,7 +199,7 @@ The normal Building interzone/category projection remains intact.
 
 ## Next in sequence
 
-EPATH-160–161 →
+EPATH-161 →
 170–171 → 180–182 → 190–198 → 200–204 → 210–211 → 220–222 → 230–235.
 
 Checklist section 22's actual-model fixtures and expected manifests also remain

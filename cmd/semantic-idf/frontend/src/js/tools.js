@@ -43,6 +43,7 @@ const state = {
     excludedCandidateKeys: new Set(),
     candidateFilter: "",
     busy: false,
+    pendingScan: false,
   },
   simulationEnvironment: null,
   multiSimulation: {
@@ -727,7 +728,7 @@ function restoreDiagnoseDocument() {
   try {
     const saved = JSON.parse(window.sessionStorage.getItem(CURRENT_DOCUMENT_STORAGE_KEY) || "null");
     if (typeof saved?.text === "string" && saved.text.trim()) {
-      setDiagnoseDocument(saved, { persist: false });
+      setDiagnoseDocument(saved, { persist: false, analyze: false });
       return true;
     }
   } catch {
@@ -737,7 +738,7 @@ function restoreDiagnoseDocument() {
   return false;
 }
 
-function setDiagnoseDocument(documentState = {}, { persist = true, replaceWorkspace = false } = {}) {
+function setDiagnoseDocument(documentState = {}, { persist = true, replaceWorkspace = false, analyze = true } = {}) {
   state.diagnose.text = String(documentState.text || "");
   state.diagnose.path = String(documentState.path || "");
   state.diagnose.filename = String(documentState.filename || "model.idf");
@@ -747,13 +748,27 @@ function setDiagnoseDocument(documentState = {}, { persist = true, replaceWorksp
   state.diagnose.selectedRuleIDs = new Set();
   state.diagnose.excludedCandidateKeys = new Set();
   state.diagnose.candidateFilter = "";
+  state.diagnose.pendingScan = Boolean(state.diagnose.text.trim());
   elements.diagnoseCandidateFilter.value = "";
+  elements.diagnoseFilename.removeAttribute("data-i18n");
   elements.diagnoseFilename.textContent = state.diagnose.filename || t("common.inputFile", {}, "Input file");
   elements.diagnoseFilename.title = state.diagnose.path;
   if (persist) {
     persistDiagnoseDocument({ replaceWorkspace });
   }
-  refreshDiagnose();
+  if (analyze) {
+    refreshDiagnose();
+  } else {
+    // Restoring the shared input is not a request to analyze it. Batch pages
+    // keep Diagnose dormant until its panel is actually opened.
+    const pending = t("diagnoseFix.pending", {}, "Scan current input for suggested fixes.");
+    elements.diagnoseStatus.textContent = pending;
+    elements.diagnoseList.innerHTML = `<div class="empty">${escapeHTML(pending)}</div>`;
+    elements.diagnoseRules.innerHTML = elements.diagnoseList.innerHTML;
+    elements.diagnoseCandidates.innerHTML = elements.diagnoseList.innerHTML;
+    renderDiagnosePreview(null);
+    updateDiagnoseButtons();
+  }
 }
 
 async function selectDiagnoseInput() {
@@ -778,6 +793,7 @@ async function loadDiagnoseBrowserFile(event) {
 }
 
 async function refreshDiagnose() {
+  state.diagnose.pendingScan = false;
   if (!state.diagnose.text.trim()) {
     renderDiagnoseEmpty();
     return;
@@ -903,6 +919,7 @@ function persistDiagnoseDocument({ replaceWorkspace = false } = {}) {
       filename: state.diagnose.filename,
       analysisKey: "",
       textHash: "",
+      simulationResultRef: null,
       analysisStage: "idle",
       geometryReady: false,
       capturedAt: new Date().toISOString(),
@@ -1015,6 +1032,7 @@ function renderDiagnosePreview(preview) {
 }
 
 function renderDiagnoseEmpty() {
+  elements.diagnoseFilename.setAttribute("data-i18n", "tools.noCurrentInputShort");
   elements.diagnoseFilename.textContent = t("tools.noCurrentInputShort", {}, "No current input.");
   elements.diagnoseStatus.textContent = t("tools.noCurrentInput", {}, "Open an input first.");
   elements.diagnoseList.innerHTML = `<div class="empty">${escapeHTML(t("tools.noCurrentInput", {}, "Open an input first."))}</div>`;
@@ -1160,5 +1178,8 @@ function switchToolsTab(toolID, { updateHash = true } = {}) {
   });
   if (updateHash) {
     window.history.replaceState(null, "", `#${toolID}`);
+  }
+  if (toolID === "diagnose" && state.diagnose.pendingScan && !state.diagnose.busy) {
+    void refreshDiagnose();
   }
 }

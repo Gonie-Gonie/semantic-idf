@@ -96,10 +96,12 @@ try{
   import("/src/js/views/energy-path-view.js"),import("/src/js/state.js"),import("/src/js/views/simulation-views.js"),import("/src/js/energy-path-output-requests.js")
  ]);
  const host=document.getElementById("simulationEnergyDashboard");
- const defaults={simulationEnergyScopeKind:"building",simulationEnergyPeriod:"annual",simulationEnergyService:"all",simulationEnergySelection:"",simulationEnergyDetailsOpen:false,simulationEnergyDetailsTab:"data",simulationEnergyDetailsStage:"",simulationEnergyOutputSource:""};
+ const defaults={simulationEnergyScopeKind:"building",simulationEnergyZoneName:"",simulationEnergyPeriod:"annual",simulationEnergyService:"all",simulationEnergySelection:"",simulationEnergyDetailsOpen:false};
+ const drawer=()=>simulation.captureSimulationEnergyWorkspaceContext().energyDrawer;
  const mount=(payload=explanation,objects=requestObjects,extra={})=>{
-  Object.assign(state,defaults,extra,{simulationResult:{purposeResults:{energyExplanation:payload},purposeRunPlan:{outputObjects:objects}}});
-  host.innerHTML=view.renderEnergyPathView(payload,state,{outputObjects:objects});
+  simulation.restoreSimulationEnergyWorkspaceContext({...defaults,...extra,energyDrawer:{tab:"data",stage:"",outputSource:"",...extra.energyDrawer}});
+  state.simulationResult={purposeResults:{energyExplanation:payload},purposeRunPlan:{outputObjects:objects}};
+  host.innerHTML=view.renderEnergyPathView(payload,state,{outputObjects:objects,drawer:drawer()});
  };
  host.addEventListener("click",simulation.handleSimulationSeriesInspectClick);
  host.addEventListener("keydown",simulation.handleSimulationEnergyDetailsKeydown);
@@ -118,7 +120,7 @@ try{
  check(![...host.querySelectorAll("table")].some(visible),"long data/source table visible beside default graph");
  check(!host.querySelector('[data-simulation-energy-view="sources"],[data-simulation-energy-view="reconciliation"]'),"Sources/Reconciliation primary subviews were added");
  line?.querySelector('[data-energy-path-quality-stage="drivers"]')?.click();
- check(state.simulationEnergyDetailsOpen===true&&state.simulationEnergyDetailsTab==="data"&&state.simulationEnergyDetailsStage==="drivers","actual stage click did not open filtered Data drawer state");
+ check(state.simulationEnergyDetailsOpen===true&&drawer().tab==="data"&&drawer().stage==="drivers","actual stage click did not open filtered Data drawer state");
  check(visible(host.querySelector("[data-energy-path-data-details]")),"stage click did not reveal drawer");
  check(host.querySelector('[data-energy-path-details-panel="data"]')?.textContent.includes("Zone Lights Convective Heating Energy"),"missing driver request is absent from filtered details");
  check(!host.querySelector('[data-energy-path-details-panel="data"]')?.textContent.includes("Cooling:Electricity"),"driver filter leaked unrelated end-use availability");
@@ -126,30 +128,30 @@ try{
  check(host.contains(document.activeElement)&&document.activeElement!==host,"opening drawer lost keyboard focus");
  const dataTab=host.querySelector('[data-energy-path-details-tab="data"]');
  dataTab?.focus();dataTab?.dispatchEvent(new KeyboardEvent("keydown",{key:"ArrowRight",bubbles:true}));
- check(state.simulationEnergyDetailsTab==="output"&&document.activeElement?.dataset.energyPathDetailsTab==="output","ArrowRight did not select and focus the Output tab");
+ check(drawer().tab==="output"&&document.activeElement?.dataset.energyPathDetailsTab==="output","ArrowRight did not select and focus the Output tab");
  document.activeElement?.dispatchEvent(new KeyboardEvent("keydown",{key:"Home",bubbles:true}));
- check(state.simulationEnergyDetailsTab==="data"&&document.activeElement?.dataset.energyPathDetailsTab==="data","Home did not select and focus the Data tab");
+ check(drawer().tab==="data"&&document.activeElement?.dataset.energyPathDetailsTab==="data","Home did not select and focus the Data tab");
  document.activeElement?.dispatchEvent(new KeyboardEvent("keydown",{key:"End",bubbles:true}));
- check(state.simulationEnergyDetailsTab==="output"&&document.activeElement?.dataset.energyPathDetailsTab==="output","End did not select and focus the Output tab");
+ check(drawer().tab==="output"&&document.activeElement?.dataset.energyPathDetailsTab==="output","End did not select and focus the Output tab");
  document.activeElement?.dispatchEvent(new KeyboardEvent("keydown",{key:"ArrowLeft",bubbles:true}));
- check(state.simulationEnergyDetailsTab==="data"&&document.activeElement?.dataset.energyPathDetailsTab==="data","ArrowLeft did not select and focus the Data tab");
+ check(drawer().tab==="data"&&document.activeElement?.dataset.energyPathDetailsTab==="data","ArrowLeft did not select and focus the Data tab");
  document.activeElement?.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}));
  check(!state.simulationEnergyDetailsOpen&&!visible(host.querySelector("[data-energy-path-data-details]"))&&document.activeElement?.dataset.energyPathQualityStage==="drivers","Escape did not close the drawer and restore the actual Drivers opener focus");
  host.querySelector("[data-energy-path-details-toggle]")?.click();
  document.activeElement?.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}));
  check(!state.simulationEnergyDetailsOpen&&document.activeElement?.hasAttribute("data-energy-path-details-toggle"),"toggle-opened drawer did not return Escape focus to its header toggle");
- mount(explanation,requestObjects,{simulationEnergyDetailsOpen:true,simulationEnergyDetailsStage:"drivers"});
+ mount(explanation,requestObjects,{simulationEnergyDetailsOpen:true,energyDrawer:{stage:"drivers"}});
  const allStages=host.querySelector('[data-energy-path-quality-stage=""]');
  check(Boolean(allStages),"filtered drawer has no All stages reset action");
  allStages?.click();
- check(state.simulationEnergyDetailsStage===""&&state.simulationEnergyDetailsOpen&&state.simulationEnergyDetailsTab==="data","All stages did not clear only the Data stage filter");
+ check(drawer().stage===""&&state.simulationEnergyDetailsOpen&&drawer().tab==="data","All stages did not clear only the Data stage filter");
  check(host.querySelectorAll("[data-energy-path-source-availability]").length===explanation.completeness.sourceAvailability.length&&host.querySelector('[data-energy-path-source-availability="Zone Air System Sensible Cooling Energy"]')&&host.querySelector('[data-energy-path-source-availability="Cooling:Electricity"]'),"All stages did not restore full run source availability");
  const storage={...explanation,quality:{...quality,endUses:level("partial",1,2)},completeness:{...explanation.completeness,sourceAvailability:[...explanation.completeness.sourceAvailability,
   {name:"Electric Storage Charge Energy",level:"energy",status:"missing"},
   {name:"Electric Storage Discharge Energy",level:"energy",status:"missing"},
   {name:"ElectricityProduced:Facility",level:"energy",status:"missing"},
  ]}};
- mount(storage,requestObjects,{simulationEnergyDetailsOpen:true,simulationEnergyDetailsStage:"endUses"});
+ mount(storage,requestObjects,{simulationEnergyDetailsOpen:true,energyDrawer:{stage:"endUses"}});
  check(host.querySelector('[data-energy-path-source-availability="Electric Storage Charge Energy"]')?.dataset.energyPathAvailabilityStatus==="missing","missing storage charge consumption was excluded from End uses availability");
  check(!host.querySelector('[data-energy-path-source-availability="Electric Storage Discharge Energy"]')&&!host.querySelector('[data-energy-path-source-availability="ElectricityProduced:Facility"]'),"storage discharge or onsite supply was classified as End uses consumption");
 
@@ -157,13 +159,13 @@ try{
   const source=sources.find(item=>item.id===sourceID);
   const resolved=resolver.resolveEnergyPathOutputRequest(source,requestObjects,sources);
   check(resolved.status==="exact"&&resolved.requestIndex===expectedIndex,"wrong exact output request for "+sourceID);
-  mount(explanation,requestObjects,{simulationEnergyDetailsOpen:true,simulationEnergyDetailsTab:"data"});
+  mount(explanation,requestObjects,{simulationEnergyDetailsOpen:true,energyDrawer:{tab:"data"}});
   let action=host.querySelector('[data-energy-path-output-source="'+sourceID+'"]');
   if(sourceID==="meter.monthly"||sourceID==="people.office")check(Boolean(action),"rendered source row has no Output jump action: "+sourceID);
   // Supplemental raw-source cases use the same production delegated handler.
   if(!action){action=document.createElement("button");action.dataset.energyPathOutputSource=sourceID;host.append(action);}
   action.click();
-  check(state.simulationEnergyDetailsOpen&&state.simulationEnergyDetailsTab==="output"&&state.simulationEnergyOutputSource===sourceID,"source jump did not navigate internal Output tab for "+sourceID);
+  check(state.simulationEnergyDetailsOpen&&drawer().tab==="output"&&drawer().outputSource===sourceID,"source jump did not navigate internal Output tab for "+sourceID);
   const selected=host.querySelector('[data-energy-path-output-request-selected="true"]');
   check(selected?.dataset.energyPathOutputRequest===resolver.energyPathOutputRequestKey(requestObjects[expectedIndex],expectedIndex),"Output selection ignored frequency/key/index verification for "+sourceID);
   check(visible(host.querySelector('[data-energy-path-details-panel="output"]')),"Output panel not visible after exact source navigation");
@@ -173,11 +175,11 @@ try{
   const source=sources.find(item=>item.id===sourceID);
   const resolved=resolver.resolveEnergyPathOutputRequest(source,requestObjects,sources);
   check(resolved.status===status,"nonexact source got wrong resolution status: "+sourceID+"="+resolved.status);
-  mount(explanation,requestObjects,{simulationEnergyDetailsOpen:true,simulationEnergyDetailsTab:"output",simulationEnergyOutputSource:sourceID});
+  mount(explanation,requestObjects,{simulationEnergyDetailsOpen:true,energyDrawer:{tab:"output",outputSource:sourceID}});
   check(!host.querySelector('[data-energy-path-output-request-selected="true"]'),"nonexact source fabricated an exact request selection: "+sourceID);
  }
  check(resolver.resolveEnergyPathOutputRequest(sources[0],[],sources).status==="unavailable","missing run plan fabricated a matching Output request");
- mount(explanation,[],{simulationEnergyDetailsOpen:true,simulationEnergyDetailsTab:"output",simulationEnergyOutputSource:"meter.monthly"});
+ mount(explanation,[],{simulationEnergyDetailsOpen:true,energyDrawer:{tab:"output",outputSource:"meter.monthly"}});
  check(!host.querySelector('[data-energy-path-output-request-selected="true"]'),"no-plan output drawer selected a request from another run");
  const zone=structuredClone(explanation);
  zone.scope={kind:"zone",zoneName:"Office",aggregationBasis:"model_total"};

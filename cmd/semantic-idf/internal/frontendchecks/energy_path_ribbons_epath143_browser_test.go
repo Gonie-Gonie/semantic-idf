@@ -108,7 +108,8 @@ try{
  revise(explanation);explanation.periods.forEach(revise);for(const zone of explanation.zoneResults){revise(zone);zone.periods.forEach(revise);}
  candidate.purposeResults.energyExplanationSummary=explanation.summary;candidate.runId="epath143-heating-larger-than-cooling";
  const result=freeze(candidate),fixtureJSON=JSON.stringify(result);
- Object.assign(state,{simulationResult:result,simulationRunning:false,simulationEnergyScopeKind:"building",simulationEnergyZoneName:"",simulationEnergyPeriod:"annual",simulationEnergyService:"all",simulationEnergySelection:"",simulationEnergyDetailsOpen:false,simulationEnergyDetailsTab:"data",simulationEnergyDetailsStage:"",simulationEnergyOutputSource:""});
+ Object.assign(state,{simulationResult:result,simulationRunning:false});
+ simulation.restoreSimulationEnergyWorkspaceContext({simulationEnergyScopeKind:"building",simulationEnergyZoneName:"",simulationEnergyPeriod:"annual",simulationEnergyService:"all",simulationEnergySelection:"",simulationEnergyDetailsOpen:false,energyDrawer:{tab:"data",stage:"",outputSource:""}});
  simulation.renderSimulation();
  const host=document.getElementById("simulationEnergyDashboard"),pane=document.querySelector("#simulationPane > .simulation-pane");
  const nodeButton=id=>[...host.querySelectorAll("[data-energy-path-layout-node]")].find(node=>node.dataset.energyPathLayoutNode===id);

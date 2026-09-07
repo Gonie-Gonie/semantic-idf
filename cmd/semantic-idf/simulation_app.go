@@ -116,6 +116,10 @@ func (a *App) SelectSimulationInputFolder(recursive bool) (*simulation.Simulatio
 }
 
 func (a *App) RunSimulationText(request simulation.SimulationRunRequest) (*simulation.SimulationRunResult, error) {
+	// Capture the user's input before purpose outputs are injected into the run
+	// copy. Workspace restoration must match the original document exactly.
+	workspaceText := request.Text
+	workspaceRequest := a.beginSimulationResultRequest()
 	_, settings, err := loadAppSettings()
 	if err != nil {
 		return nil, err
@@ -148,7 +152,11 @@ func (a *App) RunSimulationText(request simulation.SimulationRunRequest) (*simul
 	if request.Filename == "" && request.InputPath != "" {
 		request.Filename = filepath.Base(request.InputPath)
 	}
-	return simulation.RunSimulation(request, progress, settings.Simulation)
+	result, err := simulation.RunSimulation(request, progress, settings.Simulation)
+	if err == nil {
+		a.rememberSimulationResultForRequest(workspaceRequest, workspaceText, result)
+	}
+	return result, err
 }
 
 func (a *App) RunPurposeSimulationText(request simulation.SimulationRunRequest) (*simulation.SimulationRunResult, error) {

@@ -23,6 +23,7 @@ import {
   openTools,
   prioritizeAnalysisStageForTab,
   currentDocumentStorageKey,
+  computeAnalysisKey,
   registerLoadedDocument,
   revertToLoadedDocument,
   saveInputFile,
@@ -75,7 +76,12 @@ import {
 } from "./command-palette.js";
 import { captureViewSnapshot, recordViewHistory } from "./view-history.js";
 import { initializeProfileControls, renderProfile } from "./views/profile-views.js";
-import { initializeSimulationControls, loadSimulationEnvironment } from "./views/simulation-views.js";
+import {
+  initializeSimulationControls,
+  loadSimulationEnvironment,
+  restoreSimulationEnergyWorkspaceContext,
+  suppressSimulationAutoRunForCurrentDocument,
+} from "./views/simulation-views.js";
 import { normalizeAnalyzeTabOrder, t, translatePage } from "./i18n.js";
 import { initializeKeyboardShortcuts } from "./shortcuts.js";
 import { getSemanticNavigationCache } from "./semantic-navigation-cache.js";
@@ -729,6 +735,8 @@ if (restoredDocument) {
   });
   state.loadedText = typeof restoredDocument.loadedText === "string" ? restoredDocument.loadedText : state.loadedText;
   state.savedText = typeof restoredDocument.savedText === "string" ? restoredDocument.savedText : state.savedText;
+  restoreSimulationEnergyWorkspaceContext(savedSimulationWorkspaceContext(restoredDocument));
+  suppressSimulationAutoRunForCurrentDocument();
   restoreWorkspaceLayout(restoredDocument.layout || {});
   if (restoredDocument.activeInputView) {
     switchInputView(restoredDocument.activeInputView, { recordHistory: false });
@@ -760,9 +768,12 @@ if (restoredDocument) {
 async function restoreCachedDocumentAnalysis(restoredDocument) {
   const label = restoredDocument.filename || "current input";
   const api = backend();
+  await restoreCachedSimulationWorkspace(restoredDocument);
+  if (!isCurrentWorkspaceDocument(restoredDocument)) return;
   if (restoredDocument.analysisKey && api && typeof api.GetCachedAnalysis === "function") {
     try {
       const cached = await api.GetCachedAnalysis(restoredDocument.analysisKey);
+      if (!isCurrentWorkspaceDocument(restoredDocument)) return;
       if (cached && applyCachedAnalysisResult(cached, restoredDocument)) {
         await restoreSavedWorkspaceContext(restoredDocument);
         setStatus(t("status.loadedNamed", { name: label }), "ok");
@@ -772,6 +783,7 @@ async function restoreCachedDocumentAnalysis(restoredDocument) {
       // Fall through to normal analysis if the in-memory backend cache is unavailable.
     }
   }
+  if (!isCurrentWorkspaceDocument(restoredDocument)) return;
   state.pendingWorkspaceRestore = restoredDocument;
   scheduleAnalyzeAfterPaint({
     loadingMessage: t("status.analyzingNamed", { name: label }),
@@ -807,8 +819,49 @@ async function restoreSavedWorkspaceContext(restoredDocument = {}) {
     semanticCurrentOccurrenceId: restoredDocument.semanticOccurrenceId || "",
     panelContexts: restoredDocument.panelContexts || {},
   };
+  // The active adapter may be HVAC/Topology. Restore dormant Energy context
+  // explicitly without changing the selected physical model or active panel.
+  restoreSimulationEnergyWorkspaceContext(savedSimulationWorkspaceContext(restoredDocument));
   restoreWorkspaceLayout(restoredDocument.layout || {});
   await restoreViewSnapshot(snapshot, { recordHistory: false, quiet: true });
+}
+
+function savedSimulationWorkspaceContext(restoredDocument = {}) {
+  return restoredDocument.viewSnapshot?.panelContexts?.simulation || restoredDocument.panelContexts?.simulation || {};
+}
+
+function isCurrentWorkspaceDocument(restoredDocument = {}) {
+  return restoredDocument.text === getDocumentText() && (restoredDocument.path || "") === (state.currentFilePath || "") &&
+    (restoredDocument.filename || "") === (state.currentFilename || "");
+}
+
+async function restoreCachedSimulationWorkspace(restoredDocument = {}) {
+  const reference = restoredDocument.simulationResultRef;
+  if (!reference || typeof reference.textHash !== "string" || !/^[a-f0-9]{64}$/.test(reference.textHash) ||
+    typeof reference.runId !== "string" || !reference.runId.trim()) return false;
+  const text = getDocumentText();
+  if (!isCurrentWorkspaceDocument(restoredDocument) || await computeAnalysisKey(text) !== reference.textHash) return false;
+  const previousResult = state.simulationResult;
+  const previousRunID = state.simulationActiveRunID;
+  if (state.simulationRunning) return false;
+  try {
+    const api = backend();
+    const result = api && typeof api.GetCachedSimulationResult === "function"
+      ? await api.GetCachedSimulationResult(reference.textHash, reference.runId)
+      : await fetch("/api/simulation-result-cache", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ textHash: reference.textHash, runId: reference.runId }),
+      }).then(async (response) => response.ok ? response.json() : null);
+    if (!result || typeof result !== "object" || Array.isArray(result) || result.runId !== reference.runId ||
+      !isCurrentWorkspaceDocument(restoredDocument) || state.simulationRunning || state.simulationActiveRunID !== previousRunID ||
+      state.simulationResult !== previousResult) return false;
+    state.simulationResult = result;
+    return true;
+  } catch {
+    // A missing process-local result leaves an honest empty Simulation view.
+    // Workspace navigation never substitutes another run or reruns EnergyPlus.
+    return false;
+  }
 }
 
 function restoreCurrentDocument() {

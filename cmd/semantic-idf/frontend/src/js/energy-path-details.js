@@ -230,14 +230,14 @@ function renderAccountingQuality(quality) {
   </section>`;
 }
 
-function renderDataPanel(explanation, viewState, outputObjects, diagnosticsHTML) {
+function renderDataPanel(explanation, viewState, outputObjects, diagnosticsHTML, drawer) {
   const context = selectedContext(explanation, viewState);
-  const stage = STAGES.some((item) => item.key === viewState.simulationEnergyDetailsStage) ? viewState.simulationEnergyDetailsStage : "";
+  const stage = STAGES.some((item) => item.key === drawer.stage) ? drawer.stage : "";
   const roles = sourceRoles(context.result);
   const availability = context.sourceAvailability.filter((row) => rowMatchesStage(row, stage, roles, true));
   const sources = explanation.sources || [];
   const visibleSources = scopedSources(sources, context, viewState).filter((source) => rowMatchesStage(source, stage, roles));
-  return `<section id="energyPathDataPanel" class="energy-path-details-panel" role="tabpanel" aria-labelledby="energyPathDataTab" data-energy-path-details-panel="data" ${viewState.simulationEnergyDetailsTab === "output" ? "hidden" : ""}>
+  return `<section id="energyPathDataPanel" class="energy-path-details-panel" role="tabpanel" aria-labelledby="energyPathDataTab" data-energy-path-details-panel="data" ${drawer.tab === "output" ? "hidden" : ""}>
     <p>${escapeHTML(contextLabel(explanation, viewState))}</p>
     ${renderAccountingQuality(energyPathQualityForState(explanation, viewState))}
     ${diagnosticsHTML || ""}
@@ -262,11 +262,11 @@ function renderDataPanel(explanation, viewState, outputObjects, diagnosticsHTML)
   </section>`;
 }
 
-function renderOutputPanel(explanation, viewState, outputObjects) {
+function renderOutputPanel(explanation, drawer, outputObjects) {
   const sources = explanation.sources || [];
-  const source = sources.find((item) => item.id === viewState.simulationEnergyOutputSource);
+  const source = sources.find((item) => item.id === drawer.outputSource);
   const resolution = source ? resolveEnergyPathOutputRequest(source, outputObjects, sources) : null;
-  return `<section id="energyPathOutputPanel" class="energy-path-details-panel" role="tabpanel" aria-labelledby="energyPathOutputTab" data-energy-path-details-panel="output" ${viewState.simulationEnergyDetailsTab !== "output" ? "hidden" : ""}>
+  return `<section id="energyPathOutputPanel" class="energy-path-details-panel" role="tabpanel" aria-labelledby="energyPathOutputTab" data-energy-path-details-panel="output" ${drawer.tab !== "output" ? "hidden" : ""}>
     <h5>${escapeHTML(copy("OutputRequests", "Run output requests"))}</h5>
     ${source ? `<p data-energy-path-output-match-status="${escapeHTML(resolution.status)}">${escapeHTML(source.name || source.id)} · ${escapeHTML(resolution.status === "exact" ? copy("ExactOutputRequest", "Exact request") : resolutionLabel(resolution.status))}</p>` : ""}
     <div class="energy-path-details-table-wrap"><table><thead><tr><th>${escapeHTML(copy("RequestType", "Type"))}</th><th>${escapeHTML(copy("RequestKey", "Key"))}</th><th>${escapeHTML(copy("RequestName", "Name"))}</th><th>${escapeHTML(copy("RequestFrequency", "Frequency"))}</th><th>${escapeHTML(copy("QualityStatus", "Status"))}</th></tr></thead><tbody>
@@ -283,12 +283,13 @@ function renderOutputPanel(explanation, viewState, outputObjects) {
 
 export function renderEnergyPathDataDetails(explanation = {}, viewState = {}, options = {}) {
   const open = viewState.simulationEnergyDetailsOpen === true;
-  const tab = viewState.simulationEnergyDetailsTab === "output" ? "output" : "data";
+  const drawer = options.drawer && typeof options.drawer === "object" ? options.drawer : {};
+  const tab = drawer.tab === "output" ? "output" : "data";
   const outputObjects = options.outputObjects || [];
   return `<aside id="energyPathDataDetails" class="energy-path-data-details" data-energy-path-data-details ${open ? "" : "hidden"} tabindex="-1" role="dialog" aria-modal="false" aria-labelledby="energyPathDataDetailsTitle">
     <header><strong id="energyPathDataDetailsTitle">${escapeHTML(copy("DataDetails", "Data details"))}</strong><button type="button" data-energy-path-details-toggle>${escapeHTML(copy("CloseDetails", "Close"))}</button></header>
     <div class="energy-path-details-tabs" role="tablist" aria-label="${escapeHTML(copy("DataDetails", "Data details"))}">${["data", "output"].map((name) => `<button id="energyPath${name === "data" ? "Data" : "Output"}Tab" type="button" role="tab" tabindex="${tab === name ? 0 : -1}" aria-selected="${tab === name}" aria-controls="energyPath${name === "data" ? "Data" : "Output"}Panel" data-energy-path-details-tab="${name}">${escapeHTML(name === "data" ? copy("DataTab", "Data") : copy("OutputTab", "Output"))}</button>`).join("")}</div>
-    ${renderDataPanel(explanation, viewState, outputObjects, options.diagnosticsHTML)}
-    ${renderOutputPanel(explanation, viewState, outputObjects)}
+    ${renderDataPanel(explanation, viewState, outputObjects, options.diagnosticsHTML, drawer)}
+    ${renderOutputPanel(explanation, drawer, outputObjects)}
   </aside>`;
 }

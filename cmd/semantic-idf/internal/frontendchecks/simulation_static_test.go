@@ -32,18 +32,17 @@ func TestFrontendSimulationEnergySystemsCrossJumpContracts(t *testing.T) {
 		"simulation.openAssetInHVAC",
 		"relatedPathIds",
 		"focusedEnergyExplanationGraph",
-		"data-simulation-energy-focus-mode",
-		"data-simulation-energy-service-path-focus",
-		"data-simulation-energy-loop-focus",
+		"captureSimulationEnergyWorkspaceContext",
+		"restoreSimulationEnergyWorkspaceContext",
+		"legacyEnergyPresentation",
+		"state.simulationEnergyScopeKind",
+		"state.simulationEnergyZoneName",
 		"data-simulation-energy-loop-focus-jump",
 		"data-simulation-energy-service-path-jump",
 		"simulationEnergyLoopFocusOptions",
 		"simulationEnergyServicePathsForLoopFocus",
 		"renderSimulationEnergyLoopFocusButton",
 		"simulationEnergyNodeMatchesServicePaths",
-		"state.simulationEnergyLoopFocus",
-		"data-simulation-energy-sankey-mode",
-		"data-simulation-energy-sign-mode",
 		"energyExplanationSignModeGraph",
 		"cooling_pressure",
 		"heating_pressure",
@@ -53,18 +52,15 @@ func TestFrontendSimulationEnergySystemsCrossJumpContracts(t *testing.T) {
 		"simulation.energySankeyCategoryGrouped",
 		"heatCategoryGroupedCount",
 		"groupedEnergyExplanationGraph",
-		"data-simulation-energy-node-limit",
 		"data-simulation-energy-show-all-nodes",
 		"renderEnergyExplanationGroupingNotice",
 		"otherRelatedPathIDs",
 		"omittedHeatNodeByID",
 		"existing.relatedPathIds",
 		"renderEnergySignConventionNote",
-		"renderEnergySankeyModeControls",
 		"energyExplanationSankeyMode",
 		"energyExplanationSankeyColumnConfig",
 		"energyExplanationSankeyDisplayGraph",
-		"simulation.energySankeyMode",
 		"simulation.energySankeyGrouped",
 		"simulation.energySankeyGroupedAllHeat",
 		"simulation.energySignConvention",
@@ -107,9 +103,6 @@ func TestFrontendSimulationEnergySystemsCrossJumpContracts(t *testing.T) {
 		"connectedNodeIDs.has(node.id)",
 		"energyExplanationNodeClassTokens",
 		"data-simulation-energy-period-jump",
-		"data-simulation-energy-period-kind",
-		"data-simulation-energy-period-index",
-		"renderEnergyPeriodControls",
 		"energyExplanationPeriodKinds",
 		"energyExplanationPeriodKindLabel",
 		"energyPointPeriodID",
@@ -190,6 +183,16 @@ func TestFrontendSimulationEnergySystemsCrossJumpContracts(t *testing.T) {
 	} {
 		if !strings.Contains(simulation, term) {
 			t.Fatalf("simulation energy systems contract missing %q", term)
+		}
+	}
+	for _, removed := range []string{
+		"state.simulationEnergyFocusMode", "state.simulationEnergyLoopFocus", "state.simulationEnergyServicePathFocus",
+		"state.simulationEnergySankeyMode", "state.simulationEnergySignMode", "state.simulationEnergyNodeLimit",
+		"function renderEnergyFocusControls", "function renderEnergySankeyModeControls", "function renderEnergySignModeControls",
+		"function renderEnergyNodeLimitControls", "function renderEnergyPeriodControls",
+	} {
+		if strings.Contains(simulation, removed) {
+			t.Fatalf("Energy must not recreate removed primary controls or shadow focus: %q", removed)
 		}
 	}
 	hvac := readTestFile(t, "frontend/src/js/views/hvac-views.js")

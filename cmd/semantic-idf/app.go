@@ -18,8 +18,9 @@ import (
 )
 
 type App struct {
-	ctx           context.Context
-	analysisCache *AnalysisCache
+	ctx                      context.Context
+	analysisCache            *AnalysisCache
+	simulationWorkspaceCache simulationWorkspaceCache
 }
 
 type TextEditResult struct {

@@ -188,7 +188,7 @@ try{
  };
  const selectDriver=async(category,{scope="building",period="M1",service="all"}={})=>{
   navigation.switchResultTab("simulation",{recordHistory:false});state.simulationActiveResultView="energy";
-  Object.assign(state,{simulationEnergyScopeKind:scope,simulationEnergyZoneName:scope==="zone"?"Office":"",simulationEnergyPeriod:period,simulationEnergyService:service,simulationEnergySelection:"",simulationEnergyDetailsOpen:false,simulationEnergyDetailsTab:"data",simulationEnergyDetailsStage:"",simulationEnergyOutputSource:""});
+  simulation.restoreSimulationEnergyWorkspaceContext({simulationEnergyScopeKind:scope,simulationEnergyZoneName:scope==="zone"?"Office":"",simulationEnergyPeriod:period,simulationEnergyService:service,simulationEnergySelection:"",simulationEnergyDetailsOpen:false,energyDrawer:{tab:"data",stage:"",outputSource:""}});
   const node=graph().nodes.find(item=>item.driverCategory===category);if(!node)throw new Error("Missing driver "+category);
   state.simulationEnergySelection=node.id;simulation.renderSimulationEnergyDashboard(state.simulationResult);await sleep(30);check(Boolean(inspector()),"Actual driver inspector missing "+category);
   if(category==="surface.exterior_walls")checkDriverHeading("Exterior walls");

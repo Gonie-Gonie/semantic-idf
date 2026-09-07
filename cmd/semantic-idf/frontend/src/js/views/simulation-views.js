@@ -27,6 +27,7 @@ import { energyPathSeriesID, resolveEnergyPathSeriesCandidates, energyPathSeries
 import { energyPathKPIItems } from "../energy-path-kpis.js";
 import { energyPathDriverDestinations } from "../energy-path-driver-destinations.js";
 import { energyPathServiceDestinations } from "../energy-path-service-destinations.js";
+import { migrateEnergyPathState } from "../energy-path-state.js";
 import { resolveEnergyPathOutputRequest, energyPathOutputRequestKey } from "../energy-path-output-requests.js";
 import { navigateHVAC, renderHVACLoopDiagram } from "./hvac-views.js";
 import { renderProfile } from "./profile-views.js";
@@ -39,7 +40,38 @@ let simulationSeriesPanels = [];
 let simulationSeriesPanelSequence = 1;
 let simulationSeriesPan = null;
 let heatFlowBrushStartFrame = null;
-let simulationEnergyDetailsReturnSelector = "[data-energy-path-details-toggle]";
+let simulationEnergyDetailsReturnSelector = "";
+let simulationEnergyDrawer = { tab: "data", stage: "", outputSource: "" };
+const simulationEnergyPrimaryKeys = Object.keys(migrateEnergyPathState().primary);
+const legacyEnergyPresentation = Object.freeze({ signMode: "display", sankeyMode: "detailed", nodeLimit: 0 });
+
+export function captureSimulationEnergyWorkspaceContext() {
+  const { primary, drawer } = migrateEnergyPathState({
+    primary: Object.fromEntries(simulationEnergyPrimaryKeys.map((key) => [key, state[key]])),
+    energyDrawer: simulationEnergyDrawer,
+  });
+  return { ...primary, energyDrawer: { ...drawer } };
+}
+
+export function restoreSimulationEnergyWorkspaceContext(snapshot = {}) {
+  const { primary, drawer } = migrateEnergyPathState(snapshot);
+  for (const key of Object.keys(state)) {
+    if (key.startsWith("simulationEnergy") && !simulationEnergyPrimaryKeys.includes(key)) delete state[key];
+  }
+  Object.assign(state, primary);
+  simulationEnergyDrawer = { ...drawer };
+  simulationEnergyDetailsReturnSelector = "";
+  return captureSimulationEnergyWorkspaceContext();
+}
+
+function validateSimulationEnergyResultContext(explanation, graph) {
+  const matches = [...(graph.nodes || []), ...(graph.links || [])].filter((item) =>
+    item.id === state.simulationEnergySelection || [...(item.originalNodeIds || []), ...(item.originalLinkIds || [])].includes(state.simulationEnergySelection));
+  state.simulationEnergySelection = matches.length === 1 ? matches[0].id : "";
+  if ((explanation.sources || []).filter((source) => source.id === simulationEnergyDrawer.outputSource).length !== 1) {
+    simulationEnergyDrawer.outputSource = "";
+  }
+}
 
 const simulationSemanticBindings = new Map();
 const simulationEnergySourceByIDCache = new WeakMap();
@@ -748,9 +780,7 @@ function simulationNavigationDestination(selection = {}, context = {}) {
       return {
         resultView: "energy",
         energyDetailsOpen: true,
-        energyDetailsTab: "data",
-        energyDetailsStage: "",
-        energyOutputSource: source.id,
+        energyDrawer: { tab: "data", stage: "", outputSource: source.id },
         energyScopeKind: energyPathZoneNames(state.simulationResult?.purposeResults?.energyExplanation || {}).includes(source.zoneName) ? "zone" : "building",
         energyZoneName: source.zoneName || "",
         panelTargetID: simulationSourcePanelTargetID(source, object),
@@ -879,10 +909,11 @@ function applySimulationNavigationDestination(destination = {}) {
     simulationEnergyPeriod: destination.energyPeriod,
     simulationEnergyService: destination.energyService,
     simulationEnergyDetailsOpen: destination.energyDetailsOpen,
-    simulationEnergyDetailsTab: destination.energyDetailsTab,
-    simulationEnergyDetailsStage: destination.energyDetailsStage,
-    simulationEnergyOutputSource: destination.energyOutputSource,
   })) if (value !== undefined) state[key] = value;
+  if (destination.energyDrawer !== undefined) {
+    const context = captureSimulationEnergyWorkspaceContext();
+    restoreSimulationEnergyWorkspaceContext({ ...context, energyDrawer: destination.energyDrawer });
+  }
   if (destination.energySelection !== undefined) {
     state.simulationEnergySelection = destination.energySelection || "";
   }
@@ -941,8 +972,8 @@ function findSimulationNavigationTarget(selection = {}, context = {}, destinatio
   });
   candidates.sort((left, right) => simulationNavigationElementScore(right, panelTargetID, panelTargetPrefix) - simulationNavigationElementScore(left, panelTargetID, panelTargetPrefix));
   if (!candidates.length && destination?.resultView === "energy") {
-    if (destination.energyOutputSource) return [...root.querySelectorAll("[data-energy-path-data-source]")]
-      .find((item) => item.dataset.energyPathDataSource === destination.energyOutputSource) || null;
+    if (destination.energyDrawer?.outputSource) return [...root.querySelectorAll("[data-energy-path-data-source]")]
+      .find((item) => item.dataset.energyPathDataSource === destination.energyDrawer.outputSource) || null;
     if (destination.energySelection) return [...root.querySelectorAll("[data-energy-explanation-node], [data-energy-explanation-edge]")]
       .find((item) => item.dataset.energyExplanationNode === destination.energySelection || item.dataset.energyExplanationEdge === destination.energySelection) || null;
   }
@@ -988,9 +1019,7 @@ export function captureSimulationNavigationContext(context) {
     energyService: state.simulationEnergyService || "all",
     energySelection: state.simulationEnergySelection || "",
     energyDetailsOpen: Boolean(state.simulationEnergyDetailsOpen),
-    energyDetailsTab: state.simulationEnergyDetailsTab || "data",
-    energyDetailsStage: state.simulationEnergyDetailsStage || "",
-    energyOutputSource: state.simulationEnergyOutputSource || "",
+    energyDrawer: { ...simulationEnergyDrawer },
     hvacPanels: { ...(state.simulationHVACPanels || {}) },
     hvacVisibleGroups: { ...(state.simulationHVACVisibleGroups || {}) },
     hvacFrameIndex: Number(state.simulationHVACFrameIndex) || 0,
@@ -1018,20 +1047,12 @@ export function captureSimulationNavigationContext(context) {
 }
 
 export async function restoreSimulationNavigationContext(snapshot = {}, context) {
+  restoreSimulationEnergyWorkspaceContext(snapshot);
   if (!state.simulationResult) {
     return false;
   }
   const assignments = {
     simulationActiveResultView: snapshot.activeResultView,
-    simulationEnergyScopeKind: snapshot.energyScopeKind || (snapshot.energyFocusMode === "zone" ? "zone" : "building"),
-    simulationEnergyZoneName: snapshot.energyZoneName ?? snapshot.energyZoneFocus ?? "",
-    simulationEnergyPeriod: snapshot.energyPeriod || "annual",
-    simulationEnergyService: snapshot.energyService || "all",
-    simulationEnergySelection: snapshot.energySelection || "",
-    simulationEnergyDetailsOpen: snapshot.energyDetailsOpen ?? ["sources", "reconciliation"].includes(snapshot.energyView),
-    simulationEnergyDetailsTab: snapshot.energyDetailsTab || "data",
-    simulationEnergyDetailsStage: snapshot.energyDetailsStage || "",
-    simulationEnergyOutputSource: snapshot.energyOutputSource || "",
     simulationHVACPanels: snapshot.hvacPanels ? { ...snapshot.hvacPanels } : undefined,
     simulationHVACVisibleGroups: snapshot.hvacVisibleGroups ? { ...snapshot.hvacVisibleGroups } : undefined,
     simulationHVACFrameIndex: snapshot.hvacFrameIndex,
@@ -1058,19 +1079,8 @@ export async function restoreSimulationNavigationContext(snapshot = {}, context)
   }
   const explanation = state.simulationResult?.purposeResults?.energyExplanation || {};
   normalizeEnergyPathViewState(state, explanation);
-  if (snapshot.energyServicePathFocus && !snapshot.energySelection) {
-    const item = simulationEnergyItemForServicePath(snapshot.energyServicePathFocus);
-    if (item) {
-      state.simulationEnergyScopeKind = item.navigationScopeKind;
-      state.simulationEnergyZoneName = item.navigationZoneName;
-      state.simulationEnergySelection = item.id;
-    }
-  }
   const graph = energyPathGraphForState(explanation, state);
-  const selected = [...(graph.nodes || []), ...(graph.links || [])].find((item) =>
-    item.id === state.simulationEnergySelection || [...(item.originalNodeIds || []), ...(item.originalLinkIds || [])].includes(state.simulationEnergySelection));
-  state.simulationEnergySelection = selected?.id || "";
-  if (!(explanation.sources || []).some((source) => source.id === state.simulationEnergyOutputSource)) state.simulationEnergyOutputSource = "";
+  if (isEnergyPathV2(explanation)) validateSimulationEnergyResultContext(explanation, graph);
   if (Array.isArray(snapshot.seriesPanels)) {
     simulationSeriesPanels = snapshot.seriesPanels.map((panel) => ({ ...panel, seriesIDs: [...(panel.seriesIDs || [])] }));
     simulationSeriesPanelSequence = Math.max(simulationSeriesPanelSequence, ...simulationSeriesPanels.map((panel) => (Number(panel.id) || 0) + 1));
@@ -1374,9 +1384,11 @@ export function renderSimulationEnergyDashboard(result) {
   if (useEnergyPathV2) {
     normalizeEnergyPathViewState(state, explanation);
   }
-  const explanationNodes = useEnergyPathV2
-    ? energyPathGraphForState(explanation, state).nodes || []
-    : energyExplanationGraphForPeriod(explanation, state.simulationEnergyPeriod || "annual").nodes || [];
+  const explanationGraph = useEnergyPathV2
+    ? energyPathGraphForState(explanation, state)
+    : energyExplanationGraphForPeriod(explanation, state.simulationEnergyPeriod || "annual");
+  const explanationNodes = explanationGraph.nodes || [];
+  if (useEnergyPathV2) validateSimulationEnergyResultContext(explanation, explanationGraph);
   if (!facility.length && !endUse.length && !zones.length && !explanationNodes.length && !(useEnergyPathV2 && energyPathHasPayload(explanation))) {
     renderSimulationEnergyEmpty(t("simulation.noEnergyResult", {}, "Run Basic Energy to inspect monthly energy results."));
     return;
@@ -1394,6 +1406,7 @@ export function renderSimulationEnergyDashboard(result) {
         relatedEntitiesForItem: simulationEnergyInspectorRelatedEntities,
         driverNavigationForNode: simulationEnergyDriverNavigation,
         serviceNavigationForNode: simulationEnergyServiceNavigation,
+        drawer: { ...simulationEnergyDrawer },
       })}`;
     pruneSimulationSemanticBindings();
     return;
@@ -1607,46 +1620,6 @@ function energyExplanationHasPayload(explanation = {}) {
 }
 
 
-function renderEnergyPeriodControls(view, explanation = {}) {
-  if (!["sankey", "zones", "systems"].includes(view)) {
-    return "";
-  }
-  const periods = explanation.periods || [];
-  if (!periods.length) {
-    return "";
-  }
-  const currentPeriod = energyExplanationPeriodForID(periods, state.simulationEnergyPeriod || "annual") || periods[0];
-  const kinds = energyExplanationPeriodKinds(periods);
-  let kind = state.simulationEnergyPeriodKind || energyExplanationPeriodKind(currentPeriod);
-  if (!kinds.includes(kind)) {
-    kind = energyExplanationPeriodKind(currentPeriod) || kinds[0] || "annual";
-  }
-  let filtered = periods.filter((period) => energyExplanationPeriodKind(period) === kind);
-  if (!filtered.length) {
-    kind = energyExplanationPeriodKind(currentPeriod) || kinds[0] || "annual";
-    filtered = periods.filter((period) => energyExplanationPeriodKind(period) === kind);
-  }
-  let selectedPeriod = filtered.find((period) => period.id === state.simulationEnergyPeriod);
-  if (!selectedPeriod) {
-    selectedPeriod = filtered[0] || currentPeriod;
-    state.simulationEnergyPeriod = selectedPeriod.id || "annual";
-  }
-  state.simulationEnergyPeriodKind = kind;
-  const kindControl =
-    kinds.length > 1
-      ? `<label><span>${escapeHTML(t("simulation.periodType", {}, "Period type"))}</span><select data-simulation-energy-period-kind>${kinds
-          .map((item) => `<option value="${escapeHTML(item)}" ${kind === item ? "selected" : ""}>${escapeHTML(energyExplanationPeriodKindLabel(item))}</option>`)
-          .join("")}</select></label>`
-      : "";
-  const selectedIndex = Math.max(0, filtered.findIndex((period) => period.id === selectedPeriod.id));
-  const periodControl =
-    filtered.length > 96
-      ? `<label class="simulation-energy-period-slider"><span>${escapeHTML(t("common.period", {}, "Period"))}: ${escapeHTML(selectedPeriod.label || selectedPeriod.id || "")}</span><input type="range" min="0" max="${escapeHTML(filtered.length - 1)}" value="${escapeHTML(selectedIndex)}" data-simulation-energy-period-index /></label>`
-      : `<label><span>${escapeHTML(t("common.period", {}, "Period"))}</span><select data-simulation-energy-period>${filtered
-          .map((period) => `<option value="${escapeHTML(period.id || "")}" ${(state.simulationEnergyPeriod || "annual") === period.id ? "selected" : ""}>${escapeHTML(period.label || period.id || "")}</option>`)
-          .join("")}</select></label>`;
-  return `${kindControl}${periodControl}`;
-}
 
 function energyExplanationPeriodForID(periods = [], periodID = "") {
   if (!Array.isArray(periods)) {
@@ -1690,125 +1663,6 @@ function energyExplanationPeriodKindLabel(kind = "") {
     default:
       return titleCaseEnergyToken(kind);
   }
-}
-
-function renderEnergySankeyModeControls() {
-  const mode = energyExplanationSankeyMode(state.simulationEnergySankeyMode || "detailed");
-  state.simulationEnergySankeyMode = mode;
-  const options = [
-    ["detailed", t("simulation.energySankeyDetailed", {}, "Detailed")],
-    ["compact", t("simulation.energySankeyCompact", {}, "Compact")],
-  ]
-    .map(([value, label]) => `<option value="${escapeHTML(value)}" ${mode === value ? "selected" : ""}>${escapeHTML(label)}</option>`)
-    .join("");
-  return `
-    <label>
-      <span>${escapeHTML(t("simulation.energySankeyMode", {}, "Sankey mode"))}</span>
-      <select data-simulation-energy-sankey-mode>${options}</select>
-    </label>`;
-}
-
-function renderEnergySignModeControls() {
-  const mode = energyExplanationSignMode(state.simulationEnergySignMode || "display");
-  state.simulationEnergySignMode = mode;
-  const options = [
-    ["display", t("simulation.energyDisplayMagnitude", {}, "Display magnitude")],
-    ["signed", t("simulation.energySignedBalance", {}, "Signed balance")],
-    ["cooling_pressure", t("simulation.coolingPressure", {}, "Cooling pressure")],
-    ["heating_pressure", t("simulation.heatingPressure", {}, "Heating pressure")],
-  ]
-    .map(([value, label]) => `<option value="${escapeHTML(value)}" ${mode === value ? "selected" : ""}>${escapeHTML(label)}</option>`)
-    .join("");
-  return `
-    <label>
-      <span>${escapeHTML(t("simulation.heatDriverView", {}, "Heat driver view"))}</span>
-      <select data-simulation-energy-sign-mode>${options}</select>
-    </label>`;
-}
-
-function renderEnergyNodeLimitControls() {
-  const limit = energyExplanationNodeLimit(state.simulationEnergyNodeLimit);
-  state.simulationEnergyNodeLimit = limit;
-  const options = [
-    [40, "Top 40"],
-    [80, "Top 80"],
-    [120, "Top 120"],
-    [0, t("common.all", {}, "All")],
-  ]
-    .map(([value, label]) => `<option value="${escapeHTML(value)}" ${limit === value ? "selected" : ""}>${escapeHTML(label)}</option>`)
-    .join("");
-  return `
-    <label>
-      <span>${escapeHTML(t("simulation.nodeLimit", {}, "Nodes"))}</span>
-      <select data-simulation-energy-node-limit>${options}</select>
-    </label>`;
-}
-
-function renderEnergyFocusControls(explanation = {}) {
-  const { zones, paths, loops, mode } = normalizeSimulationEnergyFocusState(explanation);
-  const modeOptions = [
-    ["all", t("common.all", {}, "All")],
-    ["zone", t("common.zone", {}, "Zone")],
-    ["service_path", t("hvac.servicePath", {}, "Service path")],
-    ["loop", t("simulation.hvacLoop", {}, "HVAC loop")],
-  ]
-    .map(([value, label]) => {
-      const disabled = value === "zone" && !zones.length
-        || value === "service_path" && !paths.length
-        || value === "loop" && !loops.length;
-      return `<option value="${escapeHTML(value)}" ${mode === value ? "selected" : ""} ${disabled ? "disabled" : ""}>${escapeHTML(label)}</option>`;
-    })
-    .join("");
-  const zoneSelect = mode === "zone"
-    ? `<label><span>${escapeHTML(t("common.zone", {}, "Zone"))}</span><select data-simulation-energy-zone-focus>${zones
-        .map((zone) => `<option value="${escapeHTML(zone)}" ${simulationZoneKey(zone) === simulationZoneKey(state.simulationEnergyZoneFocus) ? "selected" : ""}>${escapeHTML(zone)}</option>`)
-        .join("")}</select></label>`
-    : "";
-  const pathSelect = mode === "service_path"
-    ? `<label><span>${escapeHTML(t("hvac.servicePath", {}, "Service path"))}</span><select data-simulation-energy-service-path-focus>${paths
-        .map((path) => `<option value="${escapeHTML(path.id || "")}" ${path.id === state.simulationEnergyServicePathFocus ? "selected" : ""}>${escapeHTML(simulationEnergyServicePathFocusLabel(path))}</option>`)
-        .join("")}</select></label>`
-    : "";
-  const loopSelect = mode === "loop"
-    ? `<label><span>${escapeHTML(t("simulation.hvacLoop", {}, "HVAC loop"))}</span><select data-simulation-energy-loop-focus>${loops
-        .map((loop) => `<option value="${escapeHTML(loop.value || "")}" ${loop.value === state.simulationEnergyLoopFocus ? "selected" : ""}>${escapeHTML(loop.label || loop.value || "")}</option>`)
-        .join("")}</select></label>`
-    : "";
-  return `
-    <div class="simulation-energy-focus-controls">
-      <label><span>${escapeHTML(t("simulation.focus", {}, "Focus"))}</span><select data-simulation-energy-focus-mode>${modeOptions}</select></label>
-      ${zoneSelect}
-      ${pathSelect}
-      ${loopSelect}
-    </div>`;
-}
-
-function normalizeSimulationEnergyFocusState(explanation = {}) {
-  const graph = energyExplanationGraphForPeriod(explanation, state.simulationEnergyPeriod || "annual");
-  const zones = energyFocusZones(graph.nodes || []);
-  const paths = simulationHVACServicePaths();
-  const loops = simulationEnergyLoopFocusOptions();
-  let mode = state.simulationEnergyFocusMode || "all";
-  if (mode === "zone" && !zones.length) {
-    mode = "all";
-  }
-  if (mode === "service_path" && !paths.length) {
-    mode = "all";
-  }
-  if (mode === "loop" && !loops.length) {
-    mode = "all";
-  }
-  state.simulationEnergyFocusMode = mode;
-  if (mode === "zone" && !zones.some((zone) => simulationZoneKey(zone) === simulationZoneKey(state.simulationEnergyZoneFocus))) {
-    state.simulationEnergyZoneFocus = zones[0] || "";
-  }
-  if (mode === "service_path" && !paths.some((path) => path.id === state.simulationEnergyServicePathFocus)) {
-    state.simulationEnergyServicePathFocus = paths[0]?.id || "";
-  }
-  if (mode === "loop" && !loops.some((loop) => loop.value === state.simulationEnergyLoopFocus)) {
-    state.simulationEnergyLoopFocus = loops[0]?.value || "";
-  }
-  return { zones, paths, loops, mode };
 }
 
 function renderEnergySubview(view, energy, explanation, explanationSummary, facility, endUse, zones) {
@@ -2585,7 +2439,7 @@ function renderEnergyExplanationSankey(explanation = {}) {
     <section class="simulation-energy-block">
       <div class="simulation-energy-block-head">
         <h4>${escapeHTML(t("simulation.energyPath", {}, "Energy Use -> Delivered Load -> Heat Drivers"))}</h4>
-        <span>${escapeHTML(t("simulation.energyBasisNote", {}, "Basis is accounting/source type."))} / ${escapeHTML(energyExplanationSignModeLabel(state.simulationEnergySignMode || "display"))}</span>
+        <span>${escapeHTML(t("simulation.energyBasisNote", {}, "Basis is accounting/source type."))} / ${escapeHTML(energyExplanationSignModeLabel(legacyEnergyPresentation.signMode))}</span>
       </div>
       ${svg}
       ${renderEnergyExplanationGroupingNotice(graph.grouping)}
@@ -2632,7 +2486,7 @@ function materializeSimulationEnergyNavigationTarget(graph = {}, sourceGraph = {
 }
 
 function energyExplanationSignModeGraph(graph = {}) {
-  const mode = energyExplanationSignMode(state.simulationEnergySignMode || "display");
+  const mode = energyExplanationSignMode(legacyEnergyPresentation.signMode);
   if (mode === "display") {
     return graph;
   }
@@ -2711,7 +2565,7 @@ function energyExplanationEdgeForSignMode(edge = {}, mode = "display") {
 }
 
 function categoryGroupedEnergyExplanationGraph(graph = {}) {
-  if ((state.simulationEnergyFocusMode || "all") !== "all" || !energyExplanationNodeLimit(state.simulationEnergyNodeLimit)) {
+  if (state.simulationEnergyScopeKind === "zone" || !energyExplanationNodeLimit(legacyEnergyPresentation.nodeLimit)) {
     return graph;
   }
   const nodes = graph.nodes || [];
@@ -2795,7 +2649,7 @@ function categoryGroupedEnergyExplanationGraph(graph = {}) {
 }
 
 function groupedEnergyExplanationGraph(graph = {}) {
-  const requestedLimit = energyExplanationNodeLimit(state.simulationEnergyNodeLimit);
+  const requestedLimit = energyExplanationNodeLimit(legacyEnergyPresentation.nodeLimit);
   if (!requestedLimit) {
     return graph;
   }
@@ -2937,7 +2791,7 @@ function roundedDisplayNumber(value) {
 }
 
 function renderEnergyExplanationSVG(nodes = [], edges = []) {
-  const mode = energyExplanationSankeyMode(state.simulationEnergySankeyMode || "detailed");
+  const mode = energyExplanationSankeyMode(legacyEnergyPresentation.sankeyMode);
   const displayGraph = energyExplanationSankeyDisplayGraph(nodes, edges, mode);
   const displayNodes = displayGraph.nodes || [];
   const displayEdges = displayGraph.edges || [];
@@ -3407,32 +3261,14 @@ function energyExplanationGraphForPeriod(explanation = {}, periodID = "annual") 
 }
 
 function focusedEnergyExplanationGraph(graph = {}) {
-  const mode = state.simulationEnergyFocusMode || "all";
-  if (mode === "all") {
+  if (state.simulationEnergyScopeKind !== "zone") {
     return graph;
   }
   const nodes = graph.nodes || [];
   const edges = graph.edges || [];
-  let includeNode = () => true;
-  if (mode === "zone") {
-    const zoneKey = simulationZoneKey(state.simulationEnergyZoneFocus || "");
-    if (!zoneKey) {
-      return graph;
-    }
-    includeNode = (node) => !node.zoneName || simulationZoneKey(node.zoneName) === zoneKey;
-  } else if (mode === "service_path") {
-    const path = simulationHVACServicePathIndex().byID.get(state.simulationEnergyServicePathFocus);
-    if (!path) {
-      return graph;
-    }
-    includeNode = (node) => simulationEnergyNodeMatchesServicePaths(node, [path]);
-  } else if (mode === "loop") {
-    const paths = simulationEnergyServicePathsForLoopFocus(state.simulationEnergyLoopFocus);
-    if (!paths.length) {
-      return graph;
-    }
-    includeNode = (node) => simulationEnergyNodeMatchesServicePaths(node, paths);
-  }
+  const zoneKey = simulationZoneKey(state.simulationEnergyZoneName || "");
+  if (!zoneKey) return graph;
+  const includeNode = (node) => !node.zoneName || simulationZoneKey(node.zoneName) === zoneKey;
   const focusedNodes = nodes.filter(includeNode);
   const nodeIDs = new Set(focusedNodes.map((node) => node.id));
   const focusedEdges = edges.filter((edge) => nodeIDs.has(edge.fromId) && nodeIDs.has(edge.toId));
@@ -5727,9 +5563,22 @@ function energySourceSeriesRef(source = {}) {
   return { keyValue, variableName, series: findSimulationSeriesForMetric(keyValue, variableName) };
 }
 
+function simulationEnergyRestoredOutputOpener(dashboard) {
+  if (simulationEnergyDrawer.tab !== "output" || !simulationEnergyDrawer.outputSource) return null;
+  const node = simulationSelectedEnergyPathNode();
+  if (!node) return null;
+  const candidates = simulationEnergyServiceNavigation(node).groups.flatMap((group) => group.candidates || [])
+    .filter((candidate) => candidate.kind === "output" && candidate.sourceId === simulationEnergyDrawer.outputSource);
+  if (candidates.length !== 1) return null;
+  const buttons = [...(dashboard?.querySelectorAll("[data-energy-path-service-destination]") || [])]
+    .filter((button) => !button.disabled && button.dataset.energyPathServiceNode === node.id && button.dataset.energyPathServiceDestination === candidates[0].id);
+  return buttons.length === 1 ? buttons[0] : null;
+}
+
 function focusSimulationEnergyDetails({ closed = false, output = false, tab = "" } = {}) {
   const dashboard = elements.simulationEnergyDashboard;
-  const opener = closed ? dashboard?.querySelector(simulationEnergyDetailsReturnSelector) : null;
+  const explicitOpener = closed && simulationEnergyDetailsReturnSelector ? dashboard?.querySelector(simulationEnergyDetailsReturnSelector) : null;
+  const opener = closed ? explicitOpener || simulationEnergyRestoredOutputOpener(dashboard) : null;
   if (closed && opener?.matches("[data-energy-path-service-destination]")) {
     // The inspector is rendered afresh with its multiple-target chooser closed.
     // Restore that disclosure before returning keyboard focus to its action.
@@ -5762,21 +5611,21 @@ function handleSimulationEnergyDetailsClick(event) {
   }
   if (kpiDetails) {
     state.simulationEnergyDetailsOpen = true;
-    state.simulationEnergyDetailsTab = "data";
-    state.simulationEnergyDetailsStage = "";
+    simulationEnergyDrawer.tab = "data";
+    simulationEnergyDrawer.stage = "";
   } else if (control.hasAttribute("data-energy-path-details-toggle")) {
     state.simulationEnergyDetailsOpen = !state.simulationEnergyDetailsOpen;
   } else if (stage !== undefined) {
     state.simulationEnergyDetailsOpen = true;
-    state.simulationEnergyDetailsTab = "data";
-    state.simulationEnergyDetailsStage = ["drivers", "loads", "endUses", "carriers"].includes(stage) ? stage : "";
+    simulationEnergyDrawer.tab = "data";
+    simulationEnergyDrawer.stage = ["drivers", "loads", "endUses", "carriers"].includes(stage) ? stage : "";
   } else if (tab !== undefined) {
     state.simulationEnergyDetailsOpen = true;
-    state.simulationEnergyDetailsTab = tab === "output" ? "output" : "data";
+    simulationEnergyDrawer.tab = tab === "output" ? "output" : "data";
   } else if (sourceID !== undefined) {
     state.simulationEnergyDetailsOpen = true;
-    state.simulationEnergyDetailsTab = "output";
-    state.simulationEnergyOutputSource = sourceID;
+    simulationEnergyDrawer.tab = "output";
+    simulationEnergyDrawer.outputSource = sourceID;
   }
   renderSimulationEnergyDashboard(state.simulationResult);
   focusSimulationEnergyDetails({ closed: !state.simulationEnergyDetailsOpen, output: sourceID !== undefined, tab });
@@ -5806,10 +5655,10 @@ export function handleSimulationEnergyDetailsKeydown(event) {
   if (!tab || !["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
   event.preventDefault();
   event.stopPropagation();
-  state.simulationEnergyDetailsTab = event.key === "Home" ? "data" : event.key === "End" ? "output"
+  simulationEnergyDrawer.tab = event.key === "Home" ? "data" : event.key === "End" ? "output"
     : tab.dataset.energyPathDetailsTab === "data" ? "output" : "data";
   renderSimulationEnergyDashboard(state.simulationResult);
-  focusSimulationEnergyDetails({ tab: state.simulationEnergyDetailsTab });
+  focusSimulationEnergyDetails({ tab: simulationEnergyDrawer.tab });
 }
 
 function simulationEnergyGraphFocusTarget(id) {
@@ -6108,8 +5957,8 @@ export async function openSimulationEnergyServiceDestination(element) {
     // returns to this exact source action while preserving the selected node.
     simulationEnergyDetailsReturnSelector = `[data-energy-path-service-destination="${CSS.escape(id)}"]`;
     state.simulationEnergyDetailsOpen = true;
-    state.simulationEnergyDetailsTab = "output";
-    state.simulationEnergyOutputSource = candidate.sourceId;
+    simulationEnergyDrawer.tab = "output";
+    simulationEnergyDrawer.outputSource = candidate.sourceId;
     renderSimulationEnergyDashboard(state.simulationResult);
     focusSimulationEnergyDetails({ output: true });
     return true;
@@ -9081,10 +8930,8 @@ async function runCurrentSimulation({ silent = false, auto = false } = {}) {
     }
     state.simulationResult = result;
     state.simulationEnergyDetailsOpen = false;
-    state.simulationEnergyDetailsTab = "data";
-    state.simulationEnergyDetailsStage = "";
-    state.simulationEnergyOutputSource = "";
-    simulationEnergyDetailsReturnSelector = "[data-energy-path-details-toggle]";
+    simulationEnergyDrawer = { tab: "data", stage: "", outputSource: "" };
+    simulationEnergyDetailsReturnSelector = "";
     state.simulationRunning = false;
     state.simulationSeriesRangeStart = 0;
     state.simulationSeriesRangeEnd = -1;
@@ -9107,6 +8954,11 @@ async function runCurrentSimulation({ silent = false, auto = false } = {}) {
     }
     return null;
   }
+}
+
+export function suppressSimulationAutoRunForCurrentDocument() {
+  const text = getDocumentText();
+  state.simulationAutoStartedKey = `${state.currentFilePath || state.currentFilename || "current"}:${hashString(text)}`;
 }
 
 async function maybeAutoRunSimulation() {
