@@ -33,7 +33,9 @@ func TestEPATH093FrontendSeparatesAndNavigatesSourceCorrespondence(t *testing.T)
 	simulationViews := readTestFile(t, "frontend/src/js/views/simulation-views.js")
 	for _, required := range []string{
 		`const energyNode = event.target.closest("[data-energy-explanation-node]")`,
-		`state.simulationEnergySelection = energyNode.dataset.energyExplanationNode || ""`,
+		`selectSimulationEnergyGraphItem(energyNode.dataset.energyExplanationNode || "")`,
+		`function selectSimulationEnergyGraphItem(id)`,
+		`state.simulationEnergySelection = id;`,
 	} {
 		if !strings.Contains(simulationViews, required) {
 			t.Fatalf("EPATH-093 related action no longer shares the existing node-selection mechanism: missing %q", required)

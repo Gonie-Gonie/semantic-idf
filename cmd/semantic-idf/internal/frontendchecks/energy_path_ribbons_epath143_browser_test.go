@@ -130,7 +130,9 @@ try{
  check(svg?.tagName.toLowerCase()==="svg"&&svg.getAttribute("aria-hidden")==="true","decorative ribbon geometry lost aria-hidden SVG separation");
  check(paths.length===23,"actual SVG omitted/duplicated additive branches: "+paths.length);
  check(current.relations.length===2&&!paths.some(path=>current.relations.some(relation=>relation.id===path.dataset.energyPathRibbon)),"source correspondence was drawn as additive energy ribbon");
- check(!host.querySelector("[data-energy-explanation-edge]"),"143 invented edge-selection actions before edge inspector implementation");
+ // EPATH-145 adds a separate accessible hit layer without changing these
+ // quantitative ribbons. Conversion ratio buttons provide the sole tab stop.
+ check(!svg.querySelector("[data-energy-explanation-edge]")&&host.querySelectorAll("[data-energy-path-link-hit]").length===paths.length,"edge interaction changed quantitative SVG or duplicated its hit targets");
  const domains=new Map(),widthEvidence=[];
  for(const path of paths){
   const id=path.dataset.energyPathRibbon,link=current.links.find(item=>item.id===id),d=path.getAttribute("d"),bbox=path.getBBox();

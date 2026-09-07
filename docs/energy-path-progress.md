@@ -108,6 +108,17 @@ the checklist or its final acceptance scenarios.
   Verification: pure appearance and provenance tests, actual light/dark contrast,
   non-color markers, unchanged raw/quantitative data, stable scope/period/service
   colors, Building/Zone fit, screenshot review and related frontend regressions.
+- EPATH-145: node taxonomy and both ends of ribbon port stacks now have fixed
+  ordering independent of values or input order. Selection follows ancestors and
+  descendants separately, so shared drivers/carriers do not activate unrelated
+  branches. Non-flow counterpart cards keep their outline without activating
+  their bars or links. Unrelated paths dim to 25%; focused labels remain readable.
+  Separate transparent link hit areas and native conversion buttons expose exact
+  selected-link values, units, ratio and basis, with source details closed.
+  Enter/Space, Escape, blank-canvas clearing and monthly history preserve focus
+  and original data. Verification: pure topology/port geometry, actual 1.37px
+  ribbon hit-testing outside its fill, directed path/counterpart selection,
+  monthly link details/history, fixed viewport and default/selected screenshots.
 
 ## Policy clarification
 
@@ -119,7 +130,7 @@ The normal Building interzone/category projection remains intact.
 
 ## Next in sequence
 
-EPATH-145 → 150–152 → 160–161 →
+EPATH-150–152 → 160–161 →
 170–171 → 180–182 → 190–198 → 200–204 → 210–211 → 220–222 → 230–235.
 
 Checklist section 22's actual-model fixtures and expected manifests also remain

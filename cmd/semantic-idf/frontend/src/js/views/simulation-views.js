@@ -571,6 +571,7 @@ export function initializeSimulationControls() {
   });
   elements.simulationEnergyDashboard?.addEventListener("click", handleSimulationSeriesInspectClick);
   elements.simulationEnergyDashboard?.addEventListener("keydown", handleSimulationEnergyDetailsKeydown);
+  elements.simulationEnergyDashboard?.addEventListener("keydown", handleSimulationEnergyGraphKeydown);
   elements.simulationEnergyDashboard?.addEventListener("input", handleSimulationEnergyDashboardChange);
   elements.simulationEnergyDashboard?.addEventListener("change", handleSimulationEnergyDashboardChange);
   elements.simulationHVACLoopResults?.addEventListener("click", handleSimulationSeriesInspectClick);
@@ -1061,7 +1062,7 @@ export async function restoreSimulationNavigationContext(snapshot = {}, context)
   }
   const graph = energyPathGraphForState(explanation, state);
   const selected = [...(graph.nodes || []), ...(graph.links || [])].find((item) =>
-    item.id === state.simulationEnergySelection || (item.originalNodeIds || []).includes(state.simulationEnergySelection));
+    item.id === state.simulationEnergySelection || [...(item.originalNodeIds || []), ...(item.originalLinkIds || [])].includes(state.simulationEnergySelection));
   state.simulationEnergySelection = selected?.id || "";
   if (!(explanation.sources || []).some((source) => source.id === state.simulationEnergyOutputSource)) state.simulationEnergyOutputSource = "";
   if (Array.isArray(snapshot.seriesPanels)) {
@@ -5664,6 +5665,53 @@ export function handleSimulationEnergyDetailsKeydown(event) {
   focusSimulationEnergyDetails({ tab: state.simulationEnergyDetailsTab });
 }
 
+function simulationEnergyGraphFocusTarget(id) {
+  return [...(elements.simulationEnergyDashboard?.querySelectorAll("[data-energy-explanation-node], [data-energy-explanation-edge]") || [])]
+    .find((element) => (element.dataset.energyExplanationNode === id || element.dataset.energyExplanationEdge === id) &&
+      element.tabIndex >= 0 && element.getClientRects().length);
+}
+
+function selectSimulationEnergyGraphItem(id) {
+  if (!id) return;
+  state.simulationEnergySelection = id;
+  renderSimulationEnergyDashboard(state.simulationResult);
+  simulationEnergyGraphFocusTarget(id)?.focus({ preventScroll: true });
+}
+
+function clearSimulationEnergyGraphSelection({ focusID = state.simulationEnergySelection, focusCanvas = false } = {}) {
+  if (!state.simulationEnergySelection) return;
+  state.simulationEnergySelection = "";
+  renderSimulationEnergyDashboard(state.simulationResult);
+  const target = !focusCanvas && simulationEnergyGraphFocusTarget(focusID);
+  if (target) target.focus({ preventScroll: true });
+  else {
+    const canvas = elements.simulationEnergyDashboard?.querySelector("[data-energy-path-canvas]");
+    if (canvas) {
+      canvas.tabIndex = -1;
+      canvas.focus({ preventScroll: true });
+    }
+  }
+}
+
+export function handleSimulationEnergyGraphKeydown(event) {
+  if (event.defaultPrevented || event.isComposing || !(event.target instanceof Element) ||
+    event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+  const edge = event.target.closest("[data-energy-explanation-edge]");
+  if (event.key === "Escape" && state.simulationEnergySelection &&
+    event.target.closest("[data-energy-path-canvas], [data-energy-path-inspector], [data-energy-path-link-inspector]")) {
+    event.preventDefault();
+    event.stopPropagation();
+    const node = event.target.closest("[data-energy-explanation-node]");
+    clearSimulationEnergyGraphSelection({ focusID: node?.dataset.energyExplanationNode || edge?.dataset.energyExplanationEdge || state.simulationEnergySelection });
+    return;
+  }
+  // Native ratio buttons supply their own keyboard click. SVG hit areas do not.
+  if (!edge || edge instanceof HTMLButtonElement || !["Enter", " "].includes(event.key)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  if (!event.repeat) selectSimulationEnergyGraphItem(edge.dataset.energyExplanationEdge || "");
+}
+
 export function handleSimulationSeriesInspectClick(event) {
   if (!(event.target instanceof Element)) {
     return;
@@ -5733,18 +5781,25 @@ export function handleSimulationSeriesInspectClick(event) {
   }
   const energyNode = event.target.closest("[data-energy-explanation-node]");
   if (energyNode) {
-    state.simulationEnergySelection = energyNode.dataset.energyExplanationNode || "";
-    renderSimulationEnergyDashboard(state.simulationResult);
-    [...elements.simulationEnergyDashboard.querySelectorAll("[data-energy-explanation-node]")]
-      .find((node) => node.dataset.energyExplanationNode === state.simulationEnergySelection)?.focus({ preventScroll: true });
+    event.preventDefault();
+    event.stopPropagation();
+    selectSimulationEnergyGraphItem(energyNode.dataset.energyExplanationNode || "");
     return;
   }
   const energyEdge = event.target.closest("[data-energy-explanation-edge]");
   if (energyEdge) {
-    state.simulationEnergySelection = energyEdge.dataset.energyExplanationEdge || "";
-    renderSimulationEnergyDashboard(state.simulationResult);
-    [...elements.simulationEnergyDashboard.querySelectorAll("[data-energy-explanation-edge]")]
-      .find((edge) => edge.dataset.energyExplanationEdge === state.simulationEnergySelection)?.focus({ preventScroll: true });
+    event.preventDefault();
+    event.stopPropagation();
+    selectSimulationEnergyGraphItem(energyEdge.dataset.energyExplanationEdge || "");
+    return;
+  }
+  const graphCanvas = event.target.closest("[data-energy-path-canvas]");
+  if (graphCanvas && !event.target.closest("button, a, input, select, textarea, summary, [role=button]")) {
+    const bar = event.target.closest("[data-energy-path-bar]");
+    event.preventDefault();
+    event.stopPropagation();
+    if (bar) selectSimulationEnergyGraphItem(bar.dataset.energyPathBar || "");
+    else if (!event.target.closest("[data-energy-path-ribbon]")) clearSimulationEnergyGraphSelection({ focusCanvas: true });
     return;
   }
   const energyPeriodJump = event.target.closest("[data-simulation-energy-period-jump]");
