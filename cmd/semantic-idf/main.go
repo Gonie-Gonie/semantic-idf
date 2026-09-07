@@ -442,6 +442,8 @@ func appAssetHandler(app *App) http.Handler {
 			}
 		case "/api/energy-path":
 			serveEnergyPathProjection(w, r, app)
+		case "/api/energy-path-xlsx":
+			serveEnergyPathXLSX(w, r, app)
 		case "/api/simulation-environment":
 			if r.Method != http.MethodGet {
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

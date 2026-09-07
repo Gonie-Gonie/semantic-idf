@@ -32,6 +32,7 @@ import { energyPathDriverDestinations, prepareEnergyPathDriverNavigation } from 
 import { energyPathServiceDestinations } from "../energy-path-service-destinations.js";
 import { migrateEnergyPathState } from "../energy-path-state.js";
 import { createEnergyPathSceneSlot } from "../energy-path-scene-slot.js";
+import { buildEnergyPathReport, renderEnergyPathReportHTML } from "../energy-path-report.js";
 import { resolveEnergyPathOutputRequest, energyPathOutputRequestKey } from "../energy-path-output-requests.js";
 import { navigateHVAC, renderHVACLoopDiagram } from "./hvac-views.js";
 import { renderProfile } from "./profile-views.js";
@@ -1425,6 +1426,7 @@ function simulationEnergySceneOptions(scene) {
     driverNavigationForNode: (node, sources, viewState, model) => simulationEnergyDriverNavigation(node, sources, viewState, model, scene.driverNavigation),
     serviceNavigationForNode: (node, sources, viewState, model) => simulationEnergyServiceNavigation(node, sources, viewState, model, graph),
     drawer: { ...simulationEnergyDrawer },
+    exportContext: { sceneToken: scene.path.token, runId: String(scene.result?.runId || ""), filename: scene.result?.filename || "" },
   };
 }
 
@@ -5798,6 +5800,13 @@ export function handleSimulationSeriesInspectClick(event) {
   if (!(event.target instanceof Element)) {
     return;
   }
+  const exportButton = event.target.closest("[data-energy-path-export]");
+  if (exportButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!exportButton.disabled) void exportSimulationEnergyPath(exportButton);
+    return;
+  }
   if (handleSimulationEnergyDetailsClick(event)) return;
   const serviceDestination = event.target.closest("[data-energy-path-service-destination]");
   if (serviceDestination) {
@@ -8314,36 +8323,67 @@ function formatTemperature(value) {
   return `${number.toLocaleString(undefined, { maximumFractionDigits: 1 })} degC`;
 }
 
-function exportPurposeResultJSON() {
-  const result = state.simulationResult;
+async function exportSimulationEnergyPath(button) {
+  const format = button.dataset.energyPathExport;
+  const scene = simulationEnergySceneSlot.peek(simulationEnergySceneContext());
+  const sceneRoot = button.closest("[data-energy-path-scene]");
+  if (!["html", "xlsx", "json"].includes(format) || !button.isConnected ||
+    !elements.simulationEnergyDashboard?.contains(button) || !scene || scene.result !== state.simulationResult ||
+    scene.path.token !== button.dataset.energyPathExportScene || sceneRoot?.dataset.energyPathScene !== scene.path.token ||
+    String(scene.result.runId || "") !== button.dataset.energyPathExportRun) {
+    setStatus(t("simulation.energyPathExportUnavailable", {}, "This export no longer matches the displayed run. Reopen Data details and try again."), "warn");
+    return;
+  }
+  const viewState = Object.fromEntries(simulationEnergyPrimaryKeys.map((key) => [key, state[key]]));
+  const includeTraceSheets = Boolean(button.closest("[data-energy-path-export-section]")?.querySelector("[data-energy-path-export-trace]")?.checked);
+  try {
+    // Capture exactly the displayed named run and six-field selection before any
+    // async dialog or save. Editing the model does not rewrite this run snapshot.
+    const report = buildEnergyPathReport(scene.result, viewState);
+    if (!report) throw new Error(t("simulation.energyPathExportUnavailable", {}, "This export no longer matches the displayed run. Reopen Data details and try again."));
+    const result = JSON.parse(report.rawResult);
+    if (format === "json") exportPurposeResultJSON(result, report);
+    else if (format === "html") exportPurposeResultHTML(result, report);
+    else {
+      button.disabled = true;
+      const saved = await callSimulationAPI("SaveEnergyPathXLSX", "/api/energy-path-xlsx", { report, includeTraceSheets });
+      if (!saved?.canceled) setStatus(t("simulation.energyPathExportSaved", {}, "Energy Path report saved"), "ok");
+    }
+  } catch (error) {
+    setStatus(t("simulation.energyPathExportFailed", { message: error.message || String(error) }, "Energy Path export failed: {message}"), "error");
+  } finally {
+    if (button.isConnected) button.disabled = false;
+  }
+}
+
+function exportPurposeResultJSON(result = state.simulationResult, report = null) {
   if (!result?.purposeResults) {
     return;
   }
-  const payload = purposeResultExportPayload(result);
-  const blob = new Blob([`${JSON.stringify(payload, null, 2)}\n`], { type: "application/json" });
+  const payload = report?.rawResult || JSON.stringify(purposeResultExportPayload(result), null, 2);
+  const blob = new Blob([`${payload}\n`], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
   link.download = purposeResultExportFilename(result, "json");
   link.click();
   URL.revokeObjectURL(url);
-  setStatus(t("status.purposeResultsExported", {}, "Purpose result JSON exported"), "ok");
+  setStatus(report ? t("simulation.energyPathExportJSONSaved", {}, "Full-run JSON exported") : t("status.purposeResultsExported", {}, "Purpose result JSON exported"), "ok");
 }
 
-function exportPurposeResultHTML() {
-  const result = state.simulationResult;
+function exportPurposeResultHTML(result = state.simulationResult, report = null) {
   if (!result?.purposeResults) {
     return;
   }
   const payload = purposeResultExportPayload(result);
-  const blob = new Blob([purposeResultHTML(payload)], { type: "text/html" });
+  const blob = new Blob([purposeResultHTML(payload, report)], { type: "text/html" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
   link.download = purposeResultExportFilename(result, "html");
   link.click();
   URL.revokeObjectURL(url);
-  setStatus(t("status.purposeHTMLExported", {}, "Purpose result HTML exported"), "ok");
+  setStatus(report ? t("simulation.energyPathExportSaved", {}, "Energy Path report saved") : t("status.purposeHTMLExported", {}, "Purpose result HTML exported"), "ok");
 }
 
 function purposeResultExportPayload(result) {
@@ -8381,7 +8421,7 @@ function sanitizeExportFilename(value) {
   return safe || "purpose-results";
 }
 
-function purposeResultHTML(payload) {
+function purposeResultHTML(payload, report = null) {
   const completeness = payload.purposeResults?.completeness || [];
   const files = payload.files || [];
   const summaryRows = [
@@ -8396,7 +8436,7 @@ function purposeResultHTML(payload) {
     ["Finished", payload.finishedAt],
   ];
   return `<!doctype html>
-<html lang="en">
+<html lang="${escapeHTML(document.documentElement.lang || "en")}">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -8409,12 +8449,15 @@ h1{margin:0 0 6px;font-size:26px} h2{margin:24px 0 10px;font-size:17px}
 th,td{padding:8px 10px;border-bottom:1px solid #e5e9f0;text-align:left;vertical-align:top}
 th{background:#eef3f8;font-size:12px;text-transform:uppercase;letter-spacing:0}
 pre{max-height:520px;overflow:auto;background:#0f172a;color:#e2e8f0;padding:14px;border-radius:6px}
+details{margin:16px 0} summary{cursor:pointer;font-weight:600} p,td,th{overflow-wrap:anywhere} section{min-width:0}
+@media(max-width:600px){main{padding:12px}th,td{padding:6px;font-size:12px}}
 </style>
 </head>
 <body>
 <main>
-<h1>Purpose Simulation Results</h1>
-<p class="muted">${escapeHTML(payload.filename || payload.runId || "")}</p>
+${report ? "" : `<h1>Purpose Simulation Results</h1><p class="muted">${escapeHTML(payload.filename || payload.runId || "")}</p>`}
+${report ? renderEnergyPathReportHTML(report) : ""}
+${report ? `<details data-energy-path-report-run-details><summary>${escapeHTML(t("simulation.energyPathExportRunDetails", {}, "Run details"))}</summary>` : ""}
 <h2>Run</h2>
 ${renderPurposeHTMLTable(["Field", "Value"], summaryRows)}
 <h2>Completeness</h2>
@@ -8422,14 +8465,17 @@ ${renderPurposeHTMLTable(
   ["Purpose", "Required Output", "Found", "Source"],
   completeness.map((item) => [item.purposeId || "", item.requiredOutput || "", item.found ? "Yes" : "No", item.source || ""]),
 )}
-${renderPurposeHTMLResultSections(payload.purposeResults || {})}
+${report ? "" : renderPurposeHTMLResultSections(payload.purposeResults || {})}
 <h2>Files</h2>
 ${renderPurposeHTMLTable(
   ["Name", "Type", "Path"],
   files.map((file) => [file.name || "", file.kind || "", file.path || ""]),
 )}
-<h2>Raw Bundle</h2>
-<pre>${escapeHTML(JSON.stringify(payload, null, 2))}</pre>
+${report ? `</details>${[
+  renderPurposeHTMLHeatFlow(payload.purposeResults?.zoneHeatFlow || {}),
+  renderPurposeHTMLHVAC(payload.purposeResults?.hvacLoops || []),
+  renderPurposeHTMLComfort(payload.purposeResults?.comfort || {}),
+].filter(Boolean).join("\n")}` : `<details><summary>${escapeHTML(t("simulation.energyPathExportRawRun", {}, "Full-run JSON snapshot"))}</summary><pre>${escapeHTML(JSON.stringify(payload, null, 2))}</pre></details>`}
 </main>
 </body>
 </html>`;

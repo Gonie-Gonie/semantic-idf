@@ -90,7 +90,7 @@ function conversionRatio(graph, service, period) {
   };
 }
 
-function coverageBoundaries(quality, knownZoneOnly) {
+export function energyPathCoverageBoundaries(quality, knownZoneOnly) {
   const definitions = [
     { id: "driver_to_load", label: "Drivers → loads", value: "driverToLoadClosedPct", status: "driverToLoadStatus" },
     { id: "end_use_to_carrier", label: "End uses → sources", value: "endUseToCarrierClosedPct", status: "endUseToCarrierStatus" },
@@ -128,7 +128,7 @@ export function energyPathKPIItems(summary = {}, graph = {}, options = {}) {
       targets: item.id === "coverage" ? [] : targeting.targets,
       emphasized,
       ...(emphasized && ratio ? { ratio } : {}),
-      ...(item.id === "coverage" ? { coverage: { boundaries: coverageBoundaries(quality, options.knownZoneOnly === true) } } : {}),
+      ...(item.id === "coverage" ? { coverage: { boundaries: energyPathCoverageBoundaries(quality, options.knownZoneOnly === true) } } : {}),
     };
   });
 }

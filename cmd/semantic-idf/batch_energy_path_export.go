@@ -493,7 +493,7 @@ func batchEnergyPathPrimarySheets(request BatchSimulationXLSXExportRequest) []ta
 	if context := batchSimulationRunContextSection(request); len(context.Rows) > 0 {
 		runSections = append(runSections, context)
 	}
-	return []tabular.WorkbookSheet{{Name: "Energy Path Summary", Sections: []tabular.Section{summary}}, {Name: "Energy Path Delta", Sections: []tabular.Section{delta}}, {Name: "Data Quality", Sections: []tabular.Section{quality}}, {Name: "Runs", Sections: runSections}}
+	return []tabular.WorkbookSheet{{Name: "Energy Path Summary", Sections: []tabular.Section{metadata, summary}}, {Name: "Energy Path Delta", Sections: []tabular.Section{delta}}, {Name: "Data Quality", Sections: []tabular.Section{quality}}, {Name: "Runs", Sections: runSections}}
 }
 
 func batchEnergyPathTraceSheets(request BatchSimulationXLSXExportRequest) []tabular.WorkbookSheet {
@@ -523,6 +523,7 @@ func batchEnergyPathTraceSheets(request BatchSimulationXLSXExportRequest) []tabu
 		}
 		if left >= 0 && right >= 0 {
 			section := batchSimulationEnergyEdgeDeltaSection(request.Result.Results[left], request.Result.Results[right])
+			section.Title = "energy_path_link_delta"
 			if len(section.Rows) > 0 {
 				sheets = append(sheets, tabular.WorkbookSheet{Name: "Energy Path Link Delta", Sections: []tabular.Section{section}})
 			}

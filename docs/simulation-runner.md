@@ -643,14 +643,28 @@ Outputs entry or discovery controls.
 ## Run Artifacts and Export
 
 Purpose runs write `semantic-idf-run.json`, `semantic-idf-run-plan.json`, and
-`temporary_outputs.diff` in the output directory. The UI can export a purpose
-result JSON bundle or a standalone HTML report that embeds run metadata,
-including EnergyPlus executable/version metadata, the run plan, parsed purpose
-results, purpose-specific Energy/Heat Flow/HVAC/Comfort summary tables,
-Basic Energy explanation completeness, source availability, relationship rules,
-summary/monthly ledger/source/annual node/annual edge/reconciliation/warning evidence, file
-references, source IDs and related service path IDs for exported explanation
-rows, source output object/table/row/column/unit metadata for summary, node, edge,
-reconciliation, and source availability rows, and the source output signatures
-visible in result tables. Annual node and edge tables also retain stable graph
-IDs plus zone/service/path scope fields where the payload provides them.
+`temporary_outputs.diff` in the output directory. In Energy Path, open **Data
+details → Data → Export** for HTML, XLSX or the full-run JSON snapshot.
+
+The first HTML section/XLSX sheet shows **Energy Path**: selected Scope/period,
+Drivers, Loads, End uses, Carriers, Ratios and Quality. These are the same
+all-service scope/period summaries used by the UI; a separate graph-selection
+label makes clear that Cooling/Heating emphasis does not filter the summary.
+The report names the saved simulation run and does not imply current editor
+changes have been simulated. Direct/reported, allocated and unassigned bases
+remain visible. Unknown values and unavailable denominators stay unknown, not 0.
+
+HTML keeps raw source/link/JSON trace in closed details and retains Heat Flow,
+HVAC and Comfort sections when present. XLSX defaults to readable summary;
+**Include trace sheets** is unchecked initially and affects XLSX only. Trace
+retains original source units, normalized units, independent link endpoint
+quantities, source IDs and exact original JSON, including unknown/null fields.
+Full-run JSON exports the captured result unchanged rather than just the
+selected month. Exporting does not analyze the model, reload SQL or run EnergyPlus.
+
+HTML and XLSX consume one immutable frontend report projection of the existing
+canonical builder output. The workbook validates raw snapshot/selection bindings
+without passing it through a normalizing result decoder or reaggregating it.
+Batch v2 workbooks also put Building/Annual context on their first Summary sheet;
+link-delta details remain opt-in trace. Genuine v1 compatibility output is retained
+until EPATH-222; newly generated Energy Path reports require v2.

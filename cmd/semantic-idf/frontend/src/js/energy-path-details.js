@@ -230,7 +230,19 @@ function renderAccountingQuality(quality) {
   </section>`;
 }
 
-function renderDataPanel(explanation, viewState, outputObjects, diagnosticsHTML, drawer) {
+function renderExportSection(exportContext) {
+  if (!exportContext?.sceneToken || typeof exportContext.runId !== "string") return "";
+  return `<section class="energy-path-export" data-energy-path-export-section>
+    <h5>${escapeHTML(copy("ExportTitle", "Export Energy Path"))}</h5>
+    <p>${escapeHTML(copy("ExportSnapshot", "Exports the displayed run snapshot for {name}. Current editor changes are not included.", { name: exportContext.filename || exportContext.runId || copy("ExportNamedRun", "this run") }))}</p>
+    <div class="energy-path-export-actions">${[
+      ["html", "ExportHTML", "HTML report"], ["xlsx", "ExportXLSX", "XLSX report"], ["json", "ExportJSON", "Full-run JSON"],
+    ].map(([format, key, label]) => `<button type="button" data-energy-path-export="${format}" data-energy-path-export-scene="${escapeHTML(exportContext.sceneToken)}" data-energy-path-export-run="${escapeHTML(exportContext.runId)}">${escapeHTML(copy(key, label))}</button>`).join("")}</div>
+    <label class="energy-path-export-trace"><input type="checkbox" data-energy-path-export-trace> <span>${escapeHTML(copy("ExportTrace", "Include trace sheets (XLSX only)"))}</span></label>
+  </section>`;
+}
+
+function renderDataPanel(explanation, viewState, outputObjects, diagnosticsHTML, drawer, exportContext) {
   const context = selectedContext(explanation, viewState);
   const stage = STAGES.some((item) => item.key === drawer.stage) ? drawer.stage : "";
   const roles = sourceRoles(context.result);
@@ -239,6 +251,7 @@ function renderDataPanel(explanation, viewState, outputObjects, diagnosticsHTML,
   const visibleSources = scopedSources(sources, context, viewState).filter((source) => rowMatchesStage(source, stage, roles));
   return `<section id="energyPathDataPanel" class="energy-path-details-panel" role="tabpanel" aria-labelledby="energyPathDataTab" data-energy-path-details-panel="data" ${drawer.tab === "output" ? "hidden" : ""}>
     <p>${escapeHTML(contextLabel(explanation, viewState))}</p>
+    ${renderExportSection(exportContext)}
     ${renderAccountingQuality(energyPathQualityForState(explanation, viewState))}
     ${diagnosticsHTML || ""}
     <section data-energy-path-source-availability-section="${escapeHTML(stage || "all")}">
@@ -289,7 +302,7 @@ export function renderEnergyPathDataDetails(explanation = {}, viewState = {}, op
   return `<aside id="energyPathDataDetails" class="energy-path-data-details" data-energy-path-data-details ${open ? "" : "hidden"} tabindex="-1" role="dialog" aria-modal="false" aria-labelledby="energyPathDataDetailsTitle">
     <header><strong id="energyPathDataDetailsTitle">${escapeHTML(copy("DataDetails", "Data details"))}</strong><button type="button" data-energy-path-details-toggle>${escapeHTML(copy("CloseDetails", "Close"))}</button></header>
     <div class="energy-path-details-tabs" role="tablist" aria-label="${escapeHTML(copy("DataDetails", "Data details"))}">${["data", "output"].map((name) => `<button id="energyPath${name === "data" ? "Data" : "Output"}Tab" type="button" role="tab" tabindex="${tab === name ? 0 : -1}" aria-selected="${tab === name}" aria-controls="energyPath${name === "data" ? "Data" : "Output"}Panel" data-energy-path-details-tab="${name}">${escapeHTML(name === "data" ? copy("DataTab", "Data") : copy("OutputTab", "Output"))}</button>`).join("")}</div>
-    ${renderDataPanel(explanation, viewState, outputObjects, options.diagnosticsHTML, drawer)}
+    ${renderDataPanel(explanation, viewState, outputObjects, options.diagnosticsHTML, drawer, options.exportContext)}
     ${renderOutputPanel(explanation, drawer, outputObjects)}
   </aside>`;
 }

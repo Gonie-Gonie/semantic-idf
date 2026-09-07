@@ -70,3 +70,31 @@ func serveEnergyPathProjection(w http.ResponseWriter, r *http.Request, app *App)
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_, _ = w.Write(payload)
 }
+
+// XLSX is an explicit export action, not a result reload or simulation request.
+func serveEnergyPathXLSX(w http.ResponseWriter, r *http.Request, app *App) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", http.MethodPost)
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var request EnergyPathReportXLSXExportRequest
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<20))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&request); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := decoder.Decode(new(any)); err != io.EOF {
+		http.Error(w, "expected exactly one JSON request object", http.StatusBadRequest)
+		return
+	}
+	result, err := app.SaveEnergyPathXLSX(request)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := json.NewEncoder(w).Encode(result); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}

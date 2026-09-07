@@ -17,6 +17,17 @@ import (
 
 func epath171Number(value float64) *float64 { return &value }
 
+func epath171SummarySection(t *testing.T, sheets []tabular.WorkbookSheet) tabular.Section {
+	t.Helper()
+	for _, section := range sheets[0].Sections {
+		if section.Title == "energy_path_summary" {
+			return section
+		}
+	}
+	t.Fatal("Energy Path Summary sheet has no summary section")
+	return tabular.Section{}
+}
+
 // The browser integration test exercises actual comparator output. This small
 // fixture isolates backend transport validation and ZIP formatting only.
 func epath171BackendRequest() BatchSimulationXLSXExportRequest {
@@ -59,7 +70,7 @@ func TestEPATH171BackendDefaultWorkbookAndNulls(t *testing.T) {
 	if !reflect.DeepEqual(names, want) {
 		t.Fatalf("default sheets=%v", names)
 	}
-	if sheets[0].Sections[0].Rows[0][4] != "0" || sheets[1].Sections[0].Rows[0][2] != "0" || sheets[1].Sections[0].Rows[0][7] != "" {
+	if epath171SummarySection(t, sheets).Rows[0][4] != "0" || sheets[1].Sections[0].Rows[0][2] != "0" || sheets[1].Sections[0].Rows[0][7] != "" {
 		t.Fatalf("reported zero or unavailable percent changed: %v", sheets[1].Sections[0].Rows)
 	}
 	var workbook bytes.Buffer
@@ -104,7 +115,7 @@ func TestEPATH171BackendDefaultWorkbookAndNulls(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if sheets[0].Sections[0].Rows[1][4] != "" || sheets[1].Sections[0].Rows[0][3] != "" || sheets[1].Sections[0].Rows[0][5] != "" {
+	if epath171SummarySection(t, sheets).Rows[1][4] != "" || sheets[1].Sections[0].Rows[0][3] != "" || sheets[1].Sections[0].Rows[0][5] != "" {
 		t.Fatal("null resurrected as zero")
 	}
 }
@@ -171,7 +182,7 @@ func TestEPATH171BackendDuplicateRunsAndUnavailableSelection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(sheets) != 4 || len(sheets[0].Sections[0].Rows) != 3 || len(sheets[1].Sections[0].Rows) != 0 {
+	if len(sheets) != 4 || len(epath171SummarySection(t, sheets).Rows) != 3 || len(sheets[1].Sections[0].Rows) != 0 {
 		t.Fatal("duplicate result-index-bound summaries discarded or fallback pair invented")
 	}
 	if !strings.Contains(strings.Join(sheets[2].Sections[0].Rows[len(sheets[2].Sections[0].Rows)-1], "|"), "ambiguous_comparison") {

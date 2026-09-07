@@ -293,6 +293,31 @@ the checklist or its final acceptance scenarios.
   The Python clients execute in real subprocesses; model text is not parsed or
   energy data aggregated in Python. See `docs/energy-path-cli.md`.
 
+- EPATH-182: the main Energy Path Data drawer now exports HTML, XLSX and the
+  original full-run JSON from one immutable snapshot of the existing UI summary
+  and quality helpers. The first HTML section / XLSX sheet is Energy Path:
+  scope/period, Drivers, Loads, End uses, Carriers, Ratios and Quality. The
+  all-service summary is explicitly distinguished from the graph's service
+  emphasis; saved-result context does not claim to include current editor edits.
+  Source/link identifiers and detailed rows are behind closed HTML Trace or
+  five opt-in XLSX trace sheets. Source and normalized units, independent link
+  quantities, unknown values, explicit zeroes and original Unicode/CRLF JSON
+  survive export. Zone direct/allocated basis and building-wide unassigned
+  accounting remain explicit. Batch v2 starts with its scope/period context;
+  genuine-v1 compatibility remains isolated until EPATH-222.
+  Go validates the captured raw graph and formats the supplied presentation
+  DTO without normalizing or aggregating the saved result. Workbook output
+  cannot overwrite input, SQL or run metadata, including aliases. Exporting
+  does not analyze, run, reread SQL, change selection or relayout the graph.
+  Verification: actual Data buttons to captured HTML/JSON and real XLSX ZIP
+  cells, every summary/quality cell, Zone accounting, trace quantities/units,
+  default/trace isolation, async run changes, malformed requests, nullable
+  values, injection escaping and raw JSON reconstruction. Focused 171/182/Batch
+  backend regression and 182/141/142 frontend/cross-jump regression pass.
+  Fresh-profile Building/Annual and Zone/M1 HTML screenshots were inspected
+  for readable hierarchy and long-label layout (synthetic browser fixtures,
+  not an actual EnergyPlus simulation claim).
+
 ## Policy clarification
 
 EPATH-030's earlier 11-node cap conflicts with EPATH-123's stricter <1% grouping
@@ -303,7 +328,7 @@ The normal Building interzone/category projection remains intact.
 
 ## Next in sequence
 
-EPATH-182 → 190–198 → 200–204 → 210–211 → 220–222 → 230–235.
+EPATH-190–198 → 200–204 → 210–211 → 220–222 → 230–235.
 
 Checklist section 22's actual-model fixtures and expected manifests also remain
 required between EPATH-204 and EPATH-210; they have no individual EPATH numbers.
