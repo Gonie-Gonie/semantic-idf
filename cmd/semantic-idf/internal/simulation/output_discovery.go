@@ -305,6 +305,15 @@ func (collector outputDiscoveryCollector) find(objectType string, keyValue strin
 	if item := collector.items[outputDiscoveryKey(objectType, keyValue, name)]; item.Name != "" {
 		return item, true
 	}
+	// A named Zone/surface/equipment request needs evidence for that exact
+	// key. Another Zone's SQL row or a general RDD entry only proves that
+	// the variable name exists somewhere, not that this key reports it.
+	// Meters are identified by their name; their plan KeyValue repeats it
+	// while MDD entries have no independent Zone/equipment key.
+	requestedKey := strings.TrimSpace(keyValue)
+	if !outputDiscoveryIsMeter(objectType) && requestedKey != "" && requestedKey != "*" {
+		return OutputDiscoveryItem{}, false
+	}
 	if item := collector.items[outputDiscoveryKey(objectType, "*", name)]; item.Name != "" {
 		return item, true
 	}

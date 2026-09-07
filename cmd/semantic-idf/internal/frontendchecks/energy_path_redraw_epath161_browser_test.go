@@ -8,11 +8,15 @@ import (
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/Gonie-Gonie/semantic-idf/cmd/semantic-idf/internal/idf"
+	"github.com/gorilla/websocket"
 )
 
 func TestEPATH161ActualAppSelectionWithoutGraphRedrawBrowser(t *testing.T) {
@@ -134,20 +138,24 @@ func TestEPATH161ActualAppSelectionWithoutGraphRedrawBrowser(t *testing.T) {
 	defer cancel()
 	width, height := 1600, 900
 	for attempt := 0; attempt < 2; attempt++ {
-		command := exec.CommandContext(ctx, chrome, "--headless=new", "--disable-gpu", "--disable-dev-shm-usage", "--no-sandbox", "--no-first-run", "--no-default-browser-check", "--force-device-scale-factor=1", fmt.Sprintf("--window-size=%d,%d", width, height), "--user-data-dir="+t.TempDir(), server.URL+"/src/epath161-redraw.html?manual=1&run161=1")
+		profile := t.TempDir()
+		// Do not let CommandContext kill Chrome before its crash-reporting children
+		// close their files. Every exit path below uses this owned profile's CDP
+		// Browser.close endpoint; timing/assertion code is unchanged.
+		command := exec.Command(chrome, "--headless=new", "--disable-gpu", "--disable-dev-shm-usage", "--no-sandbox", "--no-first-run", "--no-default-browser-check", "--remote-debugging-address=127.0.0.1", "--remote-debugging-port=0", "--force-device-scale-factor=1", fmt.Sprintf("--window-size=%d,%d", width, height), "--user-data-dir="+profile, server.URL+"/src/epath161-redraw.html?manual=1&run161=1")
 		if err := command.Start(); err != nil {
 			t.Fatal(err)
 		}
+		stop := epath161OwnedChromeCleanup(t, command, profile)
+		t.Cleanup(stop)
 		var result browserResult
 		select {
 		case result = <-done:
 		case <-ctx.Done():
-			_ = command.Process.Kill()
-			_ = command.Wait()
+			stop()
 			t.Fatal("native-time redraw acceptance timed out")
 		}
-		_ = command.Process.Kill()
-		_ = command.Wait()
+		stop()
 		if result.Width != 1600 || result.Height != 900 {
 			if attempt != 0 || result.Width < 1200 || result.Width > 1800 || result.Height < 600 || result.Height > 1000 {
 				t.Fatalf("unexpected browser content viewport %dx%d", result.Width, result.Height)
@@ -164,6 +172,100 @@ func TestEPATH161ActualAppSelectionWithoutGraphRedrawBrowser(t *testing.T) {
 		}
 		return
 	}
+}
+
+// The profile comes only from the immediately preceding t.TempDir call. Never
+// attach to an existing browser or terminate processes by name/system-wide.
+func epath161OwnedChromeCleanup(t *testing.T, command *exec.Cmd, profile string) func() {
+	t.Helper()
+	wait := make(chan error, 1)
+	go func() { wait <- command.Wait() }()
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			closed := false
+			select {
+			case <-wait:
+				closed = true
+			default:
+			}
+			if !closed {
+				if err := epath161CloseOwnedBrowser(profile); err != nil {
+					t.Logf("test-owned Browser.close: %v", err)
+				}
+				select {
+				case <-wait:
+					closed = true
+				case <-time.After(5 * time.Second):
+					// Last resort is exactly the exec.Cmd process this test started.
+					// No taskkill tree, broad Chrome search, or user-browser endpoint.
+					_ = command.Process.Kill()
+					select {
+					case <-wait:
+						closed = true
+					case <-time.After(2 * time.Second):
+					}
+				}
+			}
+			if !closed {
+				t.Error("test-owned Chrome did not exit after bounded shutdown")
+				return
+			}
+			// Crashpad may finish closing handles just after the browser exits. Retry
+			// only this validated test-owned directory, before t.TempDir's cleanup.
+			absolute, err := filepath.Abs(profile)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			resolved, err := filepath.EvalSymlinks(profile)
+			if os.IsNotExist(err) {
+				return
+			}
+			// Windows may canonicalize a legitimate 8.3 TEMP parent name. Resolve
+			// that parent too, while rejecting a substituted profile junction.
+			parent, parentErr := filepath.EvalSymlinks(filepath.Dir(absolute))
+			if err != nil || parentErr != nil || !strings.EqualFold(filepath.Clean(resolved), filepath.Join(parent, filepath.Base(absolute))) || filepath.Dir(absolute) == absolute {
+				t.Errorf("refusing cleanup of changed test profile: %q / %v", profile, err)
+				return
+			}
+			for deadline := time.Now().Add(3 * time.Second); ; {
+				if err = os.RemoveAll(resolved); err == nil {
+					return
+				}
+				if time.Now().After(deadline) {
+					t.Errorf("test-owned Chrome profile still locked after graceful exit: %v", err)
+					return
+				}
+				time.Sleep(25 * time.Millisecond)
+			}
+		})
+	}
+}
+
+func epath161CloseOwnedBrowser(profile string) error {
+	data, err := os.ReadFile(filepath.Join(profile, "DevToolsActivePort"))
+	if err != nil {
+		return err
+	}
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if len(lines) != 2 {
+		return fmt.Errorf("invalid owned DevTools endpoint")
+	}
+	port, err := strconv.Atoi(strings.TrimSpace(lines[0]))
+	path := strings.TrimSpace(lines[1])
+	if err != nil || port < 1 || port > 65535 || !strings.HasPrefix(path, "/devtools/browser/") || strings.ContainsAny(path, "?# \t\r\n") {
+		return fmt.Errorf("invalid owned DevTools endpoint")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	socket, _, err := websocket.DefaultDialer.DialContext(ctx, fmt.Sprintf("ws://127.0.0.1:%d%s", port, path), nil)
+	if err != nil {
+		return err
+	}
+	defer socket.Close()
+	_ = socket.SetWriteDeadline(time.Now().Add(2 * time.Second))
+	return socket.WriteJSON(map[string]any{"id": 1, "method": "Browser.close"})
 }
 
 const epath161RedrawHTML = `<pre id="epath161-result" hidden>pending</pre><script type="module">

@@ -1580,6 +1580,14 @@ func buildEnergyExplanationResultWithDriverContext(series []energyExplanationSer
 		series[index] = canonicalEnergyExplanationSeries(series[index])
 	}
 	series, sources = filterEnergyExplanationSeriesForBasicDetail(series, sources, plan)
+	// Requested-output availability describes original observations, not the
+	// later graph's canonical load selection or derived heat-balance terms.
+	// Capture only unique thermal group identities, without retaining raw maps.
+	runtimeAvailability := driverContext.Enabled && energyExplanationPlanUsesEnergyPath(plan)
+	var reportedThermalAvailability []energyExplanationSeries
+	if runtimeAvailability {
+		reportedThermalAvailability = energyExplanationRequestedThermalAvailability(series, plan)
+	}
 	driverWarnings := []EnergyWarning{}
 	if driverContext.Enabled {
 		series, sources, driverWarnings = prepareEnergyDriverSeries(series, sources, driverContext)
@@ -1676,7 +1684,16 @@ func buildEnergyExplanationResultWithDriverContext(series []energyExplanationSer
 			Warnings:       graph.Warnings,
 		})
 	}
-	for _, day := range energyExplanationDays(series) {
+	// Runtime Energy Path only renders annual/monthly graphs. Keep original
+	// daily/hourly SQL series and source provenance, but do not materialize
+	// thousands of unused graphs before the per-Zone v2 conversion. The frozen
+	// v1 adapter and other Basic Energy modes retain their detailed periods.
+	detailedPeriods := !driverContext.Enabled || !energyExplanationPlanUsesEnergyPath(plan)
+	var days, hours []int
+	if detailedPeriods {
+		days, hours = energyExplanationDays(series), energyExplanationHours(series)
+	}
+	for _, day := range days {
 		periodID := fmt.Sprintf("D%d", day)
 		graph := buildEnergyExplanationGraphForPeriod(periodID, energyExplanationSeriesForGraphPeriod(series, "daily"), allocationPolicy, func(item energyExplanationSeries) float64 {
 			return item.Daily[day]
@@ -1692,7 +1709,7 @@ func buildEnergyExplanationResultWithDriverContext(series []energyExplanationSer
 			Warnings:       graph.Warnings,
 		})
 	}
-	for _, hour := range energyExplanationHours(series) {
+	for _, hour := range hours {
 		periodID := fmt.Sprintf("H%d", hour)
 		graph := buildEnergyExplanationGraphForPeriod(periodID, energyExplanationSeriesForGraphPeriod(series, "hourly"), allocationPolicy, func(item energyExplanationSeries) float64 {
 			return item.Hourly[hour]
@@ -1708,6 +1725,15 @@ func buildEnergyExplanationResultWithDriverContext(series []energyExplanationSer
 			Warnings:       graph.Warnings,
 		})
 	}
+	completenessSeries := series
+	if runtimeAvailability {
+		completenessSeries = reportedThermalAvailability
+		for _, item := range series {
+			if item.Level != "heat" && item.Level != "load" {
+				completenessSeries = append(completenessSeries, item)
+			}
+		}
+	}
 	result := EnergyExplanationV1{
 		Schema:                energyExplanationV1Schema,
 		Purpose:               string(SimulationPurposeBasicEnergy),
@@ -1719,7 +1745,7 @@ func buildEnergyExplanationResultWithDriverContext(series []energyExplanationSer
 		Edges:                 annual.Edges,
 		Reconciliation:        annual.Reconciliation,
 		Sources:               sources,
-		Completeness:          buildEnergyExplanationCompleteness(series, sources, plan, annual.MappedPercent),
+		Completeness:          buildEnergyExplanationCompleteness(completenessSeries, sources, plan, annual.MappedPercent),
 		Warnings:              annual.Warnings,
 		scope:                 energyExplanationScopeForPlan(plan),
 		canonicalMonthlyBasis: driverContext.Enabled,
@@ -4932,6 +4958,36 @@ func energyHeatAliasSignedLabel(label string, suffix string) string {
 		return strings.Replace(label, "heat transfer", "heat "+suffix, 1)
 	}
 	return label + " " + suffix
+}
+
+// Only requested thermal alias groups count as found. Original reports can
+// include extra output requests unrelated to Energy Path, and a reported zero
+// is still present. Values, frequency preference and canonical graph selection
+// do not participate in this run-level availability count.
+func energyExplanationRequestedThermalAvailability(series []energyExplanationSeries, plan *PurposeRunPlan) []energyExplanationSeries {
+	requested := map[string]bool{}
+	for _, level := range []string{"heat", "load"} {
+		for _, key := range expectedEnergyExplanationOutputGroups(expectedEnergyExplanationOutputs(plan, level), level) {
+			requested[key] = true
+		}
+	}
+	out := []energyExplanationSeries{}
+	seen := map[string]bool{}
+	for _, item := range series {
+		if item.Level != "heat" && item.Level != "load" {
+			continue
+		}
+		key := energyExplanationCompletenessGroupKey(item)
+		if !requested[key] || seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, energyExplanationSeries{
+			Level: item.Level, Kind: item.Kind,
+			HeatCategory: item.HeatCategory, ServiceKind: item.ServiceKind,
+		})
+	}
+	return out
 }
 
 func buildEnergyExplanationCompleteness(series []energyExplanationSeries, sources []EnergyDataSource, plan *PurposeRunPlan, mappedPercent float64) EnergyCompleteness {

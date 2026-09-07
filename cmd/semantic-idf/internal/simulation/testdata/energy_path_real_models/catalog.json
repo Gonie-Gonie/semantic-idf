@@ -1,0 +1,352 @@
+{
+  "schema": "semantic-idf.energy-path-real-model-catalog/v1",
+  "fixtures": [
+    {
+      "id": "large-office-25-1",
+      "version": "25.1",
+      "modelPath": "models/25.1/RefBldgLargeOfficeNew2004_Chicago.idf",
+      "modelSHA256": "678af5d273bc29f771fd35fd972050cfe984fafcd28bd4587b419a2922145122",
+      "engineSourceFilename": "ExampleFiles/RefBldgLargeOfficeNew2004_Chicago.idf",
+      "sourceURL": "https://github.com/NREL/EnergyPlus/releases/tag/v25.1.0",
+      "licensePath": "licenses/EnergyPlus-25.1-LICENSE.txt",
+      "weather": {
+        "filename": "USA_IL_Chicago-OHare.Intl.AP.725300_TMY3.epw",
+        "sha256": "c7d4efcf93ba316a1d874352e743df5cf137ba5c0e3459eb2dc4b5442d5b7f5c"
+      },
+      "types": [
+        "large_office",
+        "output_alias_discovery"
+      ],
+      "oraclePath": "oracles/large-office-25-1.json",
+      "expectedPath": "expected/large-office-25-1.json"
+    },
+    {
+      "id": "small-office-25-1",
+      "version": "25.1",
+      "modelPath": "models/25.1/RefBldgSmallOfficeNew2004_Chicago.idf",
+      "modelSHA256": "2ad0124fe8edded8ad0c501dc7c717296f39bc2a6b706ce3bdf8cbb381c17f57",
+      "engineSourceFilename": "ExampleFiles/RefBldgSmallOfficeNew2004_Chicago.idf",
+      "sourceURL": "https://github.com/NREL/EnergyPlus/releases/tag/v25.1.0",
+      "licensePath": "licenses/EnergyPlus-25.1-LICENSE.txt",
+      "weather": {
+        "filename": "USA_IL_Chicago-OHare.Intl.AP.725300_TMY3.epw",
+        "sha256": "c7d4efcf93ba316a1d874352e743df5cf137ba5c0e3459eb2dc4b5442d5b7f5c"
+      },
+      "types": [
+        "small_office"
+      ],
+      "oraclePath": "oracles/small-office-25-1.json",
+      "expectedPath": "expected/small-office-25-1.json"
+    },
+    {
+      "id": "ideal-loads-25-1",
+      "version": "25.1",
+      "modelPath": "models/25.1/5Zone_IdealLoadsAirSystems_ReturnPlenum.idf",
+      "modelSHA256": "1fc3cae54a39c004522db324ab7f172ce123d146e9fd63548393d4921f1a9786",
+      "engineSourceFilename": "ExampleFiles/5Zone_IdealLoadsAirSystems_ReturnPlenum.idf",
+      "sourceURL": "https://github.com/NREL/EnergyPlus/releases/tag/v25.1.0",
+      "licensePath": "licenses/EnergyPlus-25.1-LICENSE.txt",
+      "weather": {
+        "filename": "USA_IL_Chicago-OHare.Intl.AP.725300_TMY3.epw",
+        "sha256": "c7d4efcf93ba316a1d874352e743df5cf137ba5c0e3459eb2dc4b5442d5b7f5c"
+      },
+      "types": [
+        "ideal_loads"
+      ],
+      "oraclePath": "oracles/ideal-loads-25-1.json",
+      "expectedPath": "expected/ideal-loads-25-1.json"
+    },
+    {
+      "id": "ptac-25-1",
+      "version": "25.1",
+      "modelPath": "models/25.1/DOAToPTAC.idf",
+      "modelSHA256": "0d2165184aa6e6c4834e06485df6c281adaf0ecdbfa234e41f692583d79f2f49",
+      "engineSourceFilename": "ExampleFiles/DOAToPTAC.idf",
+      "sourceURL": "https://github.com/NREL/EnergyPlus/releases/tag/v25.1.0",
+      "licensePath": "licenses/EnergyPlus-25.1-LICENSE.txt",
+      "weather": {
+        "filename": "USA_IL_Chicago-OHare.Intl.AP.725300_TMY3.epw",
+        "sha256": "c7d4efcf93ba316a1d874352e743df5cf137ba5c0e3459eb2dc4b5442d5b7f5c"
+      },
+      "types": [
+        "ptac_pthp",
+        "ptac"
+      ],
+      "oraclePath": "oracles/ptac-25-1.json",
+      "expectedPath": "expected/ptac-25-1.json"
+    },
+    {
+      "id": "pthp-25-1",
+      "version": "25.1",
+      "modelPath": "models/25.1/DOAToPTHP.idf",
+      "modelSHA256": "a73420b559c1f90061f65f6f1b6ccd6845a817d9110a7fbd5d63c266142435c6",
+      "engineSourceFilename": "ExampleFiles/DOAToPTHP.idf",
+      "sourceURL": "https://github.com/NREL/EnergyPlus/releases/tag/v25.1.0",
+      "licensePath": "licenses/EnergyPlus-25.1-LICENSE.txt",
+      "weather": {
+        "filename": "USA_IL_Chicago-OHare.Intl.AP.725300_TMY3.epw",
+        "sha256": "c7d4efcf93ba316a1d874352e743df5cf137ba5c0e3459eb2dc4b5442d5b7f5c"
+      },
+      "types": [
+        "ptac_pthp",
+        "pthp"
+      ],
+      "oraclePath": "oracles/pthp-25-1.json",
+      "expectedPath": "expected/pthp-25-1.json"
+    },
+    {
+      "id": "fan-coil-25-1",
+      "version": "25.1",
+      "modelPath": "models/25.1/FanCoilAutoSize.idf",
+      "modelSHA256": "d940e67912d5d4669773c11521b499ca671dae2d67ff8ce538c4a183ca0b43d3",
+      "engineSourceFilename": "ExampleFiles/FanCoilAutoSize.idf",
+      "sourceURL": "https://github.com/NREL/EnergyPlus/releases/tag/v25.1.0",
+      "licensePath": "licenses/EnergyPlus-25.1-LICENSE.txt",
+      "weather": {
+        "filename": "USA_IL_Chicago-OHare.Intl.AP.725300_TMY3.epw",
+        "sha256": "c7d4efcf93ba316a1d874352e743df5cf137ba5c0e3459eb2dc4b5442d5b7f5c"
+      },
+      "types": [
+        "fan_coil"
+      ],
+      "oraclePath": "oracles/fan-coil-25-1.json",
+      "expectedPath": "expected/fan-coil-25-1.json"
+    },
+    {
+      "id": "vrf-25-1",
+      "version": "25.1",
+      "modelPath": "models/25.1/DOAToVRF.idf",
+      "modelSHA256": "0b533d3ec7abc449bc592f2853af6fcd994afe8d407075c16b5ec7d0f3eded4c",
+      "engineSourceFilename": "ExampleFiles/DOAToVRF.idf",
+      "sourceURL": "https://github.com/NREL/EnergyPlus/releases/tag/v25.1.0",
+      "licensePath": "licenses/EnergyPlus-25.1-LICENSE.txt",
+      "weather": {
+        "filename": "USA_IL_Chicago-OHare.Intl.AP.725300_TMY3.epw",
+        "sha256": "c7d4efcf93ba316a1d874352e743df5cf137ba5c0e3459eb2dc4b5442d5b7f5c"
+      },
+      "types": [
+        "vrf"
+      ],
+      "oraclePath": "oracles/vrf-25-1.json",
+      "expectedPath": "expected/vrf-25-1.json"
+    },
+    {
+      "id": "radiant-25-1",
+      "version": "25.1",
+      "modelPath": "models/25.1/RadLoTempCFloHeatCool.idf",
+      "modelSHA256": "c4988a4211b37a9508dd0265ee19cb1f4f7174c57e214a38ec3935e2f918388e",
+      "engineSourceFilename": "ExampleFiles/RadLoTempCFloHeatCool.idf",
+      "sourceURL": "https://github.com/NREL/EnergyPlus/releases/tag/v25.1.0",
+      "licensePath": "licenses/EnergyPlus-25.1-LICENSE.txt",
+      "weather": {
+        "filename": "USA_IL_Chicago-OHare.Intl.AP.725300_TMY3.epw",
+        "sha256": "c7d4efcf93ba316a1d874352e743df5cf137ba5c0e3459eb2dc4b5442d5b7f5c"
+      },
+      "types": [
+        "radiant"
+      ],
+      "oraclePath": "oracles/radiant-25-1.json",
+      "expectedPath": "expected/radiant-25-1.json"
+    },
+    {
+      "id": "district-energy-25-1",
+      "version": "25.1",
+      "modelPath": "models/25.1/5ZoneFanCoilDOAS_ERVOnAirLoopMainBranch.idf",
+      "modelSHA256": "3b7712676a8ea7cb034cec7eb0b843731d12ba79cf72d3d54f3b3e6481b765da",
+      "engineSourceFilename": "ExampleFiles/5ZoneFanCoilDOAS_ERVOnAirLoopMainBranch.idf",
+      "sourceURL": "https://github.com/NREL/EnergyPlus/releases/tag/v25.1.0",
+      "licensePath": "licenses/EnergyPlus-25.1-LICENSE.txt",
+      "weather": {
+        "filename": "USA_IL_Chicago-OHare.Intl.AP.725300_TMY3.epw",
+        "sha256": "c7d4efcf93ba316a1d874352e743df5cf137ba5c0e3459eb2dc4b5442d5b7f5c"
+      },
+      "types": [
+        "district_energy"
+      ],
+      "oraclePath": "oracles/district-energy-25-1.json",
+      "expectedPath": "expected/district-energy-25-1.json"
+    },
+    {
+      "id": "mixed-heating-fuels-25-1",
+      "version": "25.1",
+      "modelPath": "models/25.1/5ZoneElectricBaseboard.idf",
+      "modelSHA256": "cc69ffb0c991ca82951bfe4df351bb51280f97cca92155515ef1cd772bcc1d58",
+      "engineSourceFilename": "ExampleFiles/5ZoneElectricBaseboard.idf",
+      "sourceURL": "https://github.com/NREL/EnergyPlus/releases/tag/v25.1.0",
+      "licensePath": "licenses/EnergyPlus-25.1-LICENSE.txt",
+      "weather": {
+        "filename": "USA_IL_Chicago-OHare.Intl.AP.725300_TMY3.epw",
+        "sha256": "c7d4efcf93ba316a1d874352e743df5cf137ba5c0e3459eb2dc4b5442d5b7f5c"
+      },
+      "types": [
+        "mixed_heating_fuels"
+      ],
+      "oraclePath": "oracles/mixed-heating-fuels-25-1.json",
+      "expectedPath": "expected/mixed-heating-fuels-25-1.json"
+    },
+    {
+      "id": "zone-group-25-1",
+      "version": "25.1",
+      "modelPath": "models/25.1/MultiStory.idf",
+      "modelSHA256": "c7165328a5f3a90aa81ac3f95928600079cf9f7a109fd615ccc6686caf518ba2",
+      "engineSourceFilename": "ExampleFiles/MultiStory.idf",
+      "sourceURL": "https://github.com/NREL/EnergyPlus/releases/tag/v25.1.0",
+      "licensePath": "licenses/EnergyPlus-25.1-LICENSE.txt",
+      "weather": {
+        "filename": "USA_IL_Chicago-OHare.Intl.AP.725300_TMY3.epw",
+        "sha256": "c7d4efcf93ba316a1d874352e743df5cf137ba5c0e3459eb2dc4b5442d5b7f5c"
+      },
+      "types": [
+        "zone_multiplier_or_group",
+        "zone_group"
+      ],
+      "oraclePath": "oracles/zone-group-25-1.json",
+      "expectedPath": "expected/zone-group-25-1.json"
+    },
+    {
+      "id": "zone-multiplier-25-1",
+      "version": "25.1",
+      "modelPath": "models/25.1/5ZoneSwimmingPoolZoneMultipliers.idf",
+      "modelSHA256": "e8fe7fdc91c4127f55f645ac059323771fa4a92f16e86900953fa8d2ceff9301",
+      "engineSourceFilename": "ExampleFiles/5ZoneSwimmingPoolZoneMultipliers.idf",
+      "sourceURL": "https://github.com/NREL/EnergyPlus/releases/tag/v25.1.0",
+      "licensePath": "licenses/EnergyPlus-25.1-LICENSE.txt",
+      "weather": {
+        "filename": "USA_IL_Chicago-OHare.Intl.AP.725300_TMY3.epw",
+        "sha256": "c7d4efcf93ba316a1d874352e743df5cf137ba5c0e3459eb2dc4b5442d5b7f5c"
+      },
+      "types": [
+        "zone_multiplier_or_group",
+        "zone_multiplier"
+      ],
+      "oraclePath": "oracles/zone-multiplier-25-1.json",
+      "expectedPath": "expected/zone-multiplier-25-1.json"
+    },
+    {
+      "id": "pv-storage-25-1",
+      "version": "25.1",
+      "modelPath": "models/25.1/ShopWithPVandBattery.idf",
+      "modelSHA256": "9c3f9b637b1e04c2e4b8911854c36ffd6442ea86cfe8e165fccaaeb8b2be9cd0",
+      "engineSourceFilename": "ExampleFiles/ShopWithPVandBattery.idf",
+      "sourceURL": "https://github.com/NREL/EnergyPlus/releases/tag/v25.1.0",
+      "licensePath": "licenses/EnergyPlus-25.1-LICENSE.txt",
+      "weather": {
+        "filename": "USA_IL_Chicago-OHare.Intl.AP.725300_TMY3.epw",
+        "sha256": "c7d4efcf93ba316a1d874352e743df5cf137ba5c0e3459eb2dc4b5442d5b7f5c"
+      },
+      "types": [
+        "pv_storage"
+      ],
+      "oraclePath": "oracles/pv-storage-25-1.json",
+      "expectedPath": "expected/pv-storage-25-1.json"
+    },
+    {
+      "id": "no-cooling-25-1",
+      "version": "25.1",
+      "modelPath": "models/25.1/Furnace.idf",
+      "modelSHA256": "2a221defefdffa3792d69924b439f466094ccb4a9fe14aa750e5ffe817fcd1f8",
+      "engineSourceFilename": "ExampleFiles/Furnace.idf",
+      "sourceURL": "https://github.com/NREL/EnergyPlus/releases/tag/v25.1.0",
+      "licensePath": "licenses/EnergyPlus-25.1-LICENSE.txt",
+      "weather": {
+        "filename": "USA_IL_Chicago-OHare.Intl.AP.725300_TMY3.epw",
+        "sha256": "c7d4efcf93ba316a1d874352e743df5cf137ba5c0e3459eb2dc4b5442d5b7f5c"
+      },
+      "types": [
+        "no_cooling"
+      ],
+      "oraclePath": "oracles/no-cooling-25-1.json",
+      "expectedPath": "expected/no-cooling-25-1.json"
+    },
+    {
+      "id": "no-heating-25-1",
+      "version": "25.1",
+      "modelPath": "models/25.1/2ZoneDataCenterHVAC_wEconomizer.idf",
+      "modelSHA256": "a41528a9a990d90092cc0d9fe5a02585ccdb3649db1534a5cb3b0042b90f2df9",
+      "engineSourceFilename": "ExampleFiles/2ZoneDataCenterHVAC_wEconomizer.idf",
+      "sourceURL": "https://github.com/NREL/EnergyPlus/releases/tag/v25.1.0",
+      "licensePath": "licenses/EnergyPlus-25.1-LICENSE.txt",
+      "weather": {
+        "filename": "USA_IL_Chicago-OHare.Intl.AP.725300_TMY3.epw",
+        "sha256": "c7d4efcf93ba316a1d874352e743df5cf137ba5c0e3459eb2dc4b5442d5b7f5c"
+      },
+      "types": [
+        "no_heating"
+      ],
+      "oraclePath": "oracles/no-heating-25-1.json",
+      "expectedPath": "expected/no-heating-25-1.json"
+    },
+    {
+      "id": "simultaneous-25-1",
+      "version": "25.1",
+      "modelPath": "models/25.1/CentralChillerHeaterSystem_Simultaneous_Cooling_Heating.idf",
+      "modelSHA256": "84d389f1c40ab098eea05105664dd71d54c58509a4d812bf6d5dfe4e933c28f0",
+      "engineSourceFilename": "ExampleFiles/CentralChillerHeaterSystem_Simultaneous_Cooling_Heating.idf",
+      "sourceURL": "https://github.com/NREL/EnergyPlus/releases/tag/v25.1.0",
+      "licensePath": "licenses/EnergyPlus-25.1-LICENSE.txt",
+      "weather": {
+        "filename": "USA_IL_Chicago-OHare.Intl.AP.725300_TMY3.epw",
+        "sha256": "c7d4efcf93ba316a1d874352e743df5cf137ba5c0e3459eb2dc4b5442d5b7f5c"
+      },
+      "types": [
+        "simultaneous_heating_cooling"
+      ],
+      "oraclePath": "oracles/simultaneous-25-1.json",
+      "expectedPath": "expected/simultaneous-25-1.json"
+    },
+    {
+      "id": "large-office-23-2",
+      "version": "23.2",
+      "modelPath": "models/23.2/RefBldgLargeOfficeNew2004_Chicago.idf",
+      "modelSHA256": "c757c4a0d103ed16d5c527738af232800a9d82720ea68f615b4ba5c95966bd04",
+      "engineSourceFilename": "ExampleFiles/RefBldgLargeOfficeNew2004_Chicago.idf",
+      "sourceURL": "https://github.com/NREL/EnergyPlus/releases/tag/v23.2.0",
+      "licensePath": "licenses/EnergyPlus-23.2-LICENSE.txt",
+      "weather": {
+        "filename": "USA_IL_Chicago-OHare.Intl.AP.725300_TMY3.epw",
+        "sha256": "c7d4efcf93ba316a1d874352e743df5cf137ba5c0e3459eb2dc4b5442d5b7f5c"
+      },
+      "types": [
+        "large_office"
+      ],
+      "oraclePath": "oracles/large-office-23-2.json",
+      "expectedPath": "expected/large-office-23-2.json"
+    },
+    {
+      "id": "large-office-24-2",
+      "version": "24.2",
+      "modelPath": "models/24.2/RefBldgLargeOfficeNew2004_Chicago.idf",
+      "modelSHA256": "4776e647b901d7ae57c3c8bd590887caba8de72e813c7657830074b5ecf9463b",
+      "engineSourceFilename": "ExampleFiles/RefBldgLargeOfficeNew2004_Chicago.idf",
+      "sourceURL": "https://github.com/NREL/EnergyPlus/releases/tag/v24.2.0",
+      "licensePath": "licenses/EnergyPlus-24.2-LICENSE.txt",
+      "weather": {
+        "filename": "USA_IL_Chicago-OHare.Intl.AP.725300_TMY3.epw",
+        "sha256": "c7d4efcf93ba316a1d874352e743df5cf137ba5c0e3459eb2dc4b5442d5b7f5c"
+      },
+      "types": [
+        "large_office"
+      ],
+      "oraclePath": "oracles/large-office-24-2.json",
+      "expectedPath": "expected/large-office-24-2.json"
+    },
+    {
+      "id": "large-office-22-1",
+      "version": "22.1",
+      "modelPath": "models/22.1/RefBldgLargeOfficeNew2004_Chicago.idf",
+      "modelSHA256": "710c78e82c055b85a818e9824242eca3a574e102159b9d440669afd8db5e6652",
+      "engineSourceFilename": "ExampleFiles/RefBldgLargeOfficeNew2004_Chicago.idf",
+      "sourceURL": "https://github.com/NREL/EnergyPlus/releases/tag/v22.1.0",
+      "licensePath": "licenses/EnergyPlus-22.1-LICENSE.txt",
+      "weather": {
+        "filename": "USA_IL_Chicago-OHare.Intl.AP.725300_TMY3.epw",
+        "sha256": "c7d4efcf93ba316a1d874352e743df5cf137ba5c0e3459eb2dc4b5442d5b7f5c"
+      },
+      "types": [
+        "large_office"
+      ],
+      "oraclePath": "oracles/large-office-22-1.json",
+      "expectedPath": "expected/large-office-22-1.json"
+    }
+  ]
+}

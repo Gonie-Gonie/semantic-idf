@@ -395,6 +395,20 @@ The normal Building interzone/category projection remains intact.
 
 Section 22 actual-model fixtures → 210–211 → 220–222 → 230–235.
 
+Section 22 is underway, not complete: 19 byte-preserved official model inputs
+cover the required equipment/model types and 22.1/23.2/24.2/25.1 Large Office
+versions. Structural assertions and independent SQL-oracle unit tests pass.
+The first actual Large Office capture exposed and reproduced unnecessary
+hourly graph construction and cross-Zone output-key fallback; focused fixes
+and regressions pass. A fresh annual run completes through the shared builder
+with all four stages and 19 Zone projections. All 19 selected engine executions
+have now finished: 18 normal results and one no-heating model rejected for two
+Severe errors. Saved SQL calendar/annual-scalar compatibility corrections pass
+focused tests and four independent read-only rechecks. Eight-group expected
+manifests and the no-heating convergence resolution remain required. Evidence,
+isolation, engine provenance and explicit capture-versus-acceptance distinctions are in
+`docs/energy-path-real-models.md`.
+
 Checklist section 22's actual-model fixtures and expected manifests also remain
 required between EPATH-204 and EPATH-210; they have no individual EPATH numbers.
 The final completion definition in section 26 is part of acceptance as well.
