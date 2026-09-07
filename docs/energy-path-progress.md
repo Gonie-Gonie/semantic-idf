@@ -74,6 +74,19 @@ the checklist or its final acceptance scenarios.
   survive zero-node pruning without invented navigation targets. Verification:
   pure KPI-value tests, actual dashboard scope/service/month/click/focus tests,
   light/dark contrast and compactness checks, and interactive browser review.
+- EPATH-142: one bounded four-column canvas now replaces the separate stage,
+  conversion and auxiliary card stacks. Direct uses begin in the end-use column;
+  carriers are shared once, and thermal counterparts remain highlight-only.
+  Native node buttons retain two-line labels, full accessible titles and quality
+  badges. Quantitative ribbons are intentionally the next EPATH-143 step.
+  Completed-run setup collapses once but remains reopenable; failed/running
+  setup stays available, and manual disclosure choices survive result browsing.
+  Compact setup/status, KPI widths and whitespace keep the whole default view
+  within the actual 1600x900 application viewport with the normal 50% editor.
+  Verification: immutable pure geometry, twelve material drivers and nine direct
+  or residual rows, actual-index 24-node hit-testing, matching Building/Zone
+  geometry, full-view scroll checks, setup/focus lifecycle and screenshot review.
+  Existing 131/140/141 navigation, drawer and KPI acceptance also passed.
 
 ## Policy clarification
 
@@ -85,7 +98,7 @@ The normal Building interzone/category projection remains intact.
 
 ## Next in sequence
 
-EPATH-142–145 → 150–152 → 160–161 →
+EPATH-143–145 → 150–152 → 160–161 →
 170–171 → 180–182 → 190–198 → 200–204 → 210–211 → 220–222 → 230–235.
 
 Existing code may already satisfy portions of later items. They remain pending

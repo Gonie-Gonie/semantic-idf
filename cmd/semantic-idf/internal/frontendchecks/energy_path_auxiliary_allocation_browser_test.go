@@ -129,7 +129,7 @@ try {
   assert(widget.querySelector('[data-energy-path-auxiliary-allocation-ratio="unassigned"]')?.textContent.includes("13.3%"), "unassigned ratio is not readable");
   assert(widget.textContent.includes("Building allocation used by this Zone view"), "Building-wide quality scope is ambiguous");
   assert(widget.textContent.includes("never added to the selected Zone"), "unassigned Building-only behavior is unexplained");
-  assert(mount.querySelector('[data-energy-path-auxiliary-end-use="fans_pumps"]'), "allocated auxiliary lane did not accept end_use_to_carrier");
+  assert(mount.querySelector('[data-energy-path-lane="direct"][data-energy-explanation-node="end_use.fans_pumps.office"]'), "allocated auxiliary was not retained once in the canvas direct lane");
   assert(mount.querySelector('[data-energy-path-inspector-value="basis"] dd')?.textContent.includes("Allocated by related AirLoop supply-air volume share"), "airflow-priority inspector terminology is missing");
   assert(!mount.querySelector("[data-simulation-energy-auxiliary-allocation], [data-simulation-energy-airflow-allocation], [data-simulation-energy-allocation-policy]"), "automatic auxiliary allocation added a toolbar selector");
   assert(!mount.textContent.includes("Unassigned building HVAC auxiliary energy"), "unassigned Building auxiliary energy appeared as a selected Zone value");

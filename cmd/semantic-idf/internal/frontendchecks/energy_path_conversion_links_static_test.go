@@ -29,12 +29,17 @@ func TestEPATH092FrontendConversionAndAuxiliaryLaneContract(t *testing.T) {
 		`data-energy-path-humidity-detail=`,
 		`"load.humidification"`,
 		`"load.dehumidification"`,
-		`renderEnergyPathFlowLanes(allGraphNodes, graph.links, selectedID)`,
-		`new Set(energyPathAuxiliaryFlows(nodes, links).map((flow) => flow.fromNode.id))`,
+		`data-energy-path-canvas`,
+		`data-energy-path-lane-band="direct"`,
+		`data-energy-path-lane="${escapeHTML(geometry.lane)}"`,
 	} {
 		if !strings.Contains(view, required) {
 			t.Fatalf("EPATH-092 frontend conversion contract missing %q", required)
 		}
+	}
+	activeView := sliceBetween(view, "export function renderEnergyPathView", "export function renderEnergyPathContextMetrics")
+	if strings.Contains(activeView, "renderEnergyPathFlowLanes(") {
+		t.Fatal("EPATH-142 must not append duplicate legacy conversion / auxiliary card lists to the canvas")
 	}
 
 	ratioGuard := sliceBetween(view, "export function energyPathConversionRatio", "export function energyPathConversionFlows")

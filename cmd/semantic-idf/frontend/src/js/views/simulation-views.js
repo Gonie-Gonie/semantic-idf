@@ -42,6 +42,7 @@ const simulationPurposeOutputLookupCache = new WeakMap();
 const simulationHeatFlowZoneMapCache = new WeakMap();
 const simulationHeatFlowFloorSurfacesCache = new WeakMap();
 const simulationWeatherOptionsCache = new WeakMap();
+const simulationRunSetupContext = new WeakMap();
 const simulationEnergyPeriodIndexCache = new WeakMap();
 const simulationChartInteractionHosts = new WeakSet();
 const simulationHeatFlowInteractionHosts = new WeakSet();
@@ -1155,6 +1156,7 @@ export async function loadSimulationEnvironment({ render = true } = {}) {
 }
 
 export function renderSimulation() {
+  syncSimulationRunSetup(state.simulationResult);
   simulationSemanticBindings.clear();
   setSimulationPreviewMode(false);
   renderSimulationEnvironment();
@@ -1173,6 +1175,24 @@ export function renderSimulation() {
   renderSimulationResultTabs(result, availability);
   toggleSimulationResultSections();
   renderActiveSimulationResultView(result);
+}
+
+function syncSimulationRunSetup(result) {
+  const setup = document.getElementById("simulationRunSetup");
+  if (!setup) return;
+  const running = Boolean(state.simulationRunning);
+  const failed = [result?.status, state.simulationProgress?.status].some((status) => ["failed", "cancelled", "canceled"].includes(status));
+  const completed = Boolean(result) && !running && !failed;
+  const previous = simulationRunSetupContext.get(setup);
+  setup.closest(".simulation-pane")?.classList.toggle("has-simulation-result", completed);
+  // Default to the result after a run, but preserve a user's disclosure choice
+  // while inspecting that same result or changing its scope/period/service.
+  if (!previous || previous.result !== result || previous.running !== running || previous.failed !== failed) {
+    const focusedControl = setup.contains(document.activeElement) && document.activeElement !== setup.querySelector("summary");
+    setup.open = !completed;
+    if (completed && focusedControl) setup.querySelector("summary")?.focus({ preventScroll: true });
+  }
+  simulationRunSetupContext.set(setup, { result, running, failed });
 }
 
 function renderSimulationRunEstimate(result) {
@@ -1335,6 +1355,7 @@ function renderSimulationEnergyEmpty(message) {
 }
 
 export function renderSimulationEnergyDashboard(result) {
+  syncSimulationRunSetup(result);
   const energy = result?.purposeResults?.energy || {};
   const explanation = result?.purposeResults?.energyExplanation || {};
   const explanationSummary = result?.purposeResults?.energyExplanationSummary || {};

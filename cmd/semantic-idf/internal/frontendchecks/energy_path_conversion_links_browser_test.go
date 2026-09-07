@@ -156,7 +156,9 @@ try {
   }
 
   const mount = document.getElementById("mount");
-  mount.innerHTML = module.renderEnergyPathView(explanation, state);
+  // Retain compatibility coverage for the standalone ratio renderer. It is
+  // no longer appended to the default EPATH-142 graph canvas.
+  mount.innerHTML = module.renderEnergyPathFlowLanes(graph.nodes, graph.links);
   const conversionLane = mount.querySelector("[data-energy-path-conversion-lane]");
   const auxiliaryLane = mount.querySelector("[data-energy-path-auxiliary-lane]");
   assert(conversionLane?.textContent.includes("Cooling load → Cooling equipment energy"), "cooling equipment conversion title is missing");
@@ -166,9 +168,14 @@ try {
   assert(conversionLane?.querySelector('[data-energy-path-ratio-kind="efficiency"]')?.dataset.energyPathRatioLabel === "Efficiency", "Efficiency metadata is not rendered");
   assert(auxiliaryLane?.querySelectorAll("[data-energy-path-auxiliary-link]").length === 2, "lower auxiliary lane does not show direct carrier branches");
   assert(!auxiliaryLane?.querySelector("[data-energy-path-ratio-kind]"), "auxiliary energy entered a conversion-ratio denominator");
+  mount.innerHTML = module.renderEnergyPathView(explanation, state);
+  assert(!mount.querySelector('[data-energy-path-conversion-lane], [data-energy-path-auxiliary-lane]'), "default canvas appended obsolete duplicate card lists");
   const mainEndUseStage = mount.querySelector('[data-energy-path-stage="end_use"]');
-  assert(!mainEndUseStage?.querySelector('[data-energy-explanation-node="end_use.fans_pumps.building"]') && !mainEndUseStage?.querySelector('[data-energy-explanation-node="end_use.hvac_auxiliaries.building"]'), "lower-lane auxiliaries were duplicated in the main end-use stage");
-  const fanPumpButton = auxiliaryLane?.querySelector('[data-energy-explanation-node="end_use.fans_pumps.building"]');
+  for (const id of ["end_use.fans_pumps.building", "end_use.hvac_auxiliaries.building"]) {
+    assert(mainEndUseStage?.querySelectorAll('[data-energy-path-lane="direct"][data-energy-explanation-node="' + id + '"]').length === 1, "auxiliary must occur once in the end-use column's direct lane: " + id);
+    assert(!mainEndUseStage?.querySelector('[data-energy-path-lane="main"][data-energy-explanation-node="' + id + '"]'), "auxiliary was forced through the thermal conversion lane");
+  }
+  const fanPumpButton = mainEndUseStage?.querySelector('[data-energy-path-lane="direct"][data-energy-explanation-node="end_use.fans_pumps.building"]');
   assert(fanPumpButton?.getAttribute("aria-pressed") === "false", "lower-lane auxiliary is not an interactive selectable node");
 
   mount.innerHTML = module.renderEnergyPathView(explanation, { ...state, simulationEnergySelection: coolingLoadID });
@@ -181,7 +188,7 @@ try {
   assert(!heatingInspector?.querySelector('[data-energy-path-humidity-detail="dehumidification"]'), "dehumidification was attached to Heating load");
 
   mount.innerHTML = module.renderEnergyPathView(explanation, { ...state, simulationEnergySelection: "end_use.fans_pumps.building" });
-  assert(mount.querySelector('[data-energy-path-auxiliary-link][data-energy-explanation-node="end_use.fans_pumps.building"]')?.getAttribute("aria-pressed") === "true", "lower-lane auxiliary selection state is not visible");
+  assert(mount.querySelector('[data-energy-path-lane="direct"][data-energy-explanation-node="end_use.fans_pumps.building"]')?.getAttribute("aria-pressed") === "true", "lower-lane auxiliary selection state is not visible");
   assert(mount.querySelector('[data-energy-path-inspector="end_use.fans_pumps.building"]'), "lower-lane auxiliary selection cannot open its inspector");
 
   const invalidLink = { ...links[0], id: "invalid-zero-denominator", toValue: 0, ratio: 0 };
@@ -189,9 +196,11 @@ try {
   assert(!mount.querySelector("[data-energy-path-ratio-kind]"), "zero-denominator conversion rendered a ratio label");
 
   i18n.setLanguage("ko");
-  mount.innerHTML = module.renderEnergyPathView(explanation, { ...state, simulationEnergySelection: coolingLoadID });
+  mount.innerHTML = module.renderEnergyPathFlowLanes(graph.nodes, graph.links);
   assert(mount.querySelector("[data-energy-path-conversion-lane]")?.textContent.includes("냉방 부하 → 냉방 설비 에너지"), "Korean cooling conversion label is missing");
   assert(mount.querySelector("[data-energy-path-auxiliary-lane]")?.textContent.includes("보조 설비 에너지"), "Korean auxiliary-lane label is missing");
+  mount.innerHTML = module.renderEnergyPathView(explanation, { ...state, simulationEnergySelection: coolingLoadID });
+  assert(mount.querySelector('[data-energy-path-lane-band="direct"]')?.textContent.includes("직접·보조 에너지"), "Korean canvas direct / auxiliary label is missing");
   assert(mount.querySelector('[data-energy-path-humidity-detail="dehumidification"]')?.textContent.includes("제습 상세"), "Korean dehumidification detail label is missing");
   i18n.setLanguage("en");
 

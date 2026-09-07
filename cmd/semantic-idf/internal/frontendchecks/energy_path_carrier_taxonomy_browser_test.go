@@ -347,7 +347,8 @@ try {
   check(carrierStage && carrierStage.querySelectorAll("[data-energy-explanation-node]").length === 14, "rendered Energy Source stage is not the fixed converted-water taxonomy");
   carrierCases.forEach((carrier) => {
     const rendered = carrierStage?.querySelector('[data-energy-explanation-node="carrier.' + carrier.token + '.building"]');
-    check(rendered && rendered.textContent.includes(carrier.label) && rendered.textContent.includes("kWh site"), "rendered carrier label/unit is not canonical for " + carrier.token);
+    check(rendered && rendered.textContent.includes(carrier.label) && rendered.title.includes("kWh site") &&
+      carrierStage.querySelector("header")?.textContent.includes("kWh site"), "rendered carrier label/common unit/full tooltip is not canonical for " + carrier.token);
   });
   check(!carrierStage?.textContent.includes("legacy "), "legacy carrier labels leaked into Energy Source nodes");
 

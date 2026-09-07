@@ -258,55 +258,62 @@
 
           <div class="result-pane" id="simulationPane">
             <div class="simulation-pane">
-              <section class="simulation-controls" aria-label="Simulation controls">
-                <label>
-                  <span data-i18n="simulation.weather">Weather</span>
-                  <select id="simulationWeatherSelect"></select>
-                </label>
-                <button id="simulationRunButton" type="button" data-i18n="action.runSimulation">Run & Inspect</button>
-              </section>
-              <section class="simulation-purpose-panel" aria-label="Simulation purposes">
-                <div class="simulation-purpose-grid">
-                  <label class="simulation-purpose-card">
-                    <input type="checkbox" data-simulation-purpose="basic_energy" checked />
-                    <span>
-                      <strong data-i18n="simulation.purposeBasicEnergy">Basic Energy</strong>
-                      <small data-i18n="simulation.purposeBasicEnergyDesc">Monthly meters, end-use energy, and heat-driver explanations.</small>
-                    </span>
-                  </label>
-                  <label class="simulation-purpose-card">
-                    <input type="checkbox" data-simulation-purpose="zone_heat_flow" checked />
-                    <span>
-                      <strong data-i18n="simulation.purposeZoneHeatFlow">Zone Heat Flow</strong>
-                      <small data-i18n="simulation.purposeZoneHeatFlowDesc">Hourly zone heat-balance ledger and temperature overlay.</small>
-                    </span>
-                  </label>
-                  <label class="simulation-purpose-card">
-                    <input type="checkbox" data-simulation-purpose="hvac_loop_check" />
-                    <span>
-                      <strong data-i18n="simulation.purposeHVACLoop">HVAC Loop Check</strong>
-                      <small data-i18n="simulation.purposeHVACLoopDesc">System node trends for loop operation review.</small>
-                    </span>
-                  </label>
-                  <label class="simulation-purpose-card">
-                    <input type="checkbox" data-simulation-purpose="comfort_check" />
-                    <span>
-                      <strong data-i18n="simulation.purposeComfort">Comfort</strong>
-                      <small data-i18n="simulation.purposeComfortDesc">Zone temperature, setpoint, PMV, and PPD trends.</small>
-                    </span>
-                  </label>
-                </div>
-              </section>
-              <section class="simulation-progress-card" aria-label="Simulation progress">
-                <div class="simulation-progress-meta">
-                  <span id="simulationStatus"></span>
-                  <span id="simulationRunEstimate" class="simulation-run-estimate" hidden></span>
-                  <span id="simulationPercent">0%</span>
-                </div>
-                <div class="tool-progress-track">
-                  <div id="simulationProgressBar" class="tool-progress-bar"></div>
-                </div>
-              </section>
+              <div class="simulation-run-overview">
+                <details id="simulationRunSetup" class="simulation-run-setup" open>
+                  <summary data-i18n="simulation.runSetup">Run setup</summary>
+                  <div class="simulation-run-setup-content">
+                    <section class="simulation-controls" aria-label="Simulation controls">
+                      <label>
+                        <span data-i18n="simulation.weather">Weather</span>
+                        <select id="simulationWeatherSelect"></select>
+                      </label>
+                      <button id="simulationRunButton" type="button" data-i18n="action.runSimulation">Run & Inspect</button>
+                    </section>
+                    <section class="simulation-purpose-panel" aria-label="Simulation purposes">
+                      <div class="simulation-purpose-grid">
+                        <label class="simulation-purpose-card">
+                          <input type="checkbox" data-simulation-purpose="basic_energy" checked />
+                          <span>
+                            <strong data-i18n="simulation.purposeBasicEnergy">Basic Energy</strong>
+                            <small data-i18n="simulation.purposeBasicEnergyDesc">Monthly meters, end-use energy, and heat-driver explanations.</small>
+                          </span>
+                        </label>
+                        <label class="simulation-purpose-card">
+                          <input type="checkbox" data-simulation-purpose="zone_heat_flow" checked />
+                          <span>
+                            <strong data-i18n="simulation.purposeZoneHeatFlow">Zone Heat Flow</strong>
+                            <small data-i18n="simulation.purposeZoneHeatFlowDesc">Hourly zone heat-balance ledger and temperature overlay.</small>
+                          </span>
+                        </label>
+                        <label class="simulation-purpose-card">
+                          <input type="checkbox" data-simulation-purpose="hvac_loop_check" />
+                          <span>
+                            <strong data-i18n="simulation.purposeHVACLoop">HVAC Loop Check</strong>
+                            <small data-i18n="simulation.purposeHVACLoopDesc">System node trends for loop operation review.</small>
+                          </span>
+                        </label>
+                        <label class="simulation-purpose-card">
+                          <input type="checkbox" data-simulation-purpose="comfort_check" />
+                          <span>
+                            <strong data-i18n="simulation.purposeComfort">Comfort</strong>
+                            <small data-i18n="simulation.purposeComfortDesc">Zone temperature, setpoint, PMV, and PPD trends.</small>
+                          </span>
+                        </label>
+                      </div>
+                    </section>
+                  </div>
+                </details>
+                <section class="simulation-progress-card" aria-label="Simulation progress">
+                  <div class="simulation-progress-meta">
+                    <span id="simulationStatus"></span>
+                    <span id="simulationRunEstimate" class="simulation-run-estimate" hidden></span>
+                    <span id="simulationPercent">0%</span>
+                  </div>
+                  <div class="tool-progress-track">
+                    <div id="simulationProgressBar" class="tool-progress-bar"></div>
+                  </div>
+                </section>
+              </div>
               <nav id="simulationResultTabs" class="simulation-result-tabs" aria-label="Simulation result views">
                 <button type="button" data-simulation-result-view-button="energy" data-i18n="simulation.energy">Energy</button>
                 <button type="button" data-simulation-result-view-button="zone_heat_flow" data-i18n="simulation.heatFlow">Heat-Flow Ledger</button>
