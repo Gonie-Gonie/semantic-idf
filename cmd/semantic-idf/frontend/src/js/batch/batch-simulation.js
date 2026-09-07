@@ -1,7 +1,14 @@
 import { energyPathSummaryGroups, isEnergyPathSummaryV2 } from "../energy-path-summary.js";
+import { ENERGY_PATH_BATCH_STAGES, energyPathBatchSummary, energyPathBatchComparison } from "../energy-path-batch-comparison.js";
+import { batchEnergyPathDetailAvailable, createBatchEnergyPathDetail } from "./batch-energy-path-detail.js";
 
 export function initializeMultiSimulationTool(context) {
   const { state, elements, waitForAppAPI, waitForProgressRuntime, escapeHTML, postJSON, t, downloadCSV } = context;
+  const detailHost = elements.multiSimulationEnergyPathDetail;
+  const energyDetail = detailHost ? createBatchEnergyPathDetail({ host: detailHost, resolveRun: (id) => {
+    const matches = (state.multiSimulation.result?.results || []).filter((item) => rowID(item) === id);
+    return matches.length === 1 ? matches[0] : null;
+  } }) : null;
 
   async function loadEnvironment() {
     try {
@@ -199,6 +206,7 @@ export function initializeMultiSimulationTool(context) {
   }
 
   function renderResult() {
+    energyDetail?.reset();
     const result = state.multiSimulation.result;
     if (!result) {
       setExportButtonsDisabled(true);
@@ -263,7 +271,7 @@ export function initializeMultiSimulationTool(context) {
               const id = rowID(item);
               return `
                 <tr>
-                  <td><input data-multi-sim-row="${escapeHTML(id)}" type="checkbox" ${state.multiSimulation.selectedRows.has(id) ? "checked" : ""} ${item.series?.length || item.purposeMetrics?.length ? "" : "disabled"} /></td>
+                  <td><input data-multi-sim-row="${escapeHTML(id)}" type="checkbox" aria-label="${escapeHTML(t("batch.energyPathSelectRun", { name: item.filename || fileName(item.inputPath) }, `Select ${item.filename || fileName(item.inputPath)}`))}" ${state.multiSimulation.selectedRows.has(id) ? "checked" : ""} ${item.series?.length || item.purposeMetrics?.length || energyPathBatchSummary(item).status === "ready" || batchEnergyPathDetailAvailable(item) ? "" : "disabled"} />${renderEnergyPathOpenButton(item, "row")}</td>
                   <th class="tool-sticky-col">
                     <strong>${escapeHTML(item.filename || fileName(item.inputPath))}</strong>
                     <span title="${escapeHTML(item.outputDirectory || "")}">${escapeHTML(item.error || item.outputDirectory || "")}</span>
@@ -295,6 +303,12 @@ export function initializeMultiSimulationTool(context) {
   }
 
   function renderChart(result) {
+    const hasEnergyResults = (result.results || []).some(hasEnergyPayload);
+    if (elements.multiSimulationMetric) elements.multiSimulationMetric.hidden = hasEnergyResults;
+    if (hasEnergyResults) {
+      elements.multiSimulationChart.innerHTML = renderEnergyExplanationBatchCompare(result);
+      return;
+    }
     if (uniquePurposeMetrics(result).length) {
       renderPurposeMetricChart(result);
       return;
@@ -352,6 +366,18 @@ export function initializeMultiSimulationTool(context) {
       </svg>`;
   }
 
+  function hasEnergyPayload(run = {}) {
+    const explanation = run.purposeResults?.energyExplanation || {};
+    const summary = run.purposeResults?.energyExplanationSummary || explanation.summary || {};
+    if ([explanation.schema, summary.schema].some((schema) => typeof schema === "string" && schema.trim())) return true;
+    const groups = ["drivers", "loads", "endUses", "carriers", "ratios", "residuals", "topZones", "energyByCarrier", "energyByEndUse", "deliveredLoadByService", "derivedKpis", "heatDrivers", "topHeatDrivers"];
+    if (groups.some((key) => Array.isArray(summary[key]) && summary[key].length)) return true;
+    const graphPresent = (graph) => ["nodes", "links", "edges"].some((key) => Array.isArray(graph?.[key]) && graph[key].length);
+    return graphPresent(explanation) || (Array.isArray(explanation.periods) ? explanation.periods : []).some(graphPresent) ||
+      (Array.isArray(explanation.zoneResults) ? explanation.zoneResults : []).some((zone) => graphPresent(zone) ||
+        (Array.isArray(zone?.periods) ? zone.periods : []).some(graphPresent));
+  }
+
   function renderPurposeMetricChart(result) {
     const metricID = state.multiSimulation.metric;
     const rows = (result.results || [])
@@ -379,8 +405,7 @@ export function initializeMultiSimulationTool(context) {
               </div>`;
           })
           .join("")}
-      </div>
-      ${renderEnergyExplanationBatchCompare(result)}`;
+      </div>`;
   }
 
   function exportMultiSimulationCSV() {
@@ -1066,25 +1091,71 @@ export function initializeMultiSimulationTool(context) {
   function renderEnergyExplanationBatchCompare(result) {
     const selected = selectedEnergyCompareResults(result);
     if (selected.length < 2) {
-      return "";
+      return `<div class="empty" data-batch-energy-comparison>${escapeHTML(t("batch.needTwoEnergyCases", {}, "Need two Basic Energy results"))}</div>`;
     }
-    const sections = energyExplanationSummaryComparisonGroups(selected[0], selected[1])
-      .map(([label, key]) => renderEnergyExplanationDeltaSection(label, selected[0], selected[1], key))
-      .filter(Boolean)
-      .join("");
-    const completeness = renderEnergyExplanationCompletenessDelta(selected[0], selected[1]);
-    const ranking = renderEnergyExplanationDeltaRanking(selected[0], selected[1]);
-    const edgeRanking = renderEnergyExplanationEdgeDeltaRanking(selected[0], selected[1]);
-    return completeness || sections || ranking || edgeRanking
-      ? `<div class="batch-energy-explanation-compare">${renderEnergyComparePair(selected[0], selected[1])}${completeness}${ranking}${edgeRanking}${sections}</div>`
-      : "";
+    const comparison = energyPathBatchComparison(selected[0], selected[1]);
+    const unknown = t("common.notAvailable", {}, "—");
+    const numeric = (value, unit = "", signed = false) => typeof value === "number" && Number.isFinite(value)
+      ? `${signed && value > 0 ? "+" : ""}${formatNumber(value)}${unit ? ` ${unit}` : ""}` : unknown;
+    const sideHTML = (side, row) => {
+      const value = escapeHTML(numeric(side?.value, side?.unit || row.unit));
+      if (row.kind !== "quality") {
+        const status = side?.ambiguous ? "Ambiguous" : side?.missing ? "Missing" : side?.invalid ? "Invalid" : "";
+        return status ? `${value}<small class="batch-energy-quality-status" data-batch-energy-value-status="${status.toLowerCase()}">${escapeHTML(t(`batch.energyPathValue${status}`, {}, status))}</small>` : value;
+      }
+      const statuses = { complete: ["Complete", "complete"], partial: ["Partial", "partial"],
+        missing: ["Missing", "missing"], found: ["Found", "found"], overmapped: ["Overmapped", "Overmapped"],
+        not_requested: ["NotRequested", "Not requested"], not_applicable: ["NotApplicable", "Not applicable"], unavailable: ["Unavailable", "Unavailable"] };
+      const status = Object.hasOwn(statuses, side?.quality?.status) ? side.quality.status : "unavailable";
+      const [key, fallback] = statuses[status];
+      return `${value}<small class="batch-energy-quality-status" data-batch-energy-quality-status="${status}">${escapeHTML(t(`simulation.energyPathQuality${key}`, {}, fallback))}</small>`;
+    };
+    const stageLabel = (stage) => t(`batch.energyPathStage.${stage.key}`, {}, stage.label);
+    const rows = ENERGY_PATH_BATCH_STAGES.map((stage) => {
+      const stageRows = (comparison.rows || []).filter((row) => row.stage === stage.key);
+      if (!stageRows.length) return `<tr data-batch-energy-row data-batch-energy-stage="${escapeHTML(stage.key)}"><th scope="row">${escapeHTML(stageLabel(stage))}</th><td>${escapeHTML(t("batch.energyPathNoCategory", {}, "No comparable annual category reported"))}</td><td>${unknown}</td><td>${unknown}</td><td>${unknown}</td><td>${unknown}</td></tr>`;
+      return stageRows.map((row) => {
+        const baseLabel = row.categoryLabel || row.category;
+        const localizedBase = t(row.categoryKey || `batch.energyPathCategory.${baseLabel}`, {}, baseLabel);
+        const service = ["drivers", "ratios"].includes(row.stage) && ["cooling", "heating"].includes(row.service)
+          ? t(`simulation.${row.service}`, {}, row.service === "cooling" ? "Cooling" : "Heating") : "";
+        const category = [localizedBase, service].filter(Boolean).join(" · ");
+        const basis = row.basisMismatch ? `<small class="batch-energy-comparison-warning" data-batch-energy-basis-warning>${escapeHTML(t("batch.energyPathNotComparable", {}, "Not directly comparable"))}</small>` : "";
+        const coverage = row.coverageMismatch ? `<small class="batch-energy-comparison-warning" data-batch-energy-coverage-warning>${escapeHTML(t("batch.energyPathCoverageDiffers", {}, "Source coverage differs"))}</small>` : "";
+        const invalidDeltaKey = row.baseline?.ambiguous || row.target?.ambiguous ? "Ambiguous"
+          : row.unitMismatch ? "Units" : row.baseline?.invalid || row.target?.invalid ? "Invalid"
+            : row.baseline?.missing || row.target?.missing ? "Missing" : "Unavailable";
+        const unavailableDelta = row.delta === null
+          ? `<small class="batch-energy-quality-status" data-batch-energy-delta-unavailable="${invalidDeltaKey.toLowerCase()}">${escapeHTML(t(`batch.energyPathDelta${invalidDeltaKey}`, {}, "Comparable units or evidence are unavailable"))}</small>` : "";
+        return `<tr data-batch-energy-row="${escapeHTML(row.key || "")}" data-batch-energy-stage="${escapeHTML(stage.key)}" data-batch-energy-comparable="${row.directlyComparable === true}">
+          <th scope="row">${escapeHTML(stageLabel(stage))}</th><td>${escapeHTML(category)}${basis}</td>
+          <td>${sideHTML(row.baseline, row)}</td><td>${sideHTML(row.target, row)}</td>
+          <td>${escapeHTML(numeric(row.delta, row.deltaUnit || row.unit, true))}${coverage}${unavailableDelta}</td><td>${escapeHTML(numeric(row.deltaPercent, "%", true))}</td>
+        </tr>`;
+      }).join("");
+    }).join("");
+    return `<section class="batch-energy-explanation-compare" data-batch-energy-comparison>
+      <header><h4>${escapeHTML(t("batch.energyPathAnnualComparison", {}, "Energy Path comparison"))}</h4><span class="tool-muted" data-batch-energy-context>${escapeHTML(t("batch.energyPathFixedContext", {}, "Building · Annual"))}</span></header>
+      ${renderEnergyComparePair(selected[0], selected[1])}
+      ${comparison.status !== "ready" ? `<p class="tool-muted">${escapeHTML(t("batch.energyPathSummaryUnavailable", {}, "A valid Building/Annual Energy Path summary is unavailable for one or both runs."))}</p>` : ""}
+      <div class="tool-table-wrap"><table class="tool-table batch-energy-summary-table" data-batch-energy-summary-table>
+        <thead><tr>${[t("batch.energyPathStage", {}, "Stage"), t("common.category", {}, "Category"), t("batch.baselineCase", {}, "Baseline"), t("batch.targetCase", {}, "Target"), t("batch.energyPathDelta", {}, "Delta"), t("batch.energyPathDeltaPercent", {}, "Delta %")].map((label) => `<th scope="col">${escapeHTML(label)}</th>`).join("")}</tr></thead><tbody>${rows}</tbody>
+      </table></div>
+    </section>`;
+  }
+
+  function renderEnergyPathOpenButton(run, origin) {
+    const unique = Boolean(rowID(run)) && (state.multiSimulation.result?.results || []).filter((item) => rowID(item) === rowID(run)).length === 1;
+    const available = unique && Boolean(energyDetail) && batchEnergyPathDetailAvailable(run);
+    const reason = !unique ? t("batch.energyPathRunAmbiguous", {}, "This run cannot be identified uniquely.") : t("batch.energyPathDetailUnavailable", {}, "The annual Energy Path graph is not included in this run.");
+    return `<button type="button" class="batch-energy-open" data-batch-energy-open="${escapeHTML(rowID(run))}" data-batch-energy-open-origin="${origin}" ${available ? "" : "disabled"} title="${escapeHTML(available ? t("batch.energyPathOpen", {}, "Open Energy Path") : reason)}">${escapeHTML(t("batch.energyPathOpen", {}, "Open Energy Path"))}</button>`;
   }
 
   function renderEnergyComparePair(leftResult, rightResult) {
     return `
       <div class="batch-energy-compare-pair">
-        <div><span>${escapeHTML(t("batch.baselineCase", {}, "Baseline"))}</span><strong>${escapeHTML(leftResult.filename || fileName(leftResult.inputPath))}</strong></div>
-        <div><span>${escapeHTML(t("batch.targetCase", {}, "Target"))}</span><strong>${escapeHTML(rightResult.filename || fileName(rightResult.inputPath))}</strong></div>
+        <div><span>${escapeHTML(t("batch.baselineCase", {}, "Baseline"))}</span><strong>${escapeHTML(leftResult.filename || fileName(leftResult.inputPath))}</strong>${renderEnergyPathOpenButton(leftResult, "baseline")}</div>
+        <div><span>${escapeHTML(t("batch.targetCase", {}, "Target"))}</span><strong>${escapeHTML(rightResult.filename || fileName(rightResult.inputPath))}</strong>${renderEnergyPathOpenButton(rightResult, "target")}</div>
       </div>`;
   }
 
@@ -1132,7 +1203,10 @@ export function initializeMultiSimulationTool(context) {
   }
 
   function energyCompareCandidates(result) {
-    return (result?.results || []).filter((item) => item.purposeResults?.energyExplanationSummary?.schema);
+    const counts = new Map();
+    for (const item of result?.results || []) counts.set(rowID(item), (counts.get(rowID(item)) || 0) + 1);
+    return (result?.results || []).filter((item) => rowID(item) && counts.get(rowID(item)) === 1 &&
+      (energyPathBatchSummary(item).status === "ready" || batchEnergyPathDetailAvailable(item)));
   }
 
   function normalizeEnergyCompareSelection(result, preferCheckedRows = false) {
@@ -1798,6 +1872,14 @@ export function initializeMultiSimulationTool(context) {
   }
 
   function bindEvents() {
+    for (const container of [elements.multiSimulationTable, elements.multiSimulationChart]) container?.addEventListener("click", (event) => {
+      const button = event.target instanceof Element ? event.target.closest("[data-batch-energy-open]") : null;
+      if (!button || button.disabled) return;
+      event.preventDefault();
+      if (!energyDetail?.open(button.dataset.batchEnergyOpen, button) && elements.multiSimulationStatus) {
+        elements.multiSimulationStatus.textContent = t("batch.energyPathDetailUnavailable", {}, "The annual Energy Path graph is not included in this run.");
+      }
+    });
     elements.multiSimulationSelectFiles?.addEventListener("click", selectFiles);
     elements.multiSimulationSelectFolder?.addEventListener("click", selectFolder);
     elements.multiSimulationRun?.addEventListener("click", run);

@@ -117,6 +117,7 @@ const elements = {
   multiSimulationCompareTarget: document.querySelector("#multiSimulationCompareTarget"),
   multiSimulationChart: document.querySelector("#multiSimulationChart"),
   multiSimulationTable: document.querySelector("#multiSimulationTable"),
+  multiSimulationEnergyPathDetail: document.querySelector("#multiSimulationEnergyPathDetail"),
 };
 
 function appAPI() {

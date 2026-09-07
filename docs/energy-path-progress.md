@@ -211,6 +211,26 @@ the checklist or its final acceptance scenarios.
   The older virtual-clock focus test now deterministically finishes native
   opacity animations before final-style assertions; production transitions and
   the new native-clock response-time acceptance remain unchanged.
+- EPATH-170: Batch Energy comparison is fixed to Building / Annual and shows
+  Drivers, Loads, End uses, Carriers, Ratios and Residual / coverage in one
+  six-column baseline/target table. Rows match typed semantic categories, never
+  run-local node/source IDs or labels. Missing, invalid and duplicate categories
+  remain unknown; an explicit zero is retained. Units and scale domains guard
+  subtraction, and basis differences and source-coverage changes are visible
+  beside the comparison. Coverage deltas use percentage points.
+  A selected model opens one separate, locally owned Energy Path detail, with
+  its own selection, inspector, KPI and Data / Output drawer. It does not replace
+  the main workspace result or expose model actions against unrelated metadata.
+  Duplicate run IDs cannot silently resolve to a different model. Non-Energy
+  purpose comparisons remain available when their Energy payloads are empty.
+  Verification: pure immutable/nullability/category/unit/coverage boundary tests,
+  actual Go v2 summary-to-browser schema tests, and the actual Tools bootstrap
+  with 100 result rows, single-model detail, keyboard/focus and Output navigation.
+  A separate cold Comfort-only document preserves its purpose chart and zeros.
+  Compare/detail navigation makes no additional analysis or simulation calls.
+  Native 1600x900 screenshots of both the comparison and selected-wall detail
+  were inspected. The capture helper fixes the viewport before navigation and
+  verifies visible panel bounds rather than accepting a blank screenshot.
 
 ## Policy clarification
 
@@ -222,7 +242,7 @@ The normal Building interzone/category projection remains intact.
 
 ## Next in sequence
 
-EPATH-170–171 → 180–182 → 190–198 → 200–204 → 210–211 → 220–222 → 230–235.
+EPATH-171 → 180–182 → 190–198 → 200–204 → 210–211 → 220–222 → 230–235.
 
 Checklist section 22's actual-model fixtures and expected manifests also remain
 required between EPATH-204 and EPATH-210; they have no individual EPATH numbers.

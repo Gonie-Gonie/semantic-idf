@@ -784,6 +784,11 @@
   display: contents;
 }
 
+.energy-path-fixed-context {
+  color: var(--ink-soft);
+  font-size: 11px;
+}
+
 .energy-path-quality-line {
   display: flex;
   flex-wrap: wrap;

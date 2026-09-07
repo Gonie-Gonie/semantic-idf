@@ -435,7 +435,7 @@ export function renderEnergyPathView(explanation = {}, viewState = {}, options =
   const { selectedID } = energyPathSceneSelection(scene, viewState);
   return `
     <section class="energy-path-view" data-energy-path-scene="${scene.token}" data-energy-path-selection="${escapeHTML(selectedID)}" data-energy-path-schema="${escapeHTML(ENERGY_PATH_SCHEMA_V2)}" data-energy-path-zone-coverage="${scene.zoneCoverage.limited ? "partial" : "complete_or_unreported"}">
-      ${renderEnergyPathHeader(explanation, viewState, { scene })}
+      ${renderEnergyPathHeader(explanation, viewState, { scene, fixedContext: options.fixedContext })}
       ${renderEnergyPathContextMetrics(explanation, viewState)}
       ${renderEnergyPathSupportStrip(scene.allGraphNodes, scene.graph.links, selectedID, scene.graph.supplyActivities)}
       ${renderEnergyPathGraph(scene, viewState)}
@@ -2285,7 +2285,11 @@ export function renderEnergyPathHeader(explanation = {}, viewState = {}, options
       <div class="energy-path-heading">
         <h4 title="${escapeHTML(t("simulation.energyPathDirection", {}, "Load drivers → Thermal load → End-use energy → Energy sources"))}">${escapeHTML(t("simulation.energyPathName", {}, "Energy Path"))}</h4>
       </div>
-      ${renderEnergyPathControls(explanation, viewState, options.scene?.controlOptions)}
+      ${options.fixedContext ? `<span class="energy-path-fixed-context" data-energy-path-fixed-context>${escapeHTML([
+        t("simulation.energyPathScopeBuilding", {}, "Building"),
+        t("simulation.periodAnnual", {}, "Annual"),
+        t("common.all", {}, "All"),
+      ].join(" · "))}</span>` : renderEnergyPathControls(explanation, viewState, options.scene?.controlOptions)}
     </div>`;
 }
 
