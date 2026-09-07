@@ -318,6 +318,37 @@ the checklist or its final acceptance scenarios.
   for readable hierarchy and long-label layout (synthetic browser fixtures,
   not an actual EnergyPlus simulation claim).
 
+- EPATH-190–191: a new real-IDF/synthetic-SQL acceptance fixture checks exact
+  forward primary relation endpoints in every returned Building/Zone/period
+  graph, both HVAC services and all ten non-HVAC categories. Direct end uses
+  have no primary load input; correspondence stays non-flow. The existing
+  exact 100/25 COP and 85/100 efficiency test was verified after that test,
+  including two JSON reloads. See `docs/energy-path-acceptance.md`.
+- EPATH-192: twelve signed wall-output months exposed two zero-as-missing
+  metadata fallbacks. Prepared source raw/effective net 0 now survives beside
+  distinct cooling/heating contributions 38+38. Unambiguously source-owned
+  directional allocations sum independently of the signed net; shared-source
+  evidence cannot invent complete attribution. V2 source/Zone-detail JSON
+  retains known zeroes, stored sparse/null values remain unknown, and the v1
+  writer is unchanged. All twelve monthly graphs, annual sums, two scopes,
+  source accounting and repeated JSON reloads pass; the full simulation
+  package and existing API/export regressions also pass.
+- EPATH-193: existing Zone/ZoneGroup multiplier source-semantics and monthly
+  aggregation acceptance tests were checked and executed after EPATH-192.
+  They cover native versus already-multiplied outputs and repeated preparation
+  without applying the multiplier twice. No new multiplier logic was needed.
+- EPATH-194: a new parsed-IDF/analyzed-Topology plus synthetic-SQL acceptance
+  fixture covers 13 surface sources, including Door/GlassDoor, InternalMass,
+  OtherSide variants and an unresolved key. Exact real entity/connection
+  ownership, category, units and raw values survive canonical build and reload.
+- EPATH-195–198: existing concrete numerical assertions were inspected and
+  executed in order for all five duplicate-prevention families, cooling/heating
+  driver closure (including zero pressure and simultaneous loads), mixed-fuel
+  end-use/carrier splits, generation/storage non-double-counting, and direct/
+  path/fallback/unassigned Zone plus AirLoop/PlantLoop auxiliary allocations.
+  Each checklist bullet and its test evidence is mapped in
+  `docs/energy-path-acceptance.md`; no duplicate aggregators were introduced.
+
 ## Policy clarification
 
 EPATH-030's earlier 11-node cap conflicts with EPATH-123's stricter <1% grouping
@@ -328,7 +359,7 @@ The normal Building interzone/category projection remains intact.
 
 ## Next in sequence
 
-EPATH-190–198 → 200–204 → 210–211 → 220–222 → 230–235.
+EPATH-200–204 → section 22 actual-model fixtures → 210–211 → 220–222 → 230–235.
 
 Checklist section 22's actual-model fixtures and expected manifests also remain
 required between EPATH-204 and EPATH-210; they have no individual EPATH numbers.

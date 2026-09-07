@@ -360,6 +360,9 @@ type EnergyDataSource struct {
 	InputSourceIDs        []string                      `json:"inputSourceIds,omitempty"`
 	RelatedEntityIDs      []string                      `json:"relatedEntityIds,omitempty"`
 	ScopeDetails          []EnergyDataSourceScopeDetail `json:"scopeDetails,omitempty"`
+
+	inspectorDecodedFromJSON bool
+	inspectorValuePresence   uint8
 }
 
 type EnergyDataSourceScopeDetail struct {
@@ -372,6 +375,9 @@ type EnergyDataSourceScopeDetail struct {
 	AllocatedValue        float64                `json:"allocatedValue,omitempty"`
 	AllocationApplied     bool                   `json:"allocationApplied,omitempty"`
 	AggregationBasis      string                 `json:"aggregationBasis,omitempty"`
+
+	inspectorDecodedFromJSON bool
+	inspectorValuePresence   uint8
 }
 
 type EnergyReconciliation struct {

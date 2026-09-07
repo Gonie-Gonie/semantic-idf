@@ -316,13 +316,23 @@ func annotateLegacyEnergyDriverSources(sources []EnergyDataSource, nodes []Energ
 			if source.ZoneName == "" {
 				source.ZoneName = node.ZoneName
 			}
-			if source.RawValue == 0 {
+			if source.RawValue == 0 && !energyDataSourceHasPreparedValues(*source) {
 				source.RawValue = firstNonZero(node.RawValue, node.SignedValue, node.Value)
 			}
 			source.RelatedEntityIDs = appendUniqueStrings(source.RelatedEntityIDs, node.RelatedEntityIDs...)
 		}
 	}
 	return out
+}
+
+// Driver multiplier preparation records both source scalars, including an exact
+// zero. Unlike sparse legacy metadata, these values must not be reconstructed
+// from directional graph magnitudes: a seasonal signed source can net to zero
+// while retaining nonzero cooling and heating contributions. Site-energy legacy
+// fixtures may contain only monthly observations, so retain their old fallback.
+func energyDataSourceHasPreparedValues(source EnergyDataSource) bool {
+	return source.DriverRole == energyDriverSourceRoleMainFlow && source.DriverCategory != "" &&
+		source.MultiplierApplication != "" && source.EffectiveMultiplier > 0
 }
 
 func inferLegacyEnergyDriverProjectionGuards(nodes []EnergyExplanationNode, sources []EnergyDataSource) []EnergyExplanationNode {

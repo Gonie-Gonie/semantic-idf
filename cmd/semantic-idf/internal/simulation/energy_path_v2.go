@@ -2396,6 +2396,9 @@ func filterEnergyDataSourcesForV2(input []EnergyDataSource, legacyNodes []Energy
 	}
 	used := map[string]bool{}
 	values := map[string]sourceValues{}
+	exactDriverAllocations := map[string]float64{}
+	exactDriverNodes := map[string]bool{}
+	ambiguousDriverAllocations := map[string]bool{}
 	sourceByID := make(map[string]EnergyDataSource, len(input))
 	for _, source := range input {
 		sourceByID[source.ID] = source
@@ -2458,6 +2461,19 @@ func filterEnergyDataSourcesForV2(input []EnergyDataSource, legacyNodes []Energy
 			}
 		}
 		allocationApplied := original.AllocationApplied || projectedAllocation && strings.TrimSpace(original.ZoneName) == ""
+		if original.AllocationApplied && energyDriverNodeUsesCanonicalTaxonomy(original) && len(allocationSourceIDs) != 1 {
+			for _, sourceID := range allocationSourceIDs {
+				ambiguousDriverAllocations[sourceID] = true
+			}
+		}
+		if original.AllocationApplied && energyDriverNodeUsesCanonicalTaxonomy(original) && len(allocationSourceIDs) == 1 && !exactDriverNodes[original.ID] {
+			// Only a single qualified source proves that this entire directional
+			// contribution belongs to that source. Annual node contributions are
+			// already sums of monthly allocations; keep the cooling and heating
+			// contributions independent of the signed annual source net.
+			exactDriverAllocations[allocationSourceIDs[0]] += allocated
+			exactDriverNodes[original.ID] = true
+		}
 		for _, sourceID := range allocationSourceIDs {
 			value := values[sourceID]
 			// A SQL dictionary source may be propagated to residual and link
@@ -2511,10 +2527,10 @@ func filterEnergyDataSourcesForV2(input []EnergyDataSource, legacyNodes []Energy
 		// Context preparation records the signed SQL value on the source. Keep
 		// that provenance: graph nodes use absolute display values and cannot
 		// reconstruct the original sign (notably for surface convection).
-		if source.RawValue == 0 {
+		if source.RawValue == 0 && !energyDataSourceHasPreparedValues(source) {
 			source.RawValue = roundedEnergyNumber(value.raw)
 		}
-		if source.EffectiveValue == 0 {
+		if source.EffectiveValue == 0 && !energyDataSourceHasPreparedValues(source) {
 			source.EffectiveValue = roundedEnergyNumber(value.effective)
 		}
 		if source.EffectiveMultiplier == 0 {
@@ -2530,6 +2546,11 @@ func filterEnergyDataSourcesForV2(input []EnergyDataSource, legacyNodes []Energy
 			source.AllocatedValue = roundedEnergyNumber(math.Abs(source.EffectiveValue) * value.allocationFactor)
 			source.AllocationExplanation = firstNonEmpty(value.allocationExplanation, energyDriverAllocationExplanation)
 			source.AllocationFormula = firstNonEmpty(value.allocationFormula, energyDriverAllocationFormula)
+			if allocated, exact := exactDriverAllocations[source.ID]; exact && !ambiguousDriverAllocations[source.ID] {
+				source.AllocatedValue = roundedEnergyNumber(allocated)
+				source.AllocationExplanation = energyDriverAllocationExplanation + " Contribution is the sum of actual cooling and heating driver allocations uniquely attributed to this source. Raw and effective values retain the signed source net; the allocation factor is category context, not a ratio against that net."
+				source.AllocationFormula = "sum(distinct directional driver allocatedValue with this sole allocation source); each allocation: " + energyDriverAllocationFormula
+			}
 			if source.Explanation == "" {
 				source.Explanation = source.AllocationExplanation
 			}
@@ -4409,7 +4430,7 @@ func (result EnergyExplanationResult) MarshalJSON() ([]byte, error) {
 		Nodes             []EnergyExplanationNode        `json:"nodes"`
 		Links             []EnergyPathLink               `json:"links"`
 		Reconciliation    []EnergyReconciliation         `json:"reconciliation,omitempty"`
-		Sources           []EnergyDataSource             `json:"sources,omitempty"`
+		Sources           []energyPathSourceWire         `json:"sources,omitempty"`
 		Completeness      EnergyCompleteness             `json:"completeness"`
 		Quality           *EnergyPathQuality             `json:"quality,omitempty"`
 		Warnings          []EnergyWarning                `json:"warnings,omitempty"`
@@ -4428,7 +4449,7 @@ func (result EnergyExplanationResult) MarshalJSON() ([]byte, error) {
 		Nodes:             result.Nodes,
 		Links:             result.Links,
 		Reconciliation:    result.Reconciliation,
-		Sources:           result.Sources,
+		Sources:           energyPathSourcesForWire(result.Sources),
 		Completeness:      result.Completeness,
 		Quality:           result.Quality,
 		Warnings:          result.Warnings,

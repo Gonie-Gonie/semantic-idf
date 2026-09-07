@@ -147,6 +147,16 @@ pair imbalance and closure evidence. Annual-only site energy can still be
 retained when no monthly counterpart exists; twelve measured months are not
 guaranteed for every source.
 
+Source dictionary scalars retain the original signed annual net, including a
+known zero when seasonal gains and losses cancel. Directional driver nodes are
+gross service contributions and cannot replace that net. For a source that
+solely owns each of its directional allocations, `allocatedValue` is their
+sum; `allocationFormula` identifies this case. Its `allocationFactor` is category
+context, not a ratio against the annual source net. A shared category does not
+prove an individual source's complete attribution. The v2 writer preserves
+known source and Zone-detail zeroes explicitly; stored absent/null quantities
+remain unknown. This does not change the frozen v1 source writer.
+
 For eligible native Zone quantities, apply Zone × ZoneGroup multipliers exactly
 once. Facility/system/plant quantities and already model-total outputs are not
 multiplied again. Surface geometry multipliers are not reapplied to these output
