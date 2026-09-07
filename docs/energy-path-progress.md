@@ -188,6 +188,29 @@ the checklist or its final acceptance scenarios.
   through Settings/Tools, dormant HVAC/Energy and Output Escape focus restoration,
   auto-run suppression with a positive control, edited/newer-run response guards,
   compact snapshots, new-file reset, lazy Diagnose and existing Energy regressions.
+- EPATH-161: Header, KPI, Graph, Inspector, Quality and Details now have separate
+  render stages. A single current scene owns the scoped projection, all-service
+  KPI targets, layout, ribbons and controls. Selection updates only existing
+  focus attributes and the inspector; the drawer has its own update boundary.
+  Cards, bars, ribbons, ports, ratio tooltips and hit targets retain DOM identity
+  and exact geometry. Re-selecting a node preserves its open source/chooser
+  disclosures; changing model metadata refreshes the inspector without layout.
+  The scene excludes selection/drawer keys, invalidates actual result/context
+  and payload replacements, and deliberately does not cache older scopes yet.
+  Model navigation indexes are prepared at activation, not on the first click.
+  Opaque driver indexes preserve duplicate, source-anchor and target validation;
+  selected evidence and destination authority are still checked on activation.
+  Verification: pure scene lifetime/invalidation and prepared destination
+  equivalence tests; actual native-clock 1600x900 app with untrimmed analyzed
+  Large Office metadata (19 Zones, 2,020 semantic entities, 64 service paths).
+  All 19 measured selections eagerly rendered all seven inspector sections and
+  actions within 50ms (max 43.5ms, p95 35.6ms); first wall selection was 31.7ms.
+  No projection/layout/ribbon computation occurs on selection, drawer changes
+  or a same-context workspace repaint. Scope/month/service/result changes rebuild.
+  Existing navigation, cold workspace, layout and inspector regressions pass.
+  The older virtual-clock focus test now deterministically finishes native
+  opacity animations before final-style assertions; production transitions and
+  the new native-clock response-time acceptance remain unchanged.
 
 ## Policy clarification
 
@@ -199,8 +222,7 @@ The normal Building interzone/category projection remains intact.
 
 ## Next in sequence
 
-EPATH-161 →
-170–171 → 180–182 → 190–198 → 200–204 → 210–211 → 220–222 → 230–235.
+EPATH-170–171 → 180–182 → 190–198 → 200–204 → 210–211 → 220–222 → 230–235.
 
 Checklist section 22's actual-model fixtures and expected manifests also remain
 required between EPATH-204 and EPATH-210; they have no individual EPATH numbers.

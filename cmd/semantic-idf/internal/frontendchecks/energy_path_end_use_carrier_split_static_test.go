@@ -10,7 +10,7 @@ func TestEPATH090FrontendKeepsEndUseAndCarrierStagesDistinct(t *testing.T) {
 	for _, required := range []string{
 		`level: "end_use"`,
 		`level: "carrier"`,
-		`const graph = energyPathGraphForState(explanation, viewState)`,
+		`const graph = options.graph || energyPathGraphForState(explanation, viewState)`,
 		`data-energy-path-canvas`,
 		`energyPathLayout(`,
 		`export function energyPathGraphForState`,
@@ -43,8 +43,8 @@ func TestEPATH090FrontendKeepsEndUseAndCarrierStagesDistinct(t *testing.T) {
 	for _, required := range []string{
 		`const useEnergyPathV2 = isEnergyPathV2(explanation)`,
 		`if (useEnergyPathV2)`,
-		`renderEnergyPathView(explanation, state, {`,
-		`outputObjects: result?.purposeRunPlan?.outputObjects || []`,
+		`renderEnergyPathView(explanation, state, simulationEnergySceneOptions(scene))`,
+		`outputObjects: scene.result?.purposeRunPlan?.outputObjects || []`,
 		`inspectorActionsForNode:`,
 		`"simulation.energyPathUpgradeUnavailable"`,
 	} {

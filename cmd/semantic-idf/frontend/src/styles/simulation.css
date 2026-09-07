@@ -780,6 +780,10 @@
   min-width: 0;
 }
 
+.energy-path-render-slot {
+  display: contents;
+}
+
 .energy-path-quality-line {
   display: flex;
   flex-wrap: wrap;

@@ -134,10 +134,14 @@ try{
  check(taxonomy("end_use").map(item=>item.level==="residual"?"residual":item.endUse).join(",")==="cooling,heating,fans_pumps,lighting,equipment,water_systems,refrigeration,other,residual","end-use order is not fixed taxonomy / residuallast");
  check(taxonomy("carrier").map(item=>item.carrier).join(",")==="electricity,natural_gas","carrier order follows descending values instead of fixed taxonomy");
  check(pane.scrollHeight<=pane.clientHeight+1&&pane.scrollWidth<=pane.clientWidth+1,"default interaction layer creates app scrolling");
- const assertClear=label=>{check(state.simulationEnergySelection===""&&!host.querySelector("[data-energy-path-link-inspector]"),label+" did not clear selection/detail");for(const element of host.querySelectorAll("[data-energy-path-layout-node],[data-energy-path-bar],[data-energy-path-ribbon],[data-energy-path-bridge-ratio]"))assertOpacity(element,1,label+" restore");check(positions()===originalPositions&&paths()===originalPaths,label+" modified quantitative geometry");};
+ // This virtual-time fixture checks final paint. Retained buttons now animate,
+ // so finish their test-only animation clock; EPATH161 measures natural timing.
+ const settleOpacity=()=>{const controls=[...host.querySelectorAll("[data-energy-path-layout-node],[data-energy-path-bridge-ratio]")];controls.forEach(opacity);for(const control of controls)for(const animation of control.getAnimations())animation.finish();controls.forEach(opacity);};
+ const assertClear=async label=>{check(state.simulationEnergySelection===""&&!host.querySelector("[data-energy-path-link-inspector]"),label+" did not clear selection/detail");await settleOpacity();for(const element of host.querySelectorAll("[data-energy-path-layout-node],[data-energy-path-bar],[data-energy-path-ribbon],[data-energy-path-bridge-ratio]"))assertOpacity(element,1,label+" restore");check(positions()===originalPositions&&paths()===originalPaths,label+" modified quantitative geometry");};
  const heatingLoad=current.nodes.find(item=>item.level==="load"&&item.serviceKind==="heating"),heatingUse=current.nodes.find(item=>item.endUse==="heating"),gas=current.nodes.find(item=>item.carrier==="natural_gas"&&item.level==="carrier"),electricity=current.nodes.find(item=>item.carrier==="electricity"&&item.level==="carrier");
  click(node(lightingDriver.id));
  check(state.simulationEnergySelection===lightingDriver.id&&document.activeElement?.dataset.energyPathLayoutNode===lightingDriver.id,"native driver selection/focus was broken by overlay");
+ await settleOpacity();
  const expectedLinks=physical.filter(link=>link.fromId===lightingDriver.id||link.fromId===heatingLoad.id&&link.toId===heatingUse.id||link.fromId===heatingUse.id&&link.toId===gas.id),expectedIDs=new Set(expectedLinks.map(link=>link.id));
  check(expectedIDs.size===3,"selection fixture does not have its expected three-stage Heating path");
  for(const link of physical)assertOpacity(ribbon(link.id),expectedIDs.has(link.id)?1:.25,"directed Lighting demand "+link.id);
@@ -147,11 +151,10 @@ try{
  assertOpacity(node(electricity.id),.25,"shared Electricity must not flood unrelated branches");
  for(const control of host.querySelectorAll("[data-energy-path-bridge-ratio]"))assertOpacity(control,expectedIDs.has(control.dataset.energyPathBridgeRatio)?1:.25,"conversion ratio focus");
  node(electricity.id).focus();opacity(node(electricity.id));
- // Resolve the real global opacity transition rather than sampling a partially
- // composited frame or disabling the app's normal focus animation.
- await Promise.race([Promise.all(node(electricity.id).getAnimations().map(animation=>animation.finished.catch(()=>{}))),new Promise(resolve=>setTimeout(resolve,1200))]);
+ // Check the focus transition's final paint without disabling production CSS.
+ await settleOpacity();
  check(node(electricity.id).matches(":focus-visible"),"keyboard readability fixture did not establish focus-visible modality");assertOpacity(node(electricity.id),1,"unrelated keyboard-focused card remains readable");for(const bar of barNodes(electricity.id))assertOpacity(bar,.25,"keyboard focus alone must not activate unrelated physical bars");check(state.simulationEnergySelection===lightingDriver.id,"keyboard focus alone changed selected demand path");node(lightingDriver.id).focus();
- key(node(lightingDriver.id),"Escape");assertClear("Escape");
+ key(node(lightingDriver.id),"Escape");await assertClear("Escape");
  const coolingLink=physical.find(link=>link.relation==="load_to_end_use"&&link.serviceKind==="cooling"),coolingControl=ratio(coolingLink.id);
  coolingControl.focus();check(state.simulationEnergySelection==="","ratio focus alone selected a link");coolingControl.click();
  check(state.simulationEnergySelection===coolingLink.id&&document.activeElement?.dataset.energyExplanationEdge===coolingLink.id,"native conversion button did not select exact link/focus");
@@ -159,9 +162,9 @@ try{
  for(const [field,value]of[["from",coolingLink.fromValue],["to",coolingLink.toValue],["ratio",4]])check(detail?.querySelector('[data-energy-path-link-value="'+field+'"]')?.textContent.includes(String(value)),"selected conversion detail omits exact "+field+" value");
  check(detail?.querySelector('[data-energy-path-link-value="from"]')?.textContent.includes("thermal")&&detail?.querySelector('[data-energy-path-link-value="to"]')?.textContent.includes("site"),"selected link detail conflates thermal and site units");
  check(detail?.querySelector('[data-energy-path-link-value="basis"]')&&detail?.querySelector("[data-energy-path-link-source-details]")?.open===false,"selected link omitted basis or eagerly expanded raw source details");
- key(ratio(coolingLink.id),"Escape");assertClear("conversion Escape");
+ key(ratio(coolingLink.id),"Escape");await assertClear("conversion Escape");
  const keyboardLink=physical.find(link=>link.fromId===lightingDriver.id);
- for(const pressed of["Enter"," "]){const beforeScroll=pane.scrollTop,event=key(hit(keyboardLink.id),pressed);check(event.defaultPrevented&&pane.scrollTop===beforeScroll,"SVG "+JSON.stringify(pressed)+" did not prevent native scrolling");check(state.simulationEnergySelection===keyboardLink.id&&document.activeElement?.dataset.energyExplanationEdge===keyboardLink.id&&host.querySelector('[data-energy-path-link-inspector="'+keyboardLink.id+'"]'),"SVG keyboard activation did not select exact link and restore focus");key(hit(keyboardLink.id),"Escape");assertClear("SVG clear");}
+ for(const pressed of["Enter"," "]){const beforeScroll=pane.scrollTop,event=key(hit(keyboardLink.id),pressed);check(event.defaultPrevented&&pane.scrollTop===beforeScroll,"SVG "+JSON.stringify(pressed)+" did not prevent native scrolling");check(state.simulationEnergySelection===keyboardLink.id&&document.activeElement?.dataset.energyExplanationEdge===keyboardLink.id&&host.querySelector('[data-energy-path-link-inspector="'+keyboardLink.id+'"]'),"SVG keyboard activation did not select exact link and restore focus");key(hit(keyboardLink.id),"Escape");await assertClear("SVG clear");}
  const tiny=physical.find(link=>link.relation==="residual"),tinyPath=ribbon(tiny.id),tinyHit=hit(tiny.id),matrix=tinyHit.getScreenCTM(),inverse=tinyPath.getScreenCTM().inverse();
  check(Number(tinyPath.dataset.fromWidth)<2&&Number(tinyPath.dataset.fromWidth)>0,"tiny-edge fixture does not exercise a true sub2px quantitative ribbon");
  check(getComputedStyle(tinyHit).vectorEffect==="non-scaling-stroke"&&parseFloat(getComputedStyle(tinyHit).strokeWidth)>=8,"tiny edge has no scale-independent accessible hit width");
@@ -170,7 +173,7 @@ try{
  check(Boolean(hitEvidence),"tiny link cannot be hit outside its true fill without inflating quantitative width");
  if(hitEvidence){hitEvidence.target.dispatchEvent(new MouseEvent("click",{bubbles:true,cancelable:true,clientX:hitEvidence.x,clientY:hitEvidence.y}));check(state.simulationEnergySelection===tiny.id&&host.querySelector('[data-energy-path-link-inspector="'+tiny.id+'"]'),"observed tiny-edge hit target does not activate real link detail");}
  check(paths()===originalPaths,"tiny hit area changed the real ribbon path/width");
- const canvas=host.querySelector("[data-energy-path-canvas]"),canvasRect=canvas.getBoundingClientRect(),blank=document.elementFromPoint(canvasRect.left+3,canvasRect.top+3);click(blank);assertClear("blank graph");
+ const canvas=host.querySelector("[data-energy-path-canvas]"),canvasRect=canvas.getBoundingClientRect(),blank=document.elementFromPoint(canvasRect.left+3,canvasRect.top+3);click(blank);await assertClear("blank graph");
  change("[data-simulation-energy-path-period]","M1");
  const monthlyLink=graph().links.find(link=>link.relation==="load_to_end_use"&&link.serviceKind==="cooling");click(ratio(monthlyLink.id));
  check(host.querySelector('[data-energy-path-link-inspector="'+monthlyLink.id+'"] [data-energy-path-link-value="from"]')?.textContent.includes(String(monthlyLink.fromValue)),"selected monthly link reused annual thermal value");

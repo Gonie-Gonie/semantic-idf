@@ -11,6 +11,64 @@ const categoryDimensions = {
 };
 const surfaceCategories = new Set(["surface.exterior_walls", "surface.roofs", "surface.ground_floors", "surface.windows_doors", "surface.interzone"]);
 const supportedCategories = new Set([...surfaceCategories, ...Object.keys(categoryDimensions), "air.interzone"]);
+const preparedNavigationStates = new WeakMap();
+
+function navigationIdentity(options) {
+  const geometry = options.geometry, topology = geometry?.topology, profile = options.profile;
+  const hvac = options.hvac, model = hvac?.serviceModel || hvac, navigation = options.semanticNavigation;
+  return [geometry, topology, topology?.nodes, topology?.boundaries, topology?.openings,
+    topology?.connections, topology?.airCouplings, geometry?.zones, profile, profile?.zoneProfiles,
+    profile?.groups, hvac, hvac?.serviceModel, model?.zoneServices, navigation, navigation?.entities, navigation?.occurrences];
+}
+
+/**
+ * Prepare selection-independent model indexes when a scene/report is activated.
+ * The opaque token is valid only for the same report/navigation identities and
+ * top-level collections. Nested model records are immutable within those arrays.
+ */
+export function prepareEnergyPathDriverNavigation(options = {}) {
+  const geometry = options.geometry || {}, topology = geometry.topology || {}, profile = options.profile || {};
+  const navigation = options.semanticNavigation || {}, entities = indexed(navigation.entities);
+  const occurrencesByEntity = new Map();
+  for (const occurrence of indexed(navigation.occurrences, "occurrenceId").values()) if (occurrence?.entityId) {
+    if (!occurrencesByEntity.has(occurrence.entityId)) occurrencesByEntity.set(occurrence.entityId, []);
+    occurrencesByEntity.get(occurrence.entityId).push(occurrence);
+  }
+  const routesByTarget = new Map();
+  for (const entity of entities.values()) if (entity) {
+    const targets = new Map();
+    const addTarget = (target, occurrence = null) => {
+      const key = targetKey(target?.view, target?.targetKind, target?.targetId);
+      if (!targets.has(key)) targets.set(key, { target, entityHasTarget: false, occurrences: new Map() });
+      const definition = targets.get(key);
+      if (occurrence) definition.occurrences.set(occurrence.occurrenceId, occurrence);
+      else definition.entityHasTarget = true;
+    };
+    list(entity.viewTargets).forEach((target) => addTarget(target));
+    for (const occurrence of occurrencesByEntity.get(entity.id) || []) list(occurrence.viewTargets).forEach((target) => addTarget(target, occurrence));
+    for (const [key, definition] of targets) {
+      if (!routesByTarget.has(key)) routesByTarget.set(key, []);
+      routesByTarget.get(key).push({ entity, target: definition.target,
+        variants: occurrenceVariants([...definition.occurrences.values()], definition.entityHasTarget) });
+    }
+  }
+  const prepared = Object.freeze({});
+  preparedNavigationStates.set(prepared, {
+    identity: navigationIdentity(options), routesByTarget,
+    nodes: indexed(topology.nodes), boundaries: indexed(topology.boundaries), openings: indexed(topology.openings),
+    connections: indexed(topology.connections), airCouplings: indexed(topology.airCouplings), zones: indexed(geometry.zones),
+    profileZones: list(profile.zoneProfiles).map((zone) => ({ zone, items: indexed(zone.items) })),
+    profileGroups: indexed(profile.groups),
+  });
+  return prepared;
+}
+
+function navigationState(options) {
+  const prepared = preparedNavigationStates.get(options.preparedNavigation);
+  const identity = navigationIdentity(options);
+  if (prepared && prepared.identity.every((value, index) => Object.is(value, identity[index]))) return prepared;
+  return preparedNavigationStates.get(prepareEnergyPathDriverNavigation(options));
+}
 
 function indexed(items, key = "id") {
   const result = new Map();
@@ -55,9 +113,9 @@ function surfaceCategory(boundary) {
   return "";
 }
 
-function reportTargets(category, options) {
-  const records = new Map(), geometry = options.geometry || {}, topology = geometry.topology || {};
-  const nodes = indexed(topology.nodes), boundaries = indexed(topology.boundaries), openings = indexed(topology.openings);
+function reportTargets(category, options, prepared) {
+  const records = new Map();
+  const { nodes, boundaries, openings } = prepared;
   const zoneName = (id) => {
     const node = nodes.get(id);
     if (!node) return "";
@@ -79,14 +137,14 @@ function reportTargets(category, options) {
   if (category === "surface.windows_doors") for (const opening of openings.values()) if (opening && /window|door|fenestration|glass/.test(token(opening.surfaceType))) {
     add("topology", "fenestration", opening.windowId, { zoneName: zoneName(opening.ownerZoneId), label: text(opening.name), entityIds: unique([opening.id, opening.windowId, opening.entityId]), anchors: list(opening.sourceAnchors), specificity: 2 });
   }
-  for (const connection of indexed(topology.connections).values()) if (connection && !connection.qaOnly && surfaceCategories.has(category)) {
+  for (const connection of prepared.connections.values()) if (connection && !connection.qaOnly && surfaceCategories.has(category)) {
     const matches = list(connection.boundaryIds).map((id) => boundaries.get(id)).filter((item) => item && surfaceCategory(item) === category);
     const matchedOpenings = category === "surface.windows_doors" ? list(connection.openingIds).map((id) => openings.get(id)).filter((item) => item && /window|door|fenestration|glass/.test(token(item.surfaceType))) : [];
     if (!matches.length && !matchedOpenings.length) continue;
     const zones = unique([...matches, ...matchedOpenings].map((item) => zoneName(item.ownerZoneId)));
     add("topology", "thermal_connection", connection.id, { zoneName: zones.length === 1 ? zones[0] : "", zoneNames: zones, label: "Related connection context", labelKind: "connection_context", entityIds: [connection.id], anchors: [], contextOnly: true, specificity: 1 });
   }
-  for (const coupling of indexed(topology.airCouplings).values()) if (coupling) {
+  for (const coupling of prepared.airCouplings.values()) if (coupling) {
     const kind = token(coupling.couplingKind), fromZone = zoneName(coupling.fromNodeId), toZone = zoneName(coupling.toNodeId);
     const from = nodes.get(coupling.fromNodeId), to = nodes.get(coupling.toNodeId);
     if (!from || !to) continue;
@@ -102,12 +160,12 @@ function reportTargets(category, options) {
   }
   // Zone view targets use GeometryZone.ID, whereas thermal nodes use the
   // semantic entity ID. Both are real report identities, not interchangeable.
-  if (category === "air.infiltration") for (const zone of indexed(geometry.zones).values()) if (zone && !records.has(targetKey("topology", "zone", zone.id))) {
+  if (category === "air.infiltration") for (const zone of prepared.zones.values()) if (zone && !records.has(targetKey("topology", "zone", zone.id))) {
     add("topology", "zone", zone.id, { zoneName: zone.name || "", label: text(zone.name) || "Zone topology context", labelKind: text(zone.name) ? "" : "zone_context", entityIds: [zone.id], anchors: [], contextOnly: true, specificity: 0 });
   }
-  const dimensions = categoryDimensions[category] || [], profile = options.profile || {};
-  for (const zone of list(profile.zoneProfiles)) {
-    for (const item of indexed(zone.items).values()) if (item && dimensions.includes(token(item.dimension)) && (!item.zoneName || token(item.zoneName) === token(zone.zoneName))) {
+  const dimensions = categoryDimensions[category] || [];
+  if (dimensions.length) for (const { zone, items } of prepared.profileZones) {
+    for (const item of items.values()) if (item && dimensions.includes(token(item.dimension)) && (!item.zoneName || token(item.zoneName) === token(zone.zoneName))) {
       add("profile", "profile-item", item.id, { zoneName: zone.zoneName, label: text(item.objectName) || token(item.dimension), labelKind: text(item.objectName) ? "" : `profile_${token(item.dimension)}`, entityIds: [item.id], anchors: [{ objectIndex: item.objectIndex, objectType: item.objectType, objectName: item.objectName }], specificity: 2 });
     }
     for (const dimension of list(zone.dimensions)) if (dimensions.includes(token(dimension.dimension))) {
@@ -115,7 +173,7 @@ function reportTargets(category, options) {
       add("profile", "zone-dimension", `profile-zone-dimension:${encodedZone}:${token(dimension.dimension)}`, { zoneName: zone.zoneName, label: dimension.label || token(dimension.dimension), labelKind: `profile_${token(dimension.dimension)}`, entityIds: [], anchors: [], contextOnly: true, specificity: 1 });
     }
   }
-  for (const group of indexed(profile.groups).values()) if (group && list(group.dimensions).some((item) => dimensions.includes(token(item.dimension)))) {
+  if (dimensions.length) for (const group of prepared.profileGroups.values()) if (group && list(group.dimensions).some((item) => dimensions.includes(token(item.dimension)))) {
     const zones = unique(list(group.zoneNames));
     add("profile", "profile-group", group.id, { zoneName: zones.length === 1 ? zones[0] : "", zoneNames: zones, label: text(group.name) || "Profile source group", labelKind: text(group.name) ? "" : "profile_source_group", entityIds: [group.id], anchors: [], contextOnly: true, specificity: 0 });
   }
@@ -161,31 +219,13 @@ export function energyPathDriverDestinations(node = {}, options = {}) {
   if (node.period && token(node.period) !== period) return empty("period_mismatch");
   const scopeZone = token(options.scope?.kind) === "zone" ? String(options.scope.zoneName || "") : String(node.zoneName || "");
   if (token(options.scope?.kind) === "zone" && !scopeZone || node.zoneName && scopeZone && token(node.zoneName) !== token(scopeZone)) return empty("scope_mismatch");
-  const evidence = selectedEvidence(node, options.sources), records = reportTargets(category, options), navigation = options.semanticNavigation || {};
-  const entities = indexed(navigation.entities), occurrences = indexed(navigation.occurrences, "occurrenceId"), candidates = new Map();
-  const occurrencesByEntity = new Map();
-  for (const occurrence of occurrences.values()) if (occurrence?.entityId) {
-    if (!occurrencesByEntity.has(occurrence.entityId)) occurrencesByEntity.set(occurrence.entityId, []);
-    occurrencesByEntity.get(occurrence.entityId).push(occurrence);
-  }
-  for (const entity of entities.values()) if (entity) {
-    const targets = new Map();
-    const addTarget = (target, occurrence = null) => {
-      const key = targetKey(target?.view, target?.targetKind, target?.targetId);
-      if (!targets.has(key)) targets.set(key, { target, entityHasTarget: false, occurrences: new Map() });
-      const item = targets.get(key);
-      if (occurrence) item.occurrences.set(occurrence.occurrenceId, occurrence);
-      else item.entityHasTarget = true;
-    };
-    list(entity.viewTargets).forEach((target) => addTarget(target));
-    for (const occurrence of occurrencesByEntity.get(entity.id) || []) list(occurrence.viewTargets).forEach((target) => addTarget(target, occurrence));
-    for (const [key, definition] of targets) {
-      const { target } = definition, record = records.get(key);
-      if (!record) continue;
+  const prepared = navigationState(options), evidence = selectedEvidence(node, options.sources);
+  const records = reportTargets(category, options, prepared), candidates = new Map();
+  for (const [recordKey, record] of records) if (record) {
+    for (const { entity, target, variants } of prepared.routesByTarget.get(recordKey) || []) {
       const zones = unique([record.zoneName, ...list(record.zoneNames)]);
       if (scopeZone && (!zones.length || !zones.some((zone) => token(zone) === token(scopeZone)))) continue;
       if (scopeZone && zones.length > 1 && record.targetKind === "profile-group") continue;
-      const variants = occurrenceVariants([...definition.occurrences.values()], definition.entityHasTarget);
       for (const occurrence of variants) {
         const anchors = [...list(entity.sourceAnchors), ...list(occurrence?.destinationAnchors), occurrence?.sourceAnchor].filter(Boolean);
         // Anchors cross-check Profile's generated item ID against its semantic source object.

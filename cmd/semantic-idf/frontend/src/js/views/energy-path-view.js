@@ -368,13 +368,20 @@ export function normalizeEnergyPathViewState(viewState = {}, explanation = {}) {
   return viewState;
 }
 
-export function renderEnergyPathView(explanation = {}, viewState = {}, options = {}) {
-  normalizeEnergyPathViewState(viewState, explanation);
-  const graph = energyPathGraphForState(explanation, viewState);
+let energyPathSceneSequence = 0;
+const energyPathMountedScenes = new WeakMap();
+
+export function prepareEnergyPathScene(explanation = {}, viewState = {}, options = {}) {
+  // A supplied projection is already bound to the caller's normalized context.
+  // Re-normalizing here would project an all-service graph a second time.
+  if (!options.graph) normalizeEnergyPathViewState(viewState, explanation);
+  const graph = options.graph || energyPathGraphForState(explanation, viewState);
+  const allServiceGraph = options.allServiceGraph || ((viewState.simulationEnergyService || "all") === "all"
+    ? graph : energyPathGraphForState(explanation, { ...viewState, simulationEnergyService: "all" }));
   const allGraphNodes = graph.nodes;
   const zoneCoverage = energyPathZoneDirectCoverageForState(explanation, viewState);
   const auxiliaryAllocationQuality = energyPathAuxiliaryAllocationQuality(explanation, viewState);
-  graph.nodes = energyPathMainStageNodes(allGraphNodes, graph.links, explanation, viewState).map((node) => {
+  const mainNodes = energyPathMainStageNodes(allGraphNodes, graph.links, explanation, viewState).map((node) => {
     const carrierQuality = node.level === "carrier"
       ? energyPathCarrierReconciliation(explanation, node, viewState)
       : null;
@@ -384,36 +391,155 @@ export function renderEnergyPathView(explanation = {}, viewState = {}, options =
       ...(carrierQuality ? { carrierQuality } : {}),
     };
   });
+  const visibleNodes = ENERGY_PATH_STAGES.flatMap((stage) => mainNodes
+    .filter((node) => (node.presentationLevel || node.level) === stage.level &&
+      (stage.level !== "driver" || Math.abs(Number(node.value) || 0) > 0))
+    .sort((left, right) => compareEnergyPathStageNodes(stage, left, right)));
+  const period = viewState.simulationEnergyPeriod || "annual";
+  const layout = energyPathLayout(visibleNodes, energyPathOrderLinks(visibleNodes, graph.links), { width: 1000, height: 420 });
+  const drawing = energyPathRibbons(layout, { period });
+  return {
+    token: String(++energyPathSceneSequence),
+    explanation,
+    context: {
+      scopeKind: viewState.simulationEnergyScopeKind || "building",
+      zoneName: viewState.simulationEnergyZoneName || "",
+      period,
+      service: viewState.simulationEnergyService || "all",
+    },
+    graph, allServiceGraph, allGraphNodes, visibleNodes, layout, drawing,
+    controlOptions: {
+      zones: energyPathZoneNames(explanation),
+      services: energyPathServiceOptions(explanation, viewState, allServiceGraph),
+    },
+    ratioQuality: energyPathRatioQualityForState(explanation, viewState),
+    zoneCoverage, auxiliaryAllocationQuality,
+  };
+}
+
+function energyPathSceneSelection(scene, viewState) {
   const requestedSelection = String(viewState.simulationEnergySelection || "");
-  const selectedID = allGraphNodes.some((node) => node.id === requestedSelection)
+  const selectedID = scene.allGraphNodes.some((node) => node.id === requestedSelection)
     ? requestedSelection
-    : allGraphNodes.find((node) => (node.originalNodeIds || []).includes(requestedSelection))?.id || requestedSelection;
+    : scene.allGraphNodes.find((node) => (node.originalNodeIds || []).includes(requestedSelection))?.id || requestedSelection;
   const relatedNodeIDs = new Set(
-    energyPathCorrespondenceCounterparts(allGraphNodes, graph.relations, selectedID)
+    energyPathCorrespondenceCounterparts(scene.allGraphNodes, scene.graph.relations, selectedID)
       .map((node) => node.id),
   );
-  const ratioQuality = energyPathRatioQualityForState(explanation, viewState);
-  const canvas = renderEnergyPathCanvas(graph.nodes, graph.links, selectedID, relatedNodeIDs, {
-    period: viewState.simulationEnergyPeriod || "annual", ratioQuality,
-  });
+  const focus = energyPathFocus(scene.layout, scene.drawing, selectedID, relatedNodeIDs);
+  return { selectedID, relatedNodeIDs, focus };
+}
+
+export function renderEnergyPathView(explanation = {}, viewState = {}, options = {}) {
+  const scene = options.scene || prepareEnergyPathScene(explanation, viewState);
+  const { selectedID } = energyPathSceneSelection(scene, viewState);
   return `
-    <section class="energy-path-view" data-energy-path-schema="${escapeHTML(ENERGY_PATH_SCHEMA_V2)}" data-energy-path-zone-coverage="${zoneCoverage.limited ? "partial" : "complete_or_unreported"}">
-      ${renderEnergyPathHeader(explanation, viewState)}
+    <section class="energy-path-view" data-energy-path-scene="${scene.token}" data-energy-path-selection="${escapeHTML(selectedID)}" data-energy-path-schema="${escapeHTML(ENERGY_PATH_SCHEMA_V2)}" data-energy-path-zone-coverage="${scene.zoneCoverage.limited ? "partial" : "complete_or_unreported"}">
+      ${renderEnergyPathHeader(explanation, viewState, { scene })}
       ${renderEnergyPathContextMetrics(explanation, viewState)}
-      ${renderEnergyPathSupportStrip(allGraphNodes, graph.links, selectedID, graph.supplyActivities)}
-      ${canvas.html}
-      ${renderEnergyPathQualityLine(explanation, viewState)}
-      ${canvas.selectedLink
-        ? renderEnergyPathLinkInspector(explanation, canvas.selectedLink, canvas.nodes, graph.links, viewState, ratioQuality, options)
-        : renderEnergyPathNodeInspector(explanation, allGraphNodes, selectedID, viewState, graph.relations, graph.links, graph.supplyActivities, options)}
+      ${renderEnergyPathSupportStrip(scene.allGraphNodes, scene.graph.links, selectedID, scene.graph.supplyActivities)}
+      ${renderEnergyPathGraph(scene, viewState)}
+      ${renderEnergyPathQuality(explanation, viewState)}
+      <div class="energy-path-render-slot" data-energy-path-inspector-slot>${renderEnergyPathInspector(scene, viewState, options)}</div>
       ${renderEnergyPathGraphLegend()}
-      ${renderEnergyPathDataDetails(explanation, viewState, {
-        ...options,
-        diagnosticsHTML: renderEnergyPathWarnings(graph.warnings) +
-          renderEnergyPathAuxiliaryAllocationQuality(auxiliaryAllocationQuality) +
-          renderEnergyPathZoneCoverageNotice(zoneCoverage),
-      })}
+      <div class="energy-path-render-slot" data-energy-path-details-slot>${renderEnergyPathDetails(scene, viewState, options)}</div>
     </section>`;
+}
+
+export function renderEnergyPathInspector(scene, viewState = {}, options = {}) {
+  const { selectedID, focus } = energyPathSceneSelection(scene, viewState);
+  const selectedLink = scene.drawing.ribbons.find((ribbon) => ribbon.id === focus.selectedLinkID);
+  return selectedLink
+    ? renderEnergyPathLinkInspector(scene.explanation, selectedLink, scene.visibleNodes, scene.graph.links, viewState, scene.ratioQuality, options)
+    : renderEnergyPathNodeInspector(scene.explanation, scene.allGraphNodes, selectedID, viewState, scene.graph.relations, scene.graph.links, scene.graph.supplyActivities, options);
+}
+
+export function renderEnergyPathQuality(explanation = {}, viewState = {}) {
+  return renderEnergyPathQualityLine(explanation, viewState);
+}
+
+export function renderEnergyPathDetails(scene, viewState = {}, options = {}) {
+  return renderEnergyPathDataDetails(scene.explanation, viewState, {
+    ...options,
+    diagnosticsHTML: renderEnergyPathWarnings(scene.graph.warnings) +
+      renderEnergyPathAuxiliaryAllocationQuality(scene.auxiliaryAllocationQuality) +
+      renderEnergyPathZoneCoverageNotice(scene.zoneCoverage),
+  });
+}
+
+function energyPathMountedScene(host, scene, viewState) {
+  const root = host?.matches?.("[data-energy-path-scene]") ? host : host?.querySelector?.("[data-energy-path-scene]");
+  const context = scene?.context;
+  if (!root || root.dataset.energyPathScene !== scene?.token || !context ||
+    context.scopeKind !== (viewState.simulationEnergyScopeKind || "building") ||
+    context.zoneName !== (viewState.simulationEnergyZoneName || "") ||
+    context.period !== (viewState.simulationEnergyPeriod || "annual") ||
+    context.service !== (viewState.simulationEnergyService || "all")) return null;
+  const previous = energyPathMountedScenes.get(root);
+  if (previous?.scene === scene) return previous;
+  const mounted = {
+    root, scene,
+    selectedID: root.dataset.energyPathSelection || "",
+    inspector: root.querySelector("[data-energy-path-inspector-slot]"),
+    details: root.querySelector("[data-energy-path-details-slot]"),
+    nodes: [...root.querySelectorAll("[data-energy-path-layout-node]")],
+    ribbons: [...root.querySelectorAll("[data-energy-path-ribbon]")],
+    bars: [...root.querySelectorAll("[data-energy-path-bar]")],
+    ratios: [...root.querySelectorAll("[data-energy-path-bridge-ratio]")],
+    hits: [...root.querySelectorAll("[data-energy-path-link-hit]")],
+    supports: [...root.querySelectorAll("[data-energy-path-support-kind]")],
+  };
+  if (!mounted.inspector || !mounted.details) return null;
+  energyPathMountedScenes.set(root, mounted);
+  return mounted;
+}
+
+export function updateEnergyPathSelection(host, scene, viewState = {}, options = {}) {
+  const mounted = energyPathMountedScene(host, scene, viewState);
+  if (!mounted) return false;
+  const { selectedID, relatedNodeIDs, focus } = energyPathSceneSelection(scene, viewState);
+  if (mounted.selectedID === selectedID && options.refreshInspector !== true) return true;
+  for (const node of mounted.nodes) {
+    const id = node.dataset.energyPathLayoutNode;
+    const related = relatedNodeIDs.has(id);
+    node.classList.toggle("selected", id === selectedID);
+    node.classList.toggle("related", related);
+    node.setAttribute("aria-pressed", String(id === selectedID));
+    if (related) node.dataset.energyPathRelated = "true";
+    else delete node.dataset.energyPathRelated;
+    node.dataset.energyPathFocus = energyPathFocusKind(focus, "node", id, true);
+  }
+  for (const ribbon of mounted.ribbons) ribbon.dataset.energyPathFocus = energyPathFocusKind(focus, "link", ribbon.dataset.energyPathRibbon);
+  for (const bar of mounted.bars) bar.dataset.energyPathFocus = energyPathFocusKind(focus, "node", bar.dataset.energyPathBar);
+  for (const ratio of mounted.ratios) {
+    ratio.dataset.energyPathFocus = energyPathFocusKind(focus, "link", ratio.dataset.energyPathBridgeRatio);
+    ratio.setAttribute("aria-pressed", String(focus.selectedLinkID === ratio.dataset.energyPathBridgeRatio));
+  }
+  for (const hit of mounted.hits) {
+    const selected = focus.selectedLinkID === hit.dataset.energyPathLinkHit;
+    hit.setAttribute("aria-pressed", String(selected));
+    hit.nextElementSibling?.classList.toggle("selected", selected);
+  }
+  const activities = scene.graph.supplyActivities || energyPathSupplyActivities(scene.allGraphNodes, scene.graph.links);
+  for (const support of mounted.supports) {
+    const activity = activities.find((item) => item.kind === support.dataset.energyPathSupportKind && item.carrier === support.dataset.energyPathSupportCarrier);
+    const selected = Boolean(activity?.nodeIds.includes(selectedID));
+    support.classList.toggle("selected", selected);
+    support.setAttribute("aria-pressed", String(selected));
+  }
+  mounted.inspector.innerHTML = renderEnergyPathInspector(scene, viewState, options);
+  mounted.selectedID = selectedID;
+  mounted.root.dataset.energyPathSelection = selectedID;
+  return true;
+}
+
+export function updateEnergyPathDetails(host, scene, viewState = {}, options = {}) {
+  const mounted = energyPathMountedScene(host, scene, viewState);
+  if (!mounted) return false;
+  mounted.details.innerHTML = renderEnergyPathDetails(scene, viewState, options);
+  const expanded = String(viewState.simulationEnergyDetailsOpen === true);
+  for (const control of host.querySelectorAll('[aria-controls="energyPathDataDetails"][aria-expanded]')) control.setAttribute("aria-expanded", expanded);
+  return true;
 }
 
 export function renderEnergyPathContextMetrics(explanation = {}, viewState = {}) {
@@ -2152,14 +2278,14 @@ export function renderEnergyPathSummaryOverview(summary = {}) {
     </section>`;
 }
 
-export function renderEnergyPathHeader(explanation = {}, viewState = {}) {
-  normalizeEnergyPathViewState(viewState, explanation);
+export function renderEnergyPathHeader(explanation = {}, viewState = {}, options = {}) {
+  if (!options.scene) normalizeEnergyPathViewState(viewState, explanation);
   return `
     <div class="energy-path-header">
       <div class="energy-path-heading">
         <h4 title="${escapeHTML(t("simulation.energyPathDirection", {}, "Load drivers → Thermal load → End-use energy → Energy sources"))}">${escapeHTML(t("simulation.energyPathName", {}, "Energy Path"))}</h4>
       </div>
-      ${renderEnergyPathControls(explanation, viewState)}
+      ${renderEnergyPathControls(explanation, viewState, options.scene?.controlOptions)}
     </div>`;
 }
 
@@ -2208,8 +2334,8 @@ export function updateEnergyPathControlState(event, viewState = {}, explanation 
   return { handled: false, render: false };
 }
 
-export function energyPathServiceOptions(explanation = {}, viewState = {}) {
-  const graph = energyPathGraphForState(explanation, {
+export function energyPathServiceOptions(explanation = {}, viewState = {}, preparedAllServiceGraph = null) {
+  const graph = preparedAllServiceGraph || energyPathGraphForState(explanation, {
     ...viewState,
     simulationEnergyService: "all",
   });
@@ -2957,8 +3083,8 @@ export function energyPathSummaryForState(explanation = {}, fallbackSummary = {}
   };
 }
 
-export function renderEnergyPathControls(explanation = {}, viewState = {}) {
-  const zones = energyPathZoneNames(explanation);
+export function renderEnergyPathControls(explanation = {}, viewState = {}, preparedOptions = null) {
+  const zones = preparedOptions?.zones || energyPathZoneNames(explanation);
   const rootIsZoneOnly = energyPathToken(explanation.scope?.kind) === "zone" && !energyPathZoneResults(explanation).length;
   const scopes = ENERGY_PATH_SCOPES.map((scope) => (
     `<option value="${scope.value}" ${viewState.simulationEnergyScopeKind === scope.value ? "selected" : ""} ${(scope.value === "zone" && !zones.length) || (scope.value === "building" && rootIsZoneOnly) ? "disabled" : ""}>${escapeHTML(t(scope.labelKey, {}, scope.label))}</option>`
@@ -2966,7 +3092,7 @@ export function renderEnergyPathControls(explanation = {}, viewState = {}) {
   const periods = ENERGY_PATH_PERIODS.map((period) => (
     `<option value="${period.value}" ${viewState.simulationEnergyPeriod === period.value ? "selected" : ""}>${escapeHTML(t(period.labelKey, {}, period.label))}</option>`
   )).join("");
-  const services = energyPathServiceOptions(explanation, viewState).map((service) => (
+  const services = (preparedOptions?.services || energyPathServiceOptions(explanation, viewState)).map((service) => (
     `<option value="${service.value}" ${viewState.simulationEnergyService === service.value ? "selected" : ""}>${escapeHTML(t(service.labelKey, {}, service.label))}</option>`
   )).join("");
   const zoneControl = viewState.simulationEnergyScopeKind === "zone"
@@ -3006,16 +3132,10 @@ export function energyPathRatioQualityForState(explanation = {}, viewState = {})
   return quality.ratios;
 }
 
-function renderEnergyPathCanvas(nodes, links, selectedID, relatedNodeIDs, options = {}) {
-  const visibleNodes = ENERGY_PATH_STAGES.flatMap((stage) => (nodes || [])
-    .filter((node) => (node.presentationLevel || node.level) === stage.level &&
-      (stage.level !== "driver" || Math.abs(Number(node.value) || 0) > 0))
-    .sort((left, right) => compareEnergyPathStageNodes(stage, left, right)));
-  // This is presentation geometry only. The canonical graph, source records,
-  // values, and original IDs remain unchanged for the inspector and exports.
-  const layout = energyPathLayout(visibleNodes, energyPathOrderLinks(visibleNodes, links), { width: 1000, height: 420 });
-  const drawing = energyPathRibbons(layout, { period: options.period || "annual" });
-  const focus = energyPathFocus(layout, drawing, selectedID, relatedNodeIDs);
+export function renderEnergyPathGraph(scene, viewState = {}) {
+  const { visibleNodes, layout, drawing, ratioQuality } = scene;
+  const links = scene.graph.links;
+  const { selectedID, relatedNodeIDs, focus } = energyPathSceneSelection(scene, viewState);
   const directLane = layout.lanes.find((lane) => lane.id === "direct");
   const directStart = layout.columns.find((column) => column.level === "end_use").x;
   const percent = (value) => `${value / layout.width * 100}%`;
@@ -3039,7 +3159,7 @@ function renderEnergyPathCanvas(nodes, links, selectedID, relatedNodeIDs, option
         : `<span class="energy-path-stage-empty">${escapeHTML(t("common.notAvailable", {}, "—"))}</span>`}</div>
     </article>`;
   }).join("");
-  const html = `<div class="energy-path-layout" data-energy-path-layout>
+  return `<div class="energy-path-layout" data-energy-path-layout>
     <div class="energy-path-stage-grid" data-energy-path-canvas role="group" aria-label="${escapeHTML(t("simulation.energyPathDirection", {}, "Load drivers → Thermal load → End-use energy → Energy sources"))}" style="height:${layout.height}px">
       <svg class="energy-path-graph-underlay" data-energy-path-graph-underlay viewBox="0 0 ${layout.width} ${layout.height}" preserveAspectRatio="none" aria-hidden="true" focusable="false">
         ${renderEnergyPathRibbonGeometry(drawing, visibleNodes, focus)}
@@ -3049,11 +3169,10 @@ function renderEnergyPathCanvas(nodes, links, selectedID, relatedNodeIDs, option
       </div>` : ""}
       <div class="energy-path-plot-divider" data-energy-path-divider style="left:${percent(layout.dividerX)}"><span>${escapeHTML(t("simulation.energyPathConversion", {}, "Equipment conversion"))}</span></div>
       ${stages}
-      ${renderEnergyPathBridgeRatios(drawing, layout, visibleNodes, links, options.ratioQuality, focus)}
+      ${renderEnergyPathBridgeRatios(drawing, layout, visibleNodes, links, ratioQuality, focus)}
       ${renderEnergyPathLinkHitLayer(drawing, layout, visibleNodes, focus)}
     </div>
   </div>`;
-  return { html, nodes: visibleNodes, selectedLink: drawing.ribbons.find((ribbon) => ribbon.id === focus.selectedLinkID) || null };
 }
 
 function energyPathFocusKind(focus, kind, id, includeCounterparts = false) {

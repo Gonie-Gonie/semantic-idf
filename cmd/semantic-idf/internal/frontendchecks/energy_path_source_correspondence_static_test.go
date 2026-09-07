@@ -11,7 +11,7 @@ func TestEPATH093FrontendSeparatesAndNavigatesSourceCorrespondence(t *testing.T)
 		`energyPathToken(link.relation) === "source_correspondence"`,
 		`links: connectedLinks.filter((link) => !isEnergyPathNonFlowRelation(link))`,
 		`relations: connectedLinks.filter(isEnergyPathNonFlowRelation)`,
-		`energyPathCorrespondenceCounterparts(allGraphNodes, graph.relations, selectedID)`,
+		`energyPathCorrespondenceCounterparts(scene.allGraphNodes, scene.graph.relations, selectedID)`,
 		`driverCategory === "internal.lighting"`,
 		`driverCategory === "internal.equipment"`,
 		`data-energy-path-related="true"`,
