@@ -4,8 +4,10 @@ import { chooseViewTarget } from "../navigation-chooser.js";
 import { configureResultPanelNavigationHooks } from "../panel-navigation-adapters.js";
 import { getSemanticNavigationCache } from "../semantic-navigation-cache.js";
 import { openSelectionInView, selectSemanticEntity } from "../selection-controller.js";
+import { recordViewHistory } from "../view-history.js";
 import {
   energyPathGraphForState,
+  energyPathResultForState,
   energyPathInspectorSources,
   energyPathZoneNames,
   energyPathHasPayload,
@@ -24,6 +26,8 @@ import { energyPathLegacyDerivedKPIItems, energyPathSummaryGroups } from "../ene
 import { energyPathSeriesID, resolveEnergyPathSeriesCandidates, energyPathSeriesPeriodRange } from "../energy-path-navigation.js";
 import { energyPathKPIItems } from "../energy-path-kpis.js";
 import { energyPathDriverDestinations } from "../energy-path-driver-destinations.js";
+import { energyPathServiceDestinations } from "../energy-path-service-destinations.js";
+import { resolveEnergyPathOutputRequest, energyPathOutputRequestKey } from "../energy-path-output-requests.js";
 import { navigateHVAC, renderHVACLoopDiagram } from "./hvac-views.js";
 import { renderProfile } from "./profile-views.js";
 
@@ -1389,6 +1393,7 @@ export function renderSimulationEnergyDashboard(result) {
         inspectorActionsForNode: (node, sources, viewState) => simulationEnergyInspectorActions(node, sources, viewState, result),
         relatedEntitiesForItem: simulationEnergyInspectorRelatedEntities,
         driverNavigationForNode: simulationEnergyDriverNavigation,
+        serviceNavigationForNode: simulationEnergyServiceNavigation,
       })}`;
     pruneSimulationSemanticBindings();
     return;
@@ -1469,6 +1474,33 @@ export function simulationEnergyDriverNavigation(node = {}, sourceDetails = [], 
     profile: viewState.report?.profile || {},
     hvac: viewState.report?.hvac || {},
     semanticNavigation: viewState.semanticProjection?.navigation || {},
+  });
+}
+
+export function simulationEnergyServiceNavigation(node = {}, sourceDetails = [], viewState = state, inspectorModel = {}) {
+  const result = viewState.simulationResult || {};
+  const explanation = result.purposeResults?.energyExplanation || {};
+  const graph = energyPathGraphForState(explanation, viewState);
+  const period = String(viewState.simulationEnergyPeriod || "annual");
+  const scoped = energyPathResultForState(explanation, viewState);
+  const wrapper = (scoped?.periods || []).find((item) => String(item.id || "").toLowerCase() === period.toLowerCase());
+  const wrapperIDs = new Set((wrapper?.nodes || []).map((item) => item.id));
+  const wrapperBacked = graph.nodes.length > 0 && graph.nodes.every((item) =>
+    [item.id, ...(item.originalNodeIds || [])].some((id) => wrapperIDs.has(id)));
+  return energyPathServiceDestinations(node, {
+    nodes: graph.nodes,
+    links: graph.links,
+    sources: Array.isArray(explanation.sources) ? explanation.sources : sourceDetails,
+    scope: { kind: viewState.simulationEnergyScopeKind || "building", zoneName: viewState.simulationEnergyZoneName || "" },
+    period,
+    periodContext: wrapperBacked ? period : "",
+    service: viewState.simulationEnergyService || "all",
+    zoneRows: inspectorModel.breakdown?.zoneRows || [],
+    geometry: viewState.report?.geometry || {},
+    hvac: viewState.report?.hvac || {},
+    semanticNavigation: viewState.semanticProjection?.navigation || {},
+    heatFlow: result.purposeResults?.zoneHeatFlow?.zones?.length ? result.purposeResults.zoneHeatFlow : result.heatFlow || {},
+    outputObjects: result.purposeRunPlan?.outputObjects || [],
   });
 }
 
@@ -5698,6 +5730,13 @@ function energySourceSeriesRef(source = {}) {
 function focusSimulationEnergyDetails({ closed = false, output = false, tab = "" } = {}) {
   const dashboard = elements.simulationEnergyDashboard;
   const opener = closed ? dashboard?.querySelector(simulationEnergyDetailsReturnSelector) : null;
+  if (closed && opener?.matches("[data-energy-path-service-destination]")) {
+    // The inspector is rendered afresh with its multiple-target chooser closed.
+    // Restore that disclosure before returning keyboard focus to its action.
+    for (let ancestor = opener.parentElement; ancestor && ancestor !== dashboard; ancestor = ancestor.parentElement) {
+      if (ancestor.tagName === "DETAILS") ancestor.open = true;
+    }
+  }
   const target = closed
     ? (opener?.getClientRects().length ? opener : dashboard?.querySelector("[data-energy-path-details-toggle]"))
     : tab
@@ -5825,6 +5864,13 @@ export function handleSimulationSeriesInspectClick(event) {
     return;
   }
   if (handleSimulationEnergyDetailsClick(event)) return;
+  const serviceDestination = event.target.closest("[data-energy-path-service-destination]");
+  if (serviceDestination) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!serviceDestination.disabled) void openSimulationEnergyServiceDestination(serviceDestination);
+    return;
+  }
   const driverDestination = event.target.closest("[data-energy-path-driver-destination]");
   if (driverDestination) {
     event.preventDefault();
@@ -5994,7 +6040,84 @@ export async function openSimulationEnergyDriverDestination(element) {
   const navigation = simulationEnergyDriverNavigation(node, sources);
   const matches = (navigation.groups || []).flatMap((group) => group.candidates || []).filter((candidate) => candidate.id === id);
   if (matches.length !== 1) return unavailable();
+  return openSimulationEnergyModelDestination(matches[0], unavailable);
+}
+
+export async function openSimulationEnergyServiceDestination(element) {
+  const unavailable = () => {
+    setStatus(t("simulation.energyPathServiceDestinationUnavailable", {}, "This related energy-path destination is unavailable."), "warn");
+    return false;
+  };
+  const id = String(element?.dataset?.energyPathServiceDestination || "");
+  const expectedNodeID = String(element?.dataset?.energyPathServiceNode || "");
+  const node = simulationSelectedEnergyPathNode();
+  if (!id || !expectedNodeID || element?.disabled || !["load", "end_use", "carrier"].includes(node?.level) || node.id !== expectedNodeID) return unavailable();
+  const navigation = simulationEnergyServiceNavigation(node);
+  const matches = (navigation.groups || []).flatMap((group) => group.candidates || []).filter((candidate) => candidate.id === id);
+  if (matches.length !== 1) return unavailable();
   const candidate = matches[0];
+  if (candidate.kind === "hvac") {
+    if (candidate.view !== "hvac") return unavailable();
+    return openSimulationEnergyModelDestination(candidate, unavailable);
+  }
+  if (candidate.kind === "heat_flow") {
+    const dataset = activeHeatFlowDataset();
+    const target = candidate.target || {};
+    const zones = (dataset?.zones || []).filter((zone) => zone.name === target.targetId);
+    const range = candidate.range || {};
+    const frameCount = dataset?.frameCount;
+    const end = range.end === -1 ? frameCount - 1 : range.end;
+    if (candidate.view !== "simulation" || target.view !== "simulation" || target.targetKind !== "heat-flow-zone" ||
+      zones.length !== 1 || !Number.isInteger(frameCount) || frameCount <= 0 || !Number.isInteger(range.start) ||
+      !Number.isInteger(end) || range.start < 0 || end < range.start || end >= frameCount) return unavailable();
+    // This is a period-local Zone ledger context, not the source of the selected
+    // load scalar. Capture Energy before changing any Simulation subview state.
+    recordViewHistory();
+    stopHeatFlowPlayback(false);
+    simulationNavigationRevealTarget = null;
+    state.simulationHeatFlowSelectedZone = zones[0].name;
+    const geometryZones = (state.report?.geometry?.zones || []).filter((zone) => normalizeHeatFlowName(zone.name) === normalizeHeatFlowName(zones[0].name));
+    const story = geometryZones.length === 1 && (state.report?.geometry?.stories || []).find((item) => item.index === geometryZones[0].storyIndex);
+    state.simulationHeatFlowStory = story ? String(story.index) : "all";
+    state.simulationHeatFlowRangeStart = range.start;
+    state.simulationHeatFlowRangeEnd = range.end;
+    state.simulationHeatFlowFrameIndex = range.start;
+    state.simulationHeatFlowInspectorCollapsed = false;
+    state.simulationActiveResultView = "zone_heat_flow";
+    renderSimulationResultTabs(state.simulationResult);
+    toggleSimulationResultSections();
+    renderSimulationHeatFlow();
+    const inspector = elements.simulationHeatFlow?.querySelector(".heatflow-inspector");
+    if (inspector) {
+      inspector.tabIndex = -1;
+      inspector.focus({ preventScroll: true });
+      inspector.scrollIntoView({ block: "nearest" });
+    }
+    return true;
+  }
+  if (candidate.kind === "output") {
+    const sources = state.simulationResult?.purposeResults?.energyExplanation?.sources || [];
+    const source = sources.filter((item) => item.id === candidate.sourceId);
+    const outputObjects = state.simulationResult?.purposeRunPlan?.outputObjects || [];
+    const target = candidate.target || {};
+    const resolution = source.length === 1 ? resolveEnergyPathOutputRequest(source[0], outputObjects, sources) : null;
+    if (candidate.view !== "simulation" || target.view !== "simulation" || target.targetKind !== "output-request" ||
+      resolution?.status !== "exact" || candidate.requestKey !== target.targetId ||
+      energyPathOutputRequestKey(resolution.request, resolution.requestIndex) !== candidate.requestKey) return unavailable();
+    // The existing Output drawer stays within Energy. Its close/Escape action
+    // returns to this exact source action while preserving the selected node.
+    simulationEnergyDetailsReturnSelector = `[data-energy-path-service-destination="${CSS.escape(id)}"]`;
+    state.simulationEnergyDetailsOpen = true;
+    state.simulationEnergyDetailsTab = "output";
+    state.simulationEnergyOutputSource = candidate.sourceId;
+    renderSimulationEnergyDashboard(state.simulationResult);
+    focusSimulationEnergyDetails({ output: true });
+    return true;
+  }
+  return unavailable();
+}
+
+async function openSimulationEnergyModelDestination(candidate, unavailable) {
   const target = candidate.target || {};
   const view = candidate.view || target.view;
   if (!["topology", "profile", "hvac"].includes(view) || target.view !== view) return unavailable();

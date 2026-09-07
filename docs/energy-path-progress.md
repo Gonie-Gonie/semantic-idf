@@ -150,6 +150,24 @@ the checklist or its final acceptance scenarios.
   Verification: pure category/provenance/identity tests, real analyzed-IDF schema
   bridge, actual Topology/Profile/HVAC adapter round trips and air-edge visibility,
   stale-target rejection, no Analyze/Run calls, unchanged raw data and screenshots.
+- EPATH-152: load and equipment actions now resolve verified HVAC service paths,
+  connected systems and AirLoop/PlantLoop targets; carriers open their exact
+  facility-meter Output request. Building aggregates offer explicit, ranked Zone
+  choices and unquantified shared-system context. Dedicated physical owners
+  remove duplicate Zone aliases without guessing among ambiguous targets.
+  Exact service, Zone, period, semantic targets and Output request identity are
+  revalidated on activation. Request frequency and HVAC type/service distinguish
+  same-name choices. Zone-only source context does not fabricate path evidence.
+  Load actions open a matching Zone Heat-Flow Ledger with actual calendar bounds
+  and category-major frames; the ledger is labelled context, not load provenance.
+  HVAC/Ledger jumps record one return point; the local Output drawer restores
+  focus to its chosen action on close. Ledger controls and charts now fit the
+  actual result-pane width, including the focused inspector.
+  Verification: immutable pure evidence/identity tests, vendored Large Office
+  analysis-to-semantic schema bridge, 19 actual destination round trips, monthly
+  and hourly request disambiguation, stale-target rejection, no Analyze/Run calls,
+  exact history restoration, actual pane overflow checks and three screenshots.
+  Existing 140/150/151 navigation and inspector regressions also passed.
 
 ## Policy clarification
 
@@ -161,7 +179,7 @@ The normal Building interzone/category projection remains intact.
 
 ## Next in sequence
 
-EPATH-152 → 160–161 →
+EPATH-160–161 →
 170–171 → 180–182 → 190–198 → 200–204 → 210–211 → 220–222 → 230–235.
 
 Checklist section 22's actual-model fixtures and expected manifests also remain

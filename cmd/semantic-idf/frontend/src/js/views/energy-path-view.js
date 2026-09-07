@@ -964,6 +964,8 @@ export function renderEnergyPathNodeInspector(explanation = {}, nodes = [], sele
   const driverNavigation = node.level === "driver" && typeof options.driverNavigationForNode === "function"
     ? options.driverNavigationForNode(node, sourceDetails, viewState, model)
     : null;
+  const hasServiceNavigation = ["load", "end_use", "carrier"].includes(node.level) && typeof options.serviceNavigationForNode === "function";
+  const serviceNavigation = hasServiceNavigation ? options.serviceNavigationForNode(node, sourceDetails, viewState, model) : null;
   const unit = model.valueRows.find((row) => row.key === "total")?.unit ||
     (node.scaleDomain === "site" ? "kWh site" : "kWh thermal");
   const rowValue = (key) => model.valueRows.find((row) => row.key === key)?.value ?? null;
@@ -1009,7 +1011,8 @@ export function renderEnergyPathNodeInspector(explanation = {}, nodes = [], sele
   const breakdown = loadBreakdown + renderEnergyPathInspectorBreakdown(model, { skipComponents: Boolean(loadBreakdown), skipContextKeys }) +
     offsetEffects + simultaneousLoad + renderEnergyPathGroupedMembers(node) + supplyBreakdown + carrierReconciliation;
   const actions = renderEnergyPathDriverNavigation(node, driverNavigation, model) +
-    renderEnergyPathInspectorActions(node, inspectorActions) + correspondenceActions;
+    renderEnergyPathInspectorActions(node, inspectorActions, { suppressHVAC: hasServiceNavigation }) +
+    renderEnergyPathServiceNavigation(node, serviceNavigation, model) + correspondenceActions;
   const entities = typeof options.relatedEntitiesForItem === "function" ? options.relatedEntitiesForItem(node, sourceDetails, viewState) : [];
   return `
     <aside class="energy-path-node-inspector" data-energy-path-inspector="${escapeHTML(node.id)}">
@@ -1285,7 +1288,107 @@ export function renderEnergyPathDriverNavigation(node = {}, navigation = null, m
   </section>`;
 }
 
-export function renderEnergyPathInspectorActions(node = {}, actions = {}) {
+function energyPathServiceNavigationLabel(item = {}, model = {}, fallback = "") {
+  const kinds = {
+    service_path: ["simulation.energyPathServicePath", "HVAC service path"],
+    air_loop: ["simulation.energyPathServiceAirLoop", "Air loop"],
+    plant_loop: ["simulation.energyPathServicePlantLoop", "Plant loop"],
+    system: ["simulation.energyPathServiceSystem", "Connected system"],
+    component: ["simulation.energyPathServiceComponent", "Connected component"],
+    heat_flow_ledger: ["simulation.heatFlow", "Heat-Flow Ledger"],
+    output_request: ["simulation.energyPathOutputRequest", "Output request"],
+    output_input: ["simulation.energyPathServiceOutputInput", "Input-source Output request"],
+    building_source_group: ["simulation.energyPathDriverBuildingGroup", "Building source group"],
+  };
+  const kind = kinds[item.labelKind];
+  const label = kind ? t(kind[0], {}, kind[1]) : energyPathInspectorSafeLabel(item.label || item.target?.label, model, fallback);
+  const context = String(item.contextLabel || "").trim() ? energyPathInspectorSafeLabel(item.contextLabel, model, "") : "";
+  return [label, context].filter(Boolean).join(" · ");
+}
+
+function energyPathServiceUnavailableReason(reason = "", kind = "") {
+  const reasons = {
+    no_explicit_hvac_path: ["simulation.energyPathServiceHVACUnavailable", "No verified HVAC path, loop, or connected system is available for this selection."],
+    scope_mismatch: ["simulation.energyPathServiceScopeUnavailable", "No matching destination is verified for the selected Zone."],
+    service_mismatch: ["simulation.energyPathServiceKindUnavailable", "No matching destination is verified for the selected service."],
+    period_mismatch: ["simulation.energyPathServicePeriodUnavailable", "No matching destination is verified for the selected period."],
+    unsupported_domain: ["simulation.energyPathServiceDomainUnavailable", "The reported unit and energy domain do not support this destination."],
+    heat_flow_unavailable: ["simulation.energyPathServiceLedgerUnavailable", "No matching Zone Heat-Flow Ledger is available in this result."],
+    heat_flow_period_unavailable: ["simulation.energyPathServiceLedgerPeriodUnavailable", "The Zone ledger has no usable frames for the selected period."],
+    output_unavailable: ["simulation.energyPathOutputUnavailable", "No exact request in this run plan"],
+    output_ambiguous: ["simulation.energyPathOutputAmbiguous", "More than one matching request"],
+    output_derived: ["simulation.energyPathOutputDerived", "Calculated from input sources"],
+    output_tabular: ["simulation.energyPathOutputTabular", "Reported in an annual summary table"],
+    facility_meter_unavailable: ["simulation.energyPathServiceFacilityUnavailable", "No exact facility-meter Output request is verified for this carrier."],
+  };
+  const fallback = kind === "hvac" ? reasons.no_explicit_hvac_path : kind === "heat_flow" ? reasons.heat_flow_unavailable : reasons.output_unavailable;
+  const [key, label] = reasons[reason] || fallback;
+  return t(key, {}, label);
+}
+
+export function renderEnergyPathServiceNavigation(node = {}, navigation = null, model = {}) {
+  if (!node.id || !["load", "end_use", "carrier"].includes(node.level) || !navigation) return "";
+  const groups = (Array.isArray(navigation.groups) ? navigation.groups : []).filter((group) => group && Array.isArray(group.candidates));
+  const reasons = navigation.unavailableReasons || {};
+  const candidates = groups.flatMap((group) => group.candidates);
+  const safeModel = { ...model, sourceIds: energyPathUniqueValues([
+    ...(model.sourceIds || []), ...groups.flatMap((group) => [group.id, ...(group.sourceIds || [])]),
+    ...candidates.flatMap((candidate) => [candidate.id, candidate.sourceId]),
+  ]) };
+  const kinds = [
+    { kind: "hvac", title: t("simulation.energyPathRelatedHVAC", {}, "Related HVAC"), action: t("simulation.energyPathOpenHVAC", {}, "Open HVAC"),
+      choose: t("simulation.energyPathServiceChooseHVAC", {}, "Choose a service path, loop, or system"),
+      note: t("simulation.energyPathServiceModelContext", {}, "Verified model relationships are shown here; no energy contribution is assigned to an individual target.") },
+    { kind: "heat_flow", title: t("simulation.heatFlow", {}, "Heat-Flow Ledger"), action: t("simulation.energyPathServiceOpenLedger", {}, "Open Zone ledger"),
+      choose: t("simulation.energyPathServiceChooseZone", {}, "Choose a Zone ledger"),
+      note: t("simulation.energyPathServiceLedgerContext", {}, "Zone heat-balance context for this period, not the source of the displayed load total.") },
+    { kind: "output", title: t("simulation.energyPathServiceOutput", {}, "Output requests"), action: t("simulation.energyPathServiceOpenOutput", {}, "Open exact Output request"),
+      choose: t("simulation.energyPathServiceChooseOutput", {}, "Choose an Output request"), note: "" },
+  ];
+  return `<div class="energy-path-service-navigation" data-energy-path-service-navigation>${kinds.map((definition) => {
+    const ownGroups = groups.filter((group) => group.kind === definition.kind).map((group) => ({ ...group,
+      candidates: group.candidates.filter((candidate) => candidate?.id && candidate.kind === definition.kind),
+    })).filter((group) => group.candidates.length);
+    if (!ownGroups.length && !Object.prototype.hasOwnProperty.call(reasons, definition.kind)) return "";
+    const count = ownGroups.reduce((sum, group) => sum + group.candidates.length, 0);
+    const reasonID = `energyPathService${definition.kind}Unavailable`;
+    const content = `<ul class="energy-path-service-groups">${ownGroups.map((group) => {
+      const label = energyPathServiceNavigationLabel(group, safeModel, group.zoneName || definition.title);
+      const contribution = group.zoneName && typeof group.value === "number" && Number.isFinite(group.value)
+        ? `${t("simulation.energyPathServiceZoneContribution", {}, "Zone contribution")}: ${energyPathInspectorValueLabel(group.value, group.unit || "kWh thermal")}` : "";
+      return `<li data-energy-path-service-group="${escapeHTML(group.id || "")}" data-energy-path-service-zone="${escapeHTML(group.zoneName || "")}">
+        <header><strong>${escapeHTML(label)}</strong>${contribution ? `<small data-energy-path-service-zone-contribution>${escapeHTML(contribution)}</small>` : ""}</header>
+        <ul class="energy-path-service-candidates">${group.candidates.map((candidate) => {
+          const targetLabel = energyPathServiceNavigationLabel(candidate, safeModel, definition.title);
+          const input = candidate.evidenceKind === "derived_input" ? t("simulation.energyPathServiceDerivedInput", {}, "Exact request for an input source; the displayed total is calculated.") : "";
+          const fields = candidate.kind === "output" ? candidate.requestFields || {} : {};
+          const requestIdentity = [fields.objectType, fields.keyValue, fields.variableName, fields.reportingFrequency]
+            .filter((value) => typeof value === "string" && value.trim())
+            .map((value) => energyPathInspectorSafeLabel(value, safeModel));
+          const serviceLabels = {
+            cooling: ["simulation.cooling", "Cooling"], heating: ["simulation.heating", "Heating"],
+            ventilation: ["simulation.energyPathDriverProfileVentilation", "Ventilation"], exhaust: ["simulation.energyPathServiceExhaust", "Exhaust"],
+          };
+          const serviceLabel = serviceLabels[candidate.serviceKind];
+          const routeKind = candidate.routeKind || (["service-path", "hvac-path"].includes(candidate.target?.targetKind) ? "service_path" : "");
+          const modelIdentity = candidate.kind === "hvac" ? [
+            routeKind ? energyPathServiceNavigationLabel({ labelKind: routeKind }, safeModel, definition.title) : "",
+            serviceLabel ? t(serviceLabel[0], {}, serviceLabel[1]) : "",
+          ].filter(Boolean) : [];
+          return `<li><button class="energy-path-inspector-action energy-path-service-destination" type="button" data-energy-path-service-node="${escapeHTML(node.id)}" data-energy-path-service-destination="${escapeHTML(candidate.id)}" data-energy-path-service-evidence="${escapeHTML(candidate.evidenceKind || "")}">
+            <span>${escapeHTML(definition.action)}</span><strong>${escapeHTML(targetLabel)}</strong>${modelIdentity.length ? `<small data-energy-path-service-model-identity>${escapeHTML(modelIdentity.join(" · "))}</small>` : ""}${requestIdentity.length ? `<small data-energy-path-service-request-identity>${escapeHTML(requestIdentity.join(" · "))}</small>` : ""}${input ? `<small>${escapeHTML(input)}</small>` : ""}
+          </button></li>`;
+        }).join("")}</ul></li>`;
+    }).join("")}</ul>`;
+    return `<section class="energy-path-inspector-action-group" data-energy-path-service-kind="${definition.kind}"><h5>${escapeHTML(definition.title)}</h5>
+      ${definition.note ? `<p>${escapeHTML(definition.note)}</p>` : ""}
+      ${count > 1 ? `<details data-energy-path-service-chooser="${definition.kind}"><summary>${escapeHTML(definition.choose)} · ${count}</summary>${content}</details>`
+        : count === 1 ? content : `<button class="energy-path-inspector-action" type="button" disabled aria-describedby="${reasonID}">${escapeHTML(definition.action)}</button><small id="${reasonID}" class="energy-path-action-unavailable">${escapeHTML(energyPathServiceUnavailableReason(reasons[definition.kind], definition.kind))}</small>`}
+    </section>`;
+  }).join("")}</div>`;
+}
+
+export function renderEnergyPathInspectorActions(node = {}, actions = {}, options = {}) {
   if (!node.id) return "";
   const context = actions || {};
   const groups = [{
@@ -1296,7 +1399,7 @@ export function renderEnergyPathInspectorActions(node = {}, actions = {}) {
     targets: context.series,
     reason: context.seriesUnavailableReason || t("simulation.energyPathSeriesUnavailable", {}, "No matching source series is available for this selection."),
   }];
-  if (["load", "end_use"].includes(node.level)) groups.push({
+  if (["load", "end_use"].includes(node.level) && !options.suppressHVAC) groups.push({
     kind: "hvac",
     title: t("simulation.energyPathRelatedHVAC", {}, "Related HVAC"),
     action: t("simulation.energyPathOpenHVAC", {}, "Open HVAC"),

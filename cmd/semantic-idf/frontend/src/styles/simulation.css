@@ -1901,6 +1901,53 @@
   outline-offset: 2px;
 }
 
+.energy-path-service-navigation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 10px 14px;
+  min-width: 0;
+}
+
+.energy-path-service-groups,
+.energy-path-service-candidates {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.energy-path-service-groups > li {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  border-left: 2px solid var(--line);
+  padding-left: 8px;
+}
+
+.energy-path-service-groups > li > header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 3px 10px;
+  min-width: 0;
+}
+
+.energy-path-inspector-action.energy-path-service-destination {
+  display: grid;
+  justify-items: start;
+  width: fit-content;
+  min-width: 0;
+  gap: 2px;
+}
+
+.energy-path-service-destination > strong {
+  color: var(--ink);
+  font-size: 11px;
+}
+
 .energy-path-inspector-action-group {
   display: grid;
   gap: 4px;
@@ -4342,6 +4389,8 @@
 
 .simulation-heatflow-section {
   position: relative;
+  min-width: 0;
+  container: heatflow / inline-size;
 }
 
 .simulation-heatflow-head {
@@ -4363,6 +4412,7 @@
   align-items: center;
   color: var(--muted);
   font-size: 12px;
+  min-width: 0;
 }
 
 .simulation-heatflow-controls input[type="range"] {
@@ -4440,7 +4490,7 @@
 
 .heatflow-timeline-brush {
   width: 100%;
-  min-width: 280px;
+  min-width: 0;
   height: 92px;
 }
 
@@ -4520,6 +4570,7 @@
   grid-template-columns: minmax(320px, 1fr) minmax(300px, 0.42fr);
   gap: 12px;
   align-items: start;
+  min-width: 0;
 }
 
 .heatflow-layout.inspector-collapsed {
@@ -4556,7 +4607,7 @@
 
 .heatflow-floor-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
   gap: 10px;
   min-width: 0;
 }
@@ -4682,10 +4733,17 @@
   position: sticky;
   top: 0;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   min-width: 0;
   gap: 10px;
   border-left: 1px solid var(--line);
   padding-left: 12px;
+}
+
+.heatflow-inspector:focus {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
 .heatflow-inspector-head {
@@ -4789,8 +4847,29 @@
 
 .heatflow-stack-chart {
   width: 100%;
-  min-width: 300px;
+  min-width: 0;
   height: 260px;
+}
+
+@container heatflow (max-width: 980px) {
+  .simulation-heatflow-controls {
+    grid-template-columns: repeat(auto-fit, minmax(min(170px, 100%), 1fr));
+  }
+}
+
+@container heatflow (max-width: 660px) {
+  .heatflow-layout,
+  .heatflow-layout.inspector-collapsed {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .heatflow-inspector {
+    position: static;
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    padding-top: 10px;
+    padding-left: 0;
+  }
 }
 
 .heatflow-cursor {

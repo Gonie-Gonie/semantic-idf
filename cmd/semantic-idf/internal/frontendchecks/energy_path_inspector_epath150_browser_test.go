@@ -128,7 +128,8 @@ try{
  candidate.purposeRunPlan.outputObjects=[{objectType:"Output:Variable",keyValue:"Office",variableName:seriesSource.name,reportingFrequency:"Monthly"}];
  candidate.runId="epath150-common-inspector";candidate.purposeResults.energyExplanationSummary=explanation.summary;
  const report={geometry:{surfaces:[{id:"surface.fixture.wall",name:"Office exterior wall",zoneName:"Office",surfaceType:"Wall"}],topology:{nodes:[{id:"zone.office",label:"Office"},{id:"zone.lab",label:"Laboratory"}],airCouplings:[{id:"air.fixture.mix",objectName:"Office transfer air",fromNodeId:"zone.office",toNodeId:"zone.lab"}]}},hvac:{loops:[],serviceModel:{zoneServices:[{zoneName:"Office",paths:[{id:"path.fixture.cooling",serviceKind:"cooling",zoneName:"Office",servedSubject:{kind:"zone",zoneName:"Office",name:"Office cooling service"}}]}]}}};
- const frozen=freeze(candidate),rawJSON=JSON.stringify(frozen);Object.assign(state,{report,simulationResult:frozen,simulationEnergyScopeKind:"building",simulationEnergyZoneName:"",simulationEnergyPeriod:"annual",simulationEnergyService:"all",simulationEnergySelection:"",simulationEnergyDetailsOpen:false});simulation.renderSimulation();
+ const serviceProjection={navigation:{entities:[{id:"entity.fixture.cooling",kind:"hvac-path",label:"Office cooling service",viewTargets:[{view:"hvac",targetKind:"service-path",targetId:"path.fixture.cooling",label:"Office cooling service"}]}]}};
+ const frozen=freeze(candidate),rawJSON=JSON.stringify(frozen);Object.assign(state,{report,semanticProjection:serviceProjection,simulationResult:frozen,simulationEnergyScopeKind:"building",simulationEnergyZoneName:"",simulationEnergyPeriod:"annual",simulationEnergyService:"all",simulationEnergySelection:"",simulationEnergyDetailsOpen:false});simulation.renderSimulation();
  const host=document.getElementById("simulationEnergyDashboard"),pane=document.querySelector("#simulationPane > .simulation-pane");
  const graph=()=>view.energyPathGraphForState(explanation,state);
  const wallID=()=>graph().nodes.find(item=>item.driverCategory==="surface.exterior_walls").id;
@@ -172,7 +173,7 @@ try{
   check(value("raw")?.includes("kWh thermal")&&value("allocated")?.includes("kWh thermal"),"thermal Driver inspector values mislabeled as site energy");
   check(visibleText(section("entities")).includes("Office exterior wall")&&!visibleText(section("entities")).includes("surface.fixture.wall"),"related model entity did not use actual report's friendly surface name");
   state.semanticProjection={navigation:{entities:[{id:"surface.fixture.wall",kind:"surface",label:"Canonical office envelope"}]}};simulation.renderSimulationEnergyDashboard(frozen);
-  check(visibleText(section("entities")).includes("Canonical office envelope")&&!visibleText(section("entities")).includes("Office exterior wall"),"exact semantic navigation entity label did not outrank fallback report name");state.semanticProjection=null;simulation.renderSimulationEnergyDashboard(frozen);
+  check(visibleText(section("entities")).includes("Canonical office envelope")&&!visibleText(section("entities")).includes("Office exterior wall"),"exact semantic navigation entity label did not outrank fallback report name");state.semanticProjection=serviceProjection;simulation.renderSimulationEnergyDashboard(frozen);
   check(visibleText(section("breakdown")).includes("Office"),"Driver top zones were not derived from matching nested Zone nodes");
   check(section("breakdown")?.querySelector('[data-energy-path-detail-breakdown="componentRows"] [data-energy-path-detail-row="sensible"] dd')?.textContent.includes(String(annualWall.value)),"Driver sensible component lost actual member contribution");
   const heatingDriver=graph().nodes.find(item=>item.driverCategory==="internal.people");select(heatingDriver.id);check(/[−-]14/.test(value("raw"))&&/[−-]28/.test(value("effective"))&&value("allocated")?.includes(String(heatingDriver.value)),"signed heating pressure was replaced by allocated contribution/magnitude");
@@ -180,7 +181,8 @@ try{
   check(visibleText(section("breakdown")).includes("32")&&visibleText(section("breakdown")).includes("8"),"Load sensible/latent breakdown lost exact selected values");
   check(section("breakdown")?.querySelector('[data-energy-path-detail-breakdown="contextRows"] dd')?.textContent.includes("900"),"reported annual predicted context is not inspectable separately from delivered load");
   check(/predicted/i.test(section("breakdown")?.querySelector('[data-energy-path-detail-breakdown="contextRows"] dt')?.textContent||""),"annual prediction is displayed as an unnamed generic context value");
-  check(section("actions")?.querySelector('[data-energy-path-hvac-path-id="path.fixture.cooling"]'),"existing exact HVAC navigation action was lost/moved outside common Actions");
+  const serviceCandidate=simulation.simulationEnergyServiceNavigation(load).groups.flatMap(group=>group.candidates).find(item=>item.target?.targetId==="path.fixture.cooling");
+  check(serviceCandidate&&section("actions")?.querySelector('[data-energy-path-service-kind="hvac"] [data-energy-path-service-destination="'+serviceCandidate.id+'"]'),"verified exact HVAC navigation action was lost/moved outside common Actions");
   const conversion=graph().links.find(item=>item.relation==="load_to_end_use"&&item.serviceKind==="cooling");select(conversion.id);
   for(const[field,number]of[["from",40],["to",10],["ratio",4]])check(inspector()?.querySelector('[data-energy-path-link-value="'+field+'"]')?.textContent.includes(String(number)),"conversion missing exact selected "+field);
   select(annualElectricity.id);const breakdown=visibleText(section("breakdown"));

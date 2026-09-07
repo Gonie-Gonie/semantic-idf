@@ -47,11 +47,11 @@ func TestEPATH140ActualEnergyDashboardSingleViewAndNavigation(t *testing.T) {
 const epath140SingleViewHTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>EPATH140 actual Energy dashboard</title>
 <link rel="stylesheet" href="/src/styles/base.css"><link rel="stylesheet" href="/src/styles/simulation.css"><style>body{margin:0;overflow:auto}#simulationPane{max-width:1100px}button{font:inherit}</style>
 <script>window.go={main:{App:{GetSimulationEnvironment:async()=>({installations:[],weatherFolders:[]})}}};window.runtime={EventsOn(){}};</script></head>
-<body data-epath140-status="pending"><div id="runtimeStatus"></div><div id="simulationPane">
+<body data-epath140-status="pending"><div id="runtimeStatus"></div><div id="semanticEditor" hidden></div><div id="simulationPane" class="result-pane active">
 <div id="simulationResultTabs"><button data-simulation-result-view-button="energy">Energy</button><button data-simulation-result-view-button="series">Series</button></div>
 <section data-simulation-result-view="energy"><div id="simulationEnergyStats"></div><div id="simulationEnergyDashboard"></div></section>
 <section data-simulation-result-view="series" hidden><div id="simulationSeriesStats"></div><div id="simulationChart"></div></section>
-</div><pre id="result">pending</pre><script type="module">
+</div><div id="hvacPane" class="result-pane"><div id="hvacSummary"></div><div id="hvacGraph"></div></div><pre id="result">pending</pre><script type="module">
 const failures=[];
 const check=(condition,message)=>{if(!condition)failures.push(message);};
 const freeze=value=>{if(value&&typeof value==="object"){Object.values(value).forEach(freeze);Object.freeze(value);}return value;};
@@ -99,16 +99,27 @@ const report={hvac:{loops:[],serviceModel:{zoneServices:[{zoneName:"Office",path
  {id:"path.unrelated.heating",serviceKind:"heating",zoneName:"Office",servedSubject:{kind:"zone",zoneName:"Office",name:"Office"}},
 ]}],couplings:[]}}};
 try{
- const [{state},simulation,navigation]=await Promise.all([import("/src/js/state.js"),import("/src/js/views/simulation-views.js"),import("/src/js/energy-path-navigation.js")]);
+ const [{state},simulation,navigation,controller,adapters,hvacViews,appNavigation,viewHistory]=await Promise.all([import("/src/js/state.js"),import("/src/js/views/simulation-views.js"),import("/src/js/energy-path-navigation.js"),import("/src/js/selection-controller.js"),import("/src/js/panel-navigation-adapters.js"),import("/src/js/views/hvac-views.js"),import("/src/js/navigation.js"),import("/src/js/view-history.js")]);
  simulation.initializeSimulationControls();
  await new Promise(resolve=>setTimeout(resolve,0));
  const host=document.getElementById("simulationEnergyDashboard");
  Object.assign(state,{report,simulationResult:result,simulationActiveResultView:"energy",activeResultTab:"simulation",simulationEnergyScopeKind:"building",simulationEnergyPeriod:"annual",simulationEnergyService:"all",simulationEnergySelection:"",simulationEnergyDetailsOpen:false,simulationEnergyDetailsTab:"data",simulationEnergyDetailsStage:"",simulationEnergyOutputSource:""});
+ const pathEntity=id=>({id:"entity."+id,kind:"hvac-path",label:"Office cooling service",viewTargets:[{view:"hvac",targetKind:"service-path",targetId:id,label:"Office cooling service"}]});
+ state.semanticProjection={navigation:{entities:[pathEntity("path.office.cooling")]}};
+ state.analysisDirty={hvac:false,simulation:false};state.analysisReady={hvac:true,simulation:true};
+ adapters.initializeResultPanelNavigationAdapters();hvacViews.initializeHVACControls();
+ controller.configureSelectionController({state,getNavigationIndex:()=>state.semanticProjection.navigation,isAnalysisCurrent:()=>true,getActivePanelView:()=>state.activeResultTab,
+  recordHistory:payload=>{const snapshot=viewHistory.captureViewSnapshot();if(payload.previous)snapshot.globalSelection=payload.previous;viewHistory.recordViewHistory(snapshot);},
+  openView:async(destination,options)=>appNavigation.switchResultTab(destination,{...options,recordHistory:false}),
+  onSelectionChange:detail=>window.dispatchEvent(new CustomEvent("idfAnalyzer:semanticSelectionChanged",{detail}))});
+ hvacViews.renderHVAC(report.hvac);
  simulation.renderSimulationEnergyDashboard(result);
  const context=()=>JSON.stringify([state.simulationEnergyScopeKind,state.simulationEnergyZoneName,state.simulationEnergyPeriod,state.simulationEnergyService,state.simulationEnergySelection,state.simulationEnergyDetailsOpen,state.simulationEnergyDetailsTab,state.simulationEnergyDetailsStage,state.simulationEnergyOutputSource]);
  const change=(selector,value)=>{const control=host.querySelector(selector);check(Boolean(control),"missing real Energy control "+selector);if(control){control.value=value;control.dispatchEvent(new Event("change",{bubbles:true}));}};
  const select=id=>{const node=host.querySelector('[data-energy-explanation-node="'+id+'"]');check(Boolean(node),"missing selected graph node "+id);node?.focus();node?.click();check(document.activeElement?.dataset.energyExplanationNode===id,"node activation discarded keyboard focus: "+id);};
  const returnEnergy=()=>document.querySelector('[data-simulation-result-view-button="energy"]')?.click();
+ const serviceCandidate=targetID=>simulation.simulationEnergyServiceNavigation({id:state.simulationEnergySelection,...(state.simulationResult.purposeResults.energyExplanation.zoneResults[0].periods.find(period=>period.id===state.simulationEnergyPeriod)||state.simulationResult.purposeResults.energyExplanation.zoneResults[0]).nodes.find(node=>node.id===state.simulationEnergySelection)}).groups.flatMap(group=>group.candidates).find(candidate=>candidate.target?.targetId===targetID);
+ const serviceButton=targetID=>{const candidate=serviceCandidate(targetID);return candidate?host.querySelector('[data-energy-path-service-destination="'+candidate.id+'"]'):null;};
  if(new URLSearchParams(location.search).get("manual")==="1"){
   document.body.dataset.epath140Status="manual";document.getElementById("result").textContent="Manual EPATH-140 fixture: use scope, month, service and node inspector; load has exact Monthly Series and HVAC targets.";
  }else{
@@ -131,7 +142,7 @@ try{
  const seriesAction=host.querySelector("[data-energy-path-series-id]");
  const monthlyID=navigation.energyPathSeriesID(series[1]);
  check(seriesAction?.dataset.energyPathSeriesId===monthlyID&&seriesAction?.dataset.energyPathSeriesPeriod==="M1","inspector guessed first Hourly series instead of exact derived-input Monthly target");
- check(host.querySelectorAll("[data-energy-path-hvac-path-id]").length===1&&host.querySelector("[data-energy-path-hvac-path-id]")?.dataset.energyPathHvacPathId==="path.office.cooling","load inspector inferred unrelated HVAC instead of exact relatedPathIds");
+ check(host.querySelectorAll('[data-energy-path-service-kind="hvac"] [data-energy-path-service-destination]').length===1&&serviceButton("path.office.cooling"),"load inspector inferred unrelated HVAC instead of verified exact relatedPathIds");
  host.querySelector("[data-energy-path-details-toggle]")?.click();
  check(state.simulationEnergyDetailsOpen&&!host.querySelector("[data-energy-path-data-details]")?.hidden,"Data details is not available beside a selected node");
  const januaryContext=context();
@@ -170,19 +181,19 @@ try{
  host.querySelector("[data-energy-path-series-id]")?.click();
  check(state.simulationSeriesRangeStart===0&&(state.simulationSeriesRangeEnd===-1||state.simulationSeriesRangeEnd===2)&&document.getElementById("simulationChart").querySelector(".simulation-series-viewport-meta")?.textContent.includes("1-3 / 3"),"Annual jump did not reset the previous month's panel range");
  returnEnergy();
- const hvacContext=context(),historyBefore=state.hvacNavigationStack.length;
- host.querySelector("[data-energy-path-hvac-path-id]")?.click();
- check(state.activeResultTab==="hvac"&&state.activeHVACContext?.pathId==="path.office.cooling","actual HVAC action did not navigate its exact service path");
- check(state.hvacNavigationStack.length===historyBefore+1,"HVAC action did not preserve and extend navigation history");
+ const hvacContext=context(),historyBefore=state.navigationUndoStack.length;
+ await simulation.openSimulationEnergyServiceDestination(serviceButton("path.office.cooling"));
+ check(state.activeResultTab==="hvac"&&state.activeHVACContext?.pathId==="path.office.cooling"&&state.globalSelection.entityId==="entity.path.office.cooling","actual global HVAC action did not navigate its exact service path");
+ check(state.navigationUndoStack.length===historyBefore+1,"HVAC action did not preserve and extend global navigation history exactly once");
  check(context()===hvacContext,"HVAC jump changed the Energy context");
- returnEnergy();
+ await appNavigation.undoViewNavigation();check(state.activeResultTab==="simulation"&&context()===hvacContext,"actual global HVAC Back did not restore Energy context");returnEnergy();
  select("driver.internal.people.cooling.office");
  check(!host.querySelector("[data-energy-path-hvac-actions]"),"driver heat-source inspector exposed HVAC path inference");
  change("[data-simulation-energy-service]","heating");select("load.heating.office");
  const missingInspector=host.querySelector('[data-energy-path-inspector="load.heating.office"]');
- check(!missingInspector?.querySelector('[data-energy-path-series-id]:not([disabled])')&&!missingInspector?.querySelector('[data-energy-path-hvac-path-id]:not([disabled])'),"missing Series/path evidence fabricated an enabled navigation action");
- check(missingInspector?.querySelector('[data-energy-path-series-actions] button[disabled]')&&missingInspector?.querySelector('[data-energy-path-hvac-actions] button[disabled]'),"unavailable Series/HVAC actions are not visibly disabled");
- check(missingInspector?.querySelector('[data-energy-path-series-actions]')?.textContent.trim().length>6&&missingInspector?.querySelector('[data-energy-path-hvac-actions]')?.textContent.trim().length>4,"unavailable navigation omits an honest explanation");
+ check(!missingInspector?.querySelector('[data-energy-path-series-id]:not([disabled])')&&!missingInspector?.querySelector('[data-energy-path-service-kind="hvac"] [data-energy-path-service-destination]:not([disabled])'),"missing Series/path evidence fabricated an enabled navigation action");
+ check(missingInspector?.querySelector('[data-energy-path-series-actions] button[disabled]')&&missingInspector?.querySelector('[data-energy-path-service-kind="hvac"] button[disabled]'),"unavailable Series/HVAC actions are not visibly disabled");
+ check(missingInspector?.querySelector('[data-energy-path-series-actions]')?.textContent.trim().length>6&&missingInspector?.querySelector('[data-energy-path-service-kind="hvac"]')?.textContent.trim().length>4,"unavailable navigation omits an honest explanation");
  const renderCase=(payload,observations,period="annual")=>{
   state.simulationResult=freeze({...result,purposeResults:{...result.purposeResults,energyExplanation:payload},series:observations});
   Object.assign(state,{simulationActiveResultView:"energy",simulationEnergyScopeKind:"zone",simulationEnergyZoneName:"Office",simulationEnergyPeriod:period,simulationEnergyService:"cooling",simulationEnergySelection:"load.cooling.office",simulationEnergyDetailsOpen:false});
@@ -199,10 +210,11 @@ try{
  multiple.zoneResults[0].nodes.find(node=>node.id==="load.cooling.office").sourceIds.push("sql-rdd-31");
  multiple.zoneResults[0].nodes.find(node=>node.id==="load.cooling.office").relatedPathIds.push("path.office.cooling.two");
  state.report={hvac:{...report.hvac,serviceModel:{...report.hvac.serviceModel,zoneServices:[{zoneName:"Office",paths:[...report.hvac.serviceModel.zoneServices[0].paths,{id:"path.office.cooling.two",serviceKind:"cooling",zoneName:"Office",servedSubject:{kind:"zone",zoneName:"Office",name:"Office secondary"}}]}]}}};
+ state.semanticProjection={navigation:{entities:[pathEntity("path.office.cooling"),pathEntity("path.office.cooling.two")]}};
  const meterSeries={file:"eplusout.sql",column:"Cooling:Electricity [J]",sourceId:"sql-rdd-31",name:"Cooling:Electricity",keyValue:"",isMeter:true,reportingFrequency:"Monthly",points:[{x:0,value:25,label:"01-31 24:00"}]};
  renderCase(multiple,[...series,meterSeries]);
  for(const kind of["series","hvac"]){
-  const chooser=host.querySelector('[data-energy-path-action-chooser="'+kind+'"]');
+  const chooser=host.querySelector(kind==="hvac"?'[data-energy-path-service-chooser="hvac"]':'[data-energy-path-action-chooser="series"]');
   check(chooser?.tagName==="DETAILS"&&!chooser.open,"multiple exact "+kind+" targets are not an explicit closed chooser");
   check(chooser?.querySelectorAll("button").length===2,"multiple exact "+kind+" choices were lost or guessed");
   chooser?.querySelector("summary")?.click();check(chooser?.open,"native "+kind+" target chooser cannot expand");

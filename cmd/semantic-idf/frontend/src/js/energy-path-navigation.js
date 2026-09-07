@@ -123,20 +123,27 @@ function pointCalendar(label) {
   return { year, month, key: [year ?? "unknown", month, day, hour, minute, second].join("|") };
 }
 
-/** Inclusive point-array indices; no assumption that array index is a month. */
-export function energyPathSeriesPeriodRange(series = {}, period = "annual") {
-  const points = Array.isArray(series?.points) ? series.points : [];
-  const reported = (point) => typeof point?.value === "number" && Number.isFinite(point.value);
-  if (token(period) === "annual") return points.length && points.every(reported) ? { start: 0, end: -1 } : null;
+/** Calendar-only inclusive indices; callers independently verify reported data. */
+export function energyPathLabelPeriodRange(labels = [], period = "annual") {
+  if (!Array.isArray(labels) || !labels.length) return null;
+  if (token(period) === "annual") return { start: 0, end: -1 };
   const match = value(period).match(/^M([1-9]|1[0-2])$/i);
   if (!match) return null;
-  const calendars = points.map((point) => pointCalendar(point?.label));
+  const calendars = labels.map(pointCalendar);
   if (!calendars.length || calendars.some((point) => !point)) return null;
   const wanted = Number(match[1]);
   const indices = calendars.flatMap((point, index) => point.month === wanted ? [index] : []);
   if (!indices.length || indices.at(-1) - indices[0] + 1 !== indices.length) return null;
   const selected = indices.map((index) => calendars[index]);
   if (new Set(selected.map((point) => point.year)).size !== 1 || new Set(selected.map((point) => point.key)).size !== selected.length) return null;
-  if (!indices.every((index) => reported(points[index]))) return null;
   return { start: indices[0], end: indices.at(-1) };
+}
+
+/** Inclusive point-array indices; no assumption that array index is a month. */
+export function energyPathSeriesPeriodRange(series = {}, period = "annual") {
+  const points = Array.isArray(series?.points) ? series.points : [];
+  const range = energyPathLabelPeriodRange(points.map((point) => point?.label), period);
+  if (!range) return null;
+  const selected = points.slice(range.start, range.end === -1 ? undefined : range.end + 1);
+  return selected.every((point) => typeof point?.value === "number" && Number.isFinite(point.value)) ? range : null;
 }
