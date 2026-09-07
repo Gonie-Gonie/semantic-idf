@@ -266,6 +266,16 @@ unknown stored coverage, not-requested outputs and non-applicable outputs have
 distinct statuses. Quality is rebuilt after allocation accounting and on stored
 result reload, and is included in v2 results, periods, zones and summaries without
 adding fields to the frozen v1 compatibility payload.
+The Energy Path graph has a compact four-stage quality line. Selecting a stage
+opens its source-availability details in a normally closed Data details drawer;
+full reconciliation, warnings and allocation diagnostics are not primary
+navigation views. The drawer's internal Output tab shows this run's output
+requests, not a restored standalone analysis tab. Source jumps validate request
+type, variable/meter identity, key and reporting frequency before selecting a
+row; stored object indices alone cannot establish a match. Ambiguous, derived,
+tabular and incomplete source identities remain explicit rather than selecting
+an unrelated request. The tabs support arrow/Home/End keys, and Escape closes
+the drawer and restores focus to its opener.
 When both energy and rate outputs are present for the same delivered-load or
 heat-driver target, the explanation parser uses the reported energy series and
 keeps the rate series only as traceable fallback source metadata. Completeness

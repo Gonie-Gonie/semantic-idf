@@ -115,7 +115,7 @@ func TestFrontendEnergyPathV2DefaultsAndV1Compatibility(t *testing.T) {
 		`from "./energy-path-view.js"`,
 		`const useEnergyPathV2 = isEnergyPathV2(explanation)`,
 		`if (useEnergyPathV2)`,
-		`renderEnergyPathView(explanation, state)`,
+		`renderEnergyPathView(explanation, state, { outputObjects: result?.purposeRunPlan?.outputObjects || [] })`,
 		`updateEnergyPathControlState(event, state, explanation)`,
 		`["overview", "sankey", "monthly", "zones", "systems"]`,
 		`return renderEnergyExplanationSankey(explanation)`,

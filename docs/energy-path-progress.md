@@ -45,6 +45,13 @@ the checklist or its final acceptance scenarios.
   shares. Stored quality and sibling summaries are rebuilt, including empty
   not-requested results; v1 serialization is unchanged. Verification includes
   `TestEPATH130*` stage/sentinel, period, allocation and round-trip regressions.
+- EPATH-131: compact stage quality sits below the graph, with a normally closed
+  Data details drawer for availability, reconciliation and diagnostics. Its
+  internal Output tab resolves exact run-plan requests by type/name/key/frequency
+  and never trusts a stale object index alone. Source filters preserve explicit
+  stage and Zone scope while retaining required derivation traces. Verification:
+  `TestEPATH131*`, full frontend checks, and interactive browser review of stage
+  filtering, All stages, exact Monthly request selection and Escape focus return.
 
 ## Policy clarification
 
@@ -56,7 +63,7 @@ The normal Building interzone/category projection remains intact.
 
 ## Next in sequence
 
-EPATH-131 → 140–145 → 150–152 → 160–161 →
+EPATH-140–145 → 150–152 → 160–161 →
 170–171 → 180–182 → 190–198 → 200–204 → 210–211 → 220–222 → 230–235.
 
 Existing code may already satisfy portions of later items. They remain pending

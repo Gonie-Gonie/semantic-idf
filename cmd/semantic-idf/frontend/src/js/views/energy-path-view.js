@@ -6,6 +6,8 @@ import {
   mergeEnergyPathOriginalMembers,
 } from "../energy-path-grouping.js";
 export { energyPathGroupSmallNodes } from "../energy-path-grouping.js";
+import { renderEnergyPathQualityLine, renderEnergyPathDataDetails } from "../energy-path-details.js";
+export { energyPathQualityForState, renderEnergyPathQualityLine, renderEnergyPathDataDetails } from "../energy-path-details.js";
 import {
   energyPathSummaryGroups,
   energyPathSummaryKPIValues,
@@ -328,10 +330,11 @@ export function renderEnergyPathAuxiliaryAllocationQuality(quality = {}) {
 }
 
 export function energyPathHasPayload(explanation = {}) {
-  return energyPathAllNodes(explanation).length > 0 ||
+  return Boolean(explanation.quality || explanation.summary?.quality || (explanation.periods || []).some((period) => period.quality)) ||
+    energyPathAllNodes(explanation).length > 0 ||
     energyPathAllLinks(explanation).length > 0 ||
     energyPathZoneResults(explanation).some((result) => (
-      energyPathAllNodes(result).length > 0 || energyPathAllLinks(result).length > 0
+      result.quality || result.summary?.quality || energyPathAllNodes(result).length > 0 || energyPathAllLinks(result).length > 0
     ));
 }
 
@@ -360,7 +363,7 @@ export function normalizeEnergyPathViewState(viewState = {}, explanation = {}) {
   return viewState;
 }
 
-export function renderEnergyPathView(explanation = {}, viewState = {}) {
+export function renderEnergyPathView(explanation = {}, viewState = {}, options = {}) {
   normalizeEnergyPathViewState(viewState, explanation);
   const graph = energyPathGraphForState(explanation, viewState);
   const allGraphNodes = graph.nodes;
@@ -390,21 +393,25 @@ export function renderEnergyPathView(explanation = {}, viewState = {}) {
   return `
     <section class="energy-path-view" data-energy-path-schema="${escapeHTML(ENERGY_PATH_SCHEMA_V2)}" data-energy-path-zone-coverage="${zoneCoverage.limited ? "partial" : "complete_or_unreported"}">
       ${renderEnergyPathHeader(explanation, viewState)}
-      ${renderEnergyPathWarnings(graph.warnings)}
-      ${renderEnergyPathAuxiliaryAllocationQuality(auxiliaryAllocationQuality)}
-      ${renderEnergyPathZoneCoverageNotice(zoneCoverage)}
       ${renderEnergyPathContextMetrics(explanation, viewState)}
       ${renderEnergyPathSupportStrip(allGraphNodes, graph.links, selectedID, graph.supplyActivities)}
       <div class="energy-path-stage-grid" role="group" aria-label="${escapeHTML(t("simulation.energyPathDirection", {}, "Load drivers → Thermal loads → End-use energy → Energy sources"))}">
         ${stages}
       </div>
       ${renderEnergyPathFlowLanes(allGraphNodes, graph.links, selectedID)}
+      ${renderEnergyPathQualityLine(explanation, viewState)}
       ${renderEnergyPathNodeInspector(explanation, allGraphNodes, selectedID, viewState, graph.relations, graph.links, graph.supplyActivities)}
       <div class="energy-path-domain-legend" aria-label="${escapeHTML(t("simulation.energyPathScaleDomains", {}, "Thermal and site-energy scale domains"))}">
         <span>${escapeHTML(t("simulation.energyPathThermalDomain", {}, "Thermal domain"))} · ${escapeHTML(t("simulation.energyPathThermalUnit", {}, "kWh thermal"))}</span>
         <strong>${escapeHTML(t("simulation.energyPathConversion", {}, "Equipment conversion"))}</strong>
         <span>${escapeHTML(t("simulation.energyPathSiteDomain", {}, "Site energy domain"))} · ${escapeHTML(t("simulation.energyPathSiteUnit", {}, "kWh site"))}</span>
       </div>
+      ${renderEnergyPathDataDetails(explanation, viewState, {
+        ...options,
+        diagnosticsHTML: renderEnergyPathWarnings(graph.warnings) +
+          renderEnergyPathAuxiliaryAllocationQuality(auxiliaryAllocationQuality) +
+          renderEnergyPathZoneCoverageNotice(zoneCoverage),
+      })}
     </section>`;
 }
 
@@ -1018,8 +1025,10 @@ export function renderEnergyPathNodeInspector(explanation = {}, nodes = [], sele
       ${correspondenceActions}
       ${renderEnergyPathGroupedMembers(node)}
       ${supplyBreakdown}
-      ${carrierReconciliation}
-      ${sourceInspector}
+      ${carrierReconciliation || sourceInspector ? `<details class="energy-path-node-source-details" data-energy-path-node-source-details>
+        <summary>${escapeHTML(t("simulation.energyPathNodeSourceDetails", {}, "Node source details"))}</summary>
+        ${carrierReconciliation}${sourceInspector}
+      </details>` : ""}
     </aside>`;
 }
 

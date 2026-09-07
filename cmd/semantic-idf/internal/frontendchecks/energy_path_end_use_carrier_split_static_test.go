@@ -42,7 +42,7 @@ func TestEPATH090FrontendKeepsEndUseAndCarrierStagesDistinct(t *testing.T) {
 	for _, required := range []string{
 		`const useEnergyPathV2 = isEnergyPathV2(explanation)`,
 		`if (useEnergyPathV2)`,
-		`renderEnergyPathView(explanation, state)`,
+		`renderEnergyPathView(explanation, state, { outputObjects: result?.purposeRunPlan?.outputObjects || [] })`,
 		`return renderEnergyExplanationSankey(explanation)`,
 	} {
 		if !strings.Contains(simulation, required) {

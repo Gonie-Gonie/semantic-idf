@@ -27,6 +27,7 @@ let simulationSeriesPanels = [];
 let simulationSeriesPanelSequence = 1;
 let simulationSeriesPan = null;
 let heatFlowBrushStartFrame = null;
+let simulationEnergyDetailsReturnSelector = "[data-energy-path-details-toggle]";
 
 const simulationSemanticBindings = new Map();
 const simulationEnergySourceByIDCache = new WeakMap();
@@ -562,6 +563,7 @@ export function initializeSimulationControls() {
     });
   });
   elements.simulationEnergyDashboard?.addEventListener("click", handleSimulationSeriesInspectClick);
+  elements.simulationEnergyDashboard?.addEventListener("keydown", handleSimulationEnergyDetailsKeydown);
   elements.simulationEnergyDashboard?.addEventListener("input", handleSimulationEnergyDashboardChange);
   elements.simulationEnergyDashboard?.addEventListener("change", handleSimulationEnergyDashboardChange);
   elements.simulationHVACLoopResults?.addEventListener("click", handleSimulationSeriesInspectClick);
@@ -1316,7 +1318,7 @@ function renderSimulationEnergyDashboard(result) {
     const scopedSummary = energyPathSummaryForState(explanation, explanationSummary, state);
     elements.simulationEnergyDashboard.innerHTML = `
       ${renderEnergyPathKPI(scopedSummary)}
-      ${renderEnergyPathView(explanation, state)}
+      ${renderEnergyPathView(explanation, state, { outputObjects: result?.purposeRunPlan?.outputObjects || [] })}
       ${renderEnergyPathSummaryOverview(scopedSummary)}`;
     pruneSimulationSemanticBindings();
     return;
@@ -5506,10 +5508,73 @@ function energySourceSeriesRef(source = {}) {
   return { keyValue, variableName, series: findSimulationSeriesForMetric(keyValue, variableName) };
 }
 
+function focusSimulationEnergyDetails({ closed = false, output = false, tab = "" } = {}) {
+  const dashboard = elements.simulationEnergyDashboard;
+  const opener = closed ? dashboard?.querySelector(simulationEnergyDetailsReturnSelector) : null;
+  const target = closed
+    ? (opener?.getClientRects().length ? opener : dashboard?.querySelector("[data-energy-path-details-toggle]"))
+    : tab
+      ? dashboard?.querySelector(`[data-energy-path-details-tab="${tab}"]`)
+      : (output ? dashboard?.querySelector('[data-energy-path-output-request-selected="true"]') : null)
+        || dashboard?.querySelector("[data-energy-path-data-details]");
+  target?.focus();
+}
+
+function handleSimulationEnergyDetailsClick(event) {
+  const control = event.target.closest("[data-energy-path-details-toggle], [data-energy-path-quality-stage], [data-energy-path-details-tab], [data-energy-path-output-source]");
+  if (!control || control.disabled) return false;
+  event.preventDefault();
+  event.stopPropagation();
+  const { energyPathQualityStage: stage, energyPathDetailsTab: tab, energyPathOutputSource: sourceID } = control.dataset;
+  if (!state.simulationEnergyDetailsOpen || (stage !== undefined && control.closest("[data-energy-path-quality-line]"))) {
+    simulationEnergyDetailsReturnSelector = ["drivers", "loads", "endUses", "carriers"].includes(stage)
+      ? `[data-energy-path-quality-stage="${stage}"]`
+      : "[data-energy-path-details-toggle]";
+  }
+  if (control.hasAttribute("data-energy-path-details-toggle")) {
+    state.simulationEnergyDetailsOpen = !state.simulationEnergyDetailsOpen;
+  } else if (stage !== undefined) {
+    state.simulationEnergyDetailsOpen = true;
+    state.simulationEnergyDetailsTab = "data";
+    state.simulationEnergyDetailsStage = ["drivers", "loads", "endUses", "carriers"].includes(stage) ? stage : "";
+  } else if (tab !== undefined) {
+    state.simulationEnergyDetailsOpen = true;
+    state.simulationEnergyDetailsTab = tab === "output" ? "output" : "data";
+  } else if (sourceID !== undefined) {
+    state.simulationEnergyDetailsOpen = true;
+    state.simulationEnergyDetailsTab = "output";
+    state.simulationEnergyOutputSource = sourceID;
+  }
+  renderSimulationEnergyDashboard(state.simulationResult);
+  focusSimulationEnergyDetails({ closed: !state.simulationEnergyDetailsOpen, output: sourceID !== undefined, tab });
+  return true;
+}
+
+export function handleSimulationEnergyDetailsKeydown(event) {
+  if (!state.simulationEnergyDetailsOpen || !(event.target instanceof Element)) return;
+  if (event.key === "Escape" && event.target.closest("[data-energy-path-data-details]")) {
+    event.preventDefault();
+    event.stopPropagation();
+    state.simulationEnergyDetailsOpen = false;
+    renderSimulationEnergyDashboard(state.simulationResult);
+    focusSimulationEnergyDetails({ closed: true });
+    return;
+  }
+  const tab = event.target.closest("[data-energy-path-details-tab]");
+  if (!tab || !["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  state.simulationEnergyDetailsTab = event.key === "Home" ? "data" : event.key === "End" ? "output"
+    : tab.dataset.energyPathDetailsTab === "data" ? "output" : "data";
+  renderSimulationEnergyDashboard(state.simulationResult);
+  focusSimulationEnergyDetails({ tab: state.simulationEnergyDetailsTab });
+}
+
 export function handleSimulationSeriesInspectClick(event) {
   if (!(event.target instanceof Element)) {
     return;
   }
+  if (handleSimulationEnergyDetailsClick(event)) return;
   const topologyAirCoupling = event.target.closest("[data-energy-path-topology-air-coupling-id]");
   if (topologyAirCoupling) {
     event.preventDefault();
@@ -8608,6 +8673,11 @@ async function runCurrentSimulation({ silent = false, auto = false } = {}) {
       return result;
     }
     state.simulationResult = result;
+    state.simulationEnergyDetailsOpen = false;
+    state.simulationEnergyDetailsTab = "data";
+    state.simulationEnergyDetailsStage = "";
+    state.simulationEnergyOutputSource = "";
+    simulationEnergyDetailsReturnSelector = "[data-energy-path-details-toggle]";
     state.simulationRunning = false;
     state.simulationSeriesRangeStart = 0;
     state.simulationSeriesRangeEnd = -1;
