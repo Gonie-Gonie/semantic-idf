@@ -1044,6 +1044,45 @@
   background: color-mix(in srgb, var(--warning) 8%, var(--surface-2));
 }
 
+.energy-path-group-members {
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 8px 10px;
+}
+
+.energy-path-group-members > summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.energy-path-group-members > p {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.energy-path-group-members > ul {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.energy-path-group-members li {
+  display: grid;
+  gap: 3px;
+  border-top: 1px solid var(--line);
+  padding-top: 7px;
+  min-width: 0;
+}
+
+.energy-path-group-members li > small,
+.energy-path-group-members li > code {
+  color: var(--muted);
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+
 .energy-path-carrier-residual-badge {
   display: inline-flex;
   width: fit-content;

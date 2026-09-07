@@ -290,7 +290,7 @@ func TestEnergyDriverPresentationMergesBuildingInterzoneAtFivePercent(t *testing
 	}
 }
 
-func TestEnergyDriverPresentationZoneScopeCapsCanonicalNodesAtEleven(t *testing.T) {
+func TestEnergyDriverPresentationZoneScopePreservesCanonicalContributors(t *testing.T) {
 	categories := []string{
 		energyDriverCategoryExteriorWalls,
 		energyDriverCategoryRoofs,
@@ -319,14 +319,14 @@ func TestEnergyDriverPresentationZoneScopeCapsCanonicalNodesAtEleven(t *testing.
 	for _, node := range nodes[1:] {
 		visible[plan.apply(node).DriverCategory] = true
 	}
-	if len(visible) > energyDriverMaxDisplayNodes {
+	if len(visible) != len(categories)-1 {
 		t.Fatalf("visible category count = %d: %#v", len(visible), visible)
 	}
 	if !visible[energyDriverCategoryInterzoneSurfaces] || !visible[energyDriverCategoryInterzoneAir] {
 		t.Fatalf("zone interzone categories were compacted: %#v", visible)
 	}
-	if visible[energyDriverCategoryEquipment] || !visible[energyDriverCategoryStorageOther] {
-		t.Fatalf("smallest internal category was not compacted: %#v", visible)
+	if !visible[energyDriverCategoryEquipment] || !visible[energyDriverCategoryStorageOther] {
+		t.Fatalf("canonical contributor was lost before presentation grouping: %#v", visible)
 	}
 }
 
@@ -614,7 +614,7 @@ func TestUpgradeEnergyExplanationV1EnforcesInterzoneThresholdAndZoneMaximum(t *t
 			driverCount++
 		}
 	}
-	if driverCount > energyDriverMaxDisplayNodes || energyPathV2NodeByID(zoneResult.Nodes, "driver.surface.interzone.cooling.office") == nil || energyPathV2NodeByID(zoneResult.Nodes, "driver.air.interzone.cooling.office") == nil {
+	if driverCount != len(allCategories)-1 || energyPathV2NodeByID(zoneResult.Nodes, "driver.surface.interzone.cooling.office") == nil || energyPathV2NodeByID(zoneResult.Nodes, "driver.air.interzone.cooling.office") == nil || energyPathV2NodeByID(zoneResult.Nodes, "driver.internal.equipment.cooling.office") == nil {
 		t.Fatalf("zone drivers (%d) = %#v", driverCount, zoneResult.Nodes)
 	}
 }

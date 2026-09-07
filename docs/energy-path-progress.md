@@ -33,10 +33,23 @@ the checklist or its final acceptance scenarios.
   Invalid carrier removal is explicit partial context, not a new conversion
   allocation. Verification: `TestEPATH122*`, the full simulation package, and
   end-use/carrier browser checks.
+- EPATH-123: presentation-only Other grouping is implemented with strict <1%
+  thresholds, protected semantic endpoints, original node/member/source IDs and
+  inspector-only Expand. Verification includes threshold/context/closure browser
+  tests and the real Tools CSV export path (identical bytes before/after grouping).
+  Full repository verification is required at the commit checkpoint.
+
+## Policy clarification
+
+EPATH-030's earlier 11-node cap conflicts with EPATH-123's stricter <1% grouping
+rule when a Zone has twelve material categories. The current implementation
+preserves the material categories rather than forcing one into Other. A user
+preference question was sent for this conflict; the default follows EPATH-123.
+The normal Building interzone/category projection remains intact.
 
 ## Next in sequence
 
-EPATH-123 → 130 → 131 → 140–145 → 150–152 → 160–161 →
+EPATH-130 → 131 → 140–145 → 150–152 → 160–161 →
 170–171 → 180–182 → 190–198 → 200–204 → 210–211 → 220–222 → 230–235.
 
 Existing code may already satisfy portions of later items. They remain pending

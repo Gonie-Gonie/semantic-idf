@@ -2,7 +2,6 @@ package simulation
 
 import (
 	"math"
-	"sort"
 	"strings"
 )
 
@@ -37,7 +36,6 @@ const (
 
 	energyDriverInterzoneThreshold  = 0.05
 	energyDriverBalanceWarningRatio = 0.05
-	energyDriverMaxDisplayNodes     = 11
 )
 
 type energyDriverCategoryDefinition struct {
@@ -235,7 +233,9 @@ func buildEnergyDriverPresentationPlan(nodes []EnergyExplanationNode, scope Ener
 			mapping[energyDriverCategoryInterzoneAir] = target
 		}
 		plan.categoryByService[service] = mapping
-		plan.compactServiceToLimit(service, values)
+		// Keep canonical contributors in the payload. Minor-category grouping
+		// is a presentation projection with member/source IDs (EPATH-123),
+		// never a count-based deletion before exports or correspondence links.
 	}
 	return plan
 }
@@ -255,53 +255,6 @@ func (plan energyDriverPresentationPlan) apply(node EnergyExplanationNode) Energ
 	node.Kind = "driver." + category
 	node.Label = energyDriverCategoryLabel(category)
 	return node
-}
-
-func (plan energyDriverPresentationPlan) compactServiceToLimit(service string, values map[string]float64) {
-	mapping := plan.categoryByService[service]
-	visible := map[string]float64{}
-	for category, value := range values {
-		if value == 0 {
-			continue
-		}
-		target := category
-		if mapped := mapping[category]; mapped != "" {
-			target = mapped
-		}
-		visible[target] += math.Abs(value)
-	}
-	if len(visible) <= energyDriverMaxDisplayNodes {
-		return
-	}
-
-	// Zone scope can expose all twelve non-zero taxonomy categories. Preserve
-	// envelope, air-exchange, and interzone semantics; fold the smallest
-	// internal source into Other / storage until the automatic cap is met.
-	type candidate struct {
-		category string
-		value    float64
-		order    int
-	}
-	candidates := []candidate{}
-	for _, category := range []string{energyDriverCategoryPeople, energyDriverCategoryLighting, energyDriverCategoryEquipment} {
-		if value := visible[category]; value > 0 {
-			candidates = append(candidates, candidate{category: category, value: value, order: energyDriverCategoryOrder(category)})
-		}
-	}
-	sort.SliceStable(candidates, func(i, j int) bool {
-		if candidates[i].value != candidates[j].value {
-			return candidates[i].value < candidates[j].value
-		}
-		return candidates[i].order > candidates[j].order
-	})
-	for _, item := range candidates {
-		if len(visible) <= energyDriverMaxDisplayNodes {
-			break
-		}
-		mapping[item.category] = energyDriverCategoryStorageOther
-		delete(visible, item.category)
-		visible[energyDriverCategoryStorageOther] += item.value
-	}
 }
 
 func energyDriverPreferredLoadTotals(nodes []EnergyExplanationNode) map[string]float64 {

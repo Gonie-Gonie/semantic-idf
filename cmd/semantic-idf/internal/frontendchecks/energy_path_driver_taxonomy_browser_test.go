@@ -109,14 +109,15 @@ try {
   };
   const graph = module.energyPathGraphForState(explanation, allState);
   const drivers = graph.nodes.filter((node) => node.level === "driver" && Number(node.value));
-  assert(drivers.length <= 11, "All-services projection exceeded 11 driver nodes: " + drivers.length);
+  assert(drivers.length === categories.length, "Taxonomy categories at or above 1% must not be removed to meet a node-count limit: " + drivers.length);
   assert(drivers.every((node) => node.id.includes(".all.building")), "All-services drivers were not projected to virtual all-service IDs");
   const wall = drivers.find((node) => node.driverCategory === "surface.exterior_walls");
   assert(wall && wall.value === 4, "Cooling/heating wall values were not merged");
   assert(wall.sourceIds.includes("surface.exterior_walls.cooling") && wall.sourceIds.includes("surface.exterior_walls.heating"), "Merged wall source provenance was lost");
   assert(wall.relatedEntityIds.length === 2, "Merged wall related entities were lost");
-  assert(!drivers.some((node) => node.driverCategory === "internal.equipment"), "Smallest internal category was not compacted");
-  assert(drivers.some((node) => node.driverCategory === "balance.storage_other"), "Compacted Other / storage node is missing");
+  const equipment = drivers.find((node) => node.driverCategory === "internal.equipment");
+  assert(equipment && equipment.value === 2, "Equipment above 1% was incorrectly compacted");
+  assert(drivers.some((node) => node.driverCategory === "balance.storage_other"), "Original Other / storage node is missing");
   const nodeIDs = new Set(graph.nodes.map((node) => node.id));
   assert(graph.links.every((link) => nodeIDs.has(link.fromId) && nodeIDs.has(link.toId)), "Projected graph has a dangling link endpoint");
   assert(graph.links.some((link) => link.toId === "load.cooling.building") && graph.links.some((link) => link.toId === "load.heating.building"), "Projected drivers did not retain both service branches");

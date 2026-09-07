@@ -243,6 +243,16 @@ be removed on reload, the end-use graph total is rebuilt from surviving splits
 with a partial-data note; original raw/effective values and source records stay
 inspectable. The original mixed-carrier conversion is then unavailable rather
 than being reinterpreted as a ratio for the surviving fuel alone.
+Automatic Other grouping is presentation-only and uses a strict less-than-1%
+threshold. End-use percentages use the selected scope/period's whole site-energy
+stage, including HVAC, while group membership remains service/scope/domain-local.
+Essential envelope/air drivers, loads, cooling/heating equipment, named carriers,
+auxiliary lanes and source-correspondence endpoints are not collapsed into Other.
+Grouped nodes retain original IDs and member snapshots; an inspector-only Expand
+list reveals the original contributions without increasing graph node count.
+Canonical nodes, carrier-local sources and actual CSV export rows stay unchanged
+by rendering. Count-driven backend compaction is not used to erase a contributor
+before that projection.
 When both energy and rate outputs are present for the same delivered-load or
 heat-driver target, the explanation parser uses the reported energy series and
 keeps the rate series only as traceable fallback source metadata. Completeness
