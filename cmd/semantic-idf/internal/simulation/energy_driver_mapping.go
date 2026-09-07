@@ -258,6 +258,7 @@ func finalizeEnergyDriverMappings(series []energyExplanationSeries, sources []En
 	out, sources, warnings = appendEnergyDriverVentilationFallbacks(out, sources, warnings)
 	out, sources = appendEnergyDriverReconciliationComponents(out, sources)
 	out, sources = appendEnergyDriverUnmappedBalanceComponents(out, sources)
+	out, sources = retainEnergyDriverDerivedRawZoneEquivalent(out, sources, context)
 	return out, sources, warnings
 }
 
@@ -902,22 +903,28 @@ func appendEnergyDriverPeriodAccounting(period string, series []energyExplanatio
 			}
 			residual := roundedEnergyNumber(aggregate.value - detail.value)
 			reference := math.Max(math.Abs(aggregate.value), detail.gross)
-			zoneKey := strings.SplitN(key, "|", 2)[0]
+			identity := strings.SplitN(key, "|", 2)
+			zoneKey := identity[0]
+			component := ""
+			if len(identity) == 2 {
+				component = identity[1]
+			}
 			sourceIDs := appendUniqueStrings(aggregate.sourceIDs, detail.sourceIDs...)
 			reconciliation = append(reconciliation, EnergyReconciliation{
-				ID:             "reconcile.driver." + family.name + "." + metricID(zoneNames[zoneKey]) + "." + period,
-				Level:          "driver",
-				Period:         period,
-				Label:          energyDriverReconciliationLabel(family.name) + " - " + zoneNames[zoneKey],
-				Status:         energyDriverReconciliationStatus(reference, residual),
-				ZoneName:       zoneNames[zoneKey],
-				ExpectedValue:  roundedEnergyNumber(aggregate.value),
-				ExplainedValue: roundedEnergyNumber(detail.value),
-				ResidualValue:  residual,
-				Unit:           "kWh",
-				Basis:          "residual",
-				Formula:        family.formula,
-				SourceIDs:      sourceIDs,
+				ID:                        "reconcile.driver." + family.name + "." + metricID(zoneNames[zoneKey]) + "." + period,
+				Level:                     "driver",
+				Period:                    period,
+				Label:                     energyDriverReconciliationLabel(family.name) + " - " + zoneNames[zoneKey],
+				Status:                    energyDriverReconciliationStatus(reference, residual),
+				ZoneName:                  zoneNames[zoneKey],
+				ExpectedValue:             roundedEnergyNumber(aggregate.value),
+				ExplainedValue:            roundedEnergyNumber(detail.value),
+				ResidualValue:             residual,
+				Unit:                      "kWh",
+				Basis:                     "residual",
+				Formula:                   family.formula,
+				SourceIDs:                 sourceIDs,
+				driverAccountingComponent: component,
 			})
 			if math.Abs(residual) > energyDriverReconciliationTolerance(reference) {
 				warnings = appendEnergyDriverWarning(warnings, EnergyWarning{

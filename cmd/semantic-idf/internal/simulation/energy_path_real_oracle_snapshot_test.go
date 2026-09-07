@@ -163,18 +163,13 @@ func epathReadOracleSnapshot(root, path string, evidence epathRealRunEvidence) (
 		return bundle, err
 	}
 	defer file.Close()
-	decoder := json.NewDecoder(file)
-	if err := decoder.Decode(&bundle); err != nil {
+	if err := epathValidateOracleCandidateWire(file); err != nil {
 		return bundle, err
 	}
-	var extra any
-	if err := decoder.Decode(&extra); err != io.EOF {
-		return bundle, fmt.Errorf("trailing candidate JSON")
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return bundle, err
 	}
-	if bundle.EnergyExplanation.Schema != energyExplanationSchema || bundle.EnergyExplanation.Scope.Kind != "building" {
-		return bundle, fmt.Errorf("snapshot must contain original Building canonical v2 result")
-	}
-	return bundle, nil
+	return epathDecodeOriginalOracleCandidate(file)
 }
 
 func TestEnergyPathRealOracleMaterializeCandidate(t *testing.T) {

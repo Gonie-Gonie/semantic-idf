@@ -6,17 +6,68 @@ import (
 	"strings"
 )
 
+type epathSQLConversionProof struct{ From, To epathSQLQuantity }
+
+type epathSQLAllocationProof struct {
+	Expected, Direct, Allocated, Unassigned *epathSQLQuantity
+}
+
+func (proof *epathSQLAllocationProof) fields() map[string]*epathSQLQuantity {
+	return map[string]*epathSQLQuantity{"expectedValue": proof.Expected, "directValue": proof.Direct, "allocatedValue": proof.Allocated, "unassignedValue": proof.Unassigned}
+}
+
+// Bind all four independently computed quantities together. Zero crossing is
+// a whole-row presentation possibility, never permission to repair one missing
+// number or to turn an unknown SQL source into a zero-valued observation.
+func (checks *epathSQLModelChecks) bindAllocationProof(start int) error {
+	if start < 0 || len(checks.Rows)-start != 4 {
+		return fmt.Errorf("allocation proof requires exactly four fields")
+	}
+	proof := &epathSQLAllocationProof{}
+	first := checks.Rows[start].Item
+	seen := map[string]bool{}
+	for index := start; index < len(checks.Rows); index++ {
+		check := &checks.Rows[index]
+		if check.Quantity == nil || !check.Quantity.valid() || check.Quantity.Value < 0 || check.Item.Target.ID != first.Target.ID || check.Item.Scope != first.Scope || check.Item.Zone != first.Zone || check.Item.Period != first.Period || seen[check.Item.Target.Field] {
+			return fmt.Errorf("unknown/contradictory allocation proof")
+		}
+		q := check.Quantity.positive()
+		check.Quantity = &q
+		seen[check.Item.Target.Field] = true
+		switch check.Item.Target.Field {
+		case "expectedValue":
+			proof.Expected = &q
+		case "directValue":
+			proof.Direct = &q
+		case "allocatedValue":
+			proof.Allocated = &q
+		case "unassignedValue":
+			proof.Unassigned = &q
+		default:
+			return fmt.Errorf("invalid whole allocation field")
+		}
+		check.Allocation = proof
+	}
+	return nil
+}
+
 func epathSQLRatio(numerator, denominator epathSQLQuantity) (*epathSQLQuantity, error) {
+	if !numerator.valid() || !denominator.valid() || numerator.Value < 0 || denominator.Value < 0 {
+		return nil, fmt.Errorf("invalid ratio interval")
+	}
 	if denominator.Value <= 0 {
 		return nil, nil
 	}
-	if denominator.Value-denominator.Error <= 0 {
+	numLow, numHigh := numerator.bounds()
+	denLow, denHigh := denominator.bounds()
+	if denLow <= 0 {
 		return nil, fmt.Errorf("uncertain positive ratio denominator")
 	}
 	value := numerator.Value / denominator.Value
-	low := math.Max(0, numerator.Value-numerator.Error) / (denominator.Value + denominator.Error)
-	high := (numerator.Value + numerator.Error) / (denominator.Value - denominator.Error)
-	return &epathSQLQuantity{value, math.Max(value-low, high-value) + .00051}, nil
+	low := math.Max(0, numLow) / denHigh
+	high := numHigh / denLow
+	q := epathSQLBounded(value, math.Max(0, low), high)
+	return &q, nil
 }
 func epathSQLDeclaredZones(frames epathSQLFrames, names []string) (map[string]bool, error) {
 	out := map[string]bool{}
@@ -79,18 +130,18 @@ func epathSQLModelServiceChecks(frames epathSQLFrames, model epathRealSQLModel, 
 				return err
 			}
 			monthSite[month-1] = consumption
-			pathLoad, totalLoad := epathSQLQuantity{}, epathSQLQuantity{}
+			pathLoad := epathSQLQuantity{}
 			for zone := range frames.Zones {
 				value := frames.Loads[epathSQLKey(zone, service.Service, month)]
-				totalLoad = totalLoad.add(value)
 				if served[zone] {
 					pathLoad = pathLoad.add(value)
 				}
 			}
 			basis, load := service.Basis, pathLoad
-			if pathLoad.Value == 0 {
-				basis, load = service.FallbackBasis, totalLoad
-			}
+			// Explicit reviewed ServedZones means known topology. A zero load
+			// on those paths does not authorize expanding the denominator to
+			// passive plenums or other unserved Zones. The fallback selector
+			// below remains an absence guard, not an invented allocation path.
 			if load.Value > 0 {
 				monthAssigned[month-1] = consumption
 			} else {
@@ -98,8 +149,12 @@ func epathSQLModelServiceChecks(frames epathSQLFrames, model epathRealSQLModel, 
 			}
 			if load.Value > 0 && consumption.Value > 0 {
 				num, den := branchNumerator[basis], branchDenominator[basis]
-				num[month-1] = load
-				den[month-1] = consumption
+				from, to := load.positive(), consumption.positive()
+				if from.includesZero() || to.includesZero() {
+					from, to = from.optionalPresentation(), to.optionalPresentation()
+				}
+				num[month-1] = from
+				den[month-1] = to
 				branchNumerator[basis], branchDenominator[basis] = num, den
 			}
 			allExpected[month-1] = allExpected[month-1].add(consumption)
@@ -113,13 +168,11 @@ func epathSQLModelServiceChecks(frames epathSQLFrames, model epathRealSQLModel, 
 					num = num.add(branchNumerator[basis][month-1])
 					den = den.add(branchDenominator[basis][month-1])
 				}
-				ratio, err := epathSQLRatio(num, den)
-				if err != nil {
-					// Continue the first diagnostic through every other group, but
-					// fail unconditionally until the presentation-pruning interval
-					// policy is reviewed. Never relabel observed positive input zero.
-					key := service.Service + "/" + period + "/" + basis
-					checks.Unresolved = append(checks.Unresolved, epathSQLModelFailure{"ratios", key, "unresolved SQL precision interval " + key + ": " + err.Error()})
+				// Retain the exact SQL quotient in evidence. Candidate validation
+				// uses independently bounded paired quantities, so a denominator
+				// crossing presentation zero does not require an infinite tolerance.
+				var ratio *epathSQLQuantity
+				if den.Value > 0 && num.Value > 0 {
 					ratio = &epathSQLQuantity{Value: num.Value / den.Value}
 				}
 				kind := service.RatioKind
@@ -130,11 +183,13 @@ func epathSQLModelServiceChecks(frames epathSQLFrames, model epathRealSQLModel, 
 				if err := checks.add("ratios", "building", "", period, service.Service+"/"+basis, "ratio", ratio, target, "", nil, nil); err != nil {
 					return err
 				}
+				checks.Rows[len(checks.Rows)-1].Conversion = &epathSQLConversionProof{From: num, To: den}
 			}
 			id, err := epathSQLAllocationID(service.ReconciliationID, period)
 			if err != nil {
 				return err
 			}
+			allocationStart := len(checks.Rows)
 			for _, field := range []string{"expectedValue", "directValue", "allocatedValue", "unassignedValue"} {
 				q := epathSQLQuantity{}
 				for _, month := range epathSQLPeriodMonths(period) {
@@ -151,6 +206,9 @@ func epathSQLModelServiceChecks(frames epathSQLFrames, model epathRealSQLModel, 
 				if err := checks.add("zoneAllocation", "building", "", period, service.Service+"/"+field, "kWh", &q, target, "", nil, nil); err != nil {
 					return err
 				}
+			}
+			if err := checks.bindAllocationProof(allocationStart); err != nil {
+				return err
 			}
 		}
 	}
@@ -193,6 +251,7 @@ func epathSQLModelServiceChecks(frames epathSQLFrames, model epathRealSQLModel, 
 			if err != nil {
 				return err
 			}
+			allocationStart := len(checks.Rows)
 			for _, field := range []string{"expectedValue", "directValue", "allocatedValue", "unassignedValue"} {
 				q := epathSQLQuantity{}
 				for _, month := range epathSQLPeriodMonths(period) {
@@ -209,6 +268,9 @@ func epathSQLModelServiceChecks(frames epathSQLFrames, model epathRealSQLModel, 
 				if err := checks.add("zoneAllocation", "building", "", period, aux.SiteID+"/"+field, "kWh", &q, target, "", nil, nil); err != nil {
 					return err
 				}
+			}
+			if err := checks.bindAllocationProof(allocationStart); err != nil {
+				return err
 			}
 		}
 	}
@@ -230,6 +292,8 @@ func epathSQLModelServiceChecks(frames epathSQLFrames, model epathRealSQLModel, 
 			}
 			if ratio != nil {
 				scaled := ratio.times(100)
+				low, high := scaled.bounds()
+				scaled = epathSQLBounded(scaled.Value, math.Max(0, low-.00051), math.Min(100, high+.00051))
 				ratio = &scaled
 			}
 			if err := checks.add("zoneAllocation", "building", "", period, field, "%", ratio, epathRealOracleTarget{Collection: "quality", Field: field}, "", nil, nil); err != nil {

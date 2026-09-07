@@ -25,20 +25,23 @@ type energyPathZoneAuxiliaryAllocationPlan struct {
 	SourceExpectedByNode       map[string]float64
 	AnnualAuthoritativeGroups  map[string]bool
 	AnnualDirectOverrideGroups map[string]bool
+	FanSourceAllocations       []energyPathFanSourceAllocation
 }
 
 type energyPathZoneAuxiliaryAllocationRecord struct {
-	Period          string
-	EndUse          string
-	Carrier         string
-	Unit            string
-	ExpectedValue   float64
-	DirectValue     float64
-	AllocatedValue  float64
-	UnassignedValue float64
-	OvermappedValue float64
-	Method          string
-	SourceIDs       []string
+	Period            string
+	EndUse            string
+	Carrier           string
+	Unit              string
+	ExpectedValue     float64
+	DirectValue       float64
+	AllocatedValue    float64
+	UnassignedValue   float64
+	OvermappedValue   float64
+	Method            string
+	SourceIDs         []string
+	poolRoundingBound float64
+	poolReason        string
 }
 
 type energyPathZoneAuxiliaryTarget struct {
@@ -57,7 +60,7 @@ type energyPathZoneAuxiliaryDirectValue struct {
 	SourceIDs []string
 }
 
-func buildEnergyPathZoneAuxiliaryAllocationPlan(nodes []EnergyExplanationNode, directSeries []energyExplanationSeries, topology energyServicePathIndex, periodID, periodKind string, canonicalMonthlyBasis bool) energyPathZoneAuxiliaryAllocationPlan {
+func buildEnergyPathZoneAuxiliaryAllocationPlan(nodes []EnergyExplanationNode, directSeries []energyExplanationSeries, topology energyServicePathIndex, periodID, periodKind string, canonicalMonthlyBasis bool, reportedFanPools ...[]energyPathFanPool) energyPathZoneAuxiliaryAllocationPlan {
 	plan := energyPathZoneAuxiliaryAllocationPlan{CentralEndUseNodeIDs: map[string]bool{}, SourceExpectedByNode: map[string]float64{}}
 	periodID = firstNonEmpty(strings.TrimSpace(periodID), "annual")
 
@@ -141,6 +144,11 @@ func buildEnergyPathZoneAuxiliaryAllocationPlan(nodes []EnergyExplanationNode, d
 			directZones[energyPathZoneHVACZoneKey(direct.ZoneName)] = true
 			record.DirectValue = roundedEnergyNumber(record.DirectValue + math.Abs(direct.Value))
 			record.SourceIDs = appendUniqueStrings(record.SourceIDs, direct.SourceIDs...)
+		}
+		if group.endUse == "fans" && group.carrier == "electricity" && len(reportedFanPools) > 0 && len(reportedFanPools[0]) > 0 {
+			record = allocateEnergyPathReportedFanPools(&plan, record, group.nodes, foldedNodes, topology, directZones, reportedFanPools[0])
+			plan.Records = append(plan.Records, record)
+			continue
 		}
 		if math.Abs(record.ExpectedValue) <= energyPathZoneHVACAllocationEpsilon && math.Abs(record.DirectValue) <= energyPathZoneHVACAllocationEpsilon {
 			continue
@@ -252,6 +260,13 @@ func energyPathZoneAuxiliaryTargets(endUse string, restrictedPathIDs []string, n
 		return nil, "unassigned"
 	}
 	eligiblePaths := energyPathZoneAuxiliaryEligiblePaths(endUse, restrictedPathIDs, topology.auxiliaryPaths)
+	return energyPathZoneAuxiliaryTargetsFromPaths(endUse, eligiblePaths, nodes, directZones)
+}
+
+// Callers with exact measured source-local pools can supply validated paths
+// without claiming that every unrelated auxiliary in the model is resolved.
+// Unmeasured global allocations still pass the topology guard above.
+func energyPathZoneAuxiliaryTargetsFromPaths(endUse string, eligiblePaths map[string]energyPathAuxiliaryServicePath, nodes []EnergyExplanationNode, directZones map[string]bool) ([]energyPathZoneAuxiliaryTarget, string) {
 	method := "unassigned"
 	switch canonicalEnergyPathEndUse(endUse) {
 	case "fans":
@@ -525,6 +540,7 @@ func aggregateEnergyPathZoneAuxiliaryAllocationPlans(input []energyPathZoneAuxil
 	edgeKeys := []string{}
 	records := []energyPathZoneAuxiliaryAllocationRecord{}
 	for _, plan := range input {
+		out.FanSourceAllocations = append(out.FanSourceAllocations, plan.FanSourceAllocations...)
 		for id := range plan.CentralEndUseNodeIDs {
 			out.CentralEndUseNodeIDs[id] = true
 		}
@@ -603,6 +619,12 @@ func aggregateEnergyPathZoneAuxiliaryAllocationRecords(input []energyPathZoneAux
 		current.AllocatedValue = roundedEnergyNumber(current.AllocatedValue + record.AllocatedValue)
 		current.UnassignedValue = roundedEnergyNumber(current.UnassignedValue + record.UnassignedValue)
 		current.OvermappedValue = roundedEnergyNumber(current.OvermappedValue + record.OvermappedValue)
+		if current.poolRoundingBound > 0 && record.poolRoundingBound > 0 {
+			current.poolRoundingBound += record.poolRoundingBound
+		} else {
+			current.poolRoundingBound = 0
+		}
+		current.poolReason = firstNonEmpty(current.poolReason, record.poolReason)
 		if current.Method != record.Method {
 			current.Method = "mixed"
 		}
@@ -669,6 +691,11 @@ func energyPathZoneAuxiliaryAllocationPlanWithAnnualFallback(monthly, annual ene
 		if out.AnnualAuthoritativeGroups[energyPathZoneAuxiliaryGroupKey(record.EndUse, record.Carrier)] {
 			out.Records = append(out.Records, record)
 		}
+	}
+	if out.AnnualAuthoritativeGroups[energyPathZoneAuxiliaryGroupKey("fans", "electricity")] {
+		out.FanSourceAllocations = append([]energyPathFanSourceAllocation(nil), annual.FanSourceAllocations...)
+	} else {
+		out.FanSourceAllocations = append([]energyPathFanSourceAllocation(nil), monthly.FanSourceAllocations...)
 	}
 	for _, edge := range monthly.Edges {
 		if !out.AnnualAuthoritativeGroups[nodeGroup[edge.FromID]] {
@@ -963,12 +990,13 @@ func appendEnergyPathZoneAuxiliaryAllocationRecords(reconciliation []EnergyRecon
 		record.Period = firstNonEmpty(strings.TrimSpace(period), record.Period, "annual")
 		explained := roundedEnergyNumber(record.DirectValue + record.AllocatedValue)
 		residual := roundedEnergyNumber(record.ExpectedValue - explained)
+		poolRoundingOnly := record.poolRoundingBound > 0 && math.Abs(residual) <= record.poolRoundingBound
 		label := "Building HVAC auxiliary allocation coverage"
 		status := "balanced"
-		if residual > energyPathZoneHVACAllocationEpsilon {
+		if !poolRoundingOnly && residual > energyPathZoneHVACAllocationEpsilon {
 			label = "Unassigned building HVAC auxiliary energy"
 			status = "partial"
-		} else if residual < -energyPathZoneHVACAllocationEpsilon {
+		} else if !poolRoundingOnly && residual < -energyPathZoneHVACAllocationEpsilon {
 			label = "Direct zone HVAC auxiliary energy exceeds building energy"
 			status = "overmapped"
 		} else if record.UnassignedValue > energyPathZoneHVACAllocationEpsilon || record.OvermappedValue > energyPathZoneHVACAllocationEpsilon {
@@ -991,6 +1019,13 @@ func appendEnergyPathZoneAuxiliaryAllocationRecords(reconciliation []EnergyRecon
 				Period:   record.Period,
 			})
 		}
+		formula := "building HVAC auxiliary end use = exact direct zone auxiliary energy + allocated related service-path auxiliary energy + unassigned building auxiliary energy"
+		if record.poolRoundingBound > 0 {
+			formula += fmt.Sprintf("; independently rounded reported fan pools retain a signed serialization residual %g kWh (counted 3dp bound %g kWh), with no scaling of observed pool energy", residual, record.poolRoundingBound)
+		}
+		if record.poolReason != "" {
+			formula += "; reported fan pool evidence: " + record.poolReason
+		}
 		filteredRows = append(filteredRows, EnergyReconciliation{
 			ID:               strings.Join([]string{"reconcile", "zone_auxiliary_allocation", canonicalEnergyPathPart(record.EndUse), canonicalEnergyPathPart(record.Carrier), canonicalEnergyPathPart(record.Period)}, "."),
 			Level:            "allocation",
@@ -1008,7 +1043,7 @@ func appendEnergyPathZoneAuxiliaryAllocationRecords(reconciliation []EnergyRecon
 			AllocationMethod: record.Method,
 			Unit:             record.Unit,
 			Basis:            "service_path_allocation",
-			Formula:          "building HVAC auxiliary end use = exact direct zone auxiliary energy + allocated related service-path auxiliary energy + unassigned building auxiliary energy",
+			Formula:          formula,
 			SourceIDs:        appendUniqueStrings(nil, record.SourceIDs...),
 		})
 	}

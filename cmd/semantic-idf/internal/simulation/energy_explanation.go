@@ -38,6 +38,7 @@ type EnergyExplanationV1 struct {
 	scope                             EnergyExplanationScope
 	canonicalMonthlyBasis             bool
 	zoneDirectUseSeries               []energyExplanationSeries
+	auxiliaryFanPools                 []energyPathFanPool
 	buildingHVACAllocationEdges       []EnergyExplanationEdge
 	buildingHVACAllocationPeriodEdges map[string][]EnergyExplanationEdge
 	servicePathIndex                  energyServicePathIndex
@@ -363,6 +364,9 @@ type EnergyDataSource struct {
 
 	inspectorDecodedFromJSON bool
 	inspectorValuePresence   uint8
+	// Set only by a fully observed SQL quantity, never dictionary membership.
+	// ScopeDetails deliberately carry no inherited observation proof.
+	observedValuePresence uint8
 }
 
 type EnergyDataSourceScopeDetail struct {
@@ -376,8 +380,9 @@ type EnergyDataSourceScopeDetail struct {
 	AllocationApplied     bool                   `json:"allocationApplied,omitempty"`
 	AggregationBasis      string                 `json:"aggregationBasis,omitempty"`
 
-	inspectorDecodedFromJSON bool
-	inspectorValuePresence   uint8
+	inspectorDecodedFromJSON     bool
+	inspectorValuePresence       uint8
+	inspectorScopedValuePresence bool
 }
 
 type EnergyReconciliation struct {
@@ -400,6 +405,10 @@ type EnergyReconciliation struct {
 	Basis            string   `json:"basis"`
 	Formula          string   `json:"formula,omitempty"`
 	SourceIDs        []string `json:"sourceIds,omitempty"`
+
+	// Retain the constructor's thermal accounting identity without changing the
+	// frozen v1 wire or its historical (combined-component) annual aggregation.
+	driverAccountingComponent string
 }
 
 type EnergyCompleteness struct {
@@ -687,8 +696,9 @@ type energyExplanationSeries struct {
 // readers stop at canonical series; node/link direction belongs to the graph
 // builder that consumes this value.
 type energyExplanationParseResult struct {
-	Series  []energyExplanationSeries
-	Sources []EnergyDataSource
+	Series   []energyExplanationSeries
+	Sources  []EnergyDataSource
+	FanPools []energyPathFanPool
 }
 
 type energyExplanationInternalGainTarget struct {
@@ -737,7 +747,9 @@ func parseSimulationEnergyExplanationSQLWithDriverContext(path string, plan *Pur
 	if len(parsed.Series) == 0 && len(parsed.Sources) == 0 {
 		return emptyEnergyExplanationResult(plan), nil
 	}
-	return buildEnergyExplanationResultWithDriverContext(parsed.Series, parsed.Sources, plan, driverContext), nil
+	result := buildEnergyExplanationResultWithDriverContext(parsed.Series, parsed.Sources, plan, driverContext)
+	result.auxiliaryFanPools = parsed.FanPools
+	return result, nil
 }
 
 func parseSimulationEnergyExplanationCanonicalSQL(path string, plan *PurposeRunPlan, driverContext energyDriverBuildContext) (energyExplanationParseResult, error) {
@@ -776,18 +788,33 @@ func parseSimulationEnergyExplanationCanonicalSQL(path string, plan *PurposeRunP
 			}
 
 			builders := map[int]*energyExplanationSeriesBuilder{}
+			invalidObservedValues := map[int]bool{}
+			lastObservedTime := map[int]int64{}
+			monthlyObservedRows := map[int]int{}
+			monthlyTimeAxis := energyPathObservedMonthlyTimeAxis(db)
 			surfaceCategories, surfaceCategoryEligible := energyExplanationSurfaceCategoriesForDictionaries(dictionaries, driverContext)
 			categoryBuilders := map[string]*energyExplanationCategorySeriesBuilder{}
 			if err := walkReportData(db, SQLSeriesQuery{DictionaryIndexes: ids}, func(row SQLSeriesRow) error {
 				timeIndex := row.TimeIndex
 				dictionaryIndex := row.DictionaryIndex
 				value := row.Value
+				if previous, seen := lastObservedTime[dictionaryIndex]; seen && previous == timeIndex {
+					invalidObservedValues[dictionaryIndex] = true
+				}
+				lastObservedTime[dictionaryIndex] = timeIndex
 				if !value.Valid || math.IsNaN(value.Float64) || math.IsInf(value.Float64, 0) {
+					invalidObservedValues[dictionaryIndex] = true
 					return nil
 				}
 				dictionary, ok := byID[dictionaryIndex]
 				if !ok {
 					return nil
+				}
+				if strings.EqualFold(strings.TrimSpace(dictionary.reportingFrequency), "Monthly") {
+					if !monthlyTimeAxis[timeIndex] {
+						invalidObservedValues[dictionaryIndex] = true
+					}
+					monthlyObservedRows[dictionaryIndex]++
 				}
 				builder := builders[dictionaryIndex]
 				if builder == nil {
@@ -796,6 +823,10 @@ func parseSimulationEnergyExplanationCanonicalSQL(path string, plan *PurposeRunP
 				}
 				intervalHours := energyExplanationRateIntervalHours(dictionary, row, intervalDetails.hours[timeIndex], intervalDetails.explicit[timeIndex])
 				number, unit := energyExplanationSQLValue(value.Float64, dictionary, intervalHours)
+				if math.IsNaN(number) || math.IsInf(number, 0) || unit != "kWh" ||
+					energyExplanationIntegratesRate(dictionary) && (!intervalDetails.explicit[timeIndex] || intervalHours <= 0 || math.IsNaN(intervalHours) || math.IsInf(intervalHours, 0)) {
+					invalidObservedValues[dictionaryIndex] = true
+				}
 				accumulateEnergyExplanationSeriesBuilder(builder, row, number, unit, dictionary, selectedStartDay, selectedEndDay, hasSelectedRange)
 				if selection, ok := surfaceCategories[dictionaryIndex]; ok {
 					category := selection.category
@@ -841,6 +872,14 @@ func parseSimulationEnergyExplanationCanonicalSQL(path string, plan *PurposeRunP
 				source := energyDataSourceForDictionary(dictionary)
 				source.ObjectIndex = energyExplanationObjectIndexForDictionary(dictionary, plan)
 				source.NormalizedUnit = builder.unit
+				if strings.EqualFold(strings.TrimSpace(dictionary.reportingFrequency), "Monthly") &&
+					(len(monthlyTimeAxis) == 0 || monthlyObservedRows[dictionary.row.index] != len(monthlyTimeAxis)) {
+					invalidObservedValues[dictionary.row.index] = true
+				}
+				if !invalidObservedValues[dictionary.row.index] && builder.unit == "kWh" && !math.IsNaN(builder.total) && !math.IsInf(builder.total, 0) {
+					source.RawValue = roundedEnergyNumber(builder.total)
+					source.observedValuePresence |= energySourceObservedRaw
+				}
 				if dictionary.energy != nil && dictionary.energy.HierarchyLevel == "zone_direct_use" {
 					source.ZoneName = strings.TrimSpace(dictionary.row.keyValue)
 				}
@@ -865,7 +904,13 @@ func parseSimulationEnergyExplanationCanonicalSQL(path string, plan *PurposeRunP
 	}
 	series = append(series, tabularSeries...)
 	sources = append(sources, tabularSources...)
-	return energyExplanationParseResult{Series: series, Sources: sources}, nil
+	fanPools, err := readEnergyPathFanPools(db, filepath.Base(path), plan)
+	if err != nil {
+		// Missing pool metadata must not discard the otherwise valid graph or
+		// silently re-enable broad allocation as if no pool had been reported.
+		fanPools = []energyPathFanPool{{Invalid: true}}
+	}
+	return energyExplanationParseResult{Series: series, Sources: sources, FanPools: fanPools}, nil
 }
 
 func accumulateEnergyExplanationSeriesBuilder(builder *energyExplanationSeriesBuilder, row SQLSeriesRow, number float64, unit string, dictionary energyExplanationDictionary, selectedStartDay int, selectedEndDay int, hasSelectedRange bool) {
@@ -1988,6 +2033,9 @@ func aggregateEnergyExplanationMonthlyGraphs(monthly map[int]energyExplanationGr
 				continue
 			}
 			current := &annual.Reconciliation[index]
+			if current.driverAccountingComponent != item.driverAccountingComponent {
+				current.driverAccountingComponent = ""
+			}
 			current.ExpectedValue = roundedEnergyNumber(current.ExpectedValue + item.ExpectedValue)
 			current.ExplainedValue = roundedEnergyNumber(current.ExplainedValue + item.ExplainedValue)
 			current.ResidualValue = roundedEnergyNumber(current.ResidualValue + item.ResidualValue)
@@ -3284,19 +3332,19 @@ func applyEnergyExplanationV1ServicePathLoadShareAllocation(explanation EnergyEx
 	// public v1-compatible edge collection now carries the direct-first Zone
 	// allocation ledger, while UpgradeEnergyExplanationV1 uses this sidecar only
 	// for the Building graph so direct zone observations are not counted twice.
-	annualBuildingPlan := buildEnergyPathZoneHVACAllocationPlan(explanation.Nodes, annualOriginalEdges, nil, "annual", "annual", explanation.canonicalMonthlyBasis)
+	annualBuildingPlan := buildEnergyPathZoneHVACAllocationPlan(explanation.Nodes, annualOriginalEdges, nil, "annual", "annual", explanation.canonicalMonthlyBasis, explanation.servicePathIndex)
 	explanation.buildingHVACAllocationEdges = applyEnergyPathZoneHVACAllocationPlan(annualOriginalEdges, explanation.Nodes, annualBuildingPlan)
 	explanation.buildingHVACAllocationPeriodEdges = map[string][]EnergyExplanationEdge{}
-	annualPlan := buildEnergyPathZoneHVACAllocationPlan(explanation.Nodes, annualOriginalEdges, explanation.zoneDirectUseSeries, "annual", "annual", explanation.canonicalMonthlyBasis)
+	annualPlan := buildEnergyPathZoneHVACAllocationPlan(explanation.Nodes, annualOriginalEdges, explanation.zoneDirectUseSeries, "annual", "annual", explanation.canonicalMonthlyBasis, explanation.servicePathIndex)
 	explanation.Edges = applyEnergyPathZoneHVACAllocationPlan(annualOriginalEdges, explanation.Nodes, annualPlan)
 	monthlyPlans := []energyPathZoneHVACAllocationPlan{}
 	monthlyBuildingPlans := []energyPathZoneHVACAllocationPlan{}
 	for periodIndex := range explanation.Periods {
 		period := &explanation.Periods[periodIndex]
 		originalEdges := append([]EnergyExplanationEdge(nil), period.Edges...)
-		buildingPlan := buildEnergyPathZoneHVACAllocationPlan(period.Nodes, originalEdges, nil, period.ID, period.Kind, explanation.canonicalMonthlyBasis)
+		buildingPlan := buildEnergyPathZoneHVACAllocationPlan(period.Nodes, originalEdges, nil, period.ID, period.Kind, explanation.canonicalMonthlyBasis, explanation.servicePathIndex)
 		explanation.buildingHVACAllocationPeriodEdges[strings.ToLower(strings.TrimSpace(period.ID))] = applyEnergyPathZoneHVACAllocationPlan(originalEdges, period.Nodes, buildingPlan)
-		plan := buildEnergyPathZoneHVACAllocationPlan(period.Nodes, originalEdges, explanation.zoneDirectUseSeries, period.ID, period.Kind, explanation.canonicalMonthlyBasis)
+		plan := buildEnergyPathZoneHVACAllocationPlan(period.Nodes, originalEdges, explanation.zoneDirectUseSeries, period.ID, period.Kind, explanation.canonicalMonthlyBasis, explanation.servicePathIndex)
 		period.Edges = applyEnergyPathZoneHVACAllocationPlan(originalEdges, period.Nodes, plan)
 		if strings.EqualFold(strings.TrimSpace(period.Kind), "monthly") {
 			monthlyPlans = append(monthlyPlans, plan)

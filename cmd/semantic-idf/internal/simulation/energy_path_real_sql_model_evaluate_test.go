@@ -3,6 +3,7 @@ package simulation
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -88,6 +89,9 @@ func epathCompileSQLModelChecks(observed epathRealOracleEvidence, model epathRea
 		func() error { return epathSQLModelSiteChecks(frames, model, &checks) },
 		func() error { return epathSQLModelServiceChecks(frames, model, &checks) },
 		func() error {
+			return epathSQLModelFanPoolChecks(observed, frames, model.FanPools, model.Precision, &checks)
+		},
+		func() error {
 			return epathSQLModelAvailabilityChecks(observed.Sources, observed.outputPlan, model, &checks)
 		},
 	} {
@@ -108,16 +112,160 @@ func epathCompileSQLModelChecks(observed epathRealOracleEvidence, model epathRea
 
 type epathSQLModelFailure struct{ Group, Key, Message string }
 
-func epathEvaluateSQLModelChecks(out *epathRealOracleEvidence, bundle PurposeResultBundle, checks epathSQLModelChecks) []epathSQLModelFailure {
-	failures := append([]epathSQLModelFailure{}, checks.Unresolved...)
-	failedGroups := map[string]bool{}
-	for _, failure := range failures {
-		failedGroups[failure.Group] = true
+func epathCheckSQLModelPresentation(bundle PurposeResultBundle, check epathSQLModelCheck, actual *float64) error {
+	q, target := check.Quantity, check.Item.Target
+	if q != nil && !q.valid() {
+		return fmt.Errorf("invalid presentation interval configuration")
 	}
+	if check.OptionalPresentation && target.Collection != "nodes" {
+		return fmt.Errorf("pruning policy cannot change source/unknown SQL presence")
+	}
+	if actual != nil && target.Collection == "nodes" && *actual < 0 {
+		return fmt.Errorf("negative directional presentation value")
+	}
+	allowAbsent := check.OptionalPresentation || target.Collection == "nodes" && target.AllowPrunedZero
+	if allowAbsent && q == nil {
+		return fmt.Errorf("unknown SQL cannot authorize presentation pruning")
+	}
+	if actual == nil && allowAbsent && q != nil && q.includesZero() {
+		nodes, _, _, _, err := epathOracleGraph(bundle, check.Item.Scope, check.Item.Zone, check.Item.Period)
+		if err != nil {
+			return err
+		}
+		for _, node := range nodes {
+			if epathOracleNodeMatches(node, target) {
+				return fmt.Errorf("present node has missing numeric field; this is not presentation pruning")
+			}
+		}
+		return nil
+	}
+	return epathCheckSQLModelQuantity(actual, q)
+}
+
+func epathCheckSQLModelConversion(bundle PurposeResultBundle, check epathSQLModelCheck) error {
+	proof := check.Conversion
+	if proof == nil || !proof.From.valid() || !proof.To.valid() || proof.From.Value < 0 || proof.To.Value < 0 || check.Quantity != nil && !check.Quantity.valid() {
+		return fmt.Errorf("invalid independently observed paired interval")
+	}
+	if err := epathValidateOracleTarget(check.Item.Target, "ratio"); err != nil {
+		return err
+	}
+	nodes, links, _, _, err := epathOracleGraph(bundle, check.Item.Scope, check.Item.Zone, check.Item.Period)
+	if err != nil {
+		return err
+	}
+	actual, err := epathReadOraclePairedQuantities(nodes, links, bundle.EnergyExplanation.Sources, check.Item.Target)
+	if err != nil {
+		return err
+	}
+	if actual.Count == 0 {
+		if proof.From.includesZero() || proof.To.includesZero() {
+			return nil
+		}
+		return fmt.Errorf("missing conversion with two required non-prunable endpoints")
+	}
+	if actual.From == nil || actual.To == nil || *actual.From < 0 || *actual.To < 0 {
+		return fmt.Errorf("missing/negative paired endpoint")
+	}
+	if err := epathCheckSQLModelQuantity(actual.From, &proof.From); err != nil {
+		return fmt.Errorf("conversion thermal endpoint: %w", err)
+	}
+	if err := epathCheckSQLModelQuantity(actual.To, &proof.To); err != nil {
+		return fmt.Errorf("conversion site endpoint: %w", err)
+	}
+	if *actual.From > 0 && *actual.To > 0 && actual.Ratio == nil {
+		return fmt.Errorf("positive paired quantities lost ratio availability")
+	}
+	if (*actual.From == 0 || *actual.To == 0) && actual.Ratio != nil {
+		return fmt.Errorf("zero presented endpoint has a fabricated ratio")
+	}
+	return nil
+}
+
+func epathCheckSQLModelAllocation(bundle PurposeResultBundle, check epathSQLModelCheck) error {
+	target, proof := check.Item.Target, check.Allocation
+	if proof == nil || target.Collection != "reconciliation" || target.Level != "allocation" || target.ID == "" || target.Unit != "kWh" || check.Item.Group != "zoneAllocation" {
+		return fmt.Errorf("whole allocation pruning requires exact allocation identity")
+	}
+	if err := epathValidateOracleTarget(target, check.Item.Unit); err != nil {
+		return err
+	}
+	canPrune := true
+	for field, q := range proof.fields() {
+		if q == nil || !q.valid() || q.Value < 0 {
+			return fmt.Errorf("unknown/invalid observed allocation %s", field)
+		}
+		low, _ := q.bounds()
+		if low < 0 {
+			return fmt.Errorf("allocation interval must respect nonnegative presentation")
+		}
+		canPrune = canPrune && q.includesZero()
+	}
+	q, ok := proof.fields()[target.Field]
+	if !ok || check.Quantity == nil || !check.Quantity.valid() {
+		return fmt.Errorf("missing selected allocation quantity")
+	}
+	ql, qh := q.bounds()
+	cl, ch := check.Quantity.bounds()
+	if q.Value != check.Quantity.Value || ql != cl || qh != ch {
+		return fmt.Errorf("selected quantity contradicts whole allocation proof")
+	}
+	accounted := proof.Direct.Value + proof.Allocated.Value + proof.Unassigned.Value
+	if math.Abs(proof.Expected.Value-accounted) > 1e-10*math.Max(1, proof.Expected.Value) {
+		return fmt.Errorf("independent allocation quantities do not conserve expected value")
+	}
+	_, _, rows, _, err := epathOracleGraph(bundle, check.Item.Scope, check.Item.Zone, check.Item.Period)
+	if err != nil {
+		return err
+	}
+	var selected *EnergyReconciliation
+	for index := range rows {
+		if rows[index].ID == target.ID {
+			selected = &rows[index]
+			break
+		}
+	}
+	if selected == nil {
+		if canPrune {
+			return nil
+		}
+		return fmt.Errorf("missing allocation row with at least one required non-prunable quantity")
+	}
+	// An exact ID with wrong metadata is present and invalid, not absent.
+	actual, err := epathReadOracleCandidate(bundle, check.Item, check.Want)
+	if err != nil {
+		return err
+	}
+	if actual == nil {
+		return fmt.Errorf("present allocation row does not match required context")
+	}
+	values := map[string]float64{"expectedValue": selected.ExpectedValue, "directValue": selected.DirectValue, "allocatedValue": selected.AllocatedValue, "unassignedValue": selected.UnassignedValue}
+	for field, number := range values {
+		if !epathOracleFinite(number) || number < 0 {
+			return fmt.Errorf("invalid present allocation %s", field)
+		}
+		if err := epathCheckSQLModelQuantity(epathOracleNumber(number), proof.fields()[field]); err != nil {
+			return fmt.Errorf("present allocation %s: %w", field, err)
+		}
+	}
+	return nil
+}
+
+func epathEvaluateSQLModelChecks(out *epathRealOracleEvidence, bundle PurposeResultBundle, checks epathSQLModelChecks) []epathSQLModelFailure {
+	failures := []epathSQLModelFailure{}
+	failedGroups := map[string]bool{}
 	for _, check := range checks.Rows {
-		actual, err := epathReadOracleCandidate(bundle, check.Item, check.Want)
-		if err == nil {
-			err = epathCheckSQLModelQuantity(actual, check.Quantity)
+		var err error
+		if check.Conversion != nil {
+			err = epathCheckSQLModelConversion(bundle, check)
+		} else if check.Allocation != nil {
+			err = epathCheckSQLModelAllocation(bundle, check)
+		} else {
+			var actual *float64
+			actual, err = epathReadOracleCandidate(bundle, check.Item, check.Want)
+			if err == nil {
+				err = epathCheckSQLModelPresentation(bundle, check, actual)
+			}
 		}
 		out.Metrics = append(out.Metrics, check.Want)
 		if err != nil {
@@ -182,6 +330,43 @@ func TestEnergyPathRealSQLModelSavedCandidate(t *testing.T) {
 		t.Fatal(err)
 	}
 	failures := epathEvaluateSQLModelChecks(&observed, bundle, checks)
+	if reportPath := os.Getenv("EPATH_REAL_ORACLE_DIAGNOSTIC_NEW"); reportPath != "" {
+		absolute, err := epathOracleSnapshotDestination(root, reportPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		candidateSHA, err := epathOracleHashFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		recipeSHA, err := epathOracleHashFile(filepath.Join(catalog, filepath.FromSlash(evidence.Fixture.OraclePath)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		report := struct {
+			Schema          string                 `json:"schema"`
+			Acceptance      bool                   `json:"acceptance"`
+			CandidatePath   string                 `json:"candidatePath"`
+			CandidateSHA256 string                 `json:"candidateSHA256"`
+			RecipeSHA256    string                 `json:"recipeSHA256"`
+			SQLSHA256       string                 `json:"sqlSHA256"`
+			Checks          int                    `json:"checks"`
+			Failures        []epathSQLModelFailure `json:"failures"`
+		}{"semantic-idf.energy-path-sql-diagnostic/v1", false, path, candidateSHA, recipeSHA, evidence.SQLSHA256, len(checks.Rows), failures}
+		file, err := os.OpenFile(absolute, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = json.NewEncoder(file).Encode(report)
+		closeErr := file.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if closeErr != nil {
+			t.Fatal(closeErr)
+		}
+		t.Logf("NEW DIAGNOSTIC ONLY, NOT EXPECTED/ACCEPTANCE: %s", absolute)
+	}
 	encoded, err := json.Marshal(observed.Metrics)
 	if err != nil {
 		t.Fatal(err)

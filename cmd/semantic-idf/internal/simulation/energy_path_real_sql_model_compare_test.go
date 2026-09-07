@@ -8,14 +8,16 @@ import (
 )
 
 type epathSQLModelCheck struct {
-	Item     epathRealOracleMetricRecipe
-	Want     epathRealOracleMetric
-	Quantity *epathSQLQuantity
+	Item                 epathRealOracleMetricRecipe
+	Want                 epathRealOracleMetric
+	Quantity             *epathSQLQuantity
+	OptionalPresentation bool
+	Conversion           *epathSQLConversionProof
+	Allocation           *epathSQLAllocationProof
 }
 type epathSQLModelChecks struct {
-	Rows       []epathSQLModelCheck
-	Keys       map[string]bool
-	Unresolved []epathSQLModelFailure
+	Rows []epathSQLModelCheck
+	Keys map[string]bool
 }
 
 func (checks *epathSQLModelChecks) add(group, scope, zone, period, key, unit string, q *epathSQLQuantity, target epathRealOracleTarget, status string, found, total *int) error {
@@ -29,7 +31,7 @@ func (checks *epathSQLModelChecks) add(group, scope, zone, period, key, unit str
 	checks.Keys[identity] = true
 	want := epathRealOracleMetric{Key: identity, Group: group, Scope: scope, Zone: zone, Period: period, Unit: unit, Status: status, Found: found, Total: total}
 	if q != nil {
-		if !epathOracleFinite(q.Value) || !epathOracleFinite(q.Error) || q.Error < 0 {
+		if !q.valid() {
 			return fmt.Errorf("invalid compiled SQL interval %s", identity)
 		}
 		want.Value = epathOracleNumber(q.Value)
@@ -94,16 +96,18 @@ func epathSQLModelLoadDriverChecks(frames epathSQLFrames, model epathRealSQLMode
 					componentTarget.Component = component
 					componentTarget.AllowPrunedZero = false
 					var componentValue *epathSQLQuantity
-					if component == "sensible" && load.Value > 0 {
+					if component == "sensible" {
 						componentValue = &load
 					}
 					if err := checks.add("loads", scope, zone, period, service+"/"+component, "kWh", componentValue, componentTarget, "", nil, nil); err != nil {
 						return err
 					}
+					if component == "sensible" && load.includesZero() {
+						checks.Rows[len(checks.Rows)-1].OptionalPresentation = true
+					}
 				}
 				categories := map[string]bool{}
 				quantities := map[string]map[string]epathSQLQuantity{}
-				visible := map[string]bool{}
 				for _, month := range epathSQLPeriodMonths(period) {
 					interzone, totalLoad := epathSQLQuantity{}, epathSQLQuantity{}
 					if scope == "building" {
@@ -139,17 +143,21 @@ func epathSQLModelLoadDriverChecks(frames epathSQLFrames, model epathRealSQLMode
 							quantities[category] = map[string]epathSQLQuantity{}
 						}
 						quantities[category]["value"] = quantities[category]["value"].add(contribution)
-						if contribution.Value <= 0 {
+						_, contributionHigh := contribution.bounds()
+						if contributionHigh <= 0 {
 							continue
 						}
-						visible[category] = true
 						raw, effective := cell.Raw, cell.Effective
 						if service == "heating" {
 							raw = raw.times(-1)
 							effective = effective.times(-1)
 						}
-						quantities[category]["rawValue"] = quantities[category]["rawValue"].add(raw.positive())
-						quantities[category]["effectiveValue"] = quantities[category]["effectiveValue"].add(effective.positive())
+						raw, effective = raw.positive(), effective.positive()
+						if contribution.includesZero() {
+							raw, effective = raw.optionalPresentation(), effective.optionalPresentation()
+						}
+						quantities[category]["rawValue"] = quantities[category]["rawValue"].add(raw)
+						quantities[category]["effectiveValue"] = quantities[category]["effectiveValue"].add(effective)
 					}
 				}
 				ordered := []string{}
@@ -163,15 +171,16 @@ func epathSQLModelLoadDriverChecks(frames epathSQLFrames, model epathRealSQLMode
 						target.Field = field
 						target.Basis = "heat_balance_share"
 						q := quantities[category][field]
-						var value *epathSQLQuantity
+						value := &q
 						if field == "value" {
 							value = &q
 							target.AllowPrunedZero = true
-						} else if visible[category] {
-							value = &q
 						}
 						if err := checks.add("drivers", scope, zone, period, category+"/"+service+"/"+field, "kWh", value, target, "", nil, nil); err != nil {
 							return err
+						}
+						if field != "value" && quantities[category]["value"].includesZero() {
+							checks.Rows[len(checks.Rows)-1].OptionalPresentation = true
 						}
 					}
 				}
@@ -328,17 +337,26 @@ func epathSQLModelAvailabilityChecks(observed []epathRealSQLSource, plan *Purpos
 }
 
 func epathCheckSQLModelQuantity(actual *float64, want *epathSQLQuantity) error {
+	if want != nil && !want.valid() {
+		return fmt.Errorf("invalid SQL interval configuration")
+	}
 	if actual == nil || want == nil {
 		if actual == nil && want == nil {
 			return nil
 		}
-		return fmt.Errorf("known/unknown mismatch")
+		if want != nil {
+			low, high := want.bounds()
+			return fmt.Errorf("candidate unknown; independent SQL center %.12g interval [%.12g, %.12g]", want.Value, low, high)
+		}
+		return fmt.Errorf("candidate known %.12g; independent observation unavailable", *actual)
 	}
-	if !epathOracleFinite(*actual) || !epathOracleFinite(want.Value) || !epathOracleFinite(want.Error) || want.Error < 0 {
+	if !epathOracleFinite(*actual) {
 		return fmt.Errorf("nonfinite SQL interval comparison")
 	}
-	if math.Abs(*actual-want.Value) > want.Error+1e-8*math.Max(1, math.Abs(want.Value)) {
-		return fmt.Errorf("candidate %.12g vs independent SQL %.12g, proven rounding budget %.12g", *actual, want.Value, want.Error)
+	low, high := want.bounds()
+	slack := 1e-8 * math.Max(1, math.Abs(want.Value))
+	if *actual < low-slack || *actual > high+slack {
+		return fmt.Errorf("candidate %.12g vs independent SQL %.12g, proven interval [%.12g, %.12g]", *actual, want.Value, low, high)
 	}
 	return nil
 }

@@ -292,9 +292,23 @@ and three separate return-plenum Zones. January's SQL effective heating is
 94,504.151627 kWh in the sixteen conditioned Zones and 29,310.660434 kWh in the
 three plenums. The service-path conversion numerator covers the former, not the
 entire nineteen-Zone total. July/August have zero conditioned-Zone heating and
-positive plenum heat; their Zone-load fallback is not a direct equipment
-measurement. A ratio expectation must preserve that method/scope distinction
-instead of substituting a Building-total numerator or hiding the fallback.
+positive plenum heat. A subsequent topology audit confirmed that the existing
+fallback escapes the known service recipients: 375.593807663247 and
+1,393.570040051900 kWh of gas are assigned to three unserved plenums. This is a
+production allocation defect, not an approved alternative allocation policy.
+The known connected scope must remain bounded even when all its current loads
+are zero; energy without a valid denominator must remain Building-unassigned.
+The genuinely missing-topology fallback is a separate compatibility case.
+
+The same independent audit found four already-reported Hourly/J
+`Air System Fan Electricity Energy` series, keyed to VAV_1, VAV_2, VAV_3 and
+VAV_5. Their twelve monthly pool sums match `Fans:Electricity` to less than
+5.1e-10 kWh. The original IDF connects the first three loops to their own five
+conditioned Zones and VAV_5 to Basement. Existing allocation tests cover
+preseeded separate fan pools, but actual SQL discovery currently discards these
+four series and allocates the broad meter across all sixteen Zones. Real
+per-loop ingestion and non-double-counted pool allocation remain required;
+new heavy output requests are not needed or authorized by this fix.
 
 The corrected replay also exposed a precision-driven availability bug in June:
 the service-path pair is 0.157 kWh thermal / 1,501.071 kWh site, but rounding its
@@ -314,6 +328,190 @@ COP, unchanged ordinary 0.85/4 ratios, unavailable/invalid inputs, three locales
 immutable geometry on selection, and zero Run/Analyze calls. Existing ratio,
 KPI and inspector regressions also pass.
 
+The candidate reader now checks original JSON numeric presence before invoking
+the application's compatibility decoder. Node values, each sensible/latent
+breakdown value, paired link quantities, reconciliation expected/explained/
+residual values, five quality count pairs and quality percentages must be
+present, non-null finite numbers in every Building/Zone/period graph. Optional
+raw/effective/allocation fields may remain omitted/unknown, but explicit null
+cannot masquerade as a reported zero. Tests reject missing/null/string/boolean
+numbers in all four nesting contexts and retain exact reported zeroes. The
+preserved `large-office-25-1-candidate-20260908-0350.json` passed the initial
+numeric-presence gate in 2.113 seconds. A subsequent count invariant also rejects
+`found > total`; that older candidate has Zone counts of 9/0 and 2/0 and does
+not pass the strengthened gate. This historical check proved numeric presence
+only, not numerical acceptance.
+
+### Second actual-candidate diagnostic: structural blocker removed
+
+`large-office-25-1-candidate-after-reconciliation-01.json` was materialized once
+in 103.150 seconds from the same immutable SQL capture. Constructor-owned
+sensible/latent reconciliation identity is retained privately until the v2
+boundary, which qualifies colliding rows consistently across all periods.
+Labels distinguish Sensible and Latent. Stored combined annual accounting is
+split only when all twelve unique months, three signed sums, semantics and the
+exact source union agree. Unknown/conflicting source components are not guessed,
+and the frozen v1 JSON identity and aggregation remain unchanged.
+
+The raw-wire and interval-aware independent diagnostic then completed in
+63.691 seconds. It still **failed**, with 218 mismatches across the same 17,469
+checks (3,261,116 bytes of numeric evidence). Monthly reconciliation guard
+failures were eliminated; the remaining discrepancies are now inspectable
+numeric/presence/metadata cases rather than ambiguous graph identities.
+
+| Group | Checks | Remaining mismatches |
+| --- | ---: | ---: |
+| Drivers | 15,250 | 183 |
+| Loads | 1,712 | 0 |
+| End uses | 109 | 2 |
+| Carriers | 30 | 0 |
+| Ratios | 52 | 25 |
+| Completeness | 4 | 0 |
+| Carrier residuals | 78 | 0 |
+| Zone allocation | 234 | 8 |
+
+The test-only interval policy keeps exact raw SQL centers, explicitly bounded
+optional presentation ranges, and independently checked conversion endpoints.
+Only fully observed quantities whose proven presentation interval includes zero
+may be pruned. Unknown/null data, negative directional quantities, wrong units,
+and ratios inconsistent with their actual paired values still fail. A tiny
+positive denominator is not relabelled as a physical zero.
+
+Two follow-up corrections are separately regression-tested, awaiting another
+actual candidate. The allocation planner now receives period-independent known
+service topology; July/August's unavailable denominator cannot escape to the
+three plenums. Derived Zone balance terms also retain native-Zone-equivalent
+raw metadata alongside their already-effective result. Previously a factor-10
+derived difference incorrectly contributed its model-total value to the raw
+column. In January, the affected Building storage/heating raw sum was
+10,236.296 kWh; applying the original Zone multipliers to those same effective
+terms gives 7,453.820 kWh, within the independently computed raw interval around
+7,453.81703904 kWh. Effective pressure, delivered load and allocated contribution
+are not rescaled. The source remains explicitly `derived_formula`, and its raw
+equivalent is labelled as calculated, not a new SQL measurement. Tests cover
+Zone/ZoneGroup factors, signed monthly values with annual net zero, unchanged
+original observations, repeated preparation and JSON reload.
+
+The first ratio mismatch samples also exposed an oracle schema assumption:
+canonical end-use nodes may express their service through typed `endUse` while
+omitting redundant `serviceKind`. The strict reader now accepts only the exact
+matching typed cooling/heating end use in that case; contradictory explicit
+service, wrong type, paired units or quantities remain rejected. These checks
+do not approve the unreviewed original fallback allocation.
+
+### Third actual-candidate diagnostic: physical values and remaining wire cases
+
+`large-office-25-1-candidate-after-real-fixes-01.json` was materialized once in
+118.253 seconds. The independent diagnostic completed in 73.889 seconds and
+still **failed**. It now includes 255 additional fan-pool checks, for 17,724
+checks and 3,307,635 bytes of numeric evidence. The complete failed-check report
+is retained as `large-office-25-1-diagnostic-after-real-fixes-01.json` alongside
+the candidate and provenance; it does not write or approve expected manifests.
+
+| Group | Checks | Remaining mismatches |
+| --- | ---: | ---: |
+| Drivers | 15,250 | 46 |
+| Loads | 1,712 | 0 |
+| End uses | 117 | 0 |
+| Carriers | 30 | 0 |
+| Ratios | 52 | 0 |
+| Completeness | 4 | 0 |
+| Carrier residuals | 78 | 0 |
+| Zone allocation | 481 | 216 |
+
+All previously failing derived raw quantities now agree with their independent
+SQL intervals. The 46 driver failures are omitted, exactly reported zeroes in
+Zone-scoped source details: 19 InterzoneAir sources and four OutdoorAir sources,
+each with raw/effective scalar checks. The original source-level zero fix did
+not yet propagate the scoped source's own proof to its detail wrapper.
+
+The 208 new fan failures are a selector-contract error, not missing fan nodes:
+canonical end-use nodes deliberately omit a single carrier because they can
+aggregate multiple carriers. For example, Basement January contains the fan
+node with 448.694 kWh, its exact VAV_5 source, and an outward electricity link.
+The fan oracle incorrectly required `node.carrier = electricity`. The remaining
+eight checks describe wholly absent cooling allocation rows for January's
+reported zero and December's fully observed, sub-display-precision amount.
+Their presence policy must be proved at the whole-row level, not by treating
+arbitrary missing fields as zero.
+
+The fan ingestion now independently reads existing exact Hourly/J SQL sources
+without adding heavy output requests or double-counting the broad meter. Four
+reviewed pools retain the original 5/5/5/1 connected Zone partitions, while
+unallocated energy remains explicit. Independent saved-SQL checks confirm all
+four 8,760-hour axes and twelve monthly pool sums. Production regressions also
+cover legitimate simultaneous Monthly reporting, explicit owner-path limits,
+and unrelated unresolved fans without discarding a valid measured pool.
+
+Known reported zero proof requires valid observation rows, not dictionary
+presence. Monthly sources must cover the complete observed reporting axis
+exactly once; missing/null/duplicate/invalid rows do not prove zero. A genuine
+three-month run can establish zero through its three reported months without
+pretending to be a twelve-month run. Frozen v1 source JSON is unchanged.
+
+The run-level quality fallback no longer combines an observed numerator with
+an unknown requested denominator (9/0 or 2/0). Such counts remain unknown as
+0/0 with partial/unavailable status; the observed inventory and limitations
+remain in the explanation, including allocated Zone carrier subtotals. Known
+requested counts remain exact. The strengthened raw-wire gate passes on this
+third candidate. This does not retroactively repair older stored metadata.
+
+The full repository verification also exposed two regressions before the
+checkpoint: the known-recipient filter omitted legitimate IdealLoads `mixed`
+service paths, removing conversion links. The corrected filter accepts exact
+indexed mixed recipients for cooling/heating, while excluding ventilation-only
+or unserved Zones and retaining zero-denominator energy as unassigned.
+Focused regressions pass; full verification is rerun before committing.
+
+Finally, the test-only candidate reader now bypasses the application's
+permissive result/period/summary compatibility readers. Original graph values,
+units, invalid links, duplicate rows and source scalar presence reach the
+independent checks without repair or pruning. This closes a separate acceptance
+gap; it does not change the application's saved-result compatibility behavior.
+Another immutable actual candidate and complete comparison are still required.
+
+### Original-wire recheck and fan rounding correction
+
+`large-office-25-1-candidate-after-real-fixes-02.json` was built in 112.291
+seconds and compared without compatibility repair in 50.305 seconds. The
+17,724 checks (3,307,663 bytes) reject only four fan Zone-month values; all
+other comparisons, including the 46 scoped zeroes and eight wholly pruned
+allocation fields, pass. Original failed candidates and reports remain intact.
+
+Each remaining case is the last recipient of a five-Zone fan pool. The old
+apportionment independently rounds earlier recipients and gives their combined
+rounding remainder to the last Zone. That can exceed the last Zone's own
+one-quantum allocation bound: for example, Perimeter_bot_ZN_4 April is 77.124
+kWh against an independently bounded interval of [77.1240275297,
+77.1264612075] kWh. The oracle's bounds and source centers are unchanged.
+
+Fan pools now use largest fractional remainders for every pool, not only when
+tiny allocations would turn negative. Every recipient receives either floor
+or ceil of its own exact three-decimal quota, the rounded pool total is exactly
+preserved, zero-weight recipients stay zero, and tied rounding ownership uses
+stable semantic identity. Rotation/reversal tests cover tiny and ordinary
+pools; fan, EPATH-094/100/101 and frozen v1 regressions pass in 7.533 seconds.
+`large-office-25-1-candidate-after-real-fixes-03.json` was materialized in
+106.066 seconds. The original-wire comparison then **passed all 17,724 checks**
+in 58.151 seconds (3,307,689 bytes of numeric evidence), with the same independent
+centers and intervals. The separately saved `large-office-25-1-diagnostic-after-real-fixes-03.json`
+has an empty failures array and remains explicitly `acceptance: false`.
+
+The passing groups contain 15,250 driver, 1,712 load, 117 end-use, 30 carrier,
+52 ratio, four completeness, 78 carrier residual and 481 allocation checks.
+This is the first passing complete numeric diagnostic for this candidate, not
+approval of the full fixture suite. Required-selector/extra-record coverage,
+complete per-Zone service/direct-use and link-closure evidence, approved
+eight-group expected manifests, other model types and the unresolved no-heating
+engine result still require completion in section 22. No later checklist item
+is marked complete on the strength of this diagnostic.
+
+The checkpoint's full `scripts/verify.ps1` passes after the apportionment fix:
+main package 24.826 seconds, CLI 7.896 seconds, actual frontend checks 160.543
+seconds, simulation 107.165 seconds, and a successful Wails production build
+in 10.101 seconds. The commit hook repeats the repository verification; it is
+not bypassed.
+
 ## Explicit execution modes
 
 Use the repository Go toolchain and select the simulation package test by name.
@@ -330,6 +528,7 @@ invoking process; do not persist them in the machine or user environment.
 | `TestEnergyPathNoHeatingHybridSolverTrial` | `EPATH_REAL_NUMERICAL_TRIAL=1` and explicit failed `EPATH_REAL_BASELINE_DIR` | Separate one-object numerical experiment only; no accepted fixture defaults or expectations are changed |
 | `TestEnergyPathRealOracleMaterializeCandidate` | `EPATH_REAL_ORACLE_CAPTURE_DIR` and a new explicit `.runtime` `EPATH_REAL_ORACLE_SNAPSHOT_NEW` path | One shared-loader rebuild; new candidate and provenance sidecar only, never overwrites an existing snapshot |
 | `TestEnergyPathRealSQLModelSavedCandidate` | `EPATH_REAL_ORACLE_CAPTURE_DIR` and `EPATH_REAL_ORACLE_SNAPSHOT` | Independent eight-group diagnostic; any mismatch fails and does not approve expectations |
+| `TestEnergyPathRealOracleCandidateWireSaved` | `EPATH_REAL_ORACLE_WIRE_PATH` points to one preserved candidate | Read-only original numeric presence, including older snapshots; no SQL comparison or acceptance |
 
 Saved evidence can explicitly rebuild through the shared public result loader
 with `EPATH_REAL_VERIFY_REBUILD=1`; `EPATH_REAL_VERIFY_ACCEPTANCE=1` additionally

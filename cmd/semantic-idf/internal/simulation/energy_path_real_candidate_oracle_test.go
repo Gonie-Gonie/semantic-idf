@@ -16,6 +16,18 @@ func epathOracleValidPeriod(period string) bool {
 	return err == nil && month >= 1 && month <= 12 && period == fmt.Sprintf("M%d", month)
 }
 
+func epathOracleNodeMatches(node EnergyExplanationNode, target epathRealOracleTarget) bool {
+	category := node.DriverCategory
+	if node.Level == "end_use" {
+		category = node.EndUse
+	}
+	if node.Level == "carrier" {
+		category = node.Carrier
+	}
+	match := func(filter, value string) bool { return filter == "" || filter == value }
+	return match(target.ID, node.ID) && match(target.Kind, node.Kind) && match(target.ThermalComponent, node.ThermalComponent) && match(target.Level, node.Level) && match(target.Category, category) && match(target.Service, node.ServiceKind) && match(target.Carrier, node.Carrier) && match(target.Basis, node.Basis)
+}
+
 func epathValidateOracleMetricIdentity(metric epathRealOracleMetric) error {
 	if (metric.Scope != "building" && metric.Scope != "zone") || (metric.Scope == "zone") != (strings.TrimSpace(metric.Zone) != "") || !epathOracleValidPeriod(metric.Period) || metric.Unit == "" {
 		return fmt.Errorf("invalid metric scope/Zone/period/unit %s", metric.Key)
@@ -163,7 +175,18 @@ func epathValidateOracleTarget(target epathRealOracleTarget, unit string) error 
 	return nil
 }
 
+type epathOraclePairedObservation struct {
+	From, To, Ratio *float64
+	Count           int
+}
+
 func epathReadOraclePairedRatio(nodes []EnergyExplanationNode, links []EnergyPathLink, sources []EnergyDataSource, target epathRealOracleTarget) (*float64, error) {
+	observed, err := epathReadOraclePairedQuantities(nodes, links, sources, target)
+	return observed.Ratio, err
+}
+
+func epathReadOraclePairedQuantities(nodes []EnergyExplanationNode, links []EnergyPathLink, sources []EnergyDataSource, target epathRealOracleTarget) (epathOraclePairedObservation, error) {
+	out := epathOraclePairedObservation{}
 	byID := map[string]EnergyExplanationNode{}
 	for _, node := range nodes {
 		byID[node.ID] = node
@@ -171,53 +194,73 @@ func epathReadOraclePairedRatio(nodes []EnergyExplanationNode, links []EnergyPat
 	sourceIDs := map[string]bool{}
 	for _, source := range sources {
 		if source.ID == "" || sourceIDs[source.ID] {
-			return nil, fmt.Errorf("ambiguous ratio source identity")
+			return out, fmt.Errorf("ambiguous ratio source identity")
 		}
 		sourceIDs[source.ID] = true
 	}
 	numerator, denominator, count := 0.0, 0.0, 0
+	allPairsPositive := true
 	for _, link := range links {
 		if target.ID != "" && link.ID != target.ID || target.FromID != "" && link.FromID != target.FromID || target.ToID != "" && link.ToID != target.ToID || link.Relation != target.Relation || link.ServiceKind != target.Service || target.Basis != "" && link.Basis != target.Basis {
 			continue
 		}
 		from, to := byID[link.FromID], byID[link.ToID]
-		if from.Level != "load" || to.Level != "end_use" || from.ScaleDomain != "thermal" || to.ScaleDomain != "site" || from.ServiceKind != target.Service || to.ServiceKind != target.Service || !strings.EqualFold(from.ZoneName, to.ZoneName) || from.Period != to.Period {
-			return nil, fmt.Errorf("invalid paired ratio endpoint context %s", link.ID)
+		toServiceMatches := to.ServiceKind == target.Service || to.ServiceKind == "" && (target.Service == "heating" || target.Service == "cooling") && to.EndUse == target.Service
+		if to.EndUse != "" && to.EndUse != target.Service {
+			toServiceMatches = false
 		}
-		if link.FromUnit != target.FromUnit || link.ToUnit != target.ToUnit || link.RatioKind != target.RatioKind || from.Unit != link.FromUnit || to.Unit != link.ToUnit {
-			return nil, fmt.Errorf("paired ratio unit/kind mismatch %s", link.ID)
+		if from.Level != "load" || to.Level != "end_use" || from.ScaleDomain != "thermal" || to.ScaleDomain != "site" || from.ServiceKind != target.Service || !toServiceMatches || !strings.EqualFold(from.ZoneName, to.ZoneName) || from.Period != to.Period {
+			return out, fmt.Errorf("invalid paired ratio endpoint context %s", link.ID)
+		}
+		if link.FromUnit != target.FromUnit || link.ToUnit != target.ToUnit || from.Unit != link.FromUnit || to.Unit != link.ToUnit {
+			return out, fmt.Errorf("paired ratio unit mismatch %s", link.ID)
 		}
 		if len(link.SourceIDs) == 0 {
-			return nil, fmt.Errorf("ratio lacks source trace")
+			return out, fmt.Errorf("ratio lacks source trace")
 		}
 		for _, id := range link.SourceIDs {
 			if !sourceIDs[id] {
-				return nil, fmt.Errorf("ratio refers to missing source %s", id)
+				return out, fmt.Errorf("ratio refers to missing source %s", id)
 			}
 		}
 		if !epathOracleFinite(link.FromValue) || !epathOracleFinite(link.ToValue) || link.FromValue < 0 || link.ToValue < 0 {
-			return nil, fmt.Errorf("invalid paired ratio quantities")
+			return out, fmt.Errorf("invalid paired ratio quantities")
 		}
-		if link.ToValue == 0 {
-			return nil, nil
-		}
-		if err := epathCompareOracleNumber(epathOracleNumber(link.Ratio), epathOracleNumber(link.FromValue/link.ToValue), .00051, 1e-8); err != nil {
-			return nil, fmt.Errorf("stored ratio does not match original paired quantities: %w", err)
+		if link.FromValue > 0 && link.ToValue > 0 {
+			if link.RatioKind != target.RatioKind || !epathOracleFinite(link.Ratio) || link.Ratio <= 0 {
+				return out, fmt.Errorf("positive pair requires exact ratio kind and positive ratio")
+			}
+			paired := link.FromValue / link.ToValue
+			tolerance := .00051
+			if paired < .0005 {
+				tolerance = math.Max(math.SmallestNonzeroFloat64, math.Abs(paired)*1e-12)
+			}
+			if err := epathCompareOracleNumber(epathOracleNumber(link.Ratio), epathOracleNumber(paired), tolerance, 1e-8); err != nil {
+				return out, fmt.Errorf("stored ratio does not match original paired quantities: %w", err)
+			}
+		} else {
+			allPairsPositive = false
+			if link.Ratio != 0 || link.RatioKind != "" || link.RatioLabel != "" {
+				return out, fmt.Errorf("zero presented endpoint cannot retain ratio metadata")
+			}
 		}
 		numerator += link.FromValue
 		denominator += link.ToValue
 		count++
 	}
 	if count == 0 {
-		return nil, nil
+		return out, nil
 	}
 	if count > 1 && (target.ID != "" || target.Aggregate != "sum") {
-		return nil, fmt.Errorf("ambiguous ratio selection")
+		return out, fmt.Errorf("ambiguous ratio selection")
 	}
-	if denominator <= 0 {
-		return nil, nil
+	out.Count = count
+	out.From = epathOracleNumber(numerator)
+	out.To = epathOracleNumber(denominator)
+	if allPairsPositive && numerator > 0 && denominator > 0 {
+		out.Ratio = epathOracleNumber(numerator / denominator)
 	}
-	return epathOracleNumber(numerator / denominator), nil
+	return out, nil
 }
 
 func epathReadOracleSourceCandidate(sources []EnergyDataSource, item epathRealOracleMetricRecipe) (*float64, error) {

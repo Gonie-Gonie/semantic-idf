@@ -12,6 +12,7 @@ type epathRealSQLModel struct {
 	Availability []epathRealSQLAvailability `json:"availability"`
 	Services     []epathRealSQLService      `json:"services"`
 	Auxiliaries  []epathRealSQLAuxiliary    `json:"auxiliaries"`
+	FanPools     []epathRealSQLFanPool      `json:"fanPools,omitempty"`
 	Precision    epathRealSQLPrecision      `json:"precision"`
 }
 

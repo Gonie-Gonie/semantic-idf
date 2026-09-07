@@ -1,6 +1,6 @@
 {
   "schema": "semantic-idf.energy-path-sql-oracle-recipe/v1",
-  "review": "Initial independently reviewed Large Office 25.1 source identities and physical memberships; numeric expectations are not approved. Original IDF ZoneHVAC:EquipmentConnections identifies sixteen conditioned Zones and three separate return plenums. Actual closed SQL supplies all quantities, multipliers and surface ownership. Surface sign is checked against official EnergyPlus 25.1 ReportSurfaceHeatBalance; storage is the opposite side of the Zone-air balance. Availability names/32 thermal groups were independently compared to the executed request and SQL dictionary. Annual/site/visible pressure scopes are distinct; see docs/energy-path-real-models.md. Every source/metric still requires strict actual candidate comparison before any expected manifest is approved.",
+  "review": "Initial independently reviewed Large Office 25.1 source identities and physical memberships; numeric expectations are not approved. Original IDF ZoneHVAC:EquipmentConnections identifies sixteen conditioned Zones and three separate return plenums. Known service membership does not expand to plenums when its load is zero; fallback selectors assert absence, not permission to allocate outside that membership. Original AirLoop Branch/Fan/Splitter/ZoneEquipment connections independently establish four fan pools VAV_1/VAV_2/VAV_3/VAV_5 with five/five/five/one supplied Zones. Their already-reported exact Hourly/J Air System Fan Electricity Energy observations close the Monthly Fans meter; pool-local C+H shares are declared allocations, not measured Zone fan energy. Actual closed SQL supplies all quantities, multipliers and surface ownership. Surface sign is checked against official EnergyPlus 25.1 ReportSurfaceHeatBalance; storage is the opposite side of the Zone-air balance. Availability names/32 thermal groups were independently compared to the executed request and SQL dictionary. Annual/site/visible pressure scopes are distinct; see docs/energy-path-real-models.md. Every source/metric still requires strict actual candidate comparison before any expected manifest is approved.",
   "sources": [],
   "metrics": [],
   "sqlModel": {
@@ -1815,6 +1815,60 @@
         "weight": "unassigned",
         "allocationMethod": "unassigned",
         "reconciliationId": "reconcile.zone_auxiliary_allocation.pumps.electricity.annual"
+      }
+    ],
+    "fanPools": [
+      {
+        "siteId": "fans.electricity",
+        "name": "Air System Fan Electricity Energy",
+        "key": "VAV_1",
+        "frequency": "Hourly",
+        "unit": "J",
+        "servedZones": [
+          "Core_bottom",
+          "Perimeter_bot_ZN_1",
+          "Perimeter_bot_ZN_2",
+          "Perimeter_bot_ZN_3",
+          "Perimeter_bot_ZN_4"
+        ]
+      },
+      {
+        "siteId": "fans.electricity",
+        "name": "Air System Fan Electricity Energy",
+        "key": "VAV_2",
+        "frequency": "Hourly",
+        "unit": "J",
+        "servedZones": [
+          "Core_mid",
+          "Perimeter_mid_ZN_1",
+          "Perimeter_mid_ZN_2",
+          "Perimeter_mid_ZN_3",
+          "Perimeter_mid_ZN_4"
+        ]
+      },
+      {
+        "siteId": "fans.electricity",
+        "name": "Air System Fan Electricity Energy",
+        "key": "VAV_3",
+        "frequency": "Hourly",
+        "unit": "J",
+        "servedZones": [
+          "Core_top",
+          "Perimeter_top_ZN_1",
+          "Perimeter_top_ZN_2",
+          "Perimeter_top_ZN_3",
+          "Perimeter_top_ZN_4"
+        ]
+      },
+      {
+        "siteId": "fans.electricity",
+        "name": "Air System Fan Electricity Energy",
+        "key": "VAV_5",
+        "frequency": "Hourly",
+        "unit": "J",
+        "servedZones": [
+          "Basement"
+        ]
       }
     ],
     "precision": {

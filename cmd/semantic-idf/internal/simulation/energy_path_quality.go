@@ -73,15 +73,20 @@ func energyPathQualityThermalLevel(input EnergyCompletenessLevel, level, label s
 		input.Message = label + ": run-level requested-output availability. " + input.Message
 		return input
 	}
+	observed := 0
 	for _, node := range nodes {
 		if node.Level == level && node.ScaleDomain == "thermal" && node.Basis != "residual" {
-			input.Found++
+			observed++
 		}
 	}
+	// Observed graph nodes are not a numerator for an unknown requested-source
+	// denominator. Retain their presence in prose, not an impossible X/0 score.
+	input.Found, input.Total = 0, 0
 	input.Status = "unavailable"
 	input.Message = label + ": requested-output coverage is unavailable in this stored result."
-	if input.Found > 0 {
+	if observed > 0 {
 		input.Status = "partial"
+		input.Message += fmt.Sprintf(" %d graph node(s) are observed; the requested source-group count is unknown.", observed)
 	}
 	return input
 }
@@ -120,6 +125,7 @@ func energyPathQualitySiteLevel(result EnergyExplanationResult, level, label str
 	out := energyCompletenessLevel(level, len(found), len(expected), label)
 	if len(expected) == 0 {
 		out.Status = "unavailable"
+		observed := 0
 		switch {
 		case notRequested:
 			out.Status = "not_requested"
@@ -133,19 +139,22 @@ func energyPathQualitySiteLevel(result EnergyExplanationResult, level, label str
 					found[group] = true
 				}
 			}
-			out.Found = len(found)
+			observed = len(found)
 			for _, node := range result.Nodes {
 				if node.Level == level && node.ScaleDomain == "site" {
 					out.Status = "partial"
 				}
 			}
-			if out.Found > 0 {
+			if observed > 0 {
 				out.Status = "partial"
 			} else if result.Completeness.EnergyUse.Status == "missing" {
 				out.Status = "missing"
 			}
 		}
 		out.Message = label + ": requested-output coverage is unavailable in this stored result."
+		if observed > 0 {
+			out.Message += fmt.Sprintf(" %d source group(s) are observed; the requested source-group count is unknown.", observed)
+		}
 		if out.Status == "not_requested" || out.Status == "not_applicable" {
 			out.Message = label + ": not requested or not applicable according to the output-plan metadata."
 		}
@@ -154,7 +163,7 @@ func energyPathQualitySiteLevel(result EnergyExplanationResult, level, label str
 		for _, node := range result.Nodes {
 			if node.Level == "carrier" && node.ScaleDomain == "site" && !energyPathQualityReportedCarrier(node) {
 				out.Status = "partial"
-				out.Message = "Carriers: observed/allocated subtotals do not establish complete carrier output coverage."
+				out.Message += " Observed/allocated carrier subtotals do not establish complete carrier output coverage."
 				break
 			}
 		}

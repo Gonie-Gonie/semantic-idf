@@ -55,9 +55,17 @@ type energyPathZoneHVACPathEvidence struct {
 	SourceIDs []string
 }
 
-func buildEnergyPathZoneHVACAllocationPlan(nodes []EnergyExplanationNode, edges []EnergyExplanationEdge, directSeries []energyExplanationSeries, periodID string, periodKind string, canonicalMonthlyBasis bool) energyPathZoneHVACAllocationPlan {
+func buildEnergyPathZoneHVACAllocationPlan(nodes []EnergyExplanationNode, edges []EnergyExplanationEdge, directSeries []energyExplanationSeries, periodID string, periodKind string, canonicalMonthlyBasis bool, topologies ...energyServicePathIndex) energyPathZoneHVACAllocationPlan {
 	plan := energyPathZoneHVACAllocationPlan{CentralEndUseNodeIDs: map[string]bool{}}
 	periodID = firstNonEmpty(strings.TrimSpace(periodID), "annual")
+	// Runtime topology is independent of this period's reported values. Zero
+	// loads may be omitted from the graph, but their known recipients must not
+	// disappear and cause allocation to an unrelated positive-load Zone.
+	var topology energyServicePathIndex
+	if len(topologies) > 0 {
+		topology = topologies[0]
+	}
+	topologyKnown := len(topology.byService) > 0 || len(topology.byZoneService) > 0 || len(topology.byZone) > 0 || len(topology.byLoopService) > 0
 
 	type endUseGroup struct {
 		service   string
@@ -73,11 +81,15 @@ func buildEnergyPathZoneHVACAllocationPlan(nodes []EnergyExplanationNode, edges 
 	foldedNodes := foldLegacyEnergyLoadDetailNodes(nodes)
 	nodeByID := make(map[string]EnergyExplanationNode, len(foldedNodes))
 	loadsByService := map[string][]EnergyExplanationNode{}
+	knownServicePaths := map[string]bool{}
 	for _, original := range foldedNodes {
 		node := energyExplanationLegacyNodeWithEffectiveValues(original)
 		nodeByID[node.ID] = node
 		if strings.EqualFold(strings.TrimSpace(node.Level), "load") && strings.TrimSpace(node.ZoneName) != "" {
 			service := energyCanonicalServiceKind(firstNonEmpty(node.ServiceKind, energyExplanationKindSuffix(node.Kind)))
+			if len(node.RelatedPathIDs) > 0 {
+				knownServicePaths[service] = true
+			}
 			if (service == "cooling" || service == "heating") && math.Abs(energyExplanationEffectiveNodeValue(node)) > 0 {
 				loadsByService[service] = append(loadsByService[service], node)
 			}
@@ -213,6 +225,7 @@ func buildEnergyPathZoneHVACAllocationPlan(nodes []EnergyExplanationNode, edges 
 		}
 		eligible := make([]energyPathZoneHVACLoadTarget, 0, len(loadsByService[group.service]))
 		matched := make([]energyPathZoneHVACLoadTarget, 0, len(loadsByService[group.service]))
+		pathRestricted := topologyKnown || len(group.pathIDs) > 0 || knownServicePaths[group.service]
 		for _, load := range loadsByService[group.service] {
 			if directZones[energyPathZoneHVACZoneKey(load.ZoneName)] {
 				continue
@@ -236,17 +249,36 @@ func buildEnergyPathZoneHVACAllocationPlan(nodes []EnergyExplanationNode, edges 
 				// source/target path intersection above.
 				evidence = serviceEvidence[group.service+"\x00"+load.ID]
 			}
+			targetPaths := appendUniqueStrings(nil, load.RelatedPathIDs...)
+			if topologyKnown {
+				// A node's path metadata cannot establish ownership by a different
+				// Zone/service. Conversely, a missing node annotation can use the
+				// exact known Zone/service entry, without inventing a load value.
+				zoneKey := normalizePurposeToken(load.ZoneName)
+				knownPaths := appendUniqueStrings(nil, topology.byZoneService[zoneKey+"|"+group.service]...)
+				// ServiceModel represents a combined heating/cooling delivery
+				// such as IdealLoads with a typed mixed path. It is still an
+				// explicit recipient, unlike ventilation-only or unrelated Zones.
+				knownPaths = appendUniqueStrings(knownPaths, topology.byZoneService[zoneKey+"|mixed"]...)
+				if len(targetPaths) > 0 {
+					targetPaths = energyPathZoneHVACIntersectPaths(targetPaths, knownPaths)
+				} else {
+					targetPaths = appendUniqueStrings(nil, knownPaths...)
+				}
+			}
 			paths := []string(nil)
 			if len(group.pathIDs) > 0 {
 				// Explicit source paths are authoritative: unrelated target paths
 				// cannot dilute this end use's denominator.
-				paths = energyPathZoneHVACIntersectPaths(load.RelatedPathIDs, group.pathIDs)
+				paths = energyPathZoneHVACIntersectPaths(targetPaths, group.pathIDs)
+			} else if topologyKnown {
+				paths = targetPaths
 			} else if evidence.Present {
 				// Runtime broad end-use meters have no loop/path identity. Their
 				// existing same-service load edges plus the target's ServiceModel
 				// paths are the bounded relationship evidence. A sibling carrier
 				// can reuse that same service evidence without another load edge.
-				paths = appendUniqueStrings(nil, load.RelatedPathIDs...)
+				paths = targetPaths
 			}
 			if len(paths) == 0 {
 				continue
@@ -260,7 +292,9 @@ func buildEnergyPathZoneHVACAllocationPlan(nodes []EnergyExplanationNode, edges 
 		basis := "service_path_allocation"
 		ruleID := energyRelationshipRuleAllocatedServicePathLoad
 		explanation := "Allocated by HVAC service-path load share"
-		if len(targets) == 0 {
+		if len(targets) == 0 && !pathRestricted {
+			// This legacy fallback is only for unavailable relationship evidence,
+			// not known connected recipients with zero/missing period loads.
 			targets = eligible
 			basis = "zone_load_allocation"
 			ruleID = energyRelationshipRuleAllocatedZoneLoad

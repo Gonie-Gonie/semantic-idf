@@ -29,14 +29,14 @@ func UpgradeEnergyExplanationV1(input EnergyExplanationV1) EnergyExplanationResu
 	annualZoneAuxiliaryAllocation := energyPathZoneAuxiliaryAllocationPlan{}
 	periodZoneAuxiliaryAllocations := map[string]energyPathZoneAuxiliaryAllocationPlan{}
 	if zoneHVACAllocationEnabled {
-		annualZoneHVACAllocation = buildEnergyPathZoneHVACAllocationPlan(input.Nodes, input.Edges, input.zoneDirectUseSeries, "annual", "annual", input.canonicalMonthlyBasis)
-		annualZoneAuxiliaryAllocation = buildEnergyPathZoneAuxiliaryAllocationPlan(input.Nodes, input.zoneDirectUseSeries, input.servicePathIndex, "annual", "annual", input.canonicalMonthlyBasis)
+		annualZoneHVACAllocation = buildEnergyPathZoneHVACAllocationPlan(input.Nodes, input.Edges, input.zoneDirectUseSeries, "annual", "annual", input.canonicalMonthlyBasis, input.servicePathIndex)
+		annualZoneAuxiliaryAllocation = buildEnergyPathZoneAuxiliaryAllocationPlan(input.Nodes, input.zoneDirectUseSeries, input.servicePathIndex, "annual", "annual", input.canonicalMonthlyBasis, input.auxiliaryFanPools)
 		monthlyZoneHVACAllocations := []energyPathZoneHVACAllocationPlan{}
 		monthlyZoneAuxiliaryAllocations := []energyPathZoneAuxiliaryAllocationPlan{}
 		for _, period := range input.Periods {
-			plan := buildEnergyPathZoneHVACAllocationPlan(period.Nodes, period.Edges, input.zoneDirectUseSeries, period.ID, period.Kind, input.canonicalMonthlyBasis)
+			plan := buildEnergyPathZoneHVACAllocationPlan(period.Nodes, period.Edges, input.zoneDirectUseSeries, period.ID, period.Kind, input.canonicalMonthlyBasis, input.servicePathIndex)
 			periodZoneHVACAllocations[strings.ToLower(strings.TrimSpace(period.ID))] = plan
-			auxiliaryPlan := buildEnergyPathZoneAuxiliaryAllocationPlan(period.Nodes, input.zoneDirectUseSeries, input.servicePathIndex, period.ID, period.Kind, input.canonicalMonthlyBasis)
+			auxiliaryPlan := buildEnergyPathZoneAuxiliaryAllocationPlan(period.Nodes, input.zoneDirectUseSeries, input.servicePathIndex, period.ID, period.Kind, input.canonicalMonthlyBasis, input.auxiliaryFanPools)
 			periodZoneAuxiliaryAllocations[strings.ToLower(strings.TrimSpace(period.ID))] = auxiliaryPlan
 			if strings.EqualFold(strings.TrimSpace(period.Kind), "monthly") {
 				monthlyZoneHVACAllocations = append(monthlyZoneHVACAllocations, plan)
@@ -154,6 +154,7 @@ func UpgradeEnergyExplanationV1(input EnergyExplanationV1) EnergyExplanationResu
 		periods = append(periods, upgradedPeriod)
 	}
 	sources := filterEnergyDataSourcesForV2(annotatedSources, legacyNodes, annualLegacyEdges, nodes, links, reconciliation, scope, allocationPolicy)
+	sources = appendEnergyPathFanPoolSources(sources, input.auxiliaryFanPools, annualZoneAuxiliaryAllocation, scope)
 	availableZones := energyExplanationAvailableZones(input)
 	result := EnergyExplanationResult{
 		Schema:            energyExplanationSchema,
@@ -173,6 +174,7 @@ func UpgradeEnergyExplanationV1(input EnergyExplanationV1) EnergyExplanationResu
 		AvailableZones:    availableZones,
 		legacyNodes:       scopedEnergyExplanationLegacyNodes(legacyNodes, annualLegacyEdges, scope, allocationPolicy),
 	}
+	canonicalizeEnergyPathDriverReconciliation(&result)
 	if input.canonicalMonthlyBasis {
 		applyCanonicalMonthlyBasisToEnergyPathResult(&result)
 		if scope.Kind == "zone" && zoneHVACAllocationEnabled {
@@ -637,6 +639,308 @@ func markEnergyPathDirectZoneReconciliationPartial(reconciliation []EnergyReconc
 			break
 		}
 	}
+}
+
+// canonicalizeEnergyPathDriverReconciliation qualifies only constructor-owned
+// families which contain multiple explicit thermal components. The entire
+// scope's period collection determines identity, including months containing
+// only one component. Legacy v1 rows and aggregation remain untouched.
+func canonicalizeEnergyPathDriverReconciliation(result *EnergyExplanationResult) bool {
+	if result == nil {
+		return false
+	}
+	annual, periods, changed := canonicalEnergyPathDriverAccounting(result.Reconciliation, result.Periods, result.Sources)
+	result.Reconciliation, result.Periods = annual, periods
+	zones := append([]EnergyExplanationZoneResult(nil), result.ZoneResults...)
+	for index := range zones {
+		zone := &zones[index]
+		annual, periods, zoneChanged := canonicalEnergyPathDriverAccounting(zone.Reconciliation, zone.Periods, result.Sources)
+		zone.Reconciliation, zone.Periods = annual, periods
+		changed = changed || zoneChanged
+	}
+	if changed {
+		result.ZoneResults = zones
+	}
+	return changed
+}
+
+type energyPathDriverAccountingGroup struct {
+	base       string
+	template   EnergyReconciliation
+	components map[string]bool
+	blocked    bool
+}
+
+// The finite stored compatibility table is intentionally not a prefix/name
+// heuristic. Every referenced source must resolve uniquely and agree.
+func energyPathStoredDriverAccountingComponent(item EnergyReconciliation, sources map[string][]EnergyDataSource) string {
+	component := ""
+	if len(item.SourceIDs) == 0 {
+		return ""
+	}
+	for _, id := range item.SourceIDs {
+		matches := sources[id]
+		if len(matches) != 1 {
+			return ""
+		}
+		current := ""
+		switch matches[0].DriverComponent {
+		case "internal.reconciliation.latent", "internal.people.latent.gain":
+			current = "latent"
+		case "internal.reconciliation.convective", "internal.equipment.sensible.gain", "internal.lighting.sensible.gain", "internal.people.sensible.gain":
+			current = "sensible"
+		default:
+			return ""
+		}
+		if component != "" && component != current {
+			return ""
+		}
+		component = current
+	}
+	return component
+}
+
+func energyPathDriverAccountingIdentity(item EnergyReconciliation, sources map[string][]EnergyDataSource) (string, string) {
+	if item.Level != "driver" || item.ZoneName == "" || item.Period == "" {
+		return "", ""
+	}
+	for _, family := range []string{"internal", "outdoor_air"} {
+		base := "reconcile.driver." + family + "." + metricID(item.ZoneName)
+		if item.ID == base+"."+item.Period {
+			switch item.driverAccountingComponent {
+			case "sensible", "latent", "combined":
+				return base, item.driverAccountingComponent
+			}
+			if family == "internal" {
+				return base, energyPathStoredDriverAccountingComponent(item, sources)
+			}
+			return base, ""
+		}
+		// This exact generated semantic identity survives canonical JSON reload
+		// without adding a public field to the shared frozen-v1 row type.
+		for _, component := range []string{"sensible", "latent", "combined"} {
+			if item.ID == base+".component."+component+"."+item.Period {
+				return base, component
+			}
+		}
+	}
+	return "", ""
+}
+
+func energyPathDriverAccountingLabel(item EnergyReconciliation, component string) string {
+	label := item.Label
+	if strings.Contains(item.ID, ".component.") {
+		for _, suffix := range []string{" · Sensible", " · Latent", " · Combined"} {
+			label = strings.TrimSuffix(label, suffix)
+		}
+	}
+	if component != "" {
+		label += " · " + strings.ToUpper(component[:1]) + component[1:]
+	}
+	return label
+}
+
+func energyPathDriverAccountingSemanticsEqual(left, right EnergyReconciliation) bool {
+	return left.Level == right.Level && left.ZoneName == right.ZoneName && left.ServiceKind == right.ServiceKind &&
+		left.Unit == right.Unit && left.Basis == right.Basis && left.Formula == right.Formula && left.AllocationMethod == right.AllocationMethod &&
+		energyPathDriverAccountingLabel(left, "") == energyPathDriverAccountingLabel(right, "") &&
+		left.DirectValue == 0 && right.DirectValue == 0 && left.AllocatedValue == 0 && right.AllocatedValue == 0 &&
+		left.UnassignedValue == 0 && right.UnassignedValue == 0 && left.OvermappedValue == 0 && right.OvermappedValue == 0
+}
+
+func energyPathDriverAccountingFinite(item EnergyReconciliation) bool {
+	for _, value := range []float64{item.ExpectedValue, item.ExplainedValue, item.ResidualValue} {
+		if math.IsNaN(value) || math.IsInf(value, 0) {
+			return false
+		}
+	}
+	return true
+}
+
+func canonicalEnergyPathDriverAccounting(annual []EnergyReconciliation, periods []EnergyPeriod, sources []EnergyDataSource) ([]EnergyReconciliation, []EnergyPeriod, bool) {
+	sourceByID := map[string][]EnergyDataSource{}
+	for _, source := range sources {
+		sourceByID[source.ID] = append(sourceByID[source.ID], source)
+	}
+	type accountingContext struct {
+		period  string
+		monthly bool
+		rows    []EnergyReconciliation
+	}
+	contexts := []accountingContext{{period: "annual", rows: annual}}
+	monthContexts := map[int]int{}
+	completeMonths := true
+	for _, period := range periods {
+		monthly := period.Kind == "monthly"
+		contexts = append(contexts, accountingContext{period: period.ID, monthly: monthly, rows: period.Reconciliation})
+		if monthly {
+			month, err := strconv.Atoi(strings.TrimPrefix(period.ID, "M"))
+			_, duplicate := monthContexts[month]
+			if err != nil || month < 1 || month > 12 || period.ID != "M"+strconv.Itoa(month) || duplicate {
+				completeMonths = false
+			}
+			monthContexts[month] = len(contexts) - 1
+		}
+	}
+	completeMonths = completeMonths && len(monthContexts) == 12
+	groups := map[string]*energyPathDriverAccountingGroup{}
+	rowKey := func(item EnergyReconciliation) (string, string, string) {
+		base, component := energyPathDriverAccountingIdentity(item, sourceByID)
+		if base == "" {
+			return "", "", ""
+		}
+		return base + "\x00" + item.ZoneName, base, component
+	}
+	for _, context := range contexts {
+		seen := map[string]bool{}
+		for _, item := range context.rows {
+			key, base, component := rowKey(item)
+			if key == "" {
+				continue
+			}
+			group := groups[key]
+			if group == nil {
+				group = &energyPathDriverAccountingGroup{base: base, template: item, components: map[string]bool{}}
+				groups[key] = group
+			}
+			if !energyPathDriverAccountingSemanticsEqual(group.template, item) || !energyPathDriverAccountingFinite(item) || item.Period != context.period {
+				group.blocked = true
+			}
+			if component == "" {
+				// An old annual aggregate may contain both components. Only the
+				// independently checked twelve-month repair below can split it.
+				if context.monthly || context.period != "annual" {
+					group.blocked = true
+				}
+				continue
+			}
+			if seen[key+"\x00"+component] {
+				group.blocked = true // never deduplicate distinct observations
+			}
+			seen[key+"\x00"+component] = true
+			group.components[component] = true
+		}
+	}
+	qualify := func(item EnergyReconciliation, group *energyPathDriverAccountingGroup, component string) EnergyReconciliation {
+		item.Label = energyPathDriverAccountingLabel(item, component)
+		item.ID = group.base + ".component." + component + "." + item.Period
+		return item
+	}
+	repairAnnual := func(item EnergyReconciliation, key string, group *energyPathDriverAccountingGroup) []EnergyReconciliation {
+		if !completeMonths || item.Period != "annual" {
+			return nil
+		}
+		components := map[string]EnergyReconciliation{}
+		var expected, explained, residual float64
+		var sourceIDs []string
+		for month := 1; month <= 12; month++ {
+			found := false
+			for _, row := range contexts[monthContexts[month]].rows {
+				rowGroup, _, component := rowKey(row)
+				if rowGroup != key {
+					continue
+				}
+				if component == "" || !energyPathDriverAccountingSemanticsEqual(item, row) || !energyPathDriverAccountingFinite(row) {
+					return nil
+				}
+				found = true
+				expected = roundedEnergyNumber(expected + row.ExpectedValue)
+				explained = roundedEnergyNumber(explained + row.ExplainedValue)
+				residual = roundedEnergyNumber(residual + row.ResidualValue)
+				sourceIDs = appendUniqueStrings(sourceIDs, row.SourceIDs...)
+				current, exists := components[component]
+				if !exists {
+					current = row
+					current.Period = "annual"
+					current.SourceIDs = append([]string(nil), row.SourceIDs...)
+				} else {
+					current.ExpectedValue = roundedEnergyNumber(current.ExpectedValue + row.ExpectedValue)
+					current.ExplainedValue = roundedEnergyNumber(current.ExplainedValue + row.ExplainedValue)
+					current.ResidualValue = roundedEnergyNumber(current.ResidualValue + row.ResidualValue)
+					current.SourceIDs = appendUniqueStrings(current.SourceIDs, row.SourceIDs...)
+				}
+				components[component] = current
+			}
+			if !found {
+				return nil
+			}
+		}
+		actualSources := appendUniqueStrings(nil, item.SourceIDs...)
+		sort.Strings(actualSources)
+		sort.Strings(sourceIDs)
+		if roundedEnergyNumber(item.ExpectedValue) != expected || roundedEnergyNumber(item.ExplainedValue) != explained || roundedEnergyNumber(item.ResidualValue) != residual || !reflect.DeepEqual(actualSources, sourceIDs) {
+			return nil
+		}
+		out := []EnergyReconciliation{}
+		for _, component := range []string{"combined", "latent", "sensible"} {
+			row, exists := components[component]
+			if !exists {
+				continue
+			}
+			row = qualify(row, group, component)
+			row.Status = energyReconciliationStatus(row.ExpectedValue, row.ResidualValue)
+			sort.Strings(row.SourceIDs)
+			out = append(out, row)
+		}
+		return out
+	}
+	build := func(context accountingContext) []EnergyReconciliation {
+		out := make([]EnergyReconciliation, 0, len(context.rows))
+		for _, item := range context.rows {
+			key, _, component := rowKey(item)
+			group := groups[key]
+			if group == nil || group.blocked || len(group.components) < 2 {
+				out = append(out, item)
+				continue
+			}
+			if component != "" {
+				item = qualify(item, group, component)
+			} else if repaired := repairAnnual(item, key, group); len(repaired) > 0 {
+				out = append(out, repaired...)
+				continue
+			}
+			out = append(out, item)
+		}
+		return out
+	}
+	// A semantic qualifier can still collide if legacy metricID normalized two
+	// distinct Zone names alike. Do not invent ordinal suffixes or merge rows.
+	for _, context := range contexts {
+		ids := map[string][]string{}
+		for _, item := range build(context) {
+			key, _, _ := rowKey(item)
+			ids[item.ID] = append(ids[item.ID], key)
+		}
+		for _, keys := range ids {
+			if len(keys) < 2 {
+				continue
+			}
+			for _, key := range keys {
+				if group := groups[key]; group != nil {
+					group.blocked = true
+				}
+			}
+		}
+	}
+	changed := false
+	newAnnual := annual
+	newPeriods := append([]EnergyPeriod(nil), periods...)
+	for index, context := range contexts {
+		rows := build(context)
+		if reflect.DeepEqual(rows, context.rows) || len(rows) == 0 && len(context.rows) == 0 {
+			continue
+		}
+		changed = true
+		if index == 0 {
+			newAnnual = rows
+		} else {
+			newPeriods[index-1].Reconciliation = rows
+		}
+	}
+	if !changed {
+		return annual, periods, false
+	}
+	return newAnnual, newPeriods, true
 }
 
 func applyCanonicalMonthlyBasisToEnergyPathResult(result *EnergyExplanationResult) {
@@ -2531,10 +2835,10 @@ func filterEnergyDataSourcesForV2(input []EnergyDataSource, legacyNodes []Energy
 		// Context preparation records the signed SQL value on the source. Keep
 		// that provenance: graph nodes use absolute display values and cannot
 		// reconstruct the original sign (notably for surface convection).
-		if source.RawValue == 0 && !energyDataSourceHasPreparedValues(source) {
+		if source.RawValue == 0 && !energyDataSourceHasPreparedValues(source) && !energyDataSourceValueKnown(source, energySourceObservedRaw) {
 			source.RawValue = roundedEnergyNumber(value.raw)
 		}
-		if source.EffectiveValue == 0 && !energyDataSourceHasPreparedValues(source) {
+		if source.EffectiveValue == 0 && !energyDataSourceHasPreparedValues(source) && !energyDataSourceValueKnown(source, energySourceObservedEffective) {
 			source.EffectiveValue = roundedEnergyNumber(value.effective)
 		}
 		if source.EffectiveMultiplier == 0 {
@@ -2596,15 +2900,30 @@ func appendEnergyDataSourceScopeDetails(parent []EnergyDataSource, scoped []Ener
 			continue
 		}
 		detail := EnergyDataSourceScopeDetail{
-			Scope:                 normalizeEnergyExplanationScope(scope),
-			RawValue:              source.RawValue,
-			EffectiveValue:        source.EffectiveValue,
-			EffectiveMultiplier:   source.EffectiveMultiplier,
-			MultiplierApplication: source.MultiplierApplication,
-			AllocationFactor:      source.AllocationFactor,
-			AllocatedValue:        source.AllocatedValue,
-			AllocationApplied:     source.AllocationApplied,
-			AggregationBasis:      firstNonEmpty(source.AggregationBasis, scope.AggregationBasis),
+			Scope:                        normalizeEnergyExplanationScope(scope),
+			RawValue:                     source.RawValue,
+			EffectiveValue:               source.EffectiveValue,
+			EffectiveMultiplier:          source.EffectiveMultiplier,
+			MultiplierApplication:        source.MultiplierApplication,
+			AllocationFactor:             source.AllocationFactor,
+			AllocatedValue:               source.AllocatedValue,
+			AllocationApplied:            source.AllocationApplied,
+			AggregationBasis:             firstNonEmpty(source.AggregationBasis, scope.AggregationBasis),
+			inspectorScopedValuePresence: true,
+		}
+		// Only an already-scoped, explicitly owning source can carry its own
+		// observed/stored scalar presence into this detail. A Building parent
+		// or service pool's known total does not prove a Zone raw/effective zero.
+		if detail.Scope.Kind == "zone" && strings.TrimSpace(source.ZoneName) != "" &&
+			strings.EqualFold(strings.TrimSpace(source.ZoneName), strings.TrimSpace(detail.Scope.ZoneName)) {
+			for _, bit := range []uint8{energySourceObservedRaw, energySourceObservedEffective} {
+				// Preserve the existing native prepared-driver guarantee, but
+				// never extend a partial observation mask or sparse stored read.
+				preparedOwnValue := source.observedValuePresence == 0 && !source.inspectorDecodedFromJSON && energyDataSourceHasPreparedValues(source)
+				if energyDataSourceValueKnown(source, bit) || preparedOwnValue {
+					detail.inspectorValuePresence |= bit
+				}
+			}
 		}
 		parent[index].ScopeDetails = append(parent[index].ScopeDetails, detail)
 		sort.SliceStable(parent[index].ScopeDetails, func(i, j int) bool {
@@ -4686,6 +5005,7 @@ func sanitizeEnergyExplanationV2Result(result *EnergyExplanationResult) bool {
 	}
 	result.Sources = annotateEnergyPathWaterContextSources(result.Sources, allNodes)
 	changed = changed || !reflect.DeepEqual(originalSources, result.Sources)
+	changed = canonicalizeEnergyPathDriverReconciliation(result) || changed
 
 	var graphChanged bool
 	result.Nodes, result.Links, result.Reconciliation, graphChanged = sanitizeEnergyExplanationV2Graph(

@@ -424,6 +424,53 @@ the interval/presence/complete-coverage acceptance guards remain unfinished.
 These are explicit next tasks within section 22, not deferred later items or
 approved fixture expectations. No numeric expected manifest is approved.
 
+Follow-up raw-wire guards now reject missing/null required quantities before
+compatibility decoding. The initial preserved-candidate presence check passed;
+the later `found <= total` invariant correctly rejects that older candidate's
+Zone 9/0 and 2/0 counts. An independent topology audit also identified false July/August
+heating allocation to unserved plenums and discarded, already-reported per-loop
+fan energy pools. These must be fixed and checked against their exact connected
+recipients; the unreviewed fallback numbers are not approved expectations.
+
+The reconciliation-fixed real candidate eliminates the shared structural
+blocker: a second 17,469-check diagnostic fails with 218 remaining discrepancies,
+down from 13,150. Loads, carriers, completeness and carrier residual comparisons
+have no mismatches in that run. Explicit bounded presentation intervals retain
+tiny positive source centers and unknown/zero distinctions. Known-topology
+zero-load allocation and derived native-Zone raw metadata corrections now pass
+focused regressions; actual post-fix verification and the eight-group manifest
+remain required. The complete chronological evidence is in the real-model doc.
+
+A third actual diagnostic includes 255 independent per-loop fan checks and
+still rejects 262 of 17,724 checks: 46 scoped reported-zero fields, 208 fan
+carrier-selector mismatches and eight wholly pruned zero/tiny allocation-row
+fields. Derived raw quantities, loads, end uses, carriers, all 52 ratios,
+completeness counts and carrier residual comparisons have no mismatches in
+that candidate. This is not acceptance. Scoped proof, canonical fan selectors
+and bounded whole-row presence corrections are undergoing regression tests;
+full verification also caught and prompted a fix for omitted IdealLoads mixed
+service recipients. Exact original-wire decoding now prevents compatibility
+repair from concealing runtime defects. A fresh complete diagnostic and full
+repository/Wails verification remain required before the next checkpoint.
+
+The next original-wire diagnostic reduces these to four fan Zone-month
+rounding failures; all other 17,720 checks pass. Largest-remainder apportionment
+now bounds each Zone's own rounding error while preserving the full pool,
+instead of accumulating earlier rounding errors in the final Zone. Dedicated
+ordering/zero-weight tests and existing allocation/v1 regressions pass. The
+independent expected centers and intervals were not changed. The new original-wire
+candidate diagnostic now passes all 17,724 checks in 58.151 seconds; the separate
+report retains `acceptance: false`. Required complete coverage and approved
+eight-group expected manifests across all model types remain unfinished.
+A full repository test and Wails build passed immediately
+before this final bounded rounding fix, and verification is repeated for the
+checkpoint.
+
+The post-rounding-fix full `scripts/verify.ps1` now also passes, including all
+actual frontend tests, the simulation suite and Wails production build
+(10.101 seconds). The first passing Large Office numeric diagnostic and these
+regressions form an intermediate checkpoint; section 22 remains active.
+
 Checklist section 22's actual-model fixtures and expected manifests also remain
 required between EPATH-204 and EPATH-210; they have no individual EPATH numbers.
 The final completion definition in section 26 is part of acceptance as well.

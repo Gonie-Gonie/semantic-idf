@@ -316,7 +316,7 @@ func annotateLegacyEnergyDriverSources(sources []EnergyDataSource, nodes []Energ
 			if source.ZoneName == "" {
 				source.ZoneName = node.ZoneName
 			}
-			if source.RawValue == 0 && !energyDataSourceHasPreparedValues(*source) {
+			if source.RawValue == 0 && !energyDataSourceHasPreparedValues(*source) && !energyDataSourceValueKnown(*source, energySourceObservedRaw) {
 				source.RawValue = firstNonZero(node.RawValue, node.SignedValue, node.Value)
 			}
 			source.RelatedEntityIDs = appendUniqueStrings(source.RelatedEntityIDs, node.RelatedEntityIDs...)

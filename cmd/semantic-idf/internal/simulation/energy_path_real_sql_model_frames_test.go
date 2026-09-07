@@ -7,16 +7,52 @@ import (
 	"strings"
 )
 
-type epathSQLQuantity struct{ Value, Error float64 }
+type epathSQLQuantity struct {
+	Value, Error float64
+	Bounds       *[2]float64
+}
+
+func (q epathSQLQuantity) bounds() (float64, float64) {
+	if q.Bounds != nil {
+		return q.Bounds[0], q.Bounds[1]
+	}
+	return q.Value - q.Error, q.Value + q.Error
+}
+func epathSQLBounded(value, low, high float64) epathSQLQuantity {
+	return epathSQLQuantity{Value: value, Error: math.Max(value-low, high-value), Bounds: &[2]float64{low, high}}
+}
+func (q epathSQLQuantity) valid() bool {
+	low, high := q.bounds()
+	return epathOracleFinite(q.Value) && epathOracleFinite(q.Error) && q.Error >= 0 && epathOracleFinite(low) && epathOracleFinite(high) && low <= q.Value && q.Value <= high && q.Error+1e-12 >= math.Max(q.Value-low, high-q.Value)
+}
+func (q epathSQLQuantity) includesZero() bool {
+	low, high := q.bounds()
+	return q.valid() && low <= 0 && high >= 0
+}
 
 func (q epathSQLQuantity) add(other epathSQLQuantity) epathSQLQuantity {
-	return epathSQLQuantity{q.Value + other.Value, q.Error + other.Error}
+	low, high := q.bounds()
+	otherLow, otherHigh := other.bounds()
+	return epathSQLBounded(q.Value+other.Value, low+otherLow, high+otherHigh)
 }
 func (q epathSQLQuantity) times(factor float64) epathSQLQuantity {
-	return epathSQLQuantity{q.Value * factor, q.Error * math.Abs(factor)}
+	low, high := q.bounds()
+	if factor < 0 {
+		low, high = high, low
+	}
+	return epathSQLBounded(q.Value*factor, low*factor, high*factor)
 }
 func (q epathSQLQuantity) positive() epathSQLQuantity {
-	return epathSQLQuantity{math.Max(0, q.Value), q.Error}
+	low, high := q.bounds()
+	return epathSQLBounded(math.Max(0, q.Value), math.Max(0, low), math.Max(0, high))
+}
+
+// The SQL center stays intact. Only the presentation contribution may be
+// omitted; its upper bound is never doubled by a symmetric zero-crossing pad.
+func (q epathSQLQuantity) optionalPresentation() epathSQLQuantity {
+	positive := q.positive()
+	_, high := positive.bounds()
+	return epathSQLBounded(positive.Value, 0, high)
 }
 
 type epathSQLZone struct {
@@ -131,6 +167,9 @@ func epathSQLSelect(sources []epathRealSQLSource, selector epathRealSQLSelector)
 }
 
 func epathSQLMonthly(source epathRealSQLSource, precision epathRealSQLPrecision) ([]epathSQLQuantity, error) {
+	if precision.DecimalPlaces != 3 || precision.SourceStages < 1 || precision.SourceStages > 3 || precision.ContributionStages < 1 || precision.ContributionStages > 3 {
+		return nil, fmt.Errorf("invalid source precision configuration")
+	}
 	if len(source.Months) != 12 {
 		return nil, fmt.Errorf("source %s/%s does not have twelve actual monthly observations", source.Name, source.KeyValue)
 	}
@@ -139,7 +178,11 @@ func epathSQLMonthly(source epathRealSQLSource, precision epathRealSQLPrecision)
 		if bucket.Month != index+1 || bucket.Rows != 1 || bucket.EnergyKWh == nil || !epathOracleFinite(*bucket.EnergyKWh) {
 			return nil, fmt.Errorf("source %s/%s has unknown/duplicate monthly energy %d", source.Name, source.KeyValue, bucket.Month)
 		}
-		values[index] = epathSQLQuantity{*bucket.EnergyKWh, float64(precision.SourceStages) * .0005}
+		budget := float64(precision.SourceStages) * .0005
+		if *bucket.EnergyKWh == 0 {
+			budget = 0
+		} // Actual reported zero remains exactly zero through rounding.
+		values[index] = epathSQLQuantity{Value: *bucket.EnergyKWh, Error: budget}
 	}
 	return values, nil
 }
@@ -422,23 +465,32 @@ func epathCompileSQLModelFrames(sqlPath string, observed []epathRealSQLSource, m
 }
 
 func epathSQLShare(load, pressure, denominator epathSQLQuantity, precision epathRealSQLPrecision) (epathSQLQuantity, error) {
+	if precision.DecimalPlaces != 3 || precision.SourceStages < 1 || precision.SourceStages > 3 || precision.ContributionStages < 1 || precision.ContributionStages > 3 {
+		return epathSQLQuantity{}, fmt.Errorf("invalid allocation precision configuration")
+	}
 	for _, q := range []epathSQLQuantity{load, pressure, denominator} {
-		if !epathOracleFinite(q.Value) || !epathOracleFinite(q.Error) || q.Value < 0 || q.Error < 0 {
+		if !q.valid() || q.Value < 0 {
 			return epathSQLQuantity{}, fmt.Errorf("invalid allocation interval")
 		}
 	}
-	if load.Value == 0 {
+	loadLow, loadHigh := load.bounds()
+	pressureLow, pressureHigh := pressure.bounds()
+	denominatorLow, denominatorHigh := denominator.bounds()
+	if loadHigh == 0 {
 		return epathSQLQuantity{}, nil
 	}
 	if denominator.Value <= 0 {
 		return epathSQLQuantity{}, fmt.Errorf("positive delivered load has no observed pressure denominator; explicit unassigned proof required")
 	}
 	value := load.Value * pressure.Value / denominator.Value
-	lowDenominator := denominator.Value - denominator.Error
-	if lowDenominator <= 0 {
+	if denominatorLow <= 0 {
 		return epathSQLQuantity{}, fmt.Errorf("rounding interval cannot prove a positive allocation denominator")
 	}
-	low := math.Max(0, load.Value-load.Error) * math.Max(0, pressure.Value-pressure.Error) / (denominator.Value + denominator.Error)
-	high := (load.Value + load.Error) * (pressure.Value + pressure.Error) / lowDenominator
-	return epathSQLQuantity{value, math.Max(value-low, high-value) + float64(precision.ContributionStages)*.0005}, nil
+	if pressureHigh == 0 {
+		return epathSQLQuantity{}, nil
+	}
+	low := math.Max(0, loadLow) * math.Max(0, pressureLow) / denominatorHigh
+	high := loadHigh * pressureHigh / denominatorLow
+	budget := float64(precision.ContributionStages) * .0005
+	return epathSQLBounded(value, math.Max(0, low-budget), high+budget), nil
 }

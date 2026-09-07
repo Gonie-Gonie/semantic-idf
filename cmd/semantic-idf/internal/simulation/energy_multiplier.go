@@ -2,6 +2,7 @@ package simulation
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
@@ -270,6 +271,9 @@ func applyEnergyExplanationMultipliers(series []energyExplanationSeries, sources
 			source.EffectiveValue = roundedEnergyNumber(item.Total)
 			source.EffectiveMultiplier = roundedEnergyNumber(factor)
 			source.MultiplierApplication = application
+			if resolved && factor > 0 && !math.IsNaN(factor) && !math.IsInf(factor, 0) && energyDataSourceValueKnown(*source, energySourceObservedRaw) {
+				source.observedValuePresence |= energySourceObservedEffective
+			}
 			if source.ZoneName == "" {
 				source.ZoneName = item.ZoneName
 			}
@@ -293,10 +297,13 @@ func applyEnergyExplanationMultipliers(series []energyExplanationSeries, sources
 			sourceName:     source.Name,
 			sourceKeyValue: source.KeyValue,
 		})
-		factor, application, _ := energyExplanationMultiplierForSeries(item, index)
+		factor, application, resolved := energyExplanationMultiplierForSeries(item, index)
 		source.EffectiveMultiplier = roundedEnergyNumber(factor)
 		source.MultiplierApplication = application
 		source.EffectiveValue = roundedEnergyNumber(source.RawValue * factor)
+		if resolved && factor > 0 && !math.IsNaN(factor) && !math.IsInf(factor, 0) && energyDataSourceValueKnown(*source, energySourceObservedRaw) {
+			source.observedValuePresence |= energySourceObservedEffective
+		}
 	}
 	return series, sources, warnings
 }

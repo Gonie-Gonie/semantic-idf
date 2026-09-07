@@ -486,14 +486,7 @@ func epathReadOracleCandidate(bundle PurposeResultBundle, item epathRealOracleMe
 	switch target.Collection {
 	case "nodes":
 		for _, node := range nodes {
-			category := node.DriverCategory
-			if node.Level == "end_use" {
-				category = node.EndUse
-			}
-			if node.Level == "carrier" {
-				category = node.Carrier
-			}
-			if !match(target.ID, node.ID) || !match(target.Kind, node.Kind) || !match(target.ThermalComponent, node.ThermalComponent) || !match(target.Level, node.Level) || !match(target.Category, category) || !match(target.Service, node.ServiceKind) || !match(target.Carrier, node.Carrier) || !match(target.Basis, node.Basis) {
+			if !epathOracleNodeMatches(node, target) {
 				continue
 			}
 			if node.Unit != target.Unit || !match(target.ScaleDomain, node.ScaleDomain) || !match(target.AggregationBasis, node.AggregationBasis) {

@@ -2,8 +2,61 @@ package simulation
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
+	"math"
+	"time"
 )
+
+const (
+	energySourceObservedRaw uint8 = 1 << iota
+	energySourceObservedEffective
+)
+
+// A source's scalar presence is independent of graph allocation and of its
+// other scalar. Explicit stored zeros survive repeated reads; absent/null
+// fields and unknown scope values do not acquire a reported-zero claim.
+func energyDataSourceValueKnown(source EnergyDataSource, bit uint8) bool {
+	return source.observedValuePresence&bit != 0 ||
+		source.inspectorDecodedFromJSON && source.inspectorValuePresence&bit != 0
+}
+
+// This is an observed reporting axis, not an assumed annual calendar. A short
+// run can contain three Monthly records; each source must actually report all
+// three. EnergyPlus Monthly Time records omit WarmupFlag (NULL), unlike a
+// timestep's explicit warmup marker. Missing schema cannot prove this axis.
+func energyPathObservedMonthlyTimeAxis(db *sql.DB) map[int64]bool {
+	rows, err := db.Query(`SELECT t.TimeIndex,t.Year,t.Month,t.Day,t."Interval",t.EnvironmentPeriodIndex
+		FROM "Time" t JOIN EnvironmentPeriods e ON e.EnvironmentPeriodIndex=t.EnvironmentPeriodIndex
+		WHERE e.EnvironmentType=3 AND t.IntervalType=3 AND (t.WarmupFlag IS NULL OR t.WarmupFlag=0)`)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	axis := map[int64]bool{}
+	var environment int64
+	for rows.Next() {
+		var index, year, month, day, env sql.NullInt64
+		var minutes sql.NullFloat64
+		if err := rows.Scan(&index, &year, &month, &day, &minutes, &env); err != nil {
+			return nil
+		}
+		if !index.Valid || index.Int64 <= 0 || !year.Valid || year.Int64 <= 0 || !month.Valid || month.Int64 < 1 || month.Int64 > 12 || !day.Valid || !env.Valid || env.Int64 <= 0 ||
+			!minutes.Valid || minutes.Float64 <= 0 || math.IsNaN(minutes.Float64) || math.IsInf(minutes.Float64, 0) {
+			return nil
+		}
+		last := time.Date(int(year.Int64), time.Month(month.Int64)+1, 0, 0, 0, 0, 0, time.UTC).Day()
+		if day.Int64 < 1 || day.Int64 > int64(last) || axis[index.Int64] || environment != 0 && environment != env.Int64 {
+			return nil
+		}
+		environment = env.Int64
+		axis[index.Int64] = true
+	}
+	if rows.Err() != nil || len(axis) == 0 {
+		return nil
+	}
+	return axis
+}
 
 // Allocated driver algorithms know all three quantities, including the zero
 // pressure of an Other/storage contribution. Stored sparse nodes do not carry
@@ -112,9 +165,7 @@ func energyPathSourcesForWire(sources []EnergyDataSource) []energyPathSourceWire
 
 func (wire energyPathSourceWire) MarshalJSON() ([]byte, error) {
 	source := wire.EnergyDataSource
-	if !energyDataSourceHasPreparedValues(source) {
-		return json.Marshal(source)
-	}
+	prepared := energyDataSourceHasPreparedValues(source)
 	type detailWire struct {
 		EnergyDataSourceScopeDetail
 		RawValue       *float64 `json:"rawValue,omitempty"`
@@ -122,10 +173,17 @@ func (wire energyPathSourceWire) MarshalJSON() ([]byte, error) {
 	}
 	details := make([]detailWire, len(source.ScopeDetails))
 	for index, detail := range source.ScopeDetails {
-		known := detail.MultiplierApplication != "" && detail.EffectiveMultiplier > 0
+		known := prepared && detail.MultiplierApplication != "" && detail.EffectiveMultiplier > 0
+		exactPresence := detail.inspectorDecodedFromJSON || detail.inspectorScopedValuePresence
 		details[index] = detailWire{detail,
-			energyPathPreparedSourceValue(detail.RawValue, known, detail.inspectorDecodedFromJSON, detail.inspectorValuePresence, 1),
-			energyPathPreparedSourceValue(detail.EffectiveValue, known, detail.inspectorDecodedFromJSON, detail.inspectorValuePresence, 2)}
+			energyPathPreparedSourceValue(detail.RawValue, known || detail.inspectorValuePresence&1 != 0, exactPresence, detail.inspectorValuePresence, 1),
+			energyPathPreparedSourceValue(detail.EffectiveValue, known || detail.inspectorValuePresence&2 != 0, exactPresence, detail.inspectorValuePresence, 2)}
+	}
+	value := func(number float64, bit uint8) *float64 {
+		if energyDataSourceValueKnown(source, bit) {
+			return &number
+		}
+		return energyPathPreparedSourceValue(number, prepared, source.inspectorDecodedFromJSON, source.inspectorValuePresence, bit)
 	}
 	return json.Marshal(struct {
 		EnergyDataSource
@@ -133,8 +191,8 @@ func (wire energyPathSourceWire) MarshalJSON() ([]byte, error) {
 		EffectiveValue *float64     `json:"effectiveValue,omitempty"`
 		ScopeDetails   []detailWire `json:"scopeDetails,omitempty"`
 	}{source,
-		energyPathPreparedSourceValue(source.RawValue, true, source.inspectorDecodedFromJSON, source.inspectorValuePresence, 1),
-		energyPathPreparedSourceValue(source.EffectiveValue, true, source.inspectorDecodedFromJSON, source.inspectorValuePresence, 2), details})
+		value(source.RawValue, energySourceObservedRaw),
+		value(source.EffectiveValue, energySourceObservedEffective), details})
 }
 
 func energyPathPreparedSourceValue(value float64, known, decoded bool, presence, bit uint8) *float64 {
