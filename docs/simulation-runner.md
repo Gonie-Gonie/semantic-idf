@@ -209,11 +209,20 @@ When an `ElectricLoadCenter:Storage:*` object is present, Basic Energy also
 requests electric storage charge and discharge energy variables. Charge is
 treated as a measured energy-variable end use, while discharge is shown as a
 separate support flow so it does not inflate mapped facility consumption.
-Onsite electricity production remains visible as a Level 1 energy end-use item
-and summary/export row, but it is not counted as mapped facility consumption
-when residuals and mapped percent are calculated. In Sankey payloads it is
-linked with `relation=onsite_production` so the measured production source is
-traceable without being classified as consumption.
+Purchased, produced, sold, and storage-discharge electricity are supply context,
+not consumption end uses. The v2 graph retains one Electricity carrier and
+exact-source `support_supply` traces; the carrier inspector shows the scoped
+period's Supply breakdown. The compact support strip appears only for nonzero
+generation or storage activity, never for purchases or sales alone. Storage
+charge remains part of consumption and has a separate context observation so
+its value is not inferred from the merged Other end use or counted twice.
+Each carrier is reconciled as facility consumption minus its incoming end-use
+carrier splits. Signed residuals are recomputed after monthly-to-annual
+aggregation and when stored results are read. Residuals appear in carrier
+badges and the inspector; a positive gap exceeding either 2% of facility use or
+0.01 kWh additionally produces an `Unclassified energy` branch. Negative gaps
+remain inspector-only because adding a positive branch would inflate the
+overmapped flow. Supply sources never enter consumption closure provenance.
 When both energy and rate outputs are present for the same delivered-load or
 heat-driver target, the explanation parser uses the reported energy series and
 keeps the rate series only as traceable fallback source metadata. Completeness

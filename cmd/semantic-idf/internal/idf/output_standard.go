@@ -296,7 +296,7 @@ func standardOutputRecommendationApplies(item OutputRecommendation, features sta
 		return features.hasExteriorLights
 	case strings.Contains(key, "electricity:refrigeration"):
 		return features.hasRefrigeration
-	case strings.Contains(key, "electricityproduced:facility"):
+	case strings.Contains(key, "electricitypurchased:facility"), strings.Contains(key, "electricityproduced:facility"), strings.Contains(key, "electricitysurplussold:facility"):
 		return features.hasOnsiteGeneration
 	case strings.Contains(key, "districtcooling:cooling"):
 		return features.hasDistrictCooling

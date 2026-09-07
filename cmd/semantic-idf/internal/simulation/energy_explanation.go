@@ -425,8 +425,10 @@ const (
 	energyRelationshipRuleAllocatedAuxiliaryServicePath = "allocation.by_auxiliary_service_path_share"
 	energyRelationshipRuleHeatDriverBalance             = "heat.driver_balance"
 	energyRelationshipRuleInternalGainHeat              = "heat.internal_gain_energy"
+	energyRelationshipRulePurchasedElectricity          = "support.purchased_electricity"
 	energyRelationshipRuleOnsiteProduction              = "support.onsite_production"
 	energyRelationshipRuleStorageDischarge              = "support.storage_discharge"
+	energyRelationshipRuleSoldElectricity               = "support.sold_electricity"
 	energyRelationshipRuleEnergyResidual                = "residual.energy_total"
 	energyRelationshipRuleHeatResidual                  = "residual.heat_driver_balance"
 )
@@ -2703,8 +2705,10 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 	warnings := []EnergyWarning{}
 	meterEndUseRule := energyRelationshipRuleByID(energyRelationshipRuleMeterEndUse)
 	measuredEnergyVariableRule := energyRelationshipRuleByID(energyRelationshipRuleMeasuredEnergyVariable)
+	purchasedElectricityRule := energyRelationshipRuleByID(energyRelationshipRulePurchasedElectricity)
 	onsiteProductionRule := energyRelationshipRuleByID(energyRelationshipRuleOnsiteProduction)
 	storageDischargeRule := energyRelationshipRuleByID(energyRelationshipRuleStorageDischarge)
+	soldElectricityRule := energyRelationshipRuleByID(energyRelationshipRuleSoldElectricity)
 	measuredLoadRule := energyRelationshipRuleByID(energyRelationshipRuleMeasuredLoad)
 	allocatedZoneLoadRule := energyRelationshipRuleByID(energyRelationshipRuleAllocatedZoneLoad)
 	heatDriverRule := energyRelationshipRuleByID(energyRelationshipRuleHeatDriverBalance)
@@ -2759,10 +2763,19 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 			rule := onsiteProductionRule
 			relation := "onsite_production"
 			edgePrefix := "production"
-			if supportNode.node.EndUse == "storage_discharge" {
+			switch supportNode.node.EndUse {
+			case "electricity_purchased":
+				rule = purchasedElectricityRule
+				relation = "purchased_electricity"
+				edgePrefix = "supply"
+			case "storage_discharge":
 				rule = storageDischargeRule
 				relation = "storage_discharge"
 				edgePrefix = "support"
+			case "electricity_sold":
+				rule = soldElectricityRule
+				relation = "sold_electricity"
+				edgePrefix = "export"
 			}
 			edges = append(edges, EnergyExplanationEdge{
 				ID:        edgeID(edgePrefix, period, facilityID, supportID),
@@ -2794,17 +2807,18 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 			Formula:        "facility carrier total - mapped broad end-use meters",
 			SourceIDs:      energySourceIDs,
 		})
-		if residualAbs > energyResidualVisibilityThreshold(facilityValue) {
+		if energyCarrierResidualVisibleInGraph(facilityValue, residual) {
 			residualID := "residual.energy." + carrier
 			addNode(EnergyExplanationNode{
 				ID:        residualID,
 				Level:     "residual",
 				Kind:      "energy.residual",
-				Label:     energyCarrierLabel(carrier) + " residual / other",
+				Label:     "Unclassified energy",
 				Value:     residualAbs,
 				Unit:      nodes[facilityID].node.Unit,
 				Period:    period,
 				Carrier:   carrier,
+				Badges:    []string{"unclassified_energy"},
 				Basis:     energyResidualRule.Basis,
 				SourceIDs: energySourceIDs,
 			})
@@ -4369,6 +4383,16 @@ func energyRelationshipRuleCatalog() []EnergyRelationshipRule {
 			Formula:        "link matching internal-gain end-use energy with reported zone heat-gain variable; values are independently measured",
 		},
 		{
+			ID:             energyRelationshipRulePurchasedElectricity,
+			FromLevel:      "energy",
+			ToLevel:        "energy",
+			FromKind:       "facility_total",
+			ToKind:         "purchased_electricity",
+			RequiredSource: []string{"ElectricityPurchased:Facility"},
+			Basis:          "measured_meter",
+			Formula:        "purchased electricity shown in supply context and excluded from end-use consumption reconciliation",
+		},
+		{
 			ID:             energyRelationshipRuleOnsiteProduction,
 			FromLevel:      "energy",
 			ToLevel:        "energy",
@@ -4387,6 +4411,16 @@ func energyRelationshipRuleCatalog() []EnergyRelationshipRule {
 			RequiredSource: []string{"Electric Storage Discharge Energy"},
 			Basis:          "measured_energy_variable",
 			Formula:        "storage discharge shown separately from facility consumption residual",
+		},
+		{
+			ID:             energyRelationshipRuleSoldElectricity,
+			FromLevel:      "energy",
+			ToLevel:        "energy",
+			FromKind:       "facility_total",
+			ToKind:         "sold_electricity",
+			RequiredSource: []string{"ElectricitySurplusSold:Facility"},
+			Basis:          "measured_meter",
+			Formula:        "surplus electricity sold shown in supply context and excluded from end-use consumption reconciliation",
 		},
 		{
 			ID:             energyRelationshipRuleEnergyResidual,
@@ -4447,7 +4481,9 @@ func energyMeterAliasCatalog() []energyMeterAliasDefinition {
 		{Kind: "energy.water_systems", Label: "Water systems", Carrier: "electricity", EndUse: "water_systems", HierarchyLevel: "broad_end_use", Aliases: []string{"WaterSystems:Electricity", "Electricity:WaterSystems"}},
 		{Kind: "energy.exterior_lighting", Label: "Exterior lighting", Carrier: "electricity", EndUse: "exterior_lighting", HierarchyLevel: "broad_end_use", Aliases: []string{"ExteriorLights:Electricity", "Electricity:ExteriorLights"}},
 		{Kind: "energy.refrigeration", Label: "Refrigeration", Carrier: "electricity", EndUse: "refrigeration", HierarchyLevel: "broad_end_use", Aliases: []string{"Refrigeration:Electricity", "Electricity:Refrigeration"}},
+		{Kind: "energy.electricity_purchased", Label: "Purchased electricity", Carrier: "electricity", EndUse: "electricity_purchased", HierarchyLevel: "supply_context", Aliases: []string{"ElectricityPurchased:Facility"}},
 		{Kind: "energy.generators", Label: "Generators / onsite production", Carrier: "electricity", EndUse: "generators", HierarchyLevel: "broad_end_use", Aliases: []string{"Generators:ElectricityProduced", "ElectricityProduced:Facility"}},
+		{Kind: "energy.electricity_sold", Label: "Electricity sold", Carrier: "electricity", EndUse: "electricity_sold", HierarchyLevel: "supply_context", Aliases: []string{"ElectricitySurplusSold:Facility"}},
 		{Kind: "energy.cooling", Label: "District cooling", Carrier: "district_cooling", EndUse: "cooling", HierarchyLevel: "broad_end_use", Aliases: []string{"Cooling:DistrictCooling", "DistrictCooling:Cooling"}},
 		{Kind: "energy.heating", Label: "Natural gas heating", Carrier: "natural_gas", EndUse: "heating", HierarchyLevel: "broad_end_use", Aliases: []string{"Heating:NaturalGas", "Heating:Gas", "NaturalGas:Heating", "Gas:Heating"}, LegacyAliases: []string{"NaturalGas:Heating", "Gas:Heating"}, OutputRequestAliases: []string{"Heating:NaturalGas", "Heating:Gas"}},
 		{Kind: "energy.heating", Label: "Gasoline heating", Carrier: "gasoline", EndUse: "heating", HierarchyLevel: "broad_end_use", Aliases: []string{"Heating:Gasoline", "Gasoline:Heating"}, LegacyAliases: []string{"Gasoline:Heating"}, OutputRequestAliases: []string{"Heating:Gasoline"}},
@@ -4882,6 +4918,9 @@ func buildEnergyExplanationCompleteness(series []energyExplanationSeries, source
 		if item.Level == "energy" && canonicalEnergyPathCarrier(item.Carrier) == "water" && !energyExplanationUnitIsSiteEnergy(item.Unit) {
 			continue
 		}
+		if energyExplanationIsSupportEndUse(item) {
+			continue
+		}
 		key := energyExplanationCompletenessGroupKey(item)
 		if key == "" {
 			continue
@@ -4936,13 +4975,29 @@ func partitionEnergyExplanationContextOutputs(input []string) ([]string, []strin
 	energy := make([]string, 0, len(input))
 	context := make([]string, 0)
 	for _, name := range input {
-		if energyExplanationNameIsWaterMeter(name) {
+		if energyExplanationNameIsWaterMeter(name) || energyExplanationNameIsSupplyContext(name) {
 			context = appendUniquePurposeString(context, name)
 			continue
 		}
 		energy = appendUniquePurposeString(energy, name)
 	}
 	return energy, context
+}
+
+func energyExplanationNameIsSupplyContext(name string) bool {
+	definition, ok := energyMeterAliasDefinitionForName(name)
+	if !ok {
+		definition, ok = energyVariableAliasDefinitionForName(name)
+	}
+	if !ok {
+		return false
+	}
+	return energyExplanationIsSupportEndUse(energyExplanationSeries{
+		Level:   "energy",
+		Kind:    definition.Kind,
+		Carrier: definition.Carrier,
+		EndUse:  definition.EndUse,
+	})
 }
 
 func energyExplanationNameIsWaterMeter(name string) bool {
@@ -5240,7 +5295,15 @@ func energyExplanationEnergyNodeID(item energyExplanationSeries) string {
 }
 
 func energyExplanationIsSupportEndUse(item energyExplanationSeries) bool {
-	return (item.Stage == "support" || item.Level == "energy") && (item.EndUse == "generators" || item.EndUse == "storage_discharge" || item.Kind == "energy.generators")
+	if item.Stage != "support" && item.Level != "energy" {
+		return false
+	}
+	switch canonicalEnergyPathPart(firstNonEmpty(item.EndUse, energyExplanationKindSuffix(item.Kind))) {
+	case "generators", "onsite_production", "production", "storage_discharge", "electricity_purchased", "purchased_electricity", "electricity_sold", "sold_electricity", "surplus_sold":
+		return true
+	default:
+		return item.Kind == "energy.generators"
+	}
 }
 
 func energyExplanationEndUseCarrierKey(endUse string, carrier string) string {
@@ -5344,6 +5407,17 @@ func energyServiceLabel(serviceKind string) string {
 
 func energyResidualVisibilityThreshold(reference float64) float64 {
 	return math.Max(0.001, math.Abs(reference)*0.001)
+}
+
+const energyCarrierResidualAbsoluteGraphThresholdKWh = 0.01
+
+func energyCarrierResidualGraphThreshold(reference float64) float64 {
+	// Either a material share or an absolute amount warrants a visible branch.
+	return math.Min(energyCarrierResidualAbsoluteGraphThresholdKWh, math.Abs(reference)*0.02)
+}
+
+func energyCarrierResidualVisibleInGraph(expected float64, residual float64) bool {
+	return residual > 0 && residual > energyCarrierResidualGraphThreshold(expected)
 }
 
 func energyReconciliationStatus(expected float64, residual float64) string {

@@ -84,7 +84,6 @@ func UpgradeEnergyExplanationV1(input EnergyExplanationV1) EnergyExplanationResu
 	}
 	annotatedSources = annotateEnergyPathWaterContextSources(annotatedSources, allLegacyNodes)
 	annotatedSources = annotateLegacyEnergyLoadDetailSources(annotatedSources, allLegacyNodes)
-	hasInvalidSiteEnergy := energyPathHasInvalidCarrierUnits(allLegacyNodes)
 	legacyNodes := foldLegacyEnergyLoadDetailNodes(inferLegacyEnergyDriverProjectionGuards(annualLegacyNodes, annotatedSources))
 	nodes, links := upgradeEnergyExplanationGraph(legacyNodes, annualLegacyEdges, annotatedSources, scope, allocationPolicy, input.canonicalMonthlyBasis)
 	reconciliation, warnings := upgradeEnergyExplanationAccounting(input.Reconciliation, input.Warnings, legacyNodes, annualLegacyEdges, scope, allocationPolicy)
@@ -92,10 +91,9 @@ func UpgradeEnergyExplanationV1(input EnergyExplanationV1) EnergyExplanationResu
 	reconciliation = removeEnergyPathWaterReconciliation(reconciliation)
 	reconciliation = reconcileEnergyPathCarrierTotals(nodes, links, reconciliation, "annual")
 	reconciliation = filterEnergyPathContextOnlyWaterReconciliation(reconciliation, nodes)
+	nodes, links = rebuildEnergyPathCarrierResidualPresentation(nodes, links, reconciliation, "annual")
 	completeness := normalizeEnergyPathWaterContextCompleteness(input.Completeness, annotatedSources, reconciliation)
-	if hasInvalidSiteEnergy {
-		completeness.MappedPercent = energyExplanationMappedPercentFromReconciliation(reconciliation)
-	}
+	completeness = energyPathCompletenessFromCarrierReconciliation(completeness, scope, reconciliation)
 	periods := make([]EnergyPeriod, 0, len(input.Periods))
 	for _, period := range input.Periods {
 		var periodDirectNodes []EnergyExplanationNode
@@ -124,6 +122,7 @@ func UpgradeEnergyExplanationV1(input EnergyExplanationV1) EnergyExplanationResu
 		periodReconciliation = removeEnergyPathWaterReconciliation(periodReconciliation)
 		periodReconciliation = reconcileEnergyPathCarrierTotals(periodNodes, periodLinks, periodReconciliation, period.ID)
 		periodReconciliation = filterEnergyPathContextOnlyWaterReconciliation(periodReconciliation, periodNodes)
+		periodNodes, periodLinks = rebuildEnergyPathCarrierResidualPresentation(periodNodes, periodLinks, periodReconciliation, period.ID)
 		periodZoneContributions := buildEnergyExplanationZoneContributions(legacyPeriodNodes, periodLegacyEdges, scope, allocationPolicy)
 		upgradedPeriod := EnergyPeriod{
 			ID:                period.ID,
@@ -763,12 +762,18 @@ func applyCanonicalMonthlyBasisToEnergyPathResult(result *EnergyExplanationResul
 		warning.Period = "annual"
 		warnings = appendEnergyDriverWarning(warnings, warning)
 	}
+	// Monthly residual nodes carry positive display magnitudes and therefore
+	// cannot be summed into an annual accounting result. Recompute the signed
+	// carrier closure from aggregated totals, then rebuild optional presentation.
+	reconciliation = reconcileEnergyPathCarrierTotals(nodes, links, reconciliation, "annual")
+	nodes, links = rebuildEnergyPathCarrierResidualPresentation(nodes, links, reconciliation, "annual")
 
 	sortEnergyExplanationNodes(nodes)
 	sort.SliceStable(links, func(i, j int) bool { return links[i].ID < links[j].ID })
 	result.Nodes = nodes
 	result.Links = links
 	result.Reconciliation = reconciliation
+	result.Completeness = energyPathCompletenessFromCarrierReconciliation(result.Completeness, result.Scope, reconciliation)
 	result.Warnings = warnings
 	for index := range result.Periods {
 		if !strings.EqualFold(result.Periods[index].Kind, "annual") && !strings.EqualFold(result.Periods[index].ID, "annual") {
@@ -1184,6 +1189,19 @@ func upgradeEnergyExplanationGraph(legacyNodes []EnergyExplanationNode, legacyEd
 		nodeByLegacyID[legacy.ID] = legacy
 		canonicalIDByLegacyID[legacy.ID] = canonical.ID
 		mergeEnergyExplanationV2Node(canonicalNodes, canonical)
+		if canonical.Level == "end_use" && canonicalEnergyPathPart(legacy.EndUse) == "storage_charge" {
+			// Charge remains consumption in canonical Other. Retain a separate
+			// context-only observation so the supply inspector can identify real
+			// storage activity without guessing its share of the merged end use.
+			charge := canonical
+			charge.ID = "support.storage_charge." + energyExplanationScopeToken(scope)
+			charge.Level = "support"
+			charge.Kind = "energy.storage_charge"
+			charge.EndUse = "storage_charge"
+			charge.Label = "Storage charge"
+			charge.Carrier = canonicalEnergyPathCarrier(legacy.Carrier)
+			mergeEnergyExplanationV2Node(canonicalNodes, charge)
+		}
 	}
 	reportedCarrierIDs := map[string]bool{}
 	for id, node := range canonicalNodes {
@@ -2024,9 +2042,6 @@ func reconcileEnergyPathCarrierTotals(nodes []EnergyExplanationNode, links []Ene
 		}
 		orderedNodeIDs = append(orderedNodeIDs, node.ID)
 	}
-	if len(byNodeID) == 0 {
-		return input
-	}
 	for _, link := range links {
 		if link.Relation != "end_use_to_carrier" && link.Relation != "direct_end_use_to_carrier" {
 			continue
@@ -2045,14 +2060,36 @@ func reconcileEnergyPathCarrierTotals(nodes []EnergyExplanationNode, links []Ene
 		total.unit = firstNonEmpty(total.unit, link.ToUnit)
 		total.sourceIDs = appendUniqueStrings(total.sourceIDs, link.SourceIDs...)
 	}
-	out := append([]EnergyReconciliation(nil), input...)
-	for index := range out {
+	claimedRows := map[int]bool{}
+	for index := range input {
 		for _, total := range byNodeID {
-			if total.existingRow >= 0 || !energyPathCarrierReconciliationMatches(out[index], total.carrier, period) {
+			if total.existingRow >= 0 || !energyPathCarrierReconciliationMatches(input[index], total.carrier, period) {
 				continue
 			}
 			total.existingRow = index
+			claimedRows[index] = true
 			break
+		}
+	}
+	out := make([]EnergyReconciliation, 0, len(input)+len(byNodeID))
+	inputIndexToOutput := map[int]int{}
+	for index, item := range input {
+		if energyPathIsCarrierReconciliationRow(item) && !claimedRows[index] {
+			// Carrier rows are graph-derived. Orphaned, duplicate, or wrong-period
+			// rows from stored payloads must not survive as authoritative data.
+			continue
+		}
+		inputIndexToOutput[index] = len(out)
+		out = append(out, item)
+	}
+	for _, total := range byNodeID {
+		if total.existingRow < 0 {
+			continue
+		}
+		if outputIndex, ok := inputIndexToOutput[total.existingRow]; ok {
+			total.existingRow = outputIndex
+		} else {
+			total.existingRow = -1
 		}
 	}
 	sort.Strings(orderedNodeIDs)
@@ -2067,7 +2104,7 @@ func reconcileEnergyPathCarrierTotals(nodes []EnergyExplanationNode, links []Ene
 			Level:          "energy",
 			Period:         period,
 			Label:          energyCarrierLabel(total.carrier) + " total basis",
-			Status:         energyReconciliationStatus(total.expected, residual),
+			Status:         energyCarrierReconciliationStatus(residual),
 			ExpectedValue:  total.expected,
 			ExplainedValue: total.explained,
 			ResidualValue:  residual,
@@ -2101,6 +2138,23 @@ func reconcileEnergyPathCarrierTotals(nodes []EnergyExplanationNode, links []Ene
 	return out
 }
 
+func energyPathIsCarrierReconciliationRow(item EnergyReconciliation) bool {
+	if !strings.EqualFold(item.Level, "energy") && !strings.EqualFold(item.Level, "carrier") {
+		return false
+	}
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(item.ID)), "reconcile.energy.")
+}
+
+func energyCarrierReconciliationStatus(residual float64) string {
+	if residual < 0 {
+		return "overmapped"
+	}
+	if residual > 0 {
+		return "residual"
+	}
+	return "balanced"
+}
+
 func energyPathCarrierReconciliationMatches(item EnergyReconciliation, carrier string, period string) bool {
 	if !strings.EqualFold(item.Level, "energy") && !strings.EqualFold(item.Level, "carrier") {
 		return false
@@ -2110,6 +2164,140 @@ func energyPathCarrierReconciliationMatches(item EnergyReconciliation, carrier s
 	}
 	prefix := "reconcile.energy." + strings.ToLower(strings.TrimSpace(carrier)) + "."
 	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(item.ID)), prefix)
+}
+
+// rebuildEnergyPathCarrierResidualPresentation keeps reconciliation as the
+// accounting authority and treats a graph residual as optional presentation.
+// Positive, material gaps become one additive Unclassified energy branch;
+// small and overmapped gaps remain available through the carrier badge and
+// inspector without distorting the main flow.
+func rebuildEnergyPathCarrierResidualPresentation(nodes []EnergyExplanationNode, links []EnergyPathLink, reconciliation []EnergyReconciliation, period string) ([]EnergyExplanationNode, []EnergyPathLink) {
+	period = firstNonEmpty(strings.TrimSpace(period), "annual")
+	removedNodeIDs := map[string]bool{}
+	outNodes := make([]EnergyExplanationNode, 0, len(nodes))
+	carrierIndexes := map[string]int{}
+	for _, original := range nodes {
+		node := original
+		node.Badges = appendUniqueStrings(nil, original.Badges...)
+		if energyPathNodeIsCarrierResidual(node) {
+			removedNodeIDs[node.ID] = true
+			continue
+		}
+		if node.Level == "carrier" {
+			filteredBadges := make([]string, 0, len(node.Badges))
+			for _, badge := range node.Badges {
+				if !strings.EqualFold(strings.TrimSpace(badge), "carrier_residual") {
+					filteredBadges = append(filteredBadges, badge)
+				}
+			}
+			node.Badges = filteredBadges
+			carrier := canonicalEnergyPathCarrier(firstNonEmpty(node.Carrier, energyExplanationKindSuffix(node.Kind), "other"))
+			carrierIndexes[carrier] = len(outNodes)
+		}
+		outNodes = append(outNodes, node)
+	}
+
+	outLinks := make([]EnergyPathLink, 0, len(links))
+	for _, link := range links {
+		if removedNodeIDs[link.FromID] || removedNodeIDs[link.ToID] {
+			continue
+		}
+		outLinks = append(outLinks, link)
+	}
+
+	for carrier, nodeIndex := range carrierIndexes {
+		var row *EnergyReconciliation
+		for index := range reconciliation {
+			if energyPathCarrierReconciliationMatches(reconciliation[index], carrier, period) {
+				row = &reconciliation[index]
+				break
+			}
+		}
+		if row == nil {
+			continue
+		}
+		carrierNode := &outNodes[nodeIndex]
+		if roundedEnergyNumber(row.ResidualValue) != 0 {
+			carrierNode.Badges = appendUniqueStrings(carrierNode.Badges, "carrier_residual")
+		}
+		if !energyCarrierResidualVisibleInGraph(row.ExpectedValue, row.ResidualValue) {
+			continue
+		}
+
+		scopeToken := energyPathCarrierNodeScopeToken(carrierNode.ID, carrierNode.ZoneName)
+		residualID := strings.Join([]string{"residual", "site_" + carrier, scopeToken}, ".")
+		value := roundedEnergyNumber(row.ResidualValue)
+		unit := firstNonEmpty(row.Unit, carrierNode.Unit, "kWh")
+		sourceIDs := appendUniqueStrings(nil, row.SourceIDs...)
+		sort.Strings(sourceIDs)
+		outNodes = append(outNodes, EnergyExplanationNode{
+			ID:               residualID,
+			Level:            "residual",
+			Kind:             "energy.unclassified",
+			Label:            "Unclassified energy",
+			Value:            value,
+			SignedValue:      value,
+			RawValue:         value,
+			EffectiveValue:   value,
+			AllocatedValue:   value,
+			DisplayValue:     value,
+			Unit:             unit,
+			ScaleDomain:      "site",
+			Period:           period,
+			ZoneName:         carrierNode.ZoneName,
+			Carrier:          carrier,
+			Badges:           []string{"unclassified_energy"},
+			Basis:            "residual",
+			AggregationBasis: carrierNode.AggregationBasis,
+			Multiplier:       1,
+			SourceIDs:        sourceIDs,
+		})
+		link := EnergyPathLink{
+			FromID:      residualID,
+			ToID:        carrierNode.ID,
+			FromValue:   value,
+			ToValue:     value,
+			FromUnit:    unit,
+			ToUnit:      unit,
+			Relation:    "residual",
+			Period:      period,
+			ZoneName:    carrierNode.ZoneName,
+			Basis:       "residual",
+			RuleID:      energyRelationshipRuleEnergyResidual,
+			Explanation: "facility carrier total - mapped carrier-qualified end-use meters",
+			SourceIDs:   sourceIDs,
+		}
+		link.ID = energyPathLinkID(link)
+		outLinks = append(outLinks, link)
+	}
+
+	sortEnergyExplanationNodes(outNodes)
+	sort.SliceStable(outLinks, func(i, j int) bool { return outLinks[i].ID < outLinks[j].ID })
+	return outNodes, outLinks
+}
+
+func energyPathNodeIsCarrierResidual(node EnergyExplanationNode) bool {
+	if !strings.EqualFold(strings.TrimSpace(node.Level), "residual") {
+		return false
+	}
+	if strings.EqualFold(strings.TrimSpace(node.ScaleDomain), "thermal") || strings.HasPrefix(strings.ToLower(strings.TrimSpace(node.Kind)), "heat.") {
+		return false
+	}
+	kind := strings.ToLower(strings.TrimSpace(node.Kind))
+	id := strings.ToLower(strings.TrimSpace(node.ID))
+	return kind == "energy.residual" || kind == "energy.unclassified" || kind == "residual.site_energy" ||
+		strings.HasPrefix(id, "residual.energy.") || strings.HasPrefix(id, "residual.site_")
+}
+
+func energyPathCarrierNodeScopeToken(id string, zoneName string) string {
+	parts := strings.Split(strings.TrimSpace(id), ".")
+	if len(parts) >= 3 && strings.EqualFold(parts[0], "carrier") {
+		return firstNonEmpty(strings.Join(parts[2:], "."), "building")
+	}
+	if strings.TrimSpace(zoneName) != "" {
+		return firstNonEmpty(energyExplanationZoneSuffix(zoneName), metricID(zoneName), "zone")
+	}
+	return "building"
 }
 
 func energyExplanationReconciliationScopeFactor(item EnergyReconciliation, nodes []EnergyExplanationNode, factors map[string]float64, scope EnergyExplanationScope) float64 {
@@ -2716,6 +2904,7 @@ func upgradeEnergyExplanationLink(edge EnergyExplanationEdge, nodes map[string]E
 		}
 	}
 	carrierSplit := legacyEnergyLinkIsEndUseToCarrier(edge)
+	supportSupply := legacyEnergyLinkIsSupportSupply(edge)
 	if carrierSplit {
 		// The carrier-qualified end-use node is the authoritative branch
 		// evidence. A malformed stored-v1 edge must not redirect an electricity
@@ -2737,6 +2926,14 @@ func upgradeEnergyExplanationLink(edge EnergyExplanationEdge, nodes map[string]E
 			sourceIDs = appendUniqueStrings(nil, legacyTo.SourceIDs...)
 		}
 	}
+	if supportSupply {
+		// Supply-context ribbons are evidenced by the purchased/produced/sold
+		// or storage source, never by the facility consumption meter.
+		sourceIDs = appendUniqueStrings(nil, edge.SourceIDs...)
+		if len(sourceIDs) == 0 {
+			sourceIDs = appendUniqueStrings(nil, legacyTo.SourceIDs...)
+		}
+	}
 	link := EnergyPathLink{
 		RuleID:         edge.RuleID,
 		Explanation:    edge.Formula,
@@ -2749,7 +2946,7 @@ func upgradeEnergyExplanationLink(edge EnergyExplanationEdge, nodes map[string]E
 	link.RelatedPathIDs = appendUniqueStrings(link.RelatedPathIDs, legacyFrom.RelatedPathIDs...)
 	link.RelatedPathIDs = appendUniqueStrings(link.RelatedPathIDs, legacyTo.RelatedPathIDs...)
 	if canonical := canonicalNodes[fromID]; canonical != nil {
-		if !carrierSplit {
+		if !carrierSplit && !supportSupply {
 			link.SourceIDs = appendUniqueStrings(link.SourceIDs, canonical.SourceIDs...)
 		}
 		link.RelatedPathIDs = appendUniqueStrings(link.RelatedPathIDs, canonical.RelatedPathIDs...)
@@ -2762,7 +2959,7 @@ func upgradeEnergyExplanationLink(edge EnergyExplanationEdge, nodes map[string]E
 		// claim the natural-gas meter too.  The legacy endpoint and edge above
 		// already carry the exact branch meter; only omit the merged endpoint
 		// union for this relation.
-		if !carrierSplit {
+		if !carrierSplit && !supportSupply {
 			link.SourceIDs = appendUniqueStrings(link.SourceIDs, canonical.SourceIDs...)
 		}
 		link.RelatedPathIDs = appendUniqueStrings(link.RelatedPathIDs, canonical.RelatedPathIDs...)
@@ -2814,7 +3011,7 @@ func upgradeEnergyExplanationLink(edge EnergyExplanationEdge, nodes map[string]E
 		link.ToValue = link.FromValue
 		link.FromUnit = firstNonEmpty(legacyTo.Unit, edge.Unit)
 		link.ToUnit = firstNonEmpty(legacyFrom.Unit, edge.Unit)
-	case legacyEnergyLinkIsSupportSupply(edge):
+	case supportSupply:
 		link.FromID = toID
 		link.ToID = fromID
 		link.Relation = "support_supply"
@@ -3222,7 +3419,7 @@ func upgradeEnergyRelationshipRules(input []EnergyRelationshipRule) []EnergyRela
 		case energyRelationshipRuleInternalGainHeat:
 			upgraded.FromLevel, upgraded.ToLevel = "driver", "end_use"
 			upgraded.FromKind, upgraded.ToKind = rule.ToKind, rule.FromKind
-		case energyRelationshipRuleOnsiteProduction, energyRelationshipRuleStorageDischarge:
+		case energyRelationshipRulePurchasedElectricity, energyRelationshipRuleOnsiteProduction, energyRelationshipRuleStorageDischarge, energyRelationshipRuleSoldElectricity:
 			upgraded.FromLevel, upgraded.ToLevel = "support", "carrier"
 			upgraded.FromKind, upgraded.ToKind = rule.ToKind, rule.FromKind
 		case energyRelationshipRuleEnergyResidual:
@@ -3269,7 +3466,11 @@ func legacyEnergyLinkIsEndUseToCarrier(edge EnergyExplanationEdge) bool {
 }
 
 func legacyEnergyLinkIsSupportSupply(edge EnergyExplanationEdge) bool {
-	return strings.EqualFold(edge.Relation, "onsite_production") || strings.EqualFold(edge.Relation, "storage_discharge")
+	return strings.EqualFold(edge.Relation, "support_supply") ||
+		strings.EqualFold(edge.Relation, "purchased_electricity") ||
+		strings.EqualFold(edge.Relation, "onsite_production") ||
+		strings.EqualFold(edge.Relation, "storage_discharge") ||
+		strings.EqualFold(edge.Relation, "sold_electricity")
 }
 
 func legacyEnergyLinkIsSourceCorrespondence(edge EnergyExplanationEdge) bool {
@@ -3325,7 +3526,7 @@ func legacyEnergyNodeIsCarrier(node EnergyExplanationNode) bool {
 
 func legacyEnergyNodeIsSupport(node EnergyExplanationNode) bool {
 	switch strings.ToLower(strings.TrimSpace(node.EndUse)) {
-	case "generators", "storage_discharge", "onsite_production", "production":
+	case "generators", "storage_discharge", "onsite_production", "production", "electricity_purchased", "purchased_electricity", "electricity_sold", "sold_electricity", "surplus_sold":
 		return true
 	default:
 		return strings.EqualFold(node.Level, "support")
@@ -4365,6 +4566,14 @@ func energyCompletenessHasContent(completeness EnergyCompleteness) bool {
 		len(completeness.Items)+len(completeness.MissingCategories)+len(completeness.SourceAvailability) > 0
 }
 
+func energyPathCompletenessFromCarrierReconciliation(input EnergyCompleteness, scope EnergyExplanationScope, reconciliation []EnergyReconciliation) EnergyCompleteness {
+	input.MappedPercent = 0
+	if normalizeEnergyExplanationScope(scope).Kind == "building" {
+		input.MappedPercent = energyExplanationMappedPercentFromReconciliation(reconciliation)
+	}
+	return input
+}
+
 func sanitizeEnergyExplanationV2Result(result *EnergyExplanationResult) bool {
 	if result == nil {
 		return false
@@ -4392,6 +4601,7 @@ func sanitizeEnergyExplanationV2Result(result *EnergyExplanationResult) bool {
 	changed = changed || graphChanged
 	originalCompleteness := result.Completeness
 	result.Completeness = normalizeEnergyPathWaterContextCompleteness(result.Completeness, result.Sources, result.Reconciliation)
+	result.Completeness = energyPathCompletenessFromCarrierReconciliation(result.Completeness, result.Scope, result.Reconciliation)
 	changed = changed || !reflect.DeepEqual(originalCompleteness, result.Completeness)
 	result.ZoneContributions, graphChanged = filterEnergyPathRawWaterSummaryItems(result.ZoneContributions)
 	changed = changed || graphChanged
@@ -4434,6 +4644,7 @@ func sanitizeEnergyExplanationV2Result(result *EnergyExplanationResult) bool {
 		changed = changed || graphChanged
 		originalZoneCompleteness := zone.Completeness
 		zone.Completeness = normalizeEnergyPathWaterContextCompleteness(zone.Completeness, result.Sources, zone.Reconciliation)
+		zone.Completeness = energyPathCompletenessFromCarrierReconciliation(zone.Completeness, zone.Scope, zone.Reconciliation)
 		changed = changed || !reflect.DeepEqual(originalZoneCompleteness, zone.Completeness)
 		zone.ZoneContributions, graphChanged = filterEnergyPathRawWaterSummaryItems(zone.ZoneContributions)
 		changed = changed || graphChanged
@@ -4583,20 +4794,22 @@ func sanitizeEnergyExplanationV2Graph(nodes []EnergyExplanationNode, links []Ene
 		if node := visibleNodeByID[link.ToID]; node.Unit != "" {
 			link.ToUnit = node.Unit
 		}
+		if link.Relation == "support_supply" {
+			support := visibleNodeByID[link.FromID]
+			if support.Level != "support" {
+				support = visibleNodeByID[link.ToID]
+			}
+			if support.Level == "support" {
+				link.SourceIDs = appendUniqueStrings(nil, support.SourceIDs...)
+			}
+		}
 		filteredLinks = append(filteredLinks, link)
 	}
 
 	reconciliation = removeEnergyPathWaterReconciliation(reconciliation)
-	waterCarrierNodes := make([]EnergyExplanationNode, 0, 1)
-	for _, node := range filteredNodes {
-		if node.Level == "carrier" && canonicalEnergyPathCarrier(node.Carrier) == "water" {
-			waterCarrierNodes = append(waterCarrierNodes, node)
-		}
-	}
-	if len(waterCarrierNodes) > 0 {
-		reconciliation = reconcileEnergyPathCarrierTotals(waterCarrierNodes, filteredLinks, reconciliation, firstNonEmpty(period, "annual"))
-	}
+	reconciliation = reconcileEnergyPathCarrierTotals(filteredNodes, filteredLinks, reconciliation, firstNonEmpty(period, "annual"))
 	reconciliation = filterEnergyPathContextOnlyWaterReconciliation(reconciliation, filteredNodes)
+	filteredNodes, filteredLinks = rebuildEnergyPathCarrierResidualPresentation(filteredNodes, filteredLinks, reconciliation, firstNonEmpty(period, "annual"))
 	changed := !reflect.DeepEqual(originalNodes, filteredNodes) || !reflect.DeepEqual(originalLinks, filteredLinks) || !reflect.DeepEqual(originalReconciliation, reconciliation)
 	return filteredNodes, filteredLinks, reconciliation, changed
 }

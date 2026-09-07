@@ -46,8 +46,11 @@ func TestEPATH093SourceCorrespondenceIsForwardNonFlowAndBounded(t *testing.T) {
 		if from == nil || to == nil {
 			t.Fatalf("link %q has missing endpoint: %#v", link.ID, link)
 		}
-		if epath093BackendStage(from.Level) > epath093BackendStage(to.Level) {
+		if from.Level != "residual" && epath093BackendStage(from.Level) > epath093BackendStage(to.Level) {
 			t.Errorf("backward link in canonical graph: %#v (%s -> %s)", link, from.Level, to.Level)
+		}
+		if from.Level == "residual" && (link.Relation != "residual" || to.Level != "carrier" || link.ToValue <= 0) {
+			t.Errorf("invalid positive carrier residual branch: %#v", link)
 		}
 		if link.Relation != energyPathRelationSourceCorrespondence &&
 			((link.FromID == lighting.FromID && link.ToID == lighting.ToID) || (link.FromID == equipment.FromID && link.ToID == equipment.ToID)) {

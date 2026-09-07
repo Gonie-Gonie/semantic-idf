@@ -16,17 +16,26 @@ func TestEPATH090FrontendKeepsEndUseAndCarrierStagesDistinct(t *testing.T) {
 		`links = [...(scopedResult.links || [])]`,
 		`const connectedLinks = links.filter((link) => nodeIDs.has(link.fromId) && nodeIDs.has(link.toId))`,
 		`links: connectedLinks.filter((link) => !isEnergyPathNonFlowRelation(link))`,
-		`node.level === stage.level`,
+		`(node.presentationLevel || node.level) === stage.level`,
 	} {
 		if !strings.Contains(view, required) {
 			t.Fatalf("EPATH-090 frontend contract missing %q", required)
 		}
 	}
 
-	endUseStage := strings.Index(view, `level: "end_use"`)
-	carrierStage := strings.Index(view, `level: "carrier"`)
-	if endUseStage < 0 || carrierStage <= endUseStage {
-		t.Fatal("End-use Energy must remain a distinct stage before Energy Source")
+	// A qualified carrier residual may be presented beside end uses without
+	// changing its accounting level or adding another main graph stage.
+	stages := sliceBetween(view, "export const ENERGY_PATH_STAGES", "export const ENERGY_PATH_PERIODS")
+	if strings.Count(stages, `level: "`) != 4 {
+		t.Fatal("Energy Path must retain exactly four main stages")
+	}
+	previous := -1
+	for _, level := range []string{"driver", "load", "end_use", "carrier"} {
+		index := strings.Index(stages, `level: "`+level+`"`)
+		if index < 0 || index <= previous {
+			t.Fatalf("Energy Path stage %q is missing or out of canonical order", level)
+		}
+		previous = index
 	}
 
 	simulation := readTestFile(t, "frontend/src/js/views/simulation-views.js")

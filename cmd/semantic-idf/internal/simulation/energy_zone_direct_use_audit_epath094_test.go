@@ -311,7 +311,7 @@ func TestEPATH094AuditMonthlyZonesAreOrderInvariantAndBuildingTotalsStayFrozen(t
 	if got, want := epath094AuditBuildingSnapshot(forward), epath094AuditBuildingSnapshot(baseline); !reflect.DeepEqual(got, want) {
 		t.Fatalf("zone-direct observations changed the frozen Building graph:\nwith direct=%#v\nbaseline=%#v", got, want)
 	}
-	if forward.Completeness.Status != "complete" || forward.Completeness.MappedPercent != 100 ||
+	if forward.Completeness.Status != "complete" || forward.Completeness.MappedPercent != energyExplanationMappedPercentFromReconciliation(baseline.Reconciliation) ||
 		forward.Completeness.EnergyUse.Status != "complete" || forward.Completeness.EnergyUse.Found != 1 || forward.Completeness.EnergyUse.Total != 1 {
 		t.Fatalf("Building completeness changed while deriving zone direct-use views: %#v", forward.Completeness)
 	}

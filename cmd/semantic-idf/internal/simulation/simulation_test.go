@@ -1587,7 +1587,7 @@ func TestParseSimulationEnergyExplanationSQLMapsElectricStorageVariables(t *test
 	if source := energyExplanationSourceByID(result.Sources, "sql-rdd-30"); source == nil || source.ObjectIndex == nil || *source.ObjectIndex != chargeObjectIndex {
 		t.Fatalf("storage charge source = %#v", source)
 	}
-	if availability := energyExplanationSourceAvailabilityByName(result.Completeness.SourceAvailability, "Electric Storage Discharge Energy"); availability == nil || availability.Status != "found" || availability.Level != "energy" {
+	if availability := energyExplanationSourceAvailabilityByName(result.Completeness.SourceAvailability, "Electric Storage Discharge Energy"); availability == nil || availability.Status != "found" || availability.Level != "context" {
 		t.Fatalf("storage source availability = %#v", result.Completeness.SourceAvailability)
 	}
 }

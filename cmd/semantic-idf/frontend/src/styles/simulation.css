@@ -1030,6 +1030,46 @@
   background: color-mix(in srgb, var(--accent) 8%, var(--surface-2));
 }
 
+.energy-path-node[data-energy-path-carrier-quality] > span {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 5px;
+  align-items: center;
+  white-space: normal;
+}
+
+.energy-path-unclassified-energy {
+  border-color: color-mix(in srgb, var(--warning) 55%, var(--line));
+  border-style: dashed;
+  background: color-mix(in srgb, var(--warning) 8%, var(--surface-2));
+}
+
+.energy-path-carrier-residual-badge {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  padding: 1px 5px;
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.energy-path-carrier-residual-badge.residual,
+.energy-path-carrier-residual-badge.overmapped {
+  border-color: color-mix(in srgb, var(--warning) 55%, var(--line));
+  background: color-mix(in srgb, var(--warning) 9%, var(--surface));
+  color: var(--warning);
+}
+
+.energy-path-carrier-residual-badge.balanced {
+  border-color: color-mix(in srgb, var(--green) 45%, var(--line));
+  color: var(--green);
+}
+
 .energy-path-stage-empty {
   color: var(--muted);
   font-size: 12px;
@@ -1368,6 +1408,116 @@
   border-radius: 3px;
   background: color-mix(in srgb, var(--surface-2) 75%, transparent);
   padding: 5px 7px;
+}
+
+.energy-path-support-strip {
+  display: grid;
+  gap: 7px;
+  border: 1px solid color-mix(in srgb, var(--teal) 42%, var(--line));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--teal) 6%, var(--surface));
+  padding: 8px 10px;
+}
+
+.energy-path-support-strip > header,
+.energy-path-support-item,
+.energy-path-support-item > span {
+  display: flex;
+  gap: 5px 9px;
+  align-items: center;
+}
+
+.energy-path-support-strip > header {
+  flex-wrap: wrap;
+  align-items: baseline;
+}
+
+.energy-path-support-strip > header span,
+.energy-path-support-item small {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.energy-path-support-items {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 6px;
+}
+
+.energy-path-support-item {
+  justify-content: space-between;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--surface-2);
+  padding: 6px 8px;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.energy-path-support-item > span {
+  min-width: 0;
+  align-items: baseline;
+  flex-wrap: wrap;
+  font-size: 10px;
+}
+
+.energy-path-support-item > strong {
+  flex: 0 0 auto;
+  font-size: 10px;
+}
+
+.energy-path-support-item:hover,
+.energy-path-support-item:focus-visible,
+.energy-path-support-item.selected {
+  border-color: var(--teal);
+  outline: none;
+}
+
+.energy-path-supply-breakdown,
+.energy-path-carrier-reconciliation {
+  display: grid;
+  gap: 6px;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+
+.energy-path-supply-breakdown > header,
+.energy-path-carrier-reconciliation > header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--text);
+  font-size: 10px;
+}
+
+.energy-path-supply-breakdown > header span,
+.energy-path-supply-breakdown > p,
+.energy-path-carrier-reconciliation > p,
+.energy-path-carrier-reconciliation > small {
+  margin: 0;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.energy-path-supply-breakdown dl,
+.energy-path-carrier-reconciliation dl {
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+
+.energy-path-supply-breakdown [data-energy-path-supply-kind="produced"],
+.energy-path-supply-breakdown [data-energy-path-supply-kind="storage"] {
+  border-left-color: var(--teal);
+}
+
+.energy-path-supply-breakdown [data-energy-path-supply-kind="sold"],
+.energy-path-carrier-reconciliation.residual [data-energy-path-carrier-reconciliation-term="residual"],
+.energy-path-carrier-reconciliation.overmapped [data-energy-path-carrier-reconciliation-term="residual"] {
+  border-left-color: var(--warning);
 }
 
 .energy-path-auxiliary-allocation-quality {

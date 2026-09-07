@@ -613,6 +613,8 @@ func applyEnergyPathAnnualZoneHVACOverrides(result *EnergyExplanationResult, ini
 	result.Nodes = nodes
 	result.Links = links
 	result.Reconciliation = reconcileEnergyPathCarrierTotals(result.Nodes, result.Links, result.Reconciliation, "annual")
+	result.Nodes, result.Links = rebuildEnergyPathCarrierResidualPresentation(result.Nodes, result.Links, result.Reconciliation, "annual")
+	nodes, links = result.Nodes, result.Links
 	for index := range result.Periods {
 		if !strings.EqualFold(result.Periods[index].Kind, "annual") && !strings.EqualFold(result.Periods[index].ID, "annual") {
 			continue

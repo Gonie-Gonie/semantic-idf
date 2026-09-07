@@ -567,7 +567,7 @@ func TestUpgradeEnergyExplanationV1KeepsAllocationSeparateFromPhysicalMultiplier
 	}
 }
 
-func TestUpgradeEnergyExplanationV1PreservesDirectZoneResidualAndSupportLinks(t *testing.T) {
+func TestUpgradeEnergyExplanationV1RebuildsDirectZoneResidualAndPreservesSupportLinks(t *testing.T) {
 	legacy := EnergyExplanationV1{
 		Schema: energyExplanationV1Schema,
 		Nodes: []EnergyExplanationNode{
@@ -584,7 +584,7 @@ func TestUpgradeEnergyExplanationV1PreservesDirectZoneResidualAndSupportLinks(t 
 	result := UpgradeEnergyExplanationV1(legacy)
 	residual := energyPathV2NodeByID(result.Nodes, "residual.site_electricity.office")
 	residualLink := energyPathV2LinkByRelation(result.Links, "residual")
-	if residual == nil || residual.Value != 5 || residual.Basis != "residual" || residualLink == nil || residualLink.FromValue != 5 || residualLink.ToValue != 5 || residualLink.ZoneName != "Office" {
+	if residual == nil || residual.Value != 25 || residual.Basis != "residual" || residualLink == nil || residualLink.FromValue != 25 || residualLink.ToValue != 25 || residualLink.ZoneName != "Office" {
 		t.Fatalf("zone residual node/link = %#v / %#v", residual, residualLink)
 	}
 	support := energyPathV2NodeByID(result.Nodes, "support.generators.office")
