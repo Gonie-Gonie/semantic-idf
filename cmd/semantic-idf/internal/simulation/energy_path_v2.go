@@ -207,6 +207,7 @@ func UpgradeEnergyExplanationV1(input EnergyExplanationV1) EnergyExplanationResu
 		appendEnergyPathZoneAuxiliaryAllocationAccounting(&result, annualZoneAuxiliaryAllocation, periodZoneAuxiliaryAllocations, input.canonicalMonthlyBasis)
 	}
 	refreshEnergyPathQuality(&result)
+	orderEnergyPathAccounting(&result)
 	return result
 }
 

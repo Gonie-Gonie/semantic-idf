@@ -1,5 +1,7 @@
 # Energy Path JSON contract
 
+For file-based CLI and Python/API access, see [Energy Path CLI and Python](energy-path-cli.md).
+
 This document describes the canonical simulation data, not a conventional
 single-scale Sankey balance. The graph explains **load drivers → thermal load →
 end-use energy → energy source**. It does not establish causal savings.

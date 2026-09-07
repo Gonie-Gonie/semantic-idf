@@ -38,7 +38,7 @@ func MaybeRun(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer
 
 func isCLICommand(value string) bool {
 	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "metrics", "summary", "batch-metrics", "multi-metrics", "multi-summary", "diagnostics", "diagnose", "analyze", "topology", "hvac-graph", "profile-graph", "profile-qa", "profile-schedules", "clean", "convert":
+	case "metrics", "summary", "batch-metrics", "multi-metrics", "multi-summary", "diagnostics", "diagnose", "analyze", "topology", "energy-path", "hvac-graph", "profile-graph", "profile-qa", "profile-schedules", "clean", "convert":
 		return true
 	default:
 		return false
@@ -70,6 +70,8 @@ func runCLI(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer, 
 		err = cliAnalyze(args[1:], stdin, stdout, stderr)
 	case "topology":
 		err = cliTopology(args[1:], stdin, stdout, stderr)
+	case "energy-path":
+		err = cliEnergyPath(args[1:], stdout, stderr)
 	case "hvac-graph":
 		err = cliHVACGraph(args[1:], stdin, stdout, stderr)
 	case "profile-graph":
@@ -108,6 +110,7 @@ Commands:
   diagnostics    Export Diagnose issues as text, JSON, or CSV.
   analyze        Export the full analysis report as JSON or compact text.
   topology       Export thermal topology as canonical JSON, GraphML, or DOT.
+  energy-path    Read existing run-directory/SQL results as Energy Path JSON or summary CSV.
   hvac-graph     Export HVAC rule, service, or coupling navigation graph JSON.
   profile-graph  Export Profile time-series graph data as JSON or text.
   profile-qa     Export Profile QA outliers and candidates as text, JSON, or CSV.
@@ -116,6 +119,7 @@ Commands:
   convert        Convert IDF/epJSON to IDF, JSON, semantic YAML view export, or XLSX tables.
 
 Use "-" as input to read from stdin. Use "-o -" to write an output file stream to stdout.
+Energy Path requires filesystem result and model paths; its JSON/CSV output supports stdout.
 Run "semantic-idf cli <command> --help" for command-specific options.
 `)
 }

@@ -270,6 +270,29 @@ the checklist or its final acceptance scenarios.
   frozen v1 golden after the real Go reader. Wrapper, monthly, missing-month,
   Zone/source ownership and forbidden cross-scope fallback cases pass.
 
+- EPATH-181: a read-only `energy-path` command, desktop `LoadEnergyPath` method,
+  local `/api/energy-path` endpoint and standard-library Python HTTP/stdio
+  methods share the existing v2 builder and one projection/CSV formatter.
+  Building/Zone, Annual/M1-M12 and All/Cooling/Heating selection is explicit.
+  The original GUI `purposeResults` stays unchanged beside the selected view;
+  service filtering retains full carrier and scope-period quality context.
+  CSV defaults to summary/quality, with source/link rows only on trace opt-in.
+  Unknown counts/percentages are blank, explicit zeroes survive, and source
+  units plus independent conversion quantities are preserved.
+  The loader binds exact SQL/input identities to genuine run metadata, rejects
+  hash mismatches and ambiguous/unreadable outputs, and never substitutes a
+  sibling SQL. Missing historical plans expose unknown requested coverage in
+  the shared builder rather than inventing output expectations. Provenance is
+  explicit outside the canonical graph. SQLite is read-only; unsafe WAL/journal
+  states are refused without writes. CLI output cannot truncate the original
+  SQL/model or run metadata, including hardlink/symlink aliases.
+  Canonical reconciliation/warning ordering is stable across repeated reads.
+  Verification includes actual IDF/epJSON and SQLite loads, strict GUI/App/HTTP/
+  CLI/Python JSON equality, exact default/trace CSV, selected scope-period
+  quality, invalid requests, unchanged source files and unchanged desktop cache.
+  The Python clients execute in real subprocesses; model text is not parsed or
+  energy data aggregated in Python. See `docs/energy-path-cli.md`.
+
 ## Policy clarification
 
 EPATH-030's earlier 11-node cap conflicts with EPATH-123's stricter <1% grouping
@@ -280,7 +303,7 @@ The normal Building interzone/category projection remains intact.
 
 ## Next in sequence
 
-EPATH-181–182 → 190–198 → 200–204 → 210–211 → 220–222 → 230–235.
+EPATH-182 → 190–198 → 200–204 → 210–211 → 220–222 → 230–235.
 
 Checklist section 22's actual-model fixtures and expected manifests also remain
 required between EPATH-204 and EPATH-210; they have no individual EPATH numbers.

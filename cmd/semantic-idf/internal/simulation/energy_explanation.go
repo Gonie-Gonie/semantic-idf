@@ -735,7 +735,7 @@ func parseSimulationEnergyExplanationSQLWithDriverContext(path string, plan *Pur
 }
 
 func parseSimulationEnergyExplanationCanonicalSQL(path string, plan *PurposeRunPlan, driverContext energyDriverBuildContext) (energyExplanationParseResult, error) {
-	db, err := sql.Open("sqlite", path)
+	db, err := openSimulationSQLiteReadOnly(path)
 	if err != nil {
 		return energyExplanationParseResult{}, err
 	}

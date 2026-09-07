@@ -440,6 +440,8 @@ func appAssetHandler(app *App) http.Handler {
 			if err := json.NewEncoder(w).Encode(result); err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 			}
+		case "/api/energy-path":
+			serveEnergyPathProjection(w, r, app)
 		case "/api/simulation-environment":
 			if r.Method != http.MethodGet {
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

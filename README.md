@@ -77,6 +77,10 @@ The packaged executable opens the desktop app when run without arguments. It als
 .\build\bin\semantic-idf-v0.4.4.exe cli batch-metrics -format csv -o .\compare.csv .\a.idf .\b.epjson
 .\build\bin\semantic-idf-v0.4.4.exe cli batch-metrics -format xlsx -orientation files -o .\compare.xlsx .\a.idf .\b.idf
 
+# Existing simulation Energy Path (read-only; no new simulation)
+.\build\bin\semantic-idf-v0.4.4.exe energy-path .\run --input .\run\model.idf --format json
+.\build\bin\semantic-idf-v0.4.4.exe energy-path .\run --scope zone --zone Core_bottom --format csv --include-trace
+
 # Cleanup
 .\build\bin\semantic-idf-v0.4.4.exe cli clean --dry-run .\model.idf
 .\build\bin\semantic-idf-v0.4.4.exe cli clean -rules all --compact -o .\cleaned.idf .\model.idf
@@ -95,6 +99,10 @@ standalone round-trip source.
 The table conversion writes one XLSX worksheet with `[ObjectType]` section markers. Column headers are bold with a fill
 color and table cells carry borders so the export is easier to scan and filter in Excel. Use `-` as an input path to
 read stdin and `-o -` to write command output to stdout.
+
+`energy-path` requires existing SQL and model paths, not stdin model text. See
+[Energy Path CLI and Python](docs/energy-path-cli.md) for scope/month/service
+selection, input provenance, summary/trace CSV and the identical local API result.
 
 ## Release Process
 
@@ -174,6 +182,7 @@ The app toolbar includes top-level Tools, Guide, and Settings navigation buttons
 - `cmd/semantic-idf/frontend/dist`: ignored future build output location.
 - `docs/agent.md`: consolidated working notes and implementation principles.
 - [Energy Path schema](docs/energy-path-schema.md): simulation graph domains, allocation, quality, migration and executable Python reconstruction.
+- [Energy Path CLI and Python](docs/energy-path-cli.md): read existing results through the shared CLI, desktop and local API builder.
 - `scripts`: repo-local runtime setup, checks, and repeatable commands.
 - `.runtime`: ignored local Go/Wails runtime and caches created by setup.
 

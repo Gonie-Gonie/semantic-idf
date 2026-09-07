@@ -171,7 +171,7 @@ func parseSimulationSQLWithContext(ctx context.Context, path string, plan Purpos
 }
 
 func parseSimulationSQLSeries(path string) ([]SimulationSeries, error) {
-	db, err := sql.Open("sqlite", path)
+	db, err := openSimulationSQLiteReadOnly(path)
 	if err != nil {
 		return nil, err
 	}
@@ -269,7 +269,7 @@ func parseSimulationSQLSeries(path string) ([]SimulationSeries, error) {
 }
 
 func parseSimulationEnergySQL(path string) (EnergyDashboardResult, error) {
-	db, err := sql.Open("sqlite", path)
+	db, err := openSimulationSQLiteReadOnly(path)
 	if err != nil {
 		return EnergyDashboardResult{}, err
 	}
@@ -416,7 +416,7 @@ func (builder *energySeriesBuilder) sortedPoints() []SimulationPoint {
 }
 
 func parseSimulationHeatFlowSQL(path string) (HeatFlowDataset, error) {
-	db, err := sql.Open("sqlite", path)
+	db, err := openSimulationSQLiteReadOnly(path)
 	if err != nil {
 		return HeatFlowDataset{}, err
 	}
@@ -565,7 +565,7 @@ func parseSimulationHeatFlowSQL(path string) (HeatFlowDataset, error) {
 }
 
 func parseSimulationIntegritySQL(path string) (integritySQLParseResult, error) {
-	db, err := sql.Open("sqlite", path)
+	db, err := openSimulationSQLiteReadOnly(path)
 	if err != nil {
 		return integritySQLParseResult{}, err
 	}
@@ -752,7 +752,7 @@ LIMIT ?`,
 }
 
 func parseComfortUnmetSQL(path string) ([]ComfortUnmetSummary, error) {
-	db, err := sql.Open("sqlite", path)
+	db, err := openSimulationSQLiteReadOnly(path)
 	if err != nil {
 		return nil, err
 	}

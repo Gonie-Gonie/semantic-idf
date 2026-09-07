@@ -633,6 +633,9 @@ func BuildPurposeResultBundle(result *SimulationRunResult, request SimulationPur
 			legacyExplanation := buildEnergyExplanationResultFromFilesWithDriverContext(result.Files, bundle.Energy, plan, driverContext)
 			legacyExplanation = enrichEnergyExplanationWithServicePaths(legacyExplanation, result.InputPath)
 			legacyExplanation = applyEnergyExplanationV1ServicePathLoadShareAllocation(legacyExplanation)
+			if result.PurposeRunPlan == nil {
+				markEnergyPathOutputPlanUnknown(&legacyExplanation)
+			}
 			bundle.EnergyExplanation = UpgradeEnergyExplanationV1(legacyExplanation)
 			bundle.EnergyExplanationSummary = buildEnergyExplanationSummary(bundle.EnergyExplanation)
 			bundle.Completeness = append(bundle.Completeness, bundle.Energy.Completeness...)
