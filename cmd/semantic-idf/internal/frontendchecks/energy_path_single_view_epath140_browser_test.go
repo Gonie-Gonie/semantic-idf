@@ -158,7 +158,7 @@ try{
  check(document.getElementById("simulationChart").querySelector(".simulation-series-viewport-meta")?.textContent.includes("1-1 / 3"),"actual Series panel retained a stale/full range instead of January");
  const januaryPoint=document.getElementById("simulationChart").querySelector("[data-simulation-series-single-point]");
  check(januaryPoint?.tagName.toLowerCase()==="circle"&&Number(januaryPoint.getAttribute("r"))>0&&januaryPoint.hasAttribute("cx")&&januaryPoint.hasAttribute("cy")&&Number.isFinite(Number(januaryPoint.getAttribute("cx")))&&Number.isFinite(Number(januaryPoint.getAttribute("cy"))),"single January observation is not visibly plotted at finite coordinates");
- check(januaryPoint?.nextElementSibling?.tagName.toLowerCase()==="text"&&januaryPoint.nextElementSibling.textContent.includes("100"),"single January observation lacks a visible reported-value label");
+ check(januaryPoint?.nextElementSibling?.tagName.toLowerCase()==="text"&&januaryPoint.nextElementSibling.textContent.includes("100 J"),"single January observation lacks a visible reported-value label with preserved unit casing");
  check(!/NaN|Infinity/.test(document.getElementById("simulationChart").innerHTML),"actual Monthly chart contains non-finite geometry");
  check(context()===januaryContext,"Series jump changed the Energy scope/month/service/selection/drawer context");
  returnEnergy();

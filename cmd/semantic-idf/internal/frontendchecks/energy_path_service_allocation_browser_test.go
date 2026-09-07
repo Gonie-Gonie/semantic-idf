@@ -136,7 +136,7 @@ try {
   assert(scopedSummary.endUses.length === 1 && scopedSummary.carriers.length === 1 && scopedSummary.residuals.length === 0, "unassigned Building energy leaked into selected Zone summary values");
   mount.innerHTML = module.renderEnergyPathKPI(scopedSummary) + module.renderEnergyPathSummaryOverview(scopedSummary);
   assert(mount.querySelector('[data-energy-path-kpi="total_site_energy"]')?.textContent.includes("Known zone site energy"), "EPATH-094 Known-only Zone KPI was not preserved");
-  assert(!mount.querySelector('[data-energy-path-kpi="coverage"]'), "unknown partial Zone coverage was restored as a numeric KPI");
+  assert(mount.querySelectorAll('[data-energy-path-kpi]').length === 4 && mount.querySelectorAll('[data-energy-path-kpi="coverage"] [data-energy-path-kpi-boundary]').length === 2 && !mount.querySelector('[data-energy-path-kpi="coverage"] [data-energy-path-kpi-boundary-value]'), "unknown partial Zone coverage must remain explicit and nonnumeric in the fourth KPI card");
   assert(!mount.textContent.includes("Unassigned building HVAC energy"), "selected Zone summary displayed unassigned Building energy");
 
   mount.innerHTML = module.renderEnergyPathView(explanation, { ...state, simulationEnergySelection: allocated.id });

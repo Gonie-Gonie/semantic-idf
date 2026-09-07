@@ -10,9 +10,9 @@ import { renderEnergyPathQualityLine, renderEnergyPathDataDetails } from "../ene
 export { energyPathQualityForState, renderEnergyPathQualityLine, renderEnergyPathDataDetails } from "../energy-path-details.js";
 import {
   energyPathSummaryGroups,
-  energyPathSummaryKPIValues,
   isEnergyPathSummaryV2,
 } from "../energy-path-summary.js";
+import { energyPathKPIItems } from "../energy-path-kpis.js";
 
 export const ENERGY_PATH_SCHEMA_V2 = "semantic-idf.energy-explanation/v2";
 
@@ -1657,33 +1657,92 @@ function energyPathInspectorMultiplier(node = {}, sources = [], raw = 0, effecti
   return raw ? effective / raw : 1;
 }
 
-export function renderEnergyPathKPI(summary = {}) {
-  if (!isEnergyPathSummaryV2(summary)) {
+export function renderEnergyPathKPI(summary = {}, options = {}) {
+  if (!isEnergyPathSummaryV2(summary) && !options.graph) {
     return "";
   }
-  const zoneCoverage = energyPathZoneDirectCoverage(summary);
+  const knownZoneOnly = options.knownZoneOnly ?? energyPathZoneDirectCoverage(summary).limited;
   const labels = {
-    total_site_energy: zoneCoverage.limited
+    total_site_energy: knownZoneOnly
       ? t("simulation.energyPathKnownZoneSiteEnergy", {}, "Known zone site energy")
       : t("simulation.energyPathTotalSiteEnergy", {}, "Total site energy"),
     cooling_load: t("simulation.energyPathCoolingLoad", {}, "Cooling load"),
     heating_load: t("simulation.energyPathHeatingLoad", {}, "Heating load"),
-    coverage: t("simulation.energyPathCoverage", {}, "Coverage"),
+    coverage: t("simulation.energyPathKPICoverage", {}, "Energy-path coverage"),
   };
   return `<div class="simulation-energy-kpis energy-path-kpis">
-    ${energyPathSummaryKPIValues(summary)
-      .filter((item) => !(zoneCoverage.limited && item.id === "coverage"))
+    ${energyPathKPIItems(summary, options.graph || {}, { ...options, knownZoneOnly })
       .map((item) => {
-        const partialSubtotal = item.id === "total_site_energy" && zoneCoverage.limited;
-        return `
-        <div data-energy-path-kpi="${escapeHTML(item.id)}"${partialSubtotal ? ' data-energy-path-value-scope="observed_direct_use_subtotal"' : ""}>
-          <span>${escapeHTML(labels[item.id] || item.label)}</span>
-          <strong>${escapeHTML(energyPathSummaryValueLabel(item.value, item.unit))}</strong>
-          ${partialSubtotal ? `<small class="energy-path-partial-coverage-badge">${escapeHTML(t("simulation.energyPathKnownOnly", {}, "Known only"))}</small>` : ""}
-        </div>`;
+        const partialSubtotal = item.id === "total_site_energy" && knownZoneOnly;
+        const label = escapeHTML(labels[item.id] || item.label);
+        const body = `<span class="energy-path-kpi-label">${label}</span>${item.id === "coverage"
+          ? renderEnergyPathKPIBoundaries(item.coverage?.boundaries || item.boundaries)
+          : `<strong>${escapeHTML(energyPathKPIFinite(item.value) ? energyPathSummaryValueLabel(item.value, item.unit) : t("common.notAvailable", {}, "—"))}</strong>`}
+          ${renderEnergyPathKPIRatio(item)}
+          ${partialSubtotal ? `<small class="energy-path-partial-coverage-badge">${escapeHTML(t("simulation.energyPathKnownOnly", {}, "Known only"))}</small>` : ""}`;
+        const targets = (item.targets || []).filter((target) => target?.id);
+        const targetAttributes = (target) => `data-energy-path-kpi-node="${escapeHTML(target.id)}" data-energy-path-kpi-service="${escapeHTML(target.serviceKind || "")}"`;
+        let control;
+        if (item.id === "coverage") {
+          control = `<button type="button" class="energy-path-kpi-control" data-energy-path-kpi-details aria-controls="energyPathDataDetails" aria-expanded="${options.detailsOpen === true}">${body}</button>`;
+        } else if (targets.length > 1) {
+          control = `<details data-energy-path-kpi-chooser="${escapeHTML(item.id)}">
+            <summary class="energy-path-kpi-control">${body}<small class="energy-path-kpi-choice-label">${escapeHTML(t("simulation.energyPathChooseGraphNode", {}, "Choose graph node"))}</small></summary>
+            <ul>${targets.map((target) => {
+              const repeatedLabel = targets.filter((candidate) => candidate.label === target.label).length > 1;
+              const targetLabel = [target.label || target.id, repeatedLabel && target.label ? target.id : ""].filter(Boolean).join(" · ");
+              return `<li><button type="button" ${targetAttributes(target)}>${escapeHTML(targetLabel)}</button></li>`;
+            }).join("")}</ul>
+          </details>`;
+        } else {
+          control = `<button type="button" class="energy-path-kpi-control" ${targets.length ? targetAttributes(targets[0]) : "disabled"}>${body}
+            ${targets.length ? "" : `<small class="energy-path-kpi-choice-label">${escapeHTML(t("simulation.energyPathGraphNodeUnavailable", {}, "Graph node unavailable"))}</small>`}
+          </button>`;
+        }
+        return `<div data-energy-path-kpi="${escapeHTML(item.id)}" data-energy-path-kpi-emphasized="${item.emphasized === true}"${partialSubtotal ? ' data-energy-path-value-scope="observed_direct_use_subtotal"' : ""}>${control}</div>`;
       })
       .join("")}
   </div>`;
+}
+
+function energyPathKPIFinite(value) {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function renderEnergyPathKPIRatio(item = {}) {
+  if (!item.emphasized || !["cooling_load", "heating_load"].includes(item.id)) return "";
+  const ratio = item.ratio;
+  const available = energyPathKPIFinite(ratio?.value);
+  return `<small class="energy-path-kpi-ratio" data-energy-path-kpi-ratio="${item.id === "cooling_load" ? "cooling" : "heating"}"
+    ${available ? `data-energy-path-kpi-ratio-value="${escapeHTML(String(ratio.value))}"` : ""}
+    data-energy-path-kpi-ratio-partial="${ratio?.partial === true}" data-energy-path-kpi-ratio-links="${escapeHTML(JSON.stringify(ratio?.linkIds || []))}">
+    ${escapeHTML(t("simulation.energyPathKPILoadSiteRatio", {}, "Load/site ratio"))}: ${escapeHTML(available ? energyPathSummaryValueLabel(ratio.value) : t("common.notAvailable", {}, "—"))}
+    ${ratio?.partial ? `<span class="energy-path-kpi-ratio-note">${escapeHTML(t("simulation.energyPathKPIMatchedConversions", {}, "Partial overlap · matched conversions only"))}</span>` : ""}
+  </small>`;
+}
+
+function renderEnergyPathKPIBoundaries(boundaries = []) {
+  const labels = {
+    driver_to_load: t("simulation.energyPathKPIDriverClosure", {}, "Drivers → loads"),
+    end_use_to_carrier: t("simulation.energyPathKPICarrierClosure", {}, "End uses → sources"),
+  };
+  const statuses = {
+    complete: ["QualityComplete", "complete"], partial: ["QualityPartial", "partial"],
+    missing: ["QualityMissing", "missing"], unavailable: ["QualityUnavailable", "Unavailable"],
+    not_requested: ["QualityNotRequested", "Not requested"], not_applicable: ["QualityNotApplicable", "Not applicable"],
+    overmapped: ["QualityOvermapped", "Overmapped"],
+  };
+  return `<span class="energy-path-kpi-boundaries">${Object.keys(labels).map((id) => {
+    const boundary = (boundaries || []).find((item) => item.id === id) || {};
+    const status = statuses[boundary.status] ? boundary.status : "unavailable";
+    const [statusKey, statusFallback] = statuses[status];
+    const statusLabel = t(`simulation.energyPath${statusKey}`, {}, statusFallback);
+    const available = ["complete", "partial", "overmapped"].includes(status) && energyPathKPIFinite(boundary.value) && boundary.value >= 0;
+    const value = available ? `${boundary.value.toLocaleString(undefined, { maximumFractionDigits: 1 })}%` : t("common.notAvailable", {}, "—");
+    return `<span data-energy-path-kpi-boundary="${id}" data-energy-path-kpi-boundary-status="${status}" ${available ? `data-energy-path-kpi-boundary-value="${escapeHTML(String(boundary.value))}"` : ""}>
+      <span>${escapeHTML(labels[id])}</span><b>${escapeHTML(`${value} · ${statusLabel}`)}</b>
+    </span>`;
+  }).join("")}</span>`;
 }
 
 export function renderEnergyPathSummaryOverview(summary = {}) {

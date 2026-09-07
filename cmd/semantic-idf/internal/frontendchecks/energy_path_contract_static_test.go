@@ -243,7 +243,7 @@ func TestFrontendEnergyPathV2SummaryConsumersAndV1Adapter(t *testing.T) {
 		`export function renderEnergyPathKPI`,
 		`export function renderEnergyPathSummaryOverview`,
 		`energyPathSummaryGroups(summary)`,
-		`energyPathSummaryKPIValues(summary)`,
+		`energyPathKPIItems(summary, options.graph || {}, { ...options, knownZoneOnly })`,
 		`"rawValue"`,
 		`"allocatedValue"`,
 		`item.basis`,
@@ -256,7 +256,7 @@ func TestFrontendEnergyPathV2SummaryConsumersAndV1Adapter(t *testing.T) {
 
 	simulation := readTestFile(t, "frontend/src/js/views/simulation-views.js")
 	for _, required := range []string{
-		`renderEnergyPathKPI(scopedSummary)`,
+		`renderEnergyPathKPI(scopedSummary, kpiOptions)`,
 		`energyPathSummaryGroups(summary).map((group) => [group.label, group.items])`,
 		`energyPathLegacyDerivedKPIItems(explanationSummary)`,
 	} {
@@ -335,7 +335,7 @@ func TestFrontendEnergyPathUsesPrecomputedZoneResults(t *testing.T) {
 	simulation := readTestFile(t, "frontend/src/js/views/simulation-views.js")
 	for _, required := range []string{
 		`const scopedSummary = energyPathSummaryForState(explanation, explanationSummary, state)`,
-		`renderEnergyPathKPI(scopedSummary)`,
+		`renderEnergyPathKPI(scopedSummary, kpiOptions)`,
 	} {
 		if !strings.Contains(simulation, required) {
 			t.Fatalf("Simulation does not align Energy Path summary scope/period with its graph: %q", required)

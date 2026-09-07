@@ -239,7 +239,7 @@ func TestFrontendSimulationEnergyUsesSingleViewWithoutLegacySubnavigation(t *tes
 			t.Fatalf("Simulation Energy still exposes removed subnavigation %q", forbidden)
 		}
 	}
-	for _, required := range []string{`renderEnergyPathKPI(scopedSummary)`, `renderEnergyPathView(explanation, state`, `inspectorActionsForNode:`} {
+	for _, required := range []string{`renderEnergyPathKPI(scopedSummary, kpiOptions)`, `renderEnergyPathView(explanation, state`, `inspectorActionsForNode:`} {
 		if !strings.Contains(dashboard, required) {
 			t.Fatalf("single Energy dashboard lost required rendering path %q", required)
 		}

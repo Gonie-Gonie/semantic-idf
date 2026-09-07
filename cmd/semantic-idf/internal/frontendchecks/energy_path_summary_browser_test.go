@@ -86,6 +86,7 @@ try {
     residuals: [{ id: "residual.cooling.building", label: "Cooling residual", value: 2, unit: "kWh thermal" }],
     topZones: [{ id: "zone.office", label: "Office", value: 18, unit: "kWh thermal" }],
     completeness: { mappedPercent: 88, status: "partial" },
+    quality: { driverToLoadStatus: "partial", driverToLoadClosedPct: 70, endUseToCarrierStatus: "complete", endUseToCarrierClosedPct: 100 },
     energyByCarrier: [{ id: "legacy-trap", label: "Legacy trap", value: 999 }],
     energyByEndUse: [{ id: "legacy-end-use-trap", value: 999 }],
     deliveredLoadByService: [{ id: "legacy-load-trap", value: 999 }],
@@ -102,13 +103,14 @@ try {
   const kpis = Object.fromEntries(summaryModule.energyPathSummaryKPIValues(v2).map((item) => [item.id, item.value]));
   assert(kpis.total_site_energy === 40, "site-energy KPI did not use carriers");
   assert(kpis.cooling_load === 100 && kpis.heating_load === 40, "load KPIs did not use loads");
-  assert(kpis.coverage === 88, "coverage KPI did not use completeness");
+  assert(kpis.coverage === null, "coverage KPI collapsed separate quality boundaries into the legacy mapped score");
 
   const overview = viewModule.renderEnergyPathSummaryOverview(v2);
   const kpiHTML = viewModule.renderEnergyPathKPI(v2);
   assert(overview.includes("People") && overview.includes("Raw: 35 kWh thermal") && overview.includes("Allocated: 30 kWh thermal"), "v2 overview omitted summary detail");
   assert(!overview.includes("Legacy trap"), "v2 overview rendered a legacy collection");
   assert(kpiHTML.includes('data-energy-path-kpi="total_site_energy"') && kpiHTML.includes("40 kWh site"), "v2 KPI markup is not summary-driven");
+  assert(kpiHTML.includes('data-energy-path-kpi-boundary-value="70"') && kpiHTML.includes('data-energy-path-kpi-boundary-value="100"') && !kpiHTML.includes("88%"), "KPI coverage lost independent reported boundary values");
 
   const v1 = {
     schema: "semantic-idf.energy-explanation-summary/v1",

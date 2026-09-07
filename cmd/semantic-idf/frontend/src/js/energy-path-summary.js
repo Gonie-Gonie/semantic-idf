@@ -58,40 +58,55 @@ export function energyPathSummaryKPIValues(summary = {}) {
   const groups = new Map(energyPathSummaryGroups(summary).map((group) => [group.key, group.items]));
   const loads = groups.get("loads") || [];
   const carriers = (groups.get("carriers") || []).filter(energyPathSummaryIsSiteEnergyCarrier);
+  const cooling = loads.filter((item) => energyPathSummaryService(item) === "cooling");
+  const heating = loads.filter((item) => energyPathSummaryService(item) === "heating");
   return [
     {
       id: "total_site_energy",
       label: "Total site energy",
       value: energyPathSummaryTotal(carriers),
       unit: energyPathSummaryUnit(carriers, "kWh site"),
+      nodeIds: carriers.map((item) => item.id || ""),
+      nodeValues: carriers.map((item) => item.value),
     },
     {
       id: "cooling_load",
       label: "Cooling load",
-      value: energyPathSummaryTotal(loads.filter((item) => energyPathSummaryService(item) === "cooling")),
+      value: energyPathSummaryTotal(cooling),
       unit: "kWh thermal",
+      nodeIds: cooling.map((item) => item.id || ""),
+      nodeValues: cooling.map((item) => item.value),
     },
     {
       id: "heating_load",
       label: "Heating load",
-      value: energyPathSummaryTotal(loads.filter((item) => energyPathSummaryService(item) === "heating")),
+      value: energyPathSummaryTotal(heating),
       unit: "kWh thermal",
+      nodeIds: heating.map((item) => item.id || ""),
+      nodeValues: heating.map((item) => item.value),
     },
     {
       id: "coverage",
-      label: "Coverage",
-      value: Number(summary.completeness?.mappedPercent),
-      unit: "%",
-      status: summary.completeness?.status || "",
+      label: "Energy-path coverage",
+      // Availability and the two accounting boundaries have different
+      // denominators. They are never collapsed into a legacy scalar score.
+      value: null,
+      unit: "",
+      nodeIds: [],
+      nodeValues: [],
     },
   ];
 }
 
 function energyPathSummaryTotal(items = []) {
-  return (items || []).reduce((sum, item) => {
-    const value = Number(item?.value);
-    return Number.isFinite(value) ? sum + value : sum;
-  }, 0);
+  if (!items.length) return null;
+  let total = 0;
+  for (const item of items) {
+    const input = item?.value;
+    if (!(typeof input === "number" || typeof input === "string" && input.trim() !== "") || !Number.isFinite(Number(input))) return null;
+    total += Number(input);
+  }
+  return Number.isFinite(total) ? total : null;
 }
 
 function energyPathSummaryUnit(items = [], fallback = "") {
@@ -116,12 +131,7 @@ function energyPathSummaryCarrier(item = {}) {
 }
 
 function energyPathSummaryService(item = {}) {
-  const value = String(item.serviceKind || item.kind || item.id || "").toLowerCase();
-  if (value.includes("cool")) {
-    return "cooling";
-  }
-  if (value.includes("heat")) {
-    return "heating";
-  }
-  return "";
+  const explicit = String(item.serviceKind || "").trim().toLowerCase();
+  if (explicit) return ["cooling", "heating"].includes(explicit) ? explicit : "";
+  return String(item.kind || item.id || "").toLowerCase().match(/(?:^|[._:-])(cooling|heating)(?:$|[._:-])/)?.[1] || "";
 }

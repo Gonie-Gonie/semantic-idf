@@ -177,7 +177,7 @@ try {
   assert(totalKPI?.dataset.energyPathValueScope === "observed_direct_use_subtotal", "Zone carrier subtotal was presented as a complete KPI");
   assert(totalKPI.textContent.includes("Known zone site energy") && totalKPI.textContent.includes("Known only"), "partial Zone KPI lacks an explicit qualifier");
   assert(!totalKPI.textContent.includes("Total site energy"), "partial Zone KPI still claims to be a total");
-  assert(!mount.querySelector('[data-energy-path-kpi="coverage"]') && !mount.textContent.includes("Coverage 0%"), "unknown Zone coverage was misrepresented as a numeric 0% KPI");
+  assert(mount.querySelectorAll('[data-energy-path-kpi]').length === 4 && mount.querySelectorAll('[data-energy-path-kpi="coverage"] [data-energy-path-kpi-boundary]').length === 2 && !mount.querySelector('[data-energy-path-kpi="coverage"] [data-energy-path-kpi-boundary-value]'), "unknown Zone coverage must retain the fourth card with explicit nonnumeric boundary states");
 
   mount.innerHTML = module.renderEnergyPathSummaryOverview(summary);
   const carrierSummary = mount.querySelector('[data-energy-path-summary-group="carriers"]');
@@ -198,9 +198,10 @@ try {
   assert(!mount.querySelector("[data-simulation-energy-allocation-policy]"), "EPATH-100 allocation-policy UI was introduced early");
 
   const completeSummary = zoneSummary("annual", 1, false);
+  completeSummary.quality = { driverToLoadStatus: "complete", driverToLoadClosedPct: 100, endUseToCarrierStatus: "complete", endUseToCarrierClosedPct: 100 };
   mount.innerHTML = module.renderEnergyPathKPI(completeSummary);
   assert(mount.querySelector('[data-energy-path-kpi="total_site_energy"]')?.textContent.includes("Total site energy"), "complete Zone coverage was incorrectly labelled partial");
-  assert(mount.querySelector('[data-energy-path-kpi="coverage"] strong')?.textContent.includes("100"), "known complete Zone coverage KPI was hidden");
+  assert(mount.querySelectorAll('[data-energy-path-kpi="coverage"] [data-energy-path-kpi-boundary-value="100"]').length === 2, "known complete Zone accounting boundaries were hidden");
   assert(!mount.querySelector('[data-energy-path-value-scope="observed_direct_use_subtotal"]'), "complete Zone coverage retained a partial marker");
 
   const buildingSummary = { ...completeSummary, scope: { kind: "building", aggregationBasis: "model_total" }, completeness: partialCompleteness() };

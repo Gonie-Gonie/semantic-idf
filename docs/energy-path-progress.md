@@ -64,6 +64,16 @@ the checklist or its final acceptance scenarios.
   Verification: real SQL duplicate-frequency fixtures, strict identity/calendar
   browser tests, actual dashboard navigation/history/keyboard acceptance, unchanged
   raw/export inputs, and interactive browser review of February Series and return.
+- EPATH-141: four compact, clickable KPI cards retain scope/period totals across
+  Service changes. Exact graph targets are selected or explicitly chosen; hidden
+  targets reveal their service without changing scope or period. Selected-service
+  load/site ratios use paired conversion-link values, with partial-overlap labels.
+  Coverage shows two separate closure boundaries, not a legacy scalar score. As
+  coverage has no energy node, it opens accounting details and returns focus to
+  its own card on Escape. Missing values stay unknown; explicitly reported zeros
+  survive zero-node pruning without invented navigation targets. Verification:
+  pure KPI-value tests, actual dashboard scope/service/month/click/focus tests,
+  light/dark contrast and compactness checks, and interactive browser review.
 
 ## Policy clarification
 
@@ -75,7 +85,7 @@ The normal Building interzone/category projection remains intact.
 
 ## Next in sequence
 
-EPATH-141–145 → 150–152 → 160–161 →
+EPATH-142–145 → 150–152 → 160–161 →
 170–171 → 180–182 → 190–198 → 200–204 → 210–211 → 220–222 → 230–235.
 
 Existing code may already satisfy portions of later items. They remain pending

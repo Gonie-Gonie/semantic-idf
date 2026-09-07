@@ -12,6 +12,13 @@ export const defaultAnalyzeTabOrder = ["metrics", "topology", "profile", "hvac",
 
 const dictionaries = {
   en: {
+    "simulation.energyPathKPICoverage": "Energy-path coverage",
+    "simulation.energyPathKPILoadSiteRatio": "Load/site ratio",
+    "simulation.energyPathKPIMatchedConversions": "Partial overlap · matched conversions only",
+    "simulation.energyPathKPIDriverClosure": "Drivers → loads",
+    "simulation.energyPathKPICarrierClosure": "End uses → sources",
+    "simulation.energyPathChooseGraphNode": "Choose graph node",
+    "simulation.energyPathGraphNodeUnavailable": "Graph node unavailable",
     "simulation.energyPathUpgradeUnavailable": "Energy Path is unavailable for this result. Run Basic Energy to create it; available variables remain in Series.",
     "simulation.energyPathSeriesPeriodUnavailable": "No reliable reported Series data is available for the selected month.",
     "simulation.energyPathSeriesDataUnavailable": "The matching series has no usable reported values for this period.",
@@ -1037,6 +1044,13 @@ const dictionaries = {
     "tools.workers": "Workers",
   },
   ko: {
+    "simulation.energyPathKPICoverage": "에너지 경로 수지 일치율",
+    "simulation.energyPathKPILoadSiteRatio": "부하/site 비율",
+    "simulation.energyPathKPIMatchedConversions": "일부 구간만 대응 · 대응하는 변환 구간만 집계",
+    "simulation.energyPathKPIDriverClosure": "열 요인 → 부하",
+    "simulation.energyPathKPICarrierClosure": "최종 용도 → 에너지원",
+    "simulation.energyPathChooseGraphNode": "그래프 노드 선택",
+    "simulation.energyPathGraphNodeUnavailable": "대응하는 그래프 노드 없음",
     "simulation.energyPathUpgradeUnavailable": "이 결과의 Energy Path를 사용할 수 없습니다. Basic Energy를 실행하면 생성되며, 사용 가능한 변수는 Series에서 확인할 수 있습니다.",
     "simulation.energyPathSeriesPeriodUnavailable": "선택한 월의 보고된 Series 시간과 값을 정확하게 확인할 수 없습니다.",
     "simulation.energyPathSeriesDataUnavailable": "일치하는 시계열에 이 기간의 사용 가능한 보고 값이 없습니다.",
