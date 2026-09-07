@@ -728,20 +728,17 @@ func TestFrontendSimulationRenderReusesIndexesAndDelegatesDynamicInteractions(t 
 func TestFrontendBatchEnergyExplanationDeltaContracts(t *testing.T) {
 	batch := readTestFile(t, "frontend/src/js/batch/batch-simulation.js")
 	for _, term := range []string{
-		"renderEnergyExplanationDeltaRanking",
-		"renderEnergyExplanationEdgeDeltaRanking",
-		"energyExplanationDeltaMetricCell",
-		"energyExplanationDeltaRatioSideDetail",
-		"energyExplanationDeltaSourceCell",
+		"energyPathBatchComparison(selected[0], selected[1])",
+		"data-batch-energy-summary-table",
+		"data-batch-energy-basis-warning",
+		"data-batch-energy-coverage-warning",
+		"energyPath: energyPathBatchExport(result, exportContext.comparison)",
+		"includeTraceSheets: Boolean(elements.multiSimulationIncludeTraceSheets?.checked)",
 		"energyExplanationDeltaSourceSummary",
 		"energyExplanationDeltaRows",
 		"energyExplanationEdgeDeltaRows",
 		"energyExplanationAnnualEdgeItems",
 		"energyExplanationDeltaStatus",
-		"renderEnergyExplanationEdgeDeltaBars",
-		"batch-energy-edge-delta-view",
-		"energyExplanationDeltaValue",
-		"energyExplanationDeltaPercent",
 		"energyExplanationComparisonValue",
 		"zero baseline",
 		"zero comparison",
@@ -749,13 +746,9 @@ func TestFrontendBatchEnergyExplanationDeltaContracts(t *testing.T) {
 		"rightMissing",
 		"leftSourceSummary",
 		"rightSourceSummary",
-		"common.missing",
-		"renderEnergyExplanationCompletenessDelta",
-		"energyExplanationSourceAvailabilitySummary",
 		"renderEnergyCompareSelects",
 		"selectedEnergyCompareResults",
 		"handleEnergyCompareSelectChange",
-		"energyExplanationMissingCategorySummary",
 		"exportMultiSimulationCSV",
 		"exportMultiSimulationXLSX",
 		"exportMultiSimulationJSON",
@@ -821,10 +814,6 @@ func TestFrontendBatchEnergyExplanationDeltaContracts(t *testing.T) {
 		"rule_id",
 		"source_ids",
 		"related_path_ids",
-		"Largest Energy Explanation Changes",
-		"Sankey Edge Delta",
-		"Basis</th><th>Edge",
-		"Sources</th><th>Status",
 		"missing in baseline",
 	} {
 		if !strings.Contains(batch, term) {
@@ -928,10 +917,17 @@ func TestFrontendBatchEnergyExplanationDeltaContracts(t *testing.T) {
 		t.Fatalf("batch simulation run context should preserve Basic Energy detail")
 	}
 	styles := readTestFile(t, "frontend/src/styles/workspace.css")
-	if !strings.Contains(styles, ".batch-energy-edge-delta-view") || !strings.Contains(styles, ".batch-energy-edge-delta-track") {
-		t.Fatalf("batch energy edge delta styles are missing")
+	for _, removed := range []string{".batch-energy-edge-delta-view", ".batch-energy-edge-delta-track", ".batch-energy-delta-sources", ".batch-energy-delta-metric"} {
+		if strings.Contains(styles, removed) {
+			t.Fatalf("removed Batch edge/ranking UI still retains styles %q", removed)
+		}
 	}
-	if !strings.Contains(styles, ".batch-energy-delta-sources") {
-		t.Fatalf("batch energy delta source styles are missing")
+	for _, removed := range []string{"renderEnergyExplanationDeltaRanking", "renderEnergyExplanationEdgeDeltaRanking", "renderEnergyExplanationEdgeDeltaBars", "renderEnergyExplanationDeltaSection", "renderEnergyExplanationCompletenessDelta", "Sankey Edge Delta", "Largest Energy Explanation Changes"} {
+		if strings.Contains(batch, removed) {
+			t.Fatalf("primary Batch comparison still retains old edge/ranking renderer %q", removed)
+		}
+	}
+	if !strings.Contains(html, `id="multiSimulationIncludeTraceSheets" type="checkbox"`) || strings.Contains(html, `id="multiSimulationIncludeTraceSheets" type="checkbox" checked`) {
+		t.Fatal("Batch Excel trace sheets must be an explicit, initially unchecked option")
 	}
 }

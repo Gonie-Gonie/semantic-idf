@@ -231,6 +231,28 @@ the checklist or its final acceptance scenarios.
   Native 1600x900 screenshots of both the comparison and selected-wall detail
   were inspected. The capture helper fixes the viewport before navigation and
   verifies visible panel bounds rather than accepting a blank screenshot.
+- EPATH-171: the disconnected Batch edge/ranking renderers and their styles are
+  removed. Current v2 Excel exports default to exactly Energy Path Summary,
+  Energy Path Delta, Data Quality and Runs. The unchecked, Excel-only Include
+  trace sheets option adds canonical node/source/link evidence, link deltas,
+  availability/reconciliation/warnings and the original submitted Energy JSON.
+  Default sheets contain readable categories, not raw node/source/link IDs.
+  Workbook rows snapshot the same pure comparison used by the UI; Go validates
+  the submitted run indexes, summary context, selected pair and row bindings
+  without implementing another semantic matcher or delta calculation. Nullable
+  numbers retain unknown versus explicit zero; basis/coverage warnings and
+  each side's units survive the request and workbook boundaries. Stale or
+  ambiguous comparison IDs cannot silently select another pair. Missing v2
+  export projections fail before the save dialog rather than falling back to
+  the old numeric exporter. Existing non-Energy exports and the established
+  genuine-v1 read/export compatibility path remain until EPATH-222.
+  Original Energy JSON trace chunks retain unknown fields, nulls and Unicode
+  within Excel's cell limit. Carriage returns are XML-escaped so opening the
+  workbook cannot normalize away original JSON line endings.
+  Verification: 100-run immutable pure projection parity, actual Tools
+  checkbox-to-Save JSON-to-Go-to-XLSX round trips, default/trace sheet isolation,
+  raw JSON reconstruction, nullable values and comparison warnings, explicit
+  unit mismatch and backend invalid-request/legacy-read regression tests.
 
 ## Policy clarification
 
@@ -242,7 +264,7 @@ The normal Building interzone/category projection remains intact.
 
 ## Next in sequence
 
-EPATH-171 → 180–182 → 190–198 → 200–204 → 210–211 → 220–222 → 230–235.
+EPATH-180–182 → 190–198 → 200–204 → 210–211 → 220–222 → 230–235.
 
 Checklist section 22's actual-model fixtures and expected manifests also remain
 required between EPATH-204 and EPATH-210; they have no individual EPATH numbers.

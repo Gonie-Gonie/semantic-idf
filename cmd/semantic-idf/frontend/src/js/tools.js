@@ -101,6 +101,7 @@ const elements = {
   multiSimulationRun: document.querySelector("#multiSimulationRun"),
   multiSimulationExport: document.querySelector("#multiSimulationExport"),
   multiSimulationExportXLSX: document.querySelector("#multiSimulationExportXLSX"),
+  multiSimulationIncludeTraceSheets: document.querySelector("#multiSimulationIncludeTraceSheets"),
   multiSimulationExportJSON: document.querySelector("#multiSimulationExportJSON"),
   multiSimulationWeather: document.querySelector("#multiSimulationWeather"),
   multiSimulationWeatherMode: document.querySelector("#multiSimulationWeatherMode"),

@@ -26,9 +26,12 @@ type BatchMetricsXLSXExportRequest struct {
 type BatchSummaryXLSXExportRequest = BatchMetricsXLSXExportRequest
 
 type BatchSimulationXLSXExportRequest struct {
-	Result     simulation.MultiSimulationResult     `json:"result"`
-	Context    BatchSimulationXLSXExportContext     `json:"context,omitempty"`
-	Comparison BatchSimulationComparisonXLSXContext `json:"comparison,omitempty"`
+	Result             simulation.MultiSimulationResult     `json:"result"`
+	Context            BatchSimulationXLSXExportContext     `json:"context,omitempty"`
+	Comparison         BatchSimulationComparisonXLSXContext `json:"comparison,omitempty"`
+	EnergyPath         *BatchEnergyPathExportProjection     `json:"energyPath,omitempty"`
+	IncludeTraceSheets bool                                 `json:"includeTraceSheets,omitempty"`
+	rawResult          []byte
 }
 
 type BatchSimulationXLSXExportContext struct {
@@ -86,11 +89,15 @@ func (a *App) ExportBatchTopologyCSV(result BatchMetricsResult) (string, error) 
 }
 
 func (a *App) SaveBatchSimulationXLSX(request BatchSimulationXLSXExportRequest) (*SaveFileResult, error) {
+	sheets, err := buildBatchSimulationExportWorkbook(request)
+	if err != nil {
+		return nil, err
+	}
 	if a.ctx == nil {
 		return nil, fmt.Errorf("desktop runtime is not ready")
 	}
 	var b bytes.Buffer
-	if err := tabular.WriteWorkbookXLSX(&b, batchSimulationWorkbookSheets(request)); err != nil {
+	if err := tabular.WriteWorkbookXLSX(&b, sheets); err != nil {
 		return nil, err
 	}
 	path, err := wailsruntime.SaveFileDialog(a.ctx, wailsruntime.SaveDialogOptions{

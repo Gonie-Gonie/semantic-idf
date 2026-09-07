@@ -12,6 +12,8 @@ export const defaultAnalyzeTabOrder = ["metrics", "topology", "profile", "hvac",
 
 const dictionaries = {
   en: {
+    "batch.includeTraceSheets": "Include trace sheets",
+    "batch.traceSheetsExcelOnly": "Excel only",
     "common.close": "Close",
     "common.category": "Category",
     "batch.baselineCase": "Baseline",
@@ -952,7 +954,6 @@ const dictionaries = {
     "simulation.errWarnings": "ERR warnings",
     "simulation.executablePath": "Executable path",
     "simulation.failed": "Failed",
-    "simulation.energySankeyEdgeDelta": "Sankey Edge Delta",
     "simulation.files": "Output files",
     "simulation.finishedWithIssues": "Simulation finished with issues",
     "simulation.fileStats": "{count} files",
@@ -1205,6 +1206,8 @@ const dictionaries = {
     "tools.workers": "Workers",
   },
   ko: {
+    "batch.includeTraceSheets": "추적 시트 포함",
+    "batch.traceSheetsExcelOnly": "Excel 전용",
     "common.close": "닫기",
     "common.category": "분류",
     "batch.baselineCase": "기준 모델",

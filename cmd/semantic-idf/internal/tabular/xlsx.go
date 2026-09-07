@@ -304,5 +304,6 @@ func xmlEscape(value string) string {
 		">", "&gt;",
 		`"`, "&quot;",
 		"'", "&apos;",
+		"\r", "&#13;",
 	).Replace(value)
 }
