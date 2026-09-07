@@ -98,6 +98,16 @@ the checklist or its final acceptance scenarios.
   overlaps, dense layouts, actual SVG hit geometry, keyboard tooltips, explicit
   versus absent ratio-quality markers, Building/Zone viewport fit and screenshot
   review. Existing navigation, KPI and drawer acceptance also passed.
+- EPATH-144: a fixed, theme-aware semantic palette distinguishes cooling blue,
+  heating red, restrained driver/end-use categories and stable carrier colors.
+  Allocated values retain their hue with diagonal hatching and accessible corner
+  markers; positive carrier residuals are neutral and crosshatched. Mixed member
+  provenance reads Includes allocated, including after automatic Other grouping.
+  No color customization controls were added. Labels, values and small badges
+  use existing theme variables with readable contrast; geometry is unchanged.
+  Verification: pure appearance and provenance tests, actual light/dark contrast,
+  non-color markers, unchanged raw/quantitative data, stable scope/period/service
+  colors, Building/Zone fit, screenshot review and related frontend regressions.
 
 ## Policy clarification
 
@@ -109,8 +119,12 @@ The normal Building interzone/category projection remains intact.
 
 ## Next in sequence
 
-EPATH-144–145 → 150–152 → 160–161 →
+EPATH-145 → 150–152 → 160–161 →
 170–171 → 180–182 → 190–198 → 200–204 → 210–211 → 220–222 → 230–235.
+
+Checklist section 22's actual-model fixtures and expected manifests also remain
+required between EPATH-204 and EPATH-210; they have no individual EPATH numbers.
+The final completion definition in section 26 is part of acceptance as well.
 
 Existing code may already satisfy portions of later items. They remain pending
 until their exact checklist requirements and regression/acceptance evidence

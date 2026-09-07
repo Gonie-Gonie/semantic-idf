@@ -90,6 +90,12 @@ function mergeNode(current, next) {
   if (Number(current.rawValue)) current.multiplier = Number(current.effectiveValue) / Number(current.rawValue);
 }
 
+function linkMemberSnapshots(link) {
+  const members = Array.isArray(link.groupedMembers) && link.groupedMembers.length
+    ? link.groupedMembers : [link];
+  return members.map((member) => ({ ...member, sourceIds: unique(member.sourceIds) }));
+}
+
 // Presentation only: retain canonical accounting/export records in the payload.
 // Named carriers and auxiliary lanes never enter an automatic Other group.
 export function energyPathGroupSmallNodes(nodes = [], links = []) {
@@ -158,6 +164,10 @@ export function energyPathGroupSmallNodes(nodes = [], links = []) {
       groupedLinks.set(key, link);
       continue;
     }
+    // Preserve each link's own allocation evidence before presentation values
+    // are summed. Two grouped_presentation links need not have the same basis
+    // mix, even though they share this grouping bucket.
+    current.groupedMembers = [...linkMemberSnapshots(current), ...linkMemberSnapshots(link)];
     for (const field of ["fromValue", "toValue", "value", "signedValue", "displayValue"]) {
       if (Object.hasOwn(current, field) || Object.hasOwn(link, field)) {
         current[field] = (Number(current[field]) || 0) + (Number(link[field]) || 0);

@@ -15,6 +15,7 @@ import {
 import { energyPathKPIItems } from "../energy-path-kpis.js";
 import { energyPathLayout } from "../energy-path-layout.js";
 import { energyPathRibbons } from "../energy-path-ribbons.js";
+import { energyPathNodeAppearance, energyPathLinkAppearance } from "../energy-path-appearance.js";
 
 export const ENERGY_PATH_SCHEMA_V2 = "semantic-idf.energy-explanation/v2";
 
@@ -2249,6 +2250,7 @@ export function energyPathProjectEndUsePresentation(nodes = [], links = []) {
       toId: oldToNewID.get(link.toId) || link.toId,
       sourceIds: energyPathUniqueValues(link.sourceIds).sort(),
       relatedPathIds: energyPathUniqueValues(link.relatedPathIds).sort(),
+      groupedMembers: energyPathLinkAllocationMembers(link),
     };
     if (!visibleNodeIDs.has(projected.fromId) || !visibleNodeIDs.has(projected.toId)) {
       continue;
@@ -2361,7 +2363,16 @@ function mergeEnergyPathPresentationNode(current, next, taxonomy) {
   }
 }
 
+function energyPathLinkAllocationMembers(link) {
+  return (link.groupedMembers?.length ? link.groupedMembers : [link]).map((member) => ({
+    ...member,
+    sourceIds: [...(member.sourceIds || [])],
+    badges: [...(member.badges || [])],
+  }));
+}
+
 function mergeEnergyPathPresentationLink(current, next) {
+  current.groupedMembers = [...energyPathLinkAllocationMembers(current), ...energyPathLinkAllocationMembers(next)];
   const nonFlow = isEnergyPathNonFlowRelation(current) && isEnergyPathNonFlowRelation(next);
   if (!nonFlow) {
     for (const field of ["fromValue", "toValue", "value", "signedValue", "displayValue"]) {
@@ -2689,19 +2700,53 @@ function renderEnergyPathCanvas(nodes, links, selectedID, relatedNodeIDs, option
 
 function renderEnergyPathRibbonGeometry(drawing, nodes) {
   const nodeByID = new Map(nodes.map((node) => [node.id, node]));
-  const paths = drawing.ribbons.map((ribbon) => {
+  const ribbonPaints = drawing.ribbons.map((ribbon) => energyPathLinkAppearance(ribbon.link, nodes));
+  const barPaints = drawing.bars.map((bar) => energyPathNodeAppearance(bar.node));
+  const definitions = new Map([...ribbonPaints, ...barPaints]
+    .filter((appearance) => appearance.allocated || appearance.residual)
+    .map((appearance) => [energyPathPatternID(appearance), appearance]));
+  const patterns = `<defs>${[...definitions].map(([id, appearance]) => `<pattern id="${id}" data-energy-path-pattern="${energyPathPaintKind(appearance)}" data-energy-path-color="${appearance.colorKey}" patternUnits="userSpaceOnUse" width="8" height="8">
+    <rect class="energy-path-pattern-base" width="8" height="8"/>
+    <path class="energy-path-pattern-stroke" d="M-2,2 L2,-2 M0,8 L8,0 M6,10 L10,6"/>
+    ${appearance.residual ? '<path class="energy-path-pattern-stroke" d="M-2,6 L2,10 M0,0 L8,8 M6,-2 L10,2"/>' : ""}
+  </pattern>`).join("")}</defs>`;
+  const paths = drawing.ribbons.map((ribbon, index) => {
+    const appearance = ribbonPaints[index];
     const kind = ribbon.domain === "conversion" ? "conversion" : "same_domain";
     const fromDomain = ribbon.domain === "conversion" ? "thermal" : ribbon.domain;
     const toDomain = ribbon.domain === "conversion" ? "site" : ribbon.domain;
-    const title = energyPathRibbonTitle(ribbon, nodeByID);
+    const title = [energyPathRibbonTitle(ribbon, nodeByID), energyPathAppearanceLabel(appearance)].filter(Boolean).join(" · ");
     return `<path class="energy-path-ribbon" data-energy-path-ribbon="${escapeHTML(ribbon.id)}" data-energy-path-ribbon-kind="${kind}" data-energy-path-ribbon-domain="${escapeHTML(ribbon.domain)}" data-energy-path-ribbon-relation="${escapeHTML(ribbon.relation)}"
+      ${energyPathAppearanceAttributes(appearance)}${appearance.allocated || appearance.residual ? ` style="fill:url(#${energyPathPatternID(appearance)})"` : ""}
       data-from-value="${ribbon.fromValue}" data-to-value="${ribbon.toValue}" data-from-width="${ribbon.fromWidth}" data-to-width="${ribbon.toWidth}" data-from-domain="${fromDomain}" data-to-domain="${toDomain}"
       data-from-x="${ribbon.fromPort.x}" data-from-y0="${ribbon.fromPort.y0}" data-from-y1="${ribbon.fromPort.y1}" data-to-x="${ribbon.toPort.x}" data-to-y0="${ribbon.toPort.y0}" data-to-y1="${ribbon.toPort.y1}"
       d="${escapeHTML(ribbon.path)}"><title>${escapeHTML(title)}</title></path>`;
   }).join("");
-  const bars = drawing.bars.map((bar) => `<rect class="energy-path-quantitative-bar" data-energy-path-bar="${escapeHTML(bar.nodeId)}" data-energy-path-bar-side="${escapeHTML(bar.side)}" data-energy-path-bar-domain="${escapeHTML(bar.domain)}" data-energy-path-bar-value="${bar.value}"
-    x="${bar.x}" y="${bar.y}" width="${bar.width}" height="${bar.height}"><title>${escapeHTML(`${bar.node.label || bar.nodeId}: ${energyPathValueLabel(bar.value, bar.domain === "thermal" ? "kWh thermal" : "kWh site")}`)}</title></rect>`).join("");
-  return paths + bars;
+  const bars = drawing.bars.map((bar, index) => {
+    const appearance = barPaints[index];
+    const title = [`${bar.node.label || bar.nodeId}: ${energyPathValueLabel(bar.value, bar.domain === "thermal" ? "kWh thermal" : "kWh site")}`, energyPathAppearanceLabel(appearance)].filter(Boolean).join(" · ");
+    return `<rect class="energy-path-quantitative-bar" data-energy-path-bar="${escapeHTML(bar.nodeId)}" data-energy-path-bar-side="${escapeHTML(bar.side)}" data-energy-path-bar-domain="${escapeHTML(bar.domain)}" data-energy-path-bar-value="${bar.value}" ${energyPathAppearanceAttributes(appearance)}${appearance.allocated || appearance.residual ? ` style="fill:url(#${energyPathPatternID(appearance)})"` : ""}
+      x="${bar.x}" y="${bar.y}" width="${bar.width}" height="${bar.height}"><title>${escapeHTML(title)}</title></rect>`;
+  }).join("");
+  return patterns + paths + bars;
+}
+
+function energyPathPaintKind(appearance) {
+  return appearance.residual ? "residual" : appearance.allocated ? "allocated" : "solid";
+}
+
+function energyPathPatternID(appearance) {
+  return `energyPathPattern-${energyPathPaintKind(appearance)}-${appearance.colorKey}`;
+}
+
+function energyPathAppearanceAttributes(appearance) {
+  return `data-energy-path-color="${appearance.colorKey}" data-energy-path-paint="${energyPathPaintKind(appearance)}" data-energy-path-allocation-kind="${appearance.allocationLabelKind}"`;
+}
+
+function energyPathAppearanceLabel(appearance) {
+  if (appearance.residual) return t("simulation.energyPathLegendResidual", {}, "Residual");
+  if (appearance.allocationLabelKind === "includes_allocated") return t("simulation.energyPathIncludesAllocated", {}, "Includes allocated");
+  return appearance.allocated ? t("simulation.energyPathAllocated", {}, "Allocated") : "";
 }
 
 function energyPathRibbonTitle(ribbon, nodeByID) {
@@ -2751,10 +2796,10 @@ function renderEnergyPathBridgeRatios(drawing, layout, nodes, links, ratioQualit
 
 function renderEnergyPathGraphLegend() {
   return `<div class="energy-path-domain-legend" data-energy-path-legend aria-label="${escapeHTML(t("simulation.energyPathScaleDomains", {}, "Thermal and site-energy scale domains"))}">
-    <span data-energy-path-legend-item="thermal">${escapeHTML(t("simulation.energyPathLegendThermal", {}, "Thermal kWh"))}</span>
-    <span data-energy-path-legend-item="site">${escapeHTML(t("simulation.energyPathLegendSite", {}, "Site kWh"))}</span>
-    <span data-energy-path-legend-item="allocated">${escapeHTML(t("simulation.energyPathAllocated", {}, "Allocated"))}</span>
-    <span data-energy-path-legend-item="residual">${escapeHTML(t("simulation.energyPathLegendResidual", {}, "Residual"))}</span>
+    <span data-energy-path-legend-item="thermal"><i class="energy-path-legend-swatch thermal" aria-hidden="true"></i>${escapeHTML(t("simulation.energyPathLegendThermal", {}, "Thermal kWh"))}</span>
+    <span data-energy-path-legend-item="site"><i class="energy-path-legend-swatch site" aria-hidden="true"></i>${escapeHTML(t("simulation.energyPathLegendSite", {}, "Site kWh"))}</span>
+    <span data-energy-path-legend-item="allocated"><i class="energy-path-legend-swatch allocated" aria-hidden="true"></i>${escapeHTML(t("simulation.energyPathAllocated", {}, "Allocated"))}</span>
+    <span data-energy-path-legend-item="residual"><i class="energy-path-legend-swatch residual" aria-hidden="true"></i>${escapeHTML(t("simulation.energyPathLegendResidual", {}, "Residual"))}</span>
   </div>`;
 }
 
@@ -2815,6 +2860,7 @@ function compareEnergyPathStageNodes(stage, left, right) {
 }
 
 function renderEnergyPathNode(node, stage, selectedID, relatedNodeIDs = new Set(), geometry = null) {
+  const appearance = energyPathNodeAppearance(node);
   const selected = node.id && node.id === selectedID;
   const related = Boolean(node.id && relatedNodeIDs.has(node.id));
   const latentShare = stage.level === "load" ? energyPathLoadLatentShare(node) : 0;
@@ -2831,6 +2877,7 @@ function renderEnergyPathNode(node, stage, selectedID, relatedNodeIDs = new Set(
     latentBadge ? t("simulation.energyPathLatentShareSignificant", { share: energyPathPercentLabel(latentShare) }, `Latent ${energyPathPercentLabel(latentShare)}`) : "",
     partialCoverageBadge ? t("simulation.energyPathKnownOnly", {}, "Known only") : "",
     residualBadge ? energyPathCarrierResidualBadgeLabel(node.carrierQuality) : "",
+    energyPathAppearanceLabel(appearance),
   ].filter(Boolean);
   const fullTitle = [`${label}: ${fullValue}`, ...badgeLabels].join(" · ");
   const compactValue = number !== null
@@ -2840,7 +2887,8 @@ function renderEnergyPathNode(node, stage, selectedID, relatedNodeIDs = new Set(
     ? ` data-energy-path-layout-node="${escapeHTML(node.id || "")}" data-energy-path-lane="${escapeHTML(geometry.lane)}" style="left:${(geometry.x - geometry.column.x) / geometry.column.width * 100}%;top:${geometry.y}px;width:${geometry.width / geometry.column.width * 100}%;height:${geometry.height}px"`
     : "";
   return `
-    <button class="energy-path-node${selected ? " selected" : ""}${related ? " related" : ""}${unclassified ? " energy-path-unclassified-energy" : ""}" type="button" data-energy-explanation-node="${escapeHTML(node.id || "")}"${placement}${related ? ' data-energy-path-related="true"' : ""}${node.carrierQuality ? ` data-energy-path-carrier-quality="${escapeHTML(node.carrierQuality.status)}"` : ""}${unclassified ? ` data-energy-path-unclassified-energy="${escapeHTML(node.carrier || "")}"` : ""} aria-pressed="${selected ? "true" : "false"}" title="${escapeHTML(fullTitle)}" aria-label="${escapeHTML(fullTitle)}">
+    <button class="energy-path-node${selected ? " selected" : ""}${related ? " related" : ""}${unclassified ? " energy-path-unclassified-energy" : ""}" type="button" data-energy-explanation-node="${escapeHTML(node.id || "")}" ${energyPathAppearanceAttributes(appearance)}${placement}${related ? ' data-energy-path-related="true"' : ""}${node.carrierQuality ? ` data-energy-path-carrier-quality="${escapeHTML(node.carrierQuality.status)}"` : ""}${unclassified ? ` data-energy-path-unclassified-energy="${escapeHTML(node.carrier || "")}"` : ""} aria-pressed="${selected ? "true" : "false"}" title="${escapeHTML(fullTitle)}" aria-label="${escapeHTML(fullTitle)}">
+      ${appearance.allocated ? `<i class="energy-path-allocation-mark" data-energy-path-allocation-mark="${appearance.allocationLabelKind}" aria-hidden="true"></i>` : ""}
       <span class="energy-path-node-copy"><span class="energy-path-node-label">${escapeHTML(label)}</span>${latentBadge}${partialCoverageBadge}${residualBadge}</span>
       <strong>${escapeHTML(geometry ? compactValue : fullValue)}</strong>
     </button>`;
