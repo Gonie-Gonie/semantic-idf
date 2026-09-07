@@ -1101,6 +1101,88 @@
   pointer-events: none;
 }
 
+.energy-path-ribbon {
+  fill: color-mix(in srgb, var(--teal) 35%, transparent);
+  stroke: none;
+  pointer-events: visiblePainted;
+}
+
+.energy-path-quantitative-bar {
+  fill: var(--teal);
+  stroke: none;
+  pointer-events: visiblePainted;
+}
+
+.energy-path-bridge-ratio {
+  position: absolute;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-sizing: border-box;
+  max-width: 72px;
+  border-radius: 3px;
+  background: var(--surface);
+  padding: 1px 0;
+  color: var(--ink);
+  font-size: 11px;
+  line-height: 13px;
+  text-align: center;
+  transform: translate(-50%, -50%);
+  cursor: help;
+}
+
+.energy-path-bridge-ratio-name {
+  max-width: 100%;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.energy-path-bridge-ratio > strong {
+  max-width: 100%;
+  overflow: hidden;
+  font: inherit;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.energy-path-bridge-ratio:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.energy-path-ratio-tooltip {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  z-index: 5;
+  display: none;
+  visibility: hidden;
+  width: 280px;
+  max-width: 70vw;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--ink) 15%, transparent);
+  background: var(--surface);
+  padding: 8px 10px;
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.45;
+  text-align: start;
+  transform: translateX(-50%);
+  overflow-wrap: anywhere;
+  pointer-events: none;
+}
+
+.energy-path-bridge-ratio:hover > .energy-path-ratio-tooltip,
+.energy-path-bridge-ratio:focus > .energy-path-ratio-tooltip {
+  display: block;
+  visibility: visible;
+}
+
 .energy-path-direct-lane-band {
   position: absolute;
   border-top: 1px solid var(--line);
@@ -2162,7 +2244,7 @@
 
 .energy-path-domain-legend {
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
   align-items: center;
   color: var(--muted);

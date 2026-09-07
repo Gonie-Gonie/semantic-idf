@@ -9,6 +9,7 @@ import {
   energyPathZoneNames,
   energyPathHasPayload,
   energyPathQualityForState,
+  energyPathRatioQualityForState,
   energyPathZoneDirectCoverage,
   isEnergyPathV2,
   normalizeEnergyPathViewState,
@@ -1397,9 +1398,15 @@ export function renderSimulationEnergyDashboard(result) {
 }
 
 function simulationEnergyKPIOptions(explanation, summary) {
+  const quality = energyPathQualityForState(explanation, state);
+  const ratioQuality = energyPathRatioQualityForState(explanation, state);
+  // Availability defaults do not invalidate otherwise typed, source-backed
+  // conversion pairs. An explicit period-local marker still takes precedence.
+  if (ratioQuality) quality.ratios = ratioQuality;
+  else delete quality.ratios;
   return {
     graph: energyPathGraphForState(explanation, { ...state, simulationEnergyService: "all" }),
-    quality: energyPathQualityForState(explanation, state),
+    quality,
     service: state.simulationEnergyService || "all",
     period: state.simulationEnergyPeriod || "annual",
     knownZoneOnly: energyPathZoneDirectCoverage(summary).limited,

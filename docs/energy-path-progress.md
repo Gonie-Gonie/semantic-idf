@@ -87,6 +87,17 @@ the checklist or its final acceptance scenarios.
   or residual rows, actual-index 24-node hit-testing, matching Building/Zone
   geometry, full-view scroll checks, setup/focus lifecycle and screenshot review.
   Existing 131/140/141 navigation, drawer and KPI acceptance also passed.
+- EPATH-143: thermal and site values now use separate linear quantitative scales,
+  with same-domain ribbons and dual-value tapered equipment bridges. Reported
+  node values are not inflated to fit mapped ports; actual From/To values and
+  source identities are retained. Accessible ratio labels explain the numeric
+  load/site ratio and independent scales. The legend has exactly four entries.
+  Invalid, contradictory duplicate and overflowing links are excluded explicitly;
+  tiny values remain linear without a fabricated minimum ribbon width.
+  Verification: immutable pure geometry, COP/efficiency taper direction, partial
+  overlaps, dense layouts, actual SVG hit geometry, keyboard tooltips, explicit
+  versus absent ratio-quality markers, Building/Zone viewport fit and screenshot
+  review. Existing navigation, KPI and drawer acceptance also passed.
 
 ## Policy clarification
 
@@ -98,7 +109,7 @@ The normal Building interzone/category projection remains intact.
 
 ## Next in sequence
 
-EPATH-143–145 → 150–152 → 160–161 →
+EPATH-144–145 → 150–152 → 160–161 →
 170–171 → 180–182 → 190–198 → 200–204 → 210–211 → 220–222 → 230–235.
 
 Existing code may already satisfy portions of later items. They remain pending
