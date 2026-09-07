@@ -961,6 +961,9 @@ export function renderEnergyPathNodeInspector(explanation = {}, nodes = [], sele
   const model = energyPathInspectorModel(node, energyPathInspectorContext(explanation, nodes, links, sourceDetails, viewState, {
     carrierQuality, supplyActivities: suppliedActivities || [],
   }));
+  const driverNavigation = node.level === "driver" && typeof options.driverNavigationForNode === "function"
+    ? options.driverNavigationForNode(node, sourceDetails, viewState, model)
+    : null;
   const unit = model.valueRows.find((row) => row.key === "total")?.unit ||
     (node.scaleDomain === "site" ? "kWh site" : "kWh thermal");
   const rowValue = (key) => model.valueRows.find((row) => row.key === key)?.value ?? null;
@@ -1005,7 +1008,8 @@ export function renderEnergyPathNodeInspector(explanation = {}, nodes = [], sele
   ]);
   const breakdown = loadBreakdown + renderEnergyPathInspectorBreakdown(model, { skipComponents: Boolean(loadBreakdown), skipContextKeys }) +
     offsetEffects + simultaneousLoad + renderEnergyPathGroupedMembers(node) + supplyBreakdown + carrierReconciliation;
-  const actions = renderEnergyPathInspectorActions(node, inspectorActions) + correspondenceActions;
+  const actions = renderEnergyPathDriverNavigation(node, driverNavigation, model) +
+    renderEnergyPathInspectorActions(node, inspectorActions) + correspondenceActions;
   const entities = typeof options.relatedEntitiesForItem === "function" ? options.relatedEntitiesForItem(node, sourceDetails, viewState) : [];
   return `
     <aside class="energy-path-node-inspector" data-energy-path-inspector="${escapeHTML(node.id)}">
@@ -1201,6 +1205,71 @@ function renderEnergyPathInspectorSourceSection(item, model, sources, viewState,
     ${technicalContext.length ? `<ul class="energy-path-technical-context">${technicalContext.map((context) => `<li>${escapeHTML([context.basis, context.explanation, context.formula, ...(context.sourceIds || [])].filter(Boolean).join(" · "))}</li>`).join("")}</ul>` : ""}
     ${renderEnergyPathSourceDetails(sources, viewState)}
   </details>`;
+}
+
+function energyPathDriverDestinationLabel(item = {}, model = {}, fallback = "") {
+  const kinds = {
+    connection_context: ["simulation.energyPathDriverConnectionContext", "Related connection context"],
+    zone_context: ["simulation.energyPathDriverZoneContext", "Zone topology context"],
+    air_coupling: ["simulation.energyPathRelatedAirCoupling", "Air coupling"],
+    outdoor_air_service: ["simulation.energyPathDriverOutdoorAirService", "Outdoor-air service"],
+    building_source_group: ["simulation.energyPathDriverBuildingGroup", "Building source group"],
+    profile_source_group: ["simulation.energyPathDriverProfileGroup", "Profile source group"],
+    model_context: ["simulation.energyPathDriverRelatedContext", "Related model context"],
+    profile_occupancy: ["simulation.energyPathDriverProfileOccupancy", "Occupancy"],
+    profile_lighting: ["simulation.energyPathDriverProfileLighting", "Lighting"],
+    profile_equipment: ["simulation.energyPathDriverProfileEquipment", "Equipment"],
+    profile_infiltration: ["simulation.energyPathDriverProfileInfiltration", "Infiltration"],
+    profile_ventilation: ["simulation.energyPathDriverProfileVentilation", "Ventilation"],
+    profile_outdoor_air: ["simulation.energyPathDriverProfileOutdoorAir", "Outdoor air"],
+  };
+  const kind = kinds[item.labelKind];
+  const label = kind ? t(kind[0], {}, kind[1]) : energyPathInspectorSafeLabel(item.label || item.target?.label || item.zoneName, model, fallback);
+  const context = String(item.contextLabel || "").trim() ? energyPathInspectorSafeLabel(item.contextLabel, model, "") : "";
+  return [label, context].filter(Boolean).join(" · ");
+}
+
+export function renderEnergyPathDriverNavigation(node = {}, navigation = null, model = {}) {
+  if (node.level !== "driver" || !navigation) return "";
+  const groups = (Array.isArray(navigation.groups) ? navigation.groups : []).filter((group) => group && Array.isArray(group.candidates));
+  const safeModel = { ...model, sourceIds: energyPathUniqueValues([...(model.sourceIds || []), ...groups.flatMap((group) => group.sourceIds || [])]) };
+  const views = [
+    ["topology", "tab.topology", "Topology"],
+    ["profile", "tab.profile", "Profile"],
+    ["hvac", "tab.hvac", "HVAC"],
+  ];
+  const sections = views.map(([view, labelKey, fallback]) => {
+    const viewLabel = t(labelKey, {}, fallback);
+    const viewGroups = groups.map((group) => ({ ...group, candidates: group.candidates.filter((candidate) => candidate?.id && candidate.view === view) }))
+      .filter((group) => group.candidates.length);
+    if (!viewGroups.length) return "";
+    const count = viewGroups.reduce((total, group) => total + group.candidates.length, 0);
+    const content = `<ul class="energy-path-driver-groups">${viewGroups.map((group) => {
+      const groupLabel = energyPathDriverDestinationLabel(group, safeModel, t("simulation.energyPathDriverSourceGroup", {}, "Source group"));
+      const contribution = typeof group.value === "number" && Number.isFinite(group.value)
+        ? `${t("simulation.energyPathDriverZoneContribution", {}, "Zone driver contribution")}: ${energyPathInspectorValueLabel(group.value, group.unit || "kWh thermal")}` : "";
+      return `<li data-energy-path-driver-group="${escapeHTML(group.id || "")}" data-energy-path-driver-zone="${escapeHTML(group.zoneName || "")}">
+        <header><strong>${escapeHTML(groupLabel)}</strong>${contribution ? `<small data-energy-path-driver-zone-contribution>${escapeHTML(contribution)}</small>` : ""}</header>
+        <ul class="energy-path-driver-candidates">${group.candidates.map((candidate) => {
+          const contextOnly = candidate.evidenceKind !== "exact_source";
+          const label = energyPathDriverDestinationLabel(candidate, safeModel, viewLabel);
+          const evidenceLabel = contextOnly
+            ? t("simulation.energyPathDriverCategoryContext", {}, "Model context only · no contribution is assigned to this target")
+            : t("simulation.energyPathDriverExactSource", {}, "Linked source context");
+          return `<li><button class="energy-path-inspector-action energy-path-driver-destination" type="button" data-energy-path-driver-node="${escapeHTML(node.id)}" data-energy-path-driver-destination="${escapeHTML(candidate.id)}" data-energy-path-driver-evidence="${contextOnly ? "category_context" : "exact_source"}">
+            <span>${escapeHTML(t("simulation.energyPathDriverOpenView", { view: viewLabel }, `Open ${viewLabel}`))}</span><strong>${escapeHTML(label)}</strong><small>${escapeHTML(evidenceLabel)}</small>
+          </button></li>`;
+        }).join("")}</ul>
+      </li>`;
+    }).join("")}</ul>`;
+    return `<section class="energy-path-driver-view" data-energy-path-driver-view="${view}"><h6>${escapeHTML(viewLabel)}</h6>${count > 1
+      ? `<details data-energy-path-driver-chooser="${view}"><summary>${escapeHTML(t("simulation.energyPathDriverChooseTarget", {}, "Choose a Zone or source group"))} · ${count}</summary>${content}</details>`
+      : content}</section>`;
+  }).join("");
+  return `<section class="energy-path-driver-navigation" data-energy-path-driver-navigation="${escapeHTML(navigation.status || "unavailable")}" data-energy-path-driver-category="${escapeHTML(navigation.category || "")}">
+    <h6>${escapeHTML(t("simulation.energyPathDriverModelContext", {}, "Explore related model context"))} · ${escapeHTML(energyPathInspectorSafeLabel(node.label, safeModel))}</h6>
+    ${sections || `<button class="energy-path-inspector-action" type="button" disabled>${escapeHTML(t("simulation.energyPathDriverModelContext", {}, "Explore related model context"))}</button><p class="energy-path-detail-empty">${escapeHTML(t("simulation.energyPathDriverNavigationUnavailable", {}, "No verified Topology, Profile, or outdoor-air service target is available for this driver."))}</p>`}
+  </section>`;
 }
 
 export function renderEnergyPathInspectorActions(node = {}, actions = {}) {

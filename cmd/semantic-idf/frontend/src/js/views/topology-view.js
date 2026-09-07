@@ -171,6 +171,12 @@ export async function revealTopologySelection(selection, options = {}, context) 
   }
   if (entity.thermalTarget) {
     state.topologyMode = "thermal";
+    // The selection controller records the prior panel context before reveal.
+    // Air coupling edges are omitted by every other thermal metric, so expose
+    // the explicitly requested target here without adding a history entry.
+    if (entity.kind === "thermal_air_coupling") {
+      state.thermalTopologyMetric = "air";
+    }
     state.thermalTopologySelectedEntityId = entity.id;
     state.thermalTopologySelectedEntityKind = entity.kind;
   } else if (state.topologyMode === "plan" && !geometryEntityHasPlanShape(entity, geometry)) {

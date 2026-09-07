@@ -6,6 +6,7 @@ import { getSemanticNavigationCache } from "../semantic-navigation-cache.js";
 import { openSelectionInView, selectSemanticEntity } from "../selection-controller.js";
 import {
   energyPathGraphForState,
+  energyPathInspectorSources,
   energyPathZoneNames,
   energyPathHasPayload,
   energyPathQualityForState,
@@ -22,6 +23,7 @@ import {
 import { energyPathLegacyDerivedKPIItems, energyPathSummaryGroups } from "../energy-path-summary.js";
 import { energyPathSeriesID, resolveEnergyPathSeriesCandidates, energyPathSeriesPeriodRange } from "../energy-path-navigation.js";
 import { energyPathKPIItems } from "../energy-path-kpis.js";
+import { energyPathDriverDestinations } from "../energy-path-driver-destinations.js";
 import { navigateHVAC, renderHVACLoopDiagram } from "./hvac-views.js";
 import { renderProfile } from "./profile-views.js";
 
@@ -1386,6 +1388,7 @@ export function renderSimulationEnergyDashboard(result) {
         outputObjects: result?.purposeRunPlan?.outputObjects || [],
         inspectorActionsForNode: (node, sources, viewState) => simulationEnergyInspectorActions(node, sources, viewState, result),
         relatedEntitiesForItem: simulationEnergyInspectorRelatedEntities,
+        driverNavigationForNode: simulationEnergyDriverNavigation,
       })}`;
     pruneSimulationSemanticBindings();
     return;
@@ -1453,6 +1456,20 @@ export function simulationEnergyInspectorActions(node = {}, sourceDetails = [], 
         : t("simulation.energyPathSeriesUnavailable", {}, "No reported series can be matched exactly to these sources."),
     hvacUnavailableReason: t("simulation.energyPathHVACUnavailable", {}, "No explicit related HVAC service path is available for this item."),
   };
+}
+
+export function simulationEnergyDriverNavigation(node = {}, sourceDetails = [], viewState = state, inspectorModel = {}) {
+  const explanation = viewState.simulationResult?.purposeResults?.energyExplanation || {};
+  return energyPathDriverDestinations(node, {
+    sources: Array.isArray(explanation.sources) ? explanation.sources : sourceDetails,
+    scope: { kind: viewState.simulationEnergyScopeKind || "building", zoneName: viewState.simulationEnergyZoneName || "" },
+    period: viewState.simulationEnergyPeriod || "annual",
+    zoneRows: inspectorModel.breakdown?.zoneRows || [],
+    geometry: viewState.report?.geometry || {},
+    profile: viewState.report?.profile || {},
+    hvac: viewState.report?.hvac || {},
+    semanticNavigation: viewState.semanticProjection?.navigation || {},
+  });
 }
 
 export function simulationEnergyInspectorRelatedEntities(item = {}, sources = [], viewState = state) {
@@ -5808,6 +5825,13 @@ export function handleSimulationSeriesInspectClick(event) {
     return;
   }
   if (handleSimulationEnergyDetailsClick(event)) return;
+  const driverDestination = event.target.closest("[data-energy-path-driver-destination]");
+  if (driverDestination) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!driverDestination.disabled) void openSimulationEnergyDriverDestination(driverDestination);
+    return;
+  }
   const kpiNodeButton = event.target.closest("[data-energy-path-kpi-node]");
   if (kpiNodeButton) {
     event.preventDefault();
@@ -5952,6 +5976,61 @@ export function handleSimulationSeriesInspectClick(event) {
     return;
   }
   selectSimulationSeries(series);
+}
+
+export async function openSimulationEnergyDriverDestination(element) {
+  const unavailable = () => {
+    setStatus(t("simulation.energyPathDriverDestinationUnavailable", {}, "This related model destination is unavailable."), "warn");
+    return false;
+  };
+  const id = String(element?.dataset?.energyPathDriverDestination || "");
+  const expectedNodeID = String(element?.dataset?.energyPathDriverNode || "");
+  const node = simulationSelectedEnergyPathNode();
+  if (!id || !expectedNodeID || element?.disabled || node?.level !== "driver" || node.id !== expectedNodeID) return unavailable();
+  const explanation = state.simulationResult?.purposeResults?.energyExplanation || {};
+  const sources = energyPathInspectorSources(explanation, node, state);
+  // Recompute from the current selected result and model. Stale DOM attributes
+  // never authorize a destination from another driver, period or document.
+  const navigation = simulationEnergyDriverNavigation(node, sources);
+  const matches = (navigation.groups || []).flatMap((group) => group.candidates || []).filter((candidate) => candidate.id === id);
+  if (matches.length !== 1) return unavailable();
+  const candidate = matches[0];
+  const target = candidate.target || {};
+  const view = candidate.view || target.view;
+  if (!["topology", "profile", "hvac"].includes(view) || target.view !== view) return unavailable();
+  const cache = simulationSemanticNavigationCache();
+  const entity = cache.entity(candidate.entityId);
+  const occurrence = candidate.occurrenceId ? cache.occurrence(candidate.occurrenceId) : null;
+  if (!entity || candidate.occurrenceId && (!occurrence || occurrence.entityId !== entity.id)) return unavailable();
+  const targets = [...(entity.viewTargets || []), ...(occurrence?.viewTargets || [])];
+  if (!targets.some((item) => String(item.view || "").toLowerCase() === view && item.targetKind === target.targetKind && item.targetId === target.targetId)) return unavailable();
+  const previous = state.globalSelection;
+  const selected = await selectSemanticEntity({
+    entityId: entity.id,
+    entityKind: entity.kind,
+    occurrenceId: occurrence?.occurrenceId || "",
+    originView: "simulation",
+    originTargetId: target.targetId,
+  }, { originView: "simulation", action: "select", recordHistory: true, follow: false, preserveFilters: true });
+  if (!selected) return unavailable();
+  // Match the controller's semantic source identity, not object property order
+  // or ancillary anchor metadata, when deciding whether it recorded a return point.
+  const anchorKey = (anchor) => anchor
+    ? [anchor.objectId, anchor.objectIndex, anchor.objectType, anchor.objectName, anchor.fieldIndex, anchor.fieldName]
+      .map((value) => String(value ?? "")).join("\u0000") : "";
+  const selectionChanged = selected.entityId !== previous?.entityId || selected.occurrenceId !== previous?.occurrenceId ||
+    anchorKey(selected.sourceAnchor) !== anchorKey(previous?.sourceAnchor);
+  const opened = await openSelectionInView(view, {
+    originView: "simulation",
+    action: "open",
+    targetId: target.targetId,
+    // Selecting an already-current entity does not record history. Its explicit
+    // cross-panel jump still needs one Energy return point, never two.
+    recordHistory: !selectionChanged,
+    follow: false,
+    preserveFilters: true,
+  });
+  return opened ? true : unavailable();
 }
 
 export async function openSimulationEnergyPathTopologyAirCoupling(element) {

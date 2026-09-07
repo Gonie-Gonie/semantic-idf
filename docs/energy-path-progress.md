@@ -135,6 +135,21 @@ the checklist or its final acceptance scenarios.
   Verification: pure model/metadata, Go zero-presence round trips, actual
   25-node/four-link-type seven-section acceptance, source visibility, monthly
   Series return, unchanged raw data, native pane fit and screenshot review.
+- EPATH-151: driver actions now provide category-specific Topology, Profile and
+  verified outdoor-air HVAC destinations through the global selection controller.
+  Building aggregates expose explicit Zone/source-group choices, never an
+  arbitrary first surface. Matching physical sources and unquantified model
+  context are distinguished; mixed connections and shared interzone air links
+  do not acquire fabricated per-target energy contributions. Exact report
+  targets, Zone ownership and Profile source anchors are checked against the
+  current semantic navigation index, again when a destination is activated.
+  Physical entity targets avoid duplicate semantic field-context choices; native
+  disclosures keep multiple choices compact. Air-coupling navigation exposes the
+  selected edge in the Topology air metric. Each jump records one Energy return
+  point, preserving scope, month, service, selected driver and detail state.
+  Verification: pure category/provenance/identity tests, real analyzed-IDF schema
+  bridge, actual Topology/Profile/HVAC adapter round trips and air-edge visibility,
+  stale-target rejection, no Analyze/Run calls, unchanged raw data and screenshots.
 
 ## Policy clarification
 
@@ -146,7 +161,7 @@ The normal Building interzone/category projection remains intact.
 
 ## Next in sequence
 
-EPATH-151–152 → 160–161 →
+EPATH-152 → 160–161 →
 170–171 → 180–182 → 190–198 → 200–204 → 210–211 → 220–222 → 230–235.
 
 Checklist section 22's actual-model fixtures and expected manifests also remain
