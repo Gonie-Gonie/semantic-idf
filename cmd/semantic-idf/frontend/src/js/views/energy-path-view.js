@@ -1068,8 +1068,12 @@ function energyPathFlowUnit(unit = "", scaleDomain = "") {
   return value;
 }
 
-function energyPathRatioValueLabel(value) {
-  return Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 });
+export function energyPathRatioValueLabel(value, locales = undefined) {
+  const number = energyPathNodeNumber(value);
+  if (number === null || number <= 0) return t("common.notAvailable", {}, "—");
+  const format = (number) => number.toLocaleString(locales, { maximumFractionDigits: 2 });
+  // Preserve a known positive ratio without implying exact zero at display precision.
+  return number < 0.01 ? `<${format(0.01)}` : format(number);
 }
 
 export function renderEnergyPathNodeInspector(explanation = {}, nodes = [], selectedID = "", viewState = {}, relations = [], links = [], suppliedActivities = null, options = {}) {
@@ -1259,7 +1263,7 @@ function renderEnergyPathInspectorBreakdown(model, options = {}) {
       }
       return known ? t(known[0], {}, known[1]) : energyPathInspectorSafeLabel(row.label, model, t(labelKey, {}, fallback));
     };
-    return `<section class="energy-path-detail-breakdown" data-energy-path-detail-breakdown="${groupKey}"><h6>${escapeHTML(t(labelKey, {}, fallback))}</h6><dl>${rows.map((row) => `<div data-energy-path-detail-row="${escapeHTML(row.key || "")}"><dt>${escapeHTML(rowLabel(row))}</dt><dd>${escapeHTML(energyPathInspectorValueLabel(row.value, row.unit || ""))}${row.partial ? ` · ${escapeHTML(t("simulation.energyPathKPIMatchedConversions", {}, "Partial overlap · matched conversions only"))}` : ""}</dd>${groupKey === "ratioRows" ? `<small>${escapeHTML(t("simulation.energyPathBridgeFrom", {}, "From"))}: ${escapeHTML(energyPathInspectorValueLabel(row.fromValue, row.fromUnit))} · ${escapeHTML(t("simulation.energyPathBridgeTo", {}, "To"))}: ${escapeHTML(energyPathInspectorValueLabel(row.toValue, row.toUnit))}</small>` : ""}</div>`).join("")}</dl></section>`;
+    return `<section class="energy-path-detail-breakdown" data-energy-path-detail-breakdown="${groupKey}"><h6>${escapeHTML(t(labelKey, {}, fallback))}</h6><dl>${rows.map((row) => `<div data-energy-path-detail-row="${escapeHTML(row.key || "")}"><dt>${escapeHTML(rowLabel(row))}</dt><dd>${escapeHTML(groupKey === "ratioRows" ? energyPathRatioValueLabel(row.value) : energyPathInspectorValueLabel(row.value, row.unit || ""))}${row.partial ? ` · ${escapeHTML(t("simulation.energyPathKPIMatchedConversions", {}, "Partial overlap · matched conversions only"))}` : ""}</dd>${groupKey === "ratioRows" ? `<small>${escapeHTML(t("simulation.energyPathBridgeFrom", {}, "From"))}: ${escapeHTML(energyPathInspectorValueLabel(row.fromValue, row.fromUnit))} · ${escapeHTML(t("simulation.energyPathBridgeTo", {}, "To"))}: ${escapeHTML(energyPathInspectorValueLabel(row.toValue, row.toUnit))}</small>` : ""}</div>`).join("")}</dl></section>`;
   }).join("");
 }
 
@@ -2195,7 +2199,7 @@ function renderEnergyPathKPIRatio(item = {}) {
   return `<small class="energy-path-kpi-ratio" data-energy-path-kpi-ratio="${item.id === "cooling_load" ? "cooling" : "heating"}"
     ${available ? `data-energy-path-kpi-ratio-value="${escapeHTML(String(ratio.value))}"` : ""}
     data-energy-path-kpi-ratio-partial="${ratio?.partial === true}" data-energy-path-kpi-ratio-links="${escapeHTML(JSON.stringify(ratio?.linkIds || []))}">
-    ${escapeHTML(t("simulation.energyPathKPILoadSiteRatio", {}, "Load/site ratio"))}: ${escapeHTML(available ? energyPathSummaryValueLabel(ratio.value) : t("common.notAvailable", {}, "—"))}
+    ${escapeHTML(t("simulation.energyPathKPILoadSiteRatio", {}, "Load/site ratio"))}: ${escapeHTML(available ? energyPathRatioValueLabel(ratio.value) : t("common.notAvailable", {}, "—"))}
     ${ratio?.partial ? `<span class="energy-path-kpi-ratio-note">${escapeHTML(t("simulation.energyPathKPIMatchedConversions", {}, "Partial overlap · matched conversions only"))}</span>` : ""}
   </small>`;
 }
@@ -2269,7 +2273,7 @@ export function renderEnergyPathSummaryOverview(summary = {}) {
             ))}</p>` : ""}
             <div>
               ${group.items.length
-                ? group.items.slice(0, 8).map(renderEnergyPathSummaryItem).join("")
+                ? group.items.slice(0, 8).map((item) => renderEnergyPathSummaryItem(item, group.key === "ratios")).join("")
                 : `<span class="energy-path-summary-empty">${escapeHTML(t("common.notAvailable", {}, "—"))}</span>`}
             </div>
           </article>`;
@@ -3421,7 +3425,7 @@ function energyPathValueLabel(value, unitLabel) {
   )}`;
 }
 
-function renderEnergyPathSummaryItem(item = {}) {
+function renderEnergyPathSummaryItem(item = {}, ratio = false) {
   const detail = [
     energyPathSummaryOptionalValue(t("simulation.energyPathRaw", {}, "Raw"), item, "rawValue"),
     energyPathSummaryOptionalValue(t("simulation.energyPathAllocated", {}, "Allocated"), item, "allocatedValue"),
@@ -3433,7 +3437,7 @@ function renderEnergyPathSummaryItem(item = {}) {
   return `
     <div class="energy-path-summary-item">
       <span>${escapeHTML(item.label || item.id || "")}</span>
-      <strong>${escapeHTML(energyPathSummaryValueLabel(item.value, item.unit || ""))}</strong>
+      <strong>${escapeHTML(ratio ? [energyPathRatioValueLabel(item.value), item.unit || ""].filter(Boolean).join(" ") : energyPathSummaryValueLabel(item.value, item.unit || ""))}</strong>
       ${detail ? `<small>${escapeHTML(detail)}</small>` : ""}
     </div>`;
 }

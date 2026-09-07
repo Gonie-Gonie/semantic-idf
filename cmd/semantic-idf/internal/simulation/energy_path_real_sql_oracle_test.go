@@ -63,6 +63,8 @@ type epathRealOracleEvidence struct {
 	Sources       []epathRealSQLSource    `json:"sources"`
 	CheckedGroups []string                `json:"checkedGroups"`
 	Metrics       []epathRealOracleMetric `json:"metrics,omitempty"`
+	sqlPath       string
+	outputPlan    *PurposeRunPlan
 }
 
 func epathOracleNumber(value float64) *float64 { return &value }
@@ -240,6 +242,7 @@ func epathOracleEnergy(value float64, unit string, minutes sql.NullFloat64) (flo
 func epathReadRealSQLOracle(path string) (epathRealOracleEvidence, error) {
 	out := epathRealOracleEvidence{Schema: "semantic-idf.energy-path-sql-oracle/v1", Status: "metadata_only", Acceptance: false,
 		Reason: "Independent weather-run SQL observations only; no approved eight-group oracle recipe/expected manifest has been accepted.", Sources: []epathRealSQLSource{}, CheckedGroups: []string{}}
+	out.sqlPath = path
 	db, err := epathOpenOracleSQL(path)
 	if err != nil {
 		return out, err
@@ -400,6 +403,9 @@ func epathCollectRealSQLOracle(t *testing.T, evidence epathRealRunEvidence) epat
 	out, err := epathReadRealSQLOracle(evidence.SQLPath)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if evidence.Run != nil {
+		out.outputPlan = evidence.Run.PurposeRunPlan
 	}
 	if strings.TrimSpace(evidence.Fixture.OraclePath) == "" {
 		return out

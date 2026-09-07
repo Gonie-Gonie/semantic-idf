@@ -8,10 +8,11 @@ This directory contains original EnergyPlus example models for checklist section
 - All 19 original models are present: the full 16-model 25.1 fixture set and
   Large Office 22.1/23.2/24.2 compatibility fixtures. All four version-specific
   license files are included with verified original bytes.
-- Oracle recipes and expected manifests are pending complete independent SQL
-  checks and explicit review. All 19 engine executions have finished (18 normal
-  results; the no-heating model rejected for Severe errors). Their catalog paths are intentional
-  destinations, not claims that the files already exist.
+- Initial Large/Small Office source recipes are being checked against exact SQL
+  identities and original physical memberships. No numeric expected manifest is
+  approved yet. All 19 engine executions have finished (18 normal results; the
+  no-heating model rejected for Severe errors). Catalog paths remain intended
+  destinations where files are not yet present, not completed acceptance claims.
 - No generated SQL, fabricated expected totals or synthetic oracle recipes are
   supplied by this catalog.
 - `output_alias_discovery` nominates Large Office 25.1 for a required check.

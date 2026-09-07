@@ -405,9 +405,24 @@ with all four stages and 19 Zone projections. All 19 selected engine executions
 have now finished: 18 normal results and one no-heating model rejected for two
 Severe errors. Saved SQL calendar/annual-scalar compatibility corrections pass
 focused tests and four independent read-only rechecks. Eight-group expected
-manifests and the no-heating convergence resolution remain required. Evidence,
+manifests and the no-heating convergence resolution remain required. Fresh
+Large Office saved replay now verifies the corrected 12/18, 9/14, 9/10 and 2/2
+stage counts and actual exact-key discovery. Real annual parallel-link ID
+collisions are fixed without losing branches or relaxing projection guards.
+The simultaneous fixture's six exact time-aligned SQL measurements also pass
+an automated positive/negative contract. The isolated no-heating hybrid-solver
+trial retained its two Severe errors and was not accepted. Evidence,
 isolation, engine provenance and explicit capture-versus-acceptance distinctions are in
 `docs/energy-path-real-models.md`.
+
+The next real-result pass also preserves tiny positive conversion ratios and
+uses explicit locale-aware `<0.01` presentation instead of zero. Actual replay
+and browser/regression checks pass. Independent Large/Small Office source
+recipes are present, but the first 17,469-metric Large Office diagnostic is
+rejected: monthly sensible/latent reconciliation rows have colliding IDs, and
+the interval/presence/complete-coverage acceptance guards remain unfinished.
+These are explicit next tasks within section 22, not deferred later items or
+approved fixture expectations. No numeric expected manifest is approved.
 
 Checklist section 22's actual-model fixtures and expected manifests also remain
 required between EPATH-204 and EPATH-210; they have no individual EPATH numbers.

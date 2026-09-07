@@ -55,22 +55,42 @@ type epathRealOracleMetricRecipe struct {
 }
 
 type epathRealOracleTarget struct {
-	Collection      string `json:"collection"`
-	Field           string `json:"field"`
-	Level           string `json:"level,omitempty"`
-	Category        string `json:"category,omitempty"`
-	Service         string `json:"service,omitempty"`
-	Carrier         string `json:"carrier,omitempty"`
-	Basis           string `json:"basis,omitempty"`
-	Relation        string `json:"relation,omitempty"`
-	AllowPrunedZero bool   `json:"allowPrunedZero,omitempty"`
+	ID               string `json:"id,omitempty"`
+	Collection       string `json:"collection"`
+	Field            string `json:"field"`
+	Level            string `json:"level,omitempty"`
+	Category         string `json:"category,omitempty"`
+	Service          string `json:"service,omitempty"`
+	Carrier          string `json:"carrier,omitempty"`
+	Basis            string `json:"basis,omitempty"`
+	Relation         string `json:"relation,omitempty"`
+	Kind             string `json:"kind,omitempty"`
+	Unit             string `json:"unit,omitempty"`
+	ScaleDomain      string `json:"scaleDomain,omitempty"`
+	AggregationBasis string `json:"aggregationBasis,omitempty"`
+	ThermalComponent string `json:"thermalComponent,omitempty"`
+	Component        string `json:"component,omitempty"`
+	SourceName       string `json:"sourceName,omitempty"`
+	SourceKey        string `json:"sourceKey,omitempty"`
+	SourceUnit       string `json:"sourceUnit,omitempty"`
+	Frequency        string `json:"frequency,omitempty"`
+	FromID           string `json:"fromId,omitempty"`
+	ToID             string `json:"toId,omitempty"`
+	FromUnit         string `json:"fromUnit,omitempty"`
+	ToUnit           string `json:"toUnit,omitempty"`
+	RatioKind        string `json:"ratioKind,omitempty"`
+	AllocationMethod string `json:"allocationMethod,omitempty"`
+	Status           string `json:"status,omitempty"`
+	Aggregate        string `json:"aggregate,omitempty"`
+	AllowPrunedZero  bool   `json:"allowPrunedZero,omitempty"`
 }
 
 type epathRealOracleRecipe struct {
-	Schema  string                        `json:"schema"`
-	Review  string                        `json:"review"`
-	Sources []epathRealOracleSourceRecipe `json:"sources"`
-	Metrics []epathRealOracleMetricRecipe `json:"metrics"`
+	Schema   string                        `json:"schema"`
+	Review   string                        `json:"review"`
+	Sources  []epathRealOracleSourceRecipe `json:"sources"`
+	Metrics  []epathRealOracleMetricRecipe `json:"metrics"`
+	SQLModel *epathRealSQLModel            `json:"sqlModel,omitempty"`
 }
 
 type epathRealExpectedManifest struct {
@@ -88,7 +108,7 @@ func epathLoadRealOracleRecipe(path string) (epathRealOracleRecipe, error) {
 	if err := epathDecodeOracleFile(path, &recipe); err != nil {
 		return recipe, err
 	}
-	if recipe.Schema != "semantic-idf.energy-path-sql-oracle-recipe/v1" || strings.TrimSpace(recipe.Review) == "" || len(recipe.Sources) == 0 || len(recipe.Metrics) == 0 {
+	if recipe.Schema != "semantic-idf.energy-path-sql-oracle-recipe/v1" || strings.TrimSpace(recipe.Review) == "" || recipe.SQLModel == nil && (len(recipe.Sources) == 0 || len(recipe.Metrics) == 0) {
 		return recipe, fmt.Errorf("%s: reviewed, nonempty SQL oracle recipe required", path)
 	}
 	return recipe, nil
@@ -121,6 +141,9 @@ func epathValidateOracleMetricGroups(metrics []epathRealOracleMetric) error {
 			return fmt.Errorf("unknown oracle group %q", metric.Group)
 		}
 		groups[metric.Group] = true
+		if err := epathValidateOracleMetricIdentity(metric); err != nil {
+			return err
+		}
 		if metric.Value != nil && !epathOracleFinite(*metric.Value) {
 			return fmt.Errorf("nonfinite metric %s", metric.Key)
 		}
@@ -309,6 +332,20 @@ func epathOracleArithmetic(operation string, inputs []*float64) (*float64, error
 }
 
 func epathEvaluateRealOracle(out *epathRealOracleEvidence, recipe epathRealOracleRecipe, bundle PurposeResultBundle) error {
+	if recipe.SQLModel != nil {
+		if len(recipe.Sources) != 0 || len(recipe.Metrics) != 0 {
+			return fmt.Errorf("a SQL model must not hide additional uncompiled legacy metrics")
+		}
+		checks, err := epathCompileSQLModelChecks(*out, *recipe.SQLModel)
+		if err != nil {
+			return err
+		}
+		failures := epathEvaluateSQLModelChecks(out, bundle, checks)
+		if len(failures) > 0 {
+			return fmt.Errorf("%d independent SQL candidate mismatches; first: %s", len(failures), failures[0].Message)
+		}
+		return nil
+	}
 	sources := map[string]epathRealOracleSourceRecipe{}
 	metrics := map[string]epathRealOracleMetric{}
 	for _, source := range recipe.Sources {
@@ -377,11 +414,26 @@ func epathEvaluateRealOracle(out *epathRealOracleEvidence, recipe epathRealOracl
 
 func epathOracleGraph(bundle PurposeResultBundle, scope, zone, period string) ([]EnergyExplanationNode, []EnergyPathLink, []EnergyReconciliation, *EnergyPathQuality, error) {
 	result := bundle.EnergyExplanation
+	if result.Schema != energyExplanationSchema || result.Scope.Kind != "building" || result.Scope.ZoneName != "" {
+		return nil, nil, nil, nil, fmt.Errorf("oracle requires the original canonical Building result, not a substituted scope/schema")
+	}
+	if (scope == "building" && zone != "") || (scope == "zone" && strings.TrimSpace(zone) == "") || !epathOracleValidPeriod(period) {
+		return nil, nil, nil, nil, fmt.Errorf("invalid exact oracle scope/Zone/period %q/%q/%q", scope, zone, period)
+	}
 	nodes, links, rows, quality, periods := result.Nodes, result.Links, result.Reconciliation, result.Quality, result.Periods
+	candidateZones := append([]string(nil), result.AvailableZones...)
+	for _, candidate := range result.ZoneResults {
+		if candidate.Scope.Kind == "zone" {
+			candidateZones = append(candidateZones, candidate.Scope.ZoneName)
+		}
+	}
 	if scope == "zone" {
 		found := false
 		for _, candidate := range result.ZoneResults {
 			if strings.EqualFold(candidate.Scope.ZoneName, zone) {
+				if candidate.Scope.Kind != "zone" {
+					return nil, nil, nil, nil, fmt.Errorf("Zone wrapper has conflicting scope kind")
+				}
 				if found {
 					return nil, nil, nil, nil, fmt.Errorf("ambiguous Zone %q", zone)
 				}
@@ -396,12 +448,26 @@ func epathOracleGraph(bundle PurposeResultBundle, scope, zone, period string) ([
 		return nil, nil, nil, nil, fmt.Errorf("invalid oracle scope %q", scope)
 	}
 	if period == "annual" {
+		if err := epathValidateOracleGraphRecords(nodes, links, rows, scope, zone, period, candidateZones...); err != nil {
+			return nil, nil, nil, nil, err
+		}
 		return nodes, links, rows, quality, nil
 	}
+	var selected *EnergyPeriod
 	for _, candidate := range periods {
 		if candidate.ID == period {
-			return candidate.Nodes, candidate.Links, candidate.Reconciliation, candidate.Quality, nil
+			if selected != nil {
+				return nil, nil, nil, nil, fmt.Errorf("duplicate candidate period %q", period)
+			}
+			copy := candidate
+			selected = &copy
 		}
+	}
+	if selected != nil {
+		if err := epathValidateOracleGraphRecords(selected.Nodes, selected.Links, selected.Reconciliation, scope, zone, period, candidateZones...); err != nil {
+			return nil, nil, nil, nil, err
+		}
+		return selected.Nodes, selected.Links, selected.Reconciliation, selected.Quality, nil
 	}
 	return nil, nil, nil, nil, fmt.Errorf("missing candidate period %q; no annual fallback", period)
 }
@@ -412,6 +478,9 @@ func epathReadOracleCandidate(bundle PurposeResultBundle, item epathRealOracleMe
 		return nil, err
 	}
 	target := item.Target
+	if err := epathValidateOracleTarget(target, item.Unit); err != nil {
+		return nil, err
+	}
 	sum, count := 0.0, 0
 	match := func(filter, value string) bool { return filter == "" || filter == value }
 	switch target.Collection {
@@ -424,28 +493,73 @@ func epathReadOracleCandidate(bundle PurposeResultBundle, item epathRealOracleMe
 			if node.Level == "carrier" {
 				category = node.Carrier
 			}
-			if !match(target.Level, node.Level) || !match(target.Category, category) || !match(target.Service, node.ServiceKind) || !match(target.Carrier, node.Carrier) || !match(target.Basis, node.Basis) {
+			if !match(target.ID, node.ID) || !match(target.Kind, node.Kind) || !match(target.ThermalComponent, node.ThermalComponent) || !match(target.Level, node.Level) || !match(target.Category, category) || !match(target.Service, node.ServiceKind) || !match(target.Carrier, node.Carrier) || !match(target.Basis, node.Basis) {
 				continue
 			}
+			if node.Unit != target.Unit || !match(target.ScaleDomain, node.ScaleDomain) || !match(target.AggregationBasis, node.AggregationBasis) {
+				return nil, fmt.Errorf("selected node %s has wrong unit/domain/aggregation basis", node.ID)
+			}
 			value := node.Value
+			bit := uint8(0)
 			switch target.Field {
 			case "value":
 			case "rawValue":
 				value = node.RawValue
+				bit = 1
 			case "effectiveValue":
 				value = node.EffectiveValue
+				bit = 2
 			case "allocatedValue":
 				value = node.AllocatedValue
+				bit = 4
+			case "loadBreakdown":
+				found := false
+				for _, component := range node.LoadBreakdown {
+					if component.Component != target.Component {
+						continue
+					}
+					if found {
+						return nil, fmt.Errorf("duplicate load breakdown component")
+					}
+					found = true
+					if component.Unit != target.Unit {
+						return nil, fmt.Errorf("load breakdown unit mismatch")
+					}
+					value = component.Value
+				}
+				if !found {
+					return nil, nil
+				}
 			default:
 				return nil, fmt.Errorf("unknown node field %q", target.Field)
+			}
+			if bit != 0 && node.inspectorDecodedFromJSON && node.inspectorValuePresence&bit == 0 {
+				return nil, nil
+			}
+			if bit != 0 && value == 0 && !node.inspectorDecodedFromJSON && !(node.Level == "driver" && node.AllocationApplied) {
+				return nil, nil
+			}
+			if !epathOracleFinite(value) {
+				return nil, fmt.Errorf("nonfinite candidate node %s", node.ID)
 			}
 			sum += value
 			count++
 		}
+	case "sources":
+		return epathReadOracleSourceCandidate(bundle.EnergyExplanation.Sources, item)
 	case "links":
+		if target.Field == "pairedRatio" {
+			return epathReadOraclePairedRatio(nodes, links, bundle.EnergyExplanation.Sources, target)
+		}
 		for _, link := range links {
-			if !match(target.Relation, link.Relation) || !match(target.Service, link.ServiceKind) || !match(target.Basis, link.Basis) {
+			if !match(target.ID, link.ID) || !match(target.FromID, link.FromID) || !match(target.ToID, link.ToID) || !match(target.Relation, link.Relation) || !match(target.Service, link.ServiceKind) || !match(target.Basis, link.Basis) {
 				continue
+			}
+			if link.FromUnit != target.FromUnit || link.ToUnit != target.ToUnit || !match(target.RatioKind, link.RatioKind) {
+				return nil, fmt.Errorf("selected link %s has wrong paired units/kind", link.ID)
+			}
+			if !epathOracleFinite(link.FromValue) || !epathOracleFinite(link.ToValue) {
+				return nil, fmt.Errorf("nonfinite candidate link %s", link.ID)
 			}
 			switch target.Field {
 			case "fromValue":
@@ -459,8 +573,11 @@ func epathReadOracleCandidate(bundle PurposeResultBundle, item epathRealOracleMe
 		}
 	case "reconciliation":
 		for _, row := range rows {
-			if !match(target.Level, row.Level) || !match(target.Service, row.ServiceKind) || !match(target.Basis, row.Basis) {
+			if !match(target.ID, row.ID) || !match(target.Level, row.Level) || !match(target.Service, row.ServiceKind) || !match(target.Basis, row.Basis) {
 				continue
+			}
+			if row.Unit != target.Unit || !match(target.AllocationMethod, row.AllocationMethod) || !match(target.Status, row.Status) {
+				return nil, fmt.Errorf("selected reconciliation %s has wrong unit/method/status", row.ID)
 			}
 			switch target.Field {
 			case "expectedValue":
@@ -483,46 +600,7 @@ func epathReadOracleCandidate(bundle PurposeResultBundle, item epathRealOracleMe
 			count++
 		}
 	case "quality":
-		if quality == nil {
-			return nil, nil
-		}
-		switch target.Field {
-		case "driverToLoadClosedPct":
-			if quality.DriverToLoadStatus == "unavailable" || quality.DriverToLoadStatus == "not_requested" {
-				return nil, nil
-			}
-			return epathOracleNumber(quality.DriverToLoadClosedPct), nil
-		case "endUseToCarrierClosedPct":
-			if quality.EndUseToCarrierStatus == "unavailable" || quality.EndUseToCarrierStatus == "not_requested" {
-				return nil, nil
-			}
-			return epathOracleNumber(quality.EndUseToCarrierClosedPct), nil
-		case "zoneAllocatedPct", "unassignedPct":
-			if quality.ZoneAllocationStatus == "unavailable" {
-				return nil, nil
-			}
-			if target.Field == "zoneAllocatedPct" {
-				return epathOracleNumber(quality.ZoneAllocatedPct), nil
-			}
-			return epathOracleNumber(quality.UnassignedPct), nil
-		case "drivers", "loads", "endUses", "carriers", "ratios":
-			level := map[string]EnergyCompletenessLevel{"drivers": quality.Drivers, "loads": quality.Loads, "endUses": quality.EndUses, "carriers": quality.Carriers, "ratios": quality.Ratios}[target.Field]
-			if want.Status != "" && want.Status != level.Status {
-				return nil, fmt.Errorf("quality %s status %s want %s", item.Key, level.Status, want.Status)
-			}
-			if want.Found != nil && (*want.Found != level.Found || *want.Total != level.Total) {
-				return nil, fmt.Errorf("quality %s count %d/%d want %d/%d", item.Key, level.Found, level.Total, *want.Found, *want.Total)
-			}
-			if level.Total <= 0 {
-				return nil, nil
-			}
-			if want.Found != nil {
-				return epathOracleNumber(float64(level.Found)), nil
-			}
-			return epathOracleNumber(float64(level.Found) * 100 / float64(level.Total)), nil
-		default:
-			return nil, fmt.Errorf("unknown quality field %q", target.Field)
-		}
+		return epathReadStrictOracleQuality(nodes, rows, quality, target, want)
 	default:
 		return nil, fmt.Errorf("unknown candidate collection %q", target.Collection)
 	}
@@ -532,10 +610,16 @@ func epathReadOracleCandidate(bundle PurposeResultBundle, item epathRealOracleMe
 		}
 		return nil, nil
 	}
+	if count > 1 && (target.ID != "" || target.Aggregate != "sum") {
+		return nil, fmt.Errorf("ambiguous candidate selection: %d records without an explicit sum", count)
+	}
 	return epathOracleNumber(sum), nil
 }
 
 func epathCompareOracleNumber(actual, want *float64, absolute, relative float64) error {
+	if !epathOracleFinite(absolute) || !epathOracleFinite(relative) || absolute < 0 || relative < 0 || absolute > 0.1 || relative > 0.001 {
+		return fmt.Errorf("unreviewably broad/invalid tolerance")
+	}
 	if actual == nil || want == nil {
 		if actual == nil && want == nil {
 			return nil
@@ -544,9 +628,6 @@ func epathCompareOracleNumber(actual, want *float64, absolute, relative float64)
 	}
 	if !epathOracleFinite(*actual) || !epathOracleFinite(*want) {
 		return fmt.Errorf("nonfinite comparison")
-	}
-	if absolute < 0 || relative < 0 || absolute > 0.1 || relative > 0.001 {
-		return fmt.Errorf("unreviewably broad/invalid tolerance")
 	}
 	if absolute == 0 {
 		absolute = 0.0001
@@ -575,6 +656,9 @@ func epathAssertRealSQLOracle(t *testing.T, evidence epathRealRunEvidence, manif
 	observed, err := epathReadRealSQLOracle(evidence.SQLPath)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if evidence.Run != nil {
+		observed.outputPlan = evidence.Run.PurposeRunPlan
 	}
 	if err := epathEvaluateRealOracle(&observed, recipe, evidence.Bundle); err != nil {
 		t.Fatal(err)

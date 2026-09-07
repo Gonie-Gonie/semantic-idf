@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"net/url"
 	"reflect"
 	"sort"
 	"strconv"
@@ -770,6 +771,7 @@ func applyCanonicalMonthlyBasisToEnergyPathResult(result *EnergyExplanationResul
 	reconciliation = reconcileEnergyPathCarrierTotals(nodes, links, reconciliation, "annual")
 	nodes, links = rebuildEnergyPathCarrierResidualPresentation(nodes, links, reconciliation, "annual")
 
+	qualifyEnergyPathLinkCollisions(links)
 	sortEnergyExplanationNodes(nodes)
 	sort.SliceStable(links, func(i, j int) bool { return links[i].ID < links[j].ID })
 	result.Nodes = nodes
@@ -895,6 +897,7 @@ func aggregateEnergyPathV2MonthlyPeriods(periods []EnergyPeriod) ([]EnergyExplan
 		}
 		finalizeEnergyPathLinkRatio(link)
 	}
+	qualifyEnergyPathLinkCollisions(links)
 	return nodes, links, reconciliation, warnings
 }
 
@@ -1386,6 +1389,7 @@ func upgradeEnergyExplanationGraph(legacyNodes []EnergyExplanationNode, legacyEd
 		finalizeEnergyPathLinkRatio(link)
 		outLinks = append(outLinks, *link)
 	}
+	qualifyEnergyPathLinkCollisions(outLinks)
 	sort.SliceStable(outLinks, func(i, j int) bool { return outLinks[i].ID < outLinks[j].ID })
 	return outNodes, outLinks
 }
@@ -3317,10 +3321,11 @@ func finalizeEnergyPathLinkRatio(link *EnergyPathLink) {
 		return
 	}
 	link.Ratio = roundedEnergyNumber(ratio)
-	if link.Ratio <= 0 {
-		link.Ratio = 0
-		link.RatioKind = ""
-		link.RatioLabel = ""
+	if link.Ratio == 0 {
+		// A dimensionless ratio can be positive below the three-decimal energy
+		// presentation precision. Keep that known paired ratio, not an invented
+		// zero or an unavailable conversion. Ordinary rounded ratios stay stable.
+		link.Ratio = ratio
 	}
 }
 
@@ -3388,6 +3393,59 @@ func energyPathSupportedConversionEnergyUnit(unit string) bool {
 
 func energyPathLinkID(link EnergyPathLink) string {
 	return "link." + canonicalEnergyPathPart(link.Relation) + "." + metricID(link.FromID) + "." + metricID(link.ToID)
+}
+
+// Completed graphs can retain distinct monthly provenance branches for the
+// same physical pair (for example service-path versus zone-load allocation).
+// Qualify every member of a colliding base-ID group, never an arbitrary first
+// member. Unique IDs and all link measurements/provenance remain unchanged.
+func qualifyEnergyPathLinkCollisions(links []EnergyPathLink) {
+	groups := map[string][]int{}
+	for index, link := range links {
+		groups[energyPathLinkID(link)] = append(groups[energyPathLinkID(link)], index)
+	}
+	field := func(name, value string) string { return name + "=" + url.QueryEscape(value) }
+	for base, indexes := range groups {
+		if len(indexes) < 2 {
+			continue
+		}
+		candidates := make(map[int]string, len(indexes))
+		counts := map[string]int{}
+		for _, index := range indexes {
+			link := links[index]
+			id := base + ".branch;" + strings.Join([]string{
+				field("rule", link.RuleID), field("service", link.ServiceKind),
+				field("zone", link.ZoneName), field("basis", link.Basis),
+			}, ";")
+			candidates[index] = id
+			counts[id]++
+		}
+		// metricID normalizes punctuation. If distinct exact endpoint names
+		// collapsed to the same base, keep their explicit, escaped identities.
+		for _, index := range indexes {
+			if counts[candidates[index]] > 1 {
+				link := links[index]
+				candidates[index] += ";" + strings.Join([]string{
+					field("from", link.FromID), field("to", link.ToID), field("relation", link.Relation),
+				}, ";")
+			}
+		}
+		seen := map[string]bool{}
+		ambiguous := false
+		for _, id := range candidates {
+			ambiguous = ambiguous || seen[id]
+			seen[id] = true
+		}
+		if ambiguous {
+			// Truly identical semantic identities are not repaired with an
+			// ordinal or hidden merge. The strict projection validator rejects
+			// duplicate IDs; aggregation owns any legitimate numeric merge.
+			continue
+		}
+		for index, id := range candidates {
+			links[index].ID = id
+		}
+	}
 }
 
 func canonicalEnergyPathBasis(basis string, ruleID string) string {

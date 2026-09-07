@@ -43,27 +43,28 @@ type epathRealCatalog struct {
 }
 
 type epathRealRunEvidence struct {
-	Fixture           epathRealFixture      `json:"fixture"`
-	Version           string                `json:"version"`
-	CatalogDirectory  string                `json:"catalogDirectory"`
-	RunDirectory      string                `json:"runDirectory"`
-	SQLPath           string                `json:"sqlPath"`
-	SQLSHA256         string                `json:"sqlSHA256"`
-	ManifestSHA256    string                `json:"manifestSHA256"`
-	ResultPath        string                `json:"resultPath,omitempty"`
-	ResultSHA256      string                `json:"resultSHA256,omitempty"`
-	OriginalInputPath string                `json:"originalInputPath"`
-	AnnualInputPath   string                `json:"annualInputPath"`
-	InputPath         string                `json:"inputPath"`
-	ModelSHA256       string                `json:"modelSHA256"`
-	AnnualSHA256      string                `json:"annualSHA256"`
-	ExecutedSHA256    string                `json:"executedSHA256"`
-	EngineSHA256      string                `json:"engineSHA256"`
-	EngineFilesSHA256 map[string]string     `json:"engineFilesSHA256"`
-	WeatherSHA256     string                `json:"weatherSHA256"`
-	Run               *SimulationRunResult  `json:"run"`
-	Bundle            PurposeResultBundle   `json:"bundle"`
-	Discovery         OutputDiscoveryResult `json:"discovery"`
+	NumericalTrial    *epathRealNumericalTrial `json:"numericalTrial,omitempty"`
+	Fixture           epathRealFixture         `json:"fixture"`
+	Version           string                   `json:"version"`
+	CatalogDirectory  string                   `json:"catalogDirectory"`
+	RunDirectory      string                   `json:"runDirectory"`
+	SQLPath           string                   `json:"sqlPath"`
+	SQLSHA256         string                   `json:"sqlSHA256"`
+	ManifestSHA256    string                   `json:"manifestSHA256"`
+	ResultPath        string                   `json:"resultPath,omitempty"`
+	ResultSHA256      string                   `json:"resultSHA256,omitempty"`
+	OriginalInputPath string                   `json:"originalInputPath"`
+	AnnualInputPath   string                   `json:"annualInputPath"`
+	InputPath         string                   `json:"inputPath"`
+	ModelSHA256       string                   `json:"modelSHA256"`
+	AnnualSHA256      string                   `json:"annualSHA256"`
+	ExecutedSHA256    string                   `json:"executedSHA256"`
+	EngineSHA256      string                   `json:"engineSHA256"`
+	EngineFilesSHA256 map[string]string        `json:"engineFilesSHA256"`
+	WeatherSHA256     string                   `json:"weatherSHA256"`
+	Run               *SimulationRunResult     `json:"run"`
+	Bundle            PurposeResultBundle      `json:"bundle"`
+	Discovery         OutputDiscoveryResult    `json:"discovery"`
 }
 
 // Capture never blesses checked-in expectations. A passing capture means only
@@ -136,6 +137,9 @@ func TestEnergyPathRealModelSavedEvidence(t *testing.T) {
 	}
 	observed := epathCollectRealSQLOracle(t, evidence)
 	if os.Getenv("EPATH_REAL_VERIFY_ACCEPTANCE") == "1" {
+		if evidence.NumericalTrial != nil {
+			t.Fatal("numerical trial has no approved fixture/expected provenance; acceptance is not authorized")
+		}
 		manifest := epathLoadRealExpectedManifest(t, epathRealCatalogPath(t, catalogDirectory, fixture.ExpectedPath))
 		epathAssertRealSQLOracle(t, evidence, manifest)
 	} else {
@@ -407,8 +411,18 @@ func epathSelectRealFixtures(t *testing.T, fixtures []epathRealFixture) []epathR
 	return selected
 }
 
-func epathRunRealFixture(t *testing.T, root, catalogDirectory string, fixture epathRealFixture) epathRealRunEvidence {
+func epathRunRealFixture(t *testing.T, root, catalogDirectory string, fixture epathRealFixture, trials ...epathRealNumericalTrial) epathRealRunEvidence {
 	t.Helper()
+	var trial *epathRealNumericalTrial
+	if len(trials) > 1 {
+		t.Fatal("only one explicit numerical trial is supported")
+	}
+	if len(trials) == 1 {
+		trial = &trials[0]
+		if fixture.ID != "no-heating-25-1" || fixture.Version != "25.1" || trial.Algorithm != "RegulaFalsiThenBisection" || trial.SwitchAfter != 5 {
+			t.Fatal("numerical trial is restricted to the reviewed noHeating hybrid-root experiment")
+		}
+	}
 	inputPath := epathRealCatalogPath(t, catalogDirectory, fixture.ModelPath)
 	original := epathRequireRealFile(t, inputPath)
 	if !strings.EqualFold(epathRealHash(original), fixture.ModelSHA256) {
@@ -423,6 +437,14 @@ func epathRunRealFixture(t *testing.T, root, catalogDirectory string, fixture ep
 	}
 	doc := epinput.ToIDFDocument(model)
 	annual, changes := epathRealAnnualDocument(t, doc)
+	if trial != nil {
+		if epathRealHash([]byte(annual.String())) != trial.BaselineSHA256["annual-model.idf"] {
+			t.Fatal("annual controls/physical model differ from the failed baseline before numerical trial")
+		}
+		var change map[string]any
+		annual, change = epathNoHeatingHybridTrialDocument(t, annual)
+		changes = append(changes, change)
+	}
 	annualText := annual.String()
 	executable := strings.TrimSpace(os.Getenv("EPATH_REAL_ENGINE_" + strings.ReplaceAll(fixture.Version, ".", "_")))
 	if executable == "" {
@@ -455,7 +477,13 @@ func epathRunRealFixture(t *testing.T, root, catalogDirectory string, fixture ep
 	if !strings.EqualFold(weatherHash, fixture.Weather.SHA256) {
 		t.Fatalf("weather hash mismatch: %s", weatherPath)
 	}
+	if trial != nil && (strings.TrimSpace(string(versionOutput)) != strings.TrimSpace(trial.BaselineEngineVersion) || !reflect.DeepEqual(engineFiles, trial.BaselineEngineSHA256) || !epathRealSamePath(weatherPath, trial.BaselineWeatherPath) || weatherHash != trial.BaselineWeatherSHA256) {
+		t.Fatal("numerical trial engine/version/weather differs from the documented failed baseline")
+	}
 	runID := "real-" + fixture.ID + "-" + time.Now().UTC().Format("20060102T150405.000000000")
+	if trial != nil {
+		runID = "numerical-trial-" + fixture.ID + "-hybrid-5-" + time.Now().UTC().Format("20060102T150405.000000000")
+	}
 	runDirectory := filepath.Join(root, ".runtime", "energy-path-acceptance", fixture.Version, fixture.ID, runID)
 	if err := os.MkdirAll(filepath.Dir(runDirectory), 0755); err != nil {
 		t.Fatal(err)
@@ -474,10 +502,26 @@ func epathRunRealFixture(t *testing.T, root, catalogDirectory string, fixture ep
 	if !preview.CanApply {
 		t.Fatalf("purpose output plan blocked: %#v", preview)
 	}
+	if trial != nil {
+		withoutTrial := updated
+		withoutTrial.Objects = nil
+		for _, object := range updated.Objects {
+			if !strings.EqualFold(object.Type, "HVACSystemRootFindingAlgorithm") {
+				withoutTrial.Objects = append(withoutTrial.Objects, object)
+			}
+		}
+		if len(updated.Objects) != len(withoutTrial.Objects)+1 || epathRealHash([]byte(withoutTrial.String())) != trial.BaselineSHA256["executed-model.idf"] {
+			t.Fatal("executed trial differs from baseline by more than the one approved numerical object")
+		}
+	}
 	epathWriteRealJSON(t, filepath.Join(runDirectory, "output-application.json"), preview)
 	request := SimulationRunRequest{RunID: runID, InputPath: inputPath, Filename: "executed-model.idf", Text: updated.String(), EnergyPlusExecutablePath: executable, WeatherPath: weatherPath, OutputDirectory: runDirectory, PurposeRequest: &purpose, PurposeRunPlan: &plan, TemporaryOutputDiff: PurposeRunPlanTemporaryOutputDiff(plan), ResultMode: "sql_first", UseReadVarsESO: false, Silent: true}
 	epathWriteRealJSON(t, filepath.Join(runDirectory, "capture-request.json"), request)
-	epathWriteRealJSON(t, filepath.Join(runDirectory, "provenance.json"), map[string]any{"originalInputPath": inputPath, "originalSHA256": epathRealHash(original), "annualInputPath": annualPath, "annualSHA256": epathRealHash([]byte(annualText)), "executedInputPath": filepath.Join(runDirectory, request.Filename), "executedSHA256": epathRealHash([]byte(request.Text)), "weatherPath": weatherPath, "weatherSHA256": weatherHash, "engineVersionOutput": string(versionOutput), "engineFilesSHA256": engineFiles})
+	provenance := map[string]any{"originalInputPath": inputPath, "originalSHA256": epathRealHash(original), "annualInputPath": annualPath, "annualSHA256": epathRealHash([]byte(annualText)), "executedInputPath": filepath.Join(runDirectory, request.Filename), "executedSHA256": epathRealHash([]byte(request.Text)), "weatherPath": weatherPath, "weatherSHA256": weatherHash, "engineVersionOutput": string(versionOutput), "engineFilesSHA256": engineFiles}
+	if trial != nil {
+		provenance["numericalTrial"] = trial
+	}
+	epathWriteRealJSON(t, filepath.Join(runDirectory, "provenance.json"), provenance)
 	t.Logf("REAL RUN starting %s; artifacts=%s", fixture.ID, runDirectory)
 	run, err := RunSimulation(request, func(progress SimulationProgress) { t.Logf("%s: %s %s", fixture.ID, progress.Phase, progress.Status) }, SimulationSettings{RunDirectory: filepath.Dir(runDirectory), EnergyPlusInstallations: []EnergyPlusInstallSetting{{Version: fixture.Version + ".0", ExecutablePath: executable, RootPath: filepath.Dir(executable)}}})
 	if err != nil {
@@ -516,7 +560,7 @@ func epathRunRealFixture(t *testing.T, root, catalogDirectory string, fixture ep
 	if epathRealHash(epathRequireRealFile(t, inputPath)) != epathRealHash(original) {
 		t.Fatal("original fixture mutated by run")
 	}
-	return epathRealRunEvidence{Fixture: fixture, Version: fixture.Version, CatalogDirectory: catalogDirectory, RunDirectory: runDirectory, SQLPath: sqlPath, SQLSHA256: sqlHash, ManifestSHA256: manifestHash, ResultPath: resultPath, ResultSHA256: resultHash, OriginalInputPath: inputPath, AnnualInputPath: annualPath, InputPath: run.InputPath, ModelSHA256: epathRealHash(original), AnnualSHA256: epathRealHash([]byte(annualText)), ExecutedSHA256: epathRealHash(epathRequireRealFile(t, run.InputPath)), EngineSHA256: engineHash, EngineFilesSHA256: engineFiles, WeatherSHA256: weatherHash, Run: run, Bundle: *run.PurposeResults, Discovery: discovery}
+	return epathRealRunEvidence{NumericalTrial: trial, Fixture: fixture, Version: fixture.Version, CatalogDirectory: catalogDirectory, RunDirectory: runDirectory, SQLPath: sqlPath, SQLSHA256: sqlHash, ManifestSHA256: manifestHash, ResultPath: resultPath, ResultSHA256: resultHash, OriginalInputPath: inputPath, AnnualInputPath: annualPath, InputPath: run.InputPath, ModelSHA256: epathRealHash(original), AnnualSHA256: epathRealHash([]byte(annualText)), ExecutedSHA256: epathRealHash(epathRequireRealFile(t, run.InputPath)), EngineSHA256: engineHash, EngineFilesSHA256: engineFiles, WeatherSHA256: weatherHash, Run: run, Bundle: *run.PurposeResults, Discovery: discovery}
 }
 
 func epathRealAnnualDocument(t *testing.T, input idf.Document) (idf.Document, []map[string]any) {

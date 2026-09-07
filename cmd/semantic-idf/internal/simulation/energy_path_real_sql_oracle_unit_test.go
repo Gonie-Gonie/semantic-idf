@@ -299,8 +299,8 @@ func TestEnergyPathRealOracleComparisonCannotBlessUnknownOrMissingGroups(t *test
 		t.Fatal("partial groups accepted as all eight")
 	}
 	observed := epathRealOracleEvidence{Sources: []epathRealSQLSource{{Name: "Cooling:Electricity", IsMeter: true, ReportingFrequency: "Annual", SourceUnit: "J", EnergyKWh: epathOracleNumber(12)}}}
-	recipe := epathRealOracleRecipe{Sources: []epathRealOracleSourceRecipe{{ID: "meter", Names: []string{"Cooling:Electricity"}, Keys: []string{""}, IsMeter: true, Frequency: "Annual", SourceUnit: "J"}}, Metrics: []epathRealOracleMetricRecipe{{Key: "cooling", Group: "endUses", Scope: "building", Period: "annual", Unit: "kWh", Operation: "source", Inputs: []string{"meter"}, Target: epathRealOracleTarget{Collection: "nodes", Field: "value", Level: "end_use", Category: "cooling"}}}}
-	bundle := PurposeResultBundle{EnergyExplanation: EnergyExplanationResult{Nodes: []EnergyExplanationNode{{Level: "end_use", EndUse: "cooling", Value: 13}}}}
+	recipe := epathRealOracleRecipe{Sources: []epathRealOracleSourceRecipe{{ID: "meter", Names: []string{"Cooling:Electricity"}, Keys: []string{""}, IsMeter: true, Frequency: "Annual", SourceUnit: "J"}}, Metrics: []epathRealOracleMetricRecipe{{Key: "cooling", Group: "endUses", Scope: "building", Period: "annual", Unit: "kWh", Operation: "source", Inputs: []string{"meter"}, Target: epathRealOracleTarget{Collection: "nodes", Field: "value", Level: "end_use", Category: "cooling", Unit: "kWh", ScaleDomain: "site"}}}}
+	bundle := PurposeResultBundle{EnergyExplanation: EnergyExplanationResult{Schema: energyExplanationSchema, Scope: EnergyExplanationScope{Kind: "building", AggregationBasis: "model_total"}, Nodes: []EnergyExplanationNode{{ID: "cooling", Level: "end_use", EndUse: "cooling", Value: 13, Unit: "kWh", ScaleDomain: "site"}}}}
 	if err := epathEvaluateRealOracle(&observed, recipe, bundle); err == nil || !strings.Contains(err.Error(), "independent SQL vs candidate") {
 		t.Fatalf("candidate-derived number was blessed instead of checked: %v", err)
 	}
