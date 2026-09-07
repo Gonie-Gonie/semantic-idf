@@ -1231,6 +1231,19 @@ function energyPathDriverDestinationLabel(item = {}, model = {}, fallback = "") 
 
 export function renderEnergyPathDriverNavigation(node = {}, navigation = null, model = {}) {
   if (node.level !== "driver" || !navigation) return "";
+  const category = energyPathToken(node.driverCategory || navigation.category);
+  const categoryLabels = {
+    "surface.exterior_walls": "Exterior walls", "surface.roofs": "Roofs",
+    "surface.ground_floors": "Ground / floors", "surface.windows_doors": "Windows / doors",
+    "surface.interzone": "Interzone surfaces", "air.infiltration": "Infiltration",
+    "air.mechanical_ventilation": "Mechanical ventilation", "air.interzone": "Interzone air",
+    "internal.people": "People", "internal.lighting": "Lighting", "internal.equipment": "Equipment",
+    "interzone.transfer": "Interzone transfer", "internal.other": "Other internal gains",
+    "balance.storage_other": "Other / storage",
+  };
+  const categoryLabel = Object.prototype.hasOwnProperty.call(categoryLabels, category)
+    ? t(`simulation.energyPathDriverCategory.${category}`, {}, categoryLabels[category])
+    : t("simulation.energyPathStageDrivers", {}, "Load Drivers");
   const groups = (Array.isArray(navigation.groups) ? navigation.groups : []).filter((group) => group && Array.isArray(group.candidates));
   const safeModel = { ...model, sourceIds: energyPathUniqueValues([...(model.sourceIds || []), ...groups.flatMap((group) => group.sourceIds || [])]) };
   const views = [
@@ -1267,7 +1280,7 @@ export function renderEnergyPathDriverNavigation(node = {}, navigation = null, m
       : content}</section>`;
   }).join("");
   return `<section class="energy-path-driver-navigation" data-energy-path-driver-navigation="${escapeHTML(navigation.status || "unavailable")}" data-energy-path-driver-category="${escapeHTML(navigation.category || "")}">
-    <h6>${escapeHTML(t("simulation.energyPathDriverModelContext", {}, "Explore related model context"))} · ${escapeHTML(energyPathInspectorSafeLabel(node.label, safeModel))}</h6>
+    <h6>${escapeHTML(t("simulation.energyPathDriverModelContext", {}, "Explore related model context"))} · ${escapeHTML(categoryLabel)}</h6>
     ${sections || `<button class="energy-path-inspector-action" type="button" disabled>${escapeHTML(t("simulation.energyPathDriverModelContext", {}, "Explore related model context"))}</button><p class="energy-path-detail-empty">${escapeHTML(t("simulation.energyPathDriverNavigationUnavailable", {}, "No verified Topology, Profile, or outdoor-air service target is available for this driver."))}</p>`}
   </section>`;
 }

@@ -96,6 +96,7 @@ try{
   import("/src/js/panel-navigation-adapters.js"),import("/src/js/selection-controller.js"),import("/src/js/view-history.js"),import("/src/js/navigation.js"),
   import("/src/js/views/profile-views.js"),import("/src/js/views/hvac-views.js"),import("/src/js/state.js")]);
  await import("/src/js/topology-loader.js");
+ const i18n=await import("/src/js/i18n.js");
  const original=state.simulationResult,originalJSON=JSON.stringify(original),result=JSON.parse(originalJSON),explanation=result.purposeResults.energyExplanation;
  const office=explanation.zoneResults[0],lab=JSON.parse(JSON.stringify(office).replaceAll("Office","Lab").replaceAll("office","lab"));
  explanation.zoneResults.push(lab);
@@ -181,11 +182,18 @@ try{
  profileViews.renderProfile(profile);hvacViews.renderHVAC(hvac);
  const graph=()=>view.energyPathGraphForState(explanation,state);
  const inspector=()=>document.querySelector("[data-energy-path-inspector]");
+ const checkDriverHeading=label=>{
+  const heading=document.querySelector("[data-energy-path-driver-navigation] > h6")?.textContent||"";
+  check(heading.includes(label)&&!/(driver\.|surface\.|internal\.)/.test(heading),"Actions heading must use the friendly localized category "+label+": "+heading);
+ };
  const selectDriver=async(category,{scope="building",period="M1",service="all"}={})=>{
   navigation.switchResultTab("simulation",{recordHistory:false});state.simulationActiveResultView="energy";
   Object.assign(state,{simulationEnergyScopeKind:scope,simulationEnergyZoneName:scope==="zone"?"Office":"",simulationEnergyPeriod:period,simulationEnergyService:service,simulationEnergySelection:"",simulationEnergyDetailsOpen:false,simulationEnergyDetailsTab:"data",simulationEnergyDetailsStage:"",simulationEnergyOutputSource:""});
   const node=graph().nodes.find(item=>item.driverCategory===category);if(!node)throw new Error("Missing driver "+category);
-  state.simulationEnergySelection=node.id;simulation.renderSimulationEnergyDashboard(state.simulationResult);await sleep(30);check(Boolean(inspector()),"Actual driver inspector missing "+category);return node;
+  state.simulationEnergySelection=node.id;simulation.renderSimulationEnergyDashboard(state.simulationResult);await sleep(30);check(Boolean(inspector()),"Actual driver inspector missing "+category);
+  if(category==="surface.exterior_walls")checkDriverHeading("Exterior walls");
+  if(category==="internal.people")checkDriverHeading("People");
+  return node;
  };
  const navModel=()=>simulation.simulationEnergyDriverNavigation(graph().nodes.find(node=>node.id===state.simulationEnergySelection));
  const candidateFor=targetID=>navModel().groups.flatMap(group=>group.candidates).find(candidate=>candidate.target.targetId===targetID);
@@ -227,6 +235,8 @@ try{
   document.querySelector("[data-energy-path-driver-navigation]")?.scrollIntoView({block:"center"});document.body.dataset.epath151Status="manual";
  }else{
   check(innerWidth===1600&&innerHeight===900,"Actual app content viewport must be 1600x900");
+  i18n.setLanguage("ko");simulation.renderSimulationEnergyDashboard(state.simulationResult);checkDriverHeading("외벽");
+  i18n.setLanguage("en");simulation.renderSimulationEnergyDashboard(state.simulationResult);checkDriverHeading("Exterior walls");
   check(state.activeResultTab==="simulation"&&openedViews.length===0&&!state.globalSelection.entityId,"Selecting aggregate driver must not navigate to an arbitrary source");
   const initialButtons=[...document.querySelectorAll("[data-energy-path-driver-destination]")];
   check(initialButtons.length===4,"Building walls need all 3 exact wall choices plus mixed connection context; got "+initialButtons.length);
@@ -243,6 +253,10 @@ try{
   for(const [category,targetID]of[["surface.roofs",roof],["surface.ground_floors",floor],["surface.windows_doors",windowID],["surface.interzone",interzone]]){await selectDriver(category,{scope:"zone",service:"cooling"});await jumpAndReturn(targetID);}
   for(const [category,targetID]of[["internal.people","profile.private.office.occupancy.1"],["internal.lighting","profile.private.office.lighting.0"],["internal.equipment","profile.private.office.equipment.0"],["air.infiltration","profile.private.office.infiltration.0"],["air.mechanical_ventilation","profile.private.office.ventilation.0"]]){
    const service=category.startsWith("internal")?"heating":"cooling";await selectDriver(category,{scope:"zone",service});
+   if(category==="internal.people"){
+    i18n.setLanguage("ko");simulation.renderSimulationEnergyDashboard(state.simulationResult);checkDriverHeading("재실자");
+    i18n.setLanguage("en");simulation.renderSimulationEnergyDashboard(state.simulationResult);checkDriverHeading("People");
+   }
    check([...document.querySelectorAll("[data-energy-path-driver-zone]")].every(element=>element.dataset.energyPathDriverZone==="Office"),"Zone driver chooser contains unrelated Lab sources "+category);
    check(![...document.querySelectorAll("[data-energy-path-driver-destination]")].some(element=>element.textContent.includes("Unavailable occupancy")),"Unresolvable Profile target was offered");
    await jumpAndReturn(targetID);
