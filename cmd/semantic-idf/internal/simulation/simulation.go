@@ -235,19 +235,24 @@ type CSVColumnSummary struct {
 }
 
 type SimulationSeries struct {
-	File           string            `json:"file"`
-	Column         string            `json:"column"`
-	DisplayColumn  string            `json:"displayColumn,omitempty"`
-	DisplayUnit    string            `json:"displayUnit,omitempty"`
-	Min            float64           `json:"min"`
-	Max            float64           `json:"max"`
-	Average        float64           `json:"average"`
-	DisplayMin     float64           `json:"displayMin,omitempty"`
-	DisplayMax     float64           `json:"displayMax,omitempty"`
-	DisplayAverage float64           `json:"displayAverage,omitempty"`
-	Points         []SimulationPoint `json:"points"`
-	DisplayPoints  []SimulationPoint `json:"displayPoints,omitempty"`
-	RowCount       int               `json:"rowCount"`
+	File               string            `json:"file"`
+	Column             string            `json:"column"`
+	SourceID           string            `json:"sourceId,omitempty"`
+	ReportingFrequency string            `json:"reportingFrequency,omitempty"`
+	Name               string            `json:"name,omitempty"`
+	KeyValue           string            `json:"keyValue,omitempty"`
+	IsMeter            *bool             `json:"isMeter,omitempty"`
+	DisplayColumn      string            `json:"displayColumn,omitempty"`
+	DisplayUnit        string            `json:"displayUnit,omitempty"`
+	Min                float64           `json:"min"`
+	Max                float64           `json:"max"`
+	Average            float64           `json:"average"`
+	DisplayMin         float64           `json:"displayMin,omitempty"`
+	DisplayMax         float64           `json:"displayMax,omitempty"`
+	DisplayAverage     float64           `json:"displayAverage,omitempty"`
+	Points             []SimulationPoint `json:"points"`
+	DisplayPoints      []SimulationPoint `json:"displayPoints,omitempty"`
+	RowCount           int               `json:"rowCount"`
 }
 
 type SimulationPoint struct {

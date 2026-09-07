@@ -11,7 +11,6 @@ func TestFrontendSimulationEnergySystemsCrossJumpContracts(t *testing.T) {
 		t.Fatalf("simulation energy renderer should describe basis without confidence vocabulary")
 	}
 	for _, term := range []string{
-		`["systems", t("simulation.systems"`,
 		"renderEnergySystemsSubview",
 		"simulationEnergyServiceAggregates",
 		"renderSimulationEnergyConnectedSystems",
@@ -228,22 +227,28 @@ func TestFrontendSimulationEnergySystemsCrossJumpContracts(t *testing.T) {
 	}
 }
 
-func TestFrontendSimulationEnergyOmitsSourcesAndReconciliationViews(t *testing.T) {
+func TestFrontendSimulationEnergyUsesSingleViewWithoutLegacySubnavigation(t *testing.T) {
 	simulation := readTestFile(t, "frontend/src/js/views/simulation-views.js")
-	controls := sliceBetween(simulation, "function renderEnergySubviewControls", "function renderEnergyPeriodControls")
-	dispatch := sliceBetween(simulation, "function renderEnergySubview(view", "function renderEnergyExplanationOverview")
+	dashboard := sliceBetween(simulation, "export function renderSimulationEnergyDashboard", "export function simulationEnergyInspectorActions")
 	for _, forbidden := range []string{
-		`["sources", t("simulation.energySources"`,
-		`["reconciliation", t("simulation.energyReconciliation"`,
+		`function energySubview(`,
+		`function renderEnergySubviewControls(`,
+		`data-simulation-energy-view`,
 	} {
-		if strings.Contains(controls, forbidden) {
-			t.Fatalf("Simulation Energy subnavigation still exposes removed view %q", forbidden)
+		if strings.Contains(simulation, forbidden) {
+			t.Fatalf("Simulation Energy still exposes removed subnavigation %q", forbidden)
 		}
 	}
-	for _, forbidden := range []string{`case "sources":`, `case "reconciliation":`} {
-		if strings.Contains(dispatch, forbidden) {
-			t.Fatalf("Simulation Energy dispatcher still exposes removed view %q", forbidden)
+	for _, required := range []string{`renderEnergyPathKPI(scopedSummary)`, `renderEnergyPathView(explanation, state`, `inspectorActionsForNode:`} {
+		if !strings.Contains(dashboard, required) {
+			t.Fatalf("single Energy dashboard lost required rendering path %q", required)
 		}
+	}
+	if strings.Contains(dashboard, "renderEnergyPathSummaryOverview") {
+		t.Fatal("single Energy dashboard still renders a duplicate summary overview")
+	}
+	if strings.Contains(dashboard, "renderEnergySubview(") {
+		t.Fatal("single Energy dashboard still invokes the legacy subview dispatcher")
 	}
 }
 
@@ -279,7 +284,7 @@ func TestFrontendSimulationSeriesUsesGroupedVariablePickerAndDualRange(t *testin
 		`data-series-variable-action=`,
 		`data-simulation-chart-hit="1"`,
 		`<optgroup label="${escapeHTML(group.label)}">`,
-		`${escapeHTML(item.column)}</option>`,
+		`${escapeHTML([item.column, item.reportingFrequency].filter(Boolean).join(" · "))}</option>`,
 		`zoomSimulationSeriesPanel`,
 		`host.addEventListener("pointerdown"`,
 		`host.addEventListener("pointermove"`,

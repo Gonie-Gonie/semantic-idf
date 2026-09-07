@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"reflect"
 	"regexp"
-	"sort"
 	"strings"
 	"testing"
 )
@@ -23,53 +22,21 @@ type energyPathV1BatchExportContract struct {
 	} `json:"csv"`
 }
 
-func TestEnergyPathV1UIContractGoldenMatchesCurrentRenderer(t *testing.T) {
+func TestEnergyPathV1UIContractGoldenRemainsHistorical(t *testing.T) {
 	var golden energyPathV1UIContract
 	readEnergyPathV1Golden(t, "v1_ui_contract.golden.json", &golden)
 	if golden.CapturedFrom == "" {
 		t.Fatal("v1 UI golden is missing capturedFrom")
 	}
 
-	source := readTestFile(t, "frontend/src/js/views/simulation-views.js")
-	allowedBody := energyPathV1SourceMatch(t, source,
-		`(?s)function energySubview\(.*?const allowed = \[(.*?)\];`,
-		"Energy subview allow-list",
-	)
-	allowed := energyPathV1QuotedStrings(allowedBody)
-	if !reflect.DeepEqual(allowed, golden.PrimarySubviewOrder) {
-		t.Fatalf("Energy subview allow-list = %#v, v1 golden = %#v", allowed, golden.PrimarySubviewOrder)
+	// EPATH-140 acceptance now verifies the live single view. Keep the captured
+	// pre-refactor UI snapshot intact as historical evidence, not a requirement
+	// to resurrect old tabs. Stored V1 data and export contracts remain active.
+	if want := []string{"overview", "sankey", "monthly", "zones", "systems"}; !reflect.DeepEqual(golden.PrimarySubviewOrder, want) {
+		t.Fatalf("historical V1 subview snapshot changed: %#v", golden.PrimarySubviewOrder)
 	}
-
-	tabsBody := energyPathV1SourceMatch(t, source,
-		`(?s)function renderEnergySubviewControls\(.*?const tabs = \[(.*?)\];`,
-		"Energy subview tabs",
-	)
-	tabPattern := regexp.MustCompile(`\[\s*"([^"]+)"\s*,`)
-	tabMatches := tabPattern.FindAllStringSubmatch(tabsBody, -1)
-	tabs := make([]string, 0, len(tabMatches))
-	for _, match := range tabMatches {
-		tabs = append(tabs, match[1])
-	}
-	if !reflect.DeepEqual(tabs, golden.PrimarySubviewOrder) {
-		t.Fatalf("Energy subview tabs = %#v, v1 golden = %#v", tabs, golden.PrimarySubviewOrder)
-	}
-
-	controlsSource := energyPathV1SourceSlice(t, source, "function renderEnergyPeriodControls", "function normalizeSimulationEnergyFocusState")
-	controlPattern := regexp.MustCompile(`data-simulation-energy-([a-z-]+)`)
-	controlMatches := controlPattern.FindAllStringSubmatch(controlsSource, -1)
-	controls := make([]string, 0, len(controlMatches))
-	seen := map[string]bool{}
-	for _, match := range controlMatches {
-		if !seen[match[1]] {
-			seen[match[1]] = true
-			controls = append(controls, match[1])
-		}
-	}
-	wantControls := append([]string(nil), golden.PrimaryControls...)
-	sort.Strings(controls)
-	sort.Strings(wantControls)
-	if !reflect.DeepEqual(controls, wantControls) {
-		t.Fatalf("Energy primary controls = %#v, v1 golden = %#v", controls, wantControls)
+	if want := []string{"period-kind", "period", "period-index", "focus-mode", "zone-focus", "service-path-focus", "loop-focus", "sankey-mode", "sign-mode", "node-limit"}; !reflect.DeepEqual(golden.PrimaryControls, want) {
+		t.Fatalf("historical V1 controls snapshot changed: %#v", golden.PrimaryControls)
 	}
 }
 

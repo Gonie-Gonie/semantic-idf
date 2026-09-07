@@ -24,10 +24,12 @@ const (
 )
 
 type sqlOutputDictionaryRow struct {
-	index    int
-	keyValue string
-	name     string
-	units    string
+	index              int
+	keyValue           string
+	name               string
+	units              string
+	reportingFrequency string
+	isMeter            *bool
 }
 
 // SQLSeriesQuery filters EnergyPlus ReportData rows by dictionary metadata.
@@ -249,13 +251,18 @@ func parseSimulationSQLSeries(path string) ([]SimulationSeries, error) {
 		}
 		average := acc.sum / float64(acc.numericCount)
 		series = append(series, normalizeSimulationSeriesDisplay(SimulationSeries{
-			File:     filepath.Base(path),
-			Column:   acc.name,
-			Min:      acc.min,
-			Max:      acc.max,
-			Average:  average,
-			Points:   downsamplePoints(seriesPoints[dictionary.index], maxCSVSeriesPoints),
-			RowCount: rowCount,
+			File:               filepath.Base(path),
+			Column:             acc.name,
+			SourceID:           fmt.Sprintf("sql-rdd-%d", dictionary.index),
+			ReportingFrequency: dictionary.reportingFrequency,
+			Name:               strings.TrimSpace(dictionary.name),
+			KeyValue:           strings.TrimSpace(dictionary.keyValue),
+			IsMeter:            dictionary.isMeter,
+			Min:                acc.min,
+			Max:                acc.max,
+			Average:            average,
+			Points:             downsamplePoints(seriesPoints[dictionary.index], maxCSVSeriesPoints),
+			RowCount:           rowCount,
 		}))
 	}
 	return series, nil
@@ -852,18 +859,39 @@ func parseSQLTabularNumber(value string) (float64, bool) {
 }
 
 func sqlOutputSeriesDictionaries(db *sql.DB) ([]sqlOutputDictionaryRow, error) {
-	rows, err := db.Query(`
-SELECT DISTINCT rdd.ReportDataDictionaryIndex, COALESCE(rdd.KeyValue, ''), COALESCE(rdd.Name, ''), COALESCE(rdd.Units, '')
+	columns, err := sqlTableColumns(db, "ReportDataDictionary")
+	if err != nil {
+		return nil, err
+	}
+	rows, err := db.Query(fmt.Sprintf(`
+SELECT DISTINCT rdd.ReportDataDictionaryIndex, COALESCE(rdd.KeyValue, ''), COALESCE(rdd.Name, ''), COALESCE(rdd.Units, ''), %s, %s
 FROM ReportDataDictionary rdd
 JOIN ReportData rd ON rd.ReportDataDictionaryIndex = rdd.ReportDataDictionaryIndex
 WHERE TRIM(COALESCE(rdd.Name, '')) <> ''
 ORDER BY rdd.ReportDataDictionaryIndex
-LIMIT ?`, maxSQLSeriesColumns)
+LIMIT ?`, sqlAliasedTextColumnExpr(columns, "rdd", "ReportingFrequency", "''"), sqlAliasedCastTextColumnExpr(columns, "rdd", "IsMeter", "NULL")), maxSQLSeriesColumns)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	return scanSQLDictionaryRows(rows)
+	out := []sqlOutputDictionaryRow{}
+	for rows.Next() {
+		var row sqlOutputDictionaryRow
+		var meter sql.NullString
+		if err := rows.Scan(&row.index, &row.keyValue, &row.name, &row.units, &row.reportingFrequency, &meter); err != nil {
+			return nil, err
+		}
+		row.reportingFrequency = strings.TrimSpace(row.reportingFrequency)
+		// Missing optional dictionary columns are unknown, not an inferred
+		// Hourly frequency or a false "variable" observation.
+		if meter.Valid {
+			if value, err := strconv.ParseBool(strings.TrimSpace(meter.String)); err == nil {
+				row.isMeter = &value
+			}
+		}
+		out = append(out, row)
+	}
+	return out, rows.Err()
 }
 
 func sqlOutputEnergyDictionaries(db *sql.DB) ([]sqlEnergyDictionaryRow, error) {

@@ -400,7 +400,7 @@ export function renderEnergyPathView(explanation = {}, viewState = {}, options =
       </div>
       ${renderEnergyPathFlowLanes(allGraphNodes, graph.links, selectedID)}
       ${renderEnergyPathQualityLine(explanation, viewState)}
-      ${renderEnergyPathNodeInspector(explanation, allGraphNodes, selectedID, viewState, graph.relations, graph.links, graph.supplyActivities)}
+      ${renderEnergyPathNodeInspector(explanation, allGraphNodes, selectedID, viewState, graph.relations, graph.links, graph.supplyActivities, options)}
       <div class="energy-path-domain-legend" aria-label="${escapeHTML(t("simulation.energyPathScaleDomains", {}, "Thermal and site-energy scale domains"))}">
         <span>${escapeHTML(t("simulation.energyPathThermalDomain", {}, "Thermal domain"))} · ${escapeHTML(t("simulation.energyPathThermalUnit", {}, "kWh thermal"))}</span>
         <strong>${escapeHTML(t("simulation.energyPathConversion", {}, "Equipment conversion"))}</strong>
@@ -943,12 +943,15 @@ function energyPathRatioValueLabel(value) {
   return Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
 
-export function renderEnergyPathNodeInspector(explanation = {}, nodes = [], selectedID = "", viewState = {}, relations = [], links = [], suppliedActivities = null) {
+export function renderEnergyPathNodeInspector(explanation = {}, nodes = [], selectedID = "", viewState = {}, relations = [], links = [], suppliedActivities = null, options = {}) {
   const node = (nodes || []).find((item) => item?.id && item.id === selectedID);
   if (!node) {
     return "";
   }
   const sourceDetails = energyPathInspectorSources(explanation, node, viewState);
+  const inspectorActions = typeof options.inspectorActionsForNode === "function"
+    ? options.inspectorActionsForNode(node, sourceDetails, viewState)
+    : {};
   const raw = energyPathInspectorNumber(node, "rawValue", energyPathSumSourceField(sourceDetails, "rawValue"));
   const effective = energyPathInspectorNumber(node, "effectiveValue", energyPathSumSourceField(sourceDetails, "effectiveValue"));
   const allocated = energyPathInspectorNumber(node, "allocatedValue", node.value);
@@ -1011,6 +1014,7 @@ export function renderEnergyPathNodeInspector(explanation = {}, nodes = [], sele
         <strong>${escapeHTML(t("simulation.energyPathInspector", {}, "Energy Path detail"))}</strong>
         <span>${escapeHTML(node.label || node.kind || node.id)}</span>
       </header>
+      ${renderEnergyPathInspectorActions(node, inspectorActions)}
       <dl>
         ${values.map(([key, label, value]) => `
           <div data-energy-path-inspector-value="${key}">
@@ -1030,6 +1034,55 @@ export function renderEnergyPathNodeInspector(explanation = {}, nodes = [], sele
         ${carrierReconciliation}${sourceInspector}
       </details>` : ""}
     </aside>`;
+}
+
+export function renderEnergyPathInspectorActions(node = {}, actions = {}) {
+  if (!node.id) return "";
+  const context = actions || {};
+  const groups = [{
+    kind: "series",
+    title: t("simulation.energyPathSourceSeries", {}, "Source series"),
+    action: t("simulation.energyPathOpenSeries", {}, "Open Series"),
+    choose: t("simulation.energyPathChooseSeries", {}, "Choose source series"),
+    targets: context.series,
+    reason: context.seriesUnavailableReason || t("simulation.energyPathSeriesUnavailable", {}, "No matching source series is available for this selection."),
+  }];
+  if (["load", "end_use"].includes(node.level)) groups.push({
+    kind: "hvac",
+    title: t("simulation.energyPathRelatedHVAC", {}, "Related HVAC"),
+    action: t("simulation.energyPathOpenHVAC", {}, "Open HVAC"),
+    choose: t("simulation.energyPathChooseHVACPath", {}, "Choose HVAC path"),
+    targets: context.hvacPaths,
+    reason: context.hvacUnavailableReason || t("simulation.energyPathHVACUnavailable", {}, "No explicit HVAC service path is available for this selection."),
+  });
+  return `<div class="energy-path-inspector-actions" data-energy-path-inspector-actions>
+    ${groups.map((group) => {
+      const targets = (Array.isArray(group.targets) ? group.targets : []).filter((target) => target && String(target.id || "").trim());
+      const reasonID = `energyPath${group.kind === "series" ? "Series" : "HVAC"}Unavailable`;
+      const button = (target) => {
+        const period = String(target.period || "annual");
+        const periodOption = ENERGY_PATH_PERIODS.find((option) => option.value === period);
+        const periodLabel = periodOption ? t(periodOption.labelKey, {}, periodOption.label) : period;
+        const detail = group.kind === "series"
+          ? [target.label || target.id, target.frequency, periodLabel].filter(Boolean).join(" · ")
+          : target.label || target.id;
+        return `<button class="energy-path-inspector-action" type="button"
+          ${group.kind === "series"
+            ? `data-energy-path-series-id="${escapeHTML(target.id)}" data-energy-path-series-period="${escapeHTML(period)}" data-energy-path-series-source="${escapeHTML(target.sourceId || "")}"`
+            : `data-energy-path-hvac-path-id="${escapeHTML(target.id)}"`}>
+          <span>${escapeHTML(group.action)}</span><small>${escapeHTML(detail)}</small>
+        </button>`;
+      };
+      return `<section class="energy-path-inspector-action-group" data-energy-path-${group.kind}-actions>
+        <h5>${escapeHTML(group.title)}</h5>
+        ${targets.length > 1 ? `<details data-energy-path-action-chooser="${group.kind}">
+          <summary>${escapeHTML(group.choose)} · ${targets.length}</summary>
+          <ul>${targets.map((target) => `<li>${button(target)}</li>`).join("")}</ul>
+        </details>` : targets.length === 1 ? button(targets[0]) : `<button class="energy-path-inspector-action" type="button" disabled aria-describedby="${reasonID}">${escapeHTML(group.action)}</button>
+          <small id="${reasonID}" class="energy-path-action-unavailable">${escapeHTML(group.reason)}</small>`}
+      </section>`;
+    }).join("")}
+  </div>`;
 }
 
 function renderEnergyPathGroupedMembers(node = {}) {
@@ -2506,17 +2559,17 @@ export function renderEnergyPathControls(explanation = {}, viewState = {}) {
       <label>
         <span>${escapeHTML(t("simulation.energyPathScope", {}, "Scope"))}</span>
         <span class="energy-path-control-fields">
-          <select data-simulation-energy-scope>${scopes}</select>
+          <select data-simulation-energy-scope aria-label="${escapeHTML(t("simulation.energyPathScope", {}, "Scope"))}">${scopes}</select>
           ${zoneControl}
         </span>
       </label>
       <label>
         <span>${escapeHTML(t("common.period", {}, "Period"))}</span>
-        <select data-simulation-energy-path-period>${periods}</select>
+        <select data-simulation-energy-path-period aria-label="${escapeHTML(t("common.period", {}, "Period"))}">${periods}</select>
       </label>
       <label>
         <span>${escapeHTML(t("simulation.service", {}, "Service"))}</span>
-        <select data-simulation-energy-service>${services}</select>
+        <select data-simulation-energy-service aria-label="${escapeHTML(t("simulation.service", {}, "Service"))}">${services}</select>
       </label>
     </div>`;
 }

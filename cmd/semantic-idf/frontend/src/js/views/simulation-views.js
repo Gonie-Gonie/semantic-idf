@@ -6,6 +6,7 @@ import { getSemanticNavigationCache } from "../semantic-navigation-cache.js";
 import { openSelectionInView, selectSemanticEntity } from "../selection-controller.js";
 import {
   energyPathGraphForState,
+  energyPathZoneNames,
   energyPathHasPayload,
   isEnergyPathV2,
   normalizeEnergyPathViewState,
@@ -16,6 +17,7 @@ import {
   updateEnergyPathControlState,
 } from "./energy-path-view.js";
 import { energyPathLegacyDerivedKPIItems, energyPathSummaryGroups } from "../energy-path-summary.js";
+import { energyPathSeriesID, resolveEnergyPathSeriesCandidates, energyPathSeriesPeriodRange } from "../energy-path-navigation.js";
 import { navigateHVAC, renderHVACLoopDiagram } from "./hvac-views.js";
 import { renderProfile } from "./profile-views.js";
 
@@ -699,7 +701,8 @@ function simulationNavigationDestination(selection = {}, context = {}) {
     if (item) {
       return {
         resultView: "energy",
-        energyView: "sankey",
+        energyScopeKind: item.navigationScopeKind || state.simulationEnergyScopeKind,
+        energyZoneName: item.navigationZoneName || state.simulationEnergyZoneName,
         energySelection: item.id,
         panelTargetID: `simulation:energy:${item.fromId ? "edge" : "node"}:${state.simulationEnergyPeriod || "annual"}:${item.id}`,
       };
@@ -732,7 +735,12 @@ function simulationNavigationDestination(selection = {}, context = {}) {
       const object = sourceOutputForEnergySource(source);
       return {
         resultView: "energy",
-        energyView: "sources",
+        energyDetailsOpen: true,
+        energyDetailsTab: "data",
+        energyDetailsStage: "",
+        energyOutputSource: source.id,
+        energyScopeKind: energyPathZoneNames(state.simulationResult?.purposeResults?.energyExplanation || {}).includes(source.zoneName) ? "zone" : "building",
+        energyZoneName: source.zoneName || "",
         panelTargetID: simulationSourcePanelTargetID(source, object),
       };
     }
@@ -750,10 +758,18 @@ function simulationNavigationDestination(selection = {}, context = {}) {
 
 function simulationEnergyItemForServicePath(pathID = "") {
   const explanation = state.simulationResult?.purposeResults?.energyExplanation || {};
-  const graph = energyExplanationGraphForPeriod(explanation, state.simulationEnergyPeriod || "annual");
-  return [...(graph.nodes || []), ...(graph.edges || [])].find((item) => (item.relatedPathIds || []).includes(pathID))
-    || [...(explanation.nodes || []), ...(explanation.edges || [])].find((item) => (item.relatedPathIds || []).includes(pathID))
-    || null;
+  const views = [state, ...energyPathZoneNames(explanation).map((zoneName) => ({
+    ...state, simulationEnergyScopeKind: "zone", simulationEnergyZoneName: zoneName,
+  }))];
+  for (const viewState of views) {
+    const graph = energyPathGraphForState(explanation, viewState);
+    const linked = (graph.links || []).filter((link) => (link.relatedPathIds || []).includes(pathID));
+    const ids = new Set(linked.flatMap((link) => [link.fromId, link.toId]));
+    const item = (graph.nodes || []).find((node) => (node.relatedPathIds || []).includes(pathID))
+      || (graph.nodes || []).find((node) => ["load", "end_use"].includes(node.level) && ids.has(node.id));
+    if (item) return { ...item, navigationScopeKind: viewState.simulationEnergyScopeKind, navigationZoneName: viewState.simulationEnergyZoneName };
+  }
+  return null;
 }
 
 function simulationZoneNameForSelection(selection = {}, entity = {}, targets = []) {
@@ -773,8 +789,9 @@ function simulationZoneNavigationDestination(zoneName = "", contextKind = "") {
   const heatZone = (activeHeatFlowDataset()?.zones || []).find((zone) => simulationZoneKey(zone.name || zone.zoneName || "") === zoneKey);
   const comfortZone = (state.simulationResult?.purposeResults?.comfort?.zones || []).find((zone) => simulationZoneKey(zone.zoneName || "") === zoneKey);
   const explanation = state.simulationResult?.purposeResults?.energyExplanation || {};
-  const graph = energyExplanationGraphForPeriod(explanation, state.simulationEnergyPeriod || "annual");
-  const energyItem = [...(graph.nodes || []), ...(graph.edges || [])].find((item) => simulationZoneKey(item.zoneName || "") === zoneKey);
+  const energyZone = energyPathZoneNames(explanation).find((name) => simulationZoneKey(name) === zoneKey);
+  const graph = energyPathGraphForState(explanation, { ...state, simulationEnergyScopeKind: "zone", simulationEnergyZoneName: energyZone || zoneName });
+  const energyItem = (graph.nodes || []).find((item) => simulationZoneKey(item.zoneName || "") === zoneKey) || graph.nodes?.[0];
   const active = state.simulationActiveResultView;
   if (comfortZone && (active === "comfort" || contextKind === "zone_profile")) {
     const metric = comfortZone.metrics?.[0];
@@ -792,12 +809,13 @@ function simulationZoneNavigationDestination(zoneName = "", contextKind = "") {
       panelTargetID: `simulation:heat-flow-zone:${zoneKey}`,
     };
   }
-  if (energyItem) {
+  if (energyZone) {
     return {
       resultView: "energy",
-      energyView: "sankey",
-      energySelection: energyItem.id,
-      panelTargetID: `simulation:energy:${energyItem.fromId ? "edge" : "node"}:${state.simulationEnergyPeriod || "annual"}:${energyItem.id}`,
+      energyScopeKind: "zone",
+      energyZoneName: energyZone,
+      energySelection: energyItem?.id || "",
+      panelTargetID: energyItem ? `simulation:energy:node:${state.simulationEnergyPeriod || "annual"}:${energyItem.id}` : "",
     };
   }
   if (heatZone) {
@@ -843,9 +861,16 @@ function applySimulationNavigationDestination(destination = {}) {
     return;
   }
   state.simulationActiveResultView = destination.resultView || state.simulationActiveResultView || "energy";
-  if (destination.energyView) {
-    state.simulationEnergyView = destination.energyView;
-  }
+  for (const [key, value] of Object.entries({
+    simulationEnergyScopeKind: destination.energyScopeKind,
+    simulationEnergyZoneName: destination.energyZoneName,
+    simulationEnergyPeriod: destination.energyPeriod,
+    simulationEnergyService: destination.energyService,
+    simulationEnergyDetailsOpen: destination.energyDetailsOpen,
+    simulationEnergyDetailsTab: destination.energyDetailsTab,
+    simulationEnergyDetailsStage: destination.energyDetailsStage,
+    simulationEnergyOutputSource: destination.energyOutputSource,
+  })) if (value !== undefined) state[key] = value;
   if (destination.energySelection !== undefined) {
     state.simulationEnergySelection = destination.energySelection || "";
   }
@@ -903,6 +928,12 @@ function findSimulationNavigationTarget(selection = {}, context = {}, destinatio
     ));
   });
   candidates.sort((left, right) => simulationNavigationElementScore(right, panelTargetID, panelTargetPrefix) - simulationNavigationElementScore(left, panelTargetID, panelTargetPrefix));
+  if (!candidates.length && destination?.resultView === "energy") {
+    if (destination.energyOutputSource) return [...root.querySelectorAll("[data-energy-path-data-source]")]
+      .find((item) => item.dataset.energyPathDataSource === destination.energyOutputSource) || null;
+    if (destination.energySelection) return [...root.querySelectorAll("[data-energy-explanation-node], [data-energy-explanation-edge]")]
+      .find((item) => item.dataset.energyExplanationNode === destination.energySelection || item.dataset.energyExplanationEdge === destination.energySelection) || null;
+  }
   return candidates[0] || null;
 }
 
@@ -934,26 +965,20 @@ function focusSimulationNavigationTarget(target, options = {}) {
   }
 }
 
-function captureSimulationNavigationContext(context) {
+export function captureSimulationNavigationContext(context) {
   return {
     ...context.genericCaptureContext(),
     navigationRevealTarget: simulationNavigationRevealTarget ? { ...simulationNavigationRevealTarget, direct: null } : null,
     activeResultView: state.simulationActiveResultView || "energy",
-    energyView: state.simulationEnergyView || "overview",
     energyScopeKind: state.simulationEnergyScopeKind || "building",
     energyZoneName: state.simulationEnergyZoneName || "",
     energyPeriod: state.simulationEnergyPeriod || "annual",
     energyService: state.simulationEnergyService || "all",
-    energyPeriodKind: state.simulationEnergyPeriodKind || "",
     energySelection: state.simulationEnergySelection || "",
-    energyFocusMode: state.simulationEnergyFocusMode || "all",
-    energyZoneFocus: state.simulationEnergyZoneFocus || "",
-    energyServicePathFocus: state.simulationEnergyServicePathFocus || "",
-    energyLoopFocus: state.simulationEnergyLoopFocus || "",
-    energySankeyMode: state.simulationEnergySankeyMode || "detailed",
-    energySignMode: state.simulationEnergySignMode || "display",
-    energyNodeLimit: state.simulationEnergyNodeLimit,
-    zoneEnergyMetric: state.simulationZoneEnergyMetric || "__total",
+    energyDetailsOpen: Boolean(state.simulationEnergyDetailsOpen),
+    energyDetailsTab: state.simulationEnergyDetailsTab || "data",
+    energyDetailsStage: state.simulationEnergyDetailsStage || "",
+    energyOutputSource: state.simulationEnergyOutputSource || "",
     hvacPanels: { ...(state.simulationHVACPanels || {}) },
     hvacVisibleGroups: { ...(state.simulationHVACVisibleGroups || {}) },
     hvacFrameIndex: Number(state.simulationHVACFrameIndex) || 0,
@@ -972,6 +997,7 @@ function captureSimulationNavigationContext(context) {
     selectedSeries: state.simulationSelectedSeries || "",
     seriesRangeStart: Number(state.simulationSeriesRangeStart) || 0,
     seriesRangeEnd: Number.isFinite(Number(state.simulationSeriesRangeEnd)) ? Number(state.simulationSeriesRangeEnd) : -1,
+    seriesPanels: simulationSeriesPanels.map((panel) => ({ ...panel, seriesIDs: [...panel.seriesIDs] })),
     energyScrollTop: Number(elements.simulationEnergyDashboard?.scrollTop) || 0,
     heatFlowScrollTop: Number(elements.simulationHeatFlow?.scrollTop) || 0,
     hvacScrollTop: Number(elements.simulationHVACLoopResults?.scrollTop) || 0,
@@ -979,27 +1005,21 @@ function captureSimulationNavigationContext(context) {
   };
 }
 
-async function restoreSimulationNavigationContext(snapshot = {}, context) {
+export async function restoreSimulationNavigationContext(snapshot = {}, context) {
   if (!state.simulationResult) {
     return false;
   }
   const assignments = {
     simulationActiveResultView: snapshot.activeResultView,
-    simulationEnergyView: snapshot.energyView,
-    simulationEnergyScopeKind: snapshot.energyScopeKind,
-    simulationEnergyZoneName: snapshot.energyZoneName,
-    simulationEnergyPeriod: snapshot.energyPeriod,
-    simulationEnergyService: snapshot.energyService,
-    simulationEnergyPeriodKind: snapshot.energyPeriodKind,
-    simulationEnergySelection: snapshot.energySelection,
-    simulationEnergyFocusMode: snapshot.energyFocusMode,
-    simulationEnergyZoneFocus: snapshot.energyZoneFocus,
-    simulationEnergyServicePathFocus: snapshot.energyServicePathFocus,
-    simulationEnergyLoopFocus: snapshot.energyLoopFocus,
-    simulationEnergySankeyMode: snapshot.energySankeyMode,
-    simulationEnergySignMode: snapshot.energySignMode,
-    simulationEnergyNodeLimit: snapshot.energyNodeLimit,
-    simulationZoneEnergyMetric: snapshot.zoneEnergyMetric,
+    simulationEnergyScopeKind: snapshot.energyScopeKind || (snapshot.energyFocusMode === "zone" ? "zone" : "building"),
+    simulationEnergyZoneName: snapshot.energyZoneName ?? snapshot.energyZoneFocus ?? "",
+    simulationEnergyPeriod: snapshot.energyPeriod || "annual",
+    simulationEnergyService: snapshot.energyService || "all",
+    simulationEnergySelection: snapshot.energySelection || "",
+    simulationEnergyDetailsOpen: snapshot.energyDetailsOpen ?? ["sources", "reconciliation"].includes(snapshot.energyView),
+    simulationEnergyDetailsTab: snapshot.energyDetailsTab || "data",
+    simulationEnergyDetailsStage: snapshot.energyDetailsStage || "",
+    simulationEnergyOutputSource: snapshot.energyOutputSource || "",
     simulationHVACPanels: snapshot.hvacPanels ? { ...snapshot.hvacPanels } : undefined,
     simulationHVACVisibleGroups: snapshot.hvacVisibleGroups ? { ...snapshot.hvacVisibleGroups } : undefined,
     simulationHVACFrameIndex: snapshot.hvacFrameIndex,
@@ -1023,6 +1043,27 @@ async function restoreSimulationNavigationContext(snapshot = {}, context) {
     if (value !== undefined) {
       state[key] = value;
     }
+  }
+  const explanation = state.simulationResult?.purposeResults?.energyExplanation || {};
+  normalizeEnergyPathViewState(state, explanation);
+  if (snapshot.energyServicePathFocus && !snapshot.energySelection) {
+    const item = simulationEnergyItemForServicePath(snapshot.energyServicePathFocus);
+    if (item) {
+      state.simulationEnergyScopeKind = item.navigationScopeKind;
+      state.simulationEnergyZoneName = item.navigationZoneName;
+      state.simulationEnergySelection = item.id;
+    }
+  }
+  const graph = energyPathGraphForState(explanation, state);
+  const selected = [...(graph.nodes || []), ...(graph.links || [])].find((item) =>
+    item.id === state.simulationEnergySelection || (item.originalNodeIds || []).includes(state.simulationEnergySelection));
+  state.simulationEnergySelection = selected?.id || "";
+  if (!(explanation.sources || []).some((source) => source.id === state.simulationEnergyOutputSource)) state.simulationEnergyOutputSource = "";
+  if (Array.isArray(snapshot.seriesPanels)) {
+    simulationSeriesPanels = snapshot.seriesPanels.map((panel) => ({ ...panel, seriesIDs: [...(panel.seriesIDs || [])] }));
+    simulationSeriesPanelSequence = Math.max(simulationSeriesPanelSequence, ...simulationSeriesPanels.map((panel) => (Number(panel.id) || 0) + 1));
+  } else if (snapshot.selectedSeries) {
+    simulationSeriesPanels = [{ id: simulationSeriesPanelSequence++, seriesIDs: [snapshot.selectedSeries], start: Number(snapshot.seriesRangeStart) || 0, end: snapshot.seriesRangeEnd ?? -1 }];
   }
   simulationNavigationRevealTarget = snapshot.navigationRevealTarget ? { ...snapshot.navigationRevealTarget } : null;
   renderSimulation();
@@ -1048,7 +1089,8 @@ function preferredSimulationSemanticOccurrence(selection = {}, context = {}) {
     return context.genericPreferredSemanticOccurrence(selection);
   }
   const expectedContexts = simulationPreferredOccurrenceContexts();
-  const pathToken = simulationSemanticToken(state.simulationEnergyServicePathFocus || "");
+  const selectedPaths = simulationSelectedEnergyPathNode()?.relatedPathIds || [];
+  const pathToken = selectedPaths.length === 1 ? simulationSemanticToken(selectedPaths[0]) : "";
   const anchor = selection.sourceAnchor || {};
   const scored = occurrences.map((occurrence, order) => ({
     occurrence,
@@ -1078,7 +1120,7 @@ function simulationPreferredOccurrenceContexts() {
     case "series":
       return ["output_request", "zone_output"];
     case "energy":
-      return state.simulationEnergyView === "sources"
+      return state.simulationEnergyDetailsOpen
         ? ["output_request", "zone_output"]
         : ["zone_service", "output_request", "definition"];
     default:
@@ -1289,7 +1331,7 @@ function renderSimulationEnergyEmpty(message) {
   pruneSimulationSemanticBindings();
 }
 
-function renderSimulationEnergyDashboard(result) {
+export function renderSimulationEnergyDashboard(result) {
   const energy = result?.purposeResults?.energy || {};
   const explanation = result?.purposeResults?.energyExplanation || {};
   const explanationSummary = result?.purposeResults?.energyExplanationSummary || {};
@@ -1307,90 +1349,79 @@ function renderSimulationEnergyDashboard(result) {
     renderSimulationEnergyEmpty(t("simulation.noEnergyResult", {}, "Run Basic Energy to inspect monthly energy results."));
     return;
   }
-  if (elements.simulationEnergyStats) {
-    elements.simulationEnergyStats.textContent = t(
-      "simulation.energyStats",
-      { facility: facility.length, enduse: endUse.length, zones: zones.length, nodes: explanationNodes.length },
-      `${facility.length} facility, ${endUse.length} end-use, ${zones.length} zone series, ${explanationNodes.length} explanation nodes`,
-    );
-  }
+  // Source counts belong to Data details, not the primary Energy reading path.
+  if (elements.simulationEnergyStats) elements.simulationEnergyStats.textContent = "";
   if (useEnergyPathV2) {
     const scopedSummary = energyPathSummaryForState(explanation, explanationSummary, state);
     elements.simulationEnergyDashboard.innerHTML = `
       ${renderEnergyPathKPI(scopedSummary)}
-      ${renderEnergyPathView(explanation, state, { outputObjects: result?.purposeRunPlan?.outputObjects || [] })}
-      ${renderEnergyPathSummaryOverview(scopedSummary)}`;
+      ${renderEnergyPathView(explanation, state, {
+        outputObjects: result?.purposeRunPlan?.outputObjects || [],
+        inspectorActionsForNode: (node, sources, viewState) => simulationEnergyInspectorActions(node, sources, viewState, result),
+      })}`;
     pruneSimulationSemanticBindings();
     return;
   }
-  const totals = [...facility, ...endUse].map((item) => ({ name: item.name, value: Number(item.total) || 0, unit: item.unit || "", source: item.source || "" }));
-  const kpis = totals
-    .slice()
-    .sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
-    .slice(0, 4)
-    .map(
-      (item) => `
-        <div>
-          <span>${escapeHTML(item.name)}</span>
-          <strong>${escapeHTML(formatEnergyValue(item.value, item.unit))}</strong>
-        </div>`,
-    )
-    .join("");
-  const view = energySubview(explanation);
-  if (["sankey", "systems"].includes(view) && energyExplanationHasPayload(explanation)) {
-    normalizeSimulationEnergyFocusState(explanation);
-  }
-  const viewBody = renderEnergySubview(view, energy, explanation, explanationSummary, facility, endUse, zones);
-  elements.simulationEnergyDashboard.innerHTML = `
-    <div class="simulation-energy-kpis">${kpis || `<div><span>${escapeHTML(t("common.notAvailable", {}, "—"))}</span><strong>0</strong></div>`}</div>
-    ${renderEnergySubviewControls(view, explanation)}
-    ${viewBody}`;
+  // Stored v1 results are upgraded at the read boundary. Never reinterpret a
+  // legacy edge direction or incomplete energy-only response as a v2 graph.
+  elements.simulationEnergyDashboard.innerHTML = `<div class="empty">${escapeHTML(t(
+    "simulation.energyPathUpgradeUnavailable", {},
+    "Energy Path is unavailable for this result. Run Basic Energy to create it; available variables remain in Series.",
+  ))}</div>`;
   pruneSimulationSemanticBindings();
 }
 
-function energySubview(explanation = {}) {
-  const allowed = ["overview", "sankey", "monthly", "zones", "systems"];
-  let view = state.simulationEnergyView || "overview";
-  if (!allowed.includes(view)) {
-    view = "overview";
-  }
-  if (view === "sankey" && !energyExplanationHasPayload(explanation)) {
-    view = "overview";
-  }
-  state.simulationEnergyView = view;
-  return view;
+export function simulationEnergyInspectorActions(node = {}, sourceDetails = [], viewState = state, result = state.simulationResult) {
+  const explanation = result?.purposeResults?.energyExplanation || {};
+  const sources = explanation.sources || sourceDetails;
+  const period = viewState.simulationEnergyPeriod || "annual";
+  const candidates = resolveEnergyPathSeriesCandidates(node, sources, result?.series || []);
+  const series = candidates.filter((candidate) => candidate.status === "exact" && energyPathSeriesPeriodRange(candidate.series, period))
+    .map((candidate) => ({
+      id: candidate.seriesId,
+      sourceId: candidate.source.id,
+      label: simulationSeriesDisplayColumn(candidate.series),
+      frequency: candidate.series.reportingFrequency || candidate.source.reportingFrequency || "",
+      period,
+    }));
+  const graph = energyPathGraphForState(explanation, viewState);
+  const ids = new Set([node.id, ...(node.originalNodeIds || [])]);
+  const relatedPathIDs = new Set([
+    ...(node.relatedPathIds || []),
+    ...(graph.links || []).filter((link) => ids.has(link.fromId) || ids.has(link.toId)).flatMap((link) => link.relatedPathIds || []),
+  ]);
+  const hvacPaths = ["load", "end_use"].includes(node.level)
+    ? simulationHVACServicePaths().filter((path) => relatedPathIDs.has(path.id))
+      .map((path) => ({ id: path.id, label: simulationEnergyServicePathFocusLabel(path) }))
+    : [];
+  const pathLabelCounts = new Map();
+  for (const path of hvacPaths) pathLabelCounts.set(path.label, (pathLabelCounts.get(path.label) || 0) + 1);
+  for (const path of hvacPaths) if (pathLabelCounts.get(path.label) > 1) path.label = `${path.label} · ${path.id}`;
+  return {
+    series, hvacPaths,
+    seriesUnavailableReason: candidates.some((candidate) => candidate.status === "exact")
+      ? period !== "annual"
+        ? t("simulation.energyPathSeriesPeriodUnavailable", {}, "No reliable reported Series data is available for the selected month.")
+        : t("simulation.energyPathSeriesDataUnavailable", {}, "The matching series has no usable reported values for this period.")
+      : candidates.length
+        ? t("simulation.energyPathSeriesAmbiguous", {}, "More than one reported series has this identity; choose a variable in Series.")
+        : t("simulation.energyPathSeriesUnavailable", {}, "No reported series can be matched exactly to these sources."),
+    hvacUnavailableReason: t("simulation.energyPathHVACUnavailable", {}, "No explicit related HVAC service path is available for this item."),
+  };
 }
+
+function simulationSelectedEnergyPathNode() {
+  const explanation = state.simulationResult?.purposeResults?.energyExplanation || {};
+  const graph = energyPathGraphForState(explanation, state);
+  const id = state.simulationEnergySelection || "";
+  return (graph.nodes || []).find((node) => node.id === id || (node.originalNodeIds || []).includes(id)) || null;
+}
+
 
 function energyExplanationHasPayload(explanation = {}) {
   return Boolean((explanation.nodes || []).length || (explanation.sources || []).length || (explanation.reconciliation || []).length);
 }
 
-function renderEnergySubviewControls(view, explanation = {}) {
-  const tabs = [
-    ["overview", t("simulation.energyOverview", {}, "Overview")],
-    ["sankey", t("simulation.energySankey", {}, "Energy Path")],
-    ["monthly", t("simulation.monthly", {}, "Monthly")],
-    ["zones", t("simulation.zones", {}, "Zones")],
-    ["systems", t("simulation.systems", {}, "Systems")],
-  ];
-  const periodControls = renderEnergyPeriodControls(view, explanation);
-  return `
-    <div class="simulation-energy-subnav">
-      <div class="view-tabs" role="tablist" aria-label="${escapeHTML(t("simulation.energyViews", {}, "Energy views"))}">
-        ${tabs
-          .map(([id, label]) => {
-            const disabled = id === "sankey" && !energyExplanationHasPayload(explanation);
-            return `<button class="view-tab ${view === id ? "active" : ""}" type="button" data-simulation-energy-view="${id}" ${disabled ? "disabled" : ""}>${escapeHTML(label)}</button>`;
-          })
-          .join("")}
-      </div>
-      ${periodControls}
-      ${["sankey", "systems"].includes(view) && energyExplanationHasPayload(explanation) ? renderEnergyFocusControls(explanation) : ""}
-      ${view === "sankey" && energyExplanationHasPayload(explanation) ? renderEnergySankeyModeControls() : ""}
-      ${view === "sankey" && energyExplanationHasPayload(explanation) ? renderEnergySignModeControls() : ""}
-      ${view === "sankey" && energyExplanationHasPayload(explanation) ? renderEnergyNodeLimitControls() : ""}
-    </div>`;
-}
 
 function renderEnergyPeriodControls(view, explanation = {}) {
   if (!["sankey", "zones", "systems"].includes(view)) {
@@ -5180,14 +5211,16 @@ function simulationSeriesLookup() {
   const byMetric = new Map();
   const byVariable = new Map();
   const byMeter = new Map();
+  const legacyIDs = new Map();
   for (const item of series) {
     const id = seriesID(item);
     const key = normalizeOutputMatchToken(seriesNodeKey(item.column));
     const variable = normalizeOutputMatchToken(seriesVariableName(item.column));
     const meter = normalizeOutputMatchToken(seriesColumnMainName(item.column));
-    if (id && !byID.has(id)) {
-      byID.set(id, item);
-    }
+    // Keep duplicate identities ambiguous instead of silently retaining first.
+    if (id) byID.set(id, byID.has(id) ? null : item);
+    const legacyID = `${item.file || ""}::${item.column || ""}`;
+    legacyIDs.set(legacyID, legacyIDs.has(legacyID) ? null : item);
     if (variable && !byVariable.has(variable)) {
       byVariable.set(variable, item);
     }
@@ -5198,6 +5231,8 @@ function simulationSeriesLookup() {
       byMeter.set(meter, item);
     }
   }
+  // Old saved selections can migrate only when their alias is unambiguous.
+  for (const [id, item] of legacyIDs) if (!byID.has(id)) byID.set(id, item);
   cached = { series, byID, byMetric, byVariable, byMeter };
   simulationSeriesLookupCache.set(rawSeries, cached);
   return cached;
@@ -5575,6 +5610,36 @@ export function handleSimulationSeriesInspectClick(event) {
     return;
   }
   if (handleSimulationEnergyDetailsClick(event)) return;
+  const pathSeriesButton = event.target.closest("[data-energy-path-series-id]");
+  if (pathSeriesButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (pathSeriesButton.disabled) return;
+    const node = simulationSelectedEnergyPathNode();
+    const actions = node ? simulationEnergyInspectorActions(node) : { series: [] };
+    const requestedID = pathSeriesButton.dataset.energyPathSeriesId || "";
+    const period = pathSeriesButton.dataset.energyPathSeriesPeriod || "annual";
+    const exact = actions.series.find((candidate) => candidate.id === requestedID && candidate.period === period);
+    const series = exact && findSimulationSeriesByID(requestedID);
+    const range = series && energyPathSeriesPeriodRange(series, period);
+    if (!range) {
+      setStatus(t("simulation.energyPathSeriesUnavailable", {}, "No reported series can be matched exactly to these sources."), "warn");
+      return;
+    }
+    selectSimulationSeries(series, range);
+    return;
+  }
+  const pathHVACButton = event.target.closest("[data-energy-path-hvac-path-id]");
+  if (pathHVACButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (pathHVACButton.disabled) return;
+    const node = simulationSelectedEnergyPathNode();
+    const actions = node ? simulationEnergyInspectorActions(node) : { hvacPaths: [] };
+    const pathID = pathHVACButton.dataset.energyPathHvacPathId || "";
+    if (actions.hvacPaths.some((path) => path.id === pathID)) openSimulationHVACServicePath(pathID);
+    return;
+  }
   const topologyAirCoupling = event.target.closest("[data-energy-path-topology-air-coupling-id]");
   if (topologyAirCoupling) {
     event.preventDefault();
@@ -5586,41 +5651,37 @@ export function handleSimulationSeriesInspectClick(event) {
   if (semanticTarget) {
     void requestSimulationModelSelection(semanticTarget);
   }
-  const energyViewButton = event.target.closest("[data-simulation-energy-view]");
-  if (energyViewButton && !energyViewButton.disabled) {
-    state.simulationEnergyView = energyViewButton.dataset.simulationEnergyView || "overview";
-    renderSimulationEnergyDashboard(state.simulationResult);
-    return;
-  }
   const energyNode = event.target.closest("[data-energy-explanation-node]");
   if (energyNode) {
     state.simulationEnergySelection = energyNode.dataset.energyExplanationNode || "";
     renderSimulationEnergyDashboard(state.simulationResult);
+    [...elements.simulationEnergyDashboard.querySelectorAll("[data-energy-explanation-node]")]
+      .find((node) => node.dataset.energyExplanationNode === state.simulationEnergySelection)?.focus({ preventScroll: true });
     return;
   }
   const energyEdge = event.target.closest("[data-energy-explanation-edge]");
   if (energyEdge) {
     state.simulationEnergySelection = energyEdge.dataset.energyExplanationEdge || "";
     renderSimulationEnergyDashboard(state.simulationResult);
+    [...elements.simulationEnergyDashboard.querySelectorAll("[data-energy-explanation-edge]")]
+      .find((edge) => edge.dataset.energyExplanationEdge === state.simulationEnergySelection)?.focus({ preventScroll: true });
     return;
   }
   const energyPeriodJump = event.target.closest("[data-simulation-energy-period-jump]");
   if (energyPeriodJump) {
     state.simulationEnergyPeriod = energyPeriodJump.dataset.simulationEnergyPeriodJump || "annual";
-    const explanation = state.simulationResult?.purposeResults?.energyExplanation || {};
-    const current = energyExplanationPeriodForID(explanation.periods || [], state.simulationEnergyPeriod);
-    state.simulationEnergyPeriodKind = energyExplanationPeriodKind(current || {}) || state.simulationEnergyPeriodKind;
     state.simulationEnergySelection = "";
-    state.simulationEnergyView = "sankey";
     renderSimulationEnergyDashboard(state.simulationResult);
     return;
   }
   const energyZoneJump = event.target.closest("[data-simulation-energy-zone-jump]");
   if (energyZoneJump) {
-    state.simulationEnergyFocusMode = "zone";
-    state.simulationEnergyZoneFocus = energyZoneJump.dataset.simulationEnergyZoneJump || "";
+    const explanation = state.simulationResult?.purposeResults?.energyExplanation || {};
+    const zoneName = energyZoneJump.dataset.simulationEnergyZoneJump || "";
+    if (!energyPathZoneNames(explanation).includes(zoneName)) return;
+    state.simulationEnergyScopeKind = "zone";
+    state.simulationEnergyZoneName = zoneName;
     state.simulationEnergySelection = "";
-    state.simulationEnergyView = "sankey";
     renderSimulationEnergyDashboard(state.simulationResult);
     return;
   }
@@ -5636,31 +5697,6 @@ export function handleSimulationSeriesInspectClick(event) {
     renderSimulationResultTabs(state.simulationResult);
     toggleSimulationResultSections();
     renderSimulationHeatFlow();
-    return;
-  }
-  const energyServicePathJump = event.target.closest("[data-simulation-energy-service-path-jump]");
-  if (energyServicePathJump) {
-    state.simulationEnergyFocusMode = "service_path";
-    state.simulationEnergyServicePathFocus = energyServicePathJump.dataset.simulationEnergyServicePathJump || "";
-    state.simulationEnergySelection = "";
-    state.simulationEnergyView = "sankey";
-    renderSimulationEnergyDashboard(state.simulationResult);
-    return;
-  }
-  const energyLoopFocusJump = event.target.closest("[data-simulation-energy-loop-focus-jump]");
-  if (energyLoopFocusJump) {
-    state.simulationEnergyFocusMode = "loop";
-    state.simulationEnergyLoopFocus = energyLoopFocusJump.dataset.simulationEnergyLoopFocusJump || "";
-    state.simulationEnergySelection = "";
-    state.simulationEnergyView = "sankey";
-    renderSimulationEnergyDashboard(state.simulationResult);
-    return;
-  }
-  const energyShowAllNodes = event.target.closest("[data-simulation-energy-show-all-nodes]");
-  if (energyShowAllNodes) {
-    state.simulationEnergyNodeLimit = 0;
-    state.simulationEnergySelection = "";
-    renderSimulationEnergyDashboard(state.simulationResult);
     return;
   }
   const hvacPath = event.target.closest("[data-simulation-hvac-path-id]");
@@ -5850,103 +5886,17 @@ function simulationHVACGraphName(value = "") {
   return String(value || "").trim().toLowerCase();
 }
 
-function handleSimulationEnergyDashboardChange(event) {
-  if (!(event.target instanceof Element)) {
-    return;
-  }
+export function handleSimulationEnergyDashboardChange(event) {
+  if (!(event.target instanceof Element)) return;
   const explanation = state.simulationResult?.purposeResults?.energyExplanation || {};
-  if (isEnergyPathV2(explanation)) {
-    const update = updateEnergyPathControlState(event, state, explanation);
-    if (update.handled) {
-      if (update.render) {
-        renderSimulationEnergyDashboard(state.simulationResult);
-      }
-      return;
-    }
-  }
-  const period = event.target.closest("[data-simulation-energy-period]");
-  if (period) {
-    state.simulationEnergyPeriod = period.value || "annual";
-    const current = energyExplanationPeriodForID(explanation.periods || [], state.simulationEnergyPeriod);
-    state.simulationEnergyPeriodKind = energyExplanationPeriodKind(current || {}) || state.simulationEnergyPeriodKind;
-    state.simulationEnergySelection = "";
+  if (!isEnergyPathV2(explanation)) return;
+  const update = updateEnergyPathControlState(event, state, explanation);
+  if (update.handled && update.render) {
+    const attribute = ["data-simulation-energy-scope", "data-simulation-energy-zone-name", "data-simulation-energy-path-period", "data-simulation-energy-service"]
+      .find((name) => event.target.hasAttribute(name));
     renderSimulationEnergyDashboard(state.simulationResult);
-    return;
+    if (attribute) elements.simulationEnergyDashboard.querySelector(`[${attribute}]`)?.focus({ preventScroll: true });
   }
-  const periodKind = event.target.closest("[data-simulation-energy-period-kind]");
-  if (periodKind) {
-    state.simulationEnergyPeriodKind = periodKind.value || "";
-    const next = (explanation.periods || []).find((item) => energyExplanationPeriodKind(item) === state.simulationEnergyPeriodKind);
-    state.simulationEnergyPeriod = next?.id || "annual";
-    state.simulationEnergySelection = "";
-    renderSimulationEnergyDashboard(state.simulationResult);
-    return;
-  }
-  const periodIndex = event.target.closest("[data-simulation-energy-period-index]");
-  if (periodIndex) {
-    const kind = state.simulationEnergyPeriodKind || "annual";
-    const periods = (explanation.periods || []).filter((item) => energyExplanationPeriodKind(item) === kind);
-    const index = Math.max(0, Math.min(periods.length - 1, Number(periodIndex.value) || 0));
-    state.simulationEnergyPeriod = periods[index]?.id || "annual";
-    state.simulationEnergySelection = "";
-    renderSimulationEnergyDashboard(state.simulationResult);
-    return;
-  }
-  const focusMode = event.target.closest("[data-simulation-energy-focus-mode]");
-  if (focusMode) {
-    state.simulationEnergyFocusMode = focusMode.value || "all";
-    state.simulationEnergySelection = "";
-    renderSimulationEnergyDashboard(state.simulationResult);
-    return;
-  }
-  const zoneFocus = event.target.closest("[data-simulation-energy-zone-focus]");
-  if (zoneFocus) {
-    state.simulationEnergyZoneFocus = zoneFocus.value || "";
-    state.simulationEnergySelection = "";
-    renderSimulationEnergyDashboard(state.simulationResult);
-    return;
-  }
-  const pathFocus = event.target.closest("[data-simulation-energy-service-path-focus]");
-  if (pathFocus) {
-    state.simulationEnergyServicePathFocus = pathFocus.value || "";
-    state.simulationEnergySelection = "";
-    renderSimulationEnergyDashboard(state.simulationResult);
-    return;
-  }
-  const loopFocus = event.target.closest("[data-simulation-energy-loop-focus]");
-  if (loopFocus) {
-    state.simulationEnergyLoopFocus = loopFocus.value || "";
-    state.simulationEnergySelection = "";
-    renderSimulationEnergyDashboard(state.simulationResult);
-    return;
-  }
-  const signMode = event.target.closest("[data-simulation-energy-sign-mode]");
-  if (signMode) {
-    state.simulationEnergySignMode = energyExplanationSignMode(signMode.value || "display");
-    state.simulationEnergySelection = "";
-    renderSimulationEnergyDashboard(state.simulationResult);
-    return;
-  }
-  const sankeyMode = event.target.closest("[data-simulation-energy-sankey-mode]");
-  if (sankeyMode) {
-    state.simulationEnergySankeyMode = energyExplanationSankeyMode(sankeyMode.value || "detailed");
-    state.simulationEnergySelection = "";
-    renderSimulationEnergyDashboard(state.simulationResult);
-    return;
-  }
-  const nodeLimit = event.target.closest("[data-simulation-energy-node-limit]");
-  if (nodeLimit) {
-    state.simulationEnergyNodeLimit = energyExplanationNodeLimit(nodeLimit.value);
-    state.simulationEnergySelection = "";
-    renderSimulationEnergyDashboard(state.simulationResult);
-    return;
-  }
-  const select = event.target.closest("[data-simulation-zone-energy-metric]");
-  if (!select) {
-    return;
-  }
-  state.simulationZoneEnergyMetric = select.value || "__total";
-  renderSimulationEnergyDashboard(state.simulationResult);
 }
 
 function handleSimulationHVACResultsInput(event) {
@@ -5987,19 +5937,26 @@ function handleSimulationComfortResultsChange(event) {
   renderSimulationComfort(state.simulationResult);
 }
 
-function selectSimulationSeries(series) {
+function selectSimulationSeries(series, range = { start: 0, end: -1 }) {
   state.simulationSelectedSeries = seriesID(series);
   if (simulationSeriesPanels[0]) {
-    simulationSeriesPanels[0].seriesIDs[0] = state.simulationSelectedSeries;
+    // Different variables can have different timestamp grids. A contextual
+    // jump owns this panel; retained overlays must not distort its month range.
+    simulationSeriesPanels[0].seriesIDs = [state.simulationSelectedSeries];
+    simulationSeriesPanels[0].start = range.start;
+    simulationSeriesPanels[0].end = range.end;
+  } else {
+    simulationSeriesPanels = [{ id: simulationSeriesPanelSequence++, seriesIDs: [state.simulationSelectedSeries], ...range }];
   }
-  state.simulationSeriesRangeStart = 0;
-  state.simulationSeriesRangeEnd = -1;
+  state.simulationSeriesRangeStart = range.start;
+  state.simulationSeriesRangeEnd = range.end;
   state.simulationActiveResultView = "series";
   renderSimulationResultTabs(state.simulationResult);
   toggleSimulationResultSections();
   renderSimulationSeriesSelect(state.simulationResult || {});
   renderSimulationChart();
   setStatus(t("simulation.inspectSeriesOpened", {}, "Series chart opened"), "ok");
+  elements.simulationChart?.querySelector("select[data-series-panel-id]")?.focus({ preventScroll: true });
   elements.simulationChart?.scrollIntoView({ block: "nearest" });
 }
 
@@ -6515,14 +6472,22 @@ function renderSimulationSeriesSelect(result) {
     return;
   }
   if (!state.simulationSelectedSeries || !series.some((item) => seriesID(item) === state.simulationSelectedSeries)) {
-    state.simulationSelectedSeries = seriesID(preferredSimulationSeries(series) || series[0]);
+    const migrated = findSimulationSeriesByID(state.simulationSelectedSeries);
+    if (migrated) state.simulationSelectedSeries = seriesID(migrated);
+    else if (!state.simulationSelectedSeries) state.simulationSelectedSeries = seriesID(preferredSimulationSeries(series) || series[0]);
   }
   if (!simulationSeriesPanels.length) {
     simulationSeriesPanels = [{ id: simulationSeriesPanelSequence++, seriesIDs: [state.simulationSelectedSeries], start: 0, end: -1 }];
   }
+  if (!findSimulationSeriesByID(state.simulationSelectedSeries)) {
+    simulationSeriesPanels[0].seriesIDs = [state.simulationSelectedSeries];
+    simulationSeriesPanels[0].start = 0;
+    simulationSeriesPanels[0].end = -1;
+  }
   const validIDs = new Set(series.map(seriesID));
   simulationSeriesPanels.forEach((panel) => {
-    panel.seriesIDs = panel.seriesIDs.filter((id) => validIDs.has(id));
+    panel.seriesIDs = panel.seriesIDs.map((id) => validIDs.has(id) ? id : energyPathSeriesID(findSimulationSeriesByID(id) || {}))
+      .filter((id) => validIDs.has(id));
     if (!panel.seriesIDs.length) panel.seriesIDs = [state.simulationSelectedSeries];
   });
   if (elements.simulationSeriesStats) {
@@ -6595,7 +6560,7 @@ function renderSimulationChart() {
 }
 
 function renderSimulationSeriesPanel(panel, allSeries) {
-  const selected = panel.seriesIDs.map((id) => allSeries.find((item) => seriesID(item) === id)).filter(Boolean);
+  const selected = panel.seriesIDs.map((id) => findSimulationSeriesByID(id)).filter(Boolean);
   const maxPoints = Math.max(0, ...selected.map(simulationSeriesPointCount));
   const maxIndex = Math.max(0, maxPoints - 1);
   if (panel.end < 0 || panel.end > maxIndex) panel.end = maxIndex;
@@ -6606,13 +6571,14 @@ function renderSimulationSeriesPanel(panel, allSeries) {
 }
 
 function simulationSeriesPickerOptions(allSeries) {
-  return (selectedID) => simulationSeriesGroupOptions(allSeries).filter((group) => group.value !== "all").map((group) => {
+  return (selectedID) => `${findSimulationSeriesByID(selectedID) ? "" : `<option value="" disabled selected>${escapeHTML(t("simulation.energyPathChooseSeries", {}, "Choose source series"))}</option>`}` + simulationSeriesGroupOptions(allSeries).filter((group) => group.value !== "all").map((group) => {
     const items = allSeries.filter((item) => simulationSeriesGroupID(item) === group.value);
-    return items.length ? `<optgroup label="${escapeHTML(group.label)}">${items.map((item) => `<option value="${escapeHTML(seriesID(item))}" ${seriesID(item) === selectedID ? "selected" : ""}>${escapeHTML(item.column)}</option>`).join("")}</optgroup>` : "";
+    return items.length ? `<optgroup label="${escapeHTML(group.label)}">${items.map((item) => `<option value="${escapeHTML(seriesID(item))}" ${seriesID(item) === selectedID ? "selected" : ""}>${escapeHTML([item.column, item.reportingFrequency].filter(Boolean).join(" · "))}</option>`).join("")}</optgroup>` : "";
   }).join("");
 }
 
 function renderSimulationMultiSeriesSVG(seriesList, panel) {
+  if (!seriesList.length) return `<div class="empty">${escapeHTML(t("simulation.energyPathSeriesAmbiguous", {}, "The saved series identity cannot be resolved. Choose a variable in Series."))}</div>`;
   const width = 900, height = 300;
   const unitKey = (series) => String(simulationSeriesDisplayUnit(series) || "value").trim().toLowerCase();
   const units = [...new Set(seriesList.map(unitKey))];
@@ -6622,11 +6588,22 @@ function renderSimulationMultiSeriesSVG(seriesList, panel) {
   const plotWidth = width - pad.left - pad.right, plotHeight = height - pad.top - pad.bottom;
   const unitRanges = new Map(units.map((unit) => {
     const values = seriesList.filter((s) => unitKey(s) === unit).flatMap((s) => simulationSeriesPoints(s).slice(panel.start, panel.end + 1).map((p) => Number(p.value))).filter(Number.isFinite);
-    const min = values.length ? Math.min(...values) : 0, max = values.length ? Math.max(...values) : 1;
-    return [unit, { min, max, span: max - min || 1 }];
+    let min = values.length ? Math.min(...values) : 0, max = values.length ? Math.max(...values) : 1;
+    if (min === max) {
+      const padding = Math.max(Math.abs(min) * 0.05, 0.5);
+      min -= padding;
+      max += padding;
+    }
+    return [unit, { min, max, span: max - min }];
   }));
   const lines = seriesList.map((series, index) => {
     const points = simulationSeriesPoints(series).slice(panel.start, panel.end + 1), scale = unitRanges.get(unitKey(series));
+    if (points.length === 1 && Number.isFinite(Number(points[0].value))) {
+      const x = pad.left + plotWidth / 2;
+      const y = pad.top + plotHeight * (1 - (Number(points[0].value) - scale.min) / scale.span);
+      const label = `${Number(points[0].value).toLocaleString(undefined, { maximumFractionDigits: 3 })} ${unitKey(series)}`;
+      return `<circle data-simulation-series-single-point="${escapeHTML(seriesID(series))}" cx="${x}" cy="${y}" r="4.5" fill="${colors[index % colors.length]}"><title>${escapeHTML(`${points[0].label}: ${label}`)}</title></circle><text x="${x + 9}" y="${y - 8}" class="simulation-axis">${escapeHTML(label)}</text>`;
+    }
     const xStep = points.length > 1 ? plotWidth / (points.length - 1) : plotWidth;
     const coords = points.map((point, i) => `${pad.left + i * xStep},${pad.top + plotHeight * (1 - (Number(point.value) - scale.min) / scale.span)}`).join(" ");
     const dash = ["", "8 4", "3 3", "10 3 2 3"][index % 4];
@@ -6644,7 +6621,7 @@ function renderSimulationMultiSeriesSVG(seriesList, panel) {
   const referencePoints = simulationSeriesPoints(seriesList[0]).slice(panel.start, panel.end + 1);
   const xTickIndexes = [...new Set(Array.from({ length: Math.min(6, referencePoints.length) }, (_, index) => Math.round(index * Math.max(0, referencePoints.length - 1) / Math.max(1, Math.min(6, referencePoints.length) - 1))))];
   const xTicks = xTickIndexes.map((pointIndex) => {
-    const x = pad.left + (referencePoints.length > 1 ? pointIndex * plotWidth / (referencePoints.length - 1) : 0);
+    const x = pad.left + (referencePoints.length > 1 ? pointIndex * plotWidth / (referencePoints.length - 1) : plotWidth / 2);
     return `<line x1="${x}" x2="${x}" y1="${pad.top}" y2="${height - pad.bottom}" class="simulation-grid"/><line x1="${x}" x2="${x}" y1="${height - pad.bottom}" y2="${height - pad.bottom + 4}" class="simulation-axis-line"/><text x="${x}" y="${height - pad.bottom + 18}" text-anchor="middle" class="simulation-axis">${escapeHTML(referencePoints[pointIndex]?.label || String(panel.start + pointIndex + 1))}</text>`;
   }).join("");
   const legend = seriesList.map((series, index) => `<span><i style="background:${colors[index % colors.length]}"></i>${escapeHTML(simulationSeriesDisplayColumn(series))}</span>`).join("");
@@ -8789,8 +8766,7 @@ function waitForProgressRuntime() {
 }
 
 function seriesID(series) {
-  series = safeSimulationSeries(series);
-  return `${series.file || ""}::${series.column || ""}`;
+  return energyPathSeriesID(safeSimulationSeries(series));
 }
 
 function preferredSimulationSeries(series = []) {

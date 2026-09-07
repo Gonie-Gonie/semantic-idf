@@ -52,6 +52,18 @@ the checklist or its final acceptance scenarios.
   stage and Zone scope while retaining required derivation traces. Verification:
   `TestEPATH131*`, full frontend checks, and interactive browser review of stage
   filtering, All stages, exact Monthly request selection and Escape focus return.
+- EPATH-140: Energy now has one primary view, without the old subnav or duplicate
+  summary tables. Selected-node inspectors retain exact Series and HVAC jumps;
+  multiple targets require an explicit choice. SQL Series retain dictionary,
+  frequency and type metadata, while old ambiguous identities remain unresolved.
+  Month jumps use actual timestamps, reset the visible panel range, and display
+  single-point values. Scope/period/service/selection/drawer and Series panels
+  survive navigation history; old Zone/Sources snapshots migrate to current
+  state. Acceptance passed before removing old subnav/active handlers/state.
+  Disconnected old renderer functions remain until the planned EPATH-220 cleanup.
+  Verification: real SQL duplicate-frequency fixtures, strict identity/calendar
+  browser tests, actual dashboard navigation/history/keyboard acceptance, unchanged
+  raw/export inputs, and interactive browser review of February Series and return.
 
 ## Policy clarification
 
@@ -63,7 +75,7 @@ The normal Building interzone/category projection remains intact.
 
 ## Next in sequence
 
-EPATH-140–145 → 150–152 → 160–161 →
+EPATH-141–145 → 150–152 → 160–161 →
 170–171 → 180–182 → 190–198 → 200–204 → 210–211 → 220–222 → 230–235.
 
 Existing code may already satisfy portions of later items. They remain pending

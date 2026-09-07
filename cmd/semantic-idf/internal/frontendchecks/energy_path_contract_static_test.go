@@ -97,7 +97,7 @@ func TestFrontendEnergyPathV2HeaderAndControlContract(t *testing.T) {
 	}
 }
 
-func TestFrontendEnergyPathV2DefaultsAndV1Compatibility(t *testing.T) {
+func TestFrontendEnergyPathV2DefaultsAndLegacyResultGuidance(t *testing.T) {
 	state := readTestFile(t, "frontend/src/js/state.js")
 	for _, required := range []string{
 		`simulationEnergyScopeKind: "building"`,
@@ -115,17 +115,18 @@ func TestFrontendEnergyPathV2DefaultsAndV1Compatibility(t *testing.T) {
 		`from "./energy-path-view.js"`,
 		`const useEnergyPathV2 = isEnergyPathV2(explanation)`,
 		`if (useEnergyPathV2)`,
-		`renderEnergyPathView(explanation, state, { outputObjects: result?.purposeRunPlan?.outputObjects || [] })`,
+		`renderEnergyPathView(explanation, state, {`,
+		`outputObjects: result?.purposeRunPlan?.outputObjects || []`,
+		`inspectorActionsForNode:`,
 		`updateEnergyPathControlState(event, state, explanation)`,
-		`["overview", "sankey", "monthly", "zones", "systems"]`,
-		`return renderEnergyExplanationSankey(explanation)`,
-		`["sankey", t("simulation.energySankey", {}, "Energy Path")]`,
+		`"simulation.energyPathUpgradeUnavailable"`,
+		`available variables remain in Series`,
 		`openSimulationEnergyPathTopologyAirCoupling`,
 		`openSelectionInView("topology"`,
 		`targetId: couplingID`,
 	} {
 		if !strings.Contains(simulation, required) {
-			t.Fatalf("Energy Path v2 integration or v1 compatibility path missing %q", required)
+			t.Fatalf("Energy Path v2 integration or legacy-result guidance missing %q", required)
 		}
 	}
 }
@@ -256,7 +257,6 @@ func TestFrontendEnergyPathV2SummaryConsumersAndV1Adapter(t *testing.T) {
 	simulation := readTestFile(t, "frontend/src/js/views/simulation-views.js")
 	for _, required := range []string{
 		`renderEnergyPathKPI(scopedSummary)`,
-		`renderEnergyPathSummaryOverview(scopedSummary)`,
 		`energyPathSummaryGroups(summary).map((group) => [group.label, group.items])`,
 		`energyPathLegacyDerivedKPIItems(explanationSummary)`,
 	} {
@@ -336,11 +336,13 @@ func TestFrontendEnergyPathUsesPrecomputedZoneResults(t *testing.T) {
 	for _, required := range []string{
 		`const scopedSummary = energyPathSummaryForState(explanation, explanationSummary, state)`,
 		`renderEnergyPathKPI(scopedSummary)`,
-		`renderEnergyPathSummaryOverview(scopedSummary)`,
 	} {
 		if !strings.Contains(simulation, required) {
 			t.Fatalf("Simulation does not align Energy Path summary scope/period with its graph: %q", required)
 		}
+	}
+	if strings.Contains(simulation, `renderEnergyPathSummaryOverview(scopedSummary)`) {
+		t.Fatal("single Energy view duplicates its graph with the old summary overview")
 	}
 	changeHandler := sliceBetween(simulation, "function handleSimulationEnergyDashboardChange", "function handleSimulationHVACResultsInput")
 	if !strings.Contains(changeHandler, "updateEnergyPathControlState(event, state, explanation)") {

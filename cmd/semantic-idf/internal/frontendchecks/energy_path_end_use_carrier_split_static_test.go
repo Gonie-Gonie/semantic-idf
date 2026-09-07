@@ -42,11 +42,13 @@ func TestEPATH090FrontendKeepsEndUseAndCarrierStagesDistinct(t *testing.T) {
 	for _, required := range []string{
 		`const useEnergyPathV2 = isEnergyPathV2(explanation)`,
 		`if (useEnergyPathV2)`,
-		`renderEnergyPathView(explanation, state, { outputObjects: result?.purposeRunPlan?.outputObjects || [] })`,
-		`return renderEnergyExplanationSankey(explanation)`,
+		`renderEnergyPathView(explanation, state, {`,
+		`outputObjects: result?.purposeRunPlan?.outputObjects || []`,
+		`inspectorActionsForNode:`,
+		`"simulation.energyPathUpgradeUnavailable"`,
 	} {
 		if !strings.Contains(simulation, required) {
-			t.Fatalf("EPATH-090 changed the v2 dispatch or v1 compatibility path: missing %q", required)
+			t.Fatalf("EPATH-090 changed the v2 dispatch or legacy-result guidance: missing %q", required)
 		}
 	}
 }
