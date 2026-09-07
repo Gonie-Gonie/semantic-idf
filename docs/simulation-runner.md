@@ -223,6 +223,26 @@ badges and the inspector; a positive gap exceeding either 2% of facility use or
 0.01 kWh additionally produces an `Unclassified energy` branch. Negative gaps
 remain inspector-only because adding a positive branch would inflate the
 overmapped flow. Supply sources never enter consumption closure provenance.
+Driver-to-load links stay entirely in the thermal domain. Both ribbon endpoints
+use the allocated contribution, not the raw signed heat pressure. Raw and
+multiplier-adjusted pressure remain separate inspector evidence alongside the
+heat-balance-share formula. Explicit zero allocation is not a missing value:
+reading a stored result must not restore a raw-only driver as a nonzero ribbon.
+Likewise an Other/storage contribution may have zero raw pressure and a nonzero
+allocated contribution; these are distinct quantities, including after reload.
+Only matching cooling/heating loads and equipment uses form conversion links.
+The thermal and site endpoints keep their separate values and units; this is
+not a conservation boundary. On reload, COP/efficiency/load-to-site labels are
+recomputed from those values and the retained carrier splits. Partial-period
+conversion values and their exact source IDs remain unchanged; the adapter
+never substitutes a full annual endpoint or adds unobserved months to a trace.
+Carrier splits use the same period-local reported energy at both site-domain
+endpoints. Distinct legacy contributors that merge into Other are added once,
+including when some legacy edges are absent. If an invalid carrier branch must
+be removed on reload, the end-use graph total is rebuilt from surviving splits
+with a partial-data note; original raw/effective values and source records stay
+inspectable. The original mixed-carrier conversion is then unavailable rather
+than being reinterpreted as a ratio for the surviving fuel alone.
 When both energy and rate outputs are present for the same delivered-load or
 heat-driver target, the explanation parser uses the reported energy series and
 keeps the rate series only as traceable fallback source metadata. Completeness

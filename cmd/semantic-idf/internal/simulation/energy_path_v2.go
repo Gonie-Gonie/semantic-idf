@@ -1273,14 +1273,21 @@ func upgradeEnergyExplanationGraph(legacyNodes []EnergyExplanationNode, legacyEd
 	}
 
 	links := map[string]*EnergyPathLink{}
+	linkedLegacyEndUses := map[string]bool{}
 	for _, edge := range legacyEdges {
 		link, ok := upgradeEnergyExplanationLink(edge, nodeByLegacyID, canonicalIDByLegacyID, canonicalNodes, loadTotalsByEndUse, endUsesWithLoads, canonicalMonthlyBasis)
 		if !ok {
 			continue
 		}
 		mergeEnergyPathLink(links, link)
+		if legacyEnergyLinkIsEndUseToCarrier(edge) {
+			linkedLegacyEndUses[edge.ToID] = true
+		}
 	}
 	for _, legacy := range scopedLegacyNodes {
+		if linkedLegacyEndUses[legacy.ID] {
+			continue
+		}
 		endUseID := canonicalIDByLegacyID[legacy.ID]
 		endUseNode := canonicalNodes[endUseID]
 		if endUseNode == nil || endUseNode.Level != "end_use" || strings.TrimSpace(legacy.Carrier) == "" {
@@ -1320,9 +1327,9 @@ func upgradeEnergyExplanationGraph(legacyNodes []EnergyExplanationNode, legacyEd
 			SourceIDs:      appendUniqueStrings(nil, legacy.SourceIDs...),
 		}
 		link.ID = energyPathLinkID(link)
-		if links[link.ID] == nil {
-			links[link.ID] = &link
-		}
+		// Different exact legacy contributors can share one bounded taxonomy
+		// node. Sum only contributors not already carried by explicit edges.
+		mergeEnergyPathLink(links, link)
 	}
 	if len(suppressedInterzone) > 0 {
 		closeBuildingLoadsAfterInterzoneProjection(canonicalNodes, links, suppressedInterzone, scope)
@@ -4784,9 +4791,33 @@ func sanitizeEnergyExplanationV2Graph(nodes []EnergyExplanationNode, links []Ene
 		visibleNodeByID[node.ID] = node
 	}
 	filteredLinks := make([]EnergyPathLink, 0, len(links))
+	prunedEndUseSplits := map[string]bool{}
 	for _, link := range links {
 		if !visibleNodeIDs[link.FromID] || !visibleNodeIDs[link.ToID] {
+			if energyPathLinkIsCarrierSplit(link) && nodeByID[link.FromID] != nil && nodeByID[link.FromID].Level == "end_use" {
+				prunedEndUseSplits[link.FromID] = true
+			}
 			continue
+		}
+		if energyPathLinkIsCarrierSplit(link) {
+			// Preserve the original unit/domain evidence before endpoint labels
+			// are copied onto a stored same-domain carrier split.
+			if !energyPathStoredCarrierSplitValid(link, *nodeByID[link.FromID], *nodeByID[link.ToID]) {
+				prunedEndUseSplits[link.FromID] = true
+				continue
+			}
+		}
+		if link.Relation == "load_to_end_use" {
+			// Do not erase invalid unit evidence by merely copying endpoint
+			// labels onto a stored conversion's unconverted values.
+			fromUnit, toUnit := energyPathConversionUnitBase(link.FromUnit), energyPathConversionUnitBase(link.ToUnit)
+			if fromUnit == "" || toUnit == "" ||
+				!strings.EqualFold(nodeByID[link.FromID].ScaleDomain, "thermal") ||
+				!strings.EqualFold(nodeByID[link.ToID].ScaleDomain, "site") ||
+				fromUnit != energyPathConversionUnitBase(visibleNodeByID[link.FromID].Unit) ||
+				toUnit != energyPathConversionUnitBase(visibleNodeByID[link.ToID].Unit) {
+				continue
+			}
 		}
 		if node := visibleNodeByID[link.FromID]; node.Unit != "" {
 			link.FromUnit = node.Unit
@@ -4805,6 +4836,9 @@ func sanitizeEnergyExplanationV2Graph(nodes []EnergyExplanationNode, links []Ene
 		}
 		filteredLinks = append(filteredLinks, link)
 	}
+	filteredNodes, filteredLinks = refreshEnergyPathEndUseCarrierSplits(filteredNodes, filteredLinks, prunedEndUseSplits)
+	filteredLinks = refreshEnergyPathAllocatedDriverLinks(filteredNodes, filteredLinks, firstNonEmpty(period, "annual"))
+	filteredLinks = refreshEnergyPathConversionLinks(filteredNodes, filteredLinks)
 
 	reconciliation = removeEnergyPathWaterReconciliation(reconciliation)
 	reconciliation = reconcileEnergyPathCarrierTotals(filteredNodes, filteredLinks, reconciliation, firstNonEmpty(period, "annual"))
@@ -4896,8 +4930,10 @@ func normalizeEnergyExplanationSummaryItems(summary *EnergyExplanationSummary) {
 	for collectionIndex := range collections {
 		for itemIndex := range collections[collectionIndex] {
 			item := &collections[collectionIndex][itemIndex]
-			item.RawValue = firstNonZero(item.RawValue, item.Value)
-			item.AllocatedValue = firstNonZero(item.AllocatedValue, item.Value)
+			if item.Level != "driver" || canonicalEnergyPathBasis(item.Basis, "") != "heat_balance_share" {
+				item.RawValue = firstNonZero(item.RawValue, item.Value)
+				item.AllocatedValue = firstNonZero(item.AllocatedValue, item.Value)
+			}
 			item.AggregationBasis = firstNonEmpty(item.AggregationBasis, summary.Scope.AggregationBasis)
 		}
 	}
@@ -4907,12 +4943,22 @@ func normalizeEnergyExplanationV2Nodes(nodes []EnergyExplanationNode, scope Ener
 	for index := range nodes {
 		node := &nodes[index]
 		node.AggregationBasis = firstNonEmpty(node.AggregationBasis, scope.AggregationBasis)
-		node.RawValue = firstNonZero(node.RawValue, node.Value)
 		if node.Multiplier == 0 {
 			node.Multiplier = 1
 		}
-		node.EffectiveValue = firstNonZero(node.EffectiveValue, roundedEnergyNumber(node.RawValue*node.Multiplier), node.Value)
-		node.AllocatedValue = firstNonZero(node.AllocatedValue, node.EffectiveValue, node.Value)
+		if node.AllocationApplied {
+			// An applied allocation makes all three quantities independent.
+			// Zero raw pressure is valid for Other/storage, and zero allocated
+			// contribution must not resurrect an unallocated raw pressure.
+			if node.Level == "driver" {
+				node.Value = math.Abs(node.AllocatedValue)
+				node.DisplayValue = node.Value
+			}
+		} else {
+			node.RawValue = firstNonZero(node.RawValue, node.Value)
+			node.EffectiveValue = firstNonZero(node.EffectiveValue, roundedEnergyNumber(node.RawValue*node.Multiplier), node.Value)
+			node.AllocatedValue = firstNonZero(node.AllocatedValue, node.EffectiveValue, node.Value)
+		}
 		if node.ScaleDomain == "" {
 			switch node.Level {
 			case "driver", "load":

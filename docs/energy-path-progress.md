@@ -16,10 +16,27 @@ the checklist or its final acceptance scenarios.
   sales stay supply context. Supply-only source IDs do not contaminate closure.
   Verification: `TestEPATH111*` backend, SQL/output-plan, round-trip and browser
   tests; full repository verification is required by the commit hook.
+- EPATH-120: allocated thermal links verified against monthly-first load
+  closure, including Other/storage. Stored results retain independent raw,
+  effective and allocated zeros, refresh known driver contributions, and only
+  reconnect missing links when the thermal service/scope target is unambiguous.
+  Conversion temporal overlap is unchanged. Verification: `TestEPATH120*`,
+  existing `TestEPATH080*`/`TestEPATH081*`, and driver-allocation browser checks.
+- EPATH-121: matching cooling/heating conversion links retain their measured
+  dual values and exact temporal traces across reloads. Ratio classifications
+  are regenerated from retained carrier splits; invalid service/domain/unit
+  crossings are rejected. Verification: `TestEPATH121*`, the full simulation
+  package, and conversion browser checks.
+- EPATH-122: all exact legacy contributors are retained when their taxonomy
+  endpoints merge. Stored carrier splits use the period-local carrier value at
+  both ends, keep branch-local provenance, and rebuild end-use display totals.
+  Invalid carrier removal is explicit partial context, not a new conversion
+  allocation. Verification: `TestEPATH122*`, the full simulation package, and
+  end-use/carrier browser checks.
 
 ## Next in sequence
 
-EPATH-120 → 121 → 122 → 123 → 130 → 131 → 140–145 → 150–152 → 160–161 →
+EPATH-123 → 130 → 131 → 140–145 → 150–152 → 160–161 →
 170–171 → 180–182 → 190–198 → 200–204 → 210–211 → 220–222 → 230–235.
 
 Existing code may already satisfy portions of later items. They remain pending
