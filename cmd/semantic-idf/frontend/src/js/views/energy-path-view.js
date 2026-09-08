@@ -1210,7 +1210,14 @@ function renderEnergyPathInspectorValues(values, attribute = "data-energy-path-i
   return `<dl>${values.map(([key, label, value]) => `<div ${attribute}="${escapeHTML(key)}"><dt>${escapeHTML(label)}</dt><dd>${escapeHTML(value)}</dd></div>`).join("")}</dl>`;
 }
 
-function renderEnergyPathRepresentation(item, model) {
+function energyPathThermalBoundary(node) {
+  // This is an explicit backend measurement contract, never inferred from
+  // output names, equipment labels, or another service's source dictionary.
+  return node?.level === "load" && ["active_surface_source", "mixed_thermal_boundaries"].includes(node.thermalBoundary)
+    ? node.thermalBoundary : "";
+}
+
+function renderEnergyPathRepresentation(item, model, thermalLoad = item) {
   const stage = model.representation?.stage || item.level || item.relation;
   const descriptions = {
     driver: ["simulation.energyPathRepresentsDriver", "Contribution of a heat gain or loss to the selected thermal load. Allocated contributions are not a direct causal decomposition."],
@@ -1224,7 +1231,15 @@ function renderEnergyPathRepresentation(item, model) {
   };
   const [key, fallback] = descriptions[item.relation] || descriptions[stage] || ["simulation.energyPathRepresentsItem", "Reported energy-path information for the selected item and period."];
   const service = energyPathToken(item.serviceKind);
-  return `<p>${escapeHTML(t(key, {}, fallback))}</p>${["cooling", "heating"].includes(service) ? `<small>${escapeHTML(t("simulation.service", {}, "Service"))}: ${escapeHTML(t(service === "cooling" ? "simulation.cooling" : "simulation.heating", {}, service === "cooling" ? "Cooling" : "Heating"))}</small>` : ""}`;
+  const boundary = energyPathThermalBoundary(thermalLoad);
+  const description = boundary ? `<div data-energy-path-thermal-boundary="${boundary}">
+    <strong>${escapeHTML(t("simulation.energyPathThermalBoundary", {}, "Thermal measurement boundary"))}</strong>
+    <p>${escapeHTML(boundary === "active_surface_source"
+      ? t("simulation.energyPathBoundaryActiveSurface", {}, "Heat added to or removed from the active radiant surface by the radiant fluid circuit. Model multipliers are already included. This is not heat delivered to Zone air in the same period.")
+      : t("simulation.energyPathBoundaryMixed", {}, "Combined air-system delivery and active-surface source/sink heat. This total does not represent a single Zone-air measurement boundary."))}</p>
+    <p>${escapeHTML(t("simulation.energyPathBoundaryComparison", {}, "Any ratio is a load/site-energy comparison, not equipment COP or efficiency. Surface heat storage and exchange with other surfaces can shift Zone-air effects between periods. Do not add active-surface heat again."))}</p>
+  </div>` : `<p>${escapeHTML(t(key, {}, fallback))}</p>`;
+  return `${description}${["cooling", "heating"].includes(service) ? `<small>${escapeHTML(t("simulation.service", {}, "Service"))}: ${escapeHTML(t(service === "cooling" ? "simulation.cooling" : "simulation.heating", {}, service === "cooling" ? "Cooling" : "Heating"))}</small>` : ""}`;
 }
 
 function renderEnergyPathInspectorBreakdown(model, options = {}) {
@@ -3304,6 +3319,8 @@ function renderEnergyPathLinkHitLayer(drawing, layout, nodes, focus) {
 function renderEnergyPathLinkInspector(explanation, ribbon, nodes, links, viewState, ratioQuality, options = {}) {
   const link = ribbon.link;
   const nodeByID = new Map(nodes.map((node) => [node.id, node]));
+  const thermalLoad = link.relation === "load_to_end_use" ? nodeByID.get(link.fromId) : null;
+  const thermalBoundary = energyPathThermalBoundary(thermalLoad);
   const fromUnit = ribbon.domain === "site" ? "kWh site" : "kWh thermal";
   const toUnit = ribbon.domain === "thermal" ? "kWh thermal" : "kWh site";
   const fields = [
@@ -3313,7 +3330,7 @@ function renderEnergyPathLinkInspector(explanation, ribbon, nodes, links, viewSt
   if (ribbon.domain === "conversion") {
     const ratio = energyPathBridgeRatio(ribbon, nodes, links, ratioQuality);
     fields.push(["ratio", t("simulation.energyPathBridgeRatio", {}, "Ratio"), ratio
-      ? `${ratio.label}: ${energyPathRatioValueLabel(ratio.value)}`
+      ? `${thermalBoundary ? t("simulation.energyPathKPILoadSiteRatio", {}, "Load/site ratio") : ratio.label}: ${energyPathRatioValueLabel(ratio.value)}`
       : t("simulation.energyPathBridgeRatioUnavailable", {}, "Ratio is unavailable for this period.")]);
   }
   const sourceIDs = energyPathUniqueValues(link.sourceIds);
@@ -3324,7 +3341,7 @@ function renderEnergyPathLinkInspector(explanation, ribbon, nodes, links, viewSt
   const heading = `${nodeByID.get(ribbon.fromId)?.label || ribbon.fromId} → ${nodeByID.get(ribbon.toId)?.label || ribbon.toId}`;
   return `<aside class="energy-path-node-inspector energy-path-link-inspector" data-energy-path-link-inspector="${escapeHTML(ribbon.id)}">
     <header><strong>${escapeHTML(t("simulation.energyPathLinkDetail", {}, "Energy link detail"))}</strong><span>${escapeHTML(energyPathInspectorSafeLabel(heading, model))}</span></header>
-    ${renderEnergyPathDetailSection("represents", renderEnergyPathRepresentation(link, model))}
+    ${renderEnergyPathDetailSection("represents", renderEnergyPathRepresentation(link, model, thermalLoad))}
     ${renderEnergyPathDetailSection("value", renderEnergyPathInspectorValues(fields, "data-energy-path-link-value"))}
     ${renderEnergyPathDetailSection("breakdown", renderEnergyPathInspectorBreakdown(model, { skipRatios: true }))}
     ${renderEnergyPathDetailSection("basis", renderEnergyPathInspectorBasis(link, model, "data-energy-path-link-value"))}

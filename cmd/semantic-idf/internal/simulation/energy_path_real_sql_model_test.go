@@ -38,8 +38,9 @@ type epathRealSQLTerm struct {
 	Sign   float64              `json:"sign"`
 }
 type epathRealSQLSurfaceModel struct {
-	Source epathRealSQLSelector `json:"source"`
-	Sign   float64              `json:"sign"`
+	Source         epathRealSQLSelector               `json:"source"`
+	Sign           float64                            `json:"sign"`
+	RadiantContext *epathRealSQLRadiantSurfaceContext `json:"radiantContext,omitempty"`
 	// Supported reviewed mapping is literal and ordered: internal mass/self,
 	// interzone positive, ground -1, then outside0 class. Unknown rows fail.
 	Mapping string `json:"mapping"`
@@ -65,9 +66,10 @@ type epathRealSQLTraceSource struct {
 	Frequency string               `json:"frequency"`
 }
 type epathRealSQLLoad struct {
-	Service   string               `json:"service"`
-	Component string               `json:"component"`
-	Source    epathRealSQLSelector `json:"source"`
+	Service       string                          `json:"service"`
+	Component     string                          `json:"component"`
+	Source        epathRealSQLSelector            `json:"source"`
+	NativeRadiant *epathRealSQLRadiantLoadBinding `json:"nativeRadiant,omitempty"`
 }
 
 // Inspector-only observations have a separately reviewed equipment owner.

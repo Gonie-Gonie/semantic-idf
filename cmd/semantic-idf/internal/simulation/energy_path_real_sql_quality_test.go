@@ -17,6 +17,7 @@ type epathSQLQualityProof struct {
 	Dependencies  []epathSQLModelCheck
 	Originals     map[int]epathRealSQLSource
 	LoadSources   map[string][]int
+	RadiantLoads  map[int]epathSQLRadiantLoadSourceIdentity
 	LoadDetails   map[string]map[string]epathSQLOriginalSource
 	SiteSources   map[string]map[string][]int
 	SiteOriginals map[string]map[string]map[string]epathSQLOriginalSource
@@ -78,6 +79,7 @@ func epathSQLModelQualityChecks(observed epathRealOracleEvidence, frames epathSQ
 				}
 				if field == "ratios" {
 					proof.Originals = frames.SourceIdentities
+					proof.RadiantLoads = frames.RadiantLoadSourceIdentities
 					proof.LoadSources, proof.SiteSources, proof.SiteValues = map[string][]int{}, map[string]map[string][]int{}, map[string]map[string]epathSQLQuantity{}
 					proof.SiteOriginals = map[string]map[string]map[string]epathSQLOriginalSource{}
 					proof.LoadDetails = map[string]map[string]epathSQLOriginalSource{}
@@ -800,7 +802,19 @@ func epathSQLQualityRatioCounts(bundle PurposeResultBundle, check epathSQLModelC
 			if !exists || original.DictionaryIndex != id {
 				return fail(fmt.Errorf("unbound original quality load source"))
 			}
-			loadOriginals[fmt.Sprintf("sql-rdd-%d", id)] = epathSQLOriginalRDD(original)
+			bound := epathSQLOriginalRDD(original)
+			if radiant, native := proof.RadiantLoads[id]; native {
+				if radiant.Service != service || radiant.Source.DictionaryIndex != id || radiant.Source.Name != original.Name || radiant.Source.KeyValue != original.KeyValue || check.Item.Scope == "zone" && !strings.EqualFold(radiant.Owner.Owner.ZoneName, check.Item.Zone) {
+					return fail(fmt.Errorf("quality radiant load has wrong original service/owner/source"))
+				}
+				bound, err = epathSQLOriginalRadiant(radiant)
+				if err != nil {
+					return fail(err)
+				}
+			} else if strings.EqualFold(original.Name, "Zone Radiant HVAC Cooling Energy") || strings.EqualFold(original.Name, "Zone Radiant HVAC Heating Energy") {
+				return fail(fmt.Errorf("quality radiant source lacks its independent original owner proof"))
+			}
+			loadOriginals[fmt.Sprintf("sql-rdd-%d", id)] = bound
 		}
 		loadAllowed := map[string]epathSQLOriginalSource{}
 		for key, original := range loadOriginals {

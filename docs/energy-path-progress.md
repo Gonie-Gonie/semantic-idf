@@ -946,3 +946,74 @@ Normal commit-hook verification/build and push are the final checkpoint steps.
 Next radiant preparation is read-only: its original observations use radiant
 equipment keys, while the existing Monthly requests use Zone keys. That request
 and delivered-load authority boundary requires its own next-fixture work.
+
+VRF checkpoint `a30dfa8` is committed and pushed to `main`. Its normal hook also
+passes: app 16.535 seconds, frontend/browser 155.757, simulation 295.126 and
+remaining packages from cache; Windows production build 5.498 seconds. Slow
+CPU-active Go cache processing completed without cancellation or bypass. The
+rebuilt executable is available and the user was told the app may reopen.
+
+Radiant is now in progress, not approved. Its preserved original SQL observation
+replay passes in 33.429 seconds and records 258 source identities over the 2017
+annual axis without an engine run or candidate generation. All three Zones'
+Monthly air-system sensible cooling/heating values are genuinely zero, while
+the original radiant equipment Timestep energy is positive. The new normal
+capture adds exact equipment-keyed Monthly radiant J/W requests and observed
+HeatRejection electricity without changing any of 4,574,728 original SQL rows.
+Native loads retain already-model-total active-surface semantics; active floor
+and own-Zone surface aggregates are context, not passive thermal drivers.
+
+Focused native source/owner, surface, load-node, driver/quality, HeatRejection
+and prior auxiliary tests pass (latest combined 17.405 seconds). Typed native
+surface reconciliation and two-broad-carrier proofs are implemented. Original
+port/Branch/plant binding corrects false heating and ventilation service paths;
+cooling-only tower allocation now retains its strict guard and mixed Pumps
+remain unassigned. Candidate 02 replaces the preserved stale candidate 01.
+
+The fifteen-family independently reviewed recipe preserves all four gross
+infiltration gain/loss pressures; its first draft incorrectly netted them.
+The native J checker now enforces the existing `sum_report_data` contract.
+Diagnostic 05 reached 9,615 checks with 72 remaining failures. Original stable
+surface identity corrects the annualization index mismatch in its source
+checker, and original Monthly precision prevents a fabricated 0.001 kWh EAST
+April ventilation fallback. The combined regression focus passes in 23.500
+seconds. Current candidate 03 and diagnostic 06 pass all 9,615 checks across
+eight groups with zero numerical/contract failures or coverage gaps (37.250
+seconds). Independent original-to-pending arithmetic passes 5,376 selected
+quantities, and a separate exact registry/provenance audit passes all 9,615 keys,
+3,038 coverage records and 52 contexts. The approved lossless expected companion
+preserves 3,096 known zeros and 429 explicit nulls.
+
+All seven prior fixtures pass current-code replay with fourteen expected hashes
+unchanged. Radiant's separate expected review, packaging and saved acceptance
+now pass all 9,615 metrics/eight groups (73.75 seconds; simulation package 76.101
+seconds with the eight-fixture catalog integrity guard). Localized active-surface
+inspector browser acceptance passes in 2.064 seconds. Full repository/build and
+normal commit/push gates follow. Section 22 is **8/19 approved**, not complete;
+District Energy is next. See `docs/energy-path-radiant-acceptance.md`.
+
+Radiant's first full repository gate fails in simulation (332.349 seconds),
+before build: two older hierarchy fixtures lack the now-required native owner,
+and two context metadata assertions expose unowned sources missing their role/
+category/component. Existing expected numerical values are unchanged. The
+fixture ownership and production context metadata are being corrected, followed
+by a new current-code candidate, saved replays and full verification. App, CLI,
+input, IDF and frontend/browser packages pass in that first run. No Radiant
+commit/push or successful full-build gate is claimed yet.
+
+The correction passes focused regressions in 20.795 seconds without changing
+the original SQL/review assertions or hierarchy quantities. Candidate 04 differs
+from 03 only in 192 reconciliation source-ID orderings, with identical numeric
+tokens and metadata. It passes all unchanged 9,615 approved metrics in saved
+acceptance (76.027-second package). Latest-code prior-fixture replay and full
+repository/build verification are being repeated before commit/push.
+
+Latest-code replay now passes all seven prior fixtures with fourteen expected
+hashes unchanged. Full repository verification/build is being retried after
+the four EPATH-070 failures were fixed; normal commit/push still follows it.
+
+Radiant's second complete repository verification passes: app 19.664 seconds,
+CLI 5.422, frontend/browser 159.405, simulation 320.483, other packages from
+cache; production Windows build passes in 7.63 seconds. Normal commit-hook
+verification/build and push now finish this checkpoint. Section 22 remains
+8/19; District Energy and the remaining catalog are still required.

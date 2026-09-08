@@ -2675,6 +2675,16 @@ func (builder *purposePlanBuilder) addBasicEnergyPath() {
 	builder.addEnergyPathVRFOutputs()
 
 	idealLoadsTargets := builder.energyPathIdealLoadsTargets(zoneKeys)
+	radiantTargets := energyPathRadiantLoadTargets(builder.doc)
+	selectedRadiantTargets := []purposeOutputKeyTarget{}
+	for _, target := range radiantTargets {
+		for _, zoneName := range zoneKeys {
+			if strings.EqualFold(strings.TrimSpace(target.ZoneName), strings.TrimSpace(zoneName)) {
+				selectedRadiantTargets = append(selectedRadiantTargets, purposeOutputKeyTarget{KeyValue: target.KeyValue, ZoneName: target.ZoneName})
+				break
+			}
+		}
+	}
 	for _, definition := range energyLoadAliasCatalog() {
 		for _, variable := range definition.Aliases {
 			targets := []purposeOutputKeyTarget{{KeyValue: "*"}}
@@ -2683,6 +2693,12 @@ func (builder *purposePlanBuilder) addBasicEnergyPath() {
 			}
 			if energyPathIsIdealLoadsVariable(variable) {
 				targets = idealLoadsTargets
+			}
+			if len(radiantTargets) > 0 && energyPathIsRadiantLoadVariable(variable) {
+				// The native radiant dictionary is keyed by equipment, not Zone.
+				// Keep legacy requests unchanged for models outside this validated
+				// native contract, including all previously accepted fixtures.
+				targets = selectedRadiantTargets
 			}
 			for _, target := range targets {
 				builder.addVariableWithReasonAndScopeZone(SimulationPurposeBasicEnergy, target.KeyValue, variable, "Monthly", "medium", "Monthly delivered-load energy with rate fallback for the four-stage Energy Path.", "Basic Energy Path", target.ZoneName)

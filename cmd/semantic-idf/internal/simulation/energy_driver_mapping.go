@@ -447,6 +447,11 @@ func appendEnergyDriverVentilationFallbacks(series []energyExplanationSeries, so
 		}
 		residual := aggregate.vector
 		residual.subtract(infil.vector)
+		// Use the same original Monthly evidence as reconciliation before
+		// deciding that a physical ventilation remainder exists. Separately
+		// rounded source values can manufacture a 0.001 kWh remainder.
+		// Missing evidence stays unknown; untracked legacy inputs are unchanged.
+		applyEnergyDriverReconciliationMonthlyPrecision(&residual)
 		if !energyDriverVectorHasValue(residual) {
 			continue
 		}

@@ -15,6 +15,7 @@ type epathSQLConversionProof struct {
 
 type epathSQLAllocationProof struct {
 	NativeVRF                               *epathSQLVRFAllocationLedgerProof
+	RadiantCarrier                          *epathSQLRadiantCarrierAllocationProof
 	Expected, Direct, Allocated, Unassigned *epathSQLQuantity
 }
 
@@ -148,7 +149,13 @@ func epathSQLModelServiceChecks(frames epathSQLFrames, model epathRealSQLModel, 
 		if err != nil {
 			return err
 		}
-		if err := epathSQLDirectHVACRequireCarrierLedger(service, directFrames); err != nil {
+		var radiantCarriers map[string]*epathSQLRadiantCarrierAllocationProof
+		if len(service.CarrierReconciliationIDs) > 0 && directFrames == nil && nativeFrames == nil {
+			radiantCarriers, err = epathSQLCompileRadiantCarrierLedger(frames, model, service)
+			if err != nil {
+				return err
+			}
+		} else if err := epathSQLDirectHVACRequireCarrierLedger(service, directFrames); err != nil {
 			return err
 		}
 		monthSite, monthAssigned, monthUnassigned := [12]epathSQLQuantity{}, [12]epathSQLQuantity{}, [12]epathSQLQuantity{}
@@ -235,7 +242,11 @@ func epathSQLModelServiceChecks(frames epathSQLFrames, model epathRealSQLModel, 
 				}
 			}
 			if len(service.CarrierReconciliationIDs) > 0 {
-				if err := epathSQLDirectHVACBuildingLedgerChecks(service, directFrames, period, checks); err != nil {
+				if radiantCarriers != nil {
+					if err := epathSQLRadiantCarrierLedgerChecks(radiantCarriers, period, checks); err != nil {
+						return err
+					}
+				} else if err := epathSQLDirectHVACBuildingLedgerChecks(service, directFrames, period, checks); err != nil {
 					return err
 				}
 				continue
@@ -280,7 +291,31 @@ func epathSQLModelServiceChecks(frames epathSQLFrames, model epathRealSQLModel, 
 		return fmt.Errorf("both declared conversion services are required")
 	}
 	for _, aux := range model.Auxiliaries {
-		if aux.Weight != "cooling_plus_heating" && aux.Weight != "unassigned" {
+		var condenserPolicy *epathSQLAuxiliaryPolicy
+		if aux.Weight == "cooling" {
+			var selected *epathRealSQLSite
+			for i := range model.Site {
+				if model.Site[i].ID == aux.SiteID {
+					if selected != nil {
+						return fmt.Errorf("condenser auxiliary has an ambiguous original site identity")
+					}
+					selected = &model.Site[i]
+				}
+			}
+			if selected == nil {
+				return fmt.Errorf("condenser auxiliary lacks its reviewed original site")
+			}
+			policy, err := epathSQLAllocatedAuxiliaryPolicy(selected.EndUse, selected.Carrier, aux.Weight, aux.AllocationMethod)
+			if err != nil {
+				return err
+			}
+			// The new policy's native meter, exact source/owner weights and
+			// completed monthly shares must be valid before its ledger exists.
+			if _, err := epathSQLAuxiliaryZoneProofs(frames, model); err != nil {
+				return err
+			}
+			condenserPolicy = &policy
+		} else if aux.Weight != "cooling_plus_heating" && aux.Weight != "unassigned" {
 			return fmt.Errorf("unsupported auxiliary weight requires an independent observation implementation")
 		}
 		served, err := epathSQLDeclaredZones(frames, aux.ServedZones)
@@ -303,7 +338,15 @@ func epathSQLModelServiceChecks(frames epathSQLFrames, model epathRealSQLModel, 
 			}
 			weight := 0.0
 			for zone := range served {
-				weight += frames.Loads[epathSQLKey(zone, "cooling", month)].Value + frames.Loads[epathSQLKey(zone, "heating", month)].Value
+				if condenserPolicy != nil {
+					q, err := epathSQLAuxiliaryWeight(frames, model, *condenserPolicy, zone, month)
+					if err != nil {
+						return err
+					}
+					weight += q.Value
+				} else {
+					weight += frames.Loads[epathSQLKey(zone, "cooling", month)].Value + frames.Loads[epathSQLKey(zone, "heating", month)].Value
+				}
 			}
 			if aux.Weight != "unassigned" && weight > 0 {
 				assigned[month-1] = value

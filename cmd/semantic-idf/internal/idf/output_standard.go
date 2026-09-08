@@ -173,6 +173,14 @@ func detectOutputFeatures(doc Document) standardOutputFeatures {
 				features.hasDistrictHeating = true
 				features.hasDistrictHeatWater = true
 			}
+		case strings.Contains(objectType, "heatrejection") || strings.Contains(objectType, "coolingtower"):
+			// CoolingTower also contains "cooling". Detect the specific physical
+			// role first so its electricity meter is not silently omitted.
+			features.hasHeatRejection = true
+			features.hasElectricity = true
+			// Preserve existing cooling-output eligibility while adding the
+			// missing, more specific heat-rejection recommendation.
+			features.hasCooling = features.hasCooling || strings.Contains(objectType, "cooling")
 		case strings.Contains(objectType, "cooling"):
 			features.hasCooling = true
 			features.hasElectricity = true
@@ -180,9 +188,6 @@ func detectOutputFeatures(doc Document) standardOutputFeatures {
 			features.hasHeating = true
 		case strings.Contains(objectType, "boiler"):
 			features.hasHeating = true
-		case strings.Contains(objectType, "heatrejection") || strings.Contains(objectType, "coolingtower"):
-			features.hasHeatRejection = true
-			features.hasElectricity = true
 		case strings.Contains(objectType, "heatrecovery") || strings.Contains(objectType, "heatexchanger"):
 			features.hasHeatRecovery = true
 			features.hasElectricity = true

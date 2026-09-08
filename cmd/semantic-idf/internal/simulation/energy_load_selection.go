@@ -374,9 +374,26 @@ func combineCanonicalEnergyLoadSeries(items []energyExplanationSeries) (energyEx
 		return energyExplanationSeries{}, false
 	}
 	result := canonicalEnergyExplanationSeries(items[0])
+	// The accumulator owns every map/slice it can change. A shallow series
+	// copy otherwise adds into the first selected source's period maps; a
+	// second selection (or another scope) then observes already-summed input.
+	result.Monthly = cloneEnergyExplanationPeriodValues(result.Monthly)
+	result.RawMonthly = cloneEnergyExplanationPeriodValues(result.RawMonthly)
+	result.Daily = cloneEnergyExplanationPeriodValues(result.Daily)
+	result.RawDaily = cloneEnergyExplanationPeriodValues(result.RawDaily)
+	result.Hourly = cloneEnergyExplanationPeriodValues(result.Hourly)
+	result.RawHourly = cloneEnergyExplanationPeriodValues(result.RawHourly)
+	result.SourceIDs = append([]string(nil), result.SourceIDs...)
+	result.AnnualSourceIDs = append([]string(nil), result.AnnualSourceIDs...)
+	result.MonthlySourceIDs = append([]string(nil), result.MonthlySourceIDs...)
+	result.DailySourceIDs = append([]string(nil), result.DailySourceIDs...)
+	result.HourlySourceIDs = append([]string(nil), result.HourlySourceIDs...)
+	result.SelectedRangeSourceIDs = append([]string(nil), result.SelectedRangeSourceIDs...)
+	result.loadBreakdown = cloneEnergyLoadCombinationBreakdown(result.loadBreakdown)
 	components := map[string]bool{strings.ToLower(strings.TrimSpace(result.ThermalComponent)): true}
 	for _, original := range items[1:] {
 		item := canonicalEnergyExplanationSeries(original)
+		result.ThermalBoundary = mergeEnergyPathThermalBoundary(result.ThermalBoundary, item.ThermalBoundary)
 		result.Total = roundedEnergyNumber(result.Total + item.Total)
 		result.RawTotal = roundedEnergyNumber(result.RawTotal + item.RawTotal)
 		addEnergyLoadPeriodValues(&result.Monthly, item.Monthly)
@@ -396,7 +413,9 @@ func combineCanonicalEnergyLoadSeries(items []energyExplanationSeries) (energyEx
 		result.DailySourceIDs = appendUniqueStrings(result.DailySourceIDs, item.DailySourceIDs...)
 		result.HourlySourceIDs = appendUniqueStrings(result.HourlySourceIDs, item.HourlySourceIDs...)
 		result.SelectedRangeSourceIDs = appendUniqueStrings(result.SelectedRangeSourceIDs, item.SelectedRangeSourceIDs...)
-		result.loadBreakdown = mergeEnergyLoadBreakdownSeries(result.loadBreakdown, item.loadBreakdown)
+		// A newly appended component may itself receive a later source. Own
+		// that component now, rather than mutating the later input on its merge.
+		result.loadBreakdown = mergeEnergyLoadBreakdownSeries(result.loadBreakdown, cloneEnergyLoadCombinationBreakdown(item.loadBreakdown))
 		components[strings.ToLower(strings.TrimSpace(item.ThermalComponent))] = true
 	}
 	delete(components, "")
@@ -406,6 +425,26 @@ func combineCanonicalEnergyLoadSeries(items []energyExplanationSeries) (energyEx
 	result.SourceName = firstNonEmpty(result.SourceName, result.sourceName)
 	result = canonicalEnergyExplanationSeries(result)
 	return result, true
+}
+
+func cloneEnergyLoadCombinationBreakdown(input []energyLoadBreakdownSeries) []energyLoadBreakdownSeries {
+	if input == nil {
+		return nil
+	}
+	out := append([]energyLoadBreakdownSeries(nil), input...)
+	for i := range out {
+		item := &out[i]
+		item.Monthly = cloneEnergyExplanationPeriodValues(item.Monthly)
+		item.Daily = cloneEnergyExplanationPeriodValues(item.Daily)
+		item.Hourly = cloneEnergyExplanationPeriodValues(item.Hourly)
+		item.SourceIDs = append([]string(nil), item.SourceIDs...)
+		item.AnnualSourceIDs = append([]string(nil), item.AnnualSourceIDs...)
+		item.MonthlySourceIDs = append([]string(nil), item.MonthlySourceIDs...)
+		item.DailySourceIDs = append([]string(nil), item.DailySourceIDs...)
+		item.HourlySourceIDs = append([]string(nil), item.HourlySourceIDs...)
+		item.SelectedRangeSourceIDs = append([]string(nil), item.SelectedRangeSourceIDs...)
+	}
+	return out
 }
 
 func appendEnergyLoadBreakdownProvenance(total energyExplanationSeries, component energyExplanationSeries) energyExplanationSeries {

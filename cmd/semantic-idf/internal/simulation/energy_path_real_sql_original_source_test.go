@@ -10,13 +10,14 @@ import (
 // These are disjoint original SQL identities. A Tabular cell never receives a
 // fabricated ReportDataDictionary index or a synthetic monthly observation.
 type epathSQLOriginalSource struct {
-	RDD        *epathRealSQLSource
-	Tabular    *epathSQLTabularObservation
-	Name, Key  string // Independent reviewed wire alias, only for Tabular.
-	site       epathRealSQLSite
-	LoadDetail *epathSQLLoadDetailIdentity       // Non-additive, exact equipment-to-Zone context only.
-	DirectHVAC *epathSQLDirectHVACSourceIdentity // Additive model-total coil observation, exact reviewed owner.
-	NativeVRF  *epathSQLVRFSourceIdentity        // Original native local/shared constituent, not a PTAC/PTHP cohort.
+	RDD           *epathRealSQLSource
+	Tabular       *epathSQLTabularObservation
+	Name, Key     string // Independent reviewed wire alias, only for Tabular.
+	site          epathRealSQLSite
+	LoadDetail    *epathSQLLoadDetailIdentity        // Non-additive, exact equipment-to-Zone context only.
+	DirectHVAC    *epathSQLDirectHVACSourceIdentity  // Additive model-total coil observation, exact reviewed owner.
+	NativeVRF     *epathSQLVRFSourceIdentity         // Original native local/shared constituent, not a PTAC/PTHP cohort.
+	NativeRadiant *epathSQLRadiantLoadSourceIdentity // Original equipment-owned, already-model-total surface-source heat.
 }
 
 func epathSQLOriginalRDD(source epathRealSQLSource) epathSQLOriginalSource {
@@ -47,6 +48,15 @@ func epathSQLOriginalVRF(identity epathSQLVRFSourceIdentity) (epathSQLOriginalSo
 	}
 	proof := epathSQLOriginalRDD(identity.Observation.Source)
 	proof.NativeVRF = &identity
+	return proof, nil
+}
+
+func epathSQLOriginalRadiant(identity epathSQLRadiantLoadSourceIdentity) (epathSQLOriginalSource, error) {
+	if err := epathSQLValidateRadiantLoadSourceIdentity(identity); err != nil {
+		return epathSQLOriginalSource{}, err
+	}
+	proof := epathSQLOriginalRDD(identity.Source)
+	proof.NativeRadiant = &identity
 	return proof, nil
 }
 
@@ -116,9 +126,12 @@ func epathSQLOriginalKey(proof epathSQLOriginalSource) (string, error) {
 		if proof.NativeVRF != nil && (proof.LoadDetail != nil || proof.DirectHVAC != nil || epathSQLValidateVRFSourceIdentity(*proof.NativeVRF) != nil || !reflect.DeepEqual(*source, proof.NativeVRF.Observation.Source)) {
 			return "", fmt.Errorf("native VRF source lost its exact original RDD/shared-system owner binding")
 		}
+		if proof.NativeRadiant != nil && (proof.LoadDetail != nil || proof.DirectHVAC != nil || proof.NativeVRF != nil || epathSQLValidateRadiantLoadSourceIdentity(*proof.NativeRadiant) != nil || !reflect.DeepEqual(*source, proof.NativeRadiant.Source)) {
+			return "", fmt.Errorf("radiant source lost its exact original RDD/equipment-owner/model-total identity")
+		}
 		return fmt.Sprintf("sql-rdd-%d", source.DictionaryIndex), nil
 	}
-	if proof.LoadDetail != nil || proof.DirectHVAC != nil || proof.NativeVRF != nil {
+	if proof.LoadDetail != nil || proof.DirectHVAC != nil || proof.NativeVRF != nil || proof.NativeRadiant != nil {
 		return "", fmt.Errorf("a Tabular cell cannot claim equipment load-detail identity")
 	}
 	observation := proof.Tabular
@@ -144,6 +157,9 @@ func epathSQLOriginalSourceMatches(source EnergyDataSource, proof epathSQLOrigin
 		return false
 	}
 	if original := proof.RDD; original != nil {
+		if proof.NativeRadiant != nil {
+			return epathSQLMatchRadiantLoadSource(source, *proof.NativeRadiant) == nil
+		}
 		if proof.NativeVRF != nil {
 			return epathSQLMatchVRFSource(source, proof.NativeVRF.Observation) == nil
 		}
@@ -191,10 +207,13 @@ func epathSQLOriginalSourceLeaves(ids []string, actual map[string]EnergyDataSour
 		if !exists || id == "" || source.ID != id {
 			return fmt.Errorf("missing original source reference %s", id)
 		}
-		if original, bound := allowed[id]; bound && (original.LoadDetail != nil || original.DirectHVAC != nil || original.NativeVRF != nil) && !epathSQLOriginalSourceMatches(source, original, period) {
+		if original, bound := allowed[id]; bound && (original.LoadDetail != nil || original.DirectHVAC != nil || original.NativeVRF != nil || original.NativeRadiant != nil) && !epathSQLOriginalSourceMatches(source, original, period) {
 			return fmt.Errorf("original equipment source cannot masquerade as a derived or ordinary source")
 		}
 		for _, original := range allowed {
+			if original.NativeRadiant != nil && strings.EqualFold(source.Name, original.RDD.Name) && strings.EqualFold(source.KeyValue, original.RDD.KeyValue) && strings.EqualFold(source.ReportingFrequency, original.RDD.ReportingFrequency) && !epathSQLOriginalSourceMatches(source, original, period) {
+				return fmt.Errorf("original radiant observation cannot acquire a different ID or derived wrapper")
+			}
 			if original.NativeVRF != nil && strings.EqualFold(source.Name, original.RDD.Name) && strings.EqualFold(source.KeyValue, original.RDD.KeyValue) &&
 				strings.EqualFold(source.ReportingFrequency, original.RDD.ReportingFrequency) && !epathSQLOriginalSourceMatches(source, original, period) {
 				return fmt.Errorf("original VRF observation cannot acquire a different ID or derived wrapper")

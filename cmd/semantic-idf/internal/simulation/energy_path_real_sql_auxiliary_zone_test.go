@@ -61,17 +61,18 @@ func epathSQLAuxiliaryZoneProofs(frames epathSQLFrames, model epathRealSQLModel)
 			continue // Existing exact fan-pool proof remains the sole authority.
 		}
 		site, exists := sites[auxiliary.SiteID]
-		if !exists || site.Facility || site.EndUse != "pumps" || site.Carrier != "electricity" || site.Tabular != nil || auxiliary.Weight != "cooling_plus_heating" || auxiliary.WeightSource != nil || auxiliary.AllocationMethod != "plant_loop_load_share" || endUses[site.EndUse] {
+		policy, policyErr := epathSQLAllocatedAuxiliaryPolicy(site.EndUse, site.Carrier, auxiliary.Weight, auxiliary.AllocationMethod)
+		if !exists || site.Facility || site.Tabular != nil || auxiliary.WeightSource != nil || endUses[site.EndUse] || policyErr != nil {
 			return nil, fmt.Errorf("allocated auxiliary lacks an explicit supported site/carrier/weight proof: %s", auxiliary.SiteID)
 		}
 		endUses[site.EndUse] = true
-		selector := epathRealSQLSelector{Alternatives: []epathRealSQLAlternative{{Name: "Pumps:Electricity", Unit: "J"}}, Keys: []string{""}, IsMeter: true}
+		selector := epathRealSQLSelector{Alternatives: []epathRealSQLAlternative{{Name: policy.MeterName, Unit: "J"}}, Keys: []string{""}, IsMeter: true}
 		if !reflect.DeepEqual(site.Source, selector) {
-			return nil, fmt.Errorf("pump scalar requires its exact reviewed broad meter selector")
+			return nil, fmt.Errorf("auxiliary scalar requires its exact reviewed broad meter selector")
 		}
 		annual, err := epathSQLSiteIsAnnual(frames, site.ID)
 		if err != nil || annual {
-			return nil, fmt.Errorf("allocated pump scalar requires original Monthly observations: %v", err)
+			return nil, fmt.Errorf("allocated auxiliary scalar requires original Monthly observations: %v", err)
 		}
 		if _, err := epathSQLAllocationID(auxiliary.ReconciliationID, "annual"); err != nil {
 			return nil, err
@@ -82,11 +83,11 @@ func epathSQLAuxiliaryZoneProofs(frames epathSQLFrames, model epathRealSQLModel)
 		}
 		ids := frames.SiteSources[site.ID]
 		if len(ids) != 1 || len(frames.Site[site.ID]) != 12 {
-			return nil, fmt.Errorf("pump allocation requires one original twelve-month broad meter")
+			return nil, fmt.Errorf("auxiliary allocation requires one original twelve-month broad meter")
 		}
 		meter, exists := frames.SourceIdentities[ids[0]]
-		if !exists || meter.DictionaryIndex != ids[0] || ids[0] <= 0 || !meter.IsMeter || meter.Name != "Pumps:Electricity" || meter.KeyValue != "" || meter.ReportingFrequency != "Monthly" || meter.SourceUnit != "J" || meter.MissingRows != 0 {
-			return nil, fmt.Errorf("pump site has a contradictory original Monthly/J meter identity")
+		if !exists || meter.DictionaryIndex != ids[0] || ids[0] <= 0 || !meter.IsMeter || meter.Name != policy.MeterName || meter.KeyValue != "" || meter.ReportingFrequency != "Monthly" || meter.SourceUnit != "J" || meter.MissingRows != 0 {
+			return nil, fmt.Errorf("auxiliary site has a contradictory original Monthly/J meter identity")
 		}
 		original, err := epathSQLMonthly(meter, model.Precision)
 		if err != nil {
@@ -95,20 +96,18 @@ func epathSQLAuxiliaryZoneProofs(frames epathSQLFrames, model epathRealSQLModel)
 		for month, bucket := range meter.Months {
 			value := frames.Site[site.ID][month]
 			if bucket.MissingRows != 0 || value == nil || !value.valid() || value.Value < 0 || !epathSQLZoneCarrierQuantityEqual(*value, original[month]) {
-				return nil, fmt.Errorf("pump model-total meter changed, was multiplied, or lost a monthly observation")
+				return nil, fmt.Errorf("auxiliary model-total meter changed, was multiplied, or lost a monthly observation")
 			}
 		}
 		shares := map[string][12]epathSQLQuantity{}
 		for month := 1; month <= 12; month++ {
 			weights, denominator := map[string]epathSQLQuantity{}, epathSQLQuantity{}
 			for _, zone := range zones {
-				for _, service := range []string{"cooling", "heating"} {
-					load, exists := frames.Loads[epathSQLKey(zone, service, month)]
-					if !exists || !load.valid() || load.Value < 0 {
-						return nil, fmt.Errorf("auxiliary weight lacks a known %s/%s/M%d load", zone, service, month)
-					}
-					weights[zone] = weights[zone].add(load)
+				weight, err := epathSQLAuxiliaryWeight(frames, model, policy, zone, month)
+				if err != nil {
+					return nil, err
 				}
+				weights[zone] = weight
 				if served[zone] {
 					denominator = denominator.add(weights[zone])
 				}
@@ -147,7 +146,7 @@ func epathSQLAuxiliaryZoneProofs(frames epathSQLFrames, model epathRealSQLModel)
 					if !part.includesZero() {
 						p.Required[meterID], p.NodeRequired[meterID] = true, true
 					}
-					for _, service := range []string{"cooling", "heating"} {
+					for _, service := range policy.Services {
 						key := epathSQLKey(zone, service, month)
 						load := frames.Loads[key]
 						_, loadHigh := load.bounds()
@@ -158,12 +157,12 @@ func epathSQLAuxiliaryZoneProofs(frames epathSQLFrames, model epathRealSQLModel)
 							return nil, fmt.Errorf("auxiliary weight has no original load trace")
 						}
 						for _, id := range frames.LoadSourceIDs[key] {
-							source, exists := frames.SourceIdentities[id]
-							if !exists || source.DictionaryIndex != id || id <= 0 || source.IsMeter || !strings.EqualFold(source.KeyValue, p.ZoneName) || source.ReportingFrequency != "Monthly" || source.SourceUnit != "J" {
-								return nil, fmt.Errorf("auxiliary weight source escapes original Zone/Monthly/J ownership")
+							source, err := epathSQLAuxiliaryWeightSource(frames, model, id, p.ZoneName, service, month)
+							if err != nil {
+								return nil, err
 							}
 							id := fmt.Sprintf("sql-rdd-%d", id)
-							p.NodeSources[id] = epathSQLOriginalRDD(source)
+							p.NodeSources[id] = source
 							if !part.includesZero() && !load.includesZero() {
 								p.NodeRequired[id] = true
 							}
@@ -212,7 +211,11 @@ func epathSQLAuxiliaryZoneCheckMatches(check epathSQLModelCheck, expected *epath
 
 func epathCheckSQLAuxiliaryZone(bundle PurposeResultBundle, check epathSQLModelCheck) error {
 	p := check.AuxiliaryZone
-	if !epathSQLAuxiliaryZoneCheckMatches(check, p) || p.SiteID == "" || p.EndUse != "pumps" || p.Carrier != "electricity" || p.Basis != "service_path_allocation" || p.Weight != "cooling_plus_heating" || p.AllocationMethod != "plant_loop_load_share" || !p.Value.valid() || p.Value.Value < 0 || !epathOracleValidPeriod(p.Period) || !p.Owned && !p.Value.includesZero() {
+	if !epathSQLAuxiliaryZoneCheckMatches(check, p) {
+		return fmt.Errorf("invalid exact independent allocated auxiliary scalar proof")
+	}
+	_, policyErr := epathSQLAllocatedAuxiliaryPolicy(p.EndUse, p.Carrier, p.Weight, p.AllocationMethod)
+	if p.SiteID == "" || policyErr != nil || p.Basis != "service_path_allocation" || !p.Value.valid() || p.Value.Value < 0 || !epathOracleValidPeriod(p.Period) || !p.Owned && !p.Value.includesZero() {
 		return fmt.Errorf("invalid exact independent allocated auxiliary scalar proof")
 	}
 	nodes, _, _, _, err := epathOracleGraph(bundle, "zone", p.ZoneName, p.Period)

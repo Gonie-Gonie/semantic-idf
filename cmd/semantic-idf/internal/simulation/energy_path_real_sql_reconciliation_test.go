@@ -179,6 +179,9 @@ func epathSQLModelThermalReconciliationChecks(frames epathSQLFrames, model epath
 	if err := epathSQLValidateZeroPressureFrames(frames, model); err != nil {
 		return err
 	}
+	if err := epathSQLValidateRadiantSurfaceContextFrames(frames); err != nil {
+		return err
+	}
 	if len(frames.Zones) == 0 {
 		return fmt.Errorf("thermal reconciliation requires independently observed Zones")
 	}
@@ -206,10 +209,20 @@ func epathSQLModelThermalReconciliationChecks(frames epathSQLFrames, model epath
 				return fmt.Errorf("unknown/duplicate declared thermal family owner")
 			}
 			owners[key] = true
+			contextOnly, err := epathSQLRadiantContextFamilyOwner(frames, family, key)
+			if err != nil {
+				return err
+			}
 			for month := 1; month <= 12; month++ {
 				cell := frames.Cells[epathSQLKey(key, family.ID, month)]
+				if contextOnly {
+					if cell != nil {
+						return fmt.Errorf("active radiant aggregate cannot create a reconciliation cell")
+					}
+					continue
+				}
 				if cell == nil || cell.Category != family.Category || cell.Component != family.Component {
-					return fmt.Errorf("missing/misclassified declared thermal family month")
+					return fmt.Errorf("missing/misclassified declared thermal family month %s/%s/M%d", family.ID, key, month)
 				}
 			}
 		}

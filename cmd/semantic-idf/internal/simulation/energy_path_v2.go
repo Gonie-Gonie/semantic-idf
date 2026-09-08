@@ -3216,6 +3216,7 @@ func mergeEnergyExplanationV2Node(nodes map[string]*EnergyExplanationNode, next 
 	current.simultaneousLoadContributions = mergeEnergyExplanationSimultaneousLoadContributions(current.simultaneousLoadContributions, next.simultaneousLoadContributions)
 	current.endUseCarriers = appendUniqueStrings(current.endUseCarriers, next.endUseCarriers...)
 	current.Badges = appendUniqueStrings(current.Badges, next.Badges...)
+	current.ThermalBoundary = mergeEnergyPathThermalBoundary(current.ThermalBoundary, next.ThermalBoundary)
 	if current.ThermalComponent == "" {
 		current.ThermalComponent = next.ThermalComponent
 	} else if next.ThermalComponent != "" && current.ThermalComponent != next.ThermalComponent {
@@ -3513,10 +3514,20 @@ func setEnergyPathConversionRatioKind(link *EnergyPathLink, canonicalLoad *Energ
 		!energyPathConversionValuesValid(*link) {
 		return
 	}
-
 	carriers := appendUniqueStrings(nil, canonicalEndUse.endUseCarriers...)
 	for index := range carriers {
 		carriers[index] = canonicalEnergyPathCarrier(carriers[index])
+	}
+	if len(carriers) > 0 {
+		if label := energyPathThermalBoundaryRatioLabel(canonicalLoad.ThermalBoundary); label != "" {
+			// Surface source/sink energy (and a sum of unlike thermal boundaries)
+			// is not a Zone-air delivered load. Preserve the observed paired ratio,
+			// but do not advertise a cooling COP, combustion efficiency, or a
+			// purchased-energy equivalence merely from its carrier.
+			link.RatioKind = "load_to_site_energy"
+			link.RatioLabel = label
+			return
+		}
 	}
 	if len(carriers) != 1 {
 		if len(carriers) > 1 {

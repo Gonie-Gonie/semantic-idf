@@ -8,27 +8,30 @@ import (
 )
 
 type epathSQLModelCheck struct {
-	Item                 epathRealOracleMetricRecipe
-	Want                 epathRealOracleMetric
-	Quantity             *epathSQLQuantity
-	OptionalPresentation bool
-	Conversion           *epathSQLConversionProof
-	Allocation           *epathSQLAllocationProof
-	ZoneService          *epathSQLZoneServiceProof
-	DriverLink           *epathSQLDriverLinkProof
-	DirectUse            *epathSQLDirectUseProof
-	AuxiliaryZone        *epathSQLAuxiliaryZoneProof
-	Reconciliation       *epathSQLReconciliationProof
-	Quality              *epathSQLQualityProof
-	SiteFlow             *epathSQLSiteFlowProof
-	ZoneCarrier          *epathSQLZoneCarrierProof
-	SiteResidual         *epathSQLSiteResidualProof
-	OriginalSource       *epathSQLOriginalSource
-	LoadDetail           *epathSQLLoadDetailIdentity
-	TraceSource          *epathSQLTraceSourceIdentity
-	DirectHVACSource     *epathSQLDirectHVACSourceIdentity
-	NativeVRFSource      *epathSQLVRFSourceIdentity
-	AnnualServiceAbsent  bool
+	Item                  epathRealOracleMetricRecipe
+	Want                  epathRealOracleMetric
+	Quantity              *epathSQLQuantity
+	OptionalPresentation  bool
+	Conversion            *epathSQLConversionProof
+	Allocation            *epathSQLAllocationProof
+	ZoneService           *epathSQLZoneServiceProof
+	DriverLink            *epathSQLDriverLinkProof
+	DirectUse             *epathSQLDirectUseProof
+	AuxiliaryZone         *epathSQLAuxiliaryZoneProof
+	Reconciliation        *epathSQLReconciliationProof
+	Quality               *epathSQLQualityProof
+	SiteFlow              *epathSQLSiteFlowProof
+	ZoneCarrier           *epathSQLZoneCarrierProof
+	SiteResidual          *epathSQLSiteResidualProof
+	OriginalSource        *epathSQLOriginalSource
+	LoadDetail            *epathSQLLoadDetailIdentity
+	RadiantSurfaceContext *epathSQLRadiantSurfaceContextIdentity
+	TraceSource           *epathSQLTraceSourceIdentity
+	DirectHVACSource      *epathSQLDirectHVACSourceIdentity
+	NativeVRFSource       *epathSQLVRFSourceIdentity
+	NativeRadiantSource   *epathSQLRadiantLoadSourceIdentity
+	NativeRadiantLoad     *epathSQLRadiantLoadNodeProof
+	AnnualServiceAbsent   bool
 }
 type epathSQLModelChecks struct {
 	Rows            []epathSQLModelCheck
@@ -92,6 +95,15 @@ func epathSQLModelLoadDriverChecks(frames epathSQLFrames, model epathRealSQLMode
 		}
 		for _, period := range periods {
 			for _, service := range []string{"cooling", "heating"} {
+				nativeRadiant := epathSQLNativeRadiantService(model, service)
+				var radiantProof *epathSQLRadiantLoadNodeProof
+				if nativeRadiant {
+					var err error
+					radiantProof, err = epathSQLRadiantLoadNodeProofFor(frames, zone, service)
+					if err != nil {
+						return err
+					}
+				}
 				load := epathSQLQuantity{}
 				for key := range frames.Zones {
 					if zone != "" && !strings.EqualFold(zone, key) {
@@ -104,22 +116,26 @@ func epathSQLModelLoadDriverChecks(frames epathSQLFrames, model epathRealSQLMode
 				target := epathSQLNodeTarget("load", "", service, "thermal")
 				target.Basis = "reported_variable"
 				target.AllowPrunedZero = true
+				if nativeRadiant {
+					target.AggregationBasis = "model_total"
+				}
 				if err := checks.add("loads", scope, zone, period, service, "kWh", &load, target, "", nil, nil); err != nil {
 					return err
 				}
+				checks.Rows[len(checks.Rows)-1].NativeRadiantLoad = radiantProof
 				for _, component := range []string{"sensible", "latent"} {
 					componentTarget := target
 					componentTarget.Field = "loadBreakdown"
 					componentTarget.Component = component
 					componentTarget.AllowPrunedZero = false
 					var componentValue *epathSQLQuantity
-					if component == "sensible" {
+					if component == "sensible" && !nativeRadiant {
 						componentValue = &load
 					}
 					if err := checks.add("loads", scope, zone, period, service+"/"+component, "kWh", componentValue, componentTarget, "", nil, nil); err != nil {
 						return err
 					}
-					if component == "sensible" && load.includesZero() {
+					if component == "sensible" && !nativeRadiant && load.includesZero() {
 						checks.Rows[len(checks.Rows)-1].OptionalPresentation = true
 					}
 				}

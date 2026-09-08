@@ -16,6 +16,7 @@ type epathSQLDriverLinkProof struct {
 	PureZeroPressureFallback bool // Every possible positive contributor is explicitly reviewed load-only fallback.
 	Load                     epathSQLQuantity
 	SourceIdentities         map[int]epathRealSQLSource
+	RadiantLoadSources       map[int]epathSQLRadiantLoadSourceIdentity
 	NonAdditiveLoadDetails   map[int]epathSQLLoadDetailIdentity
 	TemporalTraceSources     map[int]epathSQLTraceSourceIdentity
 	DriverSources            []int
@@ -77,7 +78,8 @@ func epathSQLModelDriverLinkChecks(frames epathSQLFrames, model epathRealSQLMode
 	sort.Strings(cellKeys)
 	loads := map[string]epathRealSQLSelector{}
 	for _, load := range model.Loads {
-		if load.Service != "cooling" && load.Service != "heating" || len(loads[load.Service].Alternatives) != 0 || load.Component != "sensible" || len(load.Source.Alternatives) == 0 || len(load.Source.Keys) == 0 {
+		validComponent := load.Component == "sensible" && load.NativeRadiant == nil || load.Component == "combined" && load.NativeRadiant != nil
+		if load.Service != "cooling" && load.Service != "heating" || len(loads[load.Service].Alternatives) != 0 || !validComponent || len(load.Source.Alternatives) == 0 || len(load.Source.Keys) == 0 {
 			return fmt.Errorf("driver link proof requires explicit unique delivered-load identities")
 		}
 		loads[load.Service] = load.Source
@@ -132,6 +134,14 @@ func epathSQLModelDriverLinkChecks(frames epathSQLFrames, model epathRealSQLMode
 					ids := frames.LoadSourceIDs[epathSQLKey(current, service, month)]
 					if err := epathSQLDriverOriginalIDs(frames.SourceIdentities, ids); err != nil {
 						return fmt.Errorf("load provenance %s/%s/M%d: %w", current, service, month, err)
+					}
+					if epathSQLNativeRadiantService(model, service) {
+						if len(ids) != 1 {
+							return fmt.Errorf("native radiant driver links require one exact original load per Zone/month")
+						}
+						if _, err := epathSQLRadiantFrameLoadSource(frames, ids[0], current, service, month); err != nil {
+							return err
+						}
 					}
 					monthlyLoadSources[month-1] = epathSQLDictionaryUnion(monthlyLoadSources[month-1], ids)
 					if _, high := load.bounds(); high > 0 {
@@ -311,7 +321,7 @@ func epathSQLModelDriverLinkChecks(frames epathSQLFrames, model epathRealSQLMode
 						if err := checks.add("loads", scope, zone, period, "driver_links/"+service+"/"+key+"/"+field, "kWh", &q, target, "", nil, nil); err != nil {
 							return err
 						}
-						checks.Rows[len(checks.Rows)-1].DriverLink = &epathSQLDriverLinkProof{Category: category, Service: service, Basis: target.Basis, Load: load, SourceIdentities: frames.SourceIdentities, NonAdditiveLoadDetails: details, DriverSources: traces[category].Allowed, RequiredDriverSources: traces[category].Required, LoadSources: loadSources, RequiredLoadSources: requiredLoadSources, RequiredLinkLoadSources: requiredLinkLoadSources, Branches: branches, BranchChoices: branchChoices}
+						checks.Rows[len(checks.Rows)-1].DriverLink = &epathSQLDriverLinkProof{Category: category, Service: service, Basis: target.Basis, Load: load, SourceIdentities: frames.SourceIdentities, RadiantLoadSources: frames.RadiantLoadSourceIdentities, NonAdditiveLoadDetails: details, DriverSources: traces[category].Allowed, RequiredDriverSources: traces[category].Required, LoadSources: loadSources, RequiredLoadSources: requiredLoadSources, RequiredLinkLoadSources: requiredLinkLoadSources, Branches: branches, BranchChoices: branchChoices}
 						checks.Rows[len(checks.Rows)-1].DriverLink.TemporalTraceSources = aliases
 						checks.Rows[len(checks.Rows)-1].DriverLink.PureZeroPressureFallback = category != "" && pureFallback[category]
 					}
@@ -647,6 +657,16 @@ func epathSQLDriverLinkTrace(link EnergyPathLink, from, to EnergyExplanationNode
 	if err := epathSQLDriverOriginalIDs(proof.SourceIdentities, epathSQLDictionaryUnion(proof.DriverSources, proof.LoadSources)); err != nil {
 		return nil, err
 	}
+	for _, id := range proof.LoadSources {
+		original := proof.SourceIdentities[id]
+		if radiant, native := proof.RadiantLoadSources[id]; native {
+			if epathSQLValidateRadiantLoadSourceIdentity(radiant) != nil || radiant.Source.DictionaryIndex != id || radiant.Source.Name != original.Name || radiant.Source.KeyValue != original.KeyValue || radiant.Service != proof.Service || to.ZoneName != "" && !strings.EqualFold(to.ZoneName, radiant.Owner.Owner.ZoneName) {
+				return nil, fmt.Errorf("driver link radiant load lacks its exact original owner/service/model-total proof")
+			}
+		} else if strings.EqualFold(original.Name, "Zone Radiant HVAC Cooling Energy") || strings.EqualFold(original.Name, "Zone Radiant HVAC Heating Energy") {
+			return nil, fmt.Errorf("driver link radiant load has no independent original owner proof")
+		}
+	}
 	flatten := func(ids []string) (map[int]bool, error) {
 		leaves, visiting, visited := map[int]bool{}, map[string]bool{}, map[string]bool{}
 		var visit func(string) error
@@ -669,6 +689,13 @@ func epathSQLDriverLinkTrace(link EnergyPathLink, from, to EnergyExplanationNode
 				}
 			}
 			visiting[id] = true
+			for dictionaryID, radiant := range proof.RadiantLoadSources {
+				if id == fmt.Sprintf("sql-rdd-%d", dictionaryID) || strings.EqualFold(source.Name, radiant.Source.Name) && strings.EqualFold(source.KeyValue, radiant.Source.KeyValue) && strings.EqualFold(source.ReportingFrequency, radiant.Source.ReportingFrequency) {
+					if err := epathSQLMatchRadiantLoadSource(source, radiant); err != nil {
+						return fmt.Errorf("radiant load %s is not its original model-total leaf: %w", id, err)
+					}
+				}
+			}
 			// A declared original cannot bypass its metadata checks by claiming
 			// derived inputs. Unrelated derived wrappers still resolve normally.
 			for dictionaryID, alias := range proof.TemporalTraceSources {

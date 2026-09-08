@@ -13,7 +13,14 @@ import (
 // independent typed source compiler receives them. The executed output plan
 // stays separate: its object indexes are not original equipment indexes.
 func epathBindRealSQLVRFOriginal(evidence epathRealRunEvidence, recipe epathRealOracleRecipe, observed *epathRealOracleEvidence) error {
-	if recipe.SQLModel == nil || len(recipe.SQLModel.NativeVRFSystems) == 0 {
+	if recipe.SQLModel == nil {
+		return nil
+	}
+	needsOriginal := len(recipe.SQLModel.NativeVRFSystems) > 0
+	for _, load := range recipe.SQLModel.Loads {
+		needsOriginal = needsOriginal || load.NativeRadiant != nil
+	}
+	if !needsOriginal {
 		return nil
 	}
 	if observed == nil || evidence.CatalogDirectory == "" || evidence.Fixture.ModelPath == "" ||

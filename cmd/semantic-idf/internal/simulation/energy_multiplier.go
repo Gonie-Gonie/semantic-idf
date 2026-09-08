@@ -163,6 +163,11 @@ func positiveEnergyMultiplier(value float64) float64 {
 
 func energyExplanationMultiplierRequirement(item energyExplanationSeries) string {
 	name := normalizeEnergyOutputName(firstNonEmpty(item.SourceName, item.sourceName))
+	if energyPathIsRadiantLoadVariable(name) {
+		// EnergyPlus LowTempRadiantSystem reports its surface source/sink after
+		// applying Zone and ZoneList multipliers. This is not Zone-air energy.
+		return energyMultiplierAlreadyModelTotal
+	}
 	if item.directComponentID != "" {
 		// These are exact owned HVAC component meter contributions. The system
 		// demand/sizing already includes the Zone/List multipliers; unlike

@@ -197,6 +197,9 @@ func epathSQLCoverageRecords(bundle PurposeResultBundle, context epathSQLCoverag
 		if check.Reconciliation != nil {
 			validators = append(validators, func() error { return epathCheckSQLModelReconciliation(bundle, check) })
 		}
+		if check.Allocation != nil && check.Allocation.RadiantCarrier != nil {
+			validators = append(validators, func() error { return epathCheckSQLModelAllocation(bundle, check) })
+		}
 		if check.SiteFlow != nil {
 			validators = append(validators, func() error { return epathCheckSQLSiteFlow(bundle, check) })
 		}
@@ -236,6 +239,9 @@ func epathSQLCoverageRecords(bundle PurposeResultBundle, context epathSQLCoverag
 		if check.LoadDetail != nil {
 			validators = append(validators, func() error { return epathCheckSQLLoadDetailSource(bundle, check) })
 		}
+		if check.RadiantSurfaceContext != nil {
+			validators = append(validators, func() error { return epathCheckSQLRadiantSurfaceContextSource(bundle, check) })
+		}
 		if check.TraceSource != nil {
 			validators = append(validators, func() error { return epathCheckSQLTemporalTraceSource(bundle, check) })
 		}
@@ -244,6 +250,12 @@ func epathSQLCoverageRecords(bundle PurposeResultBundle, context epathSQLCoverag
 		}
 		if check.NativeVRFSource != nil {
 			validators = append(validators, func() error { return epathCheckSQLVRFSource(bundle, check) })
+		}
+		if check.NativeRadiantSource != nil {
+			validators = append(validators, func() error { return epathCheckSQLRadiantLoadSource(bundle, check) })
+		}
+		if check.NativeRadiantLoad != nil {
+			validators = append(validators, func() error { return epathCheckSQLRadiantLoadNode(bundle, check) })
 		}
 		if check.AnnualServiceAbsent {
 			validators = append(validators, func() error { return epathCheckSQLAnnualServiceAbsent(bundle, check) })
@@ -379,6 +391,18 @@ func epathSQLCoverageRecords(bundle PurposeResultBundle, context epathSQLCoverag
 		}
 		for _, check := range candidates {
 			target := check.Item.Target
+			if check.Allocation != nil && check.Allocation.RadiantCarrier != nil {
+				valid, checked := proofValid[check.Want.Key]
+				if !checked {
+					// A copied Building ledger is still proved against its
+					// original Building context, not merely its repeated ID.
+					valid = epathCheckSQLModelAllocation(bundle, check) == nil
+					proofValid[check.Want.Key] = valid
+				}
+				if !valid {
+					continue
+				}
+			}
 			if check.Reconciliation != nil {
 				if proofValid[check.Want.Key] && epathSQLReconciliationMatches(row, check.Reconciliation) {
 					selected[target.Field] = append(selected[target.Field], check.Want.Key)

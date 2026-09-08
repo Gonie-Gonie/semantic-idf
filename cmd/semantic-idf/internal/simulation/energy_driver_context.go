@@ -31,6 +31,7 @@ type energyDriverBuildContext struct {
 	GeometryWarning      *EnergyWarning
 	DirectHVACComponents []energyPathDirectHVACComponentTarget
 	VRFSystems           []energyPathVRFSystem
+	RadiantLoads         []energyPathRadiantLoadTarget
 }
 
 func newEnergyDriverBuildContext(report idf.GeometryReport, documents ...idf.Document) energyDriverBuildContext {
@@ -38,11 +39,13 @@ func newEnergyDriverBuildContext(report idf.GeometryReport, documents ...idf.Doc
 	multipliers := energyEffectiveMultiplierIndex{}
 	var directHVACComponents []energyPathDirectHVACComponentTarget
 	var vrfSystems []energyPathVRFSystem
+	var radiantLoads []energyPathRadiantLoadTarget
 	if len(documents) > 0 {
 		addEnergyInternalMassCategories(&index, documents[0], report)
 		multipliers = buildEnergyEffectiveMultiplierIndex(documents[0])
 		directHVACComponents = energyPathDirectHVACComponentTargets(documents[0])
 		vrfSystems = energyPathVRFSystems(documents[0])
+		radiantLoads = energyPathRadiantLoadTargets(documents[0])
 	}
 	return energyDriverBuildContext{
 		Enabled:              true,
@@ -51,6 +54,7 @@ func newEnergyDriverBuildContext(report idf.GeometryReport, documents ...idf.Doc
 		Multipliers:          multipliers,
 		DirectHVACComponents: directHVACComponents,
 		VRFSystems:           vrfSystems,
+		RadiantLoads:         radiantLoads,
 	}
 }
 
@@ -97,6 +101,7 @@ func prepareEnergyDriverSeries(series []energyExplanationSeries, sources []Energ
 				}
 			}
 		}
+		applyEnergyPathRadiantSurfaceContext(&item, &policy, context)
 		if policy.Category == energyDriverCategoryInterzoneAir {
 			coupling := context.AirCouplings.resolve(item.sourceKeyValue)
 			pairwise := coupling.Pairwise && energyDriverInterzoneSourceCanBePairwise(item)

@@ -6,6 +6,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"testing"
@@ -14,6 +15,9 @@ import (
 // Every compiled row is a candidate-bound assertion. Source rows separately
 // prove all-month signed observations, including months pruned from main flow.
 func epathSQLModelSourceChecks(frames epathSQLFrames, observed []epathRealSQLSource, model epathRealSQLModel, checks *epathSQLModelChecks) error {
+	if err := epathSQLValidateRadiantSourceFrameRegistry(frames, observed, model); err != nil {
+		return err
+	}
 	byID := map[int]epathRealSQLSource{}
 	for _, source := range observed {
 		byID[source.DictionaryIndex] = source
@@ -29,6 +33,25 @@ func epathSQLModelSourceChecks(frames epathSQLFrames, observed []epathRealSQLSou
 			return fmt.Errorf("incomplete compiled source proof %d", id)
 		}
 		group := "drivers"
+		radiant, nativeRadiant := frames.RadiantLoadSourceIdentities[id]
+		if nativeRadiant {
+			if err := epathSQLValidateRadiantLoadSourceIdentity(radiant); err != nil {
+				return err
+			}
+			if radiant.Source.DictionaryIndex != id || !reflect.DeepEqual(radiant.Source, source) || !reflect.DeepEqual(frames.SourceRaw[id], radiant.Raw[:]) || !reflect.DeepEqual(frames.SourceEffective[id], radiant.Effective[:]) || !strings.EqualFold(frames.SourceZone[id], radiant.Owner.Owner.ZoneName) {
+				return fmt.Errorf("radiant source differs from the original observed SQL identity")
+			}
+			group = "loads"
+		}
+		radiantSurface, activeSurfaceContext := frames.RadiantSurfaceContextIdentities[id]
+		if activeSurfaceContext {
+			if err := epathSQLValidateRadiantSurfaceContextIdentity(radiantSurface); err != nil {
+				return err
+			}
+			if radiantSurface.Source.DictionaryIndex != id || radiantSurface.Source.Name != source.Name || radiantSurface.Source.KeyValue != source.KeyValue || radiantSurface.Source.SourceUnit != source.SourceUnit || radiantSurface.Source.ReportingFrequency != source.ReportingFrequency {
+				return fmt.Errorf("active radiant surface context differs from its original SQL identity")
+			}
+		}
 		trace, temporal := frames.TraceSourceIdentities[id]
 		if temporal {
 			if err := epathSQLValidateTemporalTrace(trace); err != nil {
@@ -104,9 +127,17 @@ func epathSQLModelSourceChecks(frames epathSQLFrames, observed []epathRealSQLSou
 					proof := detail
 					checks.Rows[len(checks.Rows)-1].LoadDetail = &proof
 				}
+				if activeSurfaceContext {
+					proof := radiantSurface
+					checks.Rows[len(checks.Rows)-1].RadiantSurfaceContext = &proof
+				}
 				if temporal {
 					proof := trace
 					checks.Rows[len(checks.Rows)-1].TraceSource = &proof
+				}
+				if nativeRadiant {
+					proof := radiant
+					checks.Rows[len(checks.Rows)-1].NativeRadiantSource = &proof
 				}
 			}
 		}
@@ -148,7 +179,7 @@ func epathCompileSQLModelChecks(observed epathRealOracleEvidence, model epathRea
 	if err := epathSQLValidateDirectHVACRequests(observed.outputPlan, model); err != nil {
 		return checks, err
 	}
-	frames, err := epathCompileSQLModelFrames(observed.sqlPath, observed.Sources, model)
+	frames, err := epathCompileSQLModelFrames(observed.sqlPath, observed.Sources, model, observed.originalText)
 	if err != nil {
 		return checks, err
 	}
@@ -337,6 +368,9 @@ func epathCheckSQLModelAllocation(bundle PurposeResultBundle, check epathSQLMode
 	}
 	if selected == nil {
 		if canPrune {
+			if proof.RadiantCarrier != nil {
+				return epathCheckSQLRadiantCarrierAllocation(bundle, check)
+			}
 			return nil
 		}
 		return fmt.Errorf("missing allocation row with at least one required non-prunable quantity")
@@ -357,6 +391,9 @@ func epathCheckSQLModelAllocation(bundle PurposeResultBundle, check epathSQLMode
 		if err := epathCheckSQLModelQuantity(epathOracleNumber(number), proof.fields()[field]); err != nil {
 			return fmt.Errorf("present allocation %s: %w", field, err)
 		}
+	}
+	if proof.RadiantCarrier != nil {
+		return epathCheckSQLRadiantCarrierAllocation(bundle, check)
 	}
 	return nil
 }
@@ -391,6 +428,8 @@ func epathEvaluateSQLModelChecks(out *epathRealOracleEvidence, bundle PurposeRes
 			err = epathCheckSQLDirectHVACSource(bundle, check)
 		} else if check.NativeVRFSource != nil {
 			err = epathCheckSQLVRFSource(bundle, check)
+		} else if check.NativeRadiantSource != nil {
+			err = epathCheckSQLRadiantLoadSource(bundle, check)
 		} else {
 			var actual *float64
 			actual, err = epathReadOracleCandidate(bundle, check.Item, check.Want)
@@ -400,6 +439,12 @@ func epathEvaluateSQLModelChecks(out *epathRealOracleEvidence, bundle PurposeRes
 		}
 		if err == nil && check.ZoneService != nil {
 			err = epathCheckSQLZoneServiceEndpoints(bundle, check)
+		}
+		if err == nil && check.RadiantSurfaceContext != nil {
+			err = epathCheckSQLRadiantSurfaceContextSource(bundle, check)
+		}
+		if err == nil && check.NativeRadiantLoad != nil {
+			err = epathCheckSQLRadiantLoadNode(bundle, check)
 		}
 		if err == nil && check.DirectUse != nil {
 			err = epathCheckSQLDirectUseEndpoints(bundle, check)

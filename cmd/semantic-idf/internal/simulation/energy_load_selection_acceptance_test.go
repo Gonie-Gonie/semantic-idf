@@ -1,6 +1,10 @@
 package simulation
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/Gonie-Gonie/semantic-idf/cmd/semantic-idf/internal/idf"
+)
 
 // EPATH-070 consumes these names at the canonical boundary. Keeping this list
 // explicit prevents a correct selector from being bypassed because an
@@ -72,12 +76,23 @@ func TestEPATH070AcceptanceCanonicalLoadHierarchy(t *testing.T) {
 // zone equipment and central/plant sources remain valid fallbacks when all
 // higher tiers are absent.
 func TestEPATH070AcceptanceHierarchyPreventsCrossLevelDoubleCounting(t *testing.T) {
+	// Native radiant SQL keys name equipment, not Zones. Supply the literal
+	// Design/EquipmentList/Connection/surface owner proof so this still tests
+	// a genuinely eligible direct-Zone tier, not an unowned context source.
+	doc := energyPathRadiantHandDocument(t)
+	directHVACFixtureObject(t, &doc, "Zone", "Office").Fields[6].Value = "1"
+	context := newEnergyDriverBuildContext(idf.AnalyzeGeometry(doc), doc)
+	if len(context.RadiantLoads) != 1 || context.RadiantLoads[0].KeyValue != "Radiant" || context.RadiantLoads[0].ZoneName != "Office" || context.RadiantLoads[0].SurfaceName != "Floor" {
+		t.Fatalf("hierarchy fixture lacks its exact original radiant owner: %+v", context.RadiantLoads)
+	}
 	for _, service := range []string{"cooling", "heating"} {
 		candidates := epath070HierarchyCandidates(service, false)
+		candidates[2].SourceKey, candidates[2].sourceKeyValue = "Radiant", "Radiant"
+		candidates[2] = canonicalEnergyExplanationSeries(candidates[2])
 		for start := range candidates {
 			start := start
 			t.Run(service+"/"+candidates[start].SourceIDs[0]+"-primary", func(t *testing.T) {
-				result := epath070BuildResult(candidates[start:])
+				result := epath070BuildResultWithContext(candidates[start:], context)
 				node := epath070NodeByID(result.Nodes, "load."+service+".building")
 				if node == nil {
 					t.Fatalf("highest available %s tier %q did not produce a canonical Building load: %#v", service, candidates[start].SourceIDs[0], result.Nodes)
@@ -237,6 +252,10 @@ func epath070Load(id string, name string, kind string, service string, pathType 
 }
 
 func epath070BuildResult(series []energyExplanationSeries) EnergyExplanationResult {
+	return epath070BuildResultWithContext(series, energyDriverBuildContext{Enabled: true, Multipliers: unitEnergyMultiplierIndex("Office")})
+}
+
+func epath070BuildResultWithContext(series []energyExplanationSeries, context energyDriverBuildContext) EnergyExplanationResult {
 	sources := make([]EnergyDataSource, 0, len(series))
 	seen := map[string]bool{}
 	for _, item := range series {
@@ -258,7 +277,7 @@ func epath070BuildResult(series []energyExplanationSeries) EnergyExplanationResu
 			})
 		}
 	}
-	legacy := buildEnergyExplanationResultWithDriverContext(series, sources, &PurposeRunPlan{BasicEnergyDetail: PurposeBasicEnergyDetailEnergyPath}, energyDriverBuildContext{Enabled: true, Multipliers: unitEnergyMultiplierIndex("Office")})
+	legacy := buildEnergyExplanationResultWithDriverContext(series, sources, &PurposeRunPlan{BasicEnergyDetail: PurposeBasicEnergyDetailEnergyPath}, context)
 	return UpgradeEnergyExplanationV1(legacy)
 }
 

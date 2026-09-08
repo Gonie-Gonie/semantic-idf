@@ -19,7 +19,8 @@ type epathSQLZoneServiceProof struct {
 	AnnualCarrierSources                map[string]map[string]epathSQLOriginalSource
 	RequiredSites                       map[string]map[string]bool
 	LoadSources                         map[string]epathRealSQLSource
-	LoadDetails                         map[string]epathSQLLoadDetailIdentity // Exact non-additive context, never the numeric authority.
+	RadiantLoadSources                  map[string]epathSQLRadiantLoadSourceIdentity // Exact native equipment owners, not Zone-key aliases.
+	LoadDetails                         map[string]epathSQLLoadDetailIdentity        // Exact non-additive context, never the numeric authority.
 }
 
 func epathSQLModelZoneServiceChecks(frames epathSQLFrames, model epathRealSQLModel, checks *epathSQLModelChecks) error {
@@ -50,6 +51,7 @@ func epathSQLModelZoneServiceChecks(frames epathSQLFrames, model epathRealSQLMod
 			return fmt.Errorf("unsupported/duplicate reviewed Zone service")
 		}
 		seen[service.Service] = true
+		nativeRadiant := epathSQLNativeRadiantService(model, service.Service)
 		served, err := epathSQLDeclaredZones(frames, service.ServedZones)
 		if err != nil || len(served) == 0 {
 			return fmt.Errorf("Zone service requires exact nonempty served membership: %v", err)
@@ -218,7 +220,21 @@ func epathSQLModelZoneServiceChecks(frames epathSQLFrames, model epathRealSQLMod
 					seenLoad := map[int]bool{}
 					for _, index := range ids {
 						source, ok := frames.SourceIdentities[index]
-						if !ok || index <= 0 || source.DictionaryIndex != index || seenLoad[index] || source.IsMeter || !strings.EqualFold(source.KeyValue, zone) || source.Name == "" || source.SourceUnit == "" || !strings.EqualFold(source.ReportingFrequency, "Monthly") {
+						owned := strings.EqualFold(source.KeyValue, zone)
+						if nativeRadiant {
+							identity, err := epathSQLRadiantFrameLoadSource(frames, index, zone, service.Service, month)
+							if err != nil || len(ids) != 1 {
+								return fmt.Errorf("invalid exact radiant Zone/service load: %v", err)
+							}
+							if proof.RadiantLoadSources == nil {
+								proof.RadiantLoadSources = map[string]epathSQLRadiantLoadSourceIdentity{}
+							}
+							proof.RadiantLoadSources[fmt.Sprintf("sql-rdd-%d", index)] = identity
+							owned = true
+						} else if _, native := frames.RadiantLoadSourceIdentities[index]; native {
+							return fmt.Errorf("native radiant source requires its explicit reviewed service declaration")
+						}
+						if !ok || index <= 0 || source.DictionaryIndex != index || seenLoad[index] || source.IsMeter || !owned || source.Name == "" || source.SourceUnit == "" || !strings.EqualFold(source.ReportingFrequency, "Monthly") {
 							return fmt.Errorf("invalid original Zone/service load source %d", index)
 						}
 						seenLoad[index] = true
@@ -378,7 +394,26 @@ func epathCheckSQLZoneServiceEndpoints(bundle PurposeResultBundle, check epathSQ
 		}
 	}
 	for id, source := range proof.LoadSources {
-		if _, duplicate := union[id]; duplicate || source.IsMeter || !strings.EqualFold(source.KeyValue, check.Item.Zone) {
+		owned := strings.EqualFold(source.KeyValue, check.Item.Zone)
+		if len(proof.RadiantLoadSources) > 0 {
+			identity, found := proof.RadiantLoadSources[id]
+			if !found || len(proof.RadiantLoadSources) != len(proof.LoadSources) || identity.Service != proof.Service || !strings.EqualFold(identity.Owner.Owner.ZoneName, check.Item.Zone) {
+				return fmt.Errorf("native radiant service lost its exact original load-source roster/owner/service")
+			}
+			original, err := epathSQLOriginalRadiant(identity)
+			if err != nil {
+				return err
+			}
+			key, err := epathSQLOriginalKey(original)
+			if err != nil || key != id || !epathSQLRadiantSameOriginalSource(source, identity.Source) {
+				return fmt.Errorf("native radiant service source was rebound to different original SQL evidence")
+			}
+			if err := epathSQLMatchRadiantLoadSource(sources[id], identity); err != nil {
+				return err
+			}
+			owned = true
+		}
+		if _, duplicate := union[id]; duplicate || source.IsMeter || !owned {
 			return fmt.Errorf("Zone-load source contradicts exact ownership")
 		}
 		union[id] = source

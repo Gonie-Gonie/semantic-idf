@@ -206,6 +206,7 @@ type EnergyExplanationNode struct {
 	EndUse                string                             `json:"endUse,omitempty"`
 	DriverCategory        string                             `json:"driverCategory,omitempty"`
 	ThermalComponent      string                             `json:"thermalComponent,omitempty"`
+	ThermalBoundary       string                             `json:"thermalBoundary,omitempty"`
 	LoadBreakdown         []EnergyExplanationLoadComponent   `json:"loadBreakdown,omitempty"`
 	OffsetEffects         []EnergyExplanationOffsetEffect    `json:"offsetEffects,omitempty"`
 	SimultaneousLoad      *EnergyExplanationSimultaneousLoad `json:"simultaneousLoad,omitempty"`
@@ -646,6 +647,7 @@ type energyExplanationSeries struct {
 	LoopName               string
 	HeatCategory           string
 	ThermalComponent       string
+	ThermalBoundary        string
 	DriverCategory         string
 	DriverSourceRole       string
 	DriverExplanation      string
@@ -928,13 +930,14 @@ func parseSimulationEnergyExplanationCanonicalSQL(path string, plan *PurposeRunP
 
 			for _, dictionary := range dictionaries {
 				builder := builders[dictionary.row.index]
-				if builder == nil && dictionary.directComponentID != "" {
+				isRadiantLoad := dictionary.load != nil && energyPathIsRadiantLoadVariable(dictionary.row.name)
+				if builder == nil && (dictionary.directComponentID != "" || isRadiantLoad) {
 					// Preserve the reported identity of an all-NULL source, but
 					// never promote it to a zero-valued direct consumption series.
 					builder = &energyExplanationSeriesBuilder{dictionary: dictionary, unit: "kWh"}
 					invalidObservedValues[dictionary.row.index] = true
 				}
-				if builder == nil || dictionary.directComponentID == "" && builder.total == 0 && len(builder.monthly) == 0 {
+				if builder == nil || dictionary.directComponentID == "" && !isRadiantLoad && builder.total == 0 && len(builder.monthly) == 0 {
 					continue
 				}
 				source := energyDataSourceForDictionary(dictionary)
@@ -944,7 +947,7 @@ func parseSimulationEnergyExplanationCanonicalSQL(path string, plan *PurposeRunP
 					(len(monthlyTimeAxis) == 0 || monthlyObservedRows[dictionary.row.index] != len(monthlyTimeAxis)) {
 					invalidObservedValues[dictionary.row.index] = true
 				}
-				if dictionary.directComponentID != "" && (builder.unit != "kWh" || math.IsNaN(builder.total) || math.IsInf(builder.total, 0) ||
+				if (dictionary.directComponentID != "" || isRadiantLoad) && (builder.unit != "kWh" || math.IsNaN(builder.total) || math.IsInf(builder.total, 0) ||
 					strings.EqualFold(dictionary.reportingFrequency, "Monthly") && len(builder.monthly) != len(monthlyTimeAxis)) {
 					invalidObservedValues[dictionary.row.index] = true
 				}
@@ -960,7 +963,7 @@ func parseSimulationEnergyExplanationCanonicalSQL(path string, plan *PurposeRunP
 					source.ZoneName = scopeZoneName
 				}
 				sources = append(sources, source)
-				if dictionary.directComponentID != "" && invalidObservedValues[dictionary.row.index] {
+				if (dictionary.directComponentID != "" || isRadiantLoad) && invalidObservedValues[dictionary.row.index] {
 					continue
 				}
 				item := energyExplanationSeriesForBuilder(builder, source.ID)
@@ -1049,6 +1052,9 @@ func energyExplanationSurfaceCategoriesForDictionaries(dictionaries []energyExpl
 			continue
 		}
 		category, _ := context.SurfaceCategories.resolve(dictionary.row.keyValue)
+		if energyPathRadiantSurfaceIsContext(context, dictionary.row.keyValue) {
+			continue
+		}
 		eligible[dictionary.row.index] = true
 		candidate := energyExplanationSeriesForBuilder(&energyExplanationSeriesBuilder{dictionary: dictionary}, fmt.Sprintf("sql-rdd-%d", dictionary.row.index))
 		key := energyExplanationSeriesSelectionKey(candidate)
@@ -1716,6 +1722,7 @@ func buildEnergyExplanationResultWithDriverContext(series []energyExplanationSer
 	for index := range series {
 		series[index] = canonicalEnergyExplanationSeries(series[index])
 	}
+	series, sources, radiantWarnings := bindEnergyPathRadiantLoadSeries(series, sources, driverContext)
 	series, sources = filterEnergyExplanationSeriesForBasicDetail(series, sources, plan)
 	// Requested-output availability describes original observations, not the
 	// later graph's canonical load selection or derived heat-balance terms.
@@ -1729,6 +1736,7 @@ func buildEnergyExplanationResultWithDriverContext(series []energyExplanationSer
 	if driverContext.Enabled {
 		series, sources, driverWarnings = prepareEnergyDriverSeries(series, sources, driverContext)
 	}
+	driverWarnings = append(driverWarnings, radiantWarnings...)
 	for index := range series {
 		series[index] = canonicalEnergyExplanationSeries(series[index])
 	}
@@ -1740,6 +1748,7 @@ func buildEnergyExplanationResultWithDriverContext(series []energyExplanationSer
 	loadCandidates := append([]energyExplanationSeries(nil), series...)
 	if driverContext.Enabled {
 		series = selectCanonicalEnergyExplanationLoads(series)
+		driverWarnings = append(driverWarnings, energyPathRadiantSelectionWarnings(loadCandidates, series)...)
 	}
 	series = preferredEnergyExplanationSeries(series)
 	if driverContext.Enabled {
@@ -2714,6 +2723,7 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 		existing.node.RelatedEntityIDs = appendUniqueStrings(existing.node.RelatedEntityIDs, node.RelatedEntityIDs...)
 		existing.node.RelatedPathIDs = appendUniqueStrings(existing.node.RelatedPathIDs, node.RelatedPathIDs...)
 		existing.node.LoadBreakdown = mergeEnergyExplanationLoadComponents(existing.node.LoadBreakdown, node.LoadBreakdown)
+		existing.node.ThermalBoundary = mergeEnergyPathThermalBoundary(existing.node.ThermalBoundary, node.ThermalBoundary)
 		existing.node.OffsetEffects = mergeEnergyExplanationOffsetEffects(existing.node.OffsetEffects, node.OffsetEffects)
 		existing.node.simultaneousLoadContributions = mergeEnergyExplanationSimultaneousLoadContributions(existing.node.simultaneousLoadContributions, node.simultaneousLoadContributions)
 		if existing.node.ThermalComponent != node.ThermalComponent {
@@ -2791,6 +2801,7 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 				PathType:         item.PathType,
 				DriverCategory:   item.DriverCategory,
 				ThermalComponent: thermalComponent,
+				ThermalBoundary:  item.ThermalBoundary,
 				LoadBreakdown:    energyExplanationLoadComponentsForPeriod(item, period, value),
 				Basis:            item.Basis,
 				SourceIDs:        item.SourceIDs,
@@ -3672,6 +3683,12 @@ func sqlEnergyExplanationDictionaries(db *sql.DB, sourceFile string, plan *Purpo
 	isMeterExpr := sqlCastTextColumnExpr(columns, "IsMeter", "'0'")
 	frequencyExpr := sqlTextColumnExpr(columns, "ReportingFrequency", "''")
 	indexGroupExpr := sqlTextColumnExpr(columns, "IndexGroup", "''")
+	missingRadiant := "0"
+	if len(driverContexts) > 0 && driverContexts[0].Enabled && len(driverContexts[0].RadiantLoads) > 0 {
+		// Preserve the native requested identity even if every observation is
+		// missing. The reader will not turn dictionary presence into a zero.
+		missingRadiant = fmt.Sprintf("LOWER(TRIM(%s)) IN ('zone radiant hvac cooling energy', 'zone radiant hvac cooling rate', 'zone radiant hvac heating energy', 'zone radiant hvac heating rate')", nameExpr)
+	}
 	rows, err := db.Query(fmt.Sprintf(`
 SELECT DISTINCT rdd.%s,
        %s,
@@ -3681,10 +3698,11 @@ SELECT DISTINCT rdd.%s,
        %s,
        %s
 FROM ReportDataDictionary rdd
-JOIN (SELECT DISTINCT ReportDataDictionaryIndex FROM ReportData) rd
+LEFT JOIN (SELECT DISTINCT ReportDataDictionaryIndex FROM ReportData) rd
   ON rd.ReportDataDictionaryIndex = rdd.ReportDataDictionaryIndex
-WHERE TRIM(%s) <> '' OR TRIM(%s) <> ''
-ORDER BY rdd.%s`, indexExpr, keyExpr, nameExpr, unitsExpr, isMeterExpr, frequencyExpr, indexGroupExpr, nameExpr, keyExpr, indexExpr))
+WHERE (TRIM(%s) <> '' OR TRIM(%s) <> '')
+  AND (rd.ReportDataDictionaryIndex IS NOT NULL OR %s)
+ORDER BY rdd.%s`, indexExpr, keyExpr, nameExpr, unitsExpr, isMeterExpr, frequencyExpr, indexGroupExpr, nameExpr, keyExpr, missingRadiant, indexExpr))
 	if err != nil {
 		return nil, err
 	}

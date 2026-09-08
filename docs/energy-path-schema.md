@@ -44,7 +44,7 @@ Zone result. Missing or ambiguous scopes/months must remain unavailable.
 | Node `level` | Meaning | `scaleDomain` | Typical unit |
 | --- | --- | --- | --- |
 | `driver` | Allocated contribution explaining an actual service load | `thermal` | `kWh` thermal |
-| `load` | Actual cooling/heating delivery, including sensible/latent detail | `thermal` | `kWh` thermal |
+| `load` | Observed cooling/heating quantity at the declared thermal boundary, with available component detail | `thermal` | `kWh` thermal |
 | `end_use` | Site energy used by equipment or a direct use | `site` | `kWh` site |
 | `carrier` | Electricity, gas, district energy or another energy carrier | `site` | `kWh` site |
 
@@ -64,6 +64,21 @@ can be pruned; an absent comparison category is therefore not a reported zero.
 
 Cooling/heating load detail can include `loadBreakdown`, `offsetEffects`,
 `latentShare` and `simultaneousLoad`. These do not create additional main stages.
+The optional load-node `thermalBoundary` has two values:
+
+- `active_surface_source`: fluid heat inserted into or removed from an active
+  radiant surface. The native quantity already includes model multipliers; it
+  is not same-period heat delivered to Zone air.
+- `mixed_thermal_boundaries`: selected active-surface and air/other thermal
+  component quantities have been combined. Their total is not a single
+  Zone-air measurement boundary.
+
+An unset field retains the existing node contract; clients must not infer it
+from source names. A radiant source is a combined thermal component, not an
+independently measured sensible/latent decomposition. Surface storage and heat
+exchange with other surfaces can shift its Zone-air effect between periods;
+do not add active-surface heat again as another delivered-load measurement.
+
 Carrier-neutral end-use nodes may branch to several carriers; each branch keeps
 its own carrier-specific source IDs. Do not copy a node's union of source IDs
 onto every branch or add facility totals to their end-use components.
@@ -102,6 +117,11 @@ single combustion heating efficiency or load/fuel, district energy
 load/purchased energy, and mixed-carrier service load/site energy. Electric
 heating alone does not establish a heat-pump COP. Missing carrier evidence,
 zero denominators or unusable temporal overlap do not justify an invented ratio.
+Conversions from either marked thermal boundary use
+`ratioKind=load_to_site_energy`: active-surface source/site or mixed-boundary/site
+comparison, not equipment COP or efficiency. The marker does not change node or
+paired-link quantities, and storage prevents treating the numerator as an
+equivalent same-period Zone-air delivery.
 
 An annual conversion can cover only the periods where both measurements exist.
 Keep its paired `fromValue`/`toValue`; do not replace them with full annual node
@@ -228,6 +248,11 @@ references. `sourceUnit` and `normalizedUnit` are different: J → kWh is common
 Scalar source values and `scopeDetails` have no month field; `Monthly` frequency
 does not make an annual source scalar suitable for filling a monthly node blank.
 Use period-local node/link evidence and retain sparse unknown values.
+For supported native radiant Monthly outputs, a retained dictionary identity
+with NULL, missing, duplicate or invalid monthly observations is not a numeric
+load series or a reported zero. Fully observed literal zero remains known zero,
+including on the v2 source wire; an absent dictionary cannot establish a source
+measurement. Do not fill missing `rawValue` or `effectiveValue` from that identity.
 
 Batch v2 comparison/export is fixed to Building / Annual. Its default workbook
 contains Energy Path Summary, Energy Path Delta, Data Quality and Runs. The

@@ -73,27 +73,29 @@ type epathSQLCell struct {
 	ZeroPressureFallback              bool  // Explicit reviewed load-only synthetic allocation, never a physical pressure.
 }
 type epathSQLFrames struct {
-	NativeVRFSystems           []epathSQLVRFSystemFrame
-	NativeVRFAllocations       []epathSQLVRFAllocationProof
-	ZeroPressureFallbacks      map[string]epathRealSQLZeroPressureFallback
-	ZeroPressurePhysicalCells  map[string]epathSQLCell
-	DirectHVAC                 map[string]epathSQLDirectHVACMonth
-	DirectHVACSourceIdentities map[int]epathSQLDirectHVACSourceIdentity
-	TraceSourceIdentities      map[int]epathSQLTraceSourceIdentity
-	CellTraceSourceIDs         map[string][]int
-	Zones                      map[string]epathSQLZone
-	Cells                      map[string]*epathSQLCell
-	Loads                      map[string]epathSQLQuantity
-	Site                       map[string][]*epathSQLQuantity
-	SiteAnnual                 map[string]epathSQLTabularObservation
-	SiteSources                map[string][]int
-	SourceRaw                  map[int][]epathSQLQuantity
-	SourceEffective            map[int][]epathSQLQuantity
-	SourceZone                 map[int]string
-	SourceIdentities           map[int]epathRealSQLSource
-	LoadSourceIDs              map[string][]int
-	LoadDetailSourceIDs        map[string][]int
-	LoadDetailIdentities       map[int]epathSQLLoadDetailIdentity
+	RadiantSurfaceContextIdentities map[int]epathSQLRadiantSurfaceContextIdentity
+	NativeVRFSystems                []epathSQLVRFSystemFrame
+	NativeVRFAllocations            []epathSQLVRFAllocationProof
+	RadiantLoadSourceIdentities     map[int]epathSQLRadiantLoadSourceIdentity
+	ZeroPressureFallbacks           map[string]epathRealSQLZeroPressureFallback
+	ZeroPressurePhysicalCells       map[string]epathSQLCell
+	DirectHVAC                      map[string]epathSQLDirectHVACMonth
+	DirectHVACSourceIdentities      map[int]epathSQLDirectHVACSourceIdentity
+	TraceSourceIdentities           map[int]epathSQLTraceSourceIdentity
+	CellTraceSourceIDs              map[string][]int
+	Zones                           map[string]epathSQLZone
+	Cells                           map[string]*epathSQLCell
+	Loads                           map[string]epathSQLQuantity
+	Site                            map[string][]*epathSQLQuantity
+	SiteAnnual                      map[string]epathSQLTabularObservation
+	SiteSources                     map[string][]int
+	SourceRaw                       map[int][]epathSQLQuantity
+	SourceEffective                 map[int][]epathSQLQuantity
+	SourceZone                      map[int]string
+	SourceIdentities                map[int]epathRealSQLSource
+	LoadSourceIDs                   map[string][]int
+	LoadDetailSourceIDs             map[string][]int
+	LoadDetailIdentities            map[int]epathSQLLoadDetailIdentity
 }
 
 func epathSQLKey(zone, family string, month int) string {
@@ -271,8 +273,11 @@ func epathSQLMonthly(source epathRealSQLSource, precision epathRealSQLPrecision)
 	return values, nil
 }
 
-func epathCompileSQLModelFrames(sqlPath string, observed []epathRealSQLSource, model epathRealSQLModel) (epathSQLFrames, error) {
+func epathCompileSQLModelFrames(sqlPath string, observed []epathRealSQLSource, model epathRealSQLModel, originalText ...string) (epathSQLFrames, error) {
 	out := epathSQLFrames{Zones: map[string]epathSQLZone{}, Cells: map[string]*epathSQLCell{}, Loads: map[string]epathSQLQuantity{}, Site: map[string][]*epathSQLQuantity{}, SiteAnnual: map[string]epathSQLTabularObservation{}, SiteSources: map[string][]int{}, SourceRaw: map[int][]epathSQLQuantity{}, SourceEffective: map[int][]epathSQLQuantity{}, SourceZone: map[int]string{}, SourceIdentities: map[int]epathRealSQLSource{}, LoadSourceIDs: map[string][]int{}}
+	if len(originalText) > 1 {
+		return out, fmt.Errorf("SQL model frames require at most one exact original input")
+	}
 	if model.Schema != "semantic-idf.energy-path-sql-model/large-office-monthly/v1" || model.Surface.Mapping != "surface_class_boundary/v1" || model.Surface.Sign != -1 || model.Precision.DecimalPlaces != 3 || model.Precision.SourceStages < 1 || model.Precision.SourceStages > 3 || model.Precision.ContributionStages < 1 || model.Precision.ContributionStages > 3 {
 		return out, fmt.Errorf("unsupported reviewed sqlModel/precision policy")
 	}
@@ -339,6 +344,11 @@ func epathCompileSQLModelFrames(sqlPath string, observed []epathRealSQLSource, m
 		return out, err
 	}
 	rows.Close()
+	radiantContext, err := epathSQLRadiantSurfaceContexts(db, observed, model, out.Zones, surfaces, originalText)
+	if err != nil {
+		return out, err
+	}
+	out.RadiantSurfaceContextIdentities = radiantContext.Identities
 	add := func(zone, family, category, component string, month int, raw epathSQLQuantity, visible bool, sourceIDs []int) {
 		key := epathSQLKey(zone, family, month)
 		cell := out.Cells[key]
@@ -369,7 +379,9 @@ func epathCompileSQLModelFrames(sqlPath string, observed []epathRealSQLSource, m
 		effective := make([]epathSQLQuantity, 12)
 		for month, value := range values {
 			signed := value.times(model.Surface.Sign)
-			add(surface.Zone, "surface:"+surface.Category, surface.Category, "sensible", month+1, signed, true, []int{source.DictionaryIndex})
+			if _, contextOnly := radiantContext.Identities[source.DictionaryIndex]; !contextOnly {
+				add(surface.Zone, "surface:"+surface.Category, surface.Category, "sensible", month+1, signed, true, []int{source.DictionaryIndex})
+			}
 			effective[month] = value.times(out.Zones[surface.Zone].Multiplier)
 		}
 		out.SourceEffective[source.DictionaryIndex] = effective
@@ -387,7 +399,9 @@ func epathCompileSQLModelFrames(sqlPath string, observed []epathRealSQLSource, m
 			}
 			keys[key] = true
 			for month := 1; month <= 12; month++ {
-				add(key, family.ID, family.Category, family.Component, month, epathSQLQuantity{}, family.BuildingVisible, nil)
+				if !radiantContext.FamilyZones[family.ID+"|"+key] {
+					add(key, family.ID, family.Category, family.Component, month, epathSQLQuantity{}, family.BuildingVisible, nil)
+				}
 			}
 		}
 		for _, term := range family.Terms {
@@ -417,7 +431,9 @@ func epathCompileSQLModelFrames(sqlPath string, observed []epathRealSQLSource, m
 				out.SourceZone[source.DictionaryIndex] = zone
 				effective := make([]epathSQLQuantity, 12)
 				for month, value := range values {
-					add(zone, family.ID, family.Category, family.Component, month+1, value.times(term.Sign), family.BuildingVisible, []int{source.DictionaryIndex})
+					if _, contextOnly := radiantContext.Identities[source.DictionaryIndex]; !contextOnly {
+						add(zone, family.ID, family.Category, family.Component, month+1, value.times(term.Sign), family.BuildingVisible, []int{source.DictionaryIndex})
+					}
 					effective[month] = value.times(out.Zones[zone].Multiplier)
 				}
 				out.SourceEffective[source.DictionaryIndex] = effective
@@ -450,10 +466,20 @@ func epathCompileSQLModelFrames(sqlPath string, observed []epathRealSQLSource, m
 	}
 	loadServices := map[string]bool{}
 	for _, load := range model.Loads {
-		if (load.Service != "cooling" && load.Service != "heating") || loadServices[load.Service] || load.Component != "sensible" {
+		if (load.Service != "cooling" && load.Service != "heating") || loadServices[load.Service] || load.NativeRadiant == nil && load.Component != "sensible" || load.NativeRadiant != nil && load.Component != "combined" {
 			return out, fmt.Errorf("unknown/duplicate delivered-load service")
 		}
 		loadServices[load.Service] = true
+		var radiantOwners map[string]epathSQLRadiantOwnerProof
+		if load.NativeRadiant != nil {
+			if len(originalText) != 1 || strings.TrimSpace(originalText[0]) == "" {
+				return out, fmt.Errorf("native radiant load requires its exact preserved original input")
+			}
+			radiantOwners, err = epathSQLRadiantLoadDeclaration(load, originalText[0])
+			if err != nil {
+				return out, err
+			}
+		}
 		sources, err := epathSQLSelect(observed, load.Source)
 		if err != nil {
 			return out, err
@@ -461,6 +487,29 @@ func epathCompileSQLModelFrames(sqlPath string, observed []epathRealSQLSource, m
 		for _, source := range sources {
 			out.SourceIdentities[source.DictionaryIndex] = source
 			zone := strings.ToLower(source.KeyValue)
+			if load.NativeRadiant != nil {
+				owner, found := radiantOwners[epathSQLRadiantName(source.KeyValue)]
+				if !found {
+					return out, fmt.Errorf("radiant load source has no exact original owner")
+				}
+				zone = strings.ToLower(owner.Owner.ZoneName)
+				identity, err := epathSQLRadiantLoadObservation(source, load.Service, owner, out.Zones[zone], model.Precision)
+				if err != nil {
+					return out, err
+				}
+				if out.RadiantLoadSourceIdentities == nil {
+					out.RadiantLoadSourceIdentities = map[int]epathSQLRadiantLoadSourceIdentity{}
+				}
+				out.RadiantLoadSourceIdentities[source.DictionaryIndex] = identity
+				out.SourceRaw[source.DictionaryIndex] = append([]epathSQLQuantity(nil), identity.Raw[:]...)
+				out.SourceEffective[source.DictionaryIndex] = append([]epathSQLQuantity(nil), identity.Effective[:]...)
+				out.SourceZone[source.DictionaryIndex] = zone
+				for month, value := range identity.Effective {
+					out.Loads[epathSQLKey(zone, load.Service, month+1)] = value
+					out.LoadSourceIDs[epathSQLKey(zone, load.Service, month+1)] = []int{source.DictionaryIndex}
+				}
+				continue // Native surface-source J already includes Zone and List multipliers.
+			}
 			if out.Zones[zone].Name == "" {
 				return out, fmt.Errorf("unowned delivered-load Zone")
 			}
@@ -600,6 +649,9 @@ func epathCompileSQLModelFrames(sqlPath string, observed []epathRealSQLSource, m
 		return out, err
 	}
 	if err := epathSQLValidateZeroPressureFrames(out, model); err != nil {
+		return out, err
+	}
+	if err := epathSQLValidateRadiantSurfaceContextFrames(out); err != nil {
 		return out, err
 	}
 	return out, nil

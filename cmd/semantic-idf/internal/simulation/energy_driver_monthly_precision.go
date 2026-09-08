@@ -62,6 +62,9 @@ func invalidateMissingEnergyDriverMonthlySurfaceShadows(db *sql.DB, dictionaries
 		if !ok || !definition.SurfaceScoped || energyDriverSourcePolicyFor(name, definition.Kind).Role != energyDriverSourceRoleMainFlow {
 			continue
 		}
+		if energyPathRadiantSurfaceIsContext(context, key) {
+			continue
+		}
 		dictionary := energyExplanationDictionary{row: sqlOutputDictionaryRow{keyValue: key, name: name, units: unit}, heat: &definition, reportingFrequency: frequency}
 		item := energyExplanationSeriesForBuilder(&energyExplanationSeriesBuilder{dictionary: dictionary}, "")
 		if selectedPhysical[energyExplanationSeriesSelectionKey(item)] {
