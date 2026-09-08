@@ -205,7 +205,7 @@ func parseSimulationSQLSeries(path string) ([]SimulationSeries, error) {
 	timeOrdinal := map[int64]int{}
 	timeLabels := map[int64]string{}
 	rowCount := 0
-	if err := walkReportData(db, SQLSeriesQuery{DictionaryIndexes: ids}, func(row SQLSeriesRow) error {
+	if err := walkReportDataCompact(db, SQLSeriesQuery{DictionaryIndexes: ids}, func(row SQLSeriesRow) error {
 		timeIndex := row.TimeIndex
 		month := row.Month
 		day := row.Day
@@ -297,7 +297,7 @@ func parseSimulationEnergySQL(path string) (EnergyDashboardResult, error) {
 	timeOrdinal := map[int64]int{}
 	timeLabels := map[int64]string{}
 	rowCount := 0
-	if err := walkReportData(db, SQLSeriesQuery{DictionaryIndexes: ids}, func(row SQLSeriesRow) error {
+	if err := walkReportDataCompact(db, SQLSeriesQuery{DictionaryIndexes: ids}, func(row SQLSeriesRow) error {
 		timeIndex := row.TimeIndex
 		month := row.Month
 		day := row.Day
@@ -503,7 +503,7 @@ func parseSimulationHeatFlowSQL(path string) (HeatFlowDataset, error) {
 	keptFrame := map[int64]int{}
 	frameIndex := -1
 
-	if err := walkReportData(db, SQLSeriesQuery{DictionaryIndexes: ids}, func(row SQLSeriesRow) error {
+	if err := walkReportDataCompact(db, SQLSeriesQuery{DictionaryIndexes: ids}, func(row SQLSeriesRow) error {
 		timeIndex := row.TimeIndex
 		month := row.Month
 		day := row.Day
@@ -866,7 +866,8 @@ func sqlOutputSeriesDictionaries(db *sql.DB) ([]sqlOutputDictionaryRow, error) {
 	rows, err := db.Query(fmt.Sprintf(`
 SELECT DISTINCT rdd.ReportDataDictionaryIndex, COALESCE(rdd.KeyValue, ''), COALESCE(rdd.Name, ''), COALESCE(rdd.Units, ''), %s, %s
 FROM ReportDataDictionary rdd
-JOIN ReportData rd ON rd.ReportDataDictionaryIndex = rdd.ReportDataDictionaryIndex
+JOIN (SELECT DISTINCT ReportDataDictionaryIndex FROM ReportData) rd
+  ON rd.ReportDataDictionaryIndex = rdd.ReportDataDictionaryIndex
 WHERE TRIM(COALESCE(rdd.Name, '')) <> ''
 ORDER BY rdd.ReportDataDictionaryIndex
 LIMIT ?`, sqlAliasedTextColumnExpr(columns, "rdd", "ReportingFrequency", "''"), sqlAliasedCastTextColumnExpr(columns, "rdd", "IsMeter", "NULL")), maxSQLSeriesColumns)
@@ -898,7 +899,8 @@ func sqlOutputEnergyDictionaries(db *sql.DB) ([]sqlEnergyDictionaryRow, error) {
 	rows, err := db.Query(`
 SELECT DISTINCT rdd.ReportDataDictionaryIndex, COALESCE(rdd.KeyValue, ''), COALESCE(rdd.Name, ''), COALESCE(rdd.Units, '')
 FROM ReportDataDictionary rdd
-JOIN ReportData rd ON rd.ReportDataDictionaryIndex = rdd.ReportDataDictionaryIndex
+JOIN (SELECT DISTINCT ReportDataDictionaryIndex FROM ReportData) rd
+  ON rd.ReportDataDictionaryIndex = rdd.ReportDataDictionaryIndex
 WHERE TRIM(COALESCE(rdd.Name, '')) <> ''
 ORDER BY rdd.ReportDataDictionaryIndex`)
 	if err != nil {

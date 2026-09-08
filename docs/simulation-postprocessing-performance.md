@@ -133,3 +133,56 @@ Fresh full `scripts/verify.ps1` passed after the native-clock correction and
 alias indexing: main 21.648 s, CLI 5.900 s, frontend 156.716 s, simulation
 84.031 s, and Wails production build 7.917 s. This is the final combined
 performance/feedback checkpoint, not completion of the overall checklist.
+
+## Follow-up: initial SQL result reading
+
+The same capture also exposed an earlier, separate source-selection problem.
+An unrestricted replay of the original SQL parser completed in 30.023 seconds;
+the normal parser returned `context deadline exceeded` after 29.016 seconds.
+Its 20-second limit is checked between parser stages, not inside each query.
+In that run, 256 Series and the complete SQL Heat Flow (19 zones, 680 displayed
+frames from 8,822 original frames) had already been read correctly. The caller
+discarded the partial result on error and fell back to CSV/ESO. Other repeats
+reached the deadline after Series, demonstrating timing-dependent selection.
+
+The complete original SQL result is preserved as
+`.runtime/sql-parse-unlimited-baseline-01.json` (1,797,121 bytes; SHA-256
+`314815dc401a0bff35bf2033e71cf7c8d9225a9e0885fcb49d5017cf8042d8bb`).
+Its sidecar binds the exact capture and records the separate deadline failure.
+This is a parser equivalence baseline, not an independent numerical oracle.
+
+The bounded correction extends the already verified compact walker to the
+initial Series, Energy and Heat Flow readers, and selects distinct observed
+dictionary IDs before joining metadata in the Series/Energy catalogs. It does
+not change the deadline, error handling, source priority, filters, 256-column
+Series cap, sampling or original public SQL query interface.
+
+Restoring SQL-first selection intentionally differs from the previous fallback
+result: the previous Series came from CSV and Heat Flow came from ESO (686
+frames). Equivalence must therefore be checked against the original *complete
+SQL parse*, not by accepting these differences in the old whole-bundle
+comparison. `TestSQLSavedParseReplay` checks the complete SQL result and
+`TestSQLSavedOutputSourcesReplay` checks exact Series/Heat Flow JSON through the
+real output-reading and source-selection path. Both preserve the original
+capture; the latter also verifies the baseline hash and capture sidecar.
+
+The isolated actual replay passed: unrestricted parsing took 12.101 seconds,
+and the normal 20-second path completed successfully in 12.146 seconds. Both
+entire SQL results match the original 1,797,121 bytes and SHA-256 exactly; no
+array sorting, numeric tolerance or compatibility repair is involved. The
+separate real output-reading replay took 11.818 seconds and selected
+`[sql, csv]`, with SQL Series/Heat Flow matching the baseline byte-for-byte and
+no ESO fallback. CSV summaries remain intentionally available. All original
+capture file hashes, sizes and modification times remained unchanged.
+
+The retained result and sidecar are
+`.runtime/sql-parse-compact-after-01.json` and its `.meta.json`. Focused tests
+passed in 5.945 seconds, including a 1,503-frame fixture comparing all three
+parsers against the preserved original walker. The fixture also explicitly
+checks mixed reporting frequencies, the 256-Series cap, 1,200-point Series
+sampling, Heat Flow stride/last-frame handling, duplicate observations,
+NULL versus known zero, signed values and unknown optional metadata.
+
+General timeout/error reporting remains a separate boundary: this optimization
+does not make the limit a hard query deadline or retain completed sections after
+a later parse error. No error is converted to success by this change.

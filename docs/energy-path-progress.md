@@ -488,6 +488,17 @@ and the full actual-file comparison pass. Fresh full repository verification
 and the Wails build also pass after correcting a native-clock browser test;
 the SQL/feedback and alias improvements are combined into one checkpoint.
 
+The saved run's initial SQL reader also exceeded its existing 20-second limit
+and discarded completed SQL sections before CSV/ESO fallback. Extending the
+verified compact walker to the initial readers reduces the original complete
+SQL parse from 30.023 to 12.101 seconds; the default-limit path completes in
+12.146 seconds. The full 1,797,121-byte SQL result is byte-identical to the
+preserved original unlimited parser. The actual source-selection replay takes
+11.818 seconds, retains SQL Series/Heat Flow exactly and does not invoke ESO
+fallback. The capture remains unchanged. This bounded optimization preserves
+the existing timeout/error policy; it is not a general partial-result policy
+change or section 22 numerical acceptance.
+
 Checklist section 22's actual-model fixtures and expected manifests also remain
 required between EPATH-204 and EPATH-210; they have no individual EPATH numbers.
 The final completion definition in section 26 is part of acceptance as well.
