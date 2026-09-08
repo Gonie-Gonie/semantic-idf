@@ -473,6 +473,9 @@ func TestEnergyPathRealSQLModelSavedCandidate(t *testing.T) {
 	if recipe.SQLModel == nil || evidence.Run == nil {
 		t.Fatal("reviewed SQL model and actual executed plan required")
 	}
+	if err := epathValidateRealSQLDirectHVACOriginal(evidence, recipe); err != nil {
+		t.Fatal(err)
+	}
 	observed, err := epathReadRealSQLOracle(evidence.SQLPath)
 	if err != nil {
 		t.Fatal(err)

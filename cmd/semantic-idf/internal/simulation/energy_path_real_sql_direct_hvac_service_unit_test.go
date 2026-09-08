@@ -46,6 +46,11 @@ func epathSQLDirectServiceUnitFrames() (epathSQLFrames, epathRealSQLModel) {
 		}
 		frames.DirectHVACSourceIdentities[index] = epathSQLDirectHVACSourceIdentity{FamilyID: item.id, Service: item.service, Carrier: item.carrier, SiteID: item.site, AggregationBasis: "model_total", Owner: owner, Source: source, Precision: model.Precision}
 	}
+	model.Services[1].ReconciliationID = ""
+	model.Services[1].CarrierReconciliationIDs = map[string]string{
+		"electricity": "reconcile.zone_hvac_allocation.heating.electricity.annual",
+		"natural_gas": "reconcile.zone_hvac_allocation.heating.natural_gas.annual",
+	}
 	return frames, model
 }
 
@@ -83,7 +88,7 @@ func TestEnergyPathRealSQLDirectHVACServiceCarrierRemainderAndKnownZero(t *testi
 	if err := epathSQLModelServiceChecks(frames, model, &checks); err != nil {
 		t.Fatal(err)
 	}
-	seen := 0
+	seen, heatingSeen := 0, 0
 	for _, check := range checks.Rows {
 		if check.Item.Period == "annual" && strings.Contains(check.Item.Key, "cooling/") && check.Allocation != nil {
 			seen++
@@ -91,9 +96,22 @@ func TestEnergyPathRealSQLDirectHVACServiceCarrierRemainderAndKnownZero(t *testi
 				t.Fatal("Building annual ledger did not sum the same completed monthly frames")
 			}
 		}
+		if check.Item.Period == "annual" && strings.Contains(check.Item.Key, "heating/") && check.Allocation != nil {
+			heatingSeen++
+			expected, direct, allocated, unassigned := 25.0, 6.0, 14.0, 5.0
+			if check.Item.Target.ID == "reconcile.zone_hvac_allocation.heating.natural_gas.annual" {
+				expected, direct, allocated, unassigned = 55, 12, 28, 15
+			}
+			if check.Allocation.Expected.Value != expected || check.Allocation.Direct.Value != direct || check.Allocation.Allocated.Value != allocated || check.Allocation.Unassigned.Value != unassigned {
+				t.Fatal("mixed-fuel Building ledger lost an independently computed carrier partition")
+			}
+		}
 	}
 	if seen != 4 {
 		t.Fatalf("missing direct Building ledger: %d", seen)
+	}
+	if heatingSeen != 8 {
+		t.Fatalf("missing per-carrier direct Building ledger: %d", heatingSeen)
 	}
 }
 

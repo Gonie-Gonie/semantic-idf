@@ -53,10 +53,13 @@ func epathSQLAnnualSiteUnitInputs(t *testing.T) (epathSQLFrames, epathRealSQLMod
 		{ID: "consumption", FromID: "end_use.cooling", ToID: "carrier.district_cooling.building", Relation: "end_use_to_carrier", Basis: "reported_meter", FromValue: 12.34, ToValue: 12.34, FromUnit: "kWh", ToUnit: "kWh", Period: "annual", SourceIDs: []string{"original.annual.cooling"}},
 		{ID: "residual", FromID: "residual.site_district_cooling.building", ToID: "carrier.district_cooling.building", Relation: "residual", Basis: "residual", FromValue: 3, ToValue: 3, FromUnit: "kWh", ToUnit: "kWh", Period: "annual", SourceIDs: []string{"original.annual.cooling", "original.annual.facility"}},
 	}
-	bundle.EnergyExplanation.Reconciliation = []EnergyReconciliation{{ID: "reconcile.energy.district_cooling.annual", Level: "energy", Period: "annual", ExpectedValue: 15.34, ExplainedValue: 12.34, ResidualValue: 3, Unit: "kWh"}}
+	bundle.EnergyExplanation.Reconciliation = []EnergyReconciliation{{ID: "reconcile.energy.district_cooling.annual", Level: "energy", Period: "annual", ExpectedValue: 15.34, ExplainedValue: 12.34, ResidualValue: 3, Unit: "kWh", Basis: "residual"}}
 	for month := 1; month <= 12; month++ {
 		bundle.EnergyExplanation.Periods = append(bundle.EnergyExplanation.Periods, EnergyPeriod{ID: fmt.Sprintf("M%d", month), Kind: "monthly"})
 	}
+	bundle.EnergyExplanation.Periods = append(bundle.EnergyExplanation.Periods, EnergyPeriod{ID: "annual", Kind: "annual",
+		Nodes: append([]EnergyExplanationNode(nil), bundle.EnergyExplanation.Nodes...), Links: append([]EnergyPathLink(nil), bundle.EnergyExplanation.Links...),
+		Reconciliation: append([]EnergyReconciliation(nil), bundle.EnergyExplanation.Reconciliation...)})
 	return frames, model, bundle
 }
 

@@ -18,6 +18,10 @@ type epathSQLDirectHVACShare struct {
 type epathSQLDirectHVACServiceMonth struct {
 	Site, Direct, Allocated, Unassigned epathSQLQuantity
 	Zones                               map[string]map[string]epathSQLDirectHVACShare
+	ByCarrier                           map[string]epathSQLDirectHVACCarrierLedger
+}
+type epathSQLDirectHVACCarrierLedger struct {
+	Site, Direct, Allocated, Unassigned epathSQLQuantity
 }
 type epathSQLDirectHVACServiceFrames struct {
 	Monthly      [12]epathSQLDirectHVACServiceMonth
@@ -108,7 +112,7 @@ func epathSQLCompileDirectHVACService(frames epathSQLFrames, model epathRealSQLM
 	}
 	used := map[string]bool{}
 	for month := 1; month <= 12; month++ {
-		row := epathSQLDirectHVACServiceMonth{Zones: map[string]map[string]epathSQLDirectHVACShare{}}
+		row := epathSQLDirectHVACServiceMonth{Zones: map[string]map[string]epathSQLDirectHVACShare{}, ByCarrier: map[string]epathSQLDirectHVACCarrierLedger{}}
 		for zone := range frames.Zones {
 			load, ok := frames.Loads[epathSQLKey(zone, service.Service, month)]
 			if !ok || !load.valid() || load.Value < 0 {
@@ -199,6 +203,7 @@ func epathSQLCompileDirectHVACService(frames epathSQLFrames, model epathRealSQLM
 				}
 			}
 			row.Site = row.Site.add(pool)
+			row.ByCarrier[carrier] = epathSQLDirectHVACCarrierLedger{Site: pool, Direct: direct, Allocated: allocated, Unassigned: unassigned}
 			row.Direct = row.Direct.add(direct)
 			row.Allocated = row.Allocated.add(allocated)
 			row.Unassigned = row.Unassigned.add(unassigned)

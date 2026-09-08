@@ -781,3 +781,44 @@ push follow. The next PTHP source audit is read-only so far and confirms that
 its old capture lacks the required direct coil-consumption outputs. It needs a
 typed DX/Fuel ownership extension and a new normal output capture, not copied
 PTAC observations or fallback-only approval.
+
+The PTAC checkpoint was committed and pushed as `fab1650`; its normal commit hook
+also passed full verification and Wails build. PTHP is now the fifth separately
+approved fixture. It requests 35 typed native-coil consumption identities and
+independently verifies all 420 monthly observations, including real heating-DX,
+defrost and crankcase electricity plus supplemental fuel and ancillary energy.
+Shared output names are resolved against exact original typed ownership;
+ambiguous reporting identities and incomplete carrier cohorts cannot become
+direct observations. Component energy is already model total, and mixed-fuel
+heating uses Load / site energy with separate carrier allocation ledgers.
+
+The new engine succeeds with 24,523 retained warnings and no Severe/Fatal, while
+its initial capture test's 103 native/wire mismatches remain preserved as failures.
+A test-only original-v2 boundary copy fixes observed-zero source verification
+without rewriting captures or treating absence/NULL as zero. Saved diagnostic 01
+then isolates three actual-zero July gas reconciliation differences. An exact
+independent whole-row proof now follows existing production zero-node/orphan-row
+pruning, while rejecting positive balanced totals, partial fields and invented
+Monthly zeros. Existing metric identities, raw centers and precision are unchanged.
+No production reader/writer/pruning behavior was altered for these test boundaries.
+
+Diagnostic 02 passes all 17,113 checks and required fields in eight groups.
+Separate original-SQL-to-pending arithmetic reviews 2,870 assertions; the explicit
+approved header and lossless companion retain 5,819 known zeros and 806 typed
+nulls, with 4,927 coverage records in 91 contexts. Saved acceptance plus the
+five-fixture integrity guard pass in 23.915 seconds. All four prior approvals
+also pass current-code rebuilding unchanged: PTAC 23.473 seconds, Small Office
+19.073, Ideal Loads 30.827 and Large Office 82.972.
+Detailed source/provenance and failed-versus-passing evidence are recorded in
+[PTHP acceptance](energy-path-pthp-acceptance.md). Section 22 is 5/19, not complete;
+fan coil with plant loops is next, followed by the remaining catalog and later
+checklist sections. The normal full verification/build gate is next.
+
+The PTHP checkpoint's full `scripts/verify.ps1` gate passes without exclusions:
+app 21.138 seconds, CLI 6.247 seconds, frontend/browser checks 166.044 seconds,
+simulation 288.174 seconds and all other packages successful. Windows production
+Wails build passes in 7.474 seconds. Normal commit-hook verification and push
+follow. The next Fan Coil preparation is read-only: it has three terminal fans,
+two shared district-energy plants and no individually requested fan/pump energy.
+Water-coil heat transfer is not direct purchased consumption; the new source
+recipe and measured auxiliary ownership require their own next-fixture work.

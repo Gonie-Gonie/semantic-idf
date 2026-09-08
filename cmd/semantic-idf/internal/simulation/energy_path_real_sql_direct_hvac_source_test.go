@@ -6,6 +6,8 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+
+	"github.com/Gonie-Gonie/semantic-idf/cmd/semantic-idf/internal/idf"
 )
 
 type epathSQLDirectHVACMonth struct {
@@ -39,8 +41,33 @@ func epathSQLDirectHVACTaxonomy(id string) (name, component, service, carrier st
 		return "Heating Coil Ancillary NaturalGas Energy", "Coil:Heating:Fuel", "heating", "natural_gas", true
 	case "heating.coil.electricity":
 		return "Heating Coil Electricity Energy", "Coil:Heating:Fuel", "heating", "electricity", true
+	case "heating.coil.dx_electricity":
+		return "Heating Coil Electricity Energy", "Coil:Heating:DX:SingleSpeed", "heating", "electricity", true
+	case "heating.coil.defrost_electricity":
+		return "Heating Coil Defrost Electricity Energy", "Coil:Heating:DX:SingleSpeed", "heating", "electricity", true
+	case "heating.coil.crankcase_electricity":
+		return "Heating Coil Crankcase Heater Electricity Energy", "Coil:Heating:DX:SingleSpeed", "heating", "electricity", true
 	}
 	return "", "", "", "", false
+}
+
+func epathSQLDirectHVACParentFamilies(objectType string) []string {
+	switch objectType {
+	case "ZoneHVAC:PackagedTerminalAirConditioner":
+		return []string{"cooling.coil.electricity", "cooling.coil.crankcase_electricity", "heating.coil.natural_gas", "heating.coil.ancillary_natural_gas", "heating.coil.electricity"}
+	case "ZoneHVAC:PackagedTerminalHeatPump":
+		return []string{"cooling.coil.electricity", "heating.coil.dx_electricity", "heating.coil.defrost_electricity", "heating.coil.crankcase_electricity", "heating.coil.natural_gas", "heating.coil.ancillary_natural_gas", "heating.coil.electricity"}
+	}
+	return nil
+}
+
+func epathSQLDirectHVACParentSupports(objectType, family string) bool {
+	for _, id := range epathSQLDirectHVACParentFamilies(objectType) {
+		if id == family {
+			return true
+		}
+	}
+	return false
 }
 
 func epathSQLDirectHVACOwners(declaration epathRealSQLDirectHVACComponent) (map[string]epathRealSQLDirectHVACOwner, error) {
@@ -58,7 +85,7 @@ func epathSQLDirectHVACOwners(declaration epathRealSQLDirectHVACComponent) (map[
 	}
 	for _, owner := range declaration.Owners {
 		key := strings.ToLower(strings.TrimSpace(owner.KeyValue))
-		if !keys[key] || owners[key].KeyValue != "" || strings.TrimSpace(owner.ZoneName) == "" || strings.TrimSpace(owner.EquipmentName) == "" || owner.EquipmentType != "ZoneHVAC:PackagedTerminalAirConditioner" || owner.ComponentType != component {
+		if !keys[key] || owners[key].KeyValue != "" || strings.TrimSpace(owner.ZoneName) == "" || strings.TrimSpace(owner.EquipmentName) == "" || !epathSQLDirectHVACParentSupports(owner.EquipmentType, declaration.ID) || owner.ComponentType != component {
 			return nil, fmt.Errorf("direct HVAC has a missing, duplicate or incompatible explicit coil owner")
 		}
 		owners[key] = owner
@@ -69,7 +96,7 @@ func epathSQLDirectHVACOwners(declaration epathRealSQLDirectHVACComponent) (map[
 func epathSQLValidateDirectHVACSourceIdentity(identity epathSQLDirectHVACSourceIdentity) error {
 	name, component, service, carrier, ok := epathSQLDirectHVACTaxonomy(identity.FamilyID)
 	source, owner := identity.Source, identity.Owner
-	if !ok || identity.Service != service || identity.Carrier != carrier || identity.SiteID == "" || identity.AggregationBasis != "model_total" || owner.ComponentType != component || owner.EquipmentType != "ZoneHVAC:PackagedTerminalAirConditioner" || strings.TrimSpace(owner.EquipmentName) == "" || strings.TrimSpace(owner.ZoneName) == "" || strings.TrimSpace(owner.KeyValue) == "" || !strings.EqualFold(strings.TrimSpace(source.KeyValue), strings.TrimSpace(owner.KeyValue)) || !strings.EqualFold(source.Name, name) || source.SourceUnit != "J" || source.IsMeter || source.DictionaryIndex <= 0 || source.ReportingFrequency != "Monthly" || source.Rows != 12 || source.MissingRows != 0 {
+	if !ok || identity.Service != service || identity.Carrier != carrier || identity.SiteID == "" || identity.AggregationBasis != "model_total" || owner.ComponentType != component || !epathSQLDirectHVACParentSupports(owner.EquipmentType, identity.FamilyID) || strings.TrimSpace(owner.EquipmentName) == "" || strings.TrimSpace(owner.ZoneName) == "" || strings.TrimSpace(owner.KeyValue) == "" || !strings.EqualFold(strings.TrimSpace(source.KeyValue), strings.TrimSpace(owner.KeyValue)) || !strings.EqualFold(source.Name, name) || source.SourceUnit != "J" || source.IsMeter || source.DictionaryIndex <= 0 || source.ReportingFrequency != "Monthly" || source.Rows != 12 || source.MissingRows != 0 {
 		return fmt.Errorf("direct HVAC source lacks its exact independent owner/service/carrier/monthly identity")
 	}
 	if _, err := epathSQLMonthly(source, identity.Precision); err != nil {
@@ -125,6 +152,145 @@ func epathSQLValidateDirectHVACRequests(plan *PurposeRunPlan, model epathRealSQL
 	return nil
 }
 
+// Real-evidence entry points additionally bind this text to the original model
+// hash. Only the low-level IDF parser is shared; typed field positions and the
+// ownership walk below are independent of production HVAC discovery. SQL cannot
+// distinguish a DX/Fuel object's type from their shared output-variable name.
+func epathSQLValidateDirectHVACOriginalModel(text string, model epathRealSQLModel) error {
+	if len(model.DirectHVACComponents) == 0 {
+		return nil
+	}
+	doc, err := idf.Parse(text)
+	if err != nil {
+		return err
+	}
+	key := func(objectType, name string) string {
+		return strings.ToLower(strings.TrimSpace(objectType)) + "|" + strings.ToLower(strings.TrimSpace(name))
+	}
+	field := func(object idf.Object, index int) string {
+		if index >= len(object.Fields) {
+			return ""
+		}
+		return strings.TrimSpace(object.Fields[index].Value)
+	}
+	objects := map[string][]idf.Object{}
+	for _, object := range doc.Objects {
+		if field(object, 0) != "" {
+			k := key(object.Type, field(object, 0))
+			objects[k] = append(objects[k], object)
+		}
+	}
+	one := func(objectType, name string) (idf.Object, error) {
+		values := objects[key(objectType, name)]
+		if strings.TrimSpace(name) == "" || len(values) != 1 {
+			return idf.Object{}, fmt.Errorf("original direct owner needs one exact %s/%s object", objectType, name)
+		}
+		return values[0], nil
+	}
+	for _, declaration := range model.DirectHVACComponents {
+		owners, err := epathSQLDirectHVACOwners(declaration)
+		if err != nil {
+			return err
+		}
+		for _, owner := range owners {
+			parent, err := one(owner.EquipmentType, owner.EquipmentName)
+			if err != nil {
+				return err
+			}
+			coil, err := one(owner.ComponentType, owner.KeyValue)
+			if err != nil {
+				return err
+			}
+			if owner.ComponentType == "Coil:Heating:Fuel" && !strings.EqualFold(field(coil, 2), "NaturalGas") {
+				return fmt.Errorf("original supplemental coil is not the declared NaturalGas consumer")
+			}
+			position := -1
+			switch owner.EquipmentType {
+			case "ZoneHVAC:PackagedTerminalAirConditioner":
+				if owner.ComponentType == "Coil:Heating:Fuel" {
+					position = 15
+				} else if owner.ComponentType == "Coil:Cooling:DX:SingleSpeed" {
+					position = 17
+				}
+			case "ZoneHVAC:PackagedTerminalHeatPump":
+				switch owner.ComponentType {
+				case "Coil:Heating:DX:SingleSpeed":
+					position = 15
+				case "Coil:Cooling:DX:SingleSpeed":
+					position = 18
+				case "Coil:Heating:Fuel":
+					position = 21
+				}
+			}
+			componentKey, parentKey := key(owner.ComponentType, owner.KeyValue), key(owner.EquipmentType, owner.EquipmentName)
+			if position < 0 || key(field(parent, position), field(parent, position+1)) != componentKey {
+				return fmt.Errorf("recipe coil type/key does not match the original parent's exact physical role")
+			}
+			coilReferences, listReferences, mixerReferences := 0, []idf.Object{}, 0
+			for _, object := range doc.Objects {
+				for index := 0; index+1 < len(object.Fields); index++ {
+					reference := key(field(object, index), field(object, index+1))
+					if reference == componentKey {
+						coilReferences++
+						if object.Index != parent.Index || index != position {
+							return fmt.Errorf("original coil is shared or referenced outside its declared typed parent field")
+						}
+					}
+					if reference != parentKey {
+						continue
+					}
+					switch {
+					case strings.EqualFold(object.Type, "ZoneHVAC:EquipmentList") && index >= 2 && (index-2)%6 == 0:
+						listReferences = append(listReferences, object)
+					case strings.EqualFold(object.Type, "AirTerminal:SingleDuct:Mixer") && index == 1:
+						mixerReferences++
+						if _, err := one(object.Type, field(object, 0)); err != nil {
+							return err
+						}
+						connection := field(object, 6)
+						inlet := strings.EqualFold(connection, "InletSide") && field(parent, 2) != "" && strings.EqualFold(field(object, 3), field(parent, 2))
+						outlet := strings.EqualFold(connection, "SupplySide") && field(parent, 3) != "" && strings.EqualFold(field(object, 5), field(parent, 3))
+						if !inlet && !outlet {
+							return fmt.Errorf("original DOAS mixer is not this package's exact air connection")
+						}
+					default:
+						return fmt.Errorf("original package has an unsupported/shared typed parent reference")
+					}
+				}
+			}
+			if coilReferences != 1 || len(listReferences) != 1 || mixerReferences > 1 {
+				return fmt.Errorf("original direct package or coil does not have unique physical ownership")
+			}
+			list := listReferences[0]
+			if _, err := one(list.Type, field(list, 0)); err != nil {
+				return err
+			}
+			if _, err := one("Zone", owner.ZoneName); err != nil {
+				return err
+			}
+			connections, zoneConnections := 0, 0
+			for _, object := range doc.Objects {
+				if !strings.EqualFold(object.Type, "ZoneHVAC:EquipmentConnections") {
+					continue
+				}
+				if strings.EqualFold(field(object, 0), owner.ZoneName) {
+					zoneConnections++
+				}
+				if strings.EqualFold(field(object, 1), field(list, 0)) {
+					connections++
+					if !strings.EqualFold(field(object, 0), owner.ZoneName) {
+						return fmt.Errorf("original equipment list belongs to a different Zone")
+					}
+				}
+			}
+			if connections != 1 || zoneConnections != 1 {
+				return fmt.Errorf("original equipment list/Zone ownership is missing or ambiguous")
+			}
+		}
+	}
+	return nil
+}
+
 func epathCompileSQLDirectHVACSources(sqlPath string, observed []epathRealSQLSource, model epathRealSQLModel, frames *epathSQLFrames) error {
 	if len(model.DirectHVACComponents) == 0 {
 		return nil
@@ -141,6 +307,26 @@ func epathCompileSQLDirectHVACSources(sqlPath string, observed []epathRealSQLSou
 	seenFamilies, componentOwners, parentZones := map[string]bool{}, map[string]string{}, map[string]string{}
 	parentFamilies := map[string]map[string]bool{}
 	parentComponents := map[string]string{}
+	parentTypes := map[string]string{}
+	// A literal output name is not a physical role: DX and Fuel heating
+	// electricity share a name but have separately reviewed key/type owners.
+	nameKeys := map[string]map[string]string{}
+	for _, declaration := range model.DirectHVACComponents {
+		owners, err := epathSQLDirectHVACOwners(declaration)
+		if err != nil {
+			return err
+		}
+		name := strings.ToLower(declaration.Source.Alternatives[0].Name)
+		if nameKeys[name] == nil {
+			nameKeys[name] = map[string]string{}
+		}
+		for key := range owners {
+			if nameKeys[name][key] != "" {
+				return fmt.Errorf("same-name direct HVAC roles have a duplicate physical source key")
+			}
+			nameKeys[name][key] = declaration.ID
+		}
+	}
 	for _, declaration := range model.DirectHVACComponents {
 		owners, err := epathSQLDirectHVACOwners(declaration)
 		if err != nil || seenFamilies[declaration.ID] {
@@ -184,6 +370,14 @@ func epathCompileSQLDirectHVACSources(sqlPath string, observed []epathRealSQLSou
 			if !strings.EqualFold(frequency, "Monthly") {
 				continue
 			}
+			declaredRole := nameKeys[strings.ToLower(name)][strings.ToLower(strings.TrimSpace(key))]
+			if declaredRole == "" || meter != 0 || unit != "J" {
+				rows.Close()
+				return fmt.Errorf("direct HVAC original dictionary has an undeclared or inconsistent physical source")
+			}
+			if declaredRole != declaration.ID {
+				continue // The other exact typed role validates its own rows.
+			}
 			original, exists := selected[id]
 			if !exists || dictionarySeen[id] || meter != 0 || unit != "J" || !strings.EqualFold(name, original.Name) || !strings.EqualFold(strings.TrimSpace(key), strings.TrimSpace(original.KeyValue)) || owners[strings.ToLower(strings.TrimSpace(key))].KeyValue == "" {
 				rows.Close()
@@ -208,6 +402,10 @@ func epathCompileSQLDirectHVACSources(sqlPath string, observed []epathRealSQLSou
 			}
 			owner.ZoneName = zone.Name
 			parent := strings.ToLower(strings.TrimSpace(owner.EquipmentName))
+			if prior := parentTypes[parent]; prior != "" && prior != owner.EquipmentType {
+				return fmt.Errorf("direct HVAC package has contradictory original equipment types")
+			}
+			parentTypes[parent] = owner.EquipmentType
 			component := strings.ToLower(owner.ComponentType) + "|" + strings.ToLower(strings.TrimSpace(owner.KeyValue))
 			binding := parent + "|" + zoneKey
 			if componentOwners[component] != "" && componentOwners[component] != binding || parentZones[parent] != "" && parentZones[parent] != zoneKey {
@@ -242,9 +440,15 @@ func epathCompileSQLDirectHVACSources(sqlPath string, observed []epathRealSQLSou
 			}
 		}
 	}
-	for _, families := range parentFamilies {
-		if len(families) != 5 {
+	for parent, families := range parentFamilies {
+		roster := epathSQLDirectHVACParentFamilies(parentTypes[parent])
+		if len(families) != len(roster) || len(roster) == 0 {
 			return fmt.Errorf("direct HVAC package is missing a reviewed additive constituent, not a complete direct observation")
+		}
+		for _, family := range roster {
+			if !families[family] {
+				return fmt.Errorf("direct HVAC package lacks its exact parent-specific constituent %s", family)
+			}
 		}
 	}
 	// Commit only after all validation succeeds; no failed partial source frame.

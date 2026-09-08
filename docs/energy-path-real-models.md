@@ -6,9 +6,12 @@ Official model inputs, licenses and a versioned catalog live under
 `cmd/semantic-idf/internal/simulation/testdata/energy_path_real_models`.
 Coverage tags in that catalog are obligations to verify, not completed claims.
 
-Current checkpoint: Large Office, Small Office and Ideal Loads 25.1 have
-explicitly reviewed expected manifests and passing saved-result acceptance for
-all 46,224, 17,675 and 17,121 independent metrics respectively. The remaining 16
+Current checkpoint: Large Office, Small Office, Ideal Loads, PTAC and PTHP 25.1
+have explicitly reviewed expected manifests and passing saved-result acceptance
+for all 46,224, 17,675, 17,121, 17,021 and 17,113 independent metrics respectively.
+PTHP source/ownership, whole-row-zero proofs and review evidence are detailed in
+[PTHP acceptance](energy-path-pthp-acceptance.md); the preceding PTAC checkpoint
+is recorded in [the progress ledger](energy-path-progress.md). The remaining 14
 catalog entries, including Large Office 22.1/23.2/24.2, are not yet approved.
 Earlier findings below are retained as a chronological record, not presented
 as the current acceptance status. Section 22 and later checklist sections remain

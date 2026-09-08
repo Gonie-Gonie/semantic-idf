@@ -8,7 +8,7 @@ import "testing"
 func TestEnergyPathRealApprovedExpectedCatalog(t *testing.T) {
 	_, directory := epathRealDirectories(t)
 	catalog := epathLoadRealCatalog(t, directory)
-	approved := map[string]int{"large-office-25-1": 46224, "small-office-25-1": 17675, "ideal-loads-25-1": 17121, "ptac-25-1": 17021}
+	approved := map[string]int{"large-office-25-1": 46224, "small-office-25-1": 17675, "ideal-loads-25-1": 17121, "ptac-25-1": 17021, "pthp-25-1": 17113}
 	for _, fixture := range catalog.Fixtures {
 		count, required := approved[fixture.ID]
 		if !required {

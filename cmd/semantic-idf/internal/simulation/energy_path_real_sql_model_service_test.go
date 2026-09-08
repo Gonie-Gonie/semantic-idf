@@ -131,6 +131,9 @@ func epathSQLModelServiceChecks(frames epathSQLFrames, model epathRealSQLModel, 
 			return err
 		}
 		if annualOnly {
+			if len(service.CarrierReconciliationIDs) > 0 {
+				return fmt.Errorf("monthly carrier allocation declarations cannot replace annual-only allocation proof")
+			}
 			if err := epathSQLAnnualBuildingServiceChecks(frames, service, served, checks); err != nil {
 				return err
 			}
@@ -138,6 +141,9 @@ func epathSQLModelServiceChecks(frames epathSQLFrames, model epathRealSQLModel, 
 		}
 		directFrames, err := epathSQLCompileDirectHVACService(frames, model, service)
 		if err != nil {
+			return err
+		}
+		if err := epathSQLDirectHVACRequireCarrierLedger(service, directFrames); err != nil {
 			return err
 		}
 		monthSite, monthAssigned, monthUnassigned := [12]epathSQLQuantity{}, [12]epathSQLQuantity{}, [12]epathSQLQuantity{}
@@ -217,6 +223,12 @@ func epathSQLModelServiceChecks(frames epathSQLFrames, model epathRealSQLModel, 
 						return err
 					}
 				}
+			}
+			if len(service.CarrierReconciliationIDs) > 0 {
+				if err := epathSQLDirectHVACBuildingLedgerChecks(service, directFrames, period, checks); err != nil {
+					return err
+				}
+				continue
 			}
 			id, err := epathSQLAllocationID(service.ReconciliationID, period)
 			if err != nil {

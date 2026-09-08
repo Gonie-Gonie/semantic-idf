@@ -3650,12 +3650,12 @@ ORDER BY rdd.%s`, indexExpr, keyExpr, nameExpr, unitsExpr, isMeterExpr, frequenc
 			copy := def
 			dictionary.meter = &copy
 			dictionary.isMeter = true
-		} else if def, ok := energyPathDirectHVACComponentDefinitionForName(row.name); ok {
+		} else if _, ok := energyPathDirectHVACComponentDefinitionForName(row.name); ok {
 			var targets []energyPathDirectHVACComponentTarget
 			if len(driverContexts) > 0 {
 				targets = driverContexts[0].DirectHVACComponents
 			}
-			zone, objectIndex, bound := energyPathDirectHVACComponentScope(def, dictionary, plan, targets)
+			def, zone, objectIndex, bound := energyPathDirectHVACComponentDictionaryScope(dictionary, plan, targets)
 			if !bound {
 				continue
 			}

@@ -125,14 +125,15 @@ type epathRealSQLAvailability struct {
 	IsMeter        bool                      `json:"isMeter"`
 }
 type epathRealSQLService struct {
-	Service           string   `json:"service"`
-	SiteIDs           []string `json:"siteIds"`
-	ServedZones       []string `json:"servedZones"`
-	Basis             string   `json:"basis"`
-	FallbackBasis     string   `json:"fallbackBasis"`
-	RatioKind         string   `json:"ratioKind"`
-	FallbackRatioKind string   `json:"fallbackRatioKind"`
-	ReconciliationID  string   `json:"reconciliationId"`
+	Service                  string            `json:"service"`
+	SiteIDs                  []string          `json:"siteIds"`
+	ServedZones              []string          `json:"servedZones"`
+	Basis                    string            `json:"basis"`
+	FallbackBasis            string            `json:"fallbackBasis"`
+	RatioKind                string            `json:"ratioKind"`
+	FallbackRatioKind        string            `json:"fallbackRatioKind"`
+	ReconciliationID         string            `json:"reconciliationId"`
+	CarrierReconciliationIDs map[string]string `json:"carrierReconciliationIds,omitempty"`
 }
 type epathRealSQLAuxiliary struct {
 	SiteID           string                `json:"siteId"`

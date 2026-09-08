@@ -30,6 +30,9 @@ func energyPathDirectHVACComponentDefinitions() []energyPathDirectHVACComponentD
 		{"heating.coil.natural_gas", "Coil:Heating:Fuel", "Heating Coil NaturalGas Energy", "heating", "natural_gas"},
 		{"heating.coil.ancillary_natural_gas", "Coil:Heating:Fuel", "Heating Coil Ancillary NaturalGas Energy", "heating", "natural_gas"},
 		{"heating.coil.electricity", "Coil:Heating:Fuel", "Heating Coil Electricity Energy", "heating", "electricity"},
+		{"heating.coil.dx_electricity", "Coil:Heating:DX:SingleSpeed", "Heating Coil Electricity Energy", "heating", "electricity"},
+		{"heating.coil.defrost_electricity", "Coil:Heating:DX:SingleSpeed", "Heating Coil Defrost Electricity Energy", "heating", "electricity"},
+		{"heating.coil.crankcase_electricity", "Coil:Heating:DX:SingleSpeed", "Heating Coil Crankcase Heater Electricity Energy", "heating", "electricity"},
 	}
 	definitions := make([]energyPathDirectHVACComponentDefinition, 0, len(items))
 	for _, item := range items {
@@ -42,36 +45,100 @@ func energyPathDirectHVACComponentDefinitions() []energyPathDirectHVACComponentD
 	return definitions
 }
 
+// Name recognition is used only for output discovery. It is not component
+// identity: DX and Fuel coils both report Heating Coil Electricity Energy.
+// The SQL reader must bind the name and key to one original typed target.
 func energyPathDirectHVACComponentDefinitionForName(name string) (energyPathDirectHVACComponentDefinition, bool) {
 	for _, definition := range energyPathDirectHVACComponentDefinitions() {
-		for _, alias := range definition.Energy.Aliases {
-			if strings.EqualFold(strings.TrimSpace(name), alias) {
-				return definition, true
-			}
+		if energyPathDirectHVACComponentNameMatches(definition, name) {
+			return definition, true
 		}
 	}
 	return energyPathDirectHVACComponentDefinition{}, false
+}
+
+func energyPathDirectHVACComponentNameMatches(definition energyPathDirectHVACComponentDefinition, name string) bool {
+	for _, alias := range definition.Energy.Aliases {
+		if strings.EqualFold(strings.TrimSpace(name), strings.TrimSpace(alias)) {
+			return true
+		}
+	}
+	return false
+}
+
+func energyPathDirectHVACParentSupported(objectType string) bool {
+	switch strings.ToLower(strings.TrimSpace(objectType)) {
+	case "zonehvac:packagedterminalairconditioner", "zonehvac:packagedterminalheatpump":
+		return true
+	default:
+		return false
+	}
+}
+
+// The supported native packages have different meter constituents. In the
+// reviewed PTHP the heating DX coil owns crankcase consumption; copying the PTAC
+// cooling-crankcase requirement would make a complete PTHP cohort look missing.
+func energyPathDirectHVACParentDefinitions(objectType string) []energyPathDirectHVACComponentDefinition {
+	var ids []string
+	switch strings.ToLower(strings.TrimSpace(objectType)) {
+	case "zonehvac:packagedterminalairconditioner":
+		ids = []string{"cooling.coil.electricity", "cooling.coil.crankcase_electricity", "heating.coil.natural_gas", "heating.coil.ancillary_natural_gas", "heating.coil.electricity"}
+	case "zonehvac:packagedterminalheatpump":
+		ids = []string{"cooling.coil.electricity", "heating.coil.dx_electricity", "heating.coil.defrost_electricity", "heating.coil.crankcase_electricity", "heating.coil.natural_gas", "heating.coil.ancillary_natural_gas", "heating.coil.electricity"}
+	default:
+		return nil
+	}
+	definitions := energyPathDirectHVACComponentDefinitions()
+	out := make([]energyPathDirectHVACComponentDefinition, 0, len(ids))
+	for _, id := range ids {
+		for _, definition := range definitions {
+			if definition.ID == id {
+				out = append(out, definition)
+				break
+			}
+		}
+	}
+	return out
 }
 
 func energyPathDirectHVACComponentKey(objectType, name string) string {
 	return strings.ToLower(strings.TrimSpace(objectType)) + "\x00" + strings.ToLower(strings.TrimSpace(name))
 }
 
+// Different object types may expose the same output name. ReportData identifies
+// only that name and key, so even a disconnected second DX/Fuel object with the
+// same reporting identity prevents assigning the observation to one owner.
+func energyPathDirectHVACReportingIdentityUnique(definition energyPathDirectHVACComponentDefinition, name string, objects map[string][]int) bool {
+	types := map[string]bool{}
+	for _, candidate := range energyPathDirectHVACComponentDefinitions() {
+		for _, alias := range definition.Energy.Aliases {
+			if energyPathDirectHVACComponentNameMatches(candidate, alias) {
+				types[candidate.ObjectType] = true
+			}
+		}
+	}
+	count := 0
+	for objectType := range types {
+		count += len(objects[energyPathDirectHVACComponentKey(objectType, name)])
+	}
+	return count == 1
+}
+
 // Ownership is established against the whole document before any output scope
 // is applied. A central/shared coil, unresolved reference, duplicate object, or
 // ambiguous equipment-list owner cannot become direct merely by selecting one
-// Zone. This deliberately supports only the reviewed native PTAC coil pair.
+// Zone. This deliberately supports only the reviewed native PTAC coil pair and
+// PTHP DX cooling/heating pair with its separate NaturalGas supplemental coil.
 func energyPathDirectHVACComponentTargets(doc idf.Document) []energyPathDirectHVACComponentTarget {
-	const ptacType = "ZoneHVAC:PackagedTerminalAirConditioner"
-	hasPTAC := false
+	hasNativePackage := false
 	for _, object := range doc.Objects {
-		if strings.EqualFold(strings.TrimSpace(object.Type), ptacType) {
-			hasPTAC = true
+		if energyPathDirectHVACParentSupported(object.Type) {
+			hasNativePackage = true
 			break
 		}
 	}
-	if !hasPTAC {
-		return nil // Do not add a full HVAC analysis to non-PTAC result building.
+	if !hasNativePackage {
+		return nil // Do not add a full HVAC analysis to unrelated result building.
 	}
 	objects := map[string][]int{}
 	references := map[string][]int{}
@@ -96,9 +163,10 @@ func energyPathDirectHVACComponentTargets(doc idf.Document) []energyPathDirectHV
 	}
 	var targets []energyPathDirectHVACComponentTarget
 	for index, parent := range doc.Objects {
-		if !strings.EqualFold(strings.TrimSpace(parent.Type), ptacType) || len(parent.Fields) == 0 {
+		if !energyPathDirectHVACParentSupported(parent.Type) || len(parent.Fields) == 0 {
 			continue
 		}
+		definitions := energyPathDirectHVACParentDefinitions(parent.Type)
 		parentKey := energyPathDirectHVACComponentKey(parent.Type, parent.Fields[0].Value)
 		if len(objects[parentKey]) != 1 || len(components[parentKey]) != 1 {
 			continue
@@ -173,8 +241,12 @@ func energyPathDirectHVACComponentTargets(doc idf.Document) []energyPathDirectHV
 		for _, ref := range item.InternalRefs {
 			resolved[strings.ToLower(strings.TrimSpace(ref.ObjectType))] = append(resolved[strings.ToLower(strings.TrimSpace(ref.ObjectType))], ref)
 		}
+		requiredTypes := []string{"Fan:OnOff"}
+		for _, definition := range definitions {
+			requiredTypes = appendUniqueStrings(requiredTypes, definition.ObjectType)
+		}
 		valid := true
-		for _, objectType := range []string{"Fan:OnOff", "Coil:Cooling:DX:SingleSpeed", "Coil:Heating:Fuel"} {
+		for _, objectType := range requiredTypes {
 			refs := resolved[strings.ToLower(objectType)]
 			if len(refs) != 1 {
 				valid = false
@@ -195,7 +267,19 @@ func energyPathDirectHVACComponentTargets(doc idf.Document) []energyPathDirectHV
 		if !valid {
 			continue
 		}
-		for _, definition := range energyPathDirectHVACComponentDefinitions() {
+		for _, definition := range definitions {
+			ref := resolved[strings.ToLower(definition.ObjectType)][0]
+			if !energyPathDirectHVACReportingIdentityUnique(definition, ref.ObjectName, objects) {
+				valid = false
+				break
+			}
+		}
+		if !valid {
+			// Reject the entire package, not just the ambiguous constituent;
+			// otherwise the expected carrier cohort would silently shrink.
+			continue
+		}
+		for _, definition := range definitions {
 			ref := resolved[strings.ToLower(definition.ObjectType)][0]
 			targets = append(targets, energyPathDirectHVACComponentTarget{Definition: definition, KeyValue: ref.ObjectName, ZoneName: zoneName})
 		}
@@ -215,7 +299,7 @@ func (builder *purposePlanBuilder) addEnergyPathDirectHVACComponentOutputs() {
 		}
 		for _, name := range target.Definition.Energy.Aliases {
 			builder.addVariableWithReasonAndScopeZone(SimulationPurposeBasicEnergy, target.KeyValue, name, "Monthly", "medium",
-				"Monthly consumption of an exclusively Zone-owned PTAC coil constituent; excludes package and supply-fan totals.", "Basic Energy Path", target.ZoneName)
+				"Monthly consumption of an exclusively Zone-owned native packaged-terminal coil constituent; excludes package and supply-fan totals.", "Basic Energy Path", target.ZoneName)
 		}
 	}
 }

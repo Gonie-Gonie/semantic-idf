@@ -365,14 +365,18 @@ func epathRunRealCatalog(t *testing.T, acceptance bool) {
 			recordedRun.HeatFlow = HeatFlowDataset{}
 			recorded.Run = &recordedRun
 			epathWriteRealJSON(t, filepath.Join(evidence.RunDirectory, "run-evidence.json"), recorded)
-			observed := epathCollectRealSQLOracle(t, evidence)
+			oracleEvidence, err := epathRealCaptureOracleEvidence(evidence)
+			if err != nil {
+				t.Fatal(err)
+			}
+			observed := epathCollectRealSQLOracle(t, oracleEvidence)
 			epathWriteRealJSON(t, filepath.Join(evidence.RunDirectory, "oracle-observations.json"), observed)
 			if !acceptance {
 				t.Logf("CAPTURE ONLY (not acceptance): %s; candidate observations remain under .runtime", evidence.RunDirectory)
 				return
 			}
 			manifest := epathLoadRealExpectedManifest(t, epathRealCatalogPath(t, catalogDirectory, fixture.ExpectedPath))
-			epathAssertRealSQLOracle(t, evidence, manifest)
+			epathAssertRealSQLOracle(t, oracleEvidence, manifest)
 		})
 	}
 }

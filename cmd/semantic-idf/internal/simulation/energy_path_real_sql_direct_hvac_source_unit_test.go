@@ -4,8 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"os"
+	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
+
+	"github.com/Gonie-Gonie/semantic-idf/cmd/semantic-idf/internal/idf"
 )
 
 func epathSQLDirectHVACSourceUnitFixture(t *testing.T) (string, epathRealSQLModel, *PurposeRunPlan) {
@@ -46,6 +51,316 @@ INSERT INTO ReportData SELECT 40000+%d*20+t.Month,%d,t.TimeIndex,CASE WHEN t.Mon
 		model.Site = append(model.Site, epathRealSQLSite{ID: site.id, EndUse: site.service, Carrier: site.carrier, Source: epathRealSQLSelector{Alternatives: []epathRealSQLAlternative{{Name: site.name, Unit: "J"}}, Keys: []string{"*"}, IsMeter: true}})
 	}
 	return path, model, plan
+}
+
+func epathSQLDirectHVACPTHPSourceUnitFixture(t *testing.T) (string, epathRealSQLModel, *PurposeRunPlan) {
+	t.Helper()
+	path, model, plan := epathSQLDirectHVACSourceUnitFixture(t)
+	// PTHP has no DX-cooling crankcase output in the reviewed RDD/MTD.
+	epathOracleEditSQL(t, path, `DELETE FROM ReportData WHERE ReportDataDictionaryIndex=41;
+DELETE FROM ReportDataDictionary WHERE ReportDataDictionaryIndex=41;
+UPDATE ReportData SET Value=2*3600000 WHERE ReportDataDictionaryIndex=1 AND TimeIndex=1;
+UPDATE ReportData SET Value=.375*3600000 WHERE ReportDataDictionaryIndex=44 AND TimeIndex=1;
+UPDATE ReportData SET Value=5*3600000 WHERE ReportDataDictionaryIndex=52 AND TimeIndex=1;`)
+	model.DirectHVACComponents = append(model.DirectHVACComponents[:1], model.DirectHVACComponents[2:]...)
+	plan.OutputObjects = append(plan.OutputObjects[:1], plan.OutputObjects[2:]...)
+	for index := range model.DirectHVACComponents {
+		model.DirectHVACComponents[index].Owners[0].EquipmentType = "ZoneHVAC:PackagedTerminalHeatPump"
+	}
+	for offset, item := range []struct {
+		id, name string
+		value    float64
+	}{
+		{"heating.coil.dx_electricity", "Heating Coil Electricity Energy", 4},
+		{"heating.coil.defrost_electricity", "Heating Coil Defrost Electricity Energy", .5},
+		{"heating.coil.crankcase_electricity", "Heating Coil Crankcase Heater Electricity Energy", .125},
+	} {
+		id, key := 80+offset, "Unrelated heat-pump name"
+		epathOracleEditSQL(t, path, fmt.Sprintf(`INSERT INTO ReportDataDictionary VALUES(%d,'%s','%s',0,'Monthly','J','System');
+INSERT INTO ReportData SELECT 50000+%d*20+t.Month,%d,t.TimeIndex,CASE WHEN t.Month=1 THEN %.17g*3600000 ELSE 0 END FROM Time t WHERE t.IntervalType=3;`, id, item.name, key, id, id, item.value))
+		model.DirectHVACComponents = append(model.DirectHVACComponents, epathRealSQLDirectHVACComponent{ID: item.id, Service: "heating", Carrier: "electricity", SiteID: "heating.electricity", Frequency: "Monthly", AggregationBasis: "model_total", Source: epathRealSQLSelector{Alternatives: []epathRealSQLAlternative{{Name: item.name, Unit: "J"}}, Keys: []string{key}}, Owners: []epathRealSQLDirectHVACOwner{{KeyValue: key, ZoneName: "Office", EquipmentType: "ZoneHVAC:PackagedTerminalHeatPump", EquipmentName: "Native package", ComponentType: "Coil:Heating:DX:SingleSpeed"}}})
+		plan.OutputObjects = append(plan.OutputObjects, PurposeOutputObject{ObjectType: "Output:Variable", VariableName: item.name, KeyValue: key, ReportingFrequency: "Monthly", ScopeZoneName: "Office", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}})
+	}
+	return path, model, plan
+}
+
+func epathSQLDirectHVACOriginalUnitText(heatPump bool) string {
+	objectType, fields := "ZoneHVAC:PackagedTerminalAirConditioner", make([]string, 21)
+	fields[15], fields[16], fields[17], fields[18] = "Coil:Heating:Fuel", "Unrelated fuel name", "Coil:Cooling:DX:SingleSpeed", "Unrelated DX name"
+	if heatPump {
+		objectType, fields = "ZoneHVAC:PackagedTerminalHeatPump", make([]string, 27)
+		fields[15], fields[16], fields[18], fields[19], fields[21], fields[22] = "Coil:Heating:DX:SingleSpeed", "Unrelated heat-pump name", "Coil:Cooling:DX:SingleSpeed", "Unrelated DX name", "Coil:Heating:Fuel", "Unrelated fuel name"
+	}
+	fields[0], fields[2], fields[3] = "Native package", "Package inlet", "Package outlet"
+	return "Zone,Office;\n" + objectType + "," + strings.Join(fields, ",") + ";\n" +
+		"Coil:Cooling:DX:SingleSpeed,Unrelated DX name;\nCoil:Heating:Fuel,Unrelated fuel name,,NaturalGas;\n" +
+		"Coil:Heating:DX:SingleSpeed,Unrelated heat-pump name;\n" +
+		"ZoneHVAC:EquipmentList,Native list,SequentialLoad," + objectType + ",Native package,1,1,,;\n" +
+		"ZoneHVAC:EquipmentConnections,Office,Native list;\n" +
+		"AirTerminal:SingleDuct:Mixer,DOAS terminal," + objectType + ",Native package,Package inlet,Primary inlet,Secondary inlet,InletSide;\n"
+}
+
+func TestEnergyPathRealSQLDirectHVACPTHPSourceRolesAndSameName(t *testing.T) {
+	path, model, plan := epathSQLDirectHVACPTHPSourceUnitFixture(t)
+	if err := epathSQLValidateDirectHVACOriginalModel(epathSQLDirectHVACOriginalUnitText(true), model); err != nil {
+		t.Fatal(err)
+	}
+	if err := epathSQLValidateDirectHVACRequests(plan, model); err != nil {
+		t.Fatal(err)
+	}
+	base := model
+	base.DirectHVACComponents = nil
+	frames, observed := epathSQLDirectHVACSourceUnitFrames(t, path, base)
+	beforeSQL := epathRealFileHash(t, path)
+	before, _ := json.Marshal([]any{frames.Loads, frames.Cells, frames.Site, frames.SourceRaw, frames.SourceEffective, frames.LoadSourceIDs})
+	if err := epathCompileSQLDirectHVACSources(path, observed.Sources, model, &frames); err != nil {
+		t.Fatal(err)
+	}
+	after, _ := json.Marshal([]any{frames.Loads, frames.Cells, frames.Site, frames.SourceRaw, frames.SourceEffective, frames.LoadSourceIDs})
+	if string(before) != string(after) || epathRealFileHash(t, path) != beforeSQL {
+		t.Fatal("PTHP consumption altered original SQL or thermal/site authorities")
+	}
+	if len(frames.DirectHVACSourceIdentities) != 7 || len(frames.DirectHVAC) != 36 || frames.Zones["office"].Multiplier != 6 {
+		t.Fatal("PTHP needs seven independently measured roles and a nonunit multiplier counterexample")
+	}
+	for _, test := range []struct {
+		service, carrier string
+		value            float64
+		ids              []int
+	}{{"cooling", "electricity", 2, []int{40}}, {"heating", "electricity", 5, []int{44, 80, 81, 82}}, {"heating", "natural_gas", 3.125, []int{42, 43}}} {
+		for month := 1; month <= 12; month++ {
+			want := test.value
+			if month > 1 {
+				want = 0
+			}
+			got := frames.DirectHVAC[epathSQLDirectHVACKey("Office", test.service, test.carrier, month)]
+			if !got.Present || math.Abs(got.Quantity.Value-want) > 1e-14 || !reflect.DeepEqual(got.SourceIDs, test.ids) || want == 0 && got.Quantity.Error != 0 {
+				t.Fatalf("PTHP constituent summation/type/known-zero mismatch: %+v", got)
+			}
+		}
+	}
+	if frames.DirectHVACSourceIdentities[44].Source.Name != frames.DirectHVACSourceIdentities[80].Source.Name || frames.DirectHVACSourceIdentities[44].Owner.ComponentType == frames.DirectHVACSourceIdentities[80].Owner.ComponentType {
+		t.Fatal("fixture lost same-name DX/Fuel distinction")
+	}
+	var checks epathSQLModelChecks
+	if err := epathSQLModelDirectHVACSourceChecks(frames, &checks); err != nil || len(checks.Rows) != 28 {
+		t.Fatalf("seven exact source raw/effective scope proofs: %v/%d", err, len(checks.Rows))
+	}
+	for _, id := range []int{44, 80, 81, 82} {
+		identity := frames.DirectHVACSourceIdentities[id]
+		if err := epathSQLMatchDirectHVACSource(epathSQLDirectHVACSourceUnitCandidate(identity), identity); err != nil {
+			t.Fatal(err)
+		}
+	}
+	dx, fuel := frames.DirectHVACSourceIdentities[80], frames.DirectHVACSourceIdentities[44]
+	wrong := epathSQLDirectHVACSourceUnitCandidate(dx)
+	wrong.KeyValue = fuel.Source.KeyValue
+	if err := epathSQLMatchDirectHVACSource(wrong, dx); err == nil {
+		t.Fatal("same variable name let Fuel consumption masquerade as the DX original")
+	}
+	dx.Owner.ComponentType = "Coil:Heating:Fuel"
+	if err := epathSQLValidateDirectHVACSourceIdentity(dx); err == nil {
+		t.Fatal("same-name DX proof accepted a substituted Fuel type")
+	}
+	for index := range plan.OutputObjects {
+		output := &plan.OutputObjects[index]
+		if output.VariableName != "Heating Coil Electricity Energy" || output.KeyValue != "Unrelated heat-pump name" {
+			continue
+		}
+		output.ScopeZoneName = "Other Zone"
+		if err := epathSQLValidateDirectHVACRequests(plan, model); err == nil {
+			t.Fatal("a valid same-name Fuel request concealed the DX request's foreign Zone")
+		}
+		break
+	}
+}
+
+func TestEnergyPathRealSQLDirectHVACPTHPRejectsPartialAndCrossTyped(t *testing.T) {
+	for _, test := range []struct {
+		name, sql string
+		mutate    func(*epathRealSQLModel)
+	}{
+		{"missing defrost month", `DELETE FROM ReportData WHERE ReportDataDictionaryIndex=81 AND TimeIndex=1`, nil},
+		{"NULL DX main", `UPDATE ReportData SET Value=NULL WHERE ReportDataDictionaryIndex=80 AND TimeIndex=1`, nil},
+		{"negative defrost", `UPDATE ReportData SET Value=-1 WHERE ReportDataDictionaryIndex=81 AND TimeIndex=1`, nil},
+		{"duplicate same-name DX identity", `INSERT INTO ReportDataDictionary SELECT 90,Name,KeyValue,IsMeter,ReportingFrequency,Units,IndexGroup FROM ReportDataDictionary WHERE ReportDataDictionaryIndex=80`, nil},
+		{"unreviewed same-name owner", `INSERT INTO ReportDataDictionary SELECT 90,Name,'Other DX',IsMeter,ReportingFrequency,Units,IndexGroup FROM ReportDataDictionary WHERE ReportDataDictionaryIndex=80`, nil},
+		{"wrong DX units", `UPDATE ReportDataDictionary SET Units='W' WHERE ReportDataDictionaryIndex=80`, nil},
+		{"missing exact role", "", func(m *epathRealSQLModel) { m.DirectHVACComponents = m.DirectHVACComponents[:6] }},
+		{"DX role assigned Fuel type", "", func(m *epathRealSQLModel) { m.DirectHVACComponents[4].Owners[0].ComponentType = "Coil:Heating:Fuel" }},
+		{"different package type", "", func(m *epathRealSQLModel) {
+			m.DirectHVACComponents[4].Owners[0].EquipmentType = "ZoneHVAC:PackagedTerminalAirConditioner"
+		}},
+		{"same-name key claimed by two roles", "", func(m *epathRealSQLModel) {
+			m.DirectHVACComponents[4].Source.Keys[0] = "Unrelated fuel name"
+			m.DirectHVACComponents[4].Owners[0].KeyValue = "Unrelated fuel name"
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			path, model, _ := epathSQLDirectHVACPTHPSourceUnitFixture(t)
+			if test.sql != "" {
+				epathOracleEditSQL(t, path, test.sql)
+			}
+			if test.mutate != nil {
+				test.mutate(&model)
+			}
+			observed, err := epathReadRealSQLOracle(path)
+			if err != nil {
+				return
+			}
+			base := model
+			base.DirectHVACComponents = nil
+			frames, err := epathCompileSQLModelFrames(path, observed.Sources, base)
+			if err != nil {
+				t.Fatal(err)
+			}
+			before, _ := json.Marshal(frames)
+			if err := epathCompileSQLDirectHVACSources(path, observed.Sources, model, &frames); err == nil {
+				t.Fatal("PTHP missing/ambiguous typed original was accepted")
+			}
+			after, _ := json.Marshal(frames)
+			if string(before) != string(after) {
+				t.Fatal("invalid PTHP source published a partial direct cohort")
+			}
+		})
+	}
+}
+
+func TestEnergyPathRealSQLDirectHVACOriginalTypedOwnership(t *testing.T) {
+	_, model, _ := epathSQLDirectHVACPTHPSourceUnitFixture(t)
+	encoded, _ := json.Marshal(model)
+	object := func(t *testing.T, doc *idf.Document, objectType string) *idf.Object {
+		t.Helper()
+		for index := range doc.Objects {
+			if doc.Objects[index].Type == objectType {
+				return &doc.Objects[index]
+			}
+		}
+		t.Fatalf("missing handwritten object %s", objectType)
+		return nil
+	}
+	for _, test := range []struct {
+		name   string
+		mutate func(*testing.T, *idf.Document, *epathRealSQLModel)
+	}{
+		{"swap declared DX and Fuel keys", func(_ *testing.T, _ *idf.Document, m *epathRealSQLModel) {
+			for index := range m.DirectHVACComponents {
+				declaration := &m.DirectHVACComponents[index]
+				switch declaration.Owners[0].ComponentType {
+				case "Coil:Heating:DX:SingleSpeed":
+					declaration.Owners[0].KeyValue, declaration.Source.Keys[0] = "Unrelated fuel name", "Unrelated fuel name"
+				case "Coil:Heating:Fuel":
+					declaration.Owners[0].KeyValue, declaration.Source.Keys[0] = "Unrelated heat-pump name", "Unrelated heat-pump name"
+				}
+			}
+		}},
+		{"wrong original coil type", func(t *testing.T, d *idf.Document, _ *epathRealSQLModel) {
+			object(t, d, "Coil:Heating:DX:SingleSpeed").Type = "Coil:Heating:Fuel"
+		}},
+		{"wrong original Fuel", func(t *testing.T, d *idf.Document, _ *epathRealSQLModel) {
+			object(t, d, "Coil:Heating:Fuel").Fields[2].Value = "Propane"
+		}},
+		{"different native role field", func(t *testing.T, d *idf.Document, _ *epathRealSQLModel) {
+			parent := object(t, d, "ZoneHVAC:PackagedTerminalHeatPump")
+			parent.Fields[15], parent.Fields[21] = parent.Fields[21], parent.Fields[15]
+			parent.Fields[16], parent.Fields[22] = parent.Fields[22], parent.Fields[16]
+		}},
+		{"duplicate original coil", func(t *testing.T, d *idf.Document, _ *epathRealSQLModel) {
+			d.Objects = append(d.Objects, *object(t, d, "Coil:Heating:DX:SingleSpeed"))
+		}},
+		{"another typed coil parent", func(_ *testing.T, d *idf.Document, _ *epathRealSQLModel) {
+			d.Objects = append(d.Objects, idf.Object{Type: "OtherComponent", Fields: []idf.Field{{Value: "Shared reference"}, {Value: "Coil:Heating:DX:SingleSpeed"}, {Value: "Unrelated heat-pump name"}}})
+		}},
+		{"duplicate EquipmentList owner", func(t *testing.T, d *idf.Document, _ *epathRealSQLModel) {
+			copy := *object(t, d, "ZoneHVAC:EquipmentList")
+			copy.Fields = append([]idf.Field(nil), copy.Fields...)
+			copy.Fields[0].Value = "Other list"
+			d.Objects = append(d.Objects, copy)
+		}},
+		{"foreign Zone owner", func(t *testing.T, d *idf.Document, _ *epathRealSQLModel) {
+			object(t, d, "ZoneHVAC:EquipmentConnections").Fields[0].Value = "Other Zone"
+		}},
+		{"missing original Zone", func(t *testing.T, d *idf.Document, _ *epathRealSQLModel) {
+			object(t, d, "Zone").Fields[0].Value = "Other Zone"
+		}},
+		{"duplicate Zone connection", func(t *testing.T, d *idf.Document, _ *epathRealSQLModel) {
+			d.Objects = append(d.Objects, *object(t, d, "ZoneHVAC:EquipmentConnections"))
+		}},
+		{"wrong mixer connection", func(t *testing.T, d *idf.Document, _ *epathRealSQLModel) {
+			object(t, d, "AirTerminal:SingleDuct:Mixer").Fields[3].Value = "Other inlet"
+		}},
+		{"blank mixer connection", func(t *testing.T, d *idf.Document, _ *epathRealSQLModel) {
+			object(t, d, "AirTerminal:SingleDuct:Mixer").Fields[3].Value = ""
+			object(t, d, "ZoneHVAC:PackagedTerminalHeatPump").Fields[2].Value = ""
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var model epathRealSQLModel
+			if err := json.Unmarshal(encoded, &model); err != nil {
+				t.Fatal(err)
+			}
+			doc, err := idf.Parse(epathSQLDirectHVACOriginalUnitText(true))
+			if err != nil {
+				t.Fatal(err)
+			}
+			test.mutate(t, &doc, &model)
+			if err := epathSQLValidateDirectHVACOriginalModel(doc.String(), model); err == nil {
+				t.Fatal("recipe-declared type/key was accepted without its true original physical owner")
+			}
+		})
+	}
+}
+
+func TestEnergyPathRealSQLDirectHVACOriginalNativePTACAndPTHP(t *testing.T) {
+	for _, heatPump := range []bool{false, true} {
+		name, packageType := "DOAToPTAC.idf", "ZoneHVAC:PackagedTerminalAirConditioner"
+		_, model, _ := epathSQLDirectHVACSourceUnitFixture(t)
+		if heatPump {
+			name, packageType = "DOAToPTHP.idf", "ZoneHVAC:PackagedTerminalHeatPump"
+			_, model, _ = epathSQLDirectHVACPTHPSourceUnitFixture(t)
+		}
+		data, err := os.ReadFile(filepath.Join("testdata", "energy_path_real_models", "models", "25.1", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		owners := 0
+		for index := range model.DirectHVACComponents {
+			declaration := &model.DirectHVACComponents[index]
+			component := declaration.Owners[0].ComponentType
+			declaration.Owners, declaration.Source.Keys = nil, nil
+			for zoneIndex := 1; zoneIndex <= 5; zoneIndex++ {
+				zone := fmt.Sprintf("SPACE%d-1", zoneIndex)
+				parent, key := zone+" PTAC", zone+" PTAC CCoil"
+				if component == "Coil:Heating:Fuel" {
+					key = zone + " Heating Coil"
+				}
+				if heatPump {
+					parent = zone + " Heat Pump"
+					switch component {
+					case "Coil:Cooling:DX:SingleSpeed":
+						key = zone + " HP Cooling Mode"
+					case "Coil:Heating:DX:SingleSpeed":
+						key = zone + " HP Heating Mode"
+					case "Coil:Heating:Fuel":
+						key = zone + " HP Supp Coil"
+					}
+				}
+				declaration.Source.Keys = append(declaration.Source.Keys, key)
+				declaration.Owners = append(declaration.Owners, epathRealSQLDirectHVACOwner{KeyValue: key, ZoneName: zone, EquipmentType: packageType, EquipmentName: parent, ComponentType: component})
+				owners++
+			}
+		}
+		want := 25
+		if heatPump {
+			want = 35
+		}
+		if owners != want {
+			t.Fatal("actual original needs every parent-specific component/owner binding")
+		}
+		if err := epathSQLValidateDirectHVACOriginalModel(string(data), model); err != nil {
+			t.Fatalf("original %s exact %d role owners: %v", name, owners, err)
+		}
+	}
 }
 
 func epathSQLDirectHVACSourceUnitFrames(t *testing.T, path string, model epathRealSQLModel) (epathSQLFrames, epathRealOracleEvidence) {

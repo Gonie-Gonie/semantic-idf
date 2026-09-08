@@ -58,24 +58,28 @@ func energyPathCompleteDirectHVACComponentSeries(series []energyExplanationSerie
 	return out
 }
 
-// A reporting key is a component, not a Zone. Require independent ownership
-// from the parsed input as well as the exact executed request. Saved metadata
-// alone cannot assign a shared/unresolved coil or invent a Zone named after it.
-func energyPathDirectHVACComponentScope(definition energyPathDirectHVACComponentDefinition, dictionary energyExplanationDictionary, plan *PurposeRunPlan, targets []energyPathDirectHVACComponentTarget) (string, *int, bool) {
+// A reporting key is a component, not a Zone. Resolve its definition only from
+// the unique original typed target: Heating Coil Electricity Energy is reported
+// by both DX and Fuel coils. The output name alone cannot choose between them,
+// and an executed request cannot disambiguate two original objects with the
+// same name/key reporting identity.
+func energyPathDirectHVACComponentDictionaryScope(dictionary energyExplanationDictionary, plan *PurposeRunPlan, targets []energyPathDirectHVACComponentTarget) (energyPathDirectHVACComponentDefinition, string, *int, bool) {
 	if !energyExplanationPlanUsesEnergyPath(plan) || dictionary.isMeter || !strings.EqualFold(strings.TrimSpace(dictionary.row.units), "J") || !strings.EqualFold(dictionary.reportingFrequency, "Monthly") {
-		return "", nil, false
+		return energyPathDirectHVACComponentDefinition{}, "", nil, false
 	}
 	owner := ""
 	count := 0
+	var definition energyPathDirectHVACComponentDefinition
 	for _, target := range targets {
-		if target.Definition.ID != definition.ID || !strings.EqualFold(strings.TrimSpace(target.KeyValue), strings.TrimSpace(dictionary.row.keyValue)) {
+		if !energyPathDirectHVACComponentNameMatches(target.Definition, dictionary.row.name) || !strings.EqualFold(strings.TrimSpace(target.KeyValue), strings.TrimSpace(dictionary.row.keyValue)) {
 			continue
 		}
 		count++
+		definition = target.Definition
 		owner = strings.TrimSpace(target.ZoneName)
 	}
 	if count != 1 || owner == "" {
-		return "", nil, false
+		return energyPathDirectHVACComponentDefinition{}, "", nil, false
 	}
 	requested := false
 	var objectIndex *int
@@ -84,15 +88,14 @@ func energyPathDirectHVACComponentScope(definition energyPathDirectHVACComponent
 		if !strings.EqualFold(strings.TrimSpace(output.ObjectType), "Output:Variable") || !strings.EqualFold(strings.TrimSpace(output.KeyValue), strings.TrimSpace(dictionary.row.keyValue)) {
 			continue
 		}
-		candidate, ok := energyPathDirectHVACComponentDefinitionForName(output.VariableName)
-		if !ok || candidate.ID != definition.ID {
+		if !energyPathDirectHVACComponentNameMatches(definition, output.VariableName) {
 			continue
 		}
 		if !strings.EqualFold(strings.TrimSpace(output.ReportingFrequency), dictionary.reportingFrequency) {
 			continue
 		}
 		if !purposeIDsContain(output.PurposeIDs, SimulationPurposeBasicEnergy) || !strings.EqualFold(strings.TrimSpace(output.ScopeZoneName), owner) {
-			return "", nil, false
+			return energyPathDirectHVACComponentDefinition{}, "", nil, false
 		}
 		requested = true
 		if output.ObjectIndex != nil {
@@ -107,5 +110,5 @@ func energyPathDirectHVACComponentScope(definition energyPathDirectHVACComponent
 	if ambiguousIndex {
 		objectIndex = nil
 	}
-	return owner, objectIndex, requested
+	return definition, owner, objectIndex, requested
 }

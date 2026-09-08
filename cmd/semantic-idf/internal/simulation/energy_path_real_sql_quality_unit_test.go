@@ -651,6 +651,11 @@ func epathSQLQualityMixedTemporalClosureFixture(t *testing.T) (PurposeResultBund
 	bundle.EnergyExplanation.Quality = &EnergyPathQuality{EndUseToCarrierClosedPct: 98.825, EndUseToCarrierStatus: "partial"}
 	for i := range bundle.EnergyExplanation.Periods {
 		p := &bundle.EnergyExplanation.Periods[i]
+		if p.ID == "annual" {
+			addElectric(&p.Nodes, &p.Links, p.ID, 240)
+			p.Quality = &EnergyPathQuality{EndUseToCarrierClosedPct: 98.825, EndUseToCarrierStatus: "partial"}
+			continue
+		}
 		addElectric(&p.Nodes, &p.Links, p.ID, 20)
 		p.Quality = &EnergyPathQuality{EndUseToCarrierClosedPct: 100, EndUseToCarrierStatus: "complete"}
 	}

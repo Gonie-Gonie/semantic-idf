@@ -275,11 +275,25 @@ func epathSQLModelSiteChecks(frames epathSQLFrames, model epathRealSQLModel, che
 				value := q.add(mappedValue.times(-1))
 				residual = &value
 			}
+			var proof *epathSQLReconciliationProof
+			if q != nil && mappedValue != nil && residual != nil && q.valid() && mappedValue.valid() && residual.valid() {
+				// Carrier accounting follows the visible carrier graph. A whole
+				// zero row may be absent, but its three independent quantities
+				// must be proved together; a zero residual alone proves nothing
+				// about whether positive expected/explained totals can be pruned.
+				proof = &epathSQLReconciliationProof{ID: "reconcile.energy." + carrier + "." + period,
+					Level: "energy", Period: period, Basis: "residual", Unit: "kWh",
+					Expected: *q, Explained: *mappedValue, Residual: *residual}
+			}
 			for field, value := range map[string]*epathSQLQuantity{"expectedValue": q, "explainedValue": mappedValue, "residualValue": residual} {
 				row := epathRealOracleTarget{Collection: "reconciliation", ID: "reconcile.energy." + carrier + "." + period, Level: "energy", Field: field, Unit: "kWh"}
+				if proof != nil {
+					row.Basis = proof.Basis
+				}
 				if err := checks.add("residuals", "building", "", period, carrier+"/"+field, "kWh", value, row, "", nil, nil); err != nil {
 					return err
 				}
+				checks.Rows[len(checks.Rows)-1].Reconciliation = proof
 			}
 		}
 	}
