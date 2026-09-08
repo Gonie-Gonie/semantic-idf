@@ -99,7 +99,7 @@ func allocateCanonicalEnergyDriverNodes(nodes map[string]*energyExplanationNodeA
 		}
 		sort.SliceStable(candidates, func(i, j int) bool { return candidates[i].id < candidates[j].id })
 		if denominator <= 1e-12 || len(candidates) == 0 {
-			appendEnergyDriverZeroPressureFallback(nodes, loadZoneName, service, loadUnit, loadValue, loadSourceIDs)
+			appendEnergyDriverZeroPressureFallback(nodes, loadZoneName, service, loadUnit, loads[key].period, loadValue, loadSourceIDs)
 			continue
 		}
 
@@ -296,7 +296,7 @@ func setEnergyDriverAllocatedContribution(node *EnergyExplanationNode, contribut
 	node.Basis = "heat_balance_share"
 }
 
-func appendEnergyDriverZeroPressureFallback(nodes map[string]*energyExplanationNodeAccumulator, zoneName string, service string, unit string, loadValue float64, sourceIDs []string) {
+func appendEnergyDriverZeroPressureFallback(nodes map[string]*energyExplanationNodeAccumulator, zoneName string, service string, unit string, period string, loadValue float64, sourceIDs []string) {
 	id := strings.Join([]string{"heat", "allocation_fallback_storage", canonicalEnergyPathPart(service), canonicalEnergyPathPart(zoneName)}, ".")
 	sign := "positive"
 	if service == "heating" {
@@ -313,6 +313,7 @@ func appendEnergyDriverZeroPressureFallback(nodes map[string]*energyExplanationN
 		AllocationExplanation: energyDriverAllocationExplanation,
 		DisplayValue:          roundedEnergyNumber(loadValue),
 		Unit:                  firstNonEmpty(unit, "kWh"),
+		Period:                period,
 		ZoneName:              zoneName,
 		ServiceKind:           service,
 		DriverCategory:        energyDriverCategoryStorageOther,

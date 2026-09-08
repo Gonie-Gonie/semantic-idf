@@ -220,6 +220,9 @@ func epathSQLCoverageRecords(bundle PurposeResultBundle, context epathSQLCoverag
 		if check.DirectUse != nil {
 			validators = append(validators, func() error { return epathCheckSQLDirectUseEndpoints(bundle, check) })
 		}
+		if check.AuxiliaryZone != nil {
+			validators = append(validators, func() error { return epathCheckSQLAuxiliaryZone(bundle, check) })
+		}
 		if check.Conversion != nil {
 			validators = append(validators, func() error { return epathCheckSQLModelConversion(bundle, check) })
 		}
@@ -289,6 +292,9 @@ func epathSQLCoverageRecords(bundle PurposeResultBundle, context epathSQLCoverag
 		for _, check := range checks {
 			target := check.Item.Target
 			if check.ZoneCarrier != nil && !proofValid[check.Want.Key] {
+				continue
+			}
+			if check.AuxiliaryZone != nil && !proofValid[check.Want.Key] {
 				continue
 			}
 			if check.SiteResidual != nil && !proofValid[check.Want.Key] {

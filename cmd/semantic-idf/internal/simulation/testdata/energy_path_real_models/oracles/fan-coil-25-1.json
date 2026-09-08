@@ -1,0 +1,1367 @@
+{
+  "schema": "semantic-idf.energy-path-sql-oracle-recipe/v1",
+  "review": "ADDITIONAL REVIEWED BOUNDARIES, 2026-09-08: Candidate 02 exposed missing independent allocated-Pumps Zone/carrier/flow proof; nine test-only auxiliary regressions now pass without inventing individual pump observations. A separate original-only twenty-identity Monthly/J ledger (240 finite values, 26 actual zeros) recomputes all monthly district/pump shares and annual sums; WEST lighting remains absent and broad Fans remain outside Zone totals. Diagnostic 03 reached all 8966 required checks but failed on missing August fallback node period metadata (371 numeric/contract and 420 cascading coverage failures). The original-value metadata regression first reproduced this defect; the bounded production correction now carries the actual load period to the fallback, and all seven precision tests/nineteen subtests pass including strict native Monthly/Annual graph identity. Values, source membership, general sharing precision and context validators are unchanged. Earlier failed candidates/diagnostics remain preserved. This source review is still not expected approval; a new SHA-bound candidate, full eight-group diagnostic, explicit pending review and saved acceptance remain mandatory. REVIEWED ORIGINAL SOURCE DECLARATIONS; expected approval is still a separate gate. The original IDF/SQL/plan review found no membership discrepancy in all 73 selected Monthly identities and 42 availability groups (150 requested names, 49 observed name/unit pairs). The exact typed Fan Coil plant-path correction passes native original/mutant and auxiliary allocation tests without adding output requests. Candidate 01 is retained as an unapproved diagnostic attempt: independent compilation rejected NORTH ZONE August heating because the original delivered load is 118617.1858992283 J (0.03294921830534119 kWh) but every observed signed monthly pressure is nonnegative. Original Hourly heating Rate independently integrates to the same value from thirteen positive hours among 744 August observations. Internal sensible aggregate minus People, Lights and Equipment is +3.98e-13 kWh, not the -0.001 kWh artificial pressure produced by separately rounded source values. Canonical-only unrounded Monthly calculation metadata now feeds derived reconciliation before final display rounding; original measured-source and direct-consumption boundaries remain unchanged. The original-value regression verifies load-only Other/storage in both Building/Zone and August/Annual with zero physical raw/effective/signed pressure, and the seven-test, nineteen-subcase precision suite passes with genuine small-signal, multiplier, missing/NULL, alias and source-roster guards. The sole explicit zeroPressureFallbacks declaration is NORTH ZONE/month 8/heating: it requires positive original load and a complete independently observed physical roster with exactly no matching raw pressure. It creates no measured heat source or HVAC consumption assignment, permits no missing/NULL-to-zero conversion, and must retain only the exact load source on its synthetic branch. The generic positive-load/zero-denominator allocation guard and numerical precision stay unchanged. All other months and services follow the ordinary independently declared pressure equations. A new current-production candidate must still pass the complete eight-group diagnostic, prior approvals must replay unchanged, and an explicitly reviewed pending artifact plus saved expected acceptance are required before approval. Historical draft evidence follows: DRAFT INDEPENDENT SOURCE RECIPE; not approved expected acceptance. Original FanCoilAutoSize.idf SHA256 d940e67912d5d4669773c11521b499ca671dae2d67ff8ce538c4a183ca0b43d3 and unchanged real-fan-coil-25-1-20260907T163224.387644700 SQL SHA256 c0004ad8c0310942375b1a2ad601ba6eee5b44ad5774fee2b3e5dbc4e080bb91 were independently audited against literal original ownership and executed requests. All three original/SQL Zones WEST ZONE, EAST ZONE and NORTH ZONE have effective multiplier one. Each owns one FourPipeFanCoil with a ConstantVolume fan, Cooling:Water coil and Heating:Water coil. Exact typed water-coil branch membership separates the Chilled Water Loop/Purchased Cooling from the Hot Water Loop/Purchased Heating. Two references per water coil (its terminal and actual plant Branch) are legitimate, not a duplicate Zone owner. Water-coil thermal EnergyTransfer is context, never direct purchased consumption; no PTAC/PTHP electrical-coil roster is reused. The delivered-load authority is Monthly Zone Air System Sensible Cooling/Heating Energy[J], preferring Energy over reported Rate[W]. Latent Zone load, radiant and baseboard outputs are absent, not zero. Independent annual sensible loads are 14427.656269580733 cooling and 12599.419172334354 heating kWh. Native Monthly district cooling 13244.775268173524 and district heating water 17952.516746306806 kWh each close exactly against the matching facility meter in every month; these are not AnnualTabular observations. Both conversions use load_to_purchased_energy, not COP or combustion efficiency. Electricity Facility 27415.150272317926 kWh equals lighting 7178.9526128, equipment 19036.880199999538, fans 1075.463544791437 and pumps 123.853914727300; maximum monthly closure discrepancy is 9.78e-11 kWh. Electricity Building/HVAC/Plant are overlapping context totals, not three additional consumptions. Cooling/Heating Electricity and obsolete DistrictHeating aliases are requested but unobserved; they contribute availability gaps, never zero-valued site rows. Exact native DistrictHeatingWater names remain the numerical authority. Lighting exists only in EAST ZONE and NORTH ZONE; WEST ZONE has no lighting source and receives no fabricated direct lighting observation. Equipment and People have all three literal Zone owners. All 21 heat-transfer surfaces report both Monthly inside-face convection Energy and Rate: eight exterior walls, three roofs, one window, six paired interzone walls and three self-referencing floors. Each self-referencing Floor has Outside Boundary Condition Surface with its own name, effectively adiabatic; self-boundary precedence places it in balance.storage_other, not ground or interzone transfer. Surface category and Zone signed sums are formed before directional allocation. Eleven pressure families preserve source roles, signs and sparse membership. The three outdoor-air and interzone-air observations are real full-year zeros; absent infiltration/ventilation/mixing cannot be subtracted as if reported. Outdoor air therefore remains unsplit storage/other rather than being relabeled as measured mechanical ventilation. Internal and surface aggregate remainders subtract only declared applicable families, with WEST lighting explicitly outside membership. No duplicate total/rate or equipment thermal context enters the main load/consumption chain. The original SQL has 167 Monthly identities (155 variables and twelve meters), all with twelve finite non-NULL observations, and 36 Hourly identities each with 8760 finite observations. Complete 2017 Weather calendar endpoints, durations and cumulative days are independently verified; five RunPeriod J meters attached to terminal Monthly Time retain their separate annual provenance. Forty-two actual requested availability groups yield Drivers 11/17, Loads 9/14, EndUses 6/8 and Carriers 3/3. The two PTHP DOAS/heat-recovery groups are not requested here and are not invented missing obligations. Basic Energy remains lightweight under EPATH-101: no new fan/pump/airflow output requests are added. Individual Fan, FanCoilFan and Pump electricity is unrequested and unobserved at every frequency. Six original terminal inlet/outlet Hourly mass-flow series exist, but the local fans have no AirLoop and no qualifying measured pool/supply-volume evidence, so broad Fans remain unassigned. The two original pumps have separate single-service typed plant ownership and all three serviced Zones; the recipe requires explicit plant_loop_load_share estimation using cooling-plus-heating Zone loads, not fictitious measured pump shares. The currently reproduced component-level PlantLoop-by-service Cartesian product is not physical ownership evidence: it must be corrected to exact water-coil/Branch/PlantLoop membership before this declaration can pass a saved current-code candidate. Unknown, conflicting or genuinely shared plant service cannot be rescued by scope filtering or blanket ambiguity relaxation. Original input and closed capture files remain unchanged; executed input SHA256 92826e6a0d1ab3961f485d0088f3426fdc45b409eef879fb4b5d0c4e315187b1 and controlled Chicago TMY3 weather retain their catalog bindings. Native engine completion is 7.73 seconds with seven warnings and no Severe/Fatal; the stored parser has eight issues because it separately records the unavailable-variable header. Neither count is suppressed. Complete independent eight-group numerical/field coverage, explicit review and saved expected-manifest acceptance are still required; this recipe alone approves nothing.",
+  "sources": [],
+  "metrics": [],
+  "sqlModel": {
+    "schema": "semantic-idf.energy-path-sql-model/large-office-monthly/v1",
+    "surface": {
+      "source": {
+        "alternatives": [
+          {
+            "name": "Surface Inside Face Convection Heat Gain Energy",
+            "unit": "J"
+          },
+          {
+            "name": "Surface Inside Face Convection Heat Gain Rate",
+            "unit": "W"
+          }
+        ],
+        "keys": [
+          "*"
+        ],
+        "isMeter": false
+      },
+      "sign": -1,
+      "mapping": "surface_class_boundary/v1"
+    },
+    "families": [
+      {
+        "id": "people.sensible",
+        "category": "internal.people",
+        "component": "sensible",
+        "keys": [
+          "WEST ZONE",
+          "EAST ZONE",
+          "NORTH ZONE"
+        ],
+        "terms": [
+          {
+            "source": {
+              "alternatives": [
+                {
+                  "name": "Zone People Convective Heating Energy",
+                  "unit": "J"
+                }
+              ],
+              "keys": [],
+              "isMeter": false
+            },
+            "sign": 1
+          }
+        ],
+        "subtract": [],
+        "role": "pressure",
+        "buildingVisible": true
+      },
+      {
+        "id": "people.latent",
+        "category": "internal.people",
+        "component": "latent",
+        "keys": [
+          "WEST ZONE",
+          "EAST ZONE",
+          "NORTH ZONE"
+        ],
+        "terms": [
+          {
+            "source": {
+              "alternatives": [
+                {
+                  "name": "Zone People Latent Gain Energy",
+                  "unit": "J"
+                }
+              ],
+              "keys": [],
+              "isMeter": false
+            },
+            "sign": 1
+          }
+        ],
+        "subtract": [],
+        "role": "pressure",
+        "buildingVisible": true
+      },
+      {
+        "id": "lighting.sensible",
+        "category": "internal.lighting",
+        "component": "sensible",
+        "keys": [
+          "EAST ZONE",
+          "NORTH ZONE"
+        ],
+        "terms": [
+          {
+            "source": {
+              "alternatives": [
+                {
+                  "name": "Zone Lights Convective Heating Energy",
+                  "unit": "J"
+                }
+              ],
+              "keys": [],
+              "isMeter": false
+            },
+            "sign": 1
+          }
+        ],
+        "subtract": [],
+        "role": "pressure",
+        "buildingVisible": true
+      },
+      {
+        "id": "equipment.sensible",
+        "category": "internal.equipment",
+        "component": "sensible",
+        "keys": [
+          "WEST ZONE",
+          "EAST ZONE",
+          "NORTH ZONE"
+        ],
+        "terms": [
+          {
+            "source": {
+              "alternatives": [
+                {
+                  "name": "Zone Electric Equipment Convective Heating Energy",
+                  "unit": "J"
+                }
+              ],
+              "keys": [],
+              "isMeter": false
+            },
+            "sign": 1
+          }
+        ],
+        "subtract": [],
+        "role": "pressure",
+        "buildingVisible": true
+      },
+      {
+        "id": "equipment.latent",
+        "category": "internal.equipment",
+        "component": "latent",
+        "keys": [
+          "WEST ZONE",
+          "EAST ZONE",
+          "NORTH ZONE"
+        ],
+        "terms": [
+          {
+            "source": {
+              "alternatives": [
+                {
+                  "name": "Zone Electric Equipment Latent Gain Energy",
+                  "unit": "J"
+                }
+              ],
+              "keys": [],
+              "isMeter": false
+            },
+            "sign": 1
+          }
+        ],
+        "subtract": [],
+        "role": "pressure",
+        "buildingVisible": true
+      },
+      {
+        "id": "outdoor.unsplit",
+        "category": "balance.storage_other",
+        "component": "sensible",
+        "keys": [
+          "WEST ZONE",
+          "EAST ZONE",
+          "NORTH ZONE"
+        ],
+        "terms": [
+          {
+            "source": {
+              "alternatives": [
+                {
+                  "name": "Zone Air Heat Balance Outdoor Air Transfer Rate",
+                  "unit": "W"
+                }
+              ],
+              "keys": [],
+              "isMeter": false
+            },
+            "sign": 1
+          }
+        ],
+        "subtract": [],
+        "role": "pressure",
+        "buildingVisible": true
+      },
+      {
+        "id": "air.storage",
+        "category": "balance.storage_other",
+        "component": "sensible",
+        "keys": [
+          "WEST ZONE",
+          "EAST ZONE",
+          "NORTH ZONE"
+        ],
+        "terms": [
+          {
+            "source": {
+              "alternatives": [
+                {
+                  "name": "Zone Air Heat Balance Air Energy Storage Rate",
+                  "unit": "W"
+                }
+              ],
+              "keys": [],
+              "isMeter": false
+            },
+            "sign": -1
+          }
+        ],
+        "subtract": [],
+        "role": "pressure",
+        "buildingVisible": true
+      },
+      {
+        "id": "surface.balance",
+        "category": "balance.storage_other",
+        "component": "sensible",
+        "keys": [
+          "WEST ZONE",
+          "EAST ZONE",
+          "NORTH ZONE"
+        ],
+        "terms": [
+          {
+            "source": {
+              "alternatives": [
+                {
+                  "name": "Zone Air Heat Balance Surface Convection Rate",
+                  "unit": "W"
+                }
+              ],
+              "keys": [],
+              "isMeter": false
+            },
+            "sign": 1
+          }
+        ],
+        "subtract": [
+          "surface.total"
+        ],
+        "role": "pressure",
+        "buildingVisible": true
+      },
+      {
+        "id": "internal.other.sensible",
+        "category": "internal.other",
+        "component": "sensible",
+        "keys": [
+          "WEST ZONE",
+          "EAST ZONE",
+          "NORTH ZONE"
+        ],
+        "terms": [
+          {
+            "source": {
+              "alternatives": [
+                {
+                  "name": "Zone Total Internal Convective Heating Energy",
+                  "unit": "J"
+                }
+              ],
+              "keys": [],
+              "isMeter": false
+            },
+            "sign": 1
+          }
+        ],
+        "subtract": [
+          "people.sensible",
+          "lighting.sensible",
+          "equipment.sensible"
+        ],
+        "role": "pressure",
+        "buildingVisible": true
+      },
+      {
+        "id": "internal.other.latent",
+        "category": "internal.other",
+        "component": "latent",
+        "keys": [
+          "WEST ZONE",
+          "EAST ZONE",
+          "NORTH ZONE"
+        ],
+        "terms": [
+          {
+            "source": {
+              "alternatives": [
+                {
+                  "name": "Zone Total Internal Latent Gain Energy",
+                  "unit": "J"
+                }
+              ],
+              "keys": [],
+              "isMeter": false
+            },
+            "sign": 1
+          }
+        ],
+        "subtract": [
+          "people.latent",
+          "equipment.latent"
+        ],
+        "role": "pressure",
+        "buildingVisible": true
+      },
+      {
+        "id": "interzone.air",
+        "category": "air.interzone",
+        "component": "sensible",
+        "keys": [
+          "WEST ZONE",
+          "EAST ZONE",
+          "NORTH ZONE"
+        ],
+        "terms": [
+          {
+            "source": {
+              "alternatives": [
+                {
+                  "name": "Zone Air Heat Balance Interzone Air Transfer Rate",
+                  "unit": "W"
+                }
+              ],
+              "keys": [],
+              "isMeter": false
+            },
+            "sign": 1
+          }
+        ],
+        "subtract": [],
+        "role": "pressure",
+        "buildingVisible": false
+      }
+    ],
+    "loads": [
+      {
+        "service": "cooling",
+        "component": "sensible",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Zone Air System Sensible Cooling Energy",
+              "unit": "J"
+            },
+            {
+              "name": "Zone Air System Sensible Cooling Rate",
+              "unit": "W"
+            }
+          ],
+          "keys": [
+            "WEST ZONE",
+            "EAST ZONE",
+            "NORTH ZONE"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "service": "heating",
+        "component": "sensible",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Zone Air System Sensible Heating Energy",
+              "unit": "J"
+            },
+            {
+              "name": "Zone Air System Sensible Heating Rate",
+              "unit": "W"
+            }
+          ],
+          "keys": [
+            "WEST ZONE",
+            "EAST ZONE",
+            "NORTH ZONE"
+          ],
+          "isMeter": false
+        }
+      }
+    ],
+    "nonAdditiveLoadDetails": [],
+    "zeroPressureFallbacks": [
+      {
+        "zoneName": "NORTH ZONE",
+        "month": 8,
+        "service": "heating"
+      }
+    ],
+    "site": [
+      {
+        "id": "cooling.district_cooling",
+        "endUse": "cooling",
+        "carrier": "district_cooling",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Cooling:DistrictCooling",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            ""
+          ],
+          "isMeter": true
+        }
+      },
+      {
+        "id": "heating.district_heating",
+        "endUse": "heating",
+        "carrier": "district_heating",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Heating:DistrictHeatingWater",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            ""
+          ],
+          "isMeter": true
+        }
+      },
+      {
+        "id": "fans.electricity",
+        "endUse": "fans",
+        "carrier": "electricity",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Fans:Electricity",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            ""
+          ],
+          "isMeter": true
+        }
+      },
+      {
+        "id": "pumps.electricity",
+        "endUse": "pumps",
+        "carrier": "electricity",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Pumps:Electricity",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            ""
+          ],
+          "isMeter": true
+        }
+      },
+      {
+        "id": "interior_lighting.electricity",
+        "endUse": "lighting",
+        "carrier": "electricity",
+        "source": {
+          "alternatives": [
+            {
+              "name": "InteriorLights:Electricity",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            ""
+          ],
+          "isMeter": true
+        }
+      },
+      {
+        "id": "equipment.electricity",
+        "endUse": "equipment",
+        "carrier": "electricity",
+        "source": {
+          "alternatives": [
+            {
+              "name": "InteriorEquipment:Electricity",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            ""
+          ],
+          "isMeter": true
+        }
+      },
+      {
+        "id": "facility.electricity",
+        "carrier": "electricity",
+        "facility": true,
+        "source": {
+          "alternatives": [
+            {
+              "name": "Electricity:Facility",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            ""
+          ],
+          "isMeter": true
+        }
+      },
+      {
+        "id": "facility.district_cooling",
+        "carrier": "district_cooling",
+        "facility": true,
+        "source": {
+          "alternatives": [
+            {
+              "name": "DistrictCooling:Facility",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            ""
+          ],
+          "isMeter": true
+        }
+      },
+      {
+        "id": "facility.district_heating",
+        "carrier": "district_heating",
+        "facility": true,
+        "source": {
+          "alternatives": [
+            {
+              "name": "DistrictHeatingWater:Facility",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            ""
+          ],
+          "isMeter": true
+        }
+      }
+    ],
+    "availability": [
+      {
+        "id": "load.plant_unmet_or_residual",
+        "stage": "loads",
+        "requestedNames": [
+          "Cond Loop Demand Not Distributed",
+          "Plant Supply Side Not Distributed Demand Rate",
+          "Plant Supply Side Unmet Demand Rate"
+        ],
+        "observations": [
+          {
+            "name": "Plant Supply Side Not Distributed Demand Rate",
+            "unit": "W"
+          },
+          {
+            "name": "Plant Supply Side Unmet Demand Rate",
+            "unit": "W"
+          }
+        ],
+        "isMeter": false
+      },
+      {
+        "id": "load.system_cooling",
+        "stage": "loads",
+        "requestedNames": [
+          "Cooling Coil Sensible Cooling Energy",
+          "Cooling Coil Total Cooling Energy",
+          "Cooling Coil Total Cooling Rate"
+        ],
+        "observations": [
+          {
+            "name": "Cooling Coil Sensible Cooling Energy",
+            "unit": "J"
+          },
+          {
+            "name": "Cooling Coil Total Cooling Energy",
+            "unit": "J"
+          },
+          {
+            "name": "Cooling Coil Total Cooling Rate",
+            "unit": "W"
+          }
+        ],
+        "isMeter": false
+      },
+      {
+        "id": "load.system_heating",
+        "stage": "loads",
+        "requestedNames": [
+          "Heating Coil Heating Energy",
+          "Heating Coil Heating Rate"
+        ],
+        "observations": [
+          {
+            "name": "Heating Coil Heating Energy",
+            "unit": "J"
+          },
+          {
+            "name": "Heating Coil Heating Rate",
+            "unit": "W"
+          }
+        ],
+        "isMeter": false
+      },
+      {
+        "id": "load.plant_cooling",
+        "stage": "loads",
+        "requestedNames": [
+          "Plant Loop Cooling Demand Energy",
+          "Plant Supply Side Cooling Demand Rate"
+        ],
+        "observations": [
+          {
+            "name": "Plant Supply Side Cooling Demand Rate",
+            "unit": "W"
+          }
+        ],
+        "isMeter": false
+      },
+      {
+        "id": "load.plant_heating",
+        "stage": "loads",
+        "requestedNames": [
+          "Plant Loop Heating Demand Energy",
+          "Plant Supply Side Heating Demand Rate"
+        ],
+        "observations": [
+          {
+            "name": "Plant Supply Side Heating Demand Rate",
+            "unit": "W"
+          }
+        ],
+        "isMeter": false
+      },
+      {
+        "id": "heat.infiltration",
+        "stage": "drivers",
+        "requestedNames": [
+          "AFN Zone Infiltration Latent Heat Gain Energy",
+          "AFN Zone Infiltration Latent Heat Gain Rate",
+          "AFN Zone Infiltration Latent Heat Loss Energy",
+          "AFN Zone Infiltration Latent Heat Loss Rate",
+          "AFN Zone Infiltration Sensible Heat Gain Energy",
+          "AFN Zone Infiltration Sensible Heat Gain Rate",
+          "AFN Zone Infiltration Sensible Heat Loss Energy",
+          "AFN Zone Infiltration Sensible Heat Loss Rate",
+          "Zone Infiltration Latent Heat Gain Energy",
+          "Zone Infiltration Latent Heat Gain Rate",
+          "Zone Infiltration Latent Heat Loss Energy",
+          "Zone Infiltration Latent Heat Loss Rate",
+          "Zone Infiltration Sensible Heat Gain Energy",
+          "Zone Infiltration Sensible Heat Gain Rate",
+          "Zone Infiltration Sensible Heat Loss Energy",
+          "Zone Infiltration Sensible Heat Loss Rate"
+        ],
+        "observations": [],
+        "isMeter": false
+      },
+      {
+        "id": "heat.mixing",
+        "stage": "drivers",
+        "requestedNames": [
+          "AFN Zone Mixing Latent Heat Gain Energy",
+          "AFN Zone Mixing Latent Heat Gain Rate",
+          "AFN Zone Mixing Latent Heat Loss Energy",
+          "AFN Zone Mixing Latent Heat Loss Rate",
+          "AFN Zone Mixing Sensible Heat Gain Energy",
+          "AFN Zone Mixing Sensible Heat Gain Rate",
+          "AFN Zone Mixing Sensible Heat Loss Energy",
+          "AFN Zone Mixing Sensible Heat Loss Rate",
+          "Zone Mixing Latent Heat Gain Energy",
+          "Zone Mixing Latent Heat Gain Rate",
+          "Zone Mixing Latent Heat Loss Energy",
+          "Zone Mixing Latent Heat Loss Rate",
+          "Zone Mixing Sensible Heat Gain Energy",
+          "Zone Mixing Sensible Heat Gain Rate",
+          "Zone Mixing Sensible Heat Loss Energy",
+          "Zone Mixing Sensible Heat Loss Rate"
+        ],
+        "observations": [],
+        "isMeter": false
+      },
+      {
+        "id": "heat.ventilation",
+        "stage": "drivers",
+        "requestedNames": [
+          "AFN Zone Ventilation Latent Heat Gain Energy",
+          "AFN Zone Ventilation Latent Heat Gain Rate",
+          "AFN Zone Ventilation Latent Heat Loss Energy",
+          "AFN Zone Ventilation Latent Heat Loss Rate",
+          "AFN Zone Ventilation Sensible Heat Gain Energy",
+          "AFN Zone Ventilation Sensible Heat Gain Rate",
+          "AFN Zone Ventilation Sensible Heat Loss Energy",
+          "AFN Zone Ventilation Sensible Heat Loss Rate",
+          "Zone Ventilation Latent Heat Gain Energy",
+          "Zone Ventilation Latent Heat Gain Rate",
+          "Zone Ventilation Latent Heat Loss Energy",
+          "Zone Ventilation Latent Heat Loss Rate",
+          "Zone Ventilation Sensible Heat Gain Energy",
+          "Zone Ventilation Sensible Heat Gain Rate",
+          "Zone Ventilation Sensible Heat Loss Energy",
+          "Zone Ventilation Sensible Heat Loss Rate"
+        ],
+        "observations": [],
+        "isMeter": false
+      },
+      {
+        "id": "heat.storage_air",
+        "stage": "drivers",
+        "requestedNames": [
+          "Zone Air Heat Balance Air Energy Storage Rate"
+        ],
+        "observations": [
+          {
+            "name": "Zone Air Heat Balance Air Energy Storage Rate",
+            "unit": "W"
+          }
+        ],
+        "isMeter": false
+      },
+      {
+        "id": "heat.zone_balance_residual",
+        "stage": "drivers",
+        "requestedNames": [
+          "Zone Air Heat Balance Deviation Rate"
+        ],
+        "observations": [],
+        "isMeter": false
+      },
+      {
+        "id": "heat.internal_convective",
+        "stage": "drivers",
+        "requestedNames": [
+          "Zone Air Heat Balance Internal Convective Heat Gain Rate",
+          "Zone Total Internal Convective Heating Energy",
+          "Zone Total Internal Convective Heating Rate",
+          "Zone Total Internal Latent Gain Energy",
+          "Zone Total Internal Latent Gain Rate"
+        ],
+        "observations": [
+          {
+            "name": "Zone Air Heat Balance Internal Convective Heat Gain Rate",
+            "unit": "W"
+          },
+          {
+            "name": "Zone Total Internal Convective Heating Energy",
+            "unit": "J"
+          },
+          {
+            "name": "Zone Total Internal Convective Heating Rate",
+            "unit": "W"
+          },
+          {
+            "name": "Zone Total Internal Latent Gain Energy",
+            "unit": "J"
+          },
+          {
+            "name": "Zone Total Internal Latent Gain Rate",
+            "unit": "W"
+          }
+        ],
+        "isMeter": false
+      },
+      {
+        "id": "heat.interzone_air",
+        "stage": "drivers",
+        "requestedNames": [
+          "Zone Air Heat Balance Interzone Air Transfer Rate"
+        ],
+        "observations": [
+          {
+            "name": "Zone Air Heat Balance Interzone Air Transfer Rate",
+            "unit": "W"
+          }
+        ],
+        "isMeter": false
+      },
+      {
+        "id": "heat.ventilation_outdoor_air",
+        "stage": "drivers",
+        "requestedNames": [
+          "Zone Air Heat Balance Outdoor Air Transfer Rate"
+        ],
+        "observations": [
+          {
+            "name": "Zone Air Heat Balance Outdoor Air Transfer Rate",
+            "unit": "W"
+          }
+        ],
+        "isMeter": false
+      },
+      {
+        "id": "heat.surface_convection",
+        "stage": "drivers",
+        "requestedNames": [
+          "Zone Air Heat Balance Surface Convection Rate"
+        ],
+        "observations": [
+          {
+            "name": "Zone Air Heat Balance Surface Convection Rate",
+            "unit": "W"
+          }
+        ],
+        "isMeter": false
+      },
+      {
+        "id": "heat.hvac_air_transfer",
+        "stage": "drivers",
+        "requestedNames": [
+          "Zone Air Heat Balance System Air Transfer Rate"
+        ],
+        "observations": [
+          {
+            "name": "Zone Air Heat Balance System Air Transfer Rate",
+            "unit": "W"
+          }
+        ],
+        "isMeter": false
+      },
+      {
+        "id": "heat.system_convective",
+        "stage": "drivers",
+        "requestedNames": [
+          "Zone Air Heat Balance System Convective Heat Gain Rate"
+        ],
+        "observations": [
+          {
+            "name": "Zone Air Heat Balance System Convective Heat Gain Rate",
+            "unit": "W"
+          }
+        ],
+        "isMeter": false
+      },
+      {
+        "id": "load.zone_latent_cooling",
+        "stage": "loads",
+        "requestedNames": [
+          "Zone Air System Latent Cooling Energy",
+          "Zone Air System Latent Cooling Rate"
+        ],
+        "observations": [],
+        "isMeter": false
+      },
+      {
+        "id": "load.zone_latent_heating",
+        "stage": "loads",
+        "requestedNames": [
+          "Zone Air System Latent Heating Energy",
+          "Zone Air System Latent Heating Rate"
+        ],
+        "observations": [],
+        "isMeter": false
+      },
+      {
+        "id": "load.zone_cooling",
+        "stage": "loads",
+        "requestedNames": [
+          "Zone Air System Sensible Cooling Energy",
+          "Zone Air System Sensible Cooling Rate"
+        ],
+        "observations": [
+          {
+            "name": "Zone Air System Sensible Cooling Energy",
+            "unit": "J"
+          },
+          {
+            "name": "Zone Air System Sensible Cooling Rate",
+            "unit": "W"
+          }
+        ],
+        "isMeter": false
+      },
+      {
+        "id": "load.zone_heating",
+        "stage": "loads",
+        "requestedNames": [
+          "Zone Air System Sensible Heating Energy",
+          "Zone Air System Sensible Heating Rate"
+        ],
+        "observations": [
+          {
+            "name": "Zone Air System Sensible Heating Energy",
+            "unit": "J"
+          },
+          {
+            "name": "Zone Air System Sensible Heating Rate",
+            "unit": "W"
+          }
+        ],
+        "isMeter": false
+      },
+      {
+        "id": "load.zone_equipment_heating",
+        "stage": "loads",
+        "requestedNames": [
+          "Zone Baseboard Total Heating Energy",
+          "Zone Baseboard Total Heating Rate"
+        ],
+        "observations": [],
+        "isMeter": false
+      },
+      {
+        "id": "heat.combined_outdoor_air",
+        "stage": "drivers",
+        "requestedNames": [
+          "Zone Combined Outdoor Air Latent Heat Gain Energy",
+          "Zone Combined Outdoor Air Latent Heat Gain Rate",
+          "Zone Combined Outdoor Air Latent Heat Loss Energy",
+          "Zone Combined Outdoor Air Latent Heat Loss Rate",
+          "Zone Combined Outdoor Air Sensible Heat Gain Energy",
+          "Zone Combined Outdoor Air Sensible Heat Gain Rate",
+          "Zone Combined Outdoor Air Sensible Heat Loss Energy",
+          "Zone Combined Outdoor Air Sensible Heat Loss Rate"
+        ],
+        "observations": [],
+        "isMeter": false
+      },
+      {
+        "id": "heat.equipment",
+        "stage": "drivers",
+        "requestedNames": [
+          "Zone Electric Equipment Convective Heating Energy",
+          "Zone Electric Equipment Convective Heating Rate",
+          "Zone Electric Equipment Latent Gain Energy",
+          "Zone Electric Equipment Latent Gain Rate",
+          "Zone Gas Equipment Convective Heating Energy",
+          "Zone Gas Equipment Convective Heating Rate",
+          "Zone Gas Equipment Latent Gain Energy",
+          "Zone Gas Equipment Latent Gain Rate",
+          "Zone Hot Water Equipment Convective Heating Energy",
+          "Zone Hot Water Equipment Convective Heating Rate",
+          "Zone Hot Water Equipment Latent Gain Energy",
+          "Zone Hot Water Equipment Latent Gain Rate",
+          "Zone Other Equipment Convective Heating Energy",
+          "Zone Other Equipment Convective Heating Rate",
+          "Zone Other Equipment Latent Gain Energy",
+          "Zone Other Equipment Latent Gain Rate",
+          "Zone Steam Equipment Convective Heating Energy",
+          "Zone Steam Equipment Convective Heating Rate",
+          "Zone Steam Equipment Latent Gain Energy",
+          "Zone Steam Equipment Latent Gain Rate"
+        ],
+        "observations": [
+          {
+            "name": "Zone Electric Equipment Convective Heating Energy",
+            "unit": "J"
+          },
+          {
+            "name": "Zone Electric Equipment Convective Heating Rate",
+            "unit": "W"
+          },
+          {
+            "name": "Zone Electric Equipment Latent Gain Energy",
+            "unit": "J"
+          },
+          {
+            "name": "Zone Electric Equipment Latent Gain Rate",
+            "unit": "W"
+          }
+        ],
+        "isMeter": false
+      },
+      {
+        "id": "heat.internal_other",
+        "stage": "drivers",
+        "requestedNames": [
+          "Zone IT Equipment Convective Heating Energy",
+          "Zone IT Equipment Convective Heating Rate",
+          "Zone IT Equipment Latent Gain Energy",
+          "Zone IT Equipment Latent Gain Rate",
+          "Zone Other Internal Convective Heating Energy",
+          "Zone Other Internal Convective Heating Rate",
+          "Zone Other Internal Latent Gain Energy",
+          "Zone Other Internal Latent Gain Rate"
+        ],
+        "observations": [],
+        "isMeter": false
+      },
+      {
+        "id": "heat.lighting",
+        "stage": "drivers",
+        "requestedNames": [
+          "Zone Lights Convective Heating Energy",
+          "Zone Lights Convective Heating Rate"
+        ],
+        "observations": [
+          {
+            "name": "Zone Lights Convective Heating Energy",
+            "unit": "J"
+          },
+          {
+            "name": "Zone Lights Convective Heating Rate",
+            "unit": "W"
+          }
+        ],
+        "isMeter": false
+      },
+      {
+        "id": "heat.people",
+        "stage": "drivers",
+        "requestedNames": [
+          "Zone People Convective Heating Energy",
+          "Zone People Convective Heating Rate",
+          "Zone People Latent Gain Energy",
+          "Zone People Latent Gain Rate"
+        ],
+        "observations": [
+          {
+            "name": "Zone People Convective Heating Energy",
+            "unit": "J"
+          },
+          {
+            "name": "Zone People Convective Heating Rate",
+            "unit": "W"
+          },
+          {
+            "name": "Zone People Latent Gain Energy",
+            "unit": "J"
+          },
+          {
+            "name": "Zone People Latent Gain Rate",
+            "unit": "W"
+          }
+        ],
+        "isMeter": false
+      },
+      {
+        "id": "load.zone_predicted_cooling",
+        "stage": "loads",
+        "requestedNames": [
+          "Zone Predicted Sensible Load to Cooling Setpoint Heat Transfer Rate",
+          "Zone System Predicted Sensible Load to Cooling Setpoint Heat Transfer Rate"
+        ],
+        "observations": [
+          {
+            "name": "Zone Predicted Sensible Load to Cooling Setpoint Heat Transfer Rate",
+            "unit": "W"
+          },
+          {
+            "name": "Zone System Predicted Sensible Load to Cooling Setpoint Heat Transfer Rate",
+            "unit": "W"
+          }
+        ],
+        "isMeter": false
+      },
+      {
+        "id": "load.zone_predicted_heating",
+        "stage": "loads",
+        "requestedNames": [
+          "Zone Predicted Sensible Load to Heating Setpoint Heat Transfer Rate",
+          "Zone System Predicted Sensible Load to Heating Setpoint Heat Transfer Rate"
+        ],
+        "observations": [
+          {
+            "name": "Zone Predicted Sensible Load to Heating Setpoint Heat Transfer Rate",
+            "unit": "W"
+          },
+          {
+            "name": "Zone System Predicted Sensible Load to Heating Setpoint Heat Transfer Rate",
+            "unit": "W"
+          }
+        ],
+        "isMeter": false
+      },
+      {
+        "id": "load.zone_radiant_cooling",
+        "stage": "loads",
+        "requestedNames": [
+          "Zone Radiant HVAC Cooling Energy",
+          "Zone Radiant HVAC Cooling Rate"
+        ],
+        "observations": [],
+        "isMeter": false
+      },
+      {
+        "id": "load.zone_radiant_heating",
+        "stage": "loads",
+        "requestedNames": [
+          "Zone Radiant HVAC Heating Energy",
+          "Zone Radiant HVAC Heating Rate"
+        ],
+        "observations": [],
+        "isMeter": false
+      },
+      {
+        "id": "heat.surface_inside_face_convection",
+        "stage": "drivers",
+        "requestedNames": [
+          "Surface Inside Face Convection Heat Gain Energy",
+          "Surface Inside Face Convection Heat Gain Rate",
+          "Surface Inside Face Convection Heat Transfer Energy",
+          "Surface Inside Face Convection Heat Transfer Rate"
+        ],
+        "observations": [
+          {
+            "name": "Surface Inside Face Convection Heat Gain Energy",
+            "unit": "J"
+          },
+          {
+            "name": "Surface Inside Face Convection Heat Gain Rate",
+            "unit": "W"
+          }
+        ],
+        "isMeter": false
+      },
+      {
+        "id": "cooling.electricity",
+        "stage": "endUses",
+        "requestedNames": [
+          "Cooling:Electricity"
+        ],
+        "observations": [],
+        "isMeter": true
+      },
+      {
+        "id": "heating.electricity",
+        "stage": "endUses",
+        "requestedNames": [
+          "Heating:Electricity"
+        ],
+        "observations": [],
+        "isMeter": true
+      },
+      {
+        "id": "interior_lighting.electricity",
+        "stage": "endUses",
+        "requestedNames": [
+          "InteriorLights:Electricity"
+        ],
+        "observations": [
+          {
+            "name": "InteriorLights:Electricity",
+            "unit": "J"
+          }
+        ],
+        "isMeter": true
+      },
+      {
+        "id": "equipment.electricity",
+        "stage": "endUses",
+        "requestedNames": [
+          "InteriorEquipment:Electricity"
+        ],
+        "observations": [
+          {
+            "name": "InteriorEquipment:Electricity",
+            "unit": "J"
+          }
+        ],
+        "isMeter": true
+      },
+      {
+        "id": "facility.electricity",
+        "stage": "carriers",
+        "requestedNames": [
+          "Electricity:Facility"
+        ],
+        "observations": [
+          {
+            "name": "Electricity:Facility",
+            "unit": "J"
+          }
+        ],
+        "isMeter": true
+      },
+      {
+        "id": "fans.electricity",
+        "stage": "endUses",
+        "requestedNames": [
+          "Fans:Electricity"
+        ],
+        "observations": [
+          {
+            "name": "Fans:Electricity",
+            "unit": "J"
+          }
+        ],
+        "isMeter": true
+      },
+      {
+        "id": "cooling.district_cooling",
+        "stage": "endUses",
+        "requestedNames": [
+          "Cooling:DistrictCooling"
+        ],
+        "observations": [
+          {
+            "name": "Cooling:DistrictCooling",
+            "unit": "J"
+          }
+        ],
+        "isMeter": true
+      },
+      {
+        "id": "heating.district_heating",
+        "stage": "endUses",
+        "requestedNames": [
+          "DistrictHeating:Heating",
+          "Heating:DistrictHeating",
+          "Heating:DistrictHeatingWater"
+        ],
+        "observations": [
+          {
+            "name": "Heating:DistrictHeatingWater",
+            "unit": "J"
+          }
+        ],
+        "isMeter": true
+      },
+      {
+        "id": "pumps.electricity",
+        "stage": "endUses",
+        "requestedNames": [
+          "Pumps:Electricity"
+        ],
+        "observations": [
+          {
+            "name": "Pumps:Electricity",
+            "unit": "J"
+          }
+        ],
+        "isMeter": true
+      },
+      {
+        "id": "facility.district_cooling",
+        "stage": "carriers",
+        "requestedNames": [
+          "DistrictCooling:Facility"
+        ],
+        "observations": [
+          {
+            "name": "DistrictCooling:Facility",
+            "unit": "J"
+          }
+        ],
+        "isMeter": true
+      },
+      {
+        "id": "facility.district_heating",
+        "stage": "carriers",
+        "requestedNames": [
+          "DistrictHeating:Facility",
+          "DistrictHeatingWater:Facility"
+        ],
+        "observations": [
+          {
+            "name": "DistrictHeatingWater:Facility",
+            "unit": "J"
+          }
+        ],
+        "isMeter": true
+      }
+    ],
+    "services": [
+      {
+        "service": "cooling",
+        "siteIds": [
+          "cooling.district_cooling"
+        ],
+        "servedZones": [
+          "WEST ZONE",
+          "EAST ZONE",
+          "NORTH ZONE"
+        ],
+        "basis": "service_path_allocation",
+        "fallbackBasis": "zone_load_allocation",
+        "ratioKind": "load_to_purchased_energy",
+        "fallbackRatioKind": "load_to_purchased_energy",
+        "reconciliationId": "reconcile.zone_hvac_allocation.cooling.district_cooling.annual"
+      },
+      {
+        "service": "heating",
+        "siteIds": [
+          "heating.district_heating"
+        ],
+        "servedZones": [
+          "WEST ZONE",
+          "EAST ZONE",
+          "NORTH ZONE"
+        ],
+        "basis": "service_path_allocation",
+        "fallbackBasis": "zone_load_allocation",
+        "ratioKind": "load_to_purchased_energy",
+        "fallbackRatioKind": "load_to_purchased_energy",
+        "reconciliationId": "reconcile.zone_hvac_allocation.heating.district_heating.annual"
+      }
+    ],
+    "auxiliaries": [
+      {
+        "siteId": "fans.electricity",
+        "servedZones": [],
+        "weight": "unassigned",
+        "allocationMethod": "unassigned",
+        "reconciliationId": "reconcile.zone_auxiliary_allocation.fans.electricity.annual"
+      },
+      {
+        "siteId": "pumps.electricity",
+        "servedZones": [
+          "WEST ZONE",
+          "EAST ZONE",
+          "NORTH ZONE"
+        ],
+        "weight": "cooling_plus_heating",
+        "allocationMethod": "plant_loop_load_share",
+        "reconciliationId": "reconcile.zone_auxiliary_allocation.pumps.electricity.annual"
+      }
+    ],
+    "fanPools": [],
+    "directUses": [
+      {
+        "endUse": "lighting",
+        "carrier": "electricity",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Zone Lights Electricity Energy",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "EAST ZONE",
+            "NORTH ZONE"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "endUse": "equipment",
+        "carrier": "electricity",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Zone Electric Equipment Electricity Energy",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "WEST ZONE",
+            "EAST ZONE",
+            "NORTH ZONE"
+          ],
+          "isMeter": false
+        }
+      }
+    ],
+    "directHVACComponents": [],
+    "precision": {
+      "decimalPlaces": 3,
+      "sourceStages": 2,
+      "contributionStages": 2
+    }
+  }
+}

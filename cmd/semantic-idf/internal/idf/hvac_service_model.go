@@ -333,11 +333,19 @@ func buildZoneServiceSummaries(relations []HVACZoneChain, paths []ZoneServicePat
 func buildZoneServicePaths(ctx *hvacContext, loops []HVACLoop, relations []HVACZoneChain, graph HVACRuleGraph, componentIndex ComponentIndex, couplingIndex CouplingIndex) []ZoneServicePath {
 	_ = componentIndex
 	airConditioning := buildHVACAirLoopConditioning(ctx, loops, graph)
+	hydronicDelivery := buildHVACHydronicDeliveryServices(ctx, loops, relations)
 	var paths []ZoneServicePath
 	seen := map[string]bool{}
 	addPath := func(path ZoneServicePath) {
 		if path.PathType == "" || path.ServiceKind == "" || path.Delivery.ID == "" {
 			return
+		}
+		if entry, handled := hydronicDelivery[hvacObjectKey(path.Delivery.ObjectType, path.Delivery.ObjectName)]; handled {
+			var valid bool
+			path, valid = entry.bindPath(path)
+			if !valid {
+				return
+			}
 		}
 		path.ID = zoneServicePathID(path)
 		path.SupportingCouplings = supportingCouplingIDsForPath(path, couplingIndex)
@@ -438,6 +446,29 @@ func buildZoneServicePaths(ctx *hvacContext, loops []HVACLoop, relations []HVACZ
 			}
 			deliveryInfo := classifyHVACDeliveryEquipment(ctx, equipment)
 			if deliveryInfo.DeliveryType == "unknown_zone_equipment" {
+				continue
+			}
+			if entry, handled := hydronicDelivery[hvacComponentKey(equipment)]; handled {
+				for _, binding := range entry.Bindings {
+					plantLoop := binding.PlantLoop
+					addPath(ZoneServicePath{
+						ZoneName: relation.ZoneName, SpaceName: relation.SpaceName,
+						ServiceKind: binding.ServiceKind, PathType: "direct_zone_hydronic", PlantLoop: &plantLoop,
+						Delivery: deliveryInfo.Component, DeliveryEquipment: deliveryInfo, ServedSubject: subject,
+						Conditioning: []ComponentRef{binding.Coil},
+						TraceIDs:     appendUniqueStrings(append([]string(nil), relation.RuleIDs...), hvacRuleComponentReferencesComponent, hvacRuleBranchComponentOccurrence),
+					})
+				}
+				for _, service := range []string{"heating", "ventilation"} {
+					if entry.LocalServices[service] {
+						addPath(ZoneServicePath{
+							ZoneName: relation.ZoneName, SpaceName: relation.SpaceName,
+							ServiceKind: service, PathType: "direct_zone_air",
+							Delivery: deliveryInfo.Component, DeliveryEquipment: deliveryInfo, ServedSubject: subject,
+							TraceIDs: append([]string(nil), relation.RuleIDs...),
+						})
+					}
+				}
 				continue
 			}
 			plantLoops := plantLoopRefsForComponent(ctx, loops, equipment)

@@ -16,6 +16,7 @@ type epathRealSQLModel struct {
 	DirectUses             []epathRealSQLDirectUse             `json:"directUses,omitempty"`
 	DirectHVACComponents   []epathRealSQLDirectHVACComponent   `json:"directHVACComponents,omitempty"`
 	NonAdditiveLoadDetails []epathRealSQLNonAdditiveLoadDetail `json:"nonAdditiveLoadDetails,omitempty"`
+	ZeroPressureFallbacks  []epathRealSQLZeroPressureFallback  `json:"zeroPressureFallbacks,omitempty"`
 	Precision              epathRealSQLPrecision               `json:"precision"`
 }
 

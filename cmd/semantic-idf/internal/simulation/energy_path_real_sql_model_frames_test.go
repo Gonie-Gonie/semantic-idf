@@ -70,8 +70,11 @@ type epathSQLCell struct {
 	Allocated                         map[string]epathSQLQuantity
 	BuildingVisible                   bool
 	SourceIDs                         []int // Independently selected original SQL dictionary leaves.
+	ZeroPressureFallback              bool  // Explicit reviewed load-only synthetic allocation, never a physical pressure.
 }
 type epathSQLFrames struct {
+	ZeroPressureFallbacks      map[string]epathRealSQLZeroPressureFallback
+	ZeroPressurePhysicalCells  map[string]epathSQLCell
 	DirectHVAC                 map[string]epathSQLDirectHVACMonth
 	DirectHVACSourceIdentities map[int]epathSQLDirectHVACSourceIdentity
 	TraceSourceIdentities      map[int]epathSQLTraceSourceIdentity
@@ -480,6 +483,12 @@ func epathCompileSQLModelFrames(sqlPath string, observed []epathRealSQLSource, m
 	if len(loadServices) != 2 {
 		return out, fmt.Errorf("reviewed model requires both explicit delivered-load observations")
 	}
+	zeroPressure, err := epathSQLZeroPressureDeclarations(out, model)
+	if err != nil {
+		return out, err
+	}
+	out.ZeroPressureFallbacks = zeroPressure
+	epathSQLRecordZeroPressurePhysicalCells(&out)
 	for zone := range out.Zones {
 		for month := 1; month <= 12; month++ {
 			for _, service := range []string{"cooling", "heating"} {
@@ -487,10 +496,16 @@ func epathCompileSQLModelFrames(sqlPath string, observed []epathRealSQLSource, m
 				if !ok {
 					return out, fmt.Errorf("missing delivered-load Zone/month is not zero")
 				}
+				if declaration, declared := zeroPressure[epathSQLKey(zone, service, month)]; declared {
+					if err := epathSQLApplyZeroPressureFallback(&out, model, declaration); err != nil {
+						return out, err
+					}
+					continue
+				}
 				candidates := []*epathSQLCell{}
 				denominator := epathSQLQuantity{}
 				for _, cell := range out.Cells {
-					if cell.Zone != zone || cell.Month != month {
+					if cell.Zone != zone || cell.Month != month || cell.ZeroPressureFallback {
 						continue
 					}
 					if definition, ok := defined[cell.Family]; ok && definition.Role != "pressure" {
@@ -580,6 +595,9 @@ func epathCompileSQLModelFrames(sqlPath string, observed []epathRealSQLSource, m
 		return out, err
 	}
 	if err := epathCompileSQLDirectHVACSources(sqlPath, observed, model, &out); err != nil {
+		return out, err
+	}
+	if err := epathSQLValidateZeroPressureFrames(out, model); err != nil {
 		return out, err
 	}
 	return out, nil

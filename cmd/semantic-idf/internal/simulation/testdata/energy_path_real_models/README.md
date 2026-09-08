@@ -32,13 +32,25 @@ This directory contains original EnergyPlus example models for checklist section
   checks and required fields across 4,047 records in 15.252 seconds. Diagnostic 04
   repeats that pass before separate provenance/registry and direct original-SQL
   arithmetic reviews. Saved acceptance against the explicitly approved expected
-  manifest passes all 17,121 metrics in 28.405 seconds. The offline integrity
-  guard requires all three approved fixtures. The other 16 catalog entries,
-  including the three older Large Office versions, remain unapproved; later
-  checklist sections are not complete. Full repository verification and Wails
-  build are required by the normal commit gate.
+  manifest passes all 17,121 metrics in 28.405 seconds.
   The native Building meter subtotal double-counting defect found in this capture
   is fixed, with original observations retained as non-additive source context.
+- PTAC 25.1 is explicitly approved for 17,021 independent metrics, including
+  exact native DX/Fuel component consumption and original known-zero constituents.
+  Its checkpoint is committed and pushed as `fab1650`.
+- PTHP 25.1 is explicitly approved for 17,113 independent metrics, including
+  heating DX main, defrost, crankcase and supplemental fuel consumption. Its
+  checkpoint is committed and pushed as `efe5540`; details and preserved failures
+  are in `docs/energy-path-pthp-acceptance.md`.
+- Fan Coil 25.1 is explicitly approved for 8,966 independent metrics and all
+  required fields across 2,728 records. Exact hydronic ownership, estimated pump
+  shares, unassigned fans and the real zero-pressure August heating boundary are
+  independently reviewed in `docs/energy-path-fan-coil-acceptance.md`. Earlier
+  failed candidates and diagnostics remain preserved.
+- The offline integrity guard requires all six approved fixtures. The other
+  thirteen entries, including the three older Large Office versions, remain
+  unapproved. Later checklist sections are not complete. Full repository
+  verification and Wails build are required by the normal commit gate.
 - All 19 engine executions have finished (18 normal results; the no-heating
   model rejected for Severe errors). Catalog paths where files are not yet
   present remain intended destinations, not completed acceptance claims.

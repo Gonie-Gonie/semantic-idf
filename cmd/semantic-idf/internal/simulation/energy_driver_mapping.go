@@ -168,6 +168,8 @@ type energyDriverVector struct {
 	hourly           map[int]float64
 	selectedRange    float64
 	hasSelectedRange bool
+	monthlyShadow    *energyDriverMonthlyShadow
+	shadowHasTerms   bool
 }
 
 func energyDriverSignedVector(item energyExplanationSeries) energyDriverVector {
@@ -191,11 +193,15 @@ func energyDriverScaledVector(item energyExplanationSeries, multiplier float64) 
 		hourly:           scaledEnergyExplanationPeriodValues(item.Hourly, multiplier),
 		selectedRange:    item.SelectedRange * multiplier,
 		hasSelectedRange: item.HasSelectedRange,
+		monthlyShadow:    signedEnergyDriverMonthlyShadow(item, multiplier),
+		shadowHasTerms:   true,
 	}
 	return vector
 }
 
 func (vector *energyDriverVector) add(next energyDriverVector) {
+	vector.monthlyShadow = combineEnergyDriverMonthlyShadow(vector.monthlyShadow, next.monthlyShadow, !vector.shadowHasTerms, 1)
+	vector.shadowHasTerms = true
 	vector.total += next.total
 	addEnergyDriverPeriodMap(&vector.monthly, next.monthly, 1)
 	addEnergyDriverPeriodMap(&vector.daily, next.daily, 1)
@@ -207,6 +213,8 @@ func (vector *energyDriverVector) add(next energyDriverVector) {
 }
 
 func (vector *energyDriverVector) subtract(next energyDriverVector) {
+	vector.monthlyShadow = combineEnergyDriverMonthlyShadow(vector.monthlyShadow, next.monthlyShadow, !vector.shadowHasTerms, -1)
+	vector.shadowHasTerms = true
 	vector.total -= next.total
 	addEnergyDriverPeriodMap(&vector.monthly, next.monthly, -1)
 	addEnergyDriverPeriodMap(&vector.daily, next.daily, -1)
@@ -500,6 +508,7 @@ func applyEnergyDriverDerivedDirection(item energyExplanationSeries, sources []E
 		item.RawTotal = math.Abs(item.RawTotal)
 		item.Monthly = absoluteEnergyDriverPeriodValues(item.Monthly)
 		item.RawMonthly = absoluteEnergyDriverPeriodValues(item.RawMonthly)
+		item.driverMonthlyShadow = absoluteEnergyDriverMonthlyShadow(item.driverMonthlyShadow)
 		item.Daily = absoluteEnergyDriverPeriodValues(item.Daily)
 		item.RawDaily = absoluteEnergyDriverPeriodValues(item.RawDaily)
 		item.Hourly = absoluteEnergyDriverPeriodValues(item.Hourly)
@@ -606,11 +615,13 @@ func appendEnergyDriverReconciliationComponents(series []energyExplanationSeries
 	sort.Strings(familyKeys)
 	for _, key := range familyKeys {
 		group := families[key]
-		if !energyDriverVectorHasValue(group.aggregate.vector) || !energyDriverVectorHasValue(group.detail.vector) {
+		observedMonthly := energyDriverMonthlyShadowHasObservation(group.aggregate.vector.monthlyShadow) && energyDriverMonthlyShadowHasObservation(group.detail.vector.monthlyShadow)
+		if !observedMonthly && (!energyDriverVectorHasValue(group.aggregate.vector) || !energyDriverVectorHasValue(group.detail.vector)) {
 			continue
 		}
 		difference := group.aggregate.vector
 		difference.subtract(group.detail.vector)
+		applyEnergyDriverReconciliationMonthlyPrecision(&difference)
 		if !energyDriverVectorHasValue(difference) {
 			continue
 		}
@@ -758,6 +769,7 @@ func appendDerivedEnergyDriverSeries(sources []EnergyDataSource, idSuffix string
 		sourceFrequency:        "Monthly",
 		heatSignMultiplier:     1,
 		driverZoneOnly:         zoneOnly,
+		driverMonthlyShadow:    cloneEnergyDriverMonthlyShadow(vector.monthlyShadow),
 	}
 	item = canonicalEnergyExplanationSeries(item)
 	source := EnergyDataSource{

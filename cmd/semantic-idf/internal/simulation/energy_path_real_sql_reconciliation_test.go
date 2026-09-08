@@ -176,6 +176,9 @@ func epathSQLAddReconciliation(checks *epathSQLModelChecks, scope, selectedZone 
 }
 
 func epathSQLModelThermalReconciliationChecks(frames epathSQLFrames, model epathRealSQLModel, checks *epathSQLModelChecks) error {
+	if err := epathSQLValidateZeroPressureFrames(frames, model); err != nil {
+		return err
+	}
 	if len(frames.Zones) == 0 {
 		return fmt.Errorf("thermal reconciliation requires independently observed Zones")
 	}
@@ -211,6 +214,14 @@ func epathSQLModelThermalReconciliationChecks(frames epathSQLFrames, model epath
 			}
 		}
 		ownersByFamily[family.ID] = owners
+	}
+	for _, declaration := range frames.ZeroPressureFallbacks {
+		family, zone := epathSQLZeroPressureFamilyPrefix+declaration.Service, strings.ToLower(declaration.ZoneName)
+		roles[family] = "pressure"
+		if ownersByFamily[family] == nil {
+			ownersByFamily[family] = map[string]bool{}
+		}
+		ownersByFamily[family][zone] = true
 	}
 	cellKeys := []string{}
 	for key, cell := range frames.Cells {

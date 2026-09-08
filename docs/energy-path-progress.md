@@ -822,3 +822,48 @@ follow. The next Fan Coil preparation is read-only: it has three terminal fans,
 two shared district-energy plants and no individually requested fan/pump energy.
 Water-coil heat transfer is not direct purchased consumption; the new source
 recipe and measured auxiliary ownership require their own next-fixture work.
+
+The PTHP checkpoint is committed and pushed as `efe5540`; its normal commit hook
+also passed the full verification/build gate. Fan Coil is now in progress, **not
+approved**. Original SQL/IDF review binds separate cooling/heating water-coil
+plants and preserves unassigned local fan energy. Native typed path binding fixes
+the former PlantLoop-by-service Cartesian product without requesting heavy
+auxiliary outputs. Original-value precision regressions also expose and remove
+an artificial -0.001 kWh internal pressure at NORTH ZONE in August, retaining its
+real 0.033 kWh delivered heating load as load-only Other/storage. Missing, NULL,
+small-real-signal and multiplier guards pass without relaxing SQL expectations.
+
+Independent zero-pressure and allocated-pump proofs are now covered by focused
+tests. The first complete 8,966-metric saved diagnostic remains a failure because
+the fallback's Monthly period metadata is incorrect; graph context/field checks
+are not bypassed. [Fan Coil work evidence](energy-path-fan-coil-acceptance.md)
+distinguishes every failed attempt from later required acceptance. Section 22
+remains 5/19 until the actual result, all prior approvals and the separate reviewed
+expected/saved-acceptance gates pass. Later checklist sections remain pending.
+
+Fan Coil diagnostic 04 now passes all 8,966 independent metrics and required
+fields in eight groups (4.65 seconds). A strengthened native regression first
+reproduces the missing Monthly fallback period; the bounded correction preserves
+the actual load period without changing quantities, allocation rules or source
+identities. Separate original-SQL arithmetic verifies 1,934 pending keys and 124
+annual/monthly sums. Independent registry/provenance review retains 3,087 known
+zeros, 373 explicit nulls and 260 count pairs, with 2,728 records in 52 contexts.
+
+Root explicitly approves pending SHA256
+`6324f440b8b608cd1d4c32fb2a5e7eff0352d82c1848cb083ece6db2f611e55d`.
+The manual expected header and 74,133-byte lossless companion preserve all values
+and statuses. Saved-original-wire acceptance passes all 8,966 metrics in 8.07
+seconds, and the offline guard now requires six approved fixtures. All five prior
+approvals pass current-code rebuilding with unchanged expected artifacts: PTHP
+25.215 seconds, PTAC 23.331, Small Office 18.877, Ideal Loads 30.675 and Large
+Office 82.207. Section 22 is now **6/19**, not complete; VRF is next, followed by
+the remaining fixtures and sections 23–26. Full repository verification/build
+and normal commit/push are the next checkpoint gates.
+
+Fan Coil's full `scripts/verify.ps1` passes without exclusions: app 21.187 seconds,
+CLI 5.765, input 1.580, frontend/browser 167.646, IDF 7.098 and simulation 307.114;
+tabular succeeds from cache. Windows production Wails build passes in 7.706
+seconds. Normal commit-hook verification and push follow. Next-fixture VRF
+preparation remains read-only: the original MTD places VRF crankcase electricity
+in Cooling and defrost in Heating, so PTHP's heating-crankcase membership cannot
+be copied. Its own source/output/ownership review is required before a recipe.

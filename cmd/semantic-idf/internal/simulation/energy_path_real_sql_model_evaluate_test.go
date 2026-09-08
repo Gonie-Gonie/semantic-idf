@@ -168,6 +168,8 @@ func epathCompileSQLModelChecks(observed epathRealOracleEvidence, model epathRea
 		func() error { return epathSQLModelZoneServiceChecks(frames, model, &checks) },
 		func() error { return epathSQLModelDirectUseChecks(observed.Sources, frames, model, &checks) },
 		func() error { return epathSQLModelFanFlowChecks(observed, frames, model, &checks) },
+		func() error { return epathSQLModelAuxiliaryZoneChecks(frames, model, &checks) },
+		func() error { return epathSQLModelAuxiliaryFlowChecks(frames, model, &checks) },
 		func() error { return epathSQLModelZoneCarrierChecks(frames, model, &checks) },
 		func() error {
 			return epathSQLModelQualityChecks(observed, frames, model, &checks)
@@ -392,6 +394,9 @@ func epathEvaluateSQLModelChecks(out *epathRealOracleEvidence, bundle PurposeRes
 		}
 		if err == nil && check.DirectUse != nil {
 			err = epathCheckSQLDirectUseEndpoints(bundle, check)
+		}
+		if err == nil && check.AuxiliaryZone != nil {
+			err = epathCheckSQLAuxiliaryZone(bundle, check)
 		}
 		if err == nil && check.ZoneCarrier != nil {
 			err = epathCheckSQLZoneCarrier(bundle, check)

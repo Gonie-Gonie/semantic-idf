@@ -338,6 +338,9 @@ func epathSQLQualityCheckDependency(bundle PurposeResultBundle, dependency epath
 	if err == nil && dependency.DirectUse != nil {
 		err = epathCheckSQLDirectUseEndpoints(bundle, dependency)
 	}
+	if err == nil && dependency.AuxiliaryZone != nil {
+		err = epathCheckSQLAuxiliaryZone(bundle, dependency)
+	}
 	return err
 }
 
@@ -688,6 +691,9 @@ func epathSQLQualityRatioCounts(bundle PurposeResultBundle, check epathSQLModelC
 		}
 		if err == nil && dependency.DirectUse != nil {
 			err = epathCheckSQLDirectUseEndpoints(bundle, dependency)
+		}
+		if err == nil && dependency.AuxiliaryZone != nil {
+			err = epathCheckSQLAuxiliaryZone(bundle, dependency)
 		}
 		if err != nil {
 			return fail(fmt.Errorf("ratio graph prerequisite %s: %w", dependency.Want.Key, err))

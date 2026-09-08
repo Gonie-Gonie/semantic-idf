@@ -96,13 +96,13 @@ func epathSQLZoneCarrierInputs(frames epathSQLFrames, model epathRealSQLModel, c
 			directOwners[key][owner][direct.Carrier] = true
 		}
 	}
-	fanSites, fanCarriers := map[string]bool{}, map[string]bool{}
+	fanCarriers := map[string]bool{}
 	for _, pool := range model.FanPools {
 		site, ok := sites[pool.SiteID]
 		if !ok || site.Facility || site.EndUse != "fans" || site.Carrier != "electricity" || pool.Name != "Air System Fan Electricity Energy" || pool.Frequency != "Hourly" || pool.Unit != "J" {
 			return nil, nil, fmt.Errorf("fan scalar lacks the exact reviewed electricity pool mapping")
 		}
-		fanSites[pool.SiteID], fanCarriers[site.Carrier] = true, true
+		fanCarriers[site.Carrier] = true
 	}
 	if len(model.FanPools) > 0 {
 		if len(fanCarriers) != 1 {
@@ -110,15 +110,18 @@ func epathSQLZoneCarrierInputs(frames epathSQLFrames, model epathRealSQLModel, c
 		}
 		families["fan"] = fanCarriers
 	}
-	for _, auxiliary := range model.Auxiliaries {
-		if auxiliary.Weight != "unassigned" && !fanSites[auxiliary.SiteID] {
-			return nil, nil, fmt.Errorf("allocated auxiliary lacks an independent Zone carrier proof: %s", auxiliary.SiteID)
-		}
+	auxiliaryProofs, err := epathSQLAuxiliaryZoneProofs(frames, model)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, proof := range auxiliaryProofs {
+		families["auxiliary/"+proof.SiteID] = map[string]bool{proof.Carrier: true}
 	}
 	if len(families) == 0 || len(carriers) == 0 {
 		return nil, nil, fmt.Errorf("empty independent Zone carrier recipe")
 	}
 	parts := map[string]map[string]epathSQLZoneCarrierPart{}
+	auxiliaryFields := map[string]map[string]bool{}
 	for _, check := range checks.Rows {
 		family := ""
 		part := epathSQLZoneCarrierPart{ByCarrier: map[string]epathSQLQuantity{}}
@@ -146,6 +149,25 @@ func epathSQLZoneCarrierInputs(frames epathSQLFrames, model epathRealSQLModel, c
 			for carrier, value := range check.DirectUse.Carriers {
 				part.ByCarrier[carrier] = value.Value
 			}
+		} else if check.AuxiliaryZone != nil {
+			p := check.AuxiliaryZone
+			key := epathSQLAuxiliaryZoneKey(p.SiteID, check.Item.Zone, check.Item.Period)
+			expected := auxiliaryProofs[key]
+			if !epathSQLAuxiliaryZoneCheckMatches(check, expected) {
+				return nil, nil, fmt.Errorf("auxiliary carrier scalar is not its exact independent site/Zone/month proof")
+			}
+			if auxiliaryFields[key] == nil {
+				auxiliaryFields[key] = map[string]bool{}
+			}
+			if auxiliaryFields[key][check.Item.Target.Field] {
+				return nil, nil, fmt.Errorf("duplicate independently allocated auxiliary scalar")
+			}
+			auxiliaryFields[key][check.Item.Target.Field] = true
+			if check.Item.Target.Field != "value" {
+				continue
+			}
+			family = "auxiliary/" + p.SiteID
+			part.ByCarrier[p.Carrier] = p.Value
 		} else if strings.HasSuffix(check.Want.Key, "|fan_pools/value") {
 			family = "fan"
 			if check.Quantity != nil {
@@ -168,6 +190,8 @@ func epathSQLZoneCarrierInputs(frames epathSQLFrames, model epathRealSQLModel, c
 			category, basis = strings.TrimPrefix(family, "direct/"), "direct_zone_energy"
 		} else if family == "fan" {
 			category = "fans"
+		} else if check.AuxiliaryZone != nil {
+			category = check.AuxiliaryZone.EndUse
 		}
 		if check.ZoneService != nil && check.ZoneService.DirectHVAC {
 			basis = check.ZoneService.Basis
@@ -207,6 +231,11 @@ func epathSQLZoneCarrierInputs(frames epathSQLFrames, model epathRealSQLModel, c
 			return nil, nil, fmt.Errorf("duplicate independent Zone carrier component")
 		}
 		parts[context][family] = part
+	}
+	for key := range auxiliaryProofs {
+		if !auxiliaryFields[key]["value"] || !auxiliaryFields[key]["allocatedValue"] {
+			return nil, nil, fmt.Errorf("missing independent auxiliary value/allocatedValue companion")
+		}
 	}
 	for key, zone := range frames.Zones {
 		if key != strings.ToLower(zone.Name) || zone.Name == "" || !epathOracleFinite(zone.Multiplier) || zone.Multiplier <= 0 {

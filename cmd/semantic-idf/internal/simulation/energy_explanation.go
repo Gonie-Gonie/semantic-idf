@@ -593,14 +593,15 @@ type energyExplanationDictionary struct {
 }
 
 type energyExplanationSeriesBuilder struct {
-	dictionary       energyExplanationDictionary
-	unit             string
-	total            float64
-	monthly          map[int]float64
-	daily            map[int]float64
-	hourly           map[int]float64
-	selectedRange    float64
-	hasSelectedRange bool
+	dictionary          energyExplanationDictionary
+	unit                string
+	total               float64
+	monthly             map[int]float64
+	daily               map[int]float64
+	hourly              map[int]float64
+	selectedRange       float64
+	hasSelectedRange    bool
+	driverMonthlyShadow *energyDriverMonthlyShadow
 }
 
 type energyExplanationCategorySeriesBuilder struct {
@@ -694,6 +695,7 @@ type energyExplanationSeries struct {
 	canonicalLoadMetadata  bool
 	directComponentID      string
 	loadBreakdown          []energyLoadBreakdownSeries
+	driverMonthlyShadow    *energyDriverMonthlyShadow
 }
 
 // energyExplanationParseResult is deliberately graph-free. SQL and tabular
@@ -826,6 +828,9 @@ func parseSimulationEnergyExplanationCanonicalSQL(path string, plan *PurposeRunP
 				builder := builders[dictionaryIndex]
 				if builder == nil {
 					builder = &energyExplanationSeriesBuilder{dictionary: dictionary}
+					if driverContext.Enabled && energyExplanationPlanUsesEnergyPath(plan) && dictionary.heat != nil && strings.EqualFold(strings.TrimSpace(dictionary.reportingFrequency), "Monthly") {
+						builder.driverMonthlyShadow = &energyDriverMonthlyShadow{}
+					}
 					builders[dictionaryIndex] = builder
 				}
 				intervalHours := energyExplanationRateIntervalHours(dictionary, row, intervalDetails.hours[timeIndex], intervalDetails.explicit[timeIndex])
@@ -835,6 +840,7 @@ func parseSimulationEnergyExplanationCanonicalSQL(path string, plan *PurposeRunP
 					invalidObservedValues[dictionaryIndex] = true
 				}
 				accumulateEnergyExplanationSeriesBuilder(builder, row, number, unit, dictionary, selectedStartDay, selectedEndDay, hasSelectedRange)
+				accumulateEnergyDriverMonthlyShadow(builder, row, value.Float64, intervalHours)
 				if selection, ok := surfaceCategories[dictionaryIndex]; ok {
 					category := selection.category
 					categoryKey := energyExplanationCategoryBuilderKey(dictionary, category)
@@ -845,6 +851,9 @@ func parseSimulationEnergyExplanationCanonicalSQL(path string, plan *PurposeRunP
 							category:      category,
 						}
 						categoryBuilders[categoryKey] = categoryBuilder
+						if driverContext.Enabled && energyExplanationPlanUsesEnergyPath(plan) {
+							categoryBuilder.seriesBuilder.driverMonthlyShadow = &energyDriverMonthlyShadow{}
+						}
 					}
 					sourceID := fmt.Sprintf("sql-rdd-%d", dictionaryIndex)
 					categoryBuilder.sourceIDs = appendUniqueStrings(categoryBuilder.sourceIDs, sourceID)
@@ -865,11 +874,38 @@ func parseSimulationEnergyExplanationCanonicalSQL(path string, plan *PurposeRunP
 					}
 					categoryBuilder.category.RelatedEntityIDs = appendUniqueStrings(categoryBuilder.category.RelatedEntityIDs, category.RelatedEntityIDs...)
 					accumulateEnergyExplanationSurfaceCategoryBuilder(&categoryBuilder.seriesBuilder, row, number, unit, dictionary, selection, selectedStartDay, selectedEndDay, hasSelectedRange)
+					if selection.monthly {
+						// Different selected surfaces may use different dictionaries.
+						shadowBuilder := categoryBuilder.seriesBuilder
+						shadowBuilder.dictionary = dictionary
+						accumulateEnergyDriverMonthlyShadow(&shadowBuilder, row, value.Float64, intervalHours)
+					}
 				}
 				return nil
 			}); err != nil {
 				return energyExplanationParseResult{}, err
 			}
+			// Validate the complete selected roster, including all-NULL/missing
+			// dictionaries for which no ordinary source builder was created.
+			for _, dictionary := range dictionaries {
+				builder := builders[dictionary.row.index]
+				invalidShadow := invalidObservedValues[dictionary.row.index] || builder == nil ||
+					!strings.EqualFold(strings.TrimSpace(dictionary.reportingFrequency), "Monthly") || len(monthlyTimeAxis) == 0 ||
+					monthlyObservedRows[dictionary.row.index] != len(monthlyTimeAxis)
+				if builder != nil && len(builder.monthly) != len(monthlyTimeAxis) {
+					invalidShadow = true
+				}
+				if invalidShadow && builder != nil && builder.driverMonthlyShadow != nil {
+					builder.driverMonthlyShadow.invalid = true
+				}
+				if selection, ok := surfaceCategories[dictionary.row.index]; ok && selection.monthly && invalidShadow {
+					key := energyExplanationCategoryBuilderKey(dictionary, selection.category)
+					if category := categoryBuilders[key]; category != nil && category.seriesBuilder.driverMonthlyShadow != nil {
+						category.seriesBuilder.driverMonthlyShadow.invalid = true
+					}
+				}
+			}
+			invalidateMissingEnergyDriverMonthlySurfaceShadows(db, dictionaries, surfaceCategories, driverContext, categoryBuilders)
 
 			for _, dictionary := range dictionaries {
 				builder := builders[dictionary.row.index]
@@ -1213,11 +1249,13 @@ func preferredEnergyExplanationSeries(series []energyExplanationSeries) []energy
 		if periodItem, ok := preferredEnergyExplanationPeriodSeries(items, func(item energyExplanationSeries) map[int]float64 { return item.Monthly }); ok {
 			selected.Monthly = cloneEnergyExplanationPeriodValues(periodItem.Monthly)
 			selected.RawMonthly = cloneEnergyExplanationPeriodValues(periodItem.RawMonthly)
+			selected.driverMonthlyShadow = cloneEnergyDriverMonthlyShadow(periodItem.driverMonthlyShadow)
 			selected.MonthlySourceIDs = energyExplanationPeriodSourceIDs(periodItem.MonthlySourceIDs, periodItem.SourceIDs)
 			selected.SourceIDs = appendUniqueStrings(selected.SourceIDs, periodItem.SourceIDs...)
 		} else {
 			selected.Monthly = nil
 			selected.RawMonthly = nil
+			selected.driverMonthlyShadow = nil
 		}
 		if periodItem, ok := preferredEnergyExplanationPeriodSeries(items, func(item energyExplanationSeries) map[int]float64 { return item.Daily }); ok {
 			selected.Daily = cloneEnergyExplanationPeriodValues(periodItem.Daily)
@@ -3796,29 +3834,30 @@ func energyExplanationSeriesForBuilder(builder *energyExplanationSeriesBuilder, 
 		signMultiplier *= -1
 	}
 	return energyExplanationSeries{
-		Level:              "heat",
-		Kind:               def.Kind,
-		Label:              energyHeatAliasLabel(def.Label, heatSign),
-		Unit:               builder.unit,
-		ZoneName:           zoneName,
-		HeatCategory:       def.HeatCategory,
-		ThermalComponent:   energyHeatThermalComponent(dictionary.row.name),
-		SurfaceScoped:      def.SurfaceScoped,
-		HeatSign:           heatSign,
-		Basis:              "derived_balance",
-		SourceIDs:          []string{sourceID},
-		Total:              roundedEnergyNumber(builder.total),
-		Monthly:            roundedEnergyExplanationMonthly(builder.monthly),
-		Daily:              roundedEnergyExplanationDaily(builder.daily),
-		Hourly:             roundedEnergyExplanationHourly(builder.hourly),
-		SelectedRange:      roundedEnergyNumber(builder.selectedRange),
-		HasSelectedRange:   builder.hasSelectedRange,
-		sourceKeyValue:     strings.TrimSpace(dictionary.row.keyValue),
-		sourceName:         strings.TrimSpace(dictionary.row.name),
-		sourceFrequency:    strings.TrimSpace(dictionary.reportingFrequency),
-		sourceIsRate:       energyExplanationIntegratesRate(dictionary),
-		sourcePriority:     energyAliasPriority(dictionary.row.name, def.Aliases),
-		heatSignMultiplier: signMultiplier,
+		Level:               "heat",
+		Kind:                def.Kind,
+		Label:               energyHeatAliasLabel(def.Label, heatSign),
+		Unit:                builder.unit,
+		ZoneName:            zoneName,
+		HeatCategory:        def.HeatCategory,
+		ThermalComponent:    energyHeatThermalComponent(dictionary.row.name),
+		SurfaceScoped:       def.SurfaceScoped,
+		HeatSign:            heatSign,
+		Basis:               "derived_balance",
+		SourceIDs:           []string{sourceID},
+		Total:               roundedEnergyNumber(builder.total),
+		Monthly:             roundedEnergyExplanationMonthly(builder.monthly),
+		Daily:               roundedEnergyExplanationDaily(builder.daily),
+		Hourly:              roundedEnergyExplanationHourly(builder.hourly),
+		SelectedRange:       roundedEnergyNumber(builder.selectedRange),
+		HasSelectedRange:    builder.hasSelectedRange,
+		sourceKeyValue:      strings.TrimSpace(dictionary.row.keyValue),
+		sourceName:          strings.TrimSpace(dictionary.row.name),
+		sourceFrequency:     strings.TrimSpace(dictionary.reportingFrequency),
+		sourceIsRate:        energyExplanationIntegratesRate(dictionary),
+		sourcePriority:      energyAliasPriority(dictionary.row.name, def.Aliases),
+		heatSignMultiplier:  signMultiplier,
+		driverMonthlyShadow: cloneEnergyDriverMonthlyShadow(builder.driverMonthlyShadow),
 	}
 }
 

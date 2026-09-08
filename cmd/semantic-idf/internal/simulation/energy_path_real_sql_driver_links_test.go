@@ -13,6 +13,7 @@ import (
 // wildcard that licenses an unvalidated candidate branch.
 type epathSQLDriverLinkProof struct {
 	Category, Service, Basis string
+	PureZeroPressureFallback bool // Every possible positive contributor is explicitly reviewed load-only fallback.
 	Load                     epathSQLQuantity
 	SourceIdentities         map[int]epathRealSQLSource
 	NonAdditiveLoadDetails   map[int]epathSQLLoadDetailIdentity
@@ -53,6 +54,9 @@ func epathSQLDriverLinkMatches(nodes map[string]EnergyExplanationNode, link Ener
 }
 
 func epathSQLModelDriverLinkChecks(frames epathSQLFrames, model epathRealSQLModel, checks *epathSQLModelChecks) error {
+	if err := epathSQLValidateZeroPressureFrames(frames, model); err != nil {
+		return err
+	}
 	zones, cellKeys := []string{}, []string{}
 	for key, zone := range frames.Zones {
 		if key != strings.ToLower(zone.Name) || zone.Name == "" {
@@ -107,7 +111,9 @@ func epathSQLModelDriverLinkChecks(frames epathSQLFrames, model epathRealSQLMode
 			monthlyRequiredLoadSources := [12][]int{}
 			monthlyLoads := [12]epathSQLQuantity{}
 			monthlyBranches := [12]map[string]map[string]epathSQLDriverBranchProof{}
+			monthlyPhysicalContributors := [12]map[string]bool{}
 			for month := 1; month <= 12; month++ {
+				monthlyPhysicalContributors[month-1] = map[string]bool{}
 				quantities := map[string]epathSQLQuantity{}
 				traces := map[string]epathSQLDriverTrace{}
 				zoneQuantities := map[string]map[string]epathSQLQuantity{}
@@ -187,6 +193,9 @@ func epathSQLModelDriverLinkChecks(frames epathSQLFrames, model epathRealSQLMode
 					zoneQuantities[category][owner] = zoneQuantities[category][owner].add(value)
 					_, high := value.bounds()
 					if high > 0 {
+						if !cell.ZeroPressureFallback {
+							monthlyPhysicalContributors[month-1][category] = true
+						}
 						if err := epathSQLDriverOriginalIDs(frames.SourceIdentities, cell.SourceIDs); err != nil {
 							return fmt.Errorf("driver provenance %s/%s: %w", key, service, err)
 						}
@@ -229,11 +238,18 @@ func epathSQLModelDriverLinkChecks(frames epathSQLFrames, model epathRealSQLMode
 				requiredLinkLoadSources := map[string][]int{}
 				branches := map[string]map[string]epathSQLDriverBranchProof{}
 				branchChoices := map[string][]epathSQLDriverMonthChoice{}
+				pureFallback := map[string]bool{}
 				for _, month := range epathSQLPeriodMonths(period) {
 					load = load.add(monthlyLoads[month-1])
 					loadSources = epathSQLDictionaryUnion(loadSources, monthlyLoadSources[month-1])
 					requiredLoadSources = epathSQLDictionaryUnion(requiredLoadSources, monthlyRequiredLoadSources[month-1])
 					for category, value := range monthly[month-1] {
+						if _, high := value.bounds(); high > 0 {
+							if _, seen := pureFallback[category]; !seen {
+								pureFallback[category] = true
+							}
+							pureFallback[category] = pureFallback[category] && !monthlyPhysicalContributors[month-1][category]
+						}
 						if len(monthlyBranches[month-1][category]) > 0 {
 							branchChoices[category] = append(branchChoices[category], epathSQLDriverMonthChoice{Quantity: value, Branches: monthlyBranches[month-1][category], RequiredLoadSources: monthlyRequiredLoadSources[month-1]})
 						}
@@ -297,6 +313,7 @@ func epathSQLModelDriverLinkChecks(frames epathSQLFrames, model epathRealSQLMode
 						}
 						checks.Rows[len(checks.Rows)-1].DriverLink = &epathSQLDriverLinkProof{Category: category, Service: service, Basis: target.Basis, Load: load, SourceIdentities: frames.SourceIdentities, NonAdditiveLoadDetails: details, DriverSources: traces[category].Allowed, RequiredDriverSources: traces[category].Required, LoadSources: loadSources, RequiredLoadSources: requiredLoadSources, RequiredLinkLoadSources: requiredLinkLoadSources, Branches: branches, BranchChoices: branchChoices}
 						checks.Rows[len(checks.Rows)-1].DriverLink.TemporalTraceSources = aliases
+						checks.Rows[len(checks.Rows)-1].DriverLink.PureZeroPressureFallback = category != "" && pureFallback[category]
 					}
 				}
 			}
@@ -383,6 +400,9 @@ func epathCheckSQLModelDriverLink(bundle PurposeResultBundle, check epathSQLMode
 			continue
 		}
 		from, to := byID[link.FromID], byID[link.ToID]
+		if err := epathSQLCheckZeroPressureDriver(from, proof); err != nil {
+			return err
+		}
 		if to.Level != "load" || to.ServiceKind != proof.Service || from.Basis != proof.Basis || from.DriverCategory == "" || from.ScaleDomain != "thermal" || to.ScaleDomain != "thermal" || from.Unit != "kWh" || to.Unit != "kWh" || link.FromUnit != "kWh" || link.ToUnit != "kWh" || link.Ratio != 0 || link.RatioKind != "" {
 			return fmt.Errorf("driver link %s has wrong endpoint/service/basis/thermal units", link.ID)
 		}
@@ -711,6 +731,13 @@ func epathSQLDriverLinkTrace(link EnergyPathLink, from, to EnergyExplanationNode
 	fromLeaves, err := flatten(from.SourceIDs)
 	if err != nil {
 		return nil, err
+	}
+	if proof.PureZeroPressureFallback {
+		for id := range fromLeaves {
+			if !driver[id] || !load[id] {
+				return nil, fmt.Errorf("zero-pressure fallback has a non-load source on its driver")
+			}
+		}
 	}
 	toLeaves, err := flatten(to.SourceIDs)
 	if err != nil {
