@@ -91,12 +91,12 @@ func epathCompileSQLModelChecks(observed epathRealOracleEvidence, model epathRea
 		func() error { return epathSQLModelSiteChecks(frames, model, &checks) },
 		func() error { return epathSQLModelSiteFlowChecks(frames, model, &checks) },
 		func() error { return epathSQLModelSiteResidualChecks(frames, model, &checks) },
-		func() error { return epathSQLModelServiceChecks(frames, model, &checks) },
-		func() error { return epathSQLModelZoneServiceChecks(frames, model, &checks) },
-		func() error { return epathSQLModelDirectUseChecks(observed.Sources, frames, model, &checks) },
 		func() error {
 			return epathSQLModelFanPoolChecks(observed, frames, model.FanPools, model.Precision, &checks)
 		},
+		func() error { return epathSQLModelServiceChecks(frames, model, &checks) },
+		func() error { return epathSQLModelZoneServiceChecks(frames, model, &checks) },
+		func() error { return epathSQLModelDirectUseChecks(observed.Sources, frames, model, &checks) },
 		func() error { return epathSQLModelFanFlowChecks(observed, frames, model, &checks) },
 		func() error { return epathSQLModelZoneCarrierChecks(frames, model, &checks) },
 		func() error {

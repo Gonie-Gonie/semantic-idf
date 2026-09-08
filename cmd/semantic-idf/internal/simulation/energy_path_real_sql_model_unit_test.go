@@ -113,14 +113,88 @@ func TestEnergyPathRealSQLModelSurfaceNetBeforePressureAndMultiplierOnce(t *test
 		class           string
 		boundary, index int
 		want            string
-	}{{"Internal Mass", 7, 7, "balance.storage_other"}, {"Wall", -1, 9, "balance.storage_other"}, {"Floor", -1, 10, "surface.ground_floors"}, {"Roof", 3, 4, "surface.interzone"}, {"Window", 0, 5, "surface.windows_doors"}} {
+	}{
+		{"Internal Mass", 7, 7, "balance.storage_other"},
+		{"Wall", -1, 9, "balance.storage_other"},
+		{"Floor", -1, 10, "surface.ground_floors"},
+		{"Floor", 0, 6, "surface.ground_floors"},
+		{"Floor", 19, 1, "surface.interzone"},
+		{"Floor", 6, 6, "balance.storage_other"},
+		{"Roof", 3, 4, "surface.interzone"},
+		{"Window", 0, 5, "surface.windows_doors"},
+	} {
 		got, err := epathSQLSurfaceCategory(test.class, test.boundary, test.index)
 		if err != nil || got != test.want {
 			t.Fatalf("surface classification %v: %s %v", test, got, err)
 		}
 	}
-	if _, err := epathSQLSurfaceCategory("Roof", -9, 1); err == nil {
-		t.Fatal("unreviewed boundary silently classified")
+	for _, test := range []struct {
+		class    string
+		boundary int
+	}{{"Roof", -9}, {"Floor", -9}, {"Unknown Class", 0}} {
+		if _, err := epathSQLSurfaceCategory(test.class, test.boundary, 1); err == nil {
+			t.Fatalf("unreviewed class/boundary silently classified: %+v", test)
+		}
+	}
+}
+
+func TestEnergyPathRealSQLModelOutdoorFloorRetainsSourceWithZeroLoad(t *testing.T) {
+	path, model := epathSQLModelUnitFixture(t)
+	// These temporary records model an exterior soffit, not ground contact.
+	// The original fixture sources remain signed -10/+6 kWh each month;
+	// only the surface identity/class and actual delivered loads change.
+	epathOracleEditSQL(t, path, `UPDATE Surfaces SET ClassName='Floor',SurfaceName=CASE SurfaceIndex WHEN 1 THEN 'Soffit A' ELSE 'Soffit B' END;
+UPDATE ReportDataDictionary SET KeyValue='Soffit A' WHERE ReportDataDictionaryIndex=12;
+UPDATE ReportDataDictionary SET KeyValue='Soffit B' WHERE ReportDataDictionaryIndex=13;
+UPDATE ReportData SET Value=0 WHERE ReportDataDictionaryIndex IN (10,11);`)
+	model.Surface.Source.Keys = []string{"Soffit A", "Soffit B"}
+	observed, err := epathReadRealSQLOracle(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	frames, err := epathCompileSQLModelFrames(path, observed.Sources, model)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for month := 1; month <= 12; month++ {
+		cell := frames.Cells[epathSQLKey("Office", "surface:surface.ground_floors", month)]
+		if cell == nil || cell.Zone != "office" || cell.Category != "surface.ground_floors" || cell.Raw.Value != 4 || cell.Effective.Value != 24 || len(cell.SourceIDs) != 2 || cell.SourceIDs[0] != 12 || cell.SourceIDs[1] != 13 {
+			t.Fatalf("exterior floor lost signed net pressure, multiplier or source ownership: %#v", cell)
+		}
+		for _, service := range []string{"cooling", "heating"} {
+			allocated, found := cell.Allocated[service]
+			if !found || !allocated.valid() || allocated.Value != 0 || allocated.Error != 0 {
+				t.Fatalf("reported zero load must keep an exact zero %s allocation: %+v", service, allocated)
+			}
+			load, found := frames.Loads[epathSQLKey("Office", service, month)]
+			if !found || !load.valid() || load.Value != 0 {
+				t.Fatalf("actual reported zero %s load became missing or nonzero: %+v", service, load)
+			}
+		}
+	}
+	for _, source := range []struct {
+		id        int
+		key       string
+		raw, full float64
+	}{{12, "Soffit A", -10, -60}, {13, "Soffit B", 6, 36}} {
+		if len(frames.SourceRaw[source.id]) != 12 || len(frames.SourceEffective[source.id]) != 12 || frames.SourceZone[source.id] != "office" || frames.SourceIdentities[source.id].KeyValue != source.key {
+			t.Fatalf("zero-load exterior source lost complete original observations: %+v", source)
+		}
+		for month := range frames.SourceRaw[source.id] {
+			raw, effective := frames.SourceRaw[source.id][month], frames.SourceEffective[source.id][month]
+			if !raw.valid() || !effective.valid() || raw.Value != source.raw || effective.Value != source.full {
+				t.Fatalf("zero load clipped signed source %d month%d: raw=%+v effective=%+v", source.id, month+1, raw, effective)
+			}
+		}
+	}
+	db, err := sql.Open("sqlite", "file:"+filepath.ToSlash(path)+"?mode=ro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var exteriorCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM Surfaces WHERE ClassName='Floor' AND ExtBoundCond=0`).Scan(&exteriorCount); err != nil || exteriorCount != 2 {
+		t.Fatalf("floor taxonomy must not rewrite Outdoors boundary to ground: count=%d error=%v", exteriorCount, err)
 	}
 }
 

@@ -12,9 +12,14 @@ This directory contains original EnergyPlus example models for checklist section
   passes saved-original-wire acceptance for all 46,224 independent metrics and
   complete record coverage. Its 394,508-byte compressed companion retains every
   metric, explicit unknown, count and status; it is not a summary subset.
-  The other 18 catalog entries remain unapproved, including the three older
-  Large Office adapter versions. Small Office's source recipe is still being
-  checked against original SQL identities and physical memberships.
+- Small Office 25.1 is also explicitly approved: all 17,675 independent metrics
+  and full required-field coverage of 5,074 records pass saved-original-wire
+  acceptance. Its 146,896-byte companion preserves all metrics, actual zeros,
+  explicit unknowns and tiny positive unassigned pump energy. Independent review
+  verifies the physical DX/gas paths, exact fan pools/direct-use owners and
+  original SQL calculations. The Large Office approved regression still passes.
+  The other 17 catalog entries remain unapproved, including the three older
+  Large Office adapter versions. Ideal Loads is the next fixture in order.
 - All 19 engine executions have finished (18 normal results; the no-heating
   model rejected for Severe errors). Catalog paths where files are not yet
   present remain intended destinations, not completed acceptance claims.

@@ -331,8 +331,8 @@ func buildZoneServiceSummaries(relations []HVACZoneChain, paths []ZoneServicePat
 }
 
 func buildZoneServicePaths(ctx *hvacContext, loops []HVACLoop, relations []HVACZoneChain, graph HVACRuleGraph, componentIndex ComponentIndex, couplingIndex CouplingIndex) []ZoneServicePath {
-	_ = graph
 	_ = componentIndex
+	airConditioning := buildHVACAirLoopConditioning(ctx, loops, graph)
 	var paths []ZoneServicePath
 	seen := map[string]bool{}
 	addPath := func(path ZoneServicePath) {
@@ -404,6 +404,20 @@ func buildZoneServicePaths(ctx *hvacContext, loops []HVACLoop, relations []HVACZ
 			deliveryInfo := classifyHVACDeliveryEquipment(ctx, terminal)
 			for _, airLoopName := range relation.AirLoopNames {
 				airRef := loopRefByName(loops, "AirLoopHVAC", airLoopName)
+				for _, conditioning := range airConditioning[normalizeName(airLoopName)] {
+					trace, connected := hvacAirConditioningDeliveryTrace(ctx, loops, graph, relation, terminal, airLoopName)
+					if !connected {
+						continue
+					}
+					addPath(ZoneServicePath{
+						ZoneName: relation.ZoneName, SpaceName: relation.SpaceName,
+						ServiceKind: conditioning.ServiceKind, PathType: "central_air", AirLoop: airRef,
+						Delivery: deliveryInfo.Component, DeliveryEquipment: deliveryInfo,
+						DeliveryWrapper: aduWrapperRefForTerminal(relation, terminal), ServedSubject: subject,
+						Conditioning: append([]ComponentRef(nil), conditioning.Components...),
+						TraceIDs:     appendUniqueStrings(trace, conditioning.TraceIDs...),
+					})
+				}
 				addPath(ZoneServicePath{
 					ZoneName:          relation.ZoneName,
 					SpaceName:         relation.SpaceName,
@@ -1719,6 +1733,12 @@ func pathTypeForDelivery(deliveryType string, hasPlantLoop bool, hasAirLoop bool
 }
 
 func serviceKindForServiceChain(chain HVACServicePath, delivery HVACComponent) string {
+	// A NoReheat terminal transports conditioned air; its type/name cannot
+	// establish a heating source. Actual upstream coils have separate, typed
+	// conditioning paths, while existing plant/source-backed chains stay intact.
+	if chain.Component == "" && chain.SourceComponent == "" && strings.HasSuffix(normalizeFieldCatalogKey(delivery.ObjectType), ":noreheat") {
+		return "ventilation"
+	}
 	text := strings.ToLower(strings.Join([]string{chain.Component, chain.SourceComponent, delivery.ObjectType, delivery.ObjectName}, " "))
 	switch {
 	case strings.Contains(text, "cool") || strings.Contains(text, "chiller") || strings.Contains(text, "dx"):

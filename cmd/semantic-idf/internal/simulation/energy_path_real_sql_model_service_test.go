@@ -123,6 +123,7 @@ func epathSQLModelServiceChecks(frames epathSQLFrames, model epathRealSQLModel, 
 		}
 		monthSite, monthAssigned, monthUnassigned := [12]epathSQLQuantity{}, [12]epathSQLQuantity{}, [12]epathSQLQuantity{}
 		branchNumerator, branchDenominator := map[string][12]epathSQLQuantity{}, map[string][12]epathSQLQuantity{}
+		branchKindPairs := map[string][12]epathSQLConversionProof{}
 		for month := 1; month <= 12; month++ {
 			consumption, err := epathSQLSiteSum(frames, service.SiteIDs, month)
 			if err != nil {
@@ -149,6 +150,9 @@ func epathSQLModelServiceChecks(frames epathSQLFrames, model epathRealSQLModel, 
 			if load.Value > 0 && consumption.Value > 0 {
 				num, den := branchNumerator[basis], branchDenominator[basis]
 				from, to := load.positive(), consumption.positive()
+				kindPairs := branchKindPairs[basis]
+				kindPairs[month-1] = epathSQLConversionProof{From: from, To: to}
+				branchKindPairs[basis] = kindPairs
 				if from.includesZero() || to.includesZero() {
 					from, to = from.optionalPresentation(), to.optionalPresentation()
 				}
@@ -174,6 +178,10 @@ func epathSQLModelServiceChecks(frames epathSQLFrames, model epathRealSQLModel, 
 				kind := service.RatioKind
 				if basis == service.FallbackBasis {
 					kind = service.FallbackRatioKind
+				}
+				kind, err = epathSQLConversionPeriodRatioKind(kind, period, branchKindPairs[basis])
+				if err != nil {
+					return fmt.Errorf("%s/%s/%s ratio kind: %w", service.Service, basis, period, err)
 				}
 				target := epathRealOracleTarget{Collection: "links", Field: "pairedRatio", Relation: "load_to_end_use", Service: service.Service, Basis: basis, FromUnit: "kWh", ToUnit: "kWh", RatioKind: kind, Aggregate: "sum"}
 				if err := checks.add("ratios", "building", "", period, service.Service+"/"+basis, "ratio", ratio, target, "", nil, nil); err != nil {
@@ -229,13 +237,23 @@ func epathSQLModelServiceChecks(frames epathSQLFrames, model epathRealSQLModel, 
 				return err
 			}
 			expected[month-1] = value
+			poolValue, err := epathSQLFanAllocatedMonth(*checks, model, aux, month, value)
+			if err != nil {
+				return err
+			}
 			weight := 0.0
 			for zone := range served {
 				weight += frames.Loads[epathSQLKey(zone, "cooling", month)].Value + frames.Loads[epathSQLKey(zone, "heating", month)].Value
 			}
 			if aux.Weight != "unassigned" && weight > 0 {
 				assigned[month-1] = value
+				if poolValue != nil {
+					assigned[month-1] = *poolValue
+				}
 			} else {
+				if poolValue != nil && poolValue.Value > 0 {
+					return fmt.Errorf("audited positive fan allocation lost its served load")
+				}
 				unassigned[month-1] = value
 			}
 		}

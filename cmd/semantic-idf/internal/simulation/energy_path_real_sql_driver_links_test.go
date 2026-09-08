@@ -19,7 +19,21 @@ type epathSQLDriverLinkProof struct {
 	RequiredDriverSources    []int
 	LoadSources              []int
 	RequiredLoadSources      []int
-	RequiredLinkLoadSources  map[string][]int // Exact category -> independently positive completed months.
+	RequiredLinkLoadSources  map[string][]int                                // Exact category -> independently positive completed months.
+	Branches                 map[string]map[string]epathSQLDriverBranchProof // Category -> completed-month owner (empty means multiple Zones).
+	BranchChoices            map[string][]epathSQLDriverMonthChoice
+}
+
+type epathSQLDriverMonthChoice struct {
+	Quantity            epathSQLQuantity
+	Branches            map[string]epathSQLDriverBranchProof
+	RequiredLoadSources []int
+}
+
+type epathSQLDriverBranchProof struct {
+	Quantity                   epathSQLQuantity
+	DriverSources, LoadSources []int
+	RequiredLoadSources        []int
 }
 
 type epathSQLDriverTrace struct{ Allowed, Required []int }
@@ -79,9 +93,13 @@ func epathSQLModelDriverLinkChecks(frames epathSQLFrames, model epathRealSQLMode
 			monthlyLoadSources := [12][]int{}
 			monthlyRequiredLoadSources := [12][]int{}
 			monthlyLoads := [12]epathSQLQuantity{}
+			monthlyBranches := [12]map[string]map[string]epathSQLDriverBranchProof{}
 			for month := 1; month <= 12; month++ {
 				quantities := map[string]epathSQLQuantity{}
 				traces := map[string]epathSQLDriverTrace{}
+				zoneQuantities := map[string]map[string]epathSQLQuantity{}
+				zoneSources := map[string]map[string][]int{}
+				possibleLoadSources := []int{}
 				for _, current := range zones {
 					if zone != "" && zone != current {
 						continue
@@ -96,6 +114,9 @@ func epathSQLModelDriverLinkChecks(frames epathSQLFrames, model epathRealSQLMode
 						return fmt.Errorf("load provenance %s/%s/M%d: %w", current, service, month, err)
 					}
 					monthlyLoadSources[month-1] = epathSQLDictionaryUnion(monthlyLoadSources[month-1], ids)
+					if _, high := load.bounds(); high > 0 {
+						possibleLoadSources = epathSQLDictionaryUnion(possibleLoadSources, ids)
+					}
 					if !load.includesZero() {
 						monthlyRequiredLoadSources[month-1] = epathSQLDictionaryUnion(monthlyRequiredLoadSources[month-1], ids)
 					}
@@ -134,6 +155,12 @@ func epathSQLModelDriverLinkChecks(frames epathSQLFrames, model epathRealSQLMode
 						}
 					}
 					quantities[category] = quantities[category].add(value)
+					if zoneQuantities[category] == nil {
+						zoneQuantities[category] = map[string]epathSQLQuantity{}
+						zoneSources[category] = map[string][]int{}
+					}
+					owner := strings.ToLower(cell.Zone)
+					zoneQuantities[category][owner] = zoneQuantities[category][owner].add(value)
 					_, high := value.bounds()
 					if high > 0 {
 						if err := epathSQLDriverOriginalIDs(frames.SourceIdentities, cell.SourceIDs); err != nil {
@@ -145,21 +172,42 @@ func epathSQLModelDriverLinkChecks(frames epathSQLFrames, model epathRealSQLMode
 							trace.Required = epathSQLDictionaryUnion(trace.Required, cell.SourceIDs)
 						}
 						traces[category] = trace
+						zoneSources[category][owner] = epathSQLDictionaryUnion(zoneSources[category][owner], cell.SourceIDs)
 					}
 				}
 				monthly[month-1] = quantities
 				monthlyTrace[month-1] = traces
+				monthlyBranches[month-1] = map[string]map[string]epathSQLDriverBranchProof{}
+				for category, owners := range zoneQuantities {
+					monthlyBranches[month-1][category] = epathSQLDriverMonthBranches(quantities[category], owners, zoneSources[category], possibleLoadSources, monthlyRequiredLoadSources[month-1])
+				}
 			}
 			for _, period := range periods {
 				quantities, load := map[string]epathSQLQuantity{}, epathSQLQuantity{}
 				traces, loadSources := map[string]epathSQLDriverTrace{}, []int{}
 				requiredLoadSources := []int{}
 				requiredLinkLoadSources := map[string][]int{}
+				branches := map[string]map[string]epathSQLDriverBranchProof{}
+				branchChoices := map[string][]epathSQLDriverMonthChoice{}
 				for _, month := range epathSQLPeriodMonths(period) {
 					load = load.add(monthlyLoads[month-1])
 					loadSources = epathSQLDictionaryUnion(loadSources, monthlyLoadSources[month-1])
 					requiredLoadSources = epathSQLDictionaryUnion(requiredLoadSources, monthlyRequiredLoadSources[month-1])
 					for category, value := range monthly[month-1] {
+						if len(monthlyBranches[month-1][category]) > 0 {
+							branchChoices[category] = append(branchChoices[category], epathSQLDriverMonthChoice{Quantity: value, Branches: monthlyBranches[month-1][category], RequiredLoadSources: monthlyRequiredLoadSources[month-1]})
+						}
+						if branches[category] == nil {
+							branches[category] = map[string]epathSQLDriverBranchProof{}
+						}
+						for owner, next := range monthlyBranches[month-1][category] {
+							branch := branches[category][owner]
+							branch.Quantity = branch.Quantity.add(next.Quantity)
+							branch.DriverSources = epathSQLDictionaryUnion(branch.DriverSources, next.DriverSources)
+							branch.LoadSources = epathSQLDictionaryUnion(branch.LoadSources, next.LoadSources)
+							branch.RequiredLoadSources = epathSQLDictionaryUnion(branch.RequiredLoadSources, next.RequiredLoadSources)
+							branches[category][owner] = branch
+						}
 						quantities[category] = quantities[category].add(value)
 						if _, exists := requiredLinkLoadSources[category]; !exists {
 							requiredLinkLoadSources[category] = nil
@@ -200,13 +248,56 @@ func epathSQLModelDriverLinkChecks(frames epathSQLFrames, model epathRealSQLMode
 						if err := checks.add("loads", scope, zone, period, "driver_links/"+service+"/"+key+"/"+field, "kWh", &q, target, "", nil, nil); err != nil {
 							return err
 						}
-						checks.Rows[len(checks.Rows)-1].DriverLink = &epathSQLDriverLinkProof{Category: category, Service: service, Basis: target.Basis, Load: load, SourceIdentities: frames.SourceIdentities, DriverSources: traces[category].Allowed, RequiredDriverSources: traces[category].Required, LoadSources: loadSources, RequiredLoadSources: requiredLoadSources, RequiredLinkLoadSources: requiredLinkLoadSources}
+						checks.Rows[len(checks.Rows)-1].DriverLink = &epathSQLDriverLinkProof{Category: category, Service: service, Basis: target.Basis, Load: load, SourceIdentities: frames.SourceIdentities, DriverSources: traces[category].Allowed, RequiredDriverSources: traces[category].Required, LoadSources: loadSources, RequiredLoadSources: requiredLoadSources, RequiredLinkLoadSources: requiredLinkLoadSources, Branches: branches, BranchChoices: branchChoices}
 					}
 				}
 			}
 		}
 	}
 	return nil
+}
+
+// Monthly canonical branches retain a singleton Zone only when that Zone can
+// be the sole visible contributor. Empty owner requires possible multi-Zone
+// contributions; it is not a fallback for unknown or erased ownership.
+func epathSQLDriverMonthBranches(quantity epathSQLQuantity, zones map[string]epathSQLQuantity, sources map[string][]int, loads, requiredLoads []int) map[string]epathSQLDriverBranchProof {
+	possible, definite := []string{}, map[string]bool{}
+	for zone, value := range zones {
+		if _, high := value.bounds(); high > 0 {
+			possible = append(possible, zone)
+			definite[zone] = !value.includesZero()
+		}
+	}
+	sort.Strings(possible)
+	owners := []string{}
+	if len(possible) > 1 {
+		owners = append(owners, "")
+	}
+	for _, zone := range possible {
+		sole := true
+		for other, known := range definite {
+			sole = sole && (other == zone || !known)
+		}
+		if sole {
+			owners = append(owners, zone)
+		}
+	}
+	out := map[string]epathSQLDriverBranchProof{}
+	for _, owner := range owners {
+		branch := epathSQLDriverBranchProof{Quantity: quantity, LoadSources: loads}
+		if len(owners) == 1 && !quantity.includesZero() {
+			branch.RequiredLoadSources = requiredLoads
+		} else {
+			branch.Quantity = quantity.optionalPresentation()
+		}
+		for _, zone := range possible {
+			if owner == "" || owner == zone {
+				branch.DriverSources = epathSQLDictionaryUnion(branch.DriverSources, sources[zone])
+			}
+		}
+		out[owner] = branch
+	}
+	return out
 }
 
 func epathCheckSQLModelDriverLink(bundle PurposeResultBundle, check epathSQLModelCheck) error {
@@ -237,6 +328,8 @@ func epathCheckSQLModelDriverLink(bundle PurposeResultBundle, check epathSQLMode
 	selected, incoming, outgoing := 0, map[string]float64{}, map[string]float64{}
 	seenBranches, sourceNodes, observedLeaves := map[string]bool{}, map[string]bool{}, map[int]bool{}
 	total := 0.0
+	branchTotals := map[string]map[string]float64{}
+	branchLeaves := map[string]map[string][]map[int]bool{}
 	for _, link := range links {
 		if !epathSQLDriverLinkMatches(byID, link, proof) {
 			continue
@@ -258,6 +351,13 @@ func epathCheckSQLModelDriverLink(bundle PurposeResultBundle, check epathSQLMode
 		if err != nil {
 			return err
 		}
+		owner := strings.ToLower(link.ZoneName)
+		if branchTotals[from.DriverCategory] == nil {
+			branchTotals[from.DriverCategory] = map[string]float64{}
+			branchLeaves[from.DriverCategory] = map[string][]map[int]bool{}
+		}
+		branchTotals[from.DriverCategory][owner] += link.FromValue
+		branchLeaves[from.DriverCategory][owner] = append(branchLeaves[from.DriverCategory][owner], leaves.Original)
 		for id := range leaves.Driver {
 			observedLeaves[id] = true
 		}
@@ -309,7 +409,120 @@ func epathCheckSQLModelDriverLink(bundle PurposeResultBundle, check epathSQLMode
 			return fmt.Errorf("driver links omit required independently contributing SQL source %d", id)
 		}
 	}
+	for category, branches := range proof.Branches {
+		if proof.Category != "" && category != proof.Category {
+			continue
+		}
+		for owner, branch := range branches {
+			value := branchTotals[category][owner]
+			if err := epathCheckSQLModelQuantity(&value, &branch.Quantity); err != nil {
+				return fmt.Errorf("independent monthly driver branch %s/%s: %w", category, owner, err)
+			}
+		}
+		if err := epathSQLDriverChoicesContain(proof.BranchChoices[category], branchTotals[category], branchLeaves[category]); err != nil {
+			return fmt.Errorf("driver category %s: %w", category, err)
+		}
+	}
 	return epathCheckSQLModelQuantity(epathOracleNumber(total), check.Quantity)
+}
+
+// One completed month belongs wholly to one possible canonical owner. Keep
+// the disjoint assignments rather than accepting their convex [0,total] hull.
+// The same assignment must explain quantities and original source leaves.
+func epathSQLDriverChoicesContain(choices []epathSQLDriverMonthChoice, actual map[string]float64, leaves map[string][]map[int]bool) error {
+	if len(choices) > 12 {
+		return fmt.Errorf("too many completed monthly driver choices")
+	}
+	owners := map[string]bool{}
+	orderedChoices := make([][]string, len(choices))
+	for index, choice := range choices {
+		if !choice.Quantity.valid() || choice.Quantity.Value < 0 || len(choice.Branches) == 0 {
+			return fmt.Errorf("invalid independent monthly driver choice")
+		}
+		for owner := range choice.Branches {
+			owners[owner] = true
+			// An absent owner has no physical link or source obligations. A
+			// positive whole-month assignment cannot fit it; an optional zero
+			// assignment is exactly the omission already searched below.
+			if actual[owner] == 0 && len(leaves[owner]) == 0 {
+				continue
+			}
+			orderedChoices[index] = append(orderedChoices[index], owner)
+		}
+		sort.Strings(orderedChoices[index])
+	}
+	for owner := range actual {
+		if !owners[owner] {
+			return fmt.Errorf("driver owner has no completed monthly choice")
+		}
+	}
+	visits, capped := 0, false
+	var search func(int, map[string]epathSQLDriverBranchProof) bool
+	search = func(index int, assigned map[string]epathSQLDriverBranchProof) bool {
+		visits++
+		if visits > 65536 {
+			capped = true
+			return false
+		}
+		if index == len(choices) {
+			for owner := range owners {
+				branch := assigned[owner]
+				value := actual[owner]
+				if epathCheckSQLModelQuantity(&value, &branch.Quantity) != nil {
+					return false
+				}
+				allowed := map[int]bool{}
+				for _, id := range epathSQLDictionaryUnion(branch.DriverSources, branch.LoadSources) {
+					allowed[id] = true
+				}
+				for _, original := range leaves[owner] {
+					for id := range original {
+						if !allowed[id] {
+							return false
+						}
+					}
+					for _, id := range branch.RequiredLoadSources {
+						if !original[id] {
+							return false
+						}
+					}
+				}
+			}
+			return true
+		}
+		choice := choices[index]
+		for _, owner := range orderedChoices[index] {
+			branch := assigned[owner]
+			branch.Quantity = branch.Quantity.add(choice.Quantity)
+			low, _ := branch.Quantity.bounds()
+			if low > actual[owner]+1e-8*math.Max(1, math.Abs(actual[owner])) {
+				continue
+			}
+			month := choice.Branches[owner]
+			branch.DriverSources = epathSQLDictionaryUnion(branch.DriverSources, month.DriverSources)
+			branch.LoadSources = epathSQLDictionaryUnion(branch.LoadSources, month.LoadSources)
+			branch.RequiredLoadSources = epathSQLDictionaryUnion(branch.RequiredLoadSources, choice.RequiredLoadSources)
+			next := make(map[string]epathSQLDriverBranchProof, len(assigned)+1)
+			for key, value := range assigned {
+				next[key] = value
+			}
+			next[owner] = branch
+			if search(index+1, next) {
+				return true
+			}
+			if capped {
+				return false
+			}
+		}
+		return choice.Quantity.includesZero() && search(index+1, assigned)
+	}
+	if search(0, map[string]epathSQLDriverBranchProof{}) {
+		return nil
+	}
+	if capped {
+		return fmt.Errorf("independent driver owner assignment exceeds bounded search limit")
+	}
+	return fmt.Errorf("driver branches are not a whole-month quantity/source assignment")
 }
 
 func epathSQLDriverOriginalIDs(identities map[int]epathRealSQLSource, ids []int) error {
@@ -420,11 +633,20 @@ func epathSQLDriverLinkTrace(link EnergyPathLink, from, to EnergyExplanationNode
 	// only its completed monthly contributions. Requiring another month's load
 	// leaves on that branch would manufacture temporal overlap. The all-incoming
 	// proof must also select each actual branch's independently compiled category.
-	linkRequired, knownCategory := proof.RequiredLinkLoadSources[from.DriverCategory]
-	if !knownCategory {
-		return nil, fmt.Errorf("driver link %s has no independently reviewed category overlap", link.ID)
+	branch, knownBranch := proof.Branches[from.DriverCategory][strings.ToLower(link.ZoneName)]
+	if !knownBranch {
+		return nil, fmt.Errorf("driver link %s has no independently possible monthly owner branch", link.ID)
 	}
-	for _, id := range linkRequired {
+	branchAllowed := map[int]bool{}
+	for _, id := range epathSQLDictionaryUnion(branch.DriverSources, branch.LoadSources) {
+		branchAllowed[id] = true
+	}
+	for id := range leaves {
+		if !branchAllowed[id] {
+			return nil, fmt.Errorf("driver link %s injects SQL source %d outside its independently possible branch months", link.ID, id)
+		}
+	}
+	for _, id := range branch.RequiredLoadSources {
 		if !load[id] || !leaves[id] {
 			return nil, fmt.Errorf("driver link %s omits required overlapping delivered-load SQL source %d", link.ID, id)
 		}

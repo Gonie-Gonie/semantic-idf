@@ -559,3 +559,24 @@ Existing code may already satisfy portions of later items. They remain pending
 until their exact checklist requirements and regression/acceptance evidence
 are checked in order. In particular, old renderers/state are removed only after
 the new view's acceptance tests pass.
+
+The next section 22 checkpoint approves Small Office 25.1 after correcting the
+actual DX/fuel AirLoop service path omission and the `NoReheat` name-based
+misclassification. Unique continuous supply branches and exact terminal demand
+membership now provide the conditioning evidence; a two-loop/two-terminal Zone
+regression prevents cross-assignment. Independent SQL checks cover exterior
+Floors, explicit nonmember Zones, seasonal Load / fuel ratios, counted fan-pool
+rounding stages and exact whole-month driver-owner/source choices. Original
+inputs, engine output, SQL and failed diagnostics remain intact.
+
+All 17,675 independent metrics and required fields across 5,074 coverage records
+pass repeatedly. Separate reviews verify the immutable pending artifact,
+42 monthly-to-annual family sums, 156 carrier sums and 91 original-SQL Core
+calculations. Explicit root approval creates the second expected header and its
+146,896-byte lossless companion, retaining actual zeros, explicit unknowns and
+tiny positive unassigned pump energy. Saved-original-wire acceptance passes in
+17.040 seconds. The unchanged Large Office approved expectation also passes
+46,224 metrics in 76.340 seconds after exact redundant-owner search pruning;
+the original visit bound and rejection of fractional-month assignments remain.
+The offline integrity guard now requires both approved fixtures. Ideal Loads
+is next; 17 catalog entries and all later checklist acceptance remain pending.

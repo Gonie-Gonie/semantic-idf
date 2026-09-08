@@ -6,9 +6,10 @@ Official model inputs, licenses and a versioned catalog live under
 `cmd/semantic-idf/internal/simulation/testdata/energy_path_real_models`.
 Coverage tags in that catalog are obligations to verify, not completed claims.
 
-Current checkpoint: Large Office 25.1 has an explicitly reviewed expected
-manifest and a passing saved-result acceptance comparison for all 46,224
-independent metrics. The remaining 18 catalog entries, including Large Office
+Current checkpoint: Large Office and Small Office 25.1 have explicitly reviewed
+expected manifests and passing saved-result acceptance comparisons for all
+46,224 and 17,675 independent metrics respectively. The remaining 17 catalog
+entries, including Ideal Loads and Large Office
 22.1/23.2/24.2, are not yet approved. Earlier findings below are retained as a
 chronological record, not presented as the current acceptance status.
 
@@ -800,6 +801,126 @@ weather and all current non-test Go source contents (including uncommitted
 changes). Candidate bytes have their own hash and `acceptance: false` marker.
 Changed production code or source provenance invalidates the snapshot; an old
 snapshot is retained as evidence and is not silently refreshed or reused.
+
+## Small Office complete-coverage diagnostic
+
+The next fixture remains the original Small Office 25.1 capture
+`real-small-office-25-1-20260907T162852.542430100`. Its SQL SHA-256 is
+`101559a393b67a3c1d89811df39e86299ab4a902d1f148b0e27f4d0537f7c6fc`;
+the engine completed successfully with 498 retained warnings and zero severe
+errors. No model changes or engine rerun were needed for this comparison.
+
+Independent preparation adds five exact `Air System Fan Electricity Energy`
+Hourly/J pools, each tied to its original single served Zone, and two Monthly/J
+direct-use declarations for the five actual Lights/ElectricEquipment owners.
+Attic has neither direct-use source nor fan path. The independently observed
+`Pumps:Electricity` annual value is 3.5376923076923375e-8 kWh, not an absent or
+exact-zero source, and its domestic-hot-water-only pool remains unassigned.
+All existing recipe physics, source preferences and precision remain intact.
+
+Two test-oracle omissions are corrected with failing-before/passing-after
+regressions. Exterior `Floor` belongs to the Ground / floor category without
+changing its Outdoors boundary; zero delivered loads must not erase the signed
+surface observations. Thermal reconciliation now respects each detail family's
+explicit Zone membership: a reviewed nonmember contributes only arithmetic
+zero, whereas missing applicable observations and fabricated outside-member
+cells still fail. The Large Office approved saved acceptance remains passing
+after these corrections (46,224 checks, 73.260 seconds).
+
+The new `small-office-25-1-candidate-coverage-01.json` is rebuilt from original
+SQL in 3.670 seconds and bound to production SHA-256
+`f638eacd43c0ced5e1abde7eee5433bd073af7e72a1e578e09d2aa05b207c0ae`.
+Its SHA-256 is
+`29c086e60e50fba1c077130c1fac299168fa403c3bd458a782ad390723dca7da`.
+The separately preserved `small-office-25-1-diagnostic-coverage-01.json`
+compiles all 17,675 independent checks but fails in 9.130 seconds with 1,013
+numeric/contract mismatches and 1,606 coverage failures across 4,866 records.
+This is explicitly a failed diagnostic, not acceptance or an approved expected
+manifest. The eight check-group counts are Drivers 6,115; Loads 4,624; End uses
+535; Carriers 342; Ratios 455; Completeness 546; Residuals 3,354; Zone allocation
+1,704. The failure record is retained while its causes are corrected; it is not
+replaced with a smaller passing subset.
+
+The complete mismatch audit identifies four causes rather than 2,619 unrelated
+defects. The production HVAC service model did not attach native air-side DX
+conditioning to its terminal path and mistook `NoReheat` for a heating source.
+Five original, continuously connected DX-wrapper/coil and gas-coil supply
+branches now supply typed cooling/heating evidence; the terminal alone supplies
+neither thermal source. Exact selected-loop demand-node membership prevents a
+Zone with two loops and two terminals from cross-assigning their services.
+The new inference is limited to validated single continuous branches and
+supported native coil types; it does not claim support for unresolved parallel
+branches or arbitrary unitary wrappers. Existing water/plant-backed paths remain
+with their original builder.
+
+The remaining three causes are independent-oracle omissions. Annual parallel
+driver branches need their actual contributing-month ownership, not the source
+union of every parallel branch. A combustion load/fuel quotient above one is
+labelled Load / fuel, not Efficiency: the original SQL confirms this in five
+Building months and 22 Zone-months. Finally, M9's five independently reported fan
+pools sum to 841.0611476728559 kWh, whereas their separately rounded allocations
+sum to 841.060 kWh. The allocated proof now sums counted per-pool intervals while
+the expected broad meter retains its separate, narrower source interval. This
+does not rescale pools, round SQL centers into new expectations, invent missing
+observations or authorize an unassigned policy inconsistent with reviewed pools.
+
+## Small Office approved expected manifest
+
+The completed implementation produces
+`small-office-25-1-candidate-coverage-02.json` in 3.920 seconds, from the unchanged
+original SQL. Candidate SHA-256 is
+`a36ba68e1eb21035f81c7c2c301401523213f5cceed2c70b3e557e8cf83ec077`,
+with production-source SHA-256
+`3f555ee13196e6a5761bb8f25141153d785fc674b72831d767835255293c1fbd`.
+Diagnostics `coverage-02`, `coverage-03` and `coverage-04` all pass the full
+17,675 checks, with zero numeric/contract failures and zero required-field gaps
+across 5,074 records. Their elapsed times are 9.470, 10.910 and 10.500 seconds.
+The corrected cooling branches increase the record count; no failing record
+or metric group was removed to obtain these passes.
+
+The separately preserved `small-office-25-1-pending-coverage-01.json` has SHA-256
+`ce02df1bf85f2c0828df2fa8a002f4f11fd033923a2d8fe2f2234dcbc4eda6a0`.
+Independent read-only reviews checked all metric/coverage identities and
+provenance, 42 Zone monthly-to-annual family sums, 156 carrier component sums and
+91 Core calculations from the original SQL. They also checked Attic zero loads
+without invented direct-use sources, actual August driver ownership, seasonal
+Load / fuel classification and exact fan pools. Known values include 6,218 exact
+zeros; all 653 null values retain explicit partial/unavailable/not-applicable
+status. Coverage includes 4,827 primary, 78 referenced-accounting, 26 context and
+143 non-flow records. The positive 3.5376923076923375e-8 kWh water-system pump
+consumption remains unassigned rather than disappearing or being allocated to
+the HVAC Zones.
+
+Root explicitly approves this reviewed independent expectation set in
+`expected/small-office-25-1.json`. The opt-in payload generator creates only its
+146,896-byte lossless metric companion; it cannot author approval or replace
+existing files. Companion SHA-256 is
+`af69ece75a9e2b6943f3f095f02ecb506086893fc97badd32f5385eea1efdc03`.
+Its uncompressed 17,675-metric array has SHA-256
+`59d96c3bc3ab714fd820d0836564832473f10f6572086d41bcf3e63b90126b2f`,
+and exact sorted-key digest
+`df54a3e29b40095b6023ba4d501760a2034bc9acb6edd11da2001322121bc5e3`.
+The separate saved-original-wire acceptance passes in 17.040 seconds, comparing
+every approved value, identity, count and status in all eight groups. The normal
+offline catalog guard now requires both approved fixtures. The recipe's retained
+draft-review text describes its preparation history; explicit approval resides
+only in the separate expected header and is limited to this exact fixture.
+
+The new exact monthly driver-owner/source assignment also receives a Large
+Office regression check. Its first full replay fails explicitly at the existing
+65,536-visit search bound, preserved as
+`large-office-25-1-diagnostic-coverage-09.json`. The correction removes only
+assignments to owners with no actual link or source leaves: optional zero there
+is equivalent to whole-month omission, while mandatory positive months cannot
+be omitted. The cap, numeric intervals, source coupling and rejection of
+fractional-month splitting remain unchanged. Twelve months with many absent
+owners reproduce the original failure and now pass. With current-production
+`large-office-25-1-candidate-coverage-03.json` (SHA-256
+`e697369616155fec51e25f70ee49d6222737833ebb4c75502a97542ad5a9c216`),
+the unchanged Large Office approved acceptance passes all 46,224 metrics in
+76.340 seconds. No original engine, input, SQL or approved Large Office
+expectation was changed. Ideal Loads is next in section 22; the remaining 17
+catalog entries and later checklist sections are not approved by these passes.
 
 ## Portable EnergyPlus 22.1 provenance
 

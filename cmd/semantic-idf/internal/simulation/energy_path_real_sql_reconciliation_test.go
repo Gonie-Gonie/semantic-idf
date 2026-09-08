@@ -190,8 +190,9 @@ func epathSQLModelThermalReconciliationChecks(frames epathSQLFrames, model epath
 	}
 	sort.Strings(zones)
 	roles := map[string]string{}
+	ownersByFamily := map[string]map[string]bool{}
 	for _, family := range model.Families {
-		if family.ID == "" || roles[family.ID] != "" || (family.Role != "pressure" && family.Role != "context") {
+		if family.ID == "" || roles[family.ID] != "" || len(family.Keys) == 0 || (family.Role != "pressure" && family.Role != "context") {
 			return fmt.Errorf("unknown/duplicate thermal family role")
 		}
 		roles[family.ID] = family.Role
@@ -209,14 +210,20 @@ func epathSQLModelThermalReconciliationChecks(frames epathSQLFrames, model epath
 				}
 			}
 		}
+		ownersByFamily[family.ID] = owners
 	}
 	cellKeys := []string{}
 	for key, cell := range frames.Cells {
 		if cell == nil || frames.Zones[cell.Zone].Name == "" || cell.Month < 1 || cell.Month > 12 || key != epathSQLKey(cell.Zone, cell.Family, cell.Month) {
 			return fmt.Errorf("unknown/misrouted thermal reconciliation cell")
 		}
-		if !strings.HasPrefix(cell.Family, "surface:") && roles[cell.Family] == "" {
-			return fmt.Errorf("undeclared reconciliation cell family")
+		if !strings.HasPrefix(cell.Family, "surface:") {
+			if roles[cell.Family] == "" {
+				return fmt.Errorf("undeclared reconciliation cell family")
+			}
+			if !ownersByFamily[cell.Family][cell.Zone] {
+				return fmt.Errorf("reconciliation cell is outside declared family membership")
+			}
 		}
 		cellKeys = append(cellKeys, key)
 	}
@@ -393,7 +400,20 @@ func epathSQLDriverReconciliationChecks(frames epathSQLFrames, model epathRealSQ
 						if !ok || definition.Component != eq.component || definition.Role != "pressure" || eq.family == "internal" && (!strings.HasPrefix(definition.Category, "internal.") || definition.Category == "internal.other") || eq.family == "outdoor_air" && id != eq.aggregate && definition.Category != "air.infiltration" {
 							return fmt.Errorf("unreviewed reconciliation detail %s", id)
 						}
-						keys = append(keys, epathSQLKey(zone, id, month))
+						key := epathSQLKey(zone, id, month)
+						applies := false
+						for _, owner := range definition.Keys {
+							applies = applies || strings.EqualFold(owner, zone)
+						}
+						if !applies {
+							if _, present := frames.Cells[key]; present {
+								return fmt.Errorf("reconciliation detail exists outside declared membership")
+							}
+							// A reviewed nonmember contributes only arithmetic zero.
+							// It is not a missing observation and creates no cell/source.
+							continue
+						}
+						keys = append(keys, key)
 					}
 				}
 				sort.Strings(keys)

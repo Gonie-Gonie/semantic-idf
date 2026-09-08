@@ -92,6 +92,7 @@ func epathSQLModelZoneServiceChecks(frames epathSQLFrames, model epathRealSQLMod
 		// values sum these completed shares, never annual load fractions.
 		allocated := map[string]map[string][12]epathSQLQuantity{}
 		fromValues, toValues := map[string][12]epathSQLQuantity{}, map[string][12]epathSQLQuantity{}
+		kindValues := map[string][12]epathSQLConversionProof{}
 		for _, zone := range zones {
 			allocated[zone] = map[string][12]epathSQLQuantity{}
 		}
@@ -134,6 +135,9 @@ func epathSQLModelZoneServiceChecks(frames epathSQLFrames, model epathRealSQLMod
 				}
 				if load.Value > 0 && total.Value > 0 {
 					from, to := load.positive(), total.positive()
+					kindPairs := kindValues[zone]
+					kindPairs[month-1] = epathSQLConversionProof{From: from, To: to}
+					kindValues[zone] = kindPairs
 					if from.includesZero() || to.includesZero() {
 						from, to = from.optionalPresentation(), to.optionalPresentation()
 					}
@@ -198,8 +202,14 @@ func epathSQLModelZoneServiceChecks(frames epathSQLFrames, model epathRealSQLMod
 				for _, basis := range []string{service.Basis, service.FallbackBasis} {
 					pair := &epathSQLConversionProof{From: from, To: to}
 					kind := service.RatioKind
+					kindPairs := kindValues[zone]
 					if basis == service.FallbackBasis {
 						pair, kind = &epathSQLConversionProof{}, service.FallbackRatioKind
+						kindPairs = [12]epathSQLConversionProof{}
+					}
+					kind, err = epathSQLConversionPeriodRatioKind(kind, period, kindPairs)
+					if err != nil {
+						return fmt.Errorf("%s/%s/%s/%s ratio kind: %w", service.Service, zone, basis, period, err)
 					}
 					var ratio *epathSQLQuantity
 					if pair.From.Value > 0 && pair.To.Value > 0 {

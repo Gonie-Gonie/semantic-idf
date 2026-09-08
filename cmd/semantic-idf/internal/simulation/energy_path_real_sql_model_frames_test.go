@@ -107,6 +107,10 @@ func epathSQLSurfaceCategory(class string, boundary, index int) (string, error) 
 			return "surface.exterior_walls", nil
 		case "Roof":
 			return "surface.roofs", nil
+		case "Floor":
+			// Ground / floor taxonomy includes exterior soffits; boundary0
+			// remains Outdoors and is not reinterpreted as ground contact.
+			return "surface.ground_floors", nil
 		case "Window", "Door", "GlassDoor":
 			return "surface.windows_doors", nil
 		}

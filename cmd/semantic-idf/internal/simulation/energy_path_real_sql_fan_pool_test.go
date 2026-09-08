@@ -271,5 +271,25 @@ func epathSQLModelFanPoolChecks(observed epathRealOracleEvidence, frames epathSQ
 			}
 		}
 	}
+	// Register only after exact hourly calendars, source identities, monthly
+	// meter closure and every served pool denominator have passed above.
+	if checks.FanPoolTotals != nil {
+		return fmt.Errorf("fan pool accounting was already compiled")
+	}
+	checks.FanPoolTotals = map[string]epathSQLFanPoolTotal{}
+	for _, item := range items {
+		total := checks.FanPoolTotals[item.Declaration.SiteID]
+		declaration := item.Declaration
+		declaration.ServedZones = append([]string(nil), declaration.ServedZones...)
+		total.Pools = append(total.Pools, declaration)
+		for month, value := range item.Months {
+			q := epathSQLQuantity{Value: value}
+			if value != 0 {
+				q.Error = float64(precision.SourceStages) * .0005
+			}
+			total.Months[month] = total.Months[month].add(q)
+		}
+		checks.FanPoolTotals[item.Declaration.SiteID] = total
+	}
 	return nil
 }

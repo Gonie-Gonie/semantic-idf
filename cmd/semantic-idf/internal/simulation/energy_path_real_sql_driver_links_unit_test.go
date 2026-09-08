@@ -41,6 +41,9 @@ func epathSQLDriverLinksFixture(t *testing.T) (epathSQLFrames, epathRealSQLModel
 			{ID: "wall-to-cooling", FromID: "wall", ToID: "cooling", Relation: "driver_to_load", ServiceKind: "cooling", Basis: "heat_balance_share", FromUnit: "kWh", ToUnit: "kWh", Period: period, ZoneName: zone, FromValue: 14.4 * factor, ToValue: 14.4 * factor, SourceIDs: []string{"surface-a", "surface-b", "cooling-source"}},
 			{ID: "people-to-cooling", FromID: "people", ToID: "cooling", Relation: "driver_to_load", ServiceKind: "cooling", Basis: "heat_balance_share", FromUnit: "kWh", ToUnit: "kWh", Period: period, ZoneName: zone, FromValue: 3.6 * factor, ToValue: 3.6 * factor, SourceIDs: []string{"people-source", "cooling-source"}},
 		}
+		for i := range links {
+			links[i].ZoneName = "Office" // This SQL fixture has one contributing Zone, even at Building scope.
+		}
 		return nodes, links
 	}
 	result := EnergyExplanationResult{Schema: energyExplanationSchema, Scope: EnergyExplanationScope{Kind: "building"}, AvailableZones: []string{"Office"}}
@@ -329,8 +332,10 @@ INSERT INTO ReportData SELECT ReportDataIndex+100000,18,TimeIndex,3600000 FROM R
 	r.Nodes[2].Value, r.Nodes[2].SourceIDs = 240, []string{"cooling-source", "lab-cooling"}
 	r.Links[0].FromValue, r.Links[0].ToValue = 192, 192
 	r.Links[0].SourceIDs = []string{"surface-a", "surface-b", "lab-wall", "cooling-source", "lab-cooling"}
+	r.Links[0].ZoneName = ""
 	r.Links[1].FromValue, r.Links[1].ToValue = 48, 48
 	r.Links[1].SourceIDs = []string{"people-source", "lab-people", "cooling-source", "lab-cooling"}
+	r.Links[1].ZoneName = ""
 	if err := epathCheckSQLModelDriverLink(original, check); err != nil {
 		t.Fatalf("complete independent two-Zone provenance rejected: %v", err)
 	}
@@ -454,7 +459,14 @@ UPDATE ReportData SET Value=0 WHERE ReportDataDictionaryIndex=17;`)
 		r.Nodes[2].Value = 20
 		r.Links[0].FromValue, r.Links[0].ToValue = 14.4, 14.4
 		r.Links[0].SourceIDs = []string{"surface-a", "surface-b", "cooling-source"}
-		r.Links[1].FromValue, r.Links[1].ToValue = 5.6, 5.6
+		r.Links[0].ZoneName = "Office"
+		r.Links[1].FromValue, r.Links[1].ToValue = 3.6, 3.6
+		r.Links[1].ZoneName, r.Links[1].SourceIDs = "Office", []string{"people-source", "cooling-source"}
+		labPeople := r.Links[1]
+		labPeople.ID, labPeople.ZoneName = "lab-people-month-two", "Lab"
+		labPeople.FromValue, labPeople.ToValue = 2, 2
+		labPeople.SourceIDs = []string{"lab-people", "lab-cooling"}
+		r.Links = append(r.Links, labPeople)
 		selected := []epathSQLModelCheck{}
 		for _, item := range checks.Rows {
 			if item.Item.Scope == "building" && item.Item.Period == "annual" && item.DriverLink.Service == "cooling" && (item.DriverLink.Category == "surface.exterior_walls" || item.DriverLink.Category == "") {
@@ -494,6 +506,234 @@ UPDATE ReportData SET Value=0 WHERE ReportDataDictionaryIndex=17;`)
 			})
 		}
 	})
+	t.Run("one ambiguous month cannot split across canonical owners", func(t *testing.T) {
+		// Office contributes a definite18 kWh in M1. Lab's0.0001 kWh
+		// remains a SQL observation but its precision interval includes0.
+		// The M1 wall14.4 may therefore retain Office or multi-Zone ownership,
+		// never half of each. All other monthly loads are observed zero.
+		epathOracleEditSQL(t, path, `UPDATE ReportData SET Value=CASE WHEN TimeIndex=1 THEN 10800000 ELSE 0 END WHERE ReportDataDictionaryIndex=10;
+UPDATE ReportData SET Value=CASE WHEN TimeIndex=1 THEN 360 ELSE 0 END WHERE ReportDataDictionaryIndex=15;
+UPDATE ReportData SET Value=-14400000 WHERE ReportDataDictionaryIndex=17;`)
+		observed, err := epathReadRealSQLOracle(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		frames, err := epathCompileSQLModelFrames(path, observed.Sources, model)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var checks epathSQLModelChecks
+		if err := epathSQLModelDriverLinkChecks(frames, model, &checks); err != nil {
+			t.Fatal(err)
+		}
+		check := epathSQLDriverAnnualWallCheck(t, checks)
+		choices := check.DriverLink.BranchChoices["surface.exterior_walls"]
+		if len(choices) != 1 || len(choices[0].Branches) != 2 || choices[0].Quantity.includesZero() {
+			t.Fatalf("independent one-month ambiguity was not retained: %#v", choices)
+		}
+		data, _ := json.Marshal(original)
+		candidate, err := epathDecodeOriginalOracleCandidate(strings.NewReader(string(data)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		r := &candidate.EnergyExplanation
+		r.Nodes[0].Value, r.Nodes[1].Value, r.Nodes[2].Value = 14.4, 3.6, 18
+		r.Links[0].FromValue, r.Links[0].ToValue = 14.4, 14.4
+		r.Links[1].FromValue, r.Links[1].ToValue = 3.6, 3.6
+		if err := epathCheckSQLModelDriverLink(candidate, check); err != nil {
+			t.Fatalf("whole ambiguous month with multi-Zone ownership rejected: %v", err)
+		}
+		r.Links[0].ZoneName = "Office"
+		r.Links[0].SourceIDs = []string{"surface-a", "surface-b", "cooling-source"}
+		if err := epathCheckSQLModelDriverLink(candidate, check); err != nil {
+			t.Fatalf("whole ambiguous month with singleton ownership rejected: %v", err)
+		}
+		// Different original source sets make these physically distinct to the
+		// duplicate detector; only the discrete temporal proof rejects this.
+		r.Links[0].FromValue, r.Links[0].ToValue = 7.2, 7.2
+		split := r.Links[0]
+		split.ID, split.ZoneName = "impossible-half-multi-Zone", ""
+		split.SourceIDs = []string{"surface-a", "surface-b", "lab-wall", "cooling-source", "lab-cooling"}
+		r.Links = append(r.Links, split)
+		if err := epathCheckSQLModelDriverLink(candidate, check); err == nil || !strings.Contains(err.Error(), "whole-month") {
+			t.Fatalf("sum-preserving50:50 owner split did not fail the discrete proof: %v", err)
+		}
+	})
+	t.Run("annual multi-Zone and singleton month branches", func(t *testing.T) {
+		// M1 has Office+Lab; M2 has only Lab. The two annual branches retain
+		// these completed ownership sets, not all annual destination sources.
+		epathOracleEditSQL(t, path, `UPDATE ReportData SET Value=CASE WHEN TimeIndex=1 THEN 10800000 ELSE 0 END WHERE ReportDataDictionaryIndex=10;
+UPDATE ReportData SET Value=CASE WHEN TimeIndex IN (1,2) THEN 7200000 ELSE 0 END WHERE ReportDataDictionaryIndex=15;
+UPDATE ReportData SET Value=-14400000 WHERE ReportDataDictionaryIndex=17;`)
+		observed, err := epathReadRealSQLOracle(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		frames, err := epathCompileSQLModelFrames(path, observed.Sources, model)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var checks epathSQLModelChecks
+		if err := epathSQLModelDriverLinkChecks(frames, model, &checks); err != nil {
+			t.Fatal(err)
+		}
+		wallCheck := epathSQLDriverAnnualWallCheck(t, checks)
+		branches := wallCheck.DriverLink.Branches["surface.exterior_walls"]
+		if len(branches) != 2 || !reflect.DeepEqual(branches[""].RequiredLoadSources, []int{10, 15}) || !reflect.DeepEqual(branches["lab"].RequiredLoadSources, []int{15}) || !reflect.DeepEqual(branches["lab"].LoadSources, []int{15}) || !reflect.DeepEqual(wallCheck.DriverLink.RequiredLoadSources, []int{10, 15}) {
+			t.Fatalf("month ownership lost exact branch/annual source obligations: %#v", branches)
+		}
+		data, _ := json.Marshal(original)
+		candidate, err := epathDecodeOriginalOracleCandidate(strings.NewReader(string(data)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		r := &candidate.EnergyExplanation
+		r.Nodes[0].Value, r.Nodes[1].Value, r.Nodes[2].Value = 17.6, 4.4, 22
+		r.Links[0].FromValue, r.Links[0].ToValue = 16, 16
+		r.Links[1].FromValue, r.Links[1].ToValue = 4, 4
+		for i, source := range []string{"lab-wall", "lab-people"} {
+			branch := r.Links[i]
+			branch.ID, branch.ZoneName = "singleton-month-"+source, "lAb"
+			branch.FromValue, branch.ToValue = []float64{1.6, .4}[i], []float64{1.6, .4}[i]
+			branch.SourceIDs = []string{source, "lab-cooling"}
+			r.Links = append(r.Links, branch)
+		}
+		selected := []epathSQLModelCheck{}
+		for _, check := range checks.Rows {
+			if check.Item.Scope == "building" && check.Item.Period == "annual" && check.DriverLink.Service == "cooling" && (check.DriverLink.Category == "surface.exterior_walls" || check.DriverLink.Category == "") {
+				if err := epathCheckSQLModelDriverLink(candidate, check); err != nil {
+					t.Fatalf("independently disjoint monthly branches rejected: %v", err)
+				}
+				selected = append(selected, check)
+			}
+		}
+		if len(selected) != 4 {
+			t.Fatal("category/all-incoming paired fields were not all checked")
+		}
+		data, _ = json.Marshal(candidate)
+		for name, edit := range map[string]func(*EnergyExplanationResult){
+			"annual endpoint loses non-overlap source": func(r *EnergyExplanationResult) { r.Nodes[2].SourceIDs = []string{"lab-cooling"} },
+			"active month loses load source": func(r *EnergyExplanationResult) {
+				r.Links[0].SourceIDs = []string{"surface-a", "surface-b", "lab-wall", "lab-cooling"}
+			},
+			"singleton loses its driver source but quantities stay": func(r *EnergyExplanationResult) { r.Links[2].SourceIDs = []string{"lab-cooling"} },
+			"singleton loses its load source but quantities stay":   func(r *EnergyExplanationResult) { r.Links[2].SourceIDs = []string{"lab-wall"} },
+			"non-overlap source injected": func(r *EnergyExplanationResult) {
+				r.Links[2].SourceIDs = append(r.Links[2].SourceIDs, "cooling-source")
+			},
+			"missing source reference": func(r *EnergyExplanationResult) {
+				r.Links[2].SourceIDs = append(r.Links[2].SourceIDs, "missing-source")
+			},
+			"unknown owner":                         func(r *EnergyExplanationResult) { r.Links[2].ZoneName = "Unobserved" },
+			"known but unsupported singleton owner": func(r *EnergyExplanationResult) { r.Links[2].ZoneName = "Office" },
+			"erased singleton owner":                func(r *EnergyExplanationResult) { r.Links[2].ZoneName = "" },
+			"spoofed multi-Zone owner":              func(r *EnergyExplanationResult) { r.Links[0].ZoneName = "Lab" },
+			"sum-preserving wrong branch quantities": func(r *EnergyExplanationResult) {
+				r.Links[0].FromValue, r.Links[0].ToValue = 15.5, 15.5
+				r.Links[2].FromValue, r.Links[2].ToValue = 2.1, 2.1
+			},
+			"sum-preserving duplicate branch": func(r *EnergyExplanationResult) {
+				r.Links[2].FromValue, r.Links[2].ToValue = .8, .8
+				duplicate := r.Links[2]
+				duplicate.ID, duplicate.RuleID = "new-label-same-physical-branch", "different-rule"
+				r.Links = append(r.Links, duplicate)
+			},
+		} {
+			t.Run(name, func(t *testing.T) {
+				mutant, err := epathDecodeOriginalOracleCandidate(strings.NewReader(string(data)))
+				if err != nil {
+					t.Fatal(err)
+				}
+				edit(&mutant.EnergyExplanation)
+				for _, check := range selected {
+					if err := epathCheckSQLModelDriverLink(mutant, check); err == nil {
+						t.Fatalf("%s accepted changed branch ownership/provenance", check.Want.Key)
+					}
+				}
+			})
+		}
+	})
+}
+
+func TestEnergyPathRealSQLDriverLinksDiscreteMonthAssignments(t *testing.T) {
+	month := func(value float64, first, second, load int) epathSQLDriverMonthChoice {
+		q := epathSQLQuantity{Value: value}
+		return epathSQLDriverMonthChoice{
+			Quantity: q, RequiredLoadSources: []int{load},
+			Branches: map[string]epathSQLDriverBranchProof{
+				"office": {Quantity: q.optionalPresentation(), DriverSources: []int{first}, LoadSources: []int{load}},
+				"":       {Quantity: q.optionalPresentation(), DriverSources: []int{first, second}, LoadSources: []int{load}},
+			},
+		}
+	}
+	first, second := month(100, 1, 2, 3), month(200, 4, 5, 6)
+	for _, test := range []struct {
+		name    string
+		choices []epathSQLDriverMonthChoice
+		actual  map[string]float64
+		leaves  map[string][]map[int]bool
+		valid   bool
+	}{
+		{"whole singleton", []epathSQLDriverMonthChoice{first}, map[string]float64{"office": 100}, map[string][]map[int]bool{"office": {{1: true, 3: true}}}, true},
+		{"whole multi-Zone", []epathSQLDriverMonthChoice{first}, map[string]float64{"": 100}, map[string][]map[int]bool{"": {{1: true, 2: true, 3: true}}}, true},
+		{"fractional same month split", []epathSQLDriverMonthChoice{first}, map[string]float64{"office": 50, "": 50}, map[string][]map[int]bool{"office": {{1: true, 3: true}}, "": {{1: true, 2: true, 3: true}}}, false},
+		{"annual whole month partition", []epathSQLDriverMonthChoice{first, second}, map[string]float64{"office": 100, "": 200}, map[string][]map[int]bool{"office": {{1: true, 3: true}}, "": {{4: true, 5: true, 6: true}}}, true},
+		{"annual whole alternate partition", []epathSQLDriverMonthChoice{first, second}, map[string]float64{"office": 200, "": 100}, map[string][]map[int]bool{"office": {{4: true, 6: true}}, "": {{1: true, 2: true, 3: true}}}, true},
+		{"annual impossible convex partition", []epathSQLDriverMonthChoice{first, second}, map[string]float64{"office": 150, "": 150}, map[string][]map[int]bool{"office": {{1: true, 3: true, 4: true, 6: true}}, "": {{1: true, 2: true, 3: true, 4: true, 5: true, 6: true}}}, false},
+		{"quantity and source choose different months", []epathSQLDriverMonthChoice{first, second}, map[string]float64{"office": 100, "": 200}, map[string][]map[int]bool{"office": {{4: true, 6: true}}, "": {{1: true, 2: true, 3: true}}}, false},
+		{"active-month required load omitted", []epathSQLDriverMonthChoice{first}, map[string]float64{"office": 100}, map[string][]map[int]bool{"office": {{1: true}}}, false},
+		{"one merged annual owner", []epathSQLDriverMonthChoice{first, second}, map[string]float64{"office": 300}, map[string][]map[int]bool{"office": {{1: true, 3: true, 4: true, 6: true}}}, true},
+		{"missing definite whole month", []epathSQLDriverMonthChoice{first}, map[string]float64{}, nil, false},
+		{"unknown owner", []epathSQLDriverMonthChoice{first}, map[string]float64{"lab": 100}, nil, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			err := epathSQLDriverChoicesContain(test.choices, test.actual, test.leaves)
+			if (err == nil) != test.valid {
+				t.Fatalf("discrete assignment valid=%v: %v", test.valid, err)
+			}
+		})
+	}
+	optional := month(.0001, 1, 2, 3)
+	optional.Quantity = epathSQLBounded(.0001, 0, .0006)
+	if err := epathSQLDriverChoicesContain([]epathSQLDriverMonthChoice{optional}, nil, nil); err != nil {
+		t.Fatalf("independently zero-containing whole-month pruning rejected: %v", err)
+	}
+	t.Run("absent optional owners do not consume the search budget", func(t *testing.T) {
+		// Twelve independently optional months, each with many possible
+		// singleton owners. Only the actual owner has a link. Assigning0 to
+		// an absent owner has no source leaves and is identical to omission.
+		many := make([]epathSQLDriverMonthChoice, 12)
+		for i := range many {
+			many[i] = month(.0001, 1, 2, 3)
+			many[i].Quantity = epathSQLBounded(.0001, 0, .0006)
+			many[i].Branches["visible"] = many[i].Branches["office"]
+			for zone := 0; zone < 19; zone++ {
+				many[i].Branches[fmt.Sprintf("absent-%02d", zone)] = many[i].Branches["office"]
+			}
+		}
+		// The upper endpoint requires all twelve months on the visible owner.
+		if err := epathSQLDriverChoicesContain(many, map[string]float64{"visible": .0072}, map[string][]map[int]bool{"visible": {{1: true, 3: true}}}); err != nil {
+			t.Fatalf("exact whole-month assignment exhausted budget on absent owners: %v", err)
+		}
+	})
+	tooMany := make([]epathSQLDriverMonthChoice, 13)
+	for i := range tooMany {
+		tooMany[i] = first
+	}
+	if err := epathSQLDriverChoicesContain(tooMany, map[string]float64{"office": 1300}, nil); err == nil {
+		t.Fatal("unbounded monthly choice set accepted")
+	}
+	// Many numerically feasible assignments cannot fall back to their convex
+	// union when none has the supplied original-source identity.
+	capped := make([]epathSQLDriverMonthChoice, 12)
+	for i := range capped {
+		capped[i] = month(1, 1, 2, 3)
+		capped[i].Branches["lab"] = capped[i].Branches["office"]
+	}
+	err := epathSQLDriverChoicesContain(capped, map[string]float64{"office": 4, "lab": 4, "": 4}, map[string][]map[int]bool{"office": {{999: true}}})
+	if err == nil || !strings.Contains(err.Error(), "bounded search limit") {
+		t.Fatalf("exhausted discrete search did not fail closed: %v", err)
+	}
 }
 
 func TestEnergyPathRealSQLDriverLinksDependencyLeaves(t *testing.T) {

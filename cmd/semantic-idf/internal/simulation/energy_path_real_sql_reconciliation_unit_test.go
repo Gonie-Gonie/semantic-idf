@@ -337,3 +337,136 @@ func TestEnergyPathRealSQLReconciliationRejectsIncompleteOrAmbiguousFrames(t *te
 		t.Fatal("annual period contract changed")
 	}
 }
+
+func epathSQLThermalNonmemberUnitFrames() (epathSQLFrames, epathRealSQLModel) {
+	f, m := epathSQLThermalEquationUnitFrames()
+	f.Zones["attic"] = epathSQLZone{Name: "Attic", Multiplier: 1}
+	for i := range m.Families {
+		if m.Families[i].ID == "people.sensible" {
+			m.Families[i].Keys = []string{"oFfIcE"}
+		}
+		if m.Families[i].ID == "internal.other.sensible" {
+			m.Families[i].Keys = []string{"Office", "aTtIc"}
+		}
+	}
+	source := epathRealSQLSource{DictionaryIndex: 10, Name: "Internal Sensible", KeyValue: "Attic", SourceUnit: "J", ReportingFrequency: "Monthly"}
+	f.SourceZone[10] = "attic"
+	for month := 1; month <= 12; month++ {
+		value := epathSQLQuantity{Value: 2}
+		source.Months = append(source.Months, epathRealSQLMonth{Month: month, Rows: 1, EnergyKWh: epathOracleNumber(2)})
+		f.SourceRaw[10] = append(f.SourceRaw[10], value)
+		f.Cells[epathSQLKey("attic", "internal.other.sensible", month)] = &epathSQLCell{Zone: "attic", Family: "internal.other.sensible", Category: "internal.other", Component: "sensible", Month: month, Raw: value, Effective: value, Allocated: map[string]epathSQLQuantity{"cooling": {}, "heating": {}}, SourceIDs: []int{10}}
+		for _, service := range []string{"cooling", "heating"} {
+			f.Loads[epathSQLKey("attic", service, month)] = epathSQLQuantity{}
+		}
+	}
+	f.SourceIdentities[10] = source
+	return f, m
+}
+
+func epathAssertThermalNonmemberArithmetic(t *testing.T, frames epathSQLFrames, model epathRealSQLModel) {
+	t.Helper()
+	before, _ := json.Marshal(frames)
+	var checks epathSQLModelChecks
+	if err := epathSQLModelThermalReconciliationChecks(frames, model, &checks); err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]bool{}
+	for _, check := range checks.Rows {
+		p := check.Reconciliation
+		if p.Level != "driver" || p.ZoneName != "Attic" || !strings.HasPrefix(p.ID, "reconcile.driver.internal.attic.") || check.Item.Target.Field != "expectedValue" {
+			continue
+		}
+		want := 2.0
+		if p.Period == "annual" {
+			want *= 12
+		}
+		if math.Abs(p.Expected.Value-want) > 1e-10 || p.Explained.Value != 0 || math.Abs(p.Residual.Value-want) > 1e-10 {
+			t.Fatalf("undeclared People must contribute arithmetic zero, not an observed source: %#v", p)
+		}
+		seen[check.Item.Scope+"/"+p.Period] = true
+	}
+	if len(seen) != 26 {
+		t.Fatalf("both Building/selected-Zone copies require all 13 completed periods: %v", seen)
+	}
+	for month := 1; month <= 12; month++ {
+		if frames.Cells[epathSQLKey("attic", "people.sensible", month)] != nil {
+			t.Fatal("nonmember acquired a fabricated People cell")
+		}
+	}
+	for _, source := range frames.SourceIdentities {
+		if strings.EqualFold(source.KeyValue, "Attic") && strings.Contains(source.Name, "People") {
+			t.Fatal("nonmember acquired a fabricated People source")
+		}
+	}
+	after, _ := json.Marshal(frames)
+	if string(before) != string(after) {
+		t.Fatal("reconciliation compiler mutated independent frames/source membership")
+	}
+}
+
+func TestEnergyPathRealSQLReconciliationDeclaredNonmemberArithmeticOnly(t *testing.T) {
+	frames, model := epathSQLThermalNonmemberUnitFrames()
+	epathAssertThermalNonmemberArithmetic(t, frames, model)
+}
+
+func TestEnergyPathRealSQLReconciliationRejectsInvalidMembership(t *testing.T) {
+	for name, edit := range map[string]func(*epathSQLFrames, *epathRealSQLModel){
+		"missing applicable member": func(f *epathSQLFrames, _ *epathRealSQLModel) {
+			delete(f.Cells, epathSQLKey("office", "people.sensible", 1))
+		},
+		"outside member cell even zero": func(f *epathSQLFrames, _ *epathRealSQLModel) {
+			f.Cells[epathSQLKey("attic", "people.sensible", 1)] = &epathSQLCell{Zone: "attic", Family: "people.sensible", Category: "internal.people", Component: "sensible", Month: 1, Allocated: map[string]epathSQLQuantity{"cooling": {}, "heating": {}}}
+		},
+		"empty owners":             func(_ *epathSQLFrames, m *epathRealSQLModel) { m.Families[0].Keys = nil },
+		"blank owner":              func(_ *epathSQLFrames, m *epathRealSQLModel) { m.Families[0].Keys = []string{""} },
+		"unknown owner":            func(_ *epathSQLFrames, m *epathRealSQLModel) { m.Families[0].Keys = []string{"Unobserved"} },
+		"duplicate casefold owner": func(_ *epathSQLFrames, m *epathRealSQLModel) { m.Families[0].Keys = []string{"Office", "OFFICE"} },
+		"misrouted applicable cell": func(f *epathSQLFrames, _ *epathRealSQLModel) {
+			f.Cells[epathSQLKey("office", "people.sensible", 1)].Zone = "attic"
+		},
+		"incorrect component": func(f *epathSQLFrames, _ *epathRealSQLModel) {
+			f.Cells[epathSQLKey("office", "people.sensible", 1)].Component = "latent"
+		},
+		"detail changed to context": func(_ *epathSQLFrames, m *epathRealSQLModel) { m.Families[0].Role = "context" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			frames, model := epathSQLThermalNonmemberUnitFrames()
+			edit(&frames, &model)
+			if err := epathSQLModelThermalReconciliationChecks(frames, model, &epathSQLModelChecks{}); err == nil {
+				t.Fatal("invalid applicability was treated as an arithmetic zero")
+			}
+		})
+	}
+}
+
+func TestEnergyPathRealSQLReconciliationSQLNonmemberHasNoSourceOrCell(t *testing.T) {
+	path, model := epathSQLModelUnitFixture(t)
+	epathOracleEditSQL(t, path, `INSERT INTO Zones VALUES(2,'Attic',1,1);
+INSERT INTO Surfaces VALUES(3,'Attic Wall','Wall',2,0,1);
+INSERT INTO ReportDataDictionary VALUES(20,'Sensible Cooling','Attic',0,'Monthly','J','Zone'),(21,'Sensible Heating','Attic',0,'Monthly','J','Zone'),(22,'Surface Exchange','Attic Wall',0,'Monthly','J','Surface'),(23,'Internal Sensible','Office',0,'Monthly','J','Zone'),(24,'Internal Sensible','Attic',0,'Monthly','J','Zone');
+INSERT INTO ReportData SELECT 20000+TimeIndex,20,TimeIndex,0 FROM Time WHERE TimeIndex BETWEEN 1 AND 12;
+INSERT INTO ReportData SELECT 21000+TimeIndex,21,TimeIndex,0 FROM Time WHERE TimeIndex BETWEEN 1 AND 12;
+INSERT INTO ReportData SELECT 22000+TimeIndex,22,TimeIndex,0 FROM Time WHERE TimeIndex BETWEEN 1 AND 12;
+INSERT INTO ReportData SELECT 23000+TimeIndex,23,TimeIndex,5400000 FROM Time WHERE TimeIndex BETWEEN 1 AND 12;
+INSERT INTO ReportData SELECT 24000+TimeIndex,24,TimeIndex,7200000 FROM Time WHERE TimeIndex BETWEEN 1 AND 12;`)
+	model.Surface.Source.Keys = []string{"*"}
+	model.Families[0].ID, model.Families[0].Keys = "people.sensible", []string{"oFfIcE"}
+	model.Families = append(model.Families, epathRealSQLFamily{ID: "internal.other.sensible", Category: "internal.other", Component: "sensible", Role: "pressure", Keys: []string{"Office", "aTtIc"}, Subtract: []string{"people.sensible"}, Terms: []epathRealSQLTerm{{Sign: 1, Source: epathRealSQLSelector{Alternatives: []epathRealSQLAlternative{{Name: "Internal Sensible", Unit: "J"}}, Keys: []string{"*"}}}}})
+	for i := range model.Loads {
+		model.Loads[i].Source.Keys = []string{"*"}
+	}
+	observed, err := epathReadRealSQLOracle(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	frames, err := epathCompileSQLModelFrames(path, observed.Sources, model)
+	if err != nil {
+		t.Fatal(err)
+	}
+	epathAssertThermalNonmemberArithmetic(t, frames, model)
+	delete(frames.Cells, epathSQLKey("office", "people.sensible", 2))
+	if epathSQLModelThermalReconciliationChecks(frames, model, &epathSQLModelChecks{}) == nil {
+		t.Fatal("SQL-backed applicable observation deletion was mistaken for nonmembership")
+	}
+}

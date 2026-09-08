@@ -1,6 +1,6 @@
 {
   "schema": "semantic-idf.energy-path-sql-oracle-recipe/v1",
-  "review": "DRAFT, NOT ACCEPTED: independently reviewed Small Office 25.1 memberships and reported source applicability; no numeric expected values or candidate-derived values are included. Baseline closed SQL is real-small-office-25-1-20260907T162852.542430100/eplusout.sql, SHA256 101559a393b67a3c1d89811df39e86299ab4a902d1f148b0e27f4d0537f7c6fc; original RefBldgSmallOfficeNew2004_Chicago.idf SHA256 2ad0124fe8edded8ad0c501dc7c717296f39bc2a6b706ce3bdf8cbb381c17f57. Original IDF has six Zones, all Zone and list multipliers one, and five conditioned ZoneHVAC:EquipmentConnections: Core_ZN and Perimeter_ZN_1 through Perimeter_ZN_4. Attic has no HVAC equipment connection. PSZ-AC:1 through PSZ-AC:5 respectively serve those five Zones through actual supply splitters, ConstantVolume:NoReheat terminals and ADUs; each supply branch contains outdoor-air mixing, DX cooling, NaturalGas heating and a fan. The separate SWHSys1 WaterHeater/Pump/WaterUse plant serves domestic hot water at Core_ZN, not the space-heating coils: its reported plant demand remains availability context and is not added to the two sensible Zone load sources. Pumps:Electricity is reported tiny positive, not a missing or exact-zero source; no Zone pump allocation is inferred. People, Lights and ElectricEquipment occur only in the five conditioned Zones; Infiltration occurs in all six. Total internal, storage, surface-balance and interzone source families report all six; subtracting an earlier family outside its declared membership contributes zero only to the derived subtraction, never a fabricated reported source. Every Zone has explicit infiltration, so no outdoor.unsplit family applies. The outdoor-air balance minus infiltration is a derived balance observation, not proof that physical mechanical ventilation is absent or zero; the requested Air System Outdoor Air load family is unavailable. The surface selector covers the actual 69 heat-transfer surfaces; all Zone/base/boundary references resolve, thirteen interzone pairs are reciprocal, and five InternalMass surfaces are self-boundaries. SQL Window includes the original GlassDoor and SQL Roof includes interzone Ceilings; the shared surface_class_boundary/v1 rule is retained without a model-specific override. The 44 literal availability groups were independently checked against the executed Monthly plan and actual name/unit/meter identities. Actual observations have twelve finite non-warmup Weather-environment Monthly values, including reported zero Attic sensible loads and Heating:Electricity; WaterSystems:Electricity is unavailable. Existing shared signs, precision, source-selection and allocation rules are unchanged. Strict model compilation and actual candidate comparison are still pending; no expected manifest is approved.",
+  "review": "DRAFT, NOT ACCEPTED: independently reviewed Small Office 25.1 memberships and reported source applicability; no numeric expected values or candidate-derived values are included. Baseline closed SQL is real-small-office-25-1-20260907T162852.542430100/eplusout.sql, SHA256 101559a393b67a3c1d89811df39e86299ab4a902d1f148b0e27f4d0537f7c6fc; original RefBldgSmallOfficeNew2004_Chicago.idf SHA256 2ad0124fe8edded8ad0c501dc7c717296f39bc2a6b706ce3bdf8cbb381c17f57. Original IDF has six Zones, all Zone and list multipliers one, and five conditioned ZoneHVAC:EquipmentConnections: Core_ZN and Perimeter_ZN_1 through Perimeter_ZN_4. Attic has no HVAC equipment connection. PSZ-AC:1 through PSZ-AC:5 respectively serve those five Zones through actual supply splitters, ConstantVolume:NoReheat terminals and ADUs; each supply branch contains outdoor-air mixing, DX cooling, NaturalGas heating and a fan. The separate SWHSys1 WaterHeater/Pump/WaterUse plant serves domestic hot water at Core_ZN, not the space-heating coils: its reported plant demand remains availability context and is not added to the two sensible Zone load sources. Pumps:Electricity is reported tiny positive, not a missing or exact-zero source; no Zone pump allocation is inferred. People, Lights and ElectricEquipment occur only in the five conditioned Zones; Infiltration occurs in all six. Total internal, storage, surface-balance and interzone source families report all six; subtracting an earlier family outside its declared membership contributes zero only to the derived subtraction, never a fabricated reported source. Every Zone has explicit infiltration, so no outdoor.unsplit family applies. The outdoor-air balance minus infiltration is a derived balance observation, not proof that physical mechanical ventilation is absent or zero; the requested Air System Outdoor Air load family is unavailable. The surface selector covers the actual 69 heat-transfer surfaces; all Zone/base/boundary references resolve, thirteen interzone pairs are reciprocal, and five InternalMass surfaces are self-boundaries. SQL Window includes the original GlassDoor and SQL Roof includes interzone Ceilings; the shared surface_class_boundary/v1 rule is retained without a model-specific override. The 44 literal availability groups were independently checked against the executed Monthly plan and actual name/unit/meter identities. Actual observations have twelve finite non-warmup Weather-environment Monthly values, including reported zero Attic sensible loads and Heating:Electricity; WaterSystems:Electricity is unavailable. The five explicitly declared fan pools use the observed Air System Fan Electricity Energy Hourly/J nonmeter identities PSZ-AC:1 through PSZ-AC:5, each restricted to its one original served Zone; PSZ-AC:1_Fan is Fan:SystemModel and the other four are Fan:ConstantVolume. Each pool has 8760 finite nonnegative 2017 Weather hours across twelve months with unique hourly calendar slots, sixty-minute intervals and no warmup observations; the five independently summed monthly pools close the reported Monthly Fans:Electricity meter without rescaling. Each served Zone has positive cooling-plus-heating load in every month, while Attic remains outside all pools. The two directUses declarations select Zone Lights Electricity Energy and Zone Electric Equipment Electricity Energy, respectively, as Monthly/J nonmeter observations for exactly the five original Lights and ElectricEquipment owners. Every declared direct-use owner has twelve finite monthly observations and SQL Zone/List multipliers one; Attic has neither an original direct-use object nor a reported direct-use identity and is not added as a zero-valued source. These are source and membership declarations only, not approved numeric expectations. Existing shared signs, precision, source-selection and allocation rules are unchanged. Strict model compilation and actual candidate comparison are still pending; no expected manifest is approved.",
   "sources": [],
   "metrics": [],
   "sqlModel": {
@@ -1568,6 +1568,100 @@
         "weight": "unassigned",
         "allocationMethod": "unassigned",
         "reconciliationId": "reconcile.zone_auxiliary_allocation.pumps.electricity.annual"
+      }
+    ],
+    "fanPools": [
+      {
+        "siteId": "fans.electricity",
+        "name": "Air System Fan Electricity Energy",
+        "key": "PSZ-AC:1",
+        "frequency": "Hourly",
+        "unit": "J",
+        "servedZones": [
+          "Core_ZN"
+        ]
+      },
+      {
+        "siteId": "fans.electricity",
+        "name": "Air System Fan Electricity Energy",
+        "key": "PSZ-AC:2",
+        "frequency": "Hourly",
+        "unit": "J",
+        "servedZones": [
+          "Perimeter_ZN_1"
+        ]
+      },
+      {
+        "siteId": "fans.electricity",
+        "name": "Air System Fan Electricity Energy",
+        "key": "PSZ-AC:3",
+        "frequency": "Hourly",
+        "unit": "J",
+        "servedZones": [
+          "Perimeter_ZN_2"
+        ]
+      },
+      {
+        "siteId": "fans.electricity",
+        "name": "Air System Fan Electricity Energy",
+        "key": "PSZ-AC:4",
+        "frequency": "Hourly",
+        "unit": "J",
+        "servedZones": [
+          "Perimeter_ZN_3"
+        ]
+      },
+      {
+        "siteId": "fans.electricity",
+        "name": "Air System Fan Electricity Energy",
+        "key": "PSZ-AC:5",
+        "frequency": "Hourly",
+        "unit": "J",
+        "servedZones": [
+          "Perimeter_ZN_4"
+        ]
+      }
+    ],
+    "directUses": [
+      {
+        "endUse": "lighting",
+        "carrier": "electricity",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Zone Lights Electricity Energy",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "Core_ZN",
+            "Perimeter_ZN_1",
+            "Perimeter_ZN_2",
+            "Perimeter_ZN_3",
+            "Perimeter_ZN_4"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "endUse": "equipment",
+        "carrier": "electricity",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Zone Electric Equipment Electricity Energy",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "Core_ZN",
+            "Perimeter_ZN_1",
+            "Perimeter_ZN_2",
+            "Perimeter_ZN_3",
+            "Perimeter_ZN_4"
+          ],
+          "isMeter": false
+        }
       }
     ],
     "precision": {
