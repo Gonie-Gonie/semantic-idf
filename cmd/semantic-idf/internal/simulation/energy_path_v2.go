@@ -22,6 +22,10 @@ const energyPathRelationSourceCorrespondence = "source_correspondence"
 func UpgradeEnergyExplanationV1(input EnergyExplanationV1) EnergyExplanationResult {
 	input = normalizeEnergyExplanationV1Units(input)
 	scope := normalizeEnergyExplanationScope(input.scope)
+	var fanConsumptionSources map[string]bool
+	if scope.Kind == "zone" {
+		fanConsumptionSources = buildEnergyPathFanConsumptionSources(input.auxiliaryFanPools)
+	}
 	allocationPolicy := normalizePurposeAllocationPolicy(input.AllocationPolicy)
 	zoneHVACAllocationEnabled := allocationPolicy == PurposeAllocationPolicyByServicePathLoadShare
 	annualZoneHVACAllocation := energyPathZoneHVACAllocationPlan{}
@@ -86,7 +90,7 @@ func UpgradeEnergyExplanationV1(input EnergyExplanationV1) EnergyExplanationResu
 	annotatedSources = annotateEnergyPathWaterContextSources(annotatedSources, allLegacyNodes)
 	annotatedSources = annotateLegacyEnergyLoadDetailSources(annotatedSources, allLegacyNodes)
 	legacyNodes := foldLegacyEnergyLoadDetailNodes(inferLegacyEnergyDriverProjectionGuards(annualLegacyNodes, annotatedSources))
-	nodes, links := upgradeEnergyExplanationGraph(legacyNodes, annualLegacyEdges, annotatedSources, scope, allocationPolicy, input.canonicalMonthlyBasis)
+	nodes, links := upgradeEnergyExplanationGraph(legacyNodes, annualLegacyEdges, annotatedSources, scope, allocationPolicy, input.canonicalMonthlyBasis, fanConsumptionSources)
 	reconciliation, warnings := upgradeEnergyExplanationAccounting(input.Reconciliation, input.Warnings, legacyNodes, annualLegacyEdges, scope, allocationPolicy)
 	reconciliation = filterEnergyPathNonSiteEnergyReconciliation(reconciliation)
 	reconciliation = removeEnergyPathWaterReconciliation(reconciliation)
@@ -117,7 +121,7 @@ func UpgradeEnergyExplanationV1(input EnergyExplanationV1) EnergyExplanationResu
 		periodLegacyEdges = appendEnergyPathDirectZoneHVACEdges(periodLegacyEdges, periodLegacyNodes)
 		periodLegacyEdges = appendEnergyPathDirectZoneCorrespondenceEdges(periodLegacyEdges, periodLegacyNodes)
 		legacyPeriodNodes := foldLegacyEnergyLoadDetailNodes(inferLegacyEnergyDriverProjectionGuards(periodLegacyNodes, annotatedSources))
-		periodNodes, periodLinks := upgradeEnergyExplanationGraph(legacyPeriodNodes, periodLegacyEdges, annotatedSources, scope, allocationPolicy, input.canonicalMonthlyBasis)
+		periodNodes, periodLinks := upgradeEnergyExplanationGraph(legacyPeriodNodes, periodLegacyEdges, annotatedSources, scope, allocationPolicy, input.canonicalMonthlyBasis, fanConsumptionSources)
 		periodReconciliation, periodWarnings := upgradeEnergyExplanationAccounting(period.Reconciliation, period.Warnings, legacyPeriodNodes, periodLegacyEdges, scope, allocationPolicy)
 		periodReconciliation = filterEnergyPathNonSiteEnergyReconciliation(periodReconciliation)
 		periodReconciliation = removeEnergyPathWaterReconciliation(periodReconciliation)
@@ -1441,7 +1445,7 @@ func energyExplanationScopeToken(scope EnergyExplanationScope) string {
 	return "building"
 }
 
-func upgradeEnergyExplanationGraph(legacyNodes []EnergyExplanationNode, legacyEdges []EnergyExplanationEdge, sources []EnergyDataSource, scope EnergyExplanationScope, allocationPolicy string, canonicalMonthlyBasis bool) ([]EnergyExplanationNode, []EnergyPathLink) {
+func upgradeEnergyExplanationGraph(legacyNodes []EnergyExplanationNode, legacyEdges []EnergyExplanationEdge, sources []EnergyDataSource, scope EnergyExplanationScope, allocationPolicy string, canonicalMonthlyBasis bool, fanConsumptionSources map[string]bool) ([]EnergyExplanationNode, []EnergyPathLink) {
 	scope = normalizeEnergyExplanationScope(scope)
 	suppressedInterzone := energyExplanationSuppressedInterzoneTraces(legacyNodes, scope)
 	zoneAllocationProjections := energyExplanationZoneAllocationProjections(legacyNodes, legacyEdges, scope, allocationPolicy)
@@ -1584,7 +1588,7 @@ func upgradeEnergyExplanationGraph(legacyNodes []EnergyExplanationNode, legacyEd
 	links := map[string]*EnergyPathLink{}
 	linkedLegacyEndUses := map[string]bool{}
 	for _, edge := range legacyEdges {
-		link, ok := upgradeEnergyExplanationLink(edge, nodeByLegacyID, canonicalIDByLegacyID, canonicalNodes, loadTotalsByEndUse, endUsesWithLoads, canonicalMonthlyBasis)
+		link, ok := upgradeEnergyExplanationLink(edge, nodeByLegacyID, canonicalIDByLegacyID, canonicalNodes, loadTotalsByEndUse, endUsesWithLoads, canonicalMonthlyBasis, fanConsumptionSources)
 		if !ok {
 			continue
 		}
@@ -3232,7 +3236,48 @@ func mergeEnergyExplanationV2Node(nodes map[string]*EnergyExplanationNode, next 
 	finalizeEnergyExplanationSimultaneousLoad(current)
 }
 
-func upgradeEnergyExplanationLink(edge EnergyExplanationEdge, nodes map[string]EnergyExplanationNode, idMap map[string]string, canonicalNodes map[string]*EnergyExplanationNode, loadTotals map[string]float64, endUsesWithLoads map[string]bool, canonicalMonthlyBasis bool) (EnergyPathLink, bool) {
+// Fan pool sources are private, already observed allocation evidence. Build one
+// bounded index per Zone projection and reuse it for annual/monthly links; do
+// not add every pool source to the general frozen-v1 source dictionary.
+func buildEnergyPathFanConsumptionSources(pools []energyPathFanPool) map[string]bool {
+	ids, loops := map[string]int{}, map[string]int{}
+	for _, pool := range pools {
+		ids[pool.Source.ID]++
+		loops[strings.ToLower(strings.TrimSpace(pool.AirLoopName))]++
+	}
+	out := map[string]bool{}
+	for _, pool := range pools {
+		source := pool.Source
+		name := strings.ToLower(strings.TrimSpace(source.Name))
+		loop := strings.ToLower(strings.TrimSpace(pool.AirLoopName))
+		if pool.Invalid || source.ID == "" || ids[source.ID] != 1 || loop == "" || loop == "*" || loops[loop] != 1 ||
+			strings.ToLower(strings.TrimSpace(source.KeyValue)) != loop || source.SourceType != "sql_report_data" || source.IsMeter ||
+			(name != "air system fan electricity energy" && name != "air system fan electric energy") ||
+			!strings.EqualFold(strings.TrimSpace(source.SourceUnit), "J") || source.NormalizedUnit != "kWh" || !strings.EqualFold(strings.TrimSpace(source.ReportingFrequency), "Hourly") {
+			continue
+		}
+		out[source.ID] = true
+	}
+	return out
+}
+
+func appendEnergyPathFanConsumptionSources(ids []string, endUse EnergyExplanationNode, pools map[string]bool) []string {
+	if !endUse.AllocationApplied || canonicalEnergyPathBasis(endUse.Basis, "") != "service_path_allocation" ||
+		canonicalEnergyPathEndUse(endUse.EndUse) != "fans" || canonicalEnergyPathCarrier(endUse.Carrier) != "electricity" {
+		return ids
+	}
+	// This endpoint is still carrier-qualified and its private allocation trace
+	// contains only the selected Zone's contributors. A merged canonical node
+	// would mix carriers, while its load sources describe weights, not fan kWh.
+	for _, id := range endUse.allocationSourceIDs {
+		if pools[id] {
+			ids = appendUniqueStrings(ids, id)
+		}
+	}
+	return ids
+}
+
+func upgradeEnergyExplanationLink(edge EnergyExplanationEdge, nodes map[string]EnergyExplanationNode, idMap map[string]string, canonicalNodes map[string]*EnergyExplanationNode, loadTotals map[string]float64, endUsesWithLoads map[string]bool, canonicalMonthlyBasis bool, fanConsumptionIndexes ...map[string]bool) (EnergyPathLink, bool) {
 	legacyFrom, fromOK := nodes[edge.FromID]
 	legacyTo, toOK := nodes[edge.ToID]
 	fromID, mappedFrom := idMap[edge.FromID]
@@ -3277,6 +3322,9 @@ func upgradeEnergyExplanationLink(edge EnergyExplanationEdge, nodes map[string]E
 		sourceIDs = appendUniqueStrings(nil, edge.SourceIDs...)
 		if len(sourceIDs) == 0 {
 			sourceIDs = appendUniqueStrings(nil, legacyTo.SourceIDs...)
+		}
+		if len(fanConsumptionIndexes) > 0 {
+			sourceIDs = appendEnergyPathFanConsumptionSources(sourceIDs, legacyTo, fanConsumptionIndexes[0])
 		}
 	}
 	if supportSupply {

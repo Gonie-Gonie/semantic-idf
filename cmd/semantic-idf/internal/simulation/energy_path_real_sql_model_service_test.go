@@ -108,7 +108,6 @@ func epathSQLModelServiceChecks(frames epathSQLFrames, model epathRealSQLModel, 
 	for month := 1; month <= 12; month++ {
 		periods = append(periods, fmt.Sprintf("M%d", month))
 	}
-	allExpected, allAssigned, allUnassigned := [12]epathSQLQuantity{}, [12]epathSQLQuantity{}, [12]epathSQLQuantity{}
 	serviceSeen := map[string]bool{}
 	for _, service := range model.Services {
 		if (service.Service != "cooling" && service.Service != "heating") || serviceSeen[service.Service] || service.Basis == "" || service.FallbackBasis == "" || service.RatioKind == "" || service.FallbackRatioKind == "" {
@@ -157,9 +156,6 @@ func epathSQLModelServiceChecks(frames epathSQLFrames, model epathRealSQLModel, 
 				den[month-1] = to
 				branchNumerator[basis], branchDenominator[basis] = num, den
 			}
-			allExpected[month-1] = allExpected[month-1].add(consumption)
-			allAssigned[month-1] = allAssigned[month-1].add(monthAssigned[month-1])
-			allUnassigned[month-1] = allUnassigned[month-1].add(monthUnassigned[month-1])
 		}
 		for _, period := range periods {
 			for _, basis := range []string{service.Basis, service.FallbackBasis} {
@@ -242,9 +238,6 @@ func epathSQLModelServiceChecks(frames epathSQLFrames, model epathRealSQLModel, 
 			} else {
 				unassigned[month-1] = value
 			}
-			allExpected[month-1] = allExpected[month-1].add(value)
-			allAssigned[month-1] = allAssigned[month-1].add(assigned[month-1])
-			allUnassigned[month-1] = allUnassigned[month-1].add(unassigned[month-1])
 		}
 		for _, period := range periods {
 			id, err := epathSQLAllocationID(aux.ReconciliationID, period)
@@ -274,32 +267,7 @@ func epathSQLModelServiceChecks(frames epathSQLFrames, model epathRealSQLModel, 
 			}
 		}
 	}
-	for _, period := range periods {
-		expected, assigned, unassigned := epathSQLQuantity{}, epathSQLQuantity{}, epathSQLQuantity{}
-		for _, month := range epathSQLPeriodMonths(period) {
-			expected = expected.add(allExpected[month-1])
-			assigned = assigned.add(allAssigned[month-1])
-			unassigned = unassigned.add(allUnassigned[month-1])
-		}
-		for _, field := range []string{"zoneAllocatedPct", "unassignedPct"} {
-			num := assigned
-			if field == "unassignedPct" {
-				num = unassigned
-			}
-			ratio, err := epathSQLRatio(num, expected)
-			if err != nil {
-				return err
-			}
-			if ratio != nil {
-				scaled := ratio.times(100)
-				low, high := scaled.bounds()
-				scaled = epathSQLBounded(scaled.Value, math.Max(0, low-.00051), math.Min(100, high+.00051))
-				ratio = &scaled
-			}
-			if err := checks.add("zoneAllocation", "building", "", period, field, "%", ratio, epathRealOracleTarget{Collection: "quality", Field: field}, "", nil, nil); err != nil {
-				return err
-			}
-		}
-	}
+	// Accounting percentages/status now belong to the all-context quality
+	// proof, after the independent allocation rows have been validated.
 	return nil
 }

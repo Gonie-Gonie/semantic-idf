@@ -89,20 +89,56 @@ func TestEnergyPathRealModelAcceptance(t *testing.T) {
 	epathRunRealCatalog(t, true)
 }
 
+type epathRealSavedVerificationMode struct {
+	Directory, Snapshot string
+	Rebuild, Acceptance bool
+}
+
+func epathRealSavedVerificationOptions(getenv func(string) string) (epathRealSavedVerificationMode, error) {
+	mode := epathRealSavedVerificationMode{
+		Directory:  strings.TrimSpace(getenv("EPATH_REAL_VERIFY_DIR")),
+		Snapshot:   strings.TrimSpace(getenv("EPATH_REAL_VERIFY_SNAPSHOT")),
+		Rebuild:    getenv("EPATH_REAL_VERIFY_REBUILD") == "1",
+		Acceptance: getenv("EPATH_REAL_VERIFY_ACCEPTANCE") == "1",
+	}
+	if mode.Snapshot != "" && (mode.Directory == "" || !mode.Acceptance || mode.Rebuild) {
+		return mode, fmt.Errorf("saved snapshot requires EPATH_REAL_VERIFY_DIR and EPATH_REAL_VERIFY_ACCEPTANCE=1; EPATH_REAL_VERIFY_REBUILD is mutually exclusive")
+	}
+	if mode.Directory != "" && (getenv("EPATH_REAL_CAPTURE") == "1" || getenv("EPATH_REAL_RUN") == "1") {
+		return mode, fmt.Errorf("saved-run verification cannot be combined with an engine-run mode")
+	}
+	return mode, nil
+}
+
+func (mode epathRealSavedVerificationMode) bundle(root string, evidence epathRealRunEvidence) (PurposeResultBundle, error) {
+	if mode.Snapshot != "" {
+		if mode.Directory == "" || !mode.Acceptance || mode.Rebuild {
+			return PurposeResultBundle{}, fmt.Errorf("snapshot is only valid for explicit saved acceptance without rebuild")
+		}
+		return epathReadOracleSnapshot(root, mode.Snapshot, evidence)
+	}
+	if mode.Rebuild {
+		projection, err := LoadEnergyPathProjection(EnergyPathProjectionRequest{ResultPath: evidence.SQLPath, InputPath: evidence.InputPath, Scope: "building", Period: "annual", Service: "all"})
+		return projection.PurposeResults, err
+	}
+	return evidence.Bundle, nil
+}
+
 // Re-check an already completed, hash-bound real run without invoking an
 // engine, modifying artifacts, or writing/blessing expected values. Rebuilding
-// the shared canonical payload is explicit because recipe-only iteration can
-// use the preserved GUI payload directly.
+// the shared canonical payload is explicit; an existing production/SHA-bound
+// snapshot is an alternative only for explicit approved-manifest acceptance.
 func TestEnergyPathRealModelSavedEvidence(t *testing.T) {
-	directory := strings.TrimSpace(os.Getenv("EPATH_REAL_VERIFY_DIR"))
+	mode, err := epathRealSavedVerificationOptions(os.Getenv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	directory := mode.Directory
 	if directory == "" {
 		t.Skip("saved-run verification requires EPATH_REAL_VERIFY_DIR")
 	}
-	if os.Getenv("EPATH_REAL_CAPTURE") == "1" || os.Getenv("EPATH_REAL_RUN") == "1" {
-		t.Fatal("saved-run verification cannot be combined with an engine-run mode")
-	}
 	root, catalogDirectory := epathRealDirectories(t)
-	directory, err := filepath.Abs(directory)
+	directory, err = filepath.Abs(directory)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,16 +163,17 @@ func TestEnergyPathRealModelSavedEvidence(t *testing.T) {
 	if err := epathValidateSavedRealEvidence(root, catalogDirectory, evidence); err != nil {
 		t.Fatal(err)
 	}
-	if os.Getenv("EPATH_REAL_VERIFY_REBUILD") == "1" {
-		projection, err := LoadEnergyPathProjection(EnergyPathProjectionRequest{ResultPath: evidence.SQLPath, InputPath: evidence.InputPath, Scope: "building", Period: "annual", Service: "all"})
-		if err != nil {
-			t.Fatal(err)
-		}
-		evidence.Bundle = projection.PurposeResults
+	evidence.Bundle, err = mode.bundle(root, evidence)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mode.Snapshot != "" {
+		t.Log("Read the exact original-wire snapshot with production/capture/input/engine/weather/SQL/SHA validation; no canonical rebuild or artifact writes")
+	} else if mode.Rebuild {
 		t.Log("Rebuilt with the shared saved-run loader; original captured payload/files were not changed")
 	}
 	observed := epathCollectRealSQLOracle(t, evidence)
-	if os.Getenv("EPATH_REAL_VERIFY_ACCEPTANCE") == "1" {
+	if mode.Acceptance {
 		if evidence.NumericalTrial != nil {
 			t.Fatal("numerical trial has no approved fixture/expected provenance; acceptance is not authorized")
 		}

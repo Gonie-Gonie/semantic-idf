@@ -86,16 +86,21 @@ func epathCompileSQLModelChecks(observed epathRealOracleEvidence, model epathRea
 	for _, build := range []func() error{
 		func() error { return epathSQLModelLoadDriverChecks(frames, model, &checks) },
 		func() error { return epathSQLModelDriverLinkChecks(frames, model, &checks) },
+		func() error { return epathSQLModelThermalReconciliationChecks(frames, model, &checks) },
 		func() error { return epathSQLModelSourceChecks(frames, observed.Sources, model, &checks) },
 		func() error { return epathSQLModelSiteChecks(frames, model, &checks) },
+		func() error { return epathSQLModelSiteFlowChecks(frames, model, &checks) },
+		func() error { return epathSQLModelSiteResidualChecks(frames, model, &checks) },
 		func() error { return epathSQLModelServiceChecks(frames, model, &checks) },
 		func() error { return epathSQLModelZoneServiceChecks(frames, model, &checks) },
 		func() error { return epathSQLModelDirectUseChecks(observed.Sources, frames, model, &checks) },
 		func() error {
 			return epathSQLModelFanPoolChecks(observed, frames, model.FanPools, model.Precision, &checks)
 		},
+		func() error { return epathSQLModelFanFlowChecks(observed, frames, model, &checks) },
+		func() error { return epathSQLModelZoneCarrierChecks(frames, model, &checks) },
 		func() error {
-			return epathSQLModelAvailabilityChecks(observed.Sources, observed.outputPlan, model, &checks)
+			return epathSQLModelQualityChecks(observed, frames, model, &checks)
 		},
 	} {
 		if err := build(); err != nil {
@@ -261,7 +266,20 @@ func epathEvaluateSQLModelChecks(out *epathRealOracleEvidence, bundle PurposeRes
 	failedGroups := map[string]bool{}
 	for _, check := range checks.Rows {
 		var err error
-		if check.DriverLink != nil {
+		metric := check.Want
+		if check.Quality != nil {
+			var derived epathRealOracleMetric
+			derived, err = epathCheckSQLModelQuality(bundle, check)
+			if err == nil {
+				metric = derived
+			}
+		} else if check.SiteFlow != nil {
+			err = epathCheckSQLSiteFlow(bundle, check)
+		} else if check.SiteResidual != nil {
+			err = epathCheckSQLSiteResidual(bundle, check)
+		} else if check.Reconciliation != nil {
+			err = epathCheckSQLModelReconciliation(bundle, check)
+		} else if check.DriverLink != nil {
 			err = epathCheckSQLModelDriverLink(bundle, check)
 		} else if check.Conversion != nil {
 			err = epathCheckSQLModelConversion(bundle, check)
@@ -280,7 +298,10 @@ func epathEvaluateSQLModelChecks(out *epathRealOracleEvidence, bundle PurposeRes
 		if err == nil && check.DirectUse != nil {
 			err = epathCheckSQLDirectUseEndpoints(bundle, check)
 		}
-		out.Metrics = append(out.Metrics, check.Want)
+		if err == nil && check.ZoneCarrier != nil {
+			err = epathCheckSQLZoneCarrier(bundle, check)
+		}
+		out.Metrics = append(out.Metrics, metric)
 		if err != nil {
 			failedGroups[check.Want.Group] = true
 			failures = append(failures, epathSQLModelFailure{check.Want.Group, check.Want.Key, check.Want.Key + ": " + err.Error()})
@@ -307,6 +328,10 @@ func epathEvaluateSQLModelChecks(out *epathRealOracleEvidence, bundle PurposeRes
 // No engine, candidate rebuild, capture mutation, or expected-file write occurs.
 func TestEnergyPathRealSQLModelSavedCandidate(t *testing.T) {
 	directory, path := os.Getenv("EPATH_REAL_ORACLE_CAPTURE_DIR"), os.Getenv("EPATH_REAL_ORACLE_SNAPSHOT")
+	pendingPath := strings.TrimSpace(os.Getenv("EPATH_REAL_ORACLE_PENDING_NEW"))
+	if pendingPath != "" && (directory == "" || path == "") {
+		t.Fatal("pending review requires explicit saved capture and SHA-bound candidate")
+	}
 	if directory == "" && path == "" {
 		t.Skip("explicit saved capture and SHA-bound candidate required; not acceptance")
 	}
@@ -424,5 +449,11 @@ func TestEnergyPathRealSQLModelSavedCandidate(t *testing.T) {
 	}
 	if len(failures) > 0 {
 		t.Fatalf("independent SQL comparison rejected candidate: %d mismatches", len(failures))
+	}
+	if pendingPath != "" {
+		if err := epathWriteOraclePending(root, pendingPath, path, evidence, recipe, observed, checks, failures); err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("NEW PENDING REVIEW ONLY, NOT APPROVED EXPECTED/ACCEPTANCE: %s", pendingPath)
 	}
 }

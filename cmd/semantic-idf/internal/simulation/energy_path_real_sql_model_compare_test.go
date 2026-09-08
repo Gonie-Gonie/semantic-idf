@@ -17,6 +17,11 @@ type epathSQLModelCheck struct {
 	ZoneService          *epathSQLZoneServiceProof
 	DriverLink           *epathSQLDriverLinkProof
 	DirectUse            *epathSQLDirectUseProof
+	Reconciliation       *epathSQLReconciliationProof
+	Quality              *epathSQLQualityProof
+	SiteFlow             *epathSQLSiteFlowProof
+	ZoneCarrier          *epathSQLZoneCarrierProof
+	SiteResidual         *epathSQLSiteResidualProof
 }
 type epathSQLModelChecks struct {
 	Rows            []epathSQLModelCheck

@@ -38,7 +38,8 @@ func epathValidateOracleMetricIdentity(metric epathRealOracleMetric) error {
 	if metric.Found != nil && (*metric.Found < 0 || *metric.Total < 0 || *metric.Found > *metric.Total) {
 		return fmt.Errorf("metric %s has invalid counts", metric.Key)
 	}
-	if metric.Unit == "%" && metric.Value != nil && (!epathOracleFinite(*metric.Value) || *metric.Value < 0 || *metric.Value > 100) {
+	allocationOvermapped := metric.Group == "zoneAllocation" && metric.Status == "overmapped" && strings.HasSuffix(metric.Key, "|zoneAllocatedPct")
+	if metric.Unit == "%" && metric.Value != nil && (!epathOracleFinite(*metric.Value) || *metric.Value < 0 || *metric.Value > 100 && !allocationOvermapped) {
 		return fmt.Errorf("metric %s has invalid percentage", metric.Key)
 	}
 	return nil
@@ -385,7 +386,8 @@ func epathReadStrictOracleQuality(nodes []EnergyExplanationNode, rows []EnergyRe
 	if denominator <= 0 || status == "unavailable" || status == "not_requested" || status == "not_applicable" {
 		return nil, nil
 	}
-	if math.IsNaN(value) || math.IsInf(value, 0) || value < 0 || value > 100 {
+	allocationOvermapped := target.Field == "zoneAllocatedPct" && status == "overmapped"
+	if math.IsNaN(value) || math.IsInf(value, 0) || value < 0 || value > 100 && !allocationOvermapped {
 		return nil, fmt.Errorf("invalid accounting percentage")
 	}
 	return epathOracleNumber(value), nil

@@ -624,6 +624,82 @@ All original capture files and earlier diagnostic artifacts are retained.
 This checkpoint changes test/oracle code and documentation only, writes no
 approved expected manifest, and leaves section 22 incomplete.
 
+## Complete accounting and context coverage follow-up
+
+The next independent compilation adds thermal reconciliation (including
+Zone-only contributions), monthly-first Building carrier branches, Zone fan
+branches and carrier subtotals, positive site-residual presentation, and all
+nine availability/ratio/accounting quality fields for every scope-period.
+Annual ambiguous HVAC branch presence retains discrete completed-month choices:
+a possible zero-or-full monthly meter is not permission to split that month
+fractionally between paired and direct consumption.
+
+The unchanged-candidate `large-office-25-1-diagnostic-coverage-06.json`
+contains 46,224 checks and finishes in 40.680 seconds. It fails with 2,230
+numeric/contract failures and 3,696 coverage gaps. All 9,828 reconciliation /
+site-residual checks pass. The failed artifact is preserved, not an expectation.
+Investigation separates two production defects from two oracle errors:
+
+- Zone quality recalculates Building-wide allocation coverage using only its
+  repeated fan/pump rows, omitting cooling/heating accounting. In October the
+  same-period complete Building coverage is 81.584%, but the Zone displays
+  43.991%. The correction copies only allocation percentage, unassigned
+  percentage and status from the matching Building period; other Zone quality
+  fields remain local, and a missing month cannot borrow Annual coverage.
+- The fan consumption branch preserves the broad Fans meter but loses the
+  exact reported AirLoop pool used for its allocated value. That pool must
+  remain on the carrier-qualified branch. Load-weight observations belong to
+  the allocated node's context, not additional site consumption.
+- The initial fan proof omitted legitimate broad-meter and exact selected-Zone
+  load-weight context from its node-source allowance. The corrected proof binds
+  those original identities independently and still requires the exact pool on
+  both node and consumption branch; foreign loops/Zones remain rejected.
+- Zone carrier names are case-insensitive EnergyPlus identities. SQL
+  `BASEMENT` / `CORE_MID` and canonical `Basement` / `Core_mid` agree. Only that
+  comparison is corrected; period, carrier, unit, domain and basis stay strict.
+
+The remaining 208 residual-group coverage failures in report 06 are failed
+Zone carrier-closure quality prerequisites (16 conditioned Zones x 13 periods),
+not unchecked reconciliation rows. Coverage and acceptance gates remain enabled.
+
+After these corrections, the new immutable candidate
+`large-office-25-1-candidate-coverage-02.json` is materialized in 20.110 seconds
+from the same original SQL, without an engine run. Its SHA-256 is
+`386b37d58280e9c21d2313846cabc75647c89920f72c2915d58bb8628d7da1a6`.
+The recipe SHA-256 remains
+`57bf54aee4b2b3477da22f7fcd5e871d90696268c5b13e13990e950e3294a085`.
+
+`large-office-25-1-diagnostic-coverage-07.json` completes in 40.480 seconds.
+All **46,224 numeric/contract checks pass**, and all **13,996 ledger records**
+have complete required field coverage, with **zero coverage gaps**:
+
+| Group | Independently checked metrics | Failures | Coverage gaps |
+| --- | ---: | ---: | ---: |
+| Drivers | 15,250 | 0 | 0 |
+| Loads | 11,836 | 0 | 0 |
+| End uses | 533 | 0 | 0 |
+| Carriers | 1,018 | 0 | 0 |
+| Ratios | 1,300 | 0 | 0 |
+| Completeness | 1,560 | 0 | 0 |
+| Residuals | 9,828 | 0 | 0 |
+| Zone allocation | 4,899 | 0 | 0 |
+
+The independent numeric evidence contains 8,928,359 JSON bytes. Original
+capture files and every failed/successful diagnostic are retained. This is the
+first complete-record Large Office diagnostic, still explicitly
+`acceptance: false`: reviewed expected-manifest approval and the other required
+models/adapter versions remain separate section 22 work. The new thermal
+reconciliation compiler does not yet prove interzone-pair rows for models that
+contain them; this actual capture has no such rows, not an accepted exception.
+
+An additional explicit diagnostic, `large-office-25-1-diagnostic-coverage-08.json`,
+passes the same 46,224 checks and complete ledger in 41.310 seconds and writes
+`large-office-25-1-pending-coverage-01.json`. This is a new **unapproved** review
+artifact containing the independent metrics, full coverage ledger, exact key
+registry digest and candidate/recipe/production/original-run provenance. It is
+not an expected manifest and cannot be read as one. No approved expected file
+is created or updated by a passing diagnostic.
+
 ## Explicit execution modes
 
 Use the repository Go toolchain and select the simulation package test by name.
@@ -648,6 +724,20 @@ requires the approved eight-group expected manifest. Neither mode reruns an
 engine, changes original artifacts, or writes expectations. Engine-run and
 saved-run modes cannot be combined. Unknown/empty selectors fail rather than
 silently skipping the requested model.
+
+With explicit saved acceptance, `EPATH_REAL_VERIFY_SNAPSHOT` may instead select
+an existing SHA-bound candidate through the original-wire reader. It requires
+`EPATH_REAL_VERIFY_DIR` and `EPATH_REAL_VERIFY_ACCEPTANCE=1`, is mutually exclusive
+with rebuild, and still requires the catalog's approved expected manifest.
+Missing fields, stale production hashes or changed original artifacts fail;
+the reader does not normalize away invalid original candidate data.
+
+For the saved-candidate diagnostic, an additional explicit
+`EPATH_REAL_ORACLE_PENDING_NEW` destination may save pending review metrics only
+after every independent check and coverage obligation passes. Its destination
+must physically remain inside `.runtime` and must not already exist. Failed
+checks, incomplete groups/registry, changed provenance or an existing file are
+rejected. This path neither approves nor overwrites expected fixtures.
 
 Materialized candidates bind the original capture, SQL, executed input, engine,
 weather and all current non-test Go source contents (including uncommitted

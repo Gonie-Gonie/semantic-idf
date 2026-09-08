@@ -187,8 +187,30 @@ func epathSQLCoverageRecords(bundle PurposeResultBundle, context epathSQLCoverag
 	// carrying a non-nil proof, or checking one same-service scalar, is not
 	// permission to mark all of that service's links as checked.
 	proofValid := map[string]bool{}
+	qualityMetrics := map[string]epathRealOracleMetric{}
 	for _, check := range checks {
 		validators := []func() error{}
+		if check.Reconciliation != nil {
+			validators = append(validators, func() error { return epathCheckSQLModelReconciliation(bundle, check) })
+		}
+		if check.SiteFlow != nil {
+			validators = append(validators, func() error { return epathCheckSQLSiteFlow(bundle, check) })
+		}
+		if check.SiteResidual != nil {
+			validators = append(validators, func() error { return epathCheckSQLSiteResidual(bundle, check) })
+		}
+		if check.ZoneCarrier != nil {
+			validators = append(validators, func() error { return epathCheckSQLZoneCarrier(bundle, check) })
+		}
+		if check.Quality != nil {
+			validators = append(validators, func() error {
+				metric, err := epathCheckSQLModelQuality(bundle, check)
+				if err == nil {
+					qualityMetrics[check.Want.Key] = metric
+				}
+				return err
+			})
+		}
 		if check.DriverLink != nil {
 			validators = append(validators, func() error { return epathCheckSQLModelDriverLink(bundle, check) })
 		}
@@ -251,6 +273,12 @@ func epathSQLCoverageRecords(bundle PurposeResultBundle, context epathSQLCoverag
 		selected := map[string][]string{}
 		for _, check := range checks {
 			target := check.Item.Target
+			if check.ZoneCarrier != nil && !proofValid[check.Want.Key] {
+				continue
+			}
+			if check.SiteResidual != nil && !proofValid[check.Want.Key] {
+				continue
+			}
 			if target.Collection != "nodes" || !epathOracleNodeMatches(node, target) || target.Unit != node.Unit || target.ScaleDomain != node.ScaleDomain || target.AggregationBasis != "" && target.AggregationBasis != node.AggregationBasis {
 				continue
 			}
@@ -270,6 +298,12 @@ func epathSQLCoverageRecords(bundle PurposeResultBundle, context epathSQLCoverag
 			if proofValid[check.Want.Key] {
 				fields := []string{}
 				switch {
+				case check.SiteResidual != nil && epathSQLSiteResidualMatches(byID, link, check.SiteResidual):
+					if target.Collection == "links" {
+						fields = append(fields, target.Field)
+					}
+				case check.SiteFlow != nil && epathSQLSiteFlowMatches(byID, link, check.SiteFlow) && link.Relation == target.Relation:
+					fields = append(fields, target.Field)
 				case check.DriverLink != nil && epathSQLDriverLinkMatches(byID, link, check.DriverLink):
 					fields = append(fields, target.Field)
 				case check.ZoneService != nil && epathSQLZoneServiceCoveredLink(context.nodes, link, check.ZoneService):
@@ -317,6 +351,12 @@ func epathSQLCoverageRecords(bundle PurposeResultBundle, context epathSQLCoverag
 		}
 		for _, check := range candidates {
 			target := check.Item.Target
+			if check.Reconciliation != nil {
+				if proofValid[check.Want.Key] && epathSQLReconciliationMatches(row, check.Reconciliation) {
+					selected[target.Field] = append(selected[target.Field], check.Want.Key)
+				}
+				continue
+			}
 			if target.Collection == "reconciliation" && target.ID == row.ID && target.Level == row.Level && target.Unit == row.Unit && epathSQLCoverageMatch(target.Basis, row.Basis) && epathSQLCoverageMatch(target.Service, row.ServiceKind) && epathSQLCoverageMatch(target.AllocationMethod, row.AllocationMethod) && epathSQLCoverageMatch(target.Status, row.Status) {
 				selected[target.Field] = append(selected[target.Field], check.Want.Key)
 			}
@@ -326,6 +366,13 @@ func epathSQLCoverageRecords(bundle PurposeResultBundle, context epathSQLCoverag
 	for _, field := range []string{"drivers", "loads", "endUses", "carriers", "ratios", "driverToLoadClosedPct", "endUseToCarrierClosedPct", "zoneAllocatedPct", "unassignedPct"} {
 		selected := map[string][]string{}
 		for _, check := range checks {
+			if check.Quality != nil {
+				metric, ok := qualityMetrics[check.Want.Key]
+				if ok && proofValid[check.Want.Key] && context.quality != nil && check.Item.Target.Field == field && metric.Status != "" && (metric.Unit == "%" || metric.Found != nil && metric.Total != nil) {
+					selected[field] = append(selected[field], check.Want.Key)
+				}
+				continue
+			}
 			if context.quality == nil || check.Item.Target.Collection != "quality" || check.Item.Target.Field != field || check.Want.Status == "" {
 				continue
 			}

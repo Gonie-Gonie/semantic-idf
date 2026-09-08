@@ -523,6 +523,26 @@ Checklist section 22's actual-model fixtures and expected manifests also remain
 required between EPATH-204 and EPATH-210; they have no individual EPATH numbers.
 The final completion definition in section 26 is part of acceptance as well.
 
+The following checkpoint closes the Large Office full-record coverage gaps.
+Independent thermal/site reconciliation, carrier-specific consumption and fan
+branches, Zone carrier subtotals and all nine scope-period quality fields now
+pass together. This catches and fixes two production defects: Zone allocation
+coverage was calculated from a fan/pump-only subset, and allocated fan carrier
+branches lost their exact AirLoop pool source. The oracle separately corrects
+legitimate selected-Zone load-context provenance and case-insensitive EnergyPlus
+Zone identity, without changing numeric centers or weakening coverage gates.
+The new `large-office-25-1-candidate-coverage-02.json` is generated from preserved
+SQL in 20.110 seconds; `large-office-25-1-diagnostic-coverage-07.json` passes
+46,224 numeric/contract checks and all required fields in 13,996 ledger records
+in 40.480 seconds, with zero failures and zero gaps across all eight groups.
+It remains a diagnostic, not approved expected-manifest acceptance; section 22
+continues with explicit manifest review and the remaining actual model types.
+The subsequent complete replay also passes and creates a separately marked
+pending-review artifact from independent metrics, never from copied candidate
+expectations. A test-only saved acceptance option now reuses a SHA-bound
+original-wire snapshot, but still requires a separately approved catalog
+manifest; normal tests and passing diagnostics cannot create that approval.
+
 Existing code may already satisfy portions of later items. They remain pending
 until their exact checklist requirements and regression/acceptance evidence
 are checked in order. In particular, old renderers/state are removed only after
