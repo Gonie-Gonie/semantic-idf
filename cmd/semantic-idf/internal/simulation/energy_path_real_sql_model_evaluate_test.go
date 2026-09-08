@@ -145,6 +145,9 @@ func epathSQLModelSourceChecks(frames epathSQLFrames, observed []epathRealSQLSou
 
 func epathCompileSQLModelChecks(observed epathRealOracleEvidence, model epathRealSQLModel) (epathSQLModelChecks, error) {
 	checks := epathSQLModelChecks{RequireCoverage: true}
+	if err := epathSQLValidateDirectHVACRequests(observed.outputPlan, model); err != nil {
+		return checks, err
+	}
 	frames, err := epathCompileSQLModelFrames(observed.sqlPath, observed.Sources, model)
 	if err != nil {
 		return checks, err
@@ -154,6 +157,7 @@ func epathCompileSQLModelChecks(observed epathRealOracleEvidence, model epathRea
 		func() error { return epathSQLModelDriverLinkChecks(frames, model, &checks) },
 		func() error { return epathSQLModelThermalReconciliationChecks(frames, model, &checks) },
 		func() error { return epathSQLModelSourceChecks(frames, observed.Sources, model, &checks) },
+		func() error { return epathSQLModelDirectHVACSourceChecks(frames, &checks) },
 		func() error { return epathSQLModelSiteChecks(frames, model, &checks) },
 		func() error { return epathSQLModelSiteFlowChecks(frames, model, &checks) },
 		func() error { return epathSQLModelSiteResidualChecks(frames, model, &checks) },
@@ -233,6 +237,9 @@ func epathCheckSQLModelConversion(bundle PurposeResultBundle, check epathSQLMode
 		return err
 	}
 	if actual.Count == 0 {
+		if proof.ExactPresentation != nil {
+			return fmt.Errorf("missing conversion with independently proved positive displayed endpoints")
+		}
 		if proof.From.includesZero() || proof.To.includesZero() {
 			return nil
 		}
@@ -246,6 +253,26 @@ func epathCheckSQLModelConversion(bundle PurposeResultBundle, check epathSQLMode
 	}
 	if err := epathCheckSQLModelQuantity(actual.To, &proof.To); err != nil {
 		return fmt.Errorf("conversion site endpoint: %w", err)
+	}
+	if exact := proof.ExactPresentation; exact != nil {
+		if check.Item.Scope != "zone" || check.Item.Period == "annual" || check.Item.Target.Basis != "direct_zone_energy" || check.Item.Target.Service != "heating" || exact.ExactPresentation != nil || exact.From.Error != 0 || exact.To.Error != 0 || exact.From.Bounds != nil || exact.To.Bounds != nil || exact.From.Value <= 0 || exact.To.Value <= 0 {
+			return fmt.Errorf("invalid exact independently quantized direct pair")
+		}
+		kind, err := epathSQLConversionRatioKind(check.Item.Target.RatioKind, exact.From, exact.To)
+		if err != nil || kind != check.Item.Target.RatioKind {
+			return fmt.Errorf("exact direct displayed pair contradicts its independent combustion classification")
+		}
+		if err := epathCheckSQLModelQuantity(actual.From, &exact.From); err != nil {
+			return fmt.Errorf("exact direct thermal presentation: %w", err)
+		}
+		if err := epathCheckSQLModelQuantity(actual.To, &exact.To); err != nil {
+			return fmt.Errorf("exact direct site presentation: %w", err)
+		}
+	}
+	if proof.DirectHVACSources != nil {
+		if err := epathCheckSQLDirectHVACBuildingSources(bundle, check); err != nil {
+			return err
+		}
 	}
 	if *actual.From > 0 && *actual.To > 0 && actual.Ratio == nil {
 		return fmt.Errorf("positive paired quantities lost ratio availability")
@@ -351,6 +378,8 @@ func epathEvaluateSQLModelChecks(out *epathRealOracleEvidence, bundle PurposeRes
 			err = epathCheckSQLModelConversion(bundle, check)
 		} else if check.Allocation != nil {
 			err = epathCheckSQLModelAllocation(bundle, check)
+		} else if check.DirectHVACSource != nil {
+			err = epathCheckSQLDirectHVACSource(bundle, check)
 		} else {
 			var actual *float64
 			actual, err = epathReadOracleCandidate(bundle, check.Item, check.Want)

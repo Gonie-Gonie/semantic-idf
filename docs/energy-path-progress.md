@@ -661,3 +661,123 @@ already invalidates replaced collections, but the mounted inspector currently
 observes their parent model references. Normal analysis replaces those parents;
 this narrower wrapper correction does not claim broader in-place mutation
 support or mark that later audit complete.
+
+Section 22 PTAC preparation first passed 16,765 independent checks against the
+preserved September 7 capture, but that fallback-only result was not approved:
+EPATH-094/100 requires exact directly owned HVAC consumption where it exists.
+The original `DOAToPTAC.idf` owns five distinct DX/fuel PTAC pairs; the source RDD
+and MTD expose their main, crankcase and ancillary consumption separately.
+
+The normal output plan and SQL reader now request and bind all 25 reviewed
+Monthly/J coil inputs through the original whole-model PTAC/EquipmentList/Zone
+ownership. Shared, central, duplicate, broken or ambiguous ownership is rejected.
+Native DOAS mixer references are allowed only with exact connected air nodes.
+Constituents are additive and already model total, without a second Zone/List
+multiplier. Missing, NULL, negative or duplicate Monthly data cannot leave a
+partial main/ancillary cohort claiming complete direct energy. Actual source
+zeros remain observed; independent annual building meters remain authoritative.
+The mixed local/DOAS broad fan pool remains explicitly unassigned because no
+individual fan or measured fan-pool observations support a defensible split.
+
+The new annual run `real-ptac-25-1-20260908T081443.664544900` completed engine and
+result generation, preserving the original and annual-input hashes. Its SQL hash
+is `37372221dba622dc0e71b5574edba740f316fd973ea6fbcb9655311053674090`.
+Separate read-only arithmetic confirms all 300 component-month observations,
+25 exact MTD memberships, cooling/fuel meter closure, 65 owned Zone-period
+contexts and 130 paired conversion ratios. Original warnings remain visible.
+The obsolete fallback-only oracle correctly rejected 4,312 checks; that failure
+is preserved, not described as a passing capture test or fixture acceptance.
+The new independent component-source, direct-first service and exact provenance
+proofs are being integrated before any PTAC expected values may be approved.
+
+Prior-fixture rebuild checks also exposed a test-only native/wire boundary:
+the strict independent reader correctly requires explicit scalar presence, but
+the rebuild path had skipped the production v2 writer that emits observed zeros.
+The saved rebuild seam now serializes the actual v2 bundle, performs the strict
+wire preflight, and uses the original-wire decoder. It does not infer zero for
+absent/NULL data, repair a candidate through the production compatibility reader,
+or change the frozen v1 writer. Focused and full verification remain pending for
+this current integration checkpoint. Approved fixtures remain 3 of 19; PTAC and
+the other 15 entries, plus later checklist acceptance, remain unapproved.
+
+The new independent PTAC proof now passes all 17,021 metrics and required fields
+in all eight groups (diagnostic 03, 12.802 seconds). Diagnostic 02 is retained:
+its 1,230 failures comprise 30 exact-zero source-scope observations, 390 carrier
+reconciliation identities and their 810 coverage consequences. Original global
+source zeros were not missing; only the proof for an independently owned,
+exact-zero, explicitly serialized coil may reuse that observation when pruning
+left no scope detail. General missing/NULL/foreign-Zone source behavior is not
+relaxed. Fully directly observed Zone carriers use their independently proved
+plain monthly/annual reconciliation identities, without accepting arbitrary IDs.
+
+The direct-first compiler preserves carrier-qualified remainders, known-zero
+owner exclusion and exact main/ancillary source cohorts. Positive consumption
+with no load has separate relation-specific monthly/annual proofs. A narrow
+original-SQL 3-decimal presentation proof resolves the actual 0.110/0.110 heating
+classification boundary; raw numerical centers/bounds stay unchanged, and exact
+positive displayed pairs cannot be pruned by broader raw intervals. The combined
+new source/service/consumer/presentation/wire regressions pass in 18.446 seconds.
+All three earlier approvals also pass current-code saved-original rebuilding:
+Small Office 17,675 metrics in 22.199 seconds, Ideal Loads 17,121 in 35.815 seconds,
+and Large Office 46,224 in 90.177 seconds. No original capture, expected metric or
+production source was changed to achieve these oracle-boundary corrections.
+PTAC approval and the normal full verification/build gate are still pending;
+the tiny displayed allocation overlap warning is being reviewed separately before
+this fixture is marked complete.
+
+The allocation wording now explicitly describes rounded displayed totals and
+positive constituent-period overlaps, which need not equal the net annual
+residual. It does not diagnose physical excess from the displayed discrepancy
+alone or dismiss genuinely excessive observations. Overlap/gap arithmetic,
+severity, status and the actual unassigned fan energy are unchanged. The Zone
+quality line uses the allocation-specific English/Korean label without renaming
+other overmapped statuses or adding primary controls. The ledger/message tests
+pass in 0.625 seconds and the actual EPATH-131 drawer/navigation browser regression
+passes in 2.918 seconds, including unchanged 87.767/12.233 coverage values.
+
+The final wording-only production rebuild produces a distinct SHA-bound PTAC
+candidate 03 without modifying the original capture. Diagnostic 04 passes all
+17,021 independent metrics and mandatory fields in all eight groups (12.229
+seconds), then exports pending-review artifact 01. That export is deliberately
+unapproved and not acceptance; explicit review and saved expected-manifest
+acceptance remain separate gates. Earlier failed and passing diagnostics are
+preserved rather than overwritten.
+
+Root explicitly approves the separately reviewed PTAC pending artifact
+`6a29ae0c042f16c34b6e4d8604f501d59662a8bdeac376f0cade075728e8837d`.
+The hand-authored expected header and 140,629-byte lossless companion retain
+all 17,021 independent expectations. Saved-original-wire acceptance passes
+all eight groups in 22.239 seconds; the offline integrity guard now requires
+this fourth approved fixture. Actual original SQL/MTD review confirms all
+25 coil identities, 300 monthly observations and meter membership, complete
+known-zero constituents, carrier closure below 2e-12 kWh and unchanged original
+model/annual-run controls. Approval is limited to result transformation for this
+controlled fixture: its original 5,278 warnings remain, including cold-condenser
+and freeze-risk warnings. It does not approve the model's climate suitability.
+The previous three approved headers and companions remain unchanged.
+
+Section 22 now has 4 of 19 approved catalog fixtures. PTHP is next; the other
+15 entries and later checklist sections are not complete. The full repository
+verification and Wails build for this implementation checkpoint are next.
+
+The first full verification completed with three failures: the existing raw-text
+missing-value scanner misread a new comment's `main/ancillary` substring as the
+forbidden sentinel, and two EPATH-100 assertions still expected the superseded
+allocation label. The comment now says `main and ancillary`; the two label
+assertions and matching negative-scope label guard use the reviewed new wording.
+No numerical expectation, threshold, status, warning severity or scanner rule was
+relaxed. The sentinel regression passes in 0.208 seconds and all EPATH-100 audit
+plus overlap regressions pass in 0.670 seconds. A distinct candidate 04 binds the
+comment-only new production digest before replaying the unchanged approval;
+candidate 03, its pending review and approved payload remain preserved.
+Candidate 04 also passes all 17,021 saved acceptance metrics in 21.041 seconds
+against the unchanged approved expectations. Full verification is rerun next.
+
+The corrected full `scripts/verify.ps1` passes: actual frontend checks in 162.757
+seconds, simulation tests in 252.096 seconds, all other packages successful,
+and the Windows production Wails build in 10.283 seconds. This is the completed
+PTAC implementation/acceptance checkpoint; normal commit-hook verification and
+push follow. The next PTHP source audit is read-only so far and confirms that
+its old capture lacks the required direct coil-consumption outputs. It needs a
+typed DX/Fuel ownership extension and a new normal output capture, not copied
+PTAC observations or fallback-only approval.

@@ -2671,6 +2671,7 @@ func (builder *purposePlanBuilder) addBasicEnergyPath() {
 			builder.addVariableWithReason(SimulationPurposeBasicEnergy, key, variable, "Monthly", "medium", "Monthly zone direct-use energy for the four-stage Energy Path.", "Basic Energy Path")
 		}
 	}
+	builder.addEnergyPathDirectHVACComponentOutputs()
 
 	idealLoadsTargets := builder.energyPathIdealLoadsTargets(zoneKeys)
 	for _, definition := range energyLoadAliasCatalog() {

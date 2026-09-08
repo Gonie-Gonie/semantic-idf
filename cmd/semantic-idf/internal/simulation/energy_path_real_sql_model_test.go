@@ -14,6 +14,7 @@ type epathRealSQLModel struct {
 	Auxiliaries            []epathRealSQLAuxiliary             `json:"auxiliaries"`
 	FanPools               []epathRealSQLFanPool               `json:"fanPools,omitempty"`
 	DirectUses             []epathRealSQLDirectUse             `json:"directUses,omitempty"`
+	DirectHVACComponents   []epathRealSQLDirectHVACComponent   `json:"directHVACComponents,omitempty"`
 	NonAdditiveLoadDetails []epathRealSQLNonAdditiveLoadDetail `json:"nonAdditiveLoadDetails,omitempty"`
 	Precision              epathRealSQLPrecision               `json:"precision"`
 }
@@ -91,6 +92,28 @@ type epathRealSQLDirectUse struct {
 	EndUse  string               `json:"endUse"`
 	Carrier string               `json:"carrier"`
 	Source  epathRealSQLSelector `json:"source"`
+}
+
+// Each constituent is an additive observed coil input, not a package total or
+// an alias of another constituent. Ownership is explicitly reviewed from the
+// original input; the SQL reporting key is not itself a Zone name.
+type epathRealSQLDirectHVACComponent struct {
+	ID               string                        `json:"id"`
+	Service          string                        `json:"service"`
+	Carrier          string                        `json:"carrier"`
+	SiteID           string                        `json:"siteId"`
+	Frequency        string                        `json:"frequency"`
+	AggregationBasis string                        `json:"aggregationBasis"`
+	Source           epathRealSQLSelector          `json:"source"`
+	Owners           []epathRealSQLDirectHVACOwner `json:"owners"`
+}
+
+type epathRealSQLDirectHVACOwner struct {
+	KeyValue      string `json:"keyValue"`
+	ZoneName      string `json:"zoneName"`
+	EquipmentType string `json:"equipmentType"`
+	EquipmentName string `json:"equipmentName"`
+	ComponentType string `json:"componentType"`
 }
 type epathRealSQLAvailability struct {
 	ID    string `json:"id"`

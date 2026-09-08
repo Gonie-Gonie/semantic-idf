@@ -578,15 +578,18 @@ type energyHeatAliasDefinition struct {
 }
 
 type energyExplanationDictionary struct {
-	row                sqlOutputDictionaryRow
-	isMeter            bool
-	reportingFrequency string
-	indexGroup         string
-	sourceFile         string
-	meter              *energyMeterAliasDefinition
-	energy             *energyMeterAliasDefinition
-	load               *energyLoadAliasDefinition
-	heat               *energyHeatAliasDefinition
+	row                        sqlOutputDictionaryRow
+	isMeter                    bool
+	reportingFrequency         string
+	indexGroup                 string
+	sourceFile                 string
+	meter                      *energyMeterAliasDefinition
+	energy                     *energyMeterAliasDefinition
+	load                       *energyLoadAliasDefinition
+	heat                       *energyHeatAliasDefinition
+	directComponentID          string
+	directComponentZone        string
+	directComponentObjectIndex *int
 }
 
 type energyExplanationSeriesBuilder struct {
@@ -689,6 +692,7 @@ type energyExplanationSeries struct {
 	driverBuildingOnly     bool
 	interzonePairID        string
 	canonicalLoadMetadata  bool
+	directComponentID      string
 	loadBreakdown          []energyLoadBreakdownSeries
 }
 
@@ -766,7 +770,7 @@ func parseSimulationEnergyExplanationCanonicalSQL(path string, plan *PurposeRunP
 		return energyExplanationParseResult{}, err
 	}
 	if ready {
-		dictionaries, err := sqlEnergyExplanationDictionaries(db, filepath.Base(path), plan)
+		dictionaries, err := sqlEnergyExplanationDictionaries(db, filepath.Base(path), plan, driverContext)
 		if err != nil {
 			return energyExplanationParseResult{}, err
 		}
@@ -809,6 +813,9 @@ func parseSimulationEnergyExplanationCanonicalSQL(path string, plan *PurposeRunP
 				dictionary, ok := byID[dictionaryIndex]
 				if !ok {
 					return nil
+				}
+				if dictionary.directComponentID != "" && value.Float64 < 0 {
+					invalidObservedValues[dictionaryIndex] = true
 				}
 				if strings.EqualFold(strings.TrimSpace(dictionary.reportingFrequency), "Monthly") {
 					if !monthlyTimeAxis[timeIndex] {
@@ -866,7 +873,13 @@ func parseSimulationEnergyExplanationCanonicalSQL(path string, plan *PurposeRunP
 
 			for _, dictionary := range dictionaries {
 				builder := builders[dictionary.row.index]
-				if builder == nil || builder.total == 0 && len(builder.monthly) == 0 {
+				if builder == nil && dictionary.directComponentID != "" {
+					// Preserve the reported identity of an all-NULL source, but
+					// never promote it to a zero-valued direct consumption series.
+					builder = &energyExplanationSeriesBuilder{dictionary: dictionary, unit: "kWh"}
+					invalidObservedValues[dictionary.row.index] = true
+				}
+				if builder == nil || dictionary.directComponentID == "" && builder.total == 0 && len(builder.monthly) == 0 {
 					continue
 				}
 				source := energyDataSourceForDictionary(dictionary)
@@ -874,6 +887,10 @@ func parseSimulationEnergyExplanationCanonicalSQL(path string, plan *PurposeRunP
 				source.NormalizedUnit = builder.unit
 				if strings.EqualFold(strings.TrimSpace(dictionary.reportingFrequency), "Monthly") &&
 					(len(monthlyTimeAxis) == 0 || monthlyObservedRows[dictionary.row.index] != len(monthlyTimeAxis)) {
+					invalidObservedValues[dictionary.row.index] = true
+				}
+				if dictionary.directComponentID != "" && (builder.unit != "kWh" || math.IsNaN(builder.total) || math.IsInf(builder.total, 0) ||
+					strings.EqualFold(dictionary.reportingFrequency, "Monthly") && len(builder.monthly) != len(monthlyTimeAxis)) {
 					invalidObservedValues[dictionary.row.index] = true
 				}
 				if !invalidObservedValues[dictionary.row.index] && builder.unit == "kWh" && !math.IsNaN(builder.total) && !math.IsInf(builder.total, 0) {
@@ -888,6 +905,9 @@ func parseSimulationEnergyExplanationCanonicalSQL(path string, plan *PurposeRunP
 					source.ZoneName = scopeZoneName
 				}
 				sources = append(sources, source)
+				if dictionary.directComponentID != "" && invalidObservedValues[dictionary.row.index] {
+					continue
+				}
 				item := energyExplanationSeriesForBuilder(builder, source.ID)
 				item.parseCategorySource = surfaceCategoryEligible[dictionary.row.index]
 				if scopeZoneName != "" {
@@ -898,6 +918,7 @@ func parseSimulationEnergyExplanationCanonicalSQL(path string, plan *PurposeRunP
 			series = append(series, energyExplanationCategorySeries(categoryBuilders)...)
 		}
 	}
+	series = energyPathCompleteDirectHVACComponentSeries(series, driverContext.DirectHVACComponents)
 	tabularSeries, tabularSources, err := parseEnergyExplanationTabularAnnual(db, series)
 	if err != nil {
 		return energyExplanationParseResult{}, err
@@ -1094,6 +1115,9 @@ func energyExplanationCategorySeries(builders map[string]*energyExplanationCateg
 }
 
 func energyExplanationScopeZoneForDictionary(dictionary energyExplanationDictionary, plan *PurposeRunPlan) string {
+	if dictionary.directComponentID != "" {
+		return dictionary.directComponentZone
+	}
 	if plan == nil || dictionary.load == nil && dictionary.heat == nil {
 		return ""
 	}
@@ -1517,6 +1541,12 @@ func energyExplanationSeriesForGraphPeriod(series []energyExplanationSeries, per
 
 func energyExplanationSeriesSelectionKey(item energyExplanationSeries) string {
 	item = canonicalEnergyExplanationSeries(item)
+	if item.directComponentID != "" {
+		// Different owned coils and their main and ancillary consumption are
+		// additive. Only actual aliases/frequencies of that same constituent
+		// compete for preference; a Zone/service/carrier is not a source family.
+		return item.CanonicalFamily + "|component:" + normalizeEnergyOutputName(item.sourceKeyValue) + "|constituent:" + item.directComponentID
+	}
 	if item.CanonicalFamily != "" && (item.Stage == "carrier" || item.Stage == "end_use" || item.Stage == "support") {
 		return item.CanonicalFamily
 	}
@@ -3568,7 +3598,7 @@ func servicePathLoadShareAllocatedGroup(group []EnergyExplanationEdge, nodeByID 
 	return allocated
 }
 
-func sqlEnergyExplanationDictionaries(db *sql.DB, sourceFile string, plan *PurposeRunPlan) ([]energyExplanationDictionary, error) {
+func sqlEnergyExplanationDictionaries(db *sql.DB, sourceFile string, plan *PurposeRunPlan, driverContexts ...energyDriverBuildContext) ([]energyExplanationDictionary, error) {
 	columns, err := sqlTableColumns(db, "ReportDataDictionary")
 	if err != nil {
 		return nil, err
@@ -3620,6 +3650,19 @@ ORDER BY rdd.%s`, indexExpr, keyExpr, nameExpr, unitsExpr, isMeterExpr, frequenc
 			copy := def
 			dictionary.meter = &copy
 			dictionary.isMeter = true
+		} else if def, ok := energyPathDirectHVACComponentDefinitionForName(row.name); ok {
+			var targets []energyPathDirectHVACComponentTarget
+			if len(driverContexts) > 0 {
+				targets = driverContexts[0].DirectHVACComponents
+			}
+			zone, objectIndex, bound := energyPathDirectHVACComponentScope(def, dictionary, plan, targets)
+			if !bound {
+				continue
+			}
+			copy := def.Energy
+			dictionary.energy = &copy
+			dictionary.directComponentID, dictionary.directComponentZone = def.ID, zone
+			dictionary.directComponentObjectIndex = objectIndex
 		} else if def, ok := energyVariableAliasDefinitionForName(row.name); ok {
 			// Zone direct-use variables are part of the new Energy Path capture
 			// contract. Keep legacy parser results stable unless the run plan
@@ -3678,6 +3721,9 @@ func energyExplanationSeriesForBuilder(builder *energyExplanationSeriesBuilder, 
 		if def.HierarchyLevel == "zone_direct_use" {
 			zoneName = strings.TrimSpace(dictionary.row.keyValue)
 		}
+		if dictionary.directComponentID != "" {
+			zoneName = dictionary.directComponentZone
+		}
 		return energyExplanationSeries{
 			Level:               "energy",
 			Kind:                def.Kind,
@@ -3688,6 +3734,7 @@ func energyExplanationSeriesForBuilder(builder *energyExplanationSeriesBuilder, 
 			MeterHierarchyLevel: def.HierarchyLevel,
 			ZoneName:            zoneName,
 			Basis:               "measured_energy_variable",
+			directComponentID:   dictionary.directComponentID,
 			SourceIDs:           []string{sourceID},
 			Total:               roundedEnergyNumber(builder.total),
 			Monthly:             roundedEnergyExplanationMonthly(builder.monthly),
@@ -3931,7 +3978,10 @@ ORDER BY %s`,
 func energyExplanationExistingEnergyGroups(series []energyExplanationSeries) map[string]bool {
 	seen := map[string]bool{}
 	for _, item := range series {
-		if item.Level != "energy" {
+		// An observed Zone/component subtotal does not report the building's
+		// complete end use. It cannot suppress an independent Annual Tabular
+		// fallback merely because both have the same carrier/service taxonomy.
+		if item.Level != "energy" || strings.EqualFold(item.MeterHierarchyLevel, "zone_direct_use") || canonicalEnergyPathBasis(item.Basis, "") == "direct_zone_energy" {
 			continue
 		}
 		if key := energyExplanationCompletenessGroupKey(item); key != "" {
@@ -4095,6 +4145,9 @@ func energyExplanationSupportsHourlyPeriods(dictionary energyExplanationDictiona
 }
 
 func energyExplanationObjectIndexForDictionary(dictionary energyExplanationDictionary, plan *PurposeRunPlan) *int {
+	if dictionary.directComponentID != "" {
+		return dictionary.directComponentObjectIndex
+	}
 	if plan == nil {
 		return nil
 	}
@@ -4877,6 +4930,9 @@ func energyHeatAliasDefinitionForName(name string) (energyHeatAliasDefinition, b
 }
 
 func energyExplanationVariableAliasCandidates(name string) []string {
+	if definition, ok := energyPathDirectHVACComponentDefinitionForName(name); ok {
+		return preferredEnergyExplanationAliases(name, definition.Energy.Aliases, nil)
+	}
 	if definition, ok := energyVariableAliasDefinitionForName(name); ok {
 		return preferredEnergyExplanationAliases(name, definition.Aliases, nil)
 	}

@@ -850,7 +850,7 @@ func appendEnergyPathZoneHVACAllocationRecords(reconciliation []EnergyReconcilia
 			label = "Unassigned building HVAC energy"
 			status = "partial"
 		} else if residual < -energyPathZoneHVACAllocationEpsilon {
-			label = "Direct zone HVAC energy exceeds building HVAC energy"
+			label = "Rounded zone HVAC totals exceed reported building HVAC energy"
 			status = "overmapped"
 		} else if record.UnassignedValue > energyPathZoneHVACAllocationEpsilon || record.OvermappedValue > energyPathZoneHVACAllocationEpsilon {
 			label = "Building HVAC allocation has period-level gaps or overlaps"
@@ -868,7 +868,7 @@ func appendEnergyPathZoneHVACAllocationRecords(reconciliation []EnergyReconcilia
 			filteredWarnings = appendEnergyDriverWarning(filteredWarnings, EnergyWarning{
 				Severity: "warning",
 				Code:     "direct_zone_hvac_energy_exceeds_building",
-				Message:  fmt.Sprintf("Exact direct zone %s %s energy exceeds the Building end-use meter by %g %s; direct observations are retained and no remainder is allocated.", energyServiceLabel(record.ServiceKind), energyCarrierLabel(record.Carrier), record.OvermappedValue, record.Unit),
+				Message:  energyPathAllocationOverlapMessage(energyServiceLabel(record.ServiceKind), energyCarrierLabel(record.Carrier), record.OvermappedValue, record.Unit, record.Period),
 				Period:   record.Period,
 			})
 		}

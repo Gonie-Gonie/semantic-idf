@@ -17,6 +17,7 @@ type epathSQLZoneCarrierProof struct {
 
 type epathSQLZoneCarrierPart struct {
 	ByCarrier                  map[string]epathSQLQuantity
+	DirectByCarrier            map[string]epathSQLQuantity
 	Direct                     bool
 	AnnualTabular, Unavailable bool
 }
@@ -130,6 +131,13 @@ func epathSQLZoneCarrierInputs(frames epathSQLFrames, model epathRealSQLModel, c
 			for carrier, q := range check.ZoneService.Carriers {
 				part.ByCarrier[carrier] = q
 			}
+			if check.ZoneService.DirectHVAC {
+				var err error
+				part.DirectByCarrier, err = epathSQLDirectHVACCarrierParts(check.ZoneService)
+				if err != nil {
+					return nil, nil, err
+				}
+			}
 		} else if check.DirectUse != nil {
 			family, part.Direct = "direct/"+check.DirectUse.EndUse, true
 			if check.DirectUse.Multiplier != frames.Zones[strings.ToLower(check.Item.Zone)].Multiplier {
@@ -160,6 +168,12 @@ func epathSQLZoneCarrierInputs(frames epathSQLFrames, model epathRealSQLModel, c
 			category, basis = strings.TrimPrefix(family, "direct/"), "direct_zone_energy"
 		} else if family == "fan" {
 			category = "fans"
+		}
+		if check.ZoneService != nil && check.ZoneService.DirectHVAC {
+			basis = check.ZoneService.Basis
+			if basis != "direct_zone_energy" && basis != "service_path_allocation" {
+				return nil, nil, fmt.Errorf("unsupported direct-first service basis")
+			}
 		}
 		if target.Category != category || target.Basis != basis {
 			return nil, nil, fmt.Errorf("independent carrier component has a conflicting category/basis")
@@ -220,11 +234,17 @@ func epathSQLZoneCarrierInputs(frames epathSQLFrames, model epathRealSQLModel, c
 			}
 			for carrier, expected := range annual.ByCarrier {
 				sum := epathSQLQuantity{}
+				directSum := epathSQLQuantity{}
 				for month := 1; month <= 12; month++ {
-					sum = sum.add(parts[epathSQLZoneCarrierContext(key, fmt.Sprintf("M%d", month))][family].ByCarrier[carrier])
+					part := parts[epathSQLZoneCarrierContext(key, fmt.Sprintf("M%d", month))][family]
+					sum = sum.add(part.ByCarrier[carrier])
+					directSum = directSum.add(part.DirectByCarrier[carrier])
 				}
 				if !epathSQLZoneCarrierQuantityEqual(sum, expected) {
 					return nil, nil, fmt.Errorf("annual carrier component is not the sum of completed monthly shares: %s/%s/%s", zone.Name, family, carrier)
+				}
+				if !epathSQLZoneCarrierQuantityEqual(directSum, annual.DirectByCarrier[carrier]) {
+					return nil, nil, fmt.Errorf("annual direct carrier component is not the sum of completed monthly observations: %s/%s/%s", zone.Name, family, carrier)
 				}
 			}
 		}
@@ -366,6 +386,10 @@ func epathSQLModelZoneCarrierChecks(frames epathSQLFrames, model epathRealSQLMod
 	}
 	sort.Strings(zones)
 	for _, zone := range zones {
+		directMonthlyIDs, err := epathSQLZoneCarrierDirectMonthlyIDs(frames, model, zone)
+		if err != nil {
+			return err
+		}
 		for _, carrier := range carriers {
 			monthly, direct := [12]epathSQLQuantity{}, [12]epathSQLQuantity{}
 			for month := 1; month <= 12; month++ {
@@ -381,6 +405,8 @@ func epathSQLModelZoneCarrierChecks(frames epathSQLFrames, model epathRealSQLMod
 					monthly[month-1] = monthly[month-1].add(q)
 					if part.Direct {
 						direct[month-1] = direct[month-1].add(q)
+					} else {
+						direct[month-1] = direct[month-1].add(part.DirectByCarrier[carrier])
 					}
 				}
 			}
@@ -393,6 +419,8 @@ func epathSQLModelZoneCarrierChecks(frames epathSQLFrames, model epathRealSQLMod
 						q = q.add(value)
 						if part.Direct {
 							d = d.add(value)
+						} else {
+							d = d.add(part.DirectByCarrier[carrier])
 						}
 						annualPresent = annualPresent || part.AnnualTabular
 					}
@@ -428,7 +456,7 @@ func epathSQLModelZoneCarrierChecks(frames epathSQLFrames, model epathRealSQLMod
 					checks.Rows[len(checks.Rows)-1].ZoneCarrier = proof
 				}
 				ids, err := epathSQLZoneCarrierRowIDs(carrier, proof.ZoneName, period, monthly)
-				if plainMonthlyIDs[carrier] {
+				if plainMonthlyIDs[carrier] || directMonthlyIDs {
 					// The annual sum of plain M# rows also has a plain annual ID;
 					// this does not apply to annual-only purchased-energy fallback.
 					ids = []string{"reconcile.energy." + carrier + "." + period}

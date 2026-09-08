@@ -6,7 +6,12 @@ import (
 	"strings"
 )
 
-type epathSQLConversionProof struct{ From, To epathSQLQuantity }
+type epathSQLConversionProof struct {
+	From, To           epathSQLQuantity
+	DirectHVACSources  map[string]epathSQLOriginalSource
+	DirectHVACRequired map[string]bool
+	ExactPresentation  *epathSQLConversionProof
+}
 
 type epathSQLAllocationProof struct {
 	Expected, Direct, Allocated, Unassigned *epathSQLQuantity
@@ -131,7 +136,12 @@ func epathSQLModelServiceChecks(frames epathSQLFrames, model epathRealSQLModel, 
 			}
 			continue
 		}
+		directFrames, err := epathSQLCompileDirectHVACService(frames, model, service)
+		if err != nil {
+			return err
+		}
 		monthSite, monthAssigned, monthUnassigned := [12]epathSQLQuantity{}, [12]epathSQLQuantity{}, [12]epathSQLQuantity{}
+		monthDirect := [12]epathSQLQuantity{}
 		branchNumerator, branchDenominator := map[string][12]epathSQLQuantity{}, map[string][12]epathSQLQuantity{}
 		branchKindPairs := map[string][12]epathSQLConversionProof{}
 		for month := 1; month <= 12; month++ {
@@ -156,6 +166,10 @@ func epathSQLModelServiceChecks(frames epathSQLFrames, model epathRealSQLModel, 
 				monthAssigned[month-1] = consumption
 			} else {
 				monthUnassigned[month-1] = consumption
+			}
+			if directFrames != nil {
+				row := directFrames.Monthly[month-1]
+				monthSite[month-1], monthDirect[month-1], monthAssigned[month-1], monthUnassigned[month-1] = row.Site, row.Direct, row.Allocated, row.Unassigned
 			}
 			if load.Value > 0 && consumption.Value > 0 {
 				num, den := branchNumerator[basis], branchDenominator[basis]
@@ -198,6 +212,11 @@ func epathSQLModelServiceChecks(frames epathSQLFrames, model epathRealSQLModel, 
 					return err
 				}
 				checks.Rows[len(checks.Rows)-1].Conversion = &epathSQLConversionProof{From: num, To: den}
+				if directFrames != nil && basis == service.Basis {
+					if err := epathSQLDirectHVACBindBuildingSources(frames, service, served, directFrames, period, checks.Rows[len(checks.Rows)-1].Conversion); err != nil {
+						return err
+					}
+				}
 			}
 			id, err := epathSQLAllocationID(service.ReconciliationID, period)
 			if err != nil {
@@ -210,6 +229,8 @@ func epathSQLModelServiceChecks(frames epathSQLFrames, model epathRealSQLModel, 
 					switch field {
 					case "expectedValue":
 						q = q.add(monthSite[month-1])
+					case "directValue":
+						q = q.add(monthDirect[month-1])
 					case "allocatedValue":
 						q = q.add(monthAssigned[month-1])
 					case "unassignedValue":

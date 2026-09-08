@@ -216,6 +216,37 @@ try{
  check([...host.querySelectorAll("[data-energy-path-closure]")].every(item=>item.dataset.energyPathClosureStatus==="unavailable"&&!item.textContent.includes("%")),"absent month reused annual energy conservation percentages");
  check(host.querySelector("[data-energy-path-ratio-availability]")?.dataset.energyPathRatioAvailability==="unavailable","absent month reused annual conversion ratio availability");
  check(host.querySelector('[data-energy-path-quality-stage="carriers"]')?.dataset.energyPathQualityStatus==="complete","run-level source availability was unnecessarily erased for an absent month");
+ // Allocation overlap is a displayed-accounting diagnostic, not a global
+ // rename of physical overmapping or a change to any quantity/status.
+ const i18n=await import("/src/js/i18n.js");
+ const overlap=structuredClone(withZone);
+ const overlapZone=overlap.zoneResults[0];
+ Object.assign(overlapZone.quality,{zoneAllocatedPct:87.767,unassignedPct:12.233,zoneAllocationStatus:"overmapped"});
+ overlapZone.reconciliation=[{id:"reconcile.zone_hvac_allocation.heating.natural_gas.annual",level:"allocation",period:"annual",label:"Displayed allocation ledger",status:"overmapped",expectedValue:2585.986,explainedValue:2585.988,residualValue:-0.002,directValue:2585.988,unassignedValue:0.004,overmappedValue:0.006,unit:"kWh"}];
+ const overlapBefore=JSON.stringify(overlap);
+ const overlapState={simulationEnergyScopeKind:"zone",simulationEnergyZoneName:"Office",simulationEnergyDetailsOpen:true};
+ for(const [language,label,helpParts,generic] of [
+  ["en","Displayed allocation overlap",["not the selected zone's energy share","rounded displayed totals","monthly positive overlaps","not by itself proof of physical oversupply","both gaps and overlaps","original sources"],"Overmapped"],
+  ["ko","표시 배분 합계 초과",["선택한 존의 에너지 점유율이 아닙니다","반올림된 표시 합계","월별 양의 초과분","실제 에너지 과잉 공급을 뜻하지 않습니다","미할당과 초과분이 함께","원본 출처"],"초과 집계"],
+ ]){
+  i18n.setLanguage(language);
+  mount(overlap,requestObjects,overlapState);
+  const allocation=host.querySelector("[data-energy-path-zone-allocation-status]");
+  check(allocation?.dataset.energyPathZoneAllocationStatus==="overmapped"&&allocation.textContent.includes(label),"allocation-specific overlap label/status lost in "+language);
+  check(allocation?.textContent.includes("87.8%")&&allocation.textContent.includes("12.2%"),"allocation wording changed precision or hid real unassigned share in "+language);
+  check(helpParts.every(part=>allocation?.title.includes(part)),"allocation help lost accounting, period, original-source or scope explanation in "+language);
+  check(i18n.t("simulation.energyPathQualityOvermapped")===generic,"allocation wording globally renamed another overmapped status in "+language);
+  const exact=view.energyPathQualityForState(overlap,state);
+  check(exact.zoneAllocationStatus==="overmapped"&&exact.zoneAllocatedPct===87.767&&exact.unassignedPct===12.233,"allocation wording changed underlying quality data");
+  const data=host.querySelector('[data-energy-path-details-panel="data"]');
+  check(data?.textContent.includes("-0.002")&&data.textContent.includes("overmapped"),"allocation wording hid signed residual or raw reconciliation status");
+  check(host.querySelectorAll('[data-energy-path-quality-line] button').length===5,"allocation wording added a primary control");
+ }
+ i18n.setLanguage("en");
+ check(JSON.stringify(overlap)===overlapBefore,"allocation help mutated original source/quality/reconciliation snapshot");
+ mount(overlap,requestObjects,{...overlapState,simulationEnergyPeriod:"M1"});
+ const normalAllocation=host.querySelector("[data-energy-path-zone-allocation-status]");
+ check(normalAllocation?.dataset.energyPathZoneAllocationStatus==="partial"&&!normalAllocation.textContent.includes("Displayed allocation overlap")&&!normalAllocation.title.includes("positive overlaps"),"allocation overlap copy leaked to ordinary partial allocation");
  const missingQuality=structuredClone(explanation);delete missingQuality.quality;
  mount(missingQuality);
  const unknownStages=[...host.querySelectorAll("[data-energy-path-quality-stage]")];

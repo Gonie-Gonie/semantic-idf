@@ -14,7 +14,8 @@ type epathSQLOriginalSource struct {
 	Tabular    *epathSQLTabularObservation
 	Name, Key  string // Independent reviewed wire alias, only for Tabular.
 	site       epathRealSQLSite
-	LoadDetail *epathSQLLoadDetailIdentity // Non-additive, exact equipment-to-Zone context only.
+	LoadDetail *epathSQLLoadDetailIdentity       // Non-additive, exact equipment-to-Zone context only.
+	DirectHVAC *epathSQLDirectHVACSourceIdentity // Additive model-total coil observation, exact reviewed owner.
 }
 
 func epathSQLOriginalRDD(source epathRealSQLSource) epathSQLOriginalSource {
@@ -27,6 +28,15 @@ func epathSQLOriginalLoadDetail(detail epathSQLLoadDetailIdentity) (epathSQLOrig
 	}
 	proof := epathSQLOriginalRDD(detail.Source)
 	proof.LoadDetail = &detail
+	return proof, nil
+}
+
+func epathSQLOriginalDirectHVAC(identity epathSQLDirectHVACSourceIdentity) (epathSQLOriginalSource, error) {
+	if err := epathSQLValidateDirectHVACSourceIdentity(identity); err != nil {
+		return epathSQLOriginalSource{}, err
+	}
+	proof := epathSQLOriginalRDD(identity.Source)
+	proof.DirectHVAC = &identity
 	return proof, nil
 }
 
@@ -90,9 +100,12 @@ func epathSQLOriginalKey(proof epathSQLOriginalSource) (string, error) {
 		if proof.LoadDetail != nil && (epathSQLValidateLoadDetailIdentity(*proof.LoadDetail) != nil || !reflect.DeepEqual(*source, proof.LoadDetail.Source)) {
 			return "", fmt.Errorf("non-additive load detail lost its exact original RDD binding")
 		}
+		if proof.DirectHVAC != nil && (proof.LoadDetail != nil || epathSQLValidateDirectHVACSourceIdentity(*proof.DirectHVAC) != nil || !reflect.DeepEqual(*source, proof.DirectHVAC.Source)) {
+			return "", fmt.Errorf("direct HVAC source lost its exact original RDD/model-total owner binding")
+		}
 		return fmt.Sprintf("sql-rdd-%d", source.DictionaryIndex), nil
 	}
-	if proof.LoadDetail != nil {
+	if proof.LoadDetail != nil || proof.DirectHVAC != nil {
 		return "", fmt.Errorf("a Tabular cell cannot claim equipment load-detail identity")
 	}
 	observation := proof.Tabular
@@ -118,6 +131,9 @@ func epathSQLOriginalSourceMatches(source EnergyDataSource, proof epathSQLOrigin
 		return false
 	}
 	if original := proof.RDD; original != nil {
+		if proof.DirectHVAC != nil {
+			return epathSQLMatchDirectHVACSource(source, *proof.DirectHVAC) == nil
+		}
 		if proof.LoadDetail != nil {
 			return epathSQLLoadDetailSourceMatches(source, *proof.LoadDetail)
 		}
@@ -159,8 +175,8 @@ func epathSQLOriginalSourceLeaves(ids []string, actual map[string]EnergyDataSour
 		if !exists || id == "" || source.ID != id {
 			return fmt.Errorf("missing original source reference %s", id)
 		}
-		if original, bound := allowed[id]; bound && original.LoadDetail != nil && !epathSQLOriginalSourceMatches(source, original, period) {
-			return fmt.Errorf("original non-additive context cannot masquerade as a derived or ordinary source")
+		if original, bound := allowed[id]; bound && (original.LoadDetail != nil || original.DirectHVAC != nil) && !epathSQLOriginalSourceMatches(source, original, period) {
+			return fmt.Errorf("original equipment source cannot masquerade as a derived or ordinary source")
 		}
 		visiting[id] = true
 		if len(source.InputSourceIDs) > 0 {

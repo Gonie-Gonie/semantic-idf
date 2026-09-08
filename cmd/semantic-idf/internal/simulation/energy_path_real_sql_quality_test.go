@@ -184,6 +184,11 @@ func epathSQLModelQualityChecks(observed epathRealOracleEvidence, frames epathSQ
 									for carrier, q := range dependency.ZoneService.Carriers {
 										proof.SiteValues[service][carrier] = q
 									}
+									if dependency.ZoneService.DirectHVAC {
+										if err := epathSQLDirectHVACQualitySources(proof, dependency.ZoneService); err != nil {
+											return err
+										}
+									}
 								}
 							}
 						}

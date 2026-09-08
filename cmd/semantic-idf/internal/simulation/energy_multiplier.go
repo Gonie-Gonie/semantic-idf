@@ -163,6 +163,13 @@ func positiveEnergyMultiplier(value float64) float64 {
 
 func energyExplanationMultiplierRequirement(item energyExplanationSeries) string {
 	name := normalizeEnergyOutputName(firstNonEmpty(item.SourceName, item.sourceName))
+	if item.directComponentID != "" {
+		// These are exact owned HVAC component meter contributions. The system
+		// demand/sizing already includes the Zone/List multipliers; unlike
+		// Zone Lights/Equipment reporting variables, multiplying the measured
+		// coil consumption again would double the modeled equipment energy.
+		return energyMultiplierAlreadyModelTotal
+	}
 	if strings.TrimSpace(item.ZoneName) != "" &&
 		(strings.EqualFold(strings.TrimSpace(item.MeterHierarchyLevel), "zone_direct_use") || canonicalEnergyPathBasis(item.Basis, "") == "direct_zone_energy") {
 		// Zone direct-use report variables are zone/object contributions, not

@@ -9,6 +9,8 @@ import (
 // Quantities come only from reviewed SQL pool identities and their declared
 // served-Zone loads. Carrier endpoints are not inferred from candidate totals.
 type epathSQLZoneServiceProof struct {
+	DirectHVAC                          bool
+	Branches                            map[string]epathSQLDirectHVACBranchProof
 	Service, Basis                      string
 	AnnualTabular, Unavailable, Unowned bool
 	Carriers                            map[string]epathSQLQuantity
@@ -57,6 +59,16 @@ func epathSQLModelZoneServiceChecks(frames epathSQLFrames, model epathRealSQLMod
 		}
 		if annualOnly {
 			if err := epathSQLAnnualZoneServiceChecks(frames, model, service, served, zones, sites, checks); err != nil {
+				return err
+			}
+			continue
+		}
+		directFrames, err := epathSQLCompileDirectHVACService(frames, model, service)
+		if err != nil {
+			return err
+		}
+		if directFrames != nil {
+			if err := epathSQLDirectHVACZoneServiceChecks(frames, model, service, directFrames, zones, checks); err != nil {
 				return err
 			}
 			continue
@@ -247,6 +259,9 @@ func epathSQLModelZoneServiceChecks(frames epathSQLFrames, model epathRealSQLMod
 // declared carrier and both exact site-domain endpoints, not all outgoing links
 // of a broadly matched end-use node.
 func epathSQLZoneServiceCoveredLink(nodes []EnergyExplanationNode, link EnergyPathLink, proof *epathSQLZoneServiceProof) bool {
+	if proof != nil && proof.DirectHVAC {
+		return epathSQLDirectHVACZoneCoveredLink(nodes, link, proof)
+	}
 	if proof == nil || proof.Unavailable || proof.Unowned || link.Relation != "end_use_to_carrier" || link.ServiceKind != "" && link.ServiceKind != proof.Service || link.Basis != proof.Basis || link.FromUnit != "kWh" || link.ToUnit != "kWh" {
 		return false
 	}
@@ -283,6 +298,9 @@ func epathSQLZoneServiceVerifySources(ids []string, actual map[string]EnergyData
 
 func epathCheckSQLZoneServiceEndpoints(bundle PurposeResultBundle, check epathSQLModelCheck) error {
 	proof := check.ZoneService
+	if proof != nil && proof.DirectHVAC {
+		return epathCheckSQLDirectHVACZoneService(bundle, check)
+	}
 	if proof != nil && proof.AnnualTabular {
 		return epathCheckSQLAnnualZoneService(bundle, check)
 	}

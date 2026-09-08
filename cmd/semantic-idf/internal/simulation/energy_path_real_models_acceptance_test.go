@@ -119,7 +119,10 @@ func (mode epathRealSavedVerificationMode) bundle(root string, evidence epathRea
 	}
 	if mode.Rebuild {
 		projection, err := LoadEnergyPathProjection(EnergyPathProjectionRequest{ResultPath: evidence.SQLPath, InputPath: evidence.InputPath, Scope: "building", Period: "annual", Service: "all"})
-		return projection.PurposeResults, err
+		if err != nil {
+			return PurposeResultBundle{}, err
+		}
+		return epathRealRebuiltBundleForOracle(projection.PurposeResults)
 	}
 	return evidence.Bundle, nil
 }

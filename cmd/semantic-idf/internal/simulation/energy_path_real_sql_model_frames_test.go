@@ -72,21 +72,23 @@ type epathSQLCell struct {
 	SourceIDs                         []int // Independently selected original SQL dictionary leaves.
 }
 type epathSQLFrames struct {
-	TraceSourceIdentities map[int]epathSQLTraceSourceIdentity
-	CellTraceSourceIDs    map[string][]int
-	Zones                 map[string]epathSQLZone
-	Cells                 map[string]*epathSQLCell
-	Loads                 map[string]epathSQLQuantity
-	Site                  map[string][]*epathSQLQuantity
-	SiteAnnual            map[string]epathSQLTabularObservation
-	SiteSources           map[string][]int
-	SourceRaw             map[int][]epathSQLQuantity
-	SourceEffective       map[int][]epathSQLQuantity
-	SourceZone            map[int]string
-	SourceIdentities      map[int]epathRealSQLSource
-	LoadSourceIDs         map[string][]int
-	LoadDetailSourceIDs   map[string][]int
-	LoadDetailIdentities  map[int]epathSQLLoadDetailIdentity
+	DirectHVAC                 map[string]epathSQLDirectHVACMonth
+	DirectHVACSourceIdentities map[int]epathSQLDirectHVACSourceIdentity
+	TraceSourceIdentities      map[int]epathSQLTraceSourceIdentity
+	CellTraceSourceIDs         map[string][]int
+	Zones                      map[string]epathSQLZone
+	Cells                      map[string]*epathSQLCell
+	Loads                      map[string]epathSQLQuantity
+	Site                       map[string][]*epathSQLQuantity
+	SiteAnnual                 map[string]epathSQLTabularObservation
+	SiteSources                map[string][]int
+	SourceRaw                  map[int][]epathSQLQuantity
+	SourceEffective            map[int][]epathSQLQuantity
+	SourceZone                 map[int]string
+	SourceIdentities           map[int]epathRealSQLSource
+	LoadSourceIDs              map[string][]int
+	LoadDetailSourceIDs        map[string][]int
+	LoadDetailIdentities       map[int]epathSQLLoadDetailIdentity
 }
 
 func epathSQLKey(zone, family string, month int) string {
@@ -575,6 +577,9 @@ func epathCompileSQLModelFrames(sqlPath string, observed []epathRealSQLSource, m
 		return out, err
 	}
 	if err := epathCompileSQLTemporalTraceSources(sqlPath, observed, model, &out); err != nil {
+		return out, err
+	}
+	if err := epathCompileSQLDirectHVACSources(sqlPath, observed, model, &out); err != nil {
 		return out, err
 	}
 	return out, nil

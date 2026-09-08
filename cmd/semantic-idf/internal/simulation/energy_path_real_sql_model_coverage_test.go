@@ -232,6 +232,9 @@ func epathSQLCoverageRecords(bundle PurposeResultBundle, context epathSQLCoverag
 		if check.TraceSource != nil {
 			validators = append(validators, func() error { return epathCheckSQLTemporalTraceSource(bundle, check) })
 		}
+		if check.DirectHVACSource != nil {
+			validators = append(validators, func() error { return epathCheckSQLDirectHVACSource(bundle, check) })
+		}
 		if check.AnnualServiceAbsent {
 			validators = append(validators, func() error { return epathCheckSQLAnnualServiceAbsent(bundle, check) })
 		}

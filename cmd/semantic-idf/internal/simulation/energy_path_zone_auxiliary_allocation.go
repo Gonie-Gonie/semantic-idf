@@ -1015,7 +1015,7 @@ func appendEnergyPathZoneAuxiliaryAllocationRecords(reconciliation []EnergyRecon
 			filteredWarnings = appendEnergyDriverWarning(filteredWarnings, EnergyWarning{
 				Severity: "warning",
 				Code:     "direct_zone_hvac_auxiliary_energy_exceeds_building",
-				Message:  fmt.Sprintf("Exact direct zone %s %s energy exceeds the Building end-use meter by %g %s; direct observations are retained and no remainder is allocated.", canonicalEnergyPathEndUseLabel(record.EndUse), energyCarrierLabel(record.Carrier), record.OvermappedValue, record.Unit),
+				Message:  energyPathAllocationOverlapMessage(canonicalEnergyPathEndUseLabel(record.EndUse), energyCarrierLabel(record.Carrier), record.OvermappedValue, record.Unit, record.Period),
 				Period:   record.Period,
 			})
 		}

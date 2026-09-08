@@ -24,25 +24,29 @@ type energySurfaceCategory struct {
 }
 
 type energyDriverBuildContext struct {
-	Enabled           bool
-	SurfaceCategories energySurfaceCategoryIndex
-	AirCouplings      energyAirCouplingIndex
-	Multipliers       energyEffectiveMultiplierIndex
-	GeometryWarning   *EnergyWarning
+	Enabled              bool
+	SurfaceCategories    energySurfaceCategoryIndex
+	AirCouplings         energyAirCouplingIndex
+	Multipliers          energyEffectiveMultiplierIndex
+	GeometryWarning      *EnergyWarning
+	DirectHVACComponents []energyPathDirectHVACComponentTarget
 }
 
 func newEnergyDriverBuildContext(report idf.GeometryReport, documents ...idf.Document) energyDriverBuildContext {
 	index := buildEnergySurfaceCategoryIndex(report)
 	multipliers := energyEffectiveMultiplierIndex{}
+	var directHVACComponents []energyPathDirectHVACComponentTarget
 	if len(documents) > 0 {
 		addEnergyInternalMassCategories(&index, documents[0], report)
 		multipliers = buildEnergyEffectiveMultiplierIndex(documents[0])
+		directHVACComponents = energyPathDirectHVACComponentTargets(documents[0])
 	}
 	return energyDriverBuildContext{
-		Enabled:           true,
-		SurfaceCategories: index,
-		AirCouplings:      buildEnergyAirCouplingIndex(report.Topology),
-		Multipliers:       multipliers,
+		Enabled:              true,
+		SurfaceCategories:    index,
+		AirCouplings:         buildEnergyAirCouplingIndex(report.Topology),
+		Multipliers:          multipliers,
+		DirectHVACComponents: directHVACComponents,
 	}
 }
 

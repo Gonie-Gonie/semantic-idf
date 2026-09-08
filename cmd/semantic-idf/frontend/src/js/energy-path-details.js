@@ -100,7 +100,14 @@ function allocationLabel(quality) {
   const value = copy("QualityAssignedShares", "{assigned} direct/allocated · {unassigned} unassigned", {
     assigned: percent(quality.zoneAllocatedPct), unassigned: percent(quality.unassignedPct),
   });
-  return status === "overmapped" ? `${value} · ${statusLabel(status)}` : value;
+  return status === "overmapped" ? `${value} · ${copy("QualityAllocationOverlap", "Displayed allocation overlap")}` : value;
+}
+
+function allocationHelp(quality) {
+  const note = copy("QualityZoneCoverageNote", "Coverage of building-wide HVAC and auxiliary energy across all zones, not the selected zone's energy share.");
+  return token(quality.zoneAllocationStatus) === "overmapped"
+    ? `${note} ${copy("QualityAllocationOverlapNote", "This is an accounting diagnostic of rounded displayed totals and the sum of monthly positive overlaps, not by itself proof of physical oversupply. Annual totals may contain both gaps and overlaps. Check the original sources.")}`
+    : note;
 }
 
 export function renderEnergyPathQualityLine(explanation = {}, viewState = {}) {
@@ -113,7 +120,7 @@ export function renderEnergyPathQualityLine(explanation = {}, viewState = {}) {
       aria-controls="energyPathDataDetails" aria-expanded="${open}" title="${escapeHTML(quality[stage.key].message || "")}">
       ${escapeHTML(stageLabel(stage))} ${escapeHTML(levelLabel(quality[stage.key]))}
     </button>`).join('<span aria-hidden="true"> · </span>')}</span>
-    ${viewState.simulationEnergyScopeKind === "zone" ? `<span data-energy-path-zone-allocation-status="${escapeHTML(quality.zoneAllocationStatus)}" title="${escapeHTML(copy("QualityZoneCoverageNote", "Coverage of building-wide HVAC and auxiliary energy across all zones, not the selected zone's energy share."))}">${escapeHTML(copy("QualityZoneCoverage", "Building-wide zone coverage"))}: ${escapeHTML(allocationLabel(quality))}</span>` : ""}
+    ${viewState.simulationEnergyScopeKind === "zone" ? `<span data-energy-path-zone-allocation-status="${escapeHTML(quality.zoneAllocationStatus)}" title="${escapeHTML(allocationHelp(quality))}">${escapeHTML(copy("QualityZoneCoverage", "Building-wide zone coverage"))}: ${escapeHTML(allocationLabel(quality))}</span>` : ""}
     <button type="button" data-energy-path-details-toggle aria-controls="energyPathDataDetails" aria-expanded="${open}">${escapeHTML(copy("DataDetails", "Data details"))}</button>
   </div>`;
 }

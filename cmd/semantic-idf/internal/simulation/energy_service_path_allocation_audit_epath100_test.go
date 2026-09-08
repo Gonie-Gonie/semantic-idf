@@ -1028,7 +1028,7 @@ func TestEPATH100AuditDirectAboveBuildingStaysTruthfulAndStopsAllocation(t *test
 		epath100AuditAssertNoBuildingAllocationQuality(t, *lab)
 	}
 	row := epath100AuditAllocationReconciliation(result.Reconciliation, "heating", "electricity", "annual")
-	if row == nil || row.Level != "allocation" || row.Basis != "service_path_allocation" || row.ExpectedValue != 20 || row.ExplainedValue != 30 || row.ResidualValue != -10 || row.Status != "overmapped" || row.Label != "Direct zone HVAC energy exceeds building HVAC energy" ||
+	if row == nil || row.Level != "allocation" || row.Basis != "service_path_allocation" || row.ExpectedValue != 20 || row.ExplainedValue != 30 || row.ResidualValue != -10 || row.Status != "overmapped" || row.Label != "Rounded zone HVAC totals exceed reported building HVAC energy" ||
 		!stringSliceContains(row.SourceIDs, "meter.heating.electricity") || !stringSliceContains(row.SourceIDs, "direct.office.heating.electricity") {
 		t.Errorf("direct-above-building reconciliation = %#v", row)
 	}
@@ -1097,7 +1097,7 @@ func TestEPATH100AuditPositiveDirectAgainstZeroBuildingMeterIsOvermapped(t *test
 		t.Errorf("zero Building meter allocated energy to Lab: %#v", lab.Nodes)
 	}
 	row := epath100AuditAllocationReconciliation(result.Reconciliation, "heating", "electricity", "annual")
-	if row == nil || row.ExpectedValue != 0 || row.ExplainedValue != 30 || row.ResidualValue != -30 || row.Status != "overmapped" || row.Label != "Direct zone HVAC energy exceeds building HVAC energy" ||
+	if row == nil || row.ExpectedValue != 0 || row.ExplainedValue != 30 || row.ResidualValue != -30 || row.Status != "overmapped" || row.Label != "Rounded zone HVAC totals exceed reported building HVAC energy" ||
 		!stringSliceContains(row.SourceIDs, "meter.heating.electricity") || !stringSliceContains(row.SourceIDs, "direct.office.heating.electricity") {
 		t.Errorf("zero-meter overmapped reconciliation = %#v", row)
 	}
@@ -1334,7 +1334,7 @@ func epath100AuditMonthlyNodeSum(periods []EnergyPeriod, nodeID string) float64 
 func epath100AuditAssertNoBuildingAllocationQuality(t *testing.T, zone EnergyExplanationZoneResult) {
 	t.Helper()
 	for _, row := range zone.Reconciliation {
-		if strings.HasPrefix(row.ID, "reconcile.zone_hvac_allocation.") || row.Label == "Unassigned building HVAC energy" || row.Label == "Direct zone HVAC energy exceeds building HVAC energy" {
+		if strings.HasPrefix(row.ID, "reconcile.zone_hvac_allocation.") || row.Label == "Unassigned building HVAC energy" || row.Label == "Rounded zone HVAC totals exceed reported building HVAC energy" {
 			t.Errorf("building-only HVAC allocation reconciliation leaked into %s: %#v", zone.Scope.ZoneName, row)
 		}
 	}
