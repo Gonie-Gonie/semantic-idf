@@ -1,0 +1,15 @@
+{
+  "schema": "semantic-idf.energy-path-real-model-expected/v1",
+  "fixtureId": "large-office-25-1",
+  "version": "25.1",
+  "modelSHA256": "678af5d273bc29f771fd35fd972050cfe984fafcd28bd4587b419a2922145122",
+  "weatherSHA256": "c7d4efcf93ba316a1d874352e743df5cf137ba5c0e3459eb2dc4b5442d5b7f5c",
+  "review": "Explicit Codex root review and approval, 2026-09-08, of independent SQL expectations from pending artifact SHA256 16c1d29274ad9fa33ceabdf30917fe9e9b054c66e5aa4efa5bed0302a98c7618. All 46,224 required metrics in eight groups passed original-wire candidate comparison with zero numeric/contract failures and complete required-field coverage of 13,996 ledger records. A separate read-only review checked the exact metric registry and known/unknown/count states, 133 monthly-to-annual family sums, 494 Zone carrier component sums, and original SQL calculations for Core_mid direct lighting/equipment, exact VAV_2 fan pool allocation, cooling/heating shares and zero-served-load gas left unassigned. Expected numbers are the independent SQL evaluator's output, not copied candidate graph values; unknown observations remain explicit nulls. Original SQL SHA256 8ea939c1d962aa37b2c246e8c833427de7a38ef3ed6d98f241e9ed9cc8e5bc46; independently reviewed recipe SHA256 57bf54aee4b2b3477da22f7fcd5e871d90696268c5b13e13990e950e3294a085; compared candidate SHA256 386b37d58280e9c21d2313846cabc75647c89920f72c2915d58bb8628d7da1a6; production source SHA256 f638eacd43c0ced5e1abde7eee5433bd073af7e72a1e578e09d2aa05b207c0ae. Approval is limited to this original Large Office 25.1 fixture, controlled Chicago full-year weather, executed output plan and declared allocation rules. It is not calibration, other-model acceptance or approval of later checklist sections. The separate acceptance test must still compare every expected metric, identity, count and status against independently evaluated actual results.",
+  "metricPayload": {
+    "file": "large-office-25-1.metrics.json.gz",
+    "sha256": "c0ab6abb34a501d677e706a06eb22f76f5dd3d140f3f2df5673d410d4699db2a",
+    "uncompressedSHA256": "998ef9d88e54bb7f2e11e89f6102df65b8e267fedcb8409d3b61d7d098193c51",
+    "count": 46224,
+    "requiredKeysSHA256": "6eca683f3dbaa4234006417c21b93ca9035249921a08539f14838c09d66a18c3"
+  }
+}

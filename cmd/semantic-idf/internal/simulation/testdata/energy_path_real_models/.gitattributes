@@ -2,3 +2,5 @@
 # Do not normalize or lint upstream whitespace; authored recipes/tests are not exempt.
 models/** -text -whitespace
 licenses/** -text -whitespace
+# Lossless generated expectations are checksum-bound binary companions.
+expected/*.metrics.json.gz binary

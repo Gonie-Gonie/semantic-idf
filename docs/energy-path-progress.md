@@ -543,6 +543,18 @@ expectations. A test-only saved acceptance option now reuses a SHA-bound
 original-wire snapshot, but still requires a separately approved catalog
 manifest; normal tests and passing diagnostics cannot create that approval.
 
+Large Office 25.1 now has its first explicitly approved expected manifest.
+Its 394,508-byte lossless companion preserves all 46,224 independent metrics,
+including exact zeros and explicit unknowns; the review header binds the pending
+artifact, original SQL, reviewed recipe, compared candidate and production code.
+The separate saved-original-wire acceptance test passes in 72.320 seconds with
+all eight groups, full metric/key/count/status comparisons and complete record
+coverage. No simulation rerun or source capture changes were needed. Ordinary
+offline tests now also require this approved artifact's integrity. The other
+18 catalog entries remain unapproved; Small Office is next, with independently
+reviewed exterior-floor classification and exact fan/direct-use source work
+still to apply. Later checklist sections are not marked complete by this pass.
+
 Existing code may already satisfy portions of later items. They remain pending
 until their exact checklist requirements and regression/acceptance evidence
 are checked in order. In particular, old renderers/state are removed only after

@@ -1,0 +1,264 @@
+package simulation
+
+import (
+	"bytes"
+	"compress/gzip"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"testing"
+)
+
+func epathExpectedPayloadHash(data []byte) string {
+	digest := sha256.Sum256(data)
+	return hex.EncodeToString(digest[:])
+}
+
+// Packaging never derives expectations from the candidate or approves them.
+// The explicit review fingerprint names immutable independent SQL evidence.
+func epathBuildReviewedMetricPayload(pending epathOraclePendingMetrics, reviewedSHA, actualSHA string) ([]byte, epathRealExpectedMetricPayload, error) {
+	var descriptor epathRealExpectedMetricPayload
+	reviewedSHA, actualSHA = strings.ToLower(strings.TrimSpace(reviewedSHA)), strings.ToLower(strings.TrimSpace(actualSHA))
+	digest, err := hex.DecodeString(reviewedSHA)
+	if err != nil || len(digest) != sha256.Size || reviewedSHA != actualSHA {
+		return nil, descriptor, fmt.Errorf("explicit review must match the immutable pending artifact SHA-256")
+	}
+	if pending.Schema != "semantic-idf.energy-path-oracle-pending/v1" || pending.Approved || pending.Acceptance || pending.Provenance.Acceptance || pending.ReviewStatus != "pending_independent_review" || pending.FixtureID == "" || strings.ContainsAny(pending.FixtureID, `/\:`) || pending.FixtureID == "." || pending.FixtureID == ".." || pending.Version == "" {
+		return nil, descriptor, fmt.Errorf("only explicitly reviewed, unapproved independent pending evidence can be packaged")
+	}
+	for _, value := range []string{pending.ModelSHA256, pending.RecipeSHA256, pending.Provenance.CaptureSHA256, pending.Provenance.SQLSHA256, pending.Provenance.ExecutedSHA256, pending.Provenance.EngineSHA256, pending.Provenance.WeatherSHA256, pending.Provenance.ProductionSHA256, pending.Provenance.CandidateSHA256} {
+		decoded, err := hex.DecodeString(value)
+		if err != nil || len(decoded) != sha256.Size {
+			return nil, descriptor, fmt.Errorf("pending evidence lacks complete source/candidate provenance")
+		}
+	}
+	if len(pending.Coverage.Failures) != 0 || len(pending.Coverage.Records) == 0 || len(pending.CheckedGroups) != len(epathRealOracleGroups) {
+		return nil, descriptor, fmt.Errorf("complete independent coverage and all eight checked groups are required")
+	}
+	groups := map[string]bool{}
+	for _, group := range pending.CheckedGroups {
+		if groups[group] || !epathContainsOracleGroup(group) {
+			return nil, descriptor, fmt.Errorf("duplicate/unknown checked group")
+		}
+		groups[group] = true
+	}
+	if err := epathValidateOracleMetricGroups(pending.Metrics); err != nil {
+		return nil, descriptor, err
+	}
+	metrics := append([]epathRealOracleMetric(nil), pending.Metrics...)
+	sort.Slice(metrics, func(i, j int) bool { return metrics[i].Key < metrics[j].Key })
+	keys, known := []string{}, map[string]bool{}
+	for _, metric := range metrics {
+		keys, known[metric.Key] = append(keys, metric.Key), true
+	}
+	keySHA := epathExpectedPayloadHash([]byte(strings.Join(keys, "\n")))
+	if keySHA != pending.RequiredKeysSHA256 {
+		return nil, descriptor, fmt.Errorf("pending evidence lost its exact required metric registry")
+	}
+	records := map[string]bool{}
+	for _, record := range pending.Coverage.Records {
+		identity := strings.Join([]string{record.Scope, strings.ToLower(record.Zone), record.Period, record.Collection, record.ID, record.Role}, "\x00")
+		if records[identity] || record.ID == "" || record.Collection == "" || !epathOracleValidPeriod(record.Period) || record.Scope != "building" && record.Scope != "zone" || (record.Scope == "zone") != (record.Zone != "") {
+			return nil, descriptor, fmt.Errorf("invalid/duplicate coverage record")
+		}
+		records[identity] = true
+		switch record.Role {
+		case "primary", "referenced-accounting":
+			if len(record.RequiredFields) == 0 {
+				return nil, descriptor, fmt.Errorf("primary accounting record has no required field proof")
+			}
+		case "context", "non-flow":
+			if record.Reason == "" || len(record.RequiredFields) != 0 {
+				return nil, descriptor, fmt.Errorf("context exemption must remain explicit and non-primary")
+			}
+		default:
+			return nil, descriptor, fmt.Errorf("unreviewed coverage role")
+		}
+		fields := map[string]bool{}
+		for _, field := range record.RequiredFields {
+			if field == "" || fields[field] || len(record.Selectors[field]) == 0 {
+				return nil, descriptor, fmt.Errorf("required coverage field lacks independent selectors")
+			}
+			fields[field] = true
+		}
+		for _, selectors := range record.Selectors {
+			for _, key := range selectors {
+				if !known[key] {
+					return nil, descriptor, fmt.Errorf("coverage refers outside the reviewed metric registry")
+				}
+			}
+		}
+	}
+	raw, err := json.Marshal(metrics)
+	if err != nil {
+		return nil, descriptor, err
+	}
+	var compressed bytes.Buffer
+	writer, err := gzip.NewWriterLevel(&compressed, gzip.BestCompression)
+	if err != nil {
+		return nil, descriptor, err
+	}
+	// Zero timestamp, empty name/comment and fixed OS keep generated bytes
+	// deterministic; no wall clock or absolute workspace path enters the file.
+	writer.Header.OS = 255
+	if _, err := writer.Write(raw); err != nil {
+		return nil, descriptor, err
+	}
+	if err := writer.Close(); err != nil {
+		return nil, descriptor, err
+	}
+	payload := compressed.Bytes()
+	descriptor = epathRealExpectedMetricPayload{File: pending.FixtureID + ".metrics.json.gz", SHA256: epathExpectedPayloadHash(payload), UncompressedSHA256: epathExpectedPayloadHash(raw), Count: len(metrics), RequiredKeysSHA256: keySHA}
+	return payload, descriptor, nil
+}
+
+func epathWriteNewGeneratedPayload(path string, data []byte) error {
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	if _, err := file.Write(data); err != nil {
+		return err
+	}
+	if err := file.Sync(); err != nil {
+		return err
+	}
+	return file.Close()
+}
+
+// An explicitly authored review header must exist first. This function generates
+// only the byte-identical metric companion, never the approval itself.
+func epathInstallReviewedMetricPayload(manifestPath string, pending epathOraclePendingMetrics, pendingSHA string, payload []byte, descriptor epathRealExpectedMetricPayload) error {
+	expected, proof, err := epathBuildReviewedMetricPayload(pending, pendingSHA, pendingSHA)
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(payload, expected) || descriptor != proof {
+		return fmt.Errorf("generated companion differs from reviewed independent metrics")
+	}
+	absolute, err := filepath.Abs(manifestPath)
+	if err != nil {
+		return err
+	}
+	resolved, err := filepath.EvalSymlinks(absolute)
+	if err != nil || !epathRealSamePath(absolute, resolved) || filepath.Base(absolute) != pending.FixtureID+".json" {
+		return fmt.Errorf("review header must be an existing exact fixture file, not an indirect path")
+	}
+	var manifest epathRealExpectedManifest
+	header, err := epathExpectedReadBounded(absolute, epathExpectedUncompressedLimit)
+	if err != nil {
+		return err
+	}
+	fields, err := epathExpectedUniqueObject(header)
+	if err != nil {
+		return err
+	}
+	if _, present := fields["metrics"]; present {
+		return fmt.Errorf("companion approval cannot also declare inline metrics, even null/empty")
+	}
+	if _, err := epathExpectedUniqueObject(fields["metricPayload"]); err != nil {
+		return err
+	}
+	if err := epathExpectedDecodeOne(header, &manifest); err != nil {
+		return err
+	}
+	if manifest.Schema != "semantic-idf.energy-path-real-model-expected/v1" || !strings.Contains(strings.ToLower(manifest.Review), strings.ToLower(pendingSHA)) || manifest.FixtureID != pending.FixtureID || manifest.Version != pending.Version || manifest.ModelSHA256 != pending.ModelSHA256 || manifest.WeatherSHA256 != pending.Provenance.WeatherSHA256 || len(manifest.Metrics) != 0 || manifest.MetricPayload == nil || *manifest.MetricPayload != descriptor {
+		return fmt.Errorf("manual approval does not match this exact pending artifact and complete payload")
+	}
+	return epathWriteNewGeneratedPayload(filepath.Join(filepath.Dir(absolute), descriptor.File), payload)
+}
+
+// Explicit code-generation step for reviewed acceptance artifacts. Ordinary
+// tests/captures never enter this path, and install never creates approval JSON.
+func TestEnergyPathRealExpectedGeneratePayload(t *testing.T) {
+	mode := strings.TrimSpace(os.Getenv("EPATH_REAL_EXPECTED_PAYLOAD_MODE"))
+	pendingPath := strings.TrimSpace(os.Getenv("EPATH_REAL_EXPECTED_PENDING"))
+	reviewedSHA := strings.TrimSpace(os.Getenv("EPATH_REAL_EXPECTED_REVIEW_SHA256"))
+	if mode == "" && pendingPath == "" && reviewedSHA == "" {
+		t.Skip("explicit reviewed pending evidence and prepare/install mode required")
+	}
+	if mode != "prepare" && mode != "install" || pendingPath == "" || reviewedSHA == "" || os.Getenv("EPATH_REAL_RUN") == "1" || os.Getenv("EPATH_REAL_CAPTURE") == "1" {
+		t.Fatal("choose explicit prepare/install with exact reviewed pending SHA; cannot run an engine")
+	}
+	root, catalog := epathRealDirectories(t)
+	info, err := os.Stat(pendingPath)
+	if err != nil || info.Size() > 64<<20 {
+		t.Fatalf("bounded pending artifact required: %v", err)
+	}
+	data, err := os.ReadFile(pendingPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var pending epathOraclePendingMetrics
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&pending); err != nil {
+		t.Fatal(err)
+	}
+	if err := decoder.Decode(new(any)); err != io.EOF {
+		t.Fatal("pending artifact has trailing JSON data")
+	}
+	payload, descriptor, err := epathBuildReviewedMetricPayload(pending, reviewedSHA, epathExpectedPayloadHash(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var evidence epathRealRunEvidence
+	if err := epathDecodeOracleFile(filepath.Join(pending.Provenance.CaptureDirectory, "run-evidence.json"), &evidence); err != nil {
+		t.Fatal(err)
+	}
+	if err := epathValidateSavedRealEvidence(root, catalog, evidence); err != nil {
+		t.Fatal(err)
+	}
+	if evidence.Fixture.ID != pending.FixtureID || evidence.Version != pending.Version || evidence.ModelSHA256 != pending.ModelSHA256 || evidence.NumericalTrial != nil || !epathRealSamePath(pending.RecipePath, filepath.Join(catalog, evidence.Fixture.OraclePath)) {
+		t.Fatal("pending artifact does not belong to this exact catalog fixture")
+	}
+	provenance, err := epathOracleSnapshotProvenanceFor(root, evidence)
+	if err != nil {
+		t.Fatal(err)
+	}
+	provenance.CandidateSHA256, err = epathOracleHashFile(pending.CandidatePath)
+	if err != nil || provenance != pending.Provenance {
+		t.Fatal("pending source/candidate/production provenance changed since review")
+	}
+	if _, err := epathReadOracleSnapshot(root, pending.CandidatePath, evidence); err != nil {
+		t.Fatal(err)
+	}
+	recipeSHA, err := epathOracleHashFile(pending.RecipePath)
+	if err != nil || recipeSHA != pending.RecipeSHA256 {
+		t.Fatal("reviewed source recipe changed")
+	}
+	if mode == "prepare" {
+		path, err := epathOraclePendingDestination(root, os.Getenv("EPATH_REAL_EXPECTED_PAYLOAD_NEW"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := epathWriteNewGeneratedPayload(path, payload); err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("PREPARED ONLY, NO APPROVAL WRITTEN: %s (%d bytes)", path, len(payload))
+	} else {
+		if os.Getenv("EPATH_REAL_EXPECTED_PAYLOAD_NEW") != "" {
+			t.Fatal("install destination comes only from the existing catalog approval")
+		}
+		manifestPath := epathRealCatalogPath(t, catalog, evidence.Fixture.ExpectedPath)
+		if err := epathInstallReviewedMetricPayload(manifestPath, pending, reviewedSHA, payload, descriptor); err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("GENERATED COMPANION ONLY: %s; existing manual review header unchanged", filepath.Join(filepath.Dir(manifestPath), descriptor.File))
+	}
+	encoded, err := json.Marshal(descriptor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("All %d independently reviewed metrics retained: %s", descriptor.Count, encoded)
+}

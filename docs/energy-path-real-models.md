@@ -6,6 +6,12 @@ Official model inputs, licenses and a versioned catalog live under
 `cmd/semantic-idf/internal/simulation/testdata/energy_path_real_models`.
 Coverage tags in that catalog are obligations to verify, not completed claims.
 
+Current checkpoint: Large Office 25.1 has an explicitly reviewed expected
+manifest and a passing saved-result acceptance comparison for all 46,224
+independent metrics. The remaining 18 catalog entries, including Large Office
+22.1/23.2/24.2, are not yet approved. Earlier findings below are retained as a
+chronological record, not presented as the current acceptance status.
+
 ## Isolation and evidence
 
 Original IDFs and licenses are preserved byte-for-byte, including line endings.
@@ -80,9 +86,9 @@ digests bind this capture to its executed input and engine files. Captured
 discovery metadata predates the exact-key fix and is not presented as proof of
 the corrected discovery path; that path has its separate actual-key regression.
 
-This is still collection, not eight-group numerical acceptance. Complete
-independent category/allocation/coverage comparisons and approved expected
-manifests remain in progress. No expected manifest has been approved yet.
+At that checkpoint this was still collection, not eight-group numerical
+acceptance. Complete independent category/allocation/coverage comparisons and
+approved expected manifests remained in progress; none had yet been approved.
 
 The extended capture matrix exposed further cases:
 
@@ -699,6 +705,56 @@ artifact containing the independent metrics, full coverage ledger, exact key
 registry digest and candidate/recipe/production/original-run provenance. It is
 not an expected manifest and cannot be read as one. No approved expected file
 is created or updated by a passing diagnostic.
+
+## First approved expected manifest and saved acceptance
+
+The 2026-09-08 explicit review approves Large Office 25.1 expectations from
+pending artifact SHA-256
+`16c1d29274ad9fa33ceabdf30917fe9e9b054c66e5aa4efa5bed0302a98c7618`.
+Separate read-only checks confirm the 46,224-key registry, 13,996-record ledger,
+44,278 known metrics (including 15,296 exact zeros) and 1,946 explicitly unknown
+metrics. Independent monthly-to-annual checks cover 133 Zone/family combinations;
+494 Zone/period/carrier component sums also agree. A separate original-SQL
+calculation checks Core_mid lighting/equipment, its exact VAV_2 fan pool, HVAC
+shares and the July/August gas energy that remains unassigned when served
+heating load is zero. These checks do not copy candidate values into expectations.
+
+The authored approval is
+`testdata/energy_path_real_models/expected/large-office-25-1.json` in the
+simulation package. All 46,224 metrics are retained in its
+`large-office-25-1.metrics.json.gz` companion: **394,508 bytes**, compared with
+8,928,225 uncompressed JSON bytes. Compressed SHA-256 is
+`c0ab6abb34a501d677e706a06eb22f76f5dd3d140f3f2df5673d410d4699db2a`;
+uncompressed SHA-256 is
+`998ef9d88e54bb7f2e11e89f6102df65b8e267fedcb8409d3b61d7d098193c51`.
+This is lossless storage, not a smaller selector set. Exact key/count/status,
+known/unknown and numeric comparisons are unchanged after loading.
+
+`TestEnergyPathRealModelSavedEvidence` passes in **72.320 seconds** with
+`EPATH_REAL_VERIFY_ACCEPTANCE=1`, the preserved capture directory and
+`EPATH_REAL_VERIFY_SNAPSHOT` pointing to candidate `coverage-02`. It reports
+independent SQL and approved expectations verified for all eight groups and
+46,224 semantic metrics. The source/wire/SHA/complete-coverage gates remain
+enabled. No engine rerun, canonical rebuild or original artifact write occurs.
+This is the first numerical acceptance checkpoint, not completion of section
+22 or the later performance/cleanup/user-flow requirements.
+
+The companion generator has two explicit modes selected by
+`EPATH_REAL_EXPECTED_PAYLOAD_MODE` and requires
+`EPATH_REAL_EXPECTED_PENDING` plus `EPATH_REAL_EXPECTED_REVIEW_SHA256`.
+`prepare` also requires a new `.runtime` `EPATH_REAL_EXPECTED_PAYLOAD_NEW`
+destination; it produces bytes and a descriptor, never approval. `install`
+requires the matching review header to exist at the unchanged catalog path and
+generates only its new companion. Both verify original capture, current code,
+candidate and recipe provenance, complete metric/coverage evidence and the
+explicit review fingerprint. Existing files are never overwritten.
+
+Focused compressed-reader, generator and checked-in-artifact tests pass in
+2.136 seconds. They retain plain inline-v1 compatibility and reject ambiguous
+inline/companion headers, corrupt/truncated/extra-member gzip data, duplicate
+JSON members, missing explicit value fields, path escape and changed hashes,
+counts or required keys. The explicit install step preserves the authored
+review header; ordinary tests cannot silently create or approve expectations.
 
 ## Explicit execution modes
 

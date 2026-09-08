@@ -94,13 +94,14 @@ type epathRealOracleRecipe struct {
 }
 
 type epathRealExpectedManifest struct {
-	Schema        string                  `json:"schema"`
-	FixtureID     string                  `json:"fixtureId"`
-	Version       string                  `json:"version"`
-	ModelSHA256   string                  `json:"modelSHA256"`
-	WeatherSHA256 string                  `json:"weatherSHA256"`
-	Review        string                  `json:"review"`
-	Metrics       []epathRealOracleMetric `json:"metrics"`
+	Schema        string                          `json:"schema"`
+	FixtureID     string                          `json:"fixtureId"`
+	Version       string                          `json:"version"`
+	ModelSHA256   string                          `json:"modelSHA256"`
+	WeatherSHA256 string                          `json:"weatherSHA256"`
+	Review        string                          `json:"review"`
+	Metrics       []epathRealOracleMetric         `json:"metrics,omitempty"`
+	MetricPayload *epathRealExpectedMetricPayload `json:"metricPayload,omitempty"`
 }
 
 func epathLoadRealOracleRecipe(path string) (epathRealOracleRecipe, error) {
@@ -116,15 +117,9 @@ func epathLoadRealOracleRecipe(path string) (epathRealOracleRecipe, error) {
 
 func epathLoadRealExpectedManifest(t *testing.T, path string) epathRealExpectedManifest {
 	t.Helper()
-	var manifest epathRealExpectedManifest
-	if err := epathDecodeOracleFile(path, &manifest); err != nil {
+	manifest, err := epathReadRealExpectedManifest(path)
+	if err != nil {
 		t.Fatalf("approved expected manifest required (never auto-created): %v", err)
-	}
-	if manifest.Schema != "semantic-idf.energy-path-real-model-expected/v1" || strings.TrimSpace(manifest.Review) == "" {
-		t.Fatal("expected manifest lacks approved schema/review")
-	}
-	if err := epathValidateOracleMetricGroups(manifest.Metrics); err != nil {
-		t.Fatal(err)
 	}
 	return manifest
 }

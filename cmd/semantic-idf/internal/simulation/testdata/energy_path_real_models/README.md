@@ -8,11 +8,16 @@ This directory contains original EnergyPlus example models for checklist section
 - All 19 original models are present: the full 16-model 25.1 fixture set and
   Large Office 22.1/23.2/24.2 compatibility fixtures. All four version-specific
   license files are included with verified original bytes.
-- Initial Large/Small Office source recipes are being checked against exact SQL
-  identities and original physical memberships. No numeric expected manifest is
-  approved yet. All 19 engine executions have finished (18 normal results; the
-  no-heating model rejected for Severe errors). Catalog paths remain intended
-  destinations where files are not yet present, not completed acceptance claims.
+- Large Office 25.1 has its first explicitly reviewed expected manifest and
+  passes saved-original-wire acceptance for all 46,224 independent metrics and
+  complete record coverage. Its 394,508-byte compressed companion retains every
+  metric, explicit unknown, count and status; it is not a summary subset.
+  The other 18 catalog entries remain unapproved, including the three older
+  Large Office adapter versions. Small Office's source recipe is still being
+  checked against original SQL identities and physical memberships.
+- All 19 engine executions have finished (18 normal results; the no-heating
+  model rejected for Severe errors). Catalog paths where files are not yet
+  present remain intended destinations, not completed acceptance claims.
 - No generated SQL, fabricated expected totals or synthetic oracle recipes are
   supplied by this catalog.
 - `output_alias_discovery` nominates Large Office 25.1 for a required check.
@@ -67,6 +72,8 @@ The fixture-local `.gitattributes` marks `models/**` and `licenses/**` as
 add or checkout and invalidating these byte hashes, and excludes unchanged
 upstream whitespace from authored-code linting. Catalog, documentation, tests
 and authored oracle/expected JSON retain the repository's normal text rules.
+Generated `expected/*.metrics.json.gz` companions are explicitly binary so Git
+cannot change their checksum-bound bytes.
 
 The copied official Large Office 24.2 file is deliberately **not** the separately
 vendored frontend sample, which enables annual weather simulation. Its original
@@ -146,3 +153,19 @@ Path builder. Saved actual SQL and run provenance can subsequently be replayed
 through `LoadEnergyPathProjection` without another simulation. A missing oracle
 or expected file remains pending acceptance; generating a manifest directly from
 the implementation under test is not an independent validation.
+
+Large Office's expected JSON is an explicitly authored review/provenance header.
+Its `metricPayload` descriptor names a same-directory gzip JSON array and fixes
+compressed/uncompressed SHA-256, full metric count and exact required-key digest.
+The loader restores all metrics and retains the original acceptance comparisons.
+It rejects conflicting inline/compressed payloads, missing numeric presence,
+duplicate members, checksum/count/key changes, escaping paths, oversized data,
+truncation, extra gzip members and trailing data.
+
+The opt-in `TestEnergyPathRealExpectedGeneratePayload` is a deterministic
+packaging step, not approval: `prepare` writes only a new `.runtime` artifact;
+`install` requires the already authored catalog review header to name the exact
+reviewed pending SHA and payload descriptor. It writes only a new binary
+companion. Ordinary tests, captures and passing diagnostics cannot generate or
+overwrite approval headers. `TestEnergyPathRealApprovedExpectedCatalog` keeps
+already approved artifacts required in ordinary offline integrity tests.
