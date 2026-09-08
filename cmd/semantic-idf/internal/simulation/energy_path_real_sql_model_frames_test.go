@@ -23,7 +23,10 @@ func epathSQLBounded(value, low, high float64) epathSQLQuantity {
 }
 func (q epathSQLQuantity) valid() bool {
 	low, high := q.bounds()
-	return epathOracleFinite(q.Value) && epathOracleFinite(q.Error) && q.Error >= 0 && epathOracleFinite(low) && epathOracleFinite(high) && low <= q.Value && q.Value <= high && q.Error+1e-12 >= math.Max(q.Value-low, high-q.Value)
+	// Nil bounds are already defined by Value +/- Error. Subtracting Value
+	// again can magnify floating-point cancellation at large SQL quantities;
+	// only an independently supplied interval needs the consistency check.
+	return epathOracleFinite(q.Value) && epathOracleFinite(q.Error) && q.Error >= 0 && epathOracleFinite(low) && epathOracleFinite(high) && low <= q.Value && q.Value <= high && (q.Bounds == nil || q.Error+1e-12 >= math.Max(q.Value-low, high-q.Value))
 }
 func (q epathSQLQuantity) includesZero() bool {
 	low, high := q.bounds()
@@ -66,15 +69,19 @@ type epathSQLCell struct {
 	Raw, Effective                    epathSQLQuantity
 	Allocated                         map[string]epathSQLQuantity
 	BuildingVisible                   bool
+	SourceIDs                         []int // Independently selected original SQL dictionary leaves.
 }
 type epathSQLFrames struct {
-	Zones           map[string]epathSQLZone
-	Cells           map[string]*epathSQLCell
-	Loads           map[string]epathSQLQuantity
-	Site            map[string][]*epathSQLQuantity
-	SourceRaw       map[int][]epathSQLQuantity
-	SourceEffective map[int][]epathSQLQuantity
-	SourceZone      map[int]string
+	Zones            map[string]epathSQLZone
+	Cells            map[string]*epathSQLCell
+	Loads            map[string]epathSQLQuantity
+	Site             map[string][]*epathSQLQuantity
+	SiteSources      map[string][]int
+	SourceRaw        map[int][]epathSQLQuantity
+	SourceEffective  map[int][]epathSQLQuantity
+	SourceZone       map[int]string
+	SourceIdentities map[int]epathRealSQLSource
+	LoadSourceIDs    map[string][]int
 }
 
 func epathSQLKey(zone, family string, month int) string {
@@ -188,7 +195,7 @@ func epathSQLMonthly(source epathRealSQLSource, precision epathRealSQLPrecision)
 }
 
 func epathCompileSQLModelFrames(sqlPath string, observed []epathRealSQLSource, model epathRealSQLModel) (epathSQLFrames, error) {
-	out := epathSQLFrames{Zones: map[string]epathSQLZone{}, Cells: map[string]*epathSQLCell{}, Loads: map[string]epathSQLQuantity{}, Site: map[string][]*epathSQLQuantity{}, SourceRaw: map[int][]epathSQLQuantity{}, SourceEffective: map[int][]epathSQLQuantity{}, SourceZone: map[int]string{}}
+	out := epathSQLFrames{Zones: map[string]epathSQLZone{}, Cells: map[string]*epathSQLCell{}, Loads: map[string]epathSQLQuantity{}, Site: map[string][]*epathSQLQuantity{}, SiteSources: map[string][]int{}, SourceRaw: map[int][]epathSQLQuantity{}, SourceEffective: map[int][]epathSQLQuantity{}, SourceZone: map[int]string{}, SourceIdentities: map[int]epathRealSQLSource{}, LoadSourceIDs: map[string][]int{}}
 	if model.Schema != "semantic-idf.energy-path-sql-model/large-office-monthly/v1" || model.Surface.Mapping != "surface_class_boundary/v1" || model.Surface.Sign != -1 || model.Precision.DecimalPlaces != 3 || model.Precision.SourceStages < 1 || model.Precision.SourceStages > 3 || model.Precision.ContributionStages < 1 || model.Precision.ContributionStages > 3 {
 		return out, fmt.Errorf("unsupported reviewed sqlModel/precision policy")
 	}
@@ -255,7 +262,7 @@ func epathCompileSQLModelFrames(sqlPath string, observed []epathRealSQLSource, m
 		return out, err
 	}
 	rows.Close()
-	add := func(zone, family, category, component string, month int, raw epathSQLQuantity, visible bool) {
+	add := func(zone, family, category, component string, month int, raw epathSQLQuantity, visible bool, sourceIDs []int) {
 		key := epathSQLKey(zone, family, month)
 		cell := out.Cells[key]
 		if cell == nil {
@@ -264,12 +271,14 @@ func epathCompileSQLModelFrames(sqlPath string, observed []epathRealSQLSource, m
 		}
 		cell.Raw = cell.Raw.add(raw)
 		cell.Effective = cell.Raw.times(out.Zones[zone].Multiplier)
+		cell.SourceIDs = epathSQLDictionaryUnion(cell.SourceIDs, sourceIDs)
 	}
 	surfaceSources, err := epathSQLSelect(observed, model.Surface.Source)
 	if err != nil {
 		return out, err
 	}
 	for _, source := range surfaceSources {
+		out.SourceIdentities[source.DictionaryIndex] = source
 		surface, ok := surfaces[strings.ToLower(source.KeyValue)]
 		if !ok {
 			return out, fmt.Errorf("reported surface %q lacks exact SQL ownership", source.KeyValue)
@@ -283,7 +292,7 @@ func epathCompileSQLModelFrames(sqlPath string, observed []epathRealSQLSource, m
 		effective := make([]epathSQLQuantity, 12)
 		for month, value := range values {
 			signed := value.times(model.Surface.Sign)
-			add(surface.Zone, "surface:"+surface.Category, surface.Category, "sensible", month+1, signed, true)
+			add(surface.Zone, "surface:"+surface.Category, surface.Category, "sensible", month+1, signed, true, []int{source.DictionaryIndex})
 			effective[month] = value.times(out.Zones[surface.Zone].Multiplier)
 		}
 		out.SourceEffective[source.DictionaryIndex] = effective
@@ -301,7 +310,7 @@ func epathCompileSQLModelFrames(sqlPath string, observed []epathRealSQLSource, m
 			}
 			keys[key] = true
 			for month := 1; month <= 12; month++ {
-				add(key, family.ID, family.Category, family.Component, month, epathSQLQuantity{}, family.BuildingVisible)
+				add(key, family.ID, family.Category, family.Component, month, epathSQLQuantity{}, family.BuildingVisible, nil)
 			}
 		}
 		for _, term := range family.Terms {
@@ -318,6 +327,7 @@ func epathCompileSQLModelFrames(sqlPath string, observed []epathRealSQLSource, m
 				return out, err
 			}
 			for _, source := range sources {
+				out.SourceIdentities[source.DictionaryIndex] = source
 				zone := strings.ToLower(source.KeyValue)
 				if !keys[zone] {
 					return out, fmt.Errorf("family source has undeclared applicability Zone %s", zone)
@@ -330,7 +340,7 @@ func epathCompileSQLModelFrames(sqlPath string, observed []epathRealSQLSource, m
 				out.SourceZone[source.DictionaryIndex] = zone
 				effective := make([]epathSQLQuantity, 12)
 				for month, value := range values {
-					add(zone, family.ID, family.Category, family.Component, month+1, value.times(term.Sign), family.BuildingVisible)
+					add(zone, family.ID, family.Category, family.Component, month+1, value.times(term.Sign), family.BuildingVisible, []int{source.DictionaryIndex})
 					effective[month] = value.times(out.Zones[zone].Multiplier)
 				}
 				out.SourceEffective[source.DictionaryIndex] = effective
@@ -343,16 +353,19 @@ func epathCompileSQLModelFrames(sqlPath string, observed []epathRealSQLSource, m
 			for zone := range keys {
 				for month := 1; month <= 12; month++ {
 					subtract := epathSQLQuantity{}
+					var sourceIDs []int
 					if dependency == "surface.total" {
 						for _, cell := range out.Cells {
 							if cell.Zone == zone && cell.Month == month && strings.HasPrefix(cell.Family, "surface:") {
 								subtract = subtract.add(cell.Raw)
+								sourceIDs = epathSQLDictionaryUnion(sourceIDs, cell.SourceIDs)
 							}
 						}
 					} else if cell := out.Cells[epathSQLKey(zone, dependency, month)]; cell != nil {
 						subtract = cell.Raw
+						sourceIDs = cell.SourceIDs
 					}
-					add(zone, family.ID, family.Category, family.Component, month, subtract.times(-1), family.BuildingVisible)
+					add(zone, family.ID, family.Category, family.Component, month, subtract.times(-1), family.BuildingVisible, sourceIDs)
 				}
 			}
 		}
@@ -369,6 +382,7 @@ func epathCompileSQLModelFrames(sqlPath string, observed []epathRealSQLSource, m
 			return out, err
 		}
 		for _, source := range sources {
+			out.SourceIdentities[source.DictionaryIndex] = source
 			zone := strings.ToLower(source.KeyValue)
 			if out.Zones[zone].Name == "" {
 				return out, fmt.Errorf("unowned delivered-load Zone")
@@ -385,6 +399,7 @@ func epathCompileSQLModelFrames(sqlPath string, observed []epathRealSQLSource, m
 					return out, fmt.Errorf("negative delivered-load observation")
 				}
 				out.Loads[epathSQLKey(zone, load.Service, month+1)] = value.times(out.Zones[zone].Multiplier)
+				out.LoadSourceIDs[epathSQLKey(zone, load.Service, month+1)] = []int{source.DictionaryIndex}
 				effective[month] = value.times(out.Zones[zone].Multiplier)
 			}
 			out.SourceEffective[source.DictionaryIndex] = effective
@@ -442,6 +457,8 @@ func epathCompileSQLModelFrames(sqlPath string, observed []epathRealSQLSource, m
 		}
 		values := make([]*epathSQLQuantity, 12)
 		for _, source := range sources {
+			out.SourceIdentities[source.DictionaryIndex] = source
+			out.SiteSources[site.ID] = append(out.SiteSources[site.ID], source.DictionaryIndex)
 			months, err := epathSQLMonthly(source, model.Precision)
 			if err != nil {
 				return out, err
@@ -462,6 +479,21 @@ func epathCompileSQLModelFrames(sqlPath string, observed []epathRealSQLSource, m
 		out.Site[site.ID] = values
 	}
 	return out, nil
+}
+
+func epathSQLDictionaryUnion(left, right []int) []int {
+	seen := map[int]bool{}
+	for _, ids := range [][]int{left, right} {
+		for _, id := range ids {
+			seen[id] = true
+		}
+	}
+	out := make([]int, 0, len(seen))
+	for id := range seen {
+		out = append(out, id)
+	}
+	sort.Ints(out)
+	return out
 }
 
 func epathSQLShare(load, pressure, denominator epathSQLQuantity, precision epathRealSQLPrecision) (epathSQLQuantity, error) {

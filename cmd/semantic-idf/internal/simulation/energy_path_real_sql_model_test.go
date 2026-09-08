@@ -13,6 +13,7 @@ type epathRealSQLModel struct {
 	Services     []epathRealSQLService      `json:"services"`
 	Auxiliaries  []epathRealSQLAuxiliary    `json:"auxiliaries"`
 	FanPools     []epathRealSQLFanPool      `json:"fanPools,omitempty"`
+	DirectUses   []epathRealSQLDirectUse    `json:"directUses,omitempty"`
 	Precision    epathRealSQLPrecision      `json:"precision"`
 }
 
@@ -62,6 +63,14 @@ type epathRealSQLSite struct {
 	Carrier  string               `json:"carrier"`
 	Facility bool                 `json:"facility,omitempty"`
 	Source   epathRealSQLSelector `json:"source"`
+}
+
+// Explicit source identities, not values copied from a candidate. Only the
+// declared exact Zone keys are owners; SQL supplies their effective multipliers.
+type epathRealSQLDirectUse struct {
+	EndUse  string               `json:"endUse"`
+	Carrier string               `json:"carrier"`
+	Source  epathRealSQLSelector `json:"source"`
 }
 type epathRealSQLAvailability struct {
 	ID    string `json:"id"`

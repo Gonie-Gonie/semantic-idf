@@ -65,6 +65,7 @@ type epathRealOracleEvidence struct {
 	Metrics       []epathRealOracleMetric `json:"metrics,omitempty"`
 	sqlPath       string
 	outputPlan    *PurposeRunPlan
+	modelCoverage *epathSQLModelCoverageReport
 }
 
 func epathOracleNumber(value float64) *float64 { return &value }

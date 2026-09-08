@@ -499,6 +499,26 @@ fallback. The capture remains unchanged. This bounded optimization preserves
 the existing timeout/error policy; it is not a general partial-result policy
 change or section 22 numerical acceptance.
 
+The next section 22 checkpoint adds independent Driver-to-Load, per-Zone HVAC
+and direct lighting/equipment proofs, including exact SQL ownership, monthly-
+first allocation, source provenance and multiplier checks. Real-model
+compilation now requires a full-record coverage ledger: unchecked fields or
+missing obligations prevent group approval even when compiled numbers pass.
+The fresh `large-office-25-1-candidate-coverage-01.json` and original-wire
+`large-office-25-1-diagnostic-coverage-05.json` pass all 31,928 numeric/contract
+checks in 29.930 seconds, but the diagnostic intentionally fails for 12,127
+remaining coverage gaps across 13,996 records. Drivers and Loads have no gaps;
+the remaining obligations concern reconciliation, Zone subtotals and per-context
+quality/status evidence. This is not acceptance or an approved expected
+manifest. The exact group counts and preserved failed-attempt distinctions are
+documented in `energy-path-real-models.md`. No engine rerun, source capture
+change or production change was needed for this test-only checkpoint.
+Cross-review regression tests reject sum-preserving duplicate primary nodes,
+misplaced/missing contributor sources and cosmetic duplicate branches. Annual
+endpoint completeness remains distinct from each branch's completed-month
+provenance, avoiding invented temporal overlap while retaining active-month
+source checks.
+
 Checklist section 22's actual-model fixtures and expected manifests also remain
 required between EPATH-204 and EPATH-210; they have no individual EPATH numbers.
 The final completion definition in section 26 is part of acceptance as well.

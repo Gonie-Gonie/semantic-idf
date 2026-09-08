@@ -78,16 +78,19 @@ func epathSQLModelSourceChecks(frames epathSQLFrames, observed []epathRealSQLSou
 }
 
 func epathCompileSQLModelChecks(observed epathRealOracleEvidence, model epathRealSQLModel) (epathSQLModelChecks, error) {
-	var checks epathSQLModelChecks
+	checks := epathSQLModelChecks{RequireCoverage: true}
 	frames, err := epathCompileSQLModelFrames(observed.sqlPath, observed.Sources, model)
 	if err != nil {
 		return checks, err
 	}
 	for _, build := range []func() error{
 		func() error { return epathSQLModelLoadDriverChecks(frames, model, &checks) },
+		func() error { return epathSQLModelDriverLinkChecks(frames, model, &checks) },
 		func() error { return epathSQLModelSourceChecks(frames, observed.Sources, model, &checks) },
 		func() error { return epathSQLModelSiteChecks(frames, model, &checks) },
 		func() error { return epathSQLModelServiceChecks(frames, model, &checks) },
+		func() error { return epathSQLModelZoneServiceChecks(frames, model, &checks) },
+		func() error { return epathSQLModelDirectUseChecks(observed.Sources, frames, model, &checks) },
 		func() error {
 			return epathSQLModelFanPoolChecks(observed, frames, model.FanPools, model.Precision, &checks)
 		},
@@ -252,11 +255,15 @@ func epathCheckSQLModelAllocation(bundle PurposeResultBundle, check epathSQLMode
 }
 
 func epathEvaluateSQLModelChecks(out *epathRealOracleEvidence, bundle PurposeResultBundle, checks epathSQLModelChecks) []epathSQLModelFailure {
+	out.CheckedGroups = nil
+	out.modelCoverage = nil
 	failures := []epathSQLModelFailure{}
 	failedGroups := map[string]bool{}
 	for _, check := range checks.Rows {
 		var err error
-		if check.Conversion != nil {
+		if check.DriverLink != nil {
+			err = epathCheckSQLModelDriverLink(bundle, check)
+		} else if check.Conversion != nil {
 			err = epathCheckSQLModelConversion(bundle, check)
 		} else if check.Allocation != nil {
 			err = epathCheckSQLModelAllocation(bundle, check)
@@ -267,14 +274,28 @@ func epathEvaluateSQLModelChecks(out *epathRealOracleEvidence, bundle PurposeRes
 				err = epathCheckSQLModelPresentation(bundle, check, actual)
 			}
 		}
+		if err == nil && check.ZoneService != nil {
+			err = epathCheckSQLZoneServiceEndpoints(bundle, check)
+		}
+		if err == nil && check.DirectUse != nil {
+			err = epathCheckSQLDirectUseEndpoints(bundle, check)
+		}
 		out.Metrics = append(out.Metrics, check.Want)
 		if err != nil {
 			failedGroups[check.Want.Group] = true
 			failures = append(failures, epathSQLModelFailure{check.Want.Group, check.Want.Key, check.Want.Key + ": " + err.Error()})
 		}
 	}
+	if checks.RequireCoverage {
+		coverage := epathSQLModelCoverage(bundle, checks)
+		out.modelCoverage = &coverage
+		for _, failure := range coverage.Failures {
+			failures = append(failures, failure)
+			failedGroups[failure.Group] = true
+		}
+	}
 	for _, group := range epathRealOracleGroups {
-		if !failedGroups[group] {
+		if !failedGroups["coverage"] && !failedGroups[group] {
 			out.CheckedGroups = append(out.CheckedGroups, group)
 		}
 	}
@@ -330,6 +351,11 @@ func TestEnergyPathRealSQLModelSavedCandidate(t *testing.T) {
 		t.Fatal(err)
 	}
 	failures := epathEvaluateSQLModelChecks(&observed, bundle, checks)
+	coverageFailures := []epathSQLModelFailure{}
+	if observed.modelCoverage != nil {
+		coverageFailures = observed.modelCoverage.Failures
+	}
+	numericFailures := failures[:len(failures)-len(coverageFailures)]
 	if reportPath := os.Getenv("EPATH_REAL_ORACLE_DIAGNOSTIC_NEW"); reportPath != "" {
 		absolute, err := epathOracleSnapshotDestination(root, reportPath)
 		if err != nil {
@@ -344,15 +370,17 @@ func TestEnergyPathRealSQLModelSavedCandidate(t *testing.T) {
 			t.Fatal(err)
 		}
 		report := struct {
-			Schema          string                 `json:"schema"`
-			Acceptance      bool                   `json:"acceptance"`
-			CandidatePath   string                 `json:"candidatePath"`
-			CandidateSHA256 string                 `json:"candidateSHA256"`
-			RecipeSHA256    string                 `json:"recipeSHA256"`
-			SQLSHA256       string                 `json:"sqlSHA256"`
-			Checks          int                    `json:"checks"`
-			Failures        []epathSQLModelFailure `json:"failures"`
-		}{"semantic-idf.energy-path-sql-diagnostic/v1", false, path, candidateSHA, recipeSHA, evidence.SQLSHA256, len(checks.Rows), failures}
+			Schema          string                       `json:"schema"`
+			Acceptance      bool                         `json:"acceptance"`
+			CandidatePath   string                       `json:"candidatePath"`
+			CandidateSHA256 string                       `json:"candidateSHA256"`
+			RecipeSHA256    string                       `json:"recipeSHA256"`
+			SQLSHA256       string                       `json:"sqlSHA256"`
+			Checks          int                          `json:"checks"`
+			Failures        []epathSQLModelFailure       `json:"failures"`
+			Coverage        *epathSQLModelCoverageReport `json:"coverage,omitempty"`
+			NumericFailures []epathSQLModelFailure       `json:"numericAndContractFailures"`
+		}{"semantic-idf.energy-path-sql-diagnostic/v1", false, path, candidateSHA, recipeSHA, evidence.SQLSHA256, len(checks.Rows), failures, observed.modelCoverage, numericFailures}
 		file, err := os.OpenFile(absolute, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 		if err != nil {
 			t.Fatal(err)
@@ -371,18 +399,24 @@ func TestEnergyPathRealSQLModelSavedCandidate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	counts, failed := map[string]int{}, map[string]int{}
+	counts, failed, uncovered := map[string]int{}, map[string]int{}, map[string]int{}
 	for _, check := range checks.Rows {
 		counts[check.Want.Group]++
 	}
-	for _, failure := range failures {
+	for _, failure := range numericFailures {
 		failed[failure.Group]++
 		if failed[failure.Group] <= 12 {
 			t.Log(failure.Message)
 		}
 	}
+	for _, failure := range coverageFailures {
+		uncovered[failure.Group]++
+		if uncovered[failure.Group] <= 3 {
+			t.Logf("COVERAGE GAP: %s", failure.Message)
+		}
+	}
 	for _, group := range epathRealOracleGroups {
-		t.Logf("%s: %d candidate-bound checks; %d mismatches", group, counts[group], failed[group])
+		t.Logf("%s: %d candidate-bound checks; %d numeric/contract failures; %d coverage gaps", group, counts[group], failed[group], uncovered[group])
 	}
 	t.Logf("NOT ACCEPTANCE: %d independent SQL metrics, %d JSON bytes; no expected or source capture writes", len(checks.Rows), len(encoded))
 	if err := epathValidateSavedRealEvidence(root, catalog, evidence); err != nil {

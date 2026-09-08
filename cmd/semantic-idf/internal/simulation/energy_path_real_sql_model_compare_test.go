@@ -14,10 +14,14 @@ type epathSQLModelCheck struct {
 	OptionalPresentation bool
 	Conversion           *epathSQLConversionProof
 	Allocation           *epathSQLAllocationProof
+	ZoneService          *epathSQLZoneServiceProof
+	DriverLink           *epathSQLDriverLinkProof
+	DirectUse            *epathSQLDirectUseProof
 }
 type epathSQLModelChecks struct {
-	Rows []epathSQLModelCheck
-	Keys map[string]bool
+	Rows            []epathSQLModelCheck
+	Keys            map[string]bool
+	RequireCoverage bool
 }
 
 func (checks *epathSQLModelChecks) add(group, scope, zone, period, key, unit string, q *epathSQLQuantity, target epathRealOracleTarget, status string, found, total *int) error {

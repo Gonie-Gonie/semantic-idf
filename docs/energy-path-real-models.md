@@ -512,6 +512,118 @@ seconds, simulation 107.165 seconds, and a successful Wails production build
 in 10.101 seconds. The commit hook repeats the repository verification; it is
 not bypassed.
 
+### Full-record coverage checkpoint: exact Zone flows and provenance
+
+The next test-only checkpoint adds independent Driver-to-Load link, per-Zone
+HVAC/carrier allocation and direct lighting/equipment proofs. Expected values
+come from the preserved SQL observations and reviewed IDF ownership, not from
+candidate graph totals or production allocation helpers. Monthly calculations
+precede Annual sums, SQL Zone multipliers apply once, and known HVAC recipients
+cannot expand into unserved plenums when their load denominator is zero.
+Direct-use declarations enumerate the sixteen original owners of each output;
+undeclared, missing, NULL, duplicated and negative observations fail.
+
+Link checks bind both endpoint quantities, direction, units/domain, basis and
+exact original SQL source identities. Driver provenance traverses derived
+inputs to the required original leaves. HVAC carrier branches retain their own
+carrier sources and exact Zone-load evidence; lighting/equipment links cannot
+invent a thermal conversion ratio. Optional redundant service tags are allowed
+only when typed endpoints identify the correct service; contradictory tags fail.
+Negative fixtures cover swapped Zone allocations with unchanged Building totals,
+wrong source ownership, cross-carrier substitution, missing branches and
+duplicate records.
+
+Real-model compilation now also requires a complete-record coverage ledger.
+It rejects unchecked primary node/link/reconciliation/quality fields, absent
+required selectors, unexpected records and conflicting Annual wrappers. An
+isolated scalar unit fixture may intentionally omit this gate; real candidate
+and acceptance compilation cannot. Coverage failures prevent the corresponding
+group from being approved even when every compiled numeric check passes.
+
+The fresh, current-production-code snapshot
+`large-office-25-1-candidate-coverage-01.json` was materialized in 21.740 seconds
+without rerunning EnergyPlus or changing the original capture. Its SHA-256 is
+`2ddb90dbf5b7f1a71088a998f4d1d39c743deef73bebe1c141146bdc12fb95e8`.
+The bound original SQL remains
+`8ea939c1d962aa37b2c246e8c833427de7a38ef3ed6d98f241e9ed9cc8e5bc46`.
+
+The first numerically passing full-record diagnostic in this checkpoint,
+`large-office-25-1-diagnostic-coverage-03.json`, completed in 29.900 seconds.
+All **31,928 numeric and contract checks pass**, producing 6,066,305 bytes of
+numeric evidence. The full diagnostic still **fails** with 12,127 uncovered
+record-field obligations across a 13,996-record ledger:
+
+| Group | Numeric/contract checks | Numeric/contract failures | Coverage gaps |
+| --- | ---: | ---: | ---: |
+| Drivers | 15,250 | 0 | 0 |
+| Loads | 11,836 | 0 | 0 |
+| End uses | 117 | 0 | 596 |
+| Carriers | 30 | 0 | 348 |
+| Ratios | 1,040 | 0 | 260 |
+| Completeness | 4 | 0 | 1,036 |
+| Residuals | 78 | 0 | 9,367 |
+| Zone allocation | 3,573 | 0 | 520 |
+
+These gaps are not 12,127 proven numerical mismatches, nor are they accepted
+exceptions. They require independent reconciliation totals, remaining Zone
+subtotals and per-context quality/status evidence before acceptance. The next
+work remains inside section 22: thermal and carrier reconciliation, then
+complete availability/ratio/closure/allocation quality proofs, followed by the
+other official model recipes and approved eight-group expected manifests.
+
+Earlier diagnostic attempts remain distinct. Report `coverage-01` contains
+632 redundant-service-tag failures plus 12,759 coverage gaps. The next attempt
+stopped during compilation and did not create report `coverage-02`: subtraction
+rounding made a redundant symmetric-interval validation reject three large,
+otherwise valid SQL observations. The correction checks the explicit-bound
+consistency condition only when explicit bounds exist. Regression tests use
+the exact twelve SQL observations and assert unchanged numeric centers, error
+budgets and bound bits; invalid explicit bounds, NaN/Infinity and negative
+error budgets still fail. No expected interval was enlarged to obtain the
+passing numeric comparison in `coverage-03`.
+
+Pre-commit cross-review adds sum-preserving duplicate-node and provenance
+mutants. A second reported-meter Building node cannot hide behind an unchanged
+category sum. Moving a required driver source onto the load endpoint cannot
+prove the driver's own contribution. Cosmetic RuleID/explanation or derived
+source-ID changes cannot disguise a duplicate physical branch; independently
+distinct original sources or paths still permit legitimate parallel branches.
+
+The stricter `coverage-04` diagnostic retains 31,928 checks and finds four
+contract failures, plus 12,133 coverage failures. All four contract failures
+refer to one Annual mechanical-ventilation/heating branch and its aggregate
+checks. Its 0.001 kWh contribution occurs only in April. The canonical Annual
+load includes Basement heating source 1930, but Basement has no displayed
+April heating load: its visible heating occurs in January, February and
+December. Requiring that source on this April-only branch would manufacture
+temporal overlap. The complete canonical load endpoint and the branch's
+month-local provenance therefore need separate independent presence rules;
+the original candidate and failed report are preserved. No numeric center or
+tolerance is changed.
+
+The corrected proof keeps every independently positive completed-month load
+contributor required on the canonical Annual endpoint. Each branch separately
+requires contributors from months in which its own driver category has a
+proven positive allocation interval; the all-incoming proof also uses that
+branch's category. Independent two-Zone, different-month fixtures accept the
+unrelated-month omission while rejecting a missing Annual endpoint contributor
+or an active-month link source. Existing source-moving, duplicate-branch and
+zero/tiny interval regressions remain passing. Focused driver-link tests pass
+in 6.520 seconds and coverage tests in 0.621 seconds.
+
+The final unchanged-candidate diagnostic,
+`large-office-25-1-diagnostic-coverage-05.json`, completes in 29.930 seconds:
+all 31,928 numeric/contract checks pass again (6,066,386 bytes of numeric
+evidence), including the strengthened endpoint, temporal and physical-branch
+proofs. Its remaining 12,127 coverage failures have exactly the group counts
+shown above, with no Driver or Load gaps. The full diagnostic remains a
+failure and explicitly `acceptance: false`; numerical success does not erase
+the still-unchecked reconciliation, subtotal and quality fields.
+
+All original capture files and earlier diagnostic artifacts are retained.
+This checkpoint changes test/oracle code and documentation only, writes no
+approved expected manifest, and leaves section 22 incomplete.
+
 ## Explicit execution modes
 
 Use the repository Go toolchain and select the simulation package test by name.
