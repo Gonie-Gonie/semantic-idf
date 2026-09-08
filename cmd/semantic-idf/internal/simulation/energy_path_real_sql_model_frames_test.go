@@ -73,6 +73,8 @@ type epathSQLCell struct {
 	ZeroPressureFallback              bool  // Explicit reviewed load-only synthetic allocation, never a physical pressure.
 }
 type epathSQLFrames struct {
+	NativeVRFSystems           []epathSQLVRFSystemFrame
+	NativeVRFAllocations       []epathSQLVRFAllocationProof
 	ZeroPressureFallbacks      map[string]epathRealSQLZeroPressureFallback
 	ZeroPressurePhysicalCells  map[string]epathSQLCell
 	DirectHVAC                 map[string]epathSQLDirectHVACMonth

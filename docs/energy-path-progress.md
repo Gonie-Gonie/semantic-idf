@@ -867,3 +867,82 @@ seconds. Normal commit-hook verification and push follow. Next-fixture VRF
 preparation remains read-only: the original MTD places VRF crankcase electricity
 in Cooling and defrost in Heating, so PTHP's heating-crankcase membership cannot
 be copied. Its own source/output/ownership review is required before a recipe.
+
+### VRF original output and private allocation checkpoint — in progress
+
+Fan Coil's normal hook also completed successfully and commit `515b3be` was
+pushed to `main`. The v0.4.4 executable was rebuilt and the user was told it may
+be reopened. Section 22 remains **6/19 approved**; VRF is the seventh fixture,
+not yet approved.
+
+The VRF original review established five local terminal owners plus one shared
+outdoor unit. Fourteen exact-key Monthly consumption requests and the complete
+five-owner service-load context are now added without heavy auxiliary outputs.
+Typed ownership and selected-scope guards pass alongside unchanged PTAC/PTHP
+request contracts. The SQL reader uses the existing ReportData walk, retains
+unrounded private observations, distinguishes known zero from missing/invalid
+months, and keeps those constituents out of ordinary Building end-use totals.
+
+The new normal capture `real-vrf-25-1-20260908T130012.807798800` completes with all
+14 identities and 168 known Monthly/J observations. Independent original-only
+comparison confirms that all 3,984 earlier Monthly values and 455,520 earlier
+Timestep values remain exactly unchanged. Only the 14 requested Monthly outputs
+were added; the physical model, annual controls, weather and engine are unchanged.
+
+Private month-first allocation, precise canonical-load weights and full-pool
+reservation for mixed-system accounting have focused regressions. A source trace
+defect was also reproduced and corrected: Source.ObjectIndex must point to the
+matching Output request, not the physical equipment index retained in the typed
+target. Canonical v2 projection now passes the complete VRF prefix in 17.735
+seconds. Two further navigation and displayed-budget ledger regressions were
+reproduced and fixed; 20 focused allocation/projection/reservation tests pass in
+1.296 seconds. The original-only VRF recipe is now drafted, explicitly not
+accepted. Independent original-SQL proof/field coverage, saved expected approval
+and all normal checkpoint gates remain in progress.
+See `docs/energy-path-vrf-acceptance.md` for evidence and explicit pending work.
+
+The independent VRF original-source, path/hash context and integer-allocation
+proofs now pass ten top-level tests in 1.654 seconds. Native load weights remain
+unrounded; displayed conversion-pair existence is checked separately. Actual
+candidate 01 was materialized without a new engine run, but remains unapproved.
+Its review exposed a carrier-basis overwrite: the bounded correction preserves
+existing measured lighting/equipment evidence and passes seven projection tests
+in 1.276 seconds after a genuine 0.605-second failure. The earlier candidate is
+kept as stale evidence. Service/source proof integration and all eight coverage
+groups remain pending, with the approval count still **6/19**.
+
+VRF diagnostic 02 now passes all **16,360** independent checks in eight groups
+and mandatory record-field coverage, in 37.382 seconds. Its first failed
+diagnostic and stale candidate remain preserved. The original-only recipe has
+been reviewed for all 16 pressure families, 40 availability groups and 14 native
+consumption sources. Bounded source/quality/carrier/ledger proof integration
+retains the complete selector roster and does not change production values or
+general numeric tolerances. The passing diagnostic produces an unapproved
+pending artifact only; independent original-to-pending arithmetic, registry and
+provenance review, all six prior-fixture replays, explicit expected approval and
+saved acceptance remain separate required gates. Approval count remains **6/19**.
+
+VRF is now the seventh approved fixture. Separate original-SQL arithmetic
+recalculates 2,655 core keys and 182 quality statuses without candidate scalars;
+registry/provenance review retains 6,333 known zeros, 696 explicit nulls and 455
+count pairs. Root approves pending SHA256
+`32610d187d2d4c2e33ca3ecc11d6369fc62ed7ea6a27621eae6957ca5a6a7008`;
+the manual expected header and 129,633-byte lossless companion preserve all
+16,360 metrics. All six prior approvals pass current-code rebuilding with
+unchanged expected artifacts.
+
+The first saved-acceptance attempt remains a failure: its separate second SQL
+read omitted the exact original-IDF binding. The existing path/hash-bound reader
+is now connected to that assertion, without changing production/candidate/
+recipe/pending/expected values. The rerun passes saved acceptance, the seven-
+fixture guard and original-context counterexamples in 74.032 seconds. Section
+22 is **7/19**, not complete. Full repository verification/build and normal
+commit/push follow; radiant is next, then the remaining catalog and sections 23–26.
+
+VRF's full `scripts/verify.ps1` passes without exclusions: app 20.296 seconds,
+CLI 5.381, frontend/browser 164.607 and simulation 318.018; all remaining
+packages pass from cache. Windows production Wails build passes in 8.137 seconds.
+Normal commit-hook verification/build and push are the final checkpoint steps.
+Next radiant preparation is read-only: its original observations use radiant
+equipment keys, while the existing Monthly requests use Zone keys. That request
+and delivered-load authority boundary requires its own next-fixture work.

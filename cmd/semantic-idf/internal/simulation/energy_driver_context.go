@@ -30,16 +30,19 @@ type energyDriverBuildContext struct {
 	Multipliers          energyEffectiveMultiplierIndex
 	GeometryWarning      *EnergyWarning
 	DirectHVACComponents []energyPathDirectHVACComponentTarget
+	VRFSystems           []energyPathVRFSystem
 }
 
 func newEnergyDriverBuildContext(report idf.GeometryReport, documents ...idf.Document) energyDriverBuildContext {
 	index := buildEnergySurfaceCategoryIndex(report)
 	multipliers := energyEffectiveMultiplierIndex{}
 	var directHVACComponents []energyPathDirectHVACComponentTarget
+	var vrfSystems []energyPathVRFSystem
 	if len(documents) > 0 {
 		addEnergyInternalMassCategories(&index, documents[0], report)
 		multipliers = buildEnergyEffectiveMultiplierIndex(documents[0])
 		directHVACComponents = energyPathDirectHVACComponentTargets(documents[0])
+		vrfSystems = energyPathVRFSystems(documents[0])
 	}
 	return energyDriverBuildContext{
 		Enabled:              true,
@@ -47,6 +50,7 @@ func newEnergyDriverBuildContext(report idf.GeometryReport, documents ...idf.Doc
 		AirCouplings:         buildEnergyAirCouplingIndex(report.Topology),
 		Multipliers:          multipliers,
 		DirectHVACComponents: directHVACComponents,
+		VRFSystems:           vrfSystems,
 	}
 }
 

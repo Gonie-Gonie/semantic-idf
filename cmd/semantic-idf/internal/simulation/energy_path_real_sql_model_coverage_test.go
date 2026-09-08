@@ -58,7 +58,11 @@ func epathSQLModelCoverage(bundle PurposeResultBundle, checks epathSQLModelCheck
 			out.fail("coverage", key, err.Error())
 			continue
 		}
-		if err := epathValidateOracleTarget(check.Item.Target, check.Item.Unit); err != nil {
+		targetError := epathValidateOracleTarget(check.Item.Target, check.Item.Unit)
+		if check.NativeVRFSource != nil {
+			targetError = epathSQLVRFSourceTarget(check)
+		}
+		if err := targetError; err != nil {
 			out.fail("coverage", key, err.Error())
 			continue
 		}
@@ -237,6 +241,9 @@ func epathSQLCoverageRecords(bundle PurposeResultBundle, context epathSQLCoverag
 		}
 		if check.DirectHVACSource != nil {
 			validators = append(validators, func() error { return epathCheckSQLDirectHVACSource(bundle, check) })
+		}
+		if check.NativeVRFSource != nil {
+			validators = append(validators, func() error { return epathCheckSQLVRFSource(bundle, check) })
 		}
 		if check.AnnualServiceAbsent {
 			validators = append(validators, func() error { return epathCheckSQLAnnualServiceAbsent(bundle, check) })

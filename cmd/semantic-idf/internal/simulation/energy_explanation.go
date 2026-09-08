@@ -39,9 +39,12 @@ type EnergyExplanationV1 struct {
 	canonicalMonthlyBasis             bool
 	zoneDirectUseSeries               []energyExplanationSeries
 	auxiliaryFanPools                 []energyPathFanPool
+	vrfConsumption                    []energyPathVRFConsumptionCohort
 	buildingHVACAllocationEdges       []EnergyExplanationEdge
 	buildingHVACAllocationPeriodEdges map[string][]EnergyExplanationEdge
 	servicePathIndex                  energyServicePathIndex
+	vrfLoadEvidence                   map[string]energyPathVRFLoadEvidence
+	vrfLoadSeries                     []energyExplanationSeries
 }
 
 type EnergyExplanationScope struct {
@@ -702,9 +705,11 @@ type energyExplanationSeries struct {
 // readers stop at canonical series; node/link direction belongs to the graph
 // builder that consumes this value.
 type energyExplanationParseResult struct {
-	Series   []energyExplanationSeries
-	Sources  []EnergyDataSource
-	FanPools []energyPathFanPool
+	Series          []energyExplanationSeries
+	Sources         []EnergyDataSource
+	FanPools        []energyPathFanPool
+	VRFConsumption  []energyPathVRFConsumptionCohort
+	VRFLoadEvidence map[string]energyPathVRFLoadEvidence
 }
 
 type energyExplanationInternalGainTarget struct {
@@ -751,10 +756,15 @@ func parseSimulationEnergyExplanationSQLWithDriverContext(path string, plan *Pur
 		return EnergyExplanationV1{}, err
 	}
 	if len(parsed.Series) == 0 && len(parsed.Sources) == 0 {
-		return emptyEnergyExplanationResult(plan), nil
+		result := emptyEnergyExplanationResult(plan)
+		result.vrfConsumption = parsed.VRFConsumption
+		result.vrfLoadEvidence = parsed.VRFLoadEvidence
+		return result, nil
 	}
 	result := buildEnergyExplanationResultWithDriverContext(parsed.Series, parsed.Sources, plan, driverContext)
 	result.auxiliaryFanPools = parsed.FanPools
+	result.vrfConsumption = parsed.VRFConsumption
+	result.vrfLoadEvidence = parsed.VRFLoadEvidence
 	return result, nil
 }
 
@@ -767,6 +777,8 @@ func parseSimulationEnergyExplanationCanonicalSQL(path string, plan *PurposeRunP
 
 	series := []energyExplanationSeries{}
 	sources := []EnergyDataSource{}
+	vrfCollector := newEnergyPathVRFConsumptionCollector(driverContext.VRFSystems, plan)
+	var vrfLoadEvidence map[string]energyPathVRFLoadEvidence
 	ready, err := sqlHasTables(db, "ReportDataDictionary", "ReportData", "Time")
 	if err != nil {
 		return energyExplanationParseResult{}, err
@@ -776,6 +788,7 @@ func parseSimulationEnergyExplanationCanonicalSQL(path string, plan *PurposeRunP
 		if err != nil {
 			return energyExplanationParseResult{}, err
 		}
+		dictionaries = append(dictionaries, vrfCollector.dictionaries(db, filepath.Base(path))...)
 		if len(dictionaries) > 0 {
 			intervalDetails, err := sqlTimeIntervalDetailsForDatabase(db)
 			if err != nil {
@@ -798,9 +811,14 @@ func parseSimulationEnergyExplanationCanonicalSQL(path string, plan *PurposeRunP
 			lastObservedTime := map[int]int64{}
 			monthlyObservedRows := map[int]int{}
 			monthlyTimeAxis := energyPathObservedMonthlyTimeAxis(db)
+			vrfLoadCollector := newEnergyPathVRFLoadCollector(dictionaries, driverContext.VRFSystems, plan, monthlyTimeAxis)
 			surfaceCategories, surfaceCategoryEligible := energyExplanationSurfaceCategoriesForDictionaries(dictionaries, driverContext)
 			categoryBuilders := map[string]*energyExplanationCategorySeriesBuilder{}
 			if err := walkReportDataCompact(db, SQLSeriesQuery{DictionaryIndexes: ids}, func(row SQLSeriesRow) error {
+				vrfLoadCollector.observe(row)
+				if vrfCollector.observe(row) {
+					return nil
+				}
 				timeIndex := row.TimeIndex
 				dictionaryIndex := row.DictionaryIndex
 				value := row.Value
@@ -885,6 +903,7 @@ func parseSimulationEnergyExplanationCanonicalSQL(path string, plan *PurposeRunP
 			}); err != nil {
 				return energyExplanationParseResult{}, err
 			}
+			vrfLoadEvidence = vrfLoadCollector.evidence()
 			// Validate the complete selected roster, including all-NULL/missing
 			// dictionaries for which no ordinary source builder was created.
 			for _, dictionary := range dictionaries {
@@ -955,6 +974,8 @@ func parseSimulationEnergyExplanationCanonicalSQL(path string, plan *PurposeRunP
 		}
 	}
 	series = energyPathCompleteDirectHVACComponentSeries(series, driverContext.DirectHVACComponents)
+	vrfConsumption, vrfSources := vrfCollector.result()
+	sources = append(sources, vrfSources...)
 	tabularSeries, tabularSources, err := parseEnergyExplanationTabularAnnual(db, series)
 	if err != nil {
 		return energyExplanationParseResult{}, err
@@ -967,7 +988,8 @@ func parseSimulationEnergyExplanationCanonicalSQL(path string, plan *PurposeRunP
 		// silently re-enable broad allocation as if no pool had been reported.
 		fanPools = []energyPathFanPool{{Invalid: true}}
 	}
-	return energyExplanationParseResult{Series: series, Sources: sources, FanPools: fanPools}, nil
+	return energyExplanationParseResult{Series: series, Sources: sources, FanPools: fanPools,
+		VRFConsumption: vrfConsumption, VRFLoadEvidence: vrfLoadEvidence}, nil
 }
 
 func accumulateEnergyExplanationSeriesBuilder(builder *energyExplanationSeriesBuilder, row SQLSeriesRow, number float64, unit string, dictionary energyExplanationDictionary, selectedStartDay int, selectedEndDay int, hasSelectedRange bool) {
@@ -1731,6 +1753,7 @@ func buildEnergyExplanationResultWithDriverContext(series []energyExplanationSer
 		driverWarnings = append(driverWarnings, multiplierWarnings...)
 	}
 	zoneDirectUseSeries := []energyExplanationSeries(nil)
+	vrfLoadSeries := energyPathVRFSelectedLoadSeries(series, driverContext.VRFSystems)
 	if energyExplanationPlanUsesEnergyPath(plan) {
 		zoneDirectUseSeries = energyExplanationDirectZoneSeries(series)
 	}
@@ -1866,6 +1889,7 @@ func buildEnergyExplanationResultWithDriverContext(series []energyExplanationSer
 		scope:                 energyExplanationScopeForPlan(plan),
 		canonicalMonthlyBasis: driverContext.Enabled,
 		zoneDirectUseSeries:   zoneDirectUseSeries,
+		vrfLoadSeries:         vrfLoadSeries,
 	}
 	return result
 }

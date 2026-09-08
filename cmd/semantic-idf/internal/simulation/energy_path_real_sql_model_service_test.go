@@ -14,6 +14,7 @@ type epathSQLConversionProof struct {
 }
 
 type epathSQLAllocationProof struct {
+	NativeVRF                               *epathSQLVRFAllocationLedgerProof
 	Expected, Direct, Allocated, Unassigned *epathSQLQuantity
 }
 
@@ -143,6 +144,10 @@ func epathSQLModelServiceChecks(frames epathSQLFrames, model epathRealSQLModel, 
 		if err != nil {
 			return err
 		}
+		nativeFrames, err := epathSQLCompileVRFService(frames, model, service)
+		if err != nil {
+			return err
+		}
 		if err := epathSQLDirectHVACRequireCarrierLedger(service, directFrames); err != nil {
 			return err
 		}
@@ -176,6 +181,11 @@ func epathSQLModelServiceChecks(frames epathSQLFrames, model epathRealSQLModel, 
 			if directFrames != nil {
 				row := directFrames.Monthly[month-1]
 				monthSite[month-1], monthDirect[month-1], monthAssigned[month-1], monthUnassigned[month-1] = row.Site, row.Direct, row.Allocated, row.Unassigned
+			}
+			if nativeFrames != nil {
+				row := nativeFrames.Monthly[month-1]
+				monthSite[month-1] = *row.Expected
+				monthDirect[month-1], monthAssigned[month-1], monthUnassigned[month-1] = *row.Direct, *row.Allocated, *row.Unassigned
 			}
 			if load.Value > 0 && consumption.Value > 0 {
 				num, den := branchNumerator[basis], branchDenominator[basis]
@@ -256,6 +266,13 @@ func epathSQLModelServiceChecks(frames epathSQLFrames, model epathRealSQLModel, 
 			}
 			if err := checks.bindAllocationProof(allocationStart); err != nil {
 				return err
+			}
+			if nativeFrames != nil {
+				ledger := epathSQLVRFServiceLedger(nativeFrames, period)
+				if err := epathSQLValidateVRFLedger(ledger); err != nil {
+					return err
+				}
+				checks.Rows[allocationStart].Allocation.NativeVRF = ledger
 			}
 		}
 	}

@@ -28,17 +28,22 @@ func UpgradeEnergyExplanationV1(input EnergyExplanationV1) EnergyExplanationResu
 	}
 	allocationPolicy := normalizePurposeAllocationPolicy(input.AllocationPolicy)
 	zoneHVACAllocationEnabled := allocationPolicy == PurposeAllocationPolicyByServicePathLoadShare
+	vrfAllocation := buildEnergyPathVRFAllocationPlan(input.vrfConsumption,
+		buildEnergyPathVRFLoadObservations(input.vrfLoadSeries, input.Sources, input.vrfLoadEvidence, input.vrfConsumption))
+	vrfDisplay := energyPathVRFDisplayPlan(vrfAllocation)
 	annualZoneHVACAllocation := energyPathZoneHVACAllocationPlan{}
 	periodZoneHVACAllocations := map[string]energyPathZoneHVACAllocationPlan{}
 	annualZoneAuxiliaryAllocation := energyPathZoneAuxiliaryAllocationPlan{}
 	periodZoneAuxiliaryAllocations := map[string]energyPathZoneAuxiliaryAllocationPlan{}
 	if zoneHVACAllocationEnabled {
 		annualZoneHVACAllocation = buildEnergyPathZoneHVACAllocationPlan(input.Nodes, input.Edges, input.zoneDirectUseSeries, "annual", "annual", input.canonicalMonthlyBasis, input.servicePathIndex)
+		annualZoneHVACAllocation = reserveEnergyPathVRFAllocation(annualZoneHVACAllocation, input.Nodes, vrfAllocation, "annual", vrfDisplay)
 		annualZoneAuxiliaryAllocation = buildEnergyPathZoneAuxiliaryAllocationPlan(input.Nodes, input.zoneDirectUseSeries, input.servicePathIndex, "annual", "annual", input.canonicalMonthlyBasis, input.auxiliaryFanPools)
 		monthlyZoneHVACAllocations := []energyPathZoneHVACAllocationPlan{}
 		monthlyZoneAuxiliaryAllocations := []energyPathZoneAuxiliaryAllocationPlan{}
 		for _, period := range input.Periods {
 			plan := buildEnergyPathZoneHVACAllocationPlan(period.Nodes, period.Edges, input.zoneDirectUseSeries, period.ID, period.Kind, input.canonicalMonthlyBasis, input.servicePathIndex)
+			plan = reserveEnergyPathVRFAllocation(plan, period.Nodes, vrfAllocation, period.ID, vrfDisplay)
 			periodZoneHVACAllocations[strings.ToLower(strings.TrimSpace(period.ID))] = plan
 			auxiliaryPlan := buildEnergyPathZoneAuxiliaryAllocationPlan(period.Nodes, input.zoneDirectUseSeries, input.servicePathIndex, period.ID, period.Kind, input.canonicalMonthlyBasis, input.auxiliaryFanPools)
 			periodZoneAuxiliaryAllocations[strings.ToLower(strings.TrimSpace(period.ID))] = auxiliaryPlan
@@ -77,6 +82,7 @@ func UpgradeEnergyExplanationV1(input EnergyExplanationV1) EnergyExplanationResu
 	annualLegacyEdges := append(annualInputEdges, directEdges...)
 	annualLegacyEdges = appendEnergyPathDirectZoneHVACEdges(annualLegacyEdges, annualLegacyNodes)
 	annualLegacyEdges = appendEnergyPathDirectZoneCorrespondenceEdges(annualLegacyEdges, annualLegacyNodes)
+	annualLegacyNodes, annualLegacyEdges = energyPathVRFZoneLegacyInputs(annualLegacyNodes, annualLegacyEdges, vrfAllocation, scope)
 	annotatedSources := annotateLegacyEnergyDriverSources(input.Sources, annualLegacyNodes)
 	allLegacyNodes := append([]EnergyExplanationNode(nil), annualLegacyNodes...)
 	for _, period := range input.Periods {
@@ -91,6 +97,7 @@ func UpgradeEnergyExplanationV1(input EnergyExplanationV1) EnergyExplanationResu
 	annotatedSources = annotateLegacyEnergyLoadDetailSources(annotatedSources, allLegacyNodes)
 	legacyNodes := foldLegacyEnergyLoadDetailNodes(inferLegacyEnergyDriverProjectionGuards(annualLegacyNodes, annotatedSources))
 	nodes, links := upgradeEnergyExplanationGraph(legacyNodes, annualLegacyEdges, annotatedSources, scope, allocationPolicy, input.canonicalMonthlyBasis, fanConsumptionSources)
+	nodes, links = projectEnergyPathVRFZoneGraph(nodes, links, vrfDisplay, scope, "annual", zoneHVACAllocationEnabled)
 	reconciliation, warnings := upgradeEnergyExplanationAccounting(input.Reconciliation, input.Warnings, legacyNodes, annualLegacyEdges, scope, allocationPolicy)
 	reconciliation = filterEnergyPathNonSiteEnergyReconciliation(reconciliation)
 	reconciliation = removeEnergyPathWaterReconciliation(reconciliation)
@@ -120,8 +127,10 @@ func UpgradeEnergyExplanationV1(input EnergyExplanationV1) EnergyExplanationResu
 		periodLegacyEdges := append(periodInputEdges, periodDirectEdges...)
 		periodLegacyEdges = appendEnergyPathDirectZoneHVACEdges(periodLegacyEdges, periodLegacyNodes)
 		periodLegacyEdges = appendEnergyPathDirectZoneCorrespondenceEdges(periodLegacyEdges, periodLegacyNodes)
+		periodLegacyNodes, periodLegacyEdges = energyPathVRFZoneLegacyInputs(periodLegacyNodes, periodLegacyEdges, vrfAllocation, scope)
 		legacyPeriodNodes := foldLegacyEnergyLoadDetailNodes(inferLegacyEnergyDriverProjectionGuards(periodLegacyNodes, annotatedSources))
 		periodNodes, periodLinks := upgradeEnergyExplanationGraph(legacyPeriodNodes, periodLegacyEdges, annotatedSources, scope, allocationPolicy, input.canonicalMonthlyBasis, fanConsumptionSources)
+		periodNodes, periodLinks = projectEnergyPathVRFZoneGraph(periodNodes, periodLinks, vrfDisplay, scope, period.ID, zoneHVACAllocationEnabled)
 		periodReconciliation, periodWarnings := upgradeEnergyExplanationAccounting(period.Reconciliation, period.Warnings, legacyPeriodNodes, periodLegacyEdges, scope, allocationPolicy)
 		periodReconciliation = filterEnergyPathNonSiteEnergyReconciliation(periodReconciliation)
 		periodReconciliation = removeEnergyPathWaterReconciliation(periodReconciliation)
@@ -159,6 +168,7 @@ func UpgradeEnergyExplanationV1(input EnergyExplanationV1) EnergyExplanationResu
 	}
 	sources := filterEnergyDataSourcesForV2(annotatedSources, legacyNodes, annualLegacyEdges, nodes, links, reconciliation, scope, allocationPolicy)
 	sources = appendEnergyPathFanPoolSources(sources, input.auxiliaryFanPools, annualZoneAuxiliaryAllocation, scope)
+	sources = appendEnergyPathVRFSources(sources, vrfDisplay, scope, zoneHVACAllocationEnabled)
 	availableZones := energyExplanationAvailableZones(input)
 	result := EnergyExplanationResult{
 		Schema:            energyExplanationSchema,

@@ -9,6 +9,7 @@ import (
 // Quantities come only from reviewed SQL pool identities and their declared
 // served-Zone loads. Carrier endpoints are not inferred from candidate totals.
 type epathSQLZoneServiceProof struct {
+	NativeVRF                           *epathSQLVRFZoneServiceProof
 	DirectHVAC                          bool
 	Branches                            map[string]epathSQLDirectHVACBranchProof
 	Service, Basis                      string
@@ -59,6 +60,16 @@ func epathSQLModelZoneServiceChecks(frames epathSQLFrames, model epathRealSQLMod
 		}
 		if annualOnly {
 			if err := epathSQLAnnualZoneServiceChecks(frames, model, service, served, zones, sites, checks); err != nil {
+				return err
+			}
+			continue
+		}
+		native, err := epathSQLCompileVRFService(frames, model, service)
+		if err != nil {
+			return err
+		}
+		if native != nil {
+			if err := epathSQLVRFZoneServiceChecks(frames, service, native, zones, checks); err != nil {
 				return err
 			}
 			continue
@@ -259,6 +270,9 @@ func epathSQLModelZoneServiceChecks(frames epathSQLFrames, model epathRealSQLMod
 // declared carrier and both exact site-domain endpoints, not all outgoing links
 // of a broadly matched end-use node.
 func epathSQLZoneServiceCoveredLink(nodes []EnergyExplanationNode, link EnergyPathLink, proof *epathSQLZoneServiceProof) bool {
+	if proof != nil && proof.NativeVRF != nil {
+		return epathSQLVRFZoneCoveredLink(nodes, link, proof)
+	}
 	if proof != nil && proof.DirectHVAC {
 		return epathSQLDirectHVACZoneCoveredLink(nodes, link, proof)
 	}
@@ -298,6 +312,9 @@ func epathSQLZoneServiceVerifySources(ids []string, actual map[string]EnergyData
 
 func epathCheckSQLZoneServiceEndpoints(bundle PurposeResultBundle, check epathSQLModelCheck) error {
 	proof := check.ZoneService
+	if proof != nil && proof.NativeVRF != nil {
+		return epathCheckSQLVRFZoneService(bundle, check)
+	}
 	if proof != nil && proof.DirectHVAC {
 		return epathCheckSQLDirectHVACZoneService(bundle, check)
 	}

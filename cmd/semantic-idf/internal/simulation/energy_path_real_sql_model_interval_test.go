@@ -53,7 +53,7 @@ func epathSQLModelAllocationFixture() (PurposeResultBundle, epathSQLModelCheck) 
 	expected := epathSQLQuantity{Value: .0004, Error: .00051}.positive()
 	allocated := expected
 	direct, unassigned := epathSQLQuantity{}, epathSQLQuantity{}
-	proof := &epathSQLAllocationProof{&expected, &direct, &allocated, &unassigned}
+	proof := &epathSQLAllocationProof{Expected: &expected, Direct: &direct, Allocated: &allocated, Unassigned: &unassigned}
 	item := epathRealOracleMetricRecipe{Group: "zoneAllocation", Scope: "building", Period: "annual", Unit: "kWh", Target: epathRealOracleTarget{Collection: "reconciliation", ID: "allocation.cooling.annual", Level: "allocation", Field: "expectedValue", Unit: "kWh"}}
 	return b, epathSQLModelCheck{Item: item, Want: epathRealOracleMetric{Group: "zoneAllocation", Scope: "building", Period: "annual", Unit: "kWh", Value: epathOracleNumber(expected.Value)}, Quantity: &expected, Allocation: proof}
 }

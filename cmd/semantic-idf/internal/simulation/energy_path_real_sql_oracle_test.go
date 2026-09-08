@@ -64,6 +64,7 @@ type epathRealOracleEvidence struct {
 	CheckedGroups []string                `json:"checkedGroups"`
 	Metrics       []epathRealOracleMetric `json:"metrics,omitempty"`
 	sqlPath       string
+	originalText  string
 	outputPlan    *PurposeRunPlan
 	modelCoverage *epathSQLModelCoverageReport
 }
@@ -422,6 +423,9 @@ func epathCollectRealSQLOracle(t *testing.T, evidence epathRealRunEvidence) epat
 		t.Fatal(err)
 	}
 	if err := epathValidateRealSQLDirectHVACOriginal(evidence, recipe); err != nil {
+		t.Fatal(err)
+	}
+	if err := epathBindRealSQLVRFOriginal(evidence, recipe, &out); err != nil {
 		t.Fatal(err)
 	}
 	if err := epathEvaluateRealOracle(&out, recipe, evidence.Bundle); err != nil {

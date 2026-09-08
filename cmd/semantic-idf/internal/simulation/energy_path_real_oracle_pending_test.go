@@ -68,7 +68,13 @@ func epathWriteOraclePending(root, destination, candidatePath string, evidence e
 		if err := epathValidateOracleMetricIdentity(check.Want); err != nil {
 			return err
 		}
-		if err := epathValidateOracleTarget(check.Item.Target, check.Item.Unit); err != nil {
+		targetError := epathValidateOracleTarget(check.Item.Target, check.Item.Unit)
+		if check.NativeVRFSource != nil {
+			// The exported registry retains allocatedValue. Its knownness is
+			// justified only by the same complete typed proof as field coverage.
+			targetError = epathSQLVRFSourceTarget(check)
+		}
+		if err := targetError; err != nil {
 			return err
 		}
 		required[key] = check

@@ -27,6 +27,7 @@ type epathSQLModelCheck struct {
 	LoadDetail           *epathSQLLoadDetailIdentity
 	TraceSource          *epathSQLTraceSourceIdentity
 	DirectHVACSource     *epathSQLDirectHVACSourceIdentity
+	NativeVRFSource      *epathSQLVRFSourceIdentity
 	AnnualServiceAbsent  bool
 }
 type epathSQLModelChecks struct {

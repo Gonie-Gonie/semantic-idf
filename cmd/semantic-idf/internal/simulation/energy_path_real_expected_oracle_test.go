@@ -648,6 +648,9 @@ func epathAssertRealSQLOracle(t *testing.T, evidence epathRealRunEvidence, manif
 	if evidence.Run != nil {
 		observed.outputPlan = evidence.Run.PurposeRunPlan
 	}
+	if err := epathBindRealSQLVRFOriginal(evidence, recipe, &observed); err != nil {
+		t.Fatal(err)
+	}
 	if err := epathEvaluateRealOracle(&observed, recipe, evidence.Bundle); err != nil {
 		t.Fatal(err)
 	}

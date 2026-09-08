@@ -134,6 +134,11 @@ func epathSQLZoneCarrierInputs(frames epathSQLFrames, model epathRealSQLModel, c
 			for carrier, q := range check.ZoneService.Carriers {
 				part.ByCarrier[carrier] = q
 			}
+			if check.ZoneService.NativeVRF != nil {
+				if err := epathSQLValidateVRFServiceConsumer(check.ZoneService); err != nil {
+					return nil, nil, err
+				}
+			}
 			if check.ZoneService.DirectHVAC {
 				var err error
 				part.DirectByCarrier, err = epathSQLDirectHVACCarrierParts(check.ZoneService)
@@ -419,6 +424,10 @@ func epathSQLModelZoneCarrierChecks(frames epathSQLFrames, model epathRealSQLMod
 		if err != nil {
 			return err
 		}
+		nativeMonthlyIDs, err := epathSQLZoneCarrierNativeVRFMonthlyIDs(frames, model, zone)
+		if err != nil {
+			return err
+		}
 		for _, carrier := range carriers {
 			monthly, direct := [12]epathSQLQuantity{}, [12]epathSQLQuantity{}
 			for month := 1; month <= 12; month++ {
@@ -485,7 +494,7 @@ func epathSQLModelZoneCarrierChecks(frames epathSQLFrames, model epathRealSQLMod
 					checks.Rows[len(checks.Rows)-1].ZoneCarrier = proof
 				}
 				ids, err := epathSQLZoneCarrierRowIDs(carrier, proof.ZoneName, period, monthly)
-				if plainMonthlyIDs[carrier] || directMonthlyIDs {
+				if plainMonthlyIDs[carrier] || directMonthlyIDs || nativeMonthlyIDs {
 					// The annual sum of plain M# rows also has a plain annual ID;
 					// this does not apply to annual-only purchased-energy fallback.
 					ids = []string{"reconcile.energy." + carrier + "." + period}

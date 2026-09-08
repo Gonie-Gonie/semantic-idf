@@ -152,12 +152,16 @@ func epathCompileSQLModelChecks(observed epathRealOracleEvidence, model epathRea
 	if err != nil {
 		return checks, err
 	}
+	if err := epathSQLBindVRFFrames(observed, model, &frames); err != nil {
+		return checks, err
+	}
 	for _, build := range []func() error{
 		func() error { return epathSQLModelLoadDriverChecks(frames, model, &checks) },
 		func() error { return epathSQLModelDriverLinkChecks(frames, model, &checks) },
 		func() error { return epathSQLModelThermalReconciliationChecks(frames, model, &checks) },
 		func() error { return epathSQLModelSourceChecks(frames, observed.Sources, model, &checks) },
 		func() error { return epathSQLModelDirectHVACSourceChecks(frames, &checks) },
+		func() error { return epathSQLModelVRFSourceChecks(frames, &checks) },
 		func() error { return epathSQLModelSiteChecks(frames, model, &checks) },
 		func() error { return epathSQLModelSiteFlowChecks(frames, model, &checks) },
 		func() error { return epathSQLModelSiteResidualChecks(frames, model, &checks) },
@@ -286,6 +290,9 @@ func epathCheckSQLModelConversion(bundle PurposeResultBundle, check epathSQLMode
 }
 
 func epathCheckSQLModelAllocation(bundle PurposeResultBundle, check epathSQLModelCheck) error {
+	if check.Allocation != nil && check.Allocation.NativeVRF != nil {
+		return epathCheckSQLVRFAllocation(bundle, check)
+	}
 	target, proof := check.Item.Target, check.Allocation
 	if proof == nil || target.Collection != "reconciliation" || target.Level != "allocation" || target.ID == "" || target.Unit != "kWh" || check.Item.Group != "zoneAllocation" {
 		return fmt.Errorf("whole allocation pruning requires exact allocation identity")
@@ -382,6 +389,8 @@ func epathEvaluateSQLModelChecks(out *epathRealOracleEvidence, bundle PurposeRes
 			err = epathCheckSQLModelAllocation(bundle, check)
 		} else if check.DirectHVACSource != nil {
 			err = epathCheckSQLDirectHVACSource(bundle, check)
+		} else if check.NativeVRFSource != nil {
+			err = epathCheckSQLVRFSource(bundle, check)
 		} else {
 			var actual *float64
 			actual, err = epathReadOracleCandidate(bundle, check.Item, check.Want)
@@ -486,6 +495,9 @@ func TestEnergyPathRealSQLModelSavedCandidate(t *testing.T) {
 		t.Fatal(err)
 	}
 	observed.outputPlan = evidence.Run.PurposeRunPlan
+	if err := epathBindRealSQLVRFOriginal(evidence, recipe, &observed); err != nil {
+		t.Fatal(err)
+	}
 	checks, err := epathCompileSQLModelChecks(observed, *recipe.SQLModel)
 	if err != nil {
 		t.Fatal(err)

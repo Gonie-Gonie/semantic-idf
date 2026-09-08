@@ -189,6 +189,11 @@ func epathSQLModelQualityChecks(observed epathRealOracleEvidence, frames epathSQ
 											return err
 										}
 									}
+									if dependency.ZoneService.NativeVRF != nil {
+										if err := epathSQLVRFQualitySources(proof, dependency.ZoneService); err != nil {
+											return err
+										}
+									}
 								}
 							}
 						}
@@ -815,6 +820,13 @@ func epathSQLQualityRatioCounts(bundle PurposeResultBundle, check epathSQLModelC
 			allowed[key] = original
 		}
 		for key, original := range loadAllowed {
+			allowed[key] = original
+		}
+		weights, err := epathSQLVRFQualityWeightSources(check, service)
+		if err != nil {
+			return fail(err)
+		}
+		for key, original := range weights {
 			allowed[key] = original
 		}
 		leaves, err := epathSQLOriginalSourceLeaves(link.SourceIDs, sources, allowed, check.Item.Period)

@@ -2672,6 +2672,7 @@ func (builder *purposePlanBuilder) addBasicEnergyPath() {
 		}
 	}
 	builder.addEnergyPathDirectHVACComponentOutputs()
+	builder.addEnergyPathVRFOutputs()
 
 	idealLoadsTargets := builder.energyPathIdealLoadsTargets(zoneKeys)
 	for _, definition := range energyLoadAliasCatalog() {
