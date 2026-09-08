@@ -22,6 +22,10 @@ type epathSQLModelCheck struct {
 	SiteFlow             *epathSQLSiteFlowProof
 	ZoneCarrier          *epathSQLZoneCarrierProof
 	SiteResidual         *epathSQLSiteResidualProof
+	OriginalSource       *epathSQLOriginalSource
+	LoadDetail           *epathSQLLoadDetailIdentity
+	TraceSource          *epathSQLTraceSourceIdentity
+	AnnualServiceAbsent  bool
 }
 type epathSQLModelChecks struct {
 	Rows            []epathSQLModelCheck
@@ -206,26 +210,32 @@ func epathSQLModelSiteChecks(frames epathSQLFrames, model epathRealSQLModel, che
 		periods = append(periods, fmt.Sprintf("M%d", month))
 	}
 	for _, period := range periods {
-		endUses, carriers, mapped := map[string]epathSQLQuantity{}, map[string]epathSQLQuantity{}, map[string]epathSQLQuantity{}
-		for _, site := range model.Site {
-			total := epathSQLQuantity{}
-			known := true
-			for _, month := range epathSQLPeriodMonths(period) {
-				value := frames.Site[site.ID][month-1]
-				if value == nil {
-					known = false
-					break
-				}
-				total = total.add(*value)
+		endUses, carriers, mapped := map[string]*epathSQLQuantity{}, map[string]*epathSQLQuantity{}, map[string]*epathSQLQuantity{}
+		add := func(values map[string]*epathSQLQuantity, key string, q *epathSQLQuantity) {
+			prior, exists := values[key]
+			if q == nil || exists && prior == nil {
+				values[key] = nil
+				return
 			}
-			if !known {
-				return fmt.Errorf("site %s/%s has unknown observations; partial known sums are forbidden", site.ID, period)
+			value := *q
+			if exists {
+				value = prior.add(value)
+			}
+			values[key] = &value
+		}
+		for _, site := range model.Site {
+			total, err := epathSQLSitePeriod(frames, site.ID, period)
+			if err != nil {
+				return err
 			}
 			if site.Facility {
-				carriers[site.Carrier] = carriers[site.Carrier].add(total)
+				if _, exists := carriers[site.Carrier]; exists {
+					return fmt.Errorf("duplicate reviewed facility total for %s", site.Carrier)
+				}
+				add(carriers, site.Carrier, total)
 			} else {
-				endUses[site.EndUse] = endUses[site.EndUse].add(total)
-				mapped[site.Carrier] = mapped[site.Carrier].add(total)
+				add(endUses, site.EndUse, total)
+				add(mapped, site.Carrier, total)
 			}
 		}
 		keys := []string{}
@@ -237,8 +247,8 @@ func epathSQLModelSiteChecks(frames epathSQLFrames, model epathRealSQLModel, che
 			q := endUses[endUse]
 			target := epathSQLNodeTarget("end_use", endUse, "", "site")
 			target.Basis = "reported_meter"
-			target.AllowPrunedZero = true
-			if err := checks.add("endUses", "building", "", period, endUse, "kWh", &q, target, "", nil, nil); err != nil {
+			target.AllowPrunedZero = q != nil
+			if err := checks.add("endUses", "building", "", period, endUse, "kWh", q, target, "", nil, nil); err != nil {
 				return err
 			}
 		}
@@ -251,14 +261,22 @@ func epathSQLModelSiteChecks(frames epathSQLFrames, model epathRealSQLModel, che
 			q := carriers[carrier]
 			target := epathSQLNodeTarget("carrier", carrier, "", "site")
 			target.Basis = "reported_meter"
-			target.AllowPrunedZero = true
-			if err := checks.add("carriers", "building", "", period, carrier, "kWh", &q, target, "", nil, nil); err != nil {
+			target.AllowPrunedZero = q != nil
+			if err := checks.add("carriers", "building", "", period, carrier, "kWh", q, target, "", nil, nil); err != nil {
 				return err
 			}
-			for field, value := range map[string]epathSQLQuantity{"expectedValue": q, "explainedValue": mapped[carrier], "residualValue": q.add(mapped[carrier].times(-1))} {
+			mappedValue, exists := mapped[carrier]
+			if !exists && q != nil {
+				mappedValue = &epathSQLQuantity{}
+			}
+			var residual *epathSQLQuantity
+			if q != nil && mappedValue != nil {
+				value := q.add(mappedValue.times(-1))
+				residual = &value
+			}
+			for field, value := range map[string]*epathSQLQuantity{"expectedValue": q, "explainedValue": mappedValue, "residualValue": residual} {
 				row := epathRealOracleTarget{Collection: "reconciliation", ID: "reconcile.energy." + carrier + "." + period, Level: "energy", Field: field, Unit: "kWh"}
-				v := value
-				if err := checks.add("residuals", "building", "", period, carrier+"/"+field, "kWh", &v, row, "", nil, nil); err != nil {
+				if err := checks.add("residuals", "building", "", period, carrier+"/"+field, "kWh", value, row, "", nil, nil); err != nil {
 					return err
 				}
 			}

@@ -72,20 +72,86 @@ type epathSQLCell struct {
 	SourceIDs                         []int // Independently selected original SQL dictionary leaves.
 }
 type epathSQLFrames struct {
-	Zones            map[string]epathSQLZone
-	Cells            map[string]*epathSQLCell
-	Loads            map[string]epathSQLQuantity
-	Site             map[string][]*epathSQLQuantity
-	SiteSources      map[string][]int
-	SourceRaw        map[int][]epathSQLQuantity
-	SourceEffective  map[int][]epathSQLQuantity
-	SourceZone       map[int]string
-	SourceIdentities map[int]epathRealSQLSource
-	LoadSourceIDs    map[string][]int
+	TraceSourceIdentities map[int]epathSQLTraceSourceIdentity
+	CellTraceSourceIDs    map[string][]int
+	Zones                 map[string]epathSQLZone
+	Cells                 map[string]*epathSQLCell
+	Loads                 map[string]epathSQLQuantity
+	Site                  map[string][]*epathSQLQuantity
+	SiteAnnual            map[string]epathSQLTabularObservation
+	SiteSources           map[string][]int
+	SourceRaw             map[int][]epathSQLQuantity
+	SourceEffective       map[int][]epathSQLQuantity
+	SourceZone            map[int]string
+	SourceIdentities      map[int]epathRealSQLSource
+	LoadSourceIDs         map[string][]int
+	LoadDetailSourceIDs   map[string][]int
+	LoadDetailIdentities  map[int]epathSQLLoadDetailIdentity
 }
 
 func epathSQLKey(zone, family string, month int) string {
 	return fmt.Sprintf("%s|%s|%02d", strings.ToLower(zone), family, month)
+}
+
+// The source class is explicit: an annual cell never manufactures twelve
+// monthly zeroes, and one site cannot silently mix two reporting bases.
+func epathSQLSiteIsAnnual(frames epathSQLFrames, id string) (bool, error) {
+	_, monthly := frames.Site[id]
+	annual, yearly := frames.SiteAnnual[id]
+	if id == "" || monthly == yearly {
+		return false, fmt.Errorf("site %q requires exactly one independently observed reporting basis", id)
+	}
+	if yearly {
+		if err := epathValidateSQLTabularObservation(annual); err != nil {
+			return false, fmt.Errorf("site %s has an invalid annual Tabular observation: %w", id, err)
+		}
+	}
+	return yearly, nil
+}
+
+func epathSQLSitePeriod(frames epathSQLFrames, id, period string) (*epathSQLQuantity, error) {
+	month := 0
+	if period != "annual" {
+		for candidate := 1; candidate <= 12; candidate++ {
+			if period == fmt.Sprintf("M%d", candidate) {
+				month = candidate
+				break
+			}
+		}
+		if month == 0 {
+			return nil, fmt.Errorf("invalid exact site period %q", period)
+		}
+	}
+	annual, err := epathSQLSiteIsAnnual(frames, id)
+	if err != nil {
+		return nil, err
+	}
+	if annual {
+		if period != "annual" {
+			return nil, nil // Not reported, not a known zero or a divided annual total.
+		}
+		q := frames.SiteAnnual[id].Quantity
+		if q.Bounds != nil {
+			bounds := *q.Bounds
+			q.Bounds = &bounds
+		}
+		return &q, nil
+	}
+	values := frames.Site[id]
+	if len(values) != 12 {
+		return nil, fmt.Errorf("site %s lacks twelve original monthly observations", id)
+	}
+	q := epathSQLQuantity{}
+	for index, value := range values {
+		if month != 0 && index+1 != month {
+			continue
+		}
+		if value == nil || !value.valid() || value.Value < 0 {
+			return nil, fmt.Errorf("site %s/M%d has unknown/invalid monthly energy", id, index+1)
+		}
+		q = q.add(*value)
+	}
+	return &q, nil
 }
 
 func epathSQLSurfaceCategory(class string, boundary, index int) (string, error) {
@@ -199,7 +265,7 @@ func epathSQLMonthly(source epathRealSQLSource, precision epathRealSQLPrecision)
 }
 
 func epathCompileSQLModelFrames(sqlPath string, observed []epathRealSQLSource, model epathRealSQLModel) (epathSQLFrames, error) {
-	out := epathSQLFrames{Zones: map[string]epathSQLZone{}, Cells: map[string]*epathSQLCell{}, Loads: map[string]epathSQLQuantity{}, Site: map[string][]*epathSQLQuantity{}, SiteSources: map[string][]int{}, SourceRaw: map[int][]epathSQLQuantity{}, SourceEffective: map[int][]epathSQLQuantity{}, SourceZone: map[int]string{}, SourceIdentities: map[int]epathRealSQLSource{}, LoadSourceIDs: map[string][]int{}}
+	out := epathSQLFrames{Zones: map[string]epathSQLZone{}, Cells: map[string]*epathSQLCell{}, Loads: map[string]epathSQLQuantity{}, Site: map[string][]*epathSQLQuantity{}, SiteAnnual: map[string]epathSQLTabularObservation{}, SiteSources: map[string][]int{}, SourceRaw: map[int][]epathSQLQuantity{}, SourceEffective: map[int][]epathSQLQuantity{}, SourceZone: map[int]string{}, SourceIdentities: map[int]epathRealSQLSource{}, LoadSourceIDs: map[string][]int{}}
 	if model.Schema != "semantic-idf.energy-path-sql-model/large-office-monthly/v1" || model.Surface.Mapping != "surface_class_boundary/v1" || model.Surface.Sign != -1 || model.Precision.DecimalPlaces != 3 || model.Precision.SourceStages < 1 || model.Precision.SourceStages > 3 || model.Precision.ContributionStages < 1 || model.Precision.ContributionStages > 3 {
 		return out, fmt.Errorf("unsupported reviewed sqlModel/precision policy")
 	}
@@ -451,15 +517,32 @@ func epathCompileSQLModelFrames(sqlPath string, observed []epathRealSQLSource, m
 			}
 		}
 	}
+	annualCells := map[int]string{}
 	for _, site := range model.Site {
 		if err := epathValidateSQLSiteSource(site); err != nil {
 			return out, err
 		}
-		if site.Tabular != nil {
-			return out, fmt.Errorf("annual Tabular site sources require dedicated annual-frame integration")
-		}
-		if site.ID == "" || site.Carrier == "" || (site.EndUse == "") == !site.Facility || out.Site[site.ID] != nil {
+		_, annualExists := out.SiteAnnual[site.ID]
+		if site.ID == "" || site.Carrier == "" || (site.EndUse == "") == !site.Facility || out.Site[site.ID] != nil || annualExists {
 			return out, fmt.Errorf("invalid/duplicate site declaration")
+		}
+		if site.Tabular != nil {
+			if _, err := epathSQLTabularSiteAlias(site); err != nil {
+				return out, err
+			}
+			observation, err := epathReadSQLModelTabular(sqlPath, *site.Tabular)
+			if err != nil {
+				return out, err
+			}
+			if observation == nil {
+				return out, fmt.Errorf("declared annual site %s has no original Tabular cell", site.ID)
+			}
+			if prior := annualCells[observation.TabularDataIndex]; prior != "" {
+				return out, fmt.Errorf("annual site %s reuses the original cell already owned by %s", site.ID, prior)
+			}
+			annualCells[observation.TabularDataIndex] = site.ID
+			out.SiteAnnual[site.ID] = *observation
+			continue
 		}
 		sources, err := epathSQLSelect(observed, site.Source)
 		if err != nil {
@@ -487,6 +570,12 @@ func epathCompileSQLModelFrames(sqlPath string, observed []epathRealSQLSource, m
 			}
 		}
 		out.Site[site.ID] = values
+	}
+	if err := epathCompileSQLNonAdditiveLoadDetails(&out, observed, model); err != nil {
+		return out, err
+	}
+	if err := epathCompileSQLTemporalTraceSources(sqlPath, observed, model, &out); err != nil {
+		return out, err
 	}
 	return out, nil
 }

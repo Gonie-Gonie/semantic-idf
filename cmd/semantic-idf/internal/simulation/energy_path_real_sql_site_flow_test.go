@@ -15,10 +15,11 @@ type epathSQLSiteFlowProof struct {
 	EndUse, Carrier, Basis string
 	Total, NodeTotal       epathSQLQuantity
 	Relations              map[string]epathSQLQuantity
-	Sources, NodeSources   map[string]epathRealSQLSource
+	Sources, NodeSources   map[string]epathSQLOriginalSource
 	Required               map[string]map[string]bool
 	AllowedCarriers        map[string]bool
 	MonthlyExclusive       bool
+	Unreported             bool
 }
 
 func epathSQLSiteFlowMonth(frames epathSQLFrames, model epathRealSQLModel, site epathRealSQLSite, month int) (map[string]epathSQLQuantity, error) {
@@ -75,77 +76,157 @@ func epathSQLSiteFlowMonth(frames epathSQLFrames, model epathRealSQLModel, site 
 	return out, nil
 }
 
+func epathSQLSiteFlowAnnual(frames epathSQLFrames, model epathRealSQLModel, site epathRealSQLSite) (map[string]epathSQLQuantity, error) {
+	annual, err := epathSQLSiteIsAnnual(frames, site.ID)
+	if err != nil || !annual {
+		return nil, fmt.Errorf("annual-only flow needs an exact annual site source: %v", err)
+	}
+	q, err := epathSQLSitePeriod(frames, site.ID, "annual")
+	if err != nil || q == nil {
+		return nil, fmt.Errorf("missing original annual site energy: %v", err)
+	}
+	out := map[string]epathSQLQuantity{"end_use_to_carrier": {}, "direct_end_use_to_carrier": *q}
+	var selected *epathRealSQLService
+	for i := range model.Services {
+		for _, id := range model.Services[i].SiteIDs {
+			if id == site.ID {
+				if selected != nil || model.Services[i].Service != site.EndUse {
+					return nil, fmt.Errorf("ambiguous annual site-flow service membership")
+				}
+				selected = &model.Services[i]
+			}
+		}
+	}
+	if selected == nil {
+		if site.EndUse == "cooling" || site.EndUse == "heating" {
+			return nil, fmt.Errorf("annual thermal site lacks reviewed service membership")
+		}
+		return out, nil
+	}
+	zones, err := epathSQLDeclaredZones(frames, selected.ServedZones)
+	if err != nil || len(zones) == 0 {
+		return nil, fmt.Errorf("annual site needs exact served membership: %v", err)
+	}
+	load := epathSQLQuantity{}
+	for zone := range zones {
+		for month := 1; month <= 12; month++ {
+			value, ok := frames.Loads[epathSQLKey(zone, selected.Service, month)]
+			if !ok || !value.valid() || value.Value < 0 {
+				return nil, fmt.Errorf("annual site has unknown served monthly load")
+			}
+			load = load.add(value)
+		}
+	}
+	low, high := load.bounds()
+	_, siteHigh := q.bounds()
+	if low > 0 {
+		out["end_use_to_carrier"], out["direct_end_use_to_carrier"] = *q, epathSQLQuantity{}
+	} else if high > 0 && siteHigh > 0 {
+		paired, direct := 0.0, q.Value
+		if load.Value > 0 && q.Value > 0 {
+			paired, direct = q.Value, 0
+		}
+		out["end_use_to_carrier"] = epathSQLBounded(paired, 0, siteHigh)
+		out["direct_end_use_to_carrier"] = epathSQLBounded(direct, 0, siteHigh)
+	}
+	return out, nil
+}
+
 func epathSQLModelSiteFlowChecks(frames epathSQLFrames, model epathRealSQLModel, checks *epathSQLModelChecks) error {
 	periods := []string{"annual", "M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8", "M9", "M10", "M11", "M12"}
 	for _, period := range periods {
 		proofs := map[string]*epathSQLSiteFlowProof{}
 		nodeTotals := map[string]epathSQLQuantity{}
-		nodeSources := map[string]map[string]epathRealSQLSource{}
+		nodeSources := map[string]map[string]epathSQLOriginalSource{}
 		carriers := map[string]map[string]bool{}
+		reported, seenIDs := map[string]bool{}, map[string]bool{}
 		for _, site := range model.Site {
 			if site.Facility {
 				continue
 			}
-			if site.EndUse == "" || site.Carrier == "" || len(frames.SiteSources[site.ID]) == 0 {
-				return fmt.Errorf("site flow lacks exact reviewed meter identity %s", site.ID)
+			if site.ID == "" || seenIDs[site.ID] || site.EndUse == "" || site.Carrier == "" {
+				return fmt.Errorf("site flow lacks a unique reviewed site identity %s", site.ID)
+			}
+			seenIDs[site.ID] = true
+			annual, err := epathSQLSiteIsAnnual(frames, site.ID)
+			if err != nil {
+				return err
+			}
+			value, err := epathSQLSitePeriod(frames, site.ID, period)
+			if err != nil {
+				return err
+			}
+			if known, exists := reported[site.EndUse]; exists && known != (value != nil) {
+				return fmt.Errorf("partially reported end-use pools require a separately reviewed subtotal proof")
+			}
+			reported[site.EndUse] = value != nil
+			originals, _, err := epathSQLSiteOriginals(frames, site, period, model.Precision)
+			if err != nil {
+				return err
 			}
 			key := site.EndUse + "/" + site.Carrier
 			p := proofs[key]
 			if p == nil {
-				p = &epathSQLSiteFlowProof{EndUse: site.EndUse, Carrier: site.Carrier, Basis: "reported_meter", Relations: map[string]epathSQLQuantity{"end_use_to_carrier": {}, "direct_end_use_to_carrier": {}}, Sources: map[string]epathRealSQLSource{}, Required: map[string]map[string]bool{"end_use_to_carrier": {}, "direct_end_use_to_carrier": {}, "node": {}}}
+				p = &epathSQLSiteFlowProof{EndUse: site.EndUse, Carrier: site.Carrier, Basis: "reported_meter", Relations: map[string]epathSQLQuantity{"end_use_to_carrier": {}, "direct_end_use_to_carrier": {}}, Sources: map[string]epathSQLOriginalSource{}, Required: map[string]map[string]bool{"end_use_to_carrier": {}, "direct_end_use_to_carrier": {}, "node": {}}, Unreported: value == nil}
 				proofs[key] = p
-				p.MonthlyExclusive = period != "annual"
+				p.MonthlyExclusive = period != "annual" || annual
 			} else {
 				p.MonthlyExclusive = false // Distinct reviewed pools may choose distinct branches.
 			}
 			if nodeSources[site.EndUse] == nil {
-				nodeSources[site.EndUse], carriers[site.EndUse] = map[string]epathRealSQLSource{}, map[string]bool{}
+				nodeSources[site.EndUse], carriers[site.EndUse] = map[string]epathSQLOriginalSource{}, map[string]bool{}
 			}
 			carriers[site.EndUse][site.Carrier] = true
-			for _, id := range frames.SiteSources[site.ID] {
-				original, ok := frames.SourceIdentities[id]
-				if !ok || original.DictionaryIndex != id || !original.IsMeter {
-					return fmt.Errorf("site flow has an unbound original meter %d", id)
+			for id, original := range originals {
+				p.Sources[id], nodeSources[site.EndUse][id] = original, original
+			}
+			if value == nil {
+				continue // A later absence proof rejects fabricated monthly nodes/links.
+			}
+			months := epathSQLPeriodMonths(period)
+			if annual {
+				months = []int{0} // One real annual observation, never twelve synthetic slices.
+			}
+			for _, month := range months {
+				partPeriod := fmt.Sprintf("M%d", month)
+				var split map[string]epathSQLQuantity
+				if annual {
+					partPeriod = "annual"
+					split, err = epathSQLSiteFlowAnnual(frames, model, site)
+				} else {
+					split, err = epathSQLSiteFlowMonth(frames, model, site, month)
 				}
-				sourceID := fmt.Sprintf("sql-rdd-%d", id)
-				p.Sources[sourceID], nodeSources[site.EndUse][sourceID] = original, original
-				months, err := epathSQLMonthly(original, model.Precision)
 				if err != nil {
 					return err
 				}
-				for _, month := range epathSQLPeriodMonths(period) {
-					split, err := epathSQLSiteFlowMonth(frames, model, site, month)
-					if err != nil {
-						return err
-					}
-					if !months[month-1].includesZero() {
-						p.Required["node"][sourceID] = true
-						for relation, q := range split {
-							if !q.includesZero() {
-								p.Required[relation][sourceID] = true
-							}
+				part, err := epathSQLSitePeriod(frames, site.ID, partPeriod)
+				if err != nil || part == nil {
+					return fmt.Errorf("missing independently completed site-flow period: %v", err)
+				}
+				_, required, err := epathSQLSiteOriginals(frames, site, partPeriod, model.Precision)
+				if err != nil {
+					return err
+				}
+				for id := range required {
+					p.Required["node"][id] = true
+					for relation, q := range split {
+						if !q.includesZero() {
+							p.Required[relation][id] = true
 						}
 					}
-				}
-			}
-			for _, month := range epathSQLPeriodMonths(period) {
-				split, err := epathSQLSiteFlowMonth(frames, model, site, month)
-				if err != nil {
-					return err
 				}
 				for relation, q := range split {
 					p.Relations[relation] = p.Relations[relation].add(q)
 				}
-				value := frames.Site[site.ID][month-1].positive()
 				_, pairedHigh := split["end_use_to_carrier"].bounds()
 				_, directHigh := split["direct_end_use_to_carrier"].bounds()
 				if pairedHigh > 0 && directHigh > 0 {
-					p.PairedChoices = append(p.PairedChoices, value)
+					p.PairedChoices = append(p.PairedChoices, *part)
 				} else {
 					p.PairedCertain = p.PairedCertain.add(split["end_use_to_carrier"])
 				}
-				p.Total = p.Total.add(value)
-				nodeTotals[site.EndUse] = nodeTotals[site.EndUse].add(value)
+				p.Total = p.Total.add(*part)
+				nodeTotals[site.EndUse] = nodeTotals[site.EndUse].add(*part)
 			}
 		}
 		keys := []string{}
@@ -159,8 +240,12 @@ func epathSQLModelSiteFlowChecks(frames epathSQLFrames, model epathRealSQLModel,
 			for _, relation := range []string{"end_use_to_carrier", "direct_end_use_to_carrier"} {
 				for _, field := range []string{"fromValue", "toValue"} {
 					q := p.Relations[relation]
+					quantity := &q
+					if p.Unreported {
+						quantity = nil
+					}
 					target := epathRealOracleTarget{Collection: "links", Field: field, Relation: relation, Basis: p.Basis, FromUnit: "kWh", ToUnit: "kWh", Aggregate: "sum"}
-					if err := checks.add("endUses", "building", "", period, "site_flow/"+key+"/"+relation+"/"+field, "kWh", &q, target, "", nil, nil); err != nil {
+					if err := checks.add("endUses", "building", "", period, "site_flow/"+key+"/"+relation+"/"+field, "kWh", quantity, target, "", nil, nil); err != nil {
 						return err
 					}
 					checks.Rows[len(checks.Rows)-1].SiteFlow = p
@@ -205,7 +290,7 @@ func epathSQLModelFanFlowChecks(observed epathRealOracleEvidence, frames epathSQ
 			return fmt.Errorf("missing/duplicate independently compiled fan share")
 		}
 		seen[identity] = true
-		p := &epathSQLSiteFlowProof{EndUse: "fans", Basis: "service_path_allocation", Total: *check.Quantity, NodeTotal: *check.Quantity, Relations: map[string]epathSQLQuantity{"direct_end_use_to_carrier": *check.Quantity, "end_use_to_carrier": {}}, Sources: map[string]epathRealSQLSource{}, Required: map[string]map[string]bool{"node": {}, "direct_end_use_to_carrier": {}, "end_use_to_carrier": {}}, AllowedCarriers: map[string]bool{}}
+		p := &epathSQLSiteFlowProof{EndUse: "fans", Basis: "service_path_allocation", Total: *check.Quantity, NodeTotal: *check.Quantity, Relations: map[string]epathSQLQuantity{"direct_end_use_to_carrier": *check.Quantity, "end_use_to_carrier": {}}, Sources: map[string]epathSQLOriginalSource{}, Required: map[string]map[string]bool{"node": {}, "direct_end_use_to_carrier": {}, "end_use_to_carrier": {}}, AllowedCarriers: map[string]bool{}}
 		for _, pool := range pools {
 			for _, zone := range pool.Declaration.ServedZones {
 				if !strings.EqualFold(zone, check.Item.Zone) {
@@ -217,7 +302,7 @@ func epathSQLModelFanFlowChecks(observed epathRealOracleEvidence, frames epathSQ
 				}
 				p.Carrier, p.AllowedCarriers[carrier] = carrier, true
 				id := fmt.Sprintf("sql-rdd-%d", pool.Source.DictionaryIndex)
-				p.Sources[id] = pool.Source
+				p.Sources[id] = epathSQLOriginalRDD(pool.Source)
 				if !check.Quantity.includesZero() {
 					p.Required["node"][id], p.Required["direct_end_use_to_carrier"][id] = true, true
 				}
@@ -231,7 +316,7 @@ func epathSQLModelFanFlowChecks(observed epathRealOracleEvidence, frames epathSQ
 						return fmt.Errorf("fan trace has an invalid broad meter identity")
 					}
 					sourceID := fmt.Sprintf("sql-rdd-%d", dictionaryID)
-					p.Sources[sourceID] = source
+					p.Sources[sourceID] = epathSQLOriginalRDD(source)
 					if !check.Quantity.includesZero() {
 						p.Required["node"][sourceID], p.Required["direct_end_use_to_carrier"][sourceID] = true, true
 					}
@@ -246,7 +331,7 @@ func epathSQLModelFanFlowChecks(observed epathRealOracleEvidence, frames epathSQ
 			// independent scalar obligation remains in the original checks.
 			continue
 		}
-		p.NodeSources = map[string]epathRealSQLSource{}
+		p.NodeSources = map[string]epathSQLOriginalSource{}
 		for id, source := range p.Sources {
 			p.NodeSources[id] = source
 		}
@@ -273,7 +358,7 @@ func epathSQLModelFanFlowChecks(observed epathRealOracleEvidence, frames epathSQ
 						return fmt.Errorf("fan weight trace escapes the exact observed Zone load")
 					}
 					id := fmt.Sprintf("sql-rdd-%d", dictionaryID)
-					p.NodeSources[id] = source
+					p.NodeSources[id] = epathSQLOriginalRDD(source)
 					if !load.includesZero() && !check.Quantity.includesZero() {
 						p.Required["node"][id] = true
 					}
@@ -303,6 +388,28 @@ func epathSQLModelFanFlowChecks(observed epathRealOracleEvidence, frames epathSQ
 
 func epathCheckSQLSiteFlow(bundle PurposeResultBundle, check epathSQLModelCheck) error {
 	p := check.SiteFlow
+	if p != nil && p.Unreported {
+		if check.Quantity != nil || check.Want.Value != nil || check.Want.Status != "unavailable" || check.Item.Period == "annual" || len(epathSQLPeriodMonths(check.Item.Period)) != 1 || p.EndUse == "" || p.Carrier == "" || check.Item.Target.Collection != "links" || check.Item.Target.Basis != p.Basis || (check.Item.Target.Field != "fromValue" && check.Item.Target.Field != "toValue") || (check.Item.Target.Relation != "end_use_to_carrier" && check.Item.Target.Relation != "direct_end_use_to_carrier") {
+			return fmt.Errorf("invalid unreported annual-only site-flow obligation")
+		}
+		nodes, links, _, _, err := epathOracleGraph(bundle, check.Item.Scope, check.Item.Zone, check.Item.Period)
+		if err != nil {
+			return err
+		}
+		byID := map[string]EnergyExplanationNode{}
+		for _, node := range nodes {
+			byID[node.ID] = node
+			if node.Level == "end_use" && node.EndUse == p.EndUse {
+				return fmt.Errorf("unreported monthly site energy has a fabricated end-use endpoint")
+			}
+		}
+		for _, link := range links {
+			if epathSQLSiteFlowMatches(byID, link, p) {
+				return fmt.Errorf("unreported monthly site energy has a fabricated consumption branch")
+			}
+		}
+		return nil
+	}
 	if p == nil || p.EndUse == "" || p.Carrier == "" || p.Basis == "" || !p.Total.valid() || !p.NodeTotal.valid() || check.Quantity == nil || !check.Quantity.valid() {
 		return fmt.Errorf("invalid independent site-flow proof")
 	}
@@ -341,7 +448,7 @@ func epathCheckSQLSiteFlow(bundle PurposeResultBundle, check epathSQLModelCheck)
 	if err := epathCheckSQLModelQuantity(&selected.Value, &p.NodeTotal); err != nil {
 		return err
 	}
-	if err := epathSQLZoneServiceVerifySources(selected.SourceIDs, sources, p.NodeSources, p.Required["node"]); err != nil {
+	if err := epathSQLVerifyOriginalSources(selected.SourceIDs, sources, p.NodeSources, p.Required["node"], check.Item.Period); err != nil {
 		return err
 	}
 	seen := map[string]bool{}
@@ -364,7 +471,7 @@ func epathCheckSQLSiteFlow(bundle PurposeResultBundle, check epathSQLModelCheck)
 		if err := epathCheckSQLModelQuantity(&link.FromValue, &q); err != nil {
 			return err
 		}
-		if err := epathSQLZoneServiceVerifySources(link.SourceIDs, sources, p.Sources, p.Required[link.Relation]); err != nil {
+		if err := epathSQLVerifyOriginalSources(link.SourceIDs, sources, p.Sources, p.Required[link.Relation], check.Item.Period); err != nil {
 			return err
 		}
 		if len(link.SourceIDs) == 0 {

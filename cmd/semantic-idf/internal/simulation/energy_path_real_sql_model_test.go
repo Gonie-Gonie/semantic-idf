@@ -4,17 +4,18 @@ package simulation
 // never candidate values. The compiler performs ordinary SQL arithmetic without
 // calling the production classifier, multiplier, allocation or quality helpers.
 type epathRealSQLModel struct {
-	Schema       string                     `json:"schema"`
-	Surface      epathRealSQLSurfaceModel   `json:"surface"`
-	Families     []epathRealSQLFamily       `json:"families"`
-	Loads        []epathRealSQLLoad         `json:"loads"`
-	Site         []epathRealSQLSite         `json:"site"`
-	Availability []epathRealSQLAvailability `json:"availability"`
-	Services     []epathRealSQLService      `json:"services"`
-	Auxiliaries  []epathRealSQLAuxiliary    `json:"auxiliaries"`
-	FanPools     []epathRealSQLFanPool      `json:"fanPools,omitempty"`
-	DirectUses   []epathRealSQLDirectUse    `json:"directUses,omitempty"`
-	Precision    epathRealSQLPrecision      `json:"precision"`
+	Schema                 string                              `json:"schema"`
+	Surface                epathRealSQLSurfaceModel            `json:"surface"`
+	Families               []epathRealSQLFamily                `json:"families"`
+	Loads                  []epathRealSQLLoad                  `json:"loads"`
+	Site                   []epathRealSQLSite                  `json:"site"`
+	Availability           []epathRealSQLAvailability          `json:"availability"`
+	Services               []epathRealSQLService               `json:"services"`
+	Auxiliaries            []epathRealSQLAuxiliary             `json:"auxiliaries"`
+	FanPools               []epathRealSQLFanPool               `json:"fanPools,omitempty"`
+	DirectUses             []epathRealSQLDirectUse             `json:"directUses,omitempty"`
+	NonAdditiveLoadDetails []epathRealSQLNonAdditiveLoadDetail `json:"nonAdditiveLoadDetails,omitempty"`
+	Precision              epathRealSQLPrecision               `json:"precision"`
 }
 
 type epathRealSQLAlternative struct {
@@ -41,20 +42,38 @@ type epathRealSQLSurfaceModel struct {
 	Mapping string `json:"mapping"`
 }
 type epathRealSQLFamily struct {
-	ID        string             `json:"id"`
-	Keys      []string           `json:"keys"`
-	Category  string             `json:"category"`
-	Component string             `json:"component"`
-	Terms     []epathRealSQLTerm `json:"terms"`
-	Subtract  []string           `json:"subtract,omitempty"`
+	ID           string                    `json:"id"`
+	Keys         []string                  `json:"keys"`
+	Category     string                    `json:"category"`
+	Component    string                    `json:"component"`
+	Terms        []epathRealSQLTerm        `json:"terms"`
+	Subtract     []string                  `json:"subtract,omitempty"`
+	TraceSources []epathRealSQLTraceSource `json:"traceSources,omitempty"`
 	// pressure families participate in matching-service allocation; context
 	// never becomes an input merely because its source reports a value.
 	Role            string `json:"role"`
 	BuildingVisible bool   `json:"buildingVisible"`
 }
+
+// Explicit alternate temporal observations remain trace only. Their original
+// integrated months must equal the independently selected Monthly authority.
+type epathRealSQLTraceSource struct {
+	Source    epathRealSQLSelector `json:"source"`
+	Frequency string               `json:"frequency"`
+}
 type epathRealSQLLoad struct {
 	Service   string               `json:"service"`
 	Component string               `json:"component"`
+	Source    epathRealSQLSelector `json:"source"`
+}
+
+// Inspector-only observations have a separately reviewed equipment owner.
+// Each declaration selects one exact Energy OR Rate source, never an alias sum
+// or another contribution to the selected sensible delivered-load authority.
+type epathRealSQLNonAdditiveLoadDetail struct {
+	ZoneName  string               `json:"zoneName"`
+	Service   string               `json:"service"`
+	OwnerName string               `json:"ownerName"`
 	Source    epathRealSQLSelector `json:"source"`
 }
 type epathRealSQLSite struct {

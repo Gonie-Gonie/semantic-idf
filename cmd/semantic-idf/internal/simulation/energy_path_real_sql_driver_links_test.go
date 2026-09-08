@@ -15,6 +15,8 @@ type epathSQLDriverLinkProof struct {
 	Category, Service, Basis string
 	Load                     epathSQLQuantity
 	SourceIdentities         map[int]epathRealSQLSource
+	NonAdditiveLoadDetails   map[int]epathSQLLoadDetailIdentity
+	TemporalTraceSources     map[int]epathSQLTraceSourceIdentity
 	DriverSources            []int
 	RequiredDriverSources    []int
 	LoadSources              []int
@@ -33,10 +35,11 @@ type epathSQLDriverMonthChoice struct {
 type epathSQLDriverBranchProof struct {
 	Quantity                   epathSQLQuantity
 	DriverSources, LoadSources []int
+	TraceSources               []int // Alternate temporal evidence, never another pressure.
 	RequiredLoadSources        []int
 }
 
-type epathSQLDriverTrace struct{ Allowed, Required []int }
+type epathSQLDriverTrace struct{ Allowed, Required, Context []int }
 type epathSQLDriverLinkLeaves struct{ Original, Driver map[int]bool }
 
 // Coverage uses this same predicate only after the full proof succeeds. A bad
@@ -88,6 +91,16 @@ func epathSQLModelDriverLinkChecks(frames epathSQLFrames, model epathRealSQLMode
 			scope = "zone"
 		}
 		for _, service := range []string{"cooling", "heating"} {
+			details := map[int]epathSQLLoadDetailIdentity{}
+			for id, detail := range frames.LoadDetailIdentities {
+				if detail.Service != service || zone != "" && !strings.EqualFold(zone, detail.ZoneName) {
+					continue
+				}
+				if err := epathSQLValidateLoadDetailIdentity(detail); err != nil || id != detail.Source.DictionaryIndex {
+					return fmt.Errorf("invalid exact non-additive load detail: %v", err)
+				}
+				details[id] = detail
+			}
 			monthly := [12]map[string]epathSQLQuantity{}
 			monthlyTrace := [12]map[string]epathSQLDriverTrace{}
 			monthlyLoadSources := [12][]int{}
@@ -99,6 +112,7 @@ func epathSQLModelDriverLinkChecks(frames epathSQLFrames, model epathRealSQLMode
 				traces := map[string]epathSQLDriverTrace{}
 				zoneQuantities := map[string]map[string]epathSQLQuantity{}
 				zoneSources := map[string]map[string][]int{}
+				zoneTraceSources := map[string]map[string][]int{}
 				possibleLoadSources := []int{}
 				for _, current := range zones {
 					if zone != "" && zone != current {
@@ -119,6 +133,15 @@ func epathSQLModelDriverLinkChecks(frames epathSQLFrames, model epathRealSQLMode
 					}
 					if !load.includesZero() {
 						monthlyRequiredLoadSources[month-1] = epathSQLDictionaryUnion(monthlyRequiredLoadSources[month-1], ids)
+					}
+					for _, id := range frames.LoadDetailSourceIDs[epathSQLKey(current, service, month)] {
+						detail, ok := details[id]
+						if !ok || !strings.EqualFold(detail.ZoneName, current) {
+							return fmt.Errorf("load detail has no exact scope/service owner")
+						}
+						// Inspector context is permitted on an actual load's trace,
+						// but is never a numeric contributor or a required load leaf.
+						possibleLoadSources = epathSQLDictionaryUnion(possibleLoadSources, []int{id})
 					}
 				}
 				interzone := epathSQLQuantity{}
@@ -158,6 +181,7 @@ func epathSQLModelDriverLinkChecks(frames epathSQLFrames, model epathRealSQLMode
 					if zoneQuantities[category] == nil {
 						zoneQuantities[category] = map[string]epathSQLQuantity{}
 						zoneSources[category] = map[string][]int{}
+						zoneTraceSources[category] = map[string][]int{}
 					}
 					owner := strings.ToLower(cell.Zone)
 					zoneQuantities[category][owner] = zoneQuantities[category][owner].add(value)
@@ -168,6 +192,14 @@ func epathSQLModelDriverLinkChecks(frames epathSQLFrames, model epathRealSQLMode
 						}
 						trace := traces[category]
 						trace.Allowed = epathSQLDictionaryUnion(trace.Allowed, cell.SourceIDs)
+						for _, id := range frames.CellTraceSourceIDs[key] {
+							alias, known := frames.TraceSourceIdentities[id]
+							if !known || epathSQLValidateTemporalTrace(alias) != nil || alias.Source.DictionaryIndex != id || alias.Family != cell.Family || !strings.EqualFold(alias.ZoneName, cell.Zone) {
+								return fmt.Errorf("temporal trace lacks exact independently positive family/Zone/month")
+							}
+							trace.Context = epathSQLDictionaryUnion(trace.Context, []int{id})
+							zoneTraceSources[category][owner] = epathSQLDictionaryUnion(zoneTraceSources[category][owner], []int{id})
+						}
 						if !value.includesZero() {
 							trace.Required = epathSQLDictionaryUnion(trace.Required, cell.SourceIDs)
 						}
@@ -180,6 +212,14 @@ func epathSQLModelDriverLinkChecks(frames epathSQLFrames, model epathRealSQLMode
 				monthlyBranches[month-1] = map[string]map[string]epathSQLDriverBranchProof{}
 				for category, owners := range zoneQuantities {
 					monthlyBranches[month-1][category] = epathSQLDriverMonthBranches(quantities[category], owners, zoneSources[category], possibleLoadSources, monthlyRequiredLoadSources[month-1])
+					for owner, branch := range monthlyBranches[month-1][category] {
+						for current, ids := range zoneTraceSources[category] {
+							if owner == "" || owner == current {
+								branch.TraceSources = epathSQLDictionaryUnion(branch.TraceSources, ids)
+							}
+						}
+						monthlyBranches[month-1][category][owner] = branch
+					}
 				}
 			}
 			for _, period := range periods {
@@ -205,6 +245,7 @@ func epathSQLModelDriverLinkChecks(frames epathSQLFrames, model epathRealSQLMode
 							branch.Quantity = branch.Quantity.add(next.Quantity)
 							branch.DriverSources = epathSQLDictionaryUnion(branch.DriverSources, next.DriverSources)
 							branch.LoadSources = epathSQLDictionaryUnion(branch.LoadSources, next.LoadSources)
+							branch.TraceSources = epathSQLDictionaryUnion(branch.TraceSources, next.TraceSources)
 							branch.RequiredLoadSources = epathSQLDictionaryUnion(branch.RequiredLoadSources, next.RequiredLoadSources)
 							branches[category][owner] = branch
 						}
@@ -218,6 +259,7 @@ func epathSQLModelDriverLinkChecks(frames epathSQLFrames, model epathRealSQLMode
 						trace, addition := traces[category], monthlyTrace[month-1][category]
 						trace.Allowed = epathSQLDictionaryUnion(trace.Allowed, addition.Allowed)
 						trace.Required = epathSQLDictionaryUnion(trace.Required, addition.Required)
+						trace.Context = epathSQLDictionaryUnion(trace.Context, addition.Context)
 						traces[category] = trace
 					}
 				}
@@ -232,12 +274,17 @@ func epathSQLModelDriverLinkChecks(frames epathSQLFrames, model epathRealSQLMode
 					trace := traces[""]
 					trace.Allowed = epathSQLDictionaryUnion(trace.Allowed, traces[category].Allowed)
 					trace.Required = epathSQLDictionaryUnion(trace.Required, traces[category].Required)
+					trace.Context = epathSQLDictionaryUnion(trace.Context, traces[category].Context)
 					traces[""] = trace
 				}
 				// This proves actual incoming flow, without inventing a balancing
 				// contribution when reviewed Building-visible cells omit context.
 				quantities[""] = incoming
 				for _, category := range append(categories, "") {
+					aliases := map[int]epathSQLTraceSourceIdentity{}
+					for _, id := range traces[category].Context {
+						aliases[id] = frames.TraceSourceIdentities[id]
+					}
 					for _, field := range []string{"fromValue", "toValue"} {
 						q := quantities[category]
 						key := category
@@ -248,7 +295,8 @@ func epathSQLModelDriverLinkChecks(frames epathSQLFrames, model epathRealSQLMode
 						if err := checks.add("loads", scope, zone, period, "driver_links/"+service+"/"+key+"/"+field, "kWh", &q, target, "", nil, nil); err != nil {
 							return err
 						}
-						checks.Rows[len(checks.Rows)-1].DriverLink = &epathSQLDriverLinkProof{Category: category, Service: service, Basis: target.Basis, Load: load, SourceIdentities: frames.SourceIdentities, DriverSources: traces[category].Allowed, RequiredDriverSources: traces[category].Required, LoadSources: loadSources, RequiredLoadSources: requiredLoadSources, RequiredLinkLoadSources: requiredLinkLoadSources, Branches: branches, BranchChoices: branchChoices}
+						checks.Rows[len(checks.Rows)-1].DriverLink = &epathSQLDriverLinkProof{Category: category, Service: service, Basis: target.Basis, Load: load, SourceIdentities: frames.SourceIdentities, NonAdditiveLoadDetails: details, DriverSources: traces[category].Allowed, RequiredDriverSources: traces[category].Required, LoadSources: loadSources, RequiredLoadSources: requiredLoadSources, RequiredLinkLoadSources: requiredLinkLoadSources, Branches: branches, BranchChoices: branchChoices}
+						checks.Rows[len(checks.Rows)-1].DriverLink.TemporalTraceSources = aliases
 					}
 				}
 			}
@@ -363,12 +411,18 @@ func epathCheckSQLModelDriverLink(bundle PurposeResultBundle, check epathSQLMode
 		}
 		originalIDs, paths := []int{}, append([]string(nil), link.RelatedPathIDs...)
 		for id := range leaves.Original {
-			originalIDs = append(originalIDs, id)
+			_, detail := proof.NonAdditiveLoadDetails[id]
+			_, temporal := proof.TemporalTraceSources[id]
+			if !detail && !temporal {
+				originalIDs = append(originalIDs, id)
+			}
 		}
 		sort.Ints(originalIDs)
 		sort.Strings(paths)
 		// Rule/description wording and opaque derived-ID aliases do not make
-		// another physical branch. Distinct original sources/paths still do.
+		// another physical branch. Neither do non-additive inspector details;
+		// they remain checked above as provenance, not physical contributors.
+		// Distinct additive original sources/paths still do.
 		identity, _ := json.Marshal([]any{link.FromID, link.ToID, link.Relation, link.ServiceKind, link.Basis, originalIDs, paths})
 		if seenBranches[string(identity)] {
 			return fmt.Errorf("duplicate semantic driver-link branch %s", link.ID)
@@ -472,7 +526,7 @@ func epathSQLDriverChoicesContain(choices []epathSQLDriverMonthChoice, actual ma
 					return false
 				}
 				allowed := map[int]bool{}
-				for _, id := range epathSQLDictionaryUnion(branch.DriverSources, branch.LoadSources) {
+				for _, id := range epathSQLDictionaryUnion(epathSQLDictionaryUnion(branch.DriverSources, branch.LoadSources), branch.TraceSources) {
 					allowed[id] = true
 				}
 				for _, original := range leaves[owner] {
@@ -501,6 +555,7 @@ func epathSQLDriverChoicesContain(choices []epathSQLDriverMonthChoice, actual ma
 			month := choice.Branches[owner]
 			branch.DriverSources = epathSQLDictionaryUnion(branch.DriverSources, month.DriverSources)
 			branch.LoadSources = epathSQLDictionaryUnion(branch.LoadSources, month.LoadSources)
+			branch.TraceSources = epathSQLDictionaryUnion(branch.TraceSources, month.TraceSources)
 			branch.RequiredLoadSources = epathSQLDictionaryUnion(branch.RequiredLoadSources, choice.RequiredLoadSources)
 			next := make(map[string]epathSQLDriverBranchProof, len(assigned)+1)
 			for key, value := range assigned {
@@ -551,6 +606,24 @@ func epathSQLDriverLinkTrace(link EnergyPathLink, from, to EnergyExplanationNode
 	for _, id := range proof.LoadSources {
 		allowed[id], load[id] = true, true
 	}
+	for id, detail := range proof.NonAdditiveLoadDetails {
+		original, known := proof.SourceIdentities[id]
+		if err := epathSQLValidateLoadDetailIdentity(detail); err != nil || id != detail.Source.DictionaryIndex || detail.Service != proof.Service || driver[id] || load[id] || !known || original.DictionaryIndex != id || original.Name != detail.Source.Name || original.KeyValue != detail.Source.KeyValue || original.IsMeter != detail.Source.IsMeter || original.ReportingFrequency != detail.Source.ReportingFrequency || original.SourceUnit != detail.Source.SourceUnit || to.ZoneName != "" && !strings.EqualFold(to.ZoneName, detail.ZoneName) {
+			return nil, fmt.Errorf("invalid non-additive load detail trace")
+		}
+		allowed[id] = true // Deliberately not driver[id] or load[id].
+	}
+	for id, alias := range proof.TemporalTraceSources {
+		original, known := proof.SourceIdentities[id]
+		authority, bound := proof.SourceIdentities[alias.Authority.DictionaryIndex]
+		if epathSQLValidateTemporalTrace(alias) != nil || !known || id != alias.Source.DictionaryIndex || original.DictionaryIndex != id || original.Name != alias.Source.Name || original.KeyValue != alias.Source.KeyValue || original.SourceUnit != alias.Source.SourceUnit || original.ReportingFrequency != alias.Source.ReportingFrequency || original.IsMeter != alias.Source.IsMeter || !bound || authority.Name != alias.Authority.Name || authority.KeyValue != alias.Authority.KeyValue || authority.SourceUnit != alias.Authority.SourceUnit || authority.ReportingFrequency != alias.Authority.ReportingFrequency || authority.IsMeter != alias.Authority.IsMeter || !driver[alias.Authority.DictionaryIndex] || driver[id] || load[id] || to.ZoneName != "" && !strings.EqualFold(to.ZoneName, alias.ZoneName) {
+			return nil, fmt.Errorf("temporal trace has no independent primary family source/owner")
+		}
+		if _, detail := proof.NonAdditiveLoadDetails[id]; detail {
+			return nil, fmt.Errorf("ambiguous context source role")
+		}
+		allowed[id] = true
+	}
 	if err := epathSQLDriverOriginalIDs(proof.SourceIdentities, epathSQLDictionaryUnion(proof.DriverSources, proof.LoadSources)); err != nil {
 		return nil, err
 	}
@@ -568,7 +641,23 @@ func epathSQLDriverLinkTrace(link EnergyPathLink, from, to EnergyExplanationNode
 			if !ok || id == "" {
 				return fmt.Errorf("driver link %s refers to missing source %s", link.ID, id)
 			}
+			for dictionaryID, detail := range proof.NonAdditiveLoadDetails {
+				if id == fmt.Sprintf("sql-rdd-%d", dictionaryID) || strings.EqualFold(source.Name, detail.Source.Name) && strings.EqualFold(source.KeyValue, detail.Source.KeyValue) {
+					if !epathSQLLoadDetailSourceMatches(source, detail) {
+						return fmt.Errorf("load detail %s is not its exact original context leaf", id)
+					}
+				}
+			}
 			visiting[id] = true
+			// A declared original cannot bypass its metadata checks by claiming
+			// derived inputs. Unrelated derived wrappers still resolve normally.
+			for dictionaryID, alias := range proof.TemporalTraceSources {
+				if id == fmt.Sprintf("sql-rdd-%d", dictionaryID) || strings.EqualFold(source.Name, alias.Source.Name) && strings.EqualFold(source.KeyValue, alias.Source.KeyValue) && source.ReportingFrequency == alias.Source.ReportingFrequency {
+					if !epathSQLTemporalTraceSourceMatches(source, alias) {
+						return fmt.Errorf("temporal source %s is not its exact original reconciliation leaf", id)
+					}
+				}
+			}
 			if len(source.InputSourceIDs) > 0 {
 				for _, input := range source.InputSourceIDs {
 					if err := visit(input); err != nil {
@@ -583,6 +672,12 @@ func epathSQLDriverLinkTrace(link EnergyPathLink, from, to EnergyExplanationNode
 				for dictionaryID := range allowed {
 					original := proof.SourceIdentities[dictionaryID]
 					if strings.EqualFold(source.Name, original.Name) && strings.EqualFold(source.KeyValue, original.KeyValue) && source.IsMeter == original.IsMeter && source.SourceUnit == original.SourceUnit && source.NormalizedUnit == "kWh" && strings.EqualFold(source.ReportingFrequency, original.ReportingFrequency) {
+						if detail, context := proof.NonAdditiveLoadDetails[dictionaryID]; context && !epathSQLLoadDetailSourceMatches(source, detail) {
+							return fmt.Errorf("load detail %s lost its exact non-additive owner/metadata", id)
+						}
+						if alias, context := proof.TemporalTraceSources[dictionaryID]; context && !epathSQLTemporalTraceSourceMatches(source, alias) {
+							return fmt.Errorf("temporal source %s lost its exact original metadata", id)
+						}
 						leaves[dictionaryID] = true
 						matched++
 					}
@@ -638,7 +733,7 @@ func epathSQLDriverLinkTrace(link EnergyPathLink, from, to EnergyExplanationNode
 		return nil, fmt.Errorf("driver link %s has no independently possible monthly owner branch", link.ID)
 	}
 	branchAllowed := map[int]bool{}
-	for _, id := range epathSQLDictionaryUnion(branch.DriverSources, branch.LoadSources) {
+	for _, id := range epathSQLDictionaryUnion(epathSQLDictionaryUnion(branch.DriverSources, branch.LoadSources), branch.TraceSources) {
 		branchAllowed[id] = true
 	}
 	for id := range leaves {
@@ -654,6 +749,12 @@ func epathSQLDriverLinkTrace(link EnergyPathLink, from, to EnergyExplanationNode
 	fromTrace, loadTrace := false, false
 	ownedDriverLeaves := map[int]bool{}
 	for id := range leaves {
+		if _, temporal := proof.TemporalTraceSources[id]; temporal && !fromLeaves[id] {
+			return nil, fmt.Errorf("driver link %s moved reconciliation temporal provenance to its load endpoint", link.ID)
+		}
+		if _, detail := proof.NonAdditiveLoadDetails[id]; detail && !toLeaves[id] {
+			return nil, fmt.Errorf("driver link %s moved load inspector detail to its driver endpoint", link.ID)
+		}
 		if !fromLeaves[id] && !toLeaves[id] {
 			return nil, fmt.Errorf("driver link %s has a SQL leaf unrelated to either endpoint", link.ID)
 		}

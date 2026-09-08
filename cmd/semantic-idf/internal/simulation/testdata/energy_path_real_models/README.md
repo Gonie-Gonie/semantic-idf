@@ -18,12 +18,25 @@ This directory contains original EnergyPlus example models for checklist section
   explicit unknowns and tiny positive unassigned pump energy. Independent review
   verifies the physical DX/gas paths, exact fan pools/direct-use owners and
   original SQL calculations. The Large Office approved regression still passes.
-  The other 17 catalog entries remain unapproved, including the three older
-  Large Office adapter versions. Ideal Loads is the next fixture in order.
-- Ideal Loads now has a reviewed draft source recipe, not an approved expected
-  manifest. Its actual Annual Tabular district consumption is preserved separately
-  from Monthly electricity observations. The independent annual-cell reader is
-  implemented; annual frame/service/quality/coverage integration is still pending.
+- Ideal Loads 25.1 is now explicitly approved with a 131,365-byte lossless metric
+  companion. Its actual Annual Tabular district consumption is preserved separately
+  from Monthly electricity observations. Independent annual-cell, frame, source,
+  service, carrier, quality and required-field coverage integration is implemented,
+  preserving strict Monthly absence and existing Monthly-to-Annual sums. Twenty
+  exact original Monthly latent Energy/Rate observations remain non-additive
+  inspector context, bound to their five actual equipment owners, not additional
+  sensible load. Preserved diagnostics report 6,504 failures over 16,993 checks,
+  then 1,246 over 17,073 (480 numeric/contract and 766 coverage). Twelve exact
+  Hourly reconciliation aliases now have full-calendar and Monthly-equivalence
+  proofs, without changing numeric authority. Diagnostic 03 passes all 17,121
+  checks and required fields across 4,047 records in 15.252 seconds. Diagnostic 04
+  repeats that pass before separate provenance/registry and direct original-SQL
+  arithmetic reviews. Saved acceptance against the explicitly approved expected
+  manifest passes all 17,121 metrics in 28.405 seconds. The offline integrity
+  guard requires all three approved fixtures. The other 16 catalog entries,
+  including the three older Large Office versions, remain unapproved; later
+  checklist sections are not complete. Full repository verification and Wails
+  build are required by the normal commit gate.
   The native Building meter subtotal double-counting defect found in this capture
   is fixed, with original observations retained as non-additive source context.
 - All 19 engine executions have finished (18 normal results; the no-heating

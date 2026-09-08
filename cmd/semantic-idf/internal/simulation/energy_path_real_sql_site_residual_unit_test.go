@@ -229,7 +229,7 @@ func TestEnergyPathRealSQLSiteResidualPositiveThresholdUsesOR(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			frames, _ := epathSQLSiteResidualUnitInputs()
-			p := &epathSQLSiteResidualProof{Carrier: "electricity", Expected: epathSQLQuantity{Value: test.expected}, Mapped: epathSQLQuantity{Value: test.expected - test.residual}, Sources: map[string]epathRealSQLSource{"sql-rdd-1": frames.SourceIdentities[1], "sql-rdd-2": frames.SourceIdentities[2]}, Required: map[string]bool{"sql-rdd-1": true, "sql-rdd-2": true}}
+			p := &epathSQLSiteResidualProof{Carrier: "electricity", Expected: epathSQLQuantity{Value: test.expected}, Mapped: epathSQLQuantity{Value: test.expected - test.residual}, Sources: map[string]epathSQLOriginalSource{"sql-rdd-1": epathSQLOriginalRDD(frames.SourceIdentities[1]), "sql-rdd-2": epathSQLOriginalRDD(frames.SourceIdentities[2])}, Required: map[string]bool{"sql-rdd-1": true, "sql-rdd-2": true}}
 			p.Residual = p.Expected.add(p.Mapped.times(-1))
 			check := epathSQLModelCheck{Item: epathRealOracleMetricRecipe{Scope: "building", Period: "M1", Unit: "kWh", Target: epathRealOracleTarget{Collection: "nodes", Field: "value", ID: "residual.site_electricity.building", Level: "residual", Unit: "kWh", ScaleDomain: "site", Basis: "residual"}}, Quantity: func() *epathSQLQuantity { q := p.Residual.positive(); return &q }(), SiteResidual: p}
 			for _, visible := range []bool{false, true} {

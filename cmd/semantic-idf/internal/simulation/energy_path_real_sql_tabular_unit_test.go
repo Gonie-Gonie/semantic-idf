@@ -160,13 +160,33 @@ func TestEnergyPathRealSQLTabularExplicitSiteBoundary(t *testing.T) {
 		}
 	}
 	path, model := epathSQLModelUnitFixture(t)
+	epathOracleEditSQL(t, path, `CREATE TABLE TabularDataWithStrings(TabularDataIndex INTEGER,Value TEXT,ReportName TEXT,ReportForString TEXT,TableName TEXT,RowName TEXT,ColumnName TEXT,Units TEXT);
+INSERT INTO TabularDataWithStrings VALUES(1,'12.34','AnnualBuildingUtilityPerformanceSummary','Entire Facility','End Uses','Cooling','District Cooling','kWh');`)
 	model.Site = []epathRealSQLSite{site}
 	observed, err := epathReadRealSQLOracle(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := epathCompileSQLModelFrames(path, observed.Sources, model); err == nil || !strings.Contains(err.Error(), "dedicated annual-frame integration") {
-		t.Fatalf("monthly-only compiler silently ignored/split annual Tabular source: %v", err)
+	frames, err := epathCompileSQLModelFrames(path, observed.Sources, model)
+	if err != nil {
+		t.Fatal(err)
+	}
+	annual, found := frames.SiteAnnual[site.ID]
+	low, high := annual.Quantity.bounds()
+	if !found || annual.TabularDataIndex != 1 || annual.RawText != "12.34" || annual.Quantity.Value != 12.34 || math.Abs(low-12.335) > 1e-12 || math.Abs(high-12.345) > 1e-12 {
+		t.Fatalf("compiler lost exact annual source/value/precision: %+v", annual)
+	}
+	if _, exists := frames.Site[site.ID]; exists || len(frames.SiteSources[site.ID]) != 0 {
+		t.Fatal("annual cell gained fabricated monthly series or RDD identities")
+	}
+	for month := 1; month <= 12; month++ {
+		q, err := epathSQLSitePeriod(frames, site.ID, fmt.Sprintf("M%d", month))
+		if err != nil || q != nil {
+			t.Fatal("annual-only source became a monthly zero or divided quantity")
+		}
+		if load := frames.Loads[epathSQLKey("office", "cooling", month)]; load.Value != 18 {
+			t.Fatal("annual source changed separately observed monthly delivered load")
+		}
 	}
 }
 

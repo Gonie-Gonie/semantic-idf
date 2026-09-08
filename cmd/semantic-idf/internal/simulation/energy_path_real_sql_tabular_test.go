@@ -67,7 +67,7 @@ func epathValidateSQLSiteSource(site epathRealSQLSite) error {
 // Present zero remains a non-nil observed quantity. A wrong-unit match is an
 // error, not absence; no alternate report or carrier column is ever selected.
 func epathReadSQLModelTabular(path string, selector epathRealSQLTabularSelector) (*epathSQLTabularObservation, error) {
-	factor, err := epathValidateSQLTabularSelector(selector)
+	_, err := epathValidateSQLTabularSelector(selector)
 	if err != nil {
 		return nil, err
 	}
@@ -103,24 +103,9 @@ AND RowName=? COLLATE BINARY AND ColumnName=? COLLATE BINARY`, selector.ReportNa
 		if !raw.Valid {
 			return nil, fmt.Errorf("annual Tabular cell is NULL, not an observed zero")
 		}
-		text := strings.TrimSpace(raw.String)
-		parts := strings.Split(text, ".")
-		if len(parts) != 2 || len(parts[0]) == 0 || len(parts[1]) != selector.DecimalPlaces {
-			return nil, fmt.Errorf("annual Tabular cell does not match its explicit source display precision")
-		}
-		for _, digit := range parts[0] + parts[1] {
-			if digit < '0' || digit > '9' {
-				return nil, fmt.Errorf("annual Tabular cell is not finite nonnegative fixed-decimal energy")
-			}
-		}
-		value, err := strconv.ParseFloat(text, 64)
-		if err != nil || !epathOracleFinite(value) || value < 0 {
-			return nil, fmt.Errorf("invalid annual Tabular energy %q", text)
-		}
-		energy, precision := value*factor, .5*math.Pow10(-selector.DecimalPlaces)*factor
-		quantity := epathSQLBounded(energy, math.Max(0, energy-precision), energy+precision)
-		if !quantity.valid() {
-			return nil, fmt.Errorf("nonfinite converted annual Tabular energy")
+		value, quantity, err := epathSQLTabularRawQuantity(selector, raw.String)
+		if err != nil {
+			return nil, err
 		}
 		out = &epathSQLTabularObservation{Selector: selector, TabularDataIndex: int(index.Int64), RawText: raw.String, RawValue: value, Quantity: quantity, Weather: weather}
 	}
@@ -128,4 +113,53 @@ AND RowName=? COLLATE BINARY AND ColumnName=? COLLATE BINARY`, selector.ReportNa
 		return nil, err
 	}
 	return out, nil
+}
+
+func epathSQLTabularRawQuantity(selector epathRealSQLTabularSelector, raw string) (float64, epathSQLQuantity, error) {
+	factor, err := epathValidateSQLTabularSelector(selector)
+	if err != nil {
+		return 0, epathSQLQuantity{}, err
+	}
+	text := strings.TrimSpace(raw)
+	parts := strings.Split(text, ".")
+	if len(parts) != 2 || len(parts[0]) == 0 || len(parts[1]) != selector.DecimalPlaces {
+		return 0, epathSQLQuantity{}, fmt.Errorf("annual Tabular cell does not match its explicit source display precision")
+	}
+	for _, digit := range parts[0] + parts[1] {
+		if digit < '0' || digit > '9' {
+			return 0, epathSQLQuantity{}, fmt.Errorf("annual Tabular cell is not finite nonnegative fixed-decimal energy")
+		}
+	}
+	value, err := strconv.ParseFloat(text, 64)
+	if err != nil || !epathOracleFinite(value) || value < 0 {
+		return 0, epathSQLQuantity{}, fmt.Errorf("invalid annual Tabular energy %q", text)
+	}
+	energy, precision := value*factor, .5*math.Pow10(-selector.DecimalPlaces)*factor
+	quantity := epathSQLBounded(energy, math.Max(0, energy-precision), energy+precision)
+	if !quantity.valid() {
+		return 0, epathSQLQuantity{}, fmt.Errorf("nonfinite converted annual Tabular energy")
+	}
+	return value, quantity, nil
+}
+
+func epathValidateSQLTabularObservation(observation epathSQLTabularObservation) error {
+	value, quantity, err := epathSQLTabularRawQuantity(observation.Selector, observation.RawText)
+	if err != nil {
+		return err
+	}
+	low, high := quantity.bounds()
+	gotLow, gotHigh := observation.Quantity.bounds()
+	if observation.TabularDataIndex <= 0 || !observation.Quantity.valid() || value != observation.RawValue || quantity.Value != observation.Quantity.Value || low != gotLow || high != gotHigh {
+		return fmt.Errorf("annual Tabular observation lost its original cell/value/display precision")
+	}
+	w := observation.Weather
+	if w.Year != 2017 || w.EnvironmentIndex <= 0 || w.EnvironmentName == "" || w.TimeRows < 12 || w.FirstMonth != 1 || w.LastMonth != 12 || len(w.Months) != 12 || w.CoverageBasis != "monthly_intervals_and_cumulative_simulation_days" && w.CoverageBasis != "365_observed_calendar_and_simulation_days" {
+		return fmt.Errorf("annual Tabular observation lacks original full-weather proof")
+	}
+	for index, month := range w.Months {
+		if month != index+1 {
+			return fmt.Errorf("annual Tabular observation has incomplete/duplicate calendar months")
+		}
+	}
+	return nil
 }

@@ -29,6 +29,25 @@ func epathSQLModelSourceChecks(frames epathSQLFrames, observed []epathRealSQLSou
 			return fmt.Errorf("incomplete compiled source proof %d", id)
 		}
 		group := "drivers"
+		trace, temporal := frames.TraceSourceIdentities[id]
+		if temporal {
+			if err := epathSQLValidateTemporalTrace(trace); err != nil {
+				return err
+			}
+			if trace.Source.DictionaryIndex != id || trace.Source.Name != source.Name || trace.Source.KeyValue != source.KeyValue || trace.Source.SourceUnit != source.SourceUnit || trace.Source.ReportingFrequency != source.ReportingFrequency {
+				return fmt.Errorf("temporal trace differs from the original SQL observation")
+			}
+		}
+		detail, nonAdditive := frames.LoadDetailIdentities[id]
+		if nonAdditive {
+			if err := epathSQLValidateLoadDetailIdentity(detail); err != nil {
+				return err
+			}
+			if detail.Source.DictionaryIndex != id || detail.Source.Name != source.Name || detail.Source.KeyValue != source.KeyValue || detail.Source.SourceUnit != source.SourceUnit || detail.Source.ReportingFrequency != source.ReportingFrequency {
+				return fmt.Errorf("non-additive load detail source differs from the observed SQL identity")
+			}
+			group = "loads"
+		}
 		for _, load := range model.Loads {
 			for _, alternative := range load.Source.Alternatives {
 				if strings.EqualFold(alternative.Name, source.Name) {
@@ -68,10 +87,57 @@ func epathSQLModelSourceChecks(frames epathSQLFrames, observed []epathRealSQLSou
 				}
 				target := epathRealOracleTarget{Collection: "sources", Field: field, SourceName: source.Name, SourceKey: source.KeyValue, SourceUnit: source.SourceUnit, Frequency: source.ReportingFrequency, Unit: "kWh"}
 				key := "source/" + source.Name + "/" + source.KeyValue + "/" + field
+				if temporal {
+					var err error
+					q, err = epathSQLTemporalTraceAnnualQuantity(trace, field)
+					if err != nil {
+						return err
+					}
+					// Preserve every prior Monthly metric identity. Only these
+					// explicitly declared additional observations gain frequency.
+					key = "source/" + source.Name + "/" + source.KeyValue + "/Hourly/" + field
+				}
 				if err := checks.add(group, scope, zone, "annual", key, "kWh", &q, target, "", nil, nil); err != nil {
 					return err
 				}
+				if nonAdditive {
+					proof := detail
+					checks.Rows[len(checks.Rows)-1].LoadDetail = &proof
+				}
+				if temporal {
+					proof := trace
+					checks.Rows[len(checks.Rows)-1].TraceSource = &proof
+				}
 			}
+		}
+	}
+	for _, site := range model.Site {
+		if site.Tabular == nil {
+			continue
+		}
+		observation, ok := frames.SiteAnnual[site.ID]
+		if !ok {
+			return fmt.Errorf("annual source %s lacks its original observed cell", site.ID)
+		}
+		original, err := epathSQLOriginalTabular(site, observation)
+		if err != nil {
+			return err
+		}
+		q, err := epathSQLSitePeriod(frames, site.ID, "annual")
+		if err != nil || q == nil {
+			return fmt.Errorf("annual original source %s is unavailable: %v", site.ID, err)
+		}
+		group := "endUses"
+		if site.Facility {
+			group = "carriers"
+		}
+		for _, field := range []string{"rawValue", "effectiveValue"} {
+			target := epathRealOracleTarget{Collection: "sources", Field: field, SourceName: original.Name, SourceKey: original.Key, SourceUnit: observation.Selector.Unit, Frequency: "Annual", Unit: "kWh"}
+			key := "source/tabular/" + site.ID + "/" + field
+			if err := checks.add(group, "building", "", "annual", key, "kWh", q, target, "", nil, nil); err != nil {
+				return err
+			}
+			checks.Rows[len(checks.Rows)-1].OriginalSource = &original
 		}
 	}
 	return nil
@@ -300,6 +366,18 @@ func epathEvaluateSQLModelChecks(out *epathRealOracleEvidence, bundle PurposeRes
 		}
 		if err == nil && check.ZoneCarrier != nil {
 			err = epathCheckSQLZoneCarrier(bundle, check)
+		}
+		if err == nil && check.OriginalSource != nil {
+			err = epathCheckSQLModelOriginalSource(bundle, check)
+		}
+		if err == nil && check.LoadDetail != nil {
+			err = epathCheckSQLLoadDetailSource(bundle, check)
+		}
+		if err == nil && check.TraceSource != nil {
+			err = epathCheckSQLTemporalTraceSource(bundle, check)
+		}
+		if err == nil && check.AnnualServiceAbsent {
+			err = epathCheckSQLAnnualServiceAbsent(bundle, check)
 		}
 		out.Metrics = append(out.Metrics, metric)
 		if err != nil {

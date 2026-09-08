@@ -223,6 +223,18 @@ func epathSQLCoverageRecords(bundle PurposeResultBundle, context epathSQLCoverag
 		if check.Conversion != nil {
 			validators = append(validators, func() error { return epathCheckSQLModelConversion(bundle, check) })
 		}
+		if check.OriginalSource != nil {
+			validators = append(validators, func() error { return epathCheckSQLModelOriginalSource(bundle, check) })
+		}
+		if check.LoadDetail != nil {
+			validators = append(validators, func() error { return epathCheckSQLLoadDetailSource(bundle, check) })
+		}
+		if check.TraceSource != nil {
+			validators = append(validators, func() error { return epathCheckSQLTemporalTraceSource(bundle, check) })
+		}
+		if check.AnnualServiceAbsent {
+			validators = append(validators, func() error { return epathCheckSQLAnnualServiceAbsent(bundle, check) })
+		}
 		if len(validators) == 0 {
 			continue
 		}

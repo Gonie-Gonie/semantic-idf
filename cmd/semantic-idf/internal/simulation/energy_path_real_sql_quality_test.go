@@ -11,14 +11,17 @@ import (
 // ratio availability depends on independently validated PRESENT graph pairs.
 // Dependencies contain no quality checks, so quality never proves itself.
 type epathSQLQualityProof struct {
-	Field        string
-	RunLevel     EnergyCompletenessLevel
-	LoadStatus   string
-	Dependencies []epathSQLModelCheck
-	Originals    map[int]epathRealSQLSource
-	LoadSources  map[string][]int
-	SiteSources  map[string]map[string][]int
-	SiteValues   map[string]map[string]epathSQLQuantity
+	Field         string
+	RunLevel      EnergyCompletenessLevel
+	LoadStatus    string
+	Dependencies  []epathSQLModelCheck
+	Originals     map[int]epathRealSQLSource
+	LoadSources   map[string][]int
+	LoadDetails   map[string]map[string]epathSQLOriginalSource
+	SiteSources   map[string]map[string][]int
+	SiteOriginals map[string]map[string]map[string]epathSQLOriginalSource
+	SiteValues    map[string]map[string]epathSQLQuantity
+	AbsentSites   map[string]map[string]epathSQLOriginalSource
 }
 
 func epathSQLModelQualityChecks(observed epathRealOracleEvidence, frames epathSQLFrames, model epathRealSQLModel, checks *epathSQLModelChecks) error {
@@ -60,6 +63,13 @@ func epathSQLModelQualityChecks(observed epathRealOracleEvidence, frames epathSQ
 						}
 					}
 					proof.Dependencies = epathSQLQualityAccountingDependencies(prior, field, scope, zone, period)
+					if field == "endUseToCarrierClosedPct" && scope == "building" {
+						var err error
+						proof.AbsentSites, err = epathSQLQualityAbsentSites(frames, model, period)
+						if err != nil {
+							return err
+						}
+					}
 					if err := checks.add(group, scope, zone, period, field, "%", nil, epathRealOracleTarget{Collection: "quality", Field: field}, "unavailable", nil, nil); err != nil {
 						return err
 					}
@@ -69,17 +79,21 @@ func epathSQLModelQualityChecks(observed epathRealOracleEvidence, frames epathSQ
 				if field == "ratios" {
 					proof.Originals = frames.SourceIdentities
 					proof.LoadSources, proof.SiteSources, proof.SiteValues = map[string][]int{}, map[string]map[string][]int{}, map[string]map[string]epathSQLQuantity{}
+					proof.SiteOriginals = map[string]map[string]map[string]epathSQLOriginalSource{}
+					proof.LoadDetails = map[string]map[string]epathSQLOriginalSource{}
 					for _, check := range prior {
 						if check.Item.Scope != scope || !strings.EqualFold(check.Item.Zone, zone) || check.Item.Period != period || check.Item.Target.Collection == "quality" {
 							continue
 						}
 						target := check.Item.Target
-						if target.Collection == "nodes" && target.Field == "value" && (target.Level == "load" || target.Level == "end_use" || target.Level == "carrier") || check.Conversion != nil || check.SiteFlow != nil && target.Field == "fromValue" && target.Relation == "end_use_to_carrier" && (check.SiteFlow.EndUse == "cooling" || check.SiteFlow.EndUse == "heating") {
+						if target.Collection == "nodes" && target.Field == "value" && (target.Level == "load" || target.Level == "end_use" || target.Level == "carrier") || check.Conversion != nil || check.AnnualServiceAbsent && target.Collection == "links" || check.SiteFlow != nil && target.Field == "fromValue" && target.Relation == "end_use_to_carrier" && (check.SiteFlow.EndUse == "cooling" || check.SiteFlow.EndUse == "heating") {
 							proof.Dependencies = append(proof.Dependencies, check)
 						}
 					}
 					for _, service := range []string{"cooling", "heating"} {
+						proof.LoadDetails[service] = map[string]epathSQLOriginalSource{}
 						proof.SiteSources[service], proof.SiteValues[service] = map[string][]int{}, map[string]epathSQLQuantity{}
+						proof.SiteOriginals[service] = map[string]map[string]epathSQLOriginalSource{}
 						for current := range frames.Zones {
 							if zone != "" && !strings.EqualFold(current, zone) {
 								continue
@@ -90,10 +104,63 @@ func epathSQLModelQualityChecks(observed epathRealOracleEvidence, frames epathSQ
 									return err
 								}
 								proof.LoadSources[service] = epathSQLDictionaryUnion(proof.LoadSources[service], ids)
+								for _, id := range frames.LoadDetailSourceIDs[epathSQLKey(current, service, month)] {
+									detail, exists := frames.LoadDetailIdentities[id]
+									if !exists || id != detail.Source.DictionaryIndex || detail.Service != service || !strings.EqualFold(detail.ZoneName, current) {
+										return fmt.Errorf("ratio context escapes its declared Zone/service/month owner")
+									}
+									original, err := epathSQLOriginalLoadDetail(detail)
+									if err != nil {
+										return err
+									}
+									key, err := epathSQLOriginalKey(original)
+									if err != nil {
+										return err
+									}
+									proof.LoadDetails[service][key] = original
+								}
 							}
 						}
 						for _, site := range model.Site {
 							if site.Facility || site.EndUse != service {
+								continue
+							}
+							if site.Tabular != nil {
+								observation, exists := frames.SiteAnnual[site.ID]
+								if !exists {
+									return fmt.Errorf("quality lacks independently observed annual site %s", site.ID)
+								}
+								original, err := epathSQLOriginalTabular(site, observation)
+								if err != nil {
+									return err
+								}
+								value, err := epathSQLSitePeriod(frames, site.ID, period)
+								if err != nil {
+									return err
+								}
+								if period != "annual" {
+									if value != nil {
+										return fmt.Errorf("annual source supplied a fabricated monthly site observation")
+									}
+									continue
+								}
+								if value == nil {
+									return fmt.Errorf("known annual site source lost its original observation")
+								}
+								key, err := epathSQLOriginalKey(original)
+								if err != nil {
+									return err
+								}
+								if proof.SiteOriginals[service][site.Carrier] == nil {
+									proof.SiteOriginals[service][site.Carrier] = map[string]epathSQLOriginalSource{}
+								}
+								if _, duplicate := proof.SiteOriginals[service][site.Carrier][key]; duplicate {
+									return fmt.Errorf("duplicate original annual site quality source")
+								}
+								proof.SiteOriginals[service][site.Carrier][key] = original
+								if scope == "building" {
+									proof.SiteValues[service][site.Carrier] = proof.SiteValues[service][site.Carrier].add(*value)
+								}
 								continue
 							}
 							ids := frames.SiteSources[site.ID]
@@ -282,6 +349,15 @@ func epathSQLQualityClosure(bundle PurposeResultBundle, check epathSQLModelCheck
 			return fail("prerequisite outside selected scope/period")
 		}
 		if dependency.Item.Target.Collection == "nodes" && (dependency.Quantity == nil || !dependency.Quantity.valid() || dependency.Quantity.Value < 0) {
+			if dependency.Quantity == nil && p.Field == "endUseToCarrierClosedPct" {
+				handled, err := epathSQLQualityCheckAbsentSiteNode(bundle, check, dependency)
+				if err != nil {
+					return nil, "", err
+				}
+				if handled {
+					continue
+				}
+			}
 			return fail("unknown node observation is not evidence for pruned zero")
 		}
 		if err := epathSQLQualityCheckDependency(bundle, dependency); err != nil {
@@ -383,6 +459,133 @@ func epathSQLQualityClosure(bundle PurposeResultBundle, check epathSQLModelCheck
 	return epathOracleNumber(math.Round(100*math.Max(0, 1-errorSum/total)*1000) / 1000), status, nil
 }
 
+// This roster comes from original reporting classes, never from absent nodes
+// or nil numeric checks. A missing Monthly RDD value still fails SitePeriod.
+func epathSQLQualityAbsentSites(frames epathSQLFrames, model epathRealSQLModel, period string) (map[string]map[string]epathSQLOriginalSource, error) {
+	out := map[string]map[string]epathSQLOriginalSource{}
+	known := map[string]bool{}
+	for _, site := range model.Site {
+		key := "end_use/" + site.EndUse
+		if site.Facility {
+			key = "carrier/" + site.Carrier
+		}
+		q, err := epathSQLSitePeriod(frames, site.ID, period)
+		if err != nil {
+			return nil, err
+		}
+		if q != nil {
+			if len(out[key]) > 0 {
+				return nil, fmt.Errorf("closure cannot mix annual-only and reported components of one site node")
+			}
+			known[key] = true
+			continue
+		}
+		if known[key] || period == "annual" || site.Tabular == nil {
+			return nil, fmt.Errorf("closure lacks an exact annual-only reporting class")
+		}
+		observation, ok := frames.SiteAnnual[site.ID]
+		if !ok {
+			return nil, fmt.Errorf("closure annual-only declaration lost original observation")
+		}
+		original, err := epathSQLOriginalTabular(site, observation)
+		if err != nil {
+			return nil, err
+		}
+		id, err := epathSQLOriginalKey(original)
+		if err != nil {
+			return nil, err
+		}
+		if out[key] == nil {
+			out[key] = map[string]epathSQLOriginalSource{}
+		}
+		if _, duplicate := out[key][id]; duplicate {
+			return nil, fmt.Errorf("duplicate closure original annual site")
+		}
+		out[key][id] = original
+	}
+	return out, nil
+}
+
+// Return true only after exact absence is proved. Nothing here manufactures a
+// zero contribution or authorizes an unknown numeric node to be pruned.
+func epathSQLQualityCheckAbsentSiteNode(bundle PurposeResultBundle, check, dependency epathSQLModelCheck) (bool, error) {
+	t := dependency.Item.Target
+	if dependency.Quantity != nil || dependency.Want.Value != nil || dependency.Want.Status != "unavailable" || dependency.Item.Period == "annual" || !epathOracleValidPeriod(dependency.Item.Period) || t.Collection != "nodes" || t.Field != "value" || t.ScaleDomain != "site" || t.Unit != "kWh" || t.AllowPrunedZero || t.Level != "end_use" && t.Level != "carrier" {
+		return false, nil
+	}
+	if p := dependency.ZoneCarrier; p != nil && p.Unavailable {
+		return true, epathCheckSQLZoneCarrierAbsent(bundle, dependency)
+	}
+	if p := dependency.ZoneService; p != nil && p.AnnualTabular && p.Unavailable {
+		return true, epathCheckSQLAnnualZoneService(bundle, dependency)
+	}
+	if dependency.Item.Scope != "building" || dependency.Item.Zone != "" || t.Basis != "reported_meter" {
+		return false, nil
+	}
+	originals := check.Quality.AbsentSites[t.Level+"/"+t.Category]
+	if len(originals) == 0 {
+		return false, nil
+	}
+	if err := epathSQLValidateOriginalSources(originals); err != nil {
+		return false, err
+	}
+	for _, original := range originals {
+		if original.Tabular == nil || original.RDD != nil || original.site.Facility != (t.Level == "carrier") || t.Level == "carrier" && original.site.Carrier != t.Category || t.Level == "end_use" && original.site.EndUse != t.Category {
+			return false, fmt.Errorf("closure absence proof has a different original site owner")
+		}
+	}
+	if t.Level == "end_use" {
+		matched := map[string]bool{}
+		for _, flow := range check.Quality.Dependencies {
+			p := flow.SiteFlow
+			if p == nil || !p.Unreported || p.EndUse != t.Category || flow.Item.Scope != "building" || flow.Item.Zone != "" || flow.Item.Period != dependency.Item.Period {
+				continue
+			}
+			if err := epathCheckSQLSiteFlow(bundle, flow); err != nil {
+				return true, err
+			}
+			if err := epathSQLValidateOriginalSources(p.Sources); err != nil {
+				return true, err
+			}
+			for id, original := range p.Sources {
+				if _, ok := originals[id]; !ok || original.Tabular == nil {
+					return true, fmt.Errorf("unreported flow has unbound original annual ownership")
+				}
+				matched[id] = true
+			}
+		}
+		for id := range originals {
+			if !matched[id] {
+				return true, fmt.Errorf("annual end-use absence lacks strict original site-flow proof")
+			}
+		}
+		return true, nil
+	}
+	// A Building facility carrier has no SiteFlow endpoint proof of its own.
+	// Bind its independent original facility cell, then reject ANY same-carrier
+	// node/flow/accounting record, including a fabricated literal zero.
+	nodes, links, rows, _, err := epathOracleGraph(bundle, "building", "", dependency.Item.Period)
+	if err != nil {
+		return true, err
+	}
+	for _, node := range nodes {
+		if node.Carrier == t.Category {
+			return true, fmt.Errorf("annual-only facility has a fabricated monthly carrier context")
+		}
+	}
+	for _, link := range links {
+		if link.FromID == "carrier."+t.Category+".building" || link.ToID == "carrier."+t.Category+".building" {
+			return true, fmt.Errorf("annual-only facility has a fabricated monthly carrier flow")
+		}
+	}
+	for _, row := range rows {
+		if row.Level == "energy" && strings.HasPrefix(row.ID, "reconcile.energy."+t.Category+".") {
+			return true, fmt.Errorf("annual-only facility has fabricated monthly accounting")
+		}
+	}
+	return true, nil
+}
+
 func epathSQLQualityAllocation(bundle PurposeResultBundle, check epathSQLModelCheck) (*float64, string, error) {
 	_, _, rows, _, err := epathOracleGraph(bundle, "building", "", check.Item.Period)
 	if err != nil {
@@ -462,7 +665,9 @@ func epathSQLQualityRatioCounts(bundle PurposeResultBundle, check epathSQLModelC
 			return fail(fmt.Errorf("quality dependency is recursive or outside the exact graph context"))
 		}
 		var err error
-		if dependency.SiteFlow != nil {
+		if dependency.AnnualServiceAbsent {
+			err = epathCheckSQLAnnualServiceAbsent(bundle, dependency)
+		} else if dependency.SiteFlow != nil {
 			err = epathCheckSQLSiteFlow(bundle, dependency)
 		} else if dependency.Conversion != nil {
 			err = epathCheckSQLModelConversion(bundle, dependency)
@@ -526,12 +731,15 @@ func epathSQLQualityRatioCounts(bundle PurposeResultBundle, check epathSQLModelC
 		}
 		from, to := byID[link.FromID], byID[link.ToID]
 		service := services[from.ID]
-		ids, known := proof.SiteSources[service][to.Carrier]
+		originals, err := epathSQLQualitySiteOriginals(proof, service, to.Carrier)
+		if err != nil {
+			return fail(err)
+		}
 		_, quantityKnown := proof.SiteValues[service][to.Carrier]
-		if !known || !quantityKnown || to.Level != "carrier" || to.ScaleDomain != "site" || to.Unit != "kWh" || link.FromUnit != "kWh" || link.ToUnit != "kWh" || link.FromValue != link.ToValue || !epathOracleFinite(link.ToValue) || link.ToValue < 0 || link.Ratio != 0 || link.RatioKind != "" {
+		if len(originals) == 0 || !quantityKnown || to.Level != "carrier" || to.ScaleDomain != "site" || to.Unit != "kWh" || link.FromUnit != "kWh" || link.ToUnit != "kWh" || link.FromValue != link.ToValue || !epathOracleFinite(link.ToValue) || link.ToValue < 0 || link.Ratio != 0 || link.RatioKind != "" {
 			return fail(fmt.Errorf("invalid ratio carrier evidence %s", link.ID))
 		}
-		if _, err := epathSQLQualitySourceLeaves(link.SourceIDs, sources, proof.Originals, ids); err != nil {
+		if _, err := epathSQLOriginalSourceLeaves(link.SourceIDs, sources, originals, check.Item.Period); err != nil {
 			return fail(err)
 		}
 		if carrierSums[service] == nil {
@@ -566,29 +774,56 @@ func epathSQLQualityRatioCounts(bundle PurposeResultBundle, check epathSQLModelC
 		if !matched || service == "" || service != services[to.ID] || from.Level != "load" || to.Level != "end_use" || !strings.EqualFold(from.ZoneName, to.ZoneName) {
 			return fail(fmt.Errorf("conversion is not an independently proved service pair: %s", link.ID))
 		}
-		siteIDs := []int{}
-		for _, ids := range proof.SiteSources[service] {
-			siteIDs = epathSQLDictionaryUnion(siteIDs, ids)
-		}
-		allowed := epathSQLDictionaryUnion(siteIDs, proof.LoadSources[service])
-		leaves, err := epathSQLQualitySourceLeaves(link.SourceIDs, sources, proof.Originals, allowed)
+		siteOriginals, err := epathSQLQualitySiteOriginals(proof, service, "")
 		if err != nil {
 			return fail(err)
 		}
-		fromLeaves, err := epathSQLQualitySourceLeaves(from.SourceIDs, sources, proof.Originals, proof.LoadSources[service])
+		loadOriginals := map[string]epathSQLOriginalSource{}
+		for _, id := range proof.LoadSources[service] {
+			original, exists := proof.Originals[id]
+			if !exists || original.DictionaryIndex != id {
+				return fail(fmt.Errorf("unbound original quality load source"))
+			}
+			loadOriginals[fmt.Sprintf("sql-rdd-%d", id)] = epathSQLOriginalRDD(original)
+		}
+		loadAllowed := map[string]epathSQLOriginalSource{}
+		for key, original := range loadOriginals {
+			loadAllowed[key] = original
+		}
+		for key, original := range proof.LoadDetails[service] {
+			if original.LoadDetail == nil || original.LoadDetail.Service != service || check.Item.Scope == "zone" && !strings.EqualFold(original.LoadDetail.ZoneName, check.Item.Zone) {
+				return fail(fmt.Errorf("ratio detail source has wrong scope/service ownership"))
+			}
+			if _, duplicate := loadAllowed[key]; duplicate {
+				return fail(fmt.Errorf("non-additive ratio context was promoted to delivered-load authority"))
+			}
+			loadAllowed[key] = original
+		}
+		allowed := map[string]epathSQLOriginalSource{}
+		for key, original := range siteOriginals {
+			allowed[key] = original
+		}
+		for key, original := range loadAllowed {
+			allowed[key] = original
+		}
+		leaves, err := epathSQLOriginalSourceLeaves(link.SourceIDs, sources, allowed, check.Item.Period)
 		if err != nil {
 			return fail(err)
 		}
-		toLeaves, err := epathSQLQualitySourceLeaves(to.SourceIDs, sources, proof.Originals, allowed)
+		fromLeaves, err := epathSQLOriginalSourceLeaves(from.SourceIDs, sources, loadAllowed, check.Item.Period)
+		if err != nil {
+			return fail(err)
+		}
+		toLeaves, err := epathSQLOriginalSourceLeaves(to.SourceIDs, sources, allowed, check.Item.Period)
 		if err != nil {
 			return fail(err)
 		}
 		loadTrace, siteTrace := false, false
-		for _, id := range proof.LoadSources[service] {
-			loadTrace = loadTrace || leaves[id] && fromLeaves[id]
+		for key := range loadOriginals {
+			loadTrace = loadTrace || leaves[key] && fromLeaves[key]
 		}
-		for _, id := range siteIDs {
-			siteTrace = siteTrace || leaves[id] && toLeaves[id]
+		for key := range siteOriginals {
+			siteTrace = siteTrace || leaves[key] && toLeaves[key]
 		}
 		if !loadTrace || !siteTrace {
 			return fail(fmt.Errorf("conversion lacks exact independently owned load/site source trace"))
@@ -609,6 +844,44 @@ func epathSQLQualityRatioCounts(bundle PurposeResultBundle, check epathSQLModelC
 		status = "partial"
 	}
 	return len(found), len(candidates), status, nil
+}
+
+// Empty carrier requests the exact union for a service pair. RDD keys remain
+// unchanged; annual Tabular keys stay disjoint and are never dictionary IDs.
+func epathSQLQualitySiteOriginals(proof *epathSQLQualityProof, service, carrier string) (map[string]epathSQLOriginalSource, error) {
+	out := map[string]epathSQLOriginalSource{}
+	for current, ids := range proof.SiteSources[service] {
+		if carrier != "" && current != carrier {
+			continue
+		}
+		for _, id := range ids {
+			original, ok := proof.Originals[id]
+			if !ok || original.DictionaryIndex != id {
+				return nil, fmt.Errorf("unbound original ratio site dictionary source")
+			}
+			p := epathSQLOriginalRDD(original)
+			key, err := epathSQLOriginalKey(p)
+			if err != nil {
+				return nil, err
+			}
+			out[key] = p
+		}
+	}
+	for current, originals := range proof.SiteOriginals[service] {
+		if carrier != "" && current != carrier {
+			continue
+		}
+		for key, original := range originals {
+			if _, duplicate := out[key]; duplicate {
+				return nil, fmt.Errorf("duplicate independently typed ratio source")
+			}
+			out[key] = original
+		}
+	}
+	if err := epathSQLValidateOriginalSources(out); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func epathSQLQualitySourceLeaves(ids []string, sources map[string]EnergyDataSource, originals map[int]epathRealSQLSource, allowed []int) (map[int]bool, error) {

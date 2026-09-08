@@ -589,17 +589,50 @@ consumption and its absence from Monthly graphs. A dictionary-only inference
 that Ideal Loads had no site consumption was corrected against the original
 utility tables and official EnergyPlus 25.1 source before implementation.
 
-The independent source recipe and strict annual Tabular reader are implemented,
-including source display precision, unique report/cell provenance, actual zero
-versus missing/NULL, and full-year Weather checks. The monthly-only compiler
-still explicitly rejects the draft's annual sources: annual frames, service/
-allocation, carrier, quality and coverage integration are the next in-order work,
-not skipped checks. No Ideal Loads expected manifest has been approved. Current
-Small Office and Large Office saved acceptance regressions remain passing
-(17,675 / 46,224 metrics, 16.230 / 69.210 seconds). The full objective and the
-remaining 17 fixture approvals are unchanged.
+The independent source recipe and strict annual Tabular reader preserve source
+display precision, unique report/cell provenance, actual zero versus missing/NULL
+and full-year Weather checks. Annual frames, original-source proofs, site flows/
+residuals, Building/Zone services, carrier subtotals, quality and required-field
+coverage are now integrated. Tabular sources never acquire fake dictionary IDs
+or Monthly quantities; strict absence proofs distinguish unavailable Monthly
+district consumption from the independently reported Monthly electricity.
+Monthly-source annual sums remain unchanged.
 
-The first full verification of this checkpoint stopped at the unchanged EPATH-161
+Twenty exact original Monthly Ideal Loads Supply Air Latent Energy/Rate sources
+are independently bound to their five actual equipment owners. Existing
+EPATH-071/092 non-additive inspector context is retained without changing the
+selected sensible load or allowing context to replace its numeric source proof.
+Preserved Ideal Loads diagnostic 01 reports 6,504 failures over 16,993 checks
+(2,276 numeric/contract and 4,228 coverage); diagnostic 02 reports 1,246 over
+17,073 checks (480 numeric/contract and 766 coverage). Twelve explicitly reviewed
+Hourly reconciliation aliases now have independent complete 8,760-hour calendar
+and Monthly-equivalence proofs. Their source-only per-point normalization bound
+does not alter Monthly numeric authority or allocation precision. The resulting
+diagnostic 03 passes all 17,121 checks and required fields across 4,047 coverage
+records in 15.252 seconds, with zero failures or gaps in all eight groups.
+
+Diagnostic 04 repeats the complete pass in 16.396 seconds and writes only a
+pending-review artifact. Independent reviews verify its exact provenance,
+17,121 unique keys, 5,809 actual zeros, 2,328 explicit nulls, 455 count pairs and
+all 8,594 required coverage fields. Separate direct original-SQL arithmetic
+compares 3,135 core expectations across all 78 Zone-period contexts, retaining
+the actual plenum load, five equipment owners and annual-only district energy.
+Root explicitly approves the reviewed expectation header and its lossless
+131,365-byte companion; saved-original-wire acceptance passes all 17,121 metrics
+in 28.405 seconds. The offline integrity guard now requires this third approved
+fixture. The other 16 fixtures and later checklist acceptance remain pending.
+No production code or original simulation output changed in this oracle pass.
+Normal full verification and Wails build remain the required commit gate.
+
+The final normal `scripts/verify.ps1` passes: app 17.388 seconds, frontend/browser
+checks 148.242 seconds, simulation 164.133 seconds and Wails production build
+6.333 seconds. No test is excluded and no hook or latency threshold is bypassed.
+Windows Go package/cache finalization is slow between child processes, but the
+same verification invocation reaches a successful exit. The resulting executable
+is `build/bin/semantic-idf-v0.4.4.exe`. PTAC (`DOAToPTAC.idf`) is next in section 22;
+its existing capture remains unapproved and its source recipe is not yet authored.
+
+The preceding checkpoint's first full verification stopped at the unchanged EPATH-161
 50 ms selection limit: refreshing metadata for the same selection took 51.6 ms.
 All backend packages passed, but the hook did not build or create a commit.
 Response-only timing instrumentation then identified unnecessary whole-model
@@ -617,8 +650,10 @@ under 50 ms (maximum 44.5 ms). Nine actual model/projection/navigation/analysis-
 replacement cases also require exactly one fresh preparation and reuse on the
 following same-node click. Independent diff review confirms the original
 synchronous seven-section visibility, graph DOM retention and no-backend-work
-assertions remain intact. The normal full verification hook is still required
-before this checkpoint can be committed.
+assertions remain intact. The subsequent full verification and Wails build passed,
+and checkpoint `cd50293` was committed and pushed: frontend 148.960 seconds, app
+19.563 seconds, simulation cached and Wails 7.462 seconds. That completed gate
+does not replace the pending full verification of the newer annual integration.
 
 The later EPATH-211 cache audit must also exercise same-node selection after
 in-place replacement of nested model collections. The pure destination resolver

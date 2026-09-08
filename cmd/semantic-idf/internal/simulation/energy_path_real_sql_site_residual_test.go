@@ -9,56 +9,53 @@ import (
 type epathSQLSiteResidualProof struct {
 	Carrier                    string
 	Expected, Mapped, Residual epathSQLQuantity
-	Sources                    map[string]epathRealSQLSource
+	Sources                    map[string]epathSQLOriginalSource
 	Required                   map[string]bool
+	Unreported                 bool
 }
 
 func epathSQLModelSiteResidualChecks(frames epathSQLFrames, model epathRealSQLModel, checks *epathSQLModelChecks) error {
 	for _, period := range []string{"annual", "M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8", "M9", "M10", "M11", "M12"} {
 		proofs := map[string]*epathSQLSiteResidualProof{}
-		facilities := map[string]int{}
+		facilities, reported := map[string]int{}, map[string]bool{}
+		seen := map[string]bool{}
 		for _, site := range model.Site {
-			if site.Carrier == "" {
-				return fmt.Errorf("residual source has no reviewed carrier")
+			if site.ID == "" || seen[site.ID] || site.Carrier == "" {
+				return fmt.Errorf("residual source has no unique reviewed site/carrier")
 			}
+			seen[site.ID] = true
+			q, err := epathSQLSitePeriod(frames, site.ID, period)
+			if err != nil {
+				return err
+			}
+			if known, exists := reported[site.Carrier]; exists && known != (q != nil) {
+				return fmt.Errorf("residual cannot mix unreported and known carrier components")
+			}
+			reported[site.Carrier] = q != nil
 			p := proofs[site.Carrier]
 			if p == nil {
-				p = &epathSQLSiteResidualProof{Carrier: site.Carrier, Sources: map[string]epathRealSQLSource{}, Required: map[string]bool{}}
+				p = &epathSQLSiteResidualProof{Carrier: site.Carrier, Sources: map[string]epathSQLOriginalSource{}, Required: map[string]bool{}, Unreported: q == nil}
 				proofs[site.Carrier] = p
-			}
-			if len(frames.Site[site.ID]) != 12 || len(frames.SiteSources[site.ID]) == 0 {
-				return fmt.Errorf("residual requires complete independently observed meter %s", site.ID)
 			}
 			if site.Facility {
 				facilities[site.Carrier]++
 			}
-			for _, month := range epathSQLPeriodMonths(period) {
-				q := frames.Site[site.ID][month-1]
-				if q == nil || !q.valid() || q.Value < 0 {
-					return fmt.Errorf("residual cannot replace unknown site energy with zero")
-				}
+			if q != nil {
 				if site.Facility {
 					p.Expected = p.Expected.add(*q)
 				} else {
 					p.Mapped = p.Mapped.add(*q)
 				}
 			}
-			for _, id := range frames.SiteSources[site.ID] {
-				source, ok := frames.SourceIdentities[id]
-				if !ok || source.DictionaryIndex != id || !source.IsMeter {
-					return fmt.Errorf("unbound original residual meter")
-				}
-				name := fmt.Sprintf("sql-rdd-%d", id)
-				p.Sources[name] = source
-				months, err := epathSQLMonthly(source, model.Precision)
-				if err != nil {
-					return err
-				}
-				for _, month := range epathSQLPeriodMonths(period) {
-					if !months[month-1].includesZero() {
-						p.Required[name] = true
-					}
-				}
+			originals, required, err := epathSQLSiteOriginals(frames, site, period, model.Precision)
+			if err != nil {
+				return err
+			}
+			for id, original := range originals {
+				p.Sources[id] = original
+			}
+			for id := range required {
+				p.Required[id] = true
 			}
 		}
 		carriers := []string{}
@@ -74,11 +71,15 @@ func epathSQLModelSiteResidualChecks(frames epathSQLFrames, model epathRealSQLMo
 			p.Residual = p.Expected.add(p.Mapped.times(-1))
 			for _, field := range []string{"value", "fromValue", "toValue"} {
 				q := p.Residual.positive()
+				quantity := &q
+				if p.Unreported {
+					quantity = nil
+				}
 				target := epathRealOracleTarget{Collection: "nodes", ID: "residual.site_" + carrier + ".building", Level: "residual", Field: field, Unit: "kWh", ScaleDomain: "site", Basis: "residual"}
 				if field != "value" {
 					target = epathRealOracleTarget{Collection: "links", Field: field, Relation: "residual", Basis: "residual", FromUnit: "kWh", ToUnit: "kWh", Aggregate: "sum"}
 				}
-				if err := checks.add("residuals", "building", "", period, "site_residual/"+carrier+"/"+field, "kWh", &q, target, "", nil, nil); err != nil {
+				if err := checks.add("residuals", "building", "", period, "site_residual/"+carrier+"/"+field, "kWh", quantity, target, "", nil, nil); err != nil {
 					return err
 				}
 				checks.Rows[len(checks.Rows)-1].SiteResidual = p
@@ -101,6 +102,28 @@ func epathCheckSQLSiteResidual(bundle PurposeResultBundle, check epathSQLModelCh
 	target := check.Item.Target
 	if target.Basis != "residual" || target.Collection == "nodes" && (target.ID != "residual.site_"+p.Carrier+".building" || target.Level != "residual" || target.ScaleDomain != "site" || target.Unit != "kWh" || target.Field != "value") || target.Collection == "links" && (target.Relation != "residual" || target.Aggregate != "sum" || target.FromUnit != "kWh" || target.ToUnit != "kWh" || target.Field != "fromValue" && target.Field != "toValue") || target.Collection != "nodes" && target.Collection != "links" {
 		return fmt.Errorf("site residual target disagrees with its independent proof")
+	}
+	if p.Unreported {
+		if check.Quantity != nil || check.Want.Value != nil || check.Want.Status != "unavailable" || check.Item.Period == "annual" || len(epathSQLPeriodMonths(check.Item.Period)) != 1 {
+			return fmt.Errorf("unreported residual cannot acquire a numeric value")
+		}
+		nodes, links, _, _, err := epathOracleGraph(bundle, "building", "", check.Item.Period)
+		if err != nil {
+			return err
+		}
+		byID := map[string]EnergyExplanationNode{}
+		for _, node := range nodes {
+			byID[node.ID] = node
+			if node.Level == "residual" && node.ScaleDomain == "site" && node.Carrier == p.Carrier {
+				return fmt.Errorf("unreported monthly carrier has a fabricated site residual")
+			}
+		}
+		for _, link := range links {
+			if link.Relation == "residual" && (byID[link.ToID].Carrier == p.Carrier || link.ToID == "carrier."+p.Carrier+".building" || link.FromID == "residual.site_"+p.Carrier+".building") {
+				return fmt.Errorf("unreported monthly carrier has a fabricated residual branch")
+			}
+		}
+		return nil
 	}
 	difference := p.Expected.add(p.Mapped.times(-1))
 	differenceLow, differenceHigh := difference.bounds()
@@ -153,7 +176,7 @@ func epathCheckSQLSiteResidual(bundle PurposeResultBundle, check epathSQLModelCh
 	if err := epathCheckSQLModelQuantity(&selected.Value, &p.Residual); err != nil {
 		return err
 	}
-	if err := epathSQLZoneServiceVerifySources(selected.SourceIDs, sources, p.Sources, p.Required); err != nil {
+	if err := epathSQLVerifyOriginalSources(selected.SourceIDs, sources, p.Sources, p.Required, check.Item.Period); err != nil {
 		return err
 	}
 	count := 0
@@ -164,7 +187,7 @@ func epathCheckSQLSiteResidual(bundle PurposeResultBundle, check epathSQLModelCh
 		if !epathSQLSiteResidualMatches(byID, link, p) || link.Basis != "residual" || link.FromUnit != "kWh" || link.ToUnit != "kWh" || link.FromValue != selected.Value || link.ToValue != selected.Value || link.Ratio != 0 || link.RatioKind != "" || link.RatioLabel != "" || link.ServiceKind != "" {
 			return fmt.Errorf("site residual is not an exact same-domain carrier branch")
 		}
-		if err := epathSQLZoneServiceVerifySources(link.SourceIDs, sources, p.Sources, p.Required); err != nil {
+		if err := epathSQLVerifyOriginalSources(link.SourceIDs, sources, p.Sources, p.Required, check.Item.Period); err != nil {
 			return err
 		}
 		count++

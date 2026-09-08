@@ -1,6 +1,6 @@
 {
   "schema": "semantic-idf.energy-path-sql-oracle-recipe/v1",
-  "review": "DRAFT, NOT ACCEPTED, NOT YET COMPILABLE: independently reviewed original 5Zone_IdealLoadsAirSystems_ReturnPlenum.idf SHA256 1fc3cae54a39c004522db324ab7f172ce123d146e9fd63548393d4921f1a9786 and closed real-ideal-loads-25-1-20260907T162941.603417700/eplusout.sql SHA256 c43c777904b93b313617f8dcc8e40388bec4b3ac3549e4279d15f13c5019849d; no candidate-derived numeric expectations are included. The original has six Zones with Zone and SQL list multipliers one: SPACE1-1 through SPACE5-1 each has one ZoneHVAC:IdealLoadsAirSystem and PLENUM-1 is the shared AirLoopHVAC:ReturnPlenum. Actual Zone equipment lists and plenum inlet/outlet nodes establish those five served owners; there is no AirLoopHVAC main loop, fan, coil, pump or plant. Ideal Loads output keys ZONE 1 IDEAL LOADS through ZONE 5 IDEAL LOADS are equipment names, not Zone-name aliases. Each Ideal Loads unit connects to its corresponding SPACE and the common return plenum; the plenum is not a sixth conditioned equipment owner. Actual Zone Air System Sensible Cooling/Heating Energy Monthly/J observations exist for all six Zones and are the declared sensible authority, including nonzero plenum heating. Ideal Loads Zone/Supply sensible, latent and total observations differ from that authority and from one another; they are not added, relabelled as equal aliases or substituted for the selected sensible load. The ideal-specific availability declarations prove reported context only. People, Lights, ElectricEquipment and ZoneInfiltration:DesignFlowRate each have exactly five original SPACE owners and five corresponding SQL identities. Internal totals, storage, surface balance and interzone air balance report all six Zones. Subtracting a component outside its declared membership contributes zero only to a derived subtraction, never a fabricated source observation. Outdoor-air balance minus infiltration applies only to the five SPACE owners; PLENUM-1 has no infiltration object/identity and its outdoor-air transfer remains outdoor.unsplit. The 46 reported heat-transfer surfaces correspond to forty original BuildingSurface:Detailed and six FenestrationSurface:Detailed objects. All Zone/base/boundary references resolve; thirteen interzone pairs are reciprocal, there are no InternalMass self-boundaries, and SQL Roof includes the five interzone ceilings. The reviewed surface_class_boundary/v1 mapping and sign are unchanged. All 513 Monthly SQL dictionary identities have twelve finite non-warmup Weather-environment observations in 2017 with twelve distinct TimeIndex/month values and no duplicate name/key/unit/meter/frequency identities. Runtime annualization replaces the original two one-day RunPeriods with fixed 2017 January 1 through December 31, retaining timestep four and equipment, weather and schedules. SQL contains 8760 hourly and twelve monthly Weather records; severe/fatal counts are zero. Three site declarations select actual Monthly/J Electricity:Facility, InteriorLights:Electricity and InteriorEquipment:Electricity meters; the two directUses select actual Monthly/J Zone Lights Electricity Energy and Zone Electric Equipment Electricity Energy for exactly the five SPACE owners. Original custom electricity meters duplicate those quantities and are not added. Absence of requested Cooling:Electricity and Heating:Electricity ReportData dictionaries is not proof of absent modeled cooling/heating consumption: original SQL TabularDataWithStrings independently reports AnnualBuildingUtilityPerformanceSummary / Entire Facility / End Uses / Cooling / District Cooling / kWh and Heating / District Heating Water / kWh, with matching Total End Uses carrier cells. Four additional site.tabular declarations bind exactly those annual end-use and Total End Uses carrier cells, with reported kWh and two decimal places, without copying their values. These selectors require the forthcoming explicitly annual proof/frame integration; services=[] is only a non-compilable draft placeholder, not a no-consumption declaration. The annual table must not be synthesized into Monthly observations. SourceEnergyEndUseComponentsSummary and DemandEndUseComponentsSummary are distinct source-energy and peak-demand reports, not site-energy substitutes. No district Steam, gas, monthly HVAC site, fan/pump pool, fake zero or COP source is invented. The forty availability groups are restricted to the actual executed Monthly output plan, with exact observed units and meter flags; unrequested Small Office equipment/plant meter groups are not copied. All shared precision and family arithmetic declarations are unchanged. Annual tabular service/ratio/source integration, strict compilation and complete candidate comparison remain pending; no expected manifest or fixture acceptance is approved.",
+  "review": "DRAFT, NOT ACCEPTED; ANNUAL INTEGRATION UNDER REVIEW: independently reviewed original 5Zone_IdealLoadsAirSystems_ReturnPlenum.idf SHA256 1fc3cae54a39c004522db324ab7f172ce123d146e9fd63548393d4921f1a9786 and closed real-ideal-loads-25-1-20260907T162941.603417700/eplusout.sql SHA256 c43c777904b93b313617f8dcc8e40388bec4b3ac3549e4279d15f13c5019849d; no candidate-derived numeric expectations are included. The original has six Zones with Zone and SQL list multipliers one: SPACE1-1 through SPACE5-1 each has one ZoneHVAC:IdealLoadsAirSystem and PLENUM-1 is the shared AirLoopHVAC:ReturnPlenum. Actual Zone equipment lists and plenum inlet/outlet nodes establish those five served owners; there is no AirLoopHVAC main loop, fan, coil, pump or plant. Ideal Loads output keys ZONE 1 IDEAL LOADS through ZONE 5 IDEAL LOADS are equipment names, not Zone-name aliases. Each Ideal Loads unit connects to its corresponding SPACE and the common return plenum; the plenum is not a sixth conditioned equipment owner. Actual Zone Air System Sensible Cooling/Heating Energy Monthly/J observations exist for all six Zones and are the declared sensible authority, including nonzero plenum heating. Ideal Loads Zone/Supply sensible, latent and total observations differ from that authority and from one another; they are not added, relabelled as equal aliases or substituted for the selected sensible load. The ideal-specific availability declarations prove reported context only. People, Lights, ElectricEquipment and ZoneInfiltration:DesignFlowRate each have exactly five original SPACE owners and five corresponding SQL identities. Internal totals, storage, surface balance and interzone air balance report all six Zones. Subtracting a component outside its declared membership contributes zero only to a derived subtraction, never a fabricated source observation. Outdoor-air balance minus infiltration applies only to the five SPACE owners; PLENUM-1 has no infiltration object/identity and its outdoor-air transfer remains outdoor.unsplit. The 46 reported heat-transfer surfaces correspond to forty original BuildingSurface:Detailed and six FenestrationSurface:Detailed objects. All Zone/base/boundary references resolve; thirteen interzone pairs are reciprocal, there are no InternalMass self-boundaries, and SQL Roof includes the five interzone ceilings. The reviewed surface_class_boundary/v1 mapping and sign are unchanged. All 513 Monthly SQL dictionary identities have twelve finite non-warmup Weather-environment observations in 2017 with twelve distinct TimeIndex/month values and no duplicate name/key/unit/meter/frequency identities. Runtime annualization replaces the original two one-day RunPeriods with fixed 2017 January 1 through December 31, retaining timestep four and equipment, weather and schedules. SQL contains 8760 hourly and twelve monthly Weather records; severe/fatal counts are zero. Three site declarations select actual Monthly/J Electricity:Facility, InteriorLights:Electricity and InteriorEquipment:Electricity meters; the two directUses select actual Monthly/J Zone Lights Electricity Energy and Zone Electric Equipment Electricity Energy for exactly the five SPACE owners. Original custom electricity meters duplicate those quantities and are not added. Absence of requested Cooling:Electricity and Heating:Electricity ReportData dictionaries is not proof of absent modeled cooling/heating consumption: original SQL TabularDataWithStrings independently reports AnnualBuildingUtilityPerformanceSummary / Entire Facility / End Uses / Cooling / District Cooling / kWh and Heating / District Heating Water / kWh, with matching Total End Uses carrier cells. Four additional site.tabular declarations bind exactly those annual end-use and Total End Uses carrier cells, with reported kWh and two decimal places, without copying their values. The two service declarations bind exactly the five SPACE owners already established by original equipment and return-plenum nodes. Their annual-only district quantities use annual sums of those served sensible loads as the allocation denominator and Load / purchased energy ratios; the common return plenum is not a sixth owner. Dedicated annual proof/frame integration is under review, and monthly absence must be explicitly verified. The annual table must not be synthesized into Monthly observations. SourceEnergyEndUseComponentsSummary and DemandEndUseComponentsSummary are distinct source-energy and peak-demand reports, not site-energy substitutes. No district Steam, gas, monthly HVAC site, fan/pump pool, fake zero or COP source is invented. The forty availability groups are restricted to the actual executed Monthly output plan, with exact observed units and meter flags; unrequested Small Office equipment/plant meter groups are not copied. All shared precision and family arithmetic declarations are unchanged. Annual tabular service/ratio/source integration must pass strict compilation and complete original-candidate comparison before acceptance; no expected manifest or fixture acceptance is approved. The twenty explicit nonAdditiveLoadDetails separately bind Energy[J] and Rate[W] Monthly observations of Ideal Loads Supply Air Latent Cooling/Heating for each of the five exact equipment owners. Original ZoneHVAC:EquipmentConnections to EquipmentList to IdealLoads ownership and the executed plan ScopeZoneName were independently verified; PLENUM-1 has no such equipment. EPATH-071 and EPATH-092 retain these records on load/conversion inspector trace as context/Breakdown, not selected sensible/latent numeric contributions. Each original raw/effective equipment quantity is verified independently using actual SQL interval integration for Rate, never summed across Energy/Rate, re-multiplied by Zone factors or added to selected Loads/Cells. Twelve explicitly declared Hourly W temporal traces cover the six surface-convection aggregate owners and all six internal-convective aggregate owners, including the physically known-zero plenum. Original Hourly observations have 8760 distinct full 2017 Weather hourly intervals and twelve integrated month totals equal to the selected Monthly surface Rate or Total Internal Convective Heating Energy authority. Their existence does not substitute for the selected Monthly leaves or add energy to any family. Only those original Hourly source raw/effective inspector values use a separately counted bound for each observed nonzero hourly decimal3 normalization and final annual/effective presentation; canonical Monthly quantities, precision and allocation budgets remain unchanged.",
   "sources": [],
   "metrics": [],
   "sqlModel": {
@@ -388,6 +388,16 @@
       },
       {
         "id": "surface.balance",
+        "traceSources": [
+          {
+            "frequency": "Hourly",
+            "source": {
+              "alternatives": [{ "name": "Zone Air Heat Balance Surface Convection Rate", "unit": "W" }],
+              "keys": ["PLENUM-1", "SPACE1-1", "SPACE2-1", "SPACE3-1", "SPACE4-1", "SPACE5-1"],
+              "isMeter": false
+            }
+          }
+        ],
         "category": "balance.storage_other",
         "component": "sensible",
         "keys": [
@@ -421,6 +431,16 @@
       },
       {
         "id": "internal.other.sensible",
+        "traceSources": [
+          {
+            "frequency": "Hourly",
+            "source": {
+              "alternatives": [{ "name": "Zone Air Heat Balance Internal Convective Heat Gain Rate", "unit": "W" }],
+              "keys": ["PLENUM-1", "SPACE1-1", "SPACE2-1", "SPACE3-1", "SPACE4-1", "SPACE5-1"],
+              "isMeter": false
+            }
+          }
+        ],
         "category": "internal.other",
         "component": "sensible",
         "keys": [
@@ -567,6 +587,348 @@
             "SPACE3-1",
             "SPACE4-1",
             "SPACE5-1"
+          ],
+          "isMeter": false
+        }
+      }
+    ],
+    "nonAdditiveLoadDetails": [
+      {
+        "zoneName": "SPACE1-1",
+        "service": "cooling",
+        "ownerName": "ZONE 1 IDEAL LOADS",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Zone Ideal Loads Supply Air Latent Cooling Energy",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "ZONE 1 IDEAL LOADS"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "zoneName": "SPACE1-1",
+        "service": "cooling",
+        "ownerName": "ZONE 1 IDEAL LOADS",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Zone Ideal Loads Supply Air Latent Cooling Rate",
+              "unit": "W"
+            }
+          ],
+          "keys": [
+            "ZONE 1 IDEAL LOADS"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "zoneName": "SPACE1-1",
+        "service": "heating",
+        "ownerName": "ZONE 1 IDEAL LOADS",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Zone Ideal Loads Supply Air Latent Heating Energy",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "ZONE 1 IDEAL LOADS"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "zoneName": "SPACE1-1",
+        "service": "heating",
+        "ownerName": "ZONE 1 IDEAL LOADS",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Zone Ideal Loads Supply Air Latent Heating Rate",
+              "unit": "W"
+            }
+          ],
+          "keys": [
+            "ZONE 1 IDEAL LOADS"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "zoneName": "SPACE2-1",
+        "service": "cooling",
+        "ownerName": "ZONE 2 IDEAL LOADS",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Zone Ideal Loads Supply Air Latent Cooling Energy",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "ZONE 2 IDEAL LOADS"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "zoneName": "SPACE2-1",
+        "service": "cooling",
+        "ownerName": "ZONE 2 IDEAL LOADS",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Zone Ideal Loads Supply Air Latent Cooling Rate",
+              "unit": "W"
+            }
+          ],
+          "keys": [
+            "ZONE 2 IDEAL LOADS"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "zoneName": "SPACE2-1",
+        "service": "heating",
+        "ownerName": "ZONE 2 IDEAL LOADS",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Zone Ideal Loads Supply Air Latent Heating Energy",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "ZONE 2 IDEAL LOADS"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "zoneName": "SPACE2-1",
+        "service": "heating",
+        "ownerName": "ZONE 2 IDEAL LOADS",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Zone Ideal Loads Supply Air Latent Heating Rate",
+              "unit": "W"
+            }
+          ],
+          "keys": [
+            "ZONE 2 IDEAL LOADS"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "zoneName": "SPACE3-1",
+        "service": "cooling",
+        "ownerName": "ZONE 3 IDEAL LOADS",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Zone Ideal Loads Supply Air Latent Cooling Energy",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "ZONE 3 IDEAL LOADS"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "zoneName": "SPACE3-1",
+        "service": "cooling",
+        "ownerName": "ZONE 3 IDEAL LOADS",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Zone Ideal Loads Supply Air Latent Cooling Rate",
+              "unit": "W"
+            }
+          ],
+          "keys": [
+            "ZONE 3 IDEAL LOADS"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "zoneName": "SPACE3-1",
+        "service": "heating",
+        "ownerName": "ZONE 3 IDEAL LOADS",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Zone Ideal Loads Supply Air Latent Heating Energy",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "ZONE 3 IDEAL LOADS"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "zoneName": "SPACE3-1",
+        "service": "heating",
+        "ownerName": "ZONE 3 IDEAL LOADS",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Zone Ideal Loads Supply Air Latent Heating Rate",
+              "unit": "W"
+            }
+          ],
+          "keys": [
+            "ZONE 3 IDEAL LOADS"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "zoneName": "SPACE4-1",
+        "service": "cooling",
+        "ownerName": "ZONE 4 IDEAL LOADS",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Zone Ideal Loads Supply Air Latent Cooling Energy",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "ZONE 4 IDEAL LOADS"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "zoneName": "SPACE4-1",
+        "service": "cooling",
+        "ownerName": "ZONE 4 IDEAL LOADS",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Zone Ideal Loads Supply Air Latent Cooling Rate",
+              "unit": "W"
+            }
+          ],
+          "keys": [
+            "ZONE 4 IDEAL LOADS"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "zoneName": "SPACE4-1",
+        "service": "heating",
+        "ownerName": "ZONE 4 IDEAL LOADS",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Zone Ideal Loads Supply Air Latent Heating Energy",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "ZONE 4 IDEAL LOADS"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "zoneName": "SPACE4-1",
+        "service": "heating",
+        "ownerName": "ZONE 4 IDEAL LOADS",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Zone Ideal Loads Supply Air Latent Heating Rate",
+              "unit": "W"
+            }
+          ],
+          "keys": [
+            "ZONE 4 IDEAL LOADS"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "zoneName": "SPACE5-1",
+        "service": "cooling",
+        "ownerName": "ZONE 5 IDEAL LOADS",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Zone Ideal Loads Supply Air Latent Cooling Energy",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "ZONE 5 IDEAL LOADS"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "zoneName": "SPACE5-1",
+        "service": "cooling",
+        "ownerName": "ZONE 5 IDEAL LOADS",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Zone Ideal Loads Supply Air Latent Cooling Rate",
+              "unit": "W"
+            }
+          ],
+          "keys": [
+            "ZONE 5 IDEAL LOADS"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "zoneName": "SPACE5-1",
+        "service": "heating",
+        "ownerName": "ZONE 5 IDEAL LOADS",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Zone Ideal Loads Supply Air Latent Heating Energy",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "ZONE 5 IDEAL LOADS"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "zoneName": "SPACE5-1",
+        "service": "heating",
+        "ownerName": "ZONE 5 IDEAL LOADS",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Zone Ideal Loads Supply Air Latent Heating Rate",
+              "unit": "W"
+            }
+          ],
+          "keys": [
+            "ZONE 5 IDEAL LOADS"
           ],
           "isMeter": false
         }
@@ -1541,7 +1903,28 @@
         "isMeter": false
       }
     ],
-    "services": [],
+    "services": [
+      {
+        "service": "cooling",
+        "siteIds": ["cooling.district_cooling"],
+        "servedZones": ["SPACE1-1", "SPACE2-1", "SPACE3-1", "SPACE4-1", "SPACE5-1"],
+        "basis": "service_path_allocation",
+        "fallbackBasis": "zone_load_allocation",
+        "ratioKind": "load_to_purchased_energy",
+        "fallbackRatioKind": "load_to_purchased_energy",
+        "reconciliationId": "reconcile.zone_hvac_allocation.cooling.district_cooling.annual"
+      },
+      {
+        "service": "heating",
+        "siteIds": ["heating.district_heating"],
+        "servedZones": ["SPACE1-1", "SPACE2-1", "SPACE3-1", "SPACE4-1", "SPACE5-1"],
+        "basis": "service_path_allocation",
+        "fallbackBasis": "zone_load_allocation",
+        "ratioKind": "load_to_purchased_energy",
+        "fallbackRatioKind": "load_to_purchased_energy",
+        "reconciliationId": "reconcile.zone_hvac_allocation.heating.district_heating.annual"
+      }
+    ],
     "auxiliaries": [],
     "fanPools": [],
     "directUses": [

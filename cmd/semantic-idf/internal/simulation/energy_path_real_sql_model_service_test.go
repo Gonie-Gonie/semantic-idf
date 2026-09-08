@@ -121,6 +121,16 @@ func epathSQLModelServiceChecks(frames epathSQLFrames, model epathRealSQLModel, 
 		if len(served) == 0 {
 			return fmt.Errorf("service path requires explicit served Zone membership")
 		}
+		annualOnly, err := epathSQLServiceIsAnnualOnly(frames, service)
+		if err != nil {
+			return err
+		}
+		if annualOnly {
+			if err := epathSQLAnnualBuildingServiceChecks(frames, service, served, checks); err != nil {
+				return err
+			}
+			continue
+		}
 		monthSite, monthAssigned, monthUnassigned := [12]epathSQLQuantity{}, [12]epathSQLQuantity{}, [12]epathSQLQuantity{}
 		branchNumerator, branchDenominator := map[string][12]epathSQLQuantity{}, map[string][12]epathSQLQuantity{}
 		branchKindPairs := map[string][12]epathSQLConversionProof{}

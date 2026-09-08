@@ -6,12 +6,13 @@ Official model inputs, licenses and a versioned catalog live under
 `cmd/semantic-idf/internal/simulation/testdata/energy_path_real_models`.
 Coverage tags in that catalog are obligations to verify, not completed claims.
 
-Current checkpoint: Large Office and Small Office 25.1 have explicitly reviewed
-expected manifests and passing saved-result acceptance comparisons for all
-46,224 and 17,675 independent metrics respectively. The remaining 17 catalog
-entries, including Ideal Loads and Large Office
-22.1/23.2/24.2, are not yet approved. Earlier findings below are retained as a
-chronological record, not presented as the current acceptance status.
+Current checkpoint: Large Office, Small Office and Ideal Loads 25.1 have
+explicitly reviewed expected manifests and passing saved-result acceptance for
+all 46,224, 17,675 and 17,121 independent metrics respectively. The remaining 16
+catalog entries, including Large Office 22.1/23.2/24.2, are not yet approved.
+Earlier findings below are retained as a chronological record, not presented
+as the current acceptance status. Section 22 and later checklist sections remain
+in progress.
 
 ## Isolation and evidence
 
@@ -989,17 +990,99 @@ and never creates Monthly frames. Focused tests include wrong units/reports,
 duplicate cells, invalid calendar and source precision; the actual original SQL
 four positive cells and literal-zero steam cell pass with unchanged SQL hash.
 
-This is not Ideal Loads acceptance. The draft explicitly has no completed
-service declaration, and the monthly-only compiler rejects Annual Tabular
-sources until their dedicated annual integration is implemented. Required next
-work covers annual frames, site/source/flow/residual proofs, Building and Zone
-service allocation, Zone carrier subtotals, quality and full-record coverage.
-Monthly-source `Annual = sum(months)` checks must remain intact; annual-only
-sources require their own source and temporal proof. No expected manifest is
-approved and none of the remaining 17 catalog entries is marked complete.
-The already approved Small Office and Large Office fixtures still pass every
-17,675 and 46,224 metric respectively on current-production rebuilt snapshots
-(16.230 and 69.210 seconds), without changing their expected artifacts.
+The dedicated Annual Tabular integration is now implemented across independent
+frames, original-source identity and value proofs, site flows/residuals,
+Building/Zone service allocation, Zone carrier subtotals, quality and required
+record coverage. Tabular originals use their exact reviewed cell identity, not
+invented ReportData dictionary IDs. Monthly-source `Annual = sum(months)` remains
+strict; Annual-only cells never create Monthly quantities. Monthly absence is
+verified by explicit node/link/allocation absence proofs before a closure check
+can exclude it, rather than treating an unknown value as zero. Reported Monthly
+electricity remains independently checked alongside absent Monthly district
+consumption.
+
+The reviewed recipe also declares 20 original Monthly Ideal Loads Supply Air
+Latent Cooling/Heating observations: Energy [J] and Rate [W] for each of the five
+actual equipment owners. Their exact equipment-to-Zone ownership and raw/effective
+source quantities are independently verified. Existing EPATH-071/092 inspector
+contracts retain these sources as non-additive context/Breakdown on selected
+load and conversion trace. They are not added to the canonical Zone Air System
+sensible load, and cannot substitute for its required numeric source evidence.
+Wrong ownership, context metadata and source-wrapper substitutions are rejected.
+
+The failed comparisons remain preserved against candidate coverage 02:
+`ideal-loads-25-1-diagnostic-coverage-01.json` checks 16,993 obligations and reports
+6,504 failures (2,276 numeric/contract and 4,228 required-field coverage).
+After the explicit annual absence and 20 non-additive source integrations,
+`ideal-loads-25-1-diagnostic-coverage-02.json` checks 17,073 obligations and reports
+1,246 failures (480 numeric/contract and 766 coverage). Their remaining cause was
+original Hourly [W] reconciliation dependencies retained inside derived source
+input IDs while the independent recipe selected only Monthly numeric evidence.
+
+Twelve explicit alternate temporal observations now bind the six surface and
+six internal-convective aggregate owners, including the reported-zero plenum.
+An independent SQL calendar audit requires every one of the 8,760 distinct 2017
+Weather hours, finite values and exact one-hour intervals. Integrated original
+months agree with the selected Monthly surface rate or internal-convective
+energy authority (maximum observed discrepancy below 5.2e-12 kWh). These aliases
+are provenance only: primary source requirements, cells, allocation quantities
+and their precision remain unchanged. Only each original Hourly inspector
+source's raw/effective display has a separately counted bound for its nonzero
+hourly decimal3 normalization and final presentation stages. Real zeros remain
+exact zeros. Wrong family, owner, period, missing hour and alias-only authority
+are rejected, as are moving driver provenance to a load and hiding duplicate
+physical links behind a different context-source list.
+
+Preserved `ideal-loads-25-1-diagnostic-coverage-03.json` passes all 17,121
+numeric/contract checks and required fields across 4,047 coverage records in
+15.252 seconds: all eight groups have zero failures and zero coverage gaps.
+It uses unchanged candidate coverage 02 and original SQL; recipe SHA-256 is
+`d42097b62c9b2a7597152e74e0d201fb6d1dde9f9f1fcaca8b9a1d134daa9a60`.
+
+The strengthened dictionary guard also rejects unobserved duplicate identities,
+including case-only and Monthly-counterpart duplicates. Its first negative test
+failed before the guard and passes after it. A separate immutability test now
+compares the same numeric frame byte-for-byte before and after trace compilation;
+two independent numeric compilations can otherwise differ by preexisting
+map-order floating-point noise. Final temporal-source tests pass in 18.783
+seconds, and all DriverLinks tests including 23 new temporal counterexamples
+pass in 24.534 seconds.
+
+Diagnostic 04 repeats the complete 17,121-check pass in 16.396 seconds and
+creates a separate pending artifact with SHA-256
+`ea2f0324588495f7ac42483d1540c9b25df4b380f06d8d0ad9ea5df72f457be2`.
+Independent read-only reviews verify every provenance hash, the 105-file
+production digest, 91 scope-period contexts, 5,809 actual zeros, 2,328 explicitly
+typed nulls and 455 valid count pairs. Coverage contains 3,904 primary records
+and 143 typed non-flow source-correspondence links; its 8,594 required field
+slots all resolve to reviewed selectors. No blanket context exemption is added.
+The diagnostic 03/04 coverage registries are identical. A separate original-SQL
+arithmetic review compares 3,135 numeric/unavailable expectations across all 78
+Zone-period contexts, plus the 20 latent original sources, with maximum difference
+1.46e-11 kWh. It confirms annual-only district ownership, plenum load preservation
+and electricity subtotal exclusion.
+
+Root explicitly approves only this reviewed independent fixture in
+`expected/ideal-loads-25-1.json`. Its lossless 131,365-byte companion has SHA-256
+`db321d182089809a58f98b4363b09a56a6e3bed2af2bb5a383efe7f8cb2c93f8`,
+uncompressed metric SHA-256
+`a1a85f512b31aa933d03cdcd293d2ffff20ddfaf156026568f9ec69218514342`,
+and full sorted-key SHA-256
+`151ab8198c9420d2f8f75f8a69e96d55611363a1edbf7dadb1237860f7a47e5d`.
+Separate saved-original-wire acceptance passes all 17,121 values, identities,
+counts and statuses in 28.405 seconds. The offline integrity guard now requires
+all three approved fixtures. Final unchanged-expectation Small Office and Large
+Office regressions pass all 17,675 / 46,224 metrics in 18.255 / 77.710 seconds.
+Original files, candidates and failed diagnostics
+remain intact. This is the third of 19 approvals, not completion of section 22
+or later checklist sections. Normal full verification and Wails build remain
+the required commit gate.
+
+Final normal repository verification passes without exclusions: app 17.388
+seconds, frontend/browser checks 148.242 seconds and simulation 164.133 seconds.
+The Windows production executable builds successfully in 6.333 seconds. PTAC is
+the next unapproved fixture in catalog order; no later fixture or checklist
+section is marked accepted by this checkpoint.
 
 ## Portable EnergyPlus 22.1 provenance
 

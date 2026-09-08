@@ -9,11 +9,14 @@ import (
 // Quantities come only from reviewed SQL pool identities and their declared
 // served-Zone loads. Carrier endpoints are not inferred from candidate totals.
 type epathSQLZoneServiceProof struct {
-	Service, Basis string
-	Carriers       map[string]epathSQLQuantity
-	CarrierSources map[string]map[string]epathRealSQLSource
-	RequiredSites  map[string]map[string]bool
-	LoadSources    map[string]epathRealSQLSource
+	Service, Basis                      string
+	AnnualTabular, Unavailable, Unowned bool
+	Carriers                            map[string]epathSQLQuantity
+	CarrierSources                      map[string]map[string]epathRealSQLSource
+	AnnualCarrierSources                map[string]map[string]epathSQLOriginalSource
+	RequiredSites                       map[string]map[string]bool
+	LoadSources                         map[string]epathRealSQLSource
+	LoadDetails                         map[string]epathSQLLoadDetailIdentity // Exact non-additive context, never the numeric authority.
 }
 
 func epathSQLModelZoneServiceChecks(frames epathSQLFrames, model epathRealSQLModel, checks *epathSQLModelChecks) error {
@@ -47,6 +50,16 @@ func epathSQLModelZoneServiceChecks(frames epathSQLFrames, model epathRealSQLMod
 		served, err := epathSQLDeclaredZones(frames, service.ServedZones)
 		if err != nil || len(served) == 0 {
 			return fmt.Errorf("Zone service requires exact nonempty served membership: %v", err)
+		}
+		annualOnly, err := epathSQLServiceIsAnnualOnly(frames, service)
+		if err != nil {
+			return err
+		}
+		if annualOnly {
+			if err := epathSQLAnnualZoneServiceChecks(frames, model, service, served, zones, sites, checks); err != nil {
+				return err
+			}
+			continue
 		}
 		poolIDs := append([]string(nil), service.SiteIDs...)
 		sort.Strings(poolIDs)
@@ -234,7 +247,7 @@ func epathSQLModelZoneServiceChecks(frames epathSQLFrames, model epathRealSQLMod
 // declared carrier and both exact site-domain endpoints, not all outgoing links
 // of a broadly matched end-use node.
 func epathSQLZoneServiceCoveredLink(nodes []EnergyExplanationNode, link EnergyPathLink, proof *epathSQLZoneServiceProof) bool {
-	if proof == nil || link.Relation != "end_use_to_carrier" || link.ServiceKind != "" && link.ServiceKind != proof.Service || link.Basis != proof.Basis || link.FromUnit != "kWh" || link.ToUnit != "kWh" {
+	if proof == nil || proof.Unavailable || proof.Unowned || link.Relation != "end_use_to_carrier" || link.ServiceKind != "" && link.ServiceKind != proof.Service || link.Basis != proof.Basis || link.FromUnit != "kWh" || link.ToUnit != "kWh" {
 		return false
 	}
 	var from, to EnergyExplanationNode
@@ -270,6 +283,9 @@ func epathSQLZoneServiceVerifySources(ids []string, actual map[string]EnergyData
 
 func epathCheckSQLZoneServiceEndpoints(bundle PurposeResultBundle, check epathSQLModelCheck) error {
 	proof := check.ZoneService
+	if proof != nil && proof.AnnualTabular {
+		return epathCheckSQLAnnualZoneService(bundle, check)
+	}
 	if proof == nil || check.Item.Scope != "zone" || (proof.Service != "cooling" && proof.Service != "heating") || proof.Basis != "service_path_allocation" || check.Item.Target.Collection != "nodes" || check.Item.Target.Category != proof.Service || check.Item.Target.Basis != proof.Basis || len(proof.Carriers) == 0 || check.Quantity == nil || !check.Quantity.valid() {
 		return fmt.Errorf("exact Zone service proof required")
 	}

@@ -12,11 +12,13 @@ import (
 type epathSQLZoneCarrierProof struct {
 	Carrier, Basis, ZoneName, Period string
 	Value                            epathSQLQuantity
+	Unavailable                      bool
 }
 
 type epathSQLZoneCarrierPart struct {
-	ByCarrier map[string]epathSQLQuantity
-	Direct    bool
+	ByCarrier                  map[string]epathSQLQuantity
+	Direct                     bool
+	AnnualTabular, Unavailable bool
 }
 
 func epathSQLZoneCarrierContext(zone, period string) string {
@@ -49,12 +51,18 @@ func epathSQLZoneCarrierInputs(frames epathSQLFrames, model epathRealSQLModel, c
 		sites[site.ID], carriers[site.Carrier] = site, true
 	}
 	families := map[string]map[string]bool{}
+	annualFamilies := map[string]bool{}
 	for _, service := range model.Services {
 		key := "service/" + service.Service
 		if families[key] != nil || len(service.SiteIDs) == 0 || service.Basis != "service_path_allocation" {
 			return nil, nil, fmt.Errorf("missing/duplicate supported Zone service declaration")
 		}
 		families[key] = map[string]bool{}
+		annualOnly, err := epathSQLServiceIsAnnualOnly(frames, service)
+		if err != nil {
+			return nil, nil, err
+		}
+		annualFamilies[key] = annualOnly
 		for _, id := range service.SiteIDs {
 			site, ok := sites[id]
 			if !ok || site.Facility || site.EndUse != service.Service {
@@ -114,7 +122,11 @@ func epathSQLZoneCarrierInputs(frames epathSQLFrames, model epathRealSQLModel, c
 		family := ""
 		part := epathSQLZoneCarrierPart{ByCarrier: map[string]epathSQLQuantity{}}
 		if check.ZoneService != nil {
+			if check.Item.Target.Field != "value" {
+				continue
+			}
 			family = "service/" + check.ZoneService.Service
+			part.AnnualTabular, part.Unavailable = check.ZoneService.AnnualTabular, check.ZoneService.Unavailable
 			for carrier, q := range check.ZoneService.Carriers {
 				part.ByCarrier[carrier] = q
 			}
@@ -138,7 +150,9 @@ func epathSQLZoneCarrierInputs(frames epathSQLFrames, model epathRealSQLModel, c
 			continue
 		}
 		target, zone := check.Item.Target, strings.ToLower(check.Item.Zone)
-		if families[family] == nil || check.Item.Scope != "zone" || frames.Zones[zone].Name != check.Item.Zone || !epathOracleValidPeriod(check.Item.Period) || check.Item.Key != check.Want.Key || !checks.Keys[check.Want.Key] || check.Want.Scope != "zone" || check.Want.Zone != check.Item.Zone || check.Want.Period != check.Item.Period || check.Item.Unit != "kWh" || check.Want.Unit != "kWh" || target.Collection != "nodes" || target.Level != "end_use" || target.Field != "value" || target.Unit != "kWh" || target.ScaleDomain != "site" || check.Quantity == nil || !check.Quantity.valid() || check.Want.Value == nil || *check.Want.Value != check.Quantity.Value {
+		unavailable := part.AnnualTabular && annualFamilies[family] && part.Unavailable && check.Item.Period != "annual" && check.Quantity == nil && check.Want.Value == nil && check.Want.Status == "unavailable" && len(part.ByCarrier) == 0
+		known := check.Quantity != nil && check.Quantity.valid() && check.Want.Value != nil && *check.Want.Value == check.Quantity.Value
+		if families[family] == nil || part.AnnualTabular != annualFamilies[family] || part.Unavailable != unavailable || check.Item.Scope != "zone" || frames.Zones[zone].Name != check.Item.Zone || !epathOracleValidPeriod(check.Item.Period) || check.Item.Key != check.Want.Key || !checks.Keys[check.Want.Key] || check.Want.Scope != "zone" || check.Want.Zone != check.Item.Zone || check.Want.Period != check.Item.Period || check.Item.Unit != "kWh" || check.Want.Unit != "kWh" || target.Collection != "nodes" || target.Level != "end_use" || target.Field != "value" || target.Unit != "kWh" || target.ScaleDomain != "site" || !known && !unavailable {
 			return nil, nil, fmt.Errorf("missing/invalid independent Zone carrier scalar identity %s", check.Want.Key)
 		}
 		category, basis := strings.TrimPrefix(family, "service/"), "service_path_allocation"
@@ -154,7 +168,7 @@ func epathSQLZoneCarrierInputs(frames epathSQLFrames, model epathRealSQLModel, c
 		if part.Direct {
 			allowed = directOwners[family][zone]
 		}
-		if len(part.ByCarrier) != len(allowed) {
+		if !unavailable && len(part.ByCarrier) != len(allowed) {
 			return nil, nil, fmt.Errorf("missing/extra carrier component in %s/%s", family, zone)
 		}
 		sum := epathSQLQuantity{}
@@ -168,7 +182,7 @@ func epathSQLZoneCarrierInputs(frames epathSQLFrames, model epathRealSQLModel, c
 			}
 			sum = sum.add(q)
 		}
-		if !epathSQLZoneCarrierQuantityEqual(sum, *check.Quantity) {
+		if !unavailable && !epathSQLZoneCarrierQuantityEqual(sum, *check.Quantity) {
 			return nil, nil, fmt.Errorf("carrier-specific proof contradicts the independently checked end-use scalar")
 		}
 		context := epathSQLZoneCarrierContext(zone, check.Item.Period)
@@ -193,6 +207,17 @@ func epathSQLZoneCarrierInputs(frames epathSQLFrames, model epathRealSQLModel, c
 		}
 		for family := range families {
 			annual := parts[epathSQLZoneCarrierContext(key, "annual")][family]
+			if annualFamilies[family] {
+				if !annual.AnnualTabular || annual.Unavailable {
+					return nil, nil, fmt.Errorf("annual carrier family lacks its annual observation")
+				}
+				for month := 1; month <= 12; month++ {
+					if !parts[epathSQLZoneCarrierContext(key, fmt.Sprintf("M%d", month))][family].Unavailable {
+						return nil, nil, fmt.Errorf("annual-only carrier family manufactured monthly quantities")
+					}
+				}
+				continue
+			}
 			for carrier, expected := range annual.ByCarrier {
 				sum := epathSQLQuantity{}
 				for month := 1; month <= 12; month++ {
@@ -278,8 +303,60 @@ func epathSQLZoneCarrierRowIDs(carrier, zone, period string, monthly [12]epathSQ
 	return ids, nil
 }
 
+// A monthly direct-only graph has no inherited allocation accounting row.
+// Its fresh carrier row therefore has the plain carrier/period identity. This
+// narrow mode is proved from original reporting classes, never candidate IDs:
+// all declared HVAC inputs are annual-only, with no fan/allocated auxiliary.
+// An allocation in ANY carrier can retain inherited accounting in another
+// carrier, so checking only the selected carrier's HVAC pools is insufficient.
+func epathSQLZoneCarrierPlainMonthlyIDs(frames epathSQLFrames, model epathRealSQLModel) (map[string]bool, error) {
+	out := map[string]bool{}
+	if len(model.Services) == 0 || len(model.FanPools) != 0 {
+		return out, nil
+	}
+	for _, auxiliary := range model.Auxiliaries {
+		if auxiliary.Weight != "unassigned" {
+			return out, nil
+		}
+	}
+	for _, service := range model.Services {
+		annual, err := epathSQLServiceIsAnnualOnly(frames, service)
+		if err != nil {
+			return nil, err
+		}
+		if !annual {
+			return out, nil
+		}
+	}
+	monthly, annual := map[string]bool{}, map[string]bool{}
+	for _, site := range model.Site {
+		yearly, err := epathSQLSiteIsAnnual(frames, site.ID)
+		if err != nil {
+			return nil, err
+		}
+		if yearly {
+			annual[site.Carrier] = true
+		} else {
+			if _, err := epathSQLSitePeriod(frames, site.ID, "annual"); err != nil {
+				return nil, err
+			}
+			monthly[site.Carrier] = true
+		}
+	}
+	for _, direct := range model.DirectUses {
+		if monthly[direct.Carrier] && !annual[direct.Carrier] {
+			out[direct.Carrier] = true
+		}
+	}
+	return out, nil
+}
+
 func epathSQLModelZoneCarrierChecks(frames epathSQLFrames, model epathRealSQLModel, checks *epathSQLModelChecks) error {
 	parts, carriers, err := epathSQLZoneCarrierInputs(frames, model, *checks)
+	if err != nil {
+		return err
+	}
+	plainMonthlyIDs, err := epathSQLZoneCarrierPlainMonthlyIDs(frames, model)
 	if err != nil {
 		return err
 	}
@@ -309,8 +386,30 @@ func epathSQLModelZoneCarrierChecks(frames epathSQLFrames, model epathRealSQLMod
 			}
 			for _, period := range epathSQLZoneCarrierPeriods() {
 				q, d := epathSQLQuantity{}, epathSQLQuantity{}
-				for _, month := range epathSQLPeriodMonths(period) {
-					q, d = q.add(monthly[month-1]), d.add(direct[month-1])
+				available, annualPresent := false, false
+				for _, part := range parts[epathSQLZoneCarrierContext(zone, period)] {
+					if value, ok := part.ByCarrier[carrier]; ok {
+						available = true
+						q = q.add(value)
+						if part.Direct {
+							d = d.add(value)
+						}
+						annualPresent = annualPresent || part.AnnualTabular
+					}
+				}
+				if !available && period != "annual" {
+					annual := parts[epathSQLZoneCarrierContext(zone, "annual")]
+					for _, part := range annual {
+						if _, ok := part.ByCarrier[carrier]; ok && part.AnnualTabular {
+							annualPresent = true
+						}
+					}
+				}
+				if !available && annualPresent {
+					if err := epathSQLZoneCarrierAbsentChecks(frames.Zones[zone].Name, carrier, period, checks); err != nil {
+						return err
+					}
+					continue
 				}
 				basis := "service_path_allocation"
 				dlow, dhigh := d.bounds()
@@ -329,6 +428,28 @@ func epathSQLModelZoneCarrierChecks(frames epathSQLFrames, model epathRealSQLMod
 					checks.Rows[len(checks.Rows)-1].ZoneCarrier = proof
 				}
 				ids, err := epathSQLZoneCarrierRowIDs(carrier, proof.ZoneName, period, monthly)
+				if plainMonthlyIDs[carrier] {
+					// The annual sum of plain M# rows also has a plain annual ID;
+					// this does not apply to annual-only purchased-energy fallback.
+					ids = []string{"reconcile.energy." + carrier + "." + period}
+				}
+				if period == "annual" && annualPresent {
+					anyMonthly := false
+					for _, value := range monthly {
+						_, high := value.bounds()
+						anyMonthly = anyMonthly || high > 0
+					}
+					if !anyMonthly {
+						token := epathSQLZoneCarrierToken(proof.ZoneName)
+						id := "reconcile.energy." + carrier + ".annual." + token
+						if strings.HasPrefix(token, "m") {
+							id = strings.TrimSuffix(id, token) + "annual"
+						} else {
+							id += ".annual"
+						}
+						ids = []string{id}
+					}
+				}
 				if err != nil {
 					return err
 				}
@@ -349,6 +470,9 @@ func epathSQLModelZoneCarrierChecks(frames epathSQLFrames, model epathRealSQLMod
 
 func epathCheckSQLZoneCarrier(bundle PurposeResultBundle, check epathSQLModelCheck) error {
 	p, target := check.ZoneCarrier, check.Item.Target
+	if p != nil && p.Unavailable {
+		return epathCheckSQLZoneCarrierAbsent(bundle, check)
+	}
 	if p == nil || p.Carrier == "" || p.Basis != "direct_zone_energy" && p.Basis != "service_path_allocation" || check.Item.Scope != "zone" || p.ZoneName != check.Item.Zone || p.Period != check.Item.Period || !p.Value.valid() || p.Value.Value < 0 || check.Quantity == nil || !epathSQLZoneCarrierQuantityEqual(*check.Quantity, p.Value) || target.Collection != "nodes" || target.Level != "carrier" || target.Category != p.Carrier || target.Unit != "kWh" || target.ScaleDomain != "site" || target.AggregationBasis != "model_total" || target.Basis != p.Basis || target.Aggregate != "" || target.Field != "value" && target.Field != "allocatedValue" {
 		return fmt.Errorf("exact independent Zone carrier proof required")
 	}

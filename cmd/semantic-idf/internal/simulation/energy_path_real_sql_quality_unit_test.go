@@ -3,6 +3,7 @@ package simulation
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -65,6 +66,244 @@ func epathSQLQualityUnitFixture(t *testing.T) (PurposeResultBundle, epathSQLMode
 	}
 	checks.Rows[0].Quality = proof
 	return PurposeResultBundle{EnergyExplanation: result}, checks.Rows[0]
+}
+
+func epathSQLQualityTabularUnitFixture(t *testing.T) (PurposeResultBundle, epathSQLModelCheck) {
+	t.Helper()
+	_, observation, original, source := epathSQLOriginalUnitFixture(t, "25.00")
+	bundle, check := epathSQLQualityUnitFixture(t)
+	key, err := epathSQLOriginalKey(original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The load is the literal 100 kWh RDD observation above; purchased energy
+	// is the independently read original 25.00 kWh annual table cell.
+	source.ID = "source-2"
+	bundle.EnergyExplanation.Sources[1] = source
+	bundle.EnergyExplanation.Nodes[2].Carrier = "district_cooling"
+	bundle.EnergyExplanation.Nodes[2].SourceIDs = []string{source.ID}
+	bundle.EnergyExplanation.Links[0].RatioKind = "load_to_site_energy"
+	for i := range check.Quality.Dependencies {
+		dependency := &check.Quality.Dependencies[i]
+		if dependency.Item.Target.Level == "carrier" {
+			dependency.Item.Target.Category = "district_cooling"
+		}
+		if dependency.Item.Target.Level == "carrier" || dependency.Item.Target.Level == "end_use" && dependency.Item.Target.Category == "cooling" {
+			q := observation.Quantity
+			dependency.Quantity = &q
+		}
+		if dependency.Conversion != nil {
+			dependency.Conversion.To = observation.Quantity
+			dependency.Item.Target.RatioKind = "load_to_site_energy"
+		}
+	}
+	delete(check.Quality.Originals, 2)
+	check.Quality.SiteSources = nil
+	check.Quality.SiteOriginals = map[string]map[string]map[string]epathSQLOriginalSource{"cooling": {"district_cooling": {key: original}}}
+	check.Quality.SiteValues = map[string]map[string]epathSQLQuantity{"cooling": {"district_cooling": observation.Quantity}}
+	return bundle, check
+}
+
+func TestEnergyPathRealSQLQualityAnnualTabularOriginalPair(t *testing.T) {
+	bundle, check := epathSQLQualityTabularUnitFixture(t)
+	want, err := epathCheckSQLModelQuality(bundle, check)
+	if err != nil || want.Status != "complete" || want.Found == nil || *want.Found != 1 || want.Total == nil || *want.Total != 1 {
+		t.Fatalf("independent annual mixed RDD/Tabular pair: %#v %v", want, err)
+	}
+	for name, edit := range map[string]func(*PurposeResultBundle, *epathSQLModelCheck){
+		"unselected latent load source": func(b *PurposeResultBundle, _ *epathSQLModelCheck) {
+			b.EnergyExplanation.Sources = append(b.EnergyExplanation.Sources, EnergyDataSource{ID: "unselected-latent", SourceType: "sql_report_data", Name: "Zone Ideal Loads Supply Air Latent Cooling Energy", KeyValue: "Ideal Unit", SourceUnit: "J", NormalizedUnit: "kWh", ReportingFrequency: "Monthly"})
+			b.EnergyExplanation.Nodes[0].SourceIDs = append(b.EnergyExplanation.Nodes[0].SourceIDs, "unselected-latent")
+		},
+		"facility is not consumption cell": func(b *PurposeResultBundle, _ *epathSQLModelCheck) {
+			b.EnergyExplanation.Sources[1].RowName = "Total End Uses"
+		},
+		"site source absent on consumption endpoint": func(b *PurposeResultBundle, _ *epathSQLModelCheck) {
+			b.EnergyExplanation.Nodes[1].SourceIDs = []string{"source-1"}
+		},
+		"site source absent on conversion": func(b *PurposeResultBundle, _ *epathSQLModelCheck) {
+			b.EnergyExplanation.Links[0].SourceIDs = []string{"source-1"}
+		},
+		"changed observed annual quantity": func(b *PurposeResultBundle, _ *epathSQLModelCheck) {
+			b.EnergyExplanation.Nodes[1].Value, b.EnergyExplanation.Nodes[2].Value = 26, 26
+			b.EnergyExplanation.Links[0].ToValue, b.EnergyExplanation.Links[0].Ratio = 26, 100.0/26
+			b.EnergyExplanation.Links[1].FromValue, b.EnergyExplanation.Links[1].ToValue = 26, 26
+		},
+		"unknown annual site cannot become zero": func(_ *PurposeResultBundle, c *epathSQLModelCheck) {
+			delete(c.Quality.SiteValues["cooling"], "district_cooling")
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			b, c := epathSQLQualityTabularUnitFixture(t)
+			edit(&b, &c)
+			if _, err := epathCheckSQLModelQuality(b, c); err == nil {
+				t.Fatal("annual pair accepted missing/wrong independently owned evidence")
+			}
+		})
+	}
+	for month := 1; month <= 12; month++ {
+		period := fmt.Sprintf("M%d", month)
+		// Deliberately retain the same literal pair quantities in this mutant:
+		// matching arithmetic must not legitimize an annual cell in any month.
+		b, c := epathSQLQualityTabularUnitFixture(t)
+		c.Item.Period = period
+		for i := range c.Quality.Dependencies {
+			c.Quality.Dependencies[i].Item.Period = period
+		}
+		for i := range b.EnergyExplanation.Nodes {
+			b.EnergyExplanation.Nodes[i].Period = period
+		}
+		for i := range b.EnergyExplanation.Links {
+			b.EnergyExplanation.Links[i].Period = period
+		}
+		b.EnergyExplanation.Periods = []EnergyPeriod{{ID: period, Nodes: b.EnergyExplanation.Nodes, Links: b.EnergyExplanation.Links, Quality: b.EnergyExplanation.Quality}}
+		if _, err := epathCheckSQLModelQuality(b, c); err == nil {
+			t.Fatalf("annual Tabular pair was fabricated in %s", period)
+		}
+	}
+}
+
+func TestEnergyPathRealSQLQualityNonAdditiveDetailNeverProvesLoadQuantity(t *testing.T) {
+	fixture := func() (PurposeResultBundle, epathSQLModelCheck) {
+		b, c := epathSQLQualityUnitFixture(t)
+		detail, source := epathSQLOriginalLoadDetailUnitFixture()
+		original, err := epathSQLOriginalLoadDetail(detail)
+		if err != nil {
+			t.Fatal(err)
+		}
+		c.Quality.LoadDetails = map[string]map[string]epathSQLOriginalSource{"cooling": {source.ID: original}}
+		b.EnergyExplanation.Sources = append(b.EnergyExplanation.Sources, source)
+		b.EnergyExplanation.Nodes[0].SourceIDs = append(b.EnergyExplanation.Nodes[0].SourceIDs, source.ID)
+		b.EnergyExplanation.Links[0].SourceIDs = append(b.EnergyExplanation.Links[0].SourceIDs, source.ID)
+		return b, c
+	}
+	b, c := fixture()
+	if _, err := epathCheckSQLModelQuality(b, c); err != nil {
+		t.Fatalf("exact context changed otherwise proven pair: %v", err)
+	}
+	for name, edit := range map[string]func(*PurposeResultBundle, *epathSQLModelCheck){
+		"context replaces load endpoint": func(b *PurposeResultBundle, _ *epathSQLModelCheck) {
+			b.EnergyExplanation.Nodes[0].SourceIDs = []string{"sql-rdd-7"}
+		},
+		"context replaces load link": func(b *PurposeResultBundle, _ *epathSQLModelCheck) {
+			b.EnergyExplanation.Links[0].SourceIDs = []string{"source-2", "sql-rdd-7"}
+		},
+		"context added to numeric load": func(b *PurposeResultBundle, _ *epathSQLModelCheck) {
+			b.EnergyExplanation.Nodes[0].Value = 136
+			b.EnergyExplanation.Links[0].FromValue = 136
+			b.EnergyExplanation.Links[0].Ratio = 136.0 / 25
+		},
+		"context replaces carrier proof": func(b *PurposeResultBundle, _ *epathSQLModelCheck) {
+			b.EnergyExplanation.Links[1].SourceIDs = []string{"sql-rdd-7"}
+		},
+		"context disguised as ordinary source": func(b *PurposeResultBundle, _ *epathSQLModelCheck) {
+			b.EnergyExplanation.Sources[len(b.EnergyExplanation.Sources)-1].DriverRole = ""
+		},
+		"context disguised as derived wrapper": func(b *PurposeResultBundle, _ *epathSQLModelCheck) {
+			b.EnergyExplanation.Sources[len(b.EnergyExplanation.Sources)-1].InputSourceIDs = []string{"source-1"}
+		},
+		"context proof drops typed role": func(_ *PurposeResultBundle, c *epathSQLModelCheck) {
+			p := c.Quality.LoadDetails["cooling"]["sql-rdd-7"]
+			p.LoadDetail = nil
+			c.Quality.LoadDetails["cooling"]["sql-rdd-7"] = p
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			b, c := fixture()
+			edit(&b, &c)
+			if _, err := epathCheckSQLModelQuality(b, c); err == nil {
+				t.Fatal("non-additive context concealed missing numeric ownership or changed quantity")
+			}
+		})
+	}
+}
+
+func TestEnergyPathRealSQLQualityAnnualTabularCompilerTemporalBoundary(t *testing.T) {
+	site, observation, original, _ := epathSQLOriginalUnitFixture(t, "25.00")
+	frames, model := epathSQLZoneServiceUnitFrames()
+	oldID := model.Site[0].ID
+	model.Site[0] = site
+	delete(frames.Site, oldID)
+	delete(frames.SiteSources, oldID)
+	frames.SiteAnnual = map[string]epathSQLTabularObservation{site.ID: observation}
+	detail, _ := epathSQLOriginalLoadDetailUnitFixture()
+	detail.ZoneName, detail.OwnerName, detail.Source.KeyValue = "A", "Ideal A", "Ideal A"
+	frames.LoadDetailIdentities = map[int]epathSQLLoadDetailIdentity{7: detail}
+	frames.LoadDetailSourceIDs = map[string][]int{}
+	frames.SourceIdentities[7] = detail.Source
+	for month := 1; month <= 12; month++ {
+		frames.LoadDetailSourceIDs[epathSQLKey("a", "cooling", month)] = []int{7}
+	}
+	observed := epathRealOracleEvidence{outputPlan: &PurposeRunPlan{}}
+	for _, stage := range []string{"drivers", "loads", "endUses", "carriers"} {
+		name, meter := "original requested "+stage, stage == "endUses" || stage == "carriers"
+		model.Availability = append(model.Availability, epathRealSQLAvailability{ID: stage, Stage: stage, RequestedNames: []string{name}, Observations: []epathRealSQLAlternative{{Name: name, Unit: "J"}}, IsMeter: meter})
+		observed.outputPlan.OutputObjects = append(observed.outputPlan.OutputObjects, PurposeOutputObject{VariableName: name, ReportingFrequency: "Monthly"})
+		observed.Sources = append(observed.Sources, epathRealSQLSource{Name: name, SourceUnit: "J", ReportingFrequency: "Monthly", IsMeter: meter, Rows: 12})
+	}
+	var checks epathSQLModelChecks
+	if err := epathSQLModelQualityChecks(observed, frames, model, &checks); err != nil {
+		t.Fatal(err)
+	}
+	key, _ := epathSQLOriginalKey(original)
+	annual, monthly, availability := 0, 0, 0
+	for _, check := range checks.Rows {
+		proof := check.Quality
+		if proof.Field == "ratios" {
+			wantDetail := check.Item.Scope == "building" || check.Item.Zone == "A"
+			_, hasDetail := proof.LoadDetails["cooling"]["sql-rdd-7"]
+			if hasDetail != wantDetail || len(proof.LoadDetails["heating"]) != 0 {
+				t.Fatal("non-additive detail escaped exact scope/service/period membership")
+			}
+			for _, id := range proof.LoadSources["cooling"] {
+				if id == 7 {
+					t.Fatal("non-additive detail became delivered-load numeric authority")
+				}
+			}
+			originals, err := epathSQLQualitySiteOriginals(proof, "cooling", "district_cooling")
+			if err != nil {
+				t.Fatal(err)
+			}
+			q, known := proof.SiteValues["cooling"]["district_cooling"]
+			if check.Item.Period == "annual" {
+				annual++
+				if len(originals) != 1 || originals[key].Tabular == nil {
+					t.Fatal("annual original source identity lost")
+				}
+				if check.Item.Scope == "building" && (!known || !reflect.DeepEqual(q, observation.Quantity)) {
+					t.Fatal("original annual value/precision was not retained")
+				}
+				if check.Item.Scope == "zone" && known {
+					t.Fatal("annual Building pool was invented as a measured Zone amount without a Zone service proof")
+				}
+			} else {
+				monthly++
+				if len(originals) != 0 || known {
+					t.Fatal("annual site became monthly source/zero observation")
+				}
+			}
+		} else if proof.Field == "drivers" || proof.Field == "loads" || proof.Field == "endUses" || proof.Field == "carriers" {
+			availability++
+			if proof.RunLevel.Found != 1 || proof.RunLevel.Total != 1 {
+				t.Fatal("annual table cell changed requested Monthly availability counts")
+			}
+		}
+	}
+	if annual != 4 || monthly != 48 || availability != 4*13*4 {
+		t.Fatalf("incomplete annual/month/Zone proof roster: %d/%d/%d", annual, monthly, availability)
+	}
+	wrongOwner := detail
+	wrongOwner.ZoneName = "B"
+	frames.LoadDetailIdentities[7] = wrongOwner
+	if err := epathSQLModelQualityChecks(observed, frames, model, &epathSQLModelChecks{}); err == nil {
+		t.Fatal("misbound non-additive equipment owner entered ratio proof")
+	}
+	frames.LoadDetailIdentities[7] = detail
+	// Annual access to a true monthly meter still requires all twelve values.
+	frames.Site["heat.e"][11] = nil
+	if err := epathSQLModelQualityChecks(observed, frames, model, &epathSQLModelChecks{}); err == nil {
+		t.Fatal("Tabular support relaxed the strict twelve-month RDD sum")
+	}
 }
 
 func TestEnergyPathRealSQLQualityRatioIndependenceAndFailures(t *testing.T) {
@@ -378,6 +617,160 @@ func epathSQLQualitySiteClosureFixture(t *testing.T) (PurposeResultBundle, epath
 	b.EnergyExplanation.Nodes[2].Value, b.EnergyExplanation.Nodes[3].Value = 168, 240
 	b.EnergyExplanation.Quality = &EnergyPathQuality{EndUseToCarrierClosedPct: 76.471, EndUseToCarrierStatus: "overmapped"}
 	return b, epathSQLQualityAccountingUnitCheck("endUseToCarrierClosedPct", "building", "", "annual", prior.Rows)
+}
+
+func epathSQLQualityMixedTemporalClosureFixture(t *testing.T) (PurposeResultBundle, epathSQLFrames, epathRealSQLModel, epathSQLModelChecks) {
+	t.Helper()
+	frames, model, bundle := epathSQLAnnualSiteUnitInputs(t)
+	frames.SiteSources, frames.SourceIdentities = map[string][]int{}, map[int]epathRealSQLSource{}
+	for index, item := range []struct {
+		id, name string
+		facility bool
+	}{{"light.e", "InteriorLights:Electricity", false}, {"facility.e", "Electricity:Facility", true}} {
+		id := 90 + index
+		source := epathRealSQLSource{DictionaryIndex: id, Name: item.name, IsMeter: true, SourceUnit: "J", ReportingFrequency: "Monthly", Rows: 12}
+		for month := 1; month <= 12; month++ {
+			source.Months = append(source.Months, epathRealSQLMonth{Month: month, Rows: 1, RawSum: epathOracleNumber(20 * 3600000), EnergyKWh: epathOracleNumber(20)})
+			frames.Site[item.id] = append(frames.Site[item.id], &epathSQLQuantity{Value: 20})
+		}
+		frames.SourceIdentities[id], frames.SiteSources[item.id] = source, []int{id}
+		site := epathRealSQLSite{ID: item.id, Carrier: "electricity", Facility: item.facility}
+		if !item.facility {
+			site.EndUse = "lighting"
+		}
+		model.Site = append(model.Site, site)
+		bundle.EnergyExplanation.Sources = append(bundle.EnergyExplanation.Sources, EnergyDataSource{ID: fmt.Sprintf("sql-rdd-%d", id), SourceType: "sql_report_data", Name: item.name, IsMeter: true, SourceUnit: "J", NormalizedUnit: "kWh", ReportingFrequency: "Monthly"})
+	}
+	addElectric := func(nodes *[]EnergyExplanationNode, links *[]EnergyPathLink, period string, value float64) {
+		*nodes = append(*nodes, EnergyExplanationNode{ID: "lighting.e", Level: "end_use", EndUse: "lighting", Value: value, Unit: "kWh", ScaleDomain: "site", Basis: "reported_meter", AggregationBasis: "model_total", Period: period, SourceIDs: []string{"sql-rdd-90"}}, EnergyExplanationNode{ID: "electricity", Level: "carrier", Carrier: "electricity", Value: value, Unit: "kWh", ScaleDomain: "site", Basis: "reported_meter", AggregationBasis: "model_total", Period: period, SourceIDs: []string{"sql-rdd-91"}})
+		*links = append(*links, EnergyPathLink{ID: "lighting.flow", FromID: "lighting.e", ToID: "electricity", Relation: "direct_end_use_to_carrier", Basis: "reported_meter", Period: period, FromValue: value, ToValue: value, FromUnit: "kWh", ToUnit: "kWh", SourceIDs: []string{"sql-rdd-90"}})
+	}
+	addElectric(&bundle.EnergyExplanation.Nodes, &bundle.EnergyExplanation.Links, "annual", 240)
+	// The original annual district has 15.34 facility,12.34 consumption. The
+	// independently observed electric carrier has12*20=240 and no residual.
+	bundle.EnergyExplanation.Quality = &EnergyPathQuality{EndUseToCarrierClosedPct: 98.825, EndUseToCarrierStatus: "partial"}
+	for i := range bundle.EnergyExplanation.Periods {
+		p := &bundle.EnergyExplanation.Periods[i]
+		addElectric(&p.Nodes, &p.Links, p.ID, 20)
+		p.Quality = &EnergyPathQuality{EndUseToCarrierClosedPct: 100, EndUseToCarrierStatus: "complete"}
+	}
+	var prior epathSQLModelChecks
+	if err := epathSQLModelSiteChecks(frames, model, &prior); err != nil {
+		t.Fatal(err)
+	}
+	if err := epathSQLModelSiteFlowChecks(frames, model, &prior); err != nil {
+		t.Fatal(err)
+	}
+	return bundle, frames, model, prior
+}
+
+func TestEnergyPathRealSQLQualityClosureAnnualAbsenceIsNotUnknownMonthly(t *testing.T) {
+	bundle, frames, model, prior := epathSQLQualityMixedTemporalClosureFixture(t)
+	makeCheck := func(period string) epathSQLModelCheck {
+		c := epathSQLQualityAccountingUnitCheck("endUseToCarrierClosedPct", "building", "", period, prior.Rows)
+		var err error
+		c.Quality.AbsentSites, err = epathSQLQualityAbsentSites(frames, model, period)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}
+	for _, period := range epathSQLZoneCarrierPeriods() {
+		c := makeCheck(period)
+		want, err := epathCheckSQLModelQuality(bundle, c)
+		expected := 100.0
+		if period == "annual" {
+			expected = 98.825
+		}
+		if err != nil || want.Value == nil || *want.Value != expected {
+			t.Fatalf("mixed original annual/monthly %s: %+v %v", period, want, err)
+		}
+	}
+	for _, name := range []string{"unproved nil", "lost flow proof", "different original", "fabricated zero end use", "fabricated zero carrier", "missing monthly electricity", "wrong monthly electricity", "borrow wrong month", "invented monthly accounting"} {
+		t.Run(name, func(t *testing.T) {
+			b := bundle
+			b.EnergyExplanation.Periods = append([]EnergyPeriod(nil), bundle.EnergyExplanation.Periods...)
+			p := &b.EnergyExplanation.Periods[0]
+			p.Nodes = append([]EnergyExplanationNode(nil), p.Nodes...)
+			c := makeCheck("M1")
+			c.Quality.Dependencies = append([]epathSQLModelCheck(nil), c.Quality.Dependencies...)
+			switch name {
+			case "unproved nil":
+				c.Quality.AbsentSites = nil
+			case "lost flow proof":
+				for i := range c.Quality.Dependencies {
+					if c.Quality.Dependencies[i].SiteFlow != nil && c.Quality.Dependencies[i].SiteFlow.Unreported {
+						c.Quality.Dependencies[i].SiteFlow = nil
+					}
+				}
+			case "different original":
+				c.Quality.AbsentSites["carrier/district_cooling"] = c.Quality.AbsentSites["end_use/cooling"]
+			case "fabricated zero end use":
+				p.Nodes = append(p.Nodes, EnergyExplanationNode{ID: "fake-cooling", Level: "end_use", EndUse: "cooling", Unit: "kWh", ScaleDomain: "site", Basis: "reported_meter", Period: "M1"})
+			case "fabricated zero carrier":
+				p.Nodes = append(p.Nodes, EnergyExplanationNode{ID: "fake-carrier", Level: "carrier", Carrier: "district_cooling", Unit: "kWh", ScaleDomain: "site", Basis: "reported_meter", Period: "M1"})
+			case "missing monthly electricity":
+				p.Nodes = p.Nodes[:1]
+			case "wrong monthly electricity":
+				p.Nodes[1].Value = 0
+			case "borrow wrong month":
+				for i := range c.Quality.Dependencies {
+					if c.Quality.Dependencies[i].SiteFlow != nil && c.Quality.Dependencies[i].SiteFlow.Unreported {
+						c.Quality.Dependencies[i].Item.Period = "M2"
+					}
+				}
+			case "invented monthly accounting":
+				p.Reconciliation = []EnergyReconciliation{{ID: "reconcile.energy.district_cooling.M1", Level: "energy", Unit: "kWh", Period: "M1"}}
+			}
+			if _, err := epathCheckSQLModelQuality(b, c); err == nil {
+				t.Fatal("absence-aware closure accepted unknown or fabricated monthly evidence")
+			}
+		})
+	}
+	frames.Site["facility.e"][0] = nil
+	if _, err := epathSQLQualityAbsentSites(frames, model, "M1"); err == nil {
+		t.Fatal("missing original monthly facility converted to annual absence")
+	}
+}
+
+func TestEnergyPathRealSQLQualityClosureCallsStrictZoneAbsenceProofs(t *testing.T) {
+	prior := epathSQLAnnualZoneUnitChecks(t)
+	b := epathSQLAnnualZoneUnitBundle()
+	checked := 0
+	for _, dependency := range prior.Rows {
+		if dependency.Item.Period == "annual" || dependency.Item.Target.Collection != "nodes" || dependency.Item.Target.Field != "value" {
+			continue
+		}
+		c := epathSQLQualityAccountingUnitCheck("endUseToCarrierClosedPct", "zone", dependency.Item.Zone, dependency.Item.Period, prior.Rows)
+		handled, err := epathSQLQualityCheckAbsentSiteNode(b, c, dependency)
+		if !handled || err != nil {
+			t.Fatalf("strict Zone absence was not invoked: %s %v", dependency.Want.Key, err)
+		}
+		checked++
+	}
+	if checked != 3*12*4 {
+		t.Fatalf("lost selected Zone/month/service+carrier absence proofs: %d", checked)
+	}
+	for _, level := range []string{"end_use", "carrier"} {
+		for _, dependency := range prior.Rows {
+			if dependency.Item.Zone != "A" || dependency.Item.Period != "M1" || dependency.Item.Target.Level != level || dependency.Item.Target.Field != "value" {
+				continue
+			}
+			mutant := epathSQLAnnualZoneUnitBundle()
+			node := EnergyExplanationNode{ID: "invented-zero", Level: level, Unit: "kWh", ScaleDomain: "site", Basis: "service_path_allocation", Period: "M1", ZoneName: "A"}
+			if level == "carrier" {
+				node.Carrier = dependency.Item.Target.Category
+			} else {
+				node.EndUse = dependency.Item.Target.Category
+			}
+			mutant.EnergyExplanation.ZoneResults[0].Periods[1].Nodes = append(mutant.EnergyExplanation.ZoneResults[0].Periods[1].Nodes, node)
+			c := epathSQLQualityAccountingUnitCheck("endUseToCarrierClosedPct", "zone", "A", "M1", prior.Rows)
+			if handled, err := epathSQLQualityCheckAbsentSiteNode(mutant, c, dependency); !handled || err == nil {
+				t.Fatal("Zone unknown numeric became a fabricated zero endpoint")
+			}
+			break
+		}
+	}
 }
 
 func TestEnergyPathRealSQLQualityClosureRejectsCancellationAndResidualPadding(t *testing.T) {
