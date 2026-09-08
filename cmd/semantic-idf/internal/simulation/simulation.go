@@ -792,7 +792,9 @@ func RunSimulation(request SimulationRunRequest, progress func(SimulationProgres
 	}
 	if request.PurposeRequest != nil {
 		emitSimulationProgress(progress, request.RunID, "build_purpose_results", "running", "Building purpose result bundle", 8, simulationProgressTotal, result.InputPath)
-		bundle := BuildPurposeResultBundle(result, *request.PurposeRequest)
+		bundle := buildPurposeResultBundleWithProgress(result, *request.PurposeRequest, func(phase, message string) {
+			emitSimulationProgress(progress, request.RunID, phase, "running", message, 8, simulationProgressTotal, result.InputPath)
+		})
 		result.PurposeResults = &bundle
 	}
 	if result.Error != "" || result.ExitCode != 0 || result.ERR.Fatal > 0 || result.ERR.Severe > 0 {

@@ -39,6 +39,8 @@ import { navigateHVAC, renderHVACLoopDiagram } from "./hvac-views.js";
 import { renderProfile } from "./profile-views.js";
 
 let progressListenerRegistered = false;
+let simulationPendingResponseRunID = "";
+let simulationProgressClock = null;
 let heatFlowPlayTimer = 0;
 let simulationNavigationCleanup = null;
 let simulationNavigationRevealTarget = null;
@@ -667,6 +669,8 @@ export function initializeSimulationControls() {
     renderSimulationHeatFlow();
   });
   window.addEventListener("idfAnalyzer:simulationProgress", (event) => handleSimulationProgress(event.detail));
+  window.addEventListener("pagehide", () => stopSimulationProgressClock());
+  document.addEventListener("visibilitychange", refreshSimulationProgressClock);
   window.addEventListener("idfAnalyzer:documentChanged", () => {
     updateSimulationControls();
     renderSimulation();
@@ -1334,9 +1338,9 @@ function renderSimulationEmpty({ controlsReady = false, blockingIssue: preparedB
     renderSimulationHeatFlowEmpty(t("simulation.heatFlowAfterRun", {}, "The heat-flow ledger will appear when Zone Heat Flow SQL/CSV output is available."));
     setSimulationSeriesGroupUnavailable();
     elements.simulationChart.innerHTML = `<div class="simulation-running-empty">${renderMiniProgressSVG()}<span>${escapeHTML(t("simulation.graphAfterRun", {}, "Variables will appear when the run finishes."))}</span></div>`;
-    renderSimulationEnergyEmpty(t("simulation.outputPending", {}, "Outputs are pending while EnergyPlus runs."));
-    renderSimulationHVACLoopEmpty(t("simulation.outputPending", {}, "Outputs are pending while EnergyPlus runs."));
-    renderSimulationComfortEmpty(t("simulation.outputPending", {}, "Outputs are pending while EnergyPlus runs."));
+    renderSimulationEnergyEmpty(t("simulation.outputPending", {}, "Results will appear after simulation and result processing finish."));
+    renderSimulationHVACLoopEmpty(t("simulation.outputPending", {}, "Results will appear after simulation and result processing finish."));
+    renderSimulationComfortEmpty(t("simulation.outputPending", {}, "Results will appear after simulation and result processing finish."));
     toggleSimulationResultSections();
     updateSimulationOutputAvailability(null, true);
     return;
@@ -6660,11 +6664,76 @@ function renderSimulationProgress() {
     updateSimulationProgressClasses(false);
     return;
   }
-  const percent = Math.max(0, Math.min(100, Number(progress.percent || 0)));
+  const percent = Math.max(0, Math.min(100, Number(progress.percent) || 0));
+  const receiving = progress.phase === "complete" && simulationPendingResponseRunID === progress.runId;
+  const phase = receiving ? "receiving_results" : String(progress.phase || "");
+  const phaseKeys = {
+    build_purpose_results: "simulation.phasePurposeResults",
+    energy_geometry: "simulation.phaseEnergyGeometry",
+    energy_dashboard: "simulation.phaseEnergyDashboard",
+    energy_drivers: "simulation.phaseEnergyDrivers",
+    energy_service_paths: "simulation.phaseEnergyServicePaths",
+    energy_path: "simulation.phaseEnergyPath",
+    zone_heat_flow: "simulation.phaseZoneHeatFlow",
+    thermal_topology: "simulation.phaseThermalTopology",
+  };
+  const message = progress.message || statusText(progress.status);
+  const phaseLabel = phaseKeys[phase] ? t(phaseKeys[phase], {}, message) : "";
+  const label = receiving ? t("simulation.receivingResults", {}, "Receiving simulation results")
+    : phaseLabel || message;
+  const elapsed = simulationProgressClock && simulationProgressClock.runId === progress.runId
+    ? Math.max(0, Math.floor((performance.now() - simulationProgressClock.startedAt) / 1000)) : null;
+  const elapsedLabel = elapsed === null ? "" : t("simulation.progressElapsed", { seconds: elapsed }, `Elapsed ${elapsed}s`);
   elements.simulationProgressBar.style.width = `${percent}%`;
-  elements.simulationPercent.textContent = `${Math.round(percent)}%`;
-  elements.simulationStatus.textContent = progress.message || statusText(progress.status);
+  elements.simulationPercent.textContent = receiving ? "…" : `${Math.round(percent)}%`;
+  elements.simulationStatus.textContent = [label, elapsedLabel,
+    state.simulationRunning && !receiving ? t("simulation.progressStageNote", {}, "Stage progress, not a time estimate") : "",
+  ].filter(Boolean).join(" · ");
+  elements.simulationStatus.dataset.simulationProgressPhase = phase;
+  elements.simulationStatus.dataset.simulationProgressElapsed = elapsed === null ? "" : String(elapsed);
+  elements.simulationStatus.title = message;
   updateSimulationProgressClasses(state.simulationRunning || progress.status === "running");
+}
+
+function updateSimulationProgressUI() {
+  renderSimulationProgress();
+  updateSimulationControls();
+  const mini = elements.simulationChart?.querySelector(".simulation-running-empty .simulation-mini-progress");
+  if (mini) mini.outerHTML = renderMiniProgressSVG();
+}
+
+function stopSimulationProgressClock(runID = "") {
+  if (runID && simulationProgressClock?.runId !== runID) return;
+  if (simulationProgressClock?.timer) window.clearInterval(simulationProgressClock.timer);
+  simulationProgressClock = null;
+}
+
+function refreshSimulationProgressClock() {
+  const clock = simulationProgressClock;
+  if (!clock) return;
+  if (clock.timer) window.clearInterval(clock.timer);
+  clock.timer = 0;
+  if (!state.simulationRunning || clock.runId !== state.simulationActiveRunID || clock.runId !== simulationPendingResponseRunID) {
+    stopSimulationProgressClock(clock.runId);
+    return;
+  }
+  if (document.hidden) return;
+  renderSimulationProgress();
+  clock.timer = window.setInterval(() => {
+    if (clock.runId !== state.simulationActiveRunID || clock.runId !== simulationPendingResponseRunID || !state.simulationRunning) {
+      stopSimulationProgressClock(clock.runId);
+      return;
+    }
+    // Time is elapsed wall time, never simulated completion or a remaining-time
+    // estimate. No graph, inspector, controls or input parsing runs per tick.
+    renderSimulationProgress();
+  }, 1000);
+}
+
+function startSimulationProgressClock(runID) {
+  stopSimulationProgressClock();
+  simulationProgressClock = { runId: runID, startedAt: performance.now(), timer: 0 };
+  refreshSimulationProgressClock();
 }
 
 function updateSimulationControls(blockingIssue = simulationBlockingIssue()) {
@@ -9111,7 +9180,9 @@ async function runCurrentSimulation({ silent = false, auto = false } = {}) {
   const runID = `sim-${Date.now()}`;
   state.simulationRunning = true;
   state.simulationActiveRunID = runID;
+  simulationPendingResponseRunID = runID;
   state.simulationProgress = { runId: runID, percent: 0, message: t("simulation.preparing", {}, "Preparing simulation") };
+  startSimulationProgressClock(runID);
   renderSimulation();
   if (!silent) {
     setStatus(t("simulation.running", {}, "EnergyPlus simulation is running"), "loading");
@@ -9131,37 +9202,48 @@ async function runCurrentSimulation({ silent = false, auto = false } = {}) {
     silent,
     auto,
   };
+  let result;
   try {
-    const result = await callSimulationAPI("RunPurposeSimulationText", "/api/simulation-run", request);
-    if (state.simulationActiveRunID !== runID) {
-      return result;
-    }
-    state.simulationResult = result;
-    state.simulationEnergyDetailsOpen = false;
-    simulationEnergyDrawer = { tab: "data", stage: "", outputSource: "" };
-    simulationEnergyDetailsReturnSelector = "";
-    state.simulationRunning = false;
-    state.simulationSeriesRangeStart = 0;
-    state.simulationSeriesRangeEnd = -1;
-    state.simulationHeatFlowRangeStart = 0;
-    state.simulationHeatFlowRangeEnd = -1;
-    state.simulationHeatFlowFrameIndex = 0;
-    state.simulationHeatFlowStory = "all";
-    state.simulationProgress = { runId: runID, percent: 100, message: simulationDoneMessage(result), status: result.status };
-    renderSimulation();
-    if (!silent) {
-      setStatus(simulationDoneMessage(result), result.status === "succeeded" ? "ok" : "warn");
-    }
-    return result;
+    result = await callSimulationAPI("RunPurposeSimulationText", "/api/simulation-run", request);
   } catch (error) {
+    stopSimulationProgressClock(runID);
+    if (state.simulationActiveRunID !== runID) return null;
+    simulationPendingResponseRunID = "";
     state.simulationRunning = false;
-    state.simulationProgress = { runId: runID, percent: 100, message: error.message || String(error), status: "failed" };
-    renderSimulation();
-    if (!silent) {
-      setStatus(error.message || String(error), "error");
-    }
+    state.simulationProgress = { runId: runID, phase: "request_failed", percent: 100, message: error.message || String(error), status: "failed" };
+    syncSimulationRunSetup(state.simulationResult);
+    updateSimulationProgressUI();
+    if (!silent) setStatus(error.message || String(error), "error");
     return null;
   }
+  stopSimulationProgressClock(runID);
+  if (state.simulationActiveRunID !== runID) return result;
+  simulationPendingResponseRunID = "";
+  state.simulationResult = result;
+  state.simulationEnergyDetailsOpen = false;
+  simulationEnergyDrawer = { tab: "data", stage: "", outputSource: "" };
+  simulationEnergyDetailsReturnSelector = "";
+  state.simulationRunning = false;
+  state.simulationSeriesRangeStart = 0;
+  state.simulationSeriesRangeEnd = -1;
+  state.simulationHeatFlowRangeStart = 0;
+  state.simulationHeatFlowRangeEnd = -1;
+  state.simulationHeatFlowFrameIndex = 0;
+  state.simulationHeatFlowStory = "all";
+  state.simulationProgress = { runId: runID, phase: "render_results", percent: 100, message: t("simulation.preparingResults", {}, "Preparing result display"), status: "running" };
+  try {
+    renderSimulation();
+  } catch (error) {
+    const message = t("simulation.resultDisplayFailed", { message: error.message || String(error) }, `Results received, but display failed: ${error.message || String(error)}`);
+    state.simulationProgress = { runId: runID, phase: "display_failed", percent: 100, message, status: "display_failed" };
+    updateSimulationProgressUI();
+    if (!silent) setStatus(message, "error");
+    return result;
+  }
+  state.simulationProgress = { runId: runID, phase: "complete", percent: 100, message: simulationDoneMessage(result), status: result.status };
+  updateSimulationProgressUI();
+  if (!silent) setStatus(simulationDoneMessage(result), result.status === "succeeded" ? "ok" : "warn");
+  return result;
 }
 
 export function suppressSimulationAutoRunForCurrentDocument() {
@@ -9200,11 +9282,11 @@ async function maybeAutoRunSimulation() {
 
 function handleSimulationProgress(payload) {
   const progress = Array.isArray(payload) ? payload[0] : payload;
-  if (!progress || progress.runId !== state.simulationActiveRunID) {
+  if (!progress || progress.runId !== state.simulationActiveRunID || progress.runId !== simulationPendingResponseRunID) {
     return;
   }
   state.simulationProgress = progress;
-  renderSimulation();
+  updateSimulationProgressUI();
 }
 
 async function callSimulationAPI(methodName, endpoint, payload) {

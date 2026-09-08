@@ -794,7 +794,7 @@ func parseSimulationEnergyExplanationCanonicalSQL(path string, plan *PurposeRunP
 			monthlyTimeAxis := energyPathObservedMonthlyTimeAxis(db)
 			surfaceCategories, surfaceCategoryEligible := energyExplanationSurfaceCategoriesForDictionaries(dictionaries, driverContext)
 			categoryBuilders := map[string]*energyExplanationCategorySeriesBuilder{}
-			if err := walkReportData(db, SQLSeriesQuery{DictionaryIndexes: ids}, func(row SQLSeriesRow) error {
+			if err := walkReportDataCompact(db, SQLSeriesQuery{DictionaryIndexes: ids}, func(row SQLSeriesRow) error {
 				timeIndex := row.TimeIndex
 				dictionaryIndex := row.DictionaryIndex
 				value := row.Value
@@ -3586,7 +3586,8 @@ SELECT DISTINCT rdd.%s,
        %s,
        %s
 FROM ReportDataDictionary rdd
-JOIN ReportData rd ON rd.ReportDataDictionaryIndex = rdd.ReportDataDictionaryIndex
+JOIN (SELECT DISTINCT ReportDataDictionaryIndex FROM ReportData) rd
+  ON rd.ReportDataDictionaryIndex = rdd.ReportDataDictionaryIndex
 WHERE TRIM(%s) <> '' OR TRIM(%s) <> ''
 ORDER BY rdd.%s`, indexExpr, keyExpr, nameExpr, unitsExpr, isMeterExpr, frequencyExpr, indexGroupExpr, nameExpr, keyExpr, indexExpr))
 	if err != nil {
@@ -4697,28 +4698,13 @@ func energyPathDirectUseVariableAliasCatalog() []energyMeterAliasDefinition {
 }
 
 func energyVariableAliasDefinitionForName(name string) (energyMeterAliasDefinition, bool) {
-	key := normalizeEnergyOutputName(name)
-	definitions := append(energyVariableAliasCatalog(), energyPathDirectUseVariableAliasCatalog()...)
-	for _, def := range definitions {
-		for _, alias := range def.Aliases {
-			if normalizeEnergyOutputName(alias) == key {
-				return def, true
-			}
-		}
-	}
-	return energyMeterAliasDefinition{}, false
+	definition, ok := energyAliasDefinitions.variable[normalizeEnergyOutputName(name)]
+	return cloneEnergyMeterAliasDefinition(definition), ok
 }
 
 func energyMeterAliasDefinitionForName(name string) (energyMeterAliasDefinition, bool) {
-	key := normalizeEnergyOutputName(name)
-	for _, def := range energyMeterAliasCatalog() {
-		for _, alias := range def.Aliases {
-			if normalizeEnergyOutputName(alias) == key {
-				return def, true
-			}
-		}
-	}
-	return energyMeterAliasDefinition{}, false
+	definition, ok := energyAliasDefinitions.meter[normalizeEnergyOutputName(name)]
+	return cloneEnergyMeterAliasDefinition(definition), ok
 }
 
 func energyMeterAliasOrOtherDefinitionForName(name string) (energyMeterAliasDefinition, bool) {
@@ -4875,27 +4861,13 @@ func energyCarrierToken(value string) (string, bool) {
 }
 
 func energyLoadAliasDefinitionForName(name string) (energyLoadAliasDefinition, bool) {
-	key := normalizeEnergyOutputName(name)
-	for _, def := range energyLoadAliasCatalog() {
-		for _, alias := range def.Aliases {
-			if normalizeEnergyOutputName(alias) == key {
-				return def, true
-			}
-		}
-	}
-	return energyLoadAliasDefinition{}, false
+	definition, ok := energyAliasDefinitions.load[normalizeEnergyOutputName(name)]
+	return cloneEnergyLoadAliasDefinition(definition), ok
 }
 
 func energyHeatAliasDefinitionForName(name string) (energyHeatAliasDefinition, bool) {
-	key := normalizeEnergyOutputName(name)
-	for _, def := range energyHeatAliasCatalog() {
-		for _, alias := range def.Aliases {
-			if normalizeEnergyOutputName(alias) == key {
-				return def, true
-			}
-		}
-	}
-	return energyHeatAliasDefinition{}, false
+	definition, ok := energyAliasDefinitions.heat[normalizeEnergyOutputName(name)]
+	return cloneEnergyHeatAliasDefinition(definition), ok
 }
 
 func energyExplanationVariableAliasCandidates(name string) []string {

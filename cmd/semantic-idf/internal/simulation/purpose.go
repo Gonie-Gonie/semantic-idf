@@ -591,6 +591,17 @@ func PurposeOutputSignature(objectType string, fields []idf.OutputFieldValue) st
 }
 
 func BuildPurposeResultBundle(result *SimulationRunResult, request SimulationPurposeRequest) PurposeResultBundle {
+	return buildPurposeResultBundleWithProgress(result, request, nil)
+}
+
+// Report real post-processing stages without pretending they predict elapsed
+// time. The public/saved-result builder keeps its existing side-effect-free API.
+func buildPurposeResultBundleWithProgress(result *SimulationRunResult, request SimulationPurposeRequest, progress func(string, string)) PurposeResultBundle {
+	report := func(phase, message string) {
+		if progress != nil {
+			progress(phase, message)
+		}
+	}
 	request = NormalizeSimulationPurposeRequest(&request)
 	bundle := PurposeResultBundle{}
 	var sharedGeometry *idf.GeometryReport
@@ -599,6 +610,7 @@ func BuildPurposeResultBundle(result *SimulationRunResult, request SimulationPur
 	needsGeometry := purposeIDsContain(request.Purposes, SimulationPurposeBasicEnergy) ||
 		(purposeIDsContain(request.Purposes, SimulationPurposeZoneHeatFlow) && request.ZoneHeatFlowDetail == PurposeZoneHeatFlowDetailSurface)
 	if needsGeometry {
+		report("energy_geometry", "Mapping result geometry")
 		doc, err := simulationDocumentFromInput(result.InputPath)
 		sharedGeometryErr = err
 		if err == nil {
@@ -610,6 +622,7 @@ func BuildPurposeResultBundle(result *SimulationRunResult, request SimulationPur
 	for _, purposeID := range request.Purposes {
 		switch purposeID {
 		case SimulationPurposeBasicEnergy:
+			report("energy_dashboard", "Reading monthly energy totals")
 			plan := purposeRunPlanWithRequestScope(result.PurposeRunPlan, request)
 			bundle.Energy = buildEnergyDashboardResultFromFiles(result.Files)
 			if len(bundle.Energy.FacilityMonthly)+len(bundle.Energy.EndUseMonthly)+len(bundle.Energy.ZoneMonthly) == 0 {
@@ -630,19 +643,26 @@ func BuildPurposeResultBundle(result *SimulationRunResult, request SimulationPur
 					Message:  "Energy driver surface context could not load GeometryReport: " + sharedGeometryErr.Error(),
 				}
 			}
+			report("energy_drivers", "Reading energy drivers and building load contributions")
 			legacyExplanation := buildEnergyExplanationResultFromFilesWithDriverContext(result.Files, bundle.Energy, plan, driverContext)
+			report("energy_service_paths", "Mapping HVAC service paths and zone allocation")
 			legacyExplanation = enrichEnergyExplanationWithServicePaths(legacyExplanation, result.InputPath)
 			legacyExplanation = applyEnergyExplanationV1ServicePathLoadShareAllocation(legacyExplanation)
 			if result.PurposeRunPlan == nil {
 				markEnergyPathOutputPlanUnknown(&legacyExplanation)
 			}
+			report("energy_path", "Building Energy Path results")
 			bundle.EnergyExplanation = UpgradeEnergyExplanationV1(legacyExplanation)
 			bundle.EnergyExplanationSummary = buildEnergyExplanationSummary(bundle.EnergyExplanation)
 			bundle.Completeness = append(bundle.Completeness, bundle.Energy.Completeness...)
 		case SimulationPurposeZoneHeatFlow:
+			report("zone_heat_flow", "Preparing zone heat-flow results")
 			bundle.ZoneHeatFlow = result.HeatFlow
 			bundle.ZoneHeatFlow.Completeness = zoneHeatFlowCompleteness(result.HeatFlow)
 			bundle.Completeness = append(bundle.Completeness, bundle.ZoneHeatFlow.Completeness...)
+			if request.ZoneHeatFlowDetail == PurposeZoneHeatFlowDetailSurface {
+				report("thermal_topology", "Building surface heat-flow results")
+			}
 			bundle.ThermalTopology = buildThermalTopologySimulationResultWithGeometry(result, request, sharedGeometry, sharedGeometryErr)
 			if request.ZoneHeatFlowDetail == PurposeZoneHeatFlowDetailSurface {
 				bundle.Completeness = append(bundle.Completeness, bundle.ThermalTopology.Completeness...)

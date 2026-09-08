@@ -265,7 +265,7 @@ func loadThermalTopologyRawSeriesFromSQL(path string) ([]thermalTopologyRawSerie
 	}
 	buckets := map[int]*bucket{}
 	ordinals := map[int]int{}
-	err = walkReportData(db, SQLSeriesQuery{Names: names}, func(row SQLSeriesRow) error {
+	err = walkReportDataCompact(db, SQLSeriesQuery{Names: names}, func(row SQLSeriesRow) error {
 		if !row.Value.Valid {
 			return nil
 		}
@@ -567,7 +567,10 @@ func selectOpaqueThermalTopologyMeasurement(selected map[string]*thermalTopology
 func normalizeThermalTopologySeries(item thermalTopologyRawSeries) ([]float64, []string) {
 	values := make([]float64, len(item.points))
 	labels := make([]string, len(item.points))
-	intervalHours := thermalTopologyIntervalHours(item)
+	var intervalHours []float64
+	if item.rate {
+		intervalHours = thermalTopologyIntervalHours(item)
+	}
 	for index, point := range item.points {
 		labels[index] = firstThermalTopologyValue(point.Label, fmt.Sprintf("Frame %d", index+1))
 		if item.rate {

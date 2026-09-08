@@ -471,6 +471,23 @@ actual frontend tests, the simulation suite and Wails production build
 (10.101 seconds). The first passing Large Office numeric diagnostic and these
 regressions form an intermediate checkpoint; section 22 remains active.
 
+The user's subsequent 89% report is reproduced from the exact combined
+Basic Energy + Surface Zone Heat Flow capture, with the original files
+preserved and no engine rerun. The extended silent post-processing interval
+is reduced from 168.525 to 118.878 seconds; complete numeric/metadata/source
+membership equality passes. Actual phase and elapsed-time feedback no longer
+rerender existing results, and the 132 MB result displays in the real frontend.
+See `simulation-postprocessing-performance.md` for the bounded evidence and
+the remaining profile-guided work. This correction is not section 22 acceptance.
+
+The immediate profile-guided alias lookup follow-up reduces that same combined
+bundle to 60.826 seconds (from 168.525 seconds), without changing any exact
+numeric token, metadata or provenance membership. Fixed catalog indexes retain
+the original first-match and caller-owned slice contracts. Focused regressions
+and the full actual-file comparison pass. Fresh full repository verification
+and the Wails build also pass after correcting a native-clock browser test;
+the SQL/feedback and alias improvements are combined into one checkpoint.
+
 Checklist section 22's actual-model fixtures and expected manifests also remain
 required between EPATH-204 and EPATH-210; they have no individual EPATH numbers.
 The final completion definition in section 26 is part of acceptance as well.
