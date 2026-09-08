@@ -1238,6 +1238,8 @@ func canonicalEnergyExplanationSeries(item energyExplanationSeries) energyExplan
 			item.Stage = "load"
 		case "energy":
 			switch {
+			case item.MeterHierarchyLevel == "meter_group":
+				item.Stage = "context"
 			case energyExplanationIsSupportEndUse(item):
 				item.Stage = "support"
 			case item.MeterHierarchyLevel == "facility_total" || strings.HasSuffix(item.Kind, ".total"):
@@ -1665,6 +1667,7 @@ func buildEnergyExplanationResultWithDriverContext(series []energyExplanationSer
 		zoneDirectUseSeries = energyExplanationDirectZoneSeries(series)
 	}
 	series = excludeEnergyExplanationDirectUseSeries(series)
+	series, sources = filterEnergyMeterGroupContextSeries(series, sources)
 	series, sources = filterEnergyExplanationWaterContextSeries(series, sources)
 	sort.SliceStable(series, func(i, j int) bool {
 		if series[i].Level != series[j].Level {
@@ -4709,6 +4712,9 @@ func energyMeterAliasDefinitionForName(name string) (energyMeterAliasDefinition,
 
 func energyMeterAliasOrOtherDefinitionForName(name string) (energyMeterAliasDefinition, bool) {
 	if def, ok := energyMeterAliasDefinitionForName(name); ok {
+		return def, true
+	}
+	if def, ok := energyMeterGroupDefinitionForName(name); ok {
 		return def, true
 	}
 	if def, ok := energyMeterEndUseCarrierDefinitionForName(name); ok {

@@ -452,6 +452,12 @@ func epathCompileSQLModelFrames(sqlPath string, observed []epathRealSQLSource, m
 		}
 	}
 	for _, site := range model.Site {
+		if err := epathValidateSQLSiteSource(site); err != nil {
+			return out, err
+		}
+		if site.Tabular != nil {
+			return out, fmt.Errorf("annual Tabular site sources require dedicated annual-frame integration")
+		}
 		if site.ID == "" || site.Carrier == "" || (site.EndUse == "") == !site.Facility || out.Site[site.ID] != nil {
 			return out, fmt.Errorf("invalid/duplicate site declaration")
 		}

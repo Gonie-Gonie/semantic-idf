@@ -20,6 +20,12 @@ This directory contains original EnergyPlus example models for checklist section
   original SQL calculations. The Large Office approved regression still passes.
   The other 17 catalog entries remain unapproved, including the three older
   Large Office adapter versions. Ideal Loads is the next fixture in order.
+- Ideal Loads now has a reviewed draft source recipe, not an approved expected
+  manifest. Its actual Annual Tabular district consumption is preserved separately
+  from Monthly electricity observations. The independent annual-cell reader is
+  implemented; annual frame/service/quality/coverage integration is still pending.
+  The native Building meter subtotal double-counting defect found in this capture
+  is fixed, with original observations retained as non-additive source context.
 - All 19 engine executions have finished (18 normal results; the no-heating
   model rejected for Severe errors). Catalog paths where files are not yet
   present remain intended destinations, not completed acceptance claims.

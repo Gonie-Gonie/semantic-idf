@@ -922,6 +922,85 @@ the unchanged Large Office approved acceptance passes all 46,224 metrics in
 expectation was changed. Ideal Loads is next in section 22; the remaining 17
 catalog entries and later checklist sections are not approved by these passes.
 
+## Ideal Loads: group subtotals and annual-only sources
+
+The next original fixture is `5Zone_IdealLoadsAirSystems_ReturnPlenum.idf`,
+SHA-256 `1fc3cae54a39c004522db324ab7f172ce123d146e9fd63548393d4921f1a9786`,
+capture `real-ideal-loads-25-1-20260907T162941.603417700`, SQL SHA-256
+`c43c777904b93b313617f8dcc8e40388bec4b3ac3549e4279d15f13c5019849d`.
+Its normal full-year run completed in 4.650 seconds with five retained warnings
+and zero Severe/Fatal errors. All six Zones have multiplier one; SPACE1-1 through
+SPACE5-1 each owns an Ideal Loads system and PLENUM-1 is their common return
+plenum. Actual Zone Air System sensible observations exist for all six Zones,
+so that existing canonical authority remains ahead of Ideal Loads alternatives.
+PLENUM-1's 27,758.043436912194 kWh heating observation must not be replaced by zero
+because it has no conditioning unit of its own.
+
+The first dictionary-only audit incorrectly inferred no HVAC consumption from
+missing district ReportData meters. Inspection of the complete original SQL
+corrects that inference before implementation: its utility End Uses table
+reports annual district cooling 19,149.37 kWh and district water heating
+7,129.51 kWh, with corresponding Total End Uses carrier cells. EnergyPlus 25.1
+[defines Ideal Loads supply conditioning as district energy consumption](https://github.com/NatLabRockies/EnergyPlus/blob/v25.1.0/doc/input-output-reference/src/overview/group-zone-forced-air-units.tex#L7),
+and [registers those exact resources](https://github.com/NatLabRockies/EnergyPlus/blob/v25.1.0/src/EnergyPlus/PurchasedAirManager.cc#L634).
+These modeled annual consumption values are not evidence of physical utility
+infrastructure, but are valid annual site-energy fallback under EPATH-050. The
+monthly electricity observations total 35,724.5 kWh; annual total site energy is
+62,003.38 kWh including district consumption. Source-energy and peak-demand
+tables are different physical quantities and cannot substitute for these cells.
+All twelve monthly candidate graphs lack district consumption/conversion links;
+Annual alone uses the actual tabular source. Neither zero substitution nor
+monthly spreading of annual energy is permitted.
+
+The actual candidate also exposed a production error: `Electricity:Building`
+was classified as an unknown Other end use and added again to its lighting and
+equipment components. Native resource `Building`, `HVAC` and `Plant` subtotals
+now retain exact original source values, units, frequencies and observed zeros
+as inspector context, without contributing another end use or becoming a
+Facility total. The matcher is restricted to native two-part resource/group
+names; ordinary carrier-qualified custom end uses remain unchanged. The
+new classification and full SQL graph regression fail before the fix and pass
+after it. Raw V1 decoding/migration is unchanged; canonical rebuilds receive
+the corrected classification.
+
+Preserved candidate `ideal-loads-25-1-candidate-coverage-01.json`, SHA-256
+`282f04691facbd516f8b3d14f4cf24a0cfabb2cbca900a97fa2b15aa46d0701c`,
+shows the duplicate branch and 42.383% overmapped site closure. New candidate
+`ideal-loads-25-1-candidate-coverage-02.json`, rebuilt in 5.690 seconds, SHA-256
+`26cc706e4684624d4d1951a3764db3704f82f5b1432420a6d5230932d4067b01`,
+has 100% complete site closure while preserving both original Building subtotal
+sources (Monthly dictionary 68 and RunPeriod dictionary 70), each 35,724.5 kWh.
+The original district values and their annual-only temporal coverage remain
+unchanged. Comparing the two preserved candidates also verifies all 604 original
+source identities, numeric values, units, frequencies and input-source IDs are
+unchanged, as are the complete thermal node payloads in all 91 scope/period
+graphs. Current production-source SHA-256 is
+`858222b1427254e393edec501491665ae80a01a807538520580c95e6c351f7bc`.
+
+The independently reviewed draft recipe records 16 driver families, six-Zone
+sensible loads, five-Zone direct lighting/equipment, three Monthly electricity
+meters, four exact Annual Tabular selectors and 40 actual-plan availability
+groups. It does not contain copied candidate expectations. A new independent
+Tabular reader validates a unique exact utility report/facility/table/row/column,
+original cell ID, explicit energy unit, fixed-decimal source precision and full
+annual Weather coverage. It retains the reported 0.01 kWh precision as a bounded
+half-unit interval, distinguishes actual zero from missing/NULL observations,
+and never creates Monthly frames. Focused tests include wrong units/reports,
+duplicate cells, invalid calendar and source precision; the actual original SQL
+four positive cells and literal-zero steam cell pass with unchanged SQL hash.
+
+This is not Ideal Loads acceptance. The draft explicitly has no completed
+service declaration, and the monthly-only compiler rejects Annual Tabular
+sources until their dedicated annual integration is implemented. Required next
+work covers annual frames, site/source/flow/residual proofs, Building and Zone
+service allocation, Zone carrier subtotals, quality and full-record coverage.
+Monthly-source `Annual = sum(months)` checks must remain intact; annual-only
+sources require their own source and temporal proof. No expected manifest is
+approved and none of the remaining 17 catalog entries is marked complete.
+The already approved Small Office and Large Office fixtures still pass every
+17,675 and 46,224 metric respectively on current-production rebuilt snapshots
+(16.230 and 69.210 seconds), without changing their expected artifacts.
+
 ## Portable EnergyPlus 22.1 provenance
 
 To test the lower supported version without changing installed applications,

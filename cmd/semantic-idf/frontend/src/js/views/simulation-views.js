@@ -1490,7 +1490,9 @@ function simulationEnergySceneOptions(scene) {
 
 function prepareSimulationEnergyModelNavigation(scene) {
   const navigation = state.semanticProjection?.navigation;
-  const context = [state.report, state.report?.geometry, state.report?.profile, state.report?.hvac,
+  // A new report wrapper still refreshes the inspector below, but the index
+  // consumes these model/navigation payloads, not the report container itself.
+  const context = [state.report?.geometry, state.report?.profile, state.report?.hvac,
     state.semanticProjection, navigation, navigation?.entities, navigation?.occurrences,
     state.reportAnalysisKey, state.lastAnalyzedKey];
   if (scene.modelNavigationContext && context.every((value, index) => value === scene.modelNavigationContext[index])) return;

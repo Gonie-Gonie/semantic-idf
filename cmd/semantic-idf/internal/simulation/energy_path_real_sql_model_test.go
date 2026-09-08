@@ -58,11 +58,12 @@ type epathRealSQLLoad struct {
 	Source    epathRealSQLSelector `json:"source"`
 }
 type epathRealSQLSite struct {
-	ID       string               `json:"id"`
-	EndUse   string               `json:"endUse,omitempty"`
-	Carrier  string               `json:"carrier"`
-	Facility bool                 `json:"facility,omitempty"`
-	Source   epathRealSQLSelector `json:"source"`
+	ID       string                       `json:"id"`
+	EndUse   string                       `json:"endUse,omitempty"`
+	Carrier  string                       `json:"carrier"`
+	Facility bool                         `json:"facility,omitempty"`
+	Source   epathRealSQLSelector         `json:"source"`
+	Tabular  *epathRealSQLTabularSelector `json:"tabular,omitempty"`
 }
 
 // Explicit source identities, not values copied from a candidate. Only the

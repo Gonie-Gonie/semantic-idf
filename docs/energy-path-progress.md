@@ -580,3 +580,49 @@ tiny positive unassigned pump energy. Saved-original-wire acceptance passes in
 the original visit bound and rejection of fractional-month assignments remain.
 The offline integrity guard now requires both approved fixtures. Ideal Loads
 is next; 17 catalog entries and all later checklist acceptance remain pending.
+
+Ideal Loads preparation now exposes and fixes native Building/HVAC/Plant meter
+subtotals being counted as additional Other consumption. Their original source
+values remain in inspector context. The actual original-SQL rebuild restores
+site closure from 42.383% overmapped to 100%, retaining reported annual district
+consumption and its absence from Monthly graphs. A dictionary-only inference
+that Ideal Loads had no site consumption was corrected against the original
+utility tables and official EnergyPlus 25.1 source before implementation.
+
+The independent source recipe and strict annual Tabular reader are implemented,
+including source display precision, unique report/cell provenance, actual zero
+versus missing/NULL, and full-year Weather checks. The monthly-only compiler
+still explicitly rejects the draft's annual sources: annual frames, service/
+allocation, carrier, quality and coverage integration are the next in-order work,
+not skipped checks. No Ideal Loads expected manifest has been approved. Current
+Small Office and Large Office saved acceptance regressions remain passing
+(17,675 / 46,224 metrics, 16.230 / 69.210 seconds). The full objective and the
+remaining 17 fixture approvals are unchanged.
+
+The first full verification of this checkpoint stopped at the unchanged EPATH-161
+50 ms selection limit: refreshing metadata for the same selection took 51.6 ms.
+All backend packages passed, but the hook did not build or create a commit.
+Response-only timing instrumentation then identified unnecessary whole-model
+driver navigation preparation after a shallow report-wrapper replacement:
+23.8 ms of a 32.9 ms handler in the isolated pre-fix measurement. A deterministic
+no-rebuild assertion fails before the correction even when timing is under the
+limit. The minimal correction excludes only that wrapper from the navigation
+cache context; inspector refresh and actual model/projection/hash invalidation
+remain required. No latency threshold, native clock or DOM-retention check is
+relaxed.
+
+The isolated post-fix run passes in 8.339 seconds: that metadata handler takes
+8.7 ms with zero navigation rebuilds, and all 19 original timed selections remain
+under 50 ms (maximum 44.5 ms). Nine actual model/projection/navigation/analysis-key
+replacement cases also require exactly one fresh preparation and reuse on the
+following same-node click. Independent diff review confirms the original
+synchronous seven-section visibility, graph DOM retention and no-backend-work
+assertions remain intact. The normal full verification hook is still required
+before this checkpoint can be committed.
+
+The later EPATH-211 cache audit must also exercise same-node selection after
+in-place replacement of nested model collections. The pure destination resolver
+already invalidates replaced collections, but the mounted inspector currently
+observes their parent model references. Normal analysis replaces those parents;
+this narrower wrapper correction does not claim broader in-place mutation
+support or mark that later audit complete.
