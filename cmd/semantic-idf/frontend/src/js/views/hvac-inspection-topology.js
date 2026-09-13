@@ -178,9 +178,9 @@ function observationRecords(loop, graph, layout, nodes, components) {
       if (!anchor) {
         // A named zone relationship must be present in the parsed demand graph.
         // Splitter list order and similar-looking names are not a relationship.
-        const mapped = (loop.demandGraph?.nodes || []).filter((point) => normalized(point.nodeName) === normalized(item.name) && point.zoneName);
+        const mapped = (loop.demandGraph?.nodes || []).filter((point) => normalized(point.nodeName) === normalized(item.name) && point.zoneName && ["zone_inlet", "zone_return"].includes(point.role));
         const owners = new Set(mapped.map((point) => normalized(point.zoneName)));
-        if (owners.size === 1) {
+        if (owners.size === 1 && new Set(mapped.map((point) => point.role)).size === 1) {
           const zone = layout.anchors.find((point) => point.kind === "zone" && normalized(point.name) === [...owners][0]);
           const role = mapped[0].role;
           if (zone && ["zone_inlet", "zone_return"].includes(role)) anchor = { ...zone, kind: "node", name: item.name, x: zone.x + (role === "zone_inlet" ? 42 : -42), role };

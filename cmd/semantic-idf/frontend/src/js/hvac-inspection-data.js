@@ -62,11 +62,12 @@ export function prepareHVACInspection(loop = {}) {
   const language = t("simulation.hvacInspectTemperature");
   const saved = cache.get(loop);
   if (saved?.language === language) return saved;
+  const waterLoop = ["plantloop", "condenserloop"].includes(token(loop.loopType || loop.topology?.type));
   const entities = new Map(), candidates = [];
   const add = (series, kind, owner = {}) => {
-    if (!series || !pointList(series).length || series.reportingFrequency && token(series.reportingFrequency) !== "hourly") return;
+    if (!series || series.reportingFrequency && token(series.reportingFrequency) !== "hourly") return;
     const parts = columnParts(series), name = owner.componentName || parts.key;
-    if (!name) return;
+    if (!name || kind === "node" && waterLoop && /humidity/i.test(parts.name) || !pointList(series).length) return;
     const id = kind === "node" ? `node:${token(name)}` : `component:${token(owner.componentType)}:${token(name)}`;
     if (!entities.has(id)) entities.set(id, { id, name, type: owner.componentType || "", kind, properties: [],
       inletNodes: owner.inletNodes || [], outletNodes: owner.outletNodes || [], nodePorts: owner.nodePorts || [],
@@ -106,7 +107,7 @@ export function prepareHVACInspection(loop = {}) {
     seen.add(id);
     item.entity.properties.push({ id, name: item.name, ...measurement(item.name, item.unit), series: item.series, entity: item.entity });
   }
-  const model = { language, loop, primary, entities: [...entities.values()].filter((entity) => entity.properties.length), frames, byRow, byLabel, calendarValid };
+  const model = { language, loop, waterLoop, primary, entities: [...entities.values()].filter((entity) => entity.properties.length), frames, byRow, byLabel, calendarValid };
   cache.set(loop, model);
   return model;
 }

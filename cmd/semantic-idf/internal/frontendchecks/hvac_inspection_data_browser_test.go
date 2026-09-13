@@ -77,6 +77,12 @@ try {
  const fuel={...structuredClone(loop),components:[{componentName:'GAS COIL',componentType:'Coil:Heating:Fuel',series:[series('Heating Coil Electricity Rate','W',[point(0,0)],'GAS COIL'),series('Heating Coil Heating Rate','W',[point(0,10000)],'GAS COIL')]}]};
  check(snapshot(prepare(fuel),0).components[0].status==='on','positive fuel heating output marked Off from zero ancillary electric power');
  const blank={name:'Empty',series:[],components:[]};check(prepare(blank).frames.length===0,'empty result invented frames');
+ for(const loopType of ['PlantLoop','CondenserLoop']){
+  const water={...loop,loopType},waterModel=prepare(water);
+  check(waterModel.waterLoop&&basic(waterModel,'humidity').length===0,'water loop exposes default humidity graph data');
+  check(!waterModel.entities.filter(e=>e.kind==='node').some(e=>e.properties.some(p=>/humidity/i.test(p.name))),'water loop offers humidity in custom property selector');
+  check(snapshot(waterModel,0).nodes[0].metrics.length===3&&snapshot(waterModel,0).nodes[0].metrics.find(m=>m.id==='temperature').value===20,'water snapshot retained RH or lost temperature/flow/setpoint');
+ }
  const {setLanguage}=await import('/src/js/i18n.js');setLanguage('ko');
  check(prepare(loop)!==model&&prepare(loop).entities[0].properties.find(p=>p.kind==='temperature').label!==node.properties.find(p=>p.kind==='temperature').label,'language change retained cached labels');setLanguage('en');
  check(JSON.stringify(loop)===original,'inspection mutated original result');

@@ -43,6 +43,9 @@ func buildHVACLoopRunResultsWithDocument(series []SimulationSeries, request Simu
 		for _, item := range series {
 			key, variable := hvacSeriesIdentity(item)
 			if purposeSeriesMatchesVariables(item.Column, hvacLoopCheckNodeVariables()) && nodes[normalizePurposeToken(key)] {
+				if hvacWaterLoop(loop.Type) && hvacHumidityVariable(variable) {
+					continue
+				}
 				matched = append(matched, item)
 				continue
 			}
@@ -76,6 +79,7 @@ func hvacLoopScopedMeasurementComponents(loop idf.HVACLoop, report idf.HVACRepor
 		return normalizePurposeToken(objectType) + "\x00" + normalizePurposeToken(name)
 	}
 	components := map[string]idf.HVACComponent{}
+	circuitNodes := map[string]map[string]bool{}
 	queue := []string{}
 	add := func(component idf.HVACComponent) {
 		key := identity(component.ObjectType, component.ObjectName)
@@ -86,6 +90,15 @@ func hvacLoopScopedMeasurementComponents(loop idf.HVACLoop, report idf.HVACRepor
 		queue = append(queue, key)
 	}
 	for _, component := range purposeHVACLoopComponents(loop) {
+		key := identity(component.ObjectType, component.ObjectName)
+		if circuitNodes[key] == nil {
+			circuitNodes[key] = map[string]bool{}
+		}
+		for _, name := range []string{component.InletNode, component.OutletNode} {
+			if name != "" {
+				circuitNodes[key][normalizePurposeToken(name)] = true
+			}
+		}
 		add(component)
 	}
 	for _, path := range []*idf.AirLoopDemandPath{loop.DemandGraph.SupplyPath, loop.DemandGraph.ReturnPath} {
@@ -148,6 +161,7 @@ func hvacLoopScopedMeasurementComponents(loop idf.HVACLoop, report idf.HVACRepor
 			continue
 		}
 		component.NodeUsages = append(append([]idf.HVACNodeUsage(nil), component.NodeUsages...), usages[key]...)
+		component = hvacComponentOnLoopCircuit(component, loop.Type, circuitNodes[key], loopNodes)
 		component.SourceOwnerName, component.SourceOwnerType = "", ""
 		parents := map[string]idf.HVACComponent{}
 		for parentKey, parent := range components {
@@ -171,6 +185,44 @@ func hvacLoopScopedMeasurementComponents(loop idf.HVACLoop, report idf.HVACRepor
 		return identity(out[i].ObjectType, out[i].ObjectName) < identity(out[j].ObjectType, out[j].ObjectName)
 	})
 	return out
+}
+
+func hvacWaterLoop(loopType string) bool {
+	return strings.EqualFold(loopType, "PlantLoop") || strings.EqualFold(loopType, "CondenserLoop")
+}
+
+func hvacHumidityVariable(variable string) bool {
+	return strings.Contains(strings.ToLower(variable), "humidity")
+}
+
+// Scope node observations to this occurrence of a shared device. In particular,
+// WaterInletNode alone cannot choose a chiller's condenser vs. evaporator circuit.
+func hvacComponentOnLoopCircuit(component idf.HVACComponent, loopType string, circuit, loopNodes map[string]bool) idf.HVACComponent {
+	allowed := func(name, role string) bool {
+		if hvacWaterLoop(loopType) {
+			if len(circuit) > 0 {
+				return circuit[normalizePurposeToken(name)]
+			}
+			return loopNodes[normalizePurposeToken(name)]
+		}
+		return !strings.HasPrefix(role, "water_") && !strings.HasPrefix(role, "plant_") && !strings.HasPrefix(role, "condenser_")
+	}
+	usages := []idf.HVACNodeUsage{}
+	for _, usage := range component.NodeUsages {
+		if allowed(usage.NodeName, usage.Role) {
+			usages = append(usages, usage)
+		}
+	}
+	component.NodeUsages = usages
+	for _, port := range []struct {
+		name *string
+		role string
+	}{{&component.InletNode, "inlet"}, {&component.OutletNode, "outlet"}, {&component.WaterInletNode, "water_inlet"}, {&component.WaterOutletNode, "water_outlet"}} {
+		if !allowed(*port.name, port.role) {
+			*port.name = ""
+		}
+	}
+	return component
 }
 
 func hvacTypedComponentSummaries(series []SimulationSeries, components map[string][]idf.HVACComponent) []HVACComponentRunSummary {

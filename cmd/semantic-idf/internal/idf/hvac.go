@@ -74,6 +74,7 @@ type AirLoopDemandPathComponent struct {
 type AirLoopDemandNode struct {
 	NodeName    string `json:"nodeName"`
 	Role        string `json:"role"`
+	ZoneName    string `json:"zoneName,omitempty"`
 	PathType    string `json:"pathType,omitempty"`
 	ObjectType  string `json:"objectType,omitempty"`
 	ObjectName  string `json:"objectName,omitempty"`
@@ -854,8 +855,10 @@ func parseHVACBranch(ctx *hvacContext, obj Object) HVACBranch {
 		}
 		component := newHVACComponent(ctx, componentType, componentName)
 		annotateHVACComponentSource(&component, obj, reference.TypeIndex, reference.NameIndex, componentType)
-		component.InletNode = firstNonEmpty(component.InletNode, inletNode)
-		component.OutletNode = firstNonEmpty(component.OutletNode, outletNode)
+		// A Branch selects one circuit of equipment that may have air, chilled
+		// water, condenser water, etc. ports on the same source object.
+		component.InletNode = firstNonEmpty(inletNode, component.InletNode)
+		component.OutletNode = firstNonEmpty(outletNode, component.OutletNode)
 		component.InletFieldIndex = reference.InletIndex
 		component.OutletFieldIndex = reference.OutletIndex
 		if reference.ControlIndex >= 0 && reference.ControlIndex < len(obj.Fields) {
@@ -3060,6 +3063,7 @@ func addAirLoopDemandNode(nodes *[]AirLoopDemandNode, node AirLoopDemandNode) {
 	for _, existing := range *nodes {
 		if strings.EqualFold(existing.NodeName, node.NodeName) &&
 			existing.Role == node.Role &&
+			strings.EqualFold(existing.ZoneName, node.ZoneName) &&
 			existing.PathType == node.PathType &&
 			existing.ObjectIndex == node.ObjectIndex &&
 			existing.FieldIndex == node.FieldIndex {
@@ -3165,6 +3169,7 @@ func applyLoopZoneRelations(loops []HVACLoop, relations []HVACZoneChain) {
 	}
 	for index := range loops {
 		loops[index].RelatedZones = sortedStringSet(zoneNamesByLoop[loops[index].Name])
+		attachAirLoopZoneNodes(&loops[index], relations)
 	}
 }
 

@@ -49,7 +49,7 @@ function renderSnapshot(model, ui) {
 }
 
 function renderBasicCharts(model, ui) {
-  return ["flow", "temperature", "humidity"].map((kind) => `<div data-hvac-inspect-basic-chart="${kind}"><div data-hvac-inspect-basic-plot="${kind}">${renderBasicPlot(model, ui, kind)}</div><div data-hvac-inspect-y-controls="${kind}">${renderBasicYControls(model, ui, kind)}</div></div>`).join("");
+  return (model.waterLoop ? ["flow", "temperature"] : ["flow", "temperature", "humidity"]).map((kind) => `<div data-hvac-inspect-basic-chart="${kind}"><div data-hvac-inspect-basic-plot="${kind}">${renderBasicPlot(model, ui, kind)}</div><div data-hvac-inspect-y-controls="${kind}">${renderBasicYControls(model, ui, kind)}</div></div>`).join("");
 }
 
 function basicChartData(model, kind) {

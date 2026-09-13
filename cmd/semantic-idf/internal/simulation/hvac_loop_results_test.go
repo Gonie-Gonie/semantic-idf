@@ -171,8 +171,8 @@ func TestHVACNestedMeasurementsKeepTypedOwnershipAndActualPorts(t *testing.T) {
 		t.Fatalf("measured children not exposed: %+v", summaries)
 	}
 	coil := summaries[0]
-	if coil.ComponentName != "Inner Coil" || coil.ParentComponentName != "Unit" || coil.ParentComponentType != "AirLoopHVAC:UnitarySystem" || len(coil.InletNodes) != 2 || len(coil.OutletNodes) != 2 || len(coil.NodePorts) != 4 {
-		t.Fatalf("typed air/water ports or wrapper ownership lost: %+v", coil)
+	if coil.ComponentName != "Inner Coil" || coil.ParentComponentName != "Unit" || coil.ParentComponentType != "AirLoopHVAC:UnitarySystem" || len(coil.InletNodes) != 1 || len(coil.OutletNodes) != 1 || len(coil.NodePorts) != 2 || coil.InletNodes[0] != "Between Fan Coil" || coil.OutletNodes[0] != "Outer Outlet" {
+		t.Fatalf("air circuit ports or wrapper ownership lost: %+v", coil)
 	}
 	components = hvacLoopScopedMeasurementComponents(loop, report, purposeComponentIDSet([]string{"Fan:ConstantVolume:Inner Fan"}))
 	if len(components) != 1 || components[0].ObjectName != "Inner Fan" {

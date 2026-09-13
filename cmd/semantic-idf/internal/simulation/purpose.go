@@ -3353,6 +3353,9 @@ func (builder *purposePlanBuilder) addHVACLoopCheck() {
 	}
 	for _, key := range keys {
 		for _, variable := range hvacLoopCheckNodeVariables() {
+			if targets.Selected && hvacHumidityVariable(variable) && !targets.HumidityNodes[normalizePurposeToken(key)] {
+				continue
+			}
 			builder.addVariable(SimulationPurposeHVACLoopCheck, key, variable, "Hourly", "heavy", "Hourly system node state for loop inspection.")
 		}
 	}
@@ -3373,6 +3376,7 @@ type hvacLoopCheckTargets struct {
 	Selected       bool
 	LoopCount      int
 	NodeNames      []string
+	HumidityNodes  map[string]bool
 	ComponentNames []string
 	Components     []hvacLoopCheckComponentTarget
 }
@@ -3387,13 +3391,20 @@ func (builder *purposePlanBuilder) hvacLoopCheckTargets() hvacLoopCheckTargets {
 	selectedComponentIDs := purposeComponentIDSet(scope.ComponentIDs)
 	componentScoped := len(selectedComponentIDs) > 0
 	selected := len(scope.AirLoopNames)+len(scope.PlantLoopNames)+len(scope.CondenserLoopNames) > 0 || strings.EqualFold(scope.LoopMode, "selected") || componentScoped
-	targets := hvacLoopCheckTargets{Selected: selected}
+	targets := hvacLoopCheckTargets{Selected: selected, HumidityNodes: map[string]bool{}}
 	if !selected {
 		return targets
 	}
 	report := idf.AnalyzeHVAC(builder.doc)
 	nodeSet := map[string]string{}
 	componentSet := map[string]string{}
+	addNode := func(node string, loop idf.HVACLoop) {
+		key := normalizePurposeToken(node)
+		nodeSet[key] = strings.TrimSpace(node)
+		if !hvacWaterLoop(loop.Type) {
+			targets.HumidityNodes[key] = true
+		}
+	}
 	for _, loop := range report.Loops {
 		if !hvacResultLoopInScope(loop, scope) {
 			continue
@@ -3401,12 +3412,12 @@ func (builder *purposePlanBuilder) hvacLoopCheckTargets() hvacLoopCheckTargets {
 		targets.LoopCount++
 		if !componentScoped {
 			for _, node := range purposeHVACLoopNodes(loop) {
-				nodeSet[normalizePurposeToken(node)] = strings.TrimSpace(node)
+				addNode(node, loop)
 			}
 		}
 		for _, component := range hvacLoopScopedMeasurementComponents(loop, report, selectedComponentIDs) {
 			for _, node := range purposeHVACComponentNodes(component) {
-				nodeSet[normalizePurposeToken(node)] = strings.TrimSpace(node)
+				addNode(node, loop)
 			}
 			if component.ObjectName != "" {
 				componentSet[normalizePurposeToken(component.ObjectName)] = strings.TrimSpace(component.ObjectName)
@@ -3498,11 +3509,6 @@ func purposeHVACLoopNodes(loop idf.HVACLoop) []string {
 			for _, component := range branch.Components {
 				add(component.InletNode)
 				add(component.OutletNode)
-				add(component.WaterInletNode)
-				add(component.WaterOutletNode)
-				for _, usage := range component.NodeUsages {
-					add(usage.NodeName)
-				}
 			}
 		}
 	}
