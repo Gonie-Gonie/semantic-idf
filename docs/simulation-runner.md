@@ -606,6 +606,12 @@ Purpose result viewers now include:
   power, load and reported COP. Zero remains a measured value; unavailable
   values never acquire a previous frame's reading. The former summary, source
   and operation tables are removed from this view.
+  A requested setpoint output alone does not establish a defined setpoint.
+  The EnergyPlus unset flag (-999, including hourly floating-point roundoff
+  within 0.000001 C) is excluded from snapshots, graph properties, summary
+  availability and temperature-deviation calculations. Properties with no
+  defined observations are omitted; valid zero and negative setpoints remain.
+  A node without a setpoint does not by itself generate a control alert.
   Three default time-series graphs show node flow, temperature and humidity,
   with per-node checkboxes and vertically aligned legends containing node names
   only. Each graph has a two-handle Y-range control and an Auto reset; ranges

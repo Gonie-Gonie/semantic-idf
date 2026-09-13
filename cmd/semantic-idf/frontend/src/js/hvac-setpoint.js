@@ -2,6 +2,13 @@ const token = (value) => String(value || "").trim().toLowerCase();
 const finite = (value) => typeof value === "number" && Number.isFinite(value);
 const only = (values) => { const modes = new Set(values.filter(Boolean)); return modes.size === 1 ? [...modes][0] : ""; };
 
+// EnergyPlus uses -999 for an unset node temperature setpoint. Hourly averages
+// can move that sentinel a few floating-point steps above -999 (observed in
+// eplusout.sql as -998.9999999999999). Do not treat that roundoff as a control.
+export function hasHVACTemperatureSetpoint(value) {
+  return finite(value) && value > -999 + 1e-6;
+}
+
 function equipmentMode(type) {
   const name = token(type);
   if (/^(coil:cooling|chiller:|coolingtower:|evaporativecooler:|districtcooling)/.test(name) || name.includes(":cooling")) return "cooling";
@@ -25,7 +32,7 @@ export function hvacSetpointMode(loop, node, components) {
 }
 
 export function hvacSetpointComparison(temperature, setpoint, mode) {
-  if (!finite(temperature) || !finite(setpoint) || setpoint <= -999) return null;
+  if (!finite(temperature) || !hasHVACTemperatureSetpoint(setpoint)) return null;
   const actual = Number(temperature.toFixed(2)), target = Number(setpoint.toFixed(2));
   return { value: setpoint, operator: actual < target ? "<" : actual > target ? ">" : "=",
     state: mode === "cooling" ? actual <= target ? "satisfied" : "unmet" : mode === "heating" ? actual >= target ? "satisfied" : "unmet" : "unknown" };

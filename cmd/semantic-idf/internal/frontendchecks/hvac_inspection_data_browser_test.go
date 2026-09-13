@@ -92,6 +92,18 @@ try {
   const result=compare(actual,target,kind);check(result.operator===operator&&result.state===status,'incorrect setpoint comparison: '+[actual,target,kind]);
  }
  check(compare(15,null,'cooling')===null&&compare(15,-999,'cooling')===null&&compare(null,15,'heating')===null,'missing/sentinel temperature displayed as valid setpoint comparison');
+ // Exact values observed in hourly EnergyPlus SQL for an unset node. A strict
+ // <= -999 check accepted the final value and exposed a fake setpoint.
+ const unsetValues=[-999,-999.0000000000005,-998.9999999999999];
+ check(unsetValues.every(value=>compare(20,value,'heating')===null),'averaged unset sentinel became a setpoint comparison');
+ const noSetpoint={...structuredClone(loop),series:[...loop.series.filter(item=>item!==setpoint),{...setpoint,points:unsetValues.map((value,x)=>point(x,value))}]},unsetModel=prepare(noSetpoint);
+ check(!unsetModel.entities[0].properties.some(property=>property.kind==='setpoint'),'uncontrolled node still offers setpoint as a custom graph property');
+ check([0,1,2].every(index=>!snapshot(unsetModel,index).nodes[0].metrics.some(metric=>metric.id==='setpoint')),'unset setpoint remains in frame snapshots');
+ check(trace(unsetModel,unsetModel.entities[0].properties.find(property=>property.kind==='temperature')).points.map(item=>item.value).join(',')==='20,21,22','setpoint filtering changed measured temperature');
+ const intermittent={name:'Intermittent',series:[temp,{...setpoint,points:[point(0,0),point(1,-998.9999999999999),point(2,-20)]},{...setpoint,keyValue:'OTHER NODE',column:'OTHER NODE:System Node Setpoint Temperature [C]',points:unsetValues.map((value,x)=>point(x,value))}]},intermittentModel=prepare(intermittent);
+ const defined=intermittentModel.entities.find(entity=>entity.name==='NODE A').properties.find(property=>property.kind==='setpoint');
+ check(trace(intermittentModel,defined).points.map(item=>item.value).join(',')==='0,,-20','valid zero/negative setpoints were lost or missing frame was filled from a neighbor');
+ check(!intermittentModel.entities.some(entity=>entity.name==='OTHER NODE'),'another node inherited the defined setpoint');
  for(const loopType of ['PlantLoop','CondenserLoop']){
   const water={...loop,loopType},waterModel=prepare(water);
   check(waterModel.waterLoop&&basic(waterModel,'humidity').length===0,'water loop exposes default humidity graph data');

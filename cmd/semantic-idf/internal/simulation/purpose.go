@@ -1271,9 +1271,11 @@ func hvacNodeSummaryFromBucket(bucket *hvacNodeSeriesBucket) HVACNodeRunSummary 
 		summary.ActiveMassFlowFraction = roundedPurposeNumber(hvacActiveMassFlowFraction(bucket.massFlow.Points))
 	}
 	if bucket.setpoint != nil {
-		summary.HasSetpoint = true
-		summary.SetpointAverage = roundedPurposeNumber(seriesDisplayAverage(*bucket.setpoint))
-		summary.SetpointUnit = seriesDisplayUnit(*bucket.setpoint)
+		if average, count := hvacDefinedSetpointAverage(*bucket.setpoint); count > 0 {
+			summary.HasSetpoint = true
+			summary.SetpointAverage = roundedPurposeNumber(average)
+			summary.SetpointUnit = seriesDisplayUnit(*bucket.setpoint)
+		}
 	}
 	if bucket.temperature != nil && bucket.setpoint != nil {
 		delta, samples := hvacAverageAbsoluteDelta(bucket.temperature.Points, bucket.setpoint.Points)
@@ -1450,15 +1452,6 @@ func buildHVACLoopAlerts(nodes []HVACNodeRunSummary) []HVACLoopAlert {
 				Unit:     node.MassFlowUnit,
 			})
 		}
-		if node.HasTemperature && !node.HasSetpoint {
-			alerts = append(alerts, HVACLoopAlert{
-				Severity: "info",
-				Code:     "missing_temperature_setpoint",
-				Message:  "Temperature was reported without a matching setpoint series for this node.",
-				NodeName: node.NodeName,
-				Source:   node.Source,
-			})
-		}
 		if node.TemperatureSetpointSamples > 0 && node.TemperatureSetpointDelta > 5 {
 			alerts = append(alerts, HVACLoopAlert{
 				Severity: "warning",
@@ -1590,7 +1583,7 @@ func hvacAverageAbsoluteDelta(left []SimulationPoint, right []SimulationPoint) (
 	total, count := 0.0, 0
 	for _, point := range left {
 		other, exists := rightByFrame[point.X]
-		if !exists || duplicates[point.X] || (point.Label != "" && other.Label != "" && point.Label != other.Label) {
+		if !exists || duplicates[point.X] || !hvacHasTemperatureSetpoint(other.Value) || math.IsNaN(point.Value) || math.IsInf(point.Value, 0) || (point.Label != "" && other.Label != "" && point.Label != other.Label) {
 			continue
 		}
 		total += math.Abs(point.Value - other.Value)

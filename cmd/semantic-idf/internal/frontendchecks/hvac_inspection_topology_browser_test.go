@@ -111,6 +111,9 @@ try {
  mount.innerHTML=render({loop,nodes:nodes.map(node=>({...node,metrics:node.metrics.map(metric=>({...metric,value:metric.id==='flow'?8:metric.value}))})),components,selectedComponent:'pump-observation'});
  check(annotationPositions()===positions,'frame change moved physical topology points');
  check(mount.querySelector('[data-hvac-inspect-component="pump-observation"]').classList.contains('selected')&&!mount.querySelector('[data-hvac-inspect-zoom],.hvac-inspect-topology-heading,.hvac-inspect-topology-viewport.fit'),'equipment selection failed or removed zoom/title returned');
+ mount.innerHTML=render({loop,nodes:nodes.map(node=>({...node,metrics:node.metrics.map(metric=>({...metric,value:metric.id==='setpoint'?-998.9999999999999:metric.value}))})),components});
+ check(!mount.querySelector('[data-hvac-setpoint-state]')&&mount.querySelector('[data-hvac-inspect-node="inlet-point"] [data-hvac-inspect-metric="temperature"] .hvac-inspect-metric-value').textContent==='7.00 °C','SQL roundoff produced a setpoint label/color on an uncontrolled node');
+ check(annotationPositions()===positions,'missing setpoint changed topology positions');
  mount.innerHTML=render({loop:wrapper,nodes:extraNodes,components:children,selectedNode:'internal-point'});
  check(mount.querySelector('[data-hvac-inspect-node="internal-point"]')?.classList.contains('selected')&&mount.querySelector('[data-hvac-inspect-component="fan-child"]')&&mount.querySelector('[data-hvac-inspect-component="unknown-device"]')&&mount.querySelector('[data-hvac-inspect-node="detached-point"]'),'expanded internal or detached observations are not interactive/visible');
  const longNodes=['VAV_2_COOLCDEMAND INLET NODE','VAV_2_COOLCDEMAND OUTLET NODE','VAV_2_HEATCDEMAND INLET NODE','VAV_2_HEATCDEMAND OUTLET NODE'].map((name,index)=>({id:'long-node-'+index,name,metrics:nodes[0].metrics}));

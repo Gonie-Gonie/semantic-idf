@@ -1,4 +1,5 @@
 import { t } from "./i18n.js";
+import { hasHVACTemperatureSetpoint } from "./hvac-setpoint.js";
 
 const cache = new WeakMap();
 const finite = (value) => typeof value === "number" && Number.isFinite(value);
@@ -120,6 +121,10 @@ export function prepareHVACInspection(loop = {}) {
     item.entity.properties.push({ id, name: item.name, ...measurement(item.name, item.unit), series: item.series, entity: item.entity });
   }
   const model = { language, loop, waterLoop, primary, entities: [...entities.values()].filter((entity) => entity.properties.length), frames, byRow, byLabel, calendarValid };
+  // A requested output exists for every node, including nodes with no setpoint.
+  // Offer this property only when at least one aligned observation is defined.
+  for (const entity of model.entities) entity.properties = entity.properties.filter((property) => property.kind !== "setpoint" || [...propertyValues(model, property).values()].some(finite));
+  model.entities = model.entities.filter((entity) => entity.properties.length);
   cache.set(loop, model);
   return model;
 }
@@ -142,7 +147,7 @@ function propertyValues(model, property) {
     const frame = fileKey(property.series) === model.primary ? model.byRow.get(point.x) : ownLabels.get(label) === 1 ? model.byLabel.get(label) : null;
     if (!frame) continue;
     if (values.has(frame.x)) duplicates.add(frame.x);
-    const value = finite(point.value) && !(property.kind === "setpoint" && point.value <= -999) ? point.value * property.factor : null;
+    const value = finite(point.value) && (property.kind !== "setpoint" || hasHVACTemperatureSetpoint(point.value)) ? point.value * property.factor : null;
     values.set(frame.x, finite(value) ? value : null);
   }
   for (const x of duplicates) values.set(x, null);
