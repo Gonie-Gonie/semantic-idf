@@ -2905,7 +2905,7 @@ func TestPurposeResultBundleBuildsComfortResult(t *testing.T) {
 	if len(bundle.Comfort.Zones) != 1 || bundle.Comfort.Zones[0].ZoneName != "Office" {
 		t.Fatalf("comfort zones = %#v", bundle.Comfort.Zones)
 	}
-	if len(bundle.Comfort.Series) != 5 || len(bundle.Comfort.Zones[0].Metrics) != 5 {
+	if len(bundle.Comfort.Series) != 4 || len(bundle.Comfort.Zones[0].Metrics) != 4 {
 		t.Fatalf("comfort series = %#v", bundle.Comfort)
 	}
 	if len(bundle.Comfort.Issues) != 1 || bundle.Comfort.Issues[0].UnmetSamples != 2 || bundle.Comfort.Issues[0].HeatingSamples != 1 || bundle.Comfort.Issues[0].CoolingSamples != 1 {
@@ -2913,7 +2913,7 @@ func TestPurposeResultBundleBuildsComfortResult(t *testing.T) {
 	}
 	if len(bundle.Completeness) != len(comfortCheckVariables()) ||
 		!purposeCompletenessFound(bundle.Completeness, "Zone Air Relative Humidity") ||
-		!purposeCompletenessFound(bundle.Completeness, "Zone Air System Sensible Heating Rate") ||
+		purposeCompletenessFound(bundle.Completeness, "Zone Air System Sensible Heating Rate") ||
 		purposeCompletenessFound(bundle.Completeness, "Zone Air System Sensible Cooling Rate") {
 		t.Fatalf("comfort completeness = %#v", bundle.Completeness)
 	}

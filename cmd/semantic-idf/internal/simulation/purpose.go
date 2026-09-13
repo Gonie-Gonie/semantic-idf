@@ -256,12 +256,13 @@ type HVACComponentOperationMetric struct {
 }
 
 type ComfortResult struct {
-	PeriodScope  string                    `json:"periodScope,omitempty"`
-	Zones        []ComfortZoneResult       `json:"zones,omitempty"`
-	Series       []SimulationSeries        `json:"series,omitempty"`
-	Issues       []ComfortIssueRank        `json:"issues,omitempty"`
-	UnmetHours   []ComfortUnmetSummary     `json:"unmetHours,omitempty"`
-	Completeness []PurposeCompletenessItem `json:"completeness,omitempty"`
+	PeriodScope     string                    `json:"periodScope,omitempty"`
+	Zones           []ComfortZoneResult       `json:"zones,omitempty"`
+	BuildingMetrics []ComfortMetricResult     `json:"buildingMetrics,omitempty"`
+	Series          []SimulationSeries        `json:"series,omitempty"`
+	Issues          []ComfortIssueRank        `json:"issues,omitempty"`
+	UnmetHours      []ComfortUnmetSummary     `json:"unmetHours,omitempty"`
+	Completeness    []PurposeCompletenessItem `json:"completeness,omitempty"`
 }
 
 type ComfortZoneResult struct {
@@ -270,13 +271,14 @@ type ComfortZoneResult struct {
 }
 
 type ComfortMetricResult struct {
-	Name    string            `json:"name"`
-	Unit    string            `json:"unit,omitempty"`
-	Source  string            `json:"source,omitempty"`
-	Min     float64           `json:"min"`
-	Max     float64           `json:"max"`
-	Average float64           `json:"average"`
-	Points  []SimulationPoint `json:"points,omitempty"`
+	Name     string            `json:"name"`
+	KeyValue string            `json:"keyValue,omitempty"`
+	Unit     string            `json:"unit,omitempty"`
+	Source   string            `json:"source,omitempty"`
+	Min      float64           `json:"min"`
+	Max      float64           `json:"max"`
+	Average  float64           `json:"average"`
+	Points   []SimulationPoint `json:"points,omitempty"`
 }
 
 type ComfortIssueRank struct {
@@ -293,6 +295,7 @@ type ComfortIssueRank struct {
 }
 
 type ComfortUnmetSummary struct {
+	Scope     string  `json:"scope,omitempty"`
 	ZoneName  string  `json:"zoneName"`
 	Metric    string  `json:"metric"`
 	Value     float64 `json:"value"`
@@ -745,8 +748,15 @@ func buildPurposeResultBundleWithProgress(result *SimulationRunResult, request S
 				hvacLoopResultSource(bundle.HVACLoops),
 			))
 		case SimulationPurposeComfort:
-			bundle.Comfort = buildComfortResult(result.Series, request.Scope)
-			bundle.Comfort.UnmetHours = buildComfortUnmetSummariesFromFiles(result.Files)
+			if sharedDocument == nil {
+				if doc, err := simulationDocumentFromInput(result.InputPath); err == nil {
+					sharedDocument = &doc
+				}
+			}
+			bundle.Comfort = buildComfortResult(result.Series, request.Scope, sharedDocument)
+			if _, _, scoped := comfortPeriodScopeDays(request.Scope); !scoped {
+				bundle.Comfort.UnmetHours = scopeComfortUnmetSummaries(buildComfortUnmetSummariesFromFiles(result.Files), sharedDocument, request.Scope)
+			}
 			bundle.Completeness = append(bundle.Completeness, bundle.Comfort.Completeness...)
 		case SimulationPurposeIntegrity:
 			sqlIntegrity := buildIntegritySQLResultFromFiles(result.Files)
@@ -1698,8 +1708,13 @@ func hvacLoopResultSource(results []HVACLoopRunResult) string {
 	return "missing"
 }
 
-func buildComfortResult(series []SimulationSeries, scope SimulationPurposeScope) ComfortResult {
+func buildComfortResult(series []SimulationSeries, scope SimulationPurposeScope, documents ...*idf.Document) ComfortResult {
 	result := ComfortResult{}
+	var document *idf.Document
+	if len(documents) > 0 {
+		document = documents[0]
+	}
+	ownership := buildComfortOwnership(document)
 	foundVariables := map[string]bool{}
 	zoneMap := map[string]*ComfortZoneResult{}
 	zoneOrder := []string{}
@@ -1708,7 +1723,7 @@ func buildComfortResult(series []SimulationSeries, scope SimulationPurposeScope)
 		result.PeriodScope = periodLabel
 	}
 	for _, item := range series {
-		if !purposeSeriesMatchesVariables(item.Column, comfortCheckVariables()) {
+		if !purposeSeriesMatchesVariables(item.Column, comfortCheckVariables()) || !hvacSeriesIsHourly(item) {
 			continue
 		}
 		filteredItem, ok := filterComfortSeriesByPeriod(item, scope)
@@ -1716,27 +1731,30 @@ func buildComfortResult(series []SimulationSeries, scope SimulationPurposeScope)
 			continue
 		}
 		keyValue, variableName := splitPurposeSeriesColumn(item.Column)
-		if keyValue == "" {
-			keyValue = "Unknown Zone"
-		}
 		foundVariables[normalizePurposeToken(variableName)] = true
 		result.Series = append(result.Series, filteredItem)
-		zoneKey := normalizePurposeToken(keyValue)
+		metric := ComfortMetricResult{
+			Name: variableName, KeyValue: keyValue,
+			Unit: seriesDisplayUnit(filteredItem), Source: filteredItem.File,
+			Min: seriesDisplayMin(filteredItem), Max: seriesDisplayMax(filteredItem), Average: seriesDisplayAverage(filteredItem),
+			Points: append([]SimulationPoint(nil), seriesDisplayPoints(filteredItem)...),
+		}
+		if comfortBuildingVariable(variableName) {
+			result.BuildingMetrics = append(result.BuildingMetrics, metric)
+			continue
+		}
+		zoneName := ownership.zoneForMetric(keyValue, variableName)
+		if zoneName == "" || !comfortZoneInScope(zoneName, scope) {
+			continue
+		}
+		zoneKey := normalizePurposeToken(zoneName)
 		zone := zoneMap[zoneKey]
 		if zone == nil {
-			zone = &ComfortZoneResult{ZoneName: keyValue}
+			zone = &ComfortZoneResult{ZoneName: zoneName}
 			zoneMap[zoneKey] = zone
 			zoneOrder = append(zoneOrder, zoneKey)
 		}
-		zone.Metrics = append(zone.Metrics, ComfortMetricResult{
-			Name:    variableName,
-			Unit:    seriesDisplayUnit(filteredItem),
-			Source:  filteredItem.File,
-			Min:     seriesDisplayMin(filteredItem),
-			Max:     seriesDisplayMax(filteredItem),
-			Average: seriesDisplayAverage(filteredItem),
-			Points:  append([]SimulationPoint(nil), seriesDisplayPoints(filteredItem)...),
-		})
+		zone.Metrics = append(zone.Metrics, metric)
 	}
 	sort.SliceStable(zoneOrder, func(i, j int) bool {
 		return strings.ToLower(zoneMap[zoneOrder[i]].ZoneName) < strings.ToLower(zoneMap[zoneOrder[j]].ZoneName)
@@ -3680,7 +3698,29 @@ func (builder *purposePlanBuilder) addComfort() {
 	}
 	for _, key := range keys {
 		for _, variable := range comfortCheckVariables() {
+			if comfortPeopleVariable(variable) || comfortBuildingVariable(variable) {
+				continue
+			}
 			builder.addVariable(SimulationPurposeComfort, key, variable, "Hourly", "medium", "Hourly zone comfort and setpoint trend.")
+		}
+	}
+	for _, variable := range comfortCheckVariables() {
+		if comfortBuildingVariable(variable) {
+			builder.addVariable(SimulationPurposeComfort, "*", variable, "Hourly", "medium", "Reported whole-building comfort hours.")
+		} else if comfortPeopleVariable(variable) {
+			peopleKeys := []string{"*"}
+			if _, scoped, _ := purposeZoneKeysForScope(builder.request.Scope); scoped {
+				peopleKeys = nil
+				for key, zone := range buildComfortOwnership(&builder.doc).people {
+					if zone != "" && comfortZoneInScope(zone, builder.request.Scope) {
+						peopleKeys = append(peopleKeys, key)
+					}
+				}
+				sort.Strings(peopleKeys)
+			}
+			for _, key := range peopleKeys {
+				builder.addVariable(SimulationPurposeComfort, key, variable, "Hourly", "medium", "Hourly occupant comfort in the selected zones.")
+			}
 		}
 	}
 }
@@ -4429,13 +4469,21 @@ func basicEnergyDetailedHeatDriverVariableNames() []string {
 func comfortCheckVariables() []string {
 	return []string{
 		"Zone Mean Air Temperature",
+		"Zone Mean Radiant Temperature",
+		"Zone Operative Temperature",
 		"Zone Air Relative Humidity",
 		"Zone Thermostat Heating Setpoint Temperature",
 		"Zone Thermostat Cooling Setpoint Temperature",
-		"Zone Air System Sensible Heating Rate",
-		"Zone Air System Sensible Cooling Rate",
 		"Zone Thermal Comfort Fanger Model PMV",
 		"Zone Thermal Comfort Fanger Model PPD",
+		"Zone Heating Setpoint Not Met Time",
+		"Zone Cooling Setpoint Not Met Time",
+		"Zone Heating Setpoint Not Met While Occupied Time",
+		"Zone Cooling Setpoint Not Met While Occupied Time",
+		"Facility Heating Setpoint Not Met Time",
+		"Facility Cooling Setpoint Not Met Time",
+		"Facility Heating Setpoint Not Met While Occupied Time",
+		"Facility Cooling Setpoint Not Met While Occupied Time",
 	}
 }
 

@@ -18,6 +18,11 @@ The release script infers bump size from these sections:
 
 ## Changed
 
+- Replaced Comfort tables with zone/building indicators and graphs for
+  temperature/setpoints, PMV/PPD, humidity and reported comfort-unmet time.
+  Removed heating/cooling energy and source details. PMV/PPD now belong to
+  their executed-model zones, building totals remain explicitly reported,
+  and hourly Comfort graphs retain all requested weather-run observations.
 - Replaced HVAC Loop Check's stacked tables with selectable executed-loop
   topology using the HVAC tab's loop schematic with frame measurements in its
   whitespace with compact measurement labels and prominent values,

@@ -19,7 +19,6 @@ const (
 	maxIntegrityTabularRows     = 360
 	maxIntegrityTabularReports  = 12
 	maxIntegrityTabularRowCells = 80
-	maxComfortUnmetRows         = 240
 	defaultSQLParseTimeout      = 20 * time.Second
 )
 
@@ -195,15 +194,15 @@ func parseSimulationSQLSeriesForPlan(path string, plan PurposeRunPlan) ([]Simula
 
 	ids := make([]int, 0, len(dictionaries))
 	accumulators := map[int]*columnAccumulator{}
-	hvacSelection := newHVACPlotSeriesSelection(plan)
-	fullHVACSeries := map[int]bool{}
+	plotSelection := newPurposePlotSeriesSelection(plan)
+	fullPlotSeries := map[int]bool{}
 	var weatherFrames map[int64]bool
-	if len(hvacSelection) > 0 {
-		weatherFrames = hvacWeatherHourlyFrames(db)
+	if len(plotSelection) > 0 {
+		weatherFrames = purposeWeatherHourlyFrames(db)
 	}
 	for position, dictionary := range dictionaries {
 		ids = append(ids, dictionary.index)
-		fullHVACSeries[dictionary.index] = hvacSelection.matches(dictionary.keyValue, dictionary.name) && strings.EqualFold(dictionary.reportingFrequency, "Hourly")
+		fullPlotSeries[dictionary.index] = plotSelection.matches(dictionary.keyValue, dictionary.name) && strings.EqualFold(dictionary.reportingFrequency, "Hourly")
 		accumulators[dictionary.index] = &columnAccumulator{
 			index: position + 1,
 			name:  sqlOutputSeriesName(dictionary),
@@ -224,7 +223,7 @@ func parseSimulationSQLSeriesForPlan(path string, plan PurposeRunPlan) ([]Simula
 		minute := row.Minute
 		dictionaryIndex := row.DictionaryIndex
 		value := row.Value
-		if fullHVACSeries[dictionaryIndex] && weatherFrames != nil && !weatherFrames[timeIndex] {
+		if fullPlotSeries[dictionaryIndex] && weatherFrames != nil && !weatherFrames[timeIndex] {
 			return nil
 		}
 		if !value.Valid || math.IsNaN(value.Float64) || math.IsInf(value.Float64, 0) {
@@ -265,7 +264,7 @@ func parseSimulationSQLSeriesForPlan(path string, plan PurposeRunPlan) ([]Simula
 		}
 		average := acc.sum / float64(acc.numericCount)
 		points := seriesPoints[dictionary.index]
-		if !fullHVACSeries[dictionary.index] {
+		if !fullPlotSeries[dictionary.index] {
 			points = downsamplePoints(points, maxCSVSeriesPoints)
 		}
 		series = append(series, normalizeSimulationSeriesDisplay(SimulationSeries{
@@ -796,8 +795,10 @@ SELECT %s AS report_name,
        %s AS value
 FROM %s
 WHERE TRIM(COALESCE(%s, '')) <> ''
-ORDER BY %s
-LIMIT ?`,
+  AND (LOWER(COALESCE("TableName", '') || ' ' || COALESCE("RowName", '') || ' ' || COALESCE("ColumnName", '')) LIKE '%%not met%%'
+       OR LOWER(COALESCE("TableName", '') || ' ' || COALESCE("RowName", '') || ' ' || COALESCE("ColumnName", '')) LIKE '%%unmet%%'
+       OR LOWER(COALESCE("TableName", '') || ' ' || COALESCE("RowName", '') || ' ' || COALESCE("ColumnName", '')) LIKE '%%not comfortable%%')
+ORDER BY %s`,
 		sqlTextColumnExpr(columns, "ReportName", "''"),
 		sqlTextColumnExpr(columns, "TableName", "''"),
 		sqlTextColumnExpr(columns, "RowName", "''"),
@@ -808,7 +809,7 @@ LIMIT ?`,
 		sqlTextColumnExpr(columns, "Value", "''"),
 		integrityTabularOrderBy(columns),
 	)
-	rows, err := db.Query(query, maxComfortUnmetRows)
+	rows, err := db.Query(query)
 	if err != nil {
 		return nil, err
 	}
@@ -822,6 +823,10 @@ LIMIT ?`,
 		if !comfortTabularLooksUnmet(reportName.String, tableName.String, rowName.String, columnName.String) {
 			continue
 		}
+		unit := normalizePurposeToken(units.String)
+		if unit != "" && unit != "hr" && unit != "h" && unit != "hours" && unit != "hrs" {
+			continue
+		}
 		zoneName := strings.TrimSpace(rowName.String)
 		metric := tabularColumnLabel(columnName.String, units.String)
 		if zoneName == "" || metric == "" {
@@ -832,7 +837,16 @@ LIMIT ?`,
 		if !ok {
 			continue
 		}
+		scope := "zone"
+		switch normalizePurposeToken(zoneName) {
+		case "facility", "entire facility", "building", "whole building", "total", "all zones":
+			scope = "building"
+		}
+		if strings.Contains(normalizePurposeToken(tableName.String), "comfort") && comfortTabularLooksUnmet(rowName.String) {
+			scope, zoneName, metric = "building", "Entire Facility", strings.TrimSpace(rowName.String)
+		}
 		out = append(out, ComfortUnmetSummary{
+			Scope:     scope,
 			ZoneName:  zoneName,
 			Metric:    metric,
 			Value:     roundedPurposeNumber(number),
@@ -860,7 +874,7 @@ LIMIT ?`,
 
 func comfortTabularLooksUnmet(values ...string) bool {
 	text := normalizeEnergyOutputName(strings.Join(values, " "))
-	return strings.Contains(text, "unmet") || strings.Contains(text, "not met")
+	return strings.Contains(text, "unmet") || strings.Contains(text, "not met") || strings.Contains(text, "not comfortable")
 }
 
 func parseComfortTabularNumber(value string) (float64, bool) {

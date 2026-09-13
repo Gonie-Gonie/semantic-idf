@@ -617,10 +617,20 @@ Purpose result viewers now include:
   ratio in g/kg. HVAC Hourly observations are retained beyond the Series preview
   sample limit. Old results without executed topology show an unavailable state
   alongside their retained observations.
-- Comfort zone metric summaries for temperature, setpoint, PMV, and PPD series.
-  Backend callers can optionally provide custom `MM-DD` period scoping for the
-  rendered trends and issue ranking; the main Simulation view uses the full
-  period.
+- Comfort shows graphs and indicators for the selected zone or the building.
+  Zone graphs contain T, available operative/radiant temperatures, Tset,h/c,
+  PMV, PPD, humidity and reported setpoint-unmet time. Indicators show actual
+  period averages/ranges or reported unmet hours. Energy and heating/cooling
+  power, source-object details, completeness badges and the old tables are
+  excluded, including the Comfort section of HTML reports.
+  PMV/PPD People keys are mapped through the executed model to their actual
+  zones, with separate traces for different People groups. Building metrics
+  use reported facility observations; zone PMV and unmet hours are never
+  averaged or summed into invented building totals. Hourly Comfort observations
+  retain the complete weather-run series beyond the general preview limit.
+  Backend callers can optionally scope trend data to a custom `MM-DD` period;
+  full-run tabular unmet hours are omitted for custom periods. The main
+  Simulation view uses the full period.
 - Integrity ERR, SQL error table, tabular report previews, and SQL/static
   cross-checks for zone, surface, construction, and nominal-load tabular rows.
   Cross-check statuses distinguish exact names, normalized matches, compact

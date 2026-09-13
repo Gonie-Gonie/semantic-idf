@@ -39,6 +39,7 @@ $modules = @(
     "app-info.js",
     "auxiliary-navigation.js",
     "command-palette.js",
+    "comfort-inspection-data.js",
     "topology-loader.js",
     "topology-focus.js",
     "layout.js",
@@ -77,6 +78,7 @@ $nestedModules = @(
     "views/input-views.js",
     "views/profile-views.js",
     "views/simulation-views.js",
+    "views/comfort-inspection-view.js",
     "tools/multi-simulation.js"
 )
 
@@ -96,6 +98,7 @@ $styles = @(
     "styles/profile.css",
     "styles/responsive.css",
     "styles/simulation.css",
+    "styles/comfort-inspection.css",
     "styles/workspace.css"
 )
 

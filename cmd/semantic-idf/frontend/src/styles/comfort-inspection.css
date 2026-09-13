@@ -1,0 +1,22 @@
+.comfort-inspection { min-width: 0; display: grid; gap: 18px; }
+.comfort-inspection-toolbar { display: flex; align-items: center; gap: 16px; padding: 4px 0; }
+.comfort-inspection-toolbar label { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; color: var(--muted); font-size: 13px; }
+.comfort-inspection-toolbar select { min-width: 220px; max-width: 100%; color: var(--ink); }
+.comfort-inspection-indicators { display: grid; grid-template-columns: repeat(auto-fit, minmax(175px, 1fr)); gap: 10px; margin-bottom: 18px; }
+.comfort-inspection-indicator { min-width: 0; padding: 15px 16px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); }
+.comfort-inspection-indicator-label { min-height: 18px; color: var(--muted); font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
+.comfort-inspection-indicator-value { display: flex; align-items: baseline; gap: 7px; margin: 8px 0; font-variant-numeric: tabular-nums; }
+.comfort-inspection-indicator-value strong { font-size: 25px; line-height: 1.2; font-weight: 650; letter-spacing: -.025em; }
+.comfort-inspection-indicator-value > span { color: var(--muted); font-size: 13px; }
+.comfort-inspection-indicator-note { display: grid; gap: 3px; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; line-height: 1.45; }
+.comfort-inspection-charts { display: grid; gap: 16px; min-width: 0; }
+.comfort-inspection-charts h4 { margin: 0 0 12px; font-size: 15px; }
+.comfort-inspection-empty { padding: 32px 20px; border: 1px solid var(--line); border-radius: 9px; color: var(--muted); text-align: center; }
+.comfort-inspection-report { margin: 20px 0 32px; }
+.comfort-inspection-report > h3 { margin: 0; }
+@media (max-width: 560px) {
+  .comfort-inspection-toolbar label, .comfort-inspection-toolbar select { width: 100%; min-width: 0; }
+  .comfort-inspection-indicators { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .comfort-inspection-indicator { padding: 12px; }
+  .comfort-inspection-indicator-value strong { font-size: 22px; }
+}

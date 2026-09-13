@@ -3771,61 +3771,6 @@
   gap: 10px;
 }
 
-.simulation-comfort-timeline {
-  display: grid;
-  gap: 8px;
-  min-width: 0;
-}
-
-.simulation-comfort-chart-wrap {
-  display: grid;
-  gap: 6px;
-  min-width: 0;
-  overflow-x: auto;
-}
-
-.simulation-comfort-chart {
-  width: 100%;
-  min-width: 720px;
-  height: 280px;
-}
-
-.comfort-setpoint-band {
-  fill: color-mix(in srgb, var(--green) 14%, transparent);
-  stroke: none;
-}
-
-.comfort-deviation-band {
-  fill: color-mix(in srgb, var(--red) 16%, transparent);
-}
-
-.comfort-temperature-line,
-.comfort-setpoint-line,
-.comfort-humidity-line {
-  fill: none;
-  stroke-width: 2.2;
-  vector-effect: non-scaling-stroke;
-}
-
-.comfort-temperature-line {
-  stroke: #f59e0b;
-}
-
-.comfort-setpoint-line.heat {
-  stroke: #dc2626;
-  stroke-dasharray: 5 3;
-}
-
-.comfort-setpoint-line.cool {
-  stroke: #2563eb;
-  stroke-dasharray: 5 3;
-}
-
-.comfort-humidity-line {
-  stroke: #0f766e;
-  stroke-width: 1.6;
-}
-
 .simulation-hvac-loop-result {
   display: grid;
   gap: 8px;

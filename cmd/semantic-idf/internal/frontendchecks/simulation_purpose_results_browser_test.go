@@ -268,11 +268,17 @@ try{
  tab("comfort").click();await tick();
  const comfort=document.getElementById("simulationComfortResults");
  check(state.simulationActiveResultView==="comfort"&&!comfort.closest('[data-simulation-result-view]').hidden,"Comfort tab did not open its result section");
- const comfortRow=[...comfort.querySelectorAll("tbody tr")].find(row=>row.cells[0]?.textContent.trim()==="OFFICE"&&row.cells[1]?.textContent.trim()==="Zone Mean Air Temperature");
- check(comfortRow&&[3,4,5,8].map(index=>Number(comfortRow.cells[index].textContent)).join(",")==="22,26,24,3","Comfort temperature min/max/average/points missing or incorrect");
- check(comfort.querySelector(".comfort-temperature-line")?.getAttribute("points").trim().split(/\s+/).length===3,"Comfort temperature timeline lost returned samples");
- check(Boolean(comfort.querySelector(".comfort-setpoint-band")),"Comfort heating/cooling setpoint band missing");
- check(Boolean(comfort.querySelector(".comfort-humidity-line")),"Comfort humidity timeline missing");
+ const comfortZone=comfort.querySelector('[data-comfort-inspect-zone]');
+ check(comfortZone&&[...comfortZone.options].some(option=>option.value==='OFFICE'),'Comfort result did not expose its reported zone');
+ if(comfortZone){comfortZone.value='OFFICE';comfortZone.dispatchEvent(new Event('change',{bubbles:true}));}
+ const comfortChart=kind=>comfort.querySelector('[data-comfort-inspect-chart="'+kind+'"]');
+ const comfortValue=id=>{const metric=comfort.querySelector('[data-comfort-inspect-metric="'+id+'"]');return Number((metric?.querySelector('[data-comfort-inspect-value]')||metric)?.dataset.comfortInspectValue);};
+ check(comfortValue('temperature')===24&&comfortValue('heatingSetpoint')===20&&comfortValue('coolingSetpoint')===25,'Comfort T/Tset indicators lost the actual returned averages');
+ const temperature=comfortChart('temperature');
+ check(temperature?.querySelectorAll('[data-hvac-chart-series]').length===3&&[22,24,26,20,25].every(value=>temperature.querySelector('[data-hvac-chart-value="'+value+'"]')),'Comfort graph lost observed temperature or heating/cooling setpoints');
+ check(comfortChart('humidity')?.querySelectorAll('[data-hvac-chart-series] circle').length===3&&comfortValue('relativeHumidity')===50,'Comfort RH graph or indicator lost the returned samples');
+ check(temperature?.querySelector('[data-hvac-chart-axis="x"]')&&temperature?.querySelector('[data-hvac-chart-axis="left"]')&&temperature?.querySelector('.hvac-chart-grid'),'Comfort graph is missing time/value axes or grid');
+ check(!comfort.querySelector('table, dl, [data-semantic-id], [data-semantic-ref], [data-hvac-graph-key]')&&!['Source data','Related model entities','eplusout.sql','Zone Mean Air Temperature'].some(label=>comfort.textContent.includes(label)),'Comfort still exposes tables, raw source descriptions or navigation links');
  check(JSON.stringify(original)===originalJSON,"Run or purpose tabs mutated previous result");
  const capture=new URLSearchParams(location.search).get('capture');
  if(capture){
@@ -283,7 +289,7 @@ try{
   }else hvac.querySelector('[data-simulation-hvac-loop]').scrollIntoView({block:'start'});
   await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
  }
- evidence.push("Native purpose checkboxes preserve all four purposes in one SQL-first Run & Inspect request. Production Go builder returns two executed loop topologies with exact membership. Native loop/frame/node/custom property controls render clean topology, status and three node graphs; frame changes retain slider and trace SVG; yyaxes and exactly-two-property scatter use observed values. Loop-local selections survive switching. Comfort temperature/setpoint/humidity regression preserved.");
+ evidence.push("Native purpose checkboxes preserve all four purposes in one SQL-first Run & Inspect request. Production Go builder returns two executed loop topologies with exact membership. Native loop/frame/node/custom property controls render clean topology, status and three node graphs; frame changes retain slider and trace SVG; yyaxes and exactly-two-property scatter use observed values. Loop-local selections survive switching. Comfort zone controls show reported T/Tset/RH graphs and indicators without tables or source links.");
 }catch(error){failures.push(error.stack||String(error));}
 document.body.dataset.purposeResultsStatus=failures.length?"failed":"passed";
 document.getElementById("purpose-results-evidence").textContent=JSON.stringify({failures,evidence});

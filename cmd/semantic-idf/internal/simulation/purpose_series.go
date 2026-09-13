@@ -43,7 +43,7 @@ func newPurposeSeriesSelection(plan PurposeRunPlan) purposeSeriesSelection {
 				// component outputs outside a selected loop's equipment scope.
 				continue
 			}
-			if comfortVariables[name] {
+			if comfortVariables[name] && !comfortPeopleVariable(name) && !comfortBuildingVariable(name) {
 				scope := SimulationPurposeScope{ZoneMode: plan.ZoneMode, ZoneNames: plan.ZoneNames}
 				if zones, scoped, _ := purposeZoneKeysForScope(scope); scoped {
 					for _, zone := range zones {
@@ -65,18 +65,17 @@ func (selection purposeSeriesSelection) matches(keyValue, variableName string) b
 	return keys["*"] || keys[normalizePurposeToken(keyValue)]
 }
 
-func newHVACPlotSeriesSelection(plan PurposeRunPlan) purposeSeriesSelection {
-	if !purposeIDsContain(plan.Purposes, SimulationPurposeHVACLoopCheck) {
+func newPurposePlotSeriesSelection(plan PurposeRunPlan) purposeSeriesSelection {
+	if !purposeIDsContain(plan.Purposes, SimulationPurposeHVACLoopCheck) && !purposeIDsContain(plan.Purposes, SimulationPurposeComfort) {
 		return nil
 	}
-	plan.Purposes = []SimulationPurposeID{SimulationPurposeHVACLoopCheck}
 	return newPurposeSeriesSelection(plan)
 }
 
 // SQL has explicit environment metadata; CSV does not. When weather-run rows
-// exist, keep HVAC plots on those actual hourly observations, excluding sizing
+// exist, keep purpose plots on those actual hourly observations, excluding sizing
 // days and warmup. Legacy schemas without that metadata retain their own axis.
-func hvacWeatherHourlyFrames(db *sql.DB) map[int64]bool {
+func purposeWeatherHourlyFrames(db *sql.DB) map[int64]bool {
 	var environments int
 	if err := db.QueryRow(`SELECT COUNT(*) FROM EnvironmentPeriods WHERE EnvironmentType=3`).Scan(&environments); err != nil || environments == 0 {
 		return nil

@@ -518,8 +518,8 @@ func TestBuildPurposeRunPlanComfortSelectedZones(t *testing.T) {
 	if findPurposeOutput(plan, "Output:Variable", "Lab", "Zone Air Relative Humidity") == nil {
 		t.Fatalf("missing selected-zone humidity comfort output in %#v", plan.OutputObjects)
 	}
-	if findPurposeOutput(plan, "Output:Variable", "Lab", "Zone Air System Sensible Heating Rate") == nil {
-		t.Fatalf("missing selected-zone heating-rate comfort output in %#v", plan.OutputObjects)
+	if findPurposeOutput(plan, "Output:Variable", "Lab", "Zone Air System Sensible Heating Rate") != nil {
+		t.Fatalf("comfort must not request heating energy or power: %#v", plan.OutputObjects)
 	}
 	if findPurposeOutput(plan, "Output:Table:SummaryReports", "", "") == nil {
 		t.Fatalf("missing comfort summary report output in %#v", plan.OutputObjects)
