@@ -2,7 +2,7 @@
 /* Keep horizontal diagram panning local; vertical wheel input must reach the
    result pane so users can continue to the graphs below the topology. */
 .hvac-inspect-topology-viewport { overflow: auto; min-height: 240px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); overscroll-behavior-x: contain; overscroll-behavior-y: auto; }
-.hvac-inspect-topology-viewport .hvac-graphic-shell { width: var(--hvac-inspect-width); min-width: 1120px; padding: 0; overflow: visible; }
+.hvac-inspect-topology-viewport .hvac-graphic-shell { width: var(--hvac-inspect-width); min-width: var(--hvac-inspect-width); padding: 0; overflow: visible; }
 .hvac-inspect-topology-svg { display: block; width: 100%; max-width: none; min-height: 0; height: auto; }
 .hvac-inspect-topology-svg .hvac-loop-connector { stroke: var(--focus); stroke-width: 4.5; }
 .hvac-inspect-topology-svg .hvac-loop-path,

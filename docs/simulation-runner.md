@@ -595,6 +595,8 @@ Purpose result viewers now include:
   time-range controls.
 - HVAC Loop Check shows one selected loop's topology from the executed input.
   It reuses the HVAC tab's supply/demand loop schematic and equipment symbols.
+  The result diagram uses wider pipe runs to leave room for measurements while
+  preserving text and equipment sizes. Narrow result panes scroll horizontally.
   Frame measurements occupy whitespace above and below the flow paths, with
   leader lines to the corresponding node points; dense labels add vertical
   space instead of shrinking the text or replacing the schematic with cards.

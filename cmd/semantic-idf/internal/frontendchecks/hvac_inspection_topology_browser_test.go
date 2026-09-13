@@ -75,8 +75,12 @@ try {
  const reference=document.createElement('div');reference.innerHTML=renderHVACLoopDiagram(loop);
  check(mount.querySelector('svg.hvac-loop-svg')&&mount.querySelectorAll('.hvac-loop-side-block').length===2,'inspection must reuse the existing supply/demand loop schematic');
  check(!mount.querySelector('.hvac-inspect-card'),'frame values still replace schematic points with separate cards');
- const equipmentKeys=root=>[...root.querySelectorAll('.hvac-loop-equipment')].map(item=>item.querySelector('title')?.textContent+':'+[...item.querySelectorAll('.pipe-port')].map(port=>port.getAttribute('cx')).join(',')).join('|');
+ const equipmentKeys=root=>[...root.querySelectorAll('.hvac-loop-equipment')].map(item=>item.querySelector('title')?.textContent+':'+(Number(item.querySelector('.pipe-port.right').getAttribute('cx'))-Number(item.querySelector('.pipe-port.left').getAttribute('cx')))).join('|');
  check(equipmentKeys(mount)===equipmentKeys(reference),'frame display changed the existing loop equipment ordering or symbols');
+ const diagram=mount.querySelector('svg.hvac-loop-svg'),referenceDiagram=reference.querySelector('svg.hvac-loop-svg');
+ check(diagram.viewBox.baseVal.width===1480&&referenceDiagram.viewBox.baseVal.width===1120,'inspection did not widen or changed the default HVAC tab width');
+ check(Math.abs(diagram.getBoundingClientRect().width-1480)<1,'wider inspection scaled the whole SVG instead of preserving native text/icon size');
+ check(mount.querySelector('.hvac-loop-connector').getBBox().width>reference.querySelector('.hvac-loop-connector').getBBox().width&&Number(mount.querySelector('.hvac-loop-side-panel').getAttribute('width'))>Number(reference.querySelector('.hvac-loop-side-panel').getAttribute('width')),'extra width did not reach the pipe runs and branch annotation area');
  const checkAnnotationSpacing=()=>{
   const annotations=[...mount.querySelectorAll('.hvac-inspect-annotation')].map(item=>({item,rect:item.getBoundingClientRect()}));
   for(let i=0;i<annotations.length;i++)for(let j=i+1;j<annotations.length;j++){

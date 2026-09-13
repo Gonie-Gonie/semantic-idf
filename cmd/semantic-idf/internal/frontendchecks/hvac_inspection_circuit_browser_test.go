@@ -177,7 +177,7 @@ try{
  const zoneLoop=loops.find(loop=>loop.loopType==='AirLoopHVAC'&&loop.topology.relatedZones.includes('Core_top'));mount.innerHTML=render(zoneLoop,{});
  const zoneNodes=zoneLoop.topology.demandGraph.nodes.filter(node=>node.zoneName==='Core_top'&&['zone_inlet','zone_return'].includes(node.role));
  check(zoneNodes.length===2,'Go result omitted Core_top inlet/return zone ownership');
- const zone=layout(zoneLoop.topology).anchors.find(anchor=>anchor.kind==='zone'&&anchor.name==='Core_top');
+ const zone=layout(zoneLoop.topology,{width:mount.querySelector('svg.hvac-loop-svg').viewBox.baseVal.width}).anchors.find(anchor=>anchor.kind==='zone'&&anchor.name==='Core_top');
  for(const node of zoneNodes){
   const item=point(node.nodeName),ring=item?.querySelector('.hvac-inspect-node-ring');
   check(item?.classList.contains('anchored')&&ring,'actual Go zone port is detached: '+node.nodeName);

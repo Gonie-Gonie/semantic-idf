@@ -1918,14 +1918,15 @@ function pathMatchesPathTypeFilter(path = {}, filter = "all") {
   return path.pathType === filter;
 }
 
-// Inspection uses these same positions; only reserved annotation space changes.
+// Inspection can reserve wider pipe runs and annotation space. Equipment and
+// port sizes stay fixed; the HVAC tab retains the default compact layout.
 // Port anchors describe the actual drawn circuit, not every port an object owns.
 export function buildHVACLoopDiagramLayout(loop, options = {}) {
-  const width = 1120;
+  const width = Number.isFinite(options.width) ? Math.max(1120, options.width) : 1120;
   const leftX = 98;
-  const rightX = 1022;
-  const branchStartX = 220;
-  const branchEndX = 900;
+  const rightX = width - leftX;
+  const branchStartX = 220 + (width - 1120) / 4;
+  const branchEndX = width - branchStartX;
   const supplyFallbackItems = componentsForSide(loop.supplySide).length
     ? componentsForSide(loop.supplySide).map((component) => ({ kind: "component", component }))
     : [{ kind: "placeholder", label: t("hvac.supplySide") }];

@@ -8,6 +8,7 @@ const label = (key, fallback) => { const value = t(key); return !value || value 
 const finite = (value) => typeof value === "number" && Number.isFinite(value);
 const metricRowHeight = 18;
 const annotationWidth = 184;
+const diagramWidth = 1480;
 
 // Only parsed ports, connectors and demand-path edges establish connectivity.
 // Branch order and the set of available observations never invent an edge.
@@ -218,7 +219,7 @@ function placeAnchoredAnnotations(records, layout) {
       const preferred = icon && record.anchor.x < icon.x ? [left, right] : [right, left];
       const sideLayout = record.side === "supply" ? layout.supplyLayout : layout.demandLayout;
       if (record.kind === "node" && record.side === "supply" && record.anchor.x === layout.leftX) preferred.unshift(18);
-      if (record.kind === "node" && record.side === "supply" && sideLayout.hasParallel && record.anchor.y === sideLayout.busY && Math.abs(record.anchor.x - sideLayout.branchStartX) < 30) preferred.unshift(sideLayout.branchStartX + 10);
+      if (record.kind === "node" && record.side === "supply" && sideLayout.hasParallel && record.anchor.y === sideLayout.busY && Math.abs(record.anchor.x - sideLayout.branchStartX) < annotationWidth / 2) preferred.unshift(sideLayout.branchStartX + 10);
       const xs = record.kind === "node" ? preferred : [record.anchor.x - annotationWidth / 2];
       let position;
       for (let level = 0; !position; level++) {
@@ -270,8 +271,10 @@ function positionAnnotations(records, layout, bands) {
     const selected = records.filter((record) => record.side === side);
     const detached = selected.filter((record) => !record.anchor);
     const startY = source.top + source.height - bands[side].extraBottom + 32;
+    const startX = source.branchStartX - 45;
+    const columnWidth = (source.branchEndX - source.branchStartX + 90) / 4;
     detached.forEach((record, index) => {
-      record.x = 176 + index % 4 * 192;
+      record.x = startX + index % 4 * columnWidth;
       record.y = startY + Math.floor(index / 4) * bands[side].detachedRowHeight;
     });
   }
@@ -304,12 +307,12 @@ function renderObservation(record, selectedNode, selectedComponent) {
 export function renderHVACInspectionTopology({ loop, nodes = [], components = [], selectedNode = "", selectedComponent = "" } = {}) {
   const graph = buildHVACInspectionTopology(loop || {}, { nodes, components });
   if (!loop || !graph.edges.length) return `<div class="hvac-inspect-topology-empty" data-hvac-inspect-topology-empty>${escapeHTML(label("simulation.hvacTopologyUnavailable", "Topology is not available for this result."))}</div>`;
-  const initial = buildHVACLoopDiagramLayout(loop, { readOnly: true });
+  const initial = buildHVACLoopDiagramLayout(loop, { readOnly: true, width: diagramWidth });
   const bands = reservedBands(observationRecords(loop, graph, initial, nodes, components), initial);
-  const layout = buildHVACLoopDiagramLayout(loop, { readOnly: true, annotationBands: bands });
+  const layout = buildHVACLoopDiagramLayout(loop, { readOnly: true, width: diagramWidth, annotationBands: bands });
   const records = observationRecords(loop, graph, layout, nodes, components);
   positionAnnotations(records, layout, bands);
-  const headings = [["supply", layout.supplyLayout], ["demand", layout.demandLayout]].filter(([side]) => bands[side].extraBottom).map(([side, source]) => `<text class="hvac-inspect-detached-label" x="176" y="${source.top + source.height - bands[side].extraBottom + 8}">${escapeHTML(label("simulation.hvacTopologyOtherPoints", "Other equipment / points"))}</text>`).join("");
+  const headings = [["supply", layout.supplyLayout], ["demand", layout.demandLayout]].filter(([side]) => bands[side].extraBottom).map(([side, source]) => `<text class="hvac-inspect-detached-label" x="${source.branchStartX - 45}" y="${source.top + source.height - bands[side].extraBottom + 8}">${escapeHTML(label("simulation.hvacTopologyOtherPoints", "Other equipment / points"))}</text>`).join("");
   const overlay = headings + records.map((record) => renderObservation(record, selectedNode, selectedComponent)).join("");
   const diagram = renderHVACLoopDiagram(loop, { readOnly: true, layout, overlay, hideLegend: true, svgClass: "hvac-inspect-topology-svg" });
   return `<section class="hvac-inspect-topology" data-hvac-inspect-topology="${escapeHTML(loop.id || loop.name)}">
