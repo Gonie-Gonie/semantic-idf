@@ -162,8 +162,10 @@ function renderSemanticView() {
     <div id="semanticSelectionContext">${renderSemanticSelectionContext(currentSemanticSelection())}</div>
     ${renderSemanticTemporaryReveal()}
     ${renderSemanticWarnings(projection)}
-    ${renderSemanticSectionIndex(projection.lines)}
-    <div class="semantic-sticky-path" aria-live="polite"></div>
+    <div class="semantic-navigation-header">
+      ${renderSemanticSectionIndex(projection.lines)}
+      <div class="semantic-sticky-path" aria-live="polite"></div>
+    </div>
     <div class="semantic-yaml" data-semantic-mode="${escapeHTML(mode)}" role="tree" aria-label="Semantic YAML projection">
       ${visibleLines.map((line, index) => renderSemanticLine(line, index, keyWidths)).join("")}
     </div>
@@ -947,40 +949,64 @@ function semanticLineIsBranch(line) {
 }
 
 function bindSemanticStickyPath() {
+  const editor = elements.semanticEditor;
+  const header = editor.querySelector(".semantic-navigation-header");
   const sticky = elements.semanticEditor.querySelector(".semantic-sticky-path");
   const yaml = elements.semanticEditor.querySelector(".semantic-yaml");
-  if (!sticky || !yaml) {
+  if (!header || !sticky || !yaml) {
     return;
   }
   const lines = Array.from(yaml.querySelectorAll(".semantic-line"));
+  let frame = 0;
+  let previousLine;
+  let previousPath = null;
+  let previousHeight = -1;
   const update = () => {
-    const editorRect = elements.semanticEditor.getBoundingClientRect();
-    const threshold = editorRect.top + sticky.offsetHeight + 6;
-    let activeLine = lines[0] || null;
-    for (const line of lines) {
-      if (line.getBoundingClientRect().top > threshold) {
-        break;
-      }
-      activeLine = line;
+    frame = 0;
+    if (!header.isConnected || editor.clientHeight === 0) return;
+    const headerRect = header.getBoundingClientRect();
+    const height = Math.ceil(headerRect.height);
+    if (height !== previousHeight) {
+      editor.style.setProperty("--semantic-navigation-height", `${height + 6}px`);
+      previousHeight = height;
     }
+    // The section index can wrap after resizing the input pane. Track the
+    // first readable row below the whole header, including the breadcrumb.
+    const threshold = headerRect.bottom + 6;
+    let low = 0, high = lines.length;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (lines[middle].getBoundingClientRect().top <= threshold) low = middle + 1;
+      else high = middle;
+    }
+    const activeLine = lines[Math.max(0, low - 1)] || null;
+    if (activeLine === previousLine) return;
+    previousLine = activeLine;
     const path = semanticPathForLine(lines, activeLine);
+    const pathText = path.join(" / ");
+    if (pathText === previousPath) return;
+    previousPath = pathText;
+    sticky.title = pathText;
     sticky.innerHTML = path.length
       ? path.map((label) => `<span>${escapeHTML(label)}</span>`).join(`<span class="semantic-path-separator">/</span>`)
       : `<span>${escapeHTML("semantic_energyplus_model")}</span>`;
   };
-  const onScroll = () => requestAnimationFrame(update);
-  elements.semanticEditor._semanticStickyScrollHandler = onScroll;
-  elements.semanticEditor.addEventListener("scroll", onScroll, { passive: true });
-  requestAnimationFrame(update);
+  const schedule = () => { if (!frame) frame = requestAnimationFrame(update); };
+  const observer = new ResizeObserver(schedule);
+  observer.observe(header);
+  editor.addEventListener("scroll", schedule, { passive: true });
+  editor._semanticStickyCleanup = () => {
+    editor.removeEventListener("scroll", schedule);
+    observer.disconnect();
+    if (frame) cancelAnimationFrame(frame);
+    editor.style.removeProperty("--semantic-navigation-height");
+  };
+  schedule();
 }
 
 function clearSemanticStickyPathBinding() {
-  const handler = elements.semanticEditor?._semanticStickyScrollHandler;
-  if (!handler) {
-    return;
-  }
-  elements.semanticEditor.removeEventListener("scroll", handler);
-  delete elements.semanticEditor._semanticStickyScrollHandler;
+  elements.semanticEditor?._semanticStickyCleanup?.();
+  if (elements.semanticEditor) delete elements.semanticEditor._semanticStickyCleanup;
 }
 
 function semanticPathForLine(lines, activeLine) {
