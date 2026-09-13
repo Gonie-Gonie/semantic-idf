@@ -5,6 +5,7 @@ import { buildHVACLoopDiagramLayout, renderHVACLoopDiagram } from "./hvac-views.
 const normalized = (value) => String(value || "").trim().toLowerCase();
 const label = (key, fallback) => { const value = t(key); return !value || value === key ? fallback : value; };
 const finite = (value) => typeof value === "number" && Number.isFinite(value);
+const metricRowHeight = 18;
 
 // Only parsed ports, connectors and demand-path edges establish connectivity.
 // Branch order and the set of available observations never invent an edge.
@@ -156,8 +157,9 @@ function splitLabel(value, limit = 21) {
   return lines;
 }
 
-function metricSymbol(metric) {
-  return ({ temperature: "T", relativeHumidity: "RH", humidity: "w", flow: "ṁ", setpoint: "Tset", power: "P", cop: "COP", cooling: "Q̇c", heating: "Q̇h", heatTransfer: "Q̇", status: /part load/i.test(metric.label || "") ? "PLR" : "Run" })[metric.id] || metric.label || metric.id;
+function renderMetricSymbol(metric) {
+  if (metric.id === "setpoint") return 'T<tspan baseline-shift="sub" font-size="75%">set</tspan>';
+  return escapeHTML(({ temperature: "T", relativeHumidity: "RH", humidity: "w", flow: "ṁ", power: "P", cop: "COP", cooling: "Q̇c", heating: "Q̇h", heatTransfer: "Q̇", status: /part load/i.test(metric.label || "") ? "PLR" : "Run" })[metric.id] || metric.label || metric.id);
 }
 
 function observationRecords(loop, graph, layout, nodes, components) {
@@ -202,7 +204,7 @@ function observationRecords(loop, graph, layout, nodes, components) {
     // sharing a reserved text band with one row, so labels cannot overlap.
     const annotationRowY = anchor ? rows.reduce((best, row) => Math.abs(row.y - anchor.y) < Math.abs(best - anchor.y) ? row.y : best, rows[0]?.y ?? anchor.y) : null;
     return { item, kind, anchor, annotationRowY, parent, side, nameLines, parentLines, metrics, status,
-      height: (nameLines.length + parentLines.length) * 16 + metrics.length * 20 + (status ? 18 : 0) + 12 };
+      height: (nameLines.length + parentLines.length) * 16 + metrics.length * metricRowHeight + (status ? 18 : 0) + 12 };
   });
 }
 
@@ -285,7 +287,7 @@ function renderObservation(record, selectedNode, selectedComponent) {
       ${nameLines.map((line, index) => `<text class="hvac-inspect-point-label" x="0" y="${index * 16}">${escapeHTML(line)}</text>`).join("")}
       ${parentLines.map((line, index) => `<text class="hvac-inspect-parent-label" x="0" y="${(nameLines.length + index) * 16}">${escapeHTML(line)}</text>`).join("")}
       ${status ? `<text class="hvac-inspect-state ${status}" x="0" y="${(nameLines.length + parentLines.length) * 16 + 4}">${escapeHTML(statusLabel)}</text>` : ""}
-      ${metrics.map((metric, index) => `<text class="hvac-inspect-metric" x="0" y="${(nameLines.length + parentLines.length) * 16 + (status ? 18 : 0) + index * 20 + 4}" data-hvac-inspect-metric="${escapeHTML(metric.id || metric.label)}"><tspan class="hvac-inspect-metric-label">${escapeHTML(metricSymbol(metric))} </tspan><tspan class="hvac-inspect-metric-value">${escapeHTML(metricValue(metric))}</tspan></text>`).join("")}
+      ${metrics.map((metric, index) => `<text class="hvac-inspect-metric" x="0" y="${(nameLines.length + parentLines.length) * 16 + (status ? 18 : 0) + index * metricRowHeight + 4}" data-hvac-inspect-metric="${escapeHTML(metric.id || metric.label)}"><tspan class="hvac-inspect-metric-label" x="0">${renderMetricSymbol(metric)}</tspan><tspan class="hvac-inspect-metric-value" x="42">${escapeHTML(metricValue(metric))}</tspan></text>`).join("")}
     </g>
   </g>`;
 }

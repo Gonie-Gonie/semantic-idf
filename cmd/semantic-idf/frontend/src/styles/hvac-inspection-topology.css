@@ -2,7 +2,9 @@
 .hvac-inspect-topology-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
 .hvac-inspect-topology-heading h4 { margin: 0; }
 .hvac-inspect-topology-heading label { display: flex; align-items: center; gap: 7px; color: var(--muted); }
-.hvac-inspect-topology-viewport { overflow: auto; min-height: 240px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); overscroll-behavior: contain; }
+/* Keep horizontal diagram panning local; vertical wheel input must reach the
+   result pane so users can continue to the graphs below the topology. */
+.hvac-inspect-topology-viewport { overflow: auto; min-height: 240px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); overscroll-behavior-x: contain; overscroll-behavior-y: auto; }
 .hvac-inspect-topology-viewport .hvac-graphic-shell { width: var(--hvac-inspect-width); min-width: 1120px; padding: 0; overflow: visible; }
 .hvac-inspect-topology-viewport.fit .hvac-graphic-shell { width: 100%; }
 .hvac-inspect-topology-svg { display: block; width: 100%; max-width: none; min-height: 0; height: auto; }
@@ -30,9 +32,9 @@
 .hvac-inspect-vertex.selected .hvac-inspect-leader { stroke: var(--selection-primary); opacity: 1; stroke-width: 1.5; }
 .hvac-inspect-point-label { fill: var(--muted); font-size: 12px; font-weight: 400; }
 .hvac-inspect-detached-label, .hvac-inspect-parent-label { fill: var(--muted); font-size: 12px; }
-.hvac-inspect-metric { fill: var(--ink); font-size: 15px; }
-.hvac-inspect-metric-label { fill: var(--muted); font-size: 13px; }
+.hvac-inspect-metric { fill: var(--ink); font-size: 13px; }
+.hvac-inspect-metric-label { fill: var(--muted); font-size: 12px; }
 .hvac-inspect-metric-value { font-variant-numeric: tabular-nums; font-weight: 600; }
-.hvac-inspect-state { fill: var(--muted); font-size: 15px; font-weight: 600; }
+.hvac-inspect-state { fill: var(--muted); font-size: 13px; font-weight: 600; }
 .hvac-inspect-state.on { fill: var(--green); }
 .hvac-inspect-topology-empty { padding: 22px; color: var(--muted); border: 1px solid var(--line); border-radius: 8px; }

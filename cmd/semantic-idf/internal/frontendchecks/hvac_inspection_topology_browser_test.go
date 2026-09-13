@@ -92,7 +92,15 @@ try {
  check(inlet.querySelectorAll('[data-hvac-inspect-metric]').length===4&&inlet.textContent.includes('0.00 kg/s')&&inlet.textContent.includes('0.0047 kg/kg'),'zero flow, humidity precision or optional setpoint disappeared');
  const compactLabel=id=>inlet.querySelector('[data-hvac-inspect-metric="'+id+'"] .hvac-inspect-metric-label').textContent.trim();
  check(compactLabel('flow')==='ṁ'&&compactLabel('temperature')==='T'&&compactLabel('humidity')==='w'&&compactLabel('setpoint')==='Tset','node measurements lost compact physical symbols or confused humidity ratio with relative humidity');
- check(parseFloat(getComputedStyle(inlet.querySelector('.hvac-inspect-metric-value')).fontSize)>parseFloat(getComputedStyle(inlet.querySelector('.hvac-inspect-point-label')).fontSize),'node names visually outweigh measured values');
+ const valueFont=parseFloat(getComputedStyle(inlet.querySelector('.hvac-inspect-metric-value')).fontSize),nameFont=parseFloat(getComputedStyle(inlet.querySelector('.hvac-inspect-point-label')).fontSize);
+ check(valueFont>nameFont&&valueFont<=nameFont+1,'frame values must stay compact while slightly emphasizing measured values');
+ for(const row of mount.querySelectorAll('[data-hvac-inspect-metric]')){
+  const symbol=row.querySelector('.hvac-inspect-metric-label'),value=row.querySelector('.hvac-inspect-metric-value');
+  check(symbol.getStartPositionOfChar(0).x===0&&value.getStartPositionOfChar(0).x===42,'frame measurement labels and values do not align in fixed columns');
+  check(symbol.getBBox().x+symbol.getBBox().width<value.getBBox().x,'frame measurement label overlaps its value');
+  check(Math.abs(value.getStartPositionOfChar(0).y-Number(row.getAttribute('y')))<.1,'a subscript shifted the measured value off its row');
+ }
+ check(inlet.querySelector('[data-hvac-inspect-metric="setpoint"] .hvac-inspect-metric-label tspan[baseline-shift="sub"]')?.textContent==='set','setpoint symbol lost its compact subscript');
  check(mount.querySelector('[data-hvac-inspect-component="pump-observation"]')?.textContent.includes('Off')&&mount.querySelector('[data-hvac-inspect-component="chiller-a-observation"]')?.textContent.includes('4.20'),'equipment status/power/COP missing');
  check(mount.querySelector('.hvac-loop-icon.pump')&&mount.querySelector('.hvac-loop-icon.chiller'),'equipment icons diverged from HVAC tab');
  check(!mount.querySelector('table,ul,dl')&&!mount.textContent.includes('Source data'),'topology introduced tabular or source/provenance detail');
