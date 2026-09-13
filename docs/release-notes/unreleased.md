@@ -19,11 +19,18 @@ The release script infers bump size from these sections:
 ## Changed
 
 - Replaced HVAC Loop Check's stacked tables with selectable executed-loop
-  topology, frame measurements, per-node flow/temperature/humidity graphs and
+  topology using the HVAC tab's loop schematic with frame measurements in its
+  whitespace with compact measurement labels and prominent values,
+  per-node flow/temperature/humidity graphs with vertical node-only legends
+  and manual two-handle Y-range controls, and
   custom line or scatter plots. Line plots support two Y-axis units; scatter
   plots pair exactly two properties by observation time. Hourly HVAC data now
   retains all requested samples and includes available equipment COP, operating
   fractions and node relative humidity.
+- Removed reveal-location navigation between HVAC and simulation results;
+  diagram and result selections stay in the current view.
+- HVAC Loop Check now requests all air, plant and condenser loops, without
+  restricting the run to the loop previously selected in the HVAC tab.
 - Removed Energy's four top summary cards and Service selector. Heating and
   cooling now appear together. Selecting a component opens a Monthly / Hourly
   chart instead of descriptive details and navigation actions. Monthly charts

@@ -1,15 +1,21 @@
 import { escapeHTML } from "../state.js";
 import { t } from "../i18n.js";
 import { prepareHVACInspection, hvacInspectionSnapshots, hvacInspectionTrace, hvacInspectionBasicProperties } from "../hvac-inspection-data.js";
-import { renderHVACInspectionChart, updateHVACInspectionChartFrame } from "../hvac-inspection-charts.js";
+import { renderHVACInspectionChart, updateHVACInspectionChartFrame, hvacInspectionChartYRanges } from "../hvac-inspection-charts.js";
 import { renderHVACInspectionTopology } from "./hvac-inspection-topology.js";
 
 const copy = (key, fallback) => t(`simulation.hvacInspect${key}`, {}, fallback);
 const option = (value, label, selected, disabled = false) => `<option value="${escapeHTML(value)}"${selected ? " selected" : ""}${disabled ? " disabled" : ""}>${escapeHTML(label)}</option>`;
+const basicChartCache = new WeakMap();
+const pendingBasicPlots = new WeakMap();
+const finite = (value) => typeof value === "number" && Number.isFinite(value);
+const basicTitle = (kind) => kind === "flow" ? copy("Flow", "Mass flow") : kind === "temperature" ? copy("Temperature", "Temperature") : copy("HumidityTitle", "Humidity");
+const rangeNumber = (value) => value.toLocaleString(undefined, { maximumFractionDigits: 4 });
 
 function normalize(model, ui) {
   ui.frameIndex = Math.max(0, Math.min(model.frames.length - 1, Math.round(Number(ui.frameIndex) || 0)));
   ui.visibleNodes ||= {};
+  ui.basicYLimits ||= {};
   ui.mode = ui.mode === "scatter" ? "scatter" : "line";
   ui.zoom ||= "fit";
   if (!model.entities.some((entity) => entity.id === ui.selectedComponent)) ui.selectedComponent = "";
@@ -43,13 +49,78 @@ function renderSnapshot(model, ui) {
 }
 
 function renderBasicCharts(model, ui) {
-  const frameKey = model.frames[ui.frameIndex]?.x;
-  return [
-    ["flow", copy("Flow", "Mass flow")],
-    ["temperature", copy("Temperature", "Temperature")],
-    ["humidity", copy("HumidityTitle", "Humidity")],
-  ].map(([kind, title]) => `<div data-hvac-inspect-basic-chart="${kind}">${renderHVACInspectionChart({ title, frameKey,
-    series: hvacInspectionBasicProperties(model, kind, ui.visibleNodes).map((property) => ({ ...hvacInspectionTrace(model, property), axisLabel: property.label })) })}</div>`).join("");
+  return ["flow", "temperature", "humidity"].map((kind) => `<div data-hvac-inspect-basic-chart="${kind}"><div data-hvac-inspect-basic-plot="${kind}">${renderBasicPlot(model, ui, kind)}</div><div data-hvac-inspect-y-controls="${kind}">${renderBasicYControls(model, ui, kind)}</div></div>`).join("");
+}
+
+function basicChartData(model, kind) {
+  if (!basicChartCache.has(model)) basicChartCache.set(model, {});
+  const cached = basicChartCache.get(model);
+  if (!cached[kind]) {
+    const nodes = model.entities.filter((entity) => entity.kind === "node");
+    const series = hvacInspectionBasicProperties(model, kind).map((property) => ({ ...hvacInspectionTrace(model, property),
+      axisLabel: property.label, legendLabel: property.entity.name, entityId: property.entity.id, colorIndex: nodes.indexOf(property.entity) }));
+    for (const trace of series) trace.hasObservations = trace.points.some((point) => finite(point.value));
+    cached[kind] = { series, ranges: hvacInspectionChartYRanges(series) };
+  }
+  return cached[kind];
+}
+
+function basicYRange(ui, kind, range) {
+  const saved = ui.basicYLimits[kind]?.[range.unit];
+  if (!finite(saved?.low) || !finite(saved?.high) || saved.low >= saved.high) return { ...range.auto };
+  const low = Math.max(range.min, Math.min(range.max - range.step, saved.low));
+  const high = Math.min(range.max, Math.max(low + range.step, saved.high));
+  return { low, high };
+}
+
+function renderBasicPlot(model, ui, kind) {
+  const { series, ranges } = basicChartData(model, kind);
+  return renderHVACInspectionChart({ title: basicTitle(kind), frameKey: model.frames[ui.frameIndex]?.x, legendLayout: "vertical",
+    yLimits: Object.fromEntries(ranges.map((range) => [range.unit, basicYRange(ui, kind, range)])),
+    series: series.filter((trace) => ui.visibleNodes[trace.entityId] !== false) });
+}
+
+function renderBasicYControls(model, ui, kind) {
+  const { series, ranges } = basicChartData(model, kind);
+  if (!ranges.length) return "";
+  const manual = Boolean(Object.keys(ui.basicYLimits[kind] || {}).length);
+  return `<div class="hvac-inspection-y-controls"><div class="hvac-inspection-y-heading"><span>${escapeHTML(copy("YLimits", "Y-axis limits"))}</span><button type="button" data-hvac-inspect-y-reset="${kind}"${manual ? "" : " disabled"}>${escapeHTML(copy("Auto", "Auto"))}</button></div>${ranges.map((range) => {
+    const { low, high } = basicYRange(ui, kind, range), span = range.max - range.min;
+    const disabled = !series.some((trace) => trace.unit === range.unit && trace.hasObservations && ui.visibleNodes[trace.entityId] !== false);
+    return `<div class="hvac-inspection-y-range" data-hvac-inspect-y-range="${kind}" data-hvac-inspect-y-unit="${escapeHTML(range.unit)}" role="group" aria-label="${escapeHTML(`${basicTitle(kind)} · ${copy("YLimits", "Y-axis limits")} (${range.unit})`)}">
+      <div class="hvac-inspection-y-values"><output data-hvac-inspect-y-value="low">${escapeHTML(`${copy("YMin", "Min")} ${rangeNumber(low)} ${range.unit}`)}</output><output data-hvac-inspect-y-value="high">${escapeHTML(`${copy("YMax", "Max")} ${rangeNumber(high)} ${range.unit}`)}</output></div>
+      <div class="hvac-inspection-y-slider"><div class="hvac-inspection-y-track"><i style="left:${(low - range.min) / span * 100}%;width:${(high - low) / span * 100}%"></i></div>
+        ${["low", "high"].map((bound) => `<input type="range" min="${range.min}" max="${range.max}" step="${range.step}" value="${bound === "low" ? low : high}" data-hvac-inspect-y-bound="${bound}" aria-label="${escapeHTML(`${basicTitle(kind)} · ${copy(bound === "low" ? "YMin" : "YMax", bound === "low" ? "Min" : "Max")} (${range.unit})`)}" aria-valuemin="${bound === "low" ? range.min : low + range.step}" aria-valuemax="${bound === "low" ? high - range.step : range.max}" aria-valuetext="${escapeHTML(`${rangeNumber(bound === "low" ? low : high)} ${range.unit}`)}"${disabled ? " disabled" : ""}/>`).join("")}
+      </div></div>`;
+  }).join("")}</div>`;
+}
+
+function refreshBasicPlot(container, model, ui, kind, immediate = false) {
+  if (!pendingBasicPlots.has(container)) pendingBasicPlots.set(container, new Map());
+  const pending = pendingBasicPlots.get(container);
+  if (pending.has(kind)) cancelAnimationFrame(pending.get(kind));
+  const mount = container.querySelector(`[data-hvac-inspect-basic-plot="${kind}"]`);
+  const draw = () => {
+    pending.delete(kind);
+    // A loop or visibility change may replace the target before the next frame.
+    if (mount && container.contains(mount)) mount.innerHTML = renderBasicPlot(model, ui, kind);
+  };
+  if (immediate) draw();
+  else pending.set(kind, requestAnimationFrame(draw));
+}
+
+function updateBasicYControl(group, range, selected) {
+  for (const bound of ["low", "high"]) {
+    const input = group.querySelector(`[data-hvac-inspect-y-bound="${bound}"]`), value = selected[bound];
+    input.value = value;
+    input.setAttribute("aria-valuemin", bound === "low" ? range.min : selected.low + range.step);
+    input.setAttribute("aria-valuemax", bound === "low" ? selected.high - range.step : range.max);
+    input.setAttribute("aria-valuetext", `${rangeNumber(value)} ${range.unit}`);
+    group.querySelector(`[data-hvac-inspect-y-value="${bound}"]`).textContent = `${copy(bound === "low" ? "YMin" : "YMax", bound === "low" ? "Min" : "Max")} ${rangeNumber(value)} ${range.unit}`;
+  }
+  const track = group.querySelector(".hvac-inspection-y-track i");
+  track.style.left = `${(selected.low - range.min) / (range.max - range.min) * 100}%`;
+  track.style.width = `${(selected.high - selected.low) / (range.max - range.min) * 100}%`;
 }
 
 function renderCustomChart(model, ui) {
@@ -100,15 +171,41 @@ export function renderHVACInspection(loop, ui = {}) {
 }
 
 export function handleHVACInspectionEvent(event, container, loop, ui) {
-  const target = event.target.closest?.("[data-simulation-hvac-frame], [data-hvac-inspect-node], [data-hvac-inspect-component], [data-hvac-inspect-node-visible], [data-hvac-inspect-entity], [data-hvac-inspect-property], [data-hvac-inspect-mode], [data-hvac-inspect-add], [data-hvac-inspect-remove], [data-hvac-inspect-zoom]");
+  const target = event.target.closest?.("[data-simulation-hvac-frame], [data-hvac-inspect-node], [data-hvac-inspect-component], [data-hvac-inspect-node-visible], [data-hvac-inspect-entity], [data-hvac-inspect-property], [data-hvac-inspect-mode], [data-hvac-inspect-add], [data-hvac-inspect-remove], [data-hvac-inspect-zoom], [data-hvac-inspect-y-bound], [data-hvac-inspect-y-reset]");
   if (!target || !container.contains(target)) return false;
-  const isClick = event.type === "click", clickControl = target.matches("[data-hvac-inspect-node], [data-hvac-inspect-component], [data-hvac-inspect-add], [data-hvac-inspect-remove]");
+  const isClick = event.type === "click", clickControl = target.matches("[data-hvac-inspect-node], [data-hvac-inspect-component], [data-hvac-inspect-add], [data-hvac-inspect-remove], [data-hvac-inspect-y-reset]");
   if (isClick !== clickControl || !isClick && event.type !== "input" && event.type !== "change") return false;
   event.stopPropagation();
   if (isClick) event.preventDefault();
   const model = prepareHVACInspection(loop);
   normalize(model, ui);
   const data = target.dataset;
+  if (data.hvacInspectYBound !== undefined) {
+    const group = target.closest("[data-hvac-inspect-y-range]"), kind = group?.dataset.hvacInspectYRange;
+    const range = basicChartData(model, kind).ranges.find((item) => item.unit === group.dataset.hvacInspectYUnit);
+    if (!range || target.disabled) return true;
+    const selected = basicYRange(ui, kind, range), value = Number(target.value);
+    if (!finite(value)) return true;
+    if (data.hvacInspectYBound === "low") selected.low = Math.max(range.min, Math.min(selected.high - range.step, value));
+    else selected.high = Math.min(range.max, Math.max(selected.low + range.step, value));
+    for (const bound of ["low", "high"]) selected[bound] = Number(selected[bound].toPrecision(12));
+    (ui.basicYLimits[kind] ||= {})[range.unit] = selected;
+    updateBasicYControl(group, range, selected);
+    container.querySelector(`[data-hvac-inspect-y-reset="${kind}"]`).disabled = false;
+    refreshBasicPlot(container, model, ui, kind, event.type === "change");
+    return true;
+  }
+  if (data.hvacInspectYReset !== undefined) {
+    const kind = data.hvacInspectYReset;
+    delete ui.basicYLimits[kind];
+    for (const range of basicChartData(model, kind).ranges) {
+      const group = [...container.querySelectorAll(`[data-hvac-inspect-y-range="${kind}"]`)].find((item) => item.dataset.hvacInspectYUnit === range.unit);
+      if (group) updateBasicYControl(group, range, range.auto);
+    }
+    target.disabled = true;
+    refreshBasicPlot(container, model, ui, kind, true);
+    return true;
+  }
   if (target.matches("[data-simulation-hvac-frame]")) {
     if (ui.frameIndex === Number(target.value)) return true;
     ui.frameIndex = Number(target.value) || 0;

@@ -106,10 +106,11 @@ The main view sends these fixed values:
 - `zoneHeatFlowDetail`: `surface`
 - `scope.periodMode`: `full`
 - `scope.zoneMode`: `all`
+- `scope.loopMode`: `all`
 
-Period start/end values and zone-name filters are therefore empty. HVAC loop
-scope can still be derived from the active HVAC selection when HVAC Loop Check
-is enabled.
+Period start/end values and zone-name filters are therefore empty. HVAC Loop
+Check includes all air, plant and condenser loops, independently of the active
+HVAC tab selection.
 
 The main view detects the model version from either IDF or epJSON input and
 automatically selects a compatible registered EnergyPlus installation when
@@ -168,8 +169,7 @@ provided. HVAC Loop Check uses selected loop node names when they can be resolve
 from the current HVAC analysis, requests component operation variables for
 resolved loop components, and falls back to wildcard node/component keys when
 scope is broad or unresolved. The main Simulation view always requests all
-zones, while still passing the active HVAC tab loop as selected HVAC scope when
-HVAC Loop Check is enabled.
+zones and loops, without inheriting HVAC tab loop or component selections.
 
 The general Series preview is limited to the first 256 SQL columns or 16 CSV
 columns. HVAC Loop Check and Comfort also read every matching requested series
@@ -594,14 +594,24 @@ Purpose result viewers now include:
 - Zone Heat Flow SQL or CSV/ESO ledger with frame sampling metadata and
   time-range controls.
 - HVAC Loop Check shows one selected loop's topology from the executed input.
+  It reuses the HVAC tab's supply/demand loop schematic and equipment symbols.
+  Frame measurements occupy whitespace above and below the flow paths, with
+  leader lines to the corresponding node points; dense labels add vertical
+  space instead of shrinking the text or replacing the schematic with cards.
+  Values take visual priority over node names, with compact labels such as T,
+  RH, w, and ṁ. HVAC and result selections stay in the current view without
+  opening a reveal-location chooser or switching between those tabs.
   Frame snapshots emphasize measured node points and show flow, temperature,
   humidity and available setpoints; equipment shows available operating state,
   power, load and reported COP. Zero remains a measured value; unavailable
   values never acquire a previous frame's reading. The former summary, source
   and operation tables are removed from this view.
   Three default time-series graphs show node flow, temperature and humidity,
-  with per-node checkboxes. Custom graph selects equipment/node first and its
-  property second. Line graphs support at most two units on separate Y axes;
+  with per-node checkboxes and vertically aligned legends containing node names
+  only. Each graph has a two-handle Y-range control and an Auto reset; ranges
+  remain independent for different measurement units. Custom graph selects
+  equipment/node first and its property second. Line graphs support at most
+  two units on separate Y axes;
   Scatter compares exactly two properties at matching observation times.
   Humidity uses reported relative humidity when available, otherwise humidity
   ratio in g/kg. HVAC Hourly observations are retained beyond the Series preview

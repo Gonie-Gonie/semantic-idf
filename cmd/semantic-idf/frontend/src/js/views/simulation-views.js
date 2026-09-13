@@ -1,6 +1,5 @@
 import { backend, elements, escapeHTML, getDocumentText, setStatus, state } from "../state.js";
 import { t } from "../i18n.js";
-import { chooseViewTarget } from "../navigation-chooser.js";
 import { configureResultPanelNavigationHooks } from "../panel-navigation-adapters.js";
 import { getSemanticNavigationCache } from "../semantic-navigation-cache.js";
 import { openSelectionInView, selectSemanticEntity } from "../selection-controller.js";
@@ -30,10 +29,8 @@ import { createEnergyPathSceneSlot } from "../energy-path-scene-slot.js";
 import { energyPathDisplayContext } from "../energy-path-display.js";
 import { buildEnergyPathReport, renderEnergyPathReportHTML } from "../energy-path-report.js";
 import { resolveEnergyPathOutputRequest, energyPathOutputRequestKey } from "../energy-path-output-requests.js";
-import { navigateHVAC } from "./hvac-views.js";
 import { hvacInspectionLoopKey } from "../hvac-inspection-data.js";
 import { renderHVACInspection, handleHVACInspectionEvent } from "./hvac-inspection-view.js";
-import { renderProfile } from "./profile-views.js";
 
 let progressListenerRegistered = false;
 let simulationPendingResponseRunID = "";
@@ -344,34 +341,9 @@ function simulationHVACLoopTypesMatch(left = "", right = "") {
   return normalize(left) === normalize(right);
 }
 
-function simulationSemanticNavigationAttributes(candidateGroups = [], panelTargetID = "") {
-  const binding = simulationSemanticBinding(candidateGroups, panelTargetID);
-  if (!binding) {
-    return simulationSemanticDataAttribute("data-panel-target-id", panelTargetID);
-  }
-  const primary = binding.selections.length === 1 ? binding.selections[0] : null;
-  const anchor = primary?.sourceAnchor || {};
-  const selected = Boolean(primary?.entityId && state.globalSelection?.entityId === primary.entityId);
-  return [
-    simulationSemanticDataAttribute("data-entity-id", primary?.entityId, true),
-    simulationSemanticDataAttribute("data-entity-kind", primary?.entityKind, true),
-    simulationSemanticDataAttribute("data-occurrence-id", primary?.occurrenceId, true),
-    simulationSemanticDataAttribute("data-occurrence-context", primary?.occurrenceContext, true),
-    simulationSemanticDataAttribute("data-semantic-path", primary?.semanticPathHint, true),
-    simulationSemanticDataAttribute("data-source-object-id", anchor.objectId, true),
-    simulationSemanticDataAttribute("data-source-object-index", anchor.objectIndex, true),
-    simulationSemanticDataAttribute("data-source-field-index", anchor.fieldIndex, true),
-    simulationSemanticDataAttribute("data-source-object-type", anchor.objectType, true),
-    simulationSemanticDataAttribute("data-source-object-name", anchor.objectName, true),
-    simulationSemanticDataAttribute("data-source-field-name", anchor.fieldName, true),
-    simulationSemanticDataAttribute("data-panel-target-id", panelTargetID, true),
-    simulationSemanticDataAttribute("data-simulation-semantic-binding-id", binding.id, true),
-    'data-simulation-semantic-select="true"',
-    binding.selections.length > 1 ? 'data-simulation-model-target-chooser="true"' : "",
-    binding.chooseOccurrence ? 'data-choose-semantic-occurrence="true"' : "",
-    binding.selections.length > 1 ? 'aria-haspopup="dialog"' : "",
-    `aria-selected="${selected ? "true" : "false"}"`,
-  ].filter(Boolean).join(" ");
+function simulationSemanticNavigationAttributes() {
+  // Result interactions remain within the current inspection view.
+  return "";
 }
 
 function simulationSemanticBinding(candidateGroups = [], panelTargetID = "") {
@@ -528,42 +500,7 @@ function simulationUniqueSelections(selections = []) {
   return out;
 }
 
-async function requestSimulationModelSelection(element) {
-  const bindingID = String(element?.dataset?.simulationSemanticBindingId || "");
-  const binding = simulationSemanticBindings.get(bindingID);
-  if (!binding?.selections?.length) {
-    return false;
-  }
-  let selection = binding.selections[0];
-  if (binding.selections.length > 1) {
-    const targets = binding.selections.map((candidate, index) => ({
-      view: "simulation",
-      targetKind: candidate.choiceGroup,
-      targetId: String(index),
-      label: `${candidate.choiceGroup} · ${candidate.choiceLabel}`,
-    }));
-    const chosen = await chooseViewTarget({
-      view: "simulation",
-      selection: { entityId: "", originTargetId: binding.panelTargetID },
-      targets,
-    });
-    if (chosen === null || chosen === undefined || !binding.selections[Number(chosen)]) {
-      return false;
-    }
-    selection = binding.selections[Number(chosen)];
-  }
-  await selectSemanticEntity({
-    ...selection,
-    originView: "simulation",
-    originTargetId: binding.panelTargetID,
-  }, {
-    originView: "simulation",
-    action: "select",
-    chooseOccurrence: selection.chooseOccurrence === true,
-    preserveFilters: true,
-  });
-  return true;
-}
+
 
 function simulationSemanticDataAttribute(name, value, includeEmpty = false) {
   if (!includeEmpty && (value === undefined || value === null || String(value) === "")) {
@@ -3462,18 +3399,11 @@ function renderSimulationEnergyDrilldownActions(selection = {}) {
   const zoneName = selection.zoneName || "";
   const heatFlowZones = heatFlowZoneMap(activeHeatFlowDataset());
   const hasHeatFlow = zoneName && heatFlowZones.has(normalizeHeatFlowName(zoneName));
-  const profileZoneName = simulationProfileZoneName(zoneName);
   const actions = [];
   if (zoneName) {
     actions.push(`
       <button class="simulation-series-inspect" type="button" data-simulation-energy-zone-jump="${escapeHTML(zoneName)}">
         ${escapeHTML(t("simulation.openZoneInSankey", {}, "Sankey"))}
-      </button>`);
-  }
-  if (profileZoneName) {
-    actions.push(`
-      <button class="simulation-series-inspect" type="button" data-simulation-energy-profile-zone-jump="${escapeHTML(profileZoneName)}">
-        ${escapeHTML(t("tab.profile", {}, "Profile"))}
       </button>`);
   }
   if (hasHeatFlow) {
@@ -3532,67 +3462,8 @@ function renderSimulationEnergyRelatedServicePaths(selection = {}) {
     </div>`;
 }
 
-function renderSimulationEnergyRelatedHVACLinks(selection = {}) {
-  const paths = simulationRelatedServicePathsForEnergySelection(selection).slice(0, 8);
-  if (!paths.length) {
-    return "";
-  }
-  const loops = [];
-  const loopKeys = new Set();
-  const assets = [];
-  const assetIDs = new Set();
-  paths.forEach((path) => {
-    simulationServicePathLoopRefs(path).forEach((loop) => {
-      const key = simulationEnergyLoopFocusValue(loop) || `${loop.type || ""}:${loop.name || ""}`;
-      if (!key || loopKeys.has(key)) {
-        return;
-      }
-      loopKeys.add(key);
-      loops.push(loop);
-    });
-    simulationServicePathSupportingAssetRefs(path).forEach((asset) => {
-      const key = asset.id || asset.label || "";
-      if (!key || assetIDs.has(key)) {
-        return;
-      }
-      assetIDs.add(key);
-      assets.push(asset);
-    });
-  });
-  const loopRows = loops
-    .map(
-      (loop) => `
-        <span class="energy-service-path-action-row">
-          <button
-            class="simulation-energy-system-chip"
-            type="button"
-            data-simulation-hvac-loop-type="${escapeHTML(loop.type || "")}"
-            data-simulation-hvac-loop-name="${escapeHTML(loop.name || "")}"
-            title="${escapeHTML(t("simulation.openLoopInHVAC", {}, "Open loop in HVAC"))}"
-          >${escapeHTML(loop.label || loop.name || "")}</button>
-          ${renderSimulationEnergyLoopFocusButton(loop)}
-        </span>`,
-    )
-    .join("");
-  const assetRows = assets
-    .map(
-      (asset) => `
-        <button
-          class="simulation-energy-system-chip"
-          type="button"
-          data-simulation-hvac-coupling-id="${escapeHTML(asset.id || "")}"
-          title="${escapeHTML(t("simulation.openAssetInHVAC", {}, "Open asset in HVAC"))}"
-        >${escapeHTML(asset.label || asset.id || "")}</button>`,
-    )
-    .join("");
-  if (!loopRows && !assetRows) {
-    return "";
-  }
-  return `
-    <div class="energy-related-hvac-links">
-      <strong>${escapeHTML(t("simulation.energyHVACJumps", {}, "HVAC jumps"))}</strong>
-      <div>${loopRows}${assetRows}</div>
-    </div>`;
+function renderSimulationEnergyRelatedHVACLinks() {
+  return "";
 }
 
 function renderSimulationEnergyRelatedZones(selection = {}) {
@@ -3629,56 +3500,18 @@ function renderSimulationEnergyServicePathFocusButton(path = {}) {
 }
 
 function renderSimulationEnergyServicePathButton(path = {}, label = "") {
-  return `
-    <button
-      type="button"
-      class="energy-service-path-chip"
-      data-simulation-hvac-path-id="${escapeHTML(path.id || "")}"
-      title="${escapeHTML(simulationServicePathConnectedSystems(path).join(", ") || simulationPathTypeLabel(path.pathType))}"
-    >${escapeHTML(label || simulationServedSubjectLabel(path.servedSubject || path))}</button>`;
+  return `<span>${escapeHTML(label || simulationServedSubjectLabel(path.servedSubject || path))}</span>`;
 }
 
 function renderSimulationEnergyConnectedSystems(path = {}) {
-  const loopButtons = simulationServicePathLoopRefs(path)
-    .map(
-      (loop) => `
-        <span class="energy-service-path-action-row">
-          <button
-            class="simulation-energy-system-chip"
-            type="button"
-            data-simulation-hvac-loop-type="${escapeHTML(loop.type || "")}"
-            data-simulation-hvac-loop-name="${escapeHTML(loop.name || "")}"
-          >${escapeHTML(loop.label || loop.name || "")}</button>
-          ${renderSimulationEnergyLoopFocusButton(loop)}
-        </span>`,
-    )
-    .join("");
-  const otherSystems = simulationServicePathOtherSystems(path)
-    .map((label) => `<span>${escapeHTML(label)}</span>`)
-    .join("");
-  return (loopButtons || otherSystems)
-    ? `<div class="simulation-energy-system-links">${loopButtons}${otherSystems}</div>`
-    : escapeHTML("—");
+  const systems = simulationServicePathLoopRefs(path).map((loop) => loop.label || loop.name || "")
+    .concat(simulationServicePathOtherSystems(path));
+  return systems.map((label) => `<span>${escapeHTML(label)}</span>`).join(" ");
 }
 
 function renderSimulationEnergySupportingAssets(path = {}) {
-  const assets = simulationServicePathSupportingAssetRefs(path);
-  if (!assets.length) {
-    return escapeHTML("—");
-  }
-  return `
-    <div class="simulation-energy-system-links">
-      ${assets
-        .map(
-          (asset) => `
-            <button
-              class="simulation-energy-system-chip"
-              type="button"
-              data-simulation-hvac-coupling-id="${escapeHTML(asset.id || "")}"
-            >${escapeHTML(asset.label || asset.id || "")}</button>`,
-        )
-        .join("")}
-    </div>`;
+  return simulationServicePathSupportingAssetRefs(path)
+    .map((asset) => `<span>${escapeHTML(asset.label || asset.id || "")}</span>`).join(" ");
 }
 
 function renderSimulationEnergyLoopFocusButton(loop = {}) {
@@ -5235,17 +5068,8 @@ export function handleSimulationSeriesInspectClick(event) {
     selectSimulationSeries(series, range);
     return;
   }
-  const pathHVACButton = event.target.closest("[data-energy-path-hvac-path-id]");
-  if (pathHVACButton) {
-    event.preventDefault();
-    event.stopPropagation();
-    if (pathHVACButton.disabled) return;
-    const node = simulationSelectedEnergyPathNode();
-    const actions = node ? simulationEnergyInspectorActions(node) : { hvacPaths: [] };
-    const pathID = pathHVACButton.dataset.energyPathHvacPathId || "";
-    if (actions.hvacPaths.some((path) => path.id === pathID)) openSimulationHVACServicePath(pathID);
-    return;
-  }
+
+
   const topologyAirCoupling = event.target.closest("[data-energy-path-topology-air-coupling-id]");
   if (topologyAirCoupling) {
     event.preventDefault();
@@ -5253,10 +5077,8 @@ export function handleSimulationSeriesInspectClick(event) {
     void openSimulationEnergyPathTopologyAirCoupling(topologyAirCoupling);
     return;
   }
-  const semanticTarget = event.target.closest("[data-simulation-semantic-select]");
-  if (semanticTarget) {
-    void requestSimulationModelSelection(semanticTarget);
-  }
+
+
   const energyNode = event.target.closest("[data-energy-explanation-node]");
   if (energyNode) {
     event.preventDefault();
@@ -5298,11 +5120,6 @@ export function handleSimulationSeriesInspectClick(event) {
     renderSimulationEnergyDashboard(state.simulationResult);
     return;
   }
-  const energyProfileZoneJump = event.target.closest("[data-simulation-energy-profile-zone-jump]");
-  if (energyProfileZoneJump) {
-    openSimulationProfileZone(energyProfileZoneJump.dataset.simulationEnergyProfileZoneJump || "");
-    return;
-  }
   const energyHeatFlowZoneJump = event.target.closest("[data-simulation-energy-heatflow-zone-jump]");
   if (energyHeatFlowZoneJump) {
     state.simulationHeatFlowSelectedZone = energyHeatFlowZoneJump.dataset.simulationEnergyHeatflowZoneJump || "";
@@ -5312,21 +5129,8 @@ export function handleSimulationSeriesInspectClick(event) {
     renderSimulationHeatFlow();
     return;
   }
-  const hvacPath = event.target.closest("[data-simulation-hvac-path-id]");
-  if (hvacPath) {
-    openSimulationHVACServicePath(hvacPath.dataset.simulationHvacPathId || "");
-    return;
-  }
-  const hvacLoop = event.target.closest("[data-simulation-hvac-loop-name]");
-  if (hvacLoop) {
-    openSimulationHVACLoopRef(hvacLoop.dataset.simulationHvacLoopType || "", hvacLoop.dataset.simulationHvacLoopName || "");
-    return;
-  }
-  const hvacCoupling = event.target.closest("[data-simulation-hvac-coupling-id]");
-  if (hvacCoupling) {
-    openSimulationHVACCoupling(hvacCoupling.dataset.simulationHvacCouplingId || "");
-    return;
-  }
+
+
   const button = event.target.closest("[data-simulation-inspect-series]");
   if (!button || button.disabled) {
     return;
@@ -5515,102 +5319,7 @@ export async function openSimulationEnergyPathTopologyAirCoupling(element) {
   return Boolean(opened);
 }
 
-function openSimulationHVACServicePath(pathID) {
-  const path = simulationHVACServicePathIndex().byID.get(pathID);
-  if (!path) {
-    setStatus(t("hvac.noServicePaths", {}, "No service paths"), "warn");
-    return;
-  }
-  navigateHVAC(
-    {
-      kind: "service_path",
-      id: simulationNavigationPathEntityID(path.id),
-      label: simulationServedSubjectLabel(path.servedSubject || path),
-      view: "services",
-      context: { pathId: path.id },
-      graphKey: simulationServicePathGraphKey(path),
-    },
-    { pushHistory: true },
-  );
-  openSimulationHVACTab();
-}
 
-function openSimulationHVACLoopRef(loopType = "", loopName = "") {
-  const loop = simulationHVACLoopForRef(loopType, loopName);
-  const type = loop?.type || loopType || "Loop";
-  const name = loop?.name || loopName;
-  if (!name) {
-    setStatus(t("hvac.noServicePaths", {}, "No service paths"), "warn");
-    return;
-  }
-  navigateHVAC(
-    {
-      kind: "loop",
-      id: `loop:${simulationHVACLoopRefGraphKey(type, name)}`,
-      label: name,
-      loopID: loop?.id || "",
-      view: "loop",
-      graphKey: loop?.id ? `loop:${loop.id}` : `loop:${simulationHVACLoopRefGraphKey(type, name)}`,
-    },
-    { pushHistory: true },
-  );
-  openSimulationHVACTab();
-}
-
-function openSimulationHVACCoupling(couplingID = "") {
-  const id = couplingID || "";
-  if (!id) {
-    return;
-  }
-  navigateHVAC(
-    {
-      kind: "coupling",
-      id: `coupling:${simulationHVACGraphName(id)}`,
-      label: id,
-      view: "services",
-      context: { couplingId: `coupling:${simulationHVACGraphName(id)}` },
-      graphKey: `coupling-node:any:${id}`,
-    },
-    { pushHistory: true },
-  );
-  openSimulationHVACTab();
-}
-
-function openSimulationHVACTab() {
-  const hvacTab = [...(elements.resultTabButtons || [])].find((button) => button.dataset.resultTab === "hvac");
-  if (hvacTab) {
-    hvacTab.click();
-  } else {
-    state.activeResultTab = "hvac";
-  }
-}
-
-function openSimulationProfileZone(zoneName = "") {
-  const profileZoneName = simulationProfileZoneName(zoneName);
-  if (!profileZoneName) {
-    setStatus(t("profile.noAnalysis", {}, "No profile analysis"), "warn");
-    return;
-  }
-  state.activeProfileView = "zone";
-  state.activeProfileZoneName = profileZoneName;
-  const profileTab = [...(elements.resultTabButtons || [])].find((button) => button.dataset.resultTab === "profile");
-  if (profileTab) {
-    profileTab.click();
-  } else {
-    state.activeResultTab = "profile";
-  }
-  renderProfile(state.report?.profile);
-}
-
-function simulationProfileZoneName(zoneName = "") {
-  const wanted = normalizeOutputMatchToken(zoneName);
-  if (!wanted) {
-    return "";
-  }
-  return (state.report?.profile?.zoneProfiles || []).find((zone) => normalizeOutputMatchToken(zone.zoneName) === wanted)?.zoneName
-    || (state.report?.profile?.matrix || []).find((row) => normalizeOutputMatchToken(row.zoneName) === wanted)?.zoneName
-    || "";
-}
 
 function simulationHVACLoopForRef(loopType = "", loopName = "") {
   const wantedName = simulationHVACGraphName(loopName);
@@ -5793,80 +5502,8 @@ function buildSimulationPurposeRequest() {
 }
 
 function simulationHVACPurposeScope(purposes = selectedSimulationPurposes()) {
-  if (!purposes.includes("hvac_loop_check")) {
-    return {};
-  }
-  const loop = activeSimulationHVACLoop();
-  if (!loop) {
-    return { loopMode: "all" };
-  }
-  const scope = { loopMode: "selected" };
-  const name = loop.name || "";
-  switch (loop.type) {
-    case "AirLoopHVAC":
-      scope.airLoopNames = name ? [name] : [];
-      break;
-    case "PlantLoop":
-      scope.plantLoopNames = name ? [name] : [];
-      break;
-    case "CondenserLoop":
-      scope.condenserLoopNames = name ? [name] : [];
-      break;
-    default:
-      scope.loopMode = "all";
-      break;
-  }
-  const component = activeSimulationHVACComponent(loop);
-  if (component) {
-    scope.componentIds = simulationHVACComponentScopeIDs(component);
-  }
-  return scope;
-}
-
-function activeSimulationHVACLoop() {
-  const loops = state.report?.hvac?.loops || [];
-  return loops.find((loop) => loop.id === state.activeHVACLoopId) || null;
-}
-
-function activeSimulationHVACComponent(loop = activeSimulationHVACLoop()) {
-  const selectedKey = normalizeOutputMatchToken(state.activeHVACGraphKey || "");
-  if (!loop || !selectedKey || selectedKey.startsWith("loop:") || selectedKey.startsWith("node:")) {
-    return null;
-  }
-  return simulationHVACLoopComponents(loop).find((component) =>
-    simulationHVACComponentScopeIDs(component).some((id) => normalizeOutputMatchToken(id) === selectedKey),
-  ) || null;
-}
-
-function simulationHVACLoopComponents(loop = {}) {
-  const sides = [loop.supplySide, loop.demandSide].filter(Boolean);
-  return sides.flatMap((side) => (side.branches || []).flatMap((branch) => branch.components || []));
-}
-
-function simulationHVACComponentScopeIDs(component = {}) {
-  const ids = [];
-  const add = (value) => {
-    const text = String(value || "").trim();
-    if (text && !ids.includes(text)) {
-      ids.push(text);
-    }
-  };
-  const index = Number(component.objectIndex);
-  if (Number.isFinite(index) && index >= 0) {
-    for (const prefix of ["component", "source", "terminal"]) {
-      add(`${prefix}:${index}`);
-    }
-  }
-  const objectType = component.objectType || "";
-  const objectName = component.objectName || "";
-  if (objectType && objectName) {
-    for (const prefix of ["component", "source", "terminal"]) {
-      add(`${prefix}:${objectType}:${objectName}`);
-    }
-    add(`${objectType}:${objectName}`);
-  }
-  add(objectName);
-  return ids;
+  // A diagram selection is inspection state, not a requested simulation scope.
+  return purposes.includes("hvac_loop_check") ? { loopMode: "all" } : {};
 }
 
 function selectedSimulationPurposes() {
@@ -7201,7 +6838,6 @@ function bindHeatFlowInteractions() {
     const shape = event.target.closest("[data-heat-zone]");
     if (shape) {
       state.simulationHeatFlowSelectedZone = shape.dataset.heatZone || "";
-      void requestSimulationModelSelection(shape);
       renderSimulationHeatFlow();
     }
   });

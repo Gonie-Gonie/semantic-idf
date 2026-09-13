@@ -32,6 +32,14 @@ func TestResultPanelNavigationAdaptersContract(t *testing.T) {
 	if !strings.Contains(content, "registerPanelNavigationAdapter(viewId, adapter)") {
 		t.Fatal("common result adapters must register through the panel navigation registry")
 	}
+	for _, isolated := range []string{
+		"if (isStandaloneResultView(viewId)) return false",
+		"if (isStandaloneResultView(viewId)) return null",
+	} {
+		if !strings.Contains(content, isolated) {
+			t.Fatalf("HVAC/Simulation adapters must retain context history while rejecting semantic navigation: missing %q", isolated)
+		}
+	}
 	for _, method := range []string{
 		"canReveal(selection)",
 		"async reveal(selection, options = {})",

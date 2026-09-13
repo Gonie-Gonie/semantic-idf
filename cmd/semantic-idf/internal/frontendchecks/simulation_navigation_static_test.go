@@ -43,67 +43,20 @@ func TestSimulationResultsMapToCanonicalModelWithoutSimulationEntities(t *testin
 	}
 }
 
-func TestSimulationInteractiveResultsUseStandardNavigationMarkup(t *testing.T) {
+func TestSimulationInteractiveResultsKeepSelectionLocal(t *testing.T) {
 	content := readTestFile(t, "frontend/src/js/views/simulation-views.js")
 	attributes := sliceBetween(content, "function simulationSemanticNavigationAttributes", "function simulationSemanticBinding")
-	for _, attribute := range []string{
-		"data-entity-id",
-		"data-entity-kind",
-		"data-occurrence-id",
-		"data-occurrence-context",
-		"data-semantic-path",
-		"data-source-object-id",
-		"data-source-object-index",
-		"data-source-field-index",
-		"data-panel-target-id",
-		"aria-selected",
-	} {
-		if !strings.Contains(attributes, attribute) {
-			t.Fatalf("simulation standard navigation markup is missing %q", attribute)
+	if !strings.Contains(attributes, `return ""`) {
+		t.Fatal("simulation results must not carry semantic navigation bindings")
+	}
+	for _, forbidden := range []string{"data-simulation-model-target-chooser", "data-simulation-semantic-select", "requestSimulationModelSelection", "openSimulationHVACTab", "data-simulation-hvac-loop-name", "data-simulation-hvac-path-id", "data-simulation-hvac-coupling-id"} {
+		if strings.Contains(content, forbidden) {
+			t.Fatalf("simulation results still expose model navigation through %q", forbidden)
 		}
 	}
-	for _, renderer := range []string{
-		`simulationEnergySemanticAttributes(edge, "edge")`,
-		`simulationEnergySemanticAttributes(node, "node")`,
-		"simulationSourceSemanticAttributes(source, object)",
-		"simulationHeatFlowZoneSemanticAttributes(zoneName)",
-		"simulationHVACLoopSemanticAttributes(loop)",
-		"simulationComfortZoneSemanticAttributes(zoneName, object, metric)",
-		"simulationSeriesSemanticAttributes(series, sourceObject, seriesRef)",
-	} {
-		if !strings.Contains(content, renderer) {
-			t.Fatalf("simulation interactive result mapping is missing %q", renderer)
-		}
-	}
-}
-
-func TestSimulationAggregateModelChooserKeepsAllCandidateGroups(t *testing.T) {
-	content := readTestFile(t, "frontend/src/js/views/simulation-views.js")
-	binding := sliceBetween(content, "function simulationSemanticBinding", "function simulationResolvedSemanticGroup")
-	for _, term := range []string{
-		"resolvedGroups",
-		"preferred.selections.length > 1",
-		"resolvedGroups.flatMap",
-		"simulationUniqueSelections",
-	} {
-		if !strings.Contains(binding, term) {
-			t.Fatalf("simulation aggregate chooser binding is missing %q", term)
-		}
-	}
-	for _, group := range []string{"Model entities", "HVAC service paths", "Output sources", "Zones"} {
-		if !strings.Contains(content, group) {
-			t.Fatalf("simulation chooser group is missing %q", group)
-		}
-	}
-	for _, term := range []string{
-		"data-simulation-model-target-chooser",
-		"data-choose-semantic-occurrence",
-		"chooseViewTarget",
-		"requestSimulationModelSelection",
-		"chooseOccurrence: selection.chooseOccurrence === true",
-	} {
-		if !strings.Contains(content, term) {
-			t.Fatalf("simulation multiple-target chooser is missing %q", term)
+	for _, local := range []string{"handleHVACInspectionEvent", "selectSimulationEnergyGraphItem", "state.simulationHeatFlowSelectedZone = shape.dataset.heatZone"} {
+		if !strings.Contains(content, local) {
+			t.Fatalf("simulation local interaction is missing %q", local)
 		}
 	}
 }

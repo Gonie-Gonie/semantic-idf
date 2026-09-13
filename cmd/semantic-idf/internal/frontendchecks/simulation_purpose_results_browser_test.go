@@ -172,6 +172,9 @@ try{
  const {state}=await import("/src/js/state.js"),i18n=await import("/src/js/i18n.js");
  i18n.setLanguage("en");
  const original=state.simulationResult,originalJSON=JSON.stringify(original),requests=[];
+ const selectedHVACLoop={id:'fixture-supply-loop',type:'AirLoopHVAC',name:'SUPPLY LOOP',supplySide:{branches:[{components:[{objectType:'Fan:ConstantVolume',objectName:'SUPPLY FAN',objectIndex:4}]}]}};
+ state.report={...state.report,hvac:{...state.report?.hvac,loops:[selectedHVACLoop]}};
+ state.activeHVACLoopId=selectedHVACLoop.id;state.activeHVACGraphKey='component:4';
  const run=document.getElementById("simulationRunButton");
  const tab=view=>document.querySelector('[data-simulation-result-view-button="'+view+'"]');
  check(tab("hvac_loops").disabled&&tab("comfort").disabled,"previous energy-only result unexpectedly enables HVAC/Comfort");
@@ -192,6 +195,9 @@ try{
  for(let n=0;(requests.length===0||state.simulationRunning)&&n<500;n++)await new Promise(resolve=>setTimeout(resolve,10));
  check(requests.length===1,"native Run must send exactly one request");
  const request=requests[0];
+ const scope=request?.purposeRequest?.scope||{};
+ check(scope.loopMode==='all'&&![scope.airLoopNames,scope.plantLoopNames,scope.condenserLoopNames,scope.componentIds].some(items=>items?.length),'HVAC tab loop/component selection silently narrowed Run & Inspect');
+ check(state.activeHVACLoopId===selectedHVACLoop.id&&state.activeHVACGraphKey==='component:4','Run & Inspect changed the HVAC tab selection');
  for(const purpose of ["basic_energy","zone_heat_flow","hvac_loop_check","comfort_check"]){
   check(request?.purposeRequest?.purposes.includes(purpose),"run request omitted purpose: "+purpose);
  }

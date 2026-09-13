@@ -1,6 +1,7 @@
 import { getPanelNavigationAdapter } from "./panel-navigation-registry.js";
 import { bundledAppInfo } from "./app-info.js";
 import { getSemanticNavigationCache } from "./semantic-navigation-cache.js";
+import { isStandalonePanelLink, isStandaloneResultView } from "./panel-navigation-policy.js";
 
 const emptySelection = () => ({
   entityId: "",
@@ -142,7 +143,7 @@ export function createSelectionController(dependencies = {}) {
     if (!selection.entityId) {
       return [];
     }
-    if (isProfileTopologyLink(selection.originView, normalizedView)) {
+    if (isProfileTopologyLink(selection.originView, normalizedView) || isStandalonePanelLink(selection.originView, normalizedView)) {
       return [];
     }
     const occurrence = findOccurrence(cache, selection.occurrenceId);
@@ -366,7 +367,8 @@ export function createSelectionController(dependencies = {}) {
     }
     const options = optionsFor("open", rawOptions);
     const selection = currentSemanticSelection();
-    if (isProfileTopologyLink(options.originView || selection.originView, normalizedView)) {
+    if (isProfileTopologyLink(options.originView || selection.originView, normalizedView) ||
+      isStandalonePanelLink(options.originView || selection.originView, normalizedView)) {
       return false;
     }
     return inTransaction(options, () => openViewWithinTransaction(normalizedView, selection, options));
@@ -376,7 +378,7 @@ export function createSelectionController(dependencies = {}) {
     const options = optionsFor("reveal_source", rawOptions);
     return inTransaction(options, async () => {
       const selection = enrichSelection(controllerState.globalSelection, navigationCache());
-      if (!selection.entityId || !selection.sourceAnchor) {
+      if (!selection.entityId || !selection.sourceAnchor || isStandaloneResultView(options.originView || selection.originView)) {
         return false;
       }
       const view = sourceView(rawOptions.view || callGetter(dependencies.getActiveInputView));
@@ -450,12 +452,12 @@ export function createSelectionController(dependencies = {}) {
 
   async function followSelection(selection, options) {
     const originView = String(options.originView || selection.originView || "").toLowerCase();
-    if (!originView) {
+    if (!originView || isStandaloneResultView(originView)) {
       return false;
     }
     if (originView === "input-semantic") {
       const activePanel = String(callGetter(dependencies.getActivePanelView) || "").toLowerCase();
-      if (!activePanel || activePanel.startsWith("input-")) {
+      if (!activePanel || activePanel.startsWith("input-") || isStandaloneResultView(activePanel)) {
         return false;
       }
       if (!(await analysisIsCurrent())) {
@@ -485,6 +487,7 @@ export function createSelectionController(dependencies = {}) {
   }
 
   async function revealSemanticWithinTransaction(selection, options) {
+    if (isStandaloneResultView(options.originView || selection.originView)) return false;
     if (!(await analysisIsCurrent())) {
       return queuePendingNavigation("reveal_semantic", "input-semantic", selection, options);
     }
@@ -519,7 +522,7 @@ export function createSelectionController(dependencies = {}) {
   }
 
   async function openViewWithinTransaction(view, selection, options) {
-    if (!selection.entityId) {
+    if (!selection.entityId || isStandalonePanelLink(options.originView || selection.originView, view)) {
       return false;
     }
     if (!(await analysisIsCurrent())) {
@@ -554,6 +557,7 @@ export function createSelectionController(dependencies = {}) {
   }
 
   async function revealViewWithinTransaction(view, selection, options) {
+    if (isStandalonePanelLink(options.originView || selection.originView, view)) return false;
     if (!(await viewIsReady(view, selection))) {
       return queuePendingNavigation("reveal_view", view, selection, options);
     }

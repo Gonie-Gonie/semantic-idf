@@ -87,6 +87,50 @@ func TestHVACComponentOnlyScopeDoesNotRequestOtherEquipment(t *testing.T) {
 	}
 }
 
+func TestHVACDefaultSampleAllLoopScopeIncludesWaterLoops(t *testing.T) {
+	inputPath := filepath.Join("..", "..", "frontend", "src", "samples", "RefBldgLargeOfficeNew2004_Chicago.idf")
+	doc, err := simulationDocumentFromInput(inputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{
+		"VAV_1": "AirLoopHVAC", "VAV_2": "AirLoopHVAC", "VAV_3": "AirLoopHVAC", "VAV_5": "AirLoopHVAC",
+		"CoolSys1": "PlantLoop", "HeatSys1": "PlantLoop", "SWHSys1": "PlantLoop", "TowerWaterSys": "CondenserLoop",
+	}
+	report := idf.AnalyzeHVAC(doc)
+	if len(report.Loops) != len(want) {
+		t.Fatalf("default sample must exercise all eight air/water loops, got %d", len(report.Loops))
+	}
+	request := SimulationPurposeRequest{Purposes: []SimulationPurposeID{SimulationPurposeHVACLoopCheck}, Scope: SimulationPurposeScope{LoopMode: "all"}}
+	plan := BuildPurposeRunPlan(doc, request)
+	for _, variable := range []string{"System Node Temperature", "Pump Electricity Rate", "Chiller COP", "Boiler Heating Rate", "Cooling Tower Fan Electricity Rate"} {
+		if findPurposeOutput(plan, "Output:Variable", "*", variable) == nil {
+			t.Fatalf("all-loop plan omitted air/water loop observations: %s", variable)
+		}
+	}
+	series := []SimulationSeries{}
+	for _, loop := range report.Loops {
+		if loop.Type != want[loop.Name] || loop.SupplySide.InletNode == "" {
+			t.Fatalf("unexpected default sample loop identity/ports: %+v", loop)
+		}
+		series = append(series, hvacResultTestSeries(loop.SupplySide.InletNode, "System Node Temperature", "C"))
+	}
+	bundle := BuildPurposeResultBundle(&SimulationRunResult{InputPath: inputPath, PurposeRunPlan: &plan, Series: series}, request)
+	if len(bundle.HVACLoops) != len(want) {
+		t.Fatalf("all-loop result lost default sample loops: got %d, want %d", len(bundle.HVACLoops), len(want))
+	}
+	for _, loop := range bundle.HVACLoops {
+		if loop.LoopType != want[loop.Name] || loop.Topology == nil || loop.Topology.Name != loop.Name || len(loop.Series) == 0 {
+			t.Fatalf("default sample loop lacks inspectable executed topology or measurements: %+v", loop)
+		}
+		delete(want, loop.Name)
+		t.Logf("%s %s: executed topology and node observations available", loop.LoopType, loop.Name)
+	}
+	if len(want) != 0 {
+		t.Fatalf("missing default sample loops: %v", want)
+	}
+}
+
 func TestHVACNodeDeltaPairsActualFrames(t *testing.T) {
 	left := []SimulationPoint{{X: 1, Value: 10}, {X: 2, Value: 20}, {X: 3, Value: 30}}
 	right := []SimulationPoint{{X: 1, Value: 11}, {X: 3, Value: 32}}

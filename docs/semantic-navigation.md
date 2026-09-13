@@ -1,7 +1,7 @@
 # Semantic Navigation Contract
 
 This document defines the product and implementation contract for bidirectional
-navigation between Semantic Text and every analysis panel. New panels and new
+navigation between Semantic Text and participating analysis panels. New panels and new
 semantic projections must follow this contract instead of introducing a
 panel-specific click or jump model.
 
@@ -18,13 +18,15 @@ panel-specific click or jump model.
 
 ### Right Analysis Panels
 
-- Metrics, Profile, HVAC, Simulation, and Topology are
+- Metrics, Profile, and Topology are
   specialized lenses over the same semantic entities.
 - A target selected in a panel must be able to return to the most appropriate
   occurrence in Semantic Text.
-- Simulation results remain observations about the analyzed model. They link
-  to canonical model entities and output sources, but do not become canonical
-  Semantic Text entities themselves.
+- HVAC and Simulation retain local selections. Their items do not open the
+  semantic reveal chooser, follow selections into another view, or appear as
+  semantic navigation destinations. Their top-level tabs remain available.
+- Simulation results remain observations about the analyzed model and do not
+  become canonical Semantic Text entities themselves.
 
 The two sides share one primary selection. A panel may retain local display
 context such as a graph scope, active story, or filter, but it must derive its
@@ -79,11 +81,13 @@ data attributes, adapter operations, telemetry, and tests use these terms.
 | `clear_selection` | Clear the global selection | No | No | Never |
 | `edit` | Explicitly change a field or apply a semantic operation | No | Restore after apply | Document history only |
 
-Existing entry points such as `focusInputObject`, `selectHVACGraphKey`,
-`navigateHVAC`, and panel-specific focus functions remain compatibility
+Existing entry points such as `focusInputObject` and participating panel-specific
+focus functions remain compatibility
 wrappers while migration is in progress. Their navigation effects must route
 through the common selection controller, and one user action must not create
 duplicate history entries.
+
+`selectHVACGraphKey` and `navigateHVAC` only change local HVAC context.
 
 ## Pointer and keyboard contract
 
@@ -113,8 +117,8 @@ equivalent accessible operation.
 
 ## Linked and followed selection
 
-Selection and highlights are always shared between Semantic Text and result
-panels. A committed panel selection scrolls Semantic Text to a compatible
+Selection and highlights are shared between Semantic Text and participating
+panels. HVAC and Simulation do not participate. A committed panel selection scrolls Semantic Text to a compatible
 occurrence, and a Semantic Text selection scrolls or focuses a compatible
 target in the active panel. Following a selection never switches result tabs
 automatically. Internal restore and remap transactions may suppress a redundant
@@ -134,30 +138,23 @@ it must not duplicate this table as a large object-type switch.
 | Zone profile dimension | Profile | Zone plus dimension |
 | Profile group | Profile | Group ID |
 | Schedule definition or use | Profile | Schedule identity |
-| HVAC service path | HVAC | Path ID |
-| HVAC loop | HVAC | Loop ID |
-| HVAC component | HVAC | Component ID |
-| Supporting coupling | HVAC | Coupling ID revealed in Zone Services or its connected loop |
 | Output request | Input source | Source object or field anchor |
-| Simulation-purpose output source | Simulation or Input source | Result/source ID or source anchor |
+| Simulation-purpose output source | Input source | Source anchor |
 | Diagnostic occurrence | Tools / Diagnose | Diagnostic ID |
 | Raw or source-only occurrence | Input source | Source anchor |
 
 A zone name is not forced to one main result panel: it advertises every
-supported Topology, Profile, and HVAC target. Tools / Diagnose resolves
+supported Topology and Profile target. Tools / Diagnose resolves
 diagnostics independently from its current document snapshot. Occurrences beneath
-`zones/<zone>/profiles`, `zones/<zone>/services`, and
-`zones/<zone>/geometry` prefer Profile, HVAC, and Topology respectively. When
+`zones/<zone>/profiles` and `zones/<zone>/geometry` prefer Profile and Topology
+respectively. When
 multiple valid targets or occurrences remain, the UI offers a chooser rather
 than inventing a relationship or silently choosing an unrelated context.
 
-HVAC Components and Couplings are not standalone result views. Component and
-supporting-coupling targets retain their stable semantic identities, but reveal
-inside a Zone Services path when one exists. A coupling without a compatible
-service path reveals its first connected loop; if neither context exists, it
-falls back to the Zone Services root. This keeps source navigation intact while
-the visible HVAC navigator remains organized around zone relationships and
-AirLoopHVAC, PlantLoop, and Other loop diagrams.
+Backend projection metadata can retain HVAC and Simulation targets for model
+identity and compatibility. The frontend excludes them from reveal, open,
+follow, and destination menus. Local HVAC navigation remains organized around
+zone relationships and AirLoopHVAC, PlantLoop, and Other loop diagrams.
 
 Profile and Topology do not advertise each other as direct related
 destinations in result-panel menus. Both remain independently reachable from

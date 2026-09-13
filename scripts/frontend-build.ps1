@@ -48,6 +48,7 @@ $modules = @(
     "panel-navigation-actions.js",
     "panel-navigation-adapters.js",
     "panel-navigation-registry.js",
+    "panel-navigation-policy.js",
     "sample.js",
     "selection-controller.js",
     "semantic-navigation-cache.js",

@@ -2,27 +2,37 @@
 .hvac-inspect-topology-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
 .hvac-inspect-topology-heading h4 { margin: 0; }
 .hvac-inspect-topology-heading label { display: flex; align-items: center; gap: 7px; color: var(--muted); }
-.hvac-inspect-topology-viewport { overflow: auto; max-height: 580px; min-height: 240px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); overscroll-behavior: contain; }
-.hvac-inspect-topology-svg { display: block; max-width: none; height: auto; }
-.hvac-inspect-topology-svg.fit { min-width: 0; }
-.hvac-inspect-topology-svg marker path { fill: var(--muted); }
-.hvac-inspect-edge { fill: none; stroke: var(--teal); stroke-width: 2; }
-.hvac-inspect-edge.demand { stroke: var(--amber); }
-.hvac-inspect-card { fill: var(--surface-2); stroke: var(--line); stroke-width: 1; }
+.hvac-inspect-topology-viewport { overflow: auto; min-height: 240px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); overscroll-behavior: contain; }
+.hvac-inspect-topology-viewport .hvac-graphic-shell { width: var(--hvac-inspect-width); min-width: 1120px; padding: 0; overflow: visible; }
+.hvac-inspect-topology-viewport.fit .hvac-graphic-shell { width: 100%; }
+.hvac-inspect-topology-svg { display: block; width: 100%; max-width: none; min-height: 0; height: auto; }
+.hvac-inspect-topology-svg .hvac-loop-connector { stroke: var(--focus); stroke-width: 4.5; }
+.hvac-inspect-topology-svg .hvac-loop-path,
+.hvac-inspect-topology-svg .hvac-loop-branch-path,
+.hvac-inspect-topology-svg .hvac-loop-connector,
+.hvac-inspect-topology-svg .hvac-loop-equipment,
+.hvac-inspect-topology-svg .hvac-loop-endpoint,
+.hvac-inspect-topology-svg .hvac-branch-badge { pointer-events: none; }
 .hvac-inspect-vertex { cursor: pointer; outline: none; }
-.hvac-inspect-vertex:hover .hvac-inspect-card, .hvac-inspect-vertex:focus .hvac-inspect-card { stroke: var(--accent, #83cbd6); stroke-width: 2; }
-.hvac-inspect-vertex.measured .hvac-inspect-card { stroke: var(--teal); }
-.hvac-inspect-vertex.selected .hvac-inspect-card { stroke: var(--selection-primary); stroke-width: 3; fill: var(--selected-soft); }
+.hvac-inspect-leader { fill: none; stroke: var(--muted); stroke-width: 1; opacity: .65; pointer-events: none; }
 .hvac-inspect-node-ring { fill: var(--surface); stroke: var(--muted); stroke-width: 2; }
 .hvac-inspect-node-core { fill: var(--muted); }
 .hvac-inspect-vertex.measured .hvac-inspect-node-ring { stroke: var(--teal); stroke-width: 3; fill: var(--teal-soft); }
 .hvac-inspect-vertex.measured .hvac-inspect-node-core { fill: var(--teal); }
-.hvac-inspect-vertex.selected .hvac-inspect-node-ring { stroke: var(--selection-primary); stroke-width: 4; }
-.hvac-inspect-point-label { fill: var(--ink); font-size: 13px; font-weight: 600; }
-.hvac-inspect-detached-label { fill: var(--muted); font-size: 14px; }
-.hvac-inspect-metric { fill: var(--ink); font-size: 12px; }
-.hvac-inspect-metric-label { fill: var(--muted); }
-.hvac-inspect-metric-value { font-variant-numeric: tabular-nums; }
-.hvac-inspect-state { fill: var(--muted); font-size: 12px; font-weight: 700; }
+.hvac-inspect-equipment-ring { fill: none; stroke: transparent; stroke-width: 2; }
+.hvac-inspect-vertex.selected .hvac-inspect-node-ring,
+.hvac-inspect-vertex.selected .hvac-inspect-equipment-ring,
+.hvac-inspect-vertex:focus-visible .hvac-inspect-node-ring,
+.hvac-inspect-vertex:focus-visible .hvac-inspect-equipment-ring { stroke: var(--selection-primary); stroke-width: 4; }
+.hvac-inspect-vertex:hover .hvac-inspect-point-label,
+.hvac-inspect-vertex:focus-visible .hvac-inspect-point-label { text-decoration: underline; }
+.hvac-inspect-vertex.selected .hvac-inspect-point-label { fill: var(--selection-primary); }
+.hvac-inspect-vertex.selected .hvac-inspect-leader { stroke: var(--selection-primary); opacity: 1; stroke-width: 1.5; }
+.hvac-inspect-point-label { fill: var(--muted); font-size: 12px; font-weight: 400; }
+.hvac-inspect-detached-label, .hvac-inspect-parent-label { fill: var(--muted); font-size: 12px; }
+.hvac-inspect-metric { fill: var(--ink); font-size: 15px; }
+.hvac-inspect-metric-label { fill: var(--muted); font-size: 13px; }
+.hvac-inspect-metric-value { font-variant-numeric: tabular-nums; font-weight: 600; }
+.hvac-inspect-state { fill: var(--muted); font-size: 15px; font-weight: 600; }
 .hvac-inspect-state.on { fill: var(--green); }
 .hvac-inspect-topology-empty { padding: 22px; color: var(--muted); border: 1px solid var(--line); border-radius: 8px; }

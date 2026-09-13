@@ -1,6 +1,7 @@
 import { t } from "./i18n.js";
 import { RESULT_PANEL_NAVIGATION_VIEW_IDS } from "./panel-navigation-adapters.js";
 import { getPanelNavigationAdapter } from "./panel-navigation-registry.js";
+import { isStandaloneResultView } from "./panel-navigation-policy.js";
 import {
   clearSemanticHover,
   hoverSemanticEntity,
@@ -138,7 +139,7 @@ function handlePanelPointerOut(event) {
 
 function panelContextForElement(element) {
   const view = String(state.activeResultTab || "").toLowerCase();
-  if (!RESULT_PANEL_NAVIGATION_VIEW_IDS.includes(view)) {
+  if (!RESULT_PANEL_NAVIGATION_VIEW_IDS.includes(view) || isStandaloneResultView(view)) {
     return null;
   }
   const adapter = getPanelNavigationAdapter(view);

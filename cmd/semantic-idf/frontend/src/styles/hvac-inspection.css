@@ -17,6 +17,25 @@
 .hvac-inspection-node-toggles span { overflow-wrap: anywhere; }
 .hvac-inspection-basic, .hvac-inspection-custom { min-width: 0; }
 [data-hvac-inspect-basic-charts] { display: grid; gap: 16px; }
+.hvac-inspection-y-controls { display: grid; gap: 10px; margin: 8px 0 0; padding: 10px 14px; border: 1px solid var(--line); border-radius: 8px; }
+.hvac-inspection-y-heading, .hvac-inspection-y-values { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 12px; }
+.hvac-inspection-y-heading button { padding: 3px 10px; min-height: 28px; }
+.hvac-inspection-y-values output { font-variant-numeric: tabular-nums; }
+.hvac-inspection-y-slider { display: grid; align-items: center; height: 30px; }
+.hvac-inspection-y-track { grid-area: 1 / 1; height: 4px; margin: 0 8px; background: var(--line); position: relative; border-radius: 4px; }
+.hvac-inspection-y-track i { position: absolute; height: 100%; background: var(--teal); border-radius: inherit; }
+.hvac-inspection-y-slider input[type="range"] { appearance: none; -webkit-appearance: none; grid-area: 1 / 1; width: 100%; min-width: 0; height: 28px; min-height: 0; margin: 0; padding: 0; border: 0; background: transparent; box-shadow: none; pointer-events: none; z-index: 1; }
+.hvac-inspection-y-slider input[type="range"]:last-child { z-index: 2; }
+.hvac-inspection-y-slider input[type="range"]:focus-visible { z-index: 3; outline: none; }
+.hvac-inspection-y-slider input[type="range"]::-webkit-slider-runnable-track { height: 4px; background: transparent; }
+.hvac-inspection-y-slider input[type="range"]::-webkit-slider-thumb { appearance: none; -webkit-appearance: none; width: 16px; height: 16px; margin-top: -6px; border: 2px solid var(--surface); border-radius: 50%; background: var(--teal); cursor: ew-resize; pointer-events: auto; }
+.hvac-inspection-y-slider input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px var(--focus); }
+.hvac-inspection-y-slider input[type="range"]::-moz-range-track { height: 4px; background: transparent; }
+.hvac-inspection-y-slider input[type="range"]::-moz-range-thumb { width: 12px; height: 12px; border: 2px solid var(--surface); border-radius: 50%; background: var(--teal); cursor: ew-resize; pointer-events: auto; }
+.hvac-inspection-y-slider input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 3px var(--focus); }
+.hvac-inspection-y-slider input[type="range"]:disabled { opacity: .4; }
+.hvac-inspection-y-slider input[type="range"]:disabled::-webkit-slider-thumb { pointer-events: none; }
+.hvac-inspection-y-slider input[type="range"]:disabled::-moz-range-thumb { pointer-events: none; }
 .hvac-inspection-custom { padding-top: 18px; border-top: 1px solid var(--border); }
 .hvac-inspection-custom-heading { justify-content: space-between; margin-bottom: 12px; }
 .hvac-inspection-custom-heading label { display: flex; align-items: center; gap: 8px; }

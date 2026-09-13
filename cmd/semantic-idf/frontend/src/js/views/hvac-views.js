@@ -137,22 +137,8 @@ function selectHVACGraphKey(key, element = null) {
 }
 
 function navigateHVACFromPanelElement(element, target) {
-  const committed = element?.closest?.("[data-entity-id][data-panel-target-id]");
-  if (!committed) {
-    hvacNavigationRevealTarget = null;
-    navigateHVAC(target, { pushHistory: true });
-    return;
-  }
-  const navigate = () => navigateHVAC(target, { pushHistory: false, replace: true });
-  hvacNavigationRevealTarget = {
-    targetId: String(committed.dataset.panelTargetId || ""),
-    entityId: String(committed.dataset.entityId || ""),
-  };
-  if (typeof queueMicrotask === "function") {
-    queueMicrotask(navigate);
-  } else {
-    Promise.resolve().then(navigate);
-  }
+  hvacNavigationRevealTarget = null;
+  navigateHVAC(target, { pushHistory: true });
 }
 
 export function navigateHVAC(target = {}, options = {}) {
@@ -960,26 +946,9 @@ function semanticHVACNavigationLookup(navigation = semanticHVACNavigationIndex()
   return hvacSemanticNavigationLookupCache;
 }
 
-function hvacSemanticAttributes(targetID, options = {}) {
-  const record = hvacSemanticRecordForTarget(targetID, options);
-  if (!record) {
-    return "";
-  }
-  const anchor = record.occurrence.sourceAnchor || record.entity.sourceAnchors?.[0] || null;
-  return [
-    semanticHVACDataAttribute("data-entity-id", record.entity.id),
-    semanticHVACDataAttribute("data-entity-kind", record.entity.kind),
-    semanticHVACDataAttribute("data-occurrence-id", record.occurrence.occurrenceId),
-    semanticHVACDataAttribute("data-occurrence-context", record.occurrence.contextKind),
-    semanticHVACDataAttribute("data-semantic-path", record.occurrence.path),
-    semanticHVACDataAttribute("data-source-object-id", anchor?.objectId),
-    semanticHVACDataAttribute("data-source-object-index", anchor?.objectIndex),
-    semanticHVACDataAttribute("data-source-field-index", anchor?.fieldIndex),
-    semanticHVACDataAttribute("data-source-object-type", anchor?.objectType),
-    semanticHVACDataAttribute("data-source-object-name", anchor?.objectName),
-    semanticHVACDataAttribute("data-source-field-name", anchor?.fieldName),
-    semanticHVACDataAttribute("data-panel-target-id", targetID),
-  ].filter(Boolean).join(" ");
+function hvacSemanticAttributes() {
+  // HVAC selections stay in this tab; model links are not rendered.
+  return "";
 }
 
 function hvacSemanticRecordForTarget(targetID, options = {}) {
@@ -1949,7 +1918,9 @@ function pathMatchesPathTypeFilter(path = {}, filter = "all") {
   return path.pathType === filter;
 }
 
-export function renderHVACLoopDiagram(loop, options = {}) {
+// Inspection uses these same positions; only reserved annotation space changes.
+// Port anchors describe the actual drawn circuit, not every port an object owns.
+export function buildHVACLoopDiagramLayout(loop, options = {}) {
   const width = 1120;
   const leftX = 98;
   const rightX = 1022;
@@ -1969,6 +1940,8 @@ export function renderHVACLoopDiagram(loop, options = {}) {
     branchStartX,
     branchEndX,
     reverse: false,
+    ...(options.annotationBands?.supply || {}),
+    readOnly: Boolean(options.readOnly),
   });
   const demandLayout = buildLoopSideLayout(loop.demandSide, demandFallbackItems.length ? demandFallbackItems : [{ kind: "placeholder", label: t("hvac.demandSide") }], {
     side: "demand",
@@ -1978,22 +1951,47 @@ export function renderHVACLoopDiagram(loop, options = {}) {
     branchStartX,
     branchEndX,
     reverse: true,
+    ...(options.annotationBands?.demand || {}),
+    readOnly: Boolean(options.readOnly),
   });
   const height = demandLayout.top + demandLayout.height + 92;
-  const selectedKey = state.activeHVACGraphKey || `loop:${loop.id}`;
+  const anchors = [];
+  const addNode = (name, x, y, side, role) => {
+    if (name) anchors.push({ kind: "node", name, x, y, side, role });
+  };
+  for (const layout of [supplyLayout, demandLayout]) {
+    const direction = layout.reverse ? -1 : 1;
+    addNode(layout.sideData.inletNode, layout.reverse ? rightX : leftX, layout.busY, layout.side, "inlet");
+    addNode(layout.sideData.outletNode, layout.reverse ? leftX : rightX, layout.busY, layout.side, "outlet");
+    for (const { item, position } of loopSideItemPositions(layout)) {
+      if (item.kind === "component") {
+        anchors.push({ kind: "component", name: item.component.objectName, type: item.component.objectType, component: item.component, ...position, side: layout.side });
+        addNode(item.component.inletNode, position.x - direction * 42, position.y, layout.side, "inlet");
+        addNode(item.component.outletNode, position.x + direction * 42, position.y, layout.side, "outlet");
+      } else if (item.kind === "zone") {
+        anchors.push({ kind: "zone", name: item.zone, ...position, side: layout.side });
+      }
+    }
+  }
+  return { width, height, leftX, rightX, supplyLayout, demandLayout, anchors };
+}
+
+export function renderHVACLoopDiagram(loop, options = {}) {
+  const { width, height, leftX, rightX, supplyLayout, demandLayout } = options.layout || buildHVACLoopDiagramLayout(loop, options);
+  const selectedKey = options.readOnly ? "" : state.activeHVACGraphKey || `loop:${loop.id}`;
   const loopSelected = selectedKey === `loop:${loop.id}` ? "selected" : "";
   const diagramKey = `loop:${loop.id}`;
   const content = `
     <text class="hvac-loop-label" x="${leftX}" y="54">${escapeHTML(loop.type)}</text>
     <text class="hvac-loop-name" x="${leftX}" y="76">${escapeHTML(loop.name || t("hvac.unnamedLoop"))}</text>
-    <path class="hvac-loop-connector navigable-row ${loopSelected}" data-hvac-graph-key="loop:${escapeHTML(loop.id)}" ${hvacLoopSemanticAttributes(loop)} tabindex="0"
+    <path class="hvac-loop-connector ${options.readOnly ? "" : "navigable-row"} ${loopSelected}" ${loopDiagramAttributes(`loop:${loop.id}`, options.readOnly ? "" : hvacLoopSemanticAttributes(loop), options.readOnly)}
       d="M${rightX},${supplyLayout.busY} V${demandLayout.busY} M${leftX},${demandLayout.busY} V${supplyLayout.busY}" marker-end="url(#hvacLoopArrow)"></path>
     ${renderLoopSideNetwork(supplyLayout, loop)}
     ${renderLoopSideNetwork(demandLayout, loop)}
-    ${renderLoopEndpoint(leftX, supplyLayout.busY, loop.supplySide?.inletNode, t("hvac.supplyInlet"), loop)}
-    ${renderLoopEndpoint(rightX, supplyLayout.busY, loop.supplySide?.outletNode, t("hvac.supplyOutlet"), loop)}
-    ${renderLoopEndpoint(rightX, demandLayout.busY, loop.demandSide?.inletNode, t("hvac.demandInlet"), loop)}
-    ${renderLoopEndpoint(leftX, demandLayout.busY, loop.demandSide?.outletNode, t("hvac.demandOutlet"), loop)}`;
+    ${renderLoopEndpoint(leftX, supplyLayout.busY, loop.supplySide?.inletNode, t("hvac.supplyInlet"), loop, options.readOnly)}
+    ${renderLoopEndpoint(rightX, supplyLayout.busY, loop.supplySide?.outletNode, t("hvac.supplyOutlet"), loop, options.readOnly)}
+    ${renderLoopEndpoint(rightX, demandLayout.busY, loop.demandSide?.inletNode, t("hvac.demandInlet"), loop, options.readOnly)}
+    ${renderLoopEndpoint(leftX, demandLayout.busY, loop.demandSide?.outletNode, t("hvac.demandOutlet"), loop, options.readOnly)}${options.overlay || ""}`;
   const diagram = options.interactive
     ? `<g class="hvac-diagram-panzoom" data-hvac-diagram-content transform="${hvacDiagramTransform(diagramKey)}">${content}</g>`
     : content;
@@ -2003,7 +2001,7 @@ export function renderHVACLoopDiagram(loop, options = {}) {
 
   return `
     <div class="hvac-graphic-shell" style="--hvac-graph-width: ${width}px">
-      <svg class="hvac-loop-svg" viewBox="0 0 ${width} ${height}"${viewportAttributes} role="img" aria-label="${escapeHTML(loop.name || "HVAC loop")} loop diagram">
+      <svg class="hvac-loop-svg${options.svgClass ? ` ${escapeHTML(options.svgClass)}` : ""}" viewBox="0 0 ${width} ${height}"${viewportAttributes} role="img" aria-label="${escapeHTML(loop.name || "HVAC loop")} loop diagram">
         <defs>
           <marker id="hvacLoopArrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
             <path d="M0,0 L8,3 L0,6 Z" class="hvac-loop-arrow-marker"></path>
@@ -2011,21 +2009,21 @@ export function renderHVACLoopDiagram(loop, options = {}) {
         </defs>
         ${diagram}
       </svg>
-      <div class="hvac-legend">
+      ${options.hideLegend ? "" : `<div class="hvac-legend">
         <span><i class="hvac-legend-supply"></i>${t("hvac.legendSupply")}</span>
         <span><i class="hvac-legend-demand"></i>${t("hvac.demandSide")}</span>
         <span><i class="hvac-legend-zone"></i>${t("hvac.legendZone")}</span>
-      </div>
+      </div>`}
     </div>`;
 }
 
 function buildLoopSideLayout(sideData = {}, fallbackItems = [], options = {}) {
   const flow = loopSideFlow(sideData, fallbackItems, options.side);
   const rows = flow.rows;
-  const rowGap = 64;
-  const rowTopOffset = 46;
-  const rowBottomPadding = 42;
-  const height = Math.max(116, rowTopOffset + Math.max(1, rows.length - 1) * rowGap + rowBottomPadding);
+  const rowGap = options.rowGap || 64;
+  const rowTopOffset = options.rowTopOffset || 46;
+  const rowBottomPadding = options.rowBottomPadding || 42;
+  const height = Math.max(116, rowTopOffset + Math.max(options.reserveAnnotations ? 0 : 1, rows.length - 1) * rowGap + rowBottomPadding) + (options.extraBottom || 0);
   const rowYs = rows.map((_, index) => options.top + rowTopOffset + index * rowGap);
   const busY = rowYs.length > 1 ? (rowYs[0] + rowYs[rowYs.length - 1]) / 2 : rowYs[0];
   return {
@@ -2119,6 +2117,34 @@ function normalizeGraphName(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+function loopDiagramAttributes(key, semanticAttributes = "", readOnly = false) {
+  return readOnly ? "" : `data-hvac-graph-key="${escapeHTML(key)}" ${semanticAttributes} tabindex="0"`;
+}
+
+function loopSerialItemPositions(items, fromX, toX, y) {
+  const direction = toX >= fromX ? 1 : -1;
+  return distributeGraphPositions(items.length, fromX + direction * 54, toX - direction * 54, y);
+}
+
+function loopBranchItemPositions(row, layout) {
+  const start = layout.reverse ? layout.branchEndX - 72 : layout.branchStartX + 72;
+  const end = layout.reverse ? layout.branchStartX + 72 : layout.branchEndX - 72;
+  return distributeGraphPositions(row.items.length, start, end, row.y);
+}
+
+function loopSideItemPositions(layout) {
+  const startX = layout.reverse ? layout.rightX : layout.leftX;
+  const endX = layout.reverse ? layout.leftX : layout.rightX;
+  const splitX = layout.reverse ? layout.branchEndX : layout.branchStartX;
+  const mixX = layout.reverse ? layout.branchStartX : layout.branchEndX;
+  const entries = [];
+  const add = (items, positions) => items.forEach((item, index) => entries.push({ item, position: positions[index] }));
+  add(layout.leadInItems, loopSerialItemPositions(layout.leadInItems, startX, splitX, layout.busY));
+  add(layout.leadOutItems, loopSerialItemPositions(layout.leadOutItems, mixX, endX, layout.busY));
+  for (const row of layout.rows) add(row.items, loopBranchItemPositions(row, layout));
+  return entries;
+}
+
 function renderLoopSideNetwork(layout, loop) {
   const startX = layout.reverse ? layout.rightX : layout.leftX;
   const endX = layout.reverse ? layout.leftX : layout.rightX;
@@ -2127,17 +2153,17 @@ function renderLoopSideNetwork(layout, loop) {
   const minY = layout.rows[0]?.y || layout.busY;
   const maxY = layout.rows[layout.rows.length - 1]?.y || layout.busY;
   const loopKey = `loop:${loop.id}`;
-  const loopClass = state.activeHVACGraphKey === loopKey ? "selected" : state.activeHVACGraphKey ? "dimmed" : "";
+  const loopClass = layout.readOnly ? "" : state.activeHVACGraphKey === loopKey ? "selected" : state.activeHVACGraphKey ? "dimmed" : "";
   const sideLabel = layout.side === "supply" ? t("hvac.supplySide") : t("hvac.demandSide");
   const branchPaths = layout.rows
     .map((row) => {
       const rowComponentKeys = row.items
         .map((item) => (item.kind === "component" ? componentGraphKey(item.component) : ""))
         .filter(Boolean);
-      const branchClass = graphSelectionClass(row.key, [loopKey, ...rowComponentKeys]);
+      const branchClass = layout.readOnly ? "" : graphSelectionClass(row.key, [loopKey, ...rowComponentKeys]);
       return `
-        <path class="hvac-loop-branch-path ${branchClass}" data-hvac-graph-key="${escapeHTML(row.key)}" d="M${splitX},${row.y} H${mixX}"></path>
-        ${renderLoopBranchMarker(row, splitX, row.y, loopKey)}
+        <path class="hvac-loop-branch-path ${branchClass}" ${layout.readOnly ? "" : `data-hvac-graph-key="${escapeHTML(row.key)}"`} d="M${splitX},${row.y} H${mixX}"></path>
+        ${renderLoopBranchMarker(row, splitX, row.y, loopKey, layout.readOnly)}
         ${renderLoopBranchItems(row, layout, loopKey)}`;
     })
     .join("");
@@ -2145,7 +2171,7 @@ function renderLoopSideNetwork(layout, loop) {
     <g class="hvac-loop-side-block ${escapeHTML(layout.side)}">
       <rect class="hvac-loop-side-panel" x="${layout.branchStartX - 62}" y="${layout.top}" width="${layout.branchEndX - layout.branchStartX + 124}" height="${layout.height}" rx="0"></rect>
       <text class="hvac-loop-side-note" x="${layout.branchStartX - 45}" y="${layout.top + 22}">${escapeHTML(sideLabel)}</text>
-      <path class="hvac-loop-path ${loopClass}" data-hvac-graph-key="${escapeHTML(loopKey)}"
+      <path class="hvac-loop-path ${loopClass}" ${layout.readOnly ? "" : `data-hvac-graph-key="${escapeHTML(loopKey)}"`}
         d="M${startX},${layout.busY} H${splitX} M${splitX},${minY} V${maxY} M${mixX},${minY} V${maxY} M${mixX},${layout.busY} H${endX}"></path>
       ${renderLoopSerialItems(layout.leadInItems, layout, startX, splitX, layout.busY, loopKey)}
       ${renderLoopSerialItems(layout.leadOutItems, layout, mixX, endX, layout.busY, loopKey)}
@@ -2157,45 +2183,40 @@ function renderLoopSerialItems(items = [], layout, fromX, toX, y, loopKey) {
   if (!items.length) {
     return "";
   }
-  const direction = toX >= fromX ? 1 : -1;
-  const start = fromX + direction * 54;
-  const end = toX - direction * 54;
-  const positions = distributeGraphPositions(items.length, start, end, y);
-  return items.map((item, index) => renderLoopDiagramItem(item, positions[index], layout.side, [loopKey])).join("");
+  const positions = loopSerialItemPositions(items, fromX, toX, y);
+  return items.map((item, index) => renderLoopDiagramItem(item, positions[index], layout.side, [loopKey], layout.readOnly)).join("");
 }
 
 function renderLoopBranchItems(row, layout, loopKey) {
-  const start = layout.reverse ? layout.branchEndX - 72 : layout.branchStartX + 72;
-  const end = layout.reverse ? layout.branchStartX + 72 : layout.branchEndX - 72;
-  const positions = distributeGraphPositions(row.items.length, start, end, row.y);
-  return row.items.map((item, index) => renderLoopDiagramItem(item, positions[index], layout.side, [row.key, loopKey])).join("");
+  const positions = loopBranchItemPositions(row, layout);
+  return row.items.map((item, index) => renderLoopDiagramItem(item, positions[index], layout.side, [row.key, loopKey], layout.readOnly)).join("");
 }
 
-function renderLoopBranchMarker(row, splitX, y, loopKey) {
+function renderLoopBranchMarker(row, splitX, y, loopKey, readOnly = false) {
   const markerX = row.index % 2 === 0 ? splitX - 24 : splitX + 24;
   const relatedKeys = row.items
     .map((item) => (item.kind === "component" ? componentGraphKey(item.component) : ""))
     .filter(Boolean);
   return `
-    <g class="hvac-branch-badge ${graphSelectionClass(row.key, [loopKey, ...relatedKeys])}" data-hvac-graph-key="${escapeHTML(row.key)}">
+    <g class="hvac-branch-badge ${readOnly ? "" : graphSelectionClass(row.key, [loopKey, ...relatedKeys])}" ${readOnly ? "" : `data-hvac-graph-key="${escapeHTML(row.key)}"`}>
       <title>${escapeHTML(row.label || "Branch")}</title>
       <circle cx="${markerX}" cy="${y}" r="8"></circle>
       <text x="${markerX}" y="${y + 4}" text-anchor="middle">${escapeHTML(row.index + 1)}</text>
     </g>`;
 }
 
-function renderLoopEndpoint(x, y, nodeName, label, loop = {}) {
+function renderLoopEndpoint(x, y, nodeName, label, loop = {}, readOnly = false) {
   const key = nodeName ? `node:${nodeName}` : `endpoint:${label}`;
-  const selected = graphSelectionClass(key, [nodeName ? `node:${nodeName}` : ""]);
+  const selected = readOnly ? "" : graphSelectionClass(key, [nodeName ? `node:${nodeName}` : ""]);
   return `
-    <g class="hvac-loop-endpoint navigable-row ${selected}" data-hvac-graph-key="${escapeHTML(key)}" ${hvacLoopSemanticAttributes(loop)} tabindex="0">
+    <g class="hvac-loop-endpoint ${readOnly ? "" : "navigable-row"} ${selected}" ${loopDiagramAttributes(key, readOnly ? "" : hvacLoopSemanticAttributes(loop), readOnly)}>
       <title>${escapeHTML([label, nodeName].filter(Boolean).join(" - "))}</title>
       <circle cx="${x}" cy="${y}" r="9"></circle>
       <circle class="port-ring" cx="${x}" cy="${y}" r="4"></circle>
     </g>`;
 }
 
-function renderLoopDiagramItem(item, position, side, relatedKeys = []) {
+function renderLoopDiagramItem(item, position, side, relatedKeys = [], readOnly = false) {
   if (!position) {
     return "";
   }
@@ -2209,8 +2230,9 @@ function renderLoopDiagramItem(item, position, side, relatedKeys = []) {
       meta: "Zone",
       iconKind: "zone",
       shortLabel: "Zone",
-      className: `zone ${graphSelectionClass(key, relatedKeys)}`,
-      semanticAttributes: hvacZoneSemanticAttributesForName(item.zone),
+      className: `zone ${readOnly ? "" : graphSelectionClass(key, relatedKeys)}`,
+      semanticAttributes: readOnly ? "" : hvacZoneSemanticAttributesForName(item.zone),
+      readOnly,
     });
   }
   if (item.kind === "placeholder") {
@@ -2223,12 +2245,13 @@ function renderLoopDiagramItem(item, position, side, relatedKeys = []) {
       meta: "No parsed components",
       iconKind: "component",
       shortLabel: "",
-      className: `placeholder ${side} ${graphSelectionClass(key, relatedKeys)}`,
+      className: `placeholder ${side} ${readOnly ? "" : graphSelectionClass(key, relatedKeys)}`,
+      readOnly,
     });
   }
   const component = item.component;
   const key = componentGraphKey(component);
-  const className = `${side} ${component.exists ? "" : "missing"} ${graphSelectionClass(key, [...componentGraphRelatedKeys(component), ...relatedKeys])}`;
+  const className = `${side} ${component.exists ? "" : "missing"} ${readOnly ? "" : graphSelectionClass(key, [...componentGraphRelatedKeys(component), ...relatedKeys])}`;
   const visual = componentVisual(component);
   return renderLoopEquipmentSymbol({
     key,
@@ -2241,17 +2264,18 @@ function renderLoopDiagramItem(item, position, side, relatedKeys = []) {
     objectType: component.objectType || "",
     crossLoopNames: component.relatedLoopNames || [],
     className,
-    semanticAttributes: hvacComponentSemanticAttributes(component, {
+    readOnly,
+    semanticAttributes: readOnly ? "" : hvacComponentSemanticAttributes(component, {
       loopName: component.loopName || (state.report?.hvac?.loops || []).find((loop) => loop.id === state.activeHVACLoopId)?.name || "",
     }),
   });
 }
 
-function renderLoopEquipmentSymbol({ key, x, y, label, meta, iconKind, shortLabel, objectType = "", crossLoopNames = [], className = "", semanticAttributes = "" }) {
+function renderLoopEquipmentSymbol({ key, x, y, label, meta, iconKind, shortLabel, objectType = "", crossLoopNames = [], className = "", semanticAttributes = "", readOnly = false }) {
   const title = [label, meta].filter(Boolean).join(" - ");
   const iconClass = escapeHTML(iconKind || "component");
   return `
-    <g class="hvac-loop-equipment navigable-row ${iconClass} ${className}" data-hvac-graph-key="${escapeHTML(key)}" ${semanticAttributes} aria-label="${escapeHTML(title)}" tabindex="0">
+    <g class="hvac-loop-equipment ${readOnly ? "" : "navigable-row"} ${iconClass} ${className}" ${loopDiagramAttributes(key, semanticAttributes, readOnly)} aria-label="${escapeHTML(title)}">
       <title>${escapeHTML(title)}</title>
       <rect class="hvac-loop-equipment-hit" x="${x - 36}" y="${y - 38}" width="72" height="76" rx="10"></rect>
       <circle class="pipe-port left" cx="${x - 42}" cy="${y}" r="5"></circle>
@@ -4514,7 +4538,7 @@ function renderObjectLink(objectIndex, objectType) {
   if (!Number.isFinite(index) || index < 0) {
     return "";
   }
-  return `<button class="profile-object-link navigable-row" data-jump-object-index="${escapeHTML(index)}" data-jump-object-type="${escapeHTML(objectType || "")}" type="button">#${escapeHTML(index + 1)}</button>`;
+  return `<span>#${escapeHTML(index + 1)}</span>`;
 }
 
 function objectReferenceText(objectIndex) {

@@ -75,6 +75,7 @@ func TestNavigationSelectionUXBrowserHarness(t *testing.T) {
 		`"sourcePrimary":1`,
 		`"maxCurrentLocations":1`,
 		`"altEnterPalette":true`,
+		`"isolatedResultClicks":2`,
 	} {
 		if !strings.Contains(document, signal) {
 			t.Fatalf("headless browser navigation UX result is missing %s:\n%s", signal, document)
@@ -297,12 +298,65 @@ async function runNavigationSelectionUXHarness() {
   const altEnterPalette = Boolean(altEnter.defaultPrevented && palette?.open && palette.querySelector('[data-command-id="input-semantic"]'));
   assert(altEnterPalette, "Alt+Enter on an analysis row did not reach the available-views shortcut");
 
+  palette.close();
+  const [{ openPanelNavigationMenu }, selectionController] = await Promise.all([
+    import("/src/js/panel-navigation-actions.js"),
+    import("/src/js/selection-controller.js"),
+  ]);
+  let isolatedResultClicks = 0;
+  for (const view of ["hvac", "simulation"]) {
+    state.activeResultTab = view;
+    const pane = document.getElementById(view + "Pane");
+    const localPoint = item(view + "LocalPoint", {
+      entityId: "schedule-entity", panelTargetId: "profile-use", chooseSemanticOccurrence: "true",
+    }, "div");
+    pane.append(localPoint);
+    localPoint.addEventListener("click", () => isolatedResultClicks++);
+    state.globalSelection = { ...metricsSelection };
+    const previousSelection = JSON.stringify(state.globalSelection);
+    const previousInput = state.activeInputView;
+    localPoint.click();
+    // Wait for delegated selection promises without requiring a paint from a
+    // hidden result pane in Chrome's virtual-time harness.
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    assert(JSON.stringify(state.globalSelection) === previousSelection, view + " local click changed semantic selection");
+    assert(state.activeResultTab === view && state.activeInputView === previousInput, view + " local click navigated away");
+    assert(!document.querySelector(".navigation-chooser[open], .navigation-command-palette[open]"), view + " local click opened a reveal chooser");
+    assert(!openPanelNavigationMenu(localPoint), view + " still offers semantic navigation actions");
+    assert(adapters.extractResultPanelSelection(localPoint, view) === null, view + " remains linked to model selection");
+    localPoint.remove();
+  }
+  assert(isolatedResultClicks === 2, "isolating result panels swallowed their local click actions");
+  let semanticReveals = 0;
+  let openedViews = 0;
+  let chosenOccurrences = 0;
+  let activePanel = "hvac";
+  const isolatedController = selectionController.createSelectionController({
+    state: { globalSelection: sourceSelection },
+    getNavigationIndex: () => navigation,
+    getActivePanelView: () => activePanel,
+    getPanelNavigationAdapter: () => ({ canReveal: () => true, reveal: () => { semanticReveals++; return true; } }),
+    openView: () => { openedViews++; },
+    chooseSemanticOccurrence: () => { chosenOccurrences++; return "schedule-use"; },
+    isAnalysisCurrent: () => true,
+  });
+  for (const view of ["hvac", "simulation"]) {
+    activePanel = view;
+    await isolatedController.selectSemanticEntity(sourceSelection, { originView: view, chooseOccurrence: true });
+    assert(!await isolatedController.openSelectionInView("profile", { originView: view }), view + " can still open another model panel");
+    assert(!await isolatedController.openSelectionInView(view, { originView: "profile" }), "model panel can still reveal into " + view);
+    assert(isolatedController.selectionTargetsForView("profile", { ...sourceSelection, originView: view }).length === 0, view + " still lists related model targets");
+    await isolatedController.selectSemanticEntity(sourceSelection, { originView: "input-semantic" });
+  }
+  assert(!semanticReveals && !openedViews && !chosenOccurrences, "standalone result panels still follow semantic links");
+
   return {
     profilePrimary,
     metricsPrimary,
     sourcePrimary,
     maxCurrentLocations,
     altEnterPalette,
+    isolatedResultClicks,
   };
 }
 

@@ -5,54 +5,15 @@ import (
 	"testing"
 )
 
-func TestHVACPanelSemanticMarkupUsesProjectionReverseIndex(t *testing.T) {
+func TestHVACPanelSelectionStaysLocal(t *testing.T) {
 	content := readTestFile(t, "frontend/src/js/views/hvac-views.js")
-	for _, required := range []string{
-		`configureResultPanelNavigationHooks("hvac"`,
-		"state.semanticProjection?.navigation",
-		"navigation.byViewTarget?.[`hvac|${target}`]",
-		"hvacSemanticRecordForTarget",
-		"hvacServicePathSemanticAttributes",
-		"hvacLoopSemanticAttributes",
-		"hvacComponentSemanticAttributes",
-		"hvacCouplingSemanticAttributes",
-		"hvacZoneSemanticAttributes",
-		`semanticHVACDataAttribute("data-entity-id"`,
-		`semanticHVACDataAttribute("data-entity-kind"`,
-		`semanticHVACDataAttribute("data-occurrence-context"`,
-		`semanticHVACDataAttribute("data-source-object-id"`,
-		`semanticHVACDataAttribute("data-source-object-index"`,
-		`semanticHVACDataAttribute("data-source-field-index"`,
-		`semanticHVACDataAttribute("data-panel-target-id"`,
-	} {
-		if !strings.Contains(content, required) {
-			t.Fatalf("HVAC semantic panel markup is missing %q", required)
-		}
+	attributes := sliceBetween(content, "function hvacSemanticAttributes", "function hvacSemanticRecordForTarget")
+	if !strings.Contains(attributes, `return ""`) || strings.Contains(content, `data-jump-object-index=`) {
+		t.Fatal("HVAC items must not render semantic or source-reveal links")
 	}
-
-	resolver := sliceBetween(content, "function hvacSemanticRecordForTarget", "function semanticHVACDataAttribute")
-	for _, guard := range []string{
-		"expectedEntityKinds",
-		"expectedContextKinds",
-		"viewTarget.targetId === target",
-		"viewTarget.targetKind === options.targetKind",
-		"occurrence.sourceAnchor",
-	} {
-		if !strings.Contains(resolver, guard) {
-			t.Fatalf("HVAC reverse-target resolution is missing %q", guard)
-		}
-	}
-
-	for _, rendererContract := range []string{
-		"serviceNodeSemanticAttributes(node)",
-		"hvacServicePathSemanticAttributes(path)",
-		"hvacLoopSemanticAttributes(loop)",
-		"hvacComponentSemanticAttributes(component",
-		"hvacCouplingSemanticAttributes(coupling",
-		"hvacZoneSemanticAttributesForName(item.zone)",
-	} {
-		if !strings.Contains(content, rendererContract) {
-			t.Fatalf("HVAC selectable renderer is missing %q", rendererContract)
+	for _, local := range []string{"data-hvac-graph-key", "data-hvac-service-subject-key", "navigateHVAC(target, { pushHistory: true })"} {
+		if !strings.Contains(content, local) {
+			t.Fatalf("HVAC local selection is missing %q", local)
 		}
 	}
 }
@@ -152,22 +113,15 @@ func TestHVACRemovedCouplingViewRedirectsSemanticTargets(t *testing.T) {
 	}
 }
 
-func TestHVACCommittedNavigationDelegatesGlobalHistoryOnce(t *testing.T) {
+func TestHVACCommittedNavigationUsesLocalHistory(t *testing.T) {
 	content := readTestFile(t, "frontend/src/js/views/hvac-views.js")
 	delegation := sliceBetween(content, "function navigateHVACFromPanelElement", "export function navigateHVAC")
-	for _, required := range []string{
-		`closest?.("[data-entity-id][data-panel-target-id]")`,
-		`navigateHVAC(target, { pushHistory: false, replace: true })`,
-		"queueMicrotask(navigate)",
-	} {
-		if !strings.Contains(delegation, required) {
-			t.Fatalf("HVAC committed navigation delegation is missing %q", required)
+	if !strings.Contains(delegation, "navigateHVAC(target, { pushHistory: true })") {
+		t.Fatal("HVAC selections must keep local navigation history")
+	}
+	for _, forbidden := range []string{"data-entity-id", "queueMicrotask", "selectSemanticEntity"} {
+		if strings.Contains(delegation, forbidden) {
+			t.Fatalf("HVAC local selection still delegates via %q", forbidden)
 		}
-	}
-	if strings.Contains(delegation, "recordViewHistory(") {
-		t.Fatal("HVAC committed selection must let the global controller own history")
-	}
-	if strings.Contains(content, `[data-hvac-graph-scope]`) {
-		t.Fatal("HVAC graph scope is fixed to Focused and must not expose a history-producing scope selector")
 	}
 }

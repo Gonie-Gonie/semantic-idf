@@ -40,6 +40,7 @@ const hvacInspectionTopologyHTML = `<!doctype html><html data-theme="dark"><head
 const check=(value,message)=>{if(!value)throw new Error(message);};
 try {
  const {buildHVACInspectionTopology:build,renderHVACInspectionTopology:render}=await import('/src/js/views/hvac-inspection-topology.js');
+ const {renderHVACLoopDiagram}=await import('/src/js/views/hvac-views.js');
  const equipment=(name,inlet,outlet,type='Pump:VariableSpeed')=>({objectType:type,objectName:name,inletNode:inlet,outletNode:outlet,exists:true});
  const loop={id:'plant-1',name:'Chilled water',type:'PlantLoop',supplySide:{inletNode:'Supply inlet',outletNode:'Supply outlet',branches:[
  {name:'Inlet branch',components:[equipment('Supply pump','Supply inlet','Splitter inlet')]},
@@ -71,19 +72,39 @@ try {
  const nodes=[{id:'inlet-point',name:'SUPPLY INLET',metrics:[{id:'flow',label:'Flow',value:0,unit:'kg/s'},{id:'temperature',label:'Temperature',value:7,unit:'°C'},{id:'humidity',label:'Humidity',value:.0047,unit:'kg/kg'},{id:'setpoint',label:'Setpoint',value:6,unit:'°C'}]},{id:'outlet-point',name:'Supply outlet',metrics:[{id:'flow',label:'Flow',value:2,unit:'kg/s'}]}];
  const components=[{id:'pump-observation',name:'Supply pump',type:'Pump:VariableSpeed',status:'off',metrics:[{id:'power',label:'Power',value:0,unit:'W'}]},{id:'chiller-a-observation',name:'Chiller A',type:'Chiller:Electric:EIR',status:'on',metrics:[{id:'power',label:'Power',value:14000,unit:'W'},{id:'cop',label:'COP',value:4.2,unit:''}]}];
  const mount=document.getElementById('mount');mount.innerHTML=render({loop,nodes,components,selectedNode:'inlet-point'});
+ const reference=document.createElement('div');reference.innerHTML=renderHVACLoopDiagram(loop);
+ check(mount.querySelector('svg.hvac-loop-svg')&&mount.querySelectorAll('.hvac-loop-side-block').length===2,'inspection must reuse the existing supply/demand loop schematic');
+ check(!mount.querySelector('.hvac-inspect-card'),'frame values still replace schematic points with separate cards');
+ const equipmentKeys=root=>[...root.querySelectorAll('.hvac-loop-equipment')].map(item=>item.querySelector('title')?.textContent+':'+[...item.querySelectorAll('.pipe-port')].map(port=>port.getAttribute('cx')).join(',')).join('|');
+ check(equipmentKeys(mount)===equipmentKeys(reference),'frame display changed the existing loop equipment ordering or symbols');
+ const checkAnnotationSpacing=()=>{
+  const annotations=[...mount.querySelectorAll('.hvac-inspect-annotation')].map(item=>({item,rect:item.getBoundingClientRect()}));
+  for(let i=0;i<annotations.length;i++)for(let j=i+1;j<annotations.length;j++){
+   const a=annotations[i].rect,b=annotations[j].rect;
+   check(Math.min(a.right,b.right)-Math.max(a.left,b.left)<=1||Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top)<=1,'frame text overlaps: '+annotations[i].item.textContent+' / '+annotations[j].item.textContent);
+  }
+ };
+ check(mount.querySelectorAll('.hvac-inspect-annotation').length>=nodes.length+components.length,'frame measurements must occupy annotation space on the original diagram');
+ checkAnnotationSpacing();
  const inlet=mount.querySelector('[data-hvac-inspect-node="inlet-point"]');
  check(inlet?.classList.contains('measured')&&inlet.classList.contains('selected'),'frame point did not match case-insensitive physical node or emphasize selected point');
  check(mount.querySelectorAll('.node.measured').length===2,'all observed node points were not highlighted');
  check(inlet.querySelectorAll('[data-hvac-inspect-metric]').length===4&&inlet.textContent.includes('0.00 kg/s')&&inlet.textContent.includes('0.0047 kg/kg'),'zero flow, humidity precision or optional setpoint disappeared');
+ const compactLabel=id=>inlet.querySelector('[data-hvac-inspect-metric="'+id+'"] .hvac-inspect-metric-label').textContent.trim();
+ check(compactLabel('flow')==='ṁ'&&compactLabel('temperature')==='T'&&compactLabel('humidity')==='w'&&compactLabel('setpoint')==='Tset','node measurements lost compact physical symbols or confused humidity ratio with relative humidity');
+ check(parseFloat(getComputedStyle(inlet.querySelector('.hvac-inspect-metric-value')).fontSize)>parseFloat(getComputedStyle(inlet.querySelector('.hvac-inspect-point-label')).fontSize),'node names visually outweigh measured values');
  check(mount.querySelector('[data-hvac-inspect-component="pump-observation"]')?.textContent.includes('Off')&&mount.querySelector('[data-hvac-inspect-component="chiller-a-observation"]')?.textContent.includes('4.20'),'equipment status/power/COP missing');
  check(mount.querySelector('.hvac-loop-icon.pump')&&mount.querySelector('.hvac-loop-icon.chiller'),'equipment icons diverged from HVAC tab');
  check(!mount.querySelector('table,ul,dl')&&!mount.textContent.includes('Source data'),'topology introduced tabular or source/provenance detail');
- const positions=[...mount.querySelectorAll('[data-hvac-inspect-topology-id]')].map(item=>item.getAttribute('transform')).join('|');
- mount.innerHTML=render({loop,nodes:[{...nodes[0],metrics:[{id:'flow',label:'Flow',value:8,unit:'kg/s'}]}],components,selectedComponent:'pump-observation',zoom:1.5});
- check([...mount.querySelectorAll('[data-hvac-inspect-topology-id]')].map(item=>item.getAttribute('transform')).join('|')===positions,'frame change moved physical topology points');
+ const annotationPositions=()=>[...mount.querySelectorAll('.hvac-inspect-annotation')].map(item=>item.getAttribute('transform')).join('|');
+ const positions=annotationPositions();
+ mount.innerHTML=render({loop,nodes:nodes.map(node=>({...node,metrics:node.metrics.map(metric=>({...metric,value:metric.id==='flow'?8:metric.value}))})),components,selectedComponent:'pump-observation',zoom:1.5});
+ check(annotationPositions()===positions,'frame change moved physical topology points');
  check(mount.querySelector('[data-hvac-inspect-component="pump-observation"]').classList.contains('selected')&&mount.querySelector('[data-hvac-inspect-zoom]').value==='1.5','equipment selection or zoom contract failed');
  mount.innerHTML=render({loop:wrapper,nodes:extraNodes,components:children,selectedNode:'internal-point'});
  check(mount.querySelector('[data-hvac-inspect-node="internal-point"]')?.classList.contains('selected')&&mount.querySelector('[data-hvac-inspect-component="fan-child"]')&&mount.querySelector('[data-hvac-inspect-component="unknown-device"]')&&mount.querySelector('[data-hvac-inspect-node="detached-point"]'),'expanded internal or detached observations are not interactive/visible');
+ const longNodes=['VAV_2_COOLCDEMAND INLET NODE','VAV_2_COOLCDEMAND OUTLET NODE','VAV_2_HEATCDEMAND INLET NODE','VAV_2_HEATCDEMAND OUTLET NODE'].map((name,index)=>({id:'long-node-'+index,name,metrics:nodes[0].metrics}));
+ mount.innerHTML=render({loop,nodes:longNodes});checkAnnotationSpacing();
  mount.innerHTML=render({nodes,components});check(mount.querySelector('[data-hvac-inspect-topology-empty]')&&!mount.querySelector('svg'),'missing model topology generated guessed wiring');
  mount.innerHTML=render({loop,nodes,components,selectedNode:'inlet-point',zoom:'fit'});
  check(JSON.stringify(loop)===original,'inspection altered executed model topology');

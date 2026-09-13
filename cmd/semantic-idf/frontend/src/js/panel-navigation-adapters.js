@@ -2,6 +2,7 @@ import { getPanelNavigationAdapter, registerPanelNavigationAdapter } from "./pan
 import { bundledAppInfo } from "./app-info.js";
 import { getSemanticNavigationCache } from "./semantic-navigation-cache.js";
 import { state } from "./state.js";
+import { isStandaloneResultView } from "./panel-navigation-policy.js";
 
 export const RESULT_PANEL_NAVIGATION_VIEW_IDS = Object.freeze([
   "metrics",
@@ -72,6 +73,7 @@ export function initializeResultPanelNavigationAdapters() {
  */
 export function extractResultPanelSelection(element, viewId, options = {}) {
   const view = normalizeResultViewId(viewId);
+  if (isStandaloneResultView(view)) return null;
   const root = options.root || resultPanelRoot(view);
   const target = closestPanelItem(element, root);
   if (!target) {
@@ -126,7 +128,7 @@ export function refreshResultPanelSelectionStyles(
 ) {
   const view = normalizeResultViewId(viewId);
   const root = resultPanelRoot(view);
-  if (!root) {
+  if (!root || isStandaloneResultView(view)) {
     return 0;
   }
   const hoveredEntityId = String(hover?.entityId || "");
@@ -238,6 +240,7 @@ function supportsARIASelected(item) {
 function createResultPanelNavigationAdapter(viewId) {
   return Object.freeze({
     canReveal(selection) {
+      if (isStandaloneResultView(viewId)) return false;
       const context = hookContext(viewId);
       const hook = hooksByView.get(viewId)?.canReveal;
       if (typeof hook === "function") {
@@ -249,6 +252,7 @@ function createResultPanelNavigationAdapter(viewId) {
       return genericCanReveal(viewId, selection, context);
     },
     async reveal(selection, options = {}) {
+      if (isStandaloneResultView(viewId)) return false;
       const context = hookContext(viewId);
       const hook = hooksByView.get(viewId)?.reveal;
       if (typeof hook === "function") {
@@ -260,6 +264,7 @@ function createResultPanelNavigationAdapter(viewId) {
       return genericReveal(viewId, selection, options, context);
     },
     selectFromElement(element) {
+      if (isStandaloneResultView(viewId)) return null;
       const context = hookContext(viewId);
       const hook = hooksByView.get(viewId)?.selectFromElement;
       if (typeof hook === "function") {

@@ -66,6 +66,7 @@ import {
 } from "./selection-controller.js";
 import { initializeResultPanelNavigationAdapters } from "./panel-navigation-adapters.js";
 import { PANEL_NAVIGATION_VIEW_IDS } from "./panel-navigation-registry.js";
+import { isStandalonePanelLink, isStandaloneResultView } from "./panel-navigation-policy.js";
 import { chooseSemanticOccurrence, chooseViewTarget } from "./navigation-chooser.js";
 import { initializePanelNavigationActions } from "./panel-navigation-actions.js";
 import {
@@ -561,6 +562,7 @@ function handleHardwareHistoryMouseButton(event) {
 }
 
 async function revealCurrentSelectionSource() {
+  if (isStandaloneResultView(state.activeResultTab) && elements.analysisPanel?.contains(document.activeElement)) return false;
   if (!state.globalSelection?.entityId) {
     setStatus(t("semantic.noAvailableView", {}, "No selection to reveal"), "warn");
     return false;
@@ -619,6 +621,7 @@ async function primaryOpenFromFocus() {
 }
 
 async function openAvailableViewsForSelection() {
+  if (isStandaloneResultView(state.activeResultTab) && elements.analysisPanel?.contains(document.activeElement)) return false;
   const selection = state.globalSelection;
   if (!selection?.entityId) {
     setStatus(t("semantic.noAvailableView", {}, "No available view can reveal this selection"), "warn");
@@ -630,7 +633,7 @@ async function openAvailableViewsForSelection() {
     if (viewID !== "input-semantic" && viewID.startsWith("input-")) {
       continue;
     }
-    if (isProfileTopologyLink(originView, viewID)) {
+    if (isProfileTopologyLink(originView, viewID) || isStandalonePanelLink(originView, viewID)) {
       continue;
     }
     const targets = selectionTargetsForView(viewID, { ...selection, originView });

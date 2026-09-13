@@ -4,6 +4,7 @@ import { bundledAppInfo } from "./app-info.js";
 import { prioritizeAnalysisStageForTab } from "./actions.js";
 import { getPanelNavigationAdapter, registerPanelNavigationAdapter } from "./panel-navigation-registry.js";
 import { getSemanticNavigationCache } from "./semantic-navigation-cache.js";
+import { isStandaloneResultView } from "./panel-navigation-policy.js";
 import {
   clearSemanticSelection,
   remapSemanticSelection,
@@ -288,7 +289,7 @@ function nextReferenceTarget(source, targets) {
 }
 
 export function handleAnalysisActivation(element) {
-  if (!element) {
+  if (!element || isStandaloneResultView(state.activeResultTab)) {
     return;
   }
   const jumpTarget = element.closest("[data-jump-object-index], [data-jump-object-type]");

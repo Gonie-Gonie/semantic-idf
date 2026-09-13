@@ -1,6 +1,6 @@
 import { escapeHTML } from "../state.js";
 import { t } from "../i18n.js";
-import { renderHVACEquipmentIcon } from "./hvac-views.js";
+import { buildHVACLoopDiagramLayout, renderHVACLoopDiagram } from "./hvac-views.js";
 
 const normalized = (value) => String(value || "").trim().toLowerCase();
 const label = (key, fallback) => { const value = t(key); return !value || value === key ? fallback : value; };
@@ -122,7 +122,7 @@ export function buildHVACInspectionTopology(loop = {}, observations = {}) {
       }
     }
     // Expand a wrapper only when its typed children prove the full inlet to
-    // outlet path. Retain the equipment's frame values as a separate card.
+    // outlet path. Retain the equipment's frame values as an annotation.
     if (visited.has(finish)) {
       for (const [key, item] of edges) if (item.from === parentID || item.to === parentID) edges.delete(key);
       parent.expanded = true;
@@ -131,114 +131,179 @@ export function buildHVACInspectionTopology(loop = {}, observations = {}) {
   return { vertices: [...vertices.values()], edges: [...edges.values()] };
 }
 
-function layoutTopology(graph) {
-  const connectedIDs = new Set(graph.edges.flatMap((item) => [item.from, item.to]));
-  const connected = graph.vertices.filter((item) => connectedIDs.has(item.id));
-  const detached = graph.vertices.filter((item) => !connectedIDs.has(item.id));
-  const outgoing = new Map(connected.map((item) => [item.id, []]));
-  const indegree = new Map(connected.map((item) => [item.id, 0]));
-  for (const edge of graph.edges) {
-    outgoing.get(edge.from)?.push(edge.to);
-    indegree.set(edge.to, (indegree.get(edge.to) || 0) + 1);
-  }
-  const pending = new Set(connected.map((item) => item.id));
-  const rank = new Map();
-  // Break a closed cycle for positioning only; the original edge remains drawn.
-  while (pending.size) {
-    const ready = [...pending].filter((id) => !indegree.get(id));
-    if (!ready.length) ready.push(pending.values().next().value);
-    for (const id of ready) {
-      pending.delete(id);
-      if (!rank.has(id)) rank.set(id, 0);
-      for (const next of outgoing.get(id) || []) {
-        if (!pending.has(next)) continue;
-        rank.set(next, Math.max(rank.get(next) || 0, rank.get(id) + 1));
-        indegree.set(next, Math.max(0, (indegree.get(next) || 0) - 1));
-      }
-    }
-  }
-  const levels = [];
-  for (const vertex of connected) (levels[rank.get(vertex.id) || 0] ||= []).push(vertex);
-  const rows = Math.max(1, ...levels.map((items) => items.length));
-  const width = Math.max(680, levels.length * 220 + 40), networkHeight = Math.max(240, rows * 190 + 50);
-  const detachedColumns = Math.min(4, Math.floor((width - 40) / 220));
-  const height = networkHeight + (detached.length ? 50 + Math.ceil(detached.length / detachedColumns) * 190 : 0);
-  const positions = new Map();
-  for (const [column, items] of levels.entries()) {
-    for (const [row, item] of items.entries()) positions.set(item.id, { x: 130 + column * 220, y: 48 + row * 190 + (rows - items.length) * 95 });
-  }
-  for (const [index, item] of detached.entries()) positions.set(item.id, { x: 130 + index % detachedColumns * 220, y: networkHeight + 68 + Math.floor(index / detachedColumns) * 190 });
-  return { width, height, positions, detachedTop: detached.length ? networkHeight : null };
-}
-
-function matchedObservation(vertex, observations) {
-  const name = normalized(vertex.name);
-  const exact = observations.filter((item) => normalized(item.name) === name && (vertex.kind === "node" || !item.type || normalized(item.type) === normalized(vertex.type)));
-  return exact.length === 1 ? exact[0] : null;
-}
-
 function metricValue(metric) {
   if (metric.formattedValue != null) return String(metric.formattedValue);
   if (!finite(metric.value)) return "—";
   const digits = Math.abs(metric.value) > 0 && Math.abs(metric.value) < .01 ? 4 : 2;
-  return `${metric.value.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits })}${metric.unit ? ` ${metric.unit}` : ""}`;
+  const unit = metric.unit && !["—", "-", "1"].includes(metric.unit) ? ` ${metric.unit}` : "";
+  return `${metric.value.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits })}${unit}`;
 }
 
-function splitLabel(value, limit = 24) {
-  const text = String(value || "");
-  if (text.length <= limit) return [text];
-  let split = text.lastIndexOf(" ", limit);
-  if (split < limit / 2) split = limit;
-  const remaining = text.slice(split).trim();
-  return [text.slice(0, split), remaining.length > limit ? `${remaining.slice(0, limit - 1)}…` : remaining];
+function splitLabel(value, limit = 21) {
+  let remaining = String(value || "").trim();
+  const lines = [];
+  while (remaining.length > limit) {
+    if (lines.length === 1) {
+      lines.push(`${remaining.slice(0, limit - 1)}…`);
+      return lines;
+    }
+    let split = Math.max(remaining.lastIndexOf(" ", limit), remaining.lastIndexOf("_", limit), remaining.lastIndexOf("-", limit));
+    if (split < limit / 2) split = limit;
+    lines.push(remaining.slice(0, split));
+    remaining = remaining.slice(split).trim();
+  }
+  if (remaining) lines.push(remaining);
+  return lines;
 }
 
-function renderVertex(vertex, point, observation, selected) {
-  const isNode = vertex.kind === "node";
-  const id = observation?.id || (isNode ? vertex.name : vertex.id);
-  const metrics = observation?.metrics || [];
-  const active = isNode && Boolean(observation && observation.active !== false);
-  const status = ["on", "off"].includes(observation?.status) ? observation.status : "unknown";
-  const stateLabel = status === "on" ? label("simulation.hvacStatusOn", "On") : status === "off" ? label("simulation.hvacStatusOff", "Off") : "";
-  const metricLines = metrics.map((metric) => `${metric.label || metric.id}: ${metricValue(metric)}`);
-  const title = [vertex.name, stateLabel, ...metricLines].filter(Boolean).join("\n");
-  const lines = splitLabel(vertex.name);
-  const nameY = isNode ? 28 : 36;
-  const metricY = nameY + lines.length * 16 + 8;
-  const cardHeight = Math.max(128, metricY + Math.min(4, metrics.length) * 17 + 10);
-  const attr = isNode ? "data-hvac-inspect-node" : "data-hvac-inspect-component";
-  return `<g class="hvac-inspect-vertex ${isNode ? "node" : "equipment"} ${active ? "measured" : ""} ${selected ? "selected" : ""} ${escapeHTML(vertex.side)}" ${attr}="${escapeHTML(id)}" data-hvac-inspect-topology-id="${escapeHTML(vertex.id)}" data-hvac-inspect-point-name="${escapeHTML(vertex.name)}" role="button" tabindex="0" aria-pressed="${Boolean(selected)}" aria-label="${escapeHTML(title)}" transform="translate(${point.x} ${point.y})">
+function metricSymbol(metric) {
+  return ({ temperature: "T", relativeHumidity: "RH", humidity: "w", flow: "ṁ", setpoint: "Tset", power: "P", cop: "COP", cooling: "Q̇c", heating: "Q̇h", heatTransfer: "Q̇", status: /part load/i.test(metric.label || "") ? "PLR" : "Run" })[metric.id] || metric.label || metric.id;
+}
+
+function observationRecords(loop, graph, layout, nodes, components) {
+  const componentAnchors = layout.anchors.filter((anchor) => anchor.kind === "component");
+  const exactEquipment = (name, type) => componentAnchors.filter((anchor) => normalized(anchor.name) === normalized(name) && normalized(anchor.type) === normalized(type));
+  const sideForNode = (name) => {
+    const known = graph.vertices.find((vertex) => vertex.kind === "node" && normalized(vertex.name) === normalized(name) && vertex.side);
+    if (known) return known.side;
+    const owners = componentAnchors.filter(({ component }) => [component.waterInletNode, component.waterOutletNode, ...(component.nodeUsages || []).map((port) => port.nodeName)].some((port) => normalized(port) === normalized(name)));
+    return owners.length && owners.every((owner) => owner.side === owners[0].side) ? owners[0].side : "demand";
+  };
+  return [...nodes.map((item) => ({ item, kind: "node" })), ...components.map((item) => ({ item, kind: "component" }))].map(({ item, kind }) => {
+    let anchor = null, parent = "";
+    if (kind === "node") {
+      anchor = layout.anchors.find((point) => point.kind === "node" && normalized(point.name) === normalized(item.name));
+      if (!anchor) {
+        // A named zone relationship must be present in the parsed demand graph.
+        // Splitter list order and similar-looking names are not a relationship.
+        const mapped = (loop.demandGraph?.nodes || []).filter((point) => normalized(point.nodeName) === normalized(item.name) && point.zoneName);
+        const owners = new Set(mapped.map((point) => normalized(point.zoneName)));
+        if (owners.size === 1) {
+          const zone = layout.anchors.find((point) => point.kind === "zone" && normalized(point.name) === [...owners][0]);
+          const role = mapped[0].role;
+          if (zone && ["zone_inlet", "zone_return"].includes(role)) anchor = { ...zone, kind: "node", name: item.name, x: zone.x + (role === "zone_inlet" ? 42 : -42), role };
+        }
+      }
+    } else {
+      const exact = exactEquipment(item.name, item.type);
+      if (exact.length === 1) anchor = exact[0];
+      if (!anchor) {
+        const owners = exactEquipment(item.parentComponentName, item.parentComponentType);
+        if (owners.length === 1) { anchor = owners[0]; parent = anchor.name; }
+      }
+    }
+    const metrics = (item.metrics || []).slice(0, 4);
+    const nameLines = splitLabel(item.name);
+    const parentLines = parent ? splitLabel(parent).map((line, index) => `${index ? "" : "↳ "}${line}`) : [];
+    const status = kind === "component" ? ["on", "off"].includes(item.status) ? item.status : "unknown" : "";
+    const side = anchor?.side || (kind === "node" ? sideForNode(item.name) : "demand");
+    const rows = (side === "supply" ? layout.supplyLayout : layout.demandLayout).rows;
+    // Bus equipment between parallel rows keeps its exact icon anchor while
+    // sharing a reserved text band with one row, so labels cannot overlap.
+    const annotationRowY = anchor ? rows.reduce((best, row) => Math.abs(row.y - anchor.y) < Math.abs(best - anchor.y) ? row.y : best, rows[0]?.y ?? anchor.y) : null;
+    return { item, kind, anchor, annotationRowY, parent, side, nameLines, parentLines, metrics, status,
+      height: (nameLines.length + parentLines.length) * 16 + metrics.length * 20 + (status ? 18 : 0) + 12 };
+  });
+}
+
+const bandColumns = 5;
+function reservedBands(records, layout) {
+  const result = {};
+  for (const side of ["supply", "demand"]) {
+    const selected = records.filter((record) => record.side === side);
+    const groups = new Map();
+    for (const record of selected.filter((entry) => entry.anchor)) {
+      const key = `${record.annotationRowY}:${record.kind}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(record);
+    }
+    const bandHeight = (kind) => Math.max(0, ...[...groups.values()].filter((group) => group[0].kind === kind).map((group) => Math.ceil(group.length / bandColumns) * (Math.max(...group.map((record) => record.height)) + 14)));
+    const detached = selected.filter((record) => !record.anchor);
+    const detachedRowHeight = Math.max(0, ...detached.map((record) => record.height)) + 14;
+    const above = bandHeight("node"), below = bandHeight("component");
+    const rowTopOffset = Math.max(46, above + 52), rowBottomPadding = Math.max(42, below + 52);
+    result[side] = { reserveAnnotations: true, rowTopOffset, rowBottomPadding,
+      rowGap: Math.max(64, rowTopOffset + rowBottomPadding),
+      extraBottom: detached.length ? Math.ceil(detached.length / 4) * detachedRowHeight + 38 : 0,
+      detachedRowHeight, above, below };
+  }
+  return result;
+}
+
+function positionAnnotations(records, layout, bands) {
+  for (const [side, source] of [["supply", layout.supplyLayout], ["demand", layout.demandLayout]]) {
+    const selected = records.filter((record) => record.side === side);
+    const groups = new Map();
+    for (const record of selected.filter((entry) => entry.anchor)) {
+      const key = `${record.annotationRowY}:${record.kind}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(record);
+    }
+    for (const group of groups.values()) {
+      group.sort((a, b) => a.anchor.x - b.anchor.x || a.item.name.localeCompare(b.item.name));
+      const rowHeight = Math.max(...group.map((record) => record.height)) + 14;
+      for (let offset = 0; offset < group.length; offset += bandColumns) {
+        const row = group.slice(offset, offset + bandColumns);
+        const inset = side === "demand" && row.length <= 4;
+        const minX = inset ? 224 : 126, maxX = inset ? 896 : 994;
+        const xs = row.map((record) => Math.max(minX, Math.min(maxX, record.anchor.x)));
+        for (let index = 1; index < xs.length; index++) xs[index] = Math.max(xs[index], xs[index - 1] + 214);
+        if (xs.at(-1) > maxX) {
+          xs[xs.length - 1] = maxX;
+          for (let index = xs.length - 2; index >= 0; index--) xs[index] = Math.min(xs[index], xs[index + 1] - 214);
+        }
+        row.forEach((record, index) => {
+          record.x = xs[index] - 96;
+          record.y = record.kind === "node" ? record.annotationRowY - bands[side].above + Math.floor(offset / bandColumns) * rowHeight - 4 : record.annotationRowY + 54 + Math.floor(offset / bandColumns) * rowHeight;
+        });
+      }
+    }
+    const detached = selected.filter((record) => !record.anchor);
+    const startY = source.top + source.height - bands[side].extraBottom + 32;
+    detached.forEach((record, index) => {
+      record.x = 176 + index % 4 * 192;
+      record.y = startY + Math.floor(index / 4) * bands[side].detachedRowHeight;
+    });
+  }
+}
+
+function renderObservation(record, selectedNode, selectedComponent) {
+  const { item, kind, anchor, nameLines, parentLines, metrics, status, x, y, height } = record;
+  const target = kind === "node" ? selectedNode : selectedComponent;
+  const selected = Boolean(item.selected || target && [item.id, item.name].some((value) => normalized(value) === normalized(target)));
+  const active = item.active !== false && metrics.some((metric) => finite(metric.value) || metric.formattedValue != null);
+  const id = item.id || item.name;
+  const attr = kind === "node" ? "data-hvac-inspect-node" : "data-hvac-inspect-component";
+  const title = [item.name, record.parent ? `↳ ${record.parent}` : "", ...metrics.map((metric) => `${metric.label || metric.id}: ${metricValue(metric)}`)].filter(Boolean).join("\n");
+  const statusLabel = status === "unknown" ? "—" : status ? label(status === "on" ? "simulation.hvacStatusOn" : "simulation.hvacStatusOff", status === "on" ? "On" : "Off") : "";
+  const leaderStartY = kind === "node" ? y + height - 2 : y - 14;
+  const leaderEndY = anchor ? anchor.y + (kind === "node" ? -13 : 23) : 0;
+  return `<g class="hvac-inspect-vertex ${kind === "node" ? "node" : "equipment"} ${active ? "measured" : ""} ${selected ? "selected" : ""} ${escapeHTML(record.side)} ${anchor ? "anchored" : "unanchored"}" ${attr}="${escapeHTML(id)}" data-hvac-inspect-topology-id="${escapeHTML(kind === "node" ? `node:${normalized(item.name)}` : item.id || item.name)}" data-hvac-inspect-point-name="${escapeHTML(item.name)}" data-hvac-inspect-anchor-kind="${anchor ? record.parent ? "parent" : "exact" : "unavailable"}" role="button" tabindex="0" aria-pressed="${selected}" aria-label="${escapeHTML(title)}">
     <title>${escapeHTML(title)}</title>
-    <rect class="hvac-inspect-card" x="-97" y="-29" width="194" height="${cardHeight + 29}" rx="9"></rect>
-    ${isNode ? `<circle class="hvac-inspect-node-ring" cx="0" cy="0" r="${active ? 13 : 9}"></circle><circle class="hvac-inspect-node-core" cx="0" cy="0" r="4"></circle>` : renderHVACEquipmentIcon(vertex, 0, 0)}
-    ${stateLabel ? `<text class="hvac-inspect-state ${status}" x="85" y="-9" text-anchor="end">${escapeHTML(stateLabel)}</text>` : ""}
-    ${lines.map((line, index) => `<text class="hvac-inspect-point-label" x="0" y="${nameY + index * 16}" text-anchor="middle" ${line.length > 26 ? `textLength="180" lengthAdjust="spacingAndGlyphs"` : ""}>${escapeHTML(line)}</text>`).join("")}
-    ${metrics.slice(0, 4).map((metric, index) => `<text class="hvac-inspect-metric" x="0" y="${metricY + index * 17}" text-anchor="middle" data-hvac-inspect-metric="${escapeHTML(metric.id || metric.label)}"><tspan class="hvac-inspect-metric-label">${escapeHTML(metric.label || metric.id)} </tspan><tspan class="hvac-inspect-metric-value">${escapeHTML(metricValue(metric))}</tspan></text>`).join("")}
+    ${anchor ? `<path class="hvac-inspect-leader" d="M${x + 96},${leaderStartY} L${x + 96},${(leaderStartY + leaderEndY) / 2} L${anchor.x},${leaderEndY}"></path>${kind === "node" ? `<circle class="hvac-inspect-node-ring" cx="${anchor.x}" cy="${anchor.y}" r="${active ? 11 : 8}"></circle><circle class="hvac-inspect-node-core" cx="${anchor.x}" cy="${anchor.y}" r="3"></circle>` : `<circle class="hvac-inspect-equipment-ring" cx="${anchor.x}" cy="${anchor.y}" r="29"></circle>`}` : ""}
+    <g class="hvac-inspect-annotation" transform="translate(${x} ${y})" data-hvac-inspect-annotation-x="${x}" data-hvac-inspect-annotation-y="${y}" data-hvac-inspect-annotation-width="192" data-hvac-inspect-annotation-height="${height}">
+      ${nameLines.map((line, index) => `<text class="hvac-inspect-point-label" x="0" y="${index * 16}">${escapeHTML(line)}</text>`).join("")}
+      ${parentLines.map((line, index) => `<text class="hvac-inspect-parent-label" x="0" y="${(nameLines.length + index) * 16}">${escapeHTML(line)}</text>`).join("")}
+      ${status ? `<text class="hvac-inspect-state ${status}" x="0" y="${(nameLines.length + parentLines.length) * 16 + 4}">${escapeHTML(statusLabel)}</text>` : ""}
+      ${metrics.map((metric, index) => `<text class="hvac-inspect-metric" x="0" y="${(nameLines.length + parentLines.length) * 16 + (status ? 18 : 0) + index * 20 + 4}" data-hvac-inspect-metric="${escapeHTML(metric.id || metric.label)}"><tspan class="hvac-inspect-metric-label">${escapeHTML(metricSymbol(metric))} </tspan><tspan class="hvac-inspect-metric-value">${escapeHTML(metricValue(metric))}</tspan></text>`).join("")}
+    </g>
   </g>`;
 }
 
 export function renderHVACInspectionTopology({ loop, nodes = [], components = [], selectedNode = "", selectedComponent = "", zoom = 1 } = {}) {
   const graph = buildHVACInspectionTopology(loop || {}, { nodes, components });
   if (!loop || !graph.edges.length) return `<div class="hvac-inspect-topology-empty" data-hvac-inspect-topology-empty>${escapeHTML(label("simulation.hvacTopologyUnavailable", "Topology is not available for this result."))}</div>`;
-  const { width, height, positions, detachedTop } = layoutTopology(graph);
+  const initial = buildHVACLoopDiagramLayout(loop, { readOnly: true });
+  const bands = reservedBands(observationRecords(loop, graph, initial, nodes, components), initial);
+  const layout = buildHVACLoopDiagramLayout(loop, { readOnly: true, annotationBands: bands });
+  const records = observationRecords(loop, graph, layout, nodes, components);
+  positionAnnotations(records, layout, bands);
+  const headings = [["supply", layout.supplyLayout], ["demand", layout.demandLayout]].filter(([side]) => bands[side].extraBottom).map(([side, source]) => `<text class="hvac-inspect-detached-label" x="176" y="${source.top + source.height - bands[side].extraBottom + 8}">${escapeHTML(label("simulation.hvacTopologyOtherPoints", "Other equipment / points"))}</text>`).join("");
+  const overlay = headings + records.map((record) => renderObservation(record, selectedNode, selectedComponent)).join("");
   const scale = zoom === "fit" ? "fit" : [1, 1.5, 2].includes(Number(zoom)) ? Number(zoom) : 1;
-  const markerId = `hvac-inspect-arrow-${String(loop.id || loop.name || "loop").replace(/[^a-zA-Z0-9_-]/g, "-")}`;
-  const edges = graph.edges.map((edge) => {
-    const from = positions.get(edge.from), to = positions.get(edge.to);
-    const middle = (from.x + to.x) / 2;
-    const d = to.x > from.x ? `M${from.x + 98},${from.y} C${middle},${from.y} ${middle},${to.y} ${to.x - 99},${to.y}` : `M${from.x},${from.y - 30} C${from.x},${from.y - 45} ${to.x},${to.y - 45} ${to.x},${to.y - 30}`;
-    return `<path class="hvac-inspect-edge ${escapeHTML(edge.side)}" data-hvac-inspect-edge-from="${escapeHTML(edge.from)}" data-hvac-inspect-edge-to="${escapeHTML(edge.to)}"${edge.role ? ` data-hvac-inspect-port-role="${escapeHTML(edge.role)}"` : ""} d="${d}" marker-end="url(#${markerId})"></path>`;
-  }).join("");
-  const vertices = graph.vertices.map((vertex) => {
-    const observation = matchedObservation(vertex, vertex.kind === "node" ? nodes : components);
-    const target = vertex.kind === "node" ? selectedNode : selectedComponent;
-    const selected = Boolean(observation?.selected || target && [observation?.id, vertex.id, vertex.name].some((value) => normalized(value) === normalized(target)));
-    return renderVertex(vertex, positions.get(vertex.id), observation, selected);
-  }).join("");
+  const diagram = renderHVACLoopDiagram(loop, { readOnly: true, layout, overlay, hideLegend: true, svgClass: `hvac-inspect-topology-svg${scale === "fit" ? " fit" : ""}` });
   return `<section class="hvac-inspect-topology" data-hvac-inspect-topology="${escapeHTML(loop.id || loop.name)}">
     <div class="hvac-inspect-topology-heading"><h4>${escapeHTML(label("simulation.hvacTopology", "Loop topology"))}</h4><label>${escapeHTML(label("simulation.hvacTopologyZoom", "Zoom"))} <select data-hvac-inspect-zoom aria-label="${escapeHTML(label("simulation.hvacTopologyZoom", "Zoom"))}">${[["fit", label("simulation.hvacTopologyFit", "Fit")], [1, "100%"], [1.5, "150%"], [2, "200%"]].map(([value, text]) => `<option value="${value}"${String(scale) === String(value) ? " selected" : ""}>${escapeHTML(text)}</option>`).join("")}</select></label></div>
-    <div class="hvac-inspect-topology-viewport" tabindex="0" aria-label="${escapeHTML(loop.name || label("simulation.hvacTopology", "Loop topology"))}" data-hvac-inspect-topology-viewport>
-      <svg class="hvac-inspect-topology-svg ${scale === "fit" ? "fit" : ""}" viewBox="0 0 ${width} ${height}" style="width:${scale === "fit" ? "100%" : `${Math.round(width * scale)}px`}" role="group" aria-label="${escapeHTML(loop.name || "HVAC loop")}"><defs><marker id="${markerId}" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z"></path></marker></defs>${edges}${detachedTop === null ? "" : `<text class="hvac-inspect-detached-label" x="32" y="${detachedTop + 19}">${escapeHTML(label("simulation.hvacTopologyOtherPoints", "Other equipment / points"))}</text>`}${vertices}</svg>
-    </div>
+    <div class="hvac-inspect-topology-viewport ${scale === "fit" ? "fit" : ""}" style="--hvac-inspect-width:${Math.round(layout.width * (scale === "fit" ? 1 : scale))}px" tabindex="0" aria-label="${escapeHTML(loop.name || label("simulation.hvacTopology", "Loop topology"))}" data-hvac-inspect-topology-viewport>${diagram}</div>
   </section>`;
 }
