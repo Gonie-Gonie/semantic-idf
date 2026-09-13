@@ -11,6 +11,18 @@ export function hvacInspectionLoopKey(loop = {}) {
   return `${token(loop.loopType || loop.topology?.type)}|${token(loop.name)}`;
 }
 
+export function hvacInspectionSharedFrame(loop, context, ui) {
+  const frames = prepareHVACInspection(loop).frames;
+  let index = finite(context.frameX) ? frames.findIndex((frame) => frame.x >= context.frameX) : Number(context.frameIndex || 0);
+  if (index < 0) index = frames.length - 1;
+  ui.frameIndex = Math.max(0, Math.min(frames.length - 1, index));
+}
+
+export function rememberHVACInspectionFrame(loop, context, ui) {
+  const frame = prepareHVACInspection(loop).frames[ui.frameIndex];
+  if (frame) { context.frameX = frame.x; context.frameIndex = ui.frameIndex; }
+}
+
 function columnParts(series) {
   const column = String(series.column || ""), split = column.indexOf(":");
   return {

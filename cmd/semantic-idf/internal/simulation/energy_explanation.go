@@ -595,6 +595,7 @@ type energyHeatAliasDefinition struct {
 
 type energyExplanationDictionary struct {
 	hourlySourceOnly           bool
+	valueConversion            *energyExplanationValueConversion
 	row                        sqlOutputDictionaryRow
 	isMeter                    bool
 	reportingFrequency         string
@@ -820,6 +821,8 @@ func parseSimulationEnergyExplanationCanonicalSQL(path string, plan *PurposeRunP
 			ids := make([]int, 0, len(dictionaries))
 			byID := map[int]energyExplanationDictionary{}
 			for _, dictionary := range dictionaries {
+				conversion := prepareEnergyExplanationValueConversion(dictionary)
+				dictionary.valueConversion = &conversion
 				ids = append(ids, dictionary.row.index)
 				byID[dictionary.row.index] = dictionary
 			}
@@ -833,6 +836,7 @@ func parseSimulationEnergyExplanationCanonicalSQL(path string, plan *PurposeRunP
 			hourlyEnergy := newEnergySourceHourlyCollector(db)
 			surfaceCategories, surfaceCategoryEligible := energyExplanationSurfaceCategoriesForDictionaries(dictionaries, driverContext)
 			categoryBuilders := map[string]*energyExplanationCategorySeriesBuilder{}
+			categoryByDictionary := map[int]*energyExplanationCategorySeriesBuilder{}
 			if err := walkReportDataCompact(db, SQLSeriesQuery{DictionaryIndexes: ids}, func(row SQLSeriesRow) error {
 				hourlyEnergy.observe(row, byID[row.DictionaryIndex])
 				vrfLoadCollector.observe(row)
@@ -881,36 +885,43 @@ func parseSimulationEnergyExplanationCanonicalSQL(path string, plan *PurposeRunP
 				accumulateEnergyDriverMonthlyShadow(builder, row, value.Float64, intervalHours)
 				if selection, ok := surfaceCategories[dictionaryIndex]; ok {
 					category := selection.category
-					categoryKey := energyExplanationCategoryBuilderKey(dictionary, category)
-					categoryBuilder := categoryBuilders[categoryKey]
+					categoryBuilder := categoryByDictionary[dictionaryIndex]
 					if categoryBuilder == nil {
-						categoryBuilder = &energyExplanationCategorySeriesBuilder{
-							seriesBuilder: energyExplanationSeriesBuilder{dictionary: dictionary},
-							category:      category,
+						// Identity and source membership are constant for this SQL
+						// dictionary. Register on its first valid observation to
+						// retain source order and missing/NULL-source semantics.
+						categoryKey := energyExplanationCategoryBuilderKey(dictionary, category)
+						categoryBuilder = categoryBuilders[categoryKey]
+						if categoryBuilder == nil {
+							categoryBuilder = &energyExplanationCategorySeriesBuilder{
+								seriesBuilder: energyExplanationSeriesBuilder{dictionary: dictionary},
+								category:      category,
+							}
+							categoryBuilders[categoryKey] = categoryBuilder
+							if driverContext.Enabled && energyExplanationPlanUsesEnergyPath(plan) {
+								categoryBuilder.seriesBuilder.driverMonthlyShadow = &energyDriverMonthlyShadow{}
+							}
 						}
-						categoryBuilders[categoryKey] = categoryBuilder
-						if driverContext.Enabled && energyExplanationPlanUsesEnergyPath(plan) {
-							categoryBuilder.seriesBuilder.driverMonthlyShadow = &energyDriverMonthlyShadow{}
+						categoryByDictionary[dictionaryIndex] = categoryBuilder
+						sourceID := fmt.Sprintf("sql-rdd-%d", dictionaryIndex)
+						categoryBuilder.sourceIDs = appendUniqueStrings(categoryBuilder.sourceIDs, sourceID)
+						if selection.annual {
+							categoryBuilder.annualSourceIDs = appendUniqueStrings(categoryBuilder.annualSourceIDs, sourceID)
 						}
+						if selection.monthly {
+							categoryBuilder.monthlySourceIDs = appendUniqueStrings(categoryBuilder.monthlySourceIDs, sourceID)
+						}
+						if selection.daily {
+							categoryBuilder.dailySourceIDs = appendUniqueStrings(categoryBuilder.dailySourceIDs, sourceID)
+						}
+						if selection.hourly {
+							categoryBuilder.hourlySourceIDs = appendUniqueStrings(categoryBuilder.hourlySourceIDs, sourceID)
+						}
+						if selection.selectedRange {
+							categoryBuilder.selectedRangeSourceIDs = appendUniqueStrings(categoryBuilder.selectedRangeSourceIDs, sourceID)
+						}
+						categoryBuilder.category.RelatedEntityIDs = appendUniqueStrings(categoryBuilder.category.RelatedEntityIDs, category.RelatedEntityIDs...)
 					}
-					sourceID := fmt.Sprintf("sql-rdd-%d", dictionaryIndex)
-					categoryBuilder.sourceIDs = appendUniqueStrings(categoryBuilder.sourceIDs, sourceID)
-					if selection.annual {
-						categoryBuilder.annualSourceIDs = appendUniqueStrings(categoryBuilder.annualSourceIDs, sourceID)
-					}
-					if selection.monthly {
-						categoryBuilder.monthlySourceIDs = appendUniqueStrings(categoryBuilder.monthlySourceIDs, sourceID)
-					}
-					if selection.daily {
-						categoryBuilder.dailySourceIDs = appendUniqueStrings(categoryBuilder.dailySourceIDs, sourceID)
-					}
-					if selection.hourly {
-						categoryBuilder.hourlySourceIDs = appendUniqueStrings(categoryBuilder.hourlySourceIDs, sourceID)
-					}
-					if selection.selectedRange {
-						categoryBuilder.selectedRangeSourceIDs = appendUniqueStrings(categoryBuilder.selectedRangeSourceIDs, sourceID)
-					}
-					categoryBuilder.category.RelatedEntityIDs = appendUniqueStrings(categoryBuilder.category.RelatedEntityIDs, category.RelatedEntityIDs...)
 					accumulateEnergyExplanationSurfaceCategoryBuilder(&categoryBuilder.seriesBuilder, row, number, unit, dictionary, selection, selectedStartDay, selectedEndDay, hasSelectedRange)
 					if selection.monthly {
 						// Different selected surfaces may use different dictionaries.
@@ -4335,6 +4346,9 @@ func energyExplanationIsMeterObjectType(objectType string) bool {
 }
 
 func energyExplanationSQLValue(value float64, dictionary energyExplanationDictionary, intervalHours float64) (float64, string) {
+	if dictionary.valueConversion != nil {
+		return dictionary.valueConversion.convert(value, intervalHours)
+	}
 	if energyExplanationIntegratesRate(dictionary) {
 		hours := intervalHours
 		if hours <= 0 || math.IsNaN(hours) || math.IsInf(hours, 0) {
@@ -4352,6 +4366,9 @@ func energyExplanationSQLValue(value float64, dictionary energyExplanationDictio
 }
 
 func energyExplanationIntegratesRate(dictionary energyExplanationDictionary) bool {
+	if dictionary.valueConversion != nil {
+		return dictionary.valueConversion.integratesRate
+	}
 	name := normalizeEnergyOutputName(dictionary.row.name)
 	if dictionary.heat != nil {
 		return strings.Contains(name, " rate") || normalizeUnitToken(dictionary.row.units) == "w" || normalizeUnitToken(dictionary.row.units) == "kw"

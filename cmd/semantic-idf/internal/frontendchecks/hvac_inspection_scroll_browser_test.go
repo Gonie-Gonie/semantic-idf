@@ -57,33 +57,33 @@ func TestHVACInspectionTopologyTrustedWheelBrowser(t *testing.T) {
 		browser.call("Input.dispatchMouseEvent", map[string]any{"type": "mouseWheel", "x": at.X, "y": at.Y, "deltaX": dx, "deltaY": dy}, nil)
 		browser.evaluate(`hvacScroll.settle()`)
 	}
-	for _, zoom := range []string{"fit", "2"} {
-		browser.evaluate(fmt.Sprintf(`hvacScroll.render(%q); hvacScroll.settle()`, zoom))
+	for _, width := range []int{900, 700} {
+		browser.evaluate(fmt.Sprintf(`hvacScroll.render(%d); hvacScroll.settle()`, width))
 		before := read()
 		wheel(0, 280)
 		down := read()
 		if down.Top < before.Top+180 || down.InnerTop != 0 {
-			t.Fatalf("zoom %s swallowed vertical wheel above the lower graphs: before=%+v after=%+v", zoom, before, down)
+			t.Fatalf("width %d swallowed vertical wheel above the lower graphs: before=%+v after=%+v", width, before, down)
 		}
 		wheel(0, 280)
 		second := read()
 		if second.Top < down.Top+180 {
-			t.Fatalf("zoom %s bounced or stalled during continued downward scrolling: %+v -> %+v", zoom, down, second)
+			t.Fatalf("width %d bounced or stalled during continued downward scrolling: %+v -> %+v", width, down, second)
 		}
 		wheel(0, -220)
 		up := read()
 		if up.Top > second.Top-120 {
-			t.Fatalf("zoom %s swallowed upward scrolling: %+v -> %+v", zoom, second, up)
+			t.Fatalf("width %d swallowed upward scrolling: %+v -> %+v", width, second, up)
 		}
 		wheel(320, 0)
 		horizontal := read()
 		if horizontal.Left < up.Left+160 || horizontal.Top != up.Top {
-			t.Fatalf("zoom %s lost horizontal diagram panning or moved the result vertically: %+v -> %+v", zoom, up, horizontal)
+			t.Fatalf("width %d lost horizontal diagram panning or moved the result vertically: %+v -> %+v", width, up, horizontal)
 		}
 		if string(browser.evaluate(`window.scrollY===0 && document.documentElement.scrollTop===0 && hvacScroll.sameDiagram()`)) != "true" {
 			t.Fatal("scrolling moved the app document or replaced the topology")
 		}
-		t.Logf("zoom %s: result scroll %.0f -> %.0f -> %.0f -> %.0f; horizontal %.0f", zoom, before.Top, down.Top, second.Top, up.Top, horizontal.Left)
+		t.Logf("width %d: result scroll %.0f -> %.0f -> %.0f -> %.0f; horizontal %.0f", width, before.Top, down.Top, second.Top, up.Top, horizontal.Left)
 	}
 }
 
@@ -98,9 +98,9 @@ try{
  const nodes=['Inlet','Outlet',...Array.from({length:16},(_,i)=>'Water circuit point '+i)].map(name=>({id:name,name,metrics}));
  const pane=document.getElementById('pane'),mount=document.getElementById('topology');let diagram;
  const viewport=()=>mount.querySelector('[data-hvac-inspect-topology-viewport]');
- const render=zoom=>{mount.innerHTML=renderTopology({loop,nodes,zoom});diagram=mount.querySelector('svg');pane.scrollTop=0;};
+ const render=width=>{pane.style.width=width+'px';mount.innerHTML=renderTopology({loop,nodes});diagram=mount.querySelector('svg');pane.scrollTop=0;};
  window.hvacScroll={render,sameDiagram:()=>diagram===mount.querySelector('svg'),settle:async()=>{for(let i=0;i<20;i++)await new Promise(resolve=>requestAnimationFrame(resolve));},measure:()=>{
   const v=viewport(),r=v.getBoundingClientRect(),p=pane.getBoundingClientRect();return {top:pane.scrollTop,left:v.scrollLeft,innerTop:v.scrollTop,width:v.clientWidth,contentWidth:v.scrollWidth,x:Math.min(r.right,p.right)-80,y:Math.max(r.top,p.top)+Math.min(220,(Math.min(r.bottom,p.bottom)-Math.max(r.top,p.top))/2)};
- }};render('fit');
+ }};render(900);
 }catch(error){document.body.textContent=error.stack;}
 </script></body></html>`

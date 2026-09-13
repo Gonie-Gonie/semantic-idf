@@ -89,32 +89,34 @@ try {
  const inlet=mount.querySelector('[data-hvac-inspect-node="inlet-point"]');
  check(inlet?.classList.contains('measured')&&inlet.classList.contains('selected'),'frame point did not match case-insensitive physical node or emphasize selected point');
  check(mount.querySelectorAll('.node.measured').length===2,'all observed node points were not highlighted');
- check(inlet.querySelectorAll('[data-hvac-inspect-metric]').length===4&&inlet.textContent.includes('0.00 kg/s')&&inlet.textContent.includes('0.0047 kg/kg'),'zero flow, humidity precision or optional setpoint disappeared');
+ check(inlet.querySelectorAll('[data-hvac-inspect-metric]').length===3&&inlet.textContent.includes('0.00 kg/s')&&inlet.textContent.includes('0.0047 kg/kg'),'zero flow/humidity precision disappeared or setpoint retained a separate row');
  const compactLabel=id=>inlet.querySelector('[data-hvac-inspect-metric="'+id+'"] .hvac-inspect-metric-label').textContent.trim();
- check(compactLabel('flow')==='ṁ'&&compactLabel('temperature')==='T'&&compactLabel('humidity')==='w'&&compactLabel('setpoint')==='Tset','node measurements lost compact physical symbols or confused humidity ratio with relative humidity');
+ check(compactLabel('flow')==='ṁ'&&compactLabel('temperature')==='T'&&compactLabel('humidity')==='w','node measurements lost compact physical symbols or confused humidity ratio with relative humidity');
  const valueFont=parseFloat(getComputedStyle(inlet.querySelector('.hvac-inspect-metric-value')).fontSize),nameFont=parseFloat(getComputedStyle(inlet.querySelector('.hvac-inspect-point-label')).fontSize);
  check(valueFont>nameFont&&valueFont<=nameFont+1,'frame values must stay compact while slightly emphasizing measured values');
  for(const row of mount.querySelectorAll('[data-hvac-inspect-metric]')){
   const symbol=row.querySelector('.hvac-inspect-metric-label'),value=row.querySelector('.hvac-inspect-metric-value');
-  check(symbol.getStartPositionOfChar(0).x===0&&value.getStartPositionOfChar(0).x===42,'frame measurement labels and values do not align in fixed columns');
+  check(symbol.getStartPositionOfChar(0).x===0&&value.getStartPositionOfChar(0).x===32,'frame measurement labels and values do not align in fixed columns');
   check(symbol.getBBox().x+symbol.getBBox().width<value.getBBox().x,'frame measurement label overlaps its value');
   check(Math.abs(value.getStartPositionOfChar(0).y-Number(row.getAttribute('y')))<.1,'a subscript shifted the measured value off its row');
  }
- check(inlet.querySelector('[data-hvac-inspect-metric="setpoint"] .hvac-inspect-metric-label tspan[baseline-shift="sub"]')?.textContent==='set','setpoint symbol lost its compact subscript');
+ const comparison=inlet.querySelector('[data-hvac-setpoint-state="unmet"]');
+ check(!inlet.querySelector('[data-hvac-inspect-metric="setpoint"]')&&comparison?.textContent==='7.00 >set 6.00'&&comparison.querySelector('[baseline-shift="sub"]')?.textContent==='set','optional setpoint must be inline with temperature and reflect cooling inequality');
+ check(getComputedStyle(comparison).fontWeight==='700'&&getComputedStyle(comparison).fill==='rgb(255, 123, 114)','unmet setpoint comparison is not bold red');
  check(mount.querySelector('[data-hvac-inspect-component="pump-observation"]')?.textContent.includes('Off')&&mount.querySelector('[data-hvac-inspect-component="chiller-a-observation"]')?.textContent.includes('4.20'),'equipment status/power/COP missing');
  check(mount.querySelector('.hvac-loop-icon.pump')&&mount.querySelector('.hvac-loop-icon.chiller'),'equipment icons diverged from HVAC tab');
  check(!mount.querySelector('table,ul,dl')&&!mount.textContent.includes('Source data'),'topology introduced tabular or source/provenance detail');
  const annotationPositions=()=>[...mount.querySelectorAll('.hvac-inspect-annotation')].map(item=>item.getAttribute('transform')).join('|');
  const positions=annotationPositions();
- mount.innerHTML=render({loop,nodes:nodes.map(node=>({...node,metrics:node.metrics.map(metric=>({...metric,value:metric.id==='flow'?8:metric.value}))})),components,selectedComponent:'pump-observation',zoom:1.5});
+ mount.innerHTML=render({loop,nodes:nodes.map(node=>({...node,metrics:node.metrics.map(metric=>({...metric,value:metric.id==='flow'?8:metric.value}))})),components,selectedComponent:'pump-observation'});
  check(annotationPositions()===positions,'frame change moved physical topology points');
- check(mount.querySelector('[data-hvac-inspect-component="pump-observation"]').classList.contains('selected')&&mount.querySelector('[data-hvac-inspect-zoom]').value==='1.5','equipment selection or zoom contract failed');
+ check(mount.querySelector('[data-hvac-inspect-component="pump-observation"]').classList.contains('selected')&&!mount.querySelector('[data-hvac-inspect-zoom],.hvac-inspect-topology-heading,.hvac-inspect-topology-viewport.fit'),'equipment selection failed or removed zoom/title returned');
  mount.innerHTML=render({loop:wrapper,nodes:extraNodes,components:children,selectedNode:'internal-point'});
  check(mount.querySelector('[data-hvac-inspect-node="internal-point"]')?.classList.contains('selected')&&mount.querySelector('[data-hvac-inspect-component="fan-child"]')&&mount.querySelector('[data-hvac-inspect-component="unknown-device"]')&&mount.querySelector('[data-hvac-inspect-node="detached-point"]'),'expanded internal or detached observations are not interactive/visible');
  const longNodes=['VAV_2_COOLCDEMAND INLET NODE','VAV_2_COOLCDEMAND OUTLET NODE','VAV_2_HEATCDEMAND INLET NODE','VAV_2_HEATCDEMAND OUTLET NODE'].map((name,index)=>({id:'long-node-'+index,name,metrics:nodes[0].metrics}));
  mount.innerHTML=render({loop,nodes:longNodes});checkAnnotationSpacing();
  mount.innerHTML=render({nodes,components});check(mount.querySelector('[data-hvac-inspect-topology-empty]')&&!mount.querySelector('svg'),'missing model topology generated guessed wiring');
- mount.innerHTML=render({loop,nodes,components,selectedNode:'inlet-point',zoom:'fit'});
+ mount.innerHTML=render({loop,nodes,components,selectedNode:'inlet-point'});
  check(JSON.stringify(loop)===original,'inspection altered executed model topology');
  document.body.dataset.inspectionTopologyStatus='passed';document.getElementById('result').textContent='passed';
 }catch(error){document.body.dataset.inspectionTopologyStatus='failed';document.getElementById('result').textContent=error.stack;}

@@ -319,7 +319,6 @@ export const elements = {
   simulationResultTabs: document.querySelector("#simulationResultTabs"),
   simulationEnergyStats: document.querySelector("#simulationEnergyStats"),
   simulationEnergyDashboard: document.querySelector("#simulationEnergyDashboard"),
-  simulationHVACLoopStats: document.querySelector("#simulationHVACLoopStats"),
   simulationHVACLoopResults: document.querySelector("#simulationHVACLoopResults"),
   simulationComfortStats: document.querySelector("#simulationComfortStats"),
   simulationComfortResults: document.querySelector("#simulationComfortResults"),

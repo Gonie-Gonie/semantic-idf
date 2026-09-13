@@ -248,3 +248,36 @@ Local evidence: `.runtime/hvac-latest-transport-replay.log` (baseline),
 in `.runtime/hvac-latest-transport-validated.log`; browser evidence is in
 `.runtime/receiving-compact-native-profile.json`. No simulation inputs, SQL files
 or stored original outputs were changed.
+
+## Energy drivers dictionary preparation (2026-09-14)
+
+The combined-purpose Large Office capture
+`20260914-031659-sim-1789323417480-RefBldgLargeOfficeNew2004_Chicago`
+has a 622,034,944-byte SQL file and 4,293 reporting dictionaries. Replaying only
+the Energy drivers stage on its executed input took **117.448 seconds** before
+and **54.776 seconds** after this change: **53.36% less time**. These are local
+saved-result timings, not the duration of a fresh simulation or the full
+postprocessing pipeline.
+
+Unit/rate conversion is now prepared once per selected dictionary. Surface
+category lookup and source/entity membership are likewise resolved on the first
+valid observation of each dictionary. Every hourly value still follows the same
+SQL ordering, arithmetic and rounding; the change removes repeated string
+normalization, classification and membership scans. SQL scanning/sorting remains
+a material part of the remaining time. EnergyPlus was not rerun, and the capture's
+contents, file hashes, sizes and modification times remained unchanged.
+
+Both complete v1 artifacts contain 271 nodes, 2,457 sources, 8,760 hourly labels
+and **71,033,416 bytes**. Comparison of the entire JSON preserves exact numeric
+tokens, hourly sample order, duplicate records and metadata. Only preexisting
+Go-map ordering of source-ID lists and reconciliation records is normalized;
+there is no numeric tolerance or sampling. Targeted regressions cover prepared
+conversion bit equality, monthly/hourly precision, streamed surface categories
+and radiant context isolation.
+
+`TestEnergyDriversSavedReplay` accepts `ENERGY_DRIVERS_REPLAY_DIR` and
+`ENERGY_DRIVERS_REPLAY_INPUT`; optional `_PROFILE`, `_OUTPUT` and `_COMPARE`
+suffixes select diagnostic artifacts. `TestEnergyDriversSavedComparison`
+compares existing `_COMPARE` and `_OUTPUT` files without repeating the SQL scan.
+Local evidence: `.runtime/energy-drivers-before.log`,
+`.runtime/energy-drivers-after.log`, their `.json` artifacts and `.pprof` profiles.

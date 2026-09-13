@@ -64,6 +64,13 @@ try{
   const labels=items.map(item=>item.querySelector('span').getBoundingClientRect()),swatches=items.map(item=>item.querySelector('i').getBoundingClientRect());
   check(labels[0].left===labels[1].left&&swatches[0].left===swatches[1].left&&labels[1].top>=labels[0].bottom,'legend rows/swatch labels are not vertically aligned');
  }
+ mount.style.width='1600px';
+ for(const kind of ['flow','temperature','humidity']){
+  const items=[...plot(kind).querySelectorAll('[data-hvac-chart-legend]')],labels=items.map(item=>item.querySelector('span').getBoundingClientRect()),swatches=items.map(item=>item.querySelector('i').getBoundingClientRect());
+  check(labels[0].top===labels[1].top&&labels[1].left>labels[0].right,'wide graph did not use multiple legend columns');
+  check(labels.every((item,index)=>Math.abs(item.left-swatches[index].left-25)<.1),'wide legend labels/swatches lost fixed alignment');
+ }
+ mount.style.width='720px';
  check(!mount.querySelector('[data-hvac-inspect-custom-chart] [data-hvac-inspect-y-bound]')&&!mount.querySelector('[data-hvac-inspect-custom-chart] .is-vertical'),'basic controls or node-only legends changed custom graphs');
  const customSVG=mount.querySelector('[data-hvac-inspect-custom-chart] svg'),frame=mount.querySelector('[data-simulation-hvac-frame]');
  const low=input('flow','kg/s','low'),high=input('flow','kg/s','high'),autoLow=Number(axis('flow','kg/s').dataset.hvacChartYLow),autoHigh=Number(axis('flow','kg/s').dataset.hvacChartYHigh),min=low.min,max=low.max;

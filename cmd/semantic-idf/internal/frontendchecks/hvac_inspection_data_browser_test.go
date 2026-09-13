@@ -35,10 +35,11 @@ func TestHVACInspectionDataBrowser(t *testing.T) {
 	}
 }
 
-const hvacInspectionDataHTML = `<!doctype html><body><pre id="result"></pre><script type="module">
+const hvacInspectionDataHTML = `<!doctype html><body><pre id="result"></pre><script>window.addEventListener('error',event=>document.getElementById('result').textContent=event.message+' line '+event.lineno);</script><script type="module">
 const check=(v,m)=>{if(!v)throw Error(m)};
 try {
- const {prepareHVACInspection:prepare,hvacInspectionTrace:trace,hvacInspectionSnapshots:snapshot,hvacInspectionBasicProperties:basic}=await import('/src/js/hvac-inspection-data.js');
+ const {prepareHVACInspection:prepare,hvacInspectionTrace:trace,hvacInspectionSnapshots:snapshot,hvacInspectionBasicProperties:basic,hvacInspectionSharedFrame:sharedFrame,rememberHVACInspectionFrame:rememberFrame}=await import('/src/js/hvac-inspection-data.js');
+ const {hvacSetpointMode:mode,hvacSetpointComparison:compare}=await import('/src/js/hvac-setpoint.js');
  const point=(x,value,label)=>({x,value,label:label||'01-01 '+String(x+1).padStart(2,'0')+':00'});
  const series=(name,unit,points,key='NODE A',file='eplusout.sql')=>({name,keyValue:key,file,column:key+':'+name+' ['+unit+']',reportingFrequency:'Hourly',points});
  const temp=series('System Node Temperature','C',[point(0,20),point(1,21),point(2,22)]);
@@ -77,6 +78,20 @@ try {
  const fuel={...structuredClone(loop),components:[{componentName:'GAS COIL',componentType:'Coil:Heating:Fuel',series:[series('Heating Coil Electricity Rate','W',[point(0,0)],'GAS COIL'),series('Heating Coil Heating Rate','W',[point(0,10000)],'GAS COIL')]}]};
  check(snapshot(prepare(fuel),0).components[0].status==='on','positive fuel heating output marked Off from zero ancillary electric power');
  const blank={name:'Empty',series:[],components:[]};check(prepare(blank).frames.length===0,'empty result invented frames');
+ const context={},firstUI={frameIndex:2},secondUI={frameIndex:0};rememberFrame(loop,context,firstUI);
+ const shorter={name:'Second',series:[series('System Node Temperature','C',[point(0,8),point(2,9)])]};
+ sharedFrame(shorter,context,secondUI);check(secondUI.frameIndex===1,'changing loop retained array index instead of selected timestamp');
+ sharedFrame(blank,context,{});sharedFrame(loop,context,firstUI);check(firstUI.frameIndex===2,'visiting an empty loop discarded shared frame');
+ secondUI.frameIndex=0;rememberFrame(shorter,context,secondUI);sharedFrame(loop,context,firstUI);check(firstUI.frameIndex===0,'changing frame in second loop did not update first loop');
+ const device=(name,type,status='on')=>({name,type,status,inletNodes:['Inlet'],outletNodes:['Outlet']});
+ const cooler=device('Cooler','Coil:Cooling:Water'),heater=device('Heater','Coil:Heating:Water'),mixedEquipment={supplySide:{branches:[{components:[cooler,heater].map(item=>({objectName:item.name,objectType:item.type}))}]}};
+ check(mode(mixedEquipment,'Outlet',[cooler,{...heater,status:'off'}])==='cooling'&&mode(mixedEquipment,'Outlet',[{...cooler,status:'off'},heater])==='heating','frame operating mode ignores active typed equipment');
+ check(mode(mixedEquipment,'Outlet',[cooler,heater])===''&&mode(mixedEquipment,'Outlet',[{...cooler,status:'off'},{...heater,status:'off'}])==='','ambiguous mixed/off loop fabricated operating mode');
+ check(mode({supplySide:{branches:[{components:[{objectName:'B',objectType:'Boiler:HotWater'}]}]}},'Water',[])==='heating','hot-water loop lost typed heating mode');
+ for(const [actual,target,kind,operator,status] of [[14,15,'cooling','<','satisfied'],[15,15,'cooling','=','satisfied'],[16,15,'cooling','>','unmet'],[16,15,'heating','>','satisfied'],[15,15,'heating','=','satisfied'],[14,15,'heating','<','unmet'],[0,0,'cooling','=','satisfied'],[15,15,'','=','unknown']]){
+  const result=compare(actual,target,kind);check(result.operator===operator&&result.state===status,'incorrect setpoint comparison: '+[actual,target,kind]);
+ }
+ check(compare(15,null,'cooling')===null&&compare(15,-999,'cooling')===null&&compare(null,15,'heating')===null,'missing/sentinel temperature displayed as valid setpoint comparison');
  for(const loopType of ['PlantLoop','CondenserLoop']){
   const water={...loop,loopType},waterModel=prepare(water);
   check(waterModel.waterLoop&&basic(waterModel,'humidity').length===0,'water loop exposes default humidity graph data');

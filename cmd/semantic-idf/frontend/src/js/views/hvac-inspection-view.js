@@ -17,7 +17,6 @@ function normalize(model, ui) {
   ui.visibleNodes ||= {};
   ui.basicYLimits ||= {};
   ui.mode = ui.mode === "scatter" ? "scatter" : "line";
-  ui.zoom ||= "fit";
   if (!model.entities.some((entity) => entity.id === ui.selectedComponent)) ui.selectedComponent = "";
   if (!model.entities.some((entity) => entity.id === ui.selectedNode)) ui.selectedNode = ui.selectedComponent ? "" : model.entities.find((entity) => entity.kind === "node")?.id || "";
   if (!Array.isArray(ui.rows)) {
@@ -41,7 +40,7 @@ function selectedProperties(model, ui) {
 function renderSnapshot(model, ui) {
   const snapshots = hvacInspectionSnapshots(model, ui.frameIndex, ui);
   if (model.loop.topology) return renderHVACInspectionTopology({ loop: model.loop.topology, ...snapshots,
-    selectedNode: ui.selectedNode, selectedComponent: ui.selectedComponent, zoom: ui.zoom });
+    selectedNode: ui.selectedNode, selectedComponent: ui.selectedComponent });
   // Older results can retain observations without the executed model graph.
   // Present the chosen point's values without inventing connections.
   const entity = [...snapshots.nodes, ...snapshots.components].find((item) => item.id === (ui.selectedComponent || ui.selectedNode));
@@ -171,7 +170,7 @@ export function renderHVACInspection(loop, ui = {}) {
 }
 
 export function handleHVACInspectionEvent(event, container, loop, ui) {
-  const target = event.target.closest?.("[data-simulation-hvac-frame], [data-hvac-inspect-node], [data-hvac-inspect-component], [data-hvac-inspect-node-visible], [data-hvac-inspect-entity], [data-hvac-inspect-property], [data-hvac-inspect-mode], [data-hvac-inspect-add], [data-hvac-inspect-remove], [data-hvac-inspect-zoom], [data-hvac-inspect-y-bound], [data-hvac-inspect-y-reset]");
+  const target = event.target.closest?.("[data-simulation-hvac-frame], [data-hvac-inspect-node], [data-hvac-inspect-component], [data-hvac-inspect-node-visible], [data-hvac-inspect-entity], [data-hvac-inspect-property], [data-hvac-inspect-mode], [data-hvac-inspect-add], [data-hvac-inspect-remove], [data-hvac-inspect-y-bound], [data-hvac-inspect-y-reset]");
   if (!target || !container.contains(target)) return false;
   const isClick = event.type === "click", clickControl = target.matches("[data-hvac-inspect-node], [data-hvac-inspect-component], [data-hvac-inspect-add], [data-hvac-inspect-remove], [data-hvac-inspect-y-reset]");
   if (isClick !== clickControl || !isClick && event.type !== "input" && event.type !== "change") return false;
@@ -215,10 +214,9 @@ export function handleHVACInspectionEvent(event, container, loop, ui) {
     updateHVACInspectionChartFrame(container, model.frames[ui.frameIndex]?.x);
     return true;
   }
-  if (data.hvacInspectNode !== undefined || data.hvacInspectComponent !== undefined || data.hvacInspectZoom !== undefined) {
+  if (data.hvacInspectNode !== undefined || data.hvacInspectComponent !== undefined) {
     if (data.hvacInspectNode !== undefined) { ui.selectedNode = data.hvacInspectNode; ui.selectedComponent = ""; }
     if (data.hvacInspectComponent !== undefined) { ui.selectedComponent = data.hvacInspectComponent; ui.selectedNode = ""; }
-    if (data.hvacInspectZoom !== undefined) ui.zoom = target.value;
     refreshSnapshot(container, model, ui);
     const attribute = [...target.attributes].find((item) => item.name.startsWith("data-hvac-inspect-"));
     if (attribute) container.querySelector(`[${attribute.name}="${CSS.escape(attribute.value)}"]`)?.focus({ preventScroll: true });

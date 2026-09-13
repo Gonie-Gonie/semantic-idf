@@ -37,7 +37,12 @@ func TestHVACInspectionExecutedCircuitBrowser(t *testing.T) {
 	}
 	report := idf.AnalyzeHVAC(doc)
 	series := []simulation.SimulationSeries{}
+	seen := map[string]bool{}
 	add := func(key string, temperature, flow float64) {
+		if key == "" || seen[strings.ToUpper(key)] {
+			return
+		}
+		seen[strings.ToUpper(key)] = true
 		for _, property := range []struct {
 			name, unit string
 			value      float64
@@ -61,6 +66,30 @@ func TestHVACInspectionExecutedCircuitBrowser(t *testing.T) {
 	add("CoolSys1 Chiller Water Outlet Node 1", 35, 2)
 	for _, loop := range report.Loops {
 		add(loop.SupplySide.InletNode, 22, 1)
+		if loop.Name == "HeatSys1" {
+			for _, side := range []idf.HVACLoopSide{loop.SupplySide, loop.DemandSide} {
+				add(side.InletNode, 75.1, 2.62)
+				add(side.OutletNode, 49.25, 2.62)
+				for _, branch := range side.Branches {
+					for _, component := range branch.Components {
+						add(component.InletNode, 82.2, .13)
+						add(component.OutletNode, 49.98, .13)
+						name := ""
+						switch {
+						case strings.HasPrefix(component.ObjectType, "Coil:Heating"):
+							name = "Heating Coil Heating Rate"
+						case strings.HasPrefix(component.ObjectType, "Boiler:"):
+							name = "Boiler Heating Rate"
+						case strings.HasPrefix(component.ObjectType, "Pump:"):
+							name = "Pump Electricity Rate"
+						}
+						if name != "" {
+							series = append(series, simulation.SimulationSeries{KeyValue: strings.ToUpper(component.ObjectName), Name: name, File: "eplusout.sql", Column: component.ObjectName + ":" + name + " [W](Hourly)", ReportingFrequency: "Hourly", Points: []simulation.SimulationPoint{{X: 1, Label: "01-01 01:00", Value: 20800}, {X: 2, Label: "01-01 02:00", Value: 0}}})
+						}
+					}
+				}
+			}
+		}
 	}
 	for _, zone := range report.ZoneRelations {
 		if zone.ZoneName != "Core_top" {
@@ -90,6 +119,12 @@ func TestHVACInspectionExecutedCircuitBrowser(t *testing.T) {
 		}
 		t.Fatalf("HVAC circuit/zone contract failed: %v\n%s", err, output)
 	}
+	if screenshot := os.Getenv("HVAC_INSPECTION_SCREENSHOT"); screenshot != "" {
+		output, err := exec.CommandContext(ctx, chrome, "--headless=new", "--disable-gpu", "--no-sandbox", "--no-first-run", "--no-default-browser-check", "--virtual-time-budget=10000", "--window-size=1460,1800", "--force-device-scale-factor=1", "--user-data-dir="+t.TempDir(), "--screenshot="+screenshot, server.URL+"/circuit?review=HeatSys1").CombinedOutput()
+		if err != nil {
+			t.Fatalf("HVAC screenshot: %v\n%s", err, output)
+		}
+	}
 }
 
 const hvacInspectionCircuitHTML = `<!doctype html><html data-theme="dark"><head><meta charset="utf-8"><link rel="stylesheet" href="/src/styles.css"><style>body{display:block;overflow:auto;height:auto}#mount{width:1400px}</style></head><body><div id="mount"></div><pre id="result"></pre><script type="module">
@@ -110,7 +145,7 @@ try{
  const cool=find('CoolSys1'),coolModel=prepare(cool);mount.innerHTML=render(cool,{});
  for(const [name,value] of [['VAV_5_CoolCDemand Inlet Node',6.7],['VAV_5_CoolCDemand Outlet Node',11.3]]){
   check(point(name)?.classList.contains('anchored')&&point(name).querySelector('.hvac-inspect-node-ring'),name+' is not on the water coil port');
-  check(point(name).querySelector('[data-hvac-inspect-metric="temperature"] .hvac-inspect-metric-value').textContent===value.toFixed(2)+' °C',name+' shows the air temperature');
+  check(point(name).querySelector('[data-hvac-inspect-metric="temperature"] .hvac-inspect-metric-value').textContent===value.toFixed(2)+' >set '+(value-1).toFixed(2)+' °C',name+' shows the air temperature');
   check(point(name).querySelector('[data-hvac-inspect-metric="flow"] .hvac-inspect-metric-value').textContent==='0.65 kg/s',name+' shows air mass flow');
   const property=basic(coolModel,'temperature').find(p=>p.entity.name.toLowerCase()===name.toLowerCase());
   check(trace(coolModel,property).points.map(p=>p.value).join(',')===[value,value+1].join(','),'graph differs from water snapshot');
@@ -119,7 +154,7 @@ try{
  const tower=find('TowerWaterSys');mount.innerHTML=render(tower,{});
  check(point('CoolSys1 Chiller Water Inlet Node 1')?.classList.contains('anchored')&&!point('CoolSys1 Pump-CoolSys1 ChillerNode 1'),'condenser circuit replaced by chilled water');
  const air=find('VAV_5');mount.innerHTML=render(air,{});
- check(mount.querySelector('[data-hvac-inspect-basic-chart="humidity"] svg')&&point('VAV_5_OA-VAV_5_CoolCNode')?.textContent.includes('27.14 °C'),'air loop lost its temperature or RH');
+ check(mount.querySelector('[data-hvac-inspect-basic-chart="humidity"] svg')&&point('VAV_5_OA-VAV_5_CoolCNode')?.textContent.includes('27.14 >set 26.14 °C'),'air loop lost its temperature or RH');
  check(!point('VAV_5_CoolCDemand Inlet Node'),'air loop includes coil water points');
  const zoneLoop=loops.find(loop=>loop.loopType==='AirLoopHVAC'&&loop.topology.relatedZones.includes('Core_top'));mount.innerHTML=render(zoneLoop,{});
  const zoneNodes=zoneLoop.topology.demandGraph.nodes.filter(node=>node.zoneName==='Core_top'&&['zone_inlet','zone_return'].includes(node.role));
@@ -131,6 +166,16 @@ try{
   check(Number(ring.getAttribute('cx'))===zone.x+(node.role==='zone_inlet'?42:-42),'zone port attached to the wrong icon or side');
  }
  check(JSON.stringify(loops)===original,'render mutated executed results');
+ const heat=find('HeatSys1');mount.innerHTML=render(heat,{});
+ const annotations=[...mount.querySelectorAll('.hvac-inspect-annotation')].map(item=>({name:item.parentElement.dataset.hvacInspectPointName,rect:item.getBoundingClientRect()}));
+ check(annotations.length>45,'dense heating-loop fixture lacks observed branch ports/equipment');
+ for(let i=0;i<annotations.length;i++)for(let j=i+1;j<annotations.length;j++){
+  const a=annotations[i],b=annotations[j];check(Math.min(a.rect.right,b.rect.right)-Math.max(a.rect.left,b.rect.left)<=1||Math.min(a.rect.bottom,b.rect.bottom)-Math.max(a.rect.top,b.rect.top)<=1,'dense loop text overlaps: '+a.name+' / '+b.name);
+ }
+ const demandRows=[...mount.querySelectorAll('.node.anchored.demand .hvac-inspect-node-ring')].map(item=>Number(item.getAttribute('cy'))),rows=[...new Set(demandRows)].sort((a,b)=>a-b);
+ check(rows.length>10&&rows.slice(1).every((y,index)=>y-rows[index]<=260),'parallel equipment lines retain excessive vertical spacing: '+JSON.stringify(rows));
+ const satisfied=mount.querySelector('[data-hvac-setpoint-state="satisfied"]');check(satisfied&&getComputedStyle(satisfied).fill==='rgb(138, 180, 248)','satisfied heating setpoint is not blue');
+ if(!new URLSearchParams(location.search).has('review'))mount.innerHTML=render(zoneLoop,{});
  document.body.dataset.hvacCircuitStatus='passed';document.getElementById('result').textContent='passed';
 }catch(error){document.body.dataset.hvacCircuitStatus='failed';document.getElementById('result').textContent=error.stack;}
 </script>`

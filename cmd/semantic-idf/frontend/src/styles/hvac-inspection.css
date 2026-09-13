@@ -5,11 +5,11 @@
   align-items: center;
   gap: 12px;
 }
-.hvac-inspection-loop-picker { margin: 4px 0 16px; }
+.hvac-inspection-loop-picker { margin: 0 0 8px; }
 .hvac-inspection-loop-picker select { min-width: 220px; max-width: 100%; }
-.hvac-inspection { min-width: 0; display: grid; gap: 20px; }
+.hvac-inspection { min-width: 0; display: grid; gap: 12px; }
 .hvac-inspection h4 { margin: 0; font-size: 15px; }
-.hvac-inspection-frame-control { flex-wrap: wrap; padding: 12px; border: 1px solid var(--border); border-radius: 8px; }
+.hvac-inspection-frame-control { flex-wrap: wrap; padding: 4px 0; }
 .hvac-inspection-frame-control input { flex: 1; min-width: 160px; }
 .hvac-inspection-frame-control output { min-width: 150px; font-variant-numeric: tabular-nums; }
 .hvac-inspection-node-toggles { display: flex; gap: 8px 16px; flex-wrap: wrap; margin: 12px 0 16px; max-height: 190px; overflow-y: auto; }

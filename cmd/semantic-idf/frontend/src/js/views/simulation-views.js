@@ -29,7 +29,7 @@ import { createEnergyPathSceneSlot } from "../energy-path-scene-slot.js";
 import { energyPathDisplayContext } from "../energy-path-display.js";
 import { buildEnergyPathReport, renderEnergyPathReportHTML } from "../energy-path-report.js";
 import { resolveEnergyPathOutputRequest, energyPathOutputRequestKey } from "../energy-path-output-requests.js";
-import { hvacInspectionLoopKey } from "../hvac-inspection-data.js";
+import { hvacInspectionLoopKey, hvacInspectionSharedFrame, rememberHVACInspectionFrame } from "../hvac-inspection-data.js";
 import { renderHVACInspection, handleHVACInspectionEvent } from "./hvac-inspection-view.js";
 import { renderComfortInspection, handleComfortInspectionEvent, renderComfortInspectionReport } from "./comfort-inspection-view.js";
 import { decodeSimulationResultTransfer, simulationResultTransferMediaType } from "../simulation-result-transport.js";
@@ -3892,9 +3892,6 @@ function shortEnergyExplanationLabel(label = "") {
 }
 
 function renderSimulationHVACLoopEmpty(message) {
-  if (elements.simulationHVACLoopStats) {
-    elements.simulationHVACLoopStats.textContent = t("simulation.noHVACLoopResult", {}, "No HVAC loop result");
-  }
   if (elements.simulationHVACLoopResults) {
     elements.simulationHVACLoopResults.innerHTML = `<div class="empty">${escapeHTML(message)}</div>`;
   }
@@ -3915,6 +3912,7 @@ function simulationHVACInspectionContext(result = state.simulationResult) {
   const key = hvacInspectionLoopKey(loop);
   context.selectedLoop = key;
   const ui = context.loops[key] ||= { frameIndex: 0 };
+  hvacInspectionSharedFrame(loop, context, ui);
   return { loops, context, loop, ui };
 }
 
@@ -3924,7 +3922,6 @@ function renderSimulationHVACLoops(result) {
     renderSimulationHVACLoopEmpty(t("simulation.noHVACLoopResult", {}, "Run HVAC Loop Check to inspect node state series."));
     return;
   }
-  if (elements.simulationHVACLoopStats) elements.simulationHVACLoopStats.textContent = `${loops.length} ${t("simulation.hvacLoops", {}, "HVAC Loops")}`;
   elements.simulationHVACLoopResults.innerHTML = `
     <label class="hvac-inspection-loop-picker"><span>${escapeHTML(t("simulation.hvacLoop", {}, "HVAC loop"))}</span>
       <select data-simulation-hvac-loop>${loops.map((item) => `<option value="${escapeHTML(hvacInspectionLoopKey(item))}"${hvacInspectionLoopKey(item) === context.selectedLoop ? " selected" : ""}>${escapeHTML(item.name || item.loopType || "HVAC loop")}</option>`).join("")}</select>
@@ -5165,6 +5162,7 @@ function handleSimulationHVACResultsInput(event) {
   }
   if (loop && handleHVACInspectionEvent(event, elements.simulationHVACLoopResults, loop, ui)) {
     state.simulationHVACFrameIndex = ui.frameIndex;
+    if (event.target.matches("[data-simulation-hvac-frame]")) rememberHVACInspectionFrame(loop, context, ui);
   }
 }
 
