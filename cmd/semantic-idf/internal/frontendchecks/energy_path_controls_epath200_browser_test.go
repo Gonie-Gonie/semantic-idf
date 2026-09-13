@@ -78,7 +78,7 @@ func TestEPATH200ActualAppEnergyPathControlsBrowser(t *testing.T) {
 // because the fixture itself requested Building / Annual / All.
 const epath200InitialStateHTML = `<script type="module">
 globalThis.epath200InitialState=import("/src/js/state.js").then(({state})=>({
- scope:state.simulationEnergyScopeKind,period:state.simulationEnergyPeriod,service:state.simulationEnergyService
+ scope:state.simulationEnergyScopeKind,period:state.simulationEnergyPeriod
 }));
 </script>`
 
@@ -88,38 +88,37 @@ const check=(condition,message)=>{if(!condition)failures.push(message);};
 document.body.dataset.epath200Viewport=innerWidth+"x"+innerHeight;
 try{
  const defaults=await globalThis.epath200InitialState;
- check(defaults?.scope==="building"&&defaults?.period==="annual"&&defaults?.service==="all","fresh state defaults are not Building / Annual / All: "+JSON.stringify(defaults));
+ check(defaults?.scope==="building"&&defaults?.period==="annual","fresh state defaults are not Building / Annual: "+JSON.stringify(defaults));
  for(let attempt=0;document.body.dataset.epath142Status!=="manual"&&attempt<200;attempt++)await new Promise(resolve=>setTimeout(resolve,10));
  if(document.body.dataset.epath142Status!=="manual")throw new Error("actual app bootstrap failed: "+document.getElementById("epath142-result")?.textContent);
  const {state}=await import("/src/js/state.js");
  const host=document.getElementById("simulationEnergyDashboard"),result=state.simulationResult,raw=JSON.stringify(result);
  const api=window.go.main.App,originalAPI={...api};let forbiddenCalls=0;
  for(const method of["AnalyzeInputText","AnalyzeInputDiagnosticsText","RunSimulation","RunSimulationText","RunPurposeSimulationText"]){api[method]=()=>{forbiddenCalls++;throw new Error("control interaction called backend "+method);};}
- const selectors={scope:"[data-simulation-energy-scope]",zone:"[data-simulation-energy-zone-name]",period:"[data-simulation-energy-path-period]",service:"[data-simulation-energy-service]"};
+ const selectors={scope:"[data-simulation-energy-scope]",zone:"[data-simulation-energy-zone-name]",period:"[data-simulation-energy-path-period]"};
  const control=kind=>host.querySelector(selectors[kind]);
  const visible=element=>Boolean(element&&element.getClientRects().length&&getComputedStyle(element).visibility!=="hidden");
  const ids=level=>[...host.querySelectorAll('[data-energy-path-stage="'+level+'"] [data-energy-path-layout-node]')].map(node=>node.dataset.energyPathLayoutNode);
  const change=(kind,value)=>{const element=control(kind);if(!element)throw new Error("missing actual control "+kind);element.focus();element.value=value;element.dispatchEvent(new Event("change",{bubbles:true}));check(control(kind)?.value===value,"handler did not retain "+kind+"="+value);check(document.activeElement===control(kind),"rerender did not return focus to "+kind);};
  const assertControls=(zone,label)=>{
   const controls=host.querySelector(".energy-path-controls");
-  check(controls?.querySelectorAll("select").length===3,label+": primary selects are not exactly Scope / Period / Service");
+  check(controls?.querySelectorAll("select").length===2,label+": primary selects are not exactly Scope / Period");
   check(controls?.querySelectorAll("input").length===(zone?1:0),label+": unexpected primary input count");
   check(host.querySelectorAll(selectors.zone).length===(zone?1:0),label+": Zone input presence differs from scope");
   check(host.querySelectorAll("#simulationEnergyPathZones").length===(zone?1:0),label+": Zone datalist presence differs from scope");
-  for(const kind of["scope","period","service"]){check(visible(control(kind)),label+": hidden "+kind);check(control(kind)?.getAttribute("aria-label")===({scope:"Scope",period:"Period",service:"Service"})[kind],label+": inaccessible "+kind+" label");}
+  for(const kind of["scope","period"]){check(visible(control(kind)),label+": hidden "+kind);check(control(kind)?.getAttribute("aria-label")===({scope:"Scope",period:"Period"})[kind],label+": inaccessible "+kind+" label");}
   if(zone){check(control("zone")?.type==="search"&&control("zone")?.list===host.querySelector("#simulationEnergyPathZones")&&visible(control("zone")),label+": Zone is not a visible search input bound to its datalist");check(control("zone")?.getAttribute("aria-label")==="Zone",label+": Zone has no distinct accessible name");}
   check(!host.querySelector(".simulation-energy-subnav,[data-simulation-energy-view],.energy-path-summary-overview,[data-energy-path-summary-group]"),label+": old Energy subview / summary controls remain");
-  for(const token of["sankey-mode","sign-mode","node-limit","focus-mode","allocation-policy","period-kind","period-index","end-use-node-limit"]){check(!host.querySelector('[data-simulation-energy-'+token+']'),label+": legacy control remains: "+token);}
+  for(const token of["service","sankey-mode","sign-mode","node-limit","focus-mode","allocation-policy","period-kind","period-index","end-use-node-limit"]){check(!host.querySelector('[data-simulation-energy-'+token+']'),label+": removed control remains: "+token);}
   check(host.querySelectorAll(".energy-path-view").length===1,label+": missing / duplicate primary view");
  };
  check(innerWidth===1600&&innerHeight===900,"actual content viewport is not1600x900");
- check(control("scope")?.value==="building"&&control("period")?.value==="annual"&&control("service")?.value==="all","rendered default selections differ from Building / Annual / All");
+ check(control("scope")?.value==="building"&&control("period")?.value==="annual","rendered default selections differ from Building / Annual");
  assertControls(false,"default Building");
  check(ids("load").includes("load.cooling.building")&&ids("load").includes("load.heating.building"),"default All omitted a thermal service");
  const expectedPeriods=["annual",...Array.from({length:12},(_,index)=>"M"+(index+1))];
  check(JSON.stringify([...control("period").options].map(option=>option.value))===JSON.stringify(expectedPeriods),"Period does not offer Annual plus each of12 months exactly once");
  check([...control("period").options].every(option=>!option.disabled&&option.textContent.trim()),"Period contains a disabled / unnamed selection");
- check(JSON.stringify([...control("service").options].map(option=>option.value))===JSON.stringify(["all","cooling","heating"]),"Service does not offer exactly All / Cooling / Heating");
  change("scope","zone");assertControls(true,"Zone");
  check([...control("zone").list.options].map(option=>option.value).join("|")==="Office","Zone datalist does not expose the actual available Zone");
  change("zone","Office");
@@ -128,27 +127,23 @@ try{
  check(ids("load").includes("load.cooling.building")&&!ids("load").includes("load.cooling.office"),"Building return retained Zone graph");
  change("period","M1");
  check(state.simulationEnergyPeriod==="M1","January was not stored in primary state");
- const coolingValue=host.querySelector('[data-energy-path-kpi="cooling_load"] strong');
- check(coolingValue?.textContent.trim()==="20.00 kWh/m² thermal","January did not render20.00kWh/m² for the1m² fixture instead of annual80.00");
+ const cooling=host.querySelector('[data-energy-path-layout-node="load.cooling.building"]');
+ check(cooling?.querySelector("strong")?.textContent.trim()==="20.00"&&cooling.title.includes("20.00 kWh/m²"),"January did not render20.00kWh/m² for the1m² fixture instead of annual80.00");
  for(const period of expectedPeriods.slice(2)){change("period",period);check(state.simulationEnergyPeriod===period,"month selection failed: "+period);check(ids("load").length===0,"absent "+period+" reused annual / January load nodes");assertControls(false,period);}
  change("period","annual");
  for(const scope of["building","zone"]){
   if(control("scope").value!==scope)change("scope",scope);
   const suffix=scope==="zone"?"office":"building";
-  for(const service of["cooling","heating"]){
-   change("service",service);assertControls(scope==="zone",scope+" "+service);
-   const opposite=service==="cooling"?"heating":"cooling";
-   check(state.simulationEnergyService===service&&ids("load").join("|")==="load."+service+"."+suffix,scope+" "+service+": load filter did not select only requested service");
-   check(ids("end_use").includes("end_use."+service+"."+suffix)&&!ids("end_use").includes("end_use."+opposite+"."+suffix),scope+" "+service+": end-use filter retained opposite service");
-   const carriers=ids("carrier");check(carriers.includes("carrier."+(service==="cooling"?"electricity":"natural_gas")+"."+suffix),scope+" "+service+": connected carrier disappeared");
-  }
-  change("service","all");check(ids("load").length===2,scope+": All did not restore both services");
+  assertControls(scope==="zone",scope);
+  check(ids("load").length===2&&ids("load").includes("load.cooling."+suffix)&&ids("load").includes("load.heating."+suffix),scope+": graph omitted a thermal service");
+  check(ids("end_use").includes("end_use.cooling."+suffix)&&ids("end_use").includes("end_use.heating."+suffix),scope+": graph omitted a service end use");
+  check(ids("carrier").includes("carrier.electricity."+suffix)&&ids("carrier").includes("carrier.natural_gas."+suffix),scope+": graph omitted a connected carrier");
  }
  change("scope","building");assertControls(false,"final Building");
  check(state.simulationResult===result&&JSON.stringify(result)===raw,"control changes mutated the completed result");
  check(forbiddenCalls===0,"controls analyzed / reran the model");
  for(const key of Object.keys(api))if(!(key in originalAPI))delete api[key];Object.assign(api,originalAPI);
- evidence.push("Actual index/CSS/delegated handlers: fresh and rendered Building/Annual/All; Zone INPUT+datalist absent→present→absent; Annual+12 months; Building/Zone Cooling/Heating/All; old controls absent; immutable result and0 Analyze/Run calls");
+ evidence.push("Actual index/CSS/delegated handlers: fresh and rendered Building/Annual; Zone INPUT+datalist absent→present→absent; Annual+12 months; both services remain in Building/Zone graphs; Service and old controls absent; immutable result and0 Analyze/Run calls");
 }catch(error){failures.push(error.stack||String(error));}
 document.body.dataset.epath200Status=failures.length?"failed":"passed";
 document.getElementById("epath200-result").textContent=JSON.stringify({failures,evidence});

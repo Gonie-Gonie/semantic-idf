@@ -65,7 +65,11 @@ try {
     const explanation = { schema: view.ENERGY_PATH_SCHEMA_V2, nodes, links, sources: [{ id: "load-source", name: "Zone Radiant HVAC Cooling Energy" }], quality: { ratios: { status: fixture.ratioStatus || "complete", found: 1, total: 1 } } };
     const state = { ...fixture.state, simulationEnergySelection: selected };
     const scene = view.prepareEnergyPathScene(explanation, state, { graph, allServiceGraph: graph });
-    return view.renderEnergyPathInspector(scene, state);
+    // These boundary contracts exercise the legacy detail utilities, independently of the interactive chart.
+    const ribbon = scene.drawing.ribbons.find(item => item.id === selected);
+    return ribbon
+      ? view.renderEnergyPathLinkInspector(explanation, ribbon, nodes, links, state, scene.ratioQuality)
+      : view.renderEnergyPathNodeInspector(explanation, nodes, selected, state, graph.relations, links, graph.supplyActivities);
   };
   const field = (html, attribute, key) => html.match(new RegExp(attribute + '="' + key + '"[^>]*><dt>[^<]*</dt><dd>([\\s\\S]*?)</dd>'))?.[1];
   let samples = 0;

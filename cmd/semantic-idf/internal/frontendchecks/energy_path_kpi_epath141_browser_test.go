@@ -11,9 +11,9 @@ import (
 	"time"
 )
 
-func TestEPATH141ActualDashboardFourKPIsAndExactSelection(t *testing.T) {
+func TestEPATH141ActualDashboardWithoutSummaryCards(t *testing.T) {
 	if testing.Short() {
-		t.Skip("headless-browser four-KPI acceptance")
+		t.Skip("headless-browser summary-card removal acceptance")
 	}
 	chrome := phaseHChromeExecutable()
 	if chrome == "" {
@@ -44,12 +44,12 @@ func TestEPATH141ActualDashboardFourKPIsAndExactSelection(t *testing.T) {
 	}
 	if start := strings.Index(document, "<pre id=\"result\">"); start >= 0 {
 		if end := strings.Index(document[start:], "</pre>"); end >= 0 {
-			t.Logf("computed KPI readability: %s", document[start+len("<pre id=\"result\">"):start+end])
+			t.Logf("Energy graph without summary cards: %s", document[start+len("<pre id=\"result\">"):start+end])
 		}
 	}
 }
 
-const epath141KPIHTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>EPATH141 compact KPI navigation</title>
+const epath141KPIHTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>EPATH141 Energy graph without duplicate summary cards</title>
 <link rel="stylesheet" href="/src/styles/base.css"><link rel="stylesheet" href="/src/styles/simulation.css"><style>body{margin:0;overflow:auto}#simulationPane{width:1100px;max-width:100%}button{font:inherit}</style>
 <script>window.go={main:{App:{GetSimulationEnvironment:async()=>({installations:[],weatherFolders:[]})}}};window.runtime={EventsOn(){}};</script></head>
 <body data-epath141-status="pending"><div id="runtimeStatus"></div><div id="simulationPane"><div id="simulationResultTabs"><button data-simulation-result-view-button="energy">Energy</button></div><section data-simulation-result-view="energy"><div id="simulationEnergyStats"></div><div id="simulationEnergyDashboard"></div></section></div><pre id="result">pending</pre>
@@ -92,107 +92,57 @@ const sources=["people","cooling","heating","electricity","gas"].map(name=>({id:
 const explanation=freeze({schema:"semantic-idf.energy-explanation/v2",scope:buildingScope,...annual,sources,periods:[january,february],zoneResults:[{scope:zoneScope,...graph(zoneScope,"annual",5,true),periods:[graph(zoneScope,"M1",.5)]}]});
 const result=freeze({status:"succeeded",purposeResults:{energyExplanation:explanation,energyExplanationSummary:annual.summary},purposeRunPlan:{outputObjects:[]}}),originalJSON=JSON.stringify(result);
 try{
- const[{state},simulation,view]=await Promise.all([import("/src/js/state.js"),import("/src/js/views/simulation-views.js"),import("/src/js/views/energy-path-view.js")]);
+ const[{state},simulation]=await Promise.all([import("/src/js/state.js"),import("/src/js/views/simulation-views.js")]);
  simulation.initializeSimulationControls();await new Promise(resolve=>setTimeout(resolve,0));
- const host=document.getElementById("simulationEnergyDashboard"),pane=document.getElementById("simulationPane");
+ const host=document.getElementById("simulationEnergyDashboard");
  const drawer=()=>simulation.captureSimulationEnergyWorkspaceContext().energyDrawer;
  const mount=(payload=result,extra={})=>{Object.assign(state,{simulationResult:payload,simulationActiveResultView:"energy"});simulation.restoreSimulationEnergyWorkspaceContext({simulationEnergyScopeKind:"building",simulationEnergyZoneName:"",simulationEnergyPeriod:"M1",simulationEnergyService:"all",simulationEnergySelection:"",simulationEnergyDetailsOpen:false,...extra,energyDrawer:{tab:"data",stage:"",outputSource:"",...extra.energyDrawer}});simulation.renderSimulationEnergyDashboard(payload);};
- const card=id=>host.querySelector('[data-energy-path-kpi="'+id+'"]');
+ const node=id=>host.querySelector('[data-energy-path-layout-node="'+id+'"]');
  const change=(selector,value)=>{const control=host.querySelector(selector);check(Boolean(control),"missing control "+selector);if(control){control.focus();control.value=value;control.dispatchEvent(new Event("change",{bubbles:true}));}};
- const activate=button=>{check(button?.tagName==="BUTTON"&&!button.disabled,"KPI target is not a native enabled button");button?.focus();button?.click();};
- const valueText=id=>card(id)?.querySelector("strong")?.textContent||"";
+ const activate=button=>{check(button?.tagName==="BUTTON"&&!button.disabled,"graph/detail target is not a native enabled button");button?.focus();button?.click();};
+ const valueText=id=>node(id)?.querySelector("strong")?.textContent.trim()||"";
+ const noCards=()=>check(!host.querySelector(".energy-path-kpis,[data-energy-path-kpi]"),"redundant summary cards remain in the actual Energy dashboard");
  mount();
  if(new URLSearchParams(location.search).get("manual")==="1"){
-  document.body.dataset.epath141Status="manual";document.getElementById("result").textContent="Manual EPATH-141 fixture: January displays a 100.00 kWh/m² cooling load but matched conversion 40/20=2; total site chooser includes electricity and gas. Coverage shows separate 50% / 95% boundaries.";
+  document.body.dataset.epath141Status="manual";document.getElementById("result").textContent="Manual EPATH-141 fixture: summary cards and Service dropdown are absent. January graph displays a 100.00 kWh/m² cooling load and matched conversion 40/20=2; graph nodes and Data details remain available.";
  }else{
- check(host.querySelectorAll("[data-energy-path-kpi]").length===4,"default dashboard does not have exactly four compact KPI cards");
- check(valueText("total_site_energy")==="120.00 kWh/m²"&&valueText("cooling_load")==="100.00 kWh/m² thermal"&&valueText("heating_load")==="80.00 kWh/m² thermal","January KPI values do not come from the selected-period summary with two-decimal area units");
- const values=["total_site_energy","cooling_load","heating_load"].map(valueText);
- check(!host.querySelector(".energy-path-kpis")?.textContent.includes("SOURCE_SENTINEL")&&!host.querySelector(".energy-path-kpis")?.textContent.includes("SQL"),"KPI strip exposes source names or SQL counts");
- for(const service of["cooling","heating","all"]){
-  change("[data-simulation-energy-service]",service);
-  check(JSON.stringify(["total_site_energy","cooling_load","heating_load"].map(valueText))===JSON.stringify(values),"changing Service changed invariant scope/month KPI totals: "+service);
-  const emphasized=[...host.querySelectorAll('[data-energy-path-kpi-emphasized="true"]')];
-  check(service==="all"?emphasized.length===0:emphasized.length===1&&emphasized[0].dataset.energyPathKpi===service+"_load","wrong selected-service KPI emphasis: "+service);
-  if(service==="heating"){
-   const ratio=card("heating_load")?.querySelector('[data-energy-path-kpi-ratio="heating"]');
-   check(Number(ratio?.dataset.energyPathKpiRatioValue)===.8&&ratio?.dataset.energyPathKpiRatioPartial==="false","Heating emphasis lost its actual80/100 matched load/site ratio");
-  }
- }
- change("[data-simulation-energy-service]","cooling");
- const coolingRatio=card("cooling_load")?.querySelector('[data-energy-path-kpi-ratio="cooling"]');
- check(Number(coolingRatio?.dataset.energyPathKpiRatioValue)===2&&coolingRatio?.dataset.energyPathKpiRatioPartial==="true","Cooling KPI used node100/site20 or stale ratio instead of matched40/20 and partial-overlap label");
- check(coolingRatio?.textContent.toLowerCase().includes("partial"),"partial conversion overlap is not explained in the visible KPI");
- const actualCoolingLinkIDs=view.energyPathGraphForState(explanation,{...state,simulationEnergyService:"all"}).links.filter(link=>link.relation==="load_to_end_use"&&link.fromId==="load.cooling.building"&&link.toId==="end_use.cooling.building").map(link=>link.id);
- const ratioLinkIDs=JSON.parse(coolingRatio?.dataset.energyPathKpiRatioLinks||"[]");
- check(actualCoolingLinkIDs.length===1&&ratioLinkIDs.length===1&&ratioLinkIDs[0]===actualCoolingLinkIDs[0],"KPI ratio lost the actual projected conversion-link identity");
- const boundary=(id)=>card("coverage")?.querySelector('[data-energy-path-kpi-boundary="'+id+'"]');
- check(boundary("driver_to_load")?.dataset.energyPathKpiBoundaryStatus==="partial"&&Number(boundary("driver_to_load")?.dataset.energyPathKpiBoundaryValue)===50,"coverage card lost Driver to load boundary status/value");
- check(boundary("end_use_to_carrier")?.dataset.energyPathKpiBoundaryStatus==="partial"&&Number(boundary("end_use_to_carrier")?.dataset.energyPathKpiBoundaryValue)===95,"coverage card lost End use to carrier boundary status/value");
- check(!card("coverage")?.textContent.includes("99%")&&!card("coverage")?.textContent.includes("72.5%"),"coverage card invented mapped/min/average scalar quality");
- const chooser=card("total_site_energy")?.querySelector('[data-energy-path-kpi-chooser="total_site_energy"]');
- check(chooser?.tagName==="DETAILS"&&!chooser.open&&chooser.querySelectorAll("[data-energy-path-kpi-node]").length===2,"total site card guessed a carrier instead of an explicit two-target chooser");
- chooser?.querySelector("summary")?.focus();chooser?.querySelector("summary")?.click();
- check(chooser?.open&&state.simulationEnergySelection==="","opening the carrier chooser selected an arbitrary graph node");
- activate(chooser?.querySelector('[data-energy-path-kpi-node="carrier.natural_gas.building"]'));
- check(state.simulationEnergyService==="all"&&state.simulationEnergySelection==="carrier.natural_gas.building"&&host.querySelector('[data-energy-path-inspector="carrier.natural_gas.building"]'),"selecting gas from Cooling did not reveal the actual all-service carrier");
- check(document.activeElement?.dataset.energyExplanationNode==="carrier.natural_gas.building","carrier KPI selection lost focus on the revealed graph node");
- change("[data-simulation-energy-service]","heating");
- activate(card("cooling_load")?.querySelector('[data-energy-path-kpi-node="load.cooling.building"]'));
- check(state.simulationEnergyService==="cooling"&&state.simulationEnergySelection==="load.cooling.building"&&document.activeElement?.dataset.energyExplanationNode==="load.cooling.building","opposite-service Cooling KPI did not switch and focus its actual load");
- activate(card("heating_load")?.querySelector('[data-energy-path-kpi-node="load.heating.building"]'));
- check(state.simulationEnergyService==="heating"&&state.simulationEnergySelection==="load.heating.building","opposite-service Heating KPI did not reveal its actual load");
- change("[data-simulation-energy-service]","all");activate(card("cooling_load")?.querySelector('[data-energy-path-kpi-node="load.cooling.building"]'));
- check(state.simulationEnergyService==="all","All-service load KPI unnecessarily narrowed the user's service context");
- simulation.restoreSimulationEnergyWorkspaceContext({...simulation.captureSimulationEnergyWorkspaceContext(),energyDrawer:{...drawer(),stage:"drivers"}});
- activate(card("coverage")?.querySelector("[data-energy-path-kpi-details]"));
- check(state.simulationEnergyDetailsOpen&&drawer().tab==="data"&&drawer().stage===""&&state.simulationEnergySelection==="load.cooling.building","coverage KPI did not open all-stage Data details without inventing an energy-node selection");
+ noCards();
+ check(host.querySelectorAll("[data-energy-path-stage]").length===4,"summary removal lost the four-stage energy graph");
+ check(valueText("load.cooling.building")==="100.00"&&valueText("load.heating.building")==="80.00","January graph lost selected-period load values and two-decimal precision");
+ check(node("load.cooling.building")?.title.includes("100.00 kWh/m²"),"load graph lost accessible area units");
+ const qualityLine=host.querySelector("[data-energy-path-quality-line]");
+ check(qualityLine?.querySelectorAll("[data-energy-path-quality-stage]").length===4,"graph quality stages disappeared with summary cards");
+ check(Boolean(host.querySelector(".energy-path-stage-grid")?.compareDocumentPosition(qualityLine)&Node.DOCUMENT_POSITION_FOLLOWING),"quality line is not below the graph");
+ check(!host.querySelector("[data-simulation-energy-service]"),"removed Service dropdown remains visible");
+ activate(node("carrier.natural_gas.building"));
+ check(state.simulationEnergySelection==="carrier.natural_gas.building","gas remains inaccessible from its graph node after chooser removal");
+ check(document.activeElement?.dataset.energyExplanationNode==="carrier.natural_gas.building","graph selection lost native node focus");
+ activate(node("load.cooling.building"));
+ check(state.simulationEnergyService==="all"&&state.simulationEnergySelection==="load.cooling.building","load graph selection changed the user's service context");
+ const bridge=host.querySelector('[data-energy-path-bridge-ratio][data-energy-path-ratio-value="2"]');
+ check(Boolean(bridge),"graph lost the matched40/20 conversion ratio with summary cards");
+ activate(host.querySelector("[data-energy-path-details-toggle]"));
+ check(state.simulationEnergyDetailsOpen&&drawer().tab==="data"&&drawer().stage===""&&state.simulationEnergySelection==="load.cooling.building","Data details toggle lost drawer access or graph selection");
  document.activeElement?.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}));
- check(!state.simulationEnergyDetailsOpen&&document.activeElement?.hasAttribute("data-energy-path-kpi-details"),"Escape did not restore the actual Coverage KPI opener");
- change("[data-simulation-energy-path-period]","M2");change("[data-simulation-energy-service]","cooling");
- const missingRatio=card("cooling_load")?.querySelector('[data-energy-path-kpi-ratio="cooling"]');
- check(missingRatio&&!missingRatio.hasAttribute("data-energy-path-kpi-ratio-value")&&!missingRatio.textContent.includes("88"),"month with no conversion links reused annual/stale ratio or fabricated zero");
- check(valueText("cooling_load")==="200.00 kWh/m² thermal","February KPI fell back to annual cooling total or lost area units/precision");
- change("[data-simulation-energy-path-period]","M3");
- check(host.querySelectorAll("[data-energy-path-kpi]").length===4&&!/\d/.test(valueText("total_site_energy")),"absent month invented a zero/annual site-energy KPI or dropped the four-card strip");
- mount(result,{simulationEnergyScopeKind:"zone",simulationEnergyZoneName:"Office"});
- check(host.querySelectorAll("[data-energy-path-kpi]").length===4&&valueText("total_site_energy")==="60.00 kWh/m²"&&card("total_site_energy")?.textContent.includes("Known zone site energy")&&card("total_site_energy")?.textContent.includes("Known only"),"partial Zone lost its known-only 60.00 kWh/m² qualifier or fourth coverage card");
- check(boundary("end_use_to_carrier")?.dataset.energyPathKpiBoundaryStatus==="unavailable"&&!boundary("end_use_to_carrier")?.hasAttribute("data-energy-path-kpi-boundary-value"),"Zone subtotal presented unknown facility closure as numeric coverage");
+ check(!state.simulationEnergyDetailsOpen&&document.activeElement?.hasAttribute("data-energy-path-details-toggle"),"Escape did not restore the Data details opener");
+ change("[data-simulation-energy-path-period]","M2");noCards();
+ check(valueText("load.cooling.building")==="200.00","February graph reused annual cooling or lost precision");
+ check(!host.querySelector("[data-energy-path-bridge-ratio][data-energy-path-ratio-value]"),"month without conversion links reused a stale ratio");
+ change("[data-simulation-energy-path-period]","M3");noCards();
+ check(!host.querySelector("[data-energy-path-layout-node]"),"absent month reused another period's graph nodes");
+ mount(result,{simulationEnergyScopeKind:"zone",simulationEnergyZoneName:"Office"});noCards();
+ check(valueText("load.cooling.office")==="50.00"&&valueText("load.heating.office")==="40.00","Zone graph lost selected-period thermal values");
+ activate(node("load.cooling.office"));
+ check(state.simulationEnergySelection==="load.cooling.office","Zone graph selection failed");
+ check(host.querySelector("[data-energy-path-quality-line]")?.textContent.includes("Office"),"Zone quality context disappeared with summary cards");
  const emptyScope={kind:"building",aggregationBasis:"model_total",floorAreaM2:1};
  const zeroSummary={schema:"semantic-idf.energy-explanation-summary/v2",scope:emptyScope,period:"annual",loads:[{id:"load.cooling.zero",serviceKind:"cooling",value:0,unit:"kWh"}],carriers:[],completeness:{mappedPercent:100}};
  const zeroPayload=freeze({schema:explanation.schema,scope:emptyScope,nodes:[],links:[],sources:[],summary:zeroSummary,quality:{...quality,driverToLoadStatus:"not_requested",endUseToCarrierStatus:"unavailable"}});
- mount(freeze({purposeResults:{energyExplanation:zeroPayload,energyExplanationSummary:zeroSummary}}),{simulationEnergyPeriod:"annual"});
- check(valueText("cooling_load")==="0.00 kWh/m² thermal"&&!/\d/.test(valueText("heating_load"))&&!/\d/.test(valueText("total_site_energy")),"reported zero and missing energy groups were conflated or zero lost area units/precision");
- check(!host.querySelector("[data-energy-path-kpi-node]")&&host.querySelectorAll("[data-energy-path-kpi]").length===4,"no-graph KPI payload fabricated a target or omitted cards");
- check(!card("coverage")?.textContent.includes("100%")&&!card("coverage")?.textContent.includes("0%"),"unavailable/not-requested boundaries became a fake numeric completeness score");
- mount();pane.style.width="360px";
- const strip=host.querySelector(".energy-path-kpis");
- check(strip&&strip.getBoundingClientRect().width<=pane.getBoundingClientRect().width+1&&strip.scrollWidth<=strip.clientWidth+1,"four-card KPI strip overflows a narrow result panel");
- pane.style.width="1100px";
- check(strip&&strip.getBoundingClientRect().height<host.querySelector(".energy-path-stage-grid")?.getBoundingClientRect().height,"default KPI strip visually dominates the Energy Path graph");
- change("[data-simulation-energy-service]","cooling");
- const colorChannels=value=>{const match=value.match(/^rgba?\(([^)]+)\)$/);if(!match)throw new Error("unsupported computed color: "+value);return match[1].split(/[ ,/]+/).filter(Boolean).map(Number);};
- const contrast=element=>{
-  const foreground=colorChannels(getComputedStyle(element).color);
-  let background=[255,255,255];
-  for(let node=element;node;node=node.parentElement){const color=colorChannels(getComputedStyle(node).backgroundColor);if(color.length===3||color[3]>=.999){background=color;break;}}
-  const luminance=channels=>channels.slice(0,3).map(value=>{const channel=value/255;return channel<=.04045?channel/12.92:((channel+.055)/1.055)**2.4;}).reduce((sum,value,index)=>sum+value*[.2126,.7152,.0722][index],0);
-  const a=luminance(foreground),b=luminance(background);return(Math.max(a,b)+.05)/(Math.min(a,b)+.05);
- };
- const originalTheme=document.documentElement.getAttribute("data-theme");
- const readability=[];
- for(const theme of["light","dark"]){
-  document.documentElement.dataset.theme=theme;
-  for(const[selector,minFont]of[["[data-energy-path-kpi-boundary] > span",11],["[data-energy-path-kpi-boundary] > b",11],["[data-energy-path-kpi-ratio='cooling']",11],[".energy-path-kpi-ratio-note",10]]){
-   const text=host.querySelector(selector),font=text?parseFloat(getComputedStyle(text).fontSize):0,ratio=text?contrast(text):0;
-   readability.push({theme,selector,font,contrast:Number(ratio.toFixed(3))});
-   check(text&&font>=minFont&&ratio>=4.5,"KPI readability failed "+theme+" "+selector+": "+font+"px / "+ratio.toFixed(3)+":1");
-  }
- }
- if(originalTheme===null)document.documentElement.removeAttribute("data-theme");else document.documentElement.setAttribute("data-theme",originalTheme);
- check(JSON.stringify(result)===originalJSON,"KPI scope/period/service, chooser or drawer interactions mutated raw/export inputs");
+ mount(freeze({purposeResults:{energyExplanation:zeroPayload,energyExplanationSummary:zeroSummary}}),{simulationEnergyPeriod:"annual"});noCards();
+ check(!host.querySelector("[data-energy-path-layout-node]")&&host.querySelector("[data-energy-path-quality-line]"),"empty graph invented nodes or discarded available quality details");
+ check(JSON.stringify(result)===originalJSON,"scope/period/service, graph or drawer interactions mutated raw/export inputs");
  if(failures.length)throw new Error(failures.join(" | "));
- document.body.dataset.epath141Status="passed";document.getElementById("result").textContent=JSON.stringify({passed:true,readability});
+ document.body.dataset.epath141Status="passed";document.getElementById("result").textContent=JSON.stringify({passed:true,summaryCards:0,graphSelection:true,qualityDetails:true});
  }
 }catch(error){document.body.dataset.epath141Status="failed";document.getElementById("result").textContent=String(error?.stack||error);}
 </script></body></html>`

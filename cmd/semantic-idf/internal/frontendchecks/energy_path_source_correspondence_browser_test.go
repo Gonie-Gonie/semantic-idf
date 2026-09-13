@@ -151,27 +151,13 @@ try {
   mount.innerHTML = module.renderEnergyPathView(explanation, { ...baseState, simulationEnergySelection: lightingEndUse.id });
   const selectedLighting = mount.querySelector('[data-energy-explanation-node="' + lightingEndUse.id + '"]');
   const relatedLightingHeat = mount.querySelector('[data-energy-explanation-node="' + lightingDriver.id + '"][data-energy-path-related="true"]');
-  const thermalAction = mount.querySelector('[data-energy-path-correspondence-action="related_thermal_effect"]');
   assert(selectedLighting?.classList.contains("selected") && relatedLightingHeat?.classList.contains("related"), "selecting Lighting energy did not outline Lighting heat");
-  assert(thermalAction?.tagName === "BUTTON" && thermalAction.type === "button" && thermalAction.tabIndex === 0, "related thermal-effect action is not keyboard-accessible");
-  assert(thermalAction.dataset.energyExplanationNode === lightingDriver.id && thermalAction.textContent.includes("Related thermal effect"), "related thermal-effect action does not use the existing node-selection target");
   assert(!mount.querySelector("[data-energy-path-correspondence-link]"), "source correspondence was drawn as a default ribbon or lane");
   assert(!mount.querySelector("[data-energy-path-flow-lanes]")?.textContent.includes("source_correspondence"), "source correspondence leaked into flow lanes");
 
-  let selectedThroughExistingMechanism = "";
-  thermalAction.addEventListener("click", (event) => {
-    selectedThroughExistingMechanism = event.target.closest("[data-energy-explanation-node]")?.dataset.energyExplanationNode || "";
-  });
-  thermalAction.focus();
-  assert(document.activeElement === thermalAction, "related action cannot receive keyboard focus");
-  thermalAction.click();
-  assert(selectedThroughExistingMechanism === lightingDriver.id, "related action bypassed the existing energy-node selection mechanism");
-
   mount.innerHTML = module.renderEnergyPathView(explanation, { ...baseState, simulationEnergySelection: equipmentDriver.id });
   const relatedEquipmentEnergy = mount.querySelector('[data-energy-explanation-node="' + equipmentEndUse.id + '"][data-energy-path-related="true"]');
-  const energyUseAction = mount.querySelector('[data-energy-path-correspondence-action="related_energy_use"]');
   assert(relatedEquipmentEnergy?.classList.contains("related"), "selecting Equipment heat did not outline Equipment energy");
-  assert(energyUseAction?.dataset.energyExplanationNode === equipmentEndUse.id && energyUseAction.textContent.includes("Related energy use"), "reverse counterpart action is missing");
 
   const coolingGraph = module.energyPathGraphForState(explanation, { ...baseState, simulationEnergyService: "cooling" });
   const coolingLighting = coolingGraph.nodes.find((node) => node.level === "end_use" && node.endUse === "lighting");
@@ -189,9 +175,7 @@ try {
 
   i18n.setLanguage("ko");
   mount.innerHTML = module.renderEnergyPathView(explanation, { ...baseState, simulationEnergySelection: lightingEndUse.id });
-  assert(mount.querySelector('[data-energy-path-correspondence-action="related_thermal_effect"]')?.textContent.includes("관련 열 영향"), "Korean related thermal-effect action is missing");
   mount.innerHTML = module.renderEnergyPathView(explanation, { ...baseState, simulationEnergySelection: lightingDriver.id });
-  assert(mount.querySelector('[data-energy-path-correspondence-action="related_energy_use"]')?.textContent.includes("관련 에너지 사용"), "Korean related energy-use action is missing");
   i18n.setLanguage("en");
 
   document.body.dataset.energyPathSourceCorrespondenceStatus = "passed";

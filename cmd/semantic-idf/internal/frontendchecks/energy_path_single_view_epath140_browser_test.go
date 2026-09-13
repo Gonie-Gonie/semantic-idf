@@ -120,38 +120,32 @@ try{
  const change=(selector,value)=>{const control=host.querySelector(selector);check(Boolean(control),"missing real Energy control "+selector);if(control){control.value=value;control.dispatchEvent(new Event("change",{bubbles:true}));}};
  const select=id=>{const node=host.querySelector('[data-energy-explanation-node="'+id+'"]');check(Boolean(node),"missing selected graph node "+id);node?.focus();node?.click();check(document.activeElement?.dataset.energyExplanationNode===id,"node activation discarded keyboard focus: "+id);};
  const returnEnergy=()=>document.querySelector('[data-simulation-result-view-button="energy"]')?.click();
- const serviceCandidate=targetID=>simulation.simulationEnergyServiceNavigation({id:state.simulationEnergySelection,...(state.simulationResult.purposeResults.energyExplanation.zoneResults[0].periods.find(period=>period.id===state.simulationEnergyPeriod)||state.simulationResult.purposeResults.energyExplanation.zoneResults[0]).nodes.find(node=>node.id===state.simulationEnergySelection)}).groups.flatMap(group=>group.candidates).find(candidate=>candidate.target?.targetId===targetID);
- const serviceButton=targetID=>{const candidate=serviceCandidate(targetID);return candidate?host.querySelector('[data-energy-path-service-destination="'+candidate.id+'"]'):null;};
  if(new URLSearchParams(location.search).get("manual")==="1"){
-  document.body.dataset.epath140Status="manual";document.getElementById("result").textContent="Manual EPATH-140 fixture: use scope, month, service and node inspector; load has exact Monthly Series and HVAC targets.";
+  document.body.dataset.epath140Status="manual";document.getElementById("result").textContent="Manual EPATH-140 fixture: use scope and month, then select a component to show its Monthly or Hourly chart.";
  }else{
  check(host.querySelectorAll(".energy-path-view").length===1&&host.querySelectorAll(".energy-path-stage-grid").length===1,"actual Energy dashboard did not render a single Energy Path graph");
- check(host.querySelectorAll(".energy-path-kpis").length===1,"actual dashboard lost or duplicated its KPI strip");
+ check(!host.querySelector(".energy-path-kpis,[data-energy-path-kpi],[data-simulation-energy-service]"),"actual dashboard retains removed summary cards or Service dropdown");
  check(!host.querySelector(".simulation-energy-subnav,[data-simulation-energy-view],.energy-path-summary-overview,[data-energy-path-summary-group]"),"single Energy dashboard still exposes old subnav or duplicate summary tables");
- check(host.querySelectorAll(".energy-path-controls select").length===3,"default Energy controls are not Scope / Period / Service only");
+ check(host.querySelectorAll(".energy-path-controls select").length===2,"default Energy controls are not Scope / Period only");
  check(!host.querySelector("[data-energy-path-inspector-actions]"),"unselected graph rendered unrelated Series/HVAC actions");
  change("[data-simulation-energy-scope]","zone");
  change("[data-simulation-energy-zone-name]","Office");
  change("[data-simulation-energy-path-period]","M1");
- change("[data-simulation-energy-service]","cooling");
- check(state.simulationEnergyScopeKind==="zone"&&state.simulationEnergyZoneName==="Office"&&state.simulationEnergyPeriod==="M1"&&state.simulationEnergyService==="cooling","actual control handlers did not retain selected scope / month / service");
- for(const[selector,label]of[["[data-simulation-energy-scope]","Scope"],["[data-simulation-energy-path-period]","Period"],["[data-simulation-energy-service]","Service"],["[data-simulation-energy-zone-name]","Zone"]]){
+ check(state.simulationEnergyScopeKind==="zone"&&state.simulationEnergyZoneName==="Office"&&state.simulationEnergyPeriod==="M1"&&state.simulationEnergyService==="all","actual control handlers did not retain selected scope / month / service");
+ for(const[selector,label]of[["[data-simulation-energy-scope]","Scope"],["[data-simulation-energy-path-period]","Period"],["[data-simulation-energy-zone-name]","Zone"]]){
   check(host.querySelector(selector)?.getAttribute("aria-label")===label,"selected Zone value contaminated accessible control name: "+label);
  }
- check(!host.querySelector('[data-energy-explanation-node="load.heating.office"]'),"Cooling service retained unrelated heating load");
+ check(host.querySelector('[data-energy-explanation-node="load.heating.office"]'),"graph omitted heating after Service dropdown removal");
  select("load.cooling.office");
  check(state.simulationEnergySelection==="load.cooling.office"&&host.querySelector('[data-energy-path-inspector="load.cooling.office"]'),"actual node selection did not open its inspector");
- const seriesAction=host.querySelector("[data-energy-path-series-id]");
  const monthlyID=navigation.energyPathSeriesID(series[1]);
- check(seriesAction?.dataset.energyPathSeriesId===monthlyID&&seriesAction?.dataset.energyPathSeriesPeriod==="M1","inspector guessed first Hourly series instead of exact derived-input Monthly target");
- check(host.querySelectorAll('[data-energy-path-service-kind="hvac"] [data-energy-path-service-destination]').length===1&&serviceButton("path.office.cooling"),"load inspector inferred unrelated HVAC instead of verified exact relatedPathIds");
  host.querySelector("[data-energy-path-details-toggle]")?.click();
  check(state.simulationEnergyDetailsOpen&&!host.querySelector("[data-energy-path-data-details]")?.hidden,"Data details is not available beside a selected node");
  const januaryContext=context();
  let genericRestored=false;
  const historyAdapter={genericCaptureContext:()=>({genericMarker:"retained"}),genericRestoreContext:async snapshot=>{genericRestored=snapshot.genericMarker==="retained";}};
  const navigationSnapshot=simulation.captureSimulationNavigationContext(historyAdapter);
- change("[data-simulation-energy-scope]","building");change("[data-simulation-energy-path-period]","M2");change("[data-simulation-energy-service]","heating");
+ change("[data-simulation-energy-scope]","building");change("[data-simulation-energy-path-period]","M2");
  const restored=await simulation.restoreSimulationNavigationContext(navigationSnapshot,historyAdapter);
  check(restored&&genericRestored&&context()===januaryContext&&host.querySelector('[data-energy-path-inspector="load.cooling.office"]'),"real navigation-context restore lost scope/month/service/selection/drawer or generic history state");
  host.querySelector('[data-energy-path-output-source="sql-rdd-11"]')?.click();
@@ -165,66 +159,10 @@ try{
   check(state.simulationEnergyScopeKind==="zone"&&state.simulationEnergyZoneName==="Office"&&state.simulationEnergyDetailsOpen&&drawer().tab==="data"&&!host.querySelector(".simulation-energy-subnav"),"legacy Zone/"+oldView+" history did not migrate to current scope and Data drawer");
  }
  await simulation.restoreSimulationNavigationContext(navigationSnapshot,historyAdapter);
- host.querySelector("[data-energy-path-series-id]")?.click();
- check(state.simulationActiveResultView==="series"&&state.simulationSelectedSeries===monthlyID,"actual Series action did not select the frequency-qualified Monthly series");
- check(state.simulationSeriesRangeStart===0&&state.simulationSeriesRangeEnd===0,"January Series range was not resolved from January point labels");
- check(document.getElementById("simulationChart").querySelector(".simulation-series-viewport-meta")?.textContent.includes("1-1 / 3"),"actual Series panel retained a stale/full range instead of January");
- const januaryPoint=document.getElementById("simulationChart").querySelector("[data-simulation-series-single-point]");
- check(januaryPoint?.tagName.toLowerCase()==="circle"&&Number(januaryPoint.getAttribute("r"))>0&&januaryPoint.hasAttribute("cx")&&januaryPoint.hasAttribute("cy")&&Number.isFinite(Number(januaryPoint.getAttribute("cx")))&&Number.isFinite(Number(januaryPoint.getAttribute("cy"))),"single January observation is not visibly plotted at finite coordinates");
- check(januaryPoint?.nextElementSibling?.tagName.toLowerCase()==="text"&&januaryPoint.nextElementSibling.textContent.includes("100 J"),"single January observation lacks a visible reported-value label with preserved unit casing");
- check(!/NaN|Infinity/.test(document.getElementById("simulationChart").innerHTML),"actual Monthly chart contains non-finite geometry");
- check(context()===januaryContext,"Series jump changed the Energy scope/month/service/selection/drawer context");
- returnEnergy();
- check(state.simulationActiveResultView==="energy"&&context()===januaryContext&&host.querySelector('[data-energy-path-inspector="load.cooling.office"]'),"return to Energy lost its selection or context");
- change("[data-simulation-energy-path-period]","M2");select("load.cooling.office");
- host.querySelector("[data-energy-path-series-id]")?.click();
- check(state.simulationSeriesRangeStart===1&&state.simulationSeriesRangeEnd===1&&document.getElementById("simulationChart").querySelector(".simulation-series-viewport-meta")?.textContent.includes("2-2 / 3"),"February jump did not replace January's panel-local range using actual labels");
- returnEnergy();change("[data-simulation-energy-path-period]","annual");select("load.cooling.office");
- host.querySelector("[data-energy-path-series-id]")?.click();
- check(state.simulationSeriesRangeStart===0&&(state.simulationSeriesRangeEnd===-1||state.simulationSeriesRangeEnd===2)&&document.getElementById("simulationChart").querySelector(".simulation-series-viewport-meta")?.textContent.includes("1-3 / 3"),"Annual jump did not reset the previous month's panel range");
- returnEnergy();
- const hvacContext=context(),historyBefore=state.navigationUndoStack.length;
- await simulation.openSimulationEnergyServiceDestination(serviceButton("path.office.cooling"));
- check(state.activeResultTab==="hvac"&&state.activeHVACContext?.pathId==="path.office.cooling"&&state.globalSelection.entityId==="entity.path.office.cooling","actual global HVAC action did not navigate its exact service path");
- check(state.navigationUndoStack.length===historyBefore+1,"HVAC action did not preserve and extend global navigation history exactly once");
- check(context()===hvacContext,"HVAC jump changed the Energy context");
- await appNavigation.undoViewNavigation();check(state.activeResultTab==="simulation"&&context()===hvacContext,"actual global HVAC Back did not restore Energy context");returnEnergy();
- select("driver.internal.people.cooling.office");
- check(!host.querySelector("[data-energy-path-hvac-actions]"),"driver heat-source inspector exposed HVAC path inference");
- change("[data-simulation-energy-service]","heating");select("load.heating.office");
- const missingInspector=host.querySelector('[data-energy-path-inspector="load.heating.office"]');
- check(!missingInspector?.querySelector('[data-energy-path-series-id]:not([disabled])')&&!missingInspector?.querySelector('[data-energy-path-service-kind="hvac"] [data-energy-path-service-destination]:not([disabled])'),"missing Series/path evidence fabricated an enabled navigation action");
- check(missingInspector?.querySelector('[data-energy-path-series-actions] button[disabled]')&&missingInspector?.querySelector('[data-energy-path-service-kind="hvac"] button[disabled]'),"unavailable Series/HVAC actions are not visibly disabled");
- check(missingInspector?.querySelector('[data-energy-path-series-actions]')?.textContent.trim().length>6&&missingInspector?.querySelector('[data-energy-path-service-kind="hvac"]')?.textContent.trim().length>4,"unavailable navigation omits an honest explanation");
- const renderCase=(payload,observations,period="annual")=>{
-  state.simulationResult=freeze({...result,purposeResults:{...result.purposeResults,energyExplanation:payload},series:observations});
-  Object.assign(state,{simulationActiveResultView:"energy",simulationEnergyScopeKind:"zone",simulationEnergyZoneName:"Office",simulationEnergyPeriod:period,simulationEnergyService:"cooling",simulationEnergySelection:"load.cooling.office",simulationEnergyDetailsOpen:false});
-  simulation.renderSimulationEnergyDashboard(state.simulationResult);
- };
- renderCase(explanation,[series[1],{...series[1]}]);
- check(!host.querySelector('[data-energy-path-series-id]:not([disabled])')&&host.querySelector('[data-energy-path-series-actions] button[disabled]'),"identical Series identities silently selected the first duplicate");
- const metadataFree={file:series[1].file,column:series[1].column,points:series[1].points};
- renderCase(explanation,[metadataFree]);
- check(!host.querySelector('[data-energy-path-series-id]:not([disabled])'),"old Series without frequency/source identity received an exact jump");
- renderCase(explanation,[{...series[1],points:[{x:1,value:100,label:"Warmup 1"},{x:2,value:200,label:"Warmup 2"}]}],"M1");
- check(!host.querySelector('[data-energy-path-series-id]:not([disabled])'),"unknown timestamps used x/index as a January range");
- const multiple=structuredClone(explanation);
- multiple.zoneResults[0].nodes.find(node=>node.id==="load.cooling.office").sourceIds.push("sql-rdd-31");
- multiple.zoneResults[0].nodes.find(node=>node.id==="load.cooling.office").relatedPathIds.push("path.office.cooling.two");
- state.report={hvac:{...report.hvac,serviceModel:{...report.hvac.serviceModel,zoneServices:[{zoneName:"Office",paths:[...report.hvac.serviceModel.zoneServices[0].paths,{id:"path.office.cooling.two",serviceKind:"cooling",zoneName:"Office",servedSubject:{kind:"zone",zoneName:"Office",name:"Office secondary"}}]}]}}};
- state.semanticProjection={navigation:{entities:[pathEntity("path.office.cooling"),pathEntity("path.office.cooling.two")]}};
- const meterSeries={file:"eplusout.sql",column:"Cooling:Electricity [J]",sourceId:"sql-rdd-31",name:"Cooling:Electricity",keyValue:"",isMeter:true,reportingFrequency:"Monthly",points:[{x:0,value:25,label:"01-31 24:00"}]};
- renderCase(multiple,[...series,meterSeries]);
- for(const kind of["series","hvac"]){
-  const chooser=host.querySelector(kind==="hvac"?'[data-energy-path-service-chooser="hvac"]':'[data-energy-path-action-chooser="series"]');
-  check(chooser?.tagName==="DETAILS"&&!chooser.open,"multiple exact "+kind+" targets are not an explicit closed chooser");
-  check(chooser?.querySelectorAll("button").length===2,"multiple exact "+kind+" choices were lost or guessed");
-  chooser?.querySelector("summary")?.click();check(chooser?.open,"native "+kind+" target chooser cannot expand");
- }
- check(state.simulationActiveResultView==="energy","merely rendering/expanding candidates navigated to a guessed target");
- const chosen=host.querySelector('[data-energy-path-series-id="'+navigation.energyPathSeriesID(meterSeries)+'"]');
- chosen?.click();
- check(state.simulationSelectedSeries===navigation.energyPathSeriesID(meterSeries),"explicit second Series choice did not navigate to the selected target");
+ select(host.querySelector('[data-energy-path-stage="driver"] [data-energy-path-layout-node]').dataset.energyPathLayoutNode);
+ check(!host.querySelector("[data-energy-path-inspector-actions],[data-energy-path-service-destination],[data-energy-path-series-actions]"),"removed component detail actions remain visible");
+ select("load.heating.office");
+ check(host.querySelector('[data-energy-path-inspector="load.heating.office"] [data-energy-path-chart-frequency]'),"heating component selection lost its chart frequency control");
  const oldSeriesID=series[1].file+"::"+series[1].column;
  state.simulationResult=freeze({...result,series:[series[1]]});state.simulationSelectedSeries=oldSeriesID;
  document.querySelector('[data-simulation-result-view-button="series"]')?.click();

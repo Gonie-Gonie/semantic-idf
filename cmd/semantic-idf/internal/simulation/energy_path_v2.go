@@ -182,6 +182,7 @@ func UpgradeEnergyExplanationV1(input EnergyExplanationV1) EnergyExplanationResu
 		Links:             links,
 		Reconciliation:    reconciliation,
 		Sources:           sources,
+		HourlyLabels:      input.HourlyLabels,
 		Completeness:      completeness,
 		Warnings:          warnings,
 		ZoneContributions: buildEnergyExplanationZoneContributions(legacyNodes, annualLegacyEdges, scope, allocationPolicy),
@@ -4861,6 +4862,7 @@ func (result EnergyExplanationResult) MarshalJSON() ([]byte, error) {
 			Edges:             result.Edges,
 			Reconciliation:    result.Reconciliation,
 			Sources:           result.Sources,
+			HourlyLabels:      result.HourlyLabels,
 			Completeness:      result.Completeness,
 			Warnings:          result.Warnings,
 			scope:             result.Scope,
@@ -4878,6 +4880,7 @@ func (result EnergyExplanationResult) MarshalJSON() ([]byte, error) {
 		Links             []EnergyPathLink               `json:"links"`
 		Reconciliation    []EnergyReconciliation         `json:"reconciliation,omitempty"`
 		Sources           []energyPathSourceWire         `json:"sources,omitempty"`
+		HourlyLabels      []string                       `json:"hourlyLabels,omitempty"`
 		Completeness      EnergyCompleteness             `json:"completeness"`
 		Quality           *EnergyPathQuality             `json:"quality,omitempty"`
 		Warnings          []EnergyWarning                `json:"warnings,omitempty"`
@@ -4897,6 +4900,7 @@ func (result EnergyExplanationResult) MarshalJSON() ([]byte, error) {
 		Links:             result.Links,
 		Reconciliation:    result.Reconciliation,
 		Sources:           energyPathSourcesForWire(result.Sources),
+		HourlyLabels:      result.HourlyLabels,
 		Completeness:      result.Completeness,
 		Quality:           result.Quality,
 		Warnings:          result.Warnings,

@@ -118,7 +118,7 @@ try{
  check(host.querySelectorAll("[data-energy-path-link-hit]").length===24,"physical links lack one separate accessible hit target each");
  const underlay=host.querySelector("[data-energy-path-graph-underlay]"),hitLayer=host.querySelector("[data-energy-path-hit-layer]");
  check(underlay?.getAttribute("aria-hidden")==="true"&&hitLayer&&!underlay.contains(hitLayer)&&hitLayer.getAttribute("aria-hidden")!=="true","keyboard hit targets are hidden inside quantitative SVG");
- check(!host.querySelector("[data-energy-path-link-inspector]"),"unselected graph rendered link details");
+ check(!host.querySelector("[data-energy-path-component-chart]"),"unselected graph rendered link details");
  check(!underlay.querySelector("text")&&!hitLayer.querySelector("text"),"default edges repeat visible value labels instead of ratio-only labels");
  check(host.querySelectorAll("[data-energy-path-bridge-ratio]").length===2,"automatic simplification lost essential conversion ratios");
  for(const link of physical){
@@ -137,7 +137,7 @@ try{
  // This virtual-time fixture checks final paint. Retained buttons now animate,
  // so finish their test-only animation clock; EPATH161 measures natural timing.
  const settleOpacity=()=>{const controls=[...host.querySelectorAll("[data-energy-path-layout-node],[data-energy-path-bridge-ratio]")];controls.forEach(opacity);for(const control of controls)for(const animation of control.getAnimations())animation.finish();controls.forEach(opacity);};
- const assertClear=async label=>{check(state.simulationEnergySelection===""&&!host.querySelector("[data-energy-path-link-inspector]"),label+" did not clear selection/detail");await settleOpacity();for(const element of host.querySelectorAll("[data-energy-path-layout-node],[data-energy-path-bar],[data-energy-path-ribbon],[data-energy-path-bridge-ratio]"))assertOpacity(element,1,label+" restore");check(positions()===originalPositions&&paths()===originalPaths,label+" modified quantitative geometry");};
+ const assertClear=async label=>{check(state.simulationEnergySelection===""&&!host.querySelector("[data-energy-path-component-chart]"),label+" did not clear selection/detail");await settleOpacity();for(const element of host.querySelectorAll("[data-energy-path-layout-node],[data-energy-path-bar],[data-energy-path-ribbon],[data-energy-path-bridge-ratio]"))assertOpacity(element,1,label+" restore");check(positions()===originalPositions&&paths()===originalPaths,label+" modified quantitative geometry");};
  const heatingLoad=current.nodes.find(item=>item.level==="load"&&item.serviceKind==="heating"),heatingUse=current.nodes.find(item=>item.endUse==="heating"),gas=current.nodes.find(item=>item.carrier==="natural_gas"&&item.level==="carrier"),electricity=current.nodes.find(item=>item.carrier==="electricity"&&item.level==="carrier");
  click(node(lightingDriver.id));
  check(state.simulationEnergySelection===lightingDriver.id&&document.activeElement?.dataset.energyPathLayoutNode===lightingDriver.id,"native driver selection/focus was broken by overlay");
@@ -158,30 +158,27 @@ try{
  const coolingLink=physical.find(link=>link.relation==="load_to_end_use"&&link.serviceKind==="cooling"),coolingControl=ratio(coolingLink.id);
  coolingControl.focus();check(state.simulationEnergySelection==="","ratio focus alone selected a link");coolingControl.click();
  check(state.simulationEnergySelection===coolingLink.id&&document.activeElement?.dataset.energyExplanationEdge===coolingLink.id,"native conversion button did not select exact link/focus");
- const detail=host.querySelector('[data-energy-path-link-inspector="'+coolingLink.id+'"]');
- for(const [field,value,domain]of[["from",coolingLink.fromValue,"thermal"],["to",coolingLink.toValue,"site"]])check(detail?.querySelector('[data-energy-path-link-value="'+field+'"] dd')?.textContent.trim()===value.toFixed(2)+" kWh/m² "+domain,"selected conversion detail omits exact "+field+" value");
- check(detail?.querySelector('[data-energy-path-link-value="ratio"]')?.textContent.includes("4"),"selected conversion detail changed dimensionless ratio");
- check(detail?.querySelector('[data-energy-path-link-value="from"]')?.textContent.includes("thermal")&&detail?.querySelector('[data-energy-path-link-value="to"]')?.textContent.includes("site"),"selected link detail conflates thermal and site units");
- check(detail?.querySelector('[data-energy-path-link-value="basis"]'),"selected link omitted calculation basis");
+ const detail=host.querySelector('[data-energy-path-component-chart="'+coolingLink.id+'"]');
+ check(detail?.querySelector("[data-energy-path-chart-frequency]")&&!detail.querySelector("[data-energy-path-detail-section]"),"selected link retained old details or omitted its chart controls");
  key(ratio(coolingLink.id),"Escape");await assertClear("conversion Escape");
  const keyboardLink=physical.find(link=>link.fromId===lightingDriver.id);
- for(const pressed of["Enter"," "]){const beforeScroll=pane.scrollTop,event=key(hit(keyboardLink.id),pressed);check(event.defaultPrevented&&pane.scrollTop===beforeScroll,"SVG "+JSON.stringify(pressed)+" did not prevent native scrolling");check(state.simulationEnergySelection===keyboardLink.id&&document.activeElement?.dataset.energyExplanationEdge===keyboardLink.id&&host.querySelector('[data-energy-path-link-inspector="'+keyboardLink.id+'"]'),"SVG keyboard activation did not select exact link and restore focus");key(hit(keyboardLink.id),"Escape");await assertClear("SVG clear");}
+ for(const pressed of["Enter"," "]){const beforeScroll=pane.scrollTop,event=key(hit(keyboardLink.id),pressed);check(event.defaultPrevented&&pane.scrollTop===beforeScroll,"SVG "+JSON.stringify(pressed)+" did not prevent native scrolling");check(state.simulationEnergySelection===keyboardLink.id&&document.activeElement?.dataset.energyExplanationEdge===keyboardLink.id&&host.querySelector('[data-energy-path-component-chart="'+keyboardLink.id+'"]'),"SVG keyboard activation did not select exact link and restore focus");key(hit(keyboardLink.id),"Escape");await assertClear("SVG clear");}
  const tiny=physical.find(link=>link.relation==="residual"),tinyPath=ribbon(tiny.id),tinyHit=hit(tiny.id),matrix=tinyHit.getScreenCTM(),inverse=tinyPath.getScreenCTM().inverse();
  check(Number(tinyPath.dataset.fromWidth)<2&&Number(tinyPath.dataset.fromWidth)>0,"tiny-edge fixture does not exercise a true sub2px quantitative ribbon");
  check(getComputedStyle(tinyHit).vectorEffect==="non-scaling-stroke"&&parseFloat(getComputedStyle(tinyHit).strokeWidth)>=8,"tiny edge has no scale-independent accessible hit width");
  let hitEvidence=null;
  for(const fraction of[.15,.25,.4]){const p=tinyHit.getPointAtLength(tinyHit.getTotalLength()*fraction),screen=new DOMPoint(p.x,p.y).matrixTransform(matrix);for(const[dx,dy]of[[0,2.5],[0,-2.5],[2.5,0],[-2.5,0]]){const point=new DOMPoint(screen.x+dx,screen.y+dy),local=point.matrixTransform(inverse),target=document.elementFromPoint(point.x,point.y);if(!tinyPath.isPointInFill(local)&&target?.dataset.energyPathLinkHit===tiny.id){hitEvidence={target,x:point.x,y:point.y};break;}}if(hitEvidence)break;}
  check(Boolean(hitEvidence),"tiny link cannot be hit outside its true fill without inflating quantitative width");
- if(hitEvidence){hitEvidence.target.dispatchEvent(new MouseEvent("click",{bubbles:true,cancelable:true,clientX:hitEvidence.x,clientY:hitEvidence.y}));check(state.simulationEnergySelection===tiny.id&&host.querySelector('[data-energy-path-link-inspector="'+tiny.id+'"]'),"observed tiny-edge hit target does not activate real link detail");}
+ if(hitEvidence){hitEvidence.target.dispatchEvent(new MouseEvent("click",{bubbles:true,cancelable:true,clientX:hitEvidence.x,clientY:hitEvidence.y}));check(state.simulationEnergySelection===tiny.id&&host.querySelector('[data-energy-path-component-chart="'+tiny.id+'"]'),"observed tiny-edge hit target does not activate real link detail");}
  check(paths()===originalPaths,"tiny hit area changed the real ribbon path/width");
  const canvas=host.querySelector("[data-energy-path-canvas]"),canvasRect=canvas.getBoundingClientRect(),blank=document.elementFromPoint(canvasRect.left+3,canvasRect.top+3);click(blank);await assertClear("blank graph");
  change("[data-simulation-energy-path-period]","M1");
  const monthlyLink=graph().links.find(link=>link.relation==="load_to_end_use"&&link.serviceKind==="cooling");click(ratio(monthlyLink.id));
- check(host.querySelector('[data-energy-path-link-inspector="'+monthlyLink.id+'"] [data-energy-path-link-value="from"] dd')?.textContent.trim()===monthlyLink.fromValue.toFixed(2)+" kWh/m² thermal","selected monthly link reused annual thermal value");
+ check(host.querySelector('[data-energy-path-component-chart="'+monthlyLink.id+'"] [data-energy-path-chart-frequency]'),"selected monthly link lost its chart controls");
  const adapter={genericCaptureContext:()=>({marker:"145-history"}),genericRestoreContext:async()=>{}},snapshot=simulation.captureSimulationNavigationContext(adapter);
- change("[data-simulation-energy-scope]","zone");change("[data-simulation-energy-zone-name]","Office");check(state.simulationEnergySelection===""&&!host.querySelector("[data-energy-path-link-inspector]"),"scope change retained an out-of-scope selected edge");
+ change("[data-simulation-energy-scope]","zone");change("[data-simulation-energy-zone-name]","Office");check(state.simulationEnergySelection===""&&!host.querySelector("[data-energy-path-component-chart]"),"scope change retained an out-of-scope selected edge");
  check(pane.scrollHeight<=pane.clientHeight+1&&pane.scrollWidth<=pane.clientWidth+1,"Zone interaction graph requires scrolling");
- const restored=await simulation.restoreSimulationNavigationContext(snapshot,adapter);check(restored&&state.simulationEnergyScopeKind==="building"&&state.simulationEnergyPeriod==="M1"&&state.simulationEnergySelection===monthlyLink.id&&host.querySelector('[data-energy-path-link-inspector="'+monthlyLink.id+'"] [data-energy-path-link-value="to"] dd')?.textContent.trim()===monthlyLink.toValue.toFixed(2)+" kWh/m² site","history restore dropped exact selected monthly link/scope/dual values");
+ const restored=await simulation.restoreSimulationNavigationContext(snapshot,adapter);check(restored&&state.simulationEnergyScopeKind==="building"&&state.simulationEnergyPeriod==="M1"&&state.simulationEnergySelection===monthlyLink.id&&host.querySelector('[data-energy-path-component-chart="'+monthlyLink.id+'"]'),"history restore dropped exact selected monthly link/scope/chart");
  key(ratio(monthlyLink.id),"Escape");change("[data-simulation-energy-path-period]","annual");assertClear("history clear");
  const varied=JSON.parse(originalJSON),payload=varied.purposeResults.energyExplanation,byID=new Map(payload.nodes.map(item=>[item.id,item]));
  const factor=item=>item.serviceKind==="cooling"?2:item.serviceKind==="heating"?.5:1;

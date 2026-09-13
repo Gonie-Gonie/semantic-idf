@@ -237,16 +237,17 @@ func TestEnergyPathRadiantSelectedOwnerAndOriginalTimestepPreserved(t *testing.T
 		t.Run(zone, func(t *testing.T) {
 			plan := BuildPurposeRunPlan(doc, SimulationPurposeRequest{Purposes: []SimulationPurposeID{SimulationPurposeBasicEnergy}, BasicEnergyDetail: PurposeBasicEnergyDetailEnergyPath,
 				Scope: SimulationPurposeScope{ZoneMode: "selected", ZoneNames: []string{zone}}})
-			count := 0
+			assertEnergyPathMonthlyHourlyRequestPairs(t, plan)
+			counts := map[string]int{}
 			for _, output := range plan.OutputObjects {
 				if output.ObjectType == "Output:Variable" && output.State != PurposeOutputStateExisting &&
-					(strings.Contains(strings.ToLower(output.VariableName), "pump electricity") || strings.Contains(strings.ToLower(output.VariableName), "fan electricity") || output.ReportingFrequency != "Monthly") {
-					t.Fatalf("load-key correction added a heavy output: %#v", output)
+					(strings.Contains(strings.ToLower(output.VariableName), "pump electricity") || strings.Contains(strings.ToLower(output.VariableName), "fan electricity")) {
+					t.Fatalf("load-key correction added an unrelated consumption output: %#v", output)
 				}
-				if !energyPathIsRadiantLoadVariable(output.VariableName) || output.ReportingFrequency != "Monthly" {
+				if !energyPathIsRadiantLoadVariable(output.VariableName) || (output.ReportingFrequency != "Monthly" && output.ReportingFrequency != "Hourly") {
 					continue
 				}
-				count++
+				counts[output.ReportingFrequency]++
 				if output.KeyValue != "Radiant" || output.ScopeZoneName != "Office" || zone != "office" {
 					t.Fatalf("selected scope invented an owner: %#v", output)
 				}
@@ -255,8 +256,10 @@ func TestEnergyPathRadiantSelectedOwnerAndOriginalTimestepPreserved(t *testing.T
 			if zone == "office" {
 				want = 4
 			}
-			if count != want {
-				t.Fatalf("selected %s radiant requests=%d, want %d", zone, count, want)
+			for _, frequency := range []string{"Monthly", "Hourly"} {
+				if counts[frequency] != want {
+					t.Fatalf("selected %s radiant %s requests=%d, want %d", zone, frequency, counts[frequency], want)
+				}
 			}
 			updated, _ := idf.ApplyOutput(doc, PurposeRunPlanApplyRequest(plan, PurposeOutputApplyModeKeepExistingAdd))
 			timestep := 0
@@ -295,17 +298,53 @@ func TestEnergyPathRadiantLiteralAliasesAndNonNativeBoundary(t *testing.T) {
 func TestEnergyPathRadiantNonNativeLegacyZoneRequestsUnchanged(t *testing.T) {
 	doc := parsePurposePlanFixture(t, "Zone,Legacy Office,0,0,0,0,1,1;")
 	plan := BuildPurposeRunPlan(doc, SimulationPurposeRequest{Purposes: []SimulationPurposeID{SimulationPurposeBasicEnergy}, BasicEnergyDetail: PurposeBasicEnergyDetailEnergyPath})
-	count := 0
+	assertEnergyPathMonthlyHourlyRequestPairs(t, plan)
+	counts := map[string]int{}
 	for _, output := range plan.OutputObjects {
 		if !energyPathIsRadiantLoadVariable(output.VariableName) {
 			continue
 		}
-		count++
-		if output.KeyValue != "Legacy Office" || output.ScopeZoneName != "Legacy Office" || output.ReportingFrequency != "Monthly" {
+		counts[output.ReportingFrequency]++
+		if output.KeyValue != "Legacy Office" || output.ScopeZoneName != "Legacy Office" {
 			t.Fatalf("native correction changed the pre-existing non-radiant request contract: %#v", output)
 		}
 	}
-	if count != 4 {
-		t.Fatalf("legacy no-native radiant aliases=%d, want original four Zone requests", count)
+	for _, frequency := range []string{"Monthly", "Hourly"} {
+		if counts[frequency] != 4 {
+			t.Fatalf("legacy no-native radiant %s aliases=%d, want original four Zone requests", frequency, counts[frequency])
+		}
+	}
+}
+
+// Hourly charts add one frequency for each existing Energy Path identity, never
+// another metric or owner. Existing requests at other frequencies stay intact.
+func assertEnergyPathMonthlyHourlyRequestPairs(t *testing.T, plan PurposeRunPlan) {
+	t.Helper()
+	pairs := map[string]map[string]PurposeOutputObject{}
+	for _, output := range plan.OutputObjects {
+		if !purposeObjectIsSeries(output.ObjectType) {
+			continue
+		}
+		if output.ReportingFrequency != "Monthly" && output.ReportingFrequency != "Hourly" {
+			if output.State != PurposeOutputStateExisting {
+				t.Fatalf("added an unrequested Energy Path frequency: %#v", output)
+			}
+			continue
+		}
+		key := strings.ToLower(strings.Join([]string{output.ObjectType, output.KeyValue, output.VariableName}, "|"))
+		if pairs[key] == nil {
+			pairs[key] = map[string]PurposeOutputObject{}
+		}
+		if _, duplicate := pairs[key][output.ReportingFrequency]; duplicate {
+			t.Fatalf("duplicate %s request for %s", output.ReportingFrequency, key)
+		}
+		pairs[key][output.ReportingFrequency] = output
+	}
+	for key, frequencies := range pairs {
+		monthly, hasMonthly := frequencies["Monthly"]
+		hourly, hasHourly := frequencies["Hourly"]
+		if !hasMonthly || !hasHourly || monthly.ScopeZoneName != hourly.ScopeZoneName {
+			t.Fatalf("request %s must have one Monthly/Hourly pair with the same owner: %#v", key, frequencies)
+		}
 	}
 }

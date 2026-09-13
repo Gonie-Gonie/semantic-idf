@@ -18,13 +18,19 @@ The release script infers bump size from these sections:
 
 ## Changed
 
+- Removed Energy's four top summary cards and Service selector. Heating and
+  cooling now appear together. Selecting a component opens a Monthly / Hourly
+  chart instead of descriptive details and navigation actions. Monthly charts
+  use scoped component totals; Hourly charts use available reported source
+  energy. Charts show axes, ticks, grids and units without source-object lists.
+  Energy Path values use kWh/m² with two decimal places.
 - Removed result-variable status tags from Heat-Flow Ledger and the Related
   model entities and Source data sections from Energy node and link details.
 - Renamed the Simulation Sankey result to Energy Path and established its
   left-to-right `Load Drivers → Thermal Loads → End-use Energy → Energy
   Sources` contract. The v2 view separates thermal kWh from site kWh at a
-  central equipment-conversion divider and uses only Scope, Period, and Service
-  as primary controls, defaulting to Building / Annual / All. Existing v1
+  central equipment-conversion divider and uses Scope and Period
+  as primary controls, defaulting to Building / Annual. Existing v1
   results continue to use the compatibility renderer. V2 KPI, overview, and
   Batch summary consumers now use the canonical Drivers, Loads, End Uses,
   Carriers, Ratios, Residuals, and Top Zones collections while retaining raw,

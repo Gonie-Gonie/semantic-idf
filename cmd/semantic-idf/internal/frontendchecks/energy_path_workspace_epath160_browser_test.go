@@ -192,8 +192,8 @@ try{
     const sameText=store.getDocumentText();actions.registerLoadedDocument(sameText,{filename:"different.idf",path:"C:/EPATH160/different.idf"});
     check(state.simulationResult===null&&!state.simulationRunning&&state.simulationActiveRunID==="","identical-text different-file registration retained the previous run");
     const fresh=simulation.captureSimulationEnergyWorkspaceContext();
-    check(fresh.simulationEnergyScopeKind==="building"&&fresh.simulationEnergyZoneName===""&&fresh.simulationEnergyPeriod==="annual"&&fresh.simulationEnergyService==="all"&&fresh.simulationEnergySelection===""&&!fresh.simulationEnergyDetailsOpen&&JSON.stringify(fresh.energyDrawer)===JSON.stringify({tab:"data",stage:"",outputSource:""}),"new file registration did not reset six Energy defaults and panel-local drawer");
-    check(Object.keys(state).filter(key=>key.startsWith("simulationEnergy")).length===6,"new file registration introduced extra Energy primary fields");
+    check(fresh.simulationEnergyScopeKind==="building"&&fresh.simulationEnergyZoneName===""&&fresh.simulationEnergyPeriod==="annual"&&fresh.simulationEnergyService==="all"&&fresh.simulationEnergySelection===""&&!fresh.simulationEnergyDetailsOpen&&fresh.energyChartFrequency==="monthly"&&JSON.stringify(fresh.energyDrawer)===JSON.stringify({tab:"data",stage:"",outputSource:""}),"new file registration did not reset Energy defaults and chart frequency and panel-local drawer");
+    check(Object.keys(state).filter(key=>key.startsWith("simulationEnergy")).length===7,"new file registration introduced extra Energy primary fields");
     check(await actions.saveWorkspaceSnapshot()===true,"new file snapshot could not be saved");
     const freshSaved=JSON.parse(sessionStorage.getItem("idfAnalyzer.currentDocument"));check(freshSaved.simulationResultRef===null&&freshSaved.text===sameText&&freshSaved.filename==="different.idf"&&fixture.read().counts.forbidden===0,"new file saved the old result locator or triggered backend work");
     fixture.update(item=>item.evidence.push("Identical-text different-file registration cleared the previous run and saved no result locator"));
@@ -216,7 +216,7 @@ try{
   const runCallsBefore=fixture.read().counts.forbidden;
   window.dispatchEvent(new CustomEvent("idfAnalyzer:analysisComplete",{detail:{text:store.getDocumentText(),analysisKey:fixture.textHash,stage:"complete"}}));await sleep(75);
   check(fixture.read().counts.forbidden===runCallsBefore&&!state.simulationRunning,"restored document auto-ran despite matching install / weather and autoRunOnOpen=true");
-  const keys=["simulationEnergyScopeKind","simulationEnergyZoneName","simulationEnergyPeriod","simulationEnergyService","simulationEnergySelection","simulationEnergyDetailsOpen"];
+  const keys=["simulationEnergyScopeKind","simulationEnergyZoneName","simulationEnergyPeriod","simulationEnergyService","simulationEnergySelection","simulationEnergyDetailsOpen","simulationEnergyChartFrequency"];
   const primary=()=>Object.fromEntries(keys.map(key=>[key,state[key]]));
   const capture=()=>history.captureViewSnapshot().panelContexts.simulation;
   const host=document.getElementById("simulationEnergyDashboard");
@@ -226,27 +226,29 @@ try{
   const change=(selector,value)=>{const element=host.querySelector(selector);if(!element)throw new Error("Missing real Energy control: "+selector);element.value=value;element.focus();element.dispatchEvent(new Event("change",{bubbles:true}));};
   const selected=()=>view.energyPathGraphForState(state.simulationResult.purposeResults.energyExplanation,state).nodes.find(node=>node.id===state.simulationEnergySelection);
   const saveExpected=()=>fixture.update(item=>{item.expected={primary:primary(),drawer:capture().energyDrawer};});
-  const assertExpected=label=>{const expected=fixture.read().expected;check(JSON.stringify(primary())===JSON.stringify(expected.primary),label+" changed six keys: "+JSON.stringify(primary()));check(JSON.stringify(capture().energyDrawer)===JSON.stringify(expected.drawer),label+" changed panel-local drawer: "+JSON.stringify(capture().energyDrawer));};
+  const assertExpected=label=>{const expected=fixture.read().expected;check(JSON.stringify(primary())===JSON.stringify(expected.primary),label+" changed Energy keys: "+JSON.stringify(primary()));check(JSON.stringify(capture().energyDrawer)===JSON.stringify(expected.drawer),label+" changed panel-local drawer: "+JSON.stringify(capture().energyDrawer));};
   assertPrimary(phase);
   if(phase==="initial"){
    assertResult("initial cache load");
-   change("[data-simulation-energy-scope]","zone");change("[data-simulation-energy-zone-name]","Office");change("[data-simulation-energy-path-period]","M2");change("[data-simulation-energy-service]","cooling");
+   change("[data-simulation-energy-scope]","zone");change("[data-simulation-energy-zone-name]","Office");change("[data-simulation-energy-path-period]","M2");
    const use=view.energyPathGraphForState(state.simulationResult.purposeResults.energyExplanation,state).nodes.find(node=>node.level==="end_use"&&node.endUse==="cooling");
    click(host.querySelector('[data-energy-path-layout-node="'+CSS.escape(use.id)+'"]'));
    check(host.querySelector("[data-energy-path-inspector]"),"real selected node did not open its inspector");
    click(host.querySelector('[data-energy-path-quality-stage="drivers"]'));
    check(capture().energyDrawer?.stage==="drivers","quality stage did not use panel-local drawer state");
-   click(host.querySelector('[data-energy-path-service-kind="output"] [data-energy-path-service-destination]'));
+   click(host.querySelector('[data-energy-path-output-source="'+fixture.sourceID+'"]'));
    check(capture().energyDrawer?.tab==="output"&&capture().energyDrawer?.outputSource===fixture.sourceID&&host.querySelector('[data-energy-path-output-request-selected="true"]'),"actual Output action did not select its exact request");
    saveExpected();assertPrimary("handlers");await actions.saveWorkspaceSnapshot();assertSnapshot("initial save");
-   fixture.update(item=>{item.phase="settings";item.evidence.push("Real scope / period / service / node / Output actions set Office M2 cooling before Settings");});click(document.getElementById("settingsButton"));
+   fixture.update(item=>{item.phase="settings";item.evidence.push("Real scope / period / node / Data Output actions set Office M2 cooling before Settings");});click(document.getElementById("settingsButton"));
   }else if(phase==="settings_return"){
    assertResult("Settings cold return");assertExpected("Settings cold return");assertSnapshot("Settings navigation");
    check(state.activeResultTab==="simulation"&&selected()&&host.querySelector('[data-energy-path-output-request-selected="true"]'),"cold Settings return did not reconstruct the selected Energy view and Output request");
    const restoredRequest=host.querySelector('[data-energy-path-output-request-selected="true"]');restoredRequest.focus();restoredRequest.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true,cancelable:true}));
-   const restoredOutputAction=host.querySelector('[data-energy-path-service-kind="output"] [data-energy-path-service-destination]');check(!state.simulationEnergyDetailsOpen&&document.activeElement===restoredOutputAction,"cold Output Escape did not derive and focus the current exact source action");
+   const restoredOutputAction=host.querySelector('[data-energy-path-details-toggle]');check(!state.simulationEnergyDetailsOpen&&document.activeElement===restoredOutputAction,"cold Output Escape did not restore the Data details opener");
    click(host.querySelector('[data-energy-path-quality-stage="drivers"]'));saveExpected();
-   click(host.querySelector('[data-energy-path-service-kind="hvac"] [data-energy-path-service-destination]'));
+   const selections=await import("/src/js/selection-controller.js");
+   await selections.selectSemanticEntity({entityId:fixture.entityID},{originView:"simulation"});
+   await selections.openSelectionInView("hvac",{targetKind:"service-path",targetId:fixture.pathID});
    await wait(()=>state.activeResultTab==="hvac"&&state.globalSelection?.entityId===fixture.entityID,"real global HVAC destination");
    assertExpected("HVAC dormant Energy");check(visible(document.getElementById("hvacGraph")),"global HVAC target did not reveal actual HVAC pane");
    fixture.update(item=>{item.phase="tools";item.evidence.push("Real global HVAC selection opened while dormant Energy state remained intact");});click(document.getElementById("toolsButton"));
@@ -259,7 +261,7 @@ try{
    cached.schemaVersion=3;cached.activeResultTab="simulation";cached.viewSnapshot.resultTab="simulation";cached.viewSnapshot.globalSelection=null;cached.viewSnapshot.panelContexts.simulation=legacy;cached.panelContexts=cached.viewSnapshot.panelContexts;sessionStorage.setItem("idfAnalyzer.currentDocument",JSON.stringify(cached));
    fixture.update(item=>{item.phase="legacy";item.evidence.push("Cold Tools return restored active HVAC and dormant Office M2 cooling selection");});location.reload();
   }else if(phase==="legacy"){
-   assertResult("legacy cache load");check(state.simulationEnergyScopeKind==="zone"&&state.simulationEnergyZoneName==="Office"&&state.simulationEnergyPeriod==="M2"&&state.simulationEnergyService==="cooling"&&selected()&&state.simulationEnergyDetailsOpen,"legacy aliases did not normalize into six primary keys: "+JSON.stringify(primary()));
+   assertResult("legacy cache load");check(state.simulationEnergyScopeKind==="zone"&&state.simulationEnergyZoneName==="Office"&&state.simulationEnergyPeriod==="M2"&&state.simulationEnergyService==="all"&&selected()&&state.simulationEnergyDetailsOpen,"legacy aliases did not normalize into six primary keys: "+JSON.stringify(primary()));
    check(capture().energyDrawer?.tab==="data"&&capture().energyDrawer?.stage==="drivers","legacy source drawer context was discarded");assertPrimary("legacy migration");
    await actions.saveWorkspaceSnapshot();assertSnapshot("legacy normalized save");saveExpected();const saved=JSON.parse(sessionStorage.getItem("idfAnalyzer.currentDocument"));saved.simulationResultRef.runId="missing-cache-run";sessionStorage.setItem("idfAnalyzer.currentDocument",JSON.stringify(saved));fixture.update(item=>{item.phase="cache_miss";item.evidence.push("Schema3 aliases normalized and rewrote only schema4 compact state");});location.reload();
   }else if(phase==="cache_miss"){
@@ -267,8 +269,8 @@ try{
    check(!host.querySelector("[data-energy-path-layout-node]"),"cache miss rendered another run's graph");
    const saved=JSON.parse(sessionStorage.getItem("idfAnalyzer.currentDocument"));saved.simulationResultRef.runId=fixture.runId;saved.viewSnapshot.panelContexts.simulation.energySelection="missing-node.epath160";saved.viewSnapshot.panelContexts.simulation.energyDrawer={tab:"output",stage:"",outputSource:"missing-source.epath160"};saved.panelContexts=saved.viewSnapshot.panelContexts;sessionStorage.setItem("idfAnalyzer.currentDocument",JSON.stringify(saved));fixture.update(item=>{item.phase="stale_loaded";item.evidence.push("Cache miss kept pending Energy context without rendering a graph or rerunning analysis / simulation");});location.reload();
   }else if(phase==="stale_loaded"){
-   assertResult("rehydrated stale selection");check(state.simulationEnergyScopeKind==="zone"&&state.simulationEnergyZoneName==="Office"&&state.simulationEnergyPeriod==="M2"&&state.simulationEnergyService==="cooling","stale selection cleanup changed valid scope / period / service");check(state.simulationEnergySelection===""&&capture().energyDrawer?.outputSource==="","loaded payload did not clear nonexistent node / source: "+JSON.stringify(capture()));assertPrimary("final hydrated state");
-   check(fixture.read().counts.forbidden===0,"cold navigation caused Analyze / Run work");fixture.update(item=>item.evidence.push("Valid payload restored; stale node and Output source cleared only after rehydration; exactly six Energy primary keys"));
+   assertResult("rehydrated stale selection");check(state.simulationEnergyScopeKind==="zone"&&state.simulationEnergyZoneName==="Office"&&state.simulationEnergyPeriod==="M2"&&state.simulationEnergyService==="all","stale selection cleanup changed valid scope / period / service");check(state.simulationEnergySelection===""&&capture().energyDrawer?.outputSource==="","loaded payload did not clear nonexistent node / source: "+JSON.stringify(capture()));assertPrimary("final hydrated state");
+   check(fixture.read().counts.forbidden===0,"cold navigation caused Analyze / Run work");fixture.update(item=>item.evidence.push("Valid payload restored; stale node and Output source cleared only after rehydration; six Energy primary keys plus chart frequency"));
    const savedBefore=sessionStorage.getItem("idfAnalyzer.currentDocument"),textBefore=store.getDocumentText(),pathBefore=state.currentFilePath;
    for(const race of["text","path"]){
     const digest=crypto.subtle.digest.bind(crypto.subtle);let release;

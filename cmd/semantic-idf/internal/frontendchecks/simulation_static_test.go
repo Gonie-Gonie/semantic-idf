@@ -242,14 +242,17 @@ func TestFrontendSimulationEnergyUsesSingleViewWithoutLegacySubnavigation(t *tes
 			t.Fatalf("Simulation Energy still exposes removed subnavigation %q", forbidden)
 		}
 	}
-	for _, required := range []string{`renderEnergyPathKPI(scene.summary,`, `renderEnergyPathView(explanation, state, simulationEnergySceneOptions(scene))`} {
+	for _, required := range []string{`renderEnergyPathView(explanation, state, simulationEnergySceneOptions(scene))`} {
 		if !strings.Contains(dashboard, required) {
 			t.Fatalf("single Energy dashboard lost required rendering path %q", required)
 		}
 	}
+	if strings.Contains(dashboard, "renderEnergyPathKPI") {
+		t.Fatal("Energy dashboard still renders redundant summary cards")
+	}
 	options := sliceBetween(simulation, "function simulationEnergySceneOptions", "function prepareSimulationEnergyModelNavigation")
-	if !strings.Contains(options, `inspectorActionsForNode:`) || !strings.Contains(options, `simulationEnergyInspectorActions(node, sources, viewState, scene.result, graph)`) {
-		t.Fatal("prepared Energy scene lost its current-result inspector action binding")
+	if !strings.Contains(options, `result: scene.result`) {
+		t.Fatal("Energy component chart lost its current-result data binding")
 	}
 	if strings.Contains(dashboard, "renderEnergyPathSummaryOverview") {
 		t.Fatal("single Energy dashboard still renders a duplicate summary overview")

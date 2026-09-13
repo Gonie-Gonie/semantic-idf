@@ -1,11 +1,9 @@
 import { t } from "../i18n.js";
 import { escapeHTML } from "../state.js";
 import {
-  isEnergyPathV2, prepareEnergyPathScene, renderEnergyPathView, renderEnergyPathKPI,
-  energyPathSummaryForState, energyPathQualityForState, energyPathRatioQualityForState,
+  isEnergyPathV2, prepareEnergyPathScene, renderEnergyPathView,
   updateEnergyPathSelection, updateEnergyPathDetails,
 } from "../views/energy-path-view.js";
-import { energyPathKPIItems } from "../energy-path-kpis.js";
 import { resolveEnergyPathOutputRequest } from "../energy-path-output-requests.js";
 import { energyPathDisplayContext } from "../energy-path-display.js";
 
@@ -26,7 +24,7 @@ export function createBatchEnergyPathDetail({ host, resolveRun }) {
   let current = null;
   let opener = null;
   let drawerOpener = null;
-  const options = () => ({ scene: current.scene, fixedContext: true,
+  const options = () => ({ scene: current.scene, result: current.run, fixedContext: true,
     outputObjects: current.run.purposeRunPlan?.outputObjects || [], drawer: { ...current.drawer } });
   const graphControl = (id) => [...host.querySelectorAll("[data-energy-explanation-node], [data-energy-explanation-edge]")]
     .find((element) => (element.dataset.energyExplanationNode === id || element.dataset.energyExplanationEdge === id) && element.tabIndex >= 0);
@@ -51,7 +49,7 @@ export function createBatchEnergyPathDetail({ host, resolveRun }) {
     if (restoreFocus && opener?.isConnected) opener.focus();
     opener = null;
   };
-  const updateDrawer = ({ closeDrawer = false, output = false, tab = "", accounting = false } = {}) => {
+  const updateDrawer = ({ closeDrawer = false, output = false, tab = "" } = {}) => {
     updateEnergyPathDetails(host, current.scene, current.viewState, options());
     if (closeDrawer) {
       const target = drawerOpener?.isConnected ? drawerOpener : host.querySelector("[data-energy-path-details-toggle]");
@@ -62,8 +60,7 @@ export function createBatchEnergyPathDetail({ host, resolveRun }) {
       return;
     }
     const target = tab ? host.querySelector(`[data-energy-path-details-tab="${tab}"]`)
-      : output ? host.querySelector('[data-energy-path-output-request-selected="true"]')
-        : accounting ? host.querySelector("[data-energy-path-accounting-quality]") : null;
+      : output ? host.querySelector('[data-energy-path-output-request-selected="true"]') : null;
     const focus = target || host.querySelector("[data-energy-path-data-details]");
     if (focus) { focus.tabIndex = focus.hasAttribute("data-energy-path-details-tab") ? 0 : -1; focus.focus({ preventScroll: true }); }
   };
@@ -72,23 +69,19 @@ export function createBatchEnergyPathDetail({ host, resolveRun }) {
     const run = resolveRun(runID);
     if (!run || !batchEnergyPathDetailAvailable(run)) return false;
     const viewState = { simulationEnergyScopeKind: "building", simulationEnergyZoneName: "",
-      simulationEnergyPeriod: "annual", simulationEnergyService: "all", simulationEnergySelection: "", simulationEnergyDetailsOpen: false };
+      simulationEnergyPeriod: "annual", simulationEnergyService: "all", simulationEnergySelection: "", simulationEnergyDetailsOpen: false,
+      simulationEnergyChartFrequency: "monthly" };
     const explanation = run.purposeResults.energyExplanation;
     const display = energyPathDisplayContext(explanation, viewState);
     const scene = prepareEnergyPathScene(explanation, viewState, { display });
     if (!scene.visibleNodes.length) return false;
-    const summary = energyPathSummaryForState(explanation, run.purposeResults.energyExplanationSummary || {}, viewState);
-    const quality = energyPathQualityForState(explanation, viewState), ratios = energyPathRatioQualityForState(explanation, viewState);
-    if (ratios) quality.ratios = ratios; else delete quality.ratios;
-    const kpiOptions = { graph: scene.allServiceGraph, quality, service: "all", period: "annual", detailsOpen: false, display };
-    const kpiTargets = new Set(energyPathKPIItems(summary || {}, scene.allServiceGraph, kpiOptions).flatMap((item) => item.targets || []).map((node) => node.id));
-    current = { run, scene, viewState, drawer: { tab: "data", stage: "", outputSource: "" }, kpiTargets };
+    current = { run, scene, viewState, drawer: { tab: "data", stage: "", outputSource: "" } };
     opener = control || null;
     drawerOpener = null;
     const label = run.filename || String(run.inputPath || "").split(/[\\/]/).pop() || copy("SelectedModel", "Selected model");
     host.innerHTML = `<header class="batch-energy-detail-header"><div><h4 id="batchEnergyDetailTitle">${escapeHTML(copy("ModelDetail", "Model Energy Path"))}</h4><strong>${escapeHTML(label)}</strong></div><button type="button" data-batch-energy-close>${escapeHTML(t("common.close", {}, "Close"))}</button></header>
       <p class="tool-muted">${escapeHTML(copy("DetailContext", "This detail uses only the selected run. Model-navigation actions require that model to be opened in the main workspace."))}</p>
-      <div class="batch-energy-detail-dashboard">${renderEnergyPathKPI(summary, kpiOptions)}${renderEnergyPathView(explanation, viewState, options())}</div>`;
+      <div class="batch-energy-detail-dashboard">${renderEnergyPathView(explanation, viewState, options())}</div>`;
     host.hidden = false;
     host.focus({ preventScroll: true });
     host.scrollIntoView({ block: "nearest" });
@@ -99,7 +92,7 @@ export function createBatchEnergyPathDetail({ host, resolveRun }) {
     if (!current || !(event.target instanceof Element)) return;
     const target = event.target;
     if (target.closest("[data-batch-energy-close]")) { event.preventDefault(); close(); return; }
-    const details = target.closest("[data-energy-path-details-toggle], [data-energy-path-quality-stage], [data-energy-path-details-tab], [data-energy-path-output-source], [data-energy-path-kpi-details]");
+    const details = target.closest("[data-energy-path-details-toggle], [data-energy-path-quality-stage], [data-energy-path-details-tab], [data-energy-path-output-source]");
     if (details && !details.disabled) {
       event.preventDefault(); event.stopPropagation();
       const sourceID = details.dataset.energyPathOutputSource;
@@ -110,17 +103,15 @@ export function createBatchEnergyPathDetail({ host, resolveRun }) {
       if (!current.viewState.simulationEnergyDetailsOpen || !details.closest("[data-energy-path-data-details]")) drawerOpener = details;
       if (details.hasAttribute("data-energy-path-details-toggle")) current.viewState.simulationEnergyDetailsOpen = !current.viewState.simulationEnergyDetailsOpen;
       else current.viewState.simulationEnergyDetailsOpen = true;
-      if (details.dataset.energyPathQualityStage !== undefined || details.hasAttribute("data-energy-path-kpi-details")) {
+      if (details.dataset.energyPathQualityStage !== undefined) {
         current.drawer.tab = "data";
         current.drawer.stage = ["drivers", "loads", "endUses", "carriers"].includes(details.dataset.energyPathQualityStage) ? details.dataset.energyPathQualityStage : "";
       }
       if (details.dataset.energyPathDetailsTab !== undefined) current.drawer.tab = details.dataset.energyPathDetailsTab === "output" ? "output" : "data";
       if (sourceID !== undefined) { current.drawer.tab = "output"; current.drawer.outputSource = sourceID; }
-      updateDrawer({ closeDrawer: !current.viewState.simulationEnergyDetailsOpen, output: sourceID !== undefined, tab: details.dataset.energyPathDetailsTab, accounting: details.hasAttribute("data-energy-path-kpi-details") });
+      updateDrawer({ closeDrawer: !current.viewState.simulationEnergyDetailsOpen, output: sourceID !== undefined, tab: details.dataset.energyPathDetailsTab });
       return;
     }
-    const kpi = target.closest("[data-energy-path-kpi-node]");
-    if (kpi) { event.preventDefault(); if (current.kpiTargets.has(kpi.dataset.energyPathKpiNode)) select(kpi.dataset.energyPathKpiNode); return; }
     const control = target.closest("[data-energy-explanation-node], [data-energy-explanation-edge]");
     if (control) { event.preventDefault(); event.stopPropagation(); select(control.dataset.energyExplanationNode || control.dataset.energyExplanationEdge); return; }
     const canvas = target.closest("[data-energy-path-canvas]");
@@ -129,6 +120,14 @@ export function createBatchEnergyPathDetail({ host, resolveRun }) {
       event.preventDefault();
       if (bar) select(bar.dataset.energyPathBar); else if (!target.closest("[data-energy-path-ribbon]")) select("");
     }
+  });
+  host.addEventListener("change", (event) => {
+    if (!current || !(event.target instanceof Element) || !event.target.matches("[data-energy-path-chart-frequency]")) return;
+    const frequency = event.target.value;
+    if (event.target.disabled || !["monthly", "hourly"].includes(frequency) || frequency === current.viewState.simulationEnergyChartFrequency) return;
+    current.viewState.simulationEnergyChartFrequency = frequency;
+    updateEnergyPathSelection(host, current.scene, current.viewState, { ...options(), refreshInspector: true });
+    host.querySelector("[data-energy-path-chart-frequency]")?.focus({ preventScroll: true });
   });
   host.addEventListener("keydown", (event) => {
     if (!current || event.defaultPrevented || event.isComposing || !(event.target instanceof Element)) return;

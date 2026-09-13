@@ -149,24 +149,30 @@ const explanationFor = (definitions = [], options = {}) => {
 
 try {
   const view = await import("/src/js/views/energy-path-view.js");
+  // Preserve the legacy detail utility's data contract separately from the interactive chart view.
+  const renderWithLegacyDetail = (explanation, state) => {
+    const graph = view.energyPathGraphForState(explanation, state);
+    return view.renderEnergyPathNodeInspector(explanation, graph.nodes, state.simulationEnergySelection, state, graph.relations, graph.links, graph.supplyActivities)
+      + view.renderEnergyPathView(explanation, state);
+  };
 
   const noSupply = explanationFor([]);
   check(view.energyPathSupplyActivities(noSupply.nodes, noSupply.links, carrier).length === 0, "no-support graph reported supply activity");
   check(view.renderEnergyPathSupportStrip(noSupply.nodes, noSupply.links) === "", "support strip rendered without supply activity");
-  document.getElementById("mount").innerHTML = view.renderEnergyPathView(noSupply, { ...state });
+  document.getElementById("mount").innerHTML = renderWithLegacyDetail(noSupply, { ...state });
   check(!document.querySelector("[data-energy-path-support-strip]"), "full view rendered an empty support strip");
 
   const purchasedOnly = explanationFor([supportDefinitions[0]]);
   const purchasedActivities = view.energyPathSupplyActivities(purchasedOnly.nodes, purchasedOnly.links, carrier);
   check(purchasedActivities.length === 1 && purchasedActivities[0].kind === "purchased" && purchasedActivities[0].value === 120, "purchased electricity was not retained as supply context");
   check(view.renderEnergyPathSupportStrip(purchasedOnly.nodes, purchasedOnly.links) === "", "purchase-only data incorrectly triggered the onsite/storage support strip");
-  document.getElementById("mount").innerHTML = view.renderEnergyPathView(purchasedOnly, { ...state });
+  document.getElementById("mount").innerHTML = renderWithLegacyDetail(purchasedOnly, { ...state });
   check(!document.querySelector("[data-energy-path-support-strip]"), "purchase-only full view rendered the onsite/storage support strip");
   check(document.querySelector('[data-energy-path-supply-breakdown] [data-energy-path-supply-kind="purchased"]'), "purchase-only supply context was not available in the carrier inspector");
 
   const soldOnly = explanationFor([supportDefinitions[2]]);
   check(view.renderEnergyPathSupportStrip(soldOnly.nodes, soldOnly.links) === "", "sold-only data incorrectly triggered the onsite/storage support strip");
-  document.getElementById("mount").innerHTML = view.renderEnergyPathView(soldOnly, { ...state });
+  document.getElementById("mount").innerHTML = renderWithLegacyDetail(soldOnly, { ...state });
   check(!document.querySelector("[data-energy-path-support-strip]"), "sold-only full view rendered the onsite/storage support strip");
   check(document.querySelector('[data-energy-path-supply-breakdown] [data-energy-path-supply-kind="sold"]'), "sold-only supply context was not available in the carrier inspector");
 
@@ -180,7 +186,7 @@ try {
   check(JSON.stringify(activities.map((item) => item.value)) === JSON.stringify([120, 25, 15, 8]), "supply activity values were netted or changed");
   check(activities.every((item) => item.carrier === "electricity"), "supply activity created a non-Electricity carrier identity");
 
-  document.getElementById("mount").innerHTML = view.renderEnergyPathView(allSupply, { ...state });
+  document.getElementById("mount").innerHTML = renderWithLegacyDetail(allSupply, { ...state });
   const carrierStage = document.querySelector('[data-energy-path-stage="carrier"]');
   check(carrierStage?.querySelectorAll("[data-energy-explanation-node]").length === 1, "main graph did not retain one Electricity carrier");
   check(carrierStage?.querySelector('[data-energy-explanation-node="carrier.electricity.building"]'), "single Electricity carrier is missing");
@@ -202,13 +208,13 @@ try {
   check(!document.querySelector("[data-energy-path-unclassified-energy]"), "residual at the absolute threshold and below 2% was rendered as an Unclassified graph node");
 
   const aboveThreshold = explanationFor(supportDefinitions, { mapped: 97, residual: 3, residualNode: true });
-  document.getElementById("mount").innerHTML = view.renderEnergyPathView(aboveThreshold, { ...state });
+  document.getElementById("mount").innerHTML = renderWithLegacyDetail(aboveThreshold, { ...state });
   const unclassified = document.querySelector('[data-energy-path-unclassified-energy="electricity"]');
   check(unclassified && unclassified.textContent.includes("Unclassified energy") && unclassified.textContent.includes("3"), "backend-qualified residual did not render as a clear Unclassified energy node");
   check(document.querySelector('[data-energy-path-stage="carrier"]')?.querySelectorAll("[data-energy-explanation-node]").length === 1, "Unclassified energy created another carrier");
 
   const overmapped = explanationFor(supportDefinitions, { mapped: 110, residual: -10, status: "overmapped" });
-  document.getElementById("mount").innerHTML = view.renderEnergyPathView(overmapped, { ...state });
+  document.getElementById("mount").innerHTML = renderWithLegacyDetail(overmapped, { ...state });
   check(!document.querySelector("[data-energy-path-unclassified-energy]"), "negative residual incorrectly rendered a positive Unclassified energy supply");
   check(document.querySelector('[data-energy-path-carrier-residual-badge="overmapped"]'), "overmapping lost its carrier quality badge");
   check(document.querySelector('[data-energy-path-carrier-reconciliation-term="residual"]')?.textContent.includes("-10"), "inspector did not preserve the signed overmapping residual");
@@ -225,7 +231,7 @@ try {
   ]) {
     const invalid = explanationFor(supportDefinitions, { mapped: 97, residual: 3, residualNode: true });
     mutate(invalid.nodes.find((node) => node.level === "residual"), invalid.links.find((link) => link.relation === "residual"));
-    document.getElementById("mount").innerHTML = view.renderEnergyPathView(invalid, { ...state });
+    document.getElementById("mount").innerHTML = renderWithLegacyDetail(invalid, { ...state });
     check(!document.querySelector("[data-energy-path-unclassified-energy]"), name + " was admitted as Unclassified energy");
   }
 
@@ -247,7 +253,7 @@ try {
   check(chargeGraph.supplyActivities.some((item) => item.kind === "storage_charge" && item.value === 5), "charging-only data lost its distinct storage activity");
   check(Math.abs(chargeGraph.links.filter((link) => ["end_use_to_carrier", "direct_end_use_to_carrier"].includes(link.relation)).reduce((sum, link) => sum + link.toValue, 0) - 99.99) < 1e-8, "storage charge stopped being consumption or was double-counted");
   check(!chargeGraph.nodes.some((node) => node.level === "support" && node.endUse === "storage_charge"), "storage charge was duplicated into a support node");
-  document.getElementById("mount").innerHTML = view.renderEnergyPathView(chargeOnly, { ...state });
+  document.getElementById("mount").innerHTML = renderWithLegacyDetail(chargeOnly, { ...state });
   check(document.querySelector('[data-energy-path-support-strip] [data-energy-path-support-kind="storage_charge"]'), "charging-only storage did not trigger a support strip");
   check(document.querySelector('[data-energy-path-supply-breakdown] [data-energy-path-supply-kind="storage_charge"]'), "storage charge absent from carrier Supply breakdown");
 
@@ -259,7 +265,7 @@ try {
   const canonicalChargeGraph = view.energyPathGraphForState(canonicalCharge, { ...state });
   check(canonicalChargeGraph.supplyActivities.filter((item) => item.kind === "storage_charge").length === 1 && canonicalChargeGraph.supplyActivities.find((item) => item.kind === "storage_charge")?.value === 5, "canonical Other consumption lost exact isolated storage-charge context");
   check(Math.abs(canonicalChargeGraph.links.filter((link) => ["end_use_to_carrier", "direct_end_use_to_carrier"].includes(link.relation)).reduce((sum, link) => sum + link.toValue, 0) - 99.99) < 1e-8, "canonical charge context inflated or reduced main consumption");
-  document.getElementById("mount").innerHTML = view.renderEnergyPathView(canonicalCharge, { ...state });
+  document.getElementById("mount").innerHTML = renderWithLegacyDetail(canonicalCharge, { ...state });
   check(Number(document.querySelector('[data-energy-path-support-kind="storage_charge"]')?.dataset.energyPathSupportValue) === 5, "canonical storage context absent from support strip");
   const mixedCharge = structuredClone(chargeOnly);
   mixedCharge.nodes.push({ ...charge, id: "support.storage_charge.building", level: "support" });
@@ -282,11 +288,11 @@ try {
     ["Zone annual", { ...state, simulationEnergyScopeKind: "zone", simulationEnergyZoneName: "Zone Alpha" }, 7],
     ["Zone January", { ...state, simulationEnergyScopeKind: "zone", simulationEnergyZoneName: "Zone Alpha", simulationEnergyPeriod: "M1" }, 0.7],
   ]) {
-    document.getElementById("mount").innerHTML = view.renderEnergyPathView(scoped, selectedState);
+    document.getElementById("mount").innerHTML = renderWithLegacyDetail(scoped, selectedState);
     const item = document.querySelector('[data-energy-path-support-kind="produced"]');
     check(item && Number(item.dataset.energyPathSupportValue) === expectedProduced, label + " leaked a different scope/period's supply value");
   }
-  document.getElementById("mount").innerHTML = view.renderEnergyPathView(scoped, { ...state, simulationEnergyScopeKind: "zone", simulationEnergyZoneName: "Zone Beta" });
+  document.getElementById("mount").innerHTML = renderWithLegacyDetail(scoped, { ...state, simulationEnergyScopeKind: "zone", simulationEnergyZoneName: "Zone Beta" });
   check(!document.querySelector("[data-energy-path-support-strip]"), "zone with no supply inherited Building/another zone's support strip");
 
   const annualQuality = view.energyPathCarrierReconciliation(allSupply, carrier, { ...state });

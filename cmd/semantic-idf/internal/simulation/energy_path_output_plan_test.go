@@ -225,7 +225,7 @@ func TestEPATH040BasicEnergyPathMonthlyFourStageOutputContract(t *testing.T) {
 		Purposes: []SimulationPurposeID{SimulationPurposeBasicEnergy},
 	})
 
-	if plan.BasicEnergyDetail != PurposeBasicEnergyDetailEnergyPath || plan.EstimatedFrames != 12 {
+	if plan.BasicEnergyDetail != PurposeBasicEnergyDetailEnergyPath || plan.EstimatedFrames != 8760 {
 		t.Fatalf("default Basic Energy contract = detail %q / frames %d", plan.BasicEnergyDetail, plan.EstimatedFrames)
 	}
 	if !plan.RequiresDiscovery || findPurposeOutput(plan, "Output:VariableDictionary", "", "") == nil {
@@ -238,7 +238,7 @@ func TestEPATH040BasicEnergyPathMonthlyFourStageOutputContract(t *testing.T) {
 		if object.Reason != "Basic Energy Path" {
 			t.Errorf("reason for %s/%s/%s = %q", object.ObjectType, object.KeyValue, object.VariableName, object.Reason)
 		}
-		if purposeObjectIsSeries(object.ObjectType) && object.ReportingFrequency != "Monthly" {
+		if purposeObjectIsSeries(object.ObjectType) && object.ReportingFrequency != "Monthly" && object.ReportingFrequency != "Hourly" {
 			t.Errorf("frequency for %s/%s/%s = %q", object.ObjectType, object.KeyValue, object.VariableName, object.ReportingFrequency)
 		}
 	}
@@ -851,14 +851,14 @@ func TestEPATH041LargeModelWeightCountsMonthlySurfaceKeys(t *testing.T) {
 
 	surfaceSeries := 0
 	for _, object := range plan.OutputObjects {
-		if object.ObjectType == "Output:Variable" && strings.HasPrefix(object.KeyValue, "Wall ") && strings.Contains(object.VariableName, "Surface Inside Face Convection") {
+		if object.ObjectType == "Output:Variable" && object.ReportingFrequency == "Monthly" && strings.HasPrefix(object.KeyValue, "Wall ") && strings.Contains(object.VariableName, "Surface Inside Face Convection") {
 			surfaceSeries++
 		}
 	}
 	if surfaceSeries != surfaceCount*4 {
 		t.Fatalf("monthly surface series = %d, want %d", surfaceSeries, surfaceCount*4)
 	}
-	if plan.EstimatedFrames != 12 || plan.EstimatedSeries < surfaceSeries || plan.EstimatedWeight != "Medium" {
+	if plan.EstimatedFrames != 8760 || plan.EstimatedSeries < surfaceSeries*2 || plan.EstimatedWeight != "Very Heavy" {
 		t.Fatalf("large Energy Path estimate = weight %q / series %d / frames %d", plan.EstimatedWeight, plan.EstimatedSeries, plan.EstimatedFrames)
 	}
 }

@@ -32,6 +32,7 @@ type EnergyExplanationV1 struct {
 	Edges             []EnergyExplanationEdge  `json:"edges"`
 	Reconciliation    []EnergyReconciliation   `json:"reconciliation,omitempty"`
 	Sources           []EnergyDataSource       `json:"sources,omitempty"`
+	HourlyLabels      []string                 `json:"hourlyLabels,omitempty"`
 	Completeness      EnergyCompleteness       `json:"completeness"`
 	Warnings          []EnergyWarning          `json:"warnings,omitempty"`
 
@@ -66,6 +67,7 @@ type EnergyExplanationResult struct {
 	Links             []EnergyPathLink               `json:"links"`
 	Reconciliation    []EnergyReconciliation         `json:"reconciliation,omitempty"`
 	Sources           []EnergyDataSource             `json:"sources,omitempty"`
+	HourlyLabels      []string                       `json:"hourlyLabels,omitempty"`
 	Completeness      EnergyCompleteness             `json:"completeness"`
 	Quality           *EnergyPathQuality             `json:"quality,omitempty"`
 	Warnings          []EnergyWarning                `json:"warnings,omitempty"`
@@ -366,12 +368,21 @@ type EnergyDataSource struct {
 	InputSourceIDs        []string                      `json:"inputSourceIds,omitempty"`
 	RelatedEntityIDs      []string                      `json:"relatedEntityIds,omitempty"`
 	ScopeDetails          []EnergyDataSourceScopeDetail `json:"scopeDetails,omitempty"`
+	HourlyEnergy          *EnergySourceHourlyEnergy     `json:"hourlyEnergy,omitempty"`
 
 	inspectorDecodedFromJSON bool
 	inspectorValuePresence   uint8
 	// Set only by a fully observed SQL quantity, never dictionary membership.
 	// ScopeDetails deliberately carry no inherited observation proof.
 	observedValuePresence uint8
+}
+
+// EnergySourceHourlyEnergy is the reported source observation in kWh before
+// Zone multipliers or allocation. It is never an allocated component total.
+type EnergySourceHourlyEnergy struct {
+	Unit   string    `json:"unit"`
+	Basis  string    `json:"basis"`
+	Values []float64 `json:"values"`
 }
 
 type EnergyDataSourceScopeDetail struct {
@@ -583,6 +594,7 @@ type energyHeatAliasDefinition struct {
 }
 
 type energyExplanationDictionary struct {
+	hourlySourceOnly           bool
 	row                        sqlOutputDictionaryRow
 	isMeter                    bool
 	reportingFrequency         string
@@ -710,6 +722,7 @@ type energyExplanationSeries struct {
 type energyExplanationParseResult struct {
 	Series          []energyExplanationSeries
 	Sources         []EnergyDataSource
+	HourlyLabels    []string
 	FanPools        []energyPathFanPool
 	VRFConsumption  []energyPathVRFConsumptionCohort
 	VRFLoadEvidence map[string]energyPathVRFLoadEvidence
@@ -765,6 +778,7 @@ func parseSimulationEnergyExplanationSQLWithDriverContext(path string, plan *Pur
 		return result, nil
 	}
 	result := buildEnergyExplanationResultWithDriverContext(parsed.Series, parsed.Sources, plan, driverContext)
+	result.HourlyLabels = parsed.HourlyLabels
 	result.auxiliaryFanPools = parsed.FanPools
 	result.vrfConsumption = parsed.VRFConsumption
 	result.vrfLoadEvidence = parsed.VRFLoadEvidence
@@ -780,6 +794,7 @@ func parseSimulationEnergyExplanationCanonicalSQL(path string, plan *PurposeRunP
 
 	series := []energyExplanationSeries{}
 	sources := []EnergyDataSource{}
+	var hourlyLabels []string
 	vrfCollector := newEnergyPathVRFConsumptionCollector(driverContext.VRFSystems, plan)
 	var vrfLoadEvidence map[string]energyPathVRFLoadEvidence
 	ready, err := sqlHasTables(db, "ReportDataDictionary", "ReportData", "Time")
@@ -815,9 +830,11 @@ func parseSimulationEnergyExplanationCanonicalSQL(path string, plan *PurposeRunP
 			monthlyObservedRows := map[int]int{}
 			monthlyTimeAxis := energyPathObservedMonthlyTimeAxis(db)
 			vrfLoadCollector := newEnergyPathVRFLoadCollector(dictionaries, driverContext.VRFSystems, plan, monthlyTimeAxis)
+			hourlyEnergy := newEnergySourceHourlyCollector(db)
 			surfaceCategories, surfaceCategoryEligible := energyExplanationSurfaceCategoriesForDictionaries(dictionaries, driverContext)
 			categoryBuilders := map[string]*energyExplanationCategorySeriesBuilder{}
 			if err := walkReportDataCompact(db, SQLSeriesQuery{DictionaryIndexes: ids}, func(row SQLSeriesRow) error {
+				hourlyEnergy.observe(row, byID[row.DictionaryIndex])
 				vrfLoadCollector.observe(row)
 				if vrfCollector.observe(row) {
 					return nil
@@ -942,6 +959,10 @@ func parseSimulationEnergyExplanationCanonicalSQL(path string, plan *PurposeRunP
 					continue
 				}
 				source := energyDataSourceForDictionary(dictionary)
+				source.HourlyEnergy = hourlyEnergy.energy(dictionary.row.index)
+				if source.HourlyEnergy != nil && len(hourlyLabels) == 0 {
+					hourlyLabels = hourlyEnergy.labels
+				}
 				source.ObjectIndex = energyExplanationObjectIndexForDictionary(dictionary, plan)
 				source.NormalizedUnit = builder.unit
 				if strings.EqualFold(strings.TrimSpace(dictionary.reportingFrequency), "Monthly") &&
@@ -964,6 +985,9 @@ func parseSimulationEnergyExplanationCanonicalSQL(path string, plan *PurposeRunP
 					source.ZoneName = scopeZoneName
 				}
 				sources = append(sources, source)
+				if dictionary.hourlySourceOnly {
+					continue
+				}
 				if (dictionary.directComponentID != "" || isRadiantLoad) && invalidObservedValues[dictionary.row.index] {
 					continue
 				}
@@ -992,7 +1016,7 @@ func parseSimulationEnergyExplanationCanonicalSQL(path string, plan *PurposeRunP
 		// silently re-enable broad allocation as if no pool had been reported.
 		fanPools = []energyPathFanPool{{Invalid: true}}
 	}
-	return energyExplanationParseResult{Series: series, Sources: sources, FanPools: fanPools,
+	return energyExplanationParseResult{Series: series, Sources: sources, HourlyLabels: hourlyLabels, FanPools: fanPools,
 		VRFConsumption: vrfConsumption, VRFLoadEvidence: vrfLoadEvidence}, nil
 }
 
@@ -3736,7 +3760,15 @@ ORDER BY rdd.%s`, indexExpr, keyExpr, nameExpr, unitsExpr, isMeterExpr, frequenc
 			if len(driverContexts) > 0 {
 				targets = driverContexts[0].DirectHVACComponents
 			}
-			def, zone, objectIndex, bound := energyPathDirectHVACComponentDictionaryScope(dictionary, plan, targets)
+			scopeDictionary := dictionary
+			if strings.EqualFold(dictionary.reportingFrequency, "Hourly") {
+				// Use the established typed Monthly owner solely to identify a
+				// source chart. Hourly component observations must not enter the
+				// direct-first Monthly allocation cohort or duplicate its energy.
+				scopeDictionary.reportingFrequency = "Monthly"
+				dictionary.hourlySourceOnly = true
+			}
+			def, zone, objectIndex, bound := energyPathDirectHVACComponentDictionaryScope(scopeDictionary, plan, targets)
 			if !bound {
 				continue
 			}

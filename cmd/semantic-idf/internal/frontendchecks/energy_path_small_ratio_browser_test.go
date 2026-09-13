@@ -122,34 +122,29 @@ try{
   for(const[group,level]of[["drivers","driver"],["loads","load"],["endUses","end_use"],["carriers","carrier"]])payload.summary[group]=payload.nodes.filter(node=>node.level===level);
   result.runId="small-ratio-"+small+"-"+qualityStatus;
   Object.assign(state,{simulationResult:freeze(result),simulationRunning:false});
-  simulation.restoreSimulationEnergyWorkspaceContext({simulationEnergyScopeKind:"building",simulationEnergyZoneName:"",simulationEnergyPeriod:"M6",simulationEnergyService:"heating",simulationEnergySelection:"",simulationEnergyDetailsOpen:false,energyDrawer:{tab:"data",stage:"",outputSource:""}});
+  simulation.restoreSimulationEnergyWorkspaceContext({simulationEnergyScopeKind:"building",simulationEnergyZoneName:"",simulationEnergyPeriod:"M6",simulationEnergyService:"all",simulationEnergySelection:"",simulationEnergyDetailsOpen:false,energyDrawer:{tab:"data",stage:"",outputSource:""}});
   simulation.renderSimulation();return{result,payload,snapshot:JSON.stringify(result)};
  };
- const service=value=>{const control=host.querySelector("[data-simulation-energy-service]");check(Boolean(control),"missing actual service control");control.value=value;control.dispatchEvent(new Event("change",{bubbles:true}));};
  const runSample=small=>{
   const fixture=install(small);
   for(const kind of["heating","cooling"]){
-   if(state.simulationEnergyService!==kind)service(kind);
    const graph=view.energyPathGraphForState(fixture.result.purposeResults.energyExplanation,state),link=graph.links.find(item=>item.relation==="load_to_end_use"&&item.serviceKind===kind);
    const expected=small?smallLabel:view.energyPathRatioValueLabel(kind==="heating" ? .85 : 4);
-   const button=host.querySelector("[data-energy-path-bridge-ratio]"),strong=button?.querySelector("strong"),ratio=kind==="heating"?(small?tiny:.85):(small?tinyCOP:4);
+   const button=host.querySelector('[data-energy-path-bridge-ratio="'+link.id+'"]'),strong=button?.querySelector("strong"),ratio=kind==="heating"?(small?tiny:.85):(small?tinyCOP:4);
    check(button?.dataset.energyPathRatioKind===(kind==="heating"?"efficiency":"coefficient_of_performance"),"typed named ratio disappeared: "+kind);
    check(strong?.textContent===expected,"bridge tiny ratio rounded to zero or normal changed: "+kind+" "+strong?.textContent);
    check(Number(button?.dataset.energyPathRatioValue)===ratio,"bridge raw numeric ratio changed: "+kind);
    check(button?.title.includes(expected)&&button?.getAttribute("aria-label").includes(expected)&&button?.querySelector("[data-energy-path-ratio-tooltip]")?.textContent.includes(expected),"tooltip/accessibility ratio differs: "+kind);
    if(small)check(strong?.innerHTML.startsWith("&lt;")&&button.querySelector("[data-energy-path-ratio-tooltip]").innerHTML.includes("&lt;"),"small-ratio text was not HTML escaped");
-   const kpi=host.querySelector('[data-energy-path-kpi-ratio="'+kind+'"]');
-   check(kpi?.textContent.includes(expected)&&Number(kpi?.dataset.energyPathKpiRatioValue)===ratio,"KPI ratio rounded to zero or mutated: "+kind);
    const geometry=()=>JSON.stringify([...host.querySelectorAll("[data-energy-path-graph-underlay] path,[data-energy-path-graph-underlay] rect")].map(element=>["d","x","y","width","height"].map(key=>element.getAttribute(key))));
    const canvas=host.querySelector("[data-energy-path-canvas]"),beforeGeometry=geometry();
    button.click();
    check(state.simulationEnergySelection===link.id,"ratio native click lost link identity");
-   check(host.querySelector('[data-energy-path-link-value="ratio"]')?.textContent.includes(expected),"selected-link inspector ratio differs");
    check(host.querySelector("[data-energy-path-canvas]")===canvas&&geometry()===beforeGeometry,"ratio selection redrew quantitative geometry");
    const endUse=graph.nodes.find(node=>node.level==="end_use"&&node.endUse===kind);
    [...host.querySelectorAll("[data-energy-path-layout-node]")].find(node=>node.dataset.energyPathLayoutNode===endUse.id).click();
-   check(state.simulationEnergySelection===endUse.id&&host.querySelector('[data-energy-path-detail-breakdown="ratioRows"] dd')?.textContent.includes(expected),"node inspector ratio differs");
-   check(state.simulationEnergyPeriod==="M6"&&state.simulationEnergyScopeKind==="building"&&state.simulationEnergyService===kind&&!state.simulationRunning,"native selection/navigation changed simulation context");
+   check(state.simulationEnergySelection===endUse.id&&host.querySelector('[data-energy-path-inspector="'+endUse.id+'"]'),"node selection lost its chart");
+   check(state.simulationEnergyPeriod==="M6"&&state.simulationEnergyScopeKind==="building"&&state.simulationEnergyService==="all"&&!state.simulationRunning,"native selection/navigation changed simulation context");
    check(JSON.stringify(fixture.result)===fixture.snapshot,"presentation mutated canonical raw ratio or dual quantities");
   }
   return fixture;
@@ -163,11 +158,11 @@ try{
  const summaryValues=[...summaryHost.querySelectorAll('[data-energy-path-summary-group="ratios"] strong')].map(node=>node.textContent);
  check(summaryValues.includes(smallLabel)&&summaryValues.includes("4"),"summary ratio formatter differs");
  const unknown=install(true,"unavailable"),bridge=host.querySelector("[data-energy-path-bridge-ratio]");
- check(bridge?.dataset.energyPathRatioKind==="unavailable"&&!bridge.hasAttribute("data-energy-path-ratio-value")&&!host.querySelector('[data-energy-path-kpi-ratio="heating"]')?.hasAttribute("data-energy-path-kpi-ratio-value"),"explicit unavailable ratio quality gained a numeric value");
- bridge.click();check(!host.querySelector('[data-energy-path-link-value="ratio"]')?.textContent.includes(smallLabel),"unavailable selected-link ratio showed a tiny value");
+ check(bridge?.dataset.energyPathRatioKind==="unavailable"&&!bridge.hasAttribute("data-energy-path-ratio-value"),"explicit unavailable ratio quality gained a numeric value");
+ bridge.click();check(state.simulationEnergySelection===bridge.dataset.energyPathBridgeRatio,"unavailable ratio selection lost link identity");
  check(JSON.stringify(unknown.result)===unknown.snapshot,"unavailable presentation mutated raw payload");
  check(runs===0&&analyses===0,"ratio selection/navigation invoked Run or Analyze");
- evidence.push("Actual June .157 / 1501.071 = "+tiny+" and tiny COP = "+tinyCOP+": bridge, tooltip, KPI, link/node inspector, summary escaped below-threshold labels; .85/4 unchanged; three locales, immutable values, no Run/Analyze.");
+ evidence.push("Actual June .157 / 1501.071 = "+tiny+" and tiny COP = "+tinyCOP+": bridge, tooltip and summary escaped below-threshold labels; .85/4 unchanged; three locales, immutable values, no Run/Analyze.");
 }catch(error){failures.push(String(error?.stack||error));}
 await fetch("/epath-small-ratio/done",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({failures,evidence})});
 </script>`

@@ -158,7 +158,7 @@ try{
  check(workspace.querySelector(".editor-panel")&&document.getElementById("workspaceSplitter"),"real editor / splitter app stack missing");
  check(setup&&!setup.open&&document.querySelector(".simulation-progress-card")?.getBoundingClientRect().height>0,"completed setup did not collapse while retaining progress");
  check(host.querySelectorAll("[data-energy-path-stage]").length===4&&host.querySelectorAll("[data-energy-path-layout]").length===1,"real dashboard lacks one four-column canvas");
- check(host.querySelectorAll("[data-energy-path-kpi]").length===4,"real result stack lost its four summary cards");
+ check(!host.querySelector(".energy-path-kpis,[data-energy-path-kpi],[data-simulation-energy-service]"),"removed summary cards or Service dropdown remain in the real result stack");
  check(!host.querySelector(".energy-path-conversion-flow,.energy-path-auxiliary-flow"),"default graph still appends duplicate conversion / auxiliary card lists");
  const projected=graph(),counts=Object.fromEntries(["driver","load","end_use","carrier"].map(level=>[level,projected.nodes.filter(n=>n.level===level).length]));
  check(JSON.stringify(counts)===JSON.stringify({driver:12,load:2,end_use:8,carrier:2}),"material categories disappeared from real graph: "+JSON.stringify(counts));

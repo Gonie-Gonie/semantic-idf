@@ -202,7 +202,9 @@ func TestEnergyPathDirectHVACPTHPSQLSevenRolesAndWholeSiteTotals(t *testing.T) {
 		}
 		matched := false
 		for _, output := range plan.OutputObjects {
-			if output.KeyValue == source.KeyValue && output.VariableName == source.Name {
+			// Native source identity includes frequency; the Hourly chart companion
+			// is a separate request and must not replace the canonical Monthly source.
+			if output.KeyValue == source.KeyValue && output.VariableName == source.Name && output.ReportingFrequency == source.ReportingFrequency {
 				matched = true
 				if source.ObjectIndex == nil || output.ObjectIndex == nil || *source.ObjectIndex != *output.ObjectIndex {
 					t.Errorf("same-name DX/Fuel lost exact request ObjectIndex: %#v", source)

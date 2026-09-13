@@ -14,9 +14,9 @@ import (
 	"time"
 )
 
-func TestEPATH150ActualAppCommonNodeAndLinkInspectorsBrowser(t *testing.T) {
+func TestEPATH150ActualAppComponentChartsBrowser(t *testing.T) {
 	if testing.Short() {
-		t.Skip("headless-browser actual common Energy Path inspector acceptance")
+		t.Skip("headless-browser actual Energy Path component chart acceptance")
 	}
 	chrome := phaseHChromeExecutable()
 	if chrome == "" {
@@ -86,129 +86,54 @@ func TestEPATH150ActualAppCommonNodeAndLinkInspectorsBrowser(t *testing.T) {
 const epath150InspectorHTML = `<pre id="epath150-result" hidden>pending</pre><script type="module">
 const failures=[],evidence=[];
 const check=(condition,message)=>{if(!condition)failures.push(message);};
-const freeze=value=>{if(value&&typeof value==="object"){Object.values(value).forEach(freeze);Object.freeze(value);}return value;};
 document.body.dataset.epath150Viewport=innerWidth+"x"+innerHeight;
 try{
  for(let attempt=0;document.body.dataset.epath144Status!=="manual"&&attempt<200;attempt++)await new Promise(resolve=>setTimeout(resolve,10));
  if(document.body.dataset.epath144Status!=="manual")throw new Error("actual app fixture failed: "+document.getElementById("epath144-result")?.textContent);
  const [{state},simulation,view]=await Promise.all([import("/src/js/state.js"),import("/src/js/views/simulation-views.js"),import("/src/js/views/energy-path-view.js")]);
- const previous=state.simulationResult,previousJSON=JSON.stringify(previous),candidate=JSON.parse(previousJSON),explanation=candidate.purposeResults.energyExplanation;
- const privateRule="rule.private.inspector150",annualSentinel=987654;
- for(const source of explanation.sources){source.name="Reported "+source.name;source.rawValue=annualSentinel;source.effectiveValue=annualSentinel*2;source.effectiveMultiplier=2;source.multiplierApplication="requires_zone_multiplier";}
- explanation.sources.push({id:"source.private.predicted.150",name:"Predicted cooling context",sourceType:"sql_variable",driverCategory:"load.cooling",driverRole:"context",driverComponent:"load.predicted.sensible",inspectorSection:"context",zoneName:"Office",rawValue:900,effectiveValue:900,normalizedUnit:"kWh",reportingFrequency:"Monthly"});
- const allGraphs=[explanation,...explanation.periods,...explanation.zoneResults.flatMap(zone=>[zone,...zone.periods])];
- for(const payload of allGraphs){
-  for(const link of payload.links)link.ruleId=privateRule;
-  const wall=payload.nodes.find(item=>item.driverCategory==="surface.exterior_walls");
-  Object.assign(wall,{rawValue:12,effectiveValue:24,allocatedValue:wall.value,multiplier:2,sign:"positive",thermalComponent:"sensible",allocationApplied:true,basis:"heat_balance_share",allocationExplanation:"Allocated according to same-period thermal pressure",relatedEntityIds:["surface.fixture.wall"]});
-  Object.assign(payload.nodes.find(item=>item.driverCategory==="internal.people"),{rawValue:-14,effectiveValue:-28,signedValue:-28,sign:"negative"});
-  payload.nodes.find(item=>item.driverCategory==="air.infiltration").relatedEntityIds=["air.fixture.mix"];
-  const load=payload.nodes.find(item=>item.level==="load"&&item.serviceKind==="cooling");
-  load.loadBreakdown=[{component:"sensible",value:load.value*.8,unit:"kWh",sourceIds:load.sourceIds},{component:"latent",value:load.value*.2,unit:"kWh",sourceIds:load.sourceIds}];
-  load.relatedPathIds=["path.fixture.cooling"];
-  const use=payload.nodes.find(item=>item.level==="end_use"&&item.endUse==="cooling");use.relatedPathIds=["path.fixture.cooling"];
-  const other=payload.nodes.find(item=>item.level==="end_use"&&item.endUse==="other");
-  other.groupedMembers=[{id:"member.miscellaneous",label:"Miscellaneous equipment",value:other.value*.6,unit:"kWh",sourceIds:other.sourceIds},{id:"member.storage",label:"Storage charging contribution",value:other.value*.4,unit:"kWh",sourceIds:other.sourceIds}];other.originalNodeIds=other.groupedMembers.map(item=>item.id);
- }
- // Supply values are exact selected-graph context, never additional consumption.
- for(const payload of[explanation,...explanation.periods]){
-  const period=payload.id||payload.period||"annual";
-  for(const[kind,annual,monthly]of[["purchased",7,1],["produced",6,2],["storage",5,3],["storage_charge",4,4]]){
-   const id="support."+kind+".fixture",sourceID="source.private."+kind+".150";
-   payload.nodes.push({id,level:"support",kind,endUse:kind,carrier:"electricity",label:kind,value:period==="annual"?annual:monthly,unit:"kWh",period,scaleDomain:"site",sourceIds:[sourceID]});
-   if(!explanation.sources.some(source=>source.id===sourceID))explanation.sources.push({id:sourceID,name:"Reported "+kind+" electricity",sourceType:"sql_meter",reportingFrequency:"Monthly",rawValue:annualSentinel,effectiveValue:annualSentinel,normalizedUnit:"kWh"});
-  }
- }
- const annualWall=explanation.nodes.find(item=>item.driverCategory==="surface.exterior_walls"),annualElectricity=explanation.nodes.find(item=>item.level==="carrier"&&item.carrier==="electricity");
- const month=explanation.periods.find(item=>item.id==="M1"),monthlyElectricity=month.nodes.find(item=>item.level==="carrier"&&item.carrier==="electricity");
- delete monthlyElectricity.rawValue;monthlyElectricity.effectiveValue=null;monthlyElectricity.allocatedValue=null;
- const monthlyGas=month.nodes.find(item=>item.level==="carrier"&&item.carrier==="natural_gas");Object.assign(monthlyGas,{rawValue:0,effectiveValue:0,allocatedValue:0});
- const seriesSource=explanation.sources.find(source=>source.id===explanation.nodes.find(item=>item.level==="load"&&item.serviceKind==="cooling").sourceIds[0]);
- candidate.series=[{file:"eplusout.sql",column:"Office:"+seriesSource.name+" [J]",sourceId:"hourly.distinct.150",name:seriesSource.name,keyValue:"Office",isMeter:false,reportingFrequency:"Hourly",points:[{x:0,value:999,label:"01-01 01:00"}]},{file:"eplusout.sql",column:"Office:"+seriesSource.name+" [J]",sourceId:seriesSource.id,name:seriesSource.name,keyValue:"Office",isMeter:false,reportingFrequency:"Monthly",points:[{x:88,value:111,label:"01-31 24:00"},{x:0,value:222,label:"02-28 24:00"}]}];
- candidate.purposeRunPlan.outputObjects=[{objectType:"Output:Variable",keyValue:"Office",variableName:seriesSource.name,reportingFrequency:"Monthly"}];
- candidate.runId="epath150-common-inspector";candidate.purposeResults.energyExplanationSummary=explanation.summary;
- const report={geometry:{surfaces:[{id:"surface.fixture.wall",name:"Office exterior wall",zoneName:"Office",surfaceType:"Wall"}],topology:{nodes:[{id:"zone.office",label:"Office"},{id:"zone.lab",label:"Laboratory"}],airCouplings:[{id:"air.fixture.mix",objectName:"Office transfer air",fromNodeId:"zone.office",toNodeId:"zone.lab"}]}},hvac:{loops:[],serviceModel:{zoneServices:[{zoneName:"Office",paths:[{id:"path.fixture.cooling",serviceKind:"cooling",zoneName:"Office",servedSubject:{kind:"zone",zoneName:"Office",name:"Office cooling service"}}]}]}}};
- const serviceProjection={navigation:{entities:[{id:"entity.fixture.cooling",kind:"hvac-path",label:"Office cooling service",viewTargets:[{view:"hvac",targetKind:"service-path",targetId:"path.fixture.cooling",label:"Office cooling service"}]}]}};
- const frozen=freeze(candidate),rawJSON=JSON.stringify(frozen);Object.assign(state,{report,semanticProjection:serviceProjection,simulationResult:frozen,simulationEnergyScopeKind:"building",simulationEnergyZoneName:"",simulationEnergyPeriod:"annual",simulationEnergyService:"all",simulationEnergySelection:"",simulationEnergyDetailsOpen:false});simulation.renderSimulation();
+ const result=state.simulationResult,rawJSON=JSON.stringify(result),reportJSON=JSON.stringify(state.report);
+ Object.assign(state,{simulationEnergyScopeKind:"building",simulationEnergyZoneName:"",simulationEnergyPeriod:"annual",simulationEnergyService:"heating",simulationEnergySelection:"",simulationEnergyDetailsOpen:false,simulationEnergyChartFrequency:"monthly"});simulation.renderSimulation();
  const host=document.getElementById("simulationEnergyDashboard"),pane=document.querySelector("#simulationPane > .simulation-pane");
- const graph=()=>view.energyPathGraphForState(explanation,state);
- const wallID=()=>graph().nodes.find(item=>item.driverCategory==="surface.exterior_walls").id;
+ const graph=()=>view.energyPathGraphForState(result.purposeResults.energyExplanation,state);
  const button=id=>[...host.querySelectorAll("[data-energy-path-layout-node]")].find(element=>element.dataset.energyPathLayoutNode===id);
  const edge=id=>[...host.querySelectorAll("[data-energy-explanation-edge]")].find(element=>element.dataset.energyExplanationEdge===id&&element.tabIndex>=0);
  const inspector=()=>host.querySelector("[data-energy-path-inspector],[data-energy-path-link-inspector]");
- const section=key=>inspector()?.querySelector('[data-energy-path-detail-section="'+key+'"]');
- const value=key=>inspector()?.querySelector('[data-energy-path-inspector-value="'+key+'"] dd')?.textContent.trim();
- // The shared fixture has 1 m² per scope, preserving its exact energy quantities.
- const formatted=(value,domain="thermal")=>value.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})+" kWh/m² "+domain;
- const click=element=>element?.dispatchEvent(new MouseEvent("click",{bubbles:true,cancelable:true}));
- const select=id=>{click(button(id)||edge(id));check(state.simulationEnergySelection===id,"actual selection handler failed "+id);return inspector();};
- const change=(selector,value)=>{const control=host.querySelector(selector);check(Boolean(control),"missing real control "+selector);if(control){control.value=value;control.dispatchEvent(new Event("change",{bubbles:true}));}};
- const escape=element=>{element.focus();element.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true,cancelable:true}));};
- const visibleText=element=>element?.innerText||"";
- const sourceTokens=[...explanation.sources.map(source=>source.id),privateRule];
- const checkStructure=(item,label)=>{
-  const panel=inspector();check(Boolean(panel),label+" inspector missing");if(!panel)return;
-  const sections=[...panel.querySelectorAll("[data-energy-path-detail-section]")];
-  check(sections.map(element=>element.dataset.energyPathDetailSection).join(",")==="represents,value,breakdown,basis,actions",label+" common sections missing/reordered/duplicated");
-  check(sections.every(element=>element.parentElement===sections[0]?.parentElement),label+" common sections are not consistent siblings");
-  const text=visibleText(panel);for(const token of sourceTokens)check(!text.includes(token),label+" inspector leaks source/rule ID: "+token);
-  check(!visibleText(section("basis")).includes("heat_balance_share")&&!visibleText(section("basis")).includes("service_path_allocation"),label+" calculation basis exposes raw rule token instead of plain-language explanation");
-  check(!text.includes(String(annualSentinel)),label+" annual source scalar leaked into main selected-period values");
-  check(pane.scrollWidth<=pane.clientWidth+1,label+" inspector introduces horizontal overflow: pane="+pane.scrollWidth+"/"+pane.clientWidth+" inspector="+panel.scrollWidth+"/"+panel.clientWidth);
-  if(pane.scrollWidth>pane.clientWidth+1){const right=pane.getBoundingClientRect().right;evidence.push(label+" overflow "+[...pane.querySelectorAll("*")].map(element=>({element,r:element.getBoundingClientRect()})).filter(({element,r})=>r.width&&r.height&&(r.right>right+2||element.scrollWidth>element.clientWidth+2)).sort((a,b)=>(b.element.scrollWidth-b.element.clientWidth)-(a.element.scrollWidth-a.element.clientWidth)).slice(0,8).map(({element,r})=>element.tagName+"."+element.getAttribute("class")+":"+r.right.toFixed(1)+" scroll"+element.scrollWidth+"/"+element.clientWidth+" ws="+getComputedStyle(element).whiteSpace).join(";"));}
+ const select=id=>{const control=button(id)||edge(id);if(!control)throw new Error("missing selected graph item "+id);control.dispatchEvent(new MouseEvent("click",{bubbles:true,cancelable:true}));check(state.simulationEnergySelection===id,"actual selection handler failed "+id);return inspector();};
+ const change=(selector,value)=>{const control=host.querySelector(selector);if(!control)throw new Error("missing real control "+selector);control.value=value;control.dispatchEvent(new Event("change",{bubbles:true}));};
+ const checkChart=label=>{
+  const panel=inspector();check(Boolean(panel),label+" chart missing");if(!panel)return;
+  const frequency=panel.querySelector("[data-energy-path-chart-frequency]");
+  check(frequency?.tagName==="SELECT"&&[...frequency.options].map(option=>option.value).join(",")==="monthly,hourly",label+" must offer Monthly and Hourly");
+  check(!panel.querySelector("[data-energy-path-detail-section],[data-energy-path-inspector-value],[data-energy-path-link-value],[data-energy-path-series-id],[data-energy-path-driver-destination],[data-energy-path-service-destination]"),label+" retains removed component information/actions");
+  check(!/What this represents|Calculation \/ allocation basis|Related model entities|Source data/.test(panel.innerText),label+" retains old detail copy");
+  check(pane.scrollWidth<=pane.clientWidth+1,label+" chart causes horizontal overflow");
  };
+ const nodeIDs=graph().nodes.filter(item=>button(item.id)).map(item=>item.id);
  if(new URLSearchParams(location.search).get("run150")!=="1"){
-  const mode=new URLSearchParams(location.search).get("inspector");if(mode==="link")select(graph().links.find(link=>link.relation==="load_to_end_use"&&link.serviceKind==="cooling").id);else select(wallID());
-  inspector()?.scrollIntoView({block:"start"});document.body.dataset.epath150Status="manual";document.getElementById("epath150-result").textContent="Actual common inspector; all five sections. Scope/Period/Service and node/link navigation remain live.";
+  const mode=new URLSearchParams(location.search).get("inspector"),id=mode==="link"?graph().links.find(link=>link.relation==="load_to_end_use"&&edge(link.id))?.id:nodeIDs[0];
+  select(id);inspector()?.scrollIntoView({block:"start"});document.body.dataset.epath150Status="manual";
  }else{
-  check(innerWidth===1600&&innerHeight===900,"actual150viewport is not1600x900");
-  const originalGraph=graph(),nodeIDs=originalGraph.nodes.filter(item=>button(item.id)).map(item=>item.id),originalPaths=[...host.querySelectorAll("[data-energy-path-ribbon]")].map(path=>[path.dataset.energyPathRibbon,path.getAttribute("d")]);
-  for(const id of nodeIDs){const item=originalGraph.nodes.find(node=>node.id===id);select(id);checkStructure(item,item.level+":"+id);}
-  for(const relation of["driver_to_load","load_to_end_use","end_use_to_carrier","residual"]){const item=graph().links.find(link=>link.relation===relation&&edge(link.id));select(item.id);checkStructure(item,relation);}
-  select(wallID());
-  check(value("raw")===formatted(12)&&value("effective")===formatted(24)&&value("allocated")===formatted(annualWall.value),"Driver raw/effective/allocated values were conflated: "+JSON.stringify([value("raw"),value("effective"),value("allocated")]));
-  check(value("raw")?.includes("kWh/m² thermal")&&value("allocated")?.includes("kWh/m² thermal"),"thermal Driver inspector values mislabeled as site energy");
-  check(visibleText(section("breakdown")).includes("Office"),"Driver top zones were not derived from matching nested Zone nodes");
-  check(section("breakdown")?.querySelector('[data-energy-path-detail-breakdown="componentRows"] [data-energy-path-detail-row="sensible"] dd')?.textContent.includes(formatted(annualWall.value)),"Driver sensible component lost actual member contribution");
-  const heatingDriver=graph().nodes.find(item=>item.driverCategory==="internal.people");select(heatingDriver.id);check(value("raw")===formatted(-14)&&value("effective")===formatted(-28)&&value("allocated")===formatted(heatingDriver.value),"signed heating pressure was replaced by allocated contribution/magnitude");
-  const load=graph().nodes.find(item=>item.level==="load"&&item.serviceKind==="cooling");select(load.id);
-  check(visibleText(section("breakdown")).includes(formatted(32))&&visibleText(section("breakdown")).includes(formatted(8)),"Load sensible/latent breakdown lost exact selected values");
-  check(section("breakdown")?.querySelector('[data-energy-path-detail-breakdown="contextRows"] dd')?.textContent.includes("900.00"),"reported annual predicted context is not inspectable separately from delivered load");
-  check(/predicted/i.test(section("breakdown")?.querySelector('[data-energy-path-detail-breakdown="contextRows"] dt')?.textContent||""),"annual prediction is displayed as an unnamed generic context value");
-  const serviceCandidate=simulation.simulationEnergyServiceNavigation(load).groups.flatMap(group=>group.candidates).find(item=>item.target?.targetId==="path.fixture.cooling");
-  check(serviceCandidate&&section("actions")?.querySelector('[data-energy-path-service-kind="hvac"] [data-energy-path-service-destination="'+serviceCandidate.id+'"]'),"verified exact HVAC navigation action was lost/moved outside common Actions");
-  const conversion=graph().links.find(item=>item.relation==="load_to_end_use"&&item.serviceKind==="cooling");select(conversion.id);
-  for(const[field,expected]of[["from",formatted(40)],["to",formatted(10,"site")],["ratio","4"]])check(inspector()?.querySelector('[data-energy-path-link-value="'+field+'"]')?.textContent.includes(expected),"conversion missing exact selected "+field);
-  select(annualElectricity.id);const breakdown=visibleText(section("breakdown"));
-  check(breakdown.includes(formatted(68,"site"))&&breakdown.includes(formatted(3,"site")),"Carrier facility total / residual missing from Breakdown");
-  check(["Purchased","production","Storage"].every(text=>breakdown.toLowerCase().includes(text.toLowerCase())),"Carrier purchased/produced/storage context missing from Breakdown");
-  const other=graph().nodes.find(item=>item.level==="end_use"&&item.endUse==="other");select(other.id);const memberDetails=section("breakdown")?.querySelector("[data-energy-path-group-members]");
-  check(memberDetails?.tagName==="DETAILS","Other original contributions lost native Breakdown Expand");click(memberDetails?.querySelector("summary"));check(memberDetails?.open&&visibleText(memberDetails).includes("Miscellaneous equipment")&&visibleText(memberDetails).includes("Storage charging contribution"),"Other Expand lost readable original members");
-  check(host.querySelectorAll("[data-energy-path-layout-node]").length===nodeIDs.length,"Other Expand altered quantitative graph node count");
-  change("[data-simulation-energy-path-period]","M1");select(monthlyElectricity.id);
-  for(const key of["raw","effective","allocated"])check(value(key)==="—", "missing/null monthly "+key+" fabricated zero or annual source value: "+value(key));
-  const monthlySupply=section("breakdown")?.querySelector('[data-energy-path-supply-kind="purchased"]');
-  check(monthlySupply?.dataset.energyPathSupplyValue==="1","monthly purchased energy missing or reused annual7");
-  select(monthlyGas.id);for(const key of["raw","effective","allocated"])check(value(key)===formatted(0,"site"),"reported explicit monthly zero was erased as missing: "+key);
-  select(wallID());const monthZoneExpected=explanation.zoneResults[0].periods.find(item=>item.id==="M1").nodes.find(item=>item.driverCategory==="surface.exterior_walls").value;
-  check(section("breakdown")?.querySelector('[data-energy-path-detail-breakdown="zoneRows"] [data-energy-path-detail-row="Office"] dd')?.textContent.includes(formatted(monthZoneExpected)),"monthly Driver top-zone contribution reused annual Zone scalar");
-  const monthLoad=graph().nodes.find(item=>item.level==="load"&&item.serviceKind==="cooling");select(monthLoad.id);
-  check(section("breakdown")?.querySelector('[data-energy-path-detail-breakdown="contextRows"] dd')?.textContent.trim()==="—"&&!visibleText(section("breakdown")).includes("900"),"monthly predicted context fabricated annual source value");
-  check(/predicted/i.test(section("breakdown")?.querySelector('[data-energy-path-detail-breakdown="contextRows"] dt')?.textContent||""),"missing monthly prediction lost its explanatory context label");
-  const monthLink=graph().links.find(item=>item.relation==="load_to_end_use"&&item.serviceKind==="cooling");select(monthLink.id);check(inspector()?.querySelector('[data-energy-path-link-value="from"]')?.textContent.includes(formatted(monthLink.fromValue)),"monthly link detail reused annual thermal value");
-  const linkSeries=section("actions")?.querySelector("[data-energy-path-series-id]");check(linkSeries?.dataset.energyPathSeriesId?.endsWith("::"+seriesSource.id),"selected link lost its exact Monthly source Series action");click(linkSeries);
-  check(state.simulationActiveResultView==="series"&&state.simulationSeriesRangeStart===0&&state.simulationSeriesRangeEnd===0&&state.simulationSelectedSeries?.endsWith("::"+seriesSource.id),"link Series action did not preserve exact source identity / January label range");
-  check(document.getElementById("simulationChart").querySelector("[data-simulation-series-single-point]")?.nextElementSibling?.textContent.includes("111 J"),"link Series navigation did not render the actual January source value");
-  click(document.querySelector('[data-simulation-result-view-button="energy"]'));check(state.simulationEnergySelection===monthLink.id&&state.simulationEnergyPeriod==="M1"&&inspector(),"return from link Series lost exact Energy context");
-  const focused=edge(monthLink.id);escape(focused);check(state.simulationEnergySelection===""&&!inspector()&&document.activeElement?.dataset.energyExplanationEdge===monthLink.id,"common link inspector broke Escape selection clear / logical focus restore");
-  change("[data-simulation-energy-scope]","zone");change("[data-simulation-energy-zone-name]","Office");const zoneLoad=graph().nodes.find(item=>item.level==="load"&&item.serviceKind==="cooling");select(zoneLoad.id);checkStructure(zoneLoad,"ZoneM1load");
-  check(visibleText(section("value")).includes(formatted(zoneLoad.value)),"Zone selected-period load value missing");
-  escape(button(zoneLoad.id));check(state.simulationEnergySelection===""&&document.activeElement?.dataset.energyPathLayoutNode===zoneLoad.id,"common node inspector broke Escape focus restore");
-  change("[data-simulation-energy-scope]","building");change("[data-simulation-energy-path-period]","annual");
-  check(JSON.stringify([...host.querySelectorAll("[data-energy-path-ribbon]")].map(path=>[path.dataset.energyPathRibbon,path.getAttribute("d")]))===JSON.stringify(originalPaths),"inspector disclosure/navigation changed quantitative ribbon geometry");
-  check(JSON.stringify(frozen)===rawJSON&&JSON.stringify(previous)===previousJSON,"common inspector mutated raw payload/export inputs");
-  evidence.push(nodeIDs.length+" primary nodes + 4 link relations; five consistent sections; period-local values and unchanged raw graph");
-  document.body.dataset.epath150Status=failures.length?"failed":"passed";document.getElementById("epath150-result").textContent=(failures.length?failures.join("\n"):"passed")+"\n"+evidence.join("\n");
+  check(innerWidth===1600&&innerHeight===900,"actual viewport is not1600x900");
+  check(state.simulationEnergyService==="all"&&!host.querySelector("[data-simulation-energy-service],.energy-path-kpis"),"removed controls or hidden persisted service filter remain");
+  const canvas=host.querySelector("[data-energy-path-canvas]"),paths=JSON.stringify([...host.querySelectorAll("[data-energy-path-ribbon]")].map(path=>path.getAttribute("d")));
+  for(const id of nodeIDs){select(id);checkChart("node "+id);}
+  for(const relation of["driver_to_load","load_to_end_use","end_use_to_carrier","residual"]){const item=graph().links.find(link=>link.relation===relation&&edge(link.id));if(item){select(item.id);checkChart("link "+relation);}}
+  select(nodeIDs[0]);check(inspector()?.querySelector("[data-energy-path-chart-frequency]")?.value==="monthly","component chart did not default Monthly");
+  change("[data-energy-path-chart-frequency]","hourly");checkChart("hourly");check(state.simulationEnergyChartFrequency==="hourly"&&inspector()?.querySelector("[data-energy-path-chart-frequency]")?.value==="hourly","native Hourly selector did not update chart state");
+  check(inspector()?.querySelector("[data-energy-path-chart-empty]")&&!inspector()?.querySelector("svg"),"Monthly-only fixture fabricated Hourly energy");
+  check(document.activeElement===inspector()?.querySelector("[data-energy-path-chart-frequency]"),"frequency change lost keyboard focus");
+  select(nodeIDs[1]);check(inspector()?.querySelector("[data-energy-path-chart-frequency]")?.value==="hourly","component selection lost Hourly preference");
+  const snapshot=simulation.captureSimulationEnergyWorkspaceContext();check(snapshot.energyChartFrequency==="hourly","workspace capture lost frequency");
+  change("[data-energy-path-chart-frequency]","monthly");simulation.restoreSimulationEnergyWorkspaceContext(snapshot);simulation.renderSimulationEnergyDashboard(result);check(inspector()?.querySelector("[data-energy-path-chart-frequency]")?.value==="hourly","restoring workspace lost frequency");
+  change("[data-energy-path-chart-frequency]","monthly");
+  const restoredCanvas=host.querySelector("[data-energy-path-canvas]");
+  change("[data-energy-path-chart-frequency]","hourly");change("[data-energy-path-chart-frequency]","monthly");check(host.querySelector("[data-energy-path-canvas]")===restoredCanvas,"frequency change rebuilt Energy flow graph");
+  check(JSON.stringify([...host.querySelectorAll("[data-energy-path-ribbon]")].map(path=>path.getAttribute("d")))===paths,"chart selection changed quantitative flow paths");
+  for(const scope of["building","zone"]){change("[data-simulation-energy-scope]",scope);if(scope==="zone")change("[data-simulation-energy-zone-name]","Office");change("[data-simulation-energy-path-period]","M1");const id=graph().nodes.find(item=>button(item.id)).id;select(id);checkChart(scope+" January");}
+  check(JSON.stringify(result)===rawJSON&&JSON.stringify(state.report)===reportJSON,"component chart mutated result/model data");
+  evidence.push("Every visible node/link uses Monthly/Hourly graph; old details absent; native frequency control and workspace restore; graph retained; scoped immutable results.");
+  if(failures.length)throw new Error(failures.join("\n"));document.body.dataset.epath150Status="passed";
  }
-}catch(error){document.body.dataset.epath150Status="failed";document.getElementById("epath150-result").textContent=failures.join("\n")+"\n"+error.stack;}
+ document.getElementById("epath150-result").textContent=evidence.join("\n");
+}catch(error){document.body.dataset.epath150Status="failed";document.getElementById("epath150-result").textContent=(error.stack||String(error))+"\n"+failures.join("\n");}
 </script>`

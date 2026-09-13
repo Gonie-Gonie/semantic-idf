@@ -8,6 +8,16 @@ those outputs through the retained Output apply APIs.
 
 ## Current Request
 
+The Energy UI uses Scope and Period controls and shows heating and cooling
+together. Selecting a component opens a Monthly / Hourly chart in kWh/m².
+Monthly uses the selected scope's computed component totals; Hourly plots the
+component's actual reported source energy, which can differ from allocated
+monthly contributions. Missing hourly output is shown as unavailable.
+Source traces retain every observed hour independently of the Series preview.
+The Basic Energy output plan keeps Monthly requests and also requests Hourly
+energy inputs for subsequent runs. Summary cards and descriptive component
+inspectors are no longer displayed in the Energy UI.
+
 `SimulationRunRequest` contains:
 
 - `runId`: caller-provided or generated run id.

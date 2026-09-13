@@ -183,21 +183,33 @@ func TestEnergyPathDirectHVACComponentsRequestsAndNames(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			plan := BuildPurposeRunPlan(doc, SimulationPurposeRequest{Purposes: []SimulationPurposeID{SimulationPurposeBasicEnergy}, BasicEnergyDetail: test.detail, Scope: test.scope})
-			count := 0
+			seen := map[string]map[string]string{}
 			for _, output := range plan.OutputObjects {
 				if _, ok := energyPathDirectHVACComponentDefinitionForName(output.VariableName); !ok {
 					continue
 				}
-				count++
-				if output.ReportingFrequency != "Monthly" || output.ScopeZoneName == "" || output.KeyValue == "*" || output.KeyValue == output.ScopeZoneName {
+				key := output.KeyValue + "\x00" + output.VariableName
+				if seen[key] == nil {
+					seen[key] = map[string]string{}
+				}
+				if seen[key][output.ReportingFrequency] != "" ||
+					(output.ReportingFrequency != "Monthly" && output.ReportingFrequency != "Hourly") ||
+					output.ObjectType != "Output:Variable" || !purposeIDsContain(output.PurposeIDs, SimulationPurposeBasicEnergy) ||
+					output.ScopeZoneName == "" || output.KeyValue == "*" || output.KeyValue == output.ScopeZoneName {
 					t.Fatalf("incorrect request binding %#v", output)
 				}
 				if test.name == "selected" && output.ScopeZoneName != "SPACE1-1" {
 					t.Fatalf("out-of-scope request %#v", output)
 				}
+				seen[key][output.ReportingFrequency] = output.ScopeZoneName
 			}
-			if count != test.want {
-				t.Fatalf("requests=%d want %d", count, test.want)
+			if len(seen) != test.want {
+				t.Fatalf("request pairs=%d want %d", len(seen), test.want)
+			}
+			for key, frequencies := range seen {
+				if len(frequencies) != 2 || frequencies["Monthly"] == "" || frequencies["Monthly"] != frequencies["Hourly"] {
+					t.Errorf("native component %q must retain one Monthly request and one Hourly companion for the same owner: %#v", key, frequencies)
+				}
 			}
 		})
 	}

@@ -160,15 +160,15 @@ type model.idf | semantic-idf cli convert -to json -o - -</code></pre>
           <h2 data-i18n="guide.energyPath.title">Energy Path</h2>
           <p data-i18n="guide.energyPath.body">
             Energy Path reads left to right: Load drivers → Thermal loads → End-use energy → Energy sources.
-            Drivers and loads use kWh thermal; the central equipment-conversion divider separates them from end uses
-            and sources in kWh site. Its only primary controls are Scope, Period, and Service, defaulting to Building,
-            Annual, and All. Zone scope adds one searchable zone selector, Period offers Annual and Jan–Dec, and
-            Cooling or Heating hides unrelated path elements.
+            Values use kWh/m² with two decimal places and the selected building or zone floor area.
+            Scope and Period default to Building and Annual; heating and cooling appear together.
+            Zone scope adds a searchable zone selector. Select a component to see a Monthly or Hourly graph.
+            Monthly shows component energy; Hourly shows its reported source energy when available.
           </p>
           <p data-i18n="guide.energyPath.export">
             Open Data details → Data → Export for HTML, XLSX, or the full-run JSON snapshot.
-            Reports start with the selected scope and period's all-service summary; the graph's Cooling/Heating
-            selection is labeled separately. HTML keeps trace details collapsed, and XLSX includes them only when
+            Reports start with the selected scope and period's all-service summary.
+            HTML keeps trace details collapsed, and XLSX includes them only when
             Include trace sheets is checked. Current editor changes are not included in the saved simulation result.
           </p>
         </section>

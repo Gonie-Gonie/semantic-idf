@@ -484,10 +484,51 @@ func BuildPurposeRunPlan(doc idf.Document, request SimulationPurposeRequest) Pur
 			builder.addCustomOutputs()
 		}
 	}
+	if purposeIDsContain(request.Purposes, SimulationPurposeBasicEnergy) && request.BasicEnergyDetail == PurposeBasicEnergyDetailEnergyPath {
+		builder.addEnergyPathHourlyOutputs()
+	}
 	if request.DiscoveryAllowed {
 		builder.addDiscoveryDictionaryOutputs()
 	}
 	return builder.plan()
+}
+
+func (builder *purposePlanBuilder) addEnergyPathHourlyOutputs() {
+	// Monthly observations remain the authoritative allocation input. Request
+	// an additional native Hourly series for selected-component source charts.
+	for _, monthly := range append([]PurposeOutputObject(nil), builder.objects...) {
+		if !purposeIDsContain(monthly.PurposeIDs, SimulationPurposeBasicEnergy) || !purposeObjectIsSeries(monthly.ObjectType) || !strings.EqualFold(monthly.ReportingFrequency, "Monthly") {
+			continue
+		}
+		covered := false
+		if monthly.ObjectType == "Output:Variable" {
+			for index := range builder.objects {
+				candidate := &builder.objects[index]
+				if candidate.ObjectType == "Output:Variable" && candidate.KeyValue == "*" && strings.EqualFold(candidate.VariableName, monthly.VariableName) && candidate.ReportingFrequency == "Hourly" {
+					candidate.PurposeIDs = normalizePurposeIDs(append(candidate.PurposeIDs, SimulationPurposeBasicEnergy))
+					candidate.Reason = "Basic Energy Path"
+					covered = true
+					break
+				}
+			}
+		}
+		if covered {
+			continue
+		}
+		hourly := monthly
+		hourly.Fields = append([]idf.OutputFieldValue(nil), monthly.Fields...)
+		for index := range hourly.Fields {
+			if strings.EqualFold(hourly.Fields[index].Name, "Reporting Frequency") {
+				hourly.Fields[index].Value = "Hourly"
+			}
+		}
+		hourly.ObjectIndex = nil
+		hourly.Reason = "Basic Energy Path"
+		hourly.PurposeIDs = []SimulationPurposeID{SimulationPurposeBasicEnergy}
+		hourly.Weight = "heavy"
+		hourly.Description = "Hourly reported source for the selected Energy component chart."
+		builder.addObject(hourly)
+	}
 }
 
 func PurposeRunPlanApplyRequest(plan PurposeRunPlan, applyModes ...string) idf.OutputApplyRequest {
@@ -3764,10 +3805,10 @@ func (builder *purposePlanBuilder) addObject(object PurposeOutputObject) {
 		}
 		object.ObjectIndex = existing.ObjectIndex
 	} else if conflict, ok := builder.existingBase[purposeOutputBaseSignature(object.ObjectType, object.Fields)]; ok {
-		if object.Reason == "Basic Energy Path" && strings.EqualFold(object.ReportingFrequency, "Monthly") && purposeObjectIsSeries(object.ObjectType) {
+		if object.Reason == "Basic Energy Path" && (strings.EqualFold(object.ReportingFrequency, "Monthly") || strings.EqualFold(object.ReportingFrequency, "Hourly")) && purposeObjectIsSeries(object.ObjectType) {
 			object.State = purposeTemporaryState(builder.request)
 			object.ObjectIndex = nil
-			builder.warn("info", "energy_path_monthly_added", fmt.Sprintf("%s exists at %s frequency; adding the Monthly Energy Path series without changing it.", purposeOutputLabel(conflict), conflict.ReportingFrequency), firstPurposeID(object.PurposeIDs), object.Signature)
+			builder.warn("info", "energy_path_"+strings.ToLower(object.ReportingFrequency)+"_added", fmt.Sprintf("%s exists at %s frequency; adding the %s Energy Path series without changing it.", purposeOutputLabel(conflict), conflict.ReportingFrequency, object.ReportingFrequency), firstPurposeID(object.PurposeIDs), object.Signature)
 		} else {
 			requestedReason := object.Reason
 			object = builder.applyFrequencyConflictPolicy(object, conflict)
@@ -3783,6 +3824,9 @@ func (builder *purposePlanBuilder) addObject(object PurposeOutputObject) {
 	if index, ok := builder.bySignature[object.Signature]; ok {
 		current := &builder.objects[index]
 		current.PurposeIDs = normalizePurposeIDs(append(current.PurposeIDs, object.PurposeIDs...))
+		if object.Reason == "Basic Energy Path" {
+			current.Reason = object.Reason
+		}
 		if current.Description == "" {
 			current.Description = object.Description
 		}
@@ -3846,6 +3890,11 @@ func (builder *purposePlanBuilder) plan() PurposeRunPlan {
 		}
 		if left.VariableName != right.VariableName {
 			return strings.ToLower(left.VariableName) < strings.ToLower(right.VariableName)
+		}
+		if left.Reason == "Basic Energy Path" && right.Reason == "Basic Energy Path" && left.ReportingFrequency != right.ReportingFrequency {
+			if left.ReportingFrequency == "Monthly" || right.ReportingFrequency == "Monthly" {
+				return left.ReportingFrequency == "Monthly"
+			}
 		}
 		return strings.ToLower(left.Signature) < strings.ToLower(right.Signature)
 	})

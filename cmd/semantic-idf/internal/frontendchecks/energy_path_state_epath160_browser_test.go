@@ -57,7 +57,7 @@ try {
   const keys=Object.keys(defaults).sort();
   const emptyDrawer={tab:'data',stage:'',outputSource:''};
   check(json(migrate())===json({primary:defaults,drawer:emptyDrawer}),'default migration differs from exact six primary defaults');
-  check(json(Object.keys(state).filter(key=>key.startsWith('simulationEnergy')).sort())===json(keys),'state.js has extra primary Energy or drawer/focus fields');
+  check(json(Object.keys(state).filter(key=>key.startsWith('simulationEnergy')).sort())===json([...keys,'simulationEnergyChartFrequency'].sort()),'state.js has unexpected Energy or drawer/focus fields');
   check(json(Object.fromEntries(Object.keys(defaults).map(key=>[key,state[key]])))===json(defaults),'actual state.js defaults drifted from migration defaults');
   for(const input of [null,undefined,false,17,'cached text',[],{simulationEnergyPeriod:NaN}]){
     check(json(migrate(input))===json({primary:defaults,drawer:emptyDrawer}),'invalid cache container/period invented state '+String(input));

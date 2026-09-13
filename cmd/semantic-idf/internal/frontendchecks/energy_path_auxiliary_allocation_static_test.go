@@ -42,8 +42,8 @@ func TestEPATH101FrontendAuxiliaryAllocationQualityContract(t *testing.T) {
 func TestEPATH101FrontendRemainsAutomaticWithoutOutputPlanExpansion(t *testing.T) {
 	view := readTestFile(t, "frontend/src/js/views/energy-path-view.js")
 	controls := sliceBetween(view, "export function renderEnergyPathControls", "function renderEnergyPathStage")
-	if count := strings.Count(controls, "<label>"); count != 3 {
-		t.Fatalf("Energy Path main toolbar must remain Scope, Period, Service only; got %d labels", count)
+	if count := strings.Count(controls, "<label>"); count != 2 {
+		t.Fatalf("Energy Path main toolbar must remain Scope and Period only; got %d labels", count)
 	}
 	for _, forbidden := range []string{
 		`data-simulation-energy-allocation-policy`,

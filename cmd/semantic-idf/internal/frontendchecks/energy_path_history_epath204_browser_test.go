@@ -103,8 +103,7 @@ try{
  if(document.body.dataset.epath142Status!=="manual")throw new Error("actual app bootstrap failed");
  const [store,simulation,history,navigation,adapters,controller]=await Promise.all([import("/src/js/state.js"),import("/src/js/views/simulation-views.js"),import("/src/js/view-history.js"),import("/src/js/navigation.js"),import("/src/js/panel-navigation-adapters.js"),import("/src/js/selection-controller.js")]);
  const {state}=store,previous=state.simulationResult,previousJSON=JSON.stringify(previous),result=JSON.parse(previousJSON),explanation=result.purposeResults.energyExplanation;
- // A genuinely heating-only selected period exercises an implicit Cooling→All
- // normalization in the same single user history transaction.
+ // A heating-only selected period exercises period history without a service filter.
  for(const scope of[explanation,...explanation.zoneResults]){
   const base=scope.periods[0],links=base.links.filter(link=>link.serviceKind==="heating"&&link.relation!=="source_correspondence").map(link=>({...link,period:"M2"})),ids=new Set(links.flatMap(link=>[link.fromId,link.toId]));
   const nodes=base.nodes.filter(node=>ids.has(node.id)).map(node=>({...node,period:"M2"}));
@@ -121,7 +120,7 @@ try{
  adapters.initializeResultPanelNavigationAdapters();let backendCalls=0,queuedAnalysis=0;
  window.go.main.App=new Proxy(window.go.main.App,{get(target,key){if(/^(Analyze|Run|StartSimulation|RequestSimulation)/.test(String(key)))return async()=>{backendCalls++;throw new Error("unexpected backend "+String(key));};return target[key];}});
  controller.configureSelectionController({state,getNavigationIndex:()=>state.semanticProjection.navigation,getCurrentText:store.getDocumentText,getReportAnalysisKey:()=>state.reportAnalysisKey,isAnalysisCurrent:()=>true,getActiveInputView:()=>"input-text",getActivePanelView:()=>state.activeResultTab,queueAnalysisTarget:()=>{queuedAnalysis++;},recordHistory:()=>history.recordViewHistory(),openView:(target,options)=>navigation.switchResultTab(target,{...options,recordHistory:false}),onSelectionChange:detail=>window.dispatchEvent(new CustomEvent("idfAnalyzer:semanticSelectionChanged",{detail}))});
- const host=document.getElementById("simulationEnergyDashboard"),attributes={scope:"data-simulation-energy-scope",zone:"data-simulation-energy-zone-name",period:"data-simulation-energy-path-period",service:"data-simulation-energy-service"};
+ const host=document.getElementById("simulationEnergyDashboard"),attributes={scope:"data-simulation-energy-scope",zone:"data-simulation-energy-zone-name",period:"data-simulation-energy-path-period"};
  const control=kind=>host.querySelector('['+attributes[kind]+']');
  const primary=()=>JSON.stringify(simulation.captureSimulationEnergyWorkspaceContext());
  const stacks=()=>JSON.stringify([state.navigationUndoStack,state.navigationRedoStack]);
@@ -130,7 +129,9 @@ try{
  const canvas=()=>host.querySelector("[data-energy-path-canvas]");
  const inspector=()=>host.querySelector("[data-energy-path-inspector],[data-energy-path-link-inspector]");
  const node=id=>[...host.querySelectorAll("[data-energy-path-layout-node]")].find(element=>element.dataset.energyPathLayoutNode===id);
- const choose=id=>{const target=node(id);if(!target)throw new Error("missing node "+id);const oldCanvas=canvas(),before=counts(),oldStacks=stacks();target.focus();target.click();check(state.simulationEnergySelection===id&&document.activeElement===target,"node selection/focus failed "+id);check(canvas()===oldCanvas&&counts()===before&&stacks()===oldStacks,"node selection rebuilt graph / recorded navigation "+id);};
+ const chartCanvases=new WeakSet();
+ const selectionComputations=(canvas,before)=>{const initial=JSON.parse(before),after=JSON.parse(counts());if(!chartCanvases.has(canvas)&&after.energyPathGraphForState-initial.energyPathGraphForState===12)after.energyPathGraphForState=initial.energyPathGraphForState;chartCanvases.add(canvas);return JSON.stringify(after)===before;};
+ const choose=id=>{const target=node(id);if(!target)throw new Error("missing node "+id);const oldCanvas=canvas(),before=counts(),oldStacks=stacks();target.focus();target.click();check(state.simulationEnergySelection===id&&document.activeElement===target,"node selection/focus failed "+id);check(canvas()===oldCanvas&&selectionComputations(oldCanvas,before)&&stacks()===oldStacks,"node selection rebuilt graph / recorded navigation "+id);};
  const emit=(kind,value,type="change")=>{const target=control(kind);if(!target)throw new Error("missing control "+kind);target.focus();target.value=value;target.dispatchEvent(new Event(type,{bubbles:true}));return target;};
  const reset=(scope="building",period="annual",service="all")=>{simulation.restoreSimulationEnergyWorkspaceContext({energyScopeKind:scope,energyZoneName:scope==="zone"?"Office":"",energyPeriod:period,energyService:service,energySelection:"",energyDetailsOpen:false,energyDrawer:{tab:"data",stage:"",outputSource:""}});simulation.renderSimulation();state.navigationUndoStack=[];state.navigationRedoStack=[];};
  const assertOutput=label=>{const row=host.querySelector('[data-energy-path-output-request-selected="true"]');check(row&&row.textContent.includes(outputSource.name)&&row.textContent.includes(outputSource.reportingFrequency),label+": exact declared output request is not visibly selected");};
@@ -150,16 +151,16 @@ try{
  check(primary()===month&&canvas()===monthCanvas&&inspector()===monthInspector&&counts()===monthCounts&&stacks()===monthStacks,"following detached/live change erased new selection, graph or history");
  await navigation.undoViewNavigation({quiet:true});assertRestored(annual,"period","Annual→M1→Back");
  await navigation.redoViewNavigation({quiet:true});assertRestored(month,"period","M1 Forward with selected node / drawer");
- reset("zone","M1","cooling");choose("load.cooling.office");openDrawer();control("period").focus();const cooling=primary();
+ reset("zone","M1");choose("load.cooling.office");openDrawer();control("period").focus();const cooling=primary();
  emit("period","M2","input");check(state.simulationEnergyPeriod==="M2"&&state.simulationEnergyService==="all"&&state.navigationUndoStack.length===1,"heating-only month did not normalize Cooling→All within one history transaction");
- check([...control("service").options].map(option=>option.value).join("|")==="all|heating","M2 fixture is not genuinely heating-only");
- await navigation.undoViewNavigation({quiet:true});assertRestored(cooling,"period","implicit service fallback Back");
- const noChange=(label,action,{typing=false}={})=>{const before=primary(),beforeStacks=stacks(),beforeCounts=counts(),oldCanvas=canvas(),oldInspector=inspector(),oldDrawer=host.querySelector("[data-energy-path-data-details]");action();check(primary()===before&&stacks()===beforeStacks,label+": changed nondefault context / selection / drawer or Undo/Redo");check(counts()===beforeCounts&&canvas()===oldCanvas&&inspector()===oldInspector&&host.querySelector("[data-energy-path-data-details]")===oldDrawer,label+": repainted / reprojected unchanged context");if(!typing)for(const[kind,key]of[["scope","simulationEnergyScopeKind"],["zone","simulationEnergyZoneName"],["period","simulationEnergyPeriod"],["service","simulationEnergyService"]])check(control(kind)?.value===state[key],label+": failed in-place control value restoration: "+kind);};
- for(const[kind,value]of[["scope","zone"],["period","M1"],["service","cooling"],["zone"," office "]])noChange("no-op "+kind,()=>{const target=emit(kind,value);check(document.activeElement===target,"no-op lost control focus "+kind);});
+ check(!host.querySelector("[data-simulation-energy-service]")&&node("load.heating.office")&&!node("load.cooling.office"),"heating-only M2 retained a cooling node or Service control");
+ await navigation.undoViewNavigation({quiet:true});assertRestored(cooling,"period","heating-only month Back");
+ const noChange=(label,action,{typing=false}={})=>{const before=primary(),beforeStacks=stacks(),beforeCounts=counts(),oldCanvas=canvas(),oldInspector=inspector(),oldDrawer=host.querySelector("[data-energy-path-data-details]");action();check(primary()===before&&stacks()===beforeStacks,label+": changed nondefault context / selection / drawer or Undo/Redo");check(counts()===beforeCounts&&canvas()===oldCanvas&&inspector()===oldInspector&&host.querySelector("[data-energy-path-data-details]")===oldDrawer,label+": repainted / reprojected unchanged context");if(!typing)for(const[kind,key]of[["scope","simulationEnergyScopeKind"],["zone","simulationEnergyZoneName"],["period","simulationEnergyPeriod"]])check(control(kind)?.value===state[key],label+": failed in-place control value restoration: "+kind);};
+ for(const[kind,value]of[["scope","zone"],["period","M1"],["zone"," office "]])noChange("no-op "+kind,()=>{const target=emit(kind,value);check(document.activeElement===target,"no-op lost control focus "+kind);});
  noChange("Zone typing",()=>{const target=emit("zone","Off","input");check(target.value==="Off"&&document.activeElement===target,"Zone input text/focus was not retained while typing");},{typing:true});
  noChange("invalid Zone commit",()=>{const target=emit("zone","unknown Office");check(document.activeElement===target,"invalid Zone commit lost focus");});
- for(const kind of["scope","period","service"])noChange("invalid "+kind,()=>{const target=emit(kind,"invalid.204");check(document.activeElement===target,"invalid "+kind+" lost focus");});
- for(const[kind,value]of[["scope","building"],["period","M2"],["service","heating"]])noChange("disabled option "+kind,()=>{const option=[...control(kind).options].find(option=>option.value===value);option.disabled=true;emit(kind,value);option.disabled=false;});
+ for(const kind of["scope","period"])noChange("invalid "+kind,()=>{const target=emit(kind,"invalid.204");check(document.activeElement===target,"invalid "+kind+" lost focus");});
+ for(const[kind,value]of[["scope","building"],["period","M2"]])noChange("disabled option "+kind,()=>{const option=[...control(kind).options].find(option=>option.value===value);option.disabled=true;emit(kind,value);option.disabled=false;});
  noChange("disabled control",()=>{const target=control("period");target.disabled=true;target.value="M2";target.dispatchEvent(new Event("change",{bubbles:true}));target.disabled=false;});
  check(state.navigationRedoStack.length===1,"no-op / invalid events discarded Redo");
  const branchBefore=primary(),depth=state.navigationUndoStack.length;emit("period","annual");check(state.navigationUndoStack.length===depth+1&&state.navigationRedoStack.length===0,"valid branch after Undo did not replace Forward once");
@@ -176,11 +177,11 @@ try{
  }
  choose("load.cooling.building");const action=inspector().querySelector("button:not(:disabled)");if(action){action.focus();check(!snapshot().targetId?.startsWith("energy-path:"),"inspector action was incorrectly captured as a graph/control target");}
  const stale={...snapshot(),targetId:"energy-path:node:not-a-real-node"};control("scope").focus();await simulation.restoreSimulationNavigationContext(stale,{genericRestoreContext:async()=>{}});check(!document.activeElement?.matches?.("[data-energy-path-layout-node]"),"unavailable focus target selected an arbitrary first node");
- const expectedKeys=["simulationEnergyScopeKind","simulationEnergyZoneName","simulationEnergyPeriod","simulationEnergyService","simulationEnergySelection","simulationEnergyDetailsOpen"].sort();
+ const expectedKeys=["simulationEnergyScopeKind","simulationEnergyZoneName","simulationEnergyPeriod","simulationEnergyService","simulationEnergySelection","simulationEnergyDetailsOpen","simulationEnergyChartFrequency"].sort();
  check(JSON.stringify(Object.keys(state).filter(key=>key.startsWith("simulationEnergy")).sort())===JSON.stringify(expectedKeys),"history added persistent Energy primary state");
  check(backendCalls===0&&queuedAnalysis===0,"history/control navigation analyzed or reran the model: "+backendCalls+"/"+queuedAnalysis);
  check(state.simulationResult===result&&JSON.stringify(result)===rawJSON&&JSON.stringify(previous)===previousJSON,"history mutated original / selected result payload");
- evidence.push("Actual Building/Zone and Annual/M1 Back/Forward; native input/change single entry; nondefault invalid/no-op preserve Redo/selection/drawer/DOM; implicit service fallback; exact control/node/ratio/edge focus; six primary fields and0 Analyze/Run");
+ evidence.push("Actual Building/Zone and Annual/M1 Back/Forward; native input/change single entry; nondefault invalid/no-op preserve Redo/selection/drawer/DOM; heating-only month; exact control/node/ratio/edge focus; six primary fields and0 Analyze/Run");
 }catch(error){failures.push(error.stack||String(error));}
 document.body.dataset.epath204Status=failures.length?"failed":"passed";
 document.getElementById("epath204-result").textContent=JSON.stringify({failures,evidence});

@@ -144,7 +144,12 @@ try {
   check(renderedOther && equalSet(renderedOther.originalNodeIds,wantedMembers),"standard projections lost original IDs before rendering");
   document.getElementById("mount").innerHTML=view.renderEnergyPathView(explanation,{...state,simulationEnergySelection:renderedOther?.id});
   const beforeCount=document.querySelectorAll('[data-energy-path-stage] [data-energy-explanation-node]').length;
-  const details=document.querySelector('details[data-energy-path-group-members]');
+  // Explicit legacy detail rendering retains the grouped-member data contract;
+  // the interactive graph selection now displays only its component chart.
+  const reference=document.createElement("div");
+  reference.innerHTML=view.renderEnergyPathNodeInspector(explanation,graph.nodes,renderedOther.id,state,graph.relations,graph.links);
+  document.getElementById("mount").append(reference);
+  const details=reference.querySelector('details[data-energy-path-group-members]');
   check(details && !details.open && details.querySelector('summary')?.textContent.includes("Expand"),"Other inspector lacks collapsed native Expand details");
   details?.querySelector("summary")?.click();
   check(details?.open,"native Expand did not open inspector members");
@@ -152,7 +157,7 @@ try {
   check(document.querySelectorAll('[data-energy-path-stage] [data-energy-explanation-node]').length===beforeCount,"Expand increased graph node count");
   document.getElementById("mount").innerHTML=view.renderEnergyPathView(explanation,{...state,simulationEnergySelection:"end_use.lighting.building"});
   check(document.querySelector('[data-energy-path-stage] [aria-pressed="true"]')?.dataset.energyExplanationNode===renderedOther?.id,"original grouped member selection did not resolve to its visible Other node");
-  check(document.querySelector('details[data-energy-path-group-members]'),"selecting an original grouped ID did not open the containing inspector");
+  check(document.querySelector('[data-energy-path-component-chart]')?.dataset.energyPathComponentChart===renderedOther.id,"selecting an original grouped ID did not open the containing component chart");
   check(!document.querySelector('[data-energy-node-limit], [data-energy-path-node-limit]'),"grouping introduced node-limit control");
   check(JSON.stringify(explanation)===explanationBefore,"render/projection mutated original export payload");
   if(failures.length)throw new Error(failures.join(" | "));

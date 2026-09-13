@@ -104,9 +104,7 @@ try{
  const host=document.getElementById("simulationEnergyDashboard");
  const change=(selector,value)=>{const control=host.querySelector(selector);if(!control)throw Error("missing native Energy control "+selector);control.value=value;control.dispatchEvent(new Event("change",{bubbles:true}));};
  const node=id=>host.querySelector('[data-energy-path-layout-node="'+id+'"]');
- const kpi=id=>host.querySelector('[data-energy-path-kpi="'+id+'"] strong')?.textContent.trim();
  const number=id=>node(id)?.querySelector("strong")?.textContent.trim();
- const row=(kind,key)=>host.querySelector('[data-energy-path-'+kind+'-value="'+key+'"] dd')?.textContent.trim();
  const energy=(text,value,label)=>check(text?.startsWith(value+" kWh/m²"),label+": "+text+"; expected "+value+" kWh/m²");
  const scope=()=>context(explanation,state);
  simulation.renderSimulationEnergyDashboard(original);
@@ -128,53 +126,43 @@ try{
  check(context(explanation,{simulationEnergyScopeKind:"zone",simulationEnergyZoneName:"OFFICE"}).areaM2===25,"zone lookup lost case-insensitive scope identity");
  check(context(explanation,{simulationEnergyScopeKind:"zone",simulationEnergyZoneName:"Missing"}).areaM2===null,"unknown zone reused building area");
 
- energy(kpi("total_site_energy"),"1.30","building annual site KPI");
- energy(kpi("cooling_load"),"0.80","building annual cooling KPI");
- energy(kpi("heating_load"),"0.40","building annual heating KPI");
- check(number("load.cooling.building")==="0.80","building chart and KPI use different area/precision: "+number("load.cooling.building"));
+ check(!host.querySelector(".energy-path-kpis,[data-energy-path-kpi]"),"redundant Energy summary cards remain above the graph");
+ check(number("load.cooling.building")==="0.80"&&number("load.heating.building")==="0.40","building chart uses wrong area/precision");
+ check(number("end_use.cooling.building")==="0.20","building site-energy chart did not use executed area");
  energy(node("load.cooling.building")?.title.split(": ").at(-1),"0.80","chart accessible energy value");
  check([...host.querySelectorAll("[data-energy-path-stage] > header")].every(header=>header.textContent.includes("kWh/m²")),"column headers did not display area units");
  check(host.querySelector("[data-energy-path-legend]")?.textContent.includes("kWh/m²"),"graph legend still displays total-energy units");
 
- change("[data-simulation-energy-service]","cooling");
+ check(!host.querySelector("[data-simulation-energy-service]"),"removed Service dropdown remains visible");
  const canvas=host.querySelector("[data-energy-path-canvas]"),scene=host.querySelector("[data-energy-path-scene]");
- const cooling=node("load.cooling.building"),coolingKPI=host.querySelector('[data-energy-path-kpi="cooling_load"]');
+ const cooling=node("load.cooling.building");
  const bridge=[...host.querySelectorAll("[data-energy-path-bridge-ratio]")].find(item=>item.dataset.energyPathRatioValue==="4");
- check(Boolean(bridge)&&host.querySelector('[data-energy-path-kpi-ratio="cooling"]')?.dataset.energyPathKpiRatioValue==="4","normalization changed the paired80/20 conversion ratio");
+ check(Boolean(bridge),"normalization changed the paired80/20 conversion ratio");
  cooling.click();
  check(state.simulationEnergySelection==="load.cooling.building","native chart selection failed");
- energy(row("inspector","total"),"0.80","selection-updated node inspector total");
- energy(row("inspector","raw"),"0.80","selection-updated raw observation display");
- check(host.querySelector("[data-energy-path-canvas]")===canvas&&host.querySelector("[data-energy-path-scene]")===scene&&host.querySelector('[data-energy-path-kpi="cooling_load"]')===coolingKPI,"node selection rebuilt the cached graph/KPI scene");
+ check(host.querySelector("[data-energy-path-canvas]")===canvas&&host.querySelector("[data-energy-path-scene]")===scene,"node selection rebuilt the cached graph scene");
  if(bridge){
   bridge.click();
-  energy(row("link","from"),"0.80","selection-updated link thermal value");
-  energy(row("link","to"),"0.20","selection-updated link site value");
-  check(row("link","ratio")?.includes("4")&&!row("link","ratio")?.includes("/m²"),"link ratio was normalized as energy");
   check(bridge.title.includes("0.80 kWh/m²")&&bridge.title.includes("0.20 kWh/m²"),"conversion tooltip retained raw kWh values");
   check(host.querySelector("[data-energy-path-canvas]")===canvas&&host.querySelector("[data-energy-path-scene]")===scene,"link selection rebuilt cached graph scene");
  }
- change("[data-simulation-energy-service]","all");
  change("[data-simulation-energy-path-period]","M1");
- energy(kpi("total_site_energy"),"0.33","building monthly site rounding");
- energy(kpi("cooling_load"),"0.20","building monthly cooling");
+ check(number("end_use.cooling.building")==="0.05","monthly site-energy chart retained annual values");
  check(number("load.cooling.building")==="0.20"&&scope().areaM2===100,"monthly selection changed building area or retained annual chart values");
 
  change("[data-simulation-energy-scope]","zone");
  change("[data-simulation-energy-zone-name]","Office");
  change("[data-simulation-energy-path-period]","annual");
  check(scope().areaM2===25,"zone view reused building area");
- energy(kpi("total_site_energy"),"2.60","zone annual site KPI");
- energy(kpi("cooling_load"),"1.60","zone annual cooling KPI");
+ check(number("end_use.cooling.office")==="0.40","zone site-energy chart reused building area");
  check(number("load.cooling.office")==="1.60","zone annual chart did not use zone area: "+number("load.cooling.office"));
  node("load.cooling.office").click();
- energy(row("inspector","total"),"1.60","zone annual selection inspector");
+ check(state.simulationEnergySelection==="load.cooling.office","zone annual graph selection failed");
  change("[data-simulation-energy-path-period]","M1");
- energy(kpi("total_site_energy"),"0.65","zone monthly site KPI");
- energy(kpi("cooling_load"),"0.40","zone monthly cooling KPI");
- check(number("load.cooling.office")==="0.40","zone monthly chart value inconsistent with KPI");
+ check(number("end_use.cooling.office")==="0.10","zone monthly site-energy chart retained annual values");
+ check(number("load.cooling.office")==="0.40","zone monthly chart did not use zone area");
  node("load.cooling.office").click();
- energy(row("inspector","total"),"0.40","zone monthly selection inspector");
+ check(state.simulationEnergySelection==="load.cooling.office","zone monthly graph selection failed");
 
  // Old captures have no denominator. A live report must never supply an
  // unrelated area, nor may a zone silently borrow the building's area.
@@ -184,12 +172,12 @@ try{
  state.simulationResult=freeze(missingArea);
  state.report={geometry:{floorArea:999,floorAreaM2:999,zones:[{name:"Office",floorArea:999,floorAreaM2:999}]}};
  simulation.renderSimulationEnergyDashboard(state.simulationResult);
- check(kpi("cooling_load")?.startsWith("—")&&number("load.cooling.office")==="—","legacy zone without area invented kWh/m² from building or current report");
+ check(number("load.cooling.office")==="—","legacy zone without area invented kWh/m² from building or current report");
  node("load.cooling.office").click();
- check(row("inspector","total")?.startsWith("—"),"selection restored numeric energy despite missing zone area");
+ check(number("load.cooling.office")==="—","selection restored numeric energy despite missing zone area");
  check(JSON.stringify(original)===originalJSON,"area formatting or selection mutated raw simulation energy values");
  check(view.energyPathGraphForState(explanation,{simulationEnergyScopeKind:"building",simulationEnergyPeriod:"annual",simulationEnergyService:"all"}).nodes.find(item=>item.id==="load.cooling.building")?.value===80,"display normalization leaked into graph computation");
- evidence.push("Executed building100m² / zone25m² areas normalize annual and monthly KPI, chart, tooltip and node/link inspector values with two decimals. Native selections retain graph DOM and ratio4; raw results stay unchanged. Missing zone area stays unavailable, independent of live model area.");
+ evidence.push("Executed building100m² / zone25m² areas normalize annual and monthly graph and tooltip values with two decimals. Native selections retain graph DOM and ratio4; raw results stay unchanged. Missing zone area stays unavailable, independent of live model area.");
  evidence.push("J/kJ/MJ/GJ/Wh/kWh/MWh convert to kWh before area division; thermal/site suffixes and nonenergy COP/%/m3 values retain their meaning.");
 }catch(error){failures.push(error.stack||String(error));}
 document.body.dataset.energyAreaStatus=failures.length?"failed":"passed";

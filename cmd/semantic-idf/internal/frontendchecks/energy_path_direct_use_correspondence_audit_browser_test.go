@@ -293,26 +293,15 @@ try {
   mount.innerHTML = module.renderEnergyPathView(explanation, { ...coolingState, simulationEnergySelection: coolingDriverID });
   assert(mount.querySelector('.energy-path-node.selected[data-energy-explanation-node="' + coolingDriverID + '"]')?.getAttribute("aria-pressed") === "true", "Lighting heat selection is not visible");
   assert(mount.querySelector('.energy-path-node.related[data-energy-path-related="true"][data-energy-explanation-node="' + lightingEndUseID + '"]'), "Lighting energy counterpart was not outline-highlighted");
-  const energyAction = mount.querySelector('[data-energy-path-correspondence-action="related_energy_use"]');
-  assert(energyAction?.dataset.energyExplanationNode === lightingEndUseID && energyAction.textContent.includes("Related energy use"), "Lighting heat -> energy action is missing");
   const driverInspector = mount.querySelector('[data-energy-path-inspector="' + coolingDriverID + '"]');
   assert(driverInspector && !driverInspector.querySelector('[data-energy-path-detail-section="sources"], [data-energy-path-source]'), "Lighting thermal inspector retained Source data");
   const driverSources = module.energyPathInspectorSources(explanation, coolingGraph.nodes.find((node) => node.id === coolingDriverID), coolingState);
   assert(driverSources.length === 1 && driverSources[0].id === "heat.lighting.building.annual" && driverSources[0].name.trim() === "Lighting thermal source annual", "Lighting thermal source provenance is not endpoint-specific within the selected scope and period");
 
-  let actionTarget = "";
-  mount.addEventListener("click", (event) => {
-    actionTarget = event.target.closest("[data-energy-explanation-node]")?.dataset.energyExplanationNode || "";
-  }, { once: true });
-  energyAction.focus();
-  assert(document.activeElement === energyAction, "correspondence action cannot receive keyboard focus");
-  energyAction.click();
-  assert(actionTarget === lightingEndUseID, "correspondence action bypassed the existing node-selection target");
+  assert(!mount.querySelector("[data-energy-path-correspondence-actions]"), "component chart retained removed navigation actions");
 
   mount.innerHTML = module.renderEnergyPathView(explanation, { ...coolingState, simulationEnergySelection: lightingEndUseID });
   assert(mount.querySelector('.energy-path-node.related[data-energy-path-related="true"][data-energy-explanation-node="' + coolingDriverID + '"]'), "Lighting heat counterpart was not outline-highlighted from energy selection");
-  const thermalAction = mount.querySelector('[data-energy-path-correspondence-action="related_thermal_effect"]');
-  assert(thermalAction?.dataset.energyExplanationNode === coolingDriverID && thermalAction.textContent.includes("Related thermal effect"), "Lighting energy -> thermal action is missing");
   const energyInspector = mount.querySelector('[data-energy-path-inspector="' + lightingEndUseID + '"]');
   assert(energyInspector && !energyInspector.querySelector('[data-energy-path-detail-section="sources"], [data-energy-path-source]'), "Lighting energy inspector retained Source data");
   const energySources = module.energyPathInspectorSources(explanation, coolingGraph.nodes.find((node) => node.id === lightingEndUseID), coolingState);
@@ -326,10 +315,8 @@ try {
   const equipmentEndUseID = "end_use.equipment.building";
   mount.innerHTML = module.renderEnergyPathView(explanation, { ...heatingState, simulationEnergySelection: equipmentDriverID });
   assert(mount.querySelector('.energy-path-node.related[data-energy-path-related="true"][data-energy-explanation-node="' + equipmentEndUseID + '"]'), "Equipment energy counterpart was not highlighted");
-  assert(mount.querySelector('[data-energy-path-correspondence-action="related_energy_use"]')?.dataset.energyExplanationNode === equipmentEndUseID, "Equipment heat -> energy action is missing");
   mount.innerHTML = module.renderEnergyPathView(explanation, { ...heatingState, simulationEnergySelection: equipmentEndUseID });
   assert(mount.querySelector('.energy-path-node.related[data-energy-path-related="true"][data-energy-explanation-node="' + equipmentDriverID + '"]'), "Equipment heat counterpart was not highlighted from energy selection");
-  assert(mount.querySelector('[data-energy-path-correspondence-action="related_thermal_effect"]')?.dataset.energyExplanationNode === equipmentDriverID, "Equipment energy -> thermal action is missing");
 
   const states = [
     baseState,

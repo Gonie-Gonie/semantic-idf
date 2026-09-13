@@ -19,6 +19,7 @@ import { energyPathNodeAppearance, energyPathLinkAppearance } from "../energy-pa
 import { energyPathCompareNodes, energyPathOrderLinks, energyPathFocus } from "../energy-path-focus.js";
 import { energyPathInspectorModel } from "../energy-path-inspector.js";
 import { energyPathDisplayUnit, formatEnergyPathDisplayValue } from "../energy-path-display.js";
+import { energyPathMonthlyChartSeries, energyPathHourlyChartSeries, renderEnergyPathComponentChart } from "../energy-path-chart.js";
 
 export const ENERGY_PATH_SCHEMA_V2 = "semantic-idf.energy-explanation/v2";
 
@@ -449,12 +450,21 @@ export function renderEnergyPathView(explanation = {}, viewState = {}, options =
 }
 
 export function renderEnergyPathInspector(scene, viewState = {}, options = {}) {
-  options = { ...options, display: scene.display };
   const { selectedID, focus } = energyPathSceneSelection(scene, viewState);
   const selectedLink = scene.drawing.ribbons.find((ribbon) => ribbon.id === focus.selectedLinkID);
-  return selectedLink
-    ? renderEnergyPathLinkInspector(scene.explanation, selectedLink, scene.visibleNodes, scene.graph.links, viewState, scene.ratioQuality, options)
-    : renderEnergyPathNodeInspector(scene.explanation, scene.allGraphNodes, selectedID, viewState, scene.graph.relations, scene.graph.links, scene.graph.supplyActivities, options);
+  const item = selectedLink?.link || scene.allGraphNodes.find((node) => node.id === selectedID);
+  if (!item) return "";
+  const kind = selectedLink ? "link" : "node";
+  const nodeByID = new Map(scene.allGraphNodes.map((node) => [node.id, node]));
+  const label = selectedLink ? `${nodeByID.get(item.fromId)?.label || item.fromId} → ${nodeByID.get(item.toId)?.label || item.toId}` : item.label;
+  scene.monthlyChartGraphs ||= Array.from({ length: 12 }, (_, month) => energyPathGraphForState(scene.explanation, { ...viewState, simulationEnergyPeriod: `M${month + 1}` }));
+  return renderEnergyPathComponentChart({
+    item, kind, label, display: scene.display, frequency: viewState.simulationEnergyChartFrequency,
+    monthly: energyPathMonthlyChartSeries(item, kind, scene.monthlyChartGraphs),
+    hourly: viewState.simulationEnergyChartFrequency === "hourly" ? energyPathHourlyChartSeries(item,
+      options.result?.purposeResults?.energyExplanation?.sources || scene.explanation.sources || [], viewState,
+      options.result?.purposeResults?.energyExplanation?.hourlyLabels || scene.explanation.hourlyLabels || []) : [],
+  });
 }
 
 export function renderEnergyPathQuality(explanation = {}, viewState = {}) {
@@ -3087,9 +3097,6 @@ export function renderEnergyPathControls(explanation = {}, viewState = {}, prepa
   const periods = ENERGY_PATH_PERIODS.map((period) => (
     `<option value="${period.value}" ${viewState.simulationEnergyPeriod === period.value ? "selected" : ""}>${escapeHTML(t(period.labelKey, {}, period.label))}</option>`
   )).join("");
-  const services = (preparedOptions?.services || energyPathServiceOptions(explanation, viewState)).map((service) => (
-    `<option value="${service.value}" ${viewState.simulationEnergyService === service.value ? "selected" : ""}>${escapeHTML(t(service.labelKey, {}, service.label))}</option>`
-  )).join("");
   const zoneControl = viewState.simulationEnergyScopeKind === "zone"
     ? `<span class="energy-path-zone-control">
         <input type="search" list="simulationEnergyPathZones" value="${escapeHTML(viewState.simulationEnergyZoneName || "")}" data-simulation-energy-zone-name aria-label="${escapeHTML(t("simulation.energyPathZone", {}, "Zone"))}" autocomplete="off" />
@@ -3108,10 +3115,6 @@ export function renderEnergyPathControls(explanation = {}, viewState = {}, prepa
       <label>
         <span>${escapeHTML(t("common.period", {}, "Period"))}</span>
         <select data-simulation-energy-path-period aria-label="${escapeHTML(t("common.period", {}, "Period"))}">${periods}</select>
-      </label>
-      <label>
-        <span>${escapeHTML(t("simulation.service", {}, "Service"))}</span>
-        <select data-simulation-energy-service aria-label="${escapeHTML(t("simulation.service", {}, "Service"))}">${services}</select>
       </label>
     </div>`;
 }
@@ -3293,7 +3296,7 @@ function renderEnergyPathLinkHitLayer(drawing, layout, nodes, focus, display) {
   </svg>`;
 }
 
-function renderEnergyPathLinkInspector(explanation, ribbon, nodes, links, viewState, ratioQuality, options = {}) {
+export function renderEnergyPathLinkInspector(explanation, ribbon, nodes, links, viewState, ratioQuality, options = {}) {
   const display = options.display;
   const link = ribbon.link;
   const nodeByID = new Map(nodes.map((node) => [node.id, node]));

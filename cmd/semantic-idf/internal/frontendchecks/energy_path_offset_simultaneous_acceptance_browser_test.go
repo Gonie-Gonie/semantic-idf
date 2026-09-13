@@ -146,7 +146,11 @@ try {
 
   const mount = document.getElementById("mount");
   const render = (selection) => {
-    mount.innerHTML = module.renderEnergyPathView(explanation, { ...state, simulationEnergySelection: selection });
+    // Preserve the legacy detail utility's data contract separately from the interactive chart view.
+    const selectedState = { ...state, simulationEnergySelection: selection };
+    const graph = module.energyPathGraphForState(explanation, selectedState);
+    mount.innerHTML = module.renderEnergyPathNodeInspector(explanation, graph.nodes, selection, selectedState, graph.relations, graph.links, graph.supplyActivities)
+      + module.renderEnergyPathView(explanation, selectedState);
     return mount;
   };
   const loadButtons = (root) => [...root.querySelectorAll('[data-energy-path-stage="load"] [data-energy-explanation-node]')];

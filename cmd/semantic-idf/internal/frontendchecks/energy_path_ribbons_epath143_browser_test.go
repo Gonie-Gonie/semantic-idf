@@ -200,20 +200,20 @@ try{
   }
   const frozen=freeze(variant),snapshot=JSON.stringify(frozen);
   Object.assign(state,{simulationResult:frozen,simulationEnergyScopeKind:"building",simulationEnergyPeriod:period,simulationEnergyService:"cooling",simulationEnergySelection:"",simulationEnergyDetailsOpen:false});simulation.renderSimulation();
-  return {frozen,snapshot,bridge:host.querySelector("[data-energy-path-bridge-ratio]"),kpi:host.querySelector('[data-energy-path-kpi-ratio="cooling"]'),path:host.querySelector('[data-energy-path-ribbon-kind="conversion"]')};
+  return {frozen,snapshot,bridge:host.querySelector("[data-energy-path-bridge-ratio]"),path:host.querySelector('[data-energy-path-ribbon-kind="conversion"]')};
  };
  const absent=ratioVariant(undefined);
- check(Number(absent.bridge?.dataset.energyPathRatioValue)===4&&Number(absent.kpi?.dataset.energyPathKpiRatioValue)===4,"absent raw ratio-quality marker hid actual80/20 COP4 in bridge or KPI");
+ check(Number(absent.bridge?.dataset.energyPathRatioValue)===4,"absent raw ratio-quality marker hid actual80/20 COP4 in bridge");
  const ratioPath=absent.path?.getAttribute("d");
  for(const status of["unavailable","missing","not_requested","not_applicable"]){
   const sample=ratioVariant(status);
-  check(sample.bridge?.dataset.energyPathRatioKind==="unavailable"&&!sample.bridge?.hasAttribute("data-energy-path-ratio-value")&&!sample.kpi?.hasAttribute("data-energy-path-kpi-ratio-value"),"explicit ratio quality contradicts bridge/KPI numeric label: "+status);
+  check(sample.bridge?.dataset.energyPathRatioKind==="unavailable"&&!sample.bridge?.hasAttribute("data-energy-path-ratio-value"),"explicit ratio quality contradicts bridge numeric label: "+status);
   check(sample.bridge?.getAttribute("aria-label")?.includes("unavailable")&&sample.bridge.querySelector("strong")?.textContent.includes("—"),"unavailable bridge ratio is not honestly explained: "+status);
   check(sample.path?.getAttribute("d")===ratioPath,"quality marker changed measured paired ribbon geometry: "+status);
   check(JSON.stringify(sample.frozen)===sample.snapshot,"ratio quality rendering mutated stored fixture: "+status);
  }
  const localMissing=ratioVariant("missing","M1");
- check(localMissing.bridge?.dataset.energyPathRatioKind==="unavailable"&&!localMissing.kpi?.hasAttribute("data-energy-path-kpi-ratio-value"),"selected-month missing ratio reused complete annual ratio metadata");
+ check(localMissing.bridge?.dataset.energyPathRatioKind==="unavailable","selected-month missing ratio reused complete annual ratio metadata");
  check(JSON.stringify(absent.frozen)===absent.snapshot&&JSON.stringify(localMissing.frozen)===localMissing.snapshot,"missing/absent ratio rendering mutated source payload");
  Object.assign(state,{simulationResult:result,simulationEnergyScopeKind:"building",simulationEnergyPeriod:"annual",simulationEnergyService:"all",simulationEnergySelection:""});simulation.renderSimulation();
  const selected=current.nodes.find(node=>node.driverCategory==="internal.lighting");nodeButton(selected.id).focus();nodeButton(selected.id).click();

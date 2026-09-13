@@ -135,12 +135,12 @@ func TestBuildPurposeRunPlanBasicEnergyDefaultsToEnergyPath(t *testing.T) {
 		if purposeIDsContain(object.PurposeIDs, SimulationPurposeBasicEnergy) && object.Reason != "Basic Energy Path" {
 			t.Fatalf("Energy Path output reason = %q for %+v", object.Reason, object)
 		}
-		if purposeIDsContain(object.PurposeIDs, SimulationPurposeBasicEnergy) && purposeObjectIsSeries(object.ObjectType) && object.ReportingFrequency != "Monthly" {
+		if purposeIDsContain(object.PurposeIDs, SimulationPurposeBasicEnergy) && purposeObjectIsSeries(object.ObjectType) && object.ReportingFrequency != "Monthly" && object.ReportingFrequency != "Hourly" {
 			t.Fatalf("Energy Path output frequency = %q for %+v", object.ReportingFrequency, object)
 		}
 	}
-	if plan.EstimatedFrames != 12 {
-		t.Fatalf("estimated frames = %d, want monthly Energy Path frames", plan.EstimatedFrames)
+	if plan.EstimatedFrames != 8760 {
+		t.Fatalf("estimated frames = %d, want hourly Energy Path chart frames", plan.EstimatedFrames)
 	}
 }
 
@@ -223,11 +223,8 @@ func TestBuildPurposeRunPlanBasicEnergyWithZoneHeatFlowKeepsEnergyMonthly(t *tes
 		if !purposeObjectIsSeries(object.ObjectType) {
 			continue
 		}
-		if purposeIDsContain(object.PurposeIDs, SimulationPurposeBasicEnergy) && object.ReportingFrequency != "Monthly" {
-			t.Fatalf("Basic Energy output should stay monthly: %+v", object)
-		}
-		if strings.EqualFold(object.ReportingFrequency, "Hourly") && purposeIDsContain(object.PurposeIDs, SimulationPurposeBasicEnergy) {
-			t.Fatalf("Hourly output should not be owned by Basic Energy: %+v", object)
+		if purposeIDsContain(object.PurposeIDs, SimulationPurposeBasicEnergy) && object.ReportingFrequency != "Monthly" && object.ReportingFrequency != "Hourly" {
+			t.Fatalf("Basic Energy needs Monthly accounting and Hourly source-chart outputs: %+v", object)
 		}
 	}
 
@@ -247,7 +244,7 @@ func TestBuildPurposeRunPlanBasicEnergyWithZoneHeatFlowKeepsEnergyMonthly(t *tes
 	if monthlyEnergyPath == nil || !purposeIDsContain(monthlyEnergyPath.PurposeIDs, SimulationPurposeBasicEnergy) || purposeIDsContain(monthlyEnergyPath.PurposeIDs, SimulationPurposeZoneHeatFlow) {
 		t.Fatalf("monthly Energy Path output = %+v", monthlyEnergyPath)
 	}
-	if hourlyDrilldown == nil || !purposeIDsContain(hourlyDrilldown.PurposeIDs, SimulationPurposeZoneHeatFlow) || purposeIDsContain(hourlyDrilldown.PurposeIDs, SimulationPurposeBasicEnergy) {
+	if hourlyDrilldown == nil || !purposeIDsContain(hourlyDrilldown.PurposeIDs, SimulationPurposeZoneHeatFlow) || !purposeIDsContain(hourlyDrilldown.PurposeIDs, SimulationPurposeBasicEnergy) {
 		t.Fatalf("hourly heat-flow drilldown output = %+v", hourlyDrilldown)
 	}
 	if plan.EstimatedFrames != 8760 {
@@ -624,7 +621,7 @@ func TestBuildPurposeRunPlanMergesDuplicateOutputsAcrossPurposes(t *testing.T) {
 				}
 			case "Hourly":
 				hourlyDrilldownCount++
-				if !purposeIDsContain(object.PurposeIDs, SimulationPurposeZoneHeatFlow) || purposeIDsContain(object.PurposeIDs, SimulationPurposeBasicEnergy) {
+				if !purposeIDsContain(object.PurposeIDs, SimulationPurposeZoneHeatFlow) || !purposeIDsContain(object.PurposeIDs, SimulationPurposeBasicEnergy) {
 					t.Fatalf("hourly drilldown ownership = %#v", object.PurposeIDs)
 				}
 			}

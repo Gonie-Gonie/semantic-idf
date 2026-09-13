@@ -122,7 +122,9 @@ try {
   assert(!graph.nodes.some(module.isEnergyPathUnassignedBuildingHVACItem), "unassigned Building auxiliary energy leaked into Zone nodes");
   assert(!graph.links.some(module.isEnergyPathUnassignedBuildingHVACItem), "unassigned Building auxiliary energy leaked into Zone links");
 
-  mount.innerHTML = module.renderEnergyPathView(explanation, state);
+  // Preserve the legacy detail utility's data contract separately from the interactive chart view.
+  mount.innerHTML = module.renderEnergyPathNodeInspector(explanation, graph.nodes, state.simulationEnergySelection, state, graph.relations, graph.links, graph.supplyActivities)
+    + module.renderEnergyPathView(explanation, state);
   const widget = mount.querySelector("[data-energy-path-auxiliary-allocation-quality]");
   assert(widget?.dataset.energyPathExpectedValue === "150", "Zone view omitted auxiliary allocation quality");
   assert(widget.querySelectorAll("[data-energy-path-auxiliary-allocation-ratio]").length === 3, "Zone quality must show direct, allocated, and unassigned ratios");

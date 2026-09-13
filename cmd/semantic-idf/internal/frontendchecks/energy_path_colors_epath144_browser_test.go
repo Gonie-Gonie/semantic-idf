@@ -184,7 +184,7 @@ try{
  const hatchShape=kind=>[...host.querySelectorAll('[data-energy-path-pattern="'+kind+'"]')].map(pattern=>[...pattern.querySelectorAll("path,line,polyline")].map(shape=>shape.getAttribute("d")||shape.outerHTML.replace(/stroke="[^"]*"/g,"")).join("|")).sort();
  check(hatchShape("allocated").length>0&&hatchShape("residual").length>0&&JSON.stringify(hatchShape("allocated"))!==JSON.stringify(hatchShape("residual")),"allocation and residual use no distinguishable hatch geometry");
  const checkCarrierColors=contextLabel=>{for(const node of graph().nodes.filter(node=>node.level==="carrier")){const expected=themeColors.get("dark")[node.carrier],paint=shapeBase(host.querySelector('[data-energy-path-bar="'+node.id+'"]')).slice(0,3);check(button(node.id).dataset.energyPathColor===expected.key&&JSON.stringify(paint)===JSON.stringify(expected.paint),contextLabel+" changed fixed carrier palette: "+node.carrier);}};
- for(const service of["cooling","heating","all"]){change("[data-simulation-energy-service]",service);checkCarrierColors("service filter");}
+ check(!host.querySelector("[data-simulation-energy-service]"),"removed Service selector is still visible");checkCarrierColors("all services");
  change("[data-simulation-energy-scope]","zone");change("[data-simulation-energy-zone-name]","Office");
  check(pane.scrollHeight<=pane.clientHeight+1&&pane.scrollWidth<=pane.clientWidth+1,"Zone color encoding introduced scrolling: "+pane.scrollHeight+"/"+pane.clientHeight);
  checkCarrierColors("Zone filter");

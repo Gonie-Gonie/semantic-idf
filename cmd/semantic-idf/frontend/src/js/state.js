@@ -181,6 +181,7 @@ export const state = {
   simulationEnergyScopeKind: "building",
   simulationEnergyZoneName: "",
   simulationEnergyPeriod: "annual",
+  simulationEnergyChartFrequency: "monthly",
   simulationEnergyService: "all",
   simulationEnergySelection: "",
   simulationEnergyDetailsOpen: false,

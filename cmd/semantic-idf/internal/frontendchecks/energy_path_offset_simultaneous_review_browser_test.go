@@ -153,7 +153,10 @@ try {
 
   const mount = document.getElementById("mount");
   const render = (state) => {
-    mount.innerHTML = module.renderEnergyPathView(explanation, state);
+    // Preserve the legacy detail utility's data contract separately from the interactive chart view.
+    const graph = module.energyPathGraphForState(explanation, state);
+    mount.innerHTML = module.renderEnergyPathNodeInspector(explanation, graph.nodes, state.simulationEnergySelection, state, graph.relations, graph.links, graph.supplyActivities)
+      + module.renderEnergyPathView(explanation, state);
     return mount;
   };
   const inspector = (root, id) => root.querySelector('[data-energy-path-inspector="' + id + '"]');

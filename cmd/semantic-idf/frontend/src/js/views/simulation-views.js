@@ -12,23 +12,17 @@ import {
   energyPathInspectorSources,
   energyPathZoneNames,
   energyPathHasPayload,
-  energyPathQualityForState,
-  energyPathRatioQualityForState,
-  energyPathZoneDirectCoverage,
   isEnergyPathV2,
   normalizeEnergyPathViewState,
   prepareEnergyPathScene,
-  renderEnergyPathKPI,
   renderEnergyPathSummaryOverview,
   renderEnergyPathView,
-  energyPathSummaryForState,
   updateEnergyPathControlState,
   updateEnergyPathSelection,
   updateEnergyPathDetails,
 } from "./energy-path-view.js";
 import { energyPathLegacyDerivedKPIItems, energyPathSummaryGroups } from "../energy-path-summary.js";
 import { energyPathSeriesID, resolveEnergyPathSeriesCandidates, energyPathSeriesPeriodRange } from "../energy-path-navigation.js";
-import { energyPathKPIItems } from "../energy-path-kpis.js";
 import { energyPathDriverDestinations, prepareEnergyPathDriverNavigation } from "../energy-path-driver-destinations.js";
 import { energyPathServiceDestinations } from "../energy-path-service-destinations.js";
 import { migrateEnergyPathState } from "../energy-path-state.js";
@@ -57,7 +51,6 @@ const simulationEnergyControls = Object.freeze({
   scope: { attribute: "data-simulation-energy-scope", key: "simulationEnergyScopeKind", values: ["building", "zone"] },
   zone: { attribute: "data-simulation-energy-zone-name", key: "simulationEnergyZoneName" },
   period: { attribute: "data-simulation-energy-path-period", key: "simulationEnergyPeriod", values: ENERGY_PATH_PERIODS.map((period) => period.value) },
-  service: { attribute: "data-simulation-energy-service", key: "simulationEnergyService", values: ["all", "cooling", "heating"] },
 });
 const legacyEnergyPresentation = Object.freeze({ signMode: "display", sankeyMode: "detailed", nodeLimit: 0 });
 
@@ -66,7 +59,8 @@ export function captureSimulationEnergyWorkspaceContext() {
     primary: Object.fromEntries(simulationEnergyPrimaryKeys.map((key) => [key, state[key]])),
     energyDrawer: simulationEnergyDrawer,
   });
-  return { ...primary, energyDrawer: { ...drawer } };
+  return { ...primary, energyDrawer: { ...drawer },
+    energyChartFrequency: state.simulationEnergyChartFrequency === "hourly" ? "hourly" : "monthly" };
 }
 
 export function restoreSimulationEnergyWorkspaceContext(snapshot = {}) {
@@ -75,6 +69,7 @@ export function restoreSimulationEnergyWorkspaceContext(snapshot = {}) {
     if (key.startsWith("simulationEnergy") && !simulationEnergyPrimaryKeys.includes(key)) delete state[key];
   }
   Object.assign(state, primary);
+  state.simulationEnergyChartFrequency = snapshot.energyChartFrequency === "hourly" ? "hourly" : "monthly";
   simulationEnergyDrawer = { ...drawer };
   simulationEnergyDetailsReturnSelector = "";
   if (!state.simulationResult) simulationEnergySceneSlot.clear();
@@ -1085,6 +1080,7 @@ export function captureSimulationNavigationContext(context) {
     energySelection: state.simulationEnergySelection || "",
     energyDetailsOpen: Boolean(state.simulationEnergyDetailsOpen),
     energyDrawer: { ...simulationEnergyDrawer },
+    energyChartFrequency: state.simulationEnergyChartFrequency === "hourly" ? "hourly" : "monthly",
     hvacPanels: { ...(state.simulationHVACPanels || {}) },
     hvacVisibleGroups: { ...(state.simulationHVACVisibleGroups || {}) },
     hvacFrameIndex: Number(state.simulationHVACFrameIndex) || 0,
@@ -1452,21 +1448,16 @@ function simulationEnergySceneContext(result = state.simulationResult, viewState
 }
 
 function prepareSimulationEnergyScene(result) {
+  state.simulationEnergyService = "all";
   const current = simulationEnergySceneSlot.peek(simulationEnergySceneContext(result));
   if (current) return current;
   const explanation = result.purposeResults.energyExplanation;
   normalizeEnergyPathViewState(state, explanation);
   return simulationEnergySceneSlot.acquire(simulationEnergySceneContext(result), () => {
     const graph = energyPathGraphForState(explanation, state);
-    const kpiGraph = state.simulationEnergyService === "all" ? graph
-      : energyPathGraphForState(explanation, { ...state, simulationEnergyService: "all" });
     const display = energyPathDisplayContext(explanation, state);
-    const path = prepareEnergyPathScene(explanation, state, { graph, allServiceGraph: kpiGraph, display });
-    const summary = energyPathSummaryForState(explanation, result.purposeResults.energyExplanationSummary || {}, state);
-    const kpiOptions = { ...simulationEnergyKPIOptions(explanation, summary, kpiGraph), display };
-    const kpiTargets = new Map(energyPathKPIItems(summary, kpiGraph, kpiOptions)
-      .flatMap((item) => item.targets || []).map((node) => [node.id, node]));
-    return { result, path, summary, kpiOptions, kpiTargets };
+    const path = prepareEnergyPathScene(explanation, state, { graph, allServiceGraph: graph, display });
+    return { result, path };
   });
 }
 
@@ -1480,6 +1471,7 @@ function simulationEnergySceneOptions(scene) {
   const graph = scene.path.graph;
   return {
     scene: scene.path,
+    result: scene.result,
     outputObjects: scene.result?.purposeRunPlan?.outputObjects || [],
     inspectorActionsForNode: (node, sources, viewState) => simulationEnergyInspectorActions(node, sources, viewState, scene.result, graph),
     driverNavigationForNode: (node, sources, viewState, model) => simulationEnergyDriverNavigation(node, sources, viewState, model, scene.driverNavigation),
@@ -1519,7 +1511,7 @@ function updateSimulationEnergyPanel(kind) {
   const scene = simulationEnergySceneSlot.peek(simulationEnergySceneContext());
   const update = kind === "details" ? updateEnergyPathDetails : updateEnergyPathSelection;
   const context = scene && simulationEnergyInspectorContext(scene);
-  const refreshInspector = scene && context.some((value, index) => value !== scene.inspectorContext?.[index]);
+  const refreshInspector = kind === "chart" || (scene && context.some((value, index) => value !== scene.inspectorContext?.[index]));
   const options = scene && { ...simulationEnergySceneOptions(scene), refreshInspector };
   if (!scene || !update(elements.simulationEnergyDashboard, scene.path, state, options)) {
     renderSimulationEnergyDashboard(state.simulationResult);
@@ -1550,9 +1542,7 @@ export function renderSimulationEnergyDashboard(result) {
   // Source counts belong to Data details, not the primary Energy reading path.
   if (elements.simulationEnergyStats) elements.simulationEnergyStats.textContent = "";
   if (useEnergyPathV2) {
-    elements.simulationEnergyDashboard.innerHTML = `
-      ${renderEnergyPathKPI(scene.summary, { ...scene.kpiOptions, detailsOpen: Boolean(state.simulationEnergyDetailsOpen) })}
-      ${renderEnergyPathView(explanation, state, simulationEnergySceneOptions(scene))}`;
+    elements.simulationEnergyDashboard.innerHTML = renderEnergyPathView(explanation, state, simulationEnergySceneOptions(scene));
     scene.inspectorContext = simulationEnergyInspectorContext(scene);
     pruneSimulationSemanticBindings();
     return;
@@ -1565,23 +1555,6 @@ export function renderSimulationEnergyDashboard(result) {
     "Energy Path is unavailable for this result. Run Basic Energy to create it; available variables remain in Series.",
   ))}</div>`;
   pruneSimulationSemanticBindings();
-}
-
-function simulationEnergyKPIOptions(explanation, summary, graph) {
-  const quality = energyPathQualityForState(explanation, state);
-  const ratioQuality = energyPathRatioQualityForState(explanation, state);
-  // Availability defaults do not invalidate otherwise typed, source-backed
-  // conversion pairs. An explicit period-local marker still takes precedence.
-  if (ratioQuality) quality.ratios = ratioQuality;
-  else delete quality.ratios;
-  return {
-    graph,
-    quality,
-    service: state.simulationEnergyService || "all",
-    period: state.simulationEnergyPeriod || "annual",
-    knownZoneOnly: energyPathZoneDirectCoverage(summary).limited,
-    detailsOpen: Boolean(state.simulationEnergyDetailsOpen),
-  };
 }
 
 export function simulationEnergyInspectorActions(node = {}, sourceDetails = [], viewState = state, result = state.simulationResult, preparedGraph) {
@@ -5664,24 +5637,17 @@ function focusSimulationEnergyDetails({ closed = false, output = false, tab = ""
 }
 
 function handleSimulationEnergyDetailsClick(event) {
-  const control = event.target.closest("[data-energy-path-details-toggle], [data-energy-path-quality-stage], [data-energy-path-details-tab], [data-energy-path-output-source], [data-energy-path-kpi-details]");
+  const control = event.target.closest("[data-energy-path-details-toggle], [data-energy-path-quality-stage], [data-energy-path-details-tab], [data-energy-path-output-source]");
   if (!control || control.disabled) return false;
   event.preventDefault();
   event.stopPropagation();
   const { energyPathQualityStage: stage, energyPathDetailsTab: tab, energyPathOutputSource: sourceID } = control.dataset;
-  const kpiDetails = control.hasAttribute("data-energy-path-kpi-details");
-  if (kpiDetails) {
-    simulationEnergyDetailsReturnSelector = "[data-energy-path-kpi-details]";
-  } else if (!state.simulationEnergyDetailsOpen || (stage !== undefined && control.closest("[data-energy-path-quality-line]"))) {
+  if (!state.simulationEnergyDetailsOpen || (stage !== undefined && control.closest("[data-energy-path-quality-line]"))) {
     simulationEnergyDetailsReturnSelector = ["drivers", "loads", "endUses", "carriers"].includes(stage)
       ? `[data-energy-path-quality-stage="${stage}"]`
       : "[data-energy-path-details-toggle]";
   }
-  if (kpiDetails) {
-    state.simulationEnergyDetailsOpen = true;
-    simulationEnergyDrawer.tab = "data";
-    simulationEnergyDrawer.stage = "";
-  } else if (control.hasAttribute("data-energy-path-details-toggle")) {
+  if (control.hasAttribute("data-energy-path-details-toggle")) {
     state.simulationEnergyDetailsOpen = !state.simulationEnergyDetailsOpen;
   } else if (stage !== undefined) {
     state.simulationEnergyDetailsOpen = true;
@@ -5697,15 +5663,6 @@ function handleSimulationEnergyDetailsClick(event) {
   }
   updateSimulationEnergyPanel("details");
   focusSimulationEnergyDetails({ closed: !state.simulationEnergyDetailsOpen, output: sourceID !== undefined, tab });
-  if (kpiDetails) {
-    const accounting = elements.simulationEnergyDashboard?.querySelector("[data-energy-path-accounting-quality]");
-    if (accounting) {
-      accounting.tabIndex = -1;
-      accounting.setAttribute("aria-label", accounting.querySelector("h5")?.textContent || t("simulation.energyPathPeriodAccounting", {}, "Selected-period accounting"));
-      accounting.focus({ preventScroll: true });
-      accounting.scrollIntoView({ block: "nearest" });
-    }
-  }
   return true;
 }
 
@@ -5800,24 +5757,6 @@ export function handleSimulationSeriesInspectClick(event) {
     event.preventDefault();
     event.stopPropagation();
     if (!driverDestination.disabled) void openSimulationEnergyDriverDestination(driverDestination);
-    return;
-  }
-  const kpiNodeButton = event.target.closest("[data-energy-path-kpi-node]");
-  if (kpiNodeButton) {
-    event.preventDefault();
-    event.stopPropagation();
-    if (kpiNodeButton.disabled) return;
-    const scene = simulationEnergySceneSlot.peek(simulationEnergySceneContext());
-    const target = scene?.kpiTargets.get(kpiNodeButton.dataset.energyPathKpiNode);
-    if (!target) return;
-    const visibleGraph = scene.path.graph;
-    if (!(visibleGraph.nodes || []).some((node) => node.id === target.id)) {
-      state.simulationEnergyService = ["cooling", "heating"].includes(target.serviceKind) ? target.serviceKind : "all";
-    }
-    state.simulationEnergySelection = target.id;
-    updateSimulationEnergyPanel("selection");
-    [...elements.simulationEnergyDashboard.querySelectorAll("[data-energy-explanation-node]")]
-      .find((node) => node.dataset.energyExplanationNode === target.id)?.focus({ preventScroll: true });
     return;
   }
   const pathSeriesButton = event.target.closest("[data-energy-path-series-id]");
@@ -6239,6 +6178,14 @@ export function handleSimulationEnergyDashboardChange(event) {
   if (!(event.target instanceof Element)) return;
   const target = event.target;
   if (!elements.simulationEnergyDashboard?.contains(target)) return;
+  if (target.matches("[data-energy-path-chart-frequency]")) {
+    if (target.disabled || !["monthly", "hourly"].includes(target.value) ||
+      target.value === (state.simulationEnergyChartFrequency || "monthly")) return;
+    state.simulationEnergyChartFrequency = target.value;
+    updateSimulationEnergyPanel("chart");
+    elements.simulationEnergyDashboard.querySelector("[data-energy-path-chart-frequency]")?.focus({ preventScroll: true });
+    return;
+  }
   const entry = Object.entries(simulationEnergyControls).find(([, control]) => target.matches(`[${control.attribute}]`));
   if (!entry) return;
   const [kind, control] = entry;

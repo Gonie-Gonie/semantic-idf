@@ -272,8 +272,11 @@ try {
   state.simulationEnergySelection = graph.nodes.find((node) => node.level === "load").id;
   const rendered = document.createElement("div");
   rendered.innerHTML = module.renderEnergyPathView(explanation, state);
-  const inspector = rendered.querySelector("[data-energy-path-inspector]");
-  assert(inspector, "Selected Zone node did not render an inspector");
+  assert(rendered.querySelector("[data-energy-path-component-chart]"), "Selected Zone node did not render its chart");
+  // Retain the standalone detail renderer's scoped calculation contract.
+  const details = document.createElement("div");
+  details.innerHTML = module.renderEnergyPathNodeInspector(explanation, graph.nodes, state.simulationEnergySelection, state, graph.relations, graph.links, graph.supplyActivities);
+  const inspector = details.querySelector("[data-energy-path-inspector]");
   assert(inspector.querySelector('[data-energy-path-inspector-value="raw"] dd').textContent.includes("1"), "Inspector did not show the raw reported value");
   assert(inspector.querySelector('[data-energy-path-inspector-value="multiplier"] dd').textContent === "10", "Inspector did not use the selected Zone multiplier detail");
   assert(inspector.querySelector('[data-energy-path-inspector-value="effective"] dd').textContent.includes("10"), "Inspector did not show the effective contribution");

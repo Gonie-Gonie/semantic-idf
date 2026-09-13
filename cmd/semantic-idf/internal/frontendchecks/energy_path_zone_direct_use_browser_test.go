@@ -112,6 +112,12 @@ const zoneSummary = (period = "annual", factor = 1, partial = true) => ({
 
 try {
   const module = await import("/src/js/views/energy-path-view.js");
+  // Preserve the legacy detail utility's data contract separately from the interactive chart view.
+  const renderWithLegacyDetail = (explanation, state) => {
+    const graph = module.energyPathGraphForState(explanation, state);
+    return module.renderEnergyPathNodeInspector(explanation, graph.nodes, state.simulationEnergySelection, state, graph.relations, graph.links, graph.supplyActivities)
+      + module.renderEnergyPathView(explanation, state);
+  };
   const i18n = await import("/src/js/i18n.js");
   const annual = zoneGraph();
   const january = zoneGraph("M1", 0.1);
@@ -184,7 +190,7 @@ try {
   assert(carrierSummary?.dataset.energyPathValueScope === "observed_direct_use_subtotal", "carrier summary was presented as complete");
   assert(carrierSummary.textContent.includes("Known energy sources") && carrierSummary.textContent.includes("Observed direct-use subtotal"), "carrier summary lacks partial-coverage context");
 
-  mount.innerHTML = module.renderEnergyPathView(explanation, { ...state, simulationEnergySelection: lighting.id });
+  mount.innerHTML = renderWithLegacyDetail(explanation, { ...state, simulationEnergySelection: lighting.id });
   const coverageNotice = mount.querySelector('[data-energy-path-zone-coverage-notice="partial"]');
   const carrierStage = mount.querySelector('[data-energy-path-stage="carrier"]');
   const inspector = mount.querySelector('[data-energy-path-inspector="' + lighting.id + '"]');
@@ -215,7 +221,7 @@ try {
   assert(januaryLighting?.value === 0.5 && januaryLighting.basis === "direct_zone_energy", "monthly Zone direct-use value/basis was lost");
 
   i18n.setLanguage("ko");
-  mount.innerHTML = module.renderEnergyPathKPI(summary) + module.renderEnergyPathView(explanation, { ...state, simulationEnergySelection: lighting.id });
+  mount.innerHTML = module.renderEnergyPathKPI(summary) + renderWithLegacyDetail(explanation, { ...state, simulationEnergySelection: lighting.id });
   assert(mount.querySelector('[data-energy-path-kpi="total_site_energy"]')?.textContent.includes("확인된 Zone site energy"), "Korean partial KPI label is missing");
   assert(mount.querySelector('[data-energy-path-zone-coverage-notice="partial"]')?.textContent.includes("완전한 Zone 합계가 아닌 소계"), "Korean partial-coverage explanation is missing");
   assert(mount.querySelector('[data-energy-path-inspector-value="basis"] dd')?.textContent.includes("Zone 직접 에너지"), "Korean direct-zone basis label is missing");

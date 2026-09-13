@@ -42,25 +42,31 @@ func TestEnergyPathVRFOriginalMonthlyRequests(t *testing.T) {
 	doc := energyPathVRFDocument(t)
 	before := doc.String()
 	plan := BuildPurposeRunPlan(doc, SimulationPurposeRequest{Purposes: []SimulationPurposeID{SimulationPurposeBasicEnergy}, BasicEnergyDetail: PurposeBasicEnergyDetailEnergyPath})
+	assertEnergyPathMonthlyHourlyRequestPairs(t, plan)
 	expected := energyPathVRFExpectedRequests()
 	seen := map[string]int{}
 	for _, output := range plan.OutputObjects {
 		key := strings.ToUpper(strings.TrimSpace(output.KeyValue)) + "|" + output.VariableName
 		owner, wanted := expected[key]
 		if !wanted {
+			if _, vrf := energyPathVRFConsumptionDefinitionForName(output.VariableName); vrf {
+				t.Errorf("unexpected VRF consumption identity: %#v", output)
+			}
 			continue
 		}
-		if output.ObjectType != "Output:Variable" || output.ReportingFrequency != "Monthly" || output.ScopeZoneName != owner || !purposeIDsContain(output.PurposeIDs, SimulationPurposeBasicEnergy) {
+		if output.ObjectType != "Output:Variable" || (output.ReportingFrequency != "Monthly" && output.ReportingFrequency != "Hourly") || output.ScopeZoneName != owner || !purposeIDsContain(output.PurposeIDs, SimulationPurposeBasicEnergy) {
 			t.Errorf("incorrect VRF request: %#v", output)
 		}
-		seen[key]++
+		seen[key+"|"+output.ReportingFrequency]++
 	}
-	if len(seen) != 14 {
-		t.Fatalf("VRF exact Monthly consumption requests=%d, want14 (five local pairs plus four shared outdoor constituents)", len(seen))
+	if len(seen) != 28 {
+		t.Fatalf("VRF exact consumption requests=%d, want14 Monthly/Hourly pairs (five local pairs plus four shared outdoor constituents)", len(seen))
 	}
 	for key := range expected {
-		if seen[key] != 1 {
-			t.Errorf("%s count=%d, want1", key, seen[key])
+		for _, frequency := range []string{"Monthly", "Hourly"} {
+			if seen[key+"|"+frequency] != 1 {
+				t.Errorf("%s %s count=%d, want1", key, frequency, seen[key+"|"+frequency])
+			}
 		}
 	}
 	if before != doc.String() {
@@ -131,28 +137,31 @@ func TestEnergyPathVRFSelectedScopePreservesWholePoolAndMinimalLoads(t *testing.
 		t.Run(mode, func(t *testing.T) {
 			plan := BuildPurposeRunPlan(doc, SimulationPurposeRequest{Purposes: []SimulationPurposeID{SimulationPurposeBasicEnergy}, BasicEnergyDetail: PurposeBasicEnergyDetailEnergyPath,
 				Scope: SimulationPurposeScope{ZoneMode: mode, ZoneNames: []string{"space1-1"}}})
+			assertEnergyPathMonthlyHourlyRequestPairs(t, plan)
 			seen, loads := map[string]int{}, map[string]int{}
 			for _, output := range plan.OutputObjects {
 				key := strings.ToUpper(output.KeyValue) + "|" + output.VariableName
 				if owner, ok := energyPathVRFExpectedRequests()[key]; ok {
-					seen[key]++
-					if output.ReportingFrequency != "Monthly" || output.ScopeZoneName != owner {
+					seen[key+"|"+output.ReportingFrequency]++
+					if output.ScopeZoneName != owner {
 						t.Fatalf("scope rewrote original owner: %#v", output)
 					}
+				} else if _, vrf := energyPathVRFConsumptionDefinitionForName(output.VariableName); vrf {
+					t.Fatalf("scope acquired an unrelated VRF consumption identity: %#v", output)
 				}
 				if output.VariableName == "Zone Air System Sensible Cooling Energy" || output.VariableName == "Zone Air System Sensible Heating Energy" {
-					loads[key]++
-					if output.ReportingFrequency != "Monthly" || output.ScopeZoneName != output.KeyValue {
+					loads[key+"|"+output.ReportingFrequency]++
+					if output.ScopeZoneName != output.KeyValue {
 						t.Fatalf("incorrect denominator context: %#v", output)
 					}
 				}
 				if output.ObjectType == "Output:Variable" && output.State != PurposeOutputStateExisting &&
-					(output.ReportingFrequency != "Monthly" || strings.Contains(strings.ToLower(output.VariableName), "fan electricity") || strings.Contains(strings.ToLower(output.VariableName), "pump electricity")) {
-					t.Fatalf("added heavy/high-frequency output %#v", output)
+					(strings.Contains(strings.ToLower(output.VariableName), "fan electricity") || strings.Contains(strings.ToLower(output.VariableName), "pump electricity")) {
+					t.Fatalf("added an unrelated consumption output %#v", output)
 				}
 			}
-			if len(seen) != 14 || len(loads) != 10 {
-				t.Fatalf("selected scope shrank cohort/denominator: %d/%d", len(seen), len(loads))
+			if len(seen) != 28 || len(loads) != 20 {
+				t.Fatalf("selected scope changed fourteen constituent/ten denominator Monthly-Hourly pairs: %d/%d", len(seen), len(loads))
 			}
 			for key, count := range seen {
 				if count != 1 {
@@ -162,8 +171,10 @@ func TestEnergyPathVRFSelectedScopePreservesWholePoolAndMinimalLoads(t *testing.
 			for zone := 1; zone <= 5; zone++ {
 				for _, service := range []string{"Cooling", "Heating"} {
 					key := fmt.Sprintf("SPACE%d-1|Zone Air System Sensible %s Energy", zone, service)
-					if loads[key] != 1 {
-						t.Errorf("incomplete exact denominator %s: %d", key, loads[key])
+					for _, frequency := range []string{"Monthly", "Hourly"} {
+						if loads[key+"|"+frequency] != 1 {
+							t.Errorf("incomplete exact denominator %s %s: %d", key, frequency, loads[key+"|"+frequency])
+						}
 					}
 				}
 			}

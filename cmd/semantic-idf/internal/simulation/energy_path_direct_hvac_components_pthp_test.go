@@ -106,21 +106,30 @@ func TestEnergyPathDirectHVACPTHPOriginalOwnershipAndRequests(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			plan := pthpDirectPlan(doc, test.scope)
-			seen := map[string]bool{}
+			seen := map[string]map[string]string{}
 			for _, output := range plan.OutputObjects {
 				if !pthpDirectName(output.VariableName) {
 					continue
 				}
 				key := output.KeyValue + "\x00" + output.VariableName
-				if seen[key] || output.ObjectType != "Output:Variable" || output.ReportingFrequency != "Monthly" || output.ScopeZoneName == "" ||
+				if seen[key] == nil {
+					seen[key] = map[string]string{}
+				}
+				if seen[key][output.ReportingFrequency] != "" || output.ObjectType != "Output:Variable" ||
+					(output.ReportingFrequency != "Monthly" && output.ReportingFrequency != "Hourly") || output.ScopeZoneName == "" ||
 					output.KeyValue == "*" || output.KeyValue == output.ScopeZoneName || !purposeIDsContain(output.PurposeIDs, SimulationPurposeBasicEnergy) ||
 					test.name == "selected" && output.ScopeZoneName != "SPACE1-1" {
 					t.Fatalf("ambiguous/unscoped request %#v", output)
 				}
-				seen[key] = true
+				seen[key][output.ReportingFrequency] = output.ScopeZoneName
 			}
 			if len(seen) != test.want {
-				t.Fatalf("exact requests%d want%d", len(seen), test.want)
+				t.Fatalf("exact request pairs%d want%d", len(seen), test.want)
+			}
+			for key, frequencies := range seen {
+				if len(frequencies) != 2 || frequencies["Monthly"] == "" || frequencies["Monthly"] != frequencies["Hourly"] {
+					t.Errorf("native component %q must retain one Monthly request and one Hourly companion for the same owner: %#v", key, frequencies)
+				}
 			}
 		})
 	}

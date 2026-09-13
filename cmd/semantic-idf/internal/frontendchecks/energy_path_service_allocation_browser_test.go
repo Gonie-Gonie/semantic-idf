@@ -140,7 +140,9 @@ try {
   assert(!mount.textContent.includes("Unassigned building HVAC energy"), "selected Zone summary displayed unassigned Building energy");
 
   mount.innerHTML = module.renderEnergyPathView(explanation, { ...state, simulationEnergySelection: allocated.id });
-  const basis = mount.querySelector('[data-energy-path-inspector-value="basis"] dd')?.textContent || "";
+  const details = document.createElement("div");
+  details.innerHTML = module.renderEnergyPathNodeInspector(explanation, graph.nodes, allocated.id, state, graph.relations);
+  const basis = details.querySelector('[data-energy-path-inspector-value="basis"] dd')?.textContent || "";
   assert(basis.includes("Allocated by HVAC service-path load share") && !basis.includes("service_path_allocation"), "inspector did not explain the service-path allocation basis in plain language");
   assert(!mount.querySelector('[data-energy-path-detail-section="sources"], [data-energy-path-detail-section="entities"]'), "removed Source data or Related model entities section is still rendered");
   assert(allocated.basis === "service_path_allocation", "allocated graph node lost the underlying service-path allocation basis");

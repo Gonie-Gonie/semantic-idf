@@ -1800,6 +1800,46 @@
   text-align: center;
 }
 
+.energy-path-component-chart {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface-2);
+  padding: 12px;
+}
+
+.energy-path-component-chart > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.energy-path-component-chart > header strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.energy-path-component-chart select { flex: 0 0 auto; }
+.energy-path-chart-plot { min-width: 0; }
+.energy-path-chart-plot svg { display: block; width: 100%; height: auto; overflow: visible; }
+.energy-path-chart-grid { stroke: var(--line); stroke-width: 1; }
+.energy-path-chart-tick { fill: var(--muted); font-size: 16px; font-variant-numeric: tabular-nums; }
+.energy-path-chart-axis-label { fill: var(--ink); font-size: 17px; }
+.energy-path-chart-mark { fill: var(--chart-color); }
+.energy-path-chart-mark:focus { outline: 2px solid var(--focus); }
+.energy-path-chart-line { fill: none; stroke: var(--chart-color); stroke-width: 1.5; }
+.energy-path-chart-color-0 { --chart-color: var(--accent); }
+.energy-path-chart-color-1 { --chart-color: var(--amber); }
+.energy-path-chart-color-2 { --chart-color: var(--focus); }
+.energy-path-chart-color-3 { --chart-color: var(--green); }
+.energy-path-chart-color-4 { --chart-color: var(--red); }
+.energy-path-chart-color-5 { --chart-color: var(--selection-hidden); }
+.energy-path-chart-legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 11px; color: var(--muted); }
+.energy-path-chart-legend span { min-width: 0; overflow-wrap: anywhere; }
+.energy-path-chart-legend i { display: inline-block; width: 9px; height: 9px; margin-right: 5px; background: var(--chart-color); }
+.energy-path-chart-empty { padding: 48px 12px; color: var(--muted); text-align: center; }
+
 .energy-path-node-inspector {
   display: grid;
   grid-template-columns: minmax(0, 1fr);

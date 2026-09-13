@@ -23,7 +23,6 @@ func TestFrontendEnergyPathV2HeaderAndControlContract(t *testing.T) {
 		`Load drivers → Thermal load → End-use energy → Energy sources`,
 		`data-simulation-energy-scope`,
 		`data-simulation-energy-path-period`,
-		`data-simulation-energy-service`,
 		`viewState.simulationEnergyScopeKind === "zone"`,
 		`type="search"`,
 		`list="simulationEnergyPathZones"`,
@@ -84,6 +83,7 @@ func TestFrontendEnergyPathV2HeaderAndControlContract(t *testing.T) {
 
 	controls := sliceBetween(view, "function renderEnergyPathControls", "function renderEnergyPathStage")
 	for _, legacy := range []string{
+		"data-simulation-energy-service",
 		"sankey-mode",
 		"sign-mode",
 		"node-limit",
@@ -158,9 +158,9 @@ func TestFrontendEnergyPathNamingDocumentationAndStyles(t *testing.T) {
 		`href="#energy-path"`,
 		`id="energy-path"`,
 		`Load drivers → Thermal loads → End-use energy → Energy sources`,
-		`Scope, Period, and Service`,
-		`defaulting to Building,`,
-		`Annual, and All`,
+		`Scope and Period default to Building and Annual`,
+		`Monthly or Hourly graph`,
+		`kWh/m² with two decimal places`,
 	} {
 		if !strings.Contains(guide, required) {
 			t.Fatalf("Energy Path Guide contract missing %q", required)
@@ -258,7 +258,6 @@ func TestFrontendEnergyPathV2SummaryConsumersAndV1Adapter(t *testing.T) {
 
 	simulation := readTestFile(t, "frontend/src/js/views/simulation-views.js")
 	for _, required := range []string{
-		`renderEnergyPathKPI(scene.summary, { ...scene.kpiOptions, detailsOpen: Boolean(state.simulationEnergyDetailsOpen) })`,
 		`energyPathSummaryGroups(summary).map((group) => [group.label, group.items])`,
 		`energyPathLegacyDerivedKPIItems(explanationSummary)`,
 	} {
@@ -336,10 +335,9 @@ func TestFrontendEnergyPathUsesPrecomputedZoneResults(t *testing.T) {
 
 	simulation := readTestFile(t, "frontend/src/js/views/simulation-views.js")
 	for _, required := range []string{
-		`const summary = energyPathSummaryForState(explanation, result.purposeResults.energyExplanationSummary || {}, state)`,
 		`const display = energyPathDisplayContext(explanation, state)`,
-		`const path = prepareEnergyPathScene(explanation, state, { graph, allServiceGraph: kpiGraph, display })`,
-		`renderEnergyPathKPI(scene.summary, { ...scene.kpiOptions, detailsOpen: Boolean(state.simulationEnergyDetailsOpen) })`,
+		`const path = prepareEnergyPathScene(explanation, state, { graph, allServiceGraph: graph, display })`,
+		`state.simulationEnergyService = "all"`,
 	} {
 		if !strings.Contains(simulation, required) {
 			t.Fatalf("Simulation does not align Energy Path summary scope/period with its graph: %q", required)
