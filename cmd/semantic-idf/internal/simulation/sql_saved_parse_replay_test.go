@@ -102,9 +102,9 @@ func TestSQLSavedParseReplay(t *testing.T) {
 	limitedElapsed := time.Since(started)
 	status := "completed_sql_first"
 	if limitedErr != nil {
-		status = "error_fallback_discards_partial_sql"
+		status = "combined_parser_error_with_partial_sql"
 		if errors.Is(limitedErr, context.DeadlineExceeded) {
-			status = "deadline_fallback_discards_partial_sql"
+			status = "combined_parser_deadline_with_partial_sql"
 		}
 	}
 	partialSeriesEqual := len(limited.Series) == 0 || reflect.DeepEqual(limited.Series, baseline.Series)
@@ -122,9 +122,9 @@ func TestSQLSavedParseReplay(t *testing.T) {
 		"defaultDeadline": map[string]any{
 			"limit": defaultSQLParseTimeout.String(), "elapsed": limitedElapsed.String(), "status": status,
 			"error": fmt.Sprint(limitedErr), "series": len(limited.Series), "heatFlowZones": len(limited.HeatFlow.Zones), "heatFlowFrames": limited.HeatFlow.FrameCount,
-			"returnedPartialData":          limitedErr != nil && sqlParseResultHasData(limited),
-			"parseSQLResultsWouldKeepData": limitedErr == nil && sqlParseResultHasData(limited),
-			"presentSeriesMatchUnlimited":  partialSeriesEqual, "presentHeatFlowMatchesUnlimited": partialHeatFlowEqual, "entireResultMatchesUnlimited": allEqual,
+			"returnedPartialData":         limitedErr != nil && sqlParseResultHasData(limited),
+			"combinedParserCompleted":     limitedErr == nil,
+			"presentSeriesMatchUnlimited": partialSeriesEqual, "presentHeatFlowMatchesUnlimited": partialHeatFlowEqual, "entireResultMatchesUnlimited": allEqual,
 		},
 	}
 	if err := json.NewEncoder(metadataFile).Encode(metadata); err != nil {
@@ -133,7 +133,7 @@ func TestSQLSavedParseReplay(t *testing.T) {
 	if err := metadataFile.Close(); err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("default deadline: %s; status=%s err=%v series=%d HeatFlow zones=%d; valid SQL partial data discarded=%v",
+	t.Logf("combined parser default deadline: %s; status=%s err=%v series=%d HeatFlow zones=%d; returned valid partial SQL=%v",
 		limitedElapsed, status, limitedErr, len(limited.Series), len(limited.HeatFlow.Zones), limitedErr != nil && sqlParseResultHasData(limited))
 	t.Logf("capture SQL/input/log/plan unchanged=%v; metadata=%s.meta.json", captureUnchanged, output)
 	if !captureUnchanged || !comparisonEqual || !partialSeriesEqual || !partialHeatFlowEqual || limitedErr == nil && !allEqual {

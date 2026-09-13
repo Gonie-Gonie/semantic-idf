@@ -114,7 +114,7 @@ func parseSimulationSQLWithContext(ctx context.Context, path string, plan Purpos
 		return result, err
 	}
 	var firstErr error
-	if series, err := parseSimulationSQLSeries(path); err != nil {
+	if series, err := parseSimulationSQLSeriesForPlan(path, plan); err != nil {
 		firstErr = err
 	} else {
 		result.Series = series
@@ -171,6 +171,10 @@ func parseSimulationSQLWithContext(ctx context.Context, path string, plan Purpos
 }
 
 func parseSimulationSQLSeries(path string) ([]SimulationSeries, error) {
+	return parseSimulationSQLSeriesForPlan(path, PurposeRunPlan{})
+}
+
+func parseSimulationSQLSeriesForPlan(path string, plan PurposeRunPlan) ([]SimulationSeries, error) {
 	db, err := openSimulationSQLiteReadOnly(path)
 	if err != nil {
 		return nil, err
@@ -181,7 +185,7 @@ func parseSimulationSQLSeries(path string) ([]SimulationSeries, error) {
 	if err != nil || !ready {
 		return nil, err
 	}
-	dictionaries, err := sqlOutputSeriesDictionaries(db)
+	dictionaries, err := sqlOutputSeriesDictionaries(db, plan)
 	if err != nil {
 		return nil, err
 	}
@@ -858,7 +862,7 @@ func parseSQLTabularNumber(value string) (float64, bool) {
 	return number, err == nil
 }
 
-func sqlOutputSeriesDictionaries(db *sql.DB) ([]sqlOutputDictionaryRow, error) {
+func sqlOutputSeriesDictionaries(db *sql.DB, plan PurposeRunPlan) ([]sqlOutputDictionaryRow, error) {
 	columns, err := sqlTableColumns(db, "ReportDataDictionary")
 	if err != nil {
 		return nil, err
@@ -869,18 +873,23 @@ FROM ReportDataDictionary rdd
 JOIN (SELECT DISTINCT ReportDataDictionaryIndex FROM ReportData) rd
   ON rd.ReportDataDictionaryIndex = rdd.ReportDataDictionaryIndex
 WHERE TRIM(COALESCE(rdd.Name, '')) <> ''
-ORDER BY rdd.ReportDataDictionaryIndex
-LIMIT ?`, sqlAliasedTextColumnExpr(columns, "rdd", "ReportingFrequency", "''"), sqlAliasedCastTextColumnExpr(columns, "rdd", "IsMeter", "NULL")), maxSQLSeriesColumns)
+ORDER BY rdd.ReportDataDictionaryIndex`, sqlAliasedTextColumnExpr(columns, "rdd", "ReportingFrequency", "''"), sqlAliasedCastTextColumnExpr(columns, "rdd", "IsMeter", "NULL")))
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	out := []sqlOutputDictionaryRow{}
+	purposeSelection := newPurposeSeriesSelection(plan)
+	position := 0
 	for rows.Next() {
 		var row sqlOutputDictionaryRow
 		var meter sql.NullString
 		if err := rows.Scan(&row.index, &row.keyValue, &row.name, &row.units, &row.reportingFrequency, &meter); err != nil {
 			return nil, err
+		}
+		position++
+		if position > maxSQLSeriesColumns && !purposeSelection.matches(row.keyValue, row.name) {
+			continue
 		}
 		row.reportingFrequency = strings.TrimSpace(row.reportingFrequency)
 		// Missing optional dictionary columns are unknown, not an inferred

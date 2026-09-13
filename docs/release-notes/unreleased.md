@@ -161,6 +161,11 @@ The release script infers bump size from these sections:
 
 ## Fixed
 
+- Fixed missing HVAC Loops and Comfort results on large Run & Inspect models.
+  Selected-purpose series are now read beyond the general SQL/CSV preview
+  limits, and the output plan is available before result parsing starts.
+  Initial Series and Heat Flow reads complete independently, preventing the
+  combined parser's elapsed-time cutoff from discarding valid SQL results.
 - Preserved the live Main workspace while moving through Tools, Guide, and
   Settings. Auxiliary-page hydration no longer invalidates the analysis cache,
   empty editor snapshots remain restorable, and selecting a different Diagnose

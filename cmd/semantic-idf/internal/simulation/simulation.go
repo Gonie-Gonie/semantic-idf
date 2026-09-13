@@ -786,10 +786,10 @@ func RunSimulation(request SimulationRunRequest, progress func(SimulationProgres
 		result.Error = runErr.Error()
 	}
 
-	readSimulationOutputsWithProgress(result, request.RunID, progress, result.InputPath)
 	if request.PurposeRunPlan != nil {
 		result.PurposeRunPlan = request.PurposeRunPlan
 	}
+	readSimulationOutputsWithProgress(result, request.RunID, progress, result.InputPath)
 	if request.PurposeRequest != nil {
 		emitSimulationProgress(progress, request.RunID, "build_purpose_results", "running", "Building purpose result bundle", 8, simulationProgressTotal, result.InputPath)
 		bundle := buildPurposeResultBundleWithProgress(result, *request.PurposeRequest, func(phase, message string) {
@@ -1170,21 +1170,26 @@ func parseSQLResults(result *SimulationRunResult) bool {
 		if result.PurposeRunPlan != nil {
 			plan = *result.PurposeRunPlan
 		}
-		parsed, err := parseSimulationSQL(file.Path, plan)
-		if err != nil {
-			continue
-		}
-		if sqlParseResultHasData(parsed) {
-			used = true
-		}
+		// The initial result stores only Series and HeatFlow. Read them
+		// independently: a slow or unavailable section must not discard another
+		// completed section. Purpose builders read their own remaining SQL data.
 		if len(result.Series) == 0 {
-			if len(parsed.Series) > 0 {
-				result.Series = append(result.Series, parsed.Series...)
+			if series, err := parseSimulationSQLSeriesForPlan(file.Path, plan); err == nil && len(series) > 0 {
+				result.Series = series
+				used = true
 			}
 		}
 		if len(result.HeatFlow.Zones) == 0 {
-			if len(parsed.HeatFlow.Zones) > 0 {
-				result.HeatFlow = parsed.HeatFlow
+			if heatFlow, err := parseSimulationHeatFlowSQL(file.Path); err == nil && len(heatFlow.Zones) > 0 {
+				result.HeatFlow = heatFlow
+				used = true
+			}
+		}
+		if !used {
+			// Tabular/diagnostic-only SQL remains a result source even without
+			// time series. This reader is bounded to small summary tables.
+			if integrity, err := parseSimulationIntegritySQL(file.Path); err == nil {
+				used = integrity.HasErrorsTable || integrity.HasTabularData
 			}
 		}
 	}
@@ -1197,7 +1202,11 @@ func parseCSVResults(result *SimulationRunResult) bool {
 		if file.Kind != "csv" {
 			continue
 		}
-		summary, series, err := parseSimulationCSV(file.Path)
+		var plan PurposeRunPlan
+		if result.PurposeRunPlan != nil {
+			plan = *result.PurposeRunPlan
+		}
+		summary, series, err := parseSimulationCSVForPlan(file.Path, plan)
 		if err != nil {
 			continue
 		}
@@ -1331,6 +1340,10 @@ func parseERRFile(path string) ERRSummary {
 }
 
 func parseSimulationCSV(path string) (CSVSummary, []SimulationSeries, error) {
+	return parseSimulationCSVForPlan(path, PurposeRunPlan{})
+}
+
+func parseSimulationCSVForPlan(path string, plan PurposeRunPlan) (CSVSummary, []SimulationSeries, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return CSVSummary{}, nil, err
@@ -1343,8 +1356,12 @@ func parseSimulationCSV(path string) (CSVSummary, []SimulationSeries, error) {
 		return CSVSummary{}, nil, err
 	}
 	accumulators := make([]columnAccumulator, len(header))
+	purposeSelection := newPurposeSeriesSelection(plan)
+	includeSeries := make([]bool, len(header))
 	for index, name := range header {
 		accumulators[index] = columnAccumulator{index: index, name: strings.TrimSpace(name), min: math.Inf(1), max: math.Inf(-1)}
+		keyValue, variableName := splitPurposeSeriesColumn(name)
+		includeSeries[index] = index <= maxCSVSeriesColumns || purposeSelection.matches(keyValue, variableName)
 	}
 	seriesPoints := make(map[int][]SimulationPoint)
 	rowCount := 0
@@ -1376,7 +1393,7 @@ func parseSimulationCSV(path string) (CSVSummary, []SimulationSeries, error) {
 			if value > acc.max {
 				acc.max = value
 			}
-			if index <= maxCSVSeriesColumns {
+			if includeSeries[index] {
 				seriesPoints[index] = append(seriesPoints[index], SimulationPoint{X: rowCount, Label: label, Value: value})
 			}
 		}

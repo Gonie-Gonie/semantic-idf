@@ -161,6 +161,13 @@ scope is broad or unresolved. The main Simulation view always requests all
 zones, while still passing the active HVAC tab loop as selected HVAC scope when
 HVAC Loop Check is enabled.
 
+The general Series preview is limited to the first 256 SQL columns or 16 CSV
+columns. HVAC Loop Check and Comfort also read every matching requested series
+beyond those preview limits, using the run plan's variable names and keys.
+Existing reporting frequencies remain available. The run plan is attached
+before results are parsed so these selections apply to Run & Inspect as well
+as saved-result processing.
+
 `PurposeRunPlan` reports:
 
 - output objects with purpose tags, signatures, state, and estimated weight
@@ -497,7 +504,14 @@ time-series rows, Basic Energy dashboard data, SQL heat-flow data, Integrity
 diagnostics/tabular reports, and Comfort unmet-hours rows into one parse result,
 while keeping partial results when one SQL feature is absent or malformed. The
 entrypoint uses a timeout-aware context wrapper and checks cancellation between
-parser phases so oversized SQL files do not monopolize the runner indefinitely.
+parser phases.
+
+The runner's initial output read handles Series and Heat Flow independently,
+without that combined parser's elapsed-time cutoff. A large selected-purpose
+dataset can finish reading without a later parser stage causing its results to
+be discarded. Energy, Integrity, and Comfort unmet-hours data are read by their
+purpose builders; the initial read does not duplicate those computations.
+CSV/ESO fallback fills sections that are missing or failed to parse.
 
 Purpose result viewers now include:
 
