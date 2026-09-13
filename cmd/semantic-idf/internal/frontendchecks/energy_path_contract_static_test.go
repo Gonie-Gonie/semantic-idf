@@ -337,7 +337,8 @@ func TestFrontendEnergyPathUsesPrecomputedZoneResults(t *testing.T) {
 	simulation := readTestFile(t, "frontend/src/js/views/simulation-views.js")
 	for _, required := range []string{
 		`const summary = energyPathSummaryForState(explanation, result.purposeResults.energyExplanationSummary || {}, state)`,
-		`const path = prepareEnergyPathScene(explanation, state, { graph, allServiceGraph: kpiGraph })`,
+		`const display = energyPathDisplayContext(explanation, state)`,
+		`const path = prepareEnergyPathScene(explanation, state, { graph, allServiceGraph: kpiGraph, display })`,
 		`renderEnergyPathKPI(scene.summary, { ...scene.kpiOptions, detailsOpen: Boolean(state.simulationEnergyDetailsOpen) })`,
 	} {
 		if !strings.Contains(simulation, required) {

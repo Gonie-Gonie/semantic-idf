@@ -173,7 +173,7 @@ try{
   const link=current.links.find(item=>item.id===ratio.dataset.energyPathBridgeRatio),service=current.nodes.find(node=>node.id===link?.fromId)?.serviceKind,expected=service==="cooling"?4:.8;
   check(!svg.contains(ratio)&&ratio.tabIndex===0,"ratio keyboard target is hidden inside decorative SVG");
   const name=ratio.getAttribute("aria-label")||"",tooltipID=ratio.getAttribute("aria-describedby"),tooltip=tooltipID&&document.getElementById(tooltipID);
-  check(link&&name.includes(String(expected))&&name.includes(String(link.fromValue))&&name.includes(String(link.toValue))&&/thermal/i.test(name)&&/site/i.test(name),"ratio accessible name omits exact ratio / dual-domain values: "+service+" "+name);
+  check(link&&name.includes(String(expected))&&name.includes(link.fromValue.toFixed(2)+" kWh/m² thermal")&&name.includes(link.toValue.toFixed(2)+" kWh/m² site"),"ratio accessible name omits exact ratio / dual-domain values: "+service+" "+name);
   check(service==="cooling"?/COP/i.test(name):/efficiency/i.test(name),"conversion ratio lacks correct typed label: "+service);
   ratio.focus();
   check(document.activeElement===ratio&&tooltip?.getAttribute("role")==="tooltip"&&getComputedStyle(tooltip).visibility!=="hidden"&&getComputedStyle(tooltip).display!=="none","full ratio tooltip is unavailable on keyboard focus: "+service);
@@ -188,7 +188,7 @@ try{
  for(const level of["load","end_use"]){const cooling=current.nodes.find(node=>node.level===level&&(level==="load"?node.serviceKind:node.endUse)==="cooling"),heating=current.nodes.find(node=>node.level===level&&(level==="load"?node.serviceKind:node.endUse)==="heating");check(cooling&&heating&&nodeButton(cooling.id).getBoundingClientRect().top<nodeButton(heating.id).getBoundingClientRect().top,"Cooling-first conversion alignment was replaced by descending load magnitude: "+level);}
  const legend=[...host.querySelectorAll("[data-energy-path-legend-item]")];
  check(legend.length===4&&legend.map(item=>item.dataset.energyPathLegendItem).join(",")==="thermal,site,allocated,residual","legend is not exactly Thermal/Site/Allocated/Residual");
- check(legend.map(item=>item.textContent.trim()).join("|")==="Thermal kWh|Site kWh|Allocated|Residual","legend includes detailed basis/source type clutter or wrong units");
+ check(legend.map(item=>item.textContent.trim()).join("|")==="Thermal kWh/m²|Site kWh/m²|Allocated|Residual","legend includes detailed basis/source type clutter or wrong units");
  // Missing request metadata must not be confused with an explicit report that
  // a ratio is unavailable. Both consumers read the same period-local truth.
  const ratioVariant=(status,period="annual")=>{

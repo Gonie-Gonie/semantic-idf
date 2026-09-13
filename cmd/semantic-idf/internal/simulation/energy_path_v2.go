@@ -1374,6 +1374,7 @@ func normalizeEnergyExplanationScope(scope EnergyExplanationScope) EnergyExplana
 		Kind:             kind,
 		ZoneName:         zoneName,
 		AggregationBasis: firstNonEmpty(strings.TrimSpace(scope.AggregationBasis), "model_total"),
+		FloorAreaM2:      validEnergyFloorArea(scope.FloorAreaM2),
 	}
 }
 

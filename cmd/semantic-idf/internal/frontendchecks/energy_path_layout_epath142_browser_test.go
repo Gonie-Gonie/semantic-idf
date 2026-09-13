@@ -128,7 +128,7 @@ const makeGraph=(scope,period,scale)=>{
  const summary={schema:"semantic-idf.energy-explanation-summary/v2",scope,period,quality,completeness,drivers:nodes.filter(n=>n.level==="driver"),loads:nodes.filter(n=>n.level==="load"),endUses:nodes.filter(n=>n.level==="end_use"),carriers:nodes.filter(n=>n.level==="carrier")};
  return {id:period,period,nodes,links,quality,summary,completeness};
 };
-const buildingScope={kind:"building",aggregationBasis:"model_total"},zoneScope={kind:"zone",zoneName:"Office",aggregationBasis:"model_total"};
+const buildingScope={kind:"building",aggregationBasis:"model_total",floorAreaM2:1},zoneScope={kind:"zone",zoneName:"Office",aggregationBasis:"model_total",floorAreaM2:1};
 const building=makeGraph(buildingScope,"annual",1),zone=makeGraph(zoneScope,"annual",.5);
 const periods=[makeGraph(buildingScope,"M1",.25)],zonePeriods=[makeGraph(zoneScope,"M1",.125)];
 const explanation={schema:"semantic-idf.energy-explanation/v2",scope:buildingScope,...building,periods,zoneResults:[{scope:zoneScope,...zone,periods:zonePeriods}],sources:[...sourceRecords.values()]};
@@ -179,7 +179,7 @@ try{
   if(node.level==="end_use"&&expectedLane==="main")check(rect.bottom<=bandRect.top+1,"HVAC conversion end use overlaps direct lane: "+node.id);
   const label=element.querySelector(".energy-path-node-label"),style=label&&getComputedStyle(label);
   check(label&&parseInt(style.webkitLineClamp,10)===2&&label.getBoundingClientRect().height<=2*parseFloat(style.lineHeight)+1,"node label is not limited to two lines: "+node.id);
-  check(element.title.includes(node.label||node.kind||node.id)&&element.title.includes("kWh")&&element.getAttribute("aria-label")===element.title,"full label and energy unit missing from tooltip / accessible name: "+node.id);
+  check(element.title.includes(node.label||node.kind||node.id)&&element.title.includes("kWh/m²")&&element.getAttribute("aria-label")===element.title,"full label and energy unit missing from tooltip / accessible name: "+node.id);
   if(node.level==="load"&&node.serviceKind==="cooling")check(element.getAttribute("aria-label").includes("Latent 20%")&&element.querySelector("[data-energy-path-load-latent-badge]"),"explicit accessible label hides important latent-load badge");
  }
  for(const element of[document.documentElement,workspace,analysis,document.getElementById("simulationPane"),host,canvas])check(element.scrollWidth<=element.clientWidth+1,"horizontal overflow in "+(element.id||element.className||element.tagName)+": "+element.scrollWidth+"/"+element.clientWidth);

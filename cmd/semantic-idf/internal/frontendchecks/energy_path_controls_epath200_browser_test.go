@@ -128,8 +128,8 @@ try{
  check(ids("load").includes("load.cooling.building")&&!ids("load").includes("load.cooling.office"),"Building return retained Zone graph");
  change("period","M1");
  check(state.simulationEnergyPeriod==="M1","January was not stored in primary state");
- const coolingValue=host.querySelector('[data-energy-path-kpi="cooling_load"]');
- check(coolingValue?.textContent.includes("20"),"January did not render its20kWh cooling load instead of annual80");
+ const coolingValue=host.querySelector('[data-energy-path-kpi="cooling_load"] strong');
+ check(coolingValue?.textContent.trim()==="20.00 kWh/m² thermal","January did not render20.00kWh/m² for the1m² fixture instead of annual80.00");
  for(const period of expectedPeriods.slice(2)){change("period",period);check(state.simulationEnergyPeriod===period,"month selection failed: "+period);check(ids("load").length===0,"absent "+period+" reused annual / January load nodes");assertControls(false,period);}
  change("period","annual");
  for(const scope of["building","zone"]){

@@ -99,7 +99,7 @@ try{
  const button=id=>[...host.querySelectorAll("[data-energy-path-layout-node]")].find(node=>node.dataset.energyPathLayoutNode===id);
  const change=(attribute,value)=>{const target=host.querySelector('['+attribute+']');if(!target)throw new Error("missing actual control "+attribute);target.value=value;target.dispatchEvent(new Event("change",{bubbles:true}));check(host.querySelector('['+attribute+']')?.value===value,"context control failed "+attribute+"="+value);};
  const select=id=>{const target=button(id);if(!target)throw new Error("missing actual native node "+id);target.focus();target.click();check(state.simulationEnergySelection===id&&inspector()?.dataset.energyPathInspector===id,"selection opened wrong inspector: "+id);check(document.activeElement===target,"native node focus lost: "+id);};
- const formatted=value=>value.toLocaleString(undefined,{maximumFractionDigits:2})+" kWh site";
+ const formatted=value=>value.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})+" kWh/m² site";
  const labels={electricity:"Electricity",natural_gas:"Natural gas",cooling:"Cooling equipment",heating:"Heating equipment",fans_pumps:"Fans & pumps",lighting:"Lighting",equipment:"Equipment",water_systems:"Water systems",refrigeration:"Refrigeration",other:"Other"};
  const assertInspectorSections=label=>{
   const text=inspector()?.innerText||"";for(const id of[...sourceIDs,"rule.private.inspector150"])check(!text.includes(id),label+": inspector leaks technical source/rule ID: "+id);

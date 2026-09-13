@@ -161,6 +161,8 @@ The release script infers bump size from these sections:
 
 ## Fixed
 
+- Energy now displays energy quantities in kWh/m² with two decimal places,
+  using the executed model's building or selected-zone floor area.
 - Fixed missing HVAC Loops and Comfort results on large Run & Inspect models.
   Selected-purpose series are now read beyond the general SQL/CSV preview
   limits, and the output plan is available before result parsing starts.

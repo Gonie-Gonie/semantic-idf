@@ -1,6 +1,7 @@
 import { t } from "./i18n.js";
 import { escapeHTML } from "./state.js";
 import { resolveEnergyPathOutputRequest, energyPathOutputRequestKey, energyPathOutputRequestFields } from "./energy-path-output-requests.js";
+import { formatEnergyPathDisplayValue } from "./energy-path-display.js";
 
 const STAGES = [
   { key: "drivers", label: "Drivers", domain: "thermal" },
@@ -219,7 +220,8 @@ function renderOutputAction(source, outputObjects, sources) {
   }).join("")}`;
 }
 
-function valueLabel(value, unit = "") {
+function valueLabel(value, unit = "", display) {
+  if (display?.perArea) return formatEnergyPathDisplayValue(value, unit, display);
   return numericValue(value) !== null ? `${Number(value).toLocaleString(undefined, { maximumFractionDigits: 3 })} ${unit}`.trim() : "—";
 }
 
@@ -249,7 +251,7 @@ function renderExportSection(exportContext) {
   </section>`;
 }
 
-function renderDataPanel(explanation, viewState, outputObjects, diagnosticsHTML, drawer, exportContext) {
+function renderDataPanel(explanation, viewState, outputObjects, diagnosticsHTML, drawer, exportContext, display) {
   const context = selectedContext(explanation, viewState);
   const stage = STAGES.some((item) => item.key === drawer.stage) ? drawer.stage : "";
   const roles = sourceRoles(context.result);
@@ -276,7 +278,7 @@ function renderDataPanel(explanation, viewState, outputObjects, diagnosticsHTML,
     </section>
     <section data-energy-path-data-reconciliation><h5>${escapeHTML(copy("Reconciliation", "Reconciliation"))}</h5>
       <div class="energy-path-details-table-wrap"><table><thead><tr><th>${escapeHTML(copy("Reconciliation", "Reconciliation"))}</th><th>${escapeHTML(copy("CarrierTotal", "Total"))}</th><th>${escapeHTML(copy("ClassifiedEndUses", "Mapped"))}</th><th>${escapeHTML(copy("UnclassifiedResidual", "Residual"))}</th><th>${escapeHTML(copy("QualityStatus", "Status"))}</th></tr></thead><tbody>
-        ${context.reconciliation.map((row) => `<tr data-energy-path-data-reconciliation-row="${escapeHTML(row.id || "")}"><td>${escapeHTML(row.label || row.id || "—")}<small>${escapeHTML(row.formula || row.basis || "")}</small></td><td>${escapeHTML(valueLabel(row.expectedValue, row.unit))}</td><td>${escapeHTML(valueLabel(row.explainedValue, row.unit))}</td><td>${escapeHTML(valueLabel(row.residualValue, row.unit))}</td><td>${escapeHTML(row.status || "—")}</td></tr>`).join("") || `<tr><td colspan="5">${escapeHTML(copy("NoReconciliation", "No reconciliation records for this period."))}</td></tr>`}
+        ${context.reconciliation.map((row) => `<tr data-energy-path-data-reconciliation-row="${escapeHTML(row.id || "")}"><td>${escapeHTML(row.label || row.id || "—")}<small>${escapeHTML(row.formula || row.basis || "")}</small></td><td>${escapeHTML(valueLabel(row.expectedValue, row.unit, display))}</td><td>${escapeHTML(valueLabel(row.explainedValue, row.unit, display))}</td><td>${escapeHTML(valueLabel(row.residualValue, row.unit, display))}</td><td>${escapeHTML(row.status || "—")}</td></tr>`).join("") || `<tr><td colspan="5">${escapeHTML(copy("NoReconciliation", "No reconciliation records for this period."))}</td></tr>`}
       </tbody></table></div>
     </section>
   </section>`;
@@ -309,7 +311,7 @@ export function renderEnergyPathDataDetails(explanation = {}, viewState = {}, op
   return `<aside id="energyPathDataDetails" class="energy-path-data-details" data-energy-path-data-details ${open ? "" : "hidden"} tabindex="-1" role="dialog" aria-modal="false" aria-labelledby="energyPathDataDetailsTitle">
     <header><strong id="energyPathDataDetailsTitle">${escapeHTML(copy("DataDetails", "Data details"))}</strong><button type="button" data-energy-path-details-toggle>${escapeHTML(copy("CloseDetails", "Close"))}</button></header>
     <div class="energy-path-details-tabs" role="tablist" aria-label="${escapeHTML(copy("DataDetails", "Data details"))}">${["data", "output"].map((name) => `<button id="energyPath${name === "data" ? "Data" : "Output"}Tab" type="button" role="tab" tabindex="${tab === name ? 0 : -1}" aria-selected="${tab === name}" aria-controls="energyPath${name === "data" ? "Data" : "Output"}Panel" data-energy-path-details-tab="${name}">${escapeHTML(name === "data" ? copy("DataTab", "Data") : copy("OutputTab", "Output"))}</button>`).join("")}</div>
-    ${renderDataPanel(explanation, viewState, outputObjects, options.diagnosticsHTML, drawer, options.exportContext)}
+    ${renderDataPanel(explanation, viewState, outputObjects, options.diagnosticsHTML, drawer, options.exportContext, options.display)}
     ${renderOutputPanel(explanation, drawer, outputObjects)}
   </aside>`;
 }

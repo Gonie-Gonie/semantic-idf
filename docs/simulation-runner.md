@@ -513,6 +513,15 @@ be discarded. Energy, Integrity, and Comfort unmet-hours data are read by their
 purpose builders; the initial read does not duplicate those computations.
 CSV/ESO fallback fills sections that are missing or failed to parse.
 
+Energy displays energy quantities in kWh/m² with two decimal places. Building
+scope uses the executed model's total floor area; Zone scope uses that zone's
+floor area. The area snapshot includes the same zone and list multipliers as
+the model totals, and excludes zones marked outside the total floor area from
+the building denominator. The display uses no area from later editor changes.
+An unavailable area produces an unavailable intensity. Conversion ratios,
+percentages, non-energy quantities, and stored/exported energy totals retain
+their original meaning and units.
+
 Purpose result viewers now include:
 
 - Basic Energy facility/end-use monthly charts, zone matrix, zone reported

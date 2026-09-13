@@ -48,9 +48,10 @@ type EnergyExplanationV1 struct {
 }
 
 type EnergyExplanationScope struct {
-	Kind             string `json:"kind"`
-	ZoneName         string `json:"zoneName,omitempty"`
-	AggregationBasis string `json:"aggregationBasis"`
+	Kind             string  `json:"kind"`
+	ZoneName         string  `json:"zoneName,omitempty"`
+	AggregationBasis string  `json:"aggregationBasis"`
+	FloorAreaM2      float64 `json:"floorAreaM2,omitempty"`
 }
 
 type EnergyExplanationResult struct {

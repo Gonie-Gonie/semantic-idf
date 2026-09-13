@@ -7,6 +7,7 @@ import {
 } from "../views/energy-path-view.js";
 import { energyPathKPIItems } from "../energy-path-kpis.js";
 import { resolveEnergyPathOutputRequest } from "../energy-path-output-requests.js";
+import { energyPathDisplayContext } from "../energy-path-display.js";
 
 const copy = (key, fallback) => t(`batch.energyPath${key}`, {}, fallback);
 const token = (value) => String(value || "").trim().toLowerCase();
@@ -73,12 +74,13 @@ export function createBatchEnergyPathDetail({ host, resolveRun }) {
     const viewState = { simulationEnergyScopeKind: "building", simulationEnergyZoneName: "",
       simulationEnergyPeriod: "annual", simulationEnergyService: "all", simulationEnergySelection: "", simulationEnergyDetailsOpen: false };
     const explanation = run.purposeResults.energyExplanation;
-    const scene = prepareEnergyPathScene(explanation, viewState);
+    const display = energyPathDisplayContext(explanation, viewState);
+    const scene = prepareEnergyPathScene(explanation, viewState, { display });
     if (!scene.visibleNodes.length) return false;
     const summary = energyPathSummaryForState(explanation, run.purposeResults.energyExplanationSummary || {}, viewState);
     const quality = energyPathQualityForState(explanation, viewState), ratios = energyPathRatioQualityForState(explanation, viewState);
     if (ratios) quality.ratios = ratios; else delete quality.ratios;
-    const kpiOptions = { graph: scene.allServiceGraph, quality, service: "all", period: "annual", detailsOpen: false };
+    const kpiOptions = { graph: scene.allServiceGraph, quality, service: "all", period: "annual", detailsOpen: false, display };
     const kpiTargets = new Set(energyPathKPIItems(summary || {}, scene.allServiceGraph, kpiOptions).flatMap((item) => item.targets || []).map((node) => node.id));
     current = { run, scene, viewState, drawer: { tab: "data", stage: "", outputSource: "" }, kpiTargets };
     opener = control || null;

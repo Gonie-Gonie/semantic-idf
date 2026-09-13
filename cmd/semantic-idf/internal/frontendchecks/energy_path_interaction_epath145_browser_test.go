@@ -125,7 +125,7 @@ try{
   const target=hit(link.id),conversion=link.relation==="load_to_end_use";
   check(target?.dataset.energyExplanationEdge===link.id&&target.getAttribute("role")==="button","hit path has no actual edge identity / button role: "+link.id);
   check(target?.tabIndex===(conversion?-1:0),"incorrect SVG edge keyboard tabstop: "+link.id);
-  check(target?.getAttribute("aria-label")&&target.querySelector("title")?.textContent.includes("kWh"),"small edge omitted accessible exact-value tooltip: "+link.id);
+  check(target?.getAttribute("aria-label")&&target.querySelector("title")?.textContent.includes("kWh/m²"),"small edge omitted accessible exact-value tooltip: "+link.id);
   if(conversion){const control=ratio(link.id);check(control?.tagName==="BUTTON"&&control.type==="button"&&control.tabIndex===0&&control.dataset.energyExplanationEdge===link.id,"conversion ratio is not the sole native conversion tabstop");check(Boolean(control?.compareDocumentPosition(hitLayer)&Node.DOCUMENT_POSITION_FOLLOWING),"native conversion controls come after SVG in keyboard DOM order");}
  }
  const taxonomy=level=>[...host.querySelectorAll('[data-energy-path-stage="'+level+'"] [data-energy-path-layout-node]')].map(element=>current.nodes.find(item=>item.id===element.dataset.energyPathLayoutNode));
@@ -159,7 +159,8 @@ try{
  coolingControl.focus();check(state.simulationEnergySelection==="","ratio focus alone selected a link");coolingControl.click();
  check(state.simulationEnergySelection===coolingLink.id&&document.activeElement?.dataset.energyExplanationEdge===coolingLink.id,"native conversion button did not select exact link/focus");
  const detail=host.querySelector('[data-energy-path-link-inspector="'+coolingLink.id+'"]');
- for(const [field,value]of[["from",coolingLink.fromValue],["to",coolingLink.toValue],["ratio",4]])check(detail?.querySelector('[data-energy-path-link-value="'+field+'"]')?.textContent.includes(String(value)),"selected conversion detail omits exact "+field+" value");
+ for(const [field,value,domain]of[["from",coolingLink.fromValue,"thermal"],["to",coolingLink.toValue,"site"]])check(detail?.querySelector('[data-energy-path-link-value="'+field+'"] dd')?.textContent.trim()===value.toFixed(2)+" kWh/m² "+domain,"selected conversion detail omits exact "+field+" value");
+ check(detail?.querySelector('[data-energy-path-link-value="ratio"]')?.textContent.includes("4"),"selected conversion detail changed dimensionless ratio");
  check(detail?.querySelector('[data-energy-path-link-value="from"]')?.textContent.includes("thermal")&&detail?.querySelector('[data-energy-path-link-value="to"]')?.textContent.includes("site"),"selected link detail conflates thermal and site units");
  check(detail?.querySelector('[data-energy-path-link-value="basis"]'),"selected link omitted calculation basis");
  key(ratio(coolingLink.id),"Escape");await assertClear("conversion Escape");
@@ -176,11 +177,11 @@ try{
  const canvas=host.querySelector("[data-energy-path-canvas]"),canvasRect=canvas.getBoundingClientRect(),blank=document.elementFromPoint(canvasRect.left+3,canvasRect.top+3);click(blank);await assertClear("blank graph");
  change("[data-simulation-energy-path-period]","M1");
  const monthlyLink=graph().links.find(link=>link.relation==="load_to_end_use"&&link.serviceKind==="cooling");click(ratio(monthlyLink.id));
- check(host.querySelector('[data-energy-path-link-inspector="'+monthlyLink.id+'"] [data-energy-path-link-value="from"]')?.textContent.includes(String(monthlyLink.fromValue)),"selected monthly link reused annual thermal value");
+ check(host.querySelector('[data-energy-path-link-inspector="'+monthlyLink.id+'"] [data-energy-path-link-value="from"] dd')?.textContent.trim()===monthlyLink.fromValue.toFixed(2)+" kWh/m² thermal","selected monthly link reused annual thermal value");
  const adapter={genericCaptureContext:()=>({marker:"145-history"}),genericRestoreContext:async()=>{}},snapshot=simulation.captureSimulationNavigationContext(adapter);
  change("[data-simulation-energy-scope]","zone");change("[data-simulation-energy-zone-name]","Office");check(state.simulationEnergySelection===""&&!host.querySelector("[data-energy-path-link-inspector]"),"scope change retained an out-of-scope selected edge");
  check(pane.scrollHeight<=pane.clientHeight+1&&pane.scrollWidth<=pane.clientWidth+1,"Zone interaction graph requires scrolling");
- const restored=await simulation.restoreSimulationNavigationContext(snapshot,adapter);check(restored&&state.simulationEnergyScopeKind==="building"&&state.simulationEnergyPeriod==="M1"&&state.simulationEnergySelection===monthlyLink.id&&host.querySelector('[data-energy-path-link-inspector="'+monthlyLink.id+'"] [data-energy-path-link-value="to"]')?.textContent.includes(String(monthlyLink.toValue)),"history restore dropped exact selected monthly link/scope/dual values");
+ const restored=await simulation.restoreSimulationNavigationContext(snapshot,adapter);check(restored&&state.simulationEnergyScopeKind==="building"&&state.simulationEnergyPeriod==="M1"&&state.simulationEnergySelection===monthlyLink.id&&host.querySelector('[data-energy-path-link-inspector="'+monthlyLink.id+'"] [data-energy-path-link-value="to"] dd')?.textContent.trim()===monthlyLink.toValue.toFixed(2)+" kWh/m² site","history restore dropped exact selected monthly link/scope/dual values");
  key(ratio(monthlyLink.id),"Escape");change("[data-simulation-energy-path-period]","annual");assertClear("history clear");
  const varied=JSON.parse(originalJSON),payload=varied.purposeResults.energyExplanation,byID=new Map(payload.nodes.map(item=>[item.id,item]));
  const factor=item=>item.serviceKind==="cooling"?2:item.serviceKind==="heating"?.5:1;

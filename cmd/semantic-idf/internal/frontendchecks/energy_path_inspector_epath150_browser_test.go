@@ -138,6 +138,8 @@ try{
  const inspector=()=>host.querySelector("[data-energy-path-inspector],[data-energy-path-link-inspector]");
  const section=key=>inspector()?.querySelector('[data-energy-path-detail-section="'+key+'"]');
  const value=key=>inspector()?.querySelector('[data-energy-path-inspector-value="'+key+'"] dd')?.textContent.trim();
+ // The shared fixture has 1 m² per scope, preserving its exact energy quantities.
+ const formatted=(value,domain="thermal")=>value.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})+" kWh/m² "+domain;
  const click=element=>element?.dispatchEvent(new MouseEvent("click",{bubbles:true,cancelable:true}));
  const select=id=>{click(button(id)||edge(id));check(state.simulationEnergySelection===id,"actual selection handler failed "+id);return inspector();};
  const change=(selector,value)=>{const control=host.querySelector(selector);check(Boolean(control),"missing real control "+selector);if(control){control.value=value;control.dispatchEvent(new Event("change",{bubbles:true}));}};
@@ -164,21 +166,21 @@ try{
   for(const id of nodeIDs){const item=originalGraph.nodes.find(node=>node.id===id);select(id);checkStructure(item,item.level+":"+id);}
   for(const relation of["driver_to_load","load_to_end_use","end_use_to_carrier","residual"]){const item=graph().links.find(link=>link.relation===relation&&edge(link.id));select(item.id);checkStructure(item,relation);}
   select(wallID());
-  check(value("raw")?.includes("12")&&value("effective")?.includes("24")&&value("allocated")?.includes(String(annualWall.value)),"Driver raw/effective/allocated values were conflated: "+JSON.stringify([value("raw"),value("effective"),value("allocated")]));
-  check(value("raw")?.includes("kWh thermal")&&value("allocated")?.includes("kWh thermal"),"thermal Driver inspector values mislabeled as site energy");
+  check(value("raw")===formatted(12)&&value("effective")===formatted(24)&&value("allocated")===formatted(annualWall.value),"Driver raw/effective/allocated values were conflated: "+JSON.stringify([value("raw"),value("effective"),value("allocated")]));
+  check(value("raw")?.includes("kWh/m² thermal")&&value("allocated")?.includes("kWh/m² thermal"),"thermal Driver inspector values mislabeled as site energy");
   check(visibleText(section("breakdown")).includes("Office"),"Driver top zones were not derived from matching nested Zone nodes");
-  check(section("breakdown")?.querySelector('[data-energy-path-detail-breakdown="componentRows"] [data-energy-path-detail-row="sensible"] dd')?.textContent.includes(String(annualWall.value)),"Driver sensible component lost actual member contribution");
-  const heatingDriver=graph().nodes.find(item=>item.driverCategory==="internal.people");select(heatingDriver.id);check(/[−-]14/.test(value("raw"))&&/[−-]28/.test(value("effective"))&&value("allocated")?.includes(String(heatingDriver.value)),"signed heating pressure was replaced by allocated contribution/magnitude");
+  check(section("breakdown")?.querySelector('[data-energy-path-detail-breakdown="componentRows"] [data-energy-path-detail-row="sensible"] dd')?.textContent.includes(formatted(annualWall.value)),"Driver sensible component lost actual member contribution");
+  const heatingDriver=graph().nodes.find(item=>item.driverCategory==="internal.people");select(heatingDriver.id);check(value("raw")===formatted(-14)&&value("effective")===formatted(-28)&&value("allocated")===formatted(heatingDriver.value),"signed heating pressure was replaced by allocated contribution/magnitude");
   const load=graph().nodes.find(item=>item.level==="load"&&item.serviceKind==="cooling");select(load.id);
-  check(visibleText(section("breakdown")).includes("32")&&visibleText(section("breakdown")).includes("8"),"Load sensible/latent breakdown lost exact selected values");
-  check(section("breakdown")?.querySelector('[data-energy-path-detail-breakdown="contextRows"] dd')?.textContent.includes("900"),"reported annual predicted context is not inspectable separately from delivered load");
+  check(visibleText(section("breakdown")).includes(formatted(32))&&visibleText(section("breakdown")).includes(formatted(8)),"Load sensible/latent breakdown lost exact selected values");
+  check(section("breakdown")?.querySelector('[data-energy-path-detail-breakdown="contextRows"] dd')?.textContent.includes("900.00"),"reported annual predicted context is not inspectable separately from delivered load");
   check(/predicted/i.test(section("breakdown")?.querySelector('[data-energy-path-detail-breakdown="contextRows"] dt')?.textContent||""),"annual prediction is displayed as an unnamed generic context value");
   const serviceCandidate=simulation.simulationEnergyServiceNavigation(load).groups.flatMap(group=>group.candidates).find(item=>item.target?.targetId==="path.fixture.cooling");
   check(serviceCandidate&&section("actions")?.querySelector('[data-energy-path-service-kind="hvac"] [data-energy-path-service-destination="'+serviceCandidate.id+'"]'),"verified exact HVAC navigation action was lost/moved outside common Actions");
   const conversion=graph().links.find(item=>item.relation==="load_to_end_use"&&item.serviceKind==="cooling");select(conversion.id);
-  for(const[field,number]of[["from",40],["to",10],["ratio",4]])check(inspector()?.querySelector('[data-energy-path-link-value="'+field+'"]')?.textContent.includes(String(number)),"conversion missing exact selected "+field);
+  for(const[field,expected]of[["from",formatted(40)],["to",formatted(10,"site")],["ratio","4"]])check(inspector()?.querySelector('[data-energy-path-link-value="'+field+'"]')?.textContent.includes(expected),"conversion missing exact selected "+field);
   select(annualElectricity.id);const breakdown=visibleText(section("breakdown"));
-  check(breakdown.includes("68")&&breakdown.includes("3"),"Carrier facility total / residual missing from Breakdown");
+  check(breakdown.includes(formatted(68,"site"))&&breakdown.includes(formatted(3,"site")),"Carrier facility total / residual missing from Breakdown");
   check(["Purchased","production","Storage"].every(text=>breakdown.toLowerCase().includes(text.toLowerCase())),"Carrier purchased/produced/storage context missing from Breakdown");
   const other=graph().nodes.find(item=>item.level==="end_use"&&item.endUse==="other");select(other.id);const memberDetails=section("breakdown")?.querySelector("[data-energy-path-group-members]");
   check(memberDetails?.tagName==="DETAILS","Other original contributions lost native Breakdown Expand");click(memberDetails?.querySelector("summary"));check(memberDetails?.open&&visibleText(memberDetails).includes("Miscellaneous equipment")&&visibleText(memberDetails).includes("Storage charging contribution"),"Other Expand lost readable original members");
@@ -187,20 +189,20 @@ try{
   for(const key of["raw","effective","allocated"])check(value(key)==="—", "missing/null monthly "+key+" fabricated zero or annual source value: "+value(key));
   const monthlySupply=section("breakdown")?.querySelector('[data-energy-path-supply-kind="purchased"]');
   check(monthlySupply?.dataset.energyPathSupplyValue==="1","monthly purchased energy missing or reused annual7");
-  select(monthlyGas.id);for(const key of["raw","effective","allocated"])check(value(key)?.startsWith("0"),"reported explicit monthly zero was erased as missing: "+key);
+  select(monthlyGas.id);for(const key of["raw","effective","allocated"])check(value(key)===formatted(0,"site"),"reported explicit monthly zero was erased as missing: "+key);
   select(wallID());const monthZoneExpected=explanation.zoneResults[0].periods.find(item=>item.id==="M1").nodes.find(item=>item.driverCategory==="surface.exterior_walls").value;
-  check(section("breakdown")?.querySelector('[data-energy-path-detail-breakdown="zoneRows"] [data-energy-path-detail-row="Office"] dd')?.textContent.includes(monthZoneExpected.toLocaleString(undefined,{maximumFractionDigits:2})),"monthly Driver top-zone contribution reused annual Zone scalar");
+  check(section("breakdown")?.querySelector('[data-energy-path-detail-breakdown="zoneRows"] [data-energy-path-detail-row="Office"] dd')?.textContent.includes(formatted(monthZoneExpected)),"monthly Driver top-zone contribution reused annual Zone scalar");
   const monthLoad=graph().nodes.find(item=>item.level==="load"&&item.serviceKind==="cooling");select(monthLoad.id);
   check(section("breakdown")?.querySelector('[data-energy-path-detail-breakdown="contextRows"] dd')?.textContent.trim()==="—"&&!visibleText(section("breakdown")).includes("900"),"monthly predicted context fabricated annual source value");
   check(/predicted/i.test(section("breakdown")?.querySelector('[data-energy-path-detail-breakdown="contextRows"] dt')?.textContent||""),"missing monthly prediction lost its explanatory context label");
-  const monthLink=graph().links.find(item=>item.relation==="load_to_end_use"&&item.serviceKind==="cooling");select(monthLink.id);check(inspector()?.querySelector('[data-energy-path-link-value="from"]')?.textContent.includes(String(monthLink.fromValue)),"monthly link detail reused annual thermal value");
+  const monthLink=graph().links.find(item=>item.relation==="load_to_end_use"&&item.serviceKind==="cooling");select(monthLink.id);check(inspector()?.querySelector('[data-energy-path-link-value="from"]')?.textContent.includes(formatted(monthLink.fromValue)),"monthly link detail reused annual thermal value");
   const linkSeries=section("actions")?.querySelector("[data-energy-path-series-id]");check(linkSeries?.dataset.energyPathSeriesId?.endsWith("::"+seriesSource.id),"selected link lost its exact Monthly source Series action");click(linkSeries);
   check(state.simulationActiveResultView==="series"&&state.simulationSeriesRangeStart===0&&state.simulationSeriesRangeEnd===0&&state.simulationSelectedSeries?.endsWith("::"+seriesSource.id),"link Series action did not preserve exact source identity / January label range");
   check(document.getElementById("simulationChart").querySelector("[data-simulation-series-single-point]")?.nextElementSibling?.textContent.includes("111 J"),"link Series navigation did not render the actual January source value");
   click(document.querySelector('[data-simulation-result-view-button="energy"]'));check(state.simulationEnergySelection===monthLink.id&&state.simulationEnergyPeriod==="M1"&&inspector(),"return from link Series lost exact Energy context");
   const focused=edge(monthLink.id);escape(focused);check(state.simulationEnergySelection===""&&!inspector()&&document.activeElement?.dataset.energyExplanationEdge===monthLink.id,"common link inspector broke Escape selection clear / logical focus restore");
   change("[data-simulation-energy-scope]","zone");change("[data-simulation-energy-zone-name]","Office");const zoneLoad=graph().nodes.find(item=>item.level==="load"&&item.serviceKind==="cooling");select(zoneLoad.id);checkStructure(zoneLoad,"ZoneM1load");
-  check(visibleText(section("value")).includes(String(zoneLoad.value)),"Zone selected-period load value missing");
+  check(visibleText(section("value")).includes(formatted(zoneLoad.value)),"Zone selected-period load value missing");
   escape(button(zoneLoad.id));check(state.simulationEnergySelection===""&&document.activeElement?.dataset.energyPathLayoutNode===zoneLoad.id,"common node inspector broke Escape focus restore");
   change("[data-simulation-energy-scope]","building");change("[data-simulation-energy-path-period]","annual");
   check(JSON.stringify([...host.querySelectorAll("[data-energy-path-ribbon]")].map(path=>[path.dataset.energyPathRibbon,path.getAttribute("d")]))===JSON.stringify(originalPaths),"inspector disclosure/navigation changed quantitative ribbon geometry");

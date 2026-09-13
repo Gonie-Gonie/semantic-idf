@@ -33,6 +33,7 @@ import { energyPathDriverDestinations, prepareEnergyPathDriverNavigation } from 
 import { energyPathServiceDestinations } from "../energy-path-service-destinations.js";
 import { migrateEnergyPathState } from "../energy-path-state.js";
 import { createEnergyPathSceneSlot } from "../energy-path-scene-slot.js";
+import { energyPathDisplayContext } from "../energy-path-display.js";
 import { buildEnergyPathReport, renderEnergyPathReportHTML } from "../energy-path-report.js";
 import { resolveEnergyPathOutputRequest, energyPathOutputRequestKey } from "../energy-path-output-requests.js";
 import { navigateHVAC, renderHVACLoopDiagram } from "./hvac-views.js";
@@ -1459,9 +1460,10 @@ function prepareSimulationEnergyScene(result) {
     const graph = energyPathGraphForState(explanation, state);
     const kpiGraph = state.simulationEnergyService === "all" ? graph
       : energyPathGraphForState(explanation, { ...state, simulationEnergyService: "all" });
-    const path = prepareEnergyPathScene(explanation, state, { graph, allServiceGraph: kpiGraph });
+    const display = energyPathDisplayContext(explanation, state);
+    const path = prepareEnergyPathScene(explanation, state, { graph, allServiceGraph: kpiGraph, display });
     const summary = energyPathSummaryForState(explanation, result.purposeResults.energyExplanationSummary || {}, state);
-    const kpiOptions = simulationEnergyKPIOptions(explanation, summary, kpiGraph);
+    const kpiOptions = { ...simulationEnergyKPIOptions(explanation, summary, kpiGraph), display };
     const kpiTargets = new Map(energyPathKPIItems(summary, kpiGraph, kpiOptions)
       .flatMap((item) => item.targets || []).map((node) => [node.id, node]));
     return { result, path, summary, kpiOptions, kpiTargets };

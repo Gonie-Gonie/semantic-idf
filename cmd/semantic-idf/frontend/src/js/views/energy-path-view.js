@@ -18,6 +18,7 @@ import { energyPathRibbons } from "../energy-path-ribbons.js";
 import { energyPathNodeAppearance, energyPathLinkAppearance } from "../energy-path-appearance.js";
 import { energyPathCompareNodes, energyPathOrderLinks, energyPathFocus } from "../energy-path-focus.js";
 import { energyPathInspectorModel } from "../energy-path-inspector.js";
+import { energyPathDisplayUnit, formatEnergyPathDisplayValue } from "../energy-path-display.js";
 
 export const ENERGY_PATH_SCHEMA_V2 = "semantic-idf.energy-explanation/v2";
 
@@ -303,7 +304,7 @@ export function energyPathAuxiliaryAllocationQuality(explanation = {}, viewState
   return total;
 }
 
-export function renderEnergyPathAuxiliaryAllocationQuality(quality = {}) {
+export function renderEnergyPathAuxiliaryAllocationQuality(quality = {}, display) {
   if (!quality.available || !(Number(quality.expectedValue) > 0)) return "";
   const items = [
     ["direct", t("simulation.energyPathAllocationDirect", {}, "Direct"), Number(quality.directValue) || 0, Number(quality.directRatio) || 0],
@@ -323,7 +324,7 @@ export function renderEnergyPathAuxiliaryAllocationQuality(quality = {}) {
           <div data-energy-path-auxiliary-allocation-ratio="${kind}" data-energy-path-ratio-value="${escapeHTML(String(ratio))}" data-energy-path-allocation-value="${escapeHTML(String(value))}">
             <span>${escapeHTML(label)}</span>
             <strong>${escapeHTML(`${(ratio * 100).toLocaleString(undefined, { maximumFractionDigits: 1 })}%`)}</strong>
-            <small>${escapeHTML(`${energyPathSummaryValueLabel(value, unit)} / ${energyPathSummaryValueLabel(expected, unit)}`)}</small>
+            <small>${escapeHTML(`${energyPathSummaryValueLabel(value, unit, display)} / ${energyPathSummaryValueLabel(expected, unit, display)}`)}</small>
           </div>`).join("")}
       </div>
       <p>${escapeHTML(t(
@@ -401,6 +402,7 @@ export function prepareEnergyPathScene(explanation = {}, viewState = {}, options
   return {
     token: String(++energyPathSceneSequence),
     explanation,
+    display: options.display,
     context: {
       scopeKind: viewState.simulationEnergyScopeKind || "building",
       zoneName: viewState.simulationEnergyZoneName || "",
@@ -431,22 +433,23 @@ function energyPathSceneSelection(scene, viewState) {
 }
 
 export function renderEnergyPathView(explanation = {}, viewState = {}, options = {}) {
-  const scene = options.scene || prepareEnergyPathScene(explanation, viewState);
+  const scene = options.scene || prepareEnergyPathScene(explanation, viewState, options);
   const { selectedID } = energyPathSceneSelection(scene, viewState);
   return `
     <section class="energy-path-view" data-energy-path-scene="${scene.token}" data-energy-path-selection="${escapeHTML(selectedID)}" data-energy-path-schema="${escapeHTML(ENERGY_PATH_SCHEMA_V2)}" data-energy-path-zone-coverage="${scene.zoneCoverage.limited ? "partial" : "complete_or_unreported"}">
       ${renderEnergyPathHeader(explanation, viewState, { scene, fixedContext: options.fixedContext })}
       ${renderEnergyPathContextMetrics(explanation, viewState)}
-      ${renderEnergyPathSupportStrip(scene.allGraphNodes, scene.graph.links, selectedID, scene.graph.supplyActivities)}
+      ${renderEnergyPathSupportStrip(scene.allGraphNodes, scene.graph.links, selectedID, scene.graph.supplyActivities, scene.display)}
       ${renderEnergyPathGraph(scene, viewState)}
       ${renderEnergyPathQuality(explanation, viewState)}
       <div class="energy-path-render-slot" data-energy-path-inspector-slot>${renderEnergyPathInspector(scene, viewState, options)}</div>
-      ${renderEnergyPathGraphLegend()}
+      ${renderEnergyPathGraphLegend(scene.display)}
       <div class="energy-path-render-slot" data-energy-path-details-slot>${renderEnergyPathDetails(scene, viewState, options)}</div>
     </section>`;
 }
 
 export function renderEnergyPathInspector(scene, viewState = {}, options = {}) {
+  options = { ...options, display: scene.display };
   const { selectedID, focus } = energyPathSceneSelection(scene, viewState);
   const selectedLink = scene.drawing.ribbons.find((ribbon) => ribbon.id === focus.selectedLinkID);
   return selectedLink
@@ -461,8 +464,9 @@ export function renderEnergyPathQuality(explanation = {}, viewState = {}) {
 export function renderEnergyPathDetails(scene, viewState = {}, options = {}) {
   return renderEnergyPathDataDetails(scene.explanation, viewState, {
     ...options,
+    display: scene.display,
     diagnosticsHTML: renderEnergyPathWarnings(scene.graph.warnings) +
-      renderEnergyPathAuxiliaryAllocationQuality(scene.auxiliaryAllocationQuality) +
+      renderEnergyPathAuxiliaryAllocationQuality(scene.auxiliaryAllocationQuality, scene.display) +
       renderEnergyPathZoneCoverageNotice(scene.zoneCoverage),
   });
 }
@@ -633,7 +637,7 @@ export function energyPathSupplyActivities(nodes = [], links = [], carrierNode =
   ));
 }
 
-export function renderEnergyPathSupportStrip(nodes = [], links = [], selectedID = "", suppliedActivities = null) {
+export function renderEnergyPathSupportStrip(nodes = [], links = [], selectedID = "", suppliedActivities = null, display) {
   const activities = suppliedActivities || energyPathSupplyActivities(nodes, links);
   if (!activities.some((activity) => ENERGY_PATH_SUPPORT_STRIP_TRIGGER_KINDS.has(activity.kind))) return "";
   return `
@@ -650,7 +654,7 @@ export function renderEnergyPathSupportStrip(nodes = [], links = [], selectedID 
         ${activities.map((activity) => {
           const nodeID = activity.nodeIds[0] || "";
           const selected = activity.nodeIds.includes(selectedID);
-          const valueLabel = energyPathSummaryValueLabel(activity.value, activity.unit);
+          const valueLabel = energyPathSummaryValueLabel(activity.value, activity.unit, display);
           const accessibleLabel = `${activity.label}: ${valueLabel}; ${activity.carrierLabel}`;
           return `<button
             class="energy-path-support-item${selected ? " selected" : ""}"
@@ -973,7 +977,7 @@ function energyPathMainStageNodes(nodes = [], links = [], explanation = {}, view
   });
 }
 
-export function renderEnergyPathFlowLanes(nodes = [], links = [], selectedID = "") {
+export function renderEnergyPathFlowLanes(nodes = [], links = [], selectedID = "", display) {
   const conversions = energyPathConversionFlows(nodes, links);
   const auxiliaries = energyPathAuxiliaryFlows(nodes, links);
   if (!conversions.length && !auxiliaries.length) return "";
@@ -986,7 +990,7 @@ export function renderEnergyPathFlowLanes(nodes = [], links = [], selectedID = "
             <span>${escapeHTML(t("simulation.energyPathMainConversionsDescription", {}, "Thermal load is converted to equipment site energy."))}</span>
           </header>
           <div class="energy-path-flow-lane-items">
-            ${conversions.map(renderEnergyPathConversionFlow).join("")}
+            ${conversions.map((flow) => renderEnergyPathConversionFlow(flow, display)).join("")}
           </div>
         </section>` : ""}
       ${auxiliaries.length ? `
@@ -996,13 +1000,13 @@ export function renderEnergyPathFlowLanes(nodes = [], links = [], selectedID = "
             <span>${escapeHTML(t("simulation.energyPathAuxiliaryLaneDescription", {}, "Fans, pumps, and heat rejection connect directly to energy sources and are excluded from conversion ratios."))}</span>
           </header>
           <div class="energy-path-flow-lane-items">
-            ${auxiliaries.map((flow) => renderEnergyPathAuxiliaryFlow(flow, selectedID)).join("")}
+            ${auxiliaries.map((flow) => renderEnergyPathAuxiliaryFlow(flow, selectedID, display)).join("")}
           </div>
         </section>` : ""}
     </section>`;
 }
 
-function renderEnergyPathConversionFlow(flow = {}) {
+function renderEnergyPathConversionFlow(flow = {}, display) {
   const title = flow.service === "cooling"
     ? t("simulation.energyPathCoolingConversion", {}, "Cooling load → Cooling equipment energy")
     : t("simulation.energyPathHeatingConversion", {}, "Heating load → Heating equipment energy");
@@ -1016,21 +1020,21 @@ function renderEnergyPathConversionFlow(flow = {}) {
     <article class="energy-path-conversion-flow" data-energy-path-conversion-link="${escapeHTML(flow.id)}" data-energy-path-service="${escapeHTML(flow.service)}">
       <header><strong>${escapeHTML(title)}</strong>${ratio}</header>
       <div class="energy-path-conversion-values">
-        <span>${escapeHTML(energyPathSummaryValueLabel(flow.fromValue, flow.fromUnit))}</span>
+        <span>${escapeHTML(energyPathSummaryValueLabel(flow.fromValue, flow.fromUnit, display))}</span>
         <b aria-hidden="true">→</b>
-        <span>${escapeHTML(energyPathSummaryValueLabel(flow.toValue, flow.toUnit))}</span>
+        <span>${escapeHTML(energyPathSummaryValueLabel(flow.toValue, flow.toUnit, display))}</span>
       </div>
     </article>`;
 }
 
-function renderEnergyPathAuxiliaryFlow(flow = {}, selectedID = "") {
+function renderEnergyPathAuxiliaryFlow(flow = {}, selectedID = "", display) {
   const selected = Boolean(flow.fromNode.id && flow.fromNode.id === selectedID);
   return `
     <button class="energy-path-auxiliary-flow${selected ? " selected" : ""}" type="button" data-energy-explanation-node="${escapeHTML(flow.fromNode.id || "")}" data-energy-path-auxiliary-link="${escapeHTML(flow.id)}" data-energy-path-auxiliary-end-use="${escapeHTML(flow.endUse)}" aria-pressed="${selected ? "true" : "false"}">
       <span>${escapeHTML(flow.fromNode.label || flow.fromNode.id || "")}</span>
       <b aria-hidden="true">→</b>
       <span>${escapeHTML(flow.toNode.label || flow.toNode.id || "")}</span>
-      <strong>${escapeHTML(energyPathSummaryValueLabel(flow.value, flow.unit))}</strong>
+      <strong>${escapeHTML(energyPathSummaryValueLabel(flow.value, flow.unit, display))}</strong>
     </button>`;
 }
 
@@ -1077,6 +1081,7 @@ export function energyPathRatioValueLabel(value, locales = undefined) {
 }
 
 export function renderEnergyPathNodeInspector(explanation = {}, nodes = [], selectedID = "", viewState = {}, relations = [], links = [], suppliedActivities = null, options = {}) {
+  const display = options.display;
   const node = (nodes || []).find((item) => item?.id && item.id === selectedID);
   if (!node) {
     return "";
@@ -1107,42 +1112,42 @@ export function renderEnergyPathNodeInspector(explanation = {}, nodes = [], sele
   const rawInspectorValue = raw;
   const effectiveInspectorValue = effective;
   const values = [
-    ["total", t("simulation.energyPathInspectorTotal", {}, "Displayed total"), energyPathInspectorValueLabel(rowValue("total"), unit)],
+    ["total", t("simulation.energyPathInspectorTotal", {}, "Displayed total"), energyPathInspectorValueLabel(rowValue("total"), unit, 2, display)],
     ["raw", allocatedDriver
       ? rowDirection("raw") === "magnitude"
         ? t("simulation.energyPathRawMagnitude", {}, "Raw magnitude · direction unavailable")
         : t("simulation.energyPathRawHeatGainLoss", {}, "Raw heat gain / loss")
-      : t("simulation.energyPathRawReported", {}, "Raw reported value"), energyPathInspectorValueLabel(rawInspectorValue, unit)],
+      : t("simulation.energyPathRawReported", {}, "Raw reported value"), energyPathInspectorValueLabel(rawInspectorValue, unit, 2, display)],
     ["multiplier", t("simulation.energyPathEffectiveMultiplier", {}, "Effective multiplier"), energyPathInspectorValueLabel(multiplier, "", 4)],
     ["effective", allocatedDriver
       ? rowDirection("effective") === "magnitude"
         ? t("simulation.energyPathEffectiveMagnitude", {}, "Magnitude after multiplier · direction unavailable")
         : t("simulation.energyPathSignedPressure", {}, "Signed pressure after multiplier")
-      : t("simulation.energyPathEffectiveContribution", {}, "Effective contribution"), energyPathInspectorValueLabel(effectiveInspectorValue, unit)],
+      : t("simulation.energyPathEffectiveContribution", {}, "Effective contribution"), energyPathInspectorValueLabel(effectiveInspectorValue, unit, 2, display)],
     ["allocated", allocatedDriver
       ? t("simulation.energyPathAllocatedContribution", {}, "Allocated contribution")
-      : t("simulation.energyPathAllocated", {}, "Allocated"), energyPathInspectorValueLabel(allocated, unit)],
+      : t("simulation.energyPathAllocated", {}, "Allocated"), energyPathInspectorValueLabel(allocated, unit, 2, display)],
   ];
-  const loadBreakdown = renderEnergyPathLoadBreakdown(node, unit, model.breakdown?.componentRows, rowValue("total") !== null);
+  const loadBreakdown = renderEnergyPathLoadBreakdown(node, unit, model.breakdown?.componentRows, rowValue("total") !== null, display);
   const allocationExplanation = renderEnergyPathAllocationExplanation(node);
-  const offsetEffects = renderEnergyPathOffsetEffects(node, unit, { hideTechnical: true });
-  const simultaneousLoad = renderEnergyPathSimultaneousLoad(node, unit, { hideTechnical: true });
+  const offsetEffects = renderEnergyPathOffsetEffects(node, unit, { hideTechnical: true, display });
+  const simultaneousLoad = renderEnergyPathSimultaneousLoad(node, unit, { hideTechnical: true, display });
   const correspondenceActions = renderEnergyPathCorrespondenceActions(nodes, relations, node);
   const supplyBreakdown = node.level === "carrier"
     ? renderEnergyPathSupplyBreakdown(suppliedActivities
       ? suppliedActivities.filter((activity) => activity.carrier === energyPathCanonicalCarrier(node.carrier || energyPathCarrierFromNodeID(node.id)))
-      : energyPathSupplyActivities(nodes, links, node))
+      : energyPathSupplyActivities(nodes, links, node), display)
     : "";
-  const carrierReconciliation = renderEnergyPathCarrierReconciliation(carrierQuality ? { ...carrierQuality, basis: "", formula: "", observedSubtotal: viewState.simulationEnergyScopeKind === "zone" } : null);
+  const carrierReconciliation = renderEnergyPathCarrierReconciliation(carrierQuality ? { ...carrierQuality, basis: "", formula: "", observedSubtotal: viewState.simulationEnergyScopeKind === "zone" } : null, display);
   const skipContextKeys = new Set([
     ...(carrierReconciliation ? ["facility_total", "observed_subtotal", "classified", "residual"] : []),
     ...(supplyBreakdown ? ["purchased", "sold", "produced", "storage", "storage_charge"] : []),
   ]);
-  const breakdown = loadBreakdown + renderEnergyPathInspectorBreakdown(model, { skipComponents: Boolean(loadBreakdown), skipContextKeys }) +
-    offsetEffects + simultaneousLoad + renderEnergyPathGroupedMembers(node) + supplyBreakdown + carrierReconciliation;
-  const actions = renderEnergyPathDriverNavigation(node, driverNavigation, model) +
+  const breakdown = loadBreakdown + renderEnergyPathInspectorBreakdown(model, { skipComponents: Boolean(loadBreakdown), skipContextKeys, display }) +
+    offsetEffects + simultaneousLoad + renderEnergyPathGroupedMembers(node, display) + supplyBreakdown + carrierReconciliation;
+  const actions = renderEnergyPathDriverNavigation(node, driverNavigation, model, display) +
     renderEnergyPathInspectorActions(node, inspectorActions, { suppressHVAC: hasServiceNavigation }) +
-    renderEnergyPathServiceNavigation(node, serviceNavigation, model) + correspondenceActions;
+    renderEnergyPathServiceNavigation(node, serviceNavigation, model, display) + correspondenceActions;
   return `
     <aside class="energy-path-node-inspector" data-energy-path-inspector="${escapeHTML(node.id)}">
       <header>
@@ -1173,8 +1178,9 @@ function energyPathInspectorContext(explanation, nodes, links, sources, viewStat
   };
 }
 
-function energyPathInspectorValueLabel(value, unit = "", digits = 2) {
+function energyPathInspectorValueLabel(value, unit = "", digits = 2, display) {
   if (typeof value !== "number" || !Number.isFinite(value)) return t("common.notAvailable", {}, "—");
+  if (display?.perArea && unit) return formatEnergyPathDisplayValue(value, energyPathFlowUnit(unit, unit.includes("thermal") ? "thermal" : "site"), display);
   return [value.toLocaleString(undefined, { maximumFractionDigits: digits }), energyPathFlowUnit(unit, unit.includes("thermal") ? "thermal" : "site")].filter(Boolean).join(" ");
 }
 
@@ -1237,6 +1243,7 @@ function renderEnergyPathRepresentation(item, model, thermalLoad = item) {
 }
 
 function renderEnergyPathInspectorBreakdown(model, options = {}) {
+  const display = options.display;
   const groups = [
     ["componentRows", "simulation.energyPathLoadBreakdown", "Sensible / latent breakdown"],
     ["zoneRows", "simulation.energyPathSummaryTopZones", "Top zones"],
@@ -1272,7 +1279,7 @@ function renderEnergyPathInspectorBreakdown(model, options = {}) {
       }
       return known ? t(known[0], {}, known[1]) : energyPathInspectorSafeLabel(row.label, model, t(labelKey, {}, fallback));
     };
-    return `<section class="energy-path-detail-breakdown" data-energy-path-detail-breakdown="${groupKey}"><h6>${escapeHTML(t(labelKey, {}, fallback))}</h6><dl>${rows.map((row) => `<div data-energy-path-detail-row="${escapeHTML(row.key || "")}"><dt>${escapeHTML(rowLabel(row))}</dt><dd>${escapeHTML(groupKey === "ratioRows" ? energyPathRatioValueLabel(row.value) : energyPathInspectorValueLabel(row.value, row.unit || ""))}${row.partial ? ` · ${escapeHTML(t("simulation.energyPathKPIMatchedConversions", {}, "Partial overlap · matched conversions only"))}` : ""}</dd>${groupKey === "ratioRows" ? `<small>${escapeHTML(t("simulation.energyPathBridgeFrom", {}, "From"))}: ${escapeHTML(energyPathInspectorValueLabel(row.fromValue, row.fromUnit))} · ${escapeHTML(t("simulation.energyPathBridgeTo", {}, "To"))}: ${escapeHTML(energyPathInspectorValueLabel(row.toValue, row.toUnit))}</small>` : ""}</div>`).join("")}</dl></section>`;
+    return `<section class="energy-path-detail-breakdown" data-energy-path-detail-breakdown="${groupKey}"><h6>${escapeHTML(t(labelKey, {}, fallback))}</h6><dl>${rows.map((row) => `<div data-energy-path-detail-row="${escapeHTML(row.key || "")}"><dt>${escapeHTML(rowLabel(row))}</dt><dd>${escapeHTML(groupKey === "ratioRows" ? energyPathRatioValueLabel(row.value) : energyPathInspectorValueLabel(row.value, row.unit || "", 2, display))}${row.partial ? ` · ${escapeHTML(t("simulation.energyPathKPIMatchedConversions", {}, "Partial overlap · matched conversions only"))}` : ""}</dd>${groupKey === "ratioRows" ? `<small>${escapeHTML(t("simulation.energyPathBridgeFrom", {}, "From"))}: ${escapeHTML(energyPathInspectorValueLabel(row.fromValue, row.fromUnit, 2, display))} · ${escapeHTML(t("simulation.energyPathBridgeTo", {}, "To"))}: ${escapeHTML(energyPathInspectorValueLabel(row.toValue, row.toUnit, 2, display))}</small>` : ""}</div>`).join("")}</dl></section>`;
   }).join("");
 }
 
@@ -1342,7 +1349,7 @@ function energyPathDriverDestinationLabel(item = {}, model = {}, fallback = "") 
   return [label, context].filter(Boolean).join(" · ");
 }
 
-export function renderEnergyPathDriverNavigation(node = {}, navigation = null, model = {}) {
+export function renderEnergyPathDriverNavigation(node = {}, navigation = null, model = {}, display) {
   if (node.level !== "driver" || !navigation) return "";
   const category = energyPathToken(node.driverCategory || navigation.category);
   const categoryLabels = {
@@ -1373,7 +1380,7 @@ export function renderEnergyPathDriverNavigation(node = {}, navigation = null, m
     const content = `<ul class="energy-path-driver-groups">${viewGroups.map((group) => {
       const groupLabel = energyPathDriverDestinationLabel(group, safeModel, t("simulation.energyPathDriverSourceGroup", {}, "Source group"));
       const contribution = typeof group.value === "number" && Number.isFinite(group.value)
-        ? `${t("simulation.energyPathDriverZoneContribution", {}, "Zone driver contribution")}: ${energyPathInspectorValueLabel(group.value, group.unit || "kWh thermal")}` : "";
+        ? `${t("simulation.energyPathDriverZoneContribution", {}, "Zone driver contribution")}: ${energyPathInspectorValueLabel(group.value, group.unit || "kWh thermal", 2, display)}` : "";
       return `<li data-energy-path-driver-group="${escapeHTML(group.id || "")}" data-energy-path-driver-zone="${escapeHTML(group.zoneName || "")}">
         <header><strong>${escapeHTML(groupLabel)}</strong>${contribution ? `<small data-energy-path-driver-zone-contribution>${escapeHTML(contribution)}</small>` : ""}</header>
         <ul class="energy-path-driver-candidates">${group.candidates.map((candidate) => {
@@ -1436,7 +1443,7 @@ function energyPathServiceUnavailableReason(reason = "", kind = "") {
   return t(key, {}, label);
 }
 
-export function renderEnergyPathServiceNavigation(node = {}, navigation = null, model = {}) {
+export function renderEnergyPathServiceNavigation(node = {}, navigation = null, model = {}, display) {
   if (!node.id || !["load", "end_use", "carrier"].includes(node.level) || !navigation) return "";
   const groups = (Array.isArray(navigation.groups) ? navigation.groups : []).filter((group) => group && Array.isArray(group.candidates));
   const reasons = navigation.unavailableReasons || {};
@@ -1465,7 +1472,7 @@ export function renderEnergyPathServiceNavigation(node = {}, navigation = null, 
     const content = `<ul class="energy-path-service-groups">${ownGroups.map((group) => {
       const label = energyPathServiceNavigationLabel(group, safeModel, group.zoneName || definition.title);
       const contribution = group.zoneName && typeof group.value === "number" && Number.isFinite(group.value)
-        ? `${t("simulation.energyPathServiceZoneContribution", {}, "Zone contribution")}: ${energyPathInspectorValueLabel(group.value, group.unit || "kWh thermal")}` : "";
+        ? `${t("simulation.energyPathServiceZoneContribution", {}, "Zone contribution")}: ${energyPathInspectorValueLabel(group.value, group.unit || "kWh thermal", 2, display)}` : "";
       return `<li data-energy-path-service-group="${escapeHTML(group.id || "")}" data-energy-path-service-zone="${escapeHTML(group.zoneName || "")}">
         <header><strong>${escapeHTML(label)}</strong>${contribution ? `<small data-energy-path-service-zone-contribution>${escapeHTML(contribution)}</small>` : ""}</header>
         <ul class="energy-path-service-candidates">${group.candidates.map((candidate) => {
@@ -1547,7 +1554,7 @@ export function renderEnergyPathInspectorActions(node = {}, actions = {}, option
   </div>`;
 }
 
-function renderEnergyPathGroupedMembers(node = {}) {
+function renderEnergyPathGroupedMembers(node = {}, display) {
   const members = node.groupedMembers || [];
   if (members.length < 2) return "";
   return `<details class="energy-path-group-members" data-energy-path-group-members>
@@ -1555,13 +1562,13 @@ function renderEnergyPathGroupedMembers(node = {}) {
     <p>${escapeHTML(t("simulation.energyPathGroupedMembersDescription", {}, "Original contributions remain available here and in exports."))}</p>
     <ul>${members.map((member) => `<li data-energy-path-group-member="${escapeHTML(member.id || "")}">
       <strong>${escapeHTML(energyPathInspectorSafeLabel(member.label || member.kind, { sourceIds: member.sourceIds || [], ruleIds: [member.ruleId].filter(Boolean) }, t("simulation.energyPathInspectorContribution", {}, "Original contribution")))}</strong>
-      <span>${escapeHTML(energyPathInspectorValueLabel(energyPathNodeNumber(member.value), energyPathFlowUnit(member.unit || node.unit, member.scaleDomain || node.scaleDomain)))}</span>
+      <span>${escapeHTML(energyPathInspectorValueLabel(energyPathNodeNumber(member.value), energyPathFlowUnit(member.unit || node.unit, member.scaleDomain || node.scaleDomain), 2, display))}</span>
       <small>${escapeHTML([member.serviceKind, member.period, member.zoneName].filter(Boolean).join(" · "))}</small>
     </li>`).join("")}</ul>
   </details>`;
 }
 
-export function renderEnergyPathSupplyBreakdown(activities = []) {
+export function renderEnergyPathSupplyBreakdown(activities = [], display) {
   if (!(activities || []).length) return "";
   return `
     <section class="energy-path-supply-breakdown" data-energy-path-supply-breakdown role="region" aria-label="${escapeHTML(t("simulation.energyPathSupplyBreakdown", {}, "Supply breakdown"))}">
@@ -1580,13 +1587,13 @@ export function renderEnergyPathSupplyBreakdown(activities = []) {
           data-energy-path-supply-value="${escapeHTML(String(activity.value))}"
         >
           <dt>${escapeHTML(activity.label)}</dt>
-          <dd>${escapeHTML(energyPathSummaryValueLabel(activity.value, activity.unit))}</dd>
+          <dd>${escapeHTML(energyPathSummaryValueLabel(activity.value, activity.unit, display))}</dd>
         </div>`).join("")}
       </dl>
     </section>`;
 }
 
-export function renderEnergyPathCarrierReconciliation(quality = null) {
+export function renderEnergyPathCarrierReconciliation(quality = null, display) {
   if (!quality) return "";
   const formula = String(quality.formula || "").trim();
   const detail = [quality.basis, formula].filter(Boolean).join(" · ");
@@ -1607,15 +1614,15 @@ export function renderEnergyPathCarrierReconciliation(quality = null) {
           <dt>${escapeHTML(quality.observedSubtotal
             ? t("simulation.energyPathObservedDirectUseSubtotal", {}, "Observed direct-use subtotal")
             : t("simulation.energyPathCarrierTotal", {}, "Facility carrier total"))}</dt>
-          <dd>${escapeHTML(energyPathSummaryValueLabel(quality.expectedValue, quality.unit))}</dd>
+          <dd>${escapeHTML(energyPathSummaryValueLabel(quality.expectedValue, quality.unit, display))}</dd>
         </div>
         <div data-energy-path-carrier-reconciliation-term="explained">
           <dt>${escapeHTML(t("simulation.energyPathClassifiedEndUses", {}, "Mapped end uses"))}</dt>
-          <dd>${escapeHTML(energyPathSummaryValueLabel(quality.explainedValue, quality.unit))}</dd>
+          <dd>${escapeHTML(energyPathSummaryValueLabel(quality.explainedValue, quality.unit, display))}</dd>
         </div>
         <div data-energy-path-carrier-reconciliation-term="residual">
           <dt>${escapeHTML(t("simulation.energyPathUnclassifiedResidual", {}, "Residual"))}</dt>
-          <dd>${escapeHTML(energyPathSummaryValueLabel(quality.residualValue, quality.unit))}</dd>
+          <dd>${escapeHTML(energyPathSummaryValueLabel(quality.residualValue, quality.unit, display))}</dd>
         </div>
       </dl>
       <p>${escapeHTML(t(
@@ -1741,8 +1748,8 @@ function renderEnergyPathOffsetEffects(node = {}, unit = "kWh thermal", options 
           return `<div data-energy-path-offset-effect="${escapeHTML(effect.effectKind)}" data-energy-path-offset-target="${escapeHTML(effect.targetService)}" data-energy-path-offset-category="${escapeHTML(effect.driverCategory)}">
             <dt>${escapeHTML(`${category} · ${targetLabel}`)}</dt>
             <dd>
-              ${escapeHTML(t("simulation.energyPathOffsetRaw", {}, "Raw"))}: ${escapeHTML(energyPathSummaryValueLabel(effect.rawValue, effect.unit))}
-              · ${escapeHTML(t("simulation.energyPathOffsetEffective", {}, "After multiplier"))}: ${escapeHTML(energyPathSummaryValueLabel(effect.effectiveValue, effect.unit))}
+              ${escapeHTML(t("simulation.energyPathOffsetRaw", {}, "Raw"))}: ${escapeHTML(energyPathSummaryValueLabel(effect.rawValue, effect.unit, options.display))}
+              · ${escapeHTML(t("simulation.energyPathOffsetEffective", {}, "After multiplier"))}: ${escapeHTML(energyPathSummaryValueLabel(effect.effectiveValue, effect.unit, options.display))}
             </dd>
             ${options.hideTechnical ? "" : `<small>${escapeHTML(effect.explanation)} <code>${escapeHTML(effect.basis)}</code></small>`}
           </div>`;
@@ -1781,18 +1788,18 @@ function renderEnergyPathSimultaneousLoad(node = {}, unit = "kWh thermal", optio
       <dl>
         <div data-energy-path-simultaneous-load-term="numerator">
           <dt>${escapeHTML(t("simulation.energyPathSimultaneousLoadNumerator", {}, "Simultaneous load"))}</dt>
-          <dd>${escapeHTML(energyPathSummaryValueLabel(numerator, metricUnit))}</dd>
+          <dd>${escapeHTML(energyPathSummaryValueLabel(numerator, metricUnit, options.display))}</dd>
         </div>
         <div data-energy-path-simultaneous-load-term="denominator">
           <dt>${escapeHTML(t("simulation.energyPathSimultaneousLoadDenominator", {}, "Larger service load"))}</dt>
-          <dd>${escapeHTML(energyPathSummaryValueLabel(denominator, metricUnit))}</dd>
+          <dd>${escapeHTML(energyPathSummaryValueLabel(denominator, metricUnit, options.display))}</dd>
         </div>
       </dl>
       ${options.hideTechnical ? "" : `<code>${escapeHTML(basis)}</code>`}
     </section>`;
 }
 
-function renderEnergyPathLoadBreakdown(node = {}, unit = "kWh thermal", validatedRows = null, allowLatentShare = true) {
+function renderEnergyPathLoadBreakdown(node = {}, unit = "kWh thermal", validatedRows = null, allowLatentShare = true, display) {
   if (node.level !== "load") return "";
   const components = (validatedRows || node.loadBreakdown || [])
     .map((component) => ({
@@ -1825,7 +1832,7 @@ function renderEnergyPathLoadBreakdown(node = {}, unit = "kWh thermal", validate
               : component.component;
           return `<div data-energy-path-load-breakdown-component="${escapeHTML(component.component)}" data-energy-path-load-breakdown-emphasized="${emphasized ? "true" : "false"}">
             <dt>${escapeHTML(label)}</dt>
-            <dd>${escapeHTML(energyPathInspectorValueLabel(component.value, unit))}${share !== null ? ` · ${escapeHTML(energyPathPercentLabel(share))}` : ""}</dd>
+            <dd>${escapeHTML(energyPathInspectorValueLabel(component.value, unit, 2, display))}${share !== null ? ` · ${escapeHTML(energyPathPercentLabel(share))}` : ""}</dd>
           </div>`;
         }).join("")}
       </dl>
@@ -2140,7 +2147,7 @@ export function renderEnergyPathKPI(summary = {}, options = {}) {
         const label = escapeHTML(labels[item.id] || item.label);
         const body = `<span class="energy-path-kpi-label">${label}</span>${item.id === "coverage"
           ? renderEnergyPathKPIBoundaries(item.coverage?.boundaries || item.boundaries)
-          : `<strong>${escapeHTML(energyPathKPIFinite(item.value) ? energyPathSummaryValueLabel(item.value, item.unit) : t("common.notAvailable", {}, "—"))}</strong>`}
+          : `<strong>${escapeHTML(energyPathKPIFinite(item.value) ? energyPathSummaryValueLabel(item.value, item.unit, options.display) : t("common.notAvailable", {}, "—"))}</strong>`}
           ${renderEnergyPathKPIRatio(item)}
           ${partialSubtotal ? `<small class="energy-path-partial-coverage-badge">${escapeHTML(t("simulation.energyPathKnownOnly", {}, "Known only"))}</small>` : ""}`;
         const targets = (item.targets || []).filter((target) => target?.id);
@@ -2208,7 +2215,7 @@ function renderEnergyPathKPIBoundaries(boundaries = []) {
   }).join("")}</span>`;
 }
 
-export function renderEnergyPathSummaryOverview(summary = {}) {
+export function renderEnergyPathSummaryOverview(summary = {}, options = {}) {
   if (!isEnergyPathSummaryV2(summary)) {
     return "";
   }
@@ -2253,7 +2260,7 @@ export function renderEnergyPathSummaryOverview(summary = {}) {
             ))}</p>` : ""}
             <div>
               ${group.items.length
-                ? group.items.slice(0, 8).map((item) => renderEnergyPathSummaryItem(item, group.key === "ratios")).join("")
+                ? group.items.slice(0, 8).map((item) => renderEnergyPathSummaryItem(item, group.key === "ratios", options.display)).join("")
                 : `<span class="energy-path-summary-empty">${escapeHTML(t("common.notAvailable", {}, "—"))}</span>`}
             </div>
           </article>`;
@@ -3121,7 +3128,7 @@ export function energyPathRatioQualityForState(explanation = {}, viewState = {})
 }
 
 export function renderEnergyPathGraph(scene, viewState = {}) {
-  const { visibleNodes, layout, drawing, ratioQuality } = scene;
+  const { visibleNodes, layout, drawing, ratioQuality, display } = scene;
   const links = scene.graph.links;
   const { selectedID, relatedNodeIDs, focus } = energyPathSceneSelection(scene, viewState);
   const directLane = layout.lanes.find((lane) => lane.id === "direct");
@@ -3134,7 +3141,7 @@ export function renderEnergyPathGraph(scene, viewState = {}) {
     const description = partialCarrierSubtotal
       ? t("simulation.energyPathObservedDirectUseSubtotalExplanation", {}, "Only directly observed zone energy uses are included; energy-source values are subtotals, not complete zone totals.")
       : t(stage.descriptionKey, {}, stage.description);
-    const unitLabel = t(stage.scaleDomain === "thermal" ? "simulation.energyPathThermalUnit" : "simulation.energyPathSiteUnit", {}, stage.unitLabel);
+    const unitLabel = energyPathDisplayUnit(t(stage.scaleDomain === "thermal" ? "simulation.energyPathThermalUnit" : "simulation.energyPathSiteUnit", {}, stage.unitLabel), display);
     return `<article class="energy-path-stage ${stage.scaleDomain === "site" ? "site-domain" : "thermal-domain"}" data-energy-path-stage="${escapeHTML(stage.level)}"${partialCarrierSubtotal ? ' data-energy-path-value-scope="observed_direct_use_subtotal"' : ""} style="left:${percent(column.x)};width:${percent(column.width)}">
       <header title="${escapeHTML(description)}">
         <strong>${escapeHTML(t(stage.labelKey, {}, stage.label))}</strong>
@@ -3143,22 +3150,22 @@ export function renderEnergyPathGraph(scene, viewState = {}) {
           : unitLabel)}</span>
       </header>
       <div class="energy-path-stage-nodes">${entries.length
-        ? entries.map((entry) => renderEnergyPathNode(entry.node, stage, selectedID, relatedNodeIDs, { ...entry, column, focusKind: energyPathFocusKind(focus, "node", entry.id, true) })).join("")
+        ? entries.map((entry) => renderEnergyPathNode(entry.node, stage, selectedID, relatedNodeIDs, { ...entry, column, focusKind: energyPathFocusKind(focus, "node", entry.id, true) }, display)).join("")
         : `<span class="energy-path-stage-empty">${escapeHTML(t("common.notAvailable", {}, "—"))}</span>`}</div>
     </article>`;
   }).join("");
   return `<div class="energy-path-layout" data-energy-path-layout>
     <div class="energy-path-stage-grid" data-energy-path-canvas role="group" aria-label="${escapeHTML(t("simulation.energyPathDirection", {}, "Load drivers → Thermal load → End-use energy → Energy sources"))}" style="height:${layout.height}px">
       <svg class="energy-path-graph-underlay" data-energy-path-graph-underlay viewBox="0 0 ${layout.width} ${layout.height}" preserveAspectRatio="none" aria-hidden="true" focusable="false">
-        ${renderEnergyPathRibbonGeometry(drawing, visibleNodes, focus)}
+        ${renderEnergyPathRibbonGeometry(drawing, visibleNodes, focus, display)}
       </svg>
       ${directLane?.height > 0 ? `<div class="energy-path-direct-lane-band" data-energy-path-lane-band="direct" style="left:${percent(directStart)};width:${percent(layout.width - directStart)};top:${directLane.y}px;height:${directLane.height}px">
         <span>${escapeHTML(t("simulation.energyPathDirectAuxiliaryLane", {}, "Direct & auxiliary energy"))}</span>
       </div>` : ""}
       <div class="energy-path-plot-divider" data-energy-path-divider style="left:${percent(layout.dividerX)}"><span>${escapeHTML(t("simulation.energyPathConversion", {}, "Equipment conversion"))}</span></div>
       ${stages}
-      ${renderEnergyPathBridgeRatios(drawing, layout, visibleNodes, links, ratioQuality, focus)}
-      ${renderEnergyPathLinkHitLayer(drawing, layout, visibleNodes, focus)}
+      ${renderEnergyPathBridgeRatios(drawing, layout, visibleNodes, links, ratioQuality, focus, display)}
+      ${renderEnergyPathLinkHitLayer(drawing, layout, visibleNodes, focus, display)}
     </div>
   </div>`;
 }
@@ -3169,7 +3176,7 @@ function energyPathFocusKind(focus, kind, id, includeCounterparts = false) {
   return includeCounterparts && focus.counterpartIDs.has(id) ? "counterpart" : "dimmed";
 }
 
-function renderEnergyPathRibbonGeometry(drawing, nodes, focus) {
+function renderEnergyPathRibbonGeometry(drawing, nodes, focus, display) {
   const nodeByID = new Map(nodes.map((node) => [node.id, node]));
   const ribbonPaints = drawing.ribbons.map((ribbon) => energyPathLinkAppearance(ribbon.link, nodes));
   const barPaints = drawing.bars.map((bar) => energyPathNodeAppearance(bar.node));
@@ -3186,7 +3193,7 @@ function renderEnergyPathRibbonGeometry(drawing, nodes, focus) {
     const kind = ribbon.domain === "conversion" ? "conversion" : "same_domain";
     const fromDomain = ribbon.domain === "conversion" ? "thermal" : ribbon.domain;
     const toDomain = ribbon.domain === "conversion" ? "site" : ribbon.domain;
-    const title = [energyPathRibbonTitle(ribbon, nodeByID), energyPathAppearanceLabel(appearance)].filter(Boolean).join(" · ");
+    const title = [energyPathRibbonTitle(ribbon, nodeByID, display), energyPathAppearanceLabel(appearance)].filter(Boolean).join(" · ");
     return `<path class="energy-path-ribbon" data-energy-path-ribbon="${escapeHTML(ribbon.id)}" data-energy-path-ribbon-kind="${kind}" data-energy-path-ribbon-domain="${escapeHTML(ribbon.domain)}" data-energy-path-ribbon-relation="${escapeHTML(ribbon.relation)}" data-energy-path-focus="${energyPathFocusKind(focus, "link", ribbon.id)}"
       ${energyPathAppearanceAttributes(appearance)}${appearance.allocated || appearance.residual ? ` style="fill:url(#${energyPathPatternID(appearance)})"` : ""}
       data-from-value="${ribbon.fromValue}" data-to-value="${ribbon.toValue}" data-from-width="${ribbon.fromWidth}" data-to-width="${ribbon.toWidth}" data-from-domain="${fromDomain}" data-to-domain="${toDomain}"
@@ -3195,7 +3202,7 @@ function renderEnergyPathRibbonGeometry(drawing, nodes, focus) {
   }).join("");
   const bars = drawing.bars.map((bar, index) => {
     const appearance = barPaints[index];
-    const title = [`${bar.node.label || bar.nodeId}: ${energyPathValueLabel(bar.value, bar.domain === "thermal" ? "kWh thermal" : "kWh site")}`, energyPathAppearanceLabel(appearance)].filter(Boolean).join(" · ");
+    const title = [`${bar.node.label || bar.nodeId}: ${energyPathValueLabel(bar.value, bar.domain === "thermal" ? "kWh thermal" : "kWh site", display)}`, energyPathAppearanceLabel(appearance)].filter(Boolean).join(" · ");
     return `<rect class="energy-path-quantitative-bar" data-energy-path-bar="${escapeHTML(bar.nodeId)}" data-energy-path-bar-side="${escapeHTML(bar.side)}" data-energy-path-bar-domain="${escapeHTML(bar.domain)}" data-energy-path-bar-value="${bar.value}" data-energy-path-focus="${energyPathFocusKind(focus, "node", bar.nodeId)}" ${energyPathAppearanceAttributes(appearance)}${appearance.allocated || appearance.residual ? ` style="fill:url(#${energyPathPatternID(appearance)})"` : ""}
       x="${bar.x}" y="${bar.y}" width="${bar.width}" height="${bar.height}"><title>${escapeHTML(title)}</title></rect>`;
   }).join("");
@@ -3220,15 +3227,20 @@ function energyPathAppearanceLabel(appearance) {
   return appearance.allocated ? t("simulation.energyPathAllocated", {}, "Allocated") : "";
 }
 
-function energyPathRibbonTitle(ribbon, nodeByID) {
+function energyPathRibbonTitle(ribbon, nodeByID, display) {
   const from = nodeByID.get(ribbon.fromId)?.label || ribbon.fromId;
   const to = nodeByID.get(ribbon.toId)?.label || ribbon.toId;
   const fromUnit = ribbon.domain === "site" ? "kWh site" : "kWh thermal";
   const toUnit = ribbon.domain === "thermal" ? "kWh thermal" : "kWh site";
-  return `${from} → ${to} · ${t("simulation.energyPathBridgeFrom", {}, "From")}: ${energyPathValueLabel(ribbon.fromValue, fromUnit)} · ${t("simulation.energyPathBridgeTo", {}, "To")}: ${energyPathValueLabel(ribbon.toValue, toUnit)}`;
+  return `${from} → ${to} · ${t("simulation.energyPathBridgeFrom", {}, "From")}: ${energyPathValueLabel(ribbon.fromValue, fromUnit, display)} · ${t("simulation.energyPathBridgeTo", {}, "To")}: ${energyPathValueLabel(ribbon.toValue, toUnit, display)}`;
 }
 
-function energyPathScaleLabel(domain, scale) {
+function energyPathScaleLabel(domain, scale, display) {
+  if (display?.perArea) {
+    const value = formatEnergyPathDisplayValue(scale?.kWhPerPixel, "kWh", display, { includeUnit: false });
+    return t(domain === "thermal" ? "simulation.energyPathThermalAreaScale" : "simulation.energyPathSiteAreaScale", { value },
+      `${domain === "thermal" ? "Thermal" : "Site"} scale: ${value} kWh/m² per px`);
+  }
   const value = typeof scale?.kWhPerPixel === "number" && Number.isFinite(scale.kWhPerPixel)
     ? scale.kWhPerPixel.toLocaleString(undefined, { maximumSignificantDigits: 5 })
     : t("common.notAvailable", {}, "—");
@@ -3245,7 +3257,7 @@ function energyPathBridgeRatio(ribbon, nodes, links, ratioQuality) {
   };
 }
 
-function renderEnergyPathBridgeRatios(drawing, layout, nodes, links, ratioQuality, focus) {
+function renderEnergyPathBridgeRatios(drawing, layout, nodes, links, ratioQuality, focus, display) {
   const nodeByID = new Map(nodes.map((node) => [node.id, node]));
   return drawing.ribbons.filter((ribbon) => ribbon.domain === "conversion").map((ribbon, index) => {
     const ratio = energyPathBridgeRatio(ribbon, nodes, links, ratioQuality);
@@ -3256,8 +3268,8 @@ function renderEnergyPathBridgeRatios(drawing, layout, nodes, links, ratioQualit
     const valueLabel = ratio ? energyPathRatioValueLabel(ratio.value) : t("common.notAvailable", {}, "—");
     const ratioLabel = ratio ? `${ratio.label}: ${valueLabel}`
       : t("simulation.energyPathBridgeRatioUnavailable", {}, "Ratio is unavailable for this period.");
-    const title = [ratioLabel, energyPathRibbonTitle(ribbon, nodeByID),
-      energyPathScaleLabel("thermal", drawing.scales.thermal), energyPathScaleLabel("site", drawing.scales.site),
+    const title = [ratioLabel, energyPathRibbonTitle(ribbon, nodeByID, display),
+      energyPathScaleLabel("thermal", drawing.scales.thermal, display), energyPathScaleLabel("site", drawing.scales.site, display),
       t("simulation.energyPathIndependentScales", {}, "The two domains use separate scales; the numeric ratio is calculated from the reported values, not pixel widths."),
     ].join(" · ");
     const tooltipID = `energyPathRatioTooltip-${index}`;
@@ -3269,11 +3281,11 @@ function renderEnergyPathBridgeRatios(drawing, layout, nodes, links, ratioQualit
   }).join("");
 }
 
-function renderEnergyPathLinkHitLayer(drawing, layout, nodes, focus) {
+function renderEnergyPathLinkHitLayer(drawing, layout, nodes, focus, display) {
   const nodeByID = new Map(nodes.map((node) => [node.id, node]));
   return `<svg class="energy-path-link-hit-layer" data-energy-path-hit-layer viewBox="0 0 ${layout.width} ${layout.height}" preserveAspectRatio="none" role="group" aria-label="${escapeHTML(t("simulation.energyPathSelectableLinks", {}, "Selectable energy links"))}">
     ${drawing.ribbons.map((ribbon) => {
-      const title = [energyPathRibbonTitle(ribbon, nodeByID), energyPathAppearanceLabel(energyPathLinkAppearance(ribbon.link, nodes))].filter(Boolean).join(" · ");
+      const title = [energyPathRibbonTitle(ribbon, nodeByID, display), energyPathAppearanceLabel(energyPathLinkAppearance(ribbon.link, nodes))].filter(Boolean).join(" · ");
       return `<g><path class="energy-path-link-hit" data-energy-path-link-hit="${escapeHTML(ribbon.id)}" data-energy-explanation-edge="${escapeHTML(ribbon.id)}" d="${escapeHTML(ribbon.path)}" tabindex="${ribbon.domain === "conversion" ? -1 : 0}" role="button" aria-pressed="${focus.selectedLinkID === ribbon.id}" aria-label="${escapeHTML(title)}"><title>${escapeHTML(title)}</title></path>
         <path class="energy-path-link-focus-ring${focus.selectedLinkID === ribbon.id ? " selected" : ""}" d="${escapeHTML(ribbon.path)}" aria-hidden="true"/>
       </g>`;
@@ -3282,6 +3294,7 @@ function renderEnergyPathLinkHitLayer(drawing, layout, nodes, focus) {
 }
 
 function renderEnergyPathLinkInspector(explanation, ribbon, nodes, links, viewState, ratioQuality, options = {}) {
+  const display = options.display;
   const link = ribbon.link;
   const nodeByID = new Map(nodes.map((node) => [node.id, node]));
   const thermalLoad = link.relation === "load_to_end_use" ? nodeByID.get(link.fromId) : null;
@@ -3289,8 +3302,8 @@ function renderEnergyPathLinkInspector(explanation, ribbon, nodes, links, viewSt
   const fromUnit = ribbon.domain === "site" ? "kWh site" : "kWh thermal";
   const toUnit = ribbon.domain === "thermal" ? "kWh thermal" : "kWh site";
   const fields = [
-    ["from", t("simulation.energyPathBridgeFrom", {}, "From"), energyPathValueLabel(ribbon.fromValue, fromUnit)],
-    ["to", t("simulation.energyPathBridgeTo", {}, "To"), energyPathValueLabel(ribbon.toValue, toUnit)],
+    ["from", t("simulation.energyPathBridgeFrom", {}, "From"), energyPathValueLabel(ribbon.fromValue, fromUnit, display)],
+    ["to", t("simulation.energyPathBridgeTo", {}, "To"), energyPathValueLabel(ribbon.toValue, toUnit, display)],
   ];
   if (ribbon.domain === "conversion") {
     const ratio = energyPathBridgeRatio(ribbon, nodes, links, ratioQuality);
@@ -3307,28 +3320,28 @@ function renderEnergyPathLinkInspector(explanation, ribbon, nodes, links, viewSt
     <header><strong>${escapeHTML(t("simulation.energyPathLinkDetail", {}, "Energy link detail"))}</strong><span>${escapeHTML(energyPathInspectorSafeLabel(heading, model))}</span></header>
     ${renderEnergyPathDetailSection("represents", renderEnergyPathRepresentation(link, model, thermalLoad))}
     ${renderEnergyPathDetailSection("value", renderEnergyPathInspectorValues(fields, "data-energy-path-link-value"))}
-    ${renderEnergyPathDetailSection("breakdown", renderEnergyPathInspectorBreakdown(model, { skipRatios: true }))}
+    ${renderEnergyPathDetailSection("breakdown", renderEnergyPathInspectorBreakdown(model, { skipRatios: true, display }))}
     ${renderEnergyPathDetailSection("basis", renderEnergyPathInspectorBasis(link, model, "data-energy-path-link-value"))}
     ${renderEnergyPathDetailSection("actions", renderEnergyPathInspectorActions(link, inspectorActions))}
   </aside>`;
 }
 
-function renderEnergyPathGraphLegend() {
+function renderEnergyPathGraphLegend(display) {
   return `<div class="energy-path-domain-legend" data-energy-path-legend aria-label="${escapeHTML(t("simulation.energyPathScaleDomains", {}, "Thermal and site-energy scale domains"))}">
-    <span data-energy-path-legend-item="thermal"><i class="energy-path-legend-swatch thermal" aria-hidden="true"></i>${escapeHTML(t("simulation.energyPathLegendThermal", {}, "Thermal kWh"))}</span>
-    <span data-energy-path-legend-item="site"><i class="energy-path-legend-swatch site" aria-hidden="true"></i>${escapeHTML(t("simulation.energyPathLegendSite", {}, "Site kWh"))}</span>
+    <span data-energy-path-legend-item="thermal"><i class="energy-path-legend-swatch thermal" aria-hidden="true"></i>${escapeHTML(display?.perArea ? t("simulation.energyPathLegendThermalArea", {}, "Thermal kWh/m²") : t("simulation.energyPathLegendThermal", {}, "Thermal kWh"))}</span>
+    <span data-energy-path-legend-item="site"><i class="energy-path-legend-swatch site" aria-hidden="true"></i>${escapeHTML(display?.perArea ? t("simulation.energyPathLegendSiteArea", {}, "Site kWh/m²") : t("simulation.energyPathLegendSite", {}, "Site kWh"))}</span>
     <span data-energy-path-legend-item="allocated"><i class="energy-path-legend-swatch allocated" aria-hidden="true"></i>${escapeHTML(t("simulation.energyPathAllocated", {}, "Allocated"))}</span>
     <span data-energy-path-legend-item="residual"><i class="energy-path-legend-swatch residual" aria-hidden="true"></i>${escapeHTML(t("simulation.energyPathLegendResidual", {}, "Residual"))}</span>
   </div>`;
 }
 
-function renderEnergyPathStage(stage, nodes, selectedID, relatedNodeIDs, index) {
+function renderEnergyPathStage(stage, nodes, selectedID, relatedNodeIDs, index, display) {
   const stageNodes = (nodes || [])
     .filter((node) => (node.presentationLevel || node.level) === stage.level && (stage.level !== "driver" || Math.abs(Number(node.value) || 0) > 0))
     .sort((left, right) => compareEnergyPathStageNodes(stage, left, right));
   const partialCarrierSubtotal = stage.level === "carrier" && stageNodes.some((node) => node.presentationCoverage === "partial");
   const content = stageNodes.length
-    ? stageNodes.map((node) => renderEnergyPathNode(node, stage, selectedID, relatedNodeIDs)).join("")
+    ? stageNodes.map((node) => renderEnergyPathNode(node, stage, selectedID, relatedNodeIDs, null, display)).join("")
     : `<span class="energy-path-stage-empty">${escapeHTML(t("common.notAvailable", {}, "—"))}</span>`;
   return `
     <article class="energy-path-stage ${stage.scaleDomain === "site" ? "site-domain" : "thermal-domain"}" data-energy-path-stage="${escapeHTML(stage.level)}"${partialCarrierSubtotal ? ' data-energy-path-value-scope="observed_direct_use_subtotal"' : ""}>
@@ -3337,7 +3350,7 @@ function renderEnergyPathStage(stage, nodes, selectedID, relatedNodeIDs, index) 
         <strong>${escapeHTML(partialCarrierSubtotal
           ? t("simulation.energyPathKnownEnergySources", {}, "Known energy sources")
           : t(stage.labelKey, {}, stage.label))}</strong>
-        <span>${escapeHTML(t(stage.scaleDomain === "thermal" ? "simulation.energyPathThermalUnit" : "simulation.energyPathSiteUnit", {}, stage.unitLabel))}</span>
+        <span>${escapeHTML(energyPathDisplayUnit(t(stage.scaleDomain === "thermal" ? "simulation.energyPathThermalUnit" : "simulation.energyPathSiteUnit", {}, stage.unitLabel), display))}</span>
       </header>
       <p>${escapeHTML(partialCarrierSubtotal
         ? t("simulation.energyPathObservedDirectUseSubtotalExplanation", {}, "Only directly observed zone energy uses are included; energy-source values are subtotals, not complete zone totals.")
@@ -3350,7 +3363,7 @@ function compareEnergyPathStageNodes(stage, left, right) {
   return energyPathCompareNodes(stage, left, right);
 }
 
-function renderEnergyPathNode(node, stage, selectedID, relatedNodeIDs = new Set(), geometry = null) {
+function renderEnergyPathNode(node, stage, selectedID, relatedNodeIDs = new Set(), geometry = null, display) {
   const appearance = energyPathNodeAppearance(node);
   const selected = node.id && node.id === selectedID;
   const related = Boolean(node.id && relatedNodeIDs.has(node.id));
@@ -3363,7 +3376,7 @@ function renderEnergyPathNode(node, stage, selectedID, relatedNodeIDs = new Set(
   const unclassified = node.presentationKind === "unclassified_energy";
   const label = node.label || node.kind || node.id || "";
   const number = energyPathNodeNumber(node.value);
-  const fullValue = number === null ? t("common.notAvailable", {}, "—") : energyPathValueLabel(number, stage.unitLabel);
+  const fullValue = number === null ? t("common.notAvailable", {}, "—") : energyPathValueLabel(number, stage.unitLabel, display);
   const badgeLabels = [
     latentBadge ? t("simulation.energyPathLatentShareSignificant", { share: energyPathPercentLabel(latentShare) }, `Latent ${energyPathPercentLabel(latentShare)}`) : "",
     partialCoverageBadge ? t("simulation.energyPathKnownOnly", {}, "Known only") : "",
@@ -3372,7 +3385,7 @@ function renderEnergyPathNode(node, stage, selectedID, relatedNodeIDs = new Set(
   ].filter(Boolean);
   const fullTitle = [`${label}: ${fullValue}`, ...badgeLabels].join(" · ");
   const compactValue = number !== null
-    ? number.toLocaleString(undefined, { maximumFractionDigits: 2 })
+    ? display?.perArea ? formatEnergyPathDisplayValue(number, stage.unitLabel, display, { includeUnit: false }) : number.toLocaleString(undefined, { maximumFractionDigits: 2 })
     : t("common.notAvailable", {}, "—");
   const placement = geometry
     ? ` data-energy-path-layout-node="${escapeHTML(node.id || "")}" data-energy-path-lane="${escapeHTML(geometry.lane)}" data-energy-path-focus="${geometry.focusKind}" style="left:${(geometry.x - geometry.column.x) / geometry.column.width * 100}%;top:${geometry.y}px;width:${geometry.width / geometry.column.width * 100}%;height:${geometry.height}px"`
@@ -3392,7 +3405,8 @@ function energyPathNodeNumber(value) {
   return Number.isFinite(number) ? number : null;
 }
 
-function energyPathValueLabel(value, unitLabel) {
+function energyPathValueLabel(value, unitLabel, display) {
+  if (display?.perArea) return formatEnergyPathDisplayValue(value, unitLabel, display);
   const number = Number(value);
   if (!Number.isFinite(number)) {
     return t("common.notAvailable", {}, "—");
@@ -3404,10 +3418,10 @@ function energyPathValueLabel(value, unitLabel) {
   )}`;
 }
 
-function renderEnergyPathSummaryItem(item = {}, ratio = false) {
+function renderEnergyPathSummaryItem(item = {}, ratio = false, display) {
   const detail = [
-    energyPathSummaryOptionalValue(t("simulation.energyPathRaw", {}, "Raw"), item, "rawValue"),
-    energyPathSummaryOptionalValue(t("simulation.energyPathAllocated", {}, "Allocated"), item, "allocatedValue"),
+    energyPathSummaryOptionalValue(t("simulation.energyPathRaw", {}, "Raw"), item, "rawValue", display),
+    energyPathSummaryOptionalValue(t("simulation.energyPathAllocated", {}, "Allocated"), item, "allocatedValue", display),
     item.basis ? `${t("simulation.energyPathBasis", {}, "Basis")}: ${item.basis}` : "",
     item.aggregationBasis
       ? `${t("simulation.energyPathAggregationBasis", {}, "Aggregation")}: ${item.aggregationBasis}`
@@ -3416,19 +3430,20 @@ function renderEnergyPathSummaryItem(item = {}, ratio = false) {
   return `
     <div class="energy-path-summary-item">
       <span>${escapeHTML(item.label || item.id || "")}</span>
-      <strong>${escapeHTML(ratio ? [energyPathRatioValueLabel(item.value), item.unit || ""].filter(Boolean).join(" ") : energyPathSummaryValueLabel(item.value, item.unit || ""))}</strong>
+      <strong>${escapeHTML(ratio ? [energyPathRatioValueLabel(item.value), item.unit || ""].filter(Boolean).join(" ") : energyPathSummaryValueLabel(item.value, item.unit || "", display))}</strong>
       ${detail ? `<small>${escapeHTML(detail)}</small>` : ""}
     </div>`;
 }
 
-function energyPathSummaryOptionalValue(label, item, key) {
+function energyPathSummaryOptionalValue(label, item, key, display) {
   if (!Object.prototype.hasOwnProperty.call(item, key) || !Number.isFinite(Number(item[key]))) {
     return "";
   }
-  return `${label}: ${energyPathSummaryValueLabel(item[key], item.unit || "")}`;
+  return `${label}: ${energyPathSummaryValueLabel(item[key], item.unit || "", display)}`;
 }
 
-function energyPathSummaryValueLabel(value, unit = "") {
+function energyPathSummaryValueLabel(value, unit = "", display) {
+  if (display?.perArea) return formatEnergyPathDisplayValue(value, unit, display);
   const number = Number(value);
   if (!Number.isFinite(number)) {
     return t("common.notAvailable", {}, "—");

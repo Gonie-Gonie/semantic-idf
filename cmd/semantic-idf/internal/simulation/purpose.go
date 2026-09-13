@@ -653,6 +653,7 @@ func buildPurposeResultBundleWithProgress(result *SimulationRunResult, request S
 			}
 			report("energy_path", "Building Energy Path results")
 			bundle.EnergyExplanation = UpgradeEnergyExplanationV1(legacyExplanation)
+			applyEnergyFloorAreas(&bundle.EnergyExplanation, energyFloorAreasForRun(result, sharedDocument))
 			bundle.EnergyExplanationSummary = buildEnergyExplanationSummary(bundle.EnergyExplanation)
 			bundle.Completeness = append(bundle.Completeness, bundle.Energy.Completeness...)
 		case SimulationPurposeZoneHeatFlow:

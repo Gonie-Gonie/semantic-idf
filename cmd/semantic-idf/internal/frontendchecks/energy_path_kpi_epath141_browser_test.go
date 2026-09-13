@@ -84,7 +84,8 @@ const graph=(scope,period,scale=1,full=false)=>{
  const summary={schema:"semantic-idf.energy-explanation-summary/v2",scope,period,quality:localQuality,completeness,drivers:nodes.filter(n=>n.level==="driver"),loads:nodes.filter(n=>n.level==="load"),endUses:nodes.filter(n=>n.level==="end_use"),carriers:nodes.filter(n=>n.level==="carrier"),ratios:[{id:"stale-ratio",value:88}]};
  return {id:period,nodes,links,quality:localQuality,completeness,summary};
 };
-const buildingScope={kind:"building",aggregationBasis:"model_total"},zoneScope={kind:"zone",zoneName:"Office",aggregationBasis:"model_total"};
+// Unit-area run snapshots preserve this navigation fixture's numeric expectations.
+const buildingScope={kind:"building",aggregationBasis:"model_total",floorAreaM2:1},zoneScope={kind:"zone",zoneName:"Office",aggregationBasis:"model_total",floorAreaM2:1};
 const annual=graph(buildingScope,"annual",10,true),january=graph(buildingScope,"M1"),february=graph(buildingScope,"M2",2);
 february.links=february.links.filter(link=>link.relation!=="load_to_end_use");
 const sources=["people","cooling","heating","electricity","gas"].map(name=>({id:"sql."+name,name:"SOURCE_SENTINEL "+name,sourceType:"sql_variable",sourceUnit:"J",normalizedUnit:"kWh",reportingFrequency:"Monthly"}));
@@ -102,10 +103,10 @@ try{
  const valueText=id=>card(id)?.querySelector("strong")?.textContent||"";
  mount();
  if(new URLSearchParams(location.search).get("manual")==="1"){
-  document.body.dataset.epath141Status="manual";document.getElementById("result").textContent="Manual EPATH-141 fixture: January has a 100 kWh cooling load but matched conversion 40/20=2; total site chooser includes electricity and gas. Coverage shows separate 50% / 95% boundaries.";
+  document.body.dataset.epath141Status="manual";document.getElementById("result").textContent="Manual EPATH-141 fixture: January displays a 100.00 kWh/m² cooling load but matched conversion 40/20=2; total site chooser includes electricity and gas. Coverage shows separate 50% / 95% boundaries.";
  }else{
  check(host.querySelectorAll("[data-energy-path-kpi]").length===4,"default dashboard does not have exactly four compact KPI cards");
- check(valueText("total_site_energy").includes("120")&&valueText("cooling_load").includes("100")&&valueText("heating_load").includes("80"),"January KPI values do not come from the selected-period summary");
+ check(valueText("total_site_energy")==="120.00 kWh/m²"&&valueText("cooling_load")==="100.00 kWh/m² thermal"&&valueText("heating_load")==="80.00 kWh/m² thermal","January KPI values do not come from the selected-period summary with two-decimal area units");
  const values=["total_site_energy","cooling_load","heating_load"].map(valueText);
  check(!host.querySelector(".energy-path-kpis")?.textContent.includes("SOURCE_SENTINEL")&&!host.querySelector(".energy-path-kpis")?.textContent.includes("SQL"),"KPI strip exposes source names or SQL counts");
  for(const service of["cooling","heating","all"]){
@@ -151,17 +152,17 @@ try{
  change("[data-simulation-energy-path-period]","M2");change("[data-simulation-energy-service]","cooling");
  const missingRatio=card("cooling_load")?.querySelector('[data-energy-path-kpi-ratio="cooling"]');
  check(missingRatio&&!missingRatio.hasAttribute("data-energy-path-kpi-ratio-value")&&!missingRatio.textContent.includes("88"),"month with no conversion links reused annual/stale ratio or fabricated zero");
- check(valueText("cooling_load").includes("200"),"February KPI fell back to annual cooling total");
+ check(valueText("cooling_load")==="200.00 kWh/m² thermal","February KPI fell back to annual cooling total or lost area units/precision");
  change("[data-simulation-energy-path-period]","M3");
  check(host.querySelectorAll("[data-energy-path-kpi]").length===4&&!/\d/.test(valueText("total_site_energy")),"absent month invented a zero/annual site-energy KPI or dropped the four-card strip");
  mount(result,{simulationEnergyScopeKind:"zone",simulationEnergyZoneName:"Office"});
- check(host.querySelectorAll("[data-energy-path-kpi]").length===4&&valueText("total_site_energy").includes("60")&&card("total_site_energy")?.textContent.includes("Known zone site energy")&&card("total_site_energy")?.textContent.includes("Known only"),"partial Zone lost its known-only 60 kWh qualifier or fourth coverage card");
+ check(host.querySelectorAll("[data-energy-path-kpi]").length===4&&valueText("total_site_energy")==="60.00 kWh/m²"&&card("total_site_energy")?.textContent.includes("Known zone site energy")&&card("total_site_energy")?.textContent.includes("Known only"),"partial Zone lost its known-only 60.00 kWh/m² qualifier or fourth coverage card");
  check(boundary("end_use_to_carrier")?.dataset.energyPathKpiBoundaryStatus==="unavailable"&&!boundary("end_use_to_carrier")?.hasAttribute("data-energy-path-kpi-boundary-value"),"Zone subtotal presented unknown facility closure as numeric coverage");
- const emptyScope={kind:"building",aggregationBasis:"model_total"};
+ const emptyScope={kind:"building",aggregationBasis:"model_total",floorAreaM2:1};
  const zeroSummary={schema:"semantic-idf.energy-explanation-summary/v2",scope:emptyScope,period:"annual",loads:[{id:"load.cooling.zero",serviceKind:"cooling",value:0,unit:"kWh"}],carriers:[],completeness:{mappedPercent:100}};
  const zeroPayload=freeze({schema:explanation.schema,scope:emptyScope,nodes:[],links:[],sources:[],summary:zeroSummary,quality:{...quality,driverToLoadStatus:"not_requested",endUseToCarrierStatus:"unavailable"}});
  mount(freeze({purposeResults:{energyExplanation:zeroPayload,energyExplanationSummary:zeroSummary}}),{simulationEnergyPeriod:"annual"});
- check(valueText("cooling_load").includes("0")&&!/\d/.test(valueText("heating_load"))&&!/\d/.test(valueText("total_site_energy")),"reported zero and missing energy groups were conflated");
+ check(valueText("cooling_load")==="0.00 kWh/m² thermal"&&!/\d/.test(valueText("heating_load"))&&!/\d/.test(valueText("total_site_energy")),"reported zero and missing energy groups were conflated or zero lost area units/precision");
  check(!host.querySelector("[data-energy-path-kpi-node]")&&host.querySelectorAll("[data-energy-path-kpi]").length===4,"no-graph KPI payload fabricated a target or omitted cards");
  check(!card("coverage")?.textContent.includes("100%")&&!card("coverage")?.textContent.includes("0%"),"unavailable/not-requested boundaries became a fake numeric completeness score");
  mount();pane.style.width="360px";
