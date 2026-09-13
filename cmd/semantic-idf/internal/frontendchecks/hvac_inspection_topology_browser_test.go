@@ -92,8 +92,10 @@ try {
  check(inlet.querySelectorAll('[data-hvac-inspect-metric]').length===3&&inlet.textContent.includes('0.00 kg/s')&&inlet.textContent.includes('0.0047 kg/kg'),'zero flow/humidity precision disappeared or setpoint retained a separate row');
  const compactLabel=id=>inlet.querySelector('[data-hvac-inspect-metric="'+id+'"] .hvac-inspect-metric-label').textContent.trim();
  check(compactLabel('flow')==='ṁ'&&compactLabel('temperature')==='T'&&compactLabel('humidity')==='w','node measurements lost compact physical symbols or confused humidity ratio with relative humidity');
- const valueFont=parseFloat(getComputedStyle(inlet.querySelector('.hvac-inspect-metric-value')).fontSize),nameFont=parseFloat(getComputedStyle(inlet.querySelector('.hvac-inspect-point-label')).fontSize);
- check(valueFont>nameFont&&valueFont<=nameFont+1,'frame values must stay compact while slightly emphasizing measured values');
+ check(!mount.querySelector('.node .hvac-inspect-point-label')&&inlet.querySelector('title').textContent.startsWith('SUPPLY INLET')&&inlet.getAttribute('aria-label').startsWith('SUPPLY INLET'),'node names must remain in tooltips/accessibility labels only');
+ check(mount.querySelector('.equipment .hvac-inspect-point-label')?.textContent==='Supply pump','hiding node names also removed equipment names');
+ const valueFont=parseFloat(getComputedStyle(inlet.querySelector('.hvac-inspect-metric-value')).fontSize),labelFont=parseFloat(getComputedStyle(inlet.querySelector('.hvac-inspect-metric-label')).fontSize);
+ check(valueFont>labelFont&&valueFont<=labelFont+1,'frame values must stay compact while slightly emphasizing measured values');
  for(const row of mount.querySelectorAll('[data-hvac-inspect-metric]')){
   const symbol=row.querySelector('.hvac-inspect-metric-label'),value=row.querySelector('.hvac-inspect-metric-value');
   check(symbol.getStartPositionOfChar(0).x===0&&value.getStartPositionOfChar(0).x===32,'frame measurement labels and values do not align in fixed columns');

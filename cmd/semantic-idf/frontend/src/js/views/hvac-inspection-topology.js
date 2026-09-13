@@ -189,7 +189,7 @@ function observationRecords(loop, graph, layout, nodes, components) {
     const metrics = (item.metrics || []).filter((metric) => kind !== "node" || metric.id !== "setpoint").slice(0, 4).map((metric) => metric.id === "temperature" && setpoint
       ? { ...metric, setpoint: hvacSetpointComparison(metric.value, setpoint.value, hvacSetpointMode(loop, item.name, components)) } : metric);
     if (kind === "node") metrics.sort((a, b) => ["temperature", "flow", "relativeHumidity", "humidity"].indexOf(a.id) - ["temperature", "flow", "relativeHumidity", "humidity"].indexOf(b.id));
-    const nameLines = [String(item.name || "").length > 24 ? `${String(item.name).slice(0, 23)}…` : String(item.name || "")];
+    const nameLines = kind === "node" ? [] : [String(item.name || "").length > 24 ? `${String(item.name).slice(0, 23)}…` : String(item.name || "")];
     const parentLines = [];
     const status = kind === "component" ? ["on", "off"].includes(item.status) ? item.status : "unknown" : "";
     const side = anchor?.side || (kind === "node" ? sideForNode(item.name) : "demand");

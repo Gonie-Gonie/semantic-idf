@@ -598,8 +598,9 @@ Purpose result viewers now include:
   Frame measurements occupy whitespace above and below the flow paths, with
   leader lines to the corresponding node points; dense labels add vertical
   space instead of shrinking the text or replacing the schematic with cards.
-  Values take visual priority over node names, with compact labels such as T,
-  RH, w, and ṁ. HVAC and result selections stay in the current view without
+  Node annotations show values with compact labels such as T, RH, w, and ṁ;
+  node names remain in tooltips and accessibility labels. Equipment names stay
+  visible. HVAC and result selections stay in the current view without
   opening a reveal-location chooser or switching between those tabs.
   Frame snapshots emphasize measured node points and show flow, temperature,
   humidity and available setpoints; equipment shows available operating state,
