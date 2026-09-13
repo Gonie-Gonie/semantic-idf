@@ -28,6 +28,7 @@
         <a href="#metrics" data-i18n="guide.nav.metrics">Metrics</a>
         <a href="#topology" data-i18n="guide.nav.topology">Topology</a>
         <a href="#energy-path" data-i18n="guide.nav.energyPath">Energy Path</a>
+        <a href="#hvac-inspection" data-i18n="guide.hvacInspection.title">HVAC Loop Check</a>
         <a href="#metric-catalog" data-i18n="guide.nav.metricCatalog">Metric Catalog</a>
         <a href="#batch-metrics" data-i18n="guide.nav.batchMetrics">Batch Metrics</a>
         <a href="#tools-diagnose" data-i18n="guide.nav.cleanup">Tools / Diagnose</a>
@@ -170,6 +171,16 @@ type model.idf | semantic-idf cli convert -to json -o - -</code></pre>
             Reports start with the selected scope and period's all-service summary.
             HTML keeps trace details collapsed, and XLSX includes them only when
             Include trace sheets is checked. Current editor changes are not included in the saved simulation result.
+          </p>
+        </section>
+
+        <section id="hvac-inspection" class="guide-section">
+          <h2 data-i18n="guide.hvacInspection.title">HVAC Loop Check</h2>
+          <p data-i18n="guide.hvacInspection.body">
+            After Run &amp; Inspect, choose a loop in HVAC Loops. Move the frame slider to inspect equipment operation
+            and node measurements on its topology. Toggle node checkboxes to compare flow, temperature and humidity.
+            In Custom graph, select equipment or a node, then its property. Line supports two units on separate Y axes;
+            Scatter compares exactly two properties at matching times. Missing observations remain unavailable.
           </p>
         </section>
 

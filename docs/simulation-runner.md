@@ -593,19 +593,20 @@ Purpose result viewers now include:
   inspector row, and offers an `All` action to expand them.
 - Zone Heat Flow SQL or CSV/ESO ledger with frame sampling metadata and
   time-range controls.
-- HVAC Loop Check node summaries, component operation summaries for fans,
-  pumps, coils, chillers, boilers, and cooling towers, derived loop metrics,
-  node-state heat-transfer estimates, loop status classification, and alerts for
-  zero flow, flow without temperature spread, missing setpoints, and large
-  temperature-setpoint deltas. The frame snapshot includes a compact node
-  schematic with live temperature/flow labels before detailed node and component
-  cards. The Simulation result viewer deliberately keeps that live schematic
-  compact, and reuses the existing HVAC tab `renderHVACLoopDiagram` only as an
-  optional topology panel when the current HVAC selection matches the simulated
-  loop. The result view also provides panel toggles for topology, snapshot, and
-  normalized multi-series chart, plus variable group toggles for temperature,
-  setpoints, mass flow, humidity/enthalpy, rate/load, power/energy, and other
-  HVAC outputs.
+- HVAC Loop Check shows one selected loop's topology from the executed input.
+  Frame snapshots emphasize measured node points and show flow, temperature,
+  humidity and available setpoints; equipment shows available operating state,
+  power, load and reported COP. Zero remains a measured value; unavailable
+  values never acquire a previous frame's reading. The former summary, source
+  and operation tables are removed from this view.
+  Three default time-series graphs show node flow, temperature and humidity,
+  with per-node checkboxes. Custom graph selects equipment/node first and its
+  property second. Line graphs support at most two units on separate Y axes;
+  Scatter compares exactly two properties at matching observation times.
+  Humidity uses reported relative humidity when available, otherwise humidity
+  ratio in g/kg. HVAC Hourly observations are retained beyond the Series preview
+  sample limit. Old results without executed topology show an unavailable state
+  alongside their retained observations.
 - Comfort zone metric summaries for temperature, setpoint, PMV, and PPD series.
   Backend callers can optionally provide custom `MM-DD` period scoping for the
   rendered trends and issue ranking; the main Simulation view uses the full

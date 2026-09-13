@@ -1,6 +1,9 @@
 @import "./styles/simulation.css";
 @import "./styles/base.css";
 @import "./styles/hvac.css";
+@import "./styles/hvac-inspection.css";
+@import "./styles/hvac-inspection-charts.css";
+@import "./styles/hvac-inspection-topology.css";
 @import "./styles/output.css";
 @import "./styles/profile.css";
 @import "./styles/topology.css";

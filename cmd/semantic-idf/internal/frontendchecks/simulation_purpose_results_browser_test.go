@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -35,6 +37,10 @@ func TestSimulationRunInspectHVACAndComfortBrowser(t *testing.T) {
 		Evidence []string `json:"evidence"`
 	}
 	done := make(chan browserResult, 1)
+	inputPath := filepath.Join(t.TempDir(), "purpose-results.idf")
+	if err := os.WriteFile(inputPath, []byte(simulationPurposeResultsHVACInput), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	mux := http.NewServeMux()
 	mux.Handle("/src/", http.StripPrefix("/src/", http.FileServer(http.Dir(repoPath("frontend/src")))))
 	mux.HandleFunc("/src/purpose-results.html", func(w http.ResponseWriter, _ *http.Request) {
@@ -47,7 +53,7 @@ func TestSimulationRunInspectHVACAndComfortBrowser(t *testing.T) {
 			http.Error(w, "invalid purpose request", http.StatusBadRequest)
 			return
 		}
-		result := simulationPurposeResultsBrowserFixture(request.RunID, *request.PurposeRequest)
+		result := simulationPurposeResultsBrowserFixture(request.RunID, inputPath, *request.PurposeRequest)
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(result)
 	})
@@ -83,6 +89,19 @@ func TestSimulationRunInspectHVACAndComfortBrowser(t *testing.T) {
 		if len(result.Failures) != 0 {
 			t.Fatalf("Run & Inspect purpose results: %s", strings.Join(result.Failures, "\n"))
 		}
+		if directory := os.Getenv("HVAC_INSPECTION_SCREENSHOT_DIR"); directory != "" {
+			for _, capture := range []string{"topology", "graphs"} {
+				path, err := filepath.Abs(filepath.Join(directory, "hvac-inspection-"+capture+".png"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				shot, err := exec.CommandContext(ctx, chrome, "--headless=new", "--disable-gpu", "--no-sandbox", "--no-first-run", "--no-default-browser-check", "--force-device-scale-factor=1", "--window-size=1600,1100", "--virtual-time-budget=10000", "--user-data-dir="+t.TempDir(), "--screenshot="+path, server.URL+"/src/purpose-results.html?manual=1&capture="+capture).CombinedOutput()
+				if err != nil {
+					t.Fatalf("HVAC inspection screenshot: %v\n%s", err, shot)
+				}
+				t.Log("Actual-app screenshot: " + path)
+			}
+		}
 	case <-ctx.Done():
 		stop()
 		t.Fatal("Run & Inspect purpose browser did not report within its deadline")
@@ -92,7 +111,7 @@ func TestSimulationRunInspectHVACAndComfortBrowser(t *testing.T) {
 // Keep the wire contract and summary construction real: only the EnergyPlus
 // series are fixtures. The browser sends its native request and receives the
 // production purpose builder's HVAC/Comfort bundle through JSON.
-func simulationPurposeResultsBrowserFixture(runID string, request simulation.SimulationPurposeRequest) simulation.SimulationRunResult {
+func simulationPurposeResultsBrowserFixture(runID, inputPath string, request simulation.SimulationPurposeRequest) simulation.SimulationRunResult {
 	series := func(key, name, unit string, first, middle, last float64) simulation.SimulationSeries {
 		return simulation.SimulationSeries{
 			File: "eplusout.sql", Column: key + ":" + name + " [" + unit + "]",
@@ -106,13 +125,21 @@ func simulationPurposeResultsBrowserFixture(runID string, request simulation.Sim
 		}
 	}
 	result := simulation.SimulationRunResult{
-		RunID: runID, Status: "succeeded", Filename: "purpose-results.idf",
+		RunID: runID, Status: "succeeded", Filename: "purpose-results.idf", InputPath: inputPath,
 		PurposeRunPlan: &simulation.PurposeRunPlan{Purposes: request.Purposes},
 		Series: []simulation.SimulationSeries{
 			series("SUPPLY OUTLET", "System Node Temperature", "C", 14, 16, 18),
 			series("SUPPLY OUTLET", "System Node Mass Flow Rate", "kg/s", 0.5, 1, 1.5),
 			series("SUPPLY OUTLET", "System Node Setpoint Temperature", "C", 16, 16, 16),
-			series("SUPPLY FAN", "Fan Electricity Rate", "W", 300, 400, 500),
+			series("SUPPLY OUTLET", "System Node Relative Humidity", "%", 45, 50, 55),
+			series("SUPPLY INLET", "System Node Temperature", "C", 24, 25, 26),
+			series("SUPPLY INLET", "System Node Mass Flow Rate", "kg/s", 0.5, 1, 1.5),
+			series("SUPPLY INLET", "System Node Relative Humidity", "%", 50, 55, 60),
+			series("SUPPLY FAN", "Fan Electricity Rate", "W", 0, 400, 500),
+			series("RETURN OUTLET", "System Node Temperature", "C", 21, 22, 23),
+			series("RETURN OUTLET", "System Node Mass Flow Rate", "kg/s", 2, 3, 4),
+			series("RETURN OUTLET", "System Node Relative Humidity", "%", 60, 65, 70),
+			series("RETURN FAN", "Fan Electricity Rate", "W", 700, 900, 1100),
 			series("OFFICE", "Zone Mean Air Temperature", "C", 22, 24, 26),
 			series("OFFICE", "Zone Thermostat Heating Setpoint Temperature", "C", 20, 20, 20),
 			series("OFFICE", "Zone Thermostat Cooling Setpoint Temperature", "C", 25, 25, 25),
@@ -123,6 +150,17 @@ func simulationPurposeResultsBrowserFixture(runID string, request simulation.Sim
 	result.PurposeResults = &bundle
 	return result
 }
+
+const simulationPurposeResultsHVACInput = `Version,25.1;
+AirLoopHVAC,SUPPLY LOOP,,,Autosize,SUPPLY BRANCHES,,SUPPLY INLET,SUPPLY RETURN,SUPPLY DEMAND,SUPPLY OUTLET;
+BranchList,SUPPLY BRANCHES,SUPPLY BRANCH;
+Branch,SUPPLY BRANCH,,Fan:ConstantVolume,SUPPLY FAN,SUPPLY INLET,SUPPLY OUTLET;
+Fan:ConstantVolume,SUPPLY FAN,,0.7,600,Autosize,0.9,1,SUPPLY INLET,SUPPLY OUTLET;
+AirLoopHVAC,RETURN LOOP,,,Autosize,RETURN BRANCHES,,RETURN INLET,RETURN RETURN,RETURN DEMAND,RETURN OUTLET;
+BranchList,RETURN BRANCHES,RETURN BRANCH;
+Branch,RETURN BRANCH,,Fan:ConstantVolume,RETURN FAN,RETURN INLET,RETURN OUTLET;
+Fan:ConstantVolume,RETURN FAN,,0.7,600,Autosize,0.9,1,RETURN INLET,RETURN OUTLET;
+`
 
 const simulationPurposeResultsBrowserHTML = `<pre id="purpose-results-evidence" hidden>pending</pre><script type="module">
 const failures=[],evidence=[];
@@ -161,20 +199,65 @@ try{
  check(!state.simulationRunning&&state.simulationProgress?.status==="succeeded","purpose run failed or did not finish: "+document.getElementById("simulationStatus").textContent);
  check(state.simulationResult!==original&&state.simulationResult?.runId===request?.runId,"native completion did not install new result");
  check(!tab("hvac_loops").disabled&&!tab("comfort").disabled,"returned purpose data did not enable both result tabs");
- check(state.simulationResult?.purposeResults?.hvacLoops?.[0]?.series?.length===3,"production HVAC builder did not return node series");
+ const loops=state.simulationResult?.purposeResults?.hvacLoops||[];
+ check(loops.length===2&&loops.find(loop=>loop.name==='SUPPLY LOOP')?.series?.length===7&&loops.every(loop=>loop.topology?.name===loop.name),"production HVAC builder did not return exact executed loop topology and node membership");
  check(state.simulationResult?.purposeResults?.comfort?.zones?.[0]?.metrics?.length===4,"production Comfort builder did not return zone metrics");
 
  tab("hvac_loops").click();await tick();
  const hvac=document.getElementById("simulationHVACLoopResults");
  check(state.simulationActiveResultView==="hvac_loops"&&!hvac.closest('[data-simulation-result-view]').hidden,"HVAC tab did not open its result section");
- const nodeRow=[...hvac.querySelectorAll("tbody tr")].find(row=>row.cells[0]?.textContent.trim()==="SUPPLY OUTLET"&&row.cells[1]?.textContent.trim()==="System Node Temperature");
- check(nodeRow&&[4,5,6,7].map(index=>parseFloat(nodeRow.cells[index].textContent)).join(",")==="14,18,16,3","HVAC node temperature min/max/average/points missing or incorrect: "+nodeRow?.textContent);
- check(hvac.textContent.includes("SUPPLY FAN")&&hvac.textContent.includes("Fan Electricity Rate"),"HVAC component operation result missing");
- check(hvac.querySelector(".simulation-hvac-node-card")?.textContent.includes("14"),"HVAC first-frame snapshot missing");
+ const change=(selector,value)=>{const input=hvac.querySelector(selector);if(!input)throw Error('missing native control '+selector);input.value=value;input.dispatchEvent(new Event('change',{bubbles:true}));};
+ const chooseLoop=name=>{const input=hvac.querySelector('[data-simulation-hvac-loop]'),option=[...input.options].find(item=>item.textContent===name);check(Boolean(option),'missing loop option '+name);if(option)change('[data-simulation-hvac-loop]',option.value);};
+ const vertex=name=>[...hvac.querySelectorAll('[data-hvac-inspect-point-name]')].find(item=>item.dataset.hvacInspectPointName===name);
+ const metric=(name,id)=>vertex(name)?.querySelector('[data-hvac-inspect-metric="'+id+'"] .hvac-inspect-metric-value')?.textContent;
+ const chooseEntity=(row,name)=>{const selector='[data-hvac-inspect-entity="'+row+'"]',input=hvac.querySelector(selector),option=[...input.options].find(item=>item.textContent===name);if(!option)throw Error('missing entity '+name);change(selector,option.value);};
+ const chooseProperty=(row,name)=>{const selector='[data-hvac-inspect-property="'+row+'"]',input=hvac.querySelector(selector),option=[...input.options].find(item=>item.textContent.startsWith(name+' ('));if(!option)throw Error('missing property '+name);check(!option.disabled,'requested property unexpectedly disabled '+name);change(selector,option.value);};
+ const basic=kind=>hvac.querySelector('[data-hvac-inspect-basic-chart="'+kind+'"]');
+ const custom=()=>hvac.querySelector('[data-hvac-inspect-custom-chart]');
+ chooseLoop('SUPPLY LOOP');
+ const installedJSON=JSON.stringify(state.simulationResult);
+ check(hvac.querySelector('[data-simulation-hvac-loop]').options.length===2&&hvac.querySelector('[data-hvac-inspect-topology]'),'loop picker or executed topology missing');
+ check(!hvac.querySelector('table, .simulation-hvac-node-card, .simulation-hvac-derived-grid')&&!hvac.textContent.includes('Fan Electricity Rate')&&!hvac.textContent.includes('System Node Temperature')&&!hvac.textContent.includes('eplusout.sql'),'HVAC result still lists tables or raw source descriptions');
+ check(vertex('SUPPLY OUTLET')&&vertex('SUPPLY FAN')&&!vertex('RETURN FAN'),'selected loop mixed another loop equipment');
+ check(metric('SUPPLY OUTLET','temperature')==='14.00 °C'&&metric('SUPPLY OUTLET','flow')==='0.50 kg/s'&&metric('SUPPLY OUTLET','relativeHumidity')==='45.00 %'&&metric('SUPPLY OUTLET','setpoint')==='16.00 °C','first topology frame lost node temperature/flow/humidity/setpoint values');
+ check(metric('SUPPLY FAN','power')==='0.00 kW'&&vertex('SUPPLY FAN')?.querySelector('.hvac-inspect-state.off'),'reported equipment zero power did not show Off');
+ check(vertex('SUPPLY OUTLET')?.classList.contains('measured'),'frame node point was not emphasized');
+ for(const kind of ['flow','temperature','humidity'])check(basic(kind)?.querySelectorAll('[data-hvac-chart-series]').length===2,'default node graph missing two observed points: '+kind);
  const frame=hvac.querySelector("[data-simulation-hvac-frame]");
  check(frame?.max==="2","HVAC frame slider did not use returned series length");
+ const graphSVG=basic('temperature').querySelector('svg'),customSVG=custom().querySelector('svg');
  if(frame){frame.value="2";frame.dispatchEvent(new Event("input",{bubbles:true}));}
- check(state.simulationHVACFrameIndex===2&&hvac.querySelector(".simulation-hvac-node-card")?.textContent.includes("18"),"HVAC frame interaction did not render the returned last value");
+ check(state.simulationHVACFrameIndex===2&&metric('SUPPLY OUTLET','temperature')==='18.00 °C'&&metric('SUPPLY OUTLET','flow')==='1.50 kg/s'&&metric('SUPPLY OUTLET','relativeHumidity')==='55.00 %','frame interaction did not render exact returned final node values');
+ check(metric('SUPPLY FAN','power')==='0.50 kW'&&vertex('SUPPLY FAN')?.querySelector('.hvac-inspect-state.on'),'frame did not update equipment status/power');
+ check(hvac.querySelector('[data-simulation-hvac-frame]')===frame&&basic('temperature').querySelector('svg')===graphSVG&&custom().querySelector('svg')===customSVG,'frame slider recreated slider or complete trace graph');
+ check(basic('temperature').querySelector('[data-hvac-chart-value="18"].is-frame')&&basic('temperature').querySelector('[data-hvac-chart-value="26"].is-frame'),'frame marker did not highlight exact time-aligned node graph observations');
+ vertex('SUPPLY INLET').dispatchEvent(new MouseEvent('click',{bubbles:true}));
+ check(vertex('SUPPLY INLET')?.getAttribute('aria-pressed')==='true','topology node selection did not emphasize selected point');
+ const outletToggle=hvac.querySelector('[data-hvac-inspect-node-visible="node:supply outlet"]');outletToggle.click();
+ for(const kind of ['flow','temperature','humidity'])check(basic(kind)?.querySelectorAll('[data-hvac-chart-series]').length===1&&!basic(kind)?.textContent.includes('SUPPLY OUTLET'),'node checkbox did not remove corresponding trace: '+kind);
+ check(vertex('SUPPLY OUTLET')&&custom().querySelector('svg')===customSVG,'node graph visibility removed topology or unrelated custom graph');
+ chooseEntity(0,'SUPPLY FAN');
+ check(hvac.querySelector('[data-hvac-inspect-property="0"]').value===''&&hvac.querySelector('[data-hvac-inspect-property="0"]').options.length===2,'equipment choice did not reset to its own property choices');
+ chooseProperty(0,'Electric power');chooseEntity(1,'SUPPLY OUTLET');chooseProperty(1,'Temperature');
+ check(custom().querySelector('[data-hvac-chart-axis="left"]').dataset.hvacChartUnit==='kW'&&custom().querySelector('[data-hvac-chart-axis="right"]').dataset.hvacChartUnit==='°C','native custom property selection failed independent power/temperature Y axes');
+ hvac.querySelector('[data-hvac-inspect-add]').click();chooseEntity(2,'SUPPLY INLET');
+ const third=hvac.querySelector('[data-hvac-inspect-property="2"]');
+ check([...third.options].find(item=>item.textContent.startsWith('Relative humidity ('))?.disabled&&![...third.options].find(item=>item.textContent.startsWith('Temperature ('))?.disabled,'line graph selector allowed third incompatible unit or blocked existing scale');
+ change('[data-hvac-inspect-mode]','scatter');
+ check(hvac.querySelectorAll('[data-hvac-inspect-entity]').length===2&&!hvac.querySelector('[data-hvac-inspect-add]'),'scatter did not limit custom comparison to two properties');
+ check(custom().querySelectorAll('[data-hvac-chart-scatter] circle').length===3&&custom().querySelector('[data-hvac-chart-x-value="0"][data-hvac-chart-y-value="14"]'),'scatter did not compare exact power/temperature observations including zero');
+ chooseEntity(0,'SUPPLY OUTLET');chooseProperty(0,'Mass flow');chooseEntity(1,'SUPPLY INLET');chooseProperty(1,'Temperature');
+ check(custom().querySelector('[data-hvac-chart-x-value="0.5"][data-hvac-chart-y-value="24"]')&&custom().querySelector('[data-hvac-chart-x-value="1.5"][data-hvac-chart-y-value="26"]'),'two-step node properties did not update exact scatter pairs');
+ const supplySelection=state.simulationHVACInspection.selectedLoop;
+ chooseLoop('RETURN LOOP');
+ check(vertex('RETURN OUTLET')&&vertex('RETURN FAN')&&!vertex('SUPPLY FAN')&&state.simulationHVACFrameIndex===0,'loop change leaked previous topology, equipment or frame');
+ check(metric('RETURN OUTLET','temperature')==='21.00 °C'&&metric('RETURN FAN','power')==='0.70 kW','second loop displayed first loop observations');
+ const secondFrame=hvac.querySelector('[data-simulation-hvac-frame]');secondFrame.value='1';secondFrame.dispatchEvent(new Event('input',{bubbles:true}));
+ chooseLoop('SUPPLY LOOP');
+ check(state.simulationHVACInspection.selectedLoop===supplySelection&&state.simulationHVACFrameIndex===2&&hvac.querySelector('[data-hvac-inspect-mode]').value==='scatter'&&!hvac.querySelector('[data-hvac-inspect-node-visible="node:supply outlet"]').checked,'returning to loop lost its frame, graph type or node toggles');
+ check(custom().querySelector('[data-hvac-chart-x-value="1.5"][data-hvac-chart-y-value="26"]')&&metric('SUPPLY OUTLET','temperature')==='18.00 °C','returning to loop lost selected custom properties or snapshot');
+ chooseLoop('RETURN LOOP');check(state.simulationHVACFrameIndex===1&&metric('RETURN OUTLET','temperature')==='22.00 °C','loop-local second frame was not retained');
+ check(JSON.stringify(state.simulationResult)===installedJSON,'HVAC topology/graph interaction mutated returned observations');
 
  tab("comfort").click();await tick();
  const comfort=document.getElementById("simulationComfortResults");
@@ -185,7 +268,16 @@ try{
  check(Boolean(comfort.querySelector(".comfort-setpoint-band")),"Comfort heating/cooling setpoint band missing");
  check(Boolean(comfort.querySelector(".comfort-humidity-line")),"Comfort humidity timeline missing");
  check(JSON.stringify(original)===originalJSON,"Run or purpose tabs mutated previous result");
- evidence.push("Native checkbox changes preserve all four purposes in one SQL-first Run & Inspect request; production Go bundle enables HVAC/Comfort; node and zone statistics, component results, frame slider, temperature/setpoint/humidity timelines render.");
+ const capture=new URLSearchParams(location.search).get('capture');
+ if(capture){
+  tab('hvac_loops').click();chooseLoop('SUPPLY LOOP');
+  if(capture==='graphs'){
+   change('[data-hvac-inspect-mode]','line');chooseEntity(0,'SUPPLY FAN');chooseProperty(0,'Electric power');chooseEntity(1,'SUPPLY OUTLET');chooseProperty(1,'Temperature');
+   hvac.querySelector('[data-hvac-inspect-custom-chart]').scrollIntoView({block:'end'});
+  }else hvac.querySelector('[data-simulation-hvac-loop]').scrollIntoView({block:'start'});
+  await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+ }
+ evidence.push("Native purpose checkboxes preserve all four purposes in one SQL-first Run & Inspect request. Production Go builder returns two executed loop topologies with exact membership. Native loop/frame/node/custom property controls render clean topology, status and three node graphs; frame changes retain slider and trace SVG; yyaxes and exactly-two-property scatter use observed values. Loop-local selections survive switching. Comfort temperature/setpoint/humidity regression preserved.");
 }catch(error){failures.push(error.stack||String(error));}
 document.body.dataset.purposeResultsStatus=failures.length?"failed":"passed";
 document.getElementById("purpose-results-evidence").textContent=JSON.stringify({failures,evidence});

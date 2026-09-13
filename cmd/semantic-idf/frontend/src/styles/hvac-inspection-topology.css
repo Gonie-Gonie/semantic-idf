@@ -1,0 +1,28 @@
+.hvac-inspect-topology { min-width: 0; margin: 14px 0; }
+.hvac-inspect-topology-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.hvac-inspect-topology-heading h4 { margin: 0; }
+.hvac-inspect-topology-heading label { display: flex; align-items: center; gap: 7px; color: var(--muted); }
+.hvac-inspect-topology-viewport { overflow: auto; max-height: 580px; min-height: 240px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); overscroll-behavior: contain; }
+.hvac-inspect-topology-svg { display: block; max-width: none; height: auto; }
+.hvac-inspect-topology-svg.fit { min-width: 0; }
+.hvac-inspect-topology-svg marker path { fill: var(--muted); }
+.hvac-inspect-edge { fill: none; stroke: var(--teal); stroke-width: 2; }
+.hvac-inspect-edge.demand { stroke: var(--amber); }
+.hvac-inspect-card { fill: var(--surface-2); stroke: var(--line); stroke-width: 1; }
+.hvac-inspect-vertex { cursor: pointer; outline: none; }
+.hvac-inspect-vertex:hover .hvac-inspect-card, .hvac-inspect-vertex:focus .hvac-inspect-card { stroke: var(--accent, #83cbd6); stroke-width: 2; }
+.hvac-inspect-vertex.measured .hvac-inspect-card { stroke: var(--teal); }
+.hvac-inspect-vertex.selected .hvac-inspect-card { stroke: var(--selection-primary); stroke-width: 3; fill: var(--selected-soft); }
+.hvac-inspect-node-ring { fill: var(--surface); stroke: var(--muted); stroke-width: 2; }
+.hvac-inspect-node-core { fill: var(--muted); }
+.hvac-inspect-vertex.measured .hvac-inspect-node-ring { stroke: var(--teal); stroke-width: 3; fill: var(--teal-soft); }
+.hvac-inspect-vertex.measured .hvac-inspect-node-core { fill: var(--teal); }
+.hvac-inspect-vertex.selected .hvac-inspect-node-ring { stroke: var(--selection-primary); stroke-width: 4; }
+.hvac-inspect-point-label { fill: var(--ink); font-size: 13px; font-weight: 600; }
+.hvac-inspect-detached-label { fill: var(--muted); font-size: 14px; }
+.hvac-inspect-metric { fill: var(--ink); font-size: 12px; }
+.hvac-inspect-metric-label { fill: var(--muted); }
+.hvac-inspect-metric-value { font-variant-numeric: tabular-nums; }
+.hvac-inspect-state { fill: var(--muted); font-size: 12px; font-weight: 700; }
+.hvac-inspect-state.on { fill: var(--green); }
+.hvac-inspect-topology-empty { padding: 22px; color: var(--muted); border: 1px solid var(--line); border-radius: 8px; }

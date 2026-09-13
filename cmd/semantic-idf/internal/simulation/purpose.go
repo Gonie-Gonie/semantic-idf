@@ -176,6 +176,7 @@ type EnergyTotal struct {
 type HVACLoopRunResult struct {
 	Name           string                    `json:"name"`
 	LoopType       string                    `json:"loopType,omitempty"`
+	Topology       *idf.HVACLoop             `json:"topology,omitempty"`
 	Status         string                    `json:"status,omitempty"`
 	StatusMessage  string                    `json:"statusMessage,omitempty"`
 	Series         []SimulationSeries        `json:"series,omitempty"`
@@ -225,12 +226,22 @@ type HVACLoopAlert struct {
 }
 
 type HVACComponentRunSummary struct {
-	ComponentName string                         `json:"componentName"`
-	ComponentType string                         `json:"componentType,omitempty"`
-	Source        string                         `json:"source,omitempty"`
-	SeriesCount   int                            `json:"seriesCount"`
-	Metrics       []HVACComponentOperationMetric `json:"metrics,omitempty"`
-	Series        []SimulationSeries             `json:"series,omitempty"`
+	ComponentName       string                         `json:"componentName"`
+	ComponentType       string                         `json:"componentType,omitempty"`
+	InletNodes          []string                       `json:"inletNodes,omitempty"`
+	OutletNodes         []string                       `json:"outletNodes,omitempty"`
+	NodePorts           []HVACComponentNodePort        `json:"nodePorts,omitempty"`
+	ParentComponentName string                         `json:"parentComponentName,omitempty"`
+	ParentComponentType string                         `json:"parentComponentType,omitempty"`
+	Source              string                         `json:"source,omitempty"`
+	SeriesCount         int                            `json:"seriesCount"`
+	Metrics             []HVACComponentOperationMetric `json:"metrics,omitempty"`
+	Series              []SimulationSeries             `json:"series,omitempty"`
+}
+
+type HVACComponentNodePort struct {
+	NodeName string `json:"nodeName"`
+	Role     string `json:"role"`
 }
 
 type HVACComponentOperationMetric struct {
@@ -710,9 +721,17 @@ func buildPurposeResultBundleWithProgress(result *SimulationRunResult, request S
 				bundle.Completeness = append(bundle.Completeness, bundle.ThermalTopology.Completeness...)
 			}
 		case SimulationPurposeHVACLoopCheck:
-			bundle.HVACLoops = buildHVACLoopRunResults(result.Series, request)
-			hasNodeSeries := len(bundle.HVACLoops) > 0 && len(bundle.HVACLoops[0].Series) > 0
-			hasComponentSeries := len(bundle.HVACLoops) > 0 && hvacComponentSeriesCount(bundle.HVACLoops[0].Components) > 0
+			if sharedDocument == nil {
+				if doc, err := simulationDocumentFromInput(result.InputPath); err == nil {
+					sharedDocument = &doc
+				}
+			}
+			bundle.HVACLoops = buildHVACLoopRunResultsWithDocument(result.Series, request, sharedDocument)
+			hasNodeSeries, hasComponentSeries := false, false
+			for _, loop := range bundle.HVACLoops {
+				hasNodeSeries = hasNodeSeries || len(loop.Series) > 0
+				hasComponentSeries = hasComponentSeries || hvacComponentSeriesCount(loop.Components) > 0
+			}
 			bundle.Completeness = append(bundle.Completeness, purposeCompleteness(
 				SimulationPurposeHVACLoopCheck,
 				"HVAC node state series",
@@ -1141,6 +1160,9 @@ func buildHVACLoopRunResults(series []SimulationSeries, request SimulationPurpos
 	componentSeries := []SimulationSeries{}
 	foundVariables := map[string]bool{}
 	for _, item := range series {
+		if !hvacSeriesIsHourly(item) {
+			continue
+		}
 		switch {
 		case purposeSeriesMatchesVariables(item.Column, hvacLoopCheckNodeVariables()):
 			nodeSeries = append(nodeSeries, item)
@@ -1546,15 +1568,28 @@ func hvacActiveMassFlowFraction(points []SimulationPoint) float64 {
 }
 
 func hvacAverageAbsoluteDelta(left []SimulationPoint, right []SimulationPoint) (float64, int) {
-	limit := minInt(len(left), len(right))
-	if limit == 0 {
+	// Missing observations must not shift the temperature/setpoint pairing.
+	rightByFrame := map[int]SimulationPoint{}
+	duplicates := map[int]bool{}
+	for _, point := range right {
+		if _, exists := rightByFrame[point.X]; exists {
+			duplicates[point.X] = true
+		}
+		rightByFrame[point.X] = point
+	}
+	total, count := 0.0, 0
+	for _, point := range left {
+		other, exists := rightByFrame[point.X]
+		if !exists || duplicates[point.X] || (point.Label != "" && other.Label != "" && point.Label != other.Label) {
+			continue
+		}
+		total += math.Abs(point.Value - other.Value)
+		count++
+	}
+	if count == 0 {
 		return 0, 0
 	}
-	total := 0.0
-	for index := 0; index < limit; index++ {
-		total += math.Abs(left[index].Value - right[index].Value)
-	}
-	return total / float64(limit), limit
+	return total / float64(count), count
 }
 
 func averageHVACNodeValue(nodes []HVACNodeRunSummary, value func(HVACNodeRunSummary) (float64, bool)) (float64, bool) {
@@ -3331,14 +3366,9 @@ type hvacLoopCheckComponentTarget struct {
 
 func (builder *purposePlanBuilder) hvacLoopCheckTargets() hvacLoopCheckTargets {
 	scope := builder.request.Scope
-	selectedNames := map[string]map[string]bool{
-		"AirLoopHVAC":   purposeNameSet(scope.AirLoopNames),
-		"PlantLoop":     purposeNameSet(scope.PlantLoopNames),
-		"CondenserLoop": purposeNameSet(scope.CondenserLoopNames),
-	}
 	selectedComponentIDs := purposeComponentIDSet(scope.ComponentIDs)
 	componentScoped := len(selectedComponentIDs) > 0
-	selected := len(scope.AirLoopNames)+len(scope.PlantLoopNames)+len(scope.CondenserLoopNames) > 0 || strings.EqualFold(scope.LoopMode, "selected")
+	selected := len(scope.AirLoopNames)+len(scope.PlantLoopNames)+len(scope.CondenserLoopNames) > 0 || strings.EqualFold(scope.LoopMode, "selected") || componentScoped
 	targets := hvacLoopCheckTargets{Selected: selected}
 	if !selected {
 		return targets
@@ -3347,7 +3377,7 @@ func (builder *purposePlanBuilder) hvacLoopCheckTargets() hvacLoopCheckTargets {
 	nodeSet := map[string]string{}
 	componentSet := map[string]string{}
 	for _, loop := range report.Loops {
-		if !purposeHVACLoopSelected(loop, selectedNames) {
+		if !hvacResultLoopInScope(loop, scope) {
 			continue
 		}
 		targets.LoopCount++
@@ -3356,14 +3386,9 @@ func (builder *purposePlanBuilder) hvacLoopCheckTargets() hvacLoopCheckTargets {
 				nodeSet[normalizePurposeToken(node)] = strings.TrimSpace(node)
 			}
 		}
-		for _, component := range purposeHVACLoopComponents(loop) {
-			if componentScoped && !purposeHVACComponentSelected(component, selectedComponentIDs) {
-				continue
-			}
-			if componentScoped {
-				for _, node := range purposeHVACComponentNodes(component) {
-					nodeSet[normalizePurposeToken(node)] = strings.TrimSpace(node)
-				}
+		for _, component := range hvacLoopScopedMeasurementComponents(loop, report, selectedComponentIDs) {
+			for _, node := range purposeHVACComponentNodes(component) {
+				nodeSet[normalizePurposeToken(node)] = strings.TrimSpace(node)
 			}
 			if component.ObjectName != "" {
 				componentSet[normalizePurposeToken(component.ObjectName)] = strings.TrimSpace(component.ObjectName)
@@ -3437,6 +3462,14 @@ func purposeHVACLoopNodes(loop idf.HVACLoop) []string {
 	out := []string{}
 	add := func(value string) {
 		out = appendUniquePurposeString(out, value)
+	}
+	add(loop.SetpointNode)
+	for _, node := range loop.DemandGraph.Nodes {
+		add(node.NodeName)
+	}
+	for _, edge := range loop.DemandGraph.Edges {
+		add(edge.FromNode)
+		add(edge.ToNode)
 	}
 	for _, side := range []idf.HVACLoopSide{loop.SupplySide, loop.DemandSide} {
 		add(side.InletNode)
@@ -3531,6 +3564,7 @@ func hvacLoopCheckNodeVariables() []string {
 		"System Node Mass Flow Rate",
 		"System Node Setpoint Temperature",
 		"System Node Humidity Ratio",
+		"System Node Relative Humidity",
 		"System Node Enthalpy",
 	}
 }
@@ -3546,20 +3580,31 @@ func hvacLoopCheckComponentOutputs() []hvacComponentOutputCatalogItem {
 	return []hvacComponentOutputCatalogItem{
 		{VariableName: "Fan Electricity Rate", Category: "fan", Description: "Hourly fan electric power for loop operation review.", MatchTokens: []string{"fan"}},
 		{VariableName: "Fan Electricity Energy", Category: "fan", Description: "Hourly fan electric energy for loop operation review.", MatchTokens: []string{"fan"}},
-		{VariableName: "Pump Electricity Rate", Category: "pump", Description: "Hourly pump electric power for loop operation review.", MatchTokens: []string{"pump"}},
-		{VariableName: "Pump Electricity Energy", Category: "pump", Description: "Hourly pump electric energy for loop operation review.", MatchTokens: []string{"pump"}},
+		{VariableName: "Pump Electricity Rate", Category: "pump", Description: "Hourly pump electric power for loop operation review.", MatchTokens: []string{"pump", "headeredpumps"}},
+		{VariableName: "Pump Electricity Energy", Category: "pump", Description: "Hourly pump electric energy for loop operation review.", MatchTokens: []string{"pump", "headeredpumps"}},
 		{VariableName: "Cooling Coil Total Cooling Rate", Category: "cooling coil", Description: "Hourly cooling coil load for loop operation review.", MatchTokens: []string{"coil:cooling", "coolingcoil", "cooling coil"}},
 		{VariableName: "Cooling Coil Total Cooling Energy", Category: "cooling coil", Description: "Hourly cooling coil energy for loop operation review.", MatchTokens: []string{"coil:cooling", "coolingcoil", "cooling coil"}},
+		{VariableName: "Cooling Coil Electricity Rate", Category: "cooling coil", Description: "Reported hourly cooling coil electric power.", MatchTokens: []string{"coil:cooling:dx", "coil:cooling:watertoairheatpump"}},
+		{VariableName: "Cooling Coil Runtime Fraction", Category: "cooling coil", Description: "Reported hourly cooling coil runtime fraction.", MatchTokens: []string{"coil:cooling:dx", "coil:cooling:watertoairheatpump"}},
 		{VariableName: "Heating Coil Heating Rate", Category: "heating coil", Description: "Hourly heating coil load for loop operation review.", MatchTokens: []string{"coil:heating", "heatingcoil", "heating coil"}},
 		{VariableName: "Heating Coil Heating Energy", Category: "heating coil", Description: "Hourly heating coil energy for loop operation review.", MatchTokens: []string{"coil:heating", "heatingcoil", "heating coil"}},
+		{VariableName: "Heating Coil Electricity Rate", Category: "heating coil", Description: "Reported hourly heating coil electric power.", MatchTokens: []string{"coil:heating:dx", "coil:heating:electric", "coil:heating:fuel", "coil:heating:gas", "coil:heating:watertoairheatpump"}},
+		{VariableName: "Heating Coil Runtime Fraction", Category: "heating coil", Description: "Reported hourly heating coil runtime fraction.", MatchTokens: []string{"coil:heating:dx", "coil:heating:watertoairheatpump"}},
 		{VariableName: "Chiller Evaporator Cooling Rate", Category: "chiller", Description: "Hourly chiller evaporator cooling load for plant-loop review.", MatchTokens: []string{"chiller"}},
 		{VariableName: "Chiller Evaporator Cooling Energy", Category: "chiller", Description: "Hourly chiller evaporator cooling energy for plant-loop review.", MatchTokens: []string{"chiller"}},
 		{VariableName: "Chiller Electricity Rate", Category: "chiller", Description: "Hourly chiller electric power for plant-loop review.", MatchTokens: []string{"chiller"}},
 		{VariableName: "Chiller Electricity Energy", Category: "chiller", Description: "Hourly chiller electric energy for plant-loop review.", MatchTokens: []string{"chiller"}},
+		{VariableName: "Chiller COP", Category: "chiller", Description: "Reported hourly chiller coefficient of performance.", MatchTokens: []string{"chiller"}},
+		{VariableName: "Chiller Part Load Ratio", Category: "chiller", Description: "Reported hourly chiller part load ratio.", MatchTokens: []string{"chiller"}},
+		{VariableName: "Chiller Cycling Ratio", Category: "chiller", Description: "Reported hourly chiller cycling ratio.", MatchTokens: []string{"chiller"}},
 		{VariableName: "Boiler Heating Rate", Category: "boiler", Description: "Hourly boiler heating load for plant-loop review.", MatchTokens: []string{"boiler"}},
 		{VariableName: "Boiler Heating Energy", Category: "boiler", Description: "Hourly boiler heating energy for plant-loop review.", MatchTokens: []string{"boiler"}},
+		{VariableName: "Boiler Ancillary Electricity Rate", Category: "boiler", Description: "Reported hourly boiler ancillary electric power.", MatchTokens: []string{"boiler"}},
+		{VariableName: "Boiler Part Load Ratio", Category: "boiler", Description: "Reported hourly boiler part load ratio.", MatchTokens: []string{"boiler"}},
 		{VariableName: "Cooling Tower Heat Transfer Rate", Category: "cooling tower", Description: "Hourly cooling tower heat rejection rate for condenser-loop review.", MatchTokens: []string{"coolingtower", "cooling tower"}},
 		{VariableName: "Cooling Tower Heat Transfer Energy", Category: "cooling tower", Description: "Hourly cooling tower heat rejection energy for condenser-loop review.", MatchTokens: []string{"coolingtower", "cooling tower"}},
+		{VariableName: "Cooling Tower Fan Electricity Rate", Category: "cooling tower", Description: "Reported hourly cooling tower fan electric power.", MatchTokens: []string{"coolingtower", "cooling tower"}},
+		{VariableName: "Cooling Tower Fan Cycling Ratio", Category: "cooling tower", Description: "Reported hourly cooling tower fan cycling ratio.", MatchTokens: []string{"coolingtower", "cooling tower"}},
 	}
 }
 
@@ -3568,7 +3613,8 @@ func hvacLoopCheckComponentOutputsForType(objectType string) []hvacComponentOutp
 	out := []hvacComponentOutputCatalogItem{}
 	for _, item := range hvacLoopCheckComponentOutputs() {
 		for _, token := range item.MatchTokens {
-			if strings.Contains(objectKey, normalizePurposeToken(token)) {
+			token = normalizePurposeToken(token)
+			if objectKey == token || strings.HasPrefix(objectKey, token+":") {
 				out = append(out, item)
 				break
 			}

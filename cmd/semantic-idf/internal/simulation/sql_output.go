@@ -195,8 +195,15 @@ func parseSimulationSQLSeriesForPlan(path string, plan PurposeRunPlan) ([]Simula
 
 	ids := make([]int, 0, len(dictionaries))
 	accumulators := map[int]*columnAccumulator{}
+	hvacSelection := newHVACPlotSeriesSelection(plan)
+	fullHVACSeries := map[int]bool{}
+	var weatherFrames map[int64]bool
+	if len(hvacSelection) > 0 {
+		weatherFrames = hvacWeatherHourlyFrames(db)
+	}
 	for position, dictionary := range dictionaries {
 		ids = append(ids, dictionary.index)
+		fullHVACSeries[dictionary.index] = hvacSelection.matches(dictionary.keyValue, dictionary.name) && strings.EqualFold(dictionary.reportingFrequency, "Hourly")
 		accumulators[dictionary.index] = &columnAccumulator{
 			index: position + 1,
 			name:  sqlOutputSeriesName(dictionary),
@@ -217,6 +224,9 @@ func parseSimulationSQLSeriesForPlan(path string, plan PurposeRunPlan) ([]Simula
 		minute := row.Minute
 		dictionaryIndex := row.DictionaryIndex
 		value := row.Value
+		if fullHVACSeries[dictionaryIndex] && weatherFrames != nil && !weatherFrames[timeIndex] {
+			return nil
+		}
 		if !value.Valid || math.IsNaN(value.Float64) || math.IsInf(value.Float64, 0) {
 			return nil
 		}
@@ -254,6 +264,10 @@ func parseSimulationSQLSeriesForPlan(path string, plan PurposeRunPlan) ([]Simula
 			continue
 		}
 		average := acc.sum / float64(acc.numericCount)
+		points := seriesPoints[dictionary.index]
+		if !fullHVACSeries[dictionary.index] {
+			points = downsamplePoints(points, maxCSVSeriesPoints)
+		}
 		series = append(series, normalizeSimulationSeriesDisplay(SimulationSeries{
 			File:               filepath.Base(path),
 			Column:             acc.name,
@@ -265,7 +279,7 @@ func parseSimulationSQLSeriesForPlan(path string, plan PurposeRunPlan) ([]Simula
 			Min:                acc.min,
 			Max:                acc.max,
 			Average:            average,
-			Points:             downsamplePoints(seriesPoints[dictionary.index], maxCSVSeriesPoints),
+			Points:             points,
 			RowCount:           rowCount,
 		}))
 	}

@@ -4951,6 +4951,11 @@ function hvacVisualLabel(iconKind, objectType) {
   }
 }
 
+// Shared by the simulation topology, so equipment keeps the same visual identity.
+export function renderHVACEquipmentIcon(component = {}, x = 0, y = 0) {
+  return renderLoopEquipmentBody(componentVisual(component).iconKind, x, y, component.objectType || component.type || "");
+}
+
 function renderLoopEquipmentBody(kind, cx, cy, objectType = "") {
   const lower = String(objectType || "").toLowerCase();
   const coilTone = lower.includes("cooling") ? "cooling" : lower.includes("heating") ? "heating" : "mixed";

@@ -951,26 +951,31 @@ output|Output:SQLite||||temporary|hvac_loop_check
 output|Output:Variable|Air Demand Inlet|System Node Enthalpy|Hourly|temporary|hvac_loop_check
 output|Output:Variable|Air Demand Inlet|System Node Humidity Ratio|Hourly|temporary|hvac_loop_check
 output|Output:Variable|Air Demand Inlet|System Node Mass Flow Rate|Hourly|temporary|hvac_loop_check
+output|Output:Variable|Air Demand Inlet|System Node Relative Humidity|Hourly|temporary|hvac_loop_check
 output|Output:Variable|Air Demand Inlet|System Node Setpoint Temperature|Hourly|temporary|hvac_loop_check
 output|Output:Variable|Air Demand Inlet|System Node Temperature|Hourly|temporary|hvac_loop_check
 output|Output:Variable|Air Demand Outlet|System Node Enthalpy|Hourly|temporary|hvac_loop_check
 output|Output:Variable|Air Demand Outlet|System Node Humidity Ratio|Hourly|temporary|hvac_loop_check
 output|Output:Variable|Air Demand Outlet|System Node Mass Flow Rate|Hourly|temporary|hvac_loop_check
+output|Output:Variable|Air Demand Outlet|System Node Relative Humidity|Hourly|temporary|hvac_loop_check
 output|Output:Variable|Air Demand Outlet|System Node Setpoint Temperature|Hourly|temporary|hvac_loop_check
 output|Output:Variable|Air Demand Outlet|System Node Temperature|Hourly|temporary|hvac_loop_check
 output|Output:Variable|Air Supply Inlet|System Node Enthalpy|Hourly|temporary|hvac_loop_check
 output|Output:Variable|Air Supply Inlet|System Node Humidity Ratio|Hourly|temporary|hvac_loop_check
 output|Output:Variable|Air Supply Inlet|System Node Mass Flow Rate|Hourly|temporary|hvac_loop_check
+output|Output:Variable|Air Supply Inlet|System Node Relative Humidity|Hourly|temporary|hvac_loop_check
 output|Output:Variable|Air Supply Inlet|System Node Setpoint Temperature|Hourly|temporary|hvac_loop_check
 output|Output:Variable|Air Supply Inlet|System Node Temperature|Hourly|temporary|hvac_loop_check
 output|Output:Variable|Air Supply Outlet|System Node Enthalpy|Hourly|temporary|hvac_loop_check
 output|Output:Variable|Air Supply Outlet|System Node Humidity Ratio|Hourly|temporary|hvac_loop_check
 output|Output:Variable|Air Supply Outlet|System Node Mass Flow Rate|Hourly|temporary|hvac_loop_check
+output|Output:Variable|Air Supply Outlet|System Node Relative Humidity|Hourly|temporary|hvac_loop_check
 output|Output:Variable|Air Supply Outlet|System Node Setpoint Temperature|Hourly|temporary|hvac_loop_check
 output|Output:Variable|Air Supply Outlet|System Node Temperature|Hourly|temporary|hvac_loop_check
 output|Output:Variable|Fan Outlet|System Node Enthalpy|Hourly|temporary|hvac_loop_check
 output|Output:Variable|Fan Outlet|System Node Humidity Ratio|Hourly|temporary|hvac_loop_check
 output|Output:Variable|Fan Outlet|System Node Mass Flow Rate|Hourly|temporary|hvac_loop_check
+output|Output:Variable|Fan Outlet|System Node Relative Humidity|Hourly|temporary|hvac_loop_check
 output|Output:Variable|Fan Outlet|System Node Setpoint Temperature|Hourly|temporary|hvac_loop_check
 output|Output:Variable|Fan Outlet|System Node Temperature|Hourly|temporary|hvac_loop_check
 output|Output:Variable|Supply Fan|Fan Electricity Energy|Hourly|temporary|hvac_loop_check

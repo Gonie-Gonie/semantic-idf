@@ -312,6 +312,27 @@ func TestFrontendSimulationSeriesUsesGroupedVariablePickerAndDualRange(t *testin
 	}
 }
 
+func TestFrontendSimulationHVACInspectionReplacesResultTables(t *testing.T) {
+	simulation := readTestFile(t, "frontend/src/js/views/simulation-views.js")
+	loopRender := sliceBetween(simulation, "function renderSimulationHVACLoops", "function hvacComponentSeriesCount")
+	for _, required := range []string{"data-simulation-hvac-loop", "renderHVACInspection(loop, ui)", "simulationHVACLoopSemanticAttributes(loop)"} {
+		if !strings.Contains(loopRender, required) {
+			t.Fatalf("HVAC results must select one executed loop and open its inspection: missing %q", required)
+		}
+	}
+	inspection := readTestFile(t, "frontend/src/js/views/hvac-inspection-view.js")
+	for _, required := range []string{"renderHVACInspectionTopology", "data-simulation-hvac-frame", "data-hvac-inspect-node-visible", "data-hvac-inspect-basic-charts", "data-hvac-inspect-entity", "data-hvac-inspect-property", "data-hvac-inspect-mode"} {
+		if !strings.Contains(inspection, required) {
+			t.Fatalf("HVAC inspection must expose topology, frame, node graphs and equipment/property controls: missing %q", required)
+		}
+	}
+	for _, removed := range []string{"<table", "renderSimulationHVACNodeSummaries", "renderSimulationHVACComponentOperations", "renderSimulationHVACSeriesOverview", "renderSimulationHVACSchematic"} {
+		if strings.Contains(loopRender+inspection, removed) {
+			t.Fatalf("HVAC inspection must not restore old result tables: %q", removed)
+		}
+	}
+}
+
 func TestFrontendSimulationRendersOnlyTheActiveResultView(t *testing.T) {
 	view := readTestFile(t, "frontend/src/js/views/simulation-views.js")
 	render := sliceBetween(view, "export function renderSimulation()", "function renderSimulationEmpty")

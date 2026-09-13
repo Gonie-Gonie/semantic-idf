@@ -1,0 +1,25 @@
+.hvac-inspection-chart {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px 14px 10px;
+  background: var(--surface-2);
+}
+
+.hvac-inspection-chart h4 { margin: 0 0 4px; font-size: 14px; }
+.hvac-chart-scroll { min-width: 0; overflow-x: auto; }
+.hvac-chart-svg { display: block; width: 100%; min-width: 560px; height: auto; overflow: visible; }
+.hvac-chart-grid { stroke: var(--line); stroke-width: 1; stroke-dasharray: 3 4; }
+.hvac-chart-axis { stroke: var(--muted); stroke-width: 1; }
+.hvac-chart-tick { fill: var(--muted); font: 15px system-ui, sans-serif; }
+.hvac-chart-axis-label { fill: var(--ink); font: 16px system-ui, sans-serif; font-weight: 600; }
+.hvac-chart-line { stroke: var(--hvac-chart-color); stroke-width: 2; fill: none; vector-effect: non-scaling-stroke; }
+.hvac-chart-point { fill: var(--hvac-chart-color); }
+.hvac-chart-scatter-point { opacity: .78; }
+.hvac-chart-point.is-frame { stroke: var(--ink); stroke-width: 2; opacity: 1; }
+.hvac-chart-frame { stroke: var(--ink); stroke-width: 1.5; stroke-dasharray: 5 4; pointer-events: none; }
+.hvac-chart-frame-label { fill: var(--ink); font: 13px system-ui, sans-serif; paint-order: stroke; stroke: var(--surface-2); stroke-width: 4; }
+.hvac-chart-legend { display: flex; flex-wrap: wrap; gap: 7px 18px; padding: 0 12px 4px; font-size: 12px; color: var(--muted); }
+.hvac-chart-legend span { display: inline-flex; align-items: center; gap: 7px; overflow-wrap: anywhere; }
+.hvac-chart-legend i { width: 16px; height: 3px; flex: 0 0 16px; background: var(--hvac-chart-color); }
+.hvac-inspection-chart-empty { padding: 32px 12px; color: var(--muted); text-align: center; }

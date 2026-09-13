@@ -1,0 +1,38 @@
+.hvac-inspection-loop-picker,
+.hvac-inspection-frame-control,
+.hvac-inspection-custom-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.hvac-inspection-loop-picker { margin: 4px 0 16px; }
+.hvac-inspection-loop-picker select { min-width: 220px; max-width: 100%; }
+.hvac-inspection { min-width: 0; display: grid; gap: 20px; }
+.hvac-inspection h4 { margin: 0; font-size: 15px; }
+.hvac-inspection-frame-control { flex-wrap: wrap; padding: 12px; border: 1px solid var(--border); border-radius: 8px; }
+.hvac-inspection-frame-control input { flex: 1; min-width: 160px; }
+.hvac-inspection-frame-control output { min-width: 150px; font-variant-numeric: tabular-nums; }
+.hvac-inspection-node-toggles { display: flex; gap: 8px 16px; flex-wrap: wrap; margin: 12px 0 16px; max-height: 190px; overflow-y: auto; }
+.hvac-inspection-node-toggles label { display: flex; align-items: center; gap: 6px; max-width: 100%; }
+.hvac-inspection-node-toggles span { overflow-wrap: anywhere; }
+.hvac-inspection-basic, .hvac-inspection-custom { min-width: 0; }
+[data-hvac-inspect-basic-charts] { display: grid; gap: 16px; }
+.hvac-inspection-custom { padding-top: 18px; border-top: 1px solid var(--border); }
+.hvac-inspection-custom-heading { justify-content: space-between; margin-bottom: 12px; }
+.hvac-inspection-custom-heading label { display: flex; align-items: center; gap: 8px; }
+.hvac-inspection-custom-rows { display: grid; gap: 10px; margin-bottom: 12px; }
+.hvac-inspection-custom-row { display: grid; grid-template-columns: 24px minmax(100px, 1fr) minmax(100px, 1fr) 32px; align-items: end; gap: 10px; }
+.hvac-inspection-custom-row > span { align-self: center; }
+.hvac-inspection-custom-row label { display: grid; gap: 5px; min-width: 0; }
+.hvac-inspection-custom-row label > span { color: var(--muted); font-size: 12px; }
+.hvac-inspection-custom-row select { width: 100%; min-width: 0; }
+.hvac-inspection-custom-row button { padding: 5px; }
+[data-hvac-inspect-custom-chart] { margin-top: 14px; }
+.hvac-inspection-legacy-frame { padding: 14px; border: 1px solid var(--border); border-radius: 8px; }
+.hvac-inspection-legacy-frame div { display: flex; flex-wrap: wrap; gap: 12px 24px; margin-top: 12px; }
+.hvac-inspection-legacy-frame b { margin-left: 6px; }
+@media (max-width: 720px) {
+  .hvac-inspection-custom-row { grid-template-columns: 20px minmax(90px, 1fr) 32px; }
+  .hvac-inspection-custom-row label:nth-of-type(2) { grid-column: 2; }
+  .hvac-inspection-loop-picker { flex-wrap: wrap; }
+}
