@@ -79,6 +79,7 @@ import { captureViewSnapshot, recordViewHistory } from "./view-history.js";
 import { initializeProfileControls, renderProfile } from "./views/profile-views.js";
 import {
   initializeSimulationControls,
+  loadCachedSimulationResult,
   loadSimulationEnvironment,
   restoreSimulationEnergyWorkspaceContext,
   suppressSimulationAutoRunForCurrentDocument,
@@ -848,13 +849,7 @@ async function restoreCachedSimulationWorkspace(restoredDocument = {}) {
   const previousRunID = state.simulationActiveRunID;
   if (state.simulationRunning) return false;
   try {
-    const api = backend();
-    const result = api && typeof api.GetCachedSimulationResult === "function"
-      ? await api.GetCachedSimulationResult(reference.textHash, reference.runId)
-      : await fetch("/api/simulation-result-cache", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ textHash: reference.textHash, runId: reference.runId }),
-      }).then(async (response) => response.ok ? response.json() : null);
+    const result = await loadCachedSimulationResult(reference.textHash, reference.runId);
     if (!result || typeof result !== "object" || Array.isArray(result) || result.runId !== reference.runId ||
       !isCurrentWorkspaceDocument(restoredDocument) || state.simulationRunning || state.simulationActiveRunID !== previousRunID ||
       state.simulationResult !== previousResult) return false;

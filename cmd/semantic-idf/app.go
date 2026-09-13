@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Gonie-Gonie/semantic-idf/cmd/semantic-idf/internal/epinput"
@@ -18,9 +19,10 @@ import (
 )
 
 type App struct {
-	ctx                      context.Context
-	analysisCache            *AnalysisCache
-	simulationWorkspaceCache simulationWorkspaceCache
+	ctx                           context.Context
+	analysisCache                 *AnalysisCache
+	simulationWorkspaceCache      simulationWorkspaceCache
+	simulationResultHTTPAvailable atomic.Bool
 }
 
 type TextEditResult struct {

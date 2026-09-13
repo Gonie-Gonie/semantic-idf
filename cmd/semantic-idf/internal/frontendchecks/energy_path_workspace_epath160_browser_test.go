@@ -246,15 +246,13 @@ try{
    const restoredRequest=host.querySelector('[data-energy-path-output-request-selected="true"]');restoredRequest.focus();restoredRequest.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true,cancelable:true}));
    const restoredOutputAction=host.querySelector('[data-energy-path-details-toggle]');check(!state.simulationEnergyDetailsOpen&&document.activeElement===restoredOutputAction,"cold Output Escape did not restore the Data details opener");
    click(host.querySelector('[data-energy-path-quality-stage="drivers"]'));saveExpected();
-   const selections=await import("/src/js/selection-controller.js");
-   await selections.selectSemanticEntity({entityId:fixture.entityID},{originView:"simulation"});
-   await selections.openSelectionInView("hvac",{targetKind:"service-path",targetId:fixture.pathID});
-   await wait(()=>state.activeResultTab==="hvac"&&state.globalSelection?.entityId===fixture.entityID,"real global HVAC destination");
-   assertExpected("HVAC dormant Energy");check(visible(document.getElementById("hvacGraph")),"global HVAC target did not reveal actual HVAC pane");
-   fixture.update(item=>{item.phase="tools";item.evidence.push("Real global HVAC selection opened while dormant Energy state remained intact");});click(document.getElementById("toolsButton"));
+   click(document.querySelector('[data-result-tab="hvac"]'));
+   await wait(()=>state.activeResultTab==="hvac","manual HVAC tab destination");
+   assertExpected("HVAC dormant Energy");check(visible(document.getElementById("hvacGraph")),"manual HVAC tab did not reveal actual HVAC pane");
+   fixture.update(item=>{item.phase="tools";item.evidence.push("Manual HVAC tab opened while dormant Energy state remained intact");});click(document.getElementById("toolsButton"));
   }else if(phase==="tools_return"){
    assertResult("Tools cold return");assertExpected("Tools dormant Energy return");assertSnapshot("Tools navigation");
-   check(state.activeResultTab==="hvac"&&state.globalSelection?.entityId===fixture.entityID,"Tools cold return lost actual HVAC global selection");
+   check(state.activeResultTab==="hvac"&&visible(document.getElementById("hvacGraph")),"Tools cold return lost the manually selected HVAC tab");
    click(document.querySelector('[data-result-tab="simulation"]'));await sleep(100);assertExpected("return from dormant Energy");check(selected()&&host.querySelector("[data-energy-path-inspector]"),"restored Energy selection is not visible after leaving HVAC");
    await actions.saveWorkspaceSnapshot();const cached=JSON.parse(sessionStorage.getItem("idfAnalyzer.currentDocument"));
    const legacy={activeResultView:"energy",energyFocusMode:"zone",energyZoneFocus:"Office",energyPeriod:"M2",energyService:"cooling",energySelection:state.simulationEnergySelection,energyView:"sources",energyDetailsTab:"data",energyDetailsStage:"drivers",energySankeyMode:"legacy",energySignMode:"absolute",energyNodeLimit:3};

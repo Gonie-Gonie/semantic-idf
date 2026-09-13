@@ -21,7 +21,9 @@ func (a *App) GetSimulationEnvironment() (*simulation.SimulationEnvironment, err
 	if err != nil {
 		return nil, err
 	}
-	return simulation.BuildEnvironment(settings.Simulation), nil
+	environment := simulation.BuildEnvironment(settings.Simulation)
+	environment.ResultHTTPAvailable = a.simulationResultHTTPAvailable.Load()
+	return environment, nil
 }
 
 func (a *App) SelectEnergyPlusExecutable() (*simulation.EnergyPlusInstallSetting, error) {
@@ -116,32 +118,37 @@ func (a *App) SelectSimulationInputFolder(recursive bool) (*simulation.Simulatio
 }
 
 func (a *App) RunSimulationText(request simulation.SimulationRunRequest) (*simulation.SimulationRunResult, error) {
+	result, _, err := a.runSimulationTextWithSnapshot(request, false)
+	return result, err
+}
+
+func (a *App) runSimulationTextWithSnapshot(request simulation.SimulationRunRequest, compact bool) (*simulation.SimulationRunResult, []byte, error) {
 	// Capture the user's input before purpose outputs are injected into the run
 	// copy. Workspace restoration must match the original document exactly.
 	workspaceText := request.Text
 	workspaceRequest := a.beginSimulationResultRequest()
 	_, settings, err := loadAppSettings()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if request.WeatherPath == "" {
 		requiresWeather, err := simulationRequestRequiresWeatherFile(request)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if requiresWeather {
-			return blockedSimulationResult(request, "This IDF uses weather-file design days or weather run periods. Select an EPW weather file before running."), nil
+			return blockedSimulationResult(request, "This IDF uses weather-file design days or weather run periods. Select an EPW weather file before running."), nil, nil
 		}
 	}
 	if request.PurposeRequest != nil {
 		request, err = preparePurposeSimulationRequest(request)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	} else if request.StandardOutput {
 		request, err = prepareStandardOutputSimulationRequest(request)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 	progress := func(item simulation.SimulationProgress) {
@@ -153,10 +160,11 @@ func (a *App) RunSimulationText(request simulation.SimulationRunRequest) (*simul
 		request.Filename = filepath.Base(request.InputPath)
 	}
 	result, err := simulation.RunSimulation(request, progress, settings.Simulation)
+	var payload []byte
 	if err == nil {
-		a.rememberSimulationResultForRequest(workspaceRequest, workspaceText, result)
+		payload = a.rememberSimulationResultForTransport(workspaceRequest, workspaceText, result, compact)
 	}
-	return result, err
+	return result, payload, err
 }
 
 func (a *App) RunPurposeSimulationText(request simulation.SimulationRunRequest) (*simulation.SimulationRunResult, error) {

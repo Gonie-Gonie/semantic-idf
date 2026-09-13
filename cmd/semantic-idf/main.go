@@ -93,6 +93,7 @@ func currentAppInfo() AppInfo {
 }
 
 func appAssetHandler(app *App) http.Handler {
+	app.simulationResultHTTPAvailable.Store(true)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
@@ -470,12 +471,7 @@ func appAssetHandler(app *App) http.Handler {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
-			result, err := app.GetCachedSimulationResult(request.TextHash, request.RunID)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			if err := json.NewEncoder(w).Encode(result); err != nil {
+			if err := writeSimulationResultBytes(w, app.cachedSimulationResultBytes(request.TextHash, request.RunID)); err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 			}
 		case "/api/simulation-run-plan":
@@ -524,12 +520,19 @@ func appAssetHandler(app *App) http.Handler {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
-			result, err := app.RunSimulationText(request)
+			result, payload, err := app.runSimulationTextWithSnapshot(request, acceptsCompactSimulationResult(r))
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
-			if err := json.NewEncoder(w).Encode(result); err != nil {
+			if payload == nil {
+				payload, err = json.Marshal(result)
+				if err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
+				}
+			}
+			if err := writeSimulationResultBytes(w, payload); err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 			}
 		case "/api/simulation-purpose-outputs":

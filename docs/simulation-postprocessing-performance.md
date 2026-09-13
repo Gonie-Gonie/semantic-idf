@@ -186,3 +186,65 @@ NULL versus known zero, signed values and unknown optional metadata.
 General timeout/error reporting remains a separate boundary: this optimization
 does not make the limit a hard query deadline or retain completed sections after
 a later parse error. No error is converted to success by this change.
+
+## HVAC result transfer (2026-09-14)
+
+The default Large Office HVAC-only capture
+`20260913-234725-sim-1789310845208-RefBldgLargeOfficeNew2004_Chicago`
+reproduced a separate delay at `Receiving simulation results`. The SQL was
+299,642,880 bytes. Replaying its original executed IDF and run plan produced
+all eight populated loops and 1,603 generic series without rerunning EnergyPlus.
+Output reading took 31.06 seconds and bundle construction 0.40 seconds; both
+precede this receiving phase.
+
+The completed result serialized to **1,733,651,105 bytes**. The old path made
+a synchronous workspace snapshot (5.16 seconds), serialized the typed result
+again for Wails (4.12 seconds), and escaped that callback into a Windows
+JavaScript string (4.75 seconds, **2,000,433,172 bytes**). These measurements
+exclude WebView script evaluation, browser parsing and display. Parallelizing
+these copies would retain the oversized payload and increase peak memory.
+
+The desktop now advertises its local HTTP result endpoint. An explicit Accept
+header negotiates `semantic-idf.simulation-transfer/v1`: identical point columns
+and timelines are transmitted once, with references from their original series.
+Matching is exact and collision-checked, including negative zero, timestamp gaps,
+duplicate timestamps and labels. No observations are sampled, rounded or dropped.
+The frontend restores the usual result shape with shared, lazy point arrays;
+opening a loop materializes its data while unopened loops retain numeric columns.
+Small responses and existing unnegotiated run APIs retain their original shape.
+
+The compact snapshot is serialized once and written directly to the local asset
+response. Workspace restoration reuses that exact representation. A newer run
+cannot replace another request's response; a failed POST is never retried through
+a second transport. Existing progress events and display-failure handling remain.
+
+On the same saved run, preparation took **250 ms** and serialization **339 ms**.
+The response is **83,008,393 bytes**, a **95.21% reduction**, with 717 unique point
+sets, two timelines and 3,886 bindings. SQL output reading remained 30.95 seconds;
+this change targets receiving and memory use, not engine or SQL execution time.
+
+A second replay compared all **33,315,600 bound observations** directly with
+their original arrays: X, label, value bits and sample order match across every
+binding. This validation adds no tolerance or stored-result migration.
+
+A native-clock Chrome replay of the saved compact response through the actual
+Run button took 297 ms through HTTP receipt/JSON parsing, 4 ms to install lazy
+bindings and 931 ms for the first display: **1.232 seconds total**. All eight
+air/water loops expose 8,760 frames and three basic graphs. The first view
+materialized only 127 of 717 point sets. This is a local HTTP/browser measurement,
+not a timing claim for a fresh engine run or the native WebView transport.
+
+`TestSimulationResultTransportSavedReplay` is an opt-in read-only diagnostic,
+using `SIMULATION_TRANSPORT_REPLAY_DIR` and `SIMULATION_TRANSPORT_REPLAY_INPUT`.
+An optional `SIMULATION_TRANSPORT_REPLAY_OUTPUT` writes a new artifact outside
+the preserved capture; `SIMULATION_TRANSPORT_REPLAY_LEGACY=1` additionally measures
+the previous Wails callback serialization and escaping. Focused regressions cover
+full observation/metadata equality, compact cache restoration, HTTP negotiation,
+concurrent completion, lazy browser decoding and duplicate-run prevention.
+
+Local evidence: `.runtime/hvac-latest-transport-replay.log` (baseline),
+`.runtime/hvac-latest-compact-replay.log`, and
+`.runtime/hvac-latest-compact-result.json`. Full-value verification is recorded
+in `.runtime/hvac-latest-transport-validated.log`; browser evidence is in
+`.runtime/receiving-compact-native-profile.json`. No simulation inputs, SQL files
+or stored original outputs were changed.

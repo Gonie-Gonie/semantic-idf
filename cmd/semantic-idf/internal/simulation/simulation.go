@@ -40,6 +40,7 @@ type SimulationEnvironment struct {
 	DefaultWorkerCount  int                        `json:"defaultWorkerCount"`
 	CPUCount            int                        `json:"cpuCount"`
 	Warnings            []string                   `json:"warnings,omitempty"`
+	ResultHTTPAvailable bool                       `json:"resultHTTPAvailable,omitempty"`
 }
 
 type WeatherFolder struct {

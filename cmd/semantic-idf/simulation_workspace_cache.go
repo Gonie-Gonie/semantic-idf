@@ -34,13 +34,31 @@ func (a *App) beginSimulationResultRequest() uint64 {
 	return cache.requestSequence
 }
 
-func (a *App) rememberSimulationResultForRequest(sequence uint64, text string, result *simulation.SimulationRunResult) {
-	if a == nil || strings.TrimSpace(text) == "" || result == nil || result.RunID == "" {
-		return
+// The returned bytes belong to this completed request even if a newer request
+// has taken over the workspace cache. They are immutable and can be written
+// directly to the HTTP response without serializing the large result again.
+func (a *App) rememberSimulationResultForRequest(sequence uint64, text string, result *simulation.SimulationRunResult) []byte {
+	return a.rememberSimulationResultForTransport(sequence, text, result, false)
+}
+
+func (a *App) rememberSimulationResultForTransport(sequence uint64, text string, result *simulation.SimulationRunResult, compact bool) []byte {
+	if result == nil {
+		return nil
 	}
-	payload, err := json.Marshal(result)
+	canCache := a != nil && strings.TrimSpace(text) != "" && result.RunID != ""
+	if !canCache && !compact {
+		return nil
+	}
+	var wire any = result
+	if compact {
+		wire = simulation.CompactResultTransport(result)
+	}
+	payload, err := json.Marshal(wire)
 	if err != nil {
-		return
+		return nil
+	}
+	if !canCache {
+		return payload
 	}
 	cache := &a.simulationWorkspaceCache
 	cache.mu.Lock()
@@ -48,30 +66,37 @@ func (a *App) rememberSimulationResultForRequest(sequence uint64, text string, r
 	// A slow older run may finish after the user starts a newer document/run.
 	// Its completion cannot evict that newer workspace result.
 	if sequence != cache.requestSequence {
-		return
+		return payload
 	}
 	cache.textHash = analysisTextHash(text)
 	cache.runID = result.RunID
 	cache.payload = payload
+	return payload
 }
 
 // GetCachedSimulationResult is a read-only, exact workspace lookup. A miss does
 // not load output files, parse SQL, analyze an input, or start EnergyPlus.
 func (a *App) GetCachedSimulationResult(textHash, runID string) (json.RawMessage, error) {
+	payload := a.cachedSimulationResultBytes(textHash, runID)
+	// Public callers may mutate their copy; the HTTP handler instead writes the
+	// immutable bytes directly and avoids this full-payload allocation.
+	return append(json.RawMessage(nil), payload...), nil
+}
+
+func (a *App) cachedSimulationResultBytes(textHash, runID string) []byte {
 	if a == nil || textHash == "" || runID == "" {
-		return nil, nil
+		return nil
 	}
 	cache := &a.simulationWorkspaceCache
 	cache.mu.RLock()
 	if cache.textHash != textHash || cache.runID != runID || len(cache.payload) == 0 {
 		cache.mu.RUnlock()
-		return nil, nil
+		return nil
 	}
-	// Return independent wire bytes. Decoding through SimulationRunResult would
-	// invoke stored-result migration or aggregation hooks and could change a fresh
-	// result during navigation. RawMessage is serialized as the original object
-	// by both Wails and the HTTP bridge, not as a quoted JSON string.
-	payload := append(json.RawMessage(nil), cache.payload...)
+	// Cached bytes are never mutated, including after replacement. Retaining this
+	// slice is safe after unlocking and does not block a new run during transfer.
+	// Do not decode it through stored-result migration or aggregation hooks.
+	payload := cache.payload
 	cache.mu.RUnlock()
-	return payload, nil
+	return payload
 }

@@ -32,6 +32,7 @@ import { resolveEnergyPathOutputRequest, energyPathOutputRequestKey } from "../e
 import { hvacInspectionLoopKey } from "../hvac-inspection-data.js";
 import { renderHVACInspection, handleHVACInspectionEvent } from "./hvac-inspection-view.js";
 import { renderComfortInspection, handleComfortInspectionEvent, renderComfortInspectionReport } from "./comfort-inspection-view.js";
+import { decodeSimulationResultTransfer, simulationResultTransferMediaType } from "../simulation-result-transport.js";
 
 let progressListenerRegistered = false;
 let simulationPendingResponseRunID = "";
@@ -7974,18 +7975,41 @@ function handleSimulationProgress(payload) {
 
 async function callSimulationAPI(methodName, endpoint, payload) {
   const api = backend();
-  if (api && typeof api[methodName] === "function") {
+  // Large results use the asset response body directly. Sending them through
+  // the desktop callback also escapes the entire JSON as executable JS text.
+  const resultHTTP = methodName === "RunPurposeSimulationText" && state.simulationEnvironment?.resultHTTPAvailable === true;
+  if (!resultHTTP && api && typeof api[methodName] === "function") {
     return payload === undefined ? api[methodName]() : api[methodName](payload);
   }
+  return fetchSimulationJSON(endpoint, payload);
+}
+
+export async function loadCachedSimulationResult(textHash, runId) {
+  state.simulationEnvironment ||= await loadSimulationEnvironment({ render: false });
+  const api = backend();
+  if (state.simulationEnvironment?.resultHTTPAvailable !== true && typeof api?.GetCachedSimulationResult === "function") {
+    return decodeSimulationResultTransfer(await api.GetCachedSimulationResult(textHash, runId));
+  }
+  return fetchSimulationJSON("/api/simulation-result-cache", { textHash, runId });
+}
+
+async function fetchSimulationJSON(endpoint, payload) {
+  // A failed POST may already have executed the simulation. Never retry it
+  // through another transport, which would start a second run.
+  const resultTransfer = endpoint === "/api/simulation-run" || endpoint === "/api/simulation-result-cache";
   const response = await fetch(endpoint, {
     method: payload === undefined ? "GET" : "POST",
-    headers: payload === undefined ? undefined : { "Content-Type": "application/json" },
+    headers: payload === undefined ? undefined : {
+      "Content-Type": "application/json",
+      ...(resultTransfer ? { Accept: simulationResultTransferMediaType } : {}),
+    },
     body: payload === undefined ? undefined : JSON.stringify(payload),
   });
   if (!response.ok) {
     throw new Error(await response.text());
   }
-  return response.json();
+  const result = await response.json();
+  return resultTransfer ? decodeSimulationResultTransfer(result) : result;
 }
 
 function waitForProgressRuntime() {
