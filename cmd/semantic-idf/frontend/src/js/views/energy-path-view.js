@@ -1143,7 +1143,6 @@ export function renderEnergyPathNodeInspector(explanation = {}, nodes = [], sele
   const actions = renderEnergyPathDriverNavigation(node, driverNavigation, model) +
     renderEnergyPathInspectorActions(node, inspectorActions, { suppressHVAC: hasServiceNavigation }) +
     renderEnergyPathServiceNavigation(node, serviceNavigation, model) + correspondenceActions;
-  const entities = typeof options.relatedEntitiesForItem === "function" ? options.relatedEntitiesForItem(node, sourceDetails, viewState) : [];
   return `
     <aside class="energy-path-node-inspector" data-energy-path-inspector="${escapeHTML(node.id)}">
       <header>
@@ -1154,8 +1153,6 @@ export function renderEnergyPathNodeInspector(explanation = {}, nodes = [], sele
       ${renderEnergyPathDetailSection("value", renderEnergyPathInspectorValues(values))}
       ${renderEnergyPathDetailSection("breakdown", breakdown)}
       ${renderEnergyPathDetailSection("basis", renderEnergyPathInspectorBasis(node, model) + allocationExplanation)}
-      ${renderEnergyPathDetailSection("entities", renderEnergyPathInspectorEntities(entities, model))}
-      ${renderEnergyPathInspectorSourceSection(node, model, sourceDetails, viewState, { carrierQuality })}
       ${renderEnergyPathDetailSection("actions", actions)}
     </aside>`;
 }
@@ -1194,15 +1191,12 @@ function renderEnergyPathDetailSection(key, content = "") {
     value: ["simulation.energyPathDetailValue", "Value"],
     breakdown: ["simulation.energyPathInspectorBreakdown", "Breakdown"],
     basis: ["simulation.energyPathDetailBasis", "Calculation / allocation basis"],
-    entities: ["simulation.energyPathDetailEntities", "Related model entities"],
     actions: ["simulation.energyPathDetailActions", "Actions"],
   };
   const [labelKey, label] = labels[key];
   const empty = key === "actions"
     ? t("simulation.energyPathInspectorNoActions", {}, "No actions are available for this selection.")
-    : key === "entities"
-      ? t("simulation.energyPathInspectorNoEntities", {}, "No related model entities are identified in this result.")
-      : t("simulation.energyPathInspectorNoBreakdown", {}, "No additional breakdown is reported for this selection and period.");
+    : t("simulation.energyPathInspectorNoBreakdown", {}, "No additional breakdown is reported for this selection and period.");
   return `<section class="energy-path-detail-section" data-energy-path-detail-section="${key}"><h5>${escapeHTML(t(labelKey, {}, label))}</h5>${content || `<p class="energy-path-detail-empty">${escapeHTML(empty)}</p>`}</section>`;
 }
 
@@ -1324,35 +1318,6 @@ function renderEnergyPathInspectorBasis(item, model, attribute = "data-energy-pa
   }));
   values.push(["application", t("simulation.energyPathMultiplierApplication", {}, "Multiplier application"), applications.join(" · ")]);
   return renderEnergyPathInspectorValues(values, attribute);
-}
-
-function renderEnergyPathInspectorEntities(entities = [], model = {}) {
-  if (!entities?.length) return "";
-  return `<ul class="energy-path-detail-entities">${entities.map((entity) => `<li data-energy-path-related-entity="${escapeHTML(entity.id || "")}">${entity.existingAirCouplingAction
-    ? `<button class="energy-path-related-entity energy-path-related-entity-action" type="button" data-energy-path-topology-air-coupling-id="${escapeHTML(entity.id)}" data-entity-id="${escapeHTML(entity.id)}" data-entity-kind="thermal_air_coupling" data-panel-target-id="${escapeHTML(entity.id)}">${escapeHTML(energyPathInspectorSafeLabel(entity.label, model, t("simulation.energyPathRelatedAirCoupling", {}, "Air coupling")))}</button>`
-    : `<span>${escapeHTML(energyPathInspectorSafeLabel(entity.label, model, t("simulation.energyPathRelatedEntity", {}, "Related model entity")))}</span>`}</li>`).join("")}</ul>`;
-}
-
-function renderEnergyPathInspectorSourceSection(item, model, sources, viewState, options = {}) {
-  const link = options.link === true;
-  const metadata = [
-    ["sourceIds", t("simulation.energyPathSourceInputs", {}, "Input sources"), (model.sourceIds || []).join(", ")],
-    ["ruleIds", t("simulation.energyPathInspectorRules", {}, "Rule IDs"), (model.ruleIds || []).join(", ")],
-    ["basis", t("simulation.energyPathBasis", {}, "Basis"), item.basis],
-    ["application", t("simulation.energyPathMultiplierApplication", {}, "Multiplier application"), model.basis?.application],
-    ["formula", t("simulation.energyPathSourceFormula", {}, "Formula"), item.formula],
-    ["allocationExplanation", t("simulation.energyPathSourceAllocationExplanation", {}, "Allocation note"), item.allocationExplanation || item.explanation],
-    ["reconciliation", t("simulation.energyPathCarrierReconciliation", {}, "Carrier reconciliation"), [options.carrierQuality?.basis, options.carrierQuality?.formula].filter(Boolean).join(" · ")],
-  ].filter(([, , value]) => String(value || "").trim());
-  const members = item.groupedMembers || [];
-  const technicalContext = [...(item.offsetEffects || []), ...(item.simultaneousLoad ? [item.simultaneousLoad] : [])];
-  return `<details class="energy-path-detail-section energy-path-node-source-details" data-energy-path-detail-section="sources" ${link ? "data-energy-path-link-source-details" : "data-energy-path-node-source-details"}>
-    <summary>${escapeHTML(t("simulation.energyPathDetailSources", {}, "Source data"))}</summary>
-    ${metadata.length ? `<dl>${metadata.map(([key, label, value]) => `<div data-energy-path-source-metadata="${key}"><dt>${escapeHTML(label)}</dt><dd${link && key === "sourceIds" ? " data-energy-path-link-source-ids" : ""}>${escapeHTML(value)}</dd></div>`).join("")}</dl>` : `<p class="energy-path-detail-empty">${escapeHTML(t("simulation.energyPathInspectorNoSources", {}, "No source records are attached to this selection."))}</p>`}
-    ${members.length ? `<ul class="energy-path-member-source-evidence">${members.map((member) => `<li><code>${escapeHTML(member.id || "")}</code>${(member.sourceIds || []).map((id) => `<code data-energy-path-group-member-source="${escapeHTML(id)}">${escapeHTML(id)}</code>`).join("")}${member.ruleId ? `<code>${escapeHTML(member.ruleId)}</code>` : ""}${member.basis ? `<span>${escapeHTML(member.basis)}</span>` : ""}</li>`).join("")}</ul>` : ""}
-    ${technicalContext.length ? `<ul class="energy-path-technical-context">${technicalContext.map((context) => `<li>${escapeHTML([context.basis, context.explanation, context.formula, ...(context.sourceIds || [])].filter(Boolean).join(" · "))}</li>`).join("")}</ul>` : ""}
-    ${renderEnergyPathSourceDetails(sources, viewState)}
-  </details>`;
 }
 
 function energyPathDriverDestinationLabel(item = {}, model = {}, fallback = "") {
@@ -3336,7 +3301,6 @@ function renderEnergyPathLinkInspector(explanation, ribbon, nodes, links, viewSt
   const sourceIDs = energyPathUniqueValues(link.sourceIds);
   const sourceDetails = energyPathInspectorSources(explanation, { sourceIds: sourceIDs }, viewState);
   const model = energyPathInspectorModel(link, energyPathInspectorContext(explanation, nodes, links, sourceDetails, viewState, { kind: "link", ratioQuality }));
-  const entities = typeof options.relatedEntitiesForItem === "function" ? options.relatedEntitiesForItem(link, sourceDetails, viewState) : [];
   const inspectorActions = typeof options.inspectorActionsForNode === "function" ? options.inspectorActionsForNode(link, sourceDetails, viewState) : {};
   const heading = `${nodeByID.get(ribbon.fromId)?.label || ribbon.fromId} → ${nodeByID.get(ribbon.toId)?.label || ribbon.toId}`;
   return `<aside class="energy-path-node-inspector energy-path-link-inspector" data-energy-path-link-inspector="${escapeHTML(ribbon.id)}">
@@ -3345,8 +3309,6 @@ function renderEnergyPathLinkInspector(explanation, ribbon, nodes, links, viewSt
     ${renderEnergyPathDetailSection("value", renderEnergyPathInspectorValues(fields, "data-energy-path-link-value"))}
     ${renderEnergyPathDetailSection("breakdown", renderEnergyPathInspectorBreakdown(model, { skipRatios: true }))}
     ${renderEnergyPathDetailSection("basis", renderEnergyPathInspectorBasis(link, model, "data-energy-path-link-value"))}
-    ${renderEnergyPathDetailSection("entities", renderEnergyPathInspectorEntities(entities, model))}
-    ${renderEnergyPathInspectorSourceSection(link, model, sourceDetails, viewState, { link: true })}
     ${renderEnergyPathDetailSection("actions", renderEnergyPathInspectorActions(link, inspectorActions))}
   </aside>`;
 }

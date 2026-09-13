@@ -124,9 +124,11 @@ try {
   assert(carrierStage.querySelector('[data-energy-explanation-node="' + gasID + '"]')?.textContent.includes("60"), "Natural-gas branch is absent from the carrier stage");
 
   const inspector = mount.querySelector('[data-energy-path-inspector="' + heatingID + '"]');
-  assert(inspector?.querySelector('[data-energy-path-source="' + electricityMeter + '"]'), "Heating selection cannot inspect its electricity source meter");
-  assert(inspector?.querySelector('[data-energy-path-source="' + gasMeter + '"]'), "Heating selection cannot inspect its natural-gas source meter");
-  assert(!inspector?.querySelector('[data-energy-path-source="' + electricityFacilityMeter + '"]') && !inspector?.querySelector('[data-energy-path-source="' + gasFacilityMeter + '"]'), "Heating selection leaked facility carrier meters into end-use provenance");
+  assert(inspector && !inspector.querySelector('[data-energy-path-detail-section="sources"], [data-energy-path-detail-section="entities"], [data-energy-path-source]'), "Heating inspector retained Source data or Related model entities");
+  const heatingSources = module.energyPathInspectorSources(explanation, endUses[0], state);
+  assert(heatingSources.some((source) => source.id === electricityMeter && source.name === "Heating:Electricity"), "Heating selection lost its electricity source meter");
+  assert(heatingSources.some((source) => source.id === gasMeter && source.name === "Heating:NaturalGas"), "Heating selection lost its natural-gas source meter");
+  assert(heatingSources.length === 2, "Heating selection broadened end-use provenance beyond its two source meters");
 
   const v1 = { schema: "semantic-idf.energy-explanation/v1", nodes: [], edges: [] };
   assert(module.isEnergyPathV2(v1) === false, "v1 payload was routed into the v2 Energy Path contract");

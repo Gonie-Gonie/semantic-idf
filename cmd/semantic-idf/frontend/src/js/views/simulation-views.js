@@ -1480,7 +1480,6 @@ function simulationEnergySceneOptions(scene) {
     scene: scene.path,
     outputObjects: scene.result?.purposeRunPlan?.outputObjects || [],
     inspectorActionsForNode: (node, sources, viewState) => simulationEnergyInspectorActions(node, sources, viewState, scene.result, graph),
-    relatedEntitiesForItem: (item, sources, viewState) => simulationEnergyInspectorRelatedEntities(item, sources, viewState, graph),
     driverNavigationForNode: (node, sources, viewState, model) => simulationEnergyDriverNavigation(node, sources, viewState, model, scene.driverNavigation),
     serviceNavigationForNode: (node, sources, viewState, model) => simulationEnergyServiceNavigation(node, sources, viewState, model, graph),
     drawer: { ...simulationEnergyDrawer },
@@ -1662,87 +1661,6 @@ export function simulationEnergyServiceNavigation(node = {}, sourceDetails = [],
     semanticNavigation: viewState.semanticProjection?.navigation || {},
     heatFlow: result.purposeResults?.zoneHeatFlow?.zones?.length ? result.purposeResults.zoneHeatFlow : result.heatFlow || {},
     outputObjects: result.purposeRunPlan?.outputObjects || [],
-  });
-}
-
-export function simulationEnergyInspectorRelatedEntities(item = {}, sources = [], viewState = state, preparedGraph) {
-  const report = viewState.report || {};
-  const geometry = report.geometry || {};
-  const topology = geometry.topology || {};
-  const serviceModel = report.hvac?.serviceModel || {};
-  const navigation = getSemanticNavigationCache(viewState.semanticProjection, {
-    textHash: viewState.reportAnalysisKey || viewState.lastAnalyzedKey || "",
-  });
-  const generic = t("simulation.energyPathRelatedEntity", {}, "Related model entity");
-  const airLabel = t("simulation.energyPathRelatedAirCoupling", {}, "Air coupling");
-  const connectionLabel = t("simulation.energyPathRelatedConnection", {}, "Thermal connection");
-  const evidenceIDs = new Set([
-    ...(item.sourceIds || []), item.ruleId,
-    ...sources.flatMap((source) => [source.id, source.ruleId, ...(source.inputSourceIds || [])]),
-  ].filter(Boolean));
-  const humanLabel = (label, id, fallback = generic) => {
-    const text = String(label || "").trim();
-    return text && text !== id && !evidenceIDs.has(text) ? text : fallback;
-  };
-  const records = new Map();
-  const addRecord = (record, kind, label = record?.label || record?.name || record?.objectName) => {
-    if (!record?.id || records.has(record.id)) return;
-    records.set(record.id, { id: record.id, kind: record.kind || kind, label: humanLabel(label, record.id) });
-  };
-  for (const [items, kind] of [
-    [geometry.zones, "zone"], [geometry.spaces, "space"],
-    [geometry.surfaces, "surface"], [geometry.windows, "window"],
-    [topology.nodes, "thermal_node"], [topology.openings, "thermal_opening"],
-    [serviceModel.navigation?.entities, "hvac_entity"],
-  ]) for (const record of items || []) addRecord(record, kind);
-  for (const record of topology.boundaries || []) addRecord(record, "thermal_boundary", record.surfaceName);
-  const endpointLabel = (id) => {
-    const entity = navigation.entity(id);
-    return entity ? humanLabel(entity.label, id, "") : records.get(id)?.label || "";
-  };
-  const airIDs = new Set((topology.airCouplings || []).map((record) => record.id));
-  for (const [items, kind, fallback] of [
-    [topology.airCouplings, "thermal_air_coupling", airLabel],
-    [topology.connections, "thermal_connection", connectionLabel],
-  ]) for (const record of items || []) {
-    const endpoints = [endpointLabel(record.fromNodeId), endpointLabel(record.toNodeId)].filter(Boolean);
-    addRecord(record, kind, record.objectName || (endpoints.length ? `${fallback} · ${endpoints.join(" / ")}` : fallback));
-  }
-  const ids = new Set([
-    ...(item.relatedEntityIds || []),
-    ...sources.flatMap((source) => source.relatedEntityIds || []),
-  ]);
-  const graph = preparedGraph || simulationEnergyPreparedGraph(viewState.simulationResult?.purposeResults?.energyExplanation || {}, viewState);
-  const nodeIDs = new Set([item.id, ...(item.originalNodeIds || [])]);
-  const pathIDs = new Set([
-    ...(item.relatedPathIds || []),
-    ...(graph.links || []).filter((link) => nodeIDs.has(link.fromId) || nodeIDs.has(link.toId))
-      .flatMap((link) => link.relatedPathIds || []),
-  ]);
-  const paths = (serviceModel.zoneServices || []).flatMap((zone) => zone.paths || []);
-  for (const path of paths) {
-    if (!pathIDs.has(path.id)) continue;
-    addRecord(path, "hvac_path", simulationEnergyServicePathFocusLabel(path));
-    ids.add(path.id);
-    // Only explicit path references identify related systems/components. Never
-    // infer a loop from service type or pick an arbitrary matching equipment.
-    for (const record of [path.airLoop, path.plantLoop, path.condenserLoop, path.sourceSystem,
-      path.refrigerantSystem, path.delivery, path.deliveryWrapper, ...(path.conditioning || [])]) {
-      if (!record?.id) continue;
-      addRecord(record, "hvac_component", record.displayName || record.name || record.objectName);
-      ids.add(record.id);
-    }
-  }
-  for (const id of pathIDs) ids.add(id);
-  return [...ids].filter((id) => typeof id === "string" && id.trim()).map((id) => {
-    const semantic = navigation.entity(id);
-    const record = records.get(id);
-    return {
-      id,
-      label: semantic ? humanLabel(semantic.label, id, record?.label || generic) : record?.label || generic,
-      kind: semantic?.kind || record?.kind || "model_entity",
-      existingAirCouplingAction: viewState.simulationEnergyScopeKind === "zone" && airIDs.has(id),
-    };
   });
 }
 
@@ -7406,7 +7324,6 @@ function renderSimulationHeatFlow() {
   }
 
   elements.simulationHeatFlow.innerHTML = `
-    ${renderPurposeCompletenessRow(dataset.completeness || [])}
     ${renderHeatFlowGuide()}
     ${renderHeatFlowTimelineBrush(dataset, zoneMap.get(normalizeHeatFlowName(selectedZone)), visibleRange, frameIndex)}
     ${renderHeatFlowSpatialToolbar()}

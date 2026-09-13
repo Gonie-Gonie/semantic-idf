@@ -210,7 +210,7 @@ with trusted native Tab/Shift+Tab, Enter, Space and Escape input. All 47 graph
 stops are traversed in exact forward and reverse order: four node columns,
 two native conversion controls, then same-domain SVG edge targets. Conversion
 SVG hits cannot introduce duplicate stops. Native activation selects the exact
-node/link and opens all seven inspector sections; Escape clears without losing
+node/link and opens all five inspector sections; Escape clears without losing
 the focused control. Focusing an unrelated dimmed card restores its readability
 but not its quantitative bars or selected path. Ratio focus exposes the complete
 tooltip without selecting. Event trust, retained graph DOM/geometry, immutable
@@ -222,8 +222,9 @@ test passed in 3.102 s, plus three consecutive acceptance runs (7.100 s total).
 ### EPATH-202 — inspector values and destinations
 
 The existing EPATH-150 actual-app test checks each primary node and link against
-the seven common inspector sections. Sources is a closed native disclosure;
-private source/rule IDs appear only after opening it. Driver raw/effective/
+the five common inspector sections: representation, value, breakdown,
+calculation basis, and actions. Related model entities and Source data are
+omitted from node and link details. Driver raw/effective/
 allocated values stay independent (including signed heating pressure), cooling
 load retains sensible 32 / latent 8, and the cooling conversion shows thermal
 40 / site 10 / COP 4. Monthly missing accounting remains unknown, explicit zeroes
@@ -254,7 +255,7 @@ and residual 3 remain separate from consumption rows. Purchased, produced,
 storage-discharge and charge context is checked separately in both periods.
 This test gives discharge an explicit canonical `storage_discharge` identity;
 the old fixture's generic `storage` label did not prove actual discharge.
-Sources stays closed, seven common sections remain, selected-node focus and
+The five common sections remain, selected-node focus and
 graph DOM/paths are retained, inputs remain immutable and Analyze/Run calls are
 zero. Independent focused test passed in 4.107 s; no production change needed.
 

@@ -296,7 +296,9 @@ try {
   const energyAction = mount.querySelector('[data-energy-path-correspondence-action="related_energy_use"]');
   assert(energyAction?.dataset.energyExplanationNode === lightingEndUseID && energyAction.textContent.includes("Related energy use"), "Lighting heat -> energy action is missing");
   const driverInspector = mount.querySelector('[data-energy-path-inspector="' + coolingDriverID + '"]');
-  assert(driverInspector?.textContent.includes("Lighting thermal source annual") && !driverInspector.textContent.includes("Lighting site-energy source annual"), "Lighting thermal source provenance is not endpoint-specific");
+  assert(driverInspector && !driverInspector.querySelector('[data-energy-path-detail-section="sources"], [data-energy-path-source]'), "Lighting thermal inspector retained Source data");
+  const driverSources = module.energyPathInspectorSources(explanation, coolingGraph.nodes.find((node) => node.id === coolingDriverID), coolingState);
+  assert(driverSources.length === 1 && driverSources[0].id === "heat.lighting.building.annual" && driverSources[0].name.trim() === "Lighting thermal source annual", "Lighting thermal source provenance is not endpoint-specific within the selected scope and period");
 
   let actionTarget = "";
   mount.addEventListener("click", (event) => {
@@ -312,7 +314,9 @@ try {
   const thermalAction = mount.querySelector('[data-energy-path-correspondence-action="related_thermal_effect"]');
   assert(thermalAction?.dataset.energyExplanationNode === coolingDriverID && thermalAction.textContent.includes("Related thermal effect"), "Lighting energy -> thermal action is missing");
   const energyInspector = mount.querySelector('[data-energy-path-inspector="' + lightingEndUseID + '"]');
-  assert(energyInspector?.textContent.includes("Lighting site-energy source annual") && !energyInspector.textContent.includes("Lighting thermal source annual"), "Lighting site-energy provenance is not endpoint-specific");
+  assert(energyInspector && !energyInspector.querySelector('[data-energy-path-detail-section="sources"], [data-energy-path-source]'), "Lighting energy inspector retained Source data");
+  const energySources = module.energyPathInspectorSources(explanation, coolingGraph.nodes.find((node) => node.id === lightingEndUseID), coolingState);
+  assert(energySources.length === 1 && energySources[0].id === "meter.lighting.building.annual" && energySources[0].name.trim() === "Lighting site-energy source annual", "Lighting site-energy provenance is not endpoint-specific within the selected scope and period");
 
   const heatingState = { ...baseState, simulationEnergyService: "heating" };
   const heatingGraph = module.energyPathGraphForState(explanation, heatingState);

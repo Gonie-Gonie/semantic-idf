@@ -86,7 +86,7 @@ try {
             : [boundary === "active_surface_source" ? "활성 복사 표면" : "공기계통 전달열", "설비 COP나 효율이 아닙니다", "열 저장", "다른 표면"];
           check(words.every(word => html.includes(word)), kind + " lacks explicit translated physical-boundary caveats");
           check(!html.includes(t(kind === "load" ? "simulation.energyPathRepresentsLoad" : "simulation.energyPathRepresentsConversion")), kind + " retained contradictory unqualified delivery/conversion description");
-          check((html.match(/data-energy-path-detail-section=/g) || []).length === 7, kind + " changed common inspector sections");
+          check([...html.matchAll(/data-energy-path-detail-section="([^"]+)"/g)].map(match => match[1]).join(",") === "represents,value,breakdown,basis,actions", kind + " changed common inspector sections");
         }
         check(field(loadHTML, "data-energy-path-inspector-value", "total") === "80 kWh thermal", "load number changed");
         check(field(linkHTML, "data-energy-path-link-value", "from") === "80 kWh thermal" && field(linkHTML, "data-energy-path-link-value", "to") === "20 kWh site", "conversion endpoint numbers changed");

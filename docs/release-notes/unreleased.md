@@ -18,6 +18,8 @@ The release script infers bump size from these sections:
 
 ## Changed
 
+- Removed result-variable status tags from Heat-Flow Ledger and the Related
+  model entities and Source data sections from Energy node and link details.
 - Renamed the Simulation Sankey result to Energy Path and established its
   left-to-right `Load Drivers → Thermal Loads → End-use Energy → Energy
   Sources` contract. The v2 view separates thermal kWh from site kWh at a

@@ -193,11 +193,9 @@ try {
   assert(carrierStage.querySelectorAll(".energy-path-partial-coverage-badge").length === 2, "carrier values lack known-only badges");
   const basisValue = inspector?.querySelector('[data-energy-path-inspector-value="basis"] dd')?.textContent || "";
   assert(basisValue.includes("Direct zone energy") && !basisValue.includes("direct_zone_energy"), "direct Zone basis is not explained without exposing a technical token");
-  const sourceDetails = inspector.querySelector('[data-energy-path-detail-section="sources"]');
-  assert(sourceDetails?.tagName === "DETAILS" && !sourceDetails.open && sourceDetails.querySelector('[data-energy-path-source-metadata="basis"] dd')?.textContent === "direct_zone_energy", "exact direct Zone basis is not preserved inside collapsed Source data");
-  sourceDetails.querySelector("summary").click();
-  assert(sourceDetails.open && sourceDetails.innerText.includes("direct_zone_energy"), "technical direct Zone basis is not available on explicit Source expansion");
-  assert(inspector?.querySelector('[data-energy-path-source="variable.zone.lights"]')?.textContent.includes("Zone Lights Electricity Energy"), "actual zone source is not inspectable");
+  assert(!inspector.querySelector('[data-energy-path-detail-section="sources"], [data-energy-path-detail-section="entities"], [data-energy-path-source]'), "direct Zone inspector still renders removed Source data or Related model entities");
+  const lightingSources = module.energyPathInspectorSources(explanation, lighting, state);
+  assert(lightingSources.length === 1 && lightingSources[0].id === "variable.zone.lights", "direct Zone lighting lost its underlying source provenance");
   assert(!inspector?.textContent.includes("InteriorLights:Electricity"), "Building fallback meter appeared in the direct Zone inspector");
   assert(!mount.querySelector("[data-simulation-energy-allocation-policy]"), "EPATH-100 allocation-policy UI was introduced early");
 

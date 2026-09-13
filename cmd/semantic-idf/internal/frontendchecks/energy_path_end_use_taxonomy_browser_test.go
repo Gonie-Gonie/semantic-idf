@@ -218,14 +218,18 @@ try {
   const fanPumpButton = endUseStage.querySelector('[data-energy-explanation-node="' + fansAndPumps.id + '"]');
   assert(fanPumpButton?.getAttribute("aria-pressed") === "true" && fanPumpButton.textContent.includes("7"), "merged Fans & pumps node cannot remain selected");
   const inspector = mount.querySelector('[data-energy-path-inspector="' + fansAndPumps.id + '"]');
-  assert(inspector?.querySelector('[data-energy-path-source="meter.fans"]')?.textContent.includes("Fans:Electricity"), "Fans original meter name is not inspectable");
-  assert(inspector?.querySelector('[data-energy-path-source="meter.pumps"]')?.textContent.includes("Pumps:Electricity"), "Pumps original meter name is not inspectable");
-  assert(!inspector?.querySelector('[data-energy-path-source="facility.electricity"]'), "merged end-use inspector leaked facility carrier provenance");
+  assert(inspector && !inspector.querySelector('[data-energy-path-detail-section="sources"], [data-energy-path-detail-section="entities"], [data-energy-path-source]'), "Fans & pumps inspector retained Source data or Related model entities");
+  const fanPumpSources = module.energyPathInspectorSources(explanation, fansAndPumps, selectedState);
+  assert(fanPumpSources.some((source) => source.id === "meter.fans" && source.name === "Fans:Electricity"), "Fans original meter name was lost");
+  assert(fanPumpSources.some((source) => source.id === "meter.pumps" && source.name === "Pumps:Electricity"), "Pumps original meter name was lost");
+  assert(fanPumpSources.length === 2, "merged end-use provenance broadened beyond fan and pump meters");
 
   mount.innerHTML = module.renderEnergyPathView(explanation, { ...baseState, simulationEnergySelection: other.id });
   const otherInspector = mount.querySelector('[data-energy-path-inspector="' + other.id + '"]');
-  assert(otherInspector?.querySelector('[data-energy-path-source="meter.custom_10"]')?.textContent.includes("Custom Process 10:Electricity"), "unknown original meter name is not preserved in Other inspector");
-  assert(otherInspector?.querySelector('[data-energy-path-source="meter.other"]')?.textContent.includes("Other:NaturalGas"), "known Other meter provenance was lost");
+  assert(otherInspector && !otherInspector.querySelector('[data-energy-path-detail-section="sources"], [data-energy-path-detail-section="entities"], [data-energy-path-source]'), "Other inspector retained Source data or Related model entities");
+  const otherSources = module.energyPathInspectorSources(explanation, other, baseState);
+  assert(otherSources.some((source) => source.id === "meter.custom_10" && source.name === "Custom Process 10:Electricity"), "unknown original meter name was lost from Other provenance");
+  assert(otherSources.some((source) => source.id === "meter.other" && source.name === "Other:NaturalGas"), "known Other meter provenance was lost");
 
   document.body.dataset.energyPathEndUseTaxonomyStatus = "passed";
   document.getElementById("result").textContent = "passed";

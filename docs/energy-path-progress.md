@@ -119,11 +119,11 @@ the checklist or its final acceptance scenarios.
   and original data. Verification: pure topology/port geometry, actual 1.37px
   ribbon hit-testing outside its fill, directed path/counterpart selection,
   monthly link details/history, fixed viewport and default/selected screenshots.
-- EPATH-150: every node/link inspector now shares seven ordered sections:
-  representation, value, breakdown, calculation basis, related model entities,
-  closed Source data and actions. Source/rule IDs and raw formulas stay in Source
-  data; grouped contribution values remain expandable. Friendly exact model
-  labels and existing Series/HVAC/counterpart actions are retained, including
+- EPATH-150: every node/link inspector shares five ordered sections:
+  representation, value, breakdown, calculation basis, and actions. The former
+  Related model entities and Source data sections have been removed from the
+  inspector; grouped contribution values remain expandable. Existing
+  Series/HVAC/counterpart actions are retained, including
   source-backed monthly Series navigation from selected links.
   Independent raw/effective/allocated values never borrow annual source scalars.
   Original driver signs are combined individually; ambiguous directions remain

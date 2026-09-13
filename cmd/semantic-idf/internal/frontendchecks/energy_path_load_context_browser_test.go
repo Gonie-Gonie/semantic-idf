@@ -131,13 +131,17 @@ try {
   assert(new Set(ids).size === ids.length, "load inspector duplicated a source");
 
   const html = module.renderEnergyPathNodeInspector(explanation, [loadNode], loadNode.id, zoneState);
-  assert(html.includes('data-energy-path-inspector-section="context"'), "load inspector did not render Context section");
-  assert(html.includes('data-energy-path-inspector-section="balance"'), "load inspector did not render Balance section");
-  assert(html.includes("Cooling Coil Total Cooling Energy"), "lower-tier context is not inspectable");
-  assert(html.includes("Zone Predicted Sensible Load"), "predicted raw context is not inspectable");
-  assert(html.includes("predicted - delivered"), "derived comparison formula is not inspectable");
-  assert(html.includes("actual-sensible") && html.includes("predicted-raw"), "derived comparison inputs are not inspectable");
-  assert(!html.includes("Other-zone lower load") && !html.includes("Heating prediction") && !html.includes("Mechanical ventilation context"), "unrelated context leaked into rendered inspector");
+  const inspector = document.createElement("div");
+  inspector.innerHTML = html;
+  assert(!inspector.querySelector('[data-energy-path-detail-section="sources"], [data-energy-path-detail-section="entities"], [data-energy-path-source]'), "load inspector still renders removed Source data or Related model entities");
+  const sourceHTML = module.renderEnergyPathSourceDetails(sources, zoneState);
+  assert(sourceHTML.includes('data-energy-path-inspector-section="context"'), "standalone source details did not render Context section");
+  assert(sourceHTML.includes('data-energy-path-inspector-section="balance"'), "standalone source details did not render Balance section");
+  assert(sourceHTML.includes("Cooling Coil Total Cooling Energy"), "standalone source details lost lower-tier context");
+  assert(sourceHTML.includes("Zone Predicted Sensible Load"), "standalone source details lost predicted raw context");
+  assert(sourceHTML.includes("predicted - delivered"), "standalone source details lost derived comparison formula");
+  assert(sourceHTML.includes("actual-sensible") && sourceHTML.includes("predicted-raw"), "standalone source details lost derived comparison inputs");
+  assert(!sourceHTML.includes("Other-zone lower load") && !sourceHTML.includes("Heating prediction") && !sourceHTML.includes("Mechanical ventilation context"), "unrelated context leaked into standalone source details");
 
   document.body.dataset.energyPathLoadContextStatus = "passed";
   document.getElementById("result").textContent = JSON.stringify({ ids });

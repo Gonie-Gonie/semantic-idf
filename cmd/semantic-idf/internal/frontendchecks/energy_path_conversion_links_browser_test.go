@@ -180,12 +180,21 @@ try {
 
   mount.innerHTML = module.renderEnergyPathView(explanation, { ...state, simulationEnergySelection: coolingLoadID });
   const coolingInspector = mount.querySelector('[data-energy-path-inspector="' + coolingLoadID + '"]');
-  assert(coolingInspector?.querySelector('[data-energy-path-humidity-detail="dehumidification"]')?.textContent.includes("Dehumidification detail"), "dehumidification is not attached as Cooling load detail");
-  assert(!coolingInspector?.querySelector('[data-energy-path-humidity-detail="humidification"]'), "humidification was attached to Cooling load");
+  assert(coolingInspector && !coolingInspector.querySelector('[data-energy-path-detail-section="sources"], [data-energy-path-source], [data-energy-path-humidity-detail]'), "Cooling inspector retained Source data");
+  const coolingSources = module.energyPathInspectorSources(explanation, graph.nodes.find((node) => node.id === coolingLoadID), state);
+  assert(coolingSources.length === 2 && coolingSources.some((source) => source.id === "cooling-load") && coolingSources.some((source) => source.id === "dehumidification-detail"), "Cooling source provenance lost or broadened its source membership");
+  const sourceDetailsMount = document.createElement("div");
+  sourceDetailsMount.innerHTML = module.renderEnergyPathSourceDetails(coolingSources, state);
+  assert(sourceDetailsMount.querySelector('[data-energy-path-humidity-detail="dehumidification"]')?.textContent.includes("Dehumidification detail"), "standalone Cooling sources lost the dehumidification detail label");
+  assert(!sourceDetailsMount.querySelector('[data-energy-path-humidity-detail="humidification"]'), "humidification was attached to Cooling sources");
   mount.innerHTML = module.renderEnergyPathView(explanation, { ...state, simulationEnergySelection: heatingLoadID });
   const heatingInspector = mount.querySelector('[data-energy-path-inspector="' + heatingLoadID + '"]');
-  assert(heatingInspector?.querySelector('[data-energy-path-humidity-detail="humidification"]')?.textContent.includes("Humidification detail"), "humidification is not attached as Heating load detail");
-  assert(!heatingInspector?.querySelector('[data-energy-path-humidity-detail="dehumidification"]'), "dehumidification was attached to Heating load");
+  assert(heatingInspector && !heatingInspector.querySelector('[data-energy-path-detail-section="sources"], [data-energy-path-source], [data-energy-path-humidity-detail]'), "Heating inspector retained Source data");
+  const heatingSources = module.energyPathInspectorSources(explanation, graph.nodes.find((node) => node.id === heatingLoadID), state);
+  assert(heatingSources.length === 2 && heatingSources.some((source) => source.id === "heating-load") && heatingSources.some((source) => source.id === "humidification-detail"), "Heating source provenance lost or broadened its source membership");
+  sourceDetailsMount.innerHTML = module.renderEnergyPathSourceDetails(heatingSources, state);
+  assert(sourceDetailsMount.querySelector('[data-energy-path-humidity-detail="humidification"]')?.textContent.includes("Humidification detail"), "standalone Heating sources lost the humidification detail label");
+  assert(!sourceDetailsMount.querySelector('[data-energy-path-humidity-detail="dehumidification"]'), "dehumidification was attached to Heating sources");
 
   mount.innerHTML = module.renderEnergyPathView(explanation, { ...state, simulationEnergySelection: "end_use.fans_pumps.building" });
   assert(mount.querySelector('[data-energy-path-lane="direct"][data-energy-explanation-node="end_use.fans_pumps.building"]')?.getAttribute("aria-pressed") === "true", "lower-lane auxiliary selection state is not visible");
@@ -201,7 +210,9 @@ try {
   assert(mount.querySelector("[data-energy-path-auxiliary-lane]")?.textContent.includes("보조 설비 에너지"), "Korean auxiliary-lane label is missing");
   mount.innerHTML = module.renderEnergyPathView(explanation, { ...state, simulationEnergySelection: coolingLoadID });
   assert(mount.querySelector('[data-energy-path-lane-band="direct"]')?.textContent.includes("직접·보조 에너지"), "Korean canvas direct / auxiliary label is missing");
-  assert(mount.querySelector('[data-energy-path-humidity-detail="dehumidification"]')?.textContent.includes("제습 상세"), "Korean dehumidification detail label is missing");
+  assert(!mount.querySelector('[data-energy-path-inspector] [data-energy-path-source]'), "Korean Cooling inspector retained Source data");
+  sourceDetailsMount.innerHTML = module.renderEnergyPathSourceDetails(coolingSources, state);
+  assert(sourceDetailsMount.querySelector('[data-energy-path-humidity-detail="dehumidification"]')?.textContent.includes("제습 상세"), "Korean standalone dehumidification detail label is missing");
   i18n.setLanguage("en");
 
   document.body.dataset.energyPathConversionLinksStatus = "passed";

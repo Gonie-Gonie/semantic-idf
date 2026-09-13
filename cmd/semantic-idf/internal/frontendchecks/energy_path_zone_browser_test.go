@@ -279,26 +279,29 @@ try {
   assert(inspector.querySelector('[data-energy-path-inspector-value="effective"] dd').textContent.includes("10"), "Inspector did not show the effective contribution");
   assert(inspector.querySelector('[data-energy-path-inspector-value="allocated"] dd').textContent.includes("2"), "Inspector did not keep allocation separate from effective contribution");
   assert(inspector.querySelector('[data-energy-path-inspector-value="application"] dd').textContent === "Zone multiplier required", "Inspector did not explain the multiplier application in plain language");
-  const applicationSource = inspector.querySelector('[data-energy-path-detail-section="sources"] [data-energy-path-source-metadata="application"] dd');
-  assert(applicationSource?.textContent === "requires_zone_multiplier" && !applicationSource.closest("details").open, "exact multiplier application token is not preserved inside collapsed Source data");
-  assert(inspector.querySelector('[data-energy-path-inspector-section="breakdown"]'), "Inspector did not group additive source details as Breakdown");
-  assert(inspector.querySelector('[data-energy-path-inspector-section="context"]'), "Inspector did not keep context-only source details visible");
-  assert(inspector.querySelector('[data-energy-path-inspector-section="balance"]'), "Inspector did not group reconciliation source details as Balance");
-  assert(inspector.querySelector('[data-energy-path-source="beta-heating-load"] [data-energy-path-source-field="driverComponent"] dd').textContent === "internal.people.sensible.gain", "Inspector did not expose the sensible/latent component dimension");
-  assert(inspector.querySelector('[data-energy-path-source="beta-heating-load"] [data-energy-path-source-field="heatDirection"] dd').textContent === "gain", "Inspector did not expose the gain/loss direction");
-  const fallbackSource = inspector.querySelector('[data-energy-path-source="beta-heating-fallback"]');
-  assert(fallbackSource?.dataset.energyPathSourceStatus === "fallback", "Inspector did not flag a fallback derivation");
-  assert(fallbackSource.querySelector('[data-energy-path-source-field="formula"] dd').textContent.includes("outdoor-air aggregate"), "Inspector did not expose the fallback formula");
-  assert(fallbackSource.querySelector('[data-energy-path-source-field="inputSourceIds"] dd').textContent.includes("outdoor-air") && fallbackSource.querySelector('[data-energy-path-source-field="inputSourceIds"] dd').textContent.includes("infiltration"), "Inspector did not expose fallback input source IDs");
-  assert(fallbackSource.querySelector('[data-energy-path-source-field="relatedEntityIds"] dd').textContent.includes("zone.office"), "Inspector did not expose related topology entities");
+  assert(!inspector.querySelector('[data-energy-path-detail-section="sources"], [data-energy-path-detail-section="entities"], [data-energy-path-source]'), "Zone inspector still renders removed Source data or Related model entities");
+  const selectedSources = module.energyPathInspectorSources(explanation, graph.nodes.find((node) => node.id === state.simulationEnergySelection), state);
+  assert(selectedSources.find((source) => source.id === "beta-heating-load")?.multiplierApplication === "requires_zone_multiplier", "selected Zone calculation source lost its exact multiplier application");
+  const sourceDetails = document.createElement("div");
+  sourceDetails.innerHTML = module.renderEnergyPathSourceDetails(selectedSources, state);
+  assert(sourceDetails.querySelector('[data-energy-path-inspector-section="breakdown"]'), "Standalone source details did not group additive sources as Breakdown");
+  assert(sourceDetails.querySelector('[data-energy-path-inspector-section="context"]'), "Standalone source details did not retain context-only sources");
+  assert(sourceDetails.querySelector('[data-energy-path-inspector-section="balance"]'), "Standalone source details did not group reconciliation sources as Balance");
+  assert(sourceDetails.querySelector('[data-energy-path-source="beta-heating-load"] [data-energy-path-source-field="driverComponent"] dd').textContent === "internal.people.sensible.gain", "Standalone source details lost the sensible/latent component dimension");
+  assert(sourceDetails.querySelector('[data-energy-path-source="beta-heating-load"] [data-energy-path-source-field="heatDirection"] dd').textContent === "gain", "Standalone source details lost the gain/loss direction");
+  const fallbackSource = sourceDetails.querySelector('[data-energy-path-source="beta-heating-fallback"]');
+  assert(fallbackSource?.dataset.energyPathSourceStatus === "fallback", "Standalone source details did not flag a fallback derivation");
+  assert(fallbackSource.querySelector('[data-energy-path-source-field="formula"] dd').textContent.includes("outdoor-air aggregate"), "Standalone source details lost the fallback formula");
+  assert(fallbackSource.querySelector('[data-energy-path-source-field="inputSourceIds"] dd').textContent.includes("outdoor-air") && fallbackSource.querySelector('[data-energy-path-source-field="inputSourceIds"] dd').textContent.includes("infiltration"), "Standalone source details lost fallback input source IDs");
+  assert(fallbackSource.querySelector('[data-energy-path-source-field="relatedEntityIds"] dd').textContent.includes("zone.office"), "Standalone source details lost related topology entities");
   const airCouplingAction = fallbackSource.querySelector('[data-energy-path-topology-air-coupling-id="air:mix"]');
-  assert(airCouplingAction?.dataset.entityKind === "thermal_air_coupling" && airCouplingAction.dataset.panelTargetId === "air:mix", "Inspector did not expose the valid Topology Air coupling as an actionable target");
-  assert(!fallbackSource.querySelector('[data-energy-path-topology-air-coupling-id="air:missing"]'), "Inspector made an unavailable related entity actionable");
+  assert(airCouplingAction?.dataset.entityKind === "thermal_air_coupling" && airCouplingAction.dataset.panelTargetId === "air:mix", "Standalone source details lost the valid Topology Air coupling action");
+  assert(!fallbackSource.querySelector('[data-energy-path-topology-air-coupling-id="air:missing"]'), "Standalone source details made an unavailable related entity actionable");
   const warningPanel = rendered.querySelector("[data-energy-path-warnings]");
   assert(warningPanel?.textContent.includes("beta monthly balance warning"), "Selected-period Energy Path quality warning was not rendered");
   assert(!warningPanel.textContent.includes("annual balance warning"), "Selected-period warning panel leaked the annual warning");
   const driverInspector = document.createElement("div");
-  driverInspector.innerHTML = module.renderEnergyPathNodeInspector(explanation, [{
+  const driverNode = {
     id: "driver.air.mechanical_ventilation.heating.beta",
     level: "driver",
     label: "Mechanical ventilation",
@@ -306,8 +309,10 @@ try {
     driverCategory: "air.mechanical_ventilation",
     serviceKind: "heating",
     sourceIds: ["beta-heating-fallback"],
-  }], "driver.air.mechanical_ventilation.heating.beta", state);
-  assert(driverInspector.querySelector('[data-energy-path-source="beta-driver-context"]'), "Inspector did not attach matching context-only provenance to the selected driver");
+  };
+  driverInspector.innerHTML = module.renderEnergyPathNodeInspector(explanation, [driverNode], driverNode.id, state);
+  assert(!driverInspector.querySelector('[data-energy-path-source]'), "Driver inspector still renders source details");
+  assert(module.energyPathInspectorSources(explanation, driverNode, state).some((source) => source.id === "beta-driver-context"), "Driver calculation sources lost matching context-only provenance");
 
   const [{ state: applicationState }, selectionController, registry, simulationView] = await Promise.all([
     import("/src/js/state.js"),
@@ -354,7 +359,7 @@ try {
     isViewReady: () => true,
     openView: (view) => { openedView = view; },
   });
-  rendered.addEventListener("click", simulationView.handleSimulationSeriesInspectClick);
+  sourceDetails.addEventListener("click", simulationView.handleSimulationSeriesInspectClick);
   airCouplingAction.click();
   await Promise.race([
     navigationComplete,

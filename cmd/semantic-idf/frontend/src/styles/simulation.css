@@ -1038,22 +1038,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-.energy-path-node-source-details {
-  min-width: 0;
-  border-top: 1px solid var(--line);
-  padding-top: 8px;
-}
-
-.energy-path-node-source-details > summary {
-  color: var(--muted);
-  font-size: 11px;
-  cursor: pointer;
-}
-
-.energy-path-node-source-details[open] > summary {
-  margin-bottom: 8px;
-}
-
 .energy-path-header {
   display: grid;
   grid-template-columns: minmax(120px, 1fr) auto;
@@ -2169,20 +2153,6 @@
   display: grid;
   gap: 5px;
   min-width: 0;
-}
-
-.energy-path-detail-entities,
-.energy-path-member-source-evidence,
-.energy-path-technical-context {
-  display: grid;
-  gap: 5px;
-  margin: 0;
-  padding-left: 18px;
-  overflow-wrap: anywhere;
-}
-
-.energy-path-member-source-evidence code {
-  display: block;
 }
 
 .energy-path-detail-section > summary:focus-visible,

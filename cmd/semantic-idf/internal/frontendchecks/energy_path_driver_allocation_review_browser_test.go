@@ -147,8 +147,8 @@ try {
   let basisNote = inspector.querySelector('[data-energy-path-allocation-explanation="heat_balance_share"]');
   assert(basisNote, "allocated driver inspector has no heat_balance_share explanation hook");
   assert(!basisNote.textContent.includes("heat_balance_share") && basisNote.textContent.toLowerCase().includes("heat-balance"), "allocation note must explain heat-balance allocation without exposing a technical basis token");
-  const sourceBasis = inspector.querySelector('[data-energy-path-detail-section="sources"] [data-energy-path-source-metadata="basis"] dd');
-  assert(sourceBasis?.textContent === "heat_balance_share" && !sourceBasis.closest("details").open, "exact heat_balance_share provenance is not retained inside collapsed Source data");
+  assert(!inspector.querySelector('[data-energy-path-detail-section="sources"], [data-energy-path-detail-section="entities"]'), "removed Source data or Related model entities section is still rendered");
+  assert(module.energyPathGraphForState(explanation, annualState).nodes.find((node) => node.id === annualPeople.id)?.basis === "heat_balance_share", "driver graph lost the underlying allocation basis");
   assert(basisNote.textContent.toLowerCase().includes("not a direct causal"), "allocation note does not explain non-causal interpretation");
 
   root = render({ ...annualState, simulationEnergyPeriod: "M1", simulationEnergySelection: annualPeople.id });
@@ -166,9 +166,9 @@ try {
   const officeState = { simulationEnergyScopeKind: "zone", simulationEnergyZoneName: "Office", simulationEnergyPeriod: "annual", simulationEnergyService: "cooling", simulationEnergySelection: officePeople.id };
   root = render(officeState);
   inspector = root.querySelector('[data-energy-path-inspector="' + officePeople.id + '"]');
-  assert(inspector && inspector.textContent.includes("Office People pressure"), "Office source provenance is not reachable");
-  assert(!inspector.textContent.includes("Lab People pressure"), "Lab source leaked into Office driver inspector");
-  assert(!inspector.textContent.includes("Office infiltration pressure"), "unrelated driver category leaked into People inspector");
+  assert(inspector && !inspector.querySelector('[data-energy-path-source]'), "Office inspector still renders source details");
+  const officeSources = module.energyPathInspectorSources(explanation, officePeople, officeState);
+  assert(officeSources.length === 1 && officeSources[0].id === "office-people", "Office driver calculation sources leaked another Zone or driver category");
   assert(button(root, officePeople.id) && !button(root, labPeople.id), "zone graph did not isolate Office from Lab");
 
   document.body.dataset.energyPathDriverAllocationReviewStatus = "passed";

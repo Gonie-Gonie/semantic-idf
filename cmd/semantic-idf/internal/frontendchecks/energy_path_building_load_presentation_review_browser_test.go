@@ -189,8 +189,9 @@ try {
   root = render(officeState);
   inspector = root.querySelector('[data-energy-path-inspector="load.cooling.office"]');
   assert(inspector, "Office cooling inspector is missing");
-  assert(inspector.textContent.includes("Office cooling sensible") && inspector.textContent.includes("Office cooling latent") && inspector.textContent.includes("Office cooling context"), "Office/cooling provenance is incomplete");
-  assert(!inspector.textContent.includes("Lab cooling") && !inspector.textContent.includes("Office heating"), "zone or category provenance leaked into Office cooling inspector");
+  assert(!inspector.querySelector('[data-energy-path-detail-section="sources"], [data-energy-path-detail-section="entities"], [data-energy-path-source]'), "Office cooling inspector still renders removed Source data or Related model entities");
+  const officeSourceIDs = module.energyPathInspectorSources(explanation, officeAnnualCooling, officeState).map((source) => source.id);
+  assert(officeSourceIDs.length === 3 && ["office-cooling-sensible", "office-cooling-latent", "office-cooling-context"].every((id) => officeSourceIDs.includes(id)), "Office cooling calculation sources lost relevant provenance or leaked another Zone or service");
   assert(loadButtons(root).length === 1 && loadButtons(root)[0].dataset.energyExplanationNode === "load.cooling.office", "zone cooling filter rendered another load service");
 
   document.body.dataset.energyPathBuildingLoadPresentationStatus = "passed";

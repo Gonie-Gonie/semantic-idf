@@ -147,22 +147,17 @@ try{
  const checkStructure=(item,label)=>{
   const panel=inspector();check(Boolean(panel),label+" inspector missing");if(!panel)return;
   const sections=[...panel.querySelectorAll("[data-energy-path-detail-section]")];
-  check(sections.map(element=>element.dataset.energyPathDetailSection).join(",")==="represents,value,breakdown,basis,entities,sources,actions",label+" common sections missing/reordered/duplicated");
+  check(sections.map(element=>element.dataset.energyPathDetailSection).join(",")==="represents,value,breakdown,basis,actions",label+" common sections missing/reordered/duplicated");
   check(sections.every(element=>element.parentElement===sections[0]?.parentElement),label+" common sections are not consistent siblings");
-  const sources=section("sources");check(sources?.tagName==="DETAILS"&&sources.open===false,label+" Sources is not closed native disclosure");
-  const text=visibleText(panel);for(const token of sourceTokens)check(!text.includes(token),label+" leaks source/rule ID before Sources opens: "+token);
+  const text=visibleText(panel);for(const token of sourceTokens)check(!text.includes(token),label+" inspector leaks source/rule ID: "+token);
   check(!visibleText(section("basis")).includes("heat_balance_share")&&!visibleText(section("basis")).includes("service_path_allocation"),label+" calculation basis exposes raw rule token instead of plain-language explanation");
   check(!text.includes(String(annualSentinel)),label+" annual source scalar leaked into main selected-period values");
   check(pane.scrollWidth<=pane.clientWidth+1,label+" inspector introduces horizontal overflow: pane="+pane.scrollWidth+"/"+pane.clientWidth+" inspector="+panel.scrollWidth+"/"+panel.clientWidth);
   if(pane.scrollWidth>pane.clientWidth+1){const right=pane.getBoundingClientRect().right;evidence.push(label+" overflow "+[...pane.querySelectorAll("*")].map(element=>({element,r:element.getBoundingClientRect()})).filter(({element,r})=>r.width&&r.height&&(r.right>right+2||element.scrollWidth>element.clientWidth+2)).sort((a,b)=>(b.element.scrollWidth-b.element.clientWidth)-(a.element.scrollWidth-a.element.clientWidth)).slice(0,8).map(({element,r})=>element.tagName+"."+element.getAttribute("class")+":"+r.right.toFixed(1)+" scroll"+element.scrollWidth+"/"+element.clientWidth+" ws="+getComputedStyle(element).whiteSpace).join(";"));}
-  click(sources?.querySelector("summary"));check(sources?.open===true,label+" native Source disclosure did not open");
-  check(pane.scrollWidth<=pane.clientWidth+1,label+" opened Sources introduces horizontal overflow: "+pane.scrollWidth+"/"+pane.clientWidth);
-  const exact=(item.sourceIds||[]).find(id=>explanation.sources.some(source=>source.id===id));if(exact)check(visibleText(sources).includes(exact),label+" exact source ID unavailable after opening Sources");
-  if(item.ruleId)check(visibleText(sources).includes(item.ruleId),label+" exact rule ID unavailable in opened Sources");
  };
  if(new URLSearchParams(location.search).get("run150")!=="1"){
   const mode=new URLSearchParams(location.search).get("inspector");if(mode==="link")select(graph().links.find(link=>link.relation==="load_to_end_use"&&link.serviceKind==="cooling").id);else select(wallID());
-  inspector()?.scrollIntoView({block:"start"});document.body.dataset.epath150Status="manual";document.getElementById("epath150-result").textContent="Actual common inspector; all seven sections; Source data closed. Scope/Period/Service and node/link navigation remain live.";
+  inspector()?.scrollIntoView({block:"start"});document.body.dataset.epath150Status="manual";document.getElementById("epath150-result").textContent="Actual common inspector; all five sections. Scope/Period/Service and node/link navigation remain live.";
  }else{
   check(innerWidth===1600&&innerHeight===900,"actual150viewport is not1600x900");
   const originalGraph=graph(),nodeIDs=originalGraph.nodes.filter(item=>button(item.id)).map(item=>item.id),originalPaths=[...host.querySelectorAll("[data-energy-path-ribbon]")].map(path=>[path.dataset.energyPathRibbon,path.getAttribute("d")]);
@@ -171,9 +166,6 @@ try{
   select(wallID());
   check(value("raw")?.includes("12")&&value("effective")?.includes("24")&&value("allocated")?.includes(String(annualWall.value)),"Driver raw/effective/allocated values were conflated: "+JSON.stringify([value("raw"),value("effective"),value("allocated")]));
   check(value("raw")?.includes("kWh thermal")&&value("allocated")?.includes("kWh thermal"),"thermal Driver inspector values mislabeled as site energy");
-  check(visibleText(section("entities")).includes("Office exterior wall")&&!visibleText(section("entities")).includes("surface.fixture.wall"),"related model entity did not use actual report's friendly surface name");
-  state.semanticProjection={navigation:{entities:[{id:"surface.fixture.wall",kind:"surface",label:"Canonical office envelope"}]}};simulation.renderSimulationEnergyDashboard(frozen);
-  check(visibleText(section("entities")).includes("Canonical office envelope")&&!visibleText(section("entities")).includes("Office exterior wall"),"exact semantic navigation entity label did not outrank fallback report name");state.semanticProjection=serviceProjection;simulation.renderSimulationEnergyDashboard(frozen);
   check(visibleText(section("breakdown")).includes("Office"),"Driver top zones were not derived from matching nested Zone nodes");
   check(section("breakdown")?.querySelector('[data-energy-path-detail-breakdown="componentRows"] [data-energy-path-detail-row="sensible"] dd')?.textContent.includes(String(annualWall.value)),"Driver sensible component lost actual member contribution");
   const heatingDriver=graph().nodes.find(item=>item.driverCategory==="internal.people");select(heatingDriver.id);check(/[−-]14/.test(value("raw"))&&/[−-]28/.test(value("effective"))&&value("allocated")?.includes(String(heatingDriver.value)),"signed heating pressure was replaced by allocated contribution/magnitude");
@@ -209,12 +201,11 @@ try{
   const focused=edge(monthLink.id);escape(focused);check(state.simulationEnergySelection===""&&!inspector()&&document.activeElement?.dataset.energyExplanationEdge===monthLink.id,"common link inspector broke Escape selection clear / logical focus restore");
   change("[data-simulation-energy-scope]","zone");change("[data-simulation-energy-zone-name]","Office");const zoneLoad=graph().nodes.find(item=>item.level==="load"&&item.serviceKind==="cooling");select(zoneLoad.id);checkStructure(zoneLoad,"ZoneM1load");
   check(visibleText(section("value")).includes(String(zoneLoad.value)),"Zone selected-period load value missing");
-  const zoneAir=graph().nodes.find(item=>item.driverCategory==="air.infiltration");select(zoneAir.id);check(visibleText(section("entities")).includes("Office transfer air")&&!visibleText(section("entities")).includes("air.fixture.mix"),"exact topology coupling objectName was not used for related-entity label");select(zoneLoad.id);
   escape(button(zoneLoad.id));check(state.simulationEnergySelection===""&&document.activeElement?.dataset.energyPathLayoutNode===zoneLoad.id,"common node inspector broke Escape focus restore");
   change("[data-simulation-energy-scope]","building");change("[data-simulation-energy-path-period]","annual");
   check(JSON.stringify([...host.querySelectorAll("[data-energy-path-ribbon]")].map(path=>[path.dataset.energyPathRibbon,path.getAttribute("d")]))===JSON.stringify(originalPaths),"inspector disclosure/navigation changed quantitative ribbon geometry");
   check(JSON.stringify(frozen)===rawJSON&&JSON.stringify(previous)===previousJSON,"common inspector mutated raw payload/export inputs");
-  evidence.push(nodeIDs.length+" primary nodes + 4 link relations; seven consistent sections; exact source IDs native-collapsed; period-local values and unchanged raw graph");
+  evidence.push(nodeIDs.length+" primary nodes + 4 link relations; five consistent sections; period-local values and unchanged raw graph");
   document.body.dataset.epath150Status=failures.length?"failed":"passed";document.getElementById("epath150-result").textContent=(failures.length?failures.join("\n"):"passed")+"\n"+evidence.join("\n");
  }
 }catch(error){document.body.dataset.epath150Status="failed";document.getElementById("epath150-result").textContent=failures.join("\n")+"\n"+error.stack;}

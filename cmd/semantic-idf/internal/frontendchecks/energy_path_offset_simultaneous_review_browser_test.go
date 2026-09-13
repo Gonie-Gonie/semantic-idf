@@ -177,8 +177,8 @@ try {
   assert(section?.querySelector('[data-energy-path-offset-target="cooling"][data-energy-path-offset-category="air.infiltration"]'), "Building annual cooling offset target/category missing");
   assert(section.textContent.includes("74") && section.textContent.includes("Building infiltration"), "Building annual cooling offset value missing");
   assert(!section.textContent.includes("signed_heat_balance_offset") && section.textContent.toLowerCase().includes("non-additive") && section.textContent.toLowerCase().includes("non-causal"), "offset non-additive/non-causal explanation is missing or exposes a technical token");
-  const offsetSources = root.querySelector('[data-energy-path-inspector="load.cooling.building"] [data-energy-path-detail-section="sources"]');
-  assert(offsetSources?.textContent.includes("signed_heat_balance_offset") && !offsetSources.open, "technical offset basis is not preserved inside collapsed Source data");
+  assert(!inspector(root, "load.cooling.building").querySelector('[data-energy-path-detail-section="sources"], [data-energy-path-detail-section="entities"]'), "removed Source data or Related model entities section is still rendered");
+  assert(module.energyPathGraphForState(explanation, state).nodes.find((node) => node.id === "load.cooling.building")?.offsetEffects[0]?.basis === "signed_heat_balance_offset", "load graph lost the underlying offset basis");
 
   root = render({ ...state, simulationEnergyPeriod: "M1" });
   assertMetric(ratio(root, "load.cooling.building"), 20, 200, 0.1, "Building M1 cooling");

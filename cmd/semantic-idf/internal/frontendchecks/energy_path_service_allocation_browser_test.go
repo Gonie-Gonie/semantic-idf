@@ -142,8 +142,8 @@ try {
   mount.innerHTML = module.renderEnergyPathView(explanation, { ...state, simulationEnergySelection: allocated.id });
   const basis = mount.querySelector('[data-energy-path-inspector-value="basis"] dd')?.textContent || "";
   assert(basis.includes("Allocated by HVAC service-path load share") && !basis.includes("service_path_allocation"), "inspector did not explain the service-path allocation basis in plain language");
-  const sourceDetails = mount.querySelector('[data-energy-path-detail-section="sources"]');
-  assert(sourceDetails?.tagName === "DETAILS" && !sourceDetails.open && sourceDetails.querySelector('[data-energy-path-source-metadata="basis"] dd')?.textContent === "service_path_allocation", "exact allocation basis was not preserved inside collapsed Source data");
+  assert(!mount.querySelector('[data-energy-path-detail-section="sources"], [data-energy-path-detail-section="entities"]'), "removed Source data or Related model entities section is still rendered");
+  assert(allocated.basis === "service_path_allocation", "allocated graph node lost the underlying service-path allocation basis");
   assert(mount.querySelector('[data-energy-path-zone-coverage-notice="partial"]'), "EPATH-094 partial Zone notice was lost");
   assert(mount.querySelectorAll(".energy-path-partial-coverage-badge").length === 1, "EPATH-094 Known-only carrier marker was lost");
   assert(!mount.textContent.includes("Unassigned building HVAC energy"), "selected Zone graph displayed unassigned Building energy");

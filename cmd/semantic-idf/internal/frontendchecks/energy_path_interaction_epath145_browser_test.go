@@ -161,7 +161,7 @@ try{
  const detail=host.querySelector('[data-energy-path-link-inspector="'+coolingLink.id+'"]');
  for(const [field,value]of[["from",coolingLink.fromValue],["to",coolingLink.toValue],["ratio",4]])check(detail?.querySelector('[data-energy-path-link-value="'+field+'"]')?.textContent.includes(String(value)),"selected conversion detail omits exact "+field+" value");
  check(detail?.querySelector('[data-energy-path-link-value="from"]')?.textContent.includes("thermal")&&detail?.querySelector('[data-energy-path-link-value="to"]')?.textContent.includes("site"),"selected link detail conflates thermal and site units");
- check(detail?.querySelector('[data-energy-path-link-value="basis"]')&&detail?.querySelector("[data-energy-path-link-source-details]")?.open===false,"selected link omitted basis or eagerly expanded raw source details");
+ check(detail?.querySelector('[data-energy-path-link-value="basis"]'),"selected link omitted calculation basis");
  key(ratio(coolingLink.id),"Escape");await assertClear("conversion Escape");
  const keyboardLink=physical.find(link=>link.fromId===lightingDriver.id);
  for(const pressed of["Enter"," "]){const beforeScroll=pane.scrollTop,event=key(hit(keyboardLink.id),pressed);check(event.defaultPrevented&&pane.scrollTop===beforeScroll,"SVG "+JSON.stringify(pressed)+" did not prevent native scrolling");check(state.simulationEnergySelection===keyboardLink.id&&document.activeElement?.dataset.energyExplanationEdge===keyboardLink.id&&host.querySelector('[data-energy-path-link-inspector="'+keyboardLink.id+'"]'),"SVG keyboard activation did not select exact link and restore focus");key(hit(keyboardLink.id),"Escape");await assertClear("SVG clear");}

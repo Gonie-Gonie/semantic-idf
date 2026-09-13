@@ -101,11 +101,10 @@ try{
  const select=id=>{const target=button(id);if(!target)throw new Error("missing actual native node "+id);target.focus();target.click();check(state.simulationEnergySelection===id&&inspector()?.dataset.energyPathInspector===id,"selection opened wrong inspector: "+id);check(document.activeElement===target,"native node focus lost: "+id);};
  const formatted=value=>value.toLocaleString(undefined,{maximumFractionDigits:2})+" kWh site";
  const labels={electricity:"Electricity",natural_gas:"Natural gas",cooling:"Cooling equipment",heating:"Heating equipment",fans_pumps:"Fans & pumps",lighting:"Lighting",equipment:"Equipment",water_systems:"Water systems",refrigeration:"Refrigeration",other:"Other"};
- const assertSourcesClosed=label=>{
-  const sources=section("sources");check(sources?.tagName==="DETAILS"&&!sources.open,label+": Source data is not initially closed native details");
-  const text=inspector()?.innerText||"";for(const id of[...sourceIDs,"rule.private.inspector150"])check(!text.includes(id),label+": technical source/rule ID leaked before disclosure: "+id);
+ const assertInspectorSections=label=>{
+  const text=inspector()?.innerText||"";for(const id of[...sourceIDs,"rule.private.inspector150"])check(!text.includes(id),label+": inspector leaks technical source/rule ID: "+id);
   check(!text.includes("987654"),label+": run-level source sentinel leaked into selected-period values");
-  check([...inspector().querySelectorAll("[data-energy-path-detail-section]")].map(element=>element.dataset.energyPathDetailSection).join("|")==="represents|value|breakdown|basis|entities|sources|actions",label+": seven common sections changed");
+  check([...inspector().querySelectorAll("[data-energy-path-detail-section]")].map(element=>element.dataset.energyPathDetailSection).join("|")==="represents|value|breakdown|basis|actions",label+": five common sections changed");
  };
  const assertRows=(groupKey,expected,label)=>{
   const groups=section("breakdown")?.querySelectorAll('[data-energy-path-detail-breakdown="'+groupKey+'"]')||[];
@@ -120,7 +119,7 @@ try{
    check(row?.getClientRects().length&&getComputedStyle(row).visibility!=="hidden",label+": split row is hidden: "+key);
   }
   check(group?.querySelector("h6")?.textContent.trim()===(groupKey==="carrierRows"?"Energy-source split":"End-use breakdown"),label+": split heading misidentifies the accounting direction");
-  assertSourcesClosed(label);
+  assertInspectorSections(label);
  };
  check(innerWidth===1600&&innerHeight===900,"actual content viewport is not1600x900");
  const cases=[{scope:"building",period:"annual",factor:1},{scope:"building",period:"M1",factor:.25},{scope:"zone",period:"annual",factor:.5},{scope:"zone",period:"M1",factor:.125}];
@@ -159,7 +158,7 @@ try{
  check(state.simulationResult===result&&JSON.stringify(result)===rawJSON&&JSON.stringify(state.report)===reportJSON,"inspector changed original result / report metadata");
  check(forbiddenCalls===0,"inspector split selection analyzed or reran the model");
  for(const key of Object.keys(api))if(!(key in originalAPI))delete api[key];Object.assign(api,originalAPI);
- evidence.push("Exact visible typed row sets/friendly labels/site units; residual and supply remain separate; Source data closed; graph DOM retained; immutable inputs and0 Analyze/Run calls");
+ evidence.push("Exact visible typed row sets/friendly labels/site units; residual and supply remain separate; graph DOM retained; immutable inputs and0 Analyze/Run calls");
 }catch(error){failures.push(error.stack||String(error));}
 document.body.dataset.epath202Status=failures.length?"failed":"passed";
 document.getElementById("epath202-result").textContent=JSON.stringify({failures,evidence});

@@ -144,10 +144,10 @@ try{
  await navigation.redoViewNavigation({quiet:true});assertRestored(zone,"scope","Zone Forward");
  reset();choose("load.cooling.building");openDrawer();control("period").focus();const annual=primary();
  const detached=emit("period","M1","input");check(state.navigationUndoStack.length===1&&state.simulationEnergyPeriod==="M1","Annual→M1 native input did not commit once");
- choose("load.cooling.building");const sources=inspector().querySelector('[data-energy-path-detail-section="sources"]');sources.open=true;
+ choose("load.cooling.building");
  const month=primary(),monthCanvas=canvas(),monthInspector=inspector(),monthCounts=counts(),monthStacks=stacks();
  detached.dispatchEvent(new Event("change",{bubbles:true}));emit("period","M1","change");
- check(primary()===month&&canvas()===monthCanvas&&inspector()===monthInspector&&sources.open&&counts()===monthCounts&&stacks()===monthStacks,"following detached/live change erased new selection, disclosure, graph or history");
+ check(primary()===month&&canvas()===monthCanvas&&inspector()===monthInspector&&counts()===monthCounts&&stacks()===monthStacks,"following detached/live change erased new selection, graph or history");
  await navigation.undoViewNavigation({quiet:true});assertRestored(annual,"period","Annual→M1→Back");
  await navigation.redoViewNavigation({quiet:true});assertRestored(month,"period","M1 Forward with selected node / drawer");
  reset("zone","M1","cooling");choose("load.cooling.office");openDrawer();control("period").focus();const cooling=primary();
