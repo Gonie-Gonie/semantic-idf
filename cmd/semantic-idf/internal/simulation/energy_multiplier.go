@@ -289,6 +289,9 @@ func applyEnergyExplanationMultipliers(series []energyExplanationSeries, sources
 				continue
 			}
 			source := &sources[position]
+			if energyPathPVSourceObservationProtected(*source) {
+				continue
+			}
 			source.RawValue = roundedEnergyNumber(item.RawTotal)
 			source.EffectiveValue = roundedEnergyNumber(item.Total)
 			source.EffectiveMultiplier = roundedEnergyNumber(factor)
@@ -308,6 +311,9 @@ func applyEnergyExplanationMultipliers(series []energyExplanationSeries, sources
 	// geometry surface multiplier.
 	for i := range sources {
 		source := &sources[i]
+		if energyPathPVSourceObservationProtected(*source) {
+			continue
+		}
 		if source.MultiplierApplication != "" {
 			continue
 		}

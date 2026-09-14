@@ -42,6 +42,8 @@ type EnergyExplanationV1 struct {
 	auxiliaryFanPools                 []energyPathFanPool
 	hvacConsumptionPools              []energyPathHVACConsumptionPool
 	poolEvidence                      energyPathPoolEvidence
+	pvElectricalEvidence              energyPathPVElectricalEvidence
+	cogenerationEvidence              energyPathCogenerationReadResult
 	vrfConsumption                    []energyPathVRFConsumptionCohort
 	buildingHVACAllocationEdges       []EnergyExplanationEdge
 	buildingHVACAllocationPeriodEdges map[string][]EnergyExplanationEdge
@@ -356,6 +358,8 @@ type EnergyDataSource struct {
 	ReportingFrequency    string                        `json:"reportingFrequency,omitempty"`
 	AggregationMethod     string                        `json:"aggregationMethod,omitempty"`
 	IndexGroup            string                        `json:"indexGroup,omitempty"`
+	ReportName            string                        `json:"reportName,omitempty"`
+	ReportForString       string                        `json:"reportForString,omitempty"`
 	TableName             string                        `json:"tableName,omitempty"`
 	RowName               string                        `json:"rowName,omitempty"`
 	ColumnName            string                        `json:"columnName,omitempty"`
@@ -387,7 +391,8 @@ type EnergyDataSource struct {
 	inspectorValuePresence   uint8
 	// Set only by a fully observed SQL quantity, never dictionary membership.
 	// ScopeDetails deliberately carry no inherited observation proof.
-	observedValuePresence uint8
+	observedValuePresence   uint8
+	pvObservationProtection *energyPathPVObservationProtection
 }
 
 // EnergySourceHourlyEnergy is the reported source observation in kWh before
@@ -743,6 +748,9 @@ type energyExplanationParseResult struct {
 	FanPools             []energyPathFanPool
 	HVACConsumptionPools []energyPathHVACConsumptionPool
 	PoolEvidence         energyPathPoolEvidence
+	PVElectricalEvidence energyPathPVElectricalEvidence
+	PVElectricalWarnings []EnergyWarning
+	CogenerationEvidence energyPathCogenerationReadResult
 	VRFConsumption       []energyPathVRFConsumptionCohort
 	VRFLoadEvidence      map[string]energyPathVRFLoadEvidence
 }
@@ -796,6 +804,11 @@ func parseSimulationEnergyExplanationSQLWithDriverContext(path string, plan *Pur
 		result.vrfLoadEvidence = parsed.VRFLoadEvidence
 		result.hvacConsumptionPools = parsed.HVACConsumptionPools
 		result.poolEvidence = parsed.PoolEvidence
+		result.pvElectricalEvidence = parsed.PVElectricalEvidence
+		result.cogenerationEvidence = parsed.CogenerationEvidence
+		applyEnergyPathPVElectricalAvailability(&result.Completeness, parsed.PVElectricalEvidence)
+		applyEnergyPathCogenerationAvailability(&result.Completeness, plan, parsed.CogenerationEvidence)
+		result.Warnings = append(result.Warnings, parsed.PVElectricalWarnings...)
 		return result, nil
 	}
 	result := buildEnergyExplanationResultWithDriverContext(parsed.Series, parsed.Sources, plan, driverContext)
@@ -805,6 +818,13 @@ func parseSimulationEnergyExplanationSQLWithDriverContext(path string, plan *Pur
 	parsed.PoolEvidence.LoadSeries = result.poolEvidence.LoadSeries
 	result.poolEvidence = parsed.PoolEvidence
 	applyEnergyPathPoolResultRestrictions(&result)
+	result.pvElectricalEvidence = parsed.PVElectricalEvidence
+	result.cogenerationEvidence = parsed.CogenerationEvidence
+	applyEnergyPathPVElectricalAvailability(&result.Completeness, parsed.PVElectricalEvidence)
+	applyEnergyPathCogenerationAvailability(&result.Completeness, plan, parsed.CogenerationEvidence)
+	result.Sources = applyEnergyPathProtectedPVElectricalSources(result.Sources, parsed.PVElectricalEvidence)
+	result.Sources = applyEnergyPathCogenerationSourceObservations(result.Sources, parsed.CogenerationEvidence)
+	result.Warnings = append(result.Warnings, parsed.PVElectricalWarnings...)
 	result.vrfConsumption = parsed.VRFConsumption
 	result.vrfLoadEvidence = parsed.VRFLoadEvidence
 	return result, nil
@@ -1040,7 +1060,7 @@ func parseSimulationEnergyExplanationCanonicalSQL(path string, plan *PurposeRunP
 	series = energyPathCompleteDirectHVACComponentSeries(series, driverContext.DirectHVACComponents)
 	vrfConsumption, vrfSources := vrfCollector.result()
 	sources = append(sources, vrfSources...)
-	tabularSeries, tabularSources, err := parseEnergyExplanationTabularAnnual(db, series)
+	tabularSeries, tabularSources, err := parseEnergyExplanationTabularAnnual(db, series, driverContext.CogenerationInventory)
 	if err != nil {
 		return energyExplanationParseResult{}, err
 	}
@@ -1062,6 +1082,31 @@ func parseSimulationEnergyExplanationCanonicalSQL(path string, plan *PurposeRunP
 			}
 		}
 	}
+	pvEvidence, pvSources, pvHourlyLabels, pvErr := readEnergyPathPVElectricalObservations(db, filepath.Base(path), plan, driverContext.PVElectricalInventory, sources)
+	// Native validation failures retain their unknown snapshots. They must not
+	// fall back to the generic reader's formerly guessed scalar or series.
+	sources = pvSources
+	pvBefore := series
+	series, pvWarnings := filterEnergyPathPVElectricalSeries(series, pvEvidence, plan)
+	pvWarnings = append(pvWarnings, energyPathPVElectricalObservationWarning(pvEvidence)...)
+	sources = protectEnergyPathPVLegacyContextSources(sources, energyPathPVElectricalRemovedLegacyComponentSourceIDs(pvBefore, series, pvEvidence))
+	if pvErr != nil {
+		pvWarnings = appendEnergyDriverWarning(pvWarnings, EnergyWarning{Severity: "warning", Code: "native_electrical_observation_unavailable", Message: pvErr.Error()})
+	}
+	if len(hourlyLabels) == 0 {
+		hourlyLabels = pvHourlyLabels
+	}
+	sources = applyEnergyPathProtectedPVElectricalSources(sources, pvEvidence)
+	cogeneration, cogenerationErr := readEnergyPathCogenerationInputs(db, filepath.Base(path), plan, driverContext.CogenerationInventory, pvEvidence, sources)
+	sources = cogeneration.Sources
+	series = mergeEnergyPathCogenerationSeries(series, cogeneration)
+	pvWarnings = append(pvWarnings, cogeneration.Warnings...)
+	if cogenerationErr != nil && len(cogeneration.Warnings) == 0 {
+		pvWarnings = append(pvWarnings, EnergyWarning{Severity: "warning", Code: "cogeneration_native_unavailable", Message: cogenerationErr.Error()})
+	}
+	if len(hourlyLabels) == 0 {
+		hourlyLabels = cogeneration.HourlyLabels
+	}
 	fanPools, err := readEnergyPathFanPools(db, filepath.Base(path), plan)
 	if err != nil {
 		// Missing pool metadata must not discard the otherwise valid graph or
@@ -1069,7 +1114,7 @@ func parseSimulationEnergyExplanationCanonicalSQL(path string, plan *PurposeRunP
 		fanPools = []energyPathFanPool{{Invalid: true}}
 	}
 	return energyExplanationParseResult{Series: series, Sources: sources, HourlyLabels: hourlyLabels, FanPools: fanPools, HVACConsumptionPools: consumptionPools,
-		PoolEvidence: poolEvidence, VRFConsumption: vrfConsumption, VRFLoadEvidence: vrfLoadEvidence}, nil
+		PoolEvidence: poolEvidence, PVElectricalEvidence: pvEvidence, PVElectricalWarnings: pvWarnings, CogenerationEvidence: cogeneration, VRFConsumption: vrfConsumption, VRFLoadEvidence: vrfLoadEvidence}, nil
 }
 
 func accumulateEnergyExplanationSeriesBuilder(builder *energyExplanationSeriesBuilder, row SQLSeriesRow, number float64, unit string, dictionary energyExplanationDictionary, selectedStartDay int, selectedEndDay int, hasSelectedRange bool) {
@@ -4090,7 +4135,7 @@ func reportDataSourceColumnName(units string) string {
 	return "Value [" + unit + "]"
 }
 
-func parseEnergyExplanationTabularAnnual(db *sql.DB, existing []energyExplanationSeries) ([]energyExplanationSeries, []EnergyDataSource, error) {
+func parseEnergyExplanationTabularAnnual(db *sql.DB, existing []energyExplanationSeries, cogenerationInventories ...energyPathCogenerationInventory) ([]energyExplanationSeries, []EnergyDataSource, error) {
 	hasTabular, err := sqlTableExists(db, "TabularDataWithStrings")
 	if err != nil || !hasTabular {
 		return nil, nil, err
@@ -4137,6 +4182,11 @@ ORDER BY %s`,
 		}
 		var tableName, rowName, columnName, units, valueText string
 		if err := rows.Scan(&tableName, &rowName, &columnName, &units, &valueText); err != nil {
+			continue
+		}
+		if len(cogenerationInventories) > 0 && cogenerationInventories[0].HasOriginal && strings.EqualFold(strings.TrimSpace(rowName), "Generators") {
+			// The independent native reader owns consumed ABUPS cells, including
+			// zero/NULL. Never relabel them as ElectricityProduced aliases.
 			continue
 		}
 		alias, ok := energyExplanationTabularEnergyAlias(tableName, rowName, columnName)
@@ -5382,6 +5432,12 @@ func buildEnergyExplanationCompleteness(series []energyExplanationSeries, source
 			continue
 		}
 		if energyExplanationIsSupportEndUse(item) {
+			continue
+		}
+		if key, handled := energyPathCogenerationCompletenessGroupKey(item, expectedEnergy, sources, plan); handled {
+			if key != "" {
+				foundEnergyGroups[key] = true
+			}
 			continue
 		}
 		key := energyExplanationCompletenessGroupKey(item)

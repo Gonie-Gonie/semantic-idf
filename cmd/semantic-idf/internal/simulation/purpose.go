@@ -501,6 +501,7 @@ func BuildPurposeRunPlan(doc idf.Document, request SimulationPurposeRequest) Pur
 	if purposeIDsContain(request.Purposes, SimulationPurposeBasicEnergy) && request.BasicEnergyDetail == PurposeBasicEnergyDetailEnergyPath {
 		builder.addEnergyPathHourlyOutputs()
 		builder.addEnergyPathPVElectricalOutputs()
+		builder.addEnergyPathCogenerationOutputs()
 	}
 	if request.DiscoveryAllowed {
 		builder.addDiscoveryDictionaryOutputs()

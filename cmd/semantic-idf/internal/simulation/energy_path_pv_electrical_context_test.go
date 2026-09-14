@@ -13,6 +13,28 @@ import (
 	"github.com/Gonie-Gonie/semantic-idf/cmd/semantic-idf/internal/idf"
 )
 
+func TestPVElectricalNoReviewedOwnerRetainsOriginalEvidence(t *testing.T) {
+	for _, version := range []string{"25.1", "24.2"} {
+		doc, err := idf.Parse("Version," + version + ";Zone,Office;ElectricLoadCenter:Inverter:Simple,Unreviewed;Output:Meter,Cogeneration:Electricity,Monthly;Output:Meter,Cogeneration:Electricity,Monthly;")
+		if err != nil {
+			t.Fatal(err)
+		}
+		before := doc.String()
+		inventory := energyPathBuildPVElectricalInventory(doc)
+		if !inventory.HasOriginal || inventory.OriginalVersion != version || inventory.SchemaReviewed != (version == "25.1") || len(inventory.Targets) != 0 || len(inventory.UnreviewedOwners) != 1 || len(inventory.OriginalOutputs) != 2 {
+			t.Fatalf("empty native-target fast path lost original evidence: %+v", inventory)
+		}
+		for index, output := range inventory.OriginalOutputs {
+			if output.ObjectIndex != index+3 || output.Name != "Cogeneration:Electricity" || output.Frequency != "Monthly" || !output.NativeShapeValid {
+				t.Fatalf("duplicate raw request census changed: %+v", output)
+			}
+		}
+		if doc.String() != before {
+			t.Fatal("inventory mutated original document")
+		}
+	}
+}
+
 func pvElectricalDraftOriginal(t *testing.T) idf.Document {
 	t.Helper()
 	raw, err := os.ReadFile("testdata/energy_path_real_models/models/25.1/ShopWithPVandBattery.idf")
@@ -402,7 +424,7 @@ func TestPVElectricalDraftHourlyCoverageCannotNarrowNativeReportingScope(t *test
 		name, variable, monthlyKey, originalKey, frequency, schedule, version, peerType, peerName string
 		want                                                                                      bool
 	}{
-		{name: "mixed_unreviewed_storage_key_subset", variable: "Electric Storage Charge Energy", monthlyKey: "*", originalKey: "Battery", frequency: "Hourly", peerType: "ElectricLoadCenter:Storage:Simple", peerName: "OtherStorage"},
+		{name: "mixed_storage_key_subset", variable: "Electric Storage Charge Energy", monthlyKey: "*", originalKey: "Battery", frequency: "Hourly", peerType: "ElectricLoadCenter:Storage:Simple", peerName: "OtherStorage"},
 		{name: "multiple_reviewed_storage_key_subset", variable: "Electric Storage Charge Energy", monthlyKey: "*", originalKey: "Battery", frequency: "Hourly", peerType: "ElectricLoadCenter:Storage:Battery", peerName: "OtherBattery"},
 		{name: "multiple_pv_key_subset", variable: "Generator Produced DC Electricity Energy", monthlyKey: "*", originalKey: "PV1", frequency: "Hourly"},
 		{name: "even_single_key_does_not_prove_star_scope", variable: "Electric Storage Charge Energy", monthlyKey: "*", originalKey: "Battery", frequency: "Hourly"},
@@ -479,5 +501,80 @@ func TestPVElectricalDraftHourlyMeterCoverageKeepsNativeMeterScope(t *testing.T)
 		if trial.want && (len(builder.objects) != 1 || builder.objects[0].KeyValue != trial.key || builder.objects[0].ObjectIndex == nil) {
 			t.Fatal("meter wildcard declaration was rewritten or widened")
 		}
+	}
+}
+
+func TestPVElectricalDraftCommonStorageReportingTypesKeepActualOwnerAndFiniteNames(t *testing.T) {
+	wantNames := map[string]bool{"Electric Storage Charge Energy": true, "Electric Storage Production Decrement Energy": true, "Electric Storage Discharge Energy": true, "Electric Storage Thermal Loss Energy": true}
+	for _, kind := range []string{"ElectricLoadCenter:Storage:Simple", "ElectricLoadCenter:Storage:Battery", "ElectricLoadCenter:Storage:LiIonNMCBattery"} {
+		doc, err := idf.Parse("Version,25.1; " + kind + ",Store;")
+		if err != nil {
+			t.Fatal(err)
+		}
+		inventory := energyPathBuildPVElectricalInventory(doc)
+		variables, meters := 0, 0
+		if len(inventory.Targets) != 8 || len(energyPathPVElectricalIntents(inventory)) != 16 || len(inventory.UnreviewedOwners) != 0 {
+			t.Fatalf("common reporting family roster wrong for %s: %+v", kind, inventory)
+		}
+		for _, target := range inventory.Targets {
+			if target.Definition.IsMeter {
+				meters++
+				continue
+			}
+			variables++
+			if !target.IdentityValid || !wantNames[target.Definition.Name] || len(target.OriginalOwners) != 1 || target.OriginalOwners[0].ObjectType != kind || !target.Definition.matchesOwnerType(kind) {
+				t.Fatalf("common output fabricated Battery physics or extra output: %+v", target)
+			}
+			basis, factor, application := target.sourceBasis()
+			if basis != "model_total" || factor != 1 || application != "already_model_total" {
+				t.Fatal("common native storage reporting acquired a multiplier")
+			}
+		}
+		if variables != 4 || meters != 4 {
+			t.Fatalf("storage common outputs expanded beyond four energies: %d/%d", variables, meters)
+		}
+	}
+	doc := pvElectricalDraftHand(t)
+	pvElectricalDraftAppend(&doc, "ElectricLoadCenter:Storage:Simple", "SimpleOne")
+	pvElectricalDraftAppend(&doc, "ElectricLoadCenter:Storage:LiIonNMCBattery", "LiIonOne")
+	inventory := energyPathBuildPVElectricalInventory(doc)
+	if len(inventory.Targets) != 28 || len(energyPathPVElectricalIntents(inventory)) != 56 {
+		t.Fatal("mixed distinct storage keys were rejected or merged")
+	}
+	for _, definition := range energyPathPVElectricalDefinitions() {
+		if definition.matchesOwnerType("ElectricLoadCenter:Storage:Converter") || definition.matchesOwnerType("ElectricLoadCenter:Storage:UnreviewedBattery") {
+			t.Fatal("reporting support broadened outside exact three storage types")
+		}
+	}
+}
+
+func TestPVElectricalDraftOriginalOutputCensusPreservesDuplicateDeclarations(t *testing.T) {
+	doc := pvElectricalDraftHand(t)
+	pvElectricalDraftAppend(&doc, "Output:Variable", "Battery", "Electric Storage Charge Energy", "Monthly")
+	pvElectricalDraftAppend(&doc, "Output:Variable", "Battery", "Electric Storage Charge Energy", "Monthly")
+	pvElectricalDraftAppend(&doc, "Output:Variable", "", "Electric Storage Charge Energy", "")
+	pvElectricalDraftAppend(&doc, "Output:Variable", "*", "Electric Storage Charge Energy", "Monthly", "LimitedSchedule")
+	pvElectricalDraftAppend(&doc, "Output:Meter", "Electricity:*", "")
+	before := doc.String()
+	inventory := energyPathBuildPVElectricalInventory(doc)
+	if len(inventory.Targets) != 20 || len(energyPathPVElectricalIntents(inventory)) != 40 || len(inventory.OriginalOutputs) != 5 {
+		t.Fatal("original requests altered reporting roster or were deduplicated")
+	}
+	seen := map[int]bool{}
+	for _, output := range inventory.OriginalOutputs {
+		if !output.NativeShapeValid || seen[output.ObjectIndex] {
+			t.Fatal("raw output index/shape lost")
+		}
+		seen[output.ObjectIndex] = true
+	}
+	first, second := inventory.OriginalOutputs[0], inventory.OriginalOutputs[1]
+	if first.KeyValue != "Battery" || first.Name != "Electric Storage Charge Energy" || first.Frequency != "Monthly" || first.ObjectIndex == second.ObjectIndex || first.Name != second.Name || first.KeyValue != second.KeyValue {
+		t.Fatal("identical original requests collapsed")
+	}
+	if inventory.OriginalOutputs[2].KeyValue != "" || inventory.OriginalOutputs[2].Frequency != "" || inventory.OriginalOutputs[3].Schedule != "LimitedSchedule" || inventory.OriginalOutputs[4].Name != "Electricity:*" {
+		t.Fatal("native raw defaults, schedule or meter name lost")
+	}
+	if doc.String() != before {
+		t.Fatal("original census changed source document")
 	}
 }

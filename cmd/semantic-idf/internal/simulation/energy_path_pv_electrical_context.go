@@ -12,6 +12,9 @@ import (
 )
 
 type energyPathPVElectricalDefinition struct {
+	// OwnerType is the reporting-family anchor, not an individual target's
+	// physical type. The four storage definitions share the exact three native
+	// storage types through matchesOwnerType; OriginalOwners retains actual type.
 	ID, OwnerType, Name, Role, ParentMeter, NativeEndUse, SignPolicy string
 	IsMeter                                                          bool
 }
@@ -53,6 +56,49 @@ type energyPathPVElectricalInventory struct {
 	OriginalVersion             string
 	Targets                     []energyPathPVElectricalTarget
 	UnreviewedOwners            []idf.ComponentRef
+	OriginalOutputs             []energyPathPVElectricalOriginalOutput // Raw census, NEVER signature-deduplicated.
+}
+
+type energyPathPVElectricalOriginalOutput struct {
+	ObjectType, KeyValue, Name, Frequency, Schedule string
+	ObjectIndex                                     int
+	NativeShapeValid                                bool
+}
+
+func energyPathPVElectricalReadOriginalOutput(object idf.Object) (energyPathPVElectricalOriginalOutput, bool) {
+	out := energyPathPVElectricalOriginalOutput{ObjectType: object.Type, ObjectIndex: object.Index}
+	switch energyPathPVElectricalKey(object.Type) {
+	case "output:variable":
+		out.KeyValue, out.Name, out.Frequency, out.Schedule = energyPathPVElectricalField(object, 0), energyPathPVElectricalField(object, 1), energyPathPVElectricalField(object, 2), energyPathPVElectricalField(object, 3)
+		out.NativeShapeValid = len(object.Fields) >= 2 && len(object.Fields) <= 4
+	case "output:meter":
+		out.Name, out.Frequency = energyPathPVElectricalField(object, 0), energyPathPVElectricalField(object, 1)
+		out.NativeShapeValid = len(object.Fields) >= 1 && len(object.Fields) <= 2
+	default:
+		return out, false
+	}
+	return out, true
+}
+
+func (output energyPathPVElectricalOriginalOutput) request() PurposeOutputObject {
+	index := output.ObjectIndex
+	out := PurposeOutputObject{ObjectType: output.ObjectType, ObjectIndex: &index, State: PurposeOutputStateExisting,
+		Fields: []idf.OutputFieldValue{{Name: "Key Value", Value: output.KeyValue}, {Name: "Variable Name", Value: output.Name}, {Name: "Reporting Frequency", Value: output.Frequency}, {Name: "Schedule Name", Value: output.Schedule}}}
+	if strings.EqualFold(output.ObjectType, "Output:Meter") {
+		out.Fields = []idf.OutputFieldValue{{Name: "Key Name", Value: output.Name}, {Name: "Reporting Frequency", Value: output.Frequency}}
+	}
+	return out
+}
+
+func (definition energyPathPVElectricalDefinition) matchesOwnerType(kind string) bool {
+	if strings.EqualFold(definition.OwnerType, "ElectricLoadCenter:Storage:Battery") {
+		switch energyPathPVElectricalKey(kind) {
+		case "electricloadcenter:storage:simple", "electricloadcenter:storage:battery", "electricloadcenter:storage:liionnmcbattery":
+			return true
+		}
+		return false
+	}
+	return !definition.IsMeter && strings.EqualFold(definition.OwnerType, kind)
 }
 
 func energyPathPVElectricalKey(value string) string { return strings.ToLower(strings.TrimSpace(value)) }
@@ -66,9 +112,11 @@ func energyPathPVElectricalRef(object idf.Object) idf.ComponentRef {
 	return idf.ComponentRef{ID: fmt.Sprintf("component:%d", object.Index), ObjectType: object.Type, ObjectName: energyPathPVElectricalField(object, 0), ObjectIndex: object.Index}
 }
 
-// Finite native reporting namespaces, NOT new supported target types. PVWatts
+// Finite native reporting namespaces. PVWatts
 // emits the same exact DC name. All four native inverter models share output
 // registration; the three native storage models likewise share these names.
+// Only the three storage types additionally share positive reporting support
+// for the four common energies; PV/inverter collision peers remain unreviewed.
 // Unrelated Generator/FuelCell/Converter names are not fabricated collisions.
 func energyPathPVElectricalReportingPeer(ownerType, peerType string) bool {
 	peer := energyPathPVElectricalKey(peerType)
@@ -100,8 +148,14 @@ func energyPathBuildPVElectricalInventory(doc idf.Document) energyPathPVElectric
 			reviewedTypes[energyPathPVElectricalKey(definition.OwnerType)] = true
 		}
 	}
+	reviewedTypes["electricloadcenter:storage:simple"], reviewedTypes["electricloadcenter:storage:liionnmcbattery"] = true, true
+	hasReviewedOwner := false
 	for _, object := range doc.Objects {
+		hasReviewedOwner = hasReviewedOwner || reviewedTypes[energyPathPVElectricalKey(object.Type)]
 		indices[object.Index]++
+		if output, ok := energyPathPVElectricalReadOriginalOutput(object); ok {
+			out.OriginalOutputs = append(out.OriginalOutputs, output)
+		}
 		if strings.EqualFold(object.Type, "Version") {
 			versions++
 			out.OriginalVersion = energyPathPVElectricalField(object, 0)
@@ -116,13 +170,16 @@ func energyPathBuildPVElectricalInventory(doc idf.Document) energyPathPVElectric
 		}
 	}
 	out.SchemaReviewed = versions == 1 && out.OriginalVersion == "25.1"
+	if !hasReviewedOwner {
+		return out // Original requests and unreviewed-owner evidence still survive.
+	}
 	for _, definition := range energyPathPVElectricalDefinitions() {
 		if definition.IsMeter {
 			continue
 		}
 		seen := map[string]bool{}
 		for _, owner := range doc.Objects {
-			if !strings.EqualFold(owner.Type, definition.OwnerType) {
+			if !definition.matchesOwnerType(owner.Type) {
 				continue
 			}
 			name := energyPathPVElectricalField(owner, 0)
@@ -332,12 +389,16 @@ func (builder *purposePlanBuilder) reuseEnergyPathPVElectricalHourlyCoverage(mon
 // BasicEnergy provenance; exact missing intents are added without updates.
 func (builder *purposePlanBuilder) addEnergyPathPVElectricalOutputs() {
 	inventory := energyPathBuildPVElectricalInventory(builder.doc)
+	intents := energyPathPVElectricalIntents(inventory)
+	if len(intents) == 0 {
+		return
+	}
 	existing := make([]PurposeOutputObject, 0, len(builder.existing))
 	for _, object := range builder.existing {
 		existing = append(existing, object)
 	}
 	sort.SliceStable(existing, func(i, j int) bool { return existing[i].Signature < existing[j].Signature })
-	for _, intent := range energyPathPVElectricalIntents(inventory) {
+	for _, intent := range intents {
 		request := intent.request()
 		covered := false
 		for _, candidates := range [][]PurposeOutputObject{existing, builder.objects} {

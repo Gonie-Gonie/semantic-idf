@@ -16,11 +16,21 @@ func compactReportDataFixture(t *testing.T, statements ...string) (*sql.DB, stri
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer db.Close()
+	// These fixtures only seed DDL/INSERT statements before the reader opens.
+	// Keep the same durable on-disk database, with one committed seed batch.
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
 	for _, statement := range statements {
-		if _, err := db.Exec(statement); err != nil {
-			db.Close()
+		if _, err := tx.Exec(statement); err != nil {
 			t.Fatal(err)
 		}
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
 	}
 	if err := db.Close(); err != nil {
 		t.Fatal(err)

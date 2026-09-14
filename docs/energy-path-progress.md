@@ -1310,3 +1310,79 @@ seconds; input, IDF and tabular pass from cache. The Windows production build
 passes in 7.938 seconds. Remote state is fetched before the normal commit hook
 and push. This validates the charge boundary checkpoint, not PV acceptance;
 the independent real-model count remains 12/19.
+
+The normal charge commit hook also passes: simulation 581.336 seconds and
+Windows build 5.728 seconds. Commit `f3a13c4` is pushed to origin/main.
+
+## Native electrical observations and consumed Cogeneration (2026-09-15)
+
+The next engineering-only pass preserves the remote UI. All three reviewed
+storage types share the four native Energy outputs without inheriting a
+battery-state equation or a second Zone multiplier. Original Output request
+duplicates remain distinct evidence: a deduplicated plan cannot invent a
+unique original request opener. The forty core PV Monthly/Hourly observations
+are validated against actual native dictionary metadata and weather cells;
+known zero, signed decrement, missing dictionary, NULL and incomplete calendars
+remain different states. Exact source snapshots survive two V1 and v2 JSON
+round trips without graph-derived values or unproved Zone allocations.
+
+Independent review catches two additional parser boundaries: validating an ID
+does not remove design/warmup values from a pre-existing generic aggregate,
+and an invalid native meter key can disguise that dictionary as another meter
+alias. Native source-ID ownership is now checked first, and every retained
+graph total/month/day/hour/selected-range map is rebuilt from validated native
+cells. Monthly output never invents selected-day energy. A tiny negative
+produced-energy cell cannot disappear into display rounding and authorize an
+absolute-valued or positive-only production sum. Removed legacy-frequency
+component sources remain explicitly nonadditive without gaining new native
+knownness, model-total basis or multiplier proof. Per-key/frequency availability
+reports the forty observations independently of whether graph nodes exist.
+
+Native `Cogeneration:<consumed resource>` and the ABUPS Generators resource
+columns are consumed input, not produced electricity. The independent raw
+reader preserves observed cells and separates numerical knownness from native
+meter membership. A Monthly parent wins once; a present unknown parent blocks
+member/TAB substitution. Only an absent parent and a proved sole native inverter
+permit the exact ancillary member fallback. Annual table data stays annual;
+nonconsumed Cogeneration resources stay source-only. Optional actual report
+name/report-for provenance accompanies native tabular sources. Separate
+add-missing-only Cogeneration electricity M/H requests do not change the core
+twenty-identity/fourty-intent census or rewrite original requests.
+
+Focused literal, original-input, native-reader, selected-range and public
+SQL/bundle/reload regressions pass in 12.571 seconds. These hand fixtures are
+not a physical annual PV balance. Full repository/Wails verification, fresh
+preserved native capture and the independent eight-group PV oracle still
+remain; no PV expected artifact or additional fixture acceptance is approved.
+
+The full `scripts/verify.ps1` gate passes: app 22.268, CLI 5.825,
+frontend/browser 184.218 and simulation 593.919 seconds, with input/IDF/tabular
+from cache; the production Windows build passes in 8.127 seconds. No test was
+excluded and no timeout was changed. Final review finds two remaining metadata
+boundaries to tighten before committing: unknown Cogeneration parent coverage
+must not say found, and unrelated native annual Generators zeros must not
+satisfy missing requested energy groups. Additional actual foreign-Heating-key
+and exact tabular-provenance regressions join that final verification; the
+normal commit hook will test/build the final state again.
+
+Both metadata boundaries are now fixed. Only an exact requested consumed parent
+with complete native observations at every requested frequency contributes to
+requested-output coverage. An unrelated annual native zero remains observed,
+but cannot fill a missing Facility request. Actual unknown source IDs remain
+traceable. Wildcard Cogeneration requests conservatively remain unresolved;
+they are not expanded into guessed resource coverage. The expanded focus passes
+in 14.631 seconds, including literal SQL and two V1/v2 reloads for these cases.
+The normal commit hook below reruns the complete gate on this final state.
+
+That hook reached the default 600-second package deadline during the final
+compact-SQL fixture setup (`FlushFileBuffers`), not a failed numerical assertion;
+simulation ended at 600.174 seconds. The commit was correctly blocked, and no
+push or PV capture was claimed. The limit and all tests remain unchanged.
+Source JSON now combines its two metadata scans while preserving typed decode,
+escaped/case-folded/duplicate keys and malformed-marker denial. Empty PV target
+plans avoid unnecessary owner scans/sorting without losing original request or
+unreviewed-owner evidence. The twelve compact-SQL fixtures seed the exact same
+DDL/rows in twelve durable transactions instead of seventy, still closing the
+writer before the read-only reader and retaining every assertion. The expanded
+focus, including these compatibility cases, passes in 15.173 seconds. A new
+normal hook reruns the complete verification/build gate before commit and push.

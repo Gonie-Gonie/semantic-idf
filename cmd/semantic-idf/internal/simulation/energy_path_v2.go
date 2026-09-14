@@ -239,6 +239,8 @@ func UpgradeEnergyExplanationV1(input EnergyExplanationV1) EnergyExplanationResu
 	}
 	result.Sources = applyEnergyPathHVACConsumptionSourceAllocations(result.Sources, annualZoneHVACAllocation, input.hvacConsumptionPools, scope)
 	result.Sources = applyEnergyPathPoolSourceAllocations(result.Sources, annualZoneAuxiliaryAllocation, input.poolEvidence, scope)
+	result.Sources = applyEnergyPathProtectedPVElectricalSources(result.Sources, input.pvElectricalEvidence)
+	result.Sources = applyEnergyPathCogenerationSourceObservations(result.Sources, input.cogenerationEvidence)
 	applyEnergyPathServiceBoundaryAnnualCensus(&result, annualBoundaryCensus)
 	filterEnergyPathServiceBoundaryResult(&result)
 	refreshEnergyPathQuality(&result)
@@ -2976,6 +2978,10 @@ func filterEnergyDataSourcesForV2(input []EnergyDataSource, legacyNodes []Energy
 	}
 	out := make([]EnergyDataSource, 0, len(input))
 	for _, source := range input {
+		if energyPathPVSourceObservationProtected(source) {
+			out = append(out, energyPathPVSourceObservationPresentation(source))
+			continue
+		}
 		if scope.Kind == "zone" && !used[source.ID] {
 			continue
 		}
@@ -3043,6 +3049,9 @@ func appendEnergyDataSourceScopeDetails(parent []EnergyDataSource, scoped []Ener
 		indexByID[parent[index].ID] = index
 	}
 	for _, source := range scoped {
+		if energyPathPVSourceObservationProtected(source) {
+			continue
+		}
 		index, ok := indexByID[source.ID]
 		if !ok {
 			continue

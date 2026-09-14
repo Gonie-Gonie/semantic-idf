@@ -132,12 +132,16 @@ func (source *EnergyDataSource) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &decoded); err != nil {
 		return err
 	}
-	presence, err := energyPathSourceValuePresence(data)
+	presence, nativeObservation, err := energyPathSourceObservationFields(data)
 	if err != nil {
 		return err
 	}
 	*source = EnergyDataSource(decoded)
 	source.inspectorDecodedFromJSON, source.inspectorValuePresence = true, presence
+	source.pvObservationProtection = decodeEnergyPathPVObservationProtection(nativeObservation)
+	if energyPathPVSourceObservationProtected(*source) {
+		*source = energyPathPVSourceObservationPresentation(*source)
+	}
 	return nil
 }
 
@@ -185,6 +189,9 @@ func energyPathSourcesForWire(sources []EnergyDataSource) []energyPathSourceWire
 
 func (wire energyPathSourceWire) MarshalJSON() ([]byte, error) {
 	source := wire.EnergyDataSource
+	if energyPathPVSourceObservationProtected(source) {
+		return marshalEnergyPathPVProtectedSource(source)
+	}
 	prepared := energyDataSourceHasPreparedValues(source)
 	type detailWire struct {
 		EnergyDataSourceScopeDetail
