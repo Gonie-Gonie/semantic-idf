@@ -186,6 +186,9 @@ func epathCompileSQLModelChecks(observed epathRealOracleEvidence, model epathRea
 	if err := epathSQLBindVRFFrames(observed, model, &frames); err != nil {
 		return checks, err
 	}
+	if err := epathSQLBindPoolSources(observed, model, &frames); err != nil {
+		return checks, err
+	}
 	if err := epathCompileSQLBaseboardContexts(observed.sqlPath, observed.originalText, observed.outputPlan, observed.Sources, model, &frames, observed.executedText); err != nil {
 		return checks, err
 	}
@@ -198,11 +201,17 @@ func epathCompileSQLModelChecks(observed epathRealOracleEvidence, model epathRea
 	if err := epathSQLBindAirLoopFans(observed.originalText, model, &frames); err != nil {
 		return checks, err
 	}
+	poolSurface, err := epathCompileSQLPoolSurfaceQualification(observed, model, frames)
+	if err != nil {
+		return checks, err
+	}
 	for _, build := range []func() error{
 		func() error { return epathSQLModelLoadDriverChecks(frames, model, &checks) },
 		func() error { return epathSQLModelDriverLinkChecks(frames, model, &checks) },
 		func() error { return epathSQLModelThermalReconciliationChecks(frames, model, &checks) },
 		func() error { return epathSQLModelSourceChecks(frames, observed.Sources, model, &checks) },
+		func() error { return epathSQLModelPoolSourceChecks(frames, &checks) },
+		func() error { return epathSQLModelPoolSurfaceChecks(poolSurface, &checks) },
 		func() error { return epathSQLModelDirectHVACSourceChecks(frames, &checks) },
 		func() error { return epathSQLModelBaseboardContextSourceChecks(frames, &checks) },
 		func() error { return epathSQLModelHVACSharedSourceChecks(frames, &checks) },
@@ -336,6 +345,9 @@ func epathCheckSQLModelConversion(bundle PurposeResultBundle, check epathSQLMode
 }
 
 func epathCheckSQLModelAllocation(bundle PurposeResultBundle, check epathSQLModelCheck) error {
+	if check.Allocation != nil && check.Allocation.NativePoolPump != nil {
+		return epathCheckSQLPoolPumpAllocation(bundle, check)
+	}
 	if check.Allocation != nil && check.Allocation.HVACConsumption != nil {
 		return epathCheckSQLHVACConsumptionAllocation(bundle, check)
 	}
@@ -497,6 +509,18 @@ func epathEvaluateSQLModelChecks(out *epathRealOracleEvidence, bundle PurposeRes
 		}
 		if err == nil && check.AnnualServiceAbsent {
 			err = epathCheckSQLAnnualServiceAbsent(bundle, check)
+		}
+		if err == nil && (check.PoolBoundary != nil || check.Want.Status == epathSQLPoolHeatingUnquantified) {
+			err = epathSQLCheckPoolBoundaryConsumer(bundle, check)
+		}
+		if err == nil && (check.PoolSource != nil || strings.Contains(check.Item.Key, "|pool_native_source/") || strings.Contains(check.Want.Key, "|pool_native_source/")) {
+			err = epathSQLCheckPoolSourceConsumer(bundle, check)
+		}
+		if err == nil && (check.PoolSurface != nil || strings.Contains(check.Item.Key, "|pool_surface_source/") || strings.Contains(check.Want.Key, "|pool_surface_source/")) {
+			err = epathSQLCheckPoolSurfaceConsumer(bundle, check)
+		}
+		if err == nil && (strings.Contains(check.Item.Key, "|pool_native_pump/") || strings.Contains(check.Want.Key, "|pool_native_pump/") || check.Allocation != nil && check.Allocation.NativePoolPump != nil) {
+			err = epathSQLCheckPoolPumpConsumer(bundle, check)
 		}
 		out.Metrics = append(out.Metrics, metric)
 		if err != nil {

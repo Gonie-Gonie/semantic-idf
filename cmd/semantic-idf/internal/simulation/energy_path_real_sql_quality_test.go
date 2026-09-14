@@ -88,7 +88,7 @@ func epathSQLModelQualityChecks(observed epathRealOracleEvidence, frames epathSQ
 							continue
 						}
 						target := check.Item.Target
-						if target.Collection == "nodes" && target.Field == "value" && (target.Level == "load" || target.Level == "end_use" || target.Level == "carrier") || check.Conversion != nil || check.AnnualServiceAbsent && target.Collection == "links" || check.SiteFlow != nil && target.Field == "fromValue" && target.Relation == "end_use_to_carrier" && (check.SiteFlow.EndUse == "cooling" || check.SiteFlow.EndUse == "heating") {
+						if target.Collection == "nodes" && target.Field == "value" && (target.Level == "load" || target.Level == "end_use" || target.Level == "carrier") || check.Conversion != nil || (check.AnnualServiceAbsent || check.PoolBoundary != nil || check.Want.Status == epathSQLPoolHeatingUnquantified) && target.Collection == "links" || check.SiteFlow != nil && target.Field == "fromValue" && target.Relation == "end_use_to_carrier" && (check.SiteFlow.EndUse == "cooling" || check.SiteFlow.EndUse == "heating") {
 							proof.Dependencies = append(proof.Dependencies, check)
 						}
 					}
@@ -707,6 +707,9 @@ func epathSQLQualityRatioCounts(bundle PurposeResultBundle, check epathSQLModelC
 		}
 		if err == nil && dependency.AuxiliaryZone != nil {
 			err = epathCheckSQLAuxiliaryZone(bundle, dependency)
+		}
+		if err == nil && (dependency.PoolBoundary != nil || dependency.Want.Status == epathSQLPoolHeatingUnquantified) {
+			err = epathSQLCheckPoolBoundaryConsumer(bundle, dependency)
 		}
 		if err != nil {
 			return fail(fmt.Errorf("ratio graph prerequisite %s: %w", dependency.Want.Key, err))

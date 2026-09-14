@@ -1227,3 +1227,39 @@ pass from cache. The production Windows build passes in 7.930 seconds. All 52
 preservation-baseline files are rechecked unchanged, and the remote is fetched
 before the normal commit-hook verification/build and push. This does not approve
 the Pool fixture or replace its remaining independent numerical acceptance.
+
+## Pool independent acceptance checkpoint (2026-09-15)
+
+Pool now passes all 16,976 independently compiled metrics across eight groups.
+Original/SQL ownership proves six Zone multipliers of 3 exactly once, five
+supplied recipients excluding the return plenum, eight hot-water plant demands
+including the Pool, and the separate chilled-water pump budget. The source
+oracle retains all 28 Monthly/Hourly Energy/Rate identities and the native Pool
+floor surface-to-air exchange. Process heat does not become extra Zone load,
+and unknown space-heating conversion remains an explicit semantic null in both
+graph and cached summaries. Joint milli-kWh checks reject independently rounded
+recipient amounts whose sum exceeds the actual source/Building budget.
+
+The immutable candidate passes diagnostic 03 with no numerical/contract failures
+or coverage gaps. Root reruns separate native arithmetic and complete registry
+reviews before manually approving pending SHA256
+`c6e21b9b835790a0a5dcadad2dc531b77ac2cef7424586a9d9c98602337fd4fe`.
+The lossless 146,471-byte companion preserves all 6,338 explicit zero metrics
+and 611 typed nulls; no candidate value is copied into expected quantities.
+All eleven earlier fixtures pass current-code rebuilding with twenty-two
+approval artifacts unchanged. All 52 preservation-baseline artifacts remain
+unchanged. The twelve-fixture integrity guard and fresh Pool saved acceptance
+pass in 515.508 seconds, including 512.32 seconds for all 16,976 saved checks.
+Detailed source identities, hashes, rounding boundaries and review limitations
+are in `energy-path-pool-acceptance.md`.
+
+Section 22 is now 12/19, not complete. PV/storage, no cooling, no heating,
+simultaneous operation and Large Office 22.1/23.2/24.2 remain. The remote UI is
+unchanged; full repository/Wails verification and normal commit/push finish this
+checkpoint before the next physics correction.
+
+Pool's full `scripts/verify.ps1` also passes without exclusions or timeout
+changes: app 17.931, frontend/browser 176.922 and simulation 566.299 seconds;
+CLI, input, IDF and tabular pass from cache. The Windows production build passes
+in 6.485 seconds. Approved header/companion hashes remain unchanged. Normal
+commit-hook verification and push follow this completed full gate.

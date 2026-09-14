@@ -5,6 +5,7 @@ package simulation
 // calling the production classifier, multiplier, allocation or quality helpers.
 type epathRealSQLModel struct {
 	OriginalZoneMultiplierProof string                              `json:"originalZoneMultiplierProof,omitempty"`
+	PoolSystems                 []epathRealSQLPoolSystem            `json:"poolSystems,omitempty"`
 	Schema                      string                              `json:"schema"`
 	Surface                     epathRealSQLSurfaceModel            `json:"surface"`
 	Families                    []epathRealSQLFamily                `json:"families"`

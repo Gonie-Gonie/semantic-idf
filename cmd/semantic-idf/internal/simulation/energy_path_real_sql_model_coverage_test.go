@@ -197,7 +197,7 @@ func epathSQLCoverageRecords(bundle PurposeResultBundle, context epathSQLCoverag
 		if check.Reconciliation != nil {
 			validators = append(validators, func() error { return epathCheckSQLModelReconciliation(bundle, check) })
 		}
-		if check.Allocation != nil && (check.Allocation.RadiantCarrier != nil || check.Allocation.HVACConsumption != nil || check.Allocation.DirectFan != nil) {
+		if check.Allocation != nil && (check.Allocation.RadiantCarrier != nil || check.Allocation.HVACConsumption != nil || check.Allocation.DirectFan != nil || check.Allocation.NativePoolPump != nil) {
 			validators = append(validators, func() error { return epathCheckSQLModelAllocation(bundle, check) })
 		}
 		if check.SiteFlow != nil {
@@ -268,6 +268,18 @@ func epathSQLCoverageRecords(bundle PurposeResultBundle, context epathSQLCoverag
 		}
 		if check.AnnualServiceAbsent {
 			validators = append(validators, func() error { return epathCheckSQLAnnualServiceAbsent(bundle, check) })
+		}
+		if check.PoolBoundary != nil || check.Want.Status == epathSQLPoolHeatingUnquantified {
+			validators = append(validators, func() error { return epathSQLCheckPoolBoundaryConsumer(bundle, check) })
+		}
+		if check.PoolSource != nil || strings.Contains(check.Item.Key, "|pool_native_source/") || strings.Contains(check.Want.Key, "|pool_native_source/") {
+			validators = append(validators, func() error { return epathSQLCheckPoolSourceConsumer(bundle, check) })
+		}
+		if check.PoolSurface != nil || strings.Contains(check.Item.Key, "|pool_surface_source/") || strings.Contains(check.Want.Key, "|pool_surface_source/") {
+			validators = append(validators, func() error { return epathSQLCheckPoolSurfaceConsumer(bundle, check) })
+		}
+		if strings.Contains(check.Item.Key, "|pool_native_pump/") || strings.Contains(check.Want.Key, "|pool_native_pump/") || check.Allocation != nil && check.Allocation.NativePoolPump != nil {
+			validators = append(validators, func() error { return epathSQLCheckPoolPumpConsumer(bundle, check) })
 		}
 		if len(validators) == 0 {
 			continue
@@ -405,12 +417,16 @@ func epathSQLCoverageRecords(bundle PurposeResultBundle, context epathSQLCoverag
 		}
 		for _, check := range candidates {
 			target := check.Item.Target
-			if check.Allocation != nil && (check.Allocation.RadiantCarrier != nil || check.Allocation.HVACConsumption != nil || check.Allocation.DirectFan != nil) {
+			pool := strings.Contains(check.Item.Key, "|pool_native_pump/") || strings.Contains(check.Want.Key, "|pool_native_pump/") || check.Allocation != nil && check.Allocation.NativePoolPump != nil
+			if pool || check.Allocation != nil && (check.Allocation.RadiantCarrier != nil || check.Allocation.HVACConsumption != nil || check.Allocation.DirectFan != nil) {
 				valid, checked := proofValid[check.Want.Key]
 				if !checked {
 					// A copied Building ledger is still proved against its
 					// original Building context, not merely its repeated ID.
 					valid = epathCheckSQLModelAllocation(bundle, check) == nil
+					if valid && pool {
+						valid = epathSQLCheckPoolPumpConsumer(bundle, check) == nil
+					}
 					proofValid[check.Want.Key] = valid
 				}
 				if !valid {

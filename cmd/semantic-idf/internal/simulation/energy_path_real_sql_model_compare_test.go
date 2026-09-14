@@ -8,6 +8,9 @@ import (
 )
 
 type epathSQLModelCheck struct {
+	PoolSurface            *epathSQLPoolSurfaceQualification
+	PoolSource             *epathSQLPoolSourceProof
+	PoolBoundary           *epathSQLPoolBoundaryProof
 	Item                   epathRealOracleMetricRecipe
 	Want                   epathRealOracleMetric
 	Quantity               *epathSQLQuantity

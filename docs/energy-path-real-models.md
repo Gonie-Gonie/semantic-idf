@@ -6,11 +6,16 @@ Official model inputs, licenses and a versioned catalog live under
 `cmd/semantic-idf/internal/simulation/testdata/energy_path_real_models`.
 Coverage tags in that catalog are obligations to verify, not completed claims.
 
-Current checkpoint: ten of nineteen fixtures are approved: Large Office, Small
+Current checkpoint: twelve of nineteen fixtures are approved: Large Office, Small
 Office, Ideal Loads, PTAC, PTHP, Fan Coil, VRF, Radiant, District Energy and Mixed
-Heating Fuels 25.1. The latest [mixed-heating acceptance](energy-path-mixed-heating-acceptance.md)
-checks 17,275 independent metrics, including native electric baseboard ownership,
-shared boiler electricity and exact consuming source boundaries. The remaining nine catalog
+Heating Fuels, plus ZoneGroup and Zone multiplier/Pool 25.1. The
+[ZoneGroup acceptance](energy-path-zone-group-acceptance.md) checks 21,413
+independent metrics, including native WindowAC/baseboard ownership, separate
+Zone/Group factors and district-water interior equipment. The latest
+[Pool acceptance](energy-path-pool-acceptance.md) checks 16,976 independent
+metrics and passes fresh saved-run rebuilding, including native pool/plant
+sources, shared-service exclusions and exact joint chilled-water pump budgets.
+The remaining seven catalog
 entries, including Large Office 22.1/23.2/24.2, are not yet approved.
 Earlier findings below are retained as a chronological record, not presented
 as the current acceptance status. Section 22 and later checklist sections remain
@@ -197,11 +202,18 @@ environments, zero/negative flow, missing/nonfinite values and duplicate
 identities or observations. The fixture's eight-group numeric manifest remains
 required; operating evidence alone does not approve Energy Path quantities.
 
-Independent read-only SQL spot checks for this capture use weather environment
-3, monthly dictionaries, `J / 3,600,000`, and no production reader/classifier.
+The following separate spot-check table belongs to **Large Office 25.1**, not
+the simultaneous chiller/heater example above. Its preserved capture is
+`real-large-office-25-1-20260907T162304.141598300`, with SQL SHA-256
+`8ea939c1d962aa37b2c246e8c833427de7a38ef3ed6d98f241e9ed9cc8e5bc46`.
+Independent read-only SQL spot checks use weather environment 3, monthly
+dictionaries, `J / 3,600,000`, and no production reader/classifier.
 Zone variables are joined by exact Zone name to SQL `Zones`; their effective
 values multiply `Multiplier * ListMultiplier` once. Building meters are not
-multiplied again. In this model, six middle-floor Zones have multiplier 10.
+multiplied again. In Large Office, six of nineteen Zones have multiplier 10.
+The simultaneous example instead has six Zones with factor 1. This attribution
+was rechecked directly against both native SQL files on 2026-09-15; the table
+is not simultaneous-model acceptance evidence.
 
 | Observed quantity | Raw kWh | Effective/building kWh |
 | --- | ---: | ---: |

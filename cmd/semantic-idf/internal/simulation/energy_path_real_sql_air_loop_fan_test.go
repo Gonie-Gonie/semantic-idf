@@ -136,12 +136,19 @@ func epathSQLAirLoopFanOriginal(doc idf.Document, declaration epathRealSQLAirLoo
 
 func epathSQLBindAirLoopFans(original string, model epathRealSQLModel, frames *epathSQLFrames) error {
 	if len(model.AirLoopFans) == 0 {
+		if len(model.PoolSystems) > 0 {
+			return fmt.Errorf("Pool model has no original fan declaration")
+		}
 		return nil
 	}
-	if frames == nil || len(frames.AirLoopFans) != 0 || strings.TrimSpace(original) == "" {
+	if frames == nil || len(frames.AirLoopFans) != 0 || len(frames.PoolAirLoopFans) != 0 || strings.TrimSpace(original) == "" {
 		return fmt.Errorf("central fan lacks fresh original-bound frames")
 	}
 	doc, err := idf.Parse(original)
+	if err != nil {
+		return err
+	}
+	poolBindings, err := epathSQLBindPoolAirLoopFans(original, model.PoolSystems, frames.PoolSystems, model.AirLoopFans)
 	if err != nil {
 		return err
 	}
@@ -150,12 +157,18 @@ func epathSQLBindAirLoopFans(original string, model epathRealSQLModel, frames *e
 		if _, duplicate := out[declaration.SiteID]; duplicate {
 			return fmt.Errorf("duplicate central fan site declaration")
 		}
-		if err := epathSQLAirLoopFanOriginal(doc, declaration); err != nil {
+		if len(model.PoolSystems) > 0 {
+			binding, exists := poolBindings[declaration.SiteID]
+			if !exists || !reflect.DeepEqual(binding.Fan, declaration) {
+				return fmt.Errorf("Pool fan has no complete original binding")
+			}
+		} else if err := epathSQLAirLoopFanOriginal(doc, declaration); err != nil {
 			return err
 		}
 		out[declaration.SiteID] = declaration
 	}
 	frames.AirLoopFans = out
+	frames.PoolAirLoopFans = poolBindings
 	return nil
 }
 
@@ -186,6 +199,16 @@ func epathSQLValidateAirLoopFanFrames(frames epathSQLFrames, model epathRealSQLM
 	}
 	if !reflect.DeepEqual(want, got) {
 		return fmt.Errorf("central fan allocation escapes its original served Zones")
+	}
+	if len(model.PoolSystems) > 0 {
+		binding, exists := frames.PoolAirLoopFans[auxiliary.SiteID]
+		if !exists || len(frames.PoolAirLoopFans) != 1 {
+			return fmt.Errorf("Pool fan lacks its detached original binding")
+		}
+		return epathSQLValidatePoolAirLoopFanBinding(binding, model.PoolSystems, frames.PoolSystems, actual)
+	}
+	if len(frames.PoolSystems) != 0 || len(frames.PoolAirLoopFans) != 0 {
+		return fmt.Errorf("undeclared Pool fan evidence cannot use legacy fallback")
 	}
 	return nil
 }

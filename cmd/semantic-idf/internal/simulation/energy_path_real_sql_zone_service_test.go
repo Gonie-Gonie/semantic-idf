@@ -9,6 +9,7 @@ import (
 // Quantities come only from reviewed SQL pool identities and their declared
 // served-Zone loads. Carrier endpoints are not inferred from candidate totals.
 type epathSQLZoneServiceProof struct {
+	NativePool                          *epathSQLPoolBoundaryProof
 	HVACConsumption                     *epathSQLHVACConsumptionServiceFrames
 	NativeVRF                           *epathSQLVRFZoneServiceProof
 	DirectHVAC                          bool
@@ -56,6 +57,12 @@ func epathSQLModelZoneServiceChecks(frames epathSQLFrames, model epathRealSQLMod
 		served, err := epathSQLDeclaredZones(frames, service.ServedZones)
 		if err != nil || len(served) == 0 {
 			return fmt.Errorf("Zone service requires exact nonempty served membership: %v", err)
+		}
+		if service.Service == "heating" && len(model.PoolSystems) > 0 {
+			if err := epathSQLPoolHeatingZoneServiceChecks(frames, model, service, checks); err != nil {
+				return err
+			}
+			continue
 		}
 		annualOnly, err := epathSQLServiceIsAnnualOnly(frames, service)
 		if err != nil {
@@ -339,6 +346,9 @@ func epathSQLZoneServiceVerifySources(ids []string, actual map[string]EnergyData
 
 func epathCheckSQLZoneServiceEndpoints(bundle PurposeResultBundle, check epathSQLModelCheck) error {
 	proof := check.ZoneService
+	if proof != nil && proof.NativePool != nil {
+		return epathCheckSQLPoolHeatingZoneService(bundle, check)
+	}
 	if proof != nil && proof.HVACConsumption != nil {
 		return epathCheckSQLHVACConsumptionZoneService(bundle, check)
 	}

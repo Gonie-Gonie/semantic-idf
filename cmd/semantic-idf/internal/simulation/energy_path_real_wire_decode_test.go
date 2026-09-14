@@ -15,12 +15,25 @@ type epathOraclePlainPeriod EnergyPeriod
 type epathOraclePlainZone EnergyExplanationZoneResult
 type epathOraclePlainSummary EnergyExplanationSummary
 
+// Keep the original legacy collection separate from canonical Ratios. No
+// application compatibility reader, recalculation or cleanup is invoked.
+type epathOracleOriginalSummaryWire struct {
+	epathOraclePlainSummary
+	DerivedKPIs []EnergyExplanationSummaryItem `json:"derivedKpis"`
+}
+
+func (wire epathOracleOriginalSummaryWire) originalSummary() EnergyExplanationSummary {
+	summary := EnergyExplanationSummary(wire.epathOraclePlainSummary)
+	summary.DerivedKPIs = wire.DerivedKPIs
+	return summary
+}
+
 func epathDecodeOriginalOracleCandidate(input io.Reader) (PurposeResultBundle, error) {
 	var plain epathOraclePlainBundle
 	wire := struct {
 		*epathOraclePlainBundle
-		Result  json.RawMessage          `json:"energyExplanation"`
-		Summary *epathOraclePlainSummary `json:"energyExplanationSummary"`
+		Result  json.RawMessage                 `json:"energyExplanation"`
+		Summary *epathOracleOriginalSummaryWire `json:"energyExplanationSummary"`
 	}{epathOraclePlainBundle: &plain}
 	decoder := json.NewDecoder(input)
 	if err := decoder.Decode(&wire); err != nil {
@@ -36,12 +49,18 @@ func epathDecodeOriginalOracleCandidate(input io.Reader) (PurposeResultBundle, e
 	}
 	plain.EnergyExplanation = result
 	if wire.Summary != nil {
-		plain.EnergyExplanationSummary = EnergyExplanationSummary(*wire.Summary)
+		plain.EnergyExplanationSummary = wire.Summary.originalSummary()
 	}
 	return PurposeResultBundle(plain), nil
 }
 
 func epathDecodeOriginalOracleResult(data json.RawMessage) (EnergyExplanationResult, error) {
+	if err := epathValidateOracleOriginalHourlyEnergy(data); err != nil {
+		return EnergyExplanationResult{}, err
+	}
+	if err := epathValidateOracleOriginalNodeValues(data); err != nil {
+		return EnergyExplanationResult{}, err
+	}
 	var plain epathOraclePlainResult
 	wire := struct {
 		*epathOraclePlainResult
@@ -63,8 +82,8 @@ func epathDecodeOriginalOracleResult(data json.RawMessage) (EnergyExplanationRes
 		var zone epathOraclePlainZone
 		zoneWire := struct {
 			*epathOraclePlainZone
-			Periods []json.RawMessage        `json:"periods"`
-			Summary *epathOraclePlainSummary `json:"summary"`
+			Periods []json.RawMessage               `json:"periods"`
+			Summary *epathOracleOriginalSummaryWire `json:"summary"`
 		}{epathOraclePlainZone: &zone}
 		if err := json.Unmarshal(data, &zoneWire); err != nil {
 			return EnergyExplanationResult{}, err
@@ -74,7 +93,7 @@ func epathDecodeOriginalOracleResult(data json.RawMessage) (EnergyExplanationRes
 			return EnergyExplanationResult{}, err
 		}
 		if zoneWire.Summary != nil {
-			zone.Summary = EnergyExplanationSummary(*zoneWire.Summary)
+			zone.Summary = zoneWire.Summary.originalSummary()
 		}
 		plain.ZoneResults = append(plain.ZoneResults, EnergyExplanationZoneResult(zone))
 	}
@@ -87,13 +106,13 @@ func epathDecodeOriginalOraclePeriods(rows []json.RawMessage) ([]EnergyPeriod, e
 		var period epathOraclePlainPeriod
 		wire := struct {
 			*epathOraclePlainPeriod
-			Summary *epathOraclePlainSummary `json:"summary"`
+			Summary *epathOracleOriginalSummaryWire `json:"summary"`
 		}{epathOraclePlainPeriod: &period}
 		if err := json.Unmarshal(data, &wire); err != nil {
 			return nil, err
 		}
 		if wire.Summary != nil {
-			summary := EnergyExplanationSummary(*wire.Summary)
+			summary := wire.Summary.originalSummary()
 			period.Summary = &summary
 		}
 		periods = append(periods, EnergyPeriod(period))

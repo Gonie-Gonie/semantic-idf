@@ -11,6 +11,7 @@ import (
 // observation. Sources justify consumption; NodeSources additionally justify
 // this Zone's load weight. Neither map invents an individual pump meter.
 type epathSQLAuxiliaryZoneProof struct {
+	NativePool                                                                 *epathSQLPoolPumpConsumer
 	SiteID, EndUse, Carrier, ZoneName, Period, Basis, Weight, AllocationMethod string
 	Value                                                                      epathSQLQuantity
 	Sources, NodeSources                                                       map[string]epathSQLOriginalSource
@@ -51,6 +52,24 @@ func epathSQLAuxiliaryZoneProofs(frames epathSQLFrames, model epathRealSQLModel)
 			return nil, fmt.Errorf("duplicate/empty auxiliary site declaration")
 		}
 		seen[auxiliary.SiteID] = true
+		poolConsumer, err := epathSQLPoolPumpConsumerFor(frames, model, auxiliary)
+		if err != nil {
+			return nil, err
+		}
+		if poolConsumer != nil {
+			if endUses["pumps"] {
+				return nil, fmt.Errorf("duplicate native Pool pump authority")
+			}
+			endUses["pumps"] = true
+			proofs, err := epathSQLPoolPumpAuxiliaryProofs(poolConsumer)
+			if err != nil {
+				return nil, err
+			}
+			for key, proof := range proofs {
+				out[key] = proof
+			}
+			continue
+		}
 		if auxiliary.Weight == "native_direct" {
 			fans, err := epathSQLCompileDirectFans(frames, model)
 			if err != nil || fans == nil || fans.SiteID != auxiliary.SiteID {
@@ -227,6 +246,9 @@ func epathCheckSQLAuxiliaryZone(bundle PurposeResultBundle, check epathSQLModelC
 		return fmt.Errorf("invalid exact independent allocated auxiliary scalar proof")
 	}
 	_, policyErr := epathSQLAllocatedAuxiliaryPolicy(p.EndUse, p.Carrier, p.Weight, p.AllocationMethod)
+	if p.NativePool != nil {
+		policyErr = epathSQLValidatePoolPumpAuxiliaryProof(p)
+	}
 	if p.SiteID == "" || policyErr != nil || p.Basis != "service_path_allocation" || !p.Value.valid() || p.Value.Value < 0 || !epathOracleValidPeriod(p.Period) || !p.Owned && !p.Value.includesZero() {
 		return fmt.Errorf("invalid exact independent allocated auxiliary scalar proof")
 	}

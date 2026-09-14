@@ -14,6 +14,7 @@ type epathSQLConversionProof struct {
 }
 
 type epathSQLAllocationProof struct {
+	NativePoolPump                          *epathSQLPoolPumpLedgerProof
 	DirectFan                               *epathSQLDirectFanFrames
 	HVACConsumption                         *epathSQLHVACConsumptionLedgerProof
 	NativeVRF                               *epathSQLVRFAllocationLedgerProof
@@ -129,6 +130,12 @@ func epathSQLModelServiceChecks(frames epathSQLFrames, model epathRealSQLModel, 
 		}
 		if len(served) == 0 {
 			return fmt.Errorf("service path requires explicit served Zone membership")
+		}
+		if service.Service == "heating" && len(model.PoolSystems) > 0 {
+			if err := epathSQLPoolHeatingBuildingServiceChecks(frames, model, service, checks); err != nil {
+				return err
+			}
+			continue
 		}
 		annualOnly, err := epathSQLServiceIsAnnualOnly(frames, service)
 		if err != nil {
@@ -307,6 +314,16 @@ func epathSQLModelServiceChecks(frames epathSQLFrames, model epathRealSQLModel, 
 		return fmt.Errorf("both declared conversion services are required")
 	}
 	for _, aux := range model.Auxiliaries {
+		poolConsumer, err := epathSQLPoolPumpConsumerFor(frames, model, aux)
+		if err != nil {
+			return err
+		}
+		if poolConsumer != nil {
+			if err := epathSQLPoolPumpBuildingLedgerChecks(poolConsumer, checks); err != nil {
+				return err
+			}
+			continue
+		}
 		if aux.Weight == "native_direct" {
 			fans, err := epathSQLCompileDirectFans(frames, model)
 			if err != nil || fans == nil || fans.SiteID != aux.SiteID {
