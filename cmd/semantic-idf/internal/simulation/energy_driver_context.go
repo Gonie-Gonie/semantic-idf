@@ -36,6 +36,8 @@ type energyDriverBuildContext struct {
 	BaseboardTargets             []energyPathBaseboardTarget
 	SharedHeatingElectricTargets []energyPathSharedHeatingElectricTarget
 	PoolInventory                energyPathPoolInventory
+	StorageChargeInventory       energyPathStorageChargeInventory
+	PVElectricalInventory        energyPathPVElectricalInventory
 }
 
 func newEnergyDriverBuildContext(report idf.GeometryReport, documents ...idf.Document) energyDriverBuildContext {
@@ -47,6 +49,8 @@ func newEnergyDriverBuildContext(report idf.GeometryReport, documents ...idf.Doc
 	var baseboardTargets []energyPathBaseboardTarget
 	var sharedHeatingElectricTargets []energyPathSharedHeatingElectricTarget
 	var poolInventory energyPathPoolInventory
+	var storageChargeInventory energyPathStorageChargeInventory
+	var pvElectricalInventory energyPathPVElectricalInventory
 	hasNativeBaseboard := false
 	if len(documents) > 0 {
 		addEnergyInternalMassCategories(&index, documents[0], report)
@@ -60,6 +64,8 @@ func newEnergyDriverBuildContext(report idf.GeometryReport, documents ...idf.Doc
 		directHVACComponents = append(directHVACComponents, energyPathBaseboardDirectTargets(baseboardTargets)...)
 		sharedHeatingElectricTargets = energyPathSharedHeatingElectricTargets(documents[0])
 		poolInventory = energyPathNativePoolInventory(documents[0])
+		storageChargeInventory = energyPathBuildStorageChargeInventory(documents[0])
+		pvElectricalInventory = energyPathBuildPVElectricalInventory(documents[0])
 		poolRoutes := applyEnergyPathPoolAirRoutes(documents[0], &poolInventory)
 		if len(poolRoutes) > 0 {
 			hvacReport := idf.AnalyzeHVAC(documents[0])
@@ -78,6 +84,8 @@ func newEnergyDriverBuildContext(report idf.GeometryReport, documents ...idf.Doc
 		BaseboardTargets:             baseboardTargets,
 		SharedHeatingElectricTargets: sharedHeatingElectricTargets,
 		PoolInventory:                poolInventory,
+		StorageChargeInventory:       storageChargeInventory,
+		PVElectricalInventory:        pvElectricalInventory,
 	}
 }
 

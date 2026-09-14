@@ -500,6 +500,7 @@ func BuildPurposeRunPlan(doc idf.Document, request SimulationPurposeRequest) Pur
 	}
 	if purposeIDsContain(request.Purposes, SimulationPurposeBasicEnergy) && request.BasicEnergyDetail == PurposeBasicEnergyDetailEnergyPath {
 		builder.addEnergyPathHourlyOutputs()
+		builder.addEnergyPathPVElectricalOutputs()
 	}
 	if request.DiscoveryAllowed {
 		builder.addDiscoveryDictionaryOutputs()
@@ -512,6 +513,9 @@ func (builder *purposePlanBuilder) addEnergyPathHourlyOutputs() {
 	// an additional native Hourly series for selected-component source charts.
 	for _, monthly := range append([]PurposeOutputObject(nil), builder.objects...) {
 		if !purposeIDsContain(monthly.PurposeIDs, SimulationPurposeBasicEnergy) || !purposeObjectIsSeries(monthly.ObjectType) || !strings.EqualFold(monthly.ReportingFrequency, "Monthly") {
+			continue
+		}
+		if builder.reuseEnergyPathPVElectricalHourlyCoverage(monthly) {
 			continue
 		}
 		covered := false

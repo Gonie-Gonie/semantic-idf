@@ -88,6 +88,42 @@ context, not a fifth conserved stage. Generation/discharge must not inflate
 consumption. Raw water volume is context, not site energy; only an explicitly
 derived energy equivalent with an energy unit can enter the energy scale.
 
+### Native storage charge boundary
+
+A support node may carry optional `storageChargeBoundaries[]` records. Each
+record contains `schema=semantic-idf.storage-charge-boundary/v1`, `state`,
+`sourceKey`, `originalVersion`, `busType`, `reason`, optional `objects[]` and
+`sourceIds[]`. Original objects have `objectType`, `objectName`, and an explicit,
+unique, nonnegative `objectIndex`. These are original physical object references,
+not executed-file offsets or Output request indices.
+
+`state=native_storage_non_consumption` identifies the reviewed EnergyPlus 25.1
+Simple, Battery/KiBaM or LiIonNMCBattery charge reporting boundary on an
+AlternatingCurrentWithStorage, DirectCurrentWithInverterACStorage or
+DirectCurrentWithInverterDCStorage distribution. The reason is
+`native_charge_is_not_facility_consumption`. Native Charge Energy is an
+unmetered transfer; its distinct Production Decrement already participates in
+ElectricityProduced. Charge is neither an additional Facility end use nor an
+additional supply ribbon. Genuine inverter ancillary electricity is a separate
+consumption boundary, not charge.
+
+`state=unresolved_native_storage_boundary` retains one of these reasons:
+`unreviewed_original_version`, `unresolved_storage_reporting_owner`,
+`unresolved_storage_distribution`, `unbound_source_key_in_original_model`, or
+`unproved_native_charge_reporting_identity`. An unknown or malformed **present**
+record still denies flow and emits a diagnostic; it cannot silently become
+legacy consumption after reopening. Missing/null indices remain missing and
+invalid; explicit index zero is valid. Omitted-original legacy payloads without
+this annotation retain their existing compatibility behavior.
+
+The internal source class is `storage_charge_context`, not `meter`; actual SQL
+source metadata and observed quantities are unchanged. Requests retain separate
+key/frequency availability, including missing AC versus observed DC and measured
+zero versus unknown. Canonical/annual metadata unions may include a pruned-zero
+constituent without adding its quantity or IDs to numerical contributors. These
+records prove no battery efficiency, SOC energy, full electrical-circuit balance,
+Zone thermal allocation, or charge-minus-discharge heat equality.
+
 ## Links and conversion ratios
 
 The wire collection is `links`, not `edges`. A link has `id`, `fromId`, `toId`,

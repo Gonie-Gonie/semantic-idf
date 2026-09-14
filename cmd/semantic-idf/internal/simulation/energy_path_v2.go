@@ -993,6 +993,7 @@ func applyCanonicalMonthlyBasisToEnergyPathResult(result *EnergyExplanationResul
 	initialReconciliation := append([]EnergyReconciliation(nil), result.Reconciliation...)
 	nodes, links, reconciliation, warnings := aggregateEnergyPathV2MonthlyPeriods(monthly)
 	nodes = mergeEnergyPathServiceBoundaryNodeMetadata(nodes, initialNodes)
+	nodes = mergeEnergyPathStorageChargeNodeMetadata(nodes, initialNodes)
 
 	nodeIndex := make(map[string]int, len(nodes)+len(initialNodes))
 	for index, node := range nodes {
@@ -1001,6 +1002,15 @@ func applyCanonicalMonthlyBasisToEnergyPathResult(result *EnergyExplanationResul
 	fallbackNodeIDs := map[string]bool{}
 	fallbackSourceIDs := map[string]bool{}
 	for _, node := range initialNodes {
+		if _, exists := nodeIndex[node.ID]; !exists && node.Level == "support" && len(node.storageChargeBoundaries) > 0 {
+			// Annual-only native transfer remains inspectable, without becoming
+			// an annual-only consumption/residual source or a made-up month.
+			node.Period = "annual"
+			node.storageChargeBoundaries = unionEnergyPathStorageChargeBoundaries(nil, node.storageChargeBoundaries)
+			nodeIndex[node.ID] = len(nodes)
+			nodes = append(nodes, node)
+			continue
+		}
 		if _, exists := nodeIndex[node.ID]; exists || node.Level != "carrier" && node.Level != "end_use" {
 			continue
 		}
@@ -1162,6 +1172,7 @@ func aggregateEnergyPathV2MonthlyPeriods(periods []EnergyPeriod) ([]EnergyExplan
 				node.SimultaneousLoad = cloneEnergyExplanationSimultaneousLoad(node.SimultaneousLoad)
 				node.allocationSourceIDs = appendUniqueStrings(nil, node.allocationSourceIDs...)
 				node.serviceBoundaryRestrictions = cloneEnergyPathServiceBoundaryRestrictions(node.serviceBoundaryRestrictions)
+				node.storageChargeBoundaries = unionEnergyPathStorageChargeBoundaries(nil, node.storageChargeBoundaries)
 				node.simultaneousLoadContributions = cloneEnergyExplanationSimultaneousLoadContributions(node.simultaneousLoadContributions)
 				node.endUseCarriers = appendUniqueStrings(nil, node.endUseCarriers...)
 				nodeIndex[node.ID] = len(nodes)
@@ -1277,6 +1288,7 @@ func cloneEnergyExplanationNodes(input []EnergyExplanationNode) []EnergyExplanat
 		out[index].SourceIDs = appendUniqueStrings(nil, node.SourceIDs...)
 		out[index].allocationSourceIDs = appendUniqueStrings(nil, node.allocationSourceIDs...)
 		out[index].serviceBoundaryRestrictions = cloneEnergyPathServiceBoundaryRestrictions(node.serviceBoundaryRestrictions)
+		out[index].storageChargeBoundaries = unionEnergyPathStorageChargeBoundaries(nil, node.storageChargeBoundaries)
 		out[index].simultaneousLoadContributions = cloneEnergyExplanationSimultaneousLoadContributions(node.simultaneousLoadContributions)
 		out[index].endUseCarriers = appendUniqueStrings(nil, node.endUseCarriers...)
 	}
@@ -1482,6 +1494,7 @@ func energyExplanationScopeToken(scope EnergyExplanationScope) string {
 
 func upgradeEnergyExplanationGraph(legacyNodes []EnergyExplanationNode, legacyEdges []EnergyExplanationEdge, sources []EnergyDataSource, scope EnergyExplanationScope, allocationPolicy string, canonicalMonthlyBasis bool, fanConsumptionSources map[string]bool) ([]EnergyExplanationNode, []EnergyPathLink) {
 	scope = normalizeEnergyExplanationScope(scope)
+	legacyEdges = filterEnergyPathStorageChargeLegacyEdges(legacyEdges, energyPathStorageChargeNodeBoundaries(legacyNodes))
 	suppressedInterzone := energyExplanationSuppressedInterzoneTraces(legacyNodes, scope)
 	zoneAllocationProjections := energyExplanationZoneAllocationProjections(legacyNodes, legacyEdges, scope, allocationPolicy)
 	nodeByLegacyID := make(map[string]EnergyExplanationNode, len(legacyNodes))
@@ -1776,6 +1789,7 @@ func upgradeEnergyExplanationGraph(legacyNodes []EnergyExplanationNode, legacyEd
 	sort.SliceStable(outLinks, func(i, j int) bool { return outLinks[i].ID < outLinks[j].ID })
 	outLinks = qualifyEnergyPathMixedConsumptionBasis(outNodes, outLinks, sources, scope)
 	outLinks = filterEnergyPathServiceBoundaryConversions(outNodes, outLinks)
+	outLinks = filterEnergyPathStorageChargeLinks(outLinks, energyPathStorageChargeNodeBoundaries(outNodes))
 	return outNodes, outLinks
 }
 
@@ -2260,6 +2274,12 @@ func energyExplanationHasExplicitAllocation(edges []EnergyExplanationEdge) bool 
 
 func energyExplanationNodeForScope(node EnergyExplanationNode, scope EnergyExplanationScope, projections map[string]energyExplanationZoneAllocationProjection) (EnergyExplanationNode, bool) {
 	node = energyExplanationLegacyNodeWithEffectiveValues(node)
+	if len(node.storageChargeBoundaries) > 0 {
+		// Original native charge is Building transfer context, even if a stale
+		// cached allocation edge claims a Zone share.
+		node.Level, node.ZoneName = "support", ""
+		return node, scope.Kind != "zone"
+	}
 	if energyPathZoneAuxiliaryIsSupplyAirflow(node) {
 		// Supply-air volume is optional allocation evidence, not an Energy Path
 		// stage. It is consumed while projections are built and never rendered as
@@ -3099,6 +3119,7 @@ func upgradeEnergyExplanationNode(input EnergyExplanationNode, scope EnergyExpla
 	out.SimultaneousLoad = cloneEnergyExplanationSimultaneousLoad(input.SimultaneousLoad)
 	out.allocationSourceIDs = appendUniqueStrings(nil, input.allocationSourceIDs...)
 	out.serviceBoundaryRestrictions = cloneEnergyPathServiceBoundaryRestrictions(input.serviceBoundaryRestrictions)
+	out.storageChargeBoundaries = unionEnergyPathStorageChargeBoundaries(nil, input.storageChargeBoundaries)
 	out.simultaneousLoadContributions = cloneEnergyExplanationSimultaneousLoadContributions(input.simultaneousLoadContributions)
 	out.endUseCarriers = appendUniqueStrings(nil, input.endUseCarriers...)
 	scopeToken := energyExplanationScopeToken(scope)
@@ -3308,6 +3329,7 @@ func mergeEnergyExplanationV2Node(nodes map[string]*EnergyExplanationNode, next 
 		copy.SimultaneousLoad = cloneEnergyExplanationSimultaneousLoad(next.SimultaneousLoad)
 		copy.allocationSourceIDs = appendUniqueStrings(nil, next.allocationSourceIDs...)
 		copy.serviceBoundaryRestrictions = cloneEnergyPathServiceBoundaryRestrictions(next.serviceBoundaryRestrictions)
+		copy.storageChargeBoundaries = unionEnergyPathStorageChargeBoundaries(nil, next.storageChargeBoundaries)
 		copy.simultaneousLoadContributions = cloneEnergyExplanationSimultaneousLoadContributions(next.simultaneousLoadContributions)
 		copy.endUseCarriers = appendUniqueStrings(nil, next.endUseCarriers...)
 		nodes[next.ID] = &copy
@@ -3329,6 +3351,7 @@ func mergeEnergyExplanationV2Node(nodes map[string]*EnergyExplanationNode, next 
 	current.RelatedEntityIDs = appendUniqueStrings(current.RelatedEntityIDs, next.RelatedEntityIDs...)
 	current.SourceIDs = appendUniqueStrings(current.SourceIDs, next.SourceIDs...)
 	current.serviceBoundaryRestrictions = unionEnergyPathServiceBoundaryRestrictions(current.serviceBoundaryRestrictions, next.serviceBoundaryRestrictions)
+	current.storageChargeBoundaries = unionEnergyPathStorageChargeBoundaries(current.storageChargeBoundaries, next.storageChargeBoundaries)
 	current.LoadBreakdown = mergeEnergyExplanationLoadComponents(current.LoadBreakdown, next.LoadBreakdown)
 	current.OffsetEffects = mergeEnergyExplanationOffsetEffects(current.OffsetEffects, next.OffsetEffects)
 	current.simultaneousLoadContributions = mergeEnergyExplanationSimultaneousLoadContributions(current.simultaneousLoadContributions, next.simultaneousLoadContributions)
@@ -4990,6 +5013,7 @@ func (result EnergyExplanationResult) MarshalJSON() ([]byte, error) {
 		})
 	}
 	filterEnergyPathServiceBoundaryResult(&result)
+	result = energyPathStorageChargeResultForWrite(result)
 	type wireResult struct {
 		Schema            string                         `json:"schema"`
 		Purpose           string                         `json:"purpose"`
@@ -5083,11 +5107,13 @@ func (period *EnergyPeriod) UnmarshalJSON(data []byte) error {
 	*period = EnergyPeriod(decoded.plainPeriod)
 	period.Edges = decoded.Edges
 	*period, _ = filterEnergyPathServiceBoundaryPeriod(*period)
+	*period, _ = filterEnergyPathStorageChargePeriod(*period)
 	return nil
 }
 
 func (period EnergyPeriod) MarshalJSON() ([]byte, error) {
 	period, _ = filterEnergyPathServiceBoundaryPeriod(period)
+	period, _ = filterEnergyPathStorageChargePeriod(period)
 	type wirePeriod struct {
 		ID                string                         `json:"id"`
 		Label             string                         `json:"label"`
@@ -5244,6 +5270,7 @@ func sanitizeEnergyExplanationV2Result(result *EnergyExplanationResult) bool {
 			changed = changed || !reflect.DeepEqual(*period.Summary, summary)
 			period.Summary = &summary
 		}
+		period.Warnings = energyPathStorageChargeNodeWarnings(period.Warnings, period.Nodes, period.ID)
 	}
 
 	for index := range result.ZoneResults {
@@ -5304,6 +5331,9 @@ func sanitizeEnergyExplanationV2Result(result *EnergyExplanationResult) bool {
 		zone.Summary = zoneSummary
 	}
 	changed = filterEnergyPathServiceBoundaryResult(result) || changed
+	priorWarnings := result.Warnings
+	result.Warnings = energyPathStorageChargeNodeWarnings(result.Warnings, result.Nodes, "annual")
+	changed = changed || !reflect.DeepEqual(priorWarnings, result.Warnings)
 	qualityChanged := refreshEnergyPathQuality(result)
 	changed = changed || qualityChanged
 	return changed
@@ -5316,6 +5346,7 @@ func sanitizeEnergyExplanationV2Graph(nodes []EnergyExplanationNode, links []Ene
 	nodes = normalizeLegacyEnergyExplanationNodes(nodes)
 	normalizeEnergyExplanationV2Nodes(nodes, scope)
 	links = normalizeEnergyExplanationV2Links(links)
+	links = filterEnergyPathStorageChargeLinks(links, energyPathStorageChargeNodeBoundaries(nodes))
 	reconciliation = normalizeLegacyEnergyExplanationReconciliation(reconciliation)
 	reconciliation = filterEnergyPathNonSiteEnergyReconciliation(reconciliation)
 	nodeByID := make(map[string]*EnergyExplanationNode, len(nodes))
@@ -5325,6 +5356,10 @@ func sanitizeEnergyExplanationV2Graph(nodes []EnergyExplanationNode, links []Ene
 	disallowed := map[string]bool{}
 	for index := range nodes {
 		node := &nodes[index]
+		if scope.Kind == "zone" && len(node.storageChargeBoundaries) > 0 {
+			disallowed[node.ID] = true
+			continue
+		}
 		if (node.Level == "end_use" || node.Level == "support") && strings.TrimSpace(node.Unit) != "" && !energyExplanationUnitIsSiteEnergy(node.Unit) {
 			disallowed[node.ID] = true
 			continue
@@ -5448,6 +5483,7 @@ func sanitizeEnergyExplanationV2Graph(nodes []EnergyExplanationNode, links []Ene
 	filteredLinks = refreshEnergyPathConversionLinks(filteredNodes, filteredLinks)
 	filteredLinks = qualifyEnergyPathMixedConsumptionBasis(filteredNodes, filteredLinks, sources, scope)
 	filteredLinks = filterEnergyPathServiceBoundaryConversions(filteredNodes, filteredLinks)
+	filteredLinks = filterEnergyPathStorageChargeLinks(filteredLinks, energyPathStorageChargeNodeBoundaries(filteredNodes))
 
 	reconciliation = removeEnergyPathWaterReconciliation(reconciliation)
 	reconciliation = reconcileEnergyPathCarrierTotals(filteredNodes, filteredLinks, reconciliation, firstNonEmpty(period, "annual"))
@@ -5519,7 +5555,7 @@ func (bundle *PurposeResultBundle) UnmarshalJSON(data []byte) error {
 	}
 	*bundle = PurposeResultBundle(decoded)
 	if bundle.EnergyExplanation.Schema == energyExplanationSchema {
-		if bundle.EnergyExplanation.upgradedFromV1 || bundle.EnergyExplanation.sanitizedOnRead || bundle.EnergyExplanationSummary.Schema == "" || !reflect.DeepEqual(bundle.EnergyExplanationSummary.Quality, bundle.EnergyExplanation.Quality) || len(bundle.EnergyExplanationSummary.Drivers)+len(bundle.EnergyExplanationSummary.Loads)+len(bundle.EnergyExplanationSummary.EndUses)+len(bundle.EnergyExplanationSummary.Carriers) == 0 {
+		if energyPathHasStorageChargeBoundary(bundle.EnergyExplanation) || bundle.EnergyExplanation.upgradedFromV1 || bundle.EnergyExplanation.sanitizedOnRead || bundle.EnergyExplanationSummary.Schema == "" || !reflect.DeepEqual(bundle.EnergyExplanationSummary.Quality, bundle.EnergyExplanation.Quality) || len(bundle.EnergyExplanationSummary.Drivers)+len(bundle.EnergyExplanationSummary.Loads)+len(bundle.EnergyExplanationSummary.EndUses)+len(bundle.EnergyExplanationSummary.Carriers) == 0 {
 			bundle.EnergyExplanationSummary = buildEnergyExplanationSummary(bundle.EnergyExplanation)
 		}
 		// A stale root summary can exist even when its stored graph is already
@@ -5554,6 +5590,9 @@ func normalizeEnergyExplanationSummaryItems(summary *EnergyExplanationSummary) {
 func normalizeEnergyExplanationV2Nodes(nodes []EnergyExplanationNode, scope EnergyExplanationScope) {
 	for index := range nodes {
 		node := &nodes[index]
+		if len(node.storageChargeBoundaries) > 0 {
+			node.Level, node.ZoneName = "support", ""
+		}
 		node.AggregationBasis = firstNonEmpty(node.AggregationBasis, scope.AggregationBasis)
 		if node.Multiplier == 0 {
 			node.Multiplier = 1

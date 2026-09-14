@@ -1263,3 +1263,50 @@ changes: app 17.931, frontend/browser 176.922 and simulation 566.299 seconds;
 CLI, input, IDF and tabular pass from cache. The Windows production build passes
 in 6.485 seconds. Approved header/companion hashes remain unchanged. Normal
 commit-hook verification and push follow this completed full gate.
+
+The normal Pool commit hook also passes (simulation 570.218 seconds; Windows
+build 5.596 seconds). Commit `7fb07d0` is pushed to origin/main. The accepted
+fixture count remains 12/19 while the PV/storage engineering pass proceeds.
+
+## PV/storage reporting-boundary implementation (2026-09-15, in progress)
+
+The first correction separates native AC and DC Charge Energy from Facility
+consumption, preserving per-storage identity, original/source proof and explicit
+unresolved context. It does not infer heat loss or a battery state-energy change.
+The optional node boundary survives source preference, canonical/annual merge,
+scope projection and stored-result adapters; source known-zero/missing handling
+is checked independently from whether a display node exists.
+
+The native output planner now includes the twenty reviewed electrical identities
+at Monthly and Hourly frequencies, reusing existing outputs before adding any.
+A scoped pre-Hourly hook reuses native blank-key wildcard requests without
+allowing one exact equipment key to replace the whole wildcard namespace. The
+original input and UI are unchanged. The first focused output/helper/EPATH111
+legacy regression run passes in 0.362 seconds.
+
+Full SQL-to-bundle regressions, signed electrical-source reader integration,
+Cogeneration consumed-resource/parent-member accounting, preserved recapture and
+the independent eight-group PV oracle remain ongoing. This reporting checkpoint
+is not PV acceptance; no new expected numerical artifact has been approved.
+
+The expanded charge focus passes in 1.871 seconds, including actual SQL-to-V1
+and public bundle paths, both allocation policies, Building/Office scopes,
+two repeated result reloads, and stale root/period summaries. Hand inputs
+Facility100/lights90/charge10(+separate AC charge4) retain explained90/residual10.
+Measured zero, all-NULL, partial-NULL, absent dictionary and a dictionary without
+rows are distinct; present dictionaries retain unknown source identities.
+No source scalar is invented from missing rows. The hand RDD metadata uses
+native Zone versus HVAC System timesteps and NULL unscheduled requests.
+
+Independent review also catches and closes source-proof inheritance from an
+unverified selected Hourly companion and loss of an annual-only charge support
+node behind unrelated Monthly results. New regressions preserve the original
+caller-owned graph on serialization, including explicit invalid denial metadata.
+The full repository gate and production build follow before normal commit/push.
+
+The complete `scripts/verify.ps1` gate passes without exclusions or timeout
+changes: app 22.280, CLI 6.101, frontend/browser 183.517 and simulation 578.569
+seconds; input, IDF and tabular pass from cache. The Windows production build
+passes in 7.938 seconds. Remote state is fetched before the normal commit hook
+and push. This validates the charge boundary checkpoint, not PV acceptance;
+the independent real-model count remains 12/19.

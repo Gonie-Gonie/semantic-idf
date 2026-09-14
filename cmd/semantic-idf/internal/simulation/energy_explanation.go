@@ -239,6 +239,7 @@ type EnergyExplanationNode struct {
 	allocationSourceIDs           []string
 	hvacConsumptionPoolBound      bool
 	serviceBoundaryRestrictions   []energyPathServiceBoundaryRestriction
+	storageChargeBoundaries       []energyPathStorageChargeBoundary
 	nativeWindowACPathQualified   bool
 	simultaneousLoadContributions []energyExplanationSimultaneousLoadContribution
 	endUseCarriers                []string
@@ -713,21 +714,23 @@ type energyExplanationSeries struct {
 	MultiplierApplication  string
 	multiplierApplied      bool
 
-	sourceKeyValue         string
-	sourceName             string
-	sourceFrequency        string
-	sourceIsRate           bool
-	sourcePriority         int
-	heatSignMultiplier     float64
-	parseCategorySource    bool
-	parseCategoryAggregate bool
-	driverZoneOnly         bool
-	driverBuildingOnly     bool
-	interzonePairID        string
-	canonicalLoadMetadata  bool
-	directComponentID      string
-	loadBreakdown          []energyLoadBreakdownSeries
-	driverMonthlyShadow    *energyDriverMonthlyShadow
+	sourceKeyValue               string
+	sourceName                   string
+	sourceFrequency              string
+	sourceIsRate                 bool
+	sourcePriority               int
+	heatSignMultiplier           float64
+	parseCategorySource          bool
+	parseCategoryAggregate       bool
+	driverZoneOnly               bool
+	driverBuildingOnly           bool
+	interzonePairID              string
+	canonicalLoadMetadata        bool
+	directComponentID            string
+	loadBreakdown                []energyLoadBreakdownSeries
+	driverMonthlyShadow          *energyDriverMonthlyShadow
+	storageChargeBoundary        *energyPathStorageChargeBoundary
+	storageChargeSelectionSuffix string
 }
 
 // energyExplanationParseResult is deliberately graph-free. SQL and tabular
@@ -879,7 +882,7 @@ func parseSimulationEnergyExplanationCanonicalSQL(path string, plan *PurposeRunP
 				if !ok {
 					return nil
 				}
-				if dictionary.directComponentID != "" && value.Float64 < 0 {
+				if (dictionary.directComponentID != "" || driverContext.StorageChargeInventory.HasOriginal && strings.EqualFold(dictionary.row.name, "Electric Storage Charge Energy")) && value.Float64 < 0 {
 					invalidObservedValues[dictionaryIndex] = true
 				}
 				if strings.EqualFold(strings.TrimSpace(dictionary.reportingFrequency), "Monthly") {
@@ -981,13 +984,14 @@ func parseSimulationEnergyExplanationCanonicalSQL(path string, plan *PurposeRunP
 			for _, dictionary := range dictionaries {
 				builder := builders[dictionary.row.index]
 				isRadiantLoad := dictionary.load != nil && energyPathIsRadiantLoadVariable(dictionary.row.name)
-				if builder == nil && (dictionary.directComponentID != "" || isRadiantLoad || dictionary.baseboardContext != nil) {
+				isNativeStorageCharge := driverContext.StorageChargeInventory.HasOriginal && strings.EqualFold(dictionary.row.name, "Electric Storage Charge Energy")
+				if builder == nil && (dictionary.directComponentID != "" || isRadiantLoad || dictionary.baseboardContext != nil || isNativeStorageCharge) {
 					// Preserve the reported identity of an all-NULL source, but
 					// never promote it to a zero-valued direct consumption series.
 					builder = &energyExplanationSeriesBuilder{dictionary: dictionary, unit: "kWh"}
 					invalidObservedValues[dictionary.row.index] = true
 				}
-				if builder == nil || dictionary.directComponentID == "" && !isRadiantLoad && dictionary.baseboardContext == nil && builder.total == 0 && len(builder.monthly) == 0 {
+				if builder == nil || dictionary.directComponentID == "" && !isRadiantLoad && dictionary.baseboardContext == nil && !isNativeStorageCharge && builder.total == 0 && len(builder.monthly) == 0 {
 					continue
 				}
 				source := energyDataSourceForDictionary(dictionary)
@@ -1001,7 +1005,7 @@ func parseSimulationEnergyExplanationCanonicalSQL(path string, plan *PurposeRunP
 					(len(monthlyTimeAxis) == 0 || monthlyObservedRows[dictionary.row.index] != len(monthlyTimeAxis)) {
 					invalidObservedValues[dictionary.row.index] = true
 				}
-				if (dictionary.directComponentID != "" || isRadiantLoad || dictionary.baseboardContext != nil) && (builder.unit != "kWh" || math.IsNaN(builder.total) || math.IsInf(builder.total, 0) ||
+				if (dictionary.directComponentID != "" || isRadiantLoad || dictionary.baseboardContext != nil || isNativeStorageCharge) && (builder.unit != "kWh" || math.IsNaN(builder.total) || math.IsInf(builder.total, 0) ||
 					strings.EqualFold(dictionary.reportingFrequency, "Monthly") && len(builder.monthly) != len(monthlyTimeAxis)) {
 					invalidObservedValues[dictionary.row.index] = true
 				}
@@ -1020,7 +1024,7 @@ func parseSimulationEnergyExplanationCanonicalSQL(path string, plan *PurposeRunP
 				if dictionary.hourlySourceOnly {
 					continue
 				}
-				if (dictionary.directComponentID != "" || isRadiantLoad) && invalidObservedValues[dictionary.row.index] {
+				if (dictionary.directComponentID != "" || isRadiantLoad || isNativeStorageCharge) && invalidObservedValues[dictionary.row.index] {
 					continue
 				}
 				item := energyExplanationSeriesForBuilder(builder, source.ID)
@@ -1386,6 +1390,7 @@ func preferredEnergyExplanationSeries(series []energyExplanationSeries) []energy
 			selected.HasSelectedRange = true
 			selected.SourceIDs = appendUniqueStrings(selected.SourceIDs, rangeItem.SourceIDs...)
 		}
+		selected.storageChargeBoundary = energyPathStorageChargePreferredBoundary(selected, items)
 		out = append(out, selected)
 	}
 	return out
@@ -1516,7 +1521,7 @@ func energyExplanationCanonicalIdentityParts(item energyExplanationSeries, inclu
 		parts = append(parts, normalizeEnergyOutputName(item.SourceClass))
 	}
 	parts = append(parts, normalizeEnergyOutputName(sourceKey))
-	return strings.Join(parts, "|")
+	return strings.Join(parts, "|") + item.storageChargeSelectionSuffix
 }
 
 func energyExplanationPhysicalSourceClass(item energyExplanationSeries) string {
@@ -1797,6 +1802,9 @@ func buildEnergyExplanationResultWithDriverContext(series []energyExplanationSer
 	allocationPolicy := energyExplanationAllocationPolicy(plan)
 	for index := range series {
 		series[index] = canonicalEnergyExplanationSeries(series[index])
+		series[index], series[index].storageChargeBoundary = qualifyEnergyPathStorageChargeSeries(series[index], driverContext.StorageChargeInventory, sources)
+		series[index].storageChargeSelectionSuffix = energyPathStorageChargeSelectionSuffix(series[index], driverContext.StorageChargeInventory)
+		series[index] = canonicalEnergyExplanationSeries(series[index])
 	}
 	series, sources, baseboardWarnings := bindEnergyPathBaseboardContextSeries(series, sources, driverContext)
 	series, sources, radiantWarnings := bindEnergyPathRadiantLoadSeries(series, sources, driverContext)
@@ -1815,6 +1823,7 @@ func buildEnergyExplanationResultWithDriverContext(series []energyExplanationSer
 	}
 	driverWarnings = append(driverWarnings, radiantWarnings...)
 	driverWarnings = append(driverWarnings, baseboardWarnings...)
+	driverWarnings = append(driverWarnings, energyPathStorageChargeWarnings(series)...)
 	for index := range series {
 		series[index] = canonicalEnergyExplanationSeries(series[index])
 	}
@@ -1972,7 +1981,7 @@ func buildEnergyExplanationResultWithDriverContext(series []energyExplanationSer
 		Edges:                 annual.Edges,
 		Reconciliation:        annual.Reconciliation,
 		Sources:               sources,
-		Completeness:          buildEnergyExplanationCompleteness(completenessSeries, sources, plan, annual.MappedPercent),
+		Completeness:          buildEnergyExplanationCompleteness(completenessSeries, sources, plan, annual.MappedPercent, driverContext.StorageChargeInventory),
 		Warnings:              annual.Warnings,
 		scope:                 energyExplanationScopeForPlan(plan),
 		canonicalMonthlyBasis: driverContext.Enabled,
@@ -2390,7 +2399,7 @@ func filterEnergyExplanationSeriesForBasicDetail(series []energyExplanationSerie
 	filteredSeries := make([]energyExplanationSeries, 0, len(series))
 	referencedSources := map[string]bool{}
 	for _, item := range series {
-		if item.Level != "energy" {
+		if item.Level != "energy" && item.storageChargeBoundary == nil {
 			continue
 		}
 		filteredSeries = append(filteredSeries, item)
@@ -2795,6 +2804,7 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 			node.OffsetEffects = cloneEnergyExplanationOffsetEffects(node.OffsetEffects)
 			node.SimultaneousLoad = cloneEnergyExplanationSimultaneousLoad(node.SimultaneousLoad)
 			node.allocationSourceIDs = appendUniqueStrings(nil, node.allocationSourceIDs...)
+			node.storageChargeBoundaries = unionEnergyPathStorageChargeBoundaries(nil, node.storageChargeBoundaries)
 			node.simultaneousLoadContributions = cloneEnergyExplanationSimultaneousLoadContributions(node.simultaneousLoadContributions)
 			nodes[node.ID] = &energyExplanationNodeAccumulator{node: node}
 			return
@@ -2808,6 +2818,7 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 		}
 		existing.node.DisplayValue = roundedEnergyNumber(existing.node.DisplayValue + node.DisplayValue)
 		existing.node.SourceIDs = appendUniqueStrings(existing.node.SourceIDs, node.SourceIDs...)
+		existing.node.storageChargeBoundaries = unionEnergyPathStorageChargeBoundaries(existing.node.storageChargeBoundaries, node.storageChargeBoundaries)
 		existing.node.allocationSourceIDs = appendUniqueStrings(existing.node.allocationSourceIDs, node.allocationSourceIDs...)
 		existing.node.RelatedEntityIDs = appendUniqueStrings(existing.node.RelatedEntityIDs, node.RelatedEntityIDs...)
 		existing.node.RelatedPathIDs = appendUniqueStrings(existing.node.RelatedPathIDs, node.RelatedPathIDs...)
@@ -2833,24 +2844,31 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 		rawValue, effectiveValue, effectiveMultiplier := energyExplanationNodeAccounting(item, value)
 		switch item.Stage {
 		case "carrier", "end_use", "support":
-			nodeID := energyExplanationEnergyNodeID(item)
+			nodeID := energyPathStorageChargeNodeID(item, item.storageChargeBoundary)
+			level := "energy"
+			var storageBoundaries []energyPathStorageChargeBoundary
+			if item.storageChargeBoundary != nil {
+				level = "support"
+				storageBoundaries = unionEnergyPathStorageChargeBoundaries(nil, []energyPathStorageChargeBoundary{*item.storageChargeBoundary})
+			}
 			addNode(EnergyExplanationNode{
-				ID:                  nodeID,
-				Level:               "energy",
-				Kind:                item.Kind,
-				Label:               item.Label,
-				Value:               value,
-				RawValue:            rawValue,
-				EffectiveValue:      effectiveValue,
-				Multiplier:          effectiveMultiplier,
-				Unit:                item.Unit,
-				Period:              period,
-				Carrier:             item.Carrier,
-				EndUse:              item.EndUse,
-				ZoneName:            item.ZoneName,
-				MeterHierarchyLevel: item.MeterHierarchyLevel,
-				Basis:               item.Basis,
-				SourceIDs:           appendUniqueStrings(item.SourceIDs, item.DriverInputSourceIDs...),
+				ID:                      nodeID,
+				Level:                   level,
+				storageChargeBoundaries: storageBoundaries,
+				Kind:                    item.Kind,
+				Label:                   item.Label,
+				Value:                   value,
+				RawValue:                rawValue,
+				EffectiveValue:          effectiveValue,
+				Multiplier:              effectiveMultiplier,
+				Unit:                    item.Unit,
+				Period:                  period,
+				Carrier:                 item.Carrier,
+				EndUse:                  item.EndUse,
+				ZoneName:                item.ZoneName,
+				MeterHierarchyLevel:     item.MeterHierarchyLevel,
+				Basis:                   item.Basis,
+				SourceIDs:               appendUniqueStrings(item.SourceIDs, item.DriverInputSourceIDs...),
 			})
 			if item.Stage == "carrier" {
 				facilityByCarrier[item.Carrier] = nodeID
@@ -3056,7 +3074,7 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 		}
 		for _, supportID := range supportNodesByCarrier[carrier] {
 			supportNode := nodes[supportID]
-			if supportNode == nil {
+			if supportNode == nil || energyPathStorageChargeBoundariesAreNonFlow(supportNode.node.storageChargeBoundaries) {
 				continue
 			}
 			rule := onsiteProductionRule
@@ -3422,6 +3440,7 @@ func buildEnergyExplanationGraphForPeriod(period string, series []energyExplanat
 		outNodes = append(outNodes, node.node)
 	}
 	sortEnergyExplanationNodes(outNodes)
+	outNodes = carryEnergyPathStorageChargePrunedMetadata(outNodes, series, valueFor)
 	sortEnergyExplanationEdges(edges)
 	mapped := 0.0
 	totalFacility := 0.0
@@ -3780,6 +3799,11 @@ func sqlEnergyExplanationDictionaries(db *sql.DB, sourceFile string, plan *Purpo
 	}
 	if len(driverContexts) > 0 && driverContexts[0].Enabled && len(driverContexts[0].BaseboardTargets) > 0 {
 		missingRadiant = fmt.Sprintf("(%s OR LOWER(TRIM(%s)) IN ('baseboard total heating energy', 'baseboard total heating rate', 'baseboard electricity rate'))", missingRadiant, nameExpr)
+	}
+	if len(driverContexts) > 0 && driverContexts[0].StorageChargeInventory.HasOriginal {
+		// A requested native dictionary without rows is an unknown observation,
+		// not an absent reporting identity and not a measured zero.
+		missingRadiant = fmt.Sprintf("(%s OR LOWER(TRIM(%s)) = 'electric storage charge energy')", missingRadiant, nameExpr)
 	}
 	rows, err := db.Query(fmt.Sprintf(`
 SELECT DISTINCT rdd.%s,
@@ -5338,8 +5362,13 @@ func energyExplanationRequestedThermalAvailability(series []energyExplanationSer
 	return out
 }
 
-func buildEnergyExplanationCompleteness(series []energyExplanationSeries, sources []EnergyDataSource, plan *PurposeRunPlan, mappedPercent float64) EnergyCompleteness {
+func buildEnergyExplanationCompleteness(series []energyExplanationSeries, sources []EnergyDataSource, plan *PurposeRunPlan, mappedPercent float64, storageInventories ...energyPathStorageChargeInventory) EnergyCompleteness {
 	expectedEnergy, expectedContext := partitionEnergyExplanationContextOutputs(expectedEnergyExplanationOutputs(plan, "energy"))
+	var storageInventory energyPathStorageChargeInventory
+	if len(storageInventories) > 0 {
+		storageInventory = storageInventories[0]
+	}
+	expectedEnergy = partitionEnergyPathStorageChargeOutputs(expectedEnergy, storageInventory)
 	expectedLoad := expectedEnergyExplanationOutputs(plan, "load")
 	expectedHeat := expectedEnergyExplanationOutputs(plan, "heat")
 	expectedEnergyGroups := expectedEnergyExplanationOutputGroups(expectedEnergy, "energy")
@@ -5392,6 +5421,7 @@ func buildEnergyExplanationCompleteness(series []energyExplanationSeries, source
 	availability = append(availability, sourceAvailabilityEntriesForLevel(expectedLoad, "load", sources, energyExplanationLevelNotRequested(plan, "load"))...)
 	availability = append(availability, sourceAvailabilityEntriesForLevel(expectedHeat, "heat", sources, energyExplanationLevelNotRequested(plan, "heat"))...)
 	availability = append(availability, sourceAvailabilityEntries(expectedContext, "context", sources)...)
+	availability = append(availability, energyPathStorageChargeAvailability(plan, storageInventory, sources)...)
 	missingCategories := missingEnergySourceCategories(availability)
 	return EnergyCompleteness{
 		Status:             status,
