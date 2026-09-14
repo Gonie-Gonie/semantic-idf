@@ -1106,6 +1106,8 @@ func energyEndUseMeterNames() []string {
 		"NaturalGas:Heating",
 		"NaturalGas:WaterSystems",
 		"NaturalGas:InteriorEquipment",
+		"InteriorEquipment:DistrictHeatingWater",
+		"InteriorEquipment:DistrictHeating",
 	}
 }
 

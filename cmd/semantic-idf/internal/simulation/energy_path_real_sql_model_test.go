@@ -4,25 +4,26 @@ package simulation
 // never candidate values. The compiler performs ordinary SQL arithmetic without
 // calling the production classifier, multiplier, allocation or quality helpers.
 type epathRealSQLModel struct {
-	Schema                 string                              `json:"schema"`
-	Surface                epathRealSQLSurfaceModel            `json:"surface"`
-	Families               []epathRealSQLFamily                `json:"families"`
-	Loads                  []epathRealSQLLoad                  `json:"loads"`
-	Site                   []epathRealSQLSite                  `json:"site"`
-	Availability           []epathRealSQLAvailability          `json:"availability"`
-	Services               []epathRealSQLService               `json:"services"`
-	Auxiliaries            []epathRealSQLAuxiliary             `json:"auxiliaries"`
-	FanPools               []epathRealSQLFanPool               `json:"fanPools,omitempty"`
-	DirectUses             []epathRealSQLDirectUse             `json:"directUses,omitempty"`
-	DirectHVACComponents   []epathRealSQLDirectHVACComponent   `json:"directHVACComponents,omitempty"`
-	BaseboardContexts      []epathRealSQLBaseboardContext      `json:"baseboardContexts,omitempty"`
-	HourlyCompanions       []epathRealSQLHourlyCompanion       `json:"hourlyCompanions,omitempty"`
-	HVACConsumptionPools   []epathRealSQLHVACConsumptionPool   `json:"hvacConsumptionPools,omitempty"`
-	AirLoopFans            []epathRealSQLAirLoopFan            `json:"airLoopFans,omitempty"`
-	NativeVRFSystems       []epathRealSQLVRFSystem             `json:"nativeVRFSystems,omitempty"`
-	NonAdditiveLoadDetails []epathRealSQLNonAdditiveLoadDetail `json:"nonAdditiveLoadDetails,omitempty"`
-	ZeroPressureFallbacks  []epathRealSQLZeroPressureFallback  `json:"zeroPressureFallbacks,omitempty"`
-	Precision              epathRealSQLPrecision               `json:"precision"`
+	OriginalZoneMultiplierProof string                              `json:"originalZoneMultiplierProof,omitempty"`
+	Schema                      string                              `json:"schema"`
+	Surface                     epathRealSQLSurfaceModel            `json:"surface"`
+	Families                    []epathRealSQLFamily                `json:"families"`
+	Loads                       []epathRealSQLLoad                  `json:"loads"`
+	Site                        []epathRealSQLSite                  `json:"site"`
+	Availability                []epathRealSQLAvailability          `json:"availability"`
+	Services                    []epathRealSQLService               `json:"services"`
+	Auxiliaries                 []epathRealSQLAuxiliary             `json:"auxiliaries"`
+	FanPools                    []epathRealSQLFanPool               `json:"fanPools,omitempty"`
+	DirectUses                  []epathRealSQLDirectUse             `json:"directUses,omitempty"`
+	DirectHVACComponents        []epathRealSQLDirectHVACComponent   `json:"directHVACComponents,omitempty"`
+	BaseboardContexts           []epathRealSQLBaseboardContext      `json:"baseboardContexts,omitempty"`
+	HourlyCompanions            []epathRealSQLHourlyCompanion       `json:"hourlyCompanions,omitempty"`
+	HVACConsumptionPools        []epathRealSQLHVACConsumptionPool   `json:"hvacConsumptionPools,omitempty"`
+	AirLoopFans                 []epathRealSQLAirLoopFan            `json:"airLoopFans,omitempty"`
+	NativeVRFSystems            []epathRealSQLVRFSystem             `json:"nativeVRFSystems,omitempty"`
+	NonAdditiveLoadDetails      []epathRealSQLNonAdditiveLoadDetail `json:"nonAdditiveLoadDetails,omitempty"`
+	ZeroPressureFallbacks       []epathRealSQLZeroPressureFallback  `json:"zeroPressureFallbacks,omitempty"`
+	Precision                   epathRealSQLPrecision               `json:"precision"`
 }
 
 type epathRealSQLAlternative struct {

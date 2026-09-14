@@ -1,9 +1,11 @@
 package simulation
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"math"
+	"reflect"
 	"sort"
 	"strings"
 )
@@ -227,7 +229,11 @@ func epathSQLModelDriverLinkChecks(frames epathSQLFrames, model epathRealSQLMode
 							zoneTraceSources[category][owner] = epathSQLDictionaryUnion(zoneTraceSources[category][owner], []int{id})
 						}
 						if !value.includesZero() {
-							trace.Required = epathSQLDictionaryUnion(trace.Required, cell.SourceIDs)
+							for _, id := range cell.SourceIDs {
+								if !epathSQLDriverObservedZeroLeaf(frames, model, cell, id) {
+									trace.Required = epathSQLDictionaryUnion(trace.Required, []int{id})
+								}
+							}
 						}
 						traces[category] = trace
 						zoneSources[category][owner] = epathSQLDictionaryUnion(zoneSources[category][owner], cell.SourceIDs)
@@ -615,6 +621,34 @@ func epathSQLDriverChoicesContain(choices []epathSQLDriverMonthChoice, actual ma
 		return fmt.Errorf("independent driver owner assignment exceeds bounded search limit")
 	}
 	return fmt.Errorf("driver branches are not a whole-month quantity/source assignment")
+}
+
+// A positive compound pressure does not make its observed-zero members
+// positive contributors. Only an exact native monthly zero may be absent from
+// the flow trace; its identity stays allowed and its source scalar checks stay
+// mandatory. Do not use rounded bounds, annual cancellation, or absent data.
+func epathSQLDriverObservedZeroLeaf(frames epathSQLFrames, model epathRealSQLModel, cell *epathSQLCell, id int) bool {
+	if cell == nil || cell.Month < 1 || cell.Month > 12 || id <= 0 {
+		return false
+	}
+	source, exists := frames.SourceIdentities[id]
+	if !exists || source.DictionaryIndex != id || source.Name == "" || source.KeyValue == "" || source.IsMeter ||
+		!strings.EqualFold(source.ReportingFrequency, "Monthly") || !strings.EqualFold(frames.SourceZone[id], cell.Zone) ||
+		frames.Zones[strings.ToLower(cell.Zone)].Name == "" || len(frames.SourceRaw[id]) != 12 || len(frames.SourceEffective[id]) != 12 {
+		return false
+	}
+	if _, energyUnit := epathOracleEnergy(0, source.SourceUnit, sql.NullFloat64{}); !energyUnit {
+		return false
+	}
+	values, err := epathSQLMonthly(source, model.Precision)
+	if err != nil {
+		return false
+	}
+	index := cell.Month - 1
+	native := source.Months[index]
+	return native.MissingRows == 0 && native.RawSum != nil && *native.RawSum == 0 && values[index].Value == 0 &&
+		reflect.DeepEqual(frames.SourceRaw[id][index], values[index]) &&
+		reflect.DeepEqual(frames.SourceEffective[id][index], values[index].times(frames.Zones[strings.ToLower(cell.Zone)].Multiplier))
 }
 
 func epathSQLDriverOriginalIDs(identities map[int]epathRealSQLSource, ids []int) error {

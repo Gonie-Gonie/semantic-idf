@@ -50,6 +50,7 @@ func newEnergyDriverBuildContext(report idf.GeometryReport, documents ...idf.Doc
 		addEnergyInternalMassCategories(&index, documents[0], report)
 		multipliers = buildEnergyEffectiveMultiplierIndex(documents[0])
 		directHVACComponents = energyPathDirectHVACComponentTargets(documents[0])
+		directHVACComponents = append(directHVACComponents, energyPathWindowACDirectTargets(energyPathWindowACTargets(documents[0]))...)
 		vrfSystems = energyPathVRFSystems(documents[0])
 		radiantLoads = energyPathRadiantLoadTargets(documents[0])
 		hasNativeBaseboard = energyPathHasNativeBaseboard(documents[0])

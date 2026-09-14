@@ -213,10 +213,20 @@ func TestEnergyPathDirectHVACComponentsRequestsAndNames(t *testing.T) {
 			}
 		})
 	}
-	for _, name := range []string{"Zone Packaged Terminal Air Conditioner Electricity Energy", "Fan Electricity Energy", "Heating Coil NaturalGas Rate", "Cooling Coil Total Cooling Energy", "Unknown Cooling Coil Electricity Energy"} {
+	for _, name := range []string{"Zone Packaged Terminal Air Conditioner Electricity Energy", "Fan Electricity Rate", "Unknown Fan Electricity Energy", "Heating Coil NaturalGas Rate", "Cooling Coil Total Cooling Energy", "Unknown Cooling Coil Electricity Energy"} {
 		if _, ok := energyPathDirectHVACComponentDefinitionForName(name); ok {
 			t.Fatalf("unreviewed alias accepted %q", name)
 		}
+	}
+	// The shared discovery registry now includes the independently reviewed
+	// WindowAC fan family. Recognition alone must not add a fan to the PTAC
+	// targets or requests checked above; original typed ownership still gates it.
+	fan, ok := energyPathDirectHVACComponentDefinitionForName(" Fan Electricity Energy ")
+	if !ok || fan.ID != "fans.zone_equipment.electricity" || fan.ObjectType != "Fan:OnOff" ||
+		fan.Energy.Kind != "energy.fans" || fan.Energy.EndUse != "fans" ||
+		fan.Energy.Carrier != "electricity" || fan.Energy.HierarchyLevel != "zone_direct_use" ||
+		len(fan.Energy.Aliases) != 1 || fan.Energy.Aliases[0] != "Fan Electricity Energy" {
+		t.Fatalf("reviewed native fan discovery family changed: %+v, found=%v", fan, ok)
 	}
 	definition, ok := energyPathDirectHVACComponentDefinitionForName(" cooling coil electricity energy ")
 	if !ok {

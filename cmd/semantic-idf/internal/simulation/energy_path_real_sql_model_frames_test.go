@@ -290,6 +290,14 @@ func epathCompileSQLModelFrames(sqlPath string, observed []epathRealSQLSource, m
 		return out, err
 	}
 	defer db.Close()
+	if model.OriginalZoneMultiplierProof != "" {
+		if len(originalText) != 1 {
+			return out, fmt.Errorf("declared original Zone multiplier proof requires exact original text")
+		}
+		if err := epathSQLValidateOriginalZoneMultipliers(db, originalText[0], model.OriginalZoneMultiplierProof); err != nil {
+			return out, err
+		}
+	}
 	zones, err := db.Query(`SELECT ZoneIndex,ZoneName,Multiplier,ListMultiplier FROM Zones ORDER BY ZoneIndex`)
 	if err != nil {
 		return out, err

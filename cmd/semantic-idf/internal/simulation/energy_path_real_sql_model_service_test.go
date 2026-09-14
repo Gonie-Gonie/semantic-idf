@@ -14,6 +14,7 @@ type epathSQLConversionProof struct {
 }
 
 type epathSQLAllocationProof struct {
+	DirectFan                               *epathSQLDirectFanFrames
 	HVACConsumption                         *epathSQLHVACConsumptionLedgerProof
 	NativeVRF                               *epathSQLVRFAllocationLedgerProof
 	RadiantCarrier                          *epathSQLRadiantCarrierAllocationProof
@@ -306,6 +307,13 @@ func epathSQLModelServiceChecks(frames epathSQLFrames, model epathRealSQLModel, 
 		return fmt.Errorf("both declared conversion services are required")
 	}
 	for _, aux := range model.Auxiliaries {
+		if aux.Weight == "native_direct" {
+			fans, err := epathSQLCompileDirectFans(frames, model)
+			if err != nil || fans == nil || fans.SiteID != aux.SiteID {
+				return fmt.Errorf("native auxiliary lacks complete independent fan proof: %v", err)
+			}
+			continue
+		}
 		var condenserPolicy *epathSQLAuxiliaryPolicy
 		if aux.Weight == "cooling" {
 			var selected *epathRealSQLSite

@@ -197,7 +197,7 @@ func epathSQLCoverageRecords(bundle PurposeResultBundle, context epathSQLCoverag
 		if check.Reconciliation != nil {
 			validators = append(validators, func() error { return epathCheckSQLModelReconciliation(bundle, check) })
 		}
-		if check.Allocation != nil && (check.Allocation.RadiantCarrier != nil || check.Allocation.HVACConsumption != nil) {
+		if check.Allocation != nil && (check.Allocation.RadiantCarrier != nil || check.Allocation.HVACConsumption != nil || check.Allocation.DirectFan != nil) {
 			validators = append(validators, func() error { return epathCheckSQLModelAllocation(bundle, check) })
 		}
 		if check.SiteFlow != nil {
@@ -226,6 +226,9 @@ func epathSQLCoverageRecords(bundle PurposeResultBundle, context epathSQLCoverag
 		}
 		if check.DirectUse != nil {
 			validators = append(validators, func() error { return epathCheckSQLDirectUseEndpoints(bundle, check) })
+		}
+		if check.DirectFan != nil {
+			validators = append(validators, func() error { return epathCheckSQLDirectFan(bundle, check) })
 		}
 		if check.AuxiliaryZone != nil {
 			validators = append(validators, func() error { return epathCheckSQLAuxiliaryZone(bundle, check) })
@@ -322,6 +325,9 @@ func epathSQLCoverageRecords(bundle PurposeResultBundle, context epathSQLCoverag
 			if check.AuxiliaryZone != nil && !proofValid[check.Want.Key] {
 				continue
 			}
+			if check.DirectFan != nil && !proofValid[check.Want.Key] {
+				continue
+			}
 			if check.SiteResidual != nil && !proofValid[check.Want.Key] {
 				continue
 			}
@@ -355,6 +361,8 @@ func epathSQLCoverageRecords(bundle PurposeResultBundle, context epathSQLCoverag
 				case check.ZoneService != nil && epathSQLZoneServiceCoveredLink(context.nodes, link, check.ZoneService):
 					fields = append(fields, "fromValue", "toValue")
 				case check.DirectUse != nil && epathSQLDirectUseLinkMatches(link, byID, check.DirectUse):
+					fields = append(fields, "fromValue", "toValue")
+				case check.DirectFan != nil && byID[link.FromID].Level == "end_use" && byID[link.FromID].EndUse == "fans" && link.Relation == "direct_end_use_to_carrier":
 					fields = append(fields, "fromValue", "toValue")
 				}
 				for _, field := range fields {
@@ -397,7 +405,7 @@ func epathSQLCoverageRecords(bundle PurposeResultBundle, context epathSQLCoverag
 		}
 		for _, check := range candidates {
 			target := check.Item.Target
-			if check.Allocation != nil && (check.Allocation.RadiantCarrier != nil || check.Allocation.HVACConsumption != nil) {
+			if check.Allocation != nil && (check.Allocation.RadiantCarrier != nil || check.Allocation.HVACConsumption != nil || check.Allocation.DirectFan != nil) {
 				valid, checked := proofValid[check.Want.Key]
 				if !checked {
 					// A copied Building ledger is still proved against its

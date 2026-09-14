@@ -11,6 +11,12 @@ import (
 )
 
 const energyPathBaseboardElectricType = "ZoneHVAC:Baseboard:RadiantConvective:Electric"
+const energyPathBaseboardConvectiveElectricType = "ZoneHVAC:Baseboard:Convective:Electric"
+
+func energyPathBaseboardElectricTypeSupported(objectType string) bool {
+	return strings.EqualFold(strings.TrimSpace(objectType), energyPathBaseboardElectricType) ||
+		strings.EqualFold(strings.TrimSpace(objectType), energyPathBaseboardConvectiveElectricType)
+}
 
 type energyPathBaseboardRecipient struct {
 	SurfaceName        string
@@ -77,7 +83,7 @@ func (index energyPathBaseboardOriginalIndex) unique(objectType, name string) (i
 
 func energyPathHasNativeBaseboard(doc idf.Document) bool {
 	for _, object := range doc.Objects {
-		if strings.EqualFold(strings.TrimSpace(object.Type), energyPathBaseboardElectricType) {
+		if energyPathBaseboardElectricTypeSupported(object.Type) {
 			return true
 		}
 	}
@@ -108,7 +114,7 @@ func energyPathBaseboardTargets(doc idf.Document) []energyPathBaseboardTarget {
 			continue
 		}
 		for _, item := range relation.ZoneEquipment {
-			if strings.EqualFold(strings.TrimSpace(item.ObjectType), energyPathBaseboardElectricType) {
+			if energyPathBaseboardElectricTypeSupported(item.ObjectType) {
 				key := energyPathDirectHVACComponentKey(item.ObjectType, item.ObjectName)
 				owners[key] = append(owners[key], owner{relation.ZoneName, item})
 			}
@@ -124,7 +130,7 @@ func energyPathBaseboardTargets(doc idf.Document) []energyPathBaseboardTarget {
 	}
 	var out []energyPathBaseboardTarget
 	for _, object := range doc.Objects {
-		if !strings.EqualFold(strings.TrimSpace(object.Type), energyPathBaseboardElectricType) {
+		if !energyPathBaseboardElectricTypeSupported(object.Type) {
 			continue
 		}
 		name := energyPathBaseboardField(object, 0)
@@ -164,7 +170,7 @@ func energyPathBaseboardTargets(doc idf.Document) []energyPathBaseboardTarget {
 			continue
 		}
 		target := energyPathBaseboardTarget{Component: energyPathBaseboardComponentRef(object), KeyValue: name, ZoneName: zoneName}
-		if !energyPathBaseboardRecipients(index, object, &target) {
+		if !energyPathBaseboardResponse(index, object, &target) {
 			continue
 		}
 		for _, output := range doc.Objects {
@@ -187,6 +193,62 @@ func energyPathBaseboardTargets(doc idf.Document) []energyPathBaseboardTarget {
 func energyPathBaseboardFraction(value string) (float64, bool) {
 	number, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
 	return number, err == nil && !math.IsNaN(number) && !math.IsInf(number, 0) && number >= 0 && number <= 1
+}
+
+func energyPathBaseboardResponse(index energyPathBaseboardOriginalIndex, object idf.Object, target *energyPathBaseboardTarget) bool {
+	if strings.EqualFold(strings.TrimSpace(object.Type), energyPathBaseboardElectricType) {
+		return energyPathBaseboardRecipients(index, object, target)
+	}
+	// This exact native type has seven schema positions, ending at efficiency6,
+	// not seven mandatory serialized fields. EnergyPlus 25.1 IdfParser pads
+	// min-fields and InputProcessor supplies omitted method/efficiency defaults.
+	// The selected capacity is still explicitly required by BaseboardElectric's
+	// numeric-blank checks. Never reinterpret another type or a radiant tail.
+	if !strings.EqualFold(strings.TrimSpace(object.Type), energyPathBaseboardConvectiveElectricType) || len(object.Fields) < 4 || len(object.Fields) > 7 || !energyPathBaseboardConvectiveCapacityValid(object) {
+		return false
+	}
+	efficiency, valid := energyPathBaseboardConvectiveNumber(firstNonEmpty(energyPathBaseboardField(object, 6), "1"))
+	// Convective IDD permits zero, but the engine divides power by efficiency.
+	// A zero-efficiency configuration cannot prove a finite consumption source.
+	return valid && efficiency > 0 && efficiency <= 1 && target.RadiantFraction == 0 && target.PeopleFraction == 0 && len(target.Recipients) == 0
+}
+
+func energyPathBaseboardConvectiveCapacityValid(object idf.Object) bool {
+	method := strings.ToLower(firstNonEmpty(energyPathBaseboardField(object, 2), "HeatingDesignCapacity"))
+	field, strictlyPositive := 3, false
+	switch method {
+	case "heatingdesigncapacity":
+		if strings.EqualFold(energyPathBaseboardField(object, 3), "Autosize") {
+			return true
+		}
+	case "capacityperfloorarea":
+		field, strictlyPositive = 4, true
+	case "fractionofautosizedheatingcapacity":
+		field = 5
+	default:
+		return false
+	}
+	// IDD defaults (Autosize and fraction1) do not erase NumBlank. Tagged
+	// BaseboardElectric GetBaseboardInput rejects a blank selected numeric;
+	// area capacity additionally rejects zero, whereas design/fraction allow it.
+	value, valid := energyPathBaseboardConvectiveNumber(energyPathBaseboardField(object, field))
+	return valid && value >= 0 && (!strictlyPositive || value > 0)
+}
+
+func energyPathBaseboardConvectiveNumber(value string) (float64, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0, false
+	}
+	// Native IDF real fields accept decimal/scientific numbers, not Go hex
+	// literals or underscore separators accepted by strconv.ParseFloat.
+	for _, character := range value {
+		if !strings.ContainsRune("0123456789+-.eE", character) {
+			return 0, false
+		}
+	}
+	number, err := strconv.ParseFloat(value, 64)
+	return number, err == nil && !math.IsNaN(number) && !math.IsInf(number, 0)
 }
 
 func energyPathBaseboardRecipients(index energyPathBaseboardOriginalIndex, object idf.Object, target *energyPathBaseboardTarget) bool {
@@ -235,10 +297,30 @@ func energyPathBaseboardElectricityDefinition() energyPathDirectHVACComponentDef
 		Energy: energyMeterAliasDefinition{Kind: "energy.heating", Label: "Baseboard electricity", Carrier: "electricity", EndUse: "heating", HierarchyLevel: "zone_direct_use", Aliases: []string{"Baseboard Electricity Energy"}}}
 }
 
+func energyPathBaseboardElectricityDefinitionForType(objectType string) (energyPathDirectHVACComponentDefinition, bool) {
+	if !energyPathBaseboardElectricTypeSupported(objectType) {
+		return energyPathDirectHVACComponentDefinition{}, false
+	}
+	definition := energyPathBaseboardElectricityDefinition()
+	if strings.EqualFold(strings.TrimSpace(objectType), energyPathBaseboardConvectiveElectricType) {
+		definition.ObjectType = energyPathBaseboardConvectiveElectricType
+	}
+	return definition, true
+}
+
+func energyPathBaseboardElectricityDefinitions() []energyPathDirectHVACComponentDefinition {
+	radiant := energyPathBaseboardElectricityDefinition()
+	convective, _ := energyPathBaseboardElectricityDefinitionForType(energyPathBaseboardConvectiveElectricType)
+	return []energyPathDirectHVACComponentDefinition{radiant, convective}
+}
+
 func energyPathBaseboardDirectTargets(targets []energyPathBaseboardTarget) []energyPathDirectHVACComponentTarget {
 	out := make([]energyPathDirectHVACComponentTarget, 0, len(targets))
 	for _, target := range targets {
-		out = append(out, energyPathDirectHVACComponentTarget{Definition: energyPathBaseboardElectricityDefinition(), KeyValue: target.KeyValue, ZoneName: target.ZoneName})
+		definition, supported := energyPathBaseboardElectricityDefinitionForType(target.Component.ObjectType)
+		if supported {
+			out = append(out, energyPathDirectHVACComponentTarget{Definition: definition, KeyValue: target.KeyValue, ZoneName: target.ZoneName})
+		}
 	}
 	return out
 }

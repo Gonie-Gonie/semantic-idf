@@ -31,6 +31,7 @@ func epathSQLHourlyCompanionUnit(name string) string {
 	switch name {
 	case "Surface Inside Face Convection Heat Gain Energy", "Zone Total Internal Convective Heating Energy",
 		"Zone Electric Equipment Convective Heating Energy", "Zone Electric Equipment Latent Gain Energy",
+		"Zone Hot Water Equipment Convective Heating Energy", "Zone Hot Water Equipment Latent Gain Energy",
 		"Zone Infiltration Latent Heat Gain Energy", "Zone Infiltration Latent Heat Loss Energy",
 		"Zone Infiltration Sensible Heat Gain Energy", "Zone Infiltration Sensible Heat Loss Energy",
 		"Zone Lights Convective Heating Energy", "Zone People Convective Heating Energy", "Zone People Latent Gain Energy":

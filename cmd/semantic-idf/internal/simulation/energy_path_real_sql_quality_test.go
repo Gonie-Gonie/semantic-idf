@@ -345,6 +345,9 @@ func epathSQLQualityCheckDependency(bundle PurposeResultBundle, dependency epath
 	if err == nil && dependency.DirectUse != nil {
 		err = epathCheckSQLDirectUseEndpoints(bundle, dependency)
 	}
+	if err == nil && dependency.DirectFan != nil {
+		err = epathCheckSQLDirectFan(bundle, dependency)
+	}
 	if err == nil && dependency.AuxiliaryZone != nil {
 		err = epathCheckSQLAuxiliaryZone(bundle, dependency)
 	}
@@ -698,6 +701,9 @@ func epathSQLQualityRatioCounts(bundle PurposeResultBundle, check epathSQLModelC
 		}
 		if err == nil && dependency.DirectUse != nil {
 			err = epathCheckSQLDirectUseEndpoints(bundle, dependency)
+		}
+		if err == nil && dependency.DirectFan != nil {
+			err = epathCheckSQLDirectFan(bundle, dependency)
 		}
 		if err == nil && dependency.AuxiliaryZone != nil {
 			err = epathCheckSQLAuxiliaryZone(bundle, dependency)

@@ -1,6 +1,9 @@
 package simulation
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // A Zone with a complete direct observation for every monthly service carrier
 // cannot inherit an allocated HVAC energy row. Its fresh monthly carrier rows,
@@ -11,8 +14,29 @@ func epathSQLZoneCarrierDirectMonthlyIDs(frames epathSQLFrames, model epathRealS
 	if len(model.DirectHVACComponents) == 0 || len(model.Services) == 0 || len(model.FanPools) != 0 {
 		return false, nil
 	}
+	var directFans *epathSQLDirectFanFrames
 	for _, auxiliary := range model.Auxiliaries {
-		if auxiliary.Weight != "unassigned" {
+		switch auxiliary.Weight {
+		case "unassigned":
+			continue
+		case "native_direct":
+			if directFans == nil {
+				var err error
+				directFans, err = epathSQLCompileDirectFans(frames, model)
+				if err != nil {
+					return false, err
+				}
+			}
+			// A direct fan cannot create an inherited allocated row, but
+			// that claim needs the complete native cohort, including zero
+			// months and this exact Zone's original consuming sources.
+			if directFans == nil || directFans.SiteID != auxiliary.SiteID {
+				return false, fmt.Errorf("direct-only carrier identity lacks a proved native fan policy")
+			}
+			if len(directFans.Sources[strings.ToLower(zone)]) == 0 {
+				return false, nil
+			}
+		default:
 			return false, nil
 		}
 	}

@@ -816,6 +816,7 @@ type energyServicePathIndex struct {
 	auxiliaryPaths       []energyPathAuxiliaryServicePath
 	auxiliaryResolvable  map[string]bool
 	nativeBaseboardPaths map[string][]string
+	nativeWindowACPaths  map[string][]string
 }
 
 func enrichEnergyExplanationWithServicePaths(explanation EnergyExplanationV1, inputPath string) EnergyExplanationV1 {
@@ -860,6 +861,7 @@ func buildEnergyServicePathIndex(inputPath string) energyServicePathIndex {
 	doc := epinput.ToIDFDocument(model)
 	report := idf.AnalyzeHVAC(doc)
 	index.nativeBaseboardPaths = buildEnergyPathNativeBaseboardPaths(doc, report.ServiceModel.ZoneServices)
+	index.nativeWindowACPaths = buildEnergyPathNativeWindowACPaths(doc, report.ServiceModel.ZoneServices)
 	condenserLoopsByPlant := energyPathCondenserLoopsByPlant(report.Loops)
 	for _, summary := range report.ServiceModel.ZoneServices {
 		for _, path := range summary.Paths {
@@ -2698,6 +2700,8 @@ func (builder *purposePlanBuilder) addBasicEnergy() {
 		"standard-meter-district-heating-steam-heating",
 		"standard-meter-naturalgas-water-systems",
 		"standard-meter-naturalgas-interior-equipment",
+		"standard-meter-district-heating-water-interior-equipment",
+		"standard-meter-district-heating-interior-equipment",
 	} {
 		if detail == PurposeBasicEnergyDetailEnergyPath {
 			builder.addRecommendationWithReason(id, SimulationPurposeBasicEnergy, "Basic Energy Path")

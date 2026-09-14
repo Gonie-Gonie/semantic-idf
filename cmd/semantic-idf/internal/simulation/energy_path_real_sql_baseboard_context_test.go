@@ -13,6 +13,7 @@ import (
 )
 
 type epathRealSQLBaseboardContext struct {
+	OwnerType string               `json:"ownerType,omitempty"`
 	ZoneName  string               `json:"zoneName"`
 	OwnerName string               `json:"ownerName"`
 	Service   string               `json:"service"`
@@ -21,6 +22,7 @@ type epathRealSQLBaseboardContext struct {
 }
 
 type epathSQLBaseboardContextIdentity struct {
+	OwnerType                    string
 	ZoneName, OwnerName, Service string
 	Source                       epathRealSQLSource
 	Precision                    epathRealSQLPrecision
@@ -199,9 +201,20 @@ func epathCompileSQLBaseboardContexts(sqlPath, originalText string, plan *Purpos
 			return err
 		}
 	}
-	recipients, err := epathSQLCompileBaseboardRecipientQualification(doc, runDoc, observed, model.BaseboardContexts)
-	if err != nil {
-		return err
+	radiantDeclarations := []epathRealSQLBaseboardContext{}
+	for _, declaration := range model.BaseboardContexts {
+		if declaration.OwnerType == "" || declaration.OwnerType == epathSQLNativeBaseboardType {
+			radiantDeclarations = append(radiantDeclarations, declaration)
+		} else if declaration.OwnerType != epathSQLConvectiveBaseboardType {
+			return fmt.Errorf("unreviewed baseboard context physical type")
+		}
+	}
+	var recipients *epathSQLBaseboardRecipientQualification
+	if len(radiantDeclarations) > 0 {
+		recipients, err = epathSQLCompileBaseboardRecipientQualification(doc, runDoc, observed, radiantDeclarations)
+		if err != nil {
+			return err
+		}
 	}
 	db, err := epathOpenOracleSQL(sqlPath)
 	if err != nil {
@@ -219,7 +232,16 @@ func epathCompileSQLBaseboardContexts(sqlPath, originalText string, plan *Purpos
 		if err != nil || alternative.Unit != unit {
 			return fmt.Errorf("invalid native context unit/frequency: %v", err)
 		}
-		if err := epathSQLValidateNativeBaseboardOriginalOwner(doc, epathSQLBaseboardOwner(declaration.ZoneName, declaration.OwnerName)); err != nil {
+		owner := epathSQLBaseboardOwner(declaration.ZoneName, declaration.OwnerName)
+		contextRecipients := recipients
+		family := "heating.baseboard.electricity"
+		if declaration.OwnerType == epathSQLConvectiveBaseboardType {
+			owner.EquipmentType, owner.ComponentType = epathSQLConvectiveBaseboardType, epathSQLConvectiveBaseboardType
+			contextRecipients, family = nil, epathSQLConvectiveBaseboardFamily
+			if err := epathSQLValidateConvectiveBaseboardOriginalOwner(doc, owner); err != nil {
+				return err
+			}
+		} else if err := epathSQLValidateNativeBaseboardOriginalOwner(doc, owner); err != nil {
 			return err
 		}
 		zone, ok := frames.Zones[strings.ToLower(declaration.ZoneName)]
@@ -229,7 +251,7 @@ func epathCompileSQLBaseboardContexts(sqlPath, originalText string, plan *Purpos
 		if alternative.Name == "Baseboard Electricity Energy" {
 			companions := 0
 			for _, direct := range frames.DirectHVACSourceIdentities {
-				if direct.FamilyID != "heating.baseboard.electricity" || !strings.EqualFold(direct.Owner.KeyValue, declaration.OwnerName) || !strings.EqualFold(direct.Owner.ZoneName, declaration.ZoneName) {
+				if direct.FamilyID != family || !strings.EqualFold(direct.Owner.KeyValue, declaration.OwnerName) || !strings.EqualFold(direct.Owner.ZoneName, declaration.ZoneName) {
 					continue
 				}
 				if err := epathSQLValidateDirectHVACSourceIdentity(direct); err != nil {
@@ -272,7 +294,7 @@ func epathCompileSQLBaseboardContexts(sqlPath, originalText string, plan *Purpos
 		if dictionaryCount != 1 || dictionaryID != selected.DictionaryIndex {
 			return fmt.Errorf("baseboard native dictionary-only duplicates cannot be hidden by absent ReportData")
 		}
-		identity := epathSQLBaseboardContextIdentity{ZoneName: declaration.ZoneName, OwnerName: declaration.OwnerName, Service: declaration.Service, Source: selected, Precision: model.Precision, ObjectIndex: index, RequestBound: true, RecipientQualification: recipients}
+		identity := epathSQLBaseboardContextIdentity{OwnerType: declaration.OwnerType, ZoneName: declaration.ZoneName, OwnerName: declaration.OwnerName, Service: declaration.Service, Source: selected, Precision: model.Precision, ObjectIndex: index, RequestBound: true, RecipientQualification: contextRecipients}
 		if err := epathSQLReadBaseboardContextRows(db, &identity); err != nil {
 			return err
 		}
@@ -377,7 +399,14 @@ WHERE r.ReportDataDictionaryIndex=? AND e.EnvironmentType=3 AND `+epathOracleNon
 }
 
 func epathSQLValidateBaseboardContextIdentity(identity epathSQLBaseboardContextIdentity) error {
-	if identity.RecipientQualification == nil {
+	convective := identity.OwnerType == epathSQLConvectiveBaseboardType
+	if identity.OwnerType != "" && identity.OwnerType != epathSQLNativeBaseboardType && !convective {
+		return fmt.Errorf("baseboard context lost its reviewed physical type")
+	}
+	if convective && identity.RecipientQualification != nil {
+		return fmt.Errorf("pure convective baseboard cannot invent radiant recipients")
+	}
+	if !convective && identity.RecipientQualification == nil {
 		return fmt.Errorf("baseboard source lost independently bound recipient metadata proof")
 	}
 	source := identity.Source
@@ -455,11 +484,16 @@ func epathCheckSQLBaseboardContextSource(bundle PurposeResultBundle, check epath
 	if err := epathSQLValidateBaseboardContextIdentity(*identity); err != nil {
 		return err
 	}
-	if err := epathSQLCheckBaseboardRecipientQualification(bundle.EnergyExplanation.Sources, identity.RecipientQualification); err != nil {
-		return err
+	if identity.OwnerType != epathSQLConvectiveBaseboardType {
+		if err := epathSQLCheckBaseboardRecipientQualification(bundle.EnergyExplanation.Sources, identity.RecipientQualification); err != nil {
+			return err
+		}
 	}
 	target := check.Item.Target
 	unit, category, component, effective, _ := epathSQLBaseboardContextClass(identity.Source.Name, identity.Source.ReportingFrequency)
+	if identity.OwnerType == epathSQLConvectiveBaseboardType && component == "load.baseboard_response.combined" {
+		component = "load.baseboard_response.convective"
+	}
 	if check.Item.Group != "loads" || check.Item.Period != "annual" || check.Item.Unit != "kWh" || check.Quantity == nil || *check.Quantity != (epathSQLQuantity{Value: identity.ReportedScalar}) || target.Collection != "sources" || target.Field != "rawValue" && target.Field != "effectiveValue" || target.Field == "effectiveValue" && !effective || target.SourceName != identity.Source.Name || target.SourceKey != identity.Source.KeyValue || target.SourceUnit != unit || target.Frequency != identity.Source.ReportingFrequency || target.Unit != "kWh" || check.Item.Scope != "building" && check.Item.Scope != "zone" || check.Item.Scope == "building" && check.Item.Zone != "" || check.Item.Scope == "zone" && !strings.EqualFold(check.Item.Zone, identity.ZoneName) {
 		return fmt.Errorf("baseboard context proof escaped its exact source/owner/quantity target")
 	}

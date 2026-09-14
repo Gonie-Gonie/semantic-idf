@@ -72,6 +72,7 @@ func UpgradeEnergyExplanationV1(input EnergyExplanationV1) EnergyExplanationResu
 	if scope.Kind == "zone" {
 		directNodes, directEdges = buildEnergyPathDirectZoneLegacyGraph(directZoneSeries, "annual", "annual", input.canonicalMonthlyBasis)
 		qualifyEnergyPathNativeBaseboardNodes(directNodes, input.Sources, scope, input.servicePathIndex.nativeBaseboardPaths)
+		qualifyEnergyPathNativeWindowACNodes(directNodes, input.Sources, scope, input.servicePathIndex.nativeWindowACPaths)
 	}
 	annualLegacyNodes := append(append([]EnergyExplanationNode(nil), input.Nodes...), directNodes...)
 	annualLegacyNodes = qualifyEnergyPathHVACConsumptionAllocationNodes(annualLegacyNodes, annualZoneHVACAllocation)
@@ -118,6 +119,7 @@ func UpgradeEnergyExplanationV1(input EnergyExplanationV1) EnergyExplanationResu
 		if scope.Kind == "zone" {
 			periodDirectNodes, periodDirectEdges = buildEnergyPathDirectZoneLegacyGraph(directZoneSeries, period.ID, period.Kind, input.canonicalMonthlyBasis)
 			qualifyEnergyPathNativeBaseboardNodes(periodDirectNodes, input.Sources, scope, input.servicePathIndex.nativeBaseboardPaths)
+			qualifyEnergyPathNativeWindowACNodes(periodDirectNodes, input.Sources, scope, input.servicePathIndex.nativeWindowACPaths)
 		}
 		periodLegacyNodes := append(append([]EnergyExplanationNode(nil), period.Nodes...), periodDirectNodes...)
 		periodLegacyNodes = qualifyEnergyPathHVACConsumptionAllocationNodes(periodLegacyNodes, periodZoneHVACAllocations[strings.ToLower(strings.TrimSpace(period.ID))])
@@ -1611,6 +1613,12 @@ func upgradeEnergyExplanationGraph(legacyNodes []EnergyExplanationNode, legacyEd
 	buildingThermalContributions := map[string]bool{}
 	nativeConsumptionSources := energyPathNativeConsumptionSources(sources, scope)
 	separateNativeConsumptionBranches := len(nativeConsumptionSources) > 0
+	windowACEndUses := map[string]bool{}
+	for _, node := range scopedLegacyNodes {
+		if node.nativeWindowACPathQualified {
+			windowACEndUses[canonicalIDByLegacyID[node.ID]] = true
+		}
+	}
 	for _, edge := range legacyEdges {
 		link, ok := upgradeEnergyExplanationLink(edge, nodeByLegacyID, canonicalIDByLegacyID, canonicalNodes, loadTotalsByEndUse, endUsesWithLoads, canonicalMonthlyBasis, fanConsumptionSources)
 		if !ok {
@@ -1628,8 +1636,8 @@ func upgradeEnergyExplanationGraph(legacyNodes []EnergyExplanationNode, legacyEd
 				buildingThermalContributions[key] = true
 			}
 		}
-		if separateNativeConsumptionBranches && canonicalNodes[link.FromID] != nil && canonicalNodes[link.FromID].EndUse == "heating" && (link.Relation == "end_use_to_carrier" || link.Relation == "direct_end_use_to_carrier") {
-			if canonicalEnergyPathBasis(link.Basis, "") == "direct_zone_energy" && energyPathOnlyNativeBaseboardSources(link.SourceIDs, nativeConsumptionSources) {
+		if canonicalNodes[link.FromID] != nil && (windowACEndUses[link.FromID] || separateNativeConsumptionBranches && canonicalNodes[link.FromID].EndUse == "heating") && (link.Relation == "end_use_to_carrier" || link.Relation == "direct_end_use_to_carrier") {
+			if canonicalEnergyPathBasis(link.Basis, "") == "direct_zone_energy" && (nodeByLegacyID[edge.ToID].nativeWindowACPathQualified || energyPathOnlyNativeBaseboardSources(link.SourceIDs, nativeConsumptionSources)) {
 				// Carrier/canonical nodes include unrelated central service paths.
 				// The direct endpoint has the exact consuming equipment paths, or
 				// none when topology is unresolved. Neither case borrows context.
@@ -1687,7 +1695,7 @@ func upgradeEnergyExplanationGraph(legacyNodes []EnergyExplanationNode, legacyEd
 		link.ID = energyPathLinkID(link)
 		// Different exact legacy contributors can share one bounded taxonomy
 		// node. Sum only contributors not already carried by explicit edges.
-		if separateNativeConsumptionBranches && endUseNode.EndUse == "heating" {
+		if windowACEndUses[endUseID] || separateNativeConsumptionBranches && endUseNode.EndUse == "heating" {
 			link.ID += ".basis." + canonicalEnergyPathBasis(link.Basis, "")
 		}
 		mergeEnergyPathLink(links, link)
@@ -3259,6 +3267,7 @@ func mergeEnergyExplanationV2Node(nodes map[string]*EnergyExplanationNode, next 
 	current.EffectiveValue = roundedEnergyNumber(current.EffectiveValue + next.EffectiveValue)
 	current.AllocatedValue = roundedEnergyNumber(current.AllocatedValue + next.AllocatedValue)
 	current.AllocationApplied = current.AllocationApplied || next.AllocationApplied
+	current.nativeWindowACPathQualified = current.nativeWindowACPathQualified || next.nativeWindowACPathQualified
 	current.AllocationExplanation = firstNonEmpty(current.AllocationExplanation, next.AllocationExplanation)
 	if current.RawValue != 0 {
 		current.Multiplier = roundedEnergyNumber(current.EffectiveValue / current.RawValue)

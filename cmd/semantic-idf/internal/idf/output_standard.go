@@ -30,6 +30,7 @@ type standardOutputFeatures struct {
 	hasLights            bool
 	hasElectricEquipment bool
 	hasGasEquipment      bool
+	hasHotWaterEquipment bool
 	hasOnsiteGeneration  bool
 	hasCooling           bool
 	hasHeating           bool
@@ -153,6 +154,12 @@ func detectOutputFeatures(doc Document) standardOutputFeatures {
 		case strings.EqualFold(obj.Type, "GasEquipment"):
 			features.hasGasEquipment = true
 			features.hasNaturalGas = true
+		case objectType == "hotwaterequipment":
+			// This internal gain implicitly consumes district heating water as
+			// InteriorEquipment, not HVAC heating. Keep its resource evidence
+			// separate so unrelated electric heating cannot create a district
+			// Heating end-use recommendation.
+			features.hasHotWaterEquipment = true
 		case strings.EqualFold(obj.Type, "Exterior:Lights"):
 			features.hasExteriorLights = true
 			features.hasElectricity = true
@@ -161,6 +168,11 @@ func detectOutputFeatures(doc Document) standardOutputFeatures {
 			features.hasElectricity = true
 		case strings.HasPrefix(objectType, "pump:"):
 			features.hasPumps = true
+			features.hasElectricity = true
+		case objectType == "zonehvac:baseboard:convective:electric" || objectType == "zonehvac:baseboard:radiantconvective:electric":
+			// These native heating types contain neither "heating" nor "boiler".
+			// Recognize the exact electric devices, not every baseboard family.
+			features.hasHeating = true
 			features.hasElectricity = true
 		case strings.Contains(objectType, "districtcooling"):
 			features.hasDistrictCooling = true
@@ -260,11 +272,11 @@ func standardOutputRecommendationApplies(item OutputRecommendation, features sta
 	case strings.Contains(key, "districtcooling:facility"):
 		return features.hasDistrictCooling
 	case strings.Contains(key, "districtheatingwater:facility"):
-		return features.hasDistrictHeatWater
+		return features.hasDistrictHeatWater || features.hasHotWaterEquipment
 	case strings.Contains(key, "districtheatingsteam:facility"):
 		return features.hasDistrictHeatSteam
 	case strings.Contains(key, "districtheating:facility"):
-		return features.hasDistrictHeating
+		return features.hasDistrictHeating || features.hasHotWaterEquipment
 	case strings.Contains(key, "fueloilno1:facility"):
 		return features.hasFuelOilNo1
 	case strings.Contains(key, "fueloilno2:facility"):
@@ -333,6 +345,8 @@ func standardOutputRecommendationApplies(item OutputRecommendation, features sta
 		return features.hasWaterSystems && features.hasNaturalGas
 	case strings.Contains(key, "naturalgas:interiorequipment"):
 		return features.hasGasEquipment
+	case key == "interiorequipment:districtheatingwater" || key == "interiorequipment:districtheating":
+		return features.hasHotWaterEquipment
 	case strings.Contains(variable, "zone lights electricity"):
 		return features.hasLights
 	case strings.Contains(variable, "zone electric equipment"):

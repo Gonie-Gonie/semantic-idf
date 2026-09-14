@@ -42,7 +42,8 @@ func energyPathDirectHVACComponentDefinitions() []energyPathDirectHVACComponentD
 				Carrier: item.carrier, EndUse: item.service, HierarchyLevel: "zone_direct_use", Aliases: []string{item.name}},
 		})
 	}
-	definitions = append(definitions, energyPathBaseboardElectricityDefinition())
+	definitions = append(definitions, energyPathBaseboardElectricityDefinitions()...)
+	definitions = append(definitions, energyPathWindowACFanElectricityDefinition())
 	return definitions
 }
 
@@ -294,13 +295,23 @@ func energyPathDirectHVACComponentTargets(doc idf.Document) []energyPathDirectHV
 
 func (builder *purposePlanBuilder) addEnergyPathDirectHVACComponentOutputs() {
 	selected, scoped := purposeSelectedZoneSet(builder.request.Scope)
-	for _, target := range energyPathDirectHVACComponentTargets(builder.doc) {
+	targets := energyPathDirectHVACComponentTargets(builder.doc)
+	packagedTargets := len(targets)
+	targets = append(targets, energyPathWindowACDirectTargets(energyPathWindowACTargets(builder.doc))...)
+	for index, target := range targets {
 		if scoped && !selected[normalizePurposeToken(target.ZoneName)] {
 			continue
 		}
+		reason := "Monthly consumption of an exclusively Zone-owned native packaged-terminal coil constituent; excludes package and supply-fan totals."
+		if index >= packagedTargets {
+			reason = "Monthly native electricity of an exclusively Zone-owned WindowAC cooling-coil constituent; primary and crankcase consumption remain distinct, excluding fan and overlapping package totals."
+		}
+		if target.Definition.ID == "fans.zone_equipment.electricity" {
+			reason = "Monthly native electricity of an exclusively Zone-owned WindowAC fan; separate from coil consumption and the overlapping package subtotal."
+		}
 		for _, name := range target.Definition.Energy.Aliases {
 			builder.addVariableWithReasonAndScopeZone(SimulationPurposeBasicEnergy, target.KeyValue, name, "Monthly", "medium",
-				"Monthly consumption of an exclusively Zone-owned native packaged-terminal coil constituent; excludes package and supply-fan totals.", "Basic Energy Path", target.ZoneName)
+				reason, "Basic Energy Path", target.ZoneName)
 		}
 	}
 }

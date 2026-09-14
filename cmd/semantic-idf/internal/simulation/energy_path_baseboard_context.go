@@ -156,6 +156,10 @@ func bindEnergyPathBaseboardContextSeries(series []energyExplanationSeries, sour
 			source.DriverRole, source.InspectorSection = energyDriverSourceRoleContext, energyDriverInspectorSectionContext
 			source.DriverCategory, source.DriverComponent, source.HeatDirection = "load.heating", "load.baseboard_response.combined", "heating"
 			source.Explanation = "Native baseboard LoadMet response is already included in Zone Air System Sensible heating/cooling. Retained as non-additive equipment context; not an additional Zone load, not a passive surface decomposition, and not generated heat divided by efficiency."
+			if owned && strings.EqualFold(targets[0].Component.ObjectType, energyPathBaseboardConvectiveElectricType) {
+				source.DriverComponent = "load.baseboard_response.convective"
+				source.Explanation = "Native electric baseboard convective heating is already included in Zone Air System Sensible heating/cooling. Retained as non-additive equipment context, not an additional Zone load or passive surface contribution. This type has no radiant recipients; measured electricity is not derived by dividing this response by efficiency."
+			}
 			if normalizeEnergyOutputName(name) == "baseboard electricity rate" {
 				source.DriverCategory, source.DriverComponent = "energy.heating", "energy.baseboard_electricity_rate"
 				source.Explanation = "Native baseboard electricity rate retained as non-additive context. Monthly Electricity Energy is the direct consumption authority; integrating this companion does not create additional site energy."

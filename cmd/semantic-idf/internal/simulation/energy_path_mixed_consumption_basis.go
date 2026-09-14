@@ -7,7 +7,7 @@ import (
 
 const energyRelationshipRuleMixedHVACConsumptionBasis = "aggregation.observed_and_allocated_zone_energy"
 
-// A native local heater and an independently allocated central service can
+// A native local heater/cooler and an independently allocated central service can
 // share one bounded end-use node. Preserve each site branch's evidence, but do
 // not label their combined node/conversion as entirely directly measured.
 // This qualification is restricted to the native constituent contract; the
@@ -17,7 +17,13 @@ func qualifyEnergyPathMixedConsumptionBasis(nodes []EnergyExplanationNode, links
 		return links
 	}
 	local := energyPathNativeConsumptionSources(sources, scope)
-	if len(local) == 0 {
+	nativeCooling := map[string]bool{}
+	for _, node := range nodes {
+		if node.Level == "end_use" && node.EndUse == "cooling" && strings.EqualFold(node.ZoneName, scope.ZoneName) && node.nativeWindowACPathQualified {
+			nativeCooling[node.ID] = true
+		}
+	}
+	if len(local) == 0 && len(nativeCooling) == 0 {
 		return links
 	}
 	type evidence struct {
@@ -32,6 +38,10 @@ func qualifyEnergyPathMixedConsumptionBasis(nodes []EnergyExplanationNode, links
 		current := byEndUse[link.FromID]
 		switch canonicalEnergyPathBasis(link.Basis, "") {
 		case "direct_zone_energy":
+			// This private marker comes only from whole-cohort original WindowAC
+			// ownership proof. A generic Cooling Coil output name is insufficient
+			// and must not reclassify the frozen PTAC compatibility path.
+			current.direct = current.direct || nativeCooling[link.FromID] && len(link.SourceIDs) > 0
 			for _, id := range link.SourceIDs {
 				if local[id] {
 					current.direct = true
@@ -47,17 +57,23 @@ func qualifyEnergyPathMixedConsumptionBasis(nodes []EnergyExplanationNode, links
 		byEndUse[link.FromID] = current
 	}
 	qualified := map[string]string{}
+	qualifiedExplanation := map[string]string{}
 	const explanation = "Mixed Zone subtotal: directly observed local heater consumption plus separately allocated central HVAC energy. The combined total is not a fully measured Zone observation; carrier branches retain their own direct or allocated basis."
+	const coolingExplanation = "Mixed Zone subtotal: directly observed local cooling consumption plus separately allocated central HVAC energy. The combined total is not a fully measured Zone observation; carrier branches retain their own direct or allocated basis."
 	for index := range nodes {
 		node := &nodes[index]
 		e := byEndUse[node.ID]
-		if node.Level != "end_use" || node.EndUse != "heating" || !strings.EqualFold(node.ZoneName, scope.ZoneName) || !e.direct || e.allocated == "" {
+		if node.Level != "end_use" || node.EndUse != "heating" && !nativeCooling[node.ID] || !strings.EqualFold(node.ZoneName, scope.ZoneName) || !e.direct || e.allocated == "" {
 			continue
 		}
 		node.Basis = e.allocated
 		node.AllocationApplied = true
 		node.AllocationExplanation = explanation
+		if nativeCooling[node.ID] {
+			node.AllocationExplanation = coolingExplanation
+		}
 		qualified[node.ID] = e.allocated
+		qualifiedExplanation[node.ID] = node.AllocationExplanation
 	}
 	if len(qualified) == 0 {
 		return links
@@ -73,7 +89,7 @@ func qualifyEnergyPathMixedConsumptionBasis(nodes []EnergyExplanationNode, links
 		}
 		link.Basis = basis
 		link.RuleID = energyRelationshipRuleMixedHVACConsumptionBasis
-		link.Explanation = explanation
+		link.Explanation = qualifiedExplanation[link.ToID]
 		link.SourceIDs = appendUniqueStrings(nil, link.SourceIDs...)
 		link.RelatedPathIDs = appendUniqueStrings(nil, link.RelatedPathIDs...)
 		link.ID = energyPathLinkID(link)

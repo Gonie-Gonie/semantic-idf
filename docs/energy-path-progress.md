@@ -1128,3 +1128,53 @@ passes: app 22.408 seconds, CLI 5.700, frontend/browser 181.959 and simulation
 465.731, with input, IDF and tabular tests passing from cache. The production
 Windows build passes in 7.927 seconds. Normal commit-hook verification/build and
 push finish this checkpoint before further production changes.
+
+## ZoneGroup engineering checkpoint (2026-09-15)
+
+The remote UI remains unchanged. Native WindowAC coil/crankcase/fan and
+convective electric baseboard objects now retain exact typed owners, source
+identities and delivery paths. Already model-total equipment outputs are not
+multiplied again; representative Zone loads and internal gains receive original
+Zone and Group factors once. Editable comments cannot replace native multiplier
+field positions. Convective baseboards have no invented radiant recipients.
+Mixed observed/allocated cooling retains honest evidence classification.
+
+Original HotWaterEquipment exposed a real omission: its district-water
+InteriorEquipment and Facility meters were not requested or classified. The
+new capture closes those measured budgets without treating them as space
+Heating, duplicating aliases, or replacing native zero with a fallback. Old
+captures, the original physical model and all prior approved expectations are
+preserved. The official model's existing physical warnings remain disclosed.
+
+The first complete diagnostic identified test/recipe assumptions about zero
+driver leaves, resistance-heating ratio kind, native fan scalar presence and
+direct Zone ledger identity. Bounded corrections and independent hand-SQL
+regressions preserve every source metric, missing/zero distinction and numerical
+bound. The corrected candidate passes 21,413 independent checks across eight
+groups, with zero numerical/contract failures and zero coverage gaps.
+
+Separate native arithmetic verifies 5,407 fields; the complete registry audit
+binds all 1,354 source-only identities plus 177 non-additive Hourly companions
+to original owners and native dictionaries. The 130 contexts retain 6,441
+coverage records and 13,351 required fields. Root manually approves pending
+SHA256 `f123e415717bb10389930e94e6843e41e79ded715bac119b8a57643c26ace0b0`;
+the 179,030-byte lossless companion preserves all 21,413 metrics, 7,086 explicit
+zero values and 1,154 typed nulls. Fresh saved acceptance and the eleven-fixture
+guard pass in 570.904 seconds. All ten earlier fixtures pass current-code
+rebuilding with twenty expected artifact hashes unchanged. Details and precise
+source/rounding boundaries are in `energy-path-zone-group-acceptance.md`.
+
+Section 22 is now 11/19, not complete. Zone multiplier/pool, PV/storage, no
+cooling, no heating, simultaneous operation and Large Office 22.1/23.2/24.2
+remain. Pool preflight additionally proves that unassigned Zone budgets alone
+cannot prevent a false Building conversion through the full Heating meter;
+affected source-local conversions and summary fallbacks require their own guard.
+No future fixture is marked implemented or approved. Final peer review adds a
+bounded empty-NodeList safety guard without weakening real duplicate ownership;
+the older PTAC discovery test now distinguishes the reviewed native WindowAC
+fan name from invalid Rate/unknown aliases. Post-guard saved acceptance passes
+all 21,413 unchanged expectations in 572.91 seconds. The second full repository
+gate passes: app 21.899, CLI 5.963, input 1.382, frontend/browser 184.073, IDF
+9.107 and simulation 551.041 seconds; tabular passes from cache. The production
+Windows build passes in 8.104 seconds. Normal commit-hook verification/build
+and push finish this checkpoint before the shared pool/plant implementation.

@@ -1,0 +1,3261 @@
+{
+  "schema": "semantic-idf.energy-path-sql-oracle-recipe/v1",
+  "review": "DRAFT ORIGINAL-ONLY ZONEGROUP REVIEW; NOT ACCEPTED. Original MultiStory SHA256 c7165328a5f3a90aa81ac3f95928600079cf9f7a109fd615ccc6686caf518ba2. Source capture real-zone-group-25-1-20260914T161342.768401800; SQL SHA256 c72db1c09745099d7e7ae304ef98d72ed67db9d6678f9b9a388e6c64fc1ed5cf. Executed input SHA256 21312038f41574bb15cedc1b052c9cd533d18cccf081179bb197068c0b4c5119. Nine exact typed WindowAC cooling/fan and ConvectiveElectric baseboard owners, 78 original heat-transfer surfaces, Zone/ZoneGroup factors compared separately. Zone sensible loads, lighting/equipment including HotWaterEquipment, and internal/air/surface driver observations are representative and receive original factors once. Native HVAC/fan inputs and baseboard context are already model total and remain multiplier1. Baseboard TotalHeating is non-additive context, no radiant recipients. Nine crankcase sources are actual observed zeros, not absent defaults. Fans remain an independent direct site consumer, not cooling energy or shared AirLoop allocation. HotWaterEquipment uses DistrictHeatingWater in InteriorEquipment, not space Heating; native District Energy Zone raw is multiplied once, distinct from native model-total baseboard energy. Equipment sensible/latent includes Electric and HotWater components separately before internal-other subtraction. No infiltration, AFN, mixing, ventilation object or radiant source is invented; actual zero outdoor/interzone balance remains observed zero. Hourly and Monthly are alternate observations, never additive. Surface sign -1; Monthly completed quantities precede Annual aggregation. No source values or keys were taken from a candidate. All eight arithmetic/coverage groups and independent pending review remain required.",
+  "sources": [],
+  "metrics": [],
+  "sqlModel": {
+    "schema": "semantic-idf.energy-path-sql-model/large-office-monthly/v1",
+    "originalZoneMultiplierProof": "zone_and_group/v1",
+    "surface": {
+      "source": {
+        "alternatives": [
+          {
+            "name": "Surface Inside Face Convection Heat Gain Energy",
+            "unit": "J"
+          },
+          {
+            "name": "Surface Inside Face Convection Heat Gain Rate",
+            "unit": "W"
+          }
+        ],
+        "keys": [
+          "*"
+        ],
+        "isMeter": false
+      },
+      "sign": -1,
+      "mapping": "surface_class_boundary/v1"
+    },
+    "families": [
+      {
+        "id": "people.sensible",
+        "category": "internal.people",
+        "component": "sensible",
+        "keys": [
+          "GND CENTER ZONE",
+          "GND EAST ZONE",
+          "GND WEST ZONE",
+          "MID CENTER ZONE",
+          "MID EAST ZONE",
+          "MID WEST ZONE",
+          "TOP CENTER ZONE",
+          "TOP EAST ZONE",
+          "TOP WEST ZONE"
+        ],
+        "terms": [
+          {
+            "source": {
+              "alternatives": [
+                {
+                  "name": "Zone People Convective Heating Energy",
+                  "unit": "J"
+                }
+              ],
+              "keys": [],
+              "isMeter": false
+            },
+            "sign": 1
+          }
+        ],
+        "subtract": [],
+        "role": "pressure",
+        "buildingVisible": true
+      },
+      {
+        "id": "people.latent",
+        "category": "internal.people",
+        "component": "latent",
+        "keys": [
+          "GND CENTER ZONE",
+          "GND EAST ZONE",
+          "GND WEST ZONE",
+          "MID CENTER ZONE",
+          "MID EAST ZONE",
+          "MID WEST ZONE",
+          "TOP CENTER ZONE",
+          "TOP EAST ZONE",
+          "TOP WEST ZONE"
+        ],
+        "terms": [
+          {
+            "source": {
+              "alternatives": [
+                {
+                  "name": "Zone People Latent Gain Energy",
+                  "unit": "J"
+                }
+              ],
+              "keys": [],
+              "isMeter": false
+            },
+            "sign": 1
+          }
+        ],
+        "subtract": [],
+        "role": "pressure",
+        "buildingVisible": true
+      },
+      {
+        "id": "lighting.sensible",
+        "category": "internal.lighting",
+        "component": "sensible",
+        "keys": [
+          "GND CENTER ZONE",
+          "GND EAST ZONE",
+          "GND WEST ZONE",
+          "MID CENTER ZONE",
+          "MID EAST ZONE",
+          "MID WEST ZONE",
+          "TOP CENTER ZONE",
+          "TOP EAST ZONE",
+          "TOP WEST ZONE"
+        ],
+        "terms": [
+          {
+            "source": {
+              "alternatives": [
+                {
+                  "name": "Zone Lights Convective Heating Energy",
+                  "unit": "J"
+                }
+              ],
+              "keys": [],
+              "isMeter": false
+            },
+            "sign": 1
+          }
+        ],
+        "subtract": [],
+        "role": "pressure",
+        "buildingVisible": true
+      },
+      {
+        "id": "equipment.sensible",
+        "category": "internal.equipment",
+        "component": "sensible",
+        "keys": [
+          "GND CENTER ZONE",
+          "GND EAST ZONE",
+          "GND WEST ZONE",
+          "MID CENTER ZONE",
+          "MID EAST ZONE",
+          "MID WEST ZONE",
+          "TOP CENTER ZONE",
+          "TOP EAST ZONE",
+          "TOP WEST ZONE"
+        ],
+        "terms": [
+          {
+            "source": {
+              "alternatives": [
+                {
+                  "name": "Zone Electric Equipment Convective Heating Energy",
+                  "unit": "J"
+                }
+              ],
+              "keys": [],
+              "isMeter": false
+            },
+            "sign": 1
+          },
+          {
+            "source": {
+              "alternatives": [
+                {
+                  "name": "Zone Hot Water Equipment Convective Heating Energy",
+                  "unit": "J"
+                }
+              ],
+              "keys": [],
+              "isMeter": false
+            },
+            "sign": 1
+          }
+        ],
+        "subtract": [],
+        "role": "pressure",
+        "buildingVisible": true
+      },
+      {
+        "id": "equipment.latent",
+        "category": "internal.equipment",
+        "component": "latent",
+        "keys": [
+          "GND CENTER ZONE",
+          "GND EAST ZONE",
+          "GND WEST ZONE",
+          "MID CENTER ZONE",
+          "MID EAST ZONE",
+          "MID WEST ZONE",
+          "TOP CENTER ZONE",
+          "TOP EAST ZONE",
+          "TOP WEST ZONE"
+        ],
+        "terms": [
+          {
+            "source": {
+              "alternatives": [
+                {
+                  "name": "Zone Electric Equipment Latent Gain Energy",
+                  "unit": "J"
+                }
+              ],
+              "keys": [],
+              "isMeter": false
+            },
+            "sign": 1
+          },
+          {
+            "source": {
+              "alternatives": [
+                {
+                  "name": "Zone Hot Water Equipment Latent Gain Energy",
+                  "unit": "J"
+                }
+              ],
+              "keys": [],
+              "isMeter": false
+            },
+            "sign": 1
+          }
+        ],
+        "subtract": [],
+        "role": "pressure",
+        "buildingVisible": true
+      },
+      {
+        "id": "outdoor.unsplit",
+        "category": "balance.storage_other",
+        "component": "sensible",
+        "keys": [
+          "GND CENTER ZONE",
+          "GND EAST ZONE",
+          "GND WEST ZONE",
+          "MID CENTER ZONE",
+          "MID EAST ZONE",
+          "MID WEST ZONE",
+          "TOP CENTER ZONE",
+          "TOP EAST ZONE",
+          "TOP WEST ZONE"
+        ],
+        "terms": [
+          {
+            "source": {
+              "alternatives": [
+                {
+                  "name": "Zone Air Heat Balance Outdoor Air Transfer Rate",
+                  "unit": "W"
+                }
+              ],
+              "keys": [],
+              "isMeter": false
+            },
+            "sign": 1
+          }
+        ],
+        "subtract": [],
+        "role": "pressure",
+        "buildingVisible": true
+      },
+      {
+        "id": "air.storage",
+        "category": "balance.storage_other",
+        "component": "sensible",
+        "keys": [
+          "GND CENTER ZONE",
+          "GND EAST ZONE",
+          "GND WEST ZONE",
+          "MID CENTER ZONE",
+          "MID EAST ZONE",
+          "MID WEST ZONE",
+          "TOP CENTER ZONE",
+          "TOP EAST ZONE",
+          "TOP WEST ZONE"
+        ],
+        "terms": [
+          {
+            "source": {
+              "alternatives": [
+                {
+                  "name": "Zone Air Heat Balance Air Energy Storage Rate",
+                  "unit": "W"
+                }
+              ],
+              "keys": [],
+              "isMeter": false
+            },
+            "sign": -1
+          }
+        ],
+        "subtract": [],
+        "role": "pressure",
+        "buildingVisible": true
+      },
+      {
+        "id": "surface.balance",
+        "category": "balance.storage_other",
+        "component": "sensible",
+        "keys": [
+          "GND CENTER ZONE",
+          "GND EAST ZONE",
+          "GND WEST ZONE",
+          "MID CENTER ZONE",
+          "MID EAST ZONE",
+          "MID WEST ZONE",
+          "TOP CENTER ZONE",
+          "TOP EAST ZONE",
+          "TOP WEST ZONE"
+        ],
+        "terms": [
+          {
+            "source": {
+              "alternatives": [
+                {
+                  "name": "Zone Air Heat Balance Surface Convection Rate",
+                  "unit": "W"
+                }
+              ],
+              "keys": [],
+              "isMeter": false
+            },
+            "sign": 1
+          }
+        ],
+        "subtract": [
+          "surface.total"
+        ],
+        "role": "pressure",
+        "buildingVisible": true
+      },
+      {
+        "id": "internal.other.sensible",
+        "category": "internal.other",
+        "component": "sensible",
+        "keys": [
+          "GND CENTER ZONE",
+          "GND EAST ZONE",
+          "GND WEST ZONE",
+          "MID CENTER ZONE",
+          "MID EAST ZONE",
+          "MID WEST ZONE",
+          "TOP CENTER ZONE",
+          "TOP EAST ZONE",
+          "TOP WEST ZONE"
+        ],
+        "terms": [
+          {
+            "source": {
+              "alternatives": [
+                {
+                  "name": "Zone Total Internal Convective Heating Energy",
+                  "unit": "J"
+                }
+              ],
+              "keys": [],
+              "isMeter": false
+            },
+            "sign": 1
+          }
+        ],
+        "subtract": [
+          "people.sensible",
+          "lighting.sensible",
+          "equipment.sensible"
+        ],
+        "role": "pressure",
+        "buildingVisible": true
+      },
+      {
+        "id": "internal.other.latent",
+        "category": "internal.other",
+        "component": "latent",
+        "keys": [
+          "GND CENTER ZONE",
+          "GND EAST ZONE",
+          "GND WEST ZONE",
+          "MID CENTER ZONE",
+          "MID EAST ZONE",
+          "MID WEST ZONE",
+          "TOP CENTER ZONE",
+          "TOP EAST ZONE",
+          "TOP WEST ZONE"
+        ],
+        "terms": [
+          {
+            "source": {
+              "alternatives": [
+                {
+                  "name": "Zone Total Internal Latent Gain Energy",
+                  "unit": "J"
+                }
+              ],
+              "keys": [],
+              "isMeter": false
+            },
+            "sign": 1
+          }
+        ],
+        "subtract": [
+          "people.latent",
+          "equipment.latent"
+        ],
+        "role": "pressure",
+        "buildingVisible": true
+      },
+      {
+        "id": "interzone.air",
+        "category": "air.interzone",
+        "component": "sensible",
+        "keys": [
+          "GND CENTER ZONE",
+          "GND EAST ZONE",
+          "GND WEST ZONE",
+          "MID CENTER ZONE",
+          "MID EAST ZONE",
+          "MID WEST ZONE",
+          "TOP CENTER ZONE",
+          "TOP EAST ZONE",
+          "TOP WEST ZONE"
+        ],
+        "terms": [
+          {
+            "source": {
+              "alternatives": [
+                {
+                  "name": "Zone Air Heat Balance Interzone Air Transfer Rate",
+                  "unit": "W"
+                }
+              ],
+              "keys": [],
+              "isMeter": false
+            },
+            "sign": 1
+          }
+        ],
+        "subtract": [],
+        "role": "pressure",
+        "buildingVisible": false
+      }
+    ],
+    "loads": [
+      {
+        "service": "cooling",
+        "component": "sensible",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Zone Air System Sensible Cooling Energy",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "GND CENTER ZONE",
+            "GND EAST ZONE",
+            "GND WEST ZONE",
+            "MID CENTER ZONE",
+            "MID EAST ZONE",
+            "MID WEST ZONE",
+            "TOP CENTER ZONE",
+            "TOP EAST ZONE",
+            "TOP WEST ZONE"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "service": "heating",
+        "component": "sensible",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Zone Air System Sensible Heating Energy",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "GND CENTER ZONE",
+            "GND EAST ZONE",
+            "GND WEST ZONE",
+            "MID CENTER ZONE",
+            "MID EAST ZONE",
+            "MID WEST ZONE",
+            "TOP CENTER ZONE",
+            "TOP EAST ZONE",
+            "TOP WEST ZONE"
+          ],
+          "isMeter": false
+        }
+      }
+    ],
+    "site": [
+      {
+        "id": "facility.electricity",
+        "endUse": "",
+        "carrier": "electricity",
+        "facility": true,
+        "source": {
+          "alternatives": [
+            {
+              "name": "Electricity:Facility",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "*"
+          ],
+          "isMeter": true
+        }
+      },
+      {
+        "id": "cooling.electricity",
+        "endUse": "cooling",
+        "carrier": "electricity",
+        "facility": false,
+        "source": {
+          "alternatives": [
+            {
+              "name": "Cooling:Electricity",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "*"
+          ],
+          "isMeter": true
+        }
+      },
+      {
+        "id": "heating.electricity",
+        "endUse": "heating",
+        "carrier": "electricity",
+        "facility": false,
+        "source": {
+          "alternatives": [
+            {
+              "name": "Heating:Electricity",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "*"
+          ],
+          "isMeter": true
+        }
+      },
+      {
+        "id": "fans.electricity",
+        "endUse": "fans",
+        "carrier": "electricity",
+        "facility": false,
+        "source": {
+          "alternatives": [
+            {
+              "name": "Fans:Electricity",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "*"
+          ],
+          "isMeter": true
+        }
+      },
+      {
+        "id": "interior_lighting.electricity",
+        "endUse": "lighting",
+        "carrier": "electricity",
+        "facility": false,
+        "source": {
+          "alternatives": [
+            {
+              "name": "InteriorLights:Electricity",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "*"
+          ],
+          "isMeter": true
+        }
+      },
+      {
+        "id": "equipment.electricity",
+        "endUse": "equipment",
+        "carrier": "electricity",
+        "facility": false,
+        "source": {
+          "alternatives": [
+            {
+              "name": "InteriorEquipment:Electricity",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "*"
+          ],
+          "isMeter": true
+        }
+      },
+      {
+        "id": "facility.district_heating",
+        "endUse": "",
+        "carrier": "district_heating",
+        "facility": true,
+        "source": {
+          "alternatives": [
+            {
+              "name": "DistrictHeatingWater:Facility",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "*"
+          ],
+          "isMeter": true
+        }
+      },
+      {
+        "id": "equipment.district_heating",
+        "endUse": "equipment",
+        "carrier": "district_heating",
+        "facility": false,
+        "source": {
+          "alternatives": [
+            {
+              "name": "InteriorEquipment:DistrictHeatingWater",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "*"
+          ],
+          "isMeter": true
+        }
+      }
+    ],
+    "availability": [
+      {
+        "id": "load.plant_unmet_or_residual",
+        "stage": "loads",
+        "requestedNames": [
+          "Cond Loop Demand Not Distributed",
+          "Plant Supply Side Not Distributed Demand Rate",
+          "Plant Supply Side Unmet Demand Rate"
+        ],
+        "observations": [],
+        "isMeter": false
+      },
+      {
+        "id": "load.system_cooling",
+        "stage": "loads",
+        "requestedNames": [
+          "Cooling Coil Sensible Cooling Energy",
+          "Cooling Coil Total Cooling Energy",
+          "Cooling Coil Total Cooling Rate"
+        ],
+        "observations": [
+          {
+            "name": "Cooling Coil Sensible Cooling Energy",
+            "unit": "J"
+          },
+          {
+            "name": "Cooling Coil Total Cooling Energy",
+            "unit": "J"
+          },
+          {
+            "name": "Cooling Coil Total Cooling Rate",
+            "unit": "W"
+          }
+        ],
+        "isMeter": false
+      },
+      {
+        "id": "load.system_heating",
+        "stage": "loads",
+        "requestedNames": [
+          "Heating Coil Heating Energy",
+          "Heating Coil Heating Rate"
+        ],
+        "observations": [],
+        "isMeter": false
+      },
+      {
+        "id": "load.plant_cooling",
+        "stage": "loads",
+        "requestedNames": [
+          "Plant Loop Cooling Demand Energy",
+          "Plant Supply Side Cooling Demand Rate"
+        ],
+        "observations": [],
+        "isMeter": false
+      },
+      {
+        "id": "load.plant_heating",
+        "stage": "loads",
+        "requestedNames": [
+          "Plant Loop Heating Demand Energy",
+          "Plant Supply Side Heating Demand Rate"
+        ],
+        "observations": [],
+        "isMeter": false
+      },
+      {
+        "id": "heat.infiltration",
+        "stage": "drivers",
+        "requestedNames": [
+          "AFN Zone Infiltration Latent Heat Gain Energy",
+          "AFN Zone Infiltration Latent Heat Gain Rate",
+          "AFN Zone Infiltration Latent Heat Loss Energy",
+          "AFN Zone Infiltration Latent Heat Loss Rate",
+          "AFN Zone Infiltration Sensible Heat Gain Energy",
+          "AFN Zone Infiltration Sensible Heat Gain Rate",
+          "AFN Zone Infiltration Sensible Heat Loss Energy",
+          "AFN Zone Infiltration Sensible Heat Loss Rate",
+          "Zone Infiltration Latent Heat Gain Energy",
+          "Zone Infiltration Latent Heat Gain Rate",
+          "Zone Infiltration Latent Heat Loss Energy",
+          "Zone Infiltration Latent Heat Loss Rate",
+          "Zone Infiltration Sensible Heat Gain Energy",
+          "Zone Infiltration Sensible Heat Gain Rate",
+          "Zone Infiltration Sensible Heat Loss Energy",
+          "Zone Infiltration Sensible Heat Loss Rate"
+        ],
+        "observations": [],
+        "isMeter": false
+      },
+      {
+        "id": "heat.mixing",
+        "stage": "drivers",
+        "requestedNames": [
+          "AFN Zone Mixing Latent Heat Gain Energy",
+          "AFN Zone Mixing Latent Heat Gain Rate",
+          "AFN Zone Mixing Latent Heat Loss Energy",
+          "AFN Zone Mixing Latent Heat Loss Rate",
+          "AFN Zone Mixing Sensible Heat Gain Energy",
+          "AFN Zone Mixing Sensible Heat Gain Rate",
+          "AFN Zone Mixing Sensible Heat Loss Energy",
+          "AFN Zone Mixing Sensible Heat Loss Rate",
+          "Zone Mixing Latent Heat Gain Energy",
+          "Zone Mixing Latent Heat Gain Rate",
+          "Zone Mixing Latent Heat Loss Energy",
+          "Zone Mixing Latent Heat Loss Rate",
+          "Zone Mixing Sensible Heat Gain Energy",
+          "Zone Mixing Sensible Heat Gain Rate",
+          "Zone Mixing Sensible Heat Loss Energy",
+          "Zone Mixing Sensible Heat Loss Rate"
+        ],
+        "observations": [],
+        "isMeter": false
+      },
+      {
+        "id": "heat.ventilation",
+        "stage": "drivers",
+        "requestedNames": [
+          "AFN Zone Ventilation Latent Heat Gain Energy",
+          "AFN Zone Ventilation Latent Heat Gain Rate",
+          "AFN Zone Ventilation Latent Heat Loss Energy",
+          "AFN Zone Ventilation Latent Heat Loss Rate",
+          "AFN Zone Ventilation Sensible Heat Gain Energy",
+          "AFN Zone Ventilation Sensible Heat Gain Rate",
+          "AFN Zone Ventilation Sensible Heat Loss Energy",
+          "AFN Zone Ventilation Sensible Heat Loss Rate",
+          "Zone Ventilation Latent Heat Gain Energy",
+          "Zone Ventilation Latent Heat Gain Rate",
+          "Zone Ventilation Latent Heat Loss Energy",
+          "Zone Ventilation Latent Heat Loss Rate",
+          "Zone Ventilation Sensible Heat Gain Energy",
+          "Zone Ventilation Sensible Heat Gain Rate",
+          "Zone Ventilation Sensible Heat Loss Energy",
+          "Zone Ventilation Sensible Heat Loss Rate"
+        ],
+        "observations": [],
+        "isMeter": false
+      },
+      {
+        "id": "heat.storage_air",
+        "stage": "drivers",
+        "requestedNames": [
+          "Zone Air Heat Balance Air Energy Storage Rate"
+        ],
+        "observations": [
+          {
+            "name": "Zone Air Heat Balance Air Energy Storage Rate",
+            "unit": "W"
+          }
+        ],
+        "isMeter": false
+      },
+      {
+        "id": "heat.zone_balance_residual",
+        "stage": "drivers",
+        "requestedNames": [
+          "Zone Air Heat Balance Deviation Rate"
+        ],
+        "observations": [],
+        "isMeter": false
+      },
+      {
+        "id": "heat.internal_convective",
+        "stage": "drivers",
+        "requestedNames": [
+          "Zone Air Heat Balance Internal Convective Heat Gain Rate",
+          "Zone Total Internal Convective Heating Energy",
+          "Zone Total Internal Convective Heating Rate",
+          "Zone Total Internal Latent Gain Energy",
+          "Zone Total Internal Latent Gain Rate"
+        ],
+        "observations": [
+          {
+            "name": "Zone Air Heat Balance Internal Convective Heat Gain Rate",
+            "unit": "W"
+          },
+          {
+            "name": "Zone Total Internal Convective Heating Energy",
+            "unit": "J"
+          },
+          {
+            "name": "Zone Total Internal Convective Heating Rate",
+            "unit": "W"
+          },
+          {
+            "name": "Zone Total Internal Latent Gain Energy",
+            "unit": "J"
+          },
+          {
+            "name": "Zone Total Internal Latent Gain Rate",
+            "unit": "W"
+          }
+        ],
+        "isMeter": false
+      },
+      {
+        "id": "heat.interzone_air",
+        "stage": "drivers",
+        "requestedNames": [
+          "Zone Air Heat Balance Interzone Air Transfer Rate"
+        ],
+        "observations": [
+          {
+            "name": "Zone Air Heat Balance Interzone Air Transfer Rate",
+            "unit": "W"
+          }
+        ],
+        "isMeter": false
+      },
+      {
+        "id": "heat.ventilation_outdoor_air",
+        "stage": "drivers",
+        "requestedNames": [
+          "Zone Air Heat Balance Outdoor Air Transfer Rate"
+        ],
+        "observations": [
+          {
+            "name": "Zone Air Heat Balance Outdoor Air Transfer Rate",
+            "unit": "W"
+          }
+        ],
+        "isMeter": false
+      },
+      {
+        "id": "heat.surface_convection",
+        "stage": "drivers",
+        "requestedNames": [
+          "Zone Air Heat Balance Surface Convection Rate"
+        ],
+        "observations": [
+          {
+            "name": "Zone Air Heat Balance Surface Convection Rate",
+            "unit": "W"
+          }
+        ],
+        "isMeter": false
+      },
+      {
+        "id": "heat.hvac_air_transfer",
+        "stage": "drivers",
+        "requestedNames": [
+          "Zone Air Heat Balance System Air Transfer Rate"
+        ],
+        "observations": [
+          {
+            "name": "Zone Air Heat Balance System Air Transfer Rate",
+            "unit": "W"
+          }
+        ],
+        "isMeter": false
+      },
+      {
+        "id": "heat.system_convective",
+        "stage": "drivers",
+        "requestedNames": [
+          "Zone Air Heat Balance System Convective Heat Gain Rate"
+        ],
+        "observations": [
+          {
+            "name": "Zone Air Heat Balance System Convective Heat Gain Rate",
+            "unit": "W"
+          }
+        ],
+        "isMeter": false
+      },
+      {
+        "id": "load.zone_latent_cooling",
+        "stage": "loads",
+        "requestedNames": [
+          "Zone Air System Latent Cooling Energy",
+          "Zone Air System Latent Cooling Rate"
+        ],
+        "observations": [],
+        "isMeter": false
+      },
+      {
+        "id": "load.zone_latent_heating",
+        "stage": "loads",
+        "requestedNames": [
+          "Zone Air System Latent Heating Energy",
+          "Zone Air System Latent Heating Rate"
+        ],
+        "observations": [],
+        "isMeter": false
+      },
+      {
+        "id": "load.zone_cooling",
+        "stage": "loads",
+        "requestedNames": [
+          "Zone Air System Sensible Cooling Energy",
+          "Zone Air System Sensible Cooling Rate"
+        ],
+        "observations": [
+          {
+            "name": "Zone Air System Sensible Cooling Energy",
+            "unit": "J"
+          },
+          {
+            "name": "Zone Air System Sensible Cooling Rate",
+            "unit": "W"
+          }
+        ],
+        "isMeter": false
+      },
+      {
+        "id": "load.zone_heating",
+        "stage": "loads",
+        "requestedNames": [
+          "Zone Air System Sensible Heating Energy",
+          "Zone Air System Sensible Heating Rate"
+        ],
+        "observations": [
+          {
+            "name": "Zone Air System Sensible Heating Energy",
+            "unit": "J"
+          },
+          {
+            "name": "Zone Air System Sensible Heating Rate",
+            "unit": "W"
+          }
+        ],
+        "isMeter": false
+      },
+      {
+        "id": "heat.combined_outdoor_air",
+        "stage": "drivers",
+        "requestedNames": [
+          "Zone Combined Outdoor Air Latent Heat Gain Energy",
+          "Zone Combined Outdoor Air Latent Heat Gain Rate",
+          "Zone Combined Outdoor Air Latent Heat Loss Energy",
+          "Zone Combined Outdoor Air Latent Heat Loss Rate",
+          "Zone Combined Outdoor Air Sensible Heat Gain Energy",
+          "Zone Combined Outdoor Air Sensible Heat Gain Rate",
+          "Zone Combined Outdoor Air Sensible Heat Loss Energy",
+          "Zone Combined Outdoor Air Sensible Heat Loss Rate"
+        ],
+        "observations": [],
+        "isMeter": false
+      },
+      {
+        "id": "heat.equipment",
+        "stage": "drivers",
+        "requestedNames": [
+          "Zone Electric Equipment Convective Heating Energy",
+          "Zone Electric Equipment Convective Heating Rate",
+          "Zone Electric Equipment Latent Gain Energy",
+          "Zone Electric Equipment Latent Gain Rate",
+          "Zone Gas Equipment Convective Heating Energy",
+          "Zone Gas Equipment Convective Heating Rate",
+          "Zone Gas Equipment Latent Gain Energy",
+          "Zone Gas Equipment Latent Gain Rate",
+          "Zone Hot Water Equipment Convective Heating Energy",
+          "Zone Hot Water Equipment Convective Heating Rate",
+          "Zone Hot Water Equipment Latent Gain Energy",
+          "Zone Hot Water Equipment Latent Gain Rate",
+          "Zone Other Equipment Convective Heating Energy",
+          "Zone Other Equipment Convective Heating Rate",
+          "Zone Other Equipment Latent Gain Energy",
+          "Zone Other Equipment Latent Gain Rate",
+          "Zone Steam Equipment Convective Heating Energy",
+          "Zone Steam Equipment Convective Heating Rate",
+          "Zone Steam Equipment Latent Gain Energy",
+          "Zone Steam Equipment Latent Gain Rate"
+        ],
+        "observations": [
+          {
+            "name": "Zone Electric Equipment Convective Heating Energy",
+            "unit": "J"
+          },
+          {
+            "name": "Zone Electric Equipment Convective Heating Rate",
+            "unit": "W"
+          },
+          {
+            "name": "Zone Electric Equipment Latent Gain Energy",
+            "unit": "J"
+          },
+          {
+            "name": "Zone Electric Equipment Latent Gain Rate",
+            "unit": "W"
+          },
+          {
+            "name": "Zone Hot Water Equipment Convective Heating Energy",
+            "unit": "J"
+          },
+          {
+            "name": "Zone Hot Water Equipment Convective Heating Rate",
+            "unit": "W"
+          },
+          {
+            "name": "Zone Hot Water Equipment Latent Gain Energy",
+            "unit": "J"
+          },
+          {
+            "name": "Zone Hot Water Equipment Latent Gain Rate",
+            "unit": "W"
+          }
+        ],
+        "isMeter": false
+      },
+      {
+        "id": "heat.internal_other",
+        "stage": "drivers",
+        "requestedNames": [
+          "Zone IT Equipment Convective Heating Energy",
+          "Zone IT Equipment Convective Heating Rate",
+          "Zone IT Equipment Latent Gain Energy",
+          "Zone IT Equipment Latent Gain Rate",
+          "Zone Other Internal Convective Heating Energy",
+          "Zone Other Internal Convective Heating Rate",
+          "Zone Other Internal Latent Gain Energy",
+          "Zone Other Internal Latent Gain Rate"
+        ],
+        "observations": [],
+        "isMeter": false
+      },
+      {
+        "id": "heat.lighting",
+        "stage": "drivers",
+        "requestedNames": [
+          "Zone Lights Convective Heating Energy",
+          "Zone Lights Convective Heating Rate"
+        ],
+        "observations": [
+          {
+            "name": "Zone Lights Convective Heating Energy",
+            "unit": "J"
+          },
+          {
+            "name": "Zone Lights Convective Heating Rate",
+            "unit": "W"
+          }
+        ],
+        "isMeter": false
+      },
+      {
+        "id": "heat.people",
+        "stage": "drivers",
+        "requestedNames": [
+          "Zone People Convective Heating Energy",
+          "Zone People Convective Heating Rate",
+          "Zone People Latent Gain Energy",
+          "Zone People Latent Gain Rate"
+        ],
+        "observations": [
+          {
+            "name": "Zone People Convective Heating Energy",
+            "unit": "J"
+          },
+          {
+            "name": "Zone People Convective Heating Rate",
+            "unit": "W"
+          },
+          {
+            "name": "Zone People Latent Gain Energy",
+            "unit": "J"
+          },
+          {
+            "name": "Zone People Latent Gain Rate",
+            "unit": "W"
+          }
+        ],
+        "isMeter": false
+      },
+      {
+        "id": "load.zone_predicted_cooling",
+        "stage": "loads",
+        "requestedNames": [
+          "Zone Predicted Sensible Load to Cooling Setpoint Heat Transfer Rate",
+          "Zone System Predicted Sensible Load to Cooling Setpoint Heat Transfer Rate"
+        ],
+        "observations": [
+          {
+            "name": "Zone Predicted Sensible Load to Cooling Setpoint Heat Transfer Rate",
+            "unit": "W"
+          },
+          {
+            "name": "Zone System Predicted Sensible Load to Cooling Setpoint Heat Transfer Rate",
+            "unit": "W"
+          }
+        ],
+        "isMeter": false
+      },
+      {
+        "id": "load.zone_predicted_heating",
+        "stage": "loads",
+        "requestedNames": [
+          "Zone Predicted Sensible Load to Heating Setpoint Heat Transfer Rate",
+          "Zone System Predicted Sensible Load to Heating Setpoint Heat Transfer Rate"
+        ],
+        "observations": [
+          {
+            "name": "Zone Predicted Sensible Load to Heating Setpoint Heat Transfer Rate",
+            "unit": "W"
+          },
+          {
+            "name": "Zone System Predicted Sensible Load to Heating Setpoint Heat Transfer Rate",
+            "unit": "W"
+          }
+        ],
+        "isMeter": false
+      },
+      {
+        "id": "load.zone_radiant_cooling",
+        "stage": "loads",
+        "requestedNames": [
+          "Zone Radiant HVAC Cooling Energy",
+          "Zone Radiant HVAC Cooling Rate"
+        ],
+        "observations": [],
+        "isMeter": false
+      },
+      {
+        "id": "load.zone_radiant_heating",
+        "stage": "loads",
+        "requestedNames": [
+          "Zone Radiant HVAC Heating Energy",
+          "Zone Radiant HVAC Heating Rate"
+        ],
+        "observations": [],
+        "isMeter": false
+      },
+      {
+        "id": "heat.surface_inside_face_convection",
+        "stage": "drivers",
+        "requestedNames": [
+          "Surface Inside Face Convection Heat Gain Energy",
+          "Surface Inside Face Convection Heat Gain Rate",
+          "Surface Inside Face Convection Heat Transfer Energy",
+          "Surface Inside Face Convection Heat Transfer Rate"
+        ],
+        "observations": [
+          {
+            "name": "Surface Inside Face Convection Heat Gain Energy",
+            "unit": "J"
+          },
+          {
+            "name": "Surface Inside Face Convection Heat Gain Rate",
+            "unit": "W"
+          }
+        ],
+        "isMeter": false
+      },
+      {
+        "id": "cooling.electricity",
+        "stage": "endUses",
+        "requestedNames": [
+          "Cooling:Electricity"
+        ],
+        "observations": [
+          {
+            "name": "Cooling:Electricity",
+            "unit": "J"
+          }
+        ],
+        "isMeter": true
+      },
+      {
+        "id": "heating.electricity",
+        "stage": "endUses",
+        "requestedNames": [
+          "Heating:Electricity"
+        ],
+        "observations": [
+          {
+            "name": "Heating:Electricity",
+            "unit": "J"
+          }
+        ],
+        "isMeter": true
+      },
+      {
+        "id": "interior_lighting.electricity",
+        "stage": "endUses",
+        "requestedNames": [
+          "InteriorLights:Electricity"
+        ],
+        "observations": [
+          {
+            "name": "InteriorLights:Electricity",
+            "unit": "J"
+          }
+        ],
+        "isMeter": true
+      },
+      {
+        "id": "equipment.electricity",
+        "stage": "endUses",
+        "requestedNames": [
+          "InteriorEquipment:Electricity"
+        ],
+        "observations": [
+          {
+            "name": "InteriorEquipment:Electricity",
+            "unit": "J"
+          }
+        ],
+        "isMeter": true
+      },
+      {
+        "id": "facility.electricity",
+        "stage": "carriers",
+        "requestedNames": [
+          "Electricity:Facility"
+        ],
+        "observations": [
+          {
+            "name": "Electricity:Facility",
+            "unit": "J"
+          }
+        ],
+        "isMeter": true
+      },
+      {
+        "id": "fans.electricity",
+        "stage": "endUses",
+        "requestedNames": [
+          "Fans:Electricity"
+        ],
+        "observations": [
+          {
+            "name": "Fans:Electricity",
+            "unit": "J"
+          }
+        ],
+        "isMeter": true
+      },
+      {
+        "id": "facility.district_heating",
+        "stage": "carriers",
+        "requestedNames": [
+          "DistrictHeatingWater:Facility"
+        ],
+        "observations": [
+          {
+            "name": "DistrictHeatingWater:Facility",
+            "unit": "J"
+          }
+        ],
+        "isMeter": true
+      },
+      {
+        "id": "equipment.district_heating",
+        "stage": "endUses",
+        "requestedNames": [
+          "InteriorEquipment:DistrictHeatingWater"
+        ],
+        "observations": [
+          {
+            "name": "InteriorEquipment:DistrictHeatingWater",
+            "unit": "J"
+          }
+        ],
+        "isMeter": true
+      }
+    ],
+    "services": [
+      {
+        "service": "cooling",
+        "siteIds": [
+          "cooling.electricity"
+        ],
+        "servedZones": [
+          "GND CENTER ZONE",
+          "GND EAST ZONE",
+          "GND WEST ZONE",
+          "MID CENTER ZONE",
+          "MID EAST ZONE",
+          "MID WEST ZONE",
+          "TOP CENTER ZONE",
+          "TOP EAST ZONE",
+          "TOP WEST ZONE"
+        ],
+        "basis": "service_path_allocation",
+        "fallbackBasis": "zone_load_allocation",
+        "ratioKind": "coefficient_of_performance",
+        "fallbackRatioKind": "coefficient_of_performance",
+        "reconciliationId": "reconcile.zone_hvac_allocation.cooling.electricity.annual"
+      },
+      {
+        "service": "heating",
+        "siteIds": [
+          "heating.electricity"
+        ],
+        "servedZones": [
+          "GND CENTER ZONE",
+          "GND EAST ZONE",
+          "GND WEST ZONE",
+          "MID CENTER ZONE",
+          "MID EAST ZONE",
+          "MID WEST ZONE",
+          "TOP CENTER ZONE",
+          "TOP EAST ZONE",
+          "TOP WEST ZONE"
+        ],
+        "basis": "service_path_allocation",
+        "fallbackBasis": "zone_load_allocation",
+        "ratioKind": "load_to_site_energy",
+        "fallbackRatioKind": "load_to_site_energy",
+        "reconciliationId": "reconcile.zone_hvac_allocation.heating.electricity.annual"
+      }
+    ],
+    "auxiliaries": [
+      {
+        "siteId": "fans.electricity",
+        "servedZones": [
+          "GND CENTER ZONE",
+          "GND EAST ZONE",
+          "GND WEST ZONE",
+          "MID CENTER ZONE",
+          "MID EAST ZONE",
+          "MID WEST ZONE",
+          "TOP CENTER ZONE",
+          "TOP EAST ZONE",
+          "TOP WEST ZONE"
+        ],
+        "weight": "native_direct",
+        "allocationMethod": "direct_only",
+        "reconciliationId": "reconcile.zone_auxiliary_allocation.fans.electricity.annual"
+      }
+    ],
+    "directUses": [
+      {
+        "endUse": "lighting",
+        "carrier": "electricity",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Zone Lights Electricity Energy",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "GND CENTER ZONE",
+            "GND EAST ZONE",
+            "GND WEST ZONE",
+            "MID CENTER ZONE",
+            "MID EAST ZONE",
+            "MID WEST ZONE",
+            "TOP CENTER ZONE",
+            "TOP EAST ZONE",
+            "TOP WEST ZONE"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "endUse": "equipment",
+        "carrier": "electricity",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Zone Electric Equipment Electricity Energy",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "GND CENTER ZONE",
+            "GND EAST ZONE",
+            "GND WEST ZONE",
+            "MID CENTER ZONE",
+            "MID EAST ZONE",
+            "MID WEST ZONE",
+            "TOP CENTER ZONE",
+            "TOP EAST ZONE",
+            "TOP WEST ZONE"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "endUse": "equipment",
+        "carrier": "district_heating",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Zone Hot Water Equipment District Heating Energy",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "GND CENTER ZONE",
+            "GND EAST ZONE",
+            "GND WEST ZONE",
+            "MID CENTER ZONE",
+            "MID EAST ZONE",
+            "MID WEST ZONE",
+            "TOP CENTER ZONE",
+            "TOP EAST ZONE",
+            "TOP WEST ZONE"
+          ],
+          "isMeter": false
+        }
+      }
+    ],
+    "directHVACComponents": [
+      {
+        "id": "heating.baseboard.convective_electricity",
+        "service": "heating",
+        "carrier": "electricity",
+        "siteId": "heating.electricity",
+        "frequency": "Monthly",
+        "aggregationBasis": "model_total",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Electricity Energy",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "GND CENTER BASEBOARD",
+            "GND EAST BASEBOARD",
+            "GND WEST BASEBOARD",
+            "MID CENTER BASEBOARD",
+            "MID EAST BASEBOARD",
+            "MID WEST BASEBOARD",
+            "TOP CENTER BASEBOARD",
+            "TOP EAST BASEBOARD",
+            "TOP WEST BASEBOARD"
+          ],
+          "isMeter": false
+        },
+        "owners": [
+          {
+            "keyValue": "GND CENTER BASEBOARD",
+            "zoneName": "GND CENTER ZONE",
+            "equipmentType": "ZoneHVAC:Baseboard:Convective:Electric",
+            "equipmentName": "Gnd Center Baseboard",
+            "componentType": "ZoneHVAC:Baseboard:Convective:Electric"
+          },
+          {
+            "keyValue": "GND EAST BASEBOARD",
+            "zoneName": "GND EAST ZONE",
+            "equipmentType": "ZoneHVAC:Baseboard:Convective:Electric",
+            "equipmentName": "Gnd East Baseboard",
+            "componentType": "ZoneHVAC:Baseboard:Convective:Electric"
+          },
+          {
+            "keyValue": "GND WEST BASEBOARD",
+            "zoneName": "GND WEST ZONE",
+            "equipmentType": "ZoneHVAC:Baseboard:Convective:Electric",
+            "equipmentName": "Gnd West Baseboard",
+            "componentType": "ZoneHVAC:Baseboard:Convective:Electric"
+          },
+          {
+            "keyValue": "MID CENTER BASEBOARD",
+            "zoneName": "MID CENTER ZONE",
+            "equipmentType": "ZoneHVAC:Baseboard:Convective:Electric",
+            "equipmentName": "Mid Center Baseboard",
+            "componentType": "ZoneHVAC:Baseboard:Convective:Electric"
+          },
+          {
+            "keyValue": "MID EAST BASEBOARD",
+            "zoneName": "MID EAST ZONE",
+            "equipmentType": "ZoneHVAC:Baseboard:Convective:Electric",
+            "equipmentName": "Mid East Baseboard",
+            "componentType": "ZoneHVAC:Baseboard:Convective:Electric"
+          },
+          {
+            "keyValue": "MID WEST BASEBOARD",
+            "zoneName": "MID WEST ZONE",
+            "equipmentType": "ZoneHVAC:Baseboard:Convective:Electric",
+            "equipmentName": "Mid West Baseboard",
+            "componentType": "ZoneHVAC:Baseboard:Convective:Electric"
+          },
+          {
+            "keyValue": "TOP CENTER BASEBOARD",
+            "zoneName": "TOP CENTER ZONE",
+            "equipmentType": "ZoneHVAC:Baseboard:Convective:Electric",
+            "equipmentName": "Top Center Baseboard",
+            "componentType": "ZoneHVAC:Baseboard:Convective:Electric"
+          },
+          {
+            "keyValue": "TOP EAST BASEBOARD",
+            "zoneName": "TOP EAST ZONE",
+            "equipmentType": "ZoneHVAC:Baseboard:Convective:Electric",
+            "equipmentName": "Top East Baseboard",
+            "componentType": "ZoneHVAC:Baseboard:Convective:Electric"
+          },
+          {
+            "keyValue": "TOP WEST BASEBOARD",
+            "zoneName": "TOP WEST ZONE",
+            "equipmentType": "ZoneHVAC:Baseboard:Convective:Electric",
+            "equipmentName": "Top West Baseboard",
+            "componentType": "ZoneHVAC:Baseboard:Convective:Electric"
+          }
+        ]
+      },
+      {
+        "id": "cooling.coil.electricity",
+        "service": "cooling",
+        "carrier": "electricity",
+        "siteId": "cooling.electricity",
+        "frequency": "Monthly",
+        "aggregationBasis": "model_total",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Cooling Coil Electricity Energy",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "GND CENTER OA DX COIL",
+            "GND EAST OA DX COIL",
+            "GND WEST OA DX COIL",
+            "MID CENTER OA DX COIL",
+            "MID EAST OA DX COIL",
+            "MID WEST OA DX COIL",
+            "TOP CENTER OA DX COIL",
+            "TOP EAST OA DX COIL",
+            "TOP WEST OA DX COIL"
+          ],
+          "isMeter": false
+        },
+        "owners": [
+          {
+            "keyValue": "GND CENTER OA DX COIL",
+            "zoneName": "GND CENTER ZONE",
+            "equipmentType": "ZoneHVAC:WindowAirConditioner",
+            "equipmentName": "Gnd Center Window AC",
+            "componentType": "Coil:Cooling:DX:SingleSpeed"
+          },
+          {
+            "keyValue": "GND EAST OA DX COIL",
+            "zoneName": "GND EAST ZONE",
+            "equipmentType": "ZoneHVAC:WindowAirConditioner",
+            "equipmentName": "Gnd East Window AC",
+            "componentType": "Coil:Cooling:DX:SingleSpeed"
+          },
+          {
+            "keyValue": "GND WEST OA DX COIL",
+            "zoneName": "GND WEST ZONE",
+            "equipmentType": "ZoneHVAC:WindowAirConditioner",
+            "equipmentName": "Gnd West Window AC",
+            "componentType": "Coil:Cooling:DX:SingleSpeed"
+          },
+          {
+            "keyValue": "MID CENTER OA DX COIL",
+            "zoneName": "MID CENTER ZONE",
+            "equipmentType": "ZoneHVAC:WindowAirConditioner",
+            "equipmentName": "Mid Center Window AC",
+            "componentType": "Coil:Cooling:DX:SingleSpeed"
+          },
+          {
+            "keyValue": "MID EAST OA DX COIL",
+            "zoneName": "MID EAST ZONE",
+            "equipmentType": "ZoneHVAC:WindowAirConditioner",
+            "equipmentName": "Mid East Window AC",
+            "componentType": "Coil:Cooling:DX:SingleSpeed"
+          },
+          {
+            "keyValue": "MID WEST OA DX COIL",
+            "zoneName": "MID WEST ZONE",
+            "equipmentType": "ZoneHVAC:WindowAirConditioner",
+            "equipmentName": "Mid West Window AC",
+            "componentType": "Coil:Cooling:DX:SingleSpeed"
+          },
+          {
+            "keyValue": "TOP CENTER OA DX COIL",
+            "zoneName": "TOP CENTER ZONE",
+            "equipmentType": "ZoneHVAC:WindowAirConditioner",
+            "equipmentName": "Top Center Window AC",
+            "componentType": "Coil:Cooling:DX:SingleSpeed"
+          },
+          {
+            "keyValue": "TOP EAST OA DX COIL",
+            "zoneName": "TOP EAST ZONE",
+            "equipmentType": "ZoneHVAC:WindowAirConditioner",
+            "equipmentName": "Top East Window AC",
+            "componentType": "Coil:Cooling:DX:SingleSpeed"
+          },
+          {
+            "keyValue": "TOP WEST OA DX COIL",
+            "zoneName": "TOP WEST ZONE",
+            "equipmentType": "ZoneHVAC:WindowAirConditioner",
+            "equipmentName": "Top West Window AC",
+            "componentType": "Coil:Cooling:DX:SingleSpeed"
+          }
+        ]
+      },
+      {
+        "id": "cooling.coil.crankcase_electricity",
+        "service": "cooling",
+        "carrier": "electricity",
+        "siteId": "cooling.electricity",
+        "frequency": "Monthly",
+        "aggregationBasis": "model_total",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Cooling Coil Crankcase Heater Electricity Energy",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "GND CENTER OA DX COIL",
+            "GND EAST OA DX COIL",
+            "GND WEST OA DX COIL",
+            "MID CENTER OA DX COIL",
+            "MID EAST OA DX COIL",
+            "MID WEST OA DX COIL",
+            "TOP CENTER OA DX COIL",
+            "TOP EAST OA DX COIL",
+            "TOP WEST OA DX COIL"
+          ],
+          "isMeter": false
+        },
+        "owners": [
+          {
+            "keyValue": "GND CENTER OA DX COIL",
+            "zoneName": "GND CENTER ZONE",
+            "equipmentType": "ZoneHVAC:WindowAirConditioner",
+            "equipmentName": "Gnd Center Window AC",
+            "componentType": "Coil:Cooling:DX:SingleSpeed"
+          },
+          {
+            "keyValue": "GND EAST OA DX COIL",
+            "zoneName": "GND EAST ZONE",
+            "equipmentType": "ZoneHVAC:WindowAirConditioner",
+            "equipmentName": "Gnd East Window AC",
+            "componentType": "Coil:Cooling:DX:SingleSpeed"
+          },
+          {
+            "keyValue": "GND WEST OA DX COIL",
+            "zoneName": "GND WEST ZONE",
+            "equipmentType": "ZoneHVAC:WindowAirConditioner",
+            "equipmentName": "Gnd West Window AC",
+            "componentType": "Coil:Cooling:DX:SingleSpeed"
+          },
+          {
+            "keyValue": "MID CENTER OA DX COIL",
+            "zoneName": "MID CENTER ZONE",
+            "equipmentType": "ZoneHVAC:WindowAirConditioner",
+            "equipmentName": "Mid Center Window AC",
+            "componentType": "Coil:Cooling:DX:SingleSpeed"
+          },
+          {
+            "keyValue": "MID EAST OA DX COIL",
+            "zoneName": "MID EAST ZONE",
+            "equipmentType": "ZoneHVAC:WindowAirConditioner",
+            "equipmentName": "Mid East Window AC",
+            "componentType": "Coil:Cooling:DX:SingleSpeed"
+          },
+          {
+            "keyValue": "MID WEST OA DX COIL",
+            "zoneName": "MID WEST ZONE",
+            "equipmentType": "ZoneHVAC:WindowAirConditioner",
+            "equipmentName": "Mid West Window AC",
+            "componentType": "Coil:Cooling:DX:SingleSpeed"
+          },
+          {
+            "keyValue": "TOP CENTER OA DX COIL",
+            "zoneName": "TOP CENTER ZONE",
+            "equipmentType": "ZoneHVAC:WindowAirConditioner",
+            "equipmentName": "Top Center Window AC",
+            "componentType": "Coil:Cooling:DX:SingleSpeed"
+          },
+          {
+            "keyValue": "TOP EAST OA DX COIL",
+            "zoneName": "TOP EAST ZONE",
+            "equipmentType": "ZoneHVAC:WindowAirConditioner",
+            "equipmentName": "Top East Window AC",
+            "componentType": "Coil:Cooling:DX:SingleSpeed"
+          },
+          {
+            "keyValue": "TOP WEST OA DX COIL",
+            "zoneName": "TOP WEST ZONE",
+            "equipmentType": "ZoneHVAC:WindowAirConditioner",
+            "equipmentName": "Top West Window AC",
+            "componentType": "Coil:Cooling:DX:SingleSpeed"
+          }
+        ]
+      },
+      {
+        "id": "fans.zone_equipment.electricity",
+        "service": "fans",
+        "carrier": "electricity",
+        "siteId": "fans.electricity",
+        "frequency": "Monthly",
+        "aggregationBasis": "model_total",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Fan Electricity Energy",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "GND CENTER OA FAN",
+            "GND EAST OA FAN",
+            "GND WEST OA FAN",
+            "MID CENTER OA FAN",
+            "MID EAST OA FAN",
+            "MID WEST OA FAN",
+            "TOP CENTER OA FAN",
+            "TOP EAST OA FAN",
+            "TOP WEST OA FAN"
+          ],
+          "isMeter": false
+        },
+        "owners": [
+          {
+            "keyValue": "GND CENTER OA FAN",
+            "zoneName": "GND CENTER ZONE",
+            "equipmentType": "ZoneHVAC:WindowAirConditioner",
+            "equipmentName": "Gnd Center Window AC",
+            "componentType": "Fan:OnOff"
+          },
+          {
+            "keyValue": "GND EAST OA FAN",
+            "zoneName": "GND EAST ZONE",
+            "equipmentType": "ZoneHVAC:WindowAirConditioner",
+            "equipmentName": "Gnd East Window AC",
+            "componentType": "Fan:OnOff"
+          },
+          {
+            "keyValue": "GND WEST OA FAN",
+            "zoneName": "GND WEST ZONE",
+            "equipmentType": "ZoneHVAC:WindowAirConditioner",
+            "equipmentName": "Gnd West Window AC",
+            "componentType": "Fan:OnOff"
+          },
+          {
+            "keyValue": "MID CENTER OA FAN",
+            "zoneName": "MID CENTER ZONE",
+            "equipmentType": "ZoneHVAC:WindowAirConditioner",
+            "equipmentName": "Mid Center Window AC",
+            "componentType": "Fan:OnOff"
+          },
+          {
+            "keyValue": "MID EAST OA FAN",
+            "zoneName": "MID EAST ZONE",
+            "equipmentType": "ZoneHVAC:WindowAirConditioner",
+            "equipmentName": "Mid East Window AC",
+            "componentType": "Fan:OnOff"
+          },
+          {
+            "keyValue": "MID WEST OA FAN",
+            "zoneName": "MID WEST ZONE",
+            "equipmentType": "ZoneHVAC:WindowAirConditioner",
+            "equipmentName": "Mid West Window AC",
+            "componentType": "Fan:OnOff"
+          },
+          {
+            "keyValue": "TOP CENTER OA FAN",
+            "zoneName": "TOP CENTER ZONE",
+            "equipmentType": "ZoneHVAC:WindowAirConditioner",
+            "equipmentName": "Top Center Window AC",
+            "componentType": "Fan:OnOff"
+          },
+          {
+            "keyValue": "TOP EAST OA FAN",
+            "zoneName": "TOP EAST ZONE",
+            "equipmentType": "ZoneHVAC:WindowAirConditioner",
+            "equipmentName": "Top East Window AC",
+            "componentType": "Fan:OnOff"
+          },
+          {
+            "keyValue": "TOP WEST OA FAN",
+            "zoneName": "TOP WEST ZONE",
+            "equipmentType": "ZoneHVAC:WindowAirConditioner",
+            "equipmentName": "Top West Window AC",
+            "componentType": "Fan:OnOff"
+          }
+        ]
+      }
+    ],
+    "baseboardContexts": [
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "GND WEST ZONE",
+        "ownerName": "GND WEST BASEBOARD",
+        "service": "heating",
+        "frequency": "Monthly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Total Heating Energy",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "GND WEST BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "GND WEST ZONE",
+        "ownerName": "GND WEST BASEBOARD",
+        "service": "heating",
+        "frequency": "Monthly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Total Heating Rate",
+              "unit": "W"
+            }
+          ],
+          "keys": [
+            "GND WEST BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "GND WEST ZONE",
+        "ownerName": "GND WEST BASEBOARD",
+        "service": "heating",
+        "frequency": "Monthly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Electricity Rate",
+              "unit": "W"
+            }
+          ],
+          "keys": [
+            "GND WEST BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "GND WEST ZONE",
+        "ownerName": "GND WEST BASEBOARD",
+        "service": "heating",
+        "frequency": "Hourly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Total Heating Energy",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "GND WEST BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "GND WEST ZONE",
+        "ownerName": "GND WEST BASEBOARD",
+        "service": "heating",
+        "frequency": "Hourly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Total Heating Rate",
+              "unit": "W"
+            }
+          ],
+          "keys": [
+            "GND WEST BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "GND WEST ZONE",
+        "ownerName": "GND WEST BASEBOARD",
+        "service": "heating",
+        "frequency": "Hourly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Electricity Rate",
+              "unit": "W"
+            }
+          ],
+          "keys": [
+            "GND WEST BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "GND WEST ZONE",
+        "ownerName": "GND WEST BASEBOARD",
+        "service": "heating",
+        "frequency": "Hourly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Electricity Energy",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "GND WEST BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "GND CENTER ZONE",
+        "ownerName": "GND CENTER BASEBOARD",
+        "service": "heating",
+        "frequency": "Monthly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Total Heating Energy",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "GND CENTER BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "GND CENTER ZONE",
+        "ownerName": "GND CENTER BASEBOARD",
+        "service": "heating",
+        "frequency": "Monthly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Total Heating Rate",
+              "unit": "W"
+            }
+          ],
+          "keys": [
+            "GND CENTER BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "GND CENTER ZONE",
+        "ownerName": "GND CENTER BASEBOARD",
+        "service": "heating",
+        "frequency": "Monthly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Electricity Rate",
+              "unit": "W"
+            }
+          ],
+          "keys": [
+            "GND CENTER BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "GND CENTER ZONE",
+        "ownerName": "GND CENTER BASEBOARD",
+        "service": "heating",
+        "frequency": "Hourly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Total Heating Energy",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "GND CENTER BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "GND CENTER ZONE",
+        "ownerName": "GND CENTER BASEBOARD",
+        "service": "heating",
+        "frequency": "Hourly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Total Heating Rate",
+              "unit": "W"
+            }
+          ],
+          "keys": [
+            "GND CENTER BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "GND CENTER ZONE",
+        "ownerName": "GND CENTER BASEBOARD",
+        "service": "heating",
+        "frequency": "Hourly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Electricity Rate",
+              "unit": "W"
+            }
+          ],
+          "keys": [
+            "GND CENTER BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "GND CENTER ZONE",
+        "ownerName": "GND CENTER BASEBOARD",
+        "service": "heating",
+        "frequency": "Hourly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Electricity Energy",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "GND CENTER BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "GND EAST ZONE",
+        "ownerName": "GND EAST BASEBOARD",
+        "service": "heating",
+        "frequency": "Monthly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Total Heating Energy",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "GND EAST BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "GND EAST ZONE",
+        "ownerName": "GND EAST BASEBOARD",
+        "service": "heating",
+        "frequency": "Monthly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Total Heating Rate",
+              "unit": "W"
+            }
+          ],
+          "keys": [
+            "GND EAST BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "GND EAST ZONE",
+        "ownerName": "GND EAST BASEBOARD",
+        "service": "heating",
+        "frequency": "Monthly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Electricity Rate",
+              "unit": "W"
+            }
+          ],
+          "keys": [
+            "GND EAST BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "GND EAST ZONE",
+        "ownerName": "GND EAST BASEBOARD",
+        "service": "heating",
+        "frequency": "Hourly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Total Heating Energy",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "GND EAST BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "GND EAST ZONE",
+        "ownerName": "GND EAST BASEBOARD",
+        "service": "heating",
+        "frequency": "Hourly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Total Heating Rate",
+              "unit": "W"
+            }
+          ],
+          "keys": [
+            "GND EAST BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "GND EAST ZONE",
+        "ownerName": "GND EAST BASEBOARD",
+        "service": "heating",
+        "frequency": "Hourly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Electricity Rate",
+              "unit": "W"
+            }
+          ],
+          "keys": [
+            "GND EAST BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "GND EAST ZONE",
+        "ownerName": "GND EAST BASEBOARD",
+        "service": "heating",
+        "frequency": "Hourly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Electricity Energy",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "GND EAST BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "MID WEST ZONE",
+        "ownerName": "MID WEST BASEBOARD",
+        "service": "heating",
+        "frequency": "Monthly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Total Heating Energy",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "MID WEST BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "MID WEST ZONE",
+        "ownerName": "MID WEST BASEBOARD",
+        "service": "heating",
+        "frequency": "Monthly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Total Heating Rate",
+              "unit": "W"
+            }
+          ],
+          "keys": [
+            "MID WEST BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "MID WEST ZONE",
+        "ownerName": "MID WEST BASEBOARD",
+        "service": "heating",
+        "frequency": "Monthly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Electricity Rate",
+              "unit": "W"
+            }
+          ],
+          "keys": [
+            "MID WEST BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "MID WEST ZONE",
+        "ownerName": "MID WEST BASEBOARD",
+        "service": "heating",
+        "frequency": "Hourly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Total Heating Energy",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "MID WEST BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "MID WEST ZONE",
+        "ownerName": "MID WEST BASEBOARD",
+        "service": "heating",
+        "frequency": "Hourly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Total Heating Rate",
+              "unit": "W"
+            }
+          ],
+          "keys": [
+            "MID WEST BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "MID WEST ZONE",
+        "ownerName": "MID WEST BASEBOARD",
+        "service": "heating",
+        "frequency": "Hourly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Electricity Rate",
+              "unit": "W"
+            }
+          ],
+          "keys": [
+            "MID WEST BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "MID WEST ZONE",
+        "ownerName": "MID WEST BASEBOARD",
+        "service": "heating",
+        "frequency": "Hourly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Electricity Energy",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "MID WEST BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "MID CENTER ZONE",
+        "ownerName": "MID CENTER BASEBOARD",
+        "service": "heating",
+        "frequency": "Monthly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Total Heating Energy",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "MID CENTER BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "MID CENTER ZONE",
+        "ownerName": "MID CENTER BASEBOARD",
+        "service": "heating",
+        "frequency": "Monthly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Total Heating Rate",
+              "unit": "W"
+            }
+          ],
+          "keys": [
+            "MID CENTER BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "MID CENTER ZONE",
+        "ownerName": "MID CENTER BASEBOARD",
+        "service": "heating",
+        "frequency": "Monthly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Electricity Rate",
+              "unit": "W"
+            }
+          ],
+          "keys": [
+            "MID CENTER BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "MID CENTER ZONE",
+        "ownerName": "MID CENTER BASEBOARD",
+        "service": "heating",
+        "frequency": "Hourly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Total Heating Energy",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "MID CENTER BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "MID CENTER ZONE",
+        "ownerName": "MID CENTER BASEBOARD",
+        "service": "heating",
+        "frequency": "Hourly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Total Heating Rate",
+              "unit": "W"
+            }
+          ],
+          "keys": [
+            "MID CENTER BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "MID CENTER ZONE",
+        "ownerName": "MID CENTER BASEBOARD",
+        "service": "heating",
+        "frequency": "Hourly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Electricity Rate",
+              "unit": "W"
+            }
+          ],
+          "keys": [
+            "MID CENTER BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "MID CENTER ZONE",
+        "ownerName": "MID CENTER BASEBOARD",
+        "service": "heating",
+        "frequency": "Hourly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Electricity Energy",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "MID CENTER BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "MID EAST ZONE",
+        "ownerName": "MID EAST BASEBOARD",
+        "service": "heating",
+        "frequency": "Monthly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Total Heating Energy",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "MID EAST BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "MID EAST ZONE",
+        "ownerName": "MID EAST BASEBOARD",
+        "service": "heating",
+        "frequency": "Monthly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Total Heating Rate",
+              "unit": "W"
+            }
+          ],
+          "keys": [
+            "MID EAST BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "MID EAST ZONE",
+        "ownerName": "MID EAST BASEBOARD",
+        "service": "heating",
+        "frequency": "Monthly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Electricity Rate",
+              "unit": "W"
+            }
+          ],
+          "keys": [
+            "MID EAST BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "MID EAST ZONE",
+        "ownerName": "MID EAST BASEBOARD",
+        "service": "heating",
+        "frequency": "Hourly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Total Heating Energy",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "MID EAST BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "MID EAST ZONE",
+        "ownerName": "MID EAST BASEBOARD",
+        "service": "heating",
+        "frequency": "Hourly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Total Heating Rate",
+              "unit": "W"
+            }
+          ],
+          "keys": [
+            "MID EAST BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "MID EAST ZONE",
+        "ownerName": "MID EAST BASEBOARD",
+        "service": "heating",
+        "frequency": "Hourly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Electricity Rate",
+              "unit": "W"
+            }
+          ],
+          "keys": [
+            "MID EAST BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "MID EAST ZONE",
+        "ownerName": "MID EAST BASEBOARD",
+        "service": "heating",
+        "frequency": "Hourly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Electricity Energy",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "MID EAST BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "TOP WEST ZONE",
+        "ownerName": "TOP WEST BASEBOARD",
+        "service": "heating",
+        "frequency": "Monthly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Total Heating Energy",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "TOP WEST BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "TOP WEST ZONE",
+        "ownerName": "TOP WEST BASEBOARD",
+        "service": "heating",
+        "frequency": "Monthly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Total Heating Rate",
+              "unit": "W"
+            }
+          ],
+          "keys": [
+            "TOP WEST BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "TOP WEST ZONE",
+        "ownerName": "TOP WEST BASEBOARD",
+        "service": "heating",
+        "frequency": "Monthly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Electricity Rate",
+              "unit": "W"
+            }
+          ],
+          "keys": [
+            "TOP WEST BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "TOP WEST ZONE",
+        "ownerName": "TOP WEST BASEBOARD",
+        "service": "heating",
+        "frequency": "Hourly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Total Heating Energy",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "TOP WEST BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "TOP WEST ZONE",
+        "ownerName": "TOP WEST BASEBOARD",
+        "service": "heating",
+        "frequency": "Hourly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Total Heating Rate",
+              "unit": "W"
+            }
+          ],
+          "keys": [
+            "TOP WEST BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "TOP WEST ZONE",
+        "ownerName": "TOP WEST BASEBOARD",
+        "service": "heating",
+        "frequency": "Hourly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Electricity Rate",
+              "unit": "W"
+            }
+          ],
+          "keys": [
+            "TOP WEST BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "TOP WEST ZONE",
+        "ownerName": "TOP WEST BASEBOARD",
+        "service": "heating",
+        "frequency": "Hourly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Electricity Energy",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "TOP WEST BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "TOP CENTER ZONE",
+        "ownerName": "TOP CENTER BASEBOARD",
+        "service": "heating",
+        "frequency": "Monthly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Total Heating Energy",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "TOP CENTER BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "TOP CENTER ZONE",
+        "ownerName": "TOP CENTER BASEBOARD",
+        "service": "heating",
+        "frequency": "Monthly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Total Heating Rate",
+              "unit": "W"
+            }
+          ],
+          "keys": [
+            "TOP CENTER BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "TOP CENTER ZONE",
+        "ownerName": "TOP CENTER BASEBOARD",
+        "service": "heating",
+        "frequency": "Monthly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Electricity Rate",
+              "unit": "W"
+            }
+          ],
+          "keys": [
+            "TOP CENTER BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "TOP CENTER ZONE",
+        "ownerName": "TOP CENTER BASEBOARD",
+        "service": "heating",
+        "frequency": "Hourly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Total Heating Energy",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "TOP CENTER BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "TOP CENTER ZONE",
+        "ownerName": "TOP CENTER BASEBOARD",
+        "service": "heating",
+        "frequency": "Hourly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Total Heating Rate",
+              "unit": "W"
+            }
+          ],
+          "keys": [
+            "TOP CENTER BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "TOP CENTER ZONE",
+        "ownerName": "TOP CENTER BASEBOARD",
+        "service": "heating",
+        "frequency": "Hourly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Electricity Rate",
+              "unit": "W"
+            }
+          ],
+          "keys": [
+            "TOP CENTER BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "TOP CENTER ZONE",
+        "ownerName": "TOP CENTER BASEBOARD",
+        "service": "heating",
+        "frequency": "Hourly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Electricity Energy",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "TOP CENTER BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "TOP EAST ZONE",
+        "ownerName": "TOP EAST BASEBOARD",
+        "service": "heating",
+        "frequency": "Monthly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Total Heating Energy",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "TOP EAST BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "TOP EAST ZONE",
+        "ownerName": "TOP EAST BASEBOARD",
+        "service": "heating",
+        "frequency": "Monthly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Total Heating Rate",
+              "unit": "W"
+            }
+          ],
+          "keys": [
+            "TOP EAST BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "TOP EAST ZONE",
+        "ownerName": "TOP EAST BASEBOARD",
+        "service": "heating",
+        "frequency": "Monthly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Electricity Rate",
+              "unit": "W"
+            }
+          ],
+          "keys": [
+            "TOP EAST BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "TOP EAST ZONE",
+        "ownerName": "TOP EAST BASEBOARD",
+        "service": "heating",
+        "frequency": "Hourly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Total Heating Energy",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "TOP EAST BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "TOP EAST ZONE",
+        "ownerName": "TOP EAST BASEBOARD",
+        "service": "heating",
+        "frequency": "Hourly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Total Heating Rate",
+              "unit": "W"
+            }
+          ],
+          "keys": [
+            "TOP EAST BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "TOP EAST ZONE",
+        "ownerName": "TOP EAST BASEBOARD",
+        "service": "heating",
+        "frequency": "Hourly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Electricity Rate",
+              "unit": "W"
+            }
+          ],
+          "keys": [
+            "TOP EAST BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      },
+      {
+        "ownerType": "ZoneHVAC:Baseboard:Convective:Electric",
+        "zoneName": "TOP EAST ZONE",
+        "ownerName": "TOP EAST BASEBOARD",
+        "service": "heating",
+        "frequency": "Hourly",
+        "source": {
+          "alternatives": [
+            {
+              "name": "Baseboard Electricity Energy",
+              "unit": "J"
+            }
+          ],
+          "keys": [
+            "TOP EAST BASEBOARD"
+          ],
+          "isMeter": false
+        }
+      }
+    ],
+    "hourlyCompanions": [
+      {
+        "name": "Surface Inside Face Convection Heat Gain Energy",
+        "unit": "J",
+        "keys": [
+          "GND CENTER CEILING",
+          "GND CENTER E WALL",
+          "GND CENTER FLOOR",
+          "GND CENTER N WALL",
+          "GND CENTER N WALL WINDOW",
+          "GND CENTER S WALL",
+          "GND CENTER S WALL WINDOW",
+          "GND CENTER W WALL",
+          "GND EAST CEILING",
+          "GND EAST E WALL",
+          "GND EAST E WALL WINDOWS",
+          "GND EAST FLOOR",
+          "GND EAST N WALL",
+          "GND EAST N WALL WINDOW",
+          "GND EAST S WALL",
+          "GND EAST S WALL WINDOW",
+          "GND EAST W WALL",
+          "GND WEST CEILING",
+          "GND WEST E WALL",
+          "GND WEST FLOOR",
+          "GND WEST N WALL",
+          "GND WEST N WALL WINDOW",
+          "GND WEST S WALL",
+          "GND WEST S WALL WINDOW",
+          "GND WEST W WALL",
+          "GND WEST W WALL WINDOWS",
+          "MID CENTER CEILING",
+          "MID CENTER E WALL",
+          "MID CENTER FLOOR",
+          "MID CENTER N WALL",
+          "MID CENTER N WALL WINDOW",
+          "MID CENTER S WALL",
+          "MID CENTER S WALL WINDOW",
+          "MID CENTER W WALL",
+          "MID EAST CEILING",
+          "MID EAST E WALL",
+          "MID EAST E WALL WINDOWS",
+          "MID EAST FLOOR",
+          "MID EAST N WALL",
+          "MID EAST N WALL WINDOW",
+          "MID EAST S WALL",
+          "MID EAST S WALL WINDOW",
+          "MID EAST W WALL",
+          "MID WEST CEILING",
+          "MID WEST E WALL",
+          "MID WEST FLOOR",
+          "MID WEST N WALL",
+          "MID WEST N WALL WINDOW",
+          "MID WEST S WALL",
+          "MID WEST S WALL WINDOW",
+          "MID WEST W WALL",
+          "MID WEST W WALL WINDOWS",
+          "TOP CENTER E WALL",
+          "TOP CENTER FLOOR",
+          "TOP CENTER N WALL",
+          "TOP CENTER N WALL WINDOW",
+          "TOP CENTER ROOF",
+          "TOP CENTER S WALL",
+          "TOP CENTER S WALL WINDOW",
+          "TOP CENTER W WALL",
+          "TOP EAST E WALL",
+          "TOP EAST E WALL WINDOWS",
+          "TOP EAST FLOOR",
+          "TOP EAST N WALL",
+          "TOP EAST N WALL WINDOW",
+          "TOP EAST ROOF",
+          "TOP EAST S WALL",
+          "TOP EAST S WALL WINDOW",
+          "TOP EAST W WALL",
+          "TOP WEST E WALL",
+          "TOP WEST FLOOR",
+          "TOP WEST N WALL",
+          "TOP WEST N WALL WINDOW",
+          "TOP WEST ROOF",
+          "TOP WEST S WALL",
+          "TOP WEST S WALL WINDOW",
+          "TOP WEST W WALL",
+          "TOP WEST W WALL WINDOWS"
+        ]
+      },
+      {
+        "name": "Zone Air Heat Balance Air Energy Storage Rate",
+        "unit": "W",
+        "keys": [
+          "GND CENTER ZONE",
+          "GND EAST ZONE",
+          "GND WEST ZONE",
+          "MID CENTER ZONE",
+          "MID EAST ZONE",
+          "MID WEST ZONE",
+          "TOP CENTER ZONE",
+          "TOP EAST ZONE",
+          "TOP WEST ZONE"
+        ]
+      },
+      {
+        "name": "Zone Air Heat Balance Surface Convection Rate",
+        "unit": "W",
+        "keys": [
+          "GND CENTER ZONE",
+          "GND EAST ZONE",
+          "GND WEST ZONE",
+          "MID CENTER ZONE",
+          "MID EAST ZONE",
+          "MID WEST ZONE",
+          "TOP CENTER ZONE",
+          "TOP EAST ZONE",
+          "TOP WEST ZONE"
+        ]
+      },
+      {
+        "name": "Zone Air Heat Balance Outdoor Air Transfer Rate",
+        "unit": "W",
+        "keys": [
+          "GND CENTER ZONE",
+          "GND EAST ZONE",
+          "GND WEST ZONE",
+          "MID CENTER ZONE",
+          "MID EAST ZONE",
+          "MID WEST ZONE",
+          "TOP CENTER ZONE",
+          "TOP EAST ZONE",
+          "TOP WEST ZONE"
+        ]
+      },
+      {
+        "name": "Zone Total Internal Convective Heating Energy",
+        "unit": "J",
+        "keys": [
+          "GND CENTER ZONE",
+          "GND EAST ZONE",
+          "GND WEST ZONE",
+          "MID CENTER ZONE",
+          "MID EAST ZONE",
+          "MID WEST ZONE",
+          "TOP CENTER ZONE",
+          "TOP EAST ZONE",
+          "TOP WEST ZONE"
+        ]
+      },
+      {
+        "name": "Zone Electric Equipment Convective Heating Energy",
+        "unit": "J",
+        "keys": [
+          "GND CENTER ZONE",
+          "GND EAST ZONE",
+          "GND WEST ZONE",
+          "MID CENTER ZONE",
+          "MID EAST ZONE",
+          "MID WEST ZONE",
+          "TOP CENTER ZONE",
+          "TOP EAST ZONE",
+          "TOP WEST ZONE"
+        ]
+      },
+      {
+        "name": "Zone Electric Equipment Latent Gain Energy",
+        "unit": "J",
+        "keys": [
+          "GND CENTER ZONE",
+          "GND EAST ZONE",
+          "GND WEST ZONE",
+          "MID CENTER ZONE",
+          "MID EAST ZONE",
+          "MID WEST ZONE",
+          "TOP CENTER ZONE",
+          "TOP EAST ZONE",
+          "TOP WEST ZONE"
+        ]
+      },
+      {
+        "name": "Zone Hot Water Equipment Convective Heating Energy",
+        "unit": "J",
+        "keys": [
+          "GND CENTER ZONE",
+          "GND EAST ZONE",
+          "GND WEST ZONE",
+          "MID CENTER ZONE",
+          "MID EAST ZONE",
+          "MID WEST ZONE",
+          "TOP CENTER ZONE",
+          "TOP EAST ZONE",
+          "TOP WEST ZONE"
+        ]
+      },
+      {
+        "name": "Zone Hot Water Equipment Latent Gain Energy",
+        "unit": "J",
+        "keys": [
+          "GND CENTER ZONE",
+          "GND EAST ZONE",
+          "GND WEST ZONE",
+          "MID CENTER ZONE",
+          "MID EAST ZONE",
+          "MID WEST ZONE",
+          "TOP CENTER ZONE",
+          "TOP EAST ZONE",
+          "TOP WEST ZONE"
+        ]
+      },
+      {
+        "name": "Zone Lights Convective Heating Energy",
+        "unit": "J",
+        "keys": [
+          "GND CENTER ZONE",
+          "GND EAST ZONE",
+          "GND WEST ZONE",
+          "MID CENTER ZONE",
+          "MID EAST ZONE",
+          "MID WEST ZONE",
+          "TOP CENTER ZONE",
+          "TOP EAST ZONE",
+          "TOP WEST ZONE"
+        ]
+      },
+      {
+        "name": "Zone People Convective Heating Energy",
+        "unit": "J",
+        "keys": [
+          "GND CENTER ZONE",
+          "GND EAST ZONE",
+          "GND WEST ZONE",
+          "MID CENTER ZONE",
+          "MID EAST ZONE",
+          "MID WEST ZONE",
+          "TOP CENTER ZONE",
+          "TOP EAST ZONE",
+          "TOP WEST ZONE"
+        ]
+      },
+      {
+        "name": "Zone People Latent Gain Energy",
+        "unit": "J",
+        "keys": [
+          "GND CENTER ZONE",
+          "GND EAST ZONE",
+          "GND WEST ZONE",
+          "MID CENTER ZONE",
+          "MID EAST ZONE",
+          "MID WEST ZONE",
+          "TOP CENTER ZONE",
+          "TOP EAST ZONE",
+          "TOP WEST ZONE"
+        ]
+      }
+    ],
+    "precision": {
+      "decimalPlaces": 3,
+      "sourceStages": 2,
+      "contributionStages": 2
+    }
+  }
+}

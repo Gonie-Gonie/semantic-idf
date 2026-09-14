@@ -214,6 +214,7 @@ func epathCompileSQLModelChecks(observed epathRealOracleEvidence, model epathRea
 			return epathSQLModelFanPoolChecks(observed, frames, model.FanPools, model.Precision, &checks)
 		},
 		func() error { return epathSQLModelServiceChecks(frames, model, &checks) },
+		func() error { return epathSQLModelDirectFanChecks(frames, model, &checks) },
 		func() error { return epathSQLModelZoneServiceChecks(frames, model, &checks) },
 		func() error { return epathSQLModelDirectUseChecks(observed.Sources, frames, model, &checks) },
 		func() error { return epathSQLModelFanFlowChecks(observed, frames, model, &checks) },
@@ -385,6 +386,9 @@ func epathCheckSQLModelAllocation(bundle PurposeResultBundle, check epathSQLMode
 	}
 	if selected == nil {
 		if canPrune {
+			if proof.DirectFan != nil {
+				return epathCheckSQLDirectFanAllocation(bundle, check)
+			}
 			if proof.RadiantCarrier != nil {
 				return epathCheckSQLRadiantCarrierAllocation(bundle, check)
 			}
@@ -411,6 +415,9 @@ func epathCheckSQLModelAllocation(bundle PurposeResultBundle, check epathSQLMode
 	}
 	if proof.RadiantCarrier != nil {
 		return epathCheckSQLRadiantCarrierAllocation(bundle, check)
+	}
+	if proof.DirectFan != nil {
+		return epathCheckSQLDirectFanAllocation(bundle, check)
 	}
 	return nil
 }
@@ -472,6 +479,9 @@ func epathEvaluateSQLModelChecks(out *epathRealOracleEvidence, bundle PurposeRes
 		}
 		if err == nil && check.AuxiliaryZone != nil {
 			err = epathCheckSQLAuxiliaryZone(bundle, check)
+		}
+		if err == nil && check.DirectFan != nil {
+			err = epathCheckSQLDirectFan(bundle, check)
 		}
 		if err == nil && check.ZoneCarrier != nil {
 			err = epathCheckSQLZoneCarrier(bundle, check)

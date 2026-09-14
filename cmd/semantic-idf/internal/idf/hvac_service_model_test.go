@@ -439,43 +439,14 @@ func TestHVACServiceModelClassifiesPackagedLocalEquipment(t *testing.T) {
 }
 
 func TestHVACServiceModelClassifiesWindowAndEvaporativeCoolerAsLocalEquipment(t *testing.T) {
-	doc := Document{Objects: []Object{
-		{Index: 0, Type: "Zone", Fields: []Field{{Value: "Office"}}},
-		{Index: 1, Type: "ZoneHVAC:EquipmentConnections", Fields: []Field{
-			{Value: "Office"},
-			{Value: "Office Equipment"},
-			{Value: "Office Supply Inlet"},
-			{Value: ""},
-			{Value: "Office Zone Air Node"},
-			{Value: ""},
-		}},
-		{Index: 2, Type: "ZoneHVAC:EquipmentList", Fields: []Field{
-			{Value: "Office Equipment"},
-			{Value: "SequentialLoad"},
-			{Value: "ZoneHVAC:WindowAirConditioner"},
-			{Value: "Office Window AC"},
-			{Value: "1"},
-			{Value: "1"},
-			{Value: "ZoneHVAC:EvaporativeCoolerUnit"},
-			{Value: "Office Evap Cooler"},
-			{Value: "2"},
-			{Value: "2"},
-		}},
-		{Index: 3, Type: "ZoneHVAC:WindowAirConditioner", Fields: []Field{
-			{Value: "Office Window AC"},
-			{Value: ""},
-			{Value: "Autosize"},
-			{Value: "Office Supply Inlet"},
-			{Value: "Office Zone Air Node"},
-		}},
-		{Index: 4, Type: "ZoneHVAC:EvaporativeCoolerUnit", Fields: []Field{
-			{Value: "Office Evap Cooler"},
-			{Value: ""},
-			{Value: "Autosize"},
-			{Value: "Office Supply Inlet"},
-			{Value: "Office Zone Air Node"},
-		}},
-	}}
+	// WindowAC uses its real native parent/child ports, not a five-field
+	// name-only miniature that could hide a physically disconnected package.
+	doc := nativeWindowACFixture(t)
+	list := nativeWindowACObject(t, &doc, "ZoneHVAC:EquipmentList", "Equipment")
+	for _, value := range []string{"ZoneHVAC:EvaporativeCoolerUnit", "Office Evap Cooler", "3", "3", "", ""} {
+		list.Fields = append(list.Fields, Field{Value: value})
+	}
+	nativeWindowACAppend(&doc, "ZoneHVAC:EvaporativeCoolerUnit", "Office Evap Cooler", "", "Autosize", "Outlet", "Office Air")
 
 	report := AnalyzeHVAC(doc)
 	office := findHVACTestingZoneService(report.ServiceModel, "Office")

@@ -237,6 +237,7 @@ type EnergyExplanationNode struct {
 	driverBuildingOnly            bool
 	allocationSourceIDs           []string
 	hvacConsumptionPoolBound      bool
+	nativeWindowACPathQualified   bool
 	simultaneousLoadContributions []energyExplanationSimultaneousLoadContribution
 	endUseCarriers                []string
 	inspectorDecodedFromJSON      bool
@@ -4887,6 +4888,10 @@ func energyMeterAliasCatalog() []energyMeterAliasDefinition {
 		{Kind: "energy.heating", Label: "Other fuel 2 heating", Carrier: "other_fuel_2", EndUse: "heating", HierarchyLevel: "broad_end_use", Aliases: []string{"Heating:OtherFuel2", "OtherFuel2:Heating"}, LegacyAliases: []string{"OtherFuel2:Heating"}, OutputRequestAliases: []string{"Heating:OtherFuel2"}},
 		{Kind: "energy.water_systems", Label: "Natural gas water systems", Carrier: "natural_gas", EndUse: "water_systems", HierarchyLevel: "broad_end_use", Aliases: []string{"WaterSystems:NaturalGas", "WaterSystems:Gas", "NaturalGas:WaterSystems", "Gas:WaterSystems"}, LegacyAliases: []string{"NaturalGas:WaterSystems", "Gas:WaterSystems"}, OutputRequestAliases: []string{"WaterSystems:NaturalGas", "WaterSystems:Gas"}},
 		{Kind: "energy.interior_equipment", Label: "Natural gas interior equipment", Carrier: "natural_gas", EndUse: "interior_equipment", HierarchyLevel: "broad_end_use", Aliases: []string{"InteriorEquipment:NaturalGas", "InteriorEquipment:Gas", "NaturalGas:InteriorEquipment", "Gas:InteriorEquipment"}, LegacyAliases: []string{"NaturalGas:InteriorEquipment", "Gas:InteriorEquipment"}, OutputRequestAliases: []string{"InteriorEquipment:NaturalGas", "InteriorEquipment:Gas"}},
+		// HotWaterEquipment is purchased district-water interior equipment,
+		// not a space-heating coil. Its native meter already includes Zone and
+		// ZoneGroup multipliers; representative Zone direct-use variables do not.
+		{Kind: "energy.interior_equipment", Label: "District heating interior equipment", Carrier: "district_heating", EndUse: "interior_equipment", HierarchyLevel: "broad_end_use", Aliases: []string{"InteriorEquipment:DistrictHeatingWater", "InteriorEquipment:DistrictHeating", "DistrictHeatingWater:InteriorEquipment", "DistrictHeating:InteriorEquipment"}, LegacyAliases: []string{"InteriorEquipment:DistrictHeating", "DistrictHeating:InteriorEquipment"}, OutputRequestAliases: []string{"InteriorEquipment:DistrictHeatingWater", "InteriorEquipment:DistrictHeating"}},
 		{Kind: "energy.heating", Label: "District heating", Carrier: "district_heating", EndUse: "heating", HierarchyLevel: "broad_end_use", Aliases: []string{"Heating:DistrictHeatingWater", "Heating:DistrictHeating", "DistrictHeating:Heating"}, LegacyAliases: []string{"Heating:DistrictHeating", "DistrictHeating:Heating"}, OutputRequestAliases: []string{"Heating:DistrictHeatingWater", "Heating:DistrictHeating", "DistrictHeating:Heating"}},
 		{Kind: "energy.heating", Label: "District steam heating", Carrier: "steam", EndUse: "heating", HierarchyLevel: "broad_end_use", Aliases: []string{"Heating:DistrictHeatingSteam", "Heating:Steam", "Steam:Heating"}, LegacyAliases: []string{"Heating:Steam", "Steam:Heating"}, OutputRequestAliases: []string{"Heating:DistrictHeatingSteam", "Heating:Steam", "Steam:Heating"}},
 	}

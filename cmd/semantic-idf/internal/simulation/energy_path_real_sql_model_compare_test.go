@@ -17,6 +17,7 @@ type epathSQLModelCheck struct {
 	ZoneService            *epathSQLZoneServiceProof
 	DriverLink             *epathSQLDriverLinkProof
 	DirectUse              *epathSQLDirectUseProof
+	DirectFan              *epathSQLDirectFanProof
 	AuxiliaryZone          *epathSQLAuxiliaryZoneProof
 	Reconciliation         *epathSQLReconciliationProof
 	Quality                *epathSQLQualityProof

@@ -3,6 +3,7 @@ package simulation
 import (
 	"fmt"
 	"math"
+	"reflect"
 	"sort"
 	"strings"
 )
@@ -97,6 +98,20 @@ func epathSQLZoneCarrierInputs(frames epathSQLFrames, model epathRealSQLModel, c
 		}
 	}
 	fanCarriers := map[string]bool{}
+	nativeFans, nativeFanErr := epathSQLCompileDirectFans(frames, model)
+	if nativeFanErr != nil {
+		return nil, nil, nativeFanErr
+	}
+	if nativeFans != nil {
+		if families["direct/fans"] != nil {
+			return nil, nil, fmt.Errorf("native fans duplicate another direct end-use authority")
+		}
+		families["direct/fans"] = map[string]bool{"electricity": true}
+		directOwners["direct/fans"] = map[string]map[string]bool{}
+		for zone := range nativeFans.Sources {
+			directOwners["direct/fans"][zone] = map[string]bool{"electricity": true}
+		}
+	}
 	for _, pool := range model.FanPools {
 		site, ok := sites[pool.SiteID]
 		if !ok || site.Facility || site.EndUse != "fans" || site.Carrier != "electricity" || pool.Name != "Air System Fan Electricity Energy" || pool.Frequency != "Hourly" || pool.Unit != "J" {
@@ -145,6 +160,24 @@ func epathSQLZoneCarrierInputs(frames epathSQLFrames, model epathRealSQLModel, c
 				if err != nil {
 					return nil, nil, err
 				}
+			}
+		} else if check.DirectFan != nil {
+			if check.Item.Target.Field != "value" {
+				continue
+			}
+			if nativeFans == nil {
+				return nil, nil, fmt.Errorf("undeclared native fan carrier scalar")
+			}
+			if err := epathSQLDirectFanProofQuantity(check.DirectFan); err != nil {
+				return nil, nil, err
+			}
+			p := check.DirectFan
+			if p.Zone != check.Item.Zone || p.Period != check.Item.Period || p.SiteID != nativeFans.SiteID || !reflect.DeepEqual(p.Sources, nativeFans.Sources[strings.ToLower(p.Zone)]) {
+				return nil, nil, fmt.Errorf("native fan carrier escaped its compiled original source roster")
+			}
+			family, part.Direct = "direct/fans", true
+			if len(check.DirectFan.Sources) > 0 {
+				part.ByCarrier["electricity"] = check.DirectFan.Value
 			}
 		} else if check.DirectUse != nil {
 			family, part.Direct = "direct/"+check.DirectUse.EndUse, true

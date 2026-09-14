@@ -51,6 +51,13 @@ func epathSQLAuxiliaryZoneProofs(frames epathSQLFrames, model epathRealSQLModel)
 			return nil, fmt.Errorf("duplicate/empty auxiliary site declaration")
 		}
 		seen[auxiliary.SiteID] = true
+		if auxiliary.Weight == "native_direct" {
+			fans, err := epathSQLCompileDirectFans(frames, model)
+			if err != nil || fans == nil || fans.SiteID != auxiliary.SiteID {
+				return nil, fmt.Errorf("native fan auxiliary lacks exact direct proof: %v", err)
+			}
+			continue
+		}
 		if auxiliary.Weight == "unassigned" {
 			if len(auxiliary.ServedZones) != 0 || auxiliary.AllocationMethod != "unassigned" {
 				return nil, fmt.Errorf("unassigned auxiliary cannot invent served ownership")

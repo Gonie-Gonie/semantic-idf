@@ -208,7 +208,8 @@ energy. Reconciliation retains direct/allocated/unassigned quantities.
 The supported `direct_only` policy does not enable those central path/load
 fallback allocations; do not infer allocation solely from a Zone scope.
 
-For supported native `ZoneHVAC:Baseboard:RadiantConvective:Electric` objects,
+For supported native `ZoneHVAC:Baseboard:RadiantConvective:Electric` and
+`ZoneHVAC:Baseboard:Convective:Electric` objects,
 exact EquipmentList/EquipmentConnections ownership binds `Baseboard Electricity
 Energy` to its Zone. Native equipment electricity is already model-total; do
 not apply the Zone multiplier again. `Baseboard Total Heating Energy/Rate` is
@@ -216,6 +217,22 @@ non-additive equipment-response context: the aggregate Zone Air System Sensible
 load already includes that response. It is neither extra Zone load nor generated
 heat divided by efficiency. Radiant recipient surfaces retain their observed
 exchange with an explicit mixed HVAC/environment qualification.
+The convective-only type does not acquire radiant recipients. Native capacity
+and efficiency defaults do not authorize filling invalid selected capacity
+values or rewriting the original input.
+
+The reviewed 25.1 `ZoneHVAC:WindowAirConditioner` package uses exact original
+Fan:OnOff, DX single-speed coil, mixer and Zone air-node ownership. Native coil,
+crankcase and fan electricity are already model total. The overlapping package
+electricity is not another consumer; fans remain a separate end use and are not
+inserted into the coil-only cooling ratio. Missing or ambiguous native paths
+cannot borrow another package's or a central system's delivery paths.
+
+`HotWaterEquipment` district-water consumption belongs to InteriorEquipment,
+not space Heating. Representative Zone energy receives its Zone/Group factors
+once; Facility and InteriorEquipment district meters are independent model-total
+reconciliation views, not extra purchased consumption. Preferred modern and
+legacy aliases cannot be summed or used to overwrite an observed monthly zero.
 
 A native baseboard electricity branch cites only the exact consuming delivery
 paths bound by typed equipment identity and its original Zone owner. A shared
@@ -233,7 +250,8 @@ details contain allocated shares, not fabricated measured raw/effective values.
 Hourly and Rate companions are trace context, not additional monthly budgets.
 
 When native local consumption and central allocations share one heating end-use
-node, preserve separate carrier branches even when both use electricity. Each
+node, or a reviewed WindowAC cooling subtotal, preserve separate carrier
+branches even when both use electricity. Each
 branch retains its own direct or allocated basis. Their combined node and thermal
 conversion use a conservative allocated basis, not a claim that the entire Zone
 subtotal was directly measured. This changes evidence classification only; native

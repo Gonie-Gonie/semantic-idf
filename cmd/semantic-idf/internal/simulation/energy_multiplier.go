@@ -57,11 +57,11 @@ func buildEnergyEffectiveMultiplierIndex(doc idf.Document) energyEffectiveMultip
 			}
 			index.Zones[key] = energyZoneMultiplierRecord{
 				ZoneName:        name,
-				ZoneMultiplier:  energyObjectNumericField(object, 6, 1, "multiplier"),
+				ZoneMultiplier:  energyObjectNumericField(object, 6, 1),
 				GroupMultiplier: 1,
 			}
 		case strings.EqualFold(strings.TrimSpace(object.Type), "Space"):
-			zoneName := energyObjectStringField(object, 1, "zone name")
+			zoneName := energyMultiplierNativeField(object, 1)
 			if key != "" && zoneName != "" {
 				index.SpaceZones[key] = zoneName
 			}
@@ -72,13 +72,13 @@ func buildEnergyEffectiveMultiplierIndex(doc idf.Document) energyEffectiveMultip
 				}
 			}
 		case strings.EqualFold(strings.TrimSpace(object.Type), "ZoneGroup"):
-			listName := energyObjectStringField(object, 1, "zone list name")
+			listName := energyMultiplierNativeField(object, 1)
 			if listName == "" {
 				continue
 			}
 			listKey := normalizePurposeToken(listName)
 			current := positiveEnergyMultiplier(groupByZoneList[listKey])
-			groupByZoneList[listKey] = current * energyObjectNumericField(object, 2, 1, "zone list multiplier")
+			groupByZoneList[listKey] = current * energyObjectNumericField(object, 2, 1)
 		}
 	}
 
@@ -145,8 +145,18 @@ func energyObjectStringField(object idf.Object, fallbackIndex int, commentToken 
 	return ""
 }
 
-func energyObjectNumericField(object idf.Object, fallbackIndex int, fallback float64, commentToken string) float64 {
-	value := energyObjectStringField(object, fallbackIndex, commentToken)
+// Zone/ZoneGroup multiplier fields and their ownership selectors have fixed
+// native positions. IDF comments are editable annotations, not schema labels;
+// a comment on another field cannot change a physical factor or Zone owner.
+func energyMultiplierNativeField(object idf.Object, index int) string {
+	if index < 0 || index >= len(object.Fields) {
+		return ""
+	}
+	return strings.TrimSpace(object.Fields[index].Value)
+}
+
+func energyObjectNumericField(object idf.Object, fieldIndex int, fallback float64) float64 {
+	value := energyMultiplierNativeField(object, fieldIndex)
 	number, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
 	if err != nil || number <= 0 {
 		return fallback

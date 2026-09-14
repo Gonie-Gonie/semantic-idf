@@ -335,9 +335,15 @@ func buildZoneServicePaths(ctx *hvacContext, loops []HVACLoop, relations []HVACZ
 	airConditioning := buildHVACAirLoopConditioning(ctx, loops, graph)
 	hydronicDelivery := buildHVACHydronicDeliveryServices(ctx, loops, relations)
 	radiantDelivery := buildHVACRadiantDeliveryServices(ctx, loops, relations)
+	windowACPath := buildHVACWindowACPathGate(ctx.doc)
 	var paths []ZoneServicePath
 	seen := map[string]bool{}
 	addPath := func(path ZoneServicePath) {
+		var windowACValid bool
+		path, windowACValid = windowACPath(path)
+		if !windowACValid {
+			return
+		}
 		if path.PathType == "" || path.ServiceKind == "" || path.Delivery.ID == "" {
 			return
 		}
