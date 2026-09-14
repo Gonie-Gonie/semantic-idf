@@ -30,18 +30,23 @@ func windowACSQLFixture(t *testing.T) (idf.Document, string, PurposeRunPlan) {
 		t.Fatal(err)
 	}
 	defer db.Close()
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
 	for _, query := range []string{`DELETE FROM ReportData`, `DELETE FROM ReportDataDictionary`} {
-		if _, err := db.Exec(query); err != nil {
+		if _, err := tx.Exec(query); err != nil {
 			t.Fatal(err)
 		}
 	}
 	add := func(id int, key, name string, meter int, first float64) {
 		t.Helper()
-		if _, err := db.Exec(`INSERT INTO ReportDataDictionary VALUES(?,?,?,'J',?,'Monthly','HVAC')`, id, key, name, meter); err != nil {
+		if _, err := tx.Exec(`INSERT INTO ReportDataDictionary VALUES(?,?,?,'J',?,'Monthly','HVAC')`, id, key, name, meter); err != nil {
 			t.Fatal(err)
 		}
 		for month := 1; month <= 2; month++ {
-			if _, err := db.Exec(`INSERT INTO ReportData(TimeIndex,ReportDataDictionaryIndex,Value) VALUES(?,?,?)`, month, id, first*float64(month)*3600000); err != nil {
+			if _, err := tx.Exec(`INSERT INTO ReportData(TimeIndex,ReportDataDictionaryIndex,Value) VALUES(?,?,?)`, month, id, first*float64(month)*3600000); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -60,6 +65,9 @@ func windowACSQLFixture(t *testing.T) (idf.Document, string, PurposeRunPlan) {
 		// Deliberately tempting overlapping package output is neither an owned
 		// constituent nor a replacement for missing coil/fan observations.
 		add(900+i, zone+" Window AC", "Zone Window Air Conditioner Electricity Energy", 0, 10000)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
 	}
 	return doc, path, plan
 }

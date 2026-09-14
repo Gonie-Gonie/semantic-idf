@@ -40,6 +40,7 @@ func UpgradeEnergyExplanationV1(input EnergyExplanationV1) EnergyExplanationResu
 		annualZoneHVACAllocation = reserveEnergyPathHVACConsumptionPools(annualZoneHVACAllocation, input.Nodes, input.servicePathIndex, input.hvacConsumptionPools, "annual", "annual", input.canonicalMonthlyBasis)
 		annualZoneHVACAllocation = reserveEnergyPathVRFAllocation(annualZoneHVACAllocation, input.Nodes, vrfAllocation, "annual", vrfDisplay)
 		annualZoneAuxiliaryAllocation = buildEnergyPathZoneAuxiliaryAllocationPlan(input.Nodes, input.zoneDirectUseSeries, input.servicePathIndex, "annual", "annual", input.canonicalMonthlyBasis, input.auxiliaryFanPools)
+		annualZoneAuxiliaryAllocation = reserveEnergyPathPoolPumpAllocation(annualZoneAuxiliaryAllocation, input.Nodes, input.servicePathIndex, input.poolEvidence, "annual", "annual", input.canonicalMonthlyBasis)
 		monthlyZoneHVACAllocations := []energyPathZoneHVACAllocationPlan{}
 		monthlyZoneAuxiliaryAllocations := []energyPathZoneAuxiliaryAllocationPlan{}
 		for _, period := range input.Periods {
@@ -48,6 +49,7 @@ func UpgradeEnergyExplanationV1(input EnergyExplanationV1) EnergyExplanationResu
 			plan = reserveEnergyPathVRFAllocation(plan, period.Nodes, vrfAllocation, period.ID, vrfDisplay)
 			periodZoneHVACAllocations[strings.ToLower(strings.TrimSpace(period.ID))] = plan
 			auxiliaryPlan := buildEnergyPathZoneAuxiliaryAllocationPlan(period.Nodes, input.zoneDirectUseSeries, input.servicePathIndex, period.ID, period.Kind, input.canonicalMonthlyBasis, input.auxiliaryFanPools)
+			auxiliaryPlan = reserveEnergyPathPoolPumpAllocation(auxiliaryPlan, period.Nodes, input.servicePathIndex, input.poolEvidence, period.ID, period.Kind, input.canonicalMonthlyBasis)
 			periodZoneAuxiliaryAllocations[strings.ToLower(strings.TrimSpace(period.ID))] = auxiliaryPlan
 			if strings.EqualFold(strings.TrimSpace(period.Kind), "monthly") {
 				monthlyZoneHVACAllocations = append(monthlyZoneHVACAllocations, plan)
@@ -101,6 +103,7 @@ func UpgradeEnergyExplanationV1(input EnergyExplanationV1) EnergyExplanationResu
 	annotatedSources = annotateEnergyPathWaterContextSources(annotatedSources, allLegacyNodes)
 	annotatedSources = annotateLegacyEnergyLoadDetailSources(annotatedSources, allLegacyNodes)
 	legacyNodes := foldLegacyEnergyLoadDetailNodes(inferLegacyEnergyDriverProjectionGuards(annualLegacyNodes, annotatedSources))
+	annualBoundaryCensus := collectEnergyPathServiceBoundaryCensusForScope(legacyNodes, annualLegacyEdges, scope, allocationPolicy)
 	nodes, links := upgradeEnergyExplanationGraph(legacyNodes, annualLegacyEdges, annotatedSources, scope, allocationPolicy, input.canonicalMonthlyBasis, fanConsumptionSources)
 	nodes, links = projectEnergyPathVRFZoneGraph(nodes, links, vrfDisplay, scope, "annual", zoneHVACAllocationEnabled)
 	reconciliation, warnings := upgradeEnergyExplanationAccounting(input.Reconciliation, input.Warnings, legacyNodes, annualLegacyEdges, scope, allocationPolicy)
@@ -138,6 +141,7 @@ func UpgradeEnergyExplanationV1(input EnergyExplanationV1) EnergyExplanationResu
 		periodLegacyEdges = appendEnergyPathDirectZoneCorrespondenceEdges(periodLegacyEdges, periodLegacyNodes)
 		periodLegacyNodes, periodLegacyEdges = energyPathVRFZoneLegacyInputs(periodLegacyNodes, periodLegacyEdges, vrfAllocation, scope)
 		legacyPeriodNodes := foldLegacyEnergyLoadDetailNodes(inferLegacyEnergyDriverProjectionGuards(periodLegacyNodes, annotatedSources))
+		mergeEnergyPathServiceBoundaryCensus(annualBoundaryCensus, collectEnergyPathServiceBoundaryCensusForScope(legacyPeriodNodes, periodLegacyEdges, scope, allocationPolicy))
 		periodNodes, periodLinks := upgradeEnergyExplanationGraph(legacyPeriodNodes, periodLegacyEdges, annotatedSources, scope, allocationPolicy, input.canonicalMonthlyBasis, fanConsumptionSources)
 		periodNodes, periodLinks = projectEnergyPathVRFZoneGraph(periodNodes, periodLinks, vrfDisplay, scope, period.ID, zoneHVACAllocationEnabled)
 		periodReconciliation, periodWarnings := upgradeEnergyExplanationAccounting(period.Reconciliation, period.Warnings, legacyPeriodNodes, periodLegacyEdges, scope, allocationPolicy)
@@ -234,6 +238,9 @@ func UpgradeEnergyExplanationV1(input EnergyExplanationV1) EnergyExplanationResu
 		appendEnergyPathZoneAuxiliaryAllocationAccounting(&result, annualZoneAuxiliaryAllocation, periodZoneAuxiliaryAllocations, input.canonicalMonthlyBasis)
 	}
 	result.Sources = applyEnergyPathHVACConsumptionSourceAllocations(result.Sources, annualZoneHVACAllocation, input.hvacConsumptionPools, scope)
+	result.Sources = applyEnergyPathPoolSourceAllocations(result.Sources, annualZoneAuxiliaryAllocation, input.poolEvidence, scope)
+	applyEnergyPathServiceBoundaryAnnualCensus(&result, annualBoundaryCensus)
+	filterEnergyPathServiceBoundaryResult(&result)
 	refreshEnergyPathQuality(&result)
 	orderEnergyPathAccounting(&result)
 	return result
@@ -985,6 +992,7 @@ func applyCanonicalMonthlyBasisToEnergyPathResult(result *EnergyExplanationResul
 	initialLinks := append([]EnergyPathLink(nil), result.Links...)
 	initialReconciliation := append([]EnergyReconciliation(nil), result.Reconciliation...)
 	nodes, links, reconciliation, warnings := aggregateEnergyPathV2MonthlyPeriods(monthly)
+	nodes = mergeEnergyPathServiceBoundaryNodeMetadata(nodes, initialNodes)
 
 	nodeIndex := make(map[string]int, len(nodes)+len(initialNodes))
 	for index, node := range nodes {
@@ -1100,6 +1108,7 @@ func applyCanonicalMonthlyBasisToEnergyPathResult(result *EnergyExplanationResul
 	reconciliation = reconcileEnergyPathCarrierTotals(nodes, links, reconciliation, "annual")
 	nodes, links = rebuildEnergyPathCarrierResidualPresentation(nodes, links, reconciliation, "annual")
 	links = qualifyEnergyPathMixedConsumptionBasis(nodes, links, result.Sources, result.Scope)
+	links = filterEnergyPathServiceBoundaryConversions(nodes, links)
 
 	qualifyEnergyPathLinkCollisions(links)
 	sortEnergyExplanationNodes(nodes)
@@ -1152,6 +1161,7 @@ func aggregateEnergyPathV2MonthlyPeriods(periods []EnergyPeriod) ([]EnergyExplan
 				node.OffsetEffects = cloneEnergyExplanationOffsetEffects(node.OffsetEffects)
 				node.SimultaneousLoad = cloneEnergyExplanationSimultaneousLoad(node.SimultaneousLoad)
 				node.allocationSourceIDs = appendUniqueStrings(nil, node.allocationSourceIDs...)
+				node.serviceBoundaryRestrictions = cloneEnergyPathServiceBoundaryRestrictions(node.serviceBoundaryRestrictions)
 				node.simultaneousLoadContributions = cloneEnergyExplanationSimultaneousLoadContributions(node.simultaneousLoadContributions)
 				node.endUseCarriers = appendUniqueStrings(nil, node.endUseCarriers...)
 				nodeIndex[node.ID] = len(nodes)
@@ -1228,6 +1238,7 @@ func aggregateEnergyPathV2MonthlyPeriods(periods []EnergyPeriod) ([]EnergyExplan
 		finalizeEnergyPathLinkRatio(link)
 	}
 	qualifyEnergyPathLinkCollisions(links)
+	links = filterEnergyPathServiceBoundaryConversions(nodes, links)
 	return nodes, links, reconciliation, warnings
 }
 
@@ -1265,6 +1276,7 @@ func cloneEnergyExplanationNodes(input []EnergyExplanationNode) []EnergyExplanat
 		out[index].RelatedEntityIDs = appendUniqueStrings(nil, node.RelatedEntityIDs...)
 		out[index].SourceIDs = appendUniqueStrings(nil, node.SourceIDs...)
 		out[index].allocationSourceIDs = appendUniqueStrings(nil, node.allocationSourceIDs...)
+		out[index].serviceBoundaryRestrictions = cloneEnergyPathServiceBoundaryRestrictions(node.serviceBoundaryRestrictions)
 		out[index].simultaneousLoadContributions = cloneEnergyExplanationSimultaneousLoadContributions(node.simultaneousLoadContributions)
 		out[index].endUseCarriers = appendUniqueStrings(nil, node.endUseCarriers...)
 	}
@@ -1503,6 +1515,7 @@ func upgradeEnergyExplanationGraph(legacyNodes []EnergyExplanationNode, legacyEd
 		scopedLegacyNodes = append(scopedLegacyNodes, legacy)
 	}
 	scopedLegacyNodes = selectEnergyDriverMainFlowNodes(scopedLegacyNodes, sources)
+	boundaryCensus := collectEnergyPathServiceBoundaryCensus(scopedLegacyNodes)
 	driverPresentation := buildEnergyDriverPresentationPlan(scopedLegacyNodes, scope)
 	for _, legacy := range scopedLegacyNodes {
 		legacy = driverPresentation.apply(legacy)
@@ -1538,6 +1551,12 @@ func upgradeEnergyExplanationGraph(legacyNodes []EnergyExplanationNode, legacyEd
 			charge.Carrier = canonicalEnergyPathCarrier(legacy.Carrier)
 			mergeEnergyExplanationV2Node(canonicalNodes, charge)
 		}
+	}
+	// This metadata-only union must precede links and follow all positive node
+	// merges: a pruned zero/unknown restricted meter still constrains its shared
+	// canonical end-use denominator, without adding numerical provenance.
+	for _, node := range canonicalNodes {
+		node.serviceBoundaryRestrictions = unionEnergyPathServiceBoundaryRestrictions(node.serviceBoundaryRestrictions, boundaryCensus[energyPathServiceBoundaryEndUse(*node)])
 	}
 	reportedCarrierIDs := map[string]bool{}
 	for id, node := range canonicalNodes {
@@ -1756,6 +1775,7 @@ func upgradeEnergyExplanationGraph(legacyNodes []EnergyExplanationNode, legacyEd
 	qualifyEnergyPathLinkCollisions(outLinks)
 	sort.SliceStable(outLinks, func(i, j int) bool { return outLinks[i].ID < outLinks[j].ID })
 	outLinks = qualifyEnergyPathMixedConsumptionBasis(outNodes, outLinks, sources, scope)
+	outLinks = filterEnergyPathServiceBoundaryConversions(outNodes, outLinks)
 	return outNodes, outLinks
 }
 
@@ -1947,6 +1967,8 @@ type energyExplanationZoneAllocationProjection struct {
 	Formula             string
 	RelatedPathIDs      []string
 	AllocationSourceIDs []string
+	ConsumerSourceIDs   []string
+	ExactConsumers      bool
 }
 
 func energyExplanationZoneAllocationProjections(nodes []EnergyExplanationNode, edges []EnergyExplanationEdge, scope EnergyExplanationScope, allocationPolicy string) map[string]energyExplanationZoneAllocationProjection {
@@ -1961,12 +1983,15 @@ func energyExplanationZoneAllocationProjections(nodes []EnergyExplanationNode, e
 		nodeByID[node.ID] = node
 	}
 	type allocationShare struct {
-		total    float64
-		selected float64
-		basis    string
-		formula  string
-		paths    []string
-		sources  []string
+		total                float64
+		selected             float64
+		basis                string
+		formula              string
+		paths                []string
+		sources              []string
+		consumerSources      []string
+		consumerProofPresent bool
+		exactConsumers       bool
 	}
 	exactShares := map[string]allocationShare{}
 	exactPresent := map[string]bool{}
@@ -2031,6 +2056,20 @@ func energyExplanationZoneAllocationProjections(nodes []EnergyExplanationNode, e
 				}
 				share.paths = appendUniqueStrings(share.paths, edge.RelatedPathIDs...)
 				share.sources = appendUniqueStrings(share.sources, edge.SourceIDs...)
+				if !share.consumerProofPresent {
+					share.exactConsumers = true
+					share.consumerProofPresent = true
+				}
+				share.exactConsumers = share.exactConsumers && edge.serviceBoundaryExactConsumers && len(edge.serviceBoundaryConsumerSourceIDs) > 0
+				seenConsumer := map[string]bool{}
+				for _, sourceID := range edge.serviceBoundaryConsumerSourceIDs {
+					sourceID = energyPathBoundaryToken(sourceID)
+					if !energyPathBoundarySQLSourceIDValid(sourceID) || seenConsumer[sourceID] {
+						share.exactConsumers = false
+					}
+					seenConsumer[sourceID] = true
+					share.consumerSources = appendUniqueStrings(share.consumerSources, sourceID)
+				}
 			}
 			return share
 		}
@@ -2038,6 +2077,13 @@ func energyExplanationZoneAllocationProjections(nodes []EnergyExplanationNode, e
 		if key := edge.FromID + "|" + edge.ToID; !seenExactLoads[key] {
 			exactShares[edge.FromID] = updateShare(exactShares[edge.FromID])
 			seenExactLoads[key] = true
+		} else if selected {
+			// Numeric legacy deduplication is not positive cohort proof. An
+			// extra edge for the same source/Zone pair cannot be silently ignored
+			// while granting exact consuming-source disjointness from the first.
+			share := exactShares[edge.FromID]
+			share.exactConsumers = false
+			exactShares[edge.FromID] = share
 		}
 		if key := carrierEndUseKey + "|" + edge.ToID; carrierEndUseKey != "" && !seenCarrierEndUseLoads[key] {
 			sharesByCarrierEndUse[carrierEndUseKey] = updateShare(sharesByCarrierEndUse[carrierEndUseKey])
@@ -2088,7 +2134,10 @@ func energyExplanationZoneAllocationProjections(nodes []EnergyExplanationNode, e
 			share := exactShares[node.ID]
 			value := math.Abs(energyExplanationEffectiveNodeValue(energyExplanationLegacyNodeWithEffectiveValues(node)))
 			if value > 0 && share.selected > 0 {
-				projections[node.ID] = projectionFromShare(share.selected/value, share)
+				projection := projectionFromShare(share.selected/value, share)
+				projection.ConsumerSourceIDs = energyPathBoundarySourceIDs(share.consumerSources)
+				projection.ExactConsumers = share.consumerProofPresent && share.exactConsumers
+				projections[node.ID] = projection
 			}
 			continue
 		}
@@ -2252,6 +2301,7 @@ func energyExplanationNodeForScope(node EnergyExplanationNode, scope EnergyExpla
 	node.RelatedPathIDs = appendUniqueStrings(nil, projection.RelatedPathIDs...)
 	node.SourceIDs = appendUniqueStrings(node.SourceIDs, projection.AllocationSourceIDs...)
 	node.allocationSourceIDs = appendUniqueStrings(node.allocationSourceIDs, projection.AllocationSourceIDs...)
+	node.serviceBoundaryRestrictions = projectEnergyPathServiceBoundaryRestrictions(node.serviceBoundaryRestrictions, projection.ConsumerSourceIDs, projection.ExactConsumers)
 	sort.Strings(node.RelatedPathIDs)
 	sort.Strings(node.SourceIDs)
 	return node, node.Value != 0
@@ -3048,6 +3098,7 @@ func upgradeEnergyExplanationNode(input EnergyExplanationNode, scope EnergyExpla
 	out.OffsetEffects = cloneEnergyExplanationOffsetEffects(input.OffsetEffects)
 	out.SimultaneousLoad = cloneEnergyExplanationSimultaneousLoad(input.SimultaneousLoad)
 	out.allocationSourceIDs = appendUniqueStrings(nil, input.allocationSourceIDs...)
+	out.serviceBoundaryRestrictions = cloneEnergyPathServiceBoundaryRestrictions(input.serviceBoundaryRestrictions)
 	out.simultaneousLoadContributions = cloneEnergyExplanationSimultaneousLoadContributions(input.simultaneousLoadContributions)
 	out.endUseCarriers = appendUniqueStrings(nil, input.endUseCarriers...)
 	scopeToken := energyExplanationScopeToken(scope)
@@ -3256,6 +3307,7 @@ func mergeEnergyExplanationV2Node(nodes map[string]*EnergyExplanationNode, next 
 		copy.OffsetEffects = cloneEnergyExplanationOffsetEffects(next.OffsetEffects)
 		copy.SimultaneousLoad = cloneEnergyExplanationSimultaneousLoad(next.SimultaneousLoad)
 		copy.allocationSourceIDs = appendUniqueStrings(nil, next.allocationSourceIDs...)
+		copy.serviceBoundaryRestrictions = cloneEnergyPathServiceBoundaryRestrictions(next.serviceBoundaryRestrictions)
 		copy.simultaneousLoadContributions = cloneEnergyExplanationSimultaneousLoadContributions(next.simultaneousLoadContributions)
 		copy.endUseCarriers = appendUniqueStrings(nil, next.endUseCarriers...)
 		nodes[next.ID] = &copy
@@ -3276,6 +3328,7 @@ func mergeEnergyExplanationV2Node(nodes map[string]*EnergyExplanationNode, next 
 	current.RelatedPathIDs = appendUniqueStrings(current.RelatedPathIDs, next.RelatedPathIDs...)
 	current.RelatedEntityIDs = appendUniqueStrings(current.RelatedEntityIDs, next.RelatedEntityIDs...)
 	current.SourceIDs = appendUniqueStrings(current.SourceIDs, next.SourceIDs...)
+	current.serviceBoundaryRestrictions = unionEnergyPathServiceBoundaryRestrictions(current.serviceBoundaryRestrictions, next.serviceBoundaryRestrictions)
 	current.LoadBreakdown = mergeEnergyExplanationLoadComponents(current.LoadBreakdown, next.LoadBreakdown)
 	current.OffsetEffects = mergeEnergyExplanationOffsetEffects(current.OffsetEffects, next.OffsetEffects)
 	current.simultaneousLoadContributions = mergeEnergyExplanationSimultaneousLoadContributions(current.simultaneousLoadContributions, next.simultaneousLoadContributions)
@@ -4681,7 +4734,7 @@ func buildEnergyExplanationSummary(input any) EnergyExplanationSummary {
 	} else {
 		summary.AllocationPolicy = firstNonEmpty(explanation.AllocationPolicy, PurposeAllocationPolicyDirectOnly)
 	}
-	return summary
+	return filterEnergyPathServiceBoundarySummary(summary, explanation.Nodes)
 }
 
 func buildEnergyExplanationSummaryForPeriod(input any, periodID string) EnergyExplanationSummary {
@@ -4720,7 +4773,7 @@ func buildEnergyExplanationSummaryForPeriod(input any, periodID string) EnergyEx
 			continue
 		}
 		if period.Summary != nil && period.Summary.Schema == energyExplanationSummarySchema {
-			return *period.Summary
+			return filterEnergyPathServiceBoundarySummary(*period.Summary, period.Nodes)
 		}
 		selected := explanation
 		selected.Periods = nil
@@ -4739,6 +4792,7 @@ func buildEnergyExplanationSummaryForPeriod(input any, periodID string) EnergyEx
 }
 
 func buildEnergyExplanationSummaryV2(explanation EnergyExplanationResult) EnergyExplanationSummary {
+	explanation.Links = filterEnergyPathServiceBoundaryConversions(explanation.Nodes, explanation.Links)
 	summary := EnergyExplanationSummary{
 		Schema:       energyExplanationSummarySchema,
 		Period:       "annual",
@@ -4856,7 +4910,7 @@ func buildEnergyExplanationSummaryV2(explanation EnergyExplanationResult) Energy
 		}
 	}
 	sort.SliceStable(summary.Ratios, func(i, j int) bool { return summary.Ratios[i].ID < summary.Ratios[j].ID })
-	return summary
+	return filterEnergyPathServiceBoundarySummary(summary, explanation.Nodes)
 }
 
 func addEnergyExplanationSummaryNodeV2(groups map[string]*EnergyExplanationSummaryItem, key string, node EnergyExplanationNode, value float64) {
@@ -4935,6 +4989,7 @@ func (result EnergyExplanationResult) MarshalJSON() ([]byte, error) {
 			scope:             result.Scope,
 		})
 	}
+	filterEnergyPathServiceBoundaryResult(&result)
 	type wireResult struct {
 		Schema            string                         `json:"schema"`
 		Purpose           string                         `json:"purpose"`
@@ -5027,10 +5082,12 @@ func (period *EnergyPeriod) UnmarshalJSON(data []byte) error {
 	}
 	*period = EnergyPeriod(decoded.plainPeriod)
 	period.Edges = decoded.Edges
+	*period, _ = filterEnergyPathServiceBoundaryPeriod(*period)
 	return nil
 }
 
 func (period EnergyPeriod) MarshalJSON() ([]byte, error) {
+	period, _ = filterEnergyPathServiceBoundaryPeriod(period)
 	type wirePeriod struct {
 		ID                string                         `json:"id"`
 		Label             string                         `json:"label"`
@@ -5246,6 +5303,7 @@ func sanitizeEnergyExplanationV2Result(result *EnergyExplanationResult) bool {
 		changed = changed || !reflect.DeepEqual(zone.Summary, zoneSummary)
 		zone.Summary = zoneSummary
 	}
+	changed = filterEnergyPathServiceBoundaryResult(result) || changed
 	qualityChanged := refreshEnergyPathQuality(result)
 	changed = changed || qualityChanged
 	return changed
@@ -5389,6 +5447,7 @@ func sanitizeEnergyExplanationV2Graph(nodes []EnergyExplanationNode, links []Ene
 	filteredLinks = refreshEnergyPathAllocatedDriverLinks(filteredNodes, filteredLinks, firstNonEmpty(period, "annual"))
 	filteredLinks = refreshEnergyPathConversionLinks(filteredNodes, filteredLinks)
 	filteredLinks = qualifyEnergyPathMixedConsumptionBasis(filteredNodes, filteredLinks, sources, scope)
+	filteredLinks = filterEnergyPathServiceBoundaryConversions(filteredNodes, filteredLinks)
 
 	reconciliation = removeEnergyPathWaterReconciliation(reconciliation)
 	reconciliation = reconcileEnergyPathCarrierTotals(filteredNodes, filteredLinks, reconciliation, firstNonEmpty(period, "annual"))
@@ -5463,6 +5522,9 @@ func (bundle *PurposeResultBundle) UnmarshalJSON(data []byte) error {
 		if bundle.EnergyExplanation.upgradedFromV1 || bundle.EnergyExplanation.sanitizedOnRead || bundle.EnergyExplanationSummary.Schema == "" || !reflect.DeepEqual(bundle.EnergyExplanationSummary.Quality, bundle.EnergyExplanation.Quality) || len(bundle.EnergyExplanationSummary.Drivers)+len(bundle.EnergyExplanationSummary.Loads)+len(bundle.EnergyExplanationSummary.EndUses)+len(bundle.EnergyExplanationSummary.Carriers) == 0 {
 			bundle.EnergyExplanationSummary = buildEnergyExplanationSummary(bundle.EnergyExplanation)
 		}
+		// A stale root summary can exist even when its stored graph is already
+		// clean. Filter only unsupported ratios, independent of rebuild flags.
+		bundle.EnergyExplanationSummary = filterEnergyPathServiceBoundarySummary(bundle.EnergyExplanationSummary, bundle.EnergyExplanation.Nodes)
 	}
 	return nil
 }

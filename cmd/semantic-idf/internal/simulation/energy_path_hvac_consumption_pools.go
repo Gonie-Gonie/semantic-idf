@@ -58,6 +58,7 @@ type energyPathHVACConsumptionSourceAllocation struct {
 // Only the observed shared constituents are allocated. A broad meter remainder
 // is never relabeled as a boiler, even if the recognized roster appears complete.
 func reserveEnergyPathHVACConsumptionPools(plan energyPathZoneHVACAllocationPlan, nodes []EnergyExplanationNode, topology energyServicePathIndex, pools []energyPathHVACConsumptionPool, periodID, periodKind string, canonicalMonthlyBasis bool) energyPathZoneHVACAllocationPlan {
+	pools = energyPathBoundaryFallbackHVACConsumptionPools(pools, nodes)
 	if len(pools) == 0 {
 		return plan
 	}

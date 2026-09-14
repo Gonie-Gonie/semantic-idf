@@ -26,6 +26,7 @@ type energyPathZoneAuxiliaryAllocationPlan struct {
 	AnnualAuthoritativeGroups  map[string]bool
 	AnnualDirectOverrideGroups map[string]bool
 	FanSourceAllocations       []energyPathFanSourceAllocation
+	PoolPumpSourceAllocations  []energyPathPoolPumpSourceAllocation
 }
 
 type energyPathZoneAuxiliaryAllocationRecord struct {
@@ -541,6 +542,7 @@ func aggregateEnergyPathZoneAuxiliaryAllocationPlans(input []energyPathZoneAuxil
 	records := []energyPathZoneAuxiliaryAllocationRecord{}
 	for _, plan := range input {
 		out.FanSourceAllocations = append(out.FanSourceAllocations, plan.FanSourceAllocations...)
+		out.PoolPumpSourceAllocations = append(out.PoolPumpSourceAllocations, plan.PoolPumpSourceAllocations...)
 		for id := range plan.CentralEndUseNodeIDs {
 			out.CentralEndUseNodeIDs[id] = true
 		}
@@ -558,6 +560,7 @@ func aggregateEnergyPathZoneAuxiliaryAllocationPlans(input []energyPathZoneAuxil
 				copy.Formula = ""
 				copy.SourceIDs = appendUniqueStrings(nil, edge.SourceIDs...)
 				copy.RelatedPathIDs = appendUniqueStrings(nil, edge.RelatedPathIDs...)
+				copy.serviceBoundaryConsumerSourceIDs = appendUniqueStrings(nil, edge.serviceBoundaryConsumerSourceIDs...)
 				edgesByKey[key] = &copy
 				edgeFormulaByKey[key] = formula
 				edgeKeys = append(edgeKeys, key)
@@ -569,6 +572,8 @@ func aggregateEnergyPathZoneAuxiliaryAllocationPlans(input []energyPathZoneAuxil
 			current.Value = roundedEnergyNumber(current.Value + edge.Value)
 			current.SourceIDs = appendUniqueStrings(current.SourceIDs, edge.SourceIDs...)
 			current.RelatedPathIDs = appendUniqueStrings(current.RelatedPathIDs, edge.RelatedPathIDs...)
+			current.serviceBoundaryExactConsumers = current.serviceBoundaryExactConsumers && edge.serviceBoundaryExactConsumers
+			current.serviceBoundaryConsumerSourceIDs = appendUniqueStrings(current.serviceBoundaryConsumerSourceIDs, edge.serviceBoundaryConsumerSourceIDs...)
 		}
 		records = append(records, plan.Records...)
 	}
@@ -696,6 +701,11 @@ func energyPathZoneAuxiliaryAllocationPlanWithAnnualFallback(monthly, annual ene
 		out.FanSourceAllocations = append([]energyPathFanSourceAllocation(nil), annual.FanSourceAllocations...)
 	} else {
 		out.FanSourceAllocations = append([]energyPathFanSourceAllocation(nil), monthly.FanSourceAllocations...)
+	}
+	if out.AnnualAuthoritativeGroups[energyPathZoneAuxiliaryGroupKey("pumps", "electricity")] {
+		out.PoolPumpSourceAllocations = append([]energyPathPoolPumpSourceAllocation(nil), annual.PoolPumpSourceAllocations...)
+	} else {
+		out.PoolPumpSourceAllocations = append([]energyPathPoolPumpSourceAllocation(nil), monthly.PoolPumpSourceAllocations...)
 	}
 	for _, edge := range monthly.Edges {
 		if !out.AnnualAuthoritativeGroups[nodeGroup[edge.FromID]] {

@@ -35,6 +35,7 @@ type energyDriverBuildContext struct {
 	HasNativeBaseboard           bool
 	BaseboardTargets             []energyPathBaseboardTarget
 	SharedHeatingElectricTargets []energyPathSharedHeatingElectricTarget
+	PoolInventory                energyPathPoolInventory
 }
 
 func newEnergyDriverBuildContext(report idf.GeometryReport, documents ...idf.Document) energyDriverBuildContext {
@@ -45,6 +46,7 @@ func newEnergyDriverBuildContext(report idf.GeometryReport, documents ...idf.Doc
 	var radiantLoads []energyPathRadiantLoadTarget
 	var baseboardTargets []energyPathBaseboardTarget
 	var sharedHeatingElectricTargets []energyPathSharedHeatingElectricTarget
+	var poolInventory energyPathPoolInventory
 	hasNativeBaseboard := false
 	if len(documents) > 0 {
 		addEnergyInternalMassCategories(&index, documents[0], report)
@@ -57,6 +59,12 @@ func newEnergyDriverBuildContext(report idf.GeometryReport, documents ...idf.Doc
 		baseboardTargets = energyPathBaseboardTargets(documents[0])
 		directHVACComponents = append(directHVACComponents, energyPathBaseboardDirectTargets(baseboardTargets)...)
 		sharedHeatingElectricTargets = energyPathSharedHeatingElectricTargets(documents[0])
+		poolInventory = energyPathNativePoolInventory(documents[0])
+		poolRoutes := applyEnergyPathPoolAirRoutes(documents[0], &poolInventory)
+		if len(poolRoutes) > 0 {
+			hvacReport := idf.AnalyzeHVAC(documents[0])
+			bindEnergyPathPoolAirRoutePaths(poolRoutes, hvacReport.ServiceModel.ZoneServices, &poolInventory)
+		}
 	}
 	return energyDriverBuildContext{
 		Enabled:                      true,
@@ -69,6 +77,7 @@ func newEnergyDriverBuildContext(report idf.GeometryReport, documents ...idf.Doc
 		HasNativeBaseboard:           hasNativeBaseboard,
 		BaseboardTargets:             baseboardTargets,
 		SharedHeatingElectricTargets: sharedHeatingElectricTargets,
+		PoolInventory:                poolInventory,
 	}
 }
 

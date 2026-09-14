@@ -376,6 +376,13 @@ func directHVACSQLFixture(t *testing.T) string {
 		t.Fatal(err)
 	}
 	defer db.Close()
+	// Populate this private hand fixture atomically; no assertion observes a
+	// partially seeded database or depends on per-row filesystem syncs.
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
 	for _, query := range []string{
 		`DELETE FROM ReportData`, `DELETE FROM ReportDataDictionary`,
 		`ALTER TABLE "Time" ADD COLUMN Year INTEGER`, `ALTER TABLE "Time" ADD COLUMN "Interval" REAL`,
@@ -385,7 +392,7 @@ func directHVACSQLFixture(t *testing.T) string {
 		`INSERT INTO EnvironmentPeriods VALUES(3,3)`,
 		`UPDATE "Time" SET Year=2017,"Interval"=CASE Month WHEN 1 THEN 44640 ELSE 40320 END,IntervalType=3,EnvironmentPeriodIndex=3,WarmupFlag=NULL`,
 	} {
-		if _, err := db.Exec(query); err != nil {
+		if _, err := tx.Exec(query); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -395,11 +402,11 @@ func directHVACSQLFixture(t *testing.T) string {
 		if meter {
 			group, flag = "Meter", 1
 		}
-		if _, err := db.Exec(`INSERT INTO ReportDataDictionary VALUES(?,?,?,'J',?,'Monthly',?)`, id, key, name, flag, group); err != nil {
+		if _, err := tx.Exec(`INSERT INTO ReportDataDictionary VALUES(?,?,?,'J',?,'Monthly',?)`, id, key, name, flag, group); err != nil {
 			t.Fatal(err)
 		}
 		for month := 1; month <= 2; month++ {
-			if _, err := db.Exec(`INSERT INTO ReportData(TimeIndex,ReportDataDictionaryIndex,Value) VALUES(?,?,?)`, month, id, first*float64(month)*3600000); err != nil {
+			if _, err := tx.Exec(`INSERT INTO ReportData(TimeIndex,ReportDataDictionaryIndex,Value) VALUES(?,?,?)`, month, id, first*float64(month)*3600000); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -429,6 +436,9 @@ func directHVACSQLFixture(t *testing.T) string {
 	}
 	add(900, "ALIEN CCoil", directHVACSQLNames[0], false, 7000)
 	add(901, "SPACE1-1 PTAC", "Zone Packaged Terminal Air Conditioner Electricity Energy", false, 9000)
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
 	return path
 }
 

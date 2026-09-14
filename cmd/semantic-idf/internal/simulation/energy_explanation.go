@@ -41,6 +41,7 @@ type EnergyExplanationV1 struct {
 	zoneDirectUseSeries               []energyExplanationSeries
 	auxiliaryFanPools                 []energyPathFanPool
 	hvacConsumptionPools              []energyPathHVACConsumptionPool
+	poolEvidence                      energyPathPoolEvidence
 	vrfConsumption                    []energyPathVRFConsumptionCohort
 	buildingHVACAllocationEdges       []EnergyExplanationEdge
 	buildingHVACAllocationPeriodEdges map[string][]EnergyExplanationEdge
@@ -237,6 +238,7 @@ type EnergyExplanationNode struct {
 	driverBuildingOnly            bool
 	allocationSourceIDs           []string
 	hvacConsumptionPoolBound      bool
+	serviceBoundaryRestrictions   []energyPathServiceBoundaryRestriction
 	nativeWindowACPathQualified   bool
 	simultaneousLoadContributions []energyExplanationSimultaneousLoadContribution
 	endUseCarriers                []string
@@ -332,6 +334,13 @@ type EnergyExplanationEdge struct {
 	ZoneName       string   `json:"zoneName,omitempty"`
 	ServiceKind    string   `json:"serviceKind,omitempty"`
 	RelatedPathIDs []string `json:"relatedPathIds,omitempty"`
+
+	// Exact source-local projection authority is produced from original plant
+	// topology and observed consuming outputs, never from the broad trace.
+	// Stored v1 edges without this private proof remain conservative; v2
+	// persists the final source-qualified boundary restrictions on its nodes.
+	serviceBoundaryConsumerSourceIDs []string
+	serviceBoundaryExactConsumers    bool
 }
 
 type EnergyDataSource struct {
@@ -730,6 +739,7 @@ type energyExplanationParseResult struct {
 	HourlyLabels         []string
 	FanPools             []energyPathFanPool
 	HVACConsumptionPools []energyPathHVACConsumptionPool
+	PoolEvidence         energyPathPoolEvidence
 	VRFConsumption       []energyPathVRFConsumptionCohort
 	VRFLoadEvidence      map[string]energyPathVRFLoadEvidence
 }
@@ -782,12 +792,16 @@ func parseSimulationEnergyExplanationSQLWithDriverContext(path string, plan *Pur
 		result.vrfConsumption = parsed.VRFConsumption
 		result.vrfLoadEvidence = parsed.VRFLoadEvidence
 		result.hvacConsumptionPools = parsed.HVACConsumptionPools
+		result.poolEvidence = parsed.PoolEvidence
 		return result, nil
 	}
 	result := buildEnergyExplanationResultWithDriverContext(parsed.Series, parsed.Sources, plan, driverContext)
 	result.HourlyLabels = parsed.HourlyLabels
 	result.auxiliaryFanPools = parsed.FanPools
 	result.hvacConsumptionPools = parsed.HVACConsumptionPools
+	parsed.PoolEvidence.LoadSeries = result.poolEvidence.LoadSeries
+	result.poolEvidence = parsed.PoolEvidence
+	applyEnergyPathPoolResultRestrictions(&result)
 	result.vrfConsumption = parsed.VRFConsumption
 	result.vrfLoadEvidence = parsed.VRFLoadEvidence
 	return result, nil
@@ -1029,6 +1043,12 @@ func parseSimulationEnergyExplanationCanonicalSQL(path string, plan *PurposeRunP
 	series = append(series, tabularSeries...)
 	sources = append(sources, tabularSources...)
 	consumptionPools, consumptionSources, consumptionHourlyLabels := readEnergyPathHVACConsumptionPools(db, filepath.Base(path), plan, driverContext, series)
+	poolEvidence, poolSources, poolHourlyLabels := readEnergyPathPoolEvidence(db, filepath.Base(path), plan, driverContext)
+	consumptionPools = mergeEnergyPathPoolHVACConsumption(consumptionPools, poolEvidence, series)
+	consumptionSources = mergeEnergyPathPoolSources(consumptionSources, poolSources)
+	if len(consumptionHourlyLabels) == 0 {
+		consumptionHourlyLabels = poolHourlyLabels
+	}
 	sources = append(sources, consumptionSources...)
 	if len(hourlyLabels) == 0 {
 		for _, source := range consumptionSources {
@@ -1045,7 +1065,7 @@ func parseSimulationEnergyExplanationCanonicalSQL(path string, plan *PurposeRunP
 		fanPools = []energyPathFanPool{{Invalid: true}}
 	}
 	return energyExplanationParseResult{Series: series, Sources: sources, HourlyLabels: hourlyLabels, FanPools: fanPools, HVACConsumptionPools: consumptionPools,
-		VRFConsumption: vrfConsumption, VRFLoadEvidence: vrfLoadEvidence}, nil
+		PoolEvidence: poolEvidence, VRFConsumption: vrfConsumption, VRFLoadEvidence: vrfLoadEvidence}, nil
 }
 
 func accumulateEnergyExplanationSeriesBuilder(builder *energyExplanationSeriesBuilder, row SQLSeriesRow, number float64, unit string, dictionary energyExplanationDictionary, selectedStartDay int, selectedEndDay int, hasSelectedRange bool) {
@@ -1818,6 +1838,7 @@ func buildEnergyExplanationResultWithDriverContext(series []energyExplanationSer
 		sources = annotateEnergyExplanationLoadSources(loadCandidates, series, sources)
 		series, sources, multiplierWarnings = finalizeEnergyDriverMappings(series, sources, driverContext)
 		driverWarnings = append(driverWarnings, multiplierWarnings...)
+		sources = qualifyEnergyPathPoolSurfaceSources(sources, driverContext.PoolInventory)
 	}
 	zoneDirectUseSeries := []energyExplanationSeries(nil)
 	vrfLoadSeries := energyPathVRFSelectedLoadSeries(series, driverContext.VRFSystems)
@@ -1957,6 +1978,16 @@ func buildEnergyExplanationResultWithDriverContext(series []energyExplanationSer
 		canonicalMonthlyBasis: driverContext.Enabled,
 		zoneDirectUseSeries:   zoneDirectUseSeries,
 		vrfLoadSeries:         vrfLoadSeries,
+	}
+	if driverContext.Enabled && energyExplanationPlanUsesEnergyPath(plan) && driverContext.PoolInventory.HasNativePool {
+		result.poolEvidence = energyPathPoolEvidence{Inventory: driverContext.PoolInventory}
+		for _, item := range series {
+			if item.Stage == "load" {
+				result.poolEvidence.LoadSeries = append(result.poolEvidence.LoadSeries, item)
+			}
+		}
+		result.hvacConsumptionPools = mergeEnergyPathPoolHVACConsumption(nil, result.poolEvidence, series)
+		applyEnergyPathPoolResultRestrictions(&result)
 	}
 	return result
 }

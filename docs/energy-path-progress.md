@@ -1178,3 +1178,52 @@ gate passes: app 21.899, CLI 5.963, input 1.382, frontend/browser 184.073, IDF
 9.107 and simulation 551.041 seconds; tabular passes from cache. The production
 Windows build passes in 8.104 seconds. Normal commit-hook verification/build
 and push finish this checkpoint before the shared pool/plant implementation.
+
+## Pool implementation checkpoint (2026-09-15; acceptance pending)
+
+The remote UI is unchanged. Native Pool, boiler and pump objects now retain
+exact original identity, actual Monthly/Hourly Energy/Rate observations and
+model-total factors. Complete water and outdoor/main-air topology proofs bind
+the five served Zones without promoting the return plenum into a recipient.
+Pool water heating and boiler output remain thermal context, not extra Zone-air
+load or a substitute for measured purchased energy.
+
+The shared hot-water loop has an unquantified process demand. Its actual Heating
+and pump consumption therefore remain unassigned to Zone-air service; the full
+Heating denominator cannot produce a misleading Building conversion or cached
+ratio. Independently proved chilled-water pump electricity can allocate only
+its own observed budget. Known zero, missing data, selected-scope exclusion,
+unsupported fuel, primary-versus-humidity load detail and repeated saved-result
+reloads retain these boundaries.
+
+Focused Pool/ServiceBoundary/existing HVAC-consumption regressions pass in
+144.612 seconds; the final unsupported-fuel denial focus passes in 0.241 seconds.
+A fresh normal capture, `real-zone-multiplier-25-1-20260914T185259.656652100`,
+completes result construction in the 77.874-second capture test. Native execution
+reports success, zero Severe errors and seven warnings (four legacy gas-alias
+requests plus three preserved MeterFileOnly duplicate requests). Missing optional
+output requests remain reported separately, never converted to observed zero.
+All 52 preservation-baseline files remain unchanged before and after execution.
+
+This is implementation and capture evidence, not numerical acceptance. The
+independent original/SQL oracle, all-eight-group comparison, prior-eleven replay
+and normal commit/build gate remain pending at
+this checkpoint. Section 22 stays 11/19; no fixture is approved from application
+candidate values or from a successful engine exit alone.
+
+The independent native recapture audit preserves all 309 physical objects and
+all 932,530 common observations exactly; all 28 native Pool/boiler/pump source
+identities are present without NULL/missing/negative rows. Root repeats the
+read-only audit successfully. The full repository gate initially fails a
+literal `N/A` substring check on two unrelated diagnostic/comment phrases and
+then the default ten-minute package limit during SQLite test-fixture seeding.
+The two phrases are corrected. Three isolated hand-fixture seeders now commit
+their unchanged rows in one transaction; no data, assertion or timeout changes.
+The expanded affected-suite focus passes in 60.049 seconds, including prior
+DirectHVAC and WindowAC coverage; the static check passes in 0.197 seconds.
+The full retry passes without timeout changes: app 21.650, CLI 5.752,
+frontend/browser 182.500 and simulation 466.918 seconds; input, IDF and tabular
+pass from cache. The production Windows build passes in 7.930 seconds. All 52
+preservation-baseline files are rechecked unchanged, and the remote is fetched
+before the normal commit-hook verification/build and push. This does not approve
+the Pool fixture or replace its remaining independent numerical acceptance.

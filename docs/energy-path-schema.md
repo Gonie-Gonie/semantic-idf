@@ -270,6 +270,46 @@ Canonical bases are `reported_meter`, `reported_variable`,
 `derived_ratio`, and `residual`. A measured value and an allocated value are not
 directly comparable merely because they have the same unit.
 
+## Pool and non-Zone plant demand boundaries
+
+An indoor pool is a process-water demand coupled to an original floor surface;
+it is not a ZoneHVAC delivery device. The reviewed EnergyPlus 25.1 native
+contract retains Pool water-heating and boiler thermal-output Energy/Rate as
+non-additive context. Boiler fuel, ancillary fuel/electricity and each pump's
+electricity have distinct native identities. Their observations are already
+model-total (factor 1); representative Zone-air and surface quantities still
+receive their original Zone/Group factors once. Thermal context never adds to
+Zone-air loads or supplies an inferred fuel split.
+
+Positive source-local allocation requires complete original water-side and
+air-side ownership: typed components, native ports, branch/splitter/mixer
+rosters, outdoor-air paths, terminal/ADU/Zone connections and actual observed
+Monthly Energy. A partial demand census or an unquantified Pool demand cannot
+authorize whole-loop Zone-air allocation. Purchased Heating and hot-water pump
+energy remain observed, but their process-versus-space split remains unassigned.
+An independently proved chilled-water pump may allocate only its own native
+electricity over its complete served cooling-load roster; it cannot borrow the
+hot-water pump or the broad Pumps meter. Annual allocation sums monthly shares.
+Missing/unknown primary loads cannot be replaced by humidity-detail observations.
+
+Optional node `serviceBoundaryRestrictions` records semantic denial, not positive
+numerical evidence. Entries identify `reason`, `endUse`, `serviceKind`, `carrier`,
+the actual `SwimmingPool:Indoor` demand and, when known, its `plantLoopName` and
+actual `consumerSourceIds`/`meterSourceIds`. Reasons are
+`non_zone_demand_unquantified` and `demand_topology_incomplete`. Unresolved native
+sources may leave IDs absent; unsupported fuels retain topology-only denial
+without fabricated fuel observations. Source IDs do not make an incomplete
+topology complete. Unknown and measured-zero contributors preserve the denial
+through canonical merging, period aggregation, scope projection and saved JSON.
+
+An affected canonical Heating end use has no `load_to_end_use` conversion, even
+if both purchased Heating and Zone-air load are positive. Cached Ratios and
+derived summaries obey the same boundary. Actual site/carrier ribbons and
+unrelated cooling remain intact. A proved source-local chilled-water projection
+does not inherit the hot-water boundary merely because both share the broad
+Pumps meter. V1 reloads lacking private allocation evidence remain conservative;
+serialization cannot restore an unsupported generic allocation.
+
 ## Quality and source trace
 
 `quality.drivers`, `loads`, `endUses`, `carriers` are availability

@@ -154,6 +154,13 @@ func energyPathReadBoilerConsumptionObservation(db *sql.DB, dictionary energyExp
 	item := energyExplanationSeries{Stage: "context", Level: "context", Kind: "energy.heating", EndUse: "heating", ServiceKind: "heating", Carrier: "electricity",
 		SourceName: dictionary.row.name, SourceKey: dictionary.row.keyValue, sourceName: dictionary.row.name, sourceKeyValue: dictionary.row.keyValue,
 		sourceFrequency: dictionary.reportingFrequency, Unit: "kWh", SourceIDs: []string{source.ID}, EffectiveMultiplier: 1, MultiplierApplication: "already_model_total", multiplierApplied: true}
+	return energyPathReadNativeConstituentObservation(db, dictionary, axis, hourly, source, item)
+}
+
+// Shared observation arithmetic only. Callers supply independently reviewed
+// physical roles and identities; this function cannot establish meter membership
+// or a service allocation. No representative-Zone multiplier is applied here.
+func energyPathReadNativeConstituentObservation(db *sql.DB, dictionary energyExplanationDictionary, axis map[int64]int, hourly *energySourceHourlyCollector, source EnergyDataSource, item energyExplanationSeries) (EnergyDataSource, energyExplanationSeries) {
 	wantedUnit := "J"
 	if energyExplanationIntegratesRate(dictionary) {
 		wantedUnit = "W"

@@ -2755,6 +2755,7 @@ func (builder *purposePlanBuilder) addBasicEnergy() {
 }
 
 func (builder *purposePlanBuilder) addBasicEnergyPath() {
+	builder.addEnergyPathPoolOutputs()
 	zoneKeys := builder.energyPathZoneKeys()
 	if len(zoneKeys) == 0 {
 		builder.warn("warning", "energy_path_zone_scope_empty", "Basic Energy Path needs zone keys for load and driver outputs, but the requested zone scope did not resolve any zones.", SimulationPurposeBasicEnergy, "")
