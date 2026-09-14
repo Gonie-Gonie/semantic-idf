@@ -37,12 +37,14 @@ func UpgradeEnergyExplanationV1(input EnergyExplanationV1) EnergyExplanationResu
 	periodZoneAuxiliaryAllocations := map[string]energyPathZoneAuxiliaryAllocationPlan{}
 	if zoneHVACAllocationEnabled {
 		annualZoneHVACAllocation = buildEnergyPathZoneHVACAllocationPlan(input.Nodes, input.Edges, input.zoneDirectUseSeries, "annual", "annual", input.canonicalMonthlyBasis, input.servicePathIndex)
+		annualZoneHVACAllocation = reserveEnergyPathHVACConsumptionPools(annualZoneHVACAllocation, input.Nodes, input.servicePathIndex, input.hvacConsumptionPools, "annual", "annual", input.canonicalMonthlyBasis)
 		annualZoneHVACAllocation = reserveEnergyPathVRFAllocation(annualZoneHVACAllocation, input.Nodes, vrfAllocation, "annual", vrfDisplay)
 		annualZoneAuxiliaryAllocation = buildEnergyPathZoneAuxiliaryAllocationPlan(input.Nodes, input.zoneDirectUseSeries, input.servicePathIndex, "annual", "annual", input.canonicalMonthlyBasis, input.auxiliaryFanPools)
 		monthlyZoneHVACAllocations := []energyPathZoneHVACAllocationPlan{}
 		monthlyZoneAuxiliaryAllocations := []energyPathZoneAuxiliaryAllocationPlan{}
 		for _, period := range input.Periods {
 			plan := buildEnergyPathZoneHVACAllocationPlan(period.Nodes, period.Edges, input.zoneDirectUseSeries, period.ID, period.Kind, input.canonicalMonthlyBasis, input.servicePathIndex)
+			plan = reserveEnergyPathHVACConsumptionPools(plan, period.Nodes, input.servicePathIndex, input.hvacConsumptionPools, period.ID, period.Kind, input.canonicalMonthlyBasis)
 			plan = reserveEnergyPathVRFAllocation(plan, period.Nodes, vrfAllocation, period.ID, vrfDisplay)
 			periodZoneHVACAllocations[strings.ToLower(strings.TrimSpace(period.ID))] = plan
 			auxiliaryPlan := buildEnergyPathZoneAuxiliaryAllocationPlan(period.Nodes, input.zoneDirectUseSeries, input.servicePathIndex, period.ID, period.Kind, input.canonicalMonthlyBasis, input.auxiliaryFanPools)
@@ -69,8 +71,10 @@ func UpgradeEnergyExplanationV1(input EnergyExplanationV1) EnergyExplanationResu
 	var directEdges []EnergyExplanationEdge
 	if scope.Kind == "zone" {
 		directNodes, directEdges = buildEnergyPathDirectZoneLegacyGraph(directZoneSeries, "annual", "annual", input.canonicalMonthlyBasis)
+		qualifyEnergyPathNativeBaseboardNodes(directNodes, input.Sources, scope, input.servicePathIndex.nativeBaseboardPaths)
 	}
 	annualLegacyNodes := append(append([]EnergyExplanationNode(nil), input.Nodes...), directNodes...)
+	annualLegacyNodes = qualifyEnergyPathHVACConsumptionAllocationNodes(annualLegacyNodes, annualZoneHVACAllocation)
 	annualInputEdges := append([]EnergyExplanationEdge(nil), input.Edges...)
 	if scope.Kind == "building" && len(input.buildingHVACAllocationEdges) > 0 {
 		annualInputEdges = append([]EnergyExplanationEdge(nil), input.buildingHVACAllocationEdges...)
@@ -104,6 +108,7 @@ func UpgradeEnergyExplanationV1(input EnergyExplanationV1) EnergyExplanationResu
 	reconciliation = reconcileEnergyPathCarrierTotals(nodes, links, reconciliation, "annual")
 	reconciliation = filterEnergyPathContextOnlyWaterReconciliation(reconciliation, nodes)
 	nodes, links = rebuildEnergyPathCarrierResidualPresentation(nodes, links, reconciliation, "annual")
+	links = qualifyEnergyPathMixedConsumptionBasis(nodes, links, annotatedSources, scope)
 	completeness := normalizeEnergyPathWaterContextCompleteness(input.Completeness, annotatedSources, reconciliation)
 	completeness = energyPathCompletenessFromCarrierReconciliation(completeness, scope, reconciliation)
 	periods := make([]EnergyPeriod, 0, len(input.Periods))
@@ -112,8 +117,10 @@ func UpgradeEnergyExplanationV1(input EnergyExplanationV1) EnergyExplanationResu
 		var periodDirectEdges []EnergyExplanationEdge
 		if scope.Kind == "zone" {
 			periodDirectNodes, periodDirectEdges = buildEnergyPathDirectZoneLegacyGraph(directZoneSeries, period.ID, period.Kind, input.canonicalMonthlyBasis)
+			qualifyEnergyPathNativeBaseboardNodes(periodDirectNodes, input.Sources, scope, input.servicePathIndex.nativeBaseboardPaths)
 		}
 		periodLegacyNodes := append(append([]EnergyExplanationNode(nil), period.Nodes...), periodDirectNodes...)
+		periodLegacyNodes = qualifyEnergyPathHVACConsumptionAllocationNodes(periodLegacyNodes, periodZoneHVACAllocations[strings.ToLower(strings.TrimSpace(period.ID))])
 		periodInputEdges := append([]EnergyExplanationEdge(nil), period.Edges...)
 		if scope.Kind == "building" {
 			if preserved := input.buildingHVACAllocationPeriodEdges[strings.ToLower(strings.TrimSpace(period.ID))]; len(preserved) > 0 {
@@ -224,6 +231,7 @@ func UpgradeEnergyExplanationV1(input EnergyExplanationV1) EnergyExplanationResu
 		appendEnergyPathZoneHVACAllocationAccounting(&result, annualZoneHVACAllocation, periodZoneHVACAllocations, input.canonicalMonthlyBasis)
 		appendEnergyPathZoneAuxiliaryAllocationAccounting(&result, annualZoneAuxiliaryAllocation, periodZoneAuxiliaryAllocations, input.canonicalMonthlyBasis)
 	}
+	result.Sources = applyEnergyPathHVACConsumptionSourceAllocations(result.Sources, annualZoneHVACAllocation, input.hvacConsumptionPools, scope)
 	refreshEnergyPathQuality(&result)
 	orderEnergyPathAccounting(&result)
 	return result
@@ -1089,6 +1097,7 @@ func applyCanonicalMonthlyBasisToEnergyPathResult(result *EnergyExplanationResul
 	// carrier closure from aggregated totals, then rebuild optional presentation.
 	reconciliation = reconcileEnergyPathCarrierTotals(nodes, links, reconciliation, "annual")
 	nodes, links = rebuildEnergyPathCarrierResidualPresentation(nodes, links, reconciliation, "annual")
+	links = qualifyEnergyPathMixedConsumptionBasis(nodes, links, result.Sources, result.Scope)
 
 	qualifyEnergyPathLinkCollisions(links)
 	sortEnergyExplanationNodes(nodes)
@@ -1599,10 +1608,34 @@ func upgradeEnergyExplanationGraph(legacyNodes []EnergyExplanationNode, legacyEd
 
 	links := map[string]*EnergyPathLink{}
 	linkedLegacyEndUses := map[string]bool{}
+	buildingThermalContributions := map[string]bool{}
+	nativeConsumptionSources := energyPathNativeConsumptionSources(sources, scope)
+	separateNativeConsumptionBranches := len(nativeConsumptionSources) > 0
 	for _, edge := range legacyEdges {
 		link, ok := upgradeEnergyExplanationLink(edge, nodeByLegacyID, canonicalIDByLegacyID, canonicalNodes, loadTotalsByEndUse, endUsesWithLoads, canonicalMonthlyBasis, fanConsumptionSources)
 		if !ok {
 			continue
+		}
+		if scope.Kind == "building" && link.Relation == "load_to_end_use" && legacyEnergyLinkIsLoadToEndUse(edge) {
+			// Carrier-qualified meters can point to the same exact Zone load.
+			// Keep every site-energy contribution, but count that physical load
+			// once for this canonical end use. A Building-load cap cannot detect
+			// duplication when the served subset excludes a large return plenum.
+			key := link.ToID + "\x00" + edge.ToID
+			if buildingThermalContributions[key] {
+				link.FromValue = 0
+			} else {
+				buildingThermalContributions[key] = true
+			}
+		}
+		if separateNativeConsumptionBranches && canonicalNodes[link.FromID] != nil && canonicalNodes[link.FromID].EndUse == "heating" && (link.Relation == "end_use_to_carrier" || link.Relation == "direct_end_use_to_carrier") {
+			if canonicalEnergyPathBasis(link.Basis, "") == "direct_zone_energy" && energyPathOnlyNativeBaseboardSources(link.SourceIDs, nativeConsumptionSources) {
+				// Carrier/canonical nodes include unrelated central service paths.
+				// The direct endpoint has the exact consuming equipment paths, or
+				// none when topology is unresolved. Neither case borrows context.
+				link.RelatedPathIDs = appendUniqueStrings(nil, nodeByLegacyID[edge.ToID].RelatedPathIDs...)
+			}
+			link.ID += ".basis." + canonicalEnergyPathBasis(link.Basis, "")
 		}
 		mergeEnergyPathLink(links, link)
 		if legacyEnergyLinkIsEndUseToCarrier(edge) {
@@ -1654,6 +1687,9 @@ func upgradeEnergyExplanationGraph(legacyNodes []EnergyExplanationNode, legacyEd
 		link.ID = energyPathLinkID(link)
 		// Different exact legacy contributors can share one bounded taxonomy
 		// node. Sum only contributors not already carried by explicit edges.
+		if separateNativeConsumptionBranches && endUseNode.EndUse == "heating" {
+			link.ID += ".basis." + canonicalEnergyPathBasis(link.Basis, "")
+		}
 		mergeEnergyPathLink(links, link)
 	}
 	if len(suppressedInterzone) > 0 {
@@ -1711,6 +1747,7 @@ func upgradeEnergyExplanationGraph(legacyNodes []EnergyExplanationNode, legacyEd
 	}
 	qualifyEnergyPathLinkCollisions(outLinks)
 	sort.SliceStable(outLinks, func(i, j int) bool { return outLinks[i].ID < outLinks[j].ID })
+	outLinks = qualifyEnergyPathMixedConsumptionBasis(outNodes, outLinks, sources, scope)
 	return outNodes, outLinks
 }
 
@@ -1746,7 +1783,12 @@ func synchronizeEnergyPathZoneHVACConversion(link *EnergyPathLink, nodes map[str
 	link.FromUnit = load.Unit
 	link.ToUnit = endUse.Unit
 	link.ZoneName = firstNonEmpty(endUse.ZoneName, load.ZoneName, link.ZoneName)
-	link.SourceIDs = appendUniqueStrings(link.SourceIDs, load.SourceIDs...)
+	if strings.TrimSpace(load.ZoneName) != "" {
+		// A Zone endpoint is the paired observed boundary. A Building endpoint
+		// may also contain unserved Zones; retain only the exact linked load
+		// contributors collected before canonical merging in that case.
+		link.SourceIDs = appendUniqueStrings(link.SourceIDs, load.SourceIDs...)
+	}
 	link.SourceIDs = appendUniqueStrings(link.SourceIDs, endUse.SourceIDs...)
 	link.RelatedPathIDs = appendUniqueStrings(link.RelatedPathIDs, load.RelatedPathIDs...)
 	link.RelatedPathIDs = appendUniqueStrings(link.RelatedPathIDs, endUse.RelatedPathIDs...)
@@ -1920,6 +1962,7 @@ func energyExplanationZoneAllocationProjections(nodes []EnergyExplanationNode, e
 	}
 	exactShares := map[string]allocationShare{}
 	exactPresent := map[string]bool{}
+	constituentShares := map[string]bool{}
 	sharesByCarrierEndUse := map[string]allocationShare{}
 	sharesByEndUse := map[string]allocationShare{}
 	sharesByService := map[string]allocationShare{}
@@ -1963,6 +2006,11 @@ func energyExplanationZoneAllocationProjections(nodes []EnergyExplanationNode, e
 		endUseKey := energyExplanationAllocationEndUseKey(endUse, service)
 		carrierEndUseKey := energyExplanationAllocationCarrierEndUseKey(endUse, service)
 		selected := strings.EqualFold(strings.TrimSpace(load.ZoneName), scope.ZoneName)
+		if selected && edge.RuleID == energyRelationshipRuleAllocatedHVACConsumptionPool {
+			// A direct local heater does not exclude its Zone from a distinct,
+			// independently observed central consuming component.
+			constituentShares[edge.FromID] = true
+		}
 		basis := canonicalEnergyPathBasis(edge.Basis, edge.RuleID)
 		updateShare := func(share allocationShare) allocationShare {
 			share.total += value
@@ -2025,7 +2073,7 @@ func energyExplanationZoneAllocationProjections(nodes []EnergyExplanationNode, e
 		if strings.TrimSpace(node.ZoneName) != "" || !strings.EqualFold(node.Level, "energy") || legacyEnergyNodeIsCarrier(node) || legacyEnergyNodeIsSupport(node) {
 			continue
 		}
-		if directTargets[energyPathDirectZoneTargetKey(node)] {
+		if directTargets[energyPathDirectZoneTargetKey(node)] && !constituentShares[node.ID] {
 			continue
 		}
 		if exactPresent[node.ID] {
@@ -2034,6 +2082,12 @@ func energyExplanationZoneAllocationProjections(nodes []EnergyExplanationNode, e
 			if value > 0 && share.selected > 0 {
 				projections[node.ID] = projectionFromShare(share.selected/value, share)
 			}
+			continue
+		}
+		if node.hvacConsumptionPoolBound {
+			// Missing or zero constituent energy is not permission to borrow
+			// another carrier's positive heating share. A source-local pool owns
+			// this decision even when it emits no positive allocation edges.
 			continue
 		}
 		service := energyCanonicalServiceKind(node.EndUse)
@@ -3373,7 +3427,11 @@ func upgradeEnergyExplanationLink(edge EnergyExplanationEdge, nodes map[string]E
 		// claim the natural-gas meter too.  The legacy endpoint and edge above
 		// already carry the exact branch meter; only omit the merged endpoint
 		// union for this relation.
-		if !carrierSplit && !supportSupply {
+		// For a thermal conversion this legacy endpoint is instead a load:
+		// only its actual linked contributors justify the paired thermal value.
+		// The canonical Building load can also include an unserved return
+		// plenum, whose observation is not evidence of consumed HVAC energy.
+		if !carrierSplit && !supportSupply && conversionService == "" {
 			link.SourceIDs = appendUniqueStrings(link.SourceIDs, canonical.SourceIDs...)
 		}
 		link.RelatedPathIDs = appendUniqueStrings(link.RelatedPathIDs, canonical.RelatedPathIDs...)
@@ -3853,12 +3911,12 @@ func canonicalEnergyPathBasis(basis string, ruleID string) string {
 	case "measured_meter_plus_zone_gain_variable":
 		return "derived_ratio"
 	case "allocated":
-		if ruleID == energyRelationshipRuleAllocatedServicePathLoad || ruleID == energyRelationshipRuleAllocatedAuxiliaryServicePath {
+		if ruleID == energyRelationshipRuleAllocatedServicePathLoad || ruleID == energyRelationshipRuleAllocatedAuxiliaryServicePath || ruleID == energyRelationshipRuleAllocatedHVACConsumptionPool {
 			return "service_path_allocation"
 		}
 		return "zone_load_allocation"
 	default:
-		if ruleID == energyRelationshipRuleAllocatedServicePathLoad {
+		if ruleID == energyRelationshipRuleAllocatedServicePathLoad || ruleID == energyRelationshipRuleAllocatedHVACConsumptionPool {
 			return "service_path_allocation"
 		}
 		if ruleID == energyRelationshipRuleAllocatedAuxiliaryServicePath {
@@ -3883,7 +3941,7 @@ func upgradeEnergyRelationshipRules(input []EnergyRelationshipRule) []EnergyRela
 		case energyRelationshipRuleMeterEndUse, energyRelationshipRuleMeasuredEnergyVariable:
 			upgraded.FromLevel, upgraded.ToLevel = "end_use", "carrier"
 			upgraded.FromKind, upgraded.ToKind = rule.ToKind, rule.FromKind
-		case energyRelationshipRuleMeasuredLoad, energyRelationshipRuleAllocatedZoneLoad, energyRelationshipRuleAllocatedServicePathLoad:
+		case energyRelationshipRuleMeasuredLoad, energyRelationshipRuleAllocatedZoneLoad, energyRelationshipRuleAllocatedServicePathLoad, energyRelationshipRuleAllocatedHVACConsumptionPool:
 			upgraded.FromLevel, upgraded.ToLevel = "load", "end_use"
 			upgraded.FromKind, upgraded.ToKind = rule.ToKind, rule.FromKind
 		case energyRelationshipRuleAllocatedAuxiliaryServicePath:
@@ -5321,6 +5379,7 @@ func sanitizeEnergyExplanationV2Graph(nodes []EnergyExplanationNode, links []Ene
 	filteredNodes, filteredLinks = refreshEnergyPathEndUseCarrierSplits(filteredNodes, filteredLinks, prunedEndUseSplits)
 	filteredLinks = refreshEnergyPathAllocatedDriverLinks(filteredNodes, filteredLinks, firstNonEmpty(period, "annual"))
 	filteredLinks = refreshEnergyPathConversionLinks(filteredNodes, filteredLinks)
+	filteredLinks = qualifyEnergyPathMixedConsumptionBasis(filteredNodes, filteredLinks, sources, scope)
 
 	reconciliation = removeEnergyPathWaterReconciliation(reconciliation)
 	reconciliation = reconcileEnergyPathCarrierTotals(filteredNodes, filteredLinks, reconciliation, firstNonEmpty(period, "annual"))

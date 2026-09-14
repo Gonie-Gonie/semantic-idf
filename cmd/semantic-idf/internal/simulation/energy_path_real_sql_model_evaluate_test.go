@@ -186,12 +186,26 @@ func epathCompileSQLModelChecks(observed epathRealOracleEvidence, model epathRea
 	if err := epathSQLBindVRFFrames(observed, model, &frames); err != nil {
 		return checks, err
 	}
+	if err := epathCompileSQLBaseboardContexts(observed.sqlPath, observed.originalText, observed.outputPlan, observed.Sources, model, &frames, observed.executedText); err != nil {
+		return checks, err
+	}
+	if err := epathSQLValidateHVACConsumptionOriginalModel(observed.originalText, model.HVACConsumptionPools); err != nil {
+		return checks, err
+	}
+	if err := epathCompileSQLHVACConsumptionPoolFrames(observed.sqlPath, observed.Sources, model, &frames, observed.outputPlan); err != nil {
+		return checks, err
+	}
+	if err := epathSQLBindAirLoopFans(observed.originalText, model, &frames); err != nil {
+		return checks, err
+	}
 	for _, build := range []func() error{
 		func() error { return epathSQLModelLoadDriverChecks(frames, model, &checks) },
 		func() error { return epathSQLModelDriverLinkChecks(frames, model, &checks) },
 		func() error { return epathSQLModelThermalReconciliationChecks(frames, model, &checks) },
 		func() error { return epathSQLModelSourceChecks(frames, observed.Sources, model, &checks) },
 		func() error { return epathSQLModelDirectHVACSourceChecks(frames, &checks) },
+		func() error { return epathSQLModelBaseboardContextSourceChecks(frames, &checks) },
+		func() error { return epathSQLModelHVACSharedSourceChecks(frames, &checks) },
 		func() error { return epathSQLModelVRFSourceChecks(frames, &checks) },
 		func() error { return epathSQLModelSiteChecks(frames, model, &checks) },
 		func() error { return epathSQLModelSiteFlowChecks(frames, model, &checks) },
@@ -321,6 +335,9 @@ func epathCheckSQLModelConversion(bundle PurposeResultBundle, check epathSQLMode
 }
 
 func epathCheckSQLModelAllocation(bundle PurposeResultBundle, check epathSQLModelCheck) error {
+	if check.Allocation != nil && check.Allocation.HVACConsumption != nil {
+		return epathCheckSQLHVACConsumptionAllocation(bundle, check)
+	}
 	if check.Allocation != nil && check.Allocation.NativeVRF != nil {
 		return epathCheckSQLVRFAllocation(bundle, check)
 	}
@@ -426,6 +443,10 @@ func epathEvaluateSQLModelChecks(out *epathRealOracleEvidence, bundle PurposeRes
 			err = epathCheckSQLModelAllocation(bundle, check)
 		} else if check.DirectHVACSource != nil {
 			err = epathCheckSQLDirectHVACSource(bundle, check)
+		} else if check.BaseboardContextSource != nil {
+			err = epathCheckSQLBaseboardContextSource(bundle, check)
+		} else if check.HVACSharedSource != nil {
+			err = epathCheckSQLHVACSharedSource(bundle, check)
 		} else if check.NativeVRFSource != nil {
 			err = epathCheckSQLVRFSource(bundle, check)
 		} else if check.NativeRadiantSource != nil {

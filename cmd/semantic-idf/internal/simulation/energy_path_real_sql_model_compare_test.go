@@ -8,30 +8,32 @@ import (
 )
 
 type epathSQLModelCheck struct {
-	Item                  epathRealOracleMetricRecipe
-	Want                  epathRealOracleMetric
-	Quantity              *epathSQLQuantity
-	OptionalPresentation  bool
-	Conversion            *epathSQLConversionProof
-	Allocation            *epathSQLAllocationProof
-	ZoneService           *epathSQLZoneServiceProof
-	DriverLink            *epathSQLDriverLinkProof
-	DirectUse             *epathSQLDirectUseProof
-	AuxiliaryZone         *epathSQLAuxiliaryZoneProof
-	Reconciliation        *epathSQLReconciliationProof
-	Quality               *epathSQLQualityProof
-	SiteFlow              *epathSQLSiteFlowProof
-	ZoneCarrier           *epathSQLZoneCarrierProof
-	SiteResidual          *epathSQLSiteResidualProof
-	OriginalSource        *epathSQLOriginalSource
-	LoadDetail            *epathSQLLoadDetailIdentity
-	RadiantSurfaceContext *epathSQLRadiantSurfaceContextIdentity
-	TraceSource           *epathSQLTraceSourceIdentity
-	DirectHVACSource      *epathSQLDirectHVACSourceIdentity
-	NativeVRFSource       *epathSQLVRFSourceIdentity
-	NativeRadiantSource   *epathSQLRadiantLoadSourceIdentity
-	NativeRadiantLoad     *epathSQLRadiantLoadNodeProof
-	AnnualServiceAbsent   bool
+	Item                   epathRealOracleMetricRecipe
+	Want                   epathRealOracleMetric
+	Quantity               *epathSQLQuantity
+	OptionalPresentation   bool
+	Conversion             *epathSQLConversionProof
+	Allocation             *epathSQLAllocationProof
+	ZoneService            *epathSQLZoneServiceProof
+	DriverLink             *epathSQLDriverLinkProof
+	DirectUse              *epathSQLDirectUseProof
+	AuxiliaryZone          *epathSQLAuxiliaryZoneProof
+	Reconciliation         *epathSQLReconciliationProof
+	Quality                *epathSQLQualityProof
+	SiteFlow               *epathSQLSiteFlowProof
+	ZoneCarrier            *epathSQLZoneCarrierProof
+	SiteResidual           *epathSQLSiteResidualProof
+	OriginalSource         *epathSQLOriginalSource
+	LoadDetail             *epathSQLLoadDetailIdentity
+	RadiantSurfaceContext  *epathSQLRadiantSurfaceContextIdentity
+	TraceSource            *epathSQLTraceSourceIdentity
+	DirectHVACSource       *epathSQLDirectHVACSourceIdentity
+	BaseboardContextSource *epathSQLBaseboardContextIdentity
+	HVACSharedSource       *epathSQLHVACSharedSourceProof
+	NativeVRFSource        *epathSQLVRFSourceIdentity
+	NativeRadiantSource    *epathSQLRadiantLoadSourceIdentity
+	NativeRadiantLoad      *epathSQLRadiantLoadNodeProof
+	AnnualServiceAbsent    bool
 }
 type epathSQLModelChecks struct {
 	Rows            []epathSQLModelCheck

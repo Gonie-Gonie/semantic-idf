@@ -81,6 +81,10 @@ type epathSQLFrames struct {
 	ZeroPressurePhysicalCells       map[string]epathSQLCell
 	DirectHVAC                      map[string]epathSQLDirectHVACMonth
 	DirectHVACSourceIdentities      map[int]epathSQLDirectHVACSourceIdentity
+	BaseboardContextIdentities      map[int]epathSQLBaseboardContextIdentity
+	HVACConsumptionPools            []epathSQLHVACConsumptionPoolFrame
+	HVACSharedSourceIdentities      map[int]epathSQLHVACSharedSourceProof
+	AirLoopFans                     map[string]epathRealSQLAirLoopFan
 	TraceSourceIdentities           map[int]epathSQLTraceSourceIdentity
 	CellTraceSourceIDs              map[string][]int
 	Zones                           map[string]epathSQLZone
@@ -643,6 +647,9 @@ func epathCompileSQLModelFrames(sqlPath string, observed []epathRealSQLSource, m
 		return out, err
 	}
 	if err := epathCompileSQLTemporalTraceSources(sqlPath, observed, model, &out); err != nil {
+		return out, err
+	}
+	if err := epathSQLBindHourlyCompanions(sqlPath, observed, model, &out); err != nil {
 		return out, err
 	}
 	if err := epathCompileSQLDirectHVACSources(sqlPath, observed, model, &out); err != nil {

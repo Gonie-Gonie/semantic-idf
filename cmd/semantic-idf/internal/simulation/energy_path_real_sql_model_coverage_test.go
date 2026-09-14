@@ -197,7 +197,7 @@ func epathSQLCoverageRecords(bundle PurposeResultBundle, context epathSQLCoverag
 		if check.Reconciliation != nil {
 			validators = append(validators, func() error { return epathCheckSQLModelReconciliation(bundle, check) })
 		}
-		if check.Allocation != nil && check.Allocation.RadiantCarrier != nil {
+		if check.Allocation != nil && (check.Allocation.RadiantCarrier != nil || check.Allocation.HVACConsumption != nil) {
 			validators = append(validators, func() error { return epathCheckSQLModelAllocation(bundle, check) })
 		}
 		if check.SiteFlow != nil {
@@ -247,6 +247,12 @@ func epathSQLCoverageRecords(bundle PurposeResultBundle, context epathSQLCoverag
 		}
 		if check.DirectHVACSource != nil {
 			validators = append(validators, func() error { return epathCheckSQLDirectHVACSource(bundle, check) })
+		}
+		if check.BaseboardContextSource != nil {
+			validators = append(validators, func() error { return epathCheckSQLBaseboardContextSource(bundle, check) })
+		}
+		if check.HVACSharedSource != nil {
+			validators = append(validators, func() error { return epathCheckSQLHVACSharedSource(bundle, check) })
 		}
 		if check.NativeVRFSource != nil {
 			validators = append(validators, func() error { return epathCheckSQLVRFSource(bundle, check) })
@@ -391,7 +397,7 @@ func epathSQLCoverageRecords(bundle PurposeResultBundle, context epathSQLCoverag
 		}
 		for _, check := range candidates {
 			target := check.Item.Target
-			if check.Allocation != nil && check.Allocation.RadiantCarrier != nil {
+			if check.Allocation != nil && (check.Allocation.RadiantCarrier != nil || check.Allocation.HVACConsumption != nil) {
 				valid, checked := proofValid[check.Want.Key]
 				if !checked {
 					// A copied Building ledger is still proved against its

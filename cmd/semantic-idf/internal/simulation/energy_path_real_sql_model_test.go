@@ -15,6 +15,10 @@ type epathRealSQLModel struct {
 	FanPools               []epathRealSQLFanPool               `json:"fanPools,omitempty"`
 	DirectUses             []epathRealSQLDirectUse             `json:"directUses,omitempty"`
 	DirectHVACComponents   []epathRealSQLDirectHVACComponent   `json:"directHVACComponents,omitempty"`
+	BaseboardContexts      []epathRealSQLBaseboardContext      `json:"baseboardContexts,omitempty"`
+	HourlyCompanions       []epathRealSQLHourlyCompanion       `json:"hourlyCompanions,omitempty"`
+	HVACConsumptionPools   []epathRealSQLHVACConsumptionPool   `json:"hvacConsumptionPools,omitempty"`
+	AirLoopFans            []epathRealSQLAirLoopFan            `json:"airLoopFans,omitempty"`
 	NativeVRFSystems       []epathRealSQLVRFSystem             `json:"nativeVRFSystems,omitempty"`
 	NonAdditiveLoadDetails []epathRealSQLNonAdditiveLoadDetail `json:"nonAdditiveLoadDetails,omitempty"`
 	ZeroPressureFallbacks  []epathRealSQLZeroPressureFallback  `json:"zeroPressureFallbacks,omitempty"`

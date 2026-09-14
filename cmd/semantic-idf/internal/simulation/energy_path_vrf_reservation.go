@@ -17,6 +17,7 @@ func reserveEnergyPathVRFAllocation(plan energyPathZoneHVACAllocationPlan, nodes
 		foreignCarrier            bool
 		owners                    map[string]bool
 		sources                   []string
+		consumptionSources        []string
 	}
 	groups := map[string]*reservation{}
 	for _, row := range native.Services {
@@ -35,6 +36,7 @@ func reserveEnergyPathVRFAllocation(plan energyPathZoneHVACAllocationPlan, nodes
 		group.complete = group.complete && row.DirectKnown && row.SharedKnown
 		group.sources = appendUniqueStrings(group.sources, row.ConsumptionSourceIDs...)
 		group.sources = appendUniqueStrings(group.sources, row.LoadSourceIDs...)
+		group.consumptionSources = appendUniqueStrings(group.consumptionSources, row.ConsumptionSourceIDs...)
 	}
 	if len(groups) == 0 {
 		return plan
@@ -82,20 +84,77 @@ func reserveEnergyPathVRFAllocation(plan energyPathZoneHVACAllocationPlan, nodes
 		nodeByID[node.ID] = node
 	}
 	edgesByGroup := map[string][]EnergyExplanationEdge{}
+	constituentEdgesByGroup := map[string][]EnergyExplanationEdge{}
+	constituentGroups := map[string]bool{}
+	for key, bound := range plan.ConsumptionPoolGroups {
+		constituentGroups[key] = bound
+	}
+	conflictingConstituentRecipients := map[string]bool{}
+	for _, row := range plan.ConsumptionSourceAllocations {
+		key := energyPathZoneHVACAllocationGroupKey(row.ServiceKind, row.Carrier)
+		if group := groups[key]; group != nil && strings.EqualFold(row.Period, periodID) &&
+			len(energyPathZoneHVACIntersectPaths(row.SourceIDs, group.consumptionSources)) > 0 {
+			// A known-zero source row may have no positive graph edge, but
+			// duplicate ownership must still not become a valid zero trace.
+			conflictingConstituentRecipients[key+"\x00"+energyPathVRFName(row.ZoneName)] = true
+		}
+	}
 	out := plan
 	out.Edges = nil
 	out.Records = append([]energyPathZoneHVACAllocationRecord(nil), plan.Records...)
 	for _, edge := range plan.Edges {
 		endUse, exists := nodeByID[edge.FromID]
 		key := energyPathZoneHVACAllocationGroupKey(endUse.EndUse, endUse.Carrier)
+		if edge.RuleID == energyRelationshipRuleAllocatedHVACConsumptionPool {
+			key = energyPathZoneHVACAllocationGroupKey(canonicalEnergyPathEndUse(firstNonEmpty(endUse.EndUse, energyExplanationKindSuffix(endUse.Kind))), canonicalEnergyPathPart(endUse.Carrier))
+		}
 		group := groups[key]
 		if !exists || group == nil {
 			out.Edges = append(out.Edges, edge)
 			continue
 		}
+		if edge.RuleID == energyRelationshipRuleAllocatedHVACConsumptionPool {
+			// This is an independently observed source budget, not a share of
+			// the broad meter remainder. A VRF terminal does not exclude a
+			// separate boiler serving the same Zone, including another carrier.
+			constituentGroups[key] = true
+			if energyPathFinite(edge.Value) && edge.Value >= 0 &&
+				len(energyPathZoneHVACIntersectPaths(edge.SourceIDs, group.consumptionSources)) == 0 {
+				constituentEdgesByGroup[key] = append(constituentEdgesByGroup[key], edge)
+			} else {
+				zone := firstNonEmpty(edge.ZoneName, nodeByID[edge.ToID].ZoneName)
+				conflictingConstituentRecipients[key+"\x00"+energyPathVRFName(zone)] = true
+			}
+			// A shared consumption identity is conflicting evidence. A merged
+			// constituent edge cannot be split safely here; keep it unassigned
+			// rather than counting that native source in both system budgets.
+			continue
+		}
 		zone := firstNonEmpty(edge.ZoneName, nodeByID[edge.ToID].ZoneName)
 		if !group.owners[energyPathVRFName(zone)] || group.foreignCarrier && strings.TrimSpace(endUse.LoopName) != "" {
 			edgesByGroup[key] = append(edgesByGroup[key], edge)
+		}
+	}
+	if len(conflictingConstituentRecipients) > 0 {
+		// A merged edge and its per-source trace must close together. Retain
+		// the original observations in Sources, but do not publish an invented
+		// allocated-zero trace for a constituent with conflicting ownership.
+		for key, edges := range constituentEdgesByGroup {
+			kept := []EnergyExplanationEdge{}
+			for _, edge := range edges {
+				zone := firstNonEmpty(edge.ZoneName, nodeByID[edge.ToID].ZoneName)
+				if !conflictingConstituentRecipients[key+"\x00"+energyPathVRFName(zone)] {
+					kept = append(kept, edge)
+				}
+			}
+			constituentEdgesByGroup[key] = kept
+		}
+		out.ConsumptionSourceAllocations = nil
+		for _, row := range plan.ConsumptionSourceAllocations {
+			key := energyPathZoneHVACAllocationGroupKey(row.ServiceKind, row.Carrier) + "\x00" + energyPathVRFName(row.ZoneName)
+			if !strings.EqualFold(row.Period, periodID) || !conflictingConstituentRecipients[key] {
+				out.ConsumptionSourceAllocations = append(out.ConsumptionSourceAllocations, row)
+			}
 		}
 	}
 	for i := range out.Records {
@@ -114,17 +173,29 @@ func reserveEnergyPathVRFAllocation(plan energyPathZoneHVACAllocationPlan, nodes
 			// observations, but don't label that unidentified residue an allocation.
 			remaining = 0
 		}
+		if constituentGroups[key] {
+			// The source-local pass intentionally left unidentified or
+			// unallocatable consumption unassigned. It must not become a new
+			// generic allocation merely because native VRF is also present.
+			remaining = 0
+		}
 		edges := edgesByGroup[key]
 		weights := make([]float64, len(edges))
 		for j, edge := range edges {
 			weights[j] = edge.Value
 		}
 		shares := energyPathZoneHVACProportionalValues(remaining, weights)
-		if group.foreignCarrier {
+		if group.foreignCarrier && !constituentGroups[key] {
 			shares = weights
 		}
 		genericAllocated := 0.0
 		usedPath, usedLoad := group.allocated > energyPathZoneHVACAllocationEpsilon, false
+		for _, edge := range constituentEdgesByGroup[key] {
+			out.Edges = append(out.Edges, edge)
+			genericAllocated += edge.Value
+			usedPath = usedPath || edge.Basis == "service_path_allocation"
+			usedLoad = usedLoad || edge.Basis == "zone_load_allocation"
+		}
 		for j, edge := range edges {
 			if j >= len(shares) || shares[j] <= 0 {
 				continue

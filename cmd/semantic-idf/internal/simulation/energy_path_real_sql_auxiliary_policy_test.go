@@ -15,6 +15,9 @@ type epathSQLAuxiliaryPolicy struct {
 
 func epathSQLAllocatedAuxiliaryPolicy(endUse, carrier, weight, method string) (epathSQLAuxiliaryPolicy, error) {
 	if carrier == "electricity" {
+		if endUse == "fans" && weight == "cooling_plus_heating" && method == "air_loop_load_share" {
+			return epathSQLAuxiliaryPolicy{MeterName: "Fans:Electricity", Services: []string{"cooling", "heating"}}, nil
+		}
 		if endUse == "pumps" && weight == "cooling_plus_heating" && method == "plant_loop_load_share" {
 			return epathSQLAuxiliaryPolicy{MeterName: "Pumps:Electricity", Services: []string{"cooling", "heating"}}, nil
 		}

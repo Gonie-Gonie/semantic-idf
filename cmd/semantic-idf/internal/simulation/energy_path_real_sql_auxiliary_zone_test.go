@@ -66,6 +66,11 @@ func epathSQLAuxiliaryZoneProofs(frames epathSQLFrames, model epathRealSQLModel)
 			return nil, fmt.Errorf("allocated auxiliary lacks an explicit supported site/carrier/weight proof: %s", auxiliary.SiteID)
 		}
 		endUses[site.EndUse] = true
+		if site.EndUse == "fans" {
+			if err := epathSQLValidateAirLoopFanFrames(frames, model, auxiliary); err != nil {
+				return nil, err
+			}
+		}
 		selector := epathRealSQLSelector{Alternatives: []epathRealSQLAlternative{{Name: policy.MeterName, Unit: "J"}}, Keys: []string{""}, IsMeter: true}
 		if !reflect.DeepEqual(site.Source, selector) {
 			return nil, fmt.Errorf("auxiliary scalar requires its exact reviewed broad meter selector")

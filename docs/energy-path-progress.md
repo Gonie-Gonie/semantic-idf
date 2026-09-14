@@ -1092,3 +1092,39 @@ CLI 7.141, input 1.737, frontend/browser 191.598, IDF 9.209 and simulation
 in 6.08 seconds. Normal commit-hook verification/build and push now finish
 this engineering checkpoint. Nine of nineteen numerical fixtures are approved;
 the mixed-heating source/consumer boundary is the next concrete engineering task.
+
+## Mixed-heating engineering checkpoint (2026-09-14)
+
+The remote UI remains unchanged under the user's engineering-only scope.
+Native radiant-convective electric Baseboards now have exact original ownership,
+actual-frequency output identity and non-additive response context. Local heater
+ownership does not exclude central boiler service to the same Zone. Independently
+observed consumption pools preserve real zeros, unknown observations and
+unassigned remainders; a zero/missing electric pool cannot borrow a gas share.
+Mixed direct/allocated subtotals retain distinct carrier branches and honest
+evidence classification. Shared thermal loads are counted once, and conversion
+source IDs exclude unserved PLENUM while the Building load retains it. Direct
+Baseboard paths no longer borrow unrelated central cooling/gas paths.
+
+The separate normal capture preserves the original physical input and weather;
+old capture files and all prior approved expectations remain intact. Candidate
+03 passes 17,275 independent checks across all eight groups with zero failures
+and coverage gaps. Separate native-SQL arithmetic matches 510 reviewed values,
+and the complete registry/provenance audit passes. Root manually approves
+pending SHA256 `a4f285b693b4ecf7b476051c1902a785dbe788b21ea4bb83dadb6f42ea7fee7f`;
+the lossless 140,577-byte companion retains every metric, 5,863 known zeros and
+702 explicit nulls. Saved acceptance and the ten-fixture guard pass in 220.822
+seconds. All nine prior fixtures pass current-code rebuilding with eighteen
+expected hashes unchanged. See `energy-path-mixed-heating-acceptance.md` for the
+original hashes, preserved failed diagnostics and exact verification history.
+
+Section 22 is now 10/19, not complete. ZoneGroup, Zone multiplier, PV/storage,
+no cooling, no heating, simultaneous operation and Large Office 22.1/23.2/24.2
+still need engineering acceptance. Read-only preflights identify separate
+WindowAC/convective-baseboard ownership, indoor-pool/shared-plant boundaries,
+DC-storage versus Facility consumption, and HeatOnly furnace-wrapper support;
+none is marked solved or accepted by this checkpoint. Full repository verification
+passes: app 22.408 seconds, CLI 5.700, frontend/browser 181.959 and simulation
+465.731, with input, IDF and tabular tests passing from cache. The production
+Windows build passes in 7.927 seconds. Normal commit-hook verification/build and
+push finish this checkpoint before further production changes.

@@ -213,8 +213,15 @@ func epathSQLModelDriverLinkChecks(frames epathSQLFrames, model epathRealSQLMode
 						trace.Allowed = epathSQLDictionaryUnion(trace.Allowed, cell.SourceIDs)
 						for _, id := range frames.CellTraceSourceIDs[key] {
 							alias, known := frames.TraceSourceIdentities[id]
-							if !known || epathSQLValidateTemporalTrace(alias) != nil || alias.Source.DictionaryIndex != id || alias.Family != cell.Family || !strings.EqualFold(alias.ZoneName, cell.Zone) {
-								return fmt.Errorf("temporal trace lacks exact independently positive family/Zone/month")
+							familyBound := alias.Family == cell.Family
+							if alias.NativeCompanion != nil {
+								familyBound = false
+								for _, authority := range cell.SourceIDs {
+									familyBound = familyBound || authority == alias.Authority.DictionaryIndex
+								}
+							}
+							if !known || epathSQLValidateTemporalTrace(alias) != nil || alias.Source.DictionaryIndex != id || !familyBound || !strings.EqualFold(alias.ZoneName, cell.Zone) {
+								return fmt.Errorf("temporal trace %d lacks exact independently positive family/Zone/month", id)
 							}
 							trace.Context = epathSQLDictionaryUnion(trace.Context, []int{id})
 							zoneTraceSources[category][owner] = epathSQLDictionaryUnion(zoneTraceSources[category][owner], []int{id})
@@ -647,7 +654,7 @@ func epathSQLDriverLinkTrace(link EnergyPathLink, from, to EnergyExplanationNode
 		original, known := proof.SourceIdentities[id]
 		authority, bound := proof.SourceIdentities[alias.Authority.DictionaryIndex]
 		if epathSQLValidateTemporalTrace(alias) != nil || !known || id != alias.Source.DictionaryIndex || original.DictionaryIndex != id || original.Name != alias.Source.Name || original.KeyValue != alias.Source.KeyValue || original.SourceUnit != alias.Source.SourceUnit || original.ReportingFrequency != alias.Source.ReportingFrequency || original.IsMeter != alias.Source.IsMeter || !bound || authority.Name != alias.Authority.Name || authority.KeyValue != alias.Authority.KeyValue || authority.SourceUnit != alias.Authority.SourceUnit || authority.ReportingFrequency != alias.Authority.ReportingFrequency || authority.IsMeter != alias.Authority.IsMeter || !driver[alias.Authority.DictionaryIndex] || driver[id] || load[id] || to.ZoneName != "" && !strings.EqualFold(to.ZoneName, alias.ZoneName) {
-			return nil, fmt.Errorf("temporal trace has no independent primary family source/owner")
+			return nil, fmt.Errorf("temporal trace %d has no independent primary family source/owner", id)
 		}
 		if _, detail := proof.NonAdditiveLoadDetails[id]; detail {
 			return nil, fmt.Errorf("ambiguous context source role")

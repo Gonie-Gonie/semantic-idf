@@ -24,14 +24,17 @@ type energySurfaceCategory struct {
 }
 
 type energyDriverBuildContext struct {
-	Enabled              bool
-	SurfaceCategories    energySurfaceCategoryIndex
-	AirCouplings         energyAirCouplingIndex
-	Multipliers          energyEffectiveMultiplierIndex
-	GeometryWarning      *EnergyWarning
-	DirectHVACComponents []energyPathDirectHVACComponentTarget
-	VRFSystems           []energyPathVRFSystem
-	RadiantLoads         []energyPathRadiantLoadTarget
+	Enabled                      bool
+	SurfaceCategories            energySurfaceCategoryIndex
+	AirCouplings                 energyAirCouplingIndex
+	Multipliers                  energyEffectiveMultiplierIndex
+	GeometryWarning              *EnergyWarning
+	DirectHVACComponents         []energyPathDirectHVACComponentTarget
+	VRFSystems                   []energyPathVRFSystem
+	RadiantLoads                 []energyPathRadiantLoadTarget
+	HasNativeBaseboard           bool
+	BaseboardTargets             []energyPathBaseboardTarget
+	SharedHeatingElectricTargets []energyPathSharedHeatingElectricTarget
 }
 
 func newEnergyDriverBuildContext(report idf.GeometryReport, documents ...idf.Document) energyDriverBuildContext {
@@ -40,21 +43,31 @@ func newEnergyDriverBuildContext(report idf.GeometryReport, documents ...idf.Doc
 	var directHVACComponents []energyPathDirectHVACComponentTarget
 	var vrfSystems []energyPathVRFSystem
 	var radiantLoads []energyPathRadiantLoadTarget
+	var baseboardTargets []energyPathBaseboardTarget
+	var sharedHeatingElectricTargets []energyPathSharedHeatingElectricTarget
+	hasNativeBaseboard := false
 	if len(documents) > 0 {
 		addEnergyInternalMassCategories(&index, documents[0], report)
 		multipliers = buildEnergyEffectiveMultiplierIndex(documents[0])
 		directHVACComponents = energyPathDirectHVACComponentTargets(documents[0])
 		vrfSystems = energyPathVRFSystems(documents[0])
 		radiantLoads = energyPathRadiantLoadTargets(documents[0])
+		hasNativeBaseboard = energyPathHasNativeBaseboard(documents[0])
+		baseboardTargets = energyPathBaseboardTargets(documents[0])
+		directHVACComponents = append(directHVACComponents, energyPathBaseboardDirectTargets(baseboardTargets)...)
+		sharedHeatingElectricTargets = energyPathSharedHeatingElectricTargets(documents[0])
 	}
 	return energyDriverBuildContext{
-		Enabled:              true,
-		SurfaceCategories:    index,
-		AirCouplings:         buildEnergyAirCouplingIndex(report.Topology),
-		Multipliers:          multipliers,
-		DirectHVACComponents: directHVACComponents,
-		VRFSystems:           vrfSystems,
-		RadiantLoads:         radiantLoads,
+		Enabled:                      true,
+		SurfaceCategories:            index,
+		AirCouplings:                 buildEnergyAirCouplingIndex(report.Topology),
+		Multipliers:                  multipliers,
+		DirectHVACComponents:         directHVACComponents,
+		VRFSystems:                   vrfSystems,
+		RadiantLoads:                 radiantLoads,
+		HasNativeBaseboard:           hasNativeBaseboard,
+		BaseboardTargets:             baseboardTargets,
+		SharedHeatingElectricTargets: sharedHeatingElectricTargets,
 	}
 }
 
@@ -156,6 +169,7 @@ func prepareEnergyDriverSeries(series []energyExplanationSeries, sources []Energ
 		}
 		out = append(out, canonicalEnergyExplanationSeries(item))
 	}
+	applyEnergyPathBaseboardRecipientQualification(out, sources, context)
 	return out, sources, warnings
 }
 

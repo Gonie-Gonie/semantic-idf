@@ -809,12 +809,13 @@ func purposeRunPlanWithRequestScope(plan *PurposeRunPlan, request SimulationPurp
 }
 
 type energyServicePathIndex struct {
-	byService           map[string][]string
-	byZone              map[string][]string
-	byZoneService       map[string][]string
-	byLoopService       map[string][]string
-	auxiliaryPaths      []energyPathAuxiliaryServicePath
-	auxiliaryResolvable map[string]bool
+	byService            map[string][]string
+	byZone               map[string][]string
+	byZoneService        map[string][]string
+	byLoopService        map[string][]string
+	auxiliaryPaths       []energyPathAuxiliaryServicePath
+	auxiliaryResolvable  map[string]bool
+	nativeBaseboardPaths map[string][]string
 }
 
 func enrichEnergyExplanationWithServicePaths(explanation EnergyExplanationV1, inputPath string) EnergyExplanationV1 {
@@ -856,7 +857,9 @@ func buildEnergyServicePathIndex(inputPath string) energyServicePathIndex {
 	if err != nil {
 		return index
 	}
-	report := idf.AnalyzeHVAC(epinput.ToIDFDocument(model))
+	doc := epinput.ToIDFDocument(model)
+	report := idf.AnalyzeHVAC(doc)
+	index.nativeBaseboardPaths = buildEnergyPathNativeBaseboardPaths(doc, report.ServiceModel.ZoneServices)
 	condenserLoopsByPlant := energyPathCondenserLoopsByPlant(report.Loops)
 	for _, summary := range report.ServiceModel.ZoneServices {
 		for _, path := range summary.Paths {
@@ -2761,9 +2764,12 @@ func (builder *purposePlanBuilder) addBasicEnergyPath() {
 	}
 	builder.addEnergyPathDirectHVACComponentOutputs()
 	builder.addEnergyPathVRFOutputs()
+	builder.addEnergyPathBaseboardOutputs()
+	builder.addEnergyPathBaseboardSharedOutputs()
 
 	idealLoadsTargets := builder.energyPathIdealLoadsTargets(zoneKeys)
 	radiantTargets := energyPathRadiantLoadTargets(builder.doc)
+	hasNativeBaseboard := energyPathHasNativeBaseboard(builder.doc)
 	selectedRadiantTargets := []purposeOutputKeyTarget{}
 	for _, target := range radiantTargets {
 		for _, zoneName := range zoneKeys {
@@ -2775,6 +2781,12 @@ func (builder *purposePlanBuilder) addBasicEnergyPath() {
 	}
 	for _, definition := range energyLoadAliasCatalog() {
 		for _, variable := range definition.Aliases {
+			if hasNativeBaseboard && strings.HasPrefix(normalizeEnergyOutputName(variable), "zone baseboard total ") {
+				// Native baseboards use equipment keys and a non-additive context
+				// contract above. Do not keep requesting nonexistent Zone aliases
+				// when ownership fails, nor change older unrelated fixture plans.
+				continue
+			}
 			targets := []purposeOutputKeyTarget{{KeyValue: "*"}}
 			if strings.EqualFold(definition.Scope, "zone") {
 				targets = purposeZoneOutputKeyTargets(zoneKeys)

@@ -42,6 +42,7 @@ func energyPathDirectHVACComponentDefinitions() []energyPathDirectHVACComponentD
 				Carrier: item.carrier, EndUse: item.service, HierarchyLevel: "zone_direct_use", Aliases: []string{item.name}},
 		})
 	}
+	definitions = append(definitions, energyPathBaseboardElectricityDefinition())
 	return definitions
 }
 

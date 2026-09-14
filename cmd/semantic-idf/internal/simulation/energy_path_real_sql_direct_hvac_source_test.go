@@ -47,6 +47,8 @@ func epathSQLDirectHVACTaxonomy(id string) (name, component, service, carrier st
 		return "Heating Coil Defrost Electricity Energy", "Coil:Heating:DX:SingleSpeed", "heating", "electricity", true
 	case "heating.coil.crankcase_electricity":
 		return "Heating Coil Crankcase Heater Electricity Energy", "Coil:Heating:DX:SingleSpeed", "heating", "electricity", true
+	case "heating.baseboard.electricity":
+		return "Baseboard Electricity Energy", "ZoneHVAC:Baseboard:RadiantConvective:Electric", "heating", "electricity", true
 	}
 	return "", "", "", "", false
 }
@@ -57,6 +59,8 @@ func epathSQLDirectHVACParentFamilies(objectType string) []string {
 		return []string{"cooling.coil.electricity", "cooling.coil.crankcase_electricity", "heating.coil.natural_gas", "heating.coil.ancillary_natural_gas", "heating.coil.electricity"}
 	case "ZoneHVAC:PackagedTerminalHeatPump":
 		return []string{"cooling.coil.electricity", "heating.coil.dx_electricity", "heating.coil.defrost_electricity", "heating.coil.crankcase_electricity", "heating.coil.natural_gas", "heating.coil.ancillary_natural_gas", "heating.coil.electricity"}
+	case "ZoneHVAC:Baseboard:RadiantConvective:Electric":
+		return []string{"heating.baseboard.electricity"}
 	}
 	return nil
 }
@@ -88,6 +92,9 @@ func epathSQLDirectHVACOwners(declaration epathRealSQLDirectHVACComponent) (map[
 		if !keys[key] || owners[key].KeyValue != "" || strings.TrimSpace(owner.ZoneName) == "" || strings.TrimSpace(owner.EquipmentName) == "" || !epathSQLDirectHVACParentSupports(owner.EquipmentType, declaration.ID) || owner.ComponentType != component {
 			return nil, fmt.Errorf("direct HVAC has a missing, duplicate or incompatible explicit coil owner")
 		}
+		if declaration.ID == "heating.baseboard.electricity" && !strings.EqualFold(strings.TrimSpace(owner.KeyValue), strings.TrimSpace(owner.EquipmentName)) {
+			return nil, fmt.Errorf("native baseboard electricity must belong to the exact self-owned equipment key")
+		}
 		owners[key] = owner
 	}
 	return owners, nil
@@ -98,6 +105,9 @@ func epathSQLValidateDirectHVACSourceIdentity(identity epathSQLDirectHVACSourceI
 	source, owner := identity.Source, identity.Owner
 	if !ok || identity.Service != service || identity.Carrier != carrier || identity.SiteID == "" || identity.AggregationBasis != "model_total" || owner.ComponentType != component || !epathSQLDirectHVACParentSupports(owner.EquipmentType, identity.FamilyID) || strings.TrimSpace(owner.EquipmentName) == "" || strings.TrimSpace(owner.ZoneName) == "" || strings.TrimSpace(owner.KeyValue) == "" || !strings.EqualFold(strings.TrimSpace(source.KeyValue), strings.TrimSpace(owner.KeyValue)) || !strings.EqualFold(source.Name, name) || source.SourceUnit != "J" || source.IsMeter || source.DictionaryIndex <= 0 || source.ReportingFrequency != "Monthly" || source.Rows != 12 || source.MissingRows != 0 {
 		return fmt.Errorf("direct HVAC source lacks its exact independent owner/service/carrier/monthly identity")
+	}
+	if identity.FamilyID == "heating.baseboard.electricity" && !strings.EqualFold(strings.TrimSpace(owner.KeyValue), strings.TrimSpace(owner.EquipmentName)) {
+		return fmt.Errorf("native baseboard source cannot borrow a packaged parent identity")
 	}
 	if _, err := epathSQLMonthly(source, identity.Precision); err != nil {
 		return err
@@ -193,6 +203,12 @@ func epathSQLValidateDirectHVACOriginalModel(text string, model epathRealSQLMode
 			return err
 		}
 		for _, owner := range owners {
+			if declaration.ID == "heating.baseboard.electricity" {
+				if err := epathSQLValidateNativeBaseboardOriginalOwner(doc, owner); err != nil {
+					return err
+				}
+				continue
+			}
 			parent, err := one(owner.EquipmentType, owner.EquipmentName)
 			if err != nil {
 				return err

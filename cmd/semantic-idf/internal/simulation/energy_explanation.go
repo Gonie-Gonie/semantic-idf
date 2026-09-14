@@ -40,6 +40,7 @@ type EnergyExplanationV1 struct {
 	canonicalMonthlyBasis             bool
 	zoneDirectUseSeries               []energyExplanationSeries
 	auxiliaryFanPools                 []energyPathFanPool
+	hvacConsumptionPools              []energyPathHVACConsumptionPool
 	vrfConsumption                    []energyPathVRFConsumptionCohort
 	buildingHVACAllocationEdges       []EnergyExplanationEdge
 	buildingHVACAllocationPeriodEdges map[string][]EnergyExplanationEdge
@@ -235,6 +236,7 @@ type EnergyExplanationNode struct {
 	driverZoneOnly                bool
 	driverBuildingOnly            bool
 	allocationSourceIDs           []string
+	hvacConsumptionPoolBound      bool
 	simultaneousLoadContributions []energyExplanationSimultaneousLoadContribution
 	endUseCarriers                []string
 	inspectorDecodedFromJSON      bool
@@ -608,6 +610,7 @@ type energyExplanationDictionary struct {
 	directComponentID          string
 	directComponentZone        string
 	directComponentObjectIndex *int
+	baseboardContext           *energyPathBaseboardContextBinding
 }
 
 type energyExplanationSeriesBuilder struct {
@@ -721,12 +724,13 @@ type energyExplanationSeries struct {
 // readers stop at canonical series; node/link direction belongs to the graph
 // builder that consumes this value.
 type energyExplanationParseResult struct {
-	Series          []energyExplanationSeries
-	Sources         []EnergyDataSource
-	HourlyLabels    []string
-	FanPools        []energyPathFanPool
-	VRFConsumption  []energyPathVRFConsumptionCohort
-	VRFLoadEvidence map[string]energyPathVRFLoadEvidence
+	Series               []energyExplanationSeries
+	Sources              []EnergyDataSource
+	HourlyLabels         []string
+	FanPools             []energyPathFanPool
+	HVACConsumptionPools []energyPathHVACConsumptionPool
+	VRFConsumption       []energyPathVRFConsumptionCohort
+	VRFLoadEvidence      map[string]energyPathVRFLoadEvidence
 }
 
 type energyExplanationInternalGainTarget struct {
@@ -776,11 +780,13 @@ func parseSimulationEnergyExplanationSQLWithDriverContext(path string, plan *Pur
 		result := emptyEnergyExplanationResult(plan)
 		result.vrfConsumption = parsed.VRFConsumption
 		result.vrfLoadEvidence = parsed.VRFLoadEvidence
+		result.hvacConsumptionPools = parsed.HVACConsumptionPools
 		return result, nil
 	}
 	result := buildEnergyExplanationResultWithDriverContext(parsed.Series, parsed.Sources, plan, driverContext)
 	result.HourlyLabels = parsed.HourlyLabels
 	result.auxiliaryFanPools = parsed.FanPools
+	result.hvacConsumptionPools = parsed.HVACConsumptionPools
 	result.vrfConsumption = parsed.VRFConsumption
 	result.vrfLoadEvidence = parsed.VRFLoadEvidence
 	return result, nil
@@ -960,13 +966,13 @@ func parseSimulationEnergyExplanationCanonicalSQL(path string, plan *PurposeRunP
 			for _, dictionary := range dictionaries {
 				builder := builders[dictionary.row.index]
 				isRadiantLoad := dictionary.load != nil && energyPathIsRadiantLoadVariable(dictionary.row.name)
-				if builder == nil && (dictionary.directComponentID != "" || isRadiantLoad) {
+				if builder == nil && (dictionary.directComponentID != "" || isRadiantLoad || dictionary.baseboardContext != nil) {
 					// Preserve the reported identity of an all-NULL source, but
 					// never promote it to a zero-valued direct consumption series.
 					builder = &energyExplanationSeriesBuilder{dictionary: dictionary, unit: "kWh"}
 					invalidObservedValues[dictionary.row.index] = true
 				}
-				if builder == nil || dictionary.directComponentID == "" && !isRadiantLoad && builder.total == 0 && len(builder.monthly) == 0 {
+				if builder == nil || dictionary.directComponentID == "" && !isRadiantLoad && dictionary.baseboardContext == nil && builder.total == 0 && len(builder.monthly) == 0 {
 					continue
 				}
 				source := energyDataSourceForDictionary(dictionary)
@@ -980,7 +986,7 @@ func parseSimulationEnergyExplanationCanonicalSQL(path string, plan *PurposeRunP
 					(len(monthlyTimeAxis) == 0 || monthlyObservedRows[dictionary.row.index] != len(monthlyTimeAxis)) {
 					invalidObservedValues[dictionary.row.index] = true
 				}
-				if (dictionary.directComponentID != "" || isRadiantLoad) && (builder.unit != "kWh" || math.IsNaN(builder.total) || math.IsInf(builder.total, 0) ||
+				if (dictionary.directComponentID != "" || isRadiantLoad || dictionary.baseboardContext != nil) && (builder.unit != "kWh" || math.IsNaN(builder.total) || math.IsInf(builder.total, 0) ||
 					strings.EqualFold(dictionary.reportingFrequency, "Monthly") && len(builder.monthly) != len(monthlyTimeAxis)) {
 					invalidObservedValues[dictionary.row.index] = true
 				}
@@ -1021,13 +1027,23 @@ func parseSimulationEnergyExplanationCanonicalSQL(path string, plan *PurposeRunP
 	}
 	series = append(series, tabularSeries...)
 	sources = append(sources, tabularSources...)
+	consumptionPools, consumptionSources, consumptionHourlyLabels := readEnergyPathHVACConsumptionPools(db, filepath.Base(path), plan, driverContext, series)
+	sources = append(sources, consumptionSources...)
+	if len(hourlyLabels) == 0 {
+		for _, source := range consumptionSources {
+			if source.HourlyEnergy != nil {
+				hourlyLabels = consumptionHourlyLabels
+				break
+			}
+		}
+	}
 	fanPools, err := readEnergyPathFanPools(db, filepath.Base(path), plan)
 	if err != nil {
 		// Missing pool metadata must not discard the otherwise valid graph or
 		// silently re-enable broad allocation as if no pool had been reported.
 		fanPools = []energyPathFanPool{{Invalid: true}}
 	}
-	return energyExplanationParseResult{Series: series, Sources: sources, HourlyLabels: hourlyLabels, FanPools: fanPools,
+	return energyExplanationParseResult{Series: series, Sources: sources, HourlyLabels: hourlyLabels, FanPools: fanPools, HVACConsumptionPools: consumptionPools,
 		VRFConsumption: vrfConsumption, VRFLoadEvidence: vrfLoadEvidence}, nil
 }
 
@@ -1215,6 +1231,9 @@ func energyExplanationCategorySeries(builders map[string]*energyExplanationCateg
 }
 
 func energyExplanationScopeZoneForDictionary(dictionary energyExplanationDictionary, plan *PurposeRunPlan) string {
+	if dictionary.baseboardContext != nil {
+		return dictionary.baseboardContext.Target.ZoneName
+	}
 	if dictionary.directComponentID != "" {
 		return dictionary.directComponentZone
 	}
@@ -1758,6 +1777,7 @@ func buildEnergyExplanationResultWithDriverContext(series []energyExplanationSer
 	for index := range series {
 		series[index] = canonicalEnergyExplanationSeries(series[index])
 	}
+	series, sources, baseboardWarnings := bindEnergyPathBaseboardContextSeries(series, sources, driverContext)
 	series, sources, radiantWarnings := bindEnergyPathRadiantLoadSeries(series, sources, driverContext)
 	series, sources = filterEnergyExplanationSeriesForBasicDetail(series, sources, plan)
 	// Requested-output availability describes original observations, not the
@@ -1773,6 +1793,7 @@ func buildEnergyExplanationResultWithDriverContext(series []energyExplanationSer
 		series, sources, driverWarnings = prepareEnergyDriverSeries(series, sources, driverContext)
 	}
 	driverWarnings = append(driverWarnings, radiantWarnings...)
+	driverWarnings = append(driverWarnings, baseboardWarnings...)
 	for index := range series {
 		series[index] = canonicalEnergyExplanationSeries(series[index])
 	}
@@ -3725,6 +3746,9 @@ func sqlEnergyExplanationDictionaries(db *sql.DB, sourceFile string, plan *Purpo
 		// missing. The reader will not turn dictionary presence into a zero.
 		missingRadiant = fmt.Sprintf("LOWER(TRIM(%s)) IN ('zone radiant hvac cooling energy', 'zone radiant hvac cooling rate', 'zone radiant hvac heating energy', 'zone radiant hvac heating rate')", nameExpr)
 	}
+	if len(driverContexts) > 0 && driverContexts[0].Enabled && len(driverContexts[0].BaseboardTargets) > 0 {
+		missingRadiant = fmt.Sprintf("(%s OR LOWER(TRIM(%s)) IN ('baseboard total heating energy', 'baseboard total heating rate', 'baseboard electricity rate'))", missingRadiant, nameExpr)
+	}
 	rows, err := db.Query(fmt.Sprintf(`
 SELECT DISTINCT rdd.%s,
        %s,
@@ -3766,6 +3790,16 @@ ORDER BY rdd.%s`, indexExpr, keyExpr, nameExpr, unitsExpr, isMeterExpr, frequenc
 			copy := def
 			dictionary.meter = &copy
 			dictionary.isMeter = true
+		} else if energyPathIsBaseboardContextVariable(row.name) {
+			var targets []energyPathBaseboardTarget
+			if len(driverContexts) > 0 {
+				targets = driverContexts[0].BaseboardTargets
+			}
+			binding, bound := energyPathBaseboardContextDictionaryScope(dictionary, plan, targets)
+			if !bound {
+				continue
+			}
+			dictionary.baseboardContext = &binding
 		} else if _, ok := energyPathDirectHVACComponentDefinitionForName(row.name); ok {
 			var targets []energyPathDirectHVACComponentTarget
 			if len(driverContexts) > 0 {
@@ -3787,6 +3821,20 @@ ORDER BY rdd.%s`, indexExpr, keyExpr, nameExpr, unitsExpr, isMeterExpr, frequenc
 			dictionary.energy = &copy
 			dictionary.directComponentID, dictionary.directComponentZone = def.ID, zone
 			dictionary.directComponentObjectIndex = objectIndex
+			if dictionary.hourlySourceOnly {
+				// The Monthly request proves the typed owner, not the request
+				// that produced this distinct Hourly observation.
+				dictionary.directComponentObjectIndex = energyPathDirectHVACReportedObjectIndex(dictionary, plan, def, zone)
+			}
+			if len(driverContexts) > 0 {
+				for _, target := range driverContexts[0].BaseboardTargets {
+					if strings.EqualFold(def.ObjectType, target.Component.ObjectType) && strings.EqualFold(target.KeyValue, row.keyValue) && strings.EqualFold(target.ZoneName, zone) {
+						// The plan may deduplicate signatures. Keep the native
+						// original duplicate-request census for this equipment.
+						dictionary.directComponentObjectIndex = energyPathBaseboardContextOutputIndex(dictionary, plan, target)
+					}
+				}
+			}
 		} else if def, ok := energyVariableAliasDefinitionForName(row.name); ok {
 			// Zone direct-use variables are part of the new Energy Path capture
 			// contract. Keep legacy parser results stable unless the run plan
@@ -3815,6 +3863,9 @@ ORDER BY rdd.%s`, indexExpr, keyExpr, nameExpr, unitsExpr, isMeterExpr, frequenc
 
 func energyExplanationSeriesForBuilder(builder *energyExplanationSeriesBuilder, sourceID string) energyExplanationSeries {
 	dictionary := builder.dictionary
+	if dictionary.baseboardContext != nil {
+		return energyPathBaseboardContextSeriesForBuilder(builder, sourceID)
+	}
 	if dictionary.meter != nil {
 		def := dictionary.meter
 		return energyExplanationSeries{
@@ -4270,6 +4321,9 @@ func energyExplanationSupportsHourlyPeriods(dictionary energyExplanationDictiona
 }
 
 func energyExplanationObjectIndexForDictionary(dictionary energyExplanationDictionary, plan *PurposeRunPlan) *int {
+	if dictionary.baseboardContext != nil {
+		return dictionary.baseboardContext.ObjectIndex
+	}
 	if dictionary.directComponentID != "" {
 		return dictionary.directComponentObjectIndex
 	}
@@ -4390,6 +4444,9 @@ func energyExplanationSQLValue(value float64, dictionary energyExplanationDictio
 func energyExplanationIntegratesRate(dictionary energyExplanationDictionary) bool {
 	if dictionary.valueConversion != nil {
 		return dictionary.valueConversion.integratesRate
+	}
+	if dictionary.baseboardContext != nil {
+		return dictionary.baseboardContext.IntegratesRate
 	}
 	name := normalizeEnergyOutputName(dictionary.row.name)
 	if dictionary.heat != nil {
@@ -4665,6 +4722,26 @@ func energyRelationshipRuleCatalog() []EnergyRelationshipRule {
 			RequiredSource: []string{"sql_report_data:meter", "sql_report_data:variable", "idf_hvac_service_model"},
 			Basis:          "allocated",
 			Formula:        "allocate end-use energy by measured delivered-load share for matched HVAC service paths",
+		},
+		{
+			ID:             energyRelationshipRuleMixedHVACConsumptionBasis,
+			FromLevel:      "load",
+			ToLevel:        "end_use",
+			FromKind:       "zone_delivered_load",
+			ToKind:         "cooling_or_heating_end_use",
+			RequiredSource: []string{"sql_report_data:meter", "sql_report_data:variable", "idf_hvac_service_model"},
+			Basis:          "service_path_allocation",
+			Formula:        "pair the Zone load once with the sum of directly observed local consumption and independently allocated central energy; retain each carrier branch's separate evidence",
+		},
+		{
+			ID:             energyRelationshipRuleAllocatedHVACConsumptionPool,
+			FromLevel:      "energy",
+			ToLevel:        "load",
+			FromKind:       "cooling_or_heating_end_use",
+			ToKind:         "service_path_delivered_load",
+			RequiredSource: []string{"sql_report_data:meter", "sql_report_data:variable", "idf_hvac_service_model"},
+			Basis:          "allocated",
+			Formula:        "allocate only independently observed consuming constituents across their exact HVAC service paths; reserve local consumption by source and retain unidentified meter remainder as unassigned",
 		},
 		{
 			ID:             energyRelationshipRuleAllocatedAuxiliaryServicePath,

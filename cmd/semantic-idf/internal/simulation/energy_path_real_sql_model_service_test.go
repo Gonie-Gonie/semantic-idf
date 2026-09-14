@@ -14,6 +14,7 @@ type epathSQLConversionProof struct {
 }
 
 type epathSQLAllocationProof struct {
+	HVACConsumption                         *epathSQLHVACConsumptionLedgerProof
 	NativeVRF                               *epathSQLVRFAllocationLedgerProof
 	RadiantCarrier                          *epathSQLRadiantCarrierAllocationProof
 	Expected, Direct, Allocated, Unassigned *epathSQLQuantity
@@ -145,6 +146,13 @@ func epathSQLModelServiceChecks(frames epathSQLFrames, model epathRealSQLModel, 
 		if err != nil {
 			return err
 		}
+		poolFrames, err := epathSQLCompileHVACConsumptionService(frames, model, service)
+		if err != nil {
+			return err
+		}
+		if poolFrames != nil {
+			directFrames = &poolFrames.Direct
+		}
 		nativeFrames, err := epathSQLCompileVRFService(frames, model, service)
 		if err != nil {
 			return err
@@ -226,6 +234,9 @@ func epathSQLModelServiceChecks(frames epathSQLFrames, model epathRealSQLModel, 
 				if basis == service.FallbackBasis {
 					kind = service.FallbackRatioKind
 				}
+				if poolFrames != nil {
+					kind = epathSQLHVACConsumptionRatioDeclaration(poolFrames, "", period, kind)
+				}
 				kind, err = epathSQLConversionPeriodRatioKind(kind, period, branchKindPairs[basis])
 				if err != nil {
 					return fmt.Errorf("%s/%s/%s ratio kind: %w", service.Service, basis, period, err)
@@ -244,6 +255,10 @@ func epathSQLModelServiceChecks(frames epathSQLFrames, model epathRealSQLModel, 
 			if len(service.CarrierReconciliationIDs) > 0 {
 				if radiantCarriers != nil {
 					if err := epathSQLRadiantCarrierLedgerChecks(radiantCarriers, period, checks); err != nil {
+						return err
+					}
+				} else if poolFrames != nil {
+					if err := epathSQLHVACConsumptionBuildingLedgerChecks(service, poolFrames, period, checks); err != nil {
 						return err
 					}
 				} else if err := epathSQLDirectHVACBuildingLedgerChecks(service, directFrames, period, checks); err != nil {

@@ -13,11 +13,13 @@ const energyPathZoneHVACAllocationEpsilon = 1e-9
 // graph project a central HVAC meter without changing the frozen v1 payload,
 // while the Building result can report the exact allocation/remainder ledger.
 type energyPathZoneHVACAllocationPlan struct {
-	Edges                      []EnergyExplanationEdge
-	Records                    []energyPathZoneHVACAllocationRecord
-	CentralEndUseNodeIDs       map[string]bool
-	AnnualAuthoritativeGroups  map[string]bool
-	AnnualDirectOverrideGroups map[string]bool
+	Edges                        []EnergyExplanationEdge
+	Records                      []energyPathZoneHVACAllocationRecord
+	CentralEndUseNodeIDs         map[string]bool
+	AnnualAuthoritativeGroups    map[string]bool
+	AnnualDirectOverrideGroups   map[string]bool
+	ConsumptionPoolGroups        map[string]bool
+	ConsumptionSourceAllocations []energyPathHVACConsumptionSourceAllocation
 }
 
 type energyPathZoneHVACAllocationRecord struct {
@@ -714,6 +716,13 @@ func aggregateEnergyPathZoneHVACAllocationPlans(input []energyPathZoneHVACAlloca
 	edgeKeys := []string{}
 	records := []energyPathZoneHVACAllocationRecord{}
 	for _, plan := range input {
+		for key := range plan.ConsumptionPoolGroups {
+			if out.ConsumptionPoolGroups == nil {
+				out.ConsumptionPoolGroups = map[string]bool{}
+			}
+			out.ConsumptionPoolGroups[key] = true
+		}
+		out.ConsumptionSourceAllocations = append(out.ConsumptionSourceAllocations, plan.ConsumptionSourceAllocations...)
 		for id := range plan.CentralEndUseNodeIDs {
 			out.CentralEndUseNodeIDs[id] = true
 		}
@@ -747,6 +756,7 @@ func aggregateEnergyPathZoneHVACAllocationPlans(input []energyPathZoneHVACAlloca
 		out.Edges = append(out.Edges, edge)
 	}
 	out.Records = aggregateEnergyPathZoneHVACAllocationRecords(records, "annual")
+	out.ConsumptionSourceAllocations = aggregateEnergyPathHVACConsumptionSourceAllocations(out.ConsumptionSourceAllocations, "annual")
 	return out
 }
 
@@ -814,6 +824,25 @@ func energyPathZoneHVACAllocationPlanWithAnnualFallback(monthly energyPathZoneHV
 			out.Edges = append(out.Edges, edge)
 		}
 	}
+	for _, candidate := range []struct {
+		plan   energyPathZoneHVACAllocationPlan
+		annual bool
+	}{{monthly, false}, {annual, true}} {
+		for key := range candidate.plan.ConsumptionPoolGroups {
+			if out.AnnualAuthoritativeGroups[key] == candidate.annual {
+				if out.ConsumptionPoolGroups == nil {
+					out.ConsumptionPoolGroups = map[string]bool{}
+				}
+				out.ConsumptionPoolGroups[key] = true
+			}
+		}
+		for _, row := range candidate.plan.ConsumptionSourceAllocations {
+			key := energyPathZoneHVACAllocationGroupKey(row.ServiceKind, row.Carrier)
+			if out.AnnualAuthoritativeGroups[key] == candidate.annual {
+				out.ConsumptionSourceAllocations = append(out.ConsumptionSourceAllocations, row)
+			}
+		}
+	}
 	sort.SliceStable(out.Records, func(i, j int) bool {
 		return energyPathZoneHVACAllocationGroupKey(out.Records[i].ServiceKind, out.Records[i].Carrier) < energyPathZoneHVACAllocationGroupKey(out.Records[j].ServiceKind, out.Records[j].Carrier)
 	})
@@ -860,7 +889,7 @@ func appendEnergyPathZoneHVACAllocationRecords(reconciliation []EnergyReconcilia
 			filteredWarnings = appendEnergyDriverWarning(filteredWarnings, EnergyWarning{
 				Severity: "warning",
 				Code:     "unassigned_building_hvac_energy",
-				Message:  fmt.Sprintf("Unassigned building HVAC energy remains for %s %s: %g %s could not be linked to an eligible non-direct zone.", energyServiceLabel(record.ServiceKind), energyCarrierLabel(record.Carrier), record.UnassignedValue, record.Unit),
+				Message:  fmt.Sprintf("Unassigned building HVAC energy remains for %s %s: %g %s could not be linked to an eligible zone.", energyServiceLabel(record.ServiceKind), energyCarrierLabel(record.Carrier), record.UnassignedValue, record.Unit),
 				Period:   record.Period,
 			})
 		}
@@ -872,7 +901,7 @@ func appendEnergyPathZoneHVACAllocationRecords(reconciliation []EnergyReconcilia
 				Period:   record.Period,
 			})
 		}
-		formula := "building HVAC end use - exact direct zone HVAC energy - allocated non-direct zone HVAC energy"
+		formula := "building HVAC end use - exact direct zone HVAC energy - allocated shared HVAC energy"
 		filteredRows = append(filteredRows, EnergyReconciliation{
 			ID:              strings.Join([]string{"reconcile", "zone_hvac_allocation", canonicalEnergyPathPart(record.ServiceKind), canonicalEnergyPathPart(record.Carrier), canonicalEnergyPathPart(record.Period)}, "."),
 			Level:           "allocation",

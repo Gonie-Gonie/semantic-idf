@@ -192,7 +192,9 @@ With the default `allocationPolicy=by_service_path_load_share`, the fixed
 priority is direct component/Zone observation → related HVAC service
 path load share → same-service Zone load share → unassigned. Exact direct
 observations, including zero, win. Subtract them from the central pool and
-exclude those Zones from further allocation. Do not distribute missing direct
+exclude those Zones from that same undifferentiated pool's further allocation.
+This exclusion is not a blanket claim that the Zone cannot also receive energy
+from a separately observed shared component. Do not distribute missing direct
 lighting/equipment sources arbitrarily, and never substitute equal-area or
 equal-Zone shares for missing HVAC evidence.
 
@@ -205,6 +207,44 @@ not silently clamped. Unassigned Building HVAC energy is not a selected Zone's
 energy. Reconciliation retains direct/allocated/unassigned quantities.
 The supported `direct_only` policy does not enable those central path/load
 fallback allocations; do not infer allocation solely from a Zone scope.
+
+For supported native `ZoneHVAC:Baseboard:RadiantConvective:Electric` objects,
+exact EquipmentList/EquipmentConnections ownership binds `Baseboard Electricity
+Energy` to its Zone. Native equipment electricity is already model-total; do
+not apply the Zone multiplier again. `Baseboard Total Heating Energy/Rate` is
+non-additive equipment-response context: the aggregate Zone Air System Sensible
+load already includes that response. It is neither extra Zone load nor generated
+heat divided by efficiency. Radiant recipient surfaces retain their observed
+exchange with an explicit mixed HVAC/environment qualification.
+
+A native baseboard electricity branch cites only the exact consuming delivery
+paths bound by typed equipment identity and its original Zone owner. A shared
+canonical carrier/end-use node's unrelated central cooling/heating paths are
+not evidence for that component. Ambiguous or missing topology leaves the path
+unresolved without discarding the observed electricity or guessing another path.
+
+Where a Heating:Electricity meter also contains separately observed boiler
+ancillary electricity, allocation uses each consuming component's own budget.
+An owned baseboard does not exclude its Zone from a verified central boiler's
+service paths. A missing component observation leaves the unidentified meter
+remainder unassigned; an observed zero is retained as zero. Shared source raw
+and effective values remain the actual Building component total. Zone source
+details contain allocated shares, not fabricated measured raw/effective values.
+Hourly and Rate companions are trace context, not additional monthly budgets.
+
+When native local consumption and central allocations share one heating end-use
+node, preserve separate carrier branches even when both use electricity. Each
+branch retains its own direct or allocated basis. Their combined node and thermal
+conversion use a conservative allocated basis, not a claim that the entire Zone
+subtotal was directly measured. This changes evidence classification only; native
+consumption, allocated shares and the single aggregate load remain unchanged.
+
+At Building scope, multiple carrier-qualified contributions may share the same
+physical Zone load. Count that load once in the paired thermal conversion and
+retain only its actual contributing source identities. An unserved plenum can
+remain in the larger Building load node without becoming evidence for served
+HVAC consumption. Monthly/annual aggregation and stored readback preserve these
+distinct boundaries rather than replacing the paired value with the whole node.
 
 Canonical bases are `reported_meter`, `reported_variable`,
 `reported_end_use_subtotal`, `integrated_rate`, `heat_balance_share`,

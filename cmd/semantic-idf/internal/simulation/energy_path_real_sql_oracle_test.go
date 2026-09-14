@@ -65,6 +65,7 @@ type epathRealOracleEvidence struct {
 	Metrics       []epathRealOracleMetric `json:"metrics,omitempty"`
 	sqlPath       string
 	originalText  string
+	executedText  string
 	outputPlan    *PurposeRunPlan
 	modelCoverage *epathSQLModelCoverageReport
 }

@@ -3,6 +3,7 @@ package simulation
 import (
 	"database/sql"
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 )
@@ -11,6 +12,7 @@ import (
 // the original Monthly family term; neither alias values nor its rounding
 // budget ever enter a numeric driver cell or allocation denominator.
 type epathSQLTraceSourceIdentity struct {
+	NativeCompanion   *epathSQLHourlyCompanionIdentity
 	Family, ZoneName  string
 	Source, Authority epathRealSQLSource
 	Multiplier        float64
@@ -31,6 +33,12 @@ func epathSQLTraceEquivalentNames(family epathRealSQLFamily, trace epathRealSQLT
 }
 
 func epathSQLValidateTemporalTrace(proof epathSQLTraceSourceIdentity) error {
+	if p := proof.NativeCompanion; p != nil {
+		if proof.Family != "" || !reflect.DeepEqual(proof.Source, p.Source) || !reflect.DeepEqual(proof.Authority, p.Authority) || proof.ZoneName != p.ZoneName || proof.Multiplier != p.Multiplier {
+			return fmt.Errorf("native Hourly companion escaped its independently bound temporal identity")
+		}
+		return epathSQLValidateHourlyCompanion(*p)
+	}
 	name, category := "Zone Air Heat Balance Surface Convection Rate", "balance.storage_other"
 	if proof.Family == "internal.other.sensible" {
 		name, category = "Zone Air Heat Balance Internal Convective Heat Gain Rate", "internal.other"
@@ -239,6 +247,9 @@ func epathCompileSQLTemporalTraceSources(sqlPath string, observed []epathRealSQL
 }
 
 func epathSQLTemporalTraceAnnualQuantity(proof epathSQLTraceSourceIdentity, field string) (epathSQLQuantity, error) {
+	if proof.NativeCompanion != nil {
+		return epathSQLQuantity{}, fmt.Errorf("Hourly companion %d is cell-local provenance, not a numeric source frame", proof.Source.DictionaryIndex)
+	}
 	if err := epathSQLValidateTemporalTrace(proof); err != nil {
 		return epathSQLQuantity{}, err
 	}
@@ -266,6 +277,9 @@ func epathSQLTemporalTraceAnnualQuantity(proof epathSQLTraceSourceIdentity, fiel
 }
 
 func epathSQLTemporalTraceSourceMatches(source EnergyDataSource, proof epathSQLTraceSourceIdentity) bool {
+	if proof.NativeCompanion != nil {
+		return epathSQLValidateTemporalTrace(proof) == nil && epathSQLMatchHourlyCompanionSource(source, *proof.NativeCompanion) == nil
+	}
 	if epathSQLValidateTemporalTrace(proof) != nil || !epathSQLOriginalSourceMatches(source, epathSQLOriginalRDD(proof.Source), "annual") {
 		return false
 	}
