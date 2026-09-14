@@ -334,13 +334,11 @@ try {
   };
   let openedView = "";
   let revealedTarget = "";
-  let completeNavigation;
-  const navigationComplete = new Promise((resolve) => { completeNavigation = resolve; });
+  let historyEntries = 0;
   registry.registerPanelNavigationAdapter("topology", {
     canReveal: (selection) => selection.viewTarget?.targetKind === "thermal_air_coupling" && selection.viewTarget.targetId === "air:mix",
     reveal: (selection) => {
       revealedTarget = selection.viewTarget?.targetId || "";
-      completeNavigation();
       return true;
     },
     selectFromElement: () => null,
@@ -350,8 +348,13 @@ try {
   });
   Object.assign(applicationState, {
     report: state.report,
+    activeResultTab: "simulation",
     simulationEnergyScopeKind: "zone",
     simulationEnergyZoneName: "Beta Zone",
+    simulationEnergyPeriod: "M1",
+    simulationEnergyService: state.simulationEnergyService,
+    simulationEnergySelection: state.simulationEnergySelection,
+    globalSelection: { ...applicationState.globalSelection, entityId: "air:mix", entityKind: "thermal_air_coupling", originView: "simulation" },
     semanticProjection: { navigation },
     analysisReady: { ...(applicationState.analysisReady || {}), topology: true },
   });
@@ -361,18 +364,32 @@ try {
     isAnalysisCurrent: () => true,
     isViewReady: () => true,
     openView: (view) => { openedView = view; },
+    recordHistory: () => { historyEntries += 1; },
   });
-  sourceDetails.addEventListener("click", simulationView.handleSimulationSeriesInspectClick);
-  airCouplingAction.click();
-  await Promise.race([
-    navigationComplete,
-    new Promise((_, reject) => window.setTimeout(() => reject(new Error("Topology Air navigation timed out")), 1000)),
-  ]);
-  assert(openedView === "topology" && revealedTarget === "air:mix", "Click did not navigate to the exact related Topology Air edge");
+  const currentContext = () => JSON.stringify({
+    activeResultTab: applicationState.activeResultTab,
+    scope: applicationState.simulationEnergyScopeKind,
+    zone: applicationState.simulationEnergyZoneName,
+    period: applicationState.simulationEnergyPeriod,
+    service: applicationState.simulationEnergyService,
+    selection: applicationState.simulationEnergySelection,
+    detailsOpen: applicationState.simulationEnergyDetailsOpen,
+    globalSelection: applicationState.globalSelection,
+  });
+  const contextBefore = currentContext();
+  const sourcePayloadBefore = JSON.stringify(explanation);
+  // The standalone source renderer retains identity metadata, but the current
+  // component-chart UI intentionally does not navigate to other model panels.
+  assert(await selectionController.openSelectionInView("topology", {
+    originView: "simulation", targetId: "air:mix", recordHistory: true, follow: false, preserveFilters: true,
+  }) === false, "Standalone Simulation unexpectedly opened a related model panel");
+  assert(openedView === "" && revealedTarget === "" && historyEntries === 0, "Blocked result navigation opened a view, revealed a target, or changed history");
+  assert(currentContext() === contextBefore && JSON.stringify(explanation) === sourcePayloadBefore, "Blocked result navigation changed the selected Zone/period, source payload, or current selection");
   const forgedUnavailable = document.createElement("button");
   forgedUnavailable.dataset.energyPathTopologyAirCouplingId = "air:missing";
   assert(await simulationView.openSimulationEnergyPathTopologyAirCoupling(forgedUnavailable) === false, "Unavailable Topology entity did not fail gracefully");
   assert(document.getElementById("runtimeStatus").textContent.includes("unavailable"), "Unavailable Topology entity did not expose a status message");
+  assert(currentContext() === contextBefore && openedView === "" && revealedTarget === "" && historyEntries === 0, "Unavailable source navigation changed the current result context");
 
   const unavailable = {
     schema: "semantic-idf.energy-explanation/v2",

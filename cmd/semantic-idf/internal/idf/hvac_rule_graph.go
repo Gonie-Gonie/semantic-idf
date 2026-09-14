@@ -452,6 +452,15 @@ func (b *hvacRuleGraphBuilder) addZoneTerminalEdges(subjectID string, connection
 		if !terminal.OutletMatchesZoneInlet || terminal.OutletNode == "" {
 			continue
 		}
+		// ADU resolution retains the wrapper outlet for display, separately
+		// from the terminal's actual outlet. A known contradiction between
+		// those original ports cannot prove that the terminal serves the Zone.
+		// Do not reinterpret unsupported composite outlet schemas here.
+		if terminal.ResolvedFromADU && strings.TrimSpace(terminal.TerminalObjectOutletNode) != "" &&
+			strings.TrimSpace(terminal.DistributionUnitOutletNode) != "" &&
+			!strings.EqualFold(terminal.TerminalObjectOutletNode, terminal.DistributionUnitOutletNode) {
+			continue
+		}
 		terminalObj, ok := b.objectByTypeName(terminal.ObjectType, terminal.ObjectName)
 		if !ok {
 			continue

@@ -10,9 +10,9 @@ type phaseHScenarioProbe struct {
 	terms []string
 }
 
-// TestPhaseHEndToEndScenarioContracts locks the cross-module hand-offs for the
-// six LINK-183 journeys. The headless harness covers controller execution; this
-// table ensures each concrete panel still supplies the required endpoints.
+// TestPhaseHEndToEndScenarioContracts locks the retained LINK-183 hand-offs and
+// standalone Simulation selection policy. The headless harness covers controller
+// execution; result source identities remain data, not cross-panel actions.
 func TestPhaseHEndToEndScenarioContracts(t *testing.T) {
 	scenarios := map[string][]phaseHScenarioProbe{
 		"A zone geometry and Back": {
@@ -30,9 +30,11 @@ func TestPhaseHEndToEndScenarioContracts(t *testing.T) {
 			{path: "frontend/src/js/views/hvac-views.js", terms: []string{"async function revealHVACSelection", "navigateHVAC(navigationTarget, { pushHistory: false", "captureHVACNavigationContext", "restoreHVACNavigationContext", `"loop_occurrence"`}},
 			{path: "frontend/src/js/navigation.js", terms: []string{"popUndoSnapshot", "restoreRegisteredPanelContext"}},
 		},
-		"D simulation output source to input": {
-			{path: "frontend/src/js/views/simulation-views.js", terms: []string{"simulationEnergySemanticAttributes", "simulationHVACPathSemanticCandidate", "simulationOutputSourceSemanticCandidate", `view: "input-text"`, `targetKind: "source"`, "requestSimulationModelSelection"}},
+		"D simulation source identity and local selection": {
+			{path: "frontend/src/js/views/simulation-views.js", terms: []string{"simulationEnergySemanticAttributes", "simulationHVACPathSemanticCandidate", "simulationOutputSourceSemanticCandidate", `view: "input-text"`, `targetKind: "source"`, "selectSimulationEnergyGraphItem", "handleHVACInspectionEvent"}},
 			{path: "frontend/src/js/views/input-views.js", terms: []string{"revealSelectionSource"}},
+			{path: "frontend/src/js/panel-navigation-policy.js", terms: []string{"isStandaloneResultView", `["hvac", "simulation"]`, "isStandalonePanelLink"}},
+			{path: "frontend/src/js/selection-controller.js", terms: []string{"isStandalonePanelLink(options.originView || selection.originView, normalizedView)", "isStandaloneResultView(options.originView || selection.originView)"}},
 		},
 		"E diagnose edit remap": {
 			{path: "frontend/src/js/tools.js", terms: []string{"restoreDiagnoseDocument", "AnalyzeInputDiagnosticsText", "PreviewCleanupText", "persistDiagnoseDocument"}},

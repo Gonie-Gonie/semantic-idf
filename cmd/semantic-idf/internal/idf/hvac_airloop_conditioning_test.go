@@ -80,6 +80,9 @@ func TestHVACAirLoopConditioningRequiresExactConnectedObjects(t *testing.T) {
 		{"wrapper inlet disconnected", func(t *testing.T, doc *Document) {
 			hvacSmallOfficeObject(t, doc, "CoilSystem:Cooling:DX", "PSZ-AC:1_CoolC").Fields[2].Value = "disconnected wrapper inlet"
 		}, 0, 0},
+		{"wrapper outlet disconnected", func(t *testing.T, doc *Document) {
+			hvacSmallOfficeObject(t, doc, "CoilSystem:Cooling:DX", "PSZ-AC:1_CoolC").Fields[3].Value = "disconnected wrapper outlet"
+		}, 0, 0},
 		{"branch chain disconnected", func(t *testing.T, doc *Document) {
 			hvacSmallOfficeObject(t, doc, "Branch", "PSZ-AC:1 Air Loop Main Branch").Fields[8].Value = "disconnected branch inlet"
 		}, 0, 0},

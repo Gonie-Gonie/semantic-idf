@@ -185,6 +185,13 @@ The release script infers bump size from these sections:
 
 ## Fixed
 
+- Energy Path source-to-output identity now respects the reported frequency,
+  preventing a Monthly result from borrowing a same-name Hourly request.
+- HVAC service paths no longer treat contradictory terminal/ADU outlets or a
+  disconnected DX wrapper's native air ports as connected delivery routes.
+  Unrelated valid local equipment and service-local child-coil checks remain
+  intact.
+
 - Energy now displays energy quantities in kWh/m² with two decimal places,
   using the executed model's building or selected-zone floor area.
 - Fixed missing HVAC Loops and Comfort results on large Run & Inspect models.

@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestFrontendSimulationEnergySystemsCrossJumpContracts(t *testing.T) {
+func TestFrontendSimulationEnergyDataAndExportContracts(t *testing.T) {
 	simulation := readTestFile(t, "frontend/src/js/views/simulation-views.js")
 	if strings.Contains(strings.ToLower(simulation), "confidence") {
 		t.Fatalf("simulation energy renderer should describe basis without confidence vocabulary")
@@ -18,18 +18,10 @@ func TestFrontendSimulationEnergySystemsCrossJumpContracts(t *testing.T) {
 		"simulationServicePathLoopRefs",
 		"simulationServicePathSupportingAssetRefs",
 		"simulation.sourceEnergy",
-		"data-simulation-hvac-path-id",
-		"data-simulation-hvac-loop-name",
-		"data-simulation-hvac-coupling-id",
-		"openSimulationHVACLoopRef",
-		"openSimulationHVACCoupling",
 		"simulationHVACLoopRefGraphKey",
 		"simulationRelatedServicePathsForEnergySelection",
 		"simulationHVACServicePathsByIDs",
 		"renderSimulationEnergyRelatedHVACLinks",
-		"simulation.energyHVACJumps",
-		"simulation.openLoopInHVAC",
-		"simulation.openAssetInHVAC",
 		"relatedPathIds",
 		"focusedEnergyExplanationGraph",
 		"captureSimulationEnergyWorkspaceContext",
@@ -154,9 +146,6 @@ func TestFrontendSimulationEnergySystemsCrossJumpContracts(t *testing.T) {
 		"energyZoneBreakdownRows",
 		"data-simulation-energy-zone-jump",
 		"data-simulation-energy-heatflow-zone-jump",
-		"data-simulation-energy-profile-zone-jump",
-		"openSimulationProfileZone",
-		"simulationProfileZoneName",
 		"simulation.energyOutputShortageHint",
 		"simulation.energyAccountingCoverageHint",
 		"renderEnergySourceAvailabilitySummary",
@@ -179,10 +168,9 @@ func TestFrontendSimulationEnergySystemsCrossJumpContracts(t *testing.T) {
 		"item.zoneName",
 		"item.serviceKind",
 		"renderSourceOutputCell(object, { compact: true })",
-		"navigateHVAC(",
 	} {
 		if !strings.Contains(simulation, term) {
-			t.Fatalf("simulation energy systems contract missing %q", term)
+			t.Fatalf("simulation energy data/export contract missing %q", term)
 		}
 	}
 	for _, removed := range []string{
@@ -194,10 +182,6 @@ func TestFrontendSimulationEnergySystemsCrossJumpContracts(t *testing.T) {
 		if strings.Contains(simulation, removed) {
 			t.Fatalf("Energy must not recreate removed primary controls or shadow focus: %q", removed)
 		}
-	}
-	hvac := readTestFile(t, "frontend/src/js/views/hvac-views.js")
-	if !strings.Contains(hvac, "export function navigateHVAC") {
-		t.Fatalf("hvac navigation should remain exportable for simulation energy cross-jumps")
 	}
 	indexHTML := readTestFile(t, "frontend/src/index.html")
 	for _, removed := range []string{
@@ -216,7 +200,7 @@ func TestFrontendSimulationEnergySystemsCrossJumpContracts(t *testing.T) {
 	styles := readTestFile(t, "frontend/src/styles/simulation.css")
 	for _, term := range []string{".energy-related-zones", ".energy-related-zone-chip", ".energy-related-service-paths", ".energy-related-hvac-links", ".energy-service-path-chip", ".energy-service-path-action-row", ".simulation-energy-system-links", ".simulation-energy-system-chip", ".energy-explanation-drilldown-actions", ".energy-use-total-basis", ".simulation-energy-focus-controls", ".simulation-energy-period-row", ".simulation-energy-period-slider", ".simulation-energy-zone-paths", ".simulation-energy-zone-actions", ".simulation-energy-chart-period", ".energy-explanation-output-actions", ".energy-source-availability-summary", ".energy-source-availability", ".energy-source-availability-status.missing", ".energy-source-availability-status.not_applicable", ".simulation-source-output-jump", ".energy-reconciliation-sources", ".energy-reconciliation-status", ".energy-sankey-grouping-notice", ".energy-sankey-sign-note", ".energy-sankey-edge.measured_meter", ".energy-sankey-edge.measured_energy_variable", ".energy-sankey-edge.integrated_rate_variable", ".energy-sankey-edge.selected", ".energy-sankey-node.connected", ".energy-sankey-node.electricity", ".energy-sankey-node.district_cooling", ".energy-sankey-node.fans", ".energy-sankey-node.pumps", ".energy-sankey-node.heat_recovery", ".energy-sankey-node.water_systems", ".energy-sankey-node.refrigeration", ".energy-sankey-node.generators", ".energy-sankey-node.storage_charge", ".energy-sankey-node.storage_discharge", ".energy-sankey-node.other", ".energy-sankey-legend i.node", ".energy-sankey-legend i.measured_meter", ".energy-sankey-legend i.measured_energy_variable", ".energy-sankey-legend i.integrated_rate_variable"} {
 		if !strings.Contains(styles, term) {
-			t.Fatalf("simulation energy cross-jump style missing %q", term)
+			t.Fatalf("simulation energy data/export style missing %q", term)
 		}
 	}
 	if !strings.Contains(simulation, "function energyEndUseLabel") || !strings.Contains(simulation, "energyEndUseGenerators") || !strings.Contains(simulation, "energyEndUseStorageCharge") {

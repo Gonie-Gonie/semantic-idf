@@ -2,7 +2,25 @@
 
 Execution order follows `semantic_idf_energy_path_refactor_checklist.md` supplied
 by the user. This ledger records implementation checkpoints; it does not replace
-the checklist or its final acceptance scenarios.
+the checklist or its final acceptance scenarios, except for the explicit scope
+revision below.
+
+## Current scope — user decision, 2026-09-14
+
+Remote `main` through `52b6026` is integrated. The user explicitly approved its
+current UI/UX and narrowed remaining work to Sankey/Energy Path engineering
+completeness: missing objects, incorrect physical or allocation assumptions,
+source identity, unit/multiplier handling, double counting, and missing-versus-
+zero semantics. Preserve the remote chart-focused UI, kWh/m² presentation and
+Monthly/Hourly inspection. Do not restore removed KPI cards, Service selection,
+the old detailed inspector or Topology/Profile/HVAC/Output navigation buttons.
+
+Conflicting MD screen requirements and additional UI-only layout, legacy cleanup
+or visual acceptance work are excluded from the revised completion scope.
+Numerical/source/export contracts and engineering regression verification remain
+required. Earlier UI checkpoint descriptions below are historical evidence, not
+claims about controls still present after the remote changes. The engineering
+fixture catalog is still in progress; remote synchronization is not completion.
 
 ## Checkpoints
 
@@ -393,7 +411,11 @@ The normal Building interzone/category projection remains intact.
 
 ## Next in sequence
 
-Section 22 actual-model fixtures → 210–211 → 220–222 → 230–235.
+Current sequence after the 2026-09-14 user scope revision: finish section 22's
+engineering model/source checks, correct concrete missing-object or physical-
+assumption defects, then run current repository/build and engineering completion
+gates. The former UI-only sequence (211, 220–222 cleanup and visual journeys)
+is not mandatory additional implementation under the revised scope.
 
 Section 22 is underway, not complete: 19 byte-preserved official model inputs
 cover the required equipment/model types and 22.1/23.2/24.2/25.1 Large Office
@@ -1017,3 +1039,56 @@ CLI 5.422, frontend/browser 159.405, simulation 320.483, other packages from
 cache; production Windows build passes in 7.63 seconds. Normal commit-hook
 verification/build and push now finish this checkpoint. Section 22 remains
 8/19; District Energy and the remaining catalog are still required.
+
+Radiant checkpoint `48f19ea` is committed and pushed to `main`, with clean
+worktree and matching remote verified. The normal hook passes app 16.675,
+frontend/browser 160.527 and simulation 315.935 seconds, other packages cached;
+production Windows build passes in 6.025 seconds. The user may reopen the app.
+
+District Energy is now in progress. Its preserved original SQL observation
+replay passes in 4.229 seconds without a new engine run, collecting 424 source
+identities including 347 complete Monthly identities. Original-only source,
+ownership, driver and availability audits are recorded separately from candidate
+comparison. Exact local-FanCoil/shared-DOAS ownership, month-first broad-pump
+allocation, conservative mixed-fan handling and manual Hourly output retention
+are being tested. Section 22 remains 8/19; District is not yet approved.
+See `docs/energy-path-district-acceptance.md` for evidence and pending gates.
+
+After remote integration, District's live purpose plan retains 967 exact Monthly/
+Hourly pairs plus two support requests (1,936 total), while the immutable saved
+capture keeps its original 969-request plan. Existing original Hourly requests
+retain their exact object indices and fields; no per-fan/pump or airflow request
+is invented. Current focused IDF/simulation regressions pass in 1.420/4.458
+seconds. A new candidate and separate diagnostic/pending export pass all 17,001
+independent metrics across eight groups with zero numerical/contract failures
+or coverage gaps. Independent original-to-pending audits pass 3,198 core and
+5,386 driver/source quantities; exact registry/provenance audit also passes.
+Expected approval and current-code prior-fixture replay remain separate gates.
+
+District is now the ninth approved engineering fixture. Root explicitly approves
+independent pending SHA256
+`83f9984140399e7e5f303ad8c92e9b73f29b6660d570b970cd80d9de22f6839f`;
+the manual header and 139,549-byte lossless companion retain all 17,001 metrics,
+5,757 known zeros and 650 explicit nulls. All eight prior fixtures pass current-
+code rebuilding with sixteen expected hashes unchanged. District saved acceptance
+and the nine-fixture catalog guard pass in a 21.760-second package. Full repository
+verification/build and normal commit/push now finish this checkpoint. Remaining
+work is engineering-only under the user's revised scope, starting with mixed-
+heating equipment output identity and source-local consumption allocation.
+
+The first integrated full gate fails before build: outdated standalone/HVAC UI
+tests, a genuine disconnected DX-wrapper inlet path, and four legacy SQL tests
+without reporting-frequency metadata. The bounded wrapper fix and exact current-
+UI test contracts pass focused IDF/frontend checks (3.680/22.346 seconds). Explicit
+Monthly/Hourly fixture metadata retains all old numeric/index assertions and adds
+exact high-resolution integration checks; simulation focus passes in 2.469 seconds.
+Current candidate 02 passes District's unchanged 17,001 metrics, and all eight
+prior approvals pass again with sixteen expected hashes unchanged. Full verification
+and normal commit/push are retried; the approved remote UI remains unchanged.
+
+District's second full repository gate passes without exclusions: app 24.260,
+CLI 7.141, input 1.737, frontend/browser 191.598, IDF 9.209 and simulation
+376.871 seconds; tabular passes from cache. Production Windows build passes
+in 6.08 seconds. Normal commit-hook verification/build and push now finish
+this engineering checkpoint. Nine of nineteen numerical fixtures are approved;
+the mixed-heating source/consumer boundary is the next concrete engineering task.

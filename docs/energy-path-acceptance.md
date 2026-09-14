@@ -8,8 +8,17 @@ New tests close identified gaps rather than duplicate the production builder.
 Backend tests below live in `cmd/semantic-idf/internal/simulation`. Browser
 fixtures and actual EnergyPlus model runs are separate forms of evidence:
 synthetic graph/SQL fixtures do not claim a successful EnergyPlus simulation.
-Actual-model manifests, performance checks, cleanup and end-user acceptance
-remain required after these unit and frontend checks.
+Actual-model manifests and current engineering regression checks remain separate
+from these unit and frontend checks.
+
+On 2026-09-14 the user approved the chart-focused remote UI through `52b6026`
+and narrowed the remaining goal to engineering completeness. Conflicting MD
+screen requirements are excluded: do not restore KPI/Service controls, the old
+inspector or navigation buttons. UI-only layout/cleanup/visual acceptance work
+is outside this revised goal. Historical UI passes below document earlier
+checkpoints; removed tests or controls are not evidence of current behavior.
+Numerical, source, allocation, multiplier, missing-value and export contracts
+still require current-code verification.
 
 ## Backend checks (EPATH-190–198)
 

@@ -4285,6 +4285,9 @@ func energyExplanationObjectIndexForDictionary(dictionary energyExplanationDicti
 			if object.ObjectIndex == nil || !purposeIDsContain(object.PurposeIDs, SimulationPurposeBasicEnergy) {
 				continue
 			}
+			if !energyExplanationOutputFrequencyMatchesDictionary(object, dictionary) {
+				continue
+			}
 			if !energyExplanationIsMeterObjectType(object.ObjectType) {
 				continue
 			}
@@ -4300,6 +4303,9 @@ func energyExplanationObjectIndexForDictionary(dictionary energyExplanationDicti
 	var wildcard *int
 	for _, object := range plan.OutputObjects {
 		if object.ObjectIndex == nil || !purposeIDsContain(object.PurposeIDs, SimulationPurposeBasicEnergy) {
+			continue
+		}
+		if !energyExplanationOutputFrequencyMatchesDictionary(object, dictionary) {
 			continue
 		}
 		if !strings.EqualFold(strings.TrimSpace(object.ObjectType), "Output:Variable") {
@@ -4318,6 +4324,22 @@ func energyExplanationObjectIndexForDictionary(dictionary energyExplanationDicti
 		}
 	}
 	return wildcard
+}
+
+// Output navigation retains the source's actual reporting boundary. A matching
+// name/key at another frequency is not the request that produced this source.
+// Keep input defaults distinct from unknown SQL metadata: omitted input frequency
+// means Hourly, while an unreported source frequency provides no index proof.
+func energyExplanationOutputFrequencyMatchesDictionary(object PurposeOutputObject, dictionary energyExplanationDictionary) bool {
+	frequency := strings.TrimSpace(firstNonEmpty(dictionary.reportingFrequency, dictionary.row.reportingFrequency))
+	if frequency == "" {
+		return false
+	}
+	requested := canonicalPurposeFrequency(firstNonEmpty(object.ReportingFrequency, purposeFieldValue(object.Fields, "Reporting Frequency")))
+	if strings.EqualFold(frequency, "Run Period") {
+		frequency = "RunPeriod"
+	}
+	return strings.EqualFold(frequency, requested)
 }
 
 func energyExplanationVariableObjectMatchesDictionaryName(objectName string, sourceName string, dictionary energyExplanationDictionary) bool {

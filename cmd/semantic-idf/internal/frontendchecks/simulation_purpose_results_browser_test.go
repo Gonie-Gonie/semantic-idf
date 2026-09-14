@@ -216,6 +216,8 @@ try{
  const chooseLoop=name=>{const input=hvac.querySelector('[data-simulation-hvac-loop]'),option=[...input.options].find(item=>item.textContent===name);check(Boolean(option),'missing loop option '+name);if(option)change('[data-simulation-hvac-loop]',option.value);};
  const vertex=name=>[...hvac.querySelectorAll('[data-hvac-inspect-point-name]')].find(item=>item.dataset.hvacInspectPointName===name);
  const metric=(name,id)=>vertex(name)?.querySelector('[data-hvac-inspect-metric="'+id+'"] .hvac-inspect-metric-value')?.textContent;
+ const checkSupplySetpoint=comparison=>{const point=vertex('SUPPLY OUTLET'),inline=point?.querySelector('[data-hvac-inspect-metric="temperature"] [data-hvac-setpoint-state]');check(inline?.textContent===comparison&&inline.dataset.hvacSetpointState==='unknown'&&inline.querySelector('[baseline-shift="sub"]')?.textContent==='set'&&!point.querySelector('[data-hvac-inspect-metric="setpoint"]'),'fan-only loop lost exact inline setpoint comparison or invented a heating/cooling control state: '+comparison);};
+ const checkFrame=(index,label)=>check(state.simulationHVACFrameIndex===index&&hvac.querySelector('[data-simulation-hvac-frame]')?.value===String(index)&&hvac.querySelector('[data-hvac-inspect-frame-label]')?.textContent===label,'shared HVAC frame does not match exact returned timestamp: '+label);
  const chooseEntity=(row,name)=>{const selector='[data-hvac-inspect-entity="'+row+'"]',input=hvac.querySelector(selector),option=[...input.options].find(item=>item.textContent===name);if(!option)throw Error('missing entity '+name);change(selector,option.value);};
  const chooseProperty=(row,name)=>{const selector='[data-hvac-inspect-property="'+row+'"]',input=hvac.querySelector(selector),option=[...input.options].find(item=>item.textContent.startsWith(name+' ('));if(!option)throw Error('missing property '+name);check(!option.disabled,'requested property unexpectedly disabled '+name);change(selector,option.value);};
  const basic=kind=>hvac.querySelector('[data-hvac-inspect-basic-chart="'+kind+'"]');
@@ -225,7 +227,9 @@ try{
  check(hvac.querySelector('[data-simulation-hvac-loop]').options.length===2&&hvac.querySelector('[data-hvac-inspect-topology]'),'loop picker or executed topology missing');
  check(!hvac.querySelector('table, .simulation-hvac-node-card, .simulation-hvac-derived-grid')&&!hvac.textContent.includes('Fan Electricity Rate')&&!hvac.textContent.includes('System Node Temperature')&&!hvac.textContent.includes('eplusout.sql'),'HVAC result still lists tables or raw source descriptions');
  check(vertex('SUPPLY OUTLET')&&vertex('SUPPLY FAN')&&!vertex('RETURN FAN'),'selected loop mixed another loop equipment');
- check(metric('SUPPLY OUTLET','temperature')==='14.00 °C'&&metric('SUPPLY OUTLET','flow')==='0.50 kg/s'&&metric('SUPPLY OUTLET','relativeHumidity')==='45.00 %'&&metric('SUPPLY OUTLET','setpoint')==='16.00 °C','first topology frame lost node temperature/flow/humidity/setpoint values');
+ checkFrame(0,'01/21 01:00:00');
+ check(metric('SUPPLY OUTLET','temperature')==='14.00 <set 16.00 °C'&&metric('SUPPLY OUTLET','flow')==='0.50 kg/s'&&metric('SUPPLY OUTLET','relativeHumidity')==='45.00 %','first topology frame lost exact node temperature/setpoint/flow/humidity values');
+ checkSupplySetpoint('14.00 <set 16.00');
  check(metric('SUPPLY FAN','power')==='0.00 kW'&&vertex('SUPPLY FAN')?.querySelector('.hvac-inspect-state.off'),'reported equipment zero power did not show Off');
  check(vertex('SUPPLY OUTLET')?.classList.contains('measured'),'frame node point was not emphasized');
  for(const kind of ['flow','temperature','humidity'])check(basic(kind)?.querySelectorAll('[data-hvac-chart-series]').length===2,'default node graph missing two observed points: '+kind);
@@ -233,7 +237,9 @@ try{
  check(frame?.max==="2","HVAC frame slider did not use returned series length");
  const graphSVG=basic('temperature').querySelector('svg'),customSVG=custom().querySelector('svg');
  if(frame){frame.value="2";frame.dispatchEvent(new Event("input",{bubbles:true}));}
- check(state.simulationHVACFrameIndex===2&&metric('SUPPLY OUTLET','temperature')==='18.00 °C'&&metric('SUPPLY OUTLET','flow')==='1.50 kg/s'&&metric('SUPPLY OUTLET','relativeHumidity')==='55.00 %','frame interaction did not render exact returned final node values');
+ checkFrame(2,'01/21 03:00:00');
+ check(metric('SUPPLY OUTLET','temperature')==='18.00 >set 16.00 °C'&&metric('SUPPLY OUTLET','flow')==='1.50 kg/s'&&metric('SUPPLY OUTLET','relativeHumidity')==='55.00 %','frame interaction did not render exact returned final node values');
+ checkSupplySetpoint('18.00 >set 16.00');
  check(metric('SUPPLY FAN','power')==='0.50 kW'&&vertex('SUPPLY FAN')?.querySelector('.hvac-inspect-state.on'),'frame did not update equipment status/power');
  check(hvac.querySelector('[data-simulation-hvac-frame]')===frame&&basic('temperature').querySelector('svg')===graphSVG&&custom().querySelector('svg')===customSVG,'frame slider recreated slider or complete trace graph');
  check(basic('temperature').querySelector('[data-hvac-chart-value="18"].is-frame')&&basic('temperature').querySelector('[data-hvac-chart-value="26"].is-frame'),'frame marker did not highlight exact time-aligned node graph observations');
@@ -255,14 +261,29 @@ try{
  chooseEntity(0,'SUPPLY OUTLET');chooseProperty(0,'Mass flow');chooseEntity(1,'SUPPLY INLET');chooseProperty(1,'Temperature');
  check(custom().querySelector('[data-hvac-chart-x-value="0.5"][data-hvac-chart-y-value="24"]')&&custom().querySelector('[data-hvac-chart-x-value="1.5"][data-hvac-chart-y-value="26"]'),'two-step node properties did not update exact scatter pairs');
  const supplySelection=state.simulationHVACInspection.selectedLoop;
+ const selectedCustomProperties=()=>JSON.stringify([0,1].map(row=>({entity:hvac.querySelector('[data-hvac-inspect-entity="'+row+'"]').value,property:hvac.querySelector('[data-hvac-inspect-property="'+row+'"]').value})));
+ const supplyCustomProperties=selectedCustomProperties();
  chooseLoop('RETURN LOOP');
- check(vertex('RETURN OUTLET')&&vertex('RETURN FAN')&&!vertex('SUPPLY FAN')&&state.simulationHVACFrameIndex===0,'loop change leaked previous topology, equipment or frame');
- check(metric('RETURN OUTLET','temperature')==='21.00 °C'&&metric('RETURN FAN','power')==='0.70 kW','second loop displayed first loop observations');
- const secondFrame=hvac.querySelector('[data-simulation-hvac-frame]');secondFrame.value='1';secondFrame.dispatchEvent(new Event('input',{bubbles:true}));
+ check(vertex('RETURN OUTLET')&&vertex('RETURN FAN')&&!vertex('SUPPLY OUTLET')&&!vertex('SUPPLY FAN'),'loop change leaked previous topology or equipment');
+ checkFrame(2,'01/21 03:00:00');
+ check(metric('RETURN OUTLET','temperature')==='23.00 °C'&&metric('RETURN OUTLET','flow')==='4.00 kg/s'&&metric('RETURN OUTLET','relativeHumidity')==='70.00 %'&&metric('RETURN FAN','power')==='1.10 kW','second loop did not show its own exact observations at the shared final timestamp');
+ check(hvac.querySelector('[data-hvac-inspect-mode]').value==='line'&&hvac.querySelector('[data-hvac-inspect-node-visible="node:return outlet"]').checked,'shared frame leaked first-loop graph type or node visibility into the second loop');
+ const secondFrame=hvac.querySelector('[data-simulation-hvac-frame]');secondFrame.value='0';secondFrame.dispatchEvent(new Event('input',{bubbles:true}));
+ checkFrame(0,'01/21 01:00:00');
+ check(metric('RETURN OUTLET','temperature')==='21.00 °C'&&metric('RETURN OUTLET','flow')==='2.00 kg/s'&&metric('RETURN OUTLET','relativeHumidity')==='60.00 %'&&metric('RETURN FAN','power')==='0.70 kW','second loop first timestamp lost its own exact observations');
+ secondFrame.value='1';secondFrame.dispatchEvent(new Event('input',{bubbles:true}));
+ checkFrame(1,'01/21 02:00:00');
+ check(metric('RETURN OUTLET','temperature')==='22.00 °C'&&metric('RETURN OUTLET','flow')==='3.00 kg/s'&&metric('RETURN OUTLET','relativeHumidity')==='65.00 %'&&metric('RETURN FAN','power')==='0.90 kW','second loop middle timestamp lost its own exact observations');
  chooseLoop('SUPPLY LOOP');
- check(state.simulationHVACInspection.selectedLoop===supplySelection&&state.simulationHVACFrameIndex===2&&hvac.querySelector('[data-hvac-inspect-mode]').value==='scatter'&&!hvac.querySelector('[data-hvac-inspect-node-visible="node:supply outlet"]').checked,'returning to loop lost its frame, graph type or node toggles');
- check(custom().querySelector('[data-hvac-chart-x-value="1.5"][data-hvac-chart-y-value="26"]')&&metric('SUPPLY OUTLET','temperature')==='18.00 °C','returning to loop lost selected custom properties or snapshot');
- chooseLoop('RETURN LOOP');check(state.simulationHVACFrameIndex===1&&metric('RETURN OUTLET','temperature')==='22.00 °C','loop-local second frame was not retained');
+ check(state.simulationHVACInspection.selectedLoop===supplySelection&&vertex('SUPPLY OUTLET')&&vertex('SUPPLY FAN')&&!vertex('RETURN OUTLET')&&!vertex('RETURN FAN'),'returning to loop lost selected topology or mixed second-loop equipment');
+ checkFrame(1,'01/21 02:00:00');
+ check(hvac.querySelector('[data-hvac-inspect-mode]').value==='scatter'&&!hvac.querySelector('[data-hvac-inspect-node-visible="node:supply outlet"]').checked&&vertex('SUPPLY INLET')?.getAttribute('aria-pressed')==='true','returning to loop lost its local graph type, node toggle or topology selection');
+ check(selectedCustomProperties()===supplyCustomProperties&&custom().querySelectorAll('[data-hvac-chart-scatter] circle').length===3&&custom().querySelector('[data-hvac-chart-x-value="0.5"][data-hvac-chart-y-value="24"]')&&custom().querySelector('[data-hvac-chart-x-value="1.5"][data-hvac-chart-y-value="26"]'),'returning to loop lost its selected custom properties or exact complete scatter observations');
+ check(custom().querySelector('[data-hvac-chart-x-value="1"][data-hvac-chart-y-value="25"].is-frame'),'restored loop-local scatter did not highlight the shared middle timestamp');
+ check(metric('SUPPLY OUTLET','temperature')==='16.00 =set 16.00 °C'&&metric('SUPPLY OUTLET','flow')==='1.00 kg/s'&&metric('SUPPLY OUTLET','relativeHumidity')==='50.00 %'&&metric('SUPPLY FAN','power')==='0.40 kW','returning to loop did not render its own exact observations at the shared middle timestamp');
+ checkSupplySetpoint('16.00 =set 16.00');
+ chooseLoop('RETURN LOOP');checkFrame(1,'01/21 02:00:00');
+ check(metric('RETURN OUTLET','temperature')==='22.00 °C'&&metric('RETURN OUTLET','flow')==='3.00 kg/s'&&metric('RETURN OUTLET','relativeHumidity')==='65.00 %'&&metric('RETURN FAN','power')==='0.90 kW','returning to second loop did not retain exact observations at the shared timestamp');
  check(JSON.stringify(state.simulationResult)===installedJSON,'HVAC topology/graph interaction mutated returned observations');
 
  tab("comfort").click();await tick();
@@ -289,7 +310,7 @@ try{
   }else hvac.querySelector('[data-simulation-hvac-loop]').scrollIntoView({block:'start'});
   await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
  }
- evidence.push("Native purpose checkboxes preserve all four purposes in one SQL-first Run & Inspect request. Production Go builder returns two executed loop topologies with exact membership. Native loop/frame/node/custom property controls render clean topology, status and three node graphs; frame changes retain slider and trace SVG; yyaxes and exactly-two-property scatter use observed values. Loop-local selections survive switching. Comfort zone controls show reported T/Tset/RH graphs and indicators without tables or source links.");
+ evidence.push("Native purpose checkboxes preserve all four purposes in one SQL-first Run & Inspect request. Production Go builder returns two executed loop topologies with exact membership. Native loop/frame/node/custom property controls render clean topology, exact inline temperature/setpoint comparisons, status and three node graphs; frame changes retain slider and trace SVG; yyaxes and exactly-two-property scatter use observed values. The timestamp is shared across loops while graph type, node selections/toggles and custom properties remain loop-local. Comfort zone controls show reported T/Tset/RH graphs and indicators without tables or source links.");
 }catch(error){failures.push(error.stack||String(error));}
 document.body.dataset.purposeResultsStatus=failures.length?"failed":"passed";
 document.getElementById("purpose-results-evidence").textContent=JSON.stringify({failures,evidence});

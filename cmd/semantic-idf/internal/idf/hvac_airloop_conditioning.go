@@ -46,6 +46,15 @@ func buildHVACAirLoopConditioning(ctx *hvacContext, loops []HVACLoop, graph HVAC
 				connected = false
 				break
 			}
+			// The wrapper's own air ports are part of the physical branch,
+			// so a contradiction breaks every downstream conditioning path.
+			// Child-coil ownership/ports remain a service-local check below.
+			if strings.EqualFold(component.ObjectType, "CoilSystem:Cooling:DX") &&
+				!hvacAirConditioningNodesMatch(ctx.objectsByTypeName[hvacComponentKey(component)], component,
+					"DX Cooling Coil System Inlet Node Name", "DX Cooling Coil System Outlet Node Name") {
+				connected = false
+				break
+			}
 			seenComponents[hvacComponentKey(component)] = true
 			lastNode = component.OutletNode
 		}

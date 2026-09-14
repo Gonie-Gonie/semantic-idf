@@ -647,10 +647,11 @@ func TestParseSimulationEnergyExplanationSQLBuildsAccountingGraph(t *testing.T) 
 	loadObjectIndex := 2
 	internalHeatObjectIndex := 3
 	surfaceHeatObjectIndex := 4
+	addTestEnergySQLReportingMetadata(t, db, 24, 25)
 	plan := &PurposeRunPlan{OutputObjects: []PurposeOutputObject{
-		{ObjectType: "Output:Meter", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, KeyValue: "Electricity:Facility", ObjectIndex: &facilityObjectIndex},
-		{ObjectType: "Output:Meter", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, KeyValue: "Cooling:Electricity", ObjectIndex: &coolingObjectIndex},
-		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, KeyValue: "*", VariableName: "Zone Air System Sensible Cooling Energy", ObjectIndex: &loadObjectIndex},
+		{ObjectType: "Output:Meter", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, KeyValue: "Electricity:Facility", ReportingFrequency: "Monthly", ObjectIndex: &facilityObjectIndex},
+		{ObjectType: "Output:Meter", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, KeyValue: "Cooling:Electricity", ReportingFrequency: "Monthly", ObjectIndex: &coolingObjectIndex},
+		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, KeyValue: "*", VariableName: "Zone Air System Sensible Cooling Energy", ReportingFrequency: "Monthly", ObjectIndex: &loadObjectIndex},
 		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, KeyValue: "*", VariableName: "Zone Air Heat Balance Internal Convective Heat Gain Rate", ObjectIndex: &internalHeatObjectIndex},
 		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, KeyValue: "*", VariableName: "Zone Air Heat Balance Surface Convection Rate", ObjectIndex: &surfaceHeatObjectIndex},
 	}}
@@ -674,8 +675,24 @@ func TestParseSimulationEnergyExplanationSQLBuildsAccountingGraph(t *testing.T) 
 	if !strings.Contains(string(encoded), `"fromLevel"`) || strings.Contains(string(encoded), `"FromLevel"`) {
 		t.Fatalf("relationship rule json = %s", encoded)
 	}
-	if len(result.Periods) != 3 || result.Periods[0].ID != "annual" || result.Periods[1].ID != "M1" || result.Periods[2].ID != "M2" {
-		t.Fatalf("periods = %#v", result.Periods)
+	wantPeriods := []string{"annual", "M1", "M2", "D1", "H1", "H2"}
+	if len(result.Periods) != len(wantPeriods) {
+		t.Fatalf("period count = %d, want %d", len(result.Periods), len(wantPeriods))
+	}
+	for index, want := range wantPeriods {
+		if result.Periods[index].ID != want {
+			t.Fatalf("period %d = %s, want %s", index, result.Periods[index].ID, want)
+		}
+	}
+	// Declared Hourly rate observations also support exact daily/hourly
+	// inspection. Monthly-only energy/load observations cannot fill those slots.
+	for index, want := range []float64{0.5, 0.25, 0.25} {
+		period := result.Periods[index+3]
+		heat := energyExplanationNodeByID(period.Nodes, "heat.internal_convective.zone_one")
+		surface := energyExplanationNodeByID(period.Nodes, "heat.surface_convection.zone_one")
+		if len(period.Nodes) != 2 || heat == nil || heat.Value != want || surface == nil || surface.SignedValue != -0.4*want {
+			t.Fatalf("%s lost reported rate integration or borrowed Monthly energy: %#v", period.ID, period.Nodes)
+		}
 	}
 	facility := energyExplanationNodeByID(result.Nodes, "energy.carrier.electricity")
 	if facility == nil || facility.Value != 3 || facility.Unit != "kWh" || facility.MeterHierarchyLevel != "facility_total" || !stringSliceContains(facility.SourceIDs, "sql-rdd-20") {
@@ -763,7 +780,7 @@ func TestParseSimulationEnergyExplanationSQLBuildsAccountingGraph(t *testing.T) 
 	if len(result.Sources) != 5 || !energyExplanationHasSource(result.Sources, "sql-rdd-20", true, "Electricity:Facility") || !energyExplanationHasSource(result.Sources, "sql-rdd-24", false, "Zone Air Heat Balance Internal Convective Heat Gain Rate") {
 		t.Fatalf("sources = %#v", result.Sources)
 	}
-	if source := energyExplanationSourceByID(result.Sources, "sql-rdd-20"); source == nil || source.ObjectIndex == nil || *source.ObjectIndex != facilityObjectIndex || source.AggregationMethod != "sum_report_data" {
+	if source := energyExplanationSourceByID(result.Sources, "sql-rdd-20"); source == nil || source.ObjectIndex == nil || *source.ObjectIndex != facilityObjectIndex || source.ReportingFrequency != "Monthly" || source.AggregationMethod != "sum_report_data" {
 		t.Fatalf("facility source object index = %#v", source)
 	}
 	if source := energyExplanationSourceByID(result.Sources, "sql-rdd-21"); source == nil || source.ObjectIndex == nil || *source.ObjectIndex != coolingObjectIndex {
@@ -1086,9 +1103,10 @@ func TestParseSimulationEnergyExplanationSQLSeparatesFanElectricityAndHeat(t *te
 
 	fanElectricityObjectIndex := 5
 	fanHeatObjectIndex := 6
+	addTestEnergySQLReportingMetadata(t, db)
 	plan := &PurposeRunPlan{OutputObjects: []PurposeOutputObject{
-		{ObjectType: "Output:Meter", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, KeyValue: "Electricity:Fans", ObjectIndex: &fanElectricityObjectIndex},
-		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, KeyValue: "*", VariableName: "Fan Air Heat Gain Energy", ObjectIndex: &fanHeatObjectIndex},
+		{ObjectType: "Output:Meter", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, KeyValue: "Electricity:Fans", ReportingFrequency: "Monthly", ObjectIndex: &fanElectricityObjectIndex},
+		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, KeyValue: "*", VariableName: "Fan Air Heat Gain Energy", ReportingFrequency: "Monthly", ObjectIndex: &fanHeatObjectIndex},
 	}}
 	result, err := parseSimulationEnergyExplanationSQL(path, plan)
 	if err != nil {
@@ -1115,7 +1133,7 @@ func TestParseSimulationEnergyExplanationSQLSeparatesFanElectricityAndHeat(t *te
 	if availability := energyExplanationSourceAvailabilityByName(result.Completeness.SourceAvailability, "Fan Air Heat Gain Energy"); availability == nil || availability.Status != "found" || availability.Level != "heat" || !stringSliceContains(availability.SourceIDs, "sql-rdd-24") {
 		t.Fatalf("fan heat availability = %#v", result.Completeness.SourceAvailability)
 	}
-	if source := energyExplanationSourceByID(result.Sources, "sql-rdd-23"); source == nil || !source.IsMeter || source.ObjectIndex == nil || *source.ObjectIndex != fanElectricityObjectIndex {
+	if source := energyExplanationSourceByID(result.Sources, "sql-rdd-23"); source == nil || !source.IsMeter || source.ObjectIndex == nil || *source.ObjectIndex != fanElectricityObjectIndex || source.ReportingFrequency != "Monthly" {
 		t.Fatalf("fan electricity source = %#v", source)
 	}
 	if source := energyExplanationSourceByID(result.Sources, "sql-rdd-24"); source == nil || source.IsMeter || source.ObjectIndex == nil || *source.ObjectIndex != fanHeatObjectIndex {
@@ -1550,6 +1568,7 @@ func TestParseSimulationEnergyExplanationSQLMapsElectricStorageVariables(t *test
 		(33, 2, 31, 900000.0)`); err != nil {
 		t.Fatal(err)
 	}
+	addTestEnergySQLReportingMetadata(t, db)
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -1557,8 +1576,8 @@ func TestParseSimulationEnergyExplanationSQLMapsElectricStorageVariables(t *test
 	chargeObjectIndex := 5
 	dischargeObjectIndex := 6
 	plan := &PurposeRunPlan{OutputObjects: []PurposeOutputObject{
-		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, KeyValue: "*", VariableName: "Electric Storage Charge Energy", ObjectIndex: &chargeObjectIndex},
-		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, KeyValue: "*", VariableName: "Electric Storage Discharge Energy", ObjectIndex: &dischargeObjectIndex},
+		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, KeyValue: "*", VariableName: "Electric Storage Charge Energy", ReportingFrequency: "Monthly", ObjectIndex: &chargeObjectIndex},
+		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, KeyValue: "*", VariableName: "Electric Storage Discharge Energy", ReportingFrequency: "Monthly", ObjectIndex: &dischargeObjectIndex},
 	}}
 	result, err := parseSimulationEnergyExplanationSQL(path, plan)
 	if err != nil {
@@ -1584,7 +1603,7 @@ func TestParseSimulationEnergyExplanationSQLMapsElectricStorageVariables(t *test
 	if reconciliation == nil || reconciliation.ExpectedValue != 3 || reconciliation.ExplainedValue != 2 || reconciliation.ResidualValue != 1 {
 		t.Fatalf("storage reconciliation should count charge but not discharge as consumption: %#v", reconciliation)
 	}
-	if source := energyExplanationSourceByID(result.Sources, "sql-rdd-30"); source == nil || source.ObjectIndex == nil || *source.ObjectIndex != chargeObjectIndex {
+	if source := energyExplanationSourceByID(result.Sources, "sql-rdd-30"); source == nil || source.ObjectIndex == nil || *source.ObjectIndex != chargeObjectIndex || source.ReportingFrequency != "Monthly" {
 		t.Fatalf("storage charge source = %#v", source)
 	}
 	if availability := energyExplanationSourceAvailabilityByName(result.Completeness.SourceAvailability, "Electric Storage Discharge Energy"); availability == nil || availability.Status != "found" || availability.Level != "context" {
@@ -2152,8 +2171,9 @@ func TestEnergyExplanationSourceAvailabilityMatchesLoadAndSignedHeatAliases(t *t
 	loadObjectIndex := 31
 	heatGainObjectIndex := 32
 	heatLossObjectIndex := 33
+	addTestEnergySQLReportingMetadata(t, db, 24)
 	plan := &PurposeRunPlan{OutputObjects: []PurposeOutputObject{
-		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, KeyValue: "*", VariableName: "Zone Air System Sensible Cooling Energy", ObjectIndex: &loadObjectIndex},
+		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, KeyValue: "*", VariableName: "Zone Air System Sensible Cooling Energy", ReportingFrequency: "Monthly", ObjectIndex: &loadObjectIndex},
 		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, KeyValue: "*", VariableName: "Zone Infiltration Sensible Heat Gain Energy", ObjectIndex: &heatGainObjectIndex},
 		{ObjectType: "Output:Variable", PurposeIDs: []SimulationPurposeID{SimulationPurposeBasicEnergy}, KeyValue: "*", VariableName: "Zone Infiltration Sensible Heat Loss Energy", ObjectIndex: &heatLossObjectIndex},
 	}}
@@ -2174,7 +2194,7 @@ func TestEnergyExplanationSourceAvailabilityMatchesLoadAndSignedHeatAliases(t *t
 	if heatLoss == nil || heatLoss.Status != "missing" || len(heatLoss.SourceIDs) != 0 {
 		t.Fatalf("heat loss availability should not match opposite sign aliases: %#v", result.Completeness.SourceAvailability)
 	}
-	if source := energyExplanationSourceByID(result.Sources, "sql-rdd-23"); source == nil || source.ObjectIndex == nil || *source.ObjectIndex != loadObjectIndex {
+	if source := energyExplanationSourceByID(result.Sources, "sql-rdd-23"); source == nil || source.ObjectIndex == nil || *source.ObjectIndex != loadObjectIndex || source.ReportingFrequency != "Monthly" {
 		t.Fatalf("load alias source object index = %#v", source)
 	}
 	if source := energyExplanationSourceByID(result.Sources, "sql-rdd-24"); source == nil || source.ObjectIndex == nil || *source.ObjectIndex != heatGainObjectIndex || *source.ObjectIndex == heatLossObjectIndex {
@@ -3464,6 +3484,22 @@ func TestEnergyExplanationV1AuxiliaryGoldenFixturesAreValidJSON(t *testing.T) {
 		}
 		if len(value) == 0 {
 			t.Fatalf("%s is empty", name)
+		}
+	}
+}
+
+// The legacy minimal schema deliberately omits reporting metadata. Tests that
+// assert exact Output object identity must declare their own real boundaries:
+// these sparse energy observations are Monthly, with explicitly named Hourly
+// rate dictionaries where present. Unknown-frequency fixtures stay unchanged.
+func addTestEnergySQLReportingMetadata(t *testing.T, db *sql.DB, hourlyIDs ...int) {
+	t.Helper()
+	if _, err := db.Exec(`ALTER TABLE ReportDataDictionary ADD COLUMN ReportingFrequency TEXT NOT NULL DEFAULT 'Monthly'`); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range hourlyIDs {
+		if _, err := db.Exec(`UPDATE ReportDataDictionary SET ReportingFrequency='Hourly' WHERE ReportDataDictionaryIndex=?`, id); err != nil {
+			t.Fatal(err)
 		}
 	}
 }
